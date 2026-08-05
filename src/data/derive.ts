@@ -1,0 +1,401 @@
+// derive.ts — the app-level derive-and-merge module (ARCHITECTURE §3.3, §7.5; AD-2).
+// Behavioral reference: sample-burrito-validation/validate.mjs sections 3 and 7.
+// Parity contract (S-0c / C0.4): the same inputs must give the same numbers as the
+// harness. The client derives check lists and progress at load and never stores
+// them authoritatively (BURRITO-SPEC §4.2).
+import { usfmjs } from './vendor';
+
+// ---------- targetBible derivation (harness section 3; FR-13 precursor) ----------
+
+/** One usfm-js verse object (loose-honest, per the vendor.d.ts discipline). */
+export interface VerseObject {
+  type?: string;
+  tag?: string;
+  text?: string;
+  [key: string]: unknown;
+}
+
+export interface DerivedVerse {
+  verseObjects: VerseObject[];
+  [key: string]: unknown;
+}
+
+/** Whole-book usfm-js output. Verse keys are the exact usfm-js strings: a span
+ * verse is keyed "9-10" and Number("9-10") is NaN — never coerce the keys
+ * (BURRITO-SPEC §4.1/§5.2). */
+export interface DerivedBook {
+  chapters: { [chapter: string]: { [verse: string]: DerivedVerse } };
+  headers: Array<{ tag?: string; content?: string; [key: string]: unknown }>;
+}
+
+/** Parse a whole draft book. The whole-book parse yields `chapters` + `headers`;
+ * only the chunk parse yields `verses` (PLATFORM-NOTES #4 [VERIFIED]). */
+export const deriveTargetBible = (bookUsfm: string): DerivedBook =>
+  usfmjs.toJSON(bookUsfm) as unknown as DerivedBook;
+
+// ---------- check-item shapes (BURRITO-SPEC §5.2) ----------
+
+export interface CheckReference {
+  bookId: string;
+  chapter: number | string;
+  verse: number | string;
+  [key: string]: unknown;
+}
+
+export interface CheckContextId {
+  checkId: string;
+  reference: CheckReference;
+  tool: string;
+  groupId: string;
+  quote: unknown;
+  quoteString: string;
+  occurrence: number;
+  [key: string]: unknown;
+}
+
+/** One check item. A freshly derived item carries `false` in every decision
+ * field; a stored decision carries the real values (§5.2). */
+export interface CheckItem {
+  contextId: CheckContextId;
+  selections: unknown[] | false;
+  comments: unknown;
+  reminders: unknown;
+  nothingToSelect: unknown;
+  verseEdits: unknown;
+  invalidated: unknown;
+  [key: string]: unknown;
+}
+
+// ---------- TSV → items (harness section 7 row mapping) ----------
+
+/** Parse one reference part. Plain digits become numbers (the harness behavior
+ * for its numeric fixtures); a span such as "9-10" stays a string — Number()
+ * coercion of span keys is the banned bug class (§5.2). */
+const refPart = (s: string): number | string => (/^\d+$/.test(s) ? Number(s) : s);
+
+/** Versioned TSV parsing (BURRITO-SPEC §4.2 "versioned TSV parsing" — AD-2):
+ * the header row is the version contract. A resource whose header differs from
+ * the expected column set is a different (newer/older) TSV schema and MUST be
+ * rejected, not guess-parsed. */
+export const TWL_HEADER = 'Reference\tID\tTags\tOrigWords\tOccurrence\tTWLink';
+export const TN_HEADER = 'Reference\tID\tTags\tSupportReference\tQuote\tOccurrence\tNote';
+
+const tsvRows = (tsv: string, expectedHeader: string, resourceLabel: string): string[][] => {
+  const lines = tsv.split('\n').filter((row) => row.trim() !== '');
+  const header = (lines[0] ?? '').replace(/\r$/, '');
+  if (header !== expectedHeader) {
+    throw new Error(
+      `unversioned/unknown ${resourceLabel} TSV header: "${header.slice(0, 80)}" — ` +
+        `expected "${expectedHeader}". Refusing to guess-parse (§4.2 versioned parsing).`,
+    );
+  }
+  return lines.slice(1).map((row) => row.split('\t').map((cell) => cell.replace(/\r$/, '')));
+};
+
+/** Derive check items from a TWL TSV
+ * (columns: Reference / ID / Tags / OrigWords / Occurrence / TWLink).
+ * `category` is the TWLink article folder: kt | names | other. */
+export const deriveTwlItems = (twlTsv: string, bookId: string): CheckItem[] =>
+  tsvRows(twlTsv, TWL_HEADER, 'TWL').map((cells) => {
+    const [ref, id, , origWords, occurrence, link] = cells;
+    const [chapter, verse] = ref.split(':').map(refPart);
+    const linkParts = link.split('/');
+    // Real-data quirk (en_twl v86): some TWLink values carry a ".md" suffix
+    // (e.g. .../names/paul.md). The slug is the article id — strip it.
+    const groupId = (linkParts.pop() ?? '').replace(/\.md\r?$/, '');
+    return {
+      contextId: {
+        checkId: id,
+        reference: { bookId, chapter, verse },
+        tool: 'translationWords',
+        groupId,
+        quote: origWords,
+        quoteString: origWords,
+        occurrence: Number(occurrence),
+      },
+      category: linkParts.pop() ?? '',
+      selections: false,
+      comments: false,
+      reminders: false,
+      nothingToSelect: false,
+      verseEdits: false,
+      invalidated: false,
+    };
+  });
+
+// ---------- tN TSV → items (7 columns; real en_tn/es-419_tn shape) ----------
+
+/** The tC3 tN category map: thematic check category ← tA module slug.
+ * Data source: tC3's translationNotes category grouping (mirrored in
+ * pankosmia/uw-client-checks `T_NOTES_CATEGORIES`, read 2026-08-03). Slugs not
+ * in the map default to "other" — the map predates newer tA modules (e.g.
+ * figs-yousingular, translate-blessing appear in en_tn v86 but not here). */
+export const TN_CATEGORY_MAP: { [category: string]: string[] } = {
+  discourse: [
+    'figs-declarative', 'figs-events', 'figs-exclamations', 'figs-exmetaphor',
+    'figs-imperative', 'figs-parables', 'figs-pastforfuture', 'figs-quotations',
+    'figs-quotesinquotes', 'figs-sentences', 'translate-versebridge',
+    'writing-background', 'writing-connectingwords', 'writing-endofstory',
+    'writing-intro', 'writing-newevent', 'writing-participants', 'writing-poetry',
+    'writing-proverbs', 'writing-quotations',
+  ],
+  numbers: ['translate-fraction', 'translate-numbers', 'translate-ordinal'],
+  figures: [
+    'figs-apostrophe', 'figs-doublenegatives', 'figs-doublet', 'figs-ellipsis',
+    'figs-euphemism', 'figs-hendiadys', 'figs-hyperbole', 'figs-idiom',
+    'figs-irony', 'figs-litotes', 'figs-merism', 'figs-metaphor', 'figs-metonymy',
+    'figs-parallelism', 'figs-personification', 'figs-rquestion', 'figs-simile',
+    'figs-synecdoche', 'figs-quotemarks',
+  ],
+  culture: [
+    'figs-explicit', 'figs-go', 'translate-bdistance', 'translate-bmoney',
+    'translate-bvolume', 'translate-hebrewmonths', 'translate-names',
+    'translate-bweight', 'translate-symaction', 'translate-unknown',
+    'writing-symlanguage',
+  ],
+  grammar: [
+    'figs-abstractnouns', 'figs-activepassive', 'figs-distinguish',
+    'figs-exclusive', 'figs-123person', 'figs-they', 'figs-you', 'figs-we',
+    'figs-genericnoun', 'figs-hypo', 'figs-inclusive', 'figs-nominaladj',
+    'figs-possession', 'figs-pronouns', 'figs-rpronouns', 'figs-gendernotations',
+    'grammar-connect-logic-goal', 'grammar-connect-exceptions',
+    'grammar-connect-logic-contrast', 'grammar-connect-logic-result',
+  ],
+  other: [
+    'guidelines-sonofgodprinciples', 'translate-manuscripts',
+    'translate-textvariants', 'translate-transliterate',
+  ],
+};
+
+const groupToCategory: Map<string, string> = new Map(
+  Object.entries(TN_CATEGORY_MAP).flatMap(([cat, groups]) =>
+    groups.map((g): [string, string] => [g, cat]),
+  ),
+);
+
+/** Thematic category for a tA module slug; unmapped slugs are "other". */
+export const categoryForTn = (groupId: string): string => groupToCategory.get(groupId) ?? 'other';
+
+export interface TnQuoteWord {
+  word: string;
+  occurrence: number;
+}
+
+/** tN quote → word-occurrence array (§5.2: tN quote MUST stay an array).
+ * The TSV quote separates discontinuous spans with "&"; the "&" token is a
+ * marker, never a word. `occurrence` is the ordinal of that word within the
+ * quote (verse-level occurrence resolution is the alignment-aware layer's job,
+ * not derivable from the TSV row alone). */
+export const tnQuoteWords = (quote: string): TnQuoteWord[] => {
+  const seen: { [word: string]: number } = {};
+  return quote
+    .split(/\s+/)
+    .filter((w) => w !== '' && w !== '&')
+    .map((word) => {
+      seen[word] = (seen[word] ?? 0) + 1;
+      return { word, occurrence: seen[word] };
+    });
+};
+
+/** Derive check items from a tN TSV
+ * (columns: Reference / ID / Tags / SupportReference / Quote / Occurrence / Note).
+ * A row without a SupportReference is a plain note, not a check — skipped
+ * (tC3 semantics: the tN tool groups by tA module; the reference client does
+ * the same). `groupId` is the SupportReference's tA module slug. */
+export const deriveTnItems = (tnTsv: string, bookId: string): CheckItem[] =>
+  tsvRows(tnTsv, TN_HEADER, 'tN')
+    .filter((cells) => (cells[3] ?? '') !== '')
+    .map((cells) => {
+      const [ref, id, , supportReference, quote, occurrence, note] = cells;
+      const [chapter, verse] = ref.split(':').map(refPart);
+      const groupId = supportReference.replace(/\/+$/, '').split('/').pop() ?? '';
+      return {
+        contextId: {
+          checkId: id,
+          occurrenceNote: note ?? '',
+          reference: { bookId, chapter, verse },
+          tool: 'translationNotes',
+          groupId,
+          quote: tnQuoteWords(quote),
+          quoteString: quote,
+          occurrence: Number(occurrence),
+        },
+        category: categoryForTn(groupId),
+        selections: false,
+        comments: false,
+        reminders: false,
+        nothingToSelect: false,
+        verseEdits: false,
+        invalidated: false,
+      };
+    });
+
+// ---------- cross-language re-attach (D17, BURRITO-SPEC §5.2) ----------
+
+export interface ReattachResult {
+  saved: CheckItem;
+  /** The derived item the decision re-attached to; absent when unplaceable. */
+  to?: CheckItem;
+  /** True when no unique match exists — left unplaced, never guessed. The
+   * caller decides its fate; a resolution change invalidates it (D36). */
+  unplaced?: boolean;
+}
+
+const crossKey = (c: CheckContextId): string =>
+  [
+    c.reference.bookId,
+    String(c.reference.chapter),
+    String(c.reference.verse),
+    c.quoteString,
+    c.occurrence,
+  ].join('|');
+
+/** Merge saved decisions into a freshly derived list, in two passes.
+ *
+ * Pass 1 is the identity key: when the resource is unchanged, every stored
+ * decision matches its twin exactly. Pass 2 is D17's cross-language fallback,
+ * applied ONLY to decisions pass 1 could not place — (reference + original
+ * quote + occurrence) with the groupId tiebreak, ambiguity left unattached.
+ *
+ * Doing both passes unconditionally matters: whether a file's stored `resource`
+ * record still matches the pins must NOT change how its decisions are matched.
+ * Making the strategy conditional meant a file could re-attach a decision on
+ * one visit and drop it on the next, purely because the record had been
+ * stamped in between. `orphaned` counts what neither pass could place, and
+ * `unplaced` is those same decisions by identity — the caller that has to
+ * REWRITE the file (a gateway change) needs to know WHICH ones, not how many. */
+export const mergeAndReattach = (
+  derived: CheckItem[],
+  saved: CheckItem[],
+): { items: CheckItem[]; orphaned: number; unplaced: CheckItem[] } => {
+  const byKey = new Map(saved.map((d) => [mergeKey(d.contextId), d]));
+  const placed = new Set<CheckItem>();
+  let items = derived.map((item) => {
+    const hit = byKey.get(mergeKey(item.contextId));
+    if (!hit) return item;
+    placed.add(hit);
+    return hit;
+  });
+
+  const unmatched = saved.filter((d) => !placed.has(d));
+  if (unmatched.length > 0) {
+    const results = reattachAcrossResource(unmatched, items);
+    const carried = new Map<string, CheckItem>();
+    const unplaced: CheckItem[] = [];
+    for (const r of results) {
+      if (r.to) carried.set(r.to.contextId.checkId, r.saved);
+      else unplaced.push(r.saved);
+    }
+    items = items.map((d) => {
+      const from = carried.get(d.contextId.checkId);
+      // Keep the DERIVED contextId (it belongs to the current resource) and
+      // carry only the human decision across.
+      return from ? { ...d, ...from, contextId: d.contextId } : d;
+    });
+    return { items, orphaned: unplaced.length, unplaced };
+  }
+  return { items, orphaned: 0, unplaced: [] };
+};
+
+/** Re-attach saved decisions after a resolution/language change (D17): when
+ * `checkId` no longer matches, fall back to (reference + original-language
+ * quote + occurrence); tiebreak by `groupId` (the language-independent slug —
+ * tN: the SupportReference tA module; tW: the TWLink slug). A still-ambiguous
+ * decision is left unplaced — it is never auto-attached (D36). */
+export const reattachAcrossResource = (
+  saved: CheckItem[],
+  derived: CheckItem[],
+): ReattachResult[] => {
+  const byId = new Map(derived.map((d) => [d.contextId.checkId, d]));
+  return saved.map((s) => {
+    const idMatch = byId.get(s.contextId.checkId);
+    if (idMatch) return { saved: s, to: idMatch };
+    let candidates = derived.filter((d) => crossKey(d.contextId) === crossKey(s.contextId));
+    if (candidates.length > 1) {
+      candidates = candidates.filter((d) => d.contextId.groupId === s.contextId.groupId);
+    }
+    return candidates.length === 1 ? { saved: s, to: candidates[0] } : { saved: s, unplaced: true };
+  });
+};
+
+// ---------- merge-by-key (harness section 7) ----------
+
+/** Stable identity key for the derive+merge re-attach. Chapter and verse join
+ * as their exact string forms, so span verses key consistently. */
+export const mergeKey = (c: CheckContextId): string =>
+  [
+    c.checkId,
+    String(c.reference.chapter),
+    String(c.reference.verse),
+    c.quoteString,
+    c.occurrence,
+  ].join('|');
+
+/** Re-attach stored decisions to freshly derived items by stable key. A stored
+ * decision replaces its derived twin; an unmatched item stays fresh (§4.2). */
+export const mergeSavedDecisions = (derived: CheckItem[], saved: CheckItem[]): CheckItem[] => {
+  const savedByKey = new Map(saved.map((d) => [mergeKey(d.contextId), d]));
+  return derived.map((item) => savedByKey.get(mergeKey(item.contextId)) ?? item);
+};
+
+// ---------- scope filter (BURRITO-SPEC §3 rules 4-5, §4.2 — D26) ----------
+
+/** Per-book scope ranges — the metadata `currentScope` shape, e.g.
+ * `{ TIT: ["1:1-2:5"], JON: [] }`. `[]` = whole book. */
+export type ProjectScope = { [bookCode: string]: string[] };
+
+export const scopeRangesFor = (scope: ProjectScope, bookCode: string): string[] =>
+  scope[bookCode] ?? [];
+
+/** True when chapter:verse falls inside the scope ranges. `[]` = whole book.
+ * Range grammar: C | C-C | C:V | C:V-V | C:V-C:V (§3 rules 4-5). Ported exactly
+ * from the harness section-7 `refInScope`. */
+export const refInScope = (
+  ranges: string[],
+  chapter: number | string,
+  verse: number | string,
+): boolean => {
+  if (ranges.length === 0) return true; // [] = whole book
+  return ranges.some((r) => {
+    const [from, to = from] = r.split('-');
+    const [fc, fv] = from.split(':').map(Number) as [number, number | undefined];
+    const [tc, tv]: [number, number | undefined] = to.includes(':')
+      ? (to.split(':').map(Number) as [number, number])
+      : [Number(to), undefined];
+    const c = Number(chapter);
+    const v = Number(verse);
+    if (c < fc || c > tc) return false;
+    if (c === fc && fv !== undefined && v < fv) return false;
+    if (
+      c === tc &&
+      (tv !== undefined ? v > tv : to.includes(':') || fv === undefined ? false : v > fv)
+    )
+      return false;
+    return true;
+  });
+};
+
+/** §4.2 (D26): derivation filters check items to the project scope. The progress
+ * denominator is the in-scope derived total, never the whole book. */
+export const filterToScope = (items: CheckItem[], ranges: string[]): CheckItem[] =>
+  items.filter((it) =>
+    refInScope(ranges, it.contextId.reference.chapter, it.contextId.reference.verse),
+  );
+
+// ---------- the pipeline + progress (harness section 7) ----------
+
+/** Derive → scope-filter → merge: the harness section-7 pipeline as one call. */
+export const deriveCheckItems = (
+  twlTsv: string,
+  bookId: string,
+  saved: CheckItem[] = [],
+  scopeRanges: string[] = [],
+): CheckItem[] =>
+  mergeSavedDecisions(filterToScope(deriveTwlItems(twlTsv, bookId), scopeRanges), saved);
+
+/** Progress reconstruction: an item is decided when it has selections or an
+ * explicit nothing-to-select. The denominator is the in-scope derived total. */
+export const progressOf = (items: CheckItem[]): { decided: number; total: number } => ({
+  decided: items.filter((i) => i.selections !== false || i.nothingToSelect).length,
+  total: items.length,
+});

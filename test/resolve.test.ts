@@ -1,0 +1,174 @@
+// (tool, book) resolution + check-session preflight — the five D30 constraints
+// as executable rules (BURRITO-SPEC §5.3; INCREMENT-2 C2.1/C2.2).
+import { describe, expect, it } from 'vitest';
+import {
+  resolveToolBook,
+  preflightToolBook,
+  resolutionRecord,
+  recordMatchesResolution,
+  TOOL_SLOT,
+} from '../src/data/resolve';
+import type { Coverage } from '../src/data/resolve';
+import type { ResourcePin, ResourcesFile } from '../src/data/burritoStore';
+
+const pin = (repo: string, version: string): ResourcePin => ({
+  repoPath: `git.door43.org/${repo}`,
+  version,
+  flavor: 'parascriptural/x-bcvnotes',
+});
+
+const set = (lang: string, owner: string, org: string, v: string) => ({
+  gatewayLanguage: { languageId: lang, owner },
+  translationNotes: pin(`${org}/${lang}_tn`, v),
+  translationWordsLinks: pin(`${org}/${lang}_twl`, v),
+  translationWords: pin(`${org}/${lang}_tw`, v),
+  translationAcademy: pin(`${org}/${lang}_ta`, v),
+});
+
+// Real-shaped fixture: es-419 primary (partial coverage — the D17 driver),
+// English fallback (whole canon).
+const RESOURCES: ResourcesFile = {
+  schemaVersion: 2,
+  languageSets: {
+    primary: set('es-419', 'Es-419_gl', 'Es-419_gl', 'v66'),
+    fallback: set('en', 'unfoldingWord', 'unfoldingWord', 'v86'),
+  },
+  resources: {},
+};
+
+// es-419 covers only its 4 released books; English covers the canon.
+// Coverage is keyed by repoPath: one version of a repo is installed at a time,
+// and version identity is enforced separately by isPinLocal.
+const COVERAGE: Coverage = {
+  [RESOURCES.languageSets.primary.translationNotes.repoPath]: ['3JN', 'JON', 'RUT', 'TIT'],
+  [RESOURCES.languageSets.primary.translationWordsLinks.repoPath]: ['3JN', 'JON', 'RUT', 'TIT'],
+  [RESOURCES.languageSets.fallback.translationNotes.repoPath]: ['TIT', 'JON', 'HEB', 'PSA'],
+  [RESOURCES.languageSets.fallback.translationWordsLinks.repoPath]: ['TIT', 'JON', 'HEB', 'PSA'],
+};
+
+const allLocal = () => true;
+const noneLocal = () => false;
+
+describe('D30.1 — the resolution unit is (tool, book)', () => {
+  it('resolves per tool AND per book, not per project', () => {
+    const tn = resolveToolBook(RESOURCES, 'translationNotes', 'TIT', COVERAGE);
+    const heb = resolveToolBook(RESOURCES, 'translationNotes', 'HEB', COVERAGE);
+    expect(tn.rung).toBe('primary');
+    expect(heb.rung).toBe('fallback'); // same tool, different book, different rung
+  });
+
+  it('tW derives from the TWL slot and tN from the notes slot', () => {
+    expect(TOOL_SLOT.translationWords).toBe('translationWordsLinks');
+    expect(resolveToolBook(RESOURCES, 'translationWords', 'TIT', COVERAGE).pin?.repoPath)
+      .toContain('es-419_twl');
+    expect(resolveToolBook(RESOURCES, 'translationNotes', 'TIT', COVERAGE).pin?.repoPath)
+      .toContain('es-419_tn');
+  });
+
+  it('one book resolves to exactly ONE resource at ONE version (no mixing)', () => {
+    const r = resolveToolBook(RESOURCES, 'translationNotes', 'TIT', COVERAGE);
+    expect(r.pin).toBeTruthy();
+    expect(resolutionRecord(r)).toEqual({
+      repoPath: 'git.door43.org/Es-419_gl/es-419_tn',
+      version: 'v66',
+      languageSet: 'primary',
+    });
+  });
+});
+
+describe('D30.2 — the automatic ladder is exactly two rungs', () => {
+  it('covered by primary → primary; uncovered by primary → English fallback', () => {
+    expect(resolveToolBook(RESOURCES, 'translationNotes', 'TIT', COVERAGE).usedFallback).toBe(false);
+    const heb = resolveToolBook(RESOURCES, 'translationNotes', 'HEB', COVERAGE);
+    expect(heb.usedFallback).toBe(true);
+    expect(heb.pin?.repoPath).toContain('en_tn');
+  });
+
+  it('neither rung covers the book → no resolution (the tool is not offered)', () => {
+    const r = resolveToolBook(RESOURCES, 'translationNotes', 'REV', COVERAGE);
+    expect(r.rung).toBeNull();
+    expect(r.pin).toBeNull();
+    expect(resolutionRecord(r)).toBeNull();
+  });
+
+  it('there is no third rung to fall to — a hypothetical extra set is never consulted', () => {
+    const withExtra = {
+      ...RESOURCES,
+      languageSets: { ...RESOURCES.languageSets, other: set('fr', 'fr_gl', 'fr_gl', 'v31') },
+    } as unknown as ResourcesFile;
+    const cov: Coverage = { ...COVERAGE, 'git.door43.org/fr_gl/fr_tn': ['REV'] };
+    // REV exists ONLY in the extra set; the ladder must still refuse it.
+    expect(resolveToolBook(withExtra, 'translationNotes', 'REV', cov).rung).toBeNull();
+  });
+});
+
+describe('D30.3 — the project pins bind every opener', () => {
+  it('resolution is a pure function of (pins, coverage) — no preference input exists', () => {
+    const a = resolveToolBook(RESOURCES, 'translationNotes', 'TIT', COVERAGE);
+    const b = resolveToolBook(RESOURCES, 'translationNotes', 'TIT', COVERAGE);
+    expect(a).toEqual(b);
+    expect(resolveToolBook.length).toBe(4); // (resources, tool, book, coverage)
+  });
+});
+
+describe('D30.4 / D30.5 — missing pinned version: fetch when online, first-class unavailable when offline', () => {
+  const opts = (online: boolean, isLocal: () => boolean) => ({ coverage: COVERAGE, isLocal, online });
+
+  it('local → ready', () => {
+    const p = preflightToolBook(RESOURCES, 'translationNotes', 'TIT', opts(true, allLocal));
+    expect(p.state).toBe('ready');
+    expect(p.needs).toBeNull();
+  });
+
+  it('absent + online → fetch, naming the exact pin to fetch (sb-zip + SHA)', () => {
+    const p = preflightToolBook(RESOURCES, 'translationNotes', 'TIT', opts(true, noneLocal));
+    expect(p.state).toBe('fetch');
+    expect(p.needs?.repoPath).toContain('es-419_tn');
+    expect(p.needs?.version).toBe('v66');
+  });
+
+  it('absent + offline → unavailable, NOT an error, and never blocks other work', () => {
+    const p = preflightToolBook(RESOURCES, 'translationNotes', 'TIT', opts(false, noneLocal));
+    expect(p.state).toBe('unavailable');
+    expect(p.needs).toBeNull();
+    // The state is per (tool, book): another book stays independently openable.
+    const other = preflightToolBook(RESOURCES, 'translationNotes', 'JON', {
+      coverage: COVERAGE,
+      isLocal: (x) => x.repoPath.includes('es-419_tn'),
+      online: false,
+    });
+    expect(other.state).toBe('ready');
+  });
+
+  it('no resources.json at all → unpinned (distinct from unavailable)', () => {
+    expect(preflightToolBook(null, 'translationNotes', 'TIT', opts(true, allLocal)).state)
+      .toBe('unpinned');
+  });
+
+  it('pins local and complete, but the book is in neither → not-covered (distinct again)', () => {
+    expect(preflightToolBook(RESOURCES, 'translationNotes', 'REV', opts(true, allLocal)).state)
+      .toBe('not-covered');
+  });
+
+  it('offline with unknown coverage (nothing fetched yet) is unavailable, not a false not-covered verdict', () => {
+    expect(preflightToolBook(RESOURCES, 'translationNotes', 'REV', opts(false, noneLocal)).state)
+      .toBe('unavailable');
+  });
+});
+
+describe('D17 — a resolution change is a warned update, never silent', () => {
+  it('a stored §5.2 record that no longer matches the resolution is detectable', () => {
+    const now = resolveToolBook(RESOURCES, 'translationNotes', 'TIT', COVERAGE);
+    expect(recordMatchesResolution(
+      { repoPath: 'git.door43.org/Es-419_gl/es-419_tn', version: 'v66' }, now,
+    )).toBe(true);
+    // Same repo, upgraded version → changed; and a language switch → changed.
+    expect(recordMatchesResolution(
+      { repoPath: 'git.door43.org/Es-419_gl/es-419_tn', version: 'v67' }, now,
+    )).toBe(false);
+    expect(recordMatchesResolution(
+      { repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v86' }, now,
+    )).toBe(false);
+    expect(recordMatchesResolution(null, now)).toBe(false);
+  });
+});

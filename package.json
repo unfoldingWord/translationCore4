@@ -1,0 +1,47 @@
+{
+  "name": "uw-tc4",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "vitest run",
+    "journeys": "playwright test",
+    "test:e2e": "playwright test",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write src/data test",
+    "verify": "npm run lint && npm run typecheck && npm test && npm run build"
+  },
+  "dependencies": {
+    "fflate": "0.8.2",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "usfm-js": "3.4.3",
+    "word-aligner": "1.0.3",
+    "word-aligner-lib": "1.0.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.4",
+    "@gabrielaillet/word-aligner-rcl": "1.3.18",
+    "@playwright/test": "1.61.1",
+    "@testing-library/dom": "10.4.1",
+    "@testing-library/react": "16.3.2",
+    "@types/node": "24.10.9",
+    "@vitejs/plugin-react": "4.7.0",
+    "eslint": "9.39.4",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-react": "7.37.5",
+    "globals": "15.15.0",
+    "jsdom": "29.1.1",
+    "prettier": "3.9.4",
+    "prop-types": "15.8.1",
+    "react-redux": "7.2.9",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.63.0",
+    "vite": "6.4.3",
+    "vite-plugin-node-polyfills": "0.24.0",
+    "vitest": "4.1.10"
+  }
+}

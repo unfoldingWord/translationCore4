@@ -1,0 +1,17 @@
+*{box-sizing:border-box;}
+html,body,#root{margin:0;padding:0;height:100%;}
+body{font-family:"Mulish",-apple-system,system-ui,sans-serif;background:#F7FAFC;color:#1E2C36;}
+button{font-family:inherit;}
+::-webkit-scrollbar{width:10px;height:10px;}
+::-webkit-scrollbar-thumb{background:rgba(1,66,99,.18);border-radius:99px;border:2px solid transparent;background-clip:padding-box;}
+::-webkit-scrollbar-thumb:hover{background:rgba(1,66,99,.32);background-clip:padding-box;}
+::selection{background:#FFF1B8;}
+.hovInspire:hover{border-color:#31ADE3 !important;}
+.hovInspireBg:hover{border-color:#31ADE3 !important;background:#eaf6fc !important;}
+.hovCultivate:hover{border-color:#70C9CC !important;}
+.hovCultivateBg:hover{border-color:#70C9CC !important;background:#F0FAFA !important;}
+.hovRow:hover{background:#F7FAFC !important;}
+.hovCheckRow:hover{border-color:#7acded !important;}
+.hovBtn:hover{background:#1f8cba !important;}
+.hovNewBible:hover{background:#2599cc !important;}
+.hovRowActive:hover{background:#dff0fa !important;}

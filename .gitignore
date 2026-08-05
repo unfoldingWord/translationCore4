@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+.DS_Store
+*.local
+test-results/
+playwright-report/
+
+# session-local Claude Code config
+.claude/

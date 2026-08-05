@@ -1,0 +1,18 @@
+{
+  "id": "uw-tc4",
+  "exclude_from_menu": false,
+  "exclude_from_dashboard": false,
+  "require": {
+    "net": false,
+    "debug": false
+  },
+  "minServerVersion": "0.18.0",
+  "i18n": {
+    "title": {
+      "en": "translationCore4"
+    },
+    "summary": {
+      "en": "Draft, check, and publish on one stored text — the unified translationCore 4 client."
+    }
+  }
+}

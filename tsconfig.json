@@ -1,0 +1,30 @@
+{
+  // Typecheck scope (arch AD-5): TypeScript for src/data/ new modules; prototype
+  // views stay JSX. allowJs+checkJs let annotated JS participate; the prototype
+  // views are excluded from typecheck until they are rebuilt journey-by-journey
+  // (they are style-reference code, not product increments — STATE.md D1).
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": false,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": ["vite/client", "node"]
+  },
+  // vendor.d.ts listed explicitly: with allowJs+bundler resolution TS otherwise
+  // resolves the untyped packages to their shipped JS and reports TS7016 instead
+  // of using the ambient declarations.
+  "files": ["src/data/vendor.d.ts"],
+  "include": ["src/data/**/*", "test/**/*", "e2e/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

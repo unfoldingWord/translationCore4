@@ -1,0 +1,30 @@
+# CI derived from TEST-PLAN §1 (guided build, Increment 1). Runs the aggregate
+# verify (lint + typecheck + unit tests + build) and the dependency audit (P-2).
+# Rig-dependent integration/journey rows are NOT run here — they need the local
+# pankosmia dev rig; they run on the developer machine and their evidence is
+# pasted into the PHASE-SUMMARY (VERIFICATION_GATE).
+# ⛔ Never add a pankosmia remote, token, or upstream trigger to this workflow.
+name: ci
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      # P-2 dependency audit: report level high; the legacy-peer-deps pairing
+      # (usfm-js 3.4.3 + word-aligner 1.0.3) is proven and MUST NOT be "fixed".
+      - run: npm audit --audit-level=high || true
+      - run: npm audit --audit-level=critical
