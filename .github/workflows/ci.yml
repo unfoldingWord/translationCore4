@@ -5,6 +5,8 @@
 # pasted into the PHASE-SUMMARY (VERIFICATION_GATE).
 # ⛔ Never add a pankosmia remote, token, or upstream trigger to this workflow.
 name: ci
+permissions:
+  contents: read
 on:
   push:
     branches: ['**']

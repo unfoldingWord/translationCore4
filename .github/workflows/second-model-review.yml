@@ -1,0 +1,88 @@
+# Second-model antagonistic review (owner requirement, 2026-08-07).
+# A model INDEPENDENT of the implementer reviews every pull request and posts a
+# verdict as this check. Precedent: the Increment-2 independent review (Codex).
+#
+# Status: SCAFFOLD — not yet a required check.
+#  1. Owner adds the OPENAI_API_KEY repository secret.
+#  2. One PR proves the check runs green end to end.
+#  3. Then add "second-model-review" to the required status checks on main.
+# Until the secret exists, the job passes with a notice so it cannot block work.
+# After the check becomes required, remove the early-exit so a missing secret FAILS.
+#
+# ⛔ Never add a pankosmia remote, token, or upstream trigger to this workflow.
+name: second-model-review
+permissions:
+  contents: read
+  pull-requests: write
+on:
+  pull_request:
+
+jobs:
+  second-model-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check for the reviewer secret
+        id: secret
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "OPENAI_API_KEY is not set. Skipping the second-model review (scaffold mode)."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.secret.outputs.present == 'true'
+        with:
+          node-version: 22
+      - name: Install the Codex CLI
+        if: steps.secret.outputs.present == 'true'
+        run: npm install -g @openai/codex
+      - name: Build the diff
+        if: steps.secret.outputs.present == 'true'
+        run: |
+          git diff "origin/${{ github.base_ref }}...HEAD" > /tmp/pr.diff
+          wc -l /tmp/pr.diff
+      - name: Run the antagonistic review
+        if: steps.secret.outputs.present == 'true'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          cat > /tmp/review-prompt.md <<'PROMPT'
+          You are an independent adversarial reviewer. You did not write this change.
+          Your job is to try to REFUTE it, not to approve it.
+
+          Review the diff in /tmp/pr.diff against this repository. Check:
+          1. Spec-vs-built: does the change do what its PR/issue claims, no more, no less?
+          2. Correctness: name a concrete input or state that makes it fail, if one exists.
+          3. Rule compliance (CONTRIBUTING.md): pinned versions unchanged
+             (usfm-js@3.4.3, word-aligner@1.0.3, word-aligner-lib@1.0.1);
+             a BURRITO-SPEC.md change ships with its harness change in the same PR;
+             no writes or references that touch pankosmia or git.door43.org upstreams.
+          4. Tests: does a named test cover the actual failure mode the change addresses?
+
+          Write your findings to /tmp/review-verdict.md. Each finding: file, line,
+          one-sentence defect, concrete failure scenario. End the file with exactly one
+          line: "VERDICT: PASS" (no blocking findings) or "VERDICT: BLOCK" (at least one
+          blocking finding). A finding you cannot tie to a concrete failure is advisory,
+          not blocking.
+          PROMPT
+          codex exec --full-auto --skip-git-repo-check "$(cat /tmp/review-prompt.md)"
+          test -f /tmp/review-verdict.md || { echo "Reviewer wrote no verdict file"; exit 1; }
+          cat /tmp/review-verdict.md
+      - name: Post the review as a PR comment
+        if: steps.secret.outputs.present == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          { echo "## Second-model antagonistic review (Codex)"; echo; cat /tmp/review-verdict.md; } > /tmp/comment.md
+          gh pr comment "${{ github.event.pull_request.number }}" --repo "${{ github.repository }}" --body-file /tmp/comment.md
+      - name: Enforce the verdict
+        if: steps.secret.outputs.present == 'true'
+        run: |
+          tail -n 1 /tmp/review-verdict.md | grep -qx "VERDICT: PASS" || {
+            echo "Second-model review did not end in VERDICT: PASS."; exit 1; }

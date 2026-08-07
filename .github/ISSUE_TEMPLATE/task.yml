@@ -1,0 +1,62 @@
+name: Task
+description: A work item with measurable acceptance criteria and an exact verify command.
+title: "[legacy-ID if any] Short imperative title"
+labels: []
+body:
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Three sentences maximum. What is true now, and why this item exists.
+      placeholder: |
+        The resource manager downloads a fetch unit but does not check the pin first.
+        D34 defines the tW fetch unit. This item adds the preflight remainder.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Measurable statements. Each one is true or false after the work — no "improve" or "better".
+      placeholder: |
+        - [ ] The preflight lists each missing resource before the first download starts.
+        - [ ] A cancelled preflight leaves no partial files on disk.
+    validations:
+      required: true
+  - type: textarea
+    id: verify
+    attributes:
+      label: Verify
+      description: The exact command and the expected output. "Done" means this command passes with pasted evidence.
+      placeholder: |
+        Command: npm run verify
+        Expected: lint, typecheck, tests and build pass; the named regression test runs green.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: files
+    attributes:
+      label: Likely files
+      description: Where the change probably lands. Best guess is fine.
+      placeholder: |
+        src/data/resourceFetch.ts
+        test/resourceFetch.test.ts
+    validations:
+      required: false
+  - type: textarea
+    id: decisions
+    attributes:
+      label: Related decisions
+      description: D-numbers from docs/DECISIONS.md that bind this item. A recorded decision is not open for re-proposal.
+      placeholder: D34, D37
+    validations:
+      required: false
+  - type: textarea
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      description: Issues that must close first, and environment needs (add the needs-rig label if the Pankosmia rig is required).
+      placeholder: "Blocked by #12. Needs the local rig (needs-rig)."
+    validations:
+      required: false
