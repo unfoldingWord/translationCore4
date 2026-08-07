@@ -1,0 +1,14 @@
+[package]
+name = "tc4_dev_server"
+version = "0.1.0"
+edition = "2021"
+# Thin launch shim over the pankosmia_web crate (same pattern as the desktop-app
+# template's local_server). Pinned by git rev to 0.18.5 [decided 2026-07-30 — owner:
+# bump to 0.18.5 for Increment 1]. A rev pin, not crates.io, because crates.io stops
+# at 0.18.4 published from 5e5b693 — WITHOUT the role/relationships modeling
+# (verified via .cargo_vcs_info.json in the published crate, 2026-07-30). Return to a
+# crates.io "=" pin when 0.18.5+ is published.
+[dependencies]
+pankosmia_web = { git = "https://github.com/pankosmia/pankosmia-web.git", rev = "99fd9bea8a9f3d14ac6a61f8e2213f1c5d42ed2a" }
+rocket = { version = "0.5.1", features = ["json"] }
+serde_json = "1.0"

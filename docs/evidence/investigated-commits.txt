@@ -1,0 +1,26 @@
+# Upstream refs verified against — refreshed 2026-08-01 by scripts/upstream-freshness.zsh
+# Cite as: version (hash, date). A bare hash does not say whether it is current.
+[VERIFIED — pankosmia-web 0.18.5 (99fd9be, 2026-07-30)]
+
+# --- historical record (pre-2026-07-30, hash date name) ---
+
+
+
+
+c5fddea  2026-05-14  Pankosmia-Documentation
+4fa9d96  2026-04-09  contenthandler-template
+3134a40  2026-04-09  core-client-burrito-gourmet
+e504268  2026-04-10  core-client-content
+0ebee3b  2026-04-10  core-client-workspace
+699c94b  2026-05-19  core-contenthandler-generic
+957e5e3  2026-04-10  core-contenthandler_bcv
+e2f6b5e  2026-04-10  core-contenthandler_t_core
+00079b9  2026-04-10  core-contenthandler_text_translation
+a20c2d7  2026-04-15  core-contenthandler_version_manager
+dba4732  2026-06-29  desktop-app-tc4
+1974a53  2026-06-29  desktop-app-template
+f55a276  2026-06-23  pankosmia-lib
+f3e7c5f  2026-07-02  pankosmia-web
+f3fa262  2026-06-29  resource-core
+cf90be7  2025-03-20  sfm2pkj
+1b0dbc6  2026-04-10  uw-client-checks

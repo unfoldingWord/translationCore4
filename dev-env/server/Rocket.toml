@@ -1,0 +1,26 @@
+## Rig server configuration.
+##
+## WHY THIS FILE EXISTS (PLATFORM-NOTES #26a): Rocket reads Rocket.toml from the running
+## binary's working directory, NOT from the pankosmia_web dependency crate. Every real
+## Pankosmia product ships one — the crate itself, desktop-app-template, and
+## desktop-app-pithekos all set the six limits to 128MiB [VERIFIED 2026-08-04]. This rig
+## had none, fell back to Rocket's defaults (file = 1 MiB, form = 2 MiB), and a real
+## 7.7 MB sb-zip import failed. That failure was written up as a platform limitation with
+## an upstream ask attached. It was ours. This file removes the divergence, so the rig
+## reproduces product behavior instead of inventing its own.
+##
+## Copied from pankosmia/desktop-app-template Rocket.toml, port adjusted to the rig's
+## default. run.zsh also exports ROCKET_PORT / ROCKET_ADDRESS / ROCKET_LIMITS; environment
+## variables override this file, so the two agree by design.
+
+[default]
+address = "127.0.0.1"
+port = 19998
+limits = { form = "128MiB", json = "128MiB", data = "128MiB", data-form = "128MiB", bytes = "128MiB", file = "128MiB" }
+log_level = "normal"
+
+[default.shutdown]
+ctrlc = true
+signals = ["term", "hup"]
+grace = 5
+mercy = 2

@@ -16,10 +16,10 @@ Do not use tC4 for production translation work.
 | Function | State |
 |---|---|
 | Draft | Built. Create a project, add books, edit verses. |
-| Check | In development. |
-| Align | In development. |
+| Check | Built. Check a book against the translation helps; edit and re-review. |
+| Align | Built. Align a verse; carry alignments over an edit. |
 | Publish | Not built. |
-| Sync with Door43 | Resource download is built. Push is not built. |
+| Sync with Door43 | Resource download at pinned versions is built. Push is not built. |
 
 ## What the application will do
 
@@ -43,7 +43,8 @@ Do the steps that follow:
 2. Type this command: `npm ci`
 3. Type this command: `npm test`
 
-Expect this result on a clean clone: **236 tests passed, 32 tests skipped**.
+Expect this result on a clean clone: **283 tests passed, 32 tests skipped**
+[VERIFIED — fresh clone at `3758a95`, 2026-08-07].
 
 The `.npmrc` file sets `legacy-peer-deps=true`. This setting is necessary.
 `word-aligner@1.0.3` declares a `usfm-js ^2` peer dependency, but the proven pairing is
@@ -84,6 +85,27 @@ typecheck, test, build and the dependency audit.
 | `e2e/` | Journey tests (Playwright). |
 | `rig/` | Client registration files for the development rig. |
 | `public/` | Static assets. |
+| `docs/` | The project documents. See the map below. |
+| `dev-env/` | The local Pankosmia server rig. Read `dev-env/README.md`. |
+
+## The documents
+
+| Question | Read |
+|---|---|
+| What is the project format? | `docs/BURRITO-SPEC.md` — **normative** |
+| What do we build, and why? | `docs/ARCHITECTURE.md` |
+| What does the platform actually do? | `docs/PLATFORM-NOTES.md` (verification rules are its final section) |
+| What was decided, and when? | `docs/DECISIONS.md` — cite decisions as `Dnn` |
+| What are the known risks? | `docs/RISKS.md` — cite risks as `Ledger #n` |
+| What proves a claim? | `docs/evidence/` — dated measurement records |
+| What is the Phase-2 journal design? | `docs/JOURNAL-TEST-PLAN.md` — reference, not a build target |
+| Where does work live? | The GitHub issues, milestones and project board of this repository |
+
+## Run against a local server (optional)
+
+The client runs against a Pankosmia server. `dev-env/` builds one, pinned to
+pankosmia-web 0.18.5 (`99fd9be`). Read `dev-env/README.md` for the steps. Without it,
+the rig-backed tests skip and the development server serves the client alone.
 
 ## Contribute
 
