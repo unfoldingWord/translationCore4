@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Question about the project
+    url: https://github.com/unfoldingWord/translationCore4/issues/new?labels=question&title=%5Bquestion%5D%20
+    about: Open a plain issue with the question label. For work items, use the Task template so the item is claimable.
