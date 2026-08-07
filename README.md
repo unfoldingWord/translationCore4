@@ -99,6 +99,7 @@ typecheck, test, build and the dependency audit.
 | What are the known risks? | `docs/RISKS.md` — cite risks as `Ledger #n` |
 | What proves a claim? | `docs/evidence/` — dated measurement records |
 | What is the Phase-2 journal design? | `docs/JOURNAL-TEST-PLAN.md` — reference, not a build target |
+| What does `D28`, `OQ#17`, or `Ledger #2` mean? | `docs/LEGACY-IDS.md` — the reference-ID decoder |
 | Where does work live? | The GitHub issues, milestones and project board of this repository |
 
 ## Run against a local server (optional)
