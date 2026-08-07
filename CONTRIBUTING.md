@@ -11,6 +11,11 @@ must also read `AGENTS.md`.
 4. `docs/PLATFORM-NOTES.md` — verified platform behaviors that are not evident from the
    API surface. Read it before you touch platform endpoints.
 
+The platform's own documentation lives at
+[Pankosmia-Documentation](https://github.com/pankosmia/Pankosmia-Documentation) —
+read it for the ecosystem's architecture and conventions. (Remember hard rule 1
+below: do not open issues or pull requests there.)
+
 ## Which document wins
 
 | Question | The document that wins |
