@@ -2,9 +2,9 @@
 
 The documents in this directory, and the decision log especially, carry short reference
 IDs from the project's pre-GitHub tracking files. The IDs were kept on purpose: they make
-the historical record searchable, and issue titles carry them (for example
-`[I1.2.4] Resource manager — preflight remainder`). This table decodes each ID class and
-says where the referenced item lives now.
+the historical record searchable. An issue migrated from a legacy item names its ID in
+the issue body (issue titles stay plain language), so a search for `I1.2.4` still finds
+the issue. This table decodes each ID class and says where the referenced item lives now.
 
 | ID form | Example | What it is | Where it lives now |
 |---|---|---|---|
