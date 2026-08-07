@@ -2,8 +2,11 @@
 //
 // The pin path is the DCS sb-zip export [decided 2026-07-25 — D23(b),
 // OPEN-QUESTIONS #24]: a pin is (repoPath, release tag, expected commit SHA),
-// the import fetches `/sb/<tag>.zip`, and the SHA is verified from the export's
-// OWN metadata before anything is installed. Never a default branch; never an
+// the import fetches `/sb/<tag>.zip`, and the export's declared revision is
+// verified against the EXPECTED SHA before anything is installed. The expected
+// SHA comes from an independent source — the pin on a re-install, or DCS's own
+// tag→commit record on a first install — never from the archive being checked
+// (that would let the archive self-certify). Never a default branch; never an
 // RC tag with a local conversion.
 //
 // Three verified platform facts shape this module (PLATFORM-NOTES #26, re-checked
@@ -17,6 +20,7 @@
 //      must raise them (the rig's run.zsh sets ROCKET_LIMITS).
 import { unzipSync, zipSync } from 'fflate';
 import type { ResourcePin } from './burritoStore';
+import { localRepoPathFromRepoPath } from './installed';
 import { ServerApi } from './serverApi';
 
 /** DCS serves the export cross-origin: a direct browser GET returns
@@ -31,9 +35,11 @@ export const sbZipUrl = (pin: ResourcePin): string => {
   return `https://${path.slice(0, slash)}/${path.slice(slash + 1)}/sb/${pin.version}.zip`;
 };
 
-/** The local repo a pin installs into: `_local_/_sideloaded_/<repo name>`. */
+/** The local repo a pin installs into. Delegates to the ONE canonical identity
+ * (owner-qualified — B9), so fetch, discovery and the resolver never disagree
+ * about where a repo lives. */
 export const localRepoPathFor = (pin: ResourcePin): string =>
-  `_local_/_sideloaded_/${pin.repoPath.split('/').pop()}`;
+  localRepoPathFromRepoPath(pin.repoPath);
 
 /** The platform's catalog reports `branch_or_tag: "master"`, never a release
  * tag, so the tag comes from DCS itself. Reachable cross-origin the same way
@@ -152,6 +158,27 @@ export const identifyExistingInstall = async (
     : null;
 };
 
+/** The git commit SHA that DCS records for a release tag. This is the
+ * INDEPENDENT oracle a FIRST install verifies the export against (D23b): on a
+ * first install the caller holds no prior pin, so the expected SHA cannot come
+ * from the archive itself — otherwise the archive certifies its own revision.
+ * Read from the same tags API `identifyExistingInstall` uses [VERIFIED shape,
+ * 2026-08-03]. Returns null when DCS is unreachable or the tag is absent from
+ * the first page of tags. */
+export const releaseCommitSha = async (
+  repoPath: string,
+  tag: string,
+  fetchFn: typeof fetch = ((...a: Parameters<typeof fetch>) => fetch(...a)),
+): Promise<string | null> => {
+  const path = repoPath.replace(/^https?:\/\//, '');
+  const slash = path.indexOf('/');
+  const url = `https://${path.slice(0, slash)}/api/v1/repos/${path.slice(slash + 1)}/tags?limit=100`;
+  const response = await fetchFn(url).catch(() => null);
+  if (!response?.ok) return null;
+  const tags = (await response.json()) as Array<{ name?: string; commit?: { sha?: string } }>;
+  return tags.find((t) => t.name === tag)?.commit?.sha ?? null;
+};
+
 export type FetchStage = 'download' | 'verify' | 'install';
 
 export interface FetchOptions {
@@ -192,16 +219,30 @@ export const fetchAndInstallPin = async (
 
   opts.onStage?.('verify');
   const { files, revision } = unwrapExport(bytes);
-  if (pin.sha && revision && pin.sha !== revision) {
+  // D23b — verify at EVERY import, against an expected SHA the archive did not
+  // supply. A re-install carries the pin's own SHA; a first install has none,
+  // so resolve the commit DCS records for this release tag (an independent
+  // source) and require the export's declared revision to match it. Without
+  // this, `pin.sha` is undefined, the old `pin.sha &&` guard never ran, and the
+  // archive's self-declared revision became the pin — it self-certified (F4).
+  const expectedSha = pin.sha ?? (await releaseCommitSha(pin.repoPath, pin.version, doFetch));
+  if (!expectedSha) {
     throw new Error(
-      `pin SHA mismatch for ${pin.repoPath} ${pin.version}: pinned ${pin.sha.slice(0, 12)}…, ` +
-        `the export declares ${revision.slice(0, 12)}… — not installed`,
+      `cannot authenticate ${pin.repoPath} ${pin.version}: DCS reported no commit for this ` +
+        'release tag, so the download cannot be verified — not installed',
     );
   }
-  if (pin.sha && !revision) {
+  if (!revision) {
     throw new Error(
-      `the export for ${pin.repoPath} ${pin.version} declares no revision, so the pinned ` +
+      `the export for ${pin.repoPath} ${pin.version} declares no revision, so its ` +
         'SHA cannot be verified — not installed',
+    );
+  }
+  if (expectedSha !== revision) {
+    throw new Error(
+      `pin SHA mismatch for ${pin.repoPath} ${pin.version}: expected ${expectedSha.slice(0, 12)}… ` +
+        `(${pin.sha ? 'pinned' : 'DCS release tag'}), the export declares ${revision.slice(0, 12)}… ` +
+        '— not installed',
     );
   }
 

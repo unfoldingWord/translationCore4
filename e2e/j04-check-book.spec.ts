@@ -5,8 +5,11 @@
 // come from the pinned resource's own TSV, and every decision must land in the
 // §5.2 sidecar with its resolution record.
 import { test, expect } from '@playwright/test';
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   SEEDED_PROJECT,
+  rigRepo,
   pinForSideloaded,
   writeProjectPins,
   readDecisionFile,
@@ -111,7 +114,8 @@ test.describe('J4 — a checker works a book', () => {
 
       // The seeded sample already carries decisions; measure the DELTA.
       const before = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')?.decisions.length ?? 0;
-      await page.getByTestId('mark-nothing').click();
+      // Mark valid with no target word tapped is the "nothing to select" path.
+      await page.getByTestId('mark-valid').click();
 
       // The record must land on DISK, in the §5.2 sidecar, with its resolution.
       await expect
@@ -160,7 +164,7 @@ test.describe('J4 — a checker works a book', () => {
       const target = page.getByTestId('check-list').locator('button[data-decided="0"]').first();
       const targetLabel = await target.textContent();
       await target.click();
-      await page.getByTestId('mark-nothing').click();
+      await page.getByTestId('mark-valid').click();
       await expect
         .poll(countDecided, { timeout: 10_000 })
         .toBe(beforeMark + 1);
@@ -181,6 +185,161 @@ test.describe('J4 — a checker works a book', () => {
           .locator(`button[data-decided="1"]:text-is("${targetLabel}")`)
           .first(),
       ).toBeVisible();
+    },
+  );
+
+  test(
+    'tapping the target word(s) that render the quote and marking valid persists a §5.2 selection (B23, D2)',
+    { tag: ['@inc2', '@J4'] },
+    async ({ page }) => {
+      writeProjectPins(SEEDED_PROJECT, PINS());
+      // Clear the seeded sample's decisions for this book so the only selection
+      // on disk is the one this test makes — the assertion targets MY decision,
+      // not a pre-existing sample record.
+      fs.rmSync(
+        path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'translationNotes', 'TIT.json'),
+        { force: true },
+      );
+      await openCheck(page);
+      await page.getByTestId('open-translationNotes').click();
+      await expect(page.getByTestId('check-progress')).toBeVisible();
+
+      // Land on an item whose verse is drafted (TIT 1:1 carries Spanish text in
+      // the seeded sample), so the "Your translation" pane renders tappable words.
+      await page.getByTestId('check-list').locator('button[data-ref="1:1"]').first().click();
+      const target = page.getByTestId('check-target');
+      await expect(target).toHaveAttribute('data-drafted', '1');
+
+      // Tap the first target word, then mark valid.
+      const firstWord = page.getByTestId('tw-0');
+      const wordText = (await firstWord.textContent())?.trim();
+      await firstWord.click();
+      await expect(firstWord).toHaveAttribute('data-selected', '1');
+      await page.getByTestId('mark-valid').click();
+
+      // The §5.2 record on disk carries a real selections array — a tapped word,
+      // not the nothing-to-select fallback — with its occurrence bookkeeping.
+      await expect
+        .poll(
+          () => {
+            const f = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT');
+            const d = f?.decisions.find(
+              (x) => Array.isArray((x as { selections?: unknown }).selections),
+            ) as { selections?: Array<Record<string, unknown>>; status?: string } | undefined;
+            return d?.selections?.[0]?.text;
+          },
+          { timeout: 10_000 },
+        )
+        .toBe(wordText);
+
+      const file = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT');
+      const d = file!.decisions.find(
+        (x) => Array.isArray((x as { selections?: unknown }).selections),
+      ) as { selections: Array<Record<string, unknown>>; nothingToSelect?: boolean; status?: string };
+      expect(d.status).toBe('valid');
+      expect(d.nothingToSelect).toBe(false);
+      expect(typeof d.selections[0].occurrence).toBe('number');
+      expect(typeof d.selections[0].occurrences).toBe('number');
+
+      // Re-open: the stored selection re-highlights the same token (round-trip).
+      await openCheck(page);
+      await page.getByTestId('open-translationNotes').click();
+      await page.getByTestId('check-list').locator('button[data-ref="1:1"]').first().click();
+      await expect(page.getByTestId('tw-0')).toHaveAttribute('data-selected', '1');
+    },
+  );
+
+  test(
+    'an Invalid triage is decided in BOTH the progress meter and the item list — never one but not the other (B23)',
+    { tag: ['@inc2', '@J4'] },
+    async ({ page }) => {
+      writeProjectPins(SEEDED_PROJECT, PINS());
+      fs.rmSync(
+        path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'translationNotes', 'TIT.json'),
+        { force: true },
+      );
+      await openCheck(page);
+      await page.getByTestId('open-translationNotes').click();
+      await expect(page.getByTestId('check-progress')).toBeVisible();
+
+      const list = page.getByTestId('check-list');
+      const meterDecided = async () =>
+        Number((await page.getByTestId('check-progress').textContent())!.match(/(\d+) of/)![1]);
+      const listDecided = () => list.locator('button[data-decided="1"]').count();
+
+      // Take an undecided item and reject its rendering.
+      const before = { meter: await meterDecided(), list: await listDecided() };
+      const target = list.locator('button[data-decided="0"]').first();
+      const targetRef = await target.getAttribute('data-ref');
+      await target.click();
+      await page.getByTestId('mark-invalid').click();
+
+      // The meter AND the list must both move by exactly one — the defect was the
+      // meter counting the Invalid while the list button still read undecided.
+      await expect.poll(meterDecided, { timeout: 10_000 }).toBe(before.meter + 1);
+      expect(await listDecided()).toBe(before.list + 1);
+      await expect(
+        list.locator(`button[data-ref="${targetRef}"][data-decided="1"]`).first(),
+      ).toBeVisible();
+
+      // On disk it is a real invalid decision, not an invalidation carry-over.
+      const file = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT');
+      const inv = file!.decisions.find(
+        (x) => (x as { status?: string }).status === 'invalid',
+      ) as { status: string; invalidated?: boolean; selections?: unknown };
+      expect(inv.status).toBe('invalid');
+      expect(inv.invalidated).not.toBe(true);
+      expect(inv.selections).toBe(false);
+    },
+  );
+
+  test(
+    'a pinned primary that is not installed opens the English fallback but WARNS and offers to fetch it — never silent (B20, D41)',
+    { tag: ['@inc2', '@J4'] },
+    async ({ page }) => {
+      // Fallback = the installed English suite (covers TIT). Primary = a French
+      // suite that is NOT installed in the rig, so it has no local coverage and
+      // the resolver falls to the fallback. That is exactly the warned case.
+      const en = PINS();
+      const frPin = (name: string) => ({
+        repoPath: `git.door43.org/fr_gl/${name}`,
+        version: 'v10',
+        flavor: '',
+      });
+      const setFor = (gw: { languageId: string; owner: string }, tn: unknown, tw: unknown, ta: unknown) => ({
+        gatewayLanguage: gw,
+        translationNotes: tn,
+        translationWordsLinks: tw,
+        translationWords: tw,
+        translationAcademy: ta,
+      });
+      const file = {
+        schemaVersion: 2,
+        languageSets: {
+          primary: setFor(
+            { languageId: 'fr', owner: 'unfoldingWord' },
+            frPin('fr_tn'),
+            frPin('fr_tw'),
+            frPin('fr_ta'),
+          ),
+          fallback: setFor({ languageId: 'en', owner: 'unfoldingWord' }, en.tn, en.tw, en.ta),
+        },
+        resources: { originalLanguage: {}, lexicon: {} },
+        extraScripture: [],
+      };
+      const dir = path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking');
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'resources.json'), `${JSON.stringify(file, null, 2)}\n`);
+
+      await openCheck(page);
+      // The card is READY (the fallback works) — the fallback never blocks…
+      await expect(page.getByTestId('preflight-translationNotes')).toHaveAttribute('data-state', 'ready');
+      await expect(page.getByTestId('open-translationNotes')).toBeVisible();
+      // …but it is NOT silent: the missing pinned primary is named, with a fetch offer.
+      const warn = page.getByTestId('fallback-warning-translationNotes');
+      await expect(warn).toBeVisible();
+      await expect(warn).toContainText('fr_tn');
+      await expect(page.getByTestId('fetch-primary-translationNotes')).toBeVisible();
     },
   );
 

@@ -4,7 +4,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useReducer, useRef } from 'react';
 import usfm from 'usfm-js';
 import { ServerApi } from './data/serverApi';
-import { HttpStore } from './data/httpStore';
+import { HttpStore, StaleWriteError } from './data/httpStore';
 import { SaveScheduler } from './data/saveScheduler';
 import { spliceVerse, verseBody } from './data/usfm/splice';
 import { indexBook } from './data/usfm/indexer';
@@ -12,9 +12,16 @@ import { seedBookFromSource } from './data/seed';
 import { BOOK_NAMES, bookName } from './data/bookNames';
 import { GATEWAYS, gatewayKey, DCS_HOST, orgForRepoName } from './data/gateways';
 import { fetchAndInstallPin, latestReleaseTag, identifyExistingInstall } from './data/resourceFetch';
-import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, isPinLocal, pinsPreferringInstalled, localRepoPathFromRepoPath, discoverOnDisk } from './data/installed';
+import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, isPinLocal, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk } from './data/installed';
 import { TOOL_SLOT, preflightToolBook, resolutionRecord, resolveToolBook } from './data/resolve';
-import { deriveTnItems, deriveTwlItems, mergeAndReattach, progressOf } from './data/derive';
+import {
+  deriveTnItems,
+  deriveTwlItems,
+  filterToScope,
+  mergeAndReattach,
+  progressOf,
+  scopeRangesFor,
+} from './data/derive';
 import { readTwArticle, readTaArticle } from './data/articles';
 import { revalidateAgainstDraft, resolutionWarning } from './data/revalidate';
 import { bootstrapVerse, linkWord, unlinkWord, stampTargetVerse, alignmentIsStale } from './data/align/edit';
@@ -140,13 +147,43 @@ export function packageRows(repos, book, exclude = {}) {
   return rows;
 }
 
-// Increment-1 resolution of a pin to a local repo: sideloaded resources live at
-// _local_/_sideloaded_/<last repoPath segment>. The full resource manager
-// (download, preflight) is Increment 2 (C5.x/E1.2).
-const localSourceRepo = (pin) => `_local_/_sideloaded_/${pin.repoPath.split('/').pop()}`;
+// B10 — resolve a pin to the ACTUAL on-disk install path. Existing/seeded
+// resources live at the legacy `_sideloaded_/<repo>` path; fresh installs use
+// the owner-qualified `<owner>--<repo>` path (B9). Resolve by IDENTITY against
+// what is actually installed — cached from the last resolutionContext — never
+// by recomputing the path, which missed every legacy/seeded resource and made
+// checking sessions time out. Falls back to the owner-qualified derivation for
+// a pin that is not (yet) installed (a fresh download's target).
+let installedCache = {};
+const resolveReadPath = (pin) =>
+  installedPathFor(installedCache, pin) ?? localRepoPathFromRepoPath(pin.repoPath);
+
+// Resolution of a pin to its local repo, for READING. Delegates to the
+// identity-based resolver above.
+const localSourceRepo = (pin) => resolveReadPath(pin);
 
 // The source-pane badge shows the actual pinned version, never a literal.
 export const SUITE_VERSION = INSTALLED_SUITE.extraScripture[0].version;
+
+// B7 — `checking/resources.json` is ONE shared whole-file document (every
+// project pin). A read-modify-write that writes blindly loses a concurrent
+// editor's change (W-5): two sessions each change a different pin, and the
+// second save restores the first's pin to its stale value. Do it under
+// compare-and-swap; on a refused (stale) write, re-read and re-apply the
+// mutation against the fresh bytes so BOTH changes survive.
+const updateResources = async (store, mutate, tries = 4) => {
+  for (let attempt = 0; ; attempt += 1) {
+    const { value, md5 } = await store.readResourcesWithMd5();
+    const next = mutate(value ?? INSTALLED_SUITE);
+    try {
+      await store.writeResources(next, md5);
+      return next;
+    } catch (e) {
+      if (e instanceof StaleWriteError && attempt < tries - 1) continue;
+      throw e;
+    }
+  }
+};
 
 // Design fonts (owner's design project, translationCore.dc.html npFonts).
 // Increment 1 records the choice in settings.json; bundling arrives with the
@@ -503,7 +540,8 @@ export function AppProvider({ children }) {
         const { installed } = await a.resolutionContext();
         const primary = languageSetFromInstalled(installed, gateway);
         if (!primary) throw new Error(t('sources.suiteIncomplete', { lang: gateway.name }));
-        const current = (await store.readResources()) ?? INSTALLED_SUITE;
+        const { value: currentResources, md5: resourcesMd5 } = await store.readResourcesWithMd5();
+        const current = currentResources ?? INSTALLED_SUITE;
 
         // Read every stored decision file this project has, so the count is
         // real rather than estimated.
@@ -511,9 +549,11 @@ export function AppProvider({ children }) {
         const md5s = {};
         for (const book of st.project.bookCodes ?? []) {
           for (const tool of Object.keys(TOOL_SLOT)) {
-            const got = await store.readDecisionsWithMd5(tool, book).catch(() => null);
-            if (got?.value) {
-              stored.push({ tool, book, file: got.value });
+            // Read the RAW bytes (B21): parse for the carry-over computation, but
+            // keep the exact text so a failed commit can restore it verbatim.
+            const got = await store.readDecisionsText(tool, book).catch(() => null);
+            if (got?.text != null) {
+              stored.push({ tool, book, file: JSON.parse(got.text), raw: got.text });
               md5s[`${tool}/${book}`] = got.md5;
             }
           }
@@ -543,19 +583,23 @@ export function AppProvider({ children }) {
             tool: entry.tool,
             book: entry.book,
             expectMd5: md5s[`${entry.tool}/${entry.book}`] ?? null,
+            // The pre-migration file (parsed) + its EXACT original bytes, kept
+            // so a later-book failure rolls back byte-identically (B11 + B21).
+            originalFile: source.file,
+            originalRaw: source.raw,
             ...result,
           });
         }
         const carried = plan.reduce((n, p) => n + p.carried, 0);
         const invalidated = plan.reduce((n, p) => n + p.invalidated, 0);
-        return { gateway, primary, consequences, next, plan, carried, invalidated };
+        return { gateway, primary, consequences, next, plan, carried, invalidated, resourcesMd5 };
       },
 
       /** Derive one book's check list from a given pin. Returns [] when the
        * pinned resource says nothing about the book — a designed state (C2.9),
        * not an error. Derived lists are disposable and never stored (§4.2). */
       deriveItemsFor: async (tool, book, pin) => {
-        const localRepo = localRepoPathFromRepoPath(pin.repoPath);
+        const localRepo = resolveReadPath(pin);
         let tsv;
         try {
           tsv = await api.readIngredient(localRepo, `${book.toUpperCase()}.tsv`);
@@ -563,9 +607,15 @@ export function AppProvider({ children }) {
           return [];
         }
         if (tsv === null || tsv.startsWith('{"is_good":false')) return [];
-        return tool === 'translationNotes'
-          ? deriveTnItems(tsv, book.toLowerCase())
-          : deriveTwlItems(tsv, book.toLowerCase());
+        // §4.2 (D26): derivation MUST filter to the project scope — an out-of-scope
+        // item is never derived, counted or shown. `[]` = whole book.
+        const ranges = scopeRangesFor(stateRef.current.projectScope ?? {}, book.toUpperCase());
+        return filterToScope(
+          tool === 'translationNotes'
+            ? deriveTnItems(tsv, book.toLowerCase())
+            : deriveTwlItems(tsv, book.toLowerCase()),
+          ranges,
+        );
       },
 
       /** Open the confirmation dialogue for a proposed gateway language. */
@@ -590,18 +640,69 @@ export function AppProvider({ children }) {
        * exactly what was described to them, not a re-derived guess — including
        * the per-book carry-over already computed there.
        *
-       * Order matters. The decision files are rewritten FIRST, each under
-       * compare-and-swap against the bytes the preview read. If any book has
-       * moved under us the write is refused and the pins never change, so the
-       * project is never left pinned to a resource its decisions were not
-       * reconciled against. */
+       * The commit is all-or-nothing (B11). FIRST every precondition is
+       * validated — resources.json and EVERY planned decision file must still
+       * hash to what the preview read. Only if all hold does any write happen,
+       * so a book that moved under us aborts the whole migration before any
+       * file changes. If a write still fails mid-way (a narrow race after
+       * validation), the already-migrated decision files are rolled back to
+       * their pre-migration content, so the project is never left with some
+       * books reconciled to the new resource while the pins stay old. */
       commitGatewayChange: async (preview) => {
         const store = storeRef.current;
         if (!store) throw new Error('no project is open');
-        for (const p of preview.plan ?? []) {
-          await store.writeDecisions(p.tool, p.book, p.file, p.expectMd5);
+        const plan = preview.plan ?? [];
+
+        // 1) Validate ALL preconditions before touching anything.
+        const { md5: nowMd5 } = await store.readResourcesWithMd5();
+        if ((preview.resourcesMd5 ?? null) !== nowMd5) {
+          throw new StaleWriteError(
+            'checking/resources.json',
+            preview.resourcesMd5 ?? '(absent)',
+            nowMd5 ?? '(absent)',
+          );
         }
-        await store.writeResources(preview.next);
+        for (const p of plan) {
+          const { md5: cur } = await store.readDecisionsWithMd5(p.tool, p.book);
+          if ((p.expectMd5 ?? null) !== (cur ?? null)) {
+            throw new StaleWriteError(
+              `checking/${p.tool}/${p.book}`,
+              p.expectMd5 ?? '(absent)',
+              cur ?? '(absent)',
+            );
+          }
+        }
+
+        // 2) Write, rolling back already-migrated books if a later write fails.
+        const migrated = [];
+        try {
+          for (const p of plan) {
+            // writeDecisions returns the md5 of EXACTLY the bytes it wrote,
+            // captured under the store's write lock (B15) — never a read-back,
+            // which could adopt a concurrent edit's bytes and then let the
+            // rollback CAS clobber that edit.
+            const wroteMd5 = await store.writeDecisions(p.tool, p.book, p.file, p.expectMd5);
+            migrated.push({ ...p, wroteMd5 });
+          }
+          await store.writeResources(preview.next, nowMd5);
+        } catch (e) {
+          for (const p of migrated) {
+            try {
+              // B14 — CAS the rollback on the bytes WE wrote. If another writer
+              // edited this book after our migration, the restore is refused and
+              // their edit stands: a rollback must never force-clobber a
+              // concurrent change (only undo our own partial migration).
+              // B21 — restore the EXACT original bytes (not the parsed file
+              // re-normalized), so a failed transaction leaves the sidecar
+              // byte-identical and the tree clean.
+              await store.restoreDecisionsText(p.tool, p.book, p.originalRaw, p.wroteMd5);
+            } catch (rollbackErr) {
+              if (!(rollbackErr instanceof StaleWriteError)) throw rollbackErr;
+              // Concurrent edit landed → it is the current truth; leave it.
+            }
+          }
+          throw e;
+        }
         dispatch({ type: 'set', patch: { projectPins: preview.next } });
         if (stateRef.current.book) await a.runPreflight();
         return preview.next;
@@ -621,13 +722,11 @@ export function AppProvider({ children }) {
         if (!primary) {
           throw new Error(t('sources.suiteIncomplete', { lang: gateway.name }));
         }
-        const current = (await store.readResources()) ?? INSTALLED_SUITE;
-        const next = {
+        const next = await updateResources(store, (current) => ({
           ...current,
           schemaVersion: 2,
           languageSets: { ...current.languageSets, primary },
-        };
-        await store.writeResources(next);
+        }));
         dispatch({ type: 'set', patch: { projectPins: next } });
         return next;
       },
@@ -675,7 +774,7 @@ export function AppProvider({ children }) {
         }
         let origUsfm = null;
         try {
-          const local = localRepoPathFromRepoPath(origPin.repoPath);
+          const local = resolveReadPath(origPin);
           ({ usfm: origUsfm } = await store.readSourceBook(local, st.book));
         } catch {
           origUsfm = null;
@@ -773,7 +872,7 @@ export function AppProvider({ children }) {
         const book = st.book;
         dispatch({ type: 'set', patch: { checkTool: tool, checkSession: { loading: true } } });
         try {
-          const localRepo = localRepoPathFromRepoPath(pin.repoPath);
+          const localRepo = resolveReadPath(pin);
           // C2.9 — a resource can be pinned, local, and still have nothing to
           // say about this book. That is a designed state, not an error: the
           // catalog's book_codes and the resource's actual files can disagree.
@@ -796,9 +895,17 @@ export function AppProvider({ children }) {
             });
             return;
           }
-          const derived = tool === 'translationNotes'
-            ? deriveTnItems(tsv, book.toLowerCase())
-            : deriveTwlItems(tsv, book.toLowerCase());
+          // §4.2 (D26): filter to the project scope before anything counts or shows it.
+          const scopeRanges = scopeRangesFor(
+            stateRef.current.projectScope ?? {},
+            book.toUpperCase(),
+          );
+          const derived = filterToScope(
+            tool === 'translationNotes'
+              ? deriveTnItems(tsv, book.toLowerCase())
+              : deriveTwlItems(tsv, book.toLowerCase()),
+            scopeRanges,
+          );
           if (derived.length === 0) {
             dispatch({
               type: 'set',
@@ -848,6 +955,10 @@ export function AppProvider({ children }) {
             invalidated,
             warning,
             orphaned,
+            // Per-verse target text for the tN/tW selection UI (B23). Kept on the
+            // SESSION, never on the items — recordDecision spreads the item into
+            // the §5.2 write, so target text must not ride along and pollute it.
+            verses,
           };
           dispatch({ type: 'set', patch: { checkSession: session } });
           a.loadActiveArticle(session);
@@ -892,14 +1003,14 @@ export function AppProvider({ children }) {
           if (cs.tool === 'translationWords' && sets?.translationWords) {
             found = await readTwArticle(
               api,
-              localRepoPathFromRepoPath(sets.translationWords.repoPath),
+              resolveReadPath(sets.translationWords),
               item.category,
               item.contextId.groupId,
             );
           } else if (sets?.translationAcademy) {
             found = await readTaArticle(
               api,
-              localRepoPathFromRepoPath(sets.translationAcademy.repoPath),
+              resolveReadPath(sets.translationAcademy),
               item.contextId.groupId,
             );
           }
@@ -942,6 +1053,9 @@ export function AppProvider({ children }) {
         // seed, a hand sideload. Identify those from their own metadata so the
         // machine's real contents drive readiness (works offline).
         const installed = await discoverOnDisk(api, summaries, recorded, orgForRepoName);
+        // Cache for resolveReadPath: reads resolve a pin to its ACTUAL on-disk
+        // path by identity, not by recomputing (B10).
+        installedCache = installed;
         return { installed, coverage: coverageFromLocal(summaries, installed) };
       },
 
@@ -961,7 +1075,10 @@ export function AppProvider({ children }) {
         const failed = [];
         for (const row of chosen) {
           const repoPath = `${DCS_HOST}/${stateRef.current.src.gateway.org}/${row.repo}`;
-          const target = `_local_/_sideloaded_/${row.repo}`;
+          // Owner-qualified target (B9): `Xenizo/fr_tn` and `MVHS/fr_tn` get
+          // DISTINCT local paths, so selecting the second gateway no longer
+          // collides with the first and is no longer skipped as "installed".
+          const target = localRepoPathFromRepoPath(repoPath);
           if (local.has(target)) {
             // Already on disk. If nothing recorded which release it is (rig
             // seeds, older installs), identify it from its own metadata
@@ -1100,8 +1217,11 @@ export function AppProvider({ children }) {
           // Pin the versions this machine actually holds, when it holds them
           // (a newer local release beats the shipped default — see
           // preferInstalledVersion); otherwise the shipped defaults stand.
+          // A fresh project: resources.json must not exist yet. `expectMd5: null`
+          // makes a create/create race a refused write, not a silent clobber (B7).
           await store.writeResources(
             pinsPreferringInstalled(INSTALLED_SUITE, await readInstalled(api, STORAGE_ID)),
+            null,
           );
           // textDirection/font live in settings.json: metadata is not writable
           // over HTTP (D28 addendum) and the platform records no direction, so
@@ -1335,9 +1455,23 @@ export function AppProvider({ children }) {
             const settings = await store.readSettings().catch(() => null);
             scriptDirection = settings?.textDirection === 'rtl' ? 'rtl' : 'ltr';
           }
+          // §4.2 (D26): the project scope gates every derived list. It lives in
+          // metadata `type.flavorType.currentScope`. Absent or unreadable metadata
+          // reads as {} — whole book for every code, which is the pre-D26 behaviour.
+          let projectScope = {};
+          try {
+            const meta = await api.getMetadataRaw(repoPath);
+            projectScope = meta?.type?.flavorType?.currentScope ?? {};
+          } catch {
+            projectScope = {};
+          }
           dispatch({
             type: 'set',
-            patch: { project: { ...summary, scriptDirection, repoPath }, view: 'draft' },
+            patch: {
+              project: { ...summary, scriptDirection, repoPath },
+              projectScope,
+              view: 'draft',
+            },
           });
           // The project's pins drive every check session (D30.3). Absent
           // resources.json reads as null — "no pins recorded" — which the
@@ -1345,6 +1479,15 @@ export function AppProvider({ children }) {
           store.readResources()
             .then((pins) => dispatch({ type: 'set', patch: { projectPins: pins } }))
             .catch(() => dispatch({ type: 'set', patch: { projectPins: null } }));
+          // B12 — warm the install resolver BEFORE any book/source read. openBook
+          // resolves its source panes through resolveReadPath, which needs
+          // installedCache populated; on a cold project open the cache is empty,
+          // so every seeded resource resolves to the wrong (owner-qualified) path
+          // and the ULT/UST panes never render. Installs are machine-scoped, so
+          // one warm-up here also covers later book switches. resolutionContext
+          // is self-healing (it swallows its own read failures), so this is safe
+          // offline. Awaited so the cache is ready before openBook reads.
+          await a.resolutionContext().catch(() => {});
           await a.openBook(bookCode || summary.bookCodes[0]);
         } catch (e) {
           dispatch({

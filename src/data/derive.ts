@@ -3,6 +3,8 @@
 // Parity contract (S-0c / C0.4): the same inputs must give the same numbers as the
 // harness. The client derives check lists and progress at load and never stores
 // them authoritatively (BURRITO-SPEC §4.2).
+import { doesReferenceContain } from 'bible-reference-range';
+import { tokenize } from 'string-punctuation-tokenizer';
 import { usfmjs } from './vendor';
 
 // ---------- targetBible derivation (harness section 3; FR-13 precursor) ----------
@@ -267,17 +269,49 @@ const crossKey = (c: CheckContextId): string =>
 export const mergeAndReattach = (
   derived: CheckItem[],
   saved: CheckItem[],
-): { items: CheckItem[]; orphaned: number; unplaced: CheckItem[] } => {
+): { items: CheckItem[]; orphaned: number; unplaced: CheckItem[]; placed: Set<CheckItem> } => {
   const byKey = new Map(saved.map((d) => [mergeKey(d.contextId), d]));
+  const placedSaved = new Set<CheckItem>();
+  // Output items that carry a saved decision. `carryOver` uses this to keep
+  // records BY PROVENANCE rather than by inspecting fields — see the F5 note
+  // in carryOver.ts. Object identity is stable: an item added here is the exact
+  // reference returned in `items`.
   const placed = new Set<CheckItem>();
   let items = derived.map((item) => {
     const hit = byKey.get(mergeKey(item.contextId));
     if (!hit) return item;
-    placed.add(hit);
-    return hit;
+    placedSaved.add(hit);
+    // D36: the decision describes a check that exists again, so a stale
+    // invalidation from an earlier resource must not survive the re-pin.
+    // Returning the saved record wholesale kept `invalidated: true` forever.
+    //
+    // B22: re-key to the CURRENT resource's context. The saved record carries
+    // the OLD resource's `contextId` (its `occurrenceNote`, `glQuote`, tool),
+    // and mergeKey does not include those — so an exact identity match can still
+    // pair a saved decision with a derived item whose note/context differs. D36
+    // says the resource is the primary key: keep the human decision (selections,
+    // status, comments, reminders) but adopt the DERIVED item's `contextId`, so
+    // the check the user sees is the new resource's, never a stale note.
+    let out: CheckItem;
+    if (hit.invalidated) {
+      // `status: "invalid"` was set BY the invalidation of a formerly-VALID
+      // decision (§5.2), so it clears with the invalidation. A `"todo"` the
+      // user set is preserved through the cycle (carryOver keeps it on
+      // invalidation, and it is not `"invalid"`, so it is not cleared here).
+      out = {
+        ...hit,
+        invalidated: false,
+        ...(hit.status === 'invalid' ? { status: undefined } : {}),
+        contextId: item.contextId,
+      };
+    } else {
+      out = { ...hit, contextId: item.contextId };
+    }
+    placed.add(out);
+    return out;
   });
 
-  const unmatched = saved.filter((d) => !placed.has(d));
+  const unmatched = saved.filter((d) => !placedSaved.has(d));
   if (unmatched.length > 0) {
     const results = reattachAcrossResource(unmatched, items);
     const carried = new Map<string, CheckItem>();
@@ -288,13 +322,32 @@ export const mergeAndReattach = (
     }
     items = items.map((d) => {
       const from = carried.get(d.contextId.checkId);
+      if (!from) return d;
       // Keep the DERIVED contextId (it belongs to the current resource) and
       // carry only the human decision across.
-      return from ? { ...d, ...from, contextId: d.contextId } : d;
+      const out = { ...d, ...from, contextId: d.contextId };
+      placed.add(out);
+      return out;
     });
-    return { items, orphaned: unplaced.length, unplaced };
+    return { items, orphaned: unplaced.length, unplaced, placed };
   }
-  return { items, orphaned: 0, unplaced: [] };
+  return { items, orphaned: 0, unplaced: [], placed };
+};
+
+/** Two original-language quotes name the same span? Compared through the tested
+ * uW tokenizer (string-punctuation-tokenizer) so punctuation, whitespace and
+ * normalization differences never cause a false mismatch, while a genuinely
+ * different span (a longer/shorter selection) still differs. Discontinuous "&"
+ * segments are compared segment-by-segment so a gap is not silently collapsed.
+ * This is the §5.2 "quoteString verification" a same-checkId reattach must pass
+ * (B18) — done with the ecosystem's proven quote code, not a naive string ===. */
+export const sameOrigQuote = (a: string, b: string): boolean => {
+  const norm = (q: string): string =>
+    q
+      .split('&')
+      .map((seg) => tokenize({ text: seg.trim() }).join(' '))
+      .join(' & ');
+  return norm(a) === norm(b);
 };
 
 /** Re-attach saved decisions after a resolution/language change (D17): when
@@ -309,7 +362,15 @@ export const reattachAcrossResource = (
   const byId = new Map(derived.map((d) => [d.contextId.checkId, d]));
   return saved.map((s) => {
     const idMatch = byId.get(s.contextId.checkId);
-    if (idMatch) return { saved: s, to: idMatch };
+    // §5.2: quoteString verification is PART of the match — a checkId whose quote
+    // the resource changed is a materially different check, not the saved one
+    // (B18). Take the checkId shortcut ONLY when the ORIGINAL-LANGUAGE quote also
+    // agrees; otherwise fall through to the (reference + quote + occurrence)
+    // fallback, which a changed quote also fails → the decision is left unplaced
+    // (D36), never carried onto the new quote.
+    if (idMatch && sameOrigQuote(idMatch.contextId.quoteString, s.contextId.quoteString)) {
+      return { saved: s, to: idMatch };
+    }
     let candidates = derived.filter((d) => crossKey(d.contextId) === crossKey(s.contextId));
     if (candidates.length > 1) {
       candidates = candidates.filter((d) => d.contextId.groupId === s.contextId.groupId);
@@ -348,31 +409,23 @@ export const scopeRangesFor = (scope: ProjectScope, bookCode: string): string[] 
   scope[bookCode] ?? [];
 
 /** True when chapter:verse falls inside the scope ranges. `[]` = whole book.
- * Range grammar: C | C-C | C:V | C:V-V | C:V-C:V (§3 rules 4-5). Ported exactly
- * from the harness section-7 `refInScope`. */
+ * Range grammar: C | C-C | C:V | C:V-V | C:V-C:V (§3 rules 4-5).
+ *
+ * Containment is delegated to `bible-reference-range` (`doesReferenceContain`) —
+ * the well-tested uW/tC3 range engine. Hand-rolled parsing kept re-introducing
+ * edge-case bugs: a `C:V-V` range end read as a chapter (F6), and an ITEM verse
+ * SPAN "23-24" coerced by `Number()` to NaN and admitted regardless of scope
+ * (B19). The library handles verse spans, letter-suffixed partial verses, and
+ * cross-chapter ranges. The harness `refInScope` (validate.mjs §7) uses the same
+ * library, so the parity contract (S-0c) holds. */
 export const refInScope = (
   ranges: string[],
   chapter: number | string,
   verse: number | string,
 ): boolean => {
   if (ranges.length === 0) return true; // [] = whole book
-  return ranges.some((r) => {
-    const [from, to = from] = r.split('-');
-    const [fc, fv] = from.split(':').map(Number) as [number, number | undefined];
-    const [tc, tv]: [number, number | undefined] = to.includes(':')
-      ? (to.split(':').map(Number) as [number, number])
-      : [Number(to), undefined];
-    const c = Number(chapter);
-    const v = Number(verse);
-    if (c < fc || c > tc) return false;
-    if (c === fc && fv !== undefined && v < fv) return false;
-    if (
-      c === tc &&
-      (tv !== undefined ? v > tv : to.includes(':') || fv === undefined ? false : v > fv)
-    )
-      return false;
-    return true;
-  });
+  const ref = `${chapter}:${verse}`; // item ref; `verse` may be a span like "23-24"
+  return ranges.some((r) => doesReferenceContain(r, ref));
 };
 
 /** §4.2 (D26): derivation filters check items to the project scope. The progress
@@ -393,9 +446,19 @@ export const deriveCheckItems = (
 ): CheckItem[] =>
   mergeSavedDecisions(filterToScope(deriveTwlItems(twlTsv, bookId), scopeRanges), saved);
 
-/** Progress reconstruction: an item is decided when it has selections or an
- * explicit nothing-to-select. The denominator is the in-scope derived total. */
+/** Is this item triaged? A VALID mark (target selections, or an explicit
+ * nothing-to-select) or an INVALID mark (the rendering was reviewed and
+ * rejected) both count; "To do" does not. §5.2 (D36): a carry-over
+ * `invalidated` flag is NOT a decision — a book that was 100% against the old
+ * resource is honestly less than 100% now. This is the SINGLE definition of
+ * "decided": both the progress meter (progressOf) and the check-list item
+ * markers read it, so the count and the list can never disagree (B23). */
+export const isDecided = (i: CheckItem): boolean =>
+  i.invalidated !== true &&
+  (i.selections !== false || i.nothingToSelect === true || i.status === 'invalid');
+
+/** Progress reconstruction: decided items over the in-scope derived total. */
 export const progressOf = (items: CheckItem[]): { decided: number; total: number } => ({
-  decided: items.filter((i) => i.selections !== false || i.nothingToSelect).length,
+  decided: items.filter(isDecided).length,
   total: items.length,
 });

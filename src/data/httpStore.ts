@@ -115,6 +115,25 @@ export const md5Hex = (text: string): string => {
 // Errors and option shapes
 // ---------------------------------------------------------------------------
 
+/** In-process serialization of writes to a single ingredient path (B7). Each
+ * call chains after the previous holder of the same key (whichever way it
+ * settled), so a check→write runs to completion before the next begins. Keyed
+ * per (repo, ipath), shared across all HttpStore instances in this process.
+ *
+ * This is scoped to ONE app instance ON PURPOSE. tC4 runs a single instance per
+ * machine (D39, as tC3 did), so the only concurrency to serialize is this one
+ * copy's own overlapping async writes. Two machines editing one project is NOT
+ * a lock problem — each has its own git clone — and is handled by the Phase-2
+ * journal merge (BURRITO-SPEC §8, gated after Phase 1), not here. */
+const writeChains = new Map<string, Promise<unknown>>();
+const withPathLock = <T>(key: string, fn: () => Promise<T>): Promise<T> => {
+  const prior = writeChains.get(key) ?? Promise.resolve();
+  const run = prior.then(fn, fn);
+  // Store a settled-either-way marker so a rejection never breaks the chain.
+  writeChains.set(key, run.then(() => undefined, () => undefined));
+  return run;
+};
+
 /** writeBook's optimistic check failed (D-3): the book changed since the
  * caller read it. Re-read, re-apply the splice, retry. */
 export class StaleWriteError extends Error {
@@ -218,6 +237,34 @@ const identityKey = (contextId: DecisionContextId): string =>
     String(contextId.occurrence),
   ].join('\u0000');
 
+/** INVARIANT I-2 (BURRITO-SPEC §5): every occurrence/occurrences field is an
+ * integer on disk. Parser-shaped inputs arrive as strings ("1"); coerce them,
+ * and REJECT anything that is not an integer rather than persist a `NaN`/string
+ * (a bare `Number("x")` would silently write `null`). Applied at every decision
+ * write boundary — the single upsert AND the whole-file rewrite. */
+const toIntegerOccurrence = (value: unknown, field: string): number => {
+  if (typeof value === 'number' && Number.isInteger(value)) return value;
+  if (typeof value === 'string' && /^-?\d+$/.test(value.trim())) return Number(value);
+  throw new RangeError(
+    `I-2: ${field} must be an integer occurrence, got ${JSON.stringify(value)}`,
+  );
+};
+
+/** Normalize the occurrence-bearing fields of a decision's contextId: its own
+ * `occurrence`, and (for a tN array quote) each quote word's `occurrence`. */
+const normalizeContextId = (contextId: DecisionContextId): DecisionContextId => ({
+  ...contextId,
+  occurrence: toIntegerOccurrence(contextId.occurrence, 'contextId.occurrence'),
+  ...(Array.isArray(contextId.quote)
+    ? {
+        quote: contextId.quote.map((word) => ({
+          ...word,
+          occurrence: toIntegerOccurrence(word.occurrence, 'quote.occurrence'),
+        })),
+      }
+    : {}),
+});
+
 const normalizeDecision = (decision: Decision): Decision => {
   // PLATFORM-NOTES #14: empty selections coerce to false — [] is not used.
   const selections = Array.isArray(decision.selections)
@@ -225,12 +272,13 @@ const normalizeDecision = (decision: Decision): Decision => {
       ? false
       : decision.selections.map((selection) => ({
           ...selection,
-          occurrence: Number(selection.occurrence),
-          occurrences: Number(selection.occurrences),
+          occurrence: toIntegerOccurrence(selection.occurrence, 'selection.occurrence'),
+          occurrences: toIntegerOccurrence(selection.occurrences, 'selection.occurrences'),
         }))
     : decision.selections;
   return {
     ...decision,
+    contextId: normalizeContextId(decision.contextId),
     selections,
     // §5.2: a writer that sets invalidated MUST NOT leave status:"valid" in place.
     ...(decision.invalidated && decision.status === 'valid'
@@ -318,16 +366,21 @@ export class HttpStore implements BurritoStore {
    * undo (omit no_bak — PLATFORM-NOTES #8) and passes update_ingredients
    * (registration + md5 refresh; the x-role wipe is accepted — D28 addendum). */
   async writeBook(book: string, usfm: string, opts: WriteBookOptions = {}): Promise<void> {
-    if (opts.expectMd5 !== undefined) {
-      const current = await this.api.readIngredient(this.repo(), bookIpath(book));
-      const currentMd5 = md5Hex(current);
-      if (currentMd5 !== opts.expectMd5) {
-        throw new StaleWriteError(book.toUpperCase(), opts.expectMd5, currentMd5);
+    // B13 — serialize the check→write per book path, exactly as writeJsonSidecar
+    // does (B7). The md5 precheck alone is a TOCTOU race: two overlapping draft
+    // writes both pass the check and the earlier edit is silently lost.
+    await withPathLock(`${this.repo()} ${bookIpath(book)}`, async () => {
+      if (opts.expectMd5 !== undefined) {
+        const current = await this.api.readIngredient(this.repo(), bookIpath(book));
+        const currentMd5 = md5Hex(current);
+        if (currentMd5 !== opts.expectMd5) {
+          throw new StaleWriteError(book.toUpperCase(), opts.expectMd5, currentMd5);
+        }
       }
-    }
-    await this.api.writeIngredient(this.repo(), bookIpath(book), usfm, {
-      updateIngredients: true,
-      keepBak: true,
+      await this.api.writeIngredient(this.repo(), bookIpath(book), usfm, {
+        updateIngredients: true,
+        keepBak: true,
+      });
     });
   }
 
@@ -361,34 +414,54 @@ export class HttpStore implements BurritoStore {
     }
   }
 
-  /**
-   * Sidecar write with OPTIONAL compare-and-swap (OPEN-QUESTIONS #17).
-   *
-   * The platform writes whole files unconditionally, so a read-modify-write
-   * cycle can silently lose another writer's update (BURRITO-SPEC W-5). Passing
-   * `expectMd5` re-reads immediately before writing and refuses when the bytes
-   * moved — the same protection `writeBook` already gives drafts. `null` means
-   * "the file must still not exist", which catches the create/create race.
-   *
-   * `.bak` is KEPT for sidecars. W-3 permits skipping it for *high-frequency*
-   * writes; a decision write is one per user action, so the single-level undo
-   * is worth far more than the write it costs [owner: data loss is an
-   * app-killing issue, 2026-08-03].
-   */
   private async writeJsonSidecar(
     ipath: string,
     data: unknown,
     expectMd5?: string | null,
-  ): Promise<void> {
-    if (expectMd5 !== undefined) {
-      const { md5: currentMd5 } = await this.readJsonSidecarWithMd5<unknown>(ipath);
-      if (currentMd5 !== expectMd5) {
-        throw new StaleWriteError(ipath, expectMd5 ?? '(absent)', currentMd5 ?? '(absent)');
+  ): Promise<string> {
+    return this.writeSidecarPayload(ipath, JSON.stringify(data, null, 2), expectMd5);
+  }
+
+  /**
+   * Write pre-serialized sidecar bytes, with OPTIONAL compare-and-swap
+   * (OPEN-QUESTIONS #17). Callers that have a value serialize it via
+   * writeJsonSidecar; callers restoring EXACT bytes (the gateway rollback, B21)
+   * pass the raw text so no re-serialization changes it.
+   *
+   * The platform writes whole files unconditionally, so a read-modify-write
+   * cycle can silently lose another writer's update (BURRITO-SPEC W-5). Passing
+   * `expectMd5` re-reads immediately before writing and refuses when the bytes
+   * moved. `null` means "the file must still not exist" (create/create race).
+   * `.bak` is KEPT for sidecars (W-3's skip is for high-frequency writes).
+   *
+   * B7 — the md5 precheck alone is NOT an atomic compare-and-swap: the platform
+   * has no conditional write, so between the check and the write a second writer
+   * can pass the same check and clobber the first (TOCTOU). The whole check→write
+   * is serialized per ingredient path (`withPathLock`) so overlapping guarded
+   * writes cannot interleave; the loser re-reads and its expectMd5 no longer
+   * matches, so it is refused, not lost. Airtight WITHIN this process; two
+   * separate OS processes still need a platform CAS primitive (D39: tC4 is
+   * single-instance per machine, so that is not a live concern).
+   */
+  private async writeSidecarPayload(
+    ipath: string,
+    payload: string,
+    expectMd5?: string | null,
+  ): Promise<string> {
+    return withPathLock(`${this.repo()} ${ipath}`, async () => {
+      if (expectMd5 !== undefined) {
+        const { md5: currentMd5 } = await this.readJsonSidecarWithMd5<unknown>(ipath);
+        if (currentMd5 !== expectMd5) {
+          throw new StaleWriteError(ipath, expectMd5 ?? '(absent)', currentMd5 ?? '(absent)');
+        }
       }
-    }
-    await this.api.writeIngredient(this.repo(), ipath, JSON.stringify(data, null, 2), {
-      updateIngredients: true,
-      keepBak: true,
+      await this.api.writeIngredient(this.repo(), ipath, payload, {
+        updateIngredients: true,
+        keepBak: true,
+      });
+      // The md5 of EXACTLY the bytes we wrote, captured while the lock is held
+      // (B15) — a later CAS uses it instead of a racy read-back.
+      return md5Hex(payload);
     });
   }
 
@@ -428,6 +501,38 @@ export class HttpStore implements BurritoStore {
     return this.readJsonSidecarWithMd5<DecisionFile>(decisionsIpath(tool, book));
   }
 
+  /** The RAW decision bytes + their md5 — for a byte-EXACT snapshot the caller
+   * can restore verbatim later (B21). readDecisionsWithMd5 parses, and writing
+   * a parsed value back through writeDecisions re-serializes/normalizes it,
+   * which changes the bytes; the gateway rollback must leave the sidecar
+   * byte-identical, so it captures and restores THIS raw text. */
+  async readDecisionsText(
+    tool: string,
+    book: string,
+  ): Promise<{ text: string | null; md5: string | null }> {
+    try {
+      const text = await this.api.readIngredient(this.repo(), decisionsIpath(tool, book));
+      return { text, md5: md5Hex(text) };
+    } catch (error) {
+      if (error instanceof ServerApiError && error.isNotFound) return { text: null, md5: null };
+      throw error;
+    }
+  }
+
+  /** Restore decision bytes VERBATIM (no normalization) under compare-and-swap.
+   * ONLY for undoing a partial gateway migration (B21): it writes back the exact
+   * pre-migration text captured by readDecisionsText, so a failed transaction
+   * leaves the sidecar byte-identical and the tree clean. Normal writes go
+   * through writeDecisions, which normalizes (I-2). */
+  async restoreDecisionsText(
+    tool: string,
+    book: string,
+    text: string,
+    expectMd5?: string | null,
+  ): Promise<string> {
+    return this.writeSidecarPayload(decisionsIpath(tool, book), text, expectMd5);
+  }
+
   /** Write a whole decision file, optionally under compare-and-swap. Used by
    * flows that rewrite more than one decision at once (a gateway-language
    * change re-attaching a book's work); single decisions go through
@@ -437,8 +542,17 @@ export class HttpStore implements BurritoStore {
     book: string,
     file: DecisionFile,
     expectMd5?: string | null,
-  ): Promise<void> {
-    await this.writeJsonSidecar(decisionsIpath(tool, book), file, expectMd5);
+  ): Promise<string> {
+    // I-2: normalize EVERY decision in the file, not just the ones a single
+    // upsert touches. This whole-file path (a gateway-language re-attach)
+    // previously wrote parser-shaped string occurrences straight to disk.
+    const normalized: DecisionFile = {
+      ...file,
+      decisions: (file.decisions ?? []).map(normalizeDecision),
+    };
+    // Returns the md5 of exactly what was written (B15) — the gateway commit
+    // uses it to CAS a rollback without a racy read-back.
+    return this.writeJsonSidecar(decisionsIpath(tool, book), normalized, expectMd5);
   }
 
   /** Merge by the §5.2 identity key with quoteString verification; persists the
@@ -504,12 +618,26 @@ export class HttpStore implements BurritoStore {
     return this.readJsonSidecar<ResourcesFile>(RESOURCES_IPATH);
   }
 
+  /** Resources plus the hash of the bytes read — the input to a safe
+   * read-modify-write cycle. `resources.json` is a shared, whole-file document
+   * (pins for the whole project), so a blind write loses a concurrent editor's
+   * change; hand this `md5` back to `writeResources` to make that a refused
+   * write instead (W-5, OPEN-QUESTIONS #17). */
+  async readResourcesWithMd5(): Promise<{ value: ResourcesFile | null; md5: string | null }> {
+    return this.readJsonSidecarWithMd5<ResourcesFile>(RESOURCES_IPATH);
+  }
+
   /** Written by the create wizard (J1) with the installed-suite pins, in the
    * §5.3 schemaVersion-2 two-language-set shape (D17/D30 — migrated for
    * Increment 2). Not part of the BurritoStore interface — an extra, like
-   * createProject/addBook. */
-  async writeResources(resources: ResourcesFile): Promise<void> {
-    await this.writeJsonSidecar(RESOURCES_IPATH, resources);
+   * createProject/addBook.
+   *
+   * `expectMd5` opts into compare-and-swap: obtain it from `readResourcesWithMd5`
+   * and a stale write is refused with StaleWriteError rather than silently
+   * clobbering the other writer's pins (B7). `null` means "must still be absent"
+   * (the create/create race). */
+  async writeResources(resources: ResourcesFile, expectMd5?: string | null): Promise<void> {
+    await this.writeJsonSidecar(RESOURCES_IPATH, resources, expectMd5);
   }
 
   async readSettings(): Promise<SettingsFile | null> {

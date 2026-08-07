@@ -105,7 +105,7 @@ test.describe('J6 — editing a checked verse flags its checks for re-review', (
         { force: true },
       );
       await openTool(page, 'translationNotes');
-      await page.getByTestId('mark-nothing').click();
+      await page.getByTestId('mark-valid').click();
       await expect
         .poll(() => readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')?.resource?.version, {
           timeout: 10_000,

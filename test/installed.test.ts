@@ -25,19 +25,20 @@ const pin = (repo: string, version: string, sha?: string): ResourcePin => ({
   ...(sha ? { sha } : {}),
 });
 
+// Owner-qualified, lowercased local identity (B9): `<owner>--<repo>`.
 const INSTALLED: InstalledMap = {
-  '_local_/_sideloaded_/en_tn': pin('unfoldingWord/en_tn', 'v89'),
-  '_local_/_sideloaded_/en_tw': pin('unfoldingWord/en_tw', 'v89'),
-  '_local_/_sideloaded_/en_ta': pin('unfoldingWord/en_ta', 'v89'),
-  '_local_/_sideloaded_/es-419_tn': pin('es-419_gl/es-419_tn', 'v66'),
+  '_local_/_sideloaded_/unfoldingword--en_tn': pin('unfoldingWord/en_tn', 'v89'),
+  '_local_/_sideloaded_/unfoldingword--en_tw': pin('unfoldingWord/en_tw', 'v89'),
+  '_local_/_sideloaded_/unfoldingword--en_ta': pin('unfoldingWord/en_ta', 'v89'),
+  '_local_/_sideloaded_/es-419_gl--es-419_tn': pin('es-419_gl/es-419_tn', 'v66'),
 };
 
 // The platform's own summaries — uppercase book_codes [VERIFIED live].
 const SUMMARIES = {
-  '_local_/_sideloaded_/en_tn': { book_codes: ['TIT', 'JON', 'HEB'] },
-  '_local_/_sideloaded_/en_tw': { book_codes: ['BIBLE'] },
-  '_local_/_sideloaded_/en_ta': { book_codes: ['TRANSLATE'] },
-  '_local_/_sideloaded_/es-419_tn': { book_codes: ['TIT', 'JON'] },
+  '_local_/_sideloaded_/unfoldingword--en_tn': { book_codes: ['TIT', 'JON', 'HEB'] },
+  '_local_/_sideloaded_/unfoldingword--en_tw': { book_codes: ['BIBLE'] },
+  '_local_/_sideloaded_/unfoldingword--en_ta': { book_codes: ['TRANSLATE'] },
+  '_local_/_sideloaded_/es-419_gl--es-419_tn': { book_codes: ['TIT', 'JON'] },
   '_local_/_sideloaded_/orphan': { book_codes: ['TIT'] },
 } as never;
 
@@ -103,9 +104,15 @@ describe('pin identity is (repoPath, version) — a different version is not thi
     expect(isPinLocal(INSTALLED, pin('unfoldingWord/en_tq', 'v89'))).toBe(false);
   });
 
-  it('maps a DCS repoPath to its sideloaded local path', () => {
+  it('maps a DCS repoPath to its OWNER-QUALIFIED sideloaded local path (B9)', () => {
     expect(localRepoPathFromRepoPath('git.door43.org/unfoldingWord/en_tn'))
-      .toBe('_local_/_sideloaded_/en_tn');
+      .toBe('_local_/_sideloaded_/unfoldingword--en_tn');
+    // Same repo, different org CASE → same install dir (mirrors samePath).
+    expect(localRepoPathFromRepoPath('git.door43.org/UnfoldingWord/EN_TN'))
+      .toBe('_local_/_sideloaded_/unfoldingword--en_tn');
+    // Two owners, same repo name → DISTINCT dirs (the collision B9 fixes).
+    expect(localRepoPathFromRepoPath('git.door43.org/Xenizo/fr_tn'))
+      .not.toBe(localRepoPathFromRepoPath('git.door43.org/MVHS/fr_tn'));
   });
 });
 

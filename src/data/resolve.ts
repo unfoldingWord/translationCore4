@@ -127,6 +127,12 @@ export interface Preflight {
   resolution: Resolution | null;
   /** The pin the app must fetch when `state === 'fetch'`. */
   needs: ResourcePin | null;
+  /** B20 (D-warned-fallback): set when the session opened against the FALLBACK
+   * rung only because the pinned PRIMARY resource is not installed. The session
+   * is usable, but the UI MUST surface a warned-update — the user is checking
+   * against a substitute — and offer to fetch this pin. Null when the primary is
+   * local (or absent), i.e. the fallback is the plainly-correct resolution. */
+  unavailablePrimary?: ResourcePin | null;
 }
 
 /** Decide what opening this (tool, book) requires. `isLocal` answers "is this
@@ -148,7 +154,26 @@ export const preflightToolBook = (
       : opts.online
         ? 'fetch'
         : 'unavailable';
-    return { tool, book, state, resolution, needs: state === 'fetch' ? resolution.pin : null };
+    // B20 (warned fallback) — coverage is evidence from LOCAL installs only
+    // ("never assumed"), so a fallback resolution is ambiguous: the primary may
+    // genuinely lack this book, OR it is simply not installed and its coverage
+    // is unknown. We do NOT silently switch resource/language (the original bug),
+    // and we do NOT force a fetch for a book the primary may not even cover (the
+    // over-correction). Instead: open the fallback (it works) and flag the
+    // not-local pinned primary so the UI warns and offers to fetch it. The
+    // precise fetch-vs-fallback call needs the primary's coverage — deferred to
+    // the resolver-metadata increment that records per-pin coverage (with D40).
+    const primaryPin = resources.languageSets.primary?.[TOOL_SLOT[tool]];
+    const unavailablePrimary =
+      resolution.usedFallback && primaryPin && !opts.isLocal(primaryPin) ? primaryPin : null;
+    return {
+      tool,
+      book,
+      state,
+      resolution,
+      needs: state === 'fetch' ? resolution.pin : null,
+      unavailablePrimary,
+    };
   }
 
   // Nothing covered the book. Distinguish "no pin at all in this slot" from

@@ -19,8 +19,24 @@ export const INSTALLED_KEY = 'installedResources';
 /** local repo path -> the pin that produced it. */
 export type InstalledMap = { [localRepoPath: string]: ResourcePin };
 
-export const localRepoPathFromRepoPath = (repoPath: string): string =>
-  `_local_/_sideloaded_/${repoPath.split('/').pop()}`;
+/** The local install directory for a DCS repo. Identity is the COMPLETE repo
+ * (owner + name), NOT the bare name: two gateways can each publish a repo of
+ * the same name (`Xenizo/fr_tn` and `MVHS/fr_tn`), and keying on the basename
+ * alone collides them into one install — the second is skipped as "already
+ * installed" and never becomes available (B9). Owner and name join with `--`
+ * so the result stays ONE path segment under `_local_/_sideloaded_/`, which is
+ * the shape the platform importer accepts. (No DCS owner or repo name contains
+ * `--`, so the split back to owner/name is unambiguous — see `discoverOnDisk`.) */
+export const localRepoPathFromRepoPath = (repoPath: string): string => {
+  const parts = repoPath.replace(/^https?:\/\//, '').split('/').filter(Boolean);
+  // Lowercase the identity segment so it is CANONICAL: `samePath` treats repo
+  // paths case-insensitively, so `Es-419_gl/es-419_tn` and `es-419_gl/...` are
+  // the same repo and MUST map to the same install dir. (The on-disk dir name
+  // is arbitrary; the DCS fetch still uses the correctly-cased `pin.repoPath`.)
+  const repo = (parts[parts.length - 1] ?? '').toLowerCase();
+  const owner = (parts.length >= 2 ? parts[parts.length - 2] : '').toLowerCase();
+  return `_local_/_sideloaded_/${owner ? `${owner}--${repo}` : repo}`;
+};
 
 export const readInstalled = async (api: ServerApi, storageId: string): Promise<InstalledMap> => {
   try {
@@ -89,11 +105,17 @@ export const discoverOnDisk = async (
         const [key] = Object.keys(dcs);
         const revision = Object.values(dcs)[0]?.revision;
         if (!key || !revision) return;
-        const repoName = localPath.split('/').pop() as string;
-        const configuredOrg = orgFor(repoName);
-        const repoPath = configuredOrg
-          ? `git.door43.org/${configuredOrg}/${repoName}`
-          : `git.door43.org/${key}`;
+        // The local segment is `<owner>--<repo>` for installs written by the
+        // owner-qualified path; older installs are the bare `<repo>`. When the
+        // owner is in the path we know the exact DCS identity and need neither
+        // the resolver nor the (possibly stale) metadata org. Otherwise fall
+        // back: a configured org for this name, else the metadata key.
+        const seg = localPath.split('/').pop() as string;
+        const sep = seg.indexOf('--');
+        const ownerFromPath = sep > 0 ? seg.slice(0, sep) : null;
+        const repoName = sep > 0 ? seg.slice(sep + 2) : seg;
+        const org = ownerFromPath ?? orgFor(repoName);
+        const repoPath = org ? `git.door43.org/${org}/${repoName}` : `git.door43.org/${key}`;
         found[localPath] = { repoPath, version: '', sha: revision, flavor: '' };
       } catch {
         /* unreadable metadata: contributes nothing, the safe direction */
@@ -126,6 +148,35 @@ export const coverageFromLocal = (
   return coverage;
 };
 
+/** The installed entry whose repo IDENTITY matches this pin, found by the same
+ * case-insensitive comparison `samePath` uses — NOT by recomputing a local
+ * path. Existing/seeded installs live at legacy `<repo>` paths while fresh
+ * installs use `<owner>--<repo>`; recomputing the path missed the legacy ones
+ * and made every seeded resource invisible (B10). An identity search finds the
+ * install wherever it actually lives, at whatever key. */
+const installedEntry = (
+  installed: InstalledMap,
+  pin: ResourcePin,
+): [string, ResourcePin] | undefined => {
+  const sameRepo = Object.entries(installed).filter(([, p]) => samePath(p.repoPath, pin.repoPath));
+  if (sameRepo.length <= 1) return sameRepo[0];
+  // B16 — more than one install of this repo can coexist (the mid-migration
+  // shape: an old legacy `<repo>` install AND the exact new `<owner>--<repo>`).
+  // Prefer the one that IS the requested pin — matching sha, else matching
+  // version — so the exact install is never shadowed by a stale first match.
+  return (
+    sameRepo.find(([, p]) => !!pin.sha && !!p.sha && pin.sha === p.sha) ??
+    sameRepo.find(([, p]) => !!p.version && p.version === pin.version) ??
+    sameRepo[0]
+  );
+};
+
+/** The ACTUAL on-disk local path a pin resolves to, or null when not installed.
+ * READ a resource through this — never recompute the path, which misses a
+ * legacy- or differently-cased install (B10). */
+export const installedPathFor = (installed: InstalledMap, pin: ResourcePin): string | null =>
+  installedEntry(installed, pin)?.[0] ?? null;
+
 /** Is this pin satisfied by what the machine holds?
  *
  * Two ways to be sure, in order of strength:
@@ -135,8 +186,8 @@ export const coverageFromLocal = (
  *   2. the recorded release tag equals the pin's version.
  * A different version of the same repo is NOT this pin. */
 export const isPinLocal = (installed: InstalledMap, pin: ResourcePin): boolean => {
-  const local = installed[localRepoPathFromRepoPath(pin.repoPath)];
-  if (!local || !samePath(local.repoPath, pin.repoPath)) return false;
+  const local = installedEntry(installed, pin)?.[1];
+  if (!local) return false;
   if (pin.sha && local.sha) return pin.sha === local.sha;
   return !!local.version && local.version === pin.version;
 };
@@ -150,8 +201,8 @@ export const isPinLocal = (installed: InstalledMap, pin: ResourcePin): boolean =
  * hides the resource the user just fetched. Identity is (repoPath, version),
  * so this REPLACES the version rather than pretending the default matches. */
 export const preferInstalledVersion = (installed: InstalledMap, pin: ResourcePin): ResourcePin => {
-  const local = installed[localRepoPathFromRepoPath(pin.repoPath)];
-  if (!local || !samePath(local.repoPath, pin.repoPath)) return pin;
+  const local = installedEntry(installed, pin)?.[1];
+  if (!local) return pin;
   return { ...pin, version: local.version, ...(local.sha ? { sha: local.sha } : {}) };
 };
 

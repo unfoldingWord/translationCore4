@@ -34,9 +34,11 @@ export interface CarryOverResult {
  * Recompute one book's decision file against a freshly derived check list.
  *
  * `derived` MUST come from the resource being switched TO. Decisions that
- * re-attach keep their state; the rest are flagged `invalidated` with
- * `status: 'invalid'` — tC3's behaviour, and the one that keeps progress
- * honest rather than crediting work against checks that no longer exist.
+ * re-attach keep their state; the rest are flagged `invalidated` (and their
+ * status forced to `invalid` UNLESS the user set `todo`, which §5.2 lets stand)
+ * — tC3's behaviour, and the one that keeps progress honest rather than
+ * crediting work against checks that no longer exist. Records are kept BY
+ * PROVENANCE (everything in `file.decisions` is user data), never deleted.
  */
 export const carryOverDecisions = (
   file: DecisionFile,
@@ -44,29 +46,34 @@ export const carryOverDecisions = (
   resource: { repoPath: string; version: string; languageSet?: string },
 ): CarryOverResult => {
   const saved = (file.decisions ?? []) as unknown as CheckItem[];
-  const { items, unplaced } = mergeAndReattach(derived, saved);
+  const { items, unplaced, placed } = mergeAndReattach(derived, saved);
 
   // What the file holds after the change is keyed to the NEW resource: the
   // decisions that sit on the new check list, carrying their contextIds. A
   // decision that re-attached across a language change is here under the
   // derived contextId, which is the point — the resource is the primary key.
-  const carriedDecisions = items.filter(
-    (i) => i.selections !== false || i.nothingToSelect === true ||
-      i.comments !== false || i.reminders === true,
-  ) as unknown as Decision[];
+  //
+  // F5 — keep BY PROVENANCE, not by inspecting fields. A record that came from
+  // `file.decisions` is user data by origin; `placed` marks the derived items
+  // that carry one. The old field test asked "does this look like user data?",
+  // and a re-pin that cleared an item's status back to a fresh-looking shape
+  // then read as untouched — silently DELETING a status-only ("todo") decision
+  // on the switch-away-and-back cycle. Provenance cannot be fooled that way.
+  const carriedDecisions = items.filter((i) => placed.has(i)) as unknown as Decision[];
 
   // Plus, retained and marked, the ones neither pass could place. They no
   // longer describe a check that exists, so they do not count as progress —
   // but they are kept, so pinning the old resource back restores them.
+  // §5.2: invalidation MUST NOT leave status "valid"; a "todo" the user set is
+  // their triage and is preserved, so the round-trip is loss-free.
   const invalidatedDecisions = (unplaced as unknown as Decision[]).map((d) => ({
     ...d,
     invalidated: true,
-    status: 'invalid' as const,
+    status: d.status === 'todo' ? ('todo' as const) : ('invalid' as const),
   }));
 
-  const undecided = items.filter(
-    (i) => i.selections === false && i.nothingToSelect !== true,
-  ).length;
+  // Checks in the new list with no decision at all — work that now exists.
+  const undecided = items.filter((i) => !placed.has(i)).length;
 
   return {
     file: {

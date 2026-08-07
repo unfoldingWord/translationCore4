@@ -11,6 +11,7 @@ import {
   categoryForTn,
   tnQuoteWords,
   reattachAcrossResource,
+  sameOrigQuote,
   mergeSavedDecisions,
   progressOf,
   TN_HEADER,
@@ -269,34 +270,55 @@ describe('cross-language re-attach on REAL en→es data (D17)', () => {
     expect(es.length).toBe(112);
   });
 
-  it('a decision whose checkId survives the language switch re-attaches by checkId', () => {
-    const esIds = new Set(es.map((i) => i.contextId.checkId));
-    const survivor = en.find((i) => esIds.has(i.contextId.checkId));
+  it('a checkId-survivor re-attaches ONLY when the original-language quote also matches (B18, §5.2)', () => {
+    // A shared checkId with a DIFFERENT quote span is a DIFFERENT check, not the
+    // saved one. Real case: rtc9 is `κατὰ πίστιν ἐκλεκτῶν Θεοῦ…` in en_tn but
+    // just `κατὰ πίστιν` in es-419_tn. It MUST NOT ride the shared id onto the
+    // other span; reattach never lands on an item whose quote differs.
+    const enRtc9 = en.find((i) => i.contextId.checkId === 'rtc9') as CheckItem;
+    const esRtc9 = es.find((i) => i.contextId.checkId === 'rtc9') as CheckItem;
+    expect(enRtc9.contextId.quoteString).not.toBe(esRtc9.contextId.quoteString);
+    const [bad] = reattachAcrossResource([enRtc9], es);
+    if (bad.to) expect(bad.to.contextId.quoteString).toBe(enRtc9.contextId.quoteString);
+    else expect(bad.unplaced).toBe(true);
+    // A genuine survivor — same checkId AND same quote — still carries.
+    const esById = new Map(es.map((i) => [i.contextId.checkId, i]));
+    const survivor = en.find(
+      (i) => esById.get(i.contextId.checkId)?.contextId.quoteString === i.contextId.quoteString,
+    ) as CheckItem;
     expect(survivor).toBeDefined();
-    const [r] = reattachAcrossResource([survivor as CheckItem], es);
-    expect(r.to?.contextId.checkId).toBe((survivor as CheckItem).contextId.checkId);
+    const [ok] = reattachAcrossResource([survivor], es);
+    expect(ok.to?.contextId.checkId).toBe(survivor.contextId.checkId);
   });
 
-  it('89 of the 157 en decisions re-attach by direct checkId match (counted at vendor time)', () => {
+  it('76 of the 157 en decisions re-attach by checkId with a MATCHING quote (B18; was 89 before quote-gating)', () => {
+    // Shared checkId + genuinely different Greek span no longer auto-carries;
+    // the quote is compared via the uW tokenizer, so a merely cosmetic quote
+    // difference still matches (that is why this is 76, not the 75 a naive
+    // string=== gave — one pair differs only cosmetically).
     const results = reattachAcrossResource(en, es);
     const byId = results.filter(
       (r) => r.to && r.to.contextId.checkId === r.saved.contextId.checkId,
     );
-    expect(byId.length).toBe(89);
+    expect(byId.length).toBe(76);
+    // A checkId match only carries when the ORIGINAL-language quote agrees.
+    expect(byId.every((r) => sameOrigQuote(r.to!.contextId.quoteString, r.saved.contextId.quoteString))).toBe(true);
   });
 
-  it('no decision is ever guessed: every result either re-attaches uniquely or goes to review', () => {
+  it('no decision is ever guessed: every result either re-attaches on a matching quote or goes to review', () => {
     const results = reattachAcrossResource(en, es);
     for (const r of results) {
       expect(Boolean(r.to) !== Boolean(r.unplaced)).toBe(true);
     }
     const reviews = results.filter((r) => r.unplaced).length;
-    const attached = results.filter((r) => r.to).length;
-    expect(attached + reviews).toBe(157);
-    // The es slice covers fewer notes than en (112 < 157): a substantial
-    // review queue is the CORRECT outcome, not a failure.
-    expect(reviews).toBeGreaterThan(0);
-    expect(attached).toBeGreaterThanOrEqual(89);
+    const attached = results.filter((r) => r.to);
+    expect(attached.length + reviews).toBe(157);
+    // THE core B18 guarantee: NO attached decision ever rides a changed quote.
+    expect(attached.every((r) => sameOrigQuote(r.to!.contextId.quoteString, r.saved.contextId.quoteString))).toBe(true);
+    // The es slice covers fewer notes than en (112 < 157) and quote-gating sends
+    // shared-id/changed-quote items to review: a substantial queue is CORRECT.
+    expect(reviews).toBe(68);
+    expect(attached.length).toBe(89);
   });
 
   it('duplicate (ref+quote+occurrence) keys exist in the REAL data and never auto-attach without a groupId tiebreak', () => {

@@ -12,10 +12,12 @@
 import React from 'react';
 import { useApp } from '../state.jsx';
 import { TOOL_SLOT } from '../data/resolve';
+import { isDecided } from '../data/derive';
 import { bookName } from '../data/bookNames';
 import { renderArticleBlocks } from '../data/articles';
 import Align from './Align.jsx';
 import { isLanguageSwitch } from '../data/revalidate';
+import { targetWords, selectionsFromTokens, tokenIndicesFromSelections } from '../data/selections';
 import { t } from '../i18n';
 
 const TOOLS = Object.keys(TOOL_SLOT);
@@ -69,6 +71,25 @@ function ToolCard({ tool, pre, book }) {
           style={{ border: '1px solid rgba(35,31,32,.16)', background: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 800, fontSize: 12.5, padding: '8px 16px', borderRadius: 999, color: '#014263' }}>
           {t('check.fix.getResources')}
         </button>
+      )}
+      {/* B20 warned fallback (D41): the resolver opened the installed fallback
+        * because the pinned PRIMARY is not on this computer. That is not silent —
+        * say which primary is missing and offer to download it. The card still
+        * opens (state 'ready'); the fallback never blocks. */}
+      {pre.unavailablePrimary && (
+        <div data-testid={`fallback-warning-${tool}`}
+          style={{ fontSize: 12.5, color: '#8A6A22', background: '#F6EEDC', border: '1px solid rgba(229,157,51,.35)', borderRadius: 10, padding: '10px 12px', margin: '0 0 10px', lineHeight: 1.5 }}>
+          {t('check.fallbackWarn', {
+            repo: pre.unavailablePrimary.repoPath,
+            version: pre.unavailablePrimary.version,
+          })}
+          <div style={{ marginTop: 8 }}>
+            <button type="button" onClick={actions.openSources} data-testid={`fetch-primary-${tool}`}
+              style={{ border: '1px solid rgba(229,157,51,.5)', background: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 800, fontSize: 12, padding: '6px 14px', borderRadius: 999, color: '#8A6A22' }}>
+              {t('check.fix.download')}
+            </button>
+          </div>
+        </div>
       )}
       {pre.state === 'ready' && (
         <button type="button" onClick={() => actions.openCheckTool(tool)} className="hovNewBible"
@@ -132,6 +153,27 @@ function CheckSession() {
   const { s, actions } = useApp();
   const cs = s.checkSession;
 
+  // B23 — the tN/tW selection: the checker highlights the word(s) in their
+  // translation that render the item's quote. Hooks run before the early
+  // returns (rules-of-hooks). `verses` is on the session, so the target text
+  // never pollutes the stored §5.2 record.
+  const activeIndex = cs?.activeIndex ?? 0;
+  const activeItem = cs?.items?.[activeIndex];
+  const activeRef = activeItem
+    ? `${activeItem.contextId.reference.chapter}:${activeItem.contextId.reference.verse}`
+    : '';
+  const targetText = (cs?.verses && cs.verses[activeRef]) || '';
+  const words = React.useMemo(() => targetWords(targetText), [targetText]);
+  const [sel, setSel] = React.useState(() => new Set());
+  // Sync the tap-selection to the active item's stored selection when the item
+  // (or its verse text) changes — NOT on `selections`, so a save does not fight
+  // the user's live selection.
+  // Deps are deliberate: re-sync when the ACTIVE ITEM or its verse text changes,
+  // not on `selections` — a save must not fight the user's live tap-selection.
+  React.useEffect(() => {
+    setSel(new Set(tokenIndicesFromSelections(targetText, activeItem?.selections)));
+  }, [activeIndex, cs?.tool, cs?.book, targetText]);
+
   if (cs?.loading) return <p style={{ fontSize: 14, color: '#8A99A4' }}>{t('check.deriving')}</p>;
   if (cs?.error) {
     return <p style={{ fontSize: 14, color: '#A21309', lineHeight: 1.6 }} data-testid="check-error">{cs.error}</p>;
@@ -165,10 +207,42 @@ function CheckSession() {
   }
 
   const item = cs.items[cs.activeIndex];
-  const decided = (i) => i.selections !== false || i.nothingToSelect === true;
+  // Single source of truth with the progress meter — an Invalid triage counts
+  // as decided in BOTH, and a carry-over invalidation counts in neither (B23).
+  const decided = isDecided;
   const quote = Array.isArray(item?.contextId.quote)
     ? item.contextId.quote.map((w) => w.word).join(' ')
     : item?.contextId.quoteString;
+
+  const toggleWord = (i) =>
+    setSel((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  const markValid = () => {
+    const selections = selectionsFromTokens(targetText, [...sel].sort((a, b) => a - b));
+    actions.recordDecision(
+      selections.length
+        ? { selections, nothingToSelect: false, status: 'valid' }
+        : { selections: false, nothingToSelect: true, status: 'valid' },
+    );
+  };
+  const markInvalid = () =>
+    actions.recordDecision({ selections: false, nothingToSelect: false, status: 'invalid' });
+  const markTodo = () => actions.recordDecision({ status: 'todo' });
+  const triageStyle = (active, tone) => ({
+    border: `1.5px solid ${active ? tone : 'rgba(35,31,32,.18)'}`,
+    background: active ? tone : '#fff',
+    color: active ? '#fff' : '#4F5E6A',
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    fontWeight: 800,
+    fontSize: 13,
+    padding: '9px 16px',
+    borderRadius: 10,
+  });
 
   return (
     <div data-testid="check-session">
@@ -204,21 +278,50 @@ function CheckSession() {
             </span>
             <span style={{ fontSize: 11.5, color: '#8A99A4', fontFamily: 'ui-monospace,Menlo,monospace' }}>{item.contextId.groupId}</span>
           </div>
-          <p lang="el" style={{ fontFamily: "'PT Serif',serif", fontSize: 20, lineHeight: 1.7, color: '#231F20', margin: '0 0 10px' }}>{quote}</p>
+          {/* Highlighted source: the quote the checker must find in the draft. */}
+          <p lang="el" data-testid="check-quote" style={{ fontFamily: "'PT Serif',serif", fontSize: 20, lineHeight: 1.7, color: '#231F20', margin: '0 0 10px' }}>
+            <span style={{ background: '#FFF1B8', borderRadius: 4, padding: '0 .12em' }}>{quote}</span>
+          </p>
           {item.contextId.occurrenceNote && (
-            <p data-testid="check-note" style={{ fontSize: 13.5, color: '#4F5E6A', lineHeight: 1.65, margin: '0 0 12px' }}>
+            <p data-testid="check-note" style={{ fontSize: 13.5, color: '#4F5E6A', lineHeight: 1.65, margin: '0 0 14px' }}>
               {item.contextId.occurrenceNote.slice(0, 400)}
             </p>
           )}
+
+          {/* Your translation: tap the word(s) that render the quote (B23). */}
+          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: '#31ADE3', margin: '0 0 6px' }}>
+            {t('check.yourTranslation')}
+          </div>
+          {words.length === 0 ? (
+            <p data-testid="check-target" data-drafted="0" style={{ fontSize: 14, color: '#8A99A4', fontStyle: 'italic', margin: '0 0 14px' }}>
+              {t('check.notDrafted')}
+            </p>
+          ) : (
+            <>
+              <p data-testid="check-target" data-drafted="1" style={{ fontFamily: "'PT Serif',serif", fontSize: 19, lineHeight: 1.9, color: '#231F20', margin: '0 0 8px' }}>
+                {words.map((w, i) => (
+                  <span key={i} data-testid={`tw-${i}`} data-selected={sel.has(i) ? '1' : '0'}
+                    onClick={() => toggleWord(i)}
+                    style={{ cursor: 'pointer', borderRadius: 4, padding: '0 .1em', marginInlineEnd: '.24em', background: sel.has(i) ? '#FFF1B8' : 'transparent' }}>
+                    {w}
+                  </span>
+                ))}
+              </p>
+              <p style={{ fontSize: 12, color: '#8A99A4', margin: '0 0 14px' }}>{t('check.selectHint')}</p>
+            </>
+          )}
+
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button type="button" data-testid="mark-nothing"
-              onClick={() => actions.recordDecision({ nothingToSelect: true, selections: false, status: 'valid' })}
-              style={{ border: '1px solid rgba(35,31,32,.18)', background: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 800, fontSize: 12.5, padding: '8px 14px', borderRadius: 999, color: '#4F5E6A' }}>
-              {t('check.nothingToSelect')}
+            <button type="button" data-testid="mark-valid" onClick={markValid}
+              style={triageStyle(item.status === 'valid', '#3C8F5C')}>
+              {t('check.markValid')}
             </button>
-            <button type="button" data-testid="mark-todo"
-              onClick={() => actions.recordDecision({ status: 'todo' })}
-              style={{ border: '1px solid rgba(35,31,32,.18)', background: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 800, fontSize: 12.5, padding: '8px 14px', borderRadius: 999, color: '#4F5E6A' }}>
+            <button type="button" data-testid="mark-invalid" onClick={markInvalid}
+              style={triageStyle(item.status === 'invalid', '#A21309')}>
+              {t('check.markInvalid')}
+            </button>
+            <button type="button" data-testid="mark-todo" onClick={markTodo}
+              style={triageStyle(item.status === 'todo', '#8A6A22')}>
               {t('check.markTodo')}
             </button>
           </div>
@@ -253,6 +356,7 @@ function CheckSession() {
         {cs.items.map((it, i) => (
           <button key={`${it.contextId.checkId}-${i}`} type="button" onClick={() => actions.setCheckIndex(i)}
             title={`${it.contextId.reference.chapter}:${it.contextId.reference.verse} · ${it.contextId.groupId}`}
+            data-ref={`${it.contextId.reference.chapter}:${it.contextId.reference.verse}`}
             data-decided={decided(it) ? '1' : '0'}
             data-invalid={it.invalidated === true ? '1' : '0'}
             style={{

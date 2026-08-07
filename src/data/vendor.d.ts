@@ -61,3 +61,18 @@ declare module 'usfm-js' {
   };
   export default usfm;
 }
+
+// bible-reference-range ships types but omits `doesReferenceContain`; augment
+// the module to add just the member we use (proven uW range engine — B19/F6).
+declare module 'bible-reference-range' {
+  export function doesReferenceContain(ref: string, subref: string): boolean;
+}
+
+// string-punctuation-tokenizer ships no types. `tokenize` returns the word
+// tokens of a string, punctuation stripped (§5.2 quote identity — B18; and the
+// tN/tW target-word selection — B23). `occurrencesInString` counts a word's
+// total occurrences (for the §5.2 selection's `occurrences`).
+declare module 'string-punctuation-tokenizer' {
+  export function tokenize(options: { text: string }): string[];
+  export function occurrencesInString(text: string, subString: string): number;
+}

@@ -45,7 +45,7 @@ describe('sb-zip URL + local target (D23b pin path)', () => {
   });
 
   it('installs into _local_/_sideloaded_/<repo>', () => {
-    expect(localRepoPathFor(PIN)).toBe('_local_/_sideloaded_/en_twl');
+    expect(localRepoPathFor(PIN)).toBe('_local_/_sideloaded_/unfoldingword--en_twl');
   });
 });
 
@@ -157,9 +157,9 @@ describe('fetchAndInstallPin — the SHA gate (D23b: verify at every import)', (
       api: apiWith(true, installed) as never,
       fetchFn: fetchReturning(wrappedZip(PIN.sha as string)),
     });
-    expect(r.repoPath).toBe('_local_/_sideloaded_/en_twl');
+    expect(r.repoPath).toBe('_local_/_sideloaded_/unfoldingword--en_twl');
     expect(r.revision).toBe(PIN.sha);
-    expect(installed).toEqual(['_local_/_sideloaded_/en_twl']);
+    expect(installed).toEqual(['_local_/_sideloaded_/unfoldingword--en_twl']);
   });
 
   it('REFUSES to install when the export SHA differs from the pin', async () => {
@@ -204,5 +204,49 @@ describe('fetchAndInstallPin — the SHA gate (D23b: verify at every import)', (
       onStage: (s) => stages.push(s),
     });
     expect(stages).toEqual(['download', 'verify', 'install']);
+  });
+
+  // F4 — a FIRST install carries no pin SHA. The expected SHA must come from
+  // DCS's own tag→commit record (independent), NOT from the archive itself.
+  const FIRST: ResourcePin = {
+    repoPath: 'git.door43.org/unfoldingWord/en_twl', version: 'v86', flavor: '',
+  };
+  const SHA = '570e76d0024c847689e48a20e2ac1a1d2c6eb6e3';
+  // Dispatch by URL: the tags API answers the oracle call, the sb-zip the download.
+  const dcsFetch = (
+    zip: Uint8Array, tags: Array<{ name: string; sha: string }>, tagsOk = true,
+  ) => (async (url: string) => (String(url).includes('/api/v1/repos/')
+    ? { ok: tagsOk, status: 200, json: async () => tags.map((t) => ({ name: t.name, commit: { sha: t.sha } })) }
+    : { ok: true, status: 200, arrayBuffer: async () => zip.buffer.slice(zip.byteOffset, zip.byteOffset + zip.byteLength) }
+  )) as unknown as typeof fetch;
+
+  it('installs a first pin (no SHA) when the export matches DCS’s tag commit', async () => {
+    const installed: string[] = [];
+    const r = await fetchAndInstallPin(FIRST, {
+      api: apiWith(true, installed) as never,
+      fetchFn: dcsFetch(wrappedZip(SHA), [{ name: 'v86', sha: SHA }]),
+    });
+    expect(r.revision).toBe(SHA);
+    expect(installed).toEqual(['_local_/_sideloaded_/unfoldingword--en_twl']);
+  });
+
+  it('REFUSES a first pin whose export declares a revision DCS does not vouch for', async () => {
+    const installed: string[] = [];
+    await expect(fetchAndInstallPin(FIRST, {
+      api: apiWith(true, installed) as never,
+      // The archive claims SHA, but DCS records a DIFFERENT commit for v86 —
+      // exactly the self-certifying archive F4 warned about.
+      fetchFn: dcsFetch(wrappedZip(SHA), [{ name: 'v86', sha: '0'.repeat(40) }]),
+    })).rejects.toThrow(/SHA mismatch/);
+    expect(installed).toEqual([]);
+  });
+
+  it('REFUSES a first pin when DCS cannot vouch for the tag at all', async () => {
+    const installed: string[] = [];
+    await expect(fetchAndInstallPin(FIRST, {
+      api: apiWith(true, installed) as never,
+      fetchFn: dcsFetch(wrappedZip(SHA), [{ name: 'v99', sha: SHA }]), // v86 absent
+    })).rejects.toThrow(/cannot authenticate/);
+    expect(installed).toEqual([]);
   });
 });
