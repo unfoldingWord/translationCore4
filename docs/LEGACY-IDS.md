@@ -10,9 +10,9 @@ the issue. This table decodes each ID class and says where the referenced item l
 |---|---|---|---|
 | `Dnn` | D28, D40 | A recorded decision | `DECISIONS.md` — one section per decision |
 | `Ledger #n` | Ledger #2 | A standing risk | `RISKS.md`, same numbering |
-| `OPEN-QUESTIONS #n`, `OQ#n` | OPEN-QUESTIONS #17 | An open technical question | Historical register (maintainer workspace). Open items become issues labelled `question`, with the number kept in the issue title. Closed items are quoted where they were closed — usually in `DECISIONS.md` or an evidence record |
-| `Mn` / `En.n` / `In.n.n` | M2, E2.6, I1.2.4 | Legacy milestone / epic / work item from the old backlog file | Open items become GitHub issues with the legacy ID in the title; delivered items are recorded in the migration reconciliation (maintainer workspace) |
-| `Cn.n` | C2.13 | A row of the internal implementation checklist | Maintainer workspace (frozen derivation record). Open remainders become issues with the ID in the title |
+| `OPEN-QUESTIONS #n`, `OQ#n` | OPEN-QUESTIONS #17 | An open technical question | Historical register (maintainer workspace). Open items become issues labelled `question`, with the number named in the issue body. Closed items are quoted where they were closed — usually in `DECISIONS.md` or an evidence record |
+| `Mn` / `En.n` / `In.n.n` | M2, E2.6, I1.2.4 | Legacy milestone / epic / work item from the old backlog file | Open items become GitHub issues with the legacy ID named in the body; delivered items are recorded in the migration reconciliation (maintainer workspace) |
+| `Cn.n` | C2.13 | A row of the internal implementation checklist | Maintainer workspace (frozen derivation record). Open remainders become issues with the ID named in the body |
 | `Tn` / `M-n` | T21, M-5 | A row of the internal test plan | Maintainer workspace. The public equivalent of the aggregate is `npm run verify` |
 | `FR-nn` | FR-33 | A functional requirement of the internal PRD | Maintainer workspace. The behavior it requires is stated where cited |
 | `Jn` / `@incN` | J5, @inc2 | A user journey / its test tag | Journey tests live in `e2e/` (`npm run test:e2e`) |
