@@ -77,6 +77,10 @@ Before you send a pull request:
 ## How work moves
 
 - **Issues** hold work. An issue states its acceptance criteria and its Verify command.
+- **Issues are written in plain language.** Assume the reader has never opened the
+  project documents. Spell out every internal ID in words, and make each reference a
+  link — to `docs/DECISIONS.md`, `docs/LEGACY-IDS.md`, or the file it names. Never cite
+  an internal or private document path.
 - **Tracking issues** (label `epic`) group sub-issues.
 - **Milestones** are delivery targets. A milestone is one increment.
 - **The project board** has one Status field: `Backlog`, `Ready`, `In progress`,
