@@ -1,6 +1,6 @@
 name: Task
 description: A work item with measurable acceptance criteria and an exact verify command.
-title: "[legacy-ID if any] Short imperative title"
+title: "Plain imperative title a stranger understands (legacy IDs go in the body)"
 labels: []
 body:
   - type: textarea
