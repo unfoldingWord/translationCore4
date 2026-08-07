@@ -1,16 +1,23 @@
 name: Task
 description: A work item with measurable acceptance criteria and an exact verify command.
-title: "[legacy-ID if any] Short imperative title"
+title: "Plain imperative title a stranger understands (legacy IDs go in the body)"
 labels: []
 body:
   - type: textarea
     id: context
     attributes:
       label: Context
-      description: Three sentences maximum. What is true now, and why this item exists.
+      description: >-
+        Write for someone who has never read the project documents. Plain sentences:
+        what is true now, why this item exists, why it matters. Spell out every internal
+        ID (D-numbers, FR-nn, legacy IDs) in words, and make each reference a LINK —
+        to docs/DECISIONS.md, docs/LEGACY-IDS.md, or the file it names. Never cite an
+        internal or private document path.
       placeholder: |
-        The resource manager downloads a fetch unit but does not check the pin first.
-        D34 defines the tW fetch unit. This item adds the preflight remainder.
+        When the app downloads a resource it never checks the file names inside the
+        archive, so a crafted name like ../../x could write outside its folder
+        (defence-in-depth; the download is already tied to a verified git commit —
+        see the decision log, D34: <link>).
     validations:
       required: true
   - type: textarea
