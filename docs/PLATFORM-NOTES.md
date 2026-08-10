@@ -113,7 +113,7 @@ Both rules, and the recipes for applying them, are in the final section of this 
 - **Editor data-loss repro:** `cd sample-burrito-validation/zaln-strip-repro && npm install && node test.mjs` (expect zero `\zaln`/`\w` in output).
 - **Metadata-drop repro:** `cd sample-burrito-validation/metadata-drop-repro && cargo run -- ../../sample-burrito/metadata.json` (expect both drops reported).
 - **Upstream freshness + graph reindex (run FIRST, before any platform claim):** `zsh scripts/upstream-freshness.zsh` (add `--report` to change nothing, `--no-index` to skip the reindex). Then scope graph queries to the `…-pankosmia-web-main` project.
-- **Re-verify a platform claim at HEAD:** shallow-clone the repo(s). Diff the cited file/lines against the recorded commit. If the behavior changed, update the doc that makes the claim **and** OPEN-QUESTIONS, and cite the new commit.
+- **Re-verify a platform claim at HEAD:** shallow-clone the repo(s). Diff the cited file/lines against the recorded commit. If the behavior changed, update the doc that makes the claim **and** open (or update) a `question` issue on the board, and cite the new commit.
 - **Check a new burrito for conformance:** point the harness's `BURRITO` path at the burrito (top of `validate.mjs`), and run `npm run validate`.
 - **Transport suite against the live server:** `dev-env/scripts/seed.zsh && dev-env/scripts/run.zsh`, then `cd sample-burrito-validation && npm run validate:transport` (expect 10/10).
 - **Server round-trip of custom work: RE-SEED FIRST.** The suite degrades the seeded fixture as it

@@ -43,7 +43,7 @@ Do the steps that follow:
 2. Type this command: `npm ci`
 3. Type this command: `npm test`
 
-Expect this result on a clean clone: **283 tests passed, 32 tests skipped**
+Expect this result on a clean clone: **288 tests passed, 32 tests skipped**
 [VERIFIED — fresh clone at `3758a95`, 2026-08-07].
 
 The `.npmrc` file sets `legacy-peer-deps=true`. This setting is necessary.

@@ -5,8 +5,9 @@ A recorded decision is not open for re-proposal (`CONTRIBUTING.md`, hard rule 5)
 If you believe a decision is wrong, say so to the project owner with evidence.
 
 Extracted 2026-08-07 from the internal build-state log; the internal file keeps
-the gates and points here. Dates and wording are preserved exactly, except two bracketed
-`[publication note …]` additions (listed in the migration manifest). Some numbers
+the gates and points here. Dates and wording are preserved exactly, except bracketed
+`[publication note …]` additions and one reworded file path in D38 (each listed in
+the migration manifest). Some numbers
 are absent (never assigned or folded into a revision); numbering is stable —
 cite decisions as `Dnn`.
 
@@ -70,7 +71,7 @@ commit (spec §9). **Addendum 2026-07-31 — LANDED** (OPEN-QUESTIONS #28 closed
 1.6-draft §5.3 schemaVersion 2 (`languageSets.primary/fallback`, tn+twl+tw+tA per set; twl
 slot added for deterministic (tool, book) coverage resolution per §4.2 — spec-editor
 derivation, noted in §5.3), §5.2 resolution record + re-attach rule; sample + harness in the
-same change set — the full harness and the journal suite green at 2026-07-31 [publication note 2026-08-07: the exact counts of that date live in the internal build-state log; run the harness for the current counts]. Primary-set pins verified
+same change set — 33 checks (Stage-1 29) + journal 59, all green [publication note 2026-08-10: counts as of 2026-07-31 — the harness has since grown; run it for the current counts. The verbatim wording was restored by owner ruling after the P6 review]. Primary-set pins verified
 live [VERIFIED — DCS API 2026-07-31; `docs/evidence/es419-suite-pins-2026-07-31.md`]. The
 product writer still writes the schemaVersion-1 shape — its migration is the first
 Increment-2 resource task.
