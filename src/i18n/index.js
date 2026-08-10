@@ -11,8 +11,20 @@ export function setLocale(locale) {
   if (catalogs[locale]) current = locale;
 }
 
+// Missing keys are not silent (issue #12): the resolver warns once per key, so a
+// checking session's console shows every gap and a journey test can assert none.
+// The fallback stays the key itself — the UI degrades, it does not crash.
+const warned = new Set();
+
 export function t(key, vars) {
-  let s = catalogs[current][key] ?? catalogs.en[key] ?? key;
+  let s = catalogs[current][key] ?? catalogs.en[key];
+  if (s === undefined) {
+    if (!warned.has(key)) {
+      warned.add(key);
+      console.warn(`[i18n] missing key: ${key}`);
+    }
+    s = key;
+  }
   if (vars) {
     for (const [k, v] of Object.entries(vars)) s = s.replaceAll(`{${k}}`, String(v));
   }

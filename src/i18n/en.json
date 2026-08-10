@@ -34,6 +34,7 @@
   "wizard.creating": "Creating…",
   "wizard.cancel": "Cancel",
   "wizard.nameRequired": "Give the project a name.",
+  "wizard.codeRequired": "Give the project a language code.",
   "wizard.abbrHint": "Short name (letters and digits only) — used for the folder.",
   "wizard.abbrRequired": "Add a short name in Latin letters or digits — it names the project folder.",
   "wizard.nameInUse": "A project folder named “{abbr}” already exists.",

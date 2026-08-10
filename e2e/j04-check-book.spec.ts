@@ -80,6 +80,39 @@ test.describe('J4 — a checker works a book', () => {
   );
 
   test(
+    'a full checking session emits no missing-i18n-key console warning (issue #12)',
+    { tag: ['@inc2', '@J4'] },
+    async ({ page }) => {
+      // The i18n resolver (src/i18n/index.js) warns "[i18n] missing key: <key>"
+      // once per gap. This journey drives a full session — open the project,
+      // open the tool, read an item, decide it — and asserts the console stayed
+      // clean. The static half of the proof is test/i18n-keys.test.ts.
+      const missing: string[] = [];
+      page.on('console', (msg) => {
+        if (msg.type() === 'warning' && msg.text().includes('[i18n] missing key')) {
+          missing.push(msg.text());
+        }
+      });
+
+      writeProjectPins(SEEDED_PROJECT, PINS());
+      await openCheck(page);
+      await expect(page.getByTestId('preflight-translationNotes')).toHaveAttribute(
+        'data-state',
+        'ready',
+      );
+      await page.getByTestId('open-translationNotes').click();
+      await expect(page.getByTestId('check-progress')).toBeVisible();
+
+      // Work one undecided item end to end.
+      await page.getByTestId('check-list').locator('button[data-decided="0"]').first().click();
+      await page.getByTestId('mark-valid').click();
+      await expect(page.getByTestId('check-progress')).toBeVisible();
+
+      expect(missing, `missing i18n keys during the session: ${missing.join(', ')}`).toEqual([]);
+    },
+  );
+
+  test(
     'a missing local resource at session open shows the guided fix screen, not a crash (FR-5)',
     { tag: ['@inc2', '@J4'] },
     async ({ page }) => {
