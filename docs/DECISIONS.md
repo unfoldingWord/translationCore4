@@ -504,3 +504,40 @@ original **silent** language switch (the bug), and a **forced fetch** for every 
 fetch-vs-fallback decision needs the primary's coverage when it is not local → record per-pin
 coverage in resources.json §5.3**, folded into the resolver-metadata increment (BACKLOG E2.6,
 with D40's versification). Increment 2 ships with the warned fallback.
+
+## D42 (2026-08-10, project-owner ruling) **Milestones and epics replace increment
+documents.** The build plan lives on the GitHub board: a milestone is an increment, and an
+epic issue carries the increment's journey and work items. No new `INCREMENT-N.md` document
+is written; `INCREMENT-1.md` and `INCREMENT-2.md` stay frozen as historical records.
+Supersedes the D24 clause that made the increment document govern its increment. First
+instance: milestone "Increment 3 — open, resume, and share a project" with epic #39.
+
+## D43 (2026-08-10, project-owner ruling) **This repository is the single source of truth
+for the published project documents.** The files under `docs/` here are the masters; edits
+go through pull requests to protected `main`. The maintainer workspace keeps no second live
+copy — its old copies are pointer stubs or frozen mirrors. New decisions are recorded in
+this file, by PR. Supersedes the workspace-is-master half of the 2026-07-30 SSOT ruling.
+The P6 closing review (2026-08-10) verified the copies byte-identical before the handover.
+
+## D44 (2026-08-10, project-owner rulings) **Fold the journal test plan; freeze the ID
+decoder.** (a) `JOURNAL-TEST-PLAN.md` folds into `BURRITO-SPEC.md` as Appendix A — §9
+already binds the spec, the plan, and the suite to one change set, so they are one
+document. The old path keeps a pointer stub. (b) `LEGACY-IDS.md` is frozen reference, not
+a maintained master: the IDs it decodes can no longer be assigned. It stays published
+because the migrated issue bodies link to it.
+
+## D45 (2026-08-10, project-owner ruling) **No project-memory graph now.** The project
+does not adopt a knowledge-graph store for decisions, architecture, or open questions.
+The documents hold what is true; the disciplined IDs (Dnn, Ledger #n, PLATFORM-NOTES #n)
+keep relations searchable. Adoption trigger — treated as a significant event, not routine:
+a concrete miss (a missed supersession, a contradiction found late) or a second regular
+contributor. If adopted then, the shape is a thin index derived from the documents by
+script — never a hand-maintained second store.
+
+## D46 (2026-08-10, project-owner ruling) **Versioning: SemVer pre-releases of 4.0.0.**
+The client is translationCore 4. Releases go `4.0.0-alpha.N` → `4.0.0-beta.N` →
+`4.0.0-rc.N` → `4.0.0`. Never `3.9.x`: translationCore 3 is a separate codebase, and the
+version must mark the rewrite boundary. One pre-release per milestone close; the notes
+carry the journey shipped and the pasted test evidence. Published 2026-08-10:
+`v4.0.0-alpha.1` (`e4ada8b`, first public build) and `v4.0.0-alpha.2` (`3758a95`,
+Increment-2 close). `package.json` tracks the current pre-release.

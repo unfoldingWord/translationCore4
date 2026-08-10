@@ -1,5 +1,9 @@
 # Legacy reference IDs — how to read them
 
+> **Frozen reference [decided 2026-08-10 — D44(b)].** The IDs this file decodes can no
+> longer be assigned; nothing here needs maintenance. The file stays published because
+> issue bodies link to it.
+
 The documents in this directory, and the decision log especially, carry short reference
 IDs from the project's pre-GitHub tracking files. The IDs were kept on purpose: they make
 the historical record searchable. An issue migrated from a legacy item names its ID in

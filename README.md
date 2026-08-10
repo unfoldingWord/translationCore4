@@ -98,7 +98,7 @@ typecheck, test, build and the dependency audit.
 | What was decided, and when? | `docs/DECISIONS.md` — cite decisions as `Dnn` |
 | What are the known risks? | `docs/RISKS.md` — cite risks as `Ledger #n` |
 | What proves a claim? | `docs/evidence/` — dated measurement records |
-| What is the Phase-2 journal design? | `docs/JOURNAL-TEST-PLAN.md` — reference, not a build target |
+| What is the Phase-2 journal design? | `docs/BURRITO-SPEC.md` §8 + Appendix A — reference, not a build target |
 | What does `D28`, `OQ#17`, or `Ledger #2` mean? | `docs/LEGACY-IDS.md` — the reference-ID decoder |
 | Where does work live? | The GitHub issues, milestones and project board of this repository |
 
