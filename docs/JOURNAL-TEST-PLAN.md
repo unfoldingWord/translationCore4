@@ -1,43 +1,6 @@
-# Journal Conformance Test Plan (BURRITO-SPEC §8)
+# Moved — 2026-08-10
 
-**Version:** 1.1 · 2026-07-10 · companion to BURRITO-SPEC 1.3-draft §8.
-**Suite:** `sample-burrito-validation/validate-journal.mjs` (reference implementation: `sample-burrito-validation/journal/*.mjs`). Run: `npm run validate:journal`. Property tests use `fast-check` with a **fixed seed** (reproducible) plus 200 runs per property.
-**Rule (spec §9):** any change to BURRITO-SPEC §8 changes this plan and the suite in the same change.
-**Scope note:** this suite proves the *format semantics* via the reference implementation. It does not exercise the Phase 2 app (journalStore/sync/review-queue UI — M4, gated on M2/M3). The reference implementation is the contract that the app's `foldEngine` ports (ARCHITECTURE §9).
-
-## Coverage map — spec clause → tests
-
-| ID | Spec | What is proven | Kind |
-|---|---|---|---|
-| J1 | §8.2 | HLC: string compare = temporal order (fixed-width); the counter increments within one ms and resets on advance; overflow past `ffff` bumps the physical ms; the receive-ratchet makes every new local `ts` > every `ts` seen | unit + property (ordering over random event streams) |
-| J2 | §8.4 | Skeleton codec: `recompose(decompose(usfm))` is **byte-identical** for the sample corpus (TIT, JON), an aligned `\zaln`/`\w` fixture, a span-keyed (`\v 4-5`) fixture, and a structure-rich fixture (`\s5`, multi-paragraph verses, `\f` footnote); `U+0001` in source is rejected; verse map keys are strings incl. spans | golden + property (random verse-content mutations still recompose exactly) |
-| J3 | §8.6 | Fold determinism: `fold(events)` ≡ `fold(shuffled)` ≡ `fold(union of partitions)` ≡ `fold(events + duplicates)` — deep-equal projections, forks, invalids | property |
-| J4 | §8.5/§8.6 | LWW linear history: on one key, a later event with `base` = the prior head replaces it; state = latest by `ts`; this applies to verse, skeleton, decision, pin, project.meta | unit |
-| J5 | §8.3/§8.6 | Fork detection: two actors, same key, same `base`, different payloads → both live, `forks[]` reports the key with both heads, the projection = the highest-`ts` head flagged provisional; **identical payloads auto-merge** (no fork entry — the OPEN-QUESTIONS #16 same-content case, now two distinct events by identity that merge deliberately, not accidentally) | unit |
-| J6 | §8.3/§8.6 | Resolution: an event with `supersedes: [both heads]` empties the fork; a plain edit that continues one branch does NOT resolve it; superseded events remain in history (journals are append-only) | unit |
-| J7 | §8.5 align + I-3 | Staleness composition: an align event is valid while `targetVerseMd5` matches the folded text; a later `text.verse.set` on that verse flips the alignment into `invalid[]`; a re-alignment against the new text clears it | unit |
-| J8 | §8.8 | Out-of-band reconcile: hand-edit the projected USFM → reconcile emits seeded `text.*.set` with `base` = the live head → the fold equals the edited file (linear supersede); if another actor's journal edit on the same verse joins the union, a fork surfaces — the out-of-band edit never wins silently | scenario |
-| J9 | §8.1/§8.6 | Three-device convergence: A and B edit disjoint verses offline; C integrates; all three folds are byte-identical, with zero forks | scenario |
-| J10 | §8.1/§8.7 | Sneakernet ≡ merge: a union of journal *files by copy* and a union via git merge produce the same fold input and identical projections | scenario |
-| J11 | §8.1 | Rotation & torn tail: events that span `00001`/`00002` fold as one stream; rotation triggers >1 MB; a torn final line is ignored; invalid JSON mid-file refuses with a clear message | unit |
-| J12 | §8.7 | End-to-end git: two actors branch from a real burrito, checkpoint real journals, a naive merge conflicts on derived files → resolve-either-side + **regenerate-post-union from the real fold** → a two-parent commit; both journals are present; the regenerated USFM is identical no matter which side was taken; the ingredients table matches disk | scenario (extends harness checks 26–27) |
-| J13 | §8.2/§8.6 | De-duplication by `ts`: the same journal file, contributed twice (copy scenarios), changes nothing | unit |
-| J14 | §8.3 | Version policy: unknown `v` or unrecognized `op` → the fold refuses with a clear message (no crash, no silent skip) | unit |
-| J15 | §8.8 | Phase-1 seed migration: `sample-burrito`'s real sidecars (decisions + alignments) → seeded events → the fold reproduces the §5-shape state exactly (decision records deep-equal; alignment payloads deep-equal; `targetVerseMd5` carried) | golden against the real sample |
-| J16 | §8.4a, §8.5 "Text vs. plain text", §8.3 `batch` | Drafting-by-section vs checking-by-verse. The target text carries no `\ts\*` (sections are presentation, derived from the source — §4.1/§8.4a); the tests prove the machinery around that: (a) *imported* files that carry `\ts\*` round-trip byte-exactly (also a J2 corpus fixture), and the milestones land in skeleton/preceding-verse content; (b) a structure-only edit (e.g. an edit that strips an imported milestone) does NOT invalidate the verse's alignment, while a word edit DOES (I-3 hashes the §5.1 plain-text extraction, not raw bytes); (c) a section save = per-verse events that share a `batch`; only the double-edited verse forks; the fork heads carry the `batch` id so the review queue can group per-verse forks into one section-level item | golden + unit |
-| J17 | §8.5 `settings.set` / `project.meta.set` / `note.add`, §8.6 step 4, I-4 | Remaining-definitions closure: `settings.set` folds LWW-per-path, and the §5.4 state projects from the fold (no shared mutable settings file is left); `project.meta.set` on a reserved root (`format`/`ingredients`/`type`/`meta`) refuses with a clear message, while allowed paths fold; an alignment whose verse slot was removed from the skeleton is **orphaned** → `invalid[]` regardless of hash; the NFC≠NFD md5 demonstration that motivates I-4 (writers MUST normalize); both `note.add` target shapes (verse ref, decisionKey) accumulate grow-only | unit |
-
-| J18 | §8.7 + `docs/evidence/pankosmia-sync-model-2026-07-08.md` | Integration with Pankosmia's transport (real git). Mirrors their `PullFromDownloaded` copy→scratch→`add_remote`→`pull-repo`→conflict-check choreography: over disjoint per-actor journals the scratch merge is clean (their conflict-abort never fires), and two translators' concurrent same-book edits converge with zero forks; the identical transport on a shared whole-file same-line edit **conflicts** — the case their model aborts on, which the journal removes | scenario (real git) |
-| J19 | §8.7 publication topology | The exact delayed-receive lifecycle (real git): A publishes A1 from an actor branch whose commits touch only A's journal; B publishes, and main regenerates while A remains offline; A continues in a separate full working projection and publishes A2 without a receive of B; named-branch scratch integration preserves A2+B with no conflict. The counterexample proves that a merge of A's full working projection conflicts. Receive then rebuilds and validates a replacement from current main + A's publication history, and leaves the old working repo untouched until the swap. | scenario (real git) |
-| J20 | §8.7 intake validation | Zero-trust contribution intake after a clean scratch merge: reject changes to any shared/non-journal path, edits to another actor's stream, and truncation/rewrite of previously accepted JSONL bytes; prove that the accepted main HEAD and the projection remain byte-identical, because all validation occurs in disposable scratch. | adversarial scenario (real git) |
-
-## Acceptance
-
-- All J1–J20 pass (59 checks; `npm run validate:journal` exits 0), **and** the Phase 1 suite still passes untouched (`npm run validate`, 34/34 as of the 1.7-draft D36 carry-over change set [VERIFIED 2026-08-04]; 33/33 at the 1.6-draft D17/D30 change set; 31/31 at the 1.5-draft extraScripture change set; 30/30 at the 1.4-draft edits; 27/27 before that), **and** `npm run validate:all` runs both.
-- A property failure prints the fast-check counterexample + seed. Any counterexample is a spec or implementation defect — file it against §8, and fix spec+suite together (§9).
-
-## Out of scope (tracked elsewhere)
-
-- Phase 2 app components: journalStore append/rotate under real I/O, the sync engine, the review-queue UI (BACKLOG M4; the TEST-PLAN of the guided build when M4 opens).
-- Fold performance on multi-year journals (measure alongside OPEN-QUESTIONS #9's methodology when M4 opens).
-- Multi-project/DCS end-to-end sync (BACKLOG E4.3 scenarios).
+This plan is now **Appendix A of [`BURRITO-SPEC.md`](BURRITO-SPEC.md)** [decided — D44(a)]:
+the specification (§8/§9), this plan, and the executable suite change together, so they
+live in one document. Content moved unchanged except heading levels. This stub stays so
+old links resolve; do not add content here.
