@@ -1,6 +1,6 @@
 {
   "name": "uw-tc4",
-  "version": "0.1.0",
+  "version": "4.0.0-alpha.2",
   "private": true,
   "type": "module",
   "scripts": {
