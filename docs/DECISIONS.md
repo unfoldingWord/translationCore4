@@ -526,6 +526,17 @@ document. The old path keeps a pointer stub. (b) `LEGACY-IDS.md` is frozen refer
 a maintained master: the IDs it decodes can no longer be assigned. It stays published
 because the migrated issue bodies link to it.
 
+**D44(c) addendum (2026-08-10, same-day owner ruling) — annotate superseded decided text;
+never rewrite it.** In a frozen or historical document, a decided statement keeps its
+original wording. When a later decision supersedes it, append one note in one fixed shape:
+`[superseded by Dnn, YYYY-MM-DD — <the current rule in one clause>]` — at the end of the
+decided text, never interleaved. The current rule goes inside the note, so a reader who
+reads only the bracket gets today's truth. Current truth never lives only in an
+annotation: a superseded rule that still matters for building MUST be carried by the
+normative document (the completeness rule). Documents outside the authority contract
+(planning seeds, frozen increment records) are history, not current truth — their
+annotations are for human readers; agents take current truth from the authority table.
+
 ## D45 (2026-08-10, project-owner ruling) **No project-memory graph now.** The project
 does not adopt a knowledge-graph store for decisions, architecture, or open questions.
 The documents hold what is true; the disciplined IDs (Dnn, Ledger #n, PLATFORM-NOTES #n)
