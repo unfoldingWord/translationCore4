@@ -552,3 +552,17 @@ version must mark the rewrite boundary. One pre-release per milestone close; the
 carry the journey shipped and the pasted test evidence. Published 2026-08-10:
 `v4.0.0-alpha.1` (`e4ada8b`, first public build) and `v4.0.0-alpha.2` (`3758a95`,
 Increment-2 close). `package.json` tracks the current pre-release.
+
+## D47 (2026-08-12, project-owner ruling) **The post-release format-change contract, and
+data-first sequencing to 4.0.0.** (a) After 4.0.0 ships, no change to the at-rest project
+format lands without all three: a `schemaVersion` bump per §9, a written migration, and
+harness fixtures that prove old data opens correctly under the new reader. Additive-optional
+fields are the only exception. (b) Before 4.0.0, work that shapes at-rest records ranks by
+one test: does postponement accrue bad data? Work that accrues (versification mapping #15,
+decision version stamps #28, coverage records #16, the write-side journal #52) lands first —
+Increment 3 — before the feature increments multiply what is recorded. (c) The journal write
+side ships in 4.0.0 (issue #52, after #22 ratifies §8): every 4.0.0 project carries complete
+per-action history from day one, verified in CI by folding the app-written journal with the
+reference implementation and comparing to actual state. The fold/sync/review app work stays
+Phase 2. (d) Verse move/span operations are post-4.0 under clause (a) — they re-key stored
+alignments and decisions.
