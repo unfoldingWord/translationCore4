@@ -34,12 +34,21 @@ has verified since August.
 
 | Increment | Theme | Due | Key issues |
 |---|---|---|---|
-| **3 — Data foundations & journal** | Versification mapping, version stamps, coverage records; CI format guardians; ratify the journal design and ship write-only journaling | Aug 29 | #33 (#15 #16 #28), #17, #47, #22, #52 |
-| **4 — Open, resume, share** | Multi-project work, resume with fresh proof, first share, platform integration | Sep 5 | #39, #4, #7, #8 |
+| **3 — Data foundations & journal** | Versification mapping, version stamps, coverage records; CI format guardians; ratify the journal design and ship write-only journaling. Also started immediately (owner ruling 2026-08-13): the CI packaging pipeline (#57), single-instance behavior (#4), and the Electronite/Graphite confirmation (#32) — packaging surprises must surface now, not in the release week | Aug 29 | #33 (#15 #16 #28), #17, #47, #22, #52, #57, #4, #32 |
+| **4 — Open, resume, share** | Multi-project work, resume with fresh proof, first share, platform integration; the pilot program starts at this close (#58), and #13 de-risks Increment 6's suggestions one increment ahead | Sep 5 | #39, #7, #8, #13, #58 |
 | **5 — Drafting for real** | Section-primary drafting, formatting UX, book introductions | Sep 19 | #53, #54, #55 |
 | **6 — Suggestions & resources** | Alignment suggestions (off by default, propose-only), comments and bookmarks, resource upgrade flow, guided fix | Oct 3 | #1, #13, #50, #40, #9 |
 | **7 — Publish & import** | Aligned USFM export; the fixture-heavy importers: tC3 zip, x-tcore migration, damaged projects | Oct 10 | #19, #21, #14, #41, #2 |
 | **8 — Ship** | Installers, smoke test, rollback plan, witnessed offline run, local fonts, keyboard basics | **Oct 16 → v4.0.0** | #44, #45, #46, #43, #3, #32, #42 |
+
+## Who October 16 is for — the pilot posture
+
+**v4.0.0 is a pilot release** [owner ruling 2026-08-13]: selected external users plus
+all internal users. Pilots do not bring real project data on day one, but soon after —
+which is why the importers and the format work are fixture-proven before any real data
+arrives. Testers receive a build and a one-page focus list at every milestone close,
+starting with alpha.4 on September 5; the schedule lives in #58. Broad adoption is the
+4.0.x/4.1 story, after the pilot proves the journeys.
 
 ## Deliberately after 4.0.0
 
