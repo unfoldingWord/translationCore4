@@ -9,6 +9,44 @@ Issue #44 extends this recipe. It must not replace it.
 `.github/workflows/package-desktop.yml` runs the script on every merge to
 `main` and uploads the zip as a workflow artifact.
 
+Two build variants exist (`--debug` selects the second):
+
+| | production (default) | debug (`--debug`) |
+|---|---|---|
+| Project store | `$HOME/pankosmia/tc4-projects` — starts EMPTY | `$HOME/pankosmia/tc4-projects-debug` — separate store |
+| Seeds | none | the conformance sample burrito, seeded by the launcher on first run |
+| Marking | none | app name `translationCore4 DEBUG`; version suffix `-debug`; artifact name suffix `-debug` |
+
+## Project-store isolation (#70)
+
+Owner ruling (2026-08-14, issue
+[#70](https://github.com/unfoldingWord/translationCore4/issues/70), queued as
+D49): the packaged app always uses a product-isolated project store, and MUST
+NOT read or write the platform default `$HOME/pankosmia_repos` (shared with
+every other Pankosmia desktop app).
+
+- **Mechanism:** the build patches the shipped
+  `lib/templates/user_settings.json` so `repo_dir` is
+  `%%HOMEDIR%%/pankosmia/tc4-projects` (debug: `…/tc4-projects-debug`). The
+  server substitutes `%%HOMEDIR%%` at first boot. The store sits BESIDE the
+  server working dir (`$HOME/pankosmia/tc4`), never inside it — pre-creating
+  anything inside the working dir before first boot makes the server skip
+  first-boot initialization and panic on the missing `app_state.json`
+  (measured while building this). The patch refuses to run if the upstream
+  template's `repo_dir` shape changed (re-verify before building).
+- **Guard, not convention:** the smoke test reads the BOOTED app's resolved
+  `user_settings.json` and FAILS the build when `repo_dir` contains
+  `pankosmia_repos` or differs from the expected isolated path — both
+  variants. It also fails a production build whose store is not empty at
+  first boot, and a debug build whose seed is missing.
+- **Guard self-test:** `TC4_TEST_FORCE_SHARED_STORE=1` (test-only) skips the
+  isolation patch so the guard's failure path can be exercised; a build with
+  it set MUST fail.
+- Side effect worth recording: no sibling Pankosmia app can write tC4's
+  projects, which strengthens the D39 single-instance safety argument.
+- Migration of existing shared-store projects is explicit import work
+  (#21's family), never an automatic read.
+
 The recipe follows the Pankosmia
 [desktop-app-template](https://github.com/pankosmia/desktop-app-template)
 (MIT). The template is a read-only reference. Do not open issues or pull
@@ -38,7 +76,8 @@ Steps, in order:
    with a fresh `HOME` and no app-specific environment overrides. The app
    must self-spawn its bundled server (first free port from 19119) and serve
    `303` from `/` to `/clients/uw-tc4`, then `200` from the client page. The
-   working directory must appear under the fresh `$HOME/pankosmia/tc4`.
+   working directory must appear under the fresh `$HOME/pankosmia/tc4`, and
+   the #70 store guard must pass (see "Project-store isolation").
 7. Zip.
 
 ## The wrapper is Electronite [VERIFIED — desktop-app-template 4cb7576, 2026-08-14]
@@ -88,13 +127,11 @@ Every artifact carries `BUILD-MANIFEST.json` at its root with the same data.
   for the spike — it keeps the recipe inspectable and avoids the installer
   toolchain before signing exists. #44 MUST converge on the template's
   app-bundle + installer structure.
-- **Shared project store** (corrected 2026-08-14 — the earlier "demo seed
-  data" claim was wrong, see the evidence record): a fresh HOME starts with
-  NO projects. The default `user_settings.json` sets `repo_dir` to
-  `$HOME/pankosmia_repos`, so the packaged app reads and writes a project
-  store shared with every other Pankosmia desktop app on the machine. The
-  pilot decision is issue
-  [#70](https://github.com/unfoldingWord/translationCore4/issues/70).
+- **Shared project store — RESOLVED by #70** (history: the earlier "demo
+  seed data" claim was wrong, see the evidence record; the platform default
+  `repo_dir` is the shared `$HOME/pankosmia_repos`). The build now pins an
+  isolated store and the smoke test guards it — see "Project-store
+  isolation (#70)" above.
 
 ## Evidence
 
