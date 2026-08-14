@@ -1,0 +1,49 @@
+name: package-desktop
+
+# #57: produce an unsigned desktop artifact on every merge to main (one OS).
+# The recipe lives in scripts/package-desktop.zsh. #44 extends this workflow
+# with more OSes and signing. The script smoke-tests the assembled server
+# (root 303 -> /clients/uw-tc4, then 200) before it bundles the zip.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos-arm64:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Rust toolchain
+        run: rustup toolchain install stable --profile minimal
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            dev-env/server/target
+          key: cargo-package-desktop-${{ runner.os }}-${{ hashFiles('dev-env/server/Cargo.lock', 'dev-env/server/Cargo.toml') }}
+
+      - name: Build the artifact
+        run: zsh scripts/package-desktop.zsh
+
+      - name: Upload the artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tc4-desktop-macos-arm64-unsigned
+          path: dist-desktop/tC4-*-unsigned.zip
+          if-no-files-found: error
+          retention-days: 30
