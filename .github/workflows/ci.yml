@@ -30,3 +30,21 @@ jobs:
       # (usfm-js 3.4.3 + word-aligner 1.0.3) is proven and MUST NOT be "fixed".
       - run: npm audit --audit-level=high || true
       - run: npm audit --audit-level=critical
+
+  conformance:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: conformance
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: conformance/package-lock.json
+      - run: npm ci
+      - run: npm run generate
+      # Expect 34 checks + journal 59 checks, all passing (BURRITO-SPEC §7/§8).
+      # The transport suite (validate:transport) is rig-gated and does NOT run here.
+      - run: npm run validate:all

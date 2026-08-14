@@ -4,7 +4,7 @@
 **Status:** Normative for Phase 1. §8 (journal + publication topology) is fully specified [PROPOSED] and tested with executable checks. The checks include the transport, end-to-end against the live server (OPEN-QUESTIONS #23 closed 2026-07-18). §8 becomes normative on ratification (OPEN-QUESTIONS #10/#16).
 **Audience:** implementers (human or AI). If you are new, read PLATFORM-NOTES.md first.
 **Conformance language:** MUST / MUST NOT / SHOULD / MAY per RFC 2119.
-**Reference implementation:** `sample-burrito/` (a conforming project) and `sample-burrito-validation/` (34 executable conformance checks [VERIFIED 2026-08-07 — Increment-2 close: 34/34 + journal 59/59]). Both live in the maintainer workspace today; publishing them is a tracked issue. If this document and the harness disagree, the harness is wrong. The harness MUST be fixed to match this document. Then this document's version bumps.
+**Reference implementation:** `conformance/sample-burrito/` (a conforming project) and `conformance/` (34 executable conformance checks [VERIFIED 2026-08-07 — Increment-2 close: 34/34 + journal 59/59]). Both live in `conformance/` in this repository (published per issue #47, D48). If this document and the harness disagree, the harness is wrong. The harness MUST be fixed to match this document. Then this document's version bumps.
 
 ---
 
@@ -285,7 +285,7 @@ These are verified semantics of pankosmia-web (first verified at 0.16.x; re-veri
 
 ## 7. Conformance
 
-A project is conforming when `sample-burrito-validation`'s checks pass against it. The suite has **34 checks in three groups**:
+A project is conforming when `conformance/`'s checks pass against it. The suite has **34 checks in three groups**:
 
 - **Stage-1 — path-authoritative conformance (30 checks).** Schema validity; ingredient integrity; versification (`vrs.json` presence, shape, scope coverage, role); scope grammar (whole-book `[]` + range arrays, with negative controls); targetBible derivability; alignment round-trip + staleness guard; selections validity + invalidation firing; decision-shape completeness incl. the additive `status` field; derive+merge progress reconstruction; scope-filtered derivation with the in-scope progress denominator; cross-language re-attach with groupId tiebreak + irreducible ambiguity left unplaced (D17); carry-over invalidation of unplaceable decisions (D36); multi-book scope; two-language-set pin completeness (D17/D30 §5.3 shape); (tool, book) resolution records + the two-rung coverage ladder; extraScripture source pins (§5.3 entry shape, unique ids, `sha` grammar); zaln export; verse-span key semantics. These checks pass on today's pankosmia-web unmodified.
 - **Stage-2 — role/relationships durability (2 checks).** Role-tagged ingredients and native SB `relationships`. The sample carries both, schema-valid. A server metadata regeneration still drops the `x-` **roles** — the scan rebuilds the table from disk, and roles are not derivable from bytes — the **accepted condition** [decided 2026-07-30 — D28], not a pending upstream fix. `relationships` **survives** regeneration at ≥0.18.5 [VERIFIED — `evidence/rig-rebaseline-0.18.5-2026-07-30.md`; it was dropped at ≤0.18.3]. So a server-rescanned copy scores Stage-2 **1/2** at the current pin (the pristine sample scores 2/2). Stage 1 treats paths as authoritative (S-2, permanent), and the client re-asserts its roles after each regeneration (§6 W-2).
@@ -297,7 +297,7 @@ Run: `npm install && npm run validate` (`.npmrc` handles the required `legacy-pe
 
 ## 8. Phase 2: the event journal (FULLY SPECIFIED — [PROPOSED], ratification pending; OPEN-QUESTIONS #10/#16)
 
-This section defines the Phase 2 format completely. Every normative statement below maps to an executable check in the journal conformance suite (`sample-burrito-validation/validate-journal.mjs`; plan: Appendix A). Status: the *semantics* are fully specified and tested via the reference implementation. The section flips from [PROPOSED] to normative when the project owner ratifies the design decisions (OPEN-QUESTIONS #10, #16). The Phase 2 *app* (M4) remains gated on M2/M3.
+This section defines the Phase 2 format completely. Every normative statement below maps to an executable check in the journal conformance suite (`conformance/validate-journal.mjs`; plan: Appendix A). Status: the *semantics* are fully specified and tested via the reference implementation. The section flips from [PROPOSED] to normative when the project owner ratifies the design decisions (OPEN-QUESTIONS #10, #16). The Phase 2 *app* (M4) remains gated on M2/M3.
 
 When Phase 2 ships, journals become canonical. `<BOOK>.usfm`, the checking sidecars (§5.1–5.2 shapes), and `metadata.json`'s `ingredients` table all become **derived, committed** artifacts. Checkpoints regenerate them from the fold, so the repo remains a normal Scripture Burrito for every other tool. Everything in §§3–5 remains valid for reading.
 
@@ -418,7 +418,7 @@ Executable proof: harness 26–27 and J12 demonstrate why merging full checkpoin
 
 ### 8.9 Conformance (journal suite)
 
-`npm run validate:journal` in `sample-burrito-validation/` (reference implementation under `journal/`) executes J1–J20 per Appendix A: HLC ordering/ratchet/overflow; skeleton codec byte-identity; fold determinism under permutation (property-based); LWW; fork detection incl. identical-content auto-merge; supersedes resolution; I-3 staleness composition; out-of-band reconcile; three-device convergence; sneakernet ≡ merge; rotation and torn tail; end-to-end two-actor git merge with regeneration; de-duplication; unknown op/version refusal; Phase-1 sidecar seed migration; section-vs-verse machinery; definitions closure; Pankosmia scratch behavior (J18); the actor-publication lifecycle (J19); and zero-trust intake rejection with unchanged main (J20). The reference implementation is the contract for the Phase 2 app's `foldEngine`/`syncEngine` ports (ARCHITECTURE §9).
+`npm run validate:journal` in `conformance/` (reference implementation under `journal/`) executes J1–J20 per Appendix A: HLC ordering/ratchet/overflow; skeleton codec byte-identity; fold determinism under permutation (property-based); LWW; fork detection incl. identical-content auto-merge; supersedes resolution; I-3 staleness composition; out-of-band reconcile; three-device convergence; sneakernet ≡ merge; rotation and torn tail; end-to-end two-actor git merge with regeneration; de-duplication; unknown op/version refusal; Phase-1 sidecar seed migration; section-vs-verse machinery; definitions closure; Pankosmia scratch behavior (J18); the actor-publication lifecycle (J19); and zero-trust intake rejection with unchanged main (J20). The reference implementation is the contract for the Phase 2 app's `foldEngine`/`syncEngine` ports (ARCHITECTURE §9).
 
 ## 9. Spec evolution
 
@@ -433,7 +433,7 @@ the spec, this plan, and the suite to change in the same change set, so they are
 document. Content unchanged except heading levels.
 
 **Version:** 1.1 · 2026-07-10 · companion to BURRITO-SPEC 1.3-draft §8.
-**Suite:** `sample-burrito-validation/validate-journal.mjs` (reference implementation: `sample-burrito-validation/journal/*.mjs`). Run: `npm run validate:journal`. Property tests use `fast-check` with a **fixed seed** (reproducible) plus 200 runs per property.
+**Suite:** `conformance/validate-journal.mjs` (reference implementation: `conformance/journal/*.mjs`). Run: `npm run validate:journal`. Property tests use `fast-check` with a **fixed seed** (reproducible) plus 200 runs per property.
 **Rule (spec §9):** any change to BURRITO-SPEC §8 changes this plan and the suite in the same change.
 **Scope note:** this suite proves the *format semantics* via the reference implementation. It does not exercise the Phase 2 app (journalStore/sync/review-queue UI — M4, gated on M2/M3). The reference implementation is the contract that the app's `foldEngine` ports (ARCHITECTURE §9).
 
