@@ -34,30 +34,46 @@ landing surface opens the project — one click. CDP reported
 Screenshot: `desktop-boot-rig-electronite-2026-08-14.png` (captured through
 the window's own CDP endpoint).
 
-## 3. Witnessed boot — the packaged artifact
+## 3. Witnessed boot — the packaged artifact through its own entry point
 
-Procedure: run `scripts/package-desktop.zsh` (exit 0). Unzip
-`tC4-4.0.0-alpha.2-macos-arm64-unsigned.zip` (141 MB zip, 372 MB unpacked)
-into a fresh directory. Start the bundled `bin/server.bin` with an isolated
-working directory. Launch the bundled Electronite.
+Procedure (the script's step 6/7 does the same on every build): stage the
+artifact; run its shipped `start-tc4.command` (→ Electronite →
+`electronStartup.js`) with a **fresh, empty `HOME`** and **no app-specific
+environment overrides**. The app must self-spawn its bundled server.
 
-Results:
+Results (2026-08-14, run log `== 6/7`):
 
-- Script smoke test: `GET /` → `303` to `/clients/uw-tc4`; `GET
-  /clients/uw-tc4` → `200`.
-- The artifact's window loaded `/clients/uw-tc4` and rendered the project
-  list. Screenshot: `desktop-boot-artifact-electronite-2026-08-14.png`.
-- Surprise, recorded per #57: a fresh working directory is seeded with demo
-  projects from `resource-core/templates` (`POC Verify Bible`, `Ben tst`,
-  `test_fr`, `unfoldingWord® Literal Text`, 66 books). A pilot build must
-  decide whether to keep, replace, or strip these seeds.
+- The app self-spawned the server on port 19119 (electronStartup's own
+  free-port scan).
+- `GET /` → `303` to `/clients/uw-tc4`; `GET /clients/uw-tc4` → `200`.
+- The working directory was created inside the fresh HOME at
+  `$HOME/pankosmia/tc4` — nothing was written to the real home.
+- Visual witness (same launch path, plus only a `--remote-debugging-port`
+  debug flag for the screenshot): the window rendered `/clients/uw-tc4` with
+  "Your Bibles — No projects yet. Select New Bible to start." Screenshot:
+  `desktop-boot-entrypoint-fresh-home-2026-08-14.png`.
 
-Isolation note: both boots used an explicit working directory and
-`START_SERVER=false` + an already-running bundled server, to keep `$HOME`
-clean. The shipped launcher starts the server itself; the server then creates
-its default working directory. The full launcher path on a clean machine is
-the remaining #57 acceptance step (with Gatekeeper handling, since the
-artifact is unsigned).
+**Scope of this proof, stated plainly:** this is a fresh-`HOME` simulation on
+the development machine. It proves the shipped entry point self-starts the
+server and lands on the tC4 client with zero configuration. It does NOT prove
+the install experience on a genuinely clean machine or account — Gatekeeper
+handling of the unsigned artifact, and any dependence on tools present on a
+developer machine, are unmeasured. **#57's "installs on a clean machine"
+criterion therefore remains OPEN.**
+
+### Correction (same day): the "demo seed projects" claim was wrong
+
+An earlier version of this record claimed a fresh working directory is
+"seeded with demo projects from `resource-core/templates`". That was a
+misreading of a non-isolated run. The projects seen in
+`desktop-boot-artifact-electronite-2026-08-14.png` (`POC Verify Bible`,
+`Ben tst`, `test_fr`, ULT) were the developer's own pre-existing repos: the
+default `templates/user_settings.json` sets `repo_dir` to
+`%%HOMEDIR%%/pankosmia_repos`, and that run inherited the real `$HOME`. A
+truly fresh `HOME` shows "No projects yet" (screenshot above), and its
+`pankosmia_repos` starts empty. The real finding for the pilot decision
+(issue #70): **the packaged app reads and writes `$HOME/pankosmia_repos`, a
+directory shared with every other Pankosmia desktop app on the machine.**
 
 ## 4. Minimal client set boots [VERIFIED]
 

@@ -31,9 +31,15 @@ Steps, in order:
      three `rig/` registration files), `setup/`, and `product/product.json`
      with `"homepage": "uw-tc4"` (PLATFORM-NOTES #25).
    - `Rocket.toml` — upload limits (PLATFORM-NOTES #26a).
-5. Smoke test: boot the assembled server. Require `303` from `/` to
-   `/clients/uw-tc4`, and `200` from the client page.
-6. Wrap with Electronite and zip.
+5. Stage the artifact: Electronite + app dir + license files +
+   `THIRD-PARTY-NOTICES.md` + `BUILD-MANIFEST.json` (every input with its
+   exact version, commit, and checksum — also echoed in the build log).
+6. Smoke test **through the shipped entry point**: run `start-tc4.command`
+   with a fresh `HOME` and no app-specific environment overrides. The app
+   must self-spawn its bundled server (first free port from 19119) and serve
+   `303` from `/` to `/clients/uw-tc4`, then `200` from the client page. The
+   working directory must appear under the fresh `$HOME/pankosmia/tc4`.
+7. Zip.
 
 ## The wrapper is Electronite [VERIFIED — desktop-app-template 4cb7576, 2026-08-14]
 
@@ -51,9 +57,13 @@ second acceptance item of #32.
 | Input | Pin | Where |
 |---|---|---|
 | pankosmia-web | 0.18.5, rev `99fd9be` | `dev-env/server/Cargo.toml` |
-| Electronite | `v37.1.0-graphite` | `scripts/package-desktop.zsh` |
+| Electronite | `v37.1.0-graphite`, zip sha256 verified (`a3dde44e…f59488` for darwin-arm64) | `scripts/package-desktop.zsh` |
 | desktop-app-template | `4cb7576` | `scripts/package-desktop.zsh` |
-| resource-core / webfonts-core | `main` HEAD, rev echoed in the build log | `scripts/package-desktop.zsh` |
+| resource-core | `54802be780af18ab02e426dd59014bc6adb158af` | `scripts/package-desktop.zsh` |
+| webfonts-core | `eb52ccdad6806b5729ea8b45b1c59c793ffa32c3` | `scripts/package-desktop.zsh` |
+| puppeteer-core / @puppeteer/browsers | `24.43.1` / `2.13.1`, exact; lockfile ships in the artifact (`electron/package-lock.json`) | `scripts/package-desktop.zsh` |
+
+Every artifact carries `BUILD-MANIFEST.json` at its root with the same data.
 
 ## Known limits (start of the pipeline, not the end)
 
@@ -64,15 +74,27 @@ second acceptance item of #32.
   (`main` tier pins pankosmia_web 0.16.20; `dev` tier 0.18.7), and no tier is
   proven compatible with our 0.18.5 rev pin. The server panics at boot on a
   `minServerVersion`/`maxServerVersion` mismatch (`bootstrap.rs` version
-  check). Picking and proving a client set is follow-up work.
+  check). Picking and proving a client set is issue
+  [#71](https://github.com/unfoldingWord/translationCore4/issues/71).
 - **Unsigned**: macOS Gatekeeper blocks the app on a clean machine.
   Right-click → Open, or `xattr -dr com.apple.quarantine`, is required.
   Signing is #44.
-- **resource-core / webfonts-core float on `main`**: the build log echoes the
-  revs. Pin them when #44 hardens the pipeline.
-- **Demo seed data**: a fresh working directory is seeded with demo projects
-  from `resource-core/templates` (a POC project, test projects, and the full
-  ULT). A pilot build must decide whether to keep or strip these seeds.
+- **Archive structure diverges from the template**: the spike ships a plain
+  folder (`Electron.app` + `electron/` + `bin/` + `lib/` + a
+  `start-tc4.command` launcher). The template instead builds a single
+  self-contained `<App>.app` bundle and wraps it in a `.pkg` installer
+  (`macos/install/makeInstallElectronite.sh`: payload `APP_NAME.app`, a
+  `Contents/MacOS` launcher script, `pkgbuild`). The divergence is deliberate
+  for the spike — it keeps the recipe inspectable and avoids the installer
+  toolchain before signing exists. #44 MUST converge on the template's
+  app-bundle + installer structure.
+- **Shared project store** (corrected 2026-08-14 — the earlier "demo seed
+  data" claim was wrong, see the evidence record): a fresh HOME starts with
+  NO projects. The default `user_settings.json` sets `repo_dir` to
+  `$HOME/pankosmia_repos`, so the packaged app reads and writes a project
+  store shared with every other Pankosmia desktop app on the machine. The
+  pilot decision is issue
+  [#70](https://github.com/unfoldingWord/translationCore4/issues/70).
 
 ## Evidence
 
