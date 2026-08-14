@@ -8,3 +8,5 @@ playwright-report/
 
 # session-local Claude Code config
 .claude/
+dist-desktop/
+dev-env/server/target/
