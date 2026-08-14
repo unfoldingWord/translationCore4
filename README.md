@@ -45,8 +45,8 @@ Do the steps that follow:
 2. Type this command: `npm ci`
 3. Type this command: `npm test`
 
-Expect this result on a clean clone: **288 tests passed, 32 tests skipped**
-[VERIFIED — fresh clone at `e7c0598`, 2026-08-10].
+Expect this result on a clean clone: **303 tests passed, 32 tests skipped**
+[VERIFIED — this branch's CI run in a clean environment, 2026-08-14].
 
 The `.npmrc` file sets `legacy-peer-deps=true`. This setting is necessary.
 `word-aligner@1.0.3` declares a `usfm-js ^2` peer dependency, but the proven pairing is
