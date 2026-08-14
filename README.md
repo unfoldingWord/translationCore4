@@ -9,7 +9,9 @@ checking decisions together. The application does not export or import between s
 
 ## Status
 
-**Version 0.1.0. This application is in development. There is no release.**
+**Version 4.0.0-alpha.2 (pre-release).** In development toward the **v4.0.0 pilot
+release, October 16, 2026** — the plan is `docs/ROADMAP.md`; pre-releases are on the
+[releases page](https://github.com/unfoldingWord/translationCore4/releases).
 
 Do not use tC4 for production translation work.
 
@@ -98,7 +100,7 @@ typecheck, test, build and the dependency audit.
 | What was decided, and when? | `docs/DECISIONS.md` — cite decisions as `Dnn` |
 | What are the known risks? | `docs/RISKS.md` — cite risks as `Ledger #n` |
 | What proves a claim? | `docs/evidence/` — dated measurement records |
-| What is the Phase-2 journal design? | `docs/BURRITO-SPEC.md` §8 + Appendix A — reference, not a build target |
+| What is the Phase-2 journal design? | `docs/BURRITO-SPEC.md` §8 + Appendix A — the journal WRITE side ships in 4.0.0 (D47); the fold/sync features stay Phase 2 |
 | What does `D28`, `OQ#17`, or `Ledger #2` mean? | `docs/LEGACY-IDS.md` — the reference-ID decoder |
 | Where does work live? | The GitHub issues, milestones and project board of this repository |
 

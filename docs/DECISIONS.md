@@ -42,7 +42,9 @@ promoted in that increment's PR, spec + harness together (OPEN-QUESTIONS #13).
 
 ## D13 (2026-07-07) Phase 2 journal format fully specified (BURRITO-SPEC §8) + reference
 implementation + journal conformance suite; [PROPOSED] pending ratification
-(OPEN-QUESTIONS #10/#16). M4 build remains gated on Phase 1 milestones.
+(OPEN-QUESTIONS #10/#16). M4 build remains gated on Phase 1 milestones. [superseded in
+part by D47, 2026-08-12 — the journal WRITE side ships in 4.0.0 (Increment 3); the M4
+gate holds for the fold/sync/review app work.]
 
 ## D14 (2026-07-07) Translator's sections (`\ts\*`) are presentation only — derived at load
 from the pinned *source* text; the target draft never contains `\ts\*` (spec §4.1/§8.4a).
@@ -566,3 +568,10 @@ per-action history from day one, verified in CI by folding the app-written journ
 reference implementation and comparing to actual state. The fold/sync/review app work stays
 Phase 2. (d) Verse move/span operations are post-4.0 under clause (a) — they re-key stored
 alignments and decisions.
+
+**D42 addendum (2026-08-14, project-owner convention, recorded after the independent
+Increment-3 readiness review):** the journey rule applies to feature increments. An
+infrastructure increment (the first: Increment 3) completes no user journey — the
+milestone description carries its ordering, and an epic exists only where several
+issues share one design surface. Feature increments keep the journey-epic rule as
+written. Increment 3 has no journey by design; journey J8 belongs to Increment 4.

@@ -180,6 +180,12 @@ List `textTranslation` projects from `metadata/summaries`. Create a project via 
 
 ## 9. Phase 2 components (build after Phase 1 exit criteria)
 
+**Write-side exception [decided 2026-08-12 — D47(c)]:** the `journalStore` WRITE side —
+append/rotate/torn-tail plus a journaling wrapper around the data layer's single write
+interface — ships in 4.0.0 (Increment 3), so every 4.0.0 project carries complete
+per-action history from day one, CI-verified by folding app-written journals with the
+reference implementation. The components below otherwise remain Phase 2.
+
 Phase 2 adds five components. `journalStore` does append/rotate/torn-tail, own-actor-only — BURRITO-SPEC §8.1. `foldEngine` and `reconcile` are **ports of the reference implementation** in `sample-burrito-validation/journal/` (§8.6/§8.8 semantics, already property-tested by the 59-check journal suite; the port must pass that same suite). `publicationStore` holds a persistent `actor-<actorId>` repo/branch; own journal bytes are committed there before they are mirrored into the full working projection; every publication commit is path-checked. `syncEngine` runs this sequence: copy current main → disposable scratch → fetch + **explicit named-branch merge** → rescan → compare against pre-merge main for shared-byte identity, foreign-actor identity, and own-stream append-only extension → validate/fold/regenerate/commit → fast-forward integration. On receive, `syncEngine` builds and validates a replacement working projection, and swaps only after own-event inclusion succeeds — BURRITO-SPEC §8.7, J19/J20. `reviewQueue` is the UI for verse forks.
 
 The named-branch operation uses **existing endpoints** via single-branch publication repos (`pull-repo` is deterministic with one head; verified end-to-end, transport rig 2026-07-18). Multi-branch `pull-repo` is measured ordering-steered and MUST NOT be used as a branch selector. The integrator writes the validated journal union explicitly and never trusts the post-merge worktree (PLATFORM-NOTES #21). The sync engine's acceptance bar is `npm run validate:transport` (10 checks) against the dev-env rig.
