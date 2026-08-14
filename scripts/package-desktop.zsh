@@ -13,8 +13,19 @@
 # bundled server and serve the tC4 client (303 from /, 200 from
 # /clients/uw-tc4) before the zip is written.
 #
-# Usage: zsh scripts/package-desktop.zsh
-# Output: dist-desktop/tC4-<version>-macos-<arch>-unsigned.zip
+# Usage: zsh scripts/package-desktop.zsh [--debug]
+#   (no flag)  production variant: isolated EMPTY project store.
+#   --debug    debug/demo variant: separate debug-only store, seeded with the
+#              conformance sample burrito on first launch, visibly marked
+#              (app name + version suffix).
+#
+# Project-store isolation (#70, owner ruling 2026-08-14): the packaged app
+# NEVER uses the platform default $HOME/pankosmia_repos (shared with every
+# other Pankosmia desktop app). The shipped user_settings template pins
+# repo_dir to a tC4-owned path, and the smoke test FAILS the build if the
+# booted app resolves repo_dir to the shared store — both variants.
+#
+# Output: dist-desktop/tC4-<version>[-debug]-macos-<arch>-unsigned.zip
 #
 # Requirements: node >= 20, npm, cargo, curl, unzip, git, shasum.
 set -e
@@ -24,6 +35,20 @@ BUILD="$REPO/dist-desktop"
 PACK="$BUILD/pack"
 ARCH=$(uname -m | sed 's/x86_64/x64/')
 VERSION=$(node -p "require('$REPO/package.json').version")
+
+# Build variant (#70).
+VARIANT=production
+[ "$1" = "--debug" ] && VARIANT=debug
+if [ "$VARIANT" = "debug" ]; then
+  STORE_LEAF="pankosmia/tc4-projects-debug"   # separate debug-only store
+else
+  STORE_LEAF="pankosmia/tc4-projects"         # production store, starts empty
+fi
+# Resolved at runtime as $HOME/$STORE_LEAF. The store sits BESIDE the server
+# working dir ($HOME/pankosmia/tc4), never inside it: pre-creating anything
+# inside the working dir before first boot makes the server skip first-boot
+# initialization and panic on the missing app_state.json (measured while
+# building this — the debug seeder hit exactly that).
 
 # Pins. Change them together with docs/PACKAGING.md.
 ELECTRONITE_TAG="v37.1.0-graphite"
@@ -38,6 +63,11 @@ PUPPETEER_CORE_VER="24.43.1"       # template package.json: ^24.43.1
 PUPPETEER_BROWSERS_VER="2.13.1"    # template package.json: ^2.13.1
 
 APP_NAME="translationCore4"
+if [ "$VARIANT" = "debug" ]; then
+  # Ruling clause 3: a debug build must be visibly distinguishable.
+  APP_NAME="translationCore4 DEBUG"
+  VERSION="$VERSION-debug"
+fi
 
 # Pin one checksum per artifact arch. Only arm64 is recorded so far; a new
 # arch needs its checksum recorded here first.
@@ -108,6 +138,27 @@ cp "$REPO/dev-env/server/Rocket.toml" "$PACK/Rocket.toml"
 # lib: runtime resources per the template's app_config.env asset map.
 cp -R "$BUILD/upstream/resource-core/runtime_resources" "$PACK/lib/app_resources"
 cp -R "$BUILD/upstream/resource-core/templates" "$PACK/lib/templates"
+
+# #70 store isolation: pin repo_dir to the tC4-owned store. The server
+# substitutes %%WORKINGDIR%% at first boot (customize_and_copy_template_file).
+# TC4_TEST_FORCE_SHARED_STORE=1 skips the patch — TEST-ONLY, used to prove
+# the smoke-test guard actually fails a build that resolves to the shared
+# store. Never set it for a real build; the guard will (and must) fail.
+if [ "${TC4_TEST_FORCE_SHARED_STORE:-0}" != "1" ]; then
+  python3 - "$PACK/lib/templates/user_settings.json" "$STORE_LEAF" <<'PY'
+import json, sys
+p, leaf = sys.argv[1], sys.argv[2]
+d = json.load(open(p))
+default = "%%HOMEDIR%%/pankosmia_repos"
+if d.get("repo_dir") != default:
+    raise SystemExit(f"user_settings template changed upstream: repo_dir is {d.get('repo_dir')!r}, expected {default!r} — re-verify #70 isolation before building")
+d["repo_dir"] = f"%%HOMEDIR%%/{leaf}"
+json.dump(d, open(p, "w"), indent=2)
+print(f"repo_dir pinned to %%HOMEDIR%%/{leaf} (#70)")
+PY
+else
+  echo "!!! TC4_TEST_FORCE_SHARED_STORE=1: leaving the platform default repo_dir (guard self-test)"
+fi
 mkdir -p "$PACK/lib/webfonts"
 cp -R "$BUILD/upstream/webfonts-core/." "$PACK/lib/webfonts/"
 rm -rf "$PACK/lib/webfonts/.git"
@@ -145,13 +196,39 @@ cp -R "$PACK/electron" "$APPDIR/electron"
 cp -R "$PACK/bin" "$APPDIR/bin"
 cp -R "$PACK/lib" "$APPDIR/lib"
 cp "$PACK/Rocket.toml" "$APPDIR/Rocket.toml"
-cat > "$APPDIR/start-tc4.command" <<'LAUNCH'
+if [ "$VARIANT" = "debug" ]; then
+  # Ruling clauses 2/3 (#70): curated test projects go into the SEPARATE
+  # debug-only store, seeded by the debug launcher on first run. Production
+  # ships neither the seeds nor this launcher.
+  mkdir -p "$APPDIR/debug-seeds"
+  cp -R "$REPO/conformance/sample-burrito" "$APPDIR/debug-seeds/sample_burrito"
+  cat > "$APPDIR/start-tc4.command" <<'LAUNCH'
+#!/bin/zsh
+# Unsigned DEBUG artifact. Seeds the debug-only project store on first run
+# (never the shared $HOME/pankosmia_repos), then starts Electronite; the
+# startup script spawns the bundled server itself.
+cd "${0:a:h}"
+STORE="$HOME/pankosmia/tc4-projects-debug"
+SEED="$STORE/_local_/_local_/sample_burrito"
+if [ ! -d "$SEED" ] && command -v git >/dev/null; then
+  mkdir -p "$STORE/_local_/_local_"
+  cp -R ./debug-seeds/sample_burrito "$SEED"
+  # Initial commit: the platform's add-and-commit panics on a repo with
+  # zero commits (PLATFORM-NOTES #20).
+  (cd "$SEED" && git init -q -b main . && git add -A \
+    && git -c user.email=debug@tc4.local -c user.name=tc4-debug commit -qm seed)
+fi
+exec ./Electron.app/Contents/MacOS/Electron ./electron
+LAUNCH
+else
+  cat > "$APPDIR/start-tc4.command" <<'LAUNCH'
 #!/bin/zsh
 # Unsigned development artifact. Starts Electronite; the startup script
 # spawns the bundled server itself.
 cd "${0:a:h}"
 exec ./Electron.app/Contents/MacOS/Electron ./electron
 LAUNCH
+fi
 chmod +x "$APPDIR/start-tc4.command"
 
 # Licenses. The startup files in electron/ are modified copies from the MIT
@@ -186,6 +263,8 @@ SERVER_SHA=$(shasum -a 256 "$APPDIR/bin/server.bin" | awk '{print $1}')
 cat > "$APPDIR/BUILD-MANIFEST.json" <<MANIFEST
 {
   "artifact": "tC4-$VERSION-macos-$ARCH-unsigned",
+  "variant": "$VARIANT",
+  "project_store": "\$HOME/$STORE_LEAF (#70 — never \$HOME/pankosmia_repos)",
   "built_utc": "$DATETIME",
   "inputs": {
     "uw-tc4_client": { "version": "$VERSION", "commit": "$(git -C $REPO rev-parse HEAD)" },
@@ -242,6 +321,33 @@ trap - EXIT
   echo "SMOKE TEST FAILED" >&2; exit 1; }
 # Prove the working dir was created inside the fresh HOME, not the real one.
 [ -d "$SMOKE_HOME/pankosmia/tc4" ] && echo "working dir created at \$HOME/pankosmia/tc4 (isolated)"
+
+# #70 GUARD (release-blocking, both variants): the RESOLVED repo_dir of the
+# booted app must never be the shared pankosmia_repos store.
+US="$SMOKE_HOME/pankosmia/tc4/user_settings.json"
+[ -f "$US" ] || { echo "#70 GUARD FAILED: no user_settings.json at $US" >&2; exit 1; }
+RESOLVED_REPO_DIR=$(node -p "require('$US').repo_dir")
+echo "resolved repo_dir: $RESOLVED_REPO_DIR"
+case "$RESOLVED_REPO_DIR" in
+  *pankosmia_repos*)
+    echo "#70 GUARD FAILED: resolved repo_dir is the shared pankosmia_repos store — release-blocking (owner ruling 2026-08-14)" >&2
+    exit 1 ;;
+esac
+EXPECTED_REPO_DIR="$SMOKE_HOME/$STORE_LEAF"
+[ "$RESOLVED_REPO_DIR" = "$EXPECTED_REPO_DIR" ] || {
+  echo "#70 GUARD FAILED: repo_dir '$RESOLVED_REPO_DIR' is not the expected isolated store '$EXPECTED_REPO_DIR'" >&2
+  exit 1; }
+if [ "$VARIANT" = "debug" ]; then
+  [ -f "$RESOLVED_REPO_DIR/_local_/_local_/sample_burrito/metadata.json" ] || {
+    echo "#70 GUARD FAILED: debug store missing the seeded sample burrito" >&2; exit 1; }
+  echo "debug store seeded at $RESOLVED_REPO_DIR (separate from production store)"
+else
+  if [ -n "$(ls -A "$RESOLVED_REPO_DIR" 2>/dev/null)" ]; then
+    echo "#70 GUARD FAILED: production store is not empty on first boot" >&2
+    ls -R "$RESOLVED_REPO_DIR" >&2; exit 1
+  fi
+  echo "production store is empty on first boot (isolated at $RESOLVED_REPO_DIR)"
+fi
 
 echo "== 7/7 zip the artifact"
 ZIP="$BUILD/tC4-$VERSION-macos-$ARCH-unsigned.zip"
