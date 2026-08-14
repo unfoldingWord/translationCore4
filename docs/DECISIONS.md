@@ -575,3 +575,33 @@ infrastructure increment (the first: Increment 3) completes no user journey — 
 milestone description carries its ordering, and an epic exists only where several
 issues share one design surface. Feature increments keep the journey-epic rule as
 written. Increment 3 has no journey by design; journey J8 belongs to Increment 4.
+
+## D48 (2026-08-14, project-owner ruling) **§8 conditionally ratified.** Three parts:
+
+**(1) The journal architecture is approved** — append-only actor journals, deterministic
+folding, explicit forks, derived projections, isolated publication branches, zero-trust
+integration, rebuild-and-swap receiving. It is settled and not open for re-proposal.
+
+**(2) §8 is not yet normative.** Three independent reviews found seven points where the
+spec text and the reference implementation disagree, and one missing design: the journal
+representation of a verse-structure change (#65).
+
+**(3) §8 becomes normative when ONE change set lands with all suites green**, containing:
+- the seven contract corrections recorded on issue #22: pin-slot grammar with a golden
+  projection test; the §5.1 extraction as the fold's only I-3 hash; actor-binding refusal;
+  the same-actor linear rule, with tests; scope carried on `book.add` (`[] | range[]`) so
+  a checkpoint reconstructs §3 rule 4; out-of-band divergence detection for every derived
+  shared file; `project.meta.set` never writing `type`;
+- the structural re-key action (#65): one atomic action with the old-key → new-key
+  mapping, no half-applied projections, retention per D36;
+- the flavor boundary sentence: journal v1 is textTranslation-shaped; other flavors
+  (textStories/OBS) extend by version bump per §9 — v1 writers unaffected;
+- the D47(d) supersession note (#63 unparked verse operations);
+- the published sample and conformance harness (#47) — a hard dependency: §9 requires
+  spec and harness to change together, which needs them in one repository.
+
+Sub-decisions adopted with the ruling: `textMd5` and `skeletonMd5` are REMOVED from v1
+(`targetVerseMd5`, which carries I-3, is a different field and stays); Ledger #4's
+"journal checking first" offer is declined — D47 chose every mutation from day one.
+Basis: three independent reviews on #22; their reproduced implementation gaps were
+verified twice over.
