@@ -72,10 +72,15 @@ Two prerequisites are outside this repository:
 
 - **The Pankosmia development rig** on port 19998. The integration tests and the
   Playwright journey tests (`npm run test:e2e`) need this server.
-- **A sibling `sample-burrito` checkout.** The three S-0 smoke tests need it.
+- **A sibling `sample-burrito` checkout.** The three S-0 smoke tests need it. The
+  conformance harness and its sample project now live in `conformance/` in this
+  repository (issue #47). The S-0 test code still reads the sibling path
+  (`../sample-burrito`), so the sibling-checkout instruction still applies to the S-0
+  tests until a code PR updates that path.
 
 The continuous-integration workflow does not supply either prerequisite. CI runs lint,
-typecheck, test, build and the dependency audit.
+typecheck, test, build and the dependency audit, plus the conformance suite in
+`conformance/` (generate + validate:all).
 
 ## Repository layout
 
@@ -85,6 +90,7 @@ typecheck, test, build and the dependency audit.
 | `test/` | Unit and integration tests (Vitest). |
 | `test/fixtures/` | Pinned test data. Read `test/fixtures/README.md` for the source of each file. |
 | `e2e/` | Journey tests (Playwright). |
+| `conformance/` | The conformance harness and the reference `sample-burrito/` project. Read `conformance/README.md` and `conformance/LICENSE-CONTENT.md`. |
 | `rig/` | Client registration files for the development rig. |
 | `public/` | Static assets. |
 | `docs/` | The project documents. See the map below. |

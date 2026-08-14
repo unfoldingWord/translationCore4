@@ -1,0 +1,31 @@
+{
+  "name": "sample-burrito-validation",
+  "version": "1.0.0",
+  "description": "Generates + validates the sample tC4 burrito with the real tC3 checking libraries and Pankosmia SB schema",
+  "main": "index.js",
+  "scripts": {
+    "generate": "node generate.mjs",
+    "validate": "node validate.mjs",
+    "validate:journal": "node validate-journal.mjs",
+    "validate:all": "npm run validate && npm run validate:journal",
+    "validate:transport": "node validate-transport.mjs",
+    "validate:roundtrip": "node validate-roundtrip.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "GPL-2.0-or-later",
+  "type": "commonjs",
+  "dependencies": {
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "bible-reference-range": "^1.1.1",
+    "lodash.clonedeep": "^4.5.0",
+    "string-punctuation-tokenizer": "^2.2.0",
+    "usfm-js": "^3.4.3",
+    "word-aligner": "^1.0.3",
+    "word-aligner-lib": "^1.0.1"
+  },
+  "devDependencies": {
+    "fast-check": "^4.8.0"
+  }
+}
