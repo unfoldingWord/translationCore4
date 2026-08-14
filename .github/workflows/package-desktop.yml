@@ -1,13 +1,26 @@
 name: package-desktop
 
-# #57: produce an unsigned desktop artifact on every merge to main (one OS).
-# The recipe lives in scripts/package-desktop.zsh. #44 extends this workflow
-# with more OSes and signing. The script smoke-tests the assembled server
-# (root 303 -> /clients/uw-tc4, then 200) before it bundles the zip.
+# #57: produce an unsigned desktop artifact on every merge to main (one OS),
+# and build (without uploading) on pull requests that touch the packaging
+# inputs. The recipe lives in scripts/package-desktop.zsh. #44 extends this
+# workflow with more OSes and signing. The script smoke-tests the staged
+# artifact THROUGH ITS OWN ENTRY POINT (self-spawned server; root 303 ->
+# /clients/uw-tc4, then 200) before it zips.
 
 on:
   push:
     branches: [main]
+  pull_request:
+    paths:
+      - scripts/package-desktop.zsh
+      - .github/workflows/package-desktop.yml
+      - src/**
+      - public/**
+      - rig/**
+      - dev-env/server/**
+      - package.json
+      - package-lock.json
+      - vite.config.js
   workflow_dispatch:
 
 permissions:
@@ -41,6 +54,7 @@ jobs:
         run: zsh scripts/package-desktop.zsh
 
       - name: Upload the artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: tc4-desktop-macos-arm64-unsigned
