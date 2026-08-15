@@ -259,9 +259,20 @@ export const fold = (eventsIn) => {
           if (!dkey.startsWith('dec|')) continue;
           for (const h of live) {
             if (h.book !== book) continue;
-            const r = h.event.decision.contextId.reference;
+            const c = h.event.decision.contextId;
+            const r = c.reference;
             if (`${r.chapter}:${r.verse}` !== k) continue;
             if (!dispSet.has(`decision|${dkey.slice(4)}|${h.ts}`)) undispositioned.push(`decision|${dkey.slice(4)}|${h.ts}`);
+            // a decisionKey-targeted note on a RE-KEYED decision is an affected record
+            // too: its §5.2 identity retires with the re-key, so it needs a disposition.
+            // (invalidate-retain/replace keep the decision's key — such notes stay valid.)
+            const decDisp = dispositions.find((d) => dispId(d) === `decision|${dkey.slice(4)}|${h.ts}`);
+            if (decDisp && decDisp.action === 're-key') {
+              const identity = `${c.checkId}|${r.bookId}|${r.chapter}|${r.verse}|${c.occurrence}`;
+              for (const n of notes)
+                if (n.target && n.target.decisionKey === identity && !dispSet.has(`note||${n.ts}`))
+                  undispositioned.push(`note|${n.ts}`);
+            }
           }
         }
         for (const n of notes) {
@@ -362,21 +373,29 @@ export const fold = (eventsIn) => {
   // payloads, report a fork otherwise. skel keys skip the ancestry filter — a structural
   // fork is exactly the review item (#65).
   const resolved = new Map(); // memoized: each key resolves once (stable chain per key)
-  const resolveKey = (key, chain, { skipAncestry = false } = {}) => {
+  const resolveKey = (key, chain, { skipAncestry = false, genRoot = null } = {}) => {
     if (resolved.has(key)) return resolved.get(key);
-    const r = resolveKeyRaw(key, chain, { skipAncestry });
+    const r = resolveKeyRaw(key, chain, { skipAncestry, genRoot });
     resolved.set(key, r);
     return r;
   };
-  const resolveKeyRaw = (key, chain, { skipAncestry = false } = {}) => {
+  const resolveKeyRaw = (key, chain, { skipAncestry = false, genRoot = null } = {}) => {
     const live = heads.get(key) || [];
     if (live.length === 0) return null;
     let candidates = live;
     if (!skipAncestry && chain) {
-      candidates = live.filter((h) => (h.sanc == null || chain.has(h.sanc)) && !isConsumed(key, h.ts, chain));
-      for (const h of live)
+      // §8.5 generational rule: a head with no structural ancestor belongs to the
+      // current book generation only if it was issued after the generation root
+      // (the current book.add ts) — prior-generation records quarantine, never resurrect
+      const inGeneration = (h) =>
+        h.sanc == null ? (genRoot == null || h.ts > genRoot) : chain.has(h.sanc);
+      candidates = live.filter((h) => inGeneration(h) && !isConsumed(key, h.ts, chain));
+      for (const h of live) {
         if (h.sanc != null && !chain.has(h.sanc))
           retained.push({ key, ts: h.ts, reason: 'unselected-structural-branch' });
+        else if (h.sanc == null && genRoot != null && h.ts <= genRoot)
+          retained.push({ key, ts: h.ts, reason: 'prior-generation' });
+      }
     }
     if (candidates.length === 0) return null;
     if (candidates.length > 1) {
@@ -394,7 +413,8 @@ export const fold = (eventsIn) => {
 
   const books = {};
   const scope = {};
-  const chains = new Map(); // book -> chain (Set)
+  const chains = new Map();   // book -> chain (Set)
+  const genRoots = new Map(); // book -> the current generation root (book.add ts, §8.5)
   const bookCodes = new Set([...heads.keys()].filter((k) => k.startsWith('book|')).map((k) => k.slice(5)));
   const headsTs = {};
   for (const book of bookCodes) {
@@ -402,6 +422,7 @@ export const fold = (eventsIn) => {
     if (bookHead) headsTs[`book|${book}`] = bookHead.ts;
     if (!bookHead || bookHead.event.op !== 'book.add') continue; // absent books fold but don't project
     scope[book] = bookHead.event.scope ?? [];
+    genRoots.set(book, bookHead.ts);
     const skelHead = resolveKey(`skel|${book}`, null, { skipAncestry: true });
     if (!skelHead) continue;
     headsTs[`skel|${book}`] = skelHead.ts;
@@ -410,7 +431,7 @@ export const fold = (eventsIn) => {
     const skeleton = skelHead.event.skeleton;
     const verses = {};
     for (const k of slotKeysOf(skeleton)) {
-      const h = resolveKey(`text|${book}|${k}`, chain);
+      const h = resolveKey(`text|${book}|${k}`, chain, { genRoot: genRoots.get(book) });
       verses[k] = h ? h.event.text : '___\n'; // §4.1 stub for a slot with no live verse head
       if (h) headsTs[`text|${book}|${k}`] = h.ts;
     }
@@ -419,7 +440,7 @@ export const fold = (eventsIn) => {
     // but off-branch descendants must surface in retained[] (§8.5 lineage rule)
     for (const key of heads.keys()) {
       if (!key.startsWith(`text|${book}|`)) continue;
-      if (!(key.slice(`text|${book}|`.length) in verses)) resolveKey(key, chain);
+      if (!(key.slice(`text|${book}|`.length) in verses)) resolveKey(key, chain, { genRoot: genRoots.get(book) });
     }
   }
   const allChains = new Set();
@@ -429,7 +450,7 @@ export const fold = (eventsIn) => {
   for (const key of heads.keys()) {
     if (!key.startsWith('dec|')) continue;
     const anyHead = heads.get(key)[0];
-    const h = resolveKey(key, chains.get(anyHead.book) || null);
+    const h = resolveKey(key, chains.get(anyHead.book) || null, { genRoot: genRoots.get(anyHead.book) });
     if (!h) continue;
     headsTs[key] = h.ts;
     (decisions[h.event.toolId] ||= []).push(h.event.decision);
@@ -441,7 +462,7 @@ export const fold = (eventsIn) => {
   for (const key of heads.keys()) {
     if (!key.startsWith('align|')) continue;
     const anyHead = heads.get(key)[0];
-    const h = resolveKey(key, chains.get(anyHead.book) || null);
+    const h = resolveKey(key, chains.get(anyHead.book) || null, { genRoot: genRoots.get(anyHead.book) });
     if (!h) continue;
     headsTs[key] = h.ts;
     const ev = h.event;
@@ -490,14 +511,28 @@ export const fold = (eventsIn) => {
     if (!h.event.removed) settings[h.event.path] = h.event.value;
   }
 
-  const notesOut = notes.map((n) => {
+  const notesOut = [];
+  for (const n of notes) {
+    // §8.5 generational rule for book-targeted notes: a note issued before the book's
+    // current generation root quarantines with the rest of the prior generation
+    const nb = n.target && n.target.book;
+    if (nb && genRoots.has(nb) && n.ts <= genRoots.get(nb)) {
+      retained.push({ key: 'note', ts: n.ts, reason: 'prior-generation' });
+      continue;
+    }
+    notesOut.push(rewriteNote(n));
+  }
+  function rewriteNote(n) {
     const rk = noteRekey.get(n.ts);
     if (rk && allChains.has(rk.structTs)) {
+      // a decisionKey-targeted note re-keys to the NEW §5.2 identity string;
+      // a verse-targeted note re-keys to the new verse key
+      if (n.target && n.target.decisionKey !== undefined) return { ...n, target: { decisionKey: rk.to } };
       const { chapter, verse } = { chapter: rk.to.split(':')[0], verse: rk.to.split(':').slice(1).join(':') };
       return { ...n, target: { ...n.target, chapter, verse } };
     }
     return n;
-  });
+  }
   for (const r of retainedByStruct) if (allChains.has(r.structTs)) retained.push({ key: r.key, ts: r.ts, reason: r.reason });
 
   return {

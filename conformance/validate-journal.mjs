@@ -344,12 +344,28 @@ try {
     targetVerseMd5: verseTextMd5('Pablo, siervo de Dios,\n'),
     sourceVersion: 'dcs::unfoldingWord/el-x-koine_ugnt@v0.34',
   };
+  // an INVALIDATED alignment (stale hash, invalid: true) — real projects carry these,
+  // and the firing-tests principle demands the fixture exercise them
+  const alignRecInvalid = {
+    alignments: [],
+    wordBank: [],
+    invalid: true,
+    targetVerseMd5: verseTextMd5('un texto viejo que ya no existe\n'),
+    sourceVersion: 'dcs::unfoldingWord/el-x-koine_ugnt@v0.33',
+  };
   const twResource = { repoPath: 'git.door43.org/es-419_gl/es-419_tw', version: 'v37', languageSet: 'primary' };
   const decision = {
     contextId: { checkId: 't1g7', occurrenceNote: '', reference: { bookId: 'tit', chapter: 1, verse: 1 }, tool: 'translationWords', groupId: 'god', quote: 'Θεοῦ', quoteString: 'Θεοῦ', glQuote: '', occurrence: 1 },
     category: 'kt', selections: [{ text: 'Dios', occurrence: 1, occurrences: 1 }], comments: false, reminders: false,
     nothingToSelect: false, verseEdits: false, invalidated: false, status: 'valid',
     modifiedTimestamp: '2026-07-02T14:21:07.000Z',
+  };
+  // an INVALIDATED decision (D36 carry-over shape) — retained state, part of real projects
+  const decisionInvalid = {
+    contextId: { checkId: 'w2k9', occurrenceNote: '', reference: { bookId: 'tit', chapter: 1, verse: 2 }, tool: 'translationWords', groupId: 'hope', quote: 'ἐλπίδι', quoteString: 'ἐλπίδι', glQuote: '', occurrence: 1 },
+    category: 'kt', selections: false, comments: false, reminders: false,
+    nothingToSelect: false, verseEdits: false, invalidated: true, status: 'invalid',
+    modifiedTimestamp: '2026-07-03T09:00:00.000Z',
   };
   const settingsDoc = { schemaVersion: 1, checkCategories: { translationWords: ['kt', 'names'] }, ui: { paneSettings: [{ bibleId: 'targetBible', languageId: 'es-419' }], toolsSettings: {} } };
   const resourcesDoc = {
@@ -374,8 +390,8 @@ try {
   });
   const state = {
     'TIT.usfm': usfm,
-    'checking/alignments/TIT.json': serialize({ schemaVersion: 1, book: 'TIT', chapters: { 1: { 1: alignRec } } }),
-    'checking/translationWords/TIT.json': serialize({ schemaVersion: 1, tool: 'translationWords', book: 'TIT', resource: twResource, decisions: [decision] }),
+    'checking/alignments/TIT.json': serialize({ schemaVersion: 1, book: 'TIT', chapters: { 1: { 1: alignRec, 2: alignRecInvalid } } }),
+    'checking/translationWords/TIT.json': serialize({ schemaVersion: 1, tool: 'translationWords', book: 'TIT', resource: twResource, decisions: [decision, decisionInvalid] }),
     'checking/resources.json': serialize(resourcesDoc),
     'checking/settings.json': serialize(settingsDoc),
     'vrs.json': vrsBytes,
@@ -385,8 +401,8 @@ try {
   const seedEvents = seedFromSidecars({
     actor: 'seed-actor',
     books: { TIT: { usfm, scope } },
-    decisionFiles: { translationWords: { decisions: [decision] } },
-    alignmentFiles: { TIT: { chapters: { 1: { 1: alignRec } } } },
+    decisionFiles: { translationWords: { decisions: [decision, decisionInvalid] } },
+    alignmentFiles: { TIT: { chapters: { 1: { 1: alignRec, 2: alignRecInvalid } } } },
     resources: resourcesDoc,
     settings: settingsDoc,
     meta: { 'identification.name.en': 'Proyecto Parcial' },
@@ -397,7 +413,7 @@ try {
   const projections = derivedProjections(out, { baseMetadata, resolutions: { translationWords: { TIT: twResource } } });
   const mismatches = Object.keys(state).filter((p) => projections[p] !== state[p]);
   const extras = Object.keys(projections).filter((p) => !(p in state));
-  check('J15 (full state): fold(seed) reproduces EVERY derived file of the partial-scope fixture byte-for-byte (scope, pins, settings, metadata, full §5.1 alignment fields)',
+  check('J15 (full state): fold(seed) reproduces EVERY derived file of the partial-scope fixture byte-for-byte (scope, pins, settings, metadata, full §5.1 alignment fields — INVALIDATED records included)',
     mismatches.length === 0 && extras.length === 0,
     JSON.stringify({ mismatches, extras }));
   check('J15 (full state): the seeded scope is the fixture\'s actual partial scope, not a hardcoded whole-book default',
@@ -405,10 +421,38 @@ try {
   check('J15 (full state): the seeded alignment record carries all §5.1 fields (sourceVersion, invalid) through the fold',
     out.alignments.TIT?.['1:1']?.sourceVersion === alignRec.sourceVersion && out.alignments.TIT?.['1:1']?.invalid === false,
     JSON.stringify(Object.keys(out.alignments.TIT?.['1:1'] || {})));
+  check('J15 (full state): the invalidated records seed and fold correctly — the stale alignment is reported by I-3, the invalidated decision is retained',
+    out.alignments.TIT?.['1:2']?.invalid === true &&
+    out.invalid.some((i) => i.book === 'TIT' && i.verse === '1:2') &&
+    out.decisions.translationWords.some((d) => d.invalidated === true),
+    JSON.stringify(out.invalid));
+  // ...and they pass through a structural action with retention intact
+  const skelR = usfm.replace('\\v 2 ', '\\v 9 '); // renumber 1:2 → 1:9 in the authored USFM
+  const { skeleton: skelRnew } = decompose(skelR);
+  const structTs = '2026-08-13T00:00:00.000Z|0000|seed-actor';
+  const structEv = mkEvent({ op: 'text.structure.apply', actor: 'seed-actor', ts: structTs, base: out.headsTs['skel|TIT'], book: 'TIT',
+    skeleton: skelRnew,
+    transitions: {
+      '1:1': { text: 'Pablo, siervo de Dios,\n', sources: [{ key: '1:1', ts: out.headsTs['text|TIT|1:1'] }] },
+      '1:9': { text: 'con esperanza de vida eterna,\n', sources: [{ key: '1:2', ts: out.headsTs['text|TIT|1:2'] }] },
+      '1:3': { text: 'a su debido tiempo manifestó su palabra,\n', sources: [{ key: '1:3', ts: out.headsTs['text|TIT|1:3'] }] },
+    },
+    dispositions: [
+      { surface: 'alignment', key: '1:2', ts: out.headsTs['align|TIT|1:2'], action: 're-key', to: '1:9' },
+      { surface: 'decision', key: 'translationWords|w2k9|tit|1|2|1', ts: out.headsTs['dec|translationWords|w2k9|tit|1|2|1'], action: 're-key', to: '1:9' },
+    ] });
+  const afterStruct = fold([...seedEvents, structEv]);
+  check('J15 (full state): invalidated records pass through a structural action with retention intact — re-keyed, flags preserved, nothing dropped',
+    afterStruct.pendingStructural.length === 0 &&
+    afterStruct.alignments.TIT?.['1:9']?.invalid === true && !afterStruct.alignments.TIT?.['1:2'] &&
+    afterStruct.decisions.translationWords.some((d) => d.invalidated === true && String(d.contextId.reference.verse) === '9'),
+    JSON.stringify({ pending: afterStruct.pendingStructural, align: Object.keys(afterStruct.alignments.TIT || {}) }));
 } catch (e) {
-  check('J15 (full state): fold(seed) reproduces EVERY derived file of the partial-scope fixture byte-for-byte (scope, pins, settings, metadata, full §5.1 alignment fields)', false, e.message);
+  check('J15 (full state): fold(seed) reproduces EVERY derived file of the partial-scope fixture byte-for-byte (scope, pins, settings, metadata, full §5.1 alignment fields — INVALIDATED records included)', false, e.message);
   check('J15 (full state): the seeded scope is the fixture\'s actual partial scope, not a hardcoded whole-book default', false, e.message);
   check('J15 (full state): the seeded alignment record carries all §5.1 fields (sourceVersion, invalid) through the fold', false, e.message);
+  check('J15 (full state): the invalidated records seed and fold correctly — the stale alignment is reported by I-3, the invalidated decision is retained', false, e.message);
+  check('J15 (full state): invalidated records pass through a structural action with retention intact — re-keyed, flags preserved, nothing dropped', false, e.message);
 }
 
 // ---------- J16: drafting by section vs checking by verse (\ts\* = presentation only; target text never carries it — §4.1/§8.4a). Fixtures model IMPORTED files + section-save batching. ----------
@@ -995,6 +1039,97 @@ try {
     dupDisp.includes('disposition'), `"${dupDisp.slice(0, 60)}"`);
 }
 
+// ---------- J21c (review round 2): invalidated records and decisionKey-targeted notes are affected records too ----------
+{
+  const E = (op, actor, ts, base, extra) => mkEvent({ op, actor, ts, base, ...extra });
+  const t = (s, c, a) => `2026-08-11T00:00:${String(s).padStart(2, '0')}.000Z|000${c}|${a}`;
+  const skel2 = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}`;
+  const skel2r = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 3 ${SLOT}1:3${SLOT}`;
+  const add2 = E('book.add', 'drafter-a', t(0, 0, 'drafter-a'), null, { book: 'TIT', scope: [], skeleton: skel2, initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n' } });
+
+  // finding 1: an INVALIDATED alignment (invalid: true) on a mapped key is retained
+  // state (D36), not dead state — omitting its disposition must refuse the event
+  const alignInv = E('align.verse.set', 'checker-c', t(1, 0, 'checker-c'), null, { book: 'TIT', chapter: '1', verse: '2', alignments: [], wordBank: [], invalid: true, targetVerseMd5: md5('stale-text') });
+  const renumberNoDisp = E('text.structure.apply', 'drafter-a', t(2, 0, 'drafter-a'), add2.ts, {
+    book: 'TIT', skeleton: skel2r,
+    transitions: {
+      '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: add2.ts }] },
+      '1:3': { text: 'dos\n', sources: [{ key: '1:2', ts: add2.ts }] },
+    },
+    dispositions: [],
+  });
+  const omitted = fold([add2, alignInv, renumberNoDisp]);
+  check('J21c: omitting a disposition for an INVALIDATED alignment on a mapped key refuses the event (invalidated records are retained state, D36)',
+    omitted.pendingStructural.length === 1 && omitted.pendingStructural[0].status === 'incomplete' &&
+    omitted.books.TIT.verses['1:2'] === 'dos\n' && !('1:3' in omitted.books.TIT.verses),
+    JSON.stringify(omitted.pendingStructural));
+  const decInv = E('check.decision.set', 'checker-c', t(1, 1, 'checker-c'), null, { toolId: 'translationWords',
+    decision: { contextId: { checkId: 'c7', reference: { bookId: 'tit', chapter: '1', verse: '2' }, occurrence: 1 }, selections: false, invalidated: true, status: 'invalid' } });
+  const omittedDec = fold([add2, decInv, renumberNoDisp]);
+  check('J21c: omitting a disposition for an INVALIDATED decision on a mapped key refuses the event',
+    omittedDec.pendingStructural.length === 1 && omittedDec.pendingStructural[0].status === 'incomplete',
+    JSON.stringify(omittedDec.pendingStructural));
+  // ...and a dispositioned invalidated record survives the re-key STILL marked invalid
+  const renumberDisp = E('text.structure.apply', 'drafter-a', t(2, 0, 'drafter-a'), add2.ts, {
+    book: 'TIT', skeleton: skel2r,
+    transitions: {
+      '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: add2.ts }] },
+      '1:3': { text: 'dos\n', sources: [{ key: '1:2', ts: add2.ts }] },
+    },
+    dispositions: [{ surface: 'alignment', key: '1:2', ts: alignInv.ts, action: 're-key', to: '1:3' }],
+  });
+  const rekeyedInv = fold([add2, alignInv, renumberDisp]);
+  check('J21c: a re-keyed invalidated alignment survives under the new key with invalid: true preserved',
+    rekeyedInv.pendingStructural.length === 0 && rekeyedInv.alignments.TIT?.['1:3']?.invalid === true && !rekeyedInv.alignments.TIT?.['1:2'],
+    JSON.stringify(rekeyedInv.alignments.TIT?.['1:3']));
+
+  // finding 2: a decisionKey-targeted note on a re-keyed decision is part of the
+  // affected set — without a disposition the event is refused; with a re-key
+  // disposition the note projects under the NEW identity
+  const dec2 = E('check.decision.set', 'checker-c', t(1, 2, 'checker-c'), null, { toolId: 'translationWords',
+    decision: { contextId: { checkId: 'c8', reference: { bookId: 'tit', chapter: '1', verse: '2' }, occurrence: 1 }, selections: false, invalidated: false, status: 'todo' } });
+  const oldDecKey = 'c8|tit|1|2|1';
+  const noteOnDec = E('note.add', 'checker-c', t(1, 3, 'checker-c'), null, { target: { decisionKey: oldDecKey }, text: 'nota sobre decisión' });
+  const structDecOnly = (extraDispositions) => E('text.structure.apply', 'drafter-a', t(2, 0, 'drafter-a'), add2.ts, {
+    book: 'TIT', skeleton: skel2r,
+    transitions: {
+      '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: add2.ts }] },
+      '1:3': { text: 'dos\n', sources: [{ key: '1:2', ts: add2.ts }] },
+    },
+    dispositions: [
+      { surface: 'decision', key: `translationWords|c8|tit|1|2|1`, ts: dec2.ts, action: 're-key', to: '1:3' },
+      ...extraDispositions,
+    ],
+  });
+  const noteOmitted = fold([add2, dec2, noteOnDec, structDecOnly([])]);
+  check('J21c: re-keying a decision that has a decisionKey-targeted note WITHOUT a note disposition refuses the event (the note is an affected record)',
+    noteOmitted.pendingStructural.length === 1 && noteOmitted.pendingStructural[0].status === 'incomplete',
+    JSON.stringify(noteOmitted.pendingStructural));
+  const newDecKey = 'c8|tit|1|3|1';
+  const noteRekeyed = fold([add2, dec2, noteOnDec, structDecOnly([
+    { surface: 'note', ts: noteOnDec.ts, action: 're-key', to: newDecKey },
+  ])]);
+  check('J21c: with a re-key disposition the decisionKey-targeted note projects under the NEW decision identity, never the retired one',
+    noteRekeyed.pendingStructural.length === 0 &&
+    noteRekeyed.notes.some((n) => n.target.decisionKey === newDecKey) &&
+    !noteRekeyed.notes.some((n) => n.target.decisionKey === oldDecKey),
+    JSON.stringify(noteRekeyed.notes.map((n) => n.target)));
+  // ...but an invalidate-retain decision KEEPS its identity — its decisionKey-targeted
+  // note stays valid and needs no disposition (reconcile compatibility)
+  const structDecRetain = E('text.structure.apply', 'drafter-a', t(2, 0, 'drafter-a'), add2.ts, {
+    book: 'TIT', skeleton: skel2r,
+    transitions: {
+      '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: add2.ts }] },
+      '1:3': { text: 'dos\n', sources: [{ key: '1:2', ts: add2.ts }] },
+    },
+    dispositions: [{ surface: 'decision', key: `translationWords|c8|tit|1|2|1`, ts: dec2.ts, action: 'invalidate-retain' }],
+  });
+  const retainKeepsNote = fold([add2, dec2, noteOnDec, structDecRetain]);
+  check('J21c: an invalidate-retain decision keeps its identity — its decisionKey-targeted note needs no disposition and still projects',
+    retainKeepsNote.pendingStructural.length === 0 && retainKeepsNote.notes.some((n) => n.target.decisionKey === oldDecKey),
+    JSON.stringify(retainKeepsNote.pendingStructural));
+}
+
 // ---------- J21b: reconcile emits COMPLETE conservative dispositions (§8.8 + #65 v2) ----------
 {
   const E = (op, actor, ts, base, extra) => mkEvent({ op, actor, ts, base, ...extra });
@@ -1408,6 +1543,37 @@ try {
   try { fold([E('book.add', 'actor-a', t(3, 'actor-a'), null, { book: 'TIT', skeleton: skelT })]); } catch (e) { noScope = e.message; }
   check('J29: book.add without skeleton or scope refuses (self-contained is mandatory)',
     noSkel.includes('skeleton') && noScope.includes('scope'));
+}
+
+// ---------- J29b (review round 2): book generations — remove + re-add quarantines prior records, never resurrects (§8.5) ----------
+{
+  const E = (op, actor, ts, base, extra) => mkEvent({ op, actor, ts, base, ...extra });
+  const t = (s, c, a) => `2026-08-12T00:00:${String(s).padStart(2, '0')}.000Z|000${c}|${a}`;
+  const skel = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}`;
+  const add1 = E('book.add', 'drafter-a', t(0, 0, 'drafter-a'), null, { book: 'TIT', scope: [], skeleton: skel, initialVerses: { '1:1': 'uno\n' } });
+  const align1 = E('align.verse.set', 'checker-c', t(1, 0, 'checker-c'), null, { book: 'TIT', chapter: '1', verse: '1', alignments: [], wordBank: [], targetVerseMd5: md5('uno') });
+  const dec1 = E('check.decision.set', 'checker-c', t(1, 1, 'checker-c'), null, { toolId: 'translationWords',
+    decision: { contextId: { checkId: 'g1', reference: { bookId: 'tit', chapter: '1', verse: '1' }, occurrence: 1 }, selections: false, invalidated: false, status: 'todo' } });
+  const note1 = E('note.add', 'checker-c', t(1, 2, 'checker-c'), null, { target: { book: 'TIT', chapter: '1', verse: '1' }, text: 'nota de la generación 1' });
+  const remove = E('book.remove', 'drafter-a', t(2, 0, 'drafter-a'), add1.ts, { book: 'TIT' });
+  const add2 = E('book.add', 'drafter-a', t(3, 0, 'drafter-a'), remove.ts, { book: 'TIT', scope: [], skeleton: skel, initialVerses: { '1:1': 'nuevo\n' } });
+  const gen2 = fold([add1, align1, dec1, note1, remove, add2]);
+  check('J29b: after remove + re-add, prior-generation alignments/decisions/notes are NOT silently resurrected into the projection',
+    gen2.books.TIT.verses['1:1'] === 'nuevo\n' &&
+    !gen2.alignments.TIT?.['1:1'] &&
+    (gen2.decisions.translationWords || []).length === 0 &&
+    !gen2.notes.some((n) => n.text === 'nota de la generación 1'),
+    JSON.stringify({ align: gen2.alignments.TIT, decs: gen2.decisions, notes: gen2.notes.length }));
+  check('J29b: prior-generation records are QUARANTINED — retained and reported for review, not deleted (D36 posture)',
+    gen2.retained.some((r) => r.ts === align1.ts && r.reason === 'prior-generation') &&
+    gen2.retained.some((r) => r.ts === dec1.ts && r.reason === 'prior-generation') &&
+    gen2.retained.some((r) => r.ts === note1.ts && r.reason === 'prior-generation'),
+    JSON.stringify(gen2.retained));
+  // records of the CURRENT generation are untouched by the rule
+  const align2 = E('align.verse.set', 'checker-c', t(4, 0, 'checker-c'), null, { book: 'TIT', chapter: '1', verse: '1', alignments: [], wordBank: [], targetVerseMd5: md5('nuevo') });
+  const gen2live = fold([add1, align1, dec1, note1, remove, add2, align2]);
+  check('J29b: current-generation records project normally (the quarantine binds to the generation root, not to the book)',
+    !!gen2live.alignments.TIT?.['1:1'] && gen2live.invalid.length === 0);
 }
 
 // ---------- J30: unjournaled-ingredient tolerance + whole-surface divergence detection (§8.5/§8.8) ----------
