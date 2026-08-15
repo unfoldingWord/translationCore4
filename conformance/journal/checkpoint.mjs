@@ -60,31 +60,80 @@ export const projectAlignments = (foldOut, book) => {
   return serialize({ schemaVersion: 1, book, chapters });
 };
 
+// §5.2 decision sidecar mirrors, one per (tool, book). The file-level `resource`
+// resolution record is derive-time state (D30 — recomputed against the pins at
+// checkpoint), not journal state: the caller passes it as `resolutions[tool][BOOK]`.
+export const projectDecisions = (foldOut, resolutions = {}) => {
+  const out = {};
+  for (const tool of Object.keys(foldOut.decisions)) {
+    const byBook = {};
+    for (const d of foldOut.decisions[tool])
+      (byBook[d.contextId.reference.bookId.toUpperCase()] ||= []).push(d);
+    for (const book of Object.keys(byBook)) {
+      const doc = { schemaVersion: 1, tool, book };
+      const resource = resolutions?.[tool]?.[book];
+      if (resource !== undefined) doc.resource = resource;
+      doc.decisions = byBook[book];
+      out[`checking/${tool}/${book}.json`] = serialize(doc);
+    }
+  }
+  return out;
+};
+
+// metadata.json at checkpoint (§8.7): the base document (whose ingredients table the
+// server rescan owns) + reconstructed type.flavorType.currentScope from folded scope
+// state + the project.meta.set overlay (removals DELETE from the base).
+export const projectMetadata = (foldOut, baseMetadata) => {
+  const doc = JSON.parse(JSON.stringify(baseMetadata));
+  const setPath = (obj, dotted, value) => {
+    const parts = dotted.split('.');
+    let cur = obj;
+    for (const p of parts.slice(0, -1)) cur = (cur[p] ||= {});
+    cur[parts[parts.length - 1]] = value;
+  };
+  const deletePath = (obj, dotted) => {
+    const parts = dotted.split('.');
+    let cur = obj;
+    for (const p of parts.slice(0, -1)) { if (cur == null || typeof cur !== 'object') return; cur = cur[p]; }
+    if (cur && typeof cur === 'object') delete cur[parts[parts.length - 1]];
+  };
+  setPath(doc, 'type.flavorType.currentScope', foldOut.scope);
+  for (const [dotted, value] of Object.entries(foldOut.projectMeta)) setPath(doc, dotted, value);
+  for (const dotted of foldOut.projectMetaRemoved || []) deletePath(doc, dotted);
+  return serialize(doc);
+};
+
 // §8.5: unjournaled ingredient classes — canonical on disk, outside the vocabulary.
 export const isUnjournaledIngredient = (ipath) => ipath.startsWith('audio/');
 
-// The §8.7 regeneration set: every journal-derived shared file, as {ipath: bytes}.
+// The §8.7 regeneration set: EVERY journal-derived shared file, as {ipath: bytes} —
+// USFM per book, alignment + decision sidecar mirrors, resources.json, settings.json,
+// vrs.json, and metadata.json (when the base document is supplied).
 // Unjournaled classes are structurally absent — checkpoints cannot touch them.
-export const derivedProjections = (foldOut) => {
+export const derivedProjections = (foldOut, { baseMetadata = null, resolutions = {} } = {}) => {
   const out = {};
   for (const book of Object.keys(foldOut.books)) {
     out[`${book}.usfm`] = foldOut.books[book].usfm;
     if (foldOut.alignments[book]) out[`checking/alignments/${book}.json`] = projectAlignments(foldOut, book);
   }
+  Object.assign(out, projectDecisions(foldOut, resolutions));
   out['checking/resources.json'] = projectResources(foldOut.pins);
   out['checking/settings.json'] = projectSettings(foldOut.settings);
   if (foldOut.vrs) out['vrs.json'] = foldOut.vrs.bytes;
+  if (baseMetadata) out['metadata.json'] = projectMetadata(foldOut, baseMetadata);
   return out;
 };
 
-// §8.8 divergence classification over EVERY derived shared file: a committed byte that
-// differs from the projection is out-of-band (reconcile or stop — never silent overwrite);
-// unjournaled ingredient classes are tolerated, never divergence.
+// §8.8 divergence classification over EVERY derived shared file. Enumeration starts
+// from the fold's expected set, not from what happens to be on disk: a projected file
+// that is ABSENT on disk (deleted out-of-band) is divergence too. A committed byte that
+// differs from the projection is out-of-band (reconcile or stop — never silent
+// overwrite); unjournaled ingredient classes are tolerated, never divergence.
 export const classifyDivergence = (diskFiles, projections) => {
   const tolerated = [], diverged = [], clean = [];
-  for (const ipath of Object.keys(diskFiles)) {
+  for (const ipath of new Set([...Object.keys(projections), ...Object.keys(diskFiles)])) {
     if (isUnjournaledIngredient(ipath)) { tolerated.push(ipath); continue; }
-    if (!(ipath in projections)) { diverged.push(ipath); continue; }
+    if (!(ipath in projections) || !(ipath in diskFiles)) { diverged.push(ipath); continue; }
     (diskFiles[ipath] === projections[ipath] ? clean : diverged).push(ipath);
   }
   return { tolerated, diverged, clean };

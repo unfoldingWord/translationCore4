@@ -181,10 +181,19 @@ export const fold = (eventsIn) => {
     }
 
     if (e.op === 'text.skeleton.set') {
-      // §8.4/§8.5: slot-preserving only — a slot-set/key/ordering change MUST use text.structure.apply
+      // §8.4/§8.5: slot-preserving only — a slot-set/key/ordering change MUST use
+      // text.structure.apply. The check binds against the base event when it is present,
+      // and otherwise against the CURRENT PROJECTED skeleton head (max-ts live head) —
+      // a missing or unknown base is not an escape from the topology rule.
       const baseEvent = e.base ? byTs.get(e.base) : null;
-      if (baseEvent && typeof baseEvent.skeleton === 'string' &&
-          JSON.stringify(slotKeysOf(baseEvent.skeleton)) !== JSON.stringify(slotKeysOf(e.skeleton)))
+      let reference = null;
+      if (baseEvent && typeof baseEvent.skeleton === 'string') reference = baseEvent.skeleton;
+      else {
+        const live = heads.get(`skel|${e.book}`) || [];
+        if (live.length) reference = live.reduce((a, b) => (a.ts > b.ts ? a : b)).event.skeleton;
+      }
+      if (reference != null &&
+          JSON.stringify(slotKeysOf(reference)) !== JSON.stringify(slotKeysOf(e.skeleton)))
         throw new Error(`text.skeleton.set changes the slot set (ts ${e.ts}) — refuse to fold; use text.structure.apply (§8.4)`);
       joinHead(`skel|${e.book}`, { ts: e.ts, actor: e.actor, sanc: sancOf(e.base ?? null), book: e.book, event: e }, e.base, e.supersedes, e.actor);
       continue;
@@ -207,6 +216,15 @@ export const fold = (eventsIn) => {
           claimed.add(c);
         }
       }
+      // §8.5: at most ONE disposition per record — duplicates/conflicts are malformed
+      const dispId = (d) => `${d.surface}|${d.key ?? ''}|${d.ts}`;
+      const dispSet = new Set();
+      for (const d of dispositions) {
+        const id = dispId(d);
+        if (dispSet.has(id))
+          throw new Error(`text.structure.apply carries duplicate/conflicting dispositions for ${id} (ts ${e.ts}) — refuse to fold`);
+        dispSet.add(id);
+      }
       // applicability (§8.5 all-or-nothing): every referenced source head present AND live
       const missing = []; const stale = [];
       const checkRef = (key, ts) => {
@@ -224,6 +242,38 @@ export const fold = (eventsIn) => {
       }
       if (missing.length) { pendingStructural.push({ ts: e.ts, book, status: 'incomplete', detail: missing }); continue; }
       if (stale.length)   { pendingStructural.push({ ts: e.ts, book, status: 'conflicted', detail: stale });  continue; }
+      // §8.5: dispositions must be COMPLETE — every live alignment, decision, and
+      // verse-targeted note on a MAPPED source key (re-keyed or removed) needs exactly
+      // one disposition; anything undispositioned makes the event incomplete.
+      const mapped = new Set();
+      for (const dest of tKeys)
+        for (const src of transitions[dest].sources || []) if (src.key !== dest) mapped.add(src.key);
+      const baseEvent = e.base ? byTs.get(e.base) : null;
+      if (baseEvent && typeof baseEvent.skeleton === 'string')
+        for (const k of slotKeysOf(baseEvent.skeleton)) if (!newSlots.includes(k)) mapped.add(k);
+      const undispositioned = [];
+      for (const k of mapped) {
+        for (const h of heads.get(`align|${book}|${k}`) || [])
+          if (!dispSet.has(`alignment|${k}|${h.ts}`)) undispositioned.push(`alignment|${k}|${h.ts}`);
+        for (const [dkey, live] of heads) {
+          if (!dkey.startsWith('dec|')) continue;
+          for (const h of live) {
+            if (h.book !== book) continue;
+            const r = h.event.decision.contextId.reference;
+            if (`${r.chapter}:${r.verse}` !== k) continue;
+            if (!dispSet.has(`decision|${dkey.slice(4)}|${h.ts}`)) undispositioned.push(`decision|${dkey.slice(4)}|${h.ts}`);
+          }
+        }
+        for (const n of notes) {
+          const tg = n.target;
+          if (tg && tg.book === book && `${tg.chapter}:${tg.verse}` === k && !dispSet.has(`note||${n.ts}`))
+            undispositioned.push(`note|${n.ts}`);
+        }
+      }
+      if (undispositioned.length) {
+        pendingStructural.push({ ts: e.ts, book, status: 'incomplete', detail: undispositioned.map((u) => `undispositioned:${u}`) });
+        continue;
+      }
       // apply — the skeleton head joins normally (a stale base = a structural FORK head);
       // post-images always PUSH (branch-local: pre-images stay live for the other branch and
       // are shadowed on this branch by consumption).
@@ -396,7 +446,12 @@ export const fold = (eventsIn) => {
     headsTs[key] = h.ts;
     const ev = h.event;
     const vkey = `${ev.chapter}:${ev.verse}`;
-    ((alignments[ev.book] ||= {})[vkey]) = { alignments: ev.alignments, wordBank: ev.wordBank, targetVerseMd5: ev.targetVerseMd5 };
+    // carry the COMPLETE §5.1 record: every payload field (sourceVersion, invalid, …),
+    // not a hand-picked subset — seeding must reproduce real projects byte-for-byte
+    const record = {};
+    for (const k of Object.keys(ev))
+      if (!ENVELOPE.has(k) && k !== 'op' && k !== 'book' && k !== 'chapter' && k !== 'verse') record[k] = ev[k];
+    ((alignments[ev.book] ||= {})[vkey]) = record;
     // orphaned if the verse has no slot in the current skeleton (§8.6 step 4 — the backstop
     // for a dependent record a structural action did not disposition)
     const skelHead = resolveKey(`skel|${ev.book}`, null, { skipAncestry: true });
@@ -416,12 +471,14 @@ export const fold = (eventsIn) => {
   }
 
   const projectMeta = {};
+  const projectMetaRemoved = []; // removed paths must DELETE from the base document at checkpoint (§8.7)
   for (const key of heads.keys()) {
     if (!key.startsWith('meta|')) continue;
     const h = resolveKey(key, null, { skipAncestry: true });
     if (!h) continue;
     headsTs[key] = h.ts;
     if (!h.event.removed) projectMeta[h.event.path] = h.event.value; // {path, removed:true} folds to absence
+    else projectMetaRemoved.push(h.event.path);
   }
 
   const settings = {};
@@ -444,7 +501,7 @@ export const fold = (eventsIn) => {
   for (const r of retainedByStruct) if (allChains.has(r.structTs)) retained.push({ key: r.key, ts: r.ts, reason: r.reason });
 
   return {
-    books, decisions, alignments, pins, projectMeta, settings, notes: notesOut,
+    books, decisions, alignments, pins, projectMeta, projectMetaRemoved, settings, notes: notesOut,
     forks, invalid, retained, scope,
     vrs: vrs ? { name: vrs.name, bytes: vrs.bytes } : null, vrsRejected,
     pendingStructural, headsTs,

@@ -27,11 +27,25 @@ export const reconcileUsfm = (book, committedUsfm, foldOut, clock, actor) => {
       if (oldSlots.includes(k) && headTs) sources.push({ key: k, ts: headTs }); // identity where possible
       transitions[k] = { text: verses[k], sources };
     }
+    // COMPLETE conservative dispositions: every live alignment, decision, and
+    // verse-targeted note on a removed key — invalidate-retain/orphan-review only,
+    // never a guessed re-key (§8.8; #65 v2).
     const dispositions = [];
     for (const k of oldSlots) {
       if (newSlots.includes(k)) continue; // removed slot — conservative handling only
       const alignTs = foldOut.headsTs[`align|${book}|${k}`];
       if (alignTs) dispositions.push({ surface: 'alignment', key: k, ts: alignTs, action: 'orphan-review' });
+      for (const dk of Object.keys(foldOut.headsTs)) {
+        if (!dk.startsWith('dec|')) continue;
+        const parts = dk.split('|'); // dec|tool|checkId|bookId|chapter|verse|occurrence
+        if (parts[3] !== book.toLowerCase() || `${parts[4]}:${parts[5]}` !== k) continue;
+        dispositions.push({ surface: 'decision', key: dk.slice(4), ts: foldOut.headsTs[dk], action: 'invalidate-retain' });
+      }
+      for (const n of foldOut.notes) {
+        const tg = n.target;
+        if (tg && tg.book === book && `${tg.chapter}:${tg.verse}` === k)
+          dispositions.push({ surface: 'note', ts: n.ts, action: 'orphan-review' });
+      }
     }
     events.push({ v: 1, op: 'text.structure.apply', actor, ts: clock.issue(),
       base: foldOut.headsTs[`skel|${book}`] ?? null, seed, book, skeleton, transitions, dispositions });
@@ -52,10 +66,14 @@ export const reconcileUsfm = (book, committedUsfm, foldOut, clock, actor) => {
   return events;
 };
 
-// Seeding is universal (§8.8/D50): state without a journal becomes seed events.
+// Seeding is universal (§8.8/D50): state without a journal becomes seed events, and it
+// covers EVERY surface a real project holds — books with their ACTUAL per-book scope,
+// text, complete §5.1 alignment records (sourceVersion, invalid, …), decisions, resource
+// pins, settings, project metadata, and versification.
 // source: 'creation' for the creation segment, 'sidecar-migration' for Phase-1 migration.
 // book.add is self-contained (§8.5): one event carries scope + skeleton + initialVerses.
-export const seedFromSidecars = ({ actor, books, decisionFiles = {}, alignmentFiles = {}, vrs = null, source = 'sidecar-migration' }) => {
+// `books` values are `{usfm, scope}` (a bare USFM string means whole-book scope `[]`).
+export const seedFromSidecars = ({ actor, books = {}, decisionFiles = {}, alignmentFiles = {}, resources = null, settings = null, meta = null, vrs = null, source = 'sidecar-migration' }) => {
   const events = [];
   let seedPhysical = Date.parse('2020-01-01T00:00:00.000Z');
   const clock = makeClock(actor, () => seedPhysical);
@@ -70,10 +88,35 @@ export const seedFromSidecars = ({ actor, books, decisionFiles = {}, alignmentFi
 
   if (vrs) events.push({ v: 1, op: 'project.vrs.set', actor, ts: issueAt(null), base: null, seed,
     name: vrs.name, bytes: vrs.bytes });
-  for (const [book, usfm] of Object.entries(books)) {
+  for (const [book, entry] of Object.entries(books)) {
+    const { usfm, scope } = typeof entry === 'string' ? { usfm: entry, scope: [] } : entry;
     const { skeleton, verses } = decompose(usfm);
     events.push({ v: 1, op: 'book.add', actor, ts: issueAt(null), base: null, seed,
-      book, scope: [], skeleton, initialVerses: verses });
+      book, scope, skeleton, initialVerses: verses });
+  }
+  if (resources) {
+    for (const set of Object.keys(resources.languageSets || {}))
+      for (const slot of Object.keys(resources.languageSets[set]))
+        events.push({ v: 1, op: 'resource.pin.set', actor, ts: issueAt(null), base: null, seed,
+          slot: `languageSets.${set}.${slot}`, entry: resources.languageSets[set][slot] });
+    for (const group of Object.keys(resources.resources || {}))
+      for (const tk of Object.keys(resources.resources[group]))
+        events.push({ v: 1, op: 'resource.pin.set', actor, ts: issueAt(null), base: null, seed,
+          slot: `resources.${group}.${tk}`, entry: resources.resources[group][tk] });
+    for (const extra of resources.extraScripture || [])
+      events.push({ v: 1, op: 'resource.pin.set', actor, ts: issueAt(null), base: null, seed,
+        slot: `extraScripture.${extra.id}`, entry: extra });
+  }
+  if (settings) {
+    for (const key of Object.keys(settings)) {
+      if (key === 'schemaVersion') continue; // the projection supplies it (§5.4)
+      events.push({ v: 1, op: 'settings.set', actor, ts: issueAt(null), base: null, seed,
+        path: key, value: settings[key] });
+    }
+  }
+  if (meta) {
+    for (const [path, value] of Object.entries(meta))
+      events.push({ v: 1, op: 'project.meta.set', actor, ts: issueAt(null), base: null, seed, path, value });
   }
   for (const [toolId, file] of Object.entries(decisionFiles)) {
     for (const decision of file.decisions) {
@@ -84,8 +127,10 @@ export const seedFromSidecars = ({ actor, books, decisionFiles = {}, alignmentFi
   for (const [book, file] of Object.entries(alignmentFiles)) {
     for (const [chapter, verses] of Object.entries(file.chapters)) {
       for (const [verse, rec] of Object.entries(verses)) {
+        // spread the COMPLETE §5.1 record — sourceVersion, invalid, and any future
+        // additive-optional field ride through the journal unchanged
         events.push({ v: 1, op: 'align.verse.set', actor, ts: issueAt(null), base: null, seed,
-          book, chapter, verse, alignments: rec.alignments, wordBank: rec.wordBank, targetVerseMd5: rec.targetVerseMd5 });
+          book, chapter, verse, ...rec });
       }
     }
   }

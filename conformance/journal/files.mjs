@@ -23,11 +23,43 @@ export const sealAction = (events) => {
   return seg;
 };
 
+// Accepted segments are IMMUTABLE (§8.1). Write branches:
+//   1. path free → write;
+//   2. existing bytes identical → idempotent accept (retry after a lost ack);
+//   3. existing VALID but different → REJECT (accepted history is never overwritten);
+//   4. existing INVALID → REJECT here too — recovery goes through republishSegment,
+//      which verifies the staged intent before it may overwrite.
 export const writeActionSegment = (actorDir, events) => {
   const dir = path.join(actorDir, 'segments');
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, segmentName(events[0].ts));
-  fs.writeFileSync(file, sealAction(events));
+  const sealed = sealAction(events);
+  if (fs.existsSync(file)) {
+    const existing = fs.readFileSync(file, 'utf8');
+    if (existing === sealed) return file; // idempotent accept
+    if (validateSegment(existing).ok)
+      throw new Error(`segment ${path.basename(file)} already accepted with different bytes — refuse to overwrite (§8.1)`);
+    throw new Error(`segment ${path.basename(file)} exists but is invalid — recover via republishSegment with staged intent (§8.1)`);
+  }
+  fs.writeFileSync(file, sealed);
+  return file;
+};
+
+// §8.1 asymmetric rule, local side: an INVALID (or absent) segment may be replaced by
+// the EXACT staged bytes from the durable outbox — after verifying the staged action
+// itself. A VALID existing segment is never overwritten.
+export const republishSegment = (actorDir, stagedBytes) => {
+  const r = validateSegment(stagedBytes);
+  if (!r.ok) throw new Error(`staged intent is itself invalid (${r.reason}) — refuse to republish`);
+  const file = path.join(actorDir, 'segments', segmentName(r.events[0].ts));
+  if (fs.existsSync(file)) {
+    const existing = fs.readFileSync(file, 'utf8');
+    if (existing === stagedBytes) return file; // already published
+    if (validateSegment(existing).ok)
+      throw new Error(`segment ${path.basename(file)} is valid and differs from the staged intent — refuse to overwrite (§8.1)`);
+  }
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, stagedBytes);
   return file;
 };
 
@@ -50,7 +82,12 @@ export const validateSegment = (raw) => {
 // Read one actor's sealed segments in filename (= ts) order. Invalid segments are
 // invisible as a whole; they are reported to `onInvalid` so the caller can apply the
 // §8.1 asymmetric rule (local: republish-from-staged-intent or report; intake: reject).
-export const readSegments = (actorDir, onInvalid = () => {}) => {
+// There is NO silent default: a caller that passes no handler gets a throw — invalidity
+// must always surface.
+const surfaceInvalid = (file, reason) => {
+  throw new Error(`invalid segment ${file} (${reason}) — pass onInvalid to apply the §8.1 recovery/rejection rule`);
+};
+export const readSegments = (actorDir, onInvalid = surfaceInvalid) => {
   const dir = path.join(actorDir, 'segments');
   if (!fs.existsSync(dir)) return [];
   const actor = path.basename(actorDir);
@@ -107,7 +144,9 @@ export const readStream = (actorDir, stream) => {
 };
 
 // Union across every actor under journal/: sealed segments + legacy streams.
-export const readUnion = (journalDir, onInvalid = () => {}) => {
+// The invalid-segment default surfaces (throws) — reading with tolerance requires an
+// explicit onInvalid handler, which is also how incompleteness is reported.
+export const readUnion = (journalDir, onInvalid = surfaceInvalid) => {
   if (!fs.existsSync(journalDir)) return [];
   const events = [];
   for (const actor of fs.readdirSync(journalDir)) {

@@ -14,6 +14,9 @@ import {
   sealAction, writeActionSegment, validateSegment, segmentName, readSegments,
   appendEventLegacy, readStream, readUnion, SEGMENT_LIMIT,
 } from './journal/files.mjs';
+import * as filesAll from './journal/files.mjs';
+const republishSegment = filesAll.republishSegment
+  || (() => { throw new Error('republishSegment not implemented'); });
 import {
   projectResources, projectSettings, projectAlignments, derivedProjections,
   classifyDivergence, isUnjournaledIngredient,
@@ -322,6 +325,92 @@ const buildSeed = () => {
   check('J15: migrated alignments are valid against the folded text (I-3 carries over)', out.invalid.length === 0, `${out.invalid.length} invalid`);
 }
 
+// ---------- J15 (full state): fold(seed) == state, byte-for-byte, on a PARTIAL-SCOPE fixture ----------
+// Seeding must reproduce a real project: actual per-book scope, resource pins, settings,
+// project metadata, and complete §5.1 alignment records (sourceVersion, invalid, …).
+try {
+  const sample = JSON.parse(fs.readFileSync(ING('checking/resources.json'), 'utf8'));
+  const LS = ['gatewayLanguage', 'translationNotes', 'translationWordsLinks', 'translationWords', 'translationAcademy'];
+  const ordered = (o, keys) => Object.fromEntries(keys.filter((k) => k in o).map((k) => [k, o[k]]));
+  const serialize = (doc) => JSON.stringify(doc, null, 2) + '\n';
+
+  // The fixture: a partial-scope project (TIT 1:1-1:3 only), authored independently.
+  const usfm = '\\id TIT proyecto parcial\n\\h Tito\n\\mt Tito\n\\c 1\n\\p\n\\v 1 Pablo, siervo de Dios,\n\\v 2 con esperanza de vida eterna,\n\\v 3 a su debido tiempo manifestó su palabra,\n';
+  const scope = ['1:1-1:3'];
+  const alignRec = {
+    alignments: [{ topWords: [{ word: 'Παῦλος', strong: 'G39720', lemma: 'Παῦλος', morph: 'Gr,N,,,,,NMS,', occurrence: 1, occurrences: 1 }], bottomWords: [{ word: 'Pablo', occurrence: 1, occurrences: 1 }] }],
+    wordBank: [{ word: 'siervo', occurrence: 1, occurrences: 1 }],
+    invalid: false,
+    targetVerseMd5: verseTextMd5('Pablo, siervo de Dios,\n'),
+    sourceVersion: 'dcs::unfoldingWord/el-x-koine_ugnt@v0.34',
+  };
+  const twResource = { repoPath: 'git.door43.org/es-419_gl/es-419_tw', version: 'v37', languageSet: 'primary' };
+  const decision = {
+    contextId: { checkId: 't1g7', occurrenceNote: '', reference: { bookId: 'tit', chapter: 1, verse: 1 }, tool: 'translationWords', groupId: 'god', quote: 'Θεοῦ', quoteString: 'Θεοῦ', glQuote: '', occurrence: 1 },
+    category: 'kt', selections: [{ text: 'Dios', occurrence: 1, occurrences: 1 }], comments: false, reminders: false,
+    nothingToSelect: false, verseEdits: false, invalidated: false, status: 'valid',
+    modifiedTimestamp: '2026-07-02T14:21:07.000Z',
+  };
+  const settingsDoc = { schemaVersion: 1, checkCategories: { translationWords: ['kt', 'names'] }, ui: { paneSettings: [{ bibleId: 'targetBible', languageId: 'es-419' }], toolsSettings: {} } };
+  const resourcesDoc = {
+    schemaVersion: 2,
+    languageSets: { primary: ordered(sample.languageSets.primary, LS), fallback: ordered(sample.languageSets.fallback, LS) },
+    resources: { originalLanguage: ordered(sample.resources.originalLanguage, ['nt', 'ot']), lexicon: ordered(sample.resources.lexicon, ['nt', 'ot']) },
+    extraScripture: sample.extraScripture,
+  };
+  const vrsBytes = fs.readFileSync(ING('vrs.json'), 'utf8');
+  const baseMetadata = {
+    format: 'scripture burrito',
+    meta: { version: '1.0.0', category: 'source', normalization: 'NFC' },
+    identification: { name: { en: 'Old Name' } },
+    type: { flavorType: { name: 'scripture', flavor: { name: 'textTranslation' }, currentScope: {} } },
+  };
+  // The fixture's expected on-disk state, authored independently of the projection code:
+  const expectedMetadata = serialize({
+    format: 'scripture burrito',
+    meta: { version: '1.0.0', category: 'source', normalization: 'NFC' },
+    identification: { name: { en: 'Proyecto Parcial' } },
+    type: { flavorType: { name: 'scripture', flavor: { name: 'textTranslation' }, currentScope: { TIT: ['1:1-1:3'] } } },
+  });
+  const state = {
+    'TIT.usfm': usfm,
+    'checking/alignments/TIT.json': serialize({ schemaVersion: 1, book: 'TIT', chapters: { 1: { 1: alignRec } } }),
+    'checking/translationWords/TIT.json': serialize({ schemaVersion: 1, tool: 'translationWords', book: 'TIT', resource: twResource, decisions: [decision] }),
+    'checking/resources.json': serialize(resourcesDoc),
+    'checking/settings.json': serialize(settingsDoc),
+    'vrs.json': vrsBytes,
+    'metadata.json': expectedMetadata,
+  };
+
+  const seedEvents = seedFromSidecars({
+    actor: 'seed-actor',
+    books: { TIT: { usfm, scope } },
+    decisionFiles: { translationWords: { decisions: [decision] } },
+    alignmentFiles: { TIT: { chapters: { 1: { 1: alignRec } } } },
+    resources: resourcesDoc,
+    settings: settingsDoc,
+    meta: { 'identification.name.en': 'Proyecto Parcial' },
+    vrs: { name: 'eng', bytes: vrsBytes },
+    source: 'creation',
+  });
+  const out = fold(seedEvents);
+  const projections = derivedProjections(out, { baseMetadata, resolutions: { translationWords: { TIT: twResource } } });
+  const mismatches = Object.keys(state).filter((p) => projections[p] !== state[p]);
+  const extras = Object.keys(projections).filter((p) => !(p in state));
+  check('J15 (full state): fold(seed) reproduces EVERY derived file of the partial-scope fixture byte-for-byte (scope, pins, settings, metadata, full §5.1 alignment fields)',
+    mismatches.length === 0 && extras.length === 0,
+    JSON.stringify({ mismatches, extras }));
+  check('J15 (full state): the seeded scope is the fixture\'s actual partial scope, not a hardcoded whole-book default',
+    deepEq(out.scope, { TIT: ['1:1-1:3'] }), JSON.stringify(out.scope));
+  check('J15 (full state): the seeded alignment record carries all §5.1 fields (sourceVersion, invalid) through the fold',
+    out.alignments.TIT?.['1:1']?.sourceVersion === alignRec.sourceVersion && out.alignments.TIT?.['1:1']?.invalid === false,
+    JSON.stringify(Object.keys(out.alignments.TIT?.['1:1'] || {})));
+} catch (e) {
+  check('J15 (full state): fold(seed) reproduces EVERY derived file of the partial-scope fixture byte-for-byte (scope, pins, settings, metadata, full §5.1 alignment fields)', false, e.message);
+  check('J15 (full state): the seeded scope is the fixture\'s actual partial scope, not a hardcoded whole-book default', false, e.message);
+  check('J15 (full state): the seeded alignment record carries all §5.1 fields (sourceVersion, invalid) through the fold', false, e.message);
+}
+
 // ---------- J16: drafting by section vs checking by verse (\ts\* = presentation only; target text never carries it — §4.1/§8.4a). Fixtures model IMPORTED files + section-save batching. ----------
 {
   const F = '\\id TIT test\n\\c 1\n\\ts\\*\n\\p\n\\v 1 Pablo siervo de Dios,\n\\v 2 con esperanza de vida eterna,\n\\ts\\*\n\\p\n\\v 3 a su debido tiempo,\n\\v 4 a Tito, verdadero hijo.\n\\ts\\*\n\\p\n\\v 5 Por esta causa te dejé en Creta,\n';
@@ -401,9 +490,10 @@ const buildSeed = () => {
   const okMeta = fold([...seedEvts, E('project.meta.set', 'actor-a', t(4, 1, 'actor-a'), null, { path: 'identification.name.en', value: 'Renamed' })]);
   check('J17: project.meta.set on an allowed path still folds', okMeta.projectMeta['identification.name.en'] === 'Renamed');
 
-  // orphaned alignment: a structural change removes the verse slot WITHOUT a disposition
-  // for the alignment → the §8.6 orphan backstop reports it in invalid[]
-  const align2 = E('align.verse.set', 'actor-b', t(5, 0, 'actor-b'), null, { book: 'TIT', chapter: '1', verse: '2', alignments: [], wordBank: [], targetVerseMd5: md5('dos') });
+  // orphaned alignment: the alignment arrives AFTER the structural event (concurrent
+  // offline actor), so the structural event could not disposition it — the §8.6 orphan
+  // backstop reports it in invalid[]
+  const align2 = E('align.verse.set', 'actor-b', t(7, 0, 'actor-b'), null, { book: 'TIT', chapter: '1', verse: '2', alignments: [], wordBank: [], targetVerseMd5: md5('dos') });
   const dropV2 = E('text.structure.apply', 'actor-a', t(6, 0, 'actor-a'), t(0, 0, 'actor-a'), {
     book: 'TIT', skeleton: `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}`,
     transitions: { '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: t(1, 0, 'actor-a') }] } },
@@ -624,6 +714,11 @@ const buildSeed = () => {
     };
     walk(dir); return out;
   };
+  // WHITELIST-ONLY intake (§8.7): the only path shapes a contribution may add or touch
+  // under its own actor directory are (a) NEW valid sealed segments whose filename
+  // matches their first event ts, and (b) a well-formed actor.json naming that actor.
+  // Everything else — arbitrary files, new legacy JSONL streams, modified segments,
+  // modified legacy bytes, deletions — is rejected.
   const validateIntake = (beforeDir, scratchDir, actor) => {
     const before = snapshot(beforeDir); const after = snapshot(scratchDir); const errors = [];
     const actorRoot = `ingredients/checking/journal/${actor}/`;
@@ -637,15 +732,30 @@ const buildSeed = () => {
         continue;
       }
       if (!b) { errors.push(`deleted:${rel}`); continue; }
-      if (rel.endsWith('.action.json')) {
-        // §8.1: accepted segments are immutable; a new incoming segment MUST validate.
+      const sub = rel.slice(actorRoot.length);
+      if (sub.startsWith('segments/') && sub.endsWith('.action.json') && !sub.slice('segments/'.length).includes('/')) {
+        // §8.1: accepted segments are immutable; a new incoming segment MUST validate
+        // and its filename MUST match its first event's ts.
         if (a) { errors.push(`segment-modified:${rel}`); continue; }
         const r = validateSegment(b.toString('utf8'));
         if (!r.ok) { errors.push(`segment-invalid:${rel}:${r.reason}`); continue; }
-        if (r.events.some((e) => e.actor !== actor)) errors.push(`segment-foreign-actor:${rel}`);
+        if (r.events.some((e) => e.actor !== actor)) { errors.push(`segment-foreign-actor:${rel}`); continue; }
+        if (sub.slice('segments/'.length) !== segmentName(r.events[0].ts)) errors.push(`segment-misnamed:${rel}`);
         continue;
       }
-      if (a && rel.endsWith('.jsonl') && !b.subarray(0, a.length).equals(a)) errors.push(`not-append-only:${rel}`);
+      if (sub === 'actor.json') {
+        let doc = null;
+        try { doc = JSON.parse(b.toString('utf8')); } catch { /* malformed */ }
+        if (!doc || doc.schemaVersion !== 1 || doc.actorId !== actor) errors.push(`actor-json-invalid:${rel}`);
+        continue;
+      }
+      if (sub.endsWith('.jsonl')) {
+        // legacy streams are read-compat artifacts, FROZEN at intake: v:1 writers
+        // publish only sealed segments, so any new or changed JSONL is rejected.
+        errors.push(a ? `jsonl-modified:${rel}` : `jsonl-new:${rel}`);
+        continue;
+      }
+      errors.push(`not-whitelisted:${rel}`);
     }
     return errors;
   };
@@ -682,7 +792,7 @@ const buildSeed = () => {
   const historyScratch = mergeToScratch(base, badHistory, 'actor-a', 'history');
   const historyErrors = validateIntake(base, historyScratch, 'actor-a');
   check('J20: intake rejects truncation/rewrite and foreign-actor edits; accepted main remains byte-identical',
-    historyErrors.some((e) => e.startsWith('not-append-only:')) &&
+    historyErrors.some((e) => e.startsWith('jsonl-modified:')) &&
     historyErrors.some((e) => e.startsWith('foreign-actor:')) &&
     git('rev-parse HEAD', base).trim() === mainHead && fs.readFileSync(path.join(base, 'ingredients/TIT.usfm'), 'utf8') === mainProjection,
     JSON.stringify(historyErrors));
@@ -698,6 +808,37 @@ const buildSeed = () => {
     segErrors.some((e) => e.startsWith('segment-modified:')) && segErrors.some((e) => e.startsWith('segment-invalid:')) &&
     git('rev-parse HEAD', base).trim() === mainHead,
     JSON.stringify(segErrors));
+
+  // intake is WHITELIST-ONLY: known path shapes (valid new segments, well-formed
+  // actor.json) are explicitly allowed; EVERYTHING else under the contributing actor's
+  // directory is rejected — arbitrary new files, new legacy JSONL streams, malformed
+  // actor.json.
+  const badMisc = path.join(tmp, 'bad-misc'); cp(base, badMisc); git('checkout -qb actor-a', badMisc);
+  write(badMisc, 'ingredients/checking/journal/actor-a/notes.txt', 'arbitrary payload\n');
+  write(badMisc, 'ingredients/checking/journal/actor-a/JON.00001.jsonl', '{"v":1}\n'); // NEW legacy stream — v:1 writers must not produce JSONL
+  write(badMisc, 'ingredients/checking/journal/actor-a/actor.json', '{"actorId":"someone-else"}'); // malformed shape + wrong actor
+  write(badMisc, 'ingredients/checking/journal/actor-a/segments/README.md', 'not a segment');
+  commitAll(badMisc, 'smuggle non-whitelisted files');
+  const miscScratch = mergeToScratch(base, badMisc, 'actor-a', 'misc');
+  const miscErrors = validateIntake(base, miscScratch, 'actor-a');
+  check('J20: whitelist-only intake — an arbitrary new file under the actor directory is rejected',
+    miscErrors.some((e) => e.includes('notes.txt')) && miscErrors.some((e) => e.includes('segments/README.md')),
+    JSON.stringify(miscErrors));
+  check('J20: whitelist-only intake — a NEW legacy JSONL stream is rejected (v:1 writers publish only sealed segments)',
+    miscErrors.some((e) => e.includes('JON.00001.jsonl')), JSON.stringify(miscErrors));
+  check('J20: whitelist-only intake — a malformed actor.json is rejected (shape validated, actorId must match the directory)',
+    miscErrors.some((e) => e.includes('actor.json')), JSON.stringify(miscErrors));
+  // the allowed shapes still pass: a valid new segment + a well-formed actor.json
+  const goodNew = path.join(tmp, 'good-new'); cp(base, goodNew); git('checkout -qb actor-a', goodNew);
+  write(goodNew, `ingredients/checking/journal/actor-a/segments/${segmentName('2026-06-02T00:00:03.000Z|0000|actor-a')}`,
+    sealAction([mkEvent({ op: 'settings.set', actor: 'actor-a', ts: '2026-06-02T00:00:03.000Z|0000|actor-a', path: 'ui.z', value: 3 })]));
+  write(goodNew, 'ingredients/checking/journal/actor-a/actor.json',
+    JSON.stringify({ schemaVersion: 1, actorId: 'actor-a', displayName: 'A', createdAt: '2026-06-01T00:00:00.000Z' }) + '\n');
+  commitAll(goodNew, 'valid publication');
+  const goodScratch = mergeToScratch(base, goodNew, 'actor-a', 'good');
+  const goodErrors = validateIntake(base, goodScratch, 'actor-a');
+  check('J20: whitelist-only intake — a valid new sealed segment and a well-formed actor.json are explicitly allowed',
+    goodErrors.length === 0, JSON.stringify(goodErrors));
 
   fs.rmSync(tmp, { recursive: true, force: true });
 }
@@ -819,6 +960,71 @@ const buildSeed = () => {
   const rng = mulberry32(SEED + 21);
   check('J21: fold determinism under permutation holds with structural events',
     deepEq(fold(full), fold(shuffled(full, rng))) && deepEq(fold([add2, ghostRef]), fold(shuffled([add2, ghostRef], rng))));
+
+  // dispositions must be COMPLETE: every live alignment, decision, and verse-targeted
+  // note on a mapped source key needs exactly one disposition — otherwise incomplete
+  const note12 = E('note.add', 'checker-c', t(1, 8, 'checker-c'), null, { target: { book: 'TIT', chapter: '1', verse: '2' }, text: 'nota sobre 1:2' });
+  const noNoteDisp = fold([add2, align2, note12, renumber('dos\n')]); // renumber dispositions cover the alignment only
+  check('J21: a structural event that omits a disposition for a live verse-targeted note on a mapped key is refused as incomplete; pre-op state projects',
+    noNoteDisp.pendingStructural.length === 1 && noNoteDisp.pendingStructural[0].status === 'incomplete' &&
+    noNoteDisp.books.TIT.verses['1:2'] === 'dos\n' && !('1:3' in noNoteDisp.books.TIT.verses),
+    JSON.stringify(noNoteDisp.pendingStructural));
+  const dec12 = E('check.decision.set', 'checker-c', t(1, 9, 'checker-c'), null, { toolId: 'translationWords',
+    decision: { contextId: { checkId: 'c9', reference: { bookId: 'tit', chapter: '1', verse: '2' }, occurrence: 1 }, selections: false } });
+  const noDecDisp = fold([add2, align2, dec12, renumber('dos\n')]);
+  check('J21: a structural event that omits a disposition for a live decision on a mapped key is refused as incomplete; pre-op state projects',
+    noDecDisp.pendingStructural.length === 1 && noDecDisp.pendingStructural[0].status === 'incomplete' &&
+    noDecDisp.books.TIT.verses['1:2'] === 'dos\n' && !('1:3' in noDecDisp.books.TIT.verses),
+    JSON.stringify(noDecDisp.pendingStructural));
+  // duplicate/conflicting dispositions for one record are malformed — refused
+  let dupDisp = '';
+  try {
+    fold([add2, align2, E('text.structure.apply', 'drafter-a', t(2, 0, 'drafter-a'), add2.ts, {
+      book: 'TIT', skeleton: skel2r,
+      transitions: {
+        '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: add2.ts }] },
+        '1:3': { text: 'dos\n', sources: [{ key: '1:2', ts: add2.ts }] },
+      },
+      dispositions: [
+        { surface: 'alignment', key: '1:2', ts: align2.ts, action: 're-key', to: '1:3' },
+        { surface: 'alignment', key: '1:2', ts: align2.ts, action: 'invalidate-retain' },
+      ],
+    })]);
+  } catch (e) { dupDisp = e.message; }
+  check('J21: duplicate/conflicting dispositions for one record refuse the fold (malformed event)',
+    dupDisp.includes('disposition'), `"${dupDisp.slice(0, 60)}"`);
+}
+
+// ---------- J21b: reconcile emits COMPLETE conservative dispositions (§8.8 + #65 v2) ----------
+{
+  const E = (op, actor, ts, base, extra) => mkEvent({ op, actor, ts, base, ...extra });
+  const t = (s, c, a) => `2026-08-01T01:00:${String(s).padStart(2, '0')}.000Z|000${c}|${a}`;
+  const skel2 = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}`;
+  const add2 = E('book.add', 'drafter-a', t(0, 0, 'drafter-a'), null, { book: 'TIT', scope: [], skeleton: skel2, initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n' } });
+  const align2 = E('align.verse.set', 'checker-c', t(1, 0, 'checker-c'), null, { book: 'TIT', chapter: '1', verse: '2', alignments: [], wordBank: [], targetVerseMd5: md5('dos') });
+  const dec2 = E('check.decision.set', 'checker-c', t(1, 1, 'checker-c'), null, { toolId: 'translationWords',
+    decision: { contextId: { checkId: 'c2', reference: { bookId: 'tit', chapter: '1', verse: '2' }, occurrence: 1 }, selections: false, invalidated: false, status: 'todo' } });
+  const note2 = E('note.add', 'checker-c', t(1, 2, 'checker-c'), null, { target: { book: 'TIT', chapter: '1', verse: '2' }, text: 'nota' });
+  const events = [add2, align2, dec2, note2];
+  const out = fold(events);
+  // out-of-band structure change: verse 2 removed from the committed file
+  const edited = '\\id TIT\n\\c 1\n\\p\n\\v 1 uno\n';
+  const clock = makeClock('reconciler', () => Date.parse('2026-08-01T02:00:00.000Z'));
+  const recEvents = reconcileUsfm('TIT', edited, out, clock, 'reconciler');
+  const structEv = recEvents.find((e) => e.op === 'text.structure.apply');
+  const after = fold([...events, ...recEvents]);
+  check('J21b: reconcile emits dispositions for the alignment, the decision, AND the verse-targeted note on a removed key — the structural event applies (complete)',
+    !!structEv &&
+    structEv.dispositions.some((d) => d.surface === 'alignment') &&
+    structEv.dispositions.some((d) => d.surface === 'decision') &&
+    structEv.dispositions.some((d) => d.surface === 'note') &&
+    after.pendingStructural.length === 0 && after.books.TIT.usfm === edited,
+    JSON.stringify(structEv?.dispositions || recEvents.map((e) => e.op)));
+  check('J21b: reconcile dispositions are conservative — invalidate-retain/orphan-review, never a guessed re-key',
+    !!structEv && structEv.dispositions.every((d) => d.action === 'invalidate-retain' || d.action === 'orphan-review'),
+    JSON.stringify(structEv?.dispositions));
+  check('J21b: after the conservative reconcile the decision is retained invalidated, never deleted (D36)',
+    (after.decisions.translationWords || []).length === 1 && after.decisions.translationWords[0].invalidated === true);
 }
 
 // ---------- J22: structural lineage — branch-local effects, retention, sequential chains (#65 ruling) ----------
@@ -896,6 +1102,27 @@ const buildSeed = () => {
   check('J22: slot-changing text.skeleton.set refuses (use text.structure.apply); a slot-preserving header edit still folds',
     refusedSkel.includes('slot set') && okSkel.books.TIT.usfm.startsWith('\\id TIT edited header'),
     `"${refusedSkel.slice(0, 60)}"`);
+
+  // the topology escape is closed against the CURRENT PROJECTED skeleton, not only a
+  // conveniently-present base: a missing-base skeleton event with a different slot set
+  // is REFUSED, not folded as a fork (the reviewer's exact reproduction)
+  const skel1 = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}`;
+  const add1 = E('book.add', 'seed-x', t(6, 0, 'seed-x'), null, { book: 'TIT', scope: [], skeleton: skel1, initialVerses: { '1:1': 'uno\n' } });
+  let noBase = '';
+  try {
+    fold([add1, E('text.skeleton.set', 'actor-b', t(7, 0, 'actor-b'), null, { book: 'TIT', skeleton: `\\id TIT\n\\c 1\n\\p\n\\v 2 ${SLOT}1:2${SLOT}` })]);
+  } catch (e) { noBase = e.message; }
+  let unknownBase = '';
+  try {
+    fold([add1, E('text.skeleton.set', 'actor-b', t(7, 0, 'actor-b'), '2026-08-02T00:00:99.000Z|0000|ghost-gg', { book: 'TIT', skeleton: `\\id TIT\n\\c 1\n\\p\n\\v 2 ${SLOT}1:2${SLOT}` })]);
+  } catch (e) { unknownBase = e.message; }
+  check('J22: a slot-changing skeleton event with a MISSING base (null or unknown ts, cross-actor) is refused against the current projected skeleton — never a fork',
+    noBase.includes('slot set') && unknownBase.includes('slot set'),
+    JSON.stringify({ noBase: noBase.slice(0, 50), unknownBase: unknownBase.slice(0, 50) }));
+  // a slot-preserving missing-base skeleton event still folds (partial sync stays legal)
+  const okNoBase = fold([add1, E('text.skeleton.set', 'actor-b', t(7, 0, 'actor-b'), null, { book: 'TIT', skeleton: `\\id TIT header edit\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}` })]);
+  check('J22: a slot-preserving missing-base skeleton event still folds (the refusal is topology-only)',
+    okNoBase.books.TIT.usfm.startsWith('\\id TIT header edit'));
 }
 
 // ---------- J23: sealed action segments — the §8.1 container contract ----------
@@ -957,6 +1184,54 @@ const buildSeed = () => {
   fs.rmSync(tmp, { recursive: true, force: true });
 }
 
+// ---------- J23b: accepted segments are IMMUTABLE at the writer, and invalidity is never silently dropped (§8.1) ----------
+{
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-j23b-'));
+  const actorDir = path.join(tmp, 'journal', 'actor-a');
+  const t = (s) => `2026-08-10T00:00:${String(s).padStart(2, '0')}.000Z|0000|actor-a`;
+  const ev = (s, text) => mkEvent({ op: 'text.verse.set', actor: 'actor-a', ts: t(s), base: null, book: 'TIT', chapter: '1', verse: '1', text });
+
+  const e1 = ev(1, 'uno\n');
+  const f1 = writeActionSegment(actorDir, [e1]);
+  const f1Bytes = fs.readFileSync(f1, 'utf8');
+  // branch 1: byte-identical rewrite is an idempotent accept
+  let idempotent = true;
+  try { writeActionSegment(actorDir, [e1]); } catch { idempotent = false; }
+  // branch 2: a DIFFERENT valid action at the same path is rejected — never overwritten
+  let rejected = '';
+  try { writeActionSegment(actorDir, [ev(1, 'otro\n')]); } catch (e) { rejected = e.message; }
+  check('J23b: writeSegment branches — byte-identical rewrite accepts idempotently; a different valid action at the same path is REJECTED, bytes untouched',
+    idempotent && rejected !== '' && fs.readFileSync(f1, 'utf8') === f1Bytes,
+    `"${rejected.slice(0, 60)}"`);
+  // branch 3: an INVALID existing segment is overwritten only via verified staged-intent recovery
+  const e2 = ev(2, 'dos\n');
+  const staged = sealAction([e2]);
+  const f2 = path.join(actorDir, 'segments', segmentName(e2.ts));
+  fs.writeFileSync(f2, staged.slice(0, 30)); // torn
+  let plainWriteOnInvalid = '';
+  try { writeActionSegment(actorDir, [e2]); } catch (e) { plainWriteOnInvalid = e.message; }
+  let republished = false;
+  try { republishSegment(actorDir, staged); republished = true; } catch {}
+  let republishOverValid = '';
+  try { republishSegment(actorDir, sealAction([ev(1, 'otro\n')])); } catch (e) { republishOverValid = e.message; }
+  check('J23b: an invalid existing segment is recovered ONLY through verified staged-intent republication — a plain write refuses; republication over a VALID segment refuses',
+    plainWriteOnInvalid !== '' && republished && fs.readFileSync(f2, 'utf8') === staged && republishOverValid !== '',
+    JSON.stringify({ plainWriteOnInvalid: plainWriteOnInvalid.slice(0, 40), republishOverValid: republishOverValid.slice(0, 40) }));
+  // silent drop is impossible: with no onInvalid handler, an invalid segment THROWS
+  const f3 = path.join(actorDir, 'segments', segmentName(t(3)));
+  fs.writeFileSync(f3, '{"container":1,"body":"broken');
+  let surfaced = '';
+  try { readSegments(actorDir); } catch (e) { surfaced = e.message; }
+  let unionSurfaced = '';
+  try { readUnion(path.join(tmp, 'journal')); } catch (e) { unionSurfaced = e.message; }
+  const collected = [];
+  const withHandler = readSegments(actorDir, (file, reason) => collected.push(reason));
+  check('J23b: readSegments/readUnion NEVER silently drop an invalid segment — the default surfaces it (throws); an explicit handler collects and reads the valid remainder',
+    surfaced.includes('invalid') && unionSurfaced.includes('invalid') && collected.length === 1 && withHandler.length === 2,
+    JSON.stringify({ surfaced: surfaced.slice(0, 50), collected }));
+  fs.rmSync(tmp, { recursive: true, force: true });
+}
+
 // ---------- J24: staged-intent (outbox) republication — exact bytes (§8.1 asymmetric rule, local side) ----------
 {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-j24-'));
@@ -969,8 +1244,9 @@ const buildSeed = () => {
   const segPath = path.join(actorDir, 'segments', segmentName(events[0].ts));
   fs.mkdirSync(path.dirname(segPath), { recursive: true });
   fs.writeFileSync(segPath, staged.slice(0, 25)); // crash mid-write: torn segment
-  const before = readSegments(actorDir);
-  fs.writeFileSync(segPath, staged); // recovery: republish the EXACT staged bytes
+  const invalidBefore = [];
+  const before = readSegments(actorDir, (f, r) => invalidBefore.push(r));
+  republishSegment(actorDir, staged); // recovery: the VERIFIED staged bytes, via the recovery path
   const after = readSegments(actorDir);
   check('J24: a torn local segment publishes nothing; republishing the staged bytes yields a byte-identical segment and the full action',
     before.length === 0 && after.length === 2 && fs.readFileSync(segPath, 'utf8') === staged &&
@@ -1138,20 +1414,32 @@ const buildSeed = () => {
 {
   const { events } = buildSeed();
   const out = fold(events);
-  const projections = derivedProjections(out);
-  check('J30: the checkpoint regeneration set contains only journal-derived files — no unjournaled ingredient class appears',
+  const baseMetadata = JSON.parse(fs.readFileSync(path.join(BURRITO, 'metadata.json'), 'utf8'));
+  const projections = derivedProjections(out, { baseMetadata });
+  check('J30: the checkpoint regeneration set is EXHAUSTIVE per §8.7 — USFM, alignment + decision sidecars, resources, settings, metadata; no unjournaled class appears',
     Object.keys(projections).every((p) => !isUnjournaledIngredient(p)) &&
-    'TIT.usfm' in projections && 'checking/alignments/TIT.json' in projections && 'checking/resources.json' in projections && 'checking/settings.json' in projections,
+    'TIT.usfm' in projections && 'JON.usfm' in projections &&
+    'checking/alignments/TIT.json' in projections &&
+    'checking/translationWords/TIT.json' in projections && 'checking/translationNotes/TIT.json' in projections &&
+    'checking/resources.json' in projections && 'checking/settings.json' in projections &&
+    'metadata.json' in projections,
     JSON.stringify(Object.keys(projections)));
+  check('J30: the projected metadata.json reconstructs type.flavorType.currentScope from folded scope state (§8.7)',
+    deepEq(JSON.parse(projections['metadata.json'] || '{}')?.type?.flavorType?.currentScope, out.scope),
+    JSON.stringify(out.scope));
   const disk = {
-    'TIT.usfm': projections['TIT.usfm'],
+    // TIT.usfm deliberately ABSENT from disk — a deleted derived file is divergence
+    'JON.usfm': projections['JON.usfm'],
     'checking/resources.json': projections['checking/resources.json'],
     'checking/alignments/TIT.json': projections['checking/alignments/TIT.json'].replace('"schemaVersion": 1', '"schemaVersion": 1, "outOfBand": true'),
     'audio/JON-1.mp3': 'RIFF-fake-audio-bytes',
   };
   const cls = classifyDivergence(disk, projections);
   check('J30: divergence detection covers every derived shared file — an out-of-band sidecar edit is detected, never silently overwritten',
-    cls.diverged.includes('checking/alignments/TIT.json') && cls.clean.includes('TIT.usfm') && cls.clean.includes('checking/resources.json'),
+    cls.diverged.includes('checking/alignments/TIT.json') && cls.clean.includes('JON.usfm') && cls.clean.includes('checking/resources.json'),
+    JSON.stringify(cls.diverged));
+  check('J30: a DELETED derived file is divergence — expected-from-fold files are enumerated, not only present-on-disk ones',
+    cls.diverged.includes('TIT.usfm') && cls.diverged.includes('checking/translationWords/TIT.json') && cls.diverged.includes('metadata.json'),
     JSON.stringify(cls.diverged));
   check('J30: ingredients/audio/ files are tolerated — never divergence, never regenerated or deleted at checkpoint',
     cls.tolerated.includes('audio/JON-1.mp3') && !cls.diverged.includes('audio/JON-1.mp3'));
