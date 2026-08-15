@@ -106,7 +106,7 @@ typecheck, test, build and the dependency audit, plus the conformance suite in
 | What was decided, and when? | `docs/DECISIONS.md` — cite decisions as `Dnn` |
 | What are the known risks? | `docs/RISKS.md` — cite risks as `Ledger #n` |
 | What proves a claim? | `docs/evidence/` — dated measurement records |
-| What is the Phase-2 journal design? | `docs/BURRITO-SPEC.md` §8 + Appendix A — the journal WRITE side ships in 4.0.0 (D47); the fold/sync features stay Phase 2 |
+| What is the Phase-2 journal design? | `docs/BURRITO-SPEC.md` §8 + Appendix A — **normative since 2026-08-14 (D48)**; the journal WRITE side ships in 4.0.0 (D47); the fold/sync features stay Phase 2 |
 | What does `D28`, `OQ#17`, or `Ledger #2` mean? | `docs/LEGACY-IDS.md` — the reference-ID decoder |
 | Where does work live? | The GitHub issues, milestones and project board of this repository |
 

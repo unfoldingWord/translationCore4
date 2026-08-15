@@ -44,7 +44,9 @@ promoted in that increment's PR, spec + harness together (OPEN-QUESTIONS #13).
 implementation + journal conformance suite; [PROPOSED] pending ratification
 (OPEN-QUESTIONS #10/#16). M4 build remains gated on Phase 1 milestones. [superseded in
 part by D47, 2026-08-12 — the journal WRITE side ships in 4.0.0 (Increment 3); the M4
-gate holds for the fold/sync/review app work.]
+gate holds for the fold/sync/review app work.] [superseded by D48, 2026-08-14 — §8 is
+normative as of the BURRITO-SPEC 1.8 flip change set; nothing about it is pending
+ratification.]
 
 ## D14 (2026-07-07) Translator's sections (`\ts\*`) are presentation only — derived at load
 from the pinned *source* text; the target draft never contains `\ts\*` (spec §4.1/§8.4a).
@@ -140,7 +142,8 @@ import-anyway/re-pin path is primary. It replaces the update-to-latest answer of
 (repoPath, tag, expected SHA). Each import verifies the pin. The tests prove that the import
 keeps `\zaln` (`evidence/sb-zip-zaln-2026-07-25.md`). (c) #21 is CLOSED: audio reserves a slot
 and has no behavior. (d) The ratification of §8 occurs after Phase 1 ships and before the
-Phase 2 build. (e) NEW #26: versification has no specification. The platform writes
+Phase 2 build. [superseded by D48, 2026-08-14 — §8 was ratified conditionally and flipped
+to normative in the BURRITO-SPEC 1.8 change set.] (e) NEW #26: versification has no specification. The platform writes
 `ingredients/vrs.json`. The Proskomma mapping is available client-side. The spec needs an edit
 before the create-project step of Increment 1.
 
@@ -461,7 +464,9 @@ under single-instance it is dead code.
 lock problem** — each machine holds its own git clone, so there is no shared file to
 compare-and-swap. It is resolved by the Phase-2 journal / publication design (per-actor streams,
 fold/union, review-queue forks — BURRITO-SPEC §8), which is `[PROPOSED]` and **gated to start
-after Phase 1 ships** (OPEN-QUESTIONS #10/#16; BACKLOG M4). It is **out of scope for Increment 2**
+after Phase 1 ships** (OPEN-QUESTIONS #10/#16; BACKLOG M4) [superseded in part by D48,
+2026-08-14 — §8 is normative; the write side ships in 4.0.0 (D47(c)) while the fold/sync/review
+app work stays gated]. It is **out of scope for Increment 2**
 (Phase-1 single-user checking).
 **Consequence:** B17 is not an Increment-2 blocker. Same-machine is closed by single-instance +
 the in-process lock; cross-machine is tracked as Phase-2 journal work. OPEN-QUESTIONS #17's
@@ -567,7 +572,9 @@ side ships in 4.0.0 (issue #52, after #22 ratifies §8): every 4.0.0 project car
 per-action history from day one, verified in CI by folding the app-written journal with the
 reference implementation and comparing to actual state. The fold/sync/review app work stays
 Phase 2. (d) Verse move/span operations are post-4.0 under clause (a) — they re-key stored
-alignments and decisions.
+alignments and decisions. [superseded by the #63 unparking, 2026-08-14 — verse move/span
+operations are Increment 5, D47-contract-governed; their journal representation is
+`text.structure.apply` (BURRITO-SPEC §8.5, issue #65, the D48 flip change set)]
 
 **D42 addendum (2026-08-14, project-owner convention, recorded after the independent
 Increment-3 readiness review):** the journey rule applies to feature increments. An

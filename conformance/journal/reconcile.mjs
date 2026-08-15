@@ -1,32 +1,61 @@
-// Reconcile & seeding — BURRITO-SPEC §8.8 reference implementation.
+// Reconcile & seeding — BURRITO-SPEC §8.8 reference implementation (spec 1.8).
 import { decompose } from './skeleton.mjs';
+import { slotKeysOf } from './fold.mjs';
 import { makeClock } from './hlc.mjs';
 
 // Out-of-band edit: committed file differs from the fold projection.
-// Emit seeded linear-supersede events (base = current live head ts per key).
+// Slot set unchanged → linear-supersede text.*.set seed events.
+// Slot set changed → ONE self-contained text.structure.apply (§8.5): the on-disk USFM
+// supplies every destination text; the mapping is the conservative identity-where-possible
+// one; everything unmappable gets invalidate-retain/orphan-review, never a guessed re-key.
 export const reconcileUsfm = (book, committedUsfm, foldOut, clock, actor) => {
   const { skeleton, verses } = decompose(committedUsfm);
   const projected = foldOut.books[book];
   const events = [];
   const batch = clock.issue();
   const seed = { source: 'out-of-band-usfm', batch };
+  const oldSkeleton = projected ? decompose(projected.usfm).skeleton : null;
+  const oldSlots = oldSkeleton ? slotKeysOf(oldSkeleton) : [];
+  const newSlots = slotKeysOf(skeleton);
+  const slotsChanged = JSON.stringify(oldSlots) !== JSON.stringify(newSlots);
+
+  if (slotsChanged) {
+    const transitions = {};
+    for (const k of newSlots) {
+      const sources = [];
+      const headTs = foldOut.headsTs[`text|${book}|${k}`];
+      if (oldSlots.includes(k) && headTs) sources.push({ key: k, ts: headTs }); // identity where possible
+      transitions[k] = { text: verses[k], sources };
+    }
+    const dispositions = [];
+    for (const k of oldSlots) {
+      if (newSlots.includes(k)) continue; // removed slot — conservative handling only
+      const alignTs = foldOut.headsTs[`align|${book}|${k}`];
+      if (alignTs) dispositions.push({ surface: 'alignment', key: k, ts: alignTs, action: 'orphan-review' });
+    }
+    events.push({ v: 1, op: 'text.structure.apply', actor, ts: clock.issue(),
+      base: foldOut.headsTs[`skel|${book}`] ?? null, seed, book, skeleton, transitions, dispositions });
+    return events;
+  }
+
   if (!projected || decompose(projected.usfm).skeleton !== skeleton) {
     events.push({ v: 1, op: 'text.skeleton.set', actor, ts: clock.issue(),
-      base: foldOut.headsTs[`skel|${book}`] ?? null, seed, book, skeleton, skeletonMd5: null });
+      base: foldOut.headsTs[`skel|${book}`] ?? null, seed, book, skeleton });
   }
   for (const [vkey, text] of Object.entries(verses)) {
     if (projected && projected.verses[vkey] === text) continue;
     const [chapter, verse] = vkey.split(':');
     events.push({ v: 1, op: 'text.verse.set', actor, ts: clock.issue(),
       base: foldOut.headsTs[`text|${book}|${vkey}`] ?? null, seed,
-      book, chapter, verse, text, textMd5: null });
+      book, chapter, verse, text });
   }
   return events;
 };
 
-// Phase-1 migration: sidecar records -> seeded events (§8.8).
-// modifiedTimestamp maps into the ts physical part; HLC counter breaks ties.
-export const seedFromSidecars = ({ actor, books, decisionFiles, alignmentFiles }) => {
+// Seeding is universal (§8.8/D50): state without a journal becomes seed events.
+// source: 'creation' for the creation segment, 'sidecar-migration' for Phase-1 migration.
+// book.add is self-contained (§8.5): one event carries scope + skeleton + initialVerses.
+export const seedFromSidecars = ({ actor, books, decisionFiles = {}, alignmentFiles = {}, vrs = null, source = 'sidecar-migration' }) => {
   const events = [];
   let seedPhysical = Date.parse('2020-01-01T00:00:00.000Z');
   const clock = makeClock(actor, () => seedPhysical);
@@ -37,16 +66,14 @@ export const seedFromSidecars = ({ actor, books, decisionFiles, alignmentFiles }
     }
     return clock.issue();
   };
-  const seed = { source: 'sidecar-migration', batch: issueAt(null) };
+  const seed = { source, batch: issueAt(null) };
 
+  if (vrs) events.push({ v: 1, op: 'project.vrs.set', actor, ts: issueAt(null), base: null, seed,
+    name: vrs.name, bytes: vrs.bytes });
   for (const [book, usfm] of Object.entries(books)) {
-    events.push({ v: 1, op: 'book.add', actor, ts: issueAt(null), base: null, seed, book });
     const { skeleton, verses } = decompose(usfm);
-    events.push({ v: 1, op: 'text.skeleton.set', actor, ts: issueAt(null), base: null, seed, book, skeleton, skeletonMd5: null });
-    for (const [vkey, text] of Object.entries(verses)) {
-      const [chapter, verse] = vkey.split(':');
-      events.push({ v: 1, op: 'text.verse.set', actor, ts: issueAt(null), base: null, seed, book, chapter, verse, text, textMd5: null });
-    }
+    events.push({ v: 1, op: 'book.add', actor, ts: issueAt(null), base: null, seed,
+      book, scope: [], skeleton, initialVerses: verses });
   }
   for (const [toolId, file] of Object.entries(decisionFiles)) {
     for (const decision of file.decisions) {

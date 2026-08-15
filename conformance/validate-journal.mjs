@@ -1,5 +1,5 @@
-// Journal conformance suite — BURRITO-SPEC §8 / docs/JOURNAL-TEST-PLAN.md (J1–J20).
-// Properties use fast-check with a FIXED seed for reproducibility.
+// Journal conformance suite — BURRITO-SPEC §8 / Appendix A (J1–J30), spec 1.8 (the D48
+// flip change set). Properties use fast-check with a FIXED seed for reproducibility.
 import { createRequire } from 'module';
 import fs from 'fs';
 import path from 'path';
@@ -8,22 +8,26 @@ import crypto from 'crypto';
 import { execSync } from 'child_process';
 import { makeClock, parseTs } from './journal/hlc.mjs';
 import { SLOT, decompose, recompose } from './journal/skeleton.mjs';
-import { fold } from './journal/fold.mjs';
+import { fold, verseTextMd5, slotKeysOf } from './journal/fold.mjs';
 import { reconcileUsfm, seedFromSidecars } from './journal/reconcile.mjs';
-import { appendEvent, readStream, readUnion } from './journal/files.mjs';
+import {
+  sealAction, writeActionSegment, validateSegment, segmentName, readSegments,
+  appendEventLegacy, readStream, readUnion, SEGMENT_LIMIT,
+} from './journal/files.mjs';
+import {
+  projectResources, projectSettings, projectAlignments, derivedProjections,
+  classifyDivergence, isUnjournaledIngredient,
+} from './journal/checkpoint.mjs';
 
 const require = createRequire(import.meta.url);
 const fc = require('fast-check');
-const usfmjs = require('usfm-js');
 
 const SEED = 20260707;
 const FC = { seed: SEED, numRuns: 200 };
 const md5 = (s) => crypto.createHash('md5').update(s, 'utf8').digest('hex');
-const canon = (o) => JSON.stringify(o, Object.keys(flatten(o)).sort());
 const deepEq = (a, b) => JSON.stringify(sort(a)) === JSON.stringify(sort(b));
 const sort = (o) => Array.isArray(o) ? o.map(sort)
   : o && typeof o === 'object' ? Object.fromEntries(Object.keys(o).sort().map((k) => [k, sort(o[k])])) : o;
-const flatten = (o) => o; // canon helper only used via deepEq/sort below
 const BURRITO = path.resolve('./sample-burrito');
 const ING = (p) => path.join(BURRITO, 'ingredients', p);
 
@@ -106,11 +110,6 @@ const buildSeed = () => {
   const alignmentFiles = { TIT: JSON.parse(fs.readFileSync(ING('checking/alignments/TIT.json'), 'utf8')) };
   return { events: seedFromSidecars({ actor: 'seed-actor', books, decisionFiles, alignmentFiles }), books, decisionFiles, alignmentFiles };
 };
-const verseTextMd5Usfm = (content) => {
-  const parsed = usfmjs.toJSON(`\\v 1 ${content}`, { chunk: true });
-  const vo = parsed.verses?.['1']?.verseObjects || [];
-  return md5(vo.map((o) => o.text || '').join('').trim());
-};
 
 // ---------- J3: fold determinism (property) ----------
 {
@@ -124,13 +123,13 @@ const verseTextMd5Usfm = (content) => {
     let now = 9000; const actors = ['actor-a', 'actor-b'];
     const clocks = actors.map((a) => makeClock(a, () => now));
     const lastByKey = {};
-    const events = [mkEvent({ op: 'book.add', actor: 'actor-a', ts: '2026-01-01T00:00:00.000Z|0000|actor-a', book: 'TIT' }),
-      mkEvent({ op: 'text.skeleton.set', actor: 'actor-a', ts: '2026-01-01T00:00:00.001Z|0000|actor-a', book: 'TIT', skeleton: `\\id TIT\n\\c 1\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}\\v 3 ${SLOT}1:3${SLOT}`, skeletonMd5: null })];
+    const skeleton = `\\id TIT\n\\c 1\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}\\v 3 ${SLOT}1:3${SLOT}`;
+    const events = [mkEvent({ op: 'book.add', actor: 'actor-a', ts: '2026-01-01T00:00:00.000Z|0000|actor-a', book: 'TIT', scope: [], skeleton, initialVerses: {} })];
     for (const c of cmds) {
       now += c.advance; const actor = actors[c.actor]; const ts = clocks[c.actor].issue(); clocks[1 - c.actor].ratchet(ts);
       let e;
-      if (c.kind === 'verse') e = { op: 'text.verse.set', book: 'TIT', chapter: '1', verse: String(c.key + 1), text: c.val + '\n', textMd5: null };
-      else if (c.kind === 'pin') e = { op: 'resource.pin.set', slot: `slot${c.key}`, entry: { v: c.val } };
+      if (c.kind === 'verse') e = { op: 'text.verse.set', book: 'TIT', chapter: '1', verse: String(c.key + 1), text: c.val + '\n' };
+      else if (c.kind === 'pin') e = { op: 'resource.pin.set', slot: `extraScripture.s${c.key}`, entry: { v: c.val } };
       else if (c.kind === 'meta') e = { op: 'project.meta.set', path: `p.${c.key}`, value: c.val };
       else if (c.kind === 'note') e = { op: 'note.add', target: `TIT 1:${c.key + 1}`, text: c.val };
       else e = { op: 'check.decision.set', toolId: 'translationWords', decision: { contextId: { checkId: `c${c.key}`, reference: { bookId: 'tit', chapter: 1, verse: c.key + 1 }, occurrence: 1 }, selections: false, note: c.val } };
@@ -157,18 +156,17 @@ const verseTextMd5Usfm = (content) => {
   const E = (op, actor, ts, base, extra) => mkEvent({ op, actor, ts, base, ...extra });
   const t = (ms, c, a) => `2026-02-01T00:00:0${ms}.000Z|000${c}|${a}`;
   const seedEvts = [
-    E('book.add', 'actor-a', t(0, 0, 'actor-a'), null, { book: 'TIT' }),
-    E('text.skeleton.set', 'actor-a', t(0, 1, 'actor-a'), null, { book: 'TIT', skeleton: S, skeletonMd5: null }),
-    E('text.verse.set', 'actor-a', t(1, 0, 'actor-a'), null, { book: 'TIT', chapter: '1', verse: '1', text: 'uno\n', textMd5: null }),
-    E('text.verse.set', 'actor-a', t(1, 1, 'actor-a'), null, { book: 'TIT', chapter: '1', verse: '2', text: 'dos\n', textMd5: null }),
+    E('book.add', 'actor-a', t(0, 0, 'actor-a'), null, { book: 'TIT', scope: [], skeleton: S, initialVerses: {} }),
+    E('text.verse.set', 'actor-a', t(1, 0, 'actor-a'), null, { book: 'TIT', chapter: '1', verse: '1', text: 'uno\n' }),
+    E('text.verse.set', 'actor-a', t(1, 1, 'actor-a'), null, { book: 'TIT', chapter: '1', verse: '2', text: 'dos\n' }),
   ];
   const base11 = t(1, 0, 'actor-a');
 
-  const lin = fold([...seedEvts, E('text.verse.set', 'actor-a', t(2, 0, 'actor-a'), base11, { book: 'TIT', chapter: '1', verse: '1', text: 'uno v2\n', textMd5: null })]);
+  const lin = fold([...seedEvts, E('text.verse.set', 'actor-a', t(2, 0, 'actor-a'), base11, { book: 'TIT', chapter: '1', verse: '1', text: 'uno v2\n' })]);
   check('J4: LWW linear — later event with base=head replaces', lin.books.TIT.verses['1:1'] === 'uno v2\n' && lin.forks.length === 0);
 
-  const forkA = E('text.verse.set', 'actor-a', t(3, 0, 'actor-a'), base11, { book: 'TIT', chapter: '1', verse: '1', text: 'versión A\n', textMd5: null });
-  const forkB = E('text.verse.set', 'actor-b', t(3, 1, 'actor-b'), base11, { book: 'TIT', chapter: '1', verse: '1', text: 'versión B\n', textMd5: null });
+  const forkA = E('text.verse.set', 'actor-a', t(3, 0, 'actor-a'), base11, { book: 'TIT', chapter: '1', verse: '1', text: 'versión A\n' });
+  const forkB = E('text.verse.set', 'actor-b', t(3, 1, 'actor-b'), base11, { book: 'TIT', chapter: '1', verse: '1', text: 'versión B\n' });
   const forked = fold([...seedEvts, forkA, forkB]);
   check('J5: fork detected — same base, different actors+payloads; provisional = max ts, surfaced',
     forked.forks.length === 1 && forked.forks[0].provisional === forkB.ts && forked.books.TIT.verses['1:1'] === 'versión B\n',
@@ -176,18 +174,18 @@ const verseTextMd5Usfm = (content) => {
   const twin = fold([...seedEvts, forkA, { ...forkB, text: 'versión A\n' }]);
   check('J5: identical-content fork auto-merges (distinct events by identity, no review item)', twin.forks.length === 0 && twin.books.TIT.verses['1:1'] === 'versión A\n');
 
-  const resolve = E('text.verse.set', 'actor-c', t(4, 0, 'actor-c'), forkB.ts, { supersedes: [forkA.ts, forkB.ts], book: 'TIT', chapter: '1', verse: '1', text: 'resuelta\n', textMd5: null });
+  const resolve = E('text.verse.set', 'actor-c', t(4, 0, 'actor-c'), forkB.ts, { supersedes: [forkA.ts, forkB.ts], book: 'TIT', chapter: '1', verse: '1', text: 'resuelta\n' });
   const resolved = fold([...seedEvts, forkA, forkB, resolve]);
   check('J6: supersedes both heads resolves the fork', resolved.forks.length === 0 && resolved.books.TIT.verses['1:1'] === 'resuelta\n');
-  const continueOnly = fold([...seedEvts, forkA, forkB, E('text.verse.set', 'actor-b', t(4, 1, 'actor-b'), t(1, 1, 'actor-a'), { book: 'TIT', chapter: '1', verse: '2', text: 'x\n', textMd5: null }), E('text.verse.set', 'actor-b', t(5, 0, 'actor-b'), forkB.ts, { book: 'TIT', chapter: '1', verse: '1', text: 'B sigue\n', textMd5: null })]);
+  const continueOnly = fold([...seedEvts, forkA, forkB, E('text.verse.set', 'actor-b', t(4, 1, 'actor-b'), t(1, 1, 'actor-a'), { book: 'TIT', chapter: '1', verse: '2', text: 'x\n' }), E('text.verse.set', 'actor-b', t(5, 0, 'actor-b'), forkB.ts, { book: 'TIT', chapter: '1', verse: '1', text: 'B sigue\n' })]);
   check('J6: a plain continuing edit advances its branch but does NOT resolve the fork',
     continueOnly.forks.length === 1 && continueOnly.forks[0].heads.length === 2 && continueOnly.books.TIT.verses['1:1'] === 'B sigue\n',
     JSON.stringify(continueOnly.forks[0]?.heads));
 
-  const alignOk = E('align.verse.set', 'actor-a', t(6, 0, 'actor-a'), null, { book: 'TIT', chapter: '1', verse: '1', alignments: [], wordBank: [], targetVerseMd5: md5('uno') });
+  const alignOk = E('align.verse.set', 'actor-c', t(6, 0, 'actor-c'), null, { book: 'TIT', chapter: '1', verse: '1', alignments: [], wordBank: [], targetVerseMd5: md5('uno') });
   const st1 = fold([...seedEvts, alignOk]);
-  const st2 = fold([...seedEvts, alignOk, E('text.verse.set', 'actor-b', t(7, 0, 'actor-b'), base11, { book: 'TIT', chapter: '1', verse: '1', text: 'cambiada\n', textMd5: null })]);
-  const st3 = fold([...seedEvts, alignOk, E('text.verse.set', 'actor-b', t(7, 0, 'actor-b'), base11, { book: 'TIT', chapter: '1', verse: '1', text: 'cambiada\n', textMd5: null }), E('align.verse.set', 'actor-b', t(8, 0, 'actor-b'), alignOk.ts, { book: 'TIT', chapter: '1', verse: '1', alignments: [], wordBank: [], targetVerseMd5: md5('cambiada') })]);
+  const st2 = fold([...seedEvts, alignOk, E('text.verse.set', 'actor-b', t(7, 0, 'actor-b'), base11, { book: 'TIT', chapter: '1', verse: '1', text: 'cambiada\n' })]);
+  const st3 = fold([...seedEvts, alignOk, E('text.verse.set', 'actor-b', t(7, 0, 'actor-b'), base11, { book: 'TIT', chapter: '1', verse: '1', text: 'cambiada\n' }), E('align.verse.set', 'actor-b', t(8, 0, 'actor-b'), alignOk.ts, { book: 'TIT', chapter: '1', verse: '1', alignments: [], wordBank: [], targetVerseMd5: md5('cambiada') })]);
   check('J7: I-3 composition — valid → text edit invalidates → re-align revalidates',
     st1.invalid.length === 0 && st2.invalid.length === 1 && st3.invalid.length === 0,
     `invalid counts ${st1.invalid.length}/${st2.invalid.length}/${st3.invalid.length}`);
@@ -203,66 +201,65 @@ const verseTextMd5Usfm = (content) => {
 // ---------- J8: out-of-band reconcile ----------
 {
   const { events } = buildSeed();
-  const out = fold(events, { verseTextMd5: verseTextMd5Usfm });
+  const out = fold(events);
   const edited = out.books.TIT.usfm.replace('Pablo, siervo de Dios', 'Saulo, siervo de Dios');
   const clock = makeClock('reconciler', () => Date.parse('2026-07-07T12:00:00.000Z'));
   const recEvents = reconcileUsfm('TIT', edited, out, clock, 'reconciler');
-  const after = fold([...events, ...recEvents], { verseTextMd5: verseTextMd5Usfm });
+  const after = fold([...events, ...recEvents]);
   check('J8: reconcile emits seeded supersede; fold equals the edited file', recEvents.length === 1 && recEvents[0].seed.source === 'out-of-band-usfm' && after.books.TIT.usfm === edited && after.forks.length === 0);
-  const concurrent = mkEvent({ op: 'text.verse.set', actor: 'actor-z', ts: '2026-07-07T11:59:00.000Z|0000|actor-z', base: out.headsTs['text|TIT|1:1'], book: 'TIT', chapter: '1', verse: '1', text: 'edición concurrente\n', textMd5: null });
-  const clash = fold([...events, ...recEvents, concurrent], { verseTextMd5: verseTextMd5Usfm });
+  const concurrent = mkEvent({ op: 'text.verse.set', actor: 'actor-z', ts: '2026-07-07T11:59:00.000Z|0000|actor-z', base: out.headsTs['text|TIT|1:1'], book: 'TIT', chapter: '1', verse: '1', text: 'edición concurrente\n' });
+  const clash = fold([...events, ...recEvents, concurrent]);
   check('J8: concurrent journal edit on the same verse surfaces as a fork (never silent)', clash.forks.some((f) => f.key === 'text|TIT|1:1'));
   check('J8: alignment invalidation composes with reconcile (edited verse alignment goes stale)', after.invalid.some((i) => i.book === 'TIT' && i.verse === '1:1'));
 }
 
-// ---------- J9 + J10: convergence & sneakernet via real files ----------
+// ---------- J9 + J10: convergence & sneakernet via real sealed segments ----------
 {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-journal-'));
   const { events } = buildSeed();
-  const out0 = fold(events, { verseTextMd5: verseTextMd5Usfm });
-  const eA = mkEvent({ op: 'text.verse.set', actor: 'device-aa', ts: '2026-07-07T13:00:00.000Z|0000|device-aa', base: out0.headsTs['text|TIT|1:2'], book: 'TIT', chapter: '1', verse: '2', text: 'con la esperanza EDITADA A\n', textMd5: null });
-  const eB = mkEvent({ op: 'text.verse.set', actor: 'device-bb', ts: '2026-07-07T13:00:01.000Z|0000|device-bb', base: out0.headsTs['text|TIT|1:3'], book: 'TIT', chapter: '1', verse: '3', text: 'EDITADA B\n', textMd5: null });
+  const out0 = fold(events);
+  const eA = mkEvent({ op: 'text.verse.set', actor: 'device-aa', ts: '2026-07-07T13:00:00.000Z|0000|device-aa', base: out0.headsTs['text|TIT|1:2'], book: 'TIT', chapter: '1', verse: '2', text: 'con la esperanza EDITADA A\n' });
+  const eB = mkEvent({ op: 'text.verse.set', actor: 'device-bb', ts: '2026-07-07T13:00:01.000Z|0000|device-bb', base: out0.headsTs['text|TIT|1:3'], book: 'TIT', chapter: '1', verse: '3', text: 'EDITADA B\n' });
   const J = (d) => path.join(tmp, d, 'journal');
   for (const d of ['deviceA', 'deviceB', 'integrator']) fs.mkdirSync(J(d), { recursive: true });
-  for (const ev of events) appendEvent(path.join(J('deviceA'), 'seed-actor'), 'TIT', ev);
+  writeActionSegment(path.join(J('deviceA'), 'seed-actor'), events); // the seed action, one sealed segment
   execSync(`cp -R "${path.join(J('deviceA'), 'seed-actor')}" "${path.join(J('deviceB'), 'seed-actor')}"`);
-  appendEvent(path.join(J('deviceA'), 'device-aa'), 'TIT', eA);
-  appendEvent(path.join(J('deviceB'), 'device-bb'), 'TIT', eB);
+  writeActionSegment(path.join(J('deviceA'), 'device-aa'), [eA]);
+  writeActionSegment(path.join(J('deviceB'), 'device-bb'), [eB]);
   // sneakernet: copy both actor dirs into integrator
   for (const [d, a] of [['deviceA', 'seed-actor'], ['deviceA', 'device-aa'], ['deviceB', 'device-bb']])
     execSync(`cp -R "${path.join(J(d), a)}" "${path.join(J('integrator'), a)}"`);
-  const foldA = fold([...readUnion(J('deviceA')), ...readUnion(J('deviceB'))], { verseTextMd5: verseTextMd5Usfm });
-  const foldI = fold(readUnion(J('integrator')), { verseTextMd5: verseTextMd5Usfm });
-  const foldM = fold([...events, eA, eB], { verseTextMd5: verseTextMd5Usfm });
+  const foldA = fold([...readUnion(J('deviceA')), ...readUnion(J('deviceB'))]);
+  const foldI = fold(readUnion(J('integrator')));
+  const foldM = fold([...events, eA, eB]);
   check('J9: three-device disjoint edits converge — identical bytes, zero forks',
     foldI.books.TIT.usfm === foldM.books.TIT.usfm && foldI.forks.length === 0 && foldI.books.TIT.usfm.includes('EDITADA A') && foldI.books.TIT.usfm.includes('EDITADA B'));
   check('J10: sneakernet (file copy union) ≡ in-memory union ≡ cross-device read', deepEq(foldA, foldI) && deepEq(foldI, foldM));
 
-  // J11 on the same tmp: rotation + torn tail
+  // J11 on the same tmp: legacy NDJSON read-compat (v:1 writers do not produce this form)
   const rotDir = path.join(tmp, 'rot', 'actor-rr');
   const bigText = 'x'.repeat(64 * 1024);
   for (let i = 0; i < 20; i++)
-    appendEvent(rotDir, 'TIT', mkEvent({ op: 'text.verse.set', actor: 'actor-rr', ts: `2026-07-07T13:10:${String(i).padStart(2, '0')}.000Z|0000|actor-rr`, base: null, book: 'TIT', chapter: '1', verse: '1', text: bigText, textMd5: null }));
+    appendEventLegacy(rotDir, 'TIT', mkEvent({ op: 'text.verse.set', actor: 'actor-rr', ts: `2026-07-07T13:10:${String(i).padStart(2, '0')}.000Z|0000|actor-rr`, base: null, book: 'TIT', chapter: '1', verse: '1', text: bigText }));
   const rotFiles = fs.readdirSync(rotDir).sort();
   const rotEvents = readStream(rotDir, 'TIT');
-  check('J11: rotation past 1 MB creates 00002+; reader spans seq files in order', rotFiles.length >= 2 && rotFiles[0].endsWith('.00001.jsonl') && rotEvents.length === 20);
+  check('J11 (read-compat): legacy rotation past 1 MB spans seq files; reader reads them in order', rotFiles.length >= 2 && rotFiles[0].endsWith('.00001.jsonl') && rotEvents.length === 20);
   const lastFile = path.join(rotDir, rotFiles[rotFiles.length - 1]);
   fs.appendFileSync(lastFile, '{"v":1,"op":"text.verse.set","truncated');
-  check('J11: torn final line is ignored', readStream(rotDir, 'TIT').length === 20);
+  check('J11 (read-compat): torn final line is ignored', readStream(rotDir, 'TIT').length === 20);
   fs.appendFileSync(lastFile, '\n');
   let cThrew = false; try { readStream(rotDir, 'TIT'); } catch { cThrew = true; }
-  check('J11: invalid JSON mid-stream (newline-terminated) refuses with clear message', cThrew);
+  check('J11 (read-compat): invalid JSON mid-stream (newline-terminated) refuses with clear message', cThrew);
   fs.rmSync(tmp, { recursive: true, force: true });
 }
 
-// ---------- J12: end-to-end git — journals + fold + derived-file regeneration ----------
+// ---------- J12: end-to-end git — sealed segments + fold + derived-file regeneration ----------
 {
   const T = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-j12-'));
   const git = (args, cwd = T) => execSync(`git ${args}`, { cwd, stdio: 'pipe' }).toString();
   const { events } = buildSeed();
-  const vOpts = { verseTextMd5: verseTextMd5Usfm };
   const writeCheckpoint = (dir, evts) => {
-    const out = fold(evts, vOpts);
+    const out = fold(evts);
     fs.mkdirSync(path.join(dir, 'ingredients'), { recursive: true });
     fs.writeFileSync(path.join(dir, 'ingredients/TIT.usfm'), out.books.TIT.usfm);
     return out;
@@ -270,19 +267,19 @@ const verseTextMd5Usfm = (content) => {
   git('init -q .'); git('config user.email t@t'); git('config user.name T');
   fs.writeFileSync(path.join(T, '.gitattributes'), 'ingredients/*.usfm merge=ours\nmetadata.json merge=ours\n');
   const jdir = (actor) => path.join(T, 'ingredients/checking/journal', actor);
-  for (const ev of events) appendEvent(jdir('seed-actor'), 'TIT', ev);
+  writeActionSegment(jdir('seed-actor'), events);
   writeCheckpoint(T, readUnion(path.join(T, 'ingredients/checking/journal')));
   git('add -A'); git('commit -qm base');
-  const out0 = fold(readUnion(path.join(T, 'ingredients/checking/journal')), vOpts);
+  const out0 = fold(readUnion(path.join(T, 'ingredients/checking/journal')));
 
   git('checkout -qb actor-a');
-  appendEvent(jdir('device-aa'), 'TIT', mkEvent({ op: 'text.verse.set', actor: 'device-aa', ts: '2026-07-07T14:00:00.000Z|0000|device-aa', base: out0.headsTs['text|TIT|1:2'], book: 'TIT', chapter: '1', verse: '2', text: 'A cambió v2\n', textMd5: null }));
+  writeActionSegment(jdir('device-aa'), [mkEvent({ op: 'text.verse.set', actor: 'device-aa', ts: '2026-07-07T14:00:00.000Z|0000|device-aa', base: out0.headsTs['text|TIT|1:2'], book: 'TIT', chapter: '1', verse: '2', text: 'A cambió v2\n' })]);
   writeCheckpoint(T, readUnion(path.join(T, 'ingredients/checking/journal')));
   git('add -A'); git('commit -qm "checkpoint A"');
 
   git('checkout -q main 2>/dev/null || git checkout -q master', T); git('checkout -qb actor-b HEAD~0');
   git('checkout -q actor-b');
-  appendEvent(jdir('device-bb'), 'TIT', mkEvent({ op: 'text.verse.set', actor: 'device-bb', ts: '2026-07-07T14:00:01.000Z|0000|device-bb', base: out0.headsTs['text|TIT|1:3'], book: 'TIT', chapter: '1', verse: '3', text: 'B cambió v3\n', textMd5: null }));
+  writeActionSegment(jdir('device-bb'), [mkEvent({ op: 'text.verse.set', actor: 'device-bb', ts: '2026-07-07T14:00:01.000Z|0000|device-bb', base: out0.headsTs['text|TIT|1:3'], book: 'TIT', chapter: '1', verse: '3', text: 'B cambió v3\n' })]);
   writeCheckpoint(T, readUnion(path.join(T, 'ingredients/checking/journal')));
   git('add -A'); git('commit -qm "checkpoint B"');
 
@@ -308,7 +305,7 @@ const verseTextMd5Usfm = (content) => {
 // ---------- J15: Phase-1 sidecar seed migration (golden vs the real sample) ----------
 {
   const { events, decisionFiles, alignmentFiles, books } = buildSeed();
-  const out = fold(events, { verseTextMd5: verseTextMd5Usfm });
+  const out = fold(events);
   check('J15: seeded fold reproduces the committed USFM byte-exactly', out.books.TIT.usfm === books.TIT && out.books.JON.usfm === books.JON);
   const wantTw = decisionFiles.translationWords.decisions;
   const gotTw = out.decisions.translationWords || [];
@@ -336,22 +333,20 @@ const verseTextMd5Usfm = (content) => {
   const E = (op, actor, ts, base, extra) => mkEvent({ op, actor, ts, base, ...extra });
   const t = (s, c, a) => `2026-03-01T00:00:${String(s).padStart(2, '0')}.000Z|000${c}|${a}`;
   const seedEvts = [
-    E('book.add', 'drafter-a', t(0, 0, 'drafter-a'), null, { book: 'TIT' }),
-    E('text.skeleton.set', 'drafter-a', t(0, 1, 'drafter-a'), null, { book: 'TIT', skeleton, skeletonMd5: null }),
+    E('book.add', 'drafter-a', t(0, 0, 'drafter-a'), null, { book: 'TIT', scope: [], skeleton, initialVerses: {} }),
     ...Object.entries(verses).map(([vkey, text], i) => {
       const [chapter, verse] = vkey.split(':');
-      return E('text.verse.set', 'drafter-a', t(1, i, 'drafter-a'), null, { book: 'TIT', chapter, verse, text, textMd5: null });
+      return E('text.verse.set', 'drafter-a', t(1, i, 'drafter-a'), null, { book: 'TIT', chapter, verse, text });
     }),
   ];
   const base12 = t(1, 1, 'drafter-a'); // verse 1:2's seed event
 
   // milestone-only edit: move the section boundary out of 1:2 (re-chunking), words unchanged
-  const align12 = E('align.verse.set', 'checker-c', t(2, 0, 'checker-c'), null, { book: 'TIT', chapter: '1', verse: '2', alignments: [], wordBank: [], targetVerseMd5: verseTextMd5Usfm(verses['1:2']) });
-  const milestoneMove = E('text.verse.set', 'drafter-a', t(3, 0, 'drafter-a'), base12, { book: 'TIT', chapter: '1', verse: '2', text: 'con esperanza de vida eterna,\n', textMd5: null });
-  const wordEdit = E('text.verse.set', 'drafter-a', t(4, 0, 'drafter-a'), milestoneMove.ts, { book: 'TIT', chapter: '1', verse: '2', text: 'con esperanza VIVA de vida eterna,\n\\ts\\*\n\\p\n', textMd5: null });
-  const opts = { verseTextMd5: verseTextMd5Usfm };
-  const afterMove = fold([...seedEvts, align12, milestoneMove], opts);
-  const afterWords = fold([...seedEvts, align12, milestoneMove, wordEdit], opts);
+  const align12 = E('align.verse.set', 'checker-c', t(2, 0, 'checker-c'), null, { book: 'TIT', chapter: '1', verse: '2', alignments: [], wordBank: [], targetVerseMd5: verseTextMd5(verses['1:2']) });
+  const milestoneMove = E('text.verse.set', 'drafter-a', t(3, 0, 'drafter-a'), base12, { book: 'TIT', chapter: '1', verse: '2', text: 'con esperanza de vida eterna,\n' });
+  const wordEdit = E('text.verse.set', 'drafter-a', t(4, 0, 'drafter-a'), milestoneMove.ts, { book: 'TIT', chapter: '1', verse: '2', text: 'con esperanza VIVA de vida eterna,\n\\ts\\*\n\\p\n' });
+  const afterMove = fold([...seedEvts, align12, milestoneMove]);
+  const afterWords = fold([...seedEvts, align12, milestoneMove, wordEdit]);
   check('J16: structure-only edit (stripping an imported \\ts\\*) does NOT invalidate the verse\'s alignment (I-3 on plain text)',
     afterMove.invalid.length === 0 && !afterMove.books.TIT.verses['1:2'].includes('\\ts\\*'),
     `invalid=${afterMove.invalid.length}`);
@@ -360,11 +355,11 @@ const verseTextMd5Usfm = (content) => {
   // section save = per-verse events sharing a batch; concurrent verse edit forks; batch groups the review
   const batchTs = t(5, 0, 'drafter-a');
   const sectionSave = [
-    E('text.verse.set', 'drafter-a', t(5, 0, 'drafter-a'), t(1, 2, 'drafter-a'), { batch: batchTs, book: 'TIT', chapter: '1', verse: '3', text: 'a su tiempo REDRAFTED,\n', textMd5: null }),
-    E('text.verse.set', 'drafter-a', t(5, 1, 'drafter-a'), t(1, 3, 'drafter-a'), { batch: batchTs, book: 'TIT', chapter: '1', verse: '4', text: 'a Tito REDRAFTED.\n\\ts\\*\n\\p\n', textMd5: null }),
+    E('text.verse.set', 'drafter-a', t(5, 0, 'drafter-a'), t(1, 2, 'drafter-a'), { batch: batchTs, book: 'TIT', chapter: '1', verse: '3', text: 'a su tiempo REDRAFTED,\n' }),
+    E('text.verse.set', 'drafter-a', t(5, 1, 'drafter-a'), t(1, 3, 'drafter-a'), { batch: batchTs, book: 'TIT', chapter: '1', verse: '4', text: 'a Tito REDRAFTED.\n\\ts\\*\n\\p\n' }),
   ];
-  const concurrent = E('text.verse.set', 'checker-c', t(5, 2, 'checker-c'), t(1, 2, 'drafter-a'), { book: 'TIT', chapter: '1', verse: '3', text: 'a su debido tiempo (checked),\n', textMd5: null });
-  const merged = fold([...seedEvts, ...sectionSave, concurrent], opts);
+  const concurrent = E('text.verse.set', 'checker-c', t(5, 2, 'checker-c'), t(1, 2, 'drafter-a'), { book: 'TIT', chapter: '1', verse: '3', text: 'a su debido tiempo (checked),\n' });
+  const merged = fold([...seedEvts, ...sectionSave, concurrent]);
   const fork = merged.forks.find((f) => f.key === 'text|TIT|1:3');
   const forkBatches = fork ? fork.heads.map((ts) => [...seedEvts, ...sectionSave, concurrent].find((e) => e.ts === ts)?.batch || null) : [];
   check('J16: section save is per-verse events sharing a batch; only the double-edited verse forks',
@@ -380,10 +375,9 @@ const verseTextMd5Usfm = (content) => {
   const t = (s, c, a) => `2026-04-01T00:00:${String(s).padStart(2, '0')}.000Z|000${c}|${a}`;
   const S = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}`;
   const seedEvts = [
-    E('book.add', 'actor-a', t(0, 0, 'actor-a'), null, { book: 'TIT' }),
-    E('text.skeleton.set', 'actor-a', t(0, 1, 'actor-a'), null, { book: 'TIT', skeleton: S, skeletonMd5: null }),
-    E('text.verse.set', 'actor-a', t(1, 0, 'actor-a'), null, { book: 'TIT', chapter: '1', verse: '1', text: 'uno\n', textMd5: null }),
-    E('text.verse.set', 'actor-a', t(1, 1, 'actor-a'), null, { book: 'TIT', chapter: '1', verse: '2', text: 'dos\n', textMd5: null }),
+    E('book.add', 'actor-a', t(0, 0, 'actor-a'), null, { book: 'TIT', scope: [], skeleton: S, initialVerses: {} }),
+    E('text.verse.set', 'actor-a', t(1, 0, 'actor-a'), null, { book: 'TIT', chapter: '1', verse: '1', text: 'uno\n' }),
+    E('text.verse.set', 'actor-a', t(1, 1, 'actor-a'), null, { book: 'TIT', chapter: '1', verse: '2', text: 'dos\n' }),
   ];
 
   // settings.set: LWW per path, projected into fold output
@@ -395,18 +389,26 @@ const verseTextMd5Usfm = (content) => {
     deepEq(withSettings.settings['checkCategories.translationWords'], ['kt', 'names']) && 'ui.paneSettings' in withSettings.settings,
     JSON.stringify(withSettings.settings['checkCategories.translationWords']));
 
-  // project.meta.set reserved roots refuse
+  // project.meta.set reserved roots refuse — incl. type (never written by meta events, §8.5)
   let refused = '';
   try { fold([...seedEvts, E('project.meta.set', 'actor-a', t(4, 0, 'actor-a'), null, { path: 'ingredients.evil', value: {} })]); }
   catch (e) { refused = e.message; }
+  let refusedType = '';
+  try { fold([...seedEvts, E('project.meta.set', 'actor-a', t(4, 0, 'actor-a'), null, { path: 'type.flavorType.currentScope', value: { TIT: [] } })]); }
+  catch (e) { refusedType = e.message; }
   check('J17: project.meta.set targeting a reserved root (ingredients/format/type/meta) refuses with a clear message',
-    refused.includes('reserved root'), `"${refused.slice(0, 60)}"`);
+    refused.includes('reserved root') && refusedType.includes('reserved root'), `"${refused.slice(0, 60)}"`);
   const okMeta = fold([...seedEvts, E('project.meta.set', 'actor-a', t(4, 1, 'actor-a'), null, { path: 'identification.name.en', value: 'Renamed' })]);
   check('J17: project.meta.set on an allowed path still folds', okMeta.projectMeta['identification.name.en'] === 'Renamed');
 
-  // orphaned alignment: skeleton edit removes the verse slot → alignment invalid regardless of hash
+  // orphaned alignment: a structural change removes the verse slot WITHOUT a disposition
+  // for the alignment → the §8.6 orphan backstop reports it in invalid[]
   const align2 = E('align.verse.set', 'actor-b', t(5, 0, 'actor-b'), null, { book: 'TIT', chapter: '1', verse: '2', alignments: [], wordBank: [], targetVerseMd5: md5('dos') });
-  const dropV2 = E('text.skeleton.set', 'actor-a', t(6, 0, 'actor-a'), t(0, 1, 'actor-a'), { book: 'TIT', skeleton: `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}`, skeletonMd5: null });
+  const dropV2 = E('text.structure.apply', 'actor-a', t(6, 0, 'actor-a'), t(0, 0, 'actor-a'), {
+    book: 'TIT', skeleton: `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}`,
+    transitions: { '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: t(1, 0, 'actor-a') }] } },
+    dispositions: [],
+  });
   const okBefore = fold([...seedEvts, align2]);
   const orphaned = fold([...seedEvts, align2, dropV2]);
   check('J17: alignment on a removed verse slot is orphaned → invalid[] regardless of matching hash',
@@ -426,12 +428,8 @@ const verseTextMd5Usfm = (content) => {
     withNotes.notes.length === 2 && withNotes.notes[0].target.verse === '1' && withNotes.notes[1].target.decisionKey.startsWith('t1g7'));
 }
 
-// ---------- J18: marries Pankosmia's transport to the journal. Mirrors their PullFromDownloaded
-//   choreography (copy pristine → scratch; add editable remote → other actor; merge into scratch;
-//   check has_conflicts) exactly. Over DISJOINT per-actor journals it converges with no conflict
-//   (so their abort branch never fires); the SAME transport on a shared whole-file same-line edit
-//   conflicts (which is what their model aborts on). Proves the journal is what makes concurrent
-//   same-book editing work on top of their conflict-free transport. Evidence: docs/evidence/pankosmia-sync-model-2026-07-08.md ----------
+// ---------- J18: marries Pankosmia's transport to the journal (read-compat legacy streams
+//   as the on-disk artifact). Mirrors their PullFromDownloaded choreography exactly. ----------
 {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-j18-'));
   const git = (args, cwd) => execSync(`git ${args}`, { cwd, stdio: 'pipe' }).toString();
@@ -449,18 +447,14 @@ const verseTextMd5Usfm = (content) => {
   const skeleton = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}\\v 3 ${SLOT}1:3${SLOT}`;
   const j = (dir, actor, evs) => { const d = path.join(dir, 'ingredients/checking/journal', actor); fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, 'TIT.00001.jsonl'), evs.map((e) => JSON.stringify(mkEvent(e)) + '\n').join('')); };
   const seedLines = [
-    { op: 'book.add', actor: 'seed', ts: ts(0, 'seed'), book: 'TIT' },
-    { op: 'text.skeleton.set', actor: 'seed', ts: ts(1, 'seed'), book: 'TIT', skeleton, skeletonMd5: null },
-    { op: 'text.verse.set', actor: 'seed', ts: ts(2, 'seed'), book: 'TIT', chapter: '1', verse: '1', text: 'uno\n', textMd5: null },
-    { op: 'text.verse.set', actor: 'seed', ts: ts(3, 'seed'), book: 'TIT', chapter: '1', verse: '2', text: 'dos\n', textMd5: null },
-    { op: 'text.verse.set', actor: 'seed', ts: ts(4, 'seed'), book: 'TIT', chapter: '1', verse: '3', text: 'tres\n', textMd5: null },
+    { op: 'book.add', actor: 'seed', ts: ts(0, 'seed'), book: 'TIT', scope: [], skeleton, initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n', '1:3': 'tres\n' } },
   ];
   const base = path.join(tmp, 'base'); init(base); j(base, 'seed', seedLines); commitAll(base, 'base');
   const downloaded = path.join(tmp, 'downloaded'); cp(base, downloaded);
-  j(downloaded, 'actor-a', [{ op: 'text.verse.set', actor: 'actor-a', ts: ts(5, 'actor-a'), base: ts(3, 'seed'), book: 'TIT', chapter: '1', verse: '2', text: 'dos (A)\n', textMd5: null }]);
+  j(downloaded, 'actor-a', [{ op: 'text.verse.set', actor: 'actor-a', ts: ts(5, 'actor-a'), base: ts(0, 'seed'), book: 'TIT', chapter: '1', verse: '2', text: 'dos (A)\n' }]);
   commitAll(downloaded, 'A-edits-1_2');
   const local = path.join(tmp, 'local'); cp(base, local);
-  j(local, 'actor-b', [{ op: 'text.verse.set', actor: 'actor-b', ts: ts(5, 'actor-b'), base: ts(4, 'seed'), book: 'TIT', chapter: '1', verse: '3', text: 'tres (B)\n', textMd5: null }]);
+  j(local, 'actor-b', [{ op: 'text.verse.set', actor: 'actor-b', ts: ts(5, 'actor-b'), base: ts(0, 'seed'), book: 'TIT', chapter: '1', verse: '3', text: 'tres (B)\n' }]);
   commitAll(local, 'B-edits-1_3');
   const scratch = path.join(tmp, 'scratch'); cp(downloaded, scratch);
   const jr = merges(scratch, local);
@@ -482,10 +476,7 @@ const verseTextMd5Usfm = (content) => {
   fs.rmSync(tmp, { recursive: true, force: true });
 }
 
-// ---------- J19: repeat publication without receiving main. A full working projection and a
-//   journal-only actor publication history are deliberately separate. The actor publishes A1,
-//   main accepts B1 and regenerates, then the actor publishes A2 while still offline from B1.
-//   Receiving main rebuilds a replacement working projection instead of merging into the old one. ----------
+// ---------- J19: repeat publication without receiving main — sealed-segment publications. ----------
 {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-j19-'));
   const git = (args, cwd) => execSync(`git ${args}`, { cwd, stdio: 'pipe' }).toString();
@@ -501,12 +492,10 @@ const verseTextMd5Usfm = (content) => {
     git(`commit -qm "${message}"`, dir);
   };
   const ts = (s, actor) => `2026-06-01T00:00:${String(s).padStart(2, '0')}.000Z|0000|${actor}`;
-  const journalPath = (dir, actor) => path.join(dir, 'ingredients/checking/journal', actor, 'TIT.00001.jsonl');
-  const writeJournal = (dir, actor, events) => {
-    const target = journalPath(dir, actor);
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.writeFileSync(target, events.map((event) => JSON.stringify(mkEvent(event)) + '\n').join(''));
-  };
+  const segRel = (actor, ev) => `ingredients/checking/journal/${actor}/segments/${segmentName(ev.ts)}`;
+  // Publications are immutable sealed segments: one new segment per action, existing files untouched.
+  const publish = (dir, actor, events) =>
+    writeActionSegment(path.join(dir, 'ingredients/checking/journal', actor), events.map(mkEvent));
   const project = (dir) => {
     const out = fold(readUnion(path.join(dir, 'ingredients/checking/journal')));
     fs.mkdirSync(path.join(dir, 'ingredients'), { recursive: true });
@@ -539,43 +528,40 @@ const verseTextMd5Usfm = (content) => {
 
   const skeleton = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}\\v 3 ${SLOT}1:3${SLOT}`;
   const seed = [
-    { op: 'book.add', actor: 'seed', ts: ts(0, 'seed'), book: 'TIT' },
-    { op: 'text.skeleton.set', actor: 'seed', ts: ts(1, 'seed'), book: 'TIT', skeleton, skeletonMd5: null },
-    { op: 'text.verse.set', actor: 'seed', ts: ts(2, 'seed'), book: 'TIT', chapter: '1', verse: '1', text: 'uno\n', textMd5: null },
-    { op: 'text.verse.set', actor: 'seed', ts: ts(3, 'seed'), book: 'TIT', chapter: '1', verse: '2', text: 'dos\n', textMd5: null },
-    { op: 'text.verse.set', actor: 'seed', ts: ts(4, 'seed'), book: 'TIT', chapter: '1', verse: '3', text: 'tres\n', textMd5: null },
+    { op: 'book.add', actor: 'seed', ts: ts(0, 'seed'), book: 'TIT', scope: [], skeleton, initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n', '1:3': 'tres\n' } },
   ];
-  const a1 = { op: 'text.verse.set', actor: 'actor-a', ts: ts(5, 'actor-a'), base: ts(3, 'seed'), book: 'TIT', chapter: '1', verse: '2', text: 'dos A1\n', textMd5: null };
-  const a2 = { op: 'text.verse.set', actor: 'actor-a', ts: ts(7, 'actor-a'), base: ts(5, 'actor-a'), book: 'TIT', chapter: '1', verse: '2', text: 'dos A2\n', textMd5: null };
-  const b1 = { op: 'text.verse.set', actor: 'actor-b', ts: ts(6, 'actor-b'), base: ts(4, 'seed'), book: 'TIT', chapter: '1', verse: '3', text: 'tres B1\n', textMd5: null };
+  const a1 = { op: 'text.verse.set', actor: 'actor-a', ts: ts(5, 'actor-a'), base: ts(0, 'seed'), book: 'TIT', chapter: '1', verse: '2', text: 'dos A1\n' };
+  const a2 = { op: 'text.verse.set', actor: 'actor-a', ts: ts(7, 'actor-a'), base: ts(5, 'actor-a'), book: 'TIT', chapter: '1', verse: '2', text: 'dos A2\n' };
+  const b1 = { op: 'text.verse.set', actor: 'actor-b', ts: ts(6, 'actor-b'), base: ts(0, 'seed'), book: 'TIT', chapter: '1', verse: '3', text: 'tres B1\n' };
 
-  const base = path.join(tmp, 'base'); init(base); writeJournal(base, 'seed', seed); project(base); commitAll(base, 'base');
+  const base = path.join(tmp, 'base'); init(base); publish(base, 'seed', seed); project(base); commitAll(base, 'base');
   const main = path.join(tmp, 'integration-main'); cp(base, main);
   const workingA = path.join(tmp, 'working-a'); cp(base, workingA);
   const pubA = path.join(tmp, 'publication-a'); cp(base, pubA); git('checkout -qb actor-a', pubA);
   const pubB = path.join(tmp, 'publication-b'); cp(base, pubB); git('checkout -qb actor-b', pubB);
 
   // A1 is a full local checkpoint, then mirrored into A's publication history as a journal-only delta.
-  writeJournal(workingA, 'actor-a', [a1]); project(workingA); commitAll(workingA, 'A1 full working checkpoint');
-  writeJournal(pubA, 'actor-a', [a1]); commitAll(pubA, 'publish A1');
+  publish(workingA, 'actor-a', [a1]); project(workingA); commitAll(workingA, 'A1 full working checkpoint');
+  publish(pubA, 'actor-a', [a1]); commitAll(pubA, 'publish A1');
   const pubA1 = git('rev-parse HEAD', pubA).trim();
   const a1Paths = git('diff --name-only HEAD^ HEAD', pubA).trim().split('\n').filter(Boolean);
   const iA1 = integrate(main, pubA, 'actor-a', 'a1');
 
   // B submits while A remains offline from main.
-  writeJournal(pubB, 'actor-b', [b1]); commitAll(pubB, 'publish B1');
+  publish(pubB, 'actor-b', [b1]); commitAll(pubB, 'publish B1');
   const b1Paths = git('diff --name-only HEAD^ HEAD', pubB).trim().split('\n').filter(Boolean);
   const iB1 = integrate(main, pubB, 'actor-b', 'b1');
 
   // A continues from A1 without receiving B1. Its working projection diverges, but publication does not.
-  writeJournal(workingA, 'actor-a', [a1, a2]); project(workingA); commitAll(workingA, 'A2 full working checkpoint while offline');
-  writeJournal(pubA, 'actor-a', [a1, a2]); commitAll(pubA, 'publish A2 while offline');
+  publish(workingA, 'actor-a', [a2]); project(workingA); commitAll(workingA, 'A2 full working checkpoint while offline');
+  publish(pubA, 'actor-a', [a2]); commitAll(pubA, 'publish A2 while offline');
   const a2Paths = git(`diff --name-only ${pubA1} HEAD`, pubA).trim().split('\n').filter(Boolean);
 
-  check('J19: actor publication commits change only their owned journal paths',
-    deepEq(a1Paths, ['ingredients/checking/journal/actor-a/TIT.00001.jsonl']) &&
-    deepEq(a2Paths, ['ingredients/checking/journal/actor-a/TIT.00001.jsonl']) &&
-    deepEq(b1Paths, ['ingredients/checking/journal/actor-b/TIT.00001.jsonl']));
+  check('J19: actor publication commits add only their owned sealed segments (existing segments untouched)',
+    deepEq(a1Paths, [segRel('actor-a', a1)]) &&
+    deepEq(a2Paths, [segRel('actor-a', a2)]) &&
+    deepEq(b1Paths, [segRel('actor-b', b1)]),
+    JSON.stringify({ a1Paths, a2Paths, b1Paths }));
   check('J19: A1 then B1 integrate through disposable scratch and regenerate cleanly',
     !iA1.conflict && !iB1.conflict && iB1.out.books.TIT.verses['1:2'] === 'dos A1\n' && iB1.out.books.TIT.verses['1:3'] === 'tres B1\n',
     JSON.stringify({ a1Conflict: iA1.conflict, b1Conflict: iB1.conflict, verses: iB1.out?.books?.TIT?.verses }));
@@ -614,7 +600,8 @@ const verseTextMd5Usfm = (content) => {
 }
 
 // ---------- J20: intake is zero-trust even when git merges cleanly. Scratch validation rejects
-//   non-journal changes, edits to another actor's stream, and truncation/rewrite of accepted bytes. ----------
+//   non-journal changes, edits to another actor's stream, truncation/rewrite of accepted legacy
+//   bytes, modification of accepted sealed segments, and invalid incoming segments (§8.1). ----------
 {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-j20-'));
   const git = (args, cwd) => execSync(`git ${args}`, { cwd, stdio: 'pipe' }).toString();
@@ -650,6 +637,14 @@ const verseTextMd5Usfm = (content) => {
         continue;
       }
       if (!b) { errors.push(`deleted:${rel}`); continue; }
+      if (rel.endsWith('.action.json')) {
+        // §8.1: accepted segments are immutable; a new incoming segment MUST validate.
+        if (a) { errors.push(`segment-modified:${rel}`); continue; }
+        const r = validateSegment(b.toString('utf8'));
+        if (!r.ok) { errors.push(`segment-invalid:${rel}:${r.reason}`); continue; }
+        if (r.events.some((e) => e.actor !== actor)) errors.push(`segment-foreign-actor:${rel}`);
+        continue;
+      }
       if (a && rel.endsWith('.jsonl') && !b.subarray(0, a.length).equals(a)) errors.push(`not-append-only:${rel}`);
     }
     return errors;
@@ -662,9 +657,11 @@ const verseTextMd5Usfm = (content) => {
     return scratch;
   };
 
+  const goodSeg = sealAction([mkEvent({ op: 'settings.set', actor: 'actor-a', ts: '2026-06-02T00:00:01.000Z|0000|actor-a', path: 'ui.x', value: 1 })]);
   const base = path.join(tmp, 'base'); init(base);
   write(base, 'ingredients/checking/journal/seed/TIT.00001.jsonl', 'seed\n');
   write(base, 'ingredients/checking/journal/actor-a/TIT.00001.jsonl', 'A1\n');
+  write(base, `ingredients/checking/journal/actor-a/segments/${segmentName('2026-06-02T00:00:01.000Z|0000|actor-a')}`, goodSeg);
   write(base, 'ingredients/TIT.usfm', '\\v 1 accepted\n');
   write(base, 'metadata.json', '{"projection":"accepted"}\n');
   commitAll(base, 'accepted main');
@@ -690,7 +687,474 @@ const verseTextMd5Usfm = (content) => {
     git('rev-parse HEAD', base).trim() === mainHead && fs.readFileSync(path.join(base, 'ingredients/TIT.usfm'), 'utf8') === mainProjection,
     JSON.stringify(historyErrors));
 
+  // sealed-segment intake law: accepted segments immutable; incoming segments must validate
+  const badSegs = path.join(tmp, 'bad-segs'); cp(base, badSegs); git('checkout -qb actor-a', badSegs);
+  write(badSegs, `ingredients/checking/journal/actor-a/segments/${segmentName('2026-06-02T00:00:01.000Z|0000|actor-a')}`, goodSeg.replace('ui.x', 'ui.y'));
+  write(badSegs, `ingredients/checking/journal/actor-a/segments/${segmentName('2026-06-02T00:00:02.000Z|0000|actor-a')}`, '{"container":1,"body":"{\\"events\\":[]}","sha256":"0000"}');
+  commitAll(badSegs, 'tamper accepted segment + push invalid segment');
+  const segScratch = mergeToScratch(base, badSegs, 'actor-a', 'segs');
+  const segErrors = validateIntake(base, segScratch, 'actor-a');
+  check('J20: intake rejects modification of an accepted sealed segment and any invalid incoming segment (§8.1 asymmetric rule, incoming side)',
+    segErrors.some((e) => e.startsWith('segment-modified:')) && segErrors.some((e) => e.startsWith('segment-invalid:')) &&
+    git('rev-parse HEAD', base).trim() === mainHead,
+    JSON.stringify(segErrors));
+
   fs.rmSync(tmp, { recursive: true, force: true });
+}
+
+// ---------- J21: text.structure.apply — all-or-nothing structural actions (#65, D48) ----------
+{
+  const E = (op, actor, ts, base, extra) => mkEvent({ op, actor, ts, base, ...extra });
+  const t = (s, c, a) => `2026-08-01T00:00:${String(s).padStart(2, '0')}.000Z|000${c}|${a}`;
+  const skel3 = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 9 ${SLOT}1:9${SLOT}\\v 10 ${SLOT}1:10${SLOT}`;
+  const add = E('book.add', 'drafter-a', t(0, 0, 'drafter-a'), null, {
+    book: 'TIT', scope: [], skeleton: skel3,
+    initialVerses: { '1:1': 'uno\n', '1:9': 'nueve\n', '1:10': 'diez\n' },
+  });
+  const skelSpan = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 9-10 ${SLOT}1:9-10${SLOT}`;
+  const spanCreate = E('text.structure.apply', 'drafter-a', t(1, 0, 'drafter-a'), add.ts, {
+    book: 'TIT', skeleton: skelSpan,
+    transitions: {
+      '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: add.ts }] },
+      '1:9-10': { text: 'nueve y diez\n', sources: [{ key: '1:9', ts: add.ts }, { key: '1:10', ts: add.ts }] },
+    },
+    dispositions: [],
+  });
+  const created = fold([add, spanCreate]);
+  check('J21: span create (9,10 → 9-10) — one atomic event; merged text stated, never inferred',
+    created.pendingStructural.length === 0 && created.forks.length === 0 &&
+    created.books.TIT.verses['1:9-10'] === 'nueve y diez\n' && !('1:9' in created.books.TIT.verses) &&
+    created.books.TIT.usfm.includes('\\v 9-10 nueve y diez'),
+    JSON.stringify(Object.keys(created.books.TIT.verses)));
+
+  const spanBreak = E('text.structure.apply', 'drafter-a', t(2, 0, 'drafter-a'), spanCreate.ts, {
+    book: 'TIT', skeleton: skel3,
+    transitions: {
+      '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: spanCreate.ts }] },
+      '1:9': { text: 'nueve\n', sources: [{ key: '1:9-10', ts: spanCreate.ts }] },
+      '1:10': { text: 'diez\n', sources: [] },
+    },
+    dispositions: [],
+  });
+  const broken = fold([add, spanCreate, spanBreak]);
+  check('J21: span break (9-10 → 9,10) — the split text is stated per destination slot',
+    broken.pendingStructural.length === 0 && broken.books.TIT.verses['1:9'] === 'nueve\n' && broken.books.TIT.verses['1:10'] === 'diez\n' && !('1:9-10' in broken.books.TIT.verses));
+
+  // renumber with alignment re-key + I-3 honesty, and a mid-chain verse edit as source
+  const skel2 = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}`;
+  const skel2r = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 3 ${SLOT}1:3${SLOT}`;
+  const add2 = E('book.add', 'drafter-a', t(0, 0, 'drafter-a'), null, { book: 'TIT', scope: [], skeleton: skel2, initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n' } });
+  const align2 = E('align.verse.set', 'checker-c', t(1, 0, 'checker-c'), null, { book: 'TIT', chapter: '1', verse: '2', alignments: [], wordBank: [], targetVerseMd5: md5('dos') });
+  const renumber = (text) => E('text.structure.apply', 'drafter-a', t(2, 0, 'drafter-a'), add2.ts, {
+    book: 'TIT', skeleton: skel2r,
+    transitions: {
+      '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: add2.ts }] },
+      '1:3': { text, sources: [{ key: '1:2', ts: add2.ts }] },
+    },
+    dispositions: [{ surface: 'alignment', key: '1:2', ts: align2.ts, action: 're-key', to: '1:3' }],
+  });
+  const renumSame = fold([add2, align2, renumber('dos\n')]);
+  const renumWord = fold([add2, align2, renumber('dos CAMBIADO\n')]);
+  check('J21: renumber (2 → 3) re-keys the alignment; unchanged words stay valid (I-3 on the moved verse)',
+    !!renumSame.alignments.TIT?.['1:3'] && !renumSame.alignments.TIT?.['1:2'] && renumSame.invalid.length === 0,
+    JSON.stringify(renumSame.invalid));
+  check('J21: renumber with changed words invalidates honestly (I-3 still binds after the move)',
+    !!renumWord.alignments.TIT?.['1:3'] && renumWord.invalid.some((i) => i.verse === '1:3'));
+
+  // missing source → incomplete; pre-operation state projects unchanged
+  const ghostRef = E('text.structure.apply', 'drafter-a', t(3, 0, 'drafter-a'), add2.ts, {
+    book: 'TIT', skeleton: skel2r,
+    transitions: {
+      '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: add2.ts }] },
+      '1:3': { text: 'dos\n', sources: [{ key: '1:2', ts: '2026-08-01T00:00:09.000Z|0000|ghost-gg' }] },
+    },
+    dispositions: [],
+  });
+  const incomplete = fold([add2, ghostRef]);
+  check('J21: a missing source reference reports incomplete; the pre-operation state projects unchanged (no stubs, no partial projection)',
+    incomplete.pendingStructural.length === 1 && incomplete.pendingStructural[0].status === 'incomplete' &&
+    incomplete.books.TIT.verses['1:2'] === 'dos\n' && !('1:3' in incomplete.books.TIT.verses),
+    JSON.stringify(incomplete.pendingStructural));
+
+  // stale source head (a concurrent verse edit replaced it) → conflicted; pre-op state unchanged
+  const concurrentEdit = E('text.verse.set', 'checker-c', t(1, 5, 'checker-c'), add2.ts, { book: 'TIT', chapter: '1', verse: '2', text: 'dos (editada)\n' });
+  const staleStruct = E('text.structure.apply', 'drafter-a', t(2, 0, 'drafter-a'), add2.ts, {
+    book: 'TIT', skeleton: skel2r,
+    transitions: {
+      '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: add2.ts }] },
+      '1:3': { text: 'dos\n', sources: [{ key: '1:2', ts: add2.ts }] }, // observed head is stale now
+    },
+    dispositions: [],
+  });
+  const conflicted = fold([add2, concurrentEdit, staleStruct]);
+  check('J21: a stale source head (concurrent verse edit) reports conflicted; the pre-operation state (with the edit) projects unchanged',
+    conflicted.pendingStructural.length === 1 && conflicted.pendingStructural[0].status === 'conflicted' &&
+    conflicted.books.TIT.verses['1:2'] === 'dos (editada)\n' && !('1:3' in conflicted.books.TIT.verses),
+    JSON.stringify(conflicted.pendingStructural));
+
+  // malformed events refuse the fold
+  let noSlot = ''; let missingTr = ''; let dupClaim = '';
+  try {
+    fold([add2, E('text.structure.apply', 'drafter-a', t(2, 0, 'drafter-a'), add2.ts, {
+      book: 'TIT', skeleton: skel2r,
+      transitions: { '1:1': { text: 'uno\n', sources: [] }, '1:3': { text: 'dos\n', sources: [] }, '1:4': { text: 'extra\n', sources: [] } },
+      dispositions: [] })]);
+  } catch (e) { noSlot = e.message; }
+  try {
+    fold([add2, E('text.structure.apply', 'drafter-a', t(2, 0, 'drafter-a'), add2.ts, {
+      book: 'TIT', skeleton: skel2r, transitions: { '1:1': { text: 'uno\n', sources: [] } }, dispositions: [] })]);
+  } catch (e) { missingTr = e.message; }
+  try {
+    fold([add2, E('text.structure.apply', 'drafter-a', t(2, 0, 'drafter-a'), add2.ts, {
+      book: 'TIT', skeleton: skel2r,
+      transitions: { '1:1': { text: 'uno\n', sources: [{ key: '1:2', ts: add2.ts }] }, '1:3': { text: 'dos\n', sources: [{ key: '1:2', ts: add2.ts }] } },
+      dispositions: [] })]);
+  } catch (e) { dupClaim = e.message; }
+  check('J21: malformed structural events refuse the fold (transition outside the skeleton; a slot without a transition; one source claimed twice)',
+    noSlot.includes('transitions must cover exactly') && missingTr.includes('transitions must cover exactly') && dupClaim.includes('twice'),
+    `"${dupClaim.slice(0, 50)}"`);
+
+  // permutation determinism incl. partial arrival
+  const full = [add2, align2, renumber('dos\n')];
+  const rng = mulberry32(SEED + 21);
+  check('J21: fold determinism under permutation holds with structural events',
+    deepEq(fold(full), fold(shuffled(full, rng))) && deepEq(fold([add2, ghostRef]), fold(shuffled([add2, ghostRef], rng))));
+}
+
+// ---------- J22: structural lineage — branch-local effects, retention, sequential chains (#65 ruling) ----------
+{
+  const E = (op, actor, ts, base, extra) => mkEvent({ op, actor, ts, base, ...extra });
+  const t = (s, c, a) => `2026-08-02T00:00:${String(s).padStart(2, '0')}.000Z|000${c}|${a}`;
+  const skel = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}`;
+  const add = E('book.add', 'seed-x', t(0, 0, 'seed-x'), null, { book: 'TIT', scope: [], skeleton: skel, initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n' } });
+  const skelTo = (n) => `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v ${n} ${SLOT}1:${n}${SLOT}`;
+  const struct = (actor, ts, base, n, srcTs) => E('text.structure.apply', actor, ts, base, {
+    book: 'TIT', skeleton: skelTo(n),
+    transitions: {
+      '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: srcTs }] },
+      [`1:${n}`]: { text: 'dos\n', sources: [{ key: '1:2', ts: srcTs }] },
+    },
+    dispositions: [],
+  });
+  const E1 = struct('actor-a', t(1, 0, 'actor-a'), add.ts, 3, add.ts); // renumber 1:2 → 1:3
+  const E2 = struct('actor-b', t(2, 0, 'actor-b'), add.ts, 4, add.ts); // concurrent renumber 1:2 → 1:4
+
+  const forked = fold([add, E1, E2]);
+  check('J22: concurrent structural actions fork on the skeleton key — both heads live, review-queue material',
+    forked.forks.some((f) => f.key === 'skel|TIT') && forked.pendingStructural.length === 0,
+    JSON.stringify(forked.forks.map((f) => f.key)));
+  check('J22: fork effects are branch-local — the winner projects its own move only; the losing branch\'s move never leaks',
+    '1:4' in forked.books.TIT.verses && !('1:3' in forked.books.TIT.verses) && forked.books.TIT.verses['1:1'] === 'uno\n',
+    JSON.stringify(Object.keys(forked.books.TIT.verses)));
+  check('J22: the losing branch\'s post-images are retained for review, not silently dropped',
+    forked.retained.some((r) => r.ts === E1.ts), JSON.stringify(forked.retained.slice(0, 4)));
+
+  // edits on BOTH sides of the structural fork before resolution
+  const eA = E('text.verse.set', 'actor-a', t(3, 0, 'actor-a'), E1.ts, { book: 'TIT', chapter: '1', verse: '3', text: 'tres A\n' });
+  const eB = E('text.verse.set', 'actor-b', t(4, 0, 'actor-b'), E2.ts, { book: 'TIT', chapter: '1', verse: '4', text: 'cuatro B\n' });
+  const bothSides = fold([add, E1, E2, eA, eB]);
+  check('J22: edits on both sides of a structural fork — each descendant projects only under its own ancestor',
+    bothSides.books.TIT.verses['1:4'] === 'cuatro B\n' && !('1:3' in bothSides.books.TIT.verses),
+    JSON.stringify(bothSides.books.TIT.verses));
+  check('J22: the losing branch\'s descendants remain retained for review (excluded by ancestry, not guesswork)',
+    bothSides.retained.some((r) => r.ts === eA.ts), JSON.stringify(bothSides.retained.slice(0, 6)));
+
+  // sequential structure changes: a chain of two text.structure.apply is ordinary head lineage
+  const E1b = struct('actor-a', t(5, 0, 'actor-a'), E2.ts, 5, E2.ts); // continues E2's branch: 1:4 → 1:5
+  const chained = fold([add, E1, E2, eA, eB, { ...E1b, transitions: {
+    '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: E2.ts }] },
+    '1:5': { text: 'cuatro B\n', sources: [{ key: '1:4', ts: eB.ts }] },
+  }, skeleton: skelTo(5) }]);
+  check('J22: sequential structure changes chain as ordinary head lineage (the second bases on the first; descendants follow)',
+    chained.pendingStructural.length === 0 && chained.books.TIT.verses['1:5'] === 'cuatro B\n' && !('1:4' in chained.books.TIT.verses),
+    JSON.stringify(Object.keys(chained.books.TIT.verses)));
+
+  // note retention across a renumber: re-key disposition rewrites the target by originating ts;
+  // an undispositioned note survives untouched (grow-only — notes are permanent)
+  const n1 = E('note.add', 'checker-c', t(0, 5, 'checker-c'), null, { target: { book: 'TIT', chapter: '1', verse: '2' }, text: 'nota sobre dos' });
+  const n2 = E('note.add', 'checker-c', t(0, 6, 'checker-c'), null, { target: { book: 'TIT', chapter: '1', verse: '1' }, text: 'nota sobre uno' });
+  const E3 = E('text.structure.apply', 'actor-a', t(1, 0, 'actor-a'), add.ts, {
+    book: 'TIT', skeleton: skelTo(3),
+    transitions: {
+      '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: add.ts }] },
+      '1:3': { text: 'dos\n', sources: [{ key: '1:2', ts: add.ts }] },
+    },
+    dispositions: [{ surface: 'note', ts: n1.ts, action: 're-key', to: '1:3' }],
+  });
+  const withNotes = fold([add, n1, n2, E3]);
+  check('J22: note retention across a renumber — the dispositioned note re-keys to the new verse; the other note survives unchanged',
+    withNotes.notes.length === 2 &&
+    withNotes.notes.some((n) => n.text === 'nota sobre dos' && n.target.verse === '3') &&
+    withNotes.notes.some((n) => n.text === 'nota sobre uno' && n.target.verse === '1'),
+    JSON.stringify(withNotes.notes.map((n) => n.target)));
+
+  // slot-changing text.skeleton.set is refused — the escape hatch is closed (#65 v2)
+  let refusedSkel = '';
+  try { fold([add, E('text.skeleton.set', 'actor-a', t(1, 0, 'actor-a'), add.ts, { book: 'TIT', skeleton: skelTo(3) })]); }
+  catch (e) { refusedSkel = e.message; }
+  const okSkel = fold([add, E('text.skeleton.set', 'actor-a', t(1, 0, 'actor-a'), add.ts, { book: 'TIT', skeleton: `\\id TIT edited header\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}` })]);
+  check('J22: slot-changing text.skeleton.set refuses (use text.structure.apply); a slot-preserving header edit still folds',
+    refusedSkel.includes('slot set') && okSkel.books.TIT.usfm.startsWith('\\id TIT edited header'),
+    `"${refusedSkel.slice(0, 60)}"`);
+}
+
+// ---------- J23: sealed action segments — the §8.1 container contract ----------
+{
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-j23-'));
+  const actorDir = path.join(tmp, 'journal', 'actor-a');
+  const t = (s) => `2026-08-03T00:00:${String(s).padStart(2, '0')}.000Z|0000|actor-a`;
+  const ev = (s, verse, text) => mkEvent({ op: 'text.verse.set', actor: 'actor-a', ts: t(s), base: null, book: 'TIT', chapter: '1', verse, text });
+
+  const f1 = writeActionSegment(actorDir, [ev(1, '1', 'uno\n')]);
+  const f2 = writeActionSegment(actorDir, [ev(2, '2', 'dos\n')]);
+  const got = readSegments(actorDir);
+  check('J23: a valid segment round-trips; filenames are ts-encoded (| → .) and sort in ts order',
+    got.length === 2 && got[0].ts === t(1) && path.basename(f1) === segmentName(t(1)) &&
+    !path.basename(f1).includes('|') && [path.basename(f1), path.basename(f2)].sort()[0] === path.basename(f1),
+    path.basename(f1));
+
+  // torn write: an unparseable or checksum-failing segment is invisible AS A WHOLE
+  const seg3 = sealAction([ev(3, '3', 'tres\n'), ev(4, '4', 'cuatro\n')]);
+  const f3 = path.join(actorDir, 'segments', segmentName(t(3)));
+  fs.writeFileSync(f3, seg3.slice(0, Math.floor(seg3.length / 2)));
+  const invalids = [];
+  const gotTorn = readSegments(actorDir, (file, reason) => invalids.push(reason));
+  check('J23: a torn segment is unpublished as a whole — no partial action ever folds',
+    gotTorn.length === 2 && invalids.length === 1, JSON.stringify(invalids));
+  fs.writeFileSync(f3, seg3.replace('tres', 'trXs')); // valid JSON, wrong checksum
+  const invalids2 = [];
+  const gotBad = readSegments(actorDir, (file, reason) => invalids2.push(reason));
+  check('J23: a checksum-failing segment is invisible as a whole (parse/checksum validity IS the commit marker)',
+    gotBad.length === 2 && invalids2[0] === 'checksum', JSON.stringify(invalids2));
+  fs.rmSync(f3, { force: true });
+
+  // 4 MiB limit
+  let oversize = false;
+  try { sealAction([ev(5, '5', 'x'.repeat(SEGMENT_LIMIT))]); } catch { oversize = true; }
+  check('J23: the 4 MiB segment limit binds the writer, and an oversize file is invalid to readers',
+    oversize && validateSegment('{"container":1,"body":"' + 'x'.repeat(80) + '","sha256":"00"}').ok === false);
+
+  // multi-scope action: one segment carries _project-scope and book-scope events together
+  const skel = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}`;
+  const multi = [
+    mkEvent({ op: 'book.add', actor: 'actor-m', ts: '2026-08-03T00:01:00.000Z|0000|actor-m', book: 'TIT', scope: [], skeleton: skel, initialVerses: { '1:1': 'uno\n' } }),
+    mkEvent({ op: 'settings.set', actor: 'actor-m', ts: '2026-08-03T00:01:00.000Z|0001|actor-m', path: 'ui.pane', value: 1 }),
+    mkEvent({ op: 'project.meta.set', actor: 'actor-m', ts: '2026-08-03T00:01:00.000Z|0002|actor-m', path: 'identification.name.en', value: 'Multi' }),
+  ];
+  const mDir = path.join(tmp, 'journal', 'actor-m');
+  writeActionSegment(mDir, multi);
+  const mOut = fold(readUnion(path.join(tmp, 'journal')));
+  check('J23: multi-scope actions in ONE segment (book + settings + metadata) fold correctly',
+    mOut.books.TIT?.verses['1:1'] === 'uno\n' && mOut.settings['ui.pane'] === 1 && mOut.projectMeta['identification.name.en'] === 'Multi');
+
+  // actor binding at the directory: a segment whose events name a different actor is invalid
+  const foreign = [mkEvent({ op: 'settings.set', actor: 'actor-z', ts: '2026-08-03T00:02:00.000Z|0000|actor-z', path: 'ui.z', value: 9 })];
+  writeActionSegment(path.join(tmp, 'journal', 'actor-a2'), foreign);
+  const invalids3 = [];
+  readSegments(path.join(tmp, 'journal', 'actor-a2'), (file, reason) => invalids3.push(reason));
+  check('J23: a segment whose events name another actor than its directory is refused (actor binding, §8.3)',
+    invalids3.length === 1 && String(invalids3[0]).startsWith('actor-mismatch'), JSON.stringify(invalids3));
+  fs.rmSync(tmp, { recursive: true, force: true });
+}
+
+// ---------- J24: staged-intent (outbox) republication — exact bytes (§8.1 asymmetric rule, local side) ----------
+{
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-j24-'));
+  const actorDir = path.join(tmp, 'journal', 'actor-a');
+  const events = [
+    mkEvent({ op: 'settings.set', actor: 'actor-a', ts: '2026-08-04T00:00:01.000Z|0000|actor-a', path: 'ui.a', value: 1 }),
+    mkEvent({ op: 'settings.set', actor: 'actor-a', ts: '2026-08-04T00:00:01.000Z|0001|actor-a', path: 'ui.b', value: 2 }),
+  ];
+  const staged = sealAction(events); // the durable staged intent (outbox record — installation-local)
+  const segPath = path.join(actorDir, 'segments', segmentName(events[0].ts));
+  fs.mkdirSync(path.dirname(segPath), { recursive: true });
+  fs.writeFileSync(segPath, staged.slice(0, 25)); // crash mid-write: torn segment
+  const before = readSegments(actorDir);
+  fs.writeFileSync(segPath, staged); // recovery: republish the EXACT staged bytes
+  const after = readSegments(actorDir);
+  check('J24: a torn local segment publishes nothing; republishing the staged bytes yields a byte-identical segment and the full action',
+    before.length === 0 && after.length === 2 && fs.readFileSync(segPath, 'utf8') === staged &&
+    deepEq(fold(after), fold(events)),
+    `${before.length} → ${after.length} events`);
+  fs.rmSync(tmp, { recursive: true, force: true });
+}
+
+// ---------- J25: project.vrs.set — the immutable first-value register (§8.5) + byte-exact projection (§8.7) ----------
+{
+  const vrsBytes = fs.readFileSync(ING('vrs.json'), 'utf8');
+  const t = (s, a) => `2026-08-05T00:00:${String(s).padStart(2, '0')}.000Z|0000|${a}`;
+  const v1 = mkEvent({ op: 'project.vrs.set', actor: 'actor-a', ts: t(1, 'actor-a'), name: 'eng', bytes: vrsBytes });
+  const v1dup = mkEvent({ op: 'project.vrs.set', actor: 'actor-b', ts: t(2, 'actor-b'), name: 'eng', bytes: vrsBytes });
+  const v2 = mkEvent({ op: 'project.vrs.set', actor: 'actor-b', ts: t(3, 'actor-b'), name: 'lxx', bytes: '{"maxVerses":{}}' });
+  const first = fold([v1]);
+  const deduped = fold([v1, v1dup]);
+  const rejected = fold([v1, v1dup, v2]);
+  check('J25: the first value binds; an identical repeat de-duplicates (no conflict surfaced)',
+    first.vrs.bytes === vrsBytes && deduped.vrs.bytes === vrsBytes && deduped.vrsRejected.length === 0);
+  check('J25: ANY different second value is surfaced and never applied — regardless of actor or base (not LWW)',
+    rejected.vrs.name === 'eng' && rejected.vrs.bytes === vrsBytes && deepEq(rejected.vrsRejected, [v2.ts]),
+    JSON.stringify(rejected.vrsRejected));
+  check('J25: projection reproduces ingredients/vrs.json byte-exactly from the stored raw bytes (§8.7 derived list includes vrs.json)',
+    derivedProjections(first)['vrs.json'] === vrsBytes);
+  // creation seeding carries vrs (seed source enum gains "creation")
+  const seeded = seedFromSidecars({ actor: 'seed-actor', books: {}, vrs: { name: 'eng', bytes: vrsBytes }, source: 'creation' });
+  const seededOut = fold(seeded);
+  check('J25: the creation seed segment carries project.vrs.set with seed.source "creation"',
+    seeded[0].op === 'project.vrs.set' && seeded[0].seed.source === 'creation' && seededOut.vrs.bytes === vrsBytes);
+}
+
+// ---------- J26: the pin golden projection — events → byte-equivalent §5.3 resources.json ----------
+{
+  const sample = JSON.parse(fs.readFileSync(ING('checking/resources.json'), 'utf8'));
+  const LS = ['gatewayLanguage', 'translationNotes', 'translationWordsLinks', 'translationWords', 'translationAcademy'];
+  const t = (s, c) => `2026-08-06T00:00:${String(s).padStart(2, '0')}.${String(c).padStart(3, '0')}Z|0000|pinner-a`;
+  const events = [];
+  let n = 0;
+  const pin = (slot, entry) => events.push(mkEvent({ op: 'resource.pin.set', actor: 'pinner-a', ts: t(Math.floor(n / 60), (n++) % 60), slot, entry }));
+  for (const set of ['primary', 'fallback']) for (const slot of LS) pin(`languageSets.${set}.${slot}`, sample.languageSets[set][slot]);
+  for (const group of ['originalLanguage', 'lexicon']) for (const tk of ['nt', 'ot']) pin(`resources.${group}.${tk}`, sample.resources[group][tk]);
+  for (const extra of sample.extraScripture) pin(`extraScripture.${extra.id}`, extra);
+  const out = fold(events);
+  const projected = projectResources(out.pins);
+  // expected bytes constructed independently, in the §5.3 document's own key order
+  // (the sample's informational top-level "note" is writer metadata, not journal state)
+  const ordered = (o, keys) => Object.fromEntries(keys.filter((k) => k in o).map((k) => [k, o[k]]));
+  const expected = JSON.stringify({
+    schemaVersion: 2,
+    languageSets: { primary: ordered(sample.languageSets.primary, LS), fallback: ordered(sample.languageSets.fallback, LS) },
+    resources: { originalLanguage: ordered(sample.resources.originalLanguage, ['nt', 'ot']), lexicon: ordered(sample.resources.lexicon, ['nt', 'ot']) },
+    extraScripture: sample.extraScripture,
+  }, null, 2) + '\n';
+  check('J26: pin events project to a byte-equivalent §5.3 resources.json (the golden projection, from the real sample\'s pins)',
+    projected === expected, projected === expected ? `${projected.length} bytes` : 'byte mismatch');
+  const rng = mulberry32(SEED + 26);
+  check('J26: the pin projection is deterministic under event permutation',
+    projectResources(fold(shuffled(events, rng)).pins) === expected);
+  // removal within the pin grammar projects to absence
+  const rm = mkEvent({ op: 'resource.pin.set', actor: 'pinner-a', ts: t(50, 0), base: out.headsTs['pin|extraScripture.ust'], slot: 'extraScripture.ust', removed: true });
+  const removedOut = fold([...events, rm]);
+  const removedProj = projectResources(removedOut.pins);
+  check('J26: pin removal ({slot, removed: true}) projects to absence',
+    !('extraScripture.ust' in removedOut.pins) && removedProj.includes('"ult"') && !removedProj.includes('"ust"'));
+  // slot grammar: anything outside the §5.3 paths refuses
+  let badSlot = '';
+  try { fold([mkEvent({ op: 'resource.pin.set', actor: 'pinner-a', ts: t(51, 0), slot: 'slot0', entry: {} })]); }
+  catch (e) { badSlot = e.message; }
+  check('J26: an out-of-grammar pin slot refuses the fold (§5.3 slot grammar is the merge identity)',
+    badSlot.includes('not a §5.3 slot'), `"${badSlot.slice(0, 60)}"`);
+}
+
+// ---------- J27: removal semantics per surface (§8.5 — JSON null is not absence) ----------
+{
+  const t = (s, a) => `2026-08-07T00:00:${String(s).padStart(2, '0')}.000Z|0000|${a}`;
+  const E = (op, actor, ts, base, extra) => mkEvent({ op, actor, ts, base, ...extra });
+  const skel = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}`;
+  const add = E('book.add', 'actor-a', t(0, 'actor-a'), null, { book: 'TIT', scope: [], skeleton: skel, initialVerses: { '1:1': 'uno\n' } });
+
+  // settings + project.meta: {path, removed: true} folds to absence; projection equals never-set
+  const sSet = E('settings.set', 'actor-a', t(1, 'actor-a'), null, { path: 'ui.pane', value: 3 });
+  const sRm = E('settings.set', 'actor-a', t(2, 'actor-a'), sSet.ts, { path: 'ui.pane', removed: true });
+  const mSet = E('project.meta.set', 'actor-a', t(3, 'actor-a'), null, { path: 'identification.abbreviation.en', value: 'X' });
+  const mRm = E('project.meta.set', 'actor-a', t(4, 'actor-a'), mSet.ts, { path: 'identification.abbreviation.en', removed: true });
+  const withRm = fold([add, sSet, sRm, mSet, mRm]);
+  const never = fold([add]);
+  check('J27: settings/meta unset ({path, removed: true}) folds to absence',
+    !('ui.pane' in withRm.settings) && !('identification.abbreviation.en' in withRm.projectMeta));
+  check('J27: the projected settings document after a removal is byte-equal to one where the path was never set',
+    projectSettings(withRm.settings) === projectSettings(never.settings));
+
+  // alignment removal = explicit empty-state payload — a defined record, never absence
+  const alignSet = E('align.verse.set', 'actor-b', t(5, 'actor-b'), null, { book: 'TIT', chapter: '1', verse: '1', alignments: [{ topWords: [{ word: 'x' }], bottomWords: [] }], wordBank: [], targetVerseMd5: md5('uno') });
+  const alignEmpty = E('align.verse.set', 'actor-b', t(6, 'actor-b'), alignSet.ts, { book: 'TIT', chapter: '1', verse: '1', alignments: [], wordBank: [], targetVerseMd5: md5('uno') });
+  const emptied = fold([add, alignSet, alignEmpty]);
+  check('J27: alignment removal is the explicit empty-state payload — the record projects (empty), it does not vanish',
+    !!emptied.alignments.TIT?.['1:1'] && emptied.alignments.TIT['1:1'].alignments.length === 0 && emptied.invalid.length === 0);
+
+  // decisions are never deleted (D36): no removal op exists; invalidate-and-retain keeps the record
+  const dec = { contextId: { checkId: 'c1', reference: { bookId: 'tit', chapter: 1, verse: 1 }, occurrence: 1 }, selections: [{ text: 'uno', occurrence: 1, occurrences: 1 }], invalidated: false, status: 'valid' };
+  const dSet = E('check.decision.set', 'actor-a', t(7, 'actor-a'), null, { toolId: 'translationWords', decision: dec });
+  const dInv = E('check.decision.set', 'actor-a', t(8, 'actor-a'), dSet.ts, { toolId: 'translationWords', decision: { ...dec, invalidated: true, status: 'invalid' } });
+  const invalidated = fold([add, dSet, dInv]);
+  let noRemovalOp = '';
+  try { fold([mkEvent({ op: 'check.decision.remove', actor: 'actor-a', ts: t(9, 'actor-a') })]); } catch (e) { noRemovalOp = e.message; }
+  check('J27: decisions are never deleted — the invalidated record is retained in full, and no removal op exists in the vocabulary',
+    invalidated.decisions.translationWords.length === 1 && invalidated.decisions.translationWords[0].invalidated === true &&
+    noRemovalOp.includes('unrecognized op'));
+}
+
+// ---------- J28: actor binding + the same-actor linear rule (§8.3) ----------
+{
+  const t = (s, a) => `2026-08-08T00:00:${String(s).padStart(2, '0')}.000Z|0000|${a}`;
+  const E = (op, actor, ts, base, extra) => mkEvent({ op, actor, ts, base, ...extra });
+  let bound = '';
+  try { fold([E('settings.set', 'actor-b', t(1, 'actor-a'), null, { path: 'ui.x', value: 1 })]); }
+  catch (e) { bound = e.message; }
+  check('J28: the fold refuses an event whose actor differs from its ts actor (actor binding)',
+    bound.includes('actor binding'), `"${bound.slice(0, 60)}"`);
+
+  const skel = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}`;
+  const add = E('book.add', 'actor-a', t(0, 'actor-a'), null, { book: 'TIT', scope: [], skeleton: skel, initialVerses: { '1:1': 'uno\n' } });
+  const v1 = E('text.verse.set', 'actor-a', t(1, 'actor-a'), add.ts, { book: 'TIT', chapter: '1', verse: '1', text: 'uno v1\n' });
+  const v2stale = E('text.verse.set', 'actor-a', t(2, 'actor-a'), add.ts, { book: 'TIT', chapter: '1', verse: '1', text: 'uno v2\n' }); // stale base
+  const v3null = E('text.verse.set', 'actor-a', t(3, 'actor-a'), null, { book: 'TIT', chapter: '1', verse: '1', text: 'uno v3\n' }); // no base at all
+  const linear = fold([add, v1, v2stale, v3null]);
+  check('J28: same-actor events with a stale or missing base advance linearly — an actor never forks against itself (§8.3:334)',
+    linear.forks.length === 0 && linear.books.TIT.verses['1:1'] === 'uno v3\n',
+    JSON.stringify(linear.forks));
+  // contrast: the SAME stale base from a DIFFERENT actor still forks
+  const vB = E('text.verse.set', 'actor-b', t(4, 'actor-b'), add.ts, { book: 'TIT', chapter: '1', verse: '1', text: 'uno B\n' });
+  const crossActor = fold([add, v1, vB]);
+  check('J28: the same stale base from a different actor still forks (the rule is same-actor only)',
+    crossActor.forks.length === 1, JSON.stringify(crossActor.forks));
+}
+
+// ---------- J29: self-contained book.add — multi-key head identity + scope reconstruction (§8.5/§8.7) ----------
+{
+  const t = (s, a) => `2026-08-09T00:00:${String(s).padStart(2, '0')}.000Z|0000|${a}`;
+  const E = (op, actor, ts, base, extra) => mkEvent({ op, actor, ts, base, ...extra });
+  const skelT = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}`;
+  const skelJ = `\\id JON\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}`;
+  const addT = E('book.add', 'actor-a', t(0, 'actor-a'), null, { book: 'TIT', scope: ['1:1-2:5'], skeleton: skelT, initialVerses: { '1:1': 'uno\n' } });
+  const addJ = E('book.add', 'actor-a', t(1, 'actor-a'), null, { book: 'JON', scope: [], skeleton: skelJ, initialVerses: {} });
+  const out = fold([addT, addJ]);
+  check('J29: book.add is self-contained — one event creates the slot topology; an uncovered slot projects the ___ stub',
+    out.books.TIT.verses['1:1'] === 'uno\n' && out.books.TIT.verses['1:2'] === '___\n' && out.books.JON.verses['1:1'] === '___\n');
+  check('J29: every produced head carries the book.add ts (the multi-key head-identity rule)',
+    out.headsTs['text|TIT|1:1'] === addT.ts && out.headsTs['text|TIT|1:2'] === addT.ts && out.headsTs['skel|TIT'] === addT.ts);
+  const vB = E('text.verse.set', 'actor-b', t(2, 'actor-b'), addT.ts, { book: 'TIT', chapter: '1', verse: '2', text: 'dos B\n' });
+  const advanced = fold([addT, addJ, vB]);
+  check('J29: a subsequent event using the book.add ts as base advances linearly (no fork)',
+    advanced.forks.length === 0 && advanced.books.TIT.verses['1:2'] === 'dos B\n');
+  check('J29: a checkpoint reconstructs type.flavorType.currentScope from folded scope state (§3 rule 4 — [] and range arrays)',
+    deepEq(advanced.scope, { TIT: ['1:1-2:5'], JON: [] }));
+  let noSkel = ''; let noScope = '';
+  try { fold([E('book.add', 'actor-a', t(3, 'actor-a'), null, { book: 'TIT', scope: [] })]); } catch (e) { noSkel = e.message; }
+  try { fold([E('book.add', 'actor-a', t(3, 'actor-a'), null, { book: 'TIT', skeleton: skelT })]); } catch (e) { noScope = e.message; }
+  check('J29: book.add without skeleton or scope refuses (self-contained is mandatory)',
+    noSkel.includes('skeleton') && noScope.includes('scope'));
+}
+
+// ---------- J30: unjournaled-ingredient tolerance + whole-surface divergence detection (§8.5/§8.8) ----------
+{
+  const { events } = buildSeed();
+  const out = fold(events);
+  const projections = derivedProjections(out);
+  check('J30: the checkpoint regeneration set contains only journal-derived files — no unjournaled ingredient class appears',
+    Object.keys(projections).every((p) => !isUnjournaledIngredient(p)) &&
+    'TIT.usfm' in projections && 'checking/alignments/TIT.json' in projections && 'checking/resources.json' in projections && 'checking/settings.json' in projections,
+    JSON.stringify(Object.keys(projections)));
+  const disk = {
+    'TIT.usfm': projections['TIT.usfm'],
+    'checking/resources.json': projections['checking/resources.json'],
+    'checking/alignments/TIT.json': projections['checking/alignments/TIT.json'].replace('"schemaVersion": 1', '"schemaVersion": 1, "outOfBand": true'),
+    'audio/JON-1.mp3': 'RIFF-fake-audio-bytes',
+  };
+  const cls = classifyDivergence(disk, projections);
+  check('J30: divergence detection covers every derived shared file — an out-of-band sidecar edit is detected, never silently overwritten',
+    cls.diverged.includes('checking/alignments/TIT.json') && cls.clean.includes('TIT.usfm') && cls.clean.includes('checking/resources.json'),
+    JSON.stringify(cls.diverged));
+  check('J30: ingredients/audio/ files are tolerated — never divergence, never regenerated or deleted at checkpoint',
+    cls.tolerated.includes('audio/JON-1.mp3') && !cls.diverged.includes('audio/JON-1.mp3'));
 }
 
 console.log(`\nJournal suite: ${pass} passed, ${fail} failed (fast-check seed ${SEED})`);
