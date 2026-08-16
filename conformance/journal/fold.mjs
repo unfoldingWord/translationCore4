@@ -384,17 +384,22 @@ export const fold = (eventsIn) => {
     if (live.length === 0) return null;
     let candidates = live;
     if (!skipAncestry && chain) {
-      // §8.5 generational rule: a head with no structural ancestor belongs to the
-      // current book generation only if it was issued after the generation root
-      // (the current book.add ts) — prior-generation records quarantine, never resurrect
-      const inGeneration = (h) =>
-        h.sanc == null ? (genRoot == null || h.ts > genRoot) : chain.has(h.sanc);
-      candidates = live.filter((h) => inGeneration(h) && !isConsumed(key, h.ts, chain));
+      // §8.5 generational rule (CAUSAL): a record that carries `generation` belongs to
+      // the current book generation iff it names the current generation root — the
+      // writer's projected causal context decides, NEVER the HLC (offline edits arrive
+      // with arbitrarily later timestamps, so a ts cutoff cannot implement quarantine).
+      // A field-less head (pre-flip artifact) falls back to lineage: a structural
+      // ancestor on the chain, or a ts that postdates the generation root.
+      const inGeneration = (h) => {
+        const g = h.event.generation;
+        if (g !== undefined) return genRoot == null || g === genRoot;
+        return h.sanc != null || genRoot == null || h.ts > genRoot;
+      };
+      const inChain = (h) => h.sanc == null || chain.has(h.sanc);
+      candidates = live.filter((h) => inGeneration(h) && inChain(h) && !isConsumed(key, h.ts, chain));
       for (const h of live) {
-        if (h.sanc != null && !chain.has(h.sanc))
-          retained.push({ key, ts: h.ts, reason: 'unselected-structural-branch' });
-        else if (h.sanc == null && genRoot != null && h.ts <= genRoot)
-          retained.push({ key, ts: h.ts, reason: 'prior-generation' });
+        if (!inGeneration(h)) retained.push({ key, ts: h.ts, reason: 'prior-generation' });
+        else if (!inChain(h)) retained.push({ key, ts: h.ts, reason: 'unselected-structural-branch' });
       }
     }
     if (candidates.length === 0) return null;
@@ -468,10 +473,11 @@ export const fold = (eventsIn) => {
     const ev = h.event;
     const vkey = `${ev.chapter}:${ev.verse}`;
     // carry the COMPLETE §5.1 record: every payload field (sourceVersion, invalid, …),
-    // not a hand-picked subset — seeding must reproduce real projects byte-for-byte
+    // not a hand-picked subset — seeding must reproduce real projects byte-for-byte.
+    // `generation` is fold bookkeeping (§8.5), never part of the projected §5.1 record.
     const record = {};
     for (const k of Object.keys(ev))
-      if (!ENVELOPE.has(k) && k !== 'op' && k !== 'book' && k !== 'chapter' && k !== 'verse') record[k] = ev[k];
+      if (!ENVELOPE.has(k) && k !== 'op' && k !== 'book' && k !== 'chapter' && k !== 'verse' && k !== 'generation') record[k] = ev[k];
     ((alignments[ev.book] ||= {})[vkey]) = record;
     // orphaned if the verse has no slot in the current skeleton (§8.6 step 4 — the backstop
     // for a dependent record a structural action did not disposition)
@@ -513,12 +519,17 @@ export const fold = (eventsIn) => {
 
   const notesOut = [];
   for (const n of notes) {
-    // §8.5 generational rule for book-targeted notes: a note issued before the book's
-    // current generation root quarantines with the rest of the prior generation
+    // §8.5 generational rule for book-targeted notes: causal when the note carries
+    // `generation` (mismatch with the current root quarantines regardless of ts);
+    // the ts fallback covers field-less pre-flip artifacts only
     const nb = n.target && n.target.book;
-    if (nb && genRoots.has(nb) && n.ts <= genRoots.get(nb)) {
-      retained.push({ key: 'note', ts: n.ts, reason: 'prior-generation' });
-      continue;
+    if (nb && genRoots.has(nb)) {
+      const root = genRoots.get(nb);
+      const prior = n.generation !== undefined ? n.generation !== root : n.ts <= root;
+      if (prior) {
+        retained.push({ key: 'note', ts: n.ts, reason: 'prior-generation' });
+        continue;
+      }
     }
     notesOut.push(rewriteNote(n));
   }

@@ -1576,6 +1576,53 @@ try {
     !!gen2live.alignments.TIT?.['1:1'] && gen2live.invalid.length === 0);
 }
 
+// ---------- J29c (review round 3): generations are CAUSAL — the generation field beats the HLC (§8.5) ----------
+{
+  const E = (op, actor, ts, base, extra) => mkEvent({ op, actor, ts, base, ...extra });
+  const t = (s, c, a) => `2026-08-13T00:00:${String(s).padStart(2, '0')}.000Z|000${c}|${a}`;
+  const skel = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}`;
+  // the reviewer's exact five-step counter-sequence:
+  // 1. A creates gen-1
+  const add1 = E('book.add', 'drafter-a', t(0, 0, 'drafter-a'), null, { book: 'TIT', scope: [], skeleton: skel, initialVerses: { '1:1': 'uno\n' } });
+  // 2. offline B creates records in gen-1 (stamped with the projected generation root)
+  const dec1 = E('check.decision.set', 'checker-b', t(1, 0, 'checker-b'), null, { toolId: 'translationWords', generation: add1.ts,
+    decision: { contextId: { checkId: 'g1', reference: { bookId: 'tit', chapter: '1', verse: '1' }, occurrence: 1 }, selections: false, invalidated: false, status: 'todo' } });
+  const align1 = E('align.verse.set', 'checker-b', t(1, 1, 'checker-b'), null, { book: 'TIT', chapter: '1', verse: '1', generation: add1.ts,
+    alignments: [], wordBank: [], targetVerseMd5: md5('uno') });
+  // 3. A removes + re-adds the book (gen-2)
+  const remove = E('book.remove', 'drafter-a', t(2, 0, 'drafter-a'), add1.ts, { book: 'TIT' });
+  const add2 = E('book.add', 'drafter-a', t(3, 0, 'drafter-a'), remove.ts, { book: 'TIT', scope: [], skeleton: skel, initialVerses: { '1:1': 'nuevo\n' } });
+  // 4./5. still-offline B EDITS its gen-1 records — each carries a LATER ts than the re-add
+  const dec2 = E('check.decision.set', 'checker-b', t(4, 0, 'checker-b'), dec1.ts, { toolId: 'translationWords', generation: add1.ts,
+    decision: { contextId: { checkId: 'g1', reference: { bookId: 'tit', chapter: '1', verse: '1' }, occurrence: 1 }, selections: [{ text: 'uno', occurrence: 1 }], invalidated: false, status: 'valid' } });
+  const align2 = E('align.verse.set', 'checker-b', t(4, 1, 'checker-b'), align1.ts, { book: 'TIT', chapter: '1', verse: '1', generation: add1.ts,
+    alignments: [], wordBank: [], targetVerseMd5: md5('uno') });
+  const out = fold([add1, dec1, align1, remove, add2, dec2, align2]);
+  check('J29c: an offline later-ts EDIT of a prior-generation record never projects against gen-2 — generation mismatch quarantines REGARDLESS of ts',
+    (out.decisions.translationWords || []).length === 0 && !out.alignments.TIT?.['1:1'],
+    JSON.stringify({ decs: out.decisions, align: out.alignments.TIT }));
+  check('J29c: the later-ts prior-generation edit lands in retained[] as prior-generation (quarantine, not resurrection, not deletion)',
+    out.retained.some((r) => r.ts === dec2.ts && r.reason === 'prior-generation') &&
+    out.retained.some((r) => r.ts === align2.ts && r.reason === 'prior-generation'),
+    JSON.stringify(out.retained));
+  // a record stamped with the CURRENT generation root projects normally
+  const align3 = E('align.verse.set', 'checker-b', t(5, 0, 'checker-b'), null, { book: 'TIT', chapter: '1', verse: '1', generation: add2.ts,
+    alignments: [], wordBank: [], targetVerseMd5: md5('nuevo') });
+  const cur = fold([add1, dec1, align1, remove, add2, dec2, align2, align3]);
+  check('J29c: a record stamped with the current generation root projects, and the generation field never leaks into the projected §5.1 record',
+    !!cur.alignments.TIT?.['1:1'] && cur.alignments.TIT['1:1'].generation === undefined && cur.invalid.length === 0,
+    JSON.stringify(cur.alignments.TIT));
+  // seeding stamps the seed's own book.add ts — the seeded fold quarantines nothing
+  const seeded = seedFromSidecars({ actor: 'seed-x', books: { TIT: recompose(skel, { '1:1': 'uno\n' }) },
+    alignmentFiles: { TIT: { chapters: { 1: { 1: { alignments: [], wordBank: [], targetVerseMd5: md5('uno') } } } } },
+    decisionFiles: { translationWords: { decisions: [dec1.decision] } } });
+  const seedAdd = seeded.find((e) => e.op === 'book.add');
+  check('J29c: universal seeding stamps generation from the seed\'s own book.add — every seeded record is current-generation',
+    seeded.filter((e) => e.op === 'align.verse.set' || e.op === 'check.decision.set').every((e) => e.generation === seedAdd.ts) &&
+    fold(seeded).retained.length === 0,
+    JSON.stringify(seeded.map((e) => [e.op, e.generation])));
+}
+
 // ---------- J30: unjournaled-ingredient tolerance + whole-surface divergence detection (§8.5/§8.8) ----------
 {
   const { events } = buildSeed();

@@ -88,10 +88,13 @@ export const seedFromSidecars = ({ actor, books = {}, decisionFiles = {}, alignm
 
   if (vrs) events.push({ v: 1, op: 'project.vrs.set', actor, ts: issueAt(null), base: null, seed,
     name: vrs.name, bytes: vrs.bytes });
+  const generationOf = {}; // book -> the seed's own book.add ts (§8.5 generation root)
   for (const [book, entry] of Object.entries(books)) {
     const { usfm, scope } = typeof entry === 'string' ? { usfm: entry, scope: [] } : entry;
     const { skeleton, verses } = decompose(usfm);
-    events.push({ v: 1, op: 'book.add', actor, ts: issueAt(null), base: null, seed,
+    const ts = issueAt(null);
+    generationOf[book] = ts;
+    events.push({ v: 1, op: 'book.add', actor, ts, base: null, seed,
       book, scope, skeleton, initialVerses: verses });
   }
   if (resources) {
@@ -118,10 +121,12 @@ export const seedFromSidecars = ({ actor, books = {}, decisionFiles = {}, alignm
     for (const [path, value] of Object.entries(meta))
       events.push({ v: 1, op: 'project.meta.set', actor, ts: issueAt(null), base: null, seed, path, value });
   }
+  // seeded records stamp `generation` = the seed's own book.add ts (§8.5/§8.8)
   for (const [toolId, file] of Object.entries(decisionFiles)) {
     for (const decision of file.decisions) {
+      const book = String(decision.contextId.reference.bookId).toUpperCase();
       events.push({ v: 1, op: 'check.decision.set', actor, ts: issueAt(decision.modifiedTimestamp),
-        base: null, seed, toolId, decision });
+        base: null, seed, toolId, generation: generationOf[book], decision });
     }
   }
   for (const [book, file] of Object.entries(alignmentFiles)) {
@@ -130,7 +135,7 @@ export const seedFromSidecars = ({ actor, books = {}, decisionFiles = {}, alignm
         // spread the COMPLETE §5.1 record — sourceVersion, invalid, and any future
         // additive-optional field ride through the journal unchanged
         events.push({ v: 1, op: 'align.verse.set', actor, ts: issueAt(null), base: null, seed,
-          book, chapter, verse, ...rec });
+          book, chapter, verse, generation: generationOf[book], ...rec });
       }
     }
   }
