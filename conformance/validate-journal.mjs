@@ -11,8 +11,8 @@ import { SLOT, decompose, recompose } from './journal/skeleton.mjs';
 import { fold, verseTextMd5, slotKeysOf } from './journal/fold.mjs';
 import { reconcileUsfm, seedFromSidecars } from './journal/reconcile.mjs';
 import {
-  sealAction, writeActionSegment, validateSegment, segmentName, readSegments,
-  readUnion, SEGMENT_LIMIT,
+  sealAction, writeActionSegment, validateSegment, validateActorDoc, segmentName,
+  readSegments, readUnion, SEGMENT_LIMIT,
 } from './journal/files.mjs';
 import * as filesAll from './journal/files.mjs';
 const republishSegment = filesAll.republishSegment
@@ -865,9 +865,10 @@ try {
         continue;
       }
       if (sub === 'actor.json') {
-        let doc = null;
-        try { doc = JSON.parse(b.toString('utf8')); } catch { /* malformed */ }
-        if (!doc || doc.schemaVersion !== 1 || doc.actorId !== actor) errors.push(`actor-json-invalid:${rel}`);
+        // the ONE shared actor-metadata validator (round 7) — the same one the live
+        // transport intake applies: shape validated, actorId must match the directory
+        const a = validateActorDoc(b.toString('utf8'), actor);
+        if (!a.ok) errors.push(`actor-json-invalid:${rel}:${a.reason}`);
         continue;
       }
       errors.push(`not-whitelisted:${rel}`);

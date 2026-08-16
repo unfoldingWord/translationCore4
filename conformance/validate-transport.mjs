@@ -10,7 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import { fold } from './journal/fold.mjs';
-import { readUnion, writeActionSegment, sealAction, validateSegment, segmentName } from './journal/files.mjs';
+import { readUnion, writeActionSegment, sealAction, validateSegment, validateActorDoc, segmentName } from './journal/files.mjs';
 import { SLOT } from './journal/skeleton.mjs';
 
 const API = process.env.RIG_API || 'http://127.0.0.1:19998/api';
@@ -241,7 +241,13 @@ const run = async () => {
     const segRe = new RegExp(`^${allowedPrefix}segments/[^/]+\\.action\\.json$`.replaceAll('/', '\\/'));
     for (const f of changed.filter((x) => x.startsWith(allowedPrefix))) {
       if (fs.existsSync(path.join(dirOf(P), f))) { bad.push(`${f} (modifies an accepted segment — immutable, §8.1)`); continue; }
-      if (f === `${allowedPrefix}actor.json`) continue;
+      if (f === `${allowedPrefix}actor.json`) {
+        // §8.7: actor.json must PARSE and validate — shape + actorId = directory
+        // (the same validator J20's in-process intake applies; round 7 unification)
+        const a = validateActorDoc(git(`show HEAD:"${f}"`, S), incomingActor);
+        if (!a.ok) bad.push(`${f} (invalid actor.json: ${a.reason})`);
+        continue;
+      }
       if (!segRe.test(f)) { bad.push(`${f} (not a whitelisted shape)`); continue; }
       const bytes = git(`show HEAD:"${f}"`, S);
       const r = validateSegment(bytes);
@@ -264,6 +270,13 @@ const run = async () => {
       fs.writeFileSync(path.join(sdir, segmentName(ts(9, 'actor-a'))),
         sealAction([mkEvent({ op: 'settings.set', actor: 'actor-a', ts: ts(9, 'actor-a'), path: 'ui.x', value: 9 })]).slice(0, 40)); // torn
     }],
+    // §8.7: actor.json is whitelisted ONLY when its shape validates and its actorId
+    // matches the directory (round 7 — the intake must PARSE it, never wave it through)
+    ['malformed actor.json', (d) => fs.writeFileSync(
+      path.join(d, 'ingredients/checking/journal/actor-a/actor.json'), '{not json')],
+    ['actor.json actorId mismatch', (d) => fs.writeFileSync(
+      path.join(d, 'ingredients/checking/journal/actor-a/actor.json'),
+      JSON.stringify({ schemaVersion: 1, actorId: 'actor-b', displayName: 'imposter' }) + '\n')],
   ];
   let t4ok = true, t4detail = [];
   for (const [label, sabotage] of evilCases) {
@@ -284,7 +297,7 @@ const run = async () => {
     t4ok = t4ok && rejected && mainIntact;
     t4detail.push(`${label}:${rejected ? 'rejected' : 'MISSED'}`);
   }
-  check('T4: zero-trust intake rejects shared-file / foreign-segment / rewrite / invalid-segment contributions; main byte-identical',
+  check('T4: zero-trust intake rejects shared-file / foreign-segment / rewrite / invalid-segment / malformed- and mismatched-actor.json contributions; main byte-identical',
     t4ok, t4detail.join(' · '));
 
   console.log(`\nTransport rig: ${pass} passed, ${fail} failed (server ${API}, pankosmia_web ${v.json?.pkg_version})`);

@@ -86,6 +86,18 @@ export const republishSegment = (actorDir, stagedBytes) => {
   return file;
 };
 
+// Validate one actor.json's bytes against §8.1/§8.7 — ONE validator (round 7), shared by
+// the in-process intake (J20) and the live transport intake: the shape MUST validate
+// ({schemaVersion: 1, actorId, …}) and actorId MUST match the actor directory.
+export const validateActorDoc = (raw, actorId) => {
+  let doc;
+  try { doc = JSON.parse(String(raw)); } catch { return { ok: false, reason: 'parse' }; }
+  if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return { ok: false, reason: 'shape' };
+  if (doc.schemaVersion !== 1) return { ok: false, reason: 'schema-version' };
+  if (doc.actorId !== actorId) return { ok: false, reason: `actor-mismatch:${doc.actorId}` };
+  return { ok: true, doc };
+};
+
 // Validate one segment's bytes. Parse outer → container:1 → sha256 over the exact body
 // string's UTF-8 bytes → parse body → events array. Any failure = the WHOLE segment is
 // unpublished (§8.1: parse/checksum validity IS the commit marker).
