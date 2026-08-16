@@ -6,6 +6,7 @@ import { createRequire } from 'module';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { scopeError } from './journal/grammar.mjs';
 
 const require = createRequire(import.meta.url);
 const usfmjs = require('usfm-js');
@@ -108,8 +109,9 @@ const metadata = json(path.join(BURRITO, 'metadata.json'));
 
   // Scope grammar (§3 rules 4-5): a scope value is an array; [] = whole book (the default);
   // each element is a range string  C | C-C | C:V | C:V-V | C:V-C:V .
-  const RANGE = /^\d+(:\d+)?(-\d+(:\d+)?)?$/;
-  const validScope = v => Array.isArray(v) && v.every(r => typeof r === 'string' && RANGE.test(r));
+  // ONE grammar (round 8): the same `scopeError` the §8.5 `book.add` schema applies, so a
+  // stored scope and a journaled scope can never be judged by two different rules.
+  const validScope = v => scopeError(v) === null;
   const allScopes = [
     ...Object.values(metadata.type.flavorType.currentScope),
     ...Object.values(metadata.ingredients).map(e => e.scope).filter(Boolean).flatMap(s => Object.values(s)),

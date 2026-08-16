@@ -4,65 +4,68 @@
 // by the fold — writer-symmetric by construction, total over malformed input (element
 // nulls included). SHAPE lives here; semantic rules (liveness, chains, applicability,
 // affected sets) stay in the fold.
+//
+// Round 8: every CONSTRAINED PRIMITIVE is validated by its named grammar in
+// grammar.mjs — the one value-grammar module. This file composes those grammars into
+// per-op payload rules and hand-rolls no character test of its own. A primitive checked
+// for TYPE but not for GRAMMAR, flowing into a structural position (a path, an identity
+// key, a prototype-chain traversal, Burrito metadata), was the defect class of round 8.
 import { slotKeysOf } from './skeleton.mjs';
-import { isTs } from './hlc.mjs';
+import {
+  isStr, isObj, isTs, identityKeyOf, identityKeyError, identityPartError, decisionKeyError,
+  bookIdError, bookIdLowerError, toolIdError, verseSlotError, scopeError, dottedPathError,
+  pinSlotError, jsonSafeNumberError, jsonRoundTripError, META_RESERVED_ROOTS, PIN_SLOT_RE,
+} from './grammar.mjs';
 
-const isStr = (v) => typeof v === 'string';
-const isObj = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
-const isScalar = (v) => isStr(v) || typeof v === 'number'; // identity-key parts (chapter, verse, occurrence)
+// Re-exported for importers that already read the identity-key pair from the schema.
+export { identityKeyOf, identityKeyError, META_RESERVED_ROOTS, PIN_SLOT_RE };
+
+// The register key a (chapter, verse) pair forms: `<chapter>:<verse>` (§8.4 slot key).
+// ONE rule for every op that keys a record by verse — text, alignment, decision, note.
+const verseRefError = (chapter, verse) => {
+  const c = identityPartError(chapter); if (c) return `chapter ${c}`;
+  const v = identityPartError(verse);   if (v) return `verse ${v}`;
+  return verseSlotError(`${chapter}:${verse}`);
+};
 
 // ONE §5.1 alignment-record validator (round 7) — SHARED by align.verse.set events and
 // structural replace post-states (§8.5). Every field the fold dereferences has a rule:
 // chapter/verse build the register key, targetVerseMd5 carries I-3, alignments/wordBank
 // are the record body.
-const alignmentRecordError = (r) =>
-  !isObj(r) ? 'is not an object'
-  : !isScalar(r.chapter) || !isScalar(r.verse) ? 'chapter/verse must be a string or number'
-  : !Array.isArray(r.alignments) ? 'without an alignments array'
-  : !Array.isArray(r.wordBank) ? 'without a wordBank array'
-  : !isStr(r.targetVerseMd5) ? 'without targetVerseMd5 (I-3)'
-  : null;
-
-// The §5.2 identity-key STRING — ONE serializer + ONE grammar validator pair (round 7
-// internal pre-pass), so the serialized form and its validation can never drift. The
-// five-part form checkId|bookId|chapter|verse|occurrence appears in note targets
-// ({decisionKey}), note re-key destinations, and (toolId-prefixed) decision
-// disposition keys; the fold's identity keys are built from the same serializer.
-export const identityKeyOf = (contextId) =>
-  [contextId.checkId, contextId.reference.bookId, contextId.reference.chapter,
-   contextId.reference.verse, contextId.occurrence].join('|');
-export const identityKeyError = (s) => {
-  if (!isStr(s)) return 'is not a string';
-  const parts = s.split('|');
-  if (parts.length !== 5)
-    return `is not the five-part §5.2 form checkId|bookId|chapter|verse|occurrence (${parts.length} part${parts.length === 1 ? '' : 's'})`;
-  if (parts.some((p) => p === '')) return 'has an empty §5.2 identity part';
+const alignmentRecordError = (r) => {
+  if (!isObj(r)) return 'is not an object';
+  const k = verseRefError(r.chapter, r.verse);
+  if (k) return `chapter/verse do not form a §8.4 register key — ${k}`;
+  if (!Array.isArray(r.alignments)) return 'without an alignments array';
+  if (!Array.isArray(r.wordBank)) return 'without a wordBank array';
+  if (!isStr(r.targetVerseMd5)) return 'without targetVerseMd5 (I-3)';
   return null;
 };
 
 // ONE §5.2 decision-record validator (round 7) — SHARED by check.decision.set events and
 // structural replace post-states. Every field the fold dereferences has a rule:
 // contextId.checkId + occurrence + reference.{bookId, chapter, verse} form the identity
-// key; bookId also resolves the record's book (generation quarantine, affected sets).
+// key (§5.2), so each part carries the identity-part grammar (non-empty, delimiter-free)
+// — which is what makes identityKeyOf's output valid BY CONSTRUCTION.
 const decisionRecordError = (d) => {
   if (!isObj(d)) return 'is not an object';
   const c = d.contextId;
   if (!isObj(c)) return 'without a contextId object';
-  if (!isStr(c.checkId)) return 'contextId.checkId must be a string';
-  if (!isScalar(c.occurrence)) return 'contextId.occurrence must be a string or number';
+  const ck = identityPartError(c.checkId);
+  if (ck) return `contextId.checkId ${ck}`;
+  // I-2: occurrence is an integer (and an integer survives JSON unchanged)
+  const oc = jsonSafeNumberError(c.occurrence, { integer: true });
+  if (oc) return `contextId.occurrence ${oc}`;
   const r = c.reference;
   if (!isObj(r)) return 'without a contextId.reference object';
-  if (!isStr(r.bookId)) return 'contextId.reference.bookId must be a string';
-  if (!isScalar(r.chapter) || !isScalar(r.verse)) return 'contextId.reference.chapter/verse must be a string or number';
+  const b = bookIdLowerError(r.bookId);
+  if (b) return `contextId.reference.bookId ${b}`;
+  const k = verseRefError(r.chapter, r.verse);
+  if (k) return `contextId.reference.chapter/verse do not form a §8.4 register key — ${k}`;
   return null;
 };
 // §8.3 seed provenance enum
 const SEED_SOURCES = new Set(['creation', 'sidecar-migration', 'out-of-band-usfm', 'tc3-import']);
-
-// §8.5: derived/fixed metadata roots a project.meta.set may never target.
-export const META_RESERVED_ROOTS = new Set(['format', 'ingredients', 'type', 'meta']);
-// §8.5: the pin slot grammar is the §5.3 document's own paths — anything else refuses.
-export const PIN_SLOT_RE = /^(languageSets\.(primary|fallback)\.(gatewayLanguage|translationNotes|translationWordsLinks|translationWords|translationAcademy)|resources\.(originalLanguage|lexicon)\.(nt|ot)|extraScripture\.[A-Za-z0-9_-]+)$/;
 
 // §8.5 disposition schema: surface and action are closed enums; re-key requires a
 // destination among the mapping's targets (or a §5.2 identity key, for notes);
@@ -76,10 +79,14 @@ const dispositionError = (d, newSlots) => {
   if (!isTs(d.ts)) return `disposition record reference "${d.ts}" is not an §8.2 HLC ts`;
   if ((d.surface === 'alignment' || d.surface === 'decision') && !isStr(d.key))
     return `disposition (${d.surface}) without a key`;
+  if (d.surface === 'alignment') {
+    // the key IS the alignment register key — the same §8.4 slot grammar everywhere
+    const err = verseSlotError(d.key);
+    if (err) return `disposition (alignment) key ${err}`;
+  }
   if (d.surface === 'decision') {
     // the key is toolId + the §5.2 identity-key string — the same grammar everywhere
-    const i = d.key.indexOf('|');
-    const err = i < 1 ? 'is missing the toolId prefix' : identityKeyError(d.key.slice(i + 1));
+    const err = decisionKeyError(d.key);
     if (err) return `disposition (decision) key "${d.key}" ${err} — must be toolId|checkId|bookId|chapter|verse|occurrence`;
   }
   if (d.action === 're-key') {
@@ -118,18 +125,21 @@ const dispositionError = (d, newSlots) => {
 };
 
 // Per-op payload validators (the §8.5 table, one row each). Return an error string or null.
+// Every `book` field carries the §2 canonical book grammar: it becomes an ingredient path
+// (`<BOOK>.usfm`, `checking/alignments/<BOOK>.json`) at checkpoint (§8.7).
 const OPS = {
-  'text.verse.set': (e) =>
-    !isStr(e.book) ? 'text.verse.set without book'
-    : !isScalar(e.chapter) || !isScalar(e.verse) ? 'text.verse.set chapter/verse must be a string or number'
-    : !isStr(e.text) ? 'text.verse.set without text'
-    : null,
-  'text.skeleton.set': (e) =>
-    !isStr(e.book) ? 'text.skeleton.set without book'
-    : !isStr(e.skeleton) ? 'text.skeleton.set without skeleton'
-    : null,
+  'text.verse.set': (e) => {
+    const b = bookIdError(e.book); if (b) return `text.verse.set book ${b}`;
+    const k = verseRefError(e.chapter, e.verse);
+    if (k) return `text.verse.set chapter/verse do not form a §8.4 register key — ${k}`;
+    return !isStr(e.text) ? 'text.verse.set without text' : null;
+  },
+  'text.skeleton.set': (e) => {
+    const b = bookIdError(e.book); if (b) return `text.skeleton.set book ${b}`;
+    return !isStr(e.skeleton) ? 'text.skeleton.set without skeleton' : null;
+  },
   'text.structure.apply': (e) => {
-    if (!isStr(e.book)) return 'text.structure.apply without book';
+    const b = bookIdError(e.book); if (b) return `text.structure.apply book ${b}`;
     if (!isStr(e.skeleton)) return 'text.structure.apply without skeleton';
     if (!isObj(e.transitions)) return 'text.structure.apply without transitions';
     if (!Array.isArray(e.dispositions)) return 'text.structure.apply without dispositions';
@@ -144,8 +154,10 @@ const OPS = {
       if (!isObj(tr) || !isStr(tr.text) || !Array.isArray(tr.sources ?? []))
         return `text.structure.apply transition "${dest}" must state its final text`;
       for (const src of tr.sources || []) {
-        if (!isObj(src) || !isStr(src.key) || !isTs(src.ts))
+        if (!isObj(src) || !isTs(src.ts))
           return `text.structure.apply transition "${dest}" carries a malformed source reference (key + §8.2 HLC ts required)`;
+        const sk = verseSlotError(src.key); // a source key IS a §8.4 register key
+        if (sk) return `text.structure.apply transition "${dest}" source key ${sk}`;
         const c = `${src.key}|${src.ts}`;
         if (claimed.has(c)) return `text.structure.apply claims source ${c} twice`;
         claimed.add(c);
@@ -162,22 +174,35 @@ const OPS = {
     }
     return null;
   },
-  'book.add': (e) =>
-    !isStr(e.book) ? 'book.add without book'
-    : !isStr(e.skeleton) ? 'book.add without a skeleton (§8.5 self-contained)'
-    : !Array.isArray(e.scope) ? 'book.add without a scope array (§8.5)'
-    : e.initialVerses !== undefined && !isObj(e.initialVerses) ? 'book.add initialVerses must be an object'
-    : e.initialVerses !== undefined && Object.values(e.initialVerses).some((v) => !isStr(v))
-      ? 'book.add initialVerses values must be strings (projected verse content)'
-    : null,
-  'book.remove': (e) => (!isStr(e.book) ? 'book.remove without book' : null),
+  'book.add': (e) => {
+    const b = bookIdError(e.book); if (b) return `book.add book ${b}`;
+    if (!isStr(e.skeleton)) return 'book.add without a skeleton (§8.5 self-contained)';
+    const s = scopeError(e.scope);
+    if (s) return `book.add scope ${s}`; // §3 rule 4 — the value projects into currentScope
+    if (e.initialVerses !== undefined) {
+      if (!isObj(e.initialVerses)) return 'book.add initialVerses must be an object';
+      // §8.5: initialVerses maps SLOT KEYS of the supplied skeleton to initial content —
+      // a key that is not a slot of this skeleton names no verse head and never projects.
+      const slots = new Set(slotKeysOf(e.skeleton));
+      for (const [k, v] of Object.entries(e.initialVerses)) {
+        if (!slots.has(k)) return `book.add initialVerses key "${k}" is not a slot of the supplied skeleton (§8.5)`;
+        if (!isStr(v)) return 'book.add initialVerses values must be strings (projected verse content)';
+      }
+    }
+    return null;
+  },
+  'book.remove': (e) => {
+    const b = bookIdError(e.book);
+    return b ? `book.remove book ${b}` : null;
+  },
   'align.verse.set': (e) => {
-    if (!isStr(e.book)) return 'align.verse.set without book';
+    const b = bookIdError(e.book); if (b) return `align.verse.set book ${b}`;
     const err = alignmentRecordError(e); // the SAME §5.1 validator replace post-states use
     return err ? `align.verse.set ${err} — must carry a complete §5.1 record` : null;
   },
   'check.decision.set': (e) => {
-    if (!isStr(e.toolId)) return 'check.decision.set without toolId';
+    const t = toolIdError(e.toolId); // closed set — it becomes checking/<toolId>/<BOOK>.json
+    if (t) return `check.decision.set toolId ${t}`;
     const err = decisionRecordError(e.decision); // the SAME §5.2 validator replace post-states use
     return err ? `check.decision.set decision ${err} — must carry a complete §5.2 record` : null;
   },
@@ -187,8 +212,11 @@ const OPS = {
     const isVerse = tg.book != null && tg.chapter != null && tg.verse != null;
     const isDec = isStr(tg.decisionKey);
     if (isVerse === isDec) return 'note.add target must be exactly one of {book, chapter, verse} or {decisionKey}';
-    if (isVerse && (!isStr(tg.book) || !isScalar(tg.chapter) || !isScalar(tg.verse)))
-      return 'note.add verse target must carry {book: string, chapter/verse: string or number}';
+    if (isVerse) {
+      const b = bookIdError(tg.book); if (b) return `note.add target book ${b}`;
+      const k = verseRefError(tg.chapter, tg.verse);
+      if (k) return `note.add target chapter/verse do not form a §8.4 register key — ${k}`;
+    }
     if (isDec) {
       const err = identityKeyError(tg.decisionKey); // the ONE §5.2 identity-key grammar
       if (err) return `note.add decisionKey "${tg.decisionKey}" ${err}`;
@@ -196,19 +224,23 @@ const OPS = {
     if (!isStr(e.text)) return 'note.add without text';
     return null;
   },
-  'resource.pin.set': (e) =>
-    !PIN_SLOT_RE.test(String(e.slot)) ? `resource.pin.set slot "${e.slot}" is not a §5.3 slot`
-    : e.removed !== true && e.entry === undefined ? 'resource.pin.set without entry (or removed: true)'
-    : null,
-  'project.meta.set': (e) =>
-    !isStr(e.path) ? 'project.meta.set without path'
-    : META_RESERVED_ROOTS.has(e.path.split('.')[0]) ? `project.meta.set targets reserved root "${e.path}"`
-    : e.removed !== true && e.value === undefined ? 'project.meta.set without value (or removed: true)'
-    : null,
-  'settings.set': (e) =>
-    !isStr(e.path) ? 'settings.set without path'
-    : e.removed !== true && e.value === undefined ? 'settings.set without value (or removed: true)'
-    : null,
+  'resource.pin.set': (e) => {
+    const s = pinSlotError(e.slot);
+    if (s) return `resource.pin.set slot ${s}`;
+    return e.removed !== true && e.entry === undefined ? 'resource.pin.set without entry (or removed: true)' : null;
+  },
+  'project.meta.set': (e) => {
+    // the dotted path is a WRITE TARGET in metadata.json — §8.5 reserved roots AND the
+    // prototype-chain segments are refused by the ONE dotted-path grammar
+    const p = dottedPathError(e.path, { reservedRoots: META_RESERVED_ROOTS });
+    if (p) return `project.meta.set path ${p}`;
+    return e.removed !== true && e.value === undefined ? 'project.meta.set without value (or removed: true)' : null;
+  },
+  'settings.set': (e) => {
+    const p = dottedPathError(e.path);
+    if (p) return `settings.set path ${p}`;
+    return e.removed !== true && e.value === undefined ? 'settings.set without value (or removed: true)' : null;
+  },
   'project.vrs.set': (e) =>
     !isStr(e.name) ? 'project.vrs.set without name'
     : !isStr(e.bytes) ? 'project.vrs.set carries no raw bytes'
@@ -226,6 +258,12 @@ export const validateEvent = (e) => {
   if (!isObj(e)) return 'event is not an object (event-shape)';
   if (e.v !== 1) return `unknown envelope version v=${e.v}`;
   if (!OPS[e.op]) return `unrecognized op "${e.op}"`;
+  // A sealed action is JSON TEXT. A value that does not survive JSON.stringify →
+  // JSON.parse unchanged (NaN, Infinity, -0, an undefined array element) makes the
+  // writer's own reader disagree with the writer — the round-8 asymmetry class.
+  // ONE recursive rule, before any field-level check.
+  const jr = jsonRoundTripError(e);
+  if (jr) return `event does not survive a JSON round trip: ${jr}`;
   if (!isTs(e.ts)) return `event ts "${e.ts}" is not an §8.2 HLC string (fixed-width ISO | 4-hex | [a-z0-9-]{4,32})`;
   if (!isStr(e.actor)) return 'event without actor';
   if (e.ts.split('|')[2] !== e.actor)

@@ -8,6 +8,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { validateAction } from './schema.mjs';
+import { actorSlugError, isoInstantError, ipathError, isStr, isObj } from './grammar.mjs';
 
 const sha256 = (s) => crypto.createHash('sha256').update(s, 'utf8').digest('hex');
 export const SEGMENT_LIMIT = 4 * 1024 * 1024; // 4 MiB (§8.1)
@@ -21,12 +22,16 @@ export const segmentName = (ts) => `${String(ts).replaceAll(':', '_').replaceAll
 export const segmentTs = (name) =>
   String(name).replace(/\.action\.json$/, '').replaceAll(',', '|').replaceAll('_', ':');
 
-// Defense in depth (§8.1, round 6): the final segment path MUST resolve strictly inside
-// the actor's segments directory — independent of the schema's §8.2 ts grammar, a
-// ts-shaped value can never smuggle a filesystem path past the writer.
+// Defense in depth (§8.1, round 6; extended round 8): the final segment path MUST
+// resolve strictly inside the actor's segments directory AND the encoded filename MUST
+// satisfy the §2 ingredient-path segment grammar — independent of the schema's §8.2 ts
+// grammar, a ts-shaped value can never smuggle a filesystem path past the writer.
 export const segmentPathFor = (actorDir, ts) => {
+  const name = segmentName(ts);
+  const nameErr = ipathError(name);
+  if (nameErr) throw new Error(`segment name for ts "${ts}" ${nameErr} — refuse to write (§2/§8.1)`);
   const dir = path.resolve(actorDir, 'segments');
-  const file = path.resolve(dir, segmentName(ts));
+  const file = path.resolve(dir, name);
   if (path.dirname(file) !== dir)
     throw new Error(`segment path for ts "${ts}" escapes the actor segments directory — refuse to write (§8.1)`);
   return file;
@@ -87,14 +92,23 @@ export const republishSegment = (actorDir, stagedBytes) => {
 };
 
 // Validate one actor.json's bytes against §8.1/§8.7 — ONE validator (round 7), shared by
-// the in-process intake (J20) and the live transport intake: the shape MUST validate
-// ({schemaVersion: 1, actorId, …}) and actorId MUST match the actor directory.
+// the in-process intake (J20) and the live transport intake. §8.1 records
+// `{schemaVersion: 1, actorId, displayName, device, createdAt}`, `displayName`/`device`
+// OPTIONAL. Round 8: the actorId carries the §8.1 SLUG GRAMMAR (it is a directory name —
+// a structural position), `createdAt` is REQUIRED and is a fixed-width ISO-8601 UTC
+// instant (§8.2), and each optional metadata field is type-checked when present.
 export const validateActorDoc = (raw, actorId) => {
   let doc;
   try { doc = JSON.parse(String(raw)); } catch { return { ok: false, reason: 'parse' }; }
-  if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return { ok: false, reason: 'shape' };
+  if (!isObj(doc)) return { ok: false, reason: 'shape' };
   if (doc.schemaVersion !== 1) return { ok: false, reason: 'schema-version' };
+  const slugErr = actorSlugError(doc.actorId);
+  if (slugErr) return { ok: false, reason: `actor-slug:${slugErr}` };
   if (doc.actorId !== actorId) return { ok: false, reason: `actor-mismatch:${doc.actorId}` };
+  const createdErr = isoInstantError(doc.createdAt);
+  if (createdErr) return { ok: false, reason: `created-at:${createdErr}` };
+  for (const f of ['displayName', 'device'])
+    if (doc[f] !== undefined && !isStr(doc[f])) return { ok: false, reason: `${f}-type` };
   return { ok: true, doc };
 };
 

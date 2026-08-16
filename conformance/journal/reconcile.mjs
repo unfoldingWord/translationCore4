@@ -2,6 +2,7 @@
 import { decompose } from './skeleton.mjs';
 import { slotKeysOf } from './fold.mjs';
 import { makeClock } from './hlc.mjs';
+import { splitDecisionKey } from './grammar.mjs';
 
 // Out-of-band edit: committed file differs from the fold projection.
 // Slot set unchanged → linear-supersede text.*.set seed events.
@@ -37,8 +38,9 @@ export const reconcileUsfm = (book, committedUsfm, foldOut, clock, actor) => {
       if (alignTs) dispositions.push({ surface: 'alignment', key: k, ts: alignTs, action: 'orphan-review' });
       for (const dk of Object.keys(foldOut.headsTs)) {
         if (!dk.startsWith('dec|')) continue;
-        const parts = dk.split('|'); // dec|tool|checkId|bookId|chapter|verse|occurrence
-        if (parts[3] !== book.toLowerCase() || `${parts[4]}:${parts[5]}` !== k) continue;
+        // decompose with the ONE §5.2 key splitter (grammar.mjs) — never by index
+        const { bookId, chapter, verse } = splitDecisionKey(dk.slice(4));
+        if (bookId !== book.toLowerCase() || `${chapter}:${verse}` !== k) continue;
         dispositions.push({ surface: 'decision', key: dk.slice(4), ts: foldOut.headsTs[dk], action: 'invalidate-retain' });
       }
       for (const n of foldOut.notes) {

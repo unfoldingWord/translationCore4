@@ -9,6 +9,8 @@ import { execSync } from 'child_process';
 import { makeClock, parseTs } from './journal/hlc.mjs';
 import { SLOT, decompose, recompose } from './journal/skeleton.mjs';
 import { fold, verseTextMd5, slotKeysOf } from './journal/fold.mjs';
+import { validateAction } from './journal/schema.mjs';
+import { BOOK_CODES, identityKeyOf, identityKeyError } from './journal/grammar.mjs';
 import { reconcileUsfm, seedFromSidecars } from './journal/reconcile.mjs';
 import {
   sealAction, writeActionSegment, validateSegment, validateActorDoc, segmentName,
@@ -18,7 +20,7 @@ import * as filesAll from './journal/files.mjs';
 const republishSegment = filesAll.republishSegment
   || (() => { throw new Error('republishSegment not implemented'); });
 import {
-  projectResources, projectSettings, projectAlignments, derivedProjections,
+  projectResources, projectSettings, projectAlignments, projectMetadata, derivedProjections,
   classifyDivergence, isUnjournaledIngredient,
 } from './journal/checkpoint.mjs';
 
@@ -2263,6 +2265,242 @@ try {
     deepEq(JSON.parse(full['checking/translationNotes/TIT.json']).resource, decisionFiles.translationNotes.resource) &&
     'metadata.json' in full,
     JSON.stringify(Object.keys(full)));
+}
+
+// ---------- J31 (round 8): ONE value-grammar module. Every constrained primitive that
+//   flows into a STRUCTURAL POSITION — a filesystem path, an identity key, a
+//   prototype-chain traversal, or Burrito metadata — is refused by its named grammar at
+//   the schema (layer 1) AND, independently, by its consumer (layer 2). ----------
+{
+  const okTs = (s, a = 'actor-a') => `2026-08-16T00:00:${String(s).padStart(2, '0')}.000Z|0000|${a}`;
+  const skel = (b) => `\\id ${b}\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}`;
+  const skel1 = (b) => `\\id ${b}\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}`;
+  const CRASHY = /Cannot read|is not iterable|is not a function|undefined is not|toUpperCase/i;
+  // refused at seal AND at fold, cleanly — the shape every layer-1 case must have
+  const refusedBothWays = (ev) => {
+    let sealMsg = '', foldMsg = '';
+    try { sealAction([ev]); } catch (e) { sealMsg = e.message; }
+    try { fold([ev]); } catch (e) { foldMsg = e.message; }
+    return { ok: sealMsg !== '' && foldMsg !== '' && !CRASHY.test(sealMsg) && !CRASHY.test(foldMsg), sealMsg, foldMsg };
+  };
+
+  // --- the canonical book set does not drift from the product's own table ---
+  {
+    const src = path.resolve('../src/data/bookNames.ts');
+    if (!fs.existsSync(src)) {
+      check('J31: SKIP — canonical book-code drift guard needs the product tree (../src/data/bookNames.ts)', true, 'prerequisite absent');
+    } else {
+      const text = fs.readFileSync(src, 'utf8');
+      const body = text.slice(text.indexOf('BOOK_NAMES: Record<string, string> = {'));
+      const productCodes = [...body.slice(0, body.indexOf('\n};')).matchAll(/^\s*'?([A-Z0-9]{3})'?:/gm)].map((m) => m[1]);
+      check('J31: the grammar\'s §2 canonical book set equals the product\'s BOOK_NAMES keys, in canon order (no drift between harness and client)',
+        JSON.stringify(productCodes) === JSON.stringify(BOOK_CODES),
+        `${productCodes.length} product codes vs ${BOOK_CODES.length} grammar codes`);
+    }
+  }
+
+  // --- FINDING 1: the structural base rule, one rule for every non-root structural op ---
+  {
+    const add = mkEvent({ op: 'book.add', actor: 'actor-a', ts: okTs(0), book: 'TIT', scope: [], skeleton: skel('TIT'), initialVerses: {} });
+    const addJ = mkEvent({ op: 'book.add', actor: 'actor-a', ts: okTs(1), book: 'JON', scope: [], skeleton: skel('JON'), initialVerses: {} });
+    const vs = mkEvent({ op: 'text.verse.set', actor: 'actor-a', ts: okTs(2), base: add.ts, book: 'TIT', chapter: '1', verse: '1', text: 'uno\n' });
+    const apply = (base) => mkEvent({ op: 'text.structure.apply', actor: 'actor-a', ts: okTs(5), base,
+      book: 'TIT', skeleton: skel1('TIT'), transitions: { '1:1': { text: 'merged\n', sources: [] } }, dispositions: [] });
+    // (a) an UNKNOWN base PENDS — the event may still arrive; the pre-operation state projects
+    const unknown = fold([add, apply('2026-01-01T00:00:00.000Z|0000|ghost-actor')]);
+    check('J31 finding 1: text.structure.apply on an UNKNOWN base PENDS (incomplete) and never applies — the pre-operation slot set projects unchanged',
+      unknown.pendingStructural.length === 1 && unknown.pendingStructural[0].detail[0].startsWith('unknown-base:') &&
+      JSON.stringify(Object.keys(unknown.books.TIT.verses)) === JSON.stringify(['1:1', '1:2']),
+      JSON.stringify(unknown.pendingStructural));
+    // (b) a base naming a NON-STRUCTURAL event REFUSES — it has no lineage to inherit
+    let vsErr = ''; try { fold([add, vs, apply(vs.ts)]); } catch (e) { vsErr = e.message; }
+    check('J31 finding 1: a base naming a text.verse.set is REFUSED — a structural op may only chain to a structural predecessor (§8.5)',
+      vsErr !== '' && !CRASHY.test(vsErr), `"${vsErr.slice(0, 80)}"`);
+    // (c) a base naming another BOOK's structural event REFUSES
+    let xErr = ''; try { fold([add, addJ, apply(addJ.ts)]); } catch (e) { xErr = e.message; }
+    check('J31 finding 1: a CROSS-BOOK structural base is REFUSED — the base must be a structural event of the SAME book',
+      xErr !== '' && !CRASHY.test(xErr), `"${xErr.slice(0, 80)}"`);
+    // the same rule, same messages, for the whole class — book.add (non-root) and text.skeleton.set
+    let addErr = '', skelErr = '';
+    try { fold([add, vs, mkEvent({ op: 'book.add', actor: 'actor-a', ts: okTs(6), base: vs.ts, book: 'TIT', scope: [], skeleton: skel('TIT'), initialVerses: {} })]); } catch (e) { addErr = e.message; }
+    try { fold([add, vs, mkEvent({ op: 'text.skeleton.set', actor: 'actor-a', ts: okTs(6), base: vs.ts, book: 'TIT', skeleton: skel('TIT') })]); } catch (e) { skelErr = e.message; }
+    check('J31 finding 1: the rule is CLASS-level — book.add (non-root) and text.skeleton.set refuse a non-structural base identically',
+      addErr !== '' && skelErr !== '' && !CRASHY.test(addErr) && !CRASHY.test(skelErr),
+      `book.add="${addErr.slice(0, 40)}" skeleton.set="${skelErr.slice(0, 40)}"`);
+    // and a legitimate re-add still chains to its book.remove (no special case lost)
+    const rm = mkEvent({ op: 'book.remove', actor: 'actor-a', ts: okTs(7), base: add.ts, book: 'TIT' });
+    const re = mkEvent({ op: 'book.add', actor: 'actor-a', ts: okTs(8), base: rm.ts, book: 'TIT', scope: [], skeleton: skel1('TIT'), initialVerses: { '1:1': 'v2\n' } });
+    const readd = fold([add, rm, re]);
+    check('J31 finding 1: a legitimate re-add still chains to its book.remove — the unified rule adds no false refusal',
+      readd.pendingStructural.length === 0 && readd.books.TIT.verses['1:1'] === 'v2\n',
+      JSON.stringify(readd.books.TIT.verses));
+  }
+
+  // --- FINDING 2: serializer/validator symmetry (see also the property test below) ---
+  {
+    const dec = (over) => mkEvent({ op: 'check.decision.set', actor: 'actor-a', ts: okTs(1), generation: okTs(0),
+      toolId: 'translationWords',
+      decision: { contextId: { checkId: 'c1', occurrence: 1, reference: { bookId: 'tit', chapter: 1, verse: 1 }, ...over }, selections: false } });
+    const rows = [
+      ['checkId carrying the identity delimiter ("bad|id" → a SIX-part identity key)', dec({ checkId: 'bad|id' })],
+      ['an EMPTY identity component (checkId "")', dec({ checkId: '' })],
+      ['chapter carrying the register delimiter ("1:2" → an ambiguous register key)', dec({ reference: { bookId: 'tit', chapter: '1:2', verse: 1 } })],
+      ['occurrence NaN (seals, then JSON-serializes to null — the writer\'s own reader rejects it)', dec({ occurrence: NaN })],
+      ['occurrence Infinity', dec({ occurrence: Infinity })],
+      ['occurrence -0 (serializes to 0)', dec({ occurrence: -0 })],
+      ['occurrence 1.5 (I-2 requires integers)', dec({ occurrence: 1.5 })],
+    ];
+    let allClean = true; const details = [];
+    for (const [label, ev] of rows) {
+      const r = refusedBothWays(ev);
+      if (!r.ok) { allClean = false; details.push(`${label}: seal="${r.sealMsg.slice(0, 40)}" fold="${r.foldMsg.slice(0, 40)}"`); }
+    }
+    check('J31 finding 2: every §5.2 identity component that would break serializer/validator symmetry is refused CLEANLY at seal AND at fold (delimiter-free, non-empty, JSON-safe, I-2 integer)',
+      allClean, details.join(' · ') || `${rows.length} firing cases`);
+  }
+
+  // --- FINDING 3 (SECURITY): a book code is a filesystem path — grammar + containment ---
+  {
+    const traversal = mkEvent({ op: 'book.add', actor: 'actor-a', ts: okTs(0), book: '../../escaped', scope: [], skeleton: skel1('X'), initialVerses: {} });
+    const r = refusedBothWays(traversal);
+    check('J31 finding 3 (layer 1): a traversal-shaped book code is refused at seal AND at fold — every `book` field carries the §2 canonical grammar',
+      r.ok, `seal="${r.sealMsg.slice(0, 70)}"`);
+    const nonCanonical = refusedBothWays(mkEvent({ op: 'book.add', actor: 'actor-a', ts: okTs(0), book: 'tit', scope: [], skeleton: skel1('X'), initialVerses: {} }));
+    check('J31 finding 3 (layer 1): a non-canonical or wrong-case book code is refused too — §2 says UPPERCASE eng-canon codes (D26)',
+      nonCanonical.ok, `seal="${nonCanonical.sealMsg.slice(0, 70)}"`);
+    // layer 2: the SCHEMA IS BYPASSED — a hand-built fold output whose keys escape
+    const evil = { books: { '../../escaped': { usfm: 'x', verses: {} } }, alignments: {}, decisions: {},
+      pins: {}, settings: {}, projectMeta: {}, projectMetaRemoved: [], vrs: null, scope: {} };
+    let projErr = ''; try { derivedProjections(evil, { baseMetadata: { type: { flavorType: {} } }, resolutions: {} }); } catch (e) { projErr = e.message; }
+    const evilTool = { ...evil, books: {}, decisions: { '../../evil': [{ contextId: { reference: { bookId: 'tit' } } }] } };
+    let toolErr = ''; try { derivedProjections(evilTool, { baseMetadata: { type: { flavorType: {} } }, resolutions: { '../../evil': { TIT: {} } } }); } catch (e) { toolErr = e.message; }
+    check('J31 finding 3 (layer 2, defense in depth): WITH THE SCHEMA BYPASSED the checkpoint still refuses an escaping projection key — books AND decision sidecars; the fold\'s keys are never trusted (§2/§8.7)',
+      projErr !== '' && toolErr !== '' && !CRASHY.test(projErr) && !CRASHY.test(toolErr),
+      `book="${projErr.slice(0, 60)}" tool="${toolErr.slice(0, 60)}"`);
+  }
+
+  // --- FINDING 4 (SECURITY): a dotted path is a write target — grammar + null prototypes ---
+  {
+    let allClean = true; const details = [];
+    for (const op of ['settings.set', 'project.meta.set'])
+      for (const seg of ['__proto__', 'prototype', 'constructor'])
+        for (const p of [`${seg}.tc4Polluted`, `a.${seg}.b`, 'a..b']) {
+          const r = refusedBothWays(mkEvent({ op, actor: 'actor-a', ts: okTs(1), path: p, value: 'yes' }));
+          if (!r.ok) { allClean = false; details.push(`${op} "${p}"`); }
+        }
+    check('J31 finding 4 (layer 1): every prototype-chain or empty-segment dotted path is refused at seal AND at fold, for settings.set AND project.meta.set (ONE dotted-path grammar)',
+      allClean, details.join(' · ') || '18 firing cases');
+    // layer 2: the SCHEMA IS BYPASSED — the malformed path handed straight to the projection
+    let sErr = '', mErr = '';
+    try { projectSettings({ '__proto__.tc4Polluted': 'yes' }); } catch (e) { sErr = e.message; }
+    try { projectMetadata({ scope: {}, projectMeta: { '__proto__.tc4Polluted': 'yes' }, projectMetaRemoved: [] }, { type: { flavorType: {} } }); } catch (e) { mErr = e.message; }
+    const clean = ({}).tc4Polluted === undefined;
+    check('J31 finding 4 (layer 2, defense in depth): WITH THE SCHEMA BYPASSED the projection setters still cannot pollute — own-property traversal into null-prototype containers; ({}).tc4Polluted stays undefined',
+      sErr !== '' && mErr !== '' && clean, `settings="${sErr.slice(0, 50)}" meta="${mErr.slice(0, 50)}" polluted=${JSON.stringify(({}).tc4Polluted)}`);
+    delete Object.prototype.tc4Polluted; // belt and braces: never leak into later checks
+    // the legitimate overlay still works, and the projected document has no prototype
+    const proj = JSON.parse(projectSettings({ 'ui.paneSettings': [1], 'checkCategories.translationWords': ['kt'] }));
+    check('J31 finding 4: the legitimate dotted-path overlay is unchanged by the hardening',
+      proj.ui.paneSettings[0] === 1 && proj.checkCategories.translationWords[0] === 'kt' && proj.schemaVersion === 1,
+      JSON.stringify(proj));
+  }
+
+  // --- FINDING 5: scope ranges and initialVerses keys are grammars, not free strings ---
+  {
+    const add = (over) => mkEvent({ op: 'book.add', actor: 'actor-a', ts: okTs(0), book: 'TIT', scope: [], skeleton: skel('TIT'), initialVerses: {}, ...over });
+    const rows = [
+      ['scope ["banana"]', add({ scope: ['banana'] })],
+      ['scope with an en-dash range ["1:1–2:5"]', add({ scope: ['1:1–2:5'] })],
+      ['scope that is not an array', add({ scope: '1:1' })],
+      ['scope entry that is not a string', add({ scope: [1] })],
+      ['scope "1-2:5" (C-C:V is outside the §3 rule 4 grammar)', add({ scope: ['1-2:5'] })],
+      ['initialVerses key that is not a slot of the supplied skeleton', add({ initialVerses: { '9:9': 'ghost\n' } })],
+      ['initialVerses key that is not a slot FORM at all', add({ initialVerses: { 'banana': 'ghost\n' } })],
+    ];
+    let allClean = true; const details = [];
+    for (const [label, ev] of rows) {
+      const r = refusedBothWays(ev);
+      if (!r.ok) { allClean = false; details.push(`${label}: seal="${r.sealMsg.slice(0, 40)}"`); }
+    }
+    check('J31 finding 5: every §3 rule 4 scope violation and every non-slot initialVerses key is refused CLEANLY at seal AND at fold',
+      allClean, details.join(' · ') || `${rows.length} firing cases`);
+    // every legal §3 rule 4 form still seals and folds
+    const legal = [[], ['3'], ['1-2'], ['1:1'], ['1:2-16'], ['1:1-2:5'], ['1:2-16', '3:1-15']];
+    let allLegal = true;
+    for (const scope of legal) {
+      try { fold([add({ scope })]); } catch { allLegal = false; }
+    }
+    check('J31 finding 5: every legal §3 rule 4 form (C, C-C, C:V, C:V-V, C:V-C:V, [] and multi-range) still seals and folds',
+      allLegal, JSON.stringify(legal));
+  }
+
+  // --- the CLASS-level guarantee: anything the writer seals survives JSON and its own reader ---
+  {
+    // Adversarial component generator: the values that broke symmetry are IN the space
+    // (delimiters, empties, NaN/Infinity/-0, non-integers, prototype segments, bad book
+    // codes, junk ranges), alongside the legal ones. Events the schema REFUSES are the
+    // property's precondition; everything it ACCEPTS must satisfy both conjuncts.
+    const ident = fc.oneof(
+      fc.constantFrom('c1', 't1g7', 'x', '1', 'bad|id', '', 'a:b', 'a|b|c'),
+      fc.integer({ min: -3, max: 5 }), fc.constantFrom(NaN, Infinity, -Infinity, -0, 1.5),
+    );
+    const bookish = fc.constantFrom('TIT', 'JON', '1CO', 'tit', '../../escaped', 'XYZ', '', 'TIT/../..');
+    const pathish = fc.constantFrom('ui.x', 'a.b.c', '__proto__.p', 'a.constructor.b', 'a..b', '', 'prototype', 'identification.name.en', 'type.x');
+    const scopeish = fc.array(fc.constantFrom('1', '1-2', '1:1', '1:2-16', '1:1-2:5', 'banana', '1-2:5', '1:1–2:5'), { maxLength: 3 });
+    const slotish = fc.constantFrom('1:1', '1:2', '9:9', 'banana', '1:4-5');
+    const okTsP = (s) => `2026-08-16T05:00:${String(s).padStart(2, '0')}.000Z|0000|actor-p`;
+    const genEvent = fc.oneof(
+      fc.record({ kind: fc.constant('decision'), checkId: ident, bookId: fc.constantFrom('tit', 'jon', 'TIT', '', 'ti|t'),
+        chapter: ident, verse: ident, occurrence: ident, toolId: fc.constantFrom('translationWords', 'translationNotes', 'evilTool', '../x') }),
+      fc.record({ kind: fc.constant('note'), decisionKey: fc.constantFrom('c1|tit|1|1|1', 'garbage', 'a|b|c|d|e|f', 'c1||1|1|1', 'c1|tit|1|1|') }),
+      fc.record({ kind: fc.constant('verse'), book: bookish, chapter: ident, verse: ident }),
+      fc.record({ kind: fc.constant('align'), book: bookish, chapter: ident, verse: ident, md5: fc.constantFrom('deadbeef', '') }),
+      fc.record({ kind: fc.constant('settings'), path: pathish, value: fc.oneof(fc.string(), fc.integer(), fc.constantFrom(NaN, -0, Infinity)) }),
+      fc.record({ kind: fc.constant('meta'), path: pathish, value: fc.oneof(fc.string(), fc.integer()) }),
+      fc.record({ kind: fc.constant('book'), book: bookish, scope: scopeish, slot: slotish }),
+    ).map((c) => {
+      const base = { v: 1, actor: 'actor-p', ts: okTsP(1), base: null };
+      const gen = okTsP(0);
+      if (c.kind === 'decision') return { ...base, op: 'check.decision.set', generation: gen, toolId: c.toolId,
+        decision: { contextId: { checkId: c.checkId, occurrence: c.occurrence, reference: { bookId: c.bookId, chapter: c.chapter, verse: c.verse } }, selections: false } };
+      if (c.kind === 'note') return { ...base, op: 'note.add', generation: gen, target: { decisionKey: c.decisionKey }, text: 'n' };
+      if (c.kind === 'verse') return { ...base, op: 'text.verse.set', book: c.book, chapter: c.chapter, verse: c.verse, text: 'x\n' };
+      if (c.kind === 'align') return { ...base, op: 'align.verse.set', generation: gen, book: c.book, chapter: c.chapter, verse: c.verse, alignments: [], wordBank: [], targetVerseMd5: c.md5 };
+      if (c.kind === 'settings') return { ...base, op: 'settings.set', path: c.path, value: c.value };
+      if (c.kind === 'meta') return { ...base, op: 'project.meta.set', path: c.path, value: c.value };
+      return { ...base, op: 'book.add', book: c.book, scope: c.scope,
+        skeleton: `\\id X\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}`, initialVerses: { [c.slot]: 'v\n' } };
+    });
+    let accepted = 0;
+    prop('J31 PROPERTY (the class-level guarantee, permanent): for every SCHEMA-VALID event — (a) its serialized §5.2 identity key validates, and (b) validateSegment(sealAction([e])) accepts. Anything the writer seals survives the JSON round trip and its own reader.',
+      genEvent, (e) => {
+        if (validateAction([e]) !== null) return true; // precondition: the schema refused it
+        accepted++;
+        if (e.op === 'check.decision.set' && identityKeyError(identityKeyOf(e.decision.contextId)) !== null) return false;
+        return validateSegment(sealAction([e])).ok === true;
+      });
+    check('J31 PROPERTY: the generator actually reaches the accepting branch (the property is not vacuous)',
+      accepted > 0, `${accepted} schema-valid events exercised both conjuncts`);
+  }
+
+  // --- §8.1 actor.json: the slug is a directory name, createdAt is required ---
+  {
+    const doc = (o) => JSON.stringify({ schemaVersion: 1, actorId: 'actor-a', createdAt: '2026-06-01T00:00:00.000Z', ...o });
+    const rows = [
+      ['actorId outside the §8.1 slug charset', doc({ actorId: 'Actor_A' }), 'Actor_A'],
+      ['actorId that is a path', doc({ actorId: '../../etc' }), '../../etc'],
+      ['actorId too short', doc({ actorId: 'ab' }), 'ab'],
+      ['createdAt absent', doc({ createdAt: undefined }), 'actor-a'],
+      ['createdAt not an ISO instant', doc({ createdAt: 'yesterday' }), 'actor-a'],
+      ['displayName wrong type', doc({ displayName: 42 }), 'actor-a'],
+      ['device wrong type', doc({ device: {} }), 'actor-a'],
+    ];
+    const rejected = rows.filter(([, raw, id]) => !validateActorDoc(raw, id).ok);
+    check('J31: validateActorDoc enforces the §8.1 actor-slug grammar (the actorId IS a directory name), a REQUIRED createdAt, and the types of the optional metadata fields',
+      rejected.length === rows.length, `${rejected.length}/${rows.length} rejected: ${rows.filter(([, r, i]) => validateActorDoc(r, i).ok).map(([l]) => l).join(', ') || 'none missed'}`);
+    check('J31: a complete, well-formed actor.json still validates (the hardening adds no false rejection)',
+      validateActorDoc(doc({ displayName: 'A', device: 'laptop' }), 'actor-a').ok);
+  }
 }
 
 console.log(`\nJournal suite: ${pass} passed, ${fail} failed (fast-check seed ${SEED})`);
