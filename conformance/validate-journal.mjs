@@ -1517,6 +1517,73 @@ try {
     JSON.stringify({ pending: resolved.pendingStructural, header: resolved.books.TIT.usfm.split('\n')[0], verses: resolved.books.TIT.verses }));
 }
 
+// ---------- J22d (round 7): ONE accepted-structural-predecessors set — pending
+//   propagates transitively ACROSS op types (book.add / text.skeleton.set /
+//   text.structure.apply are one chain-link class, §8.4/§8.5) ----------
+{
+  const E = (op, actor, ts, base, extra) => mkEvent({ op, actor, ts, base, ...extra });
+  const t = (s, c, a) => `2026-08-02T02:00:${String(s).padStart(2, '0')}.000Z|000${c}|${a}`;
+  const skel12 = (hdr) => `\\id TIT${hdr}\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}`;
+  const skel13 = (hdr) => `\\id TIT${hdr}\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 3 ${SLOT}1:3${SLOT}`;
+  const add = E('book.add', 'drafter-a', t(0, 0, 'drafter-a'), null, { book: 'TIT', scope: [], skeleton: skel12(''), initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n' } });
+
+  // the reviewer's exact cross-op sequence: a text.structure.apply pending on a MISSING
+  // source, then a text.skeleton.set based on that pending structural event — the child
+  // must pend too, never be accepted, never win the skeleton fork, never project 1:3 as ___
+  const ghostSrc = t(0, 7, 'ghost-gg'); // never arrives
+  const structPending = E('text.structure.apply', 'drafter-a', t(1, 0, 'drafter-a'), add.ts, {
+    book: 'TIT', skeleton: skel13(''),
+    transitions: {
+      '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: add.ts }] },
+      '1:3': { text: 'dos\n', sources: [{ key: '1:2', ts: ghostSrc }] },
+    },
+    dispositions: [],
+  });
+  const childSkel = E('text.skeleton.set', 'checker-b', t(2, 0, 'checker-b'), structPending.ts, { book: 'TIT', skeleton: skel13(' via child') });
+  const out = fold([add, structPending, childSkel]);
+  check('J22d: a skeleton edit based on a PENDING text.structure.apply pends too — pending crosses op types; the pre-op slots and bytes project unchanged',
+    out.pendingStructural.length === 2 &&
+    Object.keys(out.books.TIT.verses).sort().join(',') === '1:1,1:2' &&
+    out.books.TIT.verses['1:2'] === 'dos\n' && !out.books.TIT.usfm.includes('via child'),
+    JSON.stringify({ pending: out.pendingStructural, verses: out.books.TIT.verses }));
+
+  // the inverse: a text.structure.apply based on a PENDING text.skeleton.set — the
+  // structural child must pend, not apply off an unaccepted link
+  const ghostBase = t(0, 8, 'ghost-gg'); // never arrives
+  const skelPending = E('text.skeleton.set', 'ghost-gg', t(1, 1, 'ghost-gg'), ghostBase, { book: 'TIT', skeleton: skel12(' via ghost') });
+  const structChild = E('text.structure.apply', 'checker-b', t(2, 1, 'checker-b'), skelPending.ts, {
+    book: 'TIT', skeleton: skel13(' via structChild'),
+    transitions: {
+      '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: add.ts }] },
+      '1:3': { text: 'dos\n', sources: [{ key: '1:2', ts: add.ts }] },
+    },
+    dispositions: [],
+  });
+  const inv = fold([add, skelPending, structChild]);
+  check('J22d: a text.structure.apply based on a PENDING skeleton link pends too — the inverse direction holds (one accepted-predecessor rule, both op types)',
+    inv.pendingStructural.length === 2 &&
+    Object.keys(inv.books.TIT.verses).sort().join(',') === '1:1,1:2' &&
+    inv.books.TIT.verses['1:2'] === 'dos\n' && !inv.books.TIT.usfm.includes('via structChild'),
+    JSON.stringify({ pending: inv.pendingStructural, verses: inv.books.TIT.verses }));
+
+  // mixed three-deep chain: pending skeleton.set → structure.apply → skeleton.set —
+  // every descendant pends regardless of op type
+  const tail = E('text.skeleton.set', 'checker-b', t(3, 1, 'checker-b'), structChild.ts, { book: 'TIT', skeleton: skel13(' via tail') });
+  const deep = fold([add, skelPending, structChild, tail]);
+  check('J22d: pending propagates through a MIXED three-deep chain (skeleton.set → structure.apply → skeleton.set) — all three pend',
+    deep.pendingStructural.length === 3 &&
+    Object.keys(deep.books.TIT.verses).sort().join(',') === '1:1,1:2' &&
+    !deep.books.TIT.usfm.includes('via'),
+    JSON.stringify(deep.pendingStructural));
+  // when the missing ancestor arrives, the whole mixed chain folds (event-SET determinism)
+  const ghostEv = E('text.skeleton.set', 'ghost-gg', ghostBase, add.ts, { book: 'TIT', skeleton: skel12(' via ghost0') });
+  const resolved = fold([add, ghostEv, skelPending, structChild, tail]);
+  check('J22d: when the missing ancestor arrives, the whole mixed chain folds — verse bytes untouched across the op-type boundary',
+    resolved.pendingStructural.length === 0 && resolved.books.TIT.usfm.includes('via tail') &&
+    resolved.books.TIT.verses['1:1'] === 'uno\n' && resolved.books.TIT.verses['1:3'] === 'dos\n',
+    JSON.stringify({ pending: resolved.pendingStructural, header: resolved.books.TIT.usfm.split('\n')[0], verses: resolved.books.TIT.verses }));
+}
+
 // ---------- J23: sealed action segments — the §8.1 container contract ----------
 {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-j23-'));

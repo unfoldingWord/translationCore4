@@ -101,7 +101,13 @@ export const fold = (eventsIn) => {
   const consumed = new Map();      // `${key}|${headTs}` -> Set(structTs)
   const retainedByStruct = [];     // {structTs, key, ts, reason}
   const pendingStructural = [];    // {ts, book, status, detail}
-  const pendingLinks = new Set();  // skeleton links with an unresolved ancestor chain (transitive)
+  // ONE accepted-structural-predecessors set (round 7): every ACCEPTED chain link of the
+  // whole class — book.add, text.skeleton.set, text.structure.apply — lands here, and
+  // every chain link consults it for its base. A base that is merely present in the
+  // union but not accepted pends its descendant, so pending propagates transitively
+  // ACROSS op types (a skeleton edit on a pending structure.apply, and the inverse).
+  const STRUCTURAL_OPS = new Set(['book.add', 'text.skeleton.set', 'text.structure.apply']);
+  const acceptedStructural = new Set();
   let vrs = null;                  // {name, bytes, ts} — immutable first-value register
   const vrsRejected = [];
 
@@ -152,6 +158,7 @@ export const fold = (eventsIn) => {
         joinHead(`text|${e.book}|${k}`, { ts: e.ts, actor: e.actor, sanc: e.ts, book: e.book,
           event: { op: 'text.verse.set', book: e.book, chapter, verse, text: initial[k] ?? '___\n' } }, e.base, e.supersedes, e.actor);
       }
+      acceptedStructural.add(e.ts);
       continue;
     }
 
@@ -174,17 +181,17 @@ export const fold = (eventsIn) => {
       if (e.base == null)
         throw new Error(`text.skeleton.set requires base = the current skeleton head (ts ${e.ts}) — refuse to fold (§8.5); the first skeleton comes from book.add`);
       const baseEv = byTs.get(e.base);
-      // The chain rule requires an ACCEPTED predecessor (round-6 finding 3): a base
-      // that is merely PRESENT in the union but itself pending is not accepted, so
-      // pending propagates TRANSITIVELY down the chain until the ancestor resolves —
-      // a descendant must never win a fork off an unaccepted link.
-      if (!baseEv || pendingLinks.has(e.base)) {
+      // The chain rule requires an ACCEPTED predecessor (round-6 finding 3, unified in
+      // round 7): the base must be in acceptedStructural — a base that is merely
+      // PRESENT in the union but itself pending (ANY op of the structural class) is not
+      // accepted, so pending propagates TRANSITIVELY down the chain until the ancestor
+      // resolves — a descendant must never win a fork off an unaccepted link.
+      if (!baseEv || (STRUCTURAL_OPS.has(baseEv.op) && !acceptedStructural.has(e.base))) {
         pendingStructural.push({ ts: e.ts, book: e.book, status: 'incomplete',
           detail: [baseEv ? `pending-ancestor:${e.base}` : `unknown-base:${e.base}`] });
-        pendingLinks.add(e.ts);
         continue;
       }
-      if (baseEv.book !== e.book || typeof baseEv.skeleton !== 'string')
+      if (baseEv.book !== e.book || !STRUCTURAL_OPS.has(baseEv.op))
         throw new Error(`text.skeleton.set base ${e.base} is not a skeleton head of ${e.book} (ts ${e.ts}) — refuse to fold (§8.5)`);
       if (JSON.stringify(slotKeysOf(baseEv.skeleton)) !== JSON.stringify(slotKeysOf(e.skeleton)))
         throw new Error(`text.skeleton.set changes the slot set (ts ${e.ts}) — refuse to fold; use text.structure.apply (§8.4)`);
@@ -192,6 +199,7 @@ export const fold = (eventsIn) => {
       if (live.length && !live.some((h) => h.ts === e.base) && live.some((h) => h.actor === e.actor))
         throw new Error(`text.skeleton.set base ${e.base} is stale: this actor's own head advanced past it (ts ${e.ts}) — a skeleton edit cannot silently reverse a text.structure.apply; refuse to fold (§8.4)`);
       joinHead(`skel|${e.book}`, { ts: e.ts, actor: e.actor, sanc: sancOf(e.base), book: e.book, event: e }, e.base, e.supersedes, e.actor);
+      acceptedStructural.add(e.ts);
       continue;
     }
 
@@ -206,6 +214,16 @@ export const fold = (eventsIn) => {
       const tKeys = Object.keys(transitions);
       const dispId = (d) => `${d.surface}|${d.key ?? ''}|${d.ts}`;
       const dispSet = new Set(dispositions.map(dispId));
+      // The same accepted-predecessor rule as every chain link (round 7): a base that
+      // names a structural-class event which is present but NOT accepted pends this
+      // event too — pending propagates transitively across op types.
+      if (e.base != null) {
+        const baseChain = byTs.get(e.base);
+        if (baseChain && STRUCTURAL_OPS.has(baseChain.op) && !acceptedStructural.has(e.base)) {
+          pendingStructural.push({ ts: e.ts, book, status: 'incomplete', detail: [`pending-ancestor:${e.base}`] });
+          continue;
+        }
+      }
       // applicability (§8.5 all-or-nothing): every referenced source head present AND live
       const missing = []; const stale = [];
       const checkRef = (key, ts) => {
@@ -275,6 +293,7 @@ export const fold = (eventsIn) => {
       // post-images always PUSH (branch-local: pre-images stay live for the other branch and
       // are shadowed on this branch by consumption).
       joinHead(`skel|${book}`, { ts: e.ts, actor: e.actor, sanc: e.ts, book, event: e }, e.base, e.supersedes, e.actor);
+      acceptedStructural.add(e.ts);
       for (const dest of newSlots) {
         const tr = transitions[dest];
         for (const src of tr.sources || []) consume(`text|${book}|${src.key}`, src.ts, e.ts);
