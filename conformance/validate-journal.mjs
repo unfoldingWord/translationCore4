@@ -1162,6 +1162,42 @@ try {
     (after.decisions.translationWords || []).length === 1 && after.decisions.translationWords[0].invalidated === true);
 }
 
+// ---------- J21d (review round 4): dispositions are CONSTRAINED to the affected set (§8.5) ----------
+{
+  const E = (op, actor, ts, base, extra) => mkEvent({ op, actor, ts, base, ...extra });
+  const t = (s, c, a) => `2026-08-01T02:00:${String(s).padStart(2, '0')}.000Z|000${c}|${a}`;
+  const skel2 = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}`;
+  const skel2r = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 3 ${SLOT}1:3${SLOT}`;
+  const add = E('book.add', 'drafter-a', t(0, 0, 'drafter-a'), null, { book: 'TIT', scope: [], skeleton: skel2, initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n' } });
+  const align11 = E('align.verse.set', 'checker-c', t(1, 0, 'checker-c'), null, { book: 'TIT', chapter: '1', verse: '1', generation: add.ts, alignments: [], wordBank: [], targetVerseMd5: md5('uno') });
+  // the reviewer's case: the mapping touches only 1:2 → 1:3, but the event carries an
+  // orphan-review disposition for the UNRELATED live 1:1 alignment
+  const rogue = E('text.structure.apply', 'drafter-a', t(2, 0, 'drafter-a'), add.ts, {
+    book: 'TIT', skeleton: skel2r,
+    transitions: {
+      '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: add.ts }] },
+      '1:3': { text: 'dos\n', sources: [{ key: '1:2', ts: add.ts }] },
+    },
+    dispositions: [{ surface: 'alignment', key: '1:1', ts: align11.ts, action: 'orphan-review' }],
+  });
+  let refused = ''; let out = null;
+  try { out = fold([add, align11, rogue]); } catch (e) { refused = e.message; }
+  check('J21d: a disposition referencing a record OUTSIDE the computed affected set is refused whole (all-or-nothing) — structural actions cannot consume unrelated records',
+    refused.includes('affected'),
+    refused ? `"${refused.slice(0, 80)}"` : `applied: align 1:1 projects=${!!out?.alignments.TIT?.['1:1']}, retained=${JSON.stringify(out?.retained)}`);
+  check('J21d: the unrelated 1:1 alignment still projects (the rogue event never applied)',
+    refused !== '' || !!out?.alignments.TIT?.['1:1'],
+    refused ? 'refused pre-application' : JSON.stringify(out?.alignments.TIT));
+  // a rogue NOTE disposition (note on an unmapped verse) is refused the same way
+  const note11 = E('note.add', 'checker-c', t(1, 1, 'checker-c'), null, { generation: add.ts, target: { book: 'TIT', chapter: '1', verse: '1' }, text: 'nota sobre 1:1' });
+  const rogueNote = { ...rogue, ts: t(2, 1, 'drafter-a'), dispositions: [{ surface: 'note', ts: note11.ts, action: 'orphan-review' }] };
+  let refusedN = ''; let outN = null;
+  try { outN = fold([add, note11, rogueNote]); } catch (e) { refusedN = e.message; }
+  check('J21d: a rogue note disposition (unmapped verse) is refused the same way; the note survives',
+    refusedN.includes('affected') && (outN === null),
+    refusedN ? `"${refusedN.slice(0, 60)}"` : `note projected=${outN?.notes.length}`);
+}
+
 // ---------- J22: structural lineage — branch-local effects, retention, sequential chains (#65 ruling) ----------
 {
   const E = (op, actor, ts, base, extra) => mkEvent({ op, actor, ts, base, ...extra });

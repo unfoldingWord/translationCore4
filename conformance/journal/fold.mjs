@@ -249,19 +249,22 @@ export const fold = (eventsIn) => {
       }
       if (missing.length) { pendingStructural.push({ ts: e.ts, book, status: 'incomplete', detail: missing }); continue; }
       if (stale.length)   { pendingStructural.push({ ts: e.ts, book, status: 'conflicted', detail: stale });  continue; }
-      // §8.5: dispositions must be COMPLETE — every live alignment, decision, and
-      // verse-targeted note on a MAPPED source key (re-keyed or removed) needs exactly
-      // one disposition; anything undispositioned makes the event incomplete.
+      // §8.5: dispositions must be COMPLETE and CONSTRAINED — the fold computes the
+      // affected-record set (every live alignment, decision, and verse-targeted note on
+      // a MAPPED source key, re-keyed or removed, plus decisionKey-notes of re-keyed
+      // decisions); every affected record needs exactly one disposition (else
+      // incomplete), and every disposition MUST reference an affected record — a
+      // disposition outside the set could consume any unrelated live record, so it
+      // refuses the whole event (all-or-nothing).
       const mapped = new Set();
       for (const dest of tKeys)
         for (const src of transitions[dest].sources || []) if (src.key !== dest) mapped.add(src.key);
       const baseEvent = e.base ? byTs.get(e.base) : null;
       if (baseEvent && typeof baseEvent.skeleton === 'string')
         for (const k of slotKeysOf(baseEvent.skeleton)) if (!newSlots.includes(k)) mapped.add(k);
-      const undispositioned = [];
+      const affected = new Set();
       for (const k of mapped) {
-        for (const h of heads.get(`align|${book}|${k}`) || [])
-          if (!dispSet.has(`alignment|${k}|${h.ts}`)) undispositioned.push(`alignment|${k}|${h.ts}`);
+        for (const h of heads.get(`align|${book}|${k}`) || []) affected.add(`alignment|${k}|${h.ts}`);
         for (const [dkey, live] of heads) {
           if (!dkey.startsWith('dec|')) continue;
           for (const h of live) {
@@ -269,7 +272,7 @@ export const fold = (eventsIn) => {
             const c = h.event.decision.contextId;
             const r = c.reference;
             if (`${r.chapter}:${r.verse}` !== k) continue;
-            if (!dispSet.has(`decision|${dkey.slice(4)}|${h.ts}`)) undispositioned.push(`decision|${dkey.slice(4)}|${h.ts}`);
+            affected.add(`decision|${dkey.slice(4)}|${h.ts}`);
             // a decisionKey-targeted note on a RE-KEYED decision is an affected record
             // too: its §5.2 identity retires with the re-key, so it needs a disposition.
             // (invalidate-retain/replace keep the decision's key — such notes stay valid.)
@@ -277,17 +280,19 @@ export const fold = (eventsIn) => {
             if (decDisp && decDisp.action === 're-key') {
               const identity = `${c.checkId}|${r.bookId}|${r.chapter}|${r.verse}|${c.occurrence}`;
               for (const n of notes)
-                if (n.target && n.target.decisionKey === identity && !dispSet.has(`note||${n.ts}`))
-                  undispositioned.push(`note|${n.ts}`);
+                if (n.target && n.target.decisionKey === identity) affected.add(`note||${n.ts}`);
             }
           }
         }
         for (const n of notes) {
           const tg = n.target;
-          if (tg && tg.book === book && `${tg.chapter}:${tg.verse}` === k && !dispSet.has(`note||${n.ts}`))
-            undispositioned.push(`note|${n.ts}`);
+          if (tg && tg.book === book && `${tg.chapter}:${tg.verse}` === k) affected.add(`note||${n.ts}`);
         }
       }
+      for (const d of dispositions)
+        if (!affected.has(dispId(d)))
+          throw new Error(`text.structure.apply disposition ${dispId(d)} references a record outside the affected set (ts ${e.ts}) — refuse to fold (§8.5: dispositions cannot consume unrelated records)`);
+      const undispositioned = [...affected].filter((id) => !dispSet.has(id));
       if (undispositioned.length) {
         pendingStructural.push({ ts: e.ts, book, status: 'incomplete', detail: undispositioned.map((u) => `undispositioned:${u}`) });
         continue;
