@@ -1260,6 +1260,38 @@ try {
     okNoBase.books.TIT.usfm.startsWith('\\id TIT header edit'));
 }
 
+// ---------- J22b (review round 4): a stale KNOWN base is no escape from the topology rule (§8.4) ----------
+{
+  const E = (op, actor, ts, base, extra) => mkEvent({ op, actor, ts, base, ...extra });
+  const t = (s, c, a) => `2026-08-02T00:00:${String(s).padStart(2, '0')}.000Z|000${c}|${a}`;
+  const skelA = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}`;
+  const skelB = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 3 ${SLOT}1:3${SLOT}`;
+  const add = E('book.add', 'drafter-a', t(0, 0, 'drafter-a'), null, { book: 'TIT', scope: [], skeleton: skelA, initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n' } });
+  const renumber = E('text.structure.apply', 'drafter-a', t(1, 0, 'drafter-a'), add.ts, {
+    book: 'TIT', skeleton: skelB,
+    transitions: {
+      '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: add.ts }] },
+      '1:3': { text: 'dos\n', sources: [{ key: '1:2', ts: add.ts }] },
+    },
+    dispositions: [],
+  });
+  // the reviewer's reversal: the SAME actor submits a later skeleton event based on the
+  // ORIGINAL add — slot-preserving relative to its historical base, slot-CHANGING
+  // relative to the current projected skeleton
+  const stale = E('text.skeleton.set', 'drafter-a', t(2, 0, 'drafter-a'), add.ts, { book: 'TIT', skeleton: skelA });
+  let refused = ''; let reversed = null;
+  try { reversed = fold([add, renumber, stale]); } catch (e) { refused = e.message; }
+  check('J22b: a stale KNOWN-base text.skeleton.set that reverses a structural change is REFUSED — the comparison binds to the CURRENT projected skeleton, never the historical base',
+    refused.includes('structure.apply'),
+    refused ? `"${refused.slice(0, 80)}"` : `reversed silently: slots=${JSON.stringify(Object.keys(reversed?.books.TIT.verses || {}))}, forks=${reversed?.forks.length}, pending=${reversed?.pendingStructural.length}`);
+  // a genuinely slot-preserving edit (header change) with the SAME stale base still folds
+  const headerEdit = E('text.skeleton.set', 'drafter-a', t(3, 0, 'drafter-a'), renumber.ts, { book: 'TIT', skeleton: `\\id TIT edited\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 3 ${SLOT}1:3${SLOT}` });
+  const ok = fold([add, renumber, headerEdit]);
+  check('J22b: a slot-preserving skeleton edit against the current topology still folds (the rule blocks topology reversal, not header edits)',
+    ok.books.TIT.usfm.startsWith('\\id TIT edited') && Object.keys(ok.books.TIT.verses).sort().join(',') === '1:1,1:3',
+    JSON.stringify(Object.keys(ok.books.TIT.verses)));
+}
+
 // ---------- J23: sealed action segments — the §8.1 container contract ----------
 {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-j23-'));

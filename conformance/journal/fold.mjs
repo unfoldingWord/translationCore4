@@ -190,16 +190,15 @@ export const fold = (eventsIn) => {
 
     if (e.op === 'text.skeleton.set') {
       // §8.4/§8.5: slot-preserving only — a slot-set/key/ordering change MUST use
-      // text.structure.apply. The check binds against the base event when it is present,
-      // and otherwise against the CURRENT PROJECTED skeleton head (max-ts live head) —
-      // a missing or unknown base is not an escape from the topology rule.
-      const baseEvent = e.base ? byTs.get(e.base) : null;
+      // text.structure.apply. The comparison binds ALWAYS to the CURRENT PROJECTED
+      // skeleton head (max-ts live head) at fold time, never to the event's historical
+      // base: a stale KNOWN base would otherwise be a side door that silently reverses
+      // a structural change (slot-preserving relative to the old base, slot-changing
+      // relative to now — round-4 finding 2). Neither a missing base nor a stale one
+      // escapes the topology rule.
       let reference = null;
-      if (baseEvent && typeof baseEvent.skeleton === 'string') reference = baseEvent.skeleton;
-      else {
-        const live = heads.get(`skel|${e.book}`) || [];
-        if (live.length) reference = live.reduce((a, b) => (a.ts > b.ts ? a : b)).event.skeleton;
-      }
+      const live = heads.get(`skel|${e.book}`) || [];
+      if (live.length) reference = live.reduce((a, b) => (a.ts > b.ts ? a : b)).event.skeleton;
       if (reference != null &&
           JSON.stringify(slotKeysOf(reference)) !== JSON.stringify(slotKeysOf(e.skeleton)))
         throw new Error(`text.skeleton.set changes the slot set (ts ${e.ts}) — refuse to fold; use text.structure.apply (§8.4)`);
