@@ -19,8 +19,20 @@ export const segmentName = (ts) => `${String(ts).replaceAll(':', '_').replaceAll
 export const segmentTs = (name) =>
   String(name).replace(/\.action\.json$/, '').replaceAll(',', '|').replaceAll('_', ':');
 
+// The action shape (§8.1): a NON-EMPTY event array, strictly ascending ts, ONE actor.
+// Enforced symmetrically: sealAction refuses to seal it, validateSegment rejects it.
+const actionShapeError = (events) => {
+  if (!Array.isArray(events) || events.length === 0) return 'empty-events';
+  for (let i = 1; i < events.length; i++)
+    if (!(String(events[i].ts) > String(events[i - 1].ts))) return 'ts-order';
+  if (events.some((e) => !e || e.actor !== events[0].actor)) return 'multi-actor';
+  return null;
+};
+
 // Seal one action (all events of ONE store mutation, ts order, one actor; multi-scope allowed).
 export const sealAction = (events) => {
+  const shapeErr = actionShapeError(events);
+  if (shapeErr) throw new Error(`refuse to seal a malformed action (${shapeErr}) — §8.1: non-empty events, strictly ascending ts, one actor`);
   const body = JSON.stringify({ events });
   const seg = JSON.stringify({ container: 1, body, sha256: sha256(body) });
   if (Buffer.byteLength(seg, 'utf8') > SEGMENT_LIMIT)
@@ -81,6 +93,9 @@ export const validateSegment = (raw) => {
   let body;
   try { body = JSON.parse(outer.body); } catch { return { ok: false, reason: 'body-parse' }; }
   if (!body || !Array.isArray(body.events)) return { ok: false, reason: 'no-events' };
+  // §8.1 action shape: non-empty, strictly ascending ts, one actor.
+  const shapeErr = actionShapeError(body.events);
+  if (shapeErr) return { ok: false, reason: shapeErr };
   // 'legacy' is a reader-attached marker (§8.1) — a WRITTEN event carrying it is invalid
   // (no self-declared legacy: the §8.5 generation-stamp requirement cannot be bypassed).
   if (body.events.some((e) => e && e.legacy !== undefined)) return { ok: false, reason: 'reserved-field' };

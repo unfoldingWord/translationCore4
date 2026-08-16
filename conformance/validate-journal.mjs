@@ -1475,6 +1475,37 @@ try {
   fs.rmSync(tmp, { recursive: true, force: true });
 }
 
+// ---------- J23d (review round 4): the container contract binds the ACTION shape too (§8.1) ----------
+// §8.1 MUST audit, one firing case each: outer parse + container:1 + body-string + sha256
+// (J23 torn/checksum), 4 MiB (J23), directory actor binding (J23/readSegments), reserved
+// reader field (J29e), and — added here — non-empty events, strict ts order, one actor.
+{
+  const sha = (x) => crypto.createHash('sha256').update(x, 'utf8').digest('hex');
+  const craft = (events) => { const body = JSON.stringify({ events }); return JSON.stringify({ container: 1, body, sha256: sha(body) }); };
+  const ev = (s, a, extra = {}) => mkEvent({ op: 'settings.set', actor: a, ts: `2026-08-11T00:00:0${s}.000Z|0000|${a}`, path: 'ui.x', value: s, ...extra });
+  const rEmpty = validateSegment(craft([]));
+  check('J23d: an EMPTY events array is invalid — an action is one store mutation, at least one event (no later crash on events[0])',
+    rEmpty.ok === false, JSON.stringify(rEmpty));
+  const rOrder = validateSegment(craft([ev(2, 'actor-a'), ev(1, 'actor-a')]));
+  check('J23d: a mis-ordered events array is invalid — the contract requires ts order inside the action',
+    rOrder.ok === false, JSON.stringify(rOrder.ok === false ? rOrder : '(validated ok)'));
+  const rDup = validateSegment(craft([ev(1, 'actor-a'), ev(1, 'actor-a')]));
+  check('J23d: a duplicated ts inside one action is invalid (strictly ascending — one actor cannot issue the same ts twice)',
+    rDup.ok === false, JSON.stringify(rDup.ok === false ? rDup : '(validated ok)'));
+  const rMixed = validateSegment(craft([ev(1, 'actor-a'), ev(2, 'actor-b')]));
+  check('J23d: events naming more than one actor in one segment are invalid (one action, one actor, §8.1)',
+    rMixed.ok === false, JSON.stringify(rMixed.ok === false ? rMixed : '(validated ok)'));
+  // the writer refuses to seal what readers must reject
+  let wEmpty = ''; let wOrder = '';
+  try { sealAction([]); } catch (e) { wEmpty = e.message; }
+  try { sealAction([ev(2, 'actor-a'), ev(1, 'actor-a')]); } catch (e) { wOrder = e.message; }
+  check('J23d: sealAction refuses to seal an empty or mis-ordered action (writer side of the same contract)',
+    wEmpty !== '' && wOrder !== '', JSON.stringify({ wEmpty: wEmpty.slice(0, 40), wOrder: wOrder.slice(0, 40) }));
+  // a well-formed multi-event action still validates
+  const rGood = validateSegment(craft([ev(1, 'actor-a'), ev(2, 'actor-a')]));
+  check('J23d: a well-formed multi-event action still validates', rGood.ok === true && rGood.events.length === 2);
+}
+
 // ---------- J24: staged-intent (outbox) republication — exact bytes (§8.1 asymmetric rule, local side) ----------
 {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-j24-'));
