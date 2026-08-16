@@ -238,6 +238,60 @@ const buildSeed = () => {
     allClean, details.join(' · '));
 }
 
+// ---------- J14c (round 7): the schema is TOTAL over PER-OP PAYLOADS too — one shared
+//   §5.1/§5.2 record validator; every payload field the fold dereferences has a rule ----------
+{
+  const okTs = (s, a = 'actor-a') => `2026-08-14T01:00:${String(s).padStart(2, '0')}.000Z|0000|${a}`;
+  const skel1 = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}`;
+  // the reviewer's event: seals fine, then the fold crashes reading contextId.reference.bookId
+  const reviewers = { v: 1, op: 'check.decision.set', actor: 'actor-a', ts: okTs(1), base: null,
+    generation: okTs(0), toolId: 'translationWords', decision: { contextId: {} } };
+  let sealMsg0 = ''; let foldMsg0 = '';
+  try { sealAction([reviewers]); } catch (e) { sealMsg0 = e.message; }
+  try { fold([reviewers]); } catch (e) { foldMsg0 = e.message; }
+  const CRASHY = /Cannot read|is not iterable|is not a function|undefined is not|toUpperCase/i;
+  check('J14c: the reviewer\'s event — a decision with an EMPTY contextId — is refused AT SEAL (and cleanly at fold), never sealed-then-crashed',
+    sealMsg0 !== '' && foldMsg0 !== '' && !CRASHY.test(sealMsg0) && !CRASHY.test(foldMsg0),
+    `seal="${sealMsg0.slice(0, 50)}" fold="${foldMsg0.slice(0, 50)}"`);
+  // wrong-typed payload table, one row per op family — every field the fold dereferences
+  const dec = (over) => ({ v: 1, op: 'check.decision.set', actor: 'actor-a', ts: okTs(1), base: null,
+    generation: okTs(0), toolId: 'translationWords',
+    decision: { contextId: { checkId: 'c1', occurrence: 1, reference: { bookId: 'tit', chapter: '1', verse: '2' }, ...over } } });
+  const rows = [
+    ['check.decision.set reference.bookId is a number (fold crash: .toUpperCase)',
+      dec({ reference: { bookId: 7, chapter: '1', verse: '2' } })],
+    ['check.decision.set contextId without checkId (silent "undefined" identity key)', dec({ checkId: undefined })],
+    ['check.decision.set contextId without occurrence', dec({ occurrence: undefined })],
+    ['check.decision.set reference.chapter is an object', dec({ reference: { bookId: 'tit', chapter: {}, verse: '2' } })],
+    ['text.verse.set chapter is an object (silent "[object Object]" key)',
+      { v: 1, op: 'text.verse.set', actor: 'actor-a', ts: okTs(2), base: null, book: 'TIT', chapter: {}, verse: '1', text: 'x\n' }],
+    ['text.verse.set verse is an object',
+      { v: 1, op: 'text.verse.set', actor: 'actor-a', ts: okTs(2), base: null, book: 'TIT', chapter: '1', verse: {}, text: 'x\n' }],
+    ['align.verse.set chapter is an object',
+      { v: 1, op: 'align.verse.set', actor: 'actor-a', ts: okTs(3), base: null, generation: okTs(0),
+        book: 'TIT', chapter: {}, verse: '1', alignments: [], wordBank: [], targetVerseMd5: md5('x') }],
+    ['note.add verse-target book is an object',
+      { v: 1, op: 'note.add', actor: 'actor-a', ts: okTs(4), base: null, generation: okTs(0),
+        target: { book: {}, chapter: '1', verse: '1' }, text: 'n' }],
+    ['note.add verse-target chapter is an object',
+      { v: 1, op: 'note.add', actor: 'actor-a', ts: okTs(4), base: null, generation: okTs(0),
+        target: { book: 'TIT', chapter: {}, verse: '1' }, text: 'n' }],
+    ['book.add initialVerses value is a number (projected verse would not be a string)',
+      { v: 1, op: 'book.add', actor: 'actor-a', ts: okTs(5), base: null,
+        book: 'TIT', scope: [], skeleton: skel1, initialVerses: { '1:1': 42 } }],
+  ];
+  let allClean = true; const details = [];
+  for (const [label, ev] of rows) {
+    let sealMsg = ''; let foldMsg = '';
+    try { sealAction([ev]); } catch (e) { sealMsg = e.message; }
+    try { fold([ev]); } catch (e) { foldMsg = e.message; }
+    const clean = sealMsg !== '' && foldMsg !== '' && !CRASHY.test(sealMsg) && !CRASHY.test(foldMsg);
+    if (!clean) { allClean = false; details.push(`${label}: seal="${sealMsg.slice(0, 40)}" fold="${foldMsg.slice(0, 40)}"`); }
+  }
+  check('J14c: every wrong-typed PER-OP payload field the fold dereferences is refused CLEANLY at seal AND at fold — no raw TypeError, no silent pass',
+    allClean, details.join(' · '));
+}
+
 // ---------- J8: out-of-band reconcile ----------
 {
   const { events } = buildSeed();
