@@ -8,13 +8,20 @@
 // Requires the rig server: dev-env/scripts/seed.zsh && dev-env/scripts/run.zsh
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
 import { fold } from './journal/fold.mjs';
 import { readUnion, writeActionSegment, sealAction, validateSegment, validateActorDoc, segmentName } from './journal/files.mjs';
 import { SLOT } from './journal/skeleton.mjs';
 
 const API = process.env.RIG_API || 'http://127.0.0.1:19998/api';
-const REPOS = process.env.RIG_REPOS || path.resolve('../dev-env/state/work/repos');
+// The default rig repos directory is resolved RELATIVE TO THIS SCRIPT, never to the
+// ambient working directory: `npm run validate:transport` from `conformance/` and the
+// same script invoked from the repository root must both find `dev-env/state/work/repos`
+// (round 8 — the same "resolve, never trust" rule the checkpoint and the writer apply to
+// their own paths). `RIG_REPOS` still overrides, for a rig outside the repository.
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const REPOS = process.env.RIG_REPOS || path.resolve(HERE, '../dev-env/state/work/repos');
 const LOCAL = '_local_/_local_';
 
 let pass = 0, fail = 0;
@@ -104,7 +111,7 @@ const run = async () => {
   writeJournalFs(P, 'seed', seed);
   // metadata must satisfy the server's BurritoMetadata structs (update_ingredients round-trips
   // it — PLATFORM-NOTES #5); reuse the schema-valid sample metadata as the fixture's.
-  fs.copyFileSync(path.resolve('./sample-burrito/metadata.json'), path.join(dirOf(P), 'metadata.json'));
+  fs.copyFileSync(path.resolve(HERE, 'sample-burrito/metadata.json'), path.join(dirOf(P), 'metadata.json'));
   await project(P);
   await commitRepo(P, 'base');
   const pBase = head(P);
