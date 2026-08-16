@@ -28,9 +28,10 @@ discriminator, not a font-fallback difference.
 1. Launch the production artifact through its Electronite binary with a
    fresh `HOME` plus `--remote-debugging-port` (probe access only; the app
    otherwise runs as shipped and self-spawns its server, port 19119).
-2. Via CDP (`scratchpad/graphite-probe.js`, `puppeteer-core.connect`),
-   inject into the served `/clients/uw-tc4` page (test-only, nothing
-   committed to `src/`):
+2. Via CDP ([`tools/graphite-probe.js`](tools/graphite-probe.js),
+   `puppeteer-core.connect`; its header comments carry the full launch
+   procedure), inject into the served `/clients/uw-tc4` page (test-only,
+   nothing committed to `src/`):
    - `<link rel="stylesheet" href="/api/webfonts/pankosmia-Awami_Nastaliq.css">`
      — the platform's own webfont route (`launch.rs:306`).
    - A probe block: the Urdu text `نستعلیق تحریر خوش آمدید` at 48px in
