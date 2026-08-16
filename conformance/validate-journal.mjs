@@ -201,6 +201,43 @@ const buildSeed = () => {
   check('J14: unknown v / unknown op refuse with clear messages', vThrew.includes('version') && opThrew.includes('unrecognized op'), `"${vThrew.slice(0, 40)}" / "${opThrew.slice(0, 40)}"`);
 }
 
+// ---------- J14b (round 6): the schema is TOTAL over the envelope — every field the fold
+//   dereferences has a shape rule; malformed input gets a clean rejection, never a crash ----------
+{
+  const okTs = (s, a = 'actor-a') => `2026-08-14T00:00:${String(s).padStart(2, '0')}.000Z|0000|${a}`;
+  const baseEvent = { v: 1, op: 'settings.set', actor: 'actor-a', ts: okTs(1), base: null, path: 'ui.x', value: 1 };
+  const skel1 = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}`;
+  const rows = [
+    ['supersedes is not an array (the reviewer\'s crash)', { ...baseEvent, supersedes: { not: 'an array' } }],
+    ['supersedes entry is not a ts', { ...baseEvent, supersedes: ['not-a-ts'] }],
+    ['base is a number', { ...baseEvent, base: 42 }],
+    ['base is a non-ts string', { ...baseEvent, base: 'yesterday' }],
+    ['batch is an object', { ...baseEvent, batch: {} }],
+    ['seed is a string', { ...baseEvent, seed: 'creation' }],
+    ['seed.source outside the §8.3 enum', { ...baseEvent, seed: { source: 'time-travel', batch: okTs(0) } }],
+    ['generation is null', { v: 1, op: 'note.add', actor: 'actor-a', ts: okTs(2), base: null, generation: null, target: { book: 'TIT', chapter: '1', verse: '1' }, text: 'x' }],
+    ['generation is a non-ts string', { v: 1, op: 'note.add', actor: 'actor-a', ts: okTs(2), base: null, generation: 'gen-1', target: { book: 'TIT', chapter: '1', verse: '1' }, text: 'x' }],
+    ['ts counter outside lowercase hex', { ...baseEvent, ts: '2026-08-14T00:00:01.000Z|ZZZZ|actor-a' }],
+    ['ts actor slug outside [a-z0-9-]{4,32}', { v: 1, op: 'settings.set', actor: 'Actor_A', ts: '2026-08-14T00:00:01.000Z|0000|Actor_A', base: null, path: 'ui.x', value: 1 }],
+    ['structural source ts is a number', { v: 1, op: 'text.structure.apply', actor: 'actor-a', ts: okTs(3), base: okTs(1),
+      book: 'TIT', skeleton: skel1, transitions: { '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: 42 }] } }, dispositions: [] }],
+    ['disposition ts is not a ts', { v: 1, op: 'text.structure.apply', actor: 'actor-a', ts: okTs(3), base: okTs(1),
+      book: 'TIT', skeleton: skel1, transitions: { '1:1': { text: 'uno\n', sources: [] } },
+      dispositions: [{ surface: 'alignment', key: '1:1', ts: 'whenever', action: 'orphan-review' }] }],
+  ];
+  const CRASHY = /Cannot read|is not iterable|is not a function|undefined is not/i;
+  let allClean = true; const details = [];
+  for (const [label, ev] of rows) {
+    let sealMsg = ''; let foldMsg = '';
+    try { sealAction([ev]); } catch (e) { sealMsg = e.message; }
+    try { fold([ev]); } catch (e) { foldMsg = e.message; }
+    const clean = sealMsg !== '' && foldMsg !== '' && !CRASHY.test(sealMsg) && !CRASHY.test(foldMsg);
+    if (!clean) { allClean = false; details.push(`${label}: seal="${sealMsg.slice(0, 40)}" fold="${foldMsg.slice(0, 40)}"`); }
+  }
+  check('J14b: every wrong-typed envelope/ts-shaped field is refused CLEANLY at seal AND at fold — no raw TypeError, no silent pass',
+    allClean, details.join(' · '));
+}
+
 // ---------- J8: out-of-band reconcile ----------
 {
   const { events } = buildSeed();
@@ -1220,6 +1257,70 @@ try {
     !!good.alignments.TIT?.['1:3'] && good.pendingStructural.length === 0, JSON.stringify(good.alignments.TIT));
 }
 
+// ---------- J21f (round 6): replace.post is a VALIDATED post-state (§5.1/§5.2 shapes,
+//   identity-consistent with the disposition's target); note replacement is rejected ----------
+{
+  const E = (op, actor, ts, base, extra) => mkEvent({ op, actor, ts, base, ...extra });
+  const t = (s, c, a) => `2026-08-01T04:00:${String(s).padStart(2, '0')}.000Z|000${c}|${a}`;
+  const skel2 = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}`;
+  const skel2r = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 3 ${SLOT}1:3${SLOT}`;
+  const add = E('book.add', 'drafter-a', t(0, 0, 'drafter-a'), null, { book: 'TIT', scope: [], skeleton: skel2, initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n' } });
+  const align2 = E('align.verse.set', 'checker-c', t(1, 0, 'checker-c'), null, { book: 'TIT', chapter: '1', verse: '2', generation: add.ts, alignments: [], wordBank: [], targetVerseMd5: md5('dos') });
+  const note2 = E('note.add', 'checker-c', t(1, 1, 'checker-c'), null, { generation: add.ts, target: { book: 'TIT', chapter: '1', verse: '2' }, text: 'nota' });
+  const structWith = (dispositions, extraNotes = []) => [add, align2, ...extraNotes,
+    E('text.structure.apply', 'drafter-a', t(2, 0, 'drafter-a'), add.ts, {
+      book: 'TIT', skeleton: skel2r,
+      transitions: {
+        '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: add.ts }] },
+        '1:3': { text: 'dos\n', sources: [{ key: '1:2', ts: add.ts }] },
+      },
+      dispositions,
+    })];
+  const cases = [
+    ['alignment replace with an EMPTY post (the reproduced undefined:undefined)',
+      [{ surface: 'alignment', key: '1:2', ts: align2.ts, action: 'replace', post: {} }]],
+    ['alignment replace whose post identity mismatches the disposition target',
+      [{ surface: 'alignment', key: '1:2', ts: align2.ts, action: 'replace', post: { chapter: '9', verse: '9', alignments: [], wordBank: [], targetVerseMd5: md5('dos') } }]],
+  ];
+  for (const [label, dispositions] of cases) {
+    let refused = ''; let out = null;
+    try { out = fold(structWith(dispositions)); } catch (e) { refused = e.message; }
+    check(`J21f: ${label} is refused whole`,
+      refused.includes('replace'),
+      refused ? `"${refused.slice(0, 70)}"` : `applied: ${JSON.stringify(out?.alignments.TIT)}`);
+  }
+  // decision replace with mismatched identity
+  const dec2 = E('check.decision.set', 'checker-c', t(1, 2, 'checker-c'), null, { toolId: 'translationWords', generation: add.ts,
+    decision: { contextId: { checkId: 'c1', reference: { bookId: 'tit', chapter: '1', verse: '2' }, occurrence: 1 }, selections: false, invalidated: false, status: 'todo' } });
+  let decRefused = ''; let decOut = null;
+  try {
+    decOut = fold([add, dec2, structWith([
+      { surface: 'decision', key: 'translationWords|c1|tit|1|2|1', ts: dec2.ts, action: 'replace',
+        post: { contextId: { checkId: 'OTHER', reference: { bookId: 'jon', chapter: '3', verse: '9' }, occurrence: 2 }, selections: false } },
+    ])[2]]);
+  } catch (e) { decRefused = e.message; }
+  check('J21f: decision replace whose post identity mismatches the §5.2 target is refused whole',
+    decRefused.includes('replace'),
+    decRefused ? `"${decRefused.slice(0, 70)}"` : `applied: ${JSON.stringify(decOut?.decisions)}`);
+  // note replacement contradicts the grow-only model — REJECTED in v1
+  let noteRefused = '';
+  try { fold(structWith([
+    { surface: 'alignment', key: '1:2', ts: align2.ts, action: 'orphan-review' },
+    { surface: 'note', ts: note2.ts, action: 'replace', post: { text: 'sustituta' } },
+  ], [note2])); } catch (e) { noteRefused = e.message; }
+  check('J21f: note replacement is REJECTED — notes are grow-only in v1 (replace contradicts their model)',
+    noteRefused.includes('grow-only') || noteRefused.includes('replace'),
+    `"${noteRefused.slice(0, 70)}"`);
+  // a COMPLETE, identity-consistent alignment replace still applies
+  const good = fold(structWith([
+    { surface: 'alignment', key: '1:2', ts: align2.ts, action: 'replace',
+      post: { chapter: '1', verse: '2', alignments: [], wordBank: [], targetVerseMd5: md5('dos') } },
+  ]));
+  check('J21f: a complete §5.1 post-state with consistent identity still applies',
+    !!good.alignments.TIT?.['1:2'] && good.pendingStructural.length === 0,
+    JSON.stringify(good.alignments.TIT));
+}
+
 // ---------- J22: structural lineage — branch-local effects, retention, sequential chains (#65 ruling) ----------
 {
   const E = (op, actor, ts, base, extra) => mkEvent({ op, actor, ts, base, ...extra });
@@ -1380,6 +1481,40 @@ try {
     !!skelFork && skelFork.heads.length === 2 &&
     (forked.books.TIT.verses['1:2'] === 'dos\n' || forked.books.TIT.verses['1:3'] === 'dos\n'),
     JSON.stringify({ forks: forked.forks, verses: forked.books.TIT.verses }));
+}
+
+// ---------- J22c (round 6): pending propagates TRANSITIVELY — a descendant of a pending
+//   skeleton link is pending, not accepted (§8.4/§8.5) ----------
+{
+  const E = (op, actor, ts, base, extra) => mkEvent({ op, actor, ts, base, ...extra });
+  const t = (s, c, a) => `2026-08-02T01:00:${String(s).padStart(2, '0')}.000Z|000${c}|${a}`;
+  const skel = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}`;
+  const add = E('book.add', 'drafter-a', t(0, 0, 'drafter-a'), null, { book: 'TIT', scope: [], skeleton: skel, initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n' } });
+  const ghost = t(0, 5, 'ghost-gg'); // never arrives
+  // A: skeleton edit on an UNKNOWN base — pending. B bases on A: A exists in the union,
+  // but it was never ACCEPTED — B must pend too, not win a fork and stub every verse.
+  const A = E('text.skeleton.set', 'ghost-gg', t(1, 0, 'ghost-gg'), ghost, { book: 'TIT', skeleton: `\\id TIT via ghost\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}` });
+  const B = E('text.skeleton.set', 'checker-b', t(2, 0, 'checker-b'), A.ts, { book: 'TIT', skeleton: `\\id TIT via B\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}` });
+  const out = fold([add, A, B]);
+  check('J22c: a skeleton edit based on a PENDING link pends too — it never becomes a head, and the projection is unchanged (verse bytes intact)',
+    out.pendingStructural.length === 2 &&
+    !out.books.TIT.usfm.startsWith('\\id TIT via B') &&
+    out.books.TIT.verses['1:1'] === 'uno\n' && out.books.TIT.verses['1:2'] === 'dos\n',
+    JSON.stringify({ pending: out.pendingStructural, verses: out.books.TIT.verses, header: out.books.TIT.usfm.split('\n')[0] }));
+  // three-deep chain: C on B on A — all pending until the ancestor resolves
+  const C = E('text.skeleton.set', 'checker-b', t(3, 0, 'checker-b'), B.ts, { book: 'TIT', skeleton: `\\id TIT via C\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}` });
+  const deep = fold([add, A, B, C]);
+  check('J22c: pending propagates through a three-deep chain — every descendant pends',
+    deep.pendingStructural.length === 3 && deep.books.TIT.verses['1:1'] === 'uno\n' &&
+    !deep.books.TIT.usfm.startsWith('\\id TIT via'),
+    JSON.stringify(deep.pendingStructural));
+  // when the missing ancestor arrives, the whole chain folds (event-SET determinism)
+  const ghostEv = E('text.skeleton.set', 'ghost-gg', ghost, add.ts, { book: 'TIT', skeleton: `\\id TIT via ghost0\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}` });
+  const resolved = fold([add, ghostEv, A, B, C]);
+  check('J22c: when the missing ancestor arrives, the whole chain folds and verse bytes are untouched (byte invariant holds)',
+    resolved.pendingStructural.length === 0 && resolved.books.TIT.usfm.startsWith('\\id TIT via C') &&
+    resolved.books.TIT.verses['1:1'] === 'uno\n' && resolved.books.TIT.verses['1:2'] === 'dos\n',
+    JSON.stringify({ pending: resolved.pendingStructural, header: resolved.books.TIT.usfm.split('\n')[0], verses: resolved.books.TIT.verses }));
 }
 
 // ---------- J23: sealed action segments — the §8.1 container contract ----------
@@ -1558,6 +1693,43 @@ try {
   // a well-formed multi-event action still validates
   const rGood = validateSegment(craft([ev(1, 'actor-a'), ev(2, 'actor-a')]));
   check('J23d: a well-formed multi-event action still validates', rGood.ok === true && rGood.events.length === 2);
+}
+
+// ---------- J23e (round 6): no filesystem traversal via a ts-shaped field; writer touches
+//   the filesystem LAST (§8.1/§8.2) ----------
+{
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-j23e-'));
+  const actorDir = path.join(tmp, 'journal', 'actor-a');
+  // the reviewer's exact traversal: two pipes satisfy a naive shape check, and the
+  // encoded filename walks out of the actor directory
+  const evilTs = '../../escaped|0000|actor-a';
+  const evil = mkEvent({ op: 'settings.set', actor: 'actor-a', ts: evilTs, path: 'ui.x', value: 1 });
+  let sealRefused = '';
+  try { sealAction([evil]); } catch (e) { sealRefused = e.message; }
+  check('J23e: a traversal-shaped ts is refused by the SCHEMA at seal — the exact §8.2 grammar binds, actor-slug charset included',
+    sealRefused.includes('HLC'), sealRefused ? `"${sealRefused.slice(0, 70)}"` : '(sealed fine)');
+  let writeRefused = ''; let wrotePath = '';
+  try { wrotePath = writeActionSegment(actorDir, [evil]); } catch (e) { writeRefused = e.message; }
+  const escaped = fs.readdirSync(tmp).filter((f) => f.includes('escaped'));
+  check('J23e: writeActionSegment refuses the traversal and writes NOTHING outside the actor segments directory',
+    writeRefused !== '' && escaped.length === 0 && !fs.existsSync(path.join(tmp, 'escaped,0000,actor-a.action.json')),
+    JSON.stringify({ writeRefused: writeRefused.slice(0, 50), wrotePath, tmpEntries: fs.readdirSync(tmp) }));
+  // defense in depth, schema bypassed: the path derivation itself refuses containment escape
+  const segmentPathFor = filesAll.segmentPathFor;
+  let guardRefused = '';
+  try { if (typeof segmentPathFor !== 'function') throw new Error('segmentPathFor not implemented'); segmentPathFor(actorDir, evilTs); }
+  catch (e) { guardRefused = e.message; }
+  check('J23e: the path derivation REFUSES containment escape independently of the schema (defense in depth)',
+    guardRefused.includes('escape') || guardRefused.includes('refuse'), `"${guardRefused.slice(0, 70)}"`);
+  // writer order-of-operations (round-6 finding 6): validate FIRST, filesystem LAST —
+  // an empty action gets a clean schema error and creates NO directory
+  const freshActor = path.join(tmp, 'journal', 'actor-b');
+  let emptyRefused = '';
+  try { writeActionSegment(freshActor, []); } catch (e) { emptyRefused = e.message; }
+  check('J23e: writeActionSegment([]) is a clean schema refusal and touches the filesystem NOT AT ALL (no directory created)',
+    emptyRefused.includes('empty-events') && !fs.existsSync(freshActor),
+    JSON.stringify({ emptyRefused: emptyRefused.slice(0, 60), dirCreated: fs.existsSync(freshActor) }));
+  fs.rmSync(tmp, { recursive: true, force: true });
 }
 
 // ---------- J24: staged-intent (outbox) republication — exact bytes (§8.1 asymmetric rule, local side) ----------

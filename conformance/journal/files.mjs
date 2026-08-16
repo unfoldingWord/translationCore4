@@ -21,6 +21,17 @@ export const segmentName = (ts) => `${String(ts).replaceAll(':', '_').replaceAll
 export const segmentTs = (name) =>
   String(name).replace(/\.action\.json$/, '').replaceAll(',', '|').replaceAll('_', ':');
 
+// Defense in depth (§8.1, round 6): the final segment path MUST resolve strictly inside
+// the actor's segments directory — independent of the schema's §8.2 ts grammar, a
+// ts-shaped value can never smuggle a filesystem path past the writer.
+export const segmentPathFor = (actorDir, ts) => {
+  const dir = path.resolve(actorDir, 'segments');
+  const file = path.resolve(dir, segmentName(ts));
+  if (path.dirname(file) !== dir)
+    throw new Error(`segment path for ts "${ts}" escapes the actor segments directory — refuse to write (§8.1)`);
+  return file;
+};
+
 // Seal one action (all events of ONE store mutation, ts order, one actor; multi-scope
 // allowed). The writer applies the SAME schema the reader/intake applies (§8.1) —
 // writer-symmetric by construction.
@@ -41,10 +52,10 @@ export const sealAction = (events) => {
 //   4. existing INVALID → REJECT here too — recovery goes through republishSegment,
 //      which verifies the staged intent before it may overwrite.
 export const writeActionSegment = (actorDir, events) => {
-  const dir = path.join(actorDir, 'segments');
-  fs.mkdirSync(dir, { recursive: true });
-  const file = path.join(dir, segmentName(events[0].ts));
+  // order of operations (round 6): validate FIRST (seal = the schema), derive the
+  // guarded path SECOND, touch the filesystem LAST — a malformed action creates nothing.
   const sealed = sealAction(events);
+  const file = segmentPathFor(actorDir, events[0].ts);
   if (fs.existsSync(file)) {
     const existing = fs.readFileSync(file, 'utf8');
     if (existing === sealed) return file; // idempotent accept
@@ -52,6 +63,7 @@ export const writeActionSegment = (actorDir, events) => {
       throw new Error(`segment ${path.basename(file)} already accepted with different bytes — refuse to overwrite (§8.1)`);
     throw new Error(`segment ${path.basename(file)} exists but is invalid — recover via republishSegment with staged intent (§8.1)`);
   }
+  fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, sealed);
   return file;
 };
@@ -62,7 +74,7 @@ export const writeActionSegment = (actorDir, events) => {
 export const republishSegment = (actorDir, stagedBytes) => {
   const r = validateSegment(stagedBytes);
   if (!r.ok) throw new Error(`staged intent is itself invalid (${r.reason}) — refuse to republish`);
-  const file = path.join(actorDir, 'segments', segmentName(r.events[0].ts));
+  const file = segmentPathFor(actorDir, r.events[0].ts);
   if (fs.existsSync(file)) {
     const existing = fs.readFileSync(file, 'utf8');
     if (existing === stagedBytes) return file; // already published

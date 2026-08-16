@@ -38,8 +38,13 @@ export const makeClock = (actorId, now = () => Date.now()) => {
   return { issue, ratchet };
 };
 
+// The exact §8.2 ts grammar — fixed-width ISO ms UTC | 4-hex lowercase counter |
+// actor slug [a-z0-9-]{4,32}. THE definition: parseTs and the schema both use it.
+export const TS_RE = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)\|([0-9a-f]{4})\|([a-z0-9-]{4,32})$/;
+export const isTs = (v) => typeof v === 'string' && TS_RE.test(v);
+
 export const parseTs = (ts) => {
-  const m = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)\|([0-9a-f]{4})\|([a-z0-9-]{4,32})$/.exec(ts);
+  const m = TS_RE.exec(ts);
   if (!m) throw new Error(`malformed ts: ${ts}`);
   return { physical: Date.parse(m[1]), counter: parseInt(m[2], 16), actor: m[3], iso: m[1] };
 };

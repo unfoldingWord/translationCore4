@@ -5,9 +5,12 @@
 // nulls included). SHAPE lives here; semantic rules (liveness, chains, applicability,
 // affected sets) stay in the fold.
 import { slotKeysOf } from './skeleton.mjs';
+import { isTs } from './hlc.mjs';
 
 const isStr = (v) => typeof v === 'string';
 const isObj = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
+// §8.3 seed provenance enum
+const SEED_SOURCES = new Set(['creation', 'sidecar-migration', 'out-of-band-usfm', 'tc3-import']);
 
 // §8.5: derived/fixed metadata roots a project.meta.set may never target.
 export const META_RESERVED_ROOTS = new Set(['format', 'ingredients', 'type', 'meta']);
@@ -23,7 +26,7 @@ const dispositionError = (d, newSlots) => {
   if (!isObj(d)) return 'disposition is not an object';
   if (!DISP_SURFACES.has(d.surface)) return `disposition surface "${d && d.surface}" is not one of alignment|decision|note`;
   if (!DISP_ACTIONS.has(d.action)) return `disposition action "${d.action}" is not one of re-key|replace|invalidate-retain|orphan-review`;
-  if (!isStr(d.ts)) return 'disposition without a record ts';
+  if (!isTs(d.ts)) return `disposition record reference "${d.ts}" is not an §8.2 HLC ts`;
   if ((d.surface === 'alignment' || d.surface === 'decision') && !isStr(d.key))
     return `disposition (${d.surface}) without a key`;
   if (d.action === 're-key') {
@@ -33,8 +36,26 @@ const dispositionError = (d, newSlots) => {
     if (d.surface === 'note' && !newSlots.includes(d.to) && !d.to.includes('|'))
       return `note re-key destination "${d.to}" is neither a target slot nor a §5.2 identity key`;
   }
-  if (d.action === 'replace' && !isObj(d.post))
-    return 'replace disposition without the complete post-state (post)';
+  if (d.action === 'replace') {
+    // §8.5: the post-state is a VALIDATED, complete record whose identity is
+    // consistent with the disposition's target — never a free-form object.
+    if (d.surface === 'note') return 'replace is not a note disposition — notes are grow-only in v1';
+    if (!isObj(d.post)) return 'replace disposition without the complete post-state (post)';
+    if (d.surface === 'alignment') {
+      if (!Array.isArray(d.post.alignments) || !Array.isArray(d.post.wordBank) || !isStr(d.post.targetVerseMd5))
+        return 'alignment replace post must be a complete §5.1 record (alignments, wordBank, targetVerseMd5)';
+      if (`${d.post.chapter}:${d.post.verse}` !== d.key)
+        return `alignment replace post identity "${d.post.chapter}:${d.post.verse}" mismatches the disposition target "${d.key}"`;
+    }
+    if (d.surface === 'decision') {
+      const c = d.post.contextId; const r = isObj(c) ? c.reference : null;
+      if (!isObj(c) || !isObj(r)) return 'decision replace post must be a complete §5.2 record (contextId.reference)';
+      const identity = [c.checkId, r.bookId, r.chapter, r.verse, c.occurrence].map(String);
+      const target = String(d.key).split('|').slice(1);
+      if (JSON.stringify(identity) !== JSON.stringify(target))
+        return `decision replace post identity [${identity.join('|')}] mismatches the disposition target "${d.key}"`;
+    }
+  }
   return null;
 };
 
@@ -65,8 +86,8 @@ const OPS = {
       if (!isObj(tr) || !isStr(tr.text) || !Array.isArray(tr.sources ?? []))
         return `text.structure.apply transition "${dest}" must state its final text`;
       for (const src of tr.sources || []) {
-        if (!isObj(src) || !isStr(src.key) || !isStr(src.ts))
-          return `text.structure.apply transition "${dest}" carries a malformed source reference`;
+        if (!isObj(src) || !isStr(src.key) || !isTs(src.ts))
+          return `text.structure.apply transition "${dest}" carries a malformed source reference (key + §8.2 HLC ts required)`;
         const c = `${src.key}|${src.ts}`;
         if (claimed.has(c)) return `text.structure.apply claims source ${c} twice`;
         claimed.add(c);
@@ -132,17 +153,33 @@ const OPS = {
 // §8.5: these ops MUST carry the causal `generation` stamp — unconditionally.
 const GENERATION_OPS = new Set(['align.verse.set', 'check.decision.set', 'note.add']);
 
-// Validate ONE event: envelope, actor binding, generation stamp, per-op payload.
+// Validate ONE event: envelope (every field the fold dereferences has a shape rule —
+// ts-shaped fields carry the EXACT §8.2 grammar, actor-slug charset included, so a
+// ts can never smuggle a filesystem path), actor binding, generation stamp, per-op
+// payload. Total over malformed input: a wrong-typed field is a clean rejection.
 export const validateEvent = (e) => {
   if (!isObj(e)) return 'event is not an object (event-shape)';
   if (e.v !== 1) return `unknown envelope version v=${e.v}`;
   if (!OPS[e.op]) return `unrecognized op "${e.op}"`;
-  if (!isStr(e.ts) || e.ts.split('|').length !== 3) return `event ts "${e.ts}" is not an HLC string (§8.2)`;
+  if (!isTs(e.ts)) return `event ts "${e.ts}" is not an §8.2 HLC string (fixed-width ISO | 4-hex | [a-z0-9-]{4,32})`;
   if (!isStr(e.actor)) return 'event without actor';
   if (e.ts.split('|')[2] !== e.actor)
     return `actor binding violated: event actor "${e.actor}" ≠ ts actor "${e.ts.split('|')[2]}"`;
+  if (e.base !== undefined && e.base !== null && !isTs(e.base))
+    return `event base "${e.base}" must be null or an §8.2 HLC ts`;
+  if (e.supersedes !== undefined && (!Array.isArray(e.supersedes) || e.supersedes.some((s) => !isTs(s))))
+    return 'event supersedes must be an array of §8.2 HLC ts';
+  if (e.batch !== undefined && !isTs(e.batch))
+    return `event batch "${e.batch}" must be an §8.2 HLC ts`;
+  if (e.seed !== undefined) {
+    if (!isObj(e.seed) || !SEED_SOURCES.has(e.seed.source))
+      return 'event seed must be {source: creation|sidecar-migration|out-of-band-usfm|tc3-import, batch?}';
+    if (e.seed.batch !== undefined && !isTs(e.seed.batch)) return 'seed.batch must be an §8.2 HLC ts';
+  }
   if (GENERATION_OPS.has(e.op) && e.generation === undefined)
     return `${e.op} without a generation stamp — §8.5 requires every writer (seeding included) to stamp the book's generation root`;
+  if (e.generation !== undefined && !isTs(e.generation))
+    return `generation "${e.generation}" must be the rooting book.add's §8.2 HLC ts`;
   return OPS[e.op](e);
 };
 

@@ -101,6 +101,7 @@ export const fold = (eventsIn) => {
   const consumed = new Map();      // `${key}|${headTs}` -> Set(structTs)
   const retainedByStruct = [];     // {structTs, key, ts, reason}
   const pendingStructural = [];    // {ts, book, status, detail}
+  const pendingLinks = new Set();  // skeleton links with an unresolved ancestor chain (transitive)
   let vrs = null;                  // {name, bytes, ts} — immutable first-value register
   const vrsRejected = [];
 
@@ -173,8 +174,14 @@ export const fold = (eventsIn) => {
       if (e.base == null)
         throw new Error(`text.skeleton.set requires base = the current skeleton head (ts ${e.ts}) — refuse to fold (§8.5); the first skeleton comes from book.add`);
       const baseEv = byTs.get(e.base);
-      if (!baseEv) {
-        pendingStructural.push({ ts: e.ts, book: e.book, status: 'incomplete', detail: [`unknown-base:${e.base}`] });
+      // The chain rule requires an ACCEPTED predecessor (round-6 finding 3): a base
+      // that is merely PRESENT in the union but itself pending is not accepted, so
+      // pending propagates TRANSITIVELY down the chain until the ancestor resolves —
+      // a descendant must never win a fork off an unaccepted link.
+      if (!baseEv || pendingLinks.has(e.base)) {
+        pendingStructural.push({ ts: e.ts, book: e.book, status: 'incomplete',
+          detail: [baseEv ? `pending-ancestor:${e.base}` : `unknown-base:${e.base}`] });
+        pendingLinks.add(e.ts);
         continue;
       }
       if (baseEv.book !== e.book || typeof baseEv.skeleton !== 'string')
