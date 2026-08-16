@@ -7,6 +7,7 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { validateAction } from './schema.mjs';
 
 const sha256 = (s) => crypto.createHash('sha256').update(s, 'utf8').digest('hex');
 export const SEGMENT_LIMIT = 4 * 1024 * 1024; // 4 MiB (§8.1)
@@ -20,20 +21,12 @@ export const segmentName = (ts) => `${String(ts).replaceAll(':', '_').replaceAll
 export const segmentTs = (name) =>
   String(name).replace(/\.action\.json$/, '').replaceAll(',', '|').replaceAll('_', ':');
 
-// The action shape (§8.1): a NON-EMPTY event array, strictly ascending ts, ONE actor.
-// Enforced symmetrically: sealAction refuses to seal it, validateSegment rejects it.
-const actionShapeError = (events) => {
-  if (!Array.isArray(events) || events.length === 0) return 'empty-events';
-  for (let i = 1; i < events.length; i++)
-    if (!(String(events[i].ts) > String(events[i - 1].ts))) return 'ts-order';
-  if (events.some((e) => !e || e.actor !== events[0].actor)) return 'multi-actor';
-  return null;
-};
-
-// Seal one action (all events of ONE store mutation, ts order, one actor; multi-scope allowed).
+// Seal one action (all events of ONE store mutation, ts order, one actor; multi-scope
+// allowed). The writer applies the SAME schema the reader/intake applies (§8.1) —
+// writer-symmetric by construction.
 export const sealAction = (events) => {
-  const shapeErr = actionShapeError(events);
-  if (shapeErr) throw new Error(`refuse to seal a malformed action (${shapeErr}) — §8.1: non-empty events, strictly ascending ts, one actor`);
+  const err = validateAction(events);
+  if (err) throw new Error(`refuse to seal a malformed action (${err}) — §8.1/§8.5 schema`);
   const body = JSON.stringify({ events });
   const seg = JSON.stringify({ container: 1, body, sha256: sha256(body) });
   if (Buffer.byteLength(seg, 'utf8') > SEGMENT_LIMIT)
@@ -94,9 +87,10 @@ export const validateSegment = (raw) => {
   let body;
   try { body = JSON.parse(outer.body); } catch { return { ok: false, reason: 'body-parse' }; }
   if (!body || !Array.isArray(body.events)) return { ok: false, reason: 'no-events' };
-  // §8.1 action shape: non-empty, strictly ascending ts, one actor.
-  const shapeErr = actionShapeError(body.events);
-  if (shapeErr) return { ok: false, reason: shapeErr };
+  // The ONE declarative schema (§8.1/§8.3/§8.5): action shape + every event's envelope
+  // and per-op payload — the same validator the writer sealed with.
+  const err = validateAction(body.events);
+  if (err) return { ok: false, reason: err };
   return { ok: true, events: body.events };
 };
 

@@ -134,7 +134,7 @@ const buildSeed = () => {
       if (c.kind === 'verse') e = { op: 'text.verse.set', book: 'TIT', chapter: '1', verse: String(c.key + 1), text: c.val + '\n' };
       else if (c.kind === 'pin') e = { op: 'resource.pin.set', slot: `extraScripture.s${c.key}`, entry: { v: c.val } };
       else if (c.kind === 'meta') e = { op: 'project.meta.set', path: `p.${c.key}`, value: c.val };
-      else if (c.kind === 'note') e = { op: 'note.add', generation: events[0].ts, target: `TIT 1:${c.key + 1}`, text: c.val };
+      else if (c.kind === 'note') e = { op: 'note.add', generation: events[0].ts, target: { book: 'TIT', chapter: '1', verse: String(c.key + 1) }, text: c.val };
       else e = { op: 'check.decision.set', toolId: 'translationWords', generation: events[0].ts, decision: { contextId: { checkId: `c${c.key}`, reference: { bookId: 'tit', chapter: 1, verse: c.key + 1 }, occurrence: 1 }, selections: false, note: c.val } };
       const kkey = c.kind + c.key;
       events.push(mkEvent({ ...e, actor, ts, base: c.linear ? lastByKey[kkey] ?? null : null }));
@@ -1175,6 +1175,49 @@ try {
   check('J21d: a rogue note disposition (unmapped verse) is refused the same way; the note survives',
     refusedN.includes('affected') && (outN === null),
     refusedN ? `"${refusedN.slice(0, 60)}"` : `note projected=${outN?.notes.length}`);
+}
+
+// ---------- J21e (review round 5): the disposition SCHEMA binds — enum + required fields (§8.5) ----------
+{
+  const E = (op, actor, ts, base, extra) => mkEvent({ op, actor, ts, base, ...extra });
+  const t = (s, c, a) => `2026-08-01T03:00:${String(s).padStart(2, '0')}.000Z|000${c}|${a}`;
+  const skel2 = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}`;
+  const skel2r = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 3 ${SLOT}1:3${SLOT}`;
+  const add = E('book.add', 'drafter-a', t(0, 0, 'drafter-a'), null, { book: 'TIT', scope: [], skeleton: skel2, initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n' } });
+  const align2 = E('align.verse.set', 'checker-c', t(1, 0, 'checker-c'), null, { book: 'TIT', chapter: '1', verse: '2', generation: add.ts, alignments: [], wordBank: [], targetVerseMd5: md5('dos') });
+  const structWith = (disposition) => E('text.structure.apply', 'drafter-a', t(2, 0, 'drafter-a'), add.ts, {
+    book: 'TIT', skeleton: skel2r,
+    transitions: {
+      '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: add.ts }] },
+      '1:3': { text: 'dos\n', sources: [{ key: '1:2', ts: add.ts }] },
+    },
+    dispositions: [disposition],
+  });
+  const cases = [
+    ['unknown action "delete" (the reviewer\'s case — was consumed and retained under reason "delete")',
+      { surface: 'alignment', key: '1:2', ts: align2.ts, action: 'delete' }],
+    ['unknown action "obliterate"',
+      { surface: 'alignment', key: '1:2', ts: align2.ts, action: 'obliterate' }],
+    ['re-key without a destination',
+      { surface: 'alignment', key: '1:2', ts: align2.ts, action: 're-key' }],
+    ['re-key with a destination outside the mapping\'s targets',
+      { surface: 'alignment', key: '1:2', ts: align2.ts, action: 're-key', to: '9:9' }],
+    ['replace without the complete post-state',
+      { surface: 'alignment', key: '1:2', ts: align2.ts, action: 'replace' }],
+    ['unknown surface',
+      { surface: 'margin-note', key: '1:2', ts: align2.ts, action: 'orphan-review' }],
+  ];
+  for (const [label, d] of cases) {
+    let refused = ''; let out = null;
+    try { out = fold([add, align2, structWith(d)]); } catch (e) { refused = e.message; }
+    check(`J21e: disposition schema violation is refused whole — ${label}`,
+      refused.includes('disposition'),
+      refused ? `"${refused.slice(0, 70)}"` : `applied: align projects=${JSON.stringify(out?.alignments.TIT)}, retained=${JSON.stringify(out?.retained)}`);
+  }
+  // a schema-valid disposition still applies
+  const good = fold([add, align2, structWith({ surface: 'alignment', key: '1:2', ts: align2.ts, action: 're-key', to: '1:3' })]);
+  check('J21e: a schema-valid disposition still applies (re-key to a mapping target)',
+    !!good.alignments.TIT?.['1:3'] && good.pendingStructural.length === 0, JSON.stringify(good.alignments.TIT));
 }
 
 // ---------- J22: structural lineage — branch-local effects, retention, sequential chains (#65 ruling) ----------

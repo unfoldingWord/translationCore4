@@ -5,6 +5,10 @@
 
 export const SLOT = ''; // reserved (§8.4)
 
+// The slot keys of a skeleton, in document order (shared by the fold and the schema).
+export const slotKeysOf = (skeleton) =>
+  [...skeleton.matchAll(new RegExp(`${SLOT}([^${SLOT}]+)${SLOT}`, 'g'))].map((m) => m[1]);
+
 // Matches "\v <key> " where key is digits or a digit span like 4-5 (string keys, §5.2 rules).
 // The marker (incl. the single following space) belongs to the skeleton.
 const VERSE_MARKER = /\\v[ \t]+(\d+(?:-\d+)?)[ \t]/g;

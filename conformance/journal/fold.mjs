@@ -4,7 +4,9 @@
 // structural application (text.structure.apply) with branch-local effects, then project.
 import crypto from 'crypto';
 import { createRequire } from 'module';
-import { SLOT, recompose } from './skeleton.mjs';
+import { slotKeysOf, recompose } from './skeleton.mjs';
+import { validateEvent } from './schema.mjs';
+export { slotKeysOf }; // kept on this module for existing importers
 
 const require = createRequire(import.meta.url);
 const usfmjs = require('usfm-js');
@@ -26,28 +28,11 @@ const sortKeys = (o) =>
   : o;
 
 const ENVELOPE = new Set(['v', 'op', 'actor', 'ts', 'base', 'supersedes', 'seed', 'batch']);
-// §8.5: these ops MUST carry the causal `generation` stamp — UNCONDITIONALLY (round-5
-// simplification: the seed and legacy exemptions are deleted; the seeder stamps, and
-// the legacy stream form no longer exists). Omission is malformed, never a bypass.
-const GENERATION_OPS = new Set(['align.verse.set', 'check.decision.set', 'note.add']);
 const payloadOf = (e) => {
   const p = { op: e.op };
   for (const k of Object.keys(e)) if (!ENVELOPE.has(k)) p[k] = e[k];
   return p;
 };
-
-const KNOWN_OPS = new Set([
-  'text.verse.set', 'text.skeleton.set', 'text.structure.apply', 'book.add', 'book.remove',
-  'align.verse.set', 'check.decision.set', 'note.add', 'resource.pin.set', 'project.meta.set',
-  'settings.set', 'project.vrs.set',
-]);
-const META_RESERVED_ROOTS = new Set(['format', 'ingredients', 'type', 'meta']); // §8.5: derived/fixed
-
-// §8.5: the pin slot grammar is the §5.3 document's own paths — anything else refuses.
-const PIN_SLOT_RE = /^(languageSets\.(primary|fallback)\.(gatewayLanguage|translationNotes|translationWordsLinks|translationWords|translationAcademy)|resources\.(originalLanguage|lexicon)\.(nt|ot)|extraScripture\.[A-Za-z0-9_-]+)$/;
-
-const SLOT_RE = () => new RegExp(`${SLOT}([^${SLOT}]+)${SLOT}`, 'g');
-export const slotKeysOf = (skeleton) => [...skeleton.matchAll(SLOT_RE())].map((m) => m[1]);
 
 // The §5.2 identity key a decision disposition names: toolId|checkId|bookId|chapter|verse|occurrence.
 const decKeyOf = (toolId, d) => {
@@ -55,22 +40,16 @@ const decKeyOf = (toolId, d) => {
   return `dec|${toolId}|${c.checkId}|${c.reference.bookId}|${c.reference.chapter}|${c.reference.verse}|${c.occurrence}`;
 };
 
-// LWW-register key per §8.5. note.add is grow-only (no key); structural/vrs ops are handled inline.
+// LWW-register key per §8.5. note.add is grow-only (no key); structural/vrs ops are
+// handled inline. Payload validity (pin slot grammar, reserved meta roots, …) was
+// already established by the schema (validateEvent) in step 1.
 const keyOf = (e) => {
   switch (e.op) {
     case 'text.verse.set':      return `text|${e.book}|${e.chapter}:${e.verse}`;
     case 'align.verse.set':     return `align|${e.book}|${e.chapter}:${e.verse}`;
     case 'check.decision.set':  return decKeyOf(e.toolId, e.decision);
-    case 'resource.pin.set': {
-      if (!PIN_SLOT_RE.test(String(e.slot)))
-        throw new Error(`resource.pin.set slot "${e.slot}" is not a §5.3 slot (ts ${e.ts}) — refuse to fold`);
-      return `pin|${e.slot}`;
-    }
-    case 'project.meta.set': {
-      if (META_RESERVED_ROOTS.has(String(e.path).split('.')[0]))
-        throw new Error(`project.meta.set targets reserved root "${e.path}" (ts ${e.ts}) — refuse to fold`);
-      return `meta|${e.path}`;
-    }
+    case 'resource.pin.set':    return `pin|${e.slot}`;
+    case 'project.meta.set':    return `meta|${e.path}`;
     case 'settings.set':        return `set|${e.path}`;
     default: throw new Error(`unreachable op ${e.op}`);
   }
@@ -83,16 +62,13 @@ const bookOfEvent = (e) => {
 };
 
 export const fold = (eventsIn) => {
-  // 1. validate + de-duplicate by ts (identical copies fine; same ts + different content = corruption)
+  // 1. validate (the ONE §8.3/§8.5 schema — the same validator the writer's seal and
+  //    segment intake apply) + de-duplicate by ts (identical copies fine; same ts +
+  //    different content = corruption)
   const byTs = new Map();
   for (const e of eventsIn) {
-    if (e.v !== 1) throw new Error(`unknown envelope version v=${e.v} (ts ${e.ts}) — refuse to fold`);
-    if (!KNOWN_OPS.has(e.op)) throw new Error(`unrecognized op "${e.op}" (ts ${e.ts}) — refuse to fold`);
-    const tsActor = String(e.ts).split('|')[2];
-    if (tsActor !== e.actor)
-      throw new Error(`actor binding violated: event actor "${e.actor}" ≠ ts actor "${tsActor}" (ts ${e.ts}) — refuse to fold`);
-    if (GENERATION_OPS.has(e.op) && e.generation === undefined)
-      throw new Error(`${e.op} without a generation stamp (ts ${e.ts}) — §8.5 requires every writer (seeding included) to stamp the book's generation root; refuse to fold`);
+    const schemaErr = validateEvent(e);
+    if (schemaErr) throw new Error(`${schemaErr} (ts ${e && e.ts}) — refuse to fold`);
     const prev = byTs.get(e.ts);
     if (prev) {
       if (canon(prev) !== canon(e)) throw new Error(`two different events share ts ${e.ts} — corrupt union`);
@@ -159,16 +135,13 @@ export const fold = (eventsIn) => {
     if (e.op === 'project.vrs.set') {
       // §8.5: immutable first-value register — first binds, identical repeat de-duplicates,
       // any different later value is surfaced and never applied.
-      if (typeof e.bytes !== 'string') throw new Error(`project.vrs.set carries no raw bytes (ts ${e.ts}) — refuse to fold`);
       if (!vrs) vrs = { name: e.name, bytes: e.bytes, ts: e.ts };
       else if (vrs.name !== e.name || vrs.bytes !== e.bytes) vrsRejected.push(e.ts);
       continue;
     }
 
     if (e.op === 'book.add') {
-      // §8.5: self-contained — {book, scope, skeleton, initialVerses}
-      if (typeof e.skeleton !== 'string') throw new Error(`book.add without a skeleton (ts ${e.ts}) — refuse to fold (§8.5 self-contained)`);
-      if (!Array.isArray(e.scope)) throw new Error(`book.add without a scope array (ts ${e.ts}) — refuse to fold (§8.5)`);
+      // §8.5: self-contained — {book, scope, skeleton, initialVerses} (shape: schema)
       const initial = e.initialVerses || {};
       joinHead(`book|${e.book}`, { ts: e.ts, actor: e.actor, sanc: e.ts, book: e.book, event: e }, e.base, e.supersedes, e.actor);
       joinHead(`skel|${e.book}`, { ts: e.ts, actor: e.actor, sanc: e.ts, book: e.book,
@@ -218,29 +191,14 @@ export const fold = (eventsIn) => {
     if (e.op === 'text.structure.apply') {
       const book = e.book;
       const newSlots = slotKeysOf(e.skeleton);
-      const transitions = e.transitions || {};
-      const dispositions = e.dispositions || [];
-      // well-formedness (refuse-class — a malformed event is a writer defect, never applied):
+      const transitions = e.transitions;
+      const dispositions = e.dispositions;
+      // shape (transitions cover the slots, stated texts, no double-claimed source,
+      // the disposition enum + required to/post, no duplicates) is the SCHEMA's —
+      // already refused in step 1. From here on: semantics only.
       const tKeys = Object.keys(transitions);
-      if (JSON.stringify([...tKeys].sort()) !== JSON.stringify([...newSlots].sort()))
-        throw new Error(`text.structure.apply transitions must cover exactly the new skeleton's slots (ts ${e.ts}) — refuse to fold`);
-      const claimed = new Set();
-      for (const dest of tKeys) {
-        for (const src of transitions[dest].sources || []) {
-          const c = `${src.key}|${src.ts}`;
-          if (claimed.has(c)) throw new Error(`text.structure.apply claims source ${c} twice (ts ${e.ts}) — refuse to fold`);
-          claimed.add(c);
-        }
-      }
-      // §8.5: at most ONE disposition per record — duplicates/conflicts are malformed
       const dispId = (d) => `${d.surface}|${d.key ?? ''}|${d.ts}`;
-      const dispSet = new Set();
-      for (const d of dispositions) {
-        const id = dispId(d);
-        if (dispSet.has(id))
-          throw new Error(`text.structure.apply carries duplicate/conflicting dispositions for ${id} (ts ${e.ts}) — refuse to fold`);
-        dispSet.add(id);
-      }
+      const dispSet = new Set(dispositions.map(dispId));
       // applicability (§8.5 all-or-nothing): every referenced source head present AND live
       const missing = []; const stale = [];
       const checkRef = (key, ts) => {
