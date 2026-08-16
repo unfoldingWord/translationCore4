@@ -5,7 +5,7 @@
 import crypto from 'crypto';
 import { createRequire } from 'module';
 import { slotKeysOf, recompose } from './skeleton.mjs';
-import { validateEvent } from './schema.mjs';
+import { validateEvent, identityKeyOf } from './schema.mjs';
 export { slotKeysOf }; // kept on this module for existing importers
 
 const require = createRequire(import.meta.url);
@@ -35,10 +35,9 @@ const payloadOf = (e) => {
 };
 
 // The §5.2 identity key a decision disposition names: toolId|checkId|bookId|chapter|verse|occurrence.
-const decKeyOf = (toolId, d) => {
-  const c = d.contextId;
-  return `dec|${toolId}|${c.checkId}|${c.reference.bookId}|${c.reference.chapter}|${c.reference.verse}|${c.occurrence}`;
-};
+// Built from the ONE identity-key serializer (schema.mjs) — the same string the schema's
+// grammar validates, so serializer and validator can never drift.
+const decKeyOf = (toolId, d) => `dec|${toolId}|${identityKeyOf(d.contextId)}`;
 
 // LWW-register key per §8.5. note.add is grow-only (no key); structural/vrs ops are
 // handled inline. Payload validity (pin slot grammar, reserved meta roots, …) was
@@ -119,6 +118,10 @@ export const fold = (eventsIn) => {
   const pushHead = (key, head) => { heads.set(key, [...(heads.get(key) || []), head]); };
   const joinHead = (key, head, base, supersedes, actor) => {
     const live = heads.get(key) || [];
+    // Dangling supersedes refs are harmless BY CONSTRUCTION: supers is only ever used to
+    // filter/match LIVE heads, so an entry naming no live head filters nothing and the
+    // resolution condition (live.every) never consults it. Self-supersession is refused
+    // by the schema (§8.3) before any event reaches this point.
     const supers = new Set(supersedes || []);
     if (live.length === 0) {
       heads.set(key, [head]);
@@ -270,7 +273,7 @@ export const fold = (eventsIn) => {
             // (invalidate-retain/replace keep the decision's key — such notes stay valid.)
             const decDisp = dispositions.find((d) => dispId(d) === `decision|${dkey.slice(4)}|${h.ts}`);
             if (decDisp && decDisp.action === 're-key') {
-              const identity = `${c.checkId}|${r.bookId}|${r.chapter}|${r.verse}|${c.occurrence}`;
+              const identity = identityKeyOf(c); // the ONE §5.2 identity-key serializer
               for (const n of notes)
                 if (n.target && n.target.decisionKey === identity) affected.add(`note||${n.ts}`);
             }

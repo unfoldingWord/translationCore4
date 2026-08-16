@@ -292,6 +292,63 @@ const buildSeed = () => {
     allClean, details.join(' · '));
 }
 
+// ---------- J14d (round 7 internal pre-pass): the §5.2 identity-key STRING grammar —
+//   one five-part form (checkId|bookId|chapter|verse|occurrence), one shared
+//   serializer/validator pair, everywhere an identity-key string appears ----------
+{
+  const okTs = (s, a = 'actor-a') => `2026-08-14T02:00:${String(s).padStart(2, '0')}.000Z|0000|${a}`;
+  const skel1 = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}`;
+  const note = (decisionKey, s = 1) => ({ v: 1, op: 'note.add', actor: 'actor-a', ts: okTs(s), base: null,
+    generation: okTs(0), target: { decisionKey }, text: 'n' });
+  const struct = (dispositions) => ({ v: 1, op: 'text.structure.apply', actor: 'actor-a', ts: okTs(3), base: okTs(0),
+    book: 'TIT', skeleton: skel1, transitions: { '1:1': { text: 'uno\n', sources: [] } }, dispositions });
+  const CRASHY = /Cannot read|is not iterable|is not a function|undefined is not|toUpperCase/i;
+  const rows = [
+    ['note.add decisionKey with two parts (the probe\'s "x|TIT")', note('x|TIT')],
+    ['note.add decisionKey with no pipe ("garbage" — bookId would parse as undefined)', note('garbage')],
+    ['note.add decisionKey with six parts', note('a|b|c|d|e|f')],
+    ['note.add decisionKey with an empty part', note('c1||1|2|1')],
+    ['note re-key destination that is neither a slot nor a five-part identity key ("x|TIT")',
+      struct([{ surface: 'note', ts: okTs(1), action: 're-key', to: 'x|TIT' }])],
+    ['decision disposition key without the toolId|five-part form ("garbage")',
+      struct([{ surface: 'decision', key: 'garbage', ts: okTs(1), action: 'orphan-review' }])],
+  ];
+  let allClean = true; const details = [];
+  for (const [label, ev] of rows) {
+    let sealMsg = ''; let foldMsg = '';
+    try { sealAction([ev]); } catch (e) { sealMsg = e.message; }
+    try { fold([ev]); } catch (e) { foldMsg = e.message; }
+    const clean = sealMsg !== '' && foldMsg !== '' && !CRASHY.test(sealMsg) && !CRASHY.test(foldMsg);
+    if (!clean) { allClean = false; details.push(`${label}: seal="${sealMsg.slice(0, 40)}" fold="${foldMsg.slice(0, 40)}"`); }
+  }
+  check('J14d: every malformed §5.2 identity-key STRING is refused CLEANLY at seal AND at fold — one five-part grammar, shared with the serializer',
+    allClean, details.join(' · '));
+  // fold-level probe: pre-fix, a pipe-less decisionKey yielded bookId = undefined in the
+  // generation filter — the note SILENTLY BYPASSED quarantine (no crash) and projected
+  // past a book re-add with a gen-1 stamp; post-fix the schema refuses the event
+  const t = (s, c, a) => `2026-08-14T03:00:${String(s).padStart(2, '0')}.000Z|000${c}|${a}`;
+  const add1 = mkEvent({ op: 'book.add', actor: 'drafter-a', ts: t(0, 0, 'drafter-a'), book: 'TIT', scope: [], skeleton: skel1, initialVerses: { '1:1': 'uno\n' } });
+  const badNote = mkEvent({ op: 'note.add', actor: 'checker-c', ts: t(1, 0, 'checker-c'), generation: add1.ts, target: { decisionKey: 'garbage' }, text: 'stale' });
+  const rm = mkEvent({ op: 'book.remove', actor: 'drafter-a', ts: t(2, 0, 'drafter-a'), base: add1.ts, book: 'TIT' });
+  const add2 = mkEvent({ op: 'book.add', actor: 'drafter-a', ts: t(3, 0, 'drafter-a'), base: rm.ts, book: 'TIT', scope: [], skeleton: skel1, initialVerses: { '1:1': 'uno v2\n' } });
+  let probeRefused = ''; let probeOut = null;
+  try { probeOut = fold([add1, badNote, rm, add2]); } catch (e) { probeRefused = e.message; }
+  check('J14d: a pipe-less decisionKey never enters the fold — pre-fix it silently bypassed the generation quarantine (projected past a re-add); post-fix it is refused, never mis-filed',
+    probeRefused !== '' && !CRASHY.test(probeRefused),
+    probeRefused ? `"${probeRefused.slice(0, 60)}"` : `BYPASSED: notes=${JSON.stringify(probeOut?.notes.map((n) => n.text))} retained=${JSON.stringify(probeOut?.retained)}`);
+}
+
+// ---------- J14e (round 7 internal pre-pass): supersedes cannot self-reference ----------
+{
+  const ts1 = '2026-08-14T04:00:01.000Z|0000|actor-a';
+  const ev = { v: 1, op: 'settings.set', actor: 'actor-a', ts: ts1, base: null, supersedes: [ts1], path: 'ui.x', value: 1 };
+  let sealMsg = ''; let foldMsg = '';
+  try { sealAction([ev]); } catch (e) { sealMsg = e.message; }
+  try { fold([ev]); } catch (e) { foldMsg = e.message; }
+  check('J14e: an event listing its OWN ts in supersedes is malformed — refused at seal AND at fold (dangling supersedes refs stay harmless-by-construction: they filter no live head)',
+    sealMsg !== '' && foldMsg !== '', `seal="${sealMsg.slice(0, 50)}" fold="${foldMsg.slice(0, 50)}"`);
+}
+
 // ---------- J8: out-of-band reconcile ----------
 {
   const { events } = buildSeed();

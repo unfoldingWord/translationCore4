@@ -23,6 +23,23 @@ const alignmentRecordError = (r) =>
   : !isStr(r.targetVerseMd5) ? 'without targetVerseMd5 (I-3)'
   : null;
 
+// The §5.2 identity-key STRING — ONE serializer + ONE grammar validator pair (round 7
+// internal pre-pass), so the serialized form and its validation can never drift. The
+// five-part form checkId|bookId|chapter|verse|occurrence appears in note targets
+// ({decisionKey}), note re-key destinations, and (toolId-prefixed) decision
+// disposition keys; the fold's identity keys are built from the same serializer.
+export const identityKeyOf = (contextId) =>
+  [contextId.checkId, contextId.reference.bookId, contextId.reference.chapter,
+   contextId.reference.verse, contextId.occurrence].join('|');
+export const identityKeyError = (s) => {
+  if (!isStr(s)) return 'is not a string';
+  const parts = s.split('|');
+  if (parts.length !== 5)
+    return `is not the five-part §5.2 form checkId|bookId|chapter|verse|occurrence (${parts.length} part${parts.length === 1 ? '' : 's'})`;
+  if (parts.some((p) => p === '')) return 'has an empty §5.2 identity part';
+  return null;
+};
+
 // ONE §5.2 decision-record validator (round 7) — SHARED by check.decision.set events and
 // structural replace post-states. Every field the fold dereferences has a rule:
 // contextId.checkId + occurrence + reference.{bookId, chapter, verse} form the identity
@@ -59,12 +76,20 @@ const dispositionError = (d, newSlots) => {
   if (!isTs(d.ts)) return `disposition record reference "${d.ts}" is not an §8.2 HLC ts`;
   if ((d.surface === 'alignment' || d.surface === 'decision') && !isStr(d.key))
     return `disposition (${d.surface}) without a key`;
+  if (d.surface === 'decision') {
+    // the key is toolId + the §5.2 identity-key string — the same grammar everywhere
+    const i = d.key.indexOf('|');
+    const err = i < 1 ? 'is missing the toolId prefix' : identityKeyError(d.key.slice(i + 1));
+    if (err) return `disposition (decision) key "${d.key}" ${err} — must be toolId|checkId|bookId|chapter|verse|occurrence`;
+  }
   if (d.action === 're-key') {
     if (!isStr(d.to)) return 're-key disposition without a destination (to)';
     if (d.surface !== 'note' && !newSlots.includes(d.to))
       return `re-key disposition destination "${d.to}" is not a target slot of the mapping`;
-    if (d.surface === 'note' && !newSlots.includes(d.to) && !d.to.includes('|'))
-      return `note re-key destination "${d.to}" is neither a target slot nor a §5.2 identity key`;
+    if (d.surface === 'note' && !newSlots.includes(d.to)) {
+      const err = identityKeyError(d.to); // the same §5.2 grammar as every identity-key string
+      if (err) return `note re-key destination "${d.to}" is neither a target slot nor a §5.2 identity key (${err})`;
+    }
   }
   if (d.action === 'replace') {
     // §8.5: the post-state is a VALIDATED, complete record whose identity is
@@ -82,11 +107,11 @@ const dispositionError = (d, newSlots) => {
       // the SAME §5.2 validator the direct op uses (round 7 unification)
       const err = decisionRecordError(d.post);
       if (err) return `decision replace post must be a complete §5.2 record — post ${err}`;
-      const c = d.post.contextId; const r = c.reference;
-      const identity = [c.checkId, r.bookId, r.chapter, r.verse, c.occurrence].map(String);
-      const target = String(d.key).split('|').slice(1);
-      if (JSON.stringify(identity) !== JSON.stringify(target))
-        return `decision replace post identity [${identity.join('|')}] mismatches the disposition target "${d.key}"`;
+      // identity via the ONE serializer — the same string the fold keys on
+      const identity = identityKeyOf(d.post.contextId);
+      const target = d.key.slice(d.key.indexOf('|') + 1);
+      if (identity !== target)
+        return `decision replace post identity [${identity}] mismatches the disposition target "${d.key}"`;
     }
   }
   return null;
@@ -164,6 +189,10 @@ const OPS = {
     if (isVerse === isDec) return 'note.add target must be exactly one of {book, chapter, verse} or {decisionKey}';
     if (isVerse && (!isStr(tg.book) || !isScalar(tg.chapter) || !isScalar(tg.verse)))
       return 'note.add verse target must carry {book: string, chapter/verse: string or number}';
+    if (isDec) {
+      const err = identityKeyError(tg.decisionKey); // the ONE §5.2 identity-key grammar
+      if (err) return `note.add decisionKey "${tg.decisionKey}" ${err}`;
+    }
     if (!isStr(e.text)) return 'note.add without text';
     return null;
   },
@@ -205,6 +234,8 @@ export const validateEvent = (e) => {
     return `event base "${e.base}" must be null or an §8.2 HLC ts`;
   if (e.supersedes !== undefined && (!Array.isArray(e.supersedes) || e.supersedes.some((s) => !isTs(s))))
     return 'event supersedes must be an array of §8.2 HLC ts';
+  if (Array.isArray(e.supersedes) && e.supersedes.includes(e.ts))
+    return 'event supersedes must not name the event\'s own ts — self-supersession is malformed (§8.3)';
   if (e.batch !== undefined && !isTs(e.batch))
     return `event batch "${e.batch}" must be an §8.2 HLC ts`;
   if (e.seed !== undefined) {
