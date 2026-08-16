@@ -2,13 +2,15 @@
 // Re-proves the J19 delayed-receive lifecycle and J20 zero-trust intake with every git
 // transport operation performed through server endpoints (copy, remote/add, pull-repo,
 // add-and-commit, delete), plus the OPEN-QUESTIONS #23 probes (named-branch integration).
+// Journals are SEALED ACTION SEGMENTS — the only stream form (§8.1; converted from the
+// pre-ratification draft's JSONL fixtures in review round 6, and run green post-conversion).
 // Git/fs access below is ASSERTION-ONLY (reading state); the transport under test is HTTP.
 // Requires the rig server: dev-env/scripts/seed.zsh && dev-env/scripts/run.zsh
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import { fold } from './journal/fold.mjs';
-import { readUnion } from './journal/files.mjs';
+import { readUnion, writeActionSegment, sealAction, validateSegment, segmentName } from './journal/files.mjs';
 import { SLOT } from './journal/skeleton.mjs';
 
 const API = process.env.RIG_API || 'http://127.0.0.1:19998/api';
@@ -58,10 +60,12 @@ const initRepo = (repo3, branch = 'main') => {
   // platform's new-* endpoints always create an initial commit, so fixtures must too.
   execSync('git commit -q --allow-empty -m init', { cwd: d });
 };
+// Journals are sealed action segments — the only stream form (§8.1, round 6). One
+// segment per event here (one action per save); writeActionSegment is idempotent for
+// already-published actions, so re-publishing [a1, a2] after [a1] adds only a2.
 const writeJournalFs = (repo3, actor, events) => {
-  const f = path.join(dirOf(repo3), 'ingredients/checking/journal', actor, 'TIT.00001.jsonl');
-  fs.mkdirSync(path.dirname(f), { recursive: true });
-  fs.writeFileSync(f, events.map((e) => JSON.stringify(mkEvent(e)) + '\n').join(''));
+  const dir = path.join(dirOf(repo3), 'ingredients/checking/journal', actor);
+  for (const e of events) writeActionSegment(dir, [mkEvent(e)]);
 };
 
 const run = async () => {
@@ -81,16 +85,15 @@ const run = async () => {
 
   // ---------- shared fixtures ----------
   const skeleton = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}\\v 3 ${SLOT}1:3${SLOT}`;
+  // §8.5 self-contained book.add: one seed event carries the whole slot topology and
+  // initial verse state (the multi-key rule confers its ts as every produced head).
   const seed = [
-    { op: 'book.add', actor: 'seed', ts: ts(0, 'seed'), book: 'TIT' },
-    { op: 'text.skeleton.set', actor: 'seed', ts: ts(1, 'seed'), book: 'TIT', skeleton, skeletonMd5: null },
-    { op: 'text.verse.set', actor: 'seed', ts: ts(2, 'seed'), book: 'TIT', chapter: '1', verse: '1', text: 'uno\n', textMd5: null },
-    { op: 'text.verse.set', actor: 'seed', ts: ts(3, 'seed'), book: 'TIT', chapter: '1', verse: '2', text: 'dos\n', textMd5: null },
-    { op: 'text.verse.set', actor: 'seed', ts: ts(4, 'seed'), book: 'TIT', chapter: '1', verse: '3', text: 'tres\n', textMd5: null },
+    { op: 'book.add', actor: 'seed', ts: ts(0, 'seed'), book: 'TIT', scope: [],
+      skeleton, initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n', '1:3': 'tres\n' } },
   ];
-  const a1 = { op: 'text.verse.set', actor: 'actor-a', ts: ts(5, 'actor-a'), base: ts(3, 'seed'), book: 'TIT', chapter: '1', verse: '2', text: 'dos A1\n', textMd5: null };
-  const a2 = { op: 'text.verse.set', actor: 'actor-a', ts: ts(7, 'actor-a'), base: ts(5, 'actor-a'), book: 'TIT', chapter: '1', verse: '2', text: 'dos A2\n', textMd5: null };
-  const b1 = { op: 'text.verse.set', actor: 'actor-b', ts: ts(6, 'actor-b'), base: ts(4, 'seed'), book: 'TIT', chapter: '1', verse: '3', text: 'tres B1\n', textMd5: null };
+  const a1 = { op: 'text.verse.set', actor: 'actor-a', ts: ts(5, 'actor-a'), base: ts(0, 'seed'), book: 'TIT', chapter: '1', verse: '2', text: 'dos A1\n' };
+  const a2 = { op: 'text.verse.set', actor: 'actor-a', ts: ts(7, 'actor-a'), base: ts(5, 'actor-a'), book: 'TIT', chapter: '1', verse: '2', text: 'dos A2\n' };
+  const b1 = { op: 'text.verse.set', actor: 'actor-b', ts: ts(6, 'actor-b'), base: ts(0, 'seed'), book: 'TIT', chapter: '1', verse: '3', text: 'tres B1\n' };
 
   const P = `${LOCAL}/rig_project`;
   const project = (repo3) => { // fold → regenerate derived USFM (write via HTTP) — §8.7 checkpoint core
@@ -171,13 +174,14 @@ const run = async () => {
       const jdir = path.join(dirOf(src), 'ingredients/checking/journal');
       if (!fs.existsSync(jdir)) continue;
       for (const actor of fs.readdirSync(jdir)) {
-        const adir = path.join(jdir, actor);
-        if (!fs.statSync(adir).isDirectory()) continue;
-        for (const f of fs.readdirSync(adir).filter((x) => x.endsWith('.jsonl'))) {
-          const rel = `checking/journal/${actor}/${f}`;
-          const bytes = fs.readFileSync(path.join(adir, f), 'utf8');
+        const sdir = path.join(jdir, actor, 'segments');
+        if (!fs.existsSync(sdir) || !fs.statSync(sdir).isDirectory()) continue;
+        for (const f of fs.readdirSync(sdir).filter((x) => x.endsWith('.action.json'))) {
+          const rel = `checking/journal/${actor}/segments/${f}`;
+          const bytes = fs.readFileSync(path.join(sdir, f), 'utf8');
           const prev = union.get(rel);
-          if (!prev || bytes.startsWith(prev)) union.set(rel, bytes); // longer history wins; prefix-safe
+          if (prev === undefined) union.set(rel, bytes);
+          else if (prev !== bytes) throw new Error(`accepted segment ${rel} differs between sources — §8.1 immutability violated`);
         }
       }
     }
@@ -197,7 +201,8 @@ const run = async () => {
     !iA1.conflict && iA1.ffOk && iA1.after !== iA1.before,
     `merge_type=${iA1.mergeType}`);
   check('T3: publication commits are journal-only paths (publication isolation holds over HTTP)',
-    JSON.stringify(pubA1Paths) === JSON.stringify(['ingredients/checking/journal/actor-a/TIT.00001.jsonl']));
+    JSON.stringify(pubA1Paths) === JSON.stringify([`ingredients/checking/journal/actor-a/segments/${segmentName(a1.ts)}`]),
+    JSON.stringify(pubA1Paths));
 
   writeJournalFs(pubB, 'actor-b', [b1]); await commitRepo(pubB, 'publish B1');
   const iB1 = await integrate(pubB, 'b1');
@@ -231,23 +236,34 @@ const run = async () => {
     const changed = git(`diff --name-only ${head(P)} HEAD`, S).split('\n').filter(Boolean);
     const allowedPrefix = `ingredients/checking/journal/${incomingActor}/`;
     const bad = changed.filter((f) => !f.startsWith(allowedPrefix));
-    // rewrite detection: accepted journal bytes must be a prefix of incoming bytes.
-    // Read incoming from the merge COMMIT, never the worktree — the same non-force-checkout
-    // behavior that motivated union-writes also leaves merged modifications stale on disk.
+    // §8.7 whitelist over sealed segments. Read incoming from the merge COMMIT, never the
+    // worktree — non-force checkout leaves merged modifications stale on disk.
+    const segRe = new RegExp(`^${allowedPrefix}segments/[^/]+\\.action\\.json$`.replaceAll('/', '\\/'));
     for (const f of changed.filter((x) => x.startsWith(allowedPrefix))) {
-      const acceptedPath = path.join(dirOf(P), f);
-      if (fs.existsSync(acceptedPath)) {
-        const accepted = fs.readFileSync(acceptedPath, 'utf8');
-        const incoming = git(`show HEAD:"${f}"`, S) + '\n';
-        if (!incoming.startsWith(accepted)) bad.push(`${f} (rewrites accepted bytes)`);
-      }
+      if (fs.existsSync(path.join(dirOf(P), f))) { bad.push(`${f} (modifies an accepted segment — immutable, §8.1)`); continue; }
+      if (f === `${allowedPrefix}actor.json`) continue;
+      if (!segRe.test(f)) { bad.push(`${f} (not a whitelisted shape)`); continue; }
+      const bytes = git(`show HEAD:"${f}"`, S);
+      const r = validateSegment(bytes);
+      if (!r.ok) { bad.push(`${f} (invalid segment: ${r.reason})`); continue; }
+      if (r.events.some((e) => e.actor !== incomingActor)) { bad.push(`${f} (foreign-actor events)`); continue; }
+      if (path.basename(f) !== segmentName(r.events[0].ts)) bad.push(`${f} (misnamed segment)`);
     }
     return bad;
   };
+  const forgedB = mkEvent({ op: 'text.verse.set', actor: 'actor-b', ts: ts(9, 'actor-b'), base: ts(6, 'actor-b'), book: 'TIT', chapter: '1', verse: '3', text: 'tres FORGED\n' });
   const evilCases = [
     ['shared file', (d) => fs.writeFileSync(path.join(d, 'metadata.json'), '{"format":"evil"}\n')],
-    ['foreign actor stream', (d) => { const f = path.join(d, 'ingredients/checking/journal/actor-b/TIT.00001.jsonl'); fs.mkdirSync(path.dirname(f), { recursive: true }); const forged = { op: 'text.verse.set', actor: 'actor-b', ts: ts(9, 'actor-b'), base: ts(6, 'actor-b'), book: 'TIT', chapter: '1', verse: '3', text: 'tres FORGED\n', textMd5: null }; fs.writeFileSync(f, JSON.stringify(mkEvent(b1)) + '\n' + JSON.stringify(mkEvent(forged)) + '\n'); }],
-    ['rewrite accepted bytes', (d) => fs.writeFileSync(path.join(d, 'ingredients/checking/journal/actor-a/TIT.00001.jsonl'), JSON.stringify(mkEvent(a2)) + '\n')],
+    ['foreign actor segment', (d) => writeActionSegment(path.join(d, 'ingredients/checking/journal/actor-b'), [forgedB])],
+    ['rewrite accepted segment', (d) => fs.writeFileSync(
+      path.join(d, 'ingredients/checking/journal/actor-a/segments', segmentName(a1.ts)),
+      sealAction([mkEvent({ ...a1, text: 'dos TAMPERED\n' })]))],
+    ['invalid incoming segment', (d) => {
+      const sdir = path.join(d, 'ingredients/checking/journal/actor-a/segments');
+      fs.mkdirSync(sdir, { recursive: true });
+      fs.writeFileSync(path.join(sdir, segmentName(ts(9, 'actor-a'))),
+        sealAction([mkEvent({ op: 'settings.set', actor: 'actor-a', ts: ts(9, 'actor-a'), path: 'ui.x', value: 9 })]).slice(0, 40)); // torn
+    }],
   ];
   let t4ok = true, t4detail = [];
   for (const [label, sabotage] of evilCases) {
@@ -268,7 +284,7 @@ const run = async () => {
     t4ok = t4ok && rejected && mainIntact;
     t4detail.push(`${label}:${rejected ? 'rejected' : 'MISSED'}`);
   }
-  check('T4: zero-trust intake rejects shared-file / foreign-stream / rewrite contributions; main byte-identical',
+  check('T4: zero-trust intake rejects shared-file / foreign-segment / rewrite / invalid-segment contributions; main byte-identical',
     t4ok, t4detail.join(' · '));
 
   console.log(`\nTransport rig: ${pass} passed, ${fail} failed (server ${API}, pankosmia_web ${v.json?.pkg_version})`);
