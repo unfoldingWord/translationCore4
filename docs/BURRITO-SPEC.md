@@ -511,7 +511,7 @@ document. Content unchanged except heading levels.
 
 ### Acceptance
 
-- All J1–J30 pass (137 checks at the 1.8 D48 flip change set; 59 at 1.7-draft; `npm run validate:journal` exits 0), **and** the Phase 1 suite still passes untouched (`npm run validate`, 34/34 as of the 1.7-draft D36 carry-over change set [VERIFIED 2026-08-04]; 33/33 at the 1.6-draft D17/D30 change set; 31/31 at the 1.5-draft extraScripture change set; 30/30 at the 1.4-draft edits; 27/27 before that), **and** `npm run validate:all` runs both.
+- All J1–J30 pass — `npm run validate:journal` exits 0, and the suite's own summary line is the authoritative count (it grows with each review round; historically: 59 at 1.7-draft, 137 at the initial 1.8 flip change set) — **and** the Phase 1 suite still passes untouched (`npm run validate`, 34/34 as of the 1.7-draft D36 carry-over change set [VERIFIED 2026-08-04]; 33/33 at the 1.6-draft D17/D30 change set; 31/31 at the 1.5-draft extraScripture change set; 30/30 at the 1.4-draft edits; 27/27 before that), **and** `npm run validate:all` runs both.
 - A property failure prints the fast-check counterexample + seed. Any counterexample is a spec or implementation defect — file it against §8, and fix spec+suite together (§9).
 
 ### Out of scope (tracked elsewhere)

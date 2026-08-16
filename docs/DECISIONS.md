@@ -591,7 +591,9 @@ integration, rebuild-and-swap receiving. It is settled and not open for re-propo
 
 **(2) §8 is not yet normative.** Three independent reviews found seven points where the
 spec text and the reference implementation disagree, and one missing design: the journal
-representation of a verse-structure change (#65).
+representation of a verse-structure change (#65). [fulfilled by the 1.8 flip change set,
+2026-08-15 — the enumerated conditions of part (3) landed together (PR #75); §8 is
+normative as of that merge]
 
 **(3) §8 becomes normative when ONE change set lands with all suites green**, containing:
 - the seven contract corrections recorded on issue #22: pin-slot grammar with a golden
