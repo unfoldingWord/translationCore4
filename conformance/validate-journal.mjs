@@ -12,7 +12,7 @@ import { fold, verseTextMd5, slotKeysOf } from './journal/fold.mjs';
 import { reconcileUsfm, seedFromSidecars } from './journal/reconcile.mjs';
 import {
   sealAction, writeActionSegment, validateSegment, segmentName, readSegments,
-  appendEventLegacy, readStream, readUnion, SEGMENT_LIMIT,
+  readUnion, SEGMENT_LIMIT,
 } from './journal/files.mjs';
 import * as filesAll from './journal/files.mjs';
 const republishSegment = filesAll.republishSegment
@@ -239,20 +239,6 @@ const buildSeed = () => {
     foldI.books.TIT.usfm === foldM.books.TIT.usfm && foldI.forks.length === 0 && foldI.books.TIT.usfm.includes('EDITADA A') && foldI.books.TIT.usfm.includes('EDITADA B'));
   check('J10: sneakernet (file copy union) ≡ in-memory union ≡ cross-device read', deepEq(foldA, foldI) && deepEq(foldI, foldM));
 
-  // J11 on the same tmp: legacy NDJSON read-compat (v:1 writers do not produce this form)
-  const rotDir = path.join(tmp, 'rot', 'actor-rr');
-  const bigText = 'x'.repeat(64 * 1024);
-  for (let i = 0; i < 20; i++)
-    appendEventLegacy(rotDir, 'TIT', mkEvent({ op: 'text.verse.set', actor: 'actor-rr', ts: `2026-07-07T13:10:${String(i).padStart(2, '0')}.000Z|0000|actor-rr`, base: null, book: 'TIT', chapter: '1', verse: '1', text: bigText }));
-  const rotFiles = fs.readdirSync(rotDir).sort();
-  const rotEvents = readStream(rotDir, 'TIT');
-  check('J11 (read-compat): legacy rotation past 1 MB spans seq files; reader reads them in order', rotFiles.length >= 2 && rotFiles[0].endsWith('.00001.jsonl') && rotEvents.length === 20);
-  const lastFile = path.join(rotDir, rotFiles[rotFiles.length - 1]);
-  fs.appendFileSync(lastFile, '{"v":1,"op":"text.verse.set","truncated');
-  check('J11 (read-compat): torn final line is ignored', readStream(rotDir, 'TIT').length === 20);
-  fs.appendFileSync(lastFile, '\n');
-  let cThrew = false; try { readStream(rotDir, 'TIT'); } catch { cThrew = true; }
-  check('J11 (read-compat): invalid JSON mid-stream (newline-terminated) refuses with clear message', cThrew);
   fs.rmSync(tmp, { recursive: true, force: true });
 }
 
@@ -562,8 +548,8 @@ try {
     withNotes.notes.length === 2 && withNotes.notes[0].target.verse === '1' && withNotes.notes[1].target.decisionKey.startsWith('t1g7'));
 }
 
-// ---------- J18: marries Pankosmia's transport to the journal (read-compat legacy streams
-//   as the on-disk artifact). Mirrors their PullFromDownloaded choreography exactly. ----------
+// ---------- J18: marries Pankosmia's transport to the journal (sealed segments as the
+//   on-disk artifact — the only stream form). Mirrors their PullFromDownloaded choreography. ----------
 {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-j18-'));
   const git = (args, cwd) => execSync(`git ${args}`, { cwd, stdio: 'pipe' }).toString();
@@ -579,7 +565,7 @@ try {
 
   // (A) transport over disjoint per-actor journals — two translators edit the SAME book concurrently
   const skeleton = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}\\v 3 ${SLOT}1:3${SLOT}`;
-  const j = (dir, actor, evs) => { const d = path.join(dir, 'ingredients/checking/journal', actor); fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, 'TIT.00001.jsonl'), evs.map((e) => JSON.stringify(mkEvent(e)) + '\n').join('')); };
+  const j = (dir, actor, evs) => { const d = path.join(dir, 'ingredients/checking/journal', actor); for (const e of evs) writeActionSegment(d, [mkEvent(e)]); };
   const seedLines = [
     { op: 'book.add', actor: 'seed', ts: ts(0, 'seed'), book: 'TIT', scope: [], skeleton, initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n', '1:3': 'tres\n' } },
   ];
@@ -734,7 +720,7 @@ try {
 }
 
 // ---------- J20: intake is zero-trust even when git merges cleanly. Scratch validation rejects
-//   non-journal changes, edits to another actor's stream, truncation/rewrite of accepted legacy
+//   non-journal changes, edits to another actor's stream, truncation/rewrite of accepted
 //   bytes, modification of accepted sealed segments, and invalid incoming segments (§8.1). ----------
 {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-j20-'));
@@ -761,8 +747,8 @@ try {
   // WHITELIST-ONLY intake (§8.7): the only path shapes a contribution may add or touch
   // under its own actor directory are (a) NEW valid sealed segments whose filename
   // matches their first event ts, and (b) a well-formed actor.json naming that actor.
-  // Everything else — arbitrary files, new legacy JSONL streams, modified segments,
-  // modified legacy bytes, deletions — is rejected.
+  // Everything else — arbitrary files, JSONL streams, modified segments, deletions —
+  // is rejected.
   const validateIntake = (beforeDir, scratchDir, actor) => {
     const before = snapshot(beforeDir); const after = snapshot(scratchDir); const errors = [];
     const actorRoot = `ingredients/checking/journal/${actor}/`;
@@ -793,12 +779,6 @@ try {
         if (!doc || doc.schemaVersion !== 1 || doc.actorId !== actor) errors.push(`actor-json-invalid:${rel}`);
         continue;
       }
-      if (sub.endsWith('.jsonl')) {
-        // legacy streams are read-compat artifacts, FROZEN at intake: v:1 writers
-        // publish only sealed segments, so any new or changed JSONL is rejected.
-        errors.push(a ? `jsonl-modified:${rel}` : `jsonl-new:${rel}`);
-        continue;
-      }
       errors.push(`not-whitelisted:${rel}`);
     }
     return errors;
@@ -812,9 +792,9 @@ try {
   };
 
   const goodSeg = sealAction([mkEvent({ op: 'settings.set', actor: 'actor-a', ts: '2026-06-02T00:00:01.000Z|0000|actor-a', path: 'ui.x', value: 1 })]);
+  const seedSeg = sealAction([mkEvent({ op: 'settings.set', actor: 'seed', ts: '2026-06-02T00:00:00.000Z|0000|seed', path: 'ui.seed', value: 0 })]);
   const base = path.join(tmp, 'base'); init(base);
-  write(base, 'ingredients/checking/journal/seed/TIT.00001.jsonl', 'seed\n');
-  write(base, 'ingredients/checking/journal/actor-a/TIT.00001.jsonl', 'A1\n');
+  write(base, `ingredients/checking/journal/seed/segments/${segmentName('2026-06-02T00:00:00.000Z|0000|seed')}`, seedSeg);
   write(base, `ingredients/checking/journal/actor-a/segments/${segmentName('2026-06-02T00:00:01.000Z|0000|actor-a')}`, goodSeg);
   write(base, 'ingredients/TIT.usfm', '\\v 1 accepted\n');
   write(base, 'metadata.json', '{"projection":"accepted"}\n');
@@ -830,13 +810,13 @@ try {
     sharedErrors.some((e) => e === 'shared-path:metadata.json'), JSON.stringify(sharedErrors));
 
   const badHistory = path.join(tmp, 'bad-history'); cp(base, badHistory); git('checkout -qb actor-a', badHistory);
-  write(badHistory, 'ingredients/checking/journal/actor-a/TIT.00001.jsonl', 'A0-rewrite\n');
-  write(badHistory, 'ingredients/checking/journal/seed/TIT.00001.jsonl', 'seed\nforged\n');
+  write(badHistory, `ingredients/checking/journal/actor-a/segments/${segmentName('2026-06-02T00:00:01.000Z|0000|actor-a')}`, goodSeg.slice(0, 40));
+  write(badHistory, `ingredients/checking/journal/seed/segments/${segmentName('2026-06-02T00:00:00.000Z|0000|seed')}`, seedSeg + ' ');
   commitAll(badHistory, 'rewrite accepted history');
   const historyScratch = mergeToScratch(base, badHistory, 'actor-a', 'history');
   const historyErrors = validateIntake(base, historyScratch, 'actor-a');
-  check('J20: intake rejects truncation/rewrite and foreign-actor edits; accepted main remains byte-identical',
-    historyErrors.some((e) => e.startsWith('jsonl-modified:')) &&
+  check('J20: intake rejects truncation/rewrite of accepted segments and foreign-actor edits; accepted main remains byte-identical',
+    historyErrors.some((e) => e.startsWith('segment-modified:')) &&
     historyErrors.some((e) => e.startsWith('foreign-actor:')) &&
     git('rev-parse HEAD', base).trim() === mainHead && fs.readFileSync(path.join(base, 'ingredients/TIT.usfm'), 'utf8') === mainProjection,
     JSON.stringify(historyErrors));
@@ -855,11 +835,10 @@ try {
 
   // intake is WHITELIST-ONLY: known path shapes (valid new segments, well-formed
   // actor.json) are explicitly allowed; EVERYTHING else under the contributing actor's
-  // directory is rejected — arbitrary new files, new legacy JSONL streams, malformed
-  // actor.json.
+  // directory is rejected — arbitrary new files, JSONL streams, malformed actor.json.
   const badMisc = path.join(tmp, 'bad-misc'); cp(base, badMisc); git('checkout -qb actor-a', badMisc);
   write(badMisc, 'ingredients/checking/journal/actor-a/notes.txt', 'arbitrary payload\n');
-  write(badMisc, 'ingredients/checking/journal/actor-a/JON.00001.jsonl', '{"v":1}\n'); // NEW legacy stream — v:1 writers must not produce JSONL
+  write(badMisc, 'ingredients/checking/journal/actor-a/JON.00001.jsonl', '{"v":1}\n'); // a JSONL stream is not a format shape at all (one stream form, §8.1)
   write(badMisc, 'ingredients/checking/journal/actor-a/actor.json', '{"actorId":"someone-else"}'); // malformed shape + wrong actor
   write(badMisc, 'ingredients/checking/journal/actor-a/segments/README.md', 'not a segment');
   commitAll(badMisc, 'smuggle non-whitelisted files');
@@ -868,8 +847,8 @@ try {
   check('J20: whitelist-only intake — an arbitrary new file under the actor directory is rejected',
     miscErrors.some((e) => e.includes('notes.txt')) && miscErrors.some((e) => e.includes('segments/README.md')),
     JSON.stringify(miscErrors));
-  check('J20: whitelist-only intake — a NEW legacy JSONL stream is rejected (v:1 writers publish only sealed segments)',
-    miscErrors.some((e) => e.includes('JON.00001.jsonl')), JSON.stringify(miscErrors));
+  check('J20: whitelist-only intake — a JSONL stream is rejected like any other non-whitelisted file (one stream form: sealed segments)',
+    miscErrors.some((e) => e.startsWith('not-whitelisted:') && e.includes('JON.00001.jsonl')), JSON.stringify(miscErrors));
   check('J20: whitelist-only intake — a malformed actor.json is rejected (shape validated, actorId must match the directory)',
     miscErrors.some((e) => e.includes('actor.json')), JSON.stringify(miscErrors));
   // the allowed shapes still pass: a valid new segment + a well-formed actor.json
@@ -1716,38 +1695,6 @@ try {
     noSkel.includes('skeleton') && noScope.includes('scope'));
 }
 
-// ---------- J29b (review round 2; re-scoped round 4 to the read-compat FALLBACK path —
-//   stamped-input coverage lives in J29c/J29e): remove + re-add quarantines prior records (§8.5) ----------
-{
-  const E = (op, actor, ts, base, extra) => mkEvent({ op, actor, ts, base, ...extra });
-  const t = (s, c, a) => `2026-08-12T00:00:${String(s).padStart(2, '0')}.000Z|000${c}|${a}`;
-  const skel = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}`;
-  const add1 = E('book.add', 'drafter-a', t(0, 0, 'drafter-a'), null, { book: 'TIT', scope: [], skeleton: skel, initialVerses: { '1:1': 'uno\n' } });
-  const align1 = E('align.verse.set', 'checker-c', t(1, 0, 'checker-c'), null, { legacy: true, book: 'TIT', chapter: '1', verse: '1', alignments: [], wordBank: [], targetVerseMd5: md5('uno') });
-  const dec1 = E('check.decision.set', 'checker-c', t(1, 1, 'checker-c'), null, { legacy: true, toolId: 'translationWords',
-    decision: { contextId: { checkId: 'g1', reference: { bookId: 'tit', chapter: '1', verse: '1' }, occurrence: 1 }, selections: false, invalidated: false, status: 'todo' } });
-  const note1 = E('note.add', 'checker-c', t(1, 2, 'checker-c'), null, { legacy: true, target: { book: 'TIT', chapter: '1', verse: '1' }, text: 'nota de la generación 1' });
-  const remove = E('book.remove', 'drafter-a', t(2, 0, 'drafter-a'), add1.ts, { book: 'TIT' });
-  const add2 = E('book.add', 'drafter-a', t(3, 0, 'drafter-a'), remove.ts, { book: 'TIT', scope: [], skeleton: skel, initialVerses: { '1:1': 'nuevo\n' } });
-  const gen2 = fold([add1, align1, dec1, note1, remove, add2]);
-  check('J29b: after remove + re-add, prior-generation alignments/decisions/notes are NOT silently resurrected into the projection',
-    gen2.books.TIT.verses['1:1'] === 'nuevo\n' &&
-    !gen2.alignments.TIT?.['1:1'] &&
-    (gen2.decisions.translationWords || []).length === 0 &&
-    !gen2.notes.some((n) => n.text === 'nota de la generación 1'),
-    JSON.stringify({ align: gen2.alignments.TIT, decs: gen2.decisions, notes: gen2.notes.length }));
-  check('J29b: prior-generation records are QUARANTINED — retained and reported for review, not deleted (D36 posture)',
-    gen2.retained.some((r) => r.ts === align1.ts && r.reason === 'prior-generation') &&
-    gen2.retained.some((r) => r.ts === dec1.ts && r.reason === 'prior-generation') &&
-    gen2.retained.some((r) => r.ts === note1.ts && r.reason === 'prior-generation'),
-    JSON.stringify(gen2.retained));
-  // records of the CURRENT generation are untouched by the rule
-  const align2 = E('align.verse.set', 'checker-c', t(4, 0, 'checker-c'), null, { legacy: true, book: 'TIT', chapter: '1', verse: '1', alignments: [], wordBank: [], targetVerseMd5: md5('nuevo') });
-  const gen2live = fold([add1, align1, dec1, note1, remove, add2, align2]);
-  check('J29b: current-generation records project normally (the quarantine binds to the generation root, not to the book)',
-    !!gen2live.alignments.TIT?.['1:1'] && gen2live.invalid.length === 0);
-}
-
 // ---------- J29c (review round 3): generations are CAUSAL — the generation field beats the HLC (§8.5) ----------
 {
   const E = (op, actor, ts, base, extra) => mkEvent({ op, actor, ts, base, ...extra });
@@ -1801,9 +1748,9 @@ try {
   const t = (s, c, a) => `2026-08-13T01:00:${String(s).padStart(2, '0')}.000Z|000${c}|${a}`;
   const skel = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}`;
   const add1 = E('book.add', 'drafter-a', t(0, 0, 'drafter-a'), null, { book: 'TIT', scope: [], skeleton: skel, initialVerses: { '1:1': 'uno\n' } });
-  // a gen-1 decisionKey-targeted note (the §5.2 identity-key string embeds the bookId) —
-  // field-less (pre-flip artifact): the fallback must parse the book out of the key
-  const noteOld = E('note.add', 'checker-b', t(1, 0, 'checker-b'), null, { legacy: true, target: { decisionKey: 'g1|tit|1|1|1' }, text: 'nota gen-1 sin sello' });
+  // a gen-1 decisionKey-targeted note (the §5.2 identity-key string embeds the bookId):
+  // the generation filter must parse the book out of the key to find its root
+  const noteOld = E('note.add', 'checker-b', t(1, 0, 'checker-b'), null, { generation: add1.ts, target: { decisionKey: 'g1|tit|1|1|1' }, text: 'nota gen-1' });
   const remove = E('book.remove', 'drafter-a', t(2, 0, 'drafter-a'), add1.ts, { book: 'TIT' });
   const add2 = E('book.add', 'drafter-a', t(3, 0, 'drafter-a'), remove.ts, { book: 'TIT', scope: [], skeleton: skel, initialVerses: { '1:1': 'nuevo\n' } });
   // a STAMPED gen-1 decisionKey note written by still-offline B AFTER the re-add (later ts)
@@ -1812,7 +1759,7 @@ try {
   check('J29d: a prior-generation decisionKey-targeted note never projects — the generation filter reaches notes with no target.book',
     !out.notes.some((n) => n.ts === noteOld.ts) && !out.notes.some((n) => n.ts === noteLate.ts),
     JSON.stringify(out.notes.map((n) => n.text)));
-  check('J29d: both forms are QUARANTINED as prior-generation — the parsed §5.2 bookId catches the field-less artifact, the generation stamp catches the later-ts one',
+  check('J29d: both notes are QUARANTINED as prior-generation — the parsed §5.2 bookId finds the root; the stamp beats the later ts',
     out.retained.some((r) => r.ts === noteOld.ts && r.reason === 'prior-generation') &&
     out.retained.some((r) => r.ts === noteLate.ts && r.reason === 'prior-generation'),
     JSON.stringify(out.retained));
@@ -1848,22 +1795,14 @@ try {
   check('J29e: the refusal covers all three stamped ops (align.verse.set, check.decision.set, note.add)',
     refusedA.includes('generation') && refusedN.includes('generation'),
     JSON.stringify({ refusedA: refusedA.slice(0, 50), refusedN: refusedN.slice(0, 50) }));
-  // the fallback survives ONLY for identifiable legacy input: reader-marked read-compat
-  // events and seed-sourced events (best-effort ts rule, as §8.5 documents)
-  const legacyDec = { ...decNoGen, ts: t(0, 5, 'checker-b'), legacy: true }; // pre-remove ts: the ts fallback CAN catch this one
-  const legacyOut = fold([add1, remove, add2, legacyDec]);
-  check('J29e: a reader-marked legacy event is never refused — it keeps the lineage/ts fallback (a pre-re-add ts quarantines)',
-    (legacyOut.decisions.translationWords || []).length === 0 &&
-    legacyOut.retained.some((r) => r.ts === legacyDec.ts && r.reason === 'prior-generation'),
-    JSON.stringify(legacyOut.retained));
-  const seededDec = { ...decNoGen, ts: t(5, 0, 'checker-b'), seed: { source: 'sidecar-migration', batch: t(5, 0, 'checker-b') } };
-  let seedOk = true; try { fold([add1, remove, add2, seededDec]); } catch { seedOk = false; }
-  check('J29e: a seed-sourced event is exempt from the stamp requirement (migration input, §8.8)', seedOk);
-  // the marker is reader-attached, never written: a sealed segment carrying it is invalid
-  const sealedWithMarker = sealAction([legacyDec]);
-  check('J29e: the `legacy` marker is reserved to readers — a sealed segment carrying it is INVALID (no self-declared legacy bypass)',
-    validateSegment(sealedWithMarker).ok === false,
-    JSON.stringify(validateSegment(sealedWithMarker)));
+  // seed is NOT an exemption (round-5 simplification): the seeder stamps (§8.8), so a
+  // seed-flagged event without generation is a self-declared bypass — refused
+  const seededDec = { ...decNoGen, ts: t(5, 0, 'checker-b'), seed: { source: 'creation', batch: t(5, 0, 'checker-b') } };
+  let seedRefused = ''; let seedOut = null;
+  try { seedOut = fold([add1, remove, add2, seededDec]); } catch (e) { seedRefused = e.message; }
+  check('J29e: a seed-flagged event without a generation stamp is REFUSED — seed is not a self-declared bypass (the seeder always stamps, §8.8)',
+    seedRefused.includes('generation'),
+    seedRefused ? `"${seedRefused.slice(0, 70)}"` : `projected: ${JSON.stringify(seedOut?.decisions)}`);
 }
 
 // ---------- J30: unjournaled-ingredient tolerance + whole-surface divergence detection (§8.5/§8.8) ----------

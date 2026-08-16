@@ -1,8 +1,9 @@
 // Journal file I/O — BURRITO-SPEC §8.1 reference implementation (spec 1.8, D50 write model).
-// WRITE path: every mutation publishes as ONE immutable sealed action segment
-// (journal/<actorId>/segments/<ts>.action.json, container + body-string sha256, 4 MiB cap).
-// READ path: sealed segments PLUS the legacy NDJSON streams (read-compat only:
-// <BOOK>.<seq>.jsonl / _project.<seq>.jsonl with the torn-tail rule).
+// ONE stream form (round-5 simplification — the pre-ratification legacy NDJSON
+// read-compat form is deleted; no released project ever contained it): every mutation
+// publishes as ONE immutable sealed action segment
+// (journal/<actorId>/segments/<encoded-ts>.action.json, container + body-string sha256,
+// 4 MiB cap), and readers read nothing else.
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -96,9 +97,6 @@ export const validateSegment = (raw) => {
   // §8.1 action shape: non-empty, strictly ascending ts, one actor.
   const shapeErr = actionShapeError(body.events);
   if (shapeErr) return { ok: false, reason: shapeErr };
-  // 'legacy' is a reader-attached marker (§8.1) — a WRITTEN event carrying it is invalid
-  // (no self-declared legacy: the §8.5 generation-stamp requirement cannot be bypassed).
-  if (body.events.some((e) => e && e.legacy !== undefined)) return { ok: false, reason: 'reserved-field' };
   return { ok: true, events: body.events };
 };
 
@@ -126,49 +124,7 @@ export const readSegments = (actorDir, onInvalid = surfaceInvalid) => {
   return events;
 };
 
-// ---- legacy NDJSON streams (READ-COMPAT ONLY — v:1 writers MUST NOT produce this form) ----
-const ROTATE_BYTES = 1024 * 1024;
-const seqName = (stream, n) => `${stream}.${String(n).padStart(5, '0')}.jsonl`;
-
-// Legacy writer, kept ONLY so the suite can fabricate pre-1.8 artifacts for read-compat tests.
-export const appendEventLegacy = (actorDir, stream, event) => {
-  fs.mkdirSync(actorDir, { recursive: true });
-  let n = 1;
-  while (fs.existsSync(path.join(actorDir, seqName(stream, n + 1)))) n++;
-  let file = path.join(actorDir, seqName(stream, n));
-  if (fs.existsSync(file) && fs.statSync(file).size > ROTATE_BYTES)
-    file = path.join(actorDir, seqName(stream, ++n)); // rotate BEFORE appending
-  fs.appendFileSync(file, JSON.stringify(event) + '\n');
-};
-
-// Read one actor's legacy stream across all <seq> files, applying the torn-tail rule.
-export const readStream = (actorDir, stream) => {
-  const files = fs.existsSync(actorDir)
-    ? fs.readdirSync(actorDir).filter((f) => f.startsWith(`${stream}.`) && f.endsWith('.jsonl')).sort()
-    : [];
-  const events = [];
-  files.forEach((f, fi) => {
-    const raw = fs.readFileSync(path.join(actorDir, f), 'utf8');
-    const lines = raw.split('\n');
-    const lastIdx = lines.length - 1;
-    lines.forEach((line, li) => {
-      if (line === '') return; // trailing LF / blank
-      try {
-        // mark read-compat events as legacy: the fold's §8.5 generation-stamp
-        // requirement exempts ONLY identifiable legacy input (reader-marked)
-        events.push({ ...JSON.parse(line), legacy: true });
-      } catch (e) {
-        const isFinalLine = fi === files.length - 1 && li === lastIdx - (lines[lastIdx] === '' ? 1 : 0);
-        const isTornTail = isFinalLine && !raw.endsWith('\n');
-        if (isTornTail) return; // §8.1 read-compat: ignore torn tail
-        throw new Error(`corrupt journal line in ${f}:${li + 1} — refuse to fold`);
-      }
-    });
-  });
-  return events;
-};
-
-// Union across every actor under journal/: sealed segments + legacy streams.
+// Union across every actor under journal/: sealed segments — the only stream form.
 // The invalid-segment default surfaces (throws) — reading with tolerance requires an
 // explicit onInvalid handler, which is also how incompleteness is reported.
 export const readUnion = (journalDir, onInvalid = surfaceInvalid) => {
@@ -178,10 +134,6 @@ export const readUnion = (journalDir, onInvalid = surfaceInvalid) => {
     const dir = path.join(journalDir, actor);
     if (!fs.statSync(dir).isDirectory()) continue;
     events.push(...readSegments(dir, onInvalid));
-    const streams = new Set(
-      fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl')).map((f) => f.replace(/\.\d{5}\.jsonl$/, ''))
-    );
-    for (const s of streams) events.push(...readStream(dir, s));
   }
   return events;
 };

@@ -25,12 +25,10 @@ const sortKeys = (o) =>
   : o && typeof o === 'object' ? Object.fromEntries(Object.keys(o).sort().map((k) => [k, sortKeys(o[k])]))
   : o;
 
-// 'legacy' is READER-ATTACHED (§8.1 read-compat streams mark their events) — never
-// written; validateSegment rejects a sealed event that carries it.
-const ENVELOPE = new Set(['v', 'op', 'actor', 'ts', 'base', 'supersedes', 'seed', 'batch', 'legacy']);
-// §8.5: these ops MUST carry the causal `generation` stamp on v1 writer input; only
-// identifiable legacy input (reader-marked read-compat events) and seed-sourced events
-// keep the lineage/ts fallback. Omission is malformed — never a quarantine bypass.
+const ENVELOPE = new Set(['v', 'op', 'actor', 'ts', 'base', 'supersedes', 'seed', 'batch']);
+// §8.5: these ops MUST carry the causal `generation` stamp — UNCONDITIONALLY (round-5
+// simplification: the seed and legacy exemptions are deleted; the seeder stamps, and
+// the legacy stream form no longer exists). Omission is malformed, never a bypass.
 const GENERATION_OPS = new Set(['align.verse.set', 'check.decision.set', 'note.add']);
 const payloadOf = (e) => {
   const p = { op: e.op };
@@ -93,8 +91,8 @@ export const fold = (eventsIn) => {
     const tsActor = String(e.ts).split('|')[2];
     if (tsActor !== e.actor)
       throw new Error(`actor binding violated: event actor "${e.actor}" ≠ ts actor "${tsActor}" (ts ${e.ts}) — refuse to fold`);
-    if (GENERATION_OPS.has(e.op) && e.generation === undefined && !e.seed && e.legacy !== true)
-      throw new Error(`${e.op} without a generation stamp (ts ${e.ts}) — §8.5 requires v1 writers to stamp the book's generation root; refuse to fold`);
+    if (GENERATION_OPS.has(e.op) && e.generation === undefined)
+      throw new Error(`${e.op} without a generation stamp (ts ${e.ts}) — §8.5 requires every writer (seeding included) to stamp the book's generation root; refuse to fold`);
     const prev = byTs.get(e.ts);
     if (prev) {
       if (canon(prev) !== canon(e)) throw new Error(`two different events share ts ${e.ts} — corrupt union`);
@@ -411,8 +409,10 @@ export const fold = (eventsIn) => {
       // the current book generation iff it names the current generation root — the
       // writer's projected causal context decides, NEVER the HLC (offline edits arrive
       // with arbitrarily later timestamps, so a ts cutoff cannot implement quarantine).
-      // A field-less head (pre-flip artifact) falls back to lineage: a structural
-      // ancestor on the chain, or a ts that postdates the generation root.
+      // Input records always carry the stamp (refused above otherwise); the field-less
+      // branch covers CHAIN-BORNE heads only — text heads and structural post-images,
+      // whose generation is their ancestry (sanc) or, for pre-generation-root text
+      // heads with no ancestor, the ts comparison.
       const inGeneration = (h) => {
         const g = h.event.generation;
         if (g !== undefined) return genRoot == null || g === genRoot;
@@ -553,17 +553,13 @@ export const fold = (eventsIn) => {
   };
   const notesOut = [];
   for (const n of notes) {
-    // §8.5 generational rule for notes (verse- AND decisionKey-targeted): causal when
-    // the note carries `generation` (mismatch with the current root quarantines
-    // regardless of ts); the ts fallback covers field-less pre-flip artifacts only
+    // §8.5 generational rule for notes (verse- AND decisionKey-targeted): the stamp is
+    // unconditional, so quarantine is purely causal — a mismatch with the book's
+    // current generation root quarantines regardless of ts
     const nb = noteBookOf(n);
-    if (nb && genRoots.has(nb)) {
-      const root = genRoots.get(nb);
-      const prior = n.generation !== undefined ? n.generation !== root : n.ts <= root;
-      if (prior) {
-        retained.push({ key: 'note', ts: n.ts, reason: 'prior-generation' });
-        continue;
-      }
+    if (nb && genRoots.has(nb) && n.generation !== genRoots.get(nb)) {
+      retained.push({ key: 'note', ts: n.ts, reason: 'prior-generation' });
+      continue;
     }
     notesOut.push(rewriteNote(n));
   }
