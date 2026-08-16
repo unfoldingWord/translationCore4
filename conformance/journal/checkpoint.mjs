@@ -72,7 +72,11 @@ export const projectDecisions = (foldOut, resolutions = {}) => {
     for (const book of Object.keys(byBook)) {
       const doc = { schemaVersion: 1, tool, book };
       const resource = resolutions?.[tool]?.[book];
-      if (resource !== undefined) doc.resource = resource;
+      // §5.2/D30: the resolution record is REQUIRED derive-time state — a decision file
+      // without `resource` is an incomplete checkpoint, never emitted silently.
+      if (resource === undefined)
+        throw new Error(`missing resolution record for (${tool}, ${book}) — §5.2 requires \`resource\` (D30); refuse to emit an incomplete checkpoint`);
+      doc.resource = resource;
       doc.decisions = byBook[book];
       out[`checking/${tool}/${book}.json`] = serialize(doc);
     }
@@ -108,9 +112,13 @@ export const isUnjournaledIngredient = (ipath) => ipath.startsWith('audio/');
 
 // The §8.7 regeneration set: EVERY journal-derived shared file, as {ipath: bytes} —
 // USFM per book, alignment + decision sidecar mirrors, resources.json, settings.json,
-// vrs.json, and metadata.json (when the base document is supplied).
+// vrs.json, and metadata.json. The set is EXHAUSTIVE, so its inputs are MANDATORY:
+// a missing baseMetadata (or a missing per-(tool, book) resolution — see
+// projectDecisions) THROWS. An incomplete checkpoint is never returned (§8.7).
 // Unjournaled classes are structurally absent — checkpoints cannot touch them.
 export const derivedProjections = (foldOut, { baseMetadata = null, resolutions = {} } = {}) => {
+  if (!baseMetadata)
+    throw new Error('derivedProjections requires baseMetadata — the checkpoint regenerates metadata.json (§8.7); refuse to return an incomplete checkpoint');
   const out = {};
   for (const book of Object.keys(foldOut.books)) {
     out[`${book}.usfm`] = foldOut.books[book].usfm;
@@ -120,7 +128,7 @@ export const derivedProjections = (foldOut, { baseMetadata = null, resolutions =
   out['checking/resources.json'] = projectResources(foldOut.pins);
   out['checking/settings.json'] = projectSettings(foldOut.settings);
   if (foldOut.vrs) out['vrs.json'] = foldOut.vrs.bytes;
-  if (baseMetadata) out['metadata.json'] = projectMetadata(foldOut, baseMetadata);
+  out['metadata.json'] = projectMetadata(foldOut, baseMetadata);
   return out;
 };
 

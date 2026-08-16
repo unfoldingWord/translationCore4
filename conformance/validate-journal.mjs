@@ -1514,7 +1514,7 @@ try {
     rejected.vrs.name === 'eng' && rejected.vrs.bytes === vrsBytes && deepEq(rejected.vrsRejected, [v2.ts]),
     JSON.stringify(rejected.vrsRejected));
   check('J25: projection reproduces ingredients/vrs.json byte-exactly from the stored raw bytes (§8.7 derived list includes vrs.json)',
-    derivedProjections(first)['vrs.json'] === vrsBytes);
+    derivedProjections(first, { baseMetadata: JSON.parse(fs.readFileSync(path.join(BURRITO, 'metadata.json'), 'utf8')) })['vrs.json'] === vrsBytes);
   // creation seeding carries vrs (seed source enum gains "creation")
   const seeded = seedFromSidecars({ actor: 'seed-actor', books: {}, vrs: { name: 'eng', bytes: vrsBytes }, source: 'creation' });
   const seededOut = fold(seeded);
@@ -1805,10 +1805,13 @@ try {
 
 // ---------- J30: unjournaled-ingredient tolerance + whole-surface divergence detection (§8.5/§8.8) ----------
 {
-  const { events } = buildSeed();
+  const { events, decisionFiles } = buildSeed();
   const out = fold(events);
   const baseMetadata = JSON.parse(fs.readFileSync(path.join(BURRITO, 'metadata.json'), 'utf8'));
-  const projections = derivedProjections(out, { baseMetadata });
+  const projections = derivedProjections(out, { baseMetadata, resolutions: {
+    translationWords: { TIT: decisionFiles.translationWords.resource },
+    translationNotes: { TIT: decisionFiles.translationNotes.resource },
+  } });
   check('J30: the checkpoint regeneration set is EXHAUSTIVE per §8.7 — USFM, alignment + decision sidecars, resources, settings, metadata; no unjournaled class appears',
     Object.keys(projections).every((p) => !isUnjournaledIngredient(p)) &&
     'TIT.usfm' in projections && 'JON.usfm' in projections &&
@@ -1836,6 +1839,34 @@ try {
     JSON.stringify(cls.diverged));
   check('J30: ingredients/audio/ files are tolerated — never divergence, never regenerated or deleted at checkpoint',
     cls.tolerated.includes('audio/JON-1.mp3') && !cls.diverged.includes('audio/JON-1.mp3'));
+}
+
+// ---------- J30b (review round 4): an exhaustive checkpoint REQUIRES its mandatory inputs (§8.7) ----------
+{
+  const { events, decisionFiles } = buildSeed();
+  const out = fold(events);
+  const baseMetadata = JSON.parse(fs.readFileSync(path.join(BURRITO, 'metadata.json'), 'utf8'));
+  let noMeta = ''; let r1 = null;
+  try { r1 = derivedProjections(out); } catch (e) { noMeta = e.message; }
+  check('J30b: derivedProjections without baseMetadata THROWS — metadata.json is mandatory checkpoint state, never silently omitted',
+    noMeta.includes('baseMetadata'),
+    noMeta ? `"${noMeta.slice(0, 70)}"` : `returned incomplete checkpoint: metadata.json in set = ${!!r1?.['metadata.json']}`);
+  let noRes = ''; let r2 = null;
+  try { r2 = derivedProjections(out, { baseMetadata }); } catch (e) { noRes = e.message; }
+  check('J30b: emitting a §5.2 decision file without its (tool, book) resolution record THROWS — `resource` is required derive-time state (D30)',
+    noRes.includes('resolution'),
+    noRes ? `"${noRes.slice(0, 70)}"` : `emitted without resource: ${!JSON.parse(r2?.['checking/translationWords/TIT.json'] || '{}').resource}`);
+  // complete inputs still produce the full set, resource included in every decision file
+  const resolutions = {
+    translationWords: { TIT: decisionFiles.translationWords.resource },
+    translationNotes: { TIT: decisionFiles.translationNotes.resource },
+  };
+  const full = derivedProjections(out, { baseMetadata, resolutions });
+  check('J30b: with complete inputs, every emitted decision file carries its §5.2 resource record and metadata.json is present',
+    deepEq(JSON.parse(full['checking/translationWords/TIT.json']).resource, decisionFiles.translationWords.resource) &&
+    deepEq(JSON.parse(full['checking/translationNotes/TIT.json']).resource, decisionFiles.translationNotes.resource) &&
+    'metadata.json' in full,
+    JSON.stringify(Object.keys(full)));
 }
 
 console.log(`\nJournal suite: ${pass} passed, ${fail} failed (fast-check seed ${SEED})`);
