@@ -517,12 +517,23 @@ export const fold = (eventsIn) => {
     if (!h.event.removed) settings[h.event.path] = h.event.value;
   }
 
+  // §8.5: a note belongs to a book either by its verse target or by the bookId embedded
+  // in its §5.2 identity-key string (checkId|bookId|chapter|verse|occurrence)
+  const noteBookOf = (n) => {
+    const tg = n.target || {};
+    if (tg.book) return tg.book;
+    if (typeof tg.decisionKey === 'string') {
+      const bookId = tg.decisionKey.split('|')[1];
+      if (bookId) return bookId.toUpperCase();
+    }
+    return null;
+  };
   const notesOut = [];
   for (const n of notes) {
-    // §8.5 generational rule for book-targeted notes: causal when the note carries
-    // `generation` (mismatch with the current root quarantines regardless of ts);
-    // the ts fallback covers field-less pre-flip artifacts only
-    const nb = n.target && n.target.book;
+    // §8.5 generational rule for notes (verse- AND decisionKey-targeted): causal when
+    // the note carries `generation` (mismatch with the current root quarantines
+    // regardless of ts); the ts fallback covers field-less pre-flip artifacts only
+    const nb = noteBookOf(n);
     if (nb && genRoots.has(nb)) {
       const root = genRoots.get(nb);
       const prior = n.generation !== undefined ? n.generation !== root : n.ts <= root;

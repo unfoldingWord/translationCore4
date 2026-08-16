@@ -1623,6 +1623,35 @@ try {
     JSON.stringify(seeded.map((e) => [e.op, e.generation])));
 }
 
+// ---------- J29d (review round 3): decisionKey-targeted notes quarantine with their book's generation (§8.5) ----------
+{
+  const E = (op, actor, ts, base, extra) => mkEvent({ op, actor, ts, base, ...extra });
+  const t = (s, c, a) => `2026-08-13T01:00:${String(s).padStart(2, '0')}.000Z|000${c}|${a}`;
+  const skel = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}`;
+  const add1 = E('book.add', 'drafter-a', t(0, 0, 'drafter-a'), null, { book: 'TIT', scope: [], skeleton: skel, initialVerses: { '1:1': 'uno\n' } });
+  // a gen-1 decisionKey-targeted note (the §5.2 identity-key string embeds the bookId) —
+  // field-less (pre-flip artifact): the fallback must parse the book out of the key
+  const noteOld = E('note.add', 'checker-b', t(1, 0, 'checker-b'), null, { target: { decisionKey: 'g1|tit|1|1|1' }, text: 'nota gen-1 sin sello' });
+  const remove = E('book.remove', 'drafter-a', t(2, 0, 'drafter-a'), add1.ts, { book: 'TIT' });
+  const add2 = E('book.add', 'drafter-a', t(3, 0, 'drafter-a'), remove.ts, { book: 'TIT', scope: [], skeleton: skel, initialVerses: { '1:1': 'nuevo\n' } });
+  // a STAMPED gen-1 decisionKey note written by still-offline B AFTER the re-add (later ts)
+  const noteLate = E('note.add', 'checker-b', t(4, 0, 'checker-b'), null, { target: { decisionKey: 'g1|tit|1|1|1' }, generation: add1.ts, text: 'nota gen-1 tardía' });
+  const out = fold([add1, noteOld, remove, add2, noteLate]);
+  check('J29d: a prior-generation decisionKey-targeted note never projects — the generation filter reaches notes with no target.book',
+    !out.notes.some((n) => n.ts === noteOld.ts) && !out.notes.some((n) => n.ts === noteLate.ts),
+    JSON.stringify(out.notes.map((n) => n.text)));
+  check('J29d: both forms are QUARANTINED as prior-generation — the parsed §5.2 bookId catches the field-less artifact, the generation stamp catches the later-ts one',
+    out.retained.some((r) => r.ts === noteOld.ts && r.reason === 'prior-generation') &&
+    out.retained.some((r) => r.ts === noteLate.ts && r.reason === 'prior-generation'),
+    JSON.stringify(out.retained));
+  // a current-generation decisionKey note projects normally
+  const noteCur = E('note.add', 'checker-b', t(5, 0, 'checker-b'), null, { target: { decisionKey: 'g1|tit|1|1|1' }, generation: add2.ts, text: 'nota gen-2' });
+  const cur = fold([add1, noteOld, remove, add2, noteLate, noteCur]);
+  check('J29d: a current-generation decisionKey-targeted note projects (the quarantine binds to the generation, not to the target shape)',
+    cur.notes.some((n) => n.ts === noteCur.ts),
+    JSON.stringify(cur.notes.map((n) => n.text)));
+}
+
 // ---------- J30: unjournaled-ingredient tolerance + whole-surface divergence detection (§8.5/§8.8) ----------
 {
   const { events } = buildSeed();
