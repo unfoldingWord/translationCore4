@@ -189,20 +189,31 @@ export const fold = (eventsIn) => {
     }
 
     if (e.op === 'text.skeleton.set') {
-      // §8.4/§8.5: slot-preserving only — a slot-set/key/ordering change MUST use
-      // text.structure.apply. The comparison binds ALWAYS to the CURRENT PROJECTED
-      // skeleton head (max-ts live head) at fold time, never to the event's historical
-      // base: a stale KNOWN base would otherwise be a side door that silently reverses
-      // a structural change (slot-preserving relative to the old base, slot-changing
-      // relative to now — round-4 finding 2). Neither a missing base nor a stale one
-      // escapes the topology rule.
-      let reference = null;
-      const live = heads.get(`skel|${e.book}`) || [];
-      if (live.length) reference = live.reduce((a, b) => (a.ts > b.ts ? a : b)).event.skeleton;
-      if (reference != null &&
-          JSON.stringify(slotKeysOf(reference)) !== JSON.stringify(slotKeysOf(e.skeleton)))
+      // §8.4/§8.5 (round-5 simplification): a skeleton edit is an ORDINARY CHAIN LINK.
+      // Its base MUST name the predecessor skeleton head (a book.add /
+      // text.skeleton.set / text.structure.apply of the same book); the link inherits
+      // that base's structural ancestry, so an accepted slot-preserving edit can never
+      // move the selected chain or drop verse content. There is no historical-base
+      // branch, no implicit rebasing, and no ancestry reconstruction. Same-base
+      // competitors fork (explicit conflict, §8.3); an unknown base is pending until
+      // it arrives (fold determinism stays per event-SET); an actor whose own head has
+      // advanced past the claimed base is a writer defect and refuses — a skeleton
+      // edit cannot silently reverse a text.structure.apply.
+      if (e.base == null)
+        throw new Error(`text.skeleton.set requires base = the current skeleton head (ts ${e.ts}) — refuse to fold (§8.5); the first skeleton comes from book.add`);
+      const baseEv = byTs.get(e.base);
+      if (!baseEv) {
+        pendingStructural.push({ ts: e.ts, book: e.book, status: 'incomplete', detail: [`unknown-base:${e.base}`] });
+        continue;
+      }
+      if (baseEv.book !== e.book || typeof baseEv.skeleton !== 'string')
+        throw new Error(`text.skeleton.set base ${e.base} is not a skeleton head of ${e.book} (ts ${e.ts}) — refuse to fold (§8.5)`);
+      if (JSON.stringify(slotKeysOf(baseEv.skeleton)) !== JSON.stringify(slotKeysOf(e.skeleton)))
         throw new Error(`text.skeleton.set changes the slot set (ts ${e.ts}) — refuse to fold; use text.structure.apply (§8.4)`);
-      joinHead(`skel|${e.book}`, { ts: e.ts, actor: e.actor, sanc: sancOf(e.base ?? null), book: e.book, event: e }, e.base, e.supersedes, e.actor);
+      const live = heads.get(`skel|${e.book}`) || [];
+      if (live.length && !live.some((h) => h.ts === e.base) && live.some((h) => h.actor === e.actor))
+        throw new Error(`text.skeleton.set base ${e.base} is stale: this actor's own head advanced past it (ts ${e.ts}) — a skeleton edit cannot silently reverse a text.structure.apply; refuse to fold (§8.4)`);
+      joinHead(`skel|${e.book}`, { ts: e.ts, actor: e.actor, sanc: sancOf(e.base), book: e.book, event: e }, e.base, e.supersedes, e.actor);
       continue;
     }
 

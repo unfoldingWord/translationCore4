@@ -1274,26 +1274,29 @@ try {
     refusedSkel.includes('slot set') && okSkel.books.TIT.usfm.startsWith('\\id TIT edited header'),
     `"${refusedSkel.slice(0, 60)}"`);
 
-  // the topology escape is closed against the CURRENT PROJECTED skeleton, not only a
-  // conveniently-present base: a missing-base skeleton event with a different slot set
-  // is REFUSED, not folded as a fork (the reviewer's exact reproduction)
+  // the chain rule (round-5 simplification): a skeleton edit is an ordinary chain link —
+  // base is REQUIRED (the first skeleton comes from book.add), and an unknown base is
+  // PENDING until it arrives (fold determinism per event-SET, never per arrival order)
   const skel1 = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}`;
   const add1 = E('book.add', 'seed-x', t(6, 0, 'seed-x'), null, { book: 'TIT', scope: [], skeleton: skel1, initialVerses: { '1:1': 'uno\n' } });
   let noBase = '';
   try {
-    fold([add1, E('text.skeleton.set', 'actor-b', t(7, 0, 'actor-b'), null, { book: 'TIT', skeleton: `\\id TIT\n\\c 1\n\\p\n\\v 2 ${SLOT}1:2${SLOT}` })]);
+    fold([add1, E('text.skeleton.set', 'actor-b', t(7, 0, 'actor-b'), null, { book: 'TIT', skeleton: `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}` })]);
   } catch (e) { noBase = e.message; }
-  let unknownBase = '';
-  try {
-    fold([add1, E('text.skeleton.set', 'actor-b', t(7, 0, 'actor-b'), '2026-08-02T00:00:99.000Z|0000|ghost-gg', { book: 'TIT', skeleton: `\\id TIT\n\\c 1\n\\p\n\\v 2 ${SLOT}1:2${SLOT}` })]);
-  } catch (e) { unknownBase = e.message; }
-  check('J22: a slot-changing skeleton event with a MISSING base (null or unknown ts, cross-actor) is refused against the current projected skeleton — never a fork',
-    noBase.includes('slot set') && unknownBase.includes('slot set'),
-    JSON.stringify({ noBase: noBase.slice(0, 50), unknownBase: unknownBase.slice(0, 50) }));
-  // a slot-preserving missing-base skeleton event still folds (partial sync stays legal)
-  const okNoBase = fold([add1, E('text.skeleton.set', 'actor-b', t(7, 0, 'actor-b'), null, { book: 'TIT', skeleton: `\\id TIT header edit\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}` })]);
-  check('J22: a slot-preserving missing-base skeleton event still folds (the refusal is topology-only)',
-    okNoBase.books.TIT.usfm.startsWith('\\id TIT header edit'));
+  check('J22: text.skeleton.set with a NULL base is refused — the chain link must name its predecessor head',
+    noBase.includes('requires base'), `"${noBase.slice(0, 60)}"`);
+  const laterEdit = E('text.skeleton.set', 'actor-b', t(8, 0, 'actor-b'), t(7, 5, 'actor-c'), { book: 'TIT', skeleton: `\\id TIT via c\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}` });
+  const pendingOut = fold([add1, laterEdit]);
+  check('J22: an UNKNOWN base is pending until it arrives — the pre-event state projects, nothing is guessed',
+    pendingOut.pendingStructural.length === 1 && pendingOut.pendingStructural[0].detail[0].startsWith('unknown-base') &&
+    !pendingOut.books.TIT.usfm.startsWith('\\id TIT via c'),
+    JSON.stringify(pendingOut.pendingStructural));
+  const missingLink = E('text.skeleton.set', 'actor-c', t(7, 5, 'actor-c'), add1.ts, { book: 'TIT', skeleton: `\\id TIT by c\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}` });
+  const arrived = fold([add1, laterEdit, missingLink]);
+  check('J22: when the missing base arrives, the pending link folds — determinism is per event-SET',
+    arrived.pendingStructural.length === 0 && arrived.books.TIT.usfm.startsWith('\\id TIT via c') &&
+    arrived.books.TIT.verses['1:1'] === 'uno\n',
+    JSON.stringify({ pending: arrived.pendingStructural, verses: arrived.books.TIT.verses }));
 }
 
 // ---------- J22b (review round 4): a stale KNOWN base is no escape from the topology rule (§8.4) ----------
@@ -1326,6 +1329,35 @@ try {
   check('J22b: a slot-preserving skeleton edit against the current topology still folds (the rule blocks topology reversal, not header edits)',
     ok.books.TIT.usfm.startsWith('\\id TIT edited') && Object.keys(ok.books.TIT.verses).sort().join(',') === '1:1,1:3',
     JSON.stringify(Object.keys(ok.books.TIT.verses)));
+
+  // round-5 simplification: the CHAIN RULE closes the class. A skeleton edit inherits
+  // its base head's structural ancestry like any other link, so the round-5 finding-1
+  // byte losses (stale-base header edit stubbing 1:3; missing-base edit stubbing both
+  // verses — both reproduced red at 3824d9f) are structurally impossible: the only
+  // accepted skeleton.sets are chain links from a named predecessor head.
+  const skelBEdited = `\\id TIT header-v2\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 3 ${SLOT}1:3${SLOT}`;
+  // a slot-preserving edit on a SAME-ACTOR stale base is a writer defect — refused
+  // (this was the byte-loss red case: 1:3 projected ___ under ancestry reconstruction)
+  let staleSlotPreserving = '';
+  try { fold([add, renumber, E('text.skeleton.set', 'drafter-a', t(4, 0, 'drafter-a'), add.ts, { book: 'TIT', skeleton: `\\id TIT header-v2\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}` })]); }
+  catch (e) { staleSlotPreserving = e.message; }
+  check('J22b: a same-actor skeleton edit based past the actor\'s own later head is refused — no branch can silently lose the structural post-images',
+    staleSlotPreserving.includes('stale'), `"${staleSlotPreserving.slice(0, 70)}"`);
+  // the byte invariant on the ACCEPTED (chain-linked) edit: every verse byte-identical
+  const before = fold([add, renumber]).books.TIT.verses;
+  const after = fold([add, renumber, E('text.skeleton.set', 'drafter-a', t(4, 3, 'drafter-a'), renumber.ts, { book: 'TIT', skeleton: skelBEdited })]).books.TIT.verses;
+  check('J22b: byte-invariant — an accepted (chain-linked) skeleton.set leaves every verse projection byte-identical',
+    deepEq(before, after) && after['1:3'] === 'dos\n', JSON.stringify({ before, after }));
+  // CROSS-actor same-base competition is an EXPLICIT fork (§8.3), never silent: B's
+  // header edit and A's structural action both based the same head — both branches stay
+  // coherent (each projects its own chain's bytes), the conflict is surfaced
+  const headerB = E('text.skeleton.set', 'checker-b', t(4, 4, 'checker-b'), add.ts, { book: 'TIT', skeleton: `\\id TIT B header\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}` });
+  const forked = fold([add, renumber, headerB]);
+  const skelFork = forked.forks.find((f) => f.key === 'skel|TIT');
+  check('J22b: a cross-actor same-base skeleton edit FORKS explicitly (surfaced, provisional, branch-coherent) — never silently applied, never silently dropped',
+    !!skelFork && skelFork.heads.length === 2 &&
+    (forked.books.TIT.verses['1:2'] === 'dos\n' || forked.books.TIT.verses['1:3'] === 'dos\n'),
+    JSON.stringify({ forks: forked.forks, verses: forked.books.TIT.verses }));
 }
 
 // ---------- J23: sealed action segments — the §8.1 container contract ----------
