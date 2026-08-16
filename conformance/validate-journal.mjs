@@ -1270,7 +1270,7 @@ try {
   const f1 = writeActionSegment(actorDir, [ev(1, '1', 'uno\n')]);
   const f2 = writeActionSegment(actorDir, [ev(2, '2', 'dos\n')]);
   const got = readSegments(actorDir);
-  check('J23: a valid segment round-trips; filenames are ts-encoded (| → .) and sort in ts order',
+  check('J23: a valid segment round-trips; filenames are ts-encoded (: → _, | → ,) and sort in ts order',
     got.length === 2 && got[0].ts === t(1) && path.basename(f1) === segmentName(t(1)) &&
     !path.basename(f1).includes('|') && [path.basename(f1), path.basename(f2)].sort()[0] === path.basename(f1),
     path.basename(f1));
@@ -1364,6 +1364,46 @@ try {
   check('J23b: readSegments/readUnion NEVER silently drop an invalid segment — the default surfaces it (throws); an explicit handler collects and reads the valid remainder',
     surfaced.includes('invalid') && unionSurfaced.includes('invalid') && collected.length === 1 && withHandler.length === 2,
     JSON.stringify({ surfaced: surfaced.slice(0, 50), collected }));
+  fs.rmSync(tmp, { recursive: true, force: true });
+}
+
+// ---------- J23c (review round 3): segment filenames are legal on Windows AND under §2 (§8.1) ----------
+{
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-j23c-'));
+  const actorDir = path.join(tmp, 'journal', 'maria-x1');
+  // the full §8.2 ts alphabet: digits, '-', 'T', ':', '.', 'Z', '|', hex, [a-z0-9-] —
+  // ':' and '|' are the two Windows-reserved characters a ts always carries
+  const tss = [
+    '2026-07-07T14:03:22.113Z|0007|maria-x1',
+    '2026-07-07T14:03:22.113Z|000a|maria-x1',
+    '2026-07-07T14:03:23.000Z|0000|maria-x1',
+    '2026-12-31T23:59:59.999Z|ffff|maria-x1',
+  ];
+  const names = tss.map(segmentName);
+  const WINDOWS_RESERVED = /[<>:"/\\|?*]/;                 // Windows filename rules
+  const WINDOWS_DEVICE = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\.|$)/i; // reserved device names
+  const ING_FORBIDDEN = /\.\.|[~\\&*+| ?#%{}<>$!']/;       // §2 ingredient-path constraints
+  check('J23c: segment filenames carry NO Windows-reserved character, no reserved device name, no leading dot, no trailing dot/space',
+    names.every((n) => !WINDOWS_RESERVED.test(n) && !WINDOWS_DEVICE.test(n) && !n.startsWith('.') && !/[. ]$/.test(n)),
+    JSON.stringify(names[0]));
+  check('J23c: segment filenames satisfy the §2 ingredient-path constraints too',
+    names.every((n) => !ING_FORBIDDEN.test(n)),
+    JSON.stringify(names[0]));
+  const segmentTs = filesAll.segmentTs;
+  check('J23c: the encoding is INJECTIVE and reversible — every risky ts character round-trips through the filename',
+    typeof segmentTs === 'function' && tss.every((ts) => segmentTs(segmentName(ts)) === ts),
+    typeof segmentTs === 'function' ? JSON.stringify(names) : 'segmentTs not implemented');
+  // fixed-position escapes preserve the total order: filename sort = ts sort
+  check('J23c: filename sort equals ts sort within an actor directory (fixed-width escape positions)',
+    deepEq([...names].sort(), tss.map(segmentName)) && tss.every((ts, i) => !i || tss[i - 1] < ts),
+    JSON.stringify(names));
+  // write → read round-trip through real files, in ts order
+  for (const ts of tss) writeActionSegment(actorDir, [mkEvent({ op: 'settings.set', actor: 'maria-x1', ts, path: 'ui.x', value: ts })]);
+  const got = readSegments(actorDir);
+  const onDisk = fs.readdirSync(path.join(actorDir, 'segments')).sort();
+  check('J23c: a ts round-trips write→read — events return in ts order and each file is named by its encoded ts',
+    got.length === tss.length && got.every((e, i) => e.ts === tss[i]) && deepEq(onDisk, names),
+    JSON.stringify(onDisk));
   fs.rmSync(tmp, { recursive: true, force: true });
 }
 

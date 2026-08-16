@@ -10,9 +10,14 @@ import crypto from 'crypto';
 const sha256 = (s) => crypto.createHash('sha256').update(s, 'utf8').digest('hex');
 export const SEGMENT_LIMIT = 4 * 1024 * 1024; // 4 MiB (§8.1)
 
-// Filename: the action's first event ts with each '|' replaced by '.'
-// ('|' is a forbidden ingredient-path character, §2). Fixed-width fields keep sort order.
-export const segmentName = (ts) => `${String(ts).replaceAll('|', '.')}.action.json`;
+// Filename: the action's first event ts with ':' → '_' and '|' → ','  (§8.1). ':' and '|'
+// are the two ts characters reserved in Windows filenames ('|' is also §2-forbidden);
+// '_' and ',' never occur in a raw ts, so the escape is injective and reversible. The
+// escaped characters sit at fixed positions (§8.2), so filename sort = ts sort within an
+// actor directory.
+export const segmentName = (ts) => `${String(ts).replaceAll(':', '_').replaceAll('|', ',')}.action.json`;
+export const segmentTs = (name) =>
+  String(name).replace(/\.action\.json$/, '').replaceAll(',', '|').replaceAll('_', ':');
 
 // Seal one action (all events of ONE store mutation, ts order, one actor; multi-scope allowed).
 export const sealAction = (events) => {
