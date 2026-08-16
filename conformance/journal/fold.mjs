@@ -25,7 +25,13 @@ const sortKeys = (o) =>
   : o && typeof o === 'object' ? Object.fromEntries(Object.keys(o).sort().map((k) => [k, sortKeys(o[k])]))
   : o;
 
-const ENVELOPE = new Set(['v', 'op', 'actor', 'ts', 'base', 'supersedes', 'seed', 'batch']);
+// 'legacy' is READER-ATTACHED (§8.1 read-compat streams mark their events) — never
+// written; validateSegment rejects a sealed event that carries it.
+const ENVELOPE = new Set(['v', 'op', 'actor', 'ts', 'base', 'supersedes', 'seed', 'batch', 'legacy']);
+// §8.5: these ops MUST carry the causal `generation` stamp on v1 writer input; only
+// identifiable legacy input (reader-marked read-compat events) and seed-sourced events
+// keep the lineage/ts fallback. Omission is malformed — never a quarantine bypass.
+const GENERATION_OPS = new Set(['align.verse.set', 'check.decision.set', 'note.add']);
 const payloadOf = (e) => {
   const p = { op: e.op };
   for (const k of Object.keys(e)) if (!ENVELOPE.has(k)) p[k] = e[k];
@@ -87,6 +93,8 @@ export const fold = (eventsIn) => {
     const tsActor = String(e.ts).split('|')[2];
     if (tsActor !== e.actor)
       throw new Error(`actor binding violated: event actor "${e.actor}" ≠ ts actor "${tsActor}" (ts ${e.ts}) — refuse to fold`);
+    if (GENERATION_OPS.has(e.op) && e.generation === undefined && !e.seed && e.legacy !== true)
+      throw new Error(`${e.op} without a generation stamp (ts ${e.ts}) — §8.5 requires v1 writers to stamp the book's generation root; refuse to fold`);
     const prev = byTs.get(e.ts);
     if (prev) {
       if (canon(prev) !== canon(e)) throw new Error(`two different events share ts ${e.ts} — corrupt union`);

@@ -134,8 +134,8 @@ const buildSeed = () => {
       if (c.kind === 'verse') e = { op: 'text.verse.set', book: 'TIT', chapter: '1', verse: String(c.key + 1), text: c.val + '\n' };
       else if (c.kind === 'pin') e = { op: 'resource.pin.set', slot: `extraScripture.s${c.key}`, entry: { v: c.val } };
       else if (c.kind === 'meta') e = { op: 'project.meta.set', path: `p.${c.key}`, value: c.val };
-      else if (c.kind === 'note') e = { op: 'note.add', target: `TIT 1:${c.key + 1}`, text: c.val };
-      else e = { op: 'check.decision.set', toolId: 'translationWords', decision: { contextId: { checkId: `c${c.key}`, reference: { bookId: 'tit', chapter: 1, verse: c.key + 1 }, occurrence: 1 }, selections: false, note: c.val } };
+      else if (c.kind === 'note') e = { op: 'note.add', generation: events[0].ts, target: `TIT 1:${c.key + 1}`, text: c.val };
+      else e = { op: 'check.decision.set', toolId: 'translationWords', generation: events[0].ts, decision: { contextId: { checkId: `c${c.key}`, reference: { bookId: 'tit', chapter: 1, verse: c.key + 1 }, occurrence: 1 }, selections: false, note: c.val } };
       const kkey = c.kind + c.key;
       events.push(mkEvent({ ...e, actor, ts, base: c.linear ? lastByKey[kkey] ?? null : null }));
       lastByKey[kkey] = ts;
@@ -185,10 +185,10 @@ const buildSeed = () => {
     continueOnly.forks.length === 1 && continueOnly.forks[0].heads.length === 2 && continueOnly.books.TIT.verses['1:1'] === 'B sigue\n',
     JSON.stringify(continueOnly.forks[0]?.heads));
 
-  const alignOk = E('align.verse.set', 'actor-c', t(6, 0, 'actor-c'), null, { book: 'TIT', chapter: '1', verse: '1', alignments: [], wordBank: [], targetVerseMd5: md5('uno') });
+  const alignOk = E('align.verse.set', 'actor-c', t(6, 0, 'actor-c'), null, { book: 'TIT', chapter: '1', verse: '1', generation: seedEvts[0].ts, alignments: [], wordBank: [], targetVerseMd5: md5('uno') });
   const st1 = fold([...seedEvts, alignOk]);
   const st2 = fold([...seedEvts, alignOk, E('text.verse.set', 'actor-b', t(7, 0, 'actor-b'), base11, { book: 'TIT', chapter: '1', verse: '1', text: 'cambiada\n' })]);
-  const st3 = fold([...seedEvts, alignOk, E('text.verse.set', 'actor-b', t(7, 0, 'actor-b'), base11, { book: 'TIT', chapter: '1', verse: '1', text: 'cambiada\n' }), E('align.verse.set', 'actor-b', t(8, 0, 'actor-b'), alignOk.ts, { book: 'TIT', chapter: '1', verse: '1', alignments: [], wordBank: [], targetVerseMd5: md5('cambiada') })]);
+  const st3 = fold([...seedEvts, alignOk, E('text.verse.set', 'actor-b', t(7, 0, 'actor-b'), base11, { book: 'TIT', chapter: '1', verse: '1', text: 'cambiada\n' }), E('align.verse.set', 'actor-b', t(8, 0, 'actor-b'), alignOk.ts, { book: 'TIT', chapter: '1', verse: '1', generation: seedEvts[0].ts, alignments: [], wordBank: [], targetVerseMd5: md5('cambiada') })]);
   check('J7: I-3 composition — valid → text edit invalidates → re-align revalidates',
     st1.invalid.length === 0 && st2.invalid.length === 1 && st3.invalid.length === 0,
     `invalid counts ${st1.invalid.length}/${st2.invalid.length}/${st3.invalid.length}`);
@@ -475,7 +475,7 @@ try {
   const base12 = t(1, 1, 'drafter-a'); // verse 1:2's seed event
 
   // milestone-only edit: move the section boundary out of 1:2 (re-chunking), words unchanged
-  const align12 = E('align.verse.set', 'checker-c', t(2, 0, 'checker-c'), null, { book: 'TIT', chapter: '1', verse: '2', alignments: [], wordBank: [], targetVerseMd5: verseTextMd5(verses['1:2']) });
+  const align12 = E('align.verse.set', 'checker-c', t(2, 0, 'checker-c'), null, { book: 'TIT', chapter: '1', verse: '2', generation: seedEvts[0].ts, alignments: [], wordBank: [], targetVerseMd5: verseTextMd5(verses['1:2']) });
   const milestoneMove = E('text.verse.set', 'drafter-a', t(3, 0, 'drafter-a'), base12, { book: 'TIT', chapter: '1', verse: '2', text: 'con esperanza de vida eterna,\n' });
   const wordEdit = E('text.verse.set', 'drafter-a', t(4, 0, 'drafter-a'), milestoneMove.ts, { book: 'TIT', chapter: '1', verse: '2', text: 'con esperanza VIVA de vida eterna,\n\\ts\\*\n\\p\n' });
   const afterMove = fold([...seedEvts, align12, milestoneMove]);
@@ -537,7 +537,7 @@ try {
   // orphaned alignment: the alignment arrives AFTER the structural event (concurrent
   // offline actor), so the structural event could not disposition it — the §8.6 orphan
   // backstop reports it in invalid[]
-  const align2 = E('align.verse.set', 'actor-b', t(7, 0, 'actor-b'), null, { book: 'TIT', chapter: '1', verse: '2', alignments: [], wordBank: [], targetVerseMd5: md5('dos') });
+  const align2 = E('align.verse.set', 'actor-b', t(7, 0, 'actor-b'), null, { book: 'TIT', chapter: '1', verse: '2', generation: seedEvts[0].ts, alignments: [], wordBank: [], targetVerseMd5: md5('dos') });
   const dropV2 = E('text.structure.apply', 'actor-a', t(6, 0, 'actor-a'), t(0, 0, 'actor-a'), {
     book: 'TIT', skeleton: `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}`,
     transitions: { '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: t(1, 0, 'actor-a') }] } },
@@ -555,8 +555,8 @@ try {
     nfc !== nfd && md5(nfc) !== md5(nfd));
 
   // note.add target shapes per §8.5 accumulate without folding
-  const n1 = E('note.add', 'actor-a', t(7, 0, 'actor-a'), null, { target: { book: 'TIT', chapter: '1', verse: '1' }, text: 'nota de verso' });
-  const n2 = E('note.add', 'actor-b', t(7, 1, 'actor-b'), null, { target: { decisionKey: 't1g7|tit|1|1|1' }, text: 'nota de decisión' });
+  const n1 = E('note.add', 'actor-a', t(7, 0, 'actor-a'), null, { generation: seedEvts[0].ts, target: { book: 'TIT', chapter: '1', verse: '1' }, text: 'nota de verso' });
+  const n2 = E('note.add', 'actor-b', t(7, 1, 'actor-b'), null, { generation: seedEvts[0].ts, target: { decisionKey: 't1g7|tit|1|1|1' }, text: 'nota de decisión' });
   const withNotes = fold([...seedEvts, n1, n2]);
   check('J17: note.add — both target shapes accumulate grow-only (no LWW, no deletion)',
     withNotes.notes.length === 2 && withNotes.notes[0].target.verse === '1' && withNotes.notes[1].target.decisionKey.startsWith('t1g7'));
@@ -929,7 +929,7 @@ try {
   const skel2 = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}`;
   const skel2r = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 3 ${SLOT}1:3${SLOT}`;
   const add2 = E('book.add', 'drafter-a', t(0, 0, 'drafter-a'), null, { book: 'TIT', scope: [], skeleton: skel2, initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n' } });
-  const align2 = E('align.verse.set', 'checker-c', t(1, 0, 'checker-c'), null, { book: 'TIT', chapter: '1', verse: '2', alignments: [], wordBank: [], targetVerseMd5: md5('dos') });
+  const align2 = E('align.verse.set', 'checker-c', t(1, 0, 'checker-c'), null, { book: 'TIT', chapter: '1', verse: '2', generation: add2.ts, alignments: [], wordBank: [], targetVerseMd5: md5('dos') });
   const renumber = (text) => E('text.structure.apply', 'drafter-a', t(2, 0, 'drafter-a'), add2.ts, {
     book: 'TIT', skeleton: skel2r,
     transitions: {
@@ -1007,13 +1007,13 @@ try {
 
   // dispositions must be COMPLETE: every live alignment, decision, and verse-targeted
   // note on a mapped source key needs exactly one disposition — otherwise incomplete
-  const note12 = E('note.add', 'checker-c', t(1, 8, 'checker-c'), null, { target: { book: 'TIT', chapter: '1', verse: '2' }, text: 'nota sobre 1:2' });
+  const note12 = E('note.add', 'checker-c', t(1, 8, 'checker-c'), null, { generation: add2.ts, target: { book: 'TIT', chapter: '1', verse: '2' }, text: 'nota sobre 1:2' });
   const noNoteDisp = fold([add2, align2, note12, renumber('dos\n')]); // renumber dispositions cover the alignment only
   check('J21: a structural event that omits a disposition for a live verse-targeted note on a mapped key is refused as incomplete; pre-op state projects',
     noNoteDisp.pendingStructural.length === 1 && noNoteDisp.pendingStructural[0].status === 'incomplete' &&
     noNoteDisp.books.TIT.verses['1:2'] === 'dos\n' && !('1:3' in noNoteDisp.books.TIT.verses),
     JSON.stringify(noNoteDisp.pendingStructural));
-  const dec12 = E('check.decision.set', 'checker-c', t(1, 9, 'checker-c'), null, { toolId: 'translationWords',
+  const dec12 = E('check.decision.set', 'checker-c', t(1, 9, 'checker-c'), null, { toolId: 'translationWords', generation: add2.ts,
     decision: { contextId: { checkId: 'c9', reference: { bookId: 'tit', chapter: '1', verse: '2' }, occurrence: 1 }, selections: false } });
   const noDecDisp = fold([add2, align2, dec12, renumber('dos\n')]);
   check('J21: a structural event that omits a disposition for a live decision on a mapped key is refused as incomplete; pre-op state projects',
@@ -1049,7 +1049,7 @@ try {
 
   // finding 1: an INVALIDATED alignment (invalid: true) on a mapped key is retained
   // state (D36), not dead state — omitting its disposition must refuse the event
-  const alignInv = E('align.verse.set', 'checker-c', t(1, 0, 'checker-c'), null, { book: 'TIT', chapter: '1', verse: '2', alignments: [], wordBank: [], invalid: true, targetVerseMd5: md5('stale-text') });
+  const alignInv = E('align.verse.set', 'checker-c', t(1, 0, 'checker-c'), null, { book: 'TIT', chapter: '1', verse: '2', generation: add2.ts, alignments: [], wordBank: [], invalid: true, targetVerseMd5: md5('stale-text') });
   const renumberNoDisp = E('text.structure.apply', 'drafter-a', t(2, 0, 'drafter-a'), add2.ts, {
     book: 'TIT', skeleton: skel2r,
     transitions: {
@@ -1063,7 +1063,7 @@ try {
     omitted.pendingStructural.length === 1 && omitted.pendingStructural[0].status === 'incomplete' &&
     omitted.books.TIT.verses['1:2'] === 'dos\n' && !('1:3' in omitted.books.TIT.verses),
     JSON.stringify(omitted.pendingStructural));
-  const decInv = E('check.decision.set', 'checker-c', t(1, 1, 'checker-c'), null, { toolId: 'translationWords',
+  const decInv = E('check.decision.set', 'checker-c', t(1, 1, 'checker-c'), null, { toolId: 'translationWords', generation: add2.ts,
     decision: { contextId: { checkId: 'c7', reference: { bookId: 'tit', chapter: '1', verse: '2' }, occurrence: 1 }, selections: false, invalidated: true, status: 'invalid' } });
   const omittedDec = fold([add2, decInv, renumberNoDisp]);
   check('J21c: omitting a disposition for an INVALIDATED decision on a mapped key refuses the event',
@@ -1086,10 +1086,10 @@ try {
   // finding 2: a decisionKey-targeted note on a re-keyed decision is part of the
   // affected set — without a disposition the event is refused; with a re-key
   // disposition the note projects under the NEW identity
-  const dec2 = E('check.decision.set', 'checker-c', t(1, 2, 'checker-c'), null, { toolId: 'translationWords',
+  const dec2 = E('check.decision.set', 'checker-c', t(1, 2, 'checker-c'), null, { toolId: 'translationWords', generation: add2.ts,
     decision: { contextId: { checkId: 'c8', reference: { bookId: 'tit', chapter: '1', verse: '2' }, occurrence: 1 }, selections: false, invalidated: false, status: 'todo' } });
   const oldDecKey = 'c8|tit|1|2|1';
-  const noteOnDec = E('note.add', 'checker-c', t(1, 3, 'checker-c'), null, { target: { decisionKey: oldDecKey }, text: 'nota sobre decisión' });
+  const noteOnDec = E('note.add', 'checker-c', t(1, 3, 'checker-c'), null, { generation: add2.ts, target: { decisionKey: oldDecKey }, text: 'nota sobre decisión' });
   const structDecOnly = (extraDispositions) => E('text.structure.apply', 'drafter-a', t(2, 0, 'drafter-a'), add2.ts, {
     book: 'TIT', skeleton: skel2r,
     transitions: {
@@ -1136,10 +1136,10 @@ try {
   const t = (s, c, a) => `2026-08-01T01:00:${String(s).padStart(2, '0')}.000Z|000${c}|${a}`;
   const skel2 = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}`;
   const add2 = E('book.add', 'drafter-a', t(0, 0, 'drafter-a'), null, { book: 'TIT', scope: [], skeleton: skel2, initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n' } });
-  const align2 = E('align.verse.set', 'checker-c', t(1, 0, 'checker-c'), null, { book: 'TIT', chapter: '1', verse: '2', alignments: [], wordBank: [], targetVerseMd5: md5('dos') });
-  const dec2 = E('check.decision.set', 'checker-c', t(1, 1, 'checker-c'), null, { toolId: 'translationWords',
+  const align2 = E('align.verse.set', 'checker-c', t(1, 0, 'checker-c'), null, { book: 'TIT', chapter: '1', verse: '2', generation: add2.ts, alignments: [], wordBank: [], targetVerseMd5: md5('dos') });
+  const dec2 = E('check.decision.set', 'checker-c', t(1, 1, 'checker-c'), null, { toolId: 'translationWords', generation: add2.ts,
     decision: { contextId: { checkId: 'c2', reference: { bookId: 'tit', chapter: '1', verse: '2' }, occurrence: 1 }, selections: false, invalidated: false, status: 'todo' } });
-  const note2 = E('note.add', 'checker-c', t(1, 2, 'checker-c'), null, { target: { book: 'TIT', chapter: '1', verse: '2' }, text: 'nota' });
+  const note2 = E('note.add', 'checker-c', t(1, 2, 'checker-c'), null, { generation: add2.ts, target: { book: 'TIT', chapter: '1', verse: '2' }, text: 'nota' });
   const events = [add2, align2, dec2, note2];
   const out = fold(events);
   // out-of-band structure change: verse 2 removed from the committed file
@@ -1212,8 +1212,8 @@ try {
 
   // note retention across a renumber: re-key disposition rewrites the target by originating ts;
   // an undispositioned note survives untouched (grow-only — notes are permanent)
-  const n1 = E('note.add', 'checker-c', t(0, 5, 'checker-c'), null, { target: { book: 'TIT', chapter: '1', verse: '2' }, text: 'nota sobre dos' });
-  const n2 = E('note.add', 'checker-c', t(0, 6, 'checker-c'), null, { target: { book: 'TIT', chapter: '1', verse: '1' }, text: 'nota sobre uno' });
+  const n1 = E('note.add', 'checker-c', t(0, 5, 'checker-c'), null, { generation: add.ts, target: { book: 'TIT', chapter: '1', verse: '2' }, text: 'nota sobre dos' });
+  const n2 = E('note.add', 'checker-c', t(0, 6, 'checker-c'), null, { generation: add.ts, target: { book: 'TIT', chapter: '1', verse: '1' }, text: 'nota sobre uno' });
   const E3 = E('text.structure.apply', 'actor-a', t(1, 0, 'actor-a'), add.ts, {
     book: 'TIT', skeleton: skelTo(3),
     transitions: {
@@ -1515,16 +1515,16 @@ try {
     projectSettings(withRm.settings) === projectSettings(never.settings));
 
   // alignment removal = explicit empty-state payload — a defined record, never absence
-  const alignSet = E('align.verse.set', 'actor-b', t(5, 'actor-b'), null, { book: 'TIT', chapter: '1', verse: '1', alignments: [{ topWords: [{ word: 'x' }], bottomWords: [] }], wordBank: [], targetVerseMd5: md5('uno') });
-  const alignEmpty = E('align.verse.set', 'actor-b', t(6, 'actor-b'), alignSet.ts, { book: 'TIT', chapter: '1', verse: '1', alignments: [], wordBank: [], targetVerseMd5: md5('uno') });
+  const alignSet = E('align.verse.set', 'actor-b', t(5, 'actor-b'), null, { book: 'TIT', chapter: '1', verse: '1', generation: add.ts, alignments: [{ topWords: [{ word: 'x' }], bottomWords: [] }], wordBank: [], targetVerseMd5: md5('uno') });
+  const alignEmpty = E('align.verse.set', 'actor-b', t(6, 'actor-b'), alignSet.ts, { book: 'TIT', chapter: '1', verse: '1', generation: add.ts, alignments: [], wordBank: [], targetVerseMd5: md5('uno') });
   const emptied = fold([add, alignSet, alignEmpty]);
   check('J27: alignment removal is the explicit empty-state payload — the record projects (empty), it does not vanish',
     !!emptied.alignments.TIT?.['1:1'] && emptied.alignments.TIT['1:1'].alignments.length === 0 && emptied.invalid.length === 0);
 
   // decisions are never deleted (D36): no removal op exists; invalidate-and-retain keeps the record
   const dec = { contextId: { checkId: 'c1', reference: { bookId: 'tit', chapter: 1, verse: 1 }, occurrence: 1 }, selections: [{ text: 'uno', occurrence: 1, occurrences: 1 }], invalidated: false, status: 'valid' };
-  const dSet = E('check.decision.set', 'actor-a', t(7, 'actor-a'), null, { toolId: 'translationWords', decision: dec });
-  const dInv = E('check.decision.set', 'actor-a', t(8, 'actor-a'), dSet.ts, { toolId: 'translationWords', decision: { ...dec, invalidated: true, status: 'invalid' } });
+  const dSet = E('check.decision.set', 'actor-a', t(7, 'actor-a'), null, { toolId: 'translationWords', generation: add.ts, decision: dec });
+  const dInv = E('check.decision.set', 'actor-a', t(8, 'actor-a'), dSet.ts, { toolId: 'translationWords', generation: add.ts, decision: { ...dec, invalidated: true, status: 'invalid' } });
   const invalidated = fold([add, dSet, dInv]);
   let noRemovalOp = '';
   try { fold([mkEvent({ op: 'check.decision.remove', actor: 'actor-a', ts: t(9, 'actor-a') })]); } catch (e) { noRemovalOp = e.message; }
@@ -1585,16 +1585,17 @@ try {
     noSkel.includes('skeleton') && noScope.includes('scope'));
 }
 
-// ---------- J29b (review round 2): book generations — remove + re-add quarantines prior records, never resurrects (§8.5) ----------
+// ---------- J29b (review round 2; re-scoped round 4 to the read-compat FALLBACK path —
+//   stamped-input coverage lives in J29c/J29e): remove + re-add quarantines prior records (§8.5) ----------
 {
   const E = (op, actor, ts, base, extra) => mkEvent({ op, actor, ts, base, ...extra });
   const t = (s, c, a) => `2026-08-12T00:00:${String(s).padStart(2, '0')}.000Z|000${c}|${a}`;
   const skel = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}`;
   const add1 = E('book.add', 'drafter-a', t(0, 0, 'drafter-a'), null, { book: 'TIT', scope: [], skeleton: skel, initialVerses: { '1:1': 'uno\n' } });
-  const align1 = E('align.verse.set', 'checker-c', t(1, 0, 'checker-c'), null, { book: 'TIT', chapter: '1', verse: '1', alignments: [], wordBank: [], targetVerseMd5: md5('uno') });
-  const dec1 = E('check.decision.set', 'checker-c', t(1, 1, 'checker-c'), null, { toolId: 'translationWords',
+  const align1 = E('align.verse.set', 'checker-c', t(1, 0, 'checker-c'), null, { legacy: true, book: 'TIT', chapter: '1', verse: '1', alignments: [], wordBank: [], targetVerseMd5: md5('uno') });
+  const dec1 = E('check.decision.set', 'checker-c', t(1, 1, 'checker-c'), null, { legacy: true, toolId: 'translationWords',
     decision: { contextId: { checkId: 'g1', reference: { bookId: 'tit', chapter: '1', verse: '1' }, occurrence: 1 }, selections: false, invalidated: false, status: 'todo' } });
-  const note1 = E('note.add', 'checker-c', t(1, 2, 'checker-c'), null, { target: { book: 'TIT', chapter: '1', verse: '1' }, text: 'nota de la generación 1' });
+  const note1 = E('note.add', 'checker-c', t(1, 2, 'checker-c'), null, { legacy: true, target: { book: 'TIT', chapter: '1', verse: '1' }, text: 'nota de la generación 1' });
   const remove = E('book.remove', 'drafter-a', t(2, 0, 'drafter-a'), add1.ts, { book: 'TIT' });
   const add2 = E('book.add', 'drafter-a', t(3, 0, 'drafter-a'), remove.ts, { book: 'TIT', scope: [], skeleton: skel, initialVerses: { '1:1': 'nuevo\n' } });
   const gen2 = fold([add1, align1, dec1, note1, remove, add2]);
@@ -1610,7 +1611,7 @@ try {
     gen2.retained.some((r) => r.ts === note1.ts && r.reason === 'prior-generation'),
     JSON.stringify(gen2.retained));
   // records of the CURRENT generation are untouched by the rule
-  const align2 = E('align.verse.set', 'checker-c', t(4, 0, 'checker-c'), null, { book: 'TIT', chapter: '1', verse: '1', alignments: [], wordBank: [], targetVerseMd5: md5('nuevo') });
+  const align2 = E('align.verse.set', 'checker-c', t(4, 0, 'checker-c'), null, { legacy: true, book: 'TIT', chapter: '1', verse: '1', alignments: [], wordBank: [], targetVerseMd5: md5('nuevo') });
   const gen2live = fold([add1, align1, dec1, note1, remove, add2, align2]);
   check('J29b: current-generation records project normally (the quarantine binds to the generation root, not to the book)',
     !!gen2live.alignments.TIT?.['1:1'] && gen2live.invalid.length === 0);
@@ -1671,7 +1672,7 @@ try {
   const add1 = E('book.add', 'drafter-a', t(0, 0, 'drafter-a'), null, { book: 'TIT', scope: [], skeleton: skel, initialVerses: { '1:1': 'uno\n' } });
   // a gen-1 decisionKey-targeted note (the §5.2 identity-key string embeds the bookId) —
   // field-less (pre-flip artifact): the fallback must parse the book out of the key
-  const noteOld = E('note.add', 'checker-b', t(1, 0, 'checker-b'), null, { target: { decisionKey: 'g1|tit|1|1|1' }, text: 'nota gen-1 sin sello' });
+  const noteOld = E('note.add', 'checker-b', t(1, 0, 'checker-b'), null, { legacy: true, target: { decisionKey: 'g1|tit|1|1|1' }, text: 'nota gen-1 sin sello' });
   const remove = E('book.remove', 'drafter-a', t(2, 0, 'drafter-a'), add1.ts, { book: 'TIT' });
   const add2 = E('book.add', 'drafter-a', t(3, 0, 'drafter-a'), remove.ts, { book: 'TIT', scope: [], skeleton: skel, initialVerses: { '1:1': 'nuevo\n' } });
   // a STAMPED gen-1 decisionKey note written by still-offline B AFTER the re-add (later ts)
@@ -1690,6 +1691,48 @@ try {
   check('J29d: a current-generation decisionKey-targeted note projects (the quarantine binds to the generation, not to the target shape)',
     cur.notes.some((n) => n.ts === noteCur.ts),
     JSON.stringify(cur.notes.map((n) => n.text)));
+}
+
+// ---------- J29e (review round 4): omitting `generation` is REFUSED, never a quarantine bypass (§8.5) ----------
+{
+  const E = (op, actor, ts, base, extra) => mkEvent({ op, actor, ts, base, ...extra });
+  const t = (s, c, a) => `2026-08-13T02:00:${String(s).padStart(2, '0')}.000Z|000${c}|${a}`;
+  const skel = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}`;
+  const add1 = E('book.add', 'drafter-a', t(0, 0, 'drafter-a'), null, { book: 'TIT', scope: [], skeleton: skel, initialVerses: { '1:1': 'uno\n' } });
+  const remove = E('book.remove', 'drafter-a', t(1, 0, 'drafter-a'), add1.ts, { book: 'TIT' });
+  const add2 = E('book.add', 'drafter-a', t(2, 0, 'drafter-a'), remove.ts, { book: 'TIT', scope: [], skeleton: skel, initialVerses: { '1:1': 'nuevo\n' } });
+  // the reviewer's bypass: a later decision with NO generation field (no seed, not legacy)
+  const decNoGen = E('check.decision.set', 'checker-b', t(3, 0, 'checker-b'), null, { toolId: 'translationWords',
+    decision: { contextId: { checkId: 'g1', reference: { bookId: 'tit', chapter: '1', verse: '1' }, occurrence: 1 }, selections: false, invalidated: false, status: 'todo' } });
+  let refused = ''; let bypassed = null;
+  try { bypassed = fold([add1, remove, add2, decNoGen]); } catch (e) { refused = e.message; }
+  check('J29e: a v1 align/decision/note event with NO generation stamp is REFUSED as malformed — omission is not a quarantine bypass',
+    refused.includes('generation'),
+    refused ? `"${refused.slice(0, 80)}"` : `projected: ${JSON.stringify(bypassed?.decisions)}`);
+  const alignNoGen = E('align.verse.set', 'checker-b', t(3, 1, 'checker-b'), null, { book: 'TIT', chapter: '1', verse: '1', alignments: [], wordBank: [], targetVerseMd5: md5('nuevo') });
+  const noteNoGen = E('note.add', 'checker-b', t(3, 2, 'checker-b'), null, { target: { book: 'TIT', chapter: '1', verse: '1' }, text: 'sin sello' });
+  let refusedA = ''; let refusedN = '';
+  try { fold([add2, alignNoGen]); } catch (e) { refusedA = e.message; }
+  try { fold([add2, noteNoGen]); } catch (e) { refusedN = e.message; }
+  check('J29e: the refusal covers all three stamped ops (align.verse.set, check.decision.set, note.add)',
+    refusedA.includes('generation') && refusedN.includes('generation'),
+    JSON.stringify({ refusedA: refusedA.slice(0, 50), refusedN: refusedN.slice(0, 50) }));
+  // the fallback survives ONLY for identifiable legacy input: reader-marked read-compat
+  // events and seed-sourced events (best-effort ts rule, as §8.5 documents)
+  const legacyDec = { ...decNoGen, ts: t(0, 5, 'checker-b'), legacy: true }; // pre-remove ts: the ts fallback CAN catch this one
+  const legacyOut = fold([add1, remove, add2, legacyDec]);
+  check('J29e: a reader-marked legacy event is never refused — it keeps the lineage/ts fallback (a pre-re-add ts quarantines)',
+    (legacyOut.decisions.translationWords || []).length === 0 &&
+    legacyOut.retained.some((r) => r.ts === legacyDec.ts && r.reason === 'prior-generation'),
+    JSON.stringify(legacyOut.retained));
+  const seededDec = { ...decNoGen, ts: t(5, 0, 'checker-b'), seed: { source: 'sidecar-migration', batch: t(5, 0, 'checker-b') } };
+  let seedOk = true; try { fold([add1, remove, add2, seededDec]); } catch { seedOk = false; }
+  check('J29e: a seed-sourced event is exempt from the stamp requirement (migration input, §8.8)', seedOk);
+  // the marker is reader-attached, never written: a sealed segment carrying it is invalid
+  const sealedWithMarker = sealAction([legacyDec]);
+  check('J29e: the `legacy` marker is reserved to readers — a sealed segment carrying it is INVALID (no self-declared legacy bypass)',
+    validateSegment(sealedWithMarker).ok === false,
+    JSON.stringify(validateSegment(sealedWithMarker)));
 }
 
 // ---------- J30: unjournaled-ingredient tolerance + whole-surface divergence detection (§8.5/§8.8) ----------

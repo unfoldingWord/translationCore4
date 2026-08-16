@@ -81,6 +81,9 @@ export const validateSegment = (raw) => {
   let body;
   try { body = JSON.parse(outer.body); } catch { return { ok: false, reason: 'body-parse' }; }
   if (!body || !Array.isArray(body.events)) return { ok: false, reason: 'no-events' };
+  // 'legacy' is a reader-attached marker (§8.1) — a WRITTEN event carrying it is invalid
+  // (no self-declared legacy: the §8.5 generation-stamp requirement cannot be bypassed).
+  if (body.events.some((e) => e && e.legacy !== undefined)) return { ok: false, reason: 'reserved-field' };
   return { ok: true, events: body.events };
 };
 
@@ -136,7 +139,9 @@ export const readStream = (actorDir, stream) => {
     lines.forEach((line, li) => {
       if (line === '') return; // trailing LF / blank
       try {
-        events.push(JSON.parse(line));
+        // mark read-compat events as legacy: the fold's §8.5 generation-stamp
+        // requirement exempts ONLY identifiable legacy input (reader-marked)
+        events.push({ ...JSON.parse(line), legacy: true });
       } catch (e) {
         const isFinalLine = fi === files.length - 1 && li === lastIdx - (lines[lastIdx] === '' ? 1 : 0);
         const isTornTail = isFinalLine && !raw.endsWith('\n');
