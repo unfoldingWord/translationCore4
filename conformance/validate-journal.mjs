@@ -2334,6 +2334,72 @@ try {
     check('J31 finding 1: a legitimate re-add still chains to its book.remove — the unified rule adds no false refusal',
       readd.pendingStructural.length === 0 && readd.books.TIT.verses['1:1'] === 'v2\n',
       JSON.stringify(readd.books.TIT.verses));
+
+    // --- the class sibling: book.remove is structural too, and it DELETES the book ---
+    // Pre-fix it was the ONLY structural op reaching the fold with an unvalidated base
+    // kind: an unknown, non-structural or cross-book base each removed TIT outright.
+    const rmBad = (base) => mkEvent({ op: 'book.remove', actor: 'actor-a', ts: okTs(9), base, book: 'TIT' });
+    const rmUnknown = fold([add, rmBad('2026-01-01T00:00:00.000Z|0000|ghost-actor')]);
+    check('J31 finding 1 (sibling): book.remove on an UNKNOWN base PENDS and the book STAYS PROJECTED — a removal never lands off an absent ancestor',
+      rmUnknown.pendingStructural.length === 1 && rmUnknown.pendingStructural[0].detail[0].startsWith('unknown-base:') &&
+      'TIT' in rmUnknown.books,
+      JSON.stringify(rmUnknown.pendingStructural));
+    let rmVsErr = '', rmXErr = '';
+    try { fold([add, vs, rmBad(vs.ts)]); } catch (e) { rmVsErr = e.message; }
+    try { fold([add, addJ, rmBad(addJ.ts)]); } catch (e) { rmXErr = e.message; }
+    check('J31 finding 1 (sibling): book.remove REFUSES a non-structural base and a CROSS-BOOK structural base — the most destructive op in the class is held to the same rule',
+      rmVsErr !== '' && rmXErr !== '' && !CRASHY.test(rmVsErr) && !CRASHY.test(rmXErr),
+      `verse-base="${rmVsErr.slice(0, 45)}" cross-book="${rmXErr.slice(0, 45)}"`);
+    // regression guard: the generation quarantine still fires across a well-formed chain
+    const dec = mkEvent({ op: 'check.decision.set', actor: 'actor-a', ts: okTs(3), generation: add.ts, toolId: 'translationWords',
+      decision: { contextId: { checkId: 'c1', occurrence: 1, reference: { bookId: 'tit', chapter: 1, verse: 1 } }, selections: false } });
+    const gen = fold([add, dec, rm, re]);
+    check('J31 finding 1 (sibling): a well-formed book.remove chain still works — re-add projects generation 2 and the prior-generation decision is still quarantined (no regression)',
+      gen.pendingStructural.length === 0 && gen.books.TIT.verses['1:1'] === 'v2\n' &&
+      Object.keys(gen.decisions).length === 0 &&
+      gen.retained.some((r) => r.reason === 'prior-generation'),
+      JSON.stringify(gen.retained));
+
+    // --- ASSERTED, NOT ASSUMED: the WHOLE structural class shares ONE rule ---
+    // Every structural op, every base-kind scenario, one outcome table. A new structural
+    // op that forgets the rule fails here, not in review.
+    const structuralEvent = (op, base) => {
+      const common = { actor: 'actor-a', ts: okTs(9), base, book: 'TIT' };
+      if (op === 'book.add') return mkEvent({ ...common, op, scope: [], skeleton: skel('TIT'), initialVerses: {} });
+      if (op === 'book.remove') return mkEvent({ ...common, op });
+      if (op === 'text.skeleton.set') return mkEvent({ ...common, op, skeleton: skel('TIT') });
+      return mkEvent({ ...common, op, skeleton: skel1('TIT'), transitions: { '1:1': { text: 'x\n', sources: [] } }, dispositions: [] });
+    };
+    const STRUCTURAL = ['book.add', 'book.remove', 'text.skeleton.set', 'text.structure.apply'];
+    const outcomeOf = (op, base, prelude) => {
+      try {
+        const o = fold([...prelude, structuralEvent(op, base)]);
+        return o.pendingStructural.some((p) => p.ts === okTs(9)) ? 'PEND' : 'APPLIED';
+      } catch { return 'REFUSED'; }
+    };
+    const matrix = {};
+    for (const op of STRUCTURAL) {
+      matrix[op] = [
+        outcomeOf(op, '2026-01-01T00:00:00.000Z|0000|ghost-actor', [add]),  // unknown  → PEND
+        outcomeOf(op, vs.ts, [add, vs]),                                     // verse.set → REFUSED
+        outcomeOf(op, addJ.ts, [add, addJ]),                                 // cross-book→ REFUSED
+      ].join('/');
+    }
+    const expected = 'PEND/REFUSED/REFUSED';
+    check('J31: ASSERTED, not assumed — EVERY structural op (book.add, book.remove, text.skeleton.set, text.structure.apply) shares ONE base rule: unknown PENDS, non-structural REFUSES, cross-book REFUSES. No op is exempt, and a fifth would have to opt in here',
+      STRUCTURAL.every((op) => matrix[op] === expected), JSON.stringify(matrix));
+
+    // --- and the audit's other half: CONTENT ops fail CLOSED, never leak across books ---
+    // A content op's `base` is a §8.3 register reference, not a structural claim, so it
+    // carries no chain-link rule. Measured consequence: a cross-book base excludes the
+    // head from the projection and REPORTS it — it never projects into the wrong book.
+    const leaky = mkEvent({ op: 'text.verse.set', actor: 'actor-b', ts: okTs(9, 'actor-b'), base: addJ.ts,
+      book: 'TIT', chapter: '1', verse: '1', text: 'LEAKED\n' });
+    const audit = fold([add, addJ, leaky]);
+    check('J31: audit — a CONTENT op with a cross-book base fails CLOSED: the head is excluded by ancestry and reported in retained[] as unselected-structural-branch; no text ever crosses books',
+      audit.books.TIT.verses['1:1'] !== 'LEAKED\n' && audit.books.JON.verses['1:1'] !== 'LEAKED\n' &&
+      audit.retained.some((r) => r.key === 'text|TIT|1:1' && r.reason === 'unselected-structural-branch'),
+      `TIT=${JSON.stringify(audit.books.TIT.verses['1:1'])} retained=${JSON.stringify(audit.retained)}`);
   }
 
   // --- FINDING 2: serializer/validator symmetry (see also the property test below) ---

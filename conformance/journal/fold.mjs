@@ -193,6 +193,11 @@ export const fold = (eventsIn) => {
     }
 
     if (e.op === 'book.remove') {
+      // The SAME chain-link rule as every other structural op (round 8): a removal is a
+      // chain link of the book's lineage, and it DELETES the book from the projection —
+      // so an unvalidated base kind is the most destructive of the class, not the least.
+      const pend = structuralBaseState(e, CHAIN_OPS);
+      if (pend) { pendingStructural.push(pend); continue; }
       joinHead(`book|${e.book}`, { ts: e.ts, actor: e.actor, sanc: sancOf(e.base ?? null), book: e.book, event: e }, e.base, e.supersedes, e.actor);
       acceptedStructural.add(e.ts); // an accepted chain link — a later re-add may base on it
       continue;
