@@ -5,8 +5,8 @@
 import crypto from 'crypto';
 import { createRequire } from 'module';
 import { slotKeysOf, recompose } from './skeleton.mjs';
-import { validateEvent } from './schema.mjs';
-import { identityKeyOf } from './grammar.mjs';
+import { validateEvent, PAYLOAD_FIELDS } from './schema.mjs';
+import { identityKeyOf, noteRekeyError, journaledTextError, MAX_JSON_DEPTH } from './grammar.mjs';
 export { slotKeysOf }; // kept on this module for existing importers
 
 const require = createRequire(import.meta.url);
@@ -16,24 +16,69 @@ const md5 = (s) => crypto.createHash('md5').update(s, 'utf8').digest('hex');
 
 // §5.1 plain-text extraction — the fold's ONLY validity hash (I-3; §8.5 "Text vs. plain text").
 // There is no substitute hash: the D48 flip removed the former opts escape.
+//
+// LAYER 2 (round 9): the hash covers the WHOLE content slot. The extraction used to read
+// only the parse's verse `1`, so bytes after an embedded `\v ` or `\c ` marker fell
+// OUTSIDE the validity hash — an alignment stayed "valid" over text it never saw. Layer 1
+// (the schema's `journaledTextError`) refuses such content at seal and at fold; this walk
+// refuses to be truncated by it in the first place, so the two layers fail independently.
 export const verseTextMd5 = (content) => {
+  // The extraction REFUSES what it cannot cover. A `\c ` region is dropped outright by the
+  // chunk parse, so hashing such content would return a hash over PART of it — silently.
+  // The same ONE grammar layer 1 applies at the schema is applied here, at the hash, so a
+  // truncated hash cannot be produced even with validation off.
+  const err = journaledTextError(content);
+  if (err) throw new Error(`verseTextMd5: content ${err} — the §5.1 extraction (I-3) covers ONE content slot; refuse to hash part of it`);
   const parsed = usfmjs.toJSON(`\\v 1 ${content}`, { chunk: true });
-  const vo = parsed.verses?.['1']?.verseObjects || [];
-  return md5(vo.map((o) => o.text || '').join('').trim());
+  const parts = [];
+  const take = (vo) => { for (const o of vo || []) parts.push(o.text || ''); };
+  for (const k of Object.keys(parsed.verses || {})) take(parsed.verses[k].verseObjects);
+  return md5(parts.join('').trim());
 };
 
+// Own-key-safe object rebuild. `out[k] = v` runs the PROTOTYPE setter for a `__proto__`
+// key and swallows the field, so any walk that copies field-by-field goes blind on it.
+const putOwn = (out, k, v) => {
+  Object.defineProperty(out, k, { value: v, enumerable: true, writable: true, configurable: true });
+  return out;
+};
+// The canonical form the fold compares heads by. Bounded like every other recursive walk
+// (§8.1): the schema already refuses a deeper document, and this walk refuses it AGAIN so
+// a hostile event reaching the fold with validation off cannot blow the stack here.
+const sortKeys = (o, depth = 0) => {
+  if (depth > MAX_JSON_DEPTH)
+    throw new Error(`value nests deeper than the §8.1 limit of ${MAX_JSON_DEPTH} levels — refuse to fold`);
+  if (Array.isArray(o)) return o.map((x) => sortKeys(x, depth + 1));
+  if (o && typeof o === 'object') {
+    const out = {};
+    for (const k of Object.keys(o).sort()) putOwn(out, k, sortKeys(o[k], depth + 1));
+    return out;
+  }
+  return o;
+};
 const canon = (o) => JSON.stringify(sortKeys(o));
-const sortKeys = (o) =>
-  Array.isArray(o) ? o.map(sortKeys)
-  : o && typeof o === 'object' ? Object.fromEntries(Object.keys(o).sort().map((k) => [k, sortKeys(o[k])]))
-  : o;
 
+const EMPTY_SET = new Set();
 const ENVELOPE = new Set(['v', 'op', 'actor', 'ts', 'base', 'supersedes', 'seed', 'batch']);
+// Fork identity is built by ADDITION from the op's §8.5 payload row (schema.mjs), never by
+// subtracting the known envelope keys: subtraction made every unknown top-level field —
+// including an additive-optional one §9 says readers MUST tolerate — part of identity, so
+// two otherwise IDENTICAL heads forked instead of auto-merging. `align.verse.set` declares
+// no row (its payload IS the open §5.1 record) and keeps the subtractive rule.
 const payloadOf = (e) => {
-  const p = { op: e.op };
-  for (const k of Object.keys(e)) if (!ENVELOPE.has(k)) p[k] = e[k];
+  const fields = PAYLOAD_FIELDS[e.op];
+  const p = putOwn({}, 'op', e.op);
+  if (fields) {
+    for (const k of fields) if (e[k] !== undefined) putOwn(p, k, e[k]);
+    return p;
+  }
+  for (const k of Object.keys(e)) if (!ENVELOPE.has(k)) putOwn(p, k, e[k]);
   return p;
 };
+// The canonical head identity the auto-merge test compares (§8.6 step 3), exported so the
+// conformance suite can assert LAYER 2 directly — with the schema bypassed, which is the
+// only way to reach an own `__proto__` payload field or an over-deep value here.
+export const headIdentity = (e) => canon(payloadOf(e));
 
 // The §5.2 identity key a decision disposition names: toolId|checkId|bookId|chapter|verse|occurrence.
 // Built from the ONE identity-key serializer (grammar.mjs) — the same string the schema's
@@ -79,28 +124,54 @@ export const fold = (eventsIn) => {
   // 2. total order = plain string compare on ts
   const events = [...byTs.values()].sort((a, b) => (a.ts < b.ts ? -1 : 1));
 
-  // structural ancestry: sancOf(ts) = the nearest book.add / text.structure.apply on the base chain
+  // structural ancestry: sancOf(ts) = the nearest book.add / text.structure.apply on the
+  // base chain, or null when the chain resolves to NO structural anchor (an absent base,
+  // a cycle, or a chain that bottoms out in a rootless content event).
+  //
+  // ROUND 9 — `base` absence is a legal state, and the fold DECIDES it. `sanc == null`
+  // used to mean "belongs to every branch and every generation": `inChain` passed
+  // unconditionally and the generational test fell back to an HLC cutoff (`h.ts >
+  // genRoot`) — the exact mechanism §8.5 forbids by name. That single unhandled state is
+  // what let a rootless content op project under EVERY structural branch, let a base
+  // cycle behave chain-agnostically, and let a still-offline actor's prior-generation
+  // draft win or lose purely by clock. `sanc == null` now means exactly what it says —
+  // NO anchor — and an unanchored head does not project (it is retained and reported).
   const sancCache = new Map();
   const sancOf = (ts) => {
     if (ts == null) return null;
     if (sancCache.has(ts)) return sancCache.get(ts);
-    sancCache.set(ts, null); // cycle guard
+    sancCache.set(ts, null); // cycle guard: a cycle resolves to NO anchor, never to "any"
     const e = byTs.get(ts);
     let r = null;
     if (e) r = (e.op === 'book.add' || e.op === 'text.structure.apply') ? ts : sancOf(e.base ?? null);
     sancCache.set(ts, r);
     return r;
   };
-  const headSancFor = (e) =>
-    (e.op === 'book.add' || e.op === 'text.structure.apply') ? e.ts : sancOf(e.base ?? null);
+  // The anchor a head carries. A structural post-image confers its own ts (§8.5 multi-key
+  // rule). A CONTENT head inherits its base's anchor; when the base is rootless or
+  // unresolvable it falls back to the op's CAUSAL stamp — `generation`, the ts of the
+  // book's rooting `book.add` as the writer projected it (§8.5 Book generations). That
+  // stamp is mandatory for exactly the ops whose first write is legitimately rootless
+  // (`align.verse.set`, `check.decision.set`, `note.add`), which is what lets two genuine
+  // concurrent first writes fork instead of silently agreeing to be branch-agnostic.
+  const headSancFor = (e) => {
+    if (e.op === 'book.add' || e.op === 'text.structure.apply') return e.ts;
+    const a = sancOf(e.base ?? null);
+    if (a != null) return a;
+    return e.generation ?? null;
+  };
 
   // 3. per-key live-head sets. Head = {ts, actor, sanc, book, event}.
   const heads = new Map();
   const notes = [];
   const noteRekey = new Map();     // note ts -> {structTs, to}
+  const noteRetired = new Map();   // note ts -> structTs (orphan-review / invalidate-retain)
   const consumed = new Map();      // `${key}|${headTs}` -> Set(structTs)
   const retainedByStruct = [];     // {structTs, key, ts, reason}
   const pendingStructural = [];    // {ts, book, status, detail}
+  const superseded = [];           // {key, ts, by} — every head a `supersedes` erased
+  const supersedeRefused = [];     // {key, ts, by} — every cross-ancestry erasure REFUSED
+  const rootless = [];             // {key, ts} — every rootless content write on a live key
   // ONE accepted-structural-predecessors set (round 7): every ACCEPTED chain link of the
   // whole class — book.add, text.skeleton.set, text.structure.apply — lands here, and
   // every chain link consults it for its base. A base that is merely present in the
@@ -120,6 +191,25 @@ export const fold = (eventsIn) => {
   //       otherwise silently apply against an unrelated ancestry);
   //   (c) be ACCEPTED                   → else PEND transitively (a descendant must never
   //       win a fork off an unaccepted link).
+  // ROUND 9 — the base:null COLUMN of that same rule. `base: null` used to be an
+  // unhandled state that every rule keyed on ancestry FELL OPEN on, and the class was not
+  // even uniform: at `base: null` a `book.add`, a `book.remove` and a `text.structure.apply`
+  // all APPLIED while `text.skeleton.set` REFUSED, ten lines apart, with no text
+  // explaining the difference. A rootless `book.remove` deleted the book; a rootless
+  // `text.structure.apply` dropped slots with ZERO dispositions, because the affected-set
+  // computation reads the BASE skeleton and there was none.
+  //
+  // ONE rule: `book.add` is the ONLY rootless structural op, and it is rootless only
+  // while the book does not yet exist. Every other rootless structural op REFUSES.
+  const ROOTLESS_STRUCTURAL_OK = (e) =>
+    e.op === 'book.add' && (heads.get(`book|${e.book}`) || []).length === 0;
+  const rootlessStructuralError = (e) => {
+    if (e.base != null) return null;
+    if (ROOTLESS_STRUCTURAL_OK(e)) return null;
+    return e.op === 'book.add'
+      ? `book.add of ${e.book} carries no base but the book already exists (ts ${e.ts}) — a re-add MUST chain to the book.remove it follows; refuse to fold (§8.5)`
+      : `${e.op} requires a base naming its structural predecessor (ts ${e.ts}) — book.add is the only rootless structural op, and only while the book does not exist; refuse to fold (§8.5)`;
+  };
   // Returns a pendingStructural record, or null when the base is fine (or absent).
   const structuralBaseState = (e, allowed) => {
     if (e.base == null) return null; // a root — there is no chain link to check
@@ -140,13 +230,33 @@ export const fold = (eventsIn) => {
     consumed.get(k).add(structTs);
   };
   const pushHead = (key, head) => { heads.set(key, [...(heads.get(key) || []), head]); };
+  // A `supersedes` ERASES a live head. Two rules bound it (round 9, D-F1):
+  //   • CONSERVATION — an erased head is REPORTED (`retained[]`, reason `superseded`).
+  //     Pre-fix it could not appear in any review list: `retained[]` is built from
+  //     SURVIVING heads, so the erased draft left the projection AND every list at once,
+  //     and `\v 1 ___` was committed over drafted text with nothing anywhere to see.
+  //   • ANCESTRY — a supersedes MUST NOT erase a head OUTSIDE its own ancestry. Resolving
+  //     a fork is a statement about one's own branch; reaching across a structural branch
+  //     to delete another branch's head is not resolution, it is deletion. Such an
+  //     erasure is refused (the head stays live and the attempt is reported), so the two
+  //     branches remain a visible fork instead of one silently winning.
+  const supersedeOk = (target, head) =>
+    (target.sanc == null || head.sanc == null)
+      ? target.sanc === head.sanc            // ancestry-free surfaces (pins, meta, settings)
+      : chainOf(head.sanc).has(target.sanc); // the target must lie on this head's own chain
   const joinHead = (key, head, base, supersedes, actor) => {
     const live = heads.get(key) || [];
     // Dangling supersedes refs are harmless BY CONSTRUCTION: supers is only ever used to
     // filter/match LIVE heads, so an entry naming no live head filters nothing and the
     // resolution condition (live.every) never consults it. Self-supersession is refused
     // by the schema (§8.3) before any event reaches this point.
-    const supers = new Set(supersedes || []);
+    const claimed = new Set(supersedes || []);
+    const supers = new Set();
+    for (const h of live) {
+      if (!claimed.has(h.ts)) continue;
+      if (supersedeOk(h, head)) { supers.add(h.ts); superseded.push({ key, ts: h.ts, by: head.ts }); }
+      else supersedeRefused.push({ key, ts: h.ts, by: head.ts });
+    }
     if (live.length === 0) {
       heads.set(key, [head]);
     } else if (supers.size && live.every((h) => supers.has(h.ts))) {
@@ -161,9 +271,52 @@ export const fold = (eventsIn) => {
       heads.set(key, [...live.filter((h) => !supers.has(h.ts)), head]); // fork joins
     }
   };
+  // §8.5 chain-of-structural-ancestry walk. Declared before the event loop because the
+  // supersedes ancestry rule above consults it while heads are still being built.
+  const chainOf = (structTs) => {
+    const chain = new Set();
+    let cur = structTs; let guard = 0;
+    while (cur && !chain.has(cur) && guard++ < 10000) {
+      chain.add(cur);
+      const ev = byTs.get(cur);
+      if (!ev || ev.op === 'book.add') break;
+      cur = sancOf(ev.base ?? null);
+    }
+    return chain;
+  };
+  // THE ROOTLESS-BASE RULE for content ops (round 9). `base: null` is a CLAIM: "I observed
+  // no prior state for this key". It is legal only when that claim can be true.
+  //   • `text.verse.set` — a slot's verse head is created BY the `book.add` that created
+  //     the slot (§8.5 multi-key rule), so on an existing slot the claim is false: the
+  //     write is a writer defect. It does not become a head; it is retained and reported
+  //     (`rootless-base`), never projected. Pre-fix such an event carried NO ancestry, so
+  //     it projected under every structural branch and overwrote the winning branch's
+  //     post-image, and its generation was decided by the clock.
+  //   • `align.verse.set` / `check.decision.set` — a rootless FIRST write is ordinary, and
+  //     its anchor is the mandatory `generation` stamp (headSancFor). Two genuine
+  //     concurrent first writes therefore still fork.
+  //   • pins, project metadata and settings carry no structural ancestry at all.
+  const ROOTLESS_REFUSED = new Set(['text.verse.set']);
+  const rootlessDefect = (e, key) =>
+    e.base == null && ROOTLESS_REFUSED.has(e.op) && (heads.get(key) || []).length > 0;
+  // ONE stale-own-head rule for BOTH skeleton-chain ops (round 9, E-R3). An actor whose
+  // own skeleton head has advanced past the base it claims is reversing its own accepted
+  // structural action. `text.skeleton.set` refused that; `text.structure.apply` — the op
+  // that can DROP SLOTS — silently accepted it and re-created the removed verses. Same
+  // hazard, same rule, stated once.
+  const staleOwnSkeletonHead = (e) => {
+    const live = heads.get(`skel|${e.book}`) || [];
+    if (!live.length || live.some((h) => h.ts === e.base) || !live.some((h) => h.actor === e.actor)) return null;
+    return `${e.op} base ${e.base} is stale: this actor's own skeleton head advanced past it (ts ${e.ts}) — a structural edit cannot silently reverse an accepted structural action of the same actor; refuse to fold (§8.4)`;
+  };
   const vkeyParts = (vkey) => { const i = vkey.indexOf(':'); return { chapter: vkey.slice(0, i), verse: vkey.slice(i + 1) }; };
 
   for (const e of events) {
+    // ONE rootless-base gate for the whole structural class, before any op-specific work.
+    if (CHAIN_OPS.has(e.op)) {
+      const err = rootlessStructuralError(e);
+      if (err) throw new Error(err);
+    }
     if (e.op === 'note.add') { notes.push(e); continue; }
 
     if (e.op === 'project.vrs.set') {
@@ -224,9 +377,8 @@ export const fold = (eventsIn) => {
       const baseEv = byTs.get(e.base);
       if (JSON.stringify(slotKeysOf(baseEv.skeleton)) !== JSON.stringify(slotKeysOf(e.skeleton)))
         throw new Error(`text.skeleton.set changes the slot set (ts ${e.ts}) — refuse to fold; use text.structure.apply (§8.4)`);
-      const live = heads.get(`skel|${e.book}`) || [];
-      if (live.length && !live.some((h) => h.ts === e.base) && live.some((h) => h.actor === e.actor))
-        throw new Error(`text.skeleton.set base ${e.base} is stale: this actor's own head advanced past it (ts ${e.ts}) — a skeleton edit cannot silently reverse a text.structure.apply; refuse to fold (§8.4)`);
+      const staleErr = staleOwnSkeletonHead(e);
+      if (staleErr) throw new Error(staleErr);
       joinHead(`skel|${e.book}`, { ts: e.ts, actor: e.actor, sanc: sancOf(e.base), book: e.book, event: e }, e.base, e.supersedes, e.actor);
       acceptedStructural.add(e.ts);
       continue;
@@ -251,6 +403,8 @@ export const fold = (eventsIn) => {
       {
         const pend = structuralBaseState(e, STRUCTURAL_OPS);
         if (pend) { pendingStructural.push(pend); continue; }
+        const staleErr = staleOwnSkeletonHead(e);
+        if (staleErr) throw new Error(staleErr);
       }
       // applicability (§8.5 all-or-nothing): every referenced source head present AND live
       const missing = []; const stale = [];
@@ -263,7 +417,8 @@ export const fold = (eventsIn) => {
         for (const src of transitions[dest].sources || []) checkRef(`text|${book}|${src.key}`, src.ts);
       for (const d of dispositions) {
         const key = d.surface === 'alignment' ? `align|${book}|${d.key}`
-          : d.surface === 'decision' ? `dec|${d.key}` : null;
+          : d.surface === 'decision' ? `dec|${d.key}`
+          : d.surface === 'text' ? `text|${book}|${d.key}` : null;
         if (key) checkRef(key, d.ts);
         else if (!byTs.has(d.ts)) missing.push(`note@${d.ts}`);
       }
@@ -282,8 +437,19 @@ export const fold = (eventsIn) => {
       const baseEvent = e.base ? byTs.get(e.base) : null;
       if (baseEvent && typeof baseEvent.skeleton === 'string')
         for (const k of slotKeysOf(baseEvent.skeleton)) if (!newSlots.includes(k)) mapped.add(k);
+      // every source head this event CLAIMS — a claimed text head is carried forward by a
+      // transition and needs no disposition; an unclaimed one on a mapped key does
+      const claimedSrc = new Set();
+      for (const dest of tKeys)
+        for (const src of transitions[dest].sources || []) claimedSrc.add(`${src.key}|${src.ts}`);
       const affected = new Set();
       for (const k of mapped) {
+        // TEXT is a dependent record class like any other (round 9, D-F2). Verse text on a
+        // slot this event removes, and that no transition claims as a source, is
+        // UNCONSERVED without a disposition: it left the projection with no report and
+        // then resurfaced as a zombie fork when the slot returned.
+        for (const h of heads.get(`text|${book}|${k}`) || [])
+          if (!claimedSrc.has(`${k}|${h.ts}`)) affected.add(`text|${k}|${h.ts}`);
         for (const h of heads.get(`align|${book}|${k}`) || []) affected.add(`alignment|${k}|${h.ts}`);
         for (const [dkey, live] of heads) {
           if (!dkey.startsWith('dec|')) continue;
@@ -294,13 +460,12 @@ export const fold = (eventsIn) => {
             if (`${r.chapter}:${r.verse}` !== k) continue;
             affected.add(`decision|${dkey.slice(4)}|${h.ts}`);
             // a decisionKey-targeted note on a RE-KEYED decision is an affected record
-            // too: its §5.2 identity retires with the re-key, so it needs a disposition.
+            // too: its identity retires with the re-key, so it needs a disposition.
             // (invalidate-retain/replace keep the decision's key — such notes stay valid.)
             const decDisp = dispositions.find((d) => dispId(d) === `decision|${dkey.slice(4)}|${h.ts}`);
             if (decDisp && decDisp.action === 're-key') {
-              const identity = identityKeyOf(c); // the ONE §5.2 identity-key serializer
               for (const n of notes)
-                if (n.target && n.target.decisionKey === identity) affected.add(`note||${n.ts}`);
+                if (n.target && n.target.decisionKey === dkey.slice(4)) affected.add(`note||${n.ts}`);
             }
           }
         }
@@ -312,6 +477,18 @@ export const fold = (eventsIn) => {
       for (const d of dispositions)
         if (!affected.has(dispId(d)))
           throw new Error(`text.structure.apply disposition ${dispId(d)} references a record outside the affected set (ts ${e.ts}) — refuse to fold (§8.5: dispositions cannot consume unrelated records)`);
+      // The note re-key destination is bound to the note's target KIND, and only the fold
+      // knows BOTH the note and the destination — so the ONE shared predicate is applied
+      // here, at the call site (the deferred half of round 8's finding 12). Pre-fix a
+      // decisionKey-targeted note could be re-keyed to a verse slot string, producing
+      // `{decisionKey: "1:1"}` — a target the schema itself rejects.
+      for (const d of dispositions) {
+        if (d.surface !== 'note' || d.action !== 're-key') continue;
+        const n = notes.find((x) => x.ts === d.ts);
+        const err = n && noteRekeyError(n.target, d.to, newSlots);
+        if (err)
+          throw new Error(`text.structure.apply note disposition ${err} (ts ${e.ts}) — refuse to fold (§8.5)`);
+      }
       const undispositioned = [...affected].filter((id) => !dispSet.has(id));
       if (undispositioned.length) {
         pendingStructural.push({ ts: e.ts, book, status: 'incomplete', detail: undispositioned.map((u) => `undispositioned:${u}`) });
@@ -330,7 +507,13 @@ export const fold = (eventsIn) => {
           event: { op: 'text.verse.set', book, chapter, verse, text: tr.text } });
       }
       for (const d of dispositions) {
-        if (d.surface === 'alignment') {
+        if (d.surface === 'text') {
+          // the slot's content is DROPPED: consume the head on this branch (so it can
+          // never resurface as a zombie when the slot returns) and RETAIN it for review
+          const key = `text|${book}|${d.key}`;
+          consume(key, d.ts, e.ts);
+          retainedByStruct.push({ structTs: e.ts, key, ts: d.ts, reason: d.action });
+        } else if (d.surface === 'alignment') {
           const key = `align|${book}|${d.key}`;
           const old = (heads.get(key) || []).find((h) => h.ts === d.ts);
           consume(key, d.ts, e.ts);
@@ -339,7 +522,12 @@ export const fold = (eventsIn) => {
             pushHead(`align|${book}|${d.to}`, { ts: e.ts, actor: e.actor, sanc: e.ts, book,
               event: { ...old.event, op: 'align.verse.set', book, chapter, verse } });
           } else if (d.action === 'replace') {
-            pushHead(key, { ts: e.ts, actor: e.actor, sanc: e.ts, book, event: { op: 'align.verse.set', book, ...d.post } });
+            // the post-image carries the ORIGINAL record's `generation` (§8.5). Rebuilding
+            // it without the stamp LAUNDERED the generation quarantine: a prior-generation
+            // record resurrected through the conservative disposition that reconcile
+            // itself emits (round 9, D-F5).
+            pushHead(key, { ts: e.ts, actor: e.actor, sanc: e.ts, book,
+              event: { op: 'align.verse.set', book, generation: old.event.generation, ...d.post } });
           } else {
             retainedByStruct.push({ structTs: e.ts, key, ts: d.ts, reason: d.action });
           }
@@ -348,27 +536,36 @@ export const fold = (eventsIn) => {
           const old = (heads.get(key) || []).find((h) => h.ts === d.ts);
           consume(key, d.ts, e.ts);
           const toolId = old.event.toolId;
+          const generation = old.event.generation; // never laundered — see above
           if (d.action === 're-key') {
             const { chapter, verse } = vkeyParts(d.to);
+            // A slot key is a STRING. `Number("02")` is 2, so re-keying to slot `1:02`
+            // put the record on verse 2 — a slot that does not exist — permanently
+            // unreachable by any future structural action. The number form is taken only
+            // when it round-trips exactly (§5.2 keeps a single verse as a JSON number).
+            const numeric = (s) => (String(Number(s)) === s ? Number(s) : s);
             const dec = JSON.parse(JSON.stringify(old.event.decision));
-            dec.contextId.reference.chapter = /^\d+$/.test(chapter) ? Number(chapter) : chapter;
-            dec.contextId.reference.verse = /^\d+$/.test(verse) ? Number(verse) : verse;
+            dec.contextId.reference.chapter = numeric(chapter);
+            dec.contextId.reference.verse = numeric(verse);
             pushHead(decKeyOf(toolId, dec), { ts: e.ts, actor: e.actor, sanc: e.ts, book,
-              event: { op: 'check.decision.set', toolId, decision: dec } });
+              event: { op: 'check.decision.set', toolId, generation, decision: dec } });
           } else if (d.action === 'replace') {
             pushHead(key, { ts: e.ts, actor: e.actor, sanc: e.ts, book,
-              event: { op: 'check.decision.set', toolId, decision: d.post } });
+              event: { op: 'check.decision.set', toolId, generation, decision: d.post } });
           } else {
             // invalidate-retain / orphan-review: decisions are never deleted (D36) —
             // the record is retained, invalidated.
             const dec = { ...old.event.decision, invalidated: true, status: 'invalid' };
             pushHead(key, { ts: e.ts, actor: e.actor, sanc: e.ts, book,
-              event: { op: 'check.decision.set', toolId, decision: dec } });
+              event: { op: 'check.decision.set', toolId, generation, decision: dec } });
             retainedByStruct.push({ structTs: e.ts, key, ts: d.ts, reason: d.action });
           }
         } else if (d.surface === 'note') {
           if (d.action === 're-key') noteRekey.set(d.ts, { structTs: e.ts, to: d.to });
-          else retainedByStruct.push({ structTs: e.ts, key: 'note', ts: d.ts, reason: d.action });
+          else {
+            noteRetired.set(d.ts, e.ts);
+            retainedByStruct.push({ structTs: e.ts, key: 'note', ts: d.ts, reason: d.action });
+          }
         }
       }
       continue;
@@ -376,22 +573,13 @@ export const fold = (eventsIn) => {
 
     // standard LWW ops
     const key = keyOf(e);
+    if (rootlessDefect(e, key)) { rootless.push({ key, ts: e.ts }); continue; }
     joinHead(key, { ts: e.ts, actor: e.actor, sanc: headSancFor(e), book: bookOfEvent(e), event: e }, e.base, e.supersedes, e.actor);
   }
 
   // 4. project — per book, select the winning skeleton head; its structural chain is the
   // selected branch (§8.5 lineage rule). Heads off the chain are retained, never projected.
-  const chainOf = (structTs) => {
-    const chain = new Set();
-    let cur = structTs; let guard = 0;
-    while (cur && !chain.has(cur) && guard++ < 10000) {
-      chain.add(cur);
-      const ev = byTs.get(cur);
-      if (!ev || ev.op === 'book.add') break;
-      cur = sancOf(ev.base ?? null);
-    }
-    return chain;
-  };
+  // (`chainOf` is declared above the event loop — the supersedes ancestry rule needs it.)
   const isConsumed = (key, ts, chain) => {
     const set = consumed.get(`${key}|${ts}`);
     if (!set) return false;
@@ -406,13 +594,13 @@ export const fold = (eventsIn) => {
   // payloads, report a fork otherwise. skel keys skip the ancestry filter — a structural
   // fork is exactly the review item (#65).
   const resolved = new Map(); // memoized: each key resolves once (stable chain per key)
-  const resolveKey = (key, chain, { skipAncestry = false, genRoot = null } = {}) => {
+  const resolveKey = (key, chain, opts = {}) => {
     if (resolved.has(key)) return resolved.get(key);
-    const r = resolveKeyRaw(key, chain, { skipAncestry, genRoot });
+    const r = resolveKeyRaw(key, chain, opts);
     resolved.set(key, r);
     return r;
   };
-  const resolveKeyRaw = (key, chain, { skipAncestry = false, genRoot = null } = {}) => {
+  const resolveKeyRaw = (key, chain, { skipAncestry = false, genRoot = null, priorRoots = EMPTY_SET } = {}) => {
     const live = heads.get(key) || [];
     if (live.length === 0) return null;
     let candidates = live;
@@ -423,18 +611,28 @@ export const fold = (eventsIn) => {
       // with arbitrarily later timestamps, so a ts cutoff cannot implement quarantine).
       // Input records always carry the stamp (refused above otherwise); the field-less
       // branch covers CHAIN-BORNE heads only — text heads and structural post-images,
-      // whose generation is their ancestry (sanc) or, for pre-generation-root text
-      // heads with no ancestor, the ts comparison.
+      // whose generation IS their structural ancestry, decided by `inChain` below.
+      //
+      // ROUND 9: the field-less branch used to end in `h.ts > genRoot` — an HLC cutoff,
+      // the exact mechanism §8.5 forbids by name. It was reachable because an unanchored
+      // head (`sanc == null`) fell through to it, so a still-offline actor's
+      // prior-generation draft won or lost purely by clock. Unanchored heads no longer
+      // reach the projection at all (the rootless-base rule), and the cutoff is gone.
       const inGeneration = (h) => {
         const g = h.event.generation;
-        if (g !== undefined) return genRoot == null || g === genRoot;
-        return h.sanc != null || genRoot == null || h.ts > genRoot;
+        return g === undefined || genRoot == null || g === genRoot;
       };
-      const inChain = (h) => h.sanc == null || chain.has(h.sanc);
+      // An ANCHOR is required. `sanc == null` used to pass unconditionally — "belongs to
+      // every branch" — which is how a rootless or cycle-based content op projected under
+      // every structural branch and overwrote the winning branch's post-image.
+      const inChain = (h) => h.sanc != null && chain.has(h.sanc);
       candidates = live.filter((h) => inGeneration(h) && inChain(h) && !isConsumed(key, h.ts, chain));
       for (const h of live) {
         if (!inGeneration(h)) retained.push({ key, ts: h.ts, reason: 'prior-generation' });
-        else if (!inChain(h)) retained.push({ key, ts: h.ts, reason: 'unselected-structural-branch' });
+        else if (h.sanc == null) retained.push({ key, ts: h.ts, reason: 'no-structural-ancestor' });
+        // an anchor that is a PRIOR generation root of this same book is a generation
+        // miss, not a branch miss — name it for what it is
+        else if (!chain.has(h.sanc)) retained.push({ key, ts: h.ts, reason: priorRoots.has(h.sanc) ? 'prior-generation' : 'unselected-structural-branch' });
       }
     }
     if (candidates.length === 0) return null;
@@ -457,6 +655,15 @@ export const fold = (eventsIn) => {
   const genRoots = new Map(); // book -> the current generation root (book.add ts, §8.5)
   const bookCodes = new Set([...heads.keys()].filter((k) => k.startsWith('book|')).map((k) => k.slice(5)));
   const headsTs = {};
+  // Every generation root this union ever held, per book (§8.5) — so a head anchored to a
+  // RETIRED root of its own book is reported as `prior-generation`, not as a branch miss.
+  const rootsOfBook = new Map();
+  for (const e of events) {
+    if (e.op !== 'book.add') continue;
+    if (!rootsOfBook.has(e.book)) rootsOfBook.set(e.book, new Set());
+    rootsOfBook.get(e.book).add(e.ts);
+  }
+  const optsFor = (book) => ({ genRoot: genRoots.get(book), priorRoots: rootsOfBook.get(book) || EMPTY_SET });
   for (const book of bookCodes) {
     const bookHead = resolveKey(`book|${book}`, null, { skipAncestry: true });
     if (bookHead) headsTs[`book|${book}`] = bookHead.ts;
@@ -471,26 +678,42 @@ export const fold = (eventsIn) => {
     const skeleton = skelHead.event.skeleton;
     const verses = {};
     for (const k of slotKeysOf(skeleton)) {
-      const h = resolveKey(`text|${book}|${k}`, chain, { genRoot: genRoots.get(book) });
+      const h = resolveKey(`text|${book}|${k}`, chain, optsFor(book));
       verses[k] = h ? h.event.text : '___\n'; // §4.1 stub for a slot with no live verse head
       if (h) headsTs[`text|${book}|${k}`] = h.ts;
     }
     books[book] = { usfm: recompose(skeleton, verses), verses };
     // resolve the book's non-slot text keys too: their heads never project (no slot),
-    // but off-branch descendants must surface in retained[] (§8.5 lineage rule)
+    // but off-branch descendants must surface in retained[] (§8.5 lineage rule), and a
+    // live head on a key with NO SLOT is the §8.6 orphan backstop for TEXT — the same
+    // rule alignments already had. Without it, drafted text on a slot a structural action
+    // removed was the one dependent record class that went silently absent (round 9).
     for (const key of heads.keys()) {
       if (!key.startsWith(`text|${book}|`)) continue;
-      if (!(key.slice(`text|${book}|`.length) in verses)) resolveKey(key, chain, { genRoot: genRoots.get(book) });
+      const vkey = key.slice(`text|${book}|`.length);
+      if (vkey in verses) continue;
+      const h = resolveKey(key, chain, optsFor(book));
+      if (h) retained.push({ key, ts: h.ts, reason: 'orphaned-text' });
     }
   }
   const allChains = new Set();
   for (const c of chains.values()) for (const s of c) allChains.add(s);
 
+  // §8.5: "content events for absent books fold but don't project". The rule was written
+  // and never implemented: an absent book left `chains`/`genRoots` unset, `resolveKey`
+  // was handed a null chain, and the ancestry filter was SKIPPED ENTIRELY — so a removed
+  // book kept projecting its decisions, alignments and notes AND lost its generation
+  // quarantine at the same time. A book with no selected chain now retains its content
+  // records and projects none of them (round 9, D-F4).
+  const absentBook = (book) => book != null && !chains.has(book);
+  const retainAll = (key, reason) => { for (const h of heads.get(key) || []) retained.push({ key, ts: h.ts, reason }); };
+
   const decisions = {};
   for (const key of heads.keys()) {
     if (!key.startsWith('dec|')) continue;
     const anyHead = heads.get(key)[0];
-    const h = resolveKey(key, chains.get(anyHead.book) || null, { genRoot: genRoots.get(anyHead.book) });
+    if (absentBook(anyHead.book)) { retainAll(key, 'absent-book'); continue; }
+    const h = resolveKey(key, chains.get(anyHead.book), optsFor(anyHead.book));
     if (!h) continue;
     headsTs[key] = h.ts;
     (decisions[h.event.toolId] ||= []).push(h.event.decision);
@@ -502,7 +725,8 @@ export const fold = (eventsIn) => {
   for (const key of heads.keys()) {
     if (!key.startsWith('align|')) continue;
     const anyHead = heads.get(key)[0];
-    const h = resolveKey(key, chains.get(anyHead.book) || null, { genRoot: genRoots.get(anyHead.book) });
+    if (absentBook(anyHead.book)) { retainAll(key, 'absent-book'); continue; }
+    const h = resolveKey(key, chains.get(anyHead.book), optsFor(anyHead.book));
     if (!h) continue;
     headsTs[key] = h.ts;
     const ev = h.event;
@@ -553,32 +777,43 @@ export const fold = (eventsIn) => {
   }
 
   // §8.5: a note belongs to a book either by its verse target or by the bookId embedded
-  // in its §5.2 identity-key string (checkId|bookId|chapter|verse|occurrence)
+  // in its decision key (toolId|checkId|bookId|chapter|verse|occurrence)
   const noteBookOf = (n) => {
     const tg = n.target || {};
     if (tg.book) return tg.book;
     if (typeof tg.decisionKey === 'string') {
-      const bookId = tg.decisionKey.split('|')[1];
+      const bookId = tg.decisionKey.split('|')[2];
       if (bookId) return bookId.toUpperCase();
     }
     return null;
   };
   const notesOut = [];
   for (const n of notes) {
+    const nb = noteBookOf(n);
+    // a note of an ABSENT book folds but does not project, exactly like every other
+    // content record of that book (§8.5)
+    if (nb && bookCodes.has(nb) && !chains.has(nb)) {
+      retained.push({ key: 'note', ts: n.ts, reason: 'absent-book' });
+      continue;
+    }
     // §8.5 generational rule for notes (verse- AND decisionKey-targeted): the stamp is
     // unconditional, so quarantine is purely causal — a mismatch with the book's
     // current generation root quarantines regardless of ts
-    const nb = noteBookOf(n);
     if (nb && genRoots.has(nb) && n.generation !== genRoots.get(nb)) {
       retained.push({ key: 'note', ts: n.ts, reason: 'prior-generation' });
       continue;
     }
+    // A note dispositioned `orphan-review` / `invalidate-retain` on the SELECTED chain is
+    // RETAINED — and retained means NOT projected. Pre-fix it was both at once: two
+    // observable states for one record, one of them pointing at a slot that is gone.
+    const retire = noteRetired.get(n.ts);
+    if (retire !== undefined && allChains.has(retire)) continue;
     notesOut.push(rewriteNote(n));
   }
   function rewriteNote(n) {
     const rk = noteRekey.get(n.ts);
     if (rk && allChains.has(rk.structTs)) {
-      // a decisionKey-targeted note re-keys to the NEW §5.2 identity string;
+      // a decisionKey-targeted note re-keys to the NEW decision key;
       // a verse-targeted note re-keys to the new verse key
       if (n.target && n.target.decisionKey !== undefined) return { ...n, target: { decisionKey: rk.to } };
       const { chapter, verse } = { chapter: rk.to.split(':')[0], verse: rk.to.split(':').slice(1).join(':') };
@@ -587,11 +822,40 @@ export const fold = (eventsIn) => {
     return n;
   }
   for (const r of retainedByStruct) if (allChains.has(r.structTs)) retained.push({ key: r.key, ts: r.ts, reason: r.reason });
+  for (const s of superseded) retained.push({ key: s.key, ts: s.ts, reason: 'superseded' });
+  for (const r of rootless) retained.push({ key: r.key, ts: r.ts, reason: 'rootless-base' });
+
+  // §8.5/§5.4 dotted-path registers: `a` and `a.b` are DIFFERENT register keys that write
+  // the SAME place in the projected document, so the later write silently clobbered the
+  // earlier — no fork, no retained entry, no report. The resolution semantics are
+  // [PROPOSED — owner ratification pending, §8.5]; what is implemented here is the half
+  // that is correct under EVERY candidate rule: the loss is never silent. The later `ts`
+  // takes the projection and the earlier is retained and reported.
+  const prefixResolve = (paths, headTsOf, label) => {
+    const drop = new Set();
+    const keys = Object.keys(paths);
+    for (const a of keys) for (const b of keys) {
+      if (a === b || !b.startsWith(`${a}.`)) continue;
+      const loser = headTsOf(a) > headTsOf(b) ? b : a;
+      drop.add(loser);
+      retained.push({ key: `${label}|${loser}`, ts: headTsOf(loser), reason: 'prefix-collision' });
+    }
+    for (const p of drop) delete paths[p];
+  };
+  prefixResolve(settings, (p) => headsTs[`set|${p}`], 'set');
+  prefixResolve(projectMeta, (p) => headsTs[`meta|${p}`], 'meta');
 
   return {
     books, decisions, alignments, pins, projectMeta, projectMetaRemoved, settings, notes: notesOut,
     forks, invalid, retained, scope,
     vrs: vrs ? { name: vrs.name, bytes: vrs.bytes } : null, vrsRejected,
-    pendingStructural, headsTs,
+    pendingStructural, headsTs, supersedeRefused,
+    // The RAW live-head sets (§8.6 step 3), exposed because §8.8 reconcile must build its
+    // dispositions from the SAME set the fold computes its affected set from. Reconcile
+    // used to enumerate PROJECTED records, so a quarantined or losing-fork head was live
+    // for the fold and invisible to reconcile — and every reconcile of such a book emitted
+    // a `text.structure.apply` the fold then permanently refused as `incomplete`.
+    liveHeads: Object.fromEntries([...heads].map(([k, v]) => [k, v.map((h) => ({ ts: h.ts, actor: h.actor, book: h.book }))])),
+    liveNotes: notes.map((n) => ({ ts: n.ts, target: n.target, generation: n.generation })),
   };
 };

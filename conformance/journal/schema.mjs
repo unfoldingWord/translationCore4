@@ -91,20 +91,29 @@ const SEED_SOURCES = new Set(['creation', 'sidecar-migration', 'out-of-band-usfm
 // §8.5 disposition schema: surface and action are closed enums; re-key requires a
 // destination among the mapping's targets (or a §5.2 identity key, for notes);
 // replace requires the complete post-state.
-const DISP_SURFACES = new Set(['alignment', 'decision', 'note']);
+// Round 9: `text` is a disposition surface. Verse TEXT on a slot a structural action
+// REMOVES was the one dependent record class with no disposition and no orphan backstop:
+// it went silently absent and then resurfaced as a zombie fork when the slot returned.
+// A slot whose content is CARRIED FORWARD is named by a transition `source`; a slot whose
+// content is DROPPED needs an explicit statement, exactly like an alignment. `re-key` and
+// `replace` are therefore not text dispositions — the transitions already say that.
+const DISP_SURFACES = new Set(['text', 'alignment', 'decision', 'note']);
 const DISP_ACTIONS = new Set(['re-key', 'replace', 'invalidate-retain', 'orphan-review']);
+const KEYED_SURFACES = new Set(['text', 'alignment', 'decision']);
 const dispositionError = (d, newSlots) => {
   if (!isObj(d)) return 'disposition is not an object';
-  if (!DISP_SURFACES.has(d.surface)) return `disposition surface "${d && d.surface}" is not one of alignment|decision|note`;
+  if (!DISP_SURFACES.has(d.surface)) return `disposition surface "${d && d.surface}" is not one of text|alignment|decision|note`;
   if (!DISP_ACTIONS.has(d.action)) return `disposition action "${d.action}" is not one of re-key|replace|invalidate-retain|orphan-review`;
   if (!isTs(d.ts)) return `disposition record reference "${d.ts}" is not an §8.2 HLC ts`;
-  if ((d.surface === 'alignment' || d.surface === 'decision') && !isStr(d.key))
+  if (KEYED_SURFACES.has(d.surface) && !isStr(d.key))
     return `disposition (${d.surface}) without a key`;
-  if (d.surface === 'alignment') {
-    // the key IS the alignment register key — the same §8.4 slot grammar everywhere
+  if (d.surface === 'text' || d.surface === 'alignment') {
+    // the key IS the register key — the same §8.4 slot grammar everywhere
     const err = verseSlotError(d.key);
-    if (err) return `disposition (alignment) key ${err}`;
+    if (err) return `disposition (${d.surface}) key ${err}`;
   }
+  if (d.surface === 'text' && (d.action === 're-key' || d.action === 'replace'))
+    return `text disposition action "${d.action}" is not allowed — text carried FORWARD is named by a transition source; a text disposition states only that the slot's content is DROPPED (invalidate-retain | orphan-review, §8.5)`;
   if (d.surface === 'decision') {
     // the key is toolId + the §5.2 identity-key string — the same grammar everywhere
     const err = decisionKeyError(d.key);
@@ -115,8 +124,8 @@ const dispositionError = (d, newSlots) => {
     if (d.surface !== 'note' && !newSlots.includes(d.to))
       return `re-key disposition destination "${d.to}" is not a target slot of the mapping`;
     if (d.surface === 'note' && !newSlots.includes(d.to)) {
-      const err = identityKeyError(d.to); // the same §5.2 grammar as every identity-key string
-      if (err) return `note re-key destination "${d.to}" is neither a target slot nor a §5.2 identity key (${err})`;
+      const err = decisionKeyError(d.to); // the same decision-key grammar the registers carry
+      if (err) return `note re-key destination "${d.to}" is neither a target slot nor a decision key (${err})`;
     }
   }
   if (d.action === 'replace') {
@@ -248,7 +257,10 @@ const OPS = {
       if (k) return `note.add target chapter/verse do not form a §8.4 register key — ${k}`;
     }
     if (isDec) {
-      const err = identityKeyError(tg.decisionKey); // the ONE §5.2 identity-key grammar
+      // the ONE decision-key grammar: toolId|checkId|bookId|chapter|verse|occurrence.
+      // A bare five-part §5.2 identity key names a check POSITION, which two tools may
+      // both hold — so it could not say WHICH decision the note annotates (round 9).
+      const err = decisionKeyError(tg.decisionKey);
       if (err) return `note.add decisionKey "${tg.decisionKey}" ${err}`;
     }
     if (!isStr(e.text)) return 'note.add without text';
@@ -286,6 +298,34 @@ const OPS = {
     : !isObj(e.seed) || !VRS_SEED_SOURCES.has(e.seed.source)
       ? `project.vrs.set outside a creation/seed segment — §8.5 allows it only with seed.source ∈ ${[...VRS_SEED_SOURCES].join('|')}`
     : null,
+};
+
+// ---------- §8.5 payload fields: what a head's IDENTITY is made of (round 9) ----------
+// The fold auto-merges live heads with byte-identical payloads (§8.6 step 3). It built
+// that payload by SUBTRACTING the eight known envelope keys, so any other top-level field
+// counted as payload — and an additive-optional field (which §9 says readers must
+// tolerate without a version bump) made otherwise IDENTICAL heads FORK, manufacturing a
+// review item out of nothing. Fork identity is therefore built by ADDITION, from the
+// op's own §8.5 payload row.
+//
+// `align.verse.set` is the deliberate exception and carries `null`: its payload IS the
+// open §5.1 record, spread at the top level (`sourceVersion`, `invalid`, and any future
+// additive field ride through the journal unchanged and DO reach the projected record),
+// so for that op an unknown top-level field is record content, not envelope, and two
+// heads that differ in it are genuinely different records.
+export const PAYLOAD_FIELDS = {
+  'text.verse.set': ['book', 'chapter', 'verse', 'text'],
+  'text.skeleton.set': ['book', 'skeleton'],
+  'book.add': ['book', 'scope', 'skeleton', 'initialVerses'],
+  'book.remove': ['book'],
+  'text.structure.apply': ['book', 'skeleton', 'transitions', 'dispositions'],
+  'align.verse.set': null, // open §5.1 record — see above
+  'check.decision.set': ['toolId', 'decision', 'generation'],
+  'note.add': ['target', 'text', 'generation'],
+  'resource.pin.set': ['slot', 'entry', 'removed'],
+  'project.meta.set': ['path', 'value', 'removed'],
+  'settings.set': ['path', 'value', 'removed'],
+  'project.vrs.set': ['name', 'bytes'],
 };
 
 // §8.5: the versification frame is set when the project comes into being — at creation,

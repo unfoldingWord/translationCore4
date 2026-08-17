@@ -20,6 +20,17 @@ export const reconcileUsfm = (book, committedUsfm, foldOut, clock, actor) => {
   const newSlots = slotKeysOf(skeleton);
   const slotsChanged = JSON.stringify(oldSlots) !== JSON.stringify(newSlots);
 
+  // A committed book the journal does not project is not a structural EDIT, it is a book
+  // that has to come into being: §8.8 seeding says state without a journal becomes seed
+  // events. Emitting `text.structure.apply` for it would be a rootless structural event,
+  // which §8.5 refuses — `book.add` is the only rootless structural op, and a re-add after
+  // a `book.remove` chains to that removal.
+  if (!projected) {
+    events.push({ v: 1, op: 'book.add', actor, ts: clock.issue(),
+      base: foldOut.headsTs[`book|${book}`] ?? null, seed, book, scope: [], skeleton, initialVerses: verses });
+    return events;
+  }
+
   if (slotsChanged) {
     const transitions = {};
     for (const k of newSlots) {
@@ -28,22 +39,36 @@ export const reconcileUsfm = (book, committedUsfm, foldOut, clock, actor) => {
       if (oldSlots.includes(k) && headTs) sources.push({ key: k, ts: headTs }); // identity where possible
       transitions[k] = { text: verses[k], sources };
     }
-    // COMPLETE conservative dispositions: every live alignment, decision, and
-    // verse-targeted note on a removed key — invalidate-retain/orphan-review only,
+    // COMPLETE conservative dispositions: every LIVE text, alignment, decision and
+    // verse-targeted note record on a removed key — invalidate-retain/orphan-review only,
     // never a guessed re-key (§8.8; #65 v2).
+    //
+    // ROUND 9 (D-F3): built from the fold's LIVE HEAD sets, not from its PROJECTED
+    // records. The fold computes its affected set from live heads — which include
+    // quarantined (prior-generation) and losing-fork heads — so a reconcile that
+    // enumerated `headsTs`/`notes`/`decisions` (the projection) systematically emitted an
+    // INCOMPLETE event, which the fold then refused as `incomplete` FOREVER: an
+    // out-of-band USFM edit of such a book could never be journaled at all. One set, read
+    // by both sides.
     const dispositions = [];
+    const liveOn = (key) => foldOut.liveHeads?.[key] || [];
+    const claimed = new Set();
+    for (const k of newSlots) for (const s of transitions[k].sources) claimed.add(`${s.key}|${s.ts}`);
     for (const k of oldSlots) {
       if (newSlots.includes(k)) continue; // removed slot — conservative handling only
-      const alignTs = foldOut.headsTs[`align|${book}|${k}`];
-      if (alignTs) dispositions.push({ surface: 'alignment', key: k, ts: alignTs, action: 'orphan-review' });
-      for (const dk of Object.keys(foldOut.headsTs)) {
+      for (const h of liveOn(`text|${book}|${k}`))
+        if (!claimed.has(`${k}|${h.ts}`)) dispositions.push({ surface: 'text', key: k, ts: h.ts, action: 'orphan-review' });
+      for (const h of liveOn(`align|${book}|${k}`))
+        dispositions.push({ surface: 'alignment', key: k, ts: h.ts, action: 'orphan-review' });
+      for (const dk of Object.keys(foldOut.liveHeads || {})) {
         if (!dk.startsWith('dec|')) continue;
         // decompose with the ONE §5.2 key splitter (grammar.mjs) — never by index
         const { bookId, chapter, verse } = splitDecisionKey(dk.slice(4));
         if (bookId !== book.toLowerCase() || `${chapter}:${verse}` !== k) continue;
-        dispositions.push({ surface: 'decision', key: dk.slice(4), ts: foldOut.headsTs[dk], action: 'invalidate-retain' });
+        for (const h of liveOn(dk))
+          dispositions.push({ surface: 'decision', key: dk.slice(4), ts: h.ts, action: 'invalidate-retain' });
       }
-      for (const n of foldOut.notes) {
+      for (const n of foldOut.liveNotes || []) {
         const tg = n.target;
         if (tg && tg.book === book && `${tg.chapter}:${tg.verse}` === k)
           dispositions.push({ surface: 'note', ts: n.ts, action: 'orphan-review' });
@@ -54,15 +79,19 @@ export const reconcileUsfm = (book, committedUsfm, foldOut, clock, actor) => {
     return events;
   }
 
-  if (!projected || decompose(projected.usfm).skeleton !== skeleton) {
+  if (decompose(projected.usfm).skeleton !== skeleton) {
     events.push({ v: 1, op: 'text.skeleton.set', actor, ts: clock.issue(),
-      base: foldOut.headsTs[`skel|${book}`] ?? null, seed, book, skeleton });
+      base: foldOut.headsTs[`skel|${book}`], seed, book, skeleton });
   }
   for (const [vkey, text] of Object.entries(verses)) {
-    if (projected && projected.verses[vkey] === text) continue;
+    if (projected.verses[vkey] === text) continue;
     const [chapter, verse] = vkey.split(':');
+    // NEVER rootless (§8.5): a slot's verse head exists from the `book.add` that created
+    // the slot, so `base: null` here would be a writer defect the fold retains and never
+    // projects. A slot that projects the `___` stub has no live verse head of its own —
+    // its observed state is the SKELETON head, which is what this write actually saw.
     events.push({ v: 1, op: 'text.verse.set', actor, ts: clock.issue(),
-      base: foldOut.headsTs[`text|${book}|${vkey}`] ?? null, seed,
+      base: foldOut.headsTs[`text|${book}|${vkey}`] ?? foldOut.headsTs[`skel|${book}`], seed,
       book, chapter, verse, text });
   }
   return events;

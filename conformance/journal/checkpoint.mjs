@@ -94,7 +94,14 @@ export const projectResources = (pins) => {
     }
     if (Object.keys(out).length) languageSets[set] = out;
   }
-  if (Object.keys(languageSets).length) doc.languageSets = languageSets;
+  // §5.3/D17: `languageSets` MUST contain exactly the keys `primary` and `fallback`. A
+  // PARTIAL pin state (one set pinned, the other not yet) used to project a document that
+  // violates that rule and ship it as a valid checkpoint. §8.7 says an implementation MUST
+  // refuse rather than emit an incomplete derived set — so it refuses here.
+  const setNames = Object.keys(languageSets);
+  if (setNames.length === 1)
+    throw new Error(`checking/resources.json would carry only the "${setNames[0]}" language set — §5.3 (D17) requires exactly primary AND fallback; refuse to project an incomplete checkpoint (§8.7)`);
+  if (setNames.length) doc.languageSets = languageSets;
   const resources = {};
   for (const group of ['originalLanguage', 'lexicon']) {
     const out = {};
@@ -181,6 +188,14 @@ export const isUnjournaledIngredient = (ipath) => ipath.startsWith('audio/');
 export const derivedProjections = (foldOut, { baseMetadata = null, resolutions = {} } = {}) => {
   if (!baseMetadata)
     throw new Error('derivedProjections requires baseMetadata — the checkpoint regenerates metadata.json (§8.7); refuse to return an incomplete checkpoint');
+  // The versification frame is a MANDATORY input too, for any project that has a book.
+  // §4.3: the platform writes `vrs.json` at creation and `maxVerses` MUST cover every book
+  // in `currentScope`; §8.8 seeding covers versification. It was the one member of the
+  // "exhaustive" set emitted CONDITIONALLY, with no guard — so a journal with no
+  // `project.vrs.set` shipped a silently smaller checkpoint, and divergence detection
+  // (which enumerates from this set) never mentioned the missing file.
+  if (!foldOut.vrs && Object.keys(foldOut.books).length)
+    throw new Error('derivedProjections requires a folded project.vrs.set frame once the project has a book — the checkpoint projects ingredients/vrs.json (§4.3/§8.7); refuse to return an incomplete checkpoint');
   const out = emptySet();
   for (const book of Object.keys(foldOut.books)) {
     // the book code is a FOLD key flowing into a filesystem path — resolved, never trusted

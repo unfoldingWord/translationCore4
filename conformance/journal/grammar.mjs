@@ -258,11 +258,17 @@ export const splitDecisionKey = (s) => {
 };
 
 // ---------- §8.5 note targets and the re-key destination bound to their KIND ----------
-// A note target is exactly one of a verse or a §5.2 identity key, and the two destination
+// A note target is exactly one of a verse or a DECISION KEY, and the two destination
 // grammars are disjoint. A re-key that ignores the KIND rewrote a VERSE-targeted note to
 // an identity-key string — producing `{book, chapter: "x1|tit|1|2|1", verse: ""}`, a
 // target the schema itself rejects. ONE predicate, so the schema and the fold apply the
 // same rule at their own boundaries.
+//
+// Round 9: the decision-key form is the TOOLID-PREFIXED one — the same string the fold's
+// `dec|` registers carry and disposition keys name. A bare five-part §5.2 identity key
+// names a check position, not a decision: two tools may hold a decision at the SAME
+// position, so a note targeting the bare key could not say which decision it annotates.
+// ONE decision-key grammar, everywhere a decision is named.
 export const noteTargetKind = (target) =>
   !isObj(target) ? null
   : isStr(target.decisionKey) ? 'decisionKey'
@@ -271,13 +277,13 @@ export const noteTargetKind = (target) =>
 
 export const noteRekeyError = (target, to, newSlots = []) => {
   const kind = noteTargetKind(target);
-  if (kind === null) return 'names a note whose target is neither a verse nor a §5.2 identity key';
+  if (kind === null) return 'names a note whose target is neither a verse nor a decision key';
   if (!isStr(to)) return 're-key destination is not a string';
   if (kind === 'verse')
     return newSlots.includes(to) ? null
-      : `re-key destination "${to}" is not a target slot of the mapping — a VERSE-targeted note re-keys to a verse slot, never to a §5.2 identity key (§8.5)`;
-  const e = identityKeyError(to);
-  return e ? `re-key destination "${to}" ${e} — a decisionKey-targeted note re-keys to a §5.2 identity key` : null;
+      : `re-key destination "${to}" is not a target slot of the mapping — a VERSE-targeted note re-keys to a verse slot, never to a decision key (§8.5)`;
+  const e = decisionKeyError(to);
+  return e ? `re-key destination "${to}" ${e} — a decisionKey-targeted note re-keys to a toolId-prefixed decision key` : null;
 };
 
 // ---------- §8.4 verse slot keys ----------

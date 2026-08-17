@@ -8,9 +8,9 @@ import crypto from 'crypto';
 import { execSync } from 'child_process';
 import { makeClock, parseTs, compareTs } from './journal/hlc.mjs';
 import { SLOT, decompose, recompose } from './journal/skeleton.mjs';
-import { fold, verseTextMd5, slotKeysOf } from './journal/fold.mjs';
+import { fold, verseTextMd5, slotKeysOf, headIdentity } from './journal/fold.mjs';
 import { validateAction } from './journal/schema.mjs';
-import { BOOK_CODES, identityKeyOf, identityKeyError, ipathError, pinEntryError, noteRekeyError } from './journal/grammar.mjs';
+import { BOOK_CODES, identityKeyOf, identityKeyError, ipathError, pinEntryError, noteRekeyError, splitDecisionKey } from './journal/grammar.mjs';
 import { reconcileUsfm, seedFromSidecars } from './journal/reconcile.mjs';
 import {
   sealAction, writeActionSegment, validateSegment, validateActorDoc, segmentName,
@@ -113,7 +113,11 @@ const buildSeed = () => {
     translationNotes: JSON.parse(fs.readFileSync(ING('checking/translationNotes/TIT.json'), 'utf8')),
   };
   const alignmentFiles = { TIT: JSON.parse(fs.readFileSync(ING('checking/alignments/TIT.json'), 'utf8')) };
-  return { events: seedFromSidecars({ actor: 'seed-actor', books, decisionFiles, alignmentFiles }), books, decisionFiles, alignmentFiles };
+  // §4.3/§8.7: the versification frame is a MANDATORY checkpoint input for any project
+  // that has a book, so a realistic seed carries it (round 9 — pre-fix `vrs.json` was the
+  // one member of the "exhaustive" derived set emitted conditionally, with no guard).
+  const vrs = { name: 'eng', bytes: fs.readFileSync(ING('vrs.json'), 'utf8') };
+  return { events: seedFromSidecars({ actor: 'seed-actor', books, decisionFiles, alignmentFiles, vrs }), books, decisionFiles, alignmentFiles, vrs };
 };
 
 // ---------- J3: fold determinism (property) ----------
@@ -163,8 +167,8 @@ const buildSeed = () => {
   const t = (ms, c, a) => `2026-02-01T00:00:0${ms}.000Z|000${c}|${a}`;
   const seedEvts = [
     E('book.add', 'actor-a', t(0, 0, 'actor-a'), null, { book: 'TIT', scope: [], skeleton: S, initialVerses: {} }),
-    E('text.verse.set', 'actor-a', t(1, 0, 'actor-a'), null, { book: 'TIT', chapter: '1', verse: '1', text: 'uno\n' }),
-    E('text.verse.set', 'actor-a', t(1, 1, 'actor-a'), null, { book: 'TIT', chapter: '1', verse: '2', text: 'dos\n' }),
+    E('text.verse.set', 'actor-a', t(1, 0, 'actor-a'), t(0, 0, 'actor-a'), { book: 'TIT', chapter: '1', verse: '1', text: 'uno\n' }),
+    E('text.verse.set', 'actor-a', t(1, 1, 'actor-a'), t(0, 0, 'actor-a'), { book: 'TIT', chapter: '1', verse: '2', text: 'dos\n' }),
   ];
   const base11 = t(1, 0, 'actor-a');
 
@@ -389,8 +393,9 @@ const buildSeed = () => {
     splitSeal.includes('I-4') && splitFold.includes('I-4') &&
     identityKeyOf(dec(NFD_ID).decision.contextId) !== identityKeyOf(dec(NFC_ID).decision.contextId),
     `seal="${splitSeal.slice(splitSeal.indexOf('I-4'), splitSeal.indexOf('I-4') + 60)}"`);
+  const addT = mkEvent({ op: 'book.add', actor: 'actor-a', ts: t(0), book: 'TIT', scope: [], skeleton: skel1, initialVerses: {} });
   check('J14f (I-4): the NFC form of the same identity still seals and folds — the refusal adds no false rejection',
-    sealAction([dec(NFC_ID)]).length > 0 && fold([dec(NFC_ID)]).decisions.translationWords.length === 1);
+    sealAction([dec(NFC_ID)]).length > 0 && fold([addT, dec(NFC_ID)]).decisions.translationWords.length === 1);
 
   // every identity-bearing surface refuses, not just checkId — one rule, whole class
   const identityRows = [
@@ -735,7 +740,7 @@ try {
     E('book.add', 'drafter-a', t(0, 0, 'drafter-a'), null, { book: 'TIT', scope: [], skeleton, initialVerses: {} }),
     ...Object.entries(verses).map(([vkey, text], i) => {
       const [chapter, verse] = vkey.split(':');
-      return E('text.verse.set', 'drafter-a', t(1, i, 'drafter-a'), null, { book: 'TIT', chapter, verse, text });
+      return E('text.verse.set', 'drafter-a', t(1, i, 'drafter-a'), t(0, 0, 'drafter-a'), { book: 'TIT', chapter, verse, text });
     }),
   ];
   const base12 = t(1, 1, 'drafter-a'); // verse 1:2's seed event
@@ -775,8 +780,8 @@ try {
   const S = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}`;
   const seedEvts = [
     E('book.add', 'actor-a', t(0, 0, 'actor-a'), null, { book: 'TIT', scope: [], skeleton: S, initialVerses: {} }),
-    E('text.verse.set', 'actor-a', t(1, 0, 'actor-a'), null, { book: 'TIT', chapter: '1', verse: '1', text: 'uno\n' }),
-    E('text.verse.set', 'actor-a', t(1, 1, 'actor-a'), null, { book: 'TIT', chapter: '1', verse: '2', text: 'dos\n' }),
+    E('text.verse.set', 'actor-a', t(1, 0, 'actor-a'), t(0, 0, 'actor-a'), { book: 'TIT', chapter: '1', verse: '1', text: 'uno\n' }),
+    E('text.verse.set', 'actor-a', t(1, 1, 'actor-a'), t(0, 0, 'actor-a'), { book: 'TIT', chapter: '1', verse: '2', text: 'dos\n' }),
   ];
 
   // settings.set: LWW per path, projected into fold output
@@ -807,7 +812,10 @@ try {
   const dropV2 = E('text.structure.apply', 'actor-a', t(6, 0, 'actor-a'), t(0, 0, 'actor-a'), {
     book: 'TIT', skeleton: `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}`,
     transitions: { '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: t(1, 0, 'actor-a') }] } },
-    dispositions: [],
+    // the DROPPED slot's live text head is dispositioned (§8.5, round 9) — what this test
+    // is about is the ALIGNMENT, which arrives LATER from an offline actor and therefore
+    // cannot be dispositioned by this event at all
+    dispositions: [{ surface: 'text', key: '1:2', ts: t(1, 1, 'actor-a'), action: 'orphan-review' }],
   });
   const okBefore = fold([...seedEvts, align2]);
   const orphaned = fold([...seedEvts, align2, dropV2]);
@@ -822,10 +830,10 @@ try {
 
   // note.add target shapes per §8.5 accumulate without folding
   const n1 = E('note.add', 'actor-a', t(7, 0, 'actor-a'), null, { generation: seedEvts[0].ts, target: { book: 'TIT', chapter: '1', verse: '1' }, text: 'nota de verso' });
-  const n2 = E('note.add', 'actor-b', t(7, 1, 'actor-b'), null, { generation: seedEvts[0].ts, target: { decisionKey: 't1g7|tit|1|1|1' }, text: 'nota de decisión' });
+  const n2 = E('note.add', 'actor-b', t(7, 1, 'actor-b'), null, { generation: seedEvts[0].ts, target: { decisionKey: 'translationWords|t1g7|tit|1|1|1' }, text: 'nota de decisión' });
   const withNotes = fold([...seedEvts, n1, n2]);
   check('J17: note.add — both target shapes accumulate grow-only (no LWW, no deletion)',
-    withNotes.notes.length === 2 && withNotes.notes[0].target.verse === '1' && withNotes.notes[1].target.decisionKey.startsWith('t1g7'));
+    withNotes.notes.length === 2 && withNotes.notes[0].target.verse === '1' && withNotes.notes[1].target.decisionKey.startsWith('translationWords|t1g7'));
 }
 
 // ---------- J18: marries Pankosmia's transport to the journal (sealed segments as the
@@ -1383,7 +1391,7 @@ try {
   // disposition the note projects under the NEW identity
   const dec2 = E('check.decision.set', 'checker-c', t(1, 2, 'checker-c'), null, { toolId: 'translationWords', generation: add2.ts,
     decision: { contextId: { checkId: 'c8', reference: { bookId: 'tit', chapter: '1', verse: '2' }, occurrence: 1 }, selections: false, invalidated: false, status: 'todo' } });
-  const oldDecKey = 'c8|tit|1|2|1';
+  const oldDecKey = 'translationWords|c8|tit|1|2|1';
   const noteOnDec = E('note.add', 'checker-c', t(1, 3, 'checker-c'), null, { generation: add2.ts, target: { decisionKey: oldDecKey }, text: 'nota sobre decisión' });
   const structDecOnly = (extraDispositions) => E('text.structure.apply', 'drafter-a', t(2, 0, 'drafter-a'), add2.ts, {
     book: 'TIT', skeleton: skel2r,
@@ -1400,7 +1408,7 @@ try {
   check('J21c: re-keying a decision that has a decisionKey-targeted note WITHOUT a note disposition refuses the event (the note is an affected record)',
     noteOmitted.pendingStructural.length === 1 && noteOmitted.pendingStructural[0].status === 'incomplete',
     JSON.stringify(noteOmitted.pendingStructural));
-  const newDecKey = 'c8|tit|1|3|1';
+  const newDecKey = 'translationWords|c8|tit|1|3|1';
   const noteRekeyed = fold([add2, dec2, noteOnDec, structDecOnly([
     { surface: 'note', ts: noteOnDec.ts, action: 're-key', to: newDecKey },
   ])]);
@@ -1686,7 +1694,7 @@ try {
     fold([add1, E('text.skeleton.set', 'actor-b', t(7, 0, 'actor-b'), null, { book: 'TIT', skeleton: `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}` })]);
   } catch (e) { noBase = e.message; }
   check('J22: text.skeleton.set with a NULL base is refused — the chain link must name its predecessor head',
-    noBase.includes('requires base'), `"${noBase.slice(0, 60)}"`);
+    noBase.includes('requires a base'), `"${noBase.slice(0, 60)}"`);
   const laterEdit = E('text.skeleton.set', 'actor-b', t(8, 0, 'actor-b'), t(7, 5, 'actor-c'), { book: 'TIT', skeleton: `\\id TIT via c\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}` });
   const pendingOut = fold([add1, laterEdit]);
   check('J22: an UNKNOWN base is pending until it arrives — the pre-event state projects, nothing is guessed',
@@ -1723,7 +1731,7 @@ try {
   let refused = ''; let reversed = null;
   try { reversed = fold([add, renumber, stale]); } catch (e) { refused = e.message; }
   check('J22b: a stale KNOWN-base text.skeleton.set that reverses a structural change is REFUSED — the comparison binds to the CURRENT projected skeleton, never the historical base',
-    refused.includes('structure.apply'),
+    refused.includes('stale'),
     refused ? `"${refused.slice(0, 80)}"` : `reversed silently: slots=${JSON.stringify(Object.keys(reversed?.books.TIT.verses || {}))}, forks=${reversed?.forks.length}, pending=${reversed?.pendingStructural.length}`);
   // a genuinely slot-preserving edit (header change) with the SAME stale base still folds
   const headerEdit = E('text.skeleton.set', 'drafter-a', t(3, 0, 'drafter-a'), renumber.ts, { book: 'TIT', skeleton: `\\id TIT edited\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 3 ${SLOT}1:3${SLOT}` });
@@ -2341,10 +2349,21 @@ try {
   const v1 = E('text.verse.set', 'actor-a', t(1, 'actor-a'), add.ts, { book: 'TIT', chapter: '1', verse: '1', text: 'uno v1\n' });
   const v2stale = E('text.verse.set', 'actor-a', t(2, 'actor-a'), add.ts, { book: 'TIT', chapter: '1', verse: '1', text: 'uno v2\n' }); // stale base
   const v3null = E('text.verse.set', 'actor-a', t(3, 'actor-a'), null, { book: 'TIT', chapter: '1', verse: '1', text: 'uno v3\n' }); // no base at all
-  const linear = fold([add, v1, v2stale, v3null]);
-  check('J28: same-actor events with a stale or missing base advance linearly — an actor never forks against itself (§8.3:334)',
-    linear.forks.length === 0 && linear.books.TIT.verses['1:1'] === 'uno v3\n',
+  const linear = fold([add, v1, v2stale]);
+  check('J28: same-actor events with a STALE base advance linearly — an actor never forks against itself (§8.3:334)',
+    linear.forks.length === 0 && linear.books.TIT.verses['1:1'] === 'uno v2\n',
     JSON.stringify(linear.forks));
+  // ROUND 9 ruling: a MISSING base is a different claim from a stale one. `base: null`
+  // says "I observed no prior state for this key" — and a slot's verse head exists from
+  // the `book.add` that created the slot (§8.5 multi-key rule), so on a live key the
+  // claim is false. Such a write carries NO structural ancestry, which is what let it
+  // project under every structural branch and be generation-filtered by the clock. It is
+  // a writer defect: retained and reported, never projected, never linearly advancing.
+  const rootless = fold([add, v1, v2stale, v3null]);
+  check('J28: a MISSING base on a live key is a writer DEFECT, not a linear advance — the write is retained (`rootless-base`) and the actor\'s real head still projects (§8.5, round 9)',
+    rootless.forks.length === 0 && rootless.books.TIT.verses['1:1'] === 'uno v2\n' &&
+    rootless.retained.some((r) => r.ts === v3null.ts && r.reason === 'rootless-base'),
+    JSON.stringify(rootless.retained));
   // contrast: the SAME stale base from a DIFFERENT actor still forks
   const vB = E('text.verse.set', 'actor-b', t(4, 'actor-b'), add.ts, { book: 'TIT', chapter: '1', verse: '1', text: 'uno B\n' });
   const crossActor = fold([add, v1, vB]);
@@ -2433,11 +2452,11 @@ try {
   const add1 = E('book.add', 'drafter-a', t(0, 0, 'drafter-a'), null, { book: 'TIT', scope: [], skeleton: skel, initialVerses: { '1:1': 'uno\n' } });
   // a gen-1 decisionKey-targeted note (the §5.2 identity-key string embeds the bookId):
   // the generation filter must parse the book out of the key to find its root
-  const noteOld = E('note.add', 'checker-b', t(1, 0, 'checker-b'), null, { generation: add1.ts, target: { decisionKey: 'g1|tit|1|1|1' }, text: 'nota gen-1' });
+  const noteOld = E('note.add', 'checker-b', t(1, 0, 'checker-b'), null, { generation: add1.ts, target: { decisionKey: 'translationNotes|g1|tit|1|1|1' }, text: 'nota gen-1' });
   const remove = E('book.remove', 'drafter-a', t(2, 0, 'drafter-a'), add1.ts, { book: 'TIT' });
   const add2 = E('book.add', 'drafter-a', t(3, 0, 'drafter-a'), remove.ts, { book: 'TIT', scope: [], skeleton: skel, initialVerses: { '1:1': 'nuevo\n' } });
   // a STAMPED gen-1 decisionKey note written by still-offline B AFTER the re-add (later ts)
-  const noteLate = E('note.add', 'checker-b', t(4, 0, 'checker-b'), null, { target: { decisionKey: 'g1|tit|1|1|1' }, generation: add1.ts, text: 'nota gen-1 tardía' });
+  const noteLate = E('note.add', 'checker-b', t(4, 0, 'checker-b'), null, { target: { decisionKey: 'translationNotes|g1|tit|1|1|1' }, generation: add1.ts, text: 'nota gen-1 tardía' });
   const out = fold([add1, noteOld, remove, add2, noteLate]);
   check('J29d: a prior-generation decisionKey-targeted note never projects — the generation filter reaches notes with no target.book',
     !out.notes.some((n) => n.ts === noteOld.ts) && !out.notes.some((n) => n.ts === noteLate.ts),
@@ -2447,7 +2466,7 @@ try {
     out.retained.some((r) => r.ts === noteLate.ts && r.reason === 'prior-generation'),
     JSON.stringify(out.retained));
   // a current-generation decisionKey note projects normally
-  const noteCur = E('note.add', 'checker-b', t(5, 0, 'checker-b'), null, { target: { decisionKey: 'g1|tit|1|1|1' }, generation: add2.ts, text: 'nota gen-2' });
+  const noteCur = E('note.add', 'checker-b', t(5, 0, 'checker-b'), null, { target: { decisionKey: 'translationNotes|g1|tit|1|1|1' }, generation: add2.ts, text: 'nota gen-2' });
   const cur = fold([add1, noteOld, remove, add2, noteLate, noteCur]);
   check('J29d: a current-generation decisionKey-targeted note projects (the quarantine binds to the generation, not to the target shape)',
     cur.notes.some((n) => n.ts === noteCur.ts),
@@ -3019,9 +3038,10 @@ try {
   //     (rewriteNote) is the semantics half and is tracked separately. ---
   {
     const verseTarget = { book: 'TIT', chapter: '1', verse: '2' };
-    const decTarget = { decisionKey: 'x1|tit|1|2|1' };
+    const decTarget = { decisionKey: 'translationWords|x1|tit|1|2|1' };
     const rows = [
-      ['a VERSE-targeted note re-keyed to a §5.2 identity key', verseTarget, 'x1|tit|1|2|1', ['1:1']],
+      ['a VERSE-targeted note re-keyed to a decision key', verseTarget, 'translationWords|x1|tit|1|2|1', ['1:1']],
+      ['a decisionKey-targeted note re-keyed to a BARE five-part §5.2 identity key (which tool?)', decTarget, 'x1|tit|1|2|1', []],
       ['a decisionKey-targeted note re-keyed to a verse slot', decTarget, '1:1', ['1:1']],
       ['a verse-targeted note re-keyed to a slot outside the mapping', verseTarget, '9:9', ['1:1']],
     ];
@@ -3029,7 +3049,7 @@ try {
     check('J31 finding 12: ONE predicate binds a note re-key destination to the note\'s target KIND — a verse target re-keys to a verse slot, a decisionKey target to a §5.2 identity key. Pre-fix a verse-targeted note re-keyed to an identity key produced `{book, chapter: "x1|tit|1|2|1", verse: ""}` — a target the schema itself rejects',
       missed.length === 0, missed.length ? `missed: ${missed.map(([l]) => l).join(', ')}` : `${rows.length} firing cases`);
     check('J31 finding 12: the two legitimate re-keys still pass the predicate',
-      noteRekeyError(verseTarget, '1:1', ['1:1']) === null && noteRekeyError(decTarget, 'x1|tit|1|1|1', []) === null);
+      noteRekeyError(verseTarget, '1:1', ['1:1']) === null && noteRekeyError(decTarget, 'translationWords|x1|tit|1|1|1', []) === null);
   }
 
   // --- FINDING 13: own-property hygiene at the checkpoint. §8.7 calls the regeneration
@@ -3073,6 +3093,638 @@ try {
       rejected.length === rows.length, `${rejected.length}/${rows.length} rejected: ${rows.filter(([, r, i]) => validateActorDoc(r, i).ok).map(([l]) => l).join(', ') || 'none missed'}`);
     check('J31: a complete, well-formed actor.json still validates (the hardening adds no false rejection)',
       validateActorDoc(doc({ displayName: 'A', device: 'laptop' }), 'actor-a').ok);
+  }
+}
+
+// ---------- J32 (round 9, semantics half): `base` ABSENCE is a decided state, and no
+//   written record ever goes silently absent.
+//
+//   THE CLASS. Every rule the fold keys on ancestry FAILED OPEN when a head carried no
+//   structural anchor (`sanc == null`) — which `base: null`, an absent base, and a base
+//   cycle all produced. One unhandled state, five P1s: a rootless `text.structure.apply`
+//   dropped slots with ZERO dispositions; a rootless `book.remove` deleted the book while
+//   `text.skeleton.set` REFUSED the identical shape; generation membership for text fell
+//   through to `h.ts > genRoot` — an HLC cutoff, the mechanism §8.5 forbids BY NAME; a
+//   rootless content op was branch-agnostic and overwrote the winning branch's post-image;
+//   and a base cycle did the same.
+//
+//   CORRECTION OF A ROUND-8 OVER-CLAIM (PC1). Round 8 asserted "no op reaches the fold
+//   with an unvalidated base kind — the answer is now none". That was FALSE, and the
+//   matrix that "proved" it is why: it had three columns (unknown / non-structural /
+//   cross-book) and no `base: null` column, so the one base kind that was genuinely
+//   unvalidated was the one the proof did not test. The matrix below is 4×4. ----------
+{
+  const t = (s, a = 'actor-a') => `2026-08-16T09:00:${String(s).padStart(2, '0')}.000Z|0000|${a}`;
+  const E = (op, actor, ts, base, extra) => mkEvent({ op, actor, ts, base, ...extra });
+  const skelOf = (b, ...keys) => `\\id ${b}\n\\c 1\n\\p\n` + keys.map((k) => `\\v ${k.split(':')[1]} ${SLOT}${k}${SLOT}`).join('');
+  const S2 = skelOf('TIT', '1:1', '1:2');
+  const S1 = skelOf('TIT', '1:1');
+  const CRASHY = /Cannot read|is not iterable|is not a function|undefined is not/i;
+
+  // --- the 4×4 matrix: EVERY structural op × EVERY base kind, `base: null` INCLUDED ---
+  {
+    const add = E('book.add', 'actor-a', t(0), null, { book: 'TIT', scope: [], skeleton: S2, initialVerses: {} });
+    const addJ = E('book.add', 'actor-a', t(1), null, { book: 'JON', scope: [], skeleton: skelOf('JON', '1:1'), initialVerses: {} });
+    const vs = E('text.verse.set', 'actor-a', t(2), add.ts, { book: 'TIT', chapter: '1', verse: '1', text: 'uno\n' });
+    const structuralEvent = (op, base) => {
+      const common = { actor: 'actor-a', ts: t(9), base, book: 'TIT' };
+      if (op === 'book.add') return mkEvent({ ...common, op, scope: [], skeleton: S2, initialVerses: {} });
+      if (op === 'book.remove') return mkEvent({ ...common, op });
+      if (op === 'text.skeleton.set') return mkEvent({ ...common, op, skeleton: S2 });
+      return mkEvent({ ...common, op, skeleton: S1, transitions: { '1:1': { text: 'x\n', sources: [] } }, dispositions: [] });
+    };
+    const outcomeOf = (op, base, prelude) => {
+      try {
+        const o = fold([...prelude, structuralEvent(op, base)]);
+        return o.pendingStructural.some((p) => p.ts === t(9)) ? 'PEND' : 'APPLIED';
+      } catch (e) { return CRASHY.test(e.message) ? 'CRASH' : 'REFUSED'; }
+    };
+    const STRUCTURAL = ['book.add', 'book.remove', 'text.skeleton.set', 'text.structure.apply'];
+    const matrix = {};
+    for (const op of STRUCTURAL) {
+      matrix[op] = [
+        outcomeOf(op, t(0, 'ghost-actor'), [add]),  // unknown        → PEND
+        outcomeOf(op, vs.ts, [add, vs]),            // text.verse.set → REFUSED
+        outcomeOf(op, addJ.ts, [add, addJ]),        // cross-book     → REFUSED
+        outcomeOf(op, null, [add]),                 // NULL           → REFUSED (the book exists)
+      ].join('/');
+    }
+    const expected = 'PEND/REFUSED/REFUSED/REFUSED';
+    check('J32 THE MATRIX (4×4, the round-8 over-claim corrected): every structural op × every base KIND — unknown PENDS, non-structural REFUSES, cross-book REFUSES, and `base: null` on an existing book REFUSES. Round 8 claimed "the answer is now none" from a 3-column matrix that OMITTED the null column — the one kind that was genuinely unvalidated',
+      STRUCTURAL.every((op) => matrix[op] === expected), JSON.stringify(matrix));
+    check('J32: `book.add` is the ONE rootless structural op, and only while the book does not exist — the first add still applies with no base (no false refusal)',
+      'TIT' in fold([add]).books && fold([add]).pendingStructural.length === 0);
+    // the pre-fix consequences, each asserted absent
+    let rmErr = ''; try { fold([add, structuralEvent('book.remove', null)]); } catch (e) { rmErr = e.message; }
+    check('J32: a ROOTLESS book.remove no longer DELETES the book — pre-fix it applied, unvalidated, and the book left the projection',
+      rmErr !== '' && !CRASHY.test(rmErr), `"${rmErr.slice(0, 70)}"`);
+    const dec = E('check.decision.set', 'actor-a', t(3), null, { toolId: 'translationWords', generation: t(0),
+      decision: { contextId: { checkId: 'c1', occurrence: 1, reference: { bookId: 'tit', chapter: 1, verse: 2 } }, selections: false } });
+    let apErr = ''; try { fold([add, dec, structuralEvent('text.structure.apply', null)]); } catch (e) { apErr = e.message; }
+    check('J32: a ROOTLESS text.structure.apply no longer bypasses all-or-nothing — pre-fix the affected set was read from the BASE skeleton, so with no base it was EMPTY: the event dropped slot 1:2 with ZERO dispositions and the decision on the deleted verse still projected',
+      apErr !== '' && !CRASHY.test(apErr), `"${apErr.slice(0, 70)}"`);
+    // and the production path that reached it: reconcile's `?? null`
+    check('J32: the production path is closed too — §8.8 reconcile no longer emits a rootless structural event for a book the journal does not project; it emits the §8.8 seed `book.add` instead',
+      (() => {
+        const out = fold([add]);
+        const clock = makeClock('actor-a', () => Date.parse('2026-08-16T10:00:00.000Z'));
+        const evs = reconcileUsfm('JON', '\\id JON\n\\c 1\n\\p\n\\v 1 uno\n', out, clock, 'actor-a');
+        return evs.length === 1 && evs[0].op === 'book.add' && fold([add, ...evs]).pendingStructural.length === 0;
+      })());
+  }
+
+  // --- the CONTENT half of the same rule ---
+  {
+    const add = E('book.add', 'actor-a', t(0), null, { book: 'TIT', scope: [], skeleton: S2, initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n' } });
+    // (a) branch-agnostic projection is gone
+    const brA = E('text.structure.apply', 'actor-a', t(3), add.ts, { book: 'TIT', skeleton: S1,
+      transitions: { '1:1': { text: 'BRANCH-A\n', sources: [{ key: '1:1', ts: add.ts }, { key: '1:2', ts: add.ts }] } }, dispositions: [] });
+    const brB = E('text.structure.apply', 'actor-b', t(4, 'actor-b'), add.ts, { book: 'TIT', skeleton: S1,
+      transitions: { '1:1': { text: 'BRANCH-B\n', sources: [{ key: '1:1', ts: add.ts }, { key: '1:2', ts: add.ts }] } }, dispositions: [] });
+    const loose = E('text.verse.set', 'actor-c', t(9, 'actor-c'), null, { book: 'TIT', chapter: '1', verse: '1', text: 'BRANCH-AGNOSTIC\n' });
+    const agnostic = fold([add, brA, brB, loose]);
+    check('J32: a rootless CONTENT write no longer projects under EVERY structural branch — pre-fix `sanc == null` made `inChain` pass unconditionally, so it overwrote the winning branch\'s post-image. It is now retained and reported (`rootless-base`), which is exactly the sentence this PR added to §8.5 ("content ops therefore fail closed") finally being true',
+      agnostic.books.TIT.verses['1:1'] !== 'BRANCH-AGNOSTIC\n' &&
+      agnostic.retained.some((r) => r.ts === loose.ts && r.reason === 'rootless-base'),
+      `1:1=${JSON.stringify(agnostic.books.TIT.verses['1:1'])} retained=${JSON.stringify(agnostic.retained.filter((r) => r.ts === loose.ts))}`);
+    // (b) an UNRESOLVABLE base (absent from the union, or a cycle) is the same state
+    const ghost = E('text.verse.set', 'actor-c', t(9, 'actor-c'), t(0, 'ghost-actor'), { book: 'TIT', chapter: '1', verse: '1', text: 'GHOST\n' });
+    const ghosted = fold([add, brA, ghost]);
+    check('J32: an UNRESOLVABLE base (present in no segment of the union) resolves to NO anchor, never to "every branch" — the head is excluded from the projection and reported',
+      ghosted.books.TIT.verses['1:1'] === 'BRANCH-A\n' &&
+      ghosted.retained.some((r) => r.ts === ghost.ts && r.reason === 'no-structural-ancestor'),
+      `1:1=${JSON.stringify(ghosted.books.TIT.verses['1:1'])} retained=${JSON.stringify(ghosted.retained.filter((r) => r.ts === ghost.ts))}`);
+    // (c) the HLC cutoff is GONE — §8.5 forbids it by name
+    const rm = E('book.remove', 'actor-a', t(1), add.ts, { book: 'TIT' });
+    const add2 = E('book.add', 'actor-a', t(2), rm.ts, { book: 'TIT', scope: [], skeleton: S1, initialVerses: { '1:1': 'gen2\n' } });
+    const offline = E('text.verse.set', 'actor-b', t(9, 'actor-b'), add.ts, { book: 'TIT', chapter: '1', verse: '1', text: 'OFFLINE-GEN1\n' });
+    const gens = fold([add, rm, add2, offline]);
+    check('J32: generation membership for TEXT is CAUSAL, never an HLC cutoff — a still-offline actor\'s gen-1 edit with an arbitrarily LATER ts is quarantined by its ANCESTRY. Pre-fix the field-less branch ended in `h.ts > genRoot`, the exact mechanism §8.5 forbids by name',
+      gens.books.TIT.verses['1:1'] === 'gen2\n' &&
+      gens.retained.some((r) => r.ts === offline.ts && r.reason === 'prior-generation'),
+      `1:1=${JSON.stringify(gens.books.TIT.verses['1:1'])} retained=${JSON.stringify(gens.retained.filter((r) => r.ts === offline.ts))}`);
+    // (d) THE REGRESSION THE RULE MUST NOT CAUSE: genuine concurrent FIRST writes still fork
+    const alA = E('align.verse.set', 'actor-a', t(5), null, { book: 'TIT', chapter: '1', verse: '1', generation: add.ts,
+      alignments: [], wordBank: [], targetVerseMd5: verseTextMd5('uno\n') });
+    const alB = E('align.verse.set', 'actor-b', t(6, 'actor-b'), null, { book: 'TIT', chapter: '1', verse: '1', generation: add.ts,
+      alignments: [], wordBank: [{ word: 'uno' }], targetVerseMd5: verseTextMd5('uno\n') });
+    const forkedFirst = fold([add, alA, alB]);
+    check('J32: THE OFFLINE FORK STILL WORKS — two genuine concurrent FIRST writes (both rootless, both with no prior head) still fork and are both surfaced. The rule decides the rootless CLAIM, it does not outlaw rootless writes',
+      forkedFirst.forks.length === 1 && forkedFirst.forks[0].key === 'align|TIT|1:1' &&
+      forkedFirst.forks[0].heads.length === 2,
+      JSON.stringify(forkedFirst.forks));
+    check('J32: the rootless first write of every ancestry-free surface (pins, project metadata, settings) is untouched — those registers carry no structural branch at all',
+      (() => {
+        const p = E('resource.pin.set', 'actor-a', t(7), null, { slot: 'extraScripture.ult', entry: { id: 'ult', repoPath: 'r', version: 'v1', flavor: 'f' } });
+        const s = E('settings.set', 'actor-a', t(8), null, { path: 'ui.x', value: 1 });
+        const o = fold([add, p, s]);
+        return o.pins['extraScripture.ult'] && o.settings['ui.x'] === 1;
+      })());
+  }
+}
+
+// ---------- J32b (round 9): SILENT DATA LOSS — the master invariant. Adversary D's
+//   conservation property is ported here permanently: over random legal streams, EVERY
+//   written record ends in an OBSERVABLE state. It passed 2000 randomized runs before
+//   review except for the two defects below, which are the spec's whole promise failing.
+//   ----------
+{
+  const t = (s, a = 'actor-a') => `2026-08-16T11:00:${String(s).padStart(2, '0')}.000Z|0000|${a}`;
+  const E = (op, actor, ts, base, extra) => mkEvent({ op, actor, ts, base, ...extra });
+  const skelOf = (b, ...keys) => `\\id ${b}\n\\c 1\n\\p\n` + keys.map((k) => `\\v ${k.split(':')[1]} ${SLOT}${k}${SLOT}`).join('');
+  const S2 = skelOf('TIT', '1:1', '1:2');
+  const S1 = skelOf('TIT', '1:1');
+
+  // --- D-F1: a `supersedes` erased a live head with no ancestry check and no bookkeeping ---
+  {
+    const add = E('book.add', 'actor-a', t(0), null, { book: 'TIT', scope: [], skeleton: S1, initialVerses: { '1:1': 'uno\n' } });
+    const drafted = E('text.verse.set', 'actor-b', t(2, 'actor-b'), add.ts, { book: 'TIT', chapter: '1', verse: '1', text: 'DRAFTED BY B\n' });
+    const kill = E('text.verse.set', 'actor-c', t(5, 'actor-c'), add.ts, { supersedes: [drafted.ts], book: 'TIT', chapter: '1', verse: '1', text: '___\n' });
+    const out = fold([add, drafted, kill]);
+    check('J32b (D-F1): a SUPERSEDED head is CONSERVED — it is reported in retained[] as `superseded`. Pre-fix it could appear in NO list at all (retained[] is built from SURVIVING heads), so `\\v 1 ___` was committed over drafted text and the draft left the repo AND every review surface at once',
+      out.retained.some((r) => r.ts === drafted.ts && r.reason === 'superseded'),
+      JSON.stringify(out.retained));
+    // ...and cross-ancestry supersession is REFUSED, not merely reported
+    const brA = E('text.structure.apply', 'actor-a', t(3), add.ts, { book: 'TIT', skeleton: S1,
+      transitions: { '1:1': { text: 'BRANCH-A\n', sources: [{ key: '1:1', ts: add.ts }] } }, dispositions: [] });
+    const onA = E('text.verse.set', 'actor-a', t(4), brA.ts, { book: 'TIT', chapter: '1', verse: '1', text: 'ON BRANCH A\n' });
+    const crossKill = E('text.verse.set', 'actor-b', t(6, 'actor-b'), add.ts, { supersedes: [onA.ts], book: 'TIT', chapter: '1', verse: '1', text: 'FROM OFF-BRANCH\n' });
+    const cross = fold([add, brA, onA, crossKill]);
+    check('J32b (D-F1): a supersedes MUST NOT erase a head OUTSIDE its own ancestry — reaching across a structural branch to delete another branch\'s head is deletion, not fork resolution. The erasure is REFUSED: the head stays live, the two writes surface as a fork, and the attempt is reported in supersedeRefused[]',
+      cross.supersedeRefused.some((r) => r.ts === onA.ts && r.by === crossKill.ts) &&
+      cross.forks.some((f) => f.key === 'text|TIT|1:1' && f.heads.includes(onA.ts) && f.heads.includes(crossKill.ts)),
+      `refused=${JSON.stringify(cross.supersedeRefused)} forks=${JSON.stringify(cross.forks)}`);
+  }
+
+  // --- D-F2: verse TEXT on a removed slot was the one dependent class with no guard ---
+  {
+    const add = E('book.add', 'actor-a', t(0), null, { book: 'TIT', scope: [], skeleton: S2, initialVerses: {} });
+    const drafted = E('text.verse.set', 'actor-a', t(1), add.ts, { book: 'TIT', chapter: '1', verse: '2', text: 'PRECIOUS DRAFT\n' });
+    const drop = (dispositions) => E('text.structure.apply', 'actor-a', t(5), add.ts, { book: 'TIT', skeleton: S1,
+      transitions: { '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: add.ts }] } }, dispositions });
+    const undispositioned = fold([add, drafted, drop([])]);
+    check('J32b (D-F2): TEXT joins the disposition-required set — a structural action that REMOVES a slot carrying a live verse head, without claiming it as a transition source or dispositioning it, is `incomplete`. Pre-fix alignments, decisions and notes all demanded dispositions on removed keys and TEXT alone had neither a disposition nor an orphan backstop: the draft was silently absent',
+      undispositioned.pendingStructural.length === 1 &&
+      undispositioned.pendingStructural[0].detail.some((d) => d === `undispositioned:text|1:2|${drafted.ts}`) &&
+      undispositioned.books.TIT.verses['1:2'] === 'PRECIOUS DRAFT\n',
+      JSON.stringify(undispositioned.pendingStructural));
+    const applied = fold([add, drafted, drop([{ surface: 'text', key: '1:2', ts: drafted.ts, action: 'orphan-review' }])]);
+    check('J32b (D-F2): with the disposition stated the action applies AND the dropped draft is conserved — retained, reported, reviewable',
+      applied.pendingStructural.length === 0 && !('1:2' in applied.books.TIT.verses) &&
+      applied.retained.some((r) => r.key === 'text|TIT|1:2' && r.ts === drafted.ts && r.reason === 'orphan-review'),
+      JSON.stringify(applied.retained));
+    // the ZOMBIE: the counterexample was a 4-event stream — add, set, apply, (slot returns)
+    const dropped = drop([{ surface: 'text', key: '1:2', ts: drafted.ts, action: 'orphan-review' }]);
+    const back = E('text.structure.apply', 'actor-a', t(7), dropped.ts, { book: 'TIT', skeleton: S2,
+      transitions: { '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: dropped.ts }] }, '1:2': { text: '___\n', sources: [] } }, dispositions: [] });
+    const zombie = fold([add, drafted, dropped, back]);
+    check('J32b (D-F2): no ZOMBIE when the slot returns — the dropped head is consumed on this branch, so a later structural action that re-creates the slot projects the stub, not a resurrected draft',
+      zombie.books.TIT.verses['1:2'] === '___\n' && zombie.forks.length === 0,
+      `1:2=${JSON.stringify(zombie.books.TIT.verses['1:2'])} forks=${JSON.stringify(zombie.forks)}`);
+    check('J32b (D-F2): the ORPHAN BACKSTOP for text, equivalent to §8.6\'s alignment rule — a live text head on a key with NO SLOT in the current skeleton is reported, whatever produced it',
+      (() => {
+        const ghostSlot = E('text.verse.set', 'actor-b', t(8, 'actor-b'), add.ts, { book: 'TIT', chapter: '1', verse: '2', text: 'orphan\n' });
+        const o = fold([add, drafted, dropped, ghostSlot]);
+        return o.retained.some((r) => r.key === 'text|TIT|1:2' && r.reason === 'orphaned-text');
+      })());
+  }
+
+  // --- THE PERMANENT REGRESSION GUARD: the conservation property itself ---
+  {
+    // A written record's OBSERVABLE states. "Silently absent" means: none of these.
+    const observableStates = (out, ts, events) => {
+      const st = [];
+      if (Object.values(out.headsTs).includes(ts) || out.notes.some((n) => n.ts === ts)) st.push('projected');
+      if (out.retained.some((r) => r.ts === ts)) st.push('retained');
+      if (out.invalid.some((i) => i.ts === ts)) st.push('invalidated');
+      if (out.pendingStructural.some((p) => p.ts === ts || p.detail.some((d) => String(d).includes(ts)))) st.push('pending');
+      if (out.forks.some((f) => f.heads.includes(ts))) st.push('forked');
+      // ORDINARY HISTORY is not loss: a record whose content a traceable SUCCESSOR
+      // replaced — its own linear continuation, a supersedes naming it, a structural
+      // action claiming it as a source, or (§8.3) a later event of the same actor on the
+      // same register key — is superseded by lineage, not silently dropped.
+      const self = events.find((e) => e.ts === ts);
+      const succeeded = events.some((e) =>
+        e.base === ts ||
+        (e.supersedes || []).includes(ts) ||
+        (e.op === 'text.structure.apply' && Object.values(e.transitions).some((tr) => (tr.sources || []).some((s) => s.ts === ts))) ||
+        (e.op === 'text.structure.apply' && (e.dispositions || []).some((d) => d.ts === ts)) ||
+        (self && e.actor === self.actor && e.op === self.op && e.ts > ts && sameRegister(e, self)));
+      if (succeeded) st.push('succeeded-by-lineage');
+      return st;
+    };
+    const sameRegister = (a, b) => {
+      if (a.op !== b.op) return false;
+      if (a.op === 'text.verse.set' || a.op === 'align.verse.set') return a.book === b.book && a.chapter === b.chapter && a.verse === b.verse;
+      if (a.op === 'check.decision.set') return a.toolId === b.toolId && identityKeyOf(a.decision.contextId) === identityKeyOf(b.decision.contextId);
+      if (a.op === 'settings.set' || a.op === 'project.meta.set') return a.path === b.path;
+      if (a.op === 'resource.pin.set') return a.slot === b.slot;
+      return false;
+    };
+    const WRITES = new Set(['text.verse.set', 'align.verse.set', 'check.decision.set', 'note.add',
+      'settings.set', 'project.meta.set', 'resource.pin.set']);
+
+    // A generator of LEGAL streams: every event is built against the fold of the events
+    // already emitted, so the stream is one a conforming writer could have produced.
+    const buildStream = (cmds) => {
+      let now = Date.parse('2026-08-16T12:00:00.000Z');
+      const clock = { a: makeClock('actor-a', () => now), b: makeClock('actor-b', () => now) };
+      const events = [];
+      const genesis = { v: 1, op: 'book.add', actor: 'actor-a', ts: clock.a.issue(), base: null,
+        book: 'TIT', scope: [], skeleton: S2, initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n' } };
+      events.push(genesis);
+      let out = fold(events);
+      const push = (e) => {
+        let next;
+        try { next = fold([...events, e]); } catch { return; } // an illegal build is simply not emitted
+        events.push(e); out = next;
+      };
+      for (const c of cmds) {
+        now += c.advance;
+        const who = c.actor ? 'b' : 'a';
+        const actor = who === 'a' ? 'actor-a' : 'actor-b';
+        const ts = clock[who].issue();
+        clock[who === 'a' ? 'b' : 'a'].ratchet(ts);
+        const slot = ['1:1', '1:2'][c.key % 2];
+        const [chapter, verse] = slot.split(':');
+        const genRoot = out.headsTs['book|TIT'];
+        const skelHead = out.headsTs['skel|TIT'];
+        const headOf = (k) => out.headsTs[k];
+        if (c.kind === 'verse' && headOf(`text|TIT|${slot}`)) {
+          push({ v: 1, op: 'text.verse.set', actor, ts, base: headOf(`text|TIT|${slot}`), book: 'TIT', chapter, verse, text: `${c.val}\n` });
+        } else if (c.kind === 'align' && genRoot) {
+          push({ v: 1, op: 'align.verse.set', actor, ts, base: headOf(`align|TIT|${slot}`) ?? null, book: 'TIT', chapter, verse,
+            generation: genRoot, alignments: [], wordBank: [{ w: c.val }], targetVerseMd5: verseTextMd5(`${c.val}\n`) });
+        } else if (c.kind === 'decision' && genRoot) {
+          const dkey = `dec|translationWords|c${c.key}|tit|${chapter}|${verse}|1`;
+          push({ v: 1, op: 'check.decision.set', actor, ts, base: headOf(dkey) ?? null, toolId: 'translationWords', generation: genRoot,
+            decision: { contextId: { checkId: `c${c.key}`, occurrence: 1, reference: { bookId: 'tit', chapter, verse } }, selections: false, note: c.val } });
+        } else if (c.kind === 'note' && genRoot) {
+          push({ v: 1, op: 'note.add', actor, ts, base: null, generation: genRoot, target: { book: 'TIT', chapter, verse }, text: c.val });
+        } else if (c.kind === 'setting') {
+          push({ v: 1, op: 'settings.set', actor, ts, base: headOf(`set|ui.p${c.key}`) ?? null, path: `ui.p${c.key}`, value: c.val });
+        } else if (c.kind === 'supersede' && headOf(`text|TIT|${slot}`)) {
+          const live = (out.liveHeads[`text|TIT|${slot}`] || []).map((h) => h.ts);
+          push({ v: 1, op: 'text.verse.set', actor, ts, base: headOf(`text|TIT|${slot}`), supersedes: live.filter((x) => x !== ts),
+            book: 'TIT', chapter, verse, text: `S${c.val}\n` });
+        } else if (c.kind === 'struct' && skelHead && '1:2' in (out.books.TIT?.verses || {})) {
+          // drop slot 1:2 with the COMPLETE conservative disposition set — built from the
+          // fold's LIVE heads, which is the same set the fold's affected set reads
+          const dispositions = [];
+          for (const h of out.liveHeads['text|TIT|1:2'] || []) dispositions.push({ surface: 'text', key: '1:2', ts: h.ts, action: 'orphan-review' });
+          for (const h of out.liveHeads['align|TIT|1:2'] || []) dispositions.push({ surface: 'alignment', key: '1:2', ts: h.ts, action: 'orphan-review' });
+          for (const dk of Object.keys(out.liveHeads)) {
+            if (!dk.startsWith('dec|')) continue;
+            const { bookId, chapter: dc, verse: dv } = splitDecisionKey(dk.slice(4));
+            if (bookId !== 'tit' || `${dc}:${dv}` !== '1:2') continue;
+            for (const h of out.liveHeads[dk]) dispositions.push({ surface: 'decision', key: dk.slice(4), ts: h.ts, action: 'invalidate-retain' });
+          }
+          for (const n of out.liveNotes) if (n.target && n.target.book === 'TIT' && `${n.target.chapter}:${n.target.verse}` === '1:2')
+            dispositions.push({ surface: 'note', ts: n.ts, action: 'orphan-review' });
+          const sources = (out.liveHeads['text|TIT|1:1'] || []).map((h) => ({ key: '1:1', ts: h.ts }));
+          push({ v: 1, op: 'text.structure.apply', actor, ts, base: skelHead, book: 'TIT', skeleton: S1,
+            transitions: { '1:1': { text: `M${c.val}\n`, sources } }, dispositions });
+        } else if (c.kind === 'restore' && skelHead && !('1:2' in (out.books.TIT?.verses || {}))) {
+          const sources = (out.liveHeads['text|TIT|1:1'] || []).map((h) => ({ key: '1:1', ts: h.ts }));
+          push({ v: 1, op: 'text.structure.apply', actor, ts, base: skelHead, book: 'TIT', skeleton: S2,
+            transitions: { '1:1': { text: `R${c.val}\n`, sources }, '1:2': { text: '___\n', sources: [] } }, dispositions: [] });
+        }
+      }
+      return events;
+    };
+    const cmdArb = fc.array(fc.record({
+      kind: fc.constantFrom('verse', 'align', 'decision', 'note', 'setting', 'supersede', 'struct', 'restore'),
+      actor: fc.constantFrom(0, 1), key: fc.nat({ max: 3 }), advance: fc.nat({ max: 2 }),
+      val: fc.stringMatching(/^[a-f0-9]{1,4}$/),
+    }), { minLength: 1, maxLength: 14 });
+
+    let exercised = 0, structApplied = 0;
+    prop('J32b CONSERVATION (the master invariant, permanent): over random LEGAL event streams, EVERY written record ends in an observable state — projected, retained, invalidated, pending, forked, or superseded by a traceable successor. A record that is in NONE of those is silent data loss, which is the format\'s whole promise failing',
+      cmdArb, (cmds) => {
+        const events = buildStream(cmds);
+        const out = fold(events);
+        if (events.some((e) => e.op === 'text.structure.apply')) structApplied++;
+        for (const e of events) {
+          if (!WRITES.has(e.op)) continue;
+          exercised++;
+          if (observableStates(out, e.ts, events).length === 0) return false;
+        }
+        return true;
+      });
+    check('J32b CONSERVATION: the property is not vacuous — it exercised real records and real structural actions',
+      exercised > 200 && structApplied > 5, `${exercised} written records over ${FC.numRuns} streams; ${structApplied} streams contained a structural action`);
+
+    prop('J32b EXCLUSIVITY: a record is never PROJECTED and RETAINED at once — retained means "held for review, not in the projection". Pre-fix a note dispositioned `orphan-review` was both, pointing at a slot that was gone',
+      cmdArb, (cmds) => {
+        const events = buildStream(cmds);
+        const out = fold(events);
+        for (const e of events) {
+          if (!WRITES.has(e.op)) continue;
+          const st = observableStates(out, e.ts, events);
+          if (st.includes('projected') && st.includes('retained')) return false;
+        }
+        return true;
+      });
+
+    prop('J32b DETERMINISM + IDEMPOTENCE + SUBSET-DETERMINISM + PARTIAL ARRIVAL: the fold is a pure function of the event SET — permutation, duplication, and any prefix of the stream all fold deterministically, and a partial union never projects a ts it does not contain',
+      cmdArb, (cmds) => {
+        const events = buildStream(cmds);
+        const rng = mulberry32(events.length * 7919 + 13);
+        const full = fold(events);
+        if (!deepEq(full, fold(shuffled(events, rng)))) return false;          // permutation
+        if (!deepEq(full, fold([...events, ...events]))) return false;          // duplication
+        const sub = events.slice(0, Math.max(1, Math.floor(events.length / 2)));
+        const subOut = fold(sub);
+        if (!deepEq(subOut, fold(shuffled(sub, rng)))) return false;            // subset-determinism
+        const known = new Set(sub.map((e) => e.ts));                            // partial arrival
+        return Object.values(subOut.headsTs).every((ts) => known.has(ts));
+      });
+  }
+}
+
+// ---------- J32c (round 9): the remaining semantics findings, each with its own firing
+//   case — an absent book, the generation launderer, reconcile's input set, the re-key
+//   coercion, the same-actor structural reversal, fork identity, decision keys, the
+//   checkpoint's mandatory inputs, and the deferred layer-2 guards. ----------
+{
+  const t = (s, a = 'actor-a') => `2026-08-16T13:00:${String(s).padStart(2, '0')}.000Z|0000|${a}`;
+  const E = (op, actor, ts, base, extra) => mkEvent({ op, actor, ts, base, ...extra });
+  const skelOf = (b, ...keys) => `\\id ${b}\n\\c 1\n\\p\n` + keys.map((k) => `\\v ${k.split(':')[1]} ${SLOT}${k}${SLOT}`).join('');
+  const S2 = skelOf('TIT', '1:1', '1:2');
+  const S1 = skelOf('TIT', '1:1');
+  const decOf = (ts, verse, gen, over = {}) => E('check.decision.set', 'actor-a', ts, null, { toolId: 'translationWords', generation: gen,
+    decision: { contextId: { checkId: 'c1', occurrence: 1, reference: { bookId: 'tit', chapter: 1, verse } }, selections: false }, ...over });
+
+  // --- D-F4: an ABSENT book folds but does not project — and its quarantine stays on ---
+  {
+    const add = E('book.add', 'actor-a', t(0), null, { book: 'TIT', scope: [], skeleton: S1, initialVerses: { '1:1': 'uno\n' } });
+    const dec = decOf(t(1), 1, add.ts);
+    const al = E('align.verse.set', 'actor-a', t(2), null, { book: 'TIT', chapter: '1', verse: '1', generation: add.ts,
+      alignments: [], wordBank: [], targetVerseMd5: verseTextMd5('uno\n') });
+    const note = E('note.add', 'actor-a', t(3), null, { generation: add.ts, target: { book: 'TIT', chapter: '1', verse: '1' }, text: 'n' });
+    const rm = E('book.remove', 'actor-a', t(4), add.ts, { book: 'TIT' });
+    const out = fold([add, dec, al, note, rm]);
+    check('J32c (D-F4): §8.5 says content events for absent books "fold but don\'t project" — and now they do not. Pre-fix an absent book left `chains`/`genRoots` unset, the ancestry filter was SKIPPED ENTIRELY, and the removed book kept projecting its decisions, alignments and notes while LOSING its generation quarantine at the same time',
+      Object.keys(out.decisions).length === 0 && Object.keys(out.alignments).length === 0 && out.notes.length === 0 &&
+      out.retained.filter((r) => r.reason === 'absent-book').length === 3,
+      `decisions=${JSON.stringify(Object.keys(out.decisions))} alignments=${JSON.stringify(Object.keys(out.alignments))} notes=${out.notes.length} retained=${JSON.stringify(out.retained)}`);
+    let ckErr = '';
+    try {
+      derivedProjections(out, { baseMetadata: { type: { flavorType: {} } }, resolutions: {} });
+    } catch (e) { ckErr = e.message; }
+    check('J32c (D-F4, the checkpoint consequence): the removed book no longer gets a §5.2 decision sidecar for a book outside `currentScope` — pre-fix the checkpoint either emitted one or threw for a missing resolution record',
+      ckErr === '' || !ckErr.includes('resolution record'), ckErr || 'no sidecar emitted');
+    const readd = E('book.add', 'actor-a', t(5), rm.ts, { book: 'TIT', scope: [], skeleton: S1, initialVerses: { '1:1': 'gen2\n' } });
+    const back = fold([add, dec, al, note, rm, readd]);
+    check('J32c (D-F4): and the records come back under review, not into the projection — after a re-add they are gen-1 records against a gen-2 root, so they quarantine',
+      Object.keys(back.decisions).length === 0 && back.retained.some((r) => r.reason === 'prior-generation'),
+      JSON.stringify(back.retained));
+  }
+
+  // --- D-F5: structural dispositions LAUNDERED the generation quarantine ---
+  {
+    const add = E('book.add', 'actor-a', t(0), null, { book: 'TIT', scope: [], skeleton: S2, initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n' } });
+    const ghostGen = t(0, 'ghost-actor');
+    const quarantinedDec = decOf(t(1), 2, ghostGen);
+    const quarantinedAl = E('align.verse.set', 'actor-a', t(2), null, { book: 'TIT', chapter: '1', verse: '2', generation: ghostGen,
+      alignments: [], wordBank: [], targetVerseMd5: verseTextMd5('dos\n') });
+    const before = fold([add, quarantinedDec, quarantinedAl]);
+    const drop = (dispositions) => E('text.structure.apply', 'actor-a', t(5), add.ts, { book: 'TIT', skeleton: S1,
+      transitions: { '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: add.ts }, { key: '1:2', ts: add.ts }] } }, dispositions });
+    const dkey = 'translationWords|c1|tit|1|2|1';
+    const rows = [
+      ['decision invalidate-retain', [{ surface: 'decision', key: dkey, ts: quarantinedDec.ts, action: 'invalidate-retain' }], (o) => Object.keys(o.decisions).length === 0],
+      ['decision re-key', [{ surface: 'decision', key: dkey, ts: quarantinedDec.ts, action: 're-key', to: '1:1' }], (o) => Object.keys(o.decisions).length === 0],
+      ['decision replace', [{ surface: 'decision', key: dkey, ts: quarantinedDec.ts, action: 'replace',
+        post: { contextId: { checkId: 'c1', occurrence: 1, reference: { bookId: 'tit', chapter: 1, verse: 2 } }, selections: true } }], (o) => Object.keys(o.decisions).length === 0],
+      ['alignment re-key', [{ surface: 'alignment', key: '1:2', ts: quarantinedAl.ts, action: 're-key', to: '1:1' }], (o) => Object.keys(o.alignments).length === 0],
+      ['alignment replace', [{ surface: 'alignment', key: '1:2', ts: quarantinedAl.ts, action: 'replace',
+        post: { chapter: '1', verse: '2', alignments: [], wordBank: [], targetVerseMd5: 'deadbeef' } }], (o) => Object.keys(o.alignments).length === 0],
+    ];
+    const leaks = [];
+    for (const [label, disp, ok] of rows) {
+      const others = disp[0].surface === 'decision'
+        ? [{ surface: 'alignment', key: '1:2', ts: quarantinedAl.ts, action: 'orphan-review' }]
+        : [{ surface: 'decision', key: dkey, ts: quarantinedDec.ts, action: 'invalidate-retain' }];
+      let o; try { o = fold([add, quarantinedDec, quarantinedAl, drop([...disp, ...others])]); } catch (e) { leaks.push(`${label}: threw ${e.message.slice(0, 40)}`); continue; }
+      if (!ok(o)) leaks.push(label);
+    }
+    check('J32c (D-F5): a structural disposition NEVER launders the generation quarantine — every decision and alignment post-image carries the ORIGINAL record\'s `generation`. Pre-fix decision post-images were rebuilt WITHOUT the stamp while alignment re-key preserved it via spread: the same disposition, two surfaces, ten lines apart — so a quarantined record resurrected through the conservative disposition reconcile itself emits',
+      leaks.length === 0 && Object.keys(before.decisions).length === 0 && Object.keys(before.alignments).length === 0,
+      leaks.length ? `LEAKED: ${leaks.join(' · ')}` : `${rows.length} firing cases, both surfaces`);
+  }
+
+  // --- D-F3: reconcile builds from LIVE heads, the same set the fold's affected set reads ---
+  {
+    const add = E('book.add', 'actor-a', t(0), null, { book: 'TIT', scope: [], skeleton: S2, initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n' } });
+    const ghostGen = t(0, 'ghost-actor');
+    // a QUARANTINED alignment: a LIVE head for the fold, invisible in the projection
+    const quarantined = E('align.verse.set', 'actor-a', t(2), null, { book: 'TIT', chapter: '1', verse: '2', generation: ghostGen,
+      alignments: [], wordBank: [], targetVerseMd5: verseTextMd5('dos\n') });
+    const drafted = E('text.verse.set', 'actor-a', t(3), add.ts, { book: 'TIT', chapter: '1', verse: '2', text: 'borrador\n' });
+    const out = fold([add, quarantined, drafted]);
+    const committed = '\\id TIT\n\\c 1\n\\p\n\\v 1 uno\n';
+    const clock = makeClock('actor-a', () => Date.parse('2026-08-16T14:00:00.000Z'));
+    const evs = reconcileUsfm('TIT', committed, out, clock, 'actor-a');
+    const after = fold([add, quarantined, drafted, ...evs]);
+    check('J32c (D-F3): §8.8 reconcile builds its dispositions from the fold\'s LIVE HEADS, so the event it emits is one the fold ACCEPTS. Pre-fix reconcile enumerated PROJECTED records while the fold computed its affected set from live heads (quarantined and losing-fork heads included), so an out-of-band USFM edit of such a book could never be journaled at all — the fold refused the reconcile event as `incomplete`, deterministically, forever',
+      after.pendingStructural.length === 0 && !('1:2' in after.books.TIT.verses) &&
+      after.retained.some((r) => r.ts === quarantined.ts) && after.retained.some((r) => r.ts === drafted.ts),
+      `pending=${JSON.stringify(after.pendingStructural)} retained=${JSON.stringify(after.retained)}`);
+  }
+
+  // --- D-F9 / C-F3: the re-key destination is a SLOT KEY, not a number ---
+  {
+    const S2pad = skelOf('TIT', '1:1', '1:02');
+    const add = E('book.add', 'actor-a', t(0), null, { book: 'TIT', scope: [], skeleton: S2, initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n' } });
+    const dec = decOf(t(1), 2, add.ts);
+    const renumber = E('text.structure.apply', 'actor-a', t(5), add.ts, { book: 'TIT', skeleton: S2pad,
+      transitions: { '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: add.ts }] }, '1:02': { text: 'dos\n', sources: [{ key: '1:2', ts: add.ts }] } },
+      dispositions: [{ surface: 'decision', key: 'translationWords|c1|tit|1|2|1', ts: dec.ts, action: 're-key', to: '1:02' }] });
+    const out = fold([add, dec, renumber]);
+    const rec = out.decisions.translationWords?.[0];
+    check('J32c (D-F9): a re-key destination is a §8.4 SLOT KEY, and the number form is taken only when it ROUND-TRIPS exactly. Pre-fix `Number("02")` put the record on verse 2 — the disposition was accepted, the old head consumed, and the record pushed back naming a slot that DOES NOT EXIST: permanently unreachable by any future structural action',
+      !!rec && rec.contextId.reference.verse === '02' &&
+      `${rec.contextId.reference.chapter}:${rec.contextId.reference.verse}` === '1:02',
+      JSON.stringify(rec && rec.contextId.reference));
+    check('J32c (D-F9): the ordinary case is unchanged — a canonical decimal slot still re-keys to the §5.2 JSON number form (the typing asymmetry with alignment re-key is now a stated rule, not an accident)',
+      (() => {
+        const S1b = skelOf('TIT', '1:3');
+        const ren = E('text.structure.apply', 'actor-a', t(6), add.ts, { book: 'TIT', skeleton: S1b,
+          transitions: { '1:3': { text: 'dos\n', sources: [{ key: '1:1', ts: add.ts }, { key: '1:2', ts: add.ts }] } },
+          dispositions: [{ surface: 'decision', key: 'translationWords|c1|tit|1|2|1', ts: dec.ts, action: 're-key', to: '1:3' }] });
+        const o = fold([add, dec, ren]);
+        const r = o.decisions.translationWords?.[0]?.contextId.reference;
+        return r && r.verse === 3 && r.chapter === 1;
+      })());
+  }
+
+  // --- E-R3: ONE stale-own-head rule for both skeleton-chain ops ---
+  {
+    const add = E('book.add', 'actor-a', t(0), null, { book: 'TIT', scope: [], skeleton: S2, initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n' } });
+    const merged = E('text.structure.apply', 'actor-a', t(3), add.ts, { book: 'TIT', skeleton: S1,
+      transitions: { '1:1': { text: 'MERGED\n', sources: [{ key: '1:1', ts: add.ts }, { key: '1:2', ts: add.ts }] } }, dispositions: [] });
+    const reverse = E('text.structure.apply', 'actor-a', t(6), add.ts, { book: 'TIT', skeleton: S2,
+      transitions: { '1:1': { text: 'R1\n', sources: [] }, '1:2': { text: 'R2\n', sources: [] } }, dispositions: [] });
+    const revSkel = E('text.skeleton.set', 'actor-a', t(7), add.ts, { book: 'TIT', skeleton: S2 });
+    let applyErr = '', skelErr = '';
+    try { fold([add, merged, reverse]); } catch (e) { applyErr = e.message; }
+    try { fold([add, merged, revSkel]); } catch (e) { skelErr = e.message; }
+    check('J32c (E-R3): the same-actor stale-base rule is ONE rule for both skeleton-chain ops. Pre-fix `text.skeleton.set` REFUSED a base its own actor\'s head had advanced past while `text.structure.apply` — the op that can DROP SLOTS — silently accepted it and reversed the accepted structural action, and no text explained the difference',
+      applyErr.includes('stale') && skelErr.includes('stale') && applyErr.includes('text.structure.apply') && skelErr.includes('text.skeleton.set'),
+      `apply="${applyErr.slice(0, 60)}" skeleton="${skelErr.slice(0, 60)}"`);
+    check('J32c (E-R3): a DIFFERENT actor on the same base still forks — the rule is same-actor only, and structural forks are the review item (#65)',
+      (() => {
+        const byB = E('text.structure.apply', 'actor-b', t(6, 'actor-b'), add.ts, { book: 'TIT', skeleton: S2,
+          transitions: { '1:1': { text: 'B1\n', sources: [] }, '1:2': { text: 'B2\n', sources: [] } }, dispositions: [] });
+        const o = fold([add, merged, byB]);
+        return o.forks.some((f) => f.key === 'skel|TIT');
+      })());
+  }
+
+  // --- D-F8: an orphan-reviewed note is RETAINED, which means NOT projected ---
+  {
+    const add = E('book.add', 'actor-a', t(0), null, { book: 'TIT', scope: [], skeleton: S2, initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n' } });
+    const note = E('note.add', 'actor-a', t(1), null, { generation: add.ts, target: { book: 'TIT', chapter: '1', verse: '2' }, text: 'sobre el verso dos' });
+    const drop = E('text.structure.apply', 'actor-a', t(5), add.ts, { book: 'TIT', skeleton: S1,
+      transitions: { '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: add.ts }, { key: '1:2', ts: add.ts }] } },
+      dispositions: [{ surface: 'note', ts: note.ts, action: 'orphan-review' }] });
+    const out = fold([add, note, drop]);
+    check('J32c (D-F8): a note dispositioned `orphan-review` is RETAINED and NOT projected — pre-fix it was BOTH at once, so one record held two observable states and the projected copy pointed at a slot that no longer exists',
+      !out.notes.some((n) => n.ts === note.ts) && out.retained.some((r) => r.key === 'note' && r.ts === note.ts && r.reason === 'orphan-review'),
+      `projected=${out.notes.length} retained=${JSON.stringify(out.retained.filter((r) => r.key === 'note'))}`);
+    check('J32c (deferred half of round-8 finding 12): the note re-key destination grammar is applied AT THE FOLD, by the ONE shared predicate — only the fold knows both the note and the destination',
+      (() => {
+        const dec = decOf(t(2), 2, add.ts);
+        const bad = E('text.structure.apply', 'actor-a', t(5), add.ts, { book: 'TIT', skeleton: S1,
+          transitions: { '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: add.ts }, { key: '1:2', ts: add.ts }] } },
+          dispositions: [
+            { surface: 'decision', key: 'translationWords|c1|tit|1|2|1', ts: dec.ts, action: 're-key', to: '1:1' },
+            { surface: 'note', ts: note.ts, action: 're-key', to: 'translationWords|c1|tit|1|1|1' }, // a VERSE-targeted note → a decision key
+          ] });
+        let err = ''; try { fold([add, note, dec, bad]); } catch (e) { err = e.message; }
+        return err.includes('re-key destination') && err.includes('VERSE-targeted');
+      })());
+  }
+
+  // --- E-R10: fork identity is the op's §8.5 PAYLOAD, not "everything but the envelope" ---
+  {
+    const add = E('book.add', 'actor-a', t(0), null, { book: 'TIT', scope: [], skeleton: S1, initialVerses: {} });
+    const a = E('text.verse.set', 'actor-a', t(2), add.ts, { book: 'TIT', chapter: '1', verse: '1', text: 'same\n' });
+    const b = E('text.verse.set', 'actor-b', t(3, 'actor-b'), add.ts, { book: 'TIT', chapter: '1', verse: '1', text: 'same\n', tracking: 'x' });
+    const out = fold([add, a, b]);
+    check('J32c (E-R10): an additive-optional field never manufactures a fork — §9 says readers MUST tolerate one without a version bump, and `payloadOf` built identity by SUBTRACTING the eight known envelope keys, so any other top-level field counted as identity and two IDENTICAL heads FORKED instead of auto-merging',
+      out.forks.length === 0 && out.books.TIT.verses['1:1'] === 'same\n', JSON.stringify(out.forks));
+    check('J32c (E-R10): a genuine payload difference still forks — the fix narrows identity, it does not remove it',
+      fold([add, a, { ...b, text: 'otro\n' }]).forks.length === 1);
+    check('J32c (E-R10): `align.verse.set` is the deliberate exception — its payload IS the open §5.1 record spread at the top level, so an unknown field there is RECORD CONTENT and two heads that differ in it are genuinely different records',
+      (() => {
+        const g = { generation: add.ts, book: 'TIT', chapter: '1', verse: '1', alignments: [], wordBank: [], targetVerseMd5: verseTextMd5('___\n') };
+        const x = E('align.verse.set', 'actor-a', t(4), null, g);
+        const y = E('align.verse.set', 'actor-b', t(5, 'actor-b'), null, { ...g, sourceVersion: 'v2' });
+        return fold([add, x, y]).forks.length === 1;
+      })());
+  }
+
+  // --- E-R9: a note names a DECISION, and a decision is (toolId, §5.2 identity) ---
+  {
+    const add = E('book.add', 'actor-a', t(0), null, { book: 'TIT', scope: [], skeleton: S1, initialVerses: { '1:1': 'uno\n' } });
+    const dTW = decOf(t(1), 1, add.ts);
+    const dTN = { ...decOf(t(2), 1, add.ts), toolId: 'translationNotes' };
+    const bare = E('note.add', 'actor-a', t(3), null, { generation: add.ts, target: { decisionKey: 'c1|tit|1|1|1' }, text: 'which tool?' });
+    let bareErr = ''; try { fold([add, dTW, dTN, bare]); } catch (e) { bareErr = e.message; }
+    const qualified = E('note.add', 'actor-a', t(4), null, { generation: add.ts, target: { decisionKey: 'translationNotes|c1|tit|1|1|1' }, text: 'this tool' });
+    const out = fold([add, dTW, dTN, qualified]);
+    check('J32c (E-R9): a note\'s `decisionKey` is the TOOLID-PREFIXED decision key — the same string the fold\'s `dec|` registers carry and disposition keys name. A bare five-part §5.2 identity key names a check POSITION, which two tools may both hold, so it could not say WHICH decision the note annotates',
+      bareErr.includes('toolId') && out.notes.length === 1 && Object.keys(out.decisions).length === 2,
+      `bare="${bareErr.slice(0, 60)}" target=${JSON.stringify(out.notes[0].target)}`);
+    check('J32c (E-R9): the generation quarantine still reads the bookId out of the key — one grammar, one parse position',
+      (() => {
+        const rm = E('book.remove', 'actor-a', t(5), add.ts, { book: 'TIT' });
+        const re = E('book.add', 'actor-a', t(6), rm.ts, { book: 'TIT', scope: [], skeleton: S1, initialVerses: { '1:1': 'gen2\n' } });
+        const o = fold([add, dTW, dTN, qualified, rm, re]);
+        return !o.notes.some((n) => n.ts === qualified.ts) && o.retained.some((r) => r.ts === qualified.ts && r.reason === 'prior-generation');
+      })());
+  }
+
+  // --- E-Sweep1 #6/#7/#8: the checkpoint's mandatory inputs, completed ---
+  {
+    const add = E('book.add', 'actor-a', t(0), null, { book: 'TIT', scope: [], skeleton: S1, initialVerses: { '1:1': 'uno\n' } });
+    const out = fold([add]);
+    const baseMetadata = { type: { flavorType: {} } };
+    let noVrs = '';
+    try { derivedProjections(out, { baseMetadata, resolutions: {} }); } catch (e) { noVrs = e.message; }
+    check('J32c (E-Sweep1 #6): the §8.7 mandatory-input guard covers the VERSIFICATION FRAME too. `vrs.json` was the one member of the "exhaustive" regeneration set emitted CONDITIONALLY (`if (foldOut.vrs)`) with no guard, so a journal with no `project.vrs.set` shipped a silently smaller checkpoint',
+      noVrs.includes('vrs') && noVrs.includes('incomplete'), `"${noVrs.slice(0, 80)}"`);
+    const vrsEv = E('project.vrs.set', 'actor-a', t(1), null, { seed: { source: 'creation' }, name: 'eng', bytes: '{"maxVerses":{}}' });
+    const withVrs = fold([add, vrsEv]);
+    const projections = derivedProjections(withVrs, { baseMetadata, resolutions: {} });
+    check('J32c (E-Sweep1 #7): and divergence detection therefore LISTS vrs.json — the enumeration starts from the fold\'s expected set, so a vrs.json deleted out of band is divergence like every other derived file (§8.8)',
+      'vrs.json' in projections &&
+      classifyDivergence(Object.fromEntries(Object.entries(projections).filter(([k]) => k !== 'vrs.json')), projections).diverged.includes('vrs.json'),
+      JSON.stringify(Object.keys(projections)));
+    let partial = '';
+    try { projectResources({ 'languageSets.primary.gatewayLanguage': { languageId: 'en', owner: 'unfoldingWord' } }); } catch (e) { partial = e.message; }
+    check('J32c (E-Sweep1 #8): a PARTIAL pin state no longer projects a §5.3-violating resources.json — D17 says `languageSets` MUST contain exactly `primary` and `fallback`, and §8.7 says refuse rather than emit an incomplete derived set',
+      partial.includes('primary') && partial.includes('fallback'), `"${partial.slice(0, 80)}"`);
+    check('J32c (E-Sweep1 #8): both sets, and no set at all, still project (the guard adds no false refusal)',
+      (() => {
+        const both = JSON.parse(projectResources({
+          'languageSets.primary.gatewayLanguage': { languageId: 'es-419', owner: 'es-419_gl' },
+          'languageSets.fallback.gatewayLanguage': { languageId: 'en', owner: 'unfoldingWord' },
+        }));
+        const none = JSON.parse(projectResources({}));
+        return both.languageSets.primary && both.languageSets.fallback && !('languageSets' in none);
+      })());
+  }
+
+  // --- the deferred LAYER-2 guards ---
+  {
+    {
+      // Layer 1 (the schema) refuses content carrying a §8.4 region marker. Layer 2 is the
+      // hash itself: pre-fix the extraction read only the parse's verse 1 and RETURNED a
+      // hash, so bytes after an embedded `\\v ` lived OUTSIDE the I-3 validity hash and an
+      // alignment stayed "valid" over text it never saw. A `\\c ` region is worse — the
+      // chunk parse DROPS it entirely, so no widened walk can recover it. The extraction
+      // therefore refuses what it cannot cover, by the SAME grammar layer 1 applies.
+      const truncating = ['uno\n\\v 9 smuggled\n', 'uno\n\\c 2\n\\v 1 smuggled\n', `uno${SLOT}\n`];
+      const errs = truncating.map((c) => { try { verseTextMd5(c); return ''; } catch (e) { return e.message; } });
+      check('J32c (deferred): the §5.1 extraction (I-3) REFUSES content it cannot cover, instead of returning a hash over PART of it — the same ONE §8.4 boundary grammar the schema applies, applied again at the hash',
+        errs.every((e) => e.includes('ONE content slot')), JSON.stringify(errs.map((e) => e.slice(0, 45))));
+    }
+    check('J32c (deferred): ordinary content still hashes as before — the widened extraction changes no existing hash',
+      verseTextMd5('Pablo, siervo de Dios,\n\\p\n') === md5('Pablo, siervo de Dios,'),
+      verseTextMd5('Pablo, siervo de Dios,\n\\p\n'));
+    const withProto = JSON.parse('{"op":"align.verse.set","book":"TIT","chapter":"1","verse":"1","__proto__":{"x":1}}');
+    const without = JSON.parse('{"op":"align.verse.set","book":"TIT","chapter":"1","verse":"1"}');
+    check('J32c (deferred, layer 2): head IDENTITY is built with own-key writes. `p[k] = e[k]` runs the PROTOTYPE setter for a `__proto__` key and SWALLOWS the field, so fork detection went blind on it — two different records compared equal and auto-merged',
+      headIdentity(withProto) !== headIdentity(without),
+      `${headIdentity(withProto)} vs ${headIdentity(without)}`);
+    let deep = { op: 'align.verse.set' }; let cur = deep;
+    for (let i = 0; i < 200; i++) { cur.n = {}; cur = cur.n; }
+    let deepErr = ''; try { headIdentity(deep); } catch (e) { deepErr = e.message; }
+    check('J32c (deferred, layer 2): the canonicalization walk is BOUNDED like every other recursive consumer — the schema bounds depth at §8.1, and this walk refuses it AGAIN so a document reaching the fold with validation off gets a verdict, never a stack overflow',
+      deepErr.includes('§8.1') && !/Maximum call stack/.test(deepErr), `"${deepErr.slice(0, 70)}"`);
+  }
+
+  // --- B-F5: the prefix-collision half that is correct under every candidate rule ---
+  {
+    const a = E('settings.set', 'actor-a', t(1), null, { path: 'ui.pane', value: { width: 1 } });
+    const b = E('settings.set', 'actor-b', t(2, 'actor-b'), null, { path: 'ui.pane.width', value: 9 });
+    const out = fold([a, b]);
+    check('J32b/B-F5: dotted-path registers `a` and `a.b` are DIFFERENT keys that write the SAME place, and one used to clobber the other with no fork, no retained entry and no report — two writers editing `ui.pane` and `ui.pane.width` concurrently lost one edit INVISIBLY. The loss is now never silent: the later ts takes the projection, the earlier is retained and reported. [The resolution SEMANTICS are PROPOSED — owner ratification pending, §8.5]',
+      out.retained.some((r) => r.key === 'set|ui.pane' && r.ts === a.ts && r.reason === 'prefix-collision') &&
+      !('ui.pane' in out.settings) && out.settings['ui.pane.width'] === 9,
+      `settings=${JSON.stringify(out.settings)} retained=${JSON.stringify(out.retained)}`);
+    check('J32b/B-F5: the same rule binds project metadata, and unrelated sibling paths are untouched',
+      (() => {
+        const m1 = E('project.meta.set', 'actor-a', t(3), null, { path: 'identification.name', value: 'X' });
+        const m2 = E('project.meta.set', 'actor-b', t(4, 'actor-b'), null, { path: 'identification.name.en', value: 'Y' });
+        const sib = E('settings.set', 'actor-a', t(5), null, { path: 'ui.other', value: 2 });
+        const o = fold([a, b, m1, m2, sib]);
+        return o.retained.some((r) => r.key === 'meta|identification.name' && r.reason === 'prefix-collision') &&
+          o.settings['ui.other'] === 2;
+      })());
   }
 }
 
