@@ -12,13 +12,34 @@
 // key, a prototype-chain traversal, Burrito metadata), was the defect class of round 8.
 import { slotKeysOf } from './skeleton.mjs';
 import {
-  isStr, isObj, isTs, identityKeyOf, identityKeyError, identityPartError, decisionKeyError,
+  isStr, isObj, isTs, tsError, identityKeyOf, identityKeyError, identityPartError, decisionKeyError,
   bookIdError, bookIdLowerError, toolIdError, verseSlotError, scopeError, dottedPathError,
-  pinSlotError, jsonSafeNumberError, jsonRoundTripError, META_RESERVED_ROOTS, PIN_SLOT_RE,
+  pinSlotError, pinEntryError, journaledTextError, jsonSafeNumberError, jsonRoundTripError,
+  nfcError, nfcKeysError, toNfc, MAX_JSON_DEPTH, META_RESERVED_ROOTS, PIN_SLOT_RE,
 } from './grammar.mjs';
 
 // Re-exported for importers that already read the identity-key pair from the schema.
 export { identityKeyOf, identityKeyError, META_RESERVED_ROOTS, PIN_SLOT_RE };
+
+// ---------- §8.4 skeletons: the SLOT KEYS are a grammar, not free text ----------
+// A skeleton was type-checked (isStr) and never key-checked, so `slotKeysOf` derived
+// whatever the string contained. A `__proto__` slot recomposed to `[object Object]` and
+// PERMANENTLY destroyed the verse in committed USFM; `../../etc/passwd` and `1:1|x`
+// (the identity delimiter) rode the same hole. Duplicate keys collapsed silently. The
+// keys carry the SAME §8.4 slot grammar every other verse key carries — ONE rule, so
+// the three ops that accept a skeleton cannot drift apart.
+const skeletonError = (skeleton) => {
+  if (!isStr(skeleton)) return 'is not a string';
+  const keys = slotKeysOf(skeleton);
+  const seen = new Set();
+  for (const k of keys) {
+    const e = verseSlotError(k);
+    if (e) return `carries a slot key that ${e}`;
+    if (seen.has(k)) return `carries the duplicate slot key "${k}" — one slot key names one verse head (§8.4)`;
+    seen.add(k);
+  }
+  return null;
+};
 
 // The register key a (chapter, verse) pair forms: `<chapter>:<verse>` (§8.4 slot key).
 // ONE rule for every op that keys a record by verse — text, alignment, decision, note.
@@ -132,15 +153,19 @@ const OPS = {
     const b = bookIdError(e.book); if (b) return `text.verse.set book ${b}`;
     const k = verseRefError(e.chapter, e.verse);
     if (k) return `text.verse.set chapter/verse do not form a §8.4 register key — ${k}`;
-    return !isStr(e.text) ? 'text.verse.set without text' : null;
+    if (!isStr(e.text)) return 'text.verse.set without text';
+    const t = journaledTextError(e.text);
+    return t ? `text.verse.set text ${t}` : null;
   },
   'text.skeleton.set': (e) => {
     const b = bookIdError(e.book); if (b) return `text.skeleton.set book ${b}`;
-    return !isStr(e.skeleton) ? 'text.skeleton.set without skeleton' : null;
+    const s = skeletonError(e.skeleton);
+    return s ? `text.skeleton.set skeleton ${s}` : null;
   },
   'text.structure.apply': (e) => {
     const b = bookIdError(e.book); if (b) return `text.structure.apply book ${b}`;
-    if (!isStr(e.skeleton)) return 'text.structure.apply without skeleton';
+    const sk = skeletonError(e.skeleton);
+    if (sk) return `text.structure.apply skeleton ${sk}`;
     if (!isObj(e.transitions)) return 'text.structure.apply without transitions';
     if (!Array.isArray(e.dispositions)) return 'text.structure.apply without dispositions';
     const newSlots = slotKeysOf(e.skeleton);
@@ -153,6 +178,8 @@ const OPS = {
       const tr = e.transitions[dest];
       if (!isObj(tr) || !isStr(tr.text) || !Array.isArray(tr.sources ?? []))
         return `text.structure.apply transition "${dest}" must state its final text`;
+      const tt = journaledTextError(tr.text); // a destination text IS journaled verse content
+      if (tt) return `text.structure.apply transition "${dest}" text ${tt}`;
       for (const src of tr.sources || []) {
         if (!isObj(src) || !isTs(src.ts))
           return `text.structure.apply transition "${dest}" carries a malformed source reference (key + §8.2 HLC ts required)`;
@@ -176,7 +203,8 @@ const OPS = {
   },
   'book.add': (e) => {
     const b = bookIdError(e.book); if (b) return `book.add book ${b}`;
-    if (!isStr(e.skeleton)) return 'book.add without a skeleton (§8.5 self-contained)';
+    const sk = skeletonError(e.skeleton);
+    if (sk) return `book.add skeleton ${sk} (§8.5 self-contained)`;
     const s = scopeError(e.scope);
     if (s) return `book.add scope ${s}`; // §3 rule 4 — the value projects into currentScope
     if (e.initialVerses !== undefined) {
@@ -187,6 +215,8 @@ const OPS = {
       for (const [k, v] of Object.entries(e.initialVerses)) {
         if (!slots.has(k)) return `book.add initialVerses key "${k}" is not a slot of the supplied skeleton (§8.5)`;
         if (!isStr(v)) return 'book.add initialVerses values must be strings (projected verse content)';
+        const t = journaledTextError(v); // initial content IS journaled verse content
+        if (t) return `book.add initialVerses["${k}"] ${t}`;
       }
     }
     return null;
@@ -227,7 +257,12 @@ const OPS = {
   'resource.pin.set': (e) => {
     const s = pinSlotError(e.slot);
     if (s) return `resource.pin.set slot ${s}`;
-    return e.removed !== true && e.entry === undefined ? 'resource.pin.set without entry (or removed: true)' : null;
+    if (e.removed === true) return null;
+    if (e.entry === undefined) return 'resource.pin.set without entry (or removed: true)';
+    // The slot was validated and the ENTRY never was, so `"not-an-object"` and `42`
+    // reached the projected resources.json verbatim. ONE §5.3 entry validator.
+    const en = pinEntryError(e.slot, e.entry);
+    return en ? `resource.pin.set entry ${en}` : null;
   },
   'project.meta.set': (e) => {
     // the dotted path is a WRITE TARGET in metadata.json — §8.5 reserved roots AND the
@@ -244,11 +279,110 @@ const OPS = {
   'project.vrs.set': (e) =>
     !isStr(e.name) ? 'project.vrs.set without name'
     : !isStr(e.bytes) ? 'project.vrs.set carries no raw bytes'
+    // §8.5: "`v: 1` writers emit it only within the creation/seed segment." The rule was
+    // stated and never enforced, so an ordinary later event sealed and folded and only
+    // the register's first-value rule stood between it and a silent frame replacement.
+    // The seed marker IS the enforceable form of "creation/seed only".
+    : !isObj(e.seed) || !VRS_SEED_SOURCES.has(e.seed.source)
+      ? `project.vrs.set outside a creation/seed segment — §8.5 allows it only with seed.source ∈ ${[...VRS_SEED_SOURCES].join('|')}`
     : null,
 };
 
+// §8.5: the versification frame is set when the project comes into being — at creation,
+// at Phase-1 migration, or at tC3 import. `out-of-band-usfm` is a TEXT reconcile source
+// and never seeds a frame.
+const VRS_SEED_SOURCES = new Set(['creation', 'sidecar-migration', 'tc3-import']);
+
 // §8.5: these ops MUST carry the causal `generation` stamp — unconditionally.
 const GENERATION_OPS = new Set(['align.verse.set', 'check.decision.set', 'note.add']);
+
+// ---------- I-4 (§8.5): ONE write chokepoint, and ONE list of what it may not touch ----
+// Invariant I-4 said "writers MUST normalize" and no writer did. The rule now has an
+// implementation, and the implementation states WHICH values are transformed and which
+// are refused:
+//   • IDENTITY-bearing values (below) and every object KEY are REFUSED when they are not
+//     already NFC. Silently transforming an identity splits or merges records with no
+//     fork, no report and no way back — a refusal the writer can see is strictly better.
+//   • Everything else a writer journals is NORMALIZED on seal (files.mjs `sealAction`).
+// `project.vrs.set.bytes` is listed as identity because §8.7 projects it VERBATIM: a
+// normalization there would change a file the format promises is byte-exact.
+const IDENTITY_PATHS = {
+  'text.verse.set': ['book', 'chapter', 'verse'],
+  'text.skeleton.set': ['book'],
+  'book.add': ['book'],
+  'book.remove': ['book'],
+  'text.structure.apply': [
+    'book', 'transitions.*.sources.*.key', 'transitions.*.sources.*.ts',
+    'dispositions.*.key', 'dispositions.*.to', 'dispositions.*.ts',
+    'dispositions.*.post.chapter', 'dispositions.*.post.verse', 'dispositions.*.post.targetVerseMd5',
+    'dispositions.*.post.contextId.checkId', 'dispositions.*.post.contextId.quote',
+    'dispositions.*.post.contextId.quoteString', 'dispositions.*.post.contextId.groupId',
+    'dispositions.*.post.contextId.reference.bookId', 'dispositions.*.post.contextId.reference.chapter',
+    'dispositions.*.post.contextId.reference.verse',
+  ],
+  'align.verse.set': ['book', 'chapter', 'verse', 'targetVerseMd5'],
+  'check.decision.set': [
+    'toolId', 'decision.contextId.checkId', 'decision.contextId.quote',
+    'decision.contextId.quoteString', 'decision.contextId.groupId',
+    'decision.contextId.reference.bookId', 'decision.contextId.reference.chapter',
+    'decision.contextId.reference.verse',
+  ],
+  'note.add': ['target.book', 'target.chapter', 'target.verse', 'target.decisionKey'],
+  'resource.pin.set': ['slot'],
+  'project.meta.set': ['path'],
+  'settings.set': ['path'],
+  'project.vrs.set': ['name', 'bytes'],
+};
+// The envelope is identity in full: every field of it is either a ts, an actor slug or a
+// closed enum, so nothing in it is ever rewritten.
+const ENVELOPE_IDENTITY = ['v', 'op', 'actor', 'ts', 'base', 'batch', 'generation', 'supersedes.*', 'seed.source', 'seed.batch'];
+
+const matchesPattern = (segs, pattern) => {
+  const pat = pattern.split('.');
+  return pat.length === segs.length && pat.every((p, i) => p === '*' || p === segs[i]);
+};
+const isIdentityValue = (op, segs) =>
+  ENVELOPE_IDENTITY.some((p) => matchesPattern(segs, p)) ||
+  (IDENTITY_PATHS[op] || []).some((p) => matchesPattern(segs, p));
+
+// Collect the values an identity pattern addresses ('*' = any own key or array index).
+const valuesAt = (root, pattern) => {
+  let cur = [root];
+  for (const s of pattern.split('.')) {
+    const next = [];
+    for (const v of cur) {
+      if (v == null || typeof v !== 'object') continue;
+      if (s === '*') for (const k of Object.keys(v)) next.push(v[k]);
+      else if (Object.hasOwn(v, s)) next.push(v[s]);
+    }
+    cur = next;
+  }
+  return cur;
+};
+const identityNfcError = (e) => {
+  for (const p of IDENTITY_PATHS[e.op] || [])
+    for (const v of valuesAt(e, p)) { const err = nfcError(v); if (err) return `${e.op} ${p} ${err}`; }
+  return null;
+};
+
+// The I-4 transform, applied ONCE, at the seal (files.mjs). Own keys are copied as own
+// keys — never by `out[k] = v`, which would swallow a `__proto__` field the schema is
+// about to refuse.
+export const normalizeEvent = (e) => {
+  const walk = (v, segs, depth) => {
+    if (depth > MAX_JSON_DEPTH) return v; // bounded like every other walk (§8.1)
+    if (isStr(v)) return isIdentityValue(e && e.op, segs) ? v : toNfc(v);
+    if (Array.isArray(v)) return v.map((x, i) => walk(x, [...segs, String(i)], depth + 1));
+    if (isObj(v)) {
+      const out = {};
+      for (const k of Object.keys(v))
+        Object.defineProperty(out, k, { value: walk(v[k], [...segs, k], depth + 1), enumerable: true, writable: true, configurable: true });
+      return out;
+    }
+    return v;
+  };
+  return isObj(e) ? walk(e, [], 0) : e;
+};
 
 // Validate ONE event: envelope (every field the fold dereferences has a shape rule —
 // ts-shaped fields carry the EXACT §8.2 grammar, actor-slug charset included, so a
@@ -264,12 +398,20 @@ export const validateEvent = (e) => {
   // ONE recursive rule, before any field-level check.
   const jr = jsonRoundTripError(e);
   if (jr) return `event does not survive a JSON round trip: ${jr}`;
-  if (!isTs(e.ts)) return `event ts "${e.ts}" is not an §8.2 HLC string (fixed-width ISO | 4-hex | [a-z0-9-]{4,32})`;
+  // I-4 (§8.5): every object KEY is identity, at every depth — refuse, never rewrite.
+  const nk = nfcKeysError(e);
+  if (nk) return `event carries a non-NFC key (I-4): ${nk}`;
+  if (!isTs(e.ts)) return `event ts ${tsError(e.ts)}`;
   if (!isStr(e.actor)) return 'event without actor';
   if (e.ts.split('|')[2] !== e.actor)
     return `actor binding violated: event actor "${e.actor}" ≠ ts actor "${e.ts.split('|')[2]}"`;
   if (e.base !== undefined && e.base !== null && !isTs(e.base))
     return `event base "${e.base}" must be null or an §8.2 HLC ts`;
+  // §8.3: `base` names the event whose state this op OBSERVED, so it happened BEFORE.
+  // A forward-pointing base is causally impossible; it also defeats the ancestry cache
+  // and reaches the fold as a RangeError on schema-valid input. Layer 1 closes it.
+  if (isStr(e.base) && !(e.base < e.ts))
+    return `event base "${e.base}" is not strictly earlier than its own ts "${e.ts}" — a base names an event this one observed (§8.3)`;
   if (e.supersedes !== undefined && (!Array.isArray(e.supersedes) || e.supersedes.some((s) => !isTs(s))))
     return 'event supersedes must be an array of §8.2 HLC ts';
   if (Array.isArray(e.supersedes) && e.supersedes.includes(e.ts))
@@ -285,6 +427,10 @@ export const validateEvent = (e) => {
     return `${e.op} without a generation stamp — §8.5 requires every writer (seeding included) to stamp the book's generation root`;
   if (e.generation !== undefined && !isTs(e.generation))
     return `generation "${e.generation}" must be the rooting book.add's §8.2 HLC ts`;
+  // I-4 (§8.5): the identity-bearing values are refused when they are not NFC — the one
+  // class of value a writer may not silently rewrite.
+  const nf = identityNfcError(e);
+  if (nf) return `event carries a non-NFC identity value (I-4): ${nf}`;
   return OPS[e.op](e);
 };
 

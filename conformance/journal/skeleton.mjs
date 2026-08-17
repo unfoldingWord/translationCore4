@@ -3,7 +3,11 @@
 // Skeleton = everything else, with each verse's content replaced by SLOT+key+SLOT.
 // INVARIANT (J2): recompose(decompose(usfm)) is byte-identical to the input.
 
-export const SLOT = ''; // reserved (§8.4)
+// The slot delimiter and the region-boundary marker are stated ONCE, in grammar.mjs —
+// the codec scans for them here and the schema refuses them inside journaled verse
+// content there, so the two can never disagree about where a content slot ends.
+import { SLOT, VERSE_BOUNDARY_RE } from './grammar.mjs';
+export { SLOT };
 
 // The slot keys of a skeleton, in document order (shared by the fold and the schema).
 export const slotKeysOf = (skeleton) =>
@@ -12,7 +16,7 @@ export const slotKeysOf = (skeleton) =>
 // Matches "\v <key> " where key is digits or a digit span like 4-5 (string keys, §5.2 rules).
 // The marker (incl. the single following space) belongs to the skeleton.
 const VERSE_MARKER = /\\v[ \t]+(\d+(?:-\d+)?)[ \t]/g;
-const NEXT_BOUNDARY = /\\[vc][ \t]/g; // next verse or chapter marker starts new region
+const NEXT_BOUNDARY = new RegExp(VERSE_BOUNDARY_RE.source, 'g'); // next verse/chapter marker starts a new region
 
 export const decompose = (usfm) => {
   if (usfm.includes(SLOT)) throw new Error('source contains reserved U+0001');

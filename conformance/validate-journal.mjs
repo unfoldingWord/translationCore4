@@ -6,15 +6,15 @@ import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
 import { execSync } from 'child_process';
-import { makeClock, parseTs } from './journal/hlc.mjs';
+import { makeClock, parseTs, compareTs } from './journal/hlc.mjs';
 import { SLOT, decompose, recompose } from './journal/skeleton.mjs';
 import { fold, verseTextMd5, slotKeysOf } from './journal/fold.mjs';
 import { validateAction } from './journal/schema.mjs';
-import { BOOK_CODES, identityKeyOf, identityKeyError } from './journal/grammar.mjs';
+import { BOOK_CODES, identityKeyOf, identityKeyError, ipathError, pinEntryError, noteRekeyError } from './journal/grammar.mjs';
 import { reconcileUsfm, seedFromSidecars } from './journal/reconcile.mjs';
 import {
   sealAction, writeActionSegment, validateSegment, validateActorDoc, segmentName,
-  readSegments, readUnion, SEGMENT_LIMIT,
+  readSegments, readUnion, actorDirFor, SEGMENT_LIMIT,
 } from './journal/files.mjs';
 import * as filesAll from './journal/files.mjs';
 const republishSegment = filesAll.republishSegment
@@ -134,7 +134,8 @@ const buildSeed = () => {
       now += c.advance; const actor = actors[c.actor]; const ts = clocks[c.actor].issue(); clocks[1 - c.actor].ratchet(ts);
       let e;
       if (c.kind === 'verse') e = { op: 'text.verse.set', book: 'TIT', chapter: '1', verse: String(c.key + 1), text: c.val + '\n' };
-      else if (c.kind === 'pin') e = { op: 'resource.pin.set', slot: `extraScripture.s${c.key}`, entry: { v: c.val } };
+      else if (c.kind === 'pin') e = { op: 'resource.pin.set', slot: `extraScripture.s${c.key}`,
+        entry: { id: `s${c.key}`, repoPath: 'git.door43.org/unfoldingWord/en_ult', version: `v${c.val || '0'}`, flavor: 'scripture/textTranslation' } };
       else if (c.kind === 'meta') e = { op: 'project.meta.set', path: `p.${c.key}`, value: c.val };
       else if (c.kind === 'note') e = { op: 'note.add', generation: events[0].ts, target: { book: 'TIT', chapter: '1', verse: String(c.key + 1) }, text: c.val };
       else e = { op: 'check.decision.set', toolId: 'translationWords', generation: events[0].ts, decision: { contextId: { checkId: `c${c.key}`, reference: { bookId: 'tit', chapter: 1, verse: c.key + 1 }, occurrence: 1 }, selections: false, note: c.val } };
@@ -349,6 +350,135 @@ const buildSeed = () => {
   try { fold([ev]); } catch (e) { foldMsg = e.message; }
   check('J14e: an event listing its OWN ts in supersedes is malformed — refused at seal AND at fold (dangling supersedes refs stay harmless-by-construction: they filter no live head)',
     sealMsg !== '' && foldMsg !== '', `seal="${sealMsg.slice(0, 50)}" fold="${foldMsg.slice(0, 50)}"`);
+}
+
+// ---------- J14f (round 9): INVARIANT I-4 has an implementation. §8.5 said "writers MUST
+//   normalize all text they journal … to NFC before they hash or write" and NO writer
+//   did — `grep -rn normalize journal/` returned nothing. The rule now lives at the ONE
+//   write chokepoint (sealAction), and it splits by kind: content text is NORMALIZED,
+//   identity-bearing values and object KEYS are REFUSED. ----------
+{
+  const t = (s, a = 'actor-a') => `2026-08-16T02:00:${String(s).padStart(2, '0')}.000Z|0000|${a}`;
+  const bodyOf = (e) => JSON.parse(JSON.parse(sealAction([e])).body).events[0];
+  const NFD = 'Pabló sieŕvo\n';            // combining acutes
+  const NFC = NFD.normalize('NFC');
+  const skel1 = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}`;
+
+  // (a) the transform — every text a writer journals is NFC in the sealed bytes
+  const normalized = [
+    ['text.verse.set text', mkEvent({ op: 'text.verse.set', actor: 'actor-a', ts: t(1), book: 'TIT', chapter: '1', verse: '1', text: NFD }), (b) => b.text],
+    ['note.add text', mkEvent({ op: 'note.add', actor: 'actor-a', ts: t(2), generation: t(0), target: { book: 'TIT', chapter: '1', verse: '1' }, text: NFD }), (b) => b.text],
+    ['book.add initialVerses content', mkEvent({ op: 'book.add', actor: 'actor-a', ts: t(3), book: 'TIT', scope: [], skeleton: skel1, initialVerses: { '1:1': NFD } }), (b) => b.initialVerses['1:1']],
+    ['settings.set string value', mkEvent({ op: 'settings.set', actor: 'actor-a', ts: t(4), path: 'ui.label', value: NFD }), (b) => b.value],
+    ['project.meta.set string value', mkEvent({ op: 'project.meta.set', actor: 'actor-a', ts: t(5), path: 'identification.name.es', value: NFD }), (b) => b.value],
+    ['structure transition text', mkEvent({ op: 'text.structure.apply', actor: 'actor-a', ts: t(6), base: t(0), book: 'TIT', skeleton: skel1, transitions: { '1:1': { text: NFD, sources: [] } }, dispositions: [] }), (b) => b.transitions['1:1'].text],
+  ];
+  const misses = normalized.filter(([, e, get]) => get(bodyOf(e)) !== NFC);
+  check('J14f (I-4): sealAction NORMALIZES every text a writer journals — verse content, note text, initial verse content, structural destination text, and settings/metadata string values are NFC in the sealed bytes',
+    misses.length === 0, `${normalized.length - misses.length}/${normalized.length} normalized${misses.length ? ` · missed: ${misses.map(([l]) => l).join(', ')}` : ''}`);
+
+  // (b) the refusal — an IDENTITY is never silently rewritten. Pre-fix, the two decision
+  // records below sealed as DIFFERENT records whose identity keys PRINT IDENTICALLY: a
+  // silent identity split with no fork, no retained entry, and no way to see it.
+  const dec = (cid) => mkEvent({ op: 'check.decision.set', actor: 'actor-a', ts: t(7), generation: t(0), toolId: 'translationWords',
+    decision: { contextId: { checkId: cid, occurrence: 1, reference: { bookId: 'tit', chapter: '1', verse: '1' } }, selections: false } });
+  const NFD_ID = 'chék', NFC_ID = 'chék';
+  let splitSeal = ''; try { sealAction([dec(NFD_ID)]); } catch (e) { splitSeal = e.message; }
+  let splitFold = ''; try { fold([dec(NFD_ID)]); } catch (e) { splitFold = e.message; }
+  check('J14f (I-4): an NFD identity component is REFUSED at seal AND at fold — pre-fix it produced a SILENT IDENTITY SPLIT (two records, identity keys that print identically, no fork, no retained entry)',
+    splitSeal.includes('I-4') && splitFold.includes('I-4') &&
+    identityKeyOf(dec(NFD_ID).decision.contextId) !== identityKeyOf(dec(NFC_ID).decision.contextId),
+    `seal="${splitSeal.slice(splitSeal.indexOf('I-4'), splitSeal.indexOf('I-4') + 60)}"`);
+  check('J14f (I-4): the NFC form of the same identity still seals and folds — the refusal adds no false rejection',
+    sealAction([dec(NFC_ID)]).length > 0 && fold([dec(NFC_ID)]).decisions.translationWords.length === 1);
+
+  // every identity-bearing surface refuses, not just checkId — one rule, whole class
+  const identityRows = [
+    ['decision quoteString (the D17 re-attach verification field)', mkEvent({ op: 'check.decision.set', actor: 'actor-a', ts: t(8), generation: t(0), toolId: 'translationWords', decision: { contextId: { checkId: 'c1', occurrence: 1, quoteString: 'Θεού', reference: { bookId: 'tit', chapter: '1', verse: '1' } }, selections: false } })],
+    ['note decisionKey', mkEvent({ op: 'note.add', actor: 'actor-a', ts: t(9), generation: t(0), target: { decisionKey: 'chék|tit|1|1|1' }, text: 'n' })],
+    ['settings.set path', mkEvent({ op: 'settings.set', actor: 'actor-a', ts: t(10), path: 'ui.étiquette', value: 1 })],
+    ['project.vrs.set name (bytes are projected VERBATIM — never normalized)', mkEvent({ op: 'project.vrs.set', actor: 'actor-a', ts: t(11), seed: { source: 'creation' }, name: 'eńg', bytes: '{}' })],
+    ['an object KEY at any depth', mkEvent({ op: 'settings.set', actor: 'actor-a', ts: t(12), path: 'ui.x', value: { 'étiquette': 1 } })],
+  ];
+  const notRefused = identityRows.filter(([, e]) => { try { sealAction([e]); return true; } catch { return false; } });
+  check('J14f (I-4): the refusal is CLASS-level — quoteString, decisionKey, dotted paths, the vrs frame name, and every object KEY at every depth refuse a non-NFC value; only CONTENT is transformed',
+    notRefused.length === 0, `${identityRows.length}/${identityRows.length} refused${notRefused.length ? ` · missed: ${notRefused.map(([l]) => l).join(', ')}` : ''}`);
+
+  // (c) the writer stays symmetric with its own reader across the transform
+  const sealedNfd = sealAction([normalized[0][1]]);
+  const reread = validateSegment(sealedNfd);
+  check('J14f (I-4): what the writer seals is exactly what its own reader validates — the normalized action round-trips through validateSegment carrying the NFC text',
+    reread.ok === true && reread.events[0].text === NFC && reread.events[0].text !== NFD,
+    `re-read text is NFC: ${reread.ok && reread.events[0].text === NFC}`);
+}
+
+// ---------- J14g (round 9): the schema is TOTAL over HOSTILE input too — a verdict is
+//   returned, never a crash. Bounded depth, bounded dotted paths, plain-JSON object kinds
+//   only, and a `base` that actually precedes its own event (§8.1/§8.3). ----------
+{
+  const t = (s) => `2026-08-16T03:00:${String(s).padStart(2, '0')}.000Z|0000|actor-a`;
+  const deepJson = (d) => '{"a":'.repeat(d) + '1' + '}'.repeat(d);
+  const sha = (s) => crypto.createHash('sha256').update(s, 'utf8').digest('hex');
+
+  // (a) the reachable P1: a hostile segment far below the 4 MiB cap. Pre-fix
+  // `jsonRoundTripError` recursed unguarded, so validateSegment THREW instead of
+  // returning a verdict — `onInvalid` never fired and the honest actor's OWN segments
+  // became unreadable behind it.
+  const body = `{"events":[{"v":1,"op":"settings.set","actor":"actor-a","ts":"${t(1)}","base":null,"path":"ui.x","value":${deepJson(20000)}}]}`;
+  const hostile = JSON.stringify({ container: 1, body, sha256: sha(body) });
+  let verdict = null, threw = '';
+  try { verdict = validateSegment(hostile); } catch (e) { threw = e.constructor.name; }
+  check('J14g: a hostile deeply-nested segment — a small fraction of the 4 MiB cap — gets a VERDICT, not a RangeError: validateSegment returns {ok:false} so onInvalid fires and the rest of the stream still reads',
+    threw === '' && verdict && verdict.ok === false && /deeper than/.test(String(verdict.reason)),
+    `${(Buffer.byteLength(hostile) / 1024).toFixed(1)} KB = ${(100 * Buffer.byteLength(hostile) / SEGMENT_LIMIT).toFixed(1)}% of the cap · ${threw || String(verdict && verdict.reason).slice(0, 50)}`);
+  // and the honest neighbour in the same directory still reads
+  {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-j14g-'));
+    const dir = path.join(tmp, 'actor-a');
+    const good = mkEvent({ op: 'settings.set', actor: 'actor-a', ts: t(2), path: 'ui.ok', value: 1 });
+    writeActionSegment(dir, [good]);
+    fs.writeFileSync(path.join(dir, 'segments', 'zzzz-hostile.action.json'), hostile);
+    const seen = [];
+    const got = readSegments(dir, (f, r) => seen.push(r));
+    check('J14g: one hostile segment no longer bricks the actor stream — it is reported and skipped, and the honest segments beside it still read',
+      got.length === 1 && got[0].path === 'ui.ok' && seen.length === 1, `read ${got.length} event(s), reported ${JSON.stringify(seen).slice(0, 70)}`);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+
+  // (b) the poisoned-history P1: a 20,000-segment dotted path folded, then crashed every
+  // future checkpoint forever. The bound belongs in the grammar, at intake.
+  const longPath = Array(20000).fill('a').join('.');
+  const rows = [
+    ['a 20,000-segment dotted path (folds, then crashes every future checkpoint forever)', mkEvent({ op: 'settings.set', actor: 'actor-a', ts: t(3), path: longPath, value: 1 })],
+    ['a value nested past the §8.1 depth bound', mkEvent({ op: 'settings.set', actor: 'actor-a', ts: t(4), path: 'ui.x', value: JSON.parse(deepJson(200)) })],
+    ['a Date value', mkEvent({ op: 'settings.set', actor: 'actor-a', ts: t(5), path: 'ui.x', value: new Date(0) })],
+    ['a Map value', mkEvent({ op: 'settings.set', actor: 'actor-a', ts: t(6), path: 'ui.x', value: new Map([['a', 1]]) })],
+    ['a Set value (JSON.stringify → {} — TOTAL data loss)', mkEvent({ op: 'settings.set', actor: 'actor-a', ts: t(7), path: 'ui.x', value: new Set([1, 2]) })],
+    ['a RegExp value', mkEvent({ op: 'settings.set', actor: 'actor-a', ts: t(8), path: 'ui.x', value: /x/ })],
+    ['a typed-array value', mkEvent({ op: 'settings.set', actor: 'actor-a', ts: t(9), path: 'ui.x', value: new Uint8Array([1, 2]) })],
+    ['an own `__proto__` payload key (fork detection goes blind: two different heads auto-merge)', mkEvent({ op: 'settings.set', actor: 'actor-a', ts: t(10), path: 'ui.x', value: JSON.parse('{"__proto__":{"polluted":true}}') })],
+    ['an own `__proto__` key inside a §5.2 record (the checkpoint would write the pollution gadget into a sidecar the product client parses)',
+      mkEvent({ op: 'check.decision.set', actor: 'actor-a', ts: t(11), generation: t(0), toolId: 'translationWords',
+        decision: JSON.parse('{"contextId":{"checkId":"c1","occurrence":1,"reference":{"bookId":"tit","chapter":"1","verse":"1"}},"selections":false,"__proto__":{"polluted":true}}') })],
+    ['a forward-pointing base (base > ts — causally impossible; it also defeats the ancestry cache)', mkEvent({ op: 'settings.set', actor: 'actor-a', ts: t(12), base: t(59), path: 'ui.x', value: 1 })],
+    ['a self-referencing base (base === ts)', mkEvent({ op: 'settings.set', actor: 'actor-a', ts: t(13), base: t(13), path: 'ui.x', value: 1 })],
+  ];
+  const CRASHY9 = /Cannot read|is not iterable|is not a function|undefined is not|Maximum call stack/i;
+  let allClean = true; const details = [];
+  for (const [label, e] of rows) {
+    let sealMsg = '', foldMsg = '';
+    try { sealAction([e]); } catch (err) { sealMsg = err.message; }
+    try { fold([e]); } catch (err) { foldMsg = err.message; }
+    if (!sealMsg || !foldMsg || CRASHY9.test(sealMsg) || CRASHY9.test(foldMsg)) { allClean = false; details.push(label); }
+  }
+  check('J14g: every hostile-but-schema-shaped payload is refused CLEANLY at seal AND at fold — depth bound, path-segment bound, plain-JSON object kinds only, no own `__proto__` key, and a `base` that precedes its own ts',
+    allClean, details.length ? `missed: ${details.join(' · ')}` : `${rows.length} firing cases`);
+  check('J14g: the legitimate shapes are untouched — a 3-segment path, a 4-deep value and an ordinary earlier base all still seal and fold',
+    (() => {
+      const ok = mkEvent({ op: 'settings.set', actor: 'actor-a', ts: t(20), base: t(19), path: 'a.b.c', value: { a: { b: { c: [1, 2] } } } });
+      try { sealAction([ok]); fold([ok]); return true; } catch { return false; }
+    })());
+  Object.prototype.polluted === undefined || delete Object.prototype.polluted;
 }
 
 // ---------- J8: out-of-band reconcile ----------
@@ -882,6 +1012,11 @@ try {
   const commitAll = (dir, message) => { git('add -A', dir); git(`commit -qm "${message}"`, dir); };
   const cp = (src, dst) => fs.cpSync(src, dst, { recursive: true });
   const write = (dir, rel, body) => { const p = path.join(dir, rel); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, body); };
+  // A contribution is UNTRUSTED input, so the walk must CLASSIFY what it finds, never
+  // crash on it. A symlink is not a file: reading one that dangles throws ENOENT and one
+  // that points at a directory throws EISDIR, so a single symlinked path used to take
+  // the intake validator down instead of producing a violation (round 9).
+  const NOT_A_FILE = Symbol('not-a-regular-file');
   const snapshot = (dir) => {
     const out = new Map();
     const walk = (abs, rel = '') => {
@@ -889,6 +1024,7 @@ try {
         if (entry.name === '.git') continue;
         const childRel = rel ? `${rel}/${entry.name}` : entry.name;
         const child = path.join(abs, entry.name);
+        if (entry.isSymbolicLink() || (!entry.isDirectory() && !entry.isFile())) { out.set(childRel, NOT_A_FILE); continue; }
         if (entry.isDirectory()) walk(child, childRel); else out.set(childRel, fs.readFileSync(child));
       }
     };
@@ -905,6 +1041,7 @@ try {
     const journalRoot = 'ingredients/checking/journal/';
     for (const rel of new Set([...before.keys(), ...after.keys()])) {
       const a = before.get(rel); const b = after.get(rel);
+      if (a === NOT_A_FILE || b === NOT_A_FILE) { errors.push(`not-a-regular-file:${rel}`); continue; }
       const same = a && b && a.equals(b);
       if (same) continue;
       if (!rel.startsWith(actorRoot)) {
@@ -1002,6 +1139,34 @@ try {
     miscErrors.some((e) => e.startsWith('not-whitelisted:') && e.includes('JON.00001.jsonl')), JSON.stringify(miscErrors));
   check('J20: whitelist-only intake — a malformed actor.json is rejected (shape validated, actorId must match the directory)',
     miscErrors.some((e) => e.includes('actor.json')), JSON.stringify(miscErrors));
+  // the `segment-misnamed` branch was DEAD CODE until round 9: every J20 case fed either
+  // an invalid segment or a well-named one, so the ONE rule that binds a segment's
+  // filename to its own first event ts was never exercised. A VALID segment under the
+  // WRONG name is exactly the shape that publishes a second body at an accepted ts.
+  const badName = path.join(tmp, 'bad-name'); cp(base, badName); git('checkout -qb actor-a', badName);
+  write(badName, 'ingredients/checking/journal/actor-a/segments/2026-06-02T00_00_09.000Z,0000,actor-a.action.json',
+    sealAction([mkEvent({ op: 'settings.set', actor: 'actor-a', ts: '2026-06-02T00:00:04.000Z|0000|actor-a', path: 'ui.w', value: 4 })]));
+  commitAll(badName, 'a VALID segment under a filename that is not its ts');
+  const nameScratch = mergeToScratch(base, badName, 'actor-a', 'name');
+  const nameErrors = validateIntake(base, nameScratch, 'actor-a');
+  check('J20: whitelist-only intake — a VALID segment whose filename is not its own first event ts is rejected (§8.1); the misnamed branch now has a firing case',
+    nameErrors.length === 1 && nameErrors[0].startsWith('segment-misnamed:'), JSON.stringify(nameErrors));
+
+  // a symlinked contribution must CLASSIFY, not crash: reading a dangling link throws
+  // ENOENT and reading a link to a directory throws EISDIR, so one symlinked path used
+  // to take the intake validator down instead of producing a violation.
+  const badLink = path.join(tmp, 'bad-link'); cp(base, badLink); git('checkout -qb actor-a', badLink);
+  fs.mkdirSync(path.join(badLink, 'ingredients/checking/journal/actor-a/segments'), { recursive: true });
+  fs.symlinkSync('/nonexistent/target', path.join(badLink, 'ingredients/checking/journal/actor-a/segments/2026-06-02T00_00_05.000Z,0000,actor-a.action.json'));
+  fs.symlinkSync('/etc', path.join(badLink, 'ingredients/checking/journal/actor-a/adir'));
+  commitAll(badLink, 'symlinked contribution');
+  const linkScratch = mergeToScratch(base, badLink, 'actor-a', 'link');
+  let linkErrors = [], linkThrew = '';
+  try { linkErrors = validateIntake(base, linkScratch, 'actor-a'); } catch (e) { linkThrew = `${e.code || e.constructor.name}: ${e.message}`; }
+  check('J20: a symlinked contribution is CLASSIFIED as a violation, never a crash — the §8.7 intake validator returns a verdict on untrusted input (pre-fix: ENOENT on a dangling link, EISDIR on a link to a directory)',
+    linkThrew === '' && linkErrors.filter((e) => e.startsWith('not-a-regular-file:')).length === 2,
+    linkThrew || JSON.stringify(linkErrors));
+
   // the allowed shapes still pass: a valid new segment + a well-formed actor.json
   const goodNew = path.join(tmp, 'good-new'); cp(base, goodNew); git('checkout -qb actor-a', goodNew);
   write(goodNew, `ingredients/checking/journal/actor-a/segments/${segmentName('2026-06-02T00:00:03.000Z|0000|actor-a')}`,
@@ -1747,11 +1912,20 @@ try {
   check('J23: multi-scope actions in ONE segment (book + settings + metadata) fold correctly',
     mOut.books.TIT?.verses['1:1'] === 'uno\n' && mOut.settings['ui.pane'] === 1 && mOut.projectMeta['identification.name.en'] === 'Multi');
 
-  // actor binding at the directory: a segment whose events name a different actor is invalid
+  // actor binding at the directory: a segment whose events name a different actor is
+  // invalid — and (round 9) the WRITER refuses to create it in the first place. Both
+  // intakes already applied this rule; the writer did not, so the check ran only after
+  // the bytes existed. The segment now has to be planted by hand to test the reader.
   const foreign = [mkEvent({ op: 'settings.set', actor: 'actor-z', ts: '2026-08-03T00:02:00.000Z|0000|actor-z', path: 'ui.z', value: 9 })];
-  writeActionSegment(path.join(tmp, 'journal', 'actor-a2'), foreign);
+  const a2Dir = path.join(tmp, 'journal', 'actor-a2');
+  let writerRefused = '';
+  try { writeActionSegment(a2Dir, foreign); } catch (e) { writerRefused = e.message; }
+  check('J23: the WRITER refuses to publish another actor\'s events into this actor\'s directory (§8.1/§8.3 actor binding, writer side — the rule both intakes already applied)',
+    writerRefused.includes('actor binding') && !fs.existsSync(path.join(a2Dir, 'segments')), `"${writerRefused.slice(0, 70)}"`);
+  fs.mkdirSync(path.join(a2Dir, 'segments'), { recursive: true });
+  fs.writeFileSync(path.join(a2Dir, 'segments', segmentName(foreign[0].ts)), sealAction(foreign));
   const invalids3 = [];
-  readSegments(path.join(tmp, 'journal', 'actor-a2'), (file, reason) => invalids3.push(reason));
+  readSegments(a2Dir, (file, reason) => invalids3.push(reason));
   check('J23: a segment whose events name another actor than its directory is refused (actor binding, §8.3)',
     invalids3.length === 1 && String(invalids3[0]).startsWith('actor-mismatch'), JSON.stringify(invalids3));
   fs.rmSync(tmp, { recursive: true, force: true });
@@ -1913,6 +2087,115 @@ try {
   fs.rmSync(tmp, { recursive: true, force: true });
 }
 
+// ---------- J23f (round 9): the §8.1 containment guarantee is a FILESYSTEM guarantee.
+//   Round 6 made it lexical, and a lexical check cannot see a symlink: a DANGLING one
+//   reads as "path free" (so the immutability branch is skipped and the write lands
+//   outside the project), a symlinked `segments` directory relocates the whole stream,
+//   and the reader follows both. Plus the two trust holes beside it: the filename↔ts
+//   binding both intakes apply and the local reader did not, and an actor directory the
+//   reader trusted absolutely. ----------
+{
+  const t = (s, a = 'actor-a') => `2026-08-16T06:00:${String(s).padStart(2, '0')}.000Z|0000|${a}`;
+  const set = (s, a = 'actor-a', v = 1) => mkEvent({ op: 'settings.set', actor: a, ts: t(s, a), path: `ui.k${s}`, value: v });
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-j23f-'));
+  const journal = path.join(tmp, 'journal');
+
+  // (1) THE THREE-LINE FIX FIRST — filename ↔ ts. One stray `.action.json` used to let a
+  // SECOND body publish at the same ts; the union then refused to fold AT ALL ("two
+  // different events share ts — corrupt union"), so the project was PERMANENTLY
+  // unfoldable from one stray file. Both intakes already checked this; the reader now does.
+  {
+    const dir = path.join(journal, 'actor-a');
+    writeActionSegment(dir, [set(1)]);
+    fs.writeFileSync(path.join(dir, 'segments', 'stray.action.json'), sealAction([set(1, 'actor-a', 2)]));
+    const seen = [];
+    const events = readSegments(dir, (f, r) => seen.push(r));
+    let foldMsg = ''; try { fold(events); } catch (e) { foldMsg = e.message; }
+    check('J23f: a MISNAMED segment is invisible — the filename IS the first event\'s ts (§8.1). Pre-fix a stray file published a second body at the same ts and made the project permanently unfoldable',
+      events.length === 1 && seen.length === 1 && String(seen[0]).startsWith('segment-misnamed:') && foldMsg === '',
+      `${events.length} event(s), reported ${JSON.stringify(seen)}`);
+  }
+
+  // (2) a DANGLING SYMLINK at a segment path
+  {
+    const dir = path.join(journal, 'actor-b');
+    fs.mkdirSync(path.join(dir, 'segments'), { recursive: true });
+    const outside = path.join(tmp, 'ESCAPED.json');
+    fs.symlinkSync(outside, path.join(dir, 'segments', segmentName(t(1, 'actor-b'))));
+    let refused = ''; try { writeActionSegment(dir, [set(1, 'actor-b')]); } catch (e) { refused = e.message; }
+    check('J23f (SECURITY): a DANGLING SYMLINK at a segment path no longer reads as "path free" — the writer REFUSES and creates nothing outside the project (pre-fix it wrote through the link)',
+      refused.includes('containment') && !fs.existsSync(outside), `"${refused.slice(0, 70)}" · outside file exists = ${fs.existsSync(outside)}`);
+    const seen = [];
+    readSegments(dir, (f, r) => seen.push(r));
+    check('J23f (SECURITY): the READER refuses the same link rather than following it — containment is enforced on both sides of the file',
+      seen.length === 1 && String(seen[0]).startsWith('containment:'), JSON.stringify(seen));
+  }
+
+  // (3) a SYMLINKED `segments` directory relocates the whole stream
+  {
+    const dir = path.join(journal, 'actor-c');
+    fs.mkdirSync(dir, { recursive: true });
+    const elsewhere = path.join(tmp, 'elsewhere');
+    fs.mkdirSync(elsewhere);
+    fs.symlinkSync(elsewhere, path.join(dir, 'segments'));
+    let wErr = '', rErr = '';
+    try { writeActionSegment(dir, [set(1, 'actor-c')]); } catch (e) { wErr = e.message; }
+    try { readSegments(dir, () => {}); } catch (e) { rErr = e.message; }
+    check('J23f (SECURITY): a SYMLINKED `segments` directory relocates the entire stream — writer and reader both refuse it, and nothing is written outside',
+      wErr.includes('containment') && rErr.includes('containment') && fs.readdirSync(elsewhere).length === 0,
+      `${fs.readdirSync(elsewhere).length} file(s) outside · "${wErr.slice(0, 50)}"`);
+  }
+
+  // (4) the actor directory is a NAME, resolved through ONE constructor
+  {
+    const dirB = actorDirFor(journal, 'actor-d');
+    writeActionSegment(dirB, [set(1, 'actor-d')]);
+    let travErr = '';
+    try { readSegments(`${journal}/actor-a/../actor-d`, () => {}); } catch (e) { travErr = e.message; }
+    check('J23f (SECURITY): a traversal-shaped actor directory is REFUSED — pre-fix `readSegments(journal + "actor-a/../actor-d")` returned actor-d\'s stream while the caller believed it held actor-a\'s (basename saw only the normalized path)',
+      travErr.includes('traversal'), `"${travErr.slice(0, 80)}"`);
+    const badSlugs = ['Actor_A', '../etc', 'ab', ''];
+    const refusedSlugs = badSlugs.filter((s) => { try { actorDirFor(journal, s); return false; } catch { return true; } });
+    check('J23f: actorDirFor is the ONE actor-directory constructor — it applies the §8.1 slug grammar and refuses anything that escapes the journal root',
+      refusedSlugs.length === badSlugs.length && actorDirFor(journal, 'actor-d') === path.resolve(journal, 'actor-d'),
+      `${refusedSlugs.length}/${badSlugs.length} refused`);
+  }
+
+  // (5) the cap applies BEFORE the read (stat guard), and segmentName is injective by grammar
+  {
+    const dir = path.join(journal, 'actor-e');
+    writeActionSegment(dir, [set(1, 'actor-e')]);
+    const big = path.join(dir, 'segments', segmentName(t(2, 'actor-e')));
+    fs.writeFileSync(big, 'x'.repeat(SEGMENT_LIMIT + 1024));
+    const seen = [];
+    const got = readSegments(dir, (f, r) => seen.push(r));
+    check('J23f: an oversize segment is reported from its STAT — the 4 MiB cap applies before the read, not after it (reading first costs ~3x the file in RSS to reach the same verdict)',
+      got.length === 1 && seen.length === 1 && seen[0] === 'oversize', JSON.stringify(seen));
+    const collide = ['a:b', 'a_b', '2026-08-16T06:00:01.000Z|0000|actor a'];
+    const refusedNames = collide.filter((s) => { try { segmentName(s); return false; } catch { return true; } });
+    check('J23f: the filename encoding is injective BY GRAMMAR — segmentName refuses a non-ts outright, so `a:b` and `a_b` can never encode to one name (layer-2 independence, §8.1)',
+      refusedNames.length === collide.length && segmentName(t(1)) === '2026-08-16T06_00_01.000Z,0000,actor-a.action.json',
+      `${refusedNames.length}/${collide.length} refused`);
+  }
+
+  // (6) the §2 ipath grammar covers the characters that are not printable at all
+  {
+    const gaps = [
+      ['NUL', 'a b'], ['newline', 'a\nb'], ['DEL', 'ab'],
+      ['right-to-left override', 'a‮b'], ['Windows device CON', 'CON'], ['Windows device COM1.json', 'COM1.json'],
+      ['trailing dot', 'name.'],
+    ];
+    const accepted = gaps.filter(([, v]) => ipathError(v) === null);
+    check('J23f: the §2 ipath grammar refuses control characters, NUL, bidi overrides, Windows reserved device names and trailing dots — a §2 list of PUNCTUATION said nothing about names that stop meaning what they look like',
+      accepted.length === 0, accepted.length ? `still accepted: ${accepted.map(([l]) => l).join(', ')}` : `${gaps.length} firing cases`);
+    check('J23f: the legitimate §2 paths are untouched by the hardening',
+      ['TIT.usfm', 'checking/alignments/TIT.json', 'checking/translationWords/1CO.json', 'vrs.json', 'metadata.json']
+        .every((p) => ipathError(p) === null));
+  }
+
+  fs.rmSync(tmp, { recursive: true, force: true });
+}
+
 // ---------- J24: staged-intent (outbox) republication — exact bytes (§8.1 asymmetric rule, local side) ----------
 {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-j24-'));
@@ -1940,9 +2223,13 @@ try {
 {
   const vrsBytes = fs.readFileSync(ING('vrs.json'), 'utf8');
   const t = (s, a) => `2026-08-05T00:00:${String(s).padStart(2, '0')}.000Z|0000|${a}`;
-  const v1 = mkEvent({ op: 'project.vrs.set', actor: 'actor-a', ts: t(1, 'actor-a'), name: 'eng', bytes: vrsBytes });
-  const v1dup = mkEvent({ op: 'project.vrs.set', actor: 'actor-b', ts: t(2, 'actor-b'), name: 'eng', bytes: vrsBytes });
-  const v2 = mkEvent({ op: 'project.vrs.set', actor: 'actor-b', ts: t(3, 'actor-b'), name: 'lxx', bytes: '{"maxVerses":{}}' });
+  // §8.5: "`v: 1` writers emit it only within the creation/seed segment" — the seed
+  // marker IS that rule's enforceable form (round 9), so every legitimate vrs event
+  // carries one.
+  const seedOf = (source = 'creation') => ({ source });
+  const v1 = mkEvent({ op: 'project.vrs.set', actor: 'actor-a', ts: t(1, 'actor-a'), seed: seedOf(), name: 'eng', bytes: vrsBytes });
+  const v1dup = mkEvent({ op: 'project.vrs.set', actor: 'actor-b', ts: t(2, 'actor-b'), seed: seedOf(), name: 'eng', bytes: vrsBytes });
+  const v2 = mkEvent({ op: 'project.vrs.set', actor: 'actor-b', ts: t(3, 'actor-b'), seed: seedOf('tc3-import'), name: 'lxx', bytes: '{"maxVerses":{}}' });
   const first = fold([v1]);
   const deduped = fold([v1, v1dup]);
   const rejected = fold([v1, v1dup, v2]);
@@ -2547,6 +2834,226 @@ try {
       });
     check('J31 PROPERTY: the generator actually reaches the accepting branch (the property is not vacuous)',
       accepted > 0, `${accepted} schema-valid events exercised both conjuncts`);
+  }
+
+  // --- FINDING 6 (round 9): a DERIVED value is a value. `skeleton` was type-checked and
+  //     the slot keys `slotKeysOf()` derives from it never were — so a `__proto__` slot
+  //     recomposed to `[object Object]` and PERMANENTLY destroyed the verse in committed
+  //     USFM (unrepairable: `text.verse.set` correctly refuses that key, so no later
+  //     event can address the slot). The keys now carry the same §8.4 slot grammar every
+  //     other verse key carries, at every op that accepts a skeleton. ---
+  {
+    const skelWith = (key) => `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}${key}${SLOT}`;
+    const hostileKeys = ['__proto__', 'constructor', '../../etc/passwd', '1:1|x', 'banana', '1:1:2', '1', '1:1 '];
+    const ops = ['book.add', 'text.skeleton.set', 'text.structure.apply'];
+    const evFor = (op, skeleton) => {
+      const common = { actor: 'actor-a', ts: okTs(9), base: op === 'book.add' ? null : okTs(0), book: 'TIT' };
+      if (op === 'book.add') return mkEvent({ ...common, op, scope: [], skeleton, initialVerses: {} });
+      if (op === 'text.skeleton.set') return mkEvent({ ...common, op, skeleton });
+      return mkEvent({ ...common, op, skeleton, transitions: Object.fromEntries(slotKeysOf(skeleton).map((k) => [k, { text: 'x\n', sources: [] }])), dispositions: [] });
+    };
+    let allClean = true; const details = [];
+    for (const op of ops)
+      for (const key of hostileKeys) {
+        const r = refusedBothWays(evFor(op, skelWith(key)));
+        if (!r.ok) { allClean = false; details.push(`${op} "${key}"`); }
+      }
+    check('J31 finding 6: every SLOT KEY a skeleton derives carries the §8.4 slot grammar — at book.add, text.skeleton.set AND text.structure.apply. A `__proto__` slot used to seal, recompose to "[object Object]" and destroy the verse permanently',
+      allClean, details.length ? `missed: ${details.join(' · ')}` : `${ops.length * hostileKeys.length} firing cases`);
+    // pre-fix the consequence was in COMMITTED USFM, not in a message — assert its absence
+    let usfm = '';
+    try { usfm = fold([evFor('book.add', skelWith('__proto__'))]).books.TIT.usfm; } catch { usfm = 'REFUSED'; }
+    check('J31 finding 6: the measured consequence is gone — the fold no longer produces `\\v 1 [object Object]` for a __proto__ slot; it refuses the event',
+      usfm === 'REFUSED', usfm.slice(0, 40));
+    const dupSkel = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 1 ${SLOT}1:1${SLOT}`;
+    let allDup = true;
+    for (const op of ops) if (!refusedBothWays(evFor(op, dupSkel)).ok) allDup = false;
+    check('J31 finding 6: DUPLICATE slot keys are refused too — two slots that name one verse head collapse silently at recompose',
+      allDup);
+    check('J31 finding 6: a well-formed skeleton (single and span keys) still seals and folds — the hardening adds no false refusal',
+      (() => { try { fold([evFor('book.add', `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 4-5 ${SLOT}1:4-5${SLOT}`)]); return true; } catch { return false; } })());
+  }
+
+  // --- FINDING 7: journaled verse content is ONE content slot. A `\c ` or `\v ` inside
+  //     `text.verse.set.text` SILENTLY RE-PARTITIONED the committed book on the next
+  //     decompose, and the §5.1 extraction stopped at the embedded marker, so the
+  //     smuggled bytes lived OUTSIDE the I-3 validity hash. ---
+  {
+    const bad = [
+      ['an embedded \\c 2 (re-partitions the book into different slots)', 'uno\n\\c 2\n\\v 1 smuggled\n'],
+      ['an embedded \\v 9 (the bytes after it fall outside the I-3 hash)', 'uno\n\\v 9 outside\n'],
+      ['the reserved §8.4 slot delimiter U+0001', `uno${SLOT}\n`],
+    ];
+    let allClean = true; const details = [];
+    for (const [label, text] of bad) {
+      const rows = [
+        mkEvent({ op: 'text.verse.set', actor: 'actor-a', ts: okTs(9), book: 'TIT', chapter: '1', verse: '1', text }),
+        mkEvent({ op: 'book.add', actor: 'actor-a', ts: okTs(9), book: 'TIT', scope: [], skeleton: skel1('TIT'), initialVerses: { '1:1': text } }),
+        mkEvent({ op: 'text.structure.apply', actor: 'actor-a', ts: okTs(9), base: okTs(0), book: 'TIT', skeleton: skel1('TIT'), transitions: { '1:1': { text, sources: [] } }, dispositions: [] }),
+      ];
+      for (const ev of rows) if (!refusedBothWays(ev).ok) { allClean = false; details.push(`${ev.op}: ${label}`); }
+    }
+    check('J31 finding 7: journaled verse content carrying a §8.4 region marker (\\v /\\c ) or the reserved U+0001 is refused at seal AND at fold — at every op that carries verse content, so the committed book can never silently re-partition',
+      allClean, details.length ? `missed: ${details.join(' · ')}` : `${bad.length * 3} firing cases`);
+    check('J31 finding 7: the codec and the grammar share ONE boundary definition — the schema refuses exactly the marker `decompose` splits on, so a slot the schema accepts always survives a decompose/recompose round trip',
+      (() => {
+        const add = mkEvent({ op: 'book.add', actor: 'actor-a', ts: okTs(0), book: 'TIT', scope: [], skeleton: skel('TIT'), initialVerses: {} });
+        const ok = mkEvent({ op: 'text.verse.set', actor: 'actor-a', ts: okTs(1), base: okTs(0), book: 'TIT', chapter: '1', verse: '1', text: 'uno \\f + \\ft nota\\f*\n\\p\n' });
+        const usfm = fold([add, ok]).books.TIT.usfm;
+        return JSON.stringify(Object.keys(decompose(usfm).verses)) === JSON.stringify(['1:1', '1:2']);
+      })());
+  }
+
+  // --- FINDING 8: `resource.pin.set.entry` was unvalidated — the SLOT carried a grammar
+  //     and the value it stores carried none, so garbage reached the projected §5.3
+  //     resources.json verbatim. ---
+  {
+    const pin = (slot, entry) => mkEvent({ op: 'resource.pin.set', actor: 'actor-a', ts: okTs(9), slot, entry });
+    const rows = [
+      ['translationNotes: "not-an-object"', pin('languageSets.primary.translationNotes', 'not-an-object')],
+      ['resources.originalLanguage.nt: 42', pin('resources.originalLanguage.nt', 42)],
+      ['a pin entry with no repoPath', pin('languageSets.primary.translationWords', { version: 'v1', flavor: 'x' })],
+      ['a pin entry with an empty version', pin('languageSets.primary.translationWords', { repoPath: 'r', version: '', flavor: 'x' })],
+      ['a gatewayLanguage entry with no languageId', pin('languageSets.primary.gatewayLanguage', { owner: 'uW' })],
+      ['an extraScripture entry whose id does not match its slot', pin('extraScripture.ult', { id: 'ust', repoPath: 'r', version: 'v1', flavor: 'scripture/textTranslation' })],
+      ['a sha that is not 40 lowercase hex', pin('extraScripture.ult', { id: 'ult', repoPath: 'r', version: 'v1', flavor: 'f', sha: 'DEADBEEF' })],
+    ];
+    let allClean = true; const details = [];
+    for (const [label, ev] of rows) { if (!refusedBothWays(ev).ok) { allClean = false; details.push(label); } }
+    check('J31 finding 8: every §5.3 pin ENTRY is validated by the §5.3 entry shape — the slot grammar alone let `"not-an-object"` and `42` reach the projected resources.json',
+      allClean, details.length ? `missed: ${details.join(' · ')}` : `${rows.length} firing cases`);
+    check('J31 finding 8: ONE validator, shared — the same pinEntryError accepts every entry of the sample burrito\'s own §5.3 document',
+      (() => {
+        const doc = JSON.parse(fs.readFileSync(ING('checking/resources.json'), 'utf8'));
+        const pairs = [];
+        for (const set of Object.keys(doc.languageSets || {}))
+          for (const slot of Object.keys(doc.languageSets[set])) pairs.push([`languageSets.${set}.${slot}`, doc.languageSets[set][slot]]);
+        for (const group of Object.keys(doc.resources || {}))
+          for (const t of Object.keys(doc.resources[group])) pairs.push([`resources.${group}.${t}`, doc.resources[group][t]]);
+        for (const e of doc.extraScripture || []) pairs.push([`extraScripture.${e.id}`, e]);
+        const bad = pairs.filter(([s, e]) => pinEntryError(s, e) !== null);
+        return bad.length === 0 && pairs.length > 0;
+      })());
+  }
+
+  // --- FINDING 9: the identity SERIALIZER checks its own precondition. A bare join
+  //     laundered `-0`, arrays, objects and booleans into well-formed-LOOKING keys that
+  //     its own validator then accepted. ---
+  {
+    const rows = [
+      ['-0 (joins as "0")', { checkId: 'c1', occurrence: 1, reference: { bookId: 'tit', chapter: -0, verse: 1 } }],
+      ['an array (joins as its comma form)', { checkId: ['a'], occurrence: 1, reference: { bookId: 'tit', chapter: 1, verse: 1 } }],
+      ['an object (joins as "[object Object]")', { checkId: 'c1', occurrence: 1, reference: { bookId: 'tit', chapter: { a: 1 }, verse: 1 } }],
+      ['a boolean (joins as "true")', { checkId: 'c1', occurrence: 1, reference: { bookId: 'tit', chapter: true, verse: 1 } }],
+      ['a missing reference object', { checkId: 'c1', occurrence: 1 }],
+    ];
+    const laundered = rows.filter(([, cid]) => { try { return identityKeyError(identityKeyOf(cid)) === null; } catch { return false; } });
+    check('J31 finding 9: identityKeyOf validates its own components and THROWS — the serializer can no longer emit a string its own validator would accept from input the schema rejects (-0, arrays, objects, booleans, a missing reference)',
+      laundered.length === 0, laundered.length ? `still laundered: ${laundered.map(([l]) => l).join(', ')}` : `${rows.length} firing cases`);
+    check('J31 finding 9: a well-formed contextId still serializes — the precondition adds no false refusal',
+      identityKeyOf({ checkId: 't1g7', occurrence: 1, reference: { bookId: 'tit', chapter: 1, verse: 1 } }) === 't1g7|tit|1|1|1');
+  }
+
+  // --- FINDING 10: a CHARSET is not a CALENDAR. `2026-13-45T25:70:99.999Z` matched the
+  //     ISO regex, sealed, and parsed to NaN — so the §8.2 clock ratchet compared against
+  //     NaN, silently no-opped, and left the local clock PERMANENTLY behind. ---
+  {
+    const rows = [
+      ['2026-13-45T25:70:99.999Z (parseTs → NaN; the clock ratchet silently no-ops forever)', '2026-13-45T25:70:99.999Z|0000|actor-a'],
+      ['2026-02-30 (parses two days late — string order and instant order disagree)', '2026-02-30T00:00:00.000Z|0000|actor-a'],
+      ['2025-02-29 (not a leap year)', '2025-02-29T00:00:00.000Z|0000|actor-a'],
+      ['2026-00-10 (month zero)', '2026-00-10T00:00:00.000Z|0000|actor-a'],
+    ];
+    let allClean = true; const details = [];
+    for (const [label, ts] of rows) {
+      const r = refusedBothWays(mkEvent({ op: 'settings.set', actor: 'actor-a', ts, path: 'ui.x', value: 1 }));
+      if (!r.ok) { allClean = false; details.push(label); }
+    }
+    check('J31 finding 10: an §8.2 ts MUST carry a real calendar instant, not merely the ISO charset — every non-calendar ts is refused at seal AND at fold',
+      allClean, details.length ? `missed: ${details.join(' · ')}` : `${rows.length} firing cases`);
+    // the property the fix buys: string order IS instant order over the accepted set
+    prop('J31 finding 10 PROPERTY: over every ts the grammar accepts, compareTs (string order) AGREES with parseTs (instant order) — the two orders can no longer disagree',
+      fc.record({
+        y: fc.integer({ min: 1970, max: 2999 }), mo: fc.integer({ min: 1, max: 13 }), d: fc.integer({ min: 1, max: 32 }),
+        h: fc.integer({ min: 0, max: 24 }), mi: fc.integer({ min: 0, max: 60 }), s: fc.integer({ min: 0, max: 60 }),
+        ms: fc.integer({ min: 0, max: 999 }), c: fc.integer({ min: 0, max: 0xffff }),
+        y2: fc.integer({ min: 1970, max: 2999 }), mo2: fc.integer({ min: 1, max: 13 }), d2: fc.integer({ min: 1, max: 32 }),
+      }),
+      (r) => {
+        const p2 = (n) => String(n).padStart(2, '0');
+        const mk = (y, mo, d, h, mi, s, ms, c) => `${y}-${p2(mo)}-${p2(d)}T${p2(h)}:${p2(mi)}:${p2(s)}.${String(ms).padStart(3, '0')}Z|${c.toString(16).padStart(4, '0')}|actor-a`;
+        const a = mk(r.y, r.mo, r.d, r.h, r.mi, r.s, r.ms, r.c);
+        const b = mk(r.y2, r.mo2, r.d2, r.h, r.mi, r.s, r.ms, r.c);
+        const seals = (t) => validateAction([mkEvent({ op: 'settings.set', actor: 'actor-a', ts: t, path: 'ui.x', value: 1 })]) === null;
+        if (!seals(a) || !seals(b)) return true; // precondition: the grammar refused it
+        const inst = Math.sign(parseTs(a).physical - parseTs(b).physical);
+        return compareTs(a, b) === inst;
+      });
+    check('J31 finding 10: real instants — including a genuine leap day — still seal and fold',
+      ['2024-02-29T12:00:00.000Z|0000|actor-a', '2026-08-16T23:59:59.999Z|ffff|actor-a']
+        .every((ts) => { try { fold([mkEvent({ op: 'settings.set', actor: 'actor-a', ts, path: 'ui.x', value: 1 })]); return true; } catch { return false; } }));
+  }
+
+  // --- FINDING 11: §8.5 says `v: 1` writers emit `project.vrs.set` "only within the
+  //     creation/seed segment". The sentence was normative and unenforced. ---
+  {
+    const vrs = (over) => mkEvent({ op: 'project.vrs.set', actor: 'actor-a', ts: okTs(9), name: 'eng', bytes: '{"maxVerses":{}}', ...over });
+    const rows = [
+      ['no seed marker at all (an ordinary later event)', vrs({})],
+      ['seed.source "out-of-band-usfm" (a TEXT reconcile source, never a frame)', vrs({ seed: { source: 'out-of-band-usfm' } })],
+      ['a seed field that is not a seed object', vrs({ seed: 'creation' })],
+    ];
+    let allClean = true; const details = [];
+    for (const [label, ev] of rows) if (!refusedBothWays(ev).ok) { allClean = false; details.push(label); }
+    check('J31 finding 11: project.vrs.set outside a creation/seed segment is refused at seal AND at fold — the §8.5 "creation/seed only" sentence now has an implementation',
+      allClean, details.length ? `missed: ${details.join(' · ')}` : `${rows.length} firing cases`);
+    check('J31 finding 11: each legitimate seeding source still seals — creation, sidecar-migration and tc3-import',
+      ['creation', 'sidecar-migration', 'tc3-import'].every((source) => {
+        try { sealAction([vrs({ seed: { source } })]); return true; } catch { return false; }
+      }));
+  }
+
+  // --- FINDING 12 (DEFERRED HALF, asserted here): the note re-key destination grammar is
+  //     bound to the note's target KIND, and the ONE predicate that binds them lives in
+  //     grammar.mjs so the schema and the fold apply the same rule. The fold call-site
+  //     (rewriteNote) is the semantics half and is tracked separately. ---
+  {
+    const verseTarget = { book: 'TIT', chapter: '1', verse: '2' };
+    const decTarget = { decisionKey: 'x1|tit|1|2|1' };
+    const rows = [
+      ['a VERSE-targeted note re-keyed to a §5.2 identity key', verseTarget, 'x1|tit|1|2|1', ['1:1']],
+      ['a decisionKey-targeted note re-keyed to a verse slot', decTarget, '1:1', ['1:1']],
+      ['a verse-targeted note re-keyed to a slot outside the mapping', verseTarget, '9:9', ['1:1']],
+    ];
+    const missed = rows.filter(([, target, to, slots]) => noteRekeyError(target, to, slots) === null);
+    check('J31 finding 12: ONE predicate binds a note re-key destination to the note\'s target KIND — a verse target re-keys to a verse slot, a decisionKey target to a §5.2 identity key. Pre-fix a verse-targeted note re-keyed to an identity key produced `{book, chapter: "x1|tit|1|2|1", verse: ""}` — a target the schema itself rejects',
+      missed.length === 0, missed.length ? `missed: ${missed.map(([l]) => l).join(', ')}` : `${rows.length} firing cases`);
+    check('J31 finding 12: the two legitimate re-keys still pass the predicate',
+      noteRekeyError(verseTarget, '1:1', ['1:1']) === null && noteRekeyError(decTarget, 'x1|tit|1|1|1', []) === null);
+  }
+
+  // --- FINDING 13: own-property hygiene at the checkpoint. §8.7 calls the regeneration
+  //     set EXHAUSTIVE, and it was assembled in a plain `{}` — where assigning a
+  //     `__proto__` key runs the prototype setter and DROPS the entry. An exhaustive set
+  //     that silently loses a member is the one thing it may not be. ---
+  {
+    const foldOut = { books: {}, alignments: {}, decisions: {}, pins: {}, settings: {},
+      projectMeta: {}, projectMetaRemoved: [], vrs: null, scope: {} };
+    const set = derivedProjections(foldOut, { baseMetadata: { type: { flavorType: {} } }, resolutions: {} });
+    const plain = {}; plain['__proto__'] = 'bytes';
+    check('J31 finding 13: the §8.7 regeneration set is a NULL-PROTOTYPE container — a plain `{}` silently drops a `__proto__` key, so an "exhaustive" set could lose a member with no error anywhere',
+      Object.getPrototypeOf(set) === null && Object.keys(plain).length === 0,
+      `projection set prototype = ${Object.getPrototypeOf(set)} · plain {} kept ${Object.keys(plain).length} of 1`);
+    const withProto = derivedProjections(foldOut, { baseMetadata: { type: { flavorType: {} } }, resolutions: {} });
+    withProto['__proto__'] = 'bytes';
+    check('J31 finding 13: a `__proto__` projection key is RETAINED in the set and reported by the divergence classifier — pre-fix it vanished between emit and classification',
+      Object.keys(withProto).includes('__proto__') &&
+      classifyDivergence({}, withProto).diverged.includes('__proto__'),
+      JSON.stringify(classifyDivergence({}, withProto).diverged));
+    check('J31 finding 13: classifyDivergence tests OWN membership, never `in` — `in` walks the prototype chain, so the "absent on disk is divergence too" rule would be read off a set that does not contain the key',
+      classifyDivergence({}, Object.assign(Object.create(null), { 'toString': 'x' })).diverged.includes('toString') &&
+      classifyDivergence(Object.assign(Object.create(null), { 'valueOf': 'x' }), {}).diverged.includes('valueOf'),
+      JSON.stringify(classifyDivergence({}, Object.assign(Object.create(null), { 'toString': 'x' }))));
   }
 
   // --- §8.1 actor.json: the slug is a directory name, createdAt is required ---

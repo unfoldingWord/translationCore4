@@ -7,30 +7,93 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import { validateAction } from './schema.mjs';
-import { actorSlugError, isoInstantError, ipathError, isStr, isObj } from './grammar.mjs';
+import { validateAction, normalizeEvent } from './schema.mjs';
+import { actorSlugError, isoInstantError, ipathError, tsError, isStr, isObj } from './grammar.mjs';
 
 const sha256 = (s) => crypto.createHash('sha256').update(s, 'utf8').digest('hex');
 export const SEGMENT_LIMIT = 4 * 1024 * 1024; // 4 MiB (§8.1)
+// The container adds `{"container":1,"body":…,"sha256":"<64 hex>"}` plus the JSON escaping
+// of the body string. The body can therefore never be larger than the cap minus this
+// frame — which is what lets the writer refuse an oversize action BEFORE it pays for the
+// second serialization (a raw RangeError used to come out of the seal on huge input).
+const CONTAINER_FRAME = 128;
+
+// ---------- §8.1 containment is a FILESYSTEM guarantee, not a lexical one ----------
+// A lexical check reads a DANGLING SYMLINK as "path free", so the immutability branch is
+// skipped and the write lands OUTSIDE the project; it reads a SYMLINKED `segments`
+// directory as contained, so the whole stream relocates; and the reader follows both.
+// lstat + realpath + O_NOFOLLOW close all three at the syscall, where the guarantee lives.
+// SCOPE (measured): the remote vector does not exist — git carries a symlink as a blob
+// whose content fails validateSegment — so this guards LOCAL media and backup restore,
+// and intake needs nothing added.
+const O_NOFOLLOW = fs.constants.O_NOFOLLOW || 0;
+const READ_NOFOLLOW = fs.constants.O_RDONLY | O_NOFOLLOW;
+const WRITE_NOFOLLOW = fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_TRUNC | O_NOFOLLOW;
+const lstatOrNull = (p) => { try { return fs.lstatSync(p); } catch { return null; } };
+
+// §8.1: an actor directory is named by the actor SLUG, and the slug IS the actor
+// identity. `readSegments(journalDir + "actor-a/../actor-b")` used to return actor-b's
+// stream while the caller believed it held actor-a's — the reader derived the identity by
+// basename AFTER path normalization had erased the traversal. ONE constructor applies the
+// slug grammar; every reader and writer resolves through it.
+export const actorDirFor = (journalDir, actorId) => {
+  const err = actorSlugError(actorId);
+  if (err) throw new Error(`actor directory ${err} — refuse (§8.1)`);
+  const root = path.resolve(journalDir);
+  const dir = path.resolve(root, actorId);
+  if (path.dirname(dir) !== root)
+    throw new Error(`actor directory "${actorId}" escapes the journal root — refuse (§8.1)`);
+  return dir;
+};
+
+// The actor a directory stands for. A supplied path that carries a traversal segment
+// names one directory and resolves to another — never a typo, always a bypass.
+export const actorOf = (actorDir) => {
+  if (String(actorDir).split(/[\\/]/).some((s) => s === '..' || s === '.'))
+    throw new Error(`actor directory "${actorDir}" carries a traversal segment — resolve it with actorDirFor(journalDir, actorId) (§8.1)`);
+  const name = path.basename(path.resolve(actorDir));
+  const err = actorSlugError(name);
+  if (err) throw new Error(`actor directory name ${err} — refuse (§8.1)`);
+  return name;
+};
+
+// The actor's segments directory, proven to be a real directory inside the actor
+// directory — not a symlink pointing anywhere else.
+const segmentsDirOf = (actorDir) => {
+  const dir = path.resolve(actorDir, 'segments');
+  const st = lstatOrNull(dir);
+  if (st === null) return dir; // absent: mkdirSync creates a real directory below
+  if (!st.isDirectory())
+    throw new Error(`the actor segments path is a ${st.isSymbolicLink() ? 'symlink' : 'non-directory'} — refuse (§8.1 containment)`);
+  if (path.dirname(fs.realpathSync(dir)) !== fs.realpathSync(actorDir))
+    throw new Error(`the actor segments directory resolves outside its actor directory — refuse (§8.1 containment)`);
+  return dir;
+};
 
 // Filename: the action's first event ts with ':' → '_' and '|' → ','  (§8.1). ':' and '|'
 // are the two ts characters reserved in Windows filenames ('|' is also §2-forbidden);
 // '_' and ',' never occur in a raw ts, so the escape is injective and reversible. The
 // escaped characters sit at fixed positions (§8.2), so filename sort = ts sort within an
-// actor directory.
-export const segmentName = (ts) => `${String(ts).replaceAll(':', '_').replaceAll('|', ',')}.action.json`;
+// actor directory. Injectivity holds only over the ts GRAMMAR — `a:b` and `a_b` encode to
+// the same name — so the encoder REFUSES a non-ts, rather than depending on a caller to
+// have checked (layer-2 independence, §8.1).
+export const segmentName = (ts) => {
+  const err = tsError(ts);
+  if (err) throw new Error(`segment name requires an §8.2 ts — ${err}`);
+  return `${ts.replaceAll(':', '_').replaceAll('|', ',')}.action.json`;
+};
 export const segmentTs = (name) =>
   String(name).replace(/\.action\.json$/, '').replaceAll(',', '|').replaceAll('_', ':');
 
-// Defense in depth (§8.1, round 6; extended round 8): the final segment path MUST
-// resolve strictly inside the actor's segments directory AND the encoded filename MUST
-// satisfy the §2 ingredient-path segment grammar — independent of the schema's §8.2 ts
-// grammar, a ts-shaped value can never smuggle a filesystem path past the writer.
+// Defense in depth (§8.1, round 6; extended rounds 8–9): the final segment path MUST
+// resolve strictly inside the actor's REAL segments directory AND the encoded filename
+// MUST satisfy the §2 ingredient-path segment grammar — independent of the schema's §8.2
+// ts grammar, a ts-shaped value can never smuggle a filesystem path past the writer.
 export const segmentPathFor = (actorDir, ts) => {
   const name = segmentName(ts);
   const nameErr = ipathError(name);
   if (nameErr) throw new Error(`segment name for ts "${ts}" ${nameErr} — refuse to write (§2/§8.1)`);
-  const dir = path.resolve(actorDir, 'segments');
+  const dir = segmentsDirOf(actorDir);
   const file = path.resolve(dir, name);
   if (path.dirname(file) !== dir)
     throw new Error(`segment path for ts "${ts}" escapes the actor segments directory — refuse to write (§8.1)`);
@@ -40,10 +103,22 @@ export const segmentPathFor = (actorDir, ts) => {
 // Seal one action (all events of ONE store mutation, ts order, one actor; multi-scope
 // allowed). The writer applies the SAME schema the reader/intake applies (§8.1) —
 // writer-symmetric by construction.
-export const sealAction = (events) => {
+//
+// This is also the ONE I-4 chokepoint (§8.5): every text a writer journals is normalized
+// to Unicode NFC here, once, before the bytes exist. The order matters — validate the
+// caller's action FIRST (so a non-NFC IDENTITY value and a `__proto__` own key are
+// REFUSED, never quietly rewritten or swallowed), then normalize, then re-validate the
+// normalized copy, so what is sealed is exactly what a reader will validate.
+export const sealAction = (eventsIn) => {
+  const rawErr = validateAction(eventsIn);
+  if (rawErr) throw new Error(`refuse to seal a malformed action (${rawErr}) — §8.1/§8.5 schema`);
+  const events = Array.isArray(eventsIn) ? eventsIn.map(normalizeEvent) : eventsIn;
   const err = validateAction(events);
-  if (err) throw new Error(`refuse to seal a malformed action (${err}) — §8.1/§8.5 schema`);
+  if (err) throw new Error(`I-4 normalization produced a malformed action (${err}) — §8.5`);
   const body = JSON.stringify({ events });
+  // cheap first: the body alone already exceeds the cap, so never pay for the container
+  if (Buffer.byteLength(body, 'utf8') > SEGMENT_LIMIT - CONTAINER_FRAME)
+    throw new Error(`action segment exceeds the 4 MiB limit (§8.1)`);
   const seg = JSON.stringify({ container: 1, body, sha256: sha256(body) });
   if (Buffer.byteLength(seg, 'utf8') > SEGMENT_LIMIT)
     throw new Error(`action segment exceeds the 4 MiB limit (§8.1)`);
@@ -60,17 +135,37 @@ export const writeActionSegment = (actorDir, events) => {
   // order of operations (round 6): validate FIRST (seal = the schema), derive the
   // guarded path SECOND, touch the filesystem LAST — a malformed action creates nothing.
   const sealed = sealAction(events);
+  // §8.1 actor binding, WRITER side. Both intakes check that a segment's events name the
+  // directory that carries them; the writer did not, so a device could publish another
+  // actor's events into its own stream and only be caught downstream.
+  const actor = actorOf(actorDir);
+  const foreign = JSON.parse(JSON.parse(sealed).body).events.find((e) => e.actor !== actor);
+  if (foreign)
+    throw new Error(`refuse to write: event actor "${foreign.actor}" is not the actor directory "${actor}" (§8.1/§8.3 actor binding)`);
   const file = segmentPathFor(actorDir, events[0].ts);
-  if (fs.existsSync(file)) {
-    const existing = fs.readFileSync(file, 'utf8');
+  const existing = readSegmentFile(file); // lstat-guarded: a symlink REFUSES, it never reads through
+  if (existing !== null) {
     if (existing === sealed) return file; // idempotent accept
     if (validateSegment(existing).ok)
       throw new Error(`segment ${path.basename(file)} already accepted with different bytes — refuse to overwrite (§8.1)`);
     throw new Error(`segment ${path.basename(file)} exists but is invalid — recover via republishSegment with staged intent (§8.1)`);
   }
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, sealed);
+  fs.writeFileSync(file, sealed, { flag: WRITE_NOFOLLOW });
   return file;
+};
+
+// Read one segment file, or null when the path is free. A symlink or any other
+// non-regular file at a segment path is a containment violation, never data: `existsSync`
+// reported a DANGLING symlink as free and the following write escaped the project.
+const readSegmentFile = (file) => {
+  const st = lstatOrNull(file);
+  if (st === null) return null;
+  if (!st.isFile())
+    throw new Error(`segment path ${path.basename(file)} is a ${st.isSymbolicLink() ? 'symlink' : 'non-regular file'} — refuse to read or write through it (§8.1 containment)`);
+  if (st.size > SEGMENT_LIMIT)
+    return ''; // oversize: invalid by §8.1, and never read into memory
+  return fs.readFileSync(file, { flag: READ_NOFOLLOW, encoding: 'utf8' });
 };
 
 // §8.1 asymmetric rule, local side: an INVALID (or absent) segment may be replaced by
@@ -79,15 +174,19 @@ export const writeActionSegment = (actorDir, events) => {
 export const republishSegment = (actorDir, stagedBytes) => {
   const r = validateSegment(stagedBytes);
   if (!r.ok) throw new Error(`staged intent is itself invalid (${r.reason}) — refuse to republish`);
+  const actor = actorOf(actorDir);
+  const foreign = r.events.find((e) => e.actor !== actor);
+  if (foreign)
+    throw new Error(`refuse to republish: event actor "${foreign.actor}" is not the actor directory "${actor}" (§8.1/§8.3 actor binding)`);
   const file = segmentPathFor(actorDir, r.events[0].ts);
-  if (fs.existsSync(file)) {
-    const existing = fs.readFileSync(file, 'utf8');
+  const existing = readSegmentFile(file);
+  if (existing !== null) {
     if (existing === stagedBytes) return file; // already published
     if (validateSegment(existing).ok)
       throw new Error(`segment ${path.basename(file)} is valid and differs from the staged intent — refuse to overwrite (§8.1)`);
   }
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, stagedBytes);
+  fs.writeFileSync(file, stagedBytes, { flag: WRITE_NOFOLLOW });
   return file;
 };
 
@@ -141,16 +240,28 @@ const surfaceInvalid = (file, reason) => {
   throw new Error(`invalid segment ${file} (${reason}) — pass onInvalid to apply the §8.1 recovery/rejection rule`);
 };
 export const readSegments = (actorDir, onInvalid = surfaceInvalid) => {
-  const dir = path.join(actorDir, 'segments');
-  if (!fs.existsSync(dir)) return [];
-  const actor = path.basename(actorDir);
+  const actor = actorOf(actorDir); // slug-validated, traversal-refused
+  const dir = segmentsDirOf(actorDir); // proven a real directory inside the actor directory
+  if (lstatOrNull(dir) === null) return [];
   const events = [];
   for (const f of fs.readdirSync(dir).filter((f) => f.endsWith('.action.json')).sort()) {
-    const raw = fs.readFileSync(path.join(dir, f), 'utf8');
+    const file = path.join(dir, f);
+    const st = lstatOrNull(file);
+    if (st === null) continue; // vanished between readdir and lstat
+    if (!st.isFile()) { onInvalid(file, st.isSymbolicLink() ? 'containment:symlink' : 'containment:not-a-regular-file'); continue; }
+    // the cap applies BEFORE the read, not after it: reading a 4 GiB file into a string
+    // and then declaring it oversize costs ~3x its size in RSS to reach the same verdict
+    if (st.size > SEGMENT_LIMIT) { onInvalid(file, 'oversize'); continue; }
+    const raw = fs.readFileSync(file, { flag: READ_NOFOLLOW, encoding: 'utf8' });
     const r = validateSegment(raw);
-    if (!r.ok) { onInvalid(path.join(dir, f), r.reason); continue; }
+    if (!r.ok) { onInvalid(file, r.reason); continue; }
     const foreign = r.events.find((e) => e.actor !== actor);
-    if (foreign) { onInvalid(path.join(dir, f), `actor-mismatch:${foreign.actor}`); continue; }
+    if (foreign) { onInvalid(file, `actor-mismatch:${foreign.actor}`); continue; }
+    // §8.1: the filename IS the first event's ts. BOTH intakes already check this; the
+    // local reader did not — so one stray `.action.json` let a SECOND body publish at the
+    // same ts, and the union then refused to fold at all ("two different events share
+    // ts — corrupt union"): the project became PERMANENTLY unfoldable from one stray file.
+    if (f !== segmentName(r.events[0].ts)) { onInvalid(file, `segment-misnamed:${f}`); continue; }
     events.push(...r.events);
   }
   return events;
@@ -158,13 +269,20 @@ export const readSegments = (actorDir, onInvalid = surfaceInvalid) => {
 
 // Union across every actor under journal/: sealed segments — the only stream form.
 // The invalid-segment default surfaces (throws) — reading with tolerance requires an
-// explicit onInvalid handler, which is also how incompleteness is reported.
+// explicit onInvalid handler, which is also how incompleteness is reported. Actor
+// directories are resolved through actorDirFor, so a non-slug or symlinked entry is
+// reported, never silently read.
 export const readUnion = (journalDir, onInvalid = surfaceInvalid) => {
   if (!fs.existsSync(journalDir)) return [];
   const events = [];
-  for (const actor of fs.readdirSync(journalDir)) {
-    const dir = path.join(journalDir, actor);
-    if (!fs.statSync(dir).isDirectory()) continue;
+  for (const actor of fs.readdirSync(journalDir).sort()) {
+    const st = lstatOrNull(path.join(journalDir, actor));
+    if (st === null || !st.isDirectory()) {
+      if (st && st.isSymbolicLink()) onInvalid(path.join(journalDir, actor), 'actor-dir:symlink');
+      continue;
+    }
+    let dir;
+    try { dir = actorDirFor(journalDir, actor); } catch (e) { onInvalid(path.join(journalDir, actor), `actor-dir:${e.message}`); continue; }
     events.push(...readSegments(dir, onInvalid));
   }
   return events;

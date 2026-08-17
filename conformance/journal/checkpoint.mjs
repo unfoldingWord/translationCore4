@@ -11,7 +11,7 @@
 //   • EVERY dotted-path setter traverses with own-property checks into null-prototype
 //     containers, so a malformed path cannot reach a prototype even with validation off.
 import path from 'path';
-import { ipathError, dottedPathError } from './grammar.mjs';
+import { ipathError, dottedPathError, MAX_JSON_DEPTH } from './grammar.mjs';
 
 const serialize = (doc) => JSON.stringify(doc, null, 2) + '\n';
 
@@ -28,15 +28,25 @@ export const projectionKey = (ipath) => {
   return ipath;
 };
 // Assign under a guarded key. Every write into a projection set goes through this.
+// The set is documented as EXHAUSTIVE, so it is built in a null-prototype container: an
+// ordinary `{}` runs the prototype setter for a `__proto__` key and DROPS the entry
+// silently — an "exhaustive" set that quietly lost a member. `derivedProjections` and
+// `projectDecisions` both start their sets with `emptySet()` for the same reason.
+export const emptySet = () => Object.create(null);
 const emit = (out, ipath, bytes) => { out[projectionKey(ipath)] = bytes; };
 
 // A null-prototype deep copy: the projected document has NO prototype to pollute, at any
 // depth. JSON.stringify serializes null-prototype objects exactly like ordinary ones.
-const nullProto = (v) => {
-  if (Array.isArray(v)) return v.map(nullProto);
+// The depth bound is layer 2 of the §8.1 depth rule: the schema already refuses a value
+// nested deeper than MAX_JSON_DEPTH, and this walk refuses it AGAIN so a checkpoint can
+// never be crashed by a document that reached it with validation off.
+const nullProto = (v, depth = 0) => {
+  if (depth > MAX_JSON_DEPTH)
+    throw new Error(`projected value nests deeper than the §8.1 limit of ${MAX_JSON_DEPTH} levels — refuse to project`);
+  if (Array.isArray(v)) return v.map((x) => nullProto(x, depth + 1));
   if (v == null || typeof v !== 'object') return v;
   const out = Object.create(null);
-  for (const k of Object.keys(v)) out[k] = nullProto(v[k]);
+  for (const k of Object.keys(v)) out[k] = nullProto(v[k], depth + 1);
   return out;
 };
 const owns = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
@@ -125,7 +135,7 @@ export const projectAlignments = (foldOut, book) => {
 // resolution record is derive-time state (D30 — recomputed against the pins at
 // checkpoint), not journal state: the caller passes it as `resolutions[tool][BOOK]`.
 export const projectDecisions = (foldOut, resolutions = {}) => {
-  const out = {};
+  const out = emptySet();
   for (const tool of Object.keys(foldOut.decisions)) {
     const byBook = {};
     for (const d of foldOut.decisions[tool])
@@ -171,7 +181,7 @@ export const isUnjournaledIngredient = (ipath) => ipath.startsWith('audio/');
 export const derivedProjections = (foldOut, { baseMetadata = null, resolutions = {} } = {}) => {
   if (!baseMetadata)
     throw new Error('derivedProjections requires baseMetadata — the checkpoint regenerates metadata.json (§8.7); refuse to return an incomplete checkpoint');
-  const out = {};
+  const out = emptySet();
   for (const book of Object.keys(foldOut.books)) {
     // the book code is a FOLD key flowing into a filesystem path — resolved, never trusted
     emit(out, `${book}.usfm`, foldOut.books[book].usfm);
@@ -194,7 +204,10 @@ export const classifyDivergence = (diskFiles, projections) => {
   const tolerated = [], diverged = [], clean = [];
   for (const ipath of new Set([...Object.keys(projections), ...Object.keys(diskFiles)])) {
     if (isUnjournaledIngredient(ipath)) { tolerated.push(ipath); continue; }
-    if (!(ipath in projections) || !(ipath in diskFiles)) { diverged.push(ipath); continue; }
+    // own-property membership, never `in`: `in` walks the PROTOTYPE chain, so a file
+    // named for an Object.prototype member would be judged present in a set that does
+    // not contain it — the "absent on disk is divergence too" rule read off the wrong set.
+    if (!Object.hasOwn(projections, ipath) || !Object.hasOwn(diskFiles, ipath)) { diverged.push(ipath); continue; }
     (diskFiles[ipath] === projections[ipath] ? clean : diverged).push(ipath);
   }
   return { tolerated, diverged, clean };

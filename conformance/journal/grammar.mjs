@@ -14,6 +14,25 @@
 export const isStr = (v) => typeof v === 'string';
 export const isObj = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
 
+// ---------- §8.4 reserved characters (defined ONCE, here) ----------
+// U+0001 is the slot delimiter of the §8.4 decomposition and `\v `/`\c ` are the markers
+// that START a new content region. skeleton.mjs builds its boundary scanner from these
+// exact constants, and the schema refuses them inside journaled verse content from the
+// same source — so the codec and the grammar can never disagree about what a boundary is.
+export const SLOT = '';
+export const VERSE_BOUNDARY_RE = /\\[vc][ \t]/;
+
+// ---------- I-4: Unicode NFC (§8.5) ----------
+// Writers normalize the text they journal. IDENTITY-bearing values are the exception:
+// they are REFUSED when they are not already NFC, because silently transforming an
+// identity is worse than refusing it (it splits or merges records with no fork, no
+// report, and no way back). `isNfc` is true for non-strings so callers may apply it
+// uniformly to a mixed field.
+export const isNfc = (v) => !isStr(v) || v.normalize('NFC') === v;
+export const nfcError = (v) =>
+  isNfc(v) ? null : 'is not Unicode NFC — refuse (I-4: writers normalize before they hash or write)';
+export const toNfc = (v) => (isStr(v) ? v.normalize('NFC') : v);
+
 // ---------- §8.2 time: the ISO instant, the actor slug, and the ts built from them ----------
 // The three grammars nest, so each is stated ONCE and reused: TS_RE is BUILT from
 // ISO_RE + ACTOR_RE rather than restating their charsets (which is how the actor-slug
@@ -23,14 +42,29 @@ export const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/; // fixed-
 export const ACTOR_RE = /^[a-z0-9-]{4,32}$/;                            // §8.1 install slug
 export const TS_RE = new RegExp(`^(${src(ISO_RE)})\\|([0-9a-f]{4})\\|(${src(ACTOR_RE)})$`);
 
-export const isTs = (v) => isStr(v) && TS_RE.test(v);
+// A CHARSET is not a CALENDAR. `2026-13-45T25:70:99.999Z` matches ISO_RE and parses to
+// NaN; `2026-02-30` parses two days late, so string order and instant order disagree.
+// Either one silently breaks the §8.2 clock ratchet (it compares against NaN and no-ops,
+// leaving the local clock permanently behind). The instant MUST therefore round-trip
+// through Date unchanged — that is the definition of a real calendar instant, and it is
+// exactly what makes `compareTs` (string order) agree with `parseTs` (instant order).
+export const isCalendarInstant = (v) => {
+  if (!isStr(v) || !ISO_RE.test(v)) return false;
+  const d = new Date(v);
+  return Number.isFinite(d.getTime()) && d.toISOString() === v;
+};
+
+export const isTs = (v) => isStr(v) && TS_RE.test(v) && isCalendarInstant(v.slice(0, v.indexOf('|')));
 export const tsError = (v) =>
-  isTs(v) ? null : `"${v}" is not an §8.2 HLC ts (fixed-width ISO | 4-hex | [a-z0-9-]{4,32})`;
+  isTs(v) ? null
+  : isStr(v) && TS_RE.test(v)
+    ? `"${v}" carries no real calendar instant (§8.2 — the ISO part MUST round-trip through Date)`
+    : `"${v}" is not an §8.2 HLC ts (fixed-width ISO | 4-hex | [a-z0-9-]{4,32})`;
 export const isActorSlug = (v) => isStr(v) && ACTOR_RE.test(v);
 export const actorSlugError = (v) =>
   isActorSlug(v) ? null : `"${v}" is not an §8.1 actor slug [a-z0-9-]{4,32}`;
 export const isoInstantError = (v) =>
-  isStr(v) && ISO_RE.test(v) ? null : `"${v}" is not a fixed-width ISO-8601 UTC instant (§8.2)`;
+  isCalendarInstant(v) ? null : `"${v}" is not a fixed-width ISO-8601 UTC calendar instant (§8.2)`;
 
 // ---------- JSON round-trip safety (the writer-symmetry precondition) ----------
 // A sealed action is JSON text: whatever does not survive JSON.stringify → JSON.parse
@@ -44,22 +78,75 @@ export const jsonSafeNumberError = (v, { integer = false } = {}) =>
   : integer && !Number.isInteger(v) ? `is not an integer (I-2)`
   : null;
 
-export const jsonRoundTripError = (value, at = '') => {
+// §8.1: an event is a bounded JSON document. Depth is bounded so that EVERY recursive
+// consumer of a schema-valid event is bounded too — a hostile 47 KB segment (1% of the
+// 4 MiB cap) used to blow the stack inside the validator itself, so `validateSegment`
+// THREW instead of returning a verdict, `onInvalid` never fired, and the honest actor's
+// own segments became unreadable. A verdict, never a crash: the guard is INSIDE the
+// recursion, so the walk stops at the bound and reports.
+export const MAX_JSON_DEPTH = 64;
+// §8.5 dotted paths address object keys; a path deeper than the document bound addresses
+// nothing. Bounding the segment count at the grammar is what stops a 20,000-segment path
+// from folding and then crashing every future checkpoint forever (poisoned history).
+export const MAX_PATH_SEGMENTS = MAX_JSON_DEPTH;
+
+// A plain JSON container: an ordinary object literal or a null-prototype one. Date, Map,
+// Set, RegExp and typed arrays are `typeof "object"` but do NOT survive a JSON round trip
+// unchanged — `Set`/`Map` serialize to `{}`, which is TOTAL data loss, silently.
+const isPlainJsonObject = (v) => {
+  const p = Object.getPrototypeOf(v);
+  return p === Object.prototype || p === null;
+};
+const kindOf = (v) => (v && v.constructor && v.constructor.name) || 'object';
+
+export const jsonRoundTripError = (value, at = '', depth = 0) => {
+  if (depth > MAX_JSON_DEPTH)
+    return `${at || 'value'} nests deeper than the §8.1 limit of ${MAX_JSON_DEPTH} levels`;
   const t = typeof value;
   if (t === 'number') { const e = jsonSafeNumberError(value); return e ? `${at || 'value'} ${e}` : null; }
   if (t === 'function' || t === 'symbol' || t === 'bigint') return `${at || 'value'} is a ${t} (not JSON)`;
   if (Array.isArray(value)) {
     for (let i = 0; i < value.length; i++) {
       if (value[i] === undefined) return `${at}[${i}] is undefined (serializes to JSON null)`;
-      const e = jsonRoundTripError(value[i], `${at}[${i}]`);
+      const e = jsonRoundTripError(value[i], `${at}[${i}]`, depth + 1);
+      if (e) return e;
+    }
+    return null;
+  }
+  if (value !== null && t === 'object') {
+    if (!isPlainJsonObject(value))
+      return `${at || 'value'} is a ${kindOf(value)} — not a plain JSON object (it does not survive a JSON round trip unchanged)`;
+    for (const k of Object.keys(value)) {
+      // An own `__proto__` key survives JSON but NOT an ordinary object copy: `p[k] = v`
+      // runs the prototype setter and swallows the field. Every consumer that copies a
+      // record field-by-field would go blind on it, so the format refuses the key.
+      if (k === '__proto__')
+        return `${at ? `${at}.` : ''}__proto__ is a prototype-polluting own key — refuse (§8.1)`;
+      if (value[k] === undefined) continue; // an absent field, both before and after JSON
+      const e = jsonRoundTripError(value[k], at ? `${at}.${k}` : k, depth + 1);
+      if (e) return e;
+    }
+  }
+  return null;
+};
+
+// The I-4 key rule, applied to the whole event graph: every OBJECT KEY is identity —
+// `initialVerses` slot keys, `transitions` destinations, settings sub-keys — so a key is
+// REFUSED when it is not NFC rather than normalized (normalizing a key can collide it
+// with a sibling and destroy the sibling's value silently).
+export const nfcKeysError = (value, at = '', depth = 0) => {
+  if (depth > MAX_JSON_DEPTH) return null; // depth is jsonRoundTripError's verdict to give
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      const e = nfcKeysError(value[i], `${at}[${i}]`, depth + 1);
       if (e) return e;
     }
     return null;
   }
   if (isObj(value)) {
     for (const k of Object.keys(value)) {
-      if (value[k] === undefined) continue; // an absent field, both before and after JSON
-      const e = jsonRoundTripError(value[k], at ? `${at}.${k}` : k);
+      if (!isNfc(k)) return `key "${k}"${at ? ` at ${at}` : ''} ${nfcError(k)}`;
+      const e = nfcKeysError(value[k], at ? `${at}.${k}` : k, depth + 1);
       if (e) return e;
     }
   }
@@ -122,11 +209,24 @@ export const identityPartError = (v) => {
   return null;
 };
 
-// THE serializer. Its output is valid BY CONSTRUCTION whenever the components passed
-// identityPartError — which is what the schema enforces at every producing site.
-export const identityKeyOf = (contextId) =>
-  [contextId.checkId, contextId.reference.bookId, contextId.reference.chapter,
-   contextId.reference.verse, contextId.occurrence].join(IDENTITY_DELIMITER);
+// THE serializer. Its output is valid BY CONSTRUCTION — because the serializer CHECKS
+// its own precondition. A bare join launders `-0` into `"0"`, an array into its comma
+// form, an object into `"[object Object]"` and a boolean into `"true"`, each of which
+// then passes identityKeyError as a well-formed-looking key. Every other consumer
+// re-checks at its own boundary; this one does too, so the serializer can never emit a
+// string its own validator would reject.
+const IDENTITY_COMPONENTS = ['checkId', 'reference.bookId', 'reference.chapter', 'reference.verse', 'occurrence'];
+export const identityKeyOf = (contextId) => {
+  if (!isObj(contextId) || !isObj(contextId.reference))
+    throw new Error('identityKeyOf: a §5.2 contextId with a reference object is required — refuse to serialize');
+  const r = contextId.reference;
+  const parts = [contextId.checkId, r.bookId, r.chapter, r.verse, contextId.occurrence];
+  for (let i = 0; i < parts.length; i++) {
+    const e = identityPartError(parts[i]);
+    if (e) throw new Error(`identityKeyOf: ${IDENTITY_COMPONENTS[i]} ${e} — refuse to serialize an ambiguous §5.2 identity key`);
+  }
+  return parts.join(IDENTITY_DELIMITER);
+};
 
 export const identityKeyError = (s) => {
   if (!isStr(s)) return 'is not a string';
@@ -155,6 +255,29 @@ export const decisionKeyError = (s) => {
 export const splitDecisionKey = (s) => {
   const i = s.indexOf(IDENTITY_DELIMITER);
   return { toolId: s.slice(0, i), identityKey: s.slice(i + 1), ...identityKeyParts(s.slice(i + 1)) };
+};
+
+// ---------- §8.5 note targets and the re-key destination bound to their KIND ----------
+// A note target is exactly one of a verse or a §5.2 identity key, and the two destination
+// grammars are disjoint. A re-key that ignores the KIND rewrote a VERSE-targeted note to
+// an identity-key string — producing `{book, chapter: "x1|tit|1|2|1", verse: ""}`, a
+// target the schema itself rejects. ONE predicate, so the schema and the fold apply the
+// same rule at their own boundaries.
+export const noteTargetKind = (target) =>
+  !isObj(target) ? null
+  : isStr(target.decisionKey) ? 'decisionKey'
+  : (target.book != null && target.chapter != null && target.verse != null) ? 'verse'
+  : null;
+
+export const noteRekeyError = (target, to, newSlots = []) => {
+  const kind = noteTargetKind(target);
+  if (kind === null) return 'names a note whose target is neither a verse nor a §5.2 identity key';
+  if (!isStr(to)) return 're-key destination is not a string';
+  if (kind === 'verse')
+    return newSlots.includes(to) ? null
+      : `re-key destination "${to}" is not a target slot of the mapping — a VERSE-targeted note re-keys to a verse slot, never to a §5.2 identity key (§8.5)`;
+  const e = identityKeyError(to);
+  return e ? `re-key destination "${to}" ${e} — a decisionKey-targeted note re-keys to a §5.2 identity key` : null;
 };
 
 // ---------- §8.4 verse slot keys ----------
@@ -195,6 +318,8 @@ export const dottedPathError = (v, { reservedRoots = null } = {}) => {
   if (!isStr(v)) return 'is not a string';
   if (v === '') return 'is empty';
   const parts = v.split('.');
+  if (parts.length > MAX_PATH_SEGMENTS)
+    return `"${v.slice(0, 30)}…" has ${parts.length} segments — more than the §8.5 limit of ${MAX_PATH_SEGMENTS}`;
   for (const p of parts) {
     if (p === '') return `"${v}" has an empty path segment`;
     if (FORBIDDEN_PATH_SEGMENTS.has(p))
@@ -209,12 +334,66 @@ export const PIN_SLOT_RE = /^(languageSets\.(primary|fallback)\.(gatewayLanguage
 export const pinSlotError = (v) =>
   isStr(v) && PIN_SLOT_RE.test(v) ? null : `"${v}" is not a §5.3 slot`;
 
+// §5.3 ENTRY shape. The slot was validated but the entry never was, so `"not-an-object"`
+// and `42` reached the projected `resources.json` verbatim. The entry is a §5.3 document
+// value, so it carries the §5.3 document's own shape — ONE validator, shared by the op
+// and by any projection input.
+export const SHA_RE = /^[0-9a-f]{40}$/;                 // §5.3 OPTIONAL expected commit sha
+const pinStringField = (e, k, { required }) => {
+  if (e[k] === undefined) return required ? `without ${k}` : null;
+  if (!isStr(e[k]) || e[k] === '') return `${k} is not a non-empty string`;
+  return null;
+};
+export const pinEntryError = (slot, entry) => {
+  if (!isObj(entry)) return 'is not a §5.3 entry object';
+  const isGatewayLanguage = isStr(slot) && slot.endsWith('.gatewayLanguage');
+  const isExtra = isStr(slot) && slot.startsWith('extraScripture.');
+  // `gatewayLanguage` names a language, not a repo: {languageId, owner}
+  const fields = isGatewayLanguage
+    ? [['languageId', true], ['owner', true]]
+    : [['repoPath', true], ['version', true], ['flavor', true], ...(isExtra ? [['id', true]] : [])];
+  for (const [k, required] of fields) { const e = pinStringField(entry, k, { required }); if (e) return e; }
+  if (entry.sha !== undefined && !(isStr(entry.sha) && SHA_RE.test(entry.sha)))
+    return 'sha is not 40 lowercase hex (§5.3)';
+  if (isExtra && entry.id !== slot.slice('extraScripture.'.length))
+    return `extraScripture entry id "${entry.id}" does not match its slot "${slot}"`;
+  return null;
+};
+
+// ---------- §8.4 journaled verse content ----------
+// `text.verse.set.text` carries ONE content slot. A slot that itself contains a `\v ` or
+// `\c ` marker is not one slot: the next decompose SILENTLY RE-PARTITIONS the committed
+// book into different slots, and the §5.1 plain-text extraction (I-3) stops at the
+// embedded marker, so the smuggled bytes live outside the validity hash. U+0001 is the
+// slot delimiter itself. All three are refused at the schema.
+export const journaledTextError = (v) => {
+  if (!isStr(v)) return 'is not a string';
+  if (v.includes(SLOT)) return 'contains the reserved §8.4 slot delimiter U+0001';
+  const m = VERSE_BOUNDARY_RE.exec(v);
+  if (m) return `contains the §8.4 region marker "${m[0].trimEnd()}" — one event carries exactly ONE content slot`;
+  return null;
+};
+
 // ---------- §2 ingredient paths ----------
 // "An ingredient path (the `ipath`) MUST NOT have a segment that is empty, that starts
 // with `.`, or that contains any of: ..  ~  \  &  *  +  |  space  ?  #  %  {  }  <  >  $
 // !  '" (§2, verified against pankosmia-web `utils/paths.rs`). Enforcing it makes every
 // derived key path-safe by grammar — `..` traversal included.
 const IPATH_FORBIDDEN = ['..', '~', '\\', '&', '*', '+', '|', ' ', '?', '#', '%', '{', '}', '<', '>', '$', '!', "'"];
+// Round 9: the §2 character list is a list of PUNCTUATION. It says nothing about the
+// characters that are not printable at all, and a path is read by humans, by a shell,
+// and by Windows. Each rule below closes a way a legal-looking segment stops meaning
+// what it looks like:
+//   • C0/C1 controls and NUL — a NUL truncates the name in every C API the platform
+//     reaches through; CR/LF forge a line in any log or manifest that lists paths;
+//   • bidi controls — they REORDER the rendered name, so a reviewer reads a different
+//     path than the one on disk;
+//   • Windows reserved device names — `CON`, `NUL`, `COM1`… name a DEVICE, not a file,
+//     with or without an extension, so the write silently goes nowhere;
+//   • a trailing dot or space — Windows strips it, so two distinct §2 paths collide.
+const CONTROL_RE = /[\u0000-\u001F\u007F-\u009F]/;
+const BIDI_RE = /[\u200E\u200F\u202A-\u202E\u2066-\u2069]/;
+const WINDOWS_DEVICE_RE = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i;
 export const ipathError = (v) => {
   if (!isStr(v)) return 'is not a string';
   if (v === '') return 'is empty';
@@ -224,6 +403,11 @@ export const ipathError = (v) => {
     for (const bad of IPATH_FORBIDDEN)
       if (seg.includes(bad))
         return `"${v}" has a §2-forbidden character ${bad === ' ' ? '"space"' : `"${bad}"`} in segment "${seg}"`;
+    const ctl = CONTROL_RE.exec(seg);
+    if (ctl) return `"${v}" has a control character U+${ctl[0].charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')} in a path segment`;
+    if (BIDI_RE.test(seg)) return `"${v}" has a bidirectional control character in a path segment (the rendered name would not be the name on disk)`;
+    if (WINDOWS_DEVICE_RE.test(seg)) return `"${v}" names the Windows reserved device "${seg}"`;
+    if (seg.endsWith('.')) return `"${v}" has a path segment ending in "." ("${seg}")`;
   }
   return null;
 };

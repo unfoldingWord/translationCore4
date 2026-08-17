@@ -113,13 +113,13 @@ Both rules, and the recipes for applying them, are in the final section of this 
 
 ## Verification recipes
 
-- **Conformance proof:** `cd sample-burrito-validation && npm install && npm run generate && npm run validate` (expect 34/34 — Stage-1 30, Stage-2 2, Phase-2 2) [VERIFIED — executed 2026-08-04, after the 1.7-draft D36 carry-over change set; 33/33 at the 1.6-draft D17/D30 two-language-set change set (OPEN-QUESTIONS #28); 31/31 at the 1.5-draft extraScripture change set; 30/30 at the 1.4-draft D25–D28 edits]. Journal suite: `npm run validate:journal` (expect 59/59). Both: `validate:all`.
+- **Conformance proof:** `cd conformance && npm install && npm run generate && npm run validate` (expect 34/34 — Stage-1 30, Stage-2 2, Phase-2 2) [VERIFIED — executed 2026-08-04, after the 1.7-draft D36 carry-over change set; 33/33 at the 1.6-draft D17/D30 two-language-set change set (OPEN-QUESTIONS #28); 31/31 at the 1.5-draft extraScripture change set; 30/30 at the 1.4-draft D25–D28 edits]. Journal suite: `npm run validate:journal` — the suite's own summary line is the authoritative count, and it grows with each review round (259 passed, 0 failed after review round 9's boundary half; 217 after round 8). Both: `validate:all`.
 - **Editor data-loss repro:** `cd sample-burrito-validation/zaln-strip-repro && npm install && node test.mjs` (expect zero `\zaln`/`\w` in output).
 - **Metadata-drop repro:** `cd sample-burrito-validation/metadata-drop-repro && cargo run -- ../../sample-burrito/metadata.json` (expect both drops reported).
 - **Upstream freshness + graph reindex (run FIRST, before any platform claim):** `zsh scripts/upstream-freshness.zsh` (add `--report` to change nothing, `--no-index` to skip the reindex). Then scope graph queries to the `…-pankosmia-web-main` project.
 - **Re-verify a platform claim at HEAD:** shallow-clone the repo(s). Diff the cited file/lines against the recorded commit. If the behavior changed, update the doc that makes the claim **and** open (or update) a `question` issue on the board, and cite the new commit.
 - **Check a new burrito for conformance:** point the harness's `BURRITO` path at the burrito (top of `validate.mjs`), and run `npm run validate`.
-- **Transport suite against the live server:** `dev-env/scripts/seed.zsh && dev-env/scripts/run.zsh`, then `cd sample-burrito-validation && npm run validate:transport` (expect 10/10).
+- **Transport suite against the live server:** `dev-env/scripts/seed.zsh && dev-env/scripts/run.zsh`, then `cd conformance && npm run validate:transport` (expect 10/10).
 - **Server round-trip of custom work: RE-SEED FIRST.** The suite degrades the seeded fixture as it
   runs — it leaves a `.bak` in `_local_/_local_/sample_burrito` and its `update_ingredients` write
   wipes the 6 `x-` roles. On a second run R2 then compares 0 roles against 0 and reports
