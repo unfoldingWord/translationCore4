@@ -606,14 +606,15 @@ Sub-decisions adopted with the ruling: `textMd5` and `skeletonMd5` are REMOVED f
 Basis: three independent reviews on #22; their reproduced implementation gaps were
 verified twice over.
 
-## D49 (2026-08-13, project-owner ruling) **The packaged app uses a product-isolated
-project store.** Production builds start empty; a debug build may seed curated test
-projects into a separate debug-only store and is visibly marked; debug fixtures must
-never appear in, overwrite, or cause production to read the shared
+## D49 (2026-08-14, project-owner ruling, issue #70) **The packaged app uses a
+product-isolated project store.** Production builds start empty; a debug build may seed
+curated test projects into a separate debug-only store and is visibly marked; debug
+fixtures must never appear in, overwrite, or cause production to read the shared
 `$HOME/pankosmia_repos` store. The guard is enforced by the packaging build itself
 (the smoke test fails the build on a shared-store resolution — proven by forced
-failure, PR #72). Side effect recorded: isolation removes the cross-application
-concurrency class, strengthening D39's single-instance safety argument.
+failure, PR #72; `docs/evidence/store-isolation-2026-08-14.md`). Side effect recorded:
+isolation removes the cross-application concurrency class, strengthening D39's
+single-instance safety argument.
 
 ## D50 (2026-08-14, project-owner ruling) **The store-to-journal boundary contract is
 approved** (issue #60, notes v2–v5 + the audio addendum; six independent-review rounds).
