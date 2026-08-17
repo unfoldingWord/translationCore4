@@ -599,6 +599,9 @@ representation of a verse-structure change (#65).
 - the D47(d) supersession note (#63 unparked verse operations);
 - the published sample and conformance harness (#47) — a hard dependency: §9 requires
   spec and harness to change together, which needs them in one repository.
+[superseded in part by D51, 2026-08-17 — the conditions stand, but they MAY land across
+several change sets, each independently reviewed; D51 restates them as a checklist and adds
+the conditions the round-11 review found]
 
 Sub-decisions adopted with the ruling: `textMd5` and `skeletonMd5` are REMOVED from v1
 (`targetVerseMd5`, which carries I-3, is a different field and stays); Ledger #4's
@@ -634,3 +637,43 @@ atomicity is guaranteed; power-loss durability is detected but not guaranteed �
 the final seconds-to-minutes of typing in a power outage is accepted; the platform
 fsync primitive is a non-blocking owner-routed upstream question. Spec-touching
 consequences are enumerated on issue #22 and land only in the D48 flip change set.
+
+## D51 (2026-08-17, project-owner ruling) **§8 becomes normative in reviewable steps, not in
+one change set.** D48 part (3) required ONE change set. That requirement is withdrawn. Its
+conditions are NOT withdrawn: they stand, and D51 adds more. The work lands as separate
+change sets, each cut from `main`, each merged before the next starts, each independently
+reviewed. Tracking issue #81.
+
+**Why the single change set is withdrawn.** It produced 31 commits across 21 files that no
+reviewer can read as a unit, and 11 review rounds that began to repeat and contradict each
+other. A four-lens adversarial review on 2026-08-17 then found FIVE blocking defects, two of
+them data-loss or availability failures, **after** the suite reported 306 checks passing
+[VERIFIED — pull request #75, review comment of 2026-08-17]. The rounds were not converging.
+Each round added test cases for the defect it found and never for the class, so the suite
+grew 59 → 137 → 217 → 259 → 306 by accretion while whole classes stayed unexercised.
+
+**The conditions, restated as a checklist.** Each item is done when its evidence exists:
+- the seven contract corrections of D48(3), recorded on issue #22;
+- the structural re-key action (#65);
+- the flavor boundary sentence;
+- the D47(d) supersession note (#63);
+- the published sample and conformance harness (#47) — CLOSED 2026-08-14.
+
+**The conditions round 11 adds.** These exist because the review found each one violated
+while the suite was green:
+- **No normative statement in §8 without a check that FAILS when it is violated.** §8's
+  heading promises this today and 16 statements do not have one. Either the checks exist, or
+  the promise is narrowed to what is true.
+- **The property generators MUST reach the states the properties describe.** The conservation
+  generator cannot construct a fork — it re-folds after each event and takes each `base` from
+  that fold — so `forked` and `pending`, two of the six observable states it advertises, are
+  never exercised, and 5 of 8 `retained[]` reasons never appear.
+- **No harness artifact may build a form §8 forbids, and a check MUST enforce it.** Two
+  harness files still write the deleted NDJSON stream form; one of them is part of the
+  authoritative 34 and is green in CI.
+- **A defect is fixed at the class, not at the instance.** A rule that must hold for every
+  record surface is derived from one shared definition, never written out per surface.
+
+**The flip is LAST.** §8 becomes normative only when this checklist is complete. Making it
+normative earlier publishes a promise the harness cannot keep, and after the flip every
+mismatch blocks merge (§9).
