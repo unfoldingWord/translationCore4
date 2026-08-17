@@ -278,7 +278,7 @@ Common rules:
 
 This file is the home for the RCL `saveSettings` payload (pane/tool settings — an unpersisted TODO in the current client) and for the check-category filter (`checker_setting.json` equivalent).
 
-Phase 2 keys one LWW register per dotted PATH (§8.5 `settings.set`). Two paths where one is a PREFIX of the other (`ui.pane` and `ui.pane.width`) write the same place in this document, so they COLLIDE. The loss MUST never be silent — see the §8.5 prefix-collision rule. Its resolution semantics are normative `[decided 2026-08-17 — project-owner ruling]`.
+Phase 2 keys one LWW register per dotted PATH (§8.5 `settings.set`). Two paths where one is a PREFIX of the other (`ui.pane` and `ui.pane.width`) write the same place in this document, so they COLLIDE. The loss MUST never be silent — see the §8.5 prefix-collision rule. Its resolution semantics are normative `[decided 2026-08-17 — D51]`.
 
 ## 6. Server interaction rules (Phase 1)
 
@@ -448,7 +448,7 @@ An unknown base pends; a wrong-kind base refuses. The distinction is deliberate:
 
 **Normative now:** such a pair MUST be reported, never silently dropped. The loser is surfaced in `retained[]` (`prefix-collision`), so conservation holds independently of the resolution rule below.
 
-**`[decided 2026-08-17 — project-owner ruling]`** — the resolution SEMANTICS are normative. Prefix-related paths conflict. An implementation MUST give the projection to the later `ts`. It MUST retain the earlier path. It MUST report that path in `retained[]` as `prefix-collision`. The reference implementation follows this rule.
+**`[decided 2026-08-17 — D51]`** — the resolution SEMANTICS are normative. Prefix-related paths conflict. An implementation MUST give the projection to the later `ts`. It MUST retain the earlier path. It MUST report that path in `retained[]` as `prefix-collision`. The reference implementation follows this rule.
 
 **The flavor boundary (normative).** The `v: 1` vocabulary is **textTranslation-shaped**. Other content flavors (textStories/OBS) extend the vocabulary by a version bump per §9 — `v: 1` writers need no rework when OBS arrives.
 

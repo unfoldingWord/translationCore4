@@ -3707,12 +3707,12 @@ try {
       deepErr.includes('§8.1') && !/Maximum call stack/.test(deepErr), `"${deepErr.slice(0, 70)}"`);
   }
 
-  // --- B-F5: the prefix-collision rule, normative [§8.5, decided 2026-08-17] ---
+  // --- B-F5: the prefix-collision rule, normative [§8.5, D51, decided 2026-08-17] ---
   {
     const a = E('settings.set', 'actor-a', t(1), null, { path: 'ui.pane', value: { width: 1 } });
     const b = E('settings.set', 'actor-b', t(2, 'actor-b'), null, { path: 'ui.pane.width', value: 9 });
     const out = fold([a, b]);
-    check('J32b/B-F5: dotted-path registers `a` and `a.b` are DIFFERENT keys that write the SAME place, and one used to clobber the other with no fork, no retained entry and no report — two writers editing `ui.pane` and `ui.pane.width` concurrently lost one edit INVISIBLY. The loss is now never silent: the later ts takes the projection, the earlier is retained and reported. [The resolution SEMANTICS are normative: §8.5, decided 2026-08-17]',
+    check('J32b/B-F5: dotted-path registers `a` and `a.b` are DIFFERENT keys that write the SAME place, and one used to clobber the other with no fork, no retained entry and no report — two writers editing `ui.pane` and `ui.pane.width` concurrently lost one edit INVISIBLY. The loss is now never silent: the later ts takes the projection, the earlier is retained and reported. [The resolution SEMANTICS are normative: §8.5, D51, decided 2026-08-17]',
       out.retained.some((r) => r.key === 'set|ui.pane' && r.ts === a.ts && r.reason === 'prefix-collision') &&
       !('ui.pane' in out.settings) && out.settings['ui.pane.width'] === 9,
       `settings=${JSON.stringify(out.settings)} retained=${JSON.stringify(out.retained)}`);

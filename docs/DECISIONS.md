@@ -588,6 +588,10 @@ written. Increment 3 has no journey by design; journey J8 belongs to Increment 4
 **(1) The journal architecture is approved** — append-only actor journals, deterministic
 folding, explicit forks, derived projections, isolated publication branches, zero-trust
 integration, rebuild-and-swap receiving. It is settled and not open for re-proposal.
+[superseded in part by D50, 2026-08-14 — "append-only" is the LOGICAL property of the
+journal, not a file form: the append-only NDJSON stream form is deleted, and every
+mutation publishes as one new immutable checksum-sealed action segment that is never
+appended to or rewritten (§8.1)]
 
 **(2) §8 is not yet normative.** Three independent reviews found seven points where the
 spec text and the reference implementation disagree, and one missing design: the journal
@@ -643,3 +647,18 @@ atomicity is guaranteed; power-loss durability is detected but not guaranteed �
 the final seconds-to-minutes of typing in a power outage is accepted; the platform
 fsync primitive is a non-blocking owner-routed upstream question. Spec-touching
 consequences are enumerated on issue #22 and land only in the D48 flip change set.
+
+## D51 (2026-08-17, project-owner ruling) **Prefix-related dotted paths resolve by
+timestamp.** `settings.set` and `project.meta.set` key one register per path, so two
+paths where one is a prefix of the other — `ui.pane` and `ui.pane.width` — are different
+register keys that write the same place in the projected document. Before this ruling one
+silently clobbered the other: no fork, no retained entry, no report. The reporting half
+was already normative — such a pair MUST be surfaced, never silently dropped — so
+conservation held under any resolution rule. This ruling settles the resolution itself:
+the later `ts` takes the projection, and the earlier path is retained and reported in
+`retained[]` as `prefix-collision`. The rule does not change what the reference
+implementation already did; only its status changes, from `[PROPOSED — owner ratification
+pending]` to normative. Behavior is unchanged, so the ratification required no new
+conformance case: the two MUST clauses already had firing cases on both `settings.set` and
+`project.meta.set` (J32b/B-F5). Landed with the 1.8 flip change set (PR #75) — §8.5,
+§5.4, `conformance/journal/fold.mjs`, and the J32b check name changed together (§9).
