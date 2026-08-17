@@ -21,7 +21,7 @@ the issue. This table decodes each ID class and says where the referenced item l
 | `FR-nn` | FR-33 | A functional requirement of the internal PRD | Maintainer workspace. The behavior it requires is stated where cited |
 | `Jn` / `@incN` | J5, @inc2 | A user journey / its test tag | Journey tests live in `e2e/` (`npm run test:e2e`) |
 | `INCREMENT-n` / `PHASE-n-SUMMARY` / `STATE.md` | INCREMENT-2.md | Internal gated-build planning and verification documents | Maintainer workspace. Their decisions are in `DECISIONS.md`; their verification evidence is summarized in the increment close entries there |
-| `sample-burrito/`, `sample-burrito-validation/` | harness check 23 | The conforming sample project and the executable conformance harness (34 checks + journal 59) | Maintainer workspace; publication is a tracked issue |
+| `sample-burrito/`, `sample-burrito-validation/` | harness check 23 | The conforming sample project and the executable conformance harness (run it for the current counts; the suite's own summary line is authoritative) | Maintainer workspace; publication is a tracked issue |
 | `upstream/…`, `upstream-prs/…`, `scripts/upstream-freshness.zsh` | — | Read-only upstream mirrors and verification tooling | Maintainer workspace. See "Verifying a platform claim" in `PLATFORM-NOTES.md` |
 | Rust/JS file names without a path | `structs.rs`, `post_raw_ingredient.rs` | Source files of `pankosmia-web` or its clients, read at the cited pin | Upstream repositories, at the version + hash + date the citation names |
 
