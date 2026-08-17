@@ -614,3 +614,32 @@ Sub-decisions adopted with the ruling: `textMd5` and `skeletonMd5` are REMOVED f
 "journal checking first" offer is declined — D47 chose every mutation from day one.
 Basis: three independent reviews on #22; their reproduced implementation gaps were
 verified twice over.
+
+## D49 (2026-08-14, project-owner ruling, issue #70) **The packaged app uses a
+product-isolated project store.** Production builds start empty; a debug build may seed
+curated test projects into a separate debug-only store and is visibly marked; debug
+fixtures must never appear in, overwrite, or cause production to read the shared
+`$HOME/pankosmia_repos` store. The guard is enforced by the packaging build itself
+(the smoke test fails the build on a shared-store resolution — proven by forced
+failure, PR #72; `docs/evidence/store-isolation-2026-08-14.md`). Side effect recorded:
+isolation removes the cross-application concurrency class, strengthening D39's
+single-instance safety argument.
+
+## D50 (2026-08-14, project-owner ruling) **The store-to-journal boundary contract is
+approved** (issue #60, notes v2–v5 + the audio addendum; six independent-review rounds).
+Its pillars: every canonical mutation moves behind the `BurritoStore` interface, with a
+per-project mutation queue serializing observe → diff → durable intent → publish →
+regenerate; every mutation publishes as an **immutable sealed action segment** (single
+JSON container, body-string sha256, 4 MiB limit; parse/checksum validity IS the commit
+marker — no appends, no rewrites of accepted files, because the HTTP boundary has
+neither append nor rename/fsync); a **durable outbox in IndexedDB** (installation-local,
+never registered or committed) makes retries replay exact bytes; recovery classifies
+four ways (publish-from-outbox / regenerate / converged / out-of-band) with unjournaled
+ingredient classes (audio) tolerated, never regenerated; a **runtime fold** ships with
+the write side as an internal library (UI reading of history stays Phase 2); seeding is
+universal and all-or-nothing; actor ownership binds to an installation secret, not a
+hardware fingerprint. **Durability posture (explicit owner risk ruling):** process-crash
+atomicity is guaranteed; power-loss durability is detected but not guaranteed — losing
+the final seconds-to-minutes of typing in a power outage is accepted; the platform
+fsync primitive is a non-blocking owner-routed upstream question. Spec-touching
+consequences are enumerated on issue #22 and land only in the D48 flip change set.
