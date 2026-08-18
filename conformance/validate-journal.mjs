@@ -1689,12 +1689,14 @@ try {
   // PENDING until it arrives (fold determinism per event-SET, never per arrival order)
   const skel1 = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}`;
   const add1 = E('book.add', 'seed-x', t(6, 0, 'seed-x'), null, { book: 'TIT', scope: [], skeleton: skel1, initialVerses: { '1:1': 'uno\n' } });
-  let noBase = '';
-  try {
-    fold([add1, E('text.skeleton.set', 'actor-b', t(7, 0, 'actor-b'), null, { book: 'TIT', skeleton: `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}` })]);
-  } catch (e) { noBase = e.message; }
-  check('J22: text.skeleton.set with a NULL base is refused — the chain link must name its predecessor head',
-    noBase.includes('requires a base'), `"${noBase.slice(0, 60)}"`);
+  // [changed with D53 part d, 2026-08-18] a rootless chain link refuses to ACT, never
+  // the whole fold: it is retained and reported, and the predecessor state projects
+  const noBaseEv = E('text.skeleton.set', 'actor-b', t(7, 0, 'actor-b'), null, { book: 'TIT', skeleton: `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}` });
+  const noBase = fold([add1, noBaseEv]);
+  check('J22: text.skeleton.set with a NULL base refuses to ACT — retained and reported (`rootless-structural`, D53d), the book.add skeleton still projects, and the fold never throws',
+    noBase.retained.some((r) => r.key === 'skel|TIT' && r.ts === noBaseEv.ts && r.reason === 'rootless-structural') &&
+    noBase.books.TIT.verses['1:1'] === 'uno\n',
+    JSON.stringify(noBase.retained));
   const laterEdit = E('text.skeleton.set', 'actor-b', t(8, 0, 'actor-b'), t(7, 5, 'actor-c'), { book: 'TIT', skeleton: `\\id TIT via c\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}` });
   const pendingOut = fold([add1, laterEdit]);
   check('J22: an UNKNOWN base is pending until it arrives — the pre-event state projects, nothing is guessed',
@@ -3136,7 +3138,12 @@ try {
     const outcomeOf = (op, base, prelude) => {
       try {
         const o = fold([...prelude, structuralEvent(op, base)]);
-        return o.pendingStructural.some((p) => p.ts === t(9)) ? 'PEND' : 'APPLIED';
+        if (o.pendingStructural.some((p) => p.ts === t(9))) return 'PEND';
+        if (o.retained.some((r) => r.ts === t(9) && r.reason === 'rootless-structural')) return 'REPORTED';
+        // a rootless book.add whose payload equals the existing creation is the SAME
+        // fact (D53d): no second head, no fork, the original root still projects
+        if (op === 'book.add' && base === null && o.headsTs['book|TIT'] === t(0) && o.forks.length === 0) return 'CONVERGED';
+        return 'APPLIED';
       } catch (e) { return CRASHY.test(e.message) ? 'CRASH' : 'REFUSED'; }
     };
     const STRUCTURAL = ['book.add', 'book.remove', 'text.skeleton.set', 'text.structure.apply'];
@@ -3146,23 +3153,31 @@ try {
         outcomeOf(op, t(0, 'ghost-actor'), [add]),  // unknown        → PEND
         outcomeOf(op, vs.ts, [add, vs]),            // text.verse.set → REFUSED
         outcomeOf(op, addJ.ts, [add, addJ]),        // cross-book     → REFUSED
-        outcomeOf(op, null, [add]),                 // NULL           → REFUSED (the book exists)
+        outcomeOf(op, null, [add]),                 // NULL           → decided per D53d
       ].join('/');
     }
-    const expected = 'PEND/REFUSED/REFUSED/REFUSED';
-    check('J32 THE MATRIX (4×4, the round-8 over-claim corrected): every structural op × every base KIND — unknown PENDS, non-structural REFUSES, cross-book REFUSES, and `base: null` on an existing book REFUSES. Round 8 claimed "the answer is now none" from a 3-column matrix that OMITTED the null column — the one kind that was genuinely unvalidated',
-      STRUCTURAL.every((op) => matrix[op] === expected), JSON.stringify(matrix));
+    // [changed with D53 part d, 2026-08-18] the NULL column no longer refuses the whole
+    // fold: an identical rootless book.add CONVERGES (a differing one forks — J32e);
+    // every other rootless structural op refuses to ACT and is REPORTED.
+    const expected = (op) => `PEND/REFUSED/REFUSED/${op === 'book.add' ? 'CONVERGED' : 'REPORTED'}`;
+    check('J32 THE MATRIX (4×4): every structural op × every base KIND — unknown PENDS, non-structural REFUSES, cross-book REFUSES, and `base: null` on an existing book is decided PER EVENT (D53d): an identical book.add CONVERGES, every other rootless structural op refuses to act and is REPORTED — the whole fold never throws on a rootless claim',
+      STRUCTURAL.every((op) => matrix[op] === expected(op)), JSON.stringify(matrix));
     check('J32: `book.add` is the ONE rootless structural op, and only while the book does not exist — the first add still applies with no base (no false refusal)',
       'TIT' in fold([add]).books && fold([add]).pendingStructural.length === 0);
-    // the pre-fix consequences, each asserted absent
-    let rmErr = ''; try { fold([add, structuralEvent('book.remove', null)]); } catch (e) { rmErr = e.message; }
-    check('J32: a ROOTLESS book.remove no longer DELETES the book — pre-fix it applied, unvalidated, and the book left the projection',
-      rmErr !== '' && !CRASHY.test(rmErr), `"${rmErr.slice(0, 70)}"`);
+    // the pre-fix consequences, each asserted absent — [changed with D53d: reported, not thrown]
+    const rmNull = structuralEvent('book.remove', null);
+    const rmOut = fold([add, rmNull]);
+    check('J32: a ROOTLESS book.remove no longer DELETES the book — pre-fix it applied, unvalidated, and the book left the projection; per D53d it refuses to ACT, is retained and reported, and the fold completes',
+      'TIT' in rmOut.books && rmOut.retained.some((r) => r.ts === rmNull.ts && r.reason === 'rootless-structural'),
+      JSON.stringify(rmOut.retained));
     const dec = E('check.decision.set', 'actor-a', t(3), null, { toolId: 'translationWords', generation: t(0),
       decision: { contextId: { checkId: 'c1', occurrence: 1, reference: { bookId: 'tit', chapter: 1, verse: 2 } }, selections: false } });
-    let apErr = ''; try { fold([add, dec, structuralEvent('text.structure.apply', null)]); } catch (e) { apErr = e.message; }
-    check('J32: a ROOTLESS text.structure.apply no longer bypasses all-or-nothing — pre-fix the affected set was read from the BASE skeleton, so with no base it was EMPTY: the event dropped slot 1:2 with ZERO dispositions and the decision on the deleted verse still projected',
-      apErr !== '' && !CRASHY.test(apErr), `"${apErr.slice(0, 70)}"`);
+    const apNull = structuralEvent('text.structure.apply', null);
+    const apOut = fold([add, dec, apNull]);
+    check('J32: a ROOTLESS text.structure.apply no longer bypasses all-or-nothing — pre-fix the affected set was read from the BASE skeleton, so with no base it was EMPTY: the event dropped slot 1:2 with ZERO dispositions and the decision on the deleted verse still projected. Per D53d it never fires (slot set unchanged, the decision still projects) and is retained and reported',
+      '1:2' in apOut.books.TIT.verses && (apOut.decisions.translationWords || []).length === 1 &&
+      apOut.retained.some((r) => r.ts === apNull.ts && r.reason === 'rootless-structural'),
+      JSON.stringify(apOut.retained));
     // and the production path that reached it: reconcile's `?? null`
     check('J32: the production path is closed too — §8.8 reconcile no longer emits a rootless structural event for a book the journal does not project; it emits the §8.8 seed `book.add` instead',
       (() => {
@@ -3775,6 +3790,83 @@ try {
     backB.books.TIT.verses['1:1'] === 'gen2b\n' &&
     backB.retained.some((r) => r.key === 'text|TIT|1:1' && r.ts === draft.ts && r.reason === 'prior-generation'),
     `retained=${JSON.stringify(backB.retained.filter((r) => r.ts === draft.ts))}`);
+}
+
+// ---------- J32e (s8 round 10, D53 part d): `base: null` asserts "no prior state I KNOW
+//   OF", not "no prior state exists". Two devices seeding the same book (§8.8 universal
+//   seeding — the migration path for EVERY project opened on a second device) each fold
+//   alone, and the UNION used to THROW in both orders. The ruling: a rootless structural
+//   event meeting an existing book CONVERGES when its payload (the event minus `actor`
+//   and `ts`) is identical to the existing creation, FORKS and surfaces when it differs,
+//   and NEVER refuses the whole fold. A rootless book.remove / text.skeleton.set /
+//   text.structure.apply on an existing book keeps its refusal-to-act semantics
+//   per-event (retained, reported) — never a whole-fold throw. ----------
+{
+  const t = (s, a = 'actor-a') => `2026-08-18T06:00:${String(s).padStart(2, '0')}.000Z|0000|${a}`;
+  const E = (op, actor, ts, base, extra) => mkEvent({ op, actor, ts, base, ...extra });
+  const skelOf = (b, ...keys) => `\\id ${b}\n\\c 1\n\\p\n` + keys.map((k) => `\\v ${k.split(':')[1]} ${SLOT}${k}${SLOT}`).join('');
+  const S2 = skelOf('TIT', '1:1', '1:2');
+  const S1 = skelOf('TIT', '1:1');
+
+  // (a) the two-device seeding union CONVERGES — one book, no fork, both orders
+  {
+    const USFM = '\\id TIT\n\\c 1\n\\p\n\\v 1 Pablo, siervo de Dios.\n\\v 2 con esperanza.\n';
+    const alignmentFiles = { TIT: { chapters: { 1: { 1: { alignments: [], wordBank: [], targetVerseMd5: verseTextMd5('Pablo, siervo de Dios.\n') } } } } };
+    const decisionFiles = { translationWords: { decisions: [
+      { contextId: { checkId: 'c1', occurrence: 1, reference: { bookId: 'tit', chapter: 1, verse: 1 } }, selections: false }] } };
+    const mkSeed = (actor) => seedFromSidecars({ actor, books: { TIT: USFM }, decisionFiles, alignmentFiles });
+    const seedA = mkSeed('actor-a');
+    const seedB = mkSeed('actor-b');
+    let ab = null, ba = null, err = '';
+    try { ab = fold([...seedA, ...seedB]); ba = fold([...seedB, ...seedA]); } catch (e) { err = e.message; }
+    check('J32e (D53d): two actors seeding the SAME book from the same source CONVERGE as one fact — the union folds (both orders), one book, no fork, nothing quarantined. Pre-fix the union THREW ("book.add of TIT carries no base but the book already exists") — every project opened on a second device became permanently unfoldable',
+      err === '' && !!ab && 'TIT' in ab.books && ab.forks.length === 0 && ab.retained.length === 0 &&
+      Object.keys(ab.books).length === 1 && ab.books.TIT.verses['1:1'] === 'Pablo, siervo de Dios.\n' &&
+      (ab.decisions.translationWords || []).length === 1 && !!ab.alignments.TIT?.['1:1'],
+      err ? `THREW: ${err.slice(0, 90)}` : `forks=${JSON.stringify(ab.forks)} retained=${JSON.stringify(ab.retained)}`);
+    check('J32e (D53d): the convergence is DETERMINISTIC under order and permutation — the fold stays a pure function of the event SET',
+      err === '' && !!ab && deepEq(ab, ba) && deepEq(ab, fold(shuffled([...seedA, ...seedB], mulberry32(42)))),
+      err ? `THREW: ${err.slice(0, 60)}` : 'A+B ≡ B+A ≡ shuffled');
+  }
+
+  // (b) a DIFFERENT-payload rootless book.add FORKS and surfaces — neither silently wins
+  {
+    const addA = E('book.add', 'actor-a', t(0), null, { book: 'TIT', scope: [], skeleton: S2, initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n' } });
+    const addB = E('book.add', 'actor-b', t(1, 'actor-b'), null, { book: 'TIT', scope: [], skeleton: S1, initialVerses: { '1:1': 'otro\n' } });
+    let out = null, err = '';
+    try { out = fold([addA, addB]); } catch (e) { err = e.message; }
+    check('J32e (D53d): two rootless book.add with DIFFERENT payloads FORK and surface for review like any structural fork — neither silently wins, and the whole fold is never refused',
+      err === '' && !!out && out.forks.some((f) => f.key === 'book|TIT' && f.heads.includes(addA.ts) && f.heads.includes(addB.ts)) &&
+      'TIT' in out.books,
+      err ? `THREW: ${err.slice(0, 90)}` : `forks=${JSON.stringify(out.forks)}`);
+  }
+
+  // (c) a rootless book.remove / structure op on an existing book is REPORTED, never a throw
+  {
+    const add = E('book.add', 'actor-a', t(0), null, { book: 'TIT', scope: [], skeleton: S2, initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n' } });
+    const rm = E('book.remove', 'actor-b', t(2, 'actor-b'), null, { book: 'TIT' });
+    let rmOut = null, rmErr = '';
+    try { rmOut = fold([add, rm]); } catch (e) { rmErr = e.message; }
+    check('J32e (D53d): a rootless book.remove on an existing book still refuses to ACT (the book stays projected) but is RETAINED and REPORTED (`rootless-structural`) — the project folds; pre-fix the whole fold threw',
+      rmErr === '' && !!rmOut && 'TIT' in rmOut.books && rmOut.books.TIT.verses['1:1'] === 'uno\n' &&
+      rmOut.retained.some((r) => r.key === 'book|TIT' && r.ts === rm.ts && r.reason === 'rootless-structural'),
+      rmErr ? `THREW: ${rmErr.slice(0, 90)}` : `retained=${JSON.stringify(rmOut.retained)}`);
+    const ap = E('text.structure.apply', 'actor-b', t(3, 'actor-b'), null, { book: 'TIT', skeleton: S1,
+      transitions: { '1:1': { text: 'x\n', sources: [] } }, dispositions: [] });
+    let apOut = null, apErr = '';
+    try { apOut = fold([add, ap]); } catch (e) { apErr = e.message; }
+    check('J32e (D53d): a rootless text.structure.apply is the same verdict — it never fires blind (the slot set is unchanged) and never refuses the whole fold; it is retained and reported',
+      apErr === '' && !!apOut && '1:2' in apOut.books.TIT.verses &&
+      apOut.retained.some((r) => r.key === 'skel|TIT' && r.ts === ap.ts && r.reason === 'rootless-structural'),
+      apErr ? `THREW: ${apErr.slice(0, 90)}` : `retained=${JSON.stringify(apOut.retained)}`);
+    const sk = E('text.skeleton.set', 'actor-b', t(4, 'actor-b'), null, { book: 'TIT', skeleton: S2 });
+    let skOut = null, skErr = '';
+    try { skOut = fold([add, sk]); } catch (e) { skErr = e.message; }
+    check('J32e (D53d): and text.skeleton.set — the whole rootless-structural class is one rule: refuse to act, report, keep folding',
+      skErr === '' && !!skOut && 'TIT' in skOut.books &&
+      skOut.retained.some((r) => r.key === 'skel|TIT' && r.ts === sk.ts && r.reason === 'rootless-structural'),
+      skErr ? `THREW: ${skErr.slice(0, 90)}` : `retained=${JSON.stringify(skOut.retained)}`);
+  }
 }
 
 console.log(`\nJournal suite: ${pass} passed, ${fail} failed (fast-check seed ${SEED})`);

@@ -136,6 +136,16 @@ export const fold = (eventsIn) => {
   // cycle behave chain-agnostically, and let a still-offline actor's prior-generation
   // draft win or lose purely by clock. `sanc == null` now means exactly what it says —
   // NO anchor — and an unanchored head does not project (it is retained and reported).
+  // CONVERGED creation roots (round 10, D53 part d). `base: null` asserts "no prior
+  // state I KNOW OF", not "no prior state exists": a rootless `book.add` whose payload
+  // (the event minus `actor` and `ts`) is identical to an existing creation head IS the
+  // same fact, recorded twice — §8.8 seeding is deterministic modulo actor, so every
+  // second-device seed lands here. The later record aliases to the earlier root, and
+  // every place a generation root is consulted (anchors, generation stamps, payload
+  // identity) resolves through the alias. Events sort by ts before this map is built,
+  // so the canonical root is order- and permutation-independent.
+  const genAlias = new Map();
+  const aliasTs = (ts) => genAlias.get(ts) ?? ts;
   const sancCache = new Map();
   const sancOf = (ts) => {
     if (ts == null) return null;
@@ -143,7 +153,7 @@ export const fold = (eventsIn) => {
     sancCache.set(ts, null); // cycle guard: a cycle resolves to NO anchor, never to "any"
     const e = byTs.get(ts);
     let r = null;
-    if (e) r = (e.op === 'book.add' || e.op === 'text.structure.apply') ? ts : sancOf(e.base ?? null);
+    if (e) r = e.op === 'book.add' ? aliasTs(ts) : e.op === 'text.structure.apply' ? ts : sancOf(e.base ?? null);
     sancCache.set(ts, r);
     return r;
   };
@@ -158,7 +168,7 @@ export const fold = (eventsIn) => {
     if (e.op === 'book.add' || e.op === 'text.structure.apply') return e.ts;
     const a = sancOf(e.base ?? null);
     if (a != null) return a;
-    return e.generation ?? null;
+    return e.generation != null ? aliasTs(e.generation) : null;
   };
 
   // 3. per-key live-head sets. Head = {ts, actor, sanc, book, event}.
@@ -199,17 +209,17 @@ export const fold = (eventsIn) => {
   // `text.structure.apply` dropped slots with ZERO dispositions, because the affected-set
   // computation reads the BASE skeleton and there was none.
   //
-  // ONE rule: `book.add` is the ONLY rootless structural op, and it is rootless only
-  // while the book does not yet exist. Every other rootless structural op REFUSES.
-  const ROOTLESS_STRUCTURAL_OK = (e) =>
-    e.op === 'book.add' && (heads.get(`book|${e.book}`) || []).length === 0;
-  const rootlessStructuralError = (e) => {
-    if (e.base != null) return null;
-    if (ROOTLESS_STRUCTURAL_OK(e)) return null;
-    return e.op === 'book.add'
-      ? `book.add of ${e.book} carries no base but the book already exists (ts ${e.ts}) — a re-add MUST chain to the book.remove it follows; refuse to fold (§8.5)`
-      : `${e.op} requires a base naming its structural predecessor (ts ${e.ts}) — book.add is the only rootless structural op, and only while the book does not exist; refuse to fold (§8.5)`;
-  };
+  // ONE rule (round 10, D53 part d): `base: null` is a CLAIM — "no prior state I KNOW
+  // OF" — and the fold decides it per event, NEVER by refusing the whole fold.
+  //   • `book.add` while the book does not exist: an ordinary root.
+  //   • `book.add` while the book exists: identical payload → CONVERGE (the same fact,
+  //     recorded twice — the alias above); different payload → FORK and surface for
+  //     review like any structural fork. Neither ever throws.
+  //   • `book.remove` / `text.skeleton.set` / `text.structure.apply`: a rootless
+  //     structural op cannot fire blind (its effect reads the base it did not name), so
+  //     it refuses to ACT — retained and reported (`rootless-structural`) — and the
+  //     project keeps folding.
+  const rootlessStructural = []; // {key, ts} — every rootless non-add structural op
   // Returns a pendingStructural record, or null when the base is fine (or absent).
   const structuralBaseState = (e, allowed) => {
     if (e.base == null) return null; // a root — there is no chain link to check
@@ -313,9 +323,23 @@ export const fold = (eventsIn) => {
 
   for (const e of events) {
     // ONE rootless-base gate for the whole structural class, before any op-specific work.
-    if (CHAIN_OPS.has(e.op)) {
-      const err = rootlessStructuralError(e);
-      if (err) throw new Error(err);
+    if (CHAIN_OPS.has(e.op) && e.base == null) {
+      if (e.op !== 'book.add') {
+        // refuse to ACT, keep folding (D53d): the op's effect reads a base it never named
+        rootlessStructural.push({ key: e.op === 'book.remove' ? `book|${e.book}` : `skel|${e.book}`, ts: e.ts });
+        continue;
+      }
+      const same = (heads.get(`book|${e.book}`) || [])
+        .find((h) => h.event.op === 'book.add' && canon(payloadOf(h.event)) === canon(payloadOf(e)));
+      if (same) {
+        // CONVERGE (D53d): one fact, two records — the later aliases to the earlier
+        // root; no second head, and descendants/generation stamps resolve through it
+        genAlias.set(e.ts, aliasTs(same.ts));
+        acceptedStructural.add(e.ts); // a chain link others may legitimately base on
+        continue;
+      }
+      // different payload (or the book does not exist yet): fall through — a first add
+      // is a root, and a differing rootless add joins as a structural FORK head below
     }
     if (e.op === 'note.add') { notes.push(e); continue; }
 
@@ -373,8 +397,8 @@ export const fold = (eventsIn) => {
       // it arrives (fold determinism stays per event-SET); an actor whose own head has
       // advanced past the claimed base is a writer defect and refuses — a skeleton
       // edit cannot silently reverse a text.structure.apply.
-      if (e.base == null)
-        throw new Error(`text.skeleton.set requires base = the current skeleton head (ts ${e.ts}) — refuse to fold (§8.5); the first skeleton comes from book.add`);
+      // (a rootless text.skeleton.set never reaches here — the D53d gate above reports
+      // it; the first skeleton comes from book.add)
       // The ONE chain-link rule (round 8): exists → else pend; a structural event of the
       // SAME book → else refuse; accepted → else pend transitively, so a descendant never
       // wins a fork off an unaccepted link.
@@ -626,7 +650,7 @@ export const fold = (eventsIn) => {
       // reach the projection at all (the rootless-base rule), and the cutoff is gone.
       const inGeneration = (h) => {
         const g = h.event.generation;
-        return g === undefined || genRoot == null || g === genRoot;
+        return g === undefined || genRoot == null || aliasTs(g) === genRoot;
       };
       // An ANCHOR is required. `sanc == null` used to pass unconditionally — "belongs to
       // every branch" — which is how a rootless or cycle-based content op projected under
@@ -643,8 +667,15 @@ export const fold = (eventsIn) => {
     }
     if (candidates.length === 0) return null;
     if (candidates.length > 1) {
-      const c0 = canon(payloadOf(candidates[0].event));
-      if (candidates.every((h) => canon(payloadOf(h.event)) === c0)) {
+      // payload identity resolves `generation` through the D53d alias: two seeded
+      // records whose stamps name CONVERGED creation roots carry the same fact
+      const payloadCanon = (ev) => {
+        const p = payloadOf(ev);
+        if (typeof p.generation === 'string') putOwn(p, 'generation', aliasTs(p.generation));
+        return canon(p);
+      };
+      const c0 = payloadCanon(candidates[0].event);
+      if (candidates.every((h) => payloadCanon(h.event) === c0)) {
         candidates = [maxTs(candidates)];
       } else {
         const winner = maxTs(candidates);
@@ -815,7 +846,7 @@ export const fold = (eventsIn) => {
     // §8.5 generational rule for notes (verse- AND decisionKey-targeted): the stamp is
     // unconditional, so quarantine is purely causal — a mismatch with the book's
     // current generation root quarantines regardless of ts
-    if (nb && genRoots.has(nb) && n.generation !== genRoots.get(nb)) {
+    if (nb && genRoots.has(nb) && aliasTs(n.generation) !== genRoots.get(nb)) {
       retained.push({ key: 'note', ts: n.ts, reason: 'prior-generation' });
       continue;
     }
@@ -840,6 +871,7 @@ export const fold = (eventsIn) => {
   for (const r of retainedByStruct) if (allChains.has(r.structTs)) retained.push({ key: r.key, ts: r.ts, reason: r.reason });
   for (const s of superseded) retained.push({ key: s.key, ts: s.ts, reason: 'superseded' });
   for (const r of rootless) retained.push({ key: r.key, ts: r.ts, reason: 'rootless-base' });
+  for (const r of rootlessStructural) retained.push({ key: r.key, ts: r.ts, reason: 'rootless-structural' });
 
   // §8.5/§5.4 dotted-path registers: `a` and `a.b` are DIFFERENT register keys that write
   // the SAME place in the projected document, so the later write silently clobbered the
