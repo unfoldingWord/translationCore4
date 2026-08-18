@@ -1339,7 +1339,7 @@ try {
       transitions: { '1:1': { text: 'uno\n', sources: [{ key: '1:2', ts: add2.ts }] }, '1:3': { text: 'dos\n', sources: [{ key: '1:2', ts: add2.ts }] } },
       dispositions: [] })]);
   } catch (e) { dupClaim = e.message; }
-  check('J21: malformed structural events refuse the fold (transition outside the skeleton; a slot without a transition; one source claimed twice)',
+  check('J21: malformed structural events refuse the fold (transition outside the skeleton; a slot without a transition; one source claimed twice) [covers R-8.5.18]',
     noSlot.includes('transitions must cover exactly') && missingTr.includes('transitions must cover exactly') && dupClaim.includes('twice'),
     `"${dupClaim.slice(0, 50)}"`);
 
@@ -1526,7 +1526,7 @@ try {
   });
   let refused = ''; let out = null;
   try { out = fold([add, align11, rogue]); } catch (e) { refused = e.message; }
-  check('J21d: a disposition referencing a record OUTSIDE the computed affected set is refused whole (all-or-nothing) — structural actions cannot consume unrelated records',
+  check('J21d: a disposition referencing a record OUTSIDE the computed affected set is refused whole (all-or-nothing) — structural actions cannot consume unrelated records [covers R-8.5.16]',
     refused.includes('affected'),
     refused ? `"${refused.slice(0, 80)}"` : `applied: align 1:1 projects=${!!out?.alignments.TIT?.['1:1']}, retained=${JSON.stringify(out?.retained)}`);
   check('J21d: the unrelated 1:1 alignment still projects (the rogue event never applied)',
@@ -1537,7 +1537,7 @@ try {
   const rogueNote = { ...rogue, ts: t(2, 1, 'drafter-a'), dispositions: [{ surface: 'note', ts: note11.ts, action: 'orphan-review' }] };
   let refusedN = ''; let outN = null;
   try { outN = fold([add, note11, rogueNote]); } catch (e) { refusedN = e.message; }
-  check('J21d: a rogue note disposition (unmapped verse) is refused the same way; the note survives',
+  check('J21d: a rogue note disposition (unmapped verse) is refused the same way; the note survives [covers R-8.5.16]',
     refusedN.includes('affected') && (outN === null),
     refusedN ? `"${refusedN.slice(0, 60)}"` : `note projected=${outN?.notes.length}`);
 }
@@ -1583,6 +1583,16 @@ try {
   const good = fold([add, align2, structWith({ surface: 'alignment', key: '1:2', ts: align2.ts, action: 're-key', to: '1:3' })]);
   check('J21e: a schema-valid disposition still applies (re-key to a mapping target)',
     !!good.alignments.TIT?.['1:3'] && good.pendingStructural.length === 0, JSON.stringify(good.alignments.TIT));
+  // §8.5: re-key and replace are not TEXT-surface actions — the transitions already state where content goes
+  for (const [label, d] of [
+    ['re-key on the text surface', { surface: 'text', key: '1:2', ts: add.ts, action: 're-key', to: '1:3' }],
+    ['replace on the text surface', { surface: 'text', key: '1:2', ts: add.ts, action: 'replace', post: { text: 'x\n' } }],
+  ]) {
+    let refused = '';
+    try { fold([add, align2, structWith(d)]); } catch (e) { refused = e.message; }
+    check(`J21e: ${label} is refused whole — re-key/replace are not text actions; a live text head's dispositions are invalidate-retain/orphan-review only [covers R-8.5.17]`,
+      refused.includes('disposition'), `"${refused.slice(0, 90)}"`);
+  }
 }
 
 // ---------- J21f (round 6): replace.post is a VALIDATED post-state (§5.1/§5.2 shapes,
@@ -1636,7 +1646,7 @@ try {
     { surface: 'alignment', key: '1:2', ts: align2.ts, action: 'orphan-review' },
     { surface: 'note', ts: note2.ts, action: 'replace', post: { text: 'sustituta' } },
   ], [note2])); } catch (e) { noteRefused = e.message; }
-  check('J21f: note replacement is REJECTED — notes are grow-only in v1 (replace contradicts their model)',
+  check('J21f: note replacement is REJECTED — notes are grow-only in v1 (replace contradicts their model) [covers R-8.5.17]',
     noteRefused.includes('grow-only') || noteRefused.includes('replace'),
     `"${noteRefused.slice(0, 70)}"`);
   // a COMPLETE, identity-consistent alignment replace still applies
@@ -3077,7 +3087,7 @@ try {
     ];
     let allClean = true; const details = [];
     for (const [label, ev] of rows) if (!refusedBothWays(ev).ok) { allClean = false; details.push(label); }
-    check('J31 finding 11: project.vrs.set outside a creation/seed segment is refused at seal AND at fold — the §8.5 "creation/seed only" sentence now has an implementation',
+    check('J31 finding 11: project.vrs.set outside a creation/seed segment is refused at seal AND at fold — the §8.5 "creation/seed only" sentence now has an implementation [covers R-8.5.19]',
       allClean, details.length ? `missed: ${details.join(' · ')}` : `${rows.length} firing cases`);
     check('J31 finding 11: each legitimate seeding source still seals — creation, sidecar-migration and tc3-import',
       ['creation', 'sidecar-migration', 'tc3-import'].every((source) => {
