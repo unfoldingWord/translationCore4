@@ -9,7 +9,7 @@ import { execSync } from 'child_process';
 import { makeClock, parseTs, compareTs } from './journal/hlc.mjs';
 import { SLOT, decompose, recompose } from './journal/skeleton.mjs';
 import { fold, verseTextMd5, slotKeysOf, headIdentity } from './journal/fold.mjs';
-import { validateAction } from './journal/schema.mjs';
+import { validateAction, KNOWN_OPS } from './journal/schema.mjs';
 import { BOOK_CODES, identityKeyOf, identityKeyError, ipathError, pinEntryError, noteRekeyError, splitDecisionKey } from './journal/grammar.mjs';
 import { reconcileUsfm, seedFromSidecars } from './journal/reconcile.mjs';
 import {
@@ -208,6 +208,21 @@ const buildSeed = () => {
   check('J14: unknown v / unknown op refuse with clear messages [covers R-8.3.9 R-8.4.5 R-8.5.1]', vThrew.includes('version') && opThrew.includes('unrecognized op'), `"${vThrew.slice(0, 40)}" / "${opThrew.slice(0, 40)}"`);
 }
 
+// ---------- J14 (vocabulary closure): the op set is CLOSED — the schema's known-op set
+//   IS the §8.5 table, member for member, and no op names a section (§8.4a) ----------
+{
+  const SPEC_OPS = [
+    'text.verse.set', 'text.skeleton.set', 'book.add', 'book.remove', 'text.structure.apply',
+    'align.verse.set', 'check.decision.set', 'note.add', 'resource.pin.set',
+    'project.vrs.set', 'project.meta.set', 'settings.set',
+  ];
+  check('J14: the schema\'s known-op set EQUALS the §8.5 table — 12 ops, set-equal, and no op matches /section/i (no section op in the vocabulary, §8.4a) [covers R-8.4.5 R-8.5.1]',
+    KNOWN_OPS.length === SPEC_OPS.length &&
+    JSON.stringify([...KNOWN_OPS].sort()) === JSON.stringify([...SPEC_OPS].sort()) &&
+    KNOWN_OPS.every((op) => !/section/i.test(op)),
+    `schema ops (${KNOWN_OPS.length}): ${[...KNOWN_OPS].sort().join(', ')}`);
+}
+
 // ---------- J14b (round 6): the schema is TOTAL over the envelope — every field the fold
 //   dereferences has a shape rule; malformed input gets a clean rejection, never a crash ----------
 {
@@ -368,7 +383,13 @@ const buildSeed = () => {
   const NFC = NFD.normalize('NFC');
   const skel1 = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}`;
 
-  // (a) the transform — every text a writer journals is NFC in the sealed bytes
+  // (a) the transform — every text a writer journals is NFC in the sealed bytes.
+  // The skeleton rows (R-8.5.9): a skeleton CARRIES header text (\h, \toc, \mt …), so an
+  // NFD header must be NFC in the sealed bytes like every other journaled text.
+  const NFD_H = 'Pabló';                       // combining acute — NFD header text
+  const NFC_H = NFD_H.normalize('NFC');
+  const skelNfd = `\\id TIT\n\\h ${NFD_H}\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}`;
+  const skelNfc = `\\id TIT\n\\h ${NFC_H}\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}`;
   const normalized = [
     ['text.verse.set text', mkEvent({ op: 'text.verse.set', actor: 'actor-a', ts: t(1), book: 'TIT', chapter: '1', verse: '1', text: NFD }), (b) => b.text],
     ['note.add text', mkEvent({ op: 'note.add', actor: 'actor-a', ts: t(2), generation: t(0), target: { book: 'TIT', chapter: '1', verse: '1' }, text: NFD }), (b) => b.text],
@@ -376,9 +397,12 @@ const buildSeed = () => {
     ['settings.set string value', mkEvent({ op: 'settings.set', actor: 'actor-a', ts: t(4), path: 'ui.label', value: NFD }), (b) => b.value],
     ['project.meta.set string value', mkEvent({ op: 'project.meta.set', actor: 'actor-a', ts: t(5), path: 'identification.name.es', value: NFD }), (b) => b.value],
     ['structure transition text', mkEvent({ op: 'text.structure.apply', actor: 'actor-a', ts: t(6), base: t(0), book: 'TIT', skeleton: skel1, transitions: { '1:1': { text: NFD, sources: [] } }, dispositions: [] }), (b) => b.transitions['1:1'].text],
+    ['text.skeleton.set skeleton', mkEvent({ op: 'text.skeleton.set', actor: 'actor-a', ts: t(13), base: t(0), book: 'TIT', skeleton: skelNfd }), (b) => b.skeleton, skelNfc],
+    ['book.add skeleton', mkEvent({ op: 'book.add', actor: 'actor-a', ts: t(14), book: 'TIT', scope: [], skeleton: skelNfd, initialVerses: {} }), (b) => b.skeleton, skelNfc],
+    ['text.structure.apply skeleton', mkEvent({ op: 'text.structure.apply', actor: 'actor-a', ts: t(15), base: t(0), book: 'TIT', skeleton: skelNfd, transitions: { '1:1': { text: 'uno\n', sources: [] } }, dispositions: [] }), (b) => b.skeleton, skelNfc],
   ];
-  const misses = normalized.filter(([, e, get]) => get(bodyOf(e)) !== NFC);
-  check('J14f (I-4): sealAction NORMALIZES every text a writer journals — verse content, note text, initial verse content, structural destination text, and settings/metadata string values are NFC in the sealed bytes [covers R-8.5.9]',
+  const misses = normalized.filter(([, e, get, expect]) => get(bodyOf(e)) !== (expect ?? NFC));
+  check('J14f (I-4): sealAction NORMALIZES every text a writer journals — verse content, skeletons, note text, initial verse content, structural destination text, and settings/metadata string values are NFC in the sealed bytes [covers R-8.5.9]',
     misses.length === 0, `${normalized.length - misses.length}/${normalized.length} normalized${misses.length ? ` · missed: ${misses.map(([l]) => l).join(', ')}` : ''}`);
 
   // (b) the refusal — an IDENTITY is never silently rewritten. Pre-fix, the two decision
@@ -1186,6 +1210,23 @@ try {
   const goodErrors = validateIntake(base, goodScratch, 'actor-a');
   check('J20: whitelist-only intake — a valid new sealed segment and a well-formed actor.json are explicitly allowed',
     goodErrors.length === 0, JSON.stringify(goodErrors));
+
+  // R-8.1.15: journals are PERMANENT history — deletion of an accepted segment
+  // (a "compaction") is rejected like any rewrite, own-actor and foreign-actor alike.
+  const delOwn = path.join(tmp, 'del-own'); cp(base, delOwn); git('checkout -qb actor-a', delOwn);
+  git(`rm -q "ingredients/checking/journal/actor-a/segments/${segmentName('2026-06-02T00:00:01.000Z|0000|actor-a')}"`, delOwn);
+  commitAll(delOwn, 'compaction: delete own accepted segment');
+  const delOwnErrors = validateIntake(base, mergeToScratch(base, delOwn, 'actor-a', 'del-own'), 'actor-a');
+  const delForeign = path.join(tmp, 'del-foreign'); cp(base, delForeign); git('checkout -qb actor-a', delForeign);
+  git(`rm -q "ingredients/checking/journal/seed/segments/${segmentName('2026-06-02T00:00:00.000Z|0000|seed')}"`, delForeign);
+  commitAll(delForeign, 'delete ANOTHER actor\'s accepted segment');
+  const delForeignErrors = validateIntake(base, mergeToScratch(base, delForeign, 'actor-a', 'del-foreign'), 'actor-a');
+  check('J20: intake rejects DELETION of an accepted segment — journals are permanent history, no compaction in v:1 [covers R-8.1.15]',
+    delOwnErrors.some((e) => e.startsWith('deleted:')) &&
+    delForeignErrors.some((e) => e.startsWith('foreign-actor:')) &&
+    git('rev-parse HEAD', base).trim() === mainHead &&
+    fs.readFileSync(path.join(base, 'ingredients/TIT.usfm'), 'utf8') === mainProjection,
+    JSON.stringify({ delOwnErrors, delForeignErrors }));
 
   fs.rmSync(tmp, { recursive: true, force: true });
 }
@@ -2316,6 +2357,16 @@ try {
     !('ui.pane' in withRm.settings) && !('identification.abbreviation.en' in withRm.projectMeta));
   check('J27: the projected settings document after a removal is byte-equal to one where the path was never set',
     projectSettings(withRm.settings) === projectSettings(never.settings));
+
+  // §8.5: JSON `null` is NOT absence — {path, value: null} STORES null: the path is
+  // PRESENT with value null, distinct from never-set and from {path, removed: true}.
+  const sNull = E('settings.set', 'actor-a', t(10, 'actor-a'), null, { path: 'ui.optional', value: null });
+  const mNull = E('project.meta.set', 'actor-a', t(11, 'actor-a'), null, { path: 'identification.description.en', value: null });
+  const withNull = fold([add, sSet, sRm, sNull, mNull]);
+  check('J27: settings/meta {path, value: null} STORES null — the path is PRESENT with value null, distinct from never-set and from removed: true [covers R-8.5.11]',
+    'ui.optional' in withNull.settings && withNull.settings['ui.optional'] === null &&
+    'identification.description.en' in withNull.projectMeta && withNull.projectMeta['identification.description.en'] === null &&
+    !('ui.pane' in withNull.settings) && !('ui.optional' in never.settings) && !('identification.description.en' in never.projectMeta));
 
   // alignment removal = explicit empty-state payload — a defined record, never absence
   const alignSet = E('align.verse.set', 'actor-b', t(5, 'actor-b'), null, { book: 'TIT', chapter: '1', verse: '1', generation: add.ts, alignments: [{ topWords: [{ word: 'x' }], bottomWords: [] }], wordBank: [], targetVerseMd5: md5('uno') });

@@ -300,6 +300,10 @@ const OPS = {
     : null,
 };
 
+// The schema's known-op set (R-8.5.1: there are no other ops in `v: 1`). Exported so the
+// suite can assert set-equality with the §8.5 table instead of trusting this file.
+export const KNOWN_OPS = Object.freeze(Object.keys(OPS));
+
 // ---------- §8.5 payload fields: what a head's IDENTITY is made of (round 9) ----------
 // The fold auto-merges live heads with byte-identical payloads (§8.6 step 3). It built
 // that payload by SUBTRACTING the eight known envelope keys, so any other top-level field
