@@ -647,6 +647,12 @@ export const fold = (eventsIn) => {
 
   const forks = [];
   const retained = [];
+  // R-8.6.4 auto-merge bookkeeping (round 12): identical-payload heads collapse to ONE
+  // projected record, and each collapse is REPORTED — {key, heads, winner} — so a losing
+  // twin's observable state is the projected identical head. Pre-fix the twin was in NO
+  // output list at all (not projected, retained, forked, invalid or pending): no bytes
+  // lost, but a state the R-8.6.2 conservation vocabulary did not cover.
+  const autoMerged = [];
   const maxTs = (arr) => arr.reduce((a, b) => (a.ts > b.ts ? a : b));
   // resolve a key under a chain: filter by ancestry + consumption, auto-merge identical
   // payloads, report a fork otherwise. skel keys skip the ancestry filter — a structural
@@ -704,7 +710,9 @@ export const fold = (eventsIn) => {
       };
       const c0 = payloadCanon(candidates[0].event);
       if (candidates.every((h) => payloadCanon(h.event) === c0)) {
-        candidates = [maxTs(candidates)];
+        const winner = maxTs(candidates);
+        autoMerged.push({ key, heads: candidates.map((h) => h.ts).sort(), winner: winner.ts });
+        candidates = [winner];
       } else {
         const winner = maxTs(candidates);
         forks.push({ key, heads: candidates.map((h) => h.ts).sort(), provisional: winner.ts });
@@ -922,7 +930,7 @@ export const fold = (eventsIn) => {
 
   return {
     books, decisions, alignments, pins, projectMeta, projectMetaRemoved, settings, notes: notesOut,
-    forks, invalid, retained, scope,
+    forks, invalid, retained, autoMerged, scope,
     vrs: vrs ? { name: vrs.name, bytes: vrs.bytes } : null, vrsRejected,
     pendingStructural, headsTs, supersedeRefused,
     // The RAW live-head sets (§8.6 step 3), exposed because §8.8 reconcile must build its

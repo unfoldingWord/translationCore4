@@ -3375,6 +3375,9 @@ try {
       if (out.invalid.some((i) => i.ts === ts)) st.push('invalidated');
       if (out.pendingStructural.some((p) => p.ts === ts || p.detail.some((d) => String(d).includes(ts)))) st.push('pending');
       if (out.forks.some((f) => f.heads.includes(ts))) st.push('forked');
+      // R-8.6.4: an auto-merged identical twin's observable state IS the projected
+      // identical head — the fold reports the collapse in autoMerged[]
+      if ((out.autoMerged || []).some((a) => a.heads.includes(ts))) st.push('auto-merged');
       // ORDINARY HISTORY is not loss: a record whose content a traceable SUCCESSOR
       // replaced — its own linear continuation, a supersedes naming it, a structural
       // action claiming it as a source, or (§8.3) a later event of the same actor on the
@@ -4159,6 +4162,51 @@ try {
       !('1:2' in u.books.TIT.verses) && u.headsTs['skel|TIT'] === apB.ts &&
       stable([...seedA, ...seedB, apB]),
       `pending=${JSON.stringify(u.pendingStructural)} 1:1=${JSON.stringify(u.books.TIT?.verses['1:1'])}`);
+  }
+}
+
+// ---------- J32h (round 12): an auto-merge LOSING TWIN is ACCOUNTED. R-8.6.4 collapses
+//   byte-identical live heads to one projected record — but the losing twin then landed
+//   in NO output list at all: not projected, not retained, not forked, not invalid, not
+//   pending. No bytes are lost (the identical fact projects), but R-8.6.2's stated
+//   vocabulary did not cover the state and the round-12 conservation lens fired on it.
+//   The fold now reports every collapse in `autoMerged[]` (key, the full head ts set,
+//   the winning ts): the twin's observable state IS the projected identical head. ----------
+{
+  const t = (s, a) => `2026-08-18T12:00:${String(s).padStart(2, '0')}.000Z|0000|${a}`;
+  const skelOf = (b, ...keys) => `\\id ${b}\n\\c 1\n\\p\n` + keys.map((k) => `\\v ${k.split(':')[1]} ${SLOT}${k}${SLOT}`).join('');
+  const S2 = skelOf('TIT', '1:1', '1:2');
+  const P = { book: 'TIT', scope: [], skeleton: S2, initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n' } };
+  const alignOf = (actor, ts, gen) => mkEvent({ op: 'align.verse.set', actor, ts, base: null, book: 'TIT',
+    chapter: '1', verse: '1', generation: gen, alignments: [], wordBank: [{ w: 'uno' }], targetVerseMd5: verseTextMd5('uno\n') });
+  const inNoList = (o, ts) => !Object.values(o.headsTs).includes(ts) && !o.retained.some((r) => r.ts === ts) &&
+    !o.forks.some((f) => f.heads.includes(ts)) && !o.invalid.some((i) => i.ts === ts) &&
+    !o.pendingStructural.some((p) => p.ts === ts);
+
+  // (a) through the D53d alias: two devices' concurrent identical first alignments,
+  //     stamps naming CONVERGED creation roots
+  {
+    const addA = mkEvent({ op: 'book.add', actor: 'actor-a', ts: t(0, 'actor-a'), base: null, ...P });
+    const addB = mkEvent({ op: 'book.add', actor: 'actor-b', ts: t(1, 'actor-b'), base: null, ...P }); // converges
+    const alA = alignOf('actor-a', t(2, 'actor-a'), addA.ts);
+    const alB = alignOf('actor-b', t(3, 'actor-b'), addB.ts); // the same fact, stamped with the aliased root
+    const o = fold([addA, addB, alA, alB]);
+    check('J32h: an auto-merge LOSING TWIN is ACCOUNTED — two concurrent byte-identical first alignments (stamps naming CONVERGED creation roots, equal through the D53d alias) collapse to one projected record, and the fold reports the collapse in autoMerged[] with the full head ts set. Pre-fix the loser was in NO output list: projected/retained/forked/invalid/pending all false [covers R-8.6.4]',
+      o.headsTs['align|TIT|1:1'] === alB.ts &&
+      (o.autoMerged || []).some((a) => a.key === 'align|TIT|1:1' && a.heads.includes(alA.ts) && a.heads.includes(alB.ts) && a.winner === alB.ts) &&
+      inNoList(o, alA.ts) && o.forks.length === 0,
+      `autoMerged=${JSON.stringify(o.autoMerged)} loser-in-no-other-list=${inNoList(o, alA.ts)}`);
+  }
+
+  // (b) the plain same-root variant — no alias involved, both stamps literally equal
+  {
+    const add = mkEvent({ op: 'book.add', actor: 'actor-a', ts: t(10, 'actor-a'), base: null, ...P });
+    const alA = alignOf('actor-a', t(12, 'actor-a'), add.ts);
+    const alB = alignOf('actor-b', t(13, 'actor-b'), add.ts);
+    const o = fold([add, alA, alB]);
+    check('J32h: the plain same-root identical twins are reported the same way — auto-merge bookkeeping is one rule, alias or no alias [covers R-8.6.4]',
+      (o.autoMerged || []).some((a) => a.key === 'align|TIT|1:1' && a.heads.includes(alA.ts) && a.winner === alB.ts),
+      `autoMerged=${JSON.stringify(o.autoMerged)}`);
   }
 }
 
