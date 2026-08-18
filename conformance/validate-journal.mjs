@@ -413,7 +413,7 @@ const buildSeed = () => {
   const NFD_ID = 'chék', NFC_ID = 'chék';
   let splitSeal = ''; try { sealAction([dec(NFD_ID)]); } catch (e) { splitSeal = e.message; }
   let splitFold = ''; try { fold([dec(NFD_ID)]); } catch (e) { splitFold = e.message; }
-  check('J14f (I-4): an NFD identity component is REFUSED at seal AND at fold — pre-fix it produced a SILENT IDENTITY SPLIT (two records, identity keys that print identically, no fork, no retained entry)',
+  check('J14f (I-4): an NFD identity component is REFUSED at seal AND at fold — pre-fix it produced a SILENT IDENTITY SPLIT (two records, identity keys that print identically, no fork, no retained entry) [covers R-8.5.13]',
     splitSeal.includes('I-4') && splitFold.includes('I-4') &&
     identityKeyOf(dec(NFD_ID).decision.contextId) !== identityKeyOf(dec(NFC_ID).decision.contextId),
     `seal="${splitSeal.slice(splitSeal.indexOf('I-4'), splitSeal.indexOf('I-4') + 60)}"`);
@@ -430,7 +430,7 @@ const buildSeed = () => {
     ['an object KEY at any depth', mkEvent({ op: 'settings.set', actor: 'actor-a', ts: t(12), path: 'ui.x', value: { 'étiquette': 1 } })],
   ];
   const notRefused = identityRows.filter(([, e]) => { try { sealAction([e]); return true; } catch { return false; } });
-  check('J14f (I-4): the refusal is CLASS-level — quoteString, decisionKey, dotted paths, the vrs frame name, and every object KEY at every depth refuse a non-NFC value; only CONTENT is transformed',
+  check('J14f (I-4): the refusal is CLASS-level — quoteString, decisionKey, dotted paths, the vrs frame name, and every object KEY at every depth refuse a non-NFC value; only CONTENT is transformed [covers R-8.5.13]',
     notRefused.length === 0, `${identityRows.length}/${identityRows.length} refused${notRefused.length ? ` · missed: ${notRefused.map(([l]) => l).join(', ')}` : ''}`);
 
   // (c) the writer stays symmetric with its own reader across the transform
@@ -1453,7 +1453,7 @@ try {
   const noteRekeyed = fold([add2, dec2, noteOnDec, structDecOnly([
     { surface: 'note', ts: noteOnDec.ts, action: 're-key', to: newDecKey },
   ])]);
-  check('J21c: with a re-key disposition the decisionKey-targeted note projects under the NEW decision identity, never the retired one',
+  check('J21c: with a re-key disposition the decisionKey-targeted note projects under the NEW decision identity, never the retired one [covers R-8.5.12]',
     noteRekeyed.pendingStructural.length === 0 &&
     noteRekeyed.notes.some((n) => n.target.decisionKey === newDecKey) &&
     !noteRekeyed.notes.some((n) => n.target.decisionKey === oldDecKey),
@@ -3099,7 +3099,7 @@ try {
       ['a verse-targeted note re-keyed to a slot outside the mapping', verseTarget, '9:9', ['1:1']],
     ];
     const missed = rows.filter(([, target, to, slots]) => noteRekeyError(target, to, slots) === null);
-    check('J31 finding 12: ONE predicate binds a note re-key destination to the note\'s target KIND — a verse target re-keys to a verse slot, a decisionKey target to a §5.2 identity key. Pre-fix a verse-targeted note re-keyed to an identity key produced `{book, chapter: "x1|tit|1|2|1", verse: ""}` — a target the schema itself rejects',
+    check('J31 finding 12: ONE predicate binds a note re-key destination to the note\'s target KIND — a verse target re-keys to a verse slot, a decisionKey target to a §5.2 identity key. Pre-fix a verse-targeted note re-keyed to an identity key produced `{book, chapter: "x1|tit|1|2|1", verse: ""}` — a target the schema itself rejects [covers R-8.5.12]',
       missed.length === 0, missed.length ? `missed: ${missed.map(([l]) => l).join(', ')}` : `${rows.length} firing cases`);
     check('J31 finding 12: the two legitimate re-keys still pass the predicate',
       noteRekeyError(verseTarget, '1:1', ['1:1']) === null && noteRekeyError(decTarget, 'translationWords|x1|tit|1|1|1', []) === null);
@@ -3674,7 +3674,7 @@ try {
     check('J32c (D-F8): a note dispositioned `orphan-review` is RETAINED and NOT projected — pre-fix it was BOTH at once, so one record held two observable states and the projected copy pointed at a slot that no longer exists [covers R-8.6.6]',
       !out.notes.some((n) => n.ts === note.ts) && out.retained.some((r) => r.key === 'note' && r.ts === note.ts && r.reason === 'orphan-review'),
       `projected=${out.notes.length} retained=${JSON.stringify(out.retained.filter((r) => r.key === 'note'))}`);
-    check('J32c (deferred half of round-8 finding 12): the note re-key destination grammar is applied AT THE FOLD, by the ONE shared predicate — only the fold knows both the note and the destination',
+    check('J32c (deferred half of round-8 finding 12): the note re-key destination grammar is applied AT THE FOLD, by the ONE shared predicate — only the fold knows both the note and the destination [covers R-8.5.12]',
       (() => {
         const dec = decOf(t(2), 2, add.ts);
         const bad = E('text.structure.apply', 'actor-a', t(5), add.ts, { book: 'TIT', skeleton: S1,
