@@ -220,6 +220,14 @@ export const fold = (eventsIn) => {
   //     it refuses to ACT — retained and reported (`rootless-structural`) — and the
   //     project keeps folding.
   const rootlessStructural = []; // {key, ts} — every rootless non-add structural op
+  // R-8.6.4 auto-merge bookkeeping (round 12): identical-payload heads collapse to ONE
+  // projected record, and each collapse is REPORTED — {key, heads, winner} — so a losing
+  // twin's observable state is the projected identical head. Pre-fix the twin was in NO
+  // output list at all (not projected, retained, forked, invalid or pending): no bytes
+  // lost, but a state the R-8.6.2 conservation vocabulary did not cover. Declared here,
+  // before the event loop, because a CONVERGED rootless book.add (D53d, R-8.5.3) is an
+  // auto-merge too and is recorded at the converge branch below (PR #85 review, item 1).
+  const autoMerged = [];
   // Returns a pendingStructural record, or null when the base is fine (or absent).
   const structuralBaseState = (e, allowed) => {
     if (e.base == null) return null; // a root — there is no chain link to check
@@ -357,8 +365,15 @@ export const fold = (eventsIn) => {
       if (same) {
         // CONVERGE (D53d): one fact, two records — the later aliases to the earlier
         // root; no second head, and descendants/generation stamps resolve through it
-        genAlias.set(e.ts, aliasTs(same.ts));
+        const canonical = aliasTs(same.ts);
+        genAlias.set(e.ts, canonical);
         acceptedStructural.add(e.ts); // a chain link others may legitimately base on
+        // R-8.6.4/R-8.6.2: the converged creation is ACCOUNTED, not merely harmless —
+        // it is an identical collapse, reported like every other auto-merge, with the
+        // CANONICAL root as winner. The action-level `book|` entry accounts for the
+        // WHOLE aliased action: none of its per-key projections (skeleton or slot
+        // heads) was ever created, so there is no other list it could appear in.
+        autoMerged.push({ key: `book|${e.book}`, heads: [canonical, e.ts].sort(), winner: canonical });
         continue;
       }
       // different payload (or the book does not exist yet): fall through — a first add
@@ -647,12 +662,7 @@ export const fold = (eventsIn) => {
 
   const forks = [];
   const retained = [];
-  // R-8.6.4 auto-merge bookkeeping (round 12): identical-payload heads collapse to ONE
-  // projected record, and each collapse is REPORTED — {key, heads, winner} — so a losing
-  // twin's observable state is the projected identical head. Pre-fix the twin was in NO
-  // output list at all (not projected, retained, forked, invalid or pending): no bytes
-  // lost, but a state the R-8.6.2 conservation vocabulary did not cover.
-  const autoMerged = [];
+  // (autoMerged is declared above the event loop — the converge branch records into it)
   const maxTs = (arr) => arr.reduce((a, b) => (a.ts > b.ts ? a : b));
   // resolve a key under a chain: filter by ancestry + consumption, auto-merge identical
   // payloads, report a fork otherwise. skel keys skip the ancestry filter — a structural

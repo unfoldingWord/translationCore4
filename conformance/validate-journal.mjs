@@ -3299,6 +3299,44 @@ try {
   }
 }
 
+// ---------- THE MASTER CONSERVATION PREDICATE (R-8.6.2) — module scope, shared by
+//   J32b (the single-journal property), J32e (the two-seed convergence repro) and J32f
+//   (the two-device honest-writer property). A written record's OBSERVABLE states;
+//   "silently absent" means: none of these. ----------
+const observableStates = (out, ts, events) => {
+  const st = [];
+  if (Object.values(out.headsTs).includes(ts) || out.notes.some((n) => n.ts === ts)) st.push('projected');
+  if (out.retained.some((r) => r.ts === ts)) st.push('retained');
+  if (out.invalid.some((i) => i.ts === ts)) st.push('invalidated');
+  if (out.pendingStructural.some((p) => p.ts === ts || p.detail.some((d) => String(d).includes(ts)))) st.push('pending');
+  if (out.forks.some((f) => f.heads.includes(ts))) st.push('forked');
+  // R-8.6.4: an auto-merged identical twin's observable state IS the projected
+  // identical head — the fold reports the collapse in autoMerged[]. A CONVERGED
+  // rootless creation (R-8.5.3) is accounted the same way (item 1, PR #85 review).
+  if ((out.autoMerged || []).some((a) => a.heads.includes(ts))) st.push('auto-merged');
+  // ORDINARY HISTORY is not loss: a record whose content a traceable SUCCESSOR
+  // replaced — its own linear continuation, a supersedes naming it, a structural
+  // action claiming it as a source, or (§8.3) a later event of the same actor on the
+  // same register key — is superseded by lineage, not silently dropped.
+  const self = events.find((e) => e.ts === ts);
+  const succeeded = events.some((e) =>
+    e.base === ts ||
+    (e.supersedes || []).includes(ts) ||
+    (e.op === 'text.structure.apply' && Object.values(e.transitions).some((tr) => (tr.sources || []).some((s) => s.ts === ts))) ||
+    (e.op === 'text.structure.apply' && (e.dispositions || []).some((d) => d.ts === ts)) ||
+    (self && e.actor === self.actor && e.op === self.op && e.ts > ts && sameRegister(e, self)));
+  if (succeeded) st.push('succeeded-by-lineage');
+  return st;
+};
+const sameRegister = (a, b) => {
+  if (a.op !== b.op) return false;
+  if (a.op === 'text.verse.set' || a.op === 'align.verse.set') return a.book === b.book && a.chapter === b.chapter && a.verse === b.verse;
+  if (a.op === 'check.decision.set') return a.toolId === b.toolId && identityKeyOf(a.decision.contextId) === identityKeyOf(b.decision.contextId);
+  if (a.op === 'settings.set' || a.op === 'project.meta.set') return a.path === b.path;
+  if (a.op === 'resource.pin.set') return a.slot === b.slot;
+  return false;
+};
+
 // ---------- J32b (round 9): SILENT DATA LOSS — the master invariant. Adversary D's
 //   conservation property is ported here permanently: over random legal streams, EVERY
 //   written record ends in an OBSERVABLE state. It passed 2000 randomized runs before
@@ -3366,40 +3404,9 @@ try {
   }
 
   // --- THE PERMANENT REGRESSION GUARD: the conservation property itself ---
+  // (observableStates/sameRegister — the master predicate — are module-scope above,
+  //  shared with J32e and J32f)
   {
-    // A written record's OBSERVABLE states. "Silently absent" means: none of these.
-    const observableStates = (out, ts, events) => {
-      const st = [];
-      if (Object.values(out.headsTs).includes(ts) || out.notes.some((n) => n.ts === ts)) st.push('projected');
-      if (out.retained.some((r) => r.ts === ts)) st.push('retained');
-      if (out.invalid.some((i) => i.ts === ts)) st.push('invalidated');
-      if (out.pendingStructural.some((p) => p.ts === ts || p.detail.some((d) => String(d).includes(ts)))) st.push('pending');
-      if (out.forks.some((f) => f.heads.includes(ts))) st.push('forked');
-      // R-8.6.4: an auto-merged identical twin's observable state IS the projected
-      // identical head — the fold reports the collapse in autoMerged[]
-      if ((out.autoMerged || []).some((a) => a.heads.includes(ts))) st.push('auto-merged');
-      // ORDINARY HISTORY is not loss: a record whose content a traceable SUCCESSOR
-      // replaced — its own linear continuation, a supersedes naming it, a structural
-      // action claiming it as a source, or (§8.3) a later event of the same actor on the
-      // same register key — is superseded by lineage, not silently dropped.
-      const self = events.find((e) => e.ts === ts);
-      const succeeded = events.some((e) =>
-        e.base === ts ||
-        (e.supersedes || []).includes(ts) ||
-        (e.op === 'text.structure.apply' && Object.values(e.transitions).some((tr) => (tr.sources || []).some((s) => s.ts === ts))) ||
-        (e.op === 'text.structure.apply' && (e.dispositions || []).some((d) => d.ts === ts)) ||
-        (self && e.actor === self.actor && e.op === self.op && e.ts > ts && sameRegister(e, self)));
-      if (succeeded) st.push('succeeded-by-lineage');
-      return st;
-    };
-    const sameRegister = (a, b) => {
-      if (a.op !== b.op) return false;
-      if (a.op === 'text.verse.set' || a.op === 'align.verse.set') return a.book === b.book && a.chapter === b.chapter && a.verse === b.verse;
-      if (a.op === 'check.decision.set') return a.toolId === b.toolId && identityKeyOf(a.decision.contextId) === identityKeyOf(b.decision.contextId);
-      if (a.op === 'settings.set' || a.op === 'project.meta.set') return a.path === b.path;
-      if (a.op === 'resource.pin.set') return a.slot === b.slot;
-      return false;
-    };
     const WRITES = new Set(['text.verse.set', 'align.verse.set', 'check.decision.set', 'note.add',
       'settings.set', 'project.meta.set', 'resource.pin.set']);
 
@@ -3899,6 +3906,23 @@ try {
     check('J32e (D53d): the convergence is DETERMINISTIC under order and permutation — the fold stays a pure function of the event SET [covers R-8.6.1 R-8.8.3]',
       err === '' && !!ab && deepEq(ab, ba) && deepEq(ab, fold(shuffled([...seedA, ...seedB], mulberry32(42)))),
       err ? `THREW: ${err.slice(0, 60)}` : 'A+B ≡ B+A ≡ shuffled');
+    // (PR #85 review, item 1) the CONVERGED creation must be ACCOUNTED, not merely
+    // harmless: the aliased book.add ts used to appear in NONE of headsTs / retained /
+    // forks / autoMerged / invalid / pendingStructural — R-8.6.2's exact escape.
+    const aAdd = seedA.find((e) => e.op === 'book.add');
+    const bAdd = seedB.find((e) => e.op === 'book.add');
+    const canonical = aAdd.ts < bAdd.ts ? aAdd.ts : bAdd.ts;
+    const aliased = aAdd.ts < bAdd.ts ? bAdd.ts : aAdd.ts;
+    const converged = (o) => (o.autoMerged || []).some((m) => m.key === 'book|TIT' &&
+      deepEq(m.heads, [canonical, aliased].sort()) && m.winner === canonical);
+    const sh = fold(shuffled([...seedA, ...seedB], mulberry32(42)));
+    check('J32e (R-8.6.4): the CONVERGED book.add is OBSERVABLE — the aliased creation is reported in autoMerged[] (`book|TIT`, both head ts, winner = the canonical root) in BOTH orders and under permutation; the action-level entry accounts for the WHOLE aliased action, since none of its per-key projections (skeleton or slot heads) was ever created [covers R-8.6.4]',
+      err === '' && !!ab && converged(ab) && converged(ba) && converged(sh) &&
+      observableStates(ab, aliased, [...seedA, ...seedB]).includes('auto-merged'),
+      err ? `THREW: ${err.slice(0, 60)}` : `autoMerged=${JSON.stringify(ab?.autoMerged)} states(${aliased})=${JSON.stringify(ab ? observableStates(ab, aliased, [...seedA, ...seedB]) : null)}`);
+    check('J32e (R-8.6.2): the exact two-seed repro passes the MASTER conservation predicate — every written record of BOTH actors ends in an observable state, the aliased creation included [covers R-8.6.2 R-8.6.4]',
+      err === '' && !!ab && [...seedA, ...seedB].every((e) => observableStates(ab, e.ts, [...seedA, ...seedB]).length > 0),
+      err ? `THREW: ${err.slice(0, 60)}` : `unobservable=${JSON.stringify([...seedA, ...seedB].filter((e) => observableStates(ab, e.ts, [...seedA, ...seedB]).length === 0).map((e) => `${e.op}@${e.ts}`))}`);
   }
 
   // (b) a DIFFERENT-payload rootless book.add FORKS and surfaces — neither silently wins
