@@ -3969,6 +3969,18 @@ try {
       err ? `UNION THREW: ${err.slice(0, 90)}` : `forks=${JSON.stringify(out?.forks.map((f) => f.key))}`);
   }
 
+  // (a2) the retention REASON of a draft on the fork-LOSING genesis is a branch miss
+  {
+    const addA = E('book.add', 'actor-a', t(20), null, { book: 'TIT', scope: [], skeleton: S2, initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n' } });
+    const addB = E('book.add', 'actor-b', t(21, 'actor-b'), null, { book: 'TIT', scope: [], skeleton: S2, initialVerses: { '1:1': 'OTRO\n', '1:2': 'dos\n' } });
+    const edit = E('text.verse.set', 'actor-a', t(22), addA.ts, { book: 'TIT', chapter: '1', verse: '1', text: 'draft on the losing branch\n' });
+    const o = fold([addA, addB, edit]);
+    check('J32f: a draft anchored to the fork-LOSING genesis is retained as `unselected-structural-branch` — a fork-losing (or converged) add was never this book\'s generation root, so it is not a PRIOR root. Pre-fix rootsOfBook counted every book.add in the union and the reason mis-reported as `prior-generation`',
+      o.retained.some((r) => r.ts === edit.ts && r.reason === 'unselected-structural-branch') &&
+      !o.retained.some((r) => r.ts === edit.ts && r.reason === 'prior-generation'),
+      JSON.stringify(o.retained.filter((r) => r.ts === edit.ts)));
+  }
+
   // (b) the pre-D53 variant: a SAME-BASE skeleton fork, then both actors restructure off
   //     the fork winner — same shape, no rootless second add involved
   {

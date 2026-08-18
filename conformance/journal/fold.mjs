@@ -728,14 +728,13 @@ export const fold = (eventsIn) => {
   const genRoots = new Map(); // book -> the current generation root (book.add ts, §8.5)
   const bookCodes = new Set([...heads.keys()].filter((k) => k.startsWith('book|')).map((k) => k.slice(5)));
   const headsTs = {};
-  // Every generation root this union ever held, per book (§8.5) — so a head anchored to a
-  // RETIRED root of its own book is reported as `prior-generation`, not as a branch miss.
+  // Every RETIRED generation root on the book's SELECTED lineage (§8.5) — so a head
+  // anchored to such a root is reported as `prior-generation`, not as a branch miss.
+  // Round 12: built by walking the selected book head's base chain, NOT by scanning every
+  // `book.add` in the union — a fork-LOSING or converged add was never this book's
+  // generation root, and counting it mis-reported an off-branch head's retention reason
+  // as `prior-generation` instead of `unselected-structural-branch`.
   const rootsOfBook = new Map();
-  for (const e of events) {
-    if (e.op !== 'book.add') continue;
-    if (!rootsOfBook.has(e.book)) rootsOfBook.set(e.book, new Set());
-    rootsOfBook.get(e.book).add(e.ts);
-  }
   const optsFor = (book) => ({ genRoot: genRoots.get(book), priorRoots: rootsOfBook.get(book) || EMPTY_SET });
   for (const book of bookCodes) {
     const bookHead = resolveKey(`book|${book}`, null, { skipAncestry: true });
@@ -743,6 +742,19 @@ export const fold = (eventsIn) => {
     if (!bookHead || bookHead.event.op !== 'book.add') continue; // absent books fold but don't project
     scope[book] = bookHead.event.scope ?? [];
     genRoots.set(book, bookHead.ts);
+    {
+      const prior = new Set();
+      const seen = new Set();
+      let cur = bookHead.event.base == null ? null : aliasTs(bookHead.event.base);
+      while (cur != null && !seen.has(cur)) {
+        seen.add(cur);
+        const ev = byTs.get(cur);
+        if (!ev) break;
+        if (ev.op === 'book.add') prior.add(cur);
+        cur = ev.base == null ? null : aliasTs(ev.base);
+      }
+      rootsOfBook.set(book, prior);
+    }
     const skelHead = resolveKey(`skel|${book}`, null, { skipAncestry: true });
     if (!skelHead) continue;
     headsTs[`skel|${book}`] = skelHead.ts;
