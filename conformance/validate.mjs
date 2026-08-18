@@ -416,7 +416,7 @@ let mergedVerseObjects = null;
   // The rule the span fixture enforces: identity keys and I-3 hashes key by the exact verse
   // string — Number("9-10") is NaN, which is the bug class (fixtureStore `+vNum`) this bans.
   const idKey = r => [r.checkId, r.bookId, String(r.chapter), String(r.verse), r.occurrence].join('|');
-  check('spans: §5.2 identity-key string normalization — numeric and span refs key consistently; Number() coercion banned',
+  check('spans: §5.2 identity-key string normalization — numeric and span refs key consistently; Number() coercion banned [covers R-8.4.4]',
     Number.isNaN(Number(spanKey)) &&
     idKey({ checkId: 'x1', bookId: 'jon', chapter: 2, verse: spanKey, occurrence: 1 }) ===
     idKey({ checkId: 'x1', bookId: 'jon', chapter: '2', verse: spanKey, occurrence: 1 }) &&
@@ -568,7 +568,7 @@ let mergedVerseObjects = null;
     const evs = readSegments(actorDirFor(journalRoot, a), () => invalid++);
     if (invalid > 0 || evs.length === 0) streamProblems.push(`${a}: reader accepted ${evs.length} events (${invalid} invalid segments)`);
   }
-  check('journal merge: the fixture journals are the §8.1 SEALED-SEGMENT stream form the implementation defines — every file is a sealed container the implementation\'s own validator and reader accept (plus a valid actor.json); no hand-rolled stream shape survives here',
+  check('journal merge: the fixture journals are the §8.1 SEALED-SEGMENT stream form the implementation defines — every file is a sealed container the implementation\'s own validator and reader accept (plus a valid actor.json); no hand-rolled stream shape survives here [covers R-8.1.10]',
     streamProblems.length === 0, streamProblems.slice(0, 4).join(' · '), 'phase2');
   rmT();
 }

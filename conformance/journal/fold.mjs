@@ -876,7 +876,7 @@ export const fold = (eventsIn) => {
   // §8.5/§5.4 dotted-path registers: `a` and `a.b` are DIFFERENT register keys that write
   // the SAME place in the projected document, so the later write silently clobbered the
   // earlier — no fork, no retained entry, no report. The resolution semantics are now
-  // normative [§8.5, D51, decided 2026-08-17]: the loss is never silent. The later `ts` takes
+  // normative [§8.5, D54, decided 2026-08-17]: the loss is never silent. The later `ts` takes
   // the projection and the earlier is retained and reported.
   const prefixResolve = (paths, headTsOf, label) => {
     const drop = new Set();

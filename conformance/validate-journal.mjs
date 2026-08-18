@@ -56,15 +56,15 @@ const shuffled = (arr, rng) => { const a = [...arr]; for (let i = a.length - 1; 
   let t = 1000;
   const c = makeClock('actor-a', () => t);
   const t1 = c.issue(); const t2 = c.issue(); t += 5; const t3 = c.issue();
-  check('J1: same-ms issues increment counter; advance resets', t1 < t2 && t2 < t3 && parseTs(t2).counter === 1 && parseTs(t3).counter === 0);
+  check('J1: same-ms issues increment counter; advance resets [covers R-8.2.2]', t1 < t2 && t2 < t3 && parseTs(t2).counter === 1 && parseTs(t3).counter === 0);
   const far = '2030-01-01T00:00:00.000Z|00ff|actor-b';
   c.ratchet(far);
   const t4 = c.issue();
-  check('J1: receive-ratchet — next issue sorts after everything seen', t4 > far, t4);
+  check('J1: receive-ratchet — next issue sorts after everything seen [covers R-8.2.4]', t4 > far, t4);
   const o = makeClock('actor-a', () => 2000);
   let last = ''; for (let i = 0; i <= 0x10000; i++) last = o.issue();
-  check('J1: counter overflow bumps physical ms and resets counter', parseTs(last).physical === 2001 && parseTs(last).counter === 0);
-  prop('J1: property — issue order ≡ string sort order across interleaved clocks',
+  check('J1: counter overflow bumps physical ms and resets counter [covers R-8.2.3]', parseTs(last).physical === 2001 && parseTs(last).counter === 0);
+  prop('J1: property — issue order ≡ string sort order across interleaved clocks [covers R-8.2.1]',
     fc.array(fc.record({ actor: fc.constantFrom(0, 1), advance: fc.nat({ max: 3 }) }), { minLength: 1, maxLength: 60 }),
     (cmds) => {
       let now = 5000; const clocks = [makeClock('actor-a', () => now), makeClock('actor-b', () => now)];
@@ -88,12 +88,12 @@ const shuffled = (arr, rng) => { const a = [...arr]; for (let i = a.length - 1; 
   };
   for (const [name, f] of Object.entries(fixtures)) {
     const { skeleton, verses } = decompose(f);
-    check(`J2: byte-identical recompose — ${name}`, recompose(skeleton, verses) === f, `${Object.keys(verses).length} verses`);
+    check(`J2: byte-identical recompose [covers R-8.4.2] — ${name}`, recompose(skeleton, verses) === f, `${Object.keys(verses).length} verses`);
   }
   let rejected = false; try { decompose('\\id X\n\\v 1 bad' + SLOT); } catch { rejected = true; }
-  check('J2: U+0001 in source is rejected', rejected);
+  check('J2: U+0001 in source is rejected [covers R-8.4.3]', rejected);
   const base = fixtures['structure-rich'];
-  prop('J2: property — mutate any verse, recompose still exact',
+  prop('J2: property — mutate any verse, recompose still exact [covers R-8.4.2]',
     fc.record({ idx: fc.nat({ max: 4 }), text: fc.stringMatching(/^[ -\[\]-~áéíñ]{0,40}$/) }),
     ({ idx, text }) => {
       const { skeleton, verses } = decompose(base);
@@ -149,7 +149,7 @@ const buildSeed = () => {
     }
     return events;
   });
-  prop('J3: property — fold(events) ≡ fold(shuffle) ≡ fold(partition union) ≡ fold(+duplicates)', genEvents, (events) => {
+  prop('J3: property — fold(events) ≡ fold(shuffle) ≡ fold(partition union) ≡ fold(+duplicates) [covers R-8.6.1]', genEvents, (events) => {
     const rng = mulberry32(SEED);
     const a = fold(events);
     const b = fold(shuffled(events, rng));
@@ -173,20 +173,20 @@ const buildSeed = () => {
   const base11 = t(1, 0, 'actor-a');
 
   const lin = fold([...seedEvts, E('text.verse.set', 'actor-a', t(2, 0, 'actor-a'), base11, { book: 'TIT', chapter: '1', verse: '1', text: 'uno v2\n' })]);
-  check('J4: LWW linear — later event with base=head replaces', lin.books.TIT.verses['1:1'] === 'uno v2\n' && lin.forks.length === 0);
+  check('J4: LWW linear — later event with base=head replaces [covers R-8.3.1]', lin.books.TIT.verses['1:1'] === 'uno v2\n' && lin.forks.length === 0);
 
   const forkA = E('text.verse.set', 'actor-a', t(3, 0, 'actor-a'), base11, { book: 'TIT', chapter: '1', verse: '1', text: 'versión A\n' });
   const forkB = E('text.verse.set', 'actor-b', t(3, 1, 'actor-b'), base11, { book: 'TIT', chapter: '1', verse: '1', text: 'versión B\n' });
   const forked = fold([...seedEvts, forkA, forkB]);
-  check('J5: fork detected — same base, different actors+payloads; provisional = max ts, surfaced',
+  check('J5: fork detected — same base, different actors+payloads; provisional = max ts, surfaced [covers R-8.3.2 R-8.6.4]',
     forked.forks.length === 1 && forked.forks[0].provisional === forkB.ts && forked.books.TIT.verses['1:1'] === 'versión B\n',
     JSON.stringify(forked.forks[0]?.heads));
   const twin = fold([...seedEvts, forkA, { ...forkB, text: 'versión A\n' }]);
-  check('J5: identical-content fork auto-merges (distinct events by identity, no review item)', twin.forks.length === 0 && twin.books.TIT.verses['1:1'] === 'versión A\n');
+  check('J5: identical-content fork auto-merges (distinct events by identity, no review item) [covers R-8.2.5 R-8.6.4]', twin.forks.length === 0 && twin.books.TIT.verses['1:1'] === 'versión A\n');
 
   const resolve = E('text.verse.set', 'actor-c', t(4, 0, 'actor-c'), forkB.ts, { supersedes: [forkA.ts, forkB.ts], book: 'TIT', chapter: '1', verse: '1', text: 'resuelta\n' });
   const resolved = fold([...seedEvts, forkA, forkB, resolve]);
-  check('J6: supersedes both heads resolves the fork', resolved.forks.length === 0 && resolved.books.TIT.verses['1:1'] === 'resuelta\n');
+  check('J6: supersedes both heads resolves the fork [covers R-8.3.5]', resolved.forks.length === 0 && resolved.books.TIT.verses['1:1'] === 'resuelta\n');
   const continueOnly = fold([...seedEvts, forkA, forkB, E('text.verse.set', 'actor-b', t(4, 1, 'actor-b'), t(1, 1, 'actor-a'), { book: 'TIT', chapter: '1', verse: '2', text: 'x\n' }), E('text.verse.set', 'actor-b', t(5, 0, 'actor-b'), forkB.ts, { book: 'TIT', chapter: '1', verse: '1', text: 'B sigue\n' })]);
   check('J6: a plain continuing edit advances its branch but does NOT resolve the fork',
     continueOnly.forks.length === 1 && continueOnly.forks[0].heads.length === 2 && continueOnly.books.TIT.verses['1:1'] === 'B sigue\n',
@@ -196,16 +196,16 @@ const buildSeed = () => {
   const st1 = fold([...seedEvts, alignOk]);
   const st2 = fold([...seedEvts, alignOk, E('text.verse.set', 'actor-b', t(7, 0, 'actor-b'), base11, { book: 'TIT', chapter: '1', verse: '1', text: 'cambiada\n' })]);
   const st3 = fold([...seedEvts, alignOk, E('text.verse.set', 'actor-b', t(7, 0, 'actor-b'), base11, { book: 'TIT', chapter: '1', verse: '1', text: 'cambiada\n' }), E('align.verse.set', 'actor-b', t(8, 0, 'actor-b'), alignOk.ts, { book: 'TIT', chapter: '1', verse: '1', generation: seedEvts[0].ts, alignments: [], wordBank: [], targetVerseMd5: md5('cambiada') })]);
-  check('J7: I-3 composition — valid → text edit invalidates → re-align revalidates',
+  check('J7: I-3 composition — valid → text edit invalidates → re-align revalidates [covers R-8.5.10]',
     st1.invalid.length === 0 && st2.invalid.length === 1 && st3.invalid.length === 0,
     `invalid counts ${st1.invalid.length}/${st2.invalid.length}/${st3.invalid.length}`);
 
-  check('J13: duplicate identical events are a no-op', deepEq(fold([...seedEvts, forkA, forkA, forkA]), fold([...seedEvts, forkA])));
+  check('J13: duplicate identical events are a no-op [covers R-8.2.5]', deepEq(fold([...seedEvts, forkA, forkA, forkA]), fold([...seedEvts, forkA])));
   let dupThrew = false; try { fold([...seedEvts, forkA, { ...forkA, text: 'otro\n' }]); } catch { dupThrew = true; }
-  check('J13: same ts + different content refuses (corrupt union)', dupThrew);
+  check('J13: same ts + different content refuses (corrupt union) [covers R-8.2.5]', dupThrew);
   let vThrew = ''; try { fold([mkEvent({ op: 'text.verse.set', actor: 'x-actor', ts: t(0, 0, 'x-actor'), v: 2 })]); } catch (e) { vThrew = e.message; }
   let opThrew = ''; try { fold([mkEvent({ op: 'text.verse.merge', actor: 'x-actor', ts: t(0, 0, 'x-actor') })]); } catch (e) { opThrew = e.message; }
-  check('J14: unknown v / unknown op refuse with clear messages', vThrew.includes('version') && opThrew.includes('unrecognized op'), `"${vThrew.slice(0, 40)}" / "${opThrew.slice(0, 40)}"`);
+  check('J14: unknown v / unknown op refuse with clear messages [covers R-8.3.9 R-8.4.5 R-8.5.1]', vThrew.includes('version') && opThrew.includes('unrecognized op'), `"${vThrew.slice(0, 40)}" / "${opThrew.slice(0, 40)}"`);
 }
 
 // ---------- J14b (round 6): the schema is TOTAL over the envelope — every field the fold
@@ -352,7 +352,7 @@ const buildSeed = () => {
   let sealMsg = ''; let foldMsg = '';
   try { sealAction([ev]); } catch (e) { sealMsg = e.message; }
   try { fold([ev]); } catch (e) { foldMsg = e.message; }
-  check('J14e: an event listing its OWN ts in supersedes is malformed — refused at seal AND at fold (dangling supersedes refs stay harmless-by-construction: they filter no live head)',
+  check('J14e: an event listing its OWN ts in supersedes is malformed — refused at seal AND at fold (dangling supersedes refs stay harmless-by-construction: they filter no live head) [covers R-8.3.5]',
     sealMsg !== '' && foldMsg !== '', `seal="${sealMsg.slice(0, 50)}" fold="${foldMsg.slice(0, 50)}"`);
 }
 
@@ -378,7 +378,7 @@ const buildSeed = () => {
     ['structure transition text', mkEvent({ op: 'text.structure.apply', actor: 'actor-a', ts: t(6), base: t(0), book: 'TIT', skeleton: skel1, transitions: { '1:1': { text: NFD, sources: [] } }, dispositions: [] }), (b) => b.transitions['1:1'].text],
   ];
   const misses = normalized.filter(([, e, get]) => get(bodyOf(e)) !== NFC);
-  check('J14f (I-4): sealAction NORMALIZES every text a writer journals — verse content, note text, initial verse content, structural destination text, and settings/metadata string values are NFC in the sealed bytes',
+  check('J14f (I-4): sealAction NORMALIZES every text a writer journals — verse content, note text, initial verse content, structural destination text, and settings/metadata string values are NFC in the sealed bytes [covers R-8.5.9]',
     misses.length === 0, `${normalized.length - misses.length}/${normalized.length} normalized${misses.length ? ` · missed: ${misses.map(([l]) => l).join(', ')}` : ''}`);
 
   // (b) the refusal — an IDENTITY is never silently rewritten. Pre-fix, the two decision
@@ -494,10 +494,10 @@ const buildSeed = () => {
   const clock = makeClock('reconciler', () => Date.parse('2026-07-07T12:00:00.000Z'));
   const recEvents = reconcileUsfm('TIT', edited, out, clock, 'reconciler');
   const after = fold([...events, ...recEvents]);
-  check('J8: reconcile emits seeded supersede; fold equals the edited file', recEvents.length === 1 && recEvents[0].seed.source === 'out-of-band-usfm' && after.books.TIT.usfm === edited && after.forks.length === 0);
+  check('J8: reconcile emits seeded supersede; fold equals the edited file [covers R-8.8.1]', recEvents.length === 1 && recEvents[0].seed.source === 'out-of-band-usfm' && after.books.TIT.usfm === edited && after.forks.length === 0);
   const concurrent = mkEvent({ op: 'text.verse.set', actor: 'actor-z', ts: '2026-07-07T11:59:00.000Z|0000|actor-z', base: out.headsTs['text|TIT|1:1'], book: 'TIT', chapter: '1', verse: '1', text: 'edición concurrente\n' });
   const clash = fold([...events, ...recEvents, concurrent]);
-  check('J8: concurrent journal edit on the same verse surfaces as a fork (never silent)', clash.forks.some((f) => f.key === 'text|TIT|1:1'));
+  check('J8: concurrent journal edit on the same verse surfaces as a fork (never silent) [covers R-8.8.1]', clash.forks.some((f) => f.key === 'text|TIT|1:1'));
   check('J8: alignment invalidation composes with reconcile (edited verse alignment goes stale)', after.invalid.some((i) => i.book === 'TIT' && i.verse === '1:1'));
 }
 
@@ -520,7 +520,7 @@ const buildSeed = () => {
   const foldA = fold([...readUnion(J('deviceA')), ...readUnion(J('deviceB'))]);
   const foldI = fold(readUnion(J('integrator')));
   const foldM = fold([...events, eA, eB]);
-  check('J9: three-device disjoint edits converge — identical bytes, zero forks',
+  check('J9: three-device disjoint edits converge — identical bytes, zero forks [covers R-8.1.16]',
     foldI.books.TIT.usfm === foldM.books.TIT.usfm && foldI.forks.length === 0 && foldI.books.TIT.usfm.includes('EDITADA A') && foldI.books.TIT.usfm.includes('EDITADA B'));
   check('J10: sneakernet (file copy union) ≡ in-memory union ≡ cross-device read', deepEq(foldA, foldI) && deepEq(foldI, foldM));
 
@@ -580,7 +580,7 @@ const buildSeed = () => {
 {
   const { events, decisionFiles, alignmentFiles, books } = buildSeed();
   const out = fold(events);
-  check('J15: seeded fold reproduces the committed USFM byte-exactly', out.books.TIT.usfm === books.TIT && out.books.JON.usfm === books.JON);
+  check('J15: seeded fold reproduces the committed USFM byte-exactly [covers R-8.8.2]', out.books.TIT.usfm === books.TIT && out.books.JON.usfm === books.JON);
   const wantTw = decisionFiles.translationWords.decisions;
   const gotTw = out.decisions.translationWords || [];
   const wantTn = decisionFiles.translationNotes.decisions;
@@ -591,9 +591,9 @@ const buildSeed = () => {
     `${gotTw.length}+${gotTn.length} decisions`);
   const wantAl = alignmentFiles.TIT.chapters['1']['1'];
   const gotAl = out.alignments.TIT?.['1:1'];
-  check('J15: alignment records round-trip exactly (incl. targetVerseMd5)',
+  check('J15: alignment records round-trip exactly (incl. targetVerseMd5) [covers R-8.8.2]',
     !!gotAl && deepEq(gotAl.alignments, wantAl.alignments) && deepEq(gotAl.wordBank, wantAl.wordBank) && gotAl.targetVerseMd5 === wantAl.targetVerseMd5);
-  check('J15: migrated alignments are valid against the folded text (I-3 carries over)', out.invalid.length === 0, `${out.invalid.length} invalid`);
+  check('J15: migrated alignments are valid against the folded text (I-3 carries over) [covers R-8.8.2]', out.invalid.length === 0, `${out.invalid.length} invalid`);
 }
 
 // ---------- J15 (full state): fold(seed) == state, byte-for-byte, on a PARTIAL-SCOPE fixture ----------
@@ -684,7 +684,7 @@ try {
   const projections = derivedProjections(out, { baseMetadata, resolutions: { translationWords: { TIT: twResource } } });
   const mismatches = Object.keys(state).filter((p) => projections[p] !== state[p]);
   const extras = Object.keys(projections).filter((p) => !(p in state));
-  check('J15 (full state): fold(seed) reproduces EVERY derived file of the partial-scope fixture byte-for-byte (scope, pins, settings, metadata, full §5.1 alignment fields — INVALIDATED records included)',
+  check('J15 (full state): fold(seed) reproduces EVERY derived file of the partial-scope fixture byte-for-byte (scope, pins, settings, metadata, full §5.1 alignment fields — INVALIDATED records included) [covers R-8.8.2]',
     mismatches.length === 0 && extras.length === 0,
     JSON.stringify({ mismatches, extras }));
   check('J15 (full state): the seeded scope is the fixture\'s actual partial scope, not a hardcoded whole-book default',
@@ -719,7 +719,7 @@ try {
     afterStruct.decisions.translationWords.some((d) => d.invalidated === true && String(d.contextId.reference.verse) === '9'),
     JSON.stringify({ pending: afterStruct.pendingStructural, align: Object.keys(afterStruct.alignments.TIT || {}) }));
 } catch (e) {
-  check('J15 (full state): fold(seed) reproduces EVERY derived file of the partial-scope fixture byte-for-byte (scope, pins, settings, metadata, full §5.1 alignment fields — INVALIDATED records included)', false, e.message);
+  check('J15 (full state): fold(seed) reproduces EVERY derived file of the partial-scope fixture byte-for-byte (scope, pins, settings, metadata, full §5.1 alignment fields — INVALIDATED records included) [covers R-8.8.2]', false, e.message);
   check('J15 (full state): the seeded scope is the fixture\'s actual partial scope, not a hardcoded whole-book default', false, e.message);
   check('J15 (full state): the seeded alignment record carries all §5.1 fields (sourceVersion, invalid) through the fold', false, e.message);
   check('J15 (full state): the invalidated records seed and fold correctly — the stale alignment is reported by I-3, the invalidated decision is retained', false, e.message);
@@ -730,7 +730,7 @@ try {
 {
   const F = '\\id TIT test\n\\c 1\n\\ts\\*\n\\p\n\\v 1 Pablo siervo de Dios,\n\\v 2 con esperanza de vida eterna,\n\\ts\\*\n\\p\n\\v 3 a su debido tiempo,\n\\v 4 a Tito, verdadero hijo.\n\\ts\\*\n\\p\n\\v 5 Por esta causa te dejé en Creta,\n';
   const { skeleton, verses } = decompose(F);
-  check('J16: imported \\ts\\* round-trips — chapter-opening in skeleton; boundaries in preceding verse content',
+  check('J16: imported \\ts\\* round-trips — chapter-opening in skeleton; boundaries in preceding verse content [covers R-8.4.1]',
     skeleton.includes('\\ts\\*') && verses['1:2'].includes('\\ts\\*') && verses['1:4'].includes('\\ts\\*') && !verses['1:1'].includes('\\ts\\*'),
     JSON.stringify(verses['1:2']));
 
@@ -751,7 +751,7 @@ try {
   const wordEdit = E('text.verse.set', 'drafter-a', t(4, 0, 'drafter-a'), milestoneMove.ts, { book: 'TIT', chapter: '1', verse: '2', text: 'con esperanza VIVA de vida eterna,\n\\ts\\*\n\\p\n' });
   const afterMove = fold([...seedEvts, align12, milestoneMove]);
   const afterWords = fold([...seedEvts, align12, milestoneMove, wordEdit]);
-  check('J16: structure-only edit (stripping an imported \\ts\\*) does NOT invalidate the verse\'s alignment (I-3 on plain text)',
+  check('J16: structure-only edit (stripping an imported \\ts\\*) does NOT invalidate the verse\'s alignment (I-3 on plain text) [covers R-8.5.10]',
     afterMove.invalid.length === 0 && !afterMove.books.TIT.verses['1:2'].includes('\\ts\\*'),
     `invalid=${afterMove.invalid.length}`);
   check('J16: a word edit on the same verse DOES invalidate', afterWords.invalid.length === 1);
@@ -766,7 +766,7 @@ try {
   const merged = fold([...seedEvts, ...sectionSave, concurrent]);
   const fork = merged.forks.find((f) => f.key === 'text|TIT|1:3');
   const forkBatches = fork ? fork.heads.map((ts) => [...seedEvts, ...sectionSave, concurrent].find((e) => e.ts === ts)?.batch || null) : [];
-  check('J16: section save is per-verse events sharing a batch; only the double-edited verse forks',
+  check('J16: section save is per-verse events sharing a batch; only the double-edited verse forks [covers R-8.3.7 R-8.4.6]',
     merged.forks.length === 1 && !!fork && merged.books.TIT.verses['1:4'].includes('REDRAFTED'),
     `forks=${merged.forks.map((f) => f.key).join(',')}`);
   check('J16: fork heads carry the batch id — review queue can group per-verse forks by section action',
@@ -819,7 +819,7 @@ try {
   });
   const okBefore = fold([...seedEvts, align2]);
   const orphaned = fold([...seedEvts, align2, dropV2]);
-  check('J17: alignment on a removed verse slot is orphaned → invalid[] regardless of matching hash',
+  check('J17: alignment on a removed verse slot is orphaned → invalid[] regardless of matching hash [covers R-8.6.6]',
     okBefore.invalid.length === 0 && orphaned.invalid.length === 1 && orphaned.invalid[0].orphaned === true,
     JSON.stringify(orphaned.invalid[0] || null));
 
@@ -868,7 +868,7 @@ try {
   const jr = merges(scratch, local);
   const unmerged = git('ls-files -u', scratch).trim();
   const foldScratch = fold(readUnion(path.join(scratch, 'ingredients/checking/journal')));
-  check('J18: Pankosmia transport over disjoint journals — scratch merge is CLEAN (their conflict-abort never fires)',
+  check('J18: Pankosmia transport over disjoint journals — scratch merge is CLEAN (their conflict-abort never fires) [covers R-8.1.16]',
     jr.conflict === false && unmerged === '');
   check('J18: converged — both translators\' concurrent same-book edits present, zero forks',
     foldScratch.books.TIT.verses['1:2'] === 'dos (A)\n' && foldScratch.books.TIT.verses['1:3'] === 'tres (B)\n' && foldScratch.forks.length === 0);
@@ -1111,7 +1111,7 @@ try {
   commitAll(badHistory, 'rewrite accepted history');
   const historyScratch = mergeToScratch(base, badHistory, 'actor-a', 'history');
   const historyErrors = validateIntake(base, historyScratch, 'actor-a');
-  check('J20: intake rejects truncation/rewrite of accepted segments and foreign-actor edits; accepted main remains byte-identical',
+  check('J20: intake rejects truncation/rewrite of accepted segments and foreign-actor edits; accepted main remains byte-identical [covers R-8.1.15]',
     historyErrors.some((e) => e.startsWith('segment-modified:')) &&
     historyErrors.some((e) => e.startsWith('foreign-actor:')) &&
     git('rev-parse HEAD', base).trim() === mainHead && fs.readFileSync(path.join(base, 'ingredients/TIT.usfm'), 'utf8') === mainProjection,
@@ -1124,7 +1124,7 @@ try {
   commitAll(badSegs, 'tamper accepted segment + push invalid segment');
   const segScratch = mergeToScratch(base, badSegs, 'actor-a', 'segs');
   const segErrors = validateIntake(base, segScratch, 'actor-a');
-  check('J20: intake rejects modification of an accepted sealed segment and any invalid incoming segment (§8.1 asymmetric rule, incoming side)',
+  check('J20: intake rejects modification of an accepted sealed segment and any invalid incoming segment (§8.1 asymmetric rule, incoming side) [covers R-8.1.5]',
     segErrors.some((e) => e.startsWith('segment-modified:')) && segErrors.some((e) => e.startsWith('segment-invalid:')) &&
     git('rev-parse HEAD', base).trim() === mainHead,
     JSON.stringify(segErrors));
@@ -1143,9 +1143,9 @@ try {
   check('J20: whitelist-only intake — an arbitrary new file under the actor directory is rejected',
     miscErrors.some((e) => e.includes('notes.txt')) && miscErrors.some((e) => e.includes('segments/README.md')),
     JSON.stringify(miscErrors));
-  check('J20: whitelist-only intake — a JSONL stream is rejected like any other non-whitelisted file (one stream form: sealed segments)',
+  check('J20: whitelist-only intake — a JSONL stream is rejected like any other non-whitelisted file (one stream form: sealed segments) [covers R-8.1.10]',
     miscErrors.some((e) => e.startsWith('not-whitelisted:') && e.includes('JON.00001.jsonl')), JSON.stringify(miscErrors));
-  check('J20: whitelist-only intake — a malformed actor.json is rejected (shape validated, actorId must match the directory)',
+  check('J20: whitelist-only intake — a malformed actor.json is rejected (shape validated, actorId must match the directory) [covers R-8.1.13]',
     miscErrors.some((e) => e.includes('actor.json')), JSON.stringify(miscErrors));
   // the `segment-misnamed` branch was DEAD CODE until round 9: every J20 case fed either
   // an invalid segment or a well-named one, so the ONE rule that binds a segment's
@@ -1259,7 +1259,7 @@ try {
     dispositions: [],
   });
   const incomplete = fold([add2, ghostRef]);
-  check('J21: a missing source reference reports incomplete; the pre-operation state projects unchanged (no stubs, no partial projection)',
+  check('J21: a missing source reference reports incomplete; the pre-operation state projects unchanged (no stubs, no partial projection) [covers R-8.5.4]',
     incomplete.pendingStructural.length === 1 && incomplete.pendingStructural[0].status === 'incomplete' &&
     incomplete.books.TIT.verses['1:2'] === 'dos\n' && !('1:3' in incomplete.books.TIT.verses),
     JSON.stringify(incomplete.pendingStructural));
@@ -1275,7 +1275,7 @@ try {
     dispositions: [],
   });
   const conflicted = fold([add2, concurrentEdit, staleStruct]);
-  check('J21: a stale source head (concurrent verse edit) reports conflicted; the pre-operation state (with the edit) projects unchanged',
+  check('J21: a stale source head (concurrent verse edit) reports conflicted; the pre-operation state (with the edit) projects unchanged [covers R-8.5.4]',
     conflicted.pendingStructural.length === 1 && conflicted.pendingStructural[0].status === 'conflicted' &&
     conflicted.books.TIT.verses['1:2'] === 'dos (editada)\n' && !('1:3' in conflicted.books.TIT.verses),
     JSON.stringify(conflicted.pendingStructural));
@@ -1305,21 +1305,21 @@ try {
   // permutation determinism incl. partial arrival
   const full = [add2, align2, renumber('dos\n')];
   const rng = mulberry32(SEED + 21);
-  check('J21: fold determinism under permutation holds with structural events',
+  check('J21: fold determinism under permutation holds with structural events [covers R-8.6.1]',
     deepEq(fold(full), fold(shuffled(full, rng))) && deepEq(fold([add2, ghostRef]), fold(shuffled([add2, ghostRef], rng))));
 
   // dispositions must be COMPLETE: every live alignment, decision, and verse-targeted
   // note on a mapped source key needs exactly one disposition — otherwise incomplete
   const note12 = E('note.add', 'checker-c', t(1, 8, 'checker-c'), null, { generation: add2.ts, target: { book: 'TIT', chapter: '1', verse: '2' }, text: 'nota sobre 1:2' });
   const noNoteDisp = fold([add2, align2, note12, renumber('dos\n')]); // renumber dispositions cover the alignment only
-  check('J21: a structural event that omits a disposition for a live verse-targeted note on a mapped key is refused as incomplete; pre-op state projects',
+  check('J21: a structural event that omits a disposition for a live verse-targeted note on a mapped key is refused as incomplete; pre-op state projects [covers R-8.5.4]',
     noNoteDisp.pendingStructural.length === 1 && noNoteDisp.pendingStructural[0].status === 'incomplete' &&
     noNoteDisp.books.TIT.verses['1:2'] === 'dos\n' && !('1:3' in noNoteDisp.books.TIT.verses),
     JSON.stringify(noNoteDisp.pendingStructural));
   const dec12 = E('check.decision.set', 'checker-c', t(1, 9, 'checker-c'), null, { toolId: 'translationWords', generation: add2.ts,
     decision: { contextId: { checkId: 'c9', reference: { bookId: 'tit', chapter: '1', verse: '2' }, occurrence: 1 }, selections: false } });
   const noDecDisp = fold([add2, align2, dec12, renumber('dos\n')]);
-  check('J21: a structural event that omits a disposition for a live decision on a mapped key is refused as incomplete; pre-op state projects',
+  check('J21: a structural event that omits a disposition for a live decision on a mapped key is refused as incomplete; pre-op state projects [covers R-8.5.4]',
     noDecDisp.pendingStructural.length === 1 && noDecDisp.pendingStructural[0].status === 'incomplete' &&
     noDecDisp.books.TIT.verses['1:2'] === 'dos\n' && !('1:3' in noDecDisp.books.TIT.verses),
     JSON.stringify(noDecDisp.pendingStructural));
@@ -1362,14 +1362,14 @@ try {
     dispositions: [],
   });
   const omitted = fold([add2, alignInv, renumberNoDisp]);
-  check('J21c: omitting a disposition for an INVALIDATED alignment on a mapped key refuses the event (invalidated records are retained state, D36)',
+  check('J21c: omitting a disposition for an INVALIDATED alignment on a mapped key refuses the event (invalidated records are retained state, D36) [covers R-8.5.4]',
     omitted.pendingStructural.length === 1 && omitted.pendingStructural[0].status === 'incomplete' &&
     omitted.books.TIT.verses['1:2'] === 'dos\n' && !('1:3' in omitted.books.TIT.verses),
     JSON.stringify(omitted.pendingStructural));
   const decInv = E('check.decision.set', 'checker-c', t(1, 1, 'checker-c'), null, { toolId: 'translationWords', generation: add2.ts,
     decision: { contextId: { checkId: 'c7', reference: { bookId: 'tit', chapter: '1', verse: '2' }, occurrence: 1 }, selections: false, invalidated: true, status: 'invalid' } });
   const omittedDec = fold([add2, decInv, renumberNoDisp]);
-  check('J21c: omitting a disposition for an INVALIDATED decision on a mapped key refuses the event',
+  check('J21c: omitting a disposition for an INVALIDATED decision on a mapped key refuses the event [covers R-8.5.4]',
     omittedDec.pendingStructural.length === 1 && omittedDec.pendingStructural[0].status === 'incomplete',
     JSON.stringify(omittedDec.pendingStructural));
   // ...and a dispositioned invalidated record survives the re-key STILL marked invalid
@@ -1534,7 +1534,7 @@ try {
   for (const [label, d] of cases) {
     let refused = ''; let out = null;
     try { out = fold([add, align2, structWith(d)]); } catch (e) { refused = e.message; }
-    check(`J21e: disposition schema violation is refused whole — ${label}`,
+    check(`J21e: disposition schema violation is refused whole [covers R-8.5.5] — ${label}`,
       refused.includes('disposition'),
       refused ? `"${refused.slice(0, 70)}"` : `applied: align projects=${JSON.stringify(out?.alignments.TIT)}, retained=${JSON.stringify(out?.retained)}`);
   }
@@ -1572,7 +1572,7 @@ try {
   for (const [label, dispositions] of cases) {
     let refused = ''; let out = null;
     try { out = fold(structWith(dispositions)); } catch (e) { refused = e.message; }
-    check(`J21f: ${label} is refused whole`,
+    check(`J21f: ${label} is refused whole [covers R-8.5.5]`,
       refused.includes('replace'),
       refused ? `"${refused.slice(0, 70)}"` : `applied: ${JSON.stringify(out?.alignments.TIT)}`);
   }
@@ -1793,7 +1793,7 @@ try {
   // three-deep chain: C on B on A — all pending until the ancestor resolves
   const C = E('text.skeleton.set', 'checker-b', t(3, 0, 'checker-b'), B.ts, { book: 'TIT', skeleton: `\\id TIT via C\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}` });
   const deep = fold([add, A, B, C]);
-  check('J22c: pending propagates through a three-deep chain — every descendant pends',
+  check('J22c: pending propagates through a three-deep chain — every descendant pends [covers R-8.5.2]',
     deep.pendingStructural.length === 3 && deep.books.TIT.verses['1:1'] === 'uno\n' &&
     !deep.books.TIT.usfm.startsWith('\\id TIT via'),
     JSON.stringify(deep.pendingStructural));
@@ -1859,7 +1859,7 @@ try {
   // every descendant pends regardless of op type
   const tail = E('text.skeleton.set', 'checker-b', t(3, 1, 'checker-b'), structChild.ts, { book: 'TIT', skeleton: skel13(' via tail') });
   const deep = fold([add, skelPending, structChild, tail]);
-  check('J22d: pending propagates through a MIXED three-deep chain (skeleton.set → structure.apply → skeleton.set) — all three pend',
+  check('J22d: pending propagates through a MIXED three-deep chain (skeleton.set → structure.apply → skeleton.set) — all three pend [covers R-8.5.2]',
     deep.pendingStructural.length === 3 &&
     Object.keys(deep.books.TIT.verses).sort().join(',') === '1:1,1:2' &&
     !deep.books.TIT.usfm.includes('via'),
@@ -1883,7 +1883,7 @@ try {
   const f1 = writeActionSegment(actorDir, [ev(1, '1', 'uno\n')]);
   const f2 = writeActionSegment(actorDir, [ev(2, '2', 'dos\n')]);
   const got = readSegments(actorDir);
-  check('J23: a valid segment round-trips; filenames are ts-encoded (: → _, | → ,) and sort in ts order',
+  check('J23: a valid segment round-trips; filenames are ts-encoded (: → _, | → ,) and sort in ts order [covers R-8.1.2]',
     got.length === 2 && got[0].ts === t(1) && path.basename(f1) === segmentName(t(1)) &&
     !path.basename(f1).includes('|') && [path.basename(f1), path.basename(f2)].sort()[0] === path.basename(f1),
     path.basename(f1));
@@ -1894,19 +1894,19 @@ try {
   fs.writeFileSync(f3, seg3.slice(0, Math.floor(seg3.length / 2)));
   const invalids = [];
   const gotTorn = readSegments(actorDir, (file, reason) => invalids.push(reason));
-  check('J23: a torn segment is unpublished as a whole — no partial action ever folds',
+  check('J23: a torn segment is unpublished as a whole — no partial action ever folds [covers R-8.1.6]',
     gotTorn.length === 2 && invalids.length === 1, JSON.stringify(invalids));
   fs.writeFileSync(f3, seg3.replace('tres', 'trXs')); // valid JSON, wrong checksum
   const invalids2 = [];
   const gotBad = readSegments(actorDir, (file, reason) => invalids2.push(reason));
-  check('J23: a checksum-failing segment is invisible as a whole (parse/checksum validity IS the commit marker)',
+  check('J23: a checksum-failing segment is invisible as a whole (parse/checksum validity IS the commit marker) [covers R-8.1.1 R-8.1.6]',
     gotBad.length === 2 && invalids2[0] === 'checksum', JSON.stringify(invalids2));
   fs.rmSync(f3, { force: true });
 
   // 4 MiB limit
   let oversize = false;
   try { sealAction([ev(5, '5', 'x'.repeat(SEGMENT_LIMIT))]); } catch { oversize = true; }
-  check('J23: the 4 MiB segment limit binds the writer, and an oversize file is invalid to readers',
+  check('J23: the 4 MiB segment limit binds the writer, and an oversize file is invalid to readers [covers R-8.1.9]',
     oversize && validateSegment('{"container":1,"body":"' + 'x'.repeat(80) + '","sha256":"00"}').ok === false);
 
   // multi-scope action: one segment carries _project-scope and book-scope events together
@@ -1919,7 +1919,7 @@ try {
   const mDir = path.join(tmp, 'journal', 'actor-m');
   writeActionSegment(mDir, multi);
   const mOut = fold(readUnion(path.join(tmp, 'journal')));
-  check('J23: multi-scope actions in ONE segment (book + settings + metadata) fold correctly',
+  check('J23: multi-scope actions in ONE segment (book + settings + metadata) fold correctly [covers R-8.1.3]',
     mOut.books.TIT?.verses['1:1'] === 'uno\n' && mOut.settings['ui.pane'] === 1 && mOut.projectMeta['identification.name.en'] === 'Multi');
 
   // actor binding at the directory: a segment whose events name a different actor is
@@ -1930,13 +1930,13 @@ try {
   const a2Dir = path.join(tmp, 'journal', 'actor-a2');
   let writerRefused = '';
   try { writeActionSegment(a2Dir, foreign); } catch (e) { writerRefused = e.message; }
-  check('J23: the WRITER refuses to publish another actor\'s events into this actor\'s directory (§8.1/§8.3 actor binding, writer side — the rule both intakes already applied)',
+  check('J23: the WRITER refuses to publish another actor\'s events into this actor\'s directory (§8.1/§8.3 actor binding, writer side — the rule both intakes already applied) [covers R-8.1.12]',
     writerRefused.includes('actor binding') && !fs.existsSync(path.join(a2Dir, 'segments')), `"${writerRefused.slice(0, 70)}"`);
   fs.mkdirSync(path.join(a2Dir, 'segments'), { recursive: true });
   fs.writeFileSync(path.join(a2Dir, 'segments', segmentName(foreign[0].ts)), sealAction(foreign));
   const invalids3 = [];
   readSegments(a2Dir, (file, reason) => invalids3.push(reason));
-  check('J23: a segment whose events name another actor than its directory is refused (actor binding, §8.3)',
+  check('J23: a segment whose events name another actor than its directory is refused (actor binding, §8.3) [covers R-8.1.12]',
     invalids3.length === 1 && String(invalids3[0]).startsWith('actor-mismatch'), JSON.stringify(invalids3));
   fs.rmSync(tmp, { recursive: true, force: true });
 }
@@ -1957,7 +1957,7 @@ try {
   // branch 2: a DIFFERENT valid action at the same path is rejected — never overwritten
   let rejected = '';
   try { writeActionSegment(actorDir, [ev(1, 'otro\n')]); } catch (e) { rejected = e.message; }
-  check('J23b: writeSegment branches — byte-identical rewrite accepts idempotently; a different valid action at the same path is REJECTED, bytes untouched',
+  check('J23b: writeSegment branches — byte-identical rewrite accepts idempotently; a different valid action at the same path is REJECTED, bytes untouched [covers R-8.1.4 R-8.1.5]',
     idempotent && rejected !== '' && fs.readFileSync(f1, 'utf8') === f1Bytes,
     `"${rejected.slice(0, 60)}"`);
   // branch 3: an INVALID existing segment is overwritten only via verified staged-intent recovery
@@ -1971,7 +1971,7 @@ try {
   try { republishSegment(actorDir, staged); republished = true; } catch {}
   let republishOverValid = '';
   try { republishSegment(actorDir, sealAction([ev(1, 'otro\n')])); } catch (e) { republishOverValid = e.message; }
-  check('J23b: an invalid existing segment is recovered ONLY through verified staged-intent republication — a plain write refuses; republication over a VALID segment refuses',
+  check('J23b: an invalid existing segment is recovered ONLY through verified staged-intent republication — a plain write refuses; republication over a VALID segment refuses [covers R-8.1.8]',
     plainWriteOnInvalid !== '' && republished && fs.readFileSync(f2, 'utf8') === staged && republishOverValid !== '',
     JSON.stringify({ plainWriteOnInvalid: plainWriteOnInvalid.slice(0, 40), republishOverValid: republishOverValid.slice(0, 40) }));
   // silent drop is impossible: with no onInvalid handler, an invalid segment THROWS
@@ -1983,7 +1983,7 @@ try {
   try { readUnion(path.join(tmp, 'journal')); } catch (e) { unionSurfaced = e.message; }
   const collected = [];
   const withHandler = readSegments(actorDir, (file, reason) => collected.push(reason));
-  check('J23b: readSegments/readUnion NEVER silently drop an invalid segment — the default surfaces it (throws); an explicit handler collects and reads the valid remainder',
+  check('J23b: readSegments/readUnion NEVER silently drop an invalid segment — the default surfaces it (throws); an explicit handler collects and reads the valid remainder [covers R-8.1.7]',
     surfaced.includes('invalid') && unionSurfaced.includes('invalid') && collected.length === 1 && withHandler.length === 2,
     JSON.stringify({ surfaced: surfaced.slice(0, 50), collected }));
   fs.rmSync(tmp, { recursive: true, force: true });
@@ -2012,11 +2012,11 @@ try {
     names.every((n) => !ING_FORBIDDEN.test(n)),
     JSON.stringify(names[0]));
   const segmentTs = filesAll.segmentTs;
-  check('J23c: the encoding is INJECTIVE and reversible — every risky ts character round-trips through the filename',
+  check('J23c: the encoding is INJECTIVE and reversible — every risky ts character round-trips through the filename [covers R-8.1.2]',
     typeof segmentTs === 'function' && tss.every((ts) => segmentTs(segmentName(ts)) === ts),
     typeof segmentTs === 'function' ? JSON.stringify(names) : 'segmentTs not implemented');
   // fixed-position escapes preserve the total order: filename sort = ts sort
-  check('J23c: filename sort equals ts sort within an actor directory (fixed-width escape positions)',
+  check('J23c: filename sort equals ts sort within an actor directory (fixed-width escape positions) [covers R-8.1.2]',
     deepEq([...names].sort(), tss.map(segmentName)) && tss.every((ts, i) => !i || tss[i - 1] < ts),
     JSON.stringify(names));
   // write → read round-trip through real files, in ts order
@@ -2038,16 +2038,16 @@ try {
   const craft = (events) => { const body = JSON.stringify({ events }); return JSON.stringify({ container: 1, body, sha256: sha(body) }); };
   const ev = (s, a, extra = {}) => mkEvent({ op: 'settings.set', actor: a, ts: `2026-08-11T00:00:0${s}.000Z|0000|${a}`, path: 'ui.x', value: s, ...extra });
   const rEmpty = validateSegment(craft([]));
-  check('J23d: an EMPTY events array is invalid — an action is one store mutation, at least one event (no later crash on events[0])',
+  check('J23d: an EMPTY events array is invalid — an action is one store mutation, at least one event (no later crash on events[0]) [covers R-8.1.1]',
     rEmpty.ok === false, JSON.stringify(rEmpty));
   const rOrder = validateSegment(craft([ev(2, 'actor-a'), ev(1, 'actor-a')]));
-  check('J23d: a mis-ordered events array is invalid — the contract requires ts order inside the action',
+  check('J23d: a mis-ordered events array is invalid — the contract requires ts order inside the action [covers R-8.1.1]',
     rOrder.ok === false, JSON.stringify(rOrder.ok === false ? rOrder : '(validated ok)'));
   const rDup = validateSegment(craft([ev(1, 'actor-a'), ev(1, 'actor-a')]));
-  check('J23d: a duplicated ts inside one action is invalid (strictly ascending — one actor cannot issue the same ts twice)',
+  check('J23d: a duplicated ts inside one action is invalid (strictly ascending — one actor cannot issue the same ts twice) [covers R-8.1.1]',
     rDup.ok === false, JSON.stringify(rDup.ok === false ? rDup : '(validated ok)'));
   const rMixed = validateSegment(craft([ev(1, 'actor-a'), ev(2, 'actor-b')]));
-  check('J23d: events naming more than one actor in one segment are invalid (one action, one actor, §8.1)',
+  check('J23d: events naming more than one actor in one segment are invalid (one action, one actor, §8.1) [covers R-8.1.1]',
     rMixed.ok === false, JSON.stringify(rMixed.ok === false ? rMixed : '(validated ok)'));
   // the writer refuses to seal what readers must reject
   let wEmpty = ''; let wOrder = '';
@@ -2166,7 +2166,7 @@ try {
       travErr.includes('traversal'), `"${travErr.slice(0, 80)}"`);
     const badSlugs = ['Actor_A', '../etc', 'ab', ''];
     const refusedSlugs = badSlugs.filter((s) => { try { actorDirFor(journal, s); return false; } catch { return true; } });
-    check('J23f: actorDirFor is the ONE actor-directory constructor — it applies the §8.1 slug grammar and refuses anything that escapes the journal root',
+    check('J23f: actorDirFor is the ONE actor-directory constructor — it applies the §8.1 slug grammar and refuses anything that escapes the journal root [covers R-8.1.11]',
       refusedSlugs.length === badSlugs.length && actorDirFor(journal, 'actor-d') === path.resolve(journal, 'actor-d'),
       `${refusedSlugs.length}/${badSlugs.length} refused`);
   }
@@ -2179,7 +2179,7 @@ try {
     fs.writeFileSync(big, 'x'.repeat(SEGMENT_LIMIT + 1024));
     const seen = [];
     const got = readSegments(dir, (f, r) => seen.push(r));
-    check('J23f: an oversize segment is reported from its STAT — the 4 MiB cap applies before the read, not after it (reading first costs ~3x the file in RSS to reach the same verdict)',
+    check('J23f: an oversize segment is reported from its STAT — the 4 MiB cap applies before the read, not after it (reading first costs ~3x the file in RSS to reach the same verdict) [covers R-8.1.9]',
       got.length === 1 && seen.length === 1 && seen[0] === 'oversize', JSON.stringify(seen));
     const collide = ['a:b', 'a_b', '2026-08-16T06:00:01.000Z|0000|actor a'];
     const refusedNames = collide.filter((s) => { try { segmentName(s); return false; } catch { return true; } });
@@ -2222,7 +2222,7 @@ try {
   const before = readSegments(actorDir, (f, r) => invalidBefore.push(r));
   republishSegment(actorDir, staged); // recovery: the VERIFIED staged bytes, via the recovery path
   const after = readSegments(actorDir);
-  check('J24: a torn local segment publishes nothing; republishing the staged bytes yields a byte-identical segment and the full action',
+  check('J24: a torn local segment publishes nothing; republishing the staged bytes yields a byte-identical segment and the full action [covers R-8.1.8]',
     before.length === 0 && after.length === 2 && fs.readFileSync(segPath, 'utf8') === staged &&
     deepEq(fold(after), fold(events)),
     `${before.length} → ${after.length} events`);
@@ -2312,7 +2312,7 @@ try {
   const mRm = E('project.meta.set', 'actor-a', t(4, 'actor-a'), mSet.ts, { path: 'identification.abbreviation.en', removed: true });
   const withRm = fold([add, sSet, sRm, mSet, mRm]);
   const never = fold([add]);
-  check('J27: settings/meta unset ({path, removed: true}) folds to absence',
+  check('J27: settings/meta unset ({path, removed: true}) folds to absence [covers R-8.5.11]',
     !('ui.pane' in withRm.settings) && !('identification.abbreviation.en' in withRm.projectMeta));
   check('J27: the projected settings document after a removal is byte-equal to one where the path was never set',
     projectSettings(withRm.settings) === projectSettings(never.settings));
@@ -2321,7 +2321,7 @@ try {
   const alignSet = E('align.verse.set', 'actor-b', t(5, 'actor-b'), null, { book: 'TIT', chapter: '1', verse: '1', generation: add.ts, alignments: [{ topWords: [{ word: 'x' }], bottomWords: [] }], wordBank: [], targetVerseMd5: md5('uno') });
   const alignEmpty = E('align.verse.set', 'actor-b', t(6, 'actor-b'), alignSet.ts, { book: 'TIT', chapter: '1', verse: '1', generation: add.ts, alignments: [], wordBank: [], targetVerseMd5: md5('uno') });
   const emptied = fold([add, alignSet, alignEmpty]);
-  check('J27: alignment removal is the explicit empty-state payload — the record projects (empty), it does not vanish',
+  check('J27: alignment removal is the explicit empty-state payload — the record projects (empty), it does not vanish [covers R-8.5.11]',
     !!emptied.alignments.TIT?.['1:1'] && emptied.alignments.TIT['1:1'].alignments.length === 0 && emptied.invalid.length === 0);
 
   // decisions are never deleted (D36): no removal op exists; invalidate-and-retain keeps the record
@@ -2331,7 +2331,7 @@ try {
   const invalidated = fold([add, dSet, dInv]);
   let noRemovalOp = '';
   try { fold([mkEvent({ op: 'check.decision.remove', actor: 'actor-a', ts: t(9, 'actor-a') })]); } catch (e) { noRemovalOp = e.message; }
-  check('J27: decisions are never deleted — the invalidated record is retained in full, and no removal op exists in the vocabulary',
+  check('J27: decisions are never deleted — the invalidated record is retained in full, and no removal op exists in the vocabulary [covers R-8.5.11]',
     invalidated.decisions.translationWords.length === 1 && invalidated.decisions.translationWords[0].invalidated === true &&
     noRemovalOp.includes('unrecognized op'));
 }
@@ -2343,7 +2343,7 @@ try {
   let bound = '';
   try { fold([E('settings.set', 'actor-b', t(1, 'actor-a'), null, { path: 'ui.x', value: 1 })]); }
   catch (e) { bound = e.message; }
-  check('J28: the fold refuses an event whose actor differs from its ts actor (actor binding)',
+  check('J28: the fold refuses an event whose actor differs from its ts actor (actor binding) [covers R-8.1.12]',
     bound.includes('actor binding'), `"${bound.slice(0, 60)}"`);
 
   const skel = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}`;
@@ -2352,7 +2352,7 @@ try {
   const v2stale = E('text.verse.set', 'actor-a', t(2, 'actor-a'), add.ts, { book: 'TIT', chapter: '1', verse: '1', text: 'uno v2\n' }); // stale base
   const v3null = E('text.verse.set', 'actor-a', t(3, 'actor-a'), null, { book: 'TIT', chapter: '1', verse: '1', text: 'uno v3\n' }); // no base at all
   const linear = fold([add, v1, v2stale]);
-  check('J28: same-actor events with a STALE base advance linearly — an actor never forks against itself (§8.3:334)',
+  check('J28: same-actor events with a STALE base advance linearly — an actor never forks against itself (§8.3:334) [covers R-8.3.3]',
     linear.forks.length === 0 && linear.books.TIT.verses['1:1'] === 'uno v2\n',
     JSON.stringify(linear.forks));
   // ROUND 9 ruling: a MISSING base is a different claim from a stale one. `base: null`
@@ -2382,7 +2382,7 @@ try {
   const addT = E('book.add', 'actor-a', t(0, 'actor-a'), null, { book: 'TIT', scope: ['1:1-2:5'], skeleton: skelT, initialVerses: { '1:1': 'uno\n' } });
   const addJ = E('book.add', 'actor-a', t(1, 'actor-a'), null, { book: 'JON', scope: [], skeleton: skelJ, initialVerses: {} });
   const out = fold([addT, addJ]);
-  check('J29: book.add is self-contained — one event creates the slot topology; an uncovered slot projects the ___ stub',
+  check('J29: book.add is self-contained — one event creates the slot topology; an uncovered slot projects the ___ stub [covers R-8.6.7]',
     out.books.TIT.verses['1:1'] === 'uno\n' && out.books.TIT.verses['1:2'] === '___\n' && out.books.JON.verses['1:1'] === '___\n');
   check('J29: every produced head carries the book.add ts (the multi-key head-identity rule)',
     out.headsTs['text|TIT|1:1'] === addT.ts && out.headsTs['text|TIT|1:2'] === addT.ts && out.headsTs['skel|TIT'] === addT.ts);
@@ -2421,7 +2421,7 @@ try {
   const align2 = E('align.verse.set', 'checker-b', t(4, 1, 'checker-b'), align1.ts, { book: 'TIT', chapter: '1', verse: '1', generation: add1.ts,
     alignments: [], wordBank: [], targetVerseMd5: md5('uno') });
   const out = fold([add1, dec1, align1, remove, add2, dec2, align2]);
-  check('J29c: an offline later-ts EDIT of a prior-generation record never projects against gen-2 — generation mismatch quarantines REGARDLESS of ts',
+  check('J29c: an offline later-ts EDIT of a prior-generation record never projects against gen-2 — generation mismatch quarantines REGARDLESS of ts [covers R-8.5.6]',
     (out.decisions.translationWords || []).length === 0 && !out.alignments.TIT?.['1:1'],
     JSON.stringify({ decs: out.decisions, align: out.alignments.TIT }));
   check('J29c: the later-ts prior-generation edit lands in retained[] as prior-generation (quarantine, not resurrection, not deletion)',
@@ -2432,7 +2432,7 @@ try {
   const align3 = E('align.verse.set', 'checker-b', t(5, 0, 'checker-b'), null, { book: 'TIT', chapter: '1', verse: '1', generation: add2.ts,
     alignments: [], wordBank: [], targetVerseMd5: md5('nuevo') });
   const cur = fold([add1, dec1, align1, remove, add2, dec2, align2, align3]);
-  check('J29c: a record stamped with the current generation root projects, and the generation field never leaks into the projected §5.1 record',
+  check('J29c: a record stamped with the current generation root projects, and the generation field never leaks into the projected §5.1 record [covers R-8.6.7]',
     !!cur.alignments.TIT?.['1:1'] && cur.alignments.TIT['1:1'].generation === undefined && cur.invalid.length === 0,
     JSON.stringify(cur.alignments.TIT));
   // seeding stamps the seed's own book.add ts — the seeded fold quarantines nothing
@@ -2488,7 +2488,7 @@ try {
     decision: { contextId: { checkId: 'g1', reference: { bookId: 'tit', chapter: '1', verse: '1' }, occurrence: 1 }, selections: false, invalidated: false, status: 'todo' } });
   let refused = ''; let bypassed = null;
   try { bypassed = fold([add1, remove, add2, decNoGen]); } catch (e) { refused = e.message; }
-  check('J29e: a v1 align/decision/note event with NO generation stamp is REFUSED as malformed — omission is not a quarantine bypass',
+  check('J29e: a v1 align/decision/note event with NO generation stamp is REFUSED as malformed — omission is not a quarantine bypass [covers R-8.5.6]',
     refused.includes('generation'),
     refused ? `"${refused.slice(0, 80)}"` : `projected: ${JSON.stringify(bypassed?.decisions)}`);
   const alignNoGen = E('align.verse.set', 'checker-b', t(3, 1, 'checker-b'), null, { book: 'TIT', chapter: '1', verse: '1', alignments: [], wordBank: [], targetVerseMd5: md5('nuevo') });
@@ -2496,7 +2496,7 @@ try {
   let refusedA = ''; let refusedN = '';
   try { fold([add2, alignNoGen]); } catch (e) { refusedA = e.message; }
   try { fold([add2, noteNoGen]); } catch (e) { refusedN = e.message; }
-  check('J29e: the refusal covers all three stamped ops (align.verse.set, check.decision.set, note.add)',
+  check('J29e: the refusal covers all three stamped ops (align.verse.set, check.decision.set, note.add) [covers R-8.5.6]',
     refusedA.includes('generation') && refusedN.includes('generation'),
     JSON.stringify({ refusedA: refusedA.slice(0, 50), refusedN: refusedN.slice(0, 50) }));
   // seed is NOT an exemption (round-5 simplification): the seeder stamps (§8.8), so a
@@ -2504,7 +2504,7 @@ try {
   const seededDec = { ...decNoGen, ts: t(5, 0, 'checker-b'), seed: { source: 'creation', batch: t(5, 0, 'checker-b') } };
   let seedRefused = ''; let seedOut = null;
   try { seedOut = fold([add1, remove, add2, seededDec]); } catch (e) { seedRefused = e.message; }
-  check('J29e: a seed-flagged event without a generation stamp is REFUSED — seed is not a self-declared bypass (the seeder always stamps, §8.8)',
+  check('J29e: a seed-flagged event without a generation stamp is REFUSED — seed is not a self-declared bypass (the seeder always stamps, §8.8) [covers R-8.3.8 R-8.5.6]',
     seedRefused.includes('generation'),
     seedRefused ? `"${seedRefused.slice(0, 70)}"` : `projected: ${JSON.stringify(seedOut?.decisions)}`);
 }
@@ -2694,7 +2694,7 @@ try {
       ].join('/');
     }
     const expected = 'PEND/REFUSED/REFUSED';
-    check('J31: ASSERTED, not assumed — EVERY structural op (book.add, book.remove, text.skeleton.set, text.structure.apply) shares ONE base rule: unknown PENDS, non-structural REFUSES, cross-book REFUSES. No op is exempt, and a fifth would have to opt in here',
+    check('J31: ASSERTED, not assumed — EVERY structural op (book.add, book.remove, text.skeleton.set, text.structure.apply) shares ONE base rule: unknown PENDS, non-structural REFUSES, cross-book REFUSES. No op is exempt, and a fifth would have to opt in here [covers R-8.5.2]',
       STRUCTURAL.every((op) => matrix[op] === expected), JSON.stringify(matrix));
 
     // --- and the audit's other half: CONTENT ops fail CLOSED, never leak across books ---
@@ -2762,14 +2762,14 @@ try {
           const r = refusedBothWays(mkEvent({ op, actor: 'actor-a', ts: okTs(1), path: p, value: 'yes' }));
           if (!r.ok) { allClean = false; details.push(`${op} "${p}"`); }
         }
-    check('J31 finding 4 (layer 1): every prototype-chain or empty-segment dotted path is refused at seal AND at fold, for settings.set AND project.meta.set (ONE dotted-path grammar)',
+    check('J31 finding 4 (layer 1): every prototype-chain or empty-segment dotted path is refused at seal AND at fold, for settings.set AND project.meta.set (ONE dotted-path grammar) [covers R-8.5.8]',
       allClean, details.join(' · ') || '18 firing cases');
     // layer 2: the SCHEMA IS BYPASSED — the malformed path handed straight to the projection
     let sErr = '', mErr = '';
     try { projectSettings({ '__proto__.tc4Polluted': 'yes' }); } catch (e) { sErr = e.message; }
     try { projectMetadata({ scope: {}, projectMeta: { '__proto__.tc4Polluted': 'yes' }, projectMetaRemoved: [] }, { type: { flavorType: {} } }); } catch (e) { mErr = e.message; }
     const clean = ({}).tc4Polluted === undefined;
-    check('J31 finding 4 (layer 2, defense in depth): WITH THE SCHEMA BYPASSED the projection setters still cannot pollute — own-property traversal into null-prototype containers; ({}).tc4Polluted stays undefined',
+    check('J31 finding 4 (layer 2, defense in depth): WITH THE SCHEMA BYPASSED the projection setters still cannot pollute — own-property traversal into null-prototype containers; ({}).tc4Polluted stays undefined [covers R-8.5.8]',
       sErr !== '' && mErr !== '' && clean, `settings="${sErr.slice(0, 50)}" meta="${mErr.slice(0, 50)}" polluted=${JSON.stringify(({}).tc4Polluted)}`);
     delete Object.prototype.tc4Polluted; // belt and braces: never leak into later checks
     // the legitimate overlay still works, and the projected document has no prototype
@@ -2879,7 +2879,7 @@ try {
         const r = refusedBothWays(evFor(op, skelWith(key)));
         if (!r.ok) { allClean = false; details.push(`${op} "${key}"`); }
       }
-    check('J31 finding 6: every SLOT KEY a skeleton derives carries the §8.4 slot grammar — at book.add, text.skeleton.set AND text.structure.apply. A `__proto__` slot used to seal, recompose to "[object Object]" and destroy the verse permanently',
+    check('J31 finding 6: every SLOT KEY a skeleton derives carries the §8.4 slot grammar — at book.add, text.skeleton.set AND text.structure.apply. A `__proto__` slot used to seal, recompose to "[object Object]" and destroy the verse permanently [covers R-8.4.4]',
       allClean, details.length ? `missed: ${details.join(' · ')}` : `${ops.length * hostileKeys.length} firing cases`);
     // pre-fix the consequence was in COMMITTED USFM, not in a message — assert its absence
     let usfm = '';
@@ -2889,7 +2889,7 @@ try {
     const dupSkel = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 1 ${SLOT}1:1${SLOT}`;
     let allDup = true;
     for (const op of ops) if (!refusedBothWays(evFor(op, dupSkel)).ok) allDup = false;
-    check('J31 finding 6: DUPLICATE slot keys are refused too — two slots that name one verse head collapse silently at recompose',
+    check('J31 finding 6: DUPLICATE slot keys are refused too — two slots that name one verse head collapse silently at recompose [covers R-8.4.4]',
       allDup);
     check('J31 finding 6: a well-formed skeleton (single and span keys) still seals and folds — the hardening adds no false refusal',
       (() => { try { fold([evFor('book.add', `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 4-5 ${SLOT}1:4-5${SLOT}`)]); return true; } catch { return false; } })());
@@ -2914,7 +2914,7 @@ try {
       ];
       for (const ev of rows) if (!refusedBothWays(ev).ok) { allClean = false; details.push(`${ev.op}: ${label}`); }
     }
-    check('J31 finding 7: journaled verse content carrying a §8.4 region marker (\\v /\\c ) or the reserved U+0001 is refused at seal AND at fold — at every op that carries verse content, so the committed book can never silently re-partition',
+    check('J31 finding 7: journaled verse content carrying a §8.4 region marker (\\v /\\c ) or the reserved U+0001 is refused at seal AND at fold — at every op that carries verse content, so the committed book can never silently re-partition [covers R-8.4.3]',
       allClean, details.length ? `missed: ${details.join(' · ')}` : `${bad.length * 3} firing cases`);
     check('J31 finding 7: the codec and the grammar share ONE boundary definition — the schema refuses exactly the marker `decompose` splits on, so a slot the schema accepts always survives a decompose/recompose round trip',
       (() => {
@@ -2990,10 +2990,10 @@ try {
       const r = refusedBothWays(mkEvent({ op: 'settings.set', actor: 'actor-a', ts, path: 'ui.x', value: 1 }));
       if (!r.ok) { allClean = false; details.push(label); }
     }
-    check('J31 finding 10: an §8.2 ts MUST carry a real calendar instant, not merely the ISO charset — every non-calendar ts is refused at seal AND at fold',
+    check('J31 finding 10: an §8.2 ts MUST carry a real calendar instant, not merely the ISO charset — every non-calendar ts is refused at seal AND at fold [covers R-8.2.1]',
       allClean, details.length ? `missed: ${details.join(' · ')}` : `${rows.length} firing cases`);
     // the property the fix buys: string order IS instant order over the accepted set
-    prop('J31 finding 10 PROPERTY: over every ts the grammar accepts, compareTs (string order) AGREES with parseTs (instant order) — the two orders can no longer disagree',
+    prop('J31 finding 10 PROPERTY: over every ts the grammar accepts, compareTs (string order) AGREES with parseTs (instant order) — the two orders can no longer disagree [covers R-8.2.1]',
       fc.record({
         y: fc.integer({ min: 1970, max: 2999 }), mo: fc.integer({ min: 1, max: 13 }), d: fc.integer({ min: 1, max: 32 }),
         h: fc.integer({ min: 0, max: 24 }), mi: fc.integer({ min: 0, max: 60 }), s: fc.integer({ min: 0, max: 60 }),
@@ -3091,7 +3091,7 @@ try {
       ['device wrong type', doc({ device: {} }), 'actor-a'],
     ];
     const rejected = rows.filter(([, raw, id]) => !validateActorDoc(raw, id).ok);
-    check('J31: validateActorDoc enforces the §8.1 actor-slug grammar (the actorId IS a directory name), a REQUIRED createdAt, and the types of the optional metadata fields',
+    check('J31: validateActorDoc enforces the §8.1 actor-slug grammar (the actorId IS a directory name), a REQUIRED createdAt, and the types of the optional metadata fields [covers R-8.1.11 R-8.1.13]',
       rejected.length === rows.length, `${rejected.length}/${rows.length} rejected: ${rows.filter(([, r, i]) => validateActorDoc(r, i).ok).map(([l]) => l).join(', ') || 'none missed'}`);
     check('J31: a complete, well-formed actor.json still validates (the hardening adds no false rejection)',
       validateActorDoc(doc({ displayName: 'A', device: 'laptop' }), 'actor-a').ok);
@@ -3160,7 +3160,7 @@ try {
     // fold: an identical rootless book.add CONVERGES (a differing one forks — J32e);
     // every other rootless structural op refuses to ACT and is REPORTED.
     const expected = (op) => `PEND/REFUSED/REFUSED/${op === 'book.add' ? 'CONVERGED' : 'REPORTED'}`;
-    check('J32 THE MATRIX (4×4): every structural op × every base KIND — unknown PENDS, non-structural REFUSES, cross-book REFUSES, and `base: null` on an existing book is decided PER EVENT (D53d): an identical book.add CONVERGES, every other rootless structural op refuses to act and is REPORTED — the whole fold never throws on a rootless claim',
+    check('J32 THE MATRIX (4×4): every structural op × every base KIND — unknown PENDS, non-structural REFUSES, cross-book REFUSES, and `base: null` on an existing book is decided PER EVENT (D53d): an identical book.add CONVERGES, every other rootless structural op refuses to act and is REPORTED — the whole fold never throws on a rootless claim [covers R-8.5.3]',
       STRUCTURAL.every((op) => matrix[op] === expected(op)), JSON.stringify(matrix));
     check('J32: `book.add` is the ONE rootless structural op, and only while the book does not exist — the first add still applies with no base (no false refusal)',
       'TIT' in fold([add]).books && fold([add]).pendingStructural.length === 0);
@@ -3214,7 +3214,7 @@ try {
     const add2 = E('book.add', 'actor-a', t(2), rm.ts, { book: 'TIT', scope: [], skeleton: S1, initialVerses: { '1:1': 'gen2\n' } });
     const offline = E('text.verse.set', 'actor-b', t(9, 'actor-b'), add.ts, { book: 'TIT', chapter: '1', verse: '1', text: 'OFFLINE-GEN1\n' });
     const gens = fold([add, rm, add2, offline]);
-    check('J32: generation membership for TEXT is CAUSAL, never an HLC cutoff — a still-offline actor\'s gen-1 edit with an arbitrarily LATER ts is quarantined by its ANCESTRY. Pre-fix the field-less branch ended in `h.ts > genRoot`, the exact mechanism §8.5 forbids by name',
+    check('J32: generation membership for TEXT is CAUSAL, never an HLC cutoff — a still-offline actor\'s gen-1 edit with an arbitrarily LATER ts is quarantined by its ANCESTRY. Pre-fix the field-less branch ended in `h.ts > genRoot`, the exact mechanism §8.5 forbids by name [covers R-8.5.6]',
       gens.books.TIT.verses['1:1'] === 'gen2\n' &&
       gens.retained.some((r) => r.ts === offline.ts && r.reason === 'prior-generation'),
       `1:1=${JSON.stringify(gens.books.TIT.verses['1:1'])} retained=${JSON.stringify(gens.retained.filter((r) => r.ts === offline.ts))}`);
@@ -3256,7 +3256,7 @@ try {
     const drafted = E('text.verse.set', 'actor-b', t(2, 'actor-b'), add.ts, { book: 'TIT', chapter: '1', verse: '1', text: 'DRAFTED BY B\n' });
     const kill = E('text.verse.set', 'actor-c', t(5, 'actor-c'), add.ts, { supersedes: [drafted.ts], book: 'TIT', chapter: '1', verse: '1', text: '___\n' });
     const out = fold([add, drafted, kill]);
-    check('J32b (D-F1): a SUPERSEDED head is CONSERVED — it is reported in retained[] as `superseded`. Pre-fix it could appear in NO list at all (retained[] is built from SURVIVING heads), so `\\v 1 ___` was committed over drafted text and the draft left the repo AND every review surface at once',
+    check('J32b (D-F1): a SUPERSEDED head is CONSERVED — it is reported in retained[] as `superseded`. Pre-fix it could appear in NO list at all (retained[] is built from SURVIVING heads), so `\\v 1 ___` was committed over drafted text and the draft left the repo AND every review surface at once [covers R-8.3.6]',
       out.retained.some((r) => r.ts === drafted.ts && r.reason === 'superseded'),
       JSON.stringify(out.retained));
     // ...and cross-ancestry supersession is REFUSED, not merely reported
@@ -3265,7 +3265,7 @@ try {
     const onA = E('text.verse.set', 'actor-a', t(4), brA.ts, { book: 'TIT', chapter: '1', verse: '1', text: 'ON BRANCH A\n' });
     const crossKill = E('text.verse.set', 'actor-b', t(6, 'actor-b'), add.ts, { supersedes: [onA.ts], book: 'TIT', chapter: '1', verse: '1', text: 'FROM OFF-BRANCH\n' });
     const cross = fold([add, brA, onA, crossKill]);
-    check('J32b (D-F1): a supersedes MUST NOT erase a head OUTSIDE its own ancestry — reaching across a structural branch to delete another branch\'s head is deletion, not fork resolution. The erasure is REFUSED: the head stays live, the two writes surface as a fork, and the attempt is reported in supersedeRefused[]',
+    check('J32b (D-F1): a supersedes MUST NOT erase a head OUTSIDE its own ancestry — reaching across a structural branch to delete another branch\'s head is deletion, not fork resolution. The erasure is REFUSED: the head stays live, the two writes surface as a fork, and the attempt is reported in supersedeRefused[] [covers R-8.3.6]',
       cross.supersedeRefused.some((r) => r.ts === onA.ts && r.by === crossKill.ts) &&
       cross.forks.some((f) => f.key === 'text|TIT|1:1' && f.heads.includes(onA.ts) && f.heads.includes(crossKill.ts)),
       `refused=${JSON.stringify(cross.supersedeRefused)} forks=${JSON.stringify(cross.forks)}`);
@@ -3278,7 +3278,7 @@ try {
     const drop = (dispositions) => E('text.structure.apply', 'actor-a', t(5), add.ts, { book: 'TIT', skeleton: S1,
       transitions: { '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: add.ts }] } }, dispositions });
     const undispositioned = fold([add, drafted, drop([])]);
-    check('J32b (D-F2): TEXT joins the disposition-required set — a structural action that REMOVES a slot carrying a live verse head, without claiming it as a transition source or dispositioning it, is `incomplete`. Pre-fix alignments, decisions and notes all demanded dispositions on removed keys and TEXT alone had neither a disposition nor an orphan backstop: the draft was silently absent',
+    check('J32b (D-F2): TEXT joins the disposition-required set — a structural action that REMOVES a slot carrying a live verse head, without claiming it as a transition source or dispositioning it, is `incomplete`. Pre-fix alignments, decisions and notes all demanded dispositions on removed keys and TEXT alone had neither a disposition nor an orphan backstop: the draft was silently absent [covers R-8.5.4]',
       undispositioned.pendingStructural.length === 1 &&
       undispositioned.pendingStructural[0].detail.some((d) => d === `undispositioned:text|1:2|${drafted.ts}`) &&
       undispositioned.books.TIT.verses['1:2'] === 'PRECIOUS DRAFT\n',
@@ -3296,7 +3296,7 @@ try {
     check('J32b (D-F2): no ZOMBIE when the slot returns — the dropped head is consumed on this branch, so a later structural action that re-creates the slot projects the stub, not a resurrected draft',
       zombie.books.TIT.verses['1:2'] === '___\n' && zombie.forks.length === 0,
       `1:2=${JSON.stringify(zombie.books.TIT.verses['1:2'])} forks=${JSON.stringify(zombie.forks)}`);
-    check('J32b (D-F2): the ORPHAN BACKSTOP for text, equivalent to §8.6\'s alignment rule — a live text head on a key with NO SLOT in the current skeleton is reported, whatever produced it',
+    check('J32b (D-F2): the ORPHAN BACKSTOP for text, equivalent to §8.6\'s alignment rule — a live text head on a key with NO SLOT in the current skeleton is reported, whatever produced it [covers R-8.6.6]',
       (() => {
         const ghostSlot = E('text.verse.set', 'actor-b', t(8, 'actor-b'), add.ts, { book: 'TIT', chapter: '1', verse: '2', text: 'orphan\n' });
         const o = fold([add, drafted, dropped, ghostSlot]);
@@ -3421,7 +3421,7 @@ try {
     }), { minLength: 1, maxLength: 14 });
 
     let exercised = 0, structApplied = 0, removeReached = 0, readdReached = 0;
-    prop('J32b CONSERVATION (the master invariant, permanent): over random LEGAL event streams, EVERY written record ends in an observable state — projected, retained, invalidated, pending, forked, or superseded by a traceable successor. A record that is in NONE of those is silent data loss, which is the format\'s whole promise failing',
+    prop('J32b CONSERVATION (the master invariant, permanent): over random LEGAL event streams, EVERY written record ends in an observable state — projected, retained, invalidated, pending, forked, or superseded by a traceable successor. A record that is in NONE of those is silent data loss, which is the format\'s whole promise failing [covers R-8.6.2]',
       cmdArb, (cmds) => {
         const events = buildStream(cmds);
         const out = fold(events);
@@ -3435,13 +3435,13 @@ try {
         }
         return true;
       });
-    check('J32b CONSERVATION: the property is not vacuous — it exercised real records and real structural actions',
+    check('J32b CONSERVATION: the property is not vacuous — it exercised real records and real structural actions [covers R-8.6.2]',
       exercised > 200 && structApplied > 5, `${exercised} written records over ${FC.numRuns} streams; ${structApplied} streams contained a structural action`);
     check('J32b CONSERVATION: the generator REACHES book removal and re-add — without these states the property could never see the F2 loss (a removed book\'s verse text, and a same-actor re-add erasure)',
       removeReached > 5 && readdReached > 1,
       `${removeReached} streams contained book.remove, ${readdReached} contained a re-add, over ${FC.numRuns} streams`);
 
-    prop('J32b EXCLUSIVITY: a record is never PROJECTED and RETAINED at once — retained means "held for review, not in the projection". Pre-fix a note dispositioned `orphan-review` was both, pointing at a slot that was gone',
+    prop('J32b EXCLUSIVITY: a record is never PROJECTED and RETAINED at once — retained means "held for review, not in the projection". Pre-fix a note dispositioned `orphan-review` was both, pointing at a slot that was gone [covers R-8.6.3]',
       cmdArb, (cmds) => {
         const events = buildStream(cmds);
         const out = fold(events);
@@ -3491,7 +3491,7 @@ try {
     const note = E('note.add', 'actor-a', t(3), null, { generation: add.ts, target: { book: 'TIT', chapter: '1', verse: '1' }, text: 'n' });
     const rm = E('book.remove', 'actor-a', t(4), add.ts, { book: 'TIT' });
     const out = fold([add, dec, al, note, rm]);
-    check('J32c (D-F4): §8.5 says content events for absent books "fold but don\'t project" — and now they do not. Pre-fix an absent book left `chains`/`genRoots` unset, the ancestry filter was SKIPPED ENTIRELY, and the removed book kept projecting its decisions, alignments and notes while LOSING its generation quarantine at the same time',
+    check('J32c (D-F4): §8.5 says content events for absent books "fold but don\'t project" — and now they do not. Pre-fix an absent book left `chains`/`genRoots` unset, the ancestry filter was SKIPPED ENTIRELY, and the removed book kept projecting its decisions, alignments and notes while LOSING its generation quarantine at the same time [covers R-8.6.5]',
       Object.keys(out.decisions).length === 0 && Object.keys(out.alignments).length === 0 && out.notes.length === 0 &&
       // 4 since round 10 (F2): the removed book's verse-text head is retained too —
       // text joined the absent-book conservation rule the other three surfaces had
@@ -3502,7 +3502,7 @@ try {
     try {
       derivedProjections(out, { baseMetadata: { type: { flavorType: {} } }, resolutions: {} });
     } catch (e) { ckErr = e.message; }
-    check('J32c (D-F4, the checkpoint consequence): the removed book no longer gets a §5.2 decision sidecar for a book outside `currentScope` — pre-fix the checkpoint either emitted one or threw for a missing resolution record',
+    check('J32c (D-F4, the checkpoint consequence): the removed book no longer gets a §5.2 decision sidecar for a book outside `currentScope` — pre-fix the checkpoint either emitted one or threw for a missing resolution record [covers R-8.6.5]',
       ckErr === '' || !ckErr.includes('resolution record'), ckErr || 'no sidecar emitted');
     const readd = E('book.add', 'actor-a', t(5), rm.ts, { book: 'TIT', scope: [], skeleton: S1, initialVerses: { '1:1': 'gen2\n' } });
     const back = fold([add, dec, al, note, rm, readd]);
@@ -3539,7 +3539,7 @@ try {
       let o; try { o = fold([add, quarantinedDec, quarantinedAl, drop([...disp, ...others])]); } catch (e) { leaks.push(`${label}: threw ${e.message.slice(0, 40)}`); continue; }
       if (!ok(o)) leaks.push(label);
     }
-    check('J32c (D-F5): a structural disposition NEVER launders the generation quarantine — every decision and alignment post-image carries the ORIGINAL record\'s `generation`. Pre-fix decision post-images were rebuilt WITHOUT the stamp while alignment re-key preserved it via spread: the same disposition, two surfaces, ten lines apart — so a quarantined record resurrected through the conservative disposition reconcile itself emits',
+    check('J32c (D-F5): a structural disposition NEVER launders the generation quarantine — every decision and alignment post-image carries the ORIGINAL record\'s `generation`. Pre-fix decision post-images were rebuilt WITHOUT the stamp while alignment re-key preserved it via spread: the same disposition, two surfaces, ten lines apart — so a quarantined record resurrected through the conservative disposition reconcile itself emits [covers R-8.5.5]',
       leaks.length === 0 && Object.keys(before.decisions).length === 0 && Object.keys(before.alignments).length === 0,
       leaks.length ? `LEAKED: ${leaks.join(' · ')}` : `${rows.length} firing cases, both surfaces`);
   }
@@ -3557,7 +3557,7 @@ try {
     const clock = makeClock('actor-a', () => Date.parse('2026-08-16T14:00:00.000Z'));
     const evs = reconcileUsfm('TIT', committed, out, clock, 'actor-a');
     const after = fold([add, quarantined, drafted, ...evs]);
-    check('J32c (D-F3): §8.8 reconcile builds its dispositions from the fold\'s LIVE HEADS, so the event it emits is one the fold ACCEPTS. Pre-fix reconcile enumerated PROJECTED records while the fold computed its affected set from live heads (quarantined and losing-fork heads included), so an out-of-band USFM edit of such a book could never be journaled at all — the fold refused the reconcile event as `incomplete`, deterministically, forever',
+    check('J32c (D-F3): §8.8 reconcile builds its dispositions from the fold\'s LIVE HEADS, so the event it emits is one the fold ACCEPTS. Pre-fix reconcile enumerated PROJECTED records while the fold computed its affected set from live heads (quarantined and losing-fork heads included), so an out-of-band USFM edit of such a book could never be journaled at all — the fold refused the reconcile event as `incomplete`, deterministically, forever [covers R-8.8.1]',
       after.pendingStructural.length === 0 && !('1:2' in after.books.TIT.verses) &&
       after.retained.some((r) => r.ts === quarantined.ts) && after.retained.some((r) => r.ts === drafted.ts),
       `pending=${JSON.stringify(after.pendingStructural)} retained=${JSON.stringify(after.retained)}`);
@@ -3573,7 +3573,7 @@ try {
       dispositions: [{ surface: 'decision', key: 'translationWords|c1|tit|1|2|1', ts: dec.ts, action: 're-key', to: '1:02' }] });
     const out = fold([add, dec, renumber]);
     const rec = out.decisions.translationWords?.[0];
-    check('J32c (D-F9): a re-key destination is a §8.4 SLOT KEY, and the number form is taken only when it ROUND-TRIPS exactly. Pre-fix `Number("02")` put the record on verse 2 — the disposition was accepted, the old head consumed, and the record pushed back naming a slot that DOES NOT EXIST: permanently unreachable by any future structural action',
+    check('J32c (D-F9): a re-key destination is a §8.4 SLOT KEY, and the number form is taken only when it ROUND-TRIPS exactly. Pre-fix `Number("02")` put the record on verse 2 — the disposition was accepted, the old head consumed, and the record pushed back naming a slot that DOES NOT EXIST: permanently unreachable by any future structural action [covers R-8.5.5]',
       !!rec && rec.contextId.reference.verse === '02' &&
       `${rec.contextId.reference.chapter}:${rec.contextId.reference.verse}` === '1:02',
       JSON.stringify(rec && rec.contextId.reference));
@@ -3620,7 +3620,7 @@ try {
       transitions: { '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: add.ts }, { key: '1:2', ts: add.ts }] } },
       dispositions: [{ surface: 'note', ts: note.ts, action: 'orphan-review' }] });
     const out = fold([add, note, drop]);
-    check('J32c (D-F8): a note dispositioned `orphan-review` is RETAINED and NOT projected — pre-fix it was BOTH at once, so one record held two observable states and the projected copy pointed at a slot that no longer exists',
+    check('J32c (D-F8): a note dispositioned `orphan-review` is RETAINED and NOT projected — pre-fix it was BOTH at once, so one record held two observable states and the projected copy pointed at a slot that no longer exists [covers R-8.6.6]',
       !out.notes.some((n) => n.ts === note.ts) && out.retained.some((r) => r.key === 'note' && r.ts === note.ts && r.reason === 'orphan-review'),
       `projected=${out.notes.length} retained=${JSON.stringify(out.retained.filter((r) => r.key === 'note'))}`);
     check('J32c (deferred half of round-8 finding 12): the note re-key destination grammar is applied AT THE FOLD, by the ONE shared predicate — only the fold knows both the note and the destination',
@@ -3643,7 +3643,7 @@ try {
     const a = E('text.verse.set', 'actor-a', t(2), add.ts, { book: 'TIT', chapter: '1', verse: '1', text: 'same\n' });
     const b = E('text.verse.set', 'actor-b', t(3, 'actor-b'), add.ts, { book: 'TIT', chapter: '1', verse: '1', text: 'same\n', tracking: 'x' });
     const out = fold([add, a, b]);
-    check('J32c (E-R10): an additive-optional field never manufactures a fork — §9 says readers MUST tolerate one without a version bump, and `payloadOf` built identity by SUBTRACTING the eight known envelope keys, so any other top-level field counted as identity and two IDENTICAL heads FORKED instead of auto-merging',
+    check('J32c (E-R10): an additive-optional field never manufactures a fork — §9 says readers MUST tolerate one without a version bump, and `payloadOf` built identity by SUBTRACTING the eight known envelope keys, so any other top-level field counted as identity and two IDENTICAL heads FORKED instead of auto-merging [covers R-8.3.9 R-8.6.4]',
       out.forks.length === 0 && out.books.TIT.verses['1:1'] === 'same\n', JSON.stringify(out.forks));
     check('J32c (E-R10): a genuine payload difference still forks — the fix narrows identity, it does not remove it',
       fold([add, a, { ...b, text: 'otro\n' }]).forks.length === 1);
@@ -3719,7 +3719,7 @@ try {
       // therefore refuses what it cannot cover, by the SAME grammar layer 1 applies.
       const truncating = ['uno\n\\v 9 smuggled\n', 'uno\n\\c 2\n\\v 1 smuggled\n', `uno${SLOT}\n`];
       const errs = truncating.map((c) => { try { verseTextMd5(c); return ''; } catch (e) { return e.message; } });
-      check('J32c (deferred): the §5.1 extraction (I-3) REFUSES content it cannot cover, instead of returning a hash over PART of it — the same ONE §8.4 boundary grammar the schema applies, applied again at the hash',
+      check('J32c (deferred): the §5.1 extraction (I-3) REFUSES content it cannot cover, instead of returning a hash over PART of it — the same ONE §8.4 boundary grammar the schema applies, applied again at the hash [covers R-8.5.10]',
         errs.every((e) => e.includes('ONE content slot')), JSON.stringify(errs.map((e) => e.slice(0, 45))));
     }
     check('J32c (deferred): ordinary content still hashes as before — the widened extraction changes no existing hash',
@@ -3737,12 +3737,12 @@ try {
       deepErr.includes('§8.1') && !/Maximum call stack/.test(deepErr), `"${deepErr.slice(0, 70)}"`);
   }
 
-  // --- B-F5: the prefix-collision rule, normative [§8.5, D51, decided 2026-08-17] ---
+  // --- B-F5: the prefix-collision rule, normative [§8.5, D54, decided 2026-08-17] ---
   {
     const a = E('settings.set', 'actor-a', t(1), null, { path: 'ui.pane', value: { width: 1 } });
     const b = E('settings.set', 'actor-b', t(2, 'actor-b'), null, { path: 'ui.pane.width', value: 9 });
     const out = fold([a, b]);
-    check('J32b/B-F5: dotted-path registers `a` and `a.b` are DIFFERENT keys that write the SAME place, and one used to clobber the other with no fork, no retained entry and no report — two writers editing `ui.pane` and `ui.pane.width` concurrently lost one edit INVISIBLY. The loss is now never silent: the later ts takes the projection, the earlier is retained and reported. [The resolution SEMANTICS are normative: §8.5, D51, decided 2026-08-17]',
+    check('J32b/B-F5: dotted-path registers `a` and `a.b` are DIFFERENT keys that write the SAME place, and one used to clobber the other with no fork, no retained entry and no report — two writers editing `ui.pane` and `ui.pane.width` concurrently lost one edit INVISIBLY. The loss is now never silent: the later ts takes the projection, the earlier is retained and reported. [The resolution SEMANTICS are normative: §8.5, D54, decided 2026-08-17] [covers R-8.5.7]',
       out.retained.some((r) => r.key === 'set|ui.pane' && r.ts === a.ts && r.reason === 'prefix-collision') &&
       !('ui.pane' in out.settings) && out.settings['ui.pane.width'] === 9,
       `settings=${JSON.stringify(out.settings)} retained=${JSON.stringify(out.retained)}`);
@@ -3774,13 +3774,13 @@ try {
   const draft = E('text.verse.set', 'actor-a', t(1), add.ts, { book: 'TIT', chapter: '1', verse: '1', text: 'MY PRECIOUS DRAFT\n' });
   const rm = E('book.remove', 'actor-a', t(2), add.ts, { book: 'TIT' });
   const out = fold([add, draft, rm]);
-  check('J32d (F2): a removed book\'s live verse-text heads are RETAINED and reported (`absent-book`) — the same conservation rule decisions, alignments and notes already had. Pre-fix the draft was in NO observable state: not projected, not retained, not invalid, not pending, not forked',
+  check('J32d (F2): a removed book\'s live verse-text heads are RETAINED and reported (`absent-book`) — the same conservation rule decisions, alignments and notes already had. Pre-fix the draft was in NO observable state: not projected, not retained, not invalid, not pending, not forked [covers R-8.6.5]',
     !JSON.stringify(out.books).includes('MY PRECIOUS DRAFT') &&
     out.retained.some((r) => r.key === 'text|TIT|1:1' && r.ts === draft.ts && r.reason === 'absent-book'),
     `retained=${JSON.stringify(out.retained)}`);
   const readd = E('book.add', 'actor-a', t(3), rm.ts, { book: 'TIT', scope: [], skeleton: S1, initialVerses: { '1:1': 'gen2\n' } });
   const back = fold([add, draft, rm, readd]);
-  check('J32d (F2, the worse variant): a SAME-ACTOR remove + re-add quarantines the prior-generation text head (`prior-generation`) exactly as a different actor\'s would — pre-fix the same-actor linear rule consumed the prior-generation head and the draft was ERASED with no report',
+  check('J32d (F2, the worse variant): a SAME-ACTOR remove + re-add quarantines the prior-generation text head (`prior-generation`) exactly as a different actor\'s would — pre-fix the same-actor linear rule consumed the prior-generation head and the draft was ERASED with no report [covers R-8.6.5]',
     back.books.TIT.verses['1:1'] === 'gen2\n' &&
     back.retained.some((r) => r.key === 'text|TIT|1:1' && r.ts === draft.ts && r.reason === 'prior-generation'),
     `1:1=${JSON.stringify(back.books.TIT.verses['1:1'])} retained=${JSON.stringify(back.retained.filter((r) => r.ts === draft.ts))}`);
@@ -3819,12 +3819,12 @@ try {
     const seedB = mkSeed('actor-b');
     let ab = null, ba = null, err = '';
     try { ab = fold([...seedA, ...seedB]); ba = fold([...seedB, ...seedA]); } catch (e) { err = e.message; }
-    check('J32e (D53d): two actors seeding the SAME book from the same source CONVERGE as one fact — the union folds (both orders), one book, no fork, nothing quarantined. Pre-fix the union THREW ("book.add of TIT carries no base but the book already exists") — every project opened on a second device became permanently unfoldable',
+    check('J32e (D53d): two actors seeding the SAME book from the same source CONVERGE as one fact — the union folds (both orders), one book, no fork, nothing quarantined. Pre-fix the union THREW ("book.add of TIT carries no base but the book already exists") — every project opened on a second device became permanently unfoldable [covers R-8.3.4 R-8.5.3 R-8.8.3]',
       err === '' && !!ab && 'TIT' in ab.books && ab.forks.length === 0 && ab.retained.length === 0 &&
       Object.keys(ab.books).length === 1 && ab.books.TIT.verses['1:1'] === 'Pablo, siervo de Dios.\n' &&
       (ab.decisions.translationWords || []).length === 1 && !!ab.alignments.TIT?.['1:1'],
       err ? `THREW: ${err.slice(0, 90)}` : `forks=${JSON.stringify(ab.forks)} retained=${JSON.stringify(ab.retained)}`);
-    check('J32e (D53d): the convergence is DETERMINISTIC under order and permutation — the fold stays a pure function of the event SET',
+    check('J32e (D53d): the convergence is DETERMINISTIC under order and permutation — the fold stays a pure function of the event SET [covers R-8.6.1 R-8.8.3]',
       err === '' && !!ab && deepEq(ab, ba) && deepEq(ab, fold(shuffled([...seedA, ...seedB], mulberry32(42)))),
       err ? `THREW: ${err.slice(0, 60)}` : 'A+B ≡ B+A ≡ shuffled');
   }
@@ -3835,7 +3835,7 @@ try {
     const addB = E('book.add', 'actor-b', t(1, 'actor-b'), null, { book: 'TIT', scope: [], skeleton: S1, initialVerses: { '1:1': 'otro\n' } });
     let out = null, err = '';
     try { out = fold([addA, addB]); } catch (e) { err = e.message; }
-    check('J32e (D53d): two rootless book.add with DIFFERENT payloads FORK and surface for review like any structural fork — neither silently wins, and the whole fold is never refused',
+    check('J32e (D53d): two rootless book.add with DIFFERENT payloads FORK and surface for review like any structural fork — neither silently wins, and the whole fold is never refused [covers R-8.5.3]',
       err === '' && !!out && out.forks.some((f) => f.key === 'book|TIT' && f.heads.includes(addA.ts) && f.heads.includes(addB.ts)) &&
       'TIT' in out.books,
       err ? `THREW: ${err.slice(0, 90)}` : `forks=${JSON.stringify(out.forks)}`);
@@ -3847,7 +3847,7 @@ try {
     const rm = E('book.remove', 'actor-b', t(2, 'actor-b'), null, { book: 'TIT' });
     let rmOut = null, rmErr = '';
     try { rmOut = fold([add, rm]); } catch (e) { rmErr = e.message; }
-    check('J32e (D53d): a rootless book.remove on an existing book still refuses to ACT (the book stays projected) but is RETAINED and REPORTED (`rootless-structural`) — the project folds; pre-fix the whole fold threw',
+    check('J32e (D53d): a rootless book.remove on an existing book still refuses to ACT (the book stays projected) but is RETAINED and REPORTED (`rootless-structural`) — the project folds; pre-fix the whole fold threw [covers R-8.3.4 R-8.5.3]',
       rmErr === '' && !!rmOut && 'TIT' in rmOut.books && rmOut.books.TIT.verses['1:1'] === 'uno\n' &&
       rmOut.retained.some((r) => r.key === 'book|TIT' && r.ts === rm.ts && r.reason === 'rootless-structural'),
       rmErr ? `THREW: ${rmErr.slice(0, 90)}` : `retained=${JSON.stringify(rmOut.retained)}`);
@@ -3855,14 +3855,14 @@ try {
       transitions: { '1:1': { text: 'x\n', sources: [] } }, dispositions: [] });
     let apOut = null, apErr = '';
     try { apOut = fold([add, ap]); } catch (e) { apErr = e.message; }
-    check('J32e (D53d): a rootless text.structure.apply is the same verdict — it never fires blind (the slot set is unchanged) and never refuses the whole fold; it is retained and reported',
+    check('J32e (D53d): a rootless text.structure.apply is the same verdict — it never fires blind (the slot set is unchanged) and never refuses the whole fold; it is retained and reported [covers R-8.3.4 R-8.5.3]',
       apErr === '' && !!apOut && '1:2' in apOut.books.TIT.verses &&
       apOut.retained.some((r) => r.key === 'skel|TIT' && r.ts === ap.ts && r.reason === 'rootless-structural'),
       apErr ? `THREW: ${apErr.slice(0, 90)}` : `retained=${JSON.stringify(apOut.retained)}`);
     const sk = E('text.skeleton.set', 'actor-b', t(4, 'actor-b'), null, { book: 'TIT', skeleton: S2 });
     let skOut = null, skErr = '';
     try { skOut = fold([add, sk]); } catch (e) { skErr = e.message; }
-    check('J32e (D53d): and text.skeleton.set — the whole rootless-structural class is one rule: refuse to act, report, keep folding',
+    check('J32e (D53d): and text.skeleton.set — the whole rootless-structural class is one rule: refuse to act, report, keep folding [covers R-8.3.4 R-8.5.3]',
       skErr === '' && !!skOut && 'TIT' in skOut.books &&
       skOut.retained.some((r) => r.key === 'skel|TIT' && r.ts === sk.ts && r.reason === 'rootless-structural'),
       skErr ? `THREW: ${skErr.slice(0, 90)}` : `retained=${JSON.stringify(skOut.retained)}`);
