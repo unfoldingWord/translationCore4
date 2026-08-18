@@ -813,3 +813,8 @@ remains D51's standing condition for hardening; (b) the conservation property ge
 now reaches `book.remove`/re-add states, but a fork-capable generator remains open (D51
 condition 2). [supersedes in part D51, 2026-08-18 — the flip for this scope happened under
 this gate; D51's conditions remain the bar for the sync sections and for hardening]
+
+[addendum 2026-08-18 — app-rule exemption: a rule that binds the application rather than
+the stored format carries no R-id and is exempt from the coverage gate; it is marked
+"(D53, app rule …)" in place, and its test obligation lands with the app increment that
+implements it (#61/#62 acceptance criteria)]
