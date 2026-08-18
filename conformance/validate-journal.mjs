@@ -1671,7 +1671,7 @@ try {
   check('J22: concurrent structural actions fork on the skeleton key — both heads live, review-queue material',
     forked.forks.some((f) => f.key === 'skel|TIT') && forked.pendingStructural.length === 0,
     JSON.stringify(forked.forks.map((f) => f.key)));
-  check('J22: fork effects are branch-local — the winner projects its own move only; the losing branch\'s move never leaks',
+  check('J22: fork effects are branch-local — the winner projects its own move only; the losing branch\'s move never leaks [covers R-8.6.8]',
     '1:4' in forked.books.TIT.verses && !('1:3' in forked.books.TIT.verses) && forked.books.TIT.verses['1:1'] === 'uno\n',
     JSON.stringify(Object.keys(forked.books.TIT.verses)));
   check('J22: the losing branch\'s post-images are retained for review, not silently dropped',
@@ -1684,7 +1684,7 @@ try {
   check('J22: edits on both sides of a structural fork — each descendant projects only under its own ancestor',
     bothSides.books.TIT.verses['1:4'] === 'cuatro B\n' && !('1:3' in bothSides.books.TIT.verses),
     JSON.stringify(bothSides.books.TIT.verses));
-  check('J22: the losing branch\'s descendants remain retained for review (excluded by ancestry, not guesswork)',
+  check('J22: the losing branch\'s descendants remain retained for review (excluded by ancestry, not guesswork) [covers R-8.6.8]',
     bothSides.retained.some((r) => r.ts === eA.ts), JSON.stringify(bothSides.retained.slice(0, 6)));
 
   // sequential structure changes: a chain of two text.structure.apply is ordinary head lineage
@@ -2755,7 +2755,7 @@ try {
     const leaky = mkEvent({ op: 'text.verse.set', actor: 'actor-b', ts: okTs(9, 'actor-b'), base: addJ.ts,
       book: 'TIT', chapter: '1', verse: '1', text: 'LEAKED\n' });
     const audit = fold([add, addJ, leaky]);
-    check('J31: audit — a CONTENT op with a cross-book base fails CLOSED: the head is excluded by ancestry and reported in retained[] as unselected-structural-branch; no text ever crosses books',
+    check('J31: audit — a CONTENT op with a cross-book base fails CLOSED: the head is excluded by ancestry and reported in retained[] as unselected-structural-branch; no text ever crosses books [covers R-8.6.8]',
       audit.books.TIT.verses['1:1'] !== 'LEAKED\n' && audit.books.JON.verses['1:1'] !== 'LEAKED\n' &&
       audit.retained.some((r) => r.key === 'text|TIT|1:1' && r.reason === 'unselected-structural-branch'),
       `TIT=${JSON.stringify(audit.books.TIT.verses['1:1'])} retained=${JSON.stringify(audit.retained)}`);
@@ -3918,6 +3918,27 @@ try {
       skOut.retained.some((r) => r.key === 'skel|TIT' && r.ts === sk.ts && r.reason === 'rootless-structural'),
       skErr ? `THREW: ${skErr.slice(0, 90)}` : `retained=${JSON.stringify(skOut.retained)}`);
   }
+}
+
+// ---------- §8.6 retained[] reason vocabulary — a closed set (drift guard) ----------
+{
+  const src = fs.readFileSync(path.resolve('./journal/fold.mjs'), 'utf8');
+  const VOCAB = ['superseded', 'prior-generation', 'absent-book', 'orphaned-text', 'prefix-collision',
+    'rootless-base', 'rootless-structural', 'no-structural-ancestor', 'unselected-structural-branch'];
+  const lines = src.split('\n').filter((l) => l.includes('reason:'));
+  const literals = new Set(lines.flatMap((l) => {
+    const after = l.slice(l.indexOf('reason:'));
+    return [...after.matchAll(/'([a-z-]+)'/g)].map((m) => m[1]);
+  }));
+  const nonLiteral = [...new Set(lines
+    .map((l) => l.slice(l.indexOf('reason:') + 'reason:'.length).trim())
+    .filter((x) => !x.includes("'"))
+    .map((x) => x.replace(/\s*[,}].*$/, '')))];
+  check('§8.6: the retained[] reason vocabulary is CLOSED — the fold emits exactly the §8.6 reasons, and the only non-literal reason sources are a structural disposition\'s own retention action (d.action) and the retainedByStruct passthrough [covers R-8.6.9]',
+    VOCAB.every((v) => literals.has(v)) &&
+    [...literals].every((l) => VOCAB.includes(l)) &&
+    nonLiteral.every((x) => x === 'd.action' || x === 'r.reason'),
+    `literals={${[...literals].sort().join(',')}} · non-literal={${nonLiteral.join(' · ')}}`);
 }
 
 console.log(`\nJournal suite: ${pass} passed, ${fail} failed (fast-check seed ${SEED})`);
