@@ -309,14 +309,30 @@ export const fold = (eventsIn) => {
   const ROOTLESS_REFUSED = new Set(['text.verse.set']);
   const rootlessDefect = (e, key) =>
     e.base == null && ROOTLESS_REFUSED.has(e.op) && (heads.get(key) || []).length > 0;
-  // ONE stale-own-head rule for BOTH skeleton-chain ops (round 9, E-R3). An actor whose
-  // own skeleton head has advanced past the base it claims is reversing its own accepted
-  // structural action. `text.skeleton.set` refused that; `text.structure.apply` — the op
-  // that can DROP SLOTS — silently accepted it and re-created the removed verses. Same
-  // hazard, same rule, stated once.
+  // ONE stale-own-head rule for BOTH skeleton-chain ops (round 9, E-R3; narrowed round
+  // 12). The refusal is about REVERSAL: it fires only when the actor's own live skeleton
+  // head genuinely DESCENDS from the claimed base — the base sits in that head's own base
+  // chain, so the actor is reversing its own accepted structural action (a writer
+  // defect). Merely APPEARING among the live heads is not enough: a same-actor
+  // fork-LOSER head (a D53d differing-add genesis, or a same-base skeleton fork loser)
+  // never advanced past the base at all, so the event forks or pends by the ordinary
+  // rules. Pre-fix ANY same-actor live head triggered the refusal — a WHOLE-FOLD throw —
+  // so an honest union whose journals each folded clean alone was permanently
+  // unfoldable (round 12).
+  const descendsFrom = (headTs, baseTs) => {
+    let cur = headTs; let guard = 0;
+    while (cur != null && guard++ < 10000) {
+      if (cur === baseTs) return true;
+      const ev = byTs.get(cur);
+      if (!ev || ev.op === 'book.add') return false;
+      cur = ev.base == null ? null : aliasTs(ev.base);
+    }
+    return false;
+  };
   const staleOwnSkeletonHead = (e) => {
     const live = heads.get(`skel|${e.book}`) || [];
-    if (!live.length || live.some((h) => h.ts === e.base) || !live.some((h) => h.actor === e.actor)) return null;
+    if (!live.length || live.some((h) => h.ts === e.base)) return null;
+    if (!live.some((h) => h.actor === e.actor && h.ts !== e.ts && descendsFrom(h.ts, e.base))) return null;
     return `${e.op} base ${e.base} is stale: this actor's own skeleton head advanced past it (ts ${e.ts}) — a structural edit cannot silently reverse an accepted structural action of the same actor; refuse to fold (§8.4)`;
   };
   const vkeyParts = (vkey) => { const i = vkey.indexOf(':'); return { chapter: vkey.slice(0, i), verse: vkey.slice(i + 1) }; };

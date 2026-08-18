@@ -3930,6 +3930,168 @@ try {
   }
 }
 
+// ---------- J32f (round 12): the same-actor stale-base rule refuses DESCENT, not
+//   presence. E-R3's rule (R-8.5.14) exists to stop an actor silently REVERSING its own
+//   accepted structural action — so it applies only when the actor's own live skeleton
+//   head genuinely advanced PAST the claimed base (the base sits in that head's own base
+//   chain). Pre-fix ANY live skeleton head of the event's actor triggered the refusal —
+//   including a fork-LOSER head that never advanced past anything (A's losing rootless
+//   genesis after a D53d differing-add fork, or a same-base skeleton fork loser) — and
+//   the refusal is a WHOLE-FOLD throw, so a union whose journals each folded clean alone
+//   was permanently unfoldable for every writer. ----------
+{
+  const t = (s, a = 'actor-a') => `2026-08-18T11:00:${String(s).padStart(2, '0')}.000Z|0000|${a}`;
+  const E = (op, actor, ts, base, extra) => mkEvent({ op, actor, ts, base, ...extra });
+  const skelOf = (b, ...keys) => `\\id ${b}\n\\c 1\n\\p\n` + keys.map((k) => `\\v ${k.split(':')[1]} ${SLOT}${k}${SLOT}`).join('');
+  const S2 = skelOf('TIT', '1:1', '1:2');
+  const S1 = skelOf('TIT', '1:1');
+
+  // (a) a D53d differing-add fork, then BOTH actors restructure off the fork winner
+  {
+    const addA = E('book.add', 'actor-a', t(0), null, { book: 'TIT', scope: [], skeleton: S2, initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n' } });
+    const addB = E('book.add', 'actor-b', t(1, 'actor-b'), null, { book: 'TIT', scope: [], skeleton: S2, initialVerses: { '1:1': 'UNO!\n', '1:2': 'dos\n' } });
+    const structOf = (actor, ts, text) => E('text.structure.apply', actor, ts, addB.ts, { book: 'TIT', skeleton: S1,
+      transitions: { '1:1': { text, sources: [{ key: '1:1', ts: addB.ts }] } },
+      dispositions: [{ surface: 'text', key: '1:2', ts: addB.ts, action: 'orphan-review' },
+                     { surface: 'text', key: '1:2', ts: addA.ts, action: 'orphan-review' }] });
+    const structB = structOf('actor-b', t(2, 'actor-b'), 'MB\n');
+    const structA = structOf('actor-a', t(3), 'MA\n');
+    let aloneOk = true;
+    try { fold([addA, addB, structA]); fold([addA, addB, structB]); } catch { aloneOk = false; }
+    let out = null, err = '';
+    try { out = fold([addA, addB, structB, structA]); } catch (e) { err = e.message; }
+    check('J32f: after a D53d differing-add fork, an honest union where both actors restructured off the fork WINNER folds — actor A\'s losing rootless genesis is a live head of actor A, but it never ADVANCED PAST the base, so the stale-own-head rule stays silent and the concurrent applies surface as an ordinary structural fork. Pre-fix the union THREW (staleOwnSkeletonHead read ANY same-actor live head as "my own head advanced past my base") while each journal folded clean alone [covers R-8.5.14]',
+      aloneOk && err === '' && !!out &&
+      out.forks.some((f) => f.key === 'skel|TIT' && f.heads.includes(structA.ts) && f.heads.includes(structB.ts)),
+      err ? `UNION THREW: ${err.slice(0, 90)}` : `forks=${JSON.stringify(out?.forks.map((f) => f.key))}`);
+  }
+
+  // (b) the pre-D53 variant: a SAME-BASE skeleton fork, then both actors restructure off
+  //     the fork winner — same shape, no rootless second add involved
+  {
+    const add = E('book.add', 'actor-a', t(10), null, { book: 'TIT', scope: [], skeleton: S2, initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n' } });
+    const S2b = `\\id TIT\n\\c 1\n\\p\n\\b\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}`; // same slots, different bytes
+    const skA = E('text.skeleton.set', 'actor-a', t(11), add.ts, { book: 'TIT', skeleton: S2b });
+    const skB = E('text.skeleton.set', 'actor-b', t(12, 'actor-b'), add.ts, { book: 'TIT', skeleton: S2b });
+    const structOf = (actor, ts, text) => E('text.structure.apply', actor, ts, skB.ts, { book: 'TIT', skeleton: S1,
+      transitions: { '1:1': { text, sources: [{ key: '1:1', ts: add.ts }] } },
+      dispositions: [{ surface: 'text', key: '1:2', ts: add.ts, action: 'orphan-review' }] });
+    const structB = structOf('actor-b', t(13, 'actor-b'), 'MB\n');
+    const structA = structOf('actor-a', t(14), 'MA\n');
+    let out = null, err = '';
+    try { out = fold([add, skA, skB, structB, structA]); } catch (e) { err = e.message; }
+    check('J32f: the same union shape WITHOUT the D53d path — a same-base skeleton fork, then both actors restructure off the fork winner — folds too: actor A\'s fork-loser skeleton head does not descend from the base, so the refusal does not fire. The ORIGINAL E-R3 refusal (a base the actor\'s own head genuinely advanced past — J32c) is unchanged [covers R-8.5.14]',
+      err === '' && !!out && out.forks.some((f) => f.key === 'skel|TIT' && f.heads.includes(structA.ts) && f.heads.includes(structB.ts)),
+      err ? `UNION THREW: ${err.slice(0, 90)}` : `forks=${JSON.stringify(out?.forks.map((f) => f.key))}`);
+  }
+
+  // (c) the NO-THROW property — a TWO-DEVICE honest-writer model (adapted from the
+  //     round-12 adversarial lens). Device A roots the project; device B may JOIN by a
+  //     rootless re-seed (identical payload → converge, differing → fork). Each device
+  //     issues events against the fold of ITS OWN journal only, and `sync` merges the
+  //     journals. The property: the union of two honestly-written journals ALWAYS folds.
+  {
+    const GEN_PAYLOAD = { book: 'TIT', scope: [], skeleton: S2, initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n' } };
+    const buildUnion = (cmds) => {
+      let now = Date.parse('2026-08-16T12:00:00.000Z');
+      const clocks = [makeClock('actor-a', () => now), makeClock('actor-b', () => now)];
+      const dev = [{ events: [], out: null }, { events: [], out: null }];
+      const push = (i, e) => {
+        let next;
+        try { next = fold([...dev[i].events, e]); } catch { return; } // an honest writer never commits what its OWN fold refuses
+        dev[i].events.push(e); dev[i].out = next;
+      };
+      push(0, { v: 1, op: 'book.add', actor: 'actor-a', ts: clocks[0].issue(), base: null, ...GEN_PAYLOAD });
+      for (const c of cmds) {
+        now += c.advance;
+        const i = c.dev;
+        const actor = i === 0 ? 'actor-a' : 'actor-b';
+        const ts = clocks[i].issue();
+        const out = dev[i].out;
+        const slot = ['1:1', '1:2'][c.key % 2];
+        const [chapter, verse] = slot.split(':');
+        if (c.kind === 'join-same' || c.kind === 'join-diff') {
+          if (dev[i].events.length > 0) continue; // join only once, from empty
+          const payload = c.kind === 'join-same' ? GEN_PAYLOAD
+            : { ...GEN_PAYLOAD, initialVerses: { '1:1': `X${c.val}\n`, '1:2': 'dos\n' } };
+          push(i, { v: 1, op: 'book.add', actor, ts, base: null, ...payload });
+          continue;
+        }
+        if (!out) continue; // device has not joined yet
+        const genRoot = out.headsTs['book|TIT'];
+        const skelHead = out.headsTs['skel|TIT'];
+        const headOf = (k) => out.headsTs[k];
+        if (c.kind === 'verse' && headOf(`text|TIT|${slot}`)) {
+          push(i, { v: 1, op: 'text.verse.set', actor, ts, base: headOf(`text|TIT|${slot}`), book: 'TIT', chapter, verse, text: `${c.val}\n` });
+        } else if (c.kind === 'align' && genRoot && out.books.TIT) {
+          push(i, { v: 1, op: 'align.verse.set', actor, ts, base: headOf(`align|TIT|${slot}`) ?? null, book: 'TIT', chapter, verse,
+            generation: genRoot, alignments: [], wordBank: [{ w: c.val }], targetVerseMd5: verseTextMd5(`${c.val}\n`) });
+        } else if (c.kind === 'decision' && genRoot && out.books.TIT) {
+          const dkey = `dec|translationWords|c${c.key}|tit|${chapter}|${verse}|1`;
+          push(i, { v: 1, op: 'check.decision.set', actor, ts, base: headOf(dkey) ?? null, toolId: 'translationWords', generation: genRoot,
+            decision: { contextId: { checkId: `c${c.key}`, occurrence: 1, reference: { bookId: 'tit', chapter, verse } }, selections: false, note: c.val } });
+        } else if (c.kind === 'note' && genRoot && out.books.TIT) {
+          push(i, { v: 1, op: 'note.add', actor, ts, base: null, generation: genRoot, target: { book: 'TIT', chapter, verse }, text: c.val });
+        } else if (c.kind === 'setting') {
+          push(i, { v: 1, op: 'settings.set', actor, ts, base: headOf(`set|ui.p${c.key}`) ?? null, path: `ui.p${c.key}`, value: c.val });
+        } else if (c.kind === 'supersede' && headOf(`text|TIT|${slot}`)) {
+          const live = (out.liveHeads[`text|TIT|${slot}`] || []).map((h) => h.ts);
+          push(i, { v: 1, op: 'text.verse.set', actor, ts, base: headOf(`text|TIT|${slot}`), supersedes: live.filter((x) => x !== ts),
+            book: 'TIT', chapter, verse, text: `S${c.val}\n` });
+        } else if (c.kind === 'struct' && skelHead && '1:2' in (out.books.TIT?.verses || {})) {
+          const dispositions = [];
+          for (const h of out.liveHeads['text|TIT|1:2'] || []) dispositions.push({ surface: 'text', key: '1:2', ts: h.ts, action: 'orphan-review' });
+          for (const h of out.liveHeads['align|TIT|1:2'] || []) dispositions.push({ surface: 'alignment', key: '1:2', ts: h.ts, action: 'orphan-review' });
+          for (const dk of Object.keys(out.liveHeads)) {
+            if (!dk.startsWith('dec|')) continue;
+            const { bookId, chapter: dc, verse: dv } = splitDecisionKey(dk.slice(4));
+            if (bookId !== 'tit' || `${dc}:${dv}` !== '1:2') continue;
+            for (const h of out.liveHeads[dk]) dispositions.push({ surface: 'decision', key: dk.slice(4), ts: h.ts, action: 'invalidate-retain' });
+          }
+          for (const n of out.liveNotes) if (n.target && n.target.book === 'TIT' && `${n.target.chapter}:${n.target.verse}` === '1:2')
+            dispositions.push({ surface: 'note', ts: n.ts, action: 'orphan-review' });
+          const sources = (out.liveHeads['text|TIT|1:1'] || []).map((h) => ({ key: '1:1', ts: h.ts }));
+          push(i, { v: 1, op: 'text.structure.apply', actor, ts, base: skelHead, book: 'TIT', skeleton: S1,
+            transitions: { '1:1': { text: `M${c.val}\n`, sources } }, dispositions });
+        } else if (c.kind === 'restore' && skelHead && out.books.TIT && !('1:2' in out.books.TIT.verses)) {
+          const sources = (out.liveHeads['text|TIT|1:1'] || []).map((h) => ({ key: '1:1', ts: h.ts }));
+          push(i, { v: 1, op: 'text.structure.apply', actor, ts, base: skelHead, book: 'TIT', skeleton: S2,
+            transitions: { '1:1': { text: `R${c.val}\n`, sources }, '1:2': { text: '___\n', sources: [] } }, dispositions: [] });
+        } else if (c.kind === 'remove' && genRoot && out.books.TIT) {
+          push(i, { v: 1, op: 'book.remove', actor, ts, base: genRoot, book: 'TIT' });
+        } else if (c.kind === 'readd' && !out.books.TIT && genRoot) {
+          push(i, { v: 1, op: 'book.add', actor, ts, base: genRoot, book: 'TIT', scope: [],
+            skeleton: S2, initialVerses: { '1:1': `g${c.val}\n`, '1:2': `h${c.val}\n` } });
+        } else if (c.kind === 'rootless-rm') {
+          push(i, { v: 1, op: 'book.remove', actor, ts, base: null, book: 'TIT' });
+        } else if (c.kind === 'rootless-skel' && out.books.TIT) {
+          push(i, { v: 1, op: 'text.skeleton.set', actor, ts, base: null, book: 'TIT', skeleton: S2 });
+        } else if (c.kind === 'sync') {
+          const byTs = new Map();
+          for (const e of [...dev[0].events, ...dev[1].events]) byTs.set(e.ts, e);
+          const union = [...byTs.values()].sort((a, b) => (a.ts < b.ts ? -1 : 1));
+          let uo;
+          try { uo = fold(union); } catch { continue; } // a refusing union surfaces via the property below
+          for (const d of dev) { d.events = [...union]; d.out = uo; }
+          clocks[0].ratchet(clocks[1].issue()); clocks[1].ratchet(clocks[0].issue());
+        }
+      }
+      const byTs = new Map();
+      for (const e of [...dev[0].events, ...dev[1].events]) byTs.set(e.ts, e);
+      return [...byTs.values()].sort((a, b) => (a.ts < b.ts ? -1 : 1));
+    };
+    const cmdArb = fc.array(fc.record({
+      dev: fc.constantFrom(0, 1),
+      kind: fc.constantFrom('join-same', 'join-diff', 'join-diff', 'verse', 'align', 'decision', 'note',
+        'setting', 'supersede', 'struct', 'struct', 'struct', 'restore', 'remove', 'readd', 'rootless-rm', 'rootless-skel', 'sync', 'sync', 'sync'),
+      key: fc.nat({ max: 3 }), advance: fc.nat({ max: 2 }),
+      val: fc.stringMatching(/^[a-f0-9]{1,4}$/),
+    }), { minLength: 2, maxLength: 16 });
+    prop('J32f NO-THROW (permanent): the union of two HONESTLY-WRITTEN journals always folds — no rootless claim, no fork-loser head, no concurrent restructure ever refuses the whole fold. Each device issues only events its OWN fold accepts; the union of such journals is every sync\'s input, so a whole-fold throw here is a project no writer can ever open again [covers R-8.5.14 R-8.5.3]',
+      cmdArb, (cmds) => { try { fold(buildUnion(cmds)); return true; } catch { return false; } });
+  }
+}
+
 // ---------- §8.6 retained[] reason vocabulary — a closed set (drift guard) ----------
 {
   const src = fs.readFileSync(path.resolve('./journal/fold.mjs'), 'utf8');
