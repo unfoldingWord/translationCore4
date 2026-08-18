@@ -338,8 +338,14 @@ export const fold = (eventsIn) => {
         event: { op: 'text.skeleton.set', book: e.book, skeleton: e.skeleton } }, e.base, e.supersedes, e.actor);
       for (const k of slotKeysOf(e.skeleton)) {
         const { chapter, verse } = vkeyParts(k);
-        joinHead(`text|${e.book}|${k}`, { ts: e.ts, actor: e.actor, sanc: e.ts, book: e.book,
-          event: { op: 'text.verse.set', book: e.book, chapter, verse, text: initial[k] ?? '___\n' } }, e.base, e.supersedes, e.actor);
+        // slot heads PUSH, never join (round 10, F2) — the same branch-local rule as
+        // text.structure.apply post-images. joinHead's same-actor linear rule read a
+        // PRIOR-GENERATION text head as this actor's own history and CONSUMED it, so a
+        // same-actor remove + re-add ERASED the draft with no report, while a different
+        // actor's re-add quarantined it. The prior head stays live; the generation
+        // quarantine (ancestry, at projection) decides — one rule for every actor.
+        pushHead(`text|${e.book}|${k}`, { ts: e.ts, actor: e.actor, sanc: e.ts, book: e.book,
+          event: { op: 'text.verse.set', book: e.book, chapter, verse, text: initial[k] ?? '___\n' } });
       }
       acceptedStructural.add(e.ts);
       continue;
@@ -720,6 +726,16 @@ export const fold = (eventsIn) => {
   }
   for (const t of Object.keys(decisions))
     decisions[t].sort((a, b) => canon(a.contextId) < canon(b.contextId) ? -1 : 1);
+
+  // TEXT is bound by the SAME absent-book conservation rule (round 10, F2). The two
+  // loops below retained decisions and alignments of a removed book; verse text — the
+  // one surface whose loss is the product's whole promise — was skipped, so a removed
+  // book's live text heads ended in NO observable state.
+  for (const key of heads.keys()) {
+    if (!key.startsWith('text|')) continue;
+    const anyHead = heads.get(key)[0];
+    if (absentBook(anyHead.book)) retainAll(key, 'absent-book');
+  }
 
   const alignments = {}; const invalid = [];
   for (const key of heads.keys()) {

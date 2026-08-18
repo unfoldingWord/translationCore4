@@ -3384,6 +3384,13 @@ try {
           const sources = (out.liveHeads['text|TIT|1:1'] || []).map((h) => ({ key: '1:1', ts: h.ts }));
           push({ v: 1, op: 'text.structure.apply', actor, ts, base: skelHead, book: 'TIT', skeleton: S1,
             transitions: { '1:1': { text: `M${c.val}\n`, sources } }, dispositions });
+        } else if (c.kind === 'remove' && genRoot && out.books.TIT) {
+          // the book head is a book.add while the book projects — a legal chain link
+          push({ v: 1, op: 'book.remove', actor, ts, base: genRoot, book: 'TIT' });
+        } else if (c.kind === 'readd' && !out.books.TIT && genRoot) {
+          // the book head is the book.remove while the book is absent — a legal re-add
+          push({ v: 1, op: 'book.add', actor, ts, base: genRoot, book: 'TIT', scope: [],
+            skeleton: S2, initialVerses: { '1:1': `g${c.val}\n`, '1:2': `h${c.val}\n` } });
         } else if (c.kind === 'restore' && skelHead && !('1:2' in (out.books.TIT?.verses || {}))) {
           const sources = (out.liveHeads['text|TIT|1:1'] || []).map((h) => ({ key: '1:1', ts: h.ts }));
           push({ v: 1, op: 'text.structure.apply', actor, ts, base: skelHead, book: 'TIT', skeleton: S2,
@@ -3393,17 +3400,19 @@ try {
       return events;
     };
     const cmdArb = fc.array(fc.record({
-      kind: fc.constantFrom('verse', 'align', 'decision', 'note', 'setting', 'supersede', 'struct', 'restore'),
+      kind: fc.constantFrom('verse', 'align', 'decision', 'note', 'setting', 'supersede', 'struct', 'restore', 'remove', 'readd'),
       actor: fc.constantFrom(0, 1), key: fc.nat({ max: 3 }), advance: fc.nat({ max: 2 }),
       val: fc.stringMatching(/^[a-f0-9]{1,4}$/),
     }), { minLength: 1, maxLength: 14 });
 
-    let exercised = 0, structApplied = 0;
+    let exercised = 0, structApplied = 0, removeReached = 0, readdReached = 0;
     prop('J32b CONSERVATION (the master invariant, permanent): over random LEGAL event streams, EVERY written record ends in an observable state — projected, retained, invalidated, pending, forked, or superseded by a traceable successor. A record that is in NONE of those is silent data loss, which is the format\'s whole promise failing',
       cmdArb, (cmds) => {
         const events = buildStream(cmds);
         const out = fold(events);
         if (events.some((e) => e.op === 'text.structure.apply')) structApplied++;
+        if (events.some((e) => e.op === 'book.remove')) removeReached++;
+        if (events.some((e) => e.op === 'book.add' && e.base != null)) readdReached++;
         for (const e of events) {
           if (!WRITES.has(e.op)) continue;
           exercised++;
@@ -3413,6 +3422,9 @@ try {
       });
     check('J32b CONSERVATION: the property is not vacuous — it exercised real records and real structural actions',
       exercised > 200 && structApplied > 5, `${exercised} written records over ${FC.numRuns} streams; ${structApplied} streams contained a structural action`);
+    check('J32b CONSERVATION: the generator REACHES book removal and re-add — without these states the property could never see the F2 loss (a removed book\'s verse text, and a same-actor re-add erasure)',
+      removeReached > 5 && readdReached > 1,
+      `${removeReached} streams contained book.remove, ${readdReached} contained a re-add, over ${FC.numRuns} streams`);
 
     prop('J32b EXCLUSIVITY: a record is never PROJECTED and RETAINED at once — retained means "held for review, not in the projection". Pre-fix a note dispositioned `orphan-review` was both, pointing at a slot that was gone',
       cmdArb, (cmds) => {
@@ -3466,7 +3478,10 @@ try {
     const out = fold([add, dec, al, note, rm]);
     check('J32c (D-F4): §8.5 says content events for absent books "fold but don\'t project" — and now they do not. Pre-fix an absent book left `chains`/`genRoots` unset, the ancestry filter was SKIPPED ENTIRELY, and the removed book kept projecting its decisions, alignments and notes while LOSING its generation quarantine at the same time',
       Object.keys(out.decisions).length === 0 && Object.keys(out.alignments).length === 0 && out.notes.length === 0 &&
-      out.retained.filter((r) => r.reason === 'absent-book').length === 3,
+      // 4 since round 10 (F2): the removed book's verse-text head is retained too —
+      // text joined the absent-book conservation rule the other three surfaces had
+      out.retained.filter((r) => r.reason === 'absent-book').length === 4 &&
+      out.retained.some((r) => r.key === 'text|TIT|1:1' && r.reason === 'absent-book'),
       `decisions=${JSON.stringify(Object.keys(out.decisions))} alignments=${JSON.stringify(Object.keys(out.alignments))} notes=${out.notes.length} retained=${JSON.stringify(out.retained)}`);
     let ckErr = '';
     try {
@@ -3726,6 +3741,40 @@ try {
           o.settings['ui.other'] === 2;
       })());
   }
+}
+
+// ---------- J32d (s8 round 10): verse TEXT of a REMOVED book joins the conservation
+//   rule (F2). §8.6 conservation covered decisions, alignments and notes on an absent
+//   book (`retainAll(key, 'absent-book')`) and skipped TEXT — the one surface whose loss
+//   is the product's whole promise. Two firing cases: (a) book.add + text.verse.set +
+//   book.remove left the draft in NO observable state; (b) same-actor remove + re-add
+//   ERASED the draft outright — the same-actor linear rule consumed the prior-generation
+//   head before the quarantine could see it. ----------
+{
+  const t = (s, a = 'actor-a') => `2026-08-18T05:00:${String(s).padStart(2, '0')}.000Z|0000|${a}`;
+  const E = (op, actor, ts, base, extra) => mkEvent({ op, actor, ts, base, ...extra });
+  const skelOf = (b, ...keys) => `\\id ${b}\n\\c 1\n\\p\n` + keys.map((k) => `\\v ${k.split(':')[1]} ${SLOT}${k}${SLOT}`).join('');
+  const S1 = skelOf('TIT', '1:1');
+  const add = E('book.add', 'actor-a', t(0), null, { book: 'TIT', scope: [], skeleton: S1, initialVerses: { '1:1': 'uno\n' } });
+  const draft = E('text.verse.set', 'actor-a', t(1), add.ts, { book: 'TIT', chapter: '1', verse: '1', text: 'MY PRECIOUS DRAFT\n' });
+  const rm = E('book.remove', 'actor-a', t(2), add.ts, { book: 'TIT' });
+  const out = fold([add, draft, rm]);
+  check('J32d (F2): a removed book\'s live verse-text heads are RETAINED and reported (`absent-book`) — the same conservation rule decisions, alignments and notes already had. Pre-fix the draft was in NO observable state: not projected, not retained, not invalid, not pending, not forked',
+    !JSON.stringify(out.books).includes('MY PRECIOUS DRAFT') &&
+    out.retained.some((r) => r.key === 'text|TIT|1:1' && r.ts === draft.ts && r.reason === 'absent-book'),
+    `retained=${JSON.stringify(out.retained)}`);
+  const readd = E('book.add', 'actor-a', t(3), rm.ts, { book: 'TIT', scope: [], skeleton: S1, initialVerses: { '1:1': 'gen2\n' } });
+  const back = fold([add, draft, rm, readd]);
+  check('J32d (F2, the worse variant): a SAME-ACTOR remove + re-add quarantines the prior-generation text head (`prior-generation`) exactly as a different actor\'s would — pre-fix the same-actor linear rule consumed the prior-generation head and the draft was ERASED with no report',
+    back.books.TIT.verses['1:1'] === 'gen2\n' &&
+    back.retained.some((r) => r.key === 'text|TIT|1:1' && r.ts === draft.ts && r.reason === 'prior-generation'),
+    `1:1=${JSON.stringify(back.books.TIT.verses['1:1'])} retained=${JSON.stringify(back.retained.filter((r) => r.ts === draft.ts))}`);
+  const readdB = E('book.add', 'actor-b', t(4, 'actor-b'), rm.ts, { book: 'TIT', scope: [], skeleton: S1, initialVerses: { '1:1': 'gen2b\n' } });
+  const backB = fold([add, draft, rm, readdB]);
+  check('J32d (F2): the DIFFERENT-actor re-add gives the same verdict — one rule, no actor-dependent data loss',
+    backB.books.TIT.verses['1:1'] === 'gen2b\n' &&
+    backB.retained.some((r) => r.key === 'text|TIT|1:1' && r.ts === draft.ts && r.reason === 'prior-generation'),
+    `retained=${JSON.stringify(backB.retained.filter((r) => r.ts === draft.ts))}`);
 }
 
 console.log(`\nJournal suite: ${pass} passed, ${fail} failed (fast-check seed ${SEED})`);
