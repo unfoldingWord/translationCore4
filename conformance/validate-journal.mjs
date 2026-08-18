@@ -2521,10 +2521,10 @@ try {
   // a STAMPED gen-1 decisionKey note written by still-offline B AFTER the re-add (later ts)
   const noteLate = E('note.add', 'checker-b', t(4, 0, 'checker-b'), null, { target: { decisionKey: 'translationNotes|g1|tit|1|1|1' }, generation: add1.ts, text: 'nota gen-1 tardía' });
   const out = fold([add1, noteOld, remove, add2, noteLate]);
-  check('J29d: a prior-generation decisionKey-targeted note never projects — the generation filter reaches notes with no target.book',
+  check('J29d: a prior-generation decisionKey-targeted note never projects — the generation filter reaches notes with no target.book [covers R-8.5.6]',
     !out.notes.some((n) => n.ts === noteOld.ts) && !out.notes.some((n) => n.ts === noteLate.ts),
     JSON.stringify(out.notes.map((n) => n.text)));
-  check('J29d: both notes are QUARANTINED as prior-generation — the parsed §5.2 bookId finds the root; the stamp beats the later ts',
+  check('J29d: both notes are QUARANTINED as prior-generation — the parsed §5.2 bookId finds the root; the stamp beats the later ts [covers R-8.5.6]',
     out.retained.some((r) => r.ts === noteOld.ts && r.reason === 'prior-generation') &&
     out.retained.some((r) => r.ts === noteLate.ts && r.reason === 'prior-generation'),
     JSON.stringify(out.retained));
@@ -3717,6 +3717,14 @@ try {
         const x = E('align.verse.set', 'actor-a', t(4), null, g);
         const y = E('align.verse.set', 'actor-b', t(5, 'actor-b'), null, { ...g, sourceVersion: 'v2' });
         return fold([add, x, y]).forks.length === 1;
+      })());
+    check('J32c (E-R10): `batch` never affects fold state even on the OPEN-payload op — two `align.verse.set` heads identical in every §5.1 field and differing ONLY in `batch` AUTO-MERGE. Pre-fix hazard (found by mutation audit M7/F1): dropping `batch` from the fold ENVELOPE subtraction silently joined it to align fork identity, so one section save per device manufactured a phantom fork per aligned verse — and no check could see it, because the only `batch` check exercised `text.verse.set`, whose additive payload row excludes envelope fields by construction [covers R-8.3.7]',
+      (() => {
+        const g = { generation: add.ts, book: 'TIT', chapter: '1', verse: '1', alignments: [], wordBank: [], targetVerseMd5: verseTextMd5('___\n') };
+        const x = E('align.verse.set', 'actor-a', t(6), null, { ...g, batch: t(6) });
+        const y = E('align.verse.set', 'actor-b', t(7, 'actor-b'), null, { ...g, batch: t(7, 'actor-b') });
+        const out = fold([add, x, y]);
+        return out.forks.length === 0 && (out.autoMerged || []).some((m) => m.key === 'align|TIT|1:1');
       })());
   }
 
