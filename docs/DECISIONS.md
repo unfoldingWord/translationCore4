@@ -801,7 +801,10 @@ The abandoned-plan residue is excluded by construction rather than found by edit
 
 **The gate:** every normative rule carries an `[R-…]` id, and every id MUST be claimed
 inside a LIVE check's name (`[covers R-…]`); `node conformance/normative/check.mjs` fails
-on any gap, stale claim, or reworded rule, and CI runs it. The known data-loss defects
+on any uncovered id, stale claim, or duplicate id, and CI runs it. A reworded rule keeps
+its id and passes the gate — the rewording is visible in the spec diff, and catching a
+check that no longer binds its rule's words is the mutation hardening named in the
+residuals below. The known data-loss defects
 (conservation on `book.remove`; the `base: null` two-device refusal; the harness's own
 retired-form fixtures) were fixed red-first in this change set — failing check pasted
 before the fix, green after.
