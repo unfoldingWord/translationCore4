@@ -21,8 +21,8 @@ def sub(name):
 print('working dir initialized from templates (repo_dir isolated under', work / 'repos', ')')
 PY
 # seed the conforming sample project (regenerate if absent)
-if [ ! -d "$ROOT/sample-burrito" ]; then (cd "$ROOT/sample-burrito-validation" && npm run generate); fi
-cp -R "$ROOT/sample-burrito" "$WORK/repos/_local_/_local_/sample_burrito"
+if [ ! -d "$ROOT/conformance/sample-burrito" ]; then (cd "$ROOT/conformance" && npm run generate); fi
+cp -R "$ROOT/conformance/sample-burrito" "$WORK/repos/_local_/_local_/sample_burrito"
 if [ ! -d "$WORK/repos/_local_/_local_/sample_burrito/.git" ]; then
   (cd "$WORK/repos/_local_/_local_/sample_burrito" && git init -q -b main . && git add -A && git -c user.email=rig@local -c user.name=rig commit -qm seed)
 fi
