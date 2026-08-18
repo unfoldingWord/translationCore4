@@ -373,7 +373,11 @@ export const fold = (eventsIn) => {
         // CANONICAL root as winner. The action-level `book|` entry accounts for the
         // WHOLE aliased action: none of its per-key projections (skeleton or slot
         // heads) was ever created, so there is no other list it could appear in.
-        autoMerged.push({ key: `book|${e.book}`, heads: [canonical, e.ts].sort(), winner: canonical });
+        // R-8.6.4 requires ONE entry per collapse with the COMPLETE head set, so N
+        // identical seeds AGGREGATE into one entry — never one pairwise entry per alias.
+        const existing = autoMerged.find((m) => m.key === `book|${e.book}` && m.winner === canonical);
+        if (existing) { existing.heads = [...existing.heads, e.ts].sort(); }
+        else autoMerged.push({ key: `book|${e.book}`, heads: [canonical, e.ts].sort(), winner: canonical });
         continue;
       }
       // different payload (or the book does not exist yet): fall through — a first add

@@ -2573,7 +2573,14 @@ try {
 // ---------- J30: unjournaled-ingredient tolerance + whole-surface divergence detection (§8.5/§8.8) ----------
 {
   const { events, decisionFiles } = buildSeed();
-  const out = fold(events);
+  // R-8.7.2's overlay half needs DIRECT assertions here (review of PR #85: removing the
+  // overlay from checkpoint.mjs left this block green; only unrelated J15/J31 checks
+  // caught it incidentally). One set on a fresh path, one delete of an existing path.
+  const metaSet = mkEvent({ op: 'project.meta.set', actor: 'drafter-a',
+    ts: '2026-08-14T03:20:00.000Z|0000|drafter-a', path: 'identification.abbreviation.es', value: 'TIT-ES' });
+  const metaDel = mkEvent({ op: 'project.meta.set', actor: 'drafter-a',
+    ts: '2026-08-14T03:20:01.000Z|0000|drafter-a', path: 'identification.description.en', removed: true });
+  const out = fold([...events, metaSet, metaDel]);
   const baseMetadata = JSON.parse(fs.readFileSync(path.join(BURRITO, 'metadata.json'), 'utf8'));
   const projections = derivedProjections(out, { baseMetadata, resolutions: {
     translationWords: { TIT: decisionFiles.translationWords.resource },
@@ -2587,9 +2594,16 @@ try {
     'checking/resources.json' in projections && 'checking/settings.json' in projections &&
     'vrs.json' in projections && 'metadata.json' in projections,
     JSON.stringify(Object.keys(projections)));
-  check('J30: the projected metadata.json reconstructs type.flavorType.currentScope from folded scope state (§8.7) [covers R-8.7.2]',
-    deepEq(JSON.parse(projections['metadata.json'] || '{}')?.type?.flavorType?.currentScope, out.scope),
-    JSON.stringify(out.scope));
+  check('J30: the projected metadata.json reconstructs type.flavorType.currentScope from folded scope state AND applies the project.meta.set overlay — a folded set appears, a folded {removed:true} path is DELETED from the document (§8.7) [covers R-8.7.2]',
+    (() => {
+      const md = JSON.parse(projections['metadata.json'] || '{}');
+      const scopeOk = deepEq(md?.type?.flavorType?.currentScope, out.scope);
+      const setOk = md?.identification?.abbreviation?.es === 'TIT-ES';
+      const delOk = baseMetadata?.identification?.description?.en !== undefined &&
+        (md?.identification?.description === undefined || md?.identification?.description?.en === undefined);
+      return scopeOk && setOk && delOk;
+    })(),
+    JSON.stringify({ scope: out.scope, abbrEs: JSON.parse(projections['metadata.json'] || '{}')?.identification?.abbreviation?.es }));
   const disk = {
     // TIT.usfm deliberately ABSENT from disk — a deleted derived file is divergence
     'JON.usfm': projections['JON.usfm'],
@@ -3925,6 +3939,25 @@ const sameRegister = (a, b) => {
     check('J32e (R-8.6.2): the exact two-seed repro passes the MASTER conservation predicate — every written record of BOTH actors ends in an observable state, the aliased creation included [covers R-8.6.2 R-8.6.4]',
       err === '' && !!ab && [...seedA, ...seedB].every((e) => observableStates(ab, e.ts, [...seedA, ...seedB]).length > 0),
       err ? `THREW: ${err.slice(0, 60)}` : `unobservable=${JSON.stringify([...seedA, ...seedB].filter((e) => observableStates(ab, e.ts, [...seedA, ...seedB]).length === 0).map((e) => `${e.op}@${e.ts}`))}`);
+
+    // (PR #85 review, second round P1) N>2 writers must AGGREGATE into ONE autoMerged
+    // entry carrying the COMPLETE head set — the pairwise-append defect emitted an A+B
+    // entry and an A+C entry for one collapse, so no consumer ever saw the full set.
+    const seedC = mkSeed('actor-c');
+    const cAdd = seedC.find((e) => e.op === 'book.add');
+    const three = [...seedA, ...seedB, ...seedC];
+    const allHeads = [aAdd.ts, bAdd.ts, cAdd.ts].sort();
+    const oneEntry = (o) => {
+      const es = (o.autoMerged || []).filter((m) => m.key === 'book|TIT');
+      return es.length === 1 && deepEq(es[0].heads, allHeads) && es[0].winner === canonical;
+    };
+    const t3a = fold(three);
+    const t3b = fold([...seedC, ...seedB, ...seedA]);
+    const t3s = fold(shuffled(three, mulberry32(7)));
+    check('J32e (R-8.6.4): THREE identical seeds collapse to ONE autoMerged entry carrying the COMPLETE head-ts set — never one pairwise entry per alias — identical in every order, and every seed event of all three actors stays observable [covers R-8.6.4 R-8.6.2]',
+      oneEntry(t3a) && oneEntry(t3b) && oneEntry(t3s) &&
+      three.every((e) => observableStates(t3a, e.ts, three).length > 0),
+      JSON.stringify((t3a.autoMerged || []).filter((m) => m.key === 'book|TIT')));
   }
 
   // (b) a DIFFERENT-payload rootless book.add FORKS and surfaces — neither silently wins

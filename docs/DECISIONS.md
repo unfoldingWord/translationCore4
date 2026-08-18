@@ -812,9 +812,13 @@ before the fix, green after.
 **Honest residuals, recorded so they are worked and not assumed:** (a) the id gate proves
 a claim EXISTS and is live; per-statement mutation proof (the check fails when its rule is
 violated) is demonstrated for the fixed defect classes, not yet for every rule — that
-remains D51's standing condition for hardening; (b) the conservation property generator
-now reaches `book.remove`/re-add states, but a fork-capable generator remains open (D51
-condition 2). [supersedes in part D51, 2026-08-18 — the flip for this scope happened under
+remains D51's standing condition for hardening; (b) the master single-union generator
+constructs events serially against one shared fold, so it cannot itself build forks or
+pending ancestry; the two-device property (J32f) carries the concurrent-writer burden —
+it reaches and pins forks, pending states, converged joins and removes, and asserts
+conservation and exclusivity over each union — and generation of three-or-more-device
+joins remains open (D51 condition 2, narrowed 2026-08-18 after the PR #85 review).
+[supersedes in part D51, 2026-08-18 — the flip for this scope happened under
 this gate; D51's conditions remain the bar for the sync sections and for hardening]
 
 [addendum 2026-08-18 — app-rule exemption: a rule that binds the application rather than
