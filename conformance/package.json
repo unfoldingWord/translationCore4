@@ -7,7 +7,8 @@
     "generate": "node generate.mjs",
     "validate": "node validate.mjs",
     "validate:journal": "node validate-journal.mjs",
-    "validate:all": "npm run validate && npm run validate:journal",
+    "validate:normative": "node normative/check.mjs",
+    "validate:all": "npm run validate && npm run validate:journal && npm run validate:normative",
     "validate:transport": "node validate-transport.mjs",
     "validate:roundtrip": "node validate-roundtrip.mjs"
   },
