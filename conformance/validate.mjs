@@ -6,6 +6,8 @@ import { createRequire } from 'module';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { scopeError } from './journal/grammar.mjs';
+import { writeActionSegment, validateSegment, validateActorDoc, segmentName, readSegments, actorDirFor } from './journal/files.mjs';
 
 const require = createRequire(import.meta.url);
 const usfmjs = require('usfm-js');
@@ -108,8 +110,9 @@ const metadata = json(path.join(BURRITO, 'metadata.json'));
 
   // Scope grammar (§3 rules 4-5): a scope value is an array; [] = whole book (the default);
   // each element is a range string  C | C-C | C:V | C:V-V | C:V-C:V .
-  const RANGE = /^\d+(:\d+)?(-\d+(:\d+)?)?$/;
-  const validScope = v => Array.isArray(v) && v.every(r => typeof r === 'string' && RANGE.test(r));
+  // ONE grammar (round 8): the same `scopeError` the §8.5 `book.add` schema applies, so a
+  // stored scope and a journaled scope can never be judged by two different rules.
+  const validScope = v => scopeError(v) === null;
   const allScopes = [
     ...Object.values(metadata.type.flavorType.currentScope),
     ...Object.values(metadata.ingredients).map(e => e.scope).filter(Boolean).flatMap(s => Object.values(s)),
@@ -413,7 +416,7 @@ let mergedVerseObjects = null;
   // The rule the span fixture enforces: identity keys and I-3 hashes key by the exact verse
   // string — Number("9-10") is NaN, which is the bug class (fixtureStore `+vNum`) this bans.
   const idKey = r => [r.checkId, r.bookId, String(r.chapter), String(r.verse), r.occurrence].join('|');
-  check('spans: §5.2 identity-key string normalization — numeric and span refs key consistently; Number() coercion banned',
+  check('spans: §5.2 identity-key string normalization — numeric and span refs key consistently; Number() coercion banned [covers R-8.4.4]',
     Number.isNaN(Number(spanKey)) &&
     idKey({ checkId: 'x1', bookId: 'jon', chapter: 2, verse: spanKey, occurrence: 1 }) ===
     idKey({ checkId: 'x1', bookId: 'jon', chapter: '2', verse: spanKey, occurrence: 1 }) &&
@@ -462,7 +465,7 @@ let mergedVerseObjects = null;
       const { checksum: _c, mimeType: _m, size: _s, ...extras } = prev[key] || {};
       next[key] = {
         checksum: { md5: md5(buf) },
-        mimeType: rel.endsWith('.usfm') ? 'text/plain' : rel.endsWith('.jsonl') ? 'application/x-ndjson' : 'application/json',
+        mimeType: rel.endsWith('.usfm') ? 'text/plain' : 'application/json',
         size: buf.length,
         ...extras,
         ...(rel.startsWith('checking/journal/') ? { role: 'x-journal' } : {}),
@@ -471,13 +474,20 @@ let mergedVerseObjects = null;
     meta.ingredients = next;
     fs.writeFileSync(path.join(T, 'metadata.json'), JSON.stringify(meta, null, 2) + '\n');
   };
+  // ONE stream form (§8.1): each actor's journal is a SEALED action segment written by
+  // the implementation's own writer (seal + name + containment all in files.mjs), plus
+  // the §8.1 actor.json — never a hand-rolled stream shape.
+  const checkpointTs = actor => `2026-07-07T00:00:00.000Z|0000|${actor}`;
   const actorCheckpoint = actor => {
-    const dir = path.join(T, 'ingredients/checking/journal', actor);
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, 'TIT.00001.jsonl'), JSON.stringify({
-      v: 1, op: 'check.decision.set', actor, ts: `2026-07-07T00:00:00.000Z|0000|${actor}`,
-      id: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', ref: 'TIT 1:1', base: null,
-    }) + '\n');
+    const journalRoot = path.join(T, 'ingredients/checking/journal');
+    const ev = {
+      v: 1, op: 'check.decision.set', actor, ts: checkpointTs(actor), base: null,
+      toolId: 'translationWords', generation: `2026-07-06T00:00:00.000Z|0000|${actor}`,
+      decision: { contextId: { checkId: 'm1', occurrence: 1, reference: { bookId: 'tit', chapter: 1, verse: 1 } }, selections: false },
+    };
+    writeActionSegment(actorDirFor(journalRoot, actor), [ev]);
+    fs.writeFileSync(path.join(journalRoot, actor, 'actor.json'),
+      JSON.stringify({ schemaVersion: 1, actorId: actor, createdAt: '2026-07-07T00:00:00.000Z' }) + '\n');
     rescan();
     git('add -A');
     git(`commit -qm "checkpoint ${actor}"`);
@@ -525,7 +535,7 @@ let mergedVerseObjects = null;
     }
   }
   const meta2 = JSON.parse(fs.readFileSync(path.join(T, 'metadata.json'), 'utf8'));
-  const journalKeys = ['actor-a', 'actor-b'].map(a => `ingredients/checking/journal/${a}/TIT.00001.jsonl`);
+  const journalKeys = ['actor-a', 'actor-b'].map(a => `ingredients/checking/journal/${a}/segments/${segmentName(checkpointTs(a))}`);
   const unionOk = journalKeys.every(k => fs.existsSync(path.join(T, k)) && meta2.ingredients[k]?.role === 'x-journal');
   const onDisk2 = walkF(path.join(T, 'ingredients')).map(r => `ingredients/${r}`).sort();
   const tableOk = JSON.stringify(onDisk2) === JSON.stringify(Object.keys(meta2.ingredients).sort()) &&
@@ -535,6 +545,31 @@ let mergedVerseObjects = null;
   check('journal merge: resolve-derived-either-side + regenerate-post-union completes cleanly (two-parent commit; both journals listed; ingredients table matches disk)',
     mergedClean && unionOk && tableOk && statusClean && twoParents,
     `${Object.keys(meta2.ingredients).length} ingredients post-union`, 'phase2');
+  // §8.1 — ONE stream form: the fixture journals must be what the implementation itself
+  // defines (journal/<actorId>/segments/<encoded-ts>.action.json sealed containers, plus
+  // actor.json), proven by the implementation's OWN validator and reader — never a
+  // hand-rolled stream shape.
+  const journalRoot = path.join(T, 'ingredients/checking/journal');
+  const streamProblems = [];
+  for (const a of ['actor-a', 'actor-b']) {
+    const dir = path.join(journalRoot, a);
+    for (const rel of walkF(dir)) {
+      if (rel === 'actor.json') {
+        const r = validateActorDoc(fs.readFileSync(path.join(dir, rel), 'utf8'), a);
+        if (!r.ok) streamProblems.push(`${a}/actor.json: ${r.reason}`);
+      } else if (/^segments\/[^/]+\.action\.json$/.test(rel)) {
+        const r = validateSegment(fs.readFileSync(path.join(dir, rel), 'utf8'));
+        if (!r.ok) streamProblems.push(`${a}/${rel}: ${r.reason}`);
+        else if (path.basename(rel) !== segmentName(r.events[0].ts)) streamProblems.push(`${a}/${rel}: misnamed`);
+      } else streamProblems.push(`${a}/${rel}: not a §8.1 sealed-segment stream file`);
+    }
+    if (!fs.existsSync(path.join(dir, 'actor.json'))) streamProblems.push(`${a}: no actor.json`);
+    let invalid = 0;
+    const evs = readSegments(actorDirFor(journalRoot, a), () => invalid++);
+    if (invalid > 0 || evs.length === 0) streamProblems.push(`${a}: reader accepted ${evs.length} events (${invalid} invalid segments)`);
+  }
+  check('journal merge: the fixture journals are the §8.1 SEALED-SEGMENT stream form the implementation defines — every file is a sealed container the implementation\'s own validator and reader accept (plus a valid actor.json); no hand-rolled stream shape survives here [covers R-8.1.10]',
+    streamProblems.length === 0, streamProblems.slice(0, 4).join(' · '), 'phase2');
   rmT();
 }
 

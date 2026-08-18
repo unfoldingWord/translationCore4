@@ -8,10 +8,12 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { fileURLToPath } from 'url';
 import { execSync, spawnSync } from 'child_process';
+import { sealAction, validateSegment, validateActorDoc, segmentName } from './journal/files.mjs';
 
 const API = process.env.RIG_API || 'http://127.0.0.1:19998/api';
-const REPOS = process.env.RIG_REPOS || path.resolve('../dev-env/state/work/repos');
+const REPOS = process.env.RIG_REPOS || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dev-env/state/work/repos'); // script-relative (round 8), never cwd-relative
 const LOCAL = '_local_/_local_';
 const SRC = `${LOCAL}/sample_burrito`;
 const RT = `${LOCAL}/rt_burrito`;
@@ -46,12 +48,25 @@ const run = async () => {
   const pristineMeta = meta(SRC); // BEFORE any rig writes — R0's update_ingredients wipes roles
   const cp = await post(`/git/copy/${SRC}?target_path=${encodeURIComponent(RT)}`);
   if (cp.status !== 200) { console.error('cannot copy fixture:', cp.status); process.exit(2); }
-  const journalLine = JSON.stringify({ v: 1, op: 'check.decision.set', actor: 'rig-actor', ts: '2026-06-01T00:00:00.000Z|0000|rig-actor', base: null, toolId: 'translationWords', decision: { contextId: { checkId: 'rt1', reference: { bookId: 'tit', chapter: 1, verse: 1 }, occurrence: 1 }, selections: false } }) + '\n';
-  const actorJson = JSON.stringify({ schemaVersion: 1, actorId: 'rig-actor', createdAt: '2026-06-01T00:00:00.000Z|0000|rig-actor' }) + '\n';
-  const w1 = await writeIngredient(RT, 'checking/journal/rig-actor/TIT.00001.jsonl', journalLine);
-  const w2 = await writeIngredient(RT, 'checking/journal/rig-actor/_project.00001.jsonl', journalLine);
+  // §8.1 — ONE stream form: sealed action segments, sealed by the implementation's own
+  // writer (files.mjs sealAction) and round-tripped through its own validator BEFORE
+  // anything is written to the rig.
+  const segActions = [
+    [{ v: 1, op: 'check.decision.set', actor: 'rig-actor', ts: '2026-06-01T00:00:00.000Z|0000|rig-actor', base: null, toolId: 'translationWords', generation: '2026-05-31T00:00:00.000Z|0000|rig-actor', decision: { contextId: { checkId: 'rt1', reference: { bookId: 'tit', chapter: 1, verse: 1 }, occurrence: 1 }, selections: false } }],
+    [{ v: 1, op: 'settings.set', actor: 'rig-actor', ts: '2026-06-01T00:00:01.000Z|0000|rig-actor', base: null, path: 'ui.roundtrip', value: 1 }],
+  ];
+  const sealedSegs = segActions.map((evs) => sealAction(evs));
+  for (const [i, s] of sealedSegs.entries()) {
+    const r = validateSegment(s);
+    if (!r.ok) { console.error(`fixture segment ${i} refused by the implementation's own validator: ${r.reason}`); process.exit(2); }
+  }
+  // §8.1 actor.json: createdAt is a fixed-width ISO-8601 UTC instant (§8.2), not an HLC ts
+  const actorJson = JSON.stringify({ schemaVersion: 1, actorId: 'rig-actor', createdAt: '2026-06-01T00:00:00.000Z' }) + '\n';
+  if (!validateActorDoc(actorJson, 'rig-actor').ok) { console.error('fixture actor.json refused by the implementation\'s own validator'); process.exit(2); }
+  const w1 = await writeIngredient(RT, `checking/journal/rig-actor/segments/${segmentName(segActions[0][0].ts)}`, sealedSegs[0]);
+  const w2 = await writeIngredient(RT, `checking/journal/rig-actor/segments/${segmentName(segActions[1][0].ts)}`, sealedSegs[1]);
   const w3 = await writeIngredient(RT, 'checking/journal/rig-actor/actor.json', actorJson);
-  check('R0: Phase-2 custom files (.jsonl streams incl. _project., actor.json) write through the API',
+  check('R0: Phase-2 custom files (§8.1 sealed action segments + actor.json) write through the API',
     w1.status === 200 && w2.status === 200 && w3.status === 200, `${w1.status}/${w2.status}/${w3.status}`);
   await post(`/git/add-and-commit/${RT}`, { commit_message: 'rt fixture' });
   const baseline = snapshot(RT);
@@ -66,7 +81,7 @@ const run = async () => {
     const diskBytes = fs.readFileSync(path.join(dirOf(RT), rel), 'utf8');
     if (g.status !== 200 || g.text !== diskBytes) { r1ok = false; r1bad.push(`${ipath}(${g.status}${g.text === diskBytes ? '' : ',bytes differ'})`); }
   }
-  check('R1: read path is byte-faithful for every ingredient (USFM, JSON sidecars, JSONL journals)',
+  check('R1: read path is byte-faithful for every ingredient (USFM, JSON sidecars, sealed journal segments)',
     r1ok, r1bad.slice(0, 3).join(' '));
 
   // ---------- R2: write with update_ingredients — what does regeneration preserve? ----------
@@ -82,7 +97,7 @@ const run = async () => {
   const listed2 = new Set(Object.keys(m2.ingredients ?? {}));
   const onDisk2 = listFiles(path.join(dirOf(RT), 'ingredients')).map((r) => `ingredients/${r}`);
   const missing2 = onDisk2.filter((f) => !listed2.has(f));
-  check('R2: regeneration REGISTERS all custom files (sidecars, .jsonl journals, actor.json) with correct md5',
+  check('R2: regeneration REGISTERS all custom files (sidecars, sealed journal segments, actor.json) with correct md5',
     missing2.length === 0 && onDisk2.every((f) => (m2.ingredients[f]?.checksum?.md5 ?? null) === md5(fs.readFileSync(path.join(dirOf(RT), f)))),
     missing2.slice(0, 3).join(' '));
 

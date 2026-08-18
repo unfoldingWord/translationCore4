@@ -38,6 +38,23 @@ skipped.
 behavioral proof. Do not run `npm audit fix --force`. If an audit fix is needed, trial it
 in a scratch copy and confirm these three versions are unchanged before you apply it.
 
+## If you change BURRITO-SPEC section 8, run the normative gate
+
+```bash
+node conformance/normative/check.mjs
+```
+
+Every normative rule in section 8 carries an `[R-x.y.z]` id, and every id must be
+claimed inside a LIVE check's name in the journal suite — `[covers R-8.1.5]`. The
+gate fails on any uncovered rule, any claim that names a rule the spec no longer
+states, and any duplicate id. A commented-out check loses its claim.
+
+If you add or reword a rule, add or update its check in the same change set (§9).
+**Do not tag a check because its name sounds similar.** The check must fail when
+the rule is violated. Counting look-alike checks is how the suite once reached
+306 green checks while five blocking defects went unnoticed [VERIFIED — pull
+request #75, review of 2026-08-17].
+
 ## Read the decisions before you propose
 
 `docs/DECISIONS.md` holds the decision log. A recorded decision is not open for a new
