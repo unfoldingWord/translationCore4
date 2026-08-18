@@ -8,10 +8,11 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { fileURLToPath } from 'url';
 import { execSync, spawnSync } from 'child_process';
 
 const API = process.env.RIG_API || 'http://127.0.0.1:19998/api';
-const REPOS = process.env.RIG_REPOS || path.resolve('../dev-env/state/work/repos');
+const REPOS = process.env.RIG_REPOS || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dev-env/state/work/repos'); // script-relative (round 8), never cwd-relative
 const LOCAL = '_local_/_local_';
 const SRC = `${LOCAL}/sample_burrito`;
 const RT = `${LOCAL}/rt_burrito`;
@@ -47,7 +48,8 @@ const run = async () => {
   const cp = await post(`/git/copy/${SRC}?target_path=${encodeURIComponent(RT)}`);
   if (cp.status !== 200) { console.error('cannot copy fixture:', cp.status); process.exit(2); }
   const journalLine = JSON.stringify({ v: 1, op: 'check.decision.set', actor: 'rig-actor', ts: '2026-06-01T00:00:00.000Z|0000|rig-actor', base: null, toolId: 'translationWords', decision: { contextId: { checkId: 'rt1', reference: { bookId: 'tit', chapter: 1, verse: 1 }, occurrence: 1 }, selections: false } }) + '\n';
-  const actorJson = JSON.stringify({ schemaVersion: 1, actorId: 'rig-actor', createdAt: '2026-06-01T00:00:00.000Z|0000|rig-actor' }) + '\n';
+  // §8.1 actor.json: createdAt is a fixed-width ISO-8601 UTC instant (§8.2), not an HLC ts
+  const actorJson = JSON.stringify({ schemaVersion: 1, actorId: 'rig-actor', createdAt: '2026-06-01T00:00:00.000Z' }) + '\n';
   const w1 = await writeIngredient(RT, 'checking/journal/rig-actor/TIT.00001.jsonl', journalLine);
   const w2 = await writeIngredient(RT, 'checking/journal/rig-actor/_project.00001.jsonl', journalLine);
   const w3 = await writeIngredient(RT, 'checking/journal/rig-actor/actor.json', actorJson);

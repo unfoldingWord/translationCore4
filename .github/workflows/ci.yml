@@ -45,6 +45,6 @@ jobs:
           cache-dependency-path: conformance/package-lock.json
       - run: npm ci
       - run: npm run generate
-      # Expect 34 checks + journal 59 checks, all passing (BURRITO-SPEC §7/§8).
+      # Expect 34 checks + journal 306 checks, all passing (BURRITO-SPEC §7/§8).
       # The transport suite (validate:transport) is rig-gated and does NOT run here.
       - run: npm run validate:all
