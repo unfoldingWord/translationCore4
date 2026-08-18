@@ -2579,15 +2579,15 @@ try {
     translationWords: { TIT: decisionFiles.translationWords.resource },
     translationNotes: { TIT: decisionFiles.translationNotes.resource },
   } });
-  check('J30: the checkpoint regeneration set is EXHAUSTIVE per §8.7 — USFM, alignment + decision sidecars, resources, settings, metadata; no unjournaled class appears',
+  check('J30: the checkpoint regeneration set is EXHAUSTIVE per §8.7 — USFM, alignment + decision sidecars, resources, settings, vrs, metadata; no unjournaled class appears [covers R-8.7.1 R-8.7.3]',
     Object.keys(projections).every((p) => !isUnjournaledIngredient(p)) &&
     'TIT.usfm' in projections && 'JON.usfm' in projections &&
     'checking/alignments/TIT.json' in projections &&
     'checking/translationWords/TIT.json' in projections && 'checking/translationNotes/TIT.json' in projections &&
     'checking/resources.json' in projections && 'checking/settings.json' in projections &&
-    'metadata.json' in projections,
+    'vrs.json' in projections && 'metadata.json' in projections,
     JSON.stringify(Object.keys(projections)));
-  check('J30: the projected metadata.json reconstructs type.flavorType.currentScope from folded scope state (§8.7)',
+  check('J30: the projected metadata.json reconstructs type.flavorType.currentScope from folded scope state (§8.7) [covers R-8.7.2]',
     deepEq(JSON.parse(projections['metadata.json'] || '{}')?.type?.flavorType?.currentScope, out.scope),
     JSON.stringify(out.scope));
   const disk = {
@@ -2598,13 +2598,13 @@ try {
     'audio/JON-1.mp3': 'RIFF-fake-audio-bytes',
   };
   const cls = classifyDivergence(disk, projections);
-  check('J30: divergence detection covers every derived shared file — an out-of-band sidecar edit is detected, never silently overwritten',
+  check('J30: divergence detection covers every derived shared file — an out-of-band sidecar edit is detected, never silently overwritten [covers R-8.7.5]',
     cls.diverged.includes('checking/alignments/TIT.json') && cls.clean.includes('JON.usfm') && cls.clean.includes('checking/resources.json'),
     JSON.stringify(cls.diverged));
-  check('J30: a DELETED derived file is divergence — expected-from-fold files are enumerated, not only present-on-disk ones',
+  check('J30: a DELETED derived file is divergence — expected-from-fold files are enumerated, not only present-on-disk ones [covers R-8.7.5]',
     cls.diverged.includes('TIT.usfm') && cls.diverged.includes('checking/translationWords/TIT.json') && cls.diverged.includes('metadata.json'),
     JSON.stringify(cls.diverged));
-  check('J30: ingredients/audio/ files are tolerated — never divergence, never regenerated or deleted at checkpoint',
+  check('J30: ingredients/audio/ files are tolerated — never divergence, never regenerated or deleted at checkpoint [covers R-8.7.3]',
     cls.tolerated.includes('audio/JON-1.mp3') && !cls.diverged.includes('audio/JON-1.mp3'));
 }
 
@@ -2615,12 +2615,12 @@ try {
   const baseMetadata = JSON.parse(fs.readFileSync(path.join(BURRITO, 'metadata.json'), 'utf8'));
   let noMeta = ''; let r1 = null;
   try { r1 = derivedProjections(out); } catch (e) { noMeta = e.message; }
-  check('J30b: derivedProjections without baseMetadata THROWS — metadata.json is mandatory checkpoint state, never silently omitted',
+  check('J30b: derivedProjections without baseMetadata THROWS — metadata.json is mandatory checkpoint state, never silently omitted [covers R-8.7.4]',
     noMeta.includes('baseMetadata'),
     noMeta ? `"${noMeta.slice(0, 70)}"` : `returned incomplete checkpoint: metadata.json in set = ${!!r1?.['metadata.json']}`);
   let noRes = ''; let r2 = null;
   try { r2 = derivedProjections(out, { baseMetadata }); } catch (e) { noRes = e.message; }
-  check('J30b: emitting a §5.2 decision file without its (tool, book) resolution record THROWS — `resource` is required derive-time state (D30)',
+  check('J30b: emitting a §5.2 decision file without its (tool, book) resolution record THROWS — `resource` is required derive-time state (D30) [covers R-8.7.4]',
     noRes.includes('resolution'),
     noRes ? `"${noRes.slice(0, 70)}"` : `emitted without resource: ${!JSON.parse(r2?.['checking/translationWords/TIT.json'] || '{}').resource}`);
   // complete inputs still produce the full set, resource included in every decision file
@@ -2803,14 +2803,16 @@ try {
     const nonCanonical = refusedBothWays(mkEvent({ op: 'book.add', actor: 'actor-a', ts: okTs(0), book: 'tit', scope: [], skeleton: skel1('X'), initialVerses: {} }));
     check('J31 finding 3 (layer 1): a non-canonical or wrong-case book code is refused too — §2 says UPPERCASE eng-canon codes (D26)',
       nonCanonical.ok, `seal="${nonCanonical.sealMsg.slice(0, 70)}"`);
-    // layer 2: the SCHEMA IS BYPASSED — a hand-built fold output whose keys escape
+    // layer 2: the SCHEMA IS BYPASSED — a hand-built fold output whose keys escape.
+    // The fixture carries a vrs frame so the MANDATORY-INPUT guard (R-8.7.4) cannot
+    // mask the containment path: the thrown error must be the projection-key refusal.
     const evil = { books: { '../../escaped': { usfm: 'x', verses: {} } }, alignments: {}, decisions: {},
-      pins: {}, settings: {}, projectMeta: {}, projectMetaRemoved: [], vrs: null, scope: {} };
+      pins: {}, settings: {}, projectMeta: {}, projectMetaRemoved: [], vrs: { name: 'eng', bytes: '{}' }, scope: {} };
     let projErr = ''; try { derivedProjections(evil, { baseMetadata: { type: { flavorType: {} } }, resolutions: {} }); } catch (e) { projErr = e.message; }
     const evilTool = { ...evil, books: {}, decisions: { '../../evil': [{ contextId: { reference: { bookId: 'tit' } } }] } };
     let toolErr = ''; try { derivedProjections(evilTool, { baseMetadata: { type: { flavorType: {} } }, resolutions: { '../../evil': { TIT: {} } } }); } catch (e) { toolErr = e.message; }
-    check('J31 finding 3 (layer 2, defense in depth): WITH THE SCHEMA BYPASSED the checkpoint still refuses an escaping projection key — books AND decision sidecars; the fold\'s keys are never trusted (§2/§8.7)',
-      projErr !== '' && toolErr !== '' && !CRASHY.test(projErr) && !CRASHY.test(toolErr),
+    check('J31 finding 3 (layer 2, defense in depth): WITH THE SCHEMA BYPASSED the checkpoint still refuses an escaping projection key — books AND decision sidecars; the fold\'s keys are never trusted (§2/§8.7) [covers R-8.7.6]',
+      projErr.includes('projection key') && toolErr.includes('projection key') && !CRASHY.test(projErr) && !CRASHY.test(toolErr),
       `book="${projErr.slice(0, 60)}" tool="${toolErr.slice(0, 60)}"`);
   }
 
@@ -3763,12 +3765,12 @@ const sameRegister = (a, b) => {
     const baseMetadata = { type: { flavorType: {} } };
     let noVrs = '';
     try { derivedProjections(out, { baseMetadata, resolutions: {} }); } catch (e) { noVrs = e.message; }
-    check('J32c (E-Sweep1 #6): the §8.7 mandatory-input guard covers the VERSIFICATION FRAME too. `vrs.json` was the one member of the "exhaustive" regeneration set emitted CONDITIONALLY (`if (foldOut.vrs)`) with no guard, so a journal with no `project.vrs.set` shipped a silently smaller checkpoint',
+    check('J32c (E-Sweep1 #6): the §8.7 mandatory-input guard covers the VERSIFICATION FRAME too. `vrs.json` was the one member of the "exhaustive" regeneration set emitted CONDITIONALLY (`if (foldOut.vrs)`) with no guard, so a journal with no `project.vrs.set` shipped a silently smaller checkpoint [covers R-8.7.4]',
       noVrs.includes('vrs') && noVrs.includes('incomplete'), `"${noVrs.slice(0, 80)}"`);
     const vrsEv = E('project.vrs.set', 'actor-a', t(1), null, { seed: { source: 'creation' }, name: 'eng', bytes: '{"maxVerses":{}}' });
     const withVrs = fold([add, vrsEv]);
     const projections = derivedProjections(withVrs, { baseMetadata, resolutions: {} });
-    check('J32c (E-Sweep1 #7): and divergence detection therefore LISTS vrs.json — the enumeration starts from the fold\'s expected set, so a vrs.json deleted out of band is divergence like every other derived file (§8.8)',
+    check('J32c (E-Sweep1 #7): and divergence detection therefore LISTS vrs.json — the enumeration starts from the fold\'s expected set, so a vrs.json deleted out of band is divergence like every other derived file (§8.8) [covers R-8.7.1 R-8.7.5]',
       'vrs.json' in projections &&
       classifyDivergence(Object.fromEntries(Object.entries(projections).filter(([k]) => k !== 'vrs.json')), projections).diverged.includes('vrs.json'),
       JSON.stringify(Object.keys(projections)));
