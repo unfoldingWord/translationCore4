@@ -254,13 +254,19 @@ export const fold = (eventsIn) => {
     (target.sanc == null || head.sanc == null)
       ? target.sanc === head.sanc            // ancestry-free surfaces (pins, meta, settings)
       : chainOf(head.sanc).has(target.sanc); // the target must lie on this head's own chain
-  const joinHead = (key, head, base, supersedes, actor) => {
+  const joinHead = (key, head, baseIn, supersedes, actor) => {
+    // Base MATCHING resolves through the D53d alias (round 12): a converged device's
+    // journal names ITS OWN aliased seed root as the base of every descendant, and the
+    // canonical head it must advance carries the canonical ts. Comparing the raw ts read
+    // every such continuation as a fork — a PHANTOM FORK on every post-convergence edit
+    // by the re-seeded device.
+    const base = aliasTs(baseIn);
     const live = heads.get(key) || [];
     // Dangling supersedes refs are harmless BY CONSTRUCTION: supers is only ever used to
     // filter/match LIVE heads, so an entry naming no live head filters nothing and the
     // resolution condition (live.every) never consults it. Self-supersession is refused
     // by the schema (§8.3) before any event reaches this point.
-    const claimed = new Set(supersedes || []);
+    const claimed = new Set((supersedes || []).map((s) => aliasTs(s)));
     const supers = new Set();
     for (const h of live) {
       if (!claimed.has(h.ts)) continue;
@@ -330,9 +336,10 @@ export const fold = (eventsIn) => {
     return false;
   };
   const staleOwnSkeletonHead = (e) => {
+    const base = aliasTs(e.base); // the D53d alias — same comparison rule as joinHead
     const live = heads.get(`skel|${e.book}`) || [];
-    if (!live.length || live.some((h) => h.ts === e.base)) return null;
-    if (!live.some((h) => h.actor === e.actor && h.ts !== e.ts && descendsFrom(h.ts, e.base))) return null;
+    if (!live.length || live.some((h) => h.ts === base)) return null;
+    if (!live.some((h) => h.actor === e.actor && h.ts !== e.ts && descendsFrom(h.ts, base))) return null;
     return `${e.op} base ${e.base} is stale: this actor's own skeleton head advanced past it (ts ${e.ts}) — a structural edit cannot silently reverse an accepted structural action of the same actor; refuse to fold (§8.4)`;
   };
   const vkeyParts = (vkey) => { const i = vkey.indexOf(':'); return { chapter: vkey.slice(0, i), verse: vkey.slice(i + 1) }; };
@@ -439,7 +446,11 @@ export const fold = (eventsIn) => {
       // the disposition enum + required to/post, no duplicates) is the SCHEMA's —
       // already refused in step 1. From here on: semantics only.
       const tKeys = Object.keys(transitions);
-      const dispId = (d) => `${d.surface}|${d.key ?? ''}|${d.ts}`;
+      // Source refs and disposition refs resolve through the D53d alias (round 12), the
+      // same rule as base matching: a converged device's refs name its own aliased seed
+      // slot-head ts, and the live head carries the canonical one. Pre-fix such refs
+      // read as STALE and the action pended `conflicted` forever.
+      const dispId = (d) => `${d.surface}|${d.key ?? ''}|${aliasTs(d.ts)}`;
       const dispSet = new Set(dispositions.map(dispId));
       // The ONE chain-link rule (round 8) — the SAME rule book.add and text.skeleton.set
       // apply: an unknown base pends (it may still arrive), a base that is not a
@@ -457,7 +468,7 @@ export const fold = (eventsIn) => {
       const checkRef = (key, ts) => {
         if (!byTs.has(ts)) { missing.push(`${key}@${ts}`); return; }
         const live = heads.get(key) || [];
-        if (!live.some((h) => h.ts === ts)) stale.push(`${key}@${ts}`);
+        if (!live.some((h) => h.ts === aliasTs(ts))) stale.push(`${key}@${ts}`);
       };
       for (const dest of tKeys)
         for (const src of transitions[dest].sources || []) checkRef(`text|${book}|${src.key}`, src.ts);
@@ -487,7 +498,7 @@ export const fold = (eventsIn) => {
       // transition and needs no disposition; an unclaimed one on a mapped key does
       const claimedSrc = new Set();
       for (const dest of tKeys)
-        for (const src of transitions[dest].sources || []) claimedSrc.add(`${src.key}|${src.ts}`);
+        for (const src of transitions[dest].sources || []) claimedSrc.add(`${src.key}|${aliasTs(src.ts)}`);
       const affected = new Set();
       for (const k of mapped) {
         // TEXT is a dependent record class like any other (round 9, D-F2). Verse text on a
@@ -547,22 +558,23 @@ export const fold = (eventsIn) => {
       acceptedStructural.add(e.ts);
       for (const dest of newSlots) {
         const tr = transitions[dest];
-        for (const src of tr.sources || []) consume(`text|${book}|${src.key}`, src.ts, e.ts);
+        for (const src of tr.sources || []) consume(`text|${book}|${src.key}`, aliasTs(src.ts), e.ts);
         const { chapter, verse } = vkeyParts(dest);
         pushHead(`text|${book}|${dest}`, { ts: e.ts, actor: e.actor, sanc: e.ts, book,
           event: { op: 'text.verse.set', book, chapter, verse, text: tr.text } });
       }
       for (const d of dispositions) {
+        const dts = aliasTs(d.ts); // the D53d alias — the canonical head the ref names
         if (d.surface === 'text') {
           // the slot's content is DROPPED: consume the head on this branch (so it can
           // never resurface as a zombie when the slot returns) and RETAIN it for review
           const key = `text|${book}|${d.key}`;
-          consume(key, d.ts, e.ts);
-          retainedByStruct.push({ structTs: e.ts, key, ts: d.ts, reason: d.action });
+          consume(key, dts, e.ts);
+          retainedByStruct.push({ structTs: e.ts, key, ts: dts, reason: d.action });
         } else if (d.surface === 'alignment') {
           const key = `align|${book}|${d.key}`;
-          const old = (heads.get(key) || []).find((h) => h.ts === d.ts);
-          consume(key, d.ts, e.ts);
+          const old = (heads.get(key) || []).find((h) => h.ts === dts);
+          consume(key, dts, e.ts);
           if (d.action === 're-key') {
             const { chapter, verse } = vkeyParts(d.to);
             pushHead(`align|${book}|${d.to}`, { ts: e.ts, actor: e.actor, sanc: e.ts, book,
@@ -575,12 +587,12 @@ export const fold = (eventsIn) => {
             pushHead(key, { ts: e.ts, actor: e.actor, sanc: e.ts, book,
               event: { op: 'align.verse.set', book, generation: old.event.generation, ...d.post } });
           } else {
-            retainedByStruct.push({ structTs: e.ts, key, ts: d.ts, reason: d.action });
+            retainedByStruct.push({ structTs: e.ts, key, ts: dts, reason: d.action });
           }
         } else if (d.surface === 'decision') {
           const key = `dec|${d.key}`;
-          const old = (heads.get(key) || []).find((h) => h.ts === d.ts);
-          consume(key, d.ts, e.ts);
+          const old = (heads.get(key) || []).find((h) => h.ts === dts);
+          consume(key, dts, e.ts);
           const toolId = old.event.toolId;
           const generation = old.event.generation; // never laundered — see above
           if (d.action === 're-key') {
@@ -604,7 +616,7 @@ export const fold = (eventsIn) => {
             const dec = { ...old.event.decision, invalidated: true, status: 'invalid' };
             pushHead(key, { ts: e.ts, actor: e.actor, sanc: e.ts, book,
               event: { op: 'check.decision.set', toolId, generation, decision: dec } });
-            retainedByStruct.push({ structTs: e.ts, key, ts: d.ts, reason: d.action });
+            retainedByStruct.push({ structTs: e.ts, key, ts: dts, reason: d.action });
           }
         } else if (d.surface === 'note') {
           if (d.action === 're-key') noteRekey.set(d.ts, { structTs: e.ts, to: d.to });

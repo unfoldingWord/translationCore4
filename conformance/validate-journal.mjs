@@ -4092,6 +4092,76 @@ try {
   }
 }
 
+// ---------- J32g (round 12): the D53d alias covers EVERY comparison point. After
+//   convergence the re-seeded device keeps working on its own journal, so every base and
+//   source ts it emits names ITS OWN aliased seed root — not the canonical one. e04bbbd
+//   made anchors, generation stamps and payload identity resolve through the alias;
+//   base MATCHING (joinHead) and structure.apply SOURCE REFS did not. Consequence:
+//   every post-convergence edit by the re-seeded device raised a PHANTOM FORK, and its
+//   structural actions pended `conflicted` forever with their drafts retained forever. ----------
+{
+  const USFM = '\\id TIT\n\\c 1\n\\p\n\\v 1 Pablo, siervo de Dios.\n\\v 2 con esperanza.\n';
+  const mkSeed = (actor) => seedFromSidecars({ actor, books: { TIT: USFM } });
+  const seedA = mkSeed('actor-a');
+  const seedB = mkSeed('actor-b');
+  const addA = seedA.find((e) => e.op === 'book.add');
+  const addB = seedB.find((e) => e.op === 'book.add');
+  // determinism harness: direct union ≡ permuted union ≡ union folded AFTER the
+  // later-add subset was folded first (a partial sync arriving before the full one)
+  const stable = (evs) => {
+    const direct = fold(evs);
+    const perm = fold(shuffled([...evs], mulberry32(12)));
+    fold([...seedB, ...evs.filter((e) => !seedA.includes(e) && !seedB.includes(e))]); // the later-add subset first
+    const again = fold(evs);
+    return deepEq(direct, perm) && deepEq(direct, again);
+  };
+
+  // (a) a post-convergence VERSE EDIT by the re-seeded device: base = B's own seed
+  //     slot-head ts (the aliased root). Linear advance, NO fork.
+  {
+    const editB = mkEvent({ op: 'text.verse.set', actor: 'actor-b', ts: '2026-08-18T07:00:00.000Z|0000|actor-b',
+      base: addB.ts, book: 'TIT', chapter: '1', verse: '1', text: 'Pablo, un siervo de Dios.\n' });
+    const u = fold([...seedA, ...seedB, editB]);
+    check('J32g: a post-convergence verse edit whose base names the ALIASED seed root\'s slot head advances LINEARLY — no fork, the edit projects, one live head. Pre-fix joinHead compared the base ts literally, missed the canonical slot head, and raised a PHANTOM FORK on every verse the re-seeded device touched [covers R-8.5.3 R-8.8.3]',
+      u.forks.length === 0 && u.books.TIT.verses['1:1'] === 'Pablo, un siervo de Dios.\n' &&
+      u.headsTs['text|TIT|1:1'] === editB.ts && (u.liveHeads['text|TIT|1:1'] || []).length === 1 &&
+      stable([...seedA, ...seedB, editB]),
+      `forks=${JSON.stringify(u.forks.map((f) => f.key))} liveHeads=${JSON.stringify(u.liveHeads['text|TIT|1:1'])}`);
+  }
+
+  // (b) post-convergence STRUCTURAL CHAIN LINKS based on the aliased root: book.remove
+  //     and text.skeleton.set both advance the canonical lineage — no phantom fork.
+  {
+    const rmB = mkEvent({ op: 'book.remove', actor: 'actor-b', ts: '2026-08-18T07:00:01.000Z|0000|actor-b',
+      base: addB.ts, book: 'TIT' });
+    const u = fold([...seedA, ...seedB, rmB]);
+    const skB = mkEvent({ op: 'text.skeleton.set', actor: 'actor-b', ts: '2026-08-18T07:00:02.000Z|0000|actor-b',
+      base: addB.ts, book: 'TIT', skeleton: addB.skeleton.replace('\\p\n', '\\p\n\\b\n') });
+    const u2 = fold([...seedA, ...seedB, skB]);
+    check('J32g: a post-convergence book.remove and a slot-preserving text.skeleton.set chained to the ALIASED root are ordinary chain links of the canonical lineage — the remove removes (no fork), the skeleton edit advances the skel head (no fork, nothing pending) [covers R-8.5.3 R-8.8.3]',
+      u.forks.length === 0 && !('TIT' in u.books) &&
+      u2.forks.length === 0 && u2.pendingStructural.length === 0 && u2.headsTs['skel|TIT'] === skB.ts &&
+      stable([...seedA, ...seedB, rmB]) && stable([...seedA, ...seedB, skB]),
+      `rm: forks=${JSON.stringify(u.forks.map((f) => f.key))} projected=${'TIT' in u.books} · skel: forks=${JSON.stringify(u2.forks.map((f) => f.key))} pending=${JSON.stringify(u2.pendingStructural)}`);
+  }
+
+  // (c) a post-convergence text.structure.apply whose SOURCES name the aliased seed
+  //     slot-head ts: it FOLDS (not pending) and the post-images project.
+  {
+    const S1 = addB.skeleton.slice(0, addB.skeleton.indexOf('\\v 2')); // drop the 1:2 slot
+    const apB = mkEvent({ op: 'text.structure.apply', actor: 'actor-b', ts: '2026-08-18T07:00:03.000Z|0000|actor-b',
+      base: addB.ts, book: 'TIT', skeleton: S1,
+      transitions: { '1:1': { text: 'merged\n', sources: [{ key: '1:1', ts: addB.ts }, { key: '1:2', ts: addB.ts }] } },
+      dispositions: [] });
+    const u = fold([...seedA, ...seedB, apB]);
+    check('J32g: a post-convergence text.structure.apply whose sources name the ALIASED seed slot-head ts FOLDS — the refs resolve to the canonical heads, the action applies, the post-image projects. Pre-fix the refs read as STALE and the action pended `conflicted` forever, its drafts retained forever [covers R-8.5.3 R-8.8.3]',
+      u.pendingStructural.length === 0 && u.books.TIT.verses['1:1'] === 'merged\n' &&
+      !('1:2' in u.books.TIT.verses) && u.headsTs['skel|TIT'] === apB.ts &&
+      stable([...seedA, ...seedB, apB]),
+      `pending=${JSON.stringify(u.pendingStructural)} 1:1=${JSON.stringify(u.books.TIT?.verses['1:1'])}`);
+  }
+}
+
 // ---------- §8.6 retained[] reason vocabulary — a closed set (drift guard) ----------
 {
   const src = fs.readFileSync(path.resolve('./journal/fold.mjs'), 'utf8');
