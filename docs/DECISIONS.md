@@ -696,3 +696,120 @@ is the proof that green does not mean consistent.
 **The flip is LAST.** §8 becomes normative only when the checklist is complete. Making it
 normative earlier publishes a promise the harness cannot keep, and after the flip every
 mismatch blocks merge (§9).
+
+[superseded in part by D55, 2026-08-18 — the flip for the write format and fold invariants
+happened under the D55 gate (rule-id coverage enforced by a live-check gate, the known
+data-loss defects fixed red-first); D51's conditions remain the standing bar for the sync
+sections and for per-statement mutation hardening]
+
+## D53 (2026-08-17, project-owner ruling) **Starting work needs no shared root. Joining a
+project and merging a project are separate acts.** Five parts. The ruling answers the
+`base: null` collision found by the round-11 adversarial review, and the product question
+under it: a translator MUST be able to begin work immediately, with no account and no
+shared root, and still converge with a team later.
+
+**(a) A user starts working with no precondition.** A project is created locally, offline,
+with no account and no shared root. Requiring a Door43 project as the root of every
+translation is REFUSED: it makes an account a precondition of starting work, which is the
+barrier this product exists to remove. Sharing is opt-in and happens later. Door43 is one
+transport among several, never a requirement. A burrito delivered by any means is an equal
+transport, because §8.7 intake is zero-trust — a contribution is validated in a disposable
+copy and the accepted project stays byte-identical (J20). [Note: that protects project
+DATA. It does not make physical media safe; media risk is a transport concern, not a format
+concern.]
+
+**(b) Joining is not merging.** A user who joins an ongoing project does NOT combine their
+own existing project with it. Merging two projects is an EXPLICIT human act. The system
+MUST NOT infer it, and MUST NOT propose it, from a matching language, book, content or
+name. Two teams may translate the same book into the same language and be different
+projects; only a human can say they are the same. Joining without merging is the default,
+and the user keeps both projects.
+
+**(c) Actor identity is scoped per project.** One installation working in two projects holds
+TWO actor identities, both derived from its installation secret (D50). Without this, a user
+who merges two of their OWN projects has both sides carrying one actorId, the same-actor
+linear rule reads two independent works as one edit history, and one side's drafts are
+discarded with no fork and no report. [VERIFIED 2026-08-17 — measured against
+`conformance/journal/fold.mjs`: cross-actor different text on one base = 1 fork; same-actor
+identical inputs = 0 forks, `retained[]` empty, one draft gone from the projection.] D50 is
+unaffected: it binds actor ownership to an installation secret rather than a hardware
+fingerprint, which is about anti-spoofing, not about the scope of the identifier.
+
+**(d) `base: null` asserts "no prior state I KNOW OF", not "no prior state exists".** When a
+rootless structural event meets a book that already exists: if its payload is identical to
+the existing creation, the two CONVERGE as one fact; if the payload differs, they FORK and
+surface for review. A rootless event MUST NOT refuse the whole fold. Identity is the event
+payload without `actor` and `ts` — the rule the fold already applies. [VERIFIED 2026-08-17 —
+seeding is deterministic modulo actor: two devices seeding the same source produce identical
+`skeleton`, identical `initialVerses` and the same fixed epoch `ts`, differing only in the
+actor slug. The fold already converges identical payloads and forks differing ones for
+content events; `book.add` never reached that rule because the rootless refusal ran first.]
+
+Universal seeding (§8.8) is KEPT, and is safe only because of this rule. Deterministic
+seeding plus convergence makes the format self-healing: a project that arrives through a
+channel that strips the journal is re-seeded on open and converges with the original. A
+refusing `base: null` is what breaks that, so the two rules are decided together.
+
+**(e) A merge shows its conflicts and never blocks the work.** A merge completes
+immediately. Conflicting verses are shown — there may be only a few. The user gets three
+choices: take all of one side, take all of the other side, or resolve them while working.
+The project stays open and usable in every case. A merge MUST NOT present a wall of modal
+decisions before a translator can work.
+
+A resolution is an EVENT, not local screen state, so it travels. [VERIFIED 2026-08-17 —
+measured: an unresolved fork reports `forks: 1`; when the resolution event arrives the fold
+reports `forks: 0` with both original heads conserved in `retained[]` as `superseded`; a
+second user does NOT resolve the same conflict again. If both users resolve independently
+and choose differently, the two resolutions themselves fork and surface again rather than
+one silently winning. Arrival order changes nothing.]
+
+**Consequence for the projection during a gap.** Until a resolution arrives, a forked verse
+projects its highest-`ts` head, which may not be the reader's own text. That is correct
+offline behavior, and the fork is reported, so the user interface MUST make it legible.
+Otherwise a translator sees their own work apparently replaced with no explanation.
+
+## D54 (2026-08-17, project-owner ruling) **Prefix-related dotted paths resolve by
+timestamp.** `settings.set` and `project.meta.set` key one register per path, so two paths
+where one is a prefix of the other — `ui.pane` and `ui.pane.width` — are different register
+keys that write the same place in the projected document. Before this ruling one silently
+clobbered the other: no fork, no retained entry, no report. The ruling: the later `ts`
+takes the projection, and the earlier path is retained and reported in `retained[]` as
+`prefix-collision` — the loss is never silent. The rule did not change what the reference
+implementation already did; only its status changed, from proposed to normative
+(spec R-8.5.7). [Numbering note: this ruling was first recorded as "D51" on the closed
+pull request #75's branch; that number was later assigned to the staged-flip decision, so
+the ruling re-enters the log here as D54. Harness citations updated in the same change set.]
+
+## D55 (2026-08-18, project-owner ruling) **§8 write format and fold invariants are
+NORMATIVE. Sync operations stay [PROPOSED].** The ruling that closes issue #22 for
+Increment 3, made against this bar, in the owner's words: "This has to be right. It's too
+valuable. It will slow us down immeasurably in the future if it's wrong and if users lose a
+book of scripture then the app is dead."
+
+**What is normative:** §8.1–§8.6, §8.7's checkpoint/derived-file half, and §8.8 — the write
+format (permanent bytes) and the fold invariants that PROVE the format captures enough
+(determinism, conservation, exclusivity). **What is not:** the sync/integration operations
+(§8.7's marked block). They consume accepted bytes and never change what the normative
+sections define, so a defect there surfaces at sync time with the data intact on both
+sides — recoverable in a way a bad byte format never is. Their ratification is Phase 2.
+
+**The spec text is a lean rewrite**, not the 11-round review text: `main`'s §8 skeleton,
+with the superseded parts replaced (sealed segments per D50 replace the NDJSON stream
+form; `textMd5`/`skeletonMd5` removed per D48) and the ratified decisions added (the
+structural action per #65/D48, book generations, D53 base semantics, D54 prefix rule).
+The abandoned-plan residue is excluded by construction rather than found by editing.
+
+**The gate:** every normative rule carries an `[R-…]` id, and every id MUST be claimed
+inside a LIVE check's name (`[covers R-…]`); `node conformance/normative/check.mjs` fails
+on any gap, stale claim, or reworded rule, and CI runs it. The known data-loss defects
+(conservation on `book.remove`; the `base: null` two-device refusal; the harness's own
+retired-form fixtures) were fixed red-first in this change set — failing check pasted
+before the fix, green after.
+
+**Honest residuals, recorded so they are worked and not assumed:** (a) the id gate proves
+a claim EXISTS and is live; per-statement mutation proof (the check fails when its rule is
+violated) is demonstrated for the fixed defect classes, not yet for every rule — that
+remains D51's standing condition for hardening; (b) the conservation property generator
+now reaches `book.remove`/re-add states, but a fork-capable generator remains open (D51
+condition 2). [supersedes in part D51, 2026-08-18 — the flip for this scope happened under
+this gate; D51's conditions remain the bar for the sync sections and for hardening]
