@@ -4136,8 +4136,39 @@ const sameRegister = (a, b) => {
       key: fc.nat({ max: 3 }), advance: fc.nat({ max: 2 }),
       val: fc.stringMatching(/^[a-f0-9]{1,4}$/),
     }), { minLength: 2, maxLength: 16 });
-    prop('J32f NO-THROW (permanent): the union of two HONESTLY-WRITTEN journals always folds — no rootless claim, no fork-loser head, no concurrent restructure ever refuses the whole fold. Each device issues only events its OWN fold accepts; the union of such journals is every sync\'s input, so a whole-fold throw here is a project no writer can ever open again [covers R-8.5.14 R-8.5.3]',
-      cmdArb, (cmds) => { try { fold(buildUnion(cmds)); return true; } catch { return false; } });
+    // (PR #85 review, item 4) NO-THROW alone let item 1's escape live for a round: the
+    // union folded fine while a converged creation sat in no output list. The property
+    // now also runs the MASTER conservation predicate and the exclusivity rule on every
+    // generated union, and instruments what the generator actually REACHED.
+    const reach = { fork: 0, pending: 0, convergedJoin: 0, remove: 0 };
+    let lastEscape = '';
+    prop('J32f NO-THROW + CONSERVATION + EXCLUSIVITY (permanent): the union of two HONESTLY-WRITTEN journals always folds — no rootless claim, no fork-loser head, no concurrent restructure ever refuses the whole fold — AND every written record of BOTH devices ends in an observable state (the master R-8.6.2 predicate, converged creations included via autoMerged[]), AND no record is projected and retained at once. Each device issues only events its OWN fold accepts; the union of such journals is every sync\'s input [covers R-8.5.14 R-8.5.3 R-8.6.2 R-8.6.3]',
+      cmdArb, (cmds) => {
+        const union = buildUnion(cmds);
+        let out;
+        try { out = fold(union); } catch { return false; }
+        if (out.forks.length) reach.fork++;
+        if (out.pendingStructural.length) reach.pending++;
+        if (out.autoMerged.some((m) => m.key.startsWith('book|'))) reach.convergedJoin++;
+        if (union.some((e) => e.op === 'book.remove')) reach.remove++;
+        for (const e of union) {
+          const st = observableStates(out, e.ts, union);
+          if (st.length === 0) { lastEscape = `unobserved ${e.op}@${e.ts}`; return false; }
+        }
+        // EXCLUSIVITY (R-8.6.3) binds RECORDS, not event ts: one event (a book.add) creates
+        // several records, and a structural drop may retain one slot's pre-image while the
+        // book head projects. So the check is per retained (key, ts) pair: a retained
+        // record is never simultaneously the PROJECTED head of its own key.
+        for (const r of out.retained) {
+          const projectedToo = r.key === 'note' ? out.notes.some((n) => n.ts === r.ts) : out.headsTs[r.key] === r.ts;
+          if (projectedToo) { lastEscape = `projected+retained ${r.key}@${r.ts}`; return false; }
+        }
+        return true;
+      });
+    if (lastEscape) console.log(`      last escape: ${lastEscape}`);
+    check('J32f REACH (non-vacuity): across the runs the two-device generator REACHED at least one fork, one pending structural state, one converged-join auto-merge, and one book.remove — the states item 1\'s escape class hides in; a property that never visits them proves nothing [covers R-8.6.2]',
+      reach.fork > 0 && reach.pending > 0 && reach.convergedJoin > 0 && reach.remove > 0,
+      `forks=${reach.fork} pending=${reach.pending} converged-joins=${reach.convergedJoin} removes=${reach.remove} / ${FC.numRuns} runs`);
   }
 }
 
