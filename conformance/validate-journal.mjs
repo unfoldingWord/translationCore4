@@ -1492,14 +1492,14 @@ try {
   const recEvents = reconcileUsfm('TIT', edited, out, clock, 'reconciler');
   const structEv = recEvents.find((e) => e.op === 'text.structure.apply');
   const after = fold([...events, ...recEvents]);
-  check('J21b: reconcile emits dispositions for the alignment, the decision, AND the verse-targeted note on a removed key — the structural event applies (complete)',
+  check('J21b: reconcile emits dispositions for the alignment, the decision, AND the verse-targeted note on a removed key — the structural event applies (complete) [covers R-8.8.1]',
     !!structEv &&
     structEv.dispositions.some((d) => d.surface === 'alignment') &&
     structEv.dispositions.some((d) => d.surface === 'decision') &&
     structEv.dispositions.some((d) => d.surface === 'note') &&
     after.pendingStructural.length === 0 && after.books.TIT.usfm === edited,
     JSON.stringify(structEv?.dispositions || recEvents.map((e) => e.op)));
-  check('J21b: reconcile dispositions are conservative — invalidate-retain/orphan-review, never a guessed re-key',
+  check('J21b: reconcile dispositions are conservative — invalidate-retain/orphan-review, never a guessed re-key [covers R-8.8.1]',
     !!structEv && structEv.dispositions.every((d) => d.action === 'invalidate-retain' || d.action === 'orphan-review'),
     JSON.stringify(structEv?.dispositions));
   check('J21b: after the conservative reconcile the decision is retained invalidated, never deleted (D36)',
@@ -1721,7 +1721,7 @@ try {
   try { fold([add, E('text.skeleton.set', 'actor-a', t(1, 0, 'actor-a'), add.ts, { book: 'TIT', skeleton: skelTo(3) })]); }
   catch (e) { refusedSkel = e.message; }
   const okSkel = fold([add, E('text.skeleton.set', 'actor-a', t(1, 0, 'actor-a'), add.ts, { book: 'TIT', skeleton: `\\id TIT edited header\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}` })]);
-  check('J22: slot-changing text.skeleton.set refuses (use text.structure.apply); a slot-preserving header edit still folds',
+  check('J22: slot-changing text.skeleton.set refuses (use text.structure.apply); a slot-preserving header edit still folds [covers R-8.5.14]',
     refusedSkel.includes('slot set') && okSkel.books.TIT.usfm.startsWith('\\id TIT edited header'),
     `"${refusedSkel.slice(0, 60)}"`);
 
@@ -2413,7 +2413,7 @@ try {
   // project under every structural branch and be generation-filtered by the clock. It is
   // a writer defect: retained and reported, never projected, never linearly advancing.
   const rootless = fold([add, v1, v2stale, v3null]);
-  check('J28: a MISSING base on a live key is a writer DEFECT, not a linear advance — the write is retained (`rootless-base`) and the actor\'s real head still projects (§8.5, round 9)',
+  check('J28: a MISSING base on a live key is a writer DEFECT, not a linear advance — the write is retained (`rootless-base`) and the actor\'s real head still projects (§8.5, round 9) [covers R-8.5.15]',
     rootless.forks.length === 0 && rootless.books.TIT.verses['1:1'] === 'uno v2\n' &&
     rootless.retained.some((r) => r.ts === v3null.ts && r.reason === 'rootless-base'),
     JSON.stringify(rootless.retained));
@@ -3249,7 +3249,7 @@ try {
       transitions: { '1:1': { text: 'BRANCH-B\n', sources: [{ key: '1:1', ts: add.ts }, { key: '1:2', ts: add.ts }] } }, dispositions: [] });
     const loose = E('text.verse.set', 'actor-c', t(9, 'actor-c'), null, { book: 'TIT', chapter: '1', verse: '1', text: 'BRANCH-AGNOSTIC\n' });
     const agnostic = fold([add, brA, brB, loose]);
-    check('J32: a rootless CONTENT write no longer projects under EVERY structural branch — pre-fix `sanc == null` made `inChain` pass unconditionally, so it overwrote the winning branch\'s post-image. It is now retained and reported (`rootless-base`), which is exactly the sentence this PR added to §8.5 ("content ops therefore fail closed") finally being true',
+    check('J32: a rootless CONTENT write no longer projects under EVERY structural branch — pre-fix `sanc == null` made `inChain` pass unconditionally, so it overwrote the winning branch\'s post-image. It is now retained and reported (`rootless-base`), which is exactly the sentence this PR added to §8.5 ("content ops therefore fail closed") finally being true [covers R-8.5.15]',
       agnostic.books.TIT.verses['1:1'] !== 'BRANCH-AGNOSTIC\n' &&
       agnostic.retained.some((r) => r.ts === loose.ts && r.reason === 'rootless-base'),
       `1:1=${JSON.stringify(agnostic.books.TIT.verses['1:1'])} retained=${JSON.stringify(agnostic.retained.filter((r) => r.ts === loose.ts))}`);
@@ -3651,7 +3651,7 @@ try {
     let applyErr = '', skelErr = '';
     try { fold([add, merged, reverse]); } catch (e) { applyErr = e.message; }
     try { fold([add, merged, revSkel]); } catch (e) { skelErr = e.message; }
-    check('J32c (E-R3): the same-actor stale-base rule is ONE rule for both skeleton-chain ops. Pre-fix `text.skeleton.set` REFUSED a base its own actor\'s head had advanced past while `text.structure.apply` — the op that can DROP SLOTS — silently accepted it and reversed the accepted structural action, and no text explained the difference',
+    check('J32c (E-R3): the same-actor stale-base rule is ONE rule for both skeleton-chain ops. Pre-fix `text.skeleton.set` REFUSED a base its own actor\'s head had advanced past while `text.structure.apply` — the op that can DROP SLOTS — silently accepted it and reversed the accepted structural action, and no text explained the difference [covers R-8.5.14]',
       applyErr.includes('stale') && skelErr.includes('stale') && applyErr.includes('text.structure.apply') && skelErr.includes('text.skeleton.set'),
       `apply="${applyErr.slice(0, 60)}" skeleton="${skelErr.slice(0, 60)}"`);
     check('J32c (E-R3): a DIFFERENT actor on the same base still forks — the rule is same-actor only, and structural forks are the review item (#65)',
