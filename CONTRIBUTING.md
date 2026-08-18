@@ -53,9 +53,9 @@ A skipped test names the prerequisite that it needs. A skip is not a failure.
    version, a commit hash and a date), `[decided YYYY-MM-DD]` (a decision record), or
    `[PROPOSED]`. Do not assert an untagged assumption.
 3. **The specification and the harness change together.** A change to `BURRITO-SPEC.md`
-   ships with the matching harness change in the same change set. While the harness lives
-   in the maintainer workspace (its publication is a tracked issue), a maintainer runs it
-   and pastes the result on the pull request before merge.
+   ships with the matching harness change in the same change set. The harness lives in
+   `conformance/` in this repository (published per issue #47, closed 2026-08-14), and CI
+   runs it on every pull request.
 4. **Do not change the pinned versions.** `usfm-js@3.4.3`, `word-aligner@1.0.3` and
    `word-aligner-lib@1.0.1` are a proven pairing. The conformance harness is the proof.
    Do not run `npm audit fix --force`.
