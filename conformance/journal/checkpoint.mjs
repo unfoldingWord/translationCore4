@@ -10,8 +10,22 @@
 //     escapes — books, decision sidecars, everything. The fold's keys are never trusted.
 //   • EVERY dotted-path setter traverses with own-property checks into null-prototype
 //     containers, so a malformed path cannot reach a prototype even with validation off.
-import path from 'path';
 import { ipathError, dottedPathError, MAX_JSON_DEPTH } from './grammar.mjs';
+
+// Lexical POSIX resolve, dependency-free (issue #62: the production runtime imports
+// this module into a browser bundle, so no Node builtin may load here). Matches
+// path.posix.resolve(root, p) for an absolute `root` and no cwd involvement: an
+// absolute `p` stands alone, '' and '.' segments drop, '..' pops one level.
+const posixResolve = (root, p) => {
+  const joined = String(p).startsWith('/') ? String(p) : `${root}/${p}`;
+  const out = [];
+  for (const seg of joined.split('/')) {
+    if (seg === '' || seg === '.') continue;
+    if (seg === '..') out.pop();
+    else out.push(seg);
+  }
+  return `/${out.join('/')}`;
+};
 
 const serialize = (doc) => JSON.stringify(doc, null, 2) + '\n';
 
@@ -22,7 +36,7 @@ const PROJECTION_ROOT = '/ingredients';
 export const projectionKey = (ipath) => {
   const err = ipathError(ipath);
   if (err) throw new Error(`projection key ${err} — refuse to project (§2/§8.7)`);
-  const resolved = path.posix.resolve(PROJECTION_ROOT, ipath);
+  const resolved = posixResolve(PROJECTION_ROOT, ipath);
   if (!resolved.startsWith(`${PROJECTION_ROOT}/`) || resolved.slice(PROJECTION_ROOT.length + 1) !== ipath)
     throw new Error(`projection key "${ipath}" does not resolve strictly inside the checkpoint destination root — refuse to project (§8.7)`);
   return ipath;
