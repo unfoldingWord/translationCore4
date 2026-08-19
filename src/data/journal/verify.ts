@@ -26,8 +26,17 @@ import {
   fold,
   derivedProjections,
   isUnjournaledIngredient,
+  projectResources,
+  projectSettings,
   type FoldOutput,
 } from './runtime';
+
+/** The two EMPTY checkpoint documents. §8.7's regeneration set is complete, so
+ * the checkpoint materializes resources.json/settings.json even when nothing is
+ * folded for them; between checkpoints those files legitimately do not exist
+ * yet. An ABSENT disk file whose projection is exactly the empty document is
+ * therefore "not yet checkpointed", never divergence. */
+const EMPTY_DOCUMENTS = new Set([projectResources({}), projectSettings({})]);
 
 export interface VerifierMismatch {
   ipath: string;
@@ -180,7 +189,13 @@ export const verifyProjectAgainstJournal = async (
   // 5. Byte-compare, enumerating from the union of both sets (a deleted derived
   //    file is divergence too — R-8.7.5).
   const verdict = classifyDivergence(diskFiles, projections);
-  const mismatches: VerifierMismatch[] = verdict.diverged.map((ipath) => {
+  const notYetCheckpointed = (ipath: string): boolean =>
+    !Object.hasOwn(diskFiles, ipath) &&
+    Object.hasOwn(projections, ipath) &&
+    EMPTY_DOCUMENTS.has(projections[ipath]);
+  const mismatches: VerifierMismatch[] = verdict.diverged
+    .filter((ipath) => !notYetCheckpointed(ipath))
+    .map((ipath) => {
     const disk = Object.hasOwn(diskFiles, ipath) ? diskFiles[ipath] : null;
     const projected = Object.hasOwn(projections, ipath) ? projections[ipath] : null;
     return {
