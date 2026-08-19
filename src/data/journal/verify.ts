@@ -50,6 +50,9 @@ export interface VerifierReport {
   repoPath: string;
   /** Journal files the conformance reader refused — any entry fails the run. */
   invalidSegments: Array<{ path: string; reason: string }>;
+  /** The fold or checkpoint materialization itself refused (an incomplete or
+   * corrupt journal) — reported, never thrown past the caller. */
+  projectionFailure: string | null;
   mismatches: VerifierMismatch[];
   /** Semantic metadata failures (scope reconstruction, unapplied overlay). */
   metadataProblems: string[];
@@ -151,8 +154,26 @@ export const verifyProjectAgainstJournal = async (
     }
   }
 
-  // 3. Fold + generate the exhaustive derived set into a disposable tree.
-  const foldOut = fold(events);
+  // 3. Fold + generate the exhaustive derived set into a disposable tree. A
+  //    refusal here (a corrupt/incomplete journal) is REPORTED, never thrown:
+  //    the verifier's job is the verdict.
+  const failed = (projectionFailure: string): VerifierReport => ({
+    ok: false,
+    repoPath,
+    invalidSegments,
+    projectionFailure,
+    mismatches: [],
+    metadataProblems: [],
+    tolerated: [],
+    clean: [],
+    foldReports: { forks: [], retained: [], invalid: [], pendingStructural: [] },
+  });
+  let foldOut: FoldOutput;
+  try {
+    foldOut = fold(events);
+  } catch (error) {
+    return failed(`fold refused: ${String((error as Error).message ?? error)}`);
+  }
   const baseMetadata = await api.getMetadataRaw(repoPath);
   const resolutions: Record<string, Record<string, unknown>> = {};
   for (const [ipath, text] of Object.entries(diskFiles)) {
@@ -165,7 +186,12 @@ export const verifyProjectAgainstJournal = async (
       /* unparseable — the byte compare reports it */
     }
   }
-  const projections = derivedProjections(foldOut, { baseMetadata, resolutions });
+  let projections: Record<string, string>;
+  try {
+    projections = derivedProjections(foldOut, { baseMetadata, resolutions });
+  } catch (error) {
+    return failed(`checkpoint materialization refused: ${String((error as Error).message ?? error)}`);
+  }
 
   // 4. metadata.json is verified semantically (server-owned bytes, D28).
   delete projections['metadata.json'];
@@ -210,6 +236,7 @@ export const verifyProjectAgainstJournal = async (
     ok: invalidSegments.length === 0 && mismatches.length === 0 && metadataProblems.length === 0,
     repoPath,
     invalidSegments,
+    projectionFailure: null,
     mismatches,
     metadataProblems,
     tolerated: verdict.tolerated.filter((p) => isUnjournaledIngredient(p)),
@@ -229,6 +256,7 @@ export const describeVerifierReport = (report: VerifierReport): string => {
   return [
     `${report.repoPath}: journal materialization FAILED`,
     ...report.invalidSegments.map((s) => `  invalid segment ${s.path}: ${s.reason}`),
+    ...(report.projectionFailure ? [`  ${report.projectionFailure}`] : []),
     ...report.mismatches.map(
       (m) => `  ${m.kind} ${m.ipath} (disk ${m.diskMd5 ?? 'absent'} vs projected ${m.projectedMd5 ?? 'absent'})`,
     ),

@@ -1,0 +1,572 @@
+// Crash, recovery, seeding, and coordinated-change proofs — issue #62.
+//
+// A "crash" is modeled the only honest way an in-process suite can: an injected
+// failure aborts the mutation mid-pipeline, the store object is abandoned, the
+// module-level clocks/queues are dropped (a process restart is fresh module
+// state), and a NEW store over the SAME durable backends (the fake rig's disk,
+// the Map-backed installation kv) reopens the project. The proof is always the
+// same: reopening reaches the same verified bytes, no accepted action is lost,
+// and no action is duplicated (no new timestamps).
+import { describe, expect, it } from 'vitest';
+import { ServerApi } from '../src/data/serverApi';
+import {
+  JournalingStore,
+  SeedMismatchError,
+  UnexplainedDivergenceError,
+  forgetProjectQueues,
+} from '../src/data/journal/journalingStore';
+import { forgetSharedClocks } from '../src/data/journal/journalStore';
+import { validateSegment, type JournalEvent } from '../src/data/journal/seal';
+import { describeVerifierReport, verifyProjectAgainstJournal } from '../src/data/journal/verify';
+import type { Decision, ResourcesFile } from '../src/data/burritoStore';
+import { FAKE_VRS, journalingRig, memKv, tickingNow, type JournalingRig } from './helpers/journalingRig';
+
+const REPO = '_local_/_local_/prueba';
+
+const TIT_USFM = [
+  '\\id TIT prueba',
+  '\\h Tito',
+  '\\mt Tito',
+  '\\c 1',
+  '\\p',
+  '\\v 1 Pablo, siervo de Dios.',
+  '\\v 2 ___',
+  '',
+].join('\n');
+
+const PIN = (repo: string, version: string, flavor: string) => ({
+  repoPath: `git.door43.org/unfoldingWord/${repo}`,
+  version,
+  flavor,
+});
+const RUNG = {
+  gatewayLanguage: { languageId: 'en', owner: 'unfoldingWord' },
+  translationNotes: PIN('en_tn', 'v86', 'parascriptural/x-bcvnotes'),
+  translationWordsLinks: PIN('en_tw', 'v87', 'parascriptural/x-bcvarticles'),
+  translationWords: PIN('en_tw', 'v87', 'parascriptural/x-bcvarticles'),
+  translationAcademy: PIN('en_ta', 'v86', 'peripheral/x-peripheralArticles'),
+};
+const PINS: ResourcesFile = {
+  schemaVersion: 2,
+  languageSets: { primary: { ...RUNG }, fallback: { ...RUNG } },
+} as unknown as ResourcesFile;
+
+const RESOLUTION = { repoPath: 'git.door43.org/unfoldingWord/en_tw', version: 'v87', languageSet: 'fallback' };
+
+const decision = (checkId: string, patch: Partial<Decision> = {}): Decision => ({
+  contextId: {
+    checkId,
+    occurrenceNote: '',
+    reference: { bookId: 'tit', chapter: 1, verse: 1 },
+    tool: 'translationWords',
+    groupId: 'god',
+    quote: 'Θεοῦ',
+    quoteString: 'Θεοῦ',
+    glQuote: '',
+    occurrence: 1,
+  },
+  category: 'kt',
+  selections: false,
+  comments: false,
+  reminders: false,
+  nothingToSelect: false,
+  verseEdits: false,
+  invalidated: false,
+  modifiedTimestamp: '2026-08-19T12:00:00.000Z',
+  ...patch,
+});
+
+const segmentPaths = (rig: JournalingRig, repo = REPO): string[] =>
+  [...(rig.repos.get(repo)?.files.keys() ?? [])]
+    .filter((p) => /^checking\/journal\/[a-z0-9-]+\/segments\//.test(p))
+    .sort();
+
+const allEvents = async (rig: JournalingRig, repo = REPO): Promise<JournalEvent[]> => {
+  const out: JournalEvent[] = [];
+  for (const path of segmentPaths(rig, repo)) {
+    const verdict = await validateSegment(rig.repos.get(repo)?.files.get(path) ?? '');
+    if (!verdict.ok) throw new Error(`invalid segment ${path}: ${verdict.reason}`);
+    out.push(...verdict.events);
+  }
+  return out;
+};
+
+const expectVerified = async (api: ServerApi, repo = REPO): Promise<void> => {
+  const report = await verifyProjectAgainstJournal(api, repo);
+  expect(report.ok, describeVerifierReport(report)).toBe(true);
+};
+
+interface World {
+  rig: JournalingRig;
+  api: ServerApi;
+  kv: ReturnType<typeof memKv>;
+  clock: ReturnType<typeof tickingNow>;
+  store: JournalingStore;
+  /** A process restart: fresh module state, same durable backends. */
+  restart: () => JournalingStore;
+}
+
+const setup = async (): Promise<World> => {
+  forgetSharedClocks();
+  forgetProjectQueues();
+  const rig = journalingRig();
+  const kv = memKv();
+  const clock = tickingNow('2026-08-19T09:00:00.000Z');
+  const api = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: rig.fetchFn });
+  const store = new JournalingStore({ api, kv, now: () => clock.advance(13) });
+  await store.createProject({
+    content_name: 'Prueba',
+    content_abbr: 'prueba',
+    content_language_code: 'es',
+    add_book: false,
+    versification: 'eng',
+  });
+  await store.writeResources(PINS, null);
+  await store.writeSettings({ schemaVersion: 1, textDirection: 'ltr' });
+  await store.addBook({
+    book_code: 'TIT',
+    book_title: 'Tito',
+    book_abbr: 'TIT',
+    add_cv: true,
+    initialUsfm: TIT_USFM,
+  });
+  const restart = (): JournalingStore => {
+    forgetSharedClocks();
+    forgetProjectQueues();
+    return new JournalingStore({ api, kv, now: () => clock.advance(29) });
+  };
+  return { rig, api, kv, clock, store, restart };
+};
+
+describe('#62 crash atomicity: before publication', () => {
+  it('a failed segment write changes NO derived file; reopen republishes the EXACT staged bytes', async () => {
+    const world = await setup();
+    const { rig, api, store, kv, restart } = world;
+    const diskBefore = rig.repos.get(REPO)?.files.get('TIT.usfm');
+    const segsBefore = segmentPaths(rig);
+    rig.failOn((ctx) => ctx.method === 'POST' && (ctx.ipath ?? '').includes('/segments/'));
+    await expect(store.writeBook('TIT', TIT_USFM.replace('___', 'Nueva vida.'))).rejects.toThrow(
+      /injected failure/,
+    );
+    // Journal-first: publication failed, so no derived project file changed.
+    expect(rig.repos.get(REPO)?.files.get('TIT.usfm')).toBe(diskBefore);
+    expect(segmentPaths(rig)).toEqual(segsBefore);
+    // The durable intent survives the crash.
+    const stagedKeys = (await kv.keys('outbox:')).filter((k) => k.includes(REPO));
+    expect(stagedKeys).toHaveLength(1);
+    const stagedBytes = await kv.get(stagedKeys[0]);
+
+    const store2 = restart();
+    await store2.open(REPO);
+    expect(store2.lastOpenReport?.replayed.map((r) => r.outcome)).toEqual(['republished']);
+    // The EXACT staged bytes were republished — same action, same timestamps.
+    const published = segmentPaths(rig).filter((p) => !segsBefore.includes(p));
+    expect(published).toHaveLength(1);
+    expect(rig.repos.get(REPO)?.files.get(published[0])).toBe(stagedBytes);
+    // …and the derived file recovered FORWARD to the journal's projection.
+    expect(rig.repos.get(REPO)?.files.get('TIT.usfm')).toContain('Nueva vida.');
+    await expectVerified(api);
+    // Idempotent: a second replay finds nothing staged.
+    expect((await kv.keys('outbox:')).filter((k) => k.includes(REPO))).toHaveLength(0);
+  });
+});
+
+describe('#62 crash atomicity: after publication, before regeneration', () => {
+  it('the journal is ahead; reopen regenerates forward from the durable marker (no duplicate action)', async () => {
+    const world = await setup();
+    const { rig, api, store, restart } = world;
+    const segsBefore = segmentPaths(rig).length;
+    rig.failOn((ctx) => ctx.method === 'POST' && ctx.ipath === 'TIT.usfm');
+    await expect(store.writeBook('TIT', TIT_USFM.replace('___', 'Nueva vida.'))).rejects.toThrow(
+      /injected failure/,
+    );
+    expect(segmentPaths(rig)).toHaveLength(segsBefore + 1); // published
+    expect(rig.repos.get(REPO)?.files.get('TIT.usfm')).not.toContain('Nueva vida.'); // stale disk
+
+    const store2 = restart();
+    await store2.open(REPO);
+    expect(store2.lastOpenReport?.classification).toBe('regenerated-forward');
+    expect(segmentPaths(rig)).toHaveLength(segsBefore + 1); // NOT duplicated
+    expect(rig.repos.get(REPO)?.files.get('TIT.usfm')).toContain('Nueva vida.');
+    await expectVerified(api);
+  });
+
+  it('with the marker lost, the journal-ahead prefix check still recovers forward', async () => {
+    const world = await setup();
+    const { rig, api, store, kv, restart } = world;
+    rig.failOn((ctx) => ctx.method === 'POST' && ctx.ipath === 'TIT.usfm');
+    await expect(store.writeBook('TIT', TIT_USFM.replace('___', 'Nueva vida.'))).rejects.toThrow();
+    for (const key of await kv.keys('regen:')) await kv.delete(key); // lose the marker
+
+    const store2 = restart();
+    await store2.open(REPO);
+    expect(store2.lastOpenReport?.classification).toBe('regenerated-forward');
+    expect(rig.repos.get(REPO)?.files.get('TIT.usfm')).toContain('Nueva vida.');
+    await expectVerified(api);
+  });
+
+  it('reopening twice reaches the same verified bytes (recovery is idempotent)', async () => {
+    const world = await setup();
+    const { rig, api, store, restart } = world;
+    rig.failOn((ctx) => ctx.method === 'POST' && ctx.ipath === 'TIT.usfm');
+    await expect(store.writeBook('TIT', TIT_USFM.replace('___', 'Nueva vida.'))).rejects.toThrow();
+    await restart().open(REPO);
+    const bytesAfterFirst = rig.repos.get(REPO)?.files.get('TIT.usfm');
+    const store3 = restart();
+    await store3.open(REPO);
+    expect(store3.lastOpenReport?.classification).toBe('converged');
+    expect(rig.repos.get(REPO)?.files.get('TIT.usfm')).toBe(bytesAfterFirst);
+    await expectVerified(api);
+  });
+});
+
+describe('#62 the coordinated gateway change', () => {
+  const plannedFile = () => ({
+    schemaVersion: 1,
+    tool: 'translationWords',
+    book: 'TIT',
+    resource: { repoPath: 'git.door43.org/es-419_gl/es-419_tw', version: 'v37', languageSet: 'primary' },
+    // carry-over output: one decision re-keyed to the NEW resource's checkId,
+    // the old-key record no longer in the file (it is invalidated-and-retained
+    // by the diff), and nothing else.
+    decisions: [decision('nuevo1', { comments: 'llevada' })],
+  });
+  const nextPins = (): ResourcesFile => {
+    const next = JSON.parse(JSON.stringify(PINS)) as ResourcesFile;
+    (next.languageSets.primary as unknown as Record<string, unknown>).translationWords = PIN(
+      'es-419_tw',
+      'v37',
+      'parascriptural/x-bcvarticles',
+    );
+    return next;
+  };
+
+  it('is ONE multi-event journal action across decisions and pins', async () => {
+    const world = await setup();
+    const { rig, api, store } = world;
+    await store.upsertDecision('translationWords', 'TIT', decision('viejo1'), RESOLUTION);
+    const before = segmentPaths(rig).length;
+    const resourcesMd5 = (await store.readResourcesWithMd5()).md5;
+    const decisionsMd5 = (await store.readDecisionsWithMd5('translationWords', 'TIT')).md5;
+    await store.applyGatewayChange({
+      resources: nextPins(),
+      resourcesMd5,
+      decisions: [{ tool: 'translationWords', book: 'TIT', file: plannedFile() as never, expectMd5: decisionsMd5 }],
+    });
+    const segs = segmentPaths(rig);
+    expect(segs).toHaveLength(before + 1); // ONE action
+    const verdict = await validateSegment(rig.repos.get(REPO)?.files.get(segs[segs.length - 1]) ?? '');
+    if (!verdict.ok) throw new Error(verdict.reason);
+    const ops = verdict.events.map((e) => e.op).sort();
+    expect(ops).toEqual(['check.decision.set', 'check.decision.set', 'resource.pin.set']);
+    // The old-key decision is invalidated-and-retained, never deleted.
+    const file = JSON.parse(rig.repos.get(REPO)?.files.get('checking/translationWords/TIT.json') ?? '');
+    expect(file.resource.repoPath).toBe('git.door43.org/es-419_gl/es-419_tw');
+    const byId = Object.fromEntries(
+      (file.decisions as Decision[]).map((d) => [d.contextId.checkId, d]),
+    );
+    expect(byId.nuevo1).toMatchObject({ comments: 'llevada' });
+    expect(byId.viejo1).toMatchObject({ invalidated: true, status: 'invalid' });
+    await expectVerified(api);
+  });
+
+  it('a stale precondition refuses the WHOLE change before anything is staged or published', async () => {
+    const world = await setup();
+    const { rig, store } = world;
+    await store.upsertDecision('translationWords', 'TIT', decision('viejo1'), RESOLUTION);
+    const before = segmentPaths(rig).length;
+    await expect(
+      store.applyGatewayChange({
+        resources: nextPins(),
+        resourcesMd5: 'stale0000000000000000000000000000',
+        decisions: [],
+      }),
+    ).rejects.toThrow(/stale write refused/);
+    expect(segmentPaths(rig)).toHaveLength(before);
+  });
+
+  it('recovers FORWARD from an injected post-publication failure — no byte rollback, ever', async () => {
+    const world = await setup();
+    const { rig, api, store, restart } = world;
+    await store.upsertDecision('translationWords', 'TIT', decision('viejo1'), RESOLUTION);
+    const before = segmentPaths(rig).length;
+    // The decision sidecar regenerates first, then resources.json FAILS.
+    rig.failOn((ctx) => ctx.method === 'POST' && ctx.ipath === 'checking/resources.json');
+    await expect(
+      store.applyGatewayChange({
+        resources: nextPins(),
+        resourcesMd5: (await store.readResourcesWithMd5()).md5,
+        decisions: [
+          {
+            tool: 'translationWords',
+            book: 'TIT',
+            file: plannedFile() as never,
+            expectMd5: (await store.readDecisionsWithMd5('translationWords', 'TIT')).md5,
+          },
+        ],
+      }),
+    ).rejects.toThrow(/injected failure/);
+    expect(segmentPaths(rig)).toHaveLength(before + 1); // published — permanent
+    // The already-regenerated decision file KEEPS the new state (no rollback):
+    const file = JSON.parse(rig.repos.get(REPO)?.files.get('checking/translationWords/TIT.json') ?? '');
+    expect(file.decisions.some((d: Decision) => d.contextId.checkId === 'nuevo1')).toBe(true);
+    // …and the pins are still the OLD bytes until recovery.
+    expect(rig.repos.get(REPO)?.files.get('checking/resources.json')).not.toContain('es-419_tw');
+
+    const store2 = restart();
+    await store2.open(REPO);
+    expect(store2.lastOpenReport?.classification).toBe('regenerated-forward');
+    expect(rig.repos.get(REPO)?.files.get('checking/resources.json')).toContain('es-419_tw');
+    expect(segmentPaths(rig)).toHaveLength(before + 1); // still not duplicated
+    await expectVerified(api);
+  });
+});
+
+describe('#62 universal seeding (§8.8)', () => {
+  /** A pre-#62 project: derived files exist, journal does not. Sidecars use the
+   * LEGACY byte form (no trailing newline) the Increment-1/2 writers produced. */
+  const legacyProject = (rig: JournalingRig, name = 'legado'): string => {
+    const repo = `_local_/_local_/${name}`;
+    const legacy = (doc: unknown): string => JSON.stringify(doc, null, 2);
+    rig.createRepo(repo, {
+      'vrs.json': FAKE_VRS,
+      'TIT.usfm': TIT_USFM,
+      'checking/resources.json': legacy(PINS),
+      'checking/settings.json': legacy({ schemaVersion: 1, textDirection: 'ltr' }),
+      'checking/translationWords/TIT.json': legacy({
+        schemaVersion: 1,
+        tool: 'translationWords',
+        book: 'TIT',
+        resource: RESOLUTION,
+        decisions: [decision('t1g7')],
+      }),
+    });
+    return repo;
+  };
+
+  it('publishes one all-or-nothing seed; the fold reproduces the pre-seed state; legacy sidecars converge to canonical bytes; USFM is untouched', async () => {
+    const world = await setup();
+    const { rig, api, restart } = world;
+    const repo = legacyProject(rig);
+    const writesBefore = rig.writes.length;
+    const store = restart();
+    await store.open(repo);
+    expect(store.lastOpenReport?.seeded).toBe(true);
+    const events = await allEvents(rig, repo);
+    expect(events.every((e) => e.seed && (e.seed as { source: string }).source === 'sidecar-migration')).toBe(true);
+    expect(events.map((e) => e.op).sort()).toEqual([
+      'book.add',
+      'check.decision.set',
+      'project.vrs.set',
+      'resource.pin.set',
+      'resource.pin.set',
+      'resource.pin.set',
+      'resource.pin.set',
+      'resource.pin.set',
+      'resource.pin.set',
+      'resource.pin.set',
+      'resource.pin.set',
+      'resource.pin.set',
+      'resource.pin.set',
+      'settings.set',
+    ]);
+    // The precious surface was never rewritten:
+    expect(rig.writes.slice(writesBefore).some((w) => w.repo === repo && w.ipath === 'TIT.usfm')).toBe(false);
+    expect(rig.repos.get(repo)?.files.get('TIT.usfm')).toBe(TIT_USFM);
+    // Legacy sidecars converged to the canonical checkpoint byte form:
+    expect(rig.repos.get(repo)?.files.get('checking/settings.json')?.endsWith('\n')).toBe(true);
+    await expectVerified(api, repo);
+    // Reopening is quiet: already journaled, already converged.
+    const store2 = restart();
+    await store2.open(repo);
+    expect(store2.lastOpenReport?.seeded).toBe(false);
+    expect(store2.lastOpenReport?.classification).toBe('converged');
+  });
+
+  it('two independent seeds of the same source CONVERGE modulo actor identity (D53d)', async () => {
+    const world = await setup();
+    const { rig, api, clock } = world;
+    const repoA = legacyProject(rig, 'copiaa');
+    const repoB = legacyProject(rig, 'copiab');
+    // Two INSTALLATIONS: separate kv stores → separate secrets → separate actors.
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const storeA = new JournalingStore({ api, kv: memKv(), now: () => clock.advance(13) });
+    await storeA.open(repoA);
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const storeB = new JournalingStore({ api, kv: memKv(), now: () => clock.advance(17) });
+    await storeB.open(repoB);
+    expect(storeA.actorId).not.toBe(storeB.actorId);
+
+    // Sneakernet B's journal into A (the §8.1 disjoint-writer merge guarantee).
+    const filesA = rig.repos.get(repoA)?.files;
+    const filesB = rig.repos.get(repoB)?.files;
+    for (const [path, bytes] of filesB ?? new Map<string, string>())
+      if (path.startsWith('checking/journal/')) filesA?.set(path, bytes);
+
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const reopened = new JournalingStore({ api, kv: memKv(), now: () => clock.advance(19) });
+    await reopened.open(repoA);
+    // Identical payloads CONVERGE — auto-merged, zero forks, nothing retained.
+    expect(reopened.lastOpenReport?.forks).toEqual([]);
+    expect(reopened.lastOpenReport?.retained).toEqual([]);
+    await expectVerified(api, repoA);
+  });
+
+  it('REFUSES a seed whose fold cannot reproduce the pre-seed bytes: co-present same-key decisions', async () => {
+    const world = await setup();
+    const { rig, restart } = world;
+    const repo = '_local_/_local_/copresente';
+    rig.createRepo(repo, {
+      'vrs.json': FAKE_VRS,
+      'TIT.usfm': TIT_USFM,
+      'checking/translationWords/TIT.json': JSON.stringify({
+        schemaVersion: 1,
+        tool: 'translationWords',
+        book: 'TIT',
+        resource: RESOLUTION,
+        // The tC3-era co-present form: same §5.2 identity key, different quote.
+        decisions: [decision('t1g7'), decision('t1g7', { contextId: { ...decision('t1g7').contextId, quote: 'Κύριος', quoteString: 'Κύριος' } })],
+      }),
+    });
+    const store = restart();
+    await expect(store.open(repo)).rejects.toThrow(SeedMismatchError);
+    expect(segmentPaths(rig, repo)).toEqual([]); // all-or-nothing: nothing published
+  });
+
+  it('REFUSES a seed of non-NFC book content rather than normalizing bytes it must reproduce', async () => {
+    const world = await setup();
+    const { rig, restart } = world;
+    const repo = '_local_/_local_/nonfc';
+    rig.createRepo(repo, {
+      'vrs.json': FAKE_VRS,
+      'TIT.usfm': TIT_USFM.replace('Pablo', 'Pablo café'), // NFD é
+    });
+    const store = restart();
+    await expect(store.open(repo)).rejects.toThrow(SeedMismatchError);
+    expect(segmentPaths(rig, repo)).toEqual([]);
+  });
+
+  it('REFUSES an unknown derived-class file rather than guessing', async () => {
+    const world = await setup();
+    const { rig, restart } = world;
+    const repo = '_local_/_local_/extrania';
+    rig.createRepo(repo, {
+      'vrs.json': FAKE_VRS,
+      'TIT.usfm': TIT_USFM,
+      'checking/custom/notes.json': '{"mine": true}',
+    });
+    const store = restart();
+    await expect(store.open(repo)).rejects.toThrow(UnexplainedDivergenceError);
+  });
+
+  it('audio and other registered-but-unjournaled ingredients survive seeding, checkpoint, and recovery byte-identically', async () => {
+    const world = await setup();
+    const { rig, api, restart } = world;
+    const repo = legacyProject(rig, 'conaudio');
+    const audioBytes = 'RIFF-fake-audio-bytes-';
+    rig.repos.get(repo)?.files.set('audio/TIT-1.mp3', audioBytes);
+    const store = restart();
+    await store.open(repo);
+    await store.writeBook('TIT', TIT_USFM.replace('___', 'Nueva vida.'));
+    await store.commit('checkpoint (tC4)');
+    const store2 = restart();
+    await store2.open(repo);
+    expect(rig.repos.get(repo)?.files.get('audio/TIT-1.mp3')).toBe(audioBytes);
+    expect(rig.writes.some((w) => w.repo === repo && w.ipath.startsWith('audio/'))).toBe(false);
+    const report = await verifyProjectAgainstJournal(api, repo);
+    expect(report.ok, describeVerifierReport(report)).toBe(true);
+    expect(report.tolerated).toContain('audio/TIT-1.mp3');
+  });
+});
+
+describe('#62 actor repair limits', () => {
+  it('repairs a TORN own actor.json; never overwrites a valid-but-different record', async () => {
+    const world = await setup();
+    const { rig, store, restart } = world;
+    const actorPath = `checking/journal/${store.actorId}/actor.json`;
+    rig.repos.get(REPO)?.files.set(actorPath, '{"torn": tru'); // torn bytes
+    const store2 = restart();
+    await store2.open(REPO);
+    const repaired = JSON.parse(rig.repos.get(REPO)?.files.get(actorPath) ?? '');
+    expect(repaired.actorId).toBe(store.actorId);
+    expect(repaired.schemaVersion).toBe(1);
+
+    // A VALID record naming a DIFFERENT actor is identity evidence — refused.
+    rig.repos.get(REPO)?.files.set(
+      actorPath,
+      JSON.stringify({
+        schemaVersion: 1,
+        actorId: 'somebody-else-entirely',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      }),
+    );
+    const store3 = restart();
+    await expect(store3.open(REPO)).rejects.toThrow(/never overwritten/);
+  });
+});
+
+describe('#62 out-of-band derived state at open', () => {
+  it('an out-of-band USFM edit reconciles via §8.8 (a linear supersede, seed-marked) — never destroys journaled work', async () => {
+    const world = await setup();
+    const { rig, api, store, restart } = world;
+    await store.writeBook('TIT', TIT_USFM.replace('___', 'Nueva vida.'));
+    const edited = rig.repos
+      .get(REPO)!
+      .files.get('TIT.usfm')!
+      .replace('Pablo, siervo de Dios.', 'Pablo, apóstol.');
+    rig.repos.get(REPO)?.files.set('TIT.usfm', edited); // another tool edited the committed file
+    const store2 = restart();
+    await store2.open(REPO);
+    expect(store2.lastOpenReport?.classification).toBe('reconciled');
+    expect(store2.lastOpenReport?.reconciledBooks).toEqual(['TIT']);
+    const events = await allEvents(rig);
+    const reconcile = events.filter((e) => (e.seed as { source?: string } | undefined)?.source === 'out-of-band-usfm');
+    expect(reconcile).toHaveLength(1);
+    expect(reconcile[0].op).toBe('text.verse.set');
+    expect(reconcile[0].base).not.toBeNull(); // a linear supersede of the live head
+    // BOTH edits survive: the journaled one and the out-of-band one.
+    const disk = rig.repos.get(REPO)?.files.get('TIT.usfm');
+    expect(disk).toContain('Pablo, apóstol.');
+    expect(disk).toContain('Nueva vida.');
+    await expectVerified(api);
+  });
+
+  it('an out-of-band book CREATED on disk reconciles as a seeded book.add', async () => {
+    const world = await setup();
+    const { rig, api, restart } = world;
+    rig.repos.get(REPO)?.files.set('JON.usfm', TIT_USFM.replaceAll('TIT', 'JON').replaceAll('Tito', 'Jonás'));
+    const store2 = restart();
+    await store2.open(REPO);
+    expect(store2.lastOpenReport?.classification).toBe('reconciled');
+    const events = await allEvents(rig);
+    expect(events.some((e) => e.op === 'book.add' && e.book === 'JON')).toBe(true);
+    await expectVerified(api);
+  });
+
+  it('an unexplained sidecar divergence is a diagnosable STOP: reported with hashes, nothing overwritten', async () => {
+    const world = await setup();
+    const { rig, restart } = world;
+    const tampered = '{"schemaVersion":1,"textDirection":"rtl","tampered":true}';
+    rig.repos.get(REPO)?.files.set('checking/settings.json', tampered);
+    const store2 = restart();
+    const failure = await store2.open(REPO).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(UnexplainedDivergenceError);
+    const report = (failure as UnexplainedDivergenceError).paths;
+    expect(report.some((p) => p.ipath === 'checking/settings.json' && p.diskMd5 && p.projectedMd5)).toBe(true);
+    expect(rig.repos.get(REPO)?.files.get('checking/settings.json')).toBe(tampered); // untouched
+  });
+
+  it('a derived file DELETED out of band is divergence too — reported, not silently recreated', async () => {
+    const world = await setup();
+    const { rig, restart } = world;
+    rig.repos.get(REPO)?.files.delete('checking/settings.json');
+    const store2 = restart();
+    await expect(store2.open(REPO)).rejects.toThrow(UnexplainedDivergenceError);
+  });
+});

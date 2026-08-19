@@ -62,10 +62,16 @@ function literalKeys(): Found[] {
 
 /** Indirect keys: quoted dotted strings anywhere in the source whose first
  * segment is a catalog namespace (e.g. the role table in state.jsx, resolved
- * later by t(role.name)). */
+ * later by t(role.name)).
+ *
+ * The journal data layer is excluded from THIS heuristic (not from the literal
+ * t(...) check above): the §8.5 operation vocabulary is dotted by grammar —
+ * 'check.decision.set', 'align.verse.set', 'settings.set' — and its first
+ * segments collide with catalog namespaces structurally, not by usage. */
 function namespacedStrings(): Found[] {
   const found: Found[] = [];
   for (const file of files) {
+    if (path.relative(SRC, file).startsWith(path.join('data', 'journal'))) continue;
     const src = fs.readFileSync(file, 'utf8');
     for (const m of src.matchAll(/['"]([A-Za-z][\w-]*(?:\.[\w-]+)+)['"]/g)) {
       if (namespaces.has(m[1].split('.')[0])) {

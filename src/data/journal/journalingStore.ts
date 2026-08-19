@@ -938,6 +938,11 @@ export class JournalingStore implements BurritoStore {
         if (bytes !== null) await this.installDerived(ipath, bytes);
       }
       await this.kv.delete(this.regenMarkerKey);
+      // A reconciled book may be NEW to the metadata (created out of band and
+      // never registered): rescan so currentScope converges with the fold —
+      // regeneration rescans the whole repo and rebuilds scope entries from
+      // disk (§6 W-2; the x-role wipe is the accepted condition, D28).
+      await this.api.remakeIngredients(this.mustRepo());
       report.classification = 'reconciled';
       report.regeneratedPaths = paths;
       return;
