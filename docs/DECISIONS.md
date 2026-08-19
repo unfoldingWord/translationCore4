@@ -705,10 +705,10 @@ sections and for per-statement mutation hardening]
 ## D52 (2026-08-17, project-owner ruling) **The custom change journal is retained. A
 proven open-source merge library does not replace it.** Issue #77 asked whether one
 should, and set the bar at overwhelming evidence: a library MUST meet every requirement,
-remove a substantial part of the custom code, and carry less long-term risk. Six parallel
-investigations ran on 2026-08-17. Evidence: the closing comment of issue #77
-(`github.com/unfoldingWord/translationCore4/issues/77#issuecomment-5316664513`); every
-number below comes from a command that was run or a source file that was read that day.
+remove a substantial part of the custom code, and carry less long-term risk. The first
+survey ran on 2026-08-17. A complete Automerge proof re-evaluated the ruling from the user
+requirements on 2026-08-19. Evidence: `evidence/automerge-proof-2026-08-19.md`; disposable
+proof: `../spike/offline-merge/automerge/`.
 
 **What was tested.** A survey of 13 candidate libraries that merge locally found three
 real contenders — Automerge, Yjs and Loro — and all three were tested. The others fail on
@@ -718,58 +718,66 @@ and the same failure. Two widely used libraries were rejected for CORRECTNESS: G
 resolves conflicts by timestamp with no record of operations, and RxDB's default conflict
 handler drops data.
 
-**Two requirements every candidate failed.** (1) *Refuse a bad contribution.* No candidate
-can remove a change once any honest peer has built on it: each change names the changes it
-was built on, so deleting one breaks everything that followed. The only remedy is a new
-change that reverses the effect. The current design is stronger — it rejects one
-contribution in a disposable copy and leaves the accepted project byte-identical
-(conformance case J20, ten sabotage cases plus a positive control). (2) *Keep full history
-permanently.* TWO of the three lose history by default, and the third rewrites accepted
-storage. Yjs garbage collection is ON by default and discards deleted content. A Loro
-shallow snapshot leaves a genuinely old peer silently stuck. `automerge-repo` COMPACTS —
-and the first version of this entry called that history loss, which is WRONG: at
-v2.6.0-alpha.3 `#saveTotal` writes `A.save(doc)` to the new snapshot key BEFORE removing
-the superseded chunks, and an Automerge document chunk carries the complete change history
-by specification. [VERIFIED 2026-08-19 — `StorageSubsystem.ts` read at tag
-v2.6.0-alpha.3, lines 286-327; automerge.org binary-format specification: "A document
-always contains a complete history of changes".] What Automerge's compaction does violate
-is this project's separate immutability rule — §8.1 permits no compaction, rewriting or
-pruning in `v: 1` (R-8.1.4, R-8.1.15) — so it fails an accepted-bytes-never-change
-requirement, not the history requirement. It is also still pre-release. Yjs additionally
-fails the history requirement structurally: it keeps no author and no wall-clock time per
-change, so a separate history log would have to be built beside it.
+**Automerge passes the safety contract only in a constrained role.** Automerge 3.4.1 can
+hold an append-only causal set of validated tC4 action bodies. It MUST NOT merge verse text
+directly or hold mutable nested project state. The proof reproduced both hazards: concurrent
+whole-verse text rewrites produced a novel interleaved sentence without a conflict, and a
+parent deletion hid a concurrent nested edit from the current projection. The safe model
+keeps tC4's action schema and fold. It adds canonical JSON envelopes, SHA-256, Ed25519 actor
+signatures, a 4 MiB limit, immutable contribution files and a quarantine boundary.
 
-**The measured size result.** `conformance/journal/` is 2575 lines. Every line was
-classified once: merge machinery 738 (28.7%), translation rules 925 (35.9%), input
-validation 912 (35.4%). **1837 lines — 71.3% — stay whatever we choose.** The 738 ceiling
-is not reachable: six of those items are merge rules shaped by translation structure, and
-the sealed container of §8.1 is needed underneath every candidate. The realistic removal
-is **138 to 261 lines, 5.4% to 10.1%**. Not counted on the library's side: the adapter
-each one needs, a builder for the five review lists that no candidate produces, and the
-3732-line conformance suite, which does not transfer.
+**The first ruling's load-bearing objection was wrong.** An already-accepted Automerge
+change cannot be removed after a peer builds on it. An UNACCEPTED contribution can be
+refused. Intake applies the received causal closure to a disposable clone, validates every
+Automerge operation and tC4 action, runs the complete fold, and accepts nothing if any
+ancestor or descendant is invalid. The proof rejected a bad ancestor plus dependent honest
+work as one quarantined closure and left the accepted document byte-identical. This meets
+the user rule: work is accepted or reported for recovery; it never disappears silently.
 
-**The ruling.** A library removes 5% to 10%, gives up the strongest guarantee we have, and
-brings a storage default this format does not permit — history loss in two candidates,
-rewriting of accepted bytes in the third. The load-bearing failure is requirement 4, which
-all three fail and the correction above does not touch. The bar is not met. The custom journal is retained
-and §8 stands. **What this ruling rests on, stated plainly.** Issue #77 set an acceptance bar the closing
-comment does NOT meet: it asked for versioned executed output per candidate and per
-requirement, per-candidate deletion counts, and packaged size and start-up measurements.
-What exists is aggregate prose, with no persisted run matrix, no spike, and no line-range
-classification artifact. The size and start-up measurements were never taken — issue #80
-exists precisely because they are missing. **The owner ruled before that bar was met.**
-That is recorded here rather than implied, because this entry closes an architecture to
-re-proposal and a reader must be able to see exactly how much evidence stands behind it.
-Requirement 4 — no candidate can refuse a contribution once a peer has built on it — is
-the finding that carries the ruling, and it is reproducible from the cited comment. The
-history and size arguments are supporting, and one of them needed the correction above.
+**Full history still needs project-owned storage.** Yjs garbage collection is ON by default
+and discards deleted content. A Loro shallow snapshot can strand an old peer. The first
+version of this entry also called Automerge compaction history loss. That was WRONG.
+`A.save` carries the complete change history; `automerge-repo` compaction rewrites its
+storage representation. The safe proof does not use that storage layer. Signed contribution
+bundles are the immutable durable source; `A.save` is only a rebuildable cache. The project
+still owns the seal, signatures, validation, quarantine, crash recovery and fallback.
 
-**The journal architecture is not open for re-proposal** (`CONTRIBUTING.md`
-hard rule 5); a library proposal that does not first answer the two failures above is out
-of scope. The investigation also produced work we keep: it exposed three gaps in our own
-proof, now issues #78 (no history view exists, and requirement 5 has no test), #79
-(nothing proves that no operation can remove history), and #80 (no build size, start-up
-cost or fold performance number exists).
+**The proof passes; the value test fails.** All 15 Automerge cases passed. They cover
+concurrent verse candidates, send-without-receive, exact TIT and JON rebuilds, hostile
+intake, readable history, 200 delivery permutations, immutable replay, two crash points,
+8,640 bit flips, 1,080 truncations, three Automerge versions and USFM fallback. The existing
+journal suite also passed 336/336 with normative coverage 72/72. The safe production-path
+spike is 415 lines and calls the existing `sealAction`, `validateAction` and `fold`; it does
+not replace the domain grammar, translation rules, USFM codec or review outputs.
+
+Packaging adds a 3,571.26 kB WASM file (1,128.42 kB gzip) plus 93.43 kB and 1.61 kB
+JavaScript files (20.33 kB and 0.92 kB gzip). Twenty fresh browser contexts measured a
+38.261334000000716 ms median wall-time increase. At 50,001 actions, one long-lived
+Automerge document took 418,420.64 ms to author and 45,510 ms to receive in 13 grouped
+batches; the current sealed-action path authored the same count in 899.24 ms. The grouped
+Automerge ZIP was reasonable — 15,756,423 bytes versus 18,905,925 bytes for the custom
+segments — so archive size is not the rejection. The dependency, key/storage lifecycle,
+long-history performance and absence of meaningful code deletion are.
+
+**The artifacts travel with the project.** Four canonical JSON ingredients, including a
+2,512,429-byte signed contribution bundle, survived the live Pankosmia Web 0.18.5 raw
+ingredient API, metadata rebuild, Git commit, complete Burrito ZIP export and ZIP import,
+byte-for-byte. Segment rotation below the existing 4 MiB limit is required. If a journal is
+unmergeable, the fallback keeps all USFM sources and same-verse alternatives. A checking
+fact such as "Ruth has already been checked" travels separately instead of being guessed.
+
+**The ruling.** The custom journal is retained and §8 stands. Automerge is capable enough,
+but its incremental benefit is not worth the measured cost and added lifecycle. The other
+surveyed candidates do not present a stronger fit: Yjs needs a parallel authored history,
+Loro retains the history/old-peer concern, last-write-wins candidates fail no-silent-loss,
+and server-dependent candidates fail independent offline work. **The journal architecture
+is not open for re-proposal** (`CONTRIBUTING.md` hard rule 5). A future proposal needs new
+executed evidence that it deletes substantial project-owned code, preserves hostile-intake
+quarantine and permanent authored history, and has bounded long-history performance.
+
+The investigation also produced work we keep: issues #78 (history view), #79 (permanent
+history proof), and #80 (product size, start-up and scale evidence). The dated Automerge
+record closes the candidate evidence gap; those issues continue to govern product proof.
 
 ## D53 (2026-08-17, project-owner ruling) **Starting work needs no shared root. Joining a
 project and merging a project are separate acts.** Five parts. The ruling answers the
