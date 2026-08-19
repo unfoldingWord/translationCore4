@@ -1,6 +1,7 @@
 // J12 — Upgrade pinned resources: explicit upgrade → re-derive → carry over / invalidate
 // JOURNEYS-AND-GAPS §2 J12 · PRD FR-22 · TEST-PLAN E-J12 · Increment 5
 import { test } from '@playwright/test';
+import { verifyAllJournaledProjects } from './helpers/journal';
 
 test.describe('J12 — a facilitator upgrades the pinned resources', () => {
   test.fixme(
@@ -18,4 +19,10 @@ test.describe('J12 — a facilitator upgrades the pinned resources', () => {
     { tag: ['@inc5', '@J12'] },
     async () => {},
   );
+});
+
+// Issue #62 teardown: after this journey's mutations, every journaled local
+// project must be a verified byte-for-byte materialization of its journal.
+test.afterAll(async () => {
+  await verifyAllJournaledProjects();
 });
