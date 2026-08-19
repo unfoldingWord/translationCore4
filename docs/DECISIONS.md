@@ -724,12 +724,20 @@ was built on, so deleting one breaks everything that followed. The only remedy i
 change that reverses the effect. The current design is stronger — it rejects one
 contribution in a disposable copy and leaves the accepted project byte-identical
 (conformance case J20, ten sabotage cases plus a positive control). (2) *Keep full history
-permanently.* Every candidate ships a DEFAULT that loses history: `automerge-repo` deletes
-per-change files when it compacts (and is still pre-release), Yjs garbage collection is on
-by default, and a Loro shallow snapshot leaves a genuinely old peer silently stuck. For a
-project whose first rule is that losing content is unacceptable, that is a downgrade. Yjs
-additionally fails the history requirement structurally: it keeps no author and no
-wall-clock time per change, so a separate history log would have to be built beside it.
+permanently.* TWO of the three lose history by default, and the third rewrites accepted
+storage. Yjs garbage collection is ON by default and discards deleted content. A Loro
+shallow snapshot leaves a genuinely old peer silently stuck. `automerge-repo` COMPACTS —
+and the first version of this entry called that history loss, which is WRONG: at
+v2.6.0-alpha.3 `#saveTotal` writes `A.save(doc)` to the new snapshot key BEFORE removing
+the superseded chunks, and an Automerge document chunk carries the complete change history
+by specification. [VERIFIED 2026-08-19 — `StorageSubsystem.ts` read at tag
+v2.6.0-alpha.3, lines 286-327; automerge.org binary-format specification: "A document
+always contains a complete history of changes".] What Automerge's compaction does violate
+is this project's separate immutability rule — §8.1 permits no compaction, rewriting or
+pruning in `v: 1` (R-8.1.4, R-8.1.15) — so it fails an accepted-bytes-never-change
+requirement, not the history requirement. It is also still pre-release. Yjs additionally
+fails the history requirement structurally: it keeps no author and no wall-clock time per
+change, so a separate history log would have to be built beside it.
 
 **The measured size result.** `conformance/journal/` is 2575 lines. Every line was
 classified once: merge machinery 738 (28.7%), translation rules 925 (35.9%), input
@@ -741,8 +749,22 @@ each one needs, a builder for the five review lists that no candidate produces, 
 3732-line conformance suite, which does not transfer.
 
 **The ruling.** A library removes 5% to 10%, gives up the strongest guarantee we have, and
-inherits a default that loses history. The bar is not met. The custom journal is retained
-and §8 stands. **The journal architecture is not open for re-proposal** (`CONTRIBUTING.md`
+brings a storage default this format does not permit — history loss in two candidates,
+rewriting of accepted bytes in the third. The load-bearing failure is requirement 4, which
+all three fail and the correction above does not touch. The bar is not met. The custom journal is retained
+and §8 stands. **What this ruling rests on, stated plainly.** Issue #77 set an acceptance bar the closing
+comment does NOT meet: it asked for versioned executed output per candidate and per
+requirement, per-candidate deletion counts, and packaged size and start-up measurements.
+What exists is aggregate prose, with no persisted run matrix, no spike, and no line-range
+classification artifact. The size and start-up measurements were never taken — issue #80
+exists precisely because they are missing. **The owner ruled before that bar was met.**
+That is recorded here rather than implied, because this entry closes an architecture to
+re-proposal and a reader must be able to see exactly how much evidence stands behind it.
+Requirement 4 — no candidate can refuse a contribution once a peer has built on it — is
+the finding that carries the ruling, and it is reproducible from the cited comment. The
+history and size arguments are supporting, and one of them needed the correction above.
+
+**The journal architecture is not open for re-proposal** (`CONTRIBUTING.md`
 hard rule 5); a library proposal that does not first answer the two failures above is out
 of scope. The investigation also produced work we keep: it exposed three gaps in our own
 proof, now issues #78 (no history view exists, and requirement 5 has no test), #79
