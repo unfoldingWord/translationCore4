@@ -702,6 +702,83 @@ happened under the D55 gate (rule-id coverage enforced by a live-check gate, the
 data-loss defects fixed red-first); D51's conditions remain the standing bar for the sync
 sections and for per-statement mutation hardening]
 
+## D52 (2026-08-17, project-owner ruling) **The custom change journal is retained. A
+proven open-source merge library does not replace it.** Issue #77 asked whether one
+should, and set the bar at overwhelming evidence: a library MUST meet every requirement,
+remove a substantial part of the custom code, and carry less long-term risk. The first
+survey ran on 2026-08-17. A complete Automerge proof re-evaluated the ruling from the user
+requirements on 2026-08-19. Evidence: `evidence/automerge-proof-2026-08-19.md`; disposable
+proof: `../spike/offline-merge/automerge/`.
+
+**What was tested.** A survey of 13 candidate libraries that merge locally found three
+real contenders — Automerge, Yjs and Loro — and all three were tested. The others fail on
+maturity, on scope, or because they need a server to merge at all. `y-crdt`/`yrs` is not a
+fourth option: it is wire-compatible with Yjs by design, so it carries the same data model
+and the same failure. Two widely used libraries were rejected for CORRECTNESS: GunDB
+resolves conflicts by timestamp with no record of operations, and RxDB's default conflict
+handler drops data.
+
+**Automerge passes the safety contract only in a constrained role.** Automerge 3.4.1 can
+hold an append-only causal set of validated tC4 action bodies. It MUST NOT merge verse text
+directly or hold mutable nested project state. The proof reproduced both hazards: concurrent
+whole-verse text rewrites produced a novel interleaved sentence without a conflict, and a
+parent deletion hid a concurrent nested edit from the current projection. The safe model
+keeps tC4's action schema and fold. It adds canonical JSON envelopes, SHA-256, Ed25519 actor
+signatures, a 4 MiB limit, immutable contribution files and a quarantine boundary.
+
+**The first ruling's load-bearing objection was wrong.** An already-accepted Automerge
+change cannot be removed after a peer builds on it. An UNACCEPTED contribution can be
+refused. Intake applies the received causal closure to a disposable clone, validates every
+Automerge operation and tC4 action, runs the complete fold, and accepts nothing if any
+ancestor or descendant is invalid. The proof rejected a bad ancestor plus dependent honest
+work as one quarantined closure and left the accepted document byte-identical. This meets
+the user rule: work is accepted or reported for recovery; it never disappears silently.
+
+**Full history still needs project-owned storage.** Yjs garbage collection is ON by default
+and discards deleted content. A Loro shallow snapshot can strand an old peer. The first
+version of this entry also called Automerge compaction history loss. That was WRONG.
+`A.save` carries the complete change history; `automerge-repo` compaction rewrites its
+storage representation. The safe proof does not use that storage layer. Signed contribution
+bundles are the immutable durable source; `A.save` is only a rebuildable cache. The project
+still owns the seal, signatures, validation, quarantine, crash recovery and fallback.
+
+**The proof passes; the value test fails.** All 15 Automerge cases passed. They cover
+concurrent verse candidates, send-without-receive, exact TIT and JON rebuilds, hostile
+intake, readable history, 200 delivery permutations, immutable replay, two crash points,
+8,640 bit flips, 1,080 truncations, three Automerge versions and USFM fallback. The existing
+journal suite also passed 336/336 with normative coverage 72/72. The safe production-path
+spike is 415 lines and calls the existing `sealAction`, `validateAction` and `fold`; it does
+not replace the domain grammar, translation rules, USFM codec or review outputs.
+
+Packaging adds a 3,571.26 kB WASM file (1,128.42 kB gzip) plus 93.43 kB and 1.61 kB
+JavaScript files (20.33 kB and 0.92 kB gzip). Twenty fresh browser contexts measured a
+38.261334000000716 ms median wall-time increase. At 50,001 actions, one long-lived
+Automerge document took 418,420.64 ms to author and 45,510 ms to receive in 13 grouped
+batches; the current sealed-action path authored the same count in 899.24 ms. The grouped
+Automerge ZIP was reasonable — 15,756,423 bytes versus 18,905,925 bytes for the custom
+segments — so archive size is not the rejection. The dependency, key/storage lifecycle,
+long-history performance and absence of meaningful code deletion are.
+
+**The artifacts travel with the project.** Four canonical JSON ingredients, including a
+2,512,429-byte signed contribution bundle, survived the live Pankosmia Web 0.18.5 raw
+ingredient API, metadata rebuild, Git commit, complete Burrito ZIP export and ZIP import,
+byte-for-byte. Segment rotation below the existing 4 MiB limit is required. If a journal is
+unmergeable, the fallback keeps all USFM sources and same-verse alternatives. A checking
+fact such as "Ruth has already been checked" travels separately instead of being guessed.
+
+**The ruling.** The custom journal is retained and §8 stands. Automerge is capable enough,
+but its incremental benefit is not worth the measured cost and added lifecycle. The other
+surveyed candidates do not present a stronger fit: Yjs needs a parallel authored history,
+Loro retains the history/old-peer concern, last-write-wins candidates fail no-silent-loss,
+and server-dependent candidates fail independent offline work. **The journal architecture
+is not open for re-proposal** (`CONTRIBUTING.md` hard rule 5). A future proposal needs new
+executed evidence that it deletes substantial project-owned code, preserves hostile-intake
+quarantine and permanent authored history, and has bounded long-history performance.
+
+The investigation also produced work we keep: issues #78 (history view), #79 (permanent
+history proof), and #80 (product size, start-up and scale evidence). The dated Automerge
+record closes the candidate evidence gap; those issues continue to govern product proof.
+
 ## D53 (2026-08-17, project-owner ruling) **Starting work needs no shared root. Joining a
 project and merging a project are separate acts.** Five parts. The ruling answers the
 `base: null` collision found by the round-11 adversarial review, and the product question
