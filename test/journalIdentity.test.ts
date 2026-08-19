@@ -252,6 +252,44 @@ describe('#61 review F1: the first-run secret mint is atomic', () => {
   });
 });
 
+describe('#61 review F5: the repoPath is VALIDATED before any derivation', () => {
+  // The derivation used to accept any string, so a malformed path derived an id
+  // in silence (review finding F5, 2026-08-19). The rule is the HTTP surface's
+  // own: exactly 3 non-empty safe segments (serverApi.assertRepoPath).
+  const malformed = [
+    '_local_/_local_/proj/', // trailing slash — 4 segments, one empty
+    '_local_/proj', // 2 segments
+    '_local_/_local_/proj/book', // 4 segments
+    '', // empty
+    '_local_//proj', // empty segment
+    '_local_/_local_/pro j', // whitespace in a segment
+    '_local_/_local_/.hidden', // dot-prefixed segment
+  ];
+
+  it.each(malformed)('refuses to derive an actor id for %j', async (repoPath) => {
+    await expect(deriveActorId(SECRET_A, repoPath)).rejects.toThrow(/repo path/);
+  });
+
+  it('refuses to open a store on a malformed repoPath, before any write', async () => {
+    const rig = fakeIngredientRig();
+    const api = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: rig.fetchFn });
+    const store = new JournalStore({ api, repoPath: '_local_/_local_/proj/', kv: memKv() });
+    await expect(store.open()).rejects.toThrow(/repo path/);
+    expect([...rig.files.keys()]).toEqual([]);
+  });
+
+  it('does NOT case-fold: two case variants stay two ids (validation, not canonicalization)', async () => {
+    // Deliberate, and stated in the fix: a case-sensitive filesystem can host
+    // two genuinely different projects whose paths differ only in case. Folding
+    // them would merge two projects into ONE actor identity — the D53 split,
+    // inverted. Two ids give the visible fork D53(c) chooses.
+    const lower = await deriveActorId(SECRET_A, '_local_/_local_/proj');
+    const upper = await deriveActorId(SECRET_A, '_local_/_local_/PROJ');
+    expect(upper).not.toBe(lower);
+    expect(upper).toMatch(ACTOR_RE);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Minimal fakes (criterion 3 needs a working open(): actor.json + paths routes)
 // ---------------------------------------------------------------------------

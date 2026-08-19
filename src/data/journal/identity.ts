@@ -18,6 +18,8 @@
 // identities, so merging two of one's own projects reads as two actors (a visible
 // fork), never as one actor's linear history silently discarding one side (§8.6).
 
+import { assertRepoPath } from '../serverApi';
+
 /** Installation-local key/value storage, injected so tests use a Map-backed fake.
  * The outbox (journalStore.ts) shares this store: `keys` scans staged intents by
  * prefix and `delete` clears one after a confirmed accept. */
@@ -157,6 +159,18 @@ const ACTOR_SLUG_RE = /^[a-z0-9-]{4,32}$/;
  * repoPath = same id), project-scoped (different repoPath = different id, D53c),
  * and one-way (HMAC — the id exposes nothing of the secret). */
 export const deriveActorId = async (secret: string, repoPath: string): Promise<string> => {
+  // VALIDATE the repoPath before deriving from it (review finding F5,
+  // 2026-08-19). The derivation used to accept any string, so a malformed path
+  // or a trailing-slash variant derived an id in silence. This is strict
+  // validation, NOT canonicalization — the same three-segment rule the HTTP
+  // surface applies (serverApi.assertRepoPath), reused so one path cannot be
+  // legal for a request and illegal for an id. In particular the case is NEVER
+  // folded: a case-sensitive filesystem can host two genuinely different
+  // projects whose paths differ only in case, and folding them would merge two
+  // projects into ONE actor identity — the D53 split, inverted. Two case
+  // variants of one project on a case-insensitive filesystem therefore still
+  // derive two ids: the visible-fork outcome D53(c) chooses, never a silent loss.
+  assertRepoPath(repoPath);
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey(
     'raw',
