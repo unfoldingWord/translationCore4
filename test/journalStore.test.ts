@@ -7,7 +7,12 @@ import { describe, expect, it } from 'vitest';
 import { ServerApi } from '../src/data/serverApi';
 import { forgetSharedClocks, JournalStore } from '../src/data/journal/journalStore';
 import type { KvStore } from '../src/data/journal/identity';
-import type { JournalEvent } from '../src/data/journal/seal';
+import {
+  CONTAINER_FRAME,
+  sealAction,
+  SEGMENT_LIMIT,
+  type JournalEvent,
+} from '../src/data/journal/seal';
 import { SLOT } from '../conformance/journal/grammar.mjs';
 
 // conformance/journal/files.mjs is Node-bound (fs, node:crypto). The app's
@@ -489,4 +494,69 @@ describe('#61 review F2: no duplicate ts, no silent overwrite of a staged action
     expect(await kv.keys(`outbox:${REPO}:${store.actorId}:`)).toHaveLength(0);
     expect(rig.writes.at(-1)?.payload).toBe(refSealAction(events));
   });
+});
+
+// ---------------------------------------------------------------------------
+// F. Review finding F6 (adversarial review of #61, 2026-08-19) — the container
+// frame allowance is a SHARED constant: changing it in seal.ts alone used to
+// leave every test passing. One boundary test now pins the store's accept/refuse
+// edge to the reference's, computed from the constant, never a byte literal.
+// ---------------------------------------------------------------------------
+
+describe('#61 review F6: the seal size boundary agrees with the reference', () => {
+  const BOUNDARY_ACTOR = 'a0123456789abcde';
+  const BOUNDARY_TS = `2026-08-18T09:00:00.000Z|0000|${BOUNDARY_ACTOR}`;
+  const utf8Len = (text: string): number => new TextEncoder().encode(text).length;
+  // settings.set is the LEANEST action shape: its body carries few quotes, so
+  // JSON-escaping the body into the container stays inside the frame allowance
+  // and the FRAME is what decides the edge (asserted below).
+  const action = (payload: string): JournalEvent[] => [
+    settingsEvent(BOUNDARY_ACTOR, BOUNDARY_TS, payload),
+  ];
+  const bodyLen = (payload: string): number => utf8Len(JSON.stringify({ events: action(payload) }));
+
+  it('the largest accepted and the smallest refused action are the SAME for the store and the reference', async () => {
+    // Every added ASCII character adds exactly one byte to the body AND one to
+    // the container, so the container overhead is a constant — measured here
+    // from the reference's own bytes, never assumed.
+    const overhead = utf8Len(refSealAction(action('x'))) - bodyLen('x');
+    // The store accepts while BOTH caps hold: body ≤ limit − frame (the cheap
+    // pre-check) and body + overhead ≤ limit (the real container).
+    const largestBody = SEGMENT_LIMIT - Math.max(CONTAINER_FRAME, overhead);
+    const base = bodyLen('');
+    const payloadOf = (targetBody: number): string => 'x'.repeat(targetBody - base);
+
+    const storeAccepts = async (payload: string): Promise<boolean> => {
+      try {
+        await sealAction(action(payload));
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const referenceAccepts = (payload: string): boolean => {
+      try {
+        refSealAction(action(payload));
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    const largest = payloadOf(largestBody);
+    const smallestRefused = payloadOf(largestBody + 1);
+    // PARITY at the exact edge, in both directions.
+    expect(await storeAccepts(largest)).toBe(referenceAccepts(largest));
+    expect(await storeAccepts(smallestRefused)).toBe(referenceAccepts(smallestRefused));
+    // …and the edge really is an edge: accepted, then refused.
+    expect(await storeAccepts(largest)).toBe(true);
+    expect(await storeAccepts(smallestRefused)).toBe(false);
+    // The accepted bytes are byte-identical to the reference's at the boundary.
+    expect(await sealAction(action(largest))).toBe(refSealAction(action(largest)));
+    // SENSITIVITY GUARD, last: this test probes the FRAME only while the frame
+    // is the binding cap. If a future edit fattens the action shape past the
+    // allowance, the container cap would decide the edge and a frame divergence
+    // would slip through again — which is exactly how F6 stayed invisible.
+    expect(overhead).toBeLessThanOrEqual(CONTAINER_FRAME);
+  }, 120_000);
 });

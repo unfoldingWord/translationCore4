@@ -29,9 +29,12 @@ export interface JournalEvent {
 }
 
 export const SEGMENT_LIMIT = 4 * 1024 * 1024; // 4 MiB (§8.1, R-8.1.9)
-// The container frame allowance — MUST match the reference files.mjs value, so
-// the store and the reference refuse the same oversize actions.
-const CONTAINER_FRAME = 128;
+/** The container frame allowance — MUST match the reference files.mjs value, so
+ * the store and the reference refuse the same oversize actions. EXPORTED for the
+ * boundary-parity test, which computes the exact accept/refuse boundary from
+ * this constant instead of a hardcoded byte count (review finding F6,
+ * 2026-08-19: a divergence here used to survive the whole suite). */
+export const CONTAINER_FRAME = 128;
 
 const utf8ByteLength = (text: string): number => new TextEncoder().encode(text).length;
 
