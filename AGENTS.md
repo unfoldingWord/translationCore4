@@ -63,7 +63,7 @@ silently build the alternative.
 
 ## Skips are not failures
 
-32 tests skip on a clean clone. Each names its missing prerequisite (the Pankosmia rig,
+37 tests skip on a clean clone. Each names its missing prerequisite (the Pankosmia rig,
 or a sibling `sample-burrito` checkout). Do not "fix" a skip by inventing the missing
 data, and do not report a skip as a defect.
 
