@@ -1,7 +1,10 @@
 // BurritoStore — the persistence interface of record (basis docs/ARCHITECTURE.md
 // §3.2, with the D1–D10 revisions recorded in docs/guided-build/ARCHITECTURE.md §6).
-// Implementations: FixtureStore (fixtureBurritoStore.ts, Increment 0) and
-// HttpStore over pankosmia-web (Increment 3, BACKLOG I1.2.1/I1.2.2).
+// Since issue #62 the sole production implementation is JournalingStore
+// (src/data/journal/journalingStore.ts), which journals every mutation as an
+// immutable §8.5 action before any derived file changes; HttpStore is the raw
+// pankosmia-web surface it drives, and application code never touches it
+// (test/noBypass.test.ts).
 import type { AlignmentFile } from './align/zaln';
 
 export interface ProjectSummary {

@@ -220,6 +220,25 @@ describe('#62 crash atomicity: after publication, before regeneration', () => {
   });
 });
 
+describe('#62 crash atomicity: during the final server commit', () => {
+  it('a failed add-and-commit leaves the installed derived set standing; reopen is converged and a retried commit succeeds', async () => {
+    const world = await setup();
+    const { rig, api, store, restart } = world;
+    await store.writeBook('TIT', TIT_USFM.replace('___', 'Nueva vida.'));
+    rig.failOn((ctx) => ctx.route.includes('add-and-commit'));
+    await expect(store.commit('checkpoint (tC4)')).rejects.toThrow(/injected failure/);
+    expect(rig.repos.get(REPO)?.commits ?? []).not.toContain('checkpoint (tC4)');
+    expect(rig.repos.get(REPO)?.files.get('TIT.usfm')).toContain('Nueva vida.'); // installed set stands
+
+    const store2 = restart();
+    await store2.open(REPO);
+    expect(store2.lastOpenReport?.classification).toBe('converged');
+    await store2.commit('checkpoint (tC4)');
+    expect(rig.repos.get(REPO)?.commits).toContain('checkpoint (tC4)');
+    await expectVerified(api);
+  });
+});
+
 describe('#62 the coordinated gateway change', () => {
   const plannedFile = () => ({
     schemaVersion: 1,
