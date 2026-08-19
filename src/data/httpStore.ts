@@ -124,9 +124,13 @@ export const md5Hex = (text: string): string => {
  * machine (D39, as tC3 did), so the only concurrency to serialize is this one
  * copy's own overlapping async writes. Two machines editing one project is NOT
  * a lock problem — each has its own git clone — and is handled by the Phase-2
- * journal merge (BURRITO-SPEC §8, gated after Phase 1), not here. */
+ * journal merge (BURRITO-SPEC §8, gated after Phase 1), not here.
+ *
+ * Exported (ONE lock map per process): journal/journalStore.ts serializes its
+ * read-check-write segment publishes through the same chains, so a journal write
+ * and a sidecar write to one path can never interleave. */
 const writeChains = new Map<string, Promise<unknown>>();
-const withPathLock = <T>(key: string, fn: () => Promise<T>): Promise<T> => {
+export const withPathLock = <T>(key: string, fn: () => Promise<T>): Promise<T> => {
   const prior = writeChains.get(key) ?? Promise.resolve();
   const run = prior.then(fn, fn);
   // Store a settled-either-way marker so a rejection never breaks the chain.
