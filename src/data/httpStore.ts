@@ -14,7 +14,6 @@
 //   - Nothing here auto-commits (W-4): commit(message) is invoked only by the
 //     checkpoint scheduler.
 import type {
-  BurritoStore,
   Decision,
   DecisionContextId,
   DecisionFile,
@@ -216,7 +215,7 @@ const normalizeVerseRecord = (record: AlignmentVerseRecord): AlignmentVerseRecor
 /** MUST normalize occurrence/occurrences to integers at the store boundary
  * (I-2): USFM attribute parsing yields strings and the alignment libraries
  * fail wholesale on them (PLATFORM-NOTES #2). */
-const normalizeAlignmentFile = (data: AlignmentFile): AlignmentFile => ({
+export const normalizeAlignmentFile = (data: AlignmentFile): AlignmentFile => ({
   ...data,
   chapters: Object.fromEntries(
     Object.entries(data.chapters).map(([chapter, verses]) => [
@@ -232,7 +231,7 @@ const normalizeAlignmentFile = (data: AlignmentFile): AlignmentFile => ({
  * occurrence). Chapter and verse compare as String(...) BOTH sides — a span
  * verse is its exact span string ("9-10") and Number("9-10") is NaN; never
  * Number()-coerce (BURRITO-SPEC §5.2, harness check 24). */
-const identityKey = (contextId: DecisionContextId): string =>
+export const identityKey = (contextId: DecisionContextId): string =>
   [
     contextId.checkId,
     contextId.reference.bookId.toLowerCase(),
@@ -269,7 +268,7 @@ const normalizeContextId = (contextId: DecisionContextId): DecisionContextId => 
     : {}),
 });
 
-const normalizeDecision = (decision: Decision): Decision => {
+export const normalizeDecision = (decision: Decision): Decision => {
   // PLATFORM-NOTES #14: empty selections coerce to false — [] is not used.
   const selections = Array.isArray(decision.selections)
     ? decision.selections.length === 0
@@ -297,7 +296,13 @@ const normalizeDecision = (decision: Decision): Decision => {
 // The store
 // ---------------------------------------------------------------------------
 
-export class HttpStore implements BurritoStore {
+// Since issue #62 HttpStore is the RAW server surface, deliberately NOT an
+// implementation of the BurritoStore write boundary: every canonical mutation
+// goes through JournalingStore (src/data/journal/journalingStore.ts), which
+// journals the action FIRST and drives this class for the derived writes.
+// Application code must not construct or call this class directly
+// (test/noBypass.test.ts enforces the boundary).
+export class HttpStore {
   readonly api: ServerApi;
   private boundRepoPath: string | null;
 

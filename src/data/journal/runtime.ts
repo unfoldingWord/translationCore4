@@ -23,6 +23,7 @@ import {
 } from '../../../conformance/journal/checkpoint.mjs';
 import { reconcileUsfm as reconcileUsfmRef, seedFromSidecars as seedFromSidecarsRef } from '../../../conformance/journal/reconcile.mjs';
 import { makeClock as makeClockRef } from '../../../conformance/journal/hlc.mjs';
+import { normalizeEvent as normalizeEventRef } from '../../../conformance/journal/schema.mjs';
 import { toNfc as toNfcRef } from '../../../conformance/journal/grammar.mjs';
 import type { JournalEvent } from './seal';
 
@@ -128,3 +129,8 @@ export const makeClock = makeClockRef as (
 
 /** I-4 content normalization (write-side NFC). */
 export const toNfc = toNfcRef as <T>(value: T) => T;
+
+/** The I-4 seal transform for ONE event (content NFC'd, identity untouched) —
+ * what the sealed bytes will actually carry. The seed verifier folds the
+ * normalized form so what it proves is what a reader will fold. */
+export const normalizeEvent = normalizeEventRef as (event: JournalEvent) => JournalEvent;

@@ -381,6 +381,10 @@ export class JournalStore {
    * republished from the outbox; any left over is a diagnosable stop). */
   async readUnion(): Promise<{
     events: JournalEvent[];
+    /** One entry per accepted SEGMENT (= one action), ts-sorted across actors —
+     * the recovery classifier's "journal is ahead by the last action" prefix
+     * check peels these from the tail. */
+    actions: Array<{ actor: string; ts: string; events: JournalEvent[] }>;
     actors: string[];
     misnamed: Array<{ actor: string; name: string }>;
     invalid: Array<{ actor: string; name: string; reason: string }>;
@@ -388,7 +392,7 @@ export class JournalStore {
     const own = this.actorId; // throws before any read when not open
     const byActor = groupSegmentPaths(await this.api.listPaths(this.repoPath));
     if (!byActor.has(own)) byActor.set(own, []);
-    const events: JournalEvent[] = [];
+    const actions: Array<{ actor: string; ts: string; events: JournalEvent[] }> = [];
     const misnamed: Array<{ actor: string; name: string }> = [];
     const invalid: Array<{ actor: string; name: string; reason: string }> = [];
     const actors = [...byActor.keys()].sort();
@@ -396,9 +400,11 @@ export class JournalStore {
       const listing = await this.classifySegments(actor, byActor.get(actor) ?? []);
       for (const name of listing.misnamed) misnamed.push({ actor, name });
       for (const entry of listing.invalid) invalid.push({ actor, ...entry });
-      for (const segment of listing.segments) events.push(...segment.events);
+      for (const segment of listing.segments)
+        actions.push({ actor, ts: segment.ts, events: segment.events });
     }
-    return { events, actors, misnamed, invalid };
+    actions.sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
+    return { events: actions.flatMap((a) => a.events), actions, actors, misnamed, invalid };
   }
 
   /** Durably stage one action WITHOUT publishing it — the seed path (issue #62):
