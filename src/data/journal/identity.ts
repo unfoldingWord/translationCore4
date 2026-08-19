@@ -24,6 +24,13 @@
 export interface KvStore {
   get(key: string): Promise<string | undefined>;
   set(key: string, value: string): Promise<void>;
+  /** ATOMIC get-or-create: store `value` only when `key` is absent, and return
+   * the value that is stored afterwards — the WINNER. Competing callers all get
+   * the same answer, so a get-or-create is never a read-check-write across two
+   * transactions (review finding F1, 2026-08-19: that race split the
+   * installation's identity). An implementation MUST decide and write inside ONE
+   * serialized unit. */
+  setIfAbsent(key: string, value: string): Promise<string>;
   /** All stored keys that start with `prefix`, in no guaranteed order. */
   keys(prefix: string): Promise<string[]>;
   delete(key: string): Promise<void>;
@@ -32,18 +39,33 @@ export interface KvStore {
 const DB_NAME = 'tc4-installation';
 const STORE_NAME = 'kv';
 
-/** Browser KvStore over IndexedDB (database 'tc4-installation', object store
- * 'kv'). No npm dependency: the raw IDB API is small enough to wrap here. */
-export const idbKvStore = (): KvStore => {
+const kvStores = new Map<string, KvStore>();
+
+/** Browser KvStore over IndexedDB (object store 'kv' of `dbName`, default
+ * 'tc4-installation'). No npm dependency: the raw IDB API is small enough to
+ * wrap here.
+ *
+ * MEMOIZED per database name (review finding F1): every caller in this process
+ * shares ONE store object, so the in-process work of one database is never
+ * split over two independent objects. */
+export const idbKvStore = (dbName: string = DB_NAME): KvStore => {
+  const memoized = kvStores.get(dbName);
+  if (memoized) return memoized;
+  const store = makeIdbKvStore(dbName);
+  kvStores.set(dbName, store);
+  return store;
+};
+
+const makeIdbKvStore = (dbName: string): KvStore => {
   let dbPromise: Promise<IDBDatabase> | null = null;
   const db = (): Promise<IDBDatabase> => {
     dbPromise ??= new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, 1);
+      const req = indexedDB.open(dbName, 1);
       req.onupgradeneeded = () => {
         req.result.createObjectStore(STORE_NAME);
       };
       req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error ?? new Error(`indexedDB.open(${DB_NAME}) failed`));
+      req.onerror = () => reject(req.error ?? new Error(`indexedDB.open(${dbName}) failed`));
     });
     return dbPromise;
   };
@@ -59,6 +81,33 @@ export const idbKvStore = (): KvStore => {
     });
   };
   return {
+    // ONE readwrite transaction decides and writes: IndexedDB serializes
+    // overlapping readwrite transactions on the same object store, so a
+    // competing minter either reads the stored value or waits for this one to
+    // commit — it can never observe "absent" and write a second value (F1).
+    setIfAbsent: (key, value) =>
+      db().then(
+        (database) =>
+          new Promise<string>((resolve, reject) => {
+            const transaction = database.transaction(STORE_NAME, 'readwrite');
+            const store = transaction.objectStore(STORE_NAME);
+            const read = store.get(key);
+            const fail = (error: unknown): void =>
+              reject(error instanceof Error ? error : new Error('IndexedDB request failed'));
+            transaction.onabort = () => fail(transaction.error);
+            read.onerror = () => fail(read.error);
+            read.onsuccess = () => {
+              const found: unknown = read.result;
+              if (typeof found === 'string') {
+                resolve(found);
+                return;
+              }
+              const write = store.put(value, key);
+              write.onerror = () => fail(write.error);
+              write.onsuccess = () => resolve(value);
+            };
+          }),
+      ),
     get: (key) =>
       op<unknown>('readonly', (store) => store.get(key)).then((value) =>
         typeof value === 'string' ? value : undefined,
@@ -79,28 +128,22 @@ const SECRET_KEY = 'installation-secret';
 const toHex = (bytes: Uint8Array): string =>
   [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 
-// One get-or-create per KvStore per process: the read-check-write below is not
-// atomic, so it is serialized in-process (the in-process guarantee is sufficient —
-// tC4 is single-instance per machine, D39; same posture as httpStore's path lock).
-const secretOnce = new WeakMap<KvStore, Promise<string>>();
-
 /** Get-or-create the installation secret: 32 bytes via crypto.getRandomValues,
- * hex-encoded, stored once. Module-internal — callers derive actor ids only. */
-const getInstallationSecret = (kv: KvStore): Promise<string> => {
-  let pending = secretOnce.get(kv);
-  if (!pending) {
-    pending = (async () => {
-      const existing = await kv.get(SECRET_KEY);
-      if (existing !== undefined) return existing;
-      const bytes = new Uint8Array(32);
-      crypto.getRandomValues(bytes);
-      const secret = toHex(bytes);
-      await kv.set(SECRET_KEY, secret);
-      return secret;
-    })();
-    secretOnce.set(kv, pending);
-  }
-  return pending;
+ * hex-encoded, stored once. Module-internal — callers derive actor ids only.
+ *
+ * The mint goes through `setIfAbsent`, which decides and writes in ONE
+ * serialized unit, so two concurrent first-run callers settle on ONE secret and
+ * therefore ONE actor id per project. An earlier version memoized the
+ * get-or-create per KvStore object and claimed that made it in-process safe; it
+ * did not — `idbKvStore()` returned a NEW object per call, so two callers held
+ * two memos over one database and minted two secrets (review finding F1). The
+ * fresh random bytes of a losing minter are simply dropped. */
+const getInstallationSecret = async (kv: KvStore): Promise<string> => {
+  const existing = await kv.get(SECRET_KEY);
+  if (existing !== undefined) return existing;
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return kv.setIfAbsent(SECRET_KEY, toHex(bytes));
 };
 
 /** The §8.1 actor-slug grammar the derived id must satisfy (R-8.1.11). Stated

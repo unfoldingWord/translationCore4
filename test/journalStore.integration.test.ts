@@ -48,6 +48,12 @@ const memKv = (): KvStore => {
     set: async (key, value) => {
       map.set(key, value);
     },
+    setIfAbsent: async (key, value) => {
+      const existing = map.get(key);
+      if (existing !== undefined) return existing;
+      map.set(key, value);
+      return value;
+    },
     keys: async (prefix) => [...map.keys()].filter((key) => key.startsWith(prefix)),
     delete: async (key) => {
       map.delete(key);

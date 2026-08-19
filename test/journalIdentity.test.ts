@@ -4,7 +4,12 @@
 // installation-global actor id silently discarding one project's drafts).
 import { describe, expect, it } from 'vitest';
 import { ServerApi } from '../src/data/serverApi';
-import { deriveActorId, type KvStore } from '../src/data/journal/identity';
+import {
+  actorIdFor,
+  deriveActorId,
+  idbKvStore,
+  type KvStore,
+} from '../src/data/journal/identity';
 import { JournalStore } from '../src/data/journal/journalStore';
 import { ACTOR_RE, SLOT } from '../conformance/journal/grammar.mjs';
 
@@ -175,6 +180,79 @@ describe('#61 D53(c): actor identity is scoped per project', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Review finding F1 (adversarial review of #61, 2026-08-19): the first-run
+// secret mint was a read-check-write ACROSS two IndexedDB transactions, so two
+// concurrent openers each read "no secret", each minted one, and the
+// installation ended up with TWO actor ids for one project — one actor
+// directory orphaned, and its staged outbox intents never replayed (replay
+// filters by the current id's prefix). The reads below are SNAPSHOT reads (a
+// delay before the answer), which is what two separate get transactions do.
+// ---------------------------------------------------------------------------
+
+/** A KvStore over a SHARED backing map whose get answers from a snapshot taken
+ * before the delay — the reviewer's probe C2 construction. */
+const snapshotKv = (backing: Map<string, string>): KvStore => ({
+  get: async (key) => {
+    const value = backing.get(key);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    return value;
+  },
+  set: async (key, value) => {
+    backing.set(key, value);
+  },
+  // Atomic by construction: no await between the check and the write.
+  setIfAbsent: async (key, value) => {
+    const existing = backing.get(key);
+    if (existing !== undefined) return existing;
+    backing.set(key, value);
+    return value;
+  },
+  keys: async (prefix) => [...backing.keys()].filter((key) => key.startsWith(prefix)),
+  delete: async (key) => {
+    backing.delete(key);
+  },
+});
+
+describe('#61 review F1: the first-run secret mint is atomic', () => {
+  it('two CONCURRENT get-or-create calls over ONE backing store settle on ONE secret', async () => {
+    const backing = new Map<string, string>();
+    const [first, second] = await Promise.all([
+      actorIdFor(snapshotKv(backing), PATH_ONE),
+      actorIdFor(snapshotKv(backing), PATH_ONE),
+    ]);
+    expect(second).toBe(first); // one installation, one identity
+    // …and that id is the one the SURVIVING stored secret derives, so the next
+    // app start (which reads the stored secret) holds the same identity.
+    const stored = backing.get('installation-secret');
+    expect(stored).toBeDefined();
+    expect(await deriveActorId(stored as string, PATH_ONE)).toBe(first);
+  });
+
+  it('idbKvStore is memoized per database name, so one process holds ONE object per database', () => {
+    // The database is opened lazily, so this constructs no IndexedDB request.
+    expect(idbKvStore('tc4-memo-probe')).toBe(idbKvStore('tc4-memo-probe'));
+    expect(idbKvStore('tc4-memo-probe')).not.toBe(idbKvStore('tc4-memo-probe-other'));
+  });
+
+  it('two concurrent first-run open() calls provision exactly ONE actor directory', async () => {
+    const backing = new Map<string, string>();
+    const rig = fakeIngredientRig();
+    const api = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: rig.fetchFn });
+    const results = await Promise.all([
+      new JournalStore({ api, repoPath: PATH_ONE, kv: snapshotKv(backing) }).open(),
+      new JournalStore({ api, repoPath: PATH_ONE, kv: snapshotKv(backing) }).open(),
+    ]);
+    expect(results[1].actorId).toBe(results[0].actorId);
+    const actorDirs = new Set(
+      [...rig.files.keys()]
+        .filter((ipath) => ipath.startsWith('checking/journal/'))
+        .map((ipath) => ipath.split('/')[2]),
+    );
+    expect([...actorDirs]).toEqual([results[0].actorId]); // no orphaned directory
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Minimal fakes (criterion 3 needs a working open(): actor.json + paths routes)
 // ---------------------------------------------------------------------------
 
@@ -184,6 +262,12 @@ function memKv(): KvStore {
     get: async (key) => map.get(key),
     set: async (key, value) => {
       map.set(key, value);
+    },
+    setIfAbsent: async (key, value) => {
+      const existing = map.get(key);
+      if (existing !== undefined) return existing;
+      map.set(key, value);
+      return value;
     },
     keys: async (prefix) => [...map.keys()].filter((key) => key.startsWith(prefix)),
     delete: async (key) => {

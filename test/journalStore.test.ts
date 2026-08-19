@@ -46,6 +46,13 @@ const memKv = (): KvStore & { map: Map<string, string> } => {
     set: async (key, value) => {
       map.set(key, value);
     },
+    // Atomic by construction: no await between the check and the write.
+    setIfAbsent: async (key, value) => {
+      const existing = map.get(key);
+      if (existing !== undefined) return existing;
+      map.set(key, value);
+      return value;
+    },
     keys: async (prefix) => [...map.keys()].filter((key) => key.startsWith(prefix)),
     delete: async (key) => {
       map.delete(key);
