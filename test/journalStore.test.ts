@@ -560,3 +560,81 @@ describe('#61 review F6: the seal size boundary agrees with the reference', () =
     expect(overhead).toBeLessThanOrEqual(CONTAINER_FRAME);
   }, 120_000);
 });
+
+// ---------------------------------------------------------------------------
+// G. Review finding P1-1 (second adversarial review of #61, 2026-08-19) — the
+// HLC ratchet must cover every ts the store can SEE, not only the ones its own
+// filenames carry.
+//
+// open() ratcheted from own segment FILENAMES and outbox KEY suffixes only. Both
+// carry an action's FIRST ts, so the second event of a two-event action was
+// never ratcheted past: a restart at the same physical millisecond re-issued an
+// identity an accepted event already held. Event identity IS the ts (R-8.2.5) and
+// the union de-duplicates by it, so one of the two events disappears silently.
+// No other actor's segments were read at all — a merged-in future stream did not
+// move the local clock (R-8.2.4).
+// ---------------------------------------------------------------------------
+
+describe('#61 review P1-1: the ratchet covers every visible ts (R-8.2.4/R-8.2.5)', () => {
+  it('a restart re-issues a ts strictly after EVERY event of a published multi-event action', async () => {
+    // One physical millisecond for the whole test: the counter is the only thing
+    // that separates the ts values, which is exactly the collision case.
+    const frozen = () => Date.parse('2026-08-19T09:00:00.000Z');
+    const { rig, kv, store } = await openStore({ now: frozen });
+    const events = [
+      verseEvent(store.actorId, store.issueTs(), 'primer evento\n'), // …|0000|
+      settingsEvent(store.actorId, store.issueTs(), 'segundo evento'), // …|0001|
+    ];
+    await store.publish(events);
+    // The filename carries the FIRST ts only — the second is visible in the body.
+    expect(rig.files.get(rig.key(REPO, `checking/journal/${store.actorId}/segments/${refSegmentName(events[0].ts)}`))).toBeDefined();
+
+    forgetSharedClocks(); // a restart is a fresh module state
+    const restarted = new JournalStore({
+      api: new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: rig.fetchFn }),
+      repoPath: REPO,
+      kv,
+      now: frozen,
+    });
+    await restarted.open();
+    const next = restarted.issueTs();
+    for (const event of events) expect(next > event.ts).toBe(true);
+  });
+
+  it('a staged (unpublished) multi-event action also ratchets past its LAST event', async () => {
+    const frozen = () => Date.parse('2026-08-19T09:10:00.000Z');
+    const { rig, kv, store } = await openStore({ now: frozen });
+    const events = [
+      verseEvent(store.actorId, store.issueTs(), 'intento primero\n'),
+      settingsEvent(store.actorId, store.issueTs(), 'intento segundo'),
+    ];
+    // A crash between stage and publish: the intent is durable, the segment is not.
+    await kv.set(`outbox:${REPO}:${store.actorId}:${events[0].ts}`, refSealAction(events));
+
+    forgetSharedClocks();
+    const restarted = new JournalStore({
+      api: new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: rig.fetchFn }),
+      repoPath: REPO,
+      kv,
+      now: frozen,
+    });
+    await restarted.open();
+    const next = restarted.issueTs();
+    for (const event of events) expect(next > event.ts).toBe(true);
+  });
+
+  it("a VALID segment from ANOTHER actor, dated in the future, moves this actor's clock (R-8.2.4)", async () => {
+    // The merge case: another device's journal directory arrives in the project
+    // (git pull, import) carrying events dated after the local wall clock.
+    const rig = fakeRig();
+    const foreign = 'a-foreign-actor';
+    const foreignTs = `2030-01-01T00:00:00.000Z|0000|${foreign}`;
+    rig.files.set(
+      rig.key(REPO, `checking/journal/${foreign}/segments/${refSegmentName(foreignTs)}`),
+      refSealAction([verseEvent(foreign, foreignTs, 'del futuro\n')]),
+    );
+    const { store } = await openStore({ rig, now: tickingNow('2026-08-19T09:20:00.000Z').now });
+    expect(store.actorId).not.toBe(foreign);
+    expect(store.issueTs() > foreignTs).toBe(true);
+  });
+});

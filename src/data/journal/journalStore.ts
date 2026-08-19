@@ -10,7 +10,7 @@
 // files.mjs are replaced by HTTP branches here (R-8.1.4/5 over readIngredient +
 // writeIngredient).
 import { makeClock } from '../../../conformance/journal/hlc.mjs';
-import { ipathError, isTs } from '../../../conformance/journal/grammar.mjs';
+import { actorSlugError, ipathError, isTs } from '../../../conformance/journal/grammar.mjs';
 import { ServerApi, ServerApiError } from '../serverApi';
 import { withPathLock } from '../httpStore';
 import { actorIdFor, type KvStore } from './identity';
@@ -39,6 +39,56 @@ export interface OwnSegmentListing {
    * R-8.1.2 encoding: invisible as segments, reported here (R-8.1.7 posture). */
   misnamed: string[];
 }
+
+/** One correctly named, VALID segment of one actor. `ts` is the first event's ts
+ * (= the filename, R-8.1.2); `maxTs` is the LAST event's ts, which is the
+ * action's maximum because validateAction refuses an action whose events are not
+ * strictly ascending in ts (conformance/journal/schema.mjs, 'ts-order'). */
+interface ValidSegment {
+  name: string;
+  ts: string;
+  maxTs: string;
+}
+
+/** One correctly named segment whose BYTES are unusable, with the reason
+ * validateSegment (or the actor/filename binding) gave. */
+interface InvalidSegment {
+  name: string;
+  reason: string;
+}
+
+/** One actor's segments directory, classified. Nothing is dropped in silence:
+ * every listed file is in exactly one of the three arrays (R-8.1.7). */
+interface SegmentListing {
+  segments: ValidSegment[];
+  misnamed: string[];
+  invalid: InvalidSegment[];
+}
+
+const JOURNAL_PREFIX = 'checking/journal/';
+
+/** Group every `checking/journal/<actorId>/segments/<name>` path of ONE paths
+ * listing by actor slug — EVERY actor, not just this store's (R-8.2.4 ratchets
+ * past received events, and a merged or imported stream is received).
+ *
+ * A journal directory whose name is not an §8.1 actor slug (R-8.1.11) stands for
+ * no actor, and a path deeper than `segments/` is not a segment; neither is read,
+ * exactly as the reference readUnion resolves actor directories through
+ * actorDirFor before it reads anything. */
+const groupSegmentPaths = (paths: string[]): Map<string, string[]> => {
+  const byActor = new Map<string, string[]>();
+  for (const path of paths) {
+    if (!path.startsWith(JOURNAL_PREFIX)) continue;
+    const parts = path.slice(JOURNAL_PREFIX.length).split('/');
+    if (parts.length !== 3 || parts[1] !== 'segments') continue;
+    const [actor, , name] = parts;
+    if (actorSlugError(actor)) continue;
+    const names = byActor.get(actor);
+    if (names) names.push(name);
+    else byActor.set(actor, [name]);
+  }
+  return byActor;
+};
 
 export type ReplayOutcome =
   | 'republished' // path free or invalid — the EXACT staged bytes were written
@@ -176,18 +226,101 @@ export class JournalStore {
       return verdict.doc;
     });
 
-    // The SHARED clock for this identity (§8.2), then RATCHET it (R-8.2.4) past every
-    // ts this actor has already published — listed segments AND staged outbox
-    // intents (a crash between stage and publish must not re-mint that ts).
+    // The SHARED clock for this identity (§8.2), then RATCHET it (R-8.2.4) past
+    // EVERY ts this store can see.
     this.clock = clockFor(this.repoPath, actorId, this.now);
-    const { segments } = await this.readOwnSegments();
-    for (const segment of segments) this.clock.ratchet(segment.ts);
-    for (const key of await this.kv.keys(this.outboxPrefix)) {
-      const ts = key.slice(this.outboxPrefix.length);
-      if (isTs(ts)) this.clock.ratchet(ts);
-    }
+    await this.ratchetFromJournal(this.clock, actorId);
 
     return { actorId, actorDoc };
+  }
+
+  /** Ratchet the clock past the maximum ts of every event this store can see
+   * (R-8.2.4), in three parts: this actor's published segments, EVERY OTHER
+   * actor's segments (an imported or merged stream is "received"), and this
+   * actor's staged-but-unpublished outbox intents.
+   *
+   * The ratchet used to read only own segment FILENAMES and outbox KEY suffixes.
+   * Both carry an action's FIRST ts, so the second event of a two-event action
+   * was never ratcheted past: a restart at the same physical millisecond
+   * re-issued a ts an ACCEPTED event already held. Event identity IS the ts and
+   * the union de-duplicates by it (R-8.2.5), so one of the two events would
+   * silently disappear (review finding P1-1, 2026-08-19).
+   *
+   * COST: this reads every segment of every actor — O(all segments) per open().
+   * The cheaper "read only each actor's highest-sorting segment" rule was
+   * REJECTED after checking the encoding and the validator: filename order is
+   * FIRST-event order (R-8.1.2) and validateAction only orders events WITHIN one
+   * action, so nothing forbids an earlier-named action from carrying a LATER
+   * event. A caller that mints `t1`, then `t2`, publishes `[t2]` first and then
+   * `[t1, t3]` produces exactly that, and every rule still holds — so the
+   * one-segment-per-actor proof fails, and a foreign stream is untrusted anyway. */
+  private async ratchetFromJournal(
+    clock: ReturnType<typeof makeClock>,
+    actorId: string,
+  ): Promise<void> {
+    const byActor = groupSegmentPaths(await this.api.listPaths(this.repoPath));
+    for (const [actor, names] of byActor) {
+      const listing = await this.classifySegments(actor, names);
+      for (const segment of listing.segments) clock.ratchet(segment.maxTs);
+      // An OWN segment whose bytes are invalid still ratchets from its FILENAME
+      // ts: this actor minted that ts, and a staged intent may yet republish it,
+      // so it must never be re-issued. A foreign actor's invalid segment carries
+      // no received event — R-8.2.4 speaks of events, so there is nothing to take.
+      if (actor === actorId)
+        for (const entry of listing.invalid) clock.ratchet(segmentTs(entry.name));
+    }
+    for (const key of await this.kv.keys(this.outboxPrefix)) {
+      const ts = key.slice(this.outboxPrefix.length);
+      if (isTs(ts)) clock.ratchet(ts); // the key suffix — the action's FIRST ts
+      const staged = await this.kv.get(key);
+      if (staged === undefined) continue; // cleared concurrently
+      const verdict = await validateSegment(staged); // validate BEFORE trusting the body
+      if (!verdict.ok) continue; // unusable bytes: the key suffix is all there is
+      clock.ratchet(verdict.events[verdict.events.length - 1].ts); // ascending: the last IS the max
+    }
+  }
+
+  /** Read and classify one actor's segment files. A name is accepted only on an
+   * exact R-8.1.2 encoding round-trip; the bytes are then validated (R-8.1.6),
+   * every event must carry the directory's actor (R-8.1.12), and the filename
+   * must equal the first event's ts (R-8.1.2). Every listed file lands in exactly
+   * one of the three arrays — nothing is dropped in silence (R-8.1.7). */
+  private async classifySegments(actorId: string, names: string[]): Promise<SegmentListing> {
+    const dir = `${JOURNAL_PREFIX}${actorId}/segments`;
+    const segments: ValidSegment[] = [];
+    const misnamed: string[] = [];
+    const invalid: InvalidSegment[] = [];
+    for (const name of names) {
+      const ts = segmentTs(name);
+      if (!isTs(ts) || segmentName(ts) !== name) {
+        misnamed.push(name);
+        continue;
+      }
+      const raw = await this.readOrNull(`${dir}/${name}`);
+      if (raw === null) {
+        invalid.push({ name, reason: 'vanished' }); // listed, then gone
+        continue;
+      }
+      const verdict = await validateSegment(raw);
+      if (!verdict.ok) {
+        invalid.push({ name, reason: verdict.reason });
+        continue;
+      }
+      const foreign = verdict.events.find((event) => event.actor !== actorId);
+      if (foreign) {
+        invalid.push({ name, reason: `actor-mismatch:${foreign.actor}` });
+        continue;
+      }
+      if (verdict.events[0].ts !== ts) {
+        invalid.push({ name, reason: `segment-misnamed:${name}` });
+        continue;
+      }
+      segments.push({ name, ts, maxTs: verdict.events[verdict.events.length - 1].ts });
+    }
+    segments.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    misnamed.sort();
+    invalid.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    return { segments, misnamed, invalid };
   }
 
   /** Issue the next §8.2 HLC ts for this actor. */
