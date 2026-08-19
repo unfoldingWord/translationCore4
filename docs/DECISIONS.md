@@ -702,6 +702,53 @@ happened under the D55 gate (rule-id coverage enforced by a live-check gate, the
 data-loss defects fixed red-first); D51's conditions remain the standing bar for the sync
 sections and for per-statement mutation hardening]
 
+## D52 (2026-08-17, project-owner ruling) **The custom change journal is retained. A
+proven open-source merge library does not replace it.** Issue #77 asked whether one
+should, and set the bar at overwhelming evidence: a library MUST meet every requirement,
+remove a substantial part of the custom code, and carry less long-term risk. Six parallel
+investigations ran on 2026-08-17. Evidence: the closing comment of issue #77
+(`github.com/unfoldingWord/translationCore4/issues/77#issuecomment-5316664513`); every
+number below comes from a command that was run or a source file that was read that day.
+
+**What was tested.** A survey of 13 candidate libraries that merge locally found three
+real contenders — Automerge, Yjs and Loro — and all three were tested. The others fail on
+maturity, on scope, or because they need a server to merge at all. `y-crdt`/`yrs` is not a
+fourth option: it is wire-compatible with Yjs by design, so it carries the same data model
+and the same failure. Two widely used libraries were rejected for CORRECTNESS: GunDB
+resolves conflicts by timestamp with no record of operations, and RxDB's default conflict
+handler drops data.
+
+**Two requirements every candidate failed.** (1) *Refuse a bad contribution.* No candidate
+can remove a change once any honest peer has built on it: each change names the changes it
+was built on, so deleting one breaks everything that followed. The only remedy is a new
+change that reverses the effect. The current design is stronger — it rejects one
+contribution in a disposable copy and leaves the accepted project byte-identical
+(conformance case J20, ten sabotage cases plus a positive control). (2) *Keep full history
+permanently.* Every candidate ships a DEFAULT that loses history: `automerge-repo` deletes
+per-change files when it compacts (and is still pre-release), Yjs garbage collection is on
+by default, and a Loro shallow snapshot leaves a genuinely old peer silently stuck. For a
+project whose first rule is that losing content is unacceptable, that is a downgrade. Yjs
+additionally fails the history requirement structurally: it keeps no author and no
+wall-clock time per change, so a separate history log would have to be built beside it.
+
+**The measured size result.** `conformance/journal/` is 2575 lines. Every line was
+classified once: merge machinery 738 (28.7%), translation rules 925 (35.9%), input
+validation 912 (35.4%). **1837 lines — 71.3% — stay whatever we choose.** The 738 ceiling
+is not reachable: six of those items are merge rules shaped by translation structure, and
+the sealed container of §8.1 is needed underneath every candidate. The realistic removal
+is **138 to 261 lines, 5.4% to 10.1%**. Not counted on the library's side: the adapter
+each one needs, a builder for the five review lists that no candidate produces, and the
+3732-line conformance suite, which does not transfer.
+
+**The ruling.** A library removes 5% to 10%, gives up the strongest guarantee we have, and
+inherits a default that loses history. The bar is not met. The custom journal is retained
+and §8 stands. **The journal architecture is not open for re-proposal** (`CONTRIBUTING.md`
+hard rule 5); a library proposal that does not first answer the two failures above is out
+of scope. The investigation also produced work we keep: it exposed three gaps in our own
+proof, now issues #78 (no history view exists, and requirement 5 has no test), #79
+(nothing proves that no operation can remove history), and #80 (no build size, start-up
+cost or fold performance number exists).
+
 ## D53 (2026-08-17, project-owner ruling) **Starting work needs no shared root. Joining a
 project and merging a project are separate acts.** Five parts. The ruling answers the
 `base: null` collision found by the round-11 adversarial review, and the product question
