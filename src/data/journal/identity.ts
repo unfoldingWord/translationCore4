@@ -87,6 +87,16 @@ const makeIdbKvStore = (dbName: string): KvStore => {
     // overlapping readwrite transactions on the same object store, so a
     // competing minter either reads the stored value or waits for this one to
     // commit — it can never observe "absent" and write a second value (F1).
+    //
+    // A NEW value resolves ONLY from transaction.oncomplete (review finding
+    // P1-2, 2026-08-19). The put request's onsuccess fires BEFORE the enclosing
+    // transaction commits, and publish() treats this promise as the D50
+    // durable-intent barrier: resolving early let the HTTP write start against
+    // an uncommitted stage, so a crash in that window left a torn segment with
+    // nothing to republish from, or a provisioned actor.json whose secret never
+    // committed. A read-only HIT is the deliberate exception: the value it
+    // returns was already durable before this transaction opened, this
+    // transaction writes nothing, and so there is nothing to wait for.
     setIfAbsent: (key, value) =>
       db().then(
         (database) =>
@@ -97,16 +107,18 @@ const makeIdbKvStore = (dbName: string): KvStore => {
             const fail = (error: unknown): void =>
               reject(error instanceof Error ? error : new Error('IndexedDB request failed'));
             transaction.onabort = () => fail(transaction.error);
+            transaction.onerror = () => fail(transaction.error);
             read.onerror = () => fail(read.error);
             read.onsuccess = () => {
               const found: unknown = read.result;
               if (typeof found === 'string') {
-                resolve(found);
+                resolve(found); // read-only hit: nothing of ours needs to commit
                 return;
               }
               const write = store.put(value, key);
               write.onerror = () => fail(write.error);
-              write.onsuccess = () => resolve(value);
+              // The write is DURABLE only when the transaction commits.
+              transaction.oncomplete = () => resolve(value);
             };
           }),
       ),

@@ -344,3 +344,154 @@ function fakeIngredientRig() {
   }) as typeof fetch;
   return { files, fetchFn };
 }
+
+// ---------------------------------------------------------------------------
+// Review finding P1-2 (second adversarial review of #61, 2026-08-19) — a staged
+// intent is durable only when its TRANSACTION commits.
+//
+// idbKvStore.setIfAbsent resolved on the individual put request's onsuccess,
+// which fires BEFORE the enclosing readwrite transaction's oncomplete. publish()
+// treats that resolution as the durable-intent barrier and starts the HTTP write
+// at once, so a crash in that window leaves a torn segment with no outbox entry
+// to republish from, or an actor.json whose newly minted secret never committed
+// — the identity is stranded. That is the D50 process-crash guarantee, broken.
+//
+// The Map-backed fakes above complete synchronously and CANNOT expose this, so
+// this block drives the real idbKvStore against a minimal hand-rolled IndexedDB
+// that models the two-phase ordering: a request's onsuccess fires on a
+// microtask, the transaction's oncomplete on a later tick, and a put becomes
+// visible in the backing store only at commit. No new dependency (the pinned
+// versions rule and dependency discipline bind).
+// ---------------------------------------------------------------------------
+
+interface FakeRequest {
+  result: unknown;
+  error: unknown;
+  onsuccess: (() => void) | null;
+  onerror: (() => void) | null;
+  onupgradeneeded: (() => void) | null;
+}
+
+/** A two-phase fake IndexedDB over `backing`. Every step appends to `log`, so a
+ * test asserts the ORDER of the callbacks, not just the final value. */
+const twoPhaseIdb = (backing: Map<string, string>, log: string[]) => {
+  const request = (run: () => unknown): FakeRequest => {
+    const req: FakeRequest = {
+      result: undefined,
+      error: null,
+      onsuccess: null,
+      onerror: null,
+      onupgradeneeded: null,
+    };
+    // Phase 1: the individual request settles on a MICROTASK.
+    queueMicrotask(() => {
+      req.result = run();
+      req.onsuccess?.();
+    });
+    return req;
+  };
+  const objectStore = (staged: Map<string, string>) => ({
+    get: (key: string) =>
+      request(() => (staged.has(key) ? staged.get(key) : backing.get(key))),
+    put: (value: string, key: string) =>
+      request(() => {
+        log.push('put:success');
+        staged.set(key, value); // NOT durable yet — merged at commit
+        return undefined;
+      }),
+  });
+  const database = {
+    createObjectStore: () => undefined,
+    transaction: () => {
+      const staged = new Map<string, string>();
+      const store = objectStore(staged);
+      const transaction = {
+        error: null,
+        oncomplete: null as (() => void) | null,
+        onabort: null as (() => void) | null,
+        onerror: null as (() => void) | null,
+        objectStore: () => store,
+      };
+      // Phase 2: the transaction commits on a LATER tick — after every queued
+      // microtask, which is exactly the real ordering guarantee.
+      setTimeout(() => {
+        for (const [key, value] of staged) backing.set(key, value);
+        log.push('tx:complete');
+        transaction.oncomplete?.();
+      }, 0);
+      return transaction;
+    },
+  };
+  return {
+    // The open request: onupgradeneeded first (with `result` already set — the
+    // store is created there), then onsuccess.
+    open: (): FakeRequest => {
+      const req: FakeRequest = {
+        result: database,
+        error: null,
+        onsuccess: null,
+        onerror: null,
+        onupgradeneeded: null,
+      };
+      queueMicrotask(() => {
+        req.onupgradeneeded?.();
+        req.onsuccess?.();
+      });
+      return req;
+    },
+  };
+};
+
+/** Run `body` with the fake installed as globalThis.indexedDB, then restore. */
+const withFakeIdb = async (
+  backing: Map<string, string>,
+  log: string[],
+  body: () => Promise<void>,
+): Promise<void> => {
+  const previous = (globalThis as { indexedDB?: IDBFactory }).indexedDB;
+  (globalThis as { indexedDB?: IDBFactory }).indexedDB = twoPhaseIdb(
+    backing,
+    log,
+  ) as unknown as IDBFactory;
+  try {
+    await body();
+  } finally {
+    (globalThis as { indexedDB?: IDBFactory }).indexedDB = previous;
+  }
+};
+
+describe('#61 review P1-2: setIfAbsent resolves a NEW value only at transaction commit', () => {
+  it('a first write resolves AFTER oncomplete, never on the put request success', async () => {
+    const backing = new Map<string, string>();
+    const log: string[] = [];
+    await withFakeIdb(backing, log, async () => {
+      // A database name of its own: idbKvStore memoizes per name.
+      const kv = idbKvStore('tc4-p1-2-commit');
+      const value = await kv.setIfAbsent('installation-secret', 'c'.repeat(64)).then((won) => {
+        log.push('resolved');
+        return won;
+      });
+      expect(value).toBe('c'.repeat(64));
+      // The ORDER is the finding: the put succeeded, the transaction committed,
+      // and only then did the caller get its durable-intent barrier.
+      expect(log).toEqual(['put:success', 'tx:complete', 'resolved']);
+      expect(backing.get('installation-secret')).toBe('c'.repeat(64));
+    });
+  });
+
+  it('a read-only HIT may resolve on request success — nothing needs to commit', async () => {
+    const backing = new Map<string, string>([['installation-secret', 'd'.repeat(64)]]);
+    const log: string[] = [];
+    await withFakeIdb(backing, log, async () => {
+      const kv = idbKvStore('tc4-p1-2-hit');
+      const value = await kv.setIfAbsent('installation-secret', 'e'.repeat(64)).then((won) => {
+        log.push('resolved');
+        return won;
+      });
+      expect(value).toBe('d'.repeat(64)); // the stored winner, not the candidate
+      // No put, and the resolution does NOT wait for the commit: the value was
+      // already durable before this transaction opened.
+      expect(log).toEqual(['resolved']);
+    });
+  });
+});
