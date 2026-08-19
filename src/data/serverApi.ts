@@ -330,6 +330,18 @@ export class ServerApi {
     );
   }
 
+  /** GET /burrito/paths/<repoPath> — every FILE under the repo's ingredients/
+   * directory as ingredient-relative paths (not the indexed ingredients table,
+   * so files written without update_ingredients DO appear). Hidden files/dirs
+   * and .bak files are skipped by the server. [VERIFIED — source read,
+   * pankosmia-web 0.18.5 (99fd9be, 2026-07-30),
+   * src/endpoints/burrito2/get_repo_file_paths.rs: WalkDir over
+   * <repo>/ingredients/, returns a JSON array; live-rig behavior is exercised
+   * by test/journalStore.integration.test.ts.] */
+  async listPaths(repoPath: string): Promise<string[]> {
+    return this.requestJson(`/burrito/paths/${encodeRepoPath(repoPath)}`);
+  }
+
   // ---- write surface (W-1..W-3 encoded here, once) --------------------------
 
   /** POST /burrito/ingredient/raw/<repoPath>?ipath=…&<presence-only flags>,
