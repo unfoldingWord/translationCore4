@@ -638,3 +638,86 @@ describe('#61 review P1-1: the ratchet covers every visible ts (R-8.2.4/R-8.2.5)
     expect(store.issueTs() > foreignTs).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// H. Review finding P2 (second adversarial review of #61, 2026-08-19) — a
+// correctly NAMED file is not a valid segment.
+//
+// readOwnSegments() checked the filename round-trip only: it never read the
+// bytes and never called validateSegment, yet its `segments` array is documented
+// "Valid own segments" and feeds the ratchet. A torn file under a perfect
+// filename was therefore reported as published history (R-8.1.6/R-8.1.7).
+// ---------------------------------------------------------------------------
+
+describe('#61 review P2: a correctly named segment is listed valid only when its BYTES validate', () => {
+  const segmentIpath = (actorId: string, ts: string): string =>
+    `checking/journal/${actorId}/segments/${refSegmentName(ts)}`;
+
+  it('torn bytes under a PERFECT filename are reported invalid, with a reason — never as a segment', async () => {
+    const { rig, store } = await openStore();
+    const good = store.issueTs();
+    await store.publish([verseEvent(store.actorId, good, 'entero\n')]);
+    // The same publish, then torn in transit: the name still round-trips.
+    const torn = store.issueTs();
+    rig.files.set(rig.key(REPO, segmentIpath(store.actorId, torn)), '{"container":1,"body":"{');
+
+    const listing = await store.readOwnSegments();
+    expect(listing.segments.map((segment) => segment.ts)).toEqual([good]);
+    expect(listing.misnamed).toEqual([]);
+    expect(listing.invalid).toEqual([
+      { name: refSegmentName(torn), reason: 'outer-parse' },
+    ]);
+  });
+
+  it("a segment carrying ANOTHER actor's events is invalid in this directory (R-8.1.12)", async () => {
+    const { rig, store } = await openStore();
+    const foreign = 'a-foreign-actor';
+    const ts = `2026-08-18T09:05:00.000Z|0000|${foreign}`;
+    rig.files.set(
+      rig.key(REPO, segmentIpath(store.actorId, ts)),
+      refSealAction([verseEvent(foreign, ts, 'ajeno\n')]),
+    );
+    const listing = await store.readOwnSegments();
+    expect(listing.segments).toEqual([]);
+    expect(listing.invalid).toEqual([
+      { name: refSegmentName(ts), reason: `actor-mismatch:${foreign}` },
+    ]);
+  });
+
+  it('a VALID action stored under a DIFFERENT ts’s correct filename is invalid (R-8.1.2)', async () => {
+    // Both names round-trip; the file is still a lie about what it holds, and
+    // accepting it would let a second body publish at one ts — the union then
+    // refuses to fold at all.
+    const { rig, store } = await openStore();
+    const carried = store.issueTs();
+    const filenameTs = store.issueTs();
+    rig.files.set(
+      rig.key(REPO, segmentIpath(store.actorId, filenameTs)),
+      refSealAction([verseEvent(store.actorId, carried, 'nombre equivocado\n')]),
+    );
+    const listing = await store.readOwnSegments();
+    expect(listing.segments).toEqual([]);
+    expect(listing.invalid).toEqual([
+      { name: refSegmentName(filenameTs), reason: `segment-misnamed:${refSegmentName(filenameTs)}` },
+    ]);
+  });
+
+  it("an INVALID own segment's filename ts still ratchets the clock (the P1-1 rule holds)", async () => {
+    const frozen = () => Date.parse('2026-08-19T10:00:00.000Z');
+    const { rig, kv, store } = await openStore({ now: frozen });
+    const minted = store.issueTs();
+    // The write was torn: the ts was minted and may yet be republished from a
+    // staged intent, so it must never be re-issued.
+    rig.files.set(rig.key(REPO, segmentIpath(store.actorId, minted)), 'torn');
+
+    forgetSharedClocks();
+    const restarted = new JournalStore({
+      api: new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: rig.fetchFn }),
+      repoPath: REPO,
+      kv,
+      now: frozen,
+    });
+    await restarted.open();
+    expect(restarted.issueTs() > minted).toBe(true);
+  });
+});

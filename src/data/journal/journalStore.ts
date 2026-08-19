@@ -32,14 +32,6 @@ export interface JournalStoreInit {
   now?: () => number;
 }
 
-export interface OwnSegmentListing {
-  /** Valid own segments, filename-sorted (= ts-sorted, R-8.1.2). */
-  segments: { name: string; ts: string }[];
-  /** Files under the segments directory whose name does not round-trip the
-   * R-8.1.2 encoding: invisible as segments, reported here (R-8.1.7 posture). */
-  misnamed: string[];
-}
-
 /** One correctly named, VALID segment of one actor. `ts` is the first event's ts
  * (= the filename, R-8.1.2); `maxTs` is the LAST event's ts, which is the
  * action's maximum because validateAction refuses an action whose events are not
@@ -60,10 +52,21 @@ interface InvalidSegment {
 /** One actor's segments directory, classified. Nothing is dropped in silence:
  * every listed file is in exactly one of the three arrays (R-8.1.7). */
 interface SegmentListing {
+  /** Segments that are VALID — the name round-trips the R-8.1.2 encoding, the
+   * bytes pass validateSegment, every event carries the directory's actor
+   * (R-8.1.12), and the name equals the first event's ts. Filename-sorted
+   * (= ts-sorted, R-8.1.2). */
   segments: ValidSegment[];
+  /** Files whose name does not round-trip the R-8.1.2 encoding: invisible as
+   * segments, reported here (R-8.1.7 posture). */
   misnamed: string[];
+  /** Correctly NAMED files whose bytes or bindings fail, with the reason. A
+   * torn file under a perfect filename used to be reported as valid history
+   * (review finding P2, 2026-08-19). */
   invalid: InvalidSegment[];
 }
+
+export type OwnSegmentListing = SegmentListing;
 
 const JOURNAL_PREFIX = 'checking/journal/';
 
@@ -332,24 +335,18 @@ export class JournalStore {
   /** List this actor's own published segments over HTTP. The platform's
    * GET /burrito/paths/<repoPath> walks the real ingredients/ tree (not the
    * indexed table), so segments written without update_ingredients appear
-   * immediately. Filenames are accepted ONLY on an exact R-8.1.2 encoding
-   * round-trip — a misnamed file is invisible as a segment and reported
-   * (R-8.1.7 posture), never silently read. */
+   * immediately.
+   *
+   * A file reaches `segments` only when it is VALID, not merely well named: the
+   * name must round-trip the R-8.1.2 encoding, the BYTES must pass
+   * validateSegment (R-8.1.6), every event must carry this actor (R-8.1.12), and
+   * the name must equal the first event's ts. A misnamed file lands in
+   * `misnamed`, a correctly named unusable one in `invalid` with its reason —
+   * neither is ever dropped in silence (R-8.1.7 posture). */
   async readOwnSegments(): Promise<OwnSegmentListing> {
-    const prefix = `${this.segmentsDir}/`;
-    const paths = await this.api.listPaths(this.repoPath);
-    const segments: { name: string; ts: string }[] = [];
-    const misnamed: string[] = [];
-    for (const path of paths) {
-      if (!path.startsWith(prefix)) continue;
-      const name = path.slice(prefix.length);
-      if (name.includes('/')) continue; // deeper than the segments dir — not a segment
-      const ts = segmentTs(name);
-      if (isTs(ts) && segmentName(ts) === name) segments.push({ name, ts });
-      else misnamed.push(name);
-    }
-    segments.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-    return { segments, misnamed };
+    const actorId = this.actorId;
+    const byActor = groupSegmentPaths(await this.api.listPaths(this.repoPath));
+    return this.classifySegments(actorId, byActor.get(actorId) ?? []);
   }
 
   /** Publish one action: seal → stage → write, per the reference semantics over
