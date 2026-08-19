@@ -5,7 +5,7 @@
 // (conformance/journal/files.mjs) — the harness validates what the store writes.
 import { describe, expect, it } from 'vitest';
 import { ServerApi } from '../src/data/serverApi';
-import { JournalStore } from '../src/data/journal/journalStore';
+import { forgetSharedClocks, JournalStore } from '../src/data/journal/journalStore';
 import type { KvStore } from '../src/data/journal/identity';
 import type { JournalEvent } from '../src/data/journal/seal';
 import { SLOT } from '../conformance/journal/grammar.mjs';
@@ -353,8 +353,11 @@ describe('#61 checkbox 2: actor provisioning and the HLC ratchet (R-8.2.4)', () 
     const { rig, kv, store } = await openStore({ now: clock1.now });
     const publishedTs = store.issueTs();
     await store.publish([verseEvent(store.actorId, publishedTs, 'antes del reinicio\n')]);
-    // Restart: a new instance whose physical clock sits EARLIER than the
-    // published ts. Without the ratchet it would re-mint an earlier ts.
+    // Restart: a new PROCESS, whose physical clock sits EARLIER than the
+    // published ts. A restart is a fresh module state, so the shared clock of
+    // this identity is dropped (review finding F2) — without the ratchet the new
+    // instance would re-mint an earlier ts.
+    forgetSharedClocks();
     const rewound = tickingNow('2026-08-18T11:00:00.000Z');
     const restarted = new JournalStore({
       api: new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: rig.fetchFn }),
@@ -423,5 +426,67 @@ describe("#61 checkbox 3: I-4 NFC through the store's publish path", () => {
     await expect(store.publish([decision])).rejects.toThrow(/I-4/);
     expect(rig.writes).toHaveLength(before);
     expect(await kv.keys(`outbox:${REPO}:${store.actorId}:`)).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// E. Review finding F2 (adversarial review of #61, 2026-08-19) — a duplicate ts
+// must be impossible in-process, and staging must never overwrite a DIFFERENT
+// staged action.
+//
+// The path lock is module-shared but the HLC was per INSTANCE, so two stores on
+// one repoPath issued the SAME ts at the same physical millisecond. Store 1 then
+// staged DRAFT A and died before its HTTP write; store 2 published DRAFT B at
+// that same ts, its stage `set` OVERWROTE A's bytes at the same outbox key,
+// publish succeeded and cleared the stage — DRAFT A was gone, with no conflict
+// and no report. That is the silent loss the D50 staging exists to prevent.
+// ---------------------------------------------------------------------------
+
+describe('#61 review F2: no duplicate ts, no silent overwrite of a staged action', () => {
+  it('two stores on ONE repoPath at the SAME physical millisecond issue DIFFERENT ts values', async () => {
+    const frozen = () => Date.parse('2026-08-18T09:00:00.000Z');
+    const rig = fakeRig();
+    const kv = memKv();
+    const { store: first } = await openStore({ rig, kv, now: frozen });
+    const { store: second } = await openStore({ rig, kv, now: frozen });
+    expect(second.actorId).toBe(first.actorId); // one installation, one project
+    const tsOne = first.issueTs();
+    const tsTwo = second.issueTs();
+    expect(tsTwo).not.toBe(tsOne);
+    // The §8.2 order is plain string comparison: the second ts sorts after.
+    expect(tsTwo > tsOne).toBe(true);
+  });
+
+  it('staging refuses to overwrite DIFFERENT bytes at the same outbox key, and names the ts', async () => {
+    const { rig, kv, store } = await openStore();
+    const ts = store.issueTs();
+    // A crash-era intent that this instance did not stage: the exact sealed
+    // bytes of DRAFT A, staged at `ts` and never published.
+    const stageKey = `outbox:${REPO}:${store.actorId}:${ts}`;
+    const draftA = refSealAction([verseEvent(store.actorId, ts, 'DRAFT A — staged, never landed\n')]);
+    await kv.set(stageKey, draftA);
+    const before = rig.writes.length;
+    await expect(
+      store.publish([verseEvent(store.actorId, ts, 'DRAFT B\n')]),
+    ).rejects.toThrow(new RegExp(ts.replace(/[|]/g, '\\|')));
+    // The staged intent is intact and nothing was written.
+    expect(kv.map.get(stageKey)).toBe(draftA);
+    expect(rig.writes).toHaveLength(before);
+    // …and it still replays: DRAFT A lands, DRAFT B never existed.
+    expect(await store.replayStaged()).toEqual([{ ts, outcome: 'republished' }]);
+    const landed = rig.files.get(rig.key(REPO, `checking/journal/${store.actorId}/segments/${refSegmentName(ts)}`));
+    expect(landed).toBe(draftA);
+  });
+
+  it('re-staging BYTE-IDENTICAL bytes stays idempotent (a retry of the same publish)', async () => {
+    const { rig, kv, store } = await openStore();
+    const ts = store.issueTs();
+    const events = [verseEvent(store.actorId, ts, 'un solo intento\n')];
+    // Stage exactly what publish will seal, as a crashed first attempt did.
+    await kv.set(`outbox:${REPO}:${store.actorId}:${ts}`, refSealAction(events));
+    const result = await store.publish(events);
+    expect(result.idempotent).toBe(false);
+    expect(await kv.keys(`outbox:${REPO}:${store.actorId}:`)).toHaveLength(0);
+    expect(rig.writes.at(-1)?.payload).toBe(refSealAction(events));
   });
 });

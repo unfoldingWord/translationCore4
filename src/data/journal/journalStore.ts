@@ -62,6 +62,33 @@ interface PublishResult {
  * username, hostname or real name — user-editable later. */
 const DEFAULT_DEVICE_LABEL = 'translation device';
 
+/** ONE §8.2 clock per (repoPath, actorId) in this process, shared across every
+ * JournalStore instance for that identity — exactly as httpStore's lock map is
+ * shared, and for the same reason (D39: one app instance per machine).
+ *
+ * The clock was per INSTANCE while the lock map was module-shared, so two stores
+ * on one repoPath issued the SAME ts at the same physical millisecond (review
+ * finding F2, 2026-08-19). A shared clock makes a same-process duplicate ts
+ * impossible: `issue()` increments the counter for the second caller. */
+const clocks = new Map<string, ReturnType<typeof makeClock>>();
+
+const clockFor = (
+  repoPath: string,
+  actorId: string,
+  now: () => number,
+): ReturnType<typeof makeClock> => {
+  const key = `${repoPath}\n${actorId}`;
+  const shared = clocks.get(key) ?? makeClock(actorId, now);
+  clocks.set(key, shared);
+  return shared;
+};
+
+/** Drop every shared clock. A process RESTART is a fresh module state, so a test
+ * that models a restart must call this — nothing in the app calls it. */
+export const forgetSharedClocks = (): void => {
+  clocks.clear();
+};
+
 export class JournalStore {
   readonly api: ServerApi;
   readonly repoPath: string;
@@ -149,10 +176,10 @@ export class JournalStore {
       return verdict.doc;
     });
 
-    // One clock per store instance (§8.2), then RATCHET it (R-8.2.4) past every
+    // The SHARED clock for this identity (§8.2), then RATCHET it (R-8.2.4) past every
     // ts this actor has already published — listed segments AND staged outbox
     // intents (a crash between stage and publish must not re-mint that ts).
-    this.clock = makeClock(actorId, this.now);
+    this.clock = clockFor(this.repoPath, actorId, this.now);
     const { segments } = await this.readOwnSegments();
     for (const segment of segments) this.clock.ratchet(segment.ts);
     for (const key of await this.kv.keys(this.outboxPrefix)) {
@@ -219,8 +246,19 @@ export class JournalStore {
     // R-8.1.8): a crash between here and the accept replays the same bytes via
     // replayStaged(). The four-way recovery CLASSIFIER is issue #62's; this
     // store guarantees only staged-intent-then-publish (the D50 split).
+    // Defense in depth (review finding F2): stage with setIfAbsent, so a
+    // DIFFERENT staged action at this key is REFUSED, never silently replaced.
+    // The shared clock already makes a same-process duplicate ts impossible;
+    // this catches a duplicate that arrives any other way (a crash-era intent, a
+    // second process). Byte-identical re-staging stays idempotent — that is a
+    // retry of the same publish.
     const stageKey = `${this.outboxPrefix}${events[0].ts}`;
-    await this.kv.set(stageKey, sealed);
+    const staged = await this.kv.setIfAbsent(stageKey, sealed);
+    if (staged !== sealed)
+      throw new Error(
+        `refuse to stage: the outbox already holds a DIFFERENT action at ts ${events[0].ts} — ` +
+          'publish it or replay it first (R-8.1.8, D50 staging)',
+      );
 
     const result = await withPathLock(
       `${this.repoPath} ${ipath}`,
