@@ -474,15 +474,60 @@ export class JournalingStore implements BurritoStore {
     await this.mustJournal().publish(stamped);
     this.events.push(...stamped.map(normalizeEvent));
     this.foldCache = null;
-    const foldOut = this.foldNow();
-    const paths = [...new Set(affected)];
-    await this.kv.set(this.regenMarkerKey, JSON.stringify(paths));
-    for (const ipath of paths) {
-      const bytes = this.projectionBytes(foldOut, ipath);
-      if (bytes !== null) await this.installDerived(ipath, bytes);
-    }
-    await this.kv.delete(this.regenMarkerKey);
+    await this.installWithMarker(affected);
     if (resolutions) await this.kv.delete(this.pendingResolutionsKey);
+  }
+
+  /** Regenerate derived paths under the durable OUTSTANDING-set marker (review
+   * of 2026-08-20 round 2, P1). The marker is a SET that accumulates: an
+   * earlier mutation's failed regeneration stays recorded when a later
+   * mutation runs — never replaced, never deleted while work is outstanding —
+   * so a mixed disk state (one action materialized, an earlier one not) is
+   * always explained by "the full fold minus the marker's paths". The set
+   * SHRINKS per successful install (a crash leaves the precise remainder) and
+   * later mutations RETRY the older outstanding paths inline, after their own
+   * paths, from the CURRENT fold — the marker self-heals instead of forcing a
+   * reopen, and this mutation's own write lands even when the retry fails
+   * again. The marker is deleted only when nothing remains outstanding. */
+  private async installWithMarker(affected: string[]): Promise<void> {
+    const existing = await this.kv.get(this.regenMarkerKey);
+    const outstanding = new Set<string>(existing === undefined ? [] : (JSON.parse(existing) as string[]));
+    const own = [...new Set(affected)];
+    for (const ipath of own) outstanding.add(ipath);
+    await this.kv.set(this.regenMarkerKey, JSON.stringify([...outstanding]));
+    const foldOut = this.foldNow();
+    const ordered = [...own, ...[...outstanding].filter((p) => !own.includes(p))];
+    for (const ipath of ordered) {
+      try {
+        const bytes = this.projectionBytes(foldOut, ipath);
+        if (bytes !== null) await this.installDerived(ipath, bytes);
+      } catch (error) {
+        // This mutation fails only for ITS OWN work; a still-failing RETRY of
+        // an older outstanding path simply stays marked for the next attempt.
+        if (own.includes(ipath)) throw error;
+        continue;
+      }
+      outstanding.delete(ipath);
+      await this.kv.set(this.regenMarkerKey, JSON.stringify([...outstanding]));
+    }
+    if (outstanding.size === 0) await this.kv.delete(this.regenMarkerKey);
+  }
+
+  /** Persist and materialize a RESOLUTION-ONLY change (review of 2026-08-20
+   * round 2, P2): a whole-file decision write may validly change the
+   * authoritative §5.2 `resource` while leaving every decision unchanged. That
+   * is derive-time state the journal does not carry (D30), so there is no
+   * event to publish — the intent is durably recorded as a ts-FREE pending
+   * record (applied unconditionally on open: with no action to gate on, the
+   * record itself is the whole intent), the sidecars regenerate under the new
+   * resolution, and the record clears once disk has converged. */
+  private async applyResolutionOnly(
+    entries: Record<string, Record<string, unknown>>,
+    affected: string[],
+  ): Promise<void> {
+    await this.kv.set(this.pendingResolutionsKey, JSON.stringify({ ts: null, entries }));
+    await this.installWithMarker(affected);
+    await this.kv.delete(this.pendingResolutionsKey);
   }
 
   /** CAS precondition: the disk bytes at ipath must hash to expectMd5 (null =
@@ -588,13 +633,19 @@ export class JournalingStore implements BurritoStore {
     // stale. Cleared below once recovery has converged the disk.
     const pendingRaw = await this.kv.get(this.pendingResolutionsKey);
     let pendingResolutions: Record<string, Record<string, unknown>> | null = null;
+    let pendingTs: string | null = null;
     if (pendingRaw !== undefined) {
       const pending = JSON.parse(pendingRaw) as {
-        ts: string;
+        // ts: the gating action's first ts — or null for a RESOLUTION-ONLY
+        // change (no action exists; the record itself is the whole intent and
+        // applies unconditionally).
+        ts: string | null;
         entries: Record<string, Record<string, unknown>>;
       };
-      if (union.events.some((e) => e.ts === pending.ts)) pendingResolutions = pending.entries;
-      else await this.kv.delete(this.pendingResolutionsKey);
+      if (pending.ts === null || union.events.some((e) => e.ts === pending.ts)) {
+        pendingResolutions = pending.entries;
+        pendingTs = pending.ts;
+      } else await this.kv.delete(this.pendingResolutionsKey);
     }
 
     const report: OpenReport = {
@@ -627,7 +678,8 @@ export class JournalingStore implements BurritoStore {
         // The staged resolutions belong WITH their action: a journal PREFIX
         // that excludes that action must be compared under the resolutions the
         // DISK reflects, or a genuine journal-ahead state reads as unexplained.
-        pendingTs: pendingResolutions === null ? null : (JSON.parse(pendingRaw!) as { ts: string }).ts,
+        pendingTs,
+        hasPending: pendingResolutions !== null,
         harvested,
       });
     }
@@ -894,12 +946,7 @@ export class JournalingStore implements BurritoStore {
       if (disk.diskBytes[ipath] === undefined && EMPTY_CHECKPOINT_DOCUMENTS.has(bytes)) continue;
       toConverge.push(ipath);
     }
-    await this.kv.set(this.regenMarkerKey, JSON.stringify(toConverge));
-    for (const ipath of toConverge) {
-      const bytes = this.projectionBytes(foldOut, ipath);
-      if (bytes !== null) await this.installDerived(ipath, bytes);
-    }
-    await this.kv.delete(this.regenMarkerKey);
+    await this.installWithMarker(toConverge);
     await this.kv.delete(this.seedMarkerKey);
 
     report.seeded = true;
@@ -1004,6 +1051,7 @@ export class JournalingStore implements BurritoStore {
     report: OpenReport,
     resolutionContext?: {
       pendingTs: string | null;
+      hasPending: boolean;
       harvested: Map<string, Record<string, unknown>>;
     },
   ): Promise<void> {
@@ -1051,18 +1099,26 @@ export class JournalingStore implements BurritoStore {
     }
 
     const regenerateForward = async (): Promise<void> => {
+      // A diverged path the fold does not derive would have been refused below
+      // as unexplained before any branch chose this recovery.
       const paths = diverged.map((d) => d.ipath);
-      await this.kv.set(this.regenMarkerKey, JSON.stringify(paths));
-      for (const entry of diverged) {
-        const bytes = this.projectionBytes(foldOut, entry.ipath);
-        if (bytes !== null) await this.installDerived(entry.ipath, bytes);
-        // A diverged path the fold does not derive would have been refused
-        // below as unexplained before this branch was chosen.
-      }
-      await this.kv.delete(this.regenMarkerKey);
+      await this.installWithMarker(paths);
       report.classification = 'regenerated-forward';
       report.regeneratedPaths = paths;
     };
+
+    // (0) The ONLY divergence is a pending resolution overlay (review of
+    // 2026-08-20 round 2, P2): disk matches the fold exactly under the
+    // DISK-HARVESTED resolutions, so what remains is materializing the staged
+    // resolution change — pending-resolution-ahead, recovered forward like a
+    // journal-ahead state.
+    if (
+      resolutionContext?.hasPending &&
+      this.withResolutions(resolutionContext.harvested, () => compare(foldOut).length === 0)
+    ) {
+      await regenerateForward();
+      return;
+    }
 
     // (a) Our own durable regeneration marker covers every diverged path →
     // the journal is ahead by our recorded, interrupted regeneration.
@@ -1088,9 +1144,12 @@ export class JournalingStore implements BurritoStore {
       }
       // A prefix that EXCLUDES the pending-resolution action is compared under
       // the disk-harvested resolutions; the staged record travels with its
-      // action (review of 2026-08-20, P1).
-      const pending = resolutionContext?.pendingTs ?? null;
-      const includesPending = pending === null || prefixEvents.some((e) => e.ts === pending);
+      // action (review of 2026-08-20, P1). A ts-FREE (resolution-only) record
+      // belongs to no action at all, so NO prefix carries its overlay.
+      const includesPending =
+        !resolutionContext?.hasPending ||
+        (resolutionContext.pendingTs !== null &&
+          prefixEvents.some((e) => e.ts === resolutionContext.pendingTs));
       const prefixClean = includesPending
         ? compare(prefixFold).length === 0
         : this.withResolutions(resolutionContext!.harvested, () => compare(prefixFold).length === 0);
@@ -1125,12 +1184,7 @@ export class JournalingStore implements BurritoStore {
         const bytes = this.projectionBytes(after, entry.ipath);
         if (bytes !== null && bytes !== disk.diskBytes[entry.ipath]) paths.push(entry.ipath);
       }
-      await this.kv.set(this.regenMarkerKey, JSON.stringify(paths));
-      for (const ipath of paths) {
-        const bytes = this.projectionBytes(after, ipath);
-        if (bytes !== null) await this.installDerived(ipath, bytes);
-      }
-      await this.kv.delete(this.regenMarkerKey);
+      await this.installWithMarker(paths);
       // A reconciled book may be NEW to the metadata (created out of band and
       // never registered): rescan so currentScope converges with the fold —
       // regeneration rescans the whole repo and rebuilds scope entries from
@@ -1400,11 +1454,20 @@ export class JournalingStore implements BurritoStore {
   ): Promise<string> {
     return this.queue(async () => {
       await this.checkExpectMd5(decisionsIpath(tool, book), expectMd5);
-      const events = this.decisionDiffEvents(tool, book, file);
-      await this.publishAndRegenerate(events, [decisionsIpath(tool, book.toUpperCase())], {
+      const ipath = decisionsIpath(tool, book.toUpperCase());
+      const { events, resolutionChanged } = this.decisionDiffEvents(tool, book, file);
+      const entries = {
         [`${tool}\n${book.toUpperCase()}`]: file.resource as Record<string, unknown>,
-      });
-      const bytes = this.projectionBytes(this.foldNow(), decisionsIpath(tool, book.toUpperCase()));
+      };
+      if (events.length) {
+        await this.publishAndRegenerate(events, [ipath], entries);
+      } else if (resolutionChanged) {
+        // A resolution-only change (review of 2026-08-20 round 2, P2): no
+        // journal event exists for derive-time state, but the disk file MUST
+        // move — success is never reported over an unchanged sidecar.
+        await this.applyResolutionOnly(entries, [ipath]);
+      }
+      const bytes = this.projectionBytes(this.foldNow(), ipath);
       return bytes === null ? '' : md5Hex(bytes);
     });
   }
@@ -1414,7 +1477,11 @@ export class JournalingStore implements BurritoStore {
    * disappeared identity key an invalidate-and-retain event. Also (re)stamps
    * the (tool, BOOK) resolution record — whole-file writers carry authority
    * over it (a gateway change is exactly the flow that moves it). */
-  private decisionDiffEvents(tool: string, book: string, file: DecisionFile): JournalEvent[] {
+  private decisionDiffEvents(
+    tool: string,
+    book: string,
+    file: DecisionFile,
+  ): { events: JournalEvent[]; resolutionChanged: boolean } {
     const journal = this.mustJournal();
     const code = book.toUpperCase();
     const foldOut = this.foldNow();
@@ -1426,6 +1493,8 @@ export class JournalingStore implements BurritoStore {
         `writeDecisions(${tool}, ${code}): the file carries no (tool, book) resolution record — ` +
           `§5.2 requires \`resource\` (D30)`,
       );
+    const resolutionChanged =
+      canonical(this.resolutions.get(`${tool}\n${code}`) ?? null) !== canonical(file.resource);
     this.resolutions.set(`${tool}\n${code}`, file.resource);
 
     const incoming = (file.decisions ?? []).map(normalizeDecision);
@@ -1465,7 +1534,7 @@ export class JournalingStore implements BurritoStore {
         status: current.status === 'todo' ? 'todo' : 'invalid',
       });
     }
-    return events;
+    return { events, resolutionChanged };
   }
 
   /** §5.3 write: diff pins per slot into resource.pin.set events; a folded slot
@@ -1604,8 +1673,11 @@ export class JournalingStore implements BurritoStore {
       const events: JournalEvent[] = [];
       const affected: string[] = [];
       const changedResolutions: Record<string, Record<string, unknown>> = {};
+      let anyResolutionChanged = false;
       for (const write of plan.decisions) {
-        events.push(...this.decisionDiffEvents(write.tool, write.book, write.file));
+        const diff = this.decisionDiffEvents(write.tool, write.book, write.file);
+        events.push(...diff.events);
+        anyResolutionChanged ||= diff.resolutionChanged;
         affected.push(decisionsIpath(write.tool, write.book.toUpperCase()));
         changedResolutions[`${write.tool}\n${write.book.toUpperCase()}`] =
           write.file.resource as Record<string, unknown>;
@@ -1642,8 +1714,11 @@ export class JournalingStore implements BurritoStore {
       // 3–5. One publication, then regenerate + verify; forward-only recovery.
       // The NEW resolutions are durably staged with the action (P1): a crash
       // between publication and the sidecar writes must regenerate the new
-      // decisions under the NEW resource, never the old disk file's.
-      await this.publishAndRegenerate(events, affected, changedResolutions);
+      // decisions under the NEW resource, never the old disk file's. A change
+      // whose ONLY effect is resolution records (every decision and pin
+      // unchanged) still materializes them (round 2, P2).
+      if (events.length) await this.publishAndRegenerate(events, affected, changedResolutions);
+      else if (anyResolutionChanged) await this.applyResolutionOnly(changedResolutions, affected);
     });
   }
 
@@ -1720,10 +1795,9 @@ export class JournalingStore implements BurritoStore {
             `never silently repaired (R-8.7.5); reopen the project to reconcile (§8.8)`,
         );
 
-      // Install + byte-verify, bracketed by the durable regeneration marker.
-      await this.kv.set(this.regenMarkerKey, JSON.stringify(toWrite.map((w) => w.ipath)));
-      for (const { ipath, bytes } of toWrite) await this.installDerived(ipath, bytes);
-      await this.kv.delete(this.regenMarkerKey);
+      // Install + byte-verify, bracketed by the durable OUTSTANDING-set marker
+      // (installWithMarker also retries any older outstanding path inline).
+      await this.installWithMarker(toWrite.map((w) => w.ipath));
 
       // Rescan (registers everything; rebuilds the ingredients table and
       // currentScope — the x-role wipe is the accepted condition, D28/W-2),

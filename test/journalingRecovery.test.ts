@@ -788,3 +788,122 @@ describe('#62 review P2: a valid last-register removal materializes the EMPTY do
     expect(store2.lastOpenReport?.classification).toBe('converged');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Review regressions, round 2 (PR #88 review of 2026-08-20, second pass).
+// ---------------------------------------------------------------------------
+
+describe('#62 review round 2, P1: an earlier unfinished regeneration survives later mutations', () => {
+  it("a later successful mutation retains (and retries) the failed action's marker; reopen recovers forward (the reviewer repro)", async () => {
+    const world = await setup();
+    const { rig, api, store, restart } = world;
+    // Settings regeneration fails TWICE: once under its own mutation, once
+    // under the next mutation's inline retry — so the outstanding path is
+    // still unmaterialized when the later mutation completes.
+    rig.failOn((ctx) => ctx.method === 'POST' && ctx.ipath === 'checking/settings.json', 2);
+    await expect(store.writeSettings({ schemaVersion: 1, textDirection: 'rtl' })).rejects.toThrow(
+      /injected failure/,
+    );
+    // A subsequent mutation SUCCEEDS (its own write lands) and must not erase
+    // the earlier action's recovery state.
+    const next = JSON.parse(JSON.stringify(PINS)) as ResourcesFile;
+    (next.languageSets.primary as unknown as Record<string, unknown>).translationNotes = PIN(
+      'es-419_tn',
+      'v66',
+      'parascriptural/x-bcvnotes',
+    );
+    await store.writeResources(next);
+    expect(rig.repos.get(REPO)?.files.get('checking/resources.json')).toContain('es-419_tn');
+    expect(rig.repos.get(REPO)?.files.get('checking/settings.json')).not.toContain('rtl'); // still stale
+
+    const store2 = restart();
+    await store2.open(REPO); // pre-fix: UnexplainedDivergenceError (marker was erased)
+    expect(store2.lastOpenReport?.classification).toBe('regenerated-forward');
+    expect(rig.repos.get(REPO)?.files.get('checking/settings.json')).toContain('rtl');
+    await expectVerified(api);
+  });
+
+  it("a later mutation's inline retry heals the outstanding path without a reopen", async () => {
+    const world = await setup();
+    const { rig, api, store, kv } = world;
+    rig.failOn((ctx) => ctx.method === 'POST' && ctx.ipath === 'checking/settings.json', 1);
+    await expect(store.writeSettings({ schemaVersion: 1, textDirection: 'rtl' })).rejects.toThrow(
+      /injected failure/,
+    );
+    const next = JSON.parse(JSON.stringify(PINS)) as ResourcesFile;
+    (next.languageSets.primary as unknown as Record<string, unknown>).translationNotes = PIN(
+      'es-419_tn',
+      'v66',
+      'parascriptural/x-bcvnotes',
+    );
+    await store.writeResources(next); // retries settings.json inline — and it works now
+    expect(rig.repos.get(REPO)?.files.get('checking/settings.json')).toContain('rtl');
+    expect((await kv.keys('regen:')).length).toBe(0); // nothing outstanding
+    await expectVerified(api);
+  });
+});
+
+describe('#62 review round 2, P2: a resolution-only whole-file decision write reaches disk', () => {
+  const NEW_RESOURCE = { repoPath: 'git.door43.org/es-419_gl/es-419_tw', version: 'v37', languageSet: 'primary' };
+
+  it('updates the sidecar resource (no journal event), returns the md5 of what is ON DISK, and the checkpoint still passes', async () => {
+    const world = await setup();
+    const { rig, api, store } = world;
+    await store.upsertDecision('translationWords', 'TIT', decision('t1g7'), RESOLUTION);
+    const before = segmentPaths(rig).length;
+    const stored = await store.readDecisions('translationWords', 'TIT');
+    const md5 = await store.writeDecisions('translationWords', 'TIT', {
+      schemaVersion: 1,
+      tool: 'translationWords',
+      book: 'TIT',
+      resource: NEW_RESOURCE,
+      decisions: stored!.decisions, // every decision unchanged — resolution-only
+    });
+    expect(segmentPaths(rig)).toHaveLength(before); // derive-time state: no event
+    const disk = rig.repos.get(REPO)?.files.get('checking/translationWords/TIT.json') ?? '';
+    expect(JSON.parse(disk).resource).toEqual(NEW_RESOURCE); // pre-fix: old resource stayed
+    const { md5Hex } = await import('../src/data/httpStore');
+    expect(md5).toBe(md5Hex(disk)); // success reports DISK, not a hypothetical
+    await store.commit('resolution-only (tC4)');
+    await expectVerified(api);
+  });
+
+  it('a crash between the durable record and the sidecar write recovers forward on reopen — with or without the marker', async () => {
+    for (const loseMarker of [false, true]) {
+      const world = await setup();
+      const { rig, api, store, kv, restart } = world;
+      await store.upsertDecision('translationWords', 'TIT', decision('t1g7'), RESOLUTION);
+      const stored = await store.readDecisions('translationWords', 'TIT');
+      rig.failOn((ctx) => ctx.method === 'POST' && ctx.ipath === 'checking/translationWords/TIT.json', 1);
+      await expect(
+        store.writeDecisions('translationWords', 'TIT', {
+          schemaVersion: 1,
+          tool: 'translationWords',
+          book: 'TIT',
+          resource: NEW_RESOURCE,
+          decisions: stored!.decisions,
+        }),
+      ).rejects.toThrow(/injected failure/);
+      if (loseMarker) for (const key of await kv.keys('regen:')) await kv.delete(key);
+      const store2 = restart();
+      await store2.open(REPO);
+      expect(store2.lastOpenReport?.classification).toBe('regenerated-forward');
+      const disk = rig.repos.get(REPO)?.files.get('checking/translationWords/TIT.json') ?? '';
+      expect(JSON.parse(disk).resource).toEqual(NEW_RESOURCE);
+      expect((await kv.keys('pendingResolutions:')).length).toBe(0);
+      await expectVerified(api);
+    }
+  });
+
+  it('a fully identical whole-file write (same decisions, same resource) is a true no-op', async () => {
+    const world = await setup();
+    const { rig, store } = world;
+    await store.upsertDecision('translationWords', 'TIT', decision('t1g7'), RESOLUTION);
+    const stored = await store.readDecisions('translationWords', 'TIT');
+    const before = segmentPaths(rig).length;
+    const writesBefore = rig.writes.length;
+    await store.writeDecisions('translationWords', 'TIT', stored!);
+    expect(segmentPaths(rig)).toHaveLength(before);
+    expect(rig.writes.length).toBe(writesBefore);
+  });
+});
