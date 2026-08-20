@@ -96,6 +96,17 @@ export const projectAlignments = projectAlignmentsRef as (foldOut: FoldOutput, b
 export const projectResources = projectResourcesRef as (pins: FoldOutput['pins']) => string;
 export const projectSettings = projectSettingsRef as (settings: FoldOutput['settings']) => string;
 
+/** The two EMPTY checkpoint documents. §8.7's regeneration set is complete, so
+ * a checkpoint materializes resources.json/settings.json even when nothing is
+ * folded for them; between checkpoints those files legitimately do not exist
+ * yet. An ABSENT disk file whose projection is exactly the empty document is
+ * therefore "not yet checkpointed", never divergence — ONE definition, shared
+ * by the store's regeneration/classifier/checkpoint and by the verifier. */
+export const EMPTY_CHECKPOINT_DOCUMENTS: ReadonlySet<string> = new Set([
+  projectResources({}),
+  projectSettings({}),
+]);
+
 /** §8.8 out-of-band reconcile / #62 explicit structural edit (opts.seed: null omits
  * the seed marker — an in-app action is not migrated data). */
 export const reconcileUsfm = reconcileUsfmRef as (

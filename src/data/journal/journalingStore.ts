@@ -44,6 +44,7 @@ import { sealAction, type JournalEvent } from './seal';
 import {
   decompose,
   derivedProjections,
+  EMPTY_CHECKPOINT_DOCUMENTS,
   fold,
   isUnjournaledIngredient,
   normalizeEvent,
@@ -374,10 +375,14 @@ export class JournalingStore implements BurritoStore {
     if (align) return foldOut.alignments[align] ? projectAlignments(foldOut, align) : null;
     const dec = /^checking\/(translationWords|translationNotes)\/([A-Z0-9]{3})\.json$/.exec(ipath);
     if (dec) return this.projectDecisionFile(foldOut, dec[1], dec[2]);
-    if (ipath === RESOURCES_IPATH)
-      return Object.keys(foldOut.pins).length ? projectResources(foldOut.pins) : null;
-    if (ipath === SETTINGS_IPATH)
-      return Object.keys(foldOut.settings).length ? projectSettings(foldOut.settings) : null;
+    // resources.json and settings.json are ALWAYS derivable: when nothing is
+    // folded for them the projection is the §8.7 EMPTY document — a valid last
+    // pin/setting REMOVAL must materialize it, not silently keep the stale
+    // non-empty file (review of 2026-08-20, P2). An absent disk file whose
+    // projection is exactly the empty document stays tolerated everywhere as
+    // "not yet checkpointed" (EMPTY_CHECKPOINT_DOCUMENTS).
+    if (ipath === RESOURCES_IPATH) return projectResources(foldOut.pins);
+    if (ipath === SETTINGS_IPATH) return projectSettings(foldOut.settings);
     if (ipath === VRS_IPATH) return foldOut.vrs?.bytes ?? null;
     return null;
   }
@@ -416,8 +421,10 @@ export class JournalingStore implements BurritoStore {
       );
       for (const book of books) paths.push(decisionsIpath(tool, book));
     }
-    if (Object.keys(foldOut.pins).length) paths.push(RESOURCES_IPATH);
-    if (Object.keys(foldOut.settings).length) paths.push(SETTINGS_IPATH);
+    // Always derivable (empty documents when nothing is folded — see
+    // projectionBytes): a last-register removal must still regenerate them.
+    paths.push(RESOURCES_IPATH);
+    paths.push(SETTINGS_IPATH);
     if (foldOut.vrs) paths.push(VRS_IPATH);
     return paths;
   }
@@ -428,16 +435,42 @@ export class JournalingStore implements BurritoStore {
     return `regen:${this.mustRepo()}:${this.actorId}`;
   }
 
+  private get seedMarkerKey(): string {
+    return `seed:${this.mustRepo()}:${this.actorId}`;
+  }
+
+  private get pendingResolutionsKey(): string {
+    return `pendingResolutions:${this.mustRepo()}:${this.actorId}`;
+  }
+
   /** Publish one action journal-first, then regenerate + verify the affected
    * derived files from the NEW fold. A durable marker brackets regeneration so
    * a crash inside it is classified as "journal ahead" on the next open, with
    * the affected paths recorded. If publication fails, no derived file changes.
    * If regeneration fails after publication, the journal remains authoritative
-   * and reopening recovers forward. */
-  private async publishAndRegenerate(events: JournalEvent[], affected: string[]): Promise<void> {
+   * and reopening recovers forward.
+   *
+   * `resolutions` (review of 2026-08-20, P1): the (tool\nBOOK) resolution
+   * records this action's decision files depend on. They are derive-time state
+   * the JOURNAL does not carry, so they are DURABLY STAGED here, keyed to the
+   * action's first ts, BEFORE publication — a crash after publish and before
+   * the sidecar write must regenerate the new decisions under the NEW resource,
+   * not under whatever the old disk file still says. open() applies the staged
+   * record only when its ts is actually in the journal, and this method clears
+   * it once regeneration has converged the disk. */
+  private async publishAndRegenerate(
+    events: JournalEvent[],
+    affected: string[],
+    resolutions?: Record<string, Record<string, unknown>>,
+  ): Promise<void> {
     if (events.length === 0) return;
     const stamped =
       events.length > 1 ? events.map((e) => ({ ...e, batch: events[0].ts })) : events;
+    if (resolutions && Object.keys(resolutions).length)
+      await this.kv.set(
+        this.pendingResolutionsKey,
+        JSON.stringify({ ts: stamped[0].ts, entries: resolutions }),
+      );
     await this.mustJournal().publish(stamped);
     this.events.push(...stamped.map(normalizeEvent));
     this.foldCache = null;
@@ -449,6 +482,7 @@ export class JournalingStore implements BurritoStore {
       if (bytes !== null) await this.installDerived(ipath, bytes);
     }
     await this.kv.delete(this.regenMarkerKey);
+    if (resolutions) await this.kv.delete(this.pendingResolutionsKey);
   }
 
   /** CAS precondition: the disk bytes at ipath must hash to expectMd5 (null =
@@ -547,6 +581,22 @@ export class JournalingStore implements BurritoStore {
           ` — republish from a staged intent or resolve by hand; never silently dropped (R-8.1.6/7)`,
       );
 
+    // Durably staged (tool, BOOK) resolution records (review of 2026-08-20,
+    // P1): applied only when their action's ts is ACTUALLY in the journal —
+    // the replay above already republished any surviving intent, so a ts that
+    // is still absent proves the action never published and the record is
+    // stale. Cleared below once recovery has converged the disk.
+    const pendingRaw = await this.kv.get(this.pendingResolutionsKey);
+    let pendingResolutions: Record<string, Record<string, unknown>> | null = null;
+    if (pendingRaw !== undefined) {
+      const pending = JSON.parse(pendingRaw) as {
+        ts: string;
+        entries: Record<string, Record<string, unknown>>;
+      };
+      if (union.events.some((e) => e.ts === pending.ts)) pendingResolutions = pending.entries;
+      else await this.kv.delete(this.pendingResolutionsKey);
+    }
+
     const report: OpenReport = {
       replayed,
       seeded: false,
@@ -558,15 +608,30 @@ export class JournalingStore implements BurritoStore {
       pendingStructural: [],
     };
 
-    // 3. Journal-less project → universal seeding (§8.8, all-or-nothing).
-    if (union.events.length === 0) {
-      await this.seedProject(options, report);
+    // 3. Journal-less project → universal seeding (§8.8, all-or-nothing). A
+    // durable seed marker routes an INTERRUPTED seed back here too (review of
+    // 2026-08-20, P1): its replayed segments make the union non-empty, but the
+    // ordinary classifier cannot finish a seed's sidecar canonicalization.
+    const seedMarker = await this.kv.get(this.seedMarkerKey);
+    if (union.events.length === 0 || seedMarker !== undefined) {
+      await this.seedProject(options, report, union.events);
     } else {
       this.events = union.events;
       this.foldCache = null;
       await this.harvestResolutions();
-      await this.classifyAndRecover(union.actions, report);
+      const harvested = new Map(this.resolutions);
+      if (pendingResolutions)
+        for (const [key, resource] of Object.entries(pendingResolutions))
+          this.resolutions.set(key, resource);
+      await this.classifyAndRecover(union.actions, report, {
+        // The staged resolutions belong WITH their action: a journal PREFIX
+        // that excludes that action must be compared under the resolutions the
+        // DISK reflects, or a genuine journal-ahead state reads as unexplained.
+        pendingTs: pendingResolutions === null ? null : (JSON.parse(pendingRaw!) as { ts: string }).ts,
+        harvested,
+      });
     }
+    if (pendingResolutions) await this.kv.delete(this.pendingResolutionsKey);
 
     const foldOut = this.foldNow();
     report.forks = foldOut.forks;
@@ -607,9 +672,12 @@ export class JournalingStore implements BurritoStore {
     unknown: string[];
   }> {
     const repo = this.mustRepo();
-    const paths = (await this.api.listPaths(repo)).filter(
-      (p) => !p.startsWith('checking/journal/') && !isUnjournaledIngredient(p),
-    );
+    // SORTED: a resumed seed recomputes its events from this inventory, and the
+    // recomputation must be deterministic — event order (and so each event's
+    // ts) must not depend on the platform's directory-walk order.
+    const paths = (await this.api.listPaths(repo))
+      .filter((p) => !p.startsWith('checking/journal/') && !isUnjournaledIngredient(p))
+      .sort();
     const books: Record<string, { usfm: string; scope: string[] }> = {};
     const decisionFiles: Record<string, DecisionFile> = {};
     const decisionFilesByBook: Record<string, Record<string, DecisionFile>> = {};
@@ -694,8 +762,16 @@ export class JournalingStore implements BurritoStore {
 
   /** §8.8 universal seeding: one all-or-nothing seed covering every existing
    * journal-derived surface. Verified to reproduce the pre-seed state BEFORE
-   * anything is published; staged completely before the first publish. */
-  private async seedProject(options: OpenOptions, report: OpenReport): Promise<void> {
+   * anything is published; staged completely before the first publish; a
+   * durable marker makes an INTERRUPTED seed resume here on the next open
+   * (review of 2026-08-20, P1) — finishing the sidecar canonicalization when
+   * the published union already covers the disk, or re-staging the
+   * DETERMINISTIC seed idempotently when it does not. */
+  private async seedProject(
+    options: OpenOptions,
+    report: OpenReport,
+    unionEvents: JournalEvent[],
+  ): Promise<void> {
     const journal = this.mustJournal();
     const disk = await this.inventoryDisk();
     if (disk.unknown.length)
@@ -722,6 +798,23 @@ export class JournalingStore implements BurritoStore {
         orphaned.map((o) => `${o}: a record without its book has no §8.5 generation root`),
       );
 
+    // RESUME (review of 2026-08-20, P1): the seed marker routed us here with a
+    // non-empty union — segments the interrupted seed already published. When
+    // the union's fold fully covers the disk state, publication had completed
+    // and only the sidecar canonicalization remains: finish it. Otherwise the
+    // publication itself was partial; disk is still untouched pre-seed state
+    // (convergence writes only start after full publication), so the
+    // DETERMINISTIC candidate recomputed below reproduces the published
+    // segments byte-identically and re-staging is idempotent.
+    if (unionEvents.length > 0) {
+      this.events = unionEvents;
+      this.foldCache = null;
+      if (this.seedStateProblems(this.foldNow(), disk).length === 0) {
+        await this.finishSeedConvergence(disk, report);
+        return;
+      }
+    }
+
     const seedEvents = seedFromSidecars({
       actor: journal.actorId,
       books: disk.books,
@@ -733,43 +826,38 @@ export class JournalingStore implements BurritoStore {
       vrs: disk.vrsBytes === null ? null : { name: options.vrsName ?? 'unrecorded', bytes: disk.vrsBytes },
       source: options.seedSource ?? 'sidecar-migration',
     });
-    if (seedEvents.length === 0) return; // an empty repo has nothing to seed
+    if (seedEvents.length === 0) {
+      await this.kv.delete(this.seedMarkerKey); // an empty repo has nothing to seed
+      return;
+    }
 
     // Verify BEFORE publishing (R-8.8.2): fold the seal-normalized form — what
     // a reader will actually fold — and compare against the pre-seed state.
     // USFM and vrs bytes must match EXACTLY; sidecars must match canonically
     // (their bytes converge to the projection form right after).
-    const folded = fold(seedEvents.map(normalizeEvent));
-    const mismatches: string[] = [];
-    for (const [book, entry] of Object.entries(disk.books)) {
-      if (folded.books[book]?.usfm !== entry.usfm)
-        mismatches.push(`${bookIpath(book)}: fold-of-seed differs from disk bytes (is the file NFC?)`);
-    }
-    if (disk.vrsBytes !== null && folded.vrs?.bytes !== disk.vrsBytes)
-      mismatches.push('vrs.json: fold-of-seed differs from disk bytes');
-    for (const [tool, byBook] of Object.entries(disk.decisionFilesByBook)) {
-      for (const [book, file] of Object.entries(byBook)) {
-        const projected = (folded.decisions[tool] ?? []).filter(
-          (d) => d.contextId.reference.bookId.toUpperCase() === book,
-        );
-        if (canonical(projected) !== canonical(file.decisions ?? []))
-          mismatches.push(
-            `${decisionsIpath(tool, book)}: fold-of-seed does not reproduce the stored decisions ` +
-              `(co-present records on one §5.2 identity key cannot round-trip — resolve by hand)`,
-          );
-      }
-    }
-    for (const [book, file] of Object.entries(disk.alignmentFiles)) {
-      const flat: Record<string, unknown> = {};
-      for (const [chapter, verses] of Object.entries(file.chapters ?? {}))
-        for (const [verse, record] of Object.entries(verses)) flat[`${chapter}:${verse}`] = record;
-      if (canonical(folded.alignments[book] ?? {}) !== canonical(flat))
-        mismatches.push(`${alignmentsIpath(book)}: fold-of-seed does not reproduce the stored records`);
-    }
+    const normalizedSeed = seedEvents.map(normalizeEvent);
+    const mismatches = this.seedStateProblems(fold(normalizedSeed), disk);
     if (mismatches.length) throw new SeedMismatchError(this.mustRepo(), mismatches);
 
-    // Stage EVERY part durably, then publish the set (all-or-nothing: a crash
-    // mid-publication replays the remainder from the exact staged bytes).
+    // Torn-state guard for a resumed PARTIAL seed: every already-published
+    // event must be reproduced identically by the recomputed candidate, or the
+    // union is not this seed's prefix — a diagnosable stop, nothing overwritten.
+    if (unionEvents.length > 0) {
+      const candidate = new Map(normalizedSeed.map((e) => [e.ts, canonical(e)]));
+      const torn = unionEvents.filter((e) => candidate.get(e.ts) !== canonical(e)).map((e) => e.ts);
+      if (torn.length)
+        throw new Error(
+          `refuse to resume the interrupted seed of ${this.mustRepo()}: published seed events at ` +
+            `${torn.join(', ')} are not reproduced by the recomputed deterministic seed — ` +
+            `resolve by hand; nothing was overwritten (R-8.8.2/R-8.8.3)`,
+        );
+    }
+
+    // The durable seed marker FIRST (an interrupted seed must resume, not fall
+    // into the ordinary classifier), then stage EVERY part, then publish the
+    // set (all-or-nothing: a crash mid-publication replays the remainder from
+    // the exact staged bytes, and the marker routes the next open back here).
+    await this.kv.set(this.seedMarkerKey, '1');
     for (const chunk of await this.chunkForSealing(seedEvents)) await journal.stage(chunk);
     const outcomes = await journal.replayStaged();
     const failed = outcomes.filter(
@@ -782,17 +870,29 @@ export class JournalingStore implements BurritoStore {
           .join('; ')}`,
       );
 
-    this.events = seedEvents.map(normalizeEvent);
+    this.events = normalizedSeed;
     this.foldCache = null;
-    await this.harvestResolutions();
+    await this.finishSeedConvergence(disk, report);
+  }
 
-    // Converge legacy sidecar bytes to the canonical projection form (content
-    // proven identical above; only the byte form changes).
+  /** The seed's tail: converge legacy sidecar bytes to the canonical projection
+   * form (content proven identical by seedStateProblems; only the byte form
+   * changes), then clear the durable seed marker. */
+  private async finishSeedConvergence(
+    disk: Awaited<ReturnType<JournalingStore['inventoryDisk']>>,
+    report: OpenReport,
+  ): Promise<void> {
+    await this.harvestResolutions();
     const foldOut = this.foldNow();
     const toConverge: string[] = [];
     for (const ipath of this.derivedPathsOf(foldOut)) {
       const bytes = this.projectionBytes(foldOut, ipath);
-      if (bytes !== null && disk.diskBytes[ipath] !== bytes) toConverge.push(ipath);
+      if (bytes === null || disk.diskBytes[ipath] === bytes) continue;
+      // An absent file whose projection is the §8.7 EMPTY document is "not yet
+      // checkpointed" — seeding must not materialize it (a fresh creation's
+      // first writeResources still expects absence).
+      if (disk.diskBytes[ipath] === undefined && EMPTY_CHECKPOINT_DOCUMENTS.has(bytes)) continue;
+      toConverge.push(ipath);
     }
     await this.kv.set(this.regenMarkerKey, JSON.stringify(toConverge));
     for (const ipath of toConverge) {
@@ -800,10 +900,71 @@ export class JournalingStore implements BurritoStore {
       if (bytes !== null) await this.installDerived(ipath, bytes);
     }
     await this.kv.delete(this.regenMarkerKey);
+    await this.kv.delete(this.seedMarkerKey);
 
     report.seeded = true;
     report.classification = 'seeded';
     report.regeneratedPaths = toConverge;
+  }
+
+  /** Does `folded` reproduce the pre-seed disk state (R-8.8.2)? USFM and vrs
+   * bytes must match EXACTLY; sidecars canonically (their byte form converges
+   * to the projection right after). Shared by the pre-publish verification and
+   * by the resumed-seed coverage check, so the two can never disagree. The pin
+   * and settings round-trips are included: a legacy document whose content the
+   * §5.3/§5.4 flatten cannot represent (an unknown top-level field) REFUSES
+   * here instead of being silently dropped by convergence. */
+  private seedStateProblems(
+    folded: FoldOutput,
+    disk: Awaited<ReturnType<JournalingStore['inventoryDisk']>>,
+  ): string[] {
+    const problems: string[] = [];
+    for (const [book, entry] of Object.entries(disk.books)) {
+      if (folded.books[book]?.usfm !== entry.usfm)
+        problems.push(`${bookIpath(book)}: fold-of-seed differs from disk bytes (is the file NFC?)`);
+    }
+    if (disk.vrsBytes !== null && folded.vrs?.bytes !== disk.vrsBytes)
+      problems.push('vrs.json: fold-of-seed differs from disk bytes');
+    if (disk.vrsBytes === null && folded.vrs !== null)
+      problems.push('vrs.json: the fold carries a versification frame the disk lacks');
+    for (const [tool, byBook] of Object.entries(disk.decisionFilesByBook)) {
+      for (const [book, file] of Object.entries(byBook)) {
+        const projected = (folded.decisions[tool] ?? []).filter(
+          (d) => d.contextId.reference.bookId.toUpperCase() === book,
+        );
+        if (canonical(projected) !== canonical(file.decisions ?? []))
+          problems.push(
+            `${decisionsIpath(tool, book)}: fold-of-seed does not reproduce the stored decisions ` +
+              `(co-present records on one §5.2 identity key cannot round-trip — resolve by hand)`,
+          );
+      }
+    }
+    for (const [book, file] of Object.entries(disk.alignmentFiles)) {
+      const flat: Record<string, unknown> = {};
+      for (const [chapter, verses] of Object.entries(file.chapters ?? {}))
+        for (const [verse, record] of Object.entries(verses)) flat[`${chapter}:${verse}`] = record;
+      if (canonical(folded.alignments[book] ?? {}) !== canonical(flat))
+        problems.push(`${alignmentsIpath(book)}: fold-of-seed does not reproduce the stored records`);
+    }
+    try {
+      const projectedResources = JSON.parse(projectResources(folded.pins)) as unknown;
+      if (disk.resources !== null) {
+        if (canonical(projectedResources) !== canonical(disk.resources))
+          problems.push(`${RESOURCES_IPATH}: fold-of-seed does not reproduce the stored pins`);
+      } else if (Object.keys(folded.pins).length) {
+        problems.push(`${RESOURCES_IPATH}: the fold carries pins the disk lacks`);
+      }
+    } catch (error) {
+      problems.push(`${RESOURCES_IPATH}: ${String((error as Error).message ?? error)}`);
+    }
+    const projectedSettings = JSON.parse(projectSettings(folded.settings)) as unknown;
+    if (disk.settings !== null) {
+      if (canonical(projectedSettings) !== canonical(disk.settings))
+        problems.push(`${SETTINGS_IPATH}: fold-of-seed does not reproduce the stored settings`);
+    } else if (Object.keys(folded.settings).length) {
+      problems.push(`${SETTINGS_IPATH}: the fold carries settings the disk lacks`);
+    }
+    return problems;
   }
 
   /** Split one ts-ascending event list into as few actions as fit the §8.1
@@ -822,10 +983,29 @@ export class JournalingStore implements BurritoStore {
     }
   }
 
+  /** Evaluate `fn` under a different (tool, BOOK) resolution state — the prefix
+   * classifier compares journal PREFIXES under the resolutions the disk
+   * reflects, not under a staged record that belongs to a later action. */
+  private withResolutions<T>(entries: Map<string, Record<string, unknown>>, fn: () => T): T {
+    const saved = new Map(this.resolutions);
+    this.resolutions.clear();
+    for (const [key, value] of entries) this.resolutions.set(key, value);
+    try {
+      return fn();
+    } finally {
+      this.resolutions.clear();
+      for (const [key, value] of saved) this.resolutions.set(key, value);
+    }
+  }
+
   /** Classify derived disk state against the journal projection and recover. */
   private async classifyAndRecover(
     actions: Array<{ actor: string; ts: string; events: JournalEvent[] }>,
     report: OpenReport,
+    resolutionContext?: {
+      pendingTs: string | null;
+      harvested: Map<string, Record<string, unknown>>;
+    },
   ): Promise<void> {
     const foldOut = this.foldNow();
     const disk = await this.inventoryDisk();
@@ -841,6 +1021,11 @@ export class JournalingStore implements BurritoStore {
           projected = null; // e.g. a decision file whose resolution record is gone
         }
         const onDisk = disk.diskBytes[ipath];
+        // An ABSENT file whose projection is the §8.7 EMPTY document has simply
+        // not been checkpointed yet — never divergence (the same tolerance the
+        // verifier and the checkpoint apply).
+        if (onDisk === undefined && projected !== null && EMPTY_CHECKPOINT_DOCUMENTS.has(projected))
+          continue;
         if (projected !== (onDisk ?? null))
           diverged.push({
             ipath,
@@ -901,7 +1086,15 @@ export class JournalingStore implements BurritoStore {
       } catch {
         break; // a prefix that does not fold explains nothing
       }
-      if (compare(prefixFold).length === 0) {
+      // A prefix that EXCLUDES the pending-resolution action is compared under
+      // the disk-harvested resolutions; the staged record travels with its
+      // action (review of 2026-08-20, P1).
+      const pending = resolutionContext?.pendingTs ?? null;
+      const includesPending = pending === null || prefixEvents.some((e) => e.ts === pending);
+      const prefixClean = includesPending
+        ? compare(prefixFold).length === 0
+        : this.withResolutions(resolutionContext!.harvested, () => compare(prefixFold).length === 0);
+      if (prefixClean) {
         await regenerateForward();
         return;
       }
@@ -1189,7 +1382,9 @@ export class JournalingStore implements BurritoStore {
         toolId: tool,
         decision: toNfc(incoming) as unknown as Record<string, unknown>,
       };
-      await this.publishAndRegenerate([event], [decisionsIpath(tool, code)]);
+      await this.publishAndRegenerate([event], [decisionsIpath(tool, code)], {
+        [resolutionKey]: this.resolutions.get(resolutionKey)!,
+      });
     });
   }
 
@@ -1206,7 +1401,9 @@ export class JournalingStore implements BurritoStore {
     return this.queue(async () => {
       await this.checkExpectMd5(decisionsIpath(tool, book), expectMd5);
       const events = this.decisionDiffEvents(tool, book, file);
-      await this.publishAndRegenerate(events, [decisionsIpath(tool, book.toUpperCase())]);
+      await this.publishAndRegenerate(events, [decisionsIpath(tool, book.toUpperCase())], {
+        [`${tool}\n${book.toUpperCase()}`]: file.resource as Record<string, unknown>,
+      });
       const bytes = this.projectionBytes(this.foldNow(), decisionsIpath(tool, book.toUpperCase()));
       return bytes === null ? '' : md5Hex(bytes);
     });
@@ -1406,9 +1603,12 @@ export class JournalingStore implements BurritoStore {
       const foldOut = this.foldNow();
       const events: JournalEvent[] = [];
       const affected: string[] = [];
+      const changedResolutions: Record<string, Record<string, unknown>> = {};
       for (const write of plan.decisions) {
         events.push(...this.decisionDiffEvents(write.tool, write.book, write.file));
         affected.push(decisionsIpath(write.tool, write.book.toUpperCase()));
+        changedResolutions[`${write.tool}\n${write.book.toUpperCase()}`] =
+          write.file.resource as Record<string, unknown>;
       }
       const incoming = flattenPins(plan.resources);
       const incomingSlots = new Set(incoming.map((p) => p.slot));
@@ -1440,7 +1640,10 @@ export class JournalingStore implements BurritoStore {
       affected.push(RESOURCES_IPATH);
 
       // 3–5. One publication, then regenerate + verify; forward-only recovery.
-      await this.publishAndRegenerate(events, affected);
+      // The NEW resolutions are durably staged with the action (P1): a crash
+      // between publication and the sidecar writes must regenerate the new
+      // decisions under the NEW resource, never the old disk file's.
+      await this.publishAndRegenerate(events, affected, changedResolutions);
     });
   }
 
@@ -1487,7 +1690,6 @@ export class JournalingStore implements BurritoStore {
       // out-of-band and refuses.
       const marker = await this.kv.get(this.regenMarkerKey);
       const markerPaths = new Set(marker === undefined ? [] : (JSON.parse(marker) as string[]));
-      const perMutationPaths = new Set(this.derivedPathsOf(foldOut));
       const stale: string[] = [];
       const toWrite: Array<{ ipath: string; bytes: string }> = [];
       const diskPaths = (await this.api.listPaths(repo)).filter(
@@ -1496,7 +1698,11 @@ export class JournalingStore implements BurritoStore {
       for (const [ipath, bytes] of Object.entries(projections)) {
         const disk = await this.readIngredientOrNull(ipath);
         if (disk === bytes) continue; // byte-verified in place
-        if (markerPaths.has(ipath) || (disk === null && !perMutationPaths.has(ipath))) {
+        // Legitimate writes at checkpoint: a leftover crash marker's paths, and
+        // the FIRST materialization of a §8.7-complete EMPTY document (an
+        // absent file per-mutation regeneration never produces). An absent file
+        // with a NON-empty projection was deleted out of band — refused.
+        if (markerPaths.has(ipath) || (disk === null && EMPTY_CHECKPOINT_DOCUMENTS.has(bytes))) {
           toWrite.push({ ipath, bytes });
           continue;
         }

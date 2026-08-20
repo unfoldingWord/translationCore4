@@ -589,3 +589,202 @@ describe('#62 out-of-band derived state at open', () => {
     await expect(store2.open(REPO)).rejects.toThrow(UnexplainedDivergenceError);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Review regressions (PR #88 review of 2026-08-20) — three reproducible
+// correctness gaps in the recovery boundary, each fixed and pinned here.
+// ---------------------------------------------------------------------------
+
+describe('#62 review P1: the decision resolution survives a crash between publication and regeneration', () => {
+  const NEW_RESOURCE = { repoPath: 'git.door43.org/es-419_gl/es-419_tw', version: 'v37', languageSet: 'primary' };
+  const plannedFile = () => ({
+    schemaVersion: 1,
+    tool: 'translationWords',
+    book: 'TIT',
+    resource: NEW_RESOURCE,
+    decisions: [decision('nuevo1', { comments: 'llevada' })],
+  });
+  const nextPins = (): ResourcesFile => {
+    const next = JSON.parse(JSON.stringify(PINS)) as ResourcesFile;
+    (next.languageSets.primary as unknown as Record<string, unknown>).translationWords = PIN(
+      'es-419_tw',
+      'v37',
+      'parascriptural/x-bcvarticles',
+    );
+    return next;
+  };
+  const crashOnFirstDecisionWrite = async (world: World): Promise<void> => {
+    const { rig, store } = world;
+    await store.upsertDecision('translationWords', 'TIT', decision('viejo1'), RESOLUTION);
+    // The FIRST regeneration write (the decision sidecar) fails AFTER the
+    // action published — the reviewer's exact repro: a restart used to harvest
+    // the OLD resource from disk and regenerate the new decisions under it.
+    rig.failOn((ctx) => ctx.method === 'POST' && ctx.ipath === 'checking/translationWords/TIT.json');
+    await expect(
+      store.applyGatewayChange({
+        resources: nextPins(),
+        resourcesMd5: (await store.readResourcesWithMd5()).md5,
+        decisions: [
+          {
+            tool: 'translationWords',
+            book: 'TIT',
+            file: plannedFile() as never,
+            expectMd5: (await store.readDecisionsWithMd5('translationWords', 'TIT')).md5,
+          },
+        ],
+      }),
+    ).rejects.toThrow(/injected failure/);
+    // Published, but NOTHING regenerated yet: the disk file still carries the
+    // OLD resource — the state the durable record must survive.
+    const stale = JSON.parse(rig.repos.get(REPO)?.files.get('checking/translationWords/TIT.json') ?? '');
+    expect(stale.resource).toEqual(RESOLUTION);
+  };
+
+  it('reopen regenerates the new decisions under the NEW resource (durable marker path)', async () => {
+    const world = await setup();
+    await crashOnFirstDecisionWrite(world);
+    const store2 = world.restart();
+    await store2.open(REPO);
+    expect(store2.lastOpenReport?.classification).toBe('regenerated-forward');
+    const file = JSON.parse(world.rig.repos.get(REPO)?.files.get('checking/translationWords/TIT.json') ?? '');
+    expect(file.resource).toEqual(NEW_RESOURCE); // the fix: never the harvested old resource
+    expect(file.decisions.some((d: Decision) => d.contextId.checkId === 'nuevo1')).toBe(true);
+    expect(world.rig.repos.get(REPO)?.files.get('checking/resources.json')).toContain('es-419_tw');
+    // The durable record is consumed once recovery converged.
+    expect((await world.kv.keys('pendingResolutions:')).length).toBe(0);
+    await expectVerified(world.api);
+  });
+
+  it('reopen still applies the NEW resource with the regeneration marker LOST (prefix path)', async () => {
+    const world = await setup();
+    await crashOnFirstDecisionWrite(world);
+    // Lose the regeneration marker; the journal-ahead PREFIX check must still
+    // recover forward, and the staged resolution record must still win.
+    for (const key of await world.kv.keys('regen:')) await world.kv.delete(key);
+    const store2 = world.restart();
+    await store2.open(REPO);
+    expect(store2.lastOpenReport?.classification).toBe('regenerated-forward');
+    const file = JSON.parse(world.rig.repos.get(REPO)?.files.get('checking/translationWords/TIT.json') ?? '');
+    expect(file.resource).toEqual(NEW_RESOURCE);
+    await expectVerified(world.api);
+  });
+
+  it('a resolution record whose action provably never published is discarded, not applied', async () => {
+    const world = await setup();
+    const { kv, rig, restart } = world;
+    // A stale record naming a ts the journal does not contain (and no staged
+    // intent to republish it): applying it would relabel a file to a resource
+    // whose decisions never landed.
+    const actorDir = segmentPaths(rig)[0].split('/')[2];
+    await kv.set(
+      `pendingResolutions:${REPO}:${actorDir}`,
+      JSON.stringify({
+        ts: `2030-01-01T00:00:00.000Z|0000|${actorDir}`,
+        entries: { 'translationWords\nTIT': NEW_RESOURCE },
+      }),
+    );
+    const store2 = restart();
+    await store2.open(REPO);
+    expect((await kv.keys('pendingResolutions:')).length).toBe(0); // discarded
+    await expectVerified(world.api);
+  });
+});
+
+describe('#62 review P1: an interrupted universal seed RESUMES instead of refusing', () => {
+  const legacyProject = (rig: JournalingRig, name = 'legado'): string => {
+    const repo = `_local_/_local_/${name}`;
+    const legacy = (doc: unknown): string => JSON.stringify(doc, null, 2);
+    rig.createRepo(repo, {
+      'vrs.json': FAKE_VRS,
+      'TIT.usfm': TIT_USFM,
+      'checking/resources.json': legacy(PINS),
+      'checking/settings.json': legacy({ schemaVersion: 1, textDirection: 'ltr' }),
+      'checking/translationWords/TIT.json': legacy({
+        schemaVersion: 1,
+        tool: 'translationWords',
+        book: 'TIT',
+        resource: RESOLUTION,
+        decisions: [decision('t1g7')],
+      }),
+    });
+    return repo;
+  };
+
+  it('crash during segment publication: replay finishes the seed and convergence completes (the reviewer repro)', async () => {
+    const world = await setup();
+    const { rig, api, restart } = world;
+    const repo = legacyProject(rig);
+    // The seed's segment write fails after staging — the reviewer's repro:
+    // the next open's replay used to publish it and then refuse as unexplained.
+    rig.failOn(
+      (ctx) => ctx.method === 'POST' && ctx.repo === repo && (ctx.ipath ?? '').includes('/segments/'),
+    );
+    const store = restart();
+    await expect(store.open(repo)).rejects.toThrow(/injected failure/);
+    expect(segmentPaths(rig, repo)).toHaveLength(0); // staged, not published
+
+    const store2 = restart();
+    await store2.open(repo); // pre-fix: UnexplainedDivergenceError
+    expect(store2.lastOpenReport?.seeded).toBe(true);
+    expect(store2.lastOpenReport?.classification).toBe('seeded');
+    expect(segmentPaths(rig, repo).length).toBeGreaterThan(0);
+    // Legacy sidecars converged to the canonical byte form:
+    expect(rig.repos.get(repo)?.files.get('checking/settings.json')?.endsWith('\n')).toBe(true);
+    await expectVerified(api, repo);
+    // The durable seed marker is consumed; the third open is quiet.
+    expect((await world.kv.keys('seed:')).length).toBe(0);
+    const store3 = restart();
+    await store3.open(repo);
+    expect(store3.lastOpenReport?.classification).toBe('converged');
+  });
+
+  it('crash during post-publication convergence: reopen finishes the canonicalization', async () => {
+    const world = await setup();
+    const { rig, api, restart } = world;
+    const repo = legacyProject(rig, 'legadodos');
+    // Publication completes; the FIRST convergence write (a sidecar
+    // canonicalization) fails.
+    rig.failOn(
+      (ctx) =>
+        ctx.method === 'POST' && ctx.repo === repo && (ctx.ipath ?? '').startsWith('checking/') &&
+        !(ctx.ipath ?? '').includes('journal'),
+    );
+    const store = restart();
+    await expect(store.open(repo)).rejects.toThrow(/injected failure/);
+    expect(segmentPaths(rig, repo).length).toBeGreaterThan(0); // published
+
+    const store2 = restart();
+    await store2.open(repo);
+    expect(store2.lastOpenReport?.seeded).toBe(true);
+    await expectVerified(api, repo);
+    expect((await world.kv.keys('seed:')).length).toBe(0);
+  });
+});
+
+describe('#62 review P2: a valid last-register removal materializes the EMPTY document', () => {
+  it('writeSettings({schemaVersion: 1}) leaves the empty settings document, not the stale keys', async () => {
+    const world = await setup();
+    const { rig, api, store } = world;
+    // Both folded settings removed — a perfectly valid write.
+    await store.writeSettings({ schemaVersion: 1 });
+    const bytes = rig.repos.get(REPO)?.files.get('checking/settings.json');
+    expect(bytes).toBe('{\n  "schemaVersion": 1\n}\n'); // pre-fix: textDirection survived on disk
+    await expectVerified(api);
+  });
+
+  it('removing every pin leaves the empty resources document, and the checkpoint still passes', async () => {
+    const world = await setup();
+    const { rig, api, store } = world;
+    await store.writeResources({ schemaVersion: 2 } as unknown as ResourcesFile);
+    expect(rig.repos.get(REPO)?.files.get('checking/resources.json')).toBe(
+      '{\n  "schemaVersion": 2\n}\n',
+    );
+    await store.commit('after removals (tC4)');
+    expect(rig.repos.get(REPO)?.commits).toContain('after removals (tC4)');
+    await expectVerified(api);
+    // Reopening classifies as converged — the empty documents are the projection.
+    const store2 = world.restart();
+    await store2.open(REPO);
+    expect(store2.lastOpenReport?.classification).toBe('converged');
+  });
+});
