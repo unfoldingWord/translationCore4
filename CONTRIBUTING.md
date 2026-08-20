@@ -41,8 +41,8 @@ npm run verify
 ```
 
 `npm run verify` runs lint, typecheck, the tests and the build. On a clean clone, expect
-409 tests passed and 37 tests skipped [VERIFIED — measured 2026-08-19 on a fresh
-clone at commit c95c583, with no rig and no sibling `sample-burrito` checkout].
+416 tests passed and 37 tests skipped [VERIFIED — measured 2026-08-20 on a fresh
+clone at commit 45a7a68, with no rig and no sibling `sample-burrito` checkout].
 A skipped test names the prerequisite that it needs. A skip is not a failure.
 
 ## Hard rules
