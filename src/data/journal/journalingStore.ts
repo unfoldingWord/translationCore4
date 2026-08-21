@@ -467,15 +467,63 @@ export class JournalingStore implements BurritoStore {
     const stamped =
       events.length > 1 ? events.map((e) => ({ ...e, batch: events[0].ts })) : events;
     if (resolutions && Object.keys(resolutions).length)
-      await this.kv.set(
-        this.pendingResolutionsKey,
-        JSON.stringify({ ts: stamped[0].ts, entries: resolutions }),
-      );
+      await this.stagePendingResolutions(stamped[0].ts, resolutions);
     await this.mustJournal().publish(stamped);
     this.events.push(...stamped.map(normalizeEvent));
     this.foldCache = null;
-    await this.installWithMarker(affected);
-    if (resolutions) await this.kv.delete(this.pendingResolutionsKey);
+    try {
+      await this.installWithMarker(affected);
+    } finally {
+      // Clear per ENTRY, and only the ones whose sidecar actually converged —
+      // an earlier write's still-unmaterialized intent is never erased by this
+      // mutation's cleanup (review of 2026-08-20 round 3, P1).
+      await this.clearConvergedPendingResolutions();
+    }
+  }
+
+  /** The durable pending-resolution store — an ACCUMULATED per-(tool, BOOK)
+   * map, never a single overwriteable slot (review of 2026-08-20 round 3, P1:
+   * a later decision write must not erase an earlier accepted-but-
+   * unmaterialized resource intent). Each entry carries its own gate: the
+   * staging action's first ts, or null for a resolution-only intent that
+   * applies unconditionally. */
+  private async readPendingResolutions(): Promise<
+    Record<string, { ts: string | null; resource: Record<string, unknown> }>
+  > {
+    const raw = await this.kv.get(this.pendingResolutionsKey);
+    if (raw === undefined) return {};
+    return (JSON.parse(raw) as { entries: Record<string, { ts: string | null; resource: Record<string, unknown> }> })
+      .entries;
+  }
+
+  private async stagePendingResolutions(
+    ts: string | null,
+    resolutions: Record<string, Record<string, unknown>>,
+  ): Promise<void> {
+    const entries = await this.readPendingResolutions();
+    // Per-key overwrite is correct: the queue serializes mutations, so a newer
+    // intent for the SAME (tool, BOOK) supersedes the older one — but entries
+    // for OTHER keys are always preserved.
+    for (const [key, resource] of Object.entries(resolutions)) entries[key] = { ts, resource };
+    await this.kv.set(this.pendingResolutionsKey, JSON.stringify({ entries }));
+  }
+
+  /** Drop every pending entry whose decision sidecar is no longer OUTSTANDING
+   * (its regeneration completed, so the disk file now embeds the resolution);
+   * entries whose paths are still in the regeneration marker stay staged. */
+  private async clearConvergedPendingResolutions(): Promise<void> {
+    const entries = await this.readPendingResolutions();
+    if (Object.keys(entries).length === 0) return;
+    const marker = await this.kv.get(this.regenMarkerKey);
+    const outstanding = new Set<string>(marker === undefined ? [] : (JSON.parse(marker) as string[]));
+    let kept = false;
+    for (const key of Object.keys(entries)) {
+      const [tool, book] = key.split('\n');
+      if (outstanding.has(decisionsIpath(tool, book))) kept = true;
+      else delete entries[key];
+    }
+    if (kept) await this.kv.set(this.pendingResolutionsKey, JSON.stringify({ entries }));
+    else await this.kv.delete(this.pendingResolutionsKey);
   }
 
   /** Regenerate derived paths under the durable OUTSTANDING-set marker (review
@@ -525,9 +573,12 @@ export class JournalingStore implements BurritoStore {
     entries: Record<string, Record<string, unknown>>,
     affected: string[],
   ): Promise<void> {
-    await this.kv.set(this.pendingResolutionsKey, JSON.stringify({ ts: null, entries }));
-    await this.installWithMarker(affected);
-    await this.kv.delete(this.pendingResolutionsKey);
+    await this.stagePendingResolutions(null, entries);
+    try {
+      await this.installWithMarker(affected);
+    } finally {
+      await this.clearConvergedPendingResolutions();
+    }
   }
 
   /** CAS precondition: the disk bytes at ipath must hash to expectMd5 (null =
@@ -631,22 +682,27 @@ export class JournalingStore implements BurritoStore {
     // the replay above already republished any surviving intent, so a ts that
     // is still absent proves the action never published and the record is
     // stale. Cleared below once recovery has converged the disk.
-    const pendingRaw = await this.kv.get(this.pendingResolutionsKey);
-    let pendingResolutions: Record<string, Record<string, unknown>> | null = null;
-    let pendingTs: string | null = null;
-    if (pendingRaw !== undefined) {
-      const pending = JSON.parse(pendingRaw) as {
-        // ts: the gating action's first ts — or null for a RESOLUTION-ONLY
-        // change (no action exists; the record itself is the whole intent and
-        // applies unconditionally).
-        ts: string | null;
-        entries: Record<string, Record<string, unknown>>;
-      };
-      if (pending.ts === null || union.events.some((e) => e.ts === pending.ts)) {
-        pendingResolutions = pending.entries;
-        pendingTs = pending.ts;
-      } else await this.kv.delete(this.pendingResolutionsKey);
+    // Gate each staged entry INDIVIDUALLY (round 3: the record is a per-key
+    // map, never one slot): an entry whose gate ts is null is a resolution-only
+    // intent and applies unconditionally — the record is the whole intent; an
+    // entry gated on an action ts applies only when that ts is actually in the
+    // journal (the replay above already republished any surviving intent, so a
+    // still-absent ts proves the action never published — that entry is stale
+    // and dropped, the others untouched).
+    const unionTs = new Set(union.events.map((e) => e.ts));
+    const staged = await this.readPendingResolutions();
+    const pendingResolutions: Record<string, { ts: string | null; resource: Record<string, unknown> }> = {};
+    let droppedStale = false;
+    for (const [key, entry] of Object.entries(staged)) {
+      if (entry.ts === null || unionTs.has(entry.ts)) pendingResolutions[key] = entry;
+      else droppedStale = true;
     }
+    if (droppedStale) {
+      if (Object.keys(pendingResolutions).length)
+        await this.kv.set(this.pendingResolutionsKey, JSON.stringify({ entries: pendingResolutions }));
+      else await this.kv.delete(this.pendingResolutionsKey);
+    }
+    const hasPending = Object.keys(pendingResolutions).length > 0;
 
     const report: OpenReport = {
       replayed,
@@ -671,19 +727,20 @@ export class JournalingStore implements BurritoStore {
       this.foldCache = null;
       await this.harvestResolutions();
       const harvested = new Map(this.resolutions);
-      if (pendingResolutions)
-        for (const [key, resource] of Object.entries(pendingResolutions))
-          this.resolutions.set(key, resource);
+      for (const [key, entry] of Object.entries(pendingResolutions))
+        this.resolutions.set(key, entry.resource);
       await this.classifyAndRecover(union.actions, report, {
-        // The staged resolutions belong WITH their action: a journal PREFIX
-        // that excludes that action must be compared under the resolutions the
-        // DISK reflects, or a genuine journal-ahead state reads as unexplained.
-        pendingTs,
-        hasPending: pendingResolutions !== null,
+        // Each staged resolution belongs WITH its own gate: a journal PREFIX
+        // carries an entry's overlay only when it contains that entry's action
+        // ts (and never a ts-free one), or a genuine journal-ahead state reads
+        // as unexplained.
+        pending: pendingResolutions,
         harvested,
       });
+      // A successful classification leaves every derived path converged (any
+      // install failure throws), so the applied entries are materialized.
+      if (hasPending) await this.kv.delete(this.pendingResolutionsKey);
     }
-    if (pendingResolutions) await this.kv.delete(this.pendingResolutionsKey);
 
     const foldOut = this.foldNow();
     report.forks = foldOut.forks;
@@ -1050,8 +1107,7 @@ export class JournalingStore implements BurritoStore {
     actions: Array<{ actor: string; ts: string; events: JournalEvent[] }>,
     report: OpenReport,
     resolutionContext?: {
-      pendingTs: string | null;
-      hasPending: boolean;
+      pending: Record<string, { ts: string | null; resource: Record<string, unknown> }>;
       harvested: Map<string, Record<string, unknown>>;
     },
   ): Promise<void> {
@@ -1112,9 +1168,10 @@ export class JournalingStore implements BurritoStore {
     // DISK-HARVESTED resolutions, so what remains is materializing the staged
     // resolution change — pending-resolution-ahead, recovered forward like a
     // journal-ahead state.
+    const pendingEntries = Object.entries(resolutionContext?.pending ?? {});
     if (
-      resolutionContext?.hasPending &&
-      this.withResolutions(resolutionContext.harvested, () => compare(foldOut).length === 0)
+      pendingEntries.length > 0 &&
+      this.withResolutions(resolutionContext!.harvested, () => compare(foldOut).length === 0)
     ) {
       await regenerateForward();
       return;
@@ -1142,17 +1199,20 @@ export class JournalingStore implements BurritoStore {
       } catch {
         break; // a prefix that does not fold explains nothing
       }
-      // A prefix that EXCLUDES the pending-resolution action is compared under
-      // the disk-harvested resolutions; the staged record travels with its
-      // action (review of 2026-08-20, P1). A ts-FREE (resolution-only) record
-      // belongs to no action at all, so NO prefix carries its overlay.
-      const includesPending =
-        !resolutionContext?.hasPending ||
-        (resolutionContext.pendingTs !== null &&
-          prefixEvents.some((e) => e.ts === resolutionContext.pendingTs));
-      const prefixClean = includesPending
-        ? compare(prefixFold).length === 0
-        : this.withResolutions(resolutionContext!.harvested, () => compare(prefixFold).length === 0);
+      // Each staged resolution travels WITH its own action (review of
+      // 2026-08-20, P1; per-entry since round 3): a prefix carries an entry's
+      // overlay only when it contains that entry's gate ts — and a ts-FREE
+      // (resolution-only) entry belongs to no action, so NO prefix carries it.
+      let prefixClean: boolean;
+      if (pendingEntries.length === 0) {
+        prefixClean = compare(prefixFold).length === 0;
+      } else {
+        const prefixTs = new Set(prefixEvents.map((e) => e.ts));
+        const prefixResolutions = new Map(resolutionContext!.harvested);
+        for (const [key, entry] of pendingEntries)
+          if (entry.ts !== null && prefixTs.has(entry.ts)) prefixResolutions.set(key, entry.resource);
+        prefixClean = this.withResolutions(prefixResolutions, () => compare(prefixFold).length === 0);
+      }
       if (prefixClean) {
         await regenerateForward();
         return;

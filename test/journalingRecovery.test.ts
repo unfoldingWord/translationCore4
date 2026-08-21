@@ -907,3 +907,63 @@ describe('#62 review round 2, P2: a resolution-only whole-file decision write re
     expect(rig.writes.length).toBe(writesBefore);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Review regression, round 3 (PR #88 review of 2026-08-20, third pass).
+// ---------------------------------------------------------------------------
+
+describe('#62 review round 3, P1: pending resolutions accumulate per key, like the regeneration marker', () => {
+  const TW_NEW = { repoPath: 'git.door43.org/es-419_gl/es-419_tw', version: 'v37', languageSet: 'primary' };
+  const TN_RESOLUTION = { repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v86', languageSet: 'fallback' };
+  const TN_NEW = { repoPath: 'git.door43.org/es-419_gl/es-419_tn', version: 'v66', languageSet: 'primary' };
+  const tnDecision = (checkId: string): Decision => {
+    const d = decision(checkId);
+    return { ...d, contextId: { ...d.contextId, tool: 'translationNotes' } };
+  };
+
+  it("a later successful decision write does not erase an earlier write's unmaterialized resource intent (the reviewer repro)", async () => {
+    for (const loseMarker of [false, true]) {
+      const world = await setup();
+      const { rig, api, store, kv, restart } = world;
+      await store.upsertDecision('translationWords', 'TIT', decision('viejo1'), RESOLUTION);
+      await store.upsertDecision('translationNotes', 'TIT', tnDecision('nota1'), TN_RESOLUTION);
+      const twStale = rig.repos.get(REPO)?.files.get('checking/translationWords/TIT.json');
+
+      // Write 1 (translationWords): EVENTFUL, with a NEW resource — publishes,
+      // then its own regeneration fails. Twice: the second failure eats the
+      // later write's inline retry, so the intent is still unmaterialized.
+      rig.failOn((ctx) => ctx.method === 'POST' && ctx.ipath === 'checking/translationWords/TIT.json', 2);
+      const stored = await store.readDecisions('translationWords', 'TIT');
+      await expect(
+        store.writeDecisions('translationWords', 'TIT', {
+          schemaVersion: 1,
+          tool: 'translationWords',
+          book: 'TIT',
+          resource: TW_NEW,
+          decisions: [...stored!.decisions, decision('nuevo1', { comments: 'nueva' })],
+        }),
+      ).rejects.toThrow(/injected failure/);
+
+      // Write 2 (translationNotes): a SUCCESSFUL resolution-only write for the
+      // OTHER tool. Pre-fix its staging replaced write 1's pending resource and
+      // its cleanup deleted the record outright.
+      const tn = await store.readDecisions('translationNotes', 'TIT');
+      await store.writeDecisions('translationNotes', 'TIT', { ...tn!, resource: TN_NEW });
+      const tnDisk = JSON.parse(rig.repos.get(REPO)?.files.get('checking/translationNotes/TIT.json') ?? '');
+      expect(tnDisk.resource).toEqual(TN_NEW);
+      expect(rig.repos.get(REPO)?.files.get('checking/translationWords/TIT.json')).toBe(twStale); // still stale
+      expect((await kv.keys('pendingResolutions:')).length).toBe(1); // write 1's intent retained
+
+      if (loseMarker) for (const key of await kv.keys('regen:')) await kv.delete(key);
+      const store2 = restart();
+      await store2.open(REPO);
+      expect(store2.lastOpenReport?.classification).toBe('regenerated-forward');
+      const twDisk = JSON.parse(rig.repos.get(REPO)?.files.get('checking/translationWords/TIT.json') ?? '');
+      expect(twDisk.resource).toEqual(TW_NEW); // pre-fix: the old disk-harvested resource
+      expect(twDisk.decisions.some((d: Decision) => d.contextId.checkId === 'nuevo1')).toBe(true);
+      expect(JSON.parse(rig.repos.get(REPO)?.files.get('checking/translationNotes/TIT.json') ?? '').resource).toEqual(TN_NEW);
+      expect((await kv.keys('pendingResolutions:')).length).toBe(0);
+      await expectVerified(api);
+    }
+  });
+});
