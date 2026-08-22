@@ -105,6 +105,41 @@ const decisionRegisterKey = (tool: string, decision: Decision): string => {
   return ['dec', tool, c.checkId, r.bookId, String(r.chapter), String(r.verse), String(c.occurrence)].join('|');
 };
 
+/** The derived ipath ONE journal event materializes to, or null (a metadata
+ * overlay has no HTTP-writable file). Used to mark a just-republished action's
+ * derived paths as journal-ahead (round-5 interim rules 1 and 2): the replay
+ * itself put the action into the journal while the disk still lags, so its
+ * paths are explained forward exactly like the regen marker's. */
+const eventDerivedPath = (event: JournalEvent): string | null => {
+  const e = event as unknown as Record<string, unknown>;
+  const book = typeof e.book === 'string' ? (e.book as string) : null;
+  switch (event.op) {
+    case 'book.add':
+    case 'book.remove':
+    case 'text.verse.set':
+    case 'text.skeleton.set':
+    case 'text.structure.apply':
+      return book === null ? null : bookIpath(book);
+    case 'align.verse.set':
+      return book === null ? null : alignmentsIpath(book);
+    case 'check.decision.set': {
+      const decision = e.decision as { contextId?: { reference?: { bookId?: string } } } | undefined;
+      const bookId = decision?.contextId?.reference?.bookId;
+      return typeof e.toolId === 'string' && typeof bookId === 'string'
+        ? decisionsIpath(e.toolId, bookId.toUpperCase())
+        : null;
+    }
+    case 'resource.pin.set':
+      return RESOURCES_IPATH;
+    case 'settings.set':
+      return SETTINGS_IPATH;
+    case 'project.vrs.set':
+      return VRS_IPATH;
+    default:
+      return null; // project.meta.set, note.add: no HTTP-writable derived file
+  }
+};
+
 /** Flatten a §5.3 resources document into pin-slot entries — the SAME walk the
  * reference seeder applies (conformance/journal/reconcile.mjs seedFromSidecars),
  * restated over the typed document. Slot grammar violations surface at seal. */
@@ -471,6 +506,13 @@ export class JournalingStore implements BurritoStore {
     await this.mustJournal().publish(stamped);
     this.events.push(...stamped.map(normalizeEvent));
     this.foldCache = null;
+    // INTERIM round-5 rule 3 (REGISTER STAMPS AFTER ACCEPTANCE ONLY): the
+    // in-memory resolution register moves only once the action is PUBLISHED —
+    // a seal-rejected or otherwise failed publish leaves no trace in it, so a
+    // later mutation or inline marker retry can never regenerate a sidecar
+    // under a resource intent that was never accepted (round-5 M4/M5).
+    if (resolutions)
+      for (const [key, resource] of Object.entries(resolutions)) this.resolutions.set(key, resource);
     try {
       await this.installWithMarker(affected);
     } finally {
@@ -558,10 +600,21 @@ export class JournalingStore implements BurritoStore {
     for (const ipath of own) outstanding.add(ipath);
     await this.kv.set(this.regenMarkerKey, JSON.stringify([...outstanding]));
     const foldOut = this.foldNow();
-    const ordered = [...own, ...[...outstanding].filter((p) => !own.includes(p))];
+    const retries = [...outstanding].filter((p) => !own.includes(p));
+    const ordered = [...own, ...retries];
+    // INTERIM round-5 rule 4 (RETRIES READ DURABLE STATE): an inline retry of
+    // an OLDER outstanding path projects under the DURABLE candidate list —
+    // never under the bare in-memory register, which rule 3 keeps clean but a
+    // crash-free earlier accepted intent may not have reached yet (M5). The
+    // overlay holds, per key, the LAST candidate whose gate ts is actually in
+    // the journal (or is ts-free) — the same gate recovery applies.
+    const overlay = retries.length ? await this.durableResolutionOverlay() : null;
     for (const ipath of ordered) {
+      const isRetry = overlay !== null && !own.includes(ipath);
       try {
-        const bytes = this.projectionBytes(foldOut, ipath);
+        const bytes = isRetry
+          ? this.withResolutions(overlay, () => this.projectionBytes(foldOut, ipath))
+          : this.projectionBytes(foldOut, ipath);
         if (bytes !== null) await this.installDerived(ipath, bytes);
       } catch (error) {
         // This mutation fails only for ITS OWN work; a still-failing RETRY of
@@ -569,10 +622,79 @@ export class JournalingStore implements BurritoStore {
         if (own.includes(ipath)) throw error;
         continue;
       }
+      // A retried decision sidecar that materialized under its durable
+      // candidate is now accepted-and-materialized state: the register may
+      // move (rule 3 allows stamps after acceptance only — this is after).
+      if (isRetry) {
+        const dec = /^checking\/(translationWords|translationNotes)\/([A-Z0-9]{3})\.json$/.exec(ipath);
+        if (dec) {
+          const resource = overlay.get(`${dec[1]}\n${dec[2]}`);
+          if (resource !== undefined) this.resolutions.set(`${dec[1]}\n${dec[2]}`, resource);
+        }
+      }
       outstanding.delete(ipath);
       await this.kv.set(this.regenMarkerKey, JSON.stringify([...outstanding]));
     }
     if (outstanding.size === 0) await this.kv.delete(this.regenMarkerKey);
+  }
+
+  /** The (tool, BOOK) resolution view a RETRY must regenerate under (rule 4):
+   * the in-memory register overlaid with the last DURABLE pending candidate
+   * per key whose gate holds — ts-free, or a ts the journal actually contains. */
+  private async durableResolutionOverlay(): Promise<Map<string, Record<string, unknown>>> {
+    const merged = new Map(this.resolutions);
+    const entries = await this.readPendingResolutions();
+    if (Object.keys(entries).length === 0) return merged;
+    const journaled = new Set(this.events.map((e) => e.ts));
+    for (const [key, candidates] of Object.entries(entries))
+      for (const candidate of candidates)
+        if (candidate.ts === null || journaled.has(candidate.ts)) merged.set(key, candidate.resource);
+    return merged;
+  }
+
+  /** Merge paths into the durable regeneration marker (the OUTSTANDING set)
+   * without installing anything — used by rule 1 to record a just-republished
+   * action's derived paths as journal-ahead before the mutation proceeds. */
+  private async markOutstanding(paths: string[]): Promise<void> {
+    const existing = await this.kv.get(this.regenMarkerKey);
+    const outstanding = new Set<string>(existing === undefined ? [] : (JSON.parse(existing) as string[]));
+    for (const ipath of paths) outstanding.add(ipath);
+    await this.kv.set(this.regenMarkerKey, JSON.stringify([...outstanding]));
+  }
+
+  /** INTERIM round-5 rule 1 (REPLAY-BEFORE-DIFF): inside the per-project
+   * queue, BEFORE any mutation computes its diff, replay this actor's own
+   * staged outbox intents (#61 replayStaged) and refresh the fold from the
+   * union. This restores the linear-prefix invariant for the running session:
+   * a mutation never diffs against a fold that lacks a durably accepted
+   * action, so a failed publish can neither be silently re-lost by a later
+   * whole-file write nor land mid-history at the next open (M1/M2). The
+   * republished actions' derived paths enter the durable regeneration marker:
+   * this mutation's install retries them inline, and a crash before that
+   * still classifies as journal-ahead on the next open. */
+  private async replayOwnStagedBeforeDiff(): Promise<void> {
+    const journal = this.mustJournal();
+    const replayed = await journal.replayStaged();
+    const stagedInvalid = replayed.filter((r) => r.outcome === 'staged-invalid');
+    if (stagedInvalid.length)
+      throw new Error(
+        `refuse to mutate ${this.mustRepo()}: the outbox holds staged intents whose bytes are ` +
+          `invalid (${stagedInvalid.map((r) => `${r.ts}: ${r.reason ?? ''}`).join('; ')}) — ` +
+          `surfaced, never silently dropped (R-8.1.7/R-8.1.8)`,
+      );
+    const republished = new Set(replayed.filter((r) => r.outcome === 'republished').map((r) => r.ts));
+    if (republished.size === 0) return;
+    const union = await journal.readUnion();
+    this.events = union.events;
+    this.foldCache = null;
+    const paths = new Set<string>();
+    for (const action of union.actions)
+      if (republished.has(action.ts))
+        for (const event of action.events) {
+          const ipath = eventDerivedPath(event);
+          if (ipath !== null) paths.add(ipath);
+        }
+    if (paths.size) await this.markOutstanding([...paths]);
   }
 
   /** Persist and materialize a RESOLUTION-ONLY change (review of 2026-08-20
@@ -588,6 +710,9 @@ export class JournalingStore implements BurritoStore {
     affected: string[],
   ): Promise<void> {
     await this.stagePendingResolutions(null, entries);
+    // Rule 3 (round 5): the ts-free durable stage IS this intent's acceptance
+    // (there is no action to publish) — the register moves only now.
+    for (const [key, resource] of Object.entries(entries)) this.resolutions.set(key, resource);
     try {
       await this.installWithMarker(affected);
     } finally {
@@ -705,6 +830,22 @@ export class JournalingStore implements BurritoStore {
     // ts proves the action never published — that candidate is stale and
     // dropped, the others untouched, including earlier candidates on the SAME
     // key).
+    // INTERIM round-5 rule 2: the derived paths of every JUST-REPUBLISHED
+    // intent are journal-ahead by construction — the replay itself put those
+    // actions into the journal while the disk still lags. The classifier
+    // subtracts them (exactly like the regen marker's paths) before any other
+    // branch runs, and §8.8 reconcile may never consume them (M3).
+    const republishedTs = new Set(
+      replayed.filter((r) => r.outcome === 'republished').map((r) => r.ts),
+    );
+    const republishedPaths = new Set<string>();
+    for (const action of union.actions)
+      if (republishedTs.has(action.ts))
+        for (const event of action.events) {
+          const ipath = eventDerivedPath(event);
+          if (ipath !== null) republishedPaths.add(ipath);
+        }
+
     const unionTs = new Set(union.events.map((e) => e.ts));
     const staged = await this.readPendingResolutions();
     const pendingResolutions: Record<string, Array<{ ts: string | null; resource: Record<string, unknown> }>> = {};
@@ -749,7 +890,7 @@ export class JournalingStore implements BurritoStore {
       const harvested = new Map(this.resolutions);
       for (const [key, candidates] of Object.entries(pendingResolutions))
         this.resolutions.set(key, candidates[candidates.length - 1].resource);
-      await this.classifyAndRecover(union.actions, report, {
+      await this.classifyAndRecover(union.actions, report, republishedPaths, {
         // Each staged resolution belongs WITH its own gate: a journal PREFIX
         // carries an entry's overlay only when it contains that entry's action
         // ts (and never a ts-free one), or a genuine journal-ahead state reads
@@ -1126,6 +1267,9 @@ export class JournalingStore implements BurritoStore {
   private async classifyAndRecover(
     actions: Array<{ actor: string; ts: string; events: JournalEvent[] }>,
     report: OpenReport,
+    /** Derived paths of the actions this open() just republished from the
+     * outbox (rule 2) — journal-ahead by construction, like the marker's. */
+    republishedPaths: Set<string>,
     resolutionContext?: {
       pending: Record<string, Array<{ ts: string | null; resource: Record<string, unknown> }>>;
       harvested: Map<string, Record<string, unknown>>;
@@ -1183,6 +1327,27 @@ export class JournalingStore implements BurritoStore {
       report.regeneratedPaths = paths;
     };
 
+    // (a) Journal-ahead paths the mechanism itself explains (round-5 rule 2):
+    // our own durable regeneration marker (a recorded, interrupted
+    // regeneration) COMPOSED WITH the paths of a just-republished staged
+    // intent (the replay put the action into the journal while the disk still
+    // lags). Both are subtracted before any other branch runs; each explained
+    // path must be one the fold actually derives forward.
+    const marker = await this.kv.get(this.regenMarkerKey);
+    const markerPaths = new Set<string>(marker === undefined ? [] : (JSON.parse(marker) as string[]));
+    const aheadExplained = (ipath: string): boolean => {
+      if (!markerPaths.has(ipath) && !republishedPaths.has(ipath)) return false;
+      try {
+        return this.projectionBytes(foldOut, ipath) !== null;
+      } catch {
+        return false; // e.g. a decision file whose resolution record is gone
+      }
+    };
+    if (diverged.every((d) => aheadExplained(d.ipath))) {
+      await regenerateForward();
+      return;
+    }
+
     // (0) The ONLY divergence is a pending resolution overlay (review of
     // 2026-08-20 round 2, P2): disk matches the fold exactly under the
     // DISK-HARVESTED resolutions, so what remains is materializing the staged
@@ -1195,17 +1360,6 @@ export class JournalingStore implements BurritoStore {
     ) {
       await regenerateForward();
       return;
-    }
-
-    // (a) Our own durable regeneration marker covers every diverged path →
-    // the journal is ahead by our recorded, interrupted regeneration.
-    const marker = await this.kv.get(this.regenMarkerKey);
-    if (marker !== undefined) {
-      const markerPaths = new Set(JSON.parse(marker) as string[]);
-      if (diverged.every((d) => markerPaths.has(d.ipath) && this.projectionBytes(foldOut, d.ipath) !== null)) {
-        await regenerateForward();
-        return;
-      }
     }
 
     // (b) Disk equals the projection of a journal PREFIX (the journal is ahead
@@ -1243,13 +1397,17 @@ export class JournalingStore implements BurritoStore {
       }
     }
 
-    // (c) Every diverged path is a book USFM (edited or created out-of-band) →
-    // §8.8 reconcile: journal the committed bytes, then converge.
-    const usfmOnly = diverged.every((d) => /^[A-Z0-9]{3}\.usfm$/.test(d.ipath));
+    // (c) Every UNEXPLAINED diverged path is a book USFM (edited or created
+    // out-of-band) → §8.8 reconcile those — and ONLY those (round-5 rule 2,
+    // M3): a path the marker or a fresh republication already explains as
+    // journal-ahead is NEVER re-journaled from its (stale) disk bytes; those
+    // paths regenerate forward in the same recovery's convergence below.
+    const remainder = diverged.filter((d) => !aheadExplained(d.ipath));
+    const usfmOnly = remainder.every((d) => /^[A-Z0-9]{3}\.usfm$/.test(d.ipath));
     if (usfmOnly) {
       const journal = this.mustJournal();
       const clock = { issue: (): string => journal.issueTs() };
-      for (const entry of diverged) {
+      for (const entry of remainder) {
         const book = entry.ipath.slice(0, 3);
         const committed = disk.diskBytes[entry.ipath];
         if (committed === undefined)
@@ -1292,6 +1450,7 @@ export class JournalingStore implements BurritoStore {
    * journal-first for the content itself. */
   async addBook(params: AddBookParams): Promise<void> {
     return this.queue(async () => {
+      await this.replayOwnStagedBeforeDiff(); // round-5 rule 1: REPLAY-BEFORE-DIFF
       const journal = this.mustJournal();
       const book = params.book_code.toUpperCase();
       await this.api.newScriptureBook(this.mustRepo(), {
@@ -1327,6 +1486,7 @@ export class JournalingStore implements BurritoStore {
    * the diff compares what will actually seal. */
   async writeBook(book: string, usfm: string, opts: WriteBookOptions = {}): Promise<void> {
     return this.queue(async () => {
+      await this.replayOwnStagedBeforeDiff(); // round-5 rule 1: REPLAY-BEFORE-DIFF
       const journal = this.mustJournal();
       const code = book.toUpperCase();
       await this.checkExpectMd5(bookIpath(code), opts.expectMd5);
@@ -1382,6 +1542,7 @@ export class JournalingStore implements BurritoStore {
    * is an in-app user action, not migrated data). */
   async applyStructuralEdit(book: string, usfm: string): Promise<void> {
     return this.queue(async () => {
+      await this.replayOwnStagedBeforeDiff(); // round-5 rule 1: REPLAY-BEFORE-DIFF
       const journal = this.mustJournal();
       const code = book.toUpperCase();
       const foldOut = this.foldNow();
@@ -1409,6 +1570,7 @@ export class JournalingStore implements BurritoStore {
    * empty-state record when a stored record disappears (the §8.5 removal). */
   async writeAlignments(book: string, data: AlignmentFile, expectMd5?: string | null): Promise<void> {
     return this.queue(async () => {
+      await this.replayOwnStagedBeforeDiff(); // round-5 rule 1: REPLAY-BEFORE-DIFF
       const journal = this.mustJournal();
       const code = book.toUpperCase();
       await this.checkExpectMd5(alignmentsIpath(code), expectMd5);
@@ -1472,6 +1634,7 @@ export class JournalingStore implements BurritoStore {
     resource?: { repoPath: string; version: string; languageSet?: string },
   ): Promise<void> {
     return this.queue(async () => {
+      await this.replayOwnStagedBeforeDiff(); // round-5 rule 1: REPLAY-BEFORE-DIFF
       const journal = this.mustJournal();
       const code = book.toUpperCase();
       const foldOut = this.foldNow();
@@ -1485,12 +1648,17 @@ export class JournalingStore implements BurritoStore {
       const stored = this.resolutions.get(resolutionKey) as
         | { repoPath: string; version: string }
         | undefined;
+      // Rule 3 (round 5): the register is stamped after acceptance only — the
+      // effective resolution is computed here and travels WITH the action; it
+      // enters the register inside publishAndRegenerate once the publish is
+      // accepted, never before.
+      let effective = stored as Record<string, unknown> | undefined;
       if (resource) {
         const agrees =
           !stored || (samePath(stored.repoPath, resource.repoPath) && stored.version === resource.version);
-        if (agrees) this.resolutions.set(resolutionKey, resource);
+        if (agrees) effective = resource as unknown as Record<string, unknown>;
       }
-      if (!this.resolutions.has(resolutionKey))
+      if (effective === undefined)
         throw new Error(
           `upsertDecision(${tool}, ${code}): no (tool, book) resolution record — §5.2 requires ` +
             `\`resource\` (D30); pass the session's resolution`,
@@ -1521,7 +1689,7 @@ export class JournalingStore implements BurritoStore {
         decision: toNfc(incoming) as unknown as Record<string, unknown>,
       };
       await this.publishAndRegenerate([event], [decisionsIpath(tool, code)], {
-        [resolutionKey]: this.resolutions.get(resolutionKey)!,
+        [resolutionKey]: effective,
       });
     });
   }
@@ -1537,6 +1705,7 @@ export class JournalingStore implements BurritoStore {
     expectMd5?: string | null,
   ): Promise<string> {
     return this.queue(async () => {
+      await this.replayOwnStagedBeforeDiff(); // round-5 rule 1: REPLAY-BEFORE-DIFF
       await this.checkExpectMd5(decisionsIpath(tool, book), expectMd5);
       const ipath = decisionsIpath(tool, book.toUpperCase());
       const { events, resolutionChanged } = this.decisionDiffEvents(tool, book, file);
@@ -1577,9 +1746,12 @@ export class JournalingStore implements BurritoStore {
         `writeDecisions(${tool}, ${code}): the file carries no (tool, book) resolution record — ` +
           `§5.2 requires \`resource\` (D30)`,
       );
+    // Rule 3 (round 5): NO register stamp here — the diff only OBSERVES the
+    // register; the file's resource enters it after acceptance (the caller
+    // passes it to publishAndRegenerate / applyResolutionOnly), so a
+    // seal-rejected whole-file write leaves the register untouched (M4).
     const resolutionChanged =
       canonical(this.resolutions.get(`${tool}\n${code}`) ?? null) !== canonical(file.resource);
-    this.resolutions.set(`${tool}\n${code}`, file.resource);
 
     const incoming = (file.decisions ?? []).map(normalizeDecision);
     const incomingKeys = new Set(incoming.map((d) => decisionRegisterKey(tool, d)));
@@ -1625,6 +1797,7 @@ export class JournalingStore implements BurritoStore {
    * absent from the document removes with the spec's removed: true form. */
   async writeResources(resources: ResourcesFile, expectMd5?: string | null): Promise<void> {
     return this.queue(async () => {
+      await this.replayOwnStagedBeforeDiff(); // round-5 rule 1: REPLAY-BEFORE-DIFF
       await this.checkExpectMd5(RESOURCES_IPATH, expectMd5);
       const journal = this.mustJournal();
       const foldOut = this.foldNow();
@@ -1664,6 +1837,7 @@ export class JournalingStore implements BurritoStore {
    * top-level path absent from the document removes with removed: true. */
   async writeSettings(settings: SettingsFile): Promise<void> {
     return this.queue(async () => {
+      await this.replayOwnStagedBeforeDiff(); // round-5 rule 1: REPLAY-BEFORE-DIFF
       const journal = this.mustJournal();
       const foldOut = this.foldNow();
       const events: JournalEvent[] = [];
@@ -1706,6 +1880,7 @@ export class JournalingStore implements BurritoStore {
    * overlay cannot be applied, never emitting a silently incomplete checkpoint. */
   async writeProjectMeta(meta: Record<string, unknown>): Promise<void> {
     return this.queue(async () => {
+      await this.replayOwnStagedBeforeDiff(); // round-5 rule 1: REPLAY-BEFORE-DIFF
       const journal = this.mustJournal();
       const foldOut = this.foldNow();
       const events: JournalEvent[] = [];
@@ -1746,6 +1921,7 @@ export class JournalingStore implements BurritoStore {
    * back behind it. */
   async applyGatewayChange(plan: GatewayChangePlan): Promise<void> {
     return this.queue(async () => {
+      await this.replayOwnStagedBeforeDiff(); // round-5 rule 1: REPLAY-BEFORE-DIFF
       const journal = this.mustJournal();
       // 1. Validate ALL preconditions before anything is staged or written.
       await this.checkExpectMd5(RESOURCES_IPATH, plan.resourcesMd5);
