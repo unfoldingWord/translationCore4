@@ -12,6 +12,7 @@
 // Spanish coverage is genuinely partial (es-419_tn v66 carries 3JN/JON/RUT/TIT),
 // which is the condition D30.1 exists for.
 import { test, expect } from '@playwright/test';
+import { verifyAllJournaledProjects } from './helpers/journal';
 import fs from 'node:fs';
 import path from 'node:path';
 import { deriveTnItems, mergeKey } from '../src/data/derive';
@@ -271,4 +272,10 @@ test.describe('J13 — changing the project’s checking language', () => {
       await expect(page.getByTestId('check-note')).toContainText(/[áéíóúñ¿]/u);
     },
   );
+});
+
+// Issue #62 teardown: after this journey's mutations, every journaled local
+// project must be a verified byte-for-byte materialization of its journal.
+test.afterAll(async () => {
+  await verifyAllJournaledProjects();
 });

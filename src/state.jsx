@@ -4,7 +4,12 @@
 import React, { createContext, useContext, useEffect, useMemo, useReducer, useRef } from 'react';
 import usfm from 'usfm-js';
 import { ServerApi } from './data/serverApi';
-import { HttpStore, StaleWriteError } from './data/httpStore';
+// The CANONICAL write boundary (issue #62): every project mutation goes through
+// JournalingStore, which journals the action as an immutable §8.5 segment
+// BEFORE any derived file changes. The raw HttpStore is never constructed here
+// (test/noBypass.test.ts enforces it); read-only surfaces use ProjectReader.
+import { StaleWriteError } from './data/httpStore';
+import { JournalingStore, ProjectReader } from './data/journal/journalingStore';
 import { SaveScheduler } from './data/saveScheduler';
 import { spliceVerse, verseBody } from './data/usfm/splice';
 import { indexBook } from './data/usfm/indexer';
@@ -403,8 +408,8 @@ export function AppProvider({ children }) {
 
   async function refreshProjects() {
     try {
-      const store = new HttpStore({ api });
-      const projects = await store.listProjects();
+      const reader = new ProjectReader({ api });
+      const projects = await reader.listProjects();
       let lastUsed = {};
       try {
         lastUsed = (await api.getClientSettings(STORAGE_ID)).lastUsed || {};
@@ -549,8 +554,8 @@ export function AppProvider({ children }) {
         const md5s = {};
         for (const book of st.project.bookCodes ?? []) {
           for (const tool of Object.keys(TOOL_SLOT)) {
-            // Read the RAW bytes (B21): parse for the carry-over computation, but
-            // keep the exact text so a failed commit can restore it verbatim.
+            // Read the raw bytes once: parse for the carry-over computation and
+            // hash the exact text for the coordinated action's preconditions.
             const got = await store.readDecisionsText(tool, book).catch(() => null);
             if (got?.text != null) {
               stored.push({ tool, book, file: JSON.parse(got.text), raw: got.text });
@@ -583,10 +588,6 @@ export function AppProvider({ children }) {
             tool: entry.tool,
             book: entry.book,
             expectMd5: md5s[`${entry.tool}/${entry.book}`] ?? null,
-            // The pre-migration file (parsed) + its EXACT original bytes, kept
-            // so a later-book failure rolls back byte-identically (B11 + B21).
-            originalFile: source.file,
-            originalRaw: source.raw,
             ...result,
           });
         }
@@ -640,69 +641,27 @@ export function AppProvider({ children }) {
        * exactly what was described to them, not a re-derived guess — including
        * the per-book carry-over already computed there.
        *
-       * The commit is all-or-nothing (B11). FIRST every precondition is
-       * validated — resources.json and EVERY planned decision file must still
-       * hash to what the preview read. Only if all hold does any write happen,
-       * so a book that moved under us aborts the whole migration before any
-       * file changes. If a write still fails mid-way (a narrow race after
-       * validation), the already-migrated decision files are rolled back to
-       * their pre-migration content, so the project is never left with some
-       * books reconciled to the new resource while the pins stay old. */
+       * The change is ONE coordinated journal action (issue #62): the store
+       * validates every precondition (resources.json and EVERY planned decision
+       * file must still hash to what the preview read), computes the complete
+       * multi-event action across all affected decision records and resource
+       * pins, publishes it once, and regenerates the derived files from the
+       * fold. Published decision events are permanent, so a post-publication
+       * failure recovers FORWARD on the next open — the pre-#62 byte-rollback
+       * path is retired from this flow (test/noBypass.test.ts enforces it). */
       commitGatewayChange: async (preview) => {
         const store = storeRef.current;
         if (!store) throw new Error('no project is open');
-        const plan = preview.plan ?? [];
-
-        // 1) Validate ALL preconditions before touching anything.
-        const { md5: nowMd5 } = await store.readResourcesWithMd5();
-        if ((preview.resourcesMd5 ?? null) !== nowMd5) {
-          throw new StaleWriteError(
-            'checking/resources.json',
-            preview.resourcesMd5 ?? '(absent)',
-            nowMd5 ?? '(absent)',
-          );
-        }
-        for (const p of plan) {
-          const { md5: cur } = await store.readDecisionsWithMd5(p.tool, p.book);
-          if ((p.expectMd5 ?? null) !== (cur ?? null)) {
-            throw new StaleWriteError(
-              `checking/${p.tool}/${p.book}`,
-              p.expectMd5 ?? '(absent)',
-              cur ?? '(absent)',
-            );
-          }
-        }
-
-        // 2) Write, rolling back already-migrated books if a later write fails.
-        const migrated = [];
-        try {
-          for (const p of plan) {
-            // writeDecisions returns the md5 of EXACTLY the bytes it wrote,
-            // captured under the store's write lock (B15) — never a read-back,
-            // which could adopt a concurrent edit's bytes and then let the
-            // rollback CAS clobber that edit.
-            const wroteMd5 = await store.writeDecisions(p.tool, p.book, p.file, p.expectMd5);
-            migrated.push({ ...p, wroteMd5 });
-          }
-          await store.writeResources(preview.next, nowMd5);
-        } catch (e) {
-          for (const p of migrated) {
-            try {
-              // B14 — CAS the rollback on the bytes WE wrote. If another writer
-              // edited this book after our migration, the restore is refused and
-              // their edit stands: a rollback must never force-clobber a
-              // concurrent change (only undo our own partial migration).
-              // B21 — restore the EXACT original bytes (not the parsed file
-              // re-normalized), so a failed transaction leaves the sidecar
-              // byte-identical and the tree clean.
-              await store.restoreDecisionsText(p.tool, p.book, p.originalRaw, p.wroteMd5);
-            } catch (rollbackErr) {
-              if (!(rollbackErr instanceof StaleWriteError)) throw rollbackErr;
-              // Concurrent edit landed → it is the current truth; leave it.
-            }
-          }
-          throw e;
-        }
+        await store.applyGatewayChange({
+          resources: preview.next,
+          resourcesMd5: preview.resourcesMd5 ?? null,
+          decisions: (preview.plan ?? []).map((p) => ({
+            tool: p.tool,
+            book: p.book,
+            file: p.file,
+            expectMd5: p.expectMd5 ?? null,
+          })),
+        });
         dispatch({ type: 'set', patch: { projectPins: preview.next } });
         if (stateRef.current.book) await a.runPreflight();
         return preview.next;
@@ -1179,13 +1138,10 @@ export function AppProvider({ children }) {
         const abbr = slug(w.name) || slug(w.code);
         if (!abbr) return a.patchNp({ error: t('wizard.abbrRequired') });
         a.patchNp({ busy: true, error: null });
-        const store = new HttpStore({ api });
-        // Pre-check the name: a failed create leaves a git-init'd debris repo
-        // (validation runs AFTER init — PLATFORM-NOTES #28), so never attempt a
-        // create over an existing path. The pre-check is MANDATORY: the
-        // failure-path cleanup below deletes `target`, which is only safe when
-        // this listing POSITIVELY confirmed the path did not exist (review
-        // finding B2, 2026-07-30) — so a listing failure aborts the create.
+        const store = new JournalingStore({ api });
+        // Friendly-name pre-check only: the boundary's createProject does its
+        // own MANDATORY existence pre-check and debris cleanup (PLATFORM-NOTES
+        // #28) before the server call — this read is for the specific message.
         const target = `_local_/_local_/${abbr}`;
         let existing;
         try {
@@ -1196,7 +1152,6 @@ export function AppProvider({ children }) {
         if (existing.includes(target)) {
           return a.patchNp({ busy: false, error: t('wizard.nameInUse', { abbr }) });
         }
-        let created = false;
         try {
           const { repoPath } = await store.createProject({
             content_name: w.name.trim(),
@@ -1233,20 +1188,12 @@ export function AppProvider({ children }) {
             textFont: w.font,
             languageName: w.langName.trim() || null,
           });
-          created = true;
           await store.commit('Project created (tC4 Increment 1)');
           await markUsed(repoPath); // creation counts as use (owner, 2026-07-31)
           await refreshProjects();
           // Design flow: "You'll add books next" — straight into Add-a-book.
           a.openAddBook({ id: repoPath, name: w.name.trim(), bookCodes: [] });
         } catch (e) {
-          if (!created) {
-            // Our failed attempt may have left a git-init'd debris repo. The
-            // mandatory pre-check above CONFIRMED the path was absent before
-            // the attempt, so deleting it can only remove our own debris,
-            // never pre-existing work (PLATFORM-NOTES #28; review finding B2).
-            api.deleteRepo(target).catch(() => {});
-          }
           a.patchNp({ busy: false, error: e?.reason || e?.message || t('wizard.error') });
         }
       },
@@ -1292,34 +1239,36 @@ export function AppProvider({ children }) {
         if (!codes.length) return a.patchAb({ error: t('addBook.pickOne') });
         a.patchAb({ busy: true, error: null });
         try {
-          const store = new HttpStore({ api });
+          const store = new JournalingStore({ api });
           const summary = await store.open(f.repoPath);
           for (const code of codes) {
             if (summary.bookCodes.includes(code)) continue; // fresh server truth wins
-            await store.addBook({
-              book_code: code,
-              book_title: bookName(code),
-              book_abbr: code,
-              add_cv: true,
-            });
             // Seed client-side from the pinned ULT structure (pre-chunked;
-            // PLATFORM-NOTES #19). A book missing from the source keeps the server
-            // skeleton — absence is a state, not an error. Seeding only ever
-            // runs here, on a book this call just created as stubs.
+            // PLATFORM-NOTES #19), computed FIRST so addBook journals ONE
+            // self-contained §8.5 book.add carrying the book's REAL initial
+            // state (issue #62). A book missing from the source journals the
+            // server skeleton instead — absence is a state, not an error.
+            let initialUsfm;
             try {
               const src = await store.readSourceBook(
                 localSourceRepo(INSTALLED_SUITE.extraScripture[0]),
                 code,
               );
-              const seeded = seedBookFromSource(src.usfm, {
+              initialUsfm = seedBookFromSource(src.usfm, {
                 bookCode: code,
                 bookName: bookName(code),
                 projectName: f.projName,
               });
-              await store.writeBook(code, seeded);
             } catch {
-              /* keep the server skeleton */
+              initialUsfm = undefined; /* keep the server skeleton */
             }
+            await store.addBook({
+              book_code: code,
+              book_title: bookName(code),
+              book_abbr: code,
+              add_cv: true,
+              initialUsfm,
+            });
           }
           await store.commit(`Add ${codes.join(', ')} (tC4)`);
           await refreshProjects();
@@ -1354,9 +1303,9 @@ export function AppProvider({ children }) {
           },
         });
         try {
-          const store = new HttpStore({ api });
-          await store.open(project.id);
-          const settings = (await store.readSettings()) || {};
+          const reader = new ProjectReader({ api });
+          await reader.open(project.id);
+          const settings = (await reader.readSettings()) || {};
           a.patchSt({
             dir: settings.textDirection === 'rtl' ? 'rtl' : 'ltr',
             font: settings.textFont || SCRIPT_FONTS[0],
@@ -1375,7 +1324,7 @@ export function AppProvider({ children }) {
         if (f.busy) return;
         a.patchSt({ busy: true, error: null });
         try {
-          const store = new HttpStore({ api });
+          const store = new JournalingStore({ api });
           await store.open(f.repoPath);
           const settings = (await store.readSettings()) || { schemaVersion: 1 };
           await store.writeSettings({
@@ -1396,16 +1345,18 @@ export function AppProvider({ children }) {
       loadProgress: async (project) => {
         if (stateRef.current.progressByProject[project.id]) return;
         if ((project.bookCodes || []).length === 0 || project.bookCodes.length > 12) return;
-        const store = new HttpStore({ api });
+        // Read-only: the Home tiles must not run open-recovery or claim the
+        // shell's current-project slot (ProjectReader does neither).
+        const reader = new ProjectReader({ api });
         try {
-          await store.open(project.id);
+          await reader.open(project.id);
         } catch {
           return;
         }
         const pcts = {};
         for (const code of project.bookCodes) {
           try {
-            const { usfm: raw } = await store.readBook(code);
+            const { usfm: raw } = await reader.readBook(code);
             const entries = indexBook(raw);
             const drafted = entries.filter((e) => {
               const b = raw.slice(e.start, e.end).trim();
@@ -1436,7 +1387,11 @@ export function AppProvider({ children }) {
           schedulerRef.current.dispose();
         }
         try {
-          const store = new HttpStore({ api });
+          const store = new JournalingStore({ api });
+          // open() runs the issue-#62 recovery pipeline: replay staged intents,
+          // classify derived state against the journal, seed a journal-less
+          // project universally, reconcile out-of-band USFM — or STOP with a
+          // diagnosable report (surfaced through bookError below).
           const summary = await store.open(repoPath);
           storeRef.current = store;
           schedulerRef.current = new SaveScheduler({

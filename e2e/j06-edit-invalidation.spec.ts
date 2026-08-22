@@ -4,6 +4,7 @@
 // Two independent "the ground moved" cases, and the same promise in both:
 // nothing is discarded, the user is told.
 import { test, expect } from '@playwright/test';
+import { verifyAllJournaledProjects } from './helpers/journal';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -118,4 +119,10 @@ test.describe('J6 — editing a checked verse flags its checks for re-review', (
       await expect(page.getByTestId('resolution-warning')).toHaveCount(0);
     },
   );
+});
+
+// Issue #62 teardown: after this journey's mutations, every journaled local
+// project must be a verified byte-for-byte materialization of its journal.
+test.afterAll(async () => {
+  await verifyAllJournaledProjects();
 });

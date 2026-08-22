@@ -5,6 +5,7 @@
 // Ground truth is the sidecar on disk. Wordmap suggestions (AD-7) are deferred
 // out of this increment (D35a), so nothing here asserts them.
 import { test, expect } from '@playwright/test';
+import { verifyAllJournaledProjects } from './helpers/journal';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -200,4 +201,10 @@ test.describe('J5 — a translator aligns a verse', () => {
       await expect(unavailable).toContainText(/original-language/i);
     },
   );
+});
+
+// Issue #62 teardown: after this journey's mutations, every journaled local
+// project must be a verified byte-for-byte materialization of its journal.
+test.afterAll(async () => {
+  await verifyAllJournaledProjects();
 });

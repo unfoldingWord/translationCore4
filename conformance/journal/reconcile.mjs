@@ -9,12 +9,25 @@ import { splitDecisionKey } from './grammar.mjs';
 // Slot set changed → ONE self-contained text.structure.apply (§8.5): the on-disk USFM
 // supplies every destination text; the mapping is the conservative identity-where-possible
 // one; everything unmappable gets invalidate-retain/orphan-review, never a guessed re-key.
-export const reconcileUsfm = (book, committedUsfm, foldOut, clock, actor) => {
+// `opts.seed`: the §8.3 seed marker to stamp. Defaults to the §8.8 out-of-band
+// marker (this function's original single caller). Issue #62's EXPLICIT structural
+// edit op builds the same conservative event from user-supplied USFM — same
+// transitions, same complete dispositions — but it is an in-app action, not
+// migrated/imported data, so it passes `seed: null` to omit the marker. One
+// builder for both, so the app cannot drift from the reference (§8.8 discipline).
+export const reconcileUsfm = (book, committedUsfm, foldOut, clock, actor, opts = {}) => {
   const { skeleton, verses } = decompose(committedUsfm);
   const projected = foldOut.books[book];
   const events = [];
   const batch = clock.issue();
-  const seed = { source: 'out-of-band-usfm', batch };
+  // Spread-props, never `seed: undefined` — an own key holding undefined does not
+  // survive a JSON round trip and the schema refuses such an event.
+  const seedProps =
+    opts.seed === undefined
+      ? { seed: { source: 'out-of-band-usfm', batch } }
+      : opts.seed
+        ? { seed: opts.seed }
+        : {};
   const oldSkeleton = projected ? decompose(projected.usfm).skeleton : null;
   const oldSlots = oldSkeleton ? slotKeysOf(oldSkeleton) : [];
   const newSlots = slotKeysOf(skeleton);
@@ -27,7 +40,7 @@ export const reconcileUsfm = (book, committedUsfm, foldOut, clock, actor) => {
   // a `book.remove` chains to that removal.
   if (!projected) {
     events.push({ v: 1, op: 'book.add', actor, ts: clock.issue(),
-      base: foldOut.headsTs[`book|${book}`] ?? null, seed, book, scope: [], skeleton, initialVerses: verses });
+      base: foldOut.headsTs[`book|${book}`] ?? null, ...seedProps, book, scope: [], skeleton, initialVerses: verses });
     return events;
   }
 
@@ -75,13 +88,13 @@ export const reconcileUsfm = (book, committedUsfm, foldOut, clock, actor) => {
       }
     }
     events.push({ v: 1, op: 'text.structure.apply', actor, ts: clock.issue(),
-      base: foldOut.headsTs[`skel|${book}`] ?? null, seed, book, skeleton, transitions, dispositions });
+      base: foldOut.headsTs[`skel|${book}`] ?? null, ...seedProps, book, skeleton, transitions, dispositions });
     return events;
   }
 
   if (decompose(projected.usfm).skeleton !== skeleton) {
     events.push({ v: 1, op: 'text.skeleton.set', actor, ts: clock.issue(),
-      base: foldOut.headsTs[`skel|${book}`], seed, book, skeleton });
+      base: foldOut.headsTs[`skel|${book}`], ...seedProps, book, skeleton });
   }
   for (const [vkey, text] of Object.entries(verses)) {
     if (projected.verses[vkey] === text) continue;
@@ -91,7 +104,7 @@ export const reconcileUsfm = (book, committedUsfm, foldOut, clock, actor) => {
     // projects. A slot that projects the `___` stub has no live verse head of its own —
     // its observed state is the SKELETON head, which is what this write actually saw.
     events.push({ v: 1, op: 'text.verse.set', actor, ts: clock.issue(),
-      base: foldOut.headsTs[`text|${book}|${vkey}`] ?? foldOut.headsTs[`skel|${book}`], seed,
+      base: foldOut.headsTs[`text|${book}|${vkey}`] ?? foldOut.headsTs[`skel|${book}`], ...seedProps,
       book, chapter, verse, text });
   }
   return events;

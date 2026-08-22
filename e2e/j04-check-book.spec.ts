@@ -5,6 +5,7 @@
 // come from the pinned resource's own TSV, and every decision must land in the
 // §5.2 sidecar with its resolution record.
 import { test, expect } from '@playwright/test';
+import { verifyAllJournaledProjects } from './helpers/journal';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -395,4 +396,10 @@ test.describe('J4 — a checker works a book', () => {
       await expect(page.getByTestId('article-panel')).toContainText('payload/');
     },
   );
+});
+
+// Issue #62 teardown: after this journey's mutations, every journaled local
+// project must be a verified byte-for-byte materialization of its journal.
+test.afterAll(async () => {
+  await verifyAllJournaledProjects();
 });

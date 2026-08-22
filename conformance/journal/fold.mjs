@@ -2,17 +2,16 @@
 // fold(events) is a pure function of the event SET: validate (v, op, actor binding),
 // dedup by ts, sort by ts, per-key LWW with fork detection, same-actor linearity,
 // structural application (text.structure.apply) with branch-local effects, then project.
-import crypto from 'crypto';
-import { createRequire } from 'module';
+// Environment-agnostic on purpose (issue #62): the PRODUCTION runtime imports this
+// module into a browser bundle — one fold, never a port that can drift — so nothing
+// here may touch a Node builtin. md5 is the dependency-free md5.mjs; usfm-js is a
+// static ESM import (Node's CJS interop and the app bundler both resolve it).
+import usfmjs from 'usfm-js';
 import { slotKeysOf, recompose } from './skeleton.mjs';
 import { validateEvent, PAYLOAD_FIELDS } from './schema.mjs';
 import { identityKeyOf, noteRekeyError, journaledTextError, MAX_JSON_DEPTH } from './grammar.mjs';
+import { md5Hex as md5 } from './md5.mjs';
 export { slotKeysOf }; // kept on this module for existing importers
-
-const require = createRequire(import.meta.url);
-const usfmjs = require('usfm-js');
-
-const md5 = (s) => crypto.createHash('md5').update(s, 'utf8').digest('hex');
 
 // §5.1 plain-text extraction — the fold's ONLY validity hash (I-3; §8.5 "Text vs. plain text").
 // There is no substitute hash: the D48 flip removed the former opts escape.
