@@ -482,18 +482,22 @@ export class JournalingStore implements BurritoStore {
   }
 
   /** The durable pending-resolution store — an ACCUMULATED per-(tool, BOOK)
-   * map, never a single overwriteable slot (review of 2026-08-20 round 3, P1:
-   * a later decision write must not erase an earlier accepted-but-
-   * unmaterialized resource intent). Each entry carries its own gate: the
-   * staging action's first ts, or null for a resolution-only intent that
-   * applies unconditionally. */
+   * map of CANDIDATE LISTS, never an overwriteable slot (review of 2026-08-20
+   * round 3, P1: a later decision write must not erase an earlier accepted-
+   * but-unmaterialized resource intent for ANOTHER key; round 4, review
+   * 4999892256: nor for the SAME key). Each candidate carries its own gate:
+   * the staging action's first ts, or null for a resolution-only intent that
+   * applies unconditionally. Recovery keeps every candidate whose gate holds
+   * and applies the LAST survivor per key (candidates are appended inside the
+   * per-project queue by one actor, so list order is HLC/causal order). */
   private async readPendingResolutions(): Promise<
-    Record<string, { ts: string | null; resource: Record<string, unknown> }>
+    Record<string, Array<{ ts: string | null; resource: Record<string, unknown> }>>
   > {
     const raw = await this.kv.get(this.pendingResolutionsKey);
     if (raw === undefined) return {};
-    return (JSON.parse(raw) as { entries: Record<string, { ts: string | null; resource: Record<string, unknown> }> })
-      .entries;
+    return (JSON.parse(raw) as {
+      entries: Record<string, Array<{ ts: string | null; resource: Record<string, unknown> }>>;
+    }).entries;
   }
 
   private async stagePendingResolutions(
@@ -501,10 +505,20 @@ export class JournalingStore implements BurritoStore {
     resolutions: Record<string, Record<string, unknown>>,
   ): Promise<void> {
     const entries = await this.readPendingResolutions();
-    // Per-key overwrite is correct: the queue serializes mutations, so a newer
-    // intent for the SAME (tool, BOOK) supersedes the older one — but entries
-    // for OTHER keys are always preserved.
-    for (const [key, resource] of Object.entries(resolutions)) entries[key] = { ts, resource };
+    // APPEND a candidate — never overwrite the key (round 4, review
+    // 4999892256). The queue serializes mutations, but serialization is not
+    // durability: this staging runs BEFORE the #61 publish, and the newer
+    // action can still be REJECTED at the seal, leaving no segment and no
+    // outbox intent. The earlier candidate must survive until the newer one is
+    // accepted or durably replayable; recovery gates each candidate on its own
+    // ts and applies the last survivor. A retry re-staging the SAME ts
+    // replaces its own candidate (idempotent), never accumulates duplicates.
+    for (const [key, resource] of Object.entries(resolutions)) {
+      const list = (entries[key] ??= []);
+      const existing = ts === null ? -1 : list.findIndex((c) => c.ts === ts);
+      if (existing >= 0) list[existing] = { ts, resource };
+      else list.push({ ts, resource });
+    }
     await this.kv.set(this.pendingResolutionsKey, JSON.stringify({ entries }));
   }
 
@@ -682,20 +696,26 @@ export class JournalingStore implements BurritoStore {
     // the replay above already republished any surviving intent, so a ts that
     // is still absent proves the action never published and the record is
     // stale. Cleared below once recovery has converged the disk.
-    // Gate each staged entry INDIVIDUALLY (round 3: the record is a per-key
-    // map, never one slot): an entry whose gate ts is null is a resolution-only
-    // intent and applies unconditionally — the record is the whole intent; an
-    // entry gated on an action ts applies only when that ts is actually in the
-    // journal (the replay above already republished any surviving intent, so a
-    // still-absent ts proves the action never published — that entry is stale
-    // and dropped, the others untouched).
+    // Gate each staged CANDIDATE INDIVIDUALLY (round 3: per-key entries, never
+    // one slot; round 4: per-key candidate LISTS, never a per-key slot): a
+    // candidate whose gate ts is null is a resolution-only intent and applies
+    // unconditionally — the record is the whole intent; a candidate gated on
+    // an action ts applies only when that ts is actually in the journal (the
+    // replay above already republished any surviving intent, so a still-absent
+    // ts proves the action never published — that candidate is stale and
+    // dropped, the others untouched, including earlier candidates on the SAME
+    // key).
     const unionTs = new Set(union.events.map((e) => e.ts));
     const staged = await this.readPendingResolutions();
-    const pendingResolutions: Record<string, { ts: string | null; resource: Record<string, unknown> }> = {};
+    const pendingResolutions: Record<string, Array<{ ts: string | null; resource: Record<string, unknown> }>> = {};
     let droppedStale = false;
-    for (const [key, entry] of Object.entries(staged)) {
-      if (entry.ts === null || unionTs.has(entry.ts)) pendingResolutions[key] = entry;
-      else droppedStale = true;
+    for (const [key, candidates] of Object.entries(staged)) {
+      // Round 4 (review 4999892256): gate each CANDIDATE individually — a
+      // rejected newer intent's candidate drops as stale while the earlier
+      // accepted candidate on the SAME key survives and applies.
+      const kept = candidates.filter((c) => c.ts === null || unionTs.has(c.ts));
+      if (kept.length < candidates.length) droppedStale = true;
+      if (kept.length) pendingResolutions[key] = kept;
     }
     if (droppedStale) {
       if (Object.keys(pendingResolutions).length)
@@ -727,8 +747,8 @@ export class JournalingStore implements BurritoStore {
       this.foldCache = null;
       await this.harvestResolutions();
       const harvested = new Map(this.resolutions);
-      for (const [key, entry] of Object.entries(pendingResolutions))
-        this.resolutions.set(key, entry.resource);
+      for (const [key, candidates] of Object.entries(pendingResolutions))
+        this.resolutions.set(key, candidates[candidates.length - 1].resource);
       await this.classifyAndRecover(union.actions, report, {
         // Each staged resolution belongs WITH its own gate: a journal PREFIX
         // carries an entry's overlay only when it contains that entry's action
@@ -1107,7 +1127,7 @@ export class JournalingStore implements BurritoStore {
     actions: Array<{ actor: string; ts: string; events: JournalEvent[] }>,
     report: OpenReport,
     resolutionContext?: {
-      pending: Record<string, { ts: string | null; resource: Record<string, unknown> }>;
+      pending: Record<string, Array<{ ts: string | null; resource: Record<string, unknown> }>>;
       harvested: Map<string, Record<string, unknown>>;
     },
   ): Promise<void> {
@@ -1209,8 +1229,12 @@ export class JournalingStore implements BurritoStore {
       } else {
         const prefixTs = new Set(prefixEvents.map((e) => e.ts));
         const prefixResolutions = new Map(resolutionContext!.harvested);
-        for (const [key, entry] of pendingEntries)
-          if (entry.ts !== null && prefixTs.has(entry.ts)) prefixResolutions.set(key, entry.resource);
+        // Per key, the prefix carries the LAST candidate whose gate ts it
+        // contains (list order is causal order); a ts-FREE candidate belongs
+        // to no action, so no prefix carries it.
+        for (const [key, candidates] of pendingEntries)
+          for (const c of candidates)
+            if (c.ts !== null && prefixTs.has(c.ts)) prefixResolutions.set(key, c.resource);
         prefixClean = this.withResolutions(prefixResolutions, () => compare(prefixFold).length === 0);
       }
       if (prefixClean) {

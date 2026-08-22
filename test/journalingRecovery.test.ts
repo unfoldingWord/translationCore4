@@ -679,8 +679,11 @@ describe('#62 review P1: the decision resolution survives a crash between public
     await kv.set(
       `pendingResolutions:${REPO}:${actorDir}`,
       JSON.stringify({
-        ts: `2030-01-01T00:00:00.000Z|0000|${actorDir}`,
-        entries: { 'translationWords\nTIT': NEW_RESOURCE },
+        entries: {
+          'translationWords\nTIT': [
+            { ts: `2030-01-01T00:00:00.000Z|0000|${actorDir}`, resource: NEW_RESOURCE },
+          ],
+        },
       }),
     );
     const store2 = restart();
@@ -965,5 +968,100 @@ describe('#62 review round 3, P1: pending resolutions accumulate per key, like t
       expect((await kv.keys('pendingResolutions:')).length).toBe(0);
       await expectVerified(api);
     }
+  });
+});
+
+// Review regression, round 4 (PR #88 review 4999892256).
+// ---------------------------------------------------------------------------
+
+describe('#62 review round 4: a rejected newer same-key intent does not destroy an earlier accepted resource intent', () => {
+  const TW_NEW = { repoPath: 'git.door43.org/es-419_gl/es-419_tw', version: 'v37', languageSet: 'primary' };
+  const TW_NEWER = { repoPath: 'git.door43.org/es-419_gl/es-419_tw', version: 'v38', languageSet: 'primary' };
+
+  /** Write 1: an EVENTFUL same-key decision write with a NEW resource —
+   * publishes, then its own regeneration fails, so the intent is accepted but
+   * unmaterialized (the disk sidecar still carries the OLD resource). */
+  const acceptedButUnmaterialized = async (world: World): Promise<Decision[]> => {
+    const { rig, store } = world;
+    await store.upsertDecision('translationWords', 'TIT', decision('viejo1'), RESOLUTION);
+    const stored = await store.readDecisions('translationWords', 'TIT');
+    rig.failOn((ctx) => ctx.method === 'POST' && ctx.ipath === 'checking/translationWords/TIT.json');
+    await expect(
+      store.writeDecisions('translationWords', 'TIT', {
+        schemaVersion: 1,
+        tool: 'translationWords',
+        book: 'TIT',
+        resource: TW_NEW,
+        decisions: [...stored!.decisions, decision('nuevo1', { comments: 'nueva' })],
+      }),
+    ).rejects.toThrow(/injected failure/);
+    const stale = JSON.parse(rig.repos.get(REPO)?.files.get('checking/translationWords/TIT.json') ?? '');
+    expect(stale.resource).toEqual(RESOLUTION); // the state the intent must survive
+    return [...stored!.decisions, decision('nuevo1', { comments: 'nueva' })];
+  };
+
+  it("a seal-REJECTED newer write leaves the earlier intent recoverable (the reviewer repro)", async () => {
+    const world = await setup();
+    const { rig, api, kv, store, restart } = world;
+    const written = await acceptedButUnmaterialized(world);
+    const segsAfterWrite1 = segmentPaths(rig);
+
+    // Write 2, SAME key: rejected DETERMINISTICALLY at the §8.1 seal (one
+    // event over the 4 MiB cap) — publish() seals before it stages, so the
+    // rejected action leaves NO segment and NO outbox intent to gate on.
+    await expect(
+      store.writeDecisions('translationWords', 'TIT', {
+        schemaVersion: 1,
+        tool: 'translationWords',
+        book: 'TIT',
+        resource: TW_NEWER,
+        decisions: [...written, decision('gigante1', { comments: 'x'.repeat(4 * 1024 * 1024) })],
+      }),
+    ).rejects.toThrow(/4 MiB/);
+    expect(segmentPaths(rig)).toEqual(segsAfterWrite1); // nothing published
+    expect((await kv.keys('outbox:')).filter((k) => k.includes(REPO))).toHaveLength(0); // nothing staged
+
+    const store2 = restart();
+    await store2.open(REPO);
+    expect(store2.lastOpenReport?.classification).toBe('regenerated-forward');
+    const twDisk = JSON.parse(rig.repos.get(REPO)?.files.get('checking/translationWords/TIT.json') ?? '');
+    // Pre-fix: write 2's staging OVERWROTE write 1's entry before the seal
+    // rejected it; recovery dropped the T2-gated record as stale and
+    // regenerated write 1's accepted decision under the OLD disk resource.
+    expect(twDisk.resource).toEqual(TW_NEW);
+    expect(twDisk.decisions.some((d: Decision) => d.contextId.checkId === 'nuevo1')).toBe(true);
+    expect(twDisk.decisions.some((d: Decision) => d.contextId.checkId === 'gigante1')).toBe(false);
+    expect((await kv.keys('pendingResolutions:')).length).toBe(0);
+    await expectVerified(api);
+  });
+
+  it('a newer write that fails at the HTTP layer AFTER sealing supersedes via outbox replay (same class, durable)', async () => {
+    const world = await setup();
+    const { rig, api, kv, store, restart } = world;
+    const written = await acceptedButUnmaterialized(world);
+
+    // Write 2, SAME key: seals and stages, then the segment write fails —
+    // durably replayable, so the NEWER resolution legitimately supersedes.
+    rig.failOn((ctx) => ctx.method === 'POST' && (ctx.ipath ?? '').includes('/segments/'));
+    await expect(
+      store.writeDecisions('translationWords', 'TIT', {
+        schemaVersion: 1,
+        tool: 'translationWords',
+        book: 'TIT',
+        resource: TW_NEWER,
+        decisions: [...written, decision('nuevo2', { comments: 'segunda' })],
+      }),
+    ).rejects.toThrow(/injected failure/);
+    expect((await kv.keys('outbox:')).filter((k) => k.includes(REPO))).toHaveLength(1);
+
+    const store2 = restart();
+    await store2.open(REPO);
+    expect(store2.lastOpenReport?.replayed.map((r) => r.outcome)).toEqual(['republished']);
+    const twDisk = JSON.parse(rig.repos.get(REPO)?.files.get('checking/translationWords/TIT.json') ?? '');
+    expect(twDisk.resource).toEqual(TW_NEWER); // the replayed newer action carries its own resource
+    expect(twDisk.decisions.some((d: Decision) => d.contextId.checkId === 'nuevo1')).toBe(true);
+    expect(twDisk.decisions.some((d: Decision) => d.contextId.checkId === 'nuevo2')).toBe(true);
+    expect((await kv.keys('pendingResolutions:')).length).toBe(0);
+    await expectVerified(api);
   });
 });
