@@ -191,12 +191,14 @@ describe('#62 crash atomicity: after publication, before regeneration', () => {
     await expectVerified(api);
   });
 
-  it('with the marker lost, the journal-ahead prefix check still recovers forward', async () => {
+  it('with the ledger record lost, the journal-ahead prefix check still recovers forward', async () => {
     const world = await setup();
     const { rig, api, store, kv, restart } = world;
     rig.failOn((ctx) => ctx.method === 'POST' && ctx.ipath === 'TIT.usfm');
     await expect(store.writeBook('TIT', TIT_USFM.replace('___', 'Nueva vida.'))).rejects.toThrow();
-    for (const key of await kv.keys('regen:')) await kv.delete(key); // lose the marker
+    // Port (intent ledger): the retired regen marker is gone; losing the
+    // intent record itself is the analogous corruption.
+    for (const key of await kv.keys('intent:')) await kv.delete(key); // lose the ledger record
 
     const store2 = restart();
     await store2.open(REPO);
@@ -651,16 +653,18 @@ describe('#62 review P1: the decision resolution survives a crash between public
     expect(file.decisions.some((d: Decision) => d.contextId.checkId === 'nuevo1')).toBe(true);
     expect(world.rig.repos.get(REPO)?.files.get('checking/resources.json')).toContain('es-419_tw');
     // The durable record is consumed once recovery converged.
-    expect((await world.kv.keys('pendingResolutions:')).length).toBe(0);
+    expect((await world.kv.keys('intent:')).length).toBe(0);
     await expectVerified(world.api);
   });
 
   it('reopen still applies the NEW resource with the regeneration marker LOST (prefix path)', async () => {
     const world = await setup();
     await crashOnFirstDecisionWrite(world);
-    // Lose the regeneration marker; the journal-ahead PREFIX check must still
-    // recover forward, and the staged resolution record must still win.
-    for (const key of await world.kv.keys('regen:')) await world.kv.delete(key);
+    // Port (intent ledger): the retired regen marker was a SECOND surface that
+    // could be lost while the pending resolution survived. The ledger has ONE
+    // record carrying both, so "marker lost, resolution kept" is no longer a
+    // reachable state — the deletion is retired with the surface, and this
+    // case now proves the single record alone drives the recovery.
     const store2 = world.restart();
     await store2.open(REPO);
     expect(store2.lastOpenReport?.classification).toBe('regenerated-forward');
@@ -674,21 +678,22 @@ describe('#62 review P1: the decision resolution survives a crash between public
     const { kv, rig, restart } = world;
     // A stale record naming a ts the journal does not contain (and no staged
     // intent to republish it): applying it would relabel a file to a resource
-    // whose decisions never landed.
+    // whose decisions never landed. Ported to the ledger shape: one immutable
+    // 'mutation' record whose gate can never be satisfied.
     const actorDir = segmentPaths(rig)[0].split('/')[2];
+    const staleTs = `2030-01-01T00:00:00.000Z|0000|${actorDir}`;
     await kv.set(
-      `pendingResolutions:${REPO}:${actorDir}`,
+      `intent:${REPO}:${actorDir}:${staleTs}`,
       JSON.stringify({
-        entries: {
-          'translationWords\nTIT': [
-            { ts: `2030-01-01T00:00:00.000Z|0000|${actorDir}`, resource: NEW_RESOURCE },
-          ],
-        },
+        ts: staleTs,
+        kind: 'mutation',
+        affectedPaths: ['checking/translationWords/TIT.json'],
+        resolutions: { 'translationWords\nTIT': NEW_RESOURCE },
       }),
     );
     const store2 = restart();
     await store2.open(REPO);
-    expect((await kv.keys('pendingResolutions:')).length).toBe(0); // discarded
+    expect((await kv.keys('intent:')).length).toBe(0); // discarded
     await expectVerified(world.api);
   });
 });
@@ -734,8 +739,8 @@ describe('#62 review P1: an interrupted universal seed RESUMES instead of refusi
     // Legacy sidecars converged to the canonical byte form:
     expect(rig.repos.get(repo)?.files.get('checking/settings.json')?.endsWith('\n')).toBe(true);
     await expectVerified(api, repo);
-    // The durable seed marker is consumed; the third open is quiet.
-    expect((await world.kv.keys('seed:')).length).toBe(0);
+    // The durable seed record is consumed; the third open is quiet.
+    expect((await world.kv.keys('intent:')).length).toBe(0);
     const store3 = restart();
     await store3.open(repo);
     expect(store3.lastOpenReport?.classification).toBe('converged');
@@ -760,7 +765,7 @@ describe('#62 review P1: an interrupted universal seed RESUMES instead of refusi
     await store2.open(repo);
     expect(store2.lastOpenReport?.seeded).toBe(true);
     await expectVerified(api, repo);
-    expect((await world.kv.keys('seed:')).length).toBe(0);
+    expect((await world.kv.keys('intent:')).length).toBe(0);
   });
 });
 
@@ -841,7 +846,7 @@ describe('#62 review round 2, P1: an earlier unfinished regeneration survives la
     );
     await store.writeResources(next); // retries settings.json inline — and it works now
     expect(rig.repos.get(REPO)?.files.get('checking/settings.json')).toContain('rtl');
-    expect((await kv.keys('regen:')).length).toBe(0); // nothing outstanding
+    expect((await kv.keys('intent:')).length).toBe(0); // nothing outstanding
     await expectVerified(api);
   });
 });
@@ -887,13 +892,16 @@ describe('#62 review round 2, P2: a resolution-only whole-file decision write re
           decisions: stored!.decisions,
         }),
       ).rejects.toThrow(/injected failure/);
-      if (loseMarker) for (const key of await kv.keys('regen:')) await kv.delete(key);
+      // Port (intent ledger): loseMarker retired — the regen marker no longer
+      // exists as a separate surface; the single unconditional record carries
+      // the whole intent, so both loop passes now prove the same record.
+      void loseMarker;
       const store2 = restart();
       await store2.open(REPO);
       expect(store2.lastOpenReport?.classification).toBe('regenerated-forward');
       const disk = rig.repos.get(REPO)?.files.get('checking/translationWords/TIT.json') ?? '';
       expect(JSON.parse(disk).resource).toEqual(NEW_RESOURCE);
-      expect((await kv.keys('pendingResolutions:')).length).toBe(0);
+      expect((await kv.keys('intent:')).length).toBe(0);
       await expectVerified(api);
     }
   });
@@ -955,9 +963,12 @@ describe('#62 review round 3, P1: pending resolutions accumulate per key, like t
       const tnDisk = JSON.parse(rig.repos.get(REPO)?.files.get('checking/translationNotes/TIT.json') ?? '');
       expect(tnDisk.resource).toEqual(TN_NEW);
       expect(rig.repos.get(REPO)?.files.get('checking/translationWords/TIT.json')).toBe(twStale); // still stale
-      expect((await kv.keys('pendingResolutions:')).length).toBe(1); // write 1's intent retained
+      expect((await kv.keys('intent:')).length).toBe(1); // write 1's intent retained
 
-      if (loseMarker) for (const key of await kv.keys('regen:')) await kv.delete(key);
+      // Port (intent ledger): loseMarker retired — the regen marker no longer
+      // exists as a separate surface; write 1's single record carries both
+      // the outstanding path and the resolution.
+      void loseMarker;
       const store2 = restart();
       await store2.open(REPO);
       expect(store2.lastOpenReport?.classification).toBe('regenerated-forward');
@@ -965,7 +976,7 @@ describe('#62 review round 3, P1: pending resolutions accumulate per key, like t
       expect(twDisk.resource).toEqual(TW_NEW); // pre-fix: the old disk-harvested resource
       expect(twDisk.decisions.some((d: Decision) => d.contextId.checkId === 'nuevo1')).toBe(true);
       expect(JSON.parse(rig.repos.get(REPO)?.files.get('checking/translationNotes/TIT.json') ?? '').resource).toEqual(TN_NEW);
-      expect((await kv.keys('pendingResolutions:')).length).toBe(0);
+      expect((await kv.keys('intent:')).length).toBe(0);
       await expectVerified(api);
     }
   });
@@ -1031,7 +1042,7 @@ describe('#62 review round 4: a rejected newer same-key intent does not destroy 
     expect(twDisk.resource).toEqual(TW_NEW);
     expect(twDisk.decisions.some((d: Decision) => d.contextId.checkId === 'nuevo1')).toBe(true);
     expect(twDisk.decisions.some((d: Decision) => d.contextId.checkId === 'gigante1')).toBe(false);
-    expect((await kv.keys('pendingResolutions:')).length).toBe(0);
+    expect((await kv.keys('intent:')).length).toBe(0);
     await expectVerified(api);
   });
 
@@ -1061,7 +1072,7 @@ describe('#62 review round 4: a rejected newer same-key intent does not destroy 
     expect(twDisk.resource).toEqual(TW_NEWER); // the replayed newer action carries its own resource
     expect(twDisk.decisions.some((d: Decision) => d.contextId.checkId === 'nuevo1')).toBe(true);
     expect(twDisk.decisions.some((d: Decision) => d.contextId.checkId === 'nuevo2')).toBe(true);
-    expect((await kv.keys('pendingResolutions:')).length).toBe(0);
+    expect((await kv.keys('intent:')).length).toBe(0);
     await expectVerified(api);
   });
 });

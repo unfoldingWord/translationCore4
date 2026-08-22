@@ -194,7 +194,7 @@ describe('round 5 M2: an accepted decision intent is conserved (no silent intent
     const acceptedIntoJournal = journalBytes(rig).includes('perdida1');
     const diskFile = rig.repos.get(REPO)?.files.get('checking/translationWords/TIT.json');
     const onDisk = diskFile !== undefined && diskFile.includes('perdida1');
-    const pendingLeft = (await kv.keys('pendingResolutions:')).length;
+    const pendingLeft = (await kv.keys('intent:')).length;
     expect(acceptedIntoJournal).toBe(true);
     expect(onDisk || pendingLeft > 0).toBe(true);
 
@@ -318,7 +318,9 @@ describe('round 5 M5: an inline marker retry reads durable candidates, never the
     await expect(
       store.writeDecisions('translationWords', 'TIT', fileWith(RES_C, ['cand1', 'cand2'])),
     ).rejects.toThrow(/injected failure/);
-    expect((await kv.keys('regen:')).length).toBe(1); // the path is outstanding
+    // Port (intent ledger): one record per outstanding intent (B and C), where
+    // the retired marker was one accumulated set.
+    expect((await kv.keys('intent:')).length).toBe(2); // the path is outstanding
     // A seal-REJECTED write re-stamps nothing durable: RES_D was never accepted.
     await expect(
       store.writeDecisions('translationWords', 'TIT', {
@@ -385,7 +387,9 @@ describe('round 5 held guard: marker + outbox states compose in the classifier',
     await expect(store.writeBook('TIT', TIT_USFM.replace('___', 'Nueva vida.'))).rejects.toThrow(
       /injected failure/,
     );
-    expect((await kv.keys('regen:')).length).toBe(1); // marker survives
+    // Port (intent ledger): A's record is live (accepted, unmaterialized) and
+    // C's record is appended-but-ungated (its action sits in the outbox).
+    expect((await kv.keys('intent:')).length).toBe(2); // the intents survive
     expect((await kv.keys('outbox:')).filter((k) => k.includes(REPO))).toHaveLength(1);
 
     // Restart + open: the replayed action's paths and the marker's paths are

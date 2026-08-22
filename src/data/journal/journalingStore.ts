@@ -105,41 +105,6 @@ const decisionRegisterKey = (tool: string, decision: Decision): string => {
   return ['dec', tool, c.checkId, r.bookId, String(r.chapter), String(r.verse), String(c.occurrence)].join('|');
 };
 
-/** The derived ipath ONE journal event materializes to, or null (a metadata
- * overlay has no HTTP-writable file). Used to mark a just-republished action's
- * derived paths as journal-ahead (round-5 interim rules 1 and 2): the replay
- * itself put the action into the journal while the disk still lags, so its
- * paths are explained forward exactly like the regen marker's. */
-const eventDerivedPath = (event: JournalEvent): string | null => {
-  const e = event as unknown as Record<string, unknown>;
-  const book = typeof e.book === 'string' ? (e.book as string) : null;
-  switch (event.op) {
-    case 'book.add':
-    case 'book.remove':
-    case 'text.verse.set':
-    case 'text.skeleton.set':
-    case 'text.structure.apply':
-      return book === null ? null : bookIpath(book);
-    case 'align.verse.set':
-      return book === null ? null : alignmentsIpath(book);
-    case 'check.decision.set': {
-      const decision = e.decision as { contextId?: { reference?: { bookId?: string } } } | undefined;
-      const bookId = decision?.contextId?.reference?.bookId;
-      return typeof e.toolId === 'string' && typeof bookId === 'string'
-        ? decisionsIpath(e.toolId, bookId.toUpperCase())
-        : null;
-    }
-    case 'resource.pin.set':
-      return RESOURCES_IPATH;
-    case 'settings.set':
-      return SETTINGS_IPATH;
-    case 'project.vrs.set':
-      return VRS_IPATH;
-    default:
-      return null; // project.meta.set, note.add: no HTTP-writable derived file
-  }
-};
-
 /** Flatten a §5.3 resources document into pin-slot entries — the SAME walk the
  * reference seeder applies (conformance/journal/reconcile.mjs seedFromSidecars),
  * restated over the typed document. Slot grammar violations surface at seal. */
@@ -248,6 +213,28 @@ export interface OpenReport {
   forks: FoldOutput['forks'];
   retained: FoldOutput['retained'];
   pendingStructural: FoldOutput['pendingStructural'];
+}
+
+/** One append-only intent-ledger record (issue #62, round 6): everything
+ * recovery needs that the journal does not carry, written ONCE (setIfAbsent)
+ * BEFORE the action publishes, and deleted only by a provably-safe prune once
+ * convergence is derived from reality. ~261 bytes per record; appends are O(1)
+ * against the old whole-blob rewrites. */
+export interface IntentRecord {
+  /** The record's key: the action's first event ts ('mutation'/'seed'), or a
+   * fresh HLC ts of the record's own ('unconditional'). */
+  ts: string;
+  /** 'mutation' applies when ts is in the journal union; 'unconditional' is
+   * its own whole intent (a resolution-only change has no action to gate on);
+   * 'seed' marks an in-flight §8.8 universal seed. */
+  kind: 'mutation' | 'unconditional' | 'seed';
+  /** Every derived ipath this intent's regeneration must converge. */
+  affectedPaths: string[];
+  /** The (tool\nBOOK) §5.2 resolution records the action's decision files
+   * depend on (derive-time state the journal does not carry, D30). */
+  resolutions?: Record<string, Record<string, unknown>>;
+  /** Deterministic resume parameters (kind 'seed' only). */
+  seed?: { source: 'creation' | 'sidecar-migration'; vrsName?: string };
 }
 
 export interface JournalingStoreInit {
@@ -466,33 +453,139 @@ export class JournalingStore implements BurritoStore {
 
   // ---- publication core --------------------------------------------------------
 
-  private get regenMarkerKey(): string {
-    return `regen:${this.mustRepo()}:${this.actorId}`;
+  // ---- the intent ledger ---------------------------------------------------
+
+  /** The append-only intent-ledger prefix (issue #62, round 6). ONE kv surface
+   * replaces the retired regeneration marker, seed marker and pending-resolution
+   * candidate lists: `intent:<repoPath>:<actorId>:<ts>` holds one immutable
+   * IntentRecord, written ONCE via setIfAbsent and never rewritten. Completion
+   * is never recorded — it is DERIVED (intentConverged), recovery folds the
+   * ledger against the world, and the only destructive writes are the
+   * provably-safe prunes (pruneConvergedIntents; the stale-record prune in
+   * recoverAndConverge). */
+  private get intentPrefix(): string {
+    return `intent:${this.mustRepo()}:${this.actorId}:`;
   }
 
-  private get seedMarkerKey(): string {
-    return `seed:${this.mustRepo()}:${this.actorId}`;
+  /** Append one immutable ledger record. setIfAbsent is the ONLY write path:
+   * a DIFFERENT record already holding the key is refused loudly, never
+   * replaced (append-only); a byte-identical re-append is an idempotent no-op
+   * (the deterministic seed resume re-appends its own record). */
+  private async appendIntent(record: IntentRecord): Promise<void> {
+    const bytes = JSON.stringify(record);
+    const stored = await this.kv.setIfAbsent(`${this.intentPrefix}${record.ts}`, bytes);
+    if (stored !== bytes)
+      throw new Error(
+        `refuse to append intent at ts ${record.ts}: the ledger already holds a DIFFERENT ` +
+          `record at this key — records are immutable, never rewritten`,
+      );
   }
 
-  private get pendingResolutionsKey(): string {
-    return `pendingResolutions:${this.mustRepo()}:${this.actorId}`;
+  /** Read the whole ledger, ts-sorted (key order is HLC/causal order — every
+   * record is appended inside the per-project queue by this one actor). A
+   * record that does not parse is a diagnosable stop, never silently skipped. */
+  private async readIntents(): Promise<IntentRecord[]> {
+    const keys = (await this.kv.keys(this.intentPrefix)).sort();
+    const records: IntentRecord[] = [];
+    for (const key of keys) {
+      const raw = await this.kv.get(key);
+      if (raw === undefined) continue; // pruned concurrently
+      try {
+        records.push(JSON.parse(raw) as IntentRecord);
+      } catch {
+        throw new Error(`refuse to proceed: intent-ledger record ${key} does not parse`);
+      }
+    }
+    return records;
   }
+
+  /** Is a record's gate satisfied — may its content apply? A 'mutation' or
+   * 'seed' record applies only when its action's ts is actually in the
+   * journal; an 'unconditional' record IS the whole intent (there is no
+   * action to gate on) and always applies. */
+  private intentGateSatisfied(record: IntentRecord, journaledTs: ReadonlySet<string>): boolean {
+    return record.kind === 'unconditional' || journaledTs.has(record.ts);
+  }
+
+  /** The (tool, BOOK) resolution view regeneration must project under (the
+   * round-5 durable-overlay rule, now reading the ledger): the in-memory
+   * register overlaid, in ts order, with the resolutions of every record
+   * whose gate holds — so the LATEST gate-satisfied intent wins per key.
+   * Supersession is this QUERY at fold time, never a destructive write at
+   * stage time. */
+  private async ledgerResolutionOverlay(
+    intents?: IntentRecord[],
+    journaledTs?: ReadonlySet<string>,
+  ): Promise<Map<string, Record<string, unknown>>> {
+    const records = intents ?? (await this.readIntents());
+    const merged = new Map(this.resolutions);
+    if (records.length === 0) return merged;
+    const gate = journaledTs ?? new Set(this.events.map((e) => e.ts));
+    for (const record of records) {
+      if (!record.resolutions || !this.intentGateSatisfied(record, gate)) continue;
+      for (const [key, resource] of Object.entries(record.resolutions)) merged.set(key, resource);
+    }
+    return merged;
+  }
+
+  /** Is `record` CONVERGED? Derived from reality, never recorded: the gate
+   * holds AND every affectedPath's disk bytes equal the fold's projection
+   * under the ledger overlay. Tolerances match the recovery classifier's: a
+   * path the fold does not derive has nothing to install, and an absent file
+   * whose projection is the §8.7 EMPTY document is "not yet checkpointed". */
+  private async intentConverged(
+    record: IntentRecord,
+    foldOut: FoldOutput,
+    overlay: Map<string, Record<string, unknown>>,
+    journaledTs: ReadonlySet<string>,
+  ): Promise<boolean> {
+    if (!this.intentGateSatisfied(record, journaledTs)) return false;
+    for (const ipath of record.affectedPaths) {
+      let bytes: string | null;
+      try {
+        bytes = this.withResolutions(overlay, () => this.projectionBytes(foldOut, ipath));
+      } catch {
+        return false; // e.g. a decision file whose resolution record is gone
+      }
+      if (bytes === null) continue; // the fold derives nothing here
+      const disk = await this.readIngredientOrNull(ipath);
+      if (disk === bytes) continue;
+      if (disk === null && EMPTY_CHECKPOINT_DOCUMENTS.has(bytes)) continue;
+      return false;
+    }
+    return true;
+  }
+
+  /** The provably-safe prune: delete a ledger record only when it is
+   * derived-CONVERGED, and only after the intentConverged check that proves
+   * it. Runs lazily — at the end of a successful mutation and at the end of a
+   * successful open(). kv.delete's early-resolve is acceptable HERE by
+   * construction: a delete that did not survive a crash merely leaves a
+   * converged record behind, which costs one re-check at the next open and
+   * can never lose an intent — the deletion is not load-bearing. */
+  private async pruneConvergedIntents(): Promise<void> {
+    const intents = await this.readIntents();
+    if (intents.length === 0) return;
+    const journaledTs = new Set(this.events.map((e) => e.ts));
+    const overlay = await this.ledgerResolutionOverlay(intents, journaledTs);
+    const foldOut = this.foldNow();
+    for (const record of intents)
+      if (await this.intentConverged(record, foldOut, overlay, journaledTs))
+        await this.kv.delete(`${this.intentPrefix}${record.ts}`);
+  }
+
+  // ---- publication core --------------------------------------------------------
 
   /** Publish one action journal-first, then regenerate + verify the affected
-   * derived files from the NEW fold. A durable marker brackets regeneration so
-   * a crash inside it is classified as "journal ahead" on the next open, with
-   * the affected paths recorded. If publication fails, no derived file changes.
-   * If regeneration fails after publication, the journal remains authoritative
-   * and reopening recovers forward.
-   *
-   * `resolutions` (review of 2026-08-20, P1): the (tool\nBOOK) resolution
-   * records this action's decision files depend on. They are derive-time state
-   * the JOURNAL does not carry, so they are DURABLY STAGED here, keyed to the
-   * action's first ts, BEFORE publication — a crash after publish and before
-   * the sidecar write must regenerate the new decisions under the NEW resource,
-   * not under whatever the old disk file still says. open() applies the staged
-   * record only when its ts is actually in the journal, and this method clears
-   * it once regeneration has converged the disk. */
+   * derived files from the NEW fold. ONE immutable ledger record brackets the
+   * step: appended BEFORE publication, it carries everything recovery needs
+   * that the journal does not — the affected derived paths, and the
+   * (tool\nBOOK) resolution records this action's decision files depend on
+   * (derive-time state, D30). A crash anywhere after the append is classified
+   * from the record + reality on the next open; the record is pruned only
+   * once convergence is PROVEN. If publication fails, no derived file
+   * changes. The seal is pre-validated so a seal-rejected action leaves NO
+   * trace — no ledger record and no register stamp (round-5 M4). */
   private async publishAndRegenerate(
     events: JournalEvent[],
     affected: string[],
@@ -501,165 +594,85 @@ export class JournalingStore implements BurritoStore {
     if (events.length === 0) return;
     const stamped =
       events.length > 1 ? events.map((e) => ({ ...e, batch: events[0].ts })) : events;
-    if (resolutions && Object.keys(resolutions).length)
-      await this.stagePendingResolutions(stamped[0].ts, resolutions);
+    await sealAction(stamped); // pre-validate: a refusable action appends nothing
+    const record: IntentRecord = {
+      ts: stamped[0].ts,
+      kind: 'mutation',
+      affectedPaths: [...new Set(affected)],
+    };
+    if (resolutions && Object.keys(resolutions).length) record.resolutions = resolutions;
+    await this.appendIntent(record);
     await this.mustJournal().publish(stamped);
     this.events.push(...stamped.map(normalizeEvent));
     this.foldCache = null;
     // INTERIM round-5 rule 3 (REGISTER STAMPS AFTER ACCEPTANCE ONLY): the
     // in-memory resolution register moves only once the action is PUBLISHED —
     // a seal-rejected or otherwise failed publish leaves no trace in it, so a
-    // later mutation or inline marker retry can never regenerate a sidecar
-    // under a resource intent that was never accepted (round-5 M4/M5).
+    // later mutation or inline retry can never regenerate a sidecar under a
+    // resource intent that was never accepted (round-5 M4/M5).
     if (resolutions)
       for (const [key, resource] of Object.entries(resolutions)) this.resolutions.set(key, resource);
     try {
-      await this.installWithMarker(affected);
+      await this.installAndConverge(affected);
     } finally {
-      // Clear per ENTRY, and only the ones whose sidecar actually converged —
-      // an earlier write's still-unmaterialized intent is never erased by this
+      // Lazy prune: only records the check PROVES converged are deleted — an
+      // earlier write's still-unmaterialized intent is never erased by this
       // mutation's cleanup (review of 2026-08-20 round 3, P1).
-      await this.clearConvergedPendingResolutions();
+      await this.pruneConvergedIntents();
     }
   }
 
-  /** The durable pending-resolution store — an ACCUMULATED per-(tool, BOOK)
-   * map of CANDIDATE LISTS, never an overwriteable slot (review of 2026-08-20
-   * round 3, P1: a later decision write must not erase an earlier accepted-
-   * but-unmaterialized resource intent for ANOTHER key; round 4, review
-   * 4999892256: nor for the SAME key). Each candidate carries its own gate:
-   * the staging action's first ts, or null for a resolution-only intent that
-   * applies unconditionally. Recovery keeps every candidate whose gate holds
-   * and applies the LAST survivor per key (candidates are appended inside the
-   * per-project queue by one actor, so list order is HLC/causal order). */
-  private async readPendingResolutions(): Promise<
-    Record<string, Array<{ ts: string | null; resource: Record<string, unknown> }>>
-  > {
-    const raw = await this.kv.get(this.pendingResolutionsKey);
-    if (raw === undefined) return {};
-    return (JSON.parse(raw) as {
-      entries: Record<string, Array<{ ts: string | null; resource: Record<string, unknown> }>>;
-    }).entries;
-  }
-
-  private async stagePendingResolutions(
-    ts: string | null,
-    resolutions: Record<string, Record<string, unknown>>,
-  ): Promise<void> {
-    const entries = await this.readPendingResolutions();
-    // APPEND a candidate — never overwrite the key (round 4, review
-    // 4999892256). The queue serializes mutations, but serialization is not
-    // durability: this staging runs BEFORE the #61 publish, and the newer
-    // action can still be REJECTED at the seal, leaving no segment and no
-    // outbox intent. The earlier candidate must survive until the newer one is
-    // accepted or durably replayable; recovery gates each candidate on its own
-    // ts and applies the last survivor. A retry re-staging the SAME ts
-    // replaces its own candidate (idempotent), never accumulates duplicates.
-    for (const [key, resource] of Object.entries(resolutions)) {
-      const list = (entries[key] ??= []);
-      const existing = ts === null ? -1 : list.findIndex((c) => c.ts === ts);
-      if (existing >= 0) list[existing] = { ts, resource };
-      else list.push({ ts, resource });
-    }
-    await this.kv.set(this.pendingResolutionsKey, JSON.stringify({ entries }));
-  }
-
-  /** Drop every pending entry whose decision sidecar is no longer OUTSTANDING
-   * (its regeneration completed, so the disk file now embeds the resolution);
-   * entries whose paths are still in the regeneration marker stay staged. */
-  private async clearConvergedPendingResolutions(): Promise<void> {
-    const entries = await this.readPendingResolutions();
-    if (Object.keys(entries).length === 0) return;
-    const marker = await this.kv.get(this.regenMarkerKey);
-    const outstanding = new Set<string>(marker === undefined ? [] : (JSON.parse(marker) as string[]));
-    let kept = false;
-    for (const key of Object.keys(entries)) {
-      const [tool, book] = key.split('\n');
-      if (outstanding.has(decisionsIpath(tool, book))) kept = true;
-      else delete entries[key];
-    }
-    if (kept) await this.kv.set(this.pendingResolutionsKey, JSON.stringify({ entries }));
-    else await this.kv.delete(this.pendingResolutionsKey);
-  }
-
-  /** Regenerate derived paths under the durable OUTSTANDING-set marker (review
-   * of 2026-08-20 round 2, P1). The marker is a SET that accumulates: an
-   * earlier mutation's failed regeneration stays recorded when a later
-   * mutation runs — never replaced, never deleted while work is outstanding —
-   * so a mixed disk state (one action materialized, an earlier one not) is
-   * always explained by "the full fold minus the marker's paths". The set
-   * SHRINKS per successful install (a crash leaves the precise remainder) and
-   * later mutations RETRY the older outstanding paths inline, after their own
-   * paths, from the CURRENT fold — the marker self-heals instead of forcing a
-   * reopen, and this mutation's own write lands even when the retry fails
-   * again. The marker is deleted only when nothing remains outstanding. */
-  private async installWithMarker(affected: string[]): Promise<void> {
-    const existing = await this.kv.get(this.regenMarkerKey);
-    const outstanding = new Set<string>(existing === undefined ? [] : (JSON.parse(existing) as string[]));
+  /** Regenerate this mutation's own derived paths from the current fold, then
+   * retry every OTHER live intent's non-converged path inline (the retired
+   * regeneration marker's self-healing, re-expressed as a ledger QUERY): a
+   * mixed disk state is always explained by "the fold minus the paths of the
+   * non-converged gate-satisfied records", and later mutations heal older
+   * outstanding work without a reopen. This mutation fails only for ITS OWN
+   * paths; a still-failing retry simply stays non-converged for the next
+   * attempt (a missed retry costs a re-check, never a loss). */
+  private async installAndConverge(affected: string[]): Promise<void> {
     const own = [...new Set(affected)];
-    for (const ipath of own) outstanding.add(ipath);
-    await this.kv.set(this.regenMarkerKey, JSON.stringify([...outstanding]));
     const foldOut = this.foldNow();
-    const retries = [...outstanding].filter((p) => !own.includes(p));
-    const ordered = [...own, ...retries];
-    // INTERIM round-5 rule 4 (RETRIES READ DURABLE STATE): an inline retry of
-    // an OLDER outstanding path projects under the DURABLE candidate list —
-    // never under the bare in-memory register, which rule 3 keeps clean but a
-    // crash-free earlier accepted intent may not have reached yet (M5). The
-    // overlay holds, per key, the LAST candidate whose gate ts is actually in
-    // the journal (or is ts-free) — the same gate recovery applies.
-    const overlay = retries.length ? await this.durableResolutionOverlay() : null;
-    for (const ipath of ordered) {
-      const isRetry = overlay !== null && !own.includes(ipath);
-      try {
-        const bytes = isRetry
-          ? this.withResolutions(overlay, () => this.projectionBytes(foldOut, ipath))
-          : this.projectionBytes(foldOut, ipath);
-        if (bytes !== null) await this.installDerived(ipath, bytes);
-      } catch (error) {
-        // This mutation fails only for ITS OWN work; a still-failing RETRY of
-        // an older outstanding path simply stays marked for the next attempt.
-        if (own.includes(ipath)) throw error;
-        continue;
-      }
-      // A retried decision sidecar that materialized under its durable
-      // candidate is now accepted-and-materialized state: the register may
-      // move (rule 3 allows stamps after acceptance only — this is after).
-      if (isRetry) {
+    for (const ipath of own) {
+      const bytes = this.projectionBytes(foldOut, ipath);
+      if (bytes !== null) await this.installDerived(ipath, bytes);
+    }
+    // INTERIM round-5 rule 4 (RETRIES READ DURABLE STATE): an inline retry
+    // projects under the LEDGER overlay — never under the bare in-memory
+    // register, which rule 3 keeps clean but an earlier accepted intent may
+    // not have reached yet (M5).
+    const intents = await this.readIntents();
+    if (intents.length === 0) return;
+    const journaledTs = new Set(this.events.map((e) => e.ts));
+    const overlay = await this.ledgerResolutionOverlay(intents, journaledTs);
+    const seen = new Set(own);
+    for (const record of intents) {
+      if (!this.intentGateSatisfied(record, journaledTs)) continue;
+      for (const ipath of record.affectedPaths) {
+        if (seen.has(ipath)) continue;
+        seen.add(ipath);
+        try {
+          const bytes = this.withResolutions(overlay, () => this.projectionBytes(foldOut, ipath));
+          if (bytes === null) continue;
+          const disk = await this.readIngredientOrNull(ipath);
+          if (disk === bytes) continue; // already converged — nothing to retry
+          // An absent file whose projection is the §8.7 EMPTY document is
+          // "not yet checkpointed" — converged, never materialized here.
+          if (disk === null && EMPTY_CHECKPOINT_DOCUMENTS.has(bytes)) continue;
+          await this.installDerived(ipath, bytes);
+        } catch {
+          continue; // a still-failing retry never fails this mutation's own work
+        }
+        // A retried decision sidecar that materialized under its ledger
+        // overlay is now accepted-and-materialized state: the register may
+        // move (rule 3 allows stamps after acceptance only — this is after).
         const dec = /^checking\/(translationWords|translationNotes)\/([A-Z0-9]{3})\.json$/.exec(ipath);
         if (dec) {
           const resource = overlay.get(`${dec[1]}\n${dec[2]}`);
           if (resource !== undefined) this.resolutions.set(`${dec[1]}\n${dec[2]}`, resource);
         }
       }
-      outstanding.delete(ipath);
-      await this.kv.set(this.regenMarkerKey, JSON.stringify([...outstanding]));
     }
-    if (outstanding.size === 0) await this.kv.delete(this.regenMarkerKey);
-  }
-
-  /** The (tool, BOOK) resolution view a RETRY must regenerate under (rule 4):
-   * the in-memory register overlaid with the last DURABLE pending candidate
-   * per key whose gate holds — ts-free, or a ts the journal actually contains. */
-  private async durableResolutionOverlay(): Promise<Map<string, Record<string, unknown>>> {
-    const merged = new Map(this.resolutions);
-    const entries = await this.readPendingResolutions();
-    if (Object.keys(entries).length === 0) return merged;
-    const journaled = new Set(this.events.map((e) => e.ts));
-    for (const [key, candidates] of Object.entries(entries))
-      for (const candidate of candidates)
-        if (candidate.ts === null || journaled.has(candidate.ts)) merged.set(key, candidate.resource);
-    return merged;
-  }
-
-  /** Merge paths into the durable regeneration marker (the OUTSTANDING set)
-   * without installing anything — used by rule 1 to record a just-republished
-   * action's derived paths as journal-ahead before the mutation proceeds. */
-  private async markOutstanding(paths: string[]): Promise<void> {
-    const existing = await this.kv.get(this.regenMarkerKey);
-    const outstanding = new Set<string>(existing === undefined ? [] : (JSON.parse(existing) as string[]));
-    for (const ipath of paths) outstanding.add(ipath);
-    await this.kv.set(this.regenMarkerKey, JSON.stringify([...outstanding]));
   }
 
   /** INTERIM round-5 rule 1 (REPLAY-BEFORE-DIFF): inside the per-project
@@ -668,10 +681,12 @@ export class JournalingStore implements BurritoStore {
    * union. This restores the linear-prefix invariant for the running session:
    * a mutation never diffs against a fold that lacks a durably accepted
    * action, so a failed publish can neither be silently re-lost by a later
-   * whole-file write nor land mid-history at the next open (M1/M2). The
-   * republished actions' derived paths enter the durable regeneration marker:
-   * this mutation's install retries them inline, and a crash before that
-   * still classifies as journal-ahead on the next open. */
+   * whole-file write nor land mid-history at the next open (M1/M2). No paths
+   * are marked here: every replayable action's ledger record was appended
+   * before its publish attempt, so the replay satisfying its gate is all it
+   * takes for the record to explain its paths — this mutation's
+   * installAndConverge retries them inline, and a crash before that still
+   * classifies as journal-ahead on the next open (rule 2, now derived). */
   private async replayOwnStagedBeforeDiff(): Promise<void> {
     const journal = this.mustJournal();
     const replayed = await journal.replayStaged();
@@ -682,41 +697,37 @@ export class JournalingStore implements BurritoStore {
           `invalid (${stagedInvalid.map((r) => `${r.ts}: ${r.reason ?? ''}`).join('; ')}) — ` +
           `surfaced, never silently dropped (R-8.1.7/R-8.1.8)`,
       );
-    const republished = new Set(replayed.filter((r) => r.outcome === 'republished').map((r) => r.ts));
-    if (republished.size === 0) return;
+    if (!replayed.some((r) => r.outcome === 'republished')) return;
     const union = await journal.readUnion();
     this.events = union.events;
     this.foldCache = null;
-    const paths = new Set<string>();
-    for (const action of union.actions)
-      if (republished.has(action.ts))
-        for (const event of action.events) {
-          const ipath = eventDerivedPath(event);
-          if (ipath !== null) paths.add(ipath);
-        }
-    if (paths.size) await this.markOutstanding([...paths]);
   }
 
   /** Persist and materialize a RESOLUTION-ONLY change (review of 2026-08-20
    * round 2, P2): a whole-file decision write may validly change the
-   * authoritative §5.2 `resource` while leaving every decision unchanged. That
-   * is derive-time state the journal does not carry (D30), so there is no
-   * event to publish — the intent is durably recorded as a ts-FREE pending
-   * record (applied unconditionally on open: with no action to gate on, the
-   * record itself is the whole intent), the sidecars regenerate under the new
-   * resolution, and the record clears once disk has converged. */
+   * authoritative §5.2 `resource` while leaving every decision unchanged.
+   * That is derive-time state the journal does not carry (D30), so there is
+   * no event to publish — the intent is ONE 'unconditional' ledger record
+   * keyed by its own fresh ts (with no action to gate on, the record itself
+   * is the whole intent), the sidecars regenerate under the new resolution,
+   * and the record is pruned once disk has provably converged. */
   private async applyResolutionOnly(
     entries: Record<string, Record<string, unknown>>,
     affected: string[],
   ): Promise<void> {
-    await this.stagePendingResolutions(null, entries);
-    // Rule 3 (round 5): the ts-free durable stage IS this intent's acceptance
-    // (there is no action to publish) — the register moves only now.
+    await this.appendIntent({
+      ts: this.mustJournal().issueTs(),
+      kind: 'unconditional',
+      affectedPaths: [...new Set(affected)],
+      resolutions: entries,
+    });
+    // Rule 3 (round 5): the durable unconditional record IS this intent's
+    // acceptance (there is no action to publish) — the register moves only now.
     for (const [key, resource] of Object.entries(entries)) this.resolutions.set(key, resource);
     try {
-      await this.installWithMarker(affected);
+      await this.installAndConverge(affected);
     } finally {
-      await this.clearConvergedPendingResolutions();
+      await this.pruneConvergedIntents();
     }
   }
 
@@ -787,10 +798,11 @@ export class JournalingStore implements BurritoStore {
     });
   }
 
-  /** The four-way recovery classifier (issue #62): replay the outbox, read the
-   * union, then classify derived state as seeded / converged / journal-ahead
-   * (regenerate forward) / out-of-band (reconcile via §8.8) — anything else is
-   * a visible, diagnosable stop. */
+  /** The four-way recovery classifier (issue #62): replay the outbox, read
+   * the union, FOLD THE INTENT LEDGER AGAINST REALITY, then classify derived
+   * state as seeded / converged / journal-ahead (regenerate forward) /
+   * out-of-band (reconcile via §8.8) — anything else is a visible,
+   * diagnosable stop. */
   private async recoverAndConverge(options: OpenOptions): Promise<void> {
     const journal = this.mustJournal();
 
@@ -815,55 +827,25 @@ export class JournalingStore implements BurritoStore {
           ].join('; ') +
           ` — republish from a staged intent or resolve by hand; never silently dropped (R-8.1.6/7)`,
       );
-
-    // Durably staged (tool, BOOK) resolution records (review of 2026-08-20,
-    // P1): applied only when their action's ts is ACTUALLY in the journal —
-    // the replay above already republished any surviving intent, so a ts that
-    // is still absent proves the action never published and the record is
-    // stale. Cleared below once recovery has converged the disk.
-    // Gate each staged CANDIDATE INDIVIDUALLY (round 3: per-key entries, never
-    // one slot; round 4: per-key candidate LISTS, never a per-key slot): a
-    // candidate whose gate ts is null is a resolution-only intent and applies
-    // unconditionally — the record is the whole intent; a candidate gated on
-    // an action ts applies only when that ts is actually in the journal (the
-    // replay above already republished any surviving intent, so a still-absent
-    // ts proves the action never published — that candidate is stale and
-    // dropped, the others untouched, including earlier candidates on the SAME
-    // key).
-    // INTERIM round-5 rule 2: the derived paths of every JUST-REPUBLISHED
-    // intent are journal-ahead by construction — the replay itself put those
-    // actions into the journal while the disk still lags. The classifier
-    // subtracts them (exactly like the regen marker's paths) before any other
-    // branch runs, and §8.8 reconcile may never consume them (M3).
-    const republishedTs = new Set(
-      replayed.filter((r) => r.outcome === 'republished').map((r) => r.ts),
-    );
-    const republishedPaths = new Set<string>();
-    for (const action of union.actions)
-      if (republishedTs.has(action.ts))
-        for (const event of action.events) {
-          const ipath = eventDerivedPath(event);
-          if (ipath !== null) republishedPaths.add(ipath);
-        }
-
     const unionTs = new Set(union.events.map((e) => e.ts));
-    const staged = await this.readPendingResolutions();
-    const pendingResolutions: Record<string, Array<{ ts: string | null; resource: Record<string, unknown> }>> = {};
-    let droppedStale = false;
-    for (const [key, candidates] of Object.entries(staged)) {
-      // Round 4 (review 4999892256): gate each CANDIDATE individually — a
-      // rejected newer intent's candidate drops as stale while the earlier
-      // accepted candidate on the SAME key survives and applies.
-      const kept = candidates.filter((c) => c.ts === null || unionTs.has(c.ts));
-      if (kept.length < candidates.length) droppedStale = true;
-      if (kept.length) pendingResolutions[key] = kept;
-    }
-    if (droppedStale) {
-      if (Object.keys(pendingResolutions).length)
-        await this.kv.set(this.pendingResolutionsKey, JSON.stringify({ entries: pendingResolutions }));
-      else await this.kv.delete(this.pendingResolutionsKey);
-    }
-    const hasPending = Object.keys(pendingResolutions).length > 0;
+
+    // 3. The intent ledger, classified against reality. A 'mutation' record
+    // whose ts is in neither the union nor the still-staged outbox is
+    // provably DEAD: the replay above already republished every surviving
+    // staged intent, and events are never regenerated (D50 v2 §3), so that
+    // action can never enter the journal — the record is stale and pruned.
+    // Dropping it is the provably-safe half of the asymmetric rule (the same
+    // never-published proof the round-1 review established), and it also
+    // closes the re-mint hazard: a gate that can never be satisfied must not
+    // linger where a future clock could accidentally re-issue its ts. A
+    // 'seed' record is never dropped here — it routes this open into the seed.
+    let intents = await this.readIntents();
+    const stillStaged = new Set(replayed.filter((r) => r.outcome === 'conflict').map((r) => r.ts));
+    const dead = intents.filter(
+      (r) => r.kind === 'mutation' && !unionTs.has(r.ts) && !stillStaged.has(r.ts),
+    );
+    for (const record of dead) await this.kv.delete(`${this.intentPrefix}${record.ts}`);
+    if (dead.length) intents = intents.filter((r) => !dead.includes(r));
 
     const report: OpenReport = {
       replayed,
@@ -876,31 +858,31 @@ export class JournalingStore implements BurritoStore {
       pendingStructural: [],
     };
 
-    // 3. Journal-less project → universal seeding (§8.8, all-or-nothing). A
-    // durable seed marker routes an INTERRUPTED seed back here too (review of
-    // 2026-08-20, P1): its replayed segments make the union non-empty, but the
-    // ordinary classifier cannot finish a seed's sidecar canonicalization.
-    const seedMarker = await this.kv.get(this.seedMarkerKey);
-    if (union.events.length === 0 || seedMarker !== undefined) {
-      await this.seedProject(options, report, union.events);
+    // 4. Journal-less project → universal seeding (§8.8, all-or-nothing). A
+    // live 'seed' ledger record routes an INTERRUPTED seed back here too
+    // (review of 2026-08-20, P1): its replayed segments make the union
+    // non-empty, but the ordinary classifier cannot finish a seed's sidecar
+    // canonicalization. "Seed incomplete" is DERIVED like any other intent:
+    // the record exists exactly until its convergence is proven and pruned.
+    const seedRecord = intents.find((r) => r.kind === 'seed');
+    if (union.events.length === 0 || seedRecord !== undefined) {
+      await this.seedProject(options, report, union.events, seedRecord);
     } else {
       this.events = union.events;
       this.foldCache = null;
       await this.harvestResolutions();
       const harvested = new Map(this.resolutions);
-      for (const [key, candidates] of Object.entries(pendingResolutions))
-        this.resolutions.set(key, candidates[candidates.length - 1].resource);
-      await this.classifyAndRecover(union.actions, report, republishedPaths, {
-        // Each staged resolution belongs WITH its own gate: a journal PREFIX
-        // carries an entry's overlay only when it contains that entry's action
-        // ts (and never a ts-free one), or a genuine journal-ahead state reads
-        // as unexplained.
-        pending: pendingResolutions,
-        harvested,
-      });
+      // The register regenerates under the LEDGER OVERLAY: per (tool, BOOK)
+      // key, the resolution of the LATEST record whose gate holds (ts in the
+      // union, or unconditional) — the round-5 durable-overlay rule, now
+      // reading the ledger. A record whose gate is not satisfied never
+      // applies (a still-staged 'conflict' record waits for a later replay).
+      const overlay = await this.ledgerResolutionOverlay(intents, unionTs);
+      for (const [key, resource] of overlay) this.resolutions.set(key, resource);
+      await this.classifyAndRecover(union.actions, report, intents, harvested);
       // A successful classification leaves every derived path converged (any
-      // install failure throws), so the applied entries are materialized.
-      if (hasPending) await this.kv.delete(this.pendingResolutionsKey);
+      // install failure throws) — the lazy prune now PROVES it per record.
+      await this.pruneConvergedIntents();
     }
 
     const foldOut = this.foldNow();
@@ -1032,15 +1014,17 @@ export class JournalingStore implements BurritoStore {
 
   /** §8.8 universal seeding: one all-or-nothing seed covering every existing
    * journal-derived surface. Verified to reproduce the pre-seed state BEFORE
-   * anything is published; staged completely before the first publish; a
-   * durable marker makes an INTERRUPTED seed resume here on the next open
-   * (review of 2026-08-20, P1) — finishing the sidecar canonicalization when
+   * anything is published; staged completely before the first publish; ONE
+   * 'seed' ledger record - appended before staging, carrying the deterministic
+   * resume parameters - makes an INTERRUPTED seed resume here on the next open
+   * (review of 2026-08-20, P1): finishing the sidecar canonicalization when
    * the published union already covers the disk, or re-staging the
    * DETERMINISTIC seed idempotently when it does not. */
   private async seedProject(
     options: OpenOptions,
     report: OpenReport,
     unionEvents: JournalEvent[],
+    seedRecord?: IntentRecord,
   ): Promise<void> {
     const journal = this.mustJournal();
     const disk = await this.inventoryDisk();
@@ -1055,7 +1039,7 @@ export class JournalingStore implements BurritoStore {
       );
 
     // A sidecar record for a book with no USFM on disk has no generation root
-    // to stamp — refuse with the reason rather than seal a refusable event.
+    // to stamp - refuse with the reason rather than seal a refusable event.
     const orphaned: string[] = [];
     for (const [tool, byBook] of Object.entries(disk.decisionFilesByBook))
       for (const book of Object.keys(byBook))
@@ -1068,8 +1052,8 @@ export class JournalingStore implements BurritoStore {
         orphaned.map((o) => `${o}: a record without its book has no §8.5 generation root`),
       );
 
-    // RESUME (review of 2026-08-20, P1): the seed marker routed us here with a
-    // non-empty union — segments the interrupted seed already published. When
+    // RESUME (review of 2026-08-20, P1): the seed record routed us here with a
+    // non-empty union - segments the interrupted seed already published. When
     // the union's fold fully covers the disk state, publication had completed
     // and only the sidecar canonicalization remains: finish it. Otherwise the
     // publication itself was partial; disk is still untouched pre-seed state
@@ -1085,6 +1069,11 @@ export class JournalingStore implements BurritoStore {
       }
     }
 
+    // The RECORDED resume parameters win over the caller's options: the
+    // recomputed seed must be deterministic across opens (R-8.8.3), and a
+    // creation seed resumed by a plain open() must keep its vrs name.
+    const seedSource = seedRecord?.seed?.source ?? options.seedSource ?? 'sidecar-migration';
+    const seedVrsName = seedRecord?.seed?.vrsName ?? options.vrsName;
     const seedEvents = seedFromSidecars({
       actor: journal.actorId,
       books: disk.books,
@@ -1093,16 +1082,19 @@ export class JournalingStore implements BurritoStore {
       resources: disk.resources,
       settings: disk.settings,
       meta: null,
-      vrs: disk.vrsBytes === null ? null : { name: options.vrsName ?? 'unrecorded', bytes: disk.vrsBytes },
-      source: options.seedSource ?? 'sidecar-migration',
+      vrs: disk.vrsBytes === null ? null : { name: seedVrsName ?? 'unrecorded', bytes: disk.vrsBytes },
+      source: seedSource,
     });
     if (seedEvents.length === 0) {
-      await this.kv.delete(this.seedMarkerKey); // an empty repo has nothing to seed
+      // An empty repo has nothing to seed - and nothing to converge, so a
+      // leftover record from an interrupted seed of since-removed content is
+      // provably safe to prune.
+      if (seedRecord) await this.kv.delete(`${this.intentPrefix}${seedRecord.ts}`);
       return;
     }
 
-    // Verify BEFORE publishing (R-8.8.2): fold the seal-normalized form — what
-    // a reader will actually fold — and compare against the pre-seed state.
+    // Verify BEFORE publishing (R-8.8.2): fold the seal-normalized form - what
+    // a reader will actually fold - and compare against the pre-seed state.
     // USFM and vrs bytes must match EXACTLY; sidecars must match canonically
     // (their bytes converge to the projection form right after).
     const normalizedSeed = seedEvents.map(normalizeEvent);
@@ -1111,23 +1103,33 @@ export class JournalingStore implements BurritoStore {
 
     // Torn-state guard for a resumed PARTIAL seed: every already-published
     // event must be reproduced identically by the recomputed candidate, or the
-    // union is not this seed's prefix — a diagnosable stop, nothing overwritten.
+    // union is not this seed's prefix - a diagnosable stop, nothing overwritten.
     if (unionEvents.length > 0) {
       const candidate = new Map(normalizedSeed.map((e) => [e.ts, canonical(e)]));
       const torn = unionEvents.filter((e) => candidate.get(e.ts) !== canonical(e)).map((e) => e.ts);
       if (torn.length)
         throw new Error(
           `refuse to resume the interrupted seed of ${this.mustRepo()}: published seed events at ` +
-            `${torn.join(', ')} are not reproduced by the recomputed deterministic seed — ` +
+            `${torn.join(', ')} are not reproduced by the recomputed deterministic seed - ` +
             `resolve by hand; nothing was overwritten (R-8.8.2/R-8.8.3)`,
         );
     }
 
-    // The durable seed marker FIRST (an interrupted seed must resume, not fall
-    // into the ordinary classifier), then stage EVERY part, then publish the
-    // set (all-or-nothing: a crash mid-publication replays the remainder from
-    // the exact staged bytes, and the marker routes the next open back here).
-    await this.kv.set(this.seedMarkerKey, '1');
+    // The durable 'seed' ledger record FIRST (an interrupted seed must resume,
+    // not fall into the ordinary classifier), then stage EVERY part, then
+    // publish the set (all-or-nothing: a crash mid-publication replays the
+    // remainder from the exact staged bytes, and the record routes the next
+    // open back here). The record is immutable: a resume re-appends the SAME
+    // record - the recompute is deterministic - which setIfAbsent accepts
+    // idempotently.
+    const seedMeta: IntentRecord['seed'] = { source: seedSource };
+    if (seedVrsName !== undefined) seedMeta.vrsName = seedVrsName;
+    await this.appendIntent({
+      ts: normalizedSeed[0].ts,
+      kind: 'seed',
+      affectedPaths: this.derivedPathsOf(fold(normalizedSeed)),
+      seed: seedMeta,
+    });
     for (const chunk of await this.chunkForSealing(seedEvents)) await journal.stage(chunk);
     const outcomes = await journal.replayStaged();
     const failed = outcomes.filter(
@@ -1147,7 +1149,8 @@ export class JournalingStore implements BurritoStore {
 
   /** The seed's tail: converge legacy sidecar bytes to the canonical projection
    * form (content proven identical by seedStateProblems; only the byte form
-   * changes), then clear the durable seed marker. */
+   * changes), then prune the ledger - the 'seed' record deletes only once its
+   * convergence is PROVEN, like every other intent. */
   private async finishSeedConvergence(
     disk: Awaited<ReturnType<JournalingStore['inventoryDisk']>>,
     report: OpenReport,
@@ -1159,13 +1162,13 @@ export class JournalingStore implements BurritoStore {
       const bytes = this.projectionBytes(foldOut, ipath);
       if (bytes === null || disk.diskBytes[ipath] === bytes) continue;
       // An absent file whose projection is the §8.7 EMPTY document is "not yet
-      // checkpointed" — seeding must not materialize it (a fresh creation's
+      // checkpointed" - seeding must not materialize it (a fresh creation's
       // first writeResources still expects absence).
       if (disk.diskBytes[ipath] === undefined && EMPTY_CHECKPOINT_DOCUMENTS.has(bytes)) continue;
       toConverge.push(ipath);
     }
-    await this.installWithMarker(toConverge);
-    await this.kv.delete(this.seedMarkerKey);
+    await this.installAndConverge(toConverge);
+    await this.pruneConvergedIntents();
 
     report.seeded = true;
     report.classification = 'seeded';
@@ -1267,16 +1270,15 @@ export class JournalingStore implements BurritoStore {
   private async classifyAndRecover(
     actions: Array<{ actor: string; ts: string; events: JournalEvent[] }>,
     report: OpenReport,
-    /** Derived paths of the actions this open() just republished from the
-     * outbox (rule 2) — journal-ahead by construction, like the marker's. */
-    republishedPaths: Set<string>,
-    resolutionContext?: {
-      pending: Record<string, Array<{ ts: string | null; resource: Record<string, unknown> }>>;
-      harvested: Map<string, Record<string, unknown>>;
-    },
+    /** The live intent ledger (stale records already pruned), ts-sorted. */
+    intents: IntentRecord[],
+    /** The (tool, BOOK) resolutions the DISK reflects - prefix-comparison
+     * state, before any ledger overlay was applied to the register. */
+    harvested: Map<string, Record<string, unknown>>,
   ): Promise<void> {
     const foldOut = this.foldNow();
     const disk = await this.inventoryDisk();
+    const journaledTs = new Set(this.events.map((e) => e.ts));
 
     const compare = (fo: FoldOutput): Array<{ ipath: string; diskMd5: string | null; projectedMd5: string | null }> => {
       const diverged: Array<{ ipath: string; diskMd5: string | null; projectedMd5: string | null }> = [];
@@ -1290,7 +1292,7 @@ export class JournalingStore implements BurritoStore {
         }
         const onDisk = disk.diskBytes[ipath];
         // An ABSENT file whose projection is the §8.7 EMPTY document has simply
-        // not been checkpointed yet — never divergence (the same tolerance the
+        // not been checkpointed yet - never divergence (the same tolerance the
         // verifier and the checkpoint apply).
         if (onDisk === undefined && projected !== null && EMPTY_CHECKPOINT_DOCUMENTS.has(projected))
           continue;
@@ -1313,8 +1315,7 @@ export class JournalingStore implements BurritoStore {
 
     const diverged = compare(foldOut);
     if (diverged.length === 0) {
-      await this.kv.delete(this.regenMarkerKey); // a completed regeneration's leftover
-      report.classification = 'converged';
+      report.classification = 'converged'; // leftover converged records prune at the caller
       return;
     }
 
@@ -1322,21 +1323,24 @@ export class JournalingStore implements BurritoStore {
       // A diverged path the fold does not derive would have been refused below
       // as unexplained before any branch chose this recovery.
       const paths = diverged.map((d) => d.ipath);
-      await this.installWithMarker(paths);
+      await this.installAndConverge(paths);
       report.classification = 'regenerated-forward';
       report.regeneratedPaths = paths;
     };
 
-    // (a) Journal-ahead paths the mechanism itself explains (round-5 rule 2):
-    // our own durable regeneration marker (a recorded, interrupted
-    // regeneration) COMPOSED WITH the paths of a just-republished staged
-    // intent (the replay put the action into the journal while the disk still
-    // lags). Both are subtracted before any other branch runs; each explained
-    // path must be one the fold actually derives forward.
-    const marker = await this.kv.get(this.regenMarkerKey);
-    const markerPaths = new Set<string>(marker === undefined ? [] : (JSON.parse(marker) as string[]));
+    // (a) Journal-ahead paths the LEDGER itself explains: a gate-satisfied
+    // record's affected paths are journal-ahead by construction - the action
+    // is in the journal (or the record is its own unconditional intent) while
+    // the disk still lags. This composes over a just-republished staged
+    // intent automatically (round-5 rule 2): its record was appended before
+    // its publish attempt, so the replay satisfying its gate is all it takes.
+    // Each explained path must be one the fold actually derives forward.
+    const explained = new Set<string>();
+    for (const record of intents)
+      if (this.intentGateSatisfied(record, journaledTs))
+        for (const ipath of record.affectedPaths) explained.add(ipath);
     const aheadExplained = (ipath: string): boolean => {
-      if (!markerPaths.has(ipath) && !republishedPaths.has(ipath)) return false;
+      if (!explained.has(ipath)) return false;
       try {
         return this.projectionBytes(foldOut, ipath) !== null;
       } catch {
@@ -1350,20 +1354,27 @@ export class JournalingStore implements BurritoStore {
 
     // (0) The ONLY divergence is a pending resolution overlay (review of
     // 2026-08-20 round 2, P2): disk matches the fold exactly under the
-    // DISK-HARVESTED resolutions, so what remains is materializing the staged
-    // resolution change — pending-resolution-ahead, recovered forward like a
-    // journal-ahead state.
-    const pendingEntries = Object.entries(resolutionContext?.pending ?? {});
+    // DISK-HARVESTED resolutions, so what remains is materializing the
+    // ledger's resolution intent - recovered forward like a journal-ahead
+    // state.
+    const resolutionRecords = intents.filter(
+      (r) =>
+        r.resolutions !== undefined &&
+        Object.keys(r.resolutions).length > 0 &&
+        this.intentGateSatisfied(r, journaledTs),
+    );
     if (
-      pendingEntries.length > 0 &&
-      this.withResolutions(resolutionContext!.harvested, () => compare(foldOut).length === 0)
+      resolutionRecords.length > 0 &&
+      this.withResolutions(harvested, () => compare(foldOut).length === 0)
     ) {
       await regenerateForward();
       return;
     }
 
     // (b) Disk equals the projection of a journal PREFIX (the journal is ahead
-    // by the trailing action(s)) → regenerate forward. Bounded walk.
+    // by the trailing action(s)) -> regenerate forward. Bounded walk. This
+    // branch survives even a lost ledger record: the journal itself still
+    // explains the lag.
     const MAX_PREFIX = 8;
     for (let drop = 1; drop <= Math.min(MAX_PREFIX, actions.length); drop += 1) {
       const prefixEvents = actions.slice(0, actions.length - drop).flatMap((a) => a.events);
@@ -1373,22 +1384,21 @@ export class JournalingStore implements BurritoStore {
       } catch {
         break; // a prefix that does not fold explains nothing
       }
-      // Each staged resolution travels WITH its own action (review of
-      // 2026-08-20, P1; per-entry since round 3): a prefix carries an entry's
-      // overlay only when it contains that entry's gate ts — and a ts-FREE
-      // (resolution-only) entry belongs to no action, so NO prefix carries it.
+      // Each resolution travels WITH its own gate: a prefix carries a record's
+      // overlay only when it contains that record's action ts - and an
+      // 'unconditional' record belongs to no action, so NO prefix carries it.
       let prefixClean: boolean;
-      if (pendingEntries.length === 0) {
+      if (resolutionRecords.length === 0) {
         prefixClean = compare(prefixFold).length === 0;
       } else {
         const prefixTs = new Set(prefixEvents.map((e) => e.ts));
-        const prefixResolutions = new Map(resolutionContext!.harvested);
-        // Per key, the prefix carries the LAST candidate whose gate ts it
-        // contains (list order is causal order); a ts-FREE candidate belongs
-        // to no action, so no prefix carries it.
-        for (const [key, candidates] of pendingEntries)
-          for (const c of candidates)
-            if (c.ts !== null && prefixTs.has(c.ts)) prefixResolutions.set(key, c.resource);
+        const prefixResolutions = new Map(harvested);
+        // Records are ts-sorted, so the LAST record whose ts the prefix
+        // contains wins per key (ts order is causal order).
+        for (const record of resolutionRecords)
+          if (record.kind !== 'unconditional' && prefixTs.has(record.ts))
+            for (const [key, resource] of Object.entries(record.resolutions!))
+              prefixResolutions.set(key, resource);
         prefixClean = this.withResolutions(prefixResolutions, () => compare(prefixFold).length === 0);
       }
       if (prefixClean) {
@@ -1398,8 +1408,8 @@ export class JournalingStore implements BurritoStore {
     }
 
     // (c) Every UNEXPLAINED diverged path is a book USFM (edited or created
-    // out-of-band) → §8.8 reconcile those — and ONLY those (round-5 rule 2,
-    // M3): a path the marker or a fresh republication already explains as
+    // out-of-band) -> §8.8 reconcile those - and ONLY those (round-5 rule 2,
+    // M3): a path a gate-satisfied ledger record already explains as
     // journal-ahead is NEVER re-journaled from its (stale) disk bytes; those
     // paths regenerate forward in the same recovery's convergence below.
     const remainder = diverged.filter((d) => !aheadExplained(d.ipath));
@@ -1407,6 +1417,7 @@ export class JournalingStore implements BurritoStore {
     if (usfmOnly) {
       const journal = this.mustJournal();
       const clock = { issue: (): string => journal.issueTs() };
+      let lastReconcileTs: string | null = null;
       for (const entry of remainder) {
         const book = entry.ipath.slice(0, 3);
         const committed = disk.diskBytes[entry.ipath];
@@ -1417,6 +1428,7 @@ export class JournalingStore implements BurritoStore {
         await this.mustJournal().publish(events);
         this.events.push(...events.map(normalizeEvent));
         this.foldCache = null;
+        lastReconcileTs = events[events.length - 1].ts;
         report.reconciledBooks.push(book);
       }
       // Converge: the new projection must now equal (or replace) the disk bytes.
@@ -1426,9 +1438,18 @@ export class JournalingStore implements BurritoStore {
         const bytes = this.projectionBytes(after, entry.ipath);
         if (bytes !== null && bytes !== disk.diskBytes[entry.ipath]) paths.push(entry.ipath);
       }
-      await this.installWithMarker(paths);
+      // Durable cover for the convergence installs, exactly like a mutation's:
+      // gated on the last reconcile action when one published (it is in the
+      // journal now), otherwise the record is its own unconditional intent.
+      if (paths.length)
+        await this.appendIntent(
+          lastReconcileTs !== null
+            ? { ts: lastReconcileTs, kind: 'mutation', affectedPaths: paths }
+            : { ts: journal.issueTs(), kind: 'unconditional', affectedPaths: paths },
+        );
+      await this.installAndConverge(paths);
       // A reconciled book may be NEW to the metadata (created out of band and
-      // never registered): rescan so currentScope converges with the fold —
+      // never registered): rescan so currentScope converges with the fold -
       // regeneration rescans the whole repo and rebuilds scope entries from
       // disk (§6 W-2; the x-role wipe is the accepted condition, D28).
       await this.api.remakeIngredients(this.mustRepo());
@@ -1437,7 +1458,7 @@ export class JournalingStore implements BurritoStore {
       return;
     }
 
-    // (d) Unexplained — a visible, diagnosable stop. Nothing is overwritten.
+    // (d) Unexplained - a visible, diagnosable stop. Nothing is overwritten.
     throw new UnexplainedDivergenceError(this.mustRepo(), diverged);
   }
 
@@ -1645,7 +1666,11 @@ export class JournalingStore implements BurritoStore {
       // §5.2 resolution record (D17/D30): stamped only when absent or agreeing —
       // a decision write must never relabel a book's file to another resource.
       const resolutionKey = `${tool}\n${code}`;
-      const stored = this.resolutions.get(resolutionKey) as
+      // Rule 4 posture for the OBSERVATION too: the effective stored
+      // resolution is the LEDGER OVERLAY's view, never the bare register — an
+      // accepted-but-unmaterialized (or just-replayed) resource intent must
+      // gate this write exactly as it gates regeneration.
+      const stored = (await this.ledgerResolutionOverlay()).get(resolutionKey) as
         | { repoPath: string; version: string }
         | undefined;
       // Rule 3 (round 5): the register is stamped after acceptance only — the
@@ -2019,12 +2044,17 @@ export class JournalingStore implements BurritoStore {
       // and refuse an out-of-band edit or deletion — never silently repair it.
       // Per-mutation regeneration keeps disk == projection for every folded
       // path, so at checkpoint the only legitimate writes are (a) paths a
-      // leftover crash marker recorded, and (b) the FIRST materialization of a
+      // leftover gate-satisfied ledger record explains (a recorded, not yet
+      // converged intent), and (b) the FIRST materialization of a
       // §8.7-complete empty document (resources/settings with nothing folded
       // yet) that no mutation has produced. Everything else that differs is
       // out-of-band and refuses.
-      const marker = await this.kv.get(this.regenMarkerKey);
-      const markerPaths = new Set(marker === undefined ? [] : (JSON.parse(marker) as string[]));
+      const intents = await this.readIntents();
+      const journaledTs = new Set(this.events.map((e) => e.ts));
+      const ledgerPaths = new Set<string>();
+      for (const record of intents)
+        if (this.intentGateSatisfied(record, journaledTs))
+          for (const p of record.affectedPaths) ledgerPaths.add(p);
       const stale: string[] = [];
       const toWrite: Array<{ ipath: string; bytes: string }> = [];
       const diskPaths = (await this.api.listPaths(repo)).filter(
@@ -2033,11 +2063,11 @@ export class JournalingStore implements BurritoStore {
       for (const [ipath, bytes] of Object.entries(projections)) {
         const disk = await this.readIngredientOrNull(ipath);
         if (disk === bytes) continue; // byte-verified in place
-        // Legitimate writes at checkpoint: a leftover crash marker's paths, and
-        // the FIRST materialization of a §8.7-complete EMPTY document (an
+        // Legitimate writes at checkpoint: a crash-era ledger record's paths,
+        // and the FIRST materialization of a §8.7-complete EMPTY document (an
         // absent file per-mutation regeneration never produces). An absent file
         // with a NON-empty projection was deleted out of band — refused.
-        if (markerPaths.has(ipath) || (disk === null && EMPTY_CHECKPOINT_DOCUMENTS.has(bytes))) {
+        if (ledgerPaths.has(ipath) || (disk === null && EMPTY_CHECKPOINT_DOCUMENTS.has(bytes))) {
           toWrite.push({ ipath, bytes });
           continue;
         }
@@ -2055,9 +2085,14 @@ export class JournalingStore implements BurritoStore {
             `never silently repaired (R-8.7.5); reopen the project to reconcile (§8.8)`,
         );
 
-      // Install + byte-verify, bracketed by the durable OUTSTANDING-set marker
-      // (installWithMarker also retries any older outstanding path inline).
-      await this.installWithMarker(toWrite.map((w) => w.ipath));
+      // Install + byte-verify; installAndConverge also retries any older
+      // non-converged intent's path inline, and the lazy prune deletes only
+      // what the convergence check proves done.
+      try {
+        await this.installAndConverge(toWrite.map((w) => w.ipath));
+      } finally {
+        await this.pruneConvergedIntents();
+      }
 
       // Rescan (registers everything; rebuilds the ingredients table and
       // currentScope — the x-role wipe is the accepted condition, D28/W-2),
