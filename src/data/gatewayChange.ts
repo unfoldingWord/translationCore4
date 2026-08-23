@@ -21,8 +21,9 @@ import type { Tool } from './resolve';
 export interface AffectedBook {
   tool: Tool;
   book: string;
-  /** What its decisions were checked against. */
-  checkedAgainst: { repoPath: string; version: string };
+  /** What its decisions were checked against. The version label rides along
+   * for display; identity is the sha (D58). */
+  checkedAgainst: { repoPath: string; version?: string; sha?: string };
   /** How many stored decisions that book holds. */
   decisions: number;
 }
@@ -87,7 +88,8 @@ export const consequencesOfGatewayChange = (
       book: entry.book,
       checkedAgainst: {
         repoPath: checkedAgainst.repoPath,
-        version: checkedAgainst.version ?? '',
+        ...(checkedAgainst.version ? { version: checkedAgainst.version } : {}),
+        ...((checkedAgainst as { sha?: string }).sha ? { sha: (checkedAgainst as { sha?: string }).sha } : {}),
       },
       decisions: count,
     });

@@ -376,9 +376,9 @@ describe('R10 — a legacy/seeded install resolves by identity, not by a recompu
   // The rig seeds and older installs live at the legacy `<repo>` path; the pin
   // derives the owner-qualified path, which would look in the wrong place.
   const installed = {
-    '_local_/_sideloaded_/en_tn': { repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v89', flavor: '' },
+    '_local_/_sideloaded_/en_tn': { repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v89', sha: '9999999999999999999999999999999999999999', flavor: '' },
   };
-  const pin = { repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v89', flavor: '' };
+  const pin = { repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v89', sha: '9999999999999999999999999999999999999999', flavor: '' };
 
   it('installedPathFor returns the ACTUAL on-disk path, not the owner-qualified derivation', () => {
     expect(localRepoPathFromRepoPath(pin.repoPath)).toBe('_local_/_sideloaded_/unfoldingword--en_tn');
@@ -524,10 +524,10 @@ describe('R16 — the exact requested install is chosen over a coexisting legacy
   // Mid-migration shape: an OLD legacy `<repo>` install AND the exact new
   // `<owner>--<repo>` install of the same repo, at different versions.
   const installed = {
-    '_local_/_sideloaded_/en_tn': { repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v88', flavor: '' },
-    '_local_/_sideloaded_/unfoldingword--en_tn': { repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v89', flavor: '' },
+    '_local_/_sideloaded_/en_tn': { repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v88', sha: '8888888888888888888888888888888888888888', flavor: '' },
+    '_local_/_sideloaded_/unfoldingword--en_tn': { repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v89', sha: '9999999999999999999999999999999999999999', flavor: '' },
   };
-  const pinV89 = { repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v89', flavor: '' };
+  const pinV89 = { repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v89', sha: '9999999999999999999999999999999999999999', flavor: '' };
 
   it('installedPathFor returns the exact-version install, not the first (legacy) one', () => {
     expect(installedPathFor(installed, pinV89)).toBe('_local_/_sideloaded_/unfoldingword--en_tn');
@@ -538,7 +538,7 @@ describe('R16 — the exact requested install is chosen over a coexisting legacy
   });
 
   it('the older pin still resolves to the legacy install (both coexist correctly)', () => {
-    const pinV88 = { ...pinV89, version: 'v88' };
+    const pinV88 = { ...pinV89, version: 'v88', sha: '8'.repeat(40) };
     expect(installedPathFor(installed, pinV88)).toBe('_local_/_sideloaded_/en_tn');
     expect(isPinLocal(installed, pinV88)).toBe(true);
   });

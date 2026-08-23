@@ -54,13 +54,15 @@ export interface DecisionFile {
   decisions: Decision[];
 }
 
-/** One §5.3 resource pin. `sha` is the OPTIONAL expected commit SHA (40 lowercase
- * hex) verified at sb-zip import (OPEN-QUESTIONS #24). */
+/** One §5.3 resource pin. `sha` is the REQUIRED commit identity (40 lowercase
+ * hex, D58) verified at sb-zip import (OPEN-QUESTIONS #24); `version` is an
+ * OPTIONAL release-tag display label — tags are not enforced upstream, so it
+ * is never compared as identity. */
 export interface ResourcePin {
   repoPath: string;
-  version: string;
+  version?: string;
   flavor: string;
-  sha?: string;
+  sha: string;
 }
 
 /** One language set: a coherent helps suite at pinned versions. The `twl` slot

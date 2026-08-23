@@ -265,7 +265,6 @@ const initial = () => ({
   src: { gateway: null, book: 'TIT', rows: [], loading: false, error: null, dl: null, exclude: {} },
   installedSrc: [], // [{ langKey, book }] packages this machine already has
   checkable: [], // gatewayKeys whose COMPLETE helps suite is installed (D30.2)
-  checkableUnversioned: [], // complete on disk but no recorded version — not pinnable (D57)
   gatewayError: null, // a failed gateway-change commit, shown in the dialogue
   netEnabled: false, // mirrors the platform's net gate (GET /net/status)
   projectPins: null, // the open project's resources.json (§5.3 v2 shape)
@@ -460,21 +459,7 @@ export function AppProvider({ children }) {
         const { installed } = await a.resolutionContext();
         const checkable = GATEWAYS.filter((g) => languageSetFromInstalled(installed, g))
           .map(gatewayKey);
-        // Complete on disk but with no recorded version: readable, not
-        // pinnable (D57) — named in the Sources modal instead of a silently
-        // absent offer.
-        const unversioned = GATEWAYS.filter(
-          (g) =>
-            !checkable.includes(gatewayKey(g)) &&
-            languageSetFromInstalled(installed, g, { requireVersion: false }),
-        ).map(gatewayKey);
-        dispatch({
-          type: 'set',
-          patch: {
-            checkable: [...new Set(checkable)],
-            checkableUnversioned: [...new Set(unversioned)],
-          },
-        });
+        dispatch({ type: 'set', patch: { checkable: [...new Set(checkable)] } });
         return checkable;
       },
 

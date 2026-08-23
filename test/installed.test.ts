@@ -20,6 +20,15 @@ import type { ResourcePin, ResourcesFile } from '../src/data/burritoStore';
 
 // Recorded installs carry the burrito's real flavor (D57): a pin with an
 // empty flavor cannot journal, so the record paths fill it from metadata.
+// Deterministic fake sha per (repo, version) — D58: identity is the sha, so
+// the fixtures derive one from the same (repo, version) distinctions the
+// tests were written with.
+const sha40 = (s: string): string => {
+  let h = 5381;
+  for (const c of s) h = ((h * 33) ^ c.charCodeAt(0)) >>> 0;
+  return h.toString(16).padStart(8, '0').repeat(5);
+};
+
 const pin = (repo: string, version: string, sha?: string): ResourcePin => ({
   repoPath: `git.door43.org/${repo}`,
   version,
@@ -28,7 +37,7 @@ const pin = (repo: string, version: string, sha?: string): ResourcePin => ({
     : repo.endsWith('_tn')
       ? 'parascriptural/x-bcvnotes'
       : 'parascriptural/x-bcvarticles',
-  ...(sha ? { sha } : {}),
+  sha: sha ?? sha40(`${repo.toLowerCase()}@${version}`),
 });
 
 // Owner-qualified, lowercased local identity (B9): `<owner>--<repo>`.
@@ -97,7 +106,7 @@ describe('coverage comes from the platform summaries, keyed by pin identity', ()
   });
 });
 
-describe('pin identity is (repoPath, version) — a different version is not this pin', () => {
+describe('pin identity is (repoPath, sha) — a different commit is not this pin (D58)', () => {
   it('recognises the installed version', () => {
     expect(isPinLocal(INSTALLED, pin('unfoldingWord/en_tn', 'v89'))).toBe(true);
   });
@@ -247,7 +256,12 @@ const metadataApi = (byPath: Record<string, string>) =>
     getMetadataRaw: async (localPath: string) => {
       const dcsKey = byPath[localPath];
       if (!dcsKey) throw new Error('no metadata');
-      return { identification: { primary: { dcs: { [dcsKey]: { revision: 'abc123' } } } } };
+      // A real export carries a 40-hex revision and its flavorType — both
+      // identity halves discoverOnDisk records (D58).
+      return {
+        identification: { primary: { dcs: { [dcsKey]: { revision: sha40(dcsKey) } } } },
+        type: { flavorType: { name: 'parascriptural', flavor: { name: 'x-bcvnotes' } } },
+      };
     },
   }) as never;
 
@@ -271,8 +285,9 @@ describe('discovering resources that are on disk with no install record', () => 
 
   it('the revision always comes from the burrito itself, never from config', async () => {
     const found = await discoverOnDisk(api, summaries, {}, orgForRepoName);
-    expect(found['_local_/_sideloaded_/es-419_tn'].sha).toBe('abc123');
-    expect(found['_local_/_sideloaded_/es-419_tn'].version).toBe('');
+    expect(found['_local_/_sideloaded_/es-419_tn'].sha).toBe(sha40('Idiomas-Puentes/es-419_tn'));
+    // D58: no version label is invented — the burrito does not know its tag.
+    expect(found['_local_/_sideloaded_/es-419_tn'].version).toBeUndefined();
   });
 
   it('a recorded install still wins — it additionally knows the release tag', async () => {
@@ -314,15 +329,17 @@ describe('the whole point: a Spanish suite on disk resolves to a language set', 
     const gateway = { id: 'es-419', org: 'es-419_gl' };
 
     const stale = await discoverOnDisk(api, summaries, {});
-    expect(languageSetFromInstalled(stale, gateway, { requireVersion: false })).toBeNull(); // suite "incomplete"
+    expect(languageSetFromInstalled(stale, gateway)).toBeNull(); // suite "incomplete"
 
-    // D57: with the org corrected the suite is COMPLETE ON DISK — but a
-    // disk-discovered entry has no recorded version, so it resolves only for
-    // the completeness question, never into pinnable pins.
+    // D58: with the org corrected the suite is complete AND pinnable — its
+    // burrito metadata carries the identity (sha) and flavor; no version tag
+    // is needed (the sha IS the identity, the tag a display label).
     const fixed = await discoverOnDisk(api, summaries, {}, orgForRepoName);
-    expect(languageSetFromInstalled(fixed, gateway)).toBeNull(); // not pinnable (D57)
-    const set = languageSetFromInstalled(fixed, gateway, { requireVersion: false });
+    const set = languageSetFromInstalled(fixed, gateway);
+    expect(set).not.toBeNull();
     expect(set?.translationNotes.repoPath).toBe('git.door43.org/es-419_gl/es-419_tn');
+    expect(set?.translationNotes.sha).toMatch(/^[0-9a-f]{40}$/);
+    expect(set?.translationNotes.version).toBeUndefined();
     expect(set?.translationWords.repoPath).toBe('git.door43.org/es-419_gl/es-419_tw');
     expect(set?.translationWordsLinks.repoPath).toBe('git.door43.org/es-419_gl/es-419_tw'); // D34
   });

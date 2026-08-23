@@ -16,7 +16,14 @@ const REPO = '_local_/_local_/prueba';
 
 const TIT_USFM = ['\\id TIT prueba', '\\c 1', '\\p', '\\v 1 Pablo.', '\\v 2 ___', ''].join('\n');
 
+// D58: a §5.3 pin carries its sha identity.
+const sha40 = (s: string): string => {
+  let h = 5381;
+  for (const c of s) h = ((h * 33) ^ c.charCodeAt(0)) >>> 0;
+  return h.toString(16).padStart(8, '0').repeat(5);
+};
 const PIN = (repo: string, version: string, flavor: string) => ({
+  sha: sha40(`${repo}@${version}`),
   repoPath: `git.door43.org/unfoldingWord/${repo}`,
   version,
   flavor,

@@ -28,7 +28,7 @@ import { ServerApi } from './serverApi';
  * en_twl v86 = 1,841,386 bytes]. The platform has no fetch-this-URL endpoint,
  * so the client does the GET — but ONLY when the platform reports net enabled,
  * so the user's offline switch still governs (D30.4/D30.5). */
-export const sbZipUrl = (pin: ResourcePin): string => {
+export const sbZipUrl = (pin: FetchPin & { version: string }): string => {
   const path = pin.repoPath.replace(/^https?:\/\//, '');
   const slash = path.indexOf('/');
   if (slash < 0) throw new Error(`pin repoPath is not <host>/<owner>/<repo>: ${pin.repoPath}`);
@@ -38,7 +38,7 @@ export const sbZipUrl = (pin: ResourcePin): string => {
 /** The local repo a pin installs into. Delegates to the ONE canonical identity
  * (owner-qualified — B9), so fetch, discovery and the resolver never disagree
  * about where a repo lives. */
-export const localRepoPathFor = (pin: ResourcePin): string =>
+export const localRepoPathFor = (pin: Pick<FetchPin, 'repoPath'>): string =>
   localRepoPathFromRepoPath(pin.repoPath);
 
 /** The platform's catalog reports `branch_or_tag: "master"`, never a release
@@ -179,6 +179,33 @@ export const releaseCommitSha = async (
   return tags.find((t) => t.name === tag)?.commit?.sha ?? null;
 };
 
+/** What a fetch needs: the DCS sb-zip endpoint serves releases BY TAG, so a
+ * fetch request speaks the tag language even though pin IDENTITY is the sha
+ * (D58). A sha-only pin is fetchable when DCS still lists a tag for that
+ * commit; `fetchAndInstallPin` resolves it. */
+export interface FetchPin {
+  repoPath: string;
+  version?: string;
+  sha?: string;
+  flavor: string;
+}
+
+/** The release tag DCS lists for a commit sha — the reverse lookup a sha-only
+ * pin (D58) needs before it can be fetched via the tag-addressed sb-zip. */
+export const tagForCommitSha = async (
+  repoPath: string,
+  sha: string,
+  fetchFn: typeof fetch = ((...a: Parameters<typeof fetch>) => fetch(...a)),
+): Promise<string | null> => {
+  const path = repoPath.replace(/^https?:\/\//, '');
+  const slash = path.indexOf('/');
+  const url = `https://${path.slice(0, slash)}/api/v1/repos/${path.slice(slash + 1)}/tags?limit=100`;
+  const response = await fetchFn(url).catch(() => null);
+  if (!response?.ok) return null;
+  const tags = (await response.json()) as Array<{ name?: string; commit?: { sha?: string } }>;
+  return tags.find((t) => t.commit?.sha === sha)?.name ?? null;
+};
+
 export type FetchStage = 'download' | 'verify' | 'install';
 
 export interface FetchOptions {
@@ -199,7 +226,7 @@ export interface FetchResult {
  * a pin whose declared SHA does not match the export's own metadata is never
  * installed (D23b — "verify the SHA at each import"). */
 export const fetchAndInstallPin = async (
-  pin: ResourcePin,
+  pin: FetchPin,
   opts: FetchOptions,
 ): Promise<FetchResult> => {
   const doFetch = opts.fetchFn ?? ((...a: Parameters<typeof fetch>) => fetch(...a));
@@ -209,8 +236,20 @@ export const fetchAndInstallPin = async (
     throw new Error('the app is offline — go online to download resources');
   }
 
+  // The sb-zip endpoint is tag-addressed. A sha-only pin (D58) resolves its
+  // tag from DCS; a commit no tag names cannot be fetched this way — refuse
+  // with the reason rather than downloading something else.
+  const version =
+    pin.version ?? (pin.sha ? await tagForCommitSha(pin.repoPath, pin.sha, doFetch) : null);
+  if (!version) {
+    throw new Error(
+      `cannot fetch ${pin.repoPath}: the pin names no release tag and DCS lists no tag ` +
+        `for its commit${pin.sha ? ` ${pin.sha.slice(0, 12)}…` : ''} — not installed`,
+    );
+  }
+
   opts.onStage?.('download');
-  const url = sbZipUrl(pin);
+  const url = sbZipUrl({ ...pin, version });
   const response = await doFetch(url);
   if (!response.ok) {
     throw new Error(`could not download ${url} (HTTP ${response.status})`);
@@ -225,22 +264,22 @@ export const fetchAndInstallPin = async (
   // source) and require the export's declared revision to match it. Without
   // this, `pin.sha` is undefined, the old `pin.sha &&` guard never ran, and the
   // archive's self-declared revision became the pin — it self-certified (F4).
-  const expectedSha = pin.sha ?? (await releaseCommitSha(pin.repoPath, pin.version, doFetch));
+  const expectedSha = pin.sha ?? (await releaseCommitSha(pin.repoPath, version, doFetch));
   if (!expectedSha) {
     throw new Error(
-      `cannot authenticate ${pin.repoPath} ${pin.version}: DCS reported no commit for this ` +
+      `cannot authenticate ${pin.repoPath} ${version}: DCS reported no commit for this ` +
         'release tag, so the download cannot be verified — not installed',
     );
   }
   if (!revision) {
     throw new Error(
-      `the export for ${pin.repoPath} ${pin.version} declares no revision, so its ` +
+      `the export for ${pin.repoPath} ${version} declares no revision, so its ` +
         'SHA cannot be verified — not installed',
     );
   }
   if (expectedSha !== revision) {
     throw new Error(
-      `pin SHA mismatch for ${pin.repoPath} ${pin.version}: expected ${expectedSha.slice(0, 12)}… ` +
+      `pin SHA mismatch for ${pin.repoPath} ${version}: expected ${expectedSha.slice(0, 12)}… ` +
         `(${pin.sha ? 'pinned' : 'DCS release tag'}), the export declares ${revision.slice(0, 12)}… ` +
         '— not installed',
     );

@@ -117,11 +117,12 @@ test.describe('J4 — a checker works a book', () => {
     'a missing local resource at session open shows the guided fix screen, not a crash (FR-5)',
     { tag: ['@inc2', '@J4'] },
     async ({ page }) => {
-      // Pin a version this machine does not have.
+      // Pin a commit this machine does not have (D58: identity is the sha —
+      // a well-formed sha that matches no local install is "not local").
       const pins = PINS();
       writeProjectPins(SEEDED_PROJECT, {
         ...pins,
-        tn: { ...pins.tn, version: 'v1', sha: undefined },
+        tn: { ...pins.tn, version: 'v1', sha: '1'.repeat(40) },
       });
 
       await openCheck(page);
@@ -335,11 +336,13 @@ test.describe('J4 — a checker works a book', () => {
       // suite that is NOT installed in the rig, so it has no local coverage and
       // the resolver falls to the fallback. That is exactly the warned case.
       const en = PINS();
-      // A real flavor is required: the fold refuses a pin entry whose flavor
-      // is not a non-empty string (D56 seedability).
-      const frPin = (name: string) => ({
+      // A real flavor and a sha are required: the fold refuses a pin entry
+      // without them (D56 seedability, D58 sha identity). The French suite is
+      // deliberately NOT installed, so any well-formed sha serves.
+      const frPin = (name: string, n: number) => ({
         repoPath: `git.door43.org/fr_gl/${name}`,
         version: 'v10',
+        sha: String(n).repeat(40).slice(0, 40),
         flavor: name.endsWith('_ta') ? 'peripheral/x-peripheralArticles' : name.endsWith('_tn') ? 'parascriptural/x-bcvnotes' : 'parascriptural/x-bcvarticles',
       });
       const setFor = (gw: { languageId: string; owner: string }, tn: unknown, tw: unknown, ta: unknown) => ({
@@ -354,9 +357,9 @@ test.describe('J4 — a checker works a book', () => {
         languageSets: {
           primary: setFor(
             { languageId: 'fr', owner: 'unfoldingWord' },
-            frPin('fr_tn'),
-            frPin('fr_tw'),
-            frPin('fr_ta'),
+            frPin('fr_tn', 1),
+            frPin('fr_tw', 2),
+            frPin('fr_ta', 3),
           ),
           fallback: setFor({ languageId: 'en', owner: 'unfoldingWord' }, en.tn, en.tw, en.ta),
         },

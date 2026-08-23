@@ -128,10 +128,10 @@ export const discoverOnDisk = async (
         const repoName = sep > 0 ? seg.slice(sep + 2) : seg;
         const org = ownerFromPath ?? orgFor(repoName);
         const repoPath = org ? `git.door43.org/${org}/${repoName}` : `git.door43.org/${key}`;
-        // The flavor is factual (the burrito states it); the version stays ''
-        // because nothing on disk knows the tag — which keeps this entry
-        // readable-but-not-pinnable (D57).
-        found[localPath] = { repoPath, version: '', sha: revision, flavor };
+        // Both identity halves are factual — the burrito states its own
+        // flavor and revision (D58: the sha IS the identity). No version:
+        // nothing on disk knows the tag, and the label is optional.
+        found[localPath] = { repoPath, sha: revision, flavor };
       } catch {
         /* unreadable metadata: contributes nothing, the safe direction */
       }
@@ -213,12 +213,17 @@ export const isPinLocal = (installed: InstalledMap, pin: ResourcePin): boolean =
  * may hold a newer release of the same repo. Pinning the default blindly would
  * make a brand-new project demand a download for a resource that is already
  * present — technically correct (a pin is a pin) but a poor first run, and it
- * hides the resource the user just fetched. Identity is (repoPath, version),
- * so this REPLACES the version rather than pretending the default matches. */
+ * hides the resource the user just fetched. Identity is (repoPath, sha) — D58 —
+ * so this REPLACES the identity rather than pretending the default matches;
+ * the version label rides along only when the local record knows it (an empty
+ * version must be OMITTED, the §5.3 grammar refuses ''). */
 export const preferInstalledVersion = (installed: InstalledMap, pin: ResourcePin): ResourcePin => {
   const local = installedEntry(installed, pin)?.[1];
   if (!local) return pin;
-  return { ...pin, version: local.version, ...(local.sha ? { sha: local.sha } : {}) };
+  const next: ResourcePin = { ...pin, ...(local.sha ? { sha: local.sha } : {}) };
+  if (local.version) next.version = local.version;
+  else delete next.version;
+  return next;
 };
 
 /** Apply `preferInstalledVersion` across a whole §5.3 resources file. */
@@ -244,17 +249,13 @@ export const pinsPreferringInstalled = <T extends { languageSets?: Record<string
  * Returns null when the org's tn / tw / tA are not all present — a set must be
  * coherent, so a partial suite is never written as a pin (§5.3).
  *
- * Every pin must also carry a RECORDED version (D57): the §8.5 journal schema
- * refuses a resource.pin.set entry with an empty version or flavor, and a
- * disk-discovered suite honestly has neither — its burrito metadata records
- * only the commit sha (verified against go-rc2sb v0.5.0 + both DCS export
- * paths, 2026-08-22). Such a suite is readable but not pinnable until an
- * install record supplies the tag. Pass `requireVersion: false` only to ask
- * "is the suite complete on disk?" — never to build a pin. */
+ * Every pin must carry its IDENTITY — a sha — and a flavor (D58): the §8.5
+ * journal schema refuses a resource.pin.set entry without them. Both are in
+ * the burrito's own metadata, so a disk-discovered suite qualifies; the
+ * version tag is an optional display label and gates nothing. */
 export const languageSetFromInstalled = (
   installed: InstalledMap,
   gateway: { id: string; org: string },
-  opts: { requireVersion?: boolean } = {},
 ): {
   gatewayLanguage: { languageId: string; owner: string };
   translationNotes: ResourcePin;
@@ -262,11 +263,10 @@ export const languageSetFromInstalled = (
   translationWords: ResourcePin;
   translationAcademy: ResourcePin;
 } | null => {
-  const requireVersion = opts.requireVersion ?? true;
   const org = gateway.org.toLowerCase();
   const ofOrg = Object.values(installed)
     .filter((p) => p.repoPath.toLowerCase().includes(`/${org}/`))
-    .filter((p) => !requireVersion || (!!p.version && !!p.flavor));
+    .filter((p) => !!p.sha && !!p.flavor);
   const bySuffix = (suffix: string) => ofOrg.find((p) => p.repoPath.endsWith(suffix));
   const tn = bySuffix('_tn');
   const tw = bySuffix('_tw'); // D34: one repo serves both tW slots

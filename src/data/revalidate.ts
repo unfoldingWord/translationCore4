@@ -68,7 +68,7 @@ export interface ResolutionWarning {
   /** What the stored decision file says produced its checks. */
   stored: { repoPath?: string; version?: string; languageSet?: string };
   /** What the project's pins resolve to now. */
-  current: { repoPath: string; version: string } | null;
+  current: { repoPath: string; version?: string; sha?: string } | null;
 }
 
 /**
@@ -86,21 +86,31 @@ export interface ResolutionWarning {
  * one of them, so no warning fires (D30.1/D30.2).
  */
 export const resolutionWarning = (
-  stored: { repoPath?: string; version?: string; languageSet?: string } | null | undefined,
+  stored: { repoPath?: string; version?: string; sha?: string; languageSet?: string } | null | undefined,
   resolution: Resolution | null,
   /** Both rungs' pins for this tool. Omitted only by callers that genuinely
    * have no pin file, where nothing can be judged inconsistent. */
-  rungPins: Array<{ repoPath: string; version: string }> = [],
+  rungPins: Array<{ repoPath: string; version?: string; sha?: string }> = [],
 ): ResolutionWarning | null => {
   if (!stored?.repoPath || !resolution?.pin) return null;
   if (recordMatchesResolution(stored, resolution)) return null;
   // Recorded against the OTHER rung — that is the ladder working, not drift.
-  if (rungPins.some((p) => samePath(p.repoPath, stored.repoPath) && p.version === stored.version)) {
+  // Identity is (repoPath + sha), D58; a tC3-era record without a sha falls
+  // back to the version label, so a legacy file agreeing with a rung by tag
+  // still reads as the ladder working rather than drift.
+  const sameRecord = (p: { repoPath: string; version?: string; sha?: string }): boolean =>
+    samePath(p.repoPath, stored.repoPath) &&
+    (stored.sha ? p.sha === stored.sha : !!stored.version && p.version === stored.version);
+  if (rungPins.some(sameRecord)) {
     return null;
   }
   return {
     stored,
-    current: { repoPath: resolution.pin.repoPath, version: resolution.pin.version },
+    current: {
+      repoPath: resolution.pin.repoPath,
+      ...(resolution.pin.version ? { version: resolution.pin.version } : {}),
+      sha: resolution.pin.sha,
+    },
   };
 };
 

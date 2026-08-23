@@ -113,7 +113,15 @@ const TIT_USFM = (v2: string): string =>
     '',
   ].join('\n');
 
+// D58: a §5.3 pin carries its sha identity; the fixture derives one from the
+// same (repo, version) distinctions the tests were written with.
+const sha40 = (s: string): string => {
+  let h = 5381;
+  for (const c of s) h = ((h * 33) ^ c.charCodeAt(0)) >>> 0;
+  return h.toString(16).padStart(8, '0').repeat(5);
+};
 const PIN = (repo: string, version: string, flavor: string) => ({
+  sha: sha40(`${repo}@${version}`),
   repoPath: `git.door43.org/unfoldingWord/${repo}`,
   version,
   flavor,

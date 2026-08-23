@@ -83,30 +83,43 @@ describe('revalidateAgainstDraft — flags, never deletes', () => {
   });
 });
 
+// Deterministic fake sha per (repo, version) — D58: identity is the sha, so
+// the fixtures derive one from the same (repo, version) distinctions the
+// tests were written with.
+const sha40 = (s: string): string => {
+  let h = 5381;
+  for (const c of s) h = ((h * 33) ^ c.charCodeAt(0)) >>> 0;
+  return h.toString(16).padStart(8, '0').repeat(5);
+};
+
 describe('D17 resolution revalidation — a warned update, never silent', () => {
   const resolution = (repoPath: string, version: string): Resolution => ({
     tool: 'translationNotes',
     book: 'TIT',
     rung: 'primary',
-    pin: { repoPath, version, flavor: '' },
+    pin: { repoPath, version, sha: sha40(`${repoPath}@${version}`), flavor: '' },
     usedFallback: false,
   });
   const now = resolution('git.door43.org/unfoldingWord/en_tn', 'v89');
 
   it('agreement produces no warning', () => {
     expect(
-      resolutionWarning({ repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v89' }, now),
+      resolutionWarning({ repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v89', sha: sha40('git.door43.org/unfoldingWord/en_tn@v89') }, now),
     ).toBeNull();
   });
 
   it('a version bump warns, and reads as an upgrade rather than a switch', () => {
     const w = resolutionWarning(
-      { repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v86' },
+      { repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v86', sha: sha40('git.door43.org/unfoldingWord/en_tn@v86') },
       now,
     );
     expect(w).not.toBeNull();
     expect(isLanguageSwitch(w!)).toBe(false);
-    expect(w!.current).toEqual({ repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v89' });
+    expect(w!.current).toEqual({
+      repoPath: 'git.door43.org/unfoldingWord/en_tn',
+      version: 'v89',
+      sha: sha40('git.door43.org/unfoldingWord/en_tn@v89'),
+    });
   });
 
   it('a different resource warns AND reads as a switch', () => {

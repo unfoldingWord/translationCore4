@@ -181,15 +181,6 @@ export default function SourceTexts() {
                   {t('sources.alreadyCheckingIn', { lang: g.name })}
                 </p>
               )}
-              {/* D57 — the suite is complete on disk but carries no recorded
-                * version, so it cannot be pinned; say so instead of a silently
-                * absent offer. */}
-              {!isCheckable && !isCurrent && s.project &&
-                (s.checkableUnversioned ?? []).includes(gatewayKey(g)) && (
-                <p data-testid="unversioned-suite" style={{ fontSize: 12, color: '#8A6A22', fontWeight: 700, margin: 0, lineHeight: 1.5 }}>
-                  {t('sources.noVersionRecord', { lang: g.name })}
-                </p>
-              )}
 
               <div>
                 <label htmlFor="src-book" style={label}>{t('sources.book')}</label>

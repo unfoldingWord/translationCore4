@@ -14,7 +14,7 @@ import {
 } from '../src/data/resourceFetch';
 import type { ResourcePin } from '../src/data/burritoStore';
 
-const PIN: ResourcePin = {
+const PIN: ResourcePin & { version: string } = {
   repoPath: 'git.door43.org/unfoldingWord/en_twl',
   version: 'v86',
   flavor: 'parascriptural/x-bcvarticles',
@@ -208,7 +208,9 @@ describe('fetchAndInstallPin — the SHA gate (D23b: verify at every import)', (
 
   // F4 — a FIRST install carries no pin SHA. The expected SHA must come from
   // DCS's own tag→commit record (independent), NOT from the archive itself.
-  const FIRST: ResourcePin = {
+  // A FIRST install genuinely has no sha yet — the FetchPin request shape
+  // (D58: §5.3 pins require the sha, fetch REQUESTS may not have one).
+  const FIRST = {
     repoPath: 'git.door43.org/unfoldingWord/en_twl', version: 'v86', flavor: '',
   };
   const SHA = '570e76d0024c847689e48a20e2ac1a1d2c6eb6e3';

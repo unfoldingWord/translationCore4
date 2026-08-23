@@ -107,12 +107,12 @@ const vector = (): JournalEvent[] => {
     {
       v: 1, op: 'resource.pin.set', actor: ACTOR, ts: ts(), base: null,
       slot: 'languageSets.primary.translationNotes',
-      entry: { repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v86', flavor: 'parascriptural/x-bcvnotes' },
+      entry: { repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v86', sha: 'c354b8ae66a23c485bf6f38fd35bd8f7ef81e4e5', flavor: 'parascriptural/x-bcvnotes' },
     },
     {
       v: 1, op: 'resource.pin.set', actor: ACTOR, ts: ts(), base: null,
       slot: 'languageSets.fallback.translationNotes',
-      entry: { repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v86', flavor: 'parascriptural/x-bcvnotes' },
+      entry: { repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v86', sha: 'c354b8ae66a23c485bf6f38fd35bd8f7ef81e4e5', flavor: 'parascriptural/x-bcvnotes' },
     },
     { v: 1, op: 'settings.set', actor: ACTOR, ts: ts(), base: null, path: 'textDirection', value: 'ltr' },
   ];

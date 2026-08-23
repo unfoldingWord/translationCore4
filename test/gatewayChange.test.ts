@@ -15,9 +15,19 @@ import { resolveToolBook } from '../src/data/resolve';
 import type { Coverage } from '../src/data/resolve';
 import type { DecisionFile, LanguageSet, ResourcesFile } from '../src/data/burritoStore';
 
+// Deterministic fake sha per (repo, version): same inputs → same sha, any
+// difference → a different sha, so the D58 sha-identity comparisons preserve
+// exactly the (repo, version) distinctions these tests were written with.
+const sha40 = (s: string): string => {
+  let h = 5381;
+  for (const c of s) h = ((h * 33) ^ c.charCodeAt(0)) >>> 0;
+  return h.toString(16).padStart(8, '0').repeat(5);
+};
+
 const pin = (repo: string, version: string) => ({
   repoPath: `git.door43.org/${repo}`,
   version,
+  sha: sha40(`${repo}@${version}`),
   flavor: '',
 });
 
@@ -38,7 +48,9 @@ const file = (repoPath: string, version: string, decisions: number): DecisionFil
     schemaVersion: 1,
     tool: 'translationNotes',
     book: 'TIT',
-    resource: { repoPath, version },
+    // The resource record's sha derives from the same (repo, version) string
+    // the pins use, so "checked against pin X" still matches pin X under D58.
+    resource: { repoPath, version, sha: sha40(`${repoPath.replace('git.door43.org/', '')}@${version}`) },
     decisions: Array.from({ length: decisions }, () => ({}) as never),
   }) as DecisionFile;
 

@@ -224,7 +224,6 @@
   "gateway.carryOver": "{book} · {tool}: {carried} carried over, {invalidated} to check again",
   "sources.checkInPrompt": "This suite is installed. Check this project against {lang}?",
   "sources.checkIn": "Use for checking",
-  "sources.noVersionRecord": "The {lang} suite is on this device but has no version record, so it cannot be pinned. Fetch it from Door43 to record its version.",
   "gateway.failed": "The change was not applied.",
   "sources.alreadyCheckingIn": "This project already checks against {lang}."
 }
