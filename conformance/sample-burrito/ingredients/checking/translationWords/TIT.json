@@ -5,6 +5,7 @@
   "resource": {
     "repoPath": "git.door43.org/es-419_gl/es-419_tw",
     "version": "v37",
+    "sha": "7586f4ff1f0483ea40a4a68e5e1f33158e08c208",
     "languageSet": "primary"
   },
   "decisions": [
@@ -12,7 +13,11 @@
       "contextId": {
         "checkId": "a9p2",
         "occurrenceNote": "",
-        "reference": { "bookId": "tit", "chapter": 1, "verse": 1 },
+        "reference": {
+          "bookId": "tit",
+          "chapter": 1,
+          "verse": 1
+        },
         "tool": "translationWords",
         "groupId": "apostle",
         "quote": "ἀπόστολος",
@@ -22,7 +27,11 @@
       },
       "category": "kt",
       "selections": [
-        { "text": "apóstol", "occurrence": 1, "occurrences": 1 }
+        {
+          "text": "apóstol",
+          "occurrence": 1,
+          "occurrences": 1
+        }
       ],
       "comments": false,
       "reminders": true,
@@ -35,7 +44,11 @@
       "contextId": {
         "checkId": "t1g7",
         "occurrenceNote": "",
-        "reference": { "bookId": "tit", "chapter": 1, "verse": 1 },
+        "reference": {
+          "bookId": "tit",
+          "chapter": 1,
+          "verse": 1
+        },
         "tool": "translationWords",
         "groupId": "god",
         "quote": "Θεοῦ",
@@ -45,7 +58,11 @@
       },
       "category": "kt",
       "selections": [
-        { "text": "Dios", "occurrence": 1, "occurrences": 2 }
+        {
+          "text": "Dios",
+          "occurrence": 1,
+          "occurrences": 2
+        }
       ],
       "comments": false,
       "reminders": false,
@@ -58,6 +75,8 @@
   ],
   "summary": {
     "note": "derived cache, regenerable — decided counts by category",
-    "decided": { "kt": 2 }
+    "decided": {
+      "kt": 2
+    }
   }
 }

@@ -108,10 +108,10 @@
     },
     "ingredients/checking/resources.json": {
       "checksum": {
-        "md5": "a778c25307824fa9ab1856f0523c8d99"
+        "md5": "8f185d66ecb0c36bed50e3c9f103a1d5"
       },
       "mimeType": "application/json",
-      "size": 2647,
+      "size": 3498,
       "role": "x-resource-links"
     },
     "ingredients/checking/settings.json": {
@@ -124,10 +124,10 @@
     },
     "ingredients/checking/translationNotes/TIT.json": {
       "checksum": {
-        "md5": "e52bbd3275f30373e2f1e6cd08d38d2e"
+        "md5": "490c0191596c7d95ebd5aae0331ccd02"
       },
       "mimeType": "application/json",
-      "size": 2307,
+      "size": 2732,
       "scope": {
         "TIT": []
       },
@@ -135,10 +135,10 @@
     },
     "ingredients/checking/translationWords/TIT.json": {
       "checksum": {
-        "md5": "79ed19d1069345494bf173e9eb406741"
+        "md5": "9e53440e2f78a42c178da820fdd96051"
       },
       "mimeType": "application/json",
-      "size": 1695,
+      "size": 1912,
       "scope": {
         "TIT": []
       },

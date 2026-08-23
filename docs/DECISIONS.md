@@ -943,3 +943,29 @@ modal ("no version record — fetch to record its version"), never a silently ab
 offer. The dev rig's seed writes the install records for the tags it sideloads.
 Revisit only if suite hand-off without DCS becomes a first-class requirement; the
 format today does not foreclose ratifying sha-only pins later.
+
+## D58 (2026-08-22, project-owner ruling) **The sha is the pin's identity; the version
+tag is an optional display label.** [supersedes D57's gate; amends §5.3/§5.2]
+
+Release tags are not enforced upstream — anyone can name a version anything, and the
+sample itself carried lexicon pins (`en_ugl v2`, `en_uhl v1`) whose tags do not exist on
+DCS [VERIFIED — git.door43.org tags API, 2026-08-22: en_ugl tops at v0.5; en_uhl has no
+tags]. The commit sha is content-addressed truth and is what every export records
+(`identification.primary.<authority>[...].revision`). The owner expects the tag to be
+included in exports in the future, as reference for the user — useful, never binding.
+
+The ruling:
+1. **§5.3 pin entries: `sha` REQUIRED (40 lowercase hex), `version` OPTIONAL** —
+   a display label, non-empty when present, never compared as identity. The same for
+   `extraScripture` entries. `gatewayLanguage` entries are unchanged (no repo).
+2. **§5.2 resolution records match a rung's pin by (repoPath + sha)**; they carry the
+   pin's `version` label alongside for display.
+3. Fetching still speaks tags (DCS serves `/sb/<tag>.zip`); after arrival the export's
+   recorded revision is the identity, verified against the pin (D23b unchanged).
+4. Local-install identity (`isPinLocal`) compares shas.
+5. This DISSOLVES D57's not-pinnable gate: a disk-discovered suite carries its sha and
+   flavor in its own metadata, so it is pinnable directly. D57's factual-flavor
+   recording and the surfaced gateway-change error remain.
+6. `schemaVersion` stays 2: the format has never shipped (pre-alpha, D46), so the
+   required-ness change lands in place with the sample and harness in this change set —
+   no migration shim (the D55-era precedent).
