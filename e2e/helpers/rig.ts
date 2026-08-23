@@ -193,11 +193,13 @@ export function writeProjectPins(
     translationWords: pins.tw,
     translationAcademy: pins.ta,
   };
+  // The §8.8 seed round-trip requires the CHECKPOINT PROJECTION form: empty
+  // groups and an empty extraScripture are OMITTED by projectResources, so a
+  // hand-written file that spells them out refuses to seed (D56). Write what
+  // the app itself would checkpoint.
   const file = {
     schemaVersion: 2,
     languageSets: { primary: set, fallback: set },
-    resources: { originalLanguage: {}, lexicon: {} },
-    extraScripture: [],
   };
   const dir = path.join(rigRepo(repo), 'ingredients', 'checking');
   fs.mkdirSync(dir, { recursive: true });

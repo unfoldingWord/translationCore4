@@ -27,9 +27,13 @@ function writePinsWithOriginal() {
   writeProjectPins(SEEDED_PROJECT, PINS());
   const p = path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'resources.json');
   const file = JSON.parse(fs.readFileSync(p, 'utf8'));
-  file.resources.originalLanguage = {
-    nt: pinForSideloaded('el-x-koine_ugnt', 'v0.34'),
-    ot: { repoPath: 'git.door43.org/unfoldingWord/hbo_uhb', version: 'v2.1.30', flavor: '' },
+  // writeProjectPins writes the projection form, which omits an empty
+  // `resources` group (D56) — create it here with real content.
+  file.resources = {
+    originalLanguage: {
+      nt: pinForSideloaded('el-x-koine_ugnt', 'v0.34'),
+      ot: { repoPath: 'git.door43.org/unfoldingWord/hbo_uhb', version: 'v2.1.30', flavor: '' },
+    },
   };
   fs.writeFileSync(p, `${JSON.stringify(file, null, 2)}\n`);
 }

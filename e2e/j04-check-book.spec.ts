@@ -358,8 +358,7 @@ test.describe('J4 — a checker works a book', () => {
           ),
           fallback: setFor({ languageId: 'en', owner: 'unfoldingWord' }, en.tn, en.tw, en.ta),
         },
-        resources: { originalLanguage: {}, lexicon: {} },
-        extraScripture: [],
+        // Projection form only: empty groups are omitted (D56 seedability).
       };
       const dir = path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking');
       fs.mkdirSync(dir, { recursive: true });
