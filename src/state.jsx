@@ -17,7 +17,7 @@ import { seedBookFromSource } from './data/seed';
 import { BOOK_NAMES, bookName } from './data/bookNames';
 import { GATEWAYS, gatewayKey, DCS_HOST, orgForRepoName } from './data/gateways';
 import { fetchAndInstallPin, latestReleaseTag, identifyExistingInstall } from './data/resourceFetch';
-import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, isPinLocal, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk } from './data/installed';
+import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, isPinLocal, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk, flavorOfMetadata } from './data/installed';
 import { TOOL_SLOT, preflightToolBook, resolutionRecord, resolveToolBook } from './data/resolve';
 import {
   deriveTnItems,
@@ -265,6 +265,8 @@ const initial = () => ({
   src: { gateway: null, book: 'TIT', rows: [], loading: false, error: null, dl: null, exclude: {} },
   installedSrc: [], // [{ langKey, book }] packages this machine already has
   checkable: [], // gatewayKeys whose COMPLETE helps suite is installed (D30.2)
+  checkableUnversioned: [], // complete on disk but no recorded version — not pinnable (D57)
+  gatewayError: null, // a failed gateway-change commit, shown in the dialogue
   netEnabled: false, // mirrors the platform's net gate (GET /net/status)
   projectPins: null, // the open project's resources.json (§5.3 v2 shape)
   preflight: null, // { [tool]: Preflight } for the open book (C2.2)
@@ -458,7 +460,21 @@ export function AppProvider({ children }) {
         const { installed } = await a.resolutionContext();
         const checkable = GATEWAYS.filter((g) => languageSetFromInstalled(installed, g))
           .map(gatewayKey);
-        dispatch({ type: 'set', patch: { checkable: [...new Set(checkable)] } });
+        // Complete on disk but with no recorded version: readable, not
+        // pinnable (D57) — named in the Sources modal instead of a silently
+        // absent offer.
+        const unversioned = GATEWAYS.filter(
+          (g) =>
+            !checkable.includes(gatewayKey(g)) &&
+            languageSetFromInstalled(installed, g, { requireVersion: false }),
+        ).map(gatewayKey);
+        dispatch({
+          type: 'set',
+          patch: {
+            checkable: [...new Set(checkable)],
+            checkableUnversioned: [...new Set(unversioned)],
+          },
+        });
         return checkable;
       },
 
@@ -630,11 +646,21 @@ export function AppProvider({ children }) {
         return preview;
       },
 
-      cancelGatewayChange: () => dispatch({ type: 'set', patch: { gatewayPreview: null } }),
+      cancelGatewayChange: () =>
+        dispatch({ type: 'set', patch: { gatewayPreview: null, gatewayError: null } }),
 
       confirmGatewayChange: async (preview) => {
-        await a.commitGatewayChange(preview);
-        dispatch({ type: 'set', patch: { gatewayPreview: null } });
+        // A failed commit must stay VISIBLE: the dialogue used to swallow the
+        // rejection, leaving an open dialogue that ignored its confirm button
+        // (found 2026-08-22, rig journey run).
+        dispatch({ type: 'set', patch: { gatewayError: null } });
+        try {
+          await a.commitGatewayChange(preview);
+        } catch (e) {
+          dispatch({ type: 'set', patch: { gatewayError: e?.reason || e?.message || String(e) } });
+          return;
+        }
+        dispatch({ type: 'set', patch: { gatewayPreview: null, gatewayError: null } });
       },
 
       /** Commit a previewed change. Takes the preview so the user confirms
@@ -1047,7 +1073,9 @@ export function AppProvider({ children }) {
                 const meta = await api.getMetadataRaw(target);
                 const rev = Object.values(meta?.identification?.primary?.dcs || {})[0]?.revision;
                 const found = await identifyExistingInstall(repoPath, rev);
-                if (found) await recordInstalled(api, STORAGE_ID, target, found);
+                // The metadata is already in hand — record the factual flavor
+                // with the identified tag (§8.5 schema needs both, D57).
+                if (found) await recordInstalled(api, STORAGE_ID, target, { ...found, flavor: flavorOfMetadata(meta) });
               } catch { /* stays unidentified — contributes no coverage */ }
             }
             done.push(row.repo);
@@ -1063,8 +1091,11 @@ export function AppProvider({ children }) {
             done.push(`${row.repo} ${tag}`);
             // The export's own revision becomes this resource's pinned SHA,
             // recorded per MACHINE (an install is shared by every project).
+            // The flavor comes from the installed burrito's own metadata — a
+            // pin needs a non-empty flavor to journal (§8.5 schema, D57).
+            const flavor = flavorOfMetadata(await api.getMetadataRaw(target).catch(() => null));
             await recordInstalled(api, STORAGE_ID, target, {
-              repoPath, version: tag, sha: result.revision, flavor: '',
+              repoPath, version: tag, sha: result.revision, flavor,
             });
           } catch (e) {
             failed.push(`${row.repo}: ${String(e?.message || e)}`);

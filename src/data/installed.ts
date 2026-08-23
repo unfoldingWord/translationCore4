@@ -38,6 +38,17 @@ export const localRepoPathFromRepoPath = (repoPath: string): string => {
   return `_local_/_sideloaded_/${owner ? `${owner}--${repo}` : repo}`;
 };
 
+/** The SB flavor string ("<flavorType>/<flavor>") from a burrito's metadata —
+ * the factual value a pin's `flavor` field carries (§5.3). Empty when the
+ * metadata does not state one; a pin needs a non-empty flavor to journal
+ * (§8.5 schema, D57), so record it wherever the metadata is at hand. */
+export const flavorOfMetadata = (meta: unknown): string => {
+  const ft = (meta as { type?: { flavorType?: { name?: string; flavor?: { name?: string } } } })
+    ?.type?.flavorType;
+  if (!ft?.name || !ft?.flavor?.name) return '';
+  return `${ft.name}/${ft.flavor.name}`;
+};
+
 export const readInstalled = async (api: ServerApi, storageId: string): Promise<InstalledMap> => {
   try {
     const settings = await api.getClientSettings(storageId);
@@ -101,6 +112,7 @@ export const discoverOnDisk = async (
         const meta = (await api.getMetadataRaw(localPath)) as unknown as {
           identification?: { primary?: { dcs?: Record<string, { revision?: string }> } };
         };
+        const flavor = flavorOfMetadata(meta);
         const dcs = meta.identification?.primary?.dcs ?? {};
         const [key] = Object.keys(dcs);
         const revision = Object.values(dcs)[0]?.revision;
@@ -116,7 +128,10 @@ export const discoverOnDisk = async (
         const repoName = sep > 0 ? seg.slice(sep + 2) : seg;
         const org = ownerFromPath ?? orgFor(repoName);
         const repoPath = org ? `git.door43.org/${org}/${repoName}` : `git.door43.org/${key}`;
-        found[localPath] = { repoPath, version: '', sha: revision, flavor: '' };
+        // The flavor is factual (the burrito states it); the version stays ''
+        // because nothing on disk knows the tag — which keeps this entry
+        // readable-but-not-pinnable (D57).
+        found[localPath] = { repoPath, version: '', sha: revision, flavor };
       } catch {
         /* unreadable metadata: contributes nothing, the safe direction */
       }
@@ -227,10 +242,19 @@ export const pinsPreferringInstalled = <T extends { languageSets?: Record<string
 
 /** The §5.3 language set for one gateway org, built from what is installed.
  * Returns null when the org's tn / tw / tA are not all present — a set must be
- * coherent, so a partial suite is never written as a pin (§5.3). */
+ * coherent, so a partial suite is never written as a pin (§5.3).
+ *
+ * Every pin must also carry a RECORDED version (D57): the §8.5 journal schema
+ * refuses a resource.pin.set entry with an empty version or flavor, and a
+ * disk-discovered suite honestly has neither — its burrito metadata records
+ * only the commit sha (verified against go-rc2sb v0.5.0 + both DCS export
+ * paths, 2026-08-22). Such a suite is readable but not pinnable until an
+ * install record supplies the tag. Pass `requireVersion: false` only to ask
+ * "is the suite complete on disk?" — never to build a pin. */
 export const languageSetFromInstalled = (
   installed: InstalledMap,
   gateway: { id: string; org: string },
+  opts: { requireVersion?: boolean } = {},
 ): {
   gatewayLanguage: { languageId: string; owner: string };
   translationNotes: ResourcePin;
@@ -238,9 +262,11 @@ export const languageSetFromInstalled = (
   translationWords: ResourcePin;
   translationAcademy: ResourcePin;
 } | null => {
+  const requireVersion = opts.requireVersion ?? true;
   const org = gateway.org.toLowerCase();
   const ofOrg = Object.values(installed)
-    .filter((p) => p.repoPath.toLowerCase().includes(`/${org}/`));
+    .filter((p) => p.repoPath.toLowerCase().includes(`/${org}/`))
+    .filter((p) => !requireVersion || (!!p.version && !!p.flavor));
   const bySuffix = (suffix: string) => ofOrg.find((p) => p.repoPath.endsWith(suffix));
   const tn = bySuffix('_tn');
   const tw = bySuffix('_tw'); // D34: one repo serves both tW slots

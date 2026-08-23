@@ -18,10 +18,16 @@ import { resolveToolBook } from '../src/data/resolve';
 import type { InstalledMap } from '../src/data/installed';
 import type { ResourcePin, ResourcesFile } from '../src/data/burritoStore';
 
+// Recorded installs carry the burrito's real flavor (D57): a pin with an
+// empty flavor cannot journal, so the record paths fill it from metadata.
 const pin = (repo: string, version: string, sha?: string): ResourcePin => ({
   repoPath: `git.door43.org/${repo}`,
   version,
-  flavor: '',
+  flavor: repo.endsWith('_ta')
+    ? 'peripheral/x-peripheralArticles'
+    : repo.endsWith('_tn')
+      ? 'parascriptural/x-bcvnotes'
+      : 'parascriptural/x-bcvarticles',
   ...(sha ? { sha } : {}),
 });
 
@@ -308,10 +314,14 @@ describe('the whole point: a Spanish suite on disk resolves to a language set', 
     const gateway = { id: 'es-419', org: 'es-419_gl' };
 
     const stale = await discoverOnDisk(api, summaries, {});
-    expect(languageSetFromInstalled(stale, gateway)).toBeNull(); // suite "incomplete"
+    expect(languageSetFromInstalled(stale, gateway, { requireVersion: false })).toBeNull(); // suite "incomplete"
 
+    // D57: with the org corrected the suite is COMPLETE ON DISK — but a
+    // disk-discovered entry has no recorded version, so it resolves only for
+    // the completeness question, never into pinnable pins.
     const fixed = await discoverOnDisk(api, summaries, {}, orgForRepoName);
-    const set = languageSetFromInstalled(fixed, gateway);
+    expect(languageSetFromInstalled(fixed, gateway)).toBeNull(); // not pinnable (D57)
+    const set = languageSetFromInstalled(fixed, gateway, { requireVersion: false });
     expect(set?.translationNotes.repoPath).toBe('git.door43.org/es-419_gl/es-419_tn');
     expect(set?.translationWords.repoPath).toBe('git.door43.org/es-419_gl/es-419_tw');
     expect(set?.translationWordsLinks.repoPath).toBe('git.door43.org/es-419_gl/es-419_tw'); // D34

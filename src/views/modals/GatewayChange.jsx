@@ -78,6 +78,13 @@ export default function GatewayChange() {
           </ul>
         )}
 
+        {s.gatewayError && (
+          <p role="alert" data-testid="gateway-error"
+            style={{ fontSize: 13, color: '#8A2E22', background: 'rgba(229,157,51,.10)', border: '1px solid rgba(229,157,51,.5)', borderRadius: 10, padding: '10px 12px', lineHeight: 1.55, margin: '0 0 14px', overflowWrap: 'anywhere' }}>
+            <strong>{t('gateway.failed')}</strong> {s.gatewayError}
+          </p>
+        )}
+
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ flex: 1 }} />
           <button type="button" onClick={actions.cancelGatewayChange} data-testid="gateway-cancel"
