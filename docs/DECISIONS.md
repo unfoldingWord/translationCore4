@@ -902,3 +902,70 @@ this gate; D51's conditions remain the bar for the sync sections and for hardeni
 the stored format carries no R-id and is exempt from the coverage gate; it is marked
 "(D53, app rule …)" in place, and its test obligation lands with the app increment that
 implements it (#61/#62 acceptance criteria)]
+
+## D56 (2026-08-22, project-owner ruling) **Sidecar record order is byte form, and the
+sample burrito must be seedable.**
+
+The first rig journey run of the #62 open pipeline (2026-08-22) refused to seed the
+conformance sample: the sample stored decision records in authoring order, the fold
+projects them sorted by canonical contextId (fold.mjs), and the seed round-trip compared
+the arrays order-sensitively. The same refusal applies to every real tC3 export. A second
+refusal came from the sample's `resources.json` top-level `note` field, which the §5.3
+flatten cannot carry. Both refusals reproduce at 9e209bd — they predate the intent-ledger
+work [VERIFIED — probe against the live rig, 2026-08-22].
+
+The ruling, both sides bend:
+1. **App:** the seed round-trip compares each sidecar's decision records as a SET (both
+   sides sorted into the fold's own order before the canonical compare). Content loss
+   still refuses: co-present records on one §5.2 identity key differ after sorting.
+   R-8.8.2 now states this reading ("exactly" is content-level for sidecars; record
+   order is byte form, converged to the checkpoint projection right after seeding).
+2. **Sample:** the sample burrito is REQUIRED to be seedable. Its sidecar records are
+   stored in the fold's canonical projection order, and it carries no field the
+   checkpoint projections cannot reproduce. The pin documentation that lived in the
+   `note` field moved to `conformance/README.md`.
+
+Unknown top-level sidecar fields keep refusing the seed — never silently dropped.
+
+## D57 (2026-08-22, project-owner ruling) **A suite without a recorded version is
+readable but not pinnable.**
+
+A disk-discovered (sideloaded) gateway suite carries only a commit sha: the burrito
+metadata's `identification.primary.<authority>` entry is `{revision, timestamp}` with no
+release tag, in the current converter and both DCS export paths [VERIFIED — go-rc2sb
+v0.5.0 `sb/metadata.go` + `options.go`, dcs `services/convert2sb/convert2sb.go:181` and
+`services/repository/sbarchiver/archiver.go:183`, read 2026-08-22]. The §8.5 journal
+schema refuses a `resource.pin.set` entry whose version or flavor is empty. The schema
+does not bend (the rare hand-off case does): the gateway-change offer and every
+pin-writing flow require pins with a recorded version and flavor — the install flow's
+record supplies them. A complete-on-disk suite with no record is named in the Sources
+modal ("no version record — fetch to record its version"), never a silently absent
+offer. The dev rig's seed writes the install records for the tags it sideloads.
+Revisit only if suite hand-off without DCS becomes a first-class requirement; the
+format today does not foreclose ratifying sha-only pins later.
+
+## D58 (2026-08-22, project-owner ruling) **The sha is the pin's identity; the version
+tag is an optional display label.** [supersedes D57's gate; amends §5.3/§5.2]
+
+Release tags are not enforced upstream — anyone can name a version anything, and the
+sample itself carried lexicon pins (`en_ugl v2`, `en_uhl v1`) whose tags do not exist on
+DCS [VERIFIED — git.door43.org tags API, 2026-08-22: en_ugl tops at v0.5; en_uhl has no
+tags]. The commit sha is content-addressed truth and is what every export records
+(`identification.primary.<authority>[...].revision`). The owner expects the tag to be
+included in exports in the future, as reference for the user — useful, never binding.
+
+The ruling:
+1. **§5.3 pin entries: `sha` REQUIRED (40 lowercase hex), `version` OPTIONAL** —
+   a display label, non-empty when present, never compared as identity. The same for
+   `extraScripture` entries. `gatewayLanguage` entries are unchanged (no repo).
+2. **§5.2 resolution records match a rung's pin by (repoPath + sha)**; they carry the
+   pin's `version` label alongside for display.
+3. Fetching still speaks tags (DCS serves `/sb/<tag>.zip`); after arrival the export's
+   recorded revision is the identity, verified against the pin (D23b unchanged).
+4. Local-install identity (`isPinLocal`) compares shas.
+5. This DISSOLVES D57's not-pinnable gate: a disk-discovered suite carries its sha and
+   flavor in its own metadata, so it is pinnable directly. D57's factual-flavor
+   recording and the surfaced gateway-change error remain.
+6. `schemaVersion` stays 2: the format has never shipped (pre-alpha, D46), so the
+   required-ness change lands in place with the sample and harness in this change set —
+   no migration shim (the D55-era precedent).

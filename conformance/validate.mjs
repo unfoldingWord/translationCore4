@@ -200,10 +200,14 @@ let mergedVerseObjects = null;
     }
   }
   check('decisions: all tC3 check-item fields present on every stored decision', ok, `${count} decisions`);
-  const tn = json(ING('checking/translationNotes/TIT.json')).decisions[0];
+  // Select by checkId, not array position: the sample stores decisions in the
+  // fold's canonical projection order (§8.8 seedability), and a check pinned to
+  // an index breaks whenever a record is added or the canon changes.
+  const tnDecisions = json(ING('checking/translationNotes/TIT.json')).decisions;
+  const tn = tnDecisions.find(d => d.contextId.checkId === 'swi9');
   check('decisions: tN quote is word-occurrence array (not flattened string)',
     Array.isArray(tn.contextId.quote) && 'word' in tn.contextId.quote[0] && 'occurrence' in tn.contextId.quote[0]);
-  const inv = json(ING('checking/translationNotes/TIT.json')).decisions[1];
+  const inv = tnDecisions.find(d => d.contextId.checkId === 'gr8c');
   check('decisions: verse-edit invalidation state representable (verseEdits+invalidated flags)',
     inv.verseEdits === true && inv.invalidated === true);
 }
@@ -336,7 +340,10 @@ let mergedVerseObjects = null;
   const SHA = /^[0-9a-f]{40}$/;
   const HELP_SLOTS = ['translationNotes', 'translationWordsLinks', 'translationWords', 'translationAcademy'];
   const ls = resFile.languageSets;
-  const pinShape = e => e && e.repoPath && e.version && e.flavor;
+  // D58: the sha IS the pin's identity (required); `version` is an OPTIONAL
+  // display label, non-empty when present.
+  const pinShape = e => e && e.repoPath && SHA.test(e.sha ?? '') && e.flavor &&
+    (!('version' in e) || (typeof e.version === 'string' && e.version !== ''));
   const setOk = s => s && s.gatewayLanguage?.languageId && s.gatewayLanguage?.owner &&
     HELP_SLOTS.every(k => pinShape(s[k]));
   const twoSets = resFile.schemaVersion === 2 &&
@@ -344,15 +351,10 @@ let mergedVerseObjects = null;
     ls.fallback.gatewayLanguage.languageId === 'en';
   const indep = pinShape(res?.originalLanguage?.nt) && pinShape(res?.originalLanguage?.ot) &&
     pinShape(res?.lexicon?.nt) && pinShape(res?.lexicon?.ot);
-  // Entries MAY carry an OPTIONAL expected commit SHA (`sha`, 40 lowercase hex) for
-  // sb-zip pin verification (OPEN-QUESTIONS #24). Grammar enforced when present.
-  const entries = [
-    ...Object.values(res).flatMap(v => ('repoPath' in v ? [v] : Object.values(v))),
-    ...[ls?.primary, ls?.fallback].flatMap(s => HELP_SLOTS.map(k => s?.[k]).filter(Boolean)),
-  ];
-  const shaOk = entries.every(e => !('sha' in e) || SHA.test(e.sha)) &&
-    SHA.test('570e76d0024c847689e48a20e2ac1a1d2c6eb6e3') && !SHA.test('ZZ') && !SHA.test('570e76d');
-  check('resources: two language sets pinned (D17/D30) — primary GL + fallback en, each coherent tn+twl+tw+tA; set-independent originals + lexicons; sha 40-hex when present',
+  const shaOk = SHA.test('570e76d0024c847689e48a20e2ac1a1d2c6eb6e3') && !SHA.test('ZZ') && !SHA.test('570e76d') &&
+    !pinShape({ repoPath: 'x', version: 'v1', flavor: 'f' }) && // sha-less pin refused (D58)
+    pinShape({ repoPath: 'x', sha: '570e76d0024c847689e48a20e2ac1a1d2c6eb6e3', flavor: 'f' }); // version-less accepted
+  check('resources: two language sets pinned (D17/D30) — primary GL + fallback en, each coherent tn+twl+tw+tA; set-independent originals + lexicons; sha REQUIRED as the pin identity, version an optional label (D58)',
     twoSets && indep && shaOk,
     `primary=${ls?.primary?.gatewayLanguage?.languageId}, fallback=${ls?.fallback?.gatewayLanguage?.languageId}; sha grammar + negative controls checked`);
 
@@ -361,16 +363,18 @@ let mergedVerseObjects = null;
   // and that record MUST equal exactly one rung's pin. Ladder (D30 constraint 2): the
   // automatic fallback is exactly primary → fallback, driven by book coverage.
   const TOOL_SLOT = { translationWords: 'translationWordsLinks', translationNotes: 'translationNotes' };
+  // D58: the pin match is (repoPath + sha) — the sha is the identity; release
+  // tags are not enforced upstream, so `version` is a display label only.
   const rungOf = df => {
     const slot = TOOL_SLOT[df.tool];
     const matches = ['primary', 'fallback'].filter(r =>
-      ls[r][slot].repoPath === df.resource.repoPath && ls[r][slot].version === df.resource.version);
+      ls[r][slot].repoPath === df.resource.repoPath && ls[r][slot].sha === df.resource.sha);
     return matches.length === 1 &&
       (!('languageSet' in df.resource) || df.resource.languageSet === matches[0]) ? matches[0] : null;
   };
   const dfW = json(ING('checking/translationWords/TIT.json'));
   const dfN = json(ING('checking/translationNotes/TIT.json'));
-  const foreign = { tool: 'translationNotes', resource: { repoPath: 'git.door43.org/x/other_tn', version: 'v1' } };
+  const foreign = { tool: 'translationNotes', resource: { repoPath: 'git.door43.org/x/other_tn', sha: '0'.repeat(40) } };
   const resolve = (coverage, book) => (coverage.primary.includes(book) ? 'primary' : 'fallback');
   const cov = { primary: ['TIT', 'JON', 'RUT', '3JN'] };   // es-419 tag coverage (evidence 2026-07-31)
   check('resolution: §5.2 files record the resolved (tool, book) resource matching exactly one rung; two-rung coverage ladder primary→fallback (D17/D30)',

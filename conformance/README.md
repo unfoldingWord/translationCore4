@@ -37,6 +37,18 @@ Two more scripts exist here but are rig-gated: `npm run validate:transport` and
 `npm run validate:roundtrip` need a running Pankosmia rig (set `RIG_REPOS` to its
 repos directory). Do not run them on a clean clone.
 
+## Notes on the sample's pins (formerly a `note` field inside resources.json)
+
+Two-language-set resource pinning (D17/D30, BURRITO-SPEC §5.3). Path-authoritative;
+metadata.json `relationships` mirrors these pins. The tW slots both name `<lang>_tw`:
+its sb-zip export carries the TWL link TSVs and the payload articles together (D34).
+Pins verified: `docs/evidence/es419-suite-pins-2026-07-31.md` +
+`tw-twl-sbzip-combined-2026-08-03.md`. The field moved here because the §8.8 seed
+round-trip must reproduce resources.json from the §5.3 flatten, which carries pin
+slots only — an unknown top-level field refuses the seed instead of being dropped.
+The sample is REQUIRED to be seedable: its sidecar files carry records in the fold's
+canonical projection order and no fields the checkpoint projections cannot reproduce.
+
 `zaln-strip-repro/` is a separate, preserved empirical test in the maintainer
 workspace (not published here). The test executes the conversion files of the
 pankosmia drafting editor (`usfm2draftJson.js` → `draftJson2usfm.js`, copied

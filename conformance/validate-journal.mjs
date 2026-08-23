@@ -139,7 +139,9 @@ const buildSeed = () => {
       let e;
       if (c.kind === 'verse') e = { op: 'text.verse.set', book: 'TIT', chapter: '1', verse: String(c.key + 1), text: c.val + '\n' };
       else if (c.kind === 'pin') e = { op: 'resource.pin.set', slot: `extraScripture.s${c.key}`,
-        entry: { id: `s${c.key}`, repoPath: 'git.door43.org/unfoldingWord/en_ult', version: `v${c.val || '0'}`, flavor: 'scripture/textTranslation' } };
+        // sha varies with the value so distinct pins stay distinct (D58: sha is the identity)
+        entry: { id: `s${c.key}`, repoPath: 'git.door43.org/unfoldingWord/en_ult', version: `v${c.val || '0'}`,
+          sha: String(c.val || '0').repeat(40).replace(/[^0-9a-f]/g, '0').slice(0, 40), flavor: 'scripture/textTranslation' } };
       else if (c.kind === 'meta') e = { op: 'project.meta.set', path: `p.${c.key}`, value: c.val };
       else if (c.kind === 'note') e = { op: 'note.add', generation: events[0].ts, target: { book: 'TIT', chapter: '1', verse: String(c.key + 1) }, text: c.val };
       else e = { op: 'check.decision.set', toolId: 'translationWords', generation: events[0].ts, decision: { contextId: { checkId: `c${c.key}`, reference: { bookId: 'tit', chapter: 1, verse: c.key + 1 }, occurrence: 1 }, selections: false, note: c.val } };
@@ -3011,9 +3013,10 @@ try {
       ['translationNotes: "not-an-object"', pin('languageSets.primary.translationNotes', 'not-an-object')],
       ['resources.originalLanguage.nt: 42', pin('resources.originalLanguage.nt', 42)],
       ['a pin entry with no repoPath', pin('languageSets.primary.translationWords', { version: 'v1', flavor: 'x' })],
-      ['a pin entry with an empty version', pin('languageSets.primary.translationWords', { repoPath: 'r', version: '', flavor: 'x' })],
+      ['a pin entry with no sha (D58: the sha is the identity)', pin('languageSets.primary.translationWords', { repoPath: 'r', version: 'v1', flavor: 'x' })],
+      ['a pin entry with an empty version label', pin('languageSets.primary.translationWords', { repoPath: 'r', version: '', sha: '0'.repeat(40), flavor: 'x' })],
       ['a gatewayLanguage entry with no languageId', pin('languageSets.primary.gatewayLanguage', { owner: 'uW' })],
-      ['an extraScripture entry whose id does not match its slot', pin('extraScripture.ult', { id: 'ust', repoPath: 'r', version: 'v1', flavor: 'scripture/textTranslation' })],
+      ['an extraScripture entry whose id does not match its slot', pin('extraScripture.ult', { id: 'ust', repoPath: 'r', version: 'v1', sha: '0'.repeat(40), flavor: 'scripture/textTranslation' })],
       ['a sha that is not 40 lowercase hex', pin('extraScripture.ult', { id: 'ult', repoPath: 'r', version: 'v1', flavor: 'f', sha: 'DEADBEEF' })],
     ];
     let allClean = true; const details = [];
@@ -3307,7 +3310,7 @@ try {
       JSON.stringify(forkedFirst.forks));
     check('J32: the rootless first write of every ancestry-free surface (pins, project metadata, settings) is untouched — those registers carry no structural branch at all',
       (() => {
-        const p = E('resource.pin.set', 'actor-a', t(7), null, { slot: 'extraScripture.ult', entry: { id: 'ult', repoPath: 'r', version: 'v1', flavor: 'f' } });
+        const p = E('resource.pin.set', 'actor-a', t(7), null, { slot: 'extraScripture.ult', entry: { id: 'ult', repoPath: 'r', version: 'v1', sha: '0'.repeat(40), flavor: 'f' } });
         const s = E('settings.set', 'actor-a', t(8), null, { path: 'ui.x', value: 1 });
         const o = fold([add, p, s]);
         return o.pins['extraScripture.ult'] && o.settings['ui.x'] === 1;
