@@ -101,7 +101,9 @@ test.describe('J14 — joining is not merging: similar projects stay separate', 
       await test.step('reopen project B from Home (open/recovery never scans the sibling)', async () => {
         await page.goto('/');
         await page
-          .getByTestId(`project-${repoB}`)
+          // listLocalRepos returns the bare directory name; the Home tile's
+          // testid is the platform id (org-qualified).
+          .getByTestId(`project-_local_/_local_/${repoB}`)
           .getByRole('button', { name: /Titus/ })
           .click();
         await expect(page.getByText('borrador del gemelo dos').first()).toBeVisible({
