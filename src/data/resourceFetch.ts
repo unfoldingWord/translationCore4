@@ -132,6 +132,47 @@ export const rezip = (files: Record<string, Uint8Array>): Uint8Array => {
   return zipSync(withDirs, { level: 0 });
 };
 
+/** One DCS tag entry as the tags API lists it. */
+interface DcsTag {
+  name?: string;
+  commit?: { sha?: string };
+}
+
+/** Walk the DCS tags listing PAGE BY PAGE until `match` finds an entry, the
+ * listing ends, or a sanity bound is reached. The Gitea tags API paginates and
+ * clamps `limit` to a server-configured page size (greptile review of PR #88:
+ * a single `?limit=100` request misses any tag beyond the first page — the uW
+ * helps repos carry ~90+ release tags, so a sha-only pin whose release was not
+ * recent was falsely "untagged" and refused). The stop rule is clamp-robust:
+ * the first non-empty page's length is taken as the server's EFFECTIVE page
+ * size, and the walk continues only while pages come back full at that size —
+ * an empty or short page is the end, whatever `limit` the server honored.
+ * Returns null on any transport failure (callers already treat null as
+ * "unidentified", never as evidence of absence). */
+const TAG_PAGE_LIMIT = 50;
+const TAG_PAGE_BOUND = 40; // sanity bound: 40 pages ~ 2000 tags, far beyond any real repo
+const findDcsTag = async (
+  repoPath: string,
+  match: (tag: DcsTag) => boolean,
+  fetchFn: typeof fetch,
+): Promise<DcsTag | null> => {
+  const path = repoPath.replace(/^https?:\/\//, '');
+  const slash = path.indexOf('/');
+  const base = `https://${path.slice(0, slash)}/api/v1/repos/${path.slice(slash + 1)}/tags`;
+  let effectivePageSize: number | null = null;
+  for (let page = 1; page <= TAG_PAGE_BOUND; page += 1) {
+    const response = await fetchFn(`${base}?limit=${TAG_PAGE_LIMIT}&page=${page}`).catch(() => null);
+    if (!response?.ok) return null;
+    const tags = (await response.json()) as DcsTag[];
+    if (!Array.isArray(tags) || tags.length === 0) return null; // the listing ended
+    const hit = tags.find(match);
+    if (hit) return hit;
+    effectivePageSize ??= tags.length;
+    if (tags.length < effectivePageSize) return null; // a short page is the last page
+  }
+  return null; // bound reached — refuse to walk forever; the caller reports "unidentified"
+};
+
 /** Identify a resource that is ALREADY on disk but carries no install record —
  * the rig's seeded sources, or anything installed before the record existed.
  *
@@ -146,13 +187,7 @@ export const identifyExistingInstall = async (
   fetchFn: typeof fetch = ((...a: Parameters<typeof fetch>) => fetch(...a)),
 ): Promise<ResourcePin | null> => {
   if (!localRevision) return null;
-  const path = repoPath.replace(/^https?:\/\//, '');
-  const slash = path.indexOf('/');
-  const url = `https://${path.slice(0, slash)}/api/v1/repos/${path.slice(slash + 1)}/tags?limit=100`;
-  const response = await fetchFn(url).catch(() => null);
-  if (!response?.ok) return null;
-  const tags = (await response.json()) as Array<{ name?: string; commit?: { sha?: string } }>;
-  const hit = tags.find((tag) => tag.commit?.sha === localRevision);
+  const hit = await findDcsTag(repoPath, (tag) => tag.commit?.sha === localRevision, fetchFn);
   return hit?.name
     ? { repoPath, version: hit.name, sha: localRevision, flavor: '' }
     : null;
@@ -163,20 +198,14 @@ export const identifyExistingInstall = async (
  * first install the caller holds no prior pin, so the expected SHA cannot come
  * from the archive itself — otherwise the archive certifies its own revision.
  * Read from the same tags API `identifyExistingInstall` uses [VERIFIED shape,
- * 2026-08-03]. Returns null when DCS is unreachable or the tag is absent from
- * the first page of tags. */
+ * 2026-08-03]. Returns null when DCS is unreachable or NO page of the tags
+ * listing carries the tag (the lookup paginates — findDcsTag). */
 export const releaseCommitSha = async (
   repoPath: string,
   tag: string,
   fetchFn: typeof fetch = ((...a: Parameters<typeof fetch>) => fetch(...a)),
 ): Promise<string | null> => {
-  const path = repoPath.replace(/^https?:\/\//, '');
-  const slash = path.indexOf('/');
-  const url = `https://${path.slice(0, slash)}/api/v1/repos/${path.slice(slash + 1)}/tags?limit=100`;
-  const response = await fetchFn(url).catch(() => null);
-  if (!response?.ok) return null;
-  const tags = (await response.json()) as Array<{ name?: string; commit?: { sha?: string } }>;
-  return tags.find((t) => t.name === tag)?.commit?.sha ?? null;
+  return (await findDcsTag(repoPath, (t) => t.name === tag, fetchFn))?.commit?.sha ?? null;
 };
 
 /** What a fetch needs: the DCS sb-zip endpoint serves releases BY TAG, so a
@@ -197,13 +226,7 @@ export const tagForCommitSha = async (
   sha: string,
   fetchFn: typeof fetch = ((...a: Parameters<typeof fetch>) => fetch(...a)),
 ): Promise<string | null> => {
-  const path = repoPath.replace(/^https?:\/\//, '');
-  const slash = path.indexOf('/');
-  const url = `https://${path.slice(0, slash)}/api/v1/repos/${path.slice(slash + 1)}/tags?limit=100`;
-  const response = await fetchFn(url).catch(() => null);
-  if (!response?.ok) return null;
-  const tags = (await response.json()) as Array<{ name?: string; commit?: { sha?: string } }>;
-  return tags.find((t) => t.commit?.sha === sha)?.name ?? null;
+  return (await findDcsTag(repoPath, (t) => t.commit?.sha === sha, fetchFn))?.name ?? null;
 };
 
 export type FetchStage = 'download' | 'verify' | 'install';

@@ -11,6 +11,8 @@ import {
   rezip,
   identifyExistingInstall,
   fetchAndInstallPin,
+  releaseCommitSha,
+  tagForCommitSha,
 } from '../src/data/resourceFetch';
 import type { ResourcePin } from '../src/data/burritoStore';
 
@@ -250,5 +252,78 @@ describe('fetchAndInstallPin — the SHA gate (D23b: verify at every import)', (
       fetchFn: dcsFetch(wrappedZip(SHA), [{ name: 'v99', sha: SHA }]), // v86 absent
     })).rejects.toThrow(/cannot authenticate/);
     expect(installed).toEqual([]);
+  });
+});
+
+describe('DCS tag lookups paginate — a tag beyond the first page is still found (greptile review of PR #88)', () => {
+  /** A page-aware tags API fake: serves `allTags` in pages honoring the
+   * request's `page` and a server-side clamp of the requested `limit`. */
+  const pagedTagsFetch = (
+    allTags: Array<{ name: string; sha: string }>,
+    opts: { clampTo?: number; failOnPage?: number } = {},
+  ) => {
+    const requests: string[] = [];
+    const fetchFn = (async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      requests.push(url.search);
+      const page = Number(url.searchParams.get('page') ?? '1');
+      if (opts.failOnPage === page) return { ok: false, json: async () => [] };
+      const limit = Math.min(Number(url.searchParams.get('limit') ?? '50'), opts.clampTo ?? 50);
+      const slice = allTags.slice((page - 1) * limit, page * limit);
+      return {
+        ok: true,
+        json: async () => slice.map((t) => ({ name: t.name, commit: { sha: t.sha } })),
+      };
+    }) as unknown as typeof fetch;
+    return { fetchFn, requests };
+  };
+  // 120 tags: v1..v120, newest-last here so the OLD releases sit deep in the
+  // listing — the shape that made a single-page lookup falsely report absence.
+  const manyTags = Array.from({ length: 120 }, (_, i) => ({
+    name: `v${i + 1}`,
+    sha: String(i + 1).padStart(4, '0').repeat(10),
+  }));
+
+  it('tagForCommitSha finds a sha whose tag is on a later page (the reported repro)', async () => {
+    const target = manyTags[110]; // page 3 at 50/page
+    const { fetchFn, requests } = pagedTagsFetch(manyTags);
+    expect(await tagForCommitSha('git.door43.org/unfoldingWord/en_tn', target.sha, fetchFn)).toBe(
+      target.name,
+    );
+    expect(requests.length).toBeGreaterThan(1); // it actually walked pages
+  });
+
+  it('releaseCommitSha and identifyExistingInstall walk pages the same way (one shared walker)', async () => {
+    const target = manyTags[75]; // page 2
+    expect(
+      await releaseCommitSha('git.door43.org/unfoldingWord/en_tn', target.name, pagedTagsFetch(manyTags).fetchFn),
+    ).toBe(target.sha);
+    const found = await identifyExistingInstall(
+      'git.door43.org/unfoldingWord/en_tn',
+      target.sha,
+      pagedTagsFetch(manyTags).fetchFn,
+    );
+    expect(found?.version).toBe(target.name);
+  });
+
+  it('a server that CLAMPS the requested limit still gets fully walked', async () => {
+    const target = manyTags[119]; // last tag; at clamp 20 that is page 6
+    const { fetchFn, requests } = pagedTagsFetch(manyTags, { clampTo: 20 });
+    expect(await tagForCommitSha('git.door43.org/unfoldingWord/en_tn', target.sha, fetchFn)).toBe(
+      target.name,
+    );
+    expect(requests.length).toBe(6);
+  });
+
+  it('no match terminates at the end of the listing — bounded requests, null result', async () => {
+    const { fetchFn, requests } = pagedTagsFetch(manyTags);
+    expect(await tagForCommitSha('git.door43.org/unfoldingWord/en_tn', 'f'.repeat(40), fetchFn)).toBeNull();
+    // 120 tags at 50/page: pages 1-2 full, page 3 short (20) ends the walk.
+    expect(requests.length).toBe(3);
+  });
+
+  it('a transport failure mid-walk yields null (unidentified), never a partial verdict', async () => {
+    const { fetchFn } = pagedTagsFetch(manyTags, { failOnPage: 2 });
+    expect(await tagForCommitSha('git.door43.org/unfoldingWord/en_tn', manyTags[110].sha, fetchFn)).toBeNull();
   });
 });
