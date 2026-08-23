@@ -160,6 +160,17 @@ test.describe('J13 — changing the project’s checking language', () => {
     { tag: ['@inc2', '@J13'] },
     async ({ page }) => {
       writeProjectPins(SEEDED_PROJECT, EN());
+      // The sample's decisions record they were checked against the SPANISH
+      // notes — under exact pin identity (D58) a change TO Spanish would be
+      // genuinely harmless. This test is about LEAVING the checked-against
+      // resource, so restate the record as the English pin the project now
+      // holds (as if the book had been checked under English).
+      const en = EN();
+      const asCheckedUnderEnglish = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')!;
+      asCheckedUnderEnglish.resource = {
+        repoPath: en.tn.repoPath, version: en.tn.version, sha: en.tn.sha, languageSet: 'fallback',
+      } as never;
+      writeDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT', asCheckedUnderEnglish);
       const before = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT');
       expect(before!.decisions.length).toBeGreaterThan(0);
 
@@ -201,6 +212,12 @@ test.describe('J13 — changing the project’s checking language', () => {
       // outcome but leaves the invalidation branch unproven.
       const enOnly = englishOnlyItem('TIT');
       const file = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')!;
+      // As in the consequences test: the change must LEAVE the checked-against
+      // resource, so the record states the English pin (D58 exact identity).
+      const en = EN();
+      file.resource = {
+        repoPath: en.tn.repoPath, version: en.tn.version, sha: en.tn.sha, languageSet: 'fallback',
+      } as never;
       const countBefore = file.decisions.length + 1;
       file.decisions.push({
         ...enOnly,
