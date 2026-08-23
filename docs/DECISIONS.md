@@ -902,3 +902,27 @@ this gate; D51's conditions remain the bar for the sync sections and for hardeni
 the stored format carries no R-id and is exempt from the coverage gate; it is marked
 "(D53, app rule …)" in place, and its test obligation lands with the app increment that
 implements it (#61/#62 acceptance criteria)]
+
+## D56 (2026-08-22, project-owner ruling) **Sidecar record order is byte form, and the
+sample burrito must be seedable.**
+
+The first rig journey run of the #62 open pipeline (2026-08-22) refused to seed the
+conformance sample: the sample stored decision records in authoring order, the fold
+projects them sorted by canonical contextId (fold.mjs), and the seed round-trip compared
+the arrays order-sensitively. The same refusal applies to every real tC3 export. A second
+refusal came from the sample's `resources.json` top-level `note` field, which the §5.3
+flatten cannot carry. Both refusals reproduce at 9e209bd — they predate the intent-ledger
+work [VERIFIED — probe against the live rig, 2026-08-22].
+
+The ruling, both sides bend:
+1. **App:** the seed round-trip compares each sidecar's decision records as a SET (both
+   sides sorted into the fold's own order before the canonical compare). Content loss
+   still refuses: co-present records on one §5.2 identity key differ after sorting.
+   R-8.8.2 now states this reading ("exactly" is content-level for sidecars; record
+   order is byte form, converged to the checkpoint projection right after seeding).
+2. **Sample:** the sample burrito is REQUIRED to be seedable. Its sidecar records are
+   stored in the fold's canonical projection order, and it carries no field the
+   checkpoint projections cannot reproduce. The pin documentation that lived in the
+   `note` field moved to `conformance/README.md`.
+
+Unknown top-level sidecar fields keep refusing the seed — never silently dropped.

@@ -200,10 +200,14 @@ let mergedVerseObjects = null;
     }
   }
   check('decisions: all tC3 check-item fields present on every stored decision', ok, `${count} decisions`);
-  const tn = json(ING('checking/translationNotes/TIT.json')).decisions[0];
+  // Select by checkId, not array position: the sample stores decisions in the
+  // fold's canonical projection order (§8.8 seedability), and a check pinned to
+  // an index breaks whenever a record is added or the canon changes.
+  const tnDecisions = json(ING('checking/translationNotes/TIT.json')).decisions;
+  const tn = tnDecisions.find(d => d.contextId.checkId === 'swi9');
   check('decisions: tN quote is word-occurrence array (not flattened string)',
     Array.isArray(tn.contextId.quote) && 'word' in tn.contextId.quote[0] && 'occurrence' in tn.contextId.quote[0]);
-  const inv = json(ING('checking/translationNotes/TIT.json')).decisions[1];
+  const inv = tnDecisions.find(d => d.contextId.checkId === 'gr8c');
   check('decisions: verse-edit invalidation state representable (verseEdits+invalidated flags)',
     inv.verseEdits === true && inv.invalidated === true);
 }

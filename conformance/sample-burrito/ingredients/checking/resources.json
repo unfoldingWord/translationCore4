@@ -1,6 +1,5 @@
 {
   "schemaVersion": 2,
-  "note": "Two-language-set resource pinning (D17/D30, BURRITO-SPEC §5.3). Path-authoritative; metadata.json relationships mirrors these pins. The tW slots both name <lang>_tw: its sb-zip export carries the TWL link TSVs and the payload articles together (D34). Pins verified: docs/evidence/es419-suite-pins-2026-07-31.md + tw-twl-sbzip-combined-2026-08-03.md.",
   "languageSets": {
     "primary": {
       "gatewayLanguage": { "languageId": "es-419", "owner": "es-419_gl" },

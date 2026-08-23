@@ -10,6 +10,29 @@
   "decisions": [
     {
       "contextId": {
+        "checkId": "a9p2",
+        "occurrenceNote": "",
+        "reference": { "bookId": "tit", "chapter": 1, "verse": 1 },
+        "tool": "translationWords",
+        "groupId": "apostle",
+        "quote": "ἀπόστολος",
+        "quoteString": "ἀπόστολος",
+        "glQuote": "",
+        "occurrence": 1
+      },
+      "category": "kt",
+      "selections": [
+        { "text": "apóstol", "occurrence": 1, "occurrences": 1 }
+      ],
+      "comments": false,
+      "reminders": true,
+      "nothingToSelect": false,
+      "verseEdits": false,
+      "invalidated": false,
+      "modifiedTimestamp": "2026-07-02T14:24:39.000Z"
+    },
+    {
+      "contextId": {
         "checkId": "t1g7",
         "occurrenceNote": "",
         "reference": { "bookId": "tit", "chapter": 1, "verse": 1 },
@@ -31,29 +54,6 @@
       "invalidated": false,
       "status": "valid",
       "modifiedTimestamp": "2026-07-02T14:21:07.000Z"
-    },
-    {
-      "contextId": {
-        "checkId": "a9p2",
-        "occurrenceNote": "",
-        "reference": { "bookId": "tit", "chapter": 1, "verse": 1 },
-        "tool": "translationWords",
-        "groupId": "apostle",
-        "quote": "ἀπόστολος",
-        "quoteString": "ἀπόστολος",
-        "glQuote": "",
-        "occurrence": 1
-      },
-      "category": "kt",
-      "selections": [
-        { "text": "apóstol", "occurrence": 1, "occurrences": 1 }
-      ],
-      "comments": false,
-      "reminders": true,
-      "nothingToSelect": false,
-      "verseEdits": false,
-      "invalidated": false,
-      "modifiedTimestamp": "2026-07-02T14:24:39.000Z"
     }
   ],
   "summary": {
