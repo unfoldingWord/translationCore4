@@ -926,3 +926,20 @@ The ruling, both sides bend:
    `note` field moved to `conformance/README.md`.
 
 Unknown top-level sidecar fields keep refusing the seed — never silently dropped.
+
+## D57 (2026-08-22, project-owner ruling) **A suite without a recorded version is
+readable but not pinnable.**
+
+A disk-discovered (sideloaded) gateway suite carries only a commit sha: the burrito
+metadata's `identification.primary.<authority>` entry is `{revision, timestamp}` with no
+release tag, in the current converter and both DCS export paths [VERIFIED — go-rc2sb
+v0.5.0 `sb/metadata.go` + `options.go`, dcs `services/convert2sb/convert2sb.go:181` and
+`services/repository/sbarchiver/archiver.go:183`, read 2026-08-22]. The §8.5 journal
+schema refuses a `resource.pin.set` entry whose version or flavor is empty. The schema
+does not bend (the rare hand-off case does): the gateway-change offer and every
+pin-writing flow require pins with a recorded version and flavor — the install flow's
+record supplies them. A complete-on-disk suite with no record is named in the Sources
+modal ("no version record — fetch to record its version"), never a silently absent
+offer. The dev rig's seed writes the install records for the tags it sideloads.
+Revisit only if suite hand-off without DCS becomes a first-class requirement; the
+format today does not foreclose ratifying sha-only pins later.
