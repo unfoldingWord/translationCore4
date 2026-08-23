@@ -50,7 +50,11 @@ export interface DecisionFile {
   schemaVersion: number;
   tool: string;
   book: string;
-  resource?: { repoPath: string; version: string };
+  /** §5.2 checked-against record. Identity is (repoPath + sha) — D58/D59;
+   * `version` is a display label. `sha` stays optional in the TYPE only for
+   * the future tC3 import boundary (FR-25 unresolved records); every tC4
+   * writer supplies it. */
+  resource?: { repoPath: string; version?: string; sha?: string; languageSet?: string };
   decisions: Decision[];
 }
 
@@ -194,12 +198,13 @@ export interface BurritoStore {
    * the additive `status` field; empty selections coerce to `false`
    * (PLATFORM-NOTES #14). Implemented at Increment 2 (checklist C2.6). */
   /** `resource` stamps the §5.2 resolution record — which resource at which
-   * version produced this book's checks (D17/D30). */
+   * exact commit produced this book's checks (D17/D30). Identity is
+   * (repoPath + sha); the version tag is a display label (D58/D59). */
   upsertDecision(
     tool: string,
     book: string,
     decision: Decision,
-    resource?: { repoPath: string; version: string; languageSet?: string },
+    resource?: { repoPath: string; version?: string; sha: string; languageSet?: string },
   ): Promise<void>;
 
   /** Whole-file decision write (a gateway-language re-attach and migrations).

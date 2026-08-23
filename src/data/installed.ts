@@ -177,13 +177,10 @@ const installedEntry = (
   if (sameRepo.length <= 1) return sameRepo[0];
   // B16 — more than one install of this repo can coexist (the mid-migration
   // shape: an old legacy `<repo>` install AND the exact new `<owner>--<repo>`).
-  // Prefer the one that IS the requested pin — matching sha, else matching
-  // version — so the exact install is never shadowed by a stale first match.
-  return (
-    sameRepo.find(([, p]) => !!pin.sha && !!p.sha && pin.sha === p.sha) ??
-    sameRepo.find(([, p]) => !!p.version && p.version === pin.version) ??
-    sameRepo[0]
-  );
+  // Prefer the one that IS the requested pin — by sha, the only identity
+  // (D58/D59; the version label selects nothing) — so the exact install is
+  // never shadowed by a stale first match.
+  return sameRepo.find(([, p]) => !!pin.sha && !!p.sha && pin.sha === p.sha) ?? sameRepo[0];
 };
 
 /** The ACTUAL on-disk local path a pin resolves to, or null when not installed.
@@ -194,17 +191,15 @@ export const installedPathFor = (installed: InstalledMap, pin: ResourcePin): str
 
 /** Is this pin satisfied by what the machine holds?
  *
- * Two ways to be sure, in order of strength:
- *   1. the pin's expected commit SHA equals the installed burrito's own
- *      declared revision — the strongest possible match, and the one that
- *      works for a bundled install with no recorded tag;
- *   2. the recorded release tag equals the pin's version.
- * A different version of the same repo is NOT this pin. */
+ * One way to be sure (D58/D59): the pin's expected commit SHA equals the
+ * installed burrito's own declared revision. The version label is display
+ * only — tags are unenforced upstream, so a label match proves nothing. An
+ * install record without a sha satisfies no pin: the identifying fetch (which
+ * records the export's declared revision) is the way back in. */
 export const isPinLocal = (installed: InstalledMap, pin: ResourcePin): boolean => {
   const local = installedEntry(installed, pin)?.[1];
   if (!local) return false;
-  if (pin.sha && local.sha) return pin.sha === local.sha;
-  return !!local.version && local.version === pin.version;
+  return !!pin.sha && !!local.sha && pin.sha === local.sha;
 };
 
 /** Re-point a pin at the version this machine actually has, when it has one.
@@ -216,11 +211,14 @@ export const isPinLocal = (installed: InstalledMap, pin: ResourcePin): boolean =
  * hides the resource the user just fetched. Identity is (repoPath, sha) — D58 —
  * so this REPLACES the identity rather than pretending the default matches;
  * the version label rides along only when the local record knows it (an empty
- * version must be OMITTED, the §5.3 grammar refuses ''). */
+ * version must be OMITTED, the §5.3 grammar refuses ''). A local record
+ * WITHOUT a sha re-points nothing (D59): adopting its label while keeping the
+ * default's sha would fabricate a pin whose sha and version describe
+ * different releases. */
 export const preferInstalledVersion = (installed: InstalledMap, pin: ResourcePin): ResourcePin => {
   const local = installedEntry(installed, pin)?.[1];
-  if (!local) return pin;
-  const next: ResourcePin = { ...pin, ...(local.sha ? { sha: local.sha } : {}) };
+  if (!local?.sha) return pin;
+  const next: ResourcePin = { ...pin, sha: local.sha };
   if (local.version) next.version = local.version;
   else delete next.version;
   return next;

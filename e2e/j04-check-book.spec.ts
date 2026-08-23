@@ -24,6 +24,26 @@ const PINS = () => ({
   ta: pinForSideloaded('en_ta', 'v89'),
 });
 
+function writeDecisionFile(repo: string, tool: string, book: string, file: unknown): void {
+  const p = path.join(rigRepo(repo), 'ingredients', 'checking', tool, `${book}.json`);
+  fs.writeFileSync(p, `${JSON.stringify(file, null, 2)}\n`);
+}
+
+/** Restate the seeded sample's checked-against record as the pin the project
+ * now holds (the j13 pattern). The sample records es-419; these tests pin the
+ * sideloaded English suite, and under D59 §3 a decision write against a
+ * DRIFTED record REFUSES toward the gateway-change flow — so a journey about
+ * something else first aligns the record with what it pins. */
+function restateRecordAsEnglish(tool: string, book: string): void {
+  const en = PINS();
+  const file = readDecisionFile(SEEDED_PROJECT, tool, book);
+  if (!file) return;
+  (file as { resource?: unknown }).resource = {
+    repoPath: en.tn.repoPath, version: en.tn.version, sha: en.tn.sha, languageSet: 'primary',
+  };
+  writeDecisionFile(SEEDED_PROJECT, tool, book, file);
+}
+
 /** Open the seeded project's Titus and land on the Check view. */
 async function openCheck(page: import('@playwright/test').Page) {
   await page.goto('/');
@@ -143,6 +163,25 @@ test.describe('J4 — a checker works a book', () => {
     { tag: ['@inc2', '@J4'] },
     async ({ page }) => {
       writeProjectPins(SEEDED_PROJECT, PINS());
+
+      // Phase 1 — the DRIFTED record (D59 §3). The sample records es-419_tn;
+      // the project now pins English. A decision write must neither relabel
+      // the file nor silently journal under the old record: it REFUSES, the
+      // session says so, and the file is byte-untouched.
+      await openCheck(page);
+      await page.getByTestId('open-translationNotes').click();
+      await expect(page.getByTestId('check-progress')).toBeVisible();
+      await expect(page.getByTestId('resolution-warning')).toBeVisible(); // D17 warned update
+      const drifted = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')?.decisions.length ?? 0;
+      await page.getByTestId('mark-valid').click();
+      await expect(page.getByTestId('save-error')).toBeVisible();
+      expect(readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')?.decisions.length).toBe(drifted);
+      expect(readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')?.resource?.repoPath).toContain('es-419_tn');
+
+      // Phase 2 — the ALIGNED record: restate the checked-against record as
+      // the pinned English suite (the explicit act a gateway change performs),
+      // and triage persists as a full §5.2 record.
+      restateRecordAsEnglish('translationNotes', 'TIT');
       await openCheck(page);
       await page.getByTestId('open-translationNotes').click();
       await expect(page.getByTestId('check-progress')).toBeVisible();
@@ -160,11 +199,8 @@ test.describe('J4 — a checker works a book', () => {
         )
         .toBe(before + 1);
       const file = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT');
-      // The §5.2 resolution record must NOT be relabelled by a decision write.
-      // The seeded sample was checked against es-419_tn; changing which
-      // resource a book is checked against is an explicit, consequences-shown
-      // action (D23a/D30.2), never a side effect of marking one check.
-      expect(file?.resource?.repoPath).toContain('es-419_tn');
+      // The record stays the one the session checked against (no relabel).
+      expect(file?.resource?.repoPath).toContain('en_tn');
       const d = file!.decisions.find((x) => (x as { nothingToSelect?: boolean }).nothingToSelect) as Record<string, unknown>;
       const contextId = d.contextId as Record<string, unknown>;
       expect(d.nothingToSelect).toBe(true);
@@ -187,6 +223,9 @@ test.describe('J4 — a checker works a book', () => {
     { tag: ['@inc2', '@J4'] },
     async ({ page }) => {
       writeProjectPins(SEEDED_PROJECT, PINS());
+      // Align the checked-against record with the English pins (D59 §3 — a
+      // drifted record refuses decision writes; this journey is about FR-18).
+      restateRecordAsEnglish('translationNotes', 'TIT');
       await openCheck(page);
       await page.getByTestId('open-translationNotes').click();
       await expect(page.getByTestId('check-progress')).toBeVisible();

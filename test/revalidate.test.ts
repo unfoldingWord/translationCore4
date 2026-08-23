@@ -131,6 +131,23 @@ describe('D17 resolution revalidation — a warned update, never silent', () => 
     expect(isLanguageSwitch(w!)).toBe(true);
   });
 
+  it('D59: a sha-less stored record matching a rung by TAG still warns — the label is not identity', () => {
+    // A tC3-era record carries owner+repo+label only. The tag is unenforced
+    // (D58), so agreeing with a rung pin's label proves nothing: the record
+    // reads as drift until the import-boundary tag→sha lookup resolves it.
+    const rung = {
+      repoPath: 'git.door43.org/unfoldingWord/en_tn',
+      version: 'v89',
+      sha: sha40('git.door43.org/unfoldingWord/en_tn@v89'),
+    };
+    const w = resolutionWarning(
+      { repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v89' }, // no sha
+      now,
+      [rung],
+    );
+    expect(w).not.toBeNull();
+  });
+
   it('a file with no recorded resource is not a change — there is nothing to compare', () => {
     expect(resolutionWarning(null, now)).toBeNull();
     expect(resolutionWarning({}, now)).toBeNull();

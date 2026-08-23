@@ -193,6 +193,7 @@
   "check.warnUpgrade": "These checks were made against a different version of this resource.",
   "check.warnSwitch": "These checks were made against a different resource.",
   "check.warnDetail": "checked against {stored} · now pinned to {now}",
+  "check.saveRefused": "This check was not saved. The project's resource changed since this book was checked — update the resource first, then check again. Nothing was lost.",
   "check.invalidatedNotice": "{n} decision(s) no longer match the draft text and need re-review. Nothing was discarded.",
   "check.empty.none.title": "No checks for this book",
   "check.empty.none.body": "The pinned resource covers this book but lists no checks in it. Nothing is wrong — there is simply nothing here to decide.",

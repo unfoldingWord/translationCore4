@@ -199,6 +199,49 @@ describe('the machine record feeds the resolver end to end', () => {
   });
 });
 
+describe('D59: the sha is the ONLY local-install identity — no version-label rung', () => {
+  it('a matching version label over a DIFFERENT sha is NOT this pin', () => {
+    // The tag is unenforced (D58): same repo, same label, different commit.
+    const wanted = pin('unfoldingWord/en_tn', 'v89', 'a'.repeat(40));
+    expect(isPinLocal(INSTALLED, wanted)).toBe(false);
+  });
+
+  it('a sha-less install record satisfies NO pin — it forces the identifying fetch', () => {
+    const legacy: InstalledMap = {
+      '_local_/_sideloaded_/unfoldingword--en_tn': {
+        ...pin('unfoldingWord/en_tn', 'v89'),
+        sha: undefined,
+      } as never,
+    };
+    expect(isPinLocal(legacy, pin('unfoldingWord/en_tn', 'v89'))).toBe(false);
+  });
+
+  it('among coexisting installs, the version label never selects — only the sha', () => {
+    // Two installs of one repo (the B16 mid-migration shape): the pin's sha
+    // matches the SECOND entry while the label matches the first. The tag
+    // rung would pick the wrong install.
+    const twin: InstalledMap = {
+      '_local_/_sideloaded_/en_tn': pin('unfoldingWord/en_tn', 'v89', 'b'.repeat(40)),
+      '_local_/_sideloaded_/unfoldingword--en_tn': pin('unfoldingWord/en_tn', 'v88'),
+    };
+    const wanted = { ...pin('unfoldingWord/en_tn', 'v89'), sha: sha40('unfoldingword/en_tn@v88') };
+    expect(isPinLocal(twin, wanted)).toBe(true);
+  });
+
+  it('preferInstalledVersion never adopts a label from a sha-less install record', () => {
+    // Adopting the label while keeping the default sha fabricates a pin whose
+    // sha and version describe different releases (D59 deletes the state).
+    const legacy: InstalledMap = {
+      '_local_/_sideloaded_/unfoldingword--en_tn': {
+        ...pin('unfoldingWord/en_tn', 'v89'),
+        sha: undefined,
+      } as never,
+    };
+    const shipped = pin('unfoldingWord/en_tn', 'v86', 'c'.repeat(40));
+    expect(preferInstalledVersion(legacy, shipped)).toEqual(shipped);
+  });
+});
+
 describe('preferInstalledVersion — a fresh project pins what the machine has', () => {
   it('replaces the shipped default version with the installed one', () => {
     const shipped = pin('unfoldingWord/en_tn', 'v86', 'c'.repeat(40));

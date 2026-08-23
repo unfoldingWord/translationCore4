@@ -969,3 +969,32 @@ The ruling:
 6. `schemaVersion` stays 2: the format has never shipped (pre-alpha, D46), so the
    required-ness change lands in place with the sample and harness in this change set —
    no migration shim (the D55-era precedent).
+
+## D59 (2026-08-23, project-owner ruling) **A version label resolves to a sha at the
+import boundary, online, by one DCS tag lookup; the app keeps no version-identity
+fallbacks.** [completes D58]
+
+tC3 records resource identity as owner + repo + version tag only — its projects carry no
+git metadata at all [VERIFIED — unfoldingWord/translationCore
+`src/js/helpers/originalLanguageResourcesHelpers.js`, read 2026-08-23: `tsv_relation`
+entries of the form `el-x-koine/ugnt?v=0.30`, folder names `v86_<owner>`]. Pankosmia
+itself has no version concept: its git surface clones by branch only, and tC4's fetch
+path hands DCS sb-zips to `POST /burrito/zipped`, so the only identity the platform
+holds is the export metadata's declared revision [VERIFIED — pankosmia-web 0.18.5
+(99fd9be, 2026-07-30), `src/endpoints/git2/clone_repo.rs` + `burrito2/`].
+
+The ruling:
+1. **The tC3 import (FR-23, Increment 6) attempts a DCS tag→sha lookup when the user is
+   online.** A resolved tag imports as a full D58 pin (sha identity + version label). A
+   lookup that fails (offline, moved tag, renamed org — PLATFORM-NOTES #30) imports as
+   FR-25's marked-unresolved state; the re-pin flow re-attaches decisions.
+2. **Every version-identity fallback in the app is deleted, not guarded** (nothing uses
+   a tC4 project in the wild — reverting a misguided state is not a breaking change):
+   `installedEntry`/`isPinLocal` compare shas only; `preferInstalledVersion` never
+   adopts a label from a sha-less install record; the D17 revalidate warning treats a
+   sha-less stored record as drift, never as "the ladder working".
+3. **`upsertDecision`'s relabel guard compares (repoPath + sha)** — the version label is
+   display only (D58 §1). A stored record whose sha disagrees with the session's
+   resolution REFUSES the write toward the coordinated gateway-change/carry-over flow
+   (D36), the same posture as the §5.2 quoteString refusal. It never silently keeps or
+   silently replaces the stored record.

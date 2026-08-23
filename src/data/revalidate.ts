@@ -95,12 +95,12 @@ export const resolutionWarning = (
   if (!stored?.repoPath || !resolution?.pin) return null;
   if (recordMatchesResolution(stored, resolution)) return null;
   // Recorded against the OTHER rung — that is the ladder working, not drift.
-  // Identity is (repoPath + sha), D58; a tC3-era record without a sha falls
-  // back to the version label, so a legacy file agreeing with a rung by tag
-  // still reads as the ladder working rather than drift.
+  // Identity is (repoPath + sha), D58/D59. A record without a sha matches NO
+  // rung: tags are unenforced upstream, so a label agreement proves nothing —
+  // a sha-less (tC3-era) record reads as drift until the import boundary's
+  // tag→sha lookup resolves it (D59 §1).
   const sameRecord = (p: { repoPath: string; version?: string; sha?: string }): boolean =>
-    samePath(p.repoPath, stored.repoPath) &&
-    (stored.sha ? p.sha === stored.sha : !!stored.version && p.version === stored.version);
+    samePath(p.repoPath, stored.repoPath) && !!stored.sha && p.sha === stored.sha;
   if (rungPins.some(sameRecord)) {
     return null;
   }

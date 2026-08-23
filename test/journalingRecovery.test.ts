@@ -59,7 +59,7 @@ const PINS: ResourcesFile = {
   languageSets: { primary: { ...RUNG }, fallback: { ...RUNG } },
 } as unknown as ResourcesFile;
 
-const RESOLUTION = { repoPath: 'git.door43.org/unfoldingWord/en_tw', version: 'v87', languageSet: 'fallback' };
+const RESOLUTION = { repoPath: 'git.door43.org/unfoldingWord/en_tw', version: 'v87', sha: sha40('en_tw@v87'), languageSet: 'fallback' };
 
 const decision = (checkId: string, patch: Partial<Decision> = {}): Decision => ({
   contextId: {
@@ -254,7 +254,7 @@ describe('#62 the coordinated gateway change', () => {
     schemaVersion: 1,
     tool: 'translationWords',
     book: 'TIT',
-    resource: { repoPath: 'git.door43.org/es-419_gl/es-419_tw', version: 'v37', languageSet: 'primary' },
+    resource: { repoPath: 'git.door43.org/es-419_gl/es-419_tw', version: 'v37', sha: sha40('es-419_tw@v37'), languageSet: 'primary' },
     // carry-over output: one decision re-keyed to the NEW resource's checkId,
     // the old-key record no longer in the file (it is invalidated-and-retained
     // by the diff), and nothing else.
@@ -505,6 +505,81 @@ describe('#62 universal seeding (§8.8)', () => {
     expect(segmentPaths(rig, repo)).toEqual([]); // all-or-nothing: nothing published
   });
 
+  it('REFUSES a seed when a DECISION sidecar carries an unknown top-level field (R-8.8.2)', async () => {
+    // The checkpoint projection emits exactly {schemaVersion, tool, book,
+    // resource, decisions}; convergence rewrites the file to that form. An
+    // extra top-level field is content the projection cannot represent — the
+    // seed MUST refuse rather than drop it silently (round 6 B4).
+    const world = await setup();
+    const { rig, restart } = world;
+    const repo = '_local_/_local_/campoextra';
+    rig.createRepo(repo, {
+      'vrs.json': FAKE_VRS,
+      'TIT.usfm': TIT_USFM,
+      'checking/translationWords/TIT.json': JSON.stringify({
+        schemaVersion: 1,
+        tool: 'translationWords',
+        book: 'TIT',
+        resource: RESOLUTION,
+        decisions: [decision('t1g7')],
+        note: 'a tC3-era annotation the projection cannot carry',
+      }),
+    });
+    const store = restart();
+    await expect(store.open(repo)).rejects.toThrow(SeedMismatchError);
+    expect(segmentPaths(rig, repo)).toEqual([]); // all-or-nothing: nothing published
+    // The field is still there — nothing was converged away.
+    expect(rig.repos.get(repo)?.files.get('checking/translationWords/TIT.json')).toContain(
+      'tC3-era annotation',
+    );
+  });
+
+  it('seeds a decision file carrying the §5.2 OPTIONAL `summary` cache — disposable, never a refusal', async () => {
+    // The spec marks `summary` "derived cache, regenerable ... MUST be treated
+    // as disposable": convergence dropping it is specified behavior, not
+    // content loss. The conformance sample itself carries one (found round 6:
+    // the whole-document rule refused the seeded sample and every rig journey
+    // hung at open).
+    const world = await setup();
+    const { rig, api, restart } = world;
+    const repo = '_local_/_local_/consumario';
+    rig.createRepo(repo, {
+      'vrs.json': FAKE_VRS,
+      'TIT.usfm': TIT_USFM,
+      'checking/translationWords/TIT.json': JSON.stringify({
+        schemaVersion: 1,
+        tool: 'translationWords',
+        book: 'TIT',
+        resource: RESOLUTION,
+        decisions: [decision('t1g7')],
+        summary: { note: 'derived cache, regenerable', decided: { kt: 1 } },
+      }),
+    });
+    const store = restart();
+    await store.open(repo);
+    expect(store.lastOpenReport?.seeded).toBe(true);
+    await expectVerified(api, repo);
+  });
+
+  it('REFUSES a seed when an ALIGNMENT sidecar carries an unknown top-level field (R-8.8.2)', async () => {
+    const world = await setup();
+    const { rig, restart } = world;
+    const repo = '_local_/_local_/alineado';
+    rig.createRepo(repo, {
+      'vrs.json': FAKE_VRS,
+      'TIT.usfm': TIT_USFM,
+      'checking/alignments/TIT.json': JSON.stringify({
+        schemaVersion: 1,
+        book: 'TIT',
+        chapters: {},
+        legacyMarkers: { '1:1': '2026-01-01' },
+      }),
+    });
+    const store = restart();
+    await expect(store.open(repo)).rejects.toThrow(SeedMismatchError);
+    expect(segmentPaths(rig, repo)).toEqual([]);
+  });
+
   it('REFUSES a seed of non-NFC book content rather than normalizing bytes it must reproduce', async () => {
     const world = await setup();
     const { rig, restart } = world;
@@ -646,7 +721,7 @@ describe('#62 out-of-band derived state at open', () => {
 // ---------------------------------------------------------------------------
 
 describe('#62 review P1: the decision resolution survives a crash between publication and regeneration', () => {
-  const NEW_RESOURCE = { repoPath: 'git.door43.org/es-419_gl/es-419_tw', version: 'v37', languageSet: 'primary' };
+  const NEW_RESOURCE = { repoPath: 'git.door43.org/es-419_gl/es-419_tw', version: 'v37', sha: sha40('es-419_tw@v37'), languageSet: 'primary' };
   const plannedFile = () => ({
     schemaVersion: 1,
     tool: 'translationWords',
@@ -900,7 +975,7 @@ describe('#62 review round 2, P1: an earlier unfinished regeneration survives la
 });
 
 describe('#62 review round 2, P2: a resolution-only whole-file decision write reaches disk', () => {
-  const NEW_RESOURCE = { repoPath: 'git.door43.org/es-419_gl/es-419_tw', version: 'v37', languageSet: 'primary' };
+  const NEW_RESOURCE = { repoPath: 'git.door43.org/es-419_gl/es-419_tw', version: 'v37', sha: sha40('es-419_tw@v37'), languageSet: 'primary' };
 
   it('updates the sidecar resource (no journal event), returns the md5 of what is ON DISK, and the checkpoint still passes', async () => {
     const world = await setup();
@@ -972,9 +1047,9 @@ describe('#62 review round 2, P2: a resolution-only whole-file decision write re
 // ---------------------------------------------------------------------------
 
 describe('#62 review round 3, P1: pending resolutions accumulate per key, like the regeneration marker', () => {
-  const TW_NEW = { repoPath: 'git.door43.org/es-419_gl/es-419_tw', version: 'v37', languageSet: 'primary' };
-  const TN_RESOLUTION = { repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v86', languageSet: 'fallback' };
-  const TN_NEW = { repoPath: 'git.door43.org/es-419_gl/es-419_tn', version: 'v66', languageSet: 'primary' };
+  const TW_NEW = { repoPath: 'git.door43.org/es-419_gl/es-419_tw', version: 'v37', sha: sha40('es-419_tw@v37'), languageSet: 'primary' };
+  const TN_RESOLUTION = { repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v86', sha: sha40('en_tn@v86'), languageSet: 'fallback' };
+  const TN_NEW = { repoPath: 'git.door43.org/es-419_gl/es-419_tn', version: 'v66', sha: sha40('es-419_tn@v66'), languageSet: 'primary' };
   const tnDecision = (checkId: string): Decision => {
     const d = decision(checkId);
     return { ...d, contextId: { ...d.contextId, tool: 'translationNotes' } };
@@ -1034,8 +1109,8 @@ describe('#62 review round 3, P1: pending resolutions accumulate per key, like t
 // ---------------------------------------------------------------------------
 
 describe('#62 review round 4: a rejected newer same-key intent does not destroy an earlier accepted resource intent', () => {
-  const TW_NEW = { repoPath: 'git.door43.org/es-419_gl/es-419_tw', version: 'v37', languageSet: 'primary' };
-  const TW_NEWER = { repoPath: 'git.door43.org/es-419_gl/es-419_tw', version: 'v38', languageSet: 'primary' };
+  const TW_NEW = { repoPath: 'git.door43.org/es-419_gl/es-419_tw', version: 'v37', sha: sha40('es-419_tw@v37'), languageSet: 'primary' };
+  const TW_NEWER = { repoPath: 'git.door43.org/es-419_gl/es-419_tw', version: 'v38', sha: sha40('es-419_tw@v38'), languageSet: 'primary' };
 
   /** Write 1: an EVENTFUL same-key decision write with a NEW resource —
    * publishes, then its own regeneration fails, so the intent is accepted but

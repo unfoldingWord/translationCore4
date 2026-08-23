@@ -573,7 +573,7 @@ export class HttpStore {
     tool: string,
     book: string,
     decision: Decision,
-    resource?: { repoPath: string; version: string; languageSet?: string },
+    resource?: { repoPath: string; version?: string; sha: string; languageSet?: string },
   ): Promise<void> {
     const ipath = decisionsIpath(tool, book);
     const { value: existing, md5: expectMd5 } = await this.readJsonSidecarWithMd5<DecisionFile>(
@@ -586,16 +586,16 @@ export class HttpStore {
       decisions: [],
     };
     // §5.2 resolution record (D17/D30). Stamped ONLY when the file has no
-    // record yet, or when it already agrees. A decision write must never
-    // relabel a file to a resource its stored decisions did not come from:
-    // changing which resource a book is checked against is an explicit,
-    // consequences-shown action (D23a / D30.2 §5 default #2), not a side
-    // effect of someone marking one check.
+    // record yet, or when it already agrees — by (repoPath + sha), the only
+    // identity (D58/D59); the version tag is a display label. A decision
+    // write must never relabel a file to a resource its stored decisions did
+    // not come from: changing which resource a book is checked against is an
+    // explicit, consequences-shown action (D23a / D30.2 §5 default #2), not a
+    // side effect of someone marking one check.
     if (resource) {
-      const stored = file.resource;
+      const stored = file.resource as { repoPath: string; sha?: string } | undefined;
       const agrees =
-        !stored ||
-        (samePath(stored.repoPath, resource.repoPath) && stored.version === resource.version);
+        !stored || (samePath(stored.repoPath, resource.repoPath) && stored.sha === resource.sha);
       if (agrees) file.resource = resource;
     }
     const incoming = normalizeDecision(decision);

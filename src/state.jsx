@@ -906,7 +906,10 @@ export function AppProvider({ children }) {
           const rungPins = ['primary', 'fallback']
             .map((r) => st.projectPins?.languageSets?.[r]?.[slot])
             .filter(Boolean)
-            .map((p2) => ({ repoPath: p2.repoPath, version: p2.version }));
+            // The sha rides along: identity is (repoPath + sha) — D58/D59 —
+            // and resolutionWarning's ladder suppression compares by sha, so
+            // dropping it here would make every fallback-recorded file warn.
+            .map((p2) => ({ repoPath: p2.repoPath, version: p2.version, sha: p2.sha }));
           const warning = resolutionWarning(savedFile?.resource, pre.resolution, rungPins);
 
           // Identity key first, then D17's cross-language fallback for whatever
@@ -1011,11 +1014,24 @@ export function AppProvider({ children }) {
           ...patch,
           modifiedTimestamp: new Date().toISOString(),
         };
-        await storeRef.current.upsertDecision(cs.tool, cs.book, next, cs.resource ?? undefined);
+        try {
+          await storeRef.current.upsertDecision(cs.tool, cs.book, next, cs.resource ?? undefined);
+        } catch (e) {
+          // D59 §3: the store REFUSES a decision write whose session resolution
+          // disagrees (by sha) with the file's stored §5.2 record — surface the
+          // refusal on the session; the way through is the gateway-change flow.
+          dispatch({
+            type: 'set',
+            patch: { checkSession: { ...cs, saveError: String(e?.message ?? e) } },
+          });
+          return;
+        }
         const items = cs.items.map((it, i) => (i === cs.activeIndex ? next : it));
         dispatch({
           type: 'set',
-          patch: { checkSession: { ...cs, items, progress: progressOf(items) } },
+          patch: {
+            checkSession: { ...cs, items, progress: progressOf(items), saveError: null },
+          },
         });
       },
 

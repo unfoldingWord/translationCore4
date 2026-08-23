@@ -382,6 +382,7 @@ describe.skipIf(!rigUp)('HttpStore against the live rig', () => {
     await store.upsertDecision(tool, book, decision({ checkId: 'res-1' }), {
       repoPath: 'git.door43.org/Es-419_gl/es-419_tw',
       version: 'v37',
+      sha: 'a'.repeat(40),
       languageSet: 'primary',
     });
     expect((await store.readDecisions(tool, book))!.resource).toMatchObject({
@@ -394,6 +395,7 @@ describe.skipIf(!rigUp)('HttpStore against the live rig', () => {
     await store.upsertDecision(tool, book, decision({ checkId: 'res-2' }), {
       repoPath: 'git.door43.org/unfoldingWord/en_tw',
       version: 'v89',
+      sha: 'b'.repeat(40),
       languageSet: 'primary',
     });
     const after = await store.readDecisions(tool, book);

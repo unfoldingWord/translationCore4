@@ -139,7 +139,7 @@ const basePins = (): ResourcesFile =>
     languageSets: { primary: JSON.parse(JSON.stringify(RUNG)), fallback: JSON.parse(JSON.stringify(RUNG)) },
   }) as unknown as ResourcesFile;
 
-const RESOLUTION = { repoPath: 'git.door43.org/unfoldingWord/en_tw', version: 'v87', languageSet: 'fallback' };
+const RESOLUTION = { repoPath: 'git.door43.org/unfoldingWord/en_tw', version: 'v87', sha: sha40('en_tw@v87'), languageSet: 'fallback' };
 const resourceV = (n: number) => ({
   repoPath: 'git.door43.org/unfoldingWord/en_tw',
   version: `v${100 + n}`,

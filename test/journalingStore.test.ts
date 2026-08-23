@@ -61,7 +61,7 @@ const PINS: ResourcesFile = {
   },
 } as unknown as ResourcesFile;
 
-const RESOLUTION = { repoPath: 'git.door43.org/unfoldingWord/en_tw', version: 'v87', languageSet: 'fallback' };
+const RESOLUTION = { repoPath: 'git.door43.org/unfoldingWord/en_tw', version: 'v87', sha: sha40('en_tw@v87'), languageSet: 'fallback' };
 
 const decision = (checkId: string, patch: Partial<Decision> = {}): Decision => ({
   contextId: {
@@ -425,13 +425,16 @@ describe('#62 mapping: upsertDecision is one check.decision.set', () => {
     const count = (await segmentsOf(rig)).length;
     await store.upsertDecision('translationWords', 'TIT', decision('t1g7'), RESOLUTION);
     expect(await segmentsOf(rig)).toHaveLength(count);
-    // A DIFFERENT resolution on a later upsert does not relabel (agree-only rule).
-    await store.upsertDecision(
-      'translationWords',
-      'TIT',
-      decision('t1g7', { comments: 'nota' }),
-      { repoPath: 'git.door43.org/es-419_gl/es-419_tw', version: 'v37' },
-    );
+    // A DIFFERENT resolution on a later upsert REFUSES (D59 §3): the write
+    // must neither relabel the file nor silently journal the decision under
+    // provenance the user was not looking at — resolve via the gateway change.
+    await expect(
+      store.upsertDecision('translationWords', 'TIT', decision('t1g7', { comments: 'nota' }), {
+        repoPath: 'git.door43.org/es-419_gl/es-419_tw',
+        version: 'v37',
+        sha: sha40('es-419_tw@v37'),
+      }),
+    ).rejects.toThrow(/gateway-change/);
     const file = JSON.parse(rig.repos.get(REPO)?.files.get('checking/translationWords/TIT.json') ?? '');
     expect(file.resource).toEqual(RESOLUTION);
   });

@@ -343,6 +343,13 @@ function CheckSession() {
         </div>
       )}
 
+      {cs.saveError && (
+        <div data-testid="save-error"
+          style={{ fontSize: 12.5, color: '#A21309', background: '#FDECEA', border: '1px solid rgba(162,19,9,.25)', borderRadius: 10, padding: '10px 12px', margin: '0 0 14px', lineHeight: 1.5 }}>
+          {t('check.saveRefused')}
+        </div>
+      )}
+
       {cs.invalidated > 0 && (
         <p data-testid="invalidated-notice"
           style={{ fontSize: 12.5, color: '#A21309', background: '#FDECEA', border: '1px solid rgba(162,19,9,.25)', borderRadius: 10, padding: '10px 12px', margin: '0 0 14px', lineHeight: 1.5 }}>

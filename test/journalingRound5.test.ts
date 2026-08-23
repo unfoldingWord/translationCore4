@@ -67,21 +67,25 @@ const PINS: ResourcesFile = {
 const RESOLUTION = {
   repoPath: 'git.door43.org/unfoldingWord/en_tw',
   version: 'v87',
+  sha: sha40('en_tw@v87'),
   languageSet: 'fallback',
 };
 const RES_B = {
   repoPath: 'git.door43.org/es-419_gl/es-419_tw',
   version: 'v37',
+  sha: sha40('es-419_tw@v37'),
   languageSet: 'primary',
 };
 const RES_C = {
   repoPath: 'git.door43.org/es-419_gl/es-419_tw',
   version: 'v38',
+  sha: sha40('es-419_tw@v38'),
   languageSet: 'primary',
 };
 const RES_D = {
   repoPath: 'git.door43.org/es-419_gl/es-419_tw',
   version: 'v39',
+  sha: sha40('es-419_tw@v39'),
   languageSet: 'primary',
 };
 

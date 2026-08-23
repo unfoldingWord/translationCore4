@@ -569,9 +569,23 @@ export class JournalingStore implements BurritoStore {
     const journaledTs = new Set(this.events.map((e) => e.ts));
     const overlay = await this.ledgerResolutionOverlay(intents, journaledTs);
     const foldOut = this.foldNow();
-    for (const record of intents)
-      if (await this.intentConverged(record, foldOut, overlay, journaledTs))
+    // Round 6 B2 — the prune must never change the overlay's value for any
+    // key. The overlay is "latest live record wins per key", so deleting a
+    // NEWER record while an OLDER live record shares one of its resolution
+    // keys would resurrect the superseded resolution at the next query (and
+    // the inline retry would then rewrite the derived file backwards). Walk
+    // ts-ascending: a record whose resolution keys overlap a RETAINED older
+    // record stays, converged or not, until that older record goes.
+    const heldKeys = new Set<string>();
+    for (const record of intents) {
+      const keys = Object.keys(record.resolutions ?? {});
+      const blocked = keys.some((key) => heldKeys.has(key));
+      if (!blocked && (await this.intentConverged(record, foldOut, overlay, journaledTs))) {
         await this.kv.delete(`${this.intentPrefix}${record.ts}`);
+        continue;
+      }
+      for (const key of keys) heldKeys.add(key);
+    }
   }
 
   // ---- publication core --------------------------------------------------------
@@ -697,10 +711,29 @@ export class JournalingStore implements BurritoStore {
           `invalid (${stagedInvalid.map((r) => `${r.ts}: ${r.reason ?? ''}`).join('; ')}) — ` +
           `surfaced, never silently dropped (R-8.1.7/R-8.1.8)`,
       );
-    if (!replayed.some((r) => r.outcome === 'republished')) return;
+    const conflicts = replayed.filter((r) => r.outcome === 'conflict');
+    if (conflicts.length)
+      throw new Error(
+        `refuse to mutate ${this.mustRepo()}: a staged intent's path is held by a DIFFERENT ` +
+          `valid segment (${conflicts.map((r) => r.ts).join(', ')}) — diffing over it would ` +
+          `build on a fold this actor cannot explain (R-8.1.5/R-8.1.8)`,
+      );
+    if (replayed.length === 0) return;
+    // 'republished' AND 'already-published' both prove the journal holds an
+    // accepted action the in-memory fold may lack: 'already-published' is the
+    // lost-response window — publish() wrote the segment, threw before the
+    // stage cleared, and this.events was never pushed (round 6 B1). Diffing
+    // without the refresh re-emits the same edit on the old base.
     const union = await journal.readUnion();
     this.events = union.events;
     this.foldCache = null;
+    // The replayed action's derived paths are still the FAILED attempt's disk
+    // state. A retry that then diffs to nothing returns before any
+    // installAndConverge, so converge the outstanding ledger paths here —
+    // the retry completes the interrupted work instead of deferring it to the
+    // next unrelated mutation or open (round 6 B1).
+    await this.installAndConverge([]);
+    await this.pruneConvergedIntents();
   }
 
   /** Persist and materialize a RESOLUTION-ONLY change (review of 2026-08-20
@@ -1179,9 +1212,11 @@ export class JournalingStore implements BurritoStore {
    * bytes must match EXACTLY; sidecars canonically (their byte form converges
    * to the projection right after). Shared by the pre-publish verification and
    * by the resumed-seed coverage check, so the two can never disagree. The pin
-   * and settings round-trips are included: a legacy document whose content the
-   * §5.3/§5.4 flatten cannot represent (an unknown top-level field) REFUSES
-   * here instead of being silently dropped by convergence. */
+   * and settings round-trips are included, and every sidecar compares as its
+   * WHOLE document: content the checkpoint projection cannot represent — an
+   * unknown top-level field on ANY sidecar (decisions and alignments too,
+   * round 6 B4), or a co-present §5.2 record — REFUSES here instead of being
+   * silently dropped by convergence (R-8.8.2). */
   private seedStateProblems(
     folded: FoldOutput,
     disk: Awaited<ReturnType<JournalingStore['inventoryDisk']>>,
@@ -1198,8 +1233,13 @@ export class JournalingStore implements BurritoStore {
     // Stored decision ORDER is byte form, not content: legacy files carry the
     // writing tool's order, the fold projects contextId-sorted, and convergence
     // rewrites the byte form right after — so both sides compare in the fold's
-    // own order. Content loss (a co-present same-key record the fold collapses)
-    // still differs after sorting and still refuses.
+    // own order. The comparison is the WHOLE document, not just the records:
+    // the checkpoint projection emits exactly {schemaVersion, tool, book,
+    // resource, decisions}, so an unknown top-level field is content the
+    // projection cannot represent and MUST refuse (R-8.8.2, round 6 B4) —
+    // convergence would otherwise drop it silently. Content loss (a co-present
+    // same-key record the fold collapses) still differs after sorting and
+    // still refuses.
     const inFoldOrder = <T extends { contextId: unknown }>(list: T[]): T[] =>
       [...list].sort((a, b) => (canonical(a.contextId) < canonical(b.contextId) ? -1 : 1));
     for (const [tool, byBook] of Object.entries(disk.decisionFilesByBook)) {
@@ -1207,19 +1247,48 @@ export class JournalingStore implements BurritoStore {
         const projected = (folded.decisions[tool] ?? []).filter(
           (d) => d.contextId.reference.bookId.toUpperCase() === book,
         );
-        if (canonical(inFoldOrder(projected)) !== canonical(inFoldOrder(file.decisions ?? [])))
+        const expectedDoc = {
+          schemaVersion: 1,
+          tool,
+          book,
+          // §5.2 resolution records are derive-time state (D30) the seed
+          // carries through verbatim — the file's own record is the expected
+          // record; its integrity is judged by the resolution machinery.
+          resource: file.resource,
+          decisions: inFoldOrder(projected),
+        };
+        // §5.2's OPTIONAL `summary` is a derived cache the spec marks
+        // "regenerable ... MUST be treated as disposable" — convergence
+        // dropping it is the specified behavior, never content loss, so it is
+        // excluded from the round-trip (the sample burrito carries one).
+        const fileSansSummary: Record<string, unknown> = {
+          ...(file as unknown as Record<string, unknown>),
+        };
+        delete fileSansSummary.summary;
+        const actualDoc = { ...fileSansSummary, decisions: inFoldOrder(file.decisions ?? []) };
+        if (canonical(expectedDoc) !== canonical(actualDoc))
           problems.push(
-            `${decisionsIpath(tool, book)}: fold-of-seed does not reproduce the stored decisions ` +
-              `(co-present records on one §5.2 identity key cannot round-trip — resolve by hand)`,
+            `${decisionsIpath(tool, book)}: fold-of-seed does not reproduce the stored document ` +
+              `(an unknown top-level field, or co-present records on one §5.2 identity key, ` +
+              `cannot round-trip — resolve by hand)`,
           );
       }
     }
     for (const [book, file] of Object.entries(disk.alignmentFiles)) {
-      const flat: Record<string, unknown> = {};
-      for (const [chapter, verses] of Object.entries(file.chapters ?? {}))
-        for (const [verse, record] of Object.entries(verses)) flat[`${chapter}:${verse}`] = record;
-      if (canonical(folded.alignments[book] ?? {}) !== canonical(flat))
-        problems.push(`${alignmentsIpath(book)}: fold-of-seed does not reproduce the stored records`);
+      // Same whole-document rule: the projection emits exactly
+      // {schemaVersion, book, chapters} — an extra top-level field refuses.
+      const chapters: Record<string, Record<string, unknown>> = {};
+      for (const [key, record] of Object.entries(folded.alignments[book] ?? {})) {
+        const colon = key.indexOf(':');
+        const [chapter, verse] = [key.slice(0, colon), key.slice(colon + 1)];
+        (chapters[chapter] ??= {})[verse] = record;
+      }
+      const expectedDoc = { schemaVersion: 1, book, chapters };
+      if (canonical(expectedDoc) !== canonical({ ...file, chapters: file.chapters ?? {} }))
+        problems.push(
+          `${alignmentsIpath(book)}: fold-of-seed does not reproduce the stored document ` +
+            `(records differ, or a top-level field the projection cannot represent)`,
+        );
     }
     try {
       const projectedResources = JSON.parse(projectResources(folded.pins)) as unknown;
@@ -1659,7 +1728,7 @@ export class JournalingStore implements BurritoStore {
     tool: string,
     book: string,
     decision: Decision,
-    resource?: { repoPath: string; version: string; languageSet?: string },
+    resource?: { repoPath: string; version?: string; sha: string; languageSet?: string },
   ): Promise<void> {
     return this.queue(async () => {
       await this.replayOwnStagedBeforeDiff(); // round-5 rule 1: REPLAY-BEFORE-DIFF
@@ -1678,17 +1747,36 @@ export class JournalingStore implements BurritoStore {
       // accepted-but-unmaterialized (or just-replayed) resource intent must
       // gate this write exactly as it gates regeneration.
       const stored = (await this.ledgerResolutionOverlay()).get(resolutionKey) as
-        | { repoPath: string; version: string }
+        | { repoPath: string; version?: string; sha?: string }
         | undefined;
       // Rule 3 (round 5): the register is stamped after acceptance only — the
       // effective resolution is computed here and travels WITH the action; it
       // enters the register inside publishAndRegenerate once the publish is
       // accepted, never before.
+      // Round 6 B3 / D59 §3: agreement is (repoPath + sha) — the version tag
+      // is a display label the guard never compares (D58). A sha disagreement
+      // (or a stored record with no sha at all) REFUSES toward the coordinated
+      // gateway-change/carry-over flow: this write must neither silently
+      // relabel the file's checked-against commit nor silently journal the
+      // decision under provenance the user was not looking at.
       let effective = stored as Record<string, unknown> | undefined;
       if (resource) {
+        if (!resource.sha)
+          throw new Error(
+            `upsertDecision(${tool}, ${code}): the session resolution carries no sha — ` +
+              `identity is (repoPath + sha) (D58/D59)`,
+          );
         const agrees =
-          !stored || (samePath(stored.repoPath, resource.repoPath) && stored.version === resource.version);
-        if (agrees) effective = resource as unknown as Record<string, unknown>;
+          !stored ||
+          (samePath(stored.repoPath, resource.repoPath) && stored.sha === resource.sha);
+        if (!agrees)
+          throw new Error(
+            `upsertDecision(${tool}, ${code}): the stored §5.2 record ` +
+              `(${stored?.repoPath} @ ${stored?.sha ?? 'no sha'}) does not match the session's ` +
+              `resolution (${resource.repoPath} @ ${resource.sha}) — a decision write never ` +
+              `relabels the file; resolve through the gateway-change flow (D36/D59)`,
+          );
+        effective = resource as unknown as Record<string, unknown>;
       }
       if (effective === undefined)
         throw new Error(
