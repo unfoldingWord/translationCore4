@@ -24,6 +24,7 @@ import {
   type FoldOutput,
 } from '../src/data/journal/runtime';
 import type { JournalEvent } from '../src/data/journal/seal';
+import { md5Hex as productMd5Hex } from '../src/data/httpStore';
 
 // The NATIVE reference, loaded outside the vite pipeline (the same workaround as
 // test/journalStore.test.ts: Node >=22 supports require of ESM).
@@ -41,6 +42,9 @@ const refReconcile = nodeRequire('./conformance/journal/reconcile.mjs') as {
 };
 const refSkeleton = nodeRequire('./conformance/journal/skeleton.mjs') as {
   decompose(usfm: string): { skeleton: string; verses: Record<string, string> };
+};
+const refMd5 = nodeRequire('./conformance/journal/md5.mjs') as {
+  md5Hex(text: string): string;
 };
 
 const ACTOR = 'a1234567890abcde';
@@ -131,6 +135,33 @@ describe('#62 runtime fold parity — the vite-pipeline import equals the native
   it('verseTextMd5 agrees over multi-byte UTF-8 (the node:crypto -> md5.mjs swap)', () => {
     for (const s of ['', 'plain', 'Pablo — δοῦλος Θεοῦ. ᾽ ῦ', '“quotes” and é vs é']) {
       expect(verseTextMd5(s)).toBe(refFold.verseTextMd5(s));
+    }
+  });
+
+  // Known answers, not just parity: a bug SHARED by both md5 implementations
+  // would pass the parity checks above. The RFC 1321 A.5 test suite plus one
+  // multi-byte UTF-8 vector (built from code points so no source-encoding or
+  // NFC ambiguity can change the bytes; expected digest derived independently
+  // with node:crypto and /sbin/md5, 2026-08-22) pin the algorithm itself.
+  it('md5Hex reproduces the RFC 1321 known-answer vectors (both implementations)', () => {
+    const MULTIBYTE = String.fromCodePoint(
+      0x03b4, 0x03bf, 0x1fe6, 0x03bb, 0x03bf, 0x03c2, 0x20,
+      0x0398, 0x03b5, 0x03bf, 0x1fe6, 0x20, 0x2014, 0x20,
+      0x00e9, 0x20, 0x0065, 0x0301,
+    );
+    const VECTORS: Array<[string, string]> = [
+      ['', 'd41d8cd98f00b204e9800998ecf8427e'],
+      ['a', '0cc175b9c0f1b6a831c399e269772661'],
+      ['abc', '900150983cd24fb0d6963f7d28e17f72'],
+      ['message digest', 'f96b697d7cb7938d525a2f31aaf161d0'],
+      ['abcdefghijklmnopqrstuvwxyz', 'c3fcd3d76192e4007dfb496cca67e13b'],
+      ['ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789', 'd174ab98d277d9f5a5611c2c9f419d9f'],
+      ['12345678901234567890123456789012345678901234567890123456789012345678901234567890', '57edf4a22be3c955ac49da2e2107b67a'],
+      [MULTIBYTE, '12b4d4b6393d9b73aa8585b525e5a322'],
+    ];
+    for (const [input, digest] of VECTORS) {
+      expect(refMd5.md5Hex(input), `md5.mjs over ${JSON.stringify(input)}`).toBe(digest);
+      expect(productMd5Hex(input), `httpStore md5Hex over ${JSON.stringify(input)}`).toBe(digest);
     }
   });
 

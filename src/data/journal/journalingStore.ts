@@ -1618,7 +1618,7 @@ export class JournalingStore implements BurritoStore {
           book: code,
           chapter: vkey.slice(0, sep),
           verse: vkey.slice(sep + 1),
-          ...toNfc(record),
+          ...record,
         });
       };
       for (const [vkey, record] of Object.entries(incoming)) {
@@ -1711,7 +1711,7 @@ export class JournalingStore implements BurritoStore {
         base: foldOut.headsTs[key] ?? null, // a first write is ordinary (anchored by generation)
         generation,
         toolId: tool,
-        decision: toNfc(incoming) as unknown as Record<string, unknown>,
+        decision: incoming as unknown as Record<string, unknown>,
       };
       await this.publishAndRegenerate([event], [decisionsIpath(tool, code)], {
         [resolutionKey]: effective,
@@ -1795,7 +1795,7 @@ export class JournalingStore implements BurritoStore {
         base: foldOut.headsTs[key] ?? null,
         generation,
         toolId: tool,
-        decision: toNfc(decision) as unknown as Record<string, unknown>,
+        decision: decision as unknown as Record<string, unknown>,
       });
     };
     for (const record of incoming) {
