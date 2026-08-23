@@ -160,15 +160,22 @@ export function pinForSideloaded(name: string, version: string, org?: string): {
     fs.readFileSync(path.join(sideloadedRepo(name), 'metadata.json'), 'utf8'),
   ) as {
     identification: { primary: { dcs?: Record<string, { revision?: string }> } };
+    type?: { flavorType?: { name?: string; flavor?: { name?: string } } };
   };
   const dcsKey = Object.keys(meta.identification.primary.dcs ?? {})[0] ?? '';
   const sha = Object.values(meta.identification.primary.dcs ?? {})[0]?.revision;
   const repoPath = org ? `${org}/${name}` : dcsKey;
+  // The REAL flavor from the export's own metadata: the fold refuses a
+  // resource.pin.set entry whose flavor is not a non-empty string, so a
+  // placeholder '' makes every seeded open fail (found 2026-08-22).
+  const flavorType = meta.type?.flavorType;
+  const flavor = `${flavorType?.name ?? ''}/${flavorType?.flavor?.name ?? ''}`;
+  if (flavor === '/') throw new Error(`sideloaded ${name}: metadata carries no flavorType — cannot build a pin`);
   return {
     repoPath: `git.door43.org/${repoPath}`,
     version,
     ...(sha ? { sha } : {}),
-    flavor: '',
+    flavor,
   };
 }
 

@@ -335,10 +335,12 @@ test.describe('J4 — a checker works a book', () => {
       // suite that is NOT installed in the rig, so it has no local coverage and
       // the resolver falls to the fallback. That is exactly the warned case.
       const en = PINS();
+      // A real flavor is required: the fold refuses a pin entry whose flavor
+      // is not a non-empty string (D56 seedability).
       const frPin = (name: string) => ({
         repoPath: `git.door43.org/fr_gl/${name}`,
         version: 'v10',
-        flavor: '',
+        flavor: name.endsWith('_ta') ? 'peripheral/x-peripheralArticles' : name.endsWith('_tn') ? 'parascriptural/x-bcvnotes' : 'parascriptural/x-bcvarticles',
       });
       const setFor = (gw: { languageId: string; owner: string }, tn: unknown, tw: unknown, ta: unknown) => ({
         gatewayLanguage: gw,

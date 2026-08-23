@@ -32,7 +32,7 @@ function writePinsWithOriginal() {
   file.resources = {
     originalLanguage: {
       nt: pinForSideloaded('el-x-koine_ugnt', 'v0.34'),
-      ot: { repoPath: 'git.door43.org/unfoldingWord/hbo_uhb', version: 'v2.1.30', flavor: '' },
+      ot: { repoPath: 'git.door43.org/unfoldingWord/hbo_uhb', version: 'v2.1.30', flavor: 'scripture/textTranslation' },
     },
   };
   fs.writeFileSync(p, `${JSON.stringify(file, null, 2)}\n`);
