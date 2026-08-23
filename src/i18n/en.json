@@ -16,6 +16,7 @@
   "home.noProjects": "No projects yet. Select New Bible to start.",
   "home.blurb": "Each project is one translation in one language and text direction. Open a book to draft, check, and publish — in any order.",
   "home.loading": "Loading projects…",
+  "home.openError": "The project could not be opened.",
   "home.book": "book",
   "home.books": "books",
   "wizard.title": "New project",

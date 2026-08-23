@@ -96,6 +96,16 @@ export default function Home() {
           </button>
         </div>
 
+        {/* A refused open (e.g. the #62 seed pipeline's diagnosable STOP) routes
+            back here with bookError set; without this banner the click looked
+            like it did nothing (found 2026-08-22, rig journey run). */}
+        {s.bookError && (
+          <div role="alert" data-testid="home-open-error"
+            style={{ border: '1.5px solid rgba(229,157,51,.5)', background: 'rgba(229,157,51,.08)', borderRadius: 12, padding: '12px 16px', margin: '0 0 16px', fontSize: 13.5, color: '#014263', overflowWrap: 'anywhere' }}>
+            <strong>{t('home.openError')}</strong> {s.bookError}
+          </div>
+        )}
+
         {projects === null && (
           <p style={{ fontSize: 14, color: '#8A99A4' }}>{t('home.loading')}</p>
         )}
