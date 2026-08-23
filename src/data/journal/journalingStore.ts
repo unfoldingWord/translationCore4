@@ -1195,12 +1195,19 @@ export class JournalingStore implements BurritoStore {
       problems.push('vrs.json: fold-of-seed differs from disk bytes');
     if (disk.vrsBytes === null && folded.vrs !== null)
       problems.push('vrs.json: the fold carries a versification frame the disk lacks');
+    // Stored decision ORDER is byte form, not content: legacy files carry the
+    // writing tool's order, the fold projects contextId-sorted, and convergence
+    // rewrites the byte form right after — so both sides compare in the fold's
+    // own order. Content loss (a co-present same-key record the fold collapses)
+    // still differs after sorting and still refuses.
+    const inFoldOrder = <T extends { contextId: unknown }>(list: T[]): T[] =>
+      [...list].sort((a, b) => (canonical(a.contextId) < canonical(b.contextId) ? -1 : 1));
     for (const [tool, byBook] of Object.entries(disk.decisionFilesByBook)) {
       for (const [book, file] of Object.entries(byBook)) {
         const projected = (folded.decisions[tool] ?? []).filter(
           (d) => d.contextId.reference.bookId.toUpperCase() === book,
         );
-        if (canonical(projected) !== canonical(file.decisions ?? []))
+        if (canonical(inFoldOrder(projected)) !== canonical(inFoldOrder(file.decisions ?? [])))
           problems.push(
             `${decisionsIpath(tool, book)}: fold-of-seed does not reproduce the stored decisions ` +
               `(co-present records on one §5.2 identity key cannot round-trip — resolve by hand)`,

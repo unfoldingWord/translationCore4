@@ -404,6 +404,46 @@ describe('#62 universal seeding (§8.8)', () => {
     expect(store2.lastOpenReport?.classification).toBe('converged');
   });
 
+  it('seeds a decision file whose records are NOT in canonical order — order is byte form, not content (R-8.8.2)', async () => {
+    // Real tC3 exports carry decisions in whatever order the tool wrote them.
+    // The fold projects decisions sorted by canonical contextId, so a stored
+    // order that differs is exactly the byte-form class convergence rewrites —
+    // it must never refuse the seed (found 2026-08-22: the conformance sample
+    // itself stores [t1g7, a9p2] and every rig journey failed at open).
+    const world = await setup();
+    const { rig, api, restart } = world;
+    const repo = '_local_/_local_/desordenado';
+    const recA = decision('t1g7');
+    const recB = decision('a9p2', {
+      contextId: { ...decision('a9p2').contextId, groupId: 'apostle', quote: 'ἀπόστολος', quoteString: 'ἀπόστολος' },
+    });
+    rig.createRepo(repo, {
+      'vrs.json': FAKE_VRS,
+      'TIT.usfm': TIT_USFM,
+      'checking/resources.json': JSON.stringify(PINS, null, 2),
+      'checking/translationWords/TIT.json': JSON.stringify({
+        schemaVersion: 1,
+        tool: 'translationWords',
+        book: 'TIT',
+        resource: RESOLUTION,
+        // Deliberately NOT the projection's order (it sorts by contextId).
+        decisions: [recA, recB],
+      }),
+    });
+    const store = restart();
+    await store.open(repo);
+    expect(store.lastOpenReport?.seeded).toBe(true);
+    // Both records survived into the fold — nothing was collapsed or dropped.
+    const events = await allEvents(rig, repo);
+    const seededIds = events
+      .filter((e) => e.op === 'check.decision.set')
+      .map((e) => (e.decision as { contextId: { checkId: string } }).contextId.checkId)
+      .sort();
+    expect(seededIds).toEqual(['a9p2', 't1g7']);
+    // The stored file converged to the canonical projection byte form.
+    await expectVerified(api, repo);
+  });
+
   it('two independent seeds of the same source CONVERGE modulo actor identity (D53d)', async () => {
     const world = await setup();
     const { rig, api, clock } = world;
