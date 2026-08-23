@@ -69,13 +69,17 @@ const INSTALLED_SUITE = {
     fallback: { ...EN_HELPS },
   },
   resources: {
+    // Real identities, sha-verified against the DCS tags API 2026-08-22 (D58).
+    // The old lexicon tags (en_ugl v2, en_uhl v1) never existed upstream —
+    // en_ugl tops at v0.5 and en_uhl has no tags at all, so its pin is
+    // sha-only (the version label is optional and never invented).
     originalLanguage: {
-      nt: { repoPath: 'git.door43.org/unfoldingWord/el-x-koine_ugnt', version: 'v0.34', flavor: 'scripture/textTranslation' },
-      ot: { repoPath: 'git.door43.org/unfoldingWord/hbo_uhb', version: 'v2.1.30', flavor: 'scripture/textTranslation' },
+      nt: { repoPath: 'git.door43.org/unfoldingWord/el-x-koine_ugnt', version: 'v0.34', sha: 'fc95b2b8aad08bb65ab54628ab685413a1139e97', flavor: 'scripture/textTranslation' },
+      ot: { repoPath: 'git.door43.org/unfoldingWord/hbo_uhb', version: 'v2.1.30', sha: '106a441a788d9465846cd427538ea80b8cec6770', flavor: 'scripture/textTranslation' },
     },
     lexicon: {
-      nt: { repoPath: 'git.door43.org/unfoldingWord/en_ugl', version: 'v2', flavor: 'peripheral/x-lexicon' },
-      ot: { repoPath: 'git.door43.org/unfoldingWord/en_uhl', version: 'v1', flavor: 'peripheral/x-lexicon' },
+      nt: { repoPath: 'git.door43.org/unfoldingWord/en_ugl', version: 'v0.5', sha: '8fa6eb60c0fe7afa61a80264c7326d63db5f1e70', flavor: 'peripheral/x-lexicon' },
+      ot: { repoPath: 'git.door43.org/unfoldingWord/en_uhl', sha: 'db0098f3582814066f1a69c0aa2743a3ad0e8c81', flavor: 'peripheral/x-lexicon' },
     },
   },
   extraScripture: [

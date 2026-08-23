@@ -237,7 +237,20 @@ test.describe('J13 — changing the project’s checking language', () => {
 
       // NOTHING was deleted, and the English-only decision came back
       // invalidated — that check no longer exists, so it is work to do again.
-      expect(after.decisions.length).toBe(countBefore);
+      // Under the journal (§8.5 R-8.5.11) a RE-ATTACHED decision's old-identity
+      // record is invalidated and RETAINED — never deleted — so the file holds
+      // the original records PLUS the re-attached ones. The sample's two tN
+      // decisions both re-attach (the fixture is built for that), so the count
+      // grows by exactly those two; the pre-journal byte-replace semantics
+      // (count unchanged) are retired with #62.
+      expect(after.decisions.length).toBe(countBefore + 2);
+      // Every original record survived — conservation, not replacement.
+      for (const original of file.decisions) {
+        expect(
+          after.decisions.some((d) => mergeKey((d as never)['contextId']) === mergeKey((original as never)['contextId'])),
+          'an original decision record was deleted by the change',
+        ).toBe(true);
+      }
       const carriedBack = after.decisions.find(
         (d) => mergeKey((d as never)['contextId']) === mergeKey(enOnly.contextId),
       );
