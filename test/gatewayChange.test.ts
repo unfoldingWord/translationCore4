@@ -93,11 +93,23 @@ describe('the case that needs NO change — partial coverage is handled per book
 });
 
 describe('consequences are counted before the change is committed', () => {
+  // Affectedness is judged against the POST-CHANGE resolution (D30 ladder),
+  // so the counting takes the same coverage map the resolver uses. The French
+  // suite covers TIT + JON; English covers the canon.
+  const COV: Coverage = {
+    'git.door43.org/Xenizo/fr_tn': ['TIT', 'JON'],
+    'git.door43.org/Xenizo/fr_tw': ['TIT', 'JON'],
+    'git.door43.org/unfoldingWord/en_tn': ['TIT', 'JON', 'HEB', 'PSA', 'RUT'],
+    'git.door43.org/unfoldingWord/en_tw': ['BIBLE'],
+  };
+
   it('a change that disturbs nothing is harmless and says so', () => {
-    // Every stored file was checked against a rung the NEW pins still provide.
+    // The stored file was checked against exactly what the book still
+    // resolves to under the new pins.
     const c = consequencesOfGatewayChange(
       [stored('TIT', 'git.door43.org/unfoldingWord/en_tn', 'v89', 12)],
       { primary: EN, fallback: EN },
+      COV,
     );
     expect(c.harmless).toBe(true);
     expect(c.decisionsAtRisk).toBe(0);
@@ -111,27 +123,47 @@ describe('consequences are counted before the change is committed', () => {
         stored('JON', 'git.door43.org/Es-419_gl/es-419_tn', 'v66', 17),
       ],
       { primary: FR, fallback: EN }, // Spanish is gone from both rungs
+      COV,
     );
     expect(c.harmless).toBe(false);
     expect(c.affected.map((a) => a.book).sort()).toEqual(['JON', 'TIT']);
     expect(c.decisionsAtRisk).toBe(47);
   });
 
-  it('a book checked against the ENGLISH FALLBACK is untouched by a primary change', () => {
-    // This is the case that must not raise a false alarm: the fallback rung
-    // does not move when the primary language changes.
+  it('a book the new primary does NOT cover keeps its fallback resolution — untouched', () => {
+    // No false alarm: FR does not cover HEB, so HEB still resolves to the
+    // unchanged English fallback it was checked against.
     const c = consequencesOfGatewayChange(
       [stored('HEB', 'git.door43.org/unfoldingWord/en_tn', 'v89', 25)],
       { primary: FR, fallback: EN },
+      COV,
     );
     expect(c.harmless).toBe(true);
     expect(c.unaffectedBooks).toBe(1);
+  });
+
+  it('a book the new primary COVERS is affected even though its old resource stays pinned as fallback', () => {
+    // The hole the D58 exact-identity comparison exposed (found by journey
+    // J13, 2026-08-22): TIT was checked against the English notes, English
+    // stays pinned as the fallback — but French COVERS TIT, so the ladder
+    // moves TIT's resolution to French and the checked-against resource is
+    // being left. Membership in the pin set is not the question; the
+    // post-change resolution is.
+    const c = consequencesOfGatewayChange(
+      [stored('TIT', 'git.door43.org/unfoldingWord/en_tn', 'v89', 12)],
+      { primary: FR, fallback: EN },
+      COV,
+    );
+    expect(c.harmless).toBe(false);
+    expect(c.affected.map((a) => a.book)).toEqual(['TIT']);
+    expect(c.decisionsAtRisk).toBe(12);
   });
 
   it('a book with no decisions yet costs nothing', () => {
     const c = consequencesOfGatewayChange(
       [stored('TIT', 'git.door43.org/Es-419_gl/es-419_tn', 'v66', 0)],
       { primary: FR, fallback: EN },
+      COV,
     );
     expect(c.harmless).toBe(true);
   });
@@ -140,6 +172,7 @@ describe('consequences are counted before the change is committed', () => {
     const c = consequencesOfGatewayChange(
       [{ tool: 'translationNotes', book: 'TIT', file: { ...file('', '', 5), resource: undefined } }],
       { primary: FR, fallback: EN },
+      COV,
     );
     expect(c.harmless).toBe(true);
     expect(c.unaffectedBooks).toBe(1);
@@ -149,6 +182,10 @@ describe('consequences are counted before the change is committed', () => {
 describe('the wording the user actually reads', () => {
   const names: Record<string, string> = { TIT: 'Titus', JON: 'Jonah', RUT: 'Ruth', PSA: 'Psalms' };
   const bookName = (c: string) => names[c] ?? c;
+  const COVW: Coverage = {
+    'git.door43.org/Xenizo/fr_tn': ['TIT', 'JON', 'RUT', 'PSA'],
+    'git.door43.org/unfoldingWord/en_tn': ['TIT', 'JON', 'RUT', 'PSA', 'HEB'],
+  };
 
   it('names the books and the count in plain language, and promises nothing is deleted', () => {
     const c = consequencesOfGatewayChange(
@@ -157,6 +194,7 @@ describe('the wording the user actually reads', () => {
         stored('JON', 'git.door43.org/Es-419_gl/es-419_tn', 'v66', 17),
       ],
       { primary: FR, fallback: EN },
+      COVW,
     );
     const { headline, detail } = describeConsequences(c, bookName);
     expect(headline).toBe(
@@ -170,7 +208,7 @@ describe('the wording the user actually reads', () => {
     const many = ['TIT', 'JON', 'RUT', 'PSA'].map((b) =>
       stored(b, 'git.door43.org/Es-419_gl/es-419_tn', 'v66', 2),
     );
-    const c = consequencesOfGatewayChange(many, { primary: FR, fallback: EN });
+    const c = consequencesOfGatewayChange(many, { primary: FR, fallback: EN }, COVW);
     expect(describeConsequences(c, bookName).headline).toContain('and 1 more');
   });
 
@@ -178,6 +216,7 @@ describe('the wording the user actually reads', () => {
     const c = consequencesOfGatewayChange(
       [stored('TIT', 'git.door43.org/Es-419_gl/es-419_tn', 'v66', 1)],
       { primary: FR, fallback: EN },
+      COVW,
     );
     expect(describeConsequences(c, bookName).headline).toBe(
       '1 decision in Titus were made against the notes you are leaving.',

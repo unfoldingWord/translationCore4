@@ -13,8 +13,8 @@
 // decline. They are NOT a banner discovered later when opening a book: that
 // moves the user from deciding to discovering and removes the choice.
 import type { DecisionFile, LanguageSet, ResourcesFile } from './burritoStore';
-import { TOOL_SLOT, pinKey } from './resolve';
-import type { Tool } from './resolve';
+import { pinKey, resolveToolBook } from './resolve';
+import type { Coverage, Tool } from './resolve';
 
 /** One book whose stored decisions were made against a resource the change
  * would move away from. */
@@ -50,22 +50,21 @@ export interface StoredDecisionFile {
  * What would this gateway-language change cost?
  *
  * A book is affected when it HAS stored decisions AND those decisions were
- * checked against a resource that the new pin set no longer provides for it.
- * A book checked against the English fallback is unaffected by a change of the
- * PRIMARY language, because the fallback rung does not move — which is the
- * common case and is exactly why this must be counted rather than assumed.
+ * checked against a resource that is NOT what the book would RESOLVE to after
+ * the change. Membership in the new pin set is not enough: a book the new
+ * primary COVERS moves its resolution to the primary even though the old
+ * resource stays pinned as the fallback (D30's ladder resolves per (tool,
+ * book) by coverage) — the exact-identity comparison (D58) exposed that hole.
+ * A book the new primary does NOT cover keeps resolving to the unchanged
+ * fallback, which is the common unaffected case.
  */
 export const consequencesOfGatewayChange = (
   stored: StoredDecisionFile[],
   next: { primary: LanguageSet; fallback: LanguageSet },
+  /** Book coverage per pinned repo — the same map the D30 ladder resolves with. */
+  coverage: Coverage,
 ): ChangeConsequences => {
-  const provided = new Set<string>();
-  for (const set of [next.primary, next.fallback]) {
-    for (const slot of Object.values(TOOL_SLOT)) {
-      const pin = set[slot];
-      if (pin) provided.add(pinKey(pin));
-    }
-  }
+  const nextResources = { schemaVersion: 2, languageSets: next } as unknown as ResourcesFile;
 
   const affected: AffectedBook[] = [];
   let unaffectedBooks = 0;
@@ -78,9 +77,9 @@ export const consequencesOfGatewayChange = (
       unaffectedBooks += 1; // no record: nothing states it would move
       continue;
     }
-    const key = pinKey(checkedAgainst as never);
-    if (provided.has(key)) {
-      unaffectedBooks += 1;
+    const after = resolveToolBook(nextResources, entry.tool, entry.book, coverage);
+    if (after.pin && pinKey(after.pin) === pinKey(checkedAgainst as never)) {
+      unaffectedBooks += 1; // the book still resolves to what it was checked against
       continue;
     }
     affected.push({

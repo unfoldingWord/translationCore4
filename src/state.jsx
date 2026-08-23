@@ -568,10 +568,14 @@ export function AppProvider({ children }) {
             }
           }
         }
-        const consequences = consequencesOfGatewayChange(stored, {
-          primary,
-          fallback: current.languageSets?.fallback ?? primary,
-        });
+        // Affectedness is judged against the POST-CHANGE resolution (D30's
+        // per-(tool, book) ladder), so the counting needs the coverage map.
+        const { coverage } = await a.resolutionContext();
+        const consequences = consequencesOfGatewayChange(
+          stored,
+          { primary, fallback: current.languageSets?.fallback ?? primary },
+          coverage,
+        );
         const next = applyGatewayChange(current, primary);
 
         // The resource is the primary key (tC3 precedent, 2026-08-04): the
@@ -580,7 +584,6 @@ export function AppProvider({ children }) {
         // decisions carry over and how many checks come back — instead of a
         // count "at risk". The new suite is installed (languageSetFromInstalled
         // proved it), so every derive below reads local bytes.
-        const { coverage } = await a.resolutionContext();
         const plan = [];
         for (const entry of consequences.affected) {
           const resolution = resolveToolBook(next, entry.tool, entry.book, coverage);
