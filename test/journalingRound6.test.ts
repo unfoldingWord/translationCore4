@@ -14,7 +14,9 @@ import { JournalingStore, forgetProjectQueues } from '../src/data/journal/journa
 import { forgetSharedClocks } from '../src/data/journal/journalStore';
 import { verifyProjectAgainstJournal, describeVerifierReport } from '../src/data/journal/verify';
 import type { Decision, DecisionFile, ResourcesFile } from '../src/data/burritoStore';
+import { md5Hex } from '../src/data/httpStore';
 import {
+  FAKE_VRS,
   journalingRig,
   memKv,
   tickingNow,
@@ -179,6 +181,89 @@ describe('round 6 B1: a retry after a lost publish response is idempotent', () =
     const store2 = restart();
     await store2.open(REPO);
     expect(store2.lastOpenReport?.classification).toBe('converged');
+  });
+});
+
+describe('official review R1: a derived sidecar is DELETED when its projection disappears', () => {
+  const alignmentFileFor = (verseText: string) => ({
+    schemaVersion: 1,
+    book: 'TIT',
+    chapters: {
+      '1': {
+        '1': {
+          alignments: [
+            {
+              topWords: [
+                { word: 'Παῦλος', strong: 'G39720', lemma: 'Παῦλος', morph: 'Gr,N,,,,,NMS,', occurrence: 1, occurrences: 1 },
+              ],
+              bottomWords: [{ word: 'Pablo', occurrence: 1, occurrences: 1 }],
+            },
+          ],
+          wordBank: [],
+          targetVerseMd5: md5Hex(verseText),
+          sourceVersion: 'dcs::unfoldingWord/el-x-koine_ugnt@v0.34',
+        },
+      },
+    },
+  });
+
+  it('a structural edit that retires the last alignment removes the stale alignment file', async () => {
+    const { rig, api, store, restart } = await setup();
+    await store.writeAlignments('TIT', alignmentFileFor('Pablo, siervo de Dios.') as never);
+    expect(rig.repos.get(REPO)?.files.has('checking/alignments/TIT.json')).toBe(true);
+
+    // Merge 1:1 and 1:2 into the span 1:1-2 — a slot-set change that removes
+    // the aligned key. The fold no longer projects any alignment for TIT.
+    const edited = TIT_USFM
+      .replace('\\v 1 Pablo, siervo de Dios.\n\\v 2 ___', '\\v 1-2 Pablo, siervo de Dios.');
+    await store.applyStructuralEdit('TIT', edited);
+
+    // The derived file whose projection disappeared must be GONE — a stale
+    // sidecar is an extra derived path every later open/verify refuses.
+    expect(rig.repos.get(REPO)?.files.has('checking/alignments/TIT.json')).toBe(false);
+    const report = await verifyProjectAgainstJournal(api, REPO);
+    expect(report.ok, describeVerifierReport(report)).toBe(true);
+    const store2 = restart();
+    await store2.open(REPO);
+    expect(store2.lastOpenReport?.classification).toBe('converged');
+  });
+
+  it('reconciling an out-of-band TOPOLOGY edit re-converges sidecars that were clean before it', async () => {
+    const { rig, api, store, restart } = await setup();
+    await store.writeAlignments('TIT', alignmentFileFor('Pablo, siervo de Dios.') as never);
+
+    // Another tool rewrites the committed USFM with a slot-set change while
+    // the app is closed: 1:1 + 1:2 collapse into the span 1:1-2. The
+    // alignment sidecar was CLEAN before the reconcile event — only after
+    // text.structure.apply publishes does its projection change.
+    const edited = TIT_USFM
+      .replace('\\v 1 Pablo, siervo de Dios.\n\\v 2 ___', '\\v 1-2 Pablo, siervo de Dios.');
+    rig.repos.get(REPO)?.files.set('TIT.usfm', edited);
+
+    const store2 = restart();
+    await store2.open(REPO);
+    expect(store2.lastOpenReport?.classification).toBe('reconciled');
+    // The sidecars the structural event invalidated must have been swept too.
+    const report = await verifyProjectAgainstJournal(api, REPO);
+    expect(report.ok, describeVerifierReport(report)).toBe(true);
+    const store3 = restart();
+    await store3.open(REPO);
+    expect(store3.lastOpenReport?.classification).toBe('converged');
+  });
+});
+
+describe('official review R4: seeding ABORTS when the project scope cannot be read', () => {
+  it('a metadata-read failure refuses the seed instead of journaling a widened scope', async () => {
+    const { rig, restart } = await setup();
+    const repo = '_local_/_local_/sinscope';
+    rig.createRepo(repo, { 'vrs.json': FAKE_VRS, 'TIT.usfm': TIT_USFM });
+    // The metadata read fails transiently during the FIRST open. Seeding must
+    // stop — scope is journaled forever in book.add, and defaulting to [] is
+    // whole-book scope, silently admitting out-of-scope work.
+    rig.failOn((c) => c.route.includes('/burrito/metadata/raw/') && c.route.includes('sinscope'));
+    const store = restart();
+    await expect(store.open(repo)).rejects.toThrow(/injected failure|scope/);
+    expect(segmentPaths(rig, repo)).toEqual([]); // nothing journaled
   });
 });
 

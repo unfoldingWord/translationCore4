@@ -370,6 +370,18 @@ export class ServerApi {
     );
   }
 
+  /** POST /burrito/ingredient/delete/<repoPath>?ipath=… — remove one file.
+   * The server RENAMES the file to `<name>.bak` rather than unlinking it
+   * [VERIFIED — pankosmia-web 0.18.5 (99fd9be, 2026-07-30):
+   * `endpoints/burrito2/post_delete_ingredient.rs`], and `.bak` files are
+   * hidden from `/burrito/paths` (see listPaths above) — so a delete is
+   * complete from the client's point of view and the `.bak` is the undo. */
+  async deleteIngredient(repoPath: string, ipath: string): Promise<void> {
+    await this.post(
+      `/burrito/ingredient/delete/${encodeRepoPath(repoPath)}?ipath=${encodeIpath(ipath)}`,
+    );
+  }
+
   /** POST /burrito/metadata/remake-ingredients/<repoPath> — full rescan.
    * NOTE: wipes every `x-` role, permanently, by design (D28/W-2). */
   async remakeIngredients(repoPath: string): Promise<void> {

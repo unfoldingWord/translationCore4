@@ -382,17 +382,26 @@ let mergedVerseObjects = null;
     resolve(cov, 'TIT') === 'primary' && resolve(cov, 'HEB') === 'fallback' &&
     Object.keys(ls).every(r => ['primary', 'fallback'].includes(r)),
     `tW→${rungOf(dfW)}, tN→${rungOf(dfN)}; foreign record rejected; HEB (uncovered) → fallback`);
-  // §5.3 extraScripture (normative since 1.5-draft — D10/OPEN-QUESTIONS #13): gateway source
-  // pins for the source panes. Entry shape {id, repoPath, version, flavor}; ids unique;
-  // OPTIONAL sha has the main-pin grammar (40 lowercase hex; negative controls above).
+  // §5.3 extraScripture (normative since 1.5-draft — D10/OPEN-QUESTIONS #13; D58 re-based
+  // identity): gateway source pins for the source panes. Entry shape {id, repoPath, sha,
+  // flavor} with sha REQUIRED (40 lowercase hex — the pin's identity) and `version` an
+  // OPTIONAL non-empty display label; ids unique. Same grammar as the main pins.
   const xs = resFile.extraScripture;
-  const xsShapeOk = Array.isArray(xs) && xs.length >= 2 && xs.every(e =>
-    typeof e.id === 'string' && e.id.length > 0 && e.repoPath && e.version && e.flavor &&
-    (!('sha' in e) || SHA.test(e.sha)));
+  const xsEntryOk = e =>
+    typeof e.id === 'string' && e.id.length > 0 && e.repoPath && e.flavor &&
+    SHA.test(e.sha) &&
+    (!('version' in e) || (typeof e.version === 'string' && e.version.length > 0));
+  const xsShapeOk = Array.isArray(xs) && xs.length >= 2 && xs.every(xsEntryOk);
   const xsIdsUnique = xsShapeOk && new Set(xs.map(e => e.id)).size === xs.length;
-  check('resources: extraScripture source pins present ({id,repoPath,version,flavor} complete, ids unique, sha 40-hex when present)',
-    xsShapeOk && xsIdsUnique && !SHA.test('84c73ba') && !SHA.test('Z'.repeat(40)),
-    xsShapeOk ? `${xs.length} entries (${xs.map(e => e.id).join(', ')}); sha grammar + negative controls checked` : 'array missing or malformed');
+  // Firing negative controls (D58): a sha-less entry and an empty version label REFUSE;
+  // a sha-only entry (no version) is VALID.
+  const xsNegShaLess = !xsEntryOk({ id: 'x', repoPath: 'git.door43.org/o/r', flavor: 'scripture/textTranslation' });
+  const xsNegEmptyVersion = !xsEntryOk({ id: 'x', repoPath: 'git.door43.org/o/r', sha: 'a'.repeat(40), flavor: 'scripture/textTranslation', version: '' });
+  const xsPosShaOnly = xsEntryOk({ id: 'x', repoPath: 'git.door43.org/o/r', sha: 'a'.repeat(40), flavor: 'scripture/textTranslation' });
+  check('resources: extraScripture source pins present ({id,repoPath,sha,flavor} complete — sha REQUIRED 40-hex, version an OPTIONAL non-empty label (D58), ids unique)',
+    xsShapeOk && xsIdsUnique && xsNegShaLess && xsNegEmptyVersion && xsPosShaOnly &&
+    !SHA.test('84c73ba') && !SHA.test('Z'.repeat(40)),
+    xsShapeOk ? `${xs.length} entries (${xs.map(e => e.id).join(', ')}); sha-required + sha-only-valid + empty-label controls fired` : 'array missing or malformed');
   const rels = metadata.relationships;
   check('resources: same pins expressed as SB relationships, schema-valid per test 1',
     Array.isArray(rels) && rels.length === 12 && rels.every(r => r.relationType && r.flavor && r.id.includes('::')), '', 'stage2');

@@ -587,10 +587,26 @@ export function AppProvider({ children }) {
         const plan = [];
         for (const entry of consequences.affected) {
           const resolution = resolveToolBook(next, entry.tool, entry.book, coverage);
-          if (!resolution.pin) continue; // uncovered by both rungs: nothing to derive against
+          const source = stored.find((s) => s.tool === entry.tool && s.book === entry.book);
+          if (!resolution.pin) {
+            // Uncovered by BOTH rungs after the change: no list can derive, so
+            // no decision can re-attach — D36 invalidate-and-retain, never a
+            // silent omission from the plan (official review round 6, R5: the
+            // pins still change, so leaving the file untouched keeps decisions
+            // valid-looking against a resource no longer in either rung). The
+            // file keeps its OLD record as provenance; re-pinning restores.
+            const result = carryOverDecisions(source.file, [], source.file.resource);
+            plan.push({
+              tool: entry.tool,
+              book: entry.book,
+              expectMd5: md5s[`${entry.tool}/${entry.book}`] ?? null,
+              uncovered: true,
+              ...result,
+            });
+            continue;
+          }
           const derived = await a.deriveItemsFor(entry.tool, entry.book, resolution.pin);
           const record = resolutionRecord(resolution);
-          const source = stored.find((s) => s.tool === entry.tool && s.book === entry.book);
           const result = carryOverDecisions(source.file, derived, record);
           plan.push({
             tool: entry.tool,

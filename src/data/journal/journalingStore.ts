@@ -387,6 +387,35 @@ export class JournalingStore implements BurritoStore {
       );
   }
 
+  /** Remove one derived file whose projection disappeared (official review
+   * round 6, R1): a structural edit can retire a book's last alignment (or
+   * book.remove the book itself), after which the fold derives NOTHING for
+   * the path — leaving the old file would be an extra derived path every
+   * later open, checkpoint, and verifier run refuses. The platform delete
+   * renames to `.bak` (hidden from listPaths), so the undo survives. */
+  private async removeDerived(ipath: string): Promise<void> {
+    await this.api.deleteIngredient(this.mustRepo(), ipath);
+    const readBack = await this.readIngredientOrNull(ipath);
+    if (readBack !== null)
+      throw new Error(
+        `derived delete verification failed for ${ipath}: the file is still readable — ` +
+          `the journal remains authoritative; reopening recovers forward`,
+      );
+  }
+
+  /** Is this a derived path CLASS whose projection can legitimately disappear
+   * (and whose stale file must then be removed)? Books (book.remove),
+   * alignment and decision sidecars (structural retirement) — never
+   * resources/settings (they project the §8.7 EMPTY document instead) and
+   * never vrs.json (creation-only, retained forever). */
+  private static isRemovableDerivedClass(ipath: string): boolean {
+    return (
+      /^[A-Z0-9]{3}\.usfm$/.test(ipath) ||
+      /^checking\/alignments\/[A-Z0-9]{3}\.json$/.test(ipath) ||
+      /^checking\/(translationWords|translationNotes)\/[A-Z0-9]{3}\.json$/.test(ipath)
+    );
+  }
+
   /** The projection bytes of ONE derived path under a given fold. Returns null
    * for a path the fold does not derive (e.g. an alignment sidecar for a book
    * with no records). */
@@ -547,8 +576,13 @@ export class JournalingStore implements BurritoStore {
       } catch {
         return false; // e.g. a decision file whose resolution record is gone
       }
-      if (bytes === null) continue; // the fold derives nothing here
       const disk = await this.readIngredientOrNull(ipath);
+      if (bytes === null) {
+        // The fold derives nothing here — converged only once the stale file
+        // is actually GONE (round 6 R1: a skipped removal is not convergence).
+        if (disk !== null && JournalingStore.isRemovableDerivedClass(ipath)) return false;
+        continue;
+      }
       if (disk === bytes) continue;
       if (disk === null && EMPTY_CHECKPOINT_DOCUMENTS.has(bytes)) continue;
       return false;
@@ -649,7 +683,16 @@ export class JournalingStore implements BurritoStore {
     const foldOut = this.foldNow();
     for (const ipath of own) {
       const bytes = this.projectionBytes(foldOut, ipath);
-      if (bytes !== null) await this.installDerived(ipath, bytes);
+      if (bytes !== null) {
+        await this.installDerived(ipath, bytes);
+      } else if (
+        JournalingStore.isRemovableDerivedClass(ipath) &&
+        (await this.readIngredientOrNull(ipath)) !== null
+      ) {
+        // The projection disappeared (structural retirement / book.remove):
+        // converging means REMOVING the stale derived file (round 6 R1).
+        await this.removeDerived(ipath);
+      }
     }
     // INTERIM round-5 rule 4 (RETRIES READ DURABLE STATE): an inline retry
     // projects under the LEDGER overlay — never under the bare in-memory
@@ -667,8 +710,13 @@ export class JournalingStore implements BurritoStore {
         seen.add(ipath);
         try {
           const bytes = this.withResolutions(overlay, () => this.projectionBytes(foldOut, ipath));
-          if (bytes === null) continue;
           const disk = await this.readIngredientOrNull(ipath);
+          if (bytes === null) {
+            // Projection disappeared: converging is REMOVAL (round 6 R1).
+            if (disk !== null && JournalingStore.isRemovableDerivedClass(ipath))
+              await this.removeDerived(ipath);
+            continue;
+          }
           if (disk === bytes) continue; // already converged — nothing to retry
           // An absent file whose projection is the §8.7 EMPTY document is
           // "not yet checkpointed" — converged, never materialized here.
@@ -973,12 +1021,21 @@ export class JournalingStore implements BurritoStore {
     const diskBytes: Record<string, string> = {};
     const unknown: string[] = [];
 
-    let scope: Record<string, string[]> = {};
+    // A metadata-read FAILURE aborts (official review round 6, R4): scope is
+    // journaled forever in book.add, and defaulting a failed read to {} gives
+    // every book `[]` — whole-book scope — silently admitting out-of-scope
+    // work. An ABSENT currentScope key on a readable document stays {}: that
+    // is a real (legacy) state, not a transient failure.
+    let scope: Record<string, string[]>;
     try {
       const meta = await this.api.getMetadataRaw(repo);
       scope = (meta?.type?.flavorType?.currentScope ?? {}) as Record<string, string[]>;
-    } catch {
-      scope = {};
+    } catch (error) {
+      throw new Error(
+        `refuse to inventory ${repo}: the project scope could not be read ` +
+          `(${String((error as Error).message ?? error)}) — seeding or recovery with a ` +
+          `defaulted scope would journal a widened scope permanently`,
+      );
     }
 
     for (const ipath of paths) {
@@ -1418,7 +1475,13 @@ export class JournalingStore implements BurritoStore {
     const aheadExplained = (ipath: string): boolean => {
       if (!explained.has(ipath)) return false;
       try {
-        return this.projectionBytes(foldOut, ipath) !== null;
+        // A null projection on a removable class is still explained: the
+        // forward step is REMOVING the stale file (round 6 R1), which
+        // installAndConverge performs.
+        return (
+          this.projectionBytes(foldOut, ipath) !== null ||
+          JournalingStore.isRemovableDerivedClass(ipath)
+        );
       } catch {
         return false; // e.g. a decision file whose resolution record is gone
       }
@@ -1507,12 +1570,33 @@ export class JournalingStore implements BurritoStore {
         lastReconcileTs = events[events.length - 1].ts;
         report.reconciledBooks.push(book);
       }
-      // Converge: the new projection must now equal (or replace) the disk bytes.
+      // Converge: sweep EVERY derived surface against the POST-RECONCILE fold,
+      // not just the paths that diverged before it (official review round 6,
+      // R2): a topology-changing out-of-band edit publishes
+      // text.structure.apply, which can invalidate alignment and decision
+      // projections that were clean before the event — and can retire a
+      // projection entirely (R1: converging that path means removal).
       const after = this.foldNow();
+      const sweep = new Set([
+        ...this.derivedPathsOf(after),
+        ...Object.keys(disk.diskBytes).filter((p) => JournalingStore.isRemovableDerivedClass(p)),
+      ]);
       const paths: string[] = [];
-      for (const entry of diverged) {
-        const bytes = this.projectionBytes(after, entry.ipath);
-        if (bytes !== null && bytes !== disk.diskBytes[entry.ipath]) paths.push(entry.ipath);
+      for (const ipath of sweep) {
+        let bytes: string | null;
+        try {
+          bytes = this.projectionBytes(after, ipath);
+        } catch {
+          continue; // e.g. a decision file whose resolution record is gone — surfaced elsewhere
+        }
+        const onDisk = disk.diskBytes[ipath];
+        if (bytes === null) {
+          if (onDisk !== undefined) paths.push(ipath); // stale file → removal
+          continue;
+        }
+        if (bytes === onDisk) continue;
+        if (onDisk === undefined && EMPTY_CHECKPOINT_DOCUMENTS.has(bytes)) continue;
+        paths.push(ipath);
       }
       // Durable cover for the convergence installs, exactly like a mutation's:
       // gated on the last reconcile action when one published (it is in the

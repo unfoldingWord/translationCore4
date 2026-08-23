@@ -107,6 +107,20 @@ export const journalingRig = () => {
       return ok();
     }
 
+    if (parts[1] === 'burrito' && parts[2] === 'ingredient' && parts[3] === 'delete') {
+      const repo = repoAt(4);
+      const ipath = decodeURIComponent(url.searchParams.get('ipath') ?? '');
+      maybeFail({ method, route, repo, ipath });
+      const project = repos.get(repo);
+      if (!project) return notFound(`no such repo ${repo}`);
+      if (!project.files.has(ipath)) return notFound(`No such file: ${ipath}`);
+      // The real server renames to `<name>.bak`, which /burrito/paths hides —
+      // from the client's view the file is gone (0.18.5 post_delete_ingredient).
+      project.files.delete(ipath);
+      writes.push({ repo, ipath, payload: '<deleted>' });
+      return ok();
+    }
+
     if (parts[1] === 'burrito' && parts[2] === 'paths') {
       const repo = repoAt(3);
       maybeFail({ method, route, repo });
