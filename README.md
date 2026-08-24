@@ -45,8 +45,8 @@ Do the steps that follow:
 2. Type this command: `npm ci`
 3. Type this command: `npm test`
 
-Expect this result on a clean clone: **457 tests passed, 37 tests skipped**
-[VERIFIED — measured 2026-08-23 on a fresh clone of this branch at commit 4c4aee9,
+Expect this result on a clean clone: **459 tests passed, 37 tests skipped**
+[VERIFIED — measured 2026-08-23 on a fresh clone of this branch at commit 101a8e7,
 with no Pankosmia rig running and no sibling `sample-burrito` checkout].
 
 The `.npmrc` file sets `legacy-peer-deps=true`. This setting is necessary.
