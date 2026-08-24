@@ -12,6 +12,7 @@
 // Spanish coverage is genuinely partial (es-419_tn v66 carries 3JN/JON/RUT/TIT),
 // which is the condition D30.1 exists for.
 import { test, expect } from '@playwright/test';
+import { verifyAllJournaledProjects } from './helpers/journal';
 import fs from 'node:fs';
 import path from 'node:path';
 import { deriveTnItems, mergeKey } from '../src/data/derive';
@@ -159,6 +160,17 @@ test.describe('J13 — changing the project’s checking language', () => {
     { tag: ['@inc2', '@J13'] },
     async ({ page }) => {
       writeProjectPins(SEEDED_PROJECT, EN());
+      // The sample's decisions record they were checked against the SPANISH
+      // notes — under exact pin identity (D58) a change TO Spanish would be
+      // genuinely harmless. This test is about LEAVING the checked-against
+      // resource, so restate the record as the English pin the project now
+      // holds (as if the book had been checked under English).
+      const en = EN();
+      const asCheckedUnderEnglish = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')!;
+      asCheckedUnderEnglish.resource = {
+        repoPath: en.tn.repoPath, version: en.tn.version, sha: en.tn.sha, languageSet: 'fallback',
+      } as never;
+      writeDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT', asCheckedUnderEnglish);
       const before = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT');
       expect(before!.decisions.length).toBeGreaterThan(0);
 
@@ -200,6 +212,12 @@ test.describe('J13 — changing the project’s checking language', () => {
       // outcome but leaves the invalidation branch unproven.
       const enOnly = englishOnlyItem('TIT');
       const file = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')!;
+      // As in the consequences test: the change must LEAVE the checked-against
+      // resource, so the record states the English pin (D58 exact identity).
+      const en = EN();
+      file.resource = {
+        repoPath: en.tn.repoPath, version: en.tn.version, sha: en.tn.sha, languageSet: 'fallback',
+      } as never;
       const countBefore = file.decisions.length + 1;
       file.decisions.push({
         ...enOnly,
@@ -236,7 +254,20 @@ test.describe('J13 — changing the project’s checking language', () => {
 
       // NOTHING was deleted, and the English-only decision came back
       // invalidated — that check no longer exists, so it is work to do again.
-      expect(after.decisions.length).toBe(countBefore);
+      // Under the journal (§8.5 R-8.5.11) a RE-ATTACHED decision's old-identity
+      // record is invalidated and RETAINED — never deleted — so the file holds
+      // the original records PLUS the re-attached ones. The sample's two tN
+      // decisions both re-attach (the fixture is built for that), so the count
+      // grows by exactly those two; the pre-journal byte-replace semantics
+      // (count unchanged) are retired with #62.
+      expect(after.decisions.length).toBe(countBefore + 2);
+      // Every original record survived — conservation, not replacement.
+      for (const original of file.decisions) {
+        expect(
+          after.decisions.some((d) => mergeKey((d as never)['contextId']) === mergeKey((original as never)['contextId'])),
+          'an original decision record was deleted by the change',
+        ).toBe(true);
+      }
       const carriedBack = after.decisions.find(
         (d) => mergeKey((d as never)['contextId']) === mergeKey(enOnly.contextId),
       );
@@ -271,4 +302,10 @@ test.describe('J13 — changing the project’s checking language', () => {
       await expect(page.getByTestId('check-note')).toContainText(/[áéíóúñ¿]/u);
     },
   );
+});
+
+// Issue #62 teardown: after this journey's mutations, every journaled local
+// project must be a verified byte-for-byte materialization of its journal.
+test.afterAll(async () => {
+  await verifyAllJournaledProjects();
 });

@@ -6,6 +6,7 @@
 //   · no alignment markup written at rest (FR-8, I-1)
 //   · no auto-commit — commits happen only at checkpoints (FR-34, W-4)
 import { test, expect } from '@playwright/test';
+import { verifyAllJournaledProjects } from './helpers/journal';
 import {
   SEEDED_PROJECT,
   readIngredient,
@@ -138,4 +139,10 @@ test.describe('J2 — a translator drafts a verse', () => {
         .toBeGreaterThan(before);
     },
   );
+});
+
+// Issue #62 teardown: after this journey's mutations, every journaled local
+// project must be a verified byte-for-byte materialization of its journal.
+test.afterAll(async () => {
+  await verifyAllJournaledProjects();
 });

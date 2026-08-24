@@ -38,6 +38,17 @@ export const localRepoPathFromRepoPath = (repoPath: string): string => {
   return `_local_/_sideloaded_/${owner ? `${owner}--${repo}` : repo}`;
 };
 
+/** The SB flavor string ("<flavorType>/<flavor>") from a burrito's metadata —
+ * the factual value a pin's `flavor` field carries (§5.3). Empty when the
+ * metadata does not state one; a pin needs a non-empty flavor to journal
+ * (§8.5 schema, D57), so record it wherever the metadata is at hand. */
+export const flavorOfMetadata = (meta: unknown): string => {
+  const ft = (meta as { type?: { flavorType?: { name?: string; flavor?: { name?: string } } } })
+    ?.type?.flavorType;
+  if (!ft?.name || !ft?.flavor?.name) return '';
+  return `${ft.name}/${ft.flavor.name}`;
+};
+
 export const readInstalled = async (api: ServerApi, storageId: string): Promise<InstalledMap> => {
   try {
     const settings = await api.getClientSettings(storageId);
@@ -101,6 +112,7 @@ export const discoverOnDisk = async (
         const meta = (await api.getMetadataRaw(localPath)) as unknown as {
           identification?: { primary?: { dcs?: Record<string, { revision?: string }> } };
         };
+        const flavor = flavorOfMetadata(meta);
         const dcs = meta.identification?.primary?.dcs ?? {};
         const [key] = Object.keys(dcs);
         const revision = Object.values(dcs)[0]?.revision;
@@ -116,7 +128,10 @@ export const discoverOnDisk = async (
         const repoName = sep > 0 ? seg.slice(sep + 2) : seg;
         const org = ownerFromPath ?? orgFor(repoName);
         const repoPath = org ? `git.door43.org/${org}/${repoName}` : `git.door43.org/${key}`;
-        found[localPath] = { repoPath, version: '', sha: revision, flavor: '' };
+        // Both identity halves are factual — the burrito states its own
+        // flavor and revision (D58: the sha IS the identity). No version:
+        // nothing on disk knows the tag, and the label is optional.
+        found[localPath] = { repoPath, sha: revision, flavor };
       } catch {
         /* unreadable metadata: contributes nothing, the safe direction */
       }
@@ -158,39 +173,54 @@ const installedEntry = (
   installed: InstalledMap,
   pin: ResourcePin,
 ): [string, ResourcePin] | undefined => {
+  // Official review round 7: the entry must be the EXACT pin — (repoPath +
+  // sha), the only identity (D58/D59). A same-repo install at another commit
+  // is NOT this pin: resolving it as a read path would let the app read
+  // different content while downstream records claim the requested sha. The
+  // repoPath comparison stays case-insensitive and path-shape-blind (B10:
+  // legacy `<repo>` and `<owner>--<repo>` keys both resolve).
+  return Object.entries(installed).find(
+    ([, p]) =>
+      samePath(p.repoPath, pin.repoPath) && !!pin.sha && !!p.sha && pin.sha === p.sha,
+  );
+};
+
+/** The same-repo entry regardless of sha — ONLY for `preferInstalledVersion`,
+ * which REPLACES the pin's identity with the local install's (so "which
+ * commit" is exactly what it is deciding). Never resolve a read through this.
+ * Among coexisting installs (B16) an identified (sha-carrying) record wins. */
+const installedRepoEntry = (
+  installed: InstalledMap,
+  pin: ResourcePin,
+): [string, ResourcePin] | undefined => {
   const sameRepo = Object.entries(installed).filter(([, p]) => samePath(p.repoPath, pin.repoPath));
-  if (sameRepo.length <= 1) return sameRepo[0];
-  // B16 — more than one install of this repo can coexist (the mid-migration
-  // shape: an old legacy `<repo>` install AND the exact new `<owner>--<repo>`).
-  // Prefer the one that IS the requested pin — matching sha, else matching
-  // version — so the exact install is never shadowed by a stale first match.
+  // Round 8: among coexisting twins (B16) the EXACT requested sha wins first —
+  // first-identified-wins would repoint a new project to a stale legacy twin
+  // even when the exact install is present. Then any identified install, then
+  // the bare first (which re-points nothing — a sha-less record never adopts).
   return (
     sameRepo.find(([, p]) => !!pin.sha && !!p.sha && pin.sha === p.sha) ??
-    sameRepo.find(([, p]) => !!p.version && p.version === pin.version) ??
+    sameRepo.find(([, p]) => !!p.sha) ??
     sameRepo[0]
   );
 };
 
 /** The ACTUAL on-disk local path a pin resolves to, or null when not installed.
  * READ a resource through this — never recompute the path, which misses a
- * legacy- or differently-cased install (B10). */
+ * legacy- or differently-cased install (B10). Exact identity only: a same-repo
+ * install at a different sha reads as NOT INSTALLED (round 7). */
 export const installedPathFor = (installed: InstalledMap, pin: ResourcePin): string | null =>
   installedEntry(installed, pin)?.[0] ?? null;
 
 /** Is this pin satisfied by what the machine holds?
  *
- * Two ways to be sure, in order of strength:
- *   1. the pin's expected commit SHA equals the installed burrito's own
- *      declared revision — the strongest possible match, and the one that
- *      works for a bundled install with no recorded tag;
- *   2. the recorded release tag equals the pin's version.
- * A different version of the same repo is NOT this pin. */
-export const isPinLocal = (installed: InstalledMap, pin: ResourcePin): boolean => {
-  const local = installedEntry(installed, pin)?.[1];
-  if (!local) return false;
-  if (pin.sha && local.sha) return pin.sha === local.sha;
-  return !!local.version && local.version === pin.version;
-};
+ * One way to be sure (D58/D59): the pin's expected commit SHA equals the
+ * installed burrito's own declared revision. The version label is display
+ * only — tags are unenforced upstream, so a label match proves nothing. An
+ * install record without a sha satisfies no pin: the identifying fetch (which
+ * records the export's declared revision) is the way back in. */
+export const isPinLocal = (installed: InstalledMap, pin: ResourcePin): boolean =>
+  installedEntry(installed, pin) !== undefined;
 
 /** Re-point a pin at the version this machine actually has, when it has one.
  *
@@ -198,12 +228,20 @@ export const isPinLocal = (installed: InstalledMap, pin: ResourcePin): boolean =
  * may hold a newer release of the same repo. Pinning the default blindly would
  * make a brand-new project demand a download for a resource that is already
  * present — technically correct (a pin is a pin) but a poor first run, and it
- * hides the resource the user just fetched. Identity is (repoPath, version),
- * so this REPLACES the version rather than pretending the default matches. */
+ * hides the resource the user just fetched. Identity is (repoPath, sha) — D58 —
+ * so this REPLACES the identity rather than pretending the default matches;
+ * the version label rides along only when the local record knows it (an empty
+ * version must be OMITTED, the §5.3 grammar refuses ''). A local record
+ * WITHOUT a sha re-points nothing (D59): adopting its label while keeping the
+ * default's sha would fabricate a pin whose sha and version describe
+ * different releases. */
 export const preferInstalledVersion = (installed: InstalledMap, pin: ResourcePin): ResourcePin => {
-  const local = installedEntry(installed, pin)?.[1];
-  if (!local) return pin;
-  return { ...pin, version: local.version, ...(local.sha ? { sha: local.sha } : {}) };
+  const local = installedRepoEntry(installed, pin)?.[1];
+  if (!local?.sha) return pin;
+  const next: ResourcePin = { ...pin, sha: local.sha };
+  if (local.version) next.version = local.version;
+  else delete next.version;
+  return next;
 };
 
 /** Apply `preferInstalledVersion` across a whole §5.3 resources file. */
@@ -227,7 +265,12 @@ export const pinsPreferringInstalled = <T extends { languageSets?: Record<string
 
 /** The §5.3 language set for one gateway org, built from what is installed.
  * Returns null when the org's tn / tw / tA are not all present — a set must be
- * coherent, so a partial suite is never written as a pin (§5.3). */
+ * coherent, so a partial suite is never written as a pin (§5.3).
+ *
+ * Every pin must carry its IDENTITY — a sha — and a flavor (D58): the §8.5
+ * journal schema refuses a resource.pin.set entry without them. Both are in
+ * the burrito's own metadata, so a disk-discovered suite qualifies; the
+ * version tag is an optional display label and gates nothing. */
 export const languageSetFromInstalled = (
   installed: InstalledMap,
   gateway: { id: string; org: string },
@@ -240,7 +283,8 @@ export const languageSetFromInstalled = (
 } | null => {
   const org = gateway.org.toLowerCase();
   const ofOrg = Object.values(installed)
-    .filter((p) => p.repoPath.toLowerCase().includes(`/${org}/`));
+    .filter((p) => p.repoPath.toLowerCase().includes(`/${org}/`))
+    .filter((p) => !!p.sha && !!p.flavor);
   const bySuffix = (suffix: string) => ofOrg.find((p) => p.repoPath.endsWith(suffix));
   const tn = bySuffix('_tn');
   const tw = bySuffix('_tw'); // D34: one repo serves both tW slots

@@ -13,16 +13,17 @@
 // decline. They are NOT a banner discovered later when opening a book: that
 // moves the user from deciding to discovering and removes the choice.
 import type { DecisionFile, LanguageSet, ResourcesFile } from './burritoStore';
-import { TOOL_SLOT, pinKey } from './resolve';
-import type { Tool } from './resolve';
+import { pinKey, resolveToolBook } from './resolve';
+import type { Coverage, Tool } from './resolve';
 
 /** One book whose stored decisions were made against a resource the change
  * would move away from. */
 export interface AffectedBook {
   tool: Tool;
   book: string;
-  /** What its decisions were checked against. */
-  checkedAgainst: { repoPath: string; version: string };
+  /** What its decisions were checked against. The version label rides along
+   * for display; identity is the sha (D58). */
+  checkedAgainst: { repoPath: string; version?: string; sha?: string };
   /** How many stored decisions that book holds. */
   decisions: number;
 }
@@ -49,22 +50,21 @@ export interface StoredDecisionFile {
  * What would this gateway-language change cost?
  *
  * A book is affected when it HAS stored decisions AND those decisions were
- * checked against a resource that the new pin set no longer provides for it.
- * A book checked against the English fallback is unaffected by a change of the
- * PRIMARY language, because the fallback rung does not move — which is the
- * common case and is exactly why this must be counted rather than assumed.
+ * checked against a resource that is NOT what the book would RESOLVE to after
+ * the change. Membership in the new pin set is not enough: a book the new
+ * primary COVERS moves its resolution to the primary even though the old
+ * resource stays pinned as the fallback (D30's ladder resolves per (tool,
+ * book) by coverage) — the exact-identity comparison (D58) exposed that hole.
+ * A book the new primary does NOT cover keeps resolving to the unchanged
+ * fallback, which is the common unaffected case.
  */
 export const consequencesOfGatewayChange = (
   stored: StoredDecisionFile[],
   next: { primary: LanguageSet; fallback: LanguageSet },
+  /** Book coverage per pinned repo — the same map the D30 ladder resolves with. */
+  coverage: Coverage,
 ): ChangeConsequences => {
-  const provided = new Set<string>();
-  for (const set of [next.primary, next.fallback]) {
-    for (const slot of Object.values(TOOL_SLOT)) {
-      const pin = set[slot];
-      if (pin) provided.add(pinKey(pin));
-    }
-  }
+  const nextResources = { schemaVersion: 2, languageSets: next } as unknown as ResourcesFile;
 
   const affected: AffectedBook[] = [];
   let unaffectedBooks = 0;
@@ -77,9 +77,9 @@ export const consequencesOfGatewayChange = (
       unaffectedBooks += 1; // no record: nothing states it would move
       continue;
     }
-    const key = pinKey(checkedAgainst as never);
-    if (provided.has(key)) {
-      unaffectedBooks += 1;
+    const after = resolveToolBook(nextResources, entry.tool, entry.book, coverage);
+    if (after.pin && pinKey(after.pin) === pinKey(checkedAgainst as never)) {
+      unaffectedBooks += 1; // the book still resolves to what it was checked against
       continue;
     }
     affected.push({
@@ -87,7 +87,8 @@ export const consequencesOfGatewayChange = (
       book: entry.book,
       checkedAgainst: {
         repoPath: checkedAgainst.repoPath,
-        version: checkedAgainst.version ?? '',
+        ...(checkedAgainst.version ? { version: checkedAgainst.version } : {}),
+        ...((checkedAgainst as { sha?: string }).sha ? { sha: (checkedAgainst as { sha?: string }).sha } : {}),
       },
       decisions: count,
     });
@@ -101,6 +102,21 @@ export const consequencesOfGatewayChange = (
     harmless: affected.length === 0,
   };
 };
+
+/** Affected (tool, book)s the POST-CHANGE ladder resolves to NEITHER rung.
+ * Such a book has stored decisions but nothing to carry them to: writing its
+ * file under the change would leave a §5.2 record matching no rung — a state
+ * the format's own conformance rule forbids (official review round 7). The
+ * change is BLOCKED while any exist; a conforming unresolved state is future
+ * work (FR-25's import-side concept, not yet ratified for pins). */
+export const uncoveredByChange = (
+  affected: ReadonlyArray<Pick<AffectedBook, 'tool' | 'book'>>,
+  nextResources: ResourcesFile,
+  coverage: Coverage,
+): Array<{ tool: Tool; book: string }> =>
+  affected
+    .filter((e) => !resolveToolBook(nextResources, e.tool as Tool, e.book, coverage).pin)
+    .map((e) => ({ tool: e.tool as Tool, book: e.book }));
 
 /** Plain-language summary for the confirmation dialogue. Deliberately concrete
  * — book names and a count, not "some checks may be affected". */

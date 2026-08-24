@@ -40,6 +40,8 @@ interface ValidSegment {
   name: string;
   ts: string;
   maxTs: string;
+  /** The validated action's events — classified once, never re-read (readUnion). */
+  events: JournalEvent[];
 }
 
 /** One correctly named segment whose BYTES are unusable, with the reason
@@ -222,10 +224,28 @@ export class JournalStore {
         return doc;
       }
       const verdict = validateActorDoc(existing, actorId);
-      if (!verdict.ok)
-        throw new Error(
-          `refuse to open journal: existing ${this.actorIpath} is invalid (${verdict.reason}) — R-8.1.13`,
-        );
+      if (!verdict.ok) {
+        // Issue #62 repair rule: repair a TORN own actor.json — and ONLY that.
+        // This ipath is derived from the actor id THIS installation derives for
+        // this project, so a parseable record inside it that names a DIFFERENT
+        // actor is somebody's valid-looking record on our path: never overwrite
+        // it — that is identity evidence, surfaced for a human. A record that is
+        // simply unusable bytes (torn write, wrong shape, malformed createdAt)
+        // is repaired by re-provisioning the deterministic document.
+        if (verdict.reason.startsWith('actor-mismatch:'))
+          throw new Error(
+            `refuse to open journal: existing ${this.actorIpath} is a valid-shaped record ` +
+              `for a different actor (${verdict.reason}) — never overwritten (R-8.1.13, #62)`,
+          );
+        const repaired: ActorDoc = {
+          schemaVersion: 1,
+          actorId,
+          createdAt: new Date(this.now()).toISOString(),
+          device: DEFAULT_DEVICE_LABEL,
+        };
+        await this.writeJournalFile(this.actorIpath, JSON.stringify(repaired, null, 2));
+        return repaired;
+      }
       return verdict.doc;
     });
 
@@ -318,7 +338,12 @@ export class JournalStore {
         invalid.push({ name, reason: `segment-misnamed:${name}` });
         continue;
       }
-      segments.push({ name, ts, maxTs: verdict.events[verdict.events.length - 1].ts });
+      segments.push({
+        name,
+        ts,
+        maxTs: verdict.events[verdict.events.length - 1].ts,
+        events: verdict.events,
+      });
     }
     segments.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     misnamed.sort();
@@ -347,6 +372,62 @@ export class JournalStore {
     const actorId = this.actorId;
     const byActor = groupSegmentPaths(await this.api.listPaths(this.repoPath));
     return this.classifySegments(actorId, byActor.get(actorId) ?? []);
+  }
+
+  /** Read EVERY actor's segments and return the union of accepted events plus a
+   * complete account of everything unusable (R-8.1.7: nothing dropped in
+   * silence). Issue #62's open() folds this union; its recovery classifier
+   * decides what an `invalid` entry means (an own invalid segment may be
+   * republished from the outbox; any left over is a diagnosable stop). */
+  async readUnion(): Promise<{
+    events: JournalEvent[];
+    /** One entry per accepted SEGMENT (= one action), ts-sorted across actors —
+     * the recovery classifier's "journal is ahead by the last action" prefix
+     * check peels these from the tail. */
+    actions: Array<{ actor: string; ts: string; events: JournalEvent[] }>;
+    actors: string[];
+    misnamed: Array<{ actor: string; name: string }>;
+    invalid: Array<{ actor: string; name: string; reason: string }>;
+  }> {
+    const own = this.actorId; // throws before any read when not open
+    const byActor = groupSegmentPaths(await this.api.listPaths(this.repoPath));
+    if (!byActor.has(own)) byActor.set(own, []);
+    const actions: Array<{ actor: string; ts: string; events: JournalEvent[] }> = [];
+    const misnamed: Array<{ actor: string; name: string }> = [];
+    const invalid: Array<{ actor: string; name: string; reason: string }> = [];
+    const actors = [...byActor.keys()].sort();
+    for (const actor of actors) {
+      const listing = await this.classifySegments(actor, byActor.get(actor) ?? []);
+      for (const name of listing.misnamed) misnamed.push({ actor, name });
+      for (const entry of listing.invalid) invalid.push({ actor, ...entry });
+      for (const segment of listing.segments)
+        actions.push({ actor, ts: segment.ts, events: segment.events });
+    }
+    actions.sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
+    return { events: actions.flatMap((a) => a.events), actions, actors, misnamed, invalid };
+  }
+
+  /** Durably stage one action WITHOUT publishing it — the seed path (issue #62):
+   * a multi-part universal seed stages EVERY part before the first publish, so a
+   * crash mid-publication leaves nothing half-intended; replayStaged() finishes
+   * the set with the exact staged bytes. Same seal, same actor binding, same
+   * setIfAbsent duplicate refusal as publish(). Returns the staged ts. */
+  async stage(events: JournalEvent[]): Promise<string> {
+    const actorId = this.actorId;
+    const sealed = await sealAction(events);
+    const foreign = events.find((event) => event.actor !== actorId);
+    if (foreign)
+      throw new Error(
+        `refuse to stage: event actor "${foreign.actor}" is not this store's actor "${actorId}" (R-8.1.12)`,
+      );
+    const stageKey = `${this.outboxPrefix}${events[0].ts}`;
+    const staged = await this.kv.setIfAbsent(stageKey, sealed);
+    if (staged !== sealed)
+      throw new Error(
+        `refuse to stage: the outbox already holds a DIFFERENT action at ts ${events[0].ts} — ` +
+          'publish it or replay it first (R-8.1.8, D50 staging)',
+      );
+    return events[0].ts;
   }
 
   /** Publish one action: seal → stage → write, per the reference semantics over

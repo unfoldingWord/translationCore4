@@ -6,6 +6,7 @@
 // client-side from the pinned ULT structure (PLATFORM-NOTES #19, D14: no \ts).
 // Pins/preflight/absence-handling UI (FR-3..FR-5) is Increment 5 (@inc5).
 import { test, expect } from '@playwright/test';
+import { verifyAllJournaledProjects } from './helpers/journal';
 import { listLocalRepos, rigRepo, ingredientExists, commitCount } from './helpers/rig';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -163,4 +164,10 @@ test.describe('J1 — a translator creates a project', () => {
     { tag: ['@inc5', '@J1'] },
     async () => {},
   );
+});
+
+// Issue #62 teardown: after this journey's mutations, every journaled local
+// project must be a verified byte-for-byte materialization of its journal.
+test.afterAll(async () => {
+  await verifyAllJournaledProjects();
 });

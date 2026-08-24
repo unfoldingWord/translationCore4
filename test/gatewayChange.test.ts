@@ -9,15 +9,26 @@ import {
   consequencesOfGatewayChange,
   describeConsequences,
   applyGatewayChange,
+  uncoveredByChange,
 } from '../src/data/gatewayChange';
 import type { StoredDecisionFile } from '../src/data/gatewayChange';
 import { resolveToolBook } from '../src/data/resolve';
 import type { Coverage } from '../src/data/resolve';
 import type { DecisionFile, LanguageSet, ResourcesFile } from '../src/data/burritoStore';
 
+// Deterministic fake sha per (repo, version): same inputs → same sha, any
+// difference → a different sha, so the D58 sha-identity comparisons preserve
+// exactly the (repo, version) distinctions these tests were written with.
+const sha40 = (s: string): string => {
+  let h = 5381;
+  for (const c of s) h = ((h * 33) ^ c.charCodeAt(0)) >>> 0;
+  return h.toString(16).padStart(8, '0').repeat(5);
+};
+
 const pin = (repo: string, version: string) => ({
   repoPath: `git.door43.org/${repo}`,
   version,
+  sha: sha40(`${repo}@${version}`),
   flavor: '',
 });
 
@@ -38,7 +49,9 @@ const file = (repoPath: string, version: string, decisions: number): DecisionFil
     schemaVersion: 1,
     tool: 'translationNotes',
     book: 'TIT',
-    resource: { repoPath, version },
+    // The resource record's sha derives from the same (repo, version) string
+    // the pins use, so "checked against pin X" still matches pin X under D58.
+    resource: { repoPath, version, sha: sha40(`${repoPath.replace('git.door43.org/', '')}@${version}`) },
     decisions: Array.from({ length: decisions }, () => ({}) as never),
   }) as DecisionFile;
 
@@ -80,12 +93,45 @@ describe('the case that needs NO change — partial coverage is handled per book
   });
 });
 
+describe('official review round 7: an affected book NEITHER rung covers BLOCKS the change', () => {
+  it('uncoveredByChange names it; a covered affected book is not named', () => {
+    // The change moves to French primary + French fallback (a degenerate but
+    // legal shape). French covers TIT only — RUT has stored decisions from
+    // the Spanish era and would resolve to NEITHER rung after the change.
+    const next = {
+      schemaVersion: 2,
+      languageSets: { primary: FR, fallback: FR },
+      resources: {},
+    } as ResourcesFile;
+    const COV: Coverage = { 'git.door43.org/Xenizo/fr_tn': ['TIT'] };
+    const affected = [
+      { tool: 'translationNotes', book: 'TIT' },
+      { tool: 'translationNotes', book: 'RUT' },
+    ] as never;
+    expect(uncoveredByChange(affected, next, COV)).toEqual([
+      { tool: 'translationNotes', book: 'RUT' },
+    ]);
+  });
+});
+
 describe('consequences are counted before the change is committed', () => {
+  // Affectedness is judged against the POST-CHANGE resolution (D30 ladder),
+  // so the counting takes the same coverage map the resolver uses. The French
+  // suite covers TIT + JON; English covers the canon.
+  const COV: Coverage = {
+    'git.door43.org/Xenizo/fr_tn': ['TIT', 'JON'],
+    'git.door43.org/Xenizo/fr_tw': ['TIT', 'JON'],
+    'git.door43.org/unfoldingWord/en_tn': ['TIT', 'JON', 'HEB', 'PSA', 'RUT'],
+    'git.door43.org/unfoldingWord/en_tw': ['BIBLE'],
+  };
+
   it('a change that disturbs nothing is harmless and says so', () => {
-    // Every stored file was checked against a rung the NEW pins still provide.
+    // The stored file was checked against exactly what the book still
+    // resolves to under the new pins.
     const c = consequencesOfGatewayChange(
       [stored('TIT', 'git.door43.org/unfoldingWord/en_tn', 'v89', 12)],
       { primary: EN, fallback: EN },
+      COV,
     );
     expect(c.harmless).toBe(true);
     expect(c.decisionsAtRisk).toBe(0);
@@ -99,27 +145,47 @@ describe('consequences are counted before the change is committed', () => {
         stored('JON', 'git.door43.org/Es-419_gl/es-419_tn', 'v66', 17),
       ],
       { primary: FR, fallback: EN }, // Spanish is gone from both rungs
+      COV,
     );
     expect(c.harmless).toBe(false);
     expect(c.affected.map((a) => a.book).sort()).toEqual(['JON', 'TIT']);
     expect(c.decisionsAtRisk).toBe(47);
   });
 
-  it('a book checked against the ENGLISH FALLBACK is untouched by a primary change', () => {
-    // This is the case that must not raise a false alarm: the fallback rung
-    // does not move when the primary language changes.
+  it('a book the new primary does NOT cover keeps its fallback resolution — untouched', () => {
+    // No false alarm: FR does not cover HEB, so HEB still resolves to the
+    // unchanged English fallback it was checked against.
     const c = consequencesOfGatewayChange(
       [stored('HEB', 'git.door43.org/unfoldingWord/en_tn', 'v89', 25)],
       { primary: FR, fallback: EN },
+      COV,
     );
     expect(c.harmless).toBe(true);
     expect(c.unaffectedBooks).toBe(1);
+  });
+
+  it('a book the new primary COVERS is affected even though its old resource stays pinned as fallback', () => {
+    // The hole the D58 exact-identity comparison exposed (found by journey
+    // J13, 2026-08-22): TIT was checked against the English notes, English
+    // stays pinned as the fallback — but French COVERS TIT, so the ladder
+    // moves TIT's resolution to French and the checked-against resource is
+    // being left. Membership in the pin set is not the question; the
+    // post-change resolution is.
+    const c = consequencesOfGatewayChange(
+      [stored('TIT', 'git.door43.org/unfoldingWord/en_tn', 'v89', 12)],
+      { primary: FR, fallback: EN },
+      COV,
+    );
+    expect(c.harmless).toBe(false);
+    expect(c.affected.map((a) => a.book)).toEqual(['TIT']);
+    expect(c.decisionsAtRisk).toBe(12);
   });
 
   it('a book with no decisions yet costs nothing', () => {
     const c = consequencesOfGatewayChange(
       [stored('TIT', 'git.door43.org/Es-419_gl/es-419_tn', 'v66', 0)],
       { primary: FR, fallback: EN },
+      COV,
     );
     expect(c.harmless).toBe(true);
   });
@@ -128,6 +194,7 @@ describe('consequences are counted before the change is committed', () => {
     const c = consequencesOfGatewayChange(
       [{ tool: 'translationNotes', book: 'TIT', file: { ...file('', '', 5), resource: undefined } }],
       { primary: FR, fallback: EN },
+      COV,
     );
     expect(c.harmless).toBe(true);
     expect(c.unaffectedBooks).toBe(1);
@@ -137,6 +204,10 @@ describe('consequences are counted before the change is committed', () => {
 describe('the wording the user actually reads', () => {
   const names: Record<string, string> = { TIT: 'Titus', JON: 'Jonah', RUT: 'Ruth', PSA: 'Psalms' };
   const bookName = (c: string) => names[c] ?? c;
+  const COVW: Coverage = {
+    'git.door43.org/Xenizo/fr_tn': ['TIT', 'JON', 'RUT', 'PSA'],
+    'git.door43.org/unfoldingWord/en_tn': ['TIT', 'JON', 'RUT', 'PSA', 'HEB'],
+  };
 
   it('names the books and the count in plain language, and promises nothing is deleted', () => {
     const c = consequencesOfGatewayChange(
@@ -145,6 +216,7 @@ describe('the wording the user actually reads', () => {
         stored('JON', 'git.door43.org/Es-419_gl/es-419_tn', 'v66', 17),
       ],
       { primary: FR, fallback: EN },
+      COVW,
     );
     const { headline, detail } = describeConsequences(c, bookName);
     expect(headline).toBe(
@@ -158,7 +230,7 @@ describe('the wording the user actually reads', () => {
     const many = ['TIT', 'JON', 'RUT', 'PSA'].map((b) =>
       stored(b, 'git.door43.org/Es-419_gl/es-419_tn', 'v66', 2),
     );
-    const c = consequencesOfGatewayChange(many, { primary: FR, fallback: EN });
+    const c = consequencesOfGatewayChange(many, { primary: FR, fallback: EN }, COVW);
     expect(describeConsequences(c, bookName).headline).toContain('and 1 more');
   });
 
@@ -166,6 +238,7 @@ describe('the wording the user actually reads', () => {
     const c = consequencesOfGatewayChange(
       [stored('TIT', 'git.door43.org/Es-419_gl/es-419_tn', 'v66', 1)],
       { primary: FR, fallback: EN },
+      COVW,
     );
     expect(describeConsequences(c, bookName).headline).toBe(
       '1 decision in Titus were made against the notes you are leaving.',

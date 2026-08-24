@@ -5,6 +5,7 @@
 // come from the pinned resource's own TSV, and every decision must land in the
 // §5.2 sidecar with its resolution record.
 import { test, expect } from '@playwright/test';
+import { verifyAllJournaledProjects } from './helpers/journal';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -22,6 +23,26 @@ const PINS = () => ({
   tw: pinForSideloaded('en_tw', 'v89'),
   ta: pinForSideloaded('en_ta', 'v89'),
 });
+
+function writeDecisionFile(repo: string, tool: string, book: string, file: unknown): void {
+  const p = path.join(rigRepo(repo), 'ingredients', 'checking', tool, `${book}.json`);
+  fs.writeFileSync(p, `${JSON.stringify(file, null, 2)}\n`);
+}
+
+/** Restate the seeded sample's checked-against record as the pin the project
+ * now holds (the j13 pattern). The sample records es-419; these tests pin the
+ * sideloaded English suite, and under D59 §3 a decision write against a
+ * DRIFTED record REFUSES toward the gateway-change flow — so a journey about
+ * something else first aligns the record with what it pins. */
+function restateRecordAsEnglish(tool: string, book: string): void {
+  const en = PINS();
+  const file = readDecisionFile(SEEDED_PROJECT, tool, book);
+  if (!file) return;
+  (file as { resource?: unknown }).resource = {
+    repoPath: en.tn.repoPath, version: en.tn.version, sha: en.tn.sha, languageSet: 'primary',
+  };
+  writeDecisionFile(SEEDED_PROJECT, tool, book, file);
+}
 
 /** Open the seeded project's Titus and land on the Check view. */
 async function openCheck(page: import('@playwright/test').Page) {
@@ -116,11 +137,12 @@ test.describe('J4 — a checker works a book', () => {
     'a missing local resource at session open shows the guided fix screen, not a crash (FR-5)',
     { tag: ['@inc2', '@J4'] },
     async ({ page }) => {
-      // Pin a version this machine does not have.
+      // Pin a commit this machine does not have (D58: identity is the sha —
+      // a well-formed sha that matches no local install is "not local").
       const pins = PINS();
       writeProjectPins(SEEDED_PROJECT, {
         ...pins,
-        tn: { ...pins.tn, version: 'v1', sha: undefined },
+        tn: { ...pins.tn, version: 'v1', sha: '1'.repeat(40) },
       });
 
       await openCheck(page);
@@ -141,6 +163,25 @@ test.describe('J4 — a checker works a book', () => {
     { tag: ['@inc2', '@J4'] },
     async ({ page }) => {
       writeProjectPins(SEEDED_PROJECT, PINS());
+
+      // Phase 1 — the DRIFTED record (D59 §3). The sample records es-419_tn;
+      // the project now pins English. A decision write must neither relabel
+      // the file nor silently journal under the old record: it REFUSES, the
+      // session says so, and the file is byte-untouched.
+      await openCheck(page);
+      await page.getByTestId('open-translationNotes').click();
+      await expect(page.getByTestId('check-progress')).toBeVisible();
+      await expect(page.getByTestId('resolution-warning')).toBeVisible(); // D17 warned update
+      const drifted = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')?.decisions.length ?? 0;
+      await page.getByTestId('mark-valid').click();
+      await expect(page.getByTestId('save-error')).toBeVisible();
+      expect(readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')?.decisions.length).toBe(drifted);
+      expect(readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')?.resource?.repoPath).toContain('es-419_tn');
+
+      // Phase 2 — the ALIGNED record: restate the checked-against record as
+      // the pinned English suite (the explicit act a gateway change performs),
+      // and triage persists as a full §5.2 record.
+      restateRecordAsEnglish('translationNotes', 'TIT');
       await openCheck(page);
       await page.getByTestId('open-translationNotes').click();
       await expect(page.getByTestId('check-progress')).toBeVisible();
@@ -158,11 +199,8 @@ test.describe('J4 — a checker works a book', () => {
         )
         .toBe(before + 1);
       const file = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT');
-      // The §5.2 resolution record must NOT be relabelled by a decision write.
-      // The seeded sample was checked against es-419_tn; changing which
-      // resource a book is checked against is an explicit, consequences-shown
-      // action (D23a/D30.2), never a side effect of marking one check.
-      expect(file?.resource?.repoPath).toContain('es-419_tn');
+      // The record stays the one the session checked against (no relabel).
+      expect(file?.resource?.repoPath).toContain('en_tn');
       const d = file!.decisions.find((x) => (x as { nothingToSelect?: boolean }).nothingToSelect) as Record<string, unknown>;
       const contextId = d.contextId as Record<string, unknown>;
       expect(d.nothingToSelect).toBe(true);
@@ -185,6 +223,9 @@ test.describe('J4 — a checker works a book', () => {
     { tag: ['@inc2', '@J4'] },
     async ({ page }) => {
       writeProjectPins(SEEDED_PROJECT, PINS());
+      // Align the checked-against record with the English pins (D59 §3 — a
+      // drifted record refuses decision writes; this journey is about FR-18).
+      restateRecordAsEnglish('translationNotes', 'TIT');
       await openCheck(page);
       await page.getByTestId('open-translationNotes').click();
       await expect(page.getByTestId('check-progress')).toBeVisible();
@@ -334,10 +375,14 @@ test.describe('J4 — a checker works a book', () => {
       // suite that is NOT installed in the rig, so it has no local coverage and
       // the resolver falls to the fallback. That is exactly the warned case.
       const en = PINS();
-      const frPin = (name: string) => ({
+      // A real flavor and a sha are required: the fold refuses a pin entry
+      // without them (D56 seedability, D58 sha identity). The French suite is
+      // deliberately NOT installed, so any well-formed sha serves.
+      const frPin = (name: string, n: number) => ({
         repoPath: `git.door43.org/fr_gl/${name}`,
         version: 'v10',
-        flavor: '',
+        sha: String(n).repeat(40).slice(0, 40),
+        flavor: name.endsWith('_ta') ? 'peripheral/x-peripheralArticles' : name.endsWith('_tn') ? 'parascriptural/x-bcvnotes' : 'parascriptural/x-bcvarticles',
       });
       const setFor = (gw: { languageId: string; owner: string }, tn: unknown, tw: unknown, ta: unknown) => ({
         gatewayLanguage: gw,
@@ -351,14 +396,13 @@ test.describe('J4 — a checker works a book', () => {
         languageSets: {
           primary: setFor(
             { languageId: 'fr', owner: 'unfoldingWord' },
-            frPin('fr_tn'),
-            frPin('fr_tw'),
-            frPin('fr_ta'),
+            frPin('fr_tn', 1),
+            frPin('fr_tw', 2),
+            frPin('fr_ta', 3),
           ),
           fallback: setFor({ languageId: 'en', owner: 'unfoldingWord' }, en.tn, en.tw, en.ta),
         },
-        resources: { originalLanguage: {}, lexicon: {} },
-        extraScripture: [],
+        // Projection form only: empty groups are omitted (D56 seedability).
       };
       const dir = path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking');
       fs.mkdirSync(dir, { recursive: true });
@@ -395,4 +439,10 @@ test.describe('J4 — a checker works a book', () => {
       await expect(page.getByTestId('article-panel')).toContainText('payload/');
     },
   );
+});
+
+// Issue #62 teardown: after this journey's mutations, every journaled local
+// project must be a verified byte-for-byte materialization of its journal.
+test.afterAll(async () => {
+  await verifyAllJournaledProjects();
 });

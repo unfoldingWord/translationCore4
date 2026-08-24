@@ -47,7 +47,8 @@ export type Coverage = { [pinKey: string]: string[] };
 export const samePath = (a: string | undefined, b: string | undefined): boolean =>
   !!a && !!b && (a === b || a.toLowerCase() === b.toLowerCase());
 
-export const pinKey = (pin: ResourcePin): string => `${pin.repoPath}@${pin.version}`;
+// D58: identity is (repoPath + sha); the version tag is a display label.
+export const pinKey = (pin: ResourcePin): string => `${pin.repoPath}@${pin.sha}`;
 
 /** Books a coverage map holds for a pin. The map is keyed by the repo path as
  * DCS reports it, so the direct hit is the normal path; the scan is the same
@@ -95,18 +96,31 @@ export const resolveToolBook = (
 };
 
 /** The §5.2 `resource` record for a resolved (tool, book) — what the decision
- * file stores so a later reader knows which resource produced its checks. */
-export const resolutionRecord = (r: Resolution): { repoPath: string; version: string; languageSet: Rung } | null =>
-  r.pin && r.rung ? { repoPath: r.pin.repoPath, version: r.pin.version, languageSet: r.rung } : null;
+ * file stores so a later reader knows which resource produced its checks.
+ * Identity is (repoPath + sha), D58; the version label rides along when the
+ * pin carries one, for the user's reference only. */
+export const resolutionRecord = (
+  r: Resolution,
+): { repoPath: string; version?: string; sha: string; languageSet: Rung } | null =>
+  r.pin && r.rung
+    ? {
+        repoPath: r.pin.repoPath,
+        ...(r.pin.version ? { version: r.pin.version } : {}),
+        sha: r.pin.sha,
+        languageSet: r.rung,
+      }
+    : null;
 
 /** True when a stored §5.2 resource record still matches the current
  * resolution. A false here is the "warned update" trigger (D17): the book's
- * checks would now derive from a different resource. */
+ * checks would now derive from a different resource. Identity is
+ * (repoPath + sha), D58 — a record without a sha (tC3-era) never matches,
+ * which resolves to the warned update, the safe direction. */
 export const recordMatchesResolution = (
-  stored: { repoPath?: string; version?: string } | null | undefined,
+  stored: { repoPath?: string; version?: string; sha?: string } | null | undefined,
   r: Resolution,
 ): boolean =>
-  !!stored && !!r.pin && samePath(stored.repoPath, r.pin.repoPath) && stored.version === r.pin.version;
+  !!stored && !!r.pin && samePath(stored.repoPath, r.pin.repoPath) && stored.sha === r.pin.sha;
 
 // ---------- preflight (C2.2, FR-5) ----------
 

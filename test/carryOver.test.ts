@@ -125,6 +125,27 @@ describe('D17 cross-language re-attach still applies before anything is invalida
   });
 });
 
+// Round 7 superseded the round-6 plan-entry behavior: an uncovered book now
+// BLOCKS the gateway change (uncoveredByChange + the dialogue's gateway-blocked
+// state). This property stays as documentation of the pure D36 semantics.
+describe('carry-over against an EMPTY derived list (pure D36 property)', () => {
+  const ES = tsv([
+    ['1:1', 'a1', 'figs-metaphor', 'δοῦλος', '1', 'nota'],
+    ['1:2', 'a2', 'figs-abstractnouns', 'ἐλπίδι', '1', 'nota'],
+  ]);
+
+  it('an empty derived list invalidates-and-retains EVERYTHING and keeps the old record as provenance', () => {
+    const source = file(deriveTnItems(ES, 'tit').map(decided));
+    const r = carryOverDecisions(source, [], source.resource as never);
+    expect(r.carried).toBe(0);
+    expect(r.undecided).toBe(0);
+    expect(r.invalidated).toBe(2);
+    expect(r.file.decisions).toHaveLength(2); // retained, never deleted (D36)
+    expect(r.file.decisions.every((d) => d.invalidated === true)).toBe(true);
+    expect(r.file.resource).toEqual(source.resource); // provenance unchanged
+  });
+});
+
 describe('what the user is told', () => {
   const ES = tsv([
     ['1:1', 'a1', 'figs-metaphor', 'δοῦλος', '1', 'nota'],

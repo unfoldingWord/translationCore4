@@ -11,9 +11,19 @@ import {
 import type { Coverage } from '../src/data/resolve';
 import type { ResourcePin, ResourcesFile } from '../src/data/burritoStore';
 
+// Deterministic fake sha per (repo, version) — D58: identity is the sha, so
+// the fixtures derive one from the same (repo, version) distinctions the
+// tests were written with.
+const sha40 = (s: string): string => {
+  let h = 5381;
+  for (const c of s) h = ((h * 33) ^ c.charCodeAt(0)) >>> 0;
+  return h.toString(16).padStart(8, '0').repeat(5);
+};
+
 const pin = (repo: string, version: string): ResourcePin => ({
   repoPath: `git.door43.org/${repo}`,
   version,
+  sha: sha40(`${repo.toLowerCase()}@${version}`),
   flavor: 'parascriptural/x-bcvnotes',
 });
 
@@ -71,6 +81,7 @@ describe('D30.1 — the resolution unit is (tool, book)', () => {
     expect(resolutionRecord(r)).toEqual({
       repoPath: 'git.door43.org/Es-419_gl/es-419_tn',
       version: 'v66',
+      sha: sha40('es-419_gl/es-419_tn@v66'),
       languageSet: 'primary',
     });
   });
@@ -159,15 +170,20 @@ describe('D30.4 / D30.5 — missing pinned version: fetch when online, first-cla
 describe('D17 — a resolution change is a warned update, never silent', () => {
   it('a stored §5.2 record that no longer matches the resolution is detectable', () => {
     const now = resolveToolBook(RESOURCES, 'translationNotes', 'TIT', COVERAGE);
+    // D58: the match is (repoPath + sha); the version label is not compared.
     expect(recordMatchesResolution(
-      { repoPath: 'git.door43.org/Es-419_gl/es-419_tn', version: 'v66' }, now,
+      { repoPath: 'git.door43.org/Es-419_gl/es-419_tn', version: 'v66', sha: sha40('es-419_gl/es-419_tn@v66') }, now,
     )).toBe(true);
-    // Same repo, upgraded version → changed; and a language switch → changed.
+    // Same repo at a different commit → changed; and a language switch → changed.
     expect(recordMatchesResolution(
-      { repoPath: 'git.door43.org/Es-419_gl/es-419_tn', version: 'v67' }, now,
+      { repoPath: 'git.door43.org/Es-419_gl/es-419_tn', version: 'v67', sha: sha40('es-419_gl/es-419_tn@v67') }, now,
     )).toBe(false);
     expect(recordMatchesResolution(
-      { repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v86' }, now,
+      { repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v86', sha: sha40('unfoldingword/en_tn@v86') }, now,
+    )).toBe(false);
+    // A tC3-era record with no sha never matches — the warned update, the safe direction.
+    expect(recordMatchesResolution(
+      { repoPath: 'git.door43.org/Es-419_gl/es-419_tn', version: 'v66' }, now,
     )).toBe(false);
     expect(recordMatchesResolution(null, now)).toBe(false);
   });

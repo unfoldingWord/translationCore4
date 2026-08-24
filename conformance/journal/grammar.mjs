@@ -344,7 +344,7 @@ export const pinSlotError = (v) =>
 // and `42` reached the projected `resources.json` verbatim. The entry is a §5.3 document
 // value, so it carries the §5.3 document's own shape — ONE validator, shared by the op
 // and by any projection input.
-export const SHA_RE = /^[0-9a-f]{40}$/;                 // §5.3 OPTIONAL expected commit sha
+export const SHA_RE = /^[0-9a-f]{40}$/;                 // §5.3 REQUIRED commit sha (D58)
 const pinStringField = (e, k, { required }) => {
   if (e[k] === undefined) return required ? `without ${k}` : null;
   if (!isStr(e[k]) || e[k] === '') return `${k} is not a non-empty string`;
@@ -354,10 +354,13 @@ export const pinEntryError = (slot, entry) => {
   if (!isObj(entry)) return 'is not a §5.3 entry object';
   const isGatewayLanguage = isStr(slot) && slot.endsWith('.gatewayLanguage');
   const isExtra = isStr(slot) && slot.startsWith('extraScripture.');
-  // `gatewayLanguage` names a language, not a repo: {languageId, owner}
+  // `gatewayLanguage` names a language, not a repo: {languageId, owner}.
+  // D58: the sha IS the pin's identity (release tags are not enforced
+  // upstream — anyone can name a tag anything); `version` is an OPTIONAL
+  // display label, non-empty when present.
   const fields = isGatewayLanguage
     ? [['languageId', true], ['owner', true]]
-    : [['repoPath', true], ['version', true], ['flavor', true], ...(isExtra ? [['id', true]] : [])];
+    : [['repoPath', true], ['sha', true], ['version', false], ['flavor', true], ...(isExtra ? [['id', true]] : [])];
   for (const [k, required] of fields) { const e = pinStringField(entry, k, { required }); if (e) return e; }
   if (entry.sha !== undefined && !(isStr(entry.sha) && SHA_RE.test(entry.sha)))
     return 'sha is not 40 lowercase hex (§5.3)';

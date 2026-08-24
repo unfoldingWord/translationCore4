@@ -5,6 +5,7 @@
 // Ground truth is the sidecar on disk. Wordmap suggestions (AD-7) are deferred
 // out of this increment (D35a), so nothing here asserts them.
 import { test, expect } from '@playwright/test';
+import { verifyAllJournaledProjects } from './helpers/journal';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -26,9 +27,13 @@ function writePinsWithOriginal() {
   writeProjectPins(SEEDED_PROJECT, PINS());
   const p = path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'resources.json');
   const file = JSON.parse(fs.readFileSync(p, 'utf8'));
-  file.resources.originalLanguage = {
-    nt: pinForSideloaded('el-x-koine_ugnt', 'v0.34'),
-    ot: { repoPath: 'git.door43.org/unfoldingWord/hbo_uhb', version: 'v2.1.30', flavor: '' },
+  // writeProjectPins writes the projection form, which omits an empty
+  // `resources` group (D56) — create it here with real content.
+  file.resources = {
+    originalLanguage: {
+      nt: pinForSideloaded('el-x-koine_ugnt', 'v0.34'),
+      ot: { repoPath: 'git.door43.org/unfoldingWord/hbo_uhb', version: 'v2.1.30', sha: '106a441a788d9465846cd427538ea80b8cec6770', flavor: 'scripture/textTranslation' },
+    },
   };
   fs.writeFileSync(p, `${JSON.stringify(file, null, 2)}\n`);
 }
@@ -200,4 +205,10 @@ test.describe('J5 — a translator aligns a verse', () => {
       await expect(unavailable).toContainText(/original-language/i);
     },
   );
+});
+
+// Issue #62 teardown: after this journey's mutations, every journaled local
+// project must be a verified byte-for-byte materialization of its journal.
+test.afterAll(async () => {
+  await verifyAllJournaledProjects();
 });

@@ -1,6 +1,7 @@
 // J8 — Resume work across sessions/books; multi-book navigation
 // JOURNEYS-AND-GAPS §2 J8 · PRD FR-29, FR-34 · TEST-PLAN E-J8 · Increment 3
 import { test } from '@playwright/test';
+import { verifyAllJournaledProjects } from './helpers/journal';
 
 test.describe('J8 — a translator resumes where they left off', () => {
   test.fixme(
@@ -18,4 +19,10 @@ test.describe('J8 — a translator resumes where they left off', () => {
     { tag: ['@inc3', '@J8'] },
     async () => {},
   );
+});
+
+// Issue #62 teardown: after this journey's mutations, every journaled local
+// project must be a verified byte-for-byte materialization of its journal.
+test.afterAll(async () => {
+  await verifyAllJournaledProjects();
 });

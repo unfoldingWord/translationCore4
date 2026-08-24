@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   coverageFromLocal,
+  installedPathFor,
   isPinLocal,
   languageSetFromInstalled,
   localRepoPathFromRepoPath,
@@ -18,11 +19,26 @@ import { resolveToolBook } from '../src/data/resolve';
 import type { InstalledMap } from '../src/data/installed';
 import type { ResourcePin, ResourcesFile } from '../src/data/burritoStore';
 
+// Recorded installs carry the burrito's real flavor (D57): a pin with an
+// empty flavor cannot journal, so the record paths fill it from metadata.
+// Deterministic fake sha per (repo, version) — D58: identity is the sha, so
+// the fixtures derive one from the same (repo, version) distinctions the
+// tests were written with.
+const sha40 = (s: string): string => {
+  let h = 5381;
+  for (const c of s) h = ((h * 33) ^ c.charCodeAt(0)) >>> 0;
+  return h.toString(16).padStart(8, '0').repeat(5);
+};
+
 const pin = (repo: string, version: string, sha?: string): ResourcePin => ({
   repoPath: `git.door43.org/${repo}`,
   version,
-  flavor: '',
-  ...(sha ? { sha } : {}),
+  flavor: repo.endsWith('_ta')
+    ? 'peripheral/x-peripheralArticles'
+    : repo.endsWith('_tn')
+      ? 'parascriptural/x-bcvnotes'
+      : 'parascriptural/x-bcvarticles',
+  sha: sha ?? sha40(`${repo.toLowerCase()}@${version}`),
 });
 
 // Owner-qualified, lowercased local identity (B9): `<owner>--<repo>`.
@@ -91,7 +107,7 @@ describe('coverage comes from the platform summaries, keyed by pin identity', ()
   });
 });
 
-describe('pin identity is (repoPath, version) — a different version is not this pin', () => {
+describe('pin identity is (repoPath, sha) — a different commit is not this pin (D58)', () => {
   it('recognises the installed version', () => {
     expect(isPinLocal(INSTALLED, pin('unfoldingWord/en_tn', 'v89'))).toBe(true);
   });
@@ -184,6 +200,76 @@ describe('the machine record feeds the resolver end to end', () => {
   });
 });
 
+describe('D59: the sha is the ONLY local-install identity — no version-label rung', () => {
+  it('a matching version label over a DIFFERENT sha is NOT this pin', () => {
+    // The tag is unenforced (D58): same repo, same label, different commit.
+    const wanted = pin('unfoldingWord/en_tn', 'v89', 'a'.repeat(40));
+    expect(isPinLocal(INSTALLED, wanted)).toBe(false);
+  });
+
+  it('a sha-less install record satisfies NO pin — it forces the identifying fetch', () => {
+    const legacy: InstalledMap = {
+      '_local_/_sideloaded_/unfoldingword--en_tn': {
+        ...pin('unfoldingWord/en_tn', 'v89'),
+        sha: undefined,
+      } as never,
+    };
+    expect(isPinLocal(legacy, pin('unfoldingWord/en_tn', 'v89'))).toBe(false);
+  });
+
+  it('among coexisting installs, the version label never selects — only the sha', () => {
+    // Two installs of one repo (the B16 mid-migration shape): the pin's sha
+    // matches the SECOND entry while the label matches the first. The tag
+    // rung would pick the wrong install.
+    const twin: InstalledMap = {
+      '_local_/_sideloaded_/en_tn': pin('unfoldingWord/en_tn', 'v89', 'b'.repeat(40)),
+      '_local_/_sideloaded_/unfoldingword--en_tn': pin('unfoldingWord/en_tn', 'v88'),
+    };
+    const wanted = { ...pin('unfoldingWord/en_tn', 'v89'), sha: sha40('unfoldingword/en_tn@v88') };
+    expect(isPinLocal(twin, wanted)).toBe(true);
+  });
+
+  it('installedPathFor requires the EXACT sha — a same-repo install at another commit is not readable as this pin', () => {
+    // Official review round 7: resolving a READ path by repo alone lets the
+    // app read a different commit while downstream records claim the
+    // requested sha. Not-installed (null) is the correct answer; the fetch
+    // (or the designed empty state) is the way forward.
+    const wanted = pin('unfoldingWord/en_tn', 'v89', 'a'.repeat(40));
+    expect(installedPathFor(INSTALLED, wanted)).toBeNull();
+    // The exact install still resolves, wherever it lives (B10 unchanged).
+    expect(installedPathFor(INSTALLED, pin('unfoldingWord/en_tn', 'v89'))).toBe(
+      '_local_/_sideloaded_/unfoldingword--en_tn',
+    );
+  });
+
+  it('preferInstalledVersion prefers the EXACT sha among coexisting twin installs (round 8)', () => {
+    // B16 coexistence where BOTH entries carry shas: the legacy entry is a
+    // stale commit, the owner-qualified entry IS the requested pin. First-
+    // sha-wins would repoint a new project to the stale legacy commit.
+    const twins: InstalledMap = {
+      '_local_/_sideloaded_/en_tn': pin('unfoldingWord/en_tn', 'v88', 'd'.repeat(40)), // stale twin, sorts first
+      '_local_/_sideloaded_/unfoldingword--en_tn': pin('unfoldingWord/en_tn', 'v89'),
+    };
+    const shipped = pin('unfoldingWord/en_tn', 'v89');
+    const out = preferInstalledVersion(twins, shipped);
+    expect(out.sha).toBe(shipped.sha);
+    expect(out.version).toBe('v89');
+  });
+
+  it('preferInstalledVersion never adopts a label from a sha-less install record', () => {
+    // Adopting the label while keeping the default sha fabricates a pin whose
+    // sha and version describe different releases (D59 deletes the state).
+    const legacy: InstalledMap = {
+      '_local_/_sideloaded_/unfoldingword--en_tn': {
+        ...pin('unfoldingWord/en_tn', 'v89'),
+        sha: undefined,
+      } as never,
+    };
+    const shipped = pin('unfoldingWord/en_tn', 'v86', 'c'.repeat(40));
+    expect(preferInstalledVersion(legacy, shipped)).toEqual(shipped);
+  });
+});
+
 describe('preferInstalledVersion — a fresh project pins what the machine has', () => {
   it('replaces the shipped default version with the installed one', () => {
     const shipped = pin('unfoldingWord/en_tn', 'v86', 'c'.repeat(40));
@@ -241,7 +327,12 @@ const metadataApi = (byPath: Record<string, string>) =>
     getMetadataRaw: async (localPath: string) => {
       const dcsKey = byPath[localPath];
       if (!dcsKey) throw new Error('no metadata');
-      return { identification: { primary: { dcs: { [dcsKey]: { revision: 'abc123' } } } } };
+      // A real export carries a 40-hex revision and its flavorType — both
+      // identity halves discoverOnDisk records (D58).
+      return {
+        identification: { primary: { dcs: { [dcsKey]: { revision: sha40(dcsKey) } } } },
+        type: { flavorType: { name: 'parascriptural', flavor: { name: 'x-bcvnotes' } } },
+      };
     },
   }) as never;
 
@@ -265,8 +356,9 @@ describe('discovering resources that are on disk with no install record', () => 
 
   it('the revision always comes from the burrito itself, never from config', async () => {
     const found = await discoverOnDisk(api, summaries, {}, orgForRepoName);
-    expect(found['_local_/_sideloaded_/es-419_tn'].sha).toBe('abc123');
-    expect(found['_local_/_sideloaded_/es-419_tn'].version).toBe('');
+    expect(found['_local_/_sideloaded_/es-419_tn'].sha).toBe(sha40('Idiomas-Puentes/es-419_tn'));
+    // D58: no version label is invented — the burrito does not know its tag.
+    expect(found['_local_/_sideloaded_/es-419_tn'].version).toBeUndefined();
   });
 
   it('a recorded install still wins — it additionally knows the release tag', async () => {
@@ -310,9 +402,15 @@ describe('the whole point: a Spanish suite on disk resolves to a language set', 
     const stale = await discoverOnDisk(api, summaries, {});
     expect(languageSetFromInstalled(stale, gateway)).toBeNull(); // suite "incomplete"
 
+    // D58: with the org corrected the suite is complete AND pinnable — its
+    // burrito metadata carries the identity (sha) and flavor; no version tag
+    // is needed (the sha IS the identity, the tag a display label).
     const fixed = await discoverOnDisk(api, summaries, {}, orgForRepoName);
     const set = languageSetFromInstalled(fixed, gateway);
+    expect(set).not.toBeNull();
     expect(set?.translationNotes.repoPath).toBe('git.door43.org/es-419_gl/es-419_tn');
+    expect(set?.translationNotes.sha).toMatch(/^[0-9a-f]{40}$/);
+    expect(set?.translationNotes.version).toBeUndefined();
     expect(set?.translationWords.repoPath).toBe('git.door43.org/es-419_gl/es-419_tw');
     expect(set?.translationWordsLinks.repoPath).toBe('git.door43.org/es-419_gl/es-419_tw'); // D34
   });
