@@ -194,7 +194,15 @@ const installedRepoEntry = (
   pin: ResourcePin,
 ): [string, ResourcePin] | undefined => {
   const sameRepo = Object.entries(installed).filter(([, p]) => samePath(p.repoPath, pin.repoPath));
-  return sameRepo.find(([, p]) => !!p.sha) ?? sameRepo[0];
+  // Round 8: among coexisting twins (B16) the EXACT requested sha wins first —
+  // first-identified-wins would repoint a new project to a stale legacy twin
+  // even when the exact install is present. Then any identified install, then
+  // the bare first (which re-points nothing — a sha-less record never adopts).
+  return (
+    sameRepo.find(([, p]) => !!pin.sha && !!p.sha && pin.sha === p.sha) ??
+    sameRepo.find(([, p]) => !!p.sha) ??
+    sameRepo[0]
+  );
 };
 
 /** The ACTUAL on-disk local path a pin resolves to, or null when not installed.

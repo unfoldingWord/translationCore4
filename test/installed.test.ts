@@ -242,6 +242,20 @@ describe('D59: the sha is the ONLY local-install identity — no version-label r
     );
   });
 
+  it('preferInstalledVersion prefers the EXACT sha among coexisting twin installs (round 8)', () => {
+    // B16 coexistence where BOTH entries carry shas: the legacy entry is a
+    // stale commit, the owner-qualified entry IS the requested pin. First-
+    // sha-wins would repoint a new project to the stale legacy commit.
+    const twins: InstalledMap = {
+      '_local_/_sideloaded_/en_tn': pin('unfoldingWord/en_tn', 'v88', 'd'.repeat(40)), // stale twin, sorts first
+      '_local_/_sideloaded_/unfoldingword--en_tn': pin('unfoldingWord/en_tn', 'v89'),
+    };
+    const shipped = pin('unfoldingWord/en_tn', 'v89');
+    const out = preferInstalledVersion(twins, shipped);
+    expect(out.sha).toBe(shipped.sha);
+    expect(out.version).toBe('v89');
+  });
+
   it('preferInstalledVersion never adopts a label from a sha-less install record', () => {
     // Adopting the label while keeping the default sha fabricates a pin whose
     // sha and version describe different releases (D59 deletes the state).
