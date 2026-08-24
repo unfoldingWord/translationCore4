@@ -78,6 +78,19 @@ export default function GatewayChange() {
           </ul>
         )}
 
+        {/* Round 7: a book NEITHER rung covers after the change has stored
+          * decisions and nothing to carry them to — the change is blocked,
+          * with the books named, until the new suite covers them (or a
+          * conforming unresolved state exists). */}
+        {(preview.blocked?.length ?? 0) > 0 && (
+          <p role="alert" data-testid="gateway-blocked"
+            style={{ fontSize: 13, color: '#8A2E22', background: 'rgba(229,157,51,.10)', border: '1px solid rgba(229,157,51,.5)', borderRadius: 10, padding: '10px 12px', lineHeight: 1.55, margin: '0 0 14px' }}>
+            {t('gateway.blocked', {
+              books: preview.blocked.map((b) => `${bookName(b.book)} (${t(`check.tool.${b.tool}`)})`).join(', '),
+            })}
+          </p>
+        )}
+
         {s.gatewayError && (
           <p role="alert" data-testid="gateway-error"
             style={{ fontSize: 13, color: '#8A2E22', background: 'rgba(229,157,51,.10)', border: '1px solid rgba(229,157,51,.5)', borderRadius: 10, padding: '10px 12px', lineHeight: 1.55, margin: '0 0 14px', overflowWrap: 'anywhere' }}>
@@ -93,7 +106,8 @@ export default function GatewayChange() {
           </button>
           <button type="button" onClick={() => actions.confirmGatewayChange(preview)}
             data-testid="gateway-confirm"
-            style={{ border: 0, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 800, fontSize: 13.5, padding: '10px 20px', borderRadius: 999, background: harmless ? '#31ADE3' : '#E59D33', color: '#fff' }}>
+            disabled={(preview.blocked?.length ?? 0) > 0}
+            style={{ border: 0, cursor: (preview.blocked?.length ?? 0) > 0 ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontWeight: 800, fontSize: 13.5, padding: '10px 20px', borderRadius: 999, background: (preview.blocked?.length ?? 0) > 0 ? '#B9C4CC' : harmless ? '#31ADE3' : '#E59D33', color: '#fff' }}>
             {t('gateway.change', { lang: preview.gateway.name })}
           </button>
         </div>

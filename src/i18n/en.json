@@ -226,5 +226,7 @@
   "sources.checkInPrompt": "This suite is installed. Check this project against {lang}?",
   "sources.checkIn": "Use for checking",
   "gateway.failed": "The change was not applied.",
+  "gateway.blocked": "This change cannot be applied: {books} already carry checking decisions, and the new language does not cover them. Install a suite that covers these books first. Nothing was changed.",
+  "gateway.blockedError": "Blocked: {books} would lose their checking resource. Nothing was changed.",
   "sources.alreadyCheckingIn": "This project already checks against {lang}."
 }

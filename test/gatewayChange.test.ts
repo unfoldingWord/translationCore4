@@ -9,6 +9,7 @@ import {
   consequencesOfGatewayChange,
   describeConsequences,
   applyGatewayChange,
+  uncoveredByChange,
 } from '../src/data/gatewayChange';
 import type { StoredDecisionFile } from '../src/data/gatewayChange';
 import { resolveToolBook } from '../src/data/resolve';
@@ -89,6 +90,27 @@ describe('the case that needs NO change — partial coverage is handled per book
     const titus = resolveToolBook(resources, 'translationNotes', 'TIT', COVERAGE);
     expect(titus.rung).toBe('primary');
     expect(titus.usedFallback).toBe(false);
+  });
+});
+
+describe('official review round 7: an affected book NEITHER rung covers BLOCKS the change', () => {
+  it('uncoveredByChange names it; a covered affected book is not named', () => {
+    // The change moves to French primary + French fallback (a degenerate but
+    // legal shape). French covers TIT only — RUT has stored decisions from
+    // the Spanish era and would resolve to NEITHER rung after the change.
+    const next = {
+      schemaVersion: 2,
+      languageSets: { primary: FR, fallback: FR },
+      resources: {},
+    } as ResourcesFile;
+    const COV: Coverage = { 'git.door43.org/Xenizo/fr_tn': ['TIT'] };
+    const affected = [
+      { tool: 'translationNotes', book: 'TIT' },
+      { tool: 'translationNotes', book: 'RUT' },
+    ] as never;
+    expect(uncoveredByChange(affected, next, COV)).toEqual([
+      { tool: 'translationNotes', book: 'RUT' },
+    ]);
   });
 });
 

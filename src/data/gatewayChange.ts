@@ -103,6 +103,21 @@ export const consequencesOfGatewayChange = (
   };
 };
 
+/** Affected (tool, book)s the POST-CHANGE ladder resolves to NEITHER rung.
+ * Such a book has stored decisions but nothing to carry them to: writing its
+ * file under the change would leave a §5.2 record matching no rung — a state
+ * the format's own conformance rule forbids (official review round 7). The
+ * change is BLOCKED while any exist; a conforming unresolved state is future
+ * work (FR-25's import-side concept, not yet ratified for pins). */
+export const uncoveredByChange = (
+  affected: ReadonlyArray<Pick<AffectedBook, 'tool' | 'book'>>,
+  nextResources: ResourcesFile,
+  coverage: Coverage,
+): Array<{ tool: Tool; book: string }> =>
+  affected
+    .filter((e) => !resolveToolBook(nextResources, e.tool as Tool, e.book, coverage).pin)
+    .map((e) => ({ tool: e.tool as Tool, book: e.book }));
+
 /** Plain-language summary for the confirmation dialogue. Deliberately concrete
  * — book names and a count, not "some checks may be affected". */
 export const describeConsequences = (

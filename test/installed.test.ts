@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   coverageFromLocal,
+  installedPathFor,
   isPinLocal,
   languageSetFromInstalled,
   localRepoPathFromRepoPath,
@@ -226,6 +227,19 @@ describe('D59: the sha is the ONLY local-install identity — no version-label r
     };
     const wanted = { ...pin('unfoldingWord/en_tn', 'v89'), sha: sha40('unfoldingword/en_tn@v88') };
     expect(isPinLocal(twin, wanted)).toBe(true);
+  });
+
+  it('installedPathFor requires the EXACT sha — a same-repo install at another commit is not readable as this pin', () => {
+    // Official review round 7: resolving a READ path by repo alone lets the
+    // app read a different commit while downstream records claim the
+    // requested sha. Not-installed (null) is the correct answer; the fetch
+    // (or the designed empty state) is the way forward.
+    const wanted = pin('unfoldingWord/en_tn', 'v89', 'a'.repeat(40));
+    expect(installedPathFor(INSTALLED, wanted)).toBeNull();
+    // The exact install still resolves, wherever it lives (B10 unchanged).
+    expect(installedPathFor(INSTALLED, pin('unfoldingWord/en_tn', 'v89'))).toBe(
+      '_local_/_sideloaded_/unfoldingword--en_tn',
+    );
   });
 
   it('preferInstalledVersion never adopts a label from a sha-less install record', () => {

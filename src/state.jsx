@@ -30,7 +30,7 @@ import {
 import { readTwArticle, readTaArticle } from './data/articles';
 import { revalidateAgainstDraft, resolutionWarning } from './data/revalidate';
 import { bootstrapVerse, linkWord, unlinkWord, stampTargetVerse, alignmentIsStale } from './data/align/edit';
-import { consequencesOfGatewayChange, applyGatewayChange } from './data/gatewayChange';
+import { consequencesOfGatewayChange, applyGatewayChange, uncoveredByChange } from './data/gatewayChange';
 import { carryOverDecisions } from './data/carryOver';
 import { TC_READY_TOPIC } from './data/serverApi';
 import { t } from './i18n';
@@ -584,27 +584,19 @@ export function AppProvider({ children }) {
         // decisions carry over and how many checks come back — instead of a
         // count "at risk". The new suite is installed (languageSetFromInstalled
         // proved it), so every derive below reads local bytes.
+        // An affected book NEITHER rung covers after the change BLOCKS it
+        // (official review round 7): writing its file would leave a §5.2
+        // record matching no rung — a state the conformance rules forbid —
+        // and there is no ratified unresolved state for pins to move it to.
+        // The dialogue names the books; confirm is refused while any exist.
+        const blocked = uncoveredByChange(consequences.affected, next, coverage);
+        const blockedKey = (e) => `${e.tool}/${e.book}`;
+        const blockedSet = new Set(blocked.map(blockedKey));
         const plan = [];
         for (const entry of consequences.affected) {
+          if (blockedSet.has(blockedKey(entry))) continue; // blocked, never planned
           const resolution = resolveToolBook(next, entry.tool, entry.book, coverage);
           const source = stored.find((s) => s.tool === entry.tool && s.book === entry.book);
-          if (!resolution.pin) {
-            // Uncovered by BOTH rungs after the change: no list can derive, so
-            // no decision can re-attach — D36 invalidate-and-retain, never a
-            // silent omission from the plan (official review round 6, R5: the
-            // pins still change, so leaving the file untouched keeps decisions
-            // valid-looking against a resource no longer in either rung). The
-            // file keeps its OLD record as provenance; re-pinning restores.
-            const result = carryOverDecisions(source.file, [], source.file.resource);
-            plan.push({
-              tool: entry.tool,
-              book: entry.book,
-              expectMd5: md5s[`${entry.tool}/${entry.book}`] ?? null,
-              uncovered: true,
-              ...result,
-            });
-            continue;
-          }
           const derived = await a.deriveItemsFor(entry.tool, entry.book, resolution.pin);
           const record = resolutionRecord(resolution);
           const result = carryOverDecisions(source.file, derived, record);
@@ -617,7 +609,7 @@ export function AppProvider({ children }) {
         }
         const carried = plan.reduce((n, p) => n + p.carried, 0);
         const invalidated = plan.reduce((n, p) => n + p.invalidated, 0);
-        return { gateway, primary, consequences, next, plan, carried, invalidated, resourcesMd5 };
+        return { gateway, primary, consequences, next, plan, blocked, carried, invalidated, resourcesMd5 };
       },
 
       /** Derive one book's check list from a given pin. Returns [] when the
@@ -662,6 +654,15 @@ export function AppProvider({ children }) {
         // rejection, leaving an open dialogue that ignored its confirm button
         // (found 2026-08-22, rig journey run).
         dispatch({ type: 'set', patch: { gatewayError: null } });
+        // Defense in depth for the round-7 block: never trust the disabled
+        // button alone — a blocked change is refused here too.
+        if (preview?.blocked?.length) {
+          dispatch({
+            type: 'set',
+            patch: { gatewayError: t('gateway.blockedError', { books: preview.blocked.map((b) => b.book).join(', ') }) },
+          });
+          return;
+        }
         try {
           await a.commitGatewayChange(preview);
         } catch (e) {

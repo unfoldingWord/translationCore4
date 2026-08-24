@@ -173,19 +173,34 @@ const installedEntry = (
   installed: InstalledMap,
   pin: ResourcePin,
 ): [string, ResourcePin] | undefined => {
+  // Official review round 7: the entry must be the EXACT pin — (repoPath +
+  // sha), the only identity (D58/D59). A same-repo install at another commit
+  // is NOT this pin: resolving it as a read path would let the app read
+  // different content while downstream records claim the requested sha. The
+  // repoPath comparison stays case-insensitive and path-shape-blind (B10:
+  // legacy `<repo>` and `<owner>--<repo>` keys both resolve).
+  return Object.entries(installed).find(
+    ([, p]) =>
+      samePath(p.repoPath, pin.repoPath) && !!pin.sha && !!p.sha && pin.sha === p.sha,
+  );
+};
+
+/** The same-repo entry regardless of sha — ONLY for `preferInstalledVersion`,
+ * which REPLACES the pin's identity with the local install's (so "which
+ * commit" is exactly what it is deciding). Never resolve a read through this.
+ * Among coexisting installs (B16) an identified (sha-carrying) record wins. */
+const installedRepoEntry = (
+  installed: InstalledMap,
+  pin: ResourcePin,
+): [string, ResourcePin] | undefined => {
   const sameRepo = Object.entries(installed).filter(([, p]) => samePath(p.repoPath, pin.repoPath));
-  if (sameRepo.length <= 1) return sameRepo[0];
-  // B16 — more than one install of this repo can coexist (the mid-migration
-  // shape: an old legacy `<repo>` install AND the exact new `<owner>--<repo>`).
-  // Prefer the one that IS the requested pin — by sha, the only identity
-  // (D58/D59; the version label selects nothing) — so the exact install is
-  // never shadowed by a stale first match.
-  return sameRepo.find(([, p]) => !!pin.sha && !!p.sha && pin.sha === p.sha) ?? sameRepo[0];
+  return sameRepo.find(([, p]) => !!p.sha) ?? sameRepo[0];
 };
 
 /** The ACTUAL on-disk local path a pin resolves to, or null when not installed.
  * READ a resource through this — never recompute the path, which misses a
- * legacy- or differently-cased install (B10). */
+ * legacy- or differently-cased install (B10). Exact identity only: a same-repo
+ * install at a different sha reads as NOT INSTALLED (round 7). */
 export const installedPathFor = (installed: InstalledMap, pin: ResourcePin): string | null =>
   installedEntry(installed, pin)?.[0] ?? null;
 
@@ -196,11 +211,8 @@ export const installedPathFor = (installed: InstalledMap, pin: ResourcePin): str
  * only — tags are unenforced upstream, so a label match proves nothing. An
  * install record without a sha satisfies no pin: the identifying fetch (which
  * records the export's declared revision) is the way back in. */
-export const isPinLocal = (installed: InstalledMap, pin: ResourcePin): boolean => {
-  const local = installedEntry(installed, pin)?.[1];
-  if (!local) return false;
-  return !!pin.sha && !!local.sha && pin.sha === local.sha;
-};
+export const isPinLocal = (installed: InstalledMap, pin: ResourcePin): boolean =>
+  installedEntry(installed, pin) !== undefined;
 
 /** Re-point a pin at the version this machine actually has, when it has one.
  *
@@ -216,7 +228,7 @@ export const isPinLocal = (installed: InstalledMap, pin: ResourcePin): boolean =
  * default's sha would fabricate a pin whose sha and version describe
  * different releases. */
 export const preferInstalledVersion = (installed: InstalledMap, pin: ResourcePin): ResourcePin => {
-  const local = installedEntry(installed, pin)?.[1];
+  const local = installedRepoEntry(installed, pin)?.[1];
   if (!local?.sha) return pin;
   const next: ResourcePin = { ...pin, sha: local.sha };
   if (local.version) next.version = local.version;
