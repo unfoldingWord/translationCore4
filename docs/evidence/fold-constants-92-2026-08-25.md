@@ -1,9 +1,16 @@
 # Fold constants cut — the issue #92 record
 
-**Date:** 2026-08-25. **Commit:** 6a149f2 (clean tree — the benchmark stamps and
-refuses a dirty tree). **Machine:** Apple M2 Pro (10 cores), 16 GB RAM, macOS 26.5.1,
-Node v22.14.0. **Baseline:** the issue #80 record
-(`docs/evidence/bench-fold-2026-08-25.md`, measured at 9aa17f2 on the same machine).
+**Date:** 2026-08-25. **Commits:** 6a149f2 (the three fixes) + d4780a2 (the
+integer-key-order correction from the PR #97 review, plus its regression checks).
+All stamps are clean-tree. **Machine:** Apple M2 Pro (10 cores), 16 GB RAM, macOS
+26.5.1, Node v22.14.0. **Baseline:** the issue #80 record
+(`docs/evidence/bench-fold-2026-08-25.md`).
+
+**Measurement protocol note.** Absolute fold times DRIFT with machine state: the
+same main commit measures 9,279 ms cold (the #80 record) and 13,737 ms after hours
+of benchmarking. The headline comparison below is therefore BACK-TO-BACK — both
+commits measured minutes apart under the same conditions, clean stamps. The ratio
+is the stable claim; single absolute numbers are not comparable across sessions.
 
 ## The three changes (`conformance/journal/fold.mjs`)
 
@@ -23,14 +30,31 @@ fast-check no-throw/conservation property), the harness (39) and the normative
 gate (72/72) all pass, and the client suite (635 tests) is green against the
 modified module. `npm run verify` exit 0.
 
-## Results (medians of 3, `node bench-fold.mjs` / `--bible`)
+## Results
 
-| Fold | #80 baseline (9aa17f2) | After #92 (6a149f2) | Change |
+Back-to-back, same conditions, clean stamps (`BENCH_FOLD_ONLY=1 node
+bench-fold.mjs --bible`, medians of 3):
+
+| Fold, checked whole Bible (278,041 events) | median |
+|---|---|
+| main (490446a, before #92) | 13,737 ms |
+| after #92 (d4780a2) | **5,641 ms** |
+| **Change** | **−59%** |
+
+The aligned NT (15,945 events) is stable across sessions: 671 ms on main (#80
+record) → **329 ms** after #92 (−51%; measured 328.7/328.8 ms at both #92
+commits). One coherent full run at 6a149f2 (cooler machine — internals comparable
+within the run):
+
+| Fold | #80 record | 6a149f2 run | Change |
 |---|---|---|---|
-| Aligned NT (15,945 events) | 671 ms | **329 ms** | −51% |
-| Checked whole Bible (278,041 events) | 9,279 ms | **4,239 ms** | −54% |
+| Checked whole Bible | 9,279 ms | 4,239 ms | −54% |
 | Whole Bible, minus align.verse.set only | 6,207 ms | 2,926 ms | −53% |
 | Whole Bible, text-only | 278 ms | 332 ms | noise-level |
+
+**The ordering correction costs nothing.** A/B at identical conditions, fold-only
+whole Bible: d4780a2 (correct integer-key order) 5,150 ms vs 6a149f2 (lexical,
+wrong) 5,120 ms — within run noise.
 
 Attribution at whole-Bible scale, after the fix:
 
@@ -52,9 +76,9 @@ size (259,580,461 bytes).
 ## What this means for the save path
 
 The whole-journal re-fold a save pays (see the #80 record, "When a user pays these
-costs") drops from ~9.3 s to **~4.2 s** at checked-whole-Bible scale, and from
-~0.67 s to **~0.33 s** for an aligned NT — before the #93 per-book scoping and the
-#94 worker offload, which remain the structural fixes.
+costs") drops by **−59% at checked-whole-Bible scale** (same-conditions pair) and
+−51% for an aligned NT (~0.33 s) — before the #93 per-book scoping and the #94
+worker offload, which remain the structural fixes.
 
 ## Full outputs
 
