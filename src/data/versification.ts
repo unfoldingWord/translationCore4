@@ -97,11 +97,16 @@ export const isValidMaxVerses = (mv: unknown): mv is Record<string, string[]> =>
     (chapters) =>
       Array.isArray(chapters) &&
       chapters.length > 0 &&
-      // 1–3 digits, no leading zero: a verse count is 1..999 (the largest real
-      // chapter, PSA 119, has 176). An unbounded digit string is not safe —
+      // A verse count is a digit string parsing to a POSITIVE SAFE integer.
+      // No domain cap beyond that: the scheme set is open (platform-served),
+      // and the spec imposes none. The safe-integer bound is the guard —
       // Number('9'.repeat(400)) is Infinity, `verse > Infinity` is false, and
-      // the NaN/Infinity-silent-pass would journal any verse as existing.
-      chapters.every((last) => typeof last === 'string' && /^[1-9][0-9]{0,2}$/.test(last)),
+      // the silent-pass would journal any verse as existing.
+      chapters.every((last) => {
+        if (typeof last !== 'string' || !/^[0-9]+$/.test(last)) return false;
+        const n = Number(last);
+        return Number.isSafeInteger(n) && n >= 1;
+      }),
   );
 
 /** Coerce every `mappedVerses` value to the fork's array form.

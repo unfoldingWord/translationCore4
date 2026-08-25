@@ -526,13 +526,16 @@ describe('PR91-7 — a scheme doc with non-numeric maxVerses values is not a sch
   it('rejects impossible numeric limits, not just non-digits (2026-08-25 review, finding 2)', () => {
     // Number('9'.repeat(400)) is Infinity and `verse > Infinity` is false, so
     // an unbounded digit string would make ANY verse "exist" — the same
-    // silent-pass, one representation over. Zero, empty arrays and an empty
-    // table carry no usable scheme either.
+    // silent-pass, one representation over. The bound is POSITIVE SAFE
+    // INTEGER, nothing tighter: the scheme set is open and the spec imposes
+    // no domain cap (follow-up review, finding 2).
     expect(isValidMaxVerses({ GEN: ['9'.repeat(400)] })).toBe(false);
     expect(isValidMaxVerses({ GEN: ['0'] })).toBe(false);
-    expect(isValidMaxVerses({ GEN: ['01'] })).toBe(false);
     expect(isValidMaxVerses({ GEN: [] })).toBe(false);
     expect(isValidMaxVerses({})).toBe(false);
     expect(isValidMaxVerses({ PSA: ['176'] })).toBe(true); // the largest real chapter
+    expect(isValidMaxVerses({ GEN: ['1000'] })).toBe(true); // large but representable — allowed
+    expect(isValidMaxVerses({ GEN: ['9007199254740991'] })).toBe(true); // MAX_SAFE_INTEGER
+    expect(isValidMaxVerses({ GEN: ['9007199254740993'] })).toBe(false); // past it
   });
 });

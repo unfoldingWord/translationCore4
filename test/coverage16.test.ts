@@ -227,31 +227,51 @@ describe('backfillCoverage — retires the ambiguity for old pins (owner ruling 
     expect(out.filled).toContain(pinKey(recorded));
   });
 
-  it("never backfills the platform's non-book codes — the seal refuses them", () => {
+  it("records the whole-collection form for a 'BIBLE' marker; 'TRANSLATE' has no form", () => {
     // The platform reports whole-collection resources with non-book book_codes
-    // (tw: ['BIBLE'], ta: ['TRANSLATE'] — see test/installed.test.ts). §5.3
-    // `books` holds uppercase 3-character book codes ONLY, so an unfiltered
-    // copy would make every writeResources carrying the pin seal-refused:
-    // createProject fails, and the open-project backfill fails on every open.
+    // (tw: ['BIBLE'], ta: ['TRANSLATE'] — see test/installed.test.ts). The tw
+    // marker is recorded as EXACTLY ['BIBLE'] (§5.3 whole-collection form) so
+    // the fact travels with the project; ta has no §5.3 form and no consumer,
+    // so it stays untouched — and the seal must accept everything produced.
     const res = resources();
     const local: Coverage = {
       [pinKey(pin(ES_TWL))]: ['BIBLE'],
       [pinKey(pin('git.door43.org/es-419_gl/es-419_ta'))]: ['TRANSLATE'],
     };
     const out = backfillCoverage(res, local);
-    expect(out.changed).toBe(false);
-    expect(out.filled).toEqual([]);
-    expect(out.resources.languageSets.primary.translationWords.books).toBeUndefined();
+    expect(out.changed).toBe(true);
+    expect(out.resources.languageSets.primary.translationWords.books).toEqual(['BIBLE']);
     expect(out.resources.languageSets.primary.translationAcademy.books).toBeUndefined();
+    for (const [slot, entry] of Object.entries(out.resources.languageSets.primary)) {
+      expect(pinEntryError(`languageSets.primary.${slot}`, entry)).toBeNull();
+    }
   });
 
-  it('a whole-collection marker is never subset into a partial record', () => {
-    // 'BIBLE' means "covers everything" (covers() reads it from the local map).
-    // Recording only the 3-char codes seen beside it would write a §5.3 record
-    // that EXCLUDES real books — a false shrink. The pin stays untouched.
+  it('a marker beside book codes records the marker alone — never a mixed list', () => {
+    // The §5.3 form is EXACTLY ['BIBLE']; a mixed list refuses at the seal, and
+    // recording only the book codes would falsely SHRINK the coverage.
     const local: Coverage = { [pinKey(pin(ES_TWL))]: ['BIBLE', 'TIT'] };
     const out = backfillCoverage(resources(), local);
-    expect(out.resources.languageSets.primary.translationWordsLinks.books).toBeUndefined();
+    expect(out.resources.languageSets.primary.translationWordsLinks.books).toEqual(['BIBLE']);
+  });
+
+  it('the whole-collection record travels: another machine fetches the primary, not the fallback', () => {
+    // The 2026-08-25 follow-up review, finding 1: machine A backfills the
+    // marker; machine B has NO local copy of the primary tW. #16's whole point
+    // is that the record answers where the local scan cannot — the resolver
+    // must pick the primary and preflight must FETCH it, never open the
+    // warned English fallback.
+    const machineA = backfillCoverage(resources(), { [pinKey(pin(ES_TWL))]: ['BIBLE'] });
+    const en = machineA.resources.languageSets.fallback.translationWordsLinks;
+    const pre = preflightToolBook(machineA.resources, 'translationWords', 'TIT', {
+      coverage: {}, // machine B: primary not installed, nothing scanned
+      isLocal: (p) => pinKey(p) === pinKey(en), // only the English suite is local
+      online: true,
+    });
+    expect(pre.resolution?.rung).toBe('primary');
+    expect(pre.state).toBe('fetch');
+    expect(pre.needs?.repoPath).toBe(ES_TWL);
+    expect(pre.unavailablePrimary ?? null).toBeNull(); // nothing substituted, nothing to warn
   });
 
   it('every pin the backfill produces passes the §5.3 entry validator (the seal contract)', () => {

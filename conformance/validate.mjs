@@ -408,11 +408,19 @@ let mergedVerseObjects = null;
     ...(resFile.extraScripture ?? []),
   ];
   const BOOK = /^[A-Z0-9]{3}$/;
+  // §5.3 whole-collection form: EXACTLY ["BIBLE"] — covers every book. The
+  // marker mixed into a book list is NOT valid.
+  const isWholeCollection = books =>
+    Array.isArray(books) && books.length === 1 && books[0] === 'BIBLE';
+  const booksValid = books =>
+    Array.isArray(books) &&
+    (isWholeCollection(books) || books.every(b => typeof b === 'string' && BOOK.test(b)));
   const withBooks = allPins.filter(p => 'books' in p);
-  const booksWellFormed = withBooks.every(p =>
-    Array.isArray(p.books) && p.books.every(b => typeof b === 'string' && BOOK.test(b)));
-  check('resources: `books` (per-pin coverage, D41) is optional; when present it is an array of uppercase book codes',
-    booksWellFormed,
+  const booksWellFormed = withBooks.every(p => booksValid(p.books));
+  check('resources: `books` (per-pin coverage, D41) is optional; when present it is an array of uppercase book codes or the whole-collection form ["BIBLE"]',
+    booksWellFormed &&
+    withBooks.some(p => isWholeCollection(p.books)) &&  // the form occurs in the sample
+    !booksValid(['BIBLE', 'TIT']),                      // marker mixed with codes refuses
     `${withBooks.length}/${allPins.length} pins record coverage`);
 
   // The three states the field exists to separate (§5.3). Driven here as pure
@@ -422,7 +430,10 @@ let mergedVerseObjects = null;
   const coverageOf = pin => (Array.isArray(pin.books) && pin.books.length ? pin.books : null);
   const verdict = (primaryPin, book, primaryLocal) => {
     const rec = coverageOf(primaryPin);
-    if (rec) return rec.includes(book) ? (primaryLocal ? 'ready' : 'fetch') : 'fallback-unwarned';
+    if (rec) {
+      const covered = isWholeCollection(rec) || rec.includes(book);
+      return covered ? (primaryLocal ? 'ready' : 'fetch') : 'fallback-unwarned';
+    }
     return primaryLocal ? 'ready' : 'fallback-warned';
   };
   const pinWith = books => ({ repoPath: 'x/y', sha: '0'.repeat(40), ...(books ? { books } : {}) });
@@ -431,8 +442,9 @@ let mergedVerseObjects = null;
     verdict(pinWith(['TIT']), 'MRK', false) === 'fallback-unwarned' && // not covered -> fall back, no warning
     verdict(pinWith(null), 'TIT', false) === 'fallback-warned' &&    // unknown -> warned fallback (migration only)
     verdict(pinWith([]), 'TIT', false) === 'fallback-warned' &&      // empty list is NOT a record
-    verdict(pinWith(['TIT']), 'TIT', true) === 'ready',
-    'covered+absent→fetch; uncovered→unwarned fallback; no record→warned fallback');
+    verdict(pinWith(['TIT']), 'TIT', true) === 'ready' &&
+    verdict(pinWith(['BIBLE']), 'MRK', false) === 'fetch',           // whole-collection covers every book cross-machine
+    'covered+absent→fetch; uncovered→unwarned fallback; no record→warned fallback; ["BIBLE"]→every book');
 
   // §5.2 resolution records (D17; D30 constraint 1): each per-(tool, book) decision file
   // records the resource its check list derived from — tN: the tn pin; tW: the twl pin —

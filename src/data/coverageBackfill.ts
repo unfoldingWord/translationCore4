@@ -25,7 +25,7 @@
 import type { LanguageSet, ResourcePin, ResourcesFile } from './burritoStore';
 import { LADDER } from './burritoStore';
 import { coverageFor, type Coverage } from './resolve';
-import { PIN_BOOK_RE } from '../../conformance/journal/grammar.mjs';
+import { PIN_BOOK_RE, WHOLE_COLLECTION } from '../../conformance/journal/grammar.mjs';
 
 /** The pin slots that carry a repo and can therefore carry coverage. */
 const SET_SLOTS = [
@@ -71,25 +71,31 @@ export const backfillCoverage = (
     // LOCAL read knows. 'none' means the resource is not on this machine —
     // which is the state the warning is for, not something to invent.
     const local = coverageFor(coverage, { ...pin, books: undefined });
-    // The platform reports whole-collection resources (tw articles, ta modules)
-    // with non-book book_codes — 'BIBLE' / 'TRANSLATE'. Two reasons such a pin
-    // must stay untouched, not be filtered into a partial list:
-    //   * §5.3 `books` holds uppercase 3-character book codes ONLY — the seal
-    //     refuses anything else, so copying the marker breaks every write
-    //     carrying the pin;
-    //   * the marker means "covers everything" (`covers()` reads it from the
-    //     LOCAL map), so recording any book subset would falsely SHRINK the
-    //     coverage into a §5.3 record that excludes real books.
-    if (local.books.some((b) => !PIN_BOOK_RE.test(b))) return pin;
-    const localBooks = local.books;
-    if (local.source !== 'local' || localBooks.length === 0) return pin;
-    const recorded = Array.isArray(pin.books)
+    if (local.source !== 'local' || local.books.length === 0) return pin;
+    const recordedList = Array.isArray(pin.books)
       ? pin.books.filter((b): b is string => typeof b === 'string').map((b) => b.toUpperCase())
       : [];
-    const missing = localBooks.filter((b) => !recorded.includes(b));
-    if (recorded.length > 0 && missing.length === 0) return pin; // nothing to add
+    // A whole-collection record already covers everything — nothing to widen,
+    // and mixing book codes into it would break the §5.3 form.
+    if (recordedList.length === 1 && recordedList[0] === WHOLE_COLLECTION) return pin;
+    // A local 'BIBLE' marker means the resource is not book-partitioned and
+    // covers everything (the tw articles). Record the §5.3 whole-collection
+    // form — exactly ['BIBLE'] — so the fact TRAVELS with the project: another
+    // machine without the resource must resolve to this pin (fetch), not to
+    // the warned English fallback. Never onto a pin that already records: a
+    // record is never replaced (§5.3), and the marker never mixes with codes.
+    if (local.books.includes(WHOLE_COLLECTION)) {
+      if (recordedList.length > 0) return pin;
+      filled.push(`${pin.repoPath}@${pin.sha}`);
+      return { ...pin, books: [WHOLE_COLLECTION] };
+    }
+    // Any other non-book code (the ta modules' 'TRANSLATE') has no §5.3 form —
+    // the seal refuses it, and no tool resolves through ta coverage. Untouched.
+    if (local.books.some((b) => !PIN_BOOK_RE.test(b))) return pin;
+    const missing = local.books.filter((b) => !recordedList.includes(b));
+    if (recordedList.length > 0 && missing.length === 0) return pin; // nothing to add
     filled.push(`${pin.repoPath}@${pin.sha}`);
-    return { ...pin, books: recorded.length === 0 ? localBooks : [...recorded, ...missing] };
+    return { ...pin, books: recordedList.length === 0 ? local.books : [...recordedList, ...missing] };
   };
 
   const nextSets: Record<string, LanguageSet> = {};

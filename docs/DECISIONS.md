@@ -1031,3 +1031,20 @@ The ruling:
    added book is a fact about the same commit, so D41's rationale survives intact.
 2. **The backfill pass performs the widening** under the same compare-and-swap as any
    other resources.json write, and stays idempotent.
+
+## D62 (2026-08-25, follow-up review of PR #91) **A resource that is not book-partitioned records the whole-collection form `["BIBLE"]`.** [amends D41; §5.3]
+
+The platform's local summaries report a whole-collection resource (the tw articles)
+with `book_codes: ['BIBLE']`, not a book list. D41's record had no form for that fact,
+so it could not travel: on another machine, a fresh tW install resolved to the warned
+English fallback instead of a fetch of the pinned primary — the exact ambiguity #16
+exists to remove (follow-up review, confirmed finding 1).
+
+The ruling:
+1. **The record is EXACTLY the single-element list `["BIBLE"]`** — the platform's own
+   marker, adopted rather than invented. A reader MUST treat it as covering every
+   book. The marker MUST NOT mix with book codes; a mixed list refuses at the seal.
+2. **Never-shrink applies**; there is nothing to widen. The backfill records the form
+   when the local marker is present and the pin records nothing.
+3. **The tA modules' `TRANSLATE` marker gets no form.** No tool resolves through tA
+   coverage, so a tA pin records nothing.

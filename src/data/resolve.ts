@@ -8,6 +8,7 @@
 //   (4) online + pinned version absent -> fetch it (sb-zip + SHA);
 //   (5) offline + pinned version absent -> that (tool, book) is UNAVAILABLE as a
 //       first-class state, never an error, never a block on other work.
+import { WHOLE_COLLECTION } from '../../conformance/journal/grammar.mjs';
 import { LADDER } from './burritoStore';
 import type { LanguageSet, ResourcePin, ResourcesFile, Rung } from './burritoStore';
 
@@ -99,12 +100,12 @@ export const coverageFor = (
   return local.length > 0 ? { books: local, source: 'local' } : { books: [], source: 'none' };
 };
 
-/** The platform's whole-collection coverage marker. Local summaries report a
- * resource that is not book-partitioned with `book_codes: ['BIBLE']` (the tw
- * articles — see test/installed.test.ts): the resource covers EVERY book. The
- * marker is a coverage-map value only — §5.3 `books` holds 3-character book
- * codes, so a pin record never carries it (backfillCoverage skips it). */
-export const WHOLE_COLLECTION = 'BIBLE';
+/** The §5.3 whole-collection marker — the same value the platform's local
+ * summaries report for a resource that is not book-partitioned (the tw
+ * articles): the resource covers EVERY book. It appears in the local coverage
+ * map verbatim, and as the exact single-element record `['BIBLE']` on a pin
+ * (§5.3 whole-collection form) so the fact travels with the project. */
+export { WHOLE_COLLECTION };
 
 export const covers = (coverage: Coverage, pin: ResourcePin, book: string): boolean => {
   const { books } = coverageFor(coverage, pin);
