@@ -151,41 +151,50 @@ for (const book of NT) {
   books.push({ book, bookAddTs, skeleton, slots, textTs, texts, events });
 }
 
+// Three event sets, used by DIFFERENT controls (PR #96 review, finding 2):
+//   allAligned    — the whole corpus (the measured fold);
+//   allMinusAlign — the corpus WITHOUT align.verse.set only (the C1 control:
+//                   decisions stay in, so the difference attributes to alignment
+//                   projection alone);
+//   allNoAlign    — text + structure only (the C2/C3 base: a small union whose
+//                   head-key count is stated with the result).
 const CONTENT_OPS = new Set(['align.verse.set', 'check.decision.set']);
 const eventsOf = (bs, { aligned }) =>
   bs.flatMap((b) => (aligned ? b.events : b.events.filter((e) => !CONTENT_OPS.has(e.op))));
 const allAligned = eventsOf(books, { aligned: true });
+const allMinusAlign = books.flatMap((b) => b.events.filter((e) => e.op !== 'align.verse.set'));
 const allNoAlign = eventsOf(books, { aligned: false });
 const verseCount = books.reduce((n, b) => n + b.slots.length, 0);
 const decisionCount = allAligned.filter((e) => e.op === 'check.decision.set').length;
 
 // ---------- a text.structure.apply with M mapped keys (cost centre C2) ----------
-// Merge the first M verse pairs of the FIRST book: slot 2i-1 merges into slot 2i.
-// On the no-alignment union every dropped text head is CLAIMED by its destination's
-// transition, so the affected set is empty and the dispositions list is [] — the
-// event isolates the per-mapped-key scan of all heads, which is what C2 measures.
-const buildApply = (b, m) => {
-  const pairs = [];
-  for (let i = 0; i + 1 < b.slots.length && pairs.length < m; i += 2) {
-    pairs.push([b.slots[i], b.slots[i + 1]]);
+// CONSTANT-SHAPE variants (PR #96 review, finding 3): every variant RENAMES the
+// first M slots of the book (verse v → v+500 in its chapter) and carries every
+// other slot as an identity transition. M=0 is the pure identity apply. All
+// variants therefore have the SAME slot count, the SAME transition count and the
+// SAME texts — only the mapped-key set (renamed sources ≠ their destinations)
+// differs, which is exactly the per-mapped-key scan C2 measures. On the
+// text-only union no alignment or decision head exists, so the affected set is
+// empty and dispositions stay [].
+const buildRenameApply = (b, m) => {
+  const renamed = new Map(); // old slot key -> new slot key
+  for (let i = 0; i < m && i < b.slots.length; i++) {
+    const k = b.slots[i];
+    const c = k.slice(0, k.indexOf(':'));
+    const v = k.slice(k.indexOf(':') + 1);
+    renamed.set(k, `${c}:${Number(v) + 500}`);
   }
-  const dropped = new Set(pairs.map(([a]) => a));
-  const destOf = new Map(pairs.map(([a, d]) => [d, a]));
   let skeleton = b.skeleton;
-  for (const a of dropped) skeleton = skeleton.replace(`${SLOT}${a}${SLOT}`, '');
+  for (const [oldK, newK] of renamed) skeleton = skeleton.replace(`${SLOT}${oldK}${SLOT}`, `${SLOT}${newK}${SLOT}`);
   const transitions = {};
   for (const k of b.slots) {
-    if (dropped.has(k)) continue;
-    const src = destOf.get(k);
-    transitions[k] = src
-      ? { text: b.texts.get(src) + b.texts.get(k),
-          sources: [{ key: src, ts: b.textTs.get(src) }, { key: k, ts: b.textTs.get(k) }] }
-      : { text: b.texts.get(k), sources: [{ key: k, ts: b.textTs.get(k) }] };
+    const dest = renamed.get(k) ?? k;
+    transitions[dest] = { text: b.texts.get(k), sources: [{ key: k, ts: b.textTs.get(k) }] };
   }
   return {
     event: { v: 1, op: 'text.structure.apply', actor: ACTOR, ts: clock.issue(), base: b.bookAddTs,
       book: b.book, skeleton, transitions, dispositions: [] },
-    mapped: pairs.length,
+    mapped: renamed.size,
   };
 };
 
@@ -205,7 +214,16 @@ const bench = (fn) => {
 const f1 = (x) => x.toFixed(1);
 
 // ---------- header ----------
-const rev = (() => { try { return execSync('git rev-parse --short HEAD', { cwd: HERE }).toString().trim(); } catch { return 'unknown'; } })();
+// The stamp must identify the CODE that ran, not just the checked-out commit
+// (PR #96 review, finding 4): a dirty tree gets a visible marker, and a record
+// made from a dirty run is not a valid evidence baseline.
+const rev = (() => {
+  try {
+    const head = execSync('git rev-parse --short HEAD', { cwd: HERE }).toString().trim();
+    const dirty = execSync('git status --porcelain', { cwd: HERE }).toString().trim();
+    return dirty ? `${head}-DIRTY (not a valid evidence baseline)` : head;
+  } catch { return 'unknown'; }
+})();
 console.log('bench-fold — issue #80');
 console.log(`date: ${new Date().toISOString()}  commit: ${rev}  node: ${process.version}`);
 console.log(`machine: ${os.cpus()[0].model} (${os.cpus().length} cores), ${Math.round(os.totalmem() / 2 ** 30)} GB, ${os.platform()} ${os.release()}`);
@@ -233,9 +251,10 @@ if (process.env.BENCH_FOLD_ONLY) process.exit(0);
 // ---------- 2. C1 — one usfm-js parse per alignment head at projection ----------
 const allTexts = books.flatMap((b) => [...b.texts.values()]);
 const c1 = bench(() => { for (const t of allTexts) verseTextMd5(t); });
+const minusAlignFold = bench(() => fold(allMinusAlign));
 const noAlignFold = bench(() => fold(allNoAlign));
 console.log(`[C1] verseTextMd5 over the ${allTexts.length} projected alignment texts: ${f1(c1.median)} ms  (${(c1.median / allTexts.length).toFixed(3)} ms/parse)`);
-console.log(`[C1] cross-check — same fold WITHOUT alignments: ${f1(noAlignFold.median)} ms  (alignment projection cost by difference: ${f1(full.median - noAlignFold.median)} ms)`);
+console.log(`[C1] control — same fold minus align.verse.set ONLY (${allMinusAlign.length} events, decisions kept): ${f1(minusAlignFold.median)} ms  (alignment projection cost by difference: ${f1(full.median - minusAlignFold.median)} ms)`);
 // The alignment loop also runs `slotKeysOf(skeleton).includes(vkey)` per head (fold.mjs,
 // §8.6 orphan backstop) — a fresh regex walk of the WHOLE book skeleton for every head.
 // Measured separately so the difference above can be attributed, not guessed at.
@@ -247,10 +266,10 @@ console.log(`[C1] breakdown — slotKeysOf(skeleton).includes(vkey) per alignmen
 // ---------- 3. C2 — heads scan per mapped key in text.structure.apply ----------
 const headKeys = (r) => Object.keys(r.liveHeads).length;
 const baseKeys = headKeys(noAlignFold.out);
-const mLow = 1;
+const mLow = 0; // identity apply — same shape, zero mapped keys
 const mHigh = QUICK ? 20 : 500; // 500: large enough that the scan clears the run-to-run noise floor (~10 ms)
-const applyLow = buildApply(books[0], mLow);
-const applyHigh = buildApply(books[0], mHigh);
+const applyLow = buildRenameApply(books[0], mLow);
+const applyHigh = buildRenameApply(books[0], mHigh);
 const foldWithApply = (apply) => {
   const r = fold([...allNoAlign, apply.event]);
   if (r.pendingStructural.length) throw new Error('C2 apply did not apply — pendingStructural non-empty');
@@ -260,7 +279,7 @@ const c2Low = bench(() => foldWithApply(applyLow));
 const c2High = bench(() => foldWithApply(applyHigh));
 const perKey = (c2High.median - c2Low.median) / (applyHigh.mapped - applyLow.mapped);
 console.log(`[C2] text-only union: ${allNoAlign.length} events, ${baseKeys} head keys; base fold ${f1(noAlignFold.median)} ms`);
-console.log(`[C2] + one apply, ${applyLow.mapped} mapped key(s): ${f1(c2Low.median)} ms; ${applyHigh.mapped} mapped keys: ${f1(c2High.median)} ms`);
+console.log(`[C2] + one constant-shape rename apply, ${applyLow.mapped} mapped keys: ${f1(c2Low.median)} ms; ${applyHigh.mapped} mapped keys: ${f1(c2High.median)} ms`);
 console.log(`[C2] marginal scan cost: ${perKey.toFixed(3)} ms per mapped key over ${baseKeys} head keys (${((perKey / baseKeys) * 1e6).toFixed(1)} ns per mapped-key×head)`);
 
 // ---------- 4. C3 — scan of all heads for each book at projection ----------
@@ -272,17 +291,24 @@ for (const n of cuts) {
   console.log(`[C3]   ${String(n).padStart(2)} books, ${String(evs.length).padStart(5)} events, ${String(headKeys(r.out)).padStart(5)} head keys: ${f1(r.median)} ms`);
 }
 
-// ---------- 5. open() full-scan baseline (#62) ----------
+// ---------- 5. open() full-scan baseline (#62) — REFERENCE READER, a LOWER BOUND ----
 // The client's open() lists and reads EVERY segment of every actor, validates each
 // (validateSegment), and folds the union — O(all segments) per open(). Model: one
-// sealed action segment per event (D50: one save = one segment), on local disk.
+// sealed action segment per event (D50: one save = one segment), on local disk,
+// through the SYNCHRONOUS filesystem reference reader (readUnion).
+// This is NOT the production open path (PR #96 review, finding 1): the client
+// fetches each segment with one sequentially-awaited HTTP request
+// (ServerApi.readIngredient), plus replay/inventory/recovery work in
+// JournalingStore.open — so the production open costs MORE than this baseline by
+// roughly (per-request HTTP round trip × segment count). Record the transport
+// term separately against a live rig.
 const tmpRoot = fs.mkdtempSync(path.join(process.env.BENCH_TMPDIR || os.tmpdir(), 'bench-fold-'));
 const journalDir = path.join(tmpRoot, 'journal');
 const actorDir = actorDirFor(journalDir, ACTOR);
 const checkpoints = (QUICK ? [200, 500] : BIBLE ? [8000, 32000, 128000] : [1000, 2000, 4000, 8000])
   .filter((n) => n < allAligned.length)
   .concat(allAligned.length);
-console.log(`[open] full-scan baseline: one segment per event, ${REPS} repetition(s) per size (read+validate, then +fold):`);
+console.log(`[open] full-scan baseline — REFERENCE READER (fs), a LOWER BOUND on the production HTTP open path; one segment per event, ${REPS} repetition(s) per size (read+validate, then +fold):`);
 try {
   let written = 0;
   const byTs = [...allAligned].sort((a, b) => (a.ts < b.ts ? -1 : 1));
