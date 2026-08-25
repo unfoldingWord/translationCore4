@@ -42,7 +42,7 @@ benchmark makes sure of this before it measures. The fold under test is
 | Full fold, checked whole Bible (278,041 events) | **9,279 ms** |
 | Reference-reader scan + fold, NT (15,945 segments) | 1,652 ms (scan alone: 938 ms) |
 | Reference-reader scan + fold, whole Bible (278,041 segments) | **41,258 ms** (scan alone: 33,171 ms) |
-| Measured HTTP transport, production open path | 0.319 ms/segment → **+5.1 s NT, +88.7 s whole Bible** |
+| Measured HTTP transport, production open path (2 full scans per open) | 0.319 ms/read × 2 → **+10.2 s NT, +177 s whole Bible** |
 | Journal content on disk | NT 33.3 MiB (avg 2,189 B/segment); whole Bible **247.6 MiB** (avg 934 B/segment) |
 | Application build size (`dist/`, vite production) | **2,233,128 bytes (2.13 MiB)** raw; JS gzip ≈ 580 kB |
 | Application start-up, cold, rig-served production build | **334 ms** median to interactive |
@@ -91,14 +91,20 @@ The per-segment scan cost grows with the count (0.059 → 0.119 ms) — all segm
 one actor live in one directory, and a 278k-file directory adds filesystem overhead.
 
 **This is NOT the production open path.** The client fetches each segment with one
-sequentially-awaited HTTP request (`ServerApi.readIngredient`), plus the
-replay/inventory/recovery work of `JournalingStore.open`. The transport term was
-measured against the live rig (500 sequential ingredient reads, warm):
-**0.319 ms per read**. Scaled: **+5.1 s** for the NT journal, **+88.7 s** for the
-whole Bible [extrapolated from the measured per-read cost]. A realistic production
-open at checked-whole-Bible scale is therefore on the order of **two minutes**, not
-the 41 s reference figure. A later open() shortcut must beat the whole path and
-prove semantic equivalence under out-of-order action timestamps (#62).
+sequentially-awaited HTTP request (`ServerApi.readIngredient`), and it does so
+TWICE per open (PR #96 review, second pass): `JournalStore.open()` ratchets the
+clock by reading and validating every actor's segments
+(`journalStore.ts:255,284`), and `recoverAndConverge` then calls `readUnion()`,
+which fetches every segment AGAIN (`journalingStore.ts:918`). The transport term
+was measured against the live rig (500 sequential ingredient reads, warm):
+**0.319 ms per read**. Scaled at 2 scans per open: **+10.2 s** for the NT journal,
+**+177 s** for the whole Bible [extrapolated from the measured per-read cost]. A
+realistic production open at checked-whole-Bible scale is therefore on the order
+of **three to four minutes** (≈177 s transport + validation twice + the 9.3 s fold
++ recovery work), not the 41 s reference figure. The double scan itself is an
+optimization target: the ratchet needs only each segment's max ts, which the union
+read already computes. A later open() shortcut must beat the whole path and prove
+semantic equivalence under out-of-order action timestamps (#62).
 
 ## The checked whole Bible (`--bible`)
 
@@ -154,7 +160,8 @@ path is wired into the UI since #62 (merged in #88):
   files directly (`journalingStore.ts:329-349`).
 
 At whole-Bible scale that is a ~9.3 s UI-thread freeze for each save, and a project
-open on the order of two minutes over the production HTTP path.
+open on the order of three to four minutes over the production HTTP path
+(which scans every segment twice — see the open() section).
 
 **How the journal compresses** [VERIFIED — 8,058 sealed sample segments in corpus
 proportions, avg 930 B (the real corpus: 934 B), gzip level 6]: 2.33x per file (a
@@ -263,10 +270,11 @@ corpus: 66 books, 31104 verses, 215767 check decisions, 278041 events total, 311
 ## Conclusions
 
 1. The aligned-NT fold is **under 0.7 s** and its reference-reader open is under
-   2 s (+5.1 s HTTP transport in production). Usable at NT scale.
+   2 s (+10.2 s HTTP transport in production, which scans twice). Usable at NT scale.
 2. The CHECKED WHOLE BIBLE is a different story: fold **9.3 s** per save, and a
-   production open on the order of **two minutes** (reference scan+fold 41 s, plus
-   a measured 0.319 ms/segment sequential HTTP transport ≈ 89 s). This is the
+   production open on the order of **three to four minutes** (reference scan+fold
+   41 s, plus a measured 0.319 ms/read sequential HTTP transport over TWO full
+   scans ≈ 177 s). The double scan (ratchet, then union) is itself a target. This is the
    baseline the #62 open() shortcut and the save-path work must beat.
 3. The usfm-js parse count (the presumed dominant cost in issue #80) is NOT the
    cost: 31k parses ≈ 112 ms. The measured fold hotspots, in order: the decision
