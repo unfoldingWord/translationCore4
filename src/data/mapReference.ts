@@ -234,6 +234,13 @@ const candidatesOf = (landings: Landing[]): MappedReference[] =>
   );
 
 /** Parse a §5.2 verse field. A span keeps its exact string form. */
+/** The widest span reference the mapper will enumerate. Exported for the
+ * regression test. Generous — the largest real chapter (PSA 119) has 176
+ * verses, so no genuine span comes near it — but FINITE, which is the point:
+ * the span loop's work must be bounded by the reference, not by the scheme's
+ * uncapped maxVerses values. */
+export const MAX_SPAN_VERSES = 1000;
+
 const parseVerse = (
   verse: number | string,
 ): { kind: 'single'; v: number } | { kind: 'span'; a: number; b: number } | null => {
@@ -291,7 +298,18 @@ export const mapReference = async (request: MapRequest): Promise<MapOutcome> => 
     !parsed ||
     (parsed.kind === 'single'
       ? !validPositive(parsed.v)
-      : !validPositive(parsed.a) || !validPositive(parsed.b) || parsed.a > parsed.b);
+      : !validPositive(parsed.a) ||
+        !validPositive(parsed.b) ||
+        parsed.a > parsed.b ||
+        // Span-WORK bound (2026-08-25 follow-up review): the span loop below
+        // awaits one hop per source verse, and scheme maxVerses values are
+        // deliberately uncapped (any positive safe integer), so the reference
+        // itself must bound the work — a served scheme plus a row like
+        // `1:1-1000000000` would otherwise pass every guard and enumerate
+        // forever. No real chapter exceeds 176 verses (PSA 119), so this is a
+        // property of the REFERENCE: wider than any chapter can be = a fault
+        // in the resource row, refused before any iteration.
+        parsed.b - parsed.a + 1 > MAX_SPAN_VERSES);
   if (!validPositive(chapter) || malformedVerse) {
     return { ok: false, reason: 'malformed-reference' };
   }

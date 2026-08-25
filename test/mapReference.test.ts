@@ -7,6 +7,7 @@
 // a guess would be permanent.
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  MAX_SPAN_VERSES,
   forgetCompiledSchemes,
   forgetToolkit,
   mapReference,
@@ -416,5 +417,67 @@ describe('the string/array trap, end to end', () => {
       schemes,
     });
     expect(out).toMatchObject({ ok: true, reference: { chapter: 2, verse: 1 } });
+  });
+});
+
+describe('span-work bound (2026-08-25 follow-up review)', () => {
+  // Scheme maxVerses values are deliberately uncapped — any positive safe
+  // integer (the scheme set is open; the spec imposes no domain limit). So the
+  // span loop's work must be bounded by the REFERENCE: a hostile-but-valid
+  // scheme (huge verse count) plus a row like `1:1-1000000000` passes the
+  // endpoint checks and would otherwise await one hop per source verse,
+  // effectively forever. The bound refuses at parse time, before any mapping
+  // work — the 1s test timeout is the proof no enumeration happens.
+  const hostile = {
+    ...schemes,
+    big: { maxVerses: { GEN: [String(Number.MAX_SAFE_INTEGER)] } } as SchemeDoc,
+  };
+
+  it('a giant span refuses as malformed without iterating', { timeout: 1000 }, async () => {
+    const out = await mapReference({
+      from: 'big',
+      to: 'eng',
+      book: 'GEN',
+      chapter: 1,
+      verse: '1-1000000000',
+      schemes: hostile,
+    });
+    expect(out).toEqual({ ok: false, reason: 'malformed-reference' });
+  });
+
+  it('one past the bound refuses; the bound itself is processed', { timeout: 5000 }, async () => {
+    const over = await mapReference({
+      from: 'big',
+      to: 'eng',
+      book: 'GEN',
+      chapter: 1,
+      verse: `1-${MAX_SPAN_VERSES + 1}`,
+      schemes: hostile,
+    });
+    expect(over).toEqual({ ok: false, reason: 'malformed-reference' });
+    // Width exactly MAX_SPAN_VERSES parses and maps; it then refuses on the
+    // TARGET scheme's real limits (eng GEN 1 ends at 31) — a mapping verdict,
+    // not a parse one, proving the bound only gates the enumeration.
+    const at = await mapReference({
+      from: 'big',
+      to: 'eng',
+      book: 'GEN',
+      chapter: 1,
+      verse: `1-${MAX_SPAN_VERSES}`,
+      schemes: hostile,
+    });
+    expect(at).toMatchObject({ ok: false, reason: 'past-chapter-end' });
+  });
+
+  it('real spans stay untouched by the bound', async () => {
+    const out = await mapReference({
+      from: 'rsc',
+      to: 'eng',
+      book: 'JON',
+      chapter: 2,
+      verse: '2-3',
+      schemes,
+    });
+    expect(out.ok).toBe(true);
   });
 });
