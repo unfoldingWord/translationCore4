@@ -57,9 +57,19 @@ let toolkitPromise: Promise<VersificationToolkit> | null = null;
 /** Load the mapping engine, once per session. Only ever reached for a genuine
  * cross-frame conversion — see the file header. */
 const toolkit = async (): Promise<VersificationToolkit> => {
-  toolkitPromise ??= import('proskomma-core').then(
-    (m) => (m as unknown as { utils: { versification: VersificationToolkit } }).utils.versification,
-  );
+  // A rejected import must NOT stay cached: the chunk fetch can fail
+  // transiently (network blip, server restart mid-session), and a cached
+  // rejection would break every later mapping until page reload. Clear the
+  // cache on failure and rethrow, so the next call retries the import.
+  toolkitPromise ??= import('proskomma-core')
+    .then(
+      (m) =>
+        (m as unknown as { utils: { versification: VersificationToolkit } }).utils.versification,
+    )
+    .catch((e) => {
+      toolkitPromise = null;
+      throw e;
+    });
   return toolkitPromise;
 };
 
@@ -235,18 +245,30 @@ const parseVerse = (
 export const mapReference = async (request: MapRequest): Promise<MapOutcome> => {
   const { from, to, book, chapter, verse, schemes } = request;
 
-  // A reference that does not parse is a fault in the RESOURCE ROW, not in the
-  // project's versification — report it as such so the dropped-checks note sends
-  // the reader to the right place (review finding R-E33-4).
+  // The short-circuit. Not an optimization: composing eng -> org -> eng loses
+  // 3 verses of the 66-book canon that unmapped code handles correctly, so an
+  // eng project must not compose at all. This also returns BEFORE the dynamic
+  // import, so the default project never downloads the engine.
   //
-  // Validate BOTH parts BEFORE the same-frame short-circuit (review finding
-  // R-E33-5). A valid chapter is always an integer number (refPart yields a
-  // number for plain digits, a string otherwise); only the verse may be a span.
-  // Validating the verse but not the chapter meant a malformed chapter like
-  // 'front' was rejected on the cross-frame path yet passed straight through the
-  // eng short-circuit into the §5.2 identity key and the append-only journal —
-  // the same bad row behaving differently by project scheme. One chokepoint,
-  // one verdict, both frames.
+  // The short-circuit passes the reference through UNVALIDATED, on purpose.
+  // Real resource rows carry verse forms mapping arithmetic cannot handle —
+  // measured on en_tn v89: 110 PSA `N:front` superscription notes, comma lists
+  // (`5:1,3,8,12`), letter forms (`1:1a`) — and the pre-#33 pipeline derived,
+  // displayed and journaled all of them. A same-frame project needs no
+  // arithmetic, so rejecting them here would drop real checks from the default
+  // eng project and orphan the decisions already journaled against those keys.
+  // Delimiter safety for journal identities is the grammar's job (§8.5), not
+  // this function's.
+  if (sameFrame(from, to)) {
+    return { ok: true, reference: { book: book.toUpperCase(), chapter, verse }, mapped: false };
+  }
+
+  // A cross-frame reference that does not parse is a fault in the RESOURCE ROW,
+  // not in the project's versification — report it as such so the dropped-checks
+  // note sends the reader to the right place (review finding R-E33-4). A valid
+  // chapter is always an integer number (refPart yields a number for plain
+  // digits, a string otherwise); only the verse may be a span. Both parts get
+  // one verdict here, before any mapping arithmetic (review finding R-E33-5).
   const parsed = parseVerse(verse);
   const validPositive = (part: number): boolean => Number.isSafeInteger(part) && part >= 1;
   const malformedVerse =
@@ -256,14 +278,6 @@ export const mapReference = async (request: MapRequest): Promise<MapOutcome> => 
       : !validPositive(parsed.a) || !validPositive(parsed.b) || parsed.a > parsed.b);
   if (!validPositive(chapter) || malformedVerse) {
     return { ok: false, reason: 'malformed-reference' };
-  }
-
-  // The short-circuit. Not an optimization: composing eng -> org -> eng loses
-  // 3 verses of the 66-book canon that unmapped code handles correctly, so an
-  // eng project must not compose at all. This also returns BEFORE the dynamic
-  // import, so the default project never downloads the engine.
-  if (sameFrame(from, to)) {
-    return { ok: true, reference: { book: book.toUpperCase(), chapter, verse }, mapped: false };
   }
   if (!isSchemeName(from) || !isSchemeName(to)) return { ok: false, reason: 'unknown-frame' };
 

@@ -161,6 +161,8 @@ journal. Mapping a source pane is a *lookup*, not an identity operation.
 
 ## 6. What the platform does with versification today
 
+[VERIFIED — pankosmia-web 0.18.7 (c43c40d, 2026-08-11), read 2026-08-24: `src/endpoints/git2/new_text_translation.rs`, `new_scripture_book.rs`, `new_bcv_resource.rs`, `new_audio_translation.rs`, `new_translation_plan_resource.rs`, `src/endpoints/content_utils2/versification.rs`, `list_versifications.rs`, `src/utils/bcv_ref.rs`]
+
 From the server source:
 
 1. Takes the scheme **name** as a creation parameter on the text-translation, bcv, audio and
@@ -173,8 +175,11 @@ From the server source:
 7. Builds the canonical book-code list from `eng`'s `maxVerses`, regardless of the project's
    scheme.
 8. Serves scheme data by name over HTTP.
-9. **Never maps.** `maxVerses` is the only key any server code reads. No code anywhere in the
-   platform organization reads `mappedVerses` or calls the mapping function.
+9. **Never maps.** `maxVerses` is the only key any server code reads. No reader of
+   `mappedVerses` and no call of the mapping function exists in the platform repos we mirror
+   [VERIFIED — grep of pankosmia-web 0.18.7 (c43c40d, 2026-08-11) and core-client-rcl
+   (ffbe964, 2026-07-31), run 2026-08-24: zero hits]. Repos outside those mirrors were not
+   read; re-check on platform upgrades.
 
 **In one line: versification is a template selector and a verse-count table.** The data is copied
 in, books are scaffolded from `maxVerses`, and the scheme's name is thrown away.

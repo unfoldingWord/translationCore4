@@ -178,26 +178,14 @@ describe('R-E33-4 — a malformed reference is not an unknown frame', () => {
   });
 });
 
-describe('R-E33-5 — a malformed chapter is rejected on BOTH frame paths', () => {
-  // FOUND (2nd review pass): parseVerse guarded the verse before the same-frame
-  // short-circuit, but the chapter was never validated. So a non-numeric chapter
-  // was rejected cross-frame yet passed straight through the eng short-circuit
-  // into the identity key and the append-only journal — the same bad row
-  // behaving differently by project scheme. A valid chapter is always an integer
-  // number; only the verse may be a span.
-  it('same-frame (eng project) rejects a non-integer chapter', async () => {
-    const out = await mapReference({
-      from: 'eng',
-      to: 'eng',
-      book: 'JHN',
-      chapter: 'front' as unknown as number,
-      verse: 1,
-      schemes: { eng },
-    });
-    expect(out).toEqual({ ok: false, reason: 'malformed-reference' });
-  });
-
-  it('cross-frame rejects the identical row identically', async () => {
+describe('R-E33-5 (amended) — malformed references are a CROSS-FRAME verdict only', () => {
+  // The original R-E33-5 fix validated before the same-frame short-circuit.
+  // That dropped real resource rows the pre-#33 pipeline derived and journaled
+  // (measured on en_tn v89: 110 PSA `N:front` superscriptions, comma lists,
+  // letter forms) and orphaned their stored decisions. The same-frame path
+  // needs no mapping arithmetic, so it passes the reference through untouched;
+  // only a genuine cross-frame conversion rejects what it cannot compute.
+  it('cross-frame rejects a non-integer chapter as malformed', async () => {
     const out = await mapReference({
       from: 'eng',
       to: 'lxx',
@@ -226,6 +214,26 @@ describe('R-E33-5 — a malformed chapter is rejected on BOTH frame paths', () =
   });
 
   it.each([
+    ['front chapter (PSA superscription)', 'front', 1],
+    ['comma-list verse', 1, '1,3,8'],
+    ['letter-suffixed verse', 1, '1a'],
+  ])('same-frame passes a real-world %s through unchanged', async (_label, chapter, verse) => {
+    const out = await mapReference({
+      from: 'eng',
+      to: 'eng',
+      book: 'PSA',
+      chapter: chapter as number,
+      verse,
+      schemes: { eng },
+    });
+    expect(out).toEqual({
+      ok: true,
+      reference: { book: 'PSA', chapter: chapter as number, verse },
+      mapped: false,
+    });
+  });
+
+  it.each([
     ['zero chapter', 0, 1],
     ['negative chapter', -1, 1],
     ['unsafe chapter', Number.MAX_SAFE_INTEGER + 1, 1],
@@ -234,14 +242,14 @@ describe('R-E33-5 — a malformed chapter is rejected on BOTH frame paths', () =
     ['unsafe verse', 1, Number.MAX_SAFE_INTEGER + 1],
     ['zero span endpoint', 1, '0-2'],
     ['reversed span', 1, '3-2'],
-  ])('same-frame rejects a %s before writing an identity', async (_label, chapter, verse) => {
+  ])('cross-frame rejects a %s before any mapping arithmetic', async (_label, chapter, verse) => {
     const out = await mapReference({
       from: 'eng',
-      to: 'eng',
+      to: 'lxx',
       book: 'JHN',
       chapter: chapter as number,
       verse,
-      schemes: { eng },
+      schemes: { eng, lxx },
     });
     expect(out).toEqual({ ok: false, reason: 'malformed-reference' });
   });

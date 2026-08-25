@@ -196,6 +196,14 @@ function CheckSession() {
           <p style={{ fontSize: 13.5, color: '#4F5E6A', lineHeight: 1.6, margin: '0 auto', maxWidth: 460 }}>
             {t(`check.empty.${cs.empty}.body`)}
           </p>
+          {/* §5.2: the dropped count MUST be surfaced even when it emptied the
+            * whole list — silently shrinking the denominator is not permitted. */}
+          {cs.dropped && (
+            <p data-testid="versification-dropped"
+              style={{ fontSize: 12.5, color: '#8A6A22', margin: '14px auto 0', maxWidth: 460, lineHeight: 1.5 }}>
+              {t('check.droppedNote', { count: cs.dropped.count, scheme: cs.dropped.scheme ?? '—' })}
+            </p>
+          )}
           {cs.resource && (
             <p style={{ fontSize: 11.5, color: '#8A99A4', fontFamily: 'ui-monospace,Menlo,monospace', margin: '14px 0 0' }}>
               {cs.resource.repoPath} · {cs.resource.version}

@@ -197,6 +197,21 @@ describe('backfillCoverage — retires the ambiguity for old pins (owner ruling 
     expect(out.filled).not.toContain(pinKey(recorded));
   });
 
+  it('widens an incomplete record from a sha-exact local read, never shrinks it', () => {
+    // A record captured from a partial copy at the pinned sha (single-book
+    // sideload, interrupted install) silently substitutes the fallback for
+    // books the resource covers. Books a sha-exact local read proves present
+    // are facts about the same commit, so the record heals once the full
+    // resource is installed — while the recorded books are always kept.
+    const recorded = pin(ES_TWL, { books: ['TIT'] });
+    const res = resources({ translationWordsLinks: recorded, translationWords: recorded });
+    const out = backfillCoverage(res, { [pinKey(recorded)]: ['TIT', 'JON'] }); // local knows MORE
+
+    expect(out.changed).toBe(true);
+    expect(out.resources.languageSets.primary.translationWordsLinks.books).toEqual(['TIT', 'JON']);
+    expect(out.filled).toContain(pinKey(recorded));
+  });
+
   it('is idempotent — a second pass changes nothing', () => {
     const local: Coverage = {
       [pinKey(pin(ES_TWL))]: ['TIT', 'JON'],

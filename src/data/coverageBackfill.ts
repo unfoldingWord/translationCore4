@@ -16,10 +16,12 @@
 // is exactly the case nobody can answer and the warning is honest about
 // [decided 2026-08-24 — owner ruling, Q3 option (c)].
 //
-// This never REPLACES a recorded coverage. A pin's identity is repoPath + sha
-// (D58), so its content cannot change; a recorded book list is a fact about that
-// commit, not a cache to refresh. Overwriting one could only ever lose
-// information — for instance from a partially-fetched install.
+// This never SHRINKS or replaces a recorded coverage. A pin's identity is
+// repoPath + sha (D58), so its content cannot change; a recorded book list is a
+// fact about that commit, not a cache to refresh. But a record captured from a
+// partially-fetched install can be INCOMPLETE, and an incomplete record silently
+// substitutes the fallback for books the resource covers — so a sha-exact local
+// read may WIDEN a record. Widening only adds facts about the same commit.
 import type { LanguageSet, ResourcePin, ResourcesFile } from './burritoStore';
 import { LADDER } from './burritoStore';
 import { coverageFor, type Coverage } from './resolve';
@@ -53,18 +55,27 @@ export const backfillCoverage = (
 
   const filled: string[] = [];
 
-  /** Returns the pin unchanged unless it both lacks coverage and has a local
-   * answer available. */
+  /** Returns the pin unchanged unless a sha-exact local read adds information.
+   *
+   * A recorded list is never SHRUNK or replaced — but it can be WIDENED. The
+   * record may have been captured from a partial copy at the pinned sha (a
+   * single-book sideload, an interrupted install); books the sha-exact local
+   * read proves present are facts about the same commit, and leaving them out
+   * keeps silently substituting the fallback for books the resource actually
+   * covers (B20). Widening only ever adds, so no information is lost. */
   const fill = (pin: ResourcePin | undefined): ResourcePin | undefined => {
     if (!pin) return pin;
-    if (pin.books && pin.books.length > 0) return pin; // never overwrite a fact
-    const known = coverageFor(coverage, pin);
-    // `source: 'local'` is the only case that adds information here. 'pin' is
-    // already handled above, and 'none' means the resource is not on this
-    // machine — which is the state the warning is for, not something to invent.
-    if (known.source !== 'local' || known.books.length === 0) return pin;
+    // Strip the pin's own record for the lookup: coverageFor would answer from
+    // it ('pin' outranks 'local'), and the question here is what the sha-exact
+    // LOCAL read knows. 'none' means the resource is not on this machine —
+    // which is the state the warning is for, not something to invent.
+    const local = coverageFor(coverage, { ...pin, books: undefined });
+    if (local.source !== 'local' || local.books.length === 0) return pin;
+    const recorded = (pin.books ?? []).map((b) => b.toUpperCase());
+    const missing = local.books.filter((b) => !recorded.includes(b));
+    if (recorded.length > 0 && missing.length === 0) return pin; // nothing to add
     filled.push(`${pin.repoPath}@${pin.sha}`);
-    return { ...pin, books: known.books };
+    return { ...pin, books: recorded.length === 0 ? local.books : [...recorded, ...missing] };
   };
 
   const nextSets: Record<string, LanguageSet> = {};

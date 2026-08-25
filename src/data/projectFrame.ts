@@ -121,11 +121,16 @@ export const resolveProjectFrame = async (
   const known: Partial<Record<SchemeName, SchemeDoc>> = {};
   let fingerprintIncomplete = false;
   if (!name && register) {
-    for (const candidate of available) {
-      const doc = await fetchScheme(deps, candidate);
-      if (doc) known[candidate] = doc;
-      else fingerprintIncomplete = true;
-    }
+    // The candidate fetches are independent — gather them concurrently rather
+    // than paying up to six sequential round-trips per resolution. Only a
+    // TRANSIENT failure makes the fingerprint incomplete (retryable); a served
+    // document that fails the shape check is conclusive and never will match.
+    const docs = await Promise.all(available.map((candidate) => fetchScheme(deps, candidate)));
+    available.forEach((candidate, i) => {
+      const { doc, failed } = docs[i];
+      if (doc) known[candidate as SchemeName] = doc;
+      else if (failed) fingerprintIncomplete = true;
+    });
     const resolved = resolveProjectScheme(register, known);
     if (resolved.name) {
       name = resolved.name;
@@ -137,10 +142,14 @@ export const resolveProjectFrame = async (
   // reusing anything rung 2 already fetched. `eng` needs none — it short-circuits.
   const schemes: Partial<Record<SchemeName, SchemeDoc>> = {};
   if (name && name !== RESOURCE_FRAME) {
-    for (const needed of [RESOURCE_FRAME, name]) {
-      const doc = known[needed] ?? (await fetchScheme(deps, needed));
-      if (doc) schemes[needed] = doc;
-    }
+    const needed = [RESOURCE_FRAME, name];
+    const docs = await Promise.all(
+      needed.map(async (n) => known[n] ?? (await fetchScheme(deps, n)).doc),
+    );
+    needed.forEach((n, i) => {
+      const doc = docs[i];
+      if (doc) schemes[n] = doc;
+    });
   }
 
   // Classify. eng (or any same-as-resource frame) is always ready. A known
@@ -166,15 +175,28 @@ export const resolveProjectFrame = async (
   return frame;
 };
 
-/** One scheme document, or null when the platform cannot supply it. A missing
- * document is not fatal: the caller ends up `unavailable` (known frame or
- * incomplete fingerprint) or `unknown`, never a wrong reference. */
-const fetchScheme = async (deps: FrameDeps, name: SchemeName): Promise<SchemeDoc | null> => {
+/** One scheme document, or why there is none. A missing document is not fatal:
+ * the caller ends up `unavailable` (known frame or incomplete fingerprint) or
+ * `unknown`, never a wrong reference.
+ *
+ * `failed` separates the two ways a document can be missing. A thrown fetch is
+ * TRANSIENT (offline, server restart) and classifies `unavailable`, which is
+ * never cached so a reconnect recovers. A document the platform SERVED but that
+ * fails the shape check is CONCLUSIVE — retrying cannot change served bytes —
+ * and must not classify `unavailable`, or the frame re-fetches every scheme on
+ * every call forever while telling the user to reconnect. */
+const fetchScheme = async (
+  deps: FrameDeps,
+  name: SchemeName,
+): Promise<{ doc: SchemeDoc | null; failed: boolean }> => {
   try {
     const doc = await deps.api.getVersification(name);
-    return doc && typeof doc === 'object' && 'maxVerses' in doc ? (doc as SchemeDoc) : null;
+    return {
+      doc: doc && typeof doc === 'object' && 'maxVerses' in doc ? (doc as SchemeDoc) : null,
+      failed: false,
+    };
   } catch {
-    return null;
+    return { doc: null, failed: true };
   }
 };
 

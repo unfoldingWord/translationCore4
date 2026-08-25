@@ -998,3 +998,36 @@ The ruling:
    resolution REFUSES the write toward the coordinated gateway-change/carry-over flow
    (D36), the same posture as the §5.2 quoteString refusal. It never silently keeps or
    silently replaces the stored record.
+
+## D60 (2026-08-24, project-owner ruling) **Same-frame references pass through unvalidated; only a cross-frame conversion rejects what it cannot compute.** [amends the epic #33 review stance R-E33-5; §5.2]
+
+The #33 review made `mapReference` reject every reference outside the `chapter:verse`
+number-or-span form before the same-frame short-circuit ("one chokepoint, one verdict,
+both frames"). Measured against real data, that rule drops 112 en_tn v89 rows the
+pre-#33 pipeline derived and displayed — 110 of them PSA `N:front` superscription notes
+[VERIFIED — corpus grep, 2026-08-24, PR #91 review] — and orphans any decision journaled
+against those keys, while the dropped-note misattributes the loss to the project's
+numbering.
+
+The ruling:
+1. **A same-frame project maps nothing, so it validates nothing.** The reference passes
+   through in the resource's own form — `front` chapters, comma lists and letter verses
+   included — exactly as every pre-#33 build behaved.
+2. **A cross-frame conversion rejects them as `malformed-reference`:** mapping arithmetic
+   needs numbers, and refusing beats guessing (§5.2).
+3. **Journal identity safety stays at the journal grammar (§8.5)** — delimiter checks at
+   the trust boundary, not form checks in a mapping utility.
+
+## D61 (2026-08-24, project-owner ruling) **A pin's recorded coverage may be WIDENED from a sha-exact local read — never shrunk, never replaced.** [amends D41; §5.3]
+
+D41 froze a recorded `books` list ("a fact about that commit"). But the first capture
+itself can read a PARTIAL copy at the pinned sha (single-book sideload, interrupted
+install), and a frozen partial record silently substitutes the fallback for books the
+resource covers — unwarned, permanently (PR #91 review, confirmed finding).
+
+The ruling:
+1. **Add-only widening.** Books a local read of the same `repoPath` + `sha` proves
+   present may be added to the record; removal or replacement stays forbidden. Each
+   added book is a fact about the same commit, so D41's rationale survives intact.
+2. **The backfill pass performs the widening** under the same compare-and-swap as any
+   other resources.json write, and stays idempotent.

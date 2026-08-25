@@ -128,7 +128,8 @@ mechanism is unchanged 0.16.18→0.18.5]). Rules:
   forms in §5.3). Every shipped scheme is currently string-valued.
 - The client MUST NOT edit this file after creation. Conversion between frames is a client
   concern — see §5.2 for the frame rule. The server never maps a reference; `maxVerses` is the
-  only key any platform code reads.
+  only key any platform code reads [VERIFIED — pankosmia-web 0.18.7 (c43c40d, 2026-08-11),
+  read 2026-08-24; `evidence/versification-format-and-frames-2026-08-24.md` §6].
 - Non-canonical books (books outside the eng-derived canonical book-code list) are not
   allowed at this time [decided 2026-07-30 — D26; the platform's `canonical_book_codes`
   reads `eng.json`, so such files get no `scope` entry on rescan].
@@ -224,14 +225,21 @@ Common rules:
   - **One source frame.** Every unfoldingWord resource that feeds a check list is in the
     **`eng`** frame — the helps TSVs *and* the original-language texts. Measured over 194,080
     tN references across eight gateway languages, 58,834 TWL references, and 1,189
-    original-language chapters: zero references contradict `eng`. (`hbo_uhb` PSA 3 ends at
+    original-language chapters: zero references contradict `eng` [VERIFIED — sweep run
+    2026-08-24; scripts and per-resource tables in
+    `evidence/versification-format-and-frames-2026-08-24.md` §§2–4 and
+    `evidence/e33-frame-sweep-tsv.py` / `e33-frame-sweep-usfm.py`]. (`hbo_uhb` PSA 3 ends at
     verse 8, where `org` would number the superscription and have 9.) An earlier draft of this
     rule assumed helps were `eng` and original-language texts were `org`; that was wrong.
   - **Same frame ⇒ no conversion.** When the resource frame equals the project frame the
     reference passes through **unchanged**. This is normative, not an optimization: composing
     `eng → org → eng` loses 3 verses of the 66-book canon that an unmapped reference gets
     right, so an `eng` project — the default, and the frame of the whole resource suite — MUST
-    NOT be mapped.
+    NOT be mapped. Pass-through is also UNVALIDATED [decided 2026-08-24 — D60]: the reference
+    keeps the resource's own form (`front` chapters, comma lists, letter verses — real en_tn
+    rows carry all three), because a same-frame project computes nothing that needs numbers.
+    Only a genuine cross-frame conversion rejects such forms as `malformed-reference`; journal
+    identity safety stays at the §8.5 grammar.
   - **The mechanism** is Proskomma's versification toolkit (`mapVerse` and the succinct
     mapping functions). tC4 does not build a mapper; it takes `proskomma-core` as a direct
     dependency and loads it **lazily**, so a project that needs no conversion never fetches it
@@ -260,7 +268,9 @@ Common rules:
   - **Known losses, for reference.** Against `en_tn@v90` (76,920 check rows): `rsc` loses 7
     (PSA 116:10, PSA 147:12, REV 12:18), `rso` loses 12 (those plus PSA 87:1), `lxx` 57,
     `vul` 845 — the last dominated by Esther's differing chapter structure. An `eng` project
-    loses none and maps nothing.
+    loses none and maps nothing [VERIFIED — sweep run 2026-08-24;
+    `evidence/versification-format-and-frames-2026-08-24.md` §3 and
+    `evidence/e33-mapped-verses-form.py`].
   - **Scheme names are open.** The set of schemes is whatever the platform serves
     (`GET /content-utils/versifications`), not a fixed list. A reader MUST NOT reject a scheme
     for being unfamiliar; an unrecognised name resolves through §4.3's ladder like any other.
@@ -317,13 +327,13 @@ Common rules:
 - **Missing pinned version** [decided 2026-07-30 — D30, constraints (4)–(5)]: online → the app fetches it (sb-zip + SHA, OPEN-QUESTIONS #24), never a warn-toward-invalidation dialog. Offline → that (tool, book)'s checking is **unavailable as a first-class state**, not an error; drafting, other books, and other tools continue. The user MAY explicitly re-pin to a locally available version — warned, with re-derive and carry-over (§5.2 D36: unplaceable decisions are invalidated, not queued) — but the app never forces it.
 - **Per-pin book coverage** [decided 2026-08-07 — D41; implemented 2026-08-24 — issue #16]: every repo pin MAY carry `books`, the uppercase book codes that exact commit contains. The field is **OPTIONAL and additive**, so `schemaVersion` stays 2 (§9).
 
-  - **Recorded at pin time**, while the resource is local and its real contents can be read. Because a pin's identity is `repoPath` + `sha` (D58) and that content can never change, a recorded list is a **fact about that commit**, not a cache: it does not go stale, and a reader MUST NOT refresh or overwrite one.
+  - **Recorded at pin time**, while the resource is local and its real contents can be read. Because a pin's identity is `repoPath` + `sha` (D58) and that content can never change, a recorded list is a **fact about that commit**, not a cache: it does not go stale, and a reader MUST NOT shrink or replace one. A reader MAY **widen** a record with books a local read of the **same** `repoPath` + `sha` proves present [decided 2026-08-24 — D61]: a record captured from a partial copy (a single-book sideload, an interrupted install) is incomplete, and each added book is a fact about the same commit. Widening MUST only add book codes; it MUST NOT remove any.
   - **Why it exists.** Without it, coverage can only be derived from what is installed, so "this resource does not contain this book" and "this resource is not downloaded yet" are indistinguishable, and both resolve down the ladder to English. Recorded coverage separates them, which makes these three states distinct for a (tool, book):
     - coverage recorded and it **includes** the book → resolve to that pin. Not local ⇒ **fetch** (online) or **unavailable** (offline). The user is never silently moved to another language.
     - coverage recorded and it **excludes** the book → fall back to the next rung. This is plainly correct and MUST NOT be warned: nothing is being substituted.
     - **no** coverage recorded and the resource is not local → genuinely unknown. Open the fallback and **warn**, naming the pinned resource that is missing.
   - **Precedence.** A pin's own `books` outranks any locally-derived coverage, because it remains true when the resource is absent. A recorded **empty** array is NOT a record — it cannot be told apart from a failed capture — and MUST fall through to the local scan.
-  - **Backfill** [decided 2026-08-24 — owner ruling]: on project open, a reader SHOULD record coverage for any pin that lacks it **and whose resource is local**, which converts a project pinned before this rule once. A pin whose resource is absent MUST be left alone; inventing coverage for it would defeat the distinction above. The backfill MUST be idempotent and MUST run under the same compare-and-swap as any other write to this file.
+  - **Backfill** [decided 2026-08-24 — owner ruling]: on project open, a reader SHOULD record coverage for any pin that lacks it **and whose resource is local**, which converts a project pinned before this rule once. The same pass SHOULD widen an incomplete record from a sha-exact local read (rule above), so a record captured from a partial copy heals once the full resource is present. A pin whose resource is absent MUST be left alone; inventing coverage for it would defeat the distinction above. The backfill MUST be idempotent and MUST run under the same compare-and-swap as any other write to this file.
   - The warned fallback is therefore a **migration path**, not a steady state: after one open with the resource present, it stops firing for that pin.
 - **schemaVersion 2** is a breaking change from the single-set shape (§9: readers MUST reject unknown major versions with a clear message). A `schemaVersion: 1` file (the Increment-1 writer's shape) migrates mechanically: its `gatewayLanguage` + `resources.translationWords/translationNotes/translationAcademy` become the `fallback` set (they pin the installed English suite), `primary` is initialized equal to `fallback` until the user picks a gateway language, a `translationWordsLinks` pin is added, and `originalLanguage`/`lexicon`/`extraScripture` carry over unchanged. Updating the product writer to schemaVersion 2 is the first Increment-2 resource task (it still writes the v1 shape; journey j01 asserts that as the Increment-1 shape, not as this section's shape).
 - Deterministic derivation (§4.2) depends on these pins: same pins ⇒ same check lists ⇒ saved decisions always re-attach. An intentional resource upgrade re-derives. Unmatched decisions are invalidated and retained (§5.2 D36); they never silently persist as progress.

@@ -590,13 +590,35 @@ export function AppProvider({ children }) {
         // record matching no rung — a state the conformance rules forbid —
         // and there is no ratified unresolved state for pins to move it to.
         // The dialogue names the books; confirm is refused while any exist.
-        const blocked = uncoveredByChange(consequences.affected, next, coverage);
+        //
+        // The plan below is COMMITTED verbatim (each entry's `file` is
+        // journaled by applyGatewayChange), so it must be derived in the
+        // project's real frame. A frame that cannot map (unavailable/unknown)
+        // would derive eng-framed identities and journal them permanently —
+        // wrongful invalidations included — so a not-ready frame blocks every
+        // affected book, the same refusal openCheckTool makes. A change with
+        // no affected decisions carries no plan and stays safe regardless.
+        const frame = await a.projectFrame();
+        const blocked =
+          frame.state === 'ready'
+            ? uncoveredByChange(consequences.affected, next, coverage)
+            : consequences.affected.map((e) => ({ tool: e.tool, book: e.book }));
         const blockedKey = (e) => `${e.tool}/${e.book}`;
         const blockedSet = new Set(blocked.map(blockedKey));
         const plan = [];
         for (const entry of consequences.affected) {
           if (blockedSet.has(blockedKey(entry))) continue; // blocked, never planned
           const resolution = resolveToolBook(next, entry.tool, entry.book, coverage);
+          // Round-7 extension: a rung can cover a book by RECORD (pin.books
+          // travels with the project) while the resource is absent from this
+          // machine. The derive below would then read nothing, and an empty
+          // list invalidates every decision on confirm — so a resolved pin
+          // that is not local blocks the book instead of planning from it.
+          if (!resolution.pin || !isPinLocal(installed, resolution.pin)) {
+            blocked.push({ tool: entry.tool, book: entry.book });
+            blockedSet.add(blockedKey(entry));
+            continue;
+          }
           const source = stored.find((s) => s.tool === entry.tool && s.book === entry.book);
           const derived = await a.deriveItemsFor(entry.tool, entry.book, resolution.pin);
           const record = resolutionRecord(resolution);
@@ -633,13 +655,11 @@ export function AppProvider({ children }) {
         // short-circuits inside deriveForProject and is byte-identical to the
         // old unmapped path.
         const frame = await a.projectFrame();
-        // R-E33-8: this is a COUNT for the gateway-change preview. A frame that
-        // cannot map (unavailable/unknown) would drop every reference and return
-        // 0 — a silent undercount of decisions at risk. Count against the
-        // unmapped (resource) frame instead: the same-frame short-circuit keeps
-        // the resource's full count, a safe basis for a preview. Mapping shifts
-        // reference NUMBERS, not the count (bar the few unplaceable drops), so an
-        // unmapped count is an honest upper bound here.
+        // R-E33-8 (amended): the gateway-change plan is committed verbatim, so
+        // previewGatewayChange now BLOCKS every affected book while the frame is
+        // not ready — this path is only reached with a ready frame. The fallback
+        // below is defense in depth for any future caller, never a basis for a
+        // journaled plan.
         const to = frame.state === 'ready' ? frame.name : RESOURCE_FRAME;
         const { items } = await deriveForProject({
           tsv,
@@ -816,6 +836,19 @@ export function AppProvider({ children }) {
         // project-frame reference (§5.1), exactly like the draft it belongs to.
         // An eng project short-circuits and behaves exactly as before.
         const alignFrame = await a.projectFrame();
+        // R-E33-6 applies here too: a frame that cannot map is a designed state,
+        // never "the source verse is missing" — that message misattributes a
+        // transient fetch failure (`unavailable`) or an unidentifiable project
+        // versification (`unknown`) to the text itself, with no reconnect-and-
+        // retry path. The eng default is always `ready`, so this never fires
+        // for it.
+        if (alignFrame.state !== 'ready') {
+          dispatch({
+            type: 'set',
+            patch: { alignSession: { unavailable: `versification-${alignFrame.state}` } },
+          });
+          return;
+        }
         const srcRef = await mapReference({
           from: alignFrame.name,
           to: RESOURCE_FRAME,
@@ -996,12 +1029,17 @@ export function AppProvider({ children }) {
               }
             : null;
           if (derived.length === 0) {
+            // §5.2: the dropped count MUST be surfaced. When mapping dropped
+            // EVERY check, "the resource lists no checks — nothing is wrong"
+            // would be false; a dedicated empty state says what happened, and
+            // the check view renders the count alongside it.
             dispatch({
               type: 'set',
               patch: {
                 checkTool: tool,
                 checkSession: {
-                  loading: false, tool, book, items: [], empty: 'none',
+                  loading: false, tool, book, items: [],
+                  empty: dropped ? 'all-dropped' : 'none',
                   resource: resolutionRecord(pre.resolution), dropped,
                 },
               },
