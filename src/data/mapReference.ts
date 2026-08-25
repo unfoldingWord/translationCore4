@@ -127,7 +127,14 @@ export interface MappedReference {
 
 export type MapOutcome =
   | { ok: true; reference: MappedReference; mapped: boolean }
-  | { ok: false; reason: UnplaceableReason };
+  | {
+      ok: false;
+      reason: UnplaceableReason;
+      /** Target-frame positions the failed mapping actually reached. These are
+       * diagnostic only — never identities — and let a partial-scope caller
+       * avoid reporting drops that are outside its project scope. */
+      candidates?: MappedReference[];
+    };
 
 export interface MapRequest {
   /** The frame the reference is currently in. The whole uW suite is `eng`. */
@@ -217,6 +224,15 @@ const hop = async (
 const contiguous = (verses: number[]): boolean =>
   verses.every((v, i) => i === 0 || v === verses[i - 1] + 1);
 
+const candidatesOf = (landings: Landing[]): MappedReference[] =>
+  landings.flatMap((landing) =>
+    landing.verses.map((verse) => ({
+      book: landing.book,
+      chapter: landing.chapter,
+      verse,
+    })),
+  );
+
 /** Parse a §5.2 verse field. A span keeps its exact string form. */
 const parseVerse = (
   verse: number | string,
@@ -291,35 +307,44 @@ export const mapReference = async (request: MapRequest): Promise<MapOutcome> => 
     // [owner ruling 2026-08-24]. A gapped fan-out stays ambiguous: writing it as
     // a span would claim the verses in the gap.
     if (out.verses.length > 1 && !contiguous(out.verses)) {
-      return { ok: false, reason: 'ambiguous' };
+      return { ok: false, reason: 'ambiguous', candidates: candidatesOf([out]) };
     }
     return finish(targetDoc, out);
   }
 
-  // A span maps endpoint by endpoint. Both endpoints must land in the same
-  // book and chapter, or the row is unplaceable — we never invent a
-  // cross-chapter span, and we never narrow the span to one endpoint's chapter,
-  // because either would journal a reference no resource actually stated.
-  const first = await hop(from, to, schemes, book, chapter, parsed.a);
-  if (typeof first === 'string') return { ok: false, reason: first };
-  const last = await hop(from, to, schemes, book, chapter, parsed.b);
-  if (typeof last === 'string') return { ok: false, reason: last };
-
-  if (first.book !== last.book || first.chapter !== last.chapter) {
-    return { ok: false, reason: 'span-split' };
+  // Map EVERY source verse in a span. Endpoint-only mapping is unsafe: real
+  // mappings can reorder or skip an interior verse while both endpoints still
+  // land in one chapter. For example en_tn PSA 11:1-3 -> vul PSA 10:1,3,4;
+  // expanding only the endpoint extremes fabricated verse 2 and journaled the
+  // check under an identity the mapping never produced.
+  const sourceDoc = schemes[from];
+  if (!sourceDoc) return { ok: false, reason: 'unknown-frame' };
+  for (const endpoint of [parsed.a, parsed.b]) {
+    const bad = unplaceableReason(sourceDoc, book, chapter, endpoint);
+    if (bad) return { ok: false, reason: bad };
   }
-  // A span's ENDPOINTS are expected to have a gap between them — that gap is the
-  // span's interior. So unlike a single-verse fan-out, contiguity is not required
-  // of the endpoints; it is *produced* by expanding the range between them.
-  // Endpoints can also map out of order (eng PSA 16:10-11 lands in vul chapter 16
-  // then chapter 15), so take the extremes rather than trusting the direction.
-  const ends = [...first.verses, ...last.verses];
-  const lo = Math.min(...ends);
-  const hi = Math.max(...ends);
-  // Every verse the span covers must exist in the target scheme. A span whose far
-  // end runs past the chapter is not a shorter span; it is unplaceable.
-  const verses = Array.from({ length: hi - lo + 1 }, (_, i) => lo + i);
-  return finish(targetDoc, { book: first.book, chapter: first.chapter, verses });
+
+  const landings: Landing[] = [];
+  for (let sourceVerse = parsed.a; sourceVerse <= parsed.b; sourceVerse += 1) {
+    const landing = await hop(from, to, schemes, book, chapter, sourceVerse);
+    if (typeof landing === 'string') return { ok: false, reason: landing };
+    landings.push(landing);
+  }
+
+  const candidates = candidatesOf(landings);
+  const loci = new Set(landings.map((landing) => `${landing.book}\u0000${landing.chapter}`));
+  if (loci.size !== 1) return { ok: false, reason: 'span-split', candidates };
+
+  const verses = [...new Set(landings.flatMap((landing) => landing.verses))].sort(
+    (a, b) => a - b,
+  );
+  if (!contiguous(verses)) return { ok: false, reason: 'ambiguous', candidates };
+
+  return finish(targetDoc, {
+    book: landings[0].book,
+    chapter: landings[0].chapter,
+    verses,
+  });
 };
 
 /** Validate a landing against the target scheme and render it as a §5.2 verse
@@ -329,7 +354,7 @@ export const mapReference = async (request: MapRequest): Promise<MapOutcome> => 
 const finish = (targetDoc: SchemeDoc, landing: Landing): MapOutcome => {
   for (const v of landing.verses) {
     const bad = unplaceableReason(targetDoc, landing.book, landing.chapter, v);
-    if (bad) return { ok: false, reason: bad };
+    if (bad) return { ok: false, reason: bad, candidates: candidatesOf([landing]) };
   }
   const lo = landing.verses[0];
   const hi = landing.verses[landing.verses.length - 1];

@@ -345,6 +345,7 @@ export const pinSlotError = (v) =>
 // value, so it carries the §5.3 document's own shape — ONE validator, shared by the op
 // and by any projection input.
 export const SHA_RE = /^[0-9a-f]{40}$/;                 // §5.3 REQUIRED commit sha (D58)
+const PIN_BOOK_RE = /^[A-Z0-9]{3}$/;                    // §5.3 OPTIONAL per-pin coverage (D41)
 const pinStringField = (e, k, { required }) => {
   if (e[k] === undefined) return required ? `without ${k}` : null;
   if (!isStr(e[k]) || e[k] === '') return `${k} is not a non-empty string`;
@@ -364,6 +365,12 @@ export const pinEntryError = (slot, entry) => {
   for (const [k, required] of fields) { const e = pinStringField(entry, k, { required }); if (e) return e; }
   if (entry.sha !== undefined && !(isStr(entry.sha) && SHA_RE.test(entry.sha)))
     return 'sha is not 40 lowercase hex (§5.3)';
+  if (!isGatewayLanguage && entry.books !== undefined) {
+    if (!Array.isArray(entry.books)) return 'books is not an array (§5.3)';
+    const badBook = entry.books.find((book) => !isStr(book) || !PIN_BOOK_RE.test(book));
+    if (badBook !== undefined)
+      return `books contains ${JSON.stringify(badBook)}, not an uppercase 3-character book code (§5.3)`;
+  }
   if (isExtra && entry.id !== slot.slice('extraScripture.'.length))
     return `extraScripture entry id "${entry.id}" does not match its slot "${slot}"`;
   return null;

@@ -152,17 +152,17 @@ describe('an unresolvable frame refuses rather than aligning against the wrong v
     // different line of text.
     for (const project of ['rsc', 'vul'] as SchemeName[]) {
       const out = await sourceRefFor(project, 'PSA', 3, 1);
-      expect(out).toEqual({ ok: false, reason: 'verse-zero' });
+      expect(out).toMatchObject({ ok: false, reason: 'verse-zero' });
     }
   });
 
   it('content the eng frame does not carry refuses too', async () => {
     // rso JOS 24 runs past eng's chapter end; lxx EZR has chapters eng lacks.
-    expect(await sourceRefFor('rso', 'JOS', 24, 34)).toEqual({
+    expect(await sourceRefFor('rso', 'JOS', 24, 34)).toMatchObject({
       ok: false,
       reason: 'past-chapter-end',
     });
-    expect(await sourceRefFor('lxx', 'EZR', 14, 18)).toEqual({
+    expect(await sourceRefFor('lxx', 'EZR', 14, 18)).toMatchObject({
       ok: false,
       reason: 'no-chapter',
     });

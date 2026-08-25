@@ -81,6 +81,17 @@ describe('coverageFor — the pin outranks the local scan', () => {
     expect(coverageFor({ [pinKey(p)]: ['TIT'] }, p).source).toBe('local');
   });
 
+  it('malformed legacy coverage degrades to unknown instead of crashing', () => {
+    expect(coverageFor({}, pin(ES_TN, { books: 'TIT' as never }))).toEqual({
+      books: [],
+      source: 'none',
+    });
+    expect(coverageFor({}, pin(ES_TN, { books: ['TIT', 42] as never }))).toEqual({
+      books: [],
+      source: 'none',
+    });
+  });
+
   it('covers() reads through the same precedence', () => {
     expect(covers({}, pin(ES_TN, { books: ['TIT'] }), 'tit')).toBe(true);
     expect(covers({}, pin(ES_TN, { books: ['TIT'] }), 'JON')).toBe(false);

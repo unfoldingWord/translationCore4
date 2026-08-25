@@ -71,7 +71,9 @@ export const backfillCoverage = (
     // which is the state the warning is for, not something to invent.
     const local = coverageFor(coverage, { ...pin, books: undefined });
     if (local.source !== 'local' || local.books.length === 0) return pin;
-    const recorded = (pin.books ?? []).map((b) => b.toUpperCase());
+    const recorded = Array.isArray(pin.books)
+      ? pin.books.filter((b): b is string => typeof b === 'string').map((b) => b.toUpperCase())
+      : [];
     const missing = local.books.filter((b) => !recorded.includes(b));
     if (recorded.length > 0 && missing.length === 0) return pin; // nothing to add
     filled.push(`${pin.repoPath}@${pin.sha}`);

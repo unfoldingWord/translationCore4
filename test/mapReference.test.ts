@@ -174,7 +174,7 @@ describe('refusals — each one a measured failure mode', () => {
       verse: 10,
       schemes,
     });
-    expect(out).toEqual({ ok: false, reason: 'verse-zero' });
+    expect(out).toMatchObject({ ok: false, reason: 'verse-zero' });
   });
 
   it('past-chapter-end: rsc ACT 19 ends at 40, eng has 19:41', async () => {
@@ -186,7 +186,7 @@ describe('refusals — each one a measured failure mode', () => {
       verse: 41,
       schemes,
     });
-    expect(out).toEqual({ ok: false, reason: 'past-chapter-end' });
+    expect(out).toMatchObject({ ok: false, reason: 'past-chapter-end' });
   });
 
   it('no-chapter: vul has no EST chapter 1', async () => {
@@ -198,7 +198,7 @@ describe('refusals — each one a measured failure mode', () => {
       verse: 1,
       schemes,
     });
-    expect(out).toEqual({ ok: false, reason: 'no-chapter' });
+    expect(out).toMatchObject({ ok: false, reason: 'no-chapter' });
   });
 
   it('unknown-frame: an unresolved project scheme refuses rather than assuming eng', async () => {
@@ -343,7 +343,7 @@ describe('a fan-out becomes a span when it is contiguous', () => {
       verse: 1,
       schemes,
     });
-    expect(out).toEqual({ ok: false, reason: 'ambiguous' });
+    expect(out).toMatchObject({ ok: false, reason: 'ambiguous' });
   });
 
   it('a multi-verse span keeps its interior — the endpoints are not required to be adjacent', async () => {
@@ -363,6 +363,23 @@ describe('a fan-out becomes a span when it is contiguous', () => {
       reference: { book: '1TH', chapter: 3, verse: '11-13' },
       mapped: true,
     });
+  });
+
+  it('refuses a real span whose mapped interior is gapped instead of fabricating the gap', async () => {
+    // Published en_tn PSA 11:1-3 lands in vul at 10:1,3,4. Endpoint-only
+    // mapping returned the invented span 10:1-4, silently claiming verse 2.
+    const out = await mapReference({
+      from: 'eng',
+      to: 'vul',
+      book: 'PSA',
+      chapter: 11,
+      verse: '1-3',
+      schemes,
+    });
+    expect(out).toMatchObject({ ok: false, reason: 'ambiguous' });
+    if (!out.ok) {
+      expect(out.candidates?.map((candidate) => candidate.verse)).toEqual([1, 3, 4]);
+    }
   });
 
   it('a span whose interior runs past the chapter end is unplaceable, not truncated', async () => {

@@ -84,7 +84,15 @@ export const coverageFor = (
   coverage: Coverage,
   pin: ResourcePin,
 ): { books: string[]; source: CoverageSource } => {
-  if (pin.books && pin.books.length > 0) {
+  // The journal schema enforces string[] at the trust boundary. Keep this read
+  // defensive as well because raw/legacy resources.json files can still be
+  // inspected before migration; malformed coverage must degrade to "unknown",
+  // never throw while opening every checking tool.
+  if (
+    Array.isArray(pin.books) &&
+    pin.books.length > 0 &&
+    pin.books.every((book): book is string => typeof book === 'string')
+  ) {
     return { books: pin.books.map((b) => b.toUpperCase()), source: 'pin' };
   }
   const local = booksFor(coverage, pin);

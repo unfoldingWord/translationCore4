@@ -178,6 +178,43 @@ describe('scope filtering runs on the MAPPED reference', () => {
       expect(out.items.some((i) => i.contextId.checkId === item.contextId.checkId)).toBe(true);
     }
   });
+
+  it('does not report an out-of-scope failed mapping as dropped', async () => {
+    // vul has no JON 1:17. A project scoped to 1:1 must neither show nor count
+    // that whole-book resource row: out-of-scope checks are never derived,
+    // counted or shown (§4.2/D26).
+    const out = await deriveForProject({
+      tsv: TN_JON,
+      tool: 'translationNotes',
+      bookId: 'jon',
+      from: 'eng',
+      to: 'vul',
+      schemes,
+      scopeRanges: ['1:1'],
+    });
+    expect(refsOf(out.items)).toEqual(out.items.map(() => '1:1'));
+    expect(out.unplaceable).toEqual([]);
+  });
+
+  it('still reports a failed mapping when its landing is in scope', async () => {
+    const out = await deriveForProject({
+      tsv: TN_JON,
+      tool: 'translationNotes',
+      bookId: 'jon',
+      from: 'eng',
+      to: 'vul',
+      schemes,
+      scopeRanges: ['1:17'],
+    });
+    expect(out.items).toEqual([]);
+    expect(out.unplaceable.length).toBeGreaterThan(0);
+    expect(
+      out.unplaceable.every(
+        ({ item }) =>
+          `${item.contextId.reference.chapter}:${item.contextId.reference.verse}` === '1:17',
+      ),
+    ).toBe(true);
+  });
 });
 
 describe('unplaceable items are dropped and reported, never journaled', () => {

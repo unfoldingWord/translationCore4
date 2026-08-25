@@ -516,7 +516,18 @@ export const deriveForProject = async (params: {
       schemes,
     });
     if (!outcome.ok) {
-      unplaceable.push({ item, reason: outcome.reason });
+      // Whole-book scope reports every failed mapping. A partial scope reports
+      // only failures whose target-frame landing is actually inside that scope;
+      // otherwise an out-of-scope resource row inflates the dropped count and
+      // can falsely select the "all dropped" empty state. Failures with no
+      // target landing (malformed input / unknown frame) cannot be attributed to
+      // a partial project scope and are therefore not counted there.
+      const inScope =
+        scopeRanges.length === 0 ||
+        outcome.candidates?.some((candidate) =>
+          refInScope(scopeRanges, candidate.chapter, candidate.verse),
+        );
+      if (inScope) unplaceable.push({ item, reason: outcome.reason });
       continue;
     }
     if (!outcome.mapped) {
