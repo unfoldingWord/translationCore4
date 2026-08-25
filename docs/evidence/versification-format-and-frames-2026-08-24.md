@@ -250,7 +250,8 @@ as a `question` issue.
 - `evidence/e33-versification-roundtrip-probe.mjs` — §2, round-trip loss per scheme.
 - `evidence/e33-frame-sweep-tsv.py`, `evidence/e33-frame-sweep-usfm.py` — §4 and §5.
 - `evidence/e33-tn-loss-sweep.mts` — the addendum's per-scheme loss counts
-  (run: `npx -y tsx docs/evidence/e33-tn-loss-sweep.mts`).
+  (run: `npx -y tsx@4.23.12 docs/evidence/e33-tn-loss-sweep.mts`; the en_tn
+  commit and the runner version are pinned in the script).
 
 The bundled scheme files were confirmed byte-identical to the upstream specification's standard
 mappings, unchanged upstream since 2025-06-18, so these measurements hold against current data.
@@ -285,17 +286,20 @@ dependencies. The three behaviourally-pinned versions are unchanged: `usfm-js@3.
 
 The §5.2 "Known losses" numbers in `BURRITO-SPEC.md` come from this sweep.
 `evidence/e33-tn-loss-sweep.mts` reads every `tn_*.tsv` of
-`git.door43.org/unfoldingWord/en_tn` at tag `v90` and maps each verse-shaped row
+`git.door43.org/unfoldingWord/en_tn` at commit
+`e137f93c4de4d64281e36c84d57a68e405cb20ab` (what tag `v90` named on 2026-08-25;
+the commit is pinned because upstream tags are mutable and unenforced — the D58
+rationale) and maps each verse-shaped row
 with the client's own `mapReference` (`src/data/mapReference.ts`), against the
 committed scheme fixtures in `test/fixtures/vrs/`. A row counts as a loss when
 `mapReference` refuses it (`ok: false`) — the exact decision the derive pipeline
 makes. Rows whose reference is not verse-shaped (`front:intro`, `1:intro`) are
 the scheme-independent D60 drop and are excluded from the per-scheme counts.
 
-Output, run 2026-08-25:
+Output, run 2026-08-25 (`npx -y tsx@4.23.12 docs/evidence/e33-tn-loss-sweep.mts`):
 
 ```
-en_tn@v90: 56 book TSVs
+en_tn@e137f93c4de4d64281e36c84d57a68e405cb20ab: 56 book TSVs
 85148 rows total; 990 non-verse (front/intro, D60); 84158 verse-shaped rows swept per scheme
 
 eng: loses 0 of 84158 rows across 0 distinct references

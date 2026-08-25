@@ -513,7 +513,7 @@ describe('PR91-7 — a scheme doc with non-numeric maxVerses values is not a sch
   });
 
   it('isValidMaxVerses accepts every shipped scheme and rejects the garbage shapes', () => {
-    for (const name of ['eng', 'lxx'] as const) {
+    for (const name of ['eng', 'lxx', 'org', 'rsc', 'rso', 'vul'] as const) {
       expect(isValidMaxVerses(load(name).maxVerses)).toBe(true);
     }
     expect(isValidMaxVerses({ GEN: ['31', 'oops'] })).toBe(false);
@@ -521,5 +521,18 @@ describe('PR91-7 — a scheme doc with non-numeric maxVerses values is not a sch
     expect(isValidMaxVerses({ GEN: [31] })).toBe(false);
     expect(isValidMaxVerses(null)).toBe(false);
     expect(isValidMaxVerses(['31'])).toBe(false);
+  });
+
+  it('rejects impossible numeric limits, not just non-digits (2026-08-25 review, finding 2)', () => {
+    // Number('9'.repeat(400)) is Infinity and `verse > Infinity` is false, so
+    // an unbounded digit string would make ANY verse "exist" — the same
+    // silent-pass, one representation over. Zero, empty arrays and an empty
+    // table carry no usable scheme either.
+    expect(isValidMaxVerses({ GEN: ['9'.repeat(400)] })).toBe(false);
+    expect(isValidMaxVerses({ GEN: ['0'] })).toBe(false);
+    expect(isValidMaxVerses({ GEN: ['01'] })).toBe(false);
+    expect(isValidMaxVerses({ GEN: [] })).toBe(false);
+    expect(isValidMaxVerses({})).toBe(false);
+    expect(isValidMaxVerses({ PSA: ['176'] })).toBe(true); // the largest real chapter
   });
 });

@@ -99,8 +99,17 @@ export const coverageFor = (
   return local.length > 0 ? { books: local, source: 'local' } : { books: [], source: 'none' };
 };
 
-export const covers = (coverage: Coverage, pin: ResourcePin, book: string): boolean =>
-  coverageFor(coverage, pin).books.includes(book.toUpperCase());
+/** The platform's whole-collection coverage marker. Local summaries report a
+ * resource that is not book-partitioned with `book_codes: ['BIBLE']` (the tw
+ * articles — see test/installed.test.ts): the resource covers EVERY book. The
+ * marker is a coverage-map value only — §5.3 `books` holds 3-character book
+ * codes, so a pin record never carries it (backfillCoverage skips it). */
+export const WHOLE_COLLECTION = 'BIBLE';
+
+export const covers = (coverage: Coverage, pin: ResourcePin, book: string): boolean => {
+  const { books } = coverageFor(coverage, pin);
+  return books.includes(WHOLE_COLLECTION) || books.includes(book.toUpperCase());
+};
 
 export interface Resolution {
   tool: Tool;

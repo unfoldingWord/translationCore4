@@ -8,7 +8,9 @@
 //
 // Method:
 //   * Rows come from every `tn_*.tsv` of git.door43.org/unfoldingWord/en_tn at
-//     tag v90 (downloaded; ~66 books).
+//     commit e137f93c4de4d64281e36c84d57a68e405cb20ab (what tag v90 named on
+//     2026-08-25; the COMMIT is pinned because upstream tags are not enforced —
+//     the D58 rationale).
 //   * A row is VERSE-SHAPED when its Reference parses as integer chapter and
 //     integer-or-span verse ("1:2", "1:2-3"). Non-verse rows (`front:intro`,
 //     "1:intro") are the D60 drop — every non-eng scheme drops them identically,
@@ -18,8 +20,8 @@
 //   * Schemes are the committed `test/fixtures/vrs/*.json` (byte-identical to
 //     the platform templates — see that directory's README).
 //
-// Run (from the repo root; tsx resolves the TypeScript imports):
-//   npx -y tsx docs/evidence/e33-tn-loss-sweep.mts
+// Run (from the repo root; the pinned tsx resolves the TypeScript imports):
+//   npx -y tsx@4.23.12 docs/evidence/e33-tn-loss-sweep.mts
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,7 +31,9 @@ import type { SchemeDoc, SchemeName } from '../../src/data/versification';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const VRS = path.join(HERE, '../../test/fixtures/vrs');
 const REPO = 'https://git.door43.org/api/v1/repos/unfoldingWord/en_tn';
-const REF = 'v90';
+// The exact commit tag v90 named when the sweep was recorded (2026-08-25).
+// Pinned by sha, not tag: upstream tags are mutable and unenforced (D58).
+const REF = 'e137f93c4de4d64281e36c84d57a68e405cb20ab';
 
 const schemes: Partial<Record<SchemeName, SchemeDoc>> = {};
 for (const name of ['eng', 'org', 'lxx', 'rsc', 'rso', 'vul'] as const) {

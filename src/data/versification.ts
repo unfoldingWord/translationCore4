@@ -92,10 +92,16 @@ export const isValidMaxVerses = (mv: unknown): mv is Record<string, string[]> =>
   !!mv &&
   typeof mv === 'object' &&
   !Array.isArray(mv) &&
+  Object.keys(mv).length > 0 &&
   Object.values(mv).every(
     (chapters) =>
       Array.isArray(chapters) &&
-      chapters.every((last) => typeof last === 'string' && /^[0-9]+$/.test(last)),
+      chapters.length > 0 &&
+      // 1–3 digits, no leading zero: a verse count is 1..999 (the largest real
+      // chapter, PSA 119, has 176). An unbounded digit string is not safe —
+      // Number('9'.repeat(400)) is Infinity, `verse > Infinity` is false, and
+      // the NaN/Infinity-silent-pass would journal any verse as existing.
+      chapters.every((last) => typeof last === 'string' && /^[1-9][0-9]{0,2}$/.test(last)),
   );
 
 /** Coerce every `mappedVerses` value to the fork's array form.

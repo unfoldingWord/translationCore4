@@ -271,7 +271,8 @@ Common rules:
     PSA 87:1), `lxx` 81, `vul` 1,067 — the last dominated by Esther's differing chapter
     structure. An `eng` project loses none and maps nothing [VERIFIED — sweep run 2026-08-25
     with `evidence/e33-tn-loss-sweep.mts` (committed; it calls the client's own
-    `mapReference`); output in `evidence/versification-format-and-frames-2026-08-24.md`,
+    `mapReference`; en_tn pinned at commit `e137f93c4de4`, the commit tag v90 named);
+    output in `evidence/versification-format-and-frames-2026-08-24.md`,
     "Addendum (2026-08-25)"].
   - **Scheme names are open.** The set of schemes is whatever the platform serves
     (`GET /content-utils/versifications`), not a fixed list. A reader MUST NOT reject a scheme

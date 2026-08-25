@@ -71,13 +71,17 @@ export const backfillCoverage = (
     // LOCAL read knows. 'none' means the resource is not on this machine —
     // which is the state the warning is for, not something to invent.
     const local = coverageFor(coverage, { ...pin, books: undefined });
-    // The platform reports non-book codes for whole-collection resources
-    // (tw: 'BIBLE', ta: 'TRANSLATE'). §5.3 `books` holds uppercase 3-character
-    // book codes ONLY — the seal refuses anything else, so an unfiltered copy
-    // would make every write carrying the pin fail. A pin whose local coverage
-    // is entirely non-book codes has nothing book-scoped to record and stays
-    // untouched.
-    const localBooks = local.books.filter((b) => PIN_BOOK_RE.test(b));
+    // The platform reports whole-collection resources (tw articles, ta modules)
+    // with non-book book_codes — 'BIBLE' / 'TRANSLATE'. Two reasons such a pin
+    // must stay untouched, not be filtered into a partial list:
+    //   * §5.3 `books` holds uppercase 3-character book codes ONLY — the seal
+    //     refuses anything else, so copying the marker breaks every write
+    //     carrying the pin;
+    //   * the marker means "covers everything" (`covers()` reads it from the
+    //     LOCAL map), so recording any book subset would falsely SHRINK the
+    //     coverage into a §5.3 record that excludes real books.
+    if (local.books.some((b) => !PIN_BOOK_RE.test(b))) return pin;
+    const localBooks = local.books;
     if (local.source !== 'local' || localBooks.length === 0) return pin;
     const recorded = Array.isArray(pin.books)
       ? pin.books.filter((b): b is string => typeof b === 'string').map((b) => b.toUpperCase())
