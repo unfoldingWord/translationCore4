@@ -3835,6 +3835,43 @@ const sameRegister = (a, b) => {
     let deepErr = ''; try { headIdentity(deep); } catch (e) { deepErr = e.message; }
     check('J32c (deferred, layer 2): the canonicalization walk is BOUNDED like every other recursive consumer — the schema bounds depth at §8.1, and this walk refuses it AGAIN so a document reaching the fold with validation off gets a verdict, never a stack overflow',
       deepErr.includes('§8.1') && !/Maximum call stack/.test(deepErr), `"${deepErr.slice(0, 70)}"`);
+    {
+      // #92 regression (PR #97 review): the direct canonical serializer must keep the
+      // BYTE ORDER of the former implementation — a lexical-insert REBUILD followed by
+      // JSON.stringify, which re-enumerates integer-index keys NUMERICALLY ("2" before
+      // "10") ahead of the lexically-ordered string keys. The oracle below IS the old
+      // algorithm; the property drives it with integer-like keys, mixed keys, nesting,
+      // arrays, undefined holes and an own __proto__ field.
+      const oldCanon = (o) => {
+        const rebuild = (v) => {
+          if (Array.isArray(v)) return v.map(rebuild);
+          if (v && typeof v === 'object') {
+            const out = {};
+            for (const k of Object.keys(v).sort())
+              Object.defineProperty(out, k, { value: rebuild(v[k]), enumerable: true, writable: true, configurable: true });
+            return out;
+          }
+          return v;
+        };
+        return JSON.stringify(rebuild(o));
+      };
+      const direct = { op: 'align.verse.set', data: JSON.parse('{"10":"a","2":"b","alpha":1,"01":2,"4294967295":3}') };
+      check('J32c (deferred, #92): canonical identity keeps JSON.stringify\'s OWN-PROPERTY key order — integer-index keys ascend numerically before lexical string keys ("2" before "10"; "01" and 2^32-1 are NOT indices)',
+        headIdentity(direct) === oldCanon({ op: 'align.verse.set', data: direct.data }),
+        `${headIdentity(direct)} vs ${oldCanon({ op: 'align.verse.set', data: direct.data })}`);
+      const keyArb = fc.oneof(fc.constantFrom('10', '2', '0', '01', '9007199254740991', '__proto__', 'alpha', 'Beta', ''), fc.string({ maxLength: 6 }));
+      const valArb = fc.letrec((tie) => ({
+        val: fc.oneof({ maxDepth: 4 },
+          fc.constantFrom(null, true, 0, -0, 1.5, 'x', undefined),
+          fc.array(tie('val'), { maxLength: 4 }),
+          fc.dictionary(keyArb, tie('val'), { maxKeys: 6 })),
+      })).val;
+      const ident = (payload) => headIdentity({ op: 'align.verse.set', p: payload });
+      const identOld = (payload) => oldCanon({ op: 'align.verse.set', p: payload });
+      const rep = fc.check(fc.property(valArb, (v) => ident(v) === identOld(v)), FC);
+      check('J32c (deferred, #92, property): the direct serializer equals the old rebuild-then-stringify BYTE FOR BYTE over generated documents (integer-like keys, nesting, arrays, undefined, __proto__)',
+        !rep.failed, rep.failed ? JSON.stringify(rep.counterexample).slice(0, 120) : `${FC.numRuns} runs`);
+    }
   }
 
   // --- B-F5: the prefix-collision rule, normative [§8.5, D54, decided 2026-08-17] ---

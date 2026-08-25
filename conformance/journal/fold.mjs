@@ -44,18 +44,46 @@ const putOwn = (out, k, v) => {
 // The canonical form the fold compares heads by. Bounded like every other recursive walk
 // (§8.1): the schema already refuses a deeper document, and this walk refuses it AGAIN so
 // a hostile event reaching the fold with validation off cannot blow the stack here.
-const sortKeys = (o, depth = 0) => {
+//
+// Serialized DIRECTLY (issue #92): the former sort-then-JSON.stringify rebuilt every
+// object with one Object.defineProperty per field, and that rebuild was ~22% of a
+// whole-Bible fold's samples. The output stays byte-identical to
+// JSON.stringify(sorted rebuild): an own `__proto__` key is read as an own property,
+// and undefined/NaN follow JSON.stringify's rules (omitted in objects, null in
+// arrays and at primitives).
+//
+// KEY ORDER (PR #97 review): the old rebuild inserted keys lexically, but the final
+// JSON.stringify re-enumerated the rebuilt object in JS OWN-PROPERTY order —
+// integer-index keys ascend NUMERICALLY first ("2" before "10"), the remaining
+// string keys follow in insertion (= lexical) order. A plain lexical sort put "10"
+// before "2" and changed projected checkpoint bytes. canonKeys reproduces the JS
+// order exactly; the regression check lives in the journal suite.
+const isIndexKey = (k) => {
+  const n = Number(k);
+  return String(n) === k && Number.isInteger(n) && n >= 0 && n < 2 ** 32 - 1;
+};
+const canonKeys = (o) => {
+  const idx = []; const str = [];
+  for (const k of Object.keys(o)) (isIndexKey(k) ? idx : str).push(k);
+  idx.sort((a, b) => a - b);
+  str.sort();
+  return [...idx, ...str];
+};
+const canonStr = (o, depth) => {
   if (depth > MAX_JSON_DEPTH)
     throw new Error(`value nests deeper than the §8.1 limit of ${MAX_JSON_DEPTH} levels — refuse to fold`);
-  if (Array.isArray(o)) return o.map((x) => sortKeys(x, depth + 1));
+  if (Array.isArray(o)) return `[${o.map((x) => canonStr(x, depth + 1) ?? 'null').join(',')}]`;
   if (o && typeof o === 'object') {
-    const out = {};
-    for (const k of Object.keys(o).sort()) putOwn(out, k, sortKeys(o[k], depth + 1));
-    return out;
+    const parts = [];
+    for (const k of canonKeys(o)) {
+      const v = canonStr(o[k], depth + 1);
+      if (v !== undefined) parts.push(`${JSON.stringify(k)}:${v}`);
+    }
+    return `{${parts.join(',')}}`;
   }
-  return o;
+  return JSON.stringify(o); // primitives: exactly JSON.stringify's encoding (NaN → null)
 };
-const canon = (o) => JSON.stringify(sortKeys(o));
+const canon = (o) => canonStr(o, 0);
 
 const EMPTY_SET = new Set();
 const ENVELOPE = new Set(['v', 'op', 'actor', 'ts', 'base', 'supersedes', 'seed', 'batch']);
@@ -816,8 +844,15 @@ export const fold = (eventsIn) => {
     headsTs[key] = h.ts;
     (decisions[h.event.toolId] ||= []).push(h.event.decision);
   }
-  for (const t of Object.keys(decisions))
-    decisions[t].sort((a, b) => canon(a.contextId) < canon(b.contextId) ? -1 : 1);
+  // Sort keys are computed ONCE per record (issue #92): the comparator used to call
+  // canon() on EVERY comparison — ~7.6M serializations for a checked whole Bible's
+  // 215k decisions. The comparator itself is unchanged (`< ? -1 : 1`), applied to the
+  // same element order, so the resulting permutation is identical.
+  for (const t of Object.keys(decisions)) {
+    const keyed = decisions[t].map((d) => [canon(d.contextId), d]);
+    keyed.sort((a, b) => (a[0] < b[0] ? -1 : 1));
+    decisions[t] = keyed.map((x) => x[1]);
+  }
 
   // TEXT is bound by the SAME absent-book conservation rule (round 10, F2). The two
   // loops below retained decisions and alignments of a removed book; verse text — the
@@ -830,6 +865,18 @@ export const fold = (eventsIn) => {
   }
 
   const alignments = {}; const invalid = [];
+  // ONE slot Set per book (issue #92): the orphan backstop used to re-derive the whole
+  // book's slot list — a regex walk of the full skeleton plus a linear membership
+  // test — for EVERY alignment head: ~2 s of a whole-Bible fold on its own.
+  // `resolveKey` is memoized, so the selected skeleton is stable per book here.
+  const slotSets = new Map(); // book -> Set of slot keys, or null (no skeleton head)
+  const slotSetOf = (book) => {
+    if (slotSets.has(book)) return slotSets.get(book);
+    const skelHead = resolveKey(`skel|${book}`, null, { skipAncestry: true });
+    const s = skelHead ? new Set(slotKeysOf(skelHead.event.skeleton)) : null;
+    slotSets.set(book, s);
+    return s;
+  };
   for (const key of heads.keys()) {
     if (!key.startsWith('align|')) continue;
     const anyHead = heads.get(key)[0];
@@ -848,8 +895,8 @@ export const fold = (eventsIn) => {
     ((alignments[ev.book] ||= {})[vkey]) = record;
     // orphaned if the verse has no slot in the current skeleton (§8.6 step 4 — the backstop
     // for a dependent record a structural action did not disposition)
-    const skelHead = resolveKey(`skel|${ev.book}`, null, { skipAncestry: true });
-    const hasSlot = !!skelHead && slotKeysOf(skelHead.event.skeleton).includes(vkey);
+    const slots = slotSetOf(ev.book);
+    const hasSlot = !!slots && slots.has(vkey);
     const verseContent = books[ev.book]?.verses?.[vkey];
     if (!hasSlot || verseContent === undefined || verseTextMd5(verseContent) !== ev.targetVerseMd5)
       invalid.push({ book: ev.book, verse: vkey, ts: h.ts, ...(hasSlot ? {} : { orphaned: true }) });
