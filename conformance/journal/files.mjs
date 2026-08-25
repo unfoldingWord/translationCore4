@@ -283,7 +283,9 @@ export const readUnion = (journalDir, onInvalid = surfaceInvalid) => {
     }
     let dir;
     try { dir = actorDirFor(journalDir, actor); } catch (e) { onInvalid(path.join(journalDir, actor), `actor-dir:${e.message}`); continue; }
-    events.push(...readSegments(dir, onInvalid));
+    // no spread: push(...arr) passes every element as a call argument, and a whole-Bible
+    // journal (~278k events, issue #80) exceeds V8's argument limit — RangeError
+    for (const e of readSegments(dir, onInvalid)) events.push(e);
   }
   return events;
 };
