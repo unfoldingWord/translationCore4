@@ -48,16 +48,34 @@ const putOwn = (out, k, v) => {
 // Serialized DIRECTLY (issue #92): the former sort-then-JSON.stringify rebuilt every
 // object with one Object.defineProperty per field, and that rebuild was ~22% of a
 // whole-Bible fold's samples. The output stays byte-identical to
-// JSON.stringify(sorted copy): keys sort the same, an own `__proto__` key is read as
-// an own property, undefined/NaN follow JSON.stringify's rules (omitted in objects,
-// null in arrays and at primitives).
+// JSON.stringify(sorted rebuild): an own `__proto__` key is read as an own property,
+// and undefined/NaN follow JSON.stringify's rules (omitted in objects, null in
+// arrays and at primitives).
+//
+// KEY ORDER (PR #97 review): the old rebuild inserted keys lexically, but the final
+// JSON.stringify re-enumerated the rebuilt object in JS OWN-PROPERTY order —
+// integer-index keys ascend NUMERICALLY first ("2" before "10"), the remaining
+// string keys follow in insertion (= lexical) order. A plain lexical sort put "10"
+// before "2" and changed projected checkpoint bytes. canonKeys reproduces the JS
+// order exactly; the regression check lives in the journal suite.
+const isIndexKey = (k) => {
+  const n = Number(k);
+  return String(n) === k && Number.isInteger(n) && n >= 0 && n < 2 ** 32 - 1;
+};
+const canonKeys = (o) => {
+  const idx = []; const str = [];
+  for (const k of Object.keys(o)) (isIndexKey(k) ? idx : str).push(k);
+  idx.sort((a, b) => a - b);
+  str.sort();
+  return [...idx, ...str];
+};
 const canonStr = (o, depth) => {
   if (depth > MAX_JSON_DEPTH)
     throw new Error(`value nests deeper than the §8.1 limit of ${MAX_JSON_DEPTH} levels — refuse to fold`);
   if (Array.isArray(o)) return `[${o.map((x) => canonStr(x, depth + 1) ?? 'null').join(',')}]`;
   if (o && typeof o === 'object') {
     const parts = [];
-    for (const k of Object.keys(o).sort()) {
+    for (const k of canonKeys(o)) {
       const v = canonStr(o[k], depth + 1);
       if (v !== undefined) parts.push(`${JSON.stringify(k)}:${v}`);
     }
