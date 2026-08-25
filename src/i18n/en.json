@@ -227,6 +227,8 @@
   "align.unavailable.missing.body": "Get the source texts to download it, then come back to {book}.",
   "align.unavailable.versification-unavailable.title": "Versification data not loaded",
   "align.unavailable.versification-unavailable.body": "This project uses a versification other than the default, and the numbering data needed to find the source verse could not be loaded — usually because you are offline. Nothing is lost. Reconnect and open {book} again.",
+  "align.unavailable.no-counterpart.title": "This verse has no single source verse",
+  "align.unavailable.no-counterpart.body": "In this project's numbering, this verse does not line up with exactly one verse in the original-language text, so it cannot be aligned. The source text is installed — nothing is missing. The rest of {book} aligns normally.",
   "align.unavailable.versification-unknown.title": "Versification could not be identified",
   "align.unavailable.versification-unknown.body": "This project's versification scheme is not recorded and could not be matched to a known one, so the source verse for {book} cannot be looked up safely. Nothing is lost — recording the scheme, or re-creating the project in tC4, restores alignment.",
   "nav.align": "Align",
@@ -237,6 +239,8 @@
   "sources.checkIn": "Use for checking",
   "gateway.failed": "The change was not applied.",
   "gateway.blocked": "This change cannot be applied: {books} already carry checking decisions, and the new language does not cover them. Install a suite that covers these books first. Nothing was changed.",
+  "gateway.blocked-versification-unavailable": "This change cannot be applied right now: {books} carry checking decisions, and the numbering data needed to carry them over could not be loaded — usually because you are offline. Nothing was changed. Reconnect and try again.",
+  "gateway.blocked-versification-unknown": "This change cannot be applied: {books} carry checking decisions, and this project's versification scheme could not be identified, so they cannot be carried over safely. Nothing was changed. Recording the scheme, or re-creating the project in tC4, unblocks the change.",
   "gateway.blockedError": "Blocked: {books} would lose their checking resource. Nothing was changed.",
   "sources.alreadyCheckingIn": "This project already checks against {lang}.",
   "check.droppedNote": "{count} check(s) from this resource have no verse in this project's {scheme} numbering, so they are not shown and not counted. Nothing was lost — they return if the project's numbering ever matches the resource."

@@ -85,9 +85,17 @@ export default function GatewayChange() {
         {(preview.blocked?.length ?? 0) > 0 && (
           <p role="alert" data-testid="gateway-blocked"
             style={{ fontSize: 13, color: '#8A2E22', background: 'rgba(229,157,51,.10)', border: '1px solid rgba(229,157,51,.5)', borderRadius: 10, padding: '10px 12px', lineHeight: 1.55, margin: '0 0 14px' }}>
-            {t('gateway.blocked', {
-              books: preview.blocked.map((b) => `${bookName(b.book)} (${t(`check.tool.${b.tool}`)})`).join(', '),
-            })}
+            {/* The remedy depends on WHY the books are blocked. A versification
+              * block (frame unavailable/unknown) affects every entry at once
+              * and cannot be fixed by installing a suite — say the real fix. */}
+            {t(
+              preview.blocked.find((b) => b.reason)
+                ? `gateway.blocked-${preview.blocked.find((b) => b.reason).reason}`
+                : 'gateway.blocked',
+              {
+                books: preview.blocked.map((b) => `${bookName(b.book)} (${t(`check.tool.${b.tool}`)})`).join(', '),
+              },
+            )}
           </p>
         )}
 

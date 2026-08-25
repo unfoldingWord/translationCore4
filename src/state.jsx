@@ -598,11 +598,20 @@ export function AppProvider({ children }) {
         // wrongful invalidations included — so a not-ready frame blocks every
         // affected book, the same refusal openCheckTool makes. A change with
         // no affected decisions carries no plan and stays safe regardless.
+        // A frame-blocked entry carries WHY (`reason`), because the remedy
+        // differs: a coverage block is fixed by installing a suite, a
+        // versification block by reconnecting (unavailable) or recording the
+        // scheme (unknown) — telling an offline user to install a suite
+        // cannot unblock them. Coverage-blocked entries carry no reason.
         const frame = await a.projectFrame();
         const blocked =
           frame.state === 'ready'
             ? uncoveredByChange(consequences.affected, next, coverage)
-            : consequences.affected.map((e) => ({ tool: e.tool, book: e.book }));
+            : consequences.affected.map((e) => ({
+                tool: e.tool,
+                book: e.book,
+                reason: `versification-${frame.state}`,
+              }));
         const blockedKey = (e) => `${e.tool}/${e.book}`;
         const blockedSet = new Set(blocked.map(blockedKey));
         const plan = [];
@@ -656,11 +665,17 @@ export function AppProvider({ children }) {
         // old unmapped path.
         const frame = await a.projectFrame();
         // R-E33-8 (amended): the gateway-change plan is committed verbatim, so
-        // previewGatewayChange now BLOCKS every affected book while the frame is
-        // not ready — this path is only reached with a ready frame. The fallback
-        // below is defense in depth for any future caller, never a basis for a
-        // journaled plan.
-        const to = frame.state === 'ready' ? frame.name : RESOURCE_FRAME;
+        // previewGatewayChange BLOCKS every affected book while the frame is
+        // not ready — this path is only reached with a ready frame. A silent
+        // eng fallback here would derive eng-framed identities for a non-eng
+        // project, and the caller journals them permanently. Refuse loudly so
+        // any future caller fails instead of corrupting the journal.
+        if (frame.state !== 'ready') {
+          throw new Error(
+            `deriveItemsFor: versification frame is '${frame.state}', not ready (R-E33-8)`,
+          );
+        }
+        const to = frame.name;
         const { items } = await deriveForProject({
           tsv,
           tool,
@@ -857,10 +872,23 @@ export function AppProvider({ children }) {
           verse,
           schemes: alignFrame.schemes,
         });
+        // Both refusals below are MAPPING outcomes, never 'missing': the source
+        // text IS installed, and R-E33-6 forbids blaming the text for a
+        // numbering mismatch — 'missing' would advise a download that cannot
+        // help. `no-counterpart` says what is true: no single source verse
+        // corresponds to this project-frame verse.
         if (!srcRef.ok) {
-          // The project's numbering has no counterpart in the source text. Say
-          // so rather than aligning against a verse the reference does not name.
-          dispatch({ type: 'set', patch: { alignSession: { unavailable: 'missing' } } });
+          dispatch({ type: 'set', patch: { alignSession: { unavailable: 'no-counterpart' } } });
+          return;
+        }
+        // A contiguous fan-out maps one project verse onto a SPAN ('9-10',
+        // [decided 2026-08-24]). UGNT/UHB JSON is keyed by single verses, so an
+        // exact lookup with a span key returns nothing — refuse honestly
+        // instead of reporting the installed text as absent. No shipped scheme
+        // fans out inside the 66-book canon today; schemes come from the
+        // platform, so the data can change underneath.
+        if (String(srcRef.reference.verse).includes('-')) {
+          dispatch({ type: 'set', patch: { alignSession: { unavailable: 'no-counterpart' } } });
           return;
         }
         const origObjects = verseObjectsFor(

@@ -17,6 +17,7 @@
 import {
   KNOWN_SCHEME_NAMES,
   isSchemeName,
+  isValidMaxVerses,
   resolveProjectScheme,
   type ResolvedScheme,
   type SchemeDoc,
@@ -191,8 +192,14 @@ const fetchScheme = async (
 ): Promise<{ doc: SchemeDoc | null; failed: boolean }> => {
   try {
     const doc = await deps.api.getVersification(name);
+    // Shape check includes the VALUES: `unplaceableReason` gates journaling
+    // with `verse > Number(maxVerses[...])`, which silently passes on NaN, so
+    // a non-numeric entry must be conclusive garbage here — not a scheme.
     return {
-      doc: doc && typeof doc === 'object' && 'maxVerses' in doc ? (doc as SchemeDoc) : null,
+      doc:
+        doc && typeof doc === 'object' && isValidMaxVerses((doc as SchemeDoc).maxVerses)
+          ? (doc as SchemeDoc)
+          : null,
       failed: false,
     };
   } catch {

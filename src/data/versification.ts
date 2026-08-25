@@ -50,7 +50,6 @@ export const isSchemeName = (v: unknown): v is SchemeName =>
 /** The default every project gets unless the user picks otherwise (§4.3). */
 export const DEFAULT_SCHEME: SchemeName = 'eng';
 
-
 /** A `mappedVerses` value. The upstream Copenhagen format allows exactly one
  * target range per source range; the fork the platform and the client toolkit
  * both use ALSO allows an array — one source range to MANY targets. Readers
@@ -80,6 +79,24 @@ export interface VrsRegister {
 // ---------------------------------------------------------------------------
 // Reading scheme data safely
 // ---------------------------------------------------------------------------
+
+/** Is this a usable `maxVerses` table — every value an array of digit strings?
+ *
+ * The guard exists because `unplaceableReason` compares with
+ * `verse > Number(chapters[chapter - 1])`, and `>` is FALSE for NaN — so a
+ * non-numeric entry would make every verse in that chapter "exist", and a
+ * mapped landing that passes becomes a §5.2/§8.5 identity, journaled
+ * permanently (the same NaN-silent-pass shape R-E33-2 fixed for the inputs).
+ * Validate once, at the load point, so the comparison can stay simple. */
+export const isValidMaxVerses = (mv: unknown): mv is Record<string, string[]> =>
+  !!mv &&
+  typeof mv === 'object' &&
+  !Array.isArray(mv) &&
+  Object.values(mv).every(
+    (chapters) =>
+      Array.isArray(chapters) &&
+      chapters.every((last) => typeof last === 'string' && /^[0-9]+$/.test(last)),
+  );
 
 /** Coerce every `mappedVerses` value to the fork's array form.
  *

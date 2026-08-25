@@ -21,6 +21,7 @@
 import base64
 import glob
 import json
+import os
 import urllib.request
 
 SCHEMES = os.environ.get("VRS_DIR", "../../../dev-env/app-resources/templates/content_templates/vrs/")

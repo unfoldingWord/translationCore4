@@ -249,6 +249,8 @@ as a `question` issue.
 - `evidence/e33-helps-frame-mapping-probe.mjs` — §2, the collision and out-of-range table.
 - `evidence/e33-versification-roundtrip-probe.mjs` — §2, round-trip loss per scheme.
 - `evidence/e33-frame-sweep-tsv.py`, `evidence/e33-frame-sweep-usfm.py` — §4 and §5.
+- `evidence/e33-tn-loss-sweep.mts` — the addendum's per-scheme loss counts
+  (run: `npx -y tsx docs/evidence/e33-tn-loss-sweep.mts`).
 
 The bundled scheme files were confirmed byte-identical to the upstream specification's standard
 mappings, unchanged upstream since 2025-06-18, so these measurements hold against current data.
@@ -276,3 +278,42 @@ Adding the dependency introduced **no new vulnerabilities**: `npm audit` reports
 (6 low, 4 moderate, 2 high) both before and after, all from pre-existing transitive
 dependencies. The three behaviourally-pinned versions are unchanged: `usfm-js@3.4.3`,
 `word-aligner@1.0.3`, `word-aligner-lib@1.0.1`.
+
+---
+
+## Addendum (2026-08-25): en_tn@v90 loss sweep
+
+The §5.2 "Known losses" numbers in `BURRITO-SPEC.md` come from this sweep.
+`evidence/e33-tn-loss-sweep.mts` reads every `tn_*.tsv` of
+`git.door43.org/unfoldingWord/en_tn` at tag `v90` and maps each verse-shaped row
+with the client's own `mapReference` (`src/data/mapReference.ts`), against the
+committed scheme fixtures in `test/fixtures/vrs/`. A row counts as a loss when
+`mapReference` refuses it (`ok: false`) — the exact decision the derive pipeline
+makes. Rows whose reference is not verse-shaped (`front:intro`, `1:intro`) are
+the scheme-independent D60 drop and are excluded from the per-scheme counts.
+
+Output, run 2026-08-25:
+
+```
+en_tn@v90: 56 book TSVs
+85148 rows total; 990 non-verse (front/intro, D60); 84158 verse-shaped rows swept per scheme
+
+eng: loses 0 of 84158 rows across 0 distinct references
+rsc: loses 8 of 84158 rows across 3 distinct references
+    PSA 116:10 (verse-zero) × 3
+    PSA 147:12 (verse-zero) × 3
+    REV 12:18 (past-chapter-end) × 2
+rso: loses 13 of 84158 rows across 4 distinct references
+    PSA 87:1 (ambiguous) × 5
+    PSA 116:10 (verse-zero) × 3
+    PSA 147:12 (verse-zero) × 3
+    REV 12:18 (past-chapter-end) × 2
+lxx: loses 81 of 84158 rows across 40 distinct references
+vul: loses 1067 of 84158 rows across 170 distinct references (dominated by
+    Esther: the vul scheme lacks the chapters the eng rows name)
+```
+
+This corrects the earlier, uncommitted sweep figures (7/12/57/845 over 76,920
+rows), which no committed script reproduced. The distinct references for `rsc`
+and `rso` are unchanged; the counts differ because this sweep counts rows, at
+tag `v90`, with the shipped mapper.

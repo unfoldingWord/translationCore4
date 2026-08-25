@@ -20,9 +20,13 @@ import {
   type Coverage,
 } from '../src/data/resolve';
 import type { ResourcePin, ResourcesFile } from '../src/data/burritoStore';
+import { pinEntryError } from '../conformance/journal/grammar.mjs';
 
 const sha = (s: string): string =>
-  s.padEnd(40, '0').slice(0, 40).replace(/[^0-9a-f]/g, 'a');
+  s
+    .padEnd(40, '0')
+    .slice(0, 40)
+    .replace(/[^0-9a-f]/g, 'a');
 
 const pin = (repoPath: string, extra: Partial<ResourcePin> = {}): ResourcePin => ({
   repoPath,
@@ -59,7 +63,7 @@ const resources = (primary: Partial<Record<string, ResourcePin>> = {}): Resource
   }) as unknown as ResourcesFile;
 
 describe('coverageFor — the pin outranks the local scan', () => {
-  it('uses the pin\'s own record even when nothing is installed', () => {
+  it("uses the pin's own record even when nothing is installed", () => {
     const p = pin(ES_TN, { books: ['tit', 'jon'] });
     expect(coverageFor({}, p)).toEqual({ books: ['TIT', 'JON'], source: 'pin' });
   });
@@ -221,6 +225,34 @@ describe('backfillCoverage — retires the ambiguity for old pins (owner ruling 
     expect(out.changed).toBe(true);
     expect(out.resources.languageSets.primary.translationWordsLinks.books).toEqual(['TIT', 'JON']);
     expect(out.filled).toContain(pinKey(recorded));
+  });
+
+  it("never backfills the platform's non-book codes — the seal refuses them", () => {
+    // The platform reports whole-collection resources with non-book book_codes
+    // (tw: ['BIBLE'], ta: ['TRANSLATE'] — see test/installed.test.ts). §5.3
+    // `books` holds uppercase 3-character book codes ONLY, so an unfiltered
+    // copy would make every writeResources carrying the pin seal-refused:
+    // createProject fails, and the open-project backfill fails on every open.
+    const res = resources();
+    const local: Coverage = {
+      [pinKey(pin(ES_TWL))]: ['BIBLE'],
+      [pinKey(pin('git.door43.org/es-419_gl/es-419_ta'))]: ['TRANSLATE'],
+    };
+    const out = backfillCoverage(res, local);
+    expect(out.changed).toBe(false);
+    expect(out.filled).toEqual([]);
+    expect(out.resources.languageSets.primary.translationWords.books).toBeUndefined();
+    expect(out.resources.languageSets.primary.translationAcademy.books).toBeUndefined();
+  });
+
+  it('keeps the real book codes when a local read mixes both, and the filled pin passes the seal', () => {
+    const local: Coverage = { [pinKey(pin(ES_TWL))]: ['BIBLE', 'TIT'] };
+    const out = backfillCoverage(resources(), local);
+    const filledPin = out.resources.languageSets.primary.translationWordsLinks;
+    expect(filledPin.books).toEqual(['TIT']);
+    // The backfill-to-seal contract itself: the §5.3 entry validator (which the
+    // client seal imports) must accept every pin the backfill produces.
+    expect(pinEntryError('languageSets.primary.translationWordsLinks', filledPin)).toBeNull();
   });
 
   it('is idempotent — a second pass changes nothing', () => {

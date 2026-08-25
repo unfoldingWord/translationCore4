@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { mapReference } from '../src/data/mapReference';
 import { forgetProjectFrames, resolveProjectFrame } from '../src/data/projectFrame';
 import {
+  isValidMaxVerses,
   unplaceableReason,
   verseExists,
   type SchemeDoc,
@@ -294,7 +295,12 @@ describe('R-E33-6 — a known frame whose scheme data cannot be fetched is unava
   it('a foreign project with no recorded name and no fingerprint is UNKNOWN', async () => {
     forgetProjectFrames();
     const frame = await resolveProjectFrame('repo/foreign', {
-      store: { readVersification: async () => ({ name: 'unrecorded', bytes: '{"maxVerses":{"GEN":["99"]}}' }) },
+      store: {
+        readVersification: async () => ({
+          name: 'unrecorded',
+          bytes: '{"maxVerses":{"GEN":["99"]}}',
+        }),
+      },
       api: {
         getVersification: async (n: string) => (n === 'eng' ? eng : lxx),
         getVersifications: async () => ['eng', 'lxx'],
@@ -314,7 +320,8 @@ describe('R-E33-6 — a known frame whose scheme data cannot be fetched is unava
           if (!online) throw new Error('offline');
           return n === 'lxx' ? lxx : eng;
         },
-        getVersifications: async () => (online ? ['eng', 'lxx'] : Promise.reject(new Error('offline'))),
+        getVersifications: async () =>
+          online ? ['eng', 'lxx'] : Promise.reject(new Error('offline')),
       },
     } as never;
 
@@ -374,7 +381,9 @@ describe('R-E33-6 — a known frame whose scheme data cannot be fetched is unava
   it('a recorded name absent from a COMPLETE served list still falls through to fingerprint (R-E33-1 intact)', async () => {
     forgetProjectFrames();
     const frame = await resolveProjectFrame('repo/typo-online', {
-      store: { readVersification: async () => ({ name: 'typo-scheme', bytes: JSON.stringify(lxx) }) },
+      store: {
+        readVersification: async () => ({ name: 'typo-scheme', bytes: JSON.stringify(lxx) }),
+      },
       api: {
         getVersification: async (n: string) => {
           if (n === 'typo-scheme') throw new Error('404');
@@ -404,5 +413,113 @@ describe('R-E33-7 — a frame that cannot map has an honest message, not the dro
       expect(en[`check.empty.versification-${state}.title`]).toBeTruthy();
       expect(en[`check.empty.versification-${state}.body`]).toBeTruthy();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Regression tests for the PR #91 review (2026-08-25). Numbering continues the
+// e33 review series; each case reproduces a finding from that review.
+// ---------------------------------------------------------------------------
+
+const stateSource = (): string =>
+  fs.readFileSync(path.resolve(process.cwd(), 'src/state.jsx'), 'utf8');
+const en = (): Record<string, string> =>
+  JSON.parse(fs.readFileSync(path.resolve(process.cwd(), 'src/i18n/en.json'), 'utf8')) as Record<
+    string,
+    string
+  >;
+
+describe('PR91-2 — a frame-blocked gateway change names the real remedy, not coverage', () => {
+  // FOUND: when the frame was not ready, every affected book went into
+  // `blocked` with no reason, and the only UI string advised installing a
+  // suite — advice that cannot unblock an offline user.
+  it('previewGatewayChange stamps versification-blocked entries with a reason', () => {
+    const preview = stateSource().slice(
+      stateSource().indexOf('previewGatewayChange: async'),
+      stateSource().indexOf('deriveItemsFor: async'),
+    );
+    expect(preview).toContain('reason: `versification-${frame.state}`');
+  });
+
+  it('both versification block reasons have their own gateway message', () => {
+    for (const state of ['unavailable', 'unknown']) {
+      expect(en()[`gateway.blocked-versification-${state}`]).toBeTruthy();
+    }
+    // The unavailable copy must point at reconnecting, not at installing.
+    expect(en()['gateway.blocked-versification-unavailable']).toMatch(/[Rr]econnect/);
+  });
+});
+
+describe('PR91-3 — a mapping outcome never reports the installed source text as missing', () => {
+  // FOUND: openAlign passed a mapped SPAN verse ("9-10") into the exact-key
+  // source lookup (which can never match single-verse-keyed UGNT/UHB), and
+  // reused the 'missing' state — "download the source texts" — for both that
+  // and the ok:false mapping refusal. R-E33-6 forbids blaming the text.
+  it('openAlign routes span and refused mappings to no-counterpart, not missing', () => {
+    const src = stateSource();
+    const openAlign = src.slice(src.indexOf('openAlign:'), src.indexOf('startAligning:'));
+    expect(openAlign).toContain("unavailable: 'no-counterpart'");
+    expect(openAlign).toContain(".includes('-')");
+    // Between the mapping call and the source lookup — the two mapping-outcome
+    // refusals — 'missing' must not appear: the text IS installed there.
+    const mappingOutcomes = openAlign.slice(
+      openAlign.indexOf('mapReference'),
+      openAlign.indexOf('verseObjectsFor'),
+    );
+    expect(mappingOutcomes).not.toContain("unavailable: 'missing'");
+  });
+
+  it('the no-counterpart state has a titled, bodied message', () => {
+    expect(en()['align.unavailable.no-counterpart.title']).toBeTruthy();
+    expect(en()['align.unavailable.no-counterpart.body']).toBeTruthy();
+  });
+});
+
+describe('PR91-4 — deriveItemsFor refuses a not-ready frame instead of deriving eng-framed identities', () => {
+  // FOUND: `frame.state === 'ready' ? frame.name : RESOURCE_FRAME` silently
+  // derived eng-framed identities — the exact corruption R-E33-8 exists to
+  // prevent — held off only by the caller's blocking. The invariant now lives
+  // in the helper itself.
+  it('the silent eng fallback is gone and the guard throws', () => {
+    const src = stateSource();
+    const derive = src.slice(
+      src.indexOf('deriveItemsFor: async'),
+      src.indexOf('askGatewayChange: async'),
+    );
+    expect(derive).not.toContain("frame.state === 'ready' ? frame.name : RESOURCE_FRAME");
+    expect(derive).toContain('throw new Error');
+    expect(derive).toContain('R-E33-8');
+  });
+});
+
+describe('PR91-7 — a scheme doc with non-numeric maxVerses values is not a scheme', () => {
+  // FOUND: `verse > Number(garbage)` is false for NaN, so a corrupt maxVerses
+  // entry made verseExists pass for ANY verse in that chapter — and a landing
+  // that passes is journaled permanently. Same NaN-silent-pass shape R-E33-2
+  // fixed for the inputs; the values are now validated at the load point.
+  it('fetchScheme-served garbage cannot become a ready frame', async () => {
+    forgetProjectFrames();
+    const corrupt = { ...lxx, maxVerses: { GEN: ['31', 'not-a-count'] } };
+    const frame = await resolveProjectFrame('repo/corrupt-scheme', {
+      store: {
+        readVersification: async () => ({ name: 'lxx', bytes: JSON.stringify(corrupt) }),
+      },
+      api: {
+        getVersification: async () => corrupt,
+        getVersifications: async () => ['eng', 'lxx'],
+      },
+    } as never);
+    expect(frame.state).not.toBe('ready');
+  });
+
+  it('isValidMaxVerses accepts every shipped scheme and rejects the garbage shapes', () => {
+    for (const name of ['eng', 'lxx'] as const) {
+      expect(isValidMaxVerses(load(name).maxVerses)).toBe(true);
+    }
+    expect(isValidMaxVerses({ GEN: ['31', 'oops'] })).toBe(false);
+    expect(isValidMaxVerses({ GEN: '31' })).toBe(false);
+    expect(isValidMaxVerses({ GEN: [31] })).toBe(false);
+    expect(isValidMaxVerses(null)).toBe(false);
+    expect(isValidMaxVerses(['31'])).toBe(false);
   });
 });

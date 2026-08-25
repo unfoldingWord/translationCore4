@@ -25,6 +25,7 @@
 import type { LanguageSet, ResourcePin, ResourcesFile } from './burritoStore';
 import { LADDER } from './burritoStore';
 import { coverageFor, type Coverage } from './resolve';
+import { PIN_BOOK_RE } from '../../conformance/journal/grammar.mjs';
 
 /** The pin slots that carry a repo and can therefore carry coverage. */
 const SET_SLOTS = [
@@ -70,14 +71,21 @@ export const backfillCoverage = (
     // LOCAL read knows. 'none' means the resource is not on this machine —
     // which is the state the warning is for, not something to invent.
     const local = coverageFor(coverage, { ...pin, books: undefined });
-    if (local.source !== 'local' || local.books.length === 0) return pin;
+    // The platform reports non-book codes for whole-collection resources
+    // (tw: 'BIBLE', ta: 'TRANSLATE'). §5.3 `books` holds uppercase 3-character
+    // book codes ONLY — the seal refuses anything else, so an unfiltered copy
+    // would make every write carrying the pin fail. A pin whose local coverage
+    // is entirely non-book codes has nothing book-scoped to record and stays
+    // untouched.
+    const localBooks = local.books.filter((b) => PIN_BOOK_RE.test(b));
+    if (local.source !== 'local' || localBooks.length === 0) return pin;
     const recorded = Array.isArray(pin.books)
       ? pin.books.filter((b): b is string => typeof b === 'string').map((b) => b.toUpperCase())
       : [];
-    const missing = local.books.filter((b) => !recorded.includes(b));
+    const missing = localBooks.filter((b) => !recorded.includes(b));
     if (recorded.length > 0 && missing.length === 0) return pin; // nothing to add
     filled.push(`${pin.repoPath}@${pin.sha}`);
-    return { ...pin, books: recorded.length === 0 ? local.books : [...recorded, ...missing] };
+    return { ...pin, books: recorded.length === 0 ? localBooks : [...recorded, ...missing] };
   };
 
   const nextSets: Record<string, LanguageSet> = {};

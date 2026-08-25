@@ -22,6 +22,20 @@ import { t } from '../i18n';
 
 const TOOLS = Object.keys(TOOL_SLOT);
 
+/* #15 / §5.2: the dropped count MUST be surfaced wherever checks are shown —
+ * silently shrinking the denominator is not permitted. ONE component for the
+ * two render sites (empty state and live session), so the message and the
+ * testid can never drift apart; only the container styling differs. */
+function DroppedNote({ dropped, style }) {
+  if (!dropped) return null;
+  return (
+    <div data-testid="versification-dropped"
+      style={{ fontSize: 12.5, color: '#8A6A22', lineHeight: 1.5, ...style }}>
+      {t('check.droppedNote', { count: dropped.count, scheme: dropped.scheme ?? '—' })}
+    </div>
+  );
+}
+
 const TONE = {
   ready: { bg: '#E8F7ED', border: 'rgba(60,143,92,.35)', fg: '#3C8F5C' },
   fetch: { bg: '#eaf6fc', border: 'rgba(49,173,227,.4)', fg: '#0F7FB0' },
@@ -196,14 +210,8 @@ function CheckSession() {
           <p style={{ fontSize: 13.5, color: '#4F5E6A', lineHeight: 1.6, margin: '0 auto', maxWidth: 460 }}>
             {t(`check.empty.${cs.empty}.body`)}
           </p>
-          {/* §5.2: the dropped count MUST be surfaced even when it emptied the
-            * whole list — silently shrinking the denominator is not permitted. */}
-          {cs.dropped && (
-            <p data-testid="versification-dropped"
-              style={{ fontSize: 12.5, color: '#8A6A22', margin: '14px auto 0', maxWidth: 460, lineHeight: 1.5 }}>
-              {t('check.droppedNote', { count: cs.dropped.count, scheme: cs.dropped.scheme ?? '—' })}
-            </p>
-          )}
+          {/* Surfaced even when the drop emptied the whole list. */}
+          <DroppedNote dropped={cs.dropped} style={{ margin: '14px auto 0', maxWidth: 460 }} />
           {cs.resource && (
             <p style={{ fontSize: 11.5, color: '#8A99A4', fontFamily: 'ui-monospace,Menlo,monospace', margin: '14px 0 0' }}>
               {cs.resource.repoPath} · {cs.resource.version}
@@ -271,14 +279,10 @@ function CheckSession() {
       {/* #15: the denominator above EXCLUDES checks the project's versification
         * has no verse for. Dropping them silently would make "0 of 415" look
         * complete when the resource offered 417 — the same silence B20 fixed for
-        * the fallback. Say the count and why. Null for an eng project, which is
-        * every project whose numbering matches the resource suite. */}
-      {cs.dropped && (
-        <div data-testid="versification-dropped"
-          style={{ fontSize: 12.5, color: '#8A6A22', background: '#F6EEDC', border: '1px solid rgba(229,157,51,.35)', borderRadius: 10, padding: '10px 12px', margin: '0 0 10px', lineHeight: 1.5 }}>
-          {t('check.droppedNote', { count: cs.dropped.count, scheme: cs.dropped.scheme ?? '—' })}
-        </div>
-      )}
+        * the fallback. Null for an eng project, which is every project whose
+        * numbering matches the resource suite. */}
+      <DroppedNote dropped={cs.dropped}
+        style={{ background: '#F6EEDC', border: '1px solid rgba(229,157,51,.35)', borderRadius: 10, padding: '10px 12px', margin: '0 0 10px' }} />
 
       {cs.resource && (
         <p style={{ fontSize: 11.5, color: '#8A99A4', fontFamily: 'ui-monospace,Menlo,monospace', margin: '0 0 16px' }}>

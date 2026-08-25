@@ -345,7 +345,7 @@ export const pinSlotError = (v) =>
 // value, so it carries the §5.3 document's own shape — ONE validator, shared by the op
 // and by any projection input.
 export const SHA_RE = /^[0-9a-f]{40}$/;                 // §5.3 REQUIRED commit sha (D58)
-const PIN_BOOK_RE = /^[A-Z0-9]{3}$/;                    // §5.3 OPTIONAL per-pin coverage (D41)
+export const PIN_BOOK_RE = /^[A-Z0-9]{3}$/;             // §5.3 OPTIONAL per-pin coverage (D41)
 const pinStringField = (e, k, { required }) => {
   if (e[k] === undefined) return required ? `without ${k}` : null;
   if (!isStr(e[k]) || e[k] === '') return `${k} is not a non-empty string`;

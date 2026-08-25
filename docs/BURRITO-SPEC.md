@@ -265,12 +265,14 @@ Common rules:
     one-to-many where two source verses collapse onto one pivot verse. When the resulting
     target verses form one unbroken run they are written as the span (`"67-68"`); a gapped
     fan-out stays unplaceable, because a span would claim the verses in the gap.
-  - **Known losses, for reference.** Against `en_tn@v90` (76,920 check rows): `rsc` loses 7
-    (PSA 116:10, PSA 147:12, REV 12:18), `rso` loses 12 (those plus PSA 87:1), `lxx` 57,
-    `vul` 845 — the last dominated by Esther's differing chapter structure. An `eng` project
-    loses none and maps nothing [VERIFIED — sweep run 2026-08-24;
-    `evidence/versification-format-and-frames-2026-08-24.md` §3 and
-    `evidence/e33-mapped-verses-form.py`].
+  - **Known losses, for reference.** Against `en_tn@v90` (84,158 verse-shaped check rows in
+    56 books; 990 `front`/`intro` rows are the scheme-independent D60 drop and are excluded):
+    `rsc` loses 8 rows (PSA 116:10, PSA 147:12, REV 12:18), `rso` loses 13 (those plus
+    PSA 87:1), `lxx` 81, `vul` 1,067 — the last dominated by Esther's differing chapter
+    structure. An `eng` project loses none and maps nothing [VERIFIED — sweep run 2026-08-25
+    with `evidence/e33-tn-loss-sweep.mts` (committed; it calls the client's own
+    `mapReference`); output in `evidence/versification-format-and-frames-2026-08-24.md`,
+    "Addendum (2026-08-25)"].
   - **Scheme names are open.** The set of schemes is whatever the platform serves
     (`GET /content-utils/versifications`), not a fixed list. A reader MUST NOT reject a scheme
     for being unfamiliar; an unrecognised name resolves through §4.3's ladder like any other.
