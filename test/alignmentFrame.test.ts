@@ -18,8 +18,14 @@
 // Note this is a LOOKUP, never an identity: the alignment record stays keyed by
 // the project-frame reference, which is what keeps export frame-neutral (below).
 import { describe, expect, it } from 'vitest';
+import {
+  mergeVerseToZalnUsfm,
+  verseTextFromObjects,
+  type AlignmentFile,
+} from '../src/data/align/zaln';
 import { mapReference } from '../src/data/mapReference';
 import { RESOURCE_FRAME } from '../src/data/projectFrame';
+import { usfmjs } from '../src/data/vendor';
 import { SCHEME_NAMES, type SchemeDoc, type SchemeName } from '../src/data/versification';
 
 const fs = process.getBuiltinModule('node:fs');
@@ -164,28 +170,42 @@ describe('an unresolvable frame refuses rather than aligning against the wrong v
 });
 
 describe('export is frame-neutral by construction', () => {
-  // The export path itself is Increment 4 (e2e/j07-publish.spec.ts is test.fixme
-  // @inc4), so there is no export code to exercise yet. What CAN be pinned now
-  // is the property that makes export need no mapping at all: both of its inputs
-  // are already in the project frame. Export folds the §5.1 alignment sidecar
-  // into the draft USFM, and both are keyed by project-frame references — so no
-  // conversion arises, and none should ever be added.
-  //
-  // This test guards that invariant: if someone later keys alignment records in
-  // the resource frame, export would silently need a conversion it does not do,
-  // and this fails.
-  it('a project-frame reference is its own alignment key — no conversion in play', async () => {
+  it('real sidecar merge stays at the project chapter and verse', async () => {
     const draftRef = { book: 'JON', chapter: 2, verse: 1 }; // an rsc project's draft
-    // The alignment record is keyed by the draft reference, unmapped.
     const alignmentKey = `${draftRef.chapter}:${draftRef.verse}`;
     expect(alignmentKey).toBe('2:1');
 
-    // The SOURCE lookup maps; the KEY does not. Those must differ for a non-eng
-    // project — that difference is exactly why the key must not be the mapped one.
     const source = await sourceRefFor('rsc', draftRef.book, draftRef.chapter, draftRef.verse);
     expect(source).toMatchObject({ ok: true, reference: { chapter: 1, verse: 17 } });
-    if (source.ok) {
-      expect(`${source.reference.chapter}:${source.reference.verse}`).not.toBe(alignmentKey);
-    }
+
+    // Reuse the conformance burrito's real aligned verse and the existing tC3
+    // conversion surface. Only its project-frame key changes for this fixture.
+    const sampleDir = path.resolve(process.cwd(), 'conformance/sample-burrito/ingredients');
+    const alignment = JSON.parse(
+      fs.readFileSync(path.join(sampleDir, 'checking/alignments/TIT.json'), 'utf8'),
+    ) as AlignmentFile;
+    const record = alignment.chapters['1']['1'];
+    const titus = usfmjs.toJSON(fs.readFileSync(path.join(sampleDir, 'TIT.usfm'), 'utf8')) as unknown as {
+      chapters: Record<string, Record<string, { verseObjects: Array<Record<string, unknown>> }>>;
+    };
+    const verseText = verseTextFromObjects(titus.chapters['1']['1'].verseObjects).trim();
+    const project = usfmjs.toJSON(
+      `\\id JON\n\\c 2\n\\p\n\\v 1 ${verseText}\n\\v 2 Control verse.\n`,
+    ) as unknown as {
+      chapters: Record<string, Record<string, { verseObjects: Array<Record<string, unknown>> }>>;
+    };
+    const merged = mergeVerseToZalnUsfm(record, verseText);
+    const parsed = usfmjs.toJSON(`\\v 1 ${merged}`, { chunk: true }) as unknown as {
+      verses: Record<string, { verseObjects: Array<Record<string, unknown>> }>;
+    };
+    project.chapters['2']['1'].verseObjects = parsed.verses['1'].verseObjects;
+    const output = usfmjs.toUSFM(project, { forcedNewLines: true });
+
+    expect(output).toContain('\\c 2');
+    expect(output).toContain('\\v 1');
+    expect(output).toContain('\\zaln-s');
+    expect(output).toMatch(/x-strong="G\d+"/);
+    expect(output).toContain('\\v 2 Control verse.');
+    expect(output).not.toContain('\\c 1');
   });
 });

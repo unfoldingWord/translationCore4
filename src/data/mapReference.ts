@@ -211,7 +211,7 @@ const contiguous = (verses: number[]): boolean =>
 const parseVerse = (
   verse: number | string,
 ): { kind: 'single'; v: number } | { kind: 'span'; a: number; b: number } | null => {
-  if (typeof verse === 'number') return Number.isInteger(verse) ? { kind: 'single', v: verse } : null;
+  if (typeof verse === 'number') return Number.isSafeInteger(verse) ? { kind: 'single', v: verse } : null;
   const span = /^(\d+)-(\d+)$/.exec(verse);
   if (span) return { kind: 'span', a: Number(span[1]), b: Number(span[2]) };
   return /^\d+$/.test(verse) ? { kind: 'single', v: Number(verse) } : null;
@@ -248,7 +248,13 @@ export const mapReference = async (request: MapRequest): Promise<MapOutcome> => 
   // the same bad row behaving differently by project scheme. One chokepoint,
   // one verdict, both frames.
   const parsed = parseVerse(verse);
-  if (!parsed || !Number.isInteger(chapter)) {
+  const validPositive = (part: number): boolean => Number.isSafeInteger(part) && part >= 1;
+  const malformedVerse =
+    !parsed ||
+    (parsed.kind === 'single'
+      ? !validPositive(parsed.v)
+      : !validPositive(parsed.a) || !validPositive(parsed.b) || parsed.a > parsed.b);
+  if (!validPositive(chapter) || malformedVerse) {
     return { ok: false, reason: 'malformed-reference' };
   }
 

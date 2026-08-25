@@ -27,7 +27,7 @@ import { selectionsFromTokens, targetWords, tokenIndicesFromSelections } from '.
 import type { DecisionFile } from '../src/data/burritoStore';
 import { HttpStore, StaleWriteError } from '../src/data/httpStore';
 import { localRepoPathFromRepoPath, installedPathFor, isPinLocal } from '../src/data/installed';
-import { preflightToolBook } from '../src/data/resolve';
+import { pinKey, preflightToolBook } from '../src/data/resolve';
 
 const fs = process.getBuiltinModule('node:fs');
 const path = process.getBuiltinModule('node:path');
@@ -631,20 +631,29 @@ describe('R20 — a not-installed pinned primary opens the fallback but is NOT s
   const EN = 'git.door43.org/unfoldingWord/en_tn';
   const set = (lang: string, owner: string, repoPath: string) => ({
     gatewayLanguage: { languageId: lang, owner },
-    translationNotes: { repoPath, version: lang === 'en' ? 'v89' : 'v66', flavor: '' },
-    translationWordsLinks: { repoPath, version: 'v1', flavor: '' },
-    translationWords: { repoPath, version: 'v1', flavor: '' },
-    translationAcademy: { repoPath, version: 'v1', flavor: '' },
+    translationNotes: {
+      repoPath,
+      version: lang === 'en' ? 'v89' : 'v66',
+      flavor: '',
+      sha: (lang === 'en' ? 'e' : 'a').repeat(40),
+    },
+    translationWordsLinks: { repoPath, version: 'v1', flavor: '', sha: 'b'.repeat(40) },
+    translationWords: { repoPath, version: 'v1', flavor: '', sha: 'b'.repeat(40) },
+    translationAcademy: { repoPath, version: 'v1', flavor: '', sha: 'c'.repeat(40) },
   });
+  const primary = set('es-419', 'es-419_gl', ES);
+  const fallback = set('en', 'unfoldingWord', EN);
   const resources = {
     schemaVersion: 2,
-    languageSets: { primary: set('es-419', 'es-419_gl', ES), fallback: set('en', 'unfoldingWord', EN) },
+    languageSets: { primary, fallback },
     resources: {},
   } as never;
+  const esNotes = primary.translationNotes;
+  const enNotes = fallback.translationNotes;
 
   it('the installed fallback opens (ready) but flags the not-local pinned primary — not silent, not a forced fetch', () => {
     const pf = preflightToolBook(resources, 'translationNotes', 'JON', {
-      coverage: { [EN]: ['JON'] }, // only English is local-covered
+      coverage: { [pinKey(enNotes)]: ['JON'] }, // only English is local-covered
       isLocal: (p) => p.repoPath === EN,
       online: true,
     });
@@ -655,7 +664,7 @@ describe('R20 — a not-installed pinned primary opens the fallback but is NOT s
 
   it('offline: still opens the installed fallback, still flags the missing primary (never a silent switch)', () => {
     const pf = preflightToolBook(resources, 'translationNotes', 'JON', {
-      coverage: { [EN]: ['JON'] },
+      coverage: { [pinKey(enNotes)]: ['JON'] },
       isLocal: (p) => p.repoPath === EN,
       online: false,
     });
@@ -665,7 +674,7 @@ describe('R20 — a not-installed pinned primary opens the fallback but is NOT s
 
   it('when the primary IS local and simply lacks the book, the fallback is plainly correct — no warning', () => {
     const pf = preflightToolBook(resources, 'translationNotes', '1CO', {
-      coverage: { [ES]: ['JON'], [EN]: ['1CO'] }, // both local; es-419 lacks 1CO
+      coverage: { [pinKey(esNotes)]: ['JON'], [pinKey(enNotes)]: ['1CO'] },
       isLocal: () => true,
       online: true,
     });

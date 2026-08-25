@@ -224,6 +224,27 @@ describe('R-E33-5 — a malformed chapter is rejected on BOTH frame paths', () =
       mapped: false,
     });
   });
+
+  it.each([
+    ['zero chapter', 0, 1],
+    ['negative chapter', -1, 1],
+    ['unsafe chapter', Number.MAX_SAFE_INTEGER + 1, 1],
+    ['zero verse', 1, 0],
+    ['negative verse', 1, -1],
+    ['unsafe verse', 1, Number.MAX_SAFE_INTEGER + 1],
+    ['zero span endpoint', 1, '0-2'],
+    ['reversed span', 1, '3-2'],
+  ])('same-frame rejects a %s before writing an identity', async (_label, chapter, verse) => {
+    const out = await mapReference({
+      from: 'eng',
+      to: 'eng',
+      book: 'JHN',
+      chapter: chapter as number,
+      verse,
+      schemes: { eng },
+    });
+    expect(out).toEqual({ ok: false, reason: 'malformed-reference' });
+  });
 });
 
 describe('R-E33-6 — a known frame whose scheme data cannot be fetched is unavailable, not lost', () => {
@@ -299,6 +320,47 @@ describe('R-E33-6 — a known frame whose scheme data cannot be fetched is unava
     expect(second.state).toBe('ready');
     expect(second.schemes.lxx).toBeTruthy();
     expect(second.schemes.eng).toBeTruthy();
+  });
+
+  it('an incomplete fingerprint is retried after candidate fetches recover', async () => {
+    forgetProjectFrames();
+    let online = false;
+    const deps = {
+      store: {
+        readVersification: async () => ({ name: 'unrecorded', bytes: JSON.stringify(lxx) }),
+      },
+      api: {
+        getVersification: async (n: string) => {
+          if (!online) throw new Error('offline');
+          return n === 'lxx' ? lxx : eng;
+        },
+        getVersifications: async () => ['eng', 'lxx'],
+      },
+    } as never;
+
+    const first = await resolveProjectFrame('repo/fingerprint-reconnect', deps);
+    expect(first).toMatchObject({ name: null, source: 'unknown', state: 'unavailable' });
+
+    online = true;
+    const second = await resolveProjectFrame('repo/fingerprint-reconnect', deps);
+    expect(second).toMatchObject({ name: 'lxx', source: 'fingerprint', state: 'ready' });
+  });
+
+  it('no register is a conclusive unknown and needs no candidate fetch', async () => {
+    forgetProjectFrames();
+    let fetches = 0;
+    const frame = await resolveProjectFrame('repo/no-register', {
+      store: { readVersification: async () => null },
+      api: {
+        getVersification: async () => {
+          fetches += 1;
+          throw new Error('offline');
+        },
+        getVersifications: async () => ['eng', 'lxx'],
+      },
+    } as never);
+    expect(frame).toMatchObject({ name: null, source: 'unknown', state: 'unknown' });
+    expect(fetches).toBe(0);
   });
 
   it('a recorded name absent from a COMPLETE served list still falls through to fingerprint (R-E33-1 intact)', async () => {

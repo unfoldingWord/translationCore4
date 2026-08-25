@@ -9,7 +9,7 @@
 // platform's per-client settings (`/api/client-settings/<storage_id>`), which
 // is exactly the "belongs to this machine, not to the project" store.
 import type { ResourcePin } from './burritoStore';
-import { samePath } from './resolve';
+import { pinKey, samePath } from './resolve';
 import type { Coverage } from './resolve';
 import type { RepoSummary, ServerApi } from './serverApi';
 
@@ -144,12 +144,10 @@ export const discoverOnDisk = async (
  *
  * `book_codes` comes from the platform's own summaries — UPPERCASE for local
  * repos [VERIFIED live 2026-08-03] — so coverage never requires scanning TSVs.
- * Keys are the repo path exactly as DCS reports it (owner ruling 2026-08-04);
- * `covers()` tolerates a differently-cased pin without converting anything.
- * Keyed by repoPath, not by (repoPath, version): one version of a repo is
- * installed at a time, and version identity is enforced separately by
- * `isPinLocal`. Keying by version here would silently zero the coverage of a
- * resource that is present but recorded under a different tag. */
+ * Keys are the exact pin identity (repoPath + sha, D58). The repo path retains
+ * the casing DCS reports; `coverageFor()` tolerates a differently-cased path
+ * without converting the stored identity. A different commit of the same repo
+ * can contain a different set of books, so repoPath alone is not sufficient. */
 export const coverageFromLocal = (
   summaries: Record<string, RepoSummary>,
   installed: InstalledMap,
@@ -158,7 +156,7 @@ export const coverageFromLocal = (
   for (const [localPath, pin] of Object.entries(installed)) {
     const summary = summaries[localPath];
     if (!summary) continue;
-    coverage[pin.repoPath] = (summary.book_codes || []).map((c) => c.toUpperCase());
+    coverage[pinKey(pin)] = (summary.book_codes || []).map((c) => c.toUpperCase());
   }
   return coverage;
 };

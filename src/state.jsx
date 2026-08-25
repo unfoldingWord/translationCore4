@@ -548,11 +548,13 @@ export function AppProvider({ children }) {
         // readiness check uses. Reading only the record made a seeded or
         // hand-sideloaded suite invisible, so a language the app had just
         // offered could not be pinned.
-        const { installed } = await a.resolutionContext();
-        const primary = languageSetFromInstalled(installed, gateway);
-        if (!primary) throw new Error(t('sources.suiteIncomplete', { lang: gateway.name }));
+        const { installed, coverage } = await a.resolutionContext();
+        const proposedPrimary = languageSetFromInstalled(installed, gateway);
+        if (!proposedPrimary) throw new Error(t('sources.suiteIncomplete', { lang: gateway.name }));
         const { value: currentResources, md5: resourcesMd5 } = await store.readResourcesWithMd5();
         const current = currentResources ?? INSTALLED_SUITE;
+        const next = backfillCoverage(applyGatewayChange(current, proposedPrimary), coverage).resources;
+        const primary = next.languageSets.primary;
 
         // Read every stored decision file this project has, so the count is
         // real rather than estimated.
@@ -571,13 +573,11 @@ export function AppProvider({ children }) {
         }
         // Affectedness is judged against the POST-CHANGE resolution (D30's
         // per-(tool, book) ladder), so the counting needs the coverage map.
-        const { coverage } = await a.resolutionContext();
         const consequences = consequencesOfGatewayChange(
           stored,
-          { primary, fallback: current.languageSets?.fallback ?? primary },
+          { primary, fallback: next.languageSets.fallback ?? primary },
           coverage,
         );
-        const next = applyGatewayChange(current, primary);
 
         // The resource is the primary key (tC3 precedent, 2026-08-04): the
         // check list derived from the NEW resource is the work. Compute that
@@ -729,16 +729,23 @@ export function AppProvider({ children }) {
       setProjectGateway: async (gateway) => {
         const store = storeRef.current;
         if (!store) throw new Error('no project is open');
-        const { installed } = await a.resolutionContext();
+        const { installed, coverage } = await a.resolutionContext();
         const primary = languageSetFromInstalled(installed, gateway);
         if (!primary) {
           throw new Error(t('sources.suiteIncomplete', { lang: gateway.name }));
         }
-        const next = await updateResources(store, (current) => ({
-          ...current,
-          schemaVersion: 2,
-          languageSets: { ...current.languageSets, primary },
-        }));
+        const next = await updateResources(
+          store,
+          (current) =>
+            backfillCoverage(
+              {
+                ...current,
+                schemaVersion: 2,
+                languageSets: { ...current.languageSets, primary },
+              },
+              coverage,
+            ).resources,
+        );
         dispatch({ type: 'set', patch: { projectPins: next } });
         return next;
       },

@@ -6,6 +6,7 @@ import {
   preflightToolBook,
   resolutionRecord,
   recordMatchesResolution,
+  pinKey,
   TOOL_SLOT,
 } from '../src/data/resolve';
 import type { Coverage } from '../src/data/resolve';
@@ -47,13 +48,12 @@ const RESOURCES: ResourcesFile = {
 };
 
 // es-419 covers only its 4 released books; English covers the canon.
-// Coverage is keyed by repoPath: one version of a repo is installed at a time,
-// and version identity is enforced separately by isPinLocal.
+// Local coverage is keyed by the exact pin identity (repoPath + sha).
 const COVERAGE: Coverage = {
-  [RESOURCES.languageSets.primary.translationNotes.repoPath]: ['3JN', 'JON', 'RUT', 'TIT'],
-  [RESOURCES.languageSets.primary.translationWordsLinks.repoPath]: ['3JN', 'JON', 'RUT', 'TIT'],
-  [RESOURCES.languageSets.fallback.translationNotes.repoPath]: ['TIT', 'JON', 'HEB', 'PSA'],
-  [RESOURCES.languageSets.fallback.translationWordsLinks.repoPath]: ['TIT', 'JON', 'HEB', 'PSA'],
+  [pinKey(RESOURCES.languageSets.primary.translationNotes)]: ['3JN', 'JON', 'RUT', 'TIT'],
+  [pinKey(RESOURCES.languageSets.primary.translationWordsLinks)]: ['3JN', 'JON', 'RUT', 'TIT'],
+  [pinKey(RESOURCES.languageSets.fallback.translationNotes)]: ['TIT', 'JON', 'HEB', 'PSA'],
+  [pinKey(RESOURCES.languageSets.fallback.translationWordsLinks)]: ['TIT', 'JON', 'HEB', 'PSA'],
 };
 
 const allLocal = () => true;
@@ -107,7 +107,10 @@ describe('D30.2 — the automatic ladder is exactly two rungs', () => {
       ...RESOURCES,
       languageSets: { ...RESOURCES.languageSets, other: set('fr', 'fr_gl', 'fr_gl', 'v31') },
     } as unknown as ResourcesFile;
-    const cov: Coverage = { ...COVERAGE, 'git.door43.org/fr_gl/fr_tn': ['REV'] };
+    const cov: Coverage = {
+      ...COVERAGE,
+      [pinKey(pin('fr_gl/fr_tn', 'v31'))]: ['REV'],
+    };
     // REV exists ONLY in the extra set; the ladder must still refuse it.
     expect(resolveToolBook(withExtra, 'translationNotes', 'REV', cov).rung).toBeNull();
   });
@@ -162,7 +165,9 @@ describe('D30.4 / D30.5 — missing pinned version: fetch when online, first-cla
   });
 
   it('offline with unknown coverage (nothing fetched yet) is unavailable, not a false not-covered verdict', () => {
-    expect(preflightToolBook(RESOURCES, 'translationNotes', 'REV', opts(false, noneLocal)).state)
+    expect(preflightToolBook(RESOURCES, 'translationNotes', 'REV', {
+      coverage: {}, isLocal: noneLocal, online: false,
+    }).state)
       .toBe('unavailable');
   });
 });

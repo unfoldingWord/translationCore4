@@ -22,11 +22,9 @@ export const TOOL_SLOT = {
 
 export type Tool = keyof typeof TOOL_SLOT;
 
-/** Which books each pinned repo actually contains, keyed by `repoPath`. Built
- * from what is local on disk (the platform's own `book_codes`), never assumed.
- * A repo missing from the map has unknown coverage, which resolves the same as
- * "does not cover". Version identity is enforced separately by `isPinLocal`,
- * so keying by repo alone cannot smuggle in the wrong version's readiness. */
+/** Which books each installed pin actually contains, keyed by `repoPath@sha`.
+ * Built from what is local on disk (the platform's own `book_codes`), never
+ * assumed. A pin missing from the map has unknown coverage. */
 export type Coverage = { [pinKey: string]: string[] };
 
 /** Repo-path equality.
@@ -50,14 +48,16 @@ export const samePath = (a: string | undefined, b: string | undefined): boolean 
 // D58: identity is (repoPath + sha); the version tag is a display label.
 export const pinKey = (pin: ResourcePin): string => `${pin.repoPath}@${pin.sha}`;
 
-/** Books a coverage map holds for a pin. The map is keyed by the repo path as
- * DCS reports it, so the direct hit is the normal path; the scan is the same
- * comparison-time tolerance `samePath` describes, for a pin written elsewhere
- * in a different casing. */
-const booksFor = (coverage: Coverage, repoPath: string): string[] => {
-  const direct = coverage[repoPath];
+/** Books a local coverage map holds for one exact pin. The direct hit is normal.
+ * The scan tolerates only different repo-path casing; the sha must still match. */
+const booksFor = (coverage: Coverage, pin: ResourcePin): string[] => {
+  const direct = coverage[pinKey(pin)];
   if (direct) return direct;
-  const hit = Object.keys(coverage).find((k) => samePath(k, repoPath));
+  const hit = Object.keys(coverage).find((key) => {
+    const separator = key.lastIndexOf('@');
+    if (separator < 1) return false;
+    return key.slice(separator + 1) === pin.sha && samePath(key.slice(0, separator), pin.repoPath);
+  });
   return hit ? coverage[hit] : [];
 };
 
@@ -87,7 +87,7 @@ export const coverageFor = (
   if (pin.books && pin.books.length > 0) {
     return { books: pin.books.map((b) => b.toUpperCase()), source: 'pin' };
   }
-  const local = booksFor(coverage, pin.repoPath);
+  const local = booksFor(coverage, pin);
   return local.length > 0 ? { books: local, source: 'local' } : { books: [], source: 'none' };
 };
 
@@ -242,6 +242,7 @@ export const preflightToolBook = (
   // online that is a fetch, not a verdict about the book.
   const unfetched = LADDER.map((rung) => resources.languageSets?.[rung]?.[slot])
     .filter((p): p is ResourcePin => !!p)
+    .filter((p) => coverageFor(opts.coverage, p).source === 'none')
     .find((p) => !opts.isLocal(p));
   if (unfetched) {
     return opts.online

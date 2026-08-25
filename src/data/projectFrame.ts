@@ -32,9 +32,9 @@ export interface ProjectFrame extends ResolvedScheme {
    *   `ready`       — map: the frame is known and the scheme documents needed
    *                   for a conversion are present (or it is `eng`, which needs
    *                   none).
-   *   `unavailable` — the frame IS known (a trusted recorded name or a
-   *                   fingerprint), but the scheme data required to map could not
-   *                   be fetched — offline, or the platform endpoint was down.
+   *   `unavailable` — the frame is known, or its fingerprint is incomplete
+   *                   because candidate scheme data could not be fetched —
+   *                   offline, or the platform endpoint was down.
    *                   This is TRANSIENT and D30.5 first-class: the checks are not
    *                   lost, they simply cannot be numbered until the data loads.
    *                   A caller MUST NOT drop the check list as "no verse in this
@@ -119,10 +119,12 @@ export const resolveProjectFrame = async (
   // Rung 2: fingerprint the register's bytes, only when rung 1 found no name.
   // Needs the candidate documents, so this is where the fetches happen.
   const known: Partial<Record<SchemeName, SchemeDoc>> = {};
-  if (!name) {
+  let fingerprintIncomplete = false;
+  if (!name && register) {
     for (const candidate of available) {
       const doc = await fetchScheme(deps, candidate);
       if (doc) known[candidate] = doc;
+      else fingerprintIncomplete = true;
     }
     const resolved = resolveProjectScheme(register, known);
     if (resolved.name) {
@@ -142,15 +144,20 @@ export const resolveProjectFrame = async (
   }
 
   // Classify. eng (or any same-as-resource frame) is always ready. A known
-  // non-eng frame is ready when both documents loaded, else unavailable. No name
-  // at all is unknown.
+  // non-eng frame is ready when both documents loaded, else unavailable. A
+  // failed candidate fetch also makes an unmatched fingerprint unavailable,
+  // because the missing document can be the match. With every candidate loaded,
+  // or with no register to fingerprint, an unmatched frame is conclusively
+  // unknown.
   const state: ProjectFrame['state'] = !name
-    ? 'unknown'
+    ? register && fingerprintIncomplete
+      ? 'unavailable'
+      : 'unknown'
     : name === RESOURCE_FRAME || (!!schemes[RESOURCE_FRAME] && !!schemes[name])
       ? 'ready'
       : 'unavailable';
 
-  const frame: ProjectFrame = { name: state === 'unknown' ? null : name, source, schemes, state };
+  const frame: ProjectFrame = { name: name ?? null, source, schemes, state };
   // Do NOT cache `unavailable` (R-E33-9): it is a transient "could not fetch"
   // outcome, and the early-return above already recomputes it every call. Caching
   // it would only store an entry that is always bypassed. `ready` and `unknown`
@@ -160,8 +167,8 @@ export const resolveProjectFrame = async (
 };
 
 /** One scheme document, or null when the platform cannot supply it. A missing
- * document is not fatal: the caller ends up `unavailable` (frame known, data not
- * loaded) or `unknown`, never a wrong reference. */
+ * document is not fatal: the caller ends up `unavailable` (known frame or
+ * incomplete fingerprint) or `unknown`, never a wrong reference. */
 const fetchScheme = async (deps: FrameDeps, name: SchemeName): Promise<SchemeDoc | null> => {
   try {
     const doc = await deps.api.getVersification(name);

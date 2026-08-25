@@ -66,7 +66,7 @@ describe('coverageFor — the pin outranks the local scan', () => {
 
   it('falls back to the local scan when the pin records nothing', () => {
     const p = pin(ES_TN);
-    const local: Coverage = { [ES_TN]: ['TIT'] };
+    const local: Coverage = { [pinKey(p)]: ['TIT'] };
     expect(coverageFor(local, p)).toEqual({ books: ['TIT'], source: 'local' });
   });
 
@@ -78,7 +78,7 @@ describe('coverageFor — the pin outranks the local scan', () => {
     // `books: []` cannot be distinguished from "captured nothing", so it must not
     // out-rank a usable local scan.
     const p = pin(ES_TN, { books: [] });
-    expect(coverageFor({ [ES_TN]: ['TIT'] }, p).source).toBe('local');
+    expect(coverageFor({ [pinKey(p)]: ['TIT'] }, p).source).toBe('local');
   });
 
   it('covers() reads through the same precedence', () => {
@@ -157,7 +157,10 @@ describe('the resolver now tells the two cases apart', () => {
 describe('backfillCoverage — retires the ambiguity for old pins (owner ruling 3c)', () => {
   it('fills a coverage-less pin from the local install', () => {
     const res = resources();
-    const local: Coverage = { [ES_TWL]: ['TIT', 'JON'], [ES_TN]: ['TIT'] };
+    const local: Coverage = {
+      [pinKey(pin(ES_TWL))]: ['TIT', 'JON'],
+      [pinKey(pin(ES_TN))]: ['TIT'],
+    };
     const out = backfillCoverage(res, local);
 
     expect(out.changed).toBe(true);
@@ -187,7 +190,7 @@ describe('backfillCoverage — retires the ambiguity for old pins (owner ruling 
     // one would leave the other fillable and put that shared key in `filled`.
     const recorded = pin(ES_TWL, { books: ['TIT', 'JON'] });
     const res = resources({ translationWordsLinks: recorded, translationWords: recorded });
-    const out = backfillCoverage(res, { [ES_TWL]: ['TIT'] }); // local knows LESS
+    const out = backfillCoverage(res, { [pinKey(recorded)]: ['TIT'] }); // local knows LESS
 
     expect(out.resources.languageSets.primary.translationWordsLinks.books).toEqual(['TIT', 'JON']);
     expect(out.resources.languageSets.primary.translationWords.books).toEqual(['TIT', 'JON']);
@@ -195,7 +198,10 @@ describe('backfillCoverage — retires the ambiguity for old pins (owner ruling 
   });
 
   it('is idempotent — a second pass changes nothing', () => {
-    const local: Coverage = { [ES_TWL]: ['TIT', 'JON'], [ES_TN]: ['TIT'] };
+    const local: Coverage = {
+      [pinKey(pin(ES_TWL))]: ['TIT', 'JON'],
+      [pinKey(pin(ES_TN))]: ['TIT'],
+    };
     const first = backfillCoverage(resources(), local);
     const second = backfillCoverage(first.resources, local);
     expect(second.changed).toBe(false);
@@ -205,7 +211,7 @@ describe('backfillCoverage — retires the ambiguity for old pins (owner ruling 
   it('backfilling then resolving removes the warning', () => {
     // The end-to-end point of 3c: after one open with the resource present, an
     // old project stops seeing the B20 banner for that pin.
-    const local: Coverage = { [ES_TWL]: ['TIT', 'JON'] };
+    const local: Coverage = { [pinKey(pin(ES_TWL))]: ['TIT', 'JON'] };
     const before = preflightToolBook(resources(), 'translationWords', 'MRK', {
       coverage: {},
       isLocal: () => false,
@@ -226,6 +232,17 @@ describe('backfillCoverage — retires the ambiguity for old pins (owner ruling 
 });
 
 describe('coverage is keyed by pin identity, not by repo path', () => {
+  it('local coverage from another commit cannot backfill an older pin', () => {
+    const older = pin(ES_TWL);
+    const installed = { ...older, sha: sha('newer-commit') };
+    const res = resources({ translationWordsLinks: older, translationWords: older });
+    const out = backfillCoverage(res, { [pinKey(installed)]: ['MRK'] });
+
+    expect(out.changed).toBe(false);
+    expect(out.resources.languageSets.primary.translationWordsLinks.books).toBeUndefined();
+    expect(coverageFor({ [pinKey(installed)]: ['MRK'] }, older).source).toBe('none');
+  });
+
   it('two commits of one repo do not share a recorded coverage', () => {
     // repoPath alone collides across shas. The recorded list lives ON the pin,
     // so a re-pin cannot inherit the previous commit's coverage.
@@ -240,5 +257,19 @@ describe('coverage is keyed by pin identity, not by repo path', () => {
     const res = resources({ translationWordsLinks: pin(ES_TWL, { books: ['JON'] }) });
     expect(resolveToolBook(res, 'translationWords', 'JON', {}).rung).toBe('primary');
     expect(resolveToolBook(res, 'translationWords', 'TIT', {}).rung).toBe('fallback');
+  });
+
+  it('does not fetch a pin whose recorded coverage excludes the book', () => {
+    const res = resources({
+      translationNotes: pin(ES_TN, { books: ['TIT'] }),
+    });
+    const pre = preflightToolBook(res, 'translationNotes', 'REV', {
+      coverage: {},
+      isLocal: () => false,
+      online: true,
+    });
+
+    expect(pre.state).toBe('not-covered');
+    expect(pre.needs).toBeNull();
   });
 });
