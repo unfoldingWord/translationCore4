@@ -260,6 +260,17 @@ function CheckSession() {
       <div style={{ height: 6, borderRadius: 99, background: '#ECF2F5', overflow: 'hidden', marginBottom: 18 }}>
         <div style={{ height: '100%', background: '#31ADE3', borderRadius: 99, width: `${cs.progress.total ? (cs.progress.decided / cs.progress.total) * 100 : 0}%` }} />
       </div>
+      {/* #15: the denominator above EXCLUDES checks the project's versification
+        * has no verse for. Dropping them silently would make "0 of 415" look
+        * complete when the resource offered 417 — the same silence B20 fixed for
+        * the fallback. Say the count and why. Null for an eng project, which is
+        * every project whose numbering matches the resource suite. */}
+      {cs.dropped && (
+        <div data-testid="versification-dropped"
+          style={{ fontSize: 12.5, color: '#8A6A22', background: '#F6EEDC', border: '1px solid rgba(229,157,51,.35)', borderRadius: 10, padding: '10px 12px', margin: '0 0 10px', lineHeight: 1.5 }}>
+          {t('check.droppedNote', { count: cs.dropped.count, scheme: cs.dropped.scheme ?? '—' })}
+        </div>
+      )}
 
       {cs.resource && (
         <p style={{ fontSize: 11.5, color: '#8A99A4', fontFamily: 'ui-monospace,Menlo,monospace', margin: '0 0 16px' }}>

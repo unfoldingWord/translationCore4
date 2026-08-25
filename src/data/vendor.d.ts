@@ -76,3 +76,37 @@ declare module 'string-punctuation-tokenizer' {
   export function tokenize(options: { text: string }): string[];
   export function occurrencesInString(text: string, subString: string): number;
 }
+
+// proskomma-core ships no types. It publishes as one prebuilt bundle, and this
+// project uses exactly one corner of it: the versification mapping utilities
+// (issue #15). Loaded by a DYNAMIC import in src/data/mapReference.ts so the
+// ~233 kB gzipped chunk stays out of the main bundle — an `eng` project never
+// fetches it. Keep this declaration loose and honest; the behaviour is asserted
+// by test/mapReference.test.ts against the real scheme data.
+declare module 'proskomma-core' {
+  export const utils: {
+    versification: {
+      /** Builds per-book, per-chapter succinct mapping tables. Calls
+       * preSuccinctVerseMapping internally, so it takes the RAW mappedVerses. */
+      succinctifyVerseMappings: (
+        mappedVerses: Record<string, string[]>,
+      ) => Record<string, Record<string, unknown>>;
+      /** Inverts a mappedVerses table. REQUIRES the array value form — handed a
+       * string it iterates that string's characters and returns a silently
+       * corrupt table (see normalizeScheme in src/data/versification.ts). */
+      reverseVersification: (doc: { mappedVerses: Record<string, string[]> }) => {
+        reverseMappedVerses: Record<string, string[]>;
+      };
+      /** [bookCode, [[chapter, verse], ...]]. The inner array may hold more than
+       * one pair under the format's many-to-many form. */
+      mapVerse: (
+        succinctChapter: unknown,
+        book: string,
+        chapter: number,
+        verse: number,
+      ) => [string, [number, number][]] | null;
+      [key: string]: unknown;
+    };
+    [key: string]: unknown;
+  };
+}

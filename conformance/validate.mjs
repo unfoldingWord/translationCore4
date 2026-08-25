@@ -88,8 +88,12 @@ const metadata = json(path.join(BURRITO, 'metadata.json'));
   }
   check('ingredients: every md5 + size correct', allMatch);
   const roles = Object.values(metadata.ingredients).map(e => e.role).filter(Boolean);
-  check('ingredients: 6 role-tagged ingredients present (incl. vrs.json as x-versification)',
-    roles.length === 6 && metadata.ingredients['ingredients/vrs.json']?.role === 'x-versification',
+  // §4.3 (amended 2026-08-24, issue #15): the five roles are tC4's OWN sidecars.
+  // `vrs.json` is PLATFORM-written and carries no role — the creation endpoints
+  // register checksum/mimeType/size only, and no published burrito role-tags it.
+  // Asserting a role there described nothing any writer produces.
+  check('ingredients: 5 client-owned role-tagged ingredients present; vrs.json carries no role',
+    roles.length === 5 && !metadata.ingredients['ingredients/vrs.json']?.role,
     roles.join(', '), 'stage2');
 }
 
@@ -107,6 +111,40 @@ const metadata = json(path.join(BURRITO, 'metadata.json'));
     !!vrs && vrsKeys.every(k => k in vrs) && scopeBooks.every(b => b in vrs.maxVerses) &&
     !!vrsEntry,
     vrs ? `scheme has ${Object.keys(vrs.maxVerses).length} books; scope ${scopeBooks.join('+')}` : 'vrs.json missing/unparseable');
+
+  // §4.3 (2026-08-24, issue #15): a `mappedVerses` value is a single range string
+  // OR an array of range strings — the second form expresses a one-to-many
+  // mapping, and readers MUST accept both. A reader that assumes the string form
+  // and iterates the value gets its CHARACTERS, silently, with no exception.
+  const mv = vrs?.mappedVerses ?? {};
+  const mvEntries = Object.entries(mv);
+  const wellFormed = mvEntries.every(([, v]) =>
+    typeof v === 'string' || (Array.isArray(v) && v.length > 0 && v.every(x => typeof x === 'string')));
+  check('versification: every mappedVerses value is a range string or a non-empty array of them',
+    !!vrs && wellFormed,
+    `${mvEntries.length} mappings; ${mvEntries.filter(([, v]) => Array.isArray(v)).length} in array form`);
+
+  // §4.3: mappedVerses maps THIS scheme's references into `org`, so both sides of
+  // every mapping must parse. A malformed side silently drops OUT of the succinct
+  // table rather than failing, so this check is the only thing that would catch it.
+  //
+  // The two sides have DIFFERENT grammars, matching the toolkit's own vrs parser:
+  // a key is `BOOK C:V` or `BOOK C:V-V`; a target may additionally carry a
+  // sub-verse letter (`ESG 1:1a`). The letter is real data — 103 eng mappings use
+  // it — and the integer parse downstream drops it. That is harmless HERE and only
+  // here: ZERO letter-suffixed targets fall inside the 66-book canon in any of the
+  // six schemes, and D26 excludes non-canonical books. The detail line below is
+  // where a change to that would surface.
+  const KEY_REF = /^[A-Z0-9]{3} \d+:\d+(-\d+)?$/;
+  const TARGET_REF = /^[A-Z0-9]{3} \d+:\d+[a-z]?(-\d+)?$/;
+  const badRefs = mvEntries.filter(([k, v]) =>
+    !KEY_REF.test(k) || ![].concat(v).every(t => TARGET_REF.test(t)));
+  const subVerse = mvEntries.filter(([, v]) => [].concat(v).some(t => /:\d+[a-z]/.test(t)));
+  check('versification: every mappedVerses key and target parses',
+    !!vrs && badRefs.length === 0,
+    badRefs.length
+      ? `malformed: ${badRefs.slice(0, 3).map(([k]) => k).join(', ')}`
+      : `${mvEntries.length} mappings parse; ${subVerse.length} use a sub-verse letter`);
 
   // Scope grammar (§3 rules 4-5): a scope value is an array; [] = whole book (the default);
   // each element is a range string  C | C-C | C:V | C:V-V | C:V-C:V .
@@ -357,6 +395,44 @@ let mergedVerseObjects = null;
   check('resources: two language sets pinned (D17/D30) — primary GL + fallback en, each coherent tn+twl+tw+tA; set-independent originals + lexicons; sha REQUIRED as the pin identity, version an optional label (D58)',
     twoSets && indep && shaOk,
     `primary=${ls?.primary?.gatewayLanguage?.languageId}, fallback=${ls?.fallback?.gatewayLanguage?.languageId}; sha grammar + negative controls checked`);
+
+  // §5.3 per-pin book coverage (D41 — issue #16). OPTIONAL and additive, so a pin
+  // without `books` is conformant; when present it MUST be an array of uppercase
+  // 3-character book codes. The point of the field is that it stays true when the
+  // resource is NOT installed, which is what lets the resolver tell "does not
+  // contain this book" from "not downloaded yet".
+  const allPins = [
+    ...['primary', 'fallback'].flatMap(r =>
+      ['translationNotes', 'translationWordsLinks', 'translationWords', 'translationAcademy']
+        .map(slot => ls?.[r]?.[slot]).filter(Boolean)),
+    ...(resFile.extraScripture ?? []),
+  ];
+  const BOOK = /^[A-Z0-9]{3}$/;
+  const withBooks = allPins.filter(p => 'books' in p);
+  const booksWellFormed = withBooks.every(p =>
+    Array.isArray(p.books) && p.books.every(b => typeof b === 'string' && BOOK.test(b)));
+  check('resources: `books` (per-pin coverage, D41) is optional; when present it is an array of uppercase book codes',
+    booksWellFormed,
+    `${withBooks.length}/${allPins.length} pins record coverage`);
+
+  // The three states the field exists to separate (§5.3). Driven here as pure
+  // predicates so the harness proves the RULE, not one client's wiring: a
+  // recorded coverage decides the answer whether or not anything is installed,
+  // and only the no-record case is ambiguous enough to warrant a warning.
+  const coverageOf = pin => (Array.isArray(pin.books) && pin.books.length ? pin.books : null);
+  const verdict = (primaryPin, book, primaryLocal) => {
+    const rec = coverageOf(primaryPin);
+    if (rec) return rec.includes(book) ? (primaryLocal ? 'ready' : 'fetch') : 'fallback-unwarned';
+    return primaryLocal ? 'ready' : 'fallback-warned';
+  };
+  const pinWith = books => ({ repoPath: 'x/y', sha: '0'.repeat(40), ...(books ? { books } : {}) });
+  check('resources: recorded coverage separates "resource lacks this book" from "not downloaded yet" (D41)',
+    verdict(pinWith(['TIT']), 'TIT', false) === 'fetch' &&           // covered, absent -> FETCH, never substitute
+    verdict(pinWith(['TIT']), 'MRK', false) === 'fallback-unwarned' && // not covered -> fall back, no warning
+    verdict(pinWith(null), 'TIT', false) === 'fallback-warned' &&    // unknown -> warned fallback (migration only)
+    verdict(pinWith([]), 'TIT', false) === 'fallback-warned' &&      // empty list is NOT a record
+    verdict(pinWith(['TIT']), 'TIT', true) === 'ready',
+    'covered+absent→fetch; uncovered→unwarned fallback; no record→warned fallback');
 
   // §5.2 resolution records (D17; D30 constraint 1): each per-(tool, book) decision file
   // records the resource its check list derived from — tN: the tn pin; tW: the twl pin —

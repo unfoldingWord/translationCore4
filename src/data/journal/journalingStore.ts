@@ -27,6 +27,7 @@ import type {
   ResourcesFile,
   SettingsFile,
 } from '../burritoStore';
+import type { VrsRegister } from '../versification';
 import type { AlignmentFile, AlignmentVerseRecord } from '../align/zaln';
 import {
   HttpStore,
@@ -358,6 +359,22 @@ export class JournalingStore implements BurritoStore {
 
   readSettings(): Promise<SettingsFile | null> {
     return this.raw.readSettings();
+  }
+
+  /** The versification register from the FOLD, not from disk (issue #15).
+   *
+   * The fold is the authority here because the scheme NAME exists only in the
+   * §8.5 `project.vrs.set` event — it is nowhere in the burrito. The platform
+   * takes the name at creation, uses it to pick a template file, and discards
+   * it; the ingredient it writes carries no name and no role. So disk gives
+   * bytes only, while the sealed register gives bytes AND the name tC4 chose.
+   *
+   * A creation seed records the real name. Any other seed records the
+   * `UNRECORDED_SCHEME` placeholder, which `resolveProjectScheme` rejects as a
+   * scheme name and fingerprints past. */
+  readVersification(): Promise<VrsRegister | null> {
+    const vrs = this.foldNow().vrs;
+    return Promise.resolve(vrs === null ? null : { name: vrs.name, bytes: vrs.bytes });
   }
 
   // ---- ingredient plumbing ---------------------------------------------------
@@ -2328,6 +2345,12 @@ export class ProjectReader {
 
   readResources(): Promise<ResourcesFile | null> {
     return this.boundRaw().readResources();
+  }
+
+  /** Bytes only — a reader has no journal, so it cannot supply the name. The
+   * placeholder sends `resolveProjectScheme` to the fingerprint rung. */
+  readVersification(): Promise<VrsRegister | null> {
+    return this.boundRaw().readVersification();
   }
 
   private boundRaw(): HttpStore {

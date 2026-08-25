@@ -13,6 +13,9 @@ import { JournalingStore, ProjectReader } from './data/journal/journalingStore';
 import { SaveScheduler } from './data/saveScheduler';
 import { spliceVerse, verseBody } from './data/usfm/splice';
 import { indexBook } from './data/usfm/indexer';
+import { RESOURCE_FRAME, forgetProjectFrames, resolveProjectFrame } from './data/projectFrame';
+import { backfillCoverage } from './data/coverageBackfill';
+import { mapReference } from './data/mapReference';
 import { seedBookFromSource } from './data/seed';
 import { BOOK_NAMES, bookName } from './data/bookNames';
 import { GATEWAYS, gatewayKey, DCS_HOST, orgForRepoName } from './data/gateways';
@@ -20,9 +23,7 @@ import { fetchAndInstallPin, latestReleaseTag, identifyExistingInstall } from '.
 import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, isPinLocal, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk, flavorOfMetadata } from './data/installed';
 import { TOOL_SLOT, preflightToolBook, resolutionRecord, resolveToolBook } from './data/resolve';
 import {
-  deriveTnItems,
-  deriveTwlItems,
-  filterToScope,
+  deriveForProject,
   mergeAndReattach,
   progressOf,
   scopeRangesFor,
@@ -627,12 +628,29 @@ export function AppProvider({ children }) {
         // §4.2 (D26): derivation MUST filter to the project scope — an out-of-scope
         // item is never derived, counted or shown. `[]` = whole book.
         const ranges = scopeRangesFor(stateRef.current.projectScope ?? {}, book.toUpperCase());
-        return filterToScope(
-          tool === 'translationNotes'
-            ? deriveTnItems(tsv, book.toLowerCase())
-            : deriveTwlItems(tsv, book.toLowerCase()),
-          ranges,
-        );
+        // #15: map into the project's versification frame BEFORE scope filtering.
+        // An eng project (the default, and the whole resource suite's frame)
+        // short-circuits inside deriveForProject and is byte-identical to the
+        // old unmapped path.
+        const frame = await a.projectFrame();
+        // R-E33-8: this is a COUNT for the gateway-change preview. A frame that
+        // cannot map (unavailable/unknown) would drop every reference and return
+        // 0 — a silent undercount of decisions at risk. Count against the
+        // unmapped (resource) frame instead: the same-frame short-circuit keeps
+        // the resource's full count, a safe basis for a preview. Mapping shifts
+        // reference NUMBERS, not the count (bar the few unplaceable drops), so an
+        // unmapped count is an honest upper bound here.
+        const to = frame.state === 'ready' ? frame.name : RESOURCE_FRAME;
+        const { items } = await deriveForProject({
+          tsv,
+          tool,
+          bookId: book.toLowerCase(),
+          from: RESOURCE_FRAME,
+          to,
+          schemes: frame.schemes,
+          scopeRanges: ranges,
+        });
+        return items;
       },
 
       /** Open the confirmation dialogue for a proposed gateway language. */
@@ -779,7 +797,37 @@ export function AppProvider({ children }) {
         }
 
         const [chapter, verse] = ref.split(':');
-        const origObjects = verseObjectsFor(origUsfm, chapter, verse);
+        // #15: `ref` comes from the DRAFT, so it is in the PROJECT's versification
+        // frame. The original-language texts (UGNT/UHB) are eng-framed — measured:
+        // 929 UHB chapters and 260 UGNT chapters, zero exceeding eng, and UHB
+        // PSA 3 ends at verse 8 where org would have 9. So for a non-eng project
+        // the same chapter:verse names a DIFFERENT verse in the source, and
+        // reading it unmapped silently aligns against the wrong Greek/Hebrew.
+        //
+        // Map project frame -> resource frame for the LOOKUP only. This is not an
+        // identity operation: the alignment record stays keyed by the
+        // project-frame reference (§5.1), exactly like the draft it belongs to.
+        // An eng project short-circuits and behaves exactly as before.
+        const alignFrame = await a.projectFrame();
+        const srcRef = await mapReference({
+          from: alignFrame.name,
+          to: RESOURCE_FRAME,
+          book: st.book,
+          chapter: Number(chapter),
+          verse,
+          schemes: alignFrame.schemes,
+        });
+        if (!srcRef.ok) {
+          // The project's numbering has no counterpart in the source text. Say
+          // so rather than aligning against a verse the reference does not name.
+          dispatch({ type: 'set', patch: { alignSession: { unavailable: 'missing' } } });
+          return;
+        }
+        const origObjects = verseObjectsFor(
+          origUsfm,
+          srcRef.reference.chapter,
+          srcRef.reference.verse,
+        );
         const targetText = verseTextIndex(st.bookRaw)[ref] ?? '';
         if (!origObjects.length || !targetText) {
           dispatch({ type: 'set', patch: { alignSession: { unavailable: 'missing' } } });
@@ -894,12 +942,52 @@ export function AppProvider({ children }) {
             stateRef.current.projectScope ?? {},
             book.toUpperCase(),
           );
-          const derived = filterToScope(
-            tool === 'translationNotes'
-              ? deriveTnItems(tsv, book.toLowerCase())
-              : deriveTwlItems(tsv, book.toLowerCase()),
+          // #15: map into the project's frame BEFORE scope filtering and before
+          // any decision is keyed — the §8.5 journal is append-only, so a
+          // mapped-after-the-fact reference would be a second, conflicting
+          // identity. An eng project short-circuits and is unchanged.
+          const frame = await a.projectFrame();
+          // R-E33-6/R-E33-7: a frame that cannot MAP is a designed empty state,
+          // never dropped checks. Mapping every reference would return
+          // unknown-frame and the book would read "0 checks / no verse in this
+          // numbering" — false, and alarming, for what is either a transient
+          // network condition (`unavailable`) or an unidentifiable project
+          // versification (`unknown`). Each gets its own honest message; the
+          // eng default is always `ready`, so this never fires for it.
+          if (frame.state !== 'ready') {
+            dispatch({
+              type: 'set',
+              patch: {
+                checkTool: tool,
+                checkSession: {
+                  loading: false, tool, book, items: [],
+                  empty: `versification-${frame.state}`,
+                  resource: resolutionRecord(pre.resolution),
+                },
+              },
+            });
+            return;
+          }
+          const { items: derived, unplaceable } = await deriveForProject({
+            tsv,
+            tool,
+            bookId: book.toLowerCase(),
+            from: RESOURCE_FRAME,
+            to: frame.name,
+            schemes: frame.schemes,
             scopeRanges,
-          );
+          });
+          // Never silent (the B20 principle): a check the project's numbering
+          // has no home for is DROPPED, which silently shrinks the progress
+          // denominator — "0 of 415" where the resource offered 417. Carry the
+          // count and reasons onto the session so the check view can say so.
+          const dropped = unplaceable.length
+            ? {
+                count: unplaceable.length,
+                scheme: frame.name,
+                reasons: [...new Set(unplaceable.map((u) => u.reason))].sort(),
+              }
+            : null;
           if (derived.length === 0) {
             dispatch({
               type: 'set',
@@ -907,7 +995,7 @@ export function AppProvider({ children }) {
                 checkTool: tool,
                 checkSession: {
                   loading: false, tool, book, items: [], empty: 'none',
-                  resource: resolutionRecord(pre.resolution),
+                  resource: resolutionRecord(pre.resolution), dropped,
                 },
               },
             });
@@ -952,6 +1040,9 @@ export function AppProvider({ children }) {
             invalidated,
             warning,
             orphaned,
+            // #15: checks the project's numbering has no home for. Non-null only
+            // for a cross-frame project; the check view surfaces the count.
+            dropped,
             // Per-verse target text for the tN/tW selection UI (B23). Kept on the
             // SESSION, never on the items — recordDecision spreads the item into
             // the §5.2 write, so target text must not ride along and pollute it.
@@ -1054,6 +1145,18 @@ export function AppProvider({ children }) {
 
       /** The resolver's inputs for THIS machine + THIS project: what is
        * installed, and which books each installed pin actually covers. */
+      /** #15: the project's versification frame, resolved once and cached.
+       * `eng` — the default and the whole resource suite's frame — needs no
+       * scheme fetch, because the mapper short-circuits before reading one. */
+      projectFrame: async () => {
+        const repoPath = stateRef.current.project?.id;
+        // No open project: an inert frame. `state` MUST be present (consumers
+        // branch on it) — an eng-default 'ready' so a caller with no project
+        // never trips the unavailable path.
+        if (!repoPath) return { name: 'eng', source: 'recorded', schemes: {}, state: 'ready' };
+        return resolveProjectFrame(repoPath, { store: storeRef.current, api });
+      },
+
       resolutionContext: async () => {
         const [recorded, summaries] = await Promise.all([
           readInstalled(api, STORAGE_ID),
@@ -1230,10 +1333,17 @@ export function AppProvider({ children }) {
           // preferInstalledVersion); otherwise the shipped defaults stand.
           // A fresh project: resources.json must not exist yet. `expectMd5: null`
           // makes a create/create race a refused write, not a silent clobber (B7).
-          await store.writeResources(
-            pinsPreferringInstalled(INSTALLED_SUITE, await readInstalled(api, STORAGE_ID)),
-            null,
+          // #16 / D41: record each pin's book coverage AT PIN TIME, while the
+          // resource is local and its real contents can be read. This is the
+          // primary mechanism — a pin written here never needs the backfill, and
+          // the resolver can tell "does not have this book" from "not downloaded
+          // yet" from the first session onward.
+          const freshPins = pinsPreferringInstalled(
+            INSTALLED_SUITE,
+            await readInstalled(api, STORAGE_ID),
           );
+          const { coverage: pinCoverage } = await a.resolutionContext();
+          await store.writeResources(backfillCoverage(freshPins, pinCoverage).resources, null);
           // textDirection/font live in settings.json: metadata is not writable
           // over HTTP (D28 addendum) and the platform records no direction, so
           // the app reads these back from here.
@@ -1443,6 +1553,12 @@ export function AppProvider({ children }) {
           schedulerRef.current.dispose();
         }
         try {
+          // R-E33-3: the versification frame cache is keyed by repoPath, which is
+          // NOT unique across a delete-and-recreate inside one session. Clear it
+          // on every open so a new project at a reused path never inherits the
+          // previous project's frame — that would key every check in the wrong
+          // numbering, and the journal keeps those keys permanently.
+          forgetProjectFrames();
           const store = new JournalingStore({ api });
           // open() runs the issue-#62 recovery pipeline: replay staged intents,
           // classify derived state against the journal, seed a journal-less
@@ -1487,8 +1603,31 @@ export function AppProvider({ children }) {
           // The project's pins drive every check session (D30.3). Absent
           // resources.json reads as null — "no pins recorded" — which the
           // preflight reports distinctly from "pinned but not local".
+          //
+          // #16 / owner ruling 3c: on the way in, record book coverage on any pin
+          // that lacks it and whose resource IS on this machine. That converts a
+          // pre-#16 project once, so the warned fallback stops firing for pins
+          // whose coverage was knowable all along. Pins whose resource is absent
+          // are left alone — that is the genuinely unknown case the warning is
+          // for. Best-effort: a failure here must never block opening a project,
+          // so the pins still load from whatever is on disk.
           store.readResources()
-            .then((pins) => dispatch({ type: 'set', patch: { projectPins: pins } }))
+            .then(async (pins) => {
+              dispatch({ type: 'set', patch: { projectPins: pins } });
+              if (!pins) return;
+              try {
+                const { coverage } = await a.resolutionContext();
+                if (!backfillCoverage(pins, coverage).changed) return;
+                // Re-run the backfill INSIDE the compare-and-swap so a concurrent
+                // pin edit is not clobbered (B7/W-5).
+                const next = await updateResources(store, (current) =>
+                  backfillCoverage(current, coverage).resources,
+                );
+                dispatch({ type: 'set', patch: { projectPins: next } });
+              } catch {
+                /* coverage stays underived; the resolver falls back to warning */
+              }
+            })
             .catch(() => dispatch({ type: 'set', patch: { projectPins: null } }));
           // B12 — warm the install resolver BEFORE any book/source read. openBook
           // resolves its source panes through resolveReadPath, which needs

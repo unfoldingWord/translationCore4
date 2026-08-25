@@ -4,6 +4,9 @@
 // harness. The client derives check lists and progress at load and never stores
 // them authoritatively (BURRITO-SPEC §4.2).
 import { doesReferenceContain } from 'bible-reference-range';
+import { mapReference } from './mapReference';
+import type { SchemeDoc, SchemeName, UnplaceableReason } from './versification';
+import type { Tool } from './resolve';
 import { tokenize } from 'string-punctuation-tokenizer';
 import { usfmjs } from './vendor';
 
@@ -437,7 +440,13 @@ export const filterToScope = (items: CheckItem[], ranges: string[]): CheckItem[]
 
 // ---------- the pipeline + progress (harness section 7) ----------
 
-/** Derive → scope-filter → merge: the harness section-7 pipeline as one call. */
+/** Derive → scope-filter → merge: the harness section-7 pipeline as one call.
+ *
+ * NOTE this is the SAME-FRAME pipeline. It performs no versification mapping,
+ * so it is correct only when the resource frame equals the project frame — the
+ * `eng`/`eng` case, which is the default and covers the whole unfoldingWord
+ * suite. For any other project scheme use `deriveForProject`, which maps first.
+ * The harness drives this one directly. */
 export const deriveCheckItems = (
   twlTsv: string,
   bookId: string,
@@ -445,6 +454,97 @@ export const deriveCheckItems = (
   scopeRanges: string[] = [],
 ): CheckItem[] =>
   mergeSavedDecisions(filterToScope(deriveTwlItems(twlTsv, bookId), scopeRanges), saved);
+
+// ---------- the project pipeline: map into the project frame first (#15) ------
+
+/** An item the project's versification frame has no home for. It is dropped
+ * from the check list rather than journaled with a reference the project does
+ * not contain — see `UnplaceableReason` for what each case is. */
+export interface UnplaceableItem {
+  item: CheckItem;
+  reason: UnplaceableReason;
+}
+
+export interface ProjectDeriveResult {
+  items: CheckItem[];
+  /** Non-empty only for a cross-frame project. Surface it; never swallow it. */
+  unplaceable: UnplaceableItem[];
+  /** True when a frame conversion actually ran. False for the same-frame path. */
+  mapped: boolean;
+}
+
+/** Map every derived item's reference into the project's versification frame,
+ * THEN scope-filter, THEN merge saved decisions (issue #15).
+ *
+ * The order is the requirement, not a preference. The mapped reference is what
+ * the §5.2 identity key and the §8.5 journal register key are built from, and
+ * the journal is append-only — so the mapping must happen before scope checks,
+ * before merge, and before anything is written. Mapping a reference that has
+ * already been stored is not a repair; it is a second, conflicting identity.
+ *
+ * The whole unfoldingWord suite is `eng`-framed and `eng` is the default project
+ * scheme, so the common path is a same-frame short-circuit that touches no
+ * reference and never loads the mapping engine. */
+export const deriveForProject = async (params: {
+  tsv: string;
+  tool: Tool;
+  bookId: string;
+  /** The resource's frame. The unfoldingWord suite is `eng` throughout. */
+  from: SchemeName | null;
+  /** The project's frame, from `resolveProjectScheme`. */
+  to: SchemeName | null;
+  schemes: Partial<Record<SchemeName, SchemeDoc>>;
+  saved?: CheckItem[];
+  scopeRanges?: string[];
+}): Promise<ProjectDeriveResult> => {
+  const { tsv, tool, bookId, from, to, schemes, saved = [], scopeRanges = [] } = params;
+  const derived =
+    tool === 'translationNotes' ? deriveTnItems(tsv, bookId) : deriveTwlItems(tsv, bookId);
+
+  const items: CheckItem[] = [];
+  const unplaceable: UnplaceableItem[] = [];
+  let mappedAny = false;
+
+  for (const item of derived) {
+    const reference = item.contextId.reference;
+    const outcome = await mapReference({
+      from,
+      to,
+      book: reference.bookId,
+      chapter: reference.chapter as number,
+      verse: reference.verse,
+      schemes,
+    });
+    if (!outcome.ok) {
+      unplaceable.push({ item, reason: outcome.reason });
+      continue;
+    }
+    if (!outcome.mapped) {
+      items.push(item);
+      continue;
+    }
+    mappedAny = true;
+    items.push({
+      ...item,
+      contextId: {
+        ...item.contextId,
+        reference: {
+          // §5.2: bookId stays lowercase (tC3 convention); the mapper works in
+          // upper case because that is what maxVerses and mapVerse use.
+          bookId: outcome.reference.book.toLowerCase(),
+          chapter: outcome.reference.chapter,
+          verse: outcome.reference.verse,
+        },
+      },
+    });
+  }
+
+  return {
+    items: mergeSavedDecisions(filterToScope(items, scopeRanges), saved),
+    unplaceable,
+    mapped: mappedAny,
+  };
+};
 
 /** Is this item triaged? A VALID mark (target selections, or an explicit
  * nothing-to-select) or an INVALID mark (the rendering was reviewed and

@@ -133,8 +133,11 @@ const walk = (dir, base = '') => fs.readdirSync(dir, { withFileTypes: true }).fl
   return e.isDirectory() ? walk(path.join(dir, e.name), rel) : [rel];
 });
 const files = walk(path.join(BURRITO, 'ingredients')).sort();
+// §4.3 (amended 2026-08-24, issue #15): `vrs.json` carries NO role. It is written
+// by the PLATFORM at creation, which registers checksum/mimeType/size and nothing
+// else, and no published burrito uses ingredient roles on it. The five below are
+// tC4's OWN sidecars, which the client writes and re-asserts (Stage-2, D28/W-2).
 const ROLES = {
-  'vrs.json': 'x-versification',
   'checking/alignments/TIT.json': 'x-alignment',
   'checking/translationWords/TIT.json': 'x-check-decisions',
   'checking/translationNotes/TIT.json': 'x-check-decisions',

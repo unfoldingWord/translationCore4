@@ -6,6 +6,7 @@
 // pankosmia-web surface it drives, and application code never touches it
 // (test/noBypass.test.ts).
 import type { AlignmentFile } from './align/zaln';
+import type { VrsRegister } from './versification';
 
 export interface ProjectSummary {
   id: string;
@@ -67,6 +68,21 @@ export interface ResourcePin {
   version?: string;
   flavor: string;
   sha: string;
+  /** The books this exact pinned commit contains, uppercase (issue #16, D41).
+   *
+   * OPTIONAL and additive, so `schemaVersion` stays 2 (§9). Recorded at pin
+   * time, while the resource is local and its real contents can be read.
+   *
+   * WHY IT MATTERS: without it, coverage can only be computed from what is
+   * installed right now, so "this resource does not have Titus" and "this
+   * resource is not downloaded yet" are indistinguishable — and the resolver has
+   * to fall back to English for both. Recorded coverage tells them apart, so a
+   * covered-but-absent resource is FETCHED rather than silently substituted.
+   *
+   * Because a pin is immutable — identity is `repoPath` + `sha` (D58) — the
+   * content behind it can never change, so recorded coverage never goes stale.
+   * It is a fact about that commit, not a cache. */
+  books?: string[];
 }
 
 /** One language set: a coherent helps suite at pinned versions. The `twl` slot
@@ -230,6 +246,18 @@ export interface BurritoStore {
   /** Issue #62: diffed per settings path into settings.set events; a folded
    * path absent from the document removes with {removed: true}. */
   writeSettings(settings: SettingsFile): Promise<void>;
+
+  /** The project's versification register (issue #15) — the scheme NAME chosen
+   * at creation plus the exact `ingredients/vrs.json` bytes. `null` when the
+   * project carries no versification ingredient at all, which is common: three
+   * of five sampled published burritos have none, so absence is NOT `eng`.
+   *
+   * The name is a §8.5 `project.vrs.set` first-value register, sealed in the
+   * creation seed and immutable thereafter. A project tC4 did not create has no
+   * name to read (the platform DISCARDS the name it was given — it uses it only
+   * to pick a template file), so the store reports a non-scheme placeholder and
+   * `resolveProjectScheme` fingerprints the bytes instead. */
+  readVersification(): Promise<VrsRegister | null>;
 
   /** Project-metadata overlay write (§8.5 project.meta.set — issue #62). Diffed
    * per dotted path against the folded overlay; removals use removed: true.

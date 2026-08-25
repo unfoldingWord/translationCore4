@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 import { carryOverDecisions } from '../src/data/carryOver';
 import {
   TN_HEADER,
+  deriveForProject,
   deriveTnItems,
   filterToScope,
   mergeAndReattach,
@@ -73,14 +74,56 @@ describe('R1 — the derived list the app shows is filtered to the project scope
   });
 
   // The defect was never in the library — it was that state.jsx did not call it.
-  it('state.jsx imports the scope helpers and applies them at every derive site', () => {
+  //
+  // RE-POINTED for issue #15 (2026-08-24). Scope filtering moved INSIDE the one
+  // derive pipeline (`deriveForProject`), because #15 requires scope checks to
+  // run on the versification-MAPPED reference. So the original grep — "state.jsx
+  // calls filterToScope once per two deriveT*Items calls" — no longer describes
+  // the code. The invariant it guarded is unchanged and now enforced more
+  // strongly, and these two checks assert exactly that:
+  //
+  //   1. state.jsx cannot derive unfiltered, because it no longer reaches the
+  //      unfiltered primitives at all (the original test permitted calling them
+  //      as long as a filterToScope call appeared somewhere in the file);
+  //   2. the pipeline it does use always scope-filters — asserted behaviourally
+  //      on the same rows and scope as the cases above, not by reading source.
+  it('state.jsx cannot derive without scope filtering — it never calls the raw primitives', () => {
     const src = fs.readFileSync(path.resolve(process.cwd(), 'src/state.jsx'), 'utf8');
-    expect(src).toMatch(/import\s*\{[^}]*\bfilterToScope\b/s);
+    expect(src.match(/deriveT(n|wl)Items\(/g)).toBeNull();
+    expect(src).toMatch(/import\s*\{[^}]*\bderiveForProject\b/s);
     expect(src).toMatch(/import\s*\{[^}]*\bscopeRangesFor\b/s);
-    const deriveCalls = (src.match(/deriveT(n|wl)Items\(/g) ?? []).length;
-    const scopeFilters = (src.match(/filterToScope\(/g) ?? []).length;
-    expect(deriveCalls).toBeGreaterThan(0);
-    expect(scopeFilters * 2).toBe(deriveCalls);
+    // Every derive site passes the scope through.
+    const deriveSites = (src.match(/deriveForProject\(/g) ?? []).length;
+    const scopePassed = (src.match(/scopeRanges[,:]/g) ?? []).length;
+    expect(deriveSites).toBeGreaterThan(0);
+    expect(scopePassed).toBeGreaterThanOrEqual(deriveSites);
+  });
+
+  it('deriveForProject applies the scope itself — the same rows, the same shrunken denominator', async () => {
+    const scoped = await deriveForProject({
+      tsv: tsv(rows),
+      tool: 'translationNotes',
+      bookId: 'tit',
+      from: 'eng',
+      to: 'eng',
+      schemes: {},
+      scopeRanges: scopeRangesFor({ TIT: ['1:1-2:5'] }, 'TIT'),
+    });
+    expect(scoped.items.map(ref)).toEqual(['1:1', '1:2', '1:3', '2:1', '2:4', '2:5']);
+    expect(progressOf(scoped.items).total).toBe(6);
+  });
+
+  it('deriveForProject with an empty scope still means whole book', async () => {
+    const all = await deriveForProject({
+      tsv: tsv(rows),
+      tool: 'translationNotes',
+      bookId: 'tit',
+      from: 'eng',
+      to: 'eng',
+      schemes: {},
+      scopeRanges: scopeRangesFor({}, 'TIT'),
+    });
+    expect(all.items).toHaveLength(10);
   });
 });
 

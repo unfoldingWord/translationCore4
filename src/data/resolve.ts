@@ -61,8 +61,38 @@ const booksFor = (coverage: Coverage, repoPath: string): string[] => {
   return hit ? coverage[hit] : [];
 };
 
+/** Where a pin's coverage came from. The distinction drives the resolver: only
+ * `none` is ambiguous, and only `none` warrants the warned fallback (#16/D41). */
+export type CoverageSource =
+  /** The pin records its own books — captured at pin time against this exact
+   * commit, so it is authoritative whether or not the resource is on this
+   * machine. */
+  | 'pin'
+  /** Read from the local install. True of what is here now; says nothing about a
+   * resource that is not downloaded. */
+  | 'local'
+  /** Neither. The book may or may not be in the resource — genuinely unknown. */
+  | 'none';
+
+/** What is known about one pin's book coverage.
+ *
+ * The pin's OWN record wins over the local scan. It was captured against this
+ * exact commit (identity is repoPath + sha, D58), so it stays true when the
+ * resource is not installed — which is precisely the case the local scan cannot
+ * answer and the whole reason issue #16 exists. */
+export const coverageFor = (
+  coverage: Coverage,
+  pin: ResourcePin,
+): { books: string[]; source: CoverageSource } => {
+  if (pin.books && pin.books.length > 0) {
+    return { books: pin.books.map((b) => b.toUpperCase()), source: 'pin' };
+  }
+  const local = booksFor(coverage, pin.repoPath);
+  return local.length > 0 ? { books: local, source: 'local' } : { books: [], source: 'none' };
+};
+
 export const covers = (coverage: Coverage, pin: ResourcePin, book: string): boolean =>
-  booksFor(coverage, pin.repoPath).includes(book.toUpperCase());
+  coverageFor(coverage, pin).books.includes(book.toUpperCase());
 
 export interface Resolution {
   tool: Tool;
@@ -168,18 +198,30 @@ export const preflightToolBook = (
       : opts.online
         ? 'fetch'
         : 'unavailable';
-    // B20 (warned fallback) — coverage is evidence from LOCAL installs only
-    // ("never assumed"), so a fallback resolution is ambiguous: the primary may
-    // genuinely lack this book, OR it is simply not installed and its coverage
-    // is unknown. We do NOT silently switch resource/language (the original bug),
-    // and we do NOT force a fetch for a book the primary may not even cover (the
-    // over-correction). Instead: open the fallback (it works) and flag the
-    // not-local pinned primary so the UI warns and offers to fetch it. The
-    // precise fetch-vs-fallback call needs the primary's coverage — deferred to
-    // the resolver-metadata increment that records per-pin coverage (with D40).
+    // B20 (warned fallback), NARROWED by issue #16 / D41.
+    //
+    // Before per-pin coverage, a fallback resolution was always ambiguous:
+    // coverage came from local installs only, so "the primary genuinely lacks
+    // this book" and "the primary is simply not downloaded" looked identical,
+    // and every fallback had to be warned. Recorded coverage separates them:
+    //
+    //   primary RECORDS coverage, and it includes this book   -> not a fallback
+    //       at all; resolveToolBook picks the primary and the state below is
+    //       fetch/unavailable. The user is never silently moved to English.
+    //   primary RECORDS coverage, and it excludes this book   -> falling back is
+    //       plainly correct. NO warning: nothing is substituted, the resource
+    //       simply does not have this book.
+    //   primary records NO coverage and is not local          -> still unknown.
+    //       This is the only remaining warned case, and it is a migration path
+    //       (a pin written before #16), not a steady state — `backfillCoverage`
+    //       resolves it on first open whenever the resource is present.
     const primaryPin = resources.languageSets.primary?.[TOOL_SLOT[tool]];
+    const primaryKnows =
+      primaryPin && coverageFor(opts.coverage, primaryPin).source !== 'none';
     const unavailablePrimary =
-      resolution.usedFallback && primaryPin && !opts.isLocal(primaryPin) ? primaryPin : null;
+      resolution.usedFallback && primaryPin && !primaryKnows && !opts.isLocal(primaryPin)
+        ? primaryPin
+        : null;
     return {
       tool,
       book,

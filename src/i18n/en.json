@@ -199,6 +199,10 @@
   "check.empty.none.body": "The pinned resource covers this book but lists no checks in it. Nothing is wrong — there is simply nothing here to decide.",
   "check.empty.missing.title": "This book is not in the pinned resource",
   "check.empty.missing.body": "The catalogue lists this book for the resource, but the pinned version does not carry a file for it. A newer version, or another gateway language, may include it.",
+  "check.empty.versification-unavailable.title": "Versification data not loaded",
+  "check.empty.versification-unavailable.body": "This project uses a versification other than the default, and the numbering data needed to line the checks up could not be loaded — usually because you are offline. Nothing is lost. Reconnect and open the book again, and the checks will appear.",
+  "check.empty.versification-unknown.title": "Versification could not be identified",
+  "check.empty.versification-unknown.body": "This project's versification scheme is not recorded and could not be matched to a known one, so the checks cannot be lined up with its numbering. This usually means the project was created elsewhere. Nothing is lost — recording the scheme, or re-creating the project in tC4, restores checking.",
   "gateway.title": "Change checking language to {lang}?",
   "gateway.affectedRow": "{book} · {tool} — {n} decision(s) checked against {resource}",
   "gateway.keep": "Keep {lang}",
@@ -228,5 +232,6 @@
   "gateway.failed": "The change was not applied.",
   "gateway.blocked": "This change cannot be applied: {books} already carry checking decisions, and the new language does not cover them. Install a suite that covers these books first. Nothing was changed.",
   "gateway.blockedError": "Blocked: {books} would lose their checking resource. Nothing was changed.",
-  "sources.alreadyCheckingIn": "This project already checks against {lang}."
+  "sources.alreadyCheckingIn": "This project already checks against {lang}.",
+  "check.droppedNote": "{count} check(s) from this resource have no verse in this project's {scheme} numbering, so they are not shown and not counted. Nothing was lost — they return if the project's numbering ever matches the resource."
 }
