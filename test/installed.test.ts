@@ -15,7 +15,7 @@ import {
   INSTALLED_KEY,
 } from '../src/data/installed';
 import { orgForRepoName } from '../src/data/gateways';
-import { resolveToolBook } from '../src/data/resolve';
+import { pinKey, resolveToolBook } from '../src/data/resolve';
 import type { InstalledMap } from '../src/data/installed';
 import type { ResourcePin, ResourcesFile } from '../src/data/burritoStore';
 
@@ -59,12 +59,14 @@ const SUMMARIES = {
 } as never;
 
 describe('coverage comes from the platform summaries, keyed by pin identity', () => {
-  it('keys coverage by repoPath AS DCS REPORTS IT, not by local path', () => {
+  it('keys coverage by exact pin identity, with repoPath AS DCS REPORTS IT', () => {
     // The stored form is the catalogue's own form — nothing is converted on the
     // way in (owner ruling, 2026-08-04).
     const cov = coverageFromLocal(SUMMARIES, INSTALLED);
-    expect(cov['git.door43.org/unfoldingWord/en_tn']).toEqual(['TIT', 'JON', 'HEB']);
-    expect(cov['git.door43.org/es-419_gl/es-419_tn']).toEqual(['TIT', 'JON']);
+    expect(cov[pinKey(INSTALLED['_local_/_sideloaded_/unfoldingword--en_tn'])])
+      .toEqual(['TIT', 'JON', 'HEB']);
+    expect(cov[pinKey(INSTALLED['_local_/_sideloaded_/es-419_gl--es-419_tn'])])
+      .toEqual(['TIT', 'JON']);
   });
 
   it('a pin written ELSEWHERE with a different org case still resolves — same address', () => {

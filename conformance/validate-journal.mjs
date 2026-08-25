@@ -3018,6 +3018,8 @@ try {
       ['a gatewayLanguage entry with no languageId', pin('languageSets.primary.gatewayLanguage', { owner: 'uW' })],
       ['an extraScripture entry whose id does not match its slot', pin('extraScripture.ult', { id: 'ust', repoPath: 'r', version: 'v1', sha: '0'.repeat(40), flavor: 'scripture/textTranslation' })],
       ['a sha that is not 40 lowercase hex', pin('extraScripture.ult', { id: 'ult', repoPath: 'r', version: 'v1', flavor: 'f', sha: 'DEADBEEF' })],
+      ['books is not an array', pin('languageSets.primary.translationNotes', { repoPath: 'r', sha: '0'.repeat(40), flavor: 'f', books: 'TIT' })],
+      ['books contains malformed codes', pin('languageSets.primary.translationNotes', { repoPath: 'r', sha: '0'.repeat(40), flavor: 'f', books: ['tit', 42] })],
     ];
     let allClean = true; const details = [];
     for (const [label, ev] of rows) { if (!refusedBothWays(ev).ok) { allClean = false; details.push(label); } }

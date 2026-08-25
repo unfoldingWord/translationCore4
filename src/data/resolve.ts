@@ -8,6 +8,7 @@
 //   (4) online + pinned version absent -> fetch it (sb-zip + SHA);
 //   (5) offline + pinned version absent -> that (tool, book) is UNAVAILABLE as a
 //       first-class state, never an error, never a block on other work.
+import { WHOLE_COLLECTION } from '../../conformance/journal/grammar.mjs';
 import { LADDER } from './burritoStore';
 import type { LanguageSet, ResourcePin, ResourcesFile, Rung } from './burritoStore';
 
@@ -22,11 +23,9 @@ export const TOOL_SLOT = {
 
 export type Tool = keyof typeof TOOL_SLOT;
 
-/** Which books each pinned repo actually contains, keyed by `repoPath`. Built
- * from what is local on disk (the platform's own `book_codes`), never assumed.
- * A repo missing from the map has unknown coverage, which resolves the same as
- * "does not cover". Version identity is enforced separately by `isPinLocal`,
- * so keying by repo alone cannot smuggle in the wrong version's readiness. */
+/** Which books each installed pin actually contains, keyed by `repoPath@sha`.
+ * Built from what is local on disk (the platform's own `book_codes`), never
+ * assumed. A pin missing from the map has unknown coverage. */
 export type Coverage = { [pinKey: string]: string[] };
 
 /** Repo-path equality.
@@ -50,19 +49,68 @@ export const samePath = (a: string | undefined, b: string | undefined): boolean 
 // D58: identity is (repoPath + sha); the version tag is a display label.
 export const pinKey = (pin: ResourcePin): string => `${pin.repoPath}@${pin.sha}`;
 
-/** Books a coverage map holds for a pin. The map is keyed by the repo path as
- * DCS reports it, so the direct hit is the normal path; the scan is the same
- * comparison-time tolerance `samePath` describes, for a pin written elsewhere
- * in a different casing. */
-const booksFor = (coverage: Coverage, repoPath: string): string[] => {
-  const direct = coverage[repoPath];
+/** Books a local coverage map holds for one exact pin. The direct hit is normal.
+ * The scan tolerates only different repo-path casing; the sha must still match. */
+const booksFor = (coverage: Coverage, pin: ResourcePin): string[] => {
+  const direct = coverage[pinKey(pin)];
   if (direct) return direct;
-  const hit = Object.keys(coverage).find((k) => samePath(k, repoPath));
+  const hit = Object.keys(coverage).find((key) => {
+    const separator = key.lastIndexOf('@');
+    if (separator < 1) return false;
+    return key.slice(separator + 1) === pin.sha && samePath(key.slice(0, separator), pin.repoPath);
+  });
   return hit ? coverage[hit] : [];
 };
 
-export const covers = (coverage: Coverage, pin: ResourcePin, book: string): boolean =>
-  booksFor(coverage, pin.repoPath).includes(book.toUpperCase());
+/** Where a pin's coverage came from. The distinction drives the resolver: only
+ * `none` is ambiguous, and only `none` warrants the warned fallback (#16/D41). */
+export type CoverageSource =
+  /** The pin records its own books — captured at pin time against this exact
+   * commit, so it is authoritative whether or not the resource is on this
+   * machine. */
+  | 'pin'
+  /** Read from the local install. True of what is here now; says nothing about a
+   * resource that is not downloaded. */
+  | 'local'
+  /** Neither. The book may or may not be in the resource — genuinely unknown. */
+  | 'none';
+
+/** What is known about one pin's book coverage.
+ *
+ * The pin's OWN record wins over the local scan. It was captured against this
+ * exact commit (identity is repoPath + sha, D58), so it stays true when the
+ * resource is not installed — which is precisely the case the local scan cannot
+ * answer and the whole reason issue #16 exists. */
+export const coverageFor = (
+  coverage: Coverage,
+  pin: ResourcePin,
+): { books: string[]; source: CoverageSource } => {
+  // The journal schema enforces string[] at the trust boundary. Keep this read
+  // defensive as well because raw/legacy resources.json files can still be
+  // inspected before migration; malformed coverage must degrade to "unknown",
+  // never throw while opening every checking tool.
+  if (
+    Array.isArray(pin.books) &&
+    pin.books.length > 0 &&
+    pin.books.every((book): book is string => typeof book === 'string')
+  ) {
+    return { books: pin.books.map((b) => b.toUpperCase()), source: 'pin' };
+  }
+  const local = booksFor(coverage, pin);
+  return local.length > 0 ? { books: local, source: 'local' } : { books: [], source: 'none' };
+};
+
+/** The §5.3 whole-collection marker — the same value the platform's local
+ * summaries report for a resource that is not book-partitioned (the tw
+ * articles): the resource covers EVERY book. It appears in the local coverage
+ * map verbatim, and as the exact single-element record `['BIBLE']` on a pin
+ * (§5.3 whole-collection form) so the fact travels with the project. */
+export { WHOLE_COLLECTION };
+
+export const covers = (coverage: Coverage, pin: ResourcePin, book: string): boolean => {
+  const { books } = coverageFor(coverage, pin);
+  return books.includes(WHOLE_COLLECTION) || books.includes(book.toUpperCase());
+};
 
 export interface Resolution {
   tool: Tool;
@@ -168,18 +216,30 @@ export const preflightToolBook = (
       : opts.online
         ? 'fetch'
         : 'unavailable';
-    // B20 (warned fallback) — coverage is evidence from LOCAL installs only
-    // ("never assumed"), so a fallback resolution is ambiguous: the primary may
-    // genuinely lack this book, OR it is simply not installed and its coverage
-    // is unknown. We do NOT silently switch resource/language (the original bug),
-    // and we do NOT force a fetch for a book the primary may not even cover (the
-    // over-correction). Instead: open the fallback (it works) and flag the
-    // not-local pinned primary so the UI warns and offers to fetch it. The
-    // precise fetch-vs-fallback call needs the primary's coverage — deferred to
-    // the resolver-metadata increment that records per-pin coverage (with D40).
+    // B20 (warned fallback), NARROWED by issue #16 / D41.
+    //
+    // Before per-pin coverage, a fallback resolution was always ambiguous:
+    // coverage came from local installs only, so "the primary genuinely lacks
+    // this book" and "the primary is simply not downloaded" looked identical,
+    // and every fallback had to be warned. Recorded coverage separates them:
+    //
+    //   primary RECORDS coverage, and it includes this book   -> not a fallback
+    //       at all; resolveToolBook picks the primary and the state below is
+    //       fetch/unavailable. The user is never silently moved to English.
+    //   primary RECORDS coverage, and it excludes this book   -> falling back is
+    //       plainly correct. NO warning: nothing is substituted, the resource
+    //       simply does not have this book.
+    //   primary records NO coverage and is not local          -> still unknown.
+    //       This is the only remaining warned case, and it is a migration path
+    //       (a pin written before #16), not a steady state — `backfillCoverage`
+    //       resolves it on first open whenever the resource is present.
     const primaryPin = resources.languageSets.primary?.[TOOL_SLOT[tool]];
+    const primaryKnows =
+      primaryPin && coverageFor(opts.coverage, primaryPin).source !== 'none';
     const unavailablePrimary =
-      resolution.usedFallback && primaryPin && !opts.isLocal(primaryPin) ? primaryPin : null;
+      resolution.usedFallback && primaryPin && !primaryKnows && !opts.isLocal(primaryPin)
+        ? primaryPin
+        : null;
     return {
       tool,
       book,
@@ -200,6 +260,7 @@ export const preflightToolBook = (
   // online that is a fetch, not a verdict about the book.
   const unfetched = LADDER.map((rung) => resources.languageSets?.[rung]?.[slot])
     .filter((p): p is ResourcePin => !!p)
+    .filter((p) => coverageFor(opts.coverage, p).source === 'none')
     .find((p) => !opts.isLocal(p));
   if (unfetched) {
     return opts.online

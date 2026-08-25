@@ -89,7 +89,7 @@ These are computed at load and MUST NOT be persisted as authoritative data:
 - **Aligned USFM**: produced on export. The export merges §5.1 data into verse text (`wordaligner.merge` → `\zaln` USFM). Round-trip proven byte-equivalent (harness checks 8–11, 22).
 - A derived cache MAY be written (e.g. progress `summary` blocks, see §5.2). The cache MUST be regenerable and MUST be treated as disposable.
 
-### 4.3 `ingredients/vrs.json` (role `x-versification`)
+### 4.3 `ingredients/vrs.json`
 
 The versification scheme of the project. The platform writes this file at project creation
 (`new_text_translation.rs` [VERIFIED — pankosmia-web 0.18.5 (99fd9be, 2026-07-30); the
@@ -99,12 +99,37 @@ mechanism is unchanged 0.16.18→0.18.5]). Rules:
   `mappedVerses`, `excludedVerses`, `partialVerses`. The platform ships six schemes
   (`eng, lxx, org, rsc, rso, vul`) and serves them at `GET /content-utils/versification[s]`
   (evidence: `docs/evidence/pankosmia-versification-2026-07-30.md`).
+- **The ingredient carries NO `role`** [corrected 2026-08-24 — issue #15]. An earlier version
+  of this section required `role: "x-versification"`. Nothing writes it: the platform's
+  creation endpoints register the ingredient with `checksum`, `mimeType` and `size` only, tC4's
+  own writer sets no role, and no published burrito uses ingredient roles at all (five sampled
+  on `git.door43.org/BurritoTruck` — none carry a role of any kind, on any ingredient). The
+  requirement described nothing real, so it is withdrawn; the harness now checks that the
+  ingredient is present and scheme-shaped. Evidence:
+  `docs/evidence/versification-format-and-frames-2026-08-24.md` §6–§7.
 - New projects default to **`eng`**. The user MAY select a different scheme at creation
   [decided 2026-07-30 — OPEN-QUESTIONS #26]. The scheme is fixed for the life of the project.
 - `maxVerses` MUST cover every book in `currentScope` (harness check: versification).
+- **The scheme's NAME is not recorded in the burrito.** The platform takes the name as a
+  creation parameter, uses it only to select a template file, and discards it. So a reader
+  cannot learn the scheme from `metadata.json` or from this file's own contents. tC4 resolves
+  the name through a source ladder — the §8.5 `project.vrs.set` register first (which carries
+  the name tC4 passed at creation), then a **normalized** fingerprint of this file against the
+  served schemes, then `unknown`. The fingerprint MUST compare canonical form, not bytes:
+  published burritos re-serialize the same scheme with different key order and whitespace.
+  A project whose scheme cannot be established is `unknown` and MUST NOT be treated as `eng`;
+  absence of this ingredient carries no information either (three of five sampled burritos omit
+  it, and one that includes it is `eng`).
+- **`mappedVerses` maps this scheme's references INTO `org`.** `org` is therefore the pivot for
+  any scheme-to-scheme conversion: forward through the source scheme's table, then backward
+  through the target's. The client builds the reverse table itself; no file stores it.
+- **`mappedVerses` values MAY be a single range string or an ARRAY of range strings.** The
+  array form expresses a one-to-many mapping. Readers MUST accept both (cf. the two TWLink
+  forms in §5.3). Every shipped scheme is currently string-valued.
 - The client MUST NOT edit this file after creation. Conversion between frames is a client
-  concern (Proskomma's versification mapping, shipped in the platform clients — see §5.2 for
-  the frame rule). The server never maps a reference.
+  concern — see §5.2 for the frame rule. The server never maps a reference; `maxVerses` is the
+  only key any platform code reads [VERIFIED — pankosmia-web 0.18.7 (c43c40d, 2026-08-11),
+  read 2026-08-24; `evidence/versification-format-and-frames-2026-08-24.md` §6].
 - Non-canonical books (books outside the eng-derived canonical book-code list) are not
   allowed at this time [decided 2026-07-30 — D26; the platform's `canonical_book_codes`
   reads `eng.json`, so such files get no `scope` entry on rescan].
@@ -191,12 +216,67 @@ Common rules:
 ```
 
 - The decision record is the **full tC3 check-item shape** — every field the `tc-checking-tool-rcl` `Checker` reads or writes (verified field-for-field against its published source). Do not simplify it; the local POC's simplified shape provably fails to round-trip.
-- **Versification frame rule** [decided 2026-07-29 — D24(c)]: `reference.chapter` and
-  `reference.verse` — here, in check items, and in every stored ref — are in the **project's
-  chosen versification** (`ingredients/vrs.json`, §4.3). TSV and original-language refs map
-  INTO the project frame at derive time. The mapping mechanism is Proskomma's versification
-  toolkit, shipped client-side in the platform (`mapVerse` and the succinct mapping functions;
-  the scheme's `mappedVerses` table is range-capable). tC4 does not build a mapper.
+- **Versification frame rule** [decided 2026-07-29 — D24(c); implemented and amended
+  2026-08-24 — issue #15]: `reference.chapter` and `reference.verse` — here, in check items,
+  and in every stored ref — are in the **project's chosen versification** (§4.3). Resource
+  references map INTO the project frame **at derive time**, before scope filtering, before
+  merge, and before anything is written.
+
+  - **One source frame.** Every unfoldingWord resource that feeds a check list is in the
+    **`eng`** frame — the helps TSVs *and* the original-language texts. Measured over 194,080
+    tN references across eight gateway languages, 58,834 TWL references, and 1,189
+    original-language chapters: zero references contradict `eng` [VERIFIED — sweep run
+    2026-08-24; scripts and per-resource tables in
+    `evidence/versification-format-and-frames-2026-08-24.md` §§2–4 and
+    `evidence/e33-frame-sweep-tsv.py` / `e33-frame-sweep-usfm.py`]. (`hbo_uhb` PSA 3 ends at
+    verse 8, where `org` would number the superscription and have 9.) An earlier draft of this
+    rule assumed helps were `eng` and original-language texts were `org`; that was wrong.
+  - **Same frame ⇒ no conversion.** When the resource frame equals the project frame the
+    reference passes through **unchanged**. This is normative, not an optimization: composing
+    `eng → org → eng` loses 3 verses of the 66-book canon that an unmapped reference gets
+    right, so an `eng` project — the default, and the frame of the whole resource suite — MUST
+    NOT be mapped. Pass-through is also UNVALIDATED [decided 2026-08-24 — D60]: the reference
+    keeps the resource's own form (`front` chapters, comma lists, letter verses — real en_tn
+    rows carry all three), because a same-frame project computes nothing that needs numbers.
+    Only a genuine cross-frame conversion rejects such forms as `malformed-reference`; journal
+    identity safety stays at the §8.5 grammar.
+  - **The mechanism** is Proskomma's versification toolkit (`mapVerse` and the succinct
+    mapping functions). tC4 does not build a mapper; it takes `proskomma-core` as a direct
+    dependency and loads it **lazily**, so a project that needs no conversion never fetches it
+    [decided 2026-08-24]. The toolkit is present in two platform clients but NOT on tC4's
+    dependency path, so tC4 depends on it directly — an earlier version of this sentence said
+    it was "shipped client-side in the platform", which is true of those clients and not of
+    tC4.
+  - **Write once.** A mapped reference is produced at derive time and never re-derived from a
+    stored reference: it is both the §5.2 identity key and the §8.5 journal register key, and
+    the journal is append-only. Where the runtime needs the reference in another frame — the
+    aligner reading the original-language verse behind a project-frame draft reference — that
+    is a **lookup**, and its result MUST NOT be written into any key. §5.1 alignment records
+    stay keyed in the project frame.
+  - **Unplaceable references are dropped, never guessed.** A mapping result MUST be validated
+    against the target scheme's own `maxVerses` before it becomes an identity. A result below
+    verse 1, past a chapter's last verse, in a chapter the scheme lacks, split across chapters,
+    or ambiguous is **unplaceable**: the check is omitted from the list with a recorded reason,
+    and MUST NOT be journaled. An unplaceable check leaves the progress **denominator** as well
+    as the list, so a project can still reach 100% — it is not work the translator declined, it
+    is work that does not exist in this numbering. A reader MUST surface the count; silently
+    shrinking the denominator is not permitted.
+  - **Fan-out becomes a span when contiguous** [decided 2026-08-24]. The reverse mapping is
+    one-to-many where two source verses collapse onto one pivot verse. When the resulting
+    target verses form one unbroken run they are written as the span (`"67-68"`); a gapped
+    fan-out stays unplaceable, because a span would claim the verses in the gap.
+  - **Known losses, for reference.** Against `en_tn@v90` (84,158 verse-shaped check rows in
+    56 books; 990 `front`/`intro` rows are the scheme-independent D60 drop and are excluded):
+    `rsc` loses 8 rows (PSA 116:10, PSA 147:12, REV 12:18), `rso` loses 13 (those plus
+    PSA 87:1), `lxx` 81, `vul` 1,067 — the last dominated by Esther's differing chapter
+    structure. An `eng` project loses none and maps nothing [VERIFIED — sweep run 2026-08-25
+    with `evidence/e33-tn-loss-sweep.mts` (committed; it calls the client's own
+    `mapReference`; en_tn pinned at commit `e137f93c4de4`, the commit tag v90 named);
+    output in `evidence/versification-format-and-frames-2026-08-24.md`,
+    "Addendum (2026-08-25)"].
+  - **Scheme names are open.** The set of schemes is whatever the platform serves
+    (`GET /content-utils/versifications`), not a fixed list. A reader MUST NOT reject a scheme
+    for being unfamiliar; an unrecognised name resolves through §4.3's ladder like any other.
 - Only *touched* checks are stored. An item with no stored decision is "unchecked". That is the representation of not-done.
 - **Identity key (normative, for merge/upsert):** `(contextId.checkId, reference.bookId, reference.chapter, reference.verse, contextId.occurrence)`, with `quoteString` as a verification field. Writers SHOULD reject a key match whose quoteString differs — that difference means the resource changed; treat the record as unmatched. tN `quote` word-arrays MUST be preserved as arrays. **Chapter and verse compare as strings** (`String(...)` both sides): a single verse is its decimal string; a span verse is the exact span string (`"9-10"`). Never `Number()`-coerce (harness check 24). `reference.verse` itself stays a JSON number for single verses (tC3 convention) and is the span string for spans.
 - `selections` semantics: `false` = none; `[]` is not used — empty coerces to `false` (RCL convention, verified). "Done" = `selections !== false || nothingToSelect === true`.
@@ -248,6 +328,17 @@ Common rules:
 - **Two language sets** [decided 2026-07-12 — D17; landed in this schema 2026-07-31 — OPEN-QUESTIONS #28]: `languageSets` MUST contain exactly the keys `primary` and `fallback`. Each set pins a coherent helps suite at explicit commits (D58): `translationNotes` (tn), `translationWordsLinks` (twl — the per-book TSV that check lists derive from, §4.2; its book coverage defines tW coverage), `translationWords` (tw articles), `translationAcademy` (tA). `fallback.gatewayLanguage.languageId` MUST be `"en"` — the suite that ships with the install. The twl slot is required for deterministic derivation and coverage resolution (spec-editor derivation from D17's "resolved per (tool, book) by coverage" + §4.2; the tn/tw/tA set list is D17 verbatim). Upstream models it the same way: the uW developer guide treats TWL as a first-class per-book helps resource — a sibling of tN, with tW as the dictionary "Referenced by TWL" — and every RC manifest `relation` array lists `<lang>/twl` separately from `<lang>/tw` [VERIFIED — `uW-Tools-Collab/docs/2-unfoldingword-developer-guide.mdx` §8 + ecosystem tree, read 2026-07-31]. Note: the pins record **provenance per tool input**, not a two-repo requirement. Both slots MAY name the same repo at the same version — and for tW they normally DO. **Fetch path** [decided 2026-08-03 — D34, amending D32]: for the tW tool a project pins and fetches **`<lang>_tw` only**. That repo's DCS sb-zip export already carries both halves — the per-book TWL link TSVs and the `payload/` articles — so `translationWordsLinks` and `translationWords` name the same repo; `<lang>_twl` is not fetched. [VERIFIED 2026-08-03 — `unfoldingWord/en_tw` `/sb/v87.zip` = 66 TWL TSVs + 954 articles; `es-419_gl/es-419_tw` `/sb/v37.zip` = 66 TSVs + 1056 articles; `docs/evidence/tw-twl-sbzip-combined-2026-08-03.md`.] tC4 never combines resources itself (D32 unchanged); the combining is DCS `go-rc2sb`'s. **Readers MUST accept both TWLink forms.** Every DCS **sb-zip export** rewrites links to the repo-relative form (`./payload/kt/son.md`) — measured on both `en_tw` v87 and `en_twl` v86, 100% of rows [VERIFIED 2026-08-03]. The `rc://*/tw/dict/bible/kt/god` form appears in the **RC source branches** (which tC4 does not fetch) and in **tC3-era stored decisions**, so readers still meet it. In both forms the article slug is the last path segment (drop any `.md`) and the tW category is the segment before it. The twl `flavor` value is what the DCS sb-zip export declares [VERIFIED — en_twl v86 export metadata, 2026-07-31: `parascriptural/x-bcvarticles`; `docs/evidence/es419-suite-pins-2026-07-31.md`].
 - **Resolution** [decided 2026-07-30 — D30, constraints (1)–(3)]: the resolution unit is **(tool, book)**. A book's check list derives from ONE resource at ONE version. Per-check language mixing inside a book never occurs. The automatic ladder is exactly two rungs: `primary` → `fallback`, by book coverage of the pinned version. Any other language is an explicit whole-project gateway-language change (warned re-derive; no per-book language picker). The project's pins bind **every** opener — a personal language preference never changes the project's resources. The resolved rung is recorded per (tool, book) in the §5.2 decision file (`resource` field); a book's resolution change is a warned update, never silent.
 - **Missing pinned version** [decided 2026-07-30 — D30, constraints (4)–(5)]: online → the app fetches it (sb-zip + SHA, OPEN-QUESTIONS #24), never a warn-toward-invalidation dialog. Offline → that (tool, book)'s checking is **unavailable as a first-class state**, not an error; drafting, other books, and other tools continue. The user MAY explicitly re-pin to a locally available version — warned, with re-derive and carry-over (§5.2 D36: unplaceable decisions are invalidated, not queued) — but the app never forces it.
+- **Per-pin book coverage** [decided 2026-08-07 — D41; implemented 2026-08-24 — issue #16]: every repo pin MAY carry `books`, the uppercase book codes that exact commit contains. The field is **OPTIONAL and additive**, so `schemaVersion` stays 2 (§9).
+
+  - **Recorded at pin time**, while the resource is local and its real contents can be read. Because a pin's identity is `repoPath` + `sha` (D58) and that content can never change, a recorded list is a **fact about that commit**, not a cache: it does not go stale, and a reader MUST NOT shrink or replace one. A reader MAY **widen** a record with books a local read of the **same** `repoPath` + `sha` proves present [decided 2026-08-24 — D61]: a record captured from a partial copy (a single-book sideload, an interrupted install) is incomplete, and each added book is a fact about the same commit. Widening MUST only add book codes; it MUST NOT remove any.
+  - **Why it exists.** Without it, coverage can only be derived from what is installed, so "this resource does not contain this book" and "this resource is not downloaded yet" are indistinguishable, and both resolve down the ladder to English. Recorded coverage separates them, which makes these three states distinct for a (tool, book):
+    - coverage recorded and it **includes** the book → resolve to that pin. Not local ⇒ **fetch** (online) or **unavailable** (offline). The user is never silently moved to another language.
+    - coverage recorded and it **excludes** the book → fall back to the next rung. This is plainly correct and MUST NOT be warned: nothing is being substituted.
+    - **no** coverage recorded and the resource is not local → genuinely unknown. Open the fallback and **warn**, naming the pinned resource that is missing.
+  - **Whole-collection form** [decided 2026-08-25 — D62]: a resource that is not book-partitioned covers every book. Its record is `books` set to EXACTLY the single-element list `["BIBLE"]` — the same marker the platform's local summaries report for such a resource (the tw articles). A reader MUST treat this record as covering every book. The marker MUST NOT mix with book codes: a list that contains `"BIBLE"` beside other entries is not valid. A whole-collection record follows the same never-shrink rule; there is nothing to widen. (The platform's `TRANSLATE` marker for the tA modules has no `books` form: no tool resolves through tA coverage, so a tA pin records nothing.)
+  - **Precedence.** A pin's own `books` outranks any locally-derived coverage, because it remains true when the resource is absent. A recorded **empty** array is NOT a record — it cannot be told apart from a failed capture — and MUST fall through to the local scan.
+  - **Backfill** [decided 2026-08-24 — owner ruling]: on project open, a reader SHOULD record coverage for any pin that lacks it **and whose resource is local**, which converts a project pinned before this rule once. The same pass SHOULD widen an incomplete record from a sha-exact local read (rule above), so a record captured from a partial copy heals once the full resource is present. A pin whose resource is absent MUST be left alone; inventing coverage for it would defeat the distinction above. The backfill MUST be idempotent and MUST run under the same compare-and-swap as any other write to this file.
+  - The warned fallback is therefore a **migration path**, not a steady state: after one open with the resource present, it stops firing for that pin.
 - **schemaVersion 2** is a breaking change from the single-set shape (§9: readers MUST reject unknown major versions with a clear message). A `schemaVersion: 1` file (the Increment-1 writer's shape) migrates mechanically: its `gatewayLanguage` + `resources.translationWords/translationNotes/translationAcademy` become the `fallback` set (they pin the installed English suite), `primary` is initialized equal to `fallback` until the user picks a gateway language, a `translationWordsLinks` pin is added, and `originalLanguage`/`lexicon`/`extraScripture` carry over unchanged. Updating the product writer to schemaVersion 2 is the first Increment-2 resource task (it still writes the v1 shape; journey j01 asserts that as the Increment-1 shape, not as this section's shape).
 - Deterministic derivation (§4.2) depends on these pins: same pins ⇒ same check lists ⇒ saved decisions always re-attach. An intentional resource upgrade re-derives. Unmatched decisions are invalidated and retained (§5.2 D36); they never silently persist as progress.
 - **Stage rule S-1 (permanent** [decided 2026-07-30 — D28]**):** this file is **authoritative**, and `metadata.json.relationships` is a mirror. Upstream models `role` and `relationships` ([VERIFIED — pankosmia-web 0.18.5 (99fd9be, 2026-07-30): `structs.rs`]), and at ≥0.18.5 the `relationships` mirror **survives** regeneration in practice [VERIFIED — `evidence/rig-rebaseline-0.18.5-2026-07-30.md`; dropped at ≤0.18.3]. Authority does not move: durability is re-measured at each pin change, and the client-owned file stays the source of truth. The earlier plan — that `relationships` becomes authoritative and this file retires — is withdrawn. Do not ask upstream for more.

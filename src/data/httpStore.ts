@@ -33,6 +33,7 @@ import {
 } from './serverApi';
 import { sortCanonical } from './bookNames';
 import { samePath } from './resolve';
+import { UNRECORDED_SCHEME, type VrsRegister } from './versification';
 
 /** App-created projects live under this org; sideloaded resources live under
  * _local_/_sideloaded_/ and are NOT projects (they never list). */
@@ -180,6 +181,8 @@ const decisionsIpath = (tool: string, book: string): string =>
   `checking/${tool}/${book.toUpperCase()}.json`;
 const RESOURCES_IPATH = 'checking/resources.json';
 const SETTINGS_IPATH = 'checking/settings.json';
+/** §4.3. The platform writes this at creation and the client MUST NOT edit it. */
+const VRS_IPATH = 'vrs.json';
 
 const toProjectSummary = (repoPath: string, summary: RepoSummary): ProjectSummary => ({
   id: repoPath,
@@ -655,6 +658,25 @@ export class HttpStore {
 
   async writeSettings(settings: SettingsFile): Promise<void> {
     await this.writeJsonSidecar(SETTINGS_IPATH, settings);
+  }
+
+  /** The versification register, read straight from the ingredient.
+   *
+   * The raw store has no journal, so it cannot know the scheme NAME — the
+   * platform discards the name it was given at creation (it only uses it to
+   * pick a template file), and it writes no role and no name into the burrito.
+   * So this reports the bytes with a placeholder name, and
+   * `resolveProjectScheme` falls through to fingerprinting. The journaling
+   * store overrides this with the sealed §8.5 register, which does carry the
+   * name for any project tC4 created. */
+  async readVersification(): Promise<VrsRegister | null> {
+    try {
+      const bytes = await this.api.readIngredient(this.repo(), VRS_IPATH);
+      return { name: UNRECORDED_SCHEME, bytes };
+    } catch (error) {
+      if (error instanceof ServerApiError && error.isNotFound) return null;
+      throw error;
+    }
   }
 
   // ---- checkpoints -----------------------------------------------------------

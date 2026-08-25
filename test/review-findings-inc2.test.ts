@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 import { carryOverDecisions } from '../src/data/carryOver';
 import {
   TN_HEADER,
+  deriveForProject,
   deriveTnItems,
   filterToScope,
   mergeAndReattach,
@@ -26,7 +27,7 @@ import { selectionsFromTokens, targetWords, tokenIndicesFromSelections } from '.
 import type { DecisionFile } from '../src/data/burritoStore';
 import { HttpStore, StaleWriteError } from '../src/data/httpStore';
 import { localRepoPathFromRepoPath, installedPathFor, isPinLocal } from '../src/data/installed';
-import { preflightToolBook } from '../src/data/resolve';
+import { pinKey, preflightToolBook } from '../src/data/resolve';
 
 const fs = process.getBuiltinModule('node:fs');
 const path = process.getBuiltinModule('node:path');
@@ -73,14 +74,56 @@ describe('R1 — the derived list the app shows is filtered to the project scope
   });
 
   // The defect was never in the library — it was that state.jsx did not call it.
-  it('state.jsx imports the scope helpers and applies them at every derive site', () => {
+  //
+  // RE-POINTED for issue #15 (2026-08-24). Scope filtering moved INSIDE the one
+  // derive pipeline (`deriveForProject`), because #15 requires scope checks to
+  // run on the versification-MAPPED reference. So the original grep — "state.jsx
+  // calls filterToScope once per two deriveT*Items calls" — no longer describes
+  // the code. The invariant it guarded is unchanged and now enforced more
+  // strongly, and these two checks assert exactly that:
+  //
+  //   1. state.jsx cannot derive unfiltered, because it no longer reaches the
+  //      unfiltered primitives at all (the original test permitted calling them
+  //      as long as a filterToScope call appeared somewhere in the file);
+  //   2. the pipeline it does use always scope-filters — asserted behaviourally
+  //      on the same rows and scope as the cases above, not by reading source.
+  it('state.jsx cannot derive without scope filtering — it never calls the raw primitives', () => {
     const src = fs.readFileSync(path.resolve(process.cwd(), 'src/state.jsx'), 'utf8');
-    expect(src).toMatch(/import\s*\{[^}]*\bfilterToScope\b/s);
+    expect(src.match(/deriveT(n|wl)Items\(/g)).toBeNull();
+    expect(src).toMatch(/import\s*\{[^}]*\bderiveForProject\b/s);
     expect(src).toMatch(/import\s*\{[^}]*\bscopeRangesFor\b/s);
-    const deriveCalls = (src.match(/deriveT(n|wl)Items\(/g) ?? []).length;
-    const scopeFilters = (src.match(/filterToScope\(/g) ?? []).length;
-    expect(deriveCalls).toBeGreaterThan(0);
-    expect(scopeFilters * 2).toBe(deriveCalls);
+    // Every derive site passes the scope through.
+    const deriveSites = (src.match(/deriveForProject\(/g) ?? []).length;
+    const scopePassed = (src.match(/scopeRanges[,:]/g) ?? []).length;
+    expect(deriveSites).toBeGreaterThan(0);
+    expect(scopePassed).toBeGreaterThanOrEqual(deriveSites);
+  });
+
+  it('deriveForProject applies the scope itself — the same rows, the same shrunken denominator', async () => {
+    const scoped = await deriveForProject({
+      tsv: tsv(rows),
+      tool: 'translationNotes',
+      bookId: 'tit',
+      from: 'eng',
+      to: 'eng',
+      schemes: {},
+      scopeRanges: scopeRangesFor({ TIT: ['1:1-2:5'] }, 'TIT'),
+    });
+    expect(scoped.items.map(ref)).toEqual(['1:1', '1:2', '1:3', '2:1', '2:4', '2:5']);
+    expect(progressOf(scoped.items).total).toBe(6);
+  });
+
+  it('deriveForProject with an empty scope still means whole book', async () => {
+    const all = await deriveForProject({
+      tsv: tsv(rows),
+      tool: 'translationNotes',
+      bookId: 'tit',
+      from: 'eng',
+      to: 'eng',
+      schemes: {},
+      scopeRanges: scopeRangesFor({}, 'TIT'),
+    });
+    expect(all.items).toHaveLength(10);
   });
 });
 
@@ -588,20 +631,29 @@ describe('R20 — a not-installed pinned primary opens the fallback but is NOT s
   const EN = 'git.door43.org/unfoldingWord/en_tn';
   const set = (lang: string, owner: string, repoPath: string) => ({
     gatewayLanguage: { languageId: lang, owner },
-    translationNotes: { repoPath, version: lang === 'en' ? 'v89' : 'v66', flavor: '' },
-    translationWordsLinks: { repoPath, version: 'v1', flavor: '' },
-    translationWords: { repoPath, version: 'v1', flavor: '' },
-    translationAcademy: { repoPath, version: 'v1', flavor: '' },
+    translationNotes: {
+      repoPath,
+      version: lang === 'en' ? 'v89' : 'v66',
+      flavor: '',
+      sha: (lang === 'en' ? 'e' : 'a').repeat(40),
+    },
+    translationWordsLinks: { repoPath, version: 'v1', flavor: '', sha: 'b'.repeat(40) },
+    translationWords: { repoPath, version: 'v1', flavor: '', sha: 'b'.repeat(40) },
+    translationAcademy: { repoPath, version: 'v1', flavor: '', sha: 'c'.repeat(40) },
   });
+  const primary = set('es-419', 'es-419_gl', ES);
+  const fallback = set('en', 'unfoldingWord', EN);
   const resources = {
     schemaVersion: 2,
-    languageSets: { primary: set('es-419', 'es-419_gl', ES), fallback: set('en', 'unfoldingWord', EN) },
+    languageSets: { primary, fallback },
     resources: {},
   } as never;
+  const esNotes = primary.translationNotes;
+  const enNotes = fallback.translationNotes;
 
   it('the installed fallback opens (ready) but flags the not-local pinned primary — not silent, not a forced fetch', () => {
     const pf = preflightToolBook(resources, 'translationNotes', 'JON', {
-      coverage: { [EN]: ['JON'] }, // only English is local-covered
+      coverage: { [pinKey(enNotes)]: ['JON'] }, // only English is local-covered
       isLocal: (p) => p.repoPath === EN,
       online: true,
     });
@@ -612,7 +664,7 @@ describe('R20 — a not-installed pinned primary opens the fallback but is NOT s
 
   it('offline: still opens the installed fallback, still flags the missing primary (never a silent switch)', () => {
     const pf = preflightToolBook(resources, 'translationNotes', 'JON', {
-      coverage: { [EN]: ['JON'] },
+      coverage: { [pinKey(enNotes)]: ['JON'] },
       isLocal: (p) => p.repoPath === EN,
       online: false,
     });
@@ -622,7 +674,7 @@ describe('R20 — a not-installed pinned primary opens the fallback but is NOT s
 
   it('when the primary IS local and simply lacks the book, the fallback is plainly correct — no warning', () => {
     const pf = preflightToolBook(resources, 'translationNotes', '1CO', {
-      coverage: { [ES]: ['JON'], [EN]: ['1CO'] }, // both local; es-419 lacks 1CO
+      coverage: { [pinKey(esNotes)]: ['JON'], [pinKey(enNotes)]: ['1CO'] },
       isLocal: () => true,
       online: true,
     });

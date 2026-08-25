@@ -12,9 +12,12 @@ import {
   uncoveredByChange,
 } from '../src/data/gatewayChange';
 import type { StoredDecisionFile } from '../src/data/gatewayChange';
-import { resolveToolBook } from '../src/data/resolve';
+import { pinKey, resolveToolBook } from '../src/data/resolve';
 import type { Coverage } from '../src/data/resolve';
 import type { DecisionFile, LanguageSet, ResourcesFile } from '../src/data/burritoStore';
+
+const fs = process.getBuiltinModule('node:fs');
+const path = process.getBuiltinModule('node:path');
 
 // Deterministic fake sha per (repo, version): same inputs → same sha, any
 // difference → a different sha, so the D58 sha-identity comparisons preserve
@@ -69,8 +72,8 @@ const stored = (
 describe('the case that needs NO change — partial coverage is handled per book', () => {
   // Spanish covers 4 books; English covers the canon.
   const COVERAGE: Coverage = {
-    'git.door43.org/Es-419_gl/es-419_tn': ['TIT', 'JON', 'RUT', '3JN'],
-    'git.door43.org/unfoldingWord/en_tn': ['TIT', 'JON', 'HEB', 'PSA'],
+    [pinKey(ES.translationNotes)]: ['TIT', 'JON', 'RUT', '3JN'],
+    [pinKey(EN.translationNotes)]: ['TIT', 'JON', 'HEB', 'PSA'],
   };
   const resources = {
     schemaVersion: 2,
@@ -103,7 +106,7 @@ describe('official review round 7: an affected book NEITHER rung covers BLOCKS t
       languageSets: { primary: FR, fallback: FR },
       resources: {},
     } as ResourcesFile;
-    const COV: Coverage = { 'git.door43.org/Xenizo/fr_tn': ['TIT'] };
+    const COV: Coverage = { [pinKey(FR.translationNotes)]: ['TIT'] };
     const affected = [
       { tool: 'translationNotes', book: 'TIT' },
       { tool: 'translationNotes', book: 'RUT' },
@@ -119,10 +122,10 @@ describe('consequences are counted before the change is committed', () => {
   // so the counting takes the same coverage map the resolver uses. The French
   // suite covers TIT + JON; English covers the canon.
   const COV: Coverage = {
-    'git.door43.org/Xenizo/fr_tn': ['TIT', 'JON'],
-    'git.door43.org/Xenizo/fr_tw': ['TIT', 'JON'],
-    'git.door43.org/unfoldingWord/en_tn': ['TIT', 'JON', 'HEB', 'PSA', 'RUT'],
-    'git.door43.org/unfoldingWord/en_tw': ['BIBLE'],
+    [pinKey(FR.translationNotes)]: ['TIT', 'JON'],
+    [pinKey(FR.translationWordsLinks)]: ['TIT', 'JON'],
+    [pinKey(EN.translationNotes)]: ['TIT', 'JON', 'HEB', 'PSA', 'RUT'],
+    [pinKey(EN.translationWordsLinks)]: ['BIBLE'],
   };
 
   it('a change that disturbs nothing is harmless and says so', () => {
@@ -205,8 +208,8 @@ describe('the wording the user actually reads', () => {
   const names: Record<string, string> = { TIT: 'Titus', JON: 'Jonah', RUT: 'Ruth', PSA: 'Psalms' };
   const bookName = (c: string) => names[c] ?? c;
   const COVW: Coverage = {
-    'git.door43.org/Xenizo/fr_tn': ['TIT', 'JON', 'RUT', 'PSA'],
-    'git.door43.org/unfoldingWord/en_tn': ['TIT', 'JON', 'RUT', 'PSA', 'HEB'],
+    [pinKey(FR.translationNotes)]: ['TIT', 'JON', 'RUT', 'PSA'],
+    [pinKey(EN.translationNotes)]: ['TIT', 'JON', 'RUT', 'PSA', 'HEB'],
   };
 
   it('names the books and the count in plain language, and promises nothing is deleted', () => {
@@ -257,5 +260,23 @@ describe('applying the change', () => {
     expect(after.languageSets.primary.gatewayLanguage.languageId).toBe('fr');
     expect(after.languageSets.fallback).toEqual(EN);
     expect(after.resources).toEqual(before.resources); // untouched
+  });
+
+  it('both application write paths backfill installed coverage before persistence', () => {
+    const source = fs.readFileSync(path.resolve(process.cwd(), 'src/state.jsx'), 'utf8');
+    const preview = source.slice(
+      source.indexOf('previewGatewayChange: async'),
+      source.indexOf('commitGatewayChange: async'),
+    );
+    const direct = source.slice(
+      source.indexOf('setProjectGateway: async'),
+      source.indexOf('runPreflight: async'),
+    );
+
+    expect(preview).toContain(
+      'backfillCoverage(applyGatewayChange(current, proposedPrimary), coverage).resources',
+    );
+    expect(direct).toContain('backfillCoverage(');
+    expect(direct).toContain('coverage,');
   });
 });

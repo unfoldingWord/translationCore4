@@ -345,6 +345,12 @@ export const pinSlotError = (v) =>
 // value, so it carries the §5.3 document's own shape — ONE validator, shared by the op
 // and by any projection input.
 export const SHA_RE = /^[0-9a-f]{40}$/;                 // §5.3 REQUIRED commit sha (D58)
+export const PIN_BOOK_RE = /^[A-Z0-9]{3}$/;             // §5.3 OPTIONAL per-pin coverage (D41)
+// §5.3 whole-collection form: a resource that is not book-partitioned (the tw
+// articles — the platform reports its coverage as 'BIBLE') records `books`
+// as EXACTLY this single-element list, meaning "covers every book". The marker
+// never mixes with book codes: a mixed list has no defined meaning.
+export const WHOLE_COLLECTION = 'BIBLE';
 const pinStringField = (e, k, { required }) => {
   if (e[k] === undefined) return required ? `without ${k}` : null;
   if (!isStr(e[k]) || e[k] === '') return `${k} is not a non-empty string`;
@@ -364,6 +370,17 @@ export const pinEntryError = (slot, entry) => {
   for (const [k, required] of fields) { const e = pinStringField(entry, k, { required }); if (e) return e; }
   if (entry.sha !== undefined && !(isStr(entry.sha) && SHA_RE.test(entry.sha)))
     return 'sha is not 40 lowercase hex (§5.3)';
+  if (!isGatewayLanguage && entry.books !== undefined) {
+    if (!Array.isArray(entry.books)) return 'books is not an array (§5.3)';
+    // The whole-collection form is EXACTLY ['BIBLE'] — the marker mixed into a
+    // book list has no defined meaning and refuses.
+    const isWholeCollection = entry.books.length === 1 && entry.books[0] === WHOLE_COLLECTION;
+    if (!isWholeCollection) {
+      const badBook = entry.books.find((book) => !isStr(book) || !PIN_BOOK_RE.test(book));
+      if (badBook !== undefined)
+        return `books contains ${JSON.stringify(badBook)}, not an uppercase 3-character book code or the whole-collection form ["BIBLE"] (§5.3)`;
+    }
+  }
   if (isExtra && entry.id !== slot.slice('extraScripture.'.length))
     return `extraScripture entry id "${entry.id}" does not match its slot "${slot}"`;
   return null;

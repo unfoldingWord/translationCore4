@@ -108,10 +108,10 @@
     },
     "ingredients/checking/resources.json": {
       "checksum": {
-        "md5": "8f185d66ecb0c36bed50e3c9f103a1d5"
+        "md5": "c4a1905eb3e574b99f1edfd6c4512a27"
       },
       "mimeType": "application/json",
-      "size": 3498,
+      "size": 5036,
       "role": "x-resource-links"
     },
     "ingredients/checking/settings.json": {
@@ -149,8 +149,7 @@
         "md5": "dd0169fcd7e229933ef72c21b202c903"
       },
       "mimeType": "application/json",
-      "size": 27681,
-      "role": "x-versification"
+      "size": 27681
     }
   },
   "copyright": {
