@@ -557,7 +557,16 @@ const runTrial = async (
   killAt: number | null, // durable-op budget for the step phase; null = no kill
   nestedKillAt: number | null, // durable-op budget for the FIRST recovery open
   allowSegFault = true,
-): Promise<{ violations: Violation[]; durableOps: number; outcomes: StepOutcome[] }> => {
+  // Negative-control hook (issue #79 vacuity floor): break the recovered
+  // world's durable state right before the oracle runs. The oracle MUST
+  // redden on a sabotaged store — a sweep whose oracle cannot fail is vacuous.
+  sabotage: ((w: World) => void) | null = null,
+): Promise<{
+  violations: Violation[];
+  durableOps: number;
+  outcomes: StepOutcome[];
+  killed: boolean;
+}> => {
   const rnd = mulberry32(seedNum * 1_000_003 + seqIndex);
   const steps = genSequence(rnd, allowSegFault);
   const w = makeWorld();
@@ -582,6 +591,7 @@ const runTrial = async (
     }
   }
   const durableOps = w.ks.count;
+  const killed = w.ks.dead; // the budget really fired — a kill happened
   w.ks.enabled = false;
   w.faults.armed = false; // recovery runs on a healthy backend
 
@@ -611,6 +621,7 @@ const runTrial = async (
           violations: [{ code: 'V-OPEN', detail: `nested-kill recovery open failed: ${String(e)}` }],
           durableOps,
           outcomes,
+          killed,
         };
       recovered = w.newStore(); // died mid-recovery; recover again
     }
@@ -622,10 +633,12 @@ const runTrial = async (
       violations: [{ code: 'V-OPEN', detail: `recovery open failed: ${String(e)}` }],
       durableOps,
       outcomes,
+      killed,
     };
   }
+  if (sabotage) sabotage(w);
   const violations = await runOracle(w, outcomes, preRecovery);
-  return { violations, durableOps, outcomes };
+  return { violations, durableOps, outcomes, killed };
 };
 
 // ---------------------------------------------------------------------------
@@ -662,27 +675,69 @@ describe('intent ledger: kill-sweep conservation (all fault classes)', () => {
             buckets.set(sig, b);
           }
         };
+        let killedTrials = 0; // issue #79 vacuity floor: kills that actually fired
         for (let i = 0; i < SEQUENCES_PER_SEED; i += 1) {
           // Dry run: injected faults but no kill — measures the durable-op count.
           const dry = await runTrial(seed, i, null, null, true);
           trials += 1;
           record(`seq ${i} NO-KILL`, dry.violations, dry.outcomes);
+          // Vacuity floor (issue #79): a sequence that performed ZERO durable
+          // mutations has NO kill boundaries — its sweep below is empty, and a
+          // silently-degenerate generator would pass on nothing but dry runs.
+          expect(
+            dry.durableOps,
+            `seq ${i} performed no durable ops — the kill sweep for it is empty`,
+          ).toBeGreaterThan(0);
           // Kill sweep across every durable boundary of the step phase.
           const rnd = mulberry32(seed * 7_000_003 + i);
           for (let k = 1; k <= dry.durableOps; k += 1) {
             const nested = rnd() < 0.35 ? 1 + Math.floor(rnd() * 8) : null;
             const t = await runTrial(seed, i, k, nested, true);
             trials += 1;
+            if (t.killed) killedTrials += 1;
             record(`seq ${i} kill@${k}${nested !== null ? ` nested@${nested}` : ''}`, t.violations, t.outcomes);
           }
         }
-        console.log(`seed ${seed}: ${trials} trials, ${violationTrials} violating trials, ${buckets.size} distinct signatures`);
+        // Vacuity floor (issue #79): "zero violations" is meaningful only if
+        // kills actually happened — a sweep where no budget ever fired proves
+        // nothing about crash recovery.
+        expect(killedTrials, 'no kill trial actually killed — the sweep is vacuous').toBeGreaterThan(0);
+        console.log(`seed ${seed}: ${trials} trials, ${killedTrials} killed trials, ${violationTrials} violating trials, ${buckets.size} distinct signatures`);
         for (const [sig, b] of buckets)
           console.log(`  [x${b.count}] ${sig}\n    sample: ${b.sample.slice(0, 500)}`);
         expect(buckets.size, [...buckets.values()].map((b) => b.sample.slice(0, 300)).join('\n')).toBe(0);
       },
     );
   }
+});
+
+// The broken-store negative control (issue #79 vacuity floor): the oracle
+// MUST redden when journal history is destroyed. This proves the sweep's
+// "zero violations" verdict is falsifiable — an oracle that stays green over
+// a store that lost an accepted segment would make every sweep above vacuous.
+describe('kill-sweep negative control: a store that loses journal history MUST redden the oracle', () => {
+  it('deleting one accepted segment after recovery produces violations', async () => {
+    let sabotaged: string | null = null;
+    let reddened = false;
+    try {
+      const t = await runTrial(SEEDS[0], 0, null, null, true, (w) => {
+        const files = w.rig.repos.get(REPO)!.files;
+        const segment = [...files.keys()]
+          .filter((p) => /^checking\/journal\/[a-z0-9-]+\/segments\//.test(p))
+          .sort()[0];
+        if (segment === undefined) throw new Error('nothing to sabotage: no accepted segment');
+        files.delete(segment); // the exact abuse §8.1 forbids: pruned history
+        sabotaged = segment;
+      });
+      reddened = t.violations.length > 0;
+    } catch {
+      // A hard failure over destroyed history is also a red verdict — the
+      // oracle's own second-open check may legitimately throw here.
+      reddened = true;
+    }
+    expect(sabotaged, 'the control never destroyed a segment — nothing was proven').not.toBeNull();
+    expect(reddened, 'the oracle stayed green over a store that lost an accepted segment').toBe(true);
+  });
 });
 
 // The former demonstration suite (random no-kill sequences with segment
