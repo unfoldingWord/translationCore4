@@ -29,10 +29,15 @@ a real machine, but the development machine, not a clean one.
   on a real machine once Gatekeeper is out of the way. The store-isolation
   guarantees (#70) are enforced separately by the build's own smoke guard,
   which fails the build when the booted app's `repo_dir` is wrong.
-- OPEN until the re-sealed artifact ships: the no-terminal install path. The
-  expected flow after this change set merges: download → double-click →
-  "unidentified developer" → System Settings → Privacy & Security →
-  "Open Anyway" → the app opens. Re-test that on the next `main` artifact,
-  ideally on a machine that never had the repo or its tools.
+- WITNESSED (same day, after the re-seal): the no-terminal install path. The
+  owner downloaded THIS change set's PR artifact
+  (`tc4-desktop-macos-arm64-unsigned-pr`, workflow run 32916330143) through
+  the browser, double-clicked `start-tc4.command`, got the ordinary
+  unverified-developer block (NOT "damaged"), used System Settings →
+  Privacy & Security → "Open Anyway", and **the app opened into tC4** —
+  no terminal involved. Independently, the downloaded artifact's
+  `Electron.app` passes `codesign --verify --deep --strict`, and its
+  quarantined Gatekeeper class is plain "rejected" (the Open-Anyway class).
+  The pilot install instruction is exactly that Open-Anyway step.
 - The full fix for a clean install experience (no dialogs at all) is signing
   and notarization — issue #44.
