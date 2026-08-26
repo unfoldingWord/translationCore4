@@ -132,6 +132,55 @@ cd "$PACK/electron"
 npm install --no-audit --no-fund --save-exact \
   "puppeteer-core@$PUPPETEER_CORE_VER" "@puppeteer/browsers@$PUPPETEER_BROWSERS_VER"
 
+# #4 single instance (D39). The template launcher carries NO
+# requestSingleInstanceLock (verified on the shipped artifact, 2026-08-25),
+# and a second launch actively creates the D39 hazard: the free-port scan
+# just moves to the next port and spawns a SECOND server over the same
+# project store. A tiny tC4-owned main wrapper acquires Electron's singleton
+# lock BEFORE the template startup loads, so a refused second launch exits
+# without a window or a server, and the first window is focused instead.
+# The patch refuses to run if the template's entry point changed shape
+# (same discipline as the #70 repo_dir patch).
+TEMPLATE_MAIN=$(node -p "require('$PACK/electron/package.json').main")
+[ "$TEMPLATE_MAIN" = "electronStartup.js" ] || {
+  echo "FATAL: template electron main is '$TEMPLATE_MAIN' (expected electronStartup.js) — re-verify the #4 single-instance wrapper before building" >&2
+  exit 1
+}
+if [ -n "$TC4_TEST_NO_SINGLE_INSTANCE" ]; then
+  # TEST-ONLY (the #70 guard-self-test pattern): skip the wrapper so the #4
+  # smoke guard's FAILURE path can be exercised. A build with this set MUST
+  # fail at the guard.
+  echo "TEST-ONLY: TC4_TEST_NO_SINGLE_INSTANCE set — skipping the #4 wrapper; the smoke guard MUST fail"
+else
+cat > "$PACK/electron/tc4-main.js" <<'MAIN_EOF'
+// tC4 single-instance guard (#4, D39). This file is tC4's own, not the
+// template's. It MUST run before electronStartup.js: the template's free-port
+// scan would otherwise let a second launch start a second server over the
+// same project store — the exact overlap D39 rules out. tC3 enforced the
+// same rule at the Electron layer.
+const { app, BrowserWindow } = require('electron');
+if (!app.requestSingleInstanceLock()) {
+  app.quit(); // second copy: no window, no server, exit
+} else {
+  app.on('second-instance', () => {
+    const [win] = BrowserWindow.getAllWindows();
+    if (win) {
+      if (win.isMinimized()) win.restore();
+      win.focus();
+    }
+  });
+  require('./electronStartup.js');
+}
+MAIN_EOF
+node -e "
+const fs = require('fs');
+const p = '$PACK/electron/package.json';
+const j = JSON.parse(fs.readFileSync(p, 'utf8'));
+j.main = 'tc4-main.js';
+fs.writeFileSync(p, JSON.stringify(j, null, 2) + '\n');
+"
+fi
+
 cp "$REPO/dev-env/server/target/release/tc4_dev_server" "$PACK/bin/server.bin"
 cp "$REPO/dev-env/server/Rocket.toml" "$PACK/Rocket.toml"
 
@@ -328,6 +377,41 @@ echo "self-spawned server found on port $SMOKE_PORT"
 ROOT=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' "http://127.0.0.1:$SMOKE_PORT/")
 CLIENT=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$SMOKE_PORT/clients/uw-tc4")
 echo "root: $ROOT; /clients/uw-tc4: $CLIENT"
+
+# #4 GUARD (D39): a second launch must NOT become a second running copy.
+# With the first instance still up, launch the entry point AGAIN (same HOME —
+# the singleton lock keys on the app's userData under this HOME). The second
+# process must exit BY ITSELF, no second tc4 server may appear on any scan
+# port, and the first server must still answer. Without the tc4-main.js
+# wrapper this fails: the template's port scan starts a second server over
+# the same project store.
+HOME="$SMOKE_HOME" "$APPDIR/start-tc4.command" > "$BUILD/smoke-second-instance.log" 2>&1 &
+SECOND_PID=$!
+SECOND_DEAD=""
+for i in {1..30}; do
+  kill -0 $SECOND_PID 2>/dev/null || { SECOND_DEAD=1; break }
+  sleep 1
+done
+[ -n "$SECOND_DEAD" ] || {
+  echo "#4 GUARD FAILED: the second instance is still running after 30s" >&2
+  tail -20 "$BUILD/smoke-second-instance.log" >&2
+  kill $SECOND_PID 2>/dev/null
+  exit 1
+}
+SECOND_SERVERS=0
+for p in {19119..19139}; do
+  [ "$p" = "$SMOKE_PORT" ] && continue
+  curl -s --max-time 1 "http://127.0.0.1:$p/api/version" | grep -q '"product_short_name":"tc4"' && SECOND_SERVERS=$((SECOND_SERVERS+1))
+done
+[ "$SECOND_SERVERS" = "0" ] || {
+  echo "#4 GUARD FAILED: a second tc4 server appeared on another port — the second launch spawned a server" >&2
+  exit 1
+}
+curl -s --max-time 2 "http://127.0.0.1:$SMOKE_PORT/api/version" | grep -q '"product_short_name":"tc4"' || {
+  echo "#4 GUARD FAILED: the FIRST server stopped answering after the second launch" >&2
+  exit 1
+}
+echo "#4 guard: second launch exited by itself; one server only (port $SMOKE_PORT)"
 cleanup_smoke
 trap - EXIT
 [[ "$ROOT" == 303* && "$ROOT" == *"/clients/uw-tc4" && "$CLIENT" == "200" ]] || {

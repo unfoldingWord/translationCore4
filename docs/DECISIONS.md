@@ -469,6 +469,13 @@ remaining "cross-process/realm" concern is answered by this ruling (single insta
 Phase-2 journal for the multi-machine case. Enforcement note: single-instance is a
 packaging/shell responsibility (as in tC3); the client relies on it rather than re-implementing
 a multi-realm CAS.
+[2026-08-25 update — issue #4: the assumption now rests on an actual guard. The packaged
+app's `electron/tc4-main.js` acquires Electron's singleton lock before the template startup
+loads; a second launch exits with no window and no server, and the packaging smoke test
+fails any build where a second launch survives or spawns a second server
+(`docs/PACKAGING.md`, "Single instance"). Measured along the way: the template launcher had
+no lock at all, and tC3's lock never quits the refused copy — macOS `.app` Finder semantics
+did that work for tC3.]
 
 
 ## D40 (2026-08-06, project-owner ruling — **every project maps refs uniformly; eng is not a
