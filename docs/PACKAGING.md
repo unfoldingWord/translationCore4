@@ -47,6 +47,37 @@ every other Pankosmia desktop app).
 - Migration of existing shared-store projects is explicit import work
   (#21's family), never an automatic read.
 
+## Single instance (#4, D39)
+
+D39 rules that same-machine save safety may assume ONE running copy of tC4,
+and that enforcement is a packaging/shell responsibility. Facts, measured
+2026-08-25:
+
+- The desktop-app-template launcher has NO single-instance lock. A second
+  launch is worse than a duplicate window: the launcher's free-port scan
+  moves to the next port and spawns a SECOND server over the SAME project
+  store — the exact overlap D39 rules out.
+- tC3's launcher (`electronite/index.js`) calls
+  `app.requestSingleInstanceLock()` but never checks the result and never
+  quits the second copy; in practice macOS enforces single-instance for
+  `.app` bundles at the Finder level. Our artifact launches through
+  `start-tc4.command`, which Finder runs as many times as it is clicked —
+  so an explicit guard is load-bearing here.
+- **Mechanism:** the build writes a tC4-owned `electron/tc4-main.js` that
+  acquires Electron's singleton lock BEFORE the template startup loads. A
+  refused second launch exits with no window and no server; the first
+  window is restored and focused. `electron/package.json` `main` is patched
+  to the wrapper, and the patch refuses to run if the template's entry
+  point changed shape (the #70 patch discipline).
+- **Guard, not convention:** the smoke test launches the entry point a
+  SECOND time while the first instance runs, and FAILS the build unless the
+  second process exits by itself, no second tc4 server appears on any scan
+  port, and the first server still answers.
+- **Scope, stated plainly:** the guard covers the packaged desktop app —
+  D39's scope, the same layer tC3 used. A browser tab pointed manually at
+  the local server port, or the dev rig, is outside it; the server binds
+  127.0.0.1 and the port is not user-visible in normal use.
+
 The recipe follows the Pankosmia
 [desktop-app-template](https://github.com/pankosmia/desktop-app-template)
 (MIT). The template is a read-only reference. Do not open issues or pull
