@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tC4 Roadmap</title>
+<style>
+  :root {
+    --bg: #FBFAF8;
+    --surface: #FFFFFF;
+    --text: #231F20;
+    --text-muted: #55666D;
+    --border: #DCE3E6;
+    --accent: #1B8FC4;
+    --deep: #014263;
+    --teal: #3E9EA1;
+    --amber: #B5711A;
+    --danger: #B3261E;
+    --shipped-bg: #E9F5F1;
+    --current-bg: #EAF6FC;
+    --backlog-bg: #F1EFEC;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0A1820; --surface: #0F222B; --text: #EAF2F4; --text-muted: #9FB6BD;
+      --border: #21414D; --accent: #57C3F0; --deep: #8FE0E3; --teal: #6FC9CC;
+      --amber: #F0AE55; --danger: #F0A18C;
+      --shipped-bg: #103029; --current-bg: #0F2A38; --backlog-bg: #1A2830;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0A1820; --surface: #0F222B; --text: #EAF2F4; --text-muted: #9FB6BD;
+    --border: #21414D; --accent: #57C3F0; --deep: #8FE0E3; --teal: #6FC9CC;
+    --amber: #F0AE55; --danger: #F0A18C;
+    --shipped-bg: #103029; --current-bg: #0F2A38; --backlog-bg: #1A2830;
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); }
+  body {
+    color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 16px; line-height: 1.55; margin: 0; padding: 3.5rem 1.5rem 4rem;
+  }
+  .page { max-width: 720px; margin: 0 auto; }
+  h1, h2 { font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif; color: var(--deep); text-wrap: balance; margin: 0; }
+  .eyebrow { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); margin: 0 0 0.6rem; }
+  h1 { font-size: 2.1rem; font-weight: 600; }
+  .subtitle { color: var(--text-muted); font-size: 1rem; margin: 0.55rem 0 0; }
+  header.masthead { padding-bottom: 1.8rem; border-bottom: 1px solid var(--border); margin-bottom: 2.2rem; }
+
+  .stats { display: flex; gap: 2rem; flex-wrap: wrap; padding: 0 0 2.2rem; margin-bottom: 2.2rem; border-bottom: 1px solid var(--border); }
+  .stat { flex: 1 1 160px; min-width: 150px; }
+  .stat-value { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-variant-numeric: tabular-nums; font-size: 1.65rem; font-weight: 600; color: var(--deep); line-height: 1.1; }
+  .stat-label { font-size: 0.85rem; color: var(--text-muted); margin-top: 0.3rem; }
+
+  section { margin-bottom: 2.4rem; }
+  h2 { font-size: 1.05rem; letter-spacing: 0.01em; margin-bottom: 0.9rem; }
+  p { margin: 0 0 0.9rem; max-width: 62ch; }
+
+  .timeline { position: relative; padding-left: 1.6rem; }
+  .timeline::before { content: ""; position: absolute; left: 5px; top: 0.5rem; bottom: 0.5rem; width: 2px; background: var(--border); }
+  .tl-item { position: relative; padding-bottom: 1.7rem; }
+  .tl-item:last-child { padding-bottom: 0; }
+  .tl-dot { position: absolute; left: -1.6rem; top: 0.3rem; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--border); background: var(--text-muted); }
+  .tl-item.shipped .tl-dot { background: var(--teal); box-shadow: 0 0 0 1px var(--teal); }
+  .tl-item.current .tl-dot { background: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+  .tl-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+  .tl-title { font-family: Georgia, "Iowan Old Style", serif; font-size: 1.08rem; font-weight: 600; color: var(--text); }
+  .tl-date { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-variant-numeric: tabular-nums; font-size: 0.82rem; color: var(--text-muted); white-space: nowrap; }
+  .tl-desc { color: var(--text-muted); font-size: 0.94rem; margin: 0.3rem 0 0; max-width: 56ch; }
+
+  .tag { display: inline-block; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 0.16rem 0.5rem; border-radius: 3px; margin-right: 0.5rem; }
+  .tag.shipped { background: var(--shipped-bg); color: var(--teal); }
+  .tag.current { background: var(--current-bg); color: var(--accent); }
+  .tag.backlog { background: var(--backlog-bg); color: var(--text-muted); }
+
+  .progress-wrap { margin-top: 0.7rem; display: flex; align-items: center; gap: 0.6rem; }
+  .progress-track { flex: 1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; max-width: 220px; }
+  .progress-fill { height: 100%; background: var(--accent); border-radius: 3px; }
+  .tl-item.shipped .progress-fill { background: var(--teal); }
+  .progress-label { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-variant-numeric: tabular-nums; font-size: 0.8rem; color: var(--text-muted); }
+
+  .active-list { margin: 0.7rem 0 0; padding: 0; list-style: none; font-size: 0.9rem; }
+  .active-list li { position: relative; padding-left: 1.1rem; margin-bottom: 0.35rem; }
+  .active-list li::before { content: ""; position: absolute; left: 0; top: 0.55em; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+  .active-list a { color: var(--text); text-decoration: none; }
+  .active-list a:hover { text-decoration: underline; }
+
+  .open-items { padding: 1.1rem 1.3rem; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; }
+  .open-items h2 { margin-bottom: 0.7rem; }
+  .open-items ul { margin: 0; padding-left: 1.1rem; }
+  .open-items li { margin-bottom: 0.55rem; font-size: 0.92rem; }
+  .open-items li:last-child { margin-bottom: 0; }
+  .open-items a { color: var(--accent); }
+
+  .skeleton { color: var(--text-muted); font-size: 0.9rem; }
+  .error-banner { padding: 0.9rem 1.1rem; background: var(--current-bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 0.9rem; margin-bottom: 2rem; }
+  .error-banner a { color: var(--accent); }
+
+  footer { margin-top: 2.6rem; padding-top: 1.2rem; border-top: 1px solid var(--border); font-size: 0.78rem; color: var(--text-muted); }
+  footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="masthead">
+    <p class="eyebrow">Status update &middot; live</p>
+    <h1>translationCore 4</h1>
+    <p class="subtitle" id="subtitle">Roadmap — loading current data from GitHub&hellip;</p>
+  </header>
+
+  <div id="error-slot"></div>
+  <div id="stats-slot" class="stats"><div class="skeleton">Loading&hellip;</div></div>
+
+  <section>
+    <h2>Roadmap</h2>
+    <div id="timeline-slot" class="timeline"><p class="skeleton">Loading milestones&hellip;</p></div>
+  </section>
+
+  <section class="open-items" id="questions-section" hidden>
+    <h2>Open questions</h2>
+    <ul id="questions-slot"></ul>
+  </section>
+
+  <footer>
+    Source: <a href="https://github.com/unfoldingWord/translationCore4" target="_blank" rel="noopener">unfoldingWord/translationCore4</a> on GitHub — fetched live, in your browser, on each page load.
+    <span id="updated-slot"></span>
+  </footer>
+
+</div>
+
+<script>
+const REPO = "unfoldingWord/translationCore4";
+const API = `https://api.github.com/repos/${REPO}`;
+
+const fmtDate = iso => iso ? new Date(iso).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" }) : null;
+const daysUntil = iso => Math.ceil((new Date(iso) - new Date()) / 86400000);
+const esc = s => s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+async function getJSON(path) {
+  const res = await fetch(`${API}${path}`, { headers: { Accept: "application/vnd.github+json" } });
+  if (!res.ok) {
+    const remaining = res.headers.get("x-ratelimit-remaining");
+    if (res.status === 403 && remaining === "0") {
+      throw new Error("GitHub's public API rate limit was hit for your connection. Try again in a few minutes, or view the board directly.");
+    }
+    throw new Error(`GitHub API error (${res.status}) fetching ${path}`);
+  }
+  return res.json();
+}
+
+async function getAllPages(path) {
+  let all = [];
+  let page = 1;
+  while (true) {
+    const chunk = await getJSON(`${path}${path.includes("?") ? "&" : "?"}per_page=100&page=${page}`);
+    all = all.concat(chunk);
+    if (chunk.length < 100) break;
+    page += 1;
+  }
+  return all;
+}
+
+function renderError(message) {
+  document.getElementById("error-slot").innerHTML =
+    `<div class="error-banner">Couldn't load live data: ${esc(message)} — showing what we have. <a href="https://github.com/${REPO}/milestones" target="_blank" rel="noopener">View milestones on GitHub directly.</a></div>`;
+}
+
+function renderStats({ shippedCount, totalIncrements, current, shipTarget }) {
+  const slot = document.getElementById("stats-slot");
+  const daysLeft = current && current.due_on ? daysUntil(current.due_on) : null;
+  slot.innerHTML = `
+    <div class="stat">
+      <div class="stat-value">${shippedCount} of ${totalIncrements}</div>
+      <div class="stat-label">increments shipped</div>
+    </div>
+    ${current ? `
+    <div class="stat">
+      <div class="stat-value">${daysLeft !== null ? (daysLeft >= 0 ? daysLeft + " days" : "overdue") : "&mdash;"}</div>
+      <div class="stat-label">to the ${esc(current.title)} deadline${current.due_on ? " (" + fmtDate(current.due_on) + ")" : ""}</div>
+    </div>` : ""}
+    <div class="stat">
+      <div class="stat-value">${shipTarget ? fmtDate(shipTarget) : "TBD"}</div>
+      <div class="stat-label">target date for v4.0.0</div>
+    </div>
+  `;
+}
+
+function milestoneItem(m, state) {
+  const total = m.open_issues + m.closed_issues;
+  const pct = total > 0 ? Math.round((m.closed_issues / total) * 100) : 0;
+  const tag = state === "shipped" ? '<span class="tag shipped">Shipped</span>'
+            : state === "current" ? '<span class="tag current">In progress</span>'
+            : state === "backlog" ? '<span class="tag backlog">Backlog</span>'
+            : "";
+  const dateLabel = m.due_on
+    ? (state === "shipped" ? fmtDate(m.closed_at) : "due " + fmtDate(m.due_on))
+    : "not yet scheduled";
+  const desc = m.description ? esc(m.description.split("\n")[0]).slice(0, 220) : "";
+  return { tag, dateLabel, total, closed: m.closed_issues, pct, desc, title: m.title, cls: state, number: m.number };
+}
+
+async function renderCurrentIssues(number) {
+  const issues = await getJSON(`/issues?milestone=${number}&state=open&sort=updated&direction=desc&per_page=6`);
+  const real = issues.filter(i => !i.pull_request);
+  if (!real.length) return "";
+  return `<ul class="active-list">${real.map(i =>
+    `<li><a href="${i.html_url}" target="_blank" rel="noopener">${esc(i.title)}</a></li>`
+  ).join("")}</ul>`;
+}
+
+async function main() {
+  let openMilestones = [], closedMilestones = [];
+  try {
+    [openMilestones, closedMilestones] = await Promise.all([
+      getAllPages("/milestones?state=open"),
+      getAllPages("/milestones?state=closed"),
+    ]);
+  } catch (err) {
+    renderError(err.message);
+    document.getElementById("timeline-slot").innerHTML = "";
+    document.getElementById("stats-slot").innerHTML = "";
+    document.getElementById("subtitle").textContent = "Roadmap — live data unavailable";
+    return;
+  }
+
+  closedMilestones.sort((a, b) => new Date(a.closed_at) - new Date(b.closed_at));
+  const dated = openMilestones.filter(m => m.due_on).sort((a, b) => new Date(a.due_on) - new Date(b.due_on));
+  const undated = openMilestones.filter(m => !m.due_on);
+  const current = dated[0] || null;
+  const upcoming = dated.slice(1);
+
+  const shipTarget = dated.length ? dated[dated.length - 1].due_on : null;
+  renderStats({
+    shippedCount: closedMilestones.length,
+    totalIncrements: closedMilestones.length + dated.length,
+    current,
+    shipTarget,
+  });
+  document.getElementById("subtitle").textContent = `Roadmap — updated ${fmtDate(new Date().toISOString())}`;
+
+  const rows = [];
+  for (const m of closedMilestones) rows.push(milestoneItem(m, "shipped"));
+  if (current) rows.push(milestoneItem(current, "current"));
+  for (const m of upcoming) rows.push(milestoneItem(m, "upcoming"));
+  for (const m of undated) rows.push(milestoneItem(m, "backlog"));
+
+  let currentActiveHTML = "";
+  if (current) {
+    try { currentActiveHTML = await renderCurrentIssues(current.number); }
+    catch (_) { /* non-fatal: active-issue list is a bonus, roadmap still stands without it */ }
+  }
+
+  document.getElementById("timeline-slot").innerHTML = rows.map(r => `
+    <div class="tl-item ${r.cls === "shipped" ? "shipped" : r.cls === "current" ? "current" : ""}">
+      <span class="tl-dot"></span>
+      <div class="tl-head">
+        <span class="tl-title">${r.tag}${esc(r.title)}</span>
+        <span class="tl-date">${r.dateLabel}</span>
+      </div>
+      ${r.desc ? `<p class="tl-desc">${r.desc}</p>` : ""}
+      ${r.total > 0 ? `
+      <div class="progress-wrap">
+        <div class="progress-track"><div class="progress-fill" style="width:${r.pct}%;"></div></div>
+        <span class="progress-label">${r.closed} / ${r.total} items closed</span>
+      </div>` : ""}
+      ${r.cls === "current" ? currentActiveHTML : ""}
+    </div>
+  `).join("");
+
+  try {
+    const questions = await getJSON("/issues?labels=question&state=open&per_page=20");
+    const real = questions.filter(i => !i.pull_request);
+    if (real.length) {
+      document.getElementById("questions-slot").innerHTML = real.map(i =>
+        `<li><a href="${i.html_url}" target="_blank" rel="noopener">#${i.number} ${esc(i.title)}</a></li>`
+      ).join("");
+      document.getElementById("questions-section").hidden = false;
+    }
+  } catch (_) { /* non-fatal */ }
+
+  document.getElementById("updated-slot").textContent = ` Last fetched ${new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}.`;
+}
+
+main();
+</script>
+</body>
+</html>
