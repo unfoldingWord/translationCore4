@@ -192,6 +192,19 @@ rm -rf "$STAGE"
 mkdir -p "$STAGE/$APP_NAME/licenses"
 APPDIR="$STAGE/$APP_NAME"
 cp -R "$BUILD/electronite/Electron.app" "$APPDIR/Electron.app"
+# Re-seal the wrapper with a VALID ad-hoc signature (#57, measured 2026-08-25).
+# The upstream Electronite release ships an app bundle whose signature FAILS
+# verification ("code has no resources but signature indicates they must be
+# present" — codesign --verify, pristine v37.1.0-graphite zip). A quarantined
+# download therefore gets Gatekeeper's "damaged — move to Trash" verdict, with
+# NO "Open Anyway" escape. A forced ad-hoc re-sign produces a bundle that
+# VERIFIES, so Gatekeeper downgrades to the ordinary unidentified-developer
+# flow (System Settings -> Privacy & Security -> Open Anyway). Real signing +
+# notarization is #44's job; this step only makes the unsigned artifact
+# openable at all. The guard below fails the build if the seal did not take.
+codesign --force --deep --sign - "$APPDIR/Electron.app"
+codesign --verify --deep --strict "$APPDIR/Electron.app" \
+  || { echo "FATAL: Electron.app does not verify after the ad-hoc re-seal (#57)"; exit 1 }
 cp -R "$PACK/electron" "$APPDIR/electron"
 cp -R "$PACK/bin" "$APPDIR/bin"
 cp -R "$PACK/lib" "$APPDIR/lib"

@@ -116,8 +116,23 @@ Every artifact carries `BUILD-MANIFEST.json` at its root with the same data.
   check). Picking and proving a client set is issue
   [#71](https://github.com/unfoldingWord/translationCore4/issues/71).
 - **Unsigned**: macOS Gatekeeper blocks the app on a clean machine.
-  Right-click → Open, or `xattr -dr com.apple.quarantine`, is required.
-  Signing is #44.
+  Signing and notarization are #44. Two facts, measured 2026-08-25:
+  - The upstream Electronite v37.1.0-graphite release ships an app bundle
+    whose signature FAILS verification (`codesign --verify` on the pristine
+    zip: "code has no resources but signature indicates they must be
+    present"). A quarantined download of such a bundle gets Gatekeeper's
+    "damaged — move to Trash" verdict, and macOS offers NO "Open Anyway" for
+    that verdict. The build therefore RE-SEALS `Electron.app` with a forced
+    ad-hoc signature (`codesign --force --deep --sign -`) and fails if the
+    result does not verify. The witnessed "damaged" dialog came from the
+    2026-08-25 CI artifact on macOS 15 (owner's machine).
+  - With the valid ad-hoc seal, Gatekeeper still blocks the first launch
+    (unidentified developer), but the ordinary escape works: System
+    Settings → Privacy & Security → "Open Anyway". Pilot install
+    instructions MUST include that step until #44 ships signing.
+    On macOS 15, right-click → Open no longer bypasses Gatekeeper for
+    unsigned apps; `xattr -dr com.apple.quarantine` remains the terminal
+    workaround.
 - **Archive structure diverges from the template**: the spike ships a plain
   folder (`Electron.app` + `electron/` + `bin/` + `lib/` + a
   `start-tc4.command` launcher). The template instead builds a single
