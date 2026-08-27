@@ -1,4 +1,5 @@
-// Gateway-language change confirmation (§5 default #2 / D23a, D30.2).
+// Gateway-language change confirmation (§5 default #2 / D23a, D30.2) — rebuilt
+// on the design system (epic #104 / #109).
 //
 // This dialogue is WHERE THE WARNING LIVES. Changing which gateway language a
 // project checks against is the only thing that moves a checked book to a
@@ -11,15 +12,7 @@ import { useApp } from '../../state.jsx';
 import { describeConsequences } from '../../data/gatewayChange';
 import { bookName } from '../../data/bookNames';
 import { t } from '../../i18n';
-
-const overlay = {
-  position: 'fixed', inset: 0, background: 'rgba(1,38,56,.55)', zIndex: 90,
-  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 28,
-};
-const card = {
-  background: '#fff', borderRadius: 16, width: '100%', maxWidth: 520,
-  boxShadow: '0 24px 64px rgba(1,38,56,.4)', padding: '24px 26px',
-};
+import { Modal, Button, Callout } from '../../ds/index.js';
 
 export default function GatewayChange() {
   const { s, actions } = useApp();
@@ -28,21 +21,29 @@ export default function GatewayChange() {
 
   const { headline, detail } = describeConsequences(preview.consequences, bookName);
   const harmless = preview.consequences.harmless;
+  const blocked = (preview.blocked?.length ?? 0) > 0;
 
   return (
-    <div style={overlay} onClick={actions.cancelGatewayChange} data-testid="gateway-change">
-      <div style={card} onClick={(e) => e.stopPropagation()}
-        data-harmless={harmless ? '1' : '0'}>
-        <h3 style={{ fontSize: 19, fontWeight: 900, color: '#014263', margin: '0 0 12px' }}>
-          {t('gateway.title', { lang: preview.gateway.name })}
-        </h3>
-
+    <Modal zIndex={90} data-testid="gateway-change" title={t('gateway.title', { lang: preview.gateway.name })}
+      closeLabel={t('common.close')} onClose={actions.cancelGatewayChange}
+      footer={<>
+        <Button variant="secondary" onClick={actions.cancelGatewayChange} data-testid="gateway-cancel">
+          {t('gateway.keep', { lang: preview.currentName ?? t('gateway.current') })}
+        </Button>
+        <Button onClick={() => actions.confirmGatewayChange(preview)} data-testid="gateway-confirm"
+          disabled={blocked}
+          style={blocked ? { background: 'var(--uw-haze)', boxShadow: 'none' }
+            : harmless ? null : { background: 'var(--uw-kindle)' }}>
+          {t('gateway.change', { lang: preview.gateway.name })}
+        </Button>
+      </>}>
+      <div data-harmless={harmless ? '1' : '0'} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <p data-testid="gateway-headline"
-          style={{ fontSize: 14, color: harmless ? '#3C8F5C' : '#8A6A22', fontWeight: 700, lineHeight: 1.55, margin: '0 0 8px' }}>
+          style={{ fontSize: 'var(--fs-ui)', letterSpacing: 'var(--track-13-5)', color: harmless ? 'var(--tc-valid-strong)' : 'var(--tc-warn-text)', fontWeight: 'var(--fw-bold)', lineHeight: 'var(--lh-body)', margin: 0 }}>
           {headline}
         </p>
         {detail && (
-          <p style={{ fontSize: 13.5, color: '#4F5E6A', lineHeight: 1.6, margin: '0 0 14px' }}>
+          <p style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', color: 'var(--text-secondary)', lineHeight: 'var(--lh-body)', margin: 0 }}>
             {detail}
           </p>
         )}
@@ -51,14 +52,14 @@ export default function GatewayChange() {
           * check list has already been derived, so these numbers are what the
           * user will actually see afterwards. */}
         {!harmless && (
-          <ul style={{ margin: '0 0 16px', paddingInlineStart: 18 }} data-testid="gateway-plan">
+          <ul style={{ margin: '6px 0 0', paddingInlineStart: 18 }} data-testid="gateway-plan">
             {preview.consequences.affected.map((a) => {
               const p = (preview.plan ?? []).find(
                 (x) => x.tool === a.tool && x.book === a.book,
               );
               return (
                 <li key={`${a.tool}:${a.book}`}
-                  style={{ fontSize: 12.5, color: '#4F5E6A', lineHeight: 1.7 }}>
+                  style={{ fontSize: 'var(--fs-caption-lg)', letterSpacing: 'var(--track-12-5)', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
                   {p
                     ? t('gateway.carryOver', {
                       book: bookName(a.book),
@@ -82,9 +83,8 @@ export default function GatewayChange() {
           * decisions and nothing to carry them to — the change is blocked,
           * with the books named, until the new suite covers them (or a
           * conforming unresolved state exists). */}
-        {(preview.blocked?.length ?? 0) > 0 && (
-          <p role="alert" data-testid="gateway-blocked"
-            style={{ fontSize: 13, color: '#8A2E22', background: 'rgba(229,157,51,.10)', border: '1px solid rgba(229,157,51,.5)', borderRadius: 10, padding: '10px 12px', lineHeight: 1.55, margin: '0 0 14px' }}>
+        {blocked && (
+          <Callout tone="warn" role="alert" data-testid="gateway-blocked">
             {/* The remedy depends on WHY the books are blocked. A versification
               * block (frame unavailable/unknown) affects every entry at once
               * and cannot be fixed by installing a suite — say the real fix. */}
@@ -96,30 +96,15 @@ export default function GatewayChange() {
                 books: preview.blocked.map((b) => `${bookName(b.book)} (${t(`check.tool.${b.tool}`)})`).join(', '),
               },
             )}
-          </p>
+          </Callout>
         )}
 
         {s.gatewayError && (
-          <p role="alert" data-testid="gateway-error"
-            style={{ fontSize: 13, color: '#8A2E22', background: 'rgba(229,157,51,.10)', border: '1px solid rgba(229,157,51,.5)', borderRadius: 10, padding: '10px 12px', lineHeight: 1.55, margin: '0 0 14px', overflowWrap: 'anywhere' }}>
+          <Callout tone="warn" role="alert" data-testid="gateway-error" style={{ overflowWrap: 'anywhere' }}>
             <strong>{t('gateway.failed')}</strong> {s.gatewayError}
-          </p>
+          </Callout>
         )}
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={actions.cancelGatewayChange} data-testid="gateway-cancel"
-            style={{ border: '1px solid rgba(35,31,32,.16)', background: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 800, fontSize: 13.5, padding: '10px 20px', borderRadius: 999, color: '#4F5E6A' }}>
-            {t('gateway.keep', { lang: preview.currentName ?? t('gateway.current') })}
-          </button>
-          <button type="button" onClick={() => actions.confirmGatewayChange(preview)}
-            data-testid="gateway-confirm"
-            disabled={(preview.blocked?.length ?? 0) > 0}
-            style={{ border: 0, cursor: (preview.blocked?.length ?? 0) > 0 ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontWeight: 800, fontSize: 13.5, padding: '10px 20px', borderRadius: 999, background: (preview.blocked?.length ?? 0) > 0 ? '#B9C4CC' : harmless ? '#31ADE3' : '#E59D33', color: '#fff' }}>
-            {t('gateway.change', { lang: preview.gateway.name })}
-          </button>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }
