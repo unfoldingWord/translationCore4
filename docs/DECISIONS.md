@@ -1055,3 +1055,28 @@ The ruling:
    when the local marker is present and the pin records nothing.
 3. **The tA modules' `TRANSLATE` marker gets no form.** No tool resolves through tA
    coverage, so a tA pin records nothing.
+
+## D63 (2026-08-27, project-owner ruling) **The app adopts an Understand, Translate, Check workflow. Publish is retired as a top-level view — it is reached from Check's Community Checking tool.** [epic #104]
+
+The current top navigation is Draft, Check, Publish (`translationCore4/src/App.jsx`, the
+`TopBar` component). It treats translating as three separate, sequential jobs. In practice
+a translator needs to understand a passage before drafting it, and community checking
+already produces a shareable draft — publishing was never a separate step so much as one
+output of checking.
+
+The ruling:
+1. **Three tabs replace the current three: Understand, Translate, Check.** Understand is
+   new — a read-only pass through the source passage and its helps (notes, questions, key
+   terms, simplified text, Academy articles) before the user drafts. Translate is the
+   existing Draft screen, renamed; its internal view state stays `draft`. Check keeps its
+   position.
+2. **Publish is retired as a top-level tab.** It is reached from a Community Checking card
+   on Check's tool picker, which opens the same publish flow the old Publish tab did.
+3. **A new design system ships alongside the workflow change** — color, type, spacing,
+   radius, motion, and interaction tokens, with a matching component library. Top
+   navigation, Home, Translate, Check, and every modal are rebuilt on it; new screens and
+   components draw from these tokens, not hand-rolled styles.
+
+Basis: project-owner design work in Claude Design (mockup and design-system links on issue
+#104). Epic #104 carries the work items and is priority work for Increment 4, sequenced
+ahead of the increment's other items.
