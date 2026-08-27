@@ -84,6 +84,7 @@ const refPart = (s: string): number | string => (/^\d+$/.test(s) ? Number(s) : s
  * rejected, not guess-parsed. */
 export const TWL_HEADER = 'Reference\tID\tTags\tOrigWords\tOccurrence\tTWLink';
 export const TN_HEADER = 'Reference\tID\tTags\tSupportReference\tQuote\tOccurrence\tNote';
+export const TQ_HEADER = 'Reference\tID\tTags\tQuote\tOccurrence\tQuestion\tResponse';
 
 const tsvRows = (tsv: string, expectedHeader: string, resourceLabel: string): string[][] => {
   const lines = tsv.split('\n').filter((row) => row.trim() !== '');
@@ -234,6 +235,39 @@ export const deriveTnItems = (tnTsv: string, bookId: string): CheckItem[] =>
         invalidated: false,
       };
     });
+
+/** Derive help items from a tQ TSV
+ * (columns: Reference / ID / Tags / Quote / Occurrence / Question / Response —
+ * [VERIFIED 2026-08-27, en_tq v89 sb-zip export]). Read-only helps for the
+ * Understand screen (D63/D64): every row is an item; `question`/`response`
+ * ride on the item root, and `occurrenceNote` mirrors the response so shared
+ * renderers keep working. */
+export const deriveTqItems = (tqTsv: string, bookId: string): CheckItem[] =>
+  tsvRows(tqTsv, TQ_HEADER, 'tQ').map((cells) => {
+    const [ref, id, , quote, occurrence, question, response] = cells;
+    const [chapter, verse] = ref.split(':').map(refPart);
+    return {
+      contextId: {
+        checkId: id,
+        occurrenceNote: response ?? '',
+        reference: { bookId, chapter, verse },
+        tool: 'translationQuestions',
+        groupId: id,
+        quote: tnQuoteWords(quote ?? ''),
+        quoteString: quote ?? '',
+        occurrence: Number(occurrence),
+      },
+      category: 'questions',
+      question: question ?? '',
+      response: response ?? '',
+      selections: false,
+      comments: false,
+      reminders: false,
+      nothingToSelect: false,
+      verseEdits: false,
+      invalidated: false,
+    };
+  });
 
 // ---------- cross-language re-attach (D17, BURRITO-SPEC §5.2) ----------
 
@@ -487,7 +521,8 @@ export interface ProjectDeriveResult {
  * reference and never loads the mapping engine. */
 export const deriveForProject = async (params: {
   tsv: string;
-  tool: Tool;
+  /** A checking tool, or the Understand screen's read-only tq helps (D64). */
+  tool: Tool | 'translationQuestions';
   bookId: string;
   /** The resource's frame. The unfoldingWord suite is `eng` throughout. */
   from: SchemeName | null;
@@ -499,7 +534,9 @@ export const deriveForProject = async (params: {
 }): Promise<ProjectDeriveResult> => {
   const { tsv, tool, bookId, from, to, schemes, saved = [], scopeRanges = [] } = params;
   const derived =
-    tool === 'translationNotes' ? deriveTnItems(tsv, bookId) : deriveTwlItems(tsv, bookId);
+    tool === 'translationNotes' ? deriveTnItems(tsv, bookId)
+      : tool === 'translationQuestions' ? deriveTqItems(tsv, bookId)
+        : deriveTwlItems(tsv, bookId);
 
   const items: CheckItem[] = [];
   const unplaceable: UnplaceableItem[] = [];

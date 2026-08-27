@@ -21,7 +21,7 @@ import { BOOK_NAMES, bookName } from './data/bookNames';
 import { GATEWAYS, gatewayKey, DCS_HOST, orgForRepoName } from './data/gateways';
 import { fetchAndInstallPin, latestReleaseTag, identifyExistingInstall } from './data/resourceFetch';
 import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, isPinLocal, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk, flavorOfMetadata } from './data/installed';
-import { TOOL_SLOT, preflightToolBook, resolutionRecord, resolveToolBook } from './data/resolve';
+import { TOOL_SLOT, preflightToolBook, resolutionRecord, resolveToolBook, resolveSetSlot } from './data/resolve';
 import {
   deriveForProject,
   mergeAndReattach,
@@ -250,7 +250,7 @@ function firstDraftedRef(bookRaw) {
 }
 
 const initial = () => ({
-  view: 'home', // home | draft | check | publish
+  view: 'home', // home | read (Understand) | draft (Translate) | check | publish (Community Checking)
   projects: null, // null = loading; [] = none
   project: null, // ProjectSummary + repoPath
   book: null,
@@ -265,6 +265,10 @@ const initial = () => ({
   helps: false,
   helpsTab: 'notes',
   academy: null,
+  // Understand (D63, #106): read-only helps for the open book, derived like a
+  // check session (never stored), plus the translator's own comprehension
+  // notes read back from the §8.5 journal.
+  understand: null, // null | { loading } | { notes, questions, comprehension: {'c:v': text} }
   // Modals (the owner's design: creation, add-book, and settings are dialogs
   // over Home, not separate pages)
   modal: null, // null | 'newProject' | 'addBook' | 'settings' | 'sources'
@@ -1769,6 +1773,133 @@ export function AppProvider({ children }) {
               dispatch({ type: 'setSource', id: pin.id, value: 'missing' });
             });
         }
+      },
+
+      // ---- Understand (D63, #106) ---------------------------------------
+      /** Load the read-only helps for the open book: tN notes, tQ questions
+       * and tW links, each resolved over the §5.3 ladder (D64) and derived
+       * exactly like a check session — disposable, never stored (§4.2). The
+       * translator's own comprehension notes are read back from the journal. */
+      loadUnderstand: async () => {
+        const st = stateRef.current;
+        const book = st.book;
+        if (!book || !st.projectPins) return;
+        dispatch({ type: 'set', patch: { understand: { loading: true } } });
+        try {
+          const { installed, coverage } = await a.resolutionContext();
+          const frame = await a.projectFrame();
+          const scopeRanges = scopeRangesFor(st.projectScope ?? {}, book.toUpperCase());
+          const loadSlot = async (slot, tool) => {
+            const r = resolveSetSlot(st.projectPins, slot, book, coverage);
+            if (!r.pin) {
+              // No rung COVERS the book — but a pinned-yet-not-downloaded
+              // resource is "get it", not "the package lacks it" (D30 honesty).
+              const sets = st.projectPins.languageSets ?? {};
+              const anyPin = sets.primary?.[slot] ?? sets.fallback?.[slot];
+              if (anyPin && !isPinLocal(installed, anyPin)) {
+                return { state: st.netEnabled ? 'fetch' : 'unavailable', pin: anyPin };
+              }
+              return { state: 'none' };
+            }
+            if (!isPinLocal(installed, r.pin)) {
+              return { state: st.netEnabled ? 'fetch' : 'unavailable', pin: r.pin, rung: r.rung };
+            }
+            let tsv;
+            try {
+              tsv = await api.readIngredient(resolveReadPath(r.pin), `${book.toUpperCase()}.tsv`);
+            } catch {
+              tsv = null;
+            }
+            if (tsv === null || tsv.startsWith('{"is_good":false')) {
+              return { state: 'missing', pin: r.pin, rung: r.rung };
+            }
+            if (frame.state !== 'ready') return { state: `versification-${frame.state}` };
+            const { items, unplaceable } = await deriveForProject({
+              tsv, tool, bookId: book.toLowerCase(),
+              from: RESOURCE_FRAME, to: frame.name, schemes: frame.schemes, scopeRanges,
+            });
+            return {
+              state: 'ready', items, pin: r.pin, rung: r.rung,
+              dropped: unplaceable.length ? { count: unplaceable.length, scheme: frame.name } : null,
+            };
+          };
+          const [notes, questions, words] = await Promise.all([
+            loadSlot('translationNotes', 'translationNotes'),
+            loadSlot('translationQuestions', 'translationQuestions'),
+            loadSlot('translationWordsLinks', 'translationWords'),
+          ]);
+          // Journal order: the LAST note per target is the latest — grow-only
+          // notes never edit in place (§8.5 v1).
+          const comprehension = {};
+          for (const n of storeRef.current?.readNotes?.(book) ?? []) {
+            comprehension[`${n.chapter}:${n.verse}`] = n.text;
+          }
+          if (stateRef.current.book !== book) return; // superseded
+          dispatch({
+            type: 'set',
+            patch: { understand: { loading: false, book, notes, questions, words, comprehension } },
+          });
+        } catch (e) {
+          dispatch({
+            type: 'set',
+            patch: { understand: { loading: false, error: String(e?.message || e) } },
+          });
+        }
+      },
+
+      /** The Understand screen's ONLY write (#106, owner ruling 2026-08-27):
+       * persist one comprehension note through the §8.5 journal (note.add,
+       * grow-only). A no-op or emptied box writes nothing. */
+      saveComprehension: async (chapter, verseKey, text) => {
+        const st = stateRef.current;
+        const store = storeRef.current;
+        if (!store || !st.book) return;
+        const trimmed = (text ?? '').trim();
+        const existing = (st.understand?.comprehension?.[`${chapter}:${verseKey}`] ?? '').trim();
+        if (trimmed === existing || trimmed === '') return;
+        await store.addNote(st.book, chapter, verseKey, trimmed);
+        const now = stateRef.current;
+        dispatch({
+          type: 'set',
+          patch: {
+            understand: {
+              ...now.understand,
+              comprehension: { ...now.understand?.comprehension, [`${chapter}:${verseKey}`]: trimmed },
+            },
+          },
+        });
+      },
+
+      /** A help article behind an Understand card (tW word or tA module),
+       * read from the INSTALLED burrito like C2.5; absence is stated. */
+      loadHelpArticle: async ({ kind, category, slug, rung }) => {
+        const st = stateRef.current;
+        const sets = st.projectPins?.languageSets;
+        const set = sets?.[rung ?? 'fallback'] ?? sets?.fallback;
+        const key = `${kind}:${category ?? ''}:${slug}`;
+        if (st.understand?.article?.key === key) return;
+        dispatch({
+          type: 'set',
+          patch: { understand: { ...st.understand, article: { key, loading: true } } },
+        });
+        let found = null;
+        try {
+          if (kind === 'tw' && set?.translationWords) {
+            found = await readTwArticle(api, resolveReadPath(set.translationWords), category, slug);
+          } else if (kind === 'ta' && set?.translationAcademy) {
+            found = await readTaArticle(api, resolveReadPath(set.translationAcademy), slug);
+          }
+        } catch { /* reported as absence below */ }
+        const now = stateRef.current;
+        if (now.understand?.article?.key !== key) return; // the user moved on
+        dispatch({
+          type: 'set',
+          patch: { understand: { ...now.understand, article: { key, loading: false, found } } },
+        });
+      },
+      closeHelpArticle: () => {
+        const now = stateRef.current;
+        dispatch({ type: 'set', patch: { understand: { ...now.understand, article: null } } });
       },
 
       setChapter: (chapter) => dispatch({ type: 'set', patch: { chapter, editing: null } }),

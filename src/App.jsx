@@ -9,6 +9,7 @@ import ProjectSettings from './views/modals/ProjectSettings.jsx';
 import SourceTexts from './views/modals/SourceTexts.jsx';
 import GatewayChange from './views/modals/GatewayChange.jsx';
 import CommunityChecking from './views/CommunityChecking.jsx';
+import Understand from './views/Understand.jsx';
 import { AppHeader, SegmentedControl, StatusDot, Button } from './ds/index.js';
 import { t } from './i18n';
 
@@ -57,6 +58,7 @@ function TopBar() {
         // inside Check as the Community Checking tool (#108).
         <SegmentedControl tone="inverse" value={s.view === 'publish' ? 'check' : s.view} onChange={(v) => actions.go(v)}
           options={[
+            { value: 'read', label: t('nav.understand') },
             { value: 'draft', label: t('nav.draft') },
             { value: 'check', label: t('nav.check') },
           ]} />
@@ -75,6 +77,7 @@ export default function App() {
     <div dir={appDir} style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', background: 'var(--surface-app)', color: 'var(--text-body)', fontFamily: 'var(--font-ui)', overflow: 'hidden' }}>
       <TopBar />
       {s.view === 'home' && <Home />}
+      {s.view === 'read' && <Understand />}
       {s.view === 'draft' && <Draft />}
       {s.view === 'check' && <Check />}
       {s.view === 'publish' && <CommunityChecking />}

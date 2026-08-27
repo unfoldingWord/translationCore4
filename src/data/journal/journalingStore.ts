@@ -2095,6 +2095,49 @@ export class JournalingStore implements BurritoStore {
     });
   }
 
+  /** §8.5 `note.add`, verse-targeted — the Understand screen's comprehension
+   * notes (D63, #106). Grow-only by design (v1: no edit/delete op): each save
+   * appends, and readers show the LATEST note per target. Notes project into
+   * the fold only (no checkpoint file), so `affected` is empty. */
+  async addNote(book: string, chapter: number | string, verse: number | string, text: string): Promise<void> {
+    return this.queue(async () => {
+      await this.replayOwnStagedBeforeDiff(); // round-5 rule 1: REPLAY-BEFORE-DIFF
+      const journal = this.mustJournal();
+      const foldOut = this.foldNow();
+      const code = book.toUpperCase();
+      const generation = foldOut.books[code] ? foldOut.headsTs[`book|${code}`] : undefined;
+      if (generation === undefined) {
+        throw new Error(`addNote(${code}): the journal projects no such book — a note needs its §8.5 generation root`);
+      }
+      const event: JournalEvent = {
+        v: 1,
+        op: 'note.add',
+        actor: journal.actorId,
+        ts: journal.issueTs(),
+        target: { book: code, chapter: String(chapter), verse: String(verse) },
+        text: toNfc(text) as string,
+        generation,
+      };
+      await this.publishAndRegenerate([event], []);
+    });
+  }
+
+  /** Verse-targeted notes of one book from the fold, in journal order (so the
+   * last entry per target is the latest — the one the Understand screen shows). */
+  readNotes(book: string): Array<{ ts: string; chapter: string; verse: string; text: string }> {
+    const code = book.toUpperCase();
+    const notes = (this.foldNow() as unknown as { notes?: Array<Record<string, unknown>> }).notes ?? [];
+    return notes
+      .filter((n) => {
+        const tg = n.target as Record<string, unknown> | undefined;
+        return tg && typeof tg.book === 'string' && tg.book.toUpperCase() === code && tg.decisionKey === undefined;
+      })
+      .map((n) => {
+        const tg = n.target as { chapter: string; verse: string };
+        return { ts: String(n.ts), chapter: String(tg.chapter), verse: String(tg.verse), text: String(n.text ?? '') };
+      });
+  }
+
   /** §8.5 project.meta.set: diff per dotted path against the folded overlay.
    * The platform exposes NO HTTP metadata write route (D28), so the event is
    * journaled and commit() verifies materialization — refusing loudly when the
