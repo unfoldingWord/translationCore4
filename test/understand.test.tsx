@@ -18,12 +18,14 @@ const actionsProxy = new Proxy({}, {
   get: (_, name: string) => (...args: unknown[]) => { calls.push({ name, args }); },
 });
 
-const RAW_ULT = '\\id TIT\n\\c 1\n\\ts\\*\n\\p\n\\v 1 one\n\\v 2 two\n\\ts\\*\n\\p\n\\v 3 three\n';
+const RAW_ULT = '\\id TIT\n\\c 1\n\\ts\\*\n\\p\n\\v 1 one\n\\v 2 two\n\\ts\\*\n\\p\n\\v 3 three\n\\v 4-5 bridge\n';
 const srcChapters = {
   '1': {
     '1': { verseObjects: [{ text: 'In the beginning was the Word.' }] },
     '2': { verseObjects: [{ text: 'He was with God.' }] },
     '3': { verseObjects: [{ text: 'All things were made through him.' }] },
+    // A real USFM verse bridge — a span KEY, not two numeric keys (indexer.ts).
+    '4-5': { verseObjects: [{ text: 'In him was life, the light of men.' }] },
   },
 };
 
@@ -99,6 +101,27 @@ describe('#106 — the Understand write boundary', () => {
       expect(writes()).toEqual([]);
     } finally {
       state.helpsTab = 'notes';
+    }
+  });
+
+  it('verse-bridge keys ("4-5") render in the reading pane instead of being dropped (2026-08-27 review)', () => {
+    render(<Understand />);
+    expect(screen.getByText(/In him was life/)).toBeTruthy();
+  });
+
+  it('a note saved under a DIFFERENT chunking still surfaces: retrieval is by unit membership, latest ts wins (2026-08-27 review)', () => {
+    const saved = state.understand.comprehension;
+    // Two notes inside the first section (verses 1–2): the newer one shows.
+    state.understand.comprehension = {
+      '1:1': { text: 'older note', ts: '2026-08-26T00:00:00.000Z|0000|a' },
+      '1:2': { text: 'newer note under the other chunking', ts: '2026-08-27T00:00:00.000Z|0000|a' },
+    };
+    try {
+      render(<Understand />);
+      const boxes = screen.getAllByPlaceholderText('What does this section mean in your own words?');
+      expect((boxes[0] as HTMLTextAreaElement).value).toBe('newer note under the other chunking');
+    } finally {
+      state.understand.comprehension = saved;
     }
   });
 

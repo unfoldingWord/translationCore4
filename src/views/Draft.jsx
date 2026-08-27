@@ -8,23 +8,9 @@ import { SUITE_VERSION } from '../state.jsx';
 import { t } from '../i18n';
 import { FilterChip, IconButton, Overline, Button } from '../ds/index.js';
 import BookRail from './BookRail.jsx';
+import { verseText as sourceText } from './verseText.js';
 
 const hair = 'var(--stroke-hair) solid var(--border-hair)';
-
-// Plain display text for one source verse (verseObjects from usfm-js — aligned
-// USFM collapses to its text/word content; display only, never re-serialized).
-const sourceText = (vObj) => {
-  const walk = (vos) =>
-    (vos || [])
-      .map((vo) => {
-        if (vo.type === 'footnote' || vo.tag === 'f') return '';
-        if (vo.text != null && vo.type !== 'section') return vo.text;
-        if (vo.children) return walk(vo.children);
-        return '';
-      })
-      .join('');
-  return walk(vObj?.verseObjects).replace(/\s+/g, ' ').trim();
-};
 
 // The design's editing card. Blur on the textarea still saves-and-closes
 // (journeys blur to save); the Save/Cancel buttons carry onMouseDown

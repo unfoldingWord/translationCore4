@@ -122,6 +122,11 @@ const ROLE_BY_FLAVOR = {
 const ROLE_BY_SUFFIX = {
   _tw: { k: 'words', name: 'sources.roleWords', bookScoped: false },
   _ta: { k: 'academy', name: 'sources.roleAcademy', bookScoped: false },
+  // tq rides on the suffix as well as the flavor: the RC catalog's flavor
+  // labels are unreliable for TSV repos (the same ambiguity that forced the
+  // _tw/_ta suffix rules above), and the questions download must not dead-end
+  // on a label (D64, 2026-08-27 review finding).
+  _tq: { k: 'questions', name: 'sources.roleQuestions', bookScoped: true },
 };
 
 /** The role a catalog repo plays, or null when tC4 does not use it.
@@ -1789,12 +1794,12 @@ export function AppProvider({ children }) {
           const { installed, coverage } = await a.resolutionContext();
           const frame = await a.projectFrame();
           const scopeRanges = scopeRangesFor(st.projectScope ?? {}, book.toUpperCase());
+          const sets = st.projectPins.languageSets ?? {};
           const loadSlot = async (slot, tool) => {
             const r = resolveSetSlot(st.projectPins, slot, book, coverage);
             if (!r.pin) {
               // No rung COVERS the book — but a pinned-yet-not-downloaded
               // resource is "get it", not "the package lacks it" (D30 honesty).
-              const sets = st.projectPins.languageSets ?? {};
               const anyPin = sets.primary?.[slot] ?? sets.fallback?.[slot];
               if (anyPin && !isPinLocal(installed, anyPin)) {
                 return { state: st.netEnabled ? 'fetch' : 'unavailable', pin: anyPin };
@@ -1804,6 +1809,14 @@ export function AppProvider({ children }) {
             if (!isPinLocal(installed, r.pin)) {
               return { state: st.netEnabled ? 'fetch' : 'unavailable', pin: r.pin, rung: r.rung };
             }
+            // B20/D41: the fallback answering while the pinned PRIMARY is
+            // absent from this computer is never silent (same rule as the
+            // check preflight's unavailablePrimary).
+            const primaryPin = sets.primary?.[slot];
+            const unavailablePrimary =
+              r.rung === 'fallback' && primaryPin && !isPinLocal(installed, primaryPin)
+                ? primaryPin
+                : null;
             let tsv;
             try {
               tsv = await api.readIngredient(resolveReadPath(r.pin), `${book.toUpperCase()}.tsv`);
@@ -1819,25 +1832,44 @@ export function AppProvider({ children }) {
               from: RESOURCE_FRAME, to: frame.name, schemes: frame.schemes, scopeRanges,
             });
             return {
-              state: 'ready', items, pin: r.pin, rung: r.rung,
+              state: 'ready', items, pin: r.pin, rung: r.rung, unavailablePrimary,
               dropped: unplaceable.length ? { count: unplaceable.length, scheme: frame.name } : null,
             };
           };
-          const [notes, questions, words] = await Promise.all([
+          // The Simplified tab's content resolves the D64 simplifiedText slot
+          // (the gateway's own `_gst`/`_ust` when installed) — never only the
+          // shipped English source pane.
+          const loadSimplified = async () => {
+            const r = resolveSetSlot(st.projectPins, 'simplifiedText', book, coverage);
+            const pin = r.pin ?? sets.primary?.simplifiedText ?? sets.fallback?.simplifiedText;
+            if (!pin) return { state: 'none' };
+            if (!isPinLocal(installed, pin)) {
+              return { state: st.netEnabled ? 'fetch' : 'unavailable', pin, rung: r.rung };
+            }
+            try {
+              const { usfm: raw } = await storeRef.current.readSourceBook(localSourceRepo(pin), book);
+              return { state: 'ready', pin, rung: r.rung, chapters: parseChapters(raw) };
+            } catch {
+              return { state: 'missing', pin, rung: r.rung };
+            }
+          };
+          const [notes, questions, words, simplified] = await Promise.all([
             loadSlot('translationNotes', 'translationNotes'),
             loadSlot('translationQuestions', 'translationQuestions'),
             loadSlot('translationWordsLinks', 'translationWords'),
+            loadSimplified(),
           ]);
-          // Journal order: the LAST note per target is the latest — grow-only
-          // notes never edit in place (§8.5 v1).
+          // Per-verse latest note, ts kept: the display bucket is the SECTION,
+          // so a unit shows the newest note among all its verses — a durable
+          // rule that survives ULT/UST chunk drift (2026-08-27 review).
           const comprehension = {};
           for (const n of storeRef.current?.readNotes?.(book) ?? []) {
-            comprehension[`${n.chapter}:${n.verse}`] = n.text;
+            comprehension[`${n.chapter}:${n.verse}`] = { text: n.text, ts: n.ts };
           }
           if (stateRef.current.book !== book) return; // superseded
           dispatch({
             type: 'set',
-            patch: { understand: { loading: false, book, notes, questions, words, comprehension } },
+            patch: { understand: { loading: false, book, notes, questions, words, simplified, comprehension } },
           });
         } catch (e) {
           dispatch({
@@ -1853,18 +1885,38 @@ export function AppProvider({ children }) {
       saveComprehension: async (chapter, verseKey, text) => {
         const st = stateRef.current;
         const store = storeRef.current;
-        if (!store || !st.book) return;
+        const book = st.book;
+        if (!store || !book) return;
         const trimmed = (text ?? '').trim();
-        const existing = (st.understand?.comprehension?.[`${chapter}:${verseKey}`] ?? '').trim();
+        const existing = (st.understand?.comprehension?.[`${chapter}:${verseKey}`]?.text ?? '').trim();
         if (trimmed === existing || trimmed === '') return;
-        await store.addNote(st.book, chapter, verseKey, trimmed);
+        try {
+          await store.addNote(book, chapter, verseKey, trimmed);
+        } catch (e) {
+          // Fired from a blur — an unhandled rejection would lose the note
+          // SILENTLY. State the failure like every other write surface does.
+          const now = stateRef.current;
+          if (now.book !== book) return;
+          dispatch({
+            type: 'set',
+            patch: { understand: { ...now.understand, saveError: String(e?.reason || e?.message || e) } },
+          });
+          return;
+        }
         const now = stateRef.current;
+        // The user may have switched books while the write was in flight —
+        // never patch the old book's note into the new book's state.
+        if (now.book !== book) return;
         dispatch({
           type: 'set',
           patch: {
             understand: {
               ...now.understand,
-              comprehension: { ...now.understand?.comprehension, [`${chapter}:${verseKey}`]: trimmed },
+              saveError: null,
+              comprehension: {
+                ...now.understand?.comprehension,
+                [`${chapter}:${verseKey}`]: { text: trimmed, ts: `local-${Date.now()}` },
+              },
             },
           },
         });
@@ -1875,7 +1927,14 @@ export function AppProvider({ children }) {
       loadHelpArticle: async ({ kind, category, slug, rung }) => {
         const st = stateRef.current;
         const sets = st.projectPins?.languageSets;
-        const set = sets?.[rung ?? 'fallback'] ?? sets?.fallback;
+        // The article set must actually CARRY the slot: a primary set can
+        // resolve the notes while only the fallback pins tA/tW — take the
+        // resolved rung's set first, then the first set holding the pin
+        // (2026-08-27 review; readTw/TaArticle still state absence when the
+        // repo lacks the module).
+        const slotName = kind === 'tw' ? 'translationWords' : 'translationAcademy';
+        const set = [sets?.[rung ?? 'fallback'], sets?.fallback, sets?.primary]
+          .find((candidate) => candidate?.[slotName]);
         const key = `${kind}:${category ?? ''}:${slug}`;
         if (st.understand?.article?.key === key) return;
         dispatch({

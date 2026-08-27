@@ -93,6 +93,18 @@ describe('D64 — languageSetFromInstalled includes the optional slots only when
     expect(s?.simplifiedText?.repoPath).toContain('es-419_gst');
   });
 
+  it("a multi-language org never pins ANOTHER language's tq/gst (2026-08-27 review)", () => {
+    const bcs = (repo: string) => ({ repoPath: `git.door43.org/translationCore-Create-BCS/${repo}`, sha: 'e'.repeat(40), flavor: 'x' });
+    const installed = {
+      a: bcs('bn_tn'), b: bcs('bn_tw'), c: bcs('bn_ta'),
+      d: bcs('hi_tq'), e: bcs('hi_gst'), // the OTHER language's repos, same org
+      f: bcs('bn_tq'),
+    };
+    const s = languageSetFromInstalled(installed as never, { id: 'bn', org: 'translationCore-Create-BCS' });
+    expect(s?.translationQuestions?.repoPath).toContain('bn_tq');
+    expect(s?.simplifiedText).toBeUndefined(); // hi_gst must NOT fill Bengali's slot
+  });
+
   it('English `_ust` also satisfies the simplified slot', () => {
     const en = (repo: string) => ({ repoPath: `git.door43.org/unfoldingWord/${repo}`, sha: 'c'.repeat(40), flavor: 'x' });
     const s = languageSetFromInstalled(

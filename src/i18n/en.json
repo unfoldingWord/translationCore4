@@ -8,7 +8,6 @@
   "app.retry": "Retry",
   "nav.draft": "Translate",
   "nav.check": "Check",
-  "nav.publish": "Publish",
   "home.yourBibles": "Your Bibles",
   "home.continue": "Continue where you left off",
   "home.projects": "Projects",
@@ -113,11 +112,6 @@
   "draft.verseLabel": "Verse {n}",
   "draft.pinned": "{version} · pinned",
   "app.switchProject": "Switch project",
-  "app.laterIncrement": "This mode arrives with {increment}. Your draft is stored in the project itself, so everything you write now is ready for it.",
-  "app.checking": "Checking",
-  "app.publishing": "Publishing",
-  "app.checkingIncrement": "the checking increment",
-  "app.publishIncrement": "the publish increment",
   "source.ult": "ULT",
   "source.ust": "UST",
   "source.unavailable": "This source is not available for this book.",
@@ -281,5 +275,9 @@
   "helps.simplified": "Simplified",
   "helps.academy": "Academy",
   "understand.academyLink": "Translation Academy →",
-  "understand.wordLink": "Read the article →"
+  "understand.wordLink": "Read the article →",
+  "understand.verseOne": "Verse {n}",
+  "understand.versesRange": "Verses {from}–{to}",
+  "understand.saveFailed": "The note was not saved — edit the box and leave it again to retry.",
+  "understand.helpFallback": "Shown from the English fallback: the primary language's resource is not on this computer."
 }

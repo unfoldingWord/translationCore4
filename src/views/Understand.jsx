@@ -9,7 +9,12 @@ import { bookName } from '../data/bookNames';
 import { renderArticleBlocks } from '../data/articles';
 import { t } from '../i18n';
 import BookRail from './BookRail.jsx';
+import { verseText } from './verseText.js';
 import { FilterChip, IconButton, Overline, SegmentedControl, StatusDot, Tabs, TextArea, HelpCard, Callout, Button } from '../ds/index.js';
+
+// The leading verse number of a chapter key — span keys ("17-18") are real
+// USFM verse bridges (see usfm/indexer.ts) and MUST NOT be dropped.
+const leadingNum = (key) => Number(String(key).split('-')[0]);
 
 // Section starts for one chapter, from the source's own \ts\* chunk markers.
 // Display-only: a source without markers yields one whole-chapter section.
@@ -32,29 +37,30 @@ const sectionStarts = (raw, chapter) => {
   return starts.sort((a, b) => a - b);
 };
 
-const verseText = (vObj) => {
-  const walk = (vos) =>
-    (vos || [])
-      .map((vo) => {
-        if (vo.type === 'footnote' || vo.tag === 'f') return '';
-        if (vo.text != null && vo.type !== 'section') return vo.text;
-        if (vo.children) return walk(vo.children);
-        return '';
-      })
-      .join('');
-  return walk(vObj?.verseObjects).replace(/\s+/g, ' ').trim();
+/** The latest comprehension note within a unit's verse range. Retrieval is by
+ * MEMBERSHIP, not by exact head key: ULT and UST chunk chapters differently,
+ * so a note saved under one chunking must still surface when the reader
+ * switches tabs or a source release re-chunks (2026-08-27 review). Notes are
+ * grow-only (§8.5), so "latest" is the highest ts among the unit's verses. */
+const latestUnitNote = (comprehension, chapter, unit) => {
+  let best = null;
+  for (const key of unit.verses) {
+    const n = comprehension?.[`${chapter}:${leadingNum(key)}`];
+    if (n && (!best || String(n.ts) > String(best.ts))) best = n;
+  }
+  return best;
 };
 
 /** The comprehension box (#106's only write): saves on blur through
  * actions.saveComprehension; everything else on the screen is read-only. */
-function ComprehensionBox({ chapter, headVerse }) {
+function ComprehensionBox({ chapter, unit }) {
   const { s, actions } = useApp();
-  const stored = s.understand?.comprehension?.[`${chapter}:${headVerse}`] ?? '';
+  const stored = latestUnitNote(s.understand?.comprehension, chapter, unit)?.text ?? '';
   const [text, setText] = React.useState(stored);
-  React.useEffect(() => { setText(stored); }, [stored, chapter, headVerse]);
+  React.useEffect(() => { setText(stored); }, [stored, chapter, unit.key]);
   return (
     <TextArea rows={2} value={text} onChange={(e) => setText(e.target.value)}
-      onBlur={() => actions.saveComprehension(chapter, headVerse, text)}
+      onBlur={() => actions.saveComprehension(chapter, unit.head, text)}
       placeholder={t('understand.commentsPlaceholder')} />
   );
 }
@@ -104,10 +110,32 @@ function SlotState({ slot }) {
   );
 }
 
+/** #15 / B20 banners shared by every ready tab: the versification-dropped
+ * count MUST be surfaced wherever derived items are shown, and a fallback
+ * answering for an absent primary is never silent. */
+function SlotBanners({ slot }) {
+  if (slot?.state !== 'ready') return null;
+  return (
+    <>
+      {slot.unavailablePrimary && (
+        <Callout tone="warn" data-testid="understand-fallback-warning">
+          {t('understand.helpFallback')}
+        </Callout>
+      )}
+      {slot.dropped && (
+        <Callout tone="warn" data-testid="understand-dropped">
+          {t('check.droppedNote', { count: slot.dropped.count, scheme: slot.dropped.scheme ?? '—' })}
+        </Callout>
+      )}
+    </>
+  );
+}
+
 function HelpsPanel({ chapter }) {
   const { s, actions } = useApp();
   const u = s.understand;
   const tab = s.helpsTab;
+  const loading = !u || u.loading;
   const inChapter = (slot) =>
     slot?.state === 'ready'
       ? slot.items.filter((it) => Number(it.contextId.reference.chapter) === Number(chapter))
@@ -115,10 +143,10 @@ function HelpsPanel({ chapter }) {
   const notes = inChapter(u?.notes);
   const words = inChapter(u?.words);
   const questions = inChapter(u?.questions);
-  const ust = s.sources.ust;
   // tA modules linked from this chapter's notes, deduped, in first-note order.
   const academySlugs = [...new Set(notes.map((n) => n.contextId.groupId))];
   const empty = <p style={{ fontSize: 'var(--fs-caption-lg)', color: 'var(--text-tertiary)', fontStyle: 'italic', margin: 0 }}>{t('understand.noneForChapter')}</p>;
+  const simplified = u?.simplified;
 
   return (
     <aside data-testid="helps-panel" style={{ width: 'var(--helps-width)', flex: 'none', background: 'var(--surface-panel)', borderInlineStart: 'var(--stroke-hair) solid var(--border-hair)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -130,50 +158,76 @@ function HelpsPanel({ chapter }) {
         { value: 'academy', label: t('helps.academy') },
       ]} />
       <div style={{ flex: 1, overflow: 'auto', padding: 16, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {tab === 'notes' && (u?.notes?.state !== 'ready' ? <SlotState slot={u?.notes} /> : notes.length === 0 ? empty
-          : notes.map((n, i) => (
-            <HelpCard key={`${n.contextId.checkId}-${i}`} kind="note" verse={n.contextId.reference.verse}
-              title={n.contextId.quoteString || n.contextId.groupId} body={n.contextId.occurrenceNote.slice(0, 400)}
-              actionLabel={t('understand.academyLink')}
-              onAction={() => actions.loadHelpArticle({ kind: 'ta', slug: n.contextId.groupId, rung: u.notes.rung })} />
-          )))}
-        {tab === 'words' && (u?.words?.state !== 'ready' ? <SlotState slot={u?.words} /> : words.length === 0 ? empty
-          : words.map((w, i) => (
-            <HelpCard key={`${w.contextId.checkId}-${i}`} kind="word" verse={w.contextId.reference.verse}
-              title={w.contextId.quoteString || w.contextId.groupId} body={w.contextId.groupId}
-              actionLabel={t('understand.wordLink')}
-              onAction={() => actions.loadHelpArticle({ kind: 'tw', category: w.category, slug: w.contextId.groupId, rung: u.words.rung })} />
-          )))}
-        {tab === 'questions' && (u?.questions?.state !== 'ready' ? <SlotState slot={u?.questions} /> : questions.length === 0 ? empty
-          : questions.map((q, i) => (
-            <div key={`${q.contextId.checkId}-${i}`} data-testid="understand-question"
-              style={{ border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 14, background: '#fff' }}>
-              <p style={{ fontSize: 'var(--fs-ui-md)', letterSpacing: 'var(--track-14)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)', margin: '0 0 6px' }}>{q.question}</p>
-              <p style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', lineHeight: 'var(--lh-body)', color: 'var(--text-secondary)', margin: 0 }}>
-                <span style={{ color: 'var(--text-tertiary)', fontWeight: 'var(--fw-bold)' }}>{t('understand.answer')} · </span>{q.response}
-              </p>
-            </div>
-          )))}
-        {tab === 'simplified' && (
-          ust && ust !== 'missing' ? (
-            <div style={{ border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 16, background: 'var(--surface-app)' }} data-testid="understand-simplified">
-              <Overline>{t('understand.simplifiedTitle')}</Overline>
-              <p style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-sm)', lineHeight: 'var(--lh-verse-sm)', color: 'var(--text-scripture)', margin: '10px 0 0' }}>
-                {Object.entries(ust.chapters?.[String(chapter)] ?? {})
-                  .filter(([k]) => /^\d/.test(k))
-                  .map(([k, v]) => `${k} ${verseText(v)}`)
-                  .join(' ') || t('understand.sourceMissing')}
-              </p>
-            </div>
-          ) : <Callout tone="info">{t('understand.sourceMissing')}</Callout>
+        {/* Loading and a failed load are their OWN states — never rendered as
+            "the package lacks this resource" (D30 honesty; 2026-08-27 review). */}
+        {loading && (
+          <p data-testid="helps-loading" style={{ fontSize: 'var(--fs-caption-lg)', color: 'var(--text-tertiary)', margin: 0 }}>{t('understand.loading')}</p>
         )}
-        {tab === 'academy' && (u?.notes?.state !== 'ready' ? <SlotState slot={u?.notes} /> : academySlugs.length === 0 ? empty
-          : academySlugs.map((slug) => (
-            <Button key={slug} variant="secondary" onClick={() => actions.loadHelpArticle({ kind: 'ta', slug, rung: u.notes.rung })}
-              style={{ justifyContent: 'space-between', width: '100%', borderRadius: 'var(--radius-lg)', textAlign: 'start' }}>
-              <span>{slug}</span><span style={{ color: 'var(--accent)' }}>→</span>
-            </Button>
-          )))}
+        {!loading && u?.error && (
+          <Callout tone="warn" role="alert" data-testid="understand-error" style={{ overflowWrap: 'anywhere' }}>{u.error}</Callout>
+        )}
+        {!loading && !u?.error && (
+          <>
+            {tab === 'notes' && (<>
+              <SlotBanners slot={u?.notes} />
+              {u?.notes?.state !== 'ready' ? <SlotState slot={u?.notes} /> : notes.length === 0 ? empty
+                : notes.map((n, i) => (
+                  <HelpCard key={`${n.contextId.checkId}-${i}`} kind="note" verse={n.contextId.reference.verse}
+                    title={n.contextId.quoteString || n.contextId.groupId} body={n.contextId.occurrenceNote.slice(0, 400)}
+                    actionLabel={t('understand.academyLink')}
+                    onAction={() => actions.loadHelpArticle({ kind: 'ta', slug: n.contextId.groupId, rung: u.notes.rung })} />
+                ))}
+            </>)}
+            {tab === 'words' && (<>
+              <SlotBanners slot={u?.words} />
+              {u?.words?.state !== 'ready' ? <SlotState slot={u?.words} /> : words.length === 0 ? empty
+                : words.map((w, i) => (
+                  <HelpCard key={`${w.contextId.checkId}-${i}`} kind="word" verse={w.contextId.reference.verse}
+                    title={w.contextId.quoteString || w.contextId.groupId} body={w.contextId.groupId}
+                    actionLabel={t('understand.wordLink')}
+                    onAction={() => actions.loadHelpArticle({ kind: 'tw', category: w.category, slug: w.contextId.groupId, rung: u.words.rung })} />
+                ))}
+            </>)}
+            {tab === 'questions' && (<>
+              <SlotBanners slot={u?.questions} />
+              {u?.questions?.state !== 'ready' ? <SlotState slot={u?.questions} /> : questions.length === 0 ? empty
+                : questions.map((q, i) => (
+                  <div key={`${q.contextId.checkId}-${i}`} data-testid="understand-question"
+                    style={{ border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 14, background: '#fff' }}>
+                    <p style={{ fontSize: 'var(--fs-ui-md)', letterSpacing: 'var(--track-14)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)', margin: '0 0 6px' }}>{q.question}</p>
+                    <p style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', lineHeight: 'var(--lh-body)', color: 'var(--text-secondary)', margin: 0 }}>
+                      <span style={{ color: 'var(--text-tertiary)', fontWeight: 'var(--fw-bold)' }}>{t('understand.answer')} · </span>{q.response}
+                    </p>
+                  </div>
+                ))}
+            </>)}
+            {tab === 'simplified' && (
+              // D64: the content is the resolved simplifiedText slot — the
+              // gateway's own simplified Bible when its set pins one.
+              simplified?.state === 'ready' ? (
+                <div style={{ border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 16, background: 'var(--surface-app)' }} data-testid="understand-simplified">
+                  <Overline>{t('understand.simplifiedTitle')}</Overline>
+                  <p style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-sm)', lineHeight: 'var(--lh-verse-sm)', color: 'var(--text-scripture)', margin: '10px 0 0' }}>
+                    {Object.entries(simplified.chapters?.[String(chapter)] ?? {})
+                      .filter(([k]) => /^\d/.test(k))
+                      .sort(([a], [b]) => leadingNum(a) - leadingNum(b))
+                      .map(([k, v]) => `${k} ${verseText(v)}`)
+                      .join(' ') || t('understand.noneForChapter')}
+                  </p>
+                </div>
+              ) : <SlotState slot={simplified} />
+            )}
+            {tab === 'academy' && (<>
+              {u?.notes?.state !== 'ready' ? <SlotState slot={u?.notes} /> : academySlugs.length === 0 ? empty
+                : academySlugs.map((slug) => (
+                  <Button key={slug} variant="secondary" onClick={() => actions.loadHelpArticle({ kind: 'ta', slug, rung: u.notes.rung })}
+                    style={{ justifyContent: 'space-between', width: '100%', borderRadius: 'var(--radius-lg)', textAlign: 'start' }}>
+                    <span>{slug}</span><span style={{ color: 'var(--accent)' }}>→</span>
+                  </Button>
+                ))}
+            </>)}
+          </>
+        )}
       </div>
       <ArticleView article={u?.article} onClose={actions.closeHelpArticle} />
     </aside>
@@ -198,20 +252,31 @@ export default function Understand() {
   const chapter = s.chapter;
   const src = s.sources[s.sourceTab];
   const srcChapters = src && src !== 'missing' ? src.chapters?.[String(chapter)] ?? {} : {};
-  const verseNums = Object.keys(srcChapters).filter((k) => /^\d+$/.test(k)).map(Number).sort((a, b) => a - b);
+  // Chapter keys INCLUDING verse bridges ("17-18") — a span is a real verse
+  // that must render (2026-08-27 review); ordered by leading number.
+  const verseKeys = Object.keys(srcChapters)
+    .filter((k) => /^\d+(-\d+)?$/.test(k))
+    .sort((a, b) => leadingNum(a) - leadingNum(b));
   const starts = mode === 'section' && src && src !== 'missing' ? sectionStarts(src.raw, chapter) : [];
+  const rangeLabel = (keys) => {
+    const from = keys[0];
+    const to = keys[keys.length - 1];
+    return keys.length > 1 || String(from).includes('-')
+      ? t('understand.versesRange', { from: leadingNum(from), to: String(to).includes('-') ? String(to).split('-')[1] : leadingNum(to) })
+      : t('understand.verseOne', { n: from });
+  };
   const units = [];
   if (mode === 'section' && starts.length > 0) {
     for (let i = 0; i < starts.length; i++) {
       const from = starts[i];
       const to = i + 1 < starts.length ? starts[i + 1] - 1 : Infinity;
-      const vs = verseNums.filter((n) => n >= from && n <= to);
-      if (vs.length) units.push({ key: `s${from}`, head: vs[0], label: vs.length > 1 ? `${t('understand.byVerse')}s ${vs[0]}–${vs[vs.length - 1]}` : `${t('understand.byVerse')} ${vs[0]}`, verses: vs });
+      const keys = verseKeys.filter((k) => leadingNum(k) >= from && leadingNum(k) <= to);
+      if (keys.length) units.push({ key: `s${from}`, head: leadingNum(keys[0]), label: rangeLabel(keys), verses: keys });
     }
   } else if (mode === 'section') {
-    if (verseNums.length) units.push({ key: 'whole', head: verseNums[0], label: `${bookName(book.code)} ${chapter}`, verses: verseNums });
+    if (verseKeys.length) units.push({ key: 'whole', head: leadingNum(verseKeys[0]), label: `${bookName(book.code)} ${chapter}`, verses: verseKeys });
   } else {
-    for (const n of verseNums) units.push({ key: `v${n}`, head: n, label: `${t('understand.byVerse')} ${n}`, verses: [n] });
+    for (const k of verseKeys) units.push({ key: `v${k}`, head: leadingNum(k), label: rangeLabel([k]), verses: [k] });
   }
 
   return (
@@ -237,6 +302,11 @@ export default function Understand() {
               <SegmentedControl size="sm" tone="ocean" value={mode} onChange={setMode}
                 options={[{ value: 'section', label: t('understand.bySection') }, { value: 'verse', label: t('understand.byVerse') }]} />
             </div>
+            {s.understand?.saveError && (
+              <Callout tone="warn" role="alert" data-testid="understand-save-error" style={{ marginTop: 10, overflowWrap: 'anywhere' }}>
+                <strong>{t('understand.saveFailed')}</strong> {s.understand.saveError}
+              </Callout>
+            )}
             {src === 'missing' && (
               <Callout tone="info" style={{ marginTop: 10 }}>{t('understand.sourceMissing')}</Callout>
             )}
@@ -248,17 +318,17 @@ export default function Understand() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingBottom: 8, borderBottom: 'var(--stroke) solid var(--border)' }}>
                   <Overline>{u.label}</Overline>
                   <div style={{ flex: 1 }} />
-                  {s.understand?.comprehension?.[`${chapter}:${u.head}`] ? <StatusDot status="valid" size={7} /> : null}
+                  {latestUnitNote(s.understand?.comprehension, chapter, u) ? <StatusDot status="valid" size={7} /> : null}
                 </div>
                 <p style={{ direction: 'ltr', textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse)', color: 'var(--text-scripture)', margin: '10px 0 12px' }}>
-                  {u.verses.map((n) => (
-                    <React.Fragment key={n}>
-                      <sup style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', marginInlineEnd: 3, verticalAlign: 'super' }}>{n}</sup>
-                      {verseText(srcChapters[String(n)])}{' '}
+                  {u.verses.map((k) => (
+                    <React.Fragment key={k}>
+                      <sup style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', marginInlineEnd: 3, verticalAlign: 'super' }}>{k}</sup>
+                      {verseText(srcChapters[String(k)])}{' '}
                     </React.Fragment>
                   ))}
                 </p>
-                <ComprehensionBox chapter={chapter} headVerse={u.head} />
+                <ComprehensionBox chapter={chapter} unit={u} />
               </div>
             ))}
           </div>

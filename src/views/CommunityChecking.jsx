@@ -15,10 +15,19 @@ export default function CommunityChecking() {
   const [verseNums, setVerseNums] = React.useState(true);
   const [dropCap, setDropCap] = React.useState(true);
 
-  if (!book) return null;
-  const verses = book.byChapter[String(s.chapter)] || [];
+  // The card promises the BOOK as a whole (mockup: "Read the book as a
+  // whole"), so the preview typesets every chapter, not the open one
+  // (2026-08-27 review). A book still loading states so instead of vanishing.
+  if (!book) {
+    return (
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary)', fontSize: 'var(--fs-ui)' }} data-testid="community-checking">
+        {s.bookError ? `${t('draft.loadError')} ${s.bookError}` : t('draft.loading')}
+      </div>
+    );
+  }
+  const chapters = book.chapterNums.map((c) => ({ c, verses: book.byChapter[String(c)] || [] }));
   const dir = s.project?.scriptDirection === 'rtl' ? 'rtl' : 'ltr';
-  const undrafted = verses.some((v) => !v.drafted);
+  const undrafted = chapters.some(({ verses }) => verses.some((v) => !v.drafted));
 
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }} data-testid="community-checking">
@@ -27,12 +36,14 @@ export default function CommunityChecking() {
           <p style={{ textAlign: 'center', fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-heavy)', letterSpacing: 'var(--tracking-eyebrow)', textTransform: 'uppercase', color: 'var(--text-tertiary)', margin: '0 0 4px' }}>{t('cc.eyebrow')}</p>
           <h1 style={{ textAlign: 'center', fontFamily: 'var(--font-scripture)', fontSize: 40, lineHeight: '48px', fontWeight: 'var(--fw-bold)', color: 'var(--uw-ocean)', margin: '0 0 6px' }}>{bookName(book.code)}</h1>
           <div style={{ height: 1, background: 'var(--border)', margin: '0 auto 30px', width: 70 }} />
-          <div dir={dir} style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse)', color: 'var(--text-scripture)', textAlign: 'justify', columnCount: Number(cols), columnGap: 28 }}>
-            {dropCap ? <span style={{ float: 'inline-start', fontSize: 'var(--fs-dropcap)', lineHeight: 0.8, fontWeight: 'var(--fw-bold)', color: 'var(--accent)', marginInlineEnd: 10, marginTop: 6 }}>{s.chapter}</span> : null}
-            {verses.map((v) => v.drafted && v.text
-              ? <span key={v.n}>{verseNums ? <sup style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', marginInlineEnd: 2, verticalAlign: 'super' }}>{v.n}</sup> : null}{v.text} </span>
-              : <span key={v.n} style={{ color: 'var(--text-tertiary)' }}><sup style={{ fontSize: 11, fontWeight: 700, verticalAlign: 'super' }}>{v.n}</sup>{t('cc.notYetDrafted')} </span>)}
-          </div>
+          {chapters.map(({ c, verses }) => (
+            <div key={c} dir={dir} style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse)', color: 'var(--text-scripture)', textAlign: 'justify', columnCount: Number(cols), columnGap: 28, marginBottom: 26 }}>
+              {dropCap ? <span style={{ float: 'inline-start', fontSize: 'var(--fs-dropcap)', lineHeight: 0.8, fontWeight: 'var(--fw-bold)', color: 'var(--accent)', marginInlineEnd: 10, marginTop: 6 }}>{c}</span> : null}
+              {verses.map((v) => v.drafted && v.text
+                ? <span key={v.n}>{verseNums ? <sup style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', marginInlineEnd: 2, verticalAlign: 'super' }}>{v.n}</sup> : null}{v.text} </span>
+                : <span key={v.n} style={{ color: 'var(--text-tertiary)' }}><sup style={{ fontSize: 11, fontWeight: 700, verticalAlign: 'super' }}>{v.n}</sup>{t('cc.notYetDrafted')} </span>)}
+            </div>
+          ))}
         </div>
       </main>
       <aside style={{ width: 'var(--rail-width-wide)', flex: 'none', background: '#fff', borderInlineStart: 'var(--stroke-hair) solid var(--border-hair)', padding: 22, display: 'flex', flexDirection: 'column', gap: 16, overflow: 'auto' }}>

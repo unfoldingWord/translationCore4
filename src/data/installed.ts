@@ -293,10 +293,20 @@ export const languageSetFromInstalled = (
   if (!tn || !tw || !ta) return null;
   // §5.3 1.10 OPTIONAL slots (D64): included only when installed — a set
   // without them is still complete, so their absence never blocks the set.
-  const tq = bySuffix('_tq');
+  // These match by the FULL `<languageId>_<suffix>` repo name, not the bare
+  // suffix: a multi-language org (translationCore-Create-BCS) holds hi_tq AND
+  // bn_tq, and a suffix-only match could pin another language's repo. (The
+  // required tn/tw/ta lookups above keep their historical suffix match — a
+  // pre-existing behavior this change does not alter.)
+  const byName = (name: string) =>
+    ofOrg.find((p) => {
+      const base = p.repoPath.split('/').pop() ?? '';
+      return base.toLowerCase() === name.toLowerCase();
+    });
+  const tq = byName(`${gateway.id}_tq`);
   // English publishes `_ust`; other gateways publish `_gst` (evidence in
-  // gateways.ts). Either suffix is the language's simplified text.
-  const simplified = bySuffix('_ust') ?? bySuffix('_gst');
+  // gateways.ts). Either name is the language's simplified text.
+  const simplified = byName(`${gateway.id}_ust`) ?? byName(`${gateway.id}_gst`);
   return {
     gatewayLanguage: { languageId: gateway.id, owner: gateway.org },
     translationNotes: tn,
