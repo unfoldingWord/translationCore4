@@ -1,11 +1,14 @@
+// Translate (internal view state stays `draft`) — the drafting screen rebuilt
+// on the design system (epic #104 / #107). Function unchanged: same editing,
+// same save behavior, same actions; only the skin moved to tokens/components.
 import React, { useRef, useEffect } from 'react';
 import { useApp } from '../state.jsx';
 import { bookName } from '../data/bookNames';
 import { SUITE_VERSION } from '../state.jsx';
 import { t } from '../i18n';
+import { BookTile, FilterChip, IconButton, Overline, Button } from '../ds/index.js';
 
-const hair = '1px solid rgba(35,31,32,.07)';
-const serif = "'PT Serif',Georgia,serif";
+const hair = 'var(--stroke-hair) solid var(--border-hair)';
 
 // Plain display text for one source verse (verseObjects from usfm-js — aligned
 // USFM collapses to its text/word content; display only, never re-serialized).
@@ -22,11 +25,11 @@ const sourceText = (vObj) => {
   return walk(vObj?.verseObjects).replace(/\s+/g, ' ').trim();
 };
 
-// The design's editing card (translationCore.dc.html lines 635-647).
-// Blur on the textarea still saves-and-closes (journeys blur to save); the
-// Save/Cancel buttons carry onMouseDown preventDefault so the textarea's blur
-// does not fire first and close the editor before the click lands — without
-// it Cancel would be swallowed by the blur-close and never restore the verse.
+// The design's editing card. Blur on the textarea still saves-and-closes
+// (journeys blur to save); the Save/Cancel buttons carry onMouseDown
+// preventDefault so the textarea's blur does not fire first and close the
+// editor before the click lands — without it Cancel would be swallowed by the
+// blur-close and never restore the verse.
 function VerseEditor({ chapter, verse, dir }) {
   const { actions } = useApp();
   const ref = useRef(null);
@@ -34,10 +37,10 @@ function VerseEditor({ chapter, verse, dir }) {
     ref.current?.focus();
   }, []);
   return (
-    <div style={{ border: '1.5px solid #31ADE3', borderRadius: 10, padding: '12px 14px', background: '#fff', boxShadow: '0 2px 8px rgba(49,173,227,.15)' }}>
+    <div style={{ border: 'var(--stroke-selected) solid var(--accent)', borderRadius: 'var(--radius-md)', padding: '12px 14px', background: '#fff', boxShadow: 'var(--shadow-raised)' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
-        <sup style={{ fontFamily: serif, fontSize: 13, fontWeight: 700, color: '#8A99A4' }}>{verse.n}</sup>
-        <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#31ADE3' }}>{t('draft.drafting')}</span>
+        <sup style={{ fontFamily: 'var(--font-scripture)', fontSize: 13, fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)' }}>{verse.n}</sup>
+        <Overline tone="accent">{t('draft.drafting')}</Overline>
       </div>
       <textarea
         ref={ref}
@@ -54,22 +57,21 @@ function VerseEditor({ chapter, verse, dir }) {
           border: 0,
           outline: 'none',
           resize: 'vertical',
-          fontFamily: serif,
-          fontSize: 19,
-          lineHeight: 1.7,
-          color: '#231F20',
+          fontFamily: 'var(--font-scripture)',
+          fontSize: 'var(--fs-verse-sm)',
+          lineHeight: 'var(--lh-verse-sm)',
+          color: 'var(--text-scripture)',
           background: 'transparent',
         }}
       />
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
-        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={actions.blurVerse}
-          style={{ border: 0, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 800, fontSize: 12.5, padding: '8px 18px', borderRadius: 999, background: '#31ADE3', color: '#fff' }}>
+        <Button size="sm" onMouseDown={(e) => e.preventDefault()} onClick={actions.blurVerse}>
           {t('draft.saveVerse')}
-        </button>
-        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => actions.cancelVerse(chapter, verse.n)}
-          style={{ border: 0, background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 12, color: '#8A99A4', padding: 0 }}>
+        </Button>
+        <Button variant="ghost" onMouseDown={(e) => e.preventDefault()} onClick={() => actions.cancelVerse(chapter, verse.n)}
+          style={{ color: 'var(--text-tertiary)', fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)' }}>
           {t('draft.cancelVerse')}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -80,7 +82,7 @@ export default function Draft() {
 
   if (!book) {
     return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A99A4', fontSize: 14 }}>
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary)', fontSize: 'var(--fs-ui)' }}>
         {s.bookError ? `${t('draft.loadError')} ${s.bookError}` : t('draft.loading')}
       </div>
     );
@@ -92,9 +94,9 @@ export default function Draft() {
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       {s.rail && (
-        <aside style={{ width: 230, flex: 'none', background: '#fff', borderInlineEnd: '1px solid rgba(35,31,32,.09)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <aside style={{ width: 'var(--rail-width)', flex: 'none', background: 'var(--surface-panel)', borderInlineEnd: hair, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <div style={{ padding: '16px 16px 10px' }}>
-            <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.14em', textTransform: 'uppercase', color: '#8A99A4' }}>{t('draft.books')} · {(s.project?.bookCodes || []).length}</span>
+            <Overline style={{ letterSpacing: '.14em' }}>{t('draft.books')} · {(s.project?.bookCodes || []).length}</Overline>
           </div>
           {/* Design update (owner, 2026-07-31): the chapter grid nests under
               the ACTIVE book row — no separate chapters section. */}
@@ -107,31 +109,19 @@ export default function Draft() {
               return (
                 // Design update (owner, 2026-07-31): the active book and its
                 // chapter grid share ONE tinted group.
-                <div key={code} style={{ borderRadius: 10, background: active ? '#eaf6fc' : 'transparent' }}>
-                  <button onClick={() => actions.openBook(code)} type="button" className={active ? 'hovRowActive' : 'hovRow'}
-                    style={{ border: 0, textAlign: 'start', cursor: 'pointer', borderRadius: 10, padding: '10px 12px', display: 'block', width: '100%', background: 'transparent' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: 14, fontWeight: 800, color: '#014263' }}>{bookName(code)}</span>
-                      {pct != null && <span style={{ fontSize: 10, fontWeight: 700, color: '#8A99A4' }}>{pct}%</span>}
-                    </div>
-                    <div style={{ height: 5, borderRadius: 99, background: '#ECF2F5', overflow: 'hidden', marginTop: 7 }}>
-                      <div style={{ height: '100%', background: '#31ADE3', borderRadius: 99, width: `${pct ?? 0}%` }} />
-                    </div>
-                  </button>
+                <div key={code} style={{ borderRadius: 'var(--radius-md)', background: active ? 'var(--surface-accent-soft)' : 'transparent' }}>
+                  <BookTile layout="row" active={active} name={bookName(code)}
+                    percent={pct ?? 0} meta={pct != null ? `${pct}%` : ''}
+                    onClick={() => actions.openBook(code)} />
                   {active && (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 6, padding: '2px 12px 12px' }}>
                       {book.chapterNums.map((c) => {
                         const sel = c === s.chapter;
-                        // Design: selected = solid Inspire; chapter 1 keeps a
-                        // subtle tint inside the group; the rest are white chips.
-                        const chip = sel
-                          ? { background: '#31ADE3', color: '#fff', borderColor: '#31ADE3' }
-                          : c === 1
-                            ? { background: '#eaf6fc', color: '#014263', borderColor: '#cfecf8' }
-                            : { background: '#fff', color: '#8A99A4', borderColor: 'rgba(35,31,32,.10)' };
                         return (
-                          <button key={c} onClick={() => actions.setChapter(c)} type="button"
-                            style={{ cursor: 'pointer', fontWeight: 800, fontSize: 12, height: 32, borderRadius: 8, borderWidth: 1, borderStyle: 'solid', ...chip }}>{c}</button>
+                          <button key={c} onClick={() => actions.setChapter(c)} type="button" data-tc={sel ? undefined : 'surface'}
+                            style={{ cursor: 'pointer', fontFamily: 'var(--font-ui)', fontWeight: 'var(--fw-heavy)', fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', height: 32, borderRadius: 'var(--radius-sm)', borderWidth: 'var(--stroke)', borderStyle: 'solid',
+                              ...(sel ? { background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)' }
+                                : { background: '#fff', color: 'var(--text-tertiary)', borderColor: 'var(--border)' }) }}>{c}</button>
                         );
                       })}
                     </div>
@@ -145,27 +135,26 @@ export default function Draft() {
 
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 22px', borderBottom: hair, background: '#fff', flex: 'none' }}>
-          <button onClick={actions.toggleRail} type="button" title={t('draft.toggleRail')} style={{ border: '1px solid rgba(35,31,32,.12)', background: '#fff', cursor: 'pointer', borderRadius: 8, width: 32, height: 32, fontSize: 14, color: '#4F5E6A' }}>≡</button>
-          <h2 style={{ fontSize: 17, fontWeight: 900, color: '#014263', margin: 0 }}>{bookName(book.code)} {s.chapter}</h2>
-          <span style={{ fontSize: 12, color: '#8A99A4' }}>{t('nav.draft')}</span>
+          <IconButton title={t('draft.toggleRail')} onClick={actions.toggleRail}>≡</IconButton>
+          <h2 style={{ fontSize: 'var(--fs-title)', letterSpacing: 'var(--track-17)', margin: 0 }}>{bookName(book.code)} {s.chapter}</h2>
+          <span style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--text-tertiary)' }}>{t('nav.draft')}</span>
           <div style={{ flex: 1 }} />
         </div>
 
         <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', maxWidth: 1100, margin: '0 auto' }}>
-            <div style={{ position: 'sticky', top: 0, background: '#F7FAFC', zIndex: 2, padding: '10px 26px 8px', borderInlineEnd: hair, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ position: 'sticky', top: 0, background: 'var(--surface-app)', zIndex: 2, padding: '10px 26px 8px', borderInlineEnd: hair, display: 'flex', alignItems: 'center', gap: 8 }}>
               {/* ULT/UST source tabs (C1b.3 — the orig pane comes with the alignment increment) */}
               {['ult', 'ust'].map((id) => (
-                <button key={id} type="button" onClick={() => actions.setSourceTab(id)}
-                  style={{ cursor: 'pointer', border: 0, borderRadius: 999, padding: '5px 14px', fontSize: 11, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase',
-                    background: s.sourceTab === id ? '#014263' : '#ECF2F5', color: s.sourceTab === id ? '#fff' : '#8A99A4' }}>
+                <FilterChip key={id} tone="ocean" selected={s.sourceTab === id} onClick={() => actions.setSourceTab(id)}
+                  style={{ padding: '4px 10px', fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', borderWidth: 1 }}>
                   {t(`source.${id}`)}
-                </button>
+                </FilterChip>
               ))}
-              <span style={{ fontSize: 11, color: '#8A99A4', fontWeight: 600, marginInlineStart: 6 }}>{t('draft.pinned', { version: SUITE_VERSION })}</span>
+              <span style={{ fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', color: 'var(--text-tertiary)', fontWeight: 'var(--fw-medium)', marginInlineStart: 6 }}>{t('draft.pinned', { version: SUITE_VERSION })}</span>
             </div>
-            <div style={{ position: 'sticky', top: 0, background: '#F7FAFC', zIndex: 2, padding: '15px 26px 8px' }}>
-              <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.13em', textTransform: 'uppercase', color: '#31ADE3' }}>{s.project?.name} · {s.project?.languageTag}</span>
+            <div style={{ position: 'sticky', top: 0, background: 'var(--surface-app)', zIndex: 2, padding: '15px 26px 8px' }}>
+              <Overline tone="accent" style={{ letterSpacing: '.13em' }}>{s.project?.name} · {s.project?.languageTag}</Overline>
             </div>
 
             {verses.map((v) => {
@@ -173,38 +162,38 @@ export default function Draft() {
               const srcTxt = srcVerse ? sourceText(srcVerse) : null;
               return (
                 <React.Fragment key={v.n}>
-                  <div style={{ padding: '14px 26px 20px', borderInlineEnd: hair, borderTop: '1px solid rgba(35,31,32,.05)' }}>
+                  <div style={{ padding: '14px 26px 20px', borderInlineEnd: hair, borderTop: 'var(--stroke-hair) solid var(--border-hair)' }}>
                     {sourceModel === 'missing' ? (
-                      <p style={{ fontSize: 13, color: '#B7C2C9', fontStyle: 'italic', margin: '6px 0 0' }}>
-                        <sup style={{ fontFamily: serif, fontSize: 13, fontWeight: 700, marginInlineEnd: 3 }}>{v.n}</sup>{t('source.unavailable')}
+                      <p style={{ fontSize: 'var(--fs-ui-sm)', color: 'var(--uw-haze)', fontStyle: 'italic', margin: '6px 0 0' }}>
+                        <sup style={{ fontFamily: 'var(--font-scripture)', fontSize: 13, fontWeight: 'var(--fw-bold)', marginInlineEnd: 3 }}>{v.n}</sup>{t('source.unavailable')}
                       </p>
                     ) : srcTxt ? (
-                      <p style={{ direction: 'ltr', textAlign: 'start', fontFamily: serif, fontSize: 19, lineHeight: 1.9, color: '#231F20', margin: 0 }}>
-                        <sup style={{ fontSize: 11, fontWeight: 700, color: '#8A99A4', marginInlineEnd: 3, verticalAlign: 'super' }}>{v.n}</sup>
+                      <p style={{ direction: 'ltr', textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-sm)', lineHeight: 'var(--lh-verse)', color: 'var(--text-scripture)', margin: 0 }}>
+                        <sup style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', marginInlineEnd: 3, verticalAlign: 'super' }}>{v.n}</sup>
                         {srcTxt}
                       </p>
                     ) : (
-                      <p style={{ fontSize: 13, color: '#B7C2C9', fontStyle: 'italic', margin: '6px 0 0' }}>
-                        <sup style={{ fontFamily: serif, fontSize: 13, fontWeight: 700, marginInlineEnd: 3 }}>{v.n}</sup>{t('draft.sourcesLoad')}
+                      <p style={{ fontSize: 'var(--fs-ui-sm)', color: 'var(--uw-haze)', fontStyle: 'italic', margin: '6px 0 0' }}>
+                        <sup style={{ fontFamily: 'var(--font-scripture)', fontSize: 13, fontWeight: 'var(--fw-bold)', marginInlineEnd: 3 }}>{v.n}</sup>{t('draft.sourcesLoad')}
                       </p>
                     )}
                   </div>
-                  <div style={{ padding: '14px 26px 20px', borderTop: '1px solid rgba(35,31,32,.05)', position: 'relative' }}>
+                  <div style={{ padding: '14px 26px 20px', borderTop: 'var(--stroke-hair) solid var(--border-hair)', position: 'relative' }}>
                     {s.editing?.key === `${s.chapter}:${v.n}` ? (
                       <VerseEditor chapter={s.chapter} verse={v} dir={dir} />
                     ) : v.drafted ? (
                       <p onClick={() => actions.startVerse(s.chapter, v.n)} title={t('draft.editVerse')}
-                        style={{ direction: dir, textAlign: 'start', fontFamily: serif, fontSize: 21, lineHeight: 1.9, color: '#231F20', margin: 0, cursor: 'text' }}>
-                        <sup style={{ fontSize: 11, fontWeight: 700, color: '#8A99A4', marginInlineEnd: 3, verticalAlign: 'super' }}>{v.n}</sup>
+                        style={{ direction: dir, textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-md)', lineHeight: 'var(--lh-verse-md)', color: 'var(--text-scripture)', margin: 0, cursor: 'text' }}>
+                        <sup style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', marginInlineEnd: 3, verticalAlign: 'super' }}>{v.n}</sup>
                         {v.text}
                       </p>
                     ) : (
-                      <div style={{ border: '1.5px dashed rgba(35,31,32,.16)', borderRadius: 10, padding: '16px 18px', color: '#8A99A4', fontSize: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <sup style={{ fontFamily: serif, fontSize: 13, fontWeight: 700, color: '#8A99A4' }}>{v.n}</sup>
+                      <div style={{ border: 'var(--stroke-selected) dashed var(--border-dashed)', borderRadius: 'var(--radius-md)', padding: '16px 18px', color: 'var(--text-tertiary)', fontSize: 'var(--fs-ui)', display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <sup style={{ fontFamily: 'var(--font-scripture)', fontSize: 13, fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)' }}>{v.n}</sup>
                         <span>
                           {t('draft.notYet')}
                           <button type="button" onClick={() => actions.startVerse(s.chapter, v.n)}
-                            style={{ border: 0, background: 'transparent', color: '#31ADE3', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, padding: 0 }}>
+                            style={{ border: 0, background: 'transparent', color: 'var(--accent)', fontWeight: 'var(--fw-bold)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--fs-ui)', padding: 0 }}>
                             {t('draft.startVerse')}
                           </button>
                         </span>
