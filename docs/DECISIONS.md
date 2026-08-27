@@ -1055,3 +1055,8 @@ The ruling:
    when the local marker is present and the pin records nothing.
 3. **The tA modules' `TRANSLATE` marker gets no form.** No tool resolves through tA
    coverage, so a tA pin records nothing.
+
+## D63 (2026-08-27, project-owner ruling) **The app adopts an Understand, Translate, Check workflow, on a new design system. Publish is retired as a top-level tab — it moves into Check's Community Checking tool.** [epic #104]
+
+Replaces the current Draft, Check, Publish top navigation. Basis: project-owner design
+work in Claude Design, linked from epic #104, which carries the work items.
