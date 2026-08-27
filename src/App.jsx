@@ -8,6 +8,7 @@ import AddBook from './views/modals/AddBook.jsx';
 import ProjectSettings from './views/modals/ProjectSettings.jsx';
 import SourceTexts from './views/modals/SourceTexts.jsx';
 import GatewayChange from './views/modals/GatewayChange.jsx';
+import CommunityChecking from './views/CommunityChecking.jsx';
 import { AppHeader, SegmentedControl, StatusDot, Button } from './ds/index.js';
 import { t } from './i18n';
 
@@ -52,31 +53,16 @@ function TopBar() {
       onBrandClick={actions.backToProjects}
       onProjectClick={actions.backToProjects}
       center={inProject ? (
-        <SegmentedControl tone="inverse" value={s.view} onChange={(v) => actions.go(v)}
+        // D63: Publish is retired as a top-level tab — the publish flow lives
+        // inside Check as the Community Checking tool (#108).
+        <SegmentedControl tone="inverse" value={s.view === 'publish' ? 'check' : s.view} onChange={(v) => actions.go(v)}
           options={[
             { value: 'draft', label: t('nav.draft') },
             { value: 'check', label: t('nav.check') },
-            { value: 'publish', label: t('nav.publish') },
           ]} />
       ) : null}
       right={<SaveIndicator />}
     />
-  );
-}
-
-// Checking and publishing arrive in their own increments (journey-not-screen
-// rule). A real project shows a designed placeholder, not fixture data.
-function LaterIncrement({ what, increment }) {
-  return (
-    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ textAlign: 'center', maxWidth: 420, padding: 24 }}>
-        <p style={{ fontSize: 40, margin: '0 0 8px' }}>🌱</p>
-        <h2 style={{ fontSize: 'var(--fs-h3)', margin: '0 0 8px' }}>{what}</h2>
-        <p style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', color: 'var(--text-tertiary)', lineHeight: 'var(--lh-body)', margin: 0 }}>
-          {t('app.laterIncrement', { increment })}
-        </p>
-      </div>
-    </div>
   );
 }
 
@@ -91,7 +77,7 @@ export default function App() {
       {s.view === 'home' && <Home />}
       {s.view === 'draft' && <Draft />}
       {s.view === 'check' && <Check />}
-      {s.view === 'publish' && <LaterIncrement what={t('app.publishing')} increment={t('app.publishIncrement')} />}
+      {s.view === 'publish' && <CommunityChecking />}
       <NewBible />
       <AddBook />
       <ProjectSettings />

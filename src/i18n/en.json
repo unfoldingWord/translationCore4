@@ -243,5 +243,21 @@
   "gateway.blocked-versification-unknown": "This change cannot be applied: {books} carry checking decisions, and this project's versification scheme could not be identified, so they cannot be carried over safely. Nothing was changed. Recording the scheme, or re-creating the project in tC4, unblocks the change.",
   "gateway.blockedError": "Blocked: {books} would lose their checking resource. Nothing was changed.",
   "sources.alreadyCheckingIn": "This project already checks against {lang}.",
-  "check.droppedNote": "{count} check(s) from this resource have no verse in this project's {scheme} numbering, so they are not shown and not counted. Nothing was lost — they return if the project's numbering ever matches the resource."
+  "check.droppedNote": "{count} check(s) from this resource have no verse in this project's {scheme} numbering, so they are not shown and not counted. Nothing was lost — they return if the project's numbering ever matches the resource.",
+  "cc.title": "Community Checking",
+  "cc.eyebrow": "Preview",
+  "cc.back": "← All checking tools",
+  "cc.cardDesc": "Read the book as a whole and share it with the community for feedback. Export a copy for reviewers.",
+  "cc.open": "Open →",
+  "cc.exportPdf": "Export PDF",
+  "cc.exportUsfm": "Export USFM",
+  "cc.exportsLater": "Exports arrive later in this increment (J7).",
+  "cc.pageSetup": "Page setup",
+  "cc.columns": "Columns",
+  "cc.dropCap": "Drop-cap chapters",
+  "cc.verseNumbers": "Verse numbers",
+  "cc.footnotes": "Footnotes",
+  "cc.notYetDrafted": "[ verse not yet drafted ]",
+  "cc.incompleteTitle": "Incomplete draft.",
+  "cc.incompleteBody": "Undrafted verses are skipped in the export."
 }
