@@ -93,6 +93,12 @@ export interface LanguageSet {
   translationWordsLinks: ResourcePin;
   translationWords: ResourcePin;
   translationAcademy: ResourcePin;
+  /** OPTIONAL (§5.3 1.10, D64): the language's comprehension questions (tq).
+   * Absent = covers no book; the set stays complete without it. */
+  translationQuestions?: ResourcePin;
+  /** OPTIONAL (§5.3 1.10, D64): the language's simplified, meaning-based
+   * Bible — `en_ust` for English, `<lang>_gst` where a gateway publishes one. */
+  simplifiedText?: ResourcePin;
 }
 
 /** `checking/resources.json` — BURRITO-SPEC §5.3 schemaVersion 2 (D17/D30).

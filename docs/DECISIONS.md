@@ -1060,3 +1060,17 @@ The ruling:
 
 Replaces the current Draft, Check, Publish top navigation. Basis: project-owner design
 work in Claude Design, linked from epic #104, which carries the work items.
+
+## D64 (2026-08-27, project-owner ruling) **tQ and the simplified text join the book package: a §5.3 language set MAY pin `translationQuestions` and `simplifiedText` as OPTIONAL slots.** [issue #110, epic #104; BURRITO-SPEC 1.10]
+
+The owner's ruling: "UST and tQ are part of the English book package that comes
+installed with the app. If another gateway language has these files then that
+language's book package should include them." Encoding: two OPTIONAL slots on the
+§5.3 language set, resolved per (tool, book) over the same primary→fallback ladder.
+Set COMPLETENESS is unchanged (tn+twl+tw+tA — D17), so the amendment is additive and
+every existing schemaVersion 2 file stays conformant. The shipped English set pins
+`en_tq` v89 (`97c0a13e3b84d46d0e643ba2e8e9f1c295547a58`, `parascriptural/x-bcvquestions`
+[VERIFIED 2026-08-27 — sb-zip export metadata]) and `en_ust` v89 as `simplifiedText`.
+Per-gateway availability recorded in `gateways.ts` (`hasTq`/`hasSimplified`,
+[VERIFIED 2026-08-27 — DCS org queries]). Spec + harness changed in the same
+change set per §9 (suite → 40 checks, Stage-1 35).

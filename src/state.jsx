@@ -53,6 +53,12 @@ const EN_HELPS = {
   translationWordsLinks: { ...EN_TW },
   translationWords: { ...EN_TW },
   translationAcademy: { repoPath: 'git.door43.org/unfoldingWord/en_ta', version: 'v86', sha: 'c7caddfb474efd713f36b35a3ffc927866c7b180', flavor: 'peripheral/x-peripheralArticles' },
+  // §5.3 1.10 OPTIONAL slots (D64, #110). tq sha = the v89 tag commit, equal to
+  // the sb-zip export revision [VERIFIED 2026-08-27 — /sb/v89.zip metadata].
+  // simplifiedText reuses the shipped en_ust identity (same pin as the 'ust'
+  // extraScripture source-pane entry).
+  translationQuestions: { repoPath: 'git.door43.org/unfoldingWord/en_tq', version: 'v89', sha: '97c0a13e3b84d46d0e643ba2e8e9f1c295547a58', flavor: 'parascriptural/x-bcvquestions' },
+  simplifiedText: { repoPath: 'git.door43.org/unfoldingWord/en_ust', version: 'v89', sha: '37ec223166bbd73fb55abc7840be8310c0fee7f2', flavor: 'scripture/textTranslation' },
 };
 
 // Increment 2: pins are the normative BURRITO-SPEC §5.3 **schemaVersion 2**

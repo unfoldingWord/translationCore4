@@ -132,15 +132,35 @@ export const resolveToolBook = (
   book: string,
   coverage: Coverage,
 ): Resolution => {
-  const slot = TOOL_SLOT[tool];
+  const r = resolveSetSlot(resources, TOOL_SLOT[tool], book, coverage);
+  return { tool, book, ...r };
+};
+
+/** Any §5.3 language-set slot a per-book reader resolves — the checking-tool
+ * slots plus the 1.10 optional help slots (D64: tq + simplifiedText). */
+export type SetSlot =
+  | (typeof TOOL_SLOT)[Tool]
+  | 'translationAcademy'
+  | 'translationQuestions'
+  | 'simplifiedText';
+
+/** Resolve one (slot, book) over the same two-rung ladder the checking tools
+ * use (§5.3). An ABSENT optional slot covers no book — the rung is skipped,
+ * never an error (D64). Pure, like resolveToolBook. */
+export const resolveSetSlot = (
+  resources: ResourcesFile,
+  slot: SetSlot,
+  book: string,
+  coverage: Coverage,
+): { rung: Rung | null; pin: ResourcePin | null; usedFallback: boolean } => {
   for (const rung of LADDER) {
     const set: LanguageSet | undefined = resources.languageSets?.[rung];
     const pin = set?.[slot];
     if (pin && covers(coverage, pin, book)) {
-      return { tool, book, rung, pin, usedFallback: rung === 'fallback' };
+      return { rung, pin, usedFallback: rung === 'fallback' };
     }
   }
-  return { tool, book, rung: null, pin: null, usedFallback: false };
+  return { rung: null, pin: null, usedFallback: false };
 };
 
 /** The §5.2 `resource` record for a resolved (tool, book) — what the decision

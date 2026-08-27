@@ -248,7 +248,8 @@ export const pinsPreferringInstalled = <T extends { languageSets?: Record<string
   installed: InstalledMap,
 ): T => {
   if (!resources.languageSets) return resources;
-  const slots = ['translationNotes', 'translationWordsLinks', 'translationWords', 'translationAcademy'];
+  const slots = ['translationNotes', 'translationWordsLinks', 'translationWords', 'translationAcademy',
+    'translationQuestions', 'simplifiedText'];
   const languageSets: Record<string, Record<string, unknown>> = {};
   for (const [rung, set] of Object.entries(resources.languageSets)) {
     const next: Record<string, unknown> = { ...set };
@@ -278,6 +279,8 @@ export const languageSetFromInstalled = (
   translationWordsLinks: ResourcePin;
   translationWords: ResourcePin;
   translationAcademy: ResourcePin;
+  translationQuestions?: ResourcePin;
+  simplifiedText?: ResourcePin;
 } | null => {
   const org = gateway.org.toLowerCase();
   const ofOrg = Object.values(installed)
@@ -288,11 +291,19 @@ export const languageSetFromInstalled = (
   const tw = bySuffix('_tw'); // D34: one repo serves both tW slots
   const ta = bySuffix('_ta');
   if (!tn || !tw || !ta) return null;
+  // §5.3 1.10 OPTIONAL slots (D64): included only when installed — a set
+  // without them is still complete, so their absence never blocks the set.
+  const tq = bySuffix('_tq');
+  // English publishes `_ust`; other gateways publish `_gst` (evidence in
+  // gateways.ts). Either suffix is the language's simplified text.
+  const simplified = bySuffix('_ust') ?? bySuffix('_gst');
   return {
     gatewayLanguage: { languageId: gateway.id, owner: gateway.org },
     translationNotes: tn,
     translationWordsLinks: tw,
     translationWords: tw,
     translationAcademy: ta,
+    ...(tq ? { translationQuestions: tq } : {}),
+    ...(simplified ? { simplifiedText: simplified } : {}),
   };
 };

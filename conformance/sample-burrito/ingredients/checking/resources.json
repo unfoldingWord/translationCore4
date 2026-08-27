@@ -151,6 +151,18 @@
         "version": "v86",
         "sha": "c7caddfb474efd713f36b35a3ffc927866c7b180",
         "flavor": "peripheral/x-peripheralArticles"
+      },
+      "translationQuestions": {
+        "repoPath": "git.door43.org/unfoldingWord/en_tq",
+        "version": "v89",
+        "sha": "97c0a13e3b84d46d0e643ba2e8e9f1c295547a58",
+        "flavor": "parascriptural/x-bcvquestions"
+      },
+      "simplifiedText": {
+        "repoPath": "git.door43.org/unfoldingWord/en_ust",
+        "version": "v89",
+        "sha": "37ec223166bbd73fb55abc7840be8310c0fee7f2",
+        "flavor": "scripture/textTranslation"
       }
     }
   },

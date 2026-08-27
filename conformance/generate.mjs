@@ -217,6 +217,7 @@ const metadata = {
     { relationType: 'parascriptural', flavor: 'x-bcvnotes', id: 'dcs::unfoldingWord/en_tn', revision: 'v86' },
     { relationType: 'parascriptural', flavor: 'x-bcvarticles', id: 'dcs::unfoldingWord/en_tw', revision: 'v87' },
     { relationType: 'peripheral', flavor: 'x-peripheralArticles', id: 'dcs::unfoldingWord/en_ta', revision: 'v86' },
+    { relationType: 'parascriptural', flavor: 'x-bcvquestions', id: 'dcs::unfoldingWord/en_tq', revision: 'v89' },
     { relationType: 'peripheral', flavor: 'x-lexicon', id: 'dcs::unfoldingWord/en_ugl', revision: 'v2' },
     { relationType: 'peripheral', flavor: 'x-lexicon', id: 'dcs::unfoldingWord/en_uhl', revision: 'v1' }
   ]

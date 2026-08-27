@@ -403,7 +403,8 @@ let mergedVerseObjects = null;
   // contain this book" from "not downloaded yet".
   const allPins = [
     ...['primary', 'fallback'].flatMap(r =>
-      ['translationNotes', 'translationWordsLinks', 'translationWords', 'translationAcademy']
+      ['translationNotes', 'translationWordsLinks', 'translationWords', 'translationAcademy',
+        'translationQuestions', 'simplifiedText']
         .map(slot => ls?.[r]?.[slot]).filter(Boolean)),
     ...(resFile.extraScripture ?? []),
   ];
@@ -490,9 +491,23 @@ let mergedVerseObjects = null;
     xsShapeOk && xsIdsUnique && xsNegShaLess && xsNegEmptyVersion && xsPosShaOnly &&
     !SHA.test('84c73ba') && !SHA.test('Z'.repeat(40)),
     xsShapeOk ? `${xs.length} entries (${xs.map(e => e.id).join(', ')}); sha-required + sha-only-valid + empty-label controls fired` : 'array missing or malformed');
+  // §5.3 1.10 (D64, epic #104/#110): OPTIONAL per-set help slots. A set MAY pin
+  // `translationQuestions` (tq) and `simplifiedText`; when present each uses the
+  // unchanged §5.3 pin grammar, and an ABSENT slot keeps the set complete —
+  // completeness stays tn+twl+tw+tA, so pre-1.10 files remain conformant.
+  const OPTIONAL_SLOTS = ['translationQuestions', 'simplifiedText'];
+  const optOk = set => OPTIONAL_SLOTS.every(k => !(k in set) || pinShape(set[k]));
+  const sampleCarriesBoth = OPTIONAL_SLOTS.every(k => pinShape(ls?.fallback?.[k]));
+  const absentSlotLegal = setOk({ ...ls.primary }) && optOk(ls.primary);   // primary omits both — still a complete set
+  const malformedRefused = !optOk({ translationQuestions: { repoPath: 'x' } }); // pin grammar still binds when present
+  check('resources: optional tq + simplifiedText set slots (§5.3 1.10, D64) — pin grammar when present, absent slot keeps the set complete',
+    sampleCarriesBoth && absentSlotLegal && malformedRefused &&
+    ls.fallback.translationQuestions.flavor === 'parascriptural/x-bcvquestions' &&
+    ls.fallback.simplifiedText.flavor === 'scripture/textTranslation',
+    `fallback carries both (tq ${ls?.fallback?.translationQuestions?.version}, simplified ${ls?.fallback?.simplifiedText?.version}); primary omits both and stays complete`);
   const rels = metadata.relationships;
   check('resources: same pins expressed as SB relationships, schema-valid per test 1',
-    Array.isArray(rels) && rels.length === 12 && rels.every(r => r.relationType && r.flavor && r.id.includes('::')), '', 'stage2');
+    Array.isArray(rels) && rels.length === 13 && rels.every(r => r.relationType && r.flavor && r.id.includes('::')), '', 'stage2');
 }
 
 // ---------- 9. Whole-book aligned USFM export (tC3 interchange from burrito alone) ----------
