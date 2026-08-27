@@ -205,12 +205,17 @@ export const tnQuoteWords = (quote: string): TnQuoteWord[] => {
 
 /** Derive check items from a tN TSV
  * (columns: Reference / ID / Tags / SupportReference / Quote / Occurrence / Note).
- * A row without a SupportReference is a plain note, not a check — skipped
- * (tC3 semantics: the tN tool groups by tA module; the reference client does
- * the same). `groupId` is the SupportReference's tA module slug. */
-export const deriveTnItems = (tnTsv: string, bookId: string): CheckItem[] =>
+ * A row without a SupportReference is a plain note, not a check — skipped by
+ * default (tC3 semantics: the tN tool groups by tA module; the reference
+ * client does the same). `groupId` is the SupportReference's tA module slug.
+ *
+ * `keepPlain` (D63, Understand): the READ-ONLY notes surface must show every
+ * note the resource carries — plain rows are a large share of real data
+ * (en_tn v86 Titus: 49 of 206 rows; es-419_tn v66: 104 of 216 — 2026-08-27
+ * Codex review). A plain row's `groupId` is '' (no tA module to link). */
+export const deriveTnItems = (tnTsv: string, bookId: string, opts: { keepPlain?: boolean } = {}): CheckItem[] =>
   tsvRows(tnTsv, TN_HEADER, 'tN')
-    .filter((cells) => (cells[3] ?? '') !== '')
+    .filter((cells) => opts.keepPlain || (cells[3] ?? '') !== '')
     .map((cells) => {
       const [ref, id, , supportReference, quote, occurrence, note] = cells;
       const [chapter, verse] = ref.split(':').map(refPart);
@@ -531,10 +536,13 @@ export const deriveForProject = async (params: {
   schemes: Partial<Record<SchemeName, SchemeDoc>>;
   saved?: CheckItem[];
   scopeRanges?: string[];
+  /** tN only: keep rows without a SupportReference (the Understand screen's
+   * read-only notes surface — see deriveTnItems). Checking never sets this. */
+  keepPlainNotes?: boolean;
 }): Promise<ProjectDeriveResult> => {
-  const { tsv, tool, bookId, from, to, schemes, saved = [], scopeRanges = [] } = params;
+  const { tsv, tool, bookId, from, to, schemes, saved = [], scopeRanges = [], keepPlainNotes = false } = params;
   const derived =
-    tool === 'translationNotes' ? deriveTnItems(tsv, bookId)
+    tool === 'translationNotes' ? deriveTnItems(tsv, bookId, { keepPlain: keepPlainNotes })
       : tool === 'translationQuestions' ? deriveTqItems(tsv, bookId)
         : deriveTwlItems(tsv, bookId);
 

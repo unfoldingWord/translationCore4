@@ -37,16 +37,26 @@ const sectionStarts = (raw, chapter) => {
   return starts.sort((a, b) => a - b);
 };
 
+/** The last verse number a chapter key reaches ("4-5" → 5, "4" → 4). */
+const trailingNum = (key) => Number(String(key).split('-').pop());
+
 /** The latest comprehension note within a unit's verse range. Retrieval is by
- * MEMBERSHIP, not by exact head key: ULT and UST chunk chapters differently,
- * so a note saved under one chunking must still surface when the reader
- * switches tabs or a source release re-chunks (2026-08-27 review). Notes are
- * grow-only (§8.5), so "latest" is the highest ts among the unit's verses. */
+ * NUMERIC MEMBERSHIP, not by exact head key: ULT and UST chunk chapters
+ * differently AND bridge verses differently (one source's "4","5" is the
+ * other's "4-5"), so a note journaled under one form must still surface under
+ * the other (2026-08-27 reviews). Notes are grow-only (§8.5), so "latest" is
+ * the highest ts among the notes landing in the unit's range. */
 const latestUnitNote = (comprehension, chapter, unit) => {
+  if (!comprehension || unit.verses.length === 0) return null;
+  const lo = leadingNum(unit.verses[0]);
+  const hi = trailingNum(unit.verses[unit.verses.length - 1]);
   let best = null;
-  for (const key of unit.verses) {
-    const n = comprehension?.[`${chapter}:${leadingNum(key)}`];
-    if (n && (!best || String(n.ts) > String(best.ts))) best = n;
+  for (const [key, n] of Object.entries(comprehension)) {
+    const [c, ...rest] = key.split(':');
+    if (Number(c) !== Number(chapter)) continue;
+    const v = leadingNum(rest.join(':'));
+    if (v < lo || v > hi) continue;
+    if (!best || String(n.ts) > String(best.ts)) best = n;
   }
   return best;
 };
@@ -58,9 +68,17 @@ function ComprehensionBox({ chapter, unit }) {
   const stored = latestUnitNote(s.understand?.comprehension, chapter, unit)?.text ?? '';
   const [text, setText] = React.useState(stored);
   React.useEffect(() => { setText(stored); }, [stored, chapter, unit.key]);
+  // Compare against the note the box DISPLAYS: notes are grow-only, so an
+  // unchanged focus/blur must never append a duplicate (2026-08-27 Codex
+  // review). unit.head is the RAW first verse key — a bridge ("4-5") keeps
+  // its exact §8.4 identity in the journal.
+  const save = () => {
+    if (text.trim() === stored.trim()) return;
+    actions.saveComprehension(chapter, unit.head, text);
+  };
   return (
     <TextArea rows={2} value={text} onChange={(e) => setText(e.target.value)}
-      onBlur={() => actions.saveComprehension(chapter, unit.head, text)}
+      onBlur={save}
       placeholder={t('understand.commentsPlaceholder')} />
   );
 }
@@ -144,7 +162,9 @@ function HelpsPanel({ chapter }) {
   const words = inChapter(u?.words);
   const questions = inChapter(u?.questions);
   // tA modules linked from this chapter's notes, deduped, in first-note order.
-  const academySlugs = [...new Set(notes.map((n) => n.contextId.groupId))];
+  // A plain note (no SupportReference — kept for this read-only surface) has
+  // groupId '' and links nowhere.
+  const academySlugs = [...new Set(notes.map((n) => n.contextId.groupId))].filter(Boolean);
   const empty = <p style={{ fontSize: 'var(--fs-caption-lg)', color: 'var(--text-tertiary)', fontStyle: 'italic', margin: 0 }}>{t('understand.noneForChapter')}</p>;
   const simplified = u?.simplified;
 
@@ -175,7 +195,9 @@ function HelpsPanel({ chapter }) {
                   <HelpCard key={`${n.contextId.checkId}-${i}`} kind="note" verse={n.contextId.reference.verse}
                     title={n.contextId.quoteString || n.contextId.groupId} body={n.contextId.occurrenceNote.slice(0, 400)}
                     actionLabel={t('understand.academyLink')}
-                    onAction={() => actions.loadHelpArticle({ kind: 'ta', slug: n.contextId.groupId, rung: u.notes.rung })} />
+                    onAction={n.contextId.groupId
+                      ? () => actions.loadHelpArticle({ kind: 'ta', slug: n.contextId.groupId, rung: u.notes.rung })
+                      : undefined} />
                 ))}
             </>)}
             {tab === 'words' && (<>
@@ -271,12 +293,12 @@ export default function Understand() {
       const from = starts[i];
       const to = i + 1 < starts.length ? starts[i + 1] - 1 : Infinity;
       const keys = verseKeys.filter((k) => leadingNum(k) >= from && leadingNum(k) <= to);
-      if (keys.length) units.push({ key: `s${from}`, head: leadingNum(keys[0]), label: rangeLabel(keys), verses: keys });
+      if (keys.length) units.push({ key: `s${from}`, head: keys[0], label: rangeLabel(keys), verses: keys });
     }
   } else if (mode === 'section') {
-    if (verseKeys.length) units.push({ key: 'whole', head: leadingNum(verseKeys[0]), label: `${bookName(book.code)} ${chapter}`, verses: verseKeys });
+    if (verseKeys.length) units.push({ key: 'whole', head: verseKeys[0], label: `${bookName(book.code)} ${chapter}`, verses: verseKeys });
   } else {
-    for (const k of verseKeys) units.push({ key: `v${k}`, head: leadingNum(k), label: rangeLabel([k]), verses: [k] });
+    for (const k of verseKeys) units.push({ key: `v${k}`, head: k, label: rangeLabel([k]), verses: [k] });
   }
 
   return (

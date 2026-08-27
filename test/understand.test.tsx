@@ -138,6 +138,63 @@ describe('#106 — the Understand write boundary', () => {
   });
 });
 
+describe('2026-08-27 Codex review regressions', () => {
+  beforeEach(() => { cleanup(); calls.length = 0; });
+
+  it('deriveTnItems keeps plain rows (no SupportReference) only when asked — the Understand notes surface needs them, checking never sees them', async () => {
+    const { deriveTnItems, TN_HEADER } = await import('../src/data/derive');
+    const tsv = [
+      TN_HEADER,
+      '1:1\taaaa\t\trc://*/ta/man/translate/figs-metaphor\tquote\t1\tA checking note.',
+      '1:2\tbbbb\t\t\t\t0\tA plain note with no module.',
+    ].join('\n');
+    expect(deriveTnItems(tsv, 'tit').length).toBe(1); // checking default unchanged
+    const all = deriveTnItems(tsv, 'tit', { keepPlain: true });
+    expect(all.length).toBe(2);
+    expect(all[1].contextId.groupId).toBe(''); // plain row links nowhere
+  });
+
+  it("a note journaled under a bridge key ('4-5') surfaces in the unit that spans it, and vice versa", () => {
+    const saved = state.understand.comprehension;
+    state.understand.comprehension = { '1:4-5': { text: 'bridge note', ts: '2026-08-27T01:00:00.000Z|0000|a' } };
+    try {
+      render(<Understand />);
+      // section mode: the second section (verses 3 + 4-5) shows the note
+      const boxes = screen.getAllByPlaceholderText('What does this section mean in your own words?');
+      expect((boxes[1] as HTMLTextAreaElement).value).toBe('bridge note');
+    } finally {
+      state.understand.comprehension = saved;
+    }
+  });
+
+  it('saving from a bridge unit targets the EXACT span key, never its leading number', () => {
+    render(<Understand />);
+    fireEvent.click(screen.getByRole('button', { name: 'Verse' }));
+    const boxes = screen.getAllByPlaceholderText('What does this section mean in your own words?');
+    const bridgeBox = boxes[boxes.length - 1]; // last verse unit is 4-5
+    fireEvent.change(bridgeBox, { target: { value: 'note on the bridge' } });
+    fireEvent.blur(bridgeBox);
+    const w = writes();
+    expect(w.length).toBe(1);
+    expect(w[0].args[1]).toBe('4-5'); // §8.4 identity preserved
+  });
+
+  it('an unchanged focus/blur appends NO duplicate grow-only note', () => {
+    const saved = state.understand.comprehension;
+    state.understand.comprehension = { '1:1': { text: 'existing note', ts: '2026-08-27T01:00:00.000Z|0000|a' } };
+    try {
+      render(<Understand />);
+      const box = screen.getAllByPlaceholderText('What does this section mean in your own words?')[0];
+      expect((box as HTMLTextAreaElement).value).toBe('existing note');
+      fireEvent.focus(box);
+      fireEvent.blur(box);
+      expect(writes()).toEqual([]);
+    } finally {
+      state.understand.comprehension = saved;
+    }
+  });
+});
+
 describe('#106 — the persistence shape: §8.5 note.add seals and projects', () => {
   it('the exact event addNote() emits validates through the reference and folds into notes output', async () => {
     const { sealAction } = await import('../src/data/journal/seal');

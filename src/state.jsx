@@ -341,6 +341,7 @@ export function AppProvider({ children }) {
   const rawRef = useRef(null); // authoritative raw book text, updated synchronously
   const stateRef = useRef(null); // live state for async closures
   const openSeqRef = useRef(0); // openBook sequence token (review finding M2)
+  const understandSeqRef = useRef(0); // loadUnderstand sequence token (2026-08-27 Codex review)
 
   // ---- derived display model -------------------------------------------------
   const model = useMemo(() => {
@@ -1789,13 +1790,18 @@ export function AppProvider({ children }) {
         const st = stateRef.current;
         const book = st.book;
         if (!book || !st.projectPins) return;
+        // Sequence token: pins/net/project can change while a load is pending,
+        // and two projects can both hold the same book code — a book-only
+        // guard lets an OLDER completion (or failure) overwrite the newer
+        // state. Only the latest call may dispatch, on BOTH paths.
+        const seq = ++understandSeqRef.current;
         dispatch({ type: 'set', patch: { understand: { loading: true } } });
         try {
           const { installed, coverage } = await a.resolutionContext();
           const frame = await a.projectFrame();
           const scopeRanges = scopeRangesFor(st.projectScope ?? {}, book.toUpperCase());
           const sets = st.projectPins.languageSets ?? {};
-          const loadSlot = async (slot, tool) => {
+          const loadSlot = async (slot, tool, deriveOpts = {}) => {
             const r = resolveSetSlot(st.projectPins, slot, book, coverage);
             if (!r.pin) {
               // No rung COVERS the book — but a pinned-yet-not-downloaded
@@ -1830,6 +1836,7 @@ export function AppProvider({ children }) {
             const { items, unplaceable } = await deriveForProject({
               tsv, tool, bookId: book.toLowerCase(),
               from: RESOURCE_FRAME, to: frame.name, schemes: frame.schemes, scopeRanges,
+              ...deriveOpts,
             });
             return {
               state: 'ready', items, pin: r.pin, rung: r.rung, unavailablePrimary,
@@ -1854,7 +1861,10 @@ export function AppProvider({ children }) {
             }
           };
           const [notes, questions, words, simplified] = await Promise.all([
-            loadSlot('translationNotes', 'translationNotes'),
+            // keepPlainNotes: the read-only surface shows EVERY note the
+            // resource carries, incl. rows without a SupportReference that
+            // checking rightly skips (deriveTnItems).
+            loadSlot('translationNotes', 'translationNotes', { keepPlainNotes: true }),
             loadSlot('translationQuestions', 'translationQuestions'),
             loadSlot('translationWordsLinks', 'translationWords'),
             loadSimplified(),
@@ -1866,12 +1876,13 @@ export function AppProvider({ children }) {
           for (const n of storeRef.current?.readNotes?.(book) ?? []) {
             comprehension[`${n.chapter}:${n.verse}`] = { text: n.text, ts: n.ts };
           }
-          if (stateRef.current.book !== book) return; // superseded
+          if (seq !== understandSeqRef.current) return; // superseded
           dispatch({
             type: 'set',
             patch: { understand: { loading: false, book, notes, questions, words, simplified, comprehension } },
           });
         } catch (e) {
+          if (seq !== understandSeqRef.current) return; // a stale failure never replaces current state
           dispatch({
             type: 'set',
             patch: { understand: { loading: false, error: String(e?.message || e) } },
@@ -1887,9 +1898,12 @@ export function AppProvider({ children }) {
         const store = storeRef.current;
         const book = st.book;
         if (!store || !book) return;
+        // The unchanged-text comparison lives in the ComprehensionBox against
+        // the note it actually DISPLAYS (unit-membership retrieval) — an
+        // exact-head compare here would miss it and append a duplicate
+        // grow-only note on a plain focus/blur (2026-08-27 Codex review).
         const trimmed = (text ?? '').trim();
-        const existing = (st.understand?.comprehension?.[`${chapter}:${verseKey}`]?.text ?? '').trim();
-        if (trimmed === existing || trimmed === '') return;
+        if (trimmed === '') return;
         try {
           await store.addNote(book, chapter, verseKey, trimmed);
         } catch (e) {
