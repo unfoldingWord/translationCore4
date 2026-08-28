@@ -343,22 +343,27 @@ describe('2026-08-27 adversarial round 8 regressions', () => {
       state.chapter = 2 as never;
       state.understand = {
         ...savedU,
-        sourceRefs: { '2': [{ c: 1, v: '1' }, { unmapped: '2:99' }] },
+        // Fan-out shape (I1): TWO project verses read the SAME source ref.
+        sourceRefs: { '2': [{ c: 1, v: '1', pc: 2, pv: '1' }, { c: 1, v: '1', pc: 2, pv: '2' }, { unmapped: '2:99' }] },
       } as never;
       render(<Understand />);
-      // the unit shows the SOURCE reference and the SOURCE chapter's text
-      expect(screen.getByText('Titus 1:1')).toBeTruthy();
-      expect(screen.getByText(/In the beginning was the Word/)).toBeTruthy();
+      // both fan-out units render, each showing the SOURCE ref and text
+      expect(screen.getAllByText('Titus 1:1').length).toBe(2);
+      expect(screen.getAllByText(/In the beginning was the Word/).length).toBe(2);
       // the unmappable project verse is stated, not guessed
       expect(screen.getByTestId('understand-unit-u2:99').textContent).toContain('2:99');
-      // and a save from that unit targets the SOURCE chapter/verse
-      const box = screen.getAllByPlaceholderText('What does this section mean in your own words?')[0];
-      fireEvent.change(box, { target: { value: 'note on the mapped ref' } });
+      // and a save from the SECOND unit writes ITS exact project ref
+      // verbatim (never a reverse-mapped span), with the source ref only
+      // naming the display echo bucket
+      const box = screen.getAllByPlaceholderText('What does this section mean in your own words?')[1];
+      fireEvent.change(box, { target: { value: 'note on project 2:2' } });
       fireEvent.blur(box);
       const w = writes();
       expect(w.length).toBe(1);
-      expect(w[0].args[0]).toBe(1); // source chapter, not project chapter 2
-      expect(w[0].args[1]).toBe('1');
+      expect(w[0].args[0]).toBe(2); // the PROJECT chapter…
+      expect(w[0].args[1]).toBe('2'); // …and the PROJECT verse, verbatim
+      expect((w[0].args[3] as { projectFrame: boolean; echoKey: string }).projectFrame).toBe(true);
+      expect((w[0].args[3] as { echoKey: string }).echoKey).toBe('1:1');
     } finally {
       state.understand = savedU;
       state.chapter = savedCh;

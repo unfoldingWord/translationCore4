@@ -95,7 +95,12 @@ export const INSTALLED_GATEWAY = GATEWAYS.find((g) => g.id === 'en') as Gateway;
  * still say `Idiomas-Puentes`, an org that 404s today). The configured org is
  * the address the app pins by, so it wins where it is unambiguous. */
 export const orgForRepoName = (repoName: string): string | null => {
-  const match = repoName.match(/^(.+)_(tn|tw|twl|ta)$/);
+  // The D64 optional resources (_tq, and the simplified _gst/_ust texts)
+  // resolve like the required suite — without them, a legacy sideload with a
+  // stale metadata owner records a pin no configured gateway org matches, and
+  // languageSetFromInstalled hides a resource that is physically present
+  // (2026-08-27 adversarial round 9).
+  const match = repoName.match(/^(.+)_(tn|tw|twl|ta|tq|gst|ust)$/);
   if (!match) return null;
   const orgs = [...new Set(GATEWAYS.filter((g) => g.id === match[1]).map((g) => g.org))];
   return orgs.length === 1 ? orgs[0] : null;

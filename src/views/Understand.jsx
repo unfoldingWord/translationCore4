@@ -78,7 +78,10 @@ function ComprehensionBox({ book, chapter, unit }) {
   // chapter's draft dirty under the new one. (Blur has already fired the
   // previous target's save by the time the identity changes.)
   const identity = `${book}|${chapter}|${unit.key}`;
-  const dirtyKey = `${book}|${chapter}:${unit.head}`;
+  // A cross-frame unit's durable identity is its PROJECT reference (I1).
+  const dirtyKey = unit.project
+    ? `${book}|${unit.project.chapter}:${unit.project.verse}`
+    : `${book}|${chapter}:${unit.head}`;
   // E1 (adversarial round 5): a stored update must never CLOBBER a draft the
   // user has typed since — sync from stored only while the box still shows
   // the previous stored value; a diverged draft stays, and its dirty mark is
@@ -117,7 +120,14 @@ function ComprehensionBox({ book, chapter, unit }) {
       setClearRefused(true);
       return;
     }
-    actions.saveComprehension(chapter, unit.head, text);
+    if (unit.project) {
+      // I1: the exact project-frame reference is written VERBATIM; the source
+      // ref only names the display bucket for the local echo.
+      actions.saveComprehension(unit.project.chapter, unit.project.verse, text,
+        { projectFrame: true, echoKey: `${chapter}:${unit.head}` });
+    } else {
+      actions.saveComprehension(chapter, unit.head, text);
+    }
   };
   return (
     <>
@@ -371,7 +381,10 @@ export default function Understand() {
       if (r.unmapped) {
         units.push({ key: `u${r.unmapped}`, unmapped: r.unmapped });
       } else {
-        units.push({ key: `m${r.c}:${r.v}`, srcChapter: r.c, head: r.v, label: `${bookName(book.code)} ${r.c}:${r.v}`, verses: [r.v] });
+        // Keyed by the PROJECT ref (I1): fan-out gives two project verses the
+        // same source ref, and each must stay its own unit with its own
+        // exact journal identity.
+        units.push({ key: `m${r.pc}:${r.pv}`, srcChapter: r.c, head: r.v, project: { chapter: r.pc, verse: r.pv }, label: `${bookName(book.code)} ${r.c}:${r.v}`, verses: [r.v] });
       }
     }
   } else if (mode === 'section' && starts.length > 0) {

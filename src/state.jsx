@@ -1931,7 +1931,12 @@ export function AppProvider({ children }) {
                 verse: /^\d+$/.test(String(entry.verseKey)) ? Number(entry.verseKey) : String(entry.verseKey),
                 schemes: frame.schemes,
               });
-              if (out.ok) list.push({ c: out.reference.chapter, v: String(out.reference.verse) });
+              // I1 (adversarial round 9): the EXACT project reference rides
+              // along — the source ref is for display only, and the save
+              // writes the project ref verbatim. A reverse-mapped identity is
+              // lossy under fan-out (rsc NEH 7:67 and 7:68 both read eng
+              // 7:67; reversing yields a synthetic '67-68' span).
+              if (out.ok) list.push({ c: out.reference.chapter, v: String(out.reference.verse), pc: entry.chapter, pv: String(entry.verseKey) });
               else list.push({ unmapped: `${entry.chapter}:${entry.verseKey}` });
             }
           }
@@ -2032,7 +2037,7 @@ export function AppProvider({ children }) {
       /** The Understand screen's ONLY write (#106, owner ruling 2026-08-27):
        * persist one comprehension note through the §8.5 journal (note.add,
        * grow-only). A no-op or emptied box writes nothing. */
-      saveComprehension: async (chapter, verseKey, text) => {
+      saveComprehension: async (chapter, verseKey, text, opts = {}) => {
         const st = stateRef.current;
         // C1 (adversarial round 3): the WHOLE operation is bound to the
         // project it started in — store, repoPath and book are captured
@@ -2092,6 +2097,10 @@ export function AppProvider({ children }) {
           // or unresolved frame REFUSES the write and says so, because a note
           // journaled under a wrong identity can never be repaired (grow-only).
           let target = { chapter, verse: verseKey };
+          // I1: a cross-frame unit already carries its EXACT project-frame
+          // reference — write it verbatim; mapping a display (source) ref
+          // back would be lossy under fan-out.
+          if (!opts.projectFrame) {
           const frame = await resolveProjectFrame(repoPath, { store, api });
           if (frame.state !== 'ready') {
             fail(t('understand.saveUnmappable'));
@@ -2109,6 +2118,7 @@ export function AppProvider({ children }) {
               return false;
             }
             target = { chapter: out.reference.chapter, verse: out.reference.verse };
+          }
           }
           // The captured store writes into the ORIGINATING project no matter
           // what the UI shows by now.
@@ -2154,7 +2164,9 @@ export function AppProvider({ children }) {
               saveError: null,
               comprehension: {
                 ...now.understand?.comprehension,
-                [`${chapter}:${verseKey}`]: { text: trimmed, ts: `local-${Date.now()}` },
+                // The local echo lives in DISPLAY (source) space; a
+                // cross-frame save names it explicitly (I1).
+                [opts.echoKey ?? `${chapter}:${verseKey}`]: { text: trimmed, ts: `local-${Date.now()}` },
               },
             },
           },
