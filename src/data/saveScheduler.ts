@@ -15,7 +15,13 @@ export type SpliceFn = (
   newBody: string,
 ) => string;
 
-export type WriteBookFn = (book: string, usfm: string) => Promise<void>;
+/** Writes one key's snapshot. MAY return a replacement string (round 24):
+ * a writer that REFUSES a snapshot (e.g. the note writer refusing an empty
+ * value, G1) reports the value that is actually durable instead — the
+ * scheduler adopts it as `persisted`, and as `current` too when nothing newer
+ * was staged meanwhile, so the buffer never claims a refused snapshot was
+ * saved. A void return means the snapshot itself was persisted. */
+export type WriteBookFn = (book: string, usfm: string) => Promise<void | string>;
 
 /** The retained payload of a failed write (FR-32: keep the buffer, offer retry). */
 export interface SaveFailure {
@@ -225,9 +231,20 @@ export class SaveScheduler {
       for (const book of books) {
         const snapshot = this.current.get(book) as string;
         try {
-          await this.writeBook(book, snapshot);
-          // Edits made during the write keep the book dirty (current moved on).
-          this.persisted.set(book, snapshot);
+          const replacement = await this.writeBook(book, snapshot);
+          if (typeof replacement === 'string' && replacement !== snapshot) {
+            // Round 24: the writer REFUSED this snapshot and reported the
+            // durable value instead. Recording the refused snapshot as
+            // persisted would make the buffer claim 'saved' while disagreeing
+            // with the store (a blank box over a durable note, and a
+            // duplicate append on retype). Adopt the durable value — and as
+            // `current` too, unless something newer was staged meanwhile.
+            this.persisted.set(book, replacement);
+            if (this.current.get(book) === snapshot) this.current.set(book, replacement);
+          } else {
+            // Edits made during the write keep the book dirty (current moved on).
+            this.persisted.set(book, snapshot);
+          }
         } catch (error) {
           this.failure = { book, usfm: snapshot, error };
           break;

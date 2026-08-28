@@ -182,7 +182,7 @@ describe('D65 — the defect classes, restated against the REAL scheduler', () =
 
 describe('2026-08-28 adversarial round 23 regressions', () => {
   const clock = () => ({ setTimeout: () => 0, clearTimeout: () => {} });
-  const passthroughSched = (writeBook: (k: string, t: string) => Promise<void>) =>
+  const passthroughSched = (writeBook: (k: string, t: string) => Promise<void | string>) =>
     new SaveScheduler({ splice: (_r, _c, _v, body) => body, writeBook, clock: clock() });
 
   it('the writer REFUSES empty text at the boundary — the grow-only journal never receives a clear (G1)', async () => {
@@ -209,7 +209,9 @@ describe('2026-08-28 adversarial round 23 regressions', () => {
         started();
         await new Promise<void>((r) => { release = r; });
       }
-      await writer(k, text);
+      // The writer's return value is the refusal contract (round 24) — a
+      // wrapper must pass it through, as the production writeBook does.
+      return writer(k, text);
     });
     // Fresh note: stored is ''. The user types A; the flush starts (held open).
     sched.seedIfAbsent(key, '');
@@ -222,10 +224,49 @@ describe('2026-08-28 adversarial round 23 regressions', () => {
     release();
     await flush;
     // persisted advanced to A, so the staged '' is dirty — the next flush
-    // hands '' to the writer, which REFUSES it; the buffer then reconciles.
+    // hands '' to the writer, which REFUSES it and reports the durable value.
     expect(await sched.drain()).toBe(true);
     expect(journal).toEqual(['text A']); // no empty note.add, ever
     expect(sched.getState()).toBe('saved');
+    // Round 24: the buffer must AGREE with the journal after the refusal —
+    // a remounting box restores from the buffer, so a blank here would show
+    // an empty box over a durable note.
+    expect(sched.bookText(key)).toBe('text A');
+    // …and retyping the same text compares clean: no duplicate note.add.
+    sched.markDirty(key, 1, '1', 'text A');
+    expect(await sched.drain()).toBe(true);
+    expect(journal).toEqual(['text A']);
+  });
+
+  it('round 24: a writer refusal with newer text ALREADY staged keeps the newer text dirty (never clobbered)', async () => {
+    const journal: string[] = [];
+    let releaseEmpty: () => void = () => {};
+    let started: () => void = () => {};
+    const startedP = new Promise<void>((r) => { started = r; });
+    const key = noteKeyFor(REPO, 'TIT', 1, '1');
+    const sched = passthroughSched(async (_k, text) => {
+      if (text.trim() === '') {
+        started();
+        await new Promise<void>((r) => { releaseEmpty = r; });
+        return 'durable text'; // the refusal reports the durable value
+      }
+      journal.push(text);
+    });
+    sched.seedIfAbsent(key, '');
+    sched.markDirty(key, 1, '1', ''); // hmm: clean ('' === ''), force via persisted
+    // Make '' genuinely dirty the way the race does: persisted holds text.
+    sched.markDirty(key, 1, '1', 'durable text');
+    await sched.flushOnBlur(); // journals 'durable text'; persisted = it
+    sched.markDirty(key, 1, '1', ''); // now '' is dirty
+    const flush = sched.flushOnBlur();
+    await startedP; // the refusing write is in flight
+    sched.markDirty(key, 1, '1', 'newer draft'); // user types meanwhile
+    releaseEmpty();
+    await flush;
+    // The refusal must not clobber the newer draft: it stays dirty and writes.
+    expect(sched.bookText(key)).toBe('newer draft');
+    expect(await sched.drain()).toBe(true);
+    expect(journal).toEqual(['durable text', 'newer draft']);
   });
 
   it('F1: a note staged while the VERSE drain awaited is flushed by the drain loop, never disposed unflushed', async () => {

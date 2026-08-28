@@ -928,14 +928,21 @@ export const noteKeyFor = (repoPath, book, chapter, verse) =>
  * never receives a guessed reference. On success the persisted text is echoed
  * through the noteSaved reducer action (S1 atomic merge). */
 function makeNoteWriter({ noteTargetsRef, dispatch, apiClient }) {
+  // The last text THIS writer journaled per key — what is durably at the
+  // head. A refusal reports it back (round 24) so the scheduler's buffer
+  // never records a refused snapshot as saved.
+  const lastWritten = new Map();
   return async (key, text) => {
-    // Round 23: G1's clear refusal must hold at the WRITE boundary too. A
+    // Round 23/24: G1's clear refusal must hold at the WRITE boundary too. A
     // race can leave an empty value dirty (clear a fresh note while its
     // first write is in flight: `persisted` advances to the in-flight text,
     // making the staged '' diverge) — the grow-only journal must never
-    // receive it. Returning without writing lets the scheduler mark the
-    // empty snapshot persisted, so the buffer reconciles clean.
-    if (text.trim() === '') return;
+    // receive it. REPORT the durable value instead of writing: the scheduler
+    // adopts it as persisted (and as current when nothing newer was staged),
+    // so the box shows the durable note again and a retype of the same text
+    // compares clean — never a blank box over a durable note, never a
+    // duplicate append (round 24).
+    if (text.trim() === '') return lastWritten.get(key) ?? '';
     const target = noteTargetsRef.current.get(key);
     if (!target) throw new Error(`comprehension note target unknown: ${key}`);
     const { store, repoPath, book, chapter, verse, projectFrame } = target;
@@ -959,6 +966,7 @@ function makeNoteWriter({ noteTargetsRef, dispatch, apiClient }) {
       }
     }
     await store.addNote(book, ref.chapter, ref.verse, text.trim());
+    lastWritten.set(key, text.trim());
     dispatch({
       type: 'noteSaved',
       repoPath,
