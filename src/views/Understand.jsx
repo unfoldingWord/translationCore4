@@ -83,6 +83,8 @@ const displayedUnitNote = (comprehension, chapter, unit) => {
  * dismissal, or when the stash equals the stored text. Module-level: survives
  * remounts, never touches the journal. */
 const draftStash = new Map();
+/** Test hook: the stash is module state and must not leak between tests. */
+export const __draftStashForTests = draftStash;
 
 /** The comprehension box (#106's only write): saves on blur through
  * actions.saveComprehension; everything else on the screen is read-only. */
@@ -141,6 +143,18 @@ function ComprehensionBox({ book, chapter, unit }) {
   const prevStoredRef = React.useRef(stored);
   const identityRef = React.useRef(identity);
   const prevStashKeyRef = React.useRef(stashKey);
+  // P1 (adversarial round 16): a background refresh can UNMOUNT this box
+  // (cross-frame units re-key) with unblurred text — park the diverged draft
+  // on unmount exactly like an identity change does; the mount-time restore
+  // brings it back.
+  const latestRef = React.useRef({ text: stored, stored, stashKey });
+  latestRef.current = { text, stored, stashKey };
+  React.useEffect(() => () => {
+    const last = latestRef.current;
+    if (last.text.trim() !== last.stored.trim() && last.text.trim() !== '') {
+      draftStash.set(last.stashKey, last.text);
+    }
+  }, []);
   React.useEffect(() => {
     const identityChanged = identityRef.current !== identity;
     identityRef.current = identity;

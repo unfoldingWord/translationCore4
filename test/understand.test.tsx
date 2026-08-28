@@ -74,7 +74,13 @@ vi.mock('../src/state.jsx', () => ({
   SUITE_VERSION: 'v89',
 }));
 
-import Understand from '../src/views/Understand.jsx';
+import Understand, { __draftStashForTests } from '../src/views/Understand.jsx';
+
+// The draft stash is module state (survives unmounts BY DESIGN, round 15/16);
+// tests must not inherit each other's parked drafts. cleanup() FIRST: it is
+// the unmount that parks the previous test's drafts — clearing before it
+// would re-inherit them.
+beforeEach(() => { cleanup(); __draftStashForTests.clear(); });
 
 const writes = () => calls.filter((c) => !READ_SIDE.has(c.name));
 

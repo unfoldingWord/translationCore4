@@ -1323,13 +1323,19 @@ export function AppProvider({ children }) {
         const originStore = storeRef.current;
         const originRepoPath = stateRef.current.project?.repoPath ?? null;
         const originGateway = stateRef.current.src.gateway;
+        const originBook = src.book;
+        if (!originGateway) return;
         dispatch({ type: 'patchSrc', patch: { dl: 'run', error: null, progress: null } });
 
         const local = new Set(await api.listLocalRepos().catch(() => []));
         const done = [];
         const failed = [];
         for (const row of chosen) {
-          const repoPath = `${DCS_HOST}/${stateRef.current.src.gateway.org}/${row.repo}`;
+          // P2 (adversarial round 16): every row downloads from the gateway
+          // SNAPSHOTTED at initiation — the modal stays interactive during
+          // long downloads, and a live read could mix organizations or throw
+          // on a cleared gateway mid-run.
+          const repoPath = `${DCS_HOST}/${originGateway.org}/${row.repo}`;
           // Owner-qualified target (B9): `Xenizo/fr_tn` and `MVHS/fr_tn` get
           // DISTINCT local paths, so selecting the second gateway no longer
           // collides with the first and is no longer skipped as "installed".
@@ -1380,8 +1386,8 @@ export function AppProvider({ children }) {
           },
         });
         if (done.length) {
-          const langKey = gatewayKey(stateRef.current.src.gateway);
-          const book = stateRef.current.src.book;
+          const langKey = gatewayKey(originGateway); // the snapshot, not the live modal (P2)
+          const book = originBook;
           const already = stateRef.current.installedSrc.some(
             (x) => x.langKey === langKey && x.book === book,
           );
@@ -1934,7 +1940,15 @@ export function AppProvider({ children }) {
         // guard lets an OLDER completion (or failure) overwrite the newer
         // state. Only the latest call may dispatch, on BOTH paths.
         const seq = ++understandSeqRef.current;
-        dispatch({ type: 'set', patch: { understand: { loading: true } } });
+        // P1 (adversarial round 16): a SAME-BOOK refresh (pins/net change)
+        // keeps comprehension and sourceRefs standing — wiping them mid-edit
+        // unmounts cross-frame units (falling back to same-frame display) and
+        // discards unblurred drafts. A different book starts clean.
+        const prevU = stateRef.current.understand;
+        dispatch({
+          type: 'set',
+          patch: { understand: { ...(prevU && prevU.book === book ? prevU : {}), loading: true } },
+        });
         // Built before the help slots and carried onto BOTH dispatch paths
         // (A3): a failing optional resource must never hide persisted notes
         // behind writable empty boxes. null = "not read" — the UI disables
