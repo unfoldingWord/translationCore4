@@ -379,3 +379,277 @@ describe('round 6 B2: pruning a newer intent never resurrects a superseded resol
     expect(report.ok, describeVerifierReport(report)).toBe(true);
   });
 });
+
+describe('2026-08-28 adversarial round 26: a note retry after a lost publish response is idempotent', () => {
+  it('the retried note.add is not appended as a second permanent event', async () => {
+    const { rig, api, kv, store, restart } = await setup();
+
+    // Same crash window as B1, on the grow-only note op: the segment is
+    // ACCEPTED, the stage-key delete fails, publish() throws after the
+    // append landed — the caller (the D65 note SaveScheduler) sees a failure
+    // and its Retry replays the SAME text.
+    let lostResponses = 1;
+    const rawDelete = kv.delete.bind(kv);
+    kv.delete = async (key: string): Promise<void> => {
+      if (lostResponses > 0 && key.startsWith('outbox:')) {
+        lostResponses -= 1;
+        throw new Error('injected failure: lost response after accept');
+      }
+      return rawDelete(key);
+    };
+    await expect(store.addNote('TIT', 1, '2', 'What Paul means here.')).rejects.toThrow(/lost response/);
+
+    // The note IS on the server and the staged intent survived.
+    const published = segmentPaths(rig).filter((p) =>
+      (rig.repos.get(REPO)?.files.get(p) ?? '').includes('What Paul means here.'),
+    );
+    expect(published).toHaveLength(1);
+
+    // The retry: replay recovers the accepted note into the fold; the
+    // target's LATEST note already carries this exact text, so nothing is
+    // appended — grow-only history is not multiplied (round 26).
+    await store.addNote('TIT', 1, '2', 'What Paul means here.');
+    const republished = segmentPaths(rig).filter((p) =>
+      (rig.repos.get(REPO)?.files.get(p) ?? '').includes('What Paul means here.'),
+    );
+    expect(republished, 'the same note must not be journaled twice').toHaveLength(1);
+    expect(store.readNotes('TIT').filter((n) => n.text === 'What Paul means here.')).toHaveLength(1);
+
+    // A genuinely NEW text for the same target still appends (grow-only).
+    await store.addNote('TIT', 1, '2', 'A revised understanding.');
+    const notes = store.readNotes('TIT').filter((n) => n.chapter === '1' && n.verse === '2');
+    expect(notes[notes.length - 1].text).toBe('A revised understanding.');
+    expect(notes).toHaveLength(2);
+
+    // The project verifies and a reopen converges quietly.
+    const report = await verifyProjectAgainstJournal(api, REPO);
+    expect(report.ok, describeVerifierReport(report)).toBe(true);
+    const store2 = restart();
+    await store2.open(REPO);
+    expect(store2.lastOpenReport?.classification).toBe('converged');
+  });
+});
+
+describe('2026-08-28 adversarial round 27: an ABANDONED failed note never resurrects from the outbox', () => {
+  it('a provably-unpublished staged note.add is withdrawn on failure — a later mutation does not republish it', async () => {
+    const { rig, api, kv, store, restart } = await setup();
+
+    // PRE-accept transport failure: the segment write itself fails, so the
+    // staged intent is provably unpublished. Without the round-27 withdrawal
+    // the stage would linger, and the next mutation's replayStaged would
+    // REPUBLISH the note the user has since abandoned — permanently
+    // (grow-only, no delete).
+    rig.failOn((c) => c.method === 'POST' && (c.ipath ?? '').includes('/segments/'), 1);
+    await expect(store.addNote('TIT', 1, '2', 'An abandoned thought.')).rejects.toThrow(/injected failure/);
+
+    // Nothing landed, and neither the stage nor its ledger record lingers.
+    expect(segmentPaths(rig).filter((p) =>
+      (rig.repos.get(REPO)?.files.get(p) ?? '').includes('An abandoned thought.'),
+    )).toHaveLength(0);
+    expect((await kv.keys('outbox:')).filter((k) => k.includes(REPO))).toHaveLength(0);
+    expect((await kv.keys('intent:')).filter((k) => k.includes(REPO))).toHaveLength(0);
+
+    // The user clears the box and moves on; a later UNRELATED mutation (which
+    // runs replayStaged first) must not resurrect the abandoned note.
+    await store.writeBook('TIT', TIT_USFM.replace('___', 'Nueva vida.'));
+    expect(store.readNotes('TIT')).toHaveLength(0);
+    expect(segmentPaths(rig).filter((p) =>
+      (rig.repos.get(REPO)?.files.get(p) ?? '').includes('An abandoned thought.'),
+    )).toHaveLength(0);
+
+    // The project verifies and a reopen converges quietly.
+    const report = await verifyProjectAgainstJournal(api, REPO);
+    expect(report.ok, describeVerifierReport(report)).toBe(true);
+    const store2 = restart();
+    await store2.open(REPO);
+    expect(store2.lastOpenReport?.classification).toBe('converged');
+    expect(store2.readNotes('TIT')).toHaveLength(0);
+  });
+
+  it('a lost-response accept KEEPS its stage — the accepted note is durable truth, never withdrawn', async () => {
+    const { rig, kv, store } = await setup();
+    // Post-accept window (B1): the stage-key delete fails after the segment
+    // landed. The withdrawal probe finds the exact bytes on the server and
+    // returns "accepted" — the stage stays for replay to reconcile.
+    let lostResponses = 1;
+    const rawDelete = kv.delete.bind(kv);
+    kv.delete = async (key: string): Promise<void> => {
+      if (lostResponses > 0 && key.startsWith('outbox:')) {
+        lostResponses -= 1;
+        throw new Error('injected failure: lost response after accept');
+      }
+      return rawDelete(key);
+    };
+    await expect(store.addNote('TIT', 1, '2', 'A kept thought.')).rejects.toThrow(/lost response/);
+    // The note IS on the server, and the stage survived the failure handling.
+    expect(segmentPaths(rig).filter((p) =>
+      (rig.repos.get(REPO)?.files.get(p) ?? '').includes('A kept thought.'),
+    )).toHaveLength(1);
+    expect((await kv.keys('outbox:')).filter((k) => k.includes(REPO))).toHaveLength(1);
+    // Replay reconciles on the next mutation; the accepted note is readable.
+    await store.writeBook('TIT', TIT_USFM.replace('___', 'Nueva vida.'));
+    expect(store.readNotes('TIT').map((n) => n.text)).toEqual(['A kept thought.']);
+  });
+});
+
+describe('2026-08-28 adversarial round 28: Retry surfaces a lost-response accept even over a CLEAN buffer', () => {
+  it('fresh note → accepted/response lost → clear → Retry: the durable note appears immediately, exactly once, and Saved is honest', async () => {
+    const { kv, store } = await setup();
+    const { SaveScheduler } = await import('../src/data/saveScheduler');
+    const { __makeNoteWriterForTests: makeNoteWriter, noteKeyFor } =
+      await import('../src/state.jsx');
+
+    // The real D65 wiring: the note scheduler writes through the real store.
+    const noteTargetsRef = { current: new Map() };
+    const dispatched: Array<Record<string, unknown>> = [];
+    const writer = makeNoteWriter({
+      noteTargetsRef,
+      dispatch: (a: Record<string, unknown>) => dispatched.push(a),
+      apiClient: {},
+    });
+    const sched = new SaveScheduler({
+      splice: (_r: string, _c: unknown, _v: unknown, body: string) => body,
+      writeBook: (k: string, text: string) => writer(k, text),
+      clock: { setTimeout: () => 0, clearTimeout: () => {} },
+    });
+    const key = noteKeyFor(REPO, 'TIT', 1, '2');
+    noteTargetsRef.current.set(key, {
+      store, repoPath: REPO, book: 'TIT', chapter: 1, verse: '2', projectFrame: true,
+    });
+
+    // Fresh note: the user types A; the write is ACCEPTED but the response is
+    // lost (the stage-key delete fails after the segment landed — B1 window).
+    let lostResponses = 1;
+    const rawDelete = kv.delete.bind(kv);
+    kv.delete = async (k: string): Promise<void> => {
+      if (lostResponses > 0 && k.startsWith('outbox:')) {
+        lostResponses -= 1;
+        throw new Error('injected failure: lost response after accept');
+      }
+      return rawDelete(k);
+    };
+    sched.seedIfAbsent(key, '');
+    sched.markDirty(key, 1, '2', 'A durable thought.');
+    await sched.flushOnBlur();
+    expect(sched.getState()).toBe('error');
+
+    // The user CLEARS the failed fresh draft: the box stages the stored text
+    // (empty) — the buffer is clean, so retry() alone would write nothing.
+    sched.markDirty(key, 1, '2', '');
+
+    // The retryNoteSave sequence (round 28): reconcile the store FIRST, then
+    // retry the buffer, then re-read the notes the screen displays.
+    await store.reconcileStaged();
+    await sched.retry();
+    expect(sched.getState()).toBe('saved'); // honest: nothing is pending or failed…
+    const notes = store.readNotes('TIT').filter((n) => n.chapter === '1' && n.verse === '2');
+    expect(notes.map((n) => n.text)).toEqual(['A durable thought.']); // …and the accepted note is VISIBLE, once
+    expect((await kv.keys('outbox:')).filter((k) => k.includes(REPO))).toHaveLength(0); // the stage reconciled
+
+    // A later mutation replays nothing new — no surprise resurrection.
+    await store.writeBook('TIT', TIT_USFM.replace('___', 'Nueva vida.'));
+    expect(store.readNotes('TIT').filter((n) => n.text === 'A durable thought.')).toHaveLength(1);
+  });
+});
+
+describe('2026-08-28 adversarial round 29: a FAILED reconcile keeps the note error standing', () => {
+  it('clean failed buffer + rejecting reconcileStaged → still error, never Saved; a healed transport then surfaces the note once', async () => {
+    const { rig, kv, store } = await setup();
+    const { SaveScheduler } = await import('../src/data/saveScheduler');
+    const { __makeNoteWriterForTests: makeNoteWriter, noteKeyFor } =
+      await import('../src/state.jsx');
+    const noteTargetsRef = { current: new Map() };
+    const writer = makeNoteWriter({ noteTargetsRef, dispatch: () => {}, apiClient: {} });
+    const sched = new SaveScheduler({
+      splice: (_r: string, _c: unknown, _v: unknown, body: string) => body,
+      writeBook: (k: string, text: string) => writer(k, text),
+      clock: { setTimeout: () => 0, clearTimeout: () => {} },
+      // Round 31 hardening: the gate lives IN the scheduler — retry() runs
+      // this on a retained failure and refuses when it rejects.
+      reconcile: () => store.reconcileStaged(),
+    });
+    const key = noteKeyFor(REPO, 'TIT', 1, '2');
+    noteTargetsRef.current.set(key, {
+      store, repoPath: REPO, book: 'TIT', chapter: 1, verse: '2', projectFrame: true,
+    });
+    const retrySequence = () => sched.retry();
+
+    // SUSTAINED transport failure on the journal segment routes: the write's
+    // pre-check fails, the round-27 cancel probe fails (stage kept on
+    // doubt), and the FIRST reconcile fails too — three consecutive hits.
+    rig.failOn((c) => (c.ipath ?? '').includes('/segments/'), 3);
+    sched.seedIfAbsent(key, '');
+    sched.markDirty(key, 1, '2', 'A held-up thought.');
+    await sched.flushOnBlur();
+    expect(sched.getState()).toBe('error');
+    // The stage was KEPT (the cancel probe could not prove it unpublished).
+    expect((await kv.keys('outbox:')).filter((k) => k.includes(REPO))).toHaveLength(1);
+
+    // The user CLEARS the fresh draft (buffer clean) and clicks Retry while
+    // the transport is still down: the reconcile REJECTS, and the guard must
+    // leave the error standing — never a false Saved over an unresolved
+    // permanent write.
+    sched.markDirty(key, 1, '2', '');
+    await retrySequence();
+    expect(sched.getState()).toBe('error');
+    expect((await kv.keys('outbox:')).filter((k) => k.includes(REPO))).toHaveLength(1);
+
+    // The transport heals; the SAME gesture now reconciles (the staged note
+    // republishes — a kept intent resolves toward durability, R-8.1.7/8),
+    // retries a clean buffer, and reports Saved honestly.
+    await retrySequence();
+    expect(sched.getState()).toBe('saved');
+    const notes = store.readNotes('TIT').filter((n) => n.chapter === '1' && n.verse === '2');
+    expect(notes.map((n) => n.text)).toEqual(['A held-up thought.']);
+    expect((await kv.keys('outbox:')).filter((k) => k.includes(REPO))).toHaveLength(0);
+  });
+});
+
+describe('2026-08-28 adversarial round 30: NAVIGATION drains reconcile staged notes like Retry does', () => {
+  it('a navigation drain over a clean failed buffer blocks while reconcile rejects, and surfaces the note once when it heals', async () => {
+    const { rig, kv, store } = await setup();
+    const { SaveScheduler } = await import('../src/data/saveScheduler');
+    const { __makeNoteWriterForTests: makeNoteWriter, noteKeyFor } =
+      await import('../src/state.jsx');
+    const noteTargetsRef = { current: new Map() };
+    const writer = makeNoteWriter({ noteTargetsRef, dispatch: () => {}, apiClient: {} });
+    const sched = new SaveScheduler({
+      splice: (_r: string, _c: unknown, _v: unknown, body: string) => body,
+      writeBook: (k: string, text: string) => writer(k, text),
+      clock: { setTimeout: () => 0, clearTimeout: () => {} },
+      // Round 31 hardening: navigation calls sched.drain() directly — the
+      // reconcile gate is INSIDE, so no call site can bypass it.
+      reconcile: () => store.reconcileStaged(),
+    });
+    const key = noteKeyFor(REPO, 'TIT', 1, '2');
+    noteTargetsRef.current.set(key, {
+      store, repoPath: REPO, book: 'TIT', chapter: 1, verse: '2', projectFrame: true,
+    });
+    // Navigation calls the scheduler's own gated drain directly (round 31).
+    const drainNotes = () => sched.drain();
+
+    // Failure with the stage KEPT (write pre-check and cancel probe both
+    // fail), then the user clears the fresh draft: buffer clean, error
+    // standing — the exact state a bare sched.drain() would wave through.
+    rig.failOn((c) => (c.ipath ?? '').includes('/segments/'), 3);
+    sched.seedIfAbsent(key, '');
+    sched.markDirty(key, 1, '2', 'A navigating thought.');
+    await sched.flushOnBlur();
+    expect(sched.getState()).toBe('error');
+    sched.markDirty(key, 1, '2', '');
+
+    // Navigation while the transport is still down: the drain must REFUSE —
+    // the third injected failure rejects the reconcile.
+    expect(await drainNotes()).toBe(false);
+    expect(sched.getState()).toBe('error'); // still standing, still blocking
+    expect((await kv.keys('outbox:')).filter((k) => k.includes(REPO))).toHaveLength(1);
+
+    // The transport heals: the SAME navigation reconciles (the kept intent
+    // republishes toward durability, R-8.1.7/8), drains clean, and proceeds.
+    expect(await drainNotes()).toBe(true);
+    expect(sched.getState()).toBe('saved');
+    const notes = store.readNotes('TIT').filter((n) => n.chapter === '1' && n.verse === '2');
+    expect(notes.map((n) => n.text)).toEqual(['A navigating thought.']);
+    expect((await kv.keys('outbox:')).filter((k) => k.includes(REPO))).toHaveLength(0);
+  });
+});

@@ -1074,3 +1074,24 @@ every existing schemaVersion 2 file stays conformant. The shipped English set pi
 Per-gateway availability recorded in `gateways.ts` (`hasTq`/`hasSimplified`,
 [VERIFIED 2026-08-27 — DCS org queries]). Spec + harness changed in the same
 change set per §9 (suite → 40 checks, Stage-1 35).
+
+## D65 (2026-08-28, project-owner ruling) **Comprehension notes save through their own SaveScheduler — one write discipline for the whole app. Navigation is flush-and-go.** [epic #104, issue #106; round-22 review checkpoint]
+
+Twenty-two adversarial-review rounds put ~21 findings in one subsystem: the
+hand-rolled note-save machinery (per-target revisions, write chains, a failure
+ledger, in-flight counts, a module draft stash, a separate dirty map). The
+owner stopped the patch loop and ruled: route comprehension notes through the
+SaveScheduler discipline that verses use. A second scheduler instance carries
+the notes (the failure slot is per instance — a failing note must not park
+verse autosave). The key is the full note identity `repoPath|book|chapter:verse`.
+The buffer is a per-key latest-value register, so a retry replays only the
+newest text, and the buffer is the draft store across unmounts — the round-21
+and round-22 defect classes cannot exist in this shape.
+
+Behavior rulings (owner, 2026-08-28): notes autosave on the same 2-second
+debounce as verses, and each flush appends one grow-only §8.5 `note.add`.
+Navigation FLUSHES pending note text and proceeds (flush-and-go, same as
+verses); it refuses only while a write failure stands (FR-32). A cleared box
+never reaches the buffer as a write — the clear refusal (G1) stays, and a
+cleared box no longer blocks navigation. The checkpoint trigger itself was
+also ruled per subsystem, not per global round number.

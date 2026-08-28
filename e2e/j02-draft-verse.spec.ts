@@ -137,6 +137,14 @@ test.describe('J2 — a translator drafts a verse', () => {
       await expect
         .poll(async () => parseInt((await pctText()) || '0', 10))
         .toBeGreaterThan(before);
+      // The percent updates from in-memory state BEFORE the journal write
+      // lands; without waiting for the real save (like every sibling test
+      // does) the issue-#62 teardown verifier races the in-flight write and
+      // flakes with "journal materialization FAILED" (seen 2026-08-27, same
+      // commit passing and failing back-to-back).
+      await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', {
+        timeout: 10_000,
+      });
     },
   );
 });

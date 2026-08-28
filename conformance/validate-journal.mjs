@@ -2313,12 +2313,22 @@ try {
 // ---------- J26: the pin golden projection — events → byte-equivalent §5.3 resources.json ----------
 {
   const sample = JSON.parse(fs.readFileSync(ING('checking/resources.json'), 'utf8'));
-  const LS = ['gatewayLanguage', 'translationNotes', 'translationWordsLinks', 'translationWords', 'translationAcademy'];
+  // §5.3 1.10 (D64): the OPTIONAL slots are part of the golden projection —
+  // the sample's fallback set carries both; the primary set omits both, so
+  // this one round-trip proves presence AND absence project correctly
+  // (2026-08-27 Codex review: the grammar/projection change must be emitted
+  // here, not only accepted).
+  const LS = ['gatewayLanguage', 'translationNotes', 'translationWordsLinks', 'translationWords', 'translationAcademy', 'translationQuestions', 'simplifiedText'];
   const t = (s, c) => `2026-08-06T00:00:${String(s).padStart(2, '0')}.${String(c).padStart(3, '0')}Z|0000|pinner-a`;
   const events = [];
   let n = 0;
   const pin = (slot, entry) => events.push(mkEvent({ op: 'resource.pin.set', actor: 'pinner-a', ts: t(Math.floor(n / 60), (n++) % 60), slot, entry }));
-  for (const set of ['primary', 'fallback']) for (const slot of LS) pin(`languageSets.${set}.${slot}`, sample.languageSets[set][slot]);
+  for (const set of ['primary', 'fallback']) for (const slot of LS) {
+    if (sample.languageSets[set][slot] !== undefined) pin(`languageSets.${set}.${slot}`, sample.languageSets[set][slot]);
+  }
+  check('J26: the sample exercises the 1.10 optional slots — fallback pins both, primary omits both (D64)',
+    LS.slice(-2).every((slot) => sample.languageSets.fallback[slot] && !sample.languageSets.primary[slot]),
+    'translationQuestions + simplifiedText present on fallback only');
   for (const group of ['originalLanguage', 'lexicon']) for (const tk of ['nt', 'ot']) pin(`resources.${group}.${tk}`, sample.resources[group][tk]);
   for (const extra of sample.extraScripture) pin(`extraScripture.${extra.id}`, extra);
   const out = fold(events);

@@ -20,8 +20,9 @@ import { seedBookFromSource } from './data/seed';
 import { BOOK_NAMES, bookName } from './data/bookNames';
 import { GATEWAYS, gatewayKey, DCS_HOST, orgForRepoName } from './data/gateways';
 import { fetchAndInstallPin, latestReleaseTag, identifyExistingInstall } from './data/resourceFetch';
-import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, isPinLocal, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk, flavorOfMetadata } from './data/installed';
-import { TOOL_SLOT, preflightToolBook, resolutionRecord, resolveToolBook } from './data/resolve';
+import { isNotFoundError } from './data/serverApi';
+import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, mergeOptionalPins, isPinLocal, unsatisfiedProjectPinFor, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk, flavorOfMetadata } from './data/installed';
+import { TOOL_SLOT, preflightToolBook, resolutionRecord, resolveToolBook, resolveSetSlot } from './data/resolve';
 import {
   deriveForProject,
   mergeAndReattach,
@@ -37,6 +38,7 @@ import { TC_READY_TOPIC } from './data/serverApi';
 import { t } from './i18n';
 
 const AppCtx = createContext(null);
+const STORAGE_ID = 'uw-tc4';
 
 export const api = new ServerApi();
 
@@ -122,6 +124,11 @@ const ROLE_BY_FLAVOR = {
 const ROLE_BY_SUFFIX = {
   _tw: { k: 'words', name: 'sources.roleWords', bookScoped: false },
   _ta: { k: 'academy', name: 'sources.roleAcademy', bookScoped: false },
+  // tq rides on the suffix as well as the flavor: the RC catalog's flavor
+  // labels are unreliable for TSV repos (the same ambiguity that forced the
+  // _tw/_ta suffix rules above), and the questions download must not dead-end
+  // on a label (D64, 2026-08-27 review finding).
+  _tq: { k: 'questions', name: 'sources.roleQuestions', bookScoped: true },
 };
 
 /** The role a catalog repo plays, or null when tC4 does not use it.
@@ -234,11 +241,14 @@ function isOldTestament(bookCode) {
 
 /** usfm-js verse objects for one verse of a source book — the aligner's input. */
 function verseObjectsFor(usfmText, chapter, verse) {
+  // Catch-to-absence sweep (D30): null = the text is PRESENT but could not
+  // be parsed — the alignment surface states 'unreadable', never the false
+  // "not on this computer" claim that sends the user to re-download.
   try {
     const json = usfm.toJSON(usfmText);
     return json?.chapters?.[String(chapter)]?.[String(verse)]?.verseObjects ?? [];
   } catch {
-    return [];
+    return null;
   }
 }
 
@@ -250,7 +260,7 @@ function firstDraftedRef(bookRaw) {
 }
 
 const initial = () => ({
-  view: 'home', // home | draft | check | publish
+  view: 'home', // home | read (Understand) | draft (Translate) | check | publish (Community Checking)
   projects: null, // null = loading; [] = none
   project: null, // ProjectSummary + repoPath
   book: null,
@@ -265,6 +275,15 @@ const initial = () => ({
   helps: false,
   helpsTab: 'notes',
   academy: null,
+  // Understand (D63, #106): read-only helps for the open book, derived like a
+  // check session (never stored), plus the translator's own comprehension
+  // notes read back from the §8.5 journal.
+  understand: null, // null | { loading } | { notes, questions, comprehension: {'c:v': text} }
+  // D65: the comprehension-note SaveScheduler's state, mirrored the same way
+  // saveState mirrors the verse scheduler (subscribe → dispatch on
+  // transitions only). It survives leaving the Understand view (B1) and any
+  // 'error' blocks navigation like a verse failure (FR-32).
+  noteSaveState: 'saved',
   // Modals (the owner's design: creation, add-book, and settings are dialogs
   // over Home, not separate pages)
   modal: null, // null | 'newProject' | 'addBook' | 'settings' | 'sources'
@@ -275,10 +294,16 @@ const initial = () => ({
   // the LIVE platform catalog for the chosen org, never from app config.
   src: { gateway: null, book: 'TIT', rows: [], loading: false, error: null, dl: null, exclude: {} },
   installedSrc: [], // [{ langKey, book }] packages this machine already has
+  installEpoch: 0, // bumped on EVERY successful install (round 20 F2) — resource readiness re-derives even when resources.json is unchanged
   checkable: [], // gatewayKeys whose COMPLETE helps suite is installed (D30.2)
+  checkableError: null, // catch-to-absence sweep: an identity-read outage, stated — never "no language checkable"
+  preflightError: null, // catch-to-absence sweep: an identity-read outage on the Check preflight, stated
   gatewayError: null, // a failed gateway-change commit, shown in the dialogue
   netEnabled: false, // mirrors the platform's net gate (GET /net/status)
   projectPins: null, // the open project's resources.json (§5.3 v2 shape)
+  projectPinsLoaded: false, // round 33: distinguishes pins LOADING (understand waits) from pins legally ABSENT (understand proceeds, slots unpinned)
+  projectPinsError: null, // round 34: a REJECTED pins read — stated and retryable, never a false absence claim
+  sourcePanes: null, // round 37: the open project's §5.3 extraScripture pane ids — null while the pins load, [] when the project legally has none
   preflight: null, // { [tool]: Preflight } for the open book (C2.2)
   gatewayPreview: null, // a proposed gateway change awaiting confirmation
   aligning: false, // the align surface is open
@@ -306,12 +331,49 @@ function reducer(state, a) {
       // Atomic per-key merge: two source fetches can resolve in one batch, and
       // a read-modify-write through a stale snapshot would clobber the sibling.
       return { ...state, sources: { ...state.sources, [a.id]: a.value } };
+    case 'noteSaved': {
+      // Atomic merge of ONE persisted comprehension note (S1, adversarial
+      // round 19): two per-target saves can complete in the same batch, and
+      // building the whole `understand` from a captured stateRef snapshot
+      // dropped the sibling's entry — the reducer's own state is the only
+      // safe base (same hazard class as patchSrc/setSource above). A foreign
+      // completion (project or book changed since the write was staged)
+      // updates nothing.
+      if (state.book !== a.book || state.project?.repoPath !== a.repoPath) return state;
+      return {
+        ...state,
+        understand: {
+          ...state.understand,
+          saveError: null,
+          comprehension: {
+            ...state.understand?.comprehension,
+            [a.key]: { text: a.text, ts: a.ts },
+          },
+        },
+      };
+    }
+    case 'noteSaveState': {
+      // D65: the note scheduler's state mirror, merged from the reducer's own
+      // state (S1 hazard class — never a captured snapshot). The Understand
+      // callout's failure message rides along and clears on recovery.
+      const next = { ...state, noteSaveState: a.state };
+      if (!state.understand) return next;
+      return { ...next, understand: { ...state.understand, saveError: a.saveError } };
+    }
     case 'bump':
       return { ...state, tick: state.tick + 1, ...(a.patch || {}) };
     default:
       return state;
   }
 }
+
+/** Test hook: the reducer's atomic noteSaved merge (S1) is unit-tested. */
+export const __reducerForTests = reducer;
+
+/** Test hook (round 20): the pinned-identity install path is unit-tested —
+ * a project pin the catalog's latest release cannot satisfy must fetch its
+ * OWN identity, never `latestReleaseTag`. */
+export const __installPackageRowForTests = (...args) => installPackageRow(...args);
 
 const parseChapters = (raw) => {
   // Display parse (whole-book: chapters + headers — PLATFORM-NOTES #4).
@@ -325,6 +387,1060 @@ const verseText = (vObj) =>
     .join('')
     .trim();
 
+async function readTextIngredient(apiClient, repoPath, ipath) {
+  // Round 31: only a true NOT-FOUND means "the resource has nothing here".
+  // A transport or server failure PROPAGATES into settleHelp's error state
+  // (D30 honesty) — swallowing it told the translator the installed
+  // resource lacks the book, with no way to retry.
+  try {
+    return await apiClient.readIngredient(repoPath, ipath);
+  } catch (error) {
+    if (isNotFoundError(error)) return null;
+    throw error;
+  }
+}
+
+async function readHelpArticle(apiClient, kind, set, category, slug) {
+  // Round 35: null means CONFIRMED absent (the resource lacks the module —
+  // ArticleView states that). A transport or server failure PROPAGATES to a
+  // stated, retryable article error — labeling it "missing" told the
+  // translator a linked article does not exist (D30).
+  try {
+    if (kind === 'tw' && set?.translationWords)
+      return await readTwArticle(apiClient, resolveReadPath(set.translationWords), category, slug);
+    if (kind === 'ta' && set?.translationAcademy)
+      return await readTaArticle(apiClient, resolveReadPath(set.translationAcademy), slug);
+  } catch (error) {
+    if (isNotFoundError(error)) return null;
+    throw error;
+  }
+  return null;
+}
+
+async function storedGatewayDecisions(store, books) {
+  const stored = [];
+  const md5s = {};
+  for (const book of books) {
+    for (const tool of Object.keys(TOOL_SLOT)) {
+      // Catch-to-absence sweep (D30): readDecisionsText already returns
+      // {text:null} for a CONFIRMED absent file; a rejection here is a
+      // transient failure that would silently drop the book from the
+      // consequences the user consents to. Propagate to gatewayError.
+      const got = await store.readDecisionsText(tool, book);
+      if (got?.text == null) continue;
+      stored.push({ tool, book, file: JSON.parse(got.text), raw: got.text });
+      md5s[`${tool}/${book}`] = got.md5;
+    }
+  }
+  return { stored, md5s };
+}
+
+async function gatewayChangePlan({ consequences, next, coverage, installed, stored, md5s, actions, blocked }) {
+  const keyOf = (entry) => `${entry.tool}/${entry.book}`;
+  const blockedSet = new Set(blocked.map(keyOf));
+  const plan = [];
+  for (const entry of consequences.affected) {
+    if (blockedSet.has(keyOf(entry))) continue;
+    const resolution = resolveToolBook(next, entry.tool, entry.book, coverage);
+    if (!resolution.pin || !isPinLocal(installed, resolution.pin)) {
+      blocked.push({ tool: entry.tool, book: entry.book });
+      blockedSet.add(keyOf(entry));
+      continue;
+    }
+    const source = stored.find((candidate) => candidate.tool === entry.tool && candidate.book === entry.book);
+    const derived = await actions.deriveItemsFor(entry.tool, entry.book, resolution.pin);
+    plan.push({
+      tool: entry.tool,
+      book: entry.book,
+      expectMd5: md5s[`${entry.tool}/${entry.book}`] ?? null,
+      ...carryOverDecisions(source.file, derived, resolutionRecord(resolution)),
+    });
+  }
+  return { plan, blocked };
+}
+
+async function prepareAlignmentSource(store, st, ref) {
+  const testament = isOldTestament(st.book) ? 'ot' : 'nt';
+  const pin = st.projectPins?.resources?.originalLanguage?.[testament];
+  if (!pin?.repoPath) return { unavailable: 'unpinned' };
+  let usfmText = null;
+  // Catch-to-absence sweep (D30): 'missing' means the text is CONFIRMED not
+  // on this computer (the screen sends the user to download it). A transient
+  // read failure must not make that claim — it propagates to the alignment
+  // surface's stated, retryable error.
+  try {
+    ({ usfm: usfmText } = await store.readSourceBook(resolveReadPath(pin), st.book));
+  } catch (error) {
+    if (!isNotFoundError(error)) throw error;
+    usfmText = null;
+  }
+  if (!usfmText) return { unavailable: 'missing' };
+  return { testament, pin, usfmText, ref };
+}
+
+async function buildAlignmentSession(store, st, ref, source, mapped, origObjects) {
+  const targetText = verseTextIndex(st.bookRaw)[ref] ?? '';
+  if (!origObjects.length || !targetText) return { unavailable: 'missing' };
+  const { value: file, md5 } = await store.readAlignmentsWithMd5(st.book);
+  const stored = file?.chapters?.[mapped.chapter]?.[mapped.verse];
+  const sourceVersion = `dcs::${source.pin.repoPath.split('/').slice(-2).join('/')}@${source.pin.version}`;
+  const record = stored ?? bootstrapVerse(targetText, origObjects, sourceVersion);
+  return {
+    loading: false,
+    ref,
+    record,
+    md5,
+    targetText,
+    origObjects,
+    sourceVersion,
+    stale: alignmentIsStale(record, targetText),
+    armed: null,
+    targetDir: st.project?.scriptDirection === 'rtl' ? 'rtl' : 'ltr',
+    origDir: source.testament === 'ot' ? 'rtl' : 'ltr',
+  };
+}
+
+function understandArticleSet(st, kind, rung) {
+  const sets = st.projectPins?.languageSets;
+  const slotName = kind === 'tw' ? 'translationWords' : 'translationAcademy';
+  return [sets?.[rung ?? 'fallback'], sets?.fallback, sets?.primary]
+    .find((candidate) => candidate?.[slotName]);
+}
+
+function isCurrentArticleRequest(now, seq, currentSeq, repoPath, key) {
+  if (seq !== currentSeq) return false;
+  if (now.project?.repoPath !== repoPath) return false;
+  return now.understand?.article?.key === key;
+}
+
+function emptyCheckSession(tool, book, resolution, empty, dropped = null) {
+  return {
+    loading: false,
+    tool,
+    book,
+    items: [],
+    empty,
+    resource: resolutionRecord(resolution),
+    ...(dropped ? { dropped } : {}),
+  };
+}
+
+async function deriveCheckItems({ apiClient, actions, st, tool, book, pre }) {
+  const tsv = await readTextIngredient(apiClient, resolveReadPath(pre.resolution.pin), `${book.toUpperCase()}.tsv`);
+  if (tsv === null || tsv.startsWith('{"is_good":false'))
+    return { session: emptyCheckSession(tool, book, pre.resolution, 'missing') };
+  const frame = await actions.projectFrame();
+  if (frame.state !== 'ready')
+    return { session: emptyCheckSession(tool, book, pre.resolution, `versification-${frame.state}`) };
+  const scopeRanges = scopeRangesFor(st.projectScope ?? {}, book.toUpperCase());
+  const result = await deriveForProject({
+    tsv,
+    tool,
+    bookId: book.toLowerCase(),
+    from: RESOURCE_FRAME,
+    to: frame.name,
+    schemes: frame.schemes,
+    scopeRanges,
+  });
+  const dropped = result.unplaceable.length
+    ? {
+        count: result.unplaceable.length,
+        scheme: frame.name,
+        reasons: [...new Set(result.unplaceable.map((entry) => entry.reason))].sort(),
+      }
+    : null;
+  if (result.items.length === 0)
+    return { session: emptyCheckSession(tool, book, pre.resolution, dropped ? 'all-dropped' : 'none', dropped) };
+  return { derived: result.items, dropped };
+}
+
+async function completedCheckSession({ store, st, tool, book, pre, derived, dropped }) {
+  const savedFile = await store.readDecisions(tool, book);
+  const saved = savedFile?.decisions ?? [];
+  const slot = TOOL_SLOT[tool];
+  const rungPins = ['primary', 'fallback']
+    .map((rung) => st.projectPins?.languageSets?.[rung]?.[slot])
+    .filter(Boolean)
+    .map((pin) => ({ repoPath: pin.repoPath, version: pin.version, sha: pin.sha }));
+  const warning = resolutionWarning(savedFile?.resource, pre.resolution, rungPins);
+  const { items: merged, orphaned } = mergeAndReattach(derived, saved);
+  const verses = verseTextIndex(st.bookRaw);
+  const { items, invalidated } = revalidateAgainstDraft(merged, verses);
+  return {
+    loading: false,
+    tool,
+    book,
+    items,
+    progress: progressOf(items),
+    resource: resolutionRecord(pre.resolution),
+    categories: [...new Set(items.map((item) => item.category))].sort(),
+    activeIndex: 0,
+    invalidated,
+    warning,
+    orphaned,
+    dropped,
+    verses,
+  };
+}
+
+async function identifyInstalledResource(apiClient, repoPath, target) {
+  if ((await readInstalled(apiClient, STORAGE_ID))[target]) return;
+  // Catch-to-absence sweep (D30): "unidentified" is honest only when DCS
+  // CONFIRMS no tag names the revision (identifyExistingInstall → null). A
+  // transient failure PROPAGATES to the caller's stated per-row failure —
+  // the old swallow reported the row as done while the resource contributed
+  // no coverage ("installed" and "not checkable" at once).
+  const meta = await apiClient.getMetadataRaw(target);
+  const revision = Object.values(meta?.identification?.primary?.dcs || {})[0]?.revision;
+  const found = await identifyExistingInstall(repoPath, revision);
+  if (found)
+    await recordInstalled(apiClient, STORAGE_ID, target, {
+      ...found,
+      flavor: flavorOfMetadata(meta),
+    });
+}
+
+/** Install the EXACT identity the open project pins (round 20): fetching the
+ * catalog's latest release cannot satisfy a pin at another sha (D58), and the
+ * only exposed recovery path would strand the project permanently. When the
+ * canonical path is occupied by a different sha, the pinned identity installs
+ * side by side — the importer refuses an existing target, and deleting the
+ * occupant could orphan another project pinned to it. fetchAndInstallPin
+ * verifies the export's declared revision against the pinned sha (D23b), so a
+ * returned result IS the requested identity. */
+async function installPinnedRow(apiClient, row, wanted, local, target) {
+  const installPath = local.has(target) ? `${target}--${wanted.sha.slice(0, 12)}` : target;
+  const result = await fetchAndInstallPin(
+    { repoPath: wanted.repoPath, version: wanted.version, sha: wanted.sha, flavor: wanted.flavor ?? '' },
+    { api: apiClient, targetRepoPath: installPath === target ? undefined : installPath },
+  );
+  // Catch-to-absence sweep (D30/A17): a pin recorded with flavor '' is
+  // EXCLUDED from language sets (languageSetFromInstalled / mergeOptionalPins
+  // filter on !!flavor) — the download would report success while the
+  // language never becomes checkable. The metadata read is local and
+  // immediately post-install: a failure is transient and PROPAGATES to the
+  // stated per-row failure (a retry heals through the identify path).
+  const flavor = wanted.flavor || flavorOfMetadata(await apiClient.getMetadataRaw(installPath));
+  await recordInstalled(apiClient, STORAGE_ID, installPath, {
+    repoPath: wanted.repoPath,
+    ...(wanted.version ? { version: wanted.version } : {}),
+    sha: result.revision,
+    flavor,
+  });
+  return { done: `${row.repo} ${wanted.version ?? result.revision.slice(0, 12)}` };
+}
+
+async function installPackageRow(apiClient, originGateway, row, local, wanted = null) {
+  const repoPath = `${DCS_HOST}/${originGateway.org}/${row.repo}`;
+  const target = localRepoPathFromRepoPath(repoPath);
+  try {
+    if (wanted) return await installPinnedRow(apiClient, row, wanted, local, target);
+    if (local.has(target)) {
+      await identifyInstalledResource(apiClient, repoPath, target);
+      return { done: row.repo };
+    }
+    const tag = await latestReleaseTag(repoPath);
+    const result = await fetchAndInstallPin({ repoPath, version: tag, flavor: '' }, { api: apiClient });
+    // A17: same rule as installPinnedRow — never record flavor '' from a
+    // FAILED read; the row's stated failure + retry heals it.
+    const flavor = flavorOfMetadata(await apiClient.getMetadataRaw(target));
+    await recordInstalled(apiClient, STORAGE_ID, target, {
+      repoPath,
+      version: tag,
+      sha: result.revision,
+      flavor,
+    });
+    return { done: `${row.repo} ${tag}` };
+  } catch (error) {
+    return { failed: `${row.repo}: ${String(error?.message || error)}` };
+  }
+}
+
+function recordInstalledPackage(stateRef, dispatch, gateway, book) {
+  const langKey = gatewayKey(gateway);
+  const already = stateRef.current.installedSrc.some(
+    (entry) => entry.langKey === langKey && entry.book === book,
+  );
+  if (already) return;
+  dispatch({
+    type: 'set',
+    patch: { installedSrc: [...stateRef.current.installedSrc, { langKey, book }] },
+  });
+}
+
+async function adoptDownloadedPins({
+  originStore,
+  originRepoPath,
+  originGateway,
+  storeRef,
+  stateRef,
+  actions,
+  dispatch,
+}) {
+  const sameProject =
+    originStore &&
+    originRepoPath &&
+    storeRef.current === originStore &&
+    stateRef.current.project?.repoPath === originRepoPath;
+  if (!sameProject) return;
+  try {
+    const { installed, coverage } = await actions.resolutionContext();
+    if (!mergeOptionalPins(stateRef.current.projectPins ?? {}, originGateway, installed)) return;
+    const next = await updateResources(originStore, (current) => {
+      const merged = mergeOptionalPins(current, originGateway, installed);
+      return merged ? backfillCoverage(merged, coverage).resources : current;
+    });
+    if (stateRef.current.project?.repoPath === originRepoPath)
+      dispatch({ type: 'set', patch: { projectPins: next } });
+  } catch (error) {
+    dispatch({
+      type: 'patchSrc',
+      patch: { error: t('sources.adoptFailed', { error: String(error?.message || error) }) },
+    });
+  }
+}
+
+function validateNewBible(form) {
+  if (!form.name.trim()) return { error: t('wizard.nameRequired') };
+  if (!form.code.trim()) return { error: t('wizard.codeRequired') };
+  const slug = (value) => value.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  const abbr = slug(form.name) || slug(form.code);
+  return abbr ? { abbr } : { error: t('wizard.abbrRequired') };
+}
+
+/** D65 (round-22 checkpoint): comprehension notes ride their own
+ * SaveScheduler, so navigation drains are ONE discipline — flush-and-go, and
+ * a retained failure refuses (FR-32).
+ *
+ * Round 23: bring BOTH schedulers to rest in a LOOP that re-checks both
+ * states after every pass — the screen stays editable while a drain awaits,
+ * so a note staged during the verse drain (or a verse edited during the note
+ * drain) must be caught by another pass, never left for a later dispose to
+ * discard (TOCTOU). Resolves true only when a full pass ends with both
+ * schedulers reporting 'saved'. */
+async function drainBothSchedulers({ schedulerRef, noteSchedulerRef }) {
+  // Round 30/31: the reconcile-before-rest gate lives INSIDE the note
+  // scheduler (a constructor-injected hook its own retry() runs on a
+  // retained failure), so no drain path here — or anywhere — can bypass it.
+  const restState = (sched) => (sched ? sched.getState() : 'saved');
+  for (;;) {
+    if (noteSchedulerRef.current && !(await noteSchedulerRef.current.drain())) return false;
+    if (schedulerRef.current && !(await schedulerRef.current.drain())) return false;
+    if (restState(noteSchedulerRef.current) === 'saved' && restState(schedulerRef.current) === 'saved')
+      return true;
+  }
+}
+
+/** Test hook (round 23): the drain loop is unit-tested — work staged while
+ * the OTHER scheduler's drain awaited must flush before anything disposes. */
+export const __drainBothSchedulersForTests = drainBothSchedulers;
+
+/** Every blocker is checked BEFORE anything is disposed (C3). */
+async function drainForProjectOpen({ schedulerRef, noteSchedulerRef }) {
+  if (!(await drainBothSchedulers({ schedulerRef, noteSchedulerRef }))) return false;
+  schedulerRef.current?.dispose();
+  noteSchedulerRef.current?.dispose();
+  return true;
+}
+
+async function projectPresentation(apiClient, store, repoPath, summary) {
+  let scriptDirection = summary.scriptDirection;
+  if (scriptDirection !== 'ltr' && scriptDirection !== 'rtl') {
+    // Catch-to-absence sweep (D30): 'ltr' is the default for a project
+    // GENUINELY without settings.json. A transient read failure must not
+    // render an RTL project left-to-right — it aborts the open into the
+    // stated bookError (performProjectOpen's catch).
+    const settings = await store.readSettings().catch((error) => {
+      if (isNotFoundError(error)) return null;
+      throw error;
+    });
+    scriptDirection = settings?.textDirection === 'rtl' ? 'rtl' : 'ltr';
+  }
+  // A failed metadata read must not DEFAULT the scope: scopeRangesFor({})
+  // means whole-book, silently disabling §4.2/D26 scope filtering — the
+  // journal side refuses this exact defaulting (journalingStore: "seeding or
+  // recovery with a defaulted scope would journal a widened scope
+  // permanently"). Propagate to the stated bookError; an absent currentScope
+  // key on a READABLE document stays {}.
+  const meta = await apiClient.getMetadataRaw(repoPath);
+  const projectScope = meta?.type?.flavorType?.currentScope ?? {};
+  return { scriptDirection, projectScope };
+}
+
+function adoptInstalledResources(current, installed) {
+  let next = current;
+  for (const rung of Object.values(current.languageSets ?? {})) {
+    const language = rung?.gatewayLanguage;
+    if (!language?.languageId || !language?.owner) continue;
+    const merged = mergeOptionalPins(
+      next,
+      { id: language.languageId, org: language.owner },
+      installed,
+    );
+    if (merged) next = merged;
+  }
+  return next;
+}
+
+/** Round 25: open one project, SEQUENCED. Project cards stay clickable while
+ * an open is in flight, so two opens can interleave — without a token the
+ * earlier one resumes after the later one replaced storeRef and the
+ * schedulers, dispatches ITS summary over the later project, and reads books
+ * through the later project's refs (the UI names project A while writes
+ * target project B). Every await is followed by a supersession check BEFORE
+ * any shared ref is assigned or any state dispatched; a stale FAILURE is
+ * dropped too (it must never route the successfully opened project Home). */
+async function performProjectOpen(ctx, repoPath, bookCode) {
+  const {
+    openProjectSeqRef,
+    schedulerRef,
+    noteSchedulerRef,
+    noteTargetsRef,
+    storeRef,
+    stateRef,
+    understandSeqRef,
+    dispatch,
+    actions,
+    apiClient,
+    makeStore,
+    markUsed,
+  } = ctx;
+  const seq = ++openProjectSeqRef.current;
+  const superseded = () => seq !== openProjectSeqRef.current;
+  // Never abandon unsaved work: drain BOTH schedulers first, and stay put if
+  // a write failure remains (FR-32; B3/M1/M6; notes held to the same rule —
+  // B1/D65).
+  const canOpen = await drainForProjectOpen({ schedulerRef, noteSchedulerRef });
+  if (!canOpen || superseded()) return;
+  try {
+    // R-E33-3: the versification frame cache is keyed by repoPath, which is
+    // NOT unique across a delete-and-recreate inside one session. Clear it
+    // on every open so a new project at a reused path never inherits the
+    // previous project's frame — that would key every check in the wrong
+    // numbering, and the journal keeps those keys permanently.
+    forgetProjectFrames();
+    const store = makeStore();
+    // open() runs the issue-#62 recovery pipeline: replay staged intents,
+    // classify derived state against the journal, seed a journal-less
+    // project universally, reconcile out-of-band USFM — or STOP with a
+    // diagnosable report (surfaced through bookError below).
+    const summary = await store.open(repoPath);
+    if (superseded()) return; // a newer open owns the refs
+    storeRef.current = store;
+    schedulerRef.current = new SaveScheduler({
+      writeBook: (book, whole) => store.writeBook(book, whole),
+      splice: spliceVerse,
+    });
+    schedulerRef.current.subscribe((saveState) => dispatch({ type: 'set', patch: { saveState } }));
+    // D65: the comprehension-note scheduler — same discipline, its own
+    // instance (a failing note must not park verse autosave: the failure
+    // slot is per instance). Its key is the fully-scoped note identity; the
+    // splice degenerates to the whole value.
+    noteTargetsRef.current = new Map();
+    noteSchedulerRef.current = new SaveScheduler({
+      writeBook: makeNoteWriter({ noteTargetsRef, dispatch, apiClient }),
+      splice: (_raw, _chapter, _verse, body) => body,
+      // Round 31 hardening: the rest-claim gate lives IN the scheduler — a
+      // retained failure reconciles the store's staged intents (a rejecting
+      // reconcile keeps the failure standing, FR-32) and then REFRESHES the
+      // notes the screen displays, so a recovered durable note is visible
+      // before any Saved claim, on every retry/drain/navigation path alike.
+      reconcile: async () => {
+        await store.reconcileStaged();
+        await actions.loadUnderstand();
+      },
+    });
+    const noteSched = noteSchedulerRef.current;
+    noteSched.subscribe((noteSaveState) => {
+      // The mirror the indicator reads, plus the Understand callout's
+      // message on failure (cleared when the state recovers). The understand
+      // merge happens IN the reducer, from its own state — a snapshot spread
+      // here would clobber a concurrent noteSaved merge (S1 hazard class).
+      const failure = noteSched.getFailure();
+      dispatch({
+        type: 'noteSaveState',
+        state: noteSaveState,
+        saveError:
+          noteSaveState === 'error'
+            ? String(failure?.error?.message || failure?.error || noteSaveState)
+            : null,
+      });
+    });
+    apiClient.setCurrentProject(repoPath).catch(() => {});
+    markUsed(repoPath); // fire-and-forget; ordering refreshes next Home visit
+    // The platform summary reports script_direction "?" for app-created
+    // projects; the wizard recorded the user's choice in settings.json.
+    const { scriptDirection, projectScope } = await projectPresentation(apiClient, store, repoPath, summary);
+    if (superseded()) return;
+    // A2: the previous project's understand/pins must never survive into
+    // this one — clear both with the new project, and invalidate any
+    // in-flight loadUnderstand before its completion can land here.
+    understandSeqRef.current++;
+    dispatch({
+      type: 'set',
+      patch: {
+        project: { ...summary, scriptDirection, repoPath },
+        projectScope,
+        view: 'draft',
+        projectPins: null,
+        projectPinsLoaded: false,
+        projectPinsError: null,
+        sourcePanes: null,
+        understand: null,
+      },
+    });
+    // The project's pins drive every check session (D30.3). Absent
+    // resources.json reads as null — "no pins recorded" — which the
+    // preflight reports distinctly from "pinned but not local".
+    //
+    // #16 / owner ruling 3c: on the way in, record book coverage on any pin
+    // that lacks it and whose resource IS on this machine. Best-effort; a
+    // failure never blocks opening. N1 (round 14): the detached chain binds
+    // every dispatch to the originating store instance and repo path.
+    loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatch });
+    // B12 — warm the install resolver BEFORE any book/source read, so
+    // resolveReadPath's installedCache is populated on a cold open.
+    await actions.resolutionContext().catch(() => {});
+    if (superseded()) return;
+    await actions.openBook(bookCode || summary.bookCodes[0]);
+  } catch (e) {
+    if (superseded()) return; // a stale failure must not route the OPEN project Home
+    dispatch({
+      type: 'set',
+      patch: { bookError: e?.reason || e?.message || String(e), view: 'home' },
+    });
+  }
+}
+
+/** Test hook (round 25): out-of-order open completions are unit-tested — the
+ * latest request exclusively owns the refs and the dispatched state. */
+export const __performProjectOpenForTests = performProjectOpen;
+
+/** Load the read-only helps for the open book (extracted round 33 for the
+ * interleaving regressions): tN notes, tQ questions and tW links, each
+ * resolved over the §5.3 ladder (D64) and derived exactly like a check
+ * session — disposable, never stored (§4.2). The translator's own
+ * comprehension notes are read back from the journal. */
+async function performLoadUnderstand(ctx) {
+  const { stateRef, storeRef, understandSeqRef, dispatch, actions, apiClient } = ctx;
+  const st = stateRef.current;
+  const book = st.book;
+  // A2: while the pins are still LOADING, a previous project's
+  // understand data must not keep rendering — clear and invalidate.
+  // Round 33: pins LOADED-BUT-ABSENT is a legal state (D30.3, "no pins
+  // recorded") — the journal's comprehension notes and the passage are
+  // independent of the helps pins, so the screen proceeds with every
+  // help slot honestly unpinned instead of loading forever.
+  if (!book || (!st.projectPins && !st.projectPinsLoaded)) {
+    understandSeqRef.current++;
+    if (stateRef.current.understand) dispatch({ type: 'set', patch: { understand: null } });
+    return;
+  }
+  // Sequence token: pins/net/project can change while a load is pending,
+  // and two projects can both hold the same book code — a book-only
+  // guard lets an OLDER completion (or failure) overwrite the newer
+  // state. Only the latest call may dispatch, on BOTH paths.
+  const seq = ++understandSeqRef.current;
+  // P1 (adversarial round 16): a SAME-BOOK refresh (pins/net change)
+  // keeps comprehension and sourceRefs standing — wiping them mid-edit
+  // unmounts cross-frame units (falling back to same-frame display) and
+  // discards unblurred drafts. A different book starts clean.
+  dispatch({ type: 'set', patch: understandLoadingPatch(stateRef.current.understand, book) });
+  // Built before the help slots and carried onto BOTH dispatch paths
+  // (A3): a failing optional resource must never hide persisted notes
+  // behind writable empty boxes. null = "not read" — the UI disables
+  // the boxes rather than treating it as empty.
+  let comprehension = null;
+  // C1/N1: every read below binds to the store this load STARTED in.
+  const store = storeRef.current;
+  // For the round-33 catch-path re-read: the frame once established.
+  let frameForNotes = null;
+  // S3: only a CONFIRMED ready+eng frame may ever render same-frame.
+  // Until that is established (or when the load throws first), the
+  // failure path must not fall back to indexing the eng source with
+  // project numbers — nor leave boxes editable over it.
+  let safeSameFrame = false;
+  try {
+    const { installed, coverage, resolutionError } = await actions.resolutionContext();
+    const frame = await actions.projectFrame();
+    safeSameFrame = frame.state === 'ready' && frame.name === RESOURCE_FRAME;
+    // A1: note identities are journaled in the PROJECT frame (§8.4/§5.2
+    // identity discipline); the display buckets in SOURCE (eng) space.
+    // Map stored keys back when the frames differ; the uW default is
+    // same-frame and short-circuits.
+    // J2 (adversarial round 10): comprehension is keyed by each note's
+    // OWN project-frame chapter:verse — never re-mapped. Same-frame
+    // units read it by numeric membership (identical spaces); a
+    // cross-frame unit reads its EXACT project reference, so fan-out
+    // targets (rsc NEH 7:67 vs 7:68) keep their distinct notes. A frame
+    // that is not ready leaves comprehension null — boxes disabled,
+    // matching the save path's refusal.
+    comprehension = latestComprehension(store, book, frame);
+    frameForNotes = frame;
+    // H1 (adversarial round 8): the reading pane must NOT index the
+    // eng-frame source with a PROJECT-frame chapter number (eng JON
+    // 1:17 is rsc JON 2:1). For a cross-frame project, map every
+    // project verse to its source reference once per load; the view
+    // renders the mapped refs and states the unmappable ones. null =
+    // same frame — the view indexes directly, the common path.
+    const sourceRefs = await mappedSourceReferences(st, book, frame);
+    if (dispatchResolutionDown({ resolutionError, seq, understandSeqRef, dispatch, book, store, frame, sourceRefs })) return;
+    const scopeRanges = scopeRangesFor(st.projectScope ?? {}, book.toUpperCase());
+    const sets = st.projectPins?.languageSets ?? {};
+    // Round 33: with pins loaded-but-absent, every slot resolver sees an
+    // EMPTY languageSets — each slot resolves to its honest none/unpinned
+    // state instead of crashing on null.
+    const stForSlots = st.projectPins ? st : { ...st, projectPins: { languageSets: {} } };
+    const slotArgs = {
+      apiClient,
+      st: stForSlots,
+      book,
+      coverage,
+      installed,
+      frame,
+      scopeRanges,
+      sets,
+    };
+    const [notes, questions, words, simplified] = await Promise.all([
+      // keepPlainNotes: the read-only surface shows EVERY note the
+      // resource carries, incl. rows without a SupportReference that
+      // checking rightly skips (deriveTnItems).
+      settleHelp(loadUnderstandSlot({ ...slotArgs, slot: 'translationNotes', tool: 'translationNotes', deriveOpts: { keepPlainNotes: true } })),
+      settleHelp(loadUnderstandSlot({ ...slotArgs, slot: 'translationQuestions', tool: 'translationQuestions' })),
+      settleHelp(loadUnderstandSlot({ ...slotArgs, slot: 'translationWordsLinks', tool: 'translationWords' })),
+      settleHelp(loadSimplifiedHelp({ store, st: stForSlots, book, coverage, installed, sets })),
+    ]);
+    if (seq !== understandSeqRef.current) return; // superseded
+    // Round 33: `comprehension` was snapshotted BEFORE the help awaits —
+    // a note saved while they ran would be clobbered by dispatching the
+    // stale snapshot (the box follows the reverted stored text, and
+    // re-editing it appends obsolete content). Re-read the store's fold
+    // NOW, under the same sequence guard: readNotes is synchronous, and
+    // a write still in flight re-merges through its own noteSaved echo.
+    comprehension = latestComprehension(store, book, frame);
+    dispatch({
+      type: 'set',
+      patch: { understand: { loading: false, book, notes, questions, words, simplified, comprehension, sourceRefs } },
+    });
+  } catch (e) {
+    if (seq !== understandSeqRef.current) return; // a stale failure never replaces current state
+    // Round 33: the failure patch replaces understand wholesale — the
+    // same stale-snapshot hazard as the success path. Re-read when the
+    // frame was established; before that, comprehension is still null.
+    if (frameForNotes) comprehension = latestComprehension(store, book, frameForNotes);
+    dispatch({ type: 'set', patch: understandFailurePatch({ safeSameFrame, error: e, comprehension, book }) });
+  }
+}
+
+/** Round 35: with the summaries read down, coverage is EMPTY and every
+ * installed help would resolve to a false absence (D30). State the outage on
+ * each slot instead — the slot error is retryable in place (the round-31
+ * Retry re-runs the load, and with it the summaries read). The passage and
+ * comprehension stay fully usable. Returns true when it handled the load. */
+function dispatchResolutionDown({ resolutionError, seq, understandSeqRef, dispatch, book, store, frame, sourceRefs }) {
+  if (!resolutionError) return false;
+  if (seq !== understandSeqRef.current) return true; // superseded — nothing to dispatch
+  const errSlot = { state: 'error', error: t('understand.resolutionDown', { error: resolutionError }) };
+  dispatch({
+    type: 'set',
+    patch: {
+      understand: {
+        loading: false,
+        book,
+        notes: errSlot,
+        questions: errSlot,
+        words: errSlot,
+        simplified: errSlot,
+        comprehension: latestComprehension(store, book, frame),
+        sourceRefs,
+      },
+    },
+  });
+  return true;
+}
+
+/** Test hook (round 33): the load/save interleavings are unit-tested. */
+export const __performLoadUnderstandForTests = performLoadUnderstand;
+
+/** Round 37 (§5.3, normative): "Readers use `extraScripture` to fill the
+ * source panes. Absence is legal." The panes therefore come from the OPEN
+ * PROJECT's pins — resolving by identity (sha, via resolveReadPath/B10) —
+ * never from the machine's INSTALLED_SUITE: a conforming imported project
+ * with different source shas must see ITS text, and one that omits the
+ * array gets a stated no-panes state, not the defaults. While the pins are
+ * still LOADING the panes stay unknown (sourcePanes: null) and the reload
+ * fires when they land. A failed read is 'missing' only when CONFIRMED
+ * absent; anything else is a stated, retryable pane error (D30). */
+function loadSourcePanes({ store, code, seq, openSeqRef, stateRef, dispatch, pins }) {
+  const st = stateRef.current;
+  // `pins` carries the JUST-READ document (loadProjectPins hands it over
+  // directly — the state dispatch has not rendered yet, so stateRef still
+  // holds the old value at that moment). Absent that, state decides.
+  const havePins = pins !== undefined || st.projectPins || st.projectPinsLoaded;
+  if (!havePins) return; // pins loading — reloadSourcePanes runs on arrival
+  const effective = pins !== undefined ? pins : st.projectPins;
+  const entries = effective?.extraScripture ?? [];
+  const ids = entries.map((e) => e.id);
+  dispatch({
+    type: 'set',
+    patch: {
+      sourcePanes: ids,
+      // Keep the tab valid: an imported project may name panes differently.
+      ...(ids.length > 0 && !ids.includes(st.sourceTab) ? { sourceTab: ids[0] } : {}),
+    },
+  });
+  for (const pin of entries) {
+    store
+      .readSourceBook(localSourceRepo(pin), code)
+      .then(({ usfm: srcRaw }) => {
+        if (seq !== openSeqRef.current) return;
+        dispatch({
+          type: 'setSource',
+          id: pin.id,
+          value: { raw: srcRaw, chapters: parseChapters(srcRaw), version: pin.version ?? null },
+        });
+      })
+      .catch((error) => {
+        if (seq !== openSeqRef.current) return;
+        dispatch({
+          type: 'setSource',
+          id: pin.id,
+          value: isNotFoundError(error) ? 'missing' : { error: String(error?.message || error) },
+        });
+      });
+  }
+}
+
+/** Test hook (round 37): pane resolution is unit-tested — project pins win,
+ * absence is a stated state, and pins-loading defers. */
+export const __loadSourcePanesForTests = loadSourcePanes;
+
+/** Round 37 (§5.3): seed a new book from the PROJECT's pinned source. A
+ * project without extraScripture — or a source that confirms it lacks the
+ * book / is structurally unseedable — keeps the SERVER SKELETON (the
+ * documented state, issue #62), never the machine suite's text. A transient
+ * read failure PROPAGATES (D30 sweep): journaling an unchunked skeleton is
+ * permanent (§8.5 grow-only). */
+async function seedInitialUsfm({ store, stateRef, code, projName }) {
+  const seedPin = stateRef.current.projectPins?.extraScripture?.[0];
+  if (!seedPin) return undefined;
+  try {
+    const src = await store.readSourceBook(localSourceRepo(seedPin), code);
+    return seedBookFromSource(src.usfm, {
+      bookCode: code,
+      bookName: bookName(code),
+      projectName: projName,
+    });
+  } catch (error) {
+    if (!isNotFoundError(error) && !error?.seedUnusable) throw error;
+    return undefined;
+  }
+}
+
+function loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatch }) {
+  const stillCurrent = () =>
+    storeRef.current === store && stateRef.current.project?.repoPath === repoPath;
+  store.readResources()
+    .then(async (pins) => {
+      if (!stillCurrent()) return;
+      dispatch({ type: 'set', patch: { projectPins: pins, projectPinsLoaded: true, projectPinsError: null } });
+      // Round 37: the source panes are pin-driven — resolve them now that
+      // the pins are known (openBook deferred while they were loading). The
+      // document is handed over DIRECTLY: the dispatch above has not
+      // rendered yet, so stateRef still holds the old pins.
+      actions.reloadSourcePanes?.(pins);
+      if (!pins) return;
+      try {
+        const { installed, coverage } = await actions.resolutionContext();
+        const adopted = adoptInstalledResources(pins, installed);
+        const wouldChange = backfillCoverage(adopted, coverage).changed || adopted !== pins;
+        if (!wouldChange) return;
+        const next = await updateResources(store, (current) =>
+          backfillCoverage(adoptInstalledResources(current, installed), coverage).resources,
+        );
+        if (stillCurrent()) dispatch({ type: 'set', patch: { projectPins: next } });
+      } catch {
+        // Coverage stays underived; the resolver falls back to warning.
+      }
+    })
+    .catch((error) => {
+      // Round 34: a REJECTED pins read is not "no pins recorded" — reporting
+      // it as loaded-but-absent told the translator the package lacks the
+      // helps (a false absence claim, D30). It is a stated, retryable error;
+      // understand keeps waiting rather than resolving every slot to none.
+      if (stillCurrent())
+        dispatch({
+          type: 'set',
+          patch: { projectPins: null, projectPinsLoaded: false, projectPinsError: String(error?.message || error) },
+        });
+    });
+}
+
+/** Catch-to-absence sweep (D30): one article read, failure STATED — never a
+ * false "article missing" (the callers render error and found distinctly). */
+async function settleArticleRead(apiClient, kind, sets, category, slug) {
+  try {
+    return { found: await readHelpArticle(apiClient, kind, sets, category, slug), error: null };
+  } catch (error) {
+    return { found: null, error: String(error?.message || error) };
+  }
+}
+
+/** Test hook (round 34): the pins-read outcomes are unit-tested — resolved
+ * null is loaded-but-absent; a rejection is a stated, retryable error. */
+export const __loadProjectPinsForTests = loadProjectPins;
+
+/** The loading-flag patch for a (re)load: a SAME-BOOK refresh keeps the
+ * screen's working surface standing (P1); a different book starts clean. */
+function understandLoadingPatch(prevU, book) {
+  return { understand: { ...(prevU && prevU.book === book ? prevU : {}), loading: true } };
+}
+
+/** The failure patch (A3/S3): comprehension rides along only when same-frame
+ * was CONFIRMED before the throw; otherwise cross-frame mode with zero refs
+ * and disabled boxes — never an eng-numbered guess. */
+function understandFailurePatch({ safeSameFrame, error, comprehension, book }) {
+  const message = String(error?.message || error);
+  return {
+    understand: safeSameFrame
+      ? { loading: false, error: message, comprehension }
+      : { loading: false, error: message, book, comprehension: null, sourceRefs: {} },
+  };
+}
+
+function latestComprehension(store, book, frame) {
+  if (frame.state !== 'ready') return null;
+  const built = {};
+  for (const note of store?.readNotes?.(book) ?? []) {
+    const key = `${note.chapter}:${note.verse}`;
+    const previous = built[key];
+    if (!previous || String(note.ts) > String(previous.ts))
+      built[key] = { text: note.text, ts: note.ts };
+  }
+  return built;
+}
+
+async function mappedSourceReferences(st, book, frame) {
+  // null = CONFIRMED same-frame (ready + eng): only then may the view index
+  // the eng source with project numbers. Everything else — a known non-eng
+  // frame, an unavailable one, an unknown one — is cross-frame mode; with no
+  // usable mapping it returns {} (zero refs: the passage is SUPPRESSED, never
+  // guessed) (S3, adversarial round 19; completes the round-18 finding).
+  if (frame.state === 'ready' && frame.name === RESOURCE_FRAME) return null;
+  if (frame.state !== 'ready') return {};
+  const sourceRefs = {};
+  for (const entry of indexBook(st.bookRaw ?? '')) {
+    const list = (sourceRefs[String(entry.chapter)] ??= []);
+    const mapped = await mapReference({
+      from: frame.name,
+      to: RESOURCE_FRAME,
+      book,
+      chapter: Number(entry.chapter),
+      verse: /^\d+$/.test(String(entry.verseKey)) ? Number(entry.verseKey) : String(entry.verseKey),
+      schemes: frame.schemes,
+    });
+    if (mapped.ok && mapped.reference.book.toUpperCase() !== book.toUpperCase())
+      // Round 36: a cross-BOOK mapping (LXX EZR 11 -> eng NEH 1) must never
+      // render THIS book's source at those numbers — that displays unrelated
+      // scripture under a box that journals permanently. Stated, like the
+      // unmapped case (owner precedent: round-32 stated limitation), until
+      // cross-book source loading exists (#119).
+      list.push({
+        crossBook: `${entry.chapter}:${entry.verseKey}`,
+        to: `${mapped.reference.book.toUpperCase()} ${mapped.reference.chapter}:${mapped.reference.verse}`,
+      });
+    else if (mapped.ok)
+      list.push({
+        c: mapped.reference.chapter,
+        v: String(mapped.reference.verse),
+        pc: entry.chapter,
+        pv: String(entry.verseKey),
+      });
+    else list.push({ unmapped: `${entry.chapter}:${entry.verseKey}` });
+  }
+  return sourceRefs;
+}
+
+/** Test hook (round 36): cross-BOOK mappings are stated, never rendered as
+ * this book's text at foreign numbers. */
+export const __mappedSourceReferencesForTests = mappedSourceReferences;
+
+function unavailableHelpSlot(st, resolved, sets, slot, installed) {
+  if (!resolved.pin) {
+    const anyPin = sets.primary?.[slot] ?? sets.fallback?.[slot];
+    if (anyPin && !isPinLocal(installed, anyPin))
+      return { state: st.netEnabled ? 'fetch' : 'unavailable', pin: anyPin };
+    return { state: 'none' };
+  }
+  if (!isPinLocal(installed, resolved.pin))
+    return {
+      state: st.netEnabled ? 'fetch' : 'unavailable',
+      pin: resolved.pin,
+      rung: resolved.rung,
+    };
+  return null;
+}
+
+async function loadUnderstandSlot({
+  apiClient,
+  st,
+  book,
+  coverage,
+  installed,
+  frame,
+  scopeRanges,
+  sets,
+  slot,
+  tool,
+  deriveOpts = {},
+}) {
+  const resolved = resolveSetSlot(st.projectPins, slot, book, coverage);
+  const unavailable = unavailableHelpSlot(st, resolved, sets, slot, installed);
+  if (unavailable) return unavailable;
+  const primaryPin = sets.primary?.[slot];
+  const unavailablePrimary =
+    resolved.rung === 'fallback' && primaryPin && !isPinLocal(installed, primaryPin)
+      ? primaryPin
+      : null;
+  const tsv = await readTextIngredient(
+    apiClient,
+    resolveReadPath(resolved.pin),
+    `${book.toUpperCase()}.tsv`,
+  );
+  if (tsv === null || tsv.startsWith('{"is_good":false'))
+    return { state: 'missing', pin: resolved.pin, rung: resolved.rung };
+  if (frame.state !== 'ready') return { state: `versification-${frame.state}` };
+  const { items, unplaceable } = await deriveForProject({
+    tsv,
+    tool,
+    bookId: book.toLowerCase(),
+    from: RESOURCE_FRAME,
+    to: frame.name,
+    schemes: frame.schemes,
+    scopeRanges,
+    ...deriveOpts,
+  });
+  return {
+    state: 'ready',
+    items,
+    pin: resolved.pin,
+    rung: resolved.rung,
+    unavailablePrimary,
+    dropped: unplaceable.length ? { count: unplaceable.length, scheme: frame.name } : null,
+  };
+}
+
+async function loadSimplifiedHelp({ store, st, book, coverage, installed, sets }) {
+  const resolved = resolveSetSlot(st.projectPins, 'simplifiedText', book, coverage);
+  const pin = resolved.pin ?? sets.primary?.simplifiedText ?? sets.fallback?.simplifiedText;
+  if (!pin) return { state: 'none' };
+  if (!isPinLocal(installed, pin))
+    return { state: st.netEnabled ? 'fetch' : 'unavailable', pin, rung: resolved.rung };
+  // Round 36: the D41 warned fallback applies to the simplified text like
+  // every other slot — English simplified text must never pass silently as
+  // the project's primary gateway language.
+  const primaryPin = sets.primary?.simplifiedText;
+  const unavailablePrimary =
+    resolved.rung === 'fallback' && primaryPin && !isPinLocal(installed, primaryPin)
+      ? primaryPin
+      : null;
+  try {
+    const { usfm: raw } = await store.readSourceBook(localSourceRepo(pin), book);
+    return { state: 'ready', pin, rung: resolved.rung, unavailablePrimary, chapters: parseChapters(raw) };
+  } catch (error) {
+    // Round 31: absent book = missing; anything else (transport, parse)
+    // propagates to settleHelp's stated error (D30 honesty).
+    if (isNotFoundError(error)) return { state: 'missing', pin, rung: resolved.rung };
+    throw error;
+  }
+}
+
+/** Test hook (round 31): the missing-vs-error split is unit-tested — only a
+ * true not-found reads as absence; transport failures propagate to the
+ * stated, retryable error state. */
+export const __helpReadsForTests = { readTextIngredient, loadSimplifiedHelp, readHelpArticle };
+
+const settleHelp = (promise) =>
+  promise.then(
+    (value) => value,
+    (error) => ({ state: 'error', error: String(error?.message || error) }),
+  );
+
+/** D65 (round-22 checkpoint): comprehension notes ride their OWN
+ * SaveScheduler — one write path, one dirty/drain/indicator discipline, the
+ * same one verses use. The scheduler key is the fully-scoped note identity
+ * `repoPath|book|chapter:verse` (C2/F2); the buffer is a per-key latest-value
+ * register, so a retry structurally replays only the NEWEST text (the round-21
+ * class cannot exist), and the buffer itself is the draft store across
+ * unmounts (the round-22 class cannot exist). Notes and verses do NOT share
+ * an instance: the scheduler's failure slot is global, and a failing note
+ * must not park verse autosave. */
+export const noteKeyFor = (repoPath, book, chapter, verse) =>
+  `${repoPath}|${book}|${chapter}:${verse}`;
+
+/** The note scheduler's write function. The target registry carries what the
+ * key alone cannot: the box's original (pre-mapping) reference and whether it
+ * is already a verbatim PROJECT reference (I1/J2: cross-frame boxes save
+ * their exact project ref and skip mapping). Same-frame saves resolve the
+ * project frame and map at write time; an unmappable target THROWS so the
+ * scheduler retains the buffer and shows the error (FR-32) — the §8.5 journal
+ * never receives a guessed reference. On success the persisted text is echoed
+ * through the noteSaved reducer action (S1 atomic merge). */
+function makeNoteWriter({ noteTargetsRef, dispatch, apiClient }) {
+  // The last text THIS writer journaled per key — what is durably at the
+  // head. A refusal reports it back (round 24) so the scheduler's buffer
+  // never records a refused snapshot as saved.
+  const lastWritten = new Map();
+  return async (key, text) => {
+    // Round 23/24: G1's clear refusal must hold at the WRITE boundary too. A
+    // race can leave an empty value dirty (clear a fresh note while its
+    // first write is in flight: `persisted` advances to the in-flight text,
+    // making the staged '' diverge) — the grow-only journal must never
+    // receive it. REPORT the durable value instead of writing: the scheduler
+    // adopts it as persisted (and as current when nothing newer was staged),
+    // so the box shows the durable note again and a retype of the same text
+    // compares clean — never a blank box over a durable note, never a
+    // duplicate append (round 24).
+    if (text.trim() === '') return lastWritten.get(key) ?? '';
+    const target = noteTargetsRef.current.get(key);
+    if (!target) throw new Error(`comprehension note target unknown: ${key}`);
+    const { store, repoPath, book, chapter, verse, projectFrame } = target;
+    // C1: the write is bound to the store/project it was staged in — a
+    // project switch drains this scheduler and disposes it first (C3).
+    let ref = { chapter, verse };
+    if (!projectFrame) {
+      const frame = await resolveProjectFrame(repoPath, { store, api: apiClient });
+      if (frame.state !== 'ready') throw new Error(t('understand.saveUnmappable'));
+      if (frame.name !== RESOURCE_FRAME) {
+        const mapped = await mapReference({
+          from: RESOURCE_FRAME,
+          to: frame.name,
+          book,
+          chapter: Number(chapter),
+          verse: /^\d+$/.test(String(verse)) ? Number(verse) : String(verse),
+          schemes: frame.schemes,
+        });
+        if (!mapped.ok) throw new Error(t('understand.saveUnmappable'));
+        ref = { chapter: mapped.reference.chapter, verse: mapped.reference.verse };
+      }
+    }
+    await store.addNote(book, ref.chapter, ref.verse, text.trim());
+    lastWritten.set(key, text.trim());
+    dispatch({
+      type: 'noteSaved',
+      repoPath,
+      book,
+      key: `${chapter}:${verse}`,
+      text: text.trim(),
+      ts: `local-${Date.now()}`,
+    });
+  };
+}
+
+/** Test hook (D65): the note writer is unit-tested — frame mapping, the
+ * unmappable refusal, and the persisted-text echo. */
+export const __makeNoteWriterForTests = makeNoteWriter;
+
 export function AppProvider({ children }) {
   const [s, dispatch] = useReducer(reducer, undefined, initial);
   const storeRef = useRef(null);
@@ -332,6 +1448,17 @@ export function AppProvider({ children }) {
   const rawRef = useRef(null); // authoritative raw book text, updated synchronously
   const stateRef = useRef(null); // live state for async closures
   const openSeqRef = useRef(0); // openBook sequence token (review finding M2)
+  const understandSeqRef = useRef(0); // loadUnderstand sequence token (2026-08-27 Codex review)
+  // D65 (round-22 checkpoint): the comprehension-note SaveScheduler and the
+  // registry mapping each note key to its write target. The scheduler's
+  // buffer IS the draft store (survives unmounts) and its state IS the
+  // dirty/saving/error truth the guards consult — the old parallel refs
+  // (ledger, revisions, chains, in-flight counts, dirty set) are gone with
+  // the defect classes they bred.
+  const noteSchedulerRef = useRef(null);
+  const noteTargetsRef = useRef(new Map());
+  const openProjectSeqRef = useRef(0); // openProject sequence token (round 25): the latest open owns the refs
+  const articleSeqRef = useRef(0); // help-article completion token (D3, adversarial round 4)
 
   // ---- derived display model -------------------------------------------------
   const model = useMemo(() => {
@@ -386,14 +1513,20 @@ export function AppProvider({ children }) {
   // unsaved work, and attempt a best-effort flush when the page hides.
   useEffect(() => {
     const beforeUnload = (e) => {
-      const sched = schedulerRef.current;
-      if (sched && sched.getState() !== 'saved') {
+      // Comprehension notes are project work too (A4): both schedulers must
+      // be at rest before the window may close silently (D65 — the note
+      // scheduler now carries what the old refs tracked).
+      const unsaved = [schedulerRef.current, noteSchedulerRef.current].some(
+        (sched) => sched && sched.getState() !== 'saved',
+      );
+      if (unsaved) {
         e.preventDefault();
         e.returnValue = '';
       }
     };
     const onHide = () => {
       void schedulerRef.current?.drain();
+      void noteSchedulerRef.current?.drain();
     };
     window.addEventListener('beforeunload', beforeUnload);
     window.addEventListener('pagehide', onHide);
@@ -407,7 +1540,6 @@ export function AppProvider({ children }) {
   // "Use" is user-machine state, so it lives in the platform's per-client
   // settings (0.18.4 endpoint, inside the D31 pin) — never in the project
   // (Phase-2 sync must not carry my open times) and never in localStorage.
-  const STORAGE_ID = 'uw-tc4';
   async function markUsed(repoPath) {
     try {
       const cs = await api.getClientSettings(STORAGE_ID);
@@ -433,16 +1565,32 @@ export function AppProvider({ children }) {
           Math.max(lastUsed[b.id] || 0, b.timestamp || 0) -
           Math.max(lastUsed[a.id] || 0, a.timestamp || 0),
       );
-      dispatch({ type: 'set', patch: { projects } });
+      // Review of the D30 sweep: a successful listing clears the LISTING
+      // failure's banner (projects was null) — an open-failure banner from
+      // performProjectOpen is left alone (projects was already an array).
+      dispatch({
+        type: 'set',
+        patch: { projects, ...(stateRef.current.projects === null ? { bookError: null } : {}) },
+      });
     } catch (e) {
-      dispatch({ type: 'set', patch: { projects: [], bookError: String(e) } });
+      // Catch-to-absence sweep (D30): projects stays null (unknown), so the
+      // "No projects yet — Select New Bible" empty state never renders over
+      // a failed listing; the error banner + Retry state it instead.
+      dispatch({ type: 'set', patch: { projects: null, bookError: String(e) } });
     }
   }
 
   // ---- actions ----------------------------------------------------------------
   const actions = useMemo(() => {
     const a = {
-      go: (view) => dispatch({ type: 'set', patch: { view } }),
+      go: async (view) => {
+        // B1/D65: navigation drains the note scheduler — flush-and-go (owner
+        // ruling 2026-08-28), and a FAILED write holds navigation exactly
+        // like the verse scheduler does (FR-32). The failure is visible in
+        // the Understand callout and the save indicator.
+        if (noteSchedulerRef.current && !(await noteSchedulerRef.current.drain())) return;
+        dispatch({ type: 'set', patch: { view } });
+      },
 
       closeModal: () => dispatch({ type: 'set', patch: { modal: null, np: null, ab: null, st: null } }),
 
@@ -467,10 +1615,17 @@ export function AppProvider({ children }) {
        * assumed, because resources arrive by download, by rig seed, and by hand
        * sideload. */
       refreshCheckable: async () => {
-        const { installed } = await a.resolutionContext();
+        const { installed, resolutionError } = await a.resolutionContext();
+        if (resolutionError) {
+          // Catch-to-absence sweep (D30): an identity-read outage must not
+          // present as "this machine can check in no language" — keep the
+          // previous list standing and state the error.
+          dispatch({ type: 'set', patch: { checkableError: resolutionError } });
+          return stateRef.current.checkable;
+        }
         const checkable = GATEWAYS.filter((g) => languageSetFromInstalled(installed, g))
           .map(gatewayKey);
-        dispatch({ type: 'set', patch: { checkable: [...new Set(checkable)] } });
+        dispatch({ type: 'set', patch: { checkable: [...new Set(checkable)], checkableError: null } });
         return checkable;
       },
 
@@ -554,7 +1709,11 @@ export function AppProvider({ children }) {
         // readiness check uses. Reading only the record made a seeded or
         // hand-sideloaded suite invisible, so a language the app had just
         // offered could not be pinned.
-        const { installed, coverage } = await a.resolutionContext();
+        const { installed, coverage, resolutionError } = await a.resolutionContext();
+        // Catch-to-absence sweep (D30): an identity-read outage must not be
+        // reported as "the suite is incomplete" for a complete suite — throw
+        // the outage itself (askGatewayChange states it as gatewayError).
+        if (resolutionError) throw new Error(resolutionError);
         const proposedPrimary = languageSetFromInstalled(installed, gateway);
         if (!proposedPrimary) throw new Error(t('sources.suiteIncomplete', { lang: gateway.name }));
         const { value: currentResources, md5: resourcesMd5 } = await store.readResourcesWithMd5();
@@ -564,19 +1723,7 @@ export function AppProvider({ children }) {
 
         // Read every stored decision file this project has, so the count is
         // real rather than estimated.
-        const stored = [];
-        const md5s = {};
-        for (const book of st.project.bookCodes ?? []) {
-          for (const tool of Object.keys(TOOL_SLOT)) {
-            // Read the raw bytes once: parse for the carry-over computation and
-            // hash the exact text for the coordinated action's preconditions.
-            const got = await store.readDecisionsText(tool, book).catch(() => null);
-            if (got?.text != null) {
-              stored.push({ tool, book, file: JSON.parse(got.text), raw: got.text });
-              md5s[`${tool}/${book}`] = got.md5;
-            }
-          }
-        }
+        const { stored, md5s } = await storedGatewayDecisions(store, st.project.bookCodes ?? []);
         // Affectedness is judged against the POST-CHANGE resolution (D30's
         // per-(tool, book) ladder), so the counting needs the coverage map.
         const consequences = consequencesOfGatewayChange(
@@ -610,41 +1757,23 @@ export function AppProvider({ children }) {
         // scheme (unknown) — telling an offline user to install a suite
         // cannot unblock them. Coverage-blocked entries carry no reason.
         const frame = await a.projectFrame();
-        const blocked =
-          frame.state === 'ready'
-            ? uncoveredByChange(consequences.affected, next, coverage)
-            : consequences.affected.map((e) => ({
-                tool: e.tool,
-                book: e.book,
-                reason: `versification-${frame.state}`,
-              }));
-        const blockedKey = (e) => `${e.tool}/${e.book}`;
-        const blockedSet = new Set(blocked.map(blockedKey));
-        const plan = [];
-        for (const entry of consequences.affected) {
-          if (blockedSet.has(blockedKey(entry))) continue; // blocked, never planned
-          const resolution = resolveToolBook(next, entry.tool, entry.book, coverage);
-          // Round-7 extension: a rung can cover a book by RECORD (pin.books
-          // travels with the project) while the resource is absent from this
-          // machine. The derive below would then read nothing, and an empty
-          // list invalidates every decision on confirm — so a resolved pin
-          // that is not local blocks the book instead of planning from it.
-          if (!resolution.pin || !isPinLocal(installed, resolution.pin)) {
-            blocked.push({ tool: entry.tool, book: entry.book });
-            blockedSet.add(blockedKey(entry));
-            continue;
-          }
-          const source = stored.find((s) => s.tool === entry.tool && s.book === entry.book);
-          const derived = await a.deriveItemsFor(entry.tool, entry.book, resolution.pin);
-          const record = resolutionRecord(resolution);
-          const result = carryOverDecisions(source.file, derived, record);
-          plan.push({
-            tool: entry.tool,
-            book: entry.book,
-            expectMd5: md5s[`${entry.tool}/${entry.book}`] ?? null,
-            ...result,
-          });
-        }
+        const initiallyBlocked = frame.state === 'ready'
+          ? uncoveredByChange(consequences.affected, next, coverage)
+          : consequences.affected.map((entry) => ({
+              tool: entry.tool,
+              book: entry.book,
+              reason: `versification-${frame.state}`,
+            }));
+        const { plan, blocked } = await gatewayChangePlan({
+          consequences,
+          next,
+          coverage,
+          installed,
+          stored,
+          md5s,
+          actions: a,
+          blocked: initiallyBlocked,
+        });
         const carried = plan.reduce((n, p) => n + p.carried, 0);
         const invalidated = plan.reduce((n, p) => n + p.invalidated, 0);
         return { gateway, primary, consequences, next, plan, blocked, carried, invalidated, resourcesMd5 };
@@ -656,10 +1785,17 @@ export function AppProvider({ children }) {
       deriveItemsFor: async (tool, book, pin) => {
         const localRepo = resolveReadPath(pin);
         let tsv;
+        // Catch-to-absence sweep (D30): [] means the resource CONFIRMS it
+        // says nothing about this book (C2.9). A transient read failure must
+        // PROPAGATE — during a gateway change, [] flows into
+        // carryOverDecisions and permanently journals every stored decision
+        // as invalidated; the callers' stated error paths (gatewayError,
+        // checkSession.error) are the honest destination.
         try {
           tsv = await api.readIngredient(localRepo, `${book.toUpperCase()}.tsv`);
-        } catch {
-          return [];
+        } catch (error) {
+          if (isNotFoundError(error)) return [];
+          throw error;
         }
         if (tsv === null || tsv.startsWith('{"is_good":false')) return [];
         // §4.2 (D26): derivation MUST filter to the project scope — an out-of-scope
@@ -696,7 +1832,16 @@ export function AppProvider({ children }) {
 
       /** Open the confirmation dialogue for a proposed gateway language. */
       askGatewayChange: async (gateway) => {
-        const preview = await a.previewGatewayChange(gateway);
+        // Catch-to-absence sweep (D30): the preview now PROPAGATES transient
+        // read failures (deriveItemsFor / readDecisionsText) instead of
+        // understating consequences — state them in the dialogue's error.
+        let preview;
+        try {
+          preview = await a.previewGatewayChange(gateway);
+        } catch (error) {
+          dispatch({ type: 'set', patch: { gatewayError: String(error?.message || error) } });
+          return null;
+        }
         const current = stateRef.current.projectPins?.languageSets?.primary?.gatewayLanguage;
         dispatch({
           type: 'set',
@@ -770,7 +1915,10 @@ export function AppProvider({ children }) {
       setProjectGateway: async (gateway) => {
         const store = storeRef.current;
         if (!store) throw new Error('no project is open');
-        const { installed, coverage } = await a.resolutionContext();
+        const { installed, coverage, resolutionError } = await a.resolutionContext();
+        // Review of the D30 sweep: an identity-read outage must not report a
+        // complete suite as incomplete (mirrors previewGatewayChange).
+        if (resolutionError) throw new Error(resolutionError);
         const primary = languageSetFromInstalled(installed, gateway);
         if (!primary) {
           throw new Error(t('sources.suiteIncomplete', { lang: gateway.name }));
@@ -796,7 +1944,14 @@ export function AppProvider({ children }) {
       runPreflight: async () => {
         const st = stateRef.current;
         if (!st.book) return;
-        const { installed, coverage } = await a.resolutionContext();
+        const { installed, coverage, resolutionError } = await a.resolutionContext();
+        if (resolutionError) {
+          // Catch-to-absence sweep (D30): an identity-read outage must not
+          // present every tool as 'unavailable'/'unpinned' — state it,
+          // retryable (the preflight re-runs on the next visit or retry).
+          dispatch({ type: 'set', patch: { preflight: null, preflightError: resolutionError } });
+          return null;
+        }
         const online = st.netEnabled;
         const out = {};
         for (const tool of Object.keys(TOOL_SLOT)) {
@@ -806,7 +1961,7 @@ export function AppProvider({ children }) {
             online,
           });
         }
-        dispatch({ type: 'set', patch: { preflight: out } });
+        dispatch({ type: 'set', patch: { preflight: out, preflightError: null } });
         return out;
       },
 
@@ -825,105 +1980,57 @@ export function AppProvider({ children }) {
           return;
         }
         dispatch({ type: 'set', patch: { alignSession: { loading: true } } });
-
-        const testament = isOldTestament(st.book) ? 'ot' : 'nt';
-        const origPin = st.projectPins?.resources?.originalLanguage?.[testament];
-        if (!origPin?.repoPath) {
-          dispatch({ type: 'set', patch: { alignSession: { unavailable: 'unpinned' } } });
-          return;
-        }
-        let origUsfm = null;
+        // Catch-to-absence sweep review: the try covers the WHOLE load —
+        // frame resolution, reference mapping, and the stored-record read
+        // can all reject transiently, and each used to strand the surface
+        // at {loading:true} with an unhandled rejection. Any failure is a
+        // stated, retryable error — never the 'missing' download prompt.
         try {
-          const local = resolveReadPath(origPin);
-          ({ usfm: origUsfm } = await store.readSourceBook(local, st.book));
-        } catch {
-          origUsfm = null;
-        }
-        if (!origUsfm) {
-          dispatch({ type: 'set', patch: { alignSession: { unavailable: 'missing' } } });
+        const source = await prepareAlignmentSource(store, st, ref);
+        if (source.unavailable) {
+          dispatch({ type: 'set', patch: { alignSession: { unavailable: source.unavailable } } });
           return;
         }
-
-        const [chapter, verse] = ref.split(':');
-        // #15: `ref` comes from the DRAFT, so it is in the PROJECT's versification
-        // frame. The original-language texts (UGNT/UHB) are eng-framed — measured:
-        // 929 UHB chapters and 260 UGNT chapters, zero exceeding eng, and UHB
-        // PSA 3 ends at verse 8 where org would have 9. So for a non-eng project
-        // the same chapter:verse names a DIFFERENT verse in the source, and
-        // reading it unmapped silently aligns against the wrong Greek/Hebrew.
-        //
-        // Map project frame -> resource frame for the LOOKUP only. This is not an
-        // identity operation: the alignment record stays keyed by the
-        // project-frame reference (§5.1), exactly like the draft it belongs to.
-        // An eng project short-circuits and behaves exactly as before.
-        const alignFrame = await a.projectFrame();
-        // R-E33-6 applies here too: a frame that cannot map is a designed state,
-        // never "the source verse is missing" — that message misattributes a
-        // transient fetch failure (`unavailable`) or an unidentifiable project
-        // versification (`unknown`) to the text itself, with no reconnect-and-
-        // retry path. The eng default is always `ready`, so this never fires
-        // for it.
-        if (alignFrame.state !== 'ready') {
+        const frame = await a.projectFrame();
+        if (frame.state !== 'ready') {
           dispatch({
             type: 'set',
-            patch: { alignSession: { unavailable: `versification-${alignFrame.state}` } },
+            patch: { alignSession: { unavailable: `versification-${frame.state}` } },
           });
           return;
         }
+        const [chapter, verse] = ref.split(':');
         const srcRef = await mapReference({
-          from: alignFrame.name,
+          from: frame.name,
           to: RESOURCE_FRAME,
           book: st.book,
           chapter: Number(chapter),
           verse,
-          schemes: alignFrame.schemes,
+          schemes: frame.schemes,
         });
-        // Both refusals below are MAPPING outcomes, never 'missing': the source
-        // text IS installed, and R-E33-6 forbids blaming the text for a
-        // numbering mismatch — 'missing' would advise a download that cannot
-        // help. `no-counterpart` says what is true: no single source verse
-        // corresponds to this project-frame verse.
-        if (!srcRef.ok) {
-          dispatch({ type: 'set', patch: { alignSession: { unavailable: 'no-counterpart' } } });
-          return;
-        }
-        // A contiguous fan-out maps one project verse onto a SPAN ('9-10',
-        // [decided 2026-08-24]). UGNT/UHB JSON is keyed by single verses, so an
-        // exact lookup with a span key returns nothing — refuse honestly
-        // instead of reporting the installed text as absent. No shipped scheme
-        // fans out inside the 66-book canon today; schemes come from the
-        // platform, so the data can change underneath.
-        if (String(srcRef.reference.verse).includes('-')) {
+        if (!srcRef.ok || String(srcRef.reference.verse).includes('-')) {
           dispatch({ type: 'set', patch: { alignSession: { unavailable: 'no-counterpart' } } });
           return;
         }
         const origObjects = verseObjectsFor(
-          origUsfm,
+          source.usfmText,
           srcRef.reference.chapter,
           srcRef.reference.verse,
         );
-        const targetText = verseTextIndex(st.bookRaw)[ref] ?? '';
-        if (!origObjects.length || !targetText) {
-          dispatch({ type: 'set', patch: { alignSession: { unavailable: 'missing' } } });
+        if (origObjects === null) {
+          // The text is present but unparseable — say that (D30).
+          dispatch({ type: 'set', patch: { alignSession: { unavailable: 'unreadable' } } });
           return;
         }
-
-        const { value: file, md5 } = await store.readAlignmentsWithMd5(st.book);
-        const stored = file?.chapters?.[chapter]?.[verse];
-        const sourceVersion = `dcs::${origPin.repoPath.split('/').slice(-2).join('/')}@${origPin.version}`;
-        const record = stored ?? bootstrapVerse(targetText, origObjects, sourceVersion);
+        const mapped = { chapter, verse, reference: srcRef.reference };
+        const session = await buildAlignmentSession(store, st, ref, source, mapped, origObjects);
         dispatch({
           type: 'set',
-          patch: {
-            alignSession: {
-              loading: false, ref, record, md5, targetText, origObjects, sourceVersion,
-              stale: alignmentIsStale(record, targetText),
-              armed: null,
-              targetDir: st.project?.scriptDirection === 'rtl' ? 'rtl' : 'ltr',
-              origDir: testament === 'ot' ? 'rtl' : 'ltr',
-            },
-          },
+          patch: { alignSession: session },
         });
+        } catch (error) {
+          dispatch({ type: 'set', patch: { alignSession: { error: String(error?.message || error) } } });
+        }
       },
 
       startAligning: () => dispatch({ type: 'set', patch: { aligning: true, alignSession: null } }),
@@ -984,149 +2091,23 @@ export function AppProvider({ children }) {
         const st = stateRef.current;
         const pre = st.preflight?.[tool];
         if (!pre || pre.state !== 'ready' || !pre.resolution?.pin) return;
-        const pin = pre.resolution.pin;
         const book = st.book;
         dispatch({ type: 'set', patch: { checkTool: tool, checkSession: { loading: true } } });
         try {
-          const localRepo = resolveReadPath(pin);
-          // C2.9 — a resource can be pinned, local, and still have nothing to
-          // say about this book. That is a designed state, not an error: the
-          // catalog's book_codes and the resource's actual files can disagree.
-          let tsv;
-          try {
-            tsv = await api.readIngredient(localRepo, `${book.toUpperCase()}.tsv`);
-          } catch {
-            tsv = null;
-          }
-          if (tsv === null || tsv.startsWith('{"is_good":false')) {
-            dispatch({
-              type: 'set',
-              patch: {
-                checkTool: tool,
-                checkSession: {
-                  loading: false, tool, book, items: [], empty: 'missing',
-                  resource: resolutionRecord(pre.resolution),
-                },
-              },
-            });
+          const result = await deriveCheckItems({ apiClient: api, actions: a, st, tool, book, pre });
+          if (result.session) {
+            dispatch({ type: 'set', patch: { checkTool: tool, checkSession: result.session } });
             return;
           }
-          // §4.2 (D26): filter to the project scope before anything counts or shows it.
-          const scopeRanges = scopeRangesFor(
-            stateRef.current.projectScope ?? {},
-            book.toUpperCase(),
-          );
-          // #15: map into the project's frame BEFORE scope filtering and before
-          // any decision is keyed — the §8.5 journal is append-only, so a
-          // mapped-after-the-fact reference would be a second, conflicting
-          // identity. An eng project short-circuits and is unchanged.
-          const frame = await a.projectFrame();
-          // R-E33-6/R-E33-7: a frame that cannot MAP is a designed empty state,
-          // never dropped checks. Mapping every reference would return
-          // unknown-frame and the book would read "0 checks / no verse in this
-          // numbering" — false, and alarming, for what is either a transient
-          // network condition (`unavailable`) or an unidentifiable project
-          // versification (`unknown`). Each gets its own honest message; the
-          // eng default is always `ready`, so this never fires for it.
-          if (frame.state !== 'ready') {
-            dispatch({
-              type: 'set',
-              patch: {
-                checkTool: tool,
-                checkSession: {
-                  loading: false, tool, book, items: [],
-                  empty: `versification-${frame.state}`,
-                  resource: resolutionRecord(pre.resolution),
-                },
-              },
-            });
-            return;
-          }
-          const { items: derived, unplaceable } = await deriveForProject({
-            tsv,
+          const session = await completedCheckSession({
+            store: storeRef.current,
+            st: stateRef.current,
             tool,
-            bookId: book.toLowerCase(),
-            from: RESOURCE_FRAME,
-            to: frame.name,
-            schemes: frame.schemes,
-            scopeRanges,
+            book,
+            pre,
+            derived: result.derived,
+            dropped: result.dropped,
           });
-          // Never silent (the B20 principle): a check the project's numbering
-          // has no home for is DROPPED, which silently shrinks the progress
-          // denominator — "0 of 415" where the resource offered 417. Carry the
-          // count and reasons onto the session so the check view can say so.
-          const dropped = unplaceable.length
-            ? {
-                count: unplaceable.length,
-                scheme: frame.name,
-                reasons: [...new Set(unplaceable.map((u) => u.reason))].sort(),
-              }
-            : null;
-          if (derived.length === 0) {
-            // §5.2: the dropped count MUST be surfaced. When mapping dropped
-            // EVERY check, "the resource lists no checks — nothing is wrong"
-            // would be false; a dedicated empty state says what happened, and
-            // the check view renders the count alongside it.
-            dispatch({
-              type: 'set',
-              patch: {
-                checkTool: tool,
-                checkSession: {
-                  loading: false, tool, book, items: [],
-                  empty: dropped ? 'all-dropped' : 'none',
-                  resource: resolutionRecord(pre.resolution), dropped,
-                },
-              },
-            });
-            return;
-          }
-          const savedFile = await storeRef.current.readDecisions(tool, book);
-          const saved = savedFile?.decisions ?? [];
-          // C2.8 (2) — D17: has the resource behind this file changed?
-          // Safety net only: pass BOTH rungs so a file recorded against the
-          // other rung (the ladder working) is silent. The consequences of a
-          // real gateway change are shown at the change (D23a/D30.2).
-          const slot = TOOL_SLOT[tool];
-          const rungPins = ['primary', 'fallback']
-            .map((r) => st.projectPins?.languageSets?.[r]?.[slot])
-            .filter(Boolean)
-            // The sha rides along: identity is (repoPath + sha) — D58/D59 —
-            // and resolutionWarning's ladder suppression compares by sha, so
-            // dropping it here would make every fallback-recorded file warn.
-            .map((p2) => ({ repoPath: p2.repoPath, version: p2.version, sha: p2.sha }));
-          const warning = resolutionWarning(savedFile?.resource, pre.resolution, rungPins);
-
-          // Identity key first, then D17's cross-language fallback for whatever
-          // it could not place. Unconditional by design — see mergeAndReattach.
-          const { items: merged, orphaned } = mergeAndReattach(derived, saved);
-
-          // C2.8 (1) — the draft may have moved under stored selections (I-3).
-          // Verse text comes from the model the drafting view already builds,
-          // so revalidation reads the SAME bytes the translator sees.
-          // Built from the live raw book, not from `model`: the actions memo
-          // has empty deps, so a `model` reference here would capture the first
-          // render's empty book (the stale-closure hazard this file already
-          // guards against elsewhere with stateRef).
-          const verses = verseTextIndex(stateRef.current.bookRaw);
-          const { items, invalidated } = revalidateAgainstDraft(merged, verses);
-
-          const session = {
-            loading: false, tool, book, items,
-            progress: progressOf(items),
-            resource: resolutionRecord(pre.resolution),
-            categories: [...new Set(items.map((i) => i.category))].sort(),
-            activeIndex: 0,
-            invalidated,
-            warning,
-            orphaned,
-            // #15: checks the project's numbering has no home for. Non-null only
-            // for a cross-frame project; the check view surfaces the count.
-            dropped,
-            // Per-verse target text for the tN/tW selection UI (B23). Kept on the
-            // SESSION, never on the items — recordDecision spreads the item into
-            // the §5.2 write, so target text must not ride along and pollute it.
-            verses,
-          };
           dispatch({ type: 'set', patch: { checkSession: session } });
           a.loadActiveArticle(session);
         } catch (e) {
@@ -1163,30 +2144,19 @@ export function AppProvider({ children }) {
         const rung = cs.resource?.languageSet;
         const sets = st.projectPins?.languageSets?.[rung];
         const key = `${cs.tool}:${item.contextId.groupId}:${item.category}`;
-        if (cs.article?.key === key) return;
+        if (cs.article?.key === key && !cs.article.error) return;
         dispatch({ type: 'set', patch: { checkSession: { ...cs, article: { key, loading: true } } } });
-        let found = null;
-        try {
-          if (cs.tool === 'translationWords' && sets?.translationWords) {
-            found = await readTwArticle(
-              api,
-              resolveReadPath(sets.translationWords),
-              item.category,
-              item.contextId.groupId,
-            );
-          } else if (sets?.translationAcademy) {
-            found = await readTaArticle(
-              api,
-              resolveReadPath(sets.translationAcademy),
-              item.contextId.groupId,
-            );
-          }
-        } catch { /* reported as absence below */ }
+        const kind = cs.tool === 'translationWords' ? 'tw' : 'ta';
+        // Catch-to-absence sweep (D30): readHelpArticle now PROPAGATES
+        // transient failures (round 35) — without the settle the un-awaited
+        // call was an unhandled rejection and the panel spun forever. A
+        // failure is a stated, retryable article error, like Understand's.
+        const { found, error } = await settleArticleRead(api, kind, sets, item.category, item.contextId.groupId);
         const now = stateRef.current.checkSession;
         if (now?.article?.key !== key) return; // the user moved on
         dispatch({
           type: 'set',
-          patch: { checkSession: { ...now, article: { key, loading: false, found } } },
+          patch: { checkSession: { ...now, article: { key, loading: false, found, error } } },
         });
       },
 
@@ -1237,18 +2207,36 @@ export function AppProvider({ children }) {
       },
 
       resolutionContext: async () => {
+        // Round 35 + catch-to-absence sweep (D30): an outage in ANY of the
+        // three identity reads (the install record, the summaries, the
+        // on-disk discovery) must be REPORTED, not swallowed — each collapse
+        // makes installed resources read as a false "this machine lacks it"
+        // absence. The context stays usable (tolerant callers keep working),
+        // but carries ONE resolutionError for readiness-driving callers
+        // (Understand slots, refreshCheckable, runPreflight, the gateway
+        // change) to surface as a stated, retryable state.
+        let resolutionError = null;
+        const noteFailure = (error) => {
+          resolutionError = resolutionError ?? String(error?.message || error);
+        };
         const [recorded, summaries] = await Promise.all([
-          readInstalled(api, STORAGE_ID),
-          api.getSummaries().catch(() => ({})),
+          readInstalled(api, STORAGE_ID).catch((error) => {
+            noteFailure(error);
+            return {};
+          }),
+          api.getSummaries().catch((error) => {
+            noteFailure(error);
+            return {};
+          }),
         ]);
         // Resources can be present without a record — a bundled install, a rig
         // seed, a hand sideload. Identify those from their own metadata so the
         // machine's real contents drive readiness (works offline).
-        const installed = await discoverOnDisk(api, summaries, recorded, orgForRepoName);
+        const installed = await discoverOnDisk(api, summaries, recorded, orgForRepoName, noteFailure);
         // Cache for resolveReadPath: reads resolve a pin to its ACTUAL on-disk
         // path by identity, not by recomputing (B10).
         installedCache = installed;
-        return { installed, coverage: coverageFromLocal(summaries, installed) };
+        return { installed, coverage: coverageFromLocal(summaries, installed), resolutionError };
       },
 
       /** C2.1 — fetch each selected resource's sb-zip, verify the SHA the
@@ -1260,53 +2248,39 @@ export function AppProvider({ children }) {
         const src = stateRef.current.src;
         const chosen = src.rows.filter((r) => r.fixed || r.on);
         if (chosen.length === 0) return;
+        // M1 (adversarial round 13): the adoption finalizer runs AFTER long
+        // downloads, and the modal stays closable meanwhile — bind the whole
+        // operation to what was open when the user clicked Download.
+        const originStore = storeRef.current;
+        const originRepoPath = stateRef.current.project?.repoPath ?? null;
+        const originGateway = stateRef.current.src.gateway;
+        // Round 27: the pins consulted per row are the ORIGINATING project's,
+        // snapshotted when Download starts — the modal stays closable during
+        // long downloads, and reading live state after the awaits below could
+        // resolve a row against ANOTHER project's pinned sha (fetching the
+        // wrong artifact for the project the user clicked from).
+        const originPins = stateRef.current.projectPins;
+        const originBook = src.book;
+        if (!originGateway) return;
         dispatch({ type: 'patchSrc', patch: { dl: 'run', error: null, progress: null } });
 
         const local = new Set(await api.listLocalRepos().catch(() => []));
+        // Round 20: the download must satisfy the OPEN project's pinned
+        // identities (D58) — resolve what the machine actually holds once, up
+        // front, so a pin the catalog's latest release cannot satisfy fetches
+        // its own version instead. A failed resolve degrades to the
+        // no-open-project behavior (latest release), never to a refusal.
+        const { installed } = await a.resolutionContext().catch(() => ({ installed: {} }));
         const done = [];
         const failed = [];
         for (const row of chosen) {
-          const repoPath = `${DCS_HOST}/${stateRef.current.src.gateway.org}/${row.repo}`;
-          // Owner-qualified target (B9): `Xenizo/fr_tn` and `MVHS/fr_tn` get
-          // DISTINCT local paths, so selecting the second gateway no longer
-          // collides with the first and is no longer skipped as "installed".
-          const target = localRepoPathFromRepoPath(repoPath);
-          if (local.has(target)) {
-            // Already on disk. If nothing recorded which release it is (rig
-            // seeds, older installs), identify it from its own metadata
-            // revision + the DCS tag list — evidence, not assumption.
-            if (!(await readInstalled(api, STORAGE_ID))[target]) {
-              try {
-                const meta = await api.getMetadataRaw(target);
-                const rev = Object.values(meta?.identification?.primary?.dcs || {})[0]?.revision;
-                const found = await identifyExistingInstall(repoPath, rev);
-                // The metadata is already in hand — record the factual flavor
-                // with the identified tag (§8.5 schema needs both, D57).
-                if (found) await recordInstalled(api, STORAGE_ID, target, { ...found, flavor: flavorOfMetadata(meta) });
-              } catch { /* stays unidentified — contributes no coverage */ }
-            }
-            done.push(row.repo);
-            continue;
-          }
-          dispatch({ type: 'patchSrc', patch: { progress: t('sources.progress', { repo: row.repo }) } });
-          try {
-            const tag = await latestReleaseTag(repoPath);
-            const result = await fetchAndInstallPin(
-              { repoPath, version: tag, flavor: '' },
-              { api },
-            );
-            done.push(`${row.repo} ${tag}`);
-            // The export's own revision becomes this resource's pinned SHA,
-            // recorded per MACHINE (an install is shared by every project).
-            // The flavor comes from the installed burrito's own metadata — a
-            // pin needs a non-empty flavor to journal (§8.5 schema, D57).
-            const flavor = flavorOfMetadata(await api.getMetadataRaw(target).catch(() => null));
-            await recordInstalled(api, STORAGE_ID, target, {
-              repoPath, version: tag, sha: result.revision, flavor,
-            });
-          } catch (e) {
-            failed.push(`${row.repo}: ${String(e?.message || e)}`);
-          }
+          const target = localRepoPathFromRepoPath(`${DCS_HOST}/${originGateway.org}/${row.repo}`);
+          const wanted = unsatisfiedProjectPinFor(originPins, target, installed);
+          if (wanted || !local.has(target))
+            dispatch({ type: 'patchSrc', patch: { progress: t('sources.progress', { repo: row.repo }) } });
+          const result = await installPackageRow(api, originGateway, row, local, wanted);
+          if (result.done) done.push(result.done);
+          if (result.failed) failed.push(result.failed);
         }
         dispatch({
           type: 'patchSrc',
@@ -1317,20 +2291,25 @@ export function AppProvider({ children }) {
           },
         });
         if (done.length) {
-          const langKey = gatewayKey(stateRef.current.src.gateway);
-          const book = stateRef.current.src.book;
-          const already = stateRef.current.installedSrc.some(
-            (x) => x.langKey === langKey && x.book === book,
-          );
-          if (!already) {
-            dispatch({
-              type: 'set',
-              patch: { installedSrc: [...stateRef.current.installedSrc, { langKey, book }] },
-            });
-          }
+          recordInstalledPackage(stateRef, dispatch, originGateway, originBook);
+          // Round 20 (F2): a successful install may change NOTHING in
+          // resources.json — the pin already existed and only the machine's
+          // holdings changed — so pin adoption below dispatches nothing. Bump
+          // the epoch Understand's loader watches so readiness reflects every
+          // successful install.
+          dispatch({ type: 'set', patch: { installEpoch: stateRef.current.installEpoch + 1 } });
           // A download can COMPLETE a suite, which is what makes a language
           // offerable as the project's checking language.
           await a.refreshCheckable();
+          await adoptDownloadedPins({
+            originStore,
+            originRepoPath,
+            originGateway,
+            storeRef,
+            stateRef,
+            actions: a,
+            dispatch,
+          });
         }
       },
 
@@ -1338,10 +2317,15 @@ export function AppProvider({ children }) {
       //      books are added in the SEPARATE Add-a-book dialog) ----
       openNewProject: async () => {
         let versifications = ['eng'];
+        let versificationsError = null;
         try {
           versifications = await api.getVersifications();
-        } catch {
-          /* offline rig without the endpoint — keep the default */
+        } catch (error) {
+          // Catch-to-absence sweep (D30): a one-entry picker presented a
+          // failed listing as "the platform supports one scheme" — and the
+          // chosen scheme is journaled at creation, permanently. Keep the
+          // safe default usable but STATE the truncation in the dialog.
+          versificationsError = String(error?.message || error);
         }
         dispatch({
           type: 'set',
@@ -1355,6 +2339,7 @@ export function AppProvider({ children }) {
               font: SCRIPT_FONTS[0],
               versification: 'eng',
               versifications,
+              versificationsError,
               showAdvanced: false,
               busy: false,
               error: null,
@@ -1368,13 +2353,9 @@ export function AppProvider({ children }) {
       createBible: async () => {
         const w = stateRef.current.np;
         if (w.busy) return; // reentrancy guard: one create at a time
-        if (!w.name.trim()) return a.patchNp({ error: t('wizard.nameRequired') });
-        if (!w.code.trim()) return a.patchNp({ error: t('wizard.codeRequired') });
-        // The folder name derives from the name (no separate field — owner,
-        // 2026-07-31); a non-Latin name falls back to the language code.
-        const slug = (x) => x.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-        const abbr = slug(w.name) || slug(w.code);
-        if (!abbr) return a.patchNp({ error: t('wizard.abbrRequired') });
+        const validation = validateNewBible(w);
+        if (validation.error) return a.patchNp({ error: validation.error });
+        const { abbr } = validation;
         a.patchNp({ busy: true, error: null });
         const store = new JournalingStore({ api });
         // Friendly-name pre-check only: the boundary's createProject does its
@@ -1493,20 +2474,7 @@ export function AppProvider({ children }) {
             // self-contained §8.5 book.add carrying the book's REAL initial
             // state (issue #62). A book missing from the source journals the
             // server skeleton instead — absence is a state, not an error.
-            let initialUsfm;
-            try {
-              const src = await store.readSourceBook(
-                localSourceRepo(INSTALLED_SUITE.extraScripture[0]),
-                code,
-              );
-              initialUsfm = seedBookFromSource(src.usfm, {
-                bookCode: code,
-                bookName: bookName(code),
-                projectName: f.projName,
-              });
-            } catch {
-              initialUsfm = undefined; /* keep the server skeleton */
-            }
+            const initialUsfm = await seedInitialUsfm({ store, stateRef, code, projName: f.projName });
             await store.addBook({
               book_code: code,
               book_title: bookName(code),
@@ -1557,8 +2525,13 @@ export function AppProvider({ children }) {
             langName: settings.languageName || '',
             loaded: true,
           });
-        } catch {
-          a.patchSt({ loaded: true });
+        } catch (error) {
+          // Catch-to-absence sweep (D30, writable variant): claiming
+          // loaded:true over hard-coded defaults let Save WRITE those
+          // defaults over the project's real direction/font (an RTL project
+          // silently became LTR). State the failure; Save stays disabled
+          // while unloaded.
+          a.patchSt({ loaded: false, error: String(error?.message || error) });
         }
       },
       patchSt: (patch) =>
@@ -1588,7 +2561,12 @@ export function AppProvider({ children }) {
 
       // ---- Home: lazy per-book draft progress (design shows a bar per tile) ----
       loadProgress: async (project) => {
-        if (stateRef.current.progressByProject[project.id]) return;
+        // Review of the D30 sweep: a cached map with UNKNOWN (null) entries
+        // must not block a re-read — one transient failure would pin the
+        // tiles to em-dash for the whole session. Only a fully-known map is
+        // final.
+        const cached = stateRef.current.progressByProject[project.id];
+        if (cached && !Object.values(cached).includes(null)) return;
         if ((project.bookCodes || []).length === 0 || project.bookCodes.length > 12) return;
         // Read-only: the Home tiles must not run open-recovery or claim the
         // shell's current-project slot (ProjectReader does neither).
@@ -1596,6 +2574,9 @@ export function AppProvider({ children }) {
         try {
           await reader.open(project.id);
         } catch {
+          // Catch-to-absence sweep (D30), reviewed: cache NOTHING on a
+          // failed open — Home already renders missing entries as unknown
+          // (em-dash), and the next render retries.
           return;
         }
         const pcts = {};
@@ -1623,117 +2604,37 @@ export function AppProvider({ children }) {
         });
       },
 
-      openProject: async (repoPath, bookCode) => {
-        // Never abandon unsaved work: drain the old scheduler first, and stay
-        // put if a write failure remains (FR-32; review findings B3/M1/M6).
-        if (schedulerRef.current) {
-          const clean = await schedulerRef.current.drain();
-          if (!clean) return;
-          schedulerRef.current.dispose();
-        }
-        try {
-          // R-E33-3: the versification frame cache is keyed by repoPath, which is
-          // NOT unique across a delete-and-recreate inside one session. Clear it
-          // on every open so a new project at a reused path never inherits the
-          // previous project's frame — that would key every check in the wrong
-          // numbering, and the journal keeps those keys permanently.
-          forgetProjectFrames();
-          const store = new JournalingStore({ api });
-          // open() runs the issue-#62 recovery pipeline: replay staged intents,
-          // classify derived state against the journal, seed a journal-less
-          // project universally, reconcile out-of-band USFM — or STOP with a
-          // diagnosable report (surfaced through bookError below).
-          const summary = await store.open(repoPath);
-          storeRef.current = store;
-          schedulerRef.current = new SaveScheduler({
-            writeBook: (book, whole) => store.writeBook(book, whole),
-            splice: spliceVerse,
-          });
-          schedulerRef.current.subscribe((saveState) =>
-            dispatch({ type: 'set', patch: { saveState } }),
-          );
-          api.setCurrentProject(repoPath).catch(() => {});
-          markUsed(repoPath); // fire-and-forget; ordering refreshes next Home visit
-          // The platform summary reports script_direction "?" for app-created
-          // projects; the wizard recorded the user's choice in settings.json.
-          let scriptDirection = summary.scriptDirection;
-          if (scriptDirection !== 'ltr' && scriptDirection !== 'rtl') {
-            const settings = await store.readSettings().catch(() => null);
-            scriptDirection = settings?.textDirection === 'rtl' ? 'rtl' : 'ltr';
-          }
-          // §4.2 (D26): the project scope gates every derived list. It lives in
-          // metadata `type.flavorType.currentScope`. Absent or unreadable metadata
-          // reads as {} — whole book for every code, which is the pre-D26 behaviour.
-          let projectScope = {};
-          try {
-            const meta = await api.getMetadataRaw(repoPath);
-            projectScope = meta?.type?.flavorType?.currentScope ?? {};
-          } catch {
-            projectScope = {};
-          }
-          dispatch({
-            type: 'set',
-            patch: {
-              project: { ...summary, scriptDirection, repoPath },
-              projectScope,
-              view: 'draft',
-            },
-          });
-          // The project's pins drive every check session (D30.3). Absent
-          // resources.json reads as null — "no pins recorded" — which the
-          // preflight reports distinctly from "pinned but not local".
-          //
-          // #16 / owner ruling 3c: on the way in, record book coverage on any pin
-          // that lacks it and whose resource IS on this machine. That converts a
-          // pre-#16 project once, so the warned fallback stops firing for pins
-          // whose coverage was knowable all along. Pins whose resource is absent
-          // are left alone — that is the genuinely unknown case the warning is
-          // for. Best-effort: a failure here must never block opening a project,
-          // so the pins still load from whatever is on disk.
-          store.readResources()
-            .then(async (pins) => {
-              dispatch({ type: 'set', patch: { projectPins: pins } });
-              if (!pins) return;
-              try {
-                const { coverage } = await a.resolutionContext();
-                if (!backfillCoverage(pins, coverage).changed) return;
-                // Re-run the backfill INSIDE the compare-and-swap so a concurrent
-                // pin edit is not clobbered (B7/W-5).
-                const next = await updateResources(store, (current) =>
-                  backfillCoverage(current, coverage).resources,
-                );
-                dispatch({ type: 'set', patch: { projectPins: next } });
-              } catch {
-                /* coverage stays underived; the resolver falls back to warning */
-              }
-            })
-            .catch(() => dispatch({ type: 'set', patch: { projectPins: null } }));
-          // B12 — warm the install resolver BEFORE any book/source read. openBook
-          // resolves its source panes through resolveReadPath, which needs
-          // installedCache populated; on a cold project open the cache is empty,
-          // so every seeded resource resolves to the wrong (owner-qualified) path
-          // and the ULT/UST panes never render. Installs are machine-scoped, so
-          // one warm-up here also covers later book switches. resolutionContext
-          // is self-healing (it swallows its own read failures), so this is safe
-          // offline. Awaited so the cache is ready before openBook reads.
-          await a.resolutionContext().catch(() => {});
-          await a.openBook(bookCode || summary.bookCodes[0]);
-        } catch (e) {
-          dispatch({
-            type: 'set',
-            patch: { bookError: e?.reason || e?.message || String(e), view: 'home' },
-          });
-        }
-      },
+      openProject: (repoPath, bookCode) =>
+        performProjectOpen(
+          {
+            openProjectSeqRef,
+            schedulerRef,
+            noteSchedulerRef,
+            noteTargetsRef,
+            storeRef,
+            stateRef,
+            understandSeqRef,
+            dispatch,
+            actions: a,
+            apiClient: api,
+            makeStore: () => new JournalingStore({ api }),
+            markUsed,
+          },
+          repoPath,
+          bookCode,
+        ),
 
       openBook: async (code) => {
+        // F2/D65/round 34: a book switch is a navigation like any other —
+        // bring BOTH schedulers to rest in the re-checking loop (a note
+        // staged while the verse drain awaited is caught by the next pass,
+        // never carried out of its book's context), and refuse while a
+        // failure stands (FR-32; B3/M1: loading over unsaved work
+        // resurrects stale bytes).
         const store = storeRef.current;
         if (!store) return;
-        // Drain before switching: loading over unsaved work resurrects stale
-        // bytes (review finding B3). A retained failure keeps us on the
-        // current book with the error visible (FR-32; finding M1).
+        if (!(await drainBothSchedulers({ schedulerRef, noteSchedulerRef }))) return;
         const scheduler = schedulerRef.current;
-        if (scheduler && !(await scheduler.drain())) return;
         // Sequence token: two rapid opens must not interleave (finding M2) —
         // only the latest open may install its bytes and sources.
         const seq = ++openSeqRef.current;
@@ -1751,28 +2652,178 @@ export function AppProvider({ children }) {
         rawRef.current = raw;
         scheduler?.loadBook(code, raw);
         dispatch({ type: 'set', patch: { bookRaw: raw } });
-        // Load both source panes lazily; absence is a designed state.
-        const pins = INSTALLED_SUITE.extraScripture;
-        for (const pin of pins) {
-          store
-            .readSourceBook(localSourceRepo(pin), code)
-            .then(({ usfm: srcRaw }) => {
-              if (seq !== openSeqRef.current) return;
-              dispatch({
-                type: 'setSource',
-                id: pin.id,
-                value: { raw: srcRaw, chapters: parseChapters(srcRaw) },
-              });
-            })
-            .catch(() => {
-              if (seq !== openSeqRef.current) return;
-              dispatch({ type: 'setSource', id: pin.id, value: 'missing' });
-            });
-        }
+        // Round 37 (spec §5.3): the source panes come from the PROJECT's own
+        // extraScripture pins — never the machine suite. Deferred while the
+        // pins are still loading; loadProjectPins reloads on arrival.
+        loadSourcePanes({ store, code, seq, openSeqRef, stateRef, dispatch });
       },
 
-      setChapter: (chapter) => dispatch({ type: 'set', patch: { chapter, editing: null } }),
-      setSourceTab: (sourceTab) => dispatch({ type: 'set', patch: { sourceTab } }),
+      /** Round 37: re-resolve the open book's source panes (the pins landed
+       * after openBook, or changed). Bound to the CURRENT open sequence —
+       * never a new one, so a book switch mid-reload wins. */
+      reloadSourcePanes: (pins) => {
+        const store = storeRef.current;
+        const code = stateRef.current.book;
+        if (!store || !code) return;
+        loadSourcePanes({ store, code, seq: openSeqRef.current, openSeqRef, stateRef, dispatch, pins });
+      },
+
+      // ---- Understand (D63, #106) ---------------------------------------
+      /** Load the read-only helps for the open book: tN notes, tQ questions
+       * and tW links, each resolved over the §5.3 ladder (D64) and derived
+       * exactly like a check session — disposable, never stored (§4.2). The
+       * translator's own comprehension notes are read back from the journal. */
+      loadUnderstand: () =>
+        performLoadUnderstand({ stateRef, storeRef, understandSeqRef, dispatch, actions: a, apiClient: api }),
+
+      /** The Understand screen's ONLY write (#106, owner ruling 2026-08-27),
+       * now staged through the note SaveScheduler (D65). The box calls this
+       * on every divergent edit: the buffer coalesces keystrokes per target
+       * (latest value wins), the debounce autosaves, blur flushes. An emptied
+       * box is never staged (G1 — the caller gates it); staging the STORED
+       * text reconciles the buffer back to clean (replaces the old
+       * dismissNoteError/revision machinery — K1). The unchanged-text
+       * comparison lives in the ComprehensionBox against the note it actually
+       * DISPLAYS (unit-membership retrieval, M2). */
+      stageNote: ({ chapter, verse, projectFrame = false, stored = '' }, text) => {
+        const st = stateRef.current;
+        const store = storeRef.current;
+        const sched = noteSchedulerRef.current;
+        const book = st.book;
+        const repoPath = st.project?.repoPath;
+        if (!store || !sched || !book || !repoPath) return;
+        const key = noteKeyFor(repoPath, book, chapter, verse);
+        // C1: the target is bound to the store/project it was staged in.
+        noteTargetsRef.current.set(key, {
+          store,
+          repoPath,
+          book,
+          chapter,
+          verse,
+          projectFrame: !!projectFrame,
+        });
+        // First touch seeds `persisted` with the DISPLAYED stored note, so a
+        // revert-to-stored compares clean and re-blur writes nothing.
+        sched.seedIfAbsent(key, stored);
+        sched.markDirty(key, chapter, verse, text);
+      },
+
+      /** The buffered DRAFT for a note target, or null. Only a DIRTY buffer
+       * value is a draft (round 28): a clean value equals what the scheduler
+       * believes persisted, and restore paths must prefer the stored/durable
+       * note over it. The buffer survives unmounts and identity flips (O1/P1
+       * are structural now). */
+      stagedNote: ({ chapter, verse }) => {
+        const st = stateRef.current;
+        const repoPath = st?.project?.repoPath;
+        const sched = noteSchedulerRef.current;
+        if (!repoPath || !st.book || !sched) return null;
+        const key = noteKeyFor(repoPath, st.book, chapter, verse);
+        return sched.isDirty(key) ? sched.bookText(key) : null;
+      },
+
+      /** G1's clear refusal, version-aware (round 32): revert the target to
+       * the scheduler's latest PERSISTED value — never stage the render-time
+       * stored snapshot, which an in-flight write can make stale (journaling
+       * the OLD text over the newer one). A never-staged target is a no-op. */
+      revertNote: ({ chapter, verse }) => {
+        const st = stateRef.current;
+        const repoPath = st?.project?.repoPath;
+        if (!repoPath || !st.book) return;
+        noteSchedulerRef.current?.revertToPersisted(noteKeyFor(repoPath, st.book, chapter, verse));
+      },
+
+      /** Blur: flush the note buffer now (verse discipline — flushOnBlur). */
+      flushNotes: () => noteSchedulerRef.current?.flushOnBlur() ?? Promise.resolve(),
+
+      /** Retry after a failed note write. Reconcile the STORE first
+       * (round 28): a lost-response accept keeps its stage (round 27), and a
+       * cleared fresh draft leaves the buffer clean — retry() alone would
+       * clear the failure without ever running the replay that surfaces the
+       * durable note, and Saved would show over hidden accepted work. Then
+       * retry the buffer (the LATEST text — a stale payload structurally
+       * cannot exist, round 21) and refresh the notes the screen displays. */
+      /** Round 34: re-run the failed pins read (bound to the OPEN project's
+       * store); the error clears optimistically and returns if the read
+       * fails again. */
+      /** Catch-to-absence sweep (D30): retry a failed project listing. */
+      refreshProjects: () => refreshProjects(),
+
+      retryProjectPins: () => {
+        const store = storeRef.current;
+        const repoPath = stateRef.current.project?.repoPath;
+        if (!store || !repoPath) return;
+        dispatch({ type: 'set', patch: { projectPinsError: null } });
+        loadProjectPins({ store, repoPath, storeRef, stateRef, actions: a, dispatch });
+      },
+
+      retryNoteSave: () =>
+        // Rounds 29-31: the reconcile-before-rest gate (and the notes
+        // refresh a recovery needs) runs INSIDE the scheduler's retry — a
+        // rejecting reconcile keeps the failure standing (FR-32).
+        noteSchedulerRef.current?.retry() ?? Promise.resolve(),
+
+      /** A help article behind an Understand card (tW word or tA module),
+       * read from the INSTALLED burrito like C2.5; absence is stated. */
+      loadHelpArticle: async ({ kind, category, slug, rung }) => {
+        const st = stateRef.current;
+        // The article set must actually CARRY the slot: a primary set can
+        // resolve the notes while only the fallback pins tA/tW — take the
+        // resolved rung's set first, then the first set holding the pin
+        // (2026-08-27 review; readTw/TaArticle still state absence when the
+        // repo lacks the module).
+        const set = understandArticleSet(st, kind, rung);
+        const key = `${kind}:${category ?? ''}:${slug}`;
+        // Same-key guard — but an ERRORED article stays re-requestable
+        // (round 35): its Retry re-runs this exact request in place.
+        if (st.understand?.article?.key === key && !st.understand.article.error) return;
+        // D3 (adversarial round 4): the same slug exists across projects and
+        // pins, so a key-only guard lets a DELAYED read from a previous
+        // project land as this project's article. Completion requires the
+        // sequence token AND the originating project to still match.
+        const seq = ++articleSeqRef.current;
+        const repoPath = st.project?.repoPath;
+        const request = { kind, category, slug, rung };
+        dispatch({
+          type: 'set',
+          patch: { understand: { ...st.understand, article: { key, seq, loading: true, request } } },
+        });
+        let found = null;
+        let articleError = null;
+        try {
+          found = await readHelpArticle(api, kind, set, category, slug);
+        } catch (error) {
+          // Round 35: a failed read is a stated, retryable error — never
+          // "this article does not exist" (D30).
+          articleError = String(error?.message || error);
+        }
+        const now = stateRef.current;
+        if (!isCurrentArticleRequest(now, seq, articleSeqRef.current, repoPath, key)) return;
+        dispatch({
+          type: 'set',
+          patch: { understand: { ...now.understand, article: { key, seq, loading: false, found, error: articleError, request } } },
+        });
+      },
+
+      closeHelpArticle: () => {
+        const now = stateRef.current;
+        dispatch({ type: 'set', patch: { understand: { ...now.understand, article: null } } });
+      },
+
+      setChapter: async (chapter) => {
+        // L1/D65: a chapter click is a navigation for the comprehension
+        // boxes too — flush the note buffer and stay put only on a failure
+        // (FR-32).
+        if (noteSchedulerRef.current && !(await noteSchedulerRef.current.drain())) return;
+        dispatch({ type: 'set', patch: { chapter, editing: null } });
+      },
+      setSourceTab: async (sourceTab) => {
+        // N2/D65: a tab switch re-chunks the passage — flush the note buffer
+        // first so a draft can never be re-marked under a different target
+        // mid-flight; a failure stays put (FR-32).
+        if (noteSchedulerRef.current && !(await noteSchedulerRef.current.drain())) return;
+        dispatch({ type: 'set', patch: { sourceTab } });
+      },
       toggleRail: () => dispatch({ type: 'toggle', key: 'rail' }),
       toggleHelps: () => dispatch({ type: 'toggle', key: 'helps' }),
       setHelpsTab: (helpsTab) => dispatch({ type: 'set', patch: { helpsTab } }),
@@ -1812,16 +2863,25 @@ export function AppProvider({ children }) {
       retrySave: () => schedulerRef.current?.retry(),
       backToProjects: async () => {
         // Never navigate away from unsaved work or a visible failure (FR-32).
-        if (schedulerRef.current) {
-          const clean = await schedulerRef.current.drain();
-          if (!clean) return;
-          schedulerRef.current.dispose();
-          schedulerRef.current = null;
-        }
+        // EVERY blocker is checked BEFORE anything is disposed (C3,
+        // adversarial round 3): a refused exit must leave the project fully
+        // working — both schedulers included — or the next edit throws.
+        // Round 23: the loop re-checks both after each pass, so a note staged
+        // while the verse drain awaited can never be disposed unflushed.
+        if (!(await drainBothSchedulers({ schedulerRef, noteSchedulerRef }))) return;
+        schedulerRef.current?.dispose();
+        schedulerRef.current = null;
+        noteSchedulerRef.current?.dispose();
+        noteSchedulerRef.current = null;
+        noteTargetsRef.current = new Map();
         storeRef.current = null;
+        // A2 (2026-08-27 adversarial review): understand + projectPins are
+        // PROJECT state — leaving them set lets project B render (and journal
+        // into!) project A's data. Invalidate any in-flight load as well.
+        understandSeqRef.current++;
         dispatch({
           type: 'set',
-          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, saveState: 'saved' },
+          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, saveState: 'saved', noteSaveState: 'saved', projectPins: null, projectPinsLoaded: false, projectPinsError: null, sourcePanes: null, understand: null },
         });
         refreshProjects(); // re-order: the project just left goes to the top
       },

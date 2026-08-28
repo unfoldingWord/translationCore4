@@ -84,6 +84,7 @@ const refPart = (s: string): number | string => (/^\d+$/.test(s) ? Number(s) : s
  * rejected, not guess-parsed. */
 export const TWL_HEADER = 'Reference\tID\tTags\tOrigWords\tOccurrence\tTWLink';
 export const TN_HEADER = 'Reference\tID\tTags\tSupportReference\tQuote\tOccurrence\tNote';
+export const TQ_HEADER = 'Reference\tID\tTags\tQuote\tOccurrence\tQuestion\tResponse';
 
 const tsvRows = (tsv: string, expectedHeader: string, resourceLabel: string): string[][] => {
   const lines = tsv.split('\n').filter((row) => row.trim() !== '');
@@ -204,12 +205,17 @@ export const tnQuoteWords = (quote: string): TnQuoteWord[] => {
 
 /** Derive check items from a tN TSV
  * (columns: Reference / ID / Tags / SupportReference / Quote / Occurrence / Note).
- * A row without a SupportReference is a plain note, not a check — skipped
- * (tC3 semantics: the tN tool groups by tA module; the reference client does
- * the same). `groupId` is the SupportReference's tA module slug. */
-export const deriveTnItems = (tnTsv: string, bookId: string): CheckItem[] =>
+ * A row without a SupportReference is a plain note, not a check — skipped by
+ * default (tC3 semantics: the tN tool groups by tA module; the reference
+ * client does the same). `groupId` is the SupportReference's tA module slug.
+ *
+ * `keepPlain` (D63, Understand): the READ-ONLY notes surface must show every
+ * note the resource carries — plain rows are a large share of real data
+ * (en_tn v86 Titus: 49 of 206 rows; es-419_tn v66: 104 of 216 — 2026-08-27
+ * Codex review). A plain row's `groupId` is '' (no tA module to link). */
+export const deriveTnItems = (tnTsv: string, bookId: string, opts: { keepPlain?: boolean } = {}): CheckItem[] =>
   tsvRows(tnTsv, TN_HEADER, 'tN')
-    .filter((cells) => (cells[3] ?? '') !== '')
+    .filter((cells) => opts.keepPlain || (cells[3] ?? '') !== '')
     .map((cells) => {
       const [ref, id, , supportReference, quote, occurrence, note] = cells;
       const [chapter, verse] = ref.split(':').map(refPart);
@@ -234,6 +240,39 @@ export const deriveTnItems = (tnTsv: string, bookId: string): CheckItem[] =>
         invalidated: false,
       };
     });
+
+/** Derive help items from a tQ TSV
+ * (columns: Reference / ID / Tags / Quote / Occurrence / Question / Response —
+ * [VERIFIED 2026-08-27, en_tq v89 sb-zip export]). Read-only helps for the
+ * Understand screen (D63/D64): every row is an item; `question`/`response`
+ * ride on the item root, and `occurrenceNote` mirrors the response so shared
+ * renderers keep working. */
+export const deriveTqItems = (tqTsv: string, bookId: string): CheckItem[] =>
+  tsvRows(tqTsv, TQ_HEADER, 'tQ').map((cells) => {
+    const [ref, id, , quote, occurrence, question, response] = cells;
+    const [chapter, verse] = ref.split(':').map(refPart);
+    return {
+      contextId: {
+        checkId: id,
+        occurrenceNote: response ?? '',
+        reference: { bookId, chapter, verse },
+        tool: 'translationQuestions',
+        groupId: id,
+        quote: tnQuoteWords(quote ?? ''),
+        quoteString: quote ?? '',
+        occurrence: Number(occurrence),
+      },
+      category: 'questions',
+      question: question ?? '',
+      response: response ?? '',
+      selections: false,
+      comments: false,
+      reminders: false,
+      nothingToSelect: false,
+      verseEdits: false,
+      invalidated: false,
+    };
+  });
 
 // ---------- cross-language re-attach (D17, BURRITO-SPEC §5.2) ----------
 
@@ -487,7 +526,8 @@ export interface ProjectDeriveResult {
  * reference and never loads the mapping engine. */
 export const deriveForProject = async (params: {
   tsv: string;
-  tool: Tool;
+  /** A checking tool, or the Understand screen's read-only tq helps (D64). */
+  tool: Tool | 'translationQuestions';
   bookId: string;
   /** The resource's frame. The unfoldingWord suite is `eng` throughout. */
   from: SchemeName | null;
@@ -496,10 +536,15 @@ export const deriveForProject = async (params: {
   schemes: Partial<Record<SchemeName, SchemeDoc>>;
   saved?: CheckItem[];
   scopeRanges?: string[];
+  /** tN only: keep rows without a SupportReference (the Understand screen's
+   * read-only notes surface — see deriveTnItems). Checking never sets this. */
+  keepPlainNotes?: boolean;
 }): Promise<ProjectDeriveResult> => {
-  const { tsv, tool, bookId, from, to, schemes, saved = [], scopeRanges = [] } = params;
+  const { tsv, tool, bookId, from, to, schemes, saved = [], scopeRanges = [], keepPlainNotes = false } = params;
   const derived =
-    tool === 'translationNotes' ? deriveTnItems(tsv, bookId) : deriveTwlItems(tsv, bookId);
+    tool === 'translationNotes' ? deriveTnItems(tsv, bookId, { keepPlain: keepPlainNotes })
+      : tool === 'translationQuestions' ? deriveTqItems(tsv, bookId)
+        : deriveTwlItems(tsv, bookId);
 
   const items: CheckItem[] = [];
   const unplaceable: UnplaceableItem[] = [];

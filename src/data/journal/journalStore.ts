@@ -548,4 +548,26 @@ export class JournalStore {
     }
     return results;
   }
+
+  /** Withdraw one staged intent, ONLY when it is provably unpublished
+   * (round 27): a failed grow-only publish the user then abandons must not
+   * linger in the outbox — replayStaged would REPUBLISH it later, and a
+   * note.add cannot be deleted. 'accepted' = the segment holds these exact
+   * bytes (a lost-response accept — the action IS durable, the stage stays
+   * for replay) or the stage already cleared; 'kept' = a DIFFERENT segment
+   * holds the path (#62's classifier owns that). A transport failure while
+   * probing throws — callers keep the stage on doubt. */
+  async cancelStagedIfUnpublished(ts: string): Promise<'cancelled' | 'accepted' | 'kept'> {
+    const key = `${this.outboxPrefix}${ts}`;
+    const staged = await this.kv.get(key);
+    if (staged === undefined) return 'accepted'; // cleared: the publish completed
+    const ipath = `${this.segmentsDir}/${segmentName(ts)}`;
+    return withPathLock(`${this.repoPath} ${ipath}`, async () => {
+      const existing = await this.readOrNull(ipath);
+      if (existing === staged) return 'accepted';
+      if (existing !== null) return 'kept';
+      await this.kv.delete(key);
+      return 'cancelled';
+    });
+  }
 }

@@ -4,26 +4,12 @@
 import React, { useRef, useEffect } from 'react';
 import { useApp } from '../state.jsx';
 import { bookName } from '../data/bookNames';
-import { SUITE_VERSION } from '../state.jsx';
 import { t } from '../i18n';
-import { BookTile, FilterChip, IconButton, Overline, Button } from '../ds/index.js';
+import { FilterChip, IconButton, Overline, Button } from '../ds/index.js';
+import BookRail from './BookRail.jsx';
+import { verseText as sourceText } from './verseText.js';
 
 const hair = 'var(--stroke-hair) solid var(--border-hair)';
-
-// Plain display text for one source verse (verseObjects from usfm-js — aligned
-// USFM collapses to its text/word content; display only, never re-serialized).
-const sourceText = (vObj) => {
-  const walk = (vos) =>
-    (vos || [])
-      .map((vo) => {
-        if (vo.type === 'footnote' || vo.tag === 'f') return '';
-        if (vo.text != null && vo.type !== 'section') return vo.text;
-        if (vo.children) return walk(vo.children);
-        return '';
-      })
-      .join('');
-  return walk(vObj?.verseObjects).replace(/\s+/g, ' ').trim();
-};
 
 // The design's editing card. Blur on the textarea still saves-and-closes
 // (journeys blur to save); the Save/Cancel buttons carry onMouseDown
@@ -93,45 +79,7 @@ export default function Draft() {
 
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-      {s.rail && (
-        <aside style={{ width: 'var(--rail-width)', flex: 'none', background: 'var(--surface-panel)', borderInlineEnd: hair, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-          <div style={{ padding: '16px 16px 10px' }}>
-            <Overline style={{ letterSpacing: '.14em' }}>{t('draft.books')} · {(s.project?.bookCodes || []).length}</Overline>
-          </div>
-          {/* Design update (owner, 2026-07-31): the chapter grid nests under
-              the ACTIVE book row — no separate chapters section. */}
-          <div style={{ padding: '0 10px 14px', display: 'flex', flexDirection: 'column', gap: 4, overflow: 'auto', flex: 1, minHeight: 0 }}>
-            {(s.project?.bookCodes || []).map((code) => {
-              const active = code === book.code;
-              // Every row shows its draft bar: the active book live, the rest
-              // from the Home progress cache when it has been loaded.
-              const pct = active ? book.draftPct : s.progressByProject[s.project.id]?.[code];
-              return (
-                // Design update (owner, 2026-07-31): the active book and its
-                // chapter grid share ONE tinted group.
-                <div key={code} style={{ borderRadius: 'var(--radius-md)', background: active ? 'var(--surface-accent-soft)' : 'transparent' }}>
-                  <BookTile layout="row" active={active} name={bookName(code)}
-                    percent={pct ?? 0} meta={pct != null ? `${pct}%` : ''}
-                    onClick={() => actions.openBook(code)} />
-                  {active && (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 6, padding: '2px 12px 12px' }}>
-                      {book.chapterNums.map((c) => {
-                        const sel = c === s.chapter;
-                        return (
-                          <button key={c} onClick={() => actions.setChapter(c)} type="button" data-tc={sel ? undefined : 'surface'}
-                            style={{ cursor: 'pointer', fontFamily: 'var(--font-ui)', fontWeight: 'var(--fw-heavy)', fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', height: 32, borderRadius: 'var(--radius-sm)', borderWidth: 'var(--stroke)', borderStyle: 'solid',
-                              ...(sel ? { background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)' }
-                                : { background: '#fff', color: 'var(--text-tertiary)', borderColor: 'var(--border)' }) }}>{c}</button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </aside>
-      )}
+      {s.rail && <BookRail />}
 
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 22px', borderBottom: hair, background: '#fff', flex: 'none' }}>
@@ -145,13 +93,17 @@ export default function Draft() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', maxWidth: 1100, margin: '0 auto' }}>
             <div style={{ position: 'sticky', top: 0, background: 'var(--surface-app)', zIndex: 2, padding: '10px 26px 8px', borderInlineEnd: hair, display: 'flex', alignItems: 'center', gap: 8 }}>
               {/* ULT/UST source tabs (C1b.3 — the orig pane comes with the alignment increment) */}
-              {['ult', 'ust'].map((id) => (
+              {(s.sourcePanes ?? []).map((id) => (
                 <FilterChip key={id} tone="ocean" selected={s.sourceTab === id} onClick={() => actions.setSourceTab(id)}
                   style={{ padding: '4px 10px', fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', borderWidth: 1 }}>
-                  {t(`source.${id}`)}
+                  {t(`source.${id}`, {}, id.toUpperCase())}
                 </FilterChip>
               ))}
-              <span style={{ fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', color: 'var(--text-tertiary)', fontWeight: 'var(--fw-medium)', marginInlineStart: 6 }}>{t('draft.pinned', { version: SUITE_VERSION })}</span>
+              {(s.sources?.[s.sourceTab]?.version || null) && (
+                // Round 37: the badge names the PANE's own pinned version —
+                // never the machine suite's literal.
+                <span style={{ fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', color: 'var(--text-tertiary)', fontWeight: 'var(--fw-medium)', marginInlineStart: 6 }}>{t('draft.pinned', { version: s.sources[s.sourceTab].version })}</span>
+              )}
             </div>
             <div style={{ position: 'sticky', top: 0, background: 'var(--surface-app)', zIndex: 2, padding: '15px 26px 8px' }}>
               <Overline tone="accent" style={{ letterSpacing: '.13em' }}>{s.project?.name} · {s.project?.languageTag}</Overline>

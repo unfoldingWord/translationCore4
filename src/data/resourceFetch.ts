@@ -98,17 +98,21 @@ export const unwrapExport = (zipBytes: Uint8Array): UnwrappedBurrito => {
     throw new Error('the downloaded archive has no ingredients/ — not a burrito');
   }
 
-  let revision: string | null = null;
+  return { files, revision: declaredRevision(files['metadata.json']) };
+};
+
+/** The commit SHA the export's own metadata declares, or null when it names
+ * none. Throws on unparseable metadata — the archive is not installable. */
+const declaredRevision = (metadataJson: Uint8Array): string | null => {
   try {
-    const meta = JSON.parse(decoder.decode(files['metadata.json'])) as {
+    const meta = JSON.parse(decoder.decode(metadataJson)) as {
       identification?: { primary?: { dcs?: Record<string, { revision?: string }> } };
     };
     const dcs = meta.identification?.primary?.dcs ?? {};
-    revision = Object.values(dcs)[0]?.revision ?? null;
+    return Object.values(dcs)[0]?.revision ?? null;
   } catch {
     throw new Error('the downloaded archive has an unreadable metadata.json');
   }
-  return { files, revision };
 };
 
 /** Re-zip the unwrapped tree for `POST /burrito/zipped`.
@@ -161,8 +165,15 @@ const findDcsTag = async (
   const base = `https://${path.slice(0, slash)}/api/v1/repos/${path.slice(slash + 1)}/tags`;
   let effectivePageSize: number | null = null;
   for (let page = 1; page <= TAG_PAGE_BOUND; page += 1) {
-    const response = await fetchFn(`${base}?limit=${TAG_PAGE_LIMIT}&page=${page}`).catch(() => null);
-    if (!response?.ok) return null;
+    // Catch-to-absence sweep (D30): null means DCS CONFIRMS no tag matches.
+    // A transport failure or server error must PROPAGATE — swallowing it made
+    // an identification read as "no tag exists", and the caller then claimed
+    // an install both succeeded and contributes nothing.
+    const response = await fetchFn(`${base}?limit=${TAG_PAGE_LIMIT}&page=${page}`);
+    if (!response.ok) {
+      if (response.status === 404) return null; // the repo/listing does not exist — conclusive
+      throw new Error(`tags listing for ${repoPath} failed (HTTP ${response.status})`);
+    }
     const tags = (await response.json()) as DcsTag[];
     if (!Array.isArray(tags) || tags.length === 0) return null; // the listing ended
     const hit = tags.find(match);
@@ -236,6 +247,13 @@ export interface FetchOptions {
   /** Injected for tests; defaults to the global fetch. */
   fetchFn?: typeof fetch;
   onStage?: (stage: FetchStage) => void;
+  /** Install into this local repo path instead of the pin's canonical one.
+   * Used when the canonical path is OCCUPIED by a different sha of the same
+   * repo (round 20): the importer refuses an existing target, and deleting
+   * the occupant could orphan another project pinned to it, so the exact
+   * identity installs side by side. Reads resolve by identity, never by
+   * recomputed path (B10), so the off-canonical path stays readable. */
+  targetRepoPath?: string;
 }
 
 export interface FetchResult {
@@ -244,6 +262,40 @@ export interface FetchResult {
   revision: string | null;
   bytes: number;
 }
+
+/** D23b — verify at EVERY import, against an expected SHA the archive did not
+ * supply. A re-install carries the pin's own SHA; a first install has none,
+ * so resolve the commit DCS records for this release tag (an independent
+ * source) and require the export's declared revision to match it. Without
+ * this, `pin.sha` is undefined, the old `pin.sha &&` guard never ran, and the
+ * archive's self-declared revision became the pin — it self-certified (F4). */
+const verifyExportRevision = async (
+  pin: FetchPin,
+  version: string,
+  revision: string | null,
+  doFetch: typeof fetch,
+): Promise<void> => {
+  const expectedSha = pin.sha ?? (await releaseCommitSha(pin.repoPath, version, doFetch));
+  if (!expectedSha) {
+    throw new Error(
+      `cannot authenticate ${pin.repoPath} ${version}: DCS reported no commit for this ` +
+        'release tag, so the download cannot be verified — not installed',
+    );
+  }
+  if (!revision) {
+    throw new Error(
+      `the export for ${pin.repoPath} ${version} declares no revision, so its ` +
+        'SHA cannot be verified — not installed',
+    );
+  }
+  if (expectedSha !== revision) {
+    throw new Error(
+      `pin SHA mismatch for ${pin.repoPath} ${version}: expected ${expectedSha.slice(0, 12)}… ` +
+        `(${pin.sha ? 'pinned' : 'DCS release tag'}), the export declares ${revision.slice(0, 12)}… ` +
+        '— not installed',
+    );
+  }
+};
 
 /** Fetch one pinned resource and install it. Refuses rather than guessing:
  * a pin whose declared SHA does not match the export's own metadata is never
@@ -281,35 +333,10 @@ export const fetchAndInstallPin = async (
 
   opts.onStage?.('verify');
   const { files, revision } = unwrapExport(bytes);
-  // D23b — verify at EVERY import, against an expected SHA the archive did not
-  // supply. A re-install carries the pin's own SHA; a first install has none,
-  // so resolve the commit DCS records for this release tag (an independent
-  // source) and require the export's declared revision to match it. Without
-  // this, `pin.sha` is undefined, the old `pin.sha &&` guard never ran, and the
-  // archive's self-declared revision became the pin — it self-certified (F4).
-  const expectedSha = pin.sha ?? (await releaseCommitSha(pin.repoPath, version, doFetch));
-  if (!expectedSha) {
-    throw new Error(
-      `cannot authenticate ${pin.repoPath} ${version}: DCS reported no commit for this ` +
-        'release tag, so the download cannot be verified — not installed',
-    );
-  }
-  if (!revision) {
-    throw new Error(
-      `the export for ${pin.repoPath} ${version} declares no revision, so its ` +
-        'SHA cannot be verified — not installed',
-    );
-  }
-  if (expectedSha !== revision) {
-    throw new Error(
-      `pin SHA mismatch for ${pin.repoPath} ${version}: expected ${expectedSha.slice(0, 12)}… ` +
-        `(${pin.sha ? 'pinned' : 'DCS release tag'}), the export declares ${revision.slice(0, 12)}… ` +
-        '— not installed',
-    );
-  }
+  await verifyExportRevision(pin, version, revision, doFetch);
 
   opts.onStage?.('install');
-  const repoPath = localRepoPathFor(pin);
+  const repoPath = opts.targetRepoPath ?? localRepoPathFor(pin);
   await opts.api.postZippedBurrito(repoPath, rezip(files));
   return { repoPath, revision, bytes: bytes.length };
 };

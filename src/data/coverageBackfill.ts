@@ -27,12 +27,17 @@ import { LADDER } from './burritoStore';
 import { coverageFor, type Coverage } from './resolve';
 import { PIN_BOOK_RE, WHOLE_COLLECTION } from '../../conformance/journal/grammar.mjs';
 
-/** The pin slots that carry a repo and can therefore carry coverage. */
+/** The pin slots that carry a repo and can therefore carry coverage —
+ * including the §5.3 1.10 OPTIONAL slots (D64): without recorded `books`, a
+ * transferred project cannot tell an uncovered primary tq/simplified from an
+ * unfetched one (2026-08-27 Codex review). */
 const SET_SLOTS = [
   'translationNotes',
   'translationWordsLinks',
   'translationWords',
   'translationAcademy',
+  'translationQuestions',
+  'simplifiedText',
 ] as const;
 
 export interface BackfillResult {

@@ -34,6 +34,7 @@ const baseState = {
   progressByProject: {},
   projects: [],
   netEnabled: false,
+  noteSaveState: 'saved',
 };
 
 const bookModel = {
@@ -84,6 +85,29 @@ describe('#108 — Publish moves into Check as Community Checking', () => {
     expect(screen.getByTestId('community-checking-card')).toBeTruthy();
     fireEvent.click(screen.getByTestId('open-community-checking'));
     expect(go).toHaveBeenCalledWith('publish');
+  });
+
+  it('a failed comprehension write surfaces on the GLOBAL save indicator with its own retry (B1/D65)', () => {
+    state = { ...baseState, noteSaveState: 'error' } as never;
+    render(<App />);
+    const indicator = screen.getByTestId('save-indicator');
+    expect(indicator.getAttribute('data-state')).toBe('error');
+    expect(screen.getByTestId('retry-note-save')).toBeTruthy();
+  });
+
+  it("the indicator never claims Saved while the note scheduler holds work — the WORST of the two schedulers wins (Q2/D65)", () => {
+    state = { ...baseState, noteSaveState: 'dirty' } as never;
+    render(<App />);
+    expect(screen.getByTestId('save-indicator').getAttribute('data-state')).toBe('dirty');
+    cleanup();
+    state = { ...baseState, noteSaveState: 'saving' } as never;
+    render(<App />);
+    expect(screen.getByTestId('save-indicator').getAttribute('data-state')).toBe('saving');
+    cleanup();
+    // and the verse scheduler's worse state wins symmetrically
+    state = { ...baseState, noteSaveState: 'dirty', saveState: 'error' } as never;
+    render(<App />);
+    expect(screen.getByTestId('save-indicator').getAttribute('data-state')).toBe('error');
   });
 
   it('the publish view is the typeset preview with both exports disabled', () => {

@@ -5,6 +5,7 @@ import {
   coverageFromLocal,
   installedPathFor,
   isPinLocal,
+  unsatisfiedProjectPinFor,
   languageSetFromInstalled,
   localRepoPathFromRepoPath,
   readInstalled,
@@ -415,5 +416,105 @@ describe('the whole point: a Spanish suite on disk resolves to a language set', 
     expect(set?.translationNotes.version).toBeUndefined();
     expect(set?.translationWords.repoPath).toBe('git.door43.org/es-419_gl/es-419_tw');
     expect(set?.translationWordsLinks.repoPath).toBe('git.door43.org/es-419_gl/es-419_tw'); // D34
+  });
+});
+
+describe('round 20 — unsatisfiedProjectPinFor: a download must satisfy the PROJECT pin', () => {
+  const target = '_local_/_sideloaded_/unfoldingword--en_tq';
+  const setWith = (tq?: ResourcePin) => ({
+    languageSets: {
+      primary: {
+        gatewayLanguage: { languageId: 'en', owner: 'unfoldingWord' },
+        translationNotes: pin('unfoldingWord/en_tn', 'v89'),
+        translationWordsLinks: pin('unfoldingWord/en_tw', 'v89'),
+        translationWords: pin('unfoldingWord/en_tw', 'v89'),
+        translationAcademy: pin('unfoldingWord/en_ta', 'v89'),
+        ...(tq ? { translationQuestions: tq } : {}),
+      },
+      fallback: {
+        gatewayLanguage: { languageId: 'en', owner: 'unfoldingWord' },
+        translationNotes: pin('unfoldingWord/en_tn', 'v89'),
+        translationWordsLinks: pin('unfoldingWord/en_tw', 'v89'),
+        translationWords: pin('unfoldingWord/en_tw', 'v89'),
+        translationAcademy: pin('unfoldingWord/en_ta', 'v89'),
+      },
+    },
+  });
+
+  it('VERSION SKEW: a same-repo install at the catalog-latest sha does NOT satisfy the pin', () => {
+    // The project pins en_tq v88; the machine holds the latest release (v89,
+    // a different sha). Downloading "latest" again can never heal this — the
+    // pin's own identity is what must be fetched.
+    const wanted = pin('unfoldingWord/en_tq', 'v88');
+    const installedLatest: InstalledMap = {
+      ...INSTALLED,
+      [target]: pin('unfoldingWord/en_tq', 'v89'),
+    };
+    expect(unsatisfiedProjectPinFor(setWith(wanted), target, installedLatest)).toEqual(wanted);
+  });
+
+  it('an exact-identity install satisfies the pin — nothing to fetch', () => {
+    const wanted = pin('unfoldingWord/en_tq', 'v88');
+    const installedExact: InstalledMap = { ...INSTALLED, [`${target}--v88side`]: wanted };
+    expect(unsatisfiedProjectPinFor(setWith(wanted), target, installedExact)).toBeNull();
+  });
+
+  it('a repo the project does not pin has no wanted identity (latest is fine)', () => {
+    expect(unsatisfiedProjectPinFor(setWith(undefined), target, INSTALLED)).toBeNull();
+  });
+
+  it('null resources (no open project) and non-pin set fields are ignored', () => {
+    expect(unsatisfiedProjectPinFor(null, target, INSTALLED)).toBeNull();
+    // gatewayLanguage has no repoPath/sha — it must never be returned.
+    const tnTarget = '_local_/_sideloaded_/unfoldingword--en_tn';
+    expect(unsatisfiedProjectPinFor(setWith(undefined), tnTarget, INSTALLED)).toBeNull();
+  });
+
+  it('a sha-less pin is satisfiable by no install (D59) — and fetchable as no identity', () => {
+    const shaLess = { ...pin('unfoldingWord/en_tq', 'v88'), sha: undefined } as never;
+    expect(unsatisfiedProjectPinFor(setWith(shaLess), target, {})).toBeNull();
+  });
+});
+
+describe('catch-to-absence sweep (D30) — the install-record reads', () => {
+  const notFound = () => Object.assign(new Error('404'), { isNotFound: true });
+
+  it('readInstalled: absent settings are {}; a transport failure PROPAGATES (never "nothing installed")', async () => {
+    const absent = { getClientSettings: async () => { throw notFound(); } } as never;
+    expect(await readInstalled(absent, 'sid')).toEqual({});
+    const down = { getClientSettings: async () => { throw new Error('settings endpoint down'); } } as never;
+    await expect(readInstalled(down, 'sid')).rejects.toThrow(/settings endpoint down/);
+  });
+
+  it('recordInstalled: a failed settings READ aborts — never a blind whole-document replacement', async () => {
+    const writes: unknown[] = [];
+    const down = {
+      getClientSettings: async () => { throw new Error('read failed'); },
+      setClientSettings: async (_: string, doc: unknown) => { writes.push(doc); },
+    } as never;
+    await expect(recordInstalled(down, 'sid', 'p', pin('unfoldingWord/en_tq', 'v89'))).rejects.toThrow(/read failed/);
+    expect(writes).toEqual([]); // the destructive write never happened
+    // A confirmed-absent document is the legitimate empty base.
+    const absent = {
+      getClientSettings: async () => { throw notFound(); },
+      setClientSettings: async (_: string, doc: unknown) => { writes.push(doc); },
+    } as never;
+    await recordInstalled(absent, 'sid', 'p', pin('unfoldingWord/en_tq', 'v89'));
+    expect(writes).toHaveLength(1);
+  });
+
+  it('discoverOnDisk: a transport failure reports INCOMPLETE discovery instead of hiding an on-disk resource', async () => {
+    const failures: unknown[] = [];
+    const api = { getMetadataRaw: async () => { throw new Error('metadata read failed'); } } as never;
+    const summaries = { '_local_/_sideloaded_/unfoldingword--en_tq': { book_codes: ['TIT'] } } as never;
+    const out = await discoverOnDisk(api, summaries, {}, () => null, (e) => failures.push(e));
+    expect(out).toEqual({}); // nothing invented…
+    expect(failures).toHaveLength(1); // …and the gap is REPORTED, not silent
+    // A confirmed not-found contributes nothing and reports nothing (a real
+    // non-burrito directory).
+    const failures2: unknown[] = [];
+    const api404 = { getMetadataRaw: async () => { throw notFound(); } } as never;
+    await discoverOnDisk(api404, summaries, {}, () => null, (e) => failures2.push(e));
+    expect(failures2).toEqual([]);
   });
 });

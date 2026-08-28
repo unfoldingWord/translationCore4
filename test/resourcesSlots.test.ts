@@ -93,6 +93,28 @@ describe('D64 — languageSetFromInstalled includes the optional slots only when
     expect(s?.simplifiedText?.repoPath).toContain('es-419_gst');
   });
 
+  it("a multi-language org never pins ANOTHER language's tq/gst (2026-08-27 review)", () => {
+    const bcs = (repo: string) => ({ repoPath: `git.door43.org/translationCore-Create-BCS/${repo}`, sha: 'e'.repeat(40), flavor: 'x' });
+    const installed = {
+      a: bcs('bn_tn'), b: bcs('bn_tw'), c: bcs('bn_ta'),
+      d: bcs('hi_tq'), e: bcs('hi_gst'), // the OTHER language's repos, same org
+      f: bcs('bn_tq'),
+    };
+    const s = languageSetFromInstalled(installed as never, { id: 'bn', org: 'translationCore-Create-BCS' });
+    expect(s?.translationQuestions?.repoPath).toContain('bn_tq');
+    expect(s?.simplifiedText).toBeUndefined(); // hi_gst must NOT fill Bengali's slot
+  });
+
+  it('the REQUIRED slots refuse a mixed-language set too: a Hindi request over Bengali installs yields NO set (adversarial round 4)', () => {
+    const bcs = (repo: string) => ({ repoPath: `git.door43.org/translationCore-Create-BCS/${repo}`, sha: 'e'.repeat(40), flavor: 'x' });
+    const installed = { a: bcs('bn_tn'), b: bcs('bn_tw'), c: bcs('bn_ta') };
+    // Pre-fix this returned Bengali tN/tW/tA pins LABELED as a Hindi set.
+    expect(languageSetFromInstalled(installed as never, { id: 'hi', org: 'translationCore-Create-BCS' })).toBeNull();
+    // And the exact-name match still assembles the RIGHT language's set.
+    const bn = languageSetFromInstalled(installed as never, { id: 'bn', org: 'translationCore-Create-BCS' });
+    expect(bn?.translationNotes?.repoPath).toContain('bn_tn');
+  });
+
   it('English `_ust` also satisfies the simplified slot', () => {
     const en = (repo: string) => ({ repoPath: `git.door43.org/unfoldingWord/${repo}`, sha: 'c'.repeat(40), flavor: 'x' });
     const s = languageSetFromInstalled(

@@ -176,6 +176,14 @@ export class ServerApiError extends Error {
   }
 }
 
+/** THE absence discriminator for the catch-to-absence rule (D30): true only
+ * for a CONFIRMED not-found — a ServerApiError whose isNotFound holds, or any
+ * error carrying an explicit isNotFound flag (test fakes, wrapped reads).
+ * Every catch that maps "absent" to a designed state must gate on this ONE
+ * predicate; anything else propagates to a stated, retryable error. */
+export const isNotFoundError = (error: unknown): boolean =>
+  (error as { isNotFound?: boolean } | null | undefined)?.isNotFound === true;
+
 // ---------------------------------------------------------------------------
 // Path sanitization (client-side, before any request is built).
 // The server's own sanitizer rejects dot-prefixed segments and many special

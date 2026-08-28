@@ -72,7 +72,13 @@ export function seedBookFromSource(sourceRaw: string, params: SeedParams): strin
     }
     // every other marker (\zaln, \w, \f, \ts, headers, …) is dropped
   }
-  if (!sawContent) throw new Error(`source for ${bookCode} has no \\c/\\v structure`);
+  if (!sawContent)
+    // Review of the D30 sweep: this is a CONTENT verdict, not a transient
+    // failure — callers may treat it as "source unusable for seeding" (the
+    // documented server-skeleton state) without reopening catch-to-absence.
+    throw Object.assign(new Error(`source for ${bookCode} has no \\c/\\v structure`), {
+      seedUnusable: true,
+    });
   return out.join('\n') + '\n';
 }
 

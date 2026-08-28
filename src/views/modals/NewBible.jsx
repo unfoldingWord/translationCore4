@@ -73,6 +73,13 @@ export default function NewBible() {
               onChange={(e) => actions.patchNp({ versification: e.target.value })}
               options={np.versifications.map((v) => ({ value: v, label: `${v}${v === 'eng' ? ` ${t('wizard.default')}` : ''}` }))}
               hint={t('wizard.versificationHint')} />
+            {np.versificationsError && (
+              // Catch-to-absence sweep (D30): the listing failed — the picker
+              // holds only the safe default, and that truncation is STATED.
+              <p data-testid="versifications-error" style={{ fontSize: 'var(--fs-caption)', color: 'var(--tc-warn-text)', margin: '6px 0 0' }}>
+                {t('wizard.versificationsError')}
+              </p>
+            )}
           </div>
         )}
       </div>

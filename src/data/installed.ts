@@ -8,9 +8,10 @@
 // This module owns the machine side. The pin record is persisted through the
 // platform's per-client settings (`/api/client-settings/<storage_id>`), which
 // is exactly the "belongs to this machine, not to the project" store.
-import type { ResourcePin } from './burritoStore';
+import type { LanguageSet, ResourcePin } from './burritoStore';
 import { pinKey, samePath } from './resolve';
 import type { Coverage } from './resolve';
+import { isNotFoundError } from './serverApi';
 import type { RepoSummary, ServerApi } from './serverApi';
 
 /** Key under which the installed-resource record lives in client settings. */
@@ -50,12 +51,17 @@ export const flavorOfMetadata = (meta: unknown): string => {
 };
 
 export const readInstalled = async (api: ServerApi, storageId: string): Promise<InstalledMap> => {
+  // Catch-to-absence sweep (D30): {} means the machine CONFIRMS it has no
+  // install record (a rig without storage_id.json). A transport failure must
+  // PROPAGATE — swallowing it made every recorded install read as absent,
+  // presenting "your resources are not installed" for a settings blip.
   try {
     const settings = await api.getClientSettings(storageId);
     const raw = settings[INSTALLED_KEY];
     return raw && typeof raw === 'object' ? (raw as InstalledMap) : {};
-  } catch {
-    return {};
+  } catch (error) {
+    if (isNotFoundError(error)) return {};
+    throw error;
   }
 };
 
@@ -66,7 +72,16 @@ export const recordInstalled = async (
   localRepoPath: string,
   pin: ResourcePin,
 ): Promise<InstalledMap> => {
-  const settings = await api.getClientSettings(storageId).catch(() => ({}) as Record<string, unknown>);
+  // Catch-to-absence sweep (D30, destructive variant): a transient read
+  // failure here used to seed `current = {}`, and the write below then
+  // REPLACED the whole client-settings document — erasing every other
+  // recorded install and lastUsed. Only a confirmed-absent document may
+  // start empty; a failed read aborts the record (the callers' stated
+  // per-row failure reports it).
+  const settings = await api.getClientSettings(storageId).catch((error) => {
+    if (isNotFoundError(error)) return {} as Record<string, unknown>;
+    throw error;
+  });
   const current = (settings[INSTALLED_KEY] ?? {}) as InstalledMap;
   const next: InstalledMap = { ...current, [localRepoPath]: pin };
   await api.setClientSettings(storageId, { ...settings, [INSTALLED_KEY]: next });
@@ -102,6 +117,10 @@ export const discoverOnDisk = async (
   summaries: Record<string, RepoSummary>,
   recorded: InstalledMap,
   orgFor: OrgResolver = () => null,
+  /** Called for each per-resource metadata read that failed TRANSIENTLY
+   * (catch-to-absence sweep, D30): the discovery is then incomplete and the
+   * caller must state it rather than let readiness read as absence. */
+  onTransportFailure?: (error: unknown) => void,
 ): Promise<InstalledMap> => {
   const found: InstalledMap = {};
   const sideloaded = Object.keys(summaries).filter((p) => p.includes('/_sideloaded_/'));
@@ -109,35 +128,51 @@ export const discoverOnDisk = async (
     sideloaded.map(async (localPath) => {
       if (recorded[localPath]) return; // the record knows the tag; prefer it
       try {
-        const meta = (await api.getMetadataRaw(localPath)) as unknown as {
-          identification?: { primary?: { dcs?: Record<string, { revision?: string }> } };
-        };
-        const flavor = flavorOfMetadata(meta);
-        const dcs = meta.identification?.primary?.dcs ?? {};
-        const [key] = Object.keys(dcs);
-        const revision = Object.values(dcs)[0]?.revision;
-        if (!key || !revision) return;
-        // The local segment is `<owner>--<repo>` for installs written by the
-        // owner-qualified path; older installs are the bare `<repo>`. When the
-        // owner is in the path we know the exact DCS identity and need neither
-        // the resolver nor the (possibly stale) metadata org. Otherwise fall
-        // back: a configured org for this name, else the metadata key.
-        const seg = localPath.split('/').pop() as string;
-        const sep = seg.indexOf('--');
-        const ownerFromPath = sep > 0 ? seg.slice(0, sep) : null;
-        const repoName = sep > 0 ? seg.slice(sep + 2) : seg;
-        const org = ownerFromPath ?? orgFor(repoName);
-        const repoPath = org ? `git.door43.org/${org}/${repoName}` : `git.door43.org/${key}`;
-        // Both identity halves are factual — the burrito states its own
-        // flavor and revision (D58: the sha IS the identity). No version:
-        // nothing on disk knows the tag, and the label is optional.
-        found[localPath] = { repoPath, sha: revision, flavor };
-      } catch {
-        /* unreadable metadata: contributes nothing, the safe direction */
+        const pin = await discoverOne(api, localPath, orgFor);
+        if (pin) found[localPath] = pin;
+      } catch (error) {
+        // Catch-to-absence sweep (D30): confirmed-absent/garbage metadata
+        // contributes nothing (a real non-burrito dir). A TRANSPORT failure
+        // must not hide an on-disk resource — report the discovery as
+        // incomplete so readiness surfaces state it instead of claiming
+        // absence.
+        if (!isNotFoundError(error)) onTransportFailure?.(error);
       }
     }),
   );
   return { ...found, ...recorded };
+};
+
+/** Identify one sideloaded path from its own burrito metadata, or null when
+ * the metadata names no identity. */
+const discoverOne = async (
+  api: ServerApi,
+  localPath: string,
+  orgFor: OrgResolver,
+): Promise<ResourcePin | null> => {
+  const meta = (await api.getMetadataRaw(localPath)) as unknown as {
+    identification?: { primary?: { dcs?: Record<string, { revision?: string }> } };
+  };
+  const flavor = flavorOfMetadata(meta);
+  const dcs = meta.identification?.primary?.dcs ?? {};
+  const [key] = Object.keys(dcs);
+  const revision = Object.values(dcs)[0]?.revision;
+  if (!key || !revision) return null;
+  // The local segment is `<owner>--<repo>` for installs written by the
+  // owner-qualified path; older installs are the bare `<repo>`. When the
+  // owner is in the path we know the exact DCS identity and need neither
+  // the resolver nor the (possibly stale) metadata org. Otherwise fall
+  // back: a configured org for this name, else the metadata key.
+  const seg = localPath.split('/').pop() as string;
+  const sep = seg.indexOf('--');
+  const ownerFromPath = sep > 0 ? seg.slice(0, sep) : null;
+  const repoName = sep > 0 ? seg.slice(sep + 2) : seg;
+  const org = ownerFromPath ?? orgFor(repoName);
+  const repoPath = org ? `git.door43.org/${org}/${repoName}` : `git.door43.org/${key}`;
+  // Both identity halves are factual — the burrito states its own flavor and
+  // revision (D58: the sha IS the identity). No version: nothing on disk
+  // knows the tag, and the label is optional.
+  return { repoPath, sha: revision, flavor } as ResourcePin;
 };
 
 /** Build the resolver's coverage map from what is actually on disk.
@@ -220,6 +255,37 @@ export const installedPathFor = (installed: InstalledMap, pin: ResourcePin): str
 export const isPinLocal = (installed: InstalledMap, pin: ResourcePin): boolean =>
   installedEntry(installed, pin) !== undefined;
 
+/** The open project's pinned identity for one local install target, when no
+ * install on this machine satisfies it. This is what a download of that repo
+ * must fetch: identity is (repoPath, sha) — D58 — so downloading the catalog's
+ * LATEST release cannot satisfy a project pinned to another commit, and an
+ * existing same-repo install at the wrong sha must not read as done
+ * (2026-08-28 adversarial round 20). The primary rung wins when both rungs pin
+ * the repo. Null when the project pins the repo nowhere, the pin carries no
+ * sha (D59: such a pin is satisfiable by no install), or the exact identity is
+ * already local. */
+export const unsatisfiedProjectPinFor = (
+  resources: { languageSets?: Record<string, LanguageSet> } | null | undefined,
+  localRepoPath: string,
+  installed: InstalledMap,
+): ResourcePin | null => {
+  for (const rung of ['primary', 'fallback']) {
+    const set = resources?.languageSets?.[rung];
+    for (const pin of Object.values(set ?? {})) {
+      if (
+        !!pin &&
+        typeof pin === 'object' &&
+        'repoPath' in pin &&
+        (pin as ResourcePin).sha &&
+        localRepoPathFromRepoPath((pin as ResourcePin).repoPath) === localRepoPath &&
+        !isPinLocal(installed, pin as ResourcePin)
+      )
+        return pin as ResourcePin;
+    }
+  }
+  return null;
+};
+
 /** Re-point a pin at the version this machine actually has, when it has one.
  *
  * Why this exists: the shipped default names specific versions, but a machine
@@ -240,6 +306,65 @@ export const preferInstalledVersion = (installed: InstalledMap, pin: ResourcePin
   if (local.version) next.version = local.version;
   else delete next.version;
   return next;
+};
+
+/** Merge newly INSTALLED optional pins (tq / simplifiedText, D64) into the
+ * rungs whose gateway matches — an explicit download must become usable by
+ * the OPEN project, not only by future ones (2026-08-27 adversarial round
+ * 11). Existing pins are never replaced (re-pinning is the explicit,
+ * warned gateway-change path); returns null when nothing would change. */
+const mergeOptionalPinsIntoSet = (
+  set: LanguageSet,
+  gateway: { id: string; org: string },
+  built: Pick<LanguageSet, 'translationQuestions' | 'simplifiedText'>,
+): { set: LanguageSet; changed: boolean } => {
+  const matches =
+    set.gatewayLanguage?.languageId === gateway.id &&
+    (set.gatewayLanguage?.owner ?? '').toLowerCase() === gateway.org.toLowerCase();
+  if (!matches) return { set: { ...set }, changed: false };
+
+  const next = { ...set };
+  let changed = false;
+  if (built.translationQuestions && !set.translationQuestions) {
+    next.translationQuestions = built.translationQuestions;
+    changed = true;
+  }
+  if (built.simplifiedText && !set.simplifiedText) {
+    next.simplifiedText = built.simplifiedText;
+    changed = true;
+  }
+  return { set: next, changed };
+};
+
+export const mergeOptionalPins = <T extends { languageSets?: Record<string, LanguageSet> }>(
+  resources: T,
+  gateway: { id: string; org: string },
+  installed: InstalledMap,
+): T | null => {
+  // The optional repos are discovered INDEPENDENTLY of the required suite
+  // (L2, adversarial round 12): a user may download only tq and/or the
+  // simplified text for a project whose language set is already pinned —
+  // requiring tn/tw/ta to be local (languageSetFromInstalled's completeness
+  // rule) would silently drop exactly the resources just fetched.
+  const org = gateway.org.toLowerCase();
+  const ofOrg = Object.values(installed)
+    .filter((p) => p.repoPath.toLowerCase().includes(`/${org}/`))
+    .filter((p) => !!p.sha && !!p.flavor);
+  const byName = (name: string) =>
+    ofOrg.find((p) => (p.repoPath.split('/').pop() ?? '').toLowerCase() === name.toLowerCase());
+  const built = {
+    translationQuestions: byName(`${gateway.id}_tq`),
+    simplifiedText: byName(`${gateway.id}_ust`) ?? byName(`${gateway.id}_gst`),
+  };
+  if (!built.translationQuestions && !built.simplifiedText) return null;
+  let changed = false;
+  const languageSets: Record<string, LanguageSet> = {};
+  for (const [rung, set] of Object.entries(resources.languageSets ?? {})) {
+    const merged = mergeOptionalPinsIntoSet(set, gateway, built);
+    changed ||= merged.changed;
+    languageSets[rung] = merged.set;
+  }
+  return changed ? { ...resources, languageSets } : null;
 };
 
 /** Apply `preferInstalledVersion` across a whole §5.3 resources file. */
@@ -286,17 +411,26 @@ export const languageSetFromInstalled = (
   const ofOrg = Object.values(installed)
     .filter((p) => p.repoPath.toLowerCase().includes(`/${org}/`))
     .filter((p) => !!p.sha && !!p.flavor);
-  const bySuffix = (suffix: string) => ofOrg.find((p) => p.repoPath.endsWith(suffix));
-  const tn = bySuffix('_tn');
-  const tw = bySuffix('_tw'); // D34: one repo serves both tW slots
-  const ta = bySuffix('_ta');
+  // EVERY slot matches by the FULL `<languageId>_<suffix>` repo name, never
+  // the bare suffix: a multi-language org (translationCore-Create-BCS holds
+  // hi_*, bn_*, gu_*, …) would otherwise assemble a MIXED-language set —
+  // e.g. Bengali tN pinned into a Hindi language set (2026-08-27 adversarial
+  // round 3; the round-1 fix covered only the optional slots).
+  const byName = (name: string) =>
+    ofOrg.find((p) => {
+      const base = p.repoPath.split('/').pop() ?? '';
+      return base.toLowerCase() === name.toLowerCase();
+    });
+  const tn = byName(`${gateway.id}_tn`);
+  const tw = byName(`${gateway.id}_tw`); // D34: one repo serves both tW slots
+  const ta = byName(`${gateway.id}_ta`);
   if (!tn || !tw || !ta) return null;
   // §5.3 1.10 OPTIONAL slots (D64): included only when installed — a set
   // without them is still complete, so their absence never blocks the set.
-  const tq = bySuffix('_tq');
+  const tq = byName(`${gateway.id}_tq`);
   // English publishes `_ust`; other gateways publish `_gst` (evidence in
-  // gateways.ts). Either suffix is the language's simplified text.
-  const simplified = bySuffix('_ust') ?? bySuffix('_gst');
+  // gateways.ts). Either name is the language's simplified text.
+  const simplified = byName(`${gateway.id}_ust`) ?? byName(`${gateway.id}_gst`);
   return {
     gatewayLanguage: { languageId: gateway.id, owner: gateway.org },
     translationNotes: tn,
