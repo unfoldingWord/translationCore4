@@ -16,9 +16,12 @@ export function setLocale(locale) {
 // The fallback stays the key itself — the UI degrades, it does not crash.
 const warned = new Set();
 
-export function t(key, vars) {
+export function t(key, vars, fallback) {
   let s = catalogs[current][key] ?? catalogs.en[key];
   if (s === undefined) {
+    // Round 37: dynamic keys (a project's own source-pane ids) may have no
+    // catalog entry — an explicit fallback renders instead of the raw key.
+    if (fallback !== undefined) return fallback;
     if (!warned.has(key)) {
       warned.add(key);
       console.warn(`[i18n] missing key: ${key}`);

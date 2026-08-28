@@ -108,10 +108,10 @@
     },
     "ingredients/checking/resources.json": {
       "checksum": {
-        "md5": "c4a1905eb3e574b99f1edfd6c4512a27"
+        "md5": "f016097f37ef36ec2cf61321793bad79"
       },
       "mimeType": "application/json",
-      "size": 5036,
+      "size": 5495,
       "role": "x-resource-links"
     },
     "ingredients/checking/settings.json": {
@@ -219,6 +219,12 @@
       "flavor": "x-peripheralArticles",
       "id": "dcs::unfoldingWord/en_ta",
       "revision": "v86"
+    },
+    {
+      "relationType": "parascriptural",
+      "flavor": "x-bcvquestions",
+      "id": "dcs::unfoldingWord/en_tq",
+      "revision": "v89"
     },
     {
       "relationType": "peripheral",

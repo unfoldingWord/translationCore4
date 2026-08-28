@@ -1,15 +1,5 @@
 /* App-level leftovers on top of the design system (src/ds/styles.css).
    The reset, body type, scrollbars and selection all come from ds/tokens/
-   base.css. The hover classes below serve only the views not yet rebuilt on
-   the design system (Draft, Check, Align) and go away with #107/#108. */
+   base.css. */
 html,body,#root{margin:0;padding:0;height:100%;}
 button{font-family:inherit;}
-.hovInspire:hover{border-color:#31ADE3 !important;}
-.hovInspireBg:hover{border-color:#31ADE3 !important;background:#eaf6fc !important;}
-.hovCultivate:hover{border-color:#70C9CC !important;}
-.hovCultivateBg:hover{border-color:#70C9CC !important;background:#F0FAFA !important;}
-.hovRow:hover{background:#F7FAFC !important;}
-.hovCheckRow:hover{border-color:#7acded !important;}
-.hovBtn:hover{background:#1f8cba !important;}
-.hovNewBible:hover{background:#2599cc !important;}
-.hovRowActive:hover{background:#dff0fa !important;}

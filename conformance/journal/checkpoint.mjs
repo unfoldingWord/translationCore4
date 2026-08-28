@@ -96,7 +96,9 @@ const deleteDeep = (doc, dotted) => {
 // §5.3 resources.json from folded pins (§8.5 slot grammar). Key order is the §5.3
 // document's own order; extraScripture keeps the order of each id's first pin event
 // (the fold's pins object preserves first-set insertion order).
-const LS_SLOTS = ['gatewayLanguage', 'translationNotes', 'translationWordsLinks', 'translationWords', 'translationAcademy'];
+// §5.3 1.10 (D64): the two OPTIONAL slots project after translationAcademy —
+// the §5.3 document's own key order.
+const LS_SLOTS = ['gatewayLanguage', 'translationNotes', 'translationWordsLinks', 'translationWords', 'translationAcademy', 'translationQuestions', 'simplifiedText'];
 export const projectResources = (pins) => {
   const doc = { schemaVersion: 2 };
   const languageSets = {};

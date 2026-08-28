@@ -336,7 +336,7 @@ export const dottedPathError = (v, { reservedRoots = null } = {}) => {
 };
 
 // §8.5: the pin slot grammar is the §5.3 document's own paths — anything else refuses.
-export const PIN_SLOT_RE = /^(languageSets\.(primary|fallback)\.(gatewayLanguage|translationNotes|translationWordsLinks|translationWords|translationAcademy)|resources\.(originalLanguage|lexicon)\.(nt|ot)|extraScripture\.[A-Za-z0-9_-]+)$/;
+export const PIN_SLOT_RE = /^(languageSets\.(primary|fallback)\.(gatewayLanguage|translationNotes|translationWordsLinks|translationWords|translationAcademy|translationQuestions|simplifiedText)|resources\.(originalLanguage|lexicon)\.(nt|ot)|extraScripture\.[A-Za-z0-9_-]+)$/;
 export const pinSlotError = (v) =>
   isStr(v) && PIN_SLOT_RE.test(v) ? null : `"${v}" is not a §5.3 slot`;
 

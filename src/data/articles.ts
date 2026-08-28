@@ -29,12 +29,17 @@ const readOrNull = async (
   repoPath: string,
   ipath: string,
 ): Promise<string | null> => {
+  // Round 35: null means CONFIRMED absent (a 404, or the platform's
+  // is_good:false body). A transport or server failure PROPAGATES — the
+  // callers state it as a retryable error, never as "this article does not
+  // exist" (D30).
   try {
     const text = await api.readIngredient(repoPath, ipath);
     if (!text || text.startsWith('{"is_good":false')) return null;
     return text;
-  } catch {
-    return null;
+  } catch (error) {
+    if ((error as { isNotFound?: boolean })?.isNotFound) return null;
+    throw error;
   }
 };
 

@@ -10,9 +10,11 @@
     "journeys": "playwright test",
     "test:e2e": "playwright test",
     "lint": "eslint .",
+    "lint:staged": "lint-staged",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write src/data test",
-    "verify": "npm run lint && npm run typecheck && npm test && npm run build"
+    "verify": "npm run lint && npm run typecheck && npm test && npm run build",
+    "prepare": "husky"
   },
   "dependencies": {
     "bible-reference-range": "1.1.1",
@@ -24,6 +26,9 @@
     "usfm-js": "3.4.3",
     "word-aligner": "1.0.3",
     "word-aligner-lib": "1.0.1"
+  },
+  "lint-staged": {
+    "src/**/*.{js,jsx,ts,tsx}": "eslint --config eslint.complexity.config.js"
   },
   "devDependencies": {
     "@eslint/js": "9.39.4",
@@ -37,7 +42,9 @@
     "eslint-config-prettier": "10.1.8",
     "eslint-plugin-react": "7.37.5",
     "globals": "15.15.0",
+    "husky": "9.1.7",
     "jsdom": "29.1.1",
+    "lint-staged": "16.4.0",
     "prettier": "3.9.4",
     "prop-types": "15.8.1",
     "react-redux": "7.2.9",
