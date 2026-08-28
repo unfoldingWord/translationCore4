@@ -379,3 +379,53 @@ describe('round 6 B2: pruning a newer intent never resurrects a superseded resol
     expect(report.ok, describeVerifierReport(report)).toBe(true);
   });
 });
+
+describe('2026-08-28 adversarial round 26: a note retry after a lost publish response is idempotent', () => {
+  it('the retried note.add is not appended as a second permanent event', async () => {
+    const { rig, api, kv, store, restart } = await setup();
+
+    // Same crash window as B1, on the grow-only note op: the segment is
+    // ACCEPTED, the stage-key delete fails, publish() throws after the
+    // append landed — the caller (the D65 note SaveScheduler) sees a failure
+    // and its Retry replays the SAME text.
+    let lostResponses = 1;
+    const rawDelete = kv.delete.bind(kv);
+    kv.delete = async (key: string): Promise<void> => {
+      if (lostResponses > 0 && key.startsWith('outbox:')) {
+        lostResponses -= 1;
+        throw new Error('injected failure: lost response after accept');
+      }
+      return rawDelete(key);
+    };
+    await expect(store.addNote('TIT', 1, '2', 'What Paul means here.')).rejects.toThrow(/lost response/);
+
+    // The note IS on the server and the staged intent survived.
+    const published = segmentPaths(rig).filter((p) =>
+      (rig.repos.get(REPO)?.files.get(p) ?? '').includes('What Paul means here.'),
+    );
+    expect(published).toHaveLength(1);
+
+    // The retry: replay recovers the accepted note into the fold; the
+    // target's LATEST note already carries this exact text, so nothing is
+    // appended — grow-only history is not multiplied (round 26).
+    await store.addNote('TIT', 1, '2', 'What Paul means here.');
+    const republished = segmentPaths(rig).filter((p) =>
+      (rig.repos.get(REPO)?.files.get(p) ?? '').includes('What Paul means here.'),
+    );
+    expect(republished, 'the same note must not be journaled twice').toHaveLength(1);
+    expect(store.readNotes('TIT').filter((n) => n.text === 'What Paul means here.')).toHaveLength(1);
+
+    // A genuinely NEW text for the same target still appends (grow-only).
+    await store.addNote('TIT', 1, '2', 'A revised understanding.');
+    const notes = store.readNotes('TIT').filter((n) => n.chapter === '1' && n.verse === '2');
+    expect(notes[notes.length - 1].text).toBe('A revised understanding.');
+    expect(notes).toHaveLength(2);
+
+    // The project verifies and a reopen converges quietly.
+    const report = await verifyProjectAgainstJournal(api, REPO);
+    expect(report.ok, describeVerifierReport(report)).toBe(true);
+    const store2 = restart();
+    await store2.open(REPO);
+    expect(store2.lastOpenReport?.classification).toBe('converged');
+  });
+});

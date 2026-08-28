@@ -2192,6 +2192,31 @@ export class JournalingStore implements BurritoStore {
       const journal = this.mustJournal();
       const foldOut = this.foldNow();
       const code = book.toUpperCase();
+      // Round 26: a retry must be IDEMPOTENT across the lost-response window
+      // (round 6 B1: publish() wrote the segment, threw before the stage
+      // cleared, the caller saw a failure). The replay above has already
+      // recovered any such accepted note into the fold — so the same
+      // diff-to-nothing rule every state-setting op enjoys applies here as
+      // content equality: when the target's LATEST note already carries this
+      // exact text, there is nothing to add, and appending would multiply
+      // permanent grow-only events the reader hides.
+      const targetChapter = String(chapter);
+      const targetVerse = String(verse);
+      const notes = (foldOut as unknown as { notes?: Array<Record<string, unknown>> }).notes ?? [];
+      const latest = notes
+        .filter((n) => {
+          const tg = n.target as Record<string, unknown> | undefined;
+          return (
+            tg &&
+            typeof tg.book === 'string' &&
+            tg.book.toUpperCase() === code &&
+            tg.decisionKey === undefined &&
+            String(tg.chapter) === targetChapter &&
+            String(tg.verse) === targetVerse
+          );
+        })
+        .pop();
+      if (latest && String(latest.text ?? '') === (toNfc(text) as string)) return;
       const generation = foldOut.books[code] ? foldOut.headsTs[`book|${code}`] : undefined;
       if (generation === undefined) {
         throw new Error(`addNote(${code}): the journal projects no such book — a note needs its §8.5 generation root`);
