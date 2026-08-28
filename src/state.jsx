@@ -357,6 +357,11 @@ export function AppProvider({ children }) {
   // MIRROR of this ref, never the source the guards consult.
   const noteSaveErrorsRef = useRef({});
   const articleSeqRef = useRef(0); // help-article completion token (D3, adversarial round 4)
+  // E1 (adversarial round 5): per-target save revisions. Only the LATEST
+  // operation for a target may record/clear its error entry, clear its dirty
+  // mark, or publish its snapshot — an older completion can never erase a
+  // newer edit or a newer failure.
+  const noteRevisionsRef = useRef(new Map());
 
   // ---- derived display model -------------------------------------------------
   const model = useMemo(() => {
@@ -2011,7 +2016,13 @@ export function AppProvider({ children }) {
         // (project, chapter:verse) — so concurrent boxes never clear each
         // other's retry payload or dirty guard.
         const errKey = `${repoPath}|${chapter}:${verseKey}`;
+        const rev = (noteRevisionsRef.current.get(errKey) ?? 0) + 1;
+        noteRevisionsRef.current.set(errKey, rev);
+        const isLatest = () => noteRevisionsRef.current.get(errKey) === rev;
         const fail = (message) => {
+          // A superseded operation's outcome is the NEWER operation's to
+          // report (E1) — recording it here could overwrite that one's state.
+          if (!isLatest()) return;
           const now = stateRef.current;
           // Ledger FIRST, synchronously (D1): the guard that resumes when
           // this operation settles must already see the failure.
@@ -2072,8 +2083,10 @@ export function AppProvider({ children }) {
           pendingNotesRef.current.delete(op);
         }
         if (!ok) return; // refused (fail() already recorded it)
+        if (!isLatest()) return; // E1: a stale success must not clear a newer failure or publish over a newer edit
         // C2: clear only THIS target's dirty mark and error entry — in the
-        // synchronous ledger first (D1), then mirrored to state.
+        // synchronous ledger first (D1), then mirrored to state. The box
+        // re-asserts dirty immediately if its draft has already diverged.
         noteDirtyRef.current.delete(`${chapter}:${verseKey}`);
         const remaining = { ...noteSaveErrorsRef.current };
         delete remaining[errKey];

@@ -271,6 +271,44 @@ describe('2026-08-27 adversarial round 2 regressions', () => {
   });
 });
 
+describe('2026-08-27 adversarial round 5 regression', () => {
+  beforeEach(() => { cleanup(); calls.length = 0; });
+
+  it("a stored update landing while the user has TYPED newer text does not clobber the draft (E1)", () => {
+    const saved = state.understand.comprehension;
+    try {
+      const { rerender } = render(<Understand />);
+      const box = () => screen.getAllByPlaceholderText('What does this section mean in your own words?')[0] as HTMLTextAreaElement;
+      // user blurs A (save starts), refocuses and types B while A is pending
+      fireEvent.change(box(), { target: { value: 'text B, typed while A saves' } });
+      // A's completion publishes its snapshot into comprehension...
+      state.understand.comprehension = { '1:1': { text: 'text A', ts: '2026-08-27T02:00:00.000Z|0000|a' } };
+      rerender(<Understand />);
+      // ...and the box KEEPS the newer draft instead of resetting to A
+      expect(box().value).toBe('text B, typed while A saves');
+      // and the dirty mark is re-asserted for the unload guard
+      const dirty = calls.filter((c) => c.name === 'setNoteDirty');
+      expect(dirty[dirty.length - 1].args[1]).toBe(true);
+    } finally {
+      state.understand.comprehension = saved;
+    }
+  });
+
+  it('an undiverged box still follows a stored update (the normal sync path)', () => {
+    const saved = state.understand.comprehension;
+    try {
+      const { rerender } = render(<Understand />);
+      const box = () => screen.getAllByPlaceholderText('What does this section mean in your own words?')[0] as HTMLTextAreaElement;
+      expect(box().value).toBe('');
+      state.understand.comprehension = { '1:1': { text: 'saved elsewhere', ts: '2026-08-27T02:00:00.000Z|0000|a' } };
+      rerender(<Understand />);
+      expect(box().value).toBe('saved elsewhere');
+    } finally {
+      state.understand.comprehension = saved;
+    }
+  });
+});
+
 describe('#106 — the persistence shape: §8.5 note.add seals and projects', () => {
   it('the exact event addNote() emits validates through the reference and folds into notes output', async () => {
     const { sealAction } = await import('../src/data/journal/seal');

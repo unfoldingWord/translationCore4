@@ -71,7 +71,23 @@ function ComprehensionBox({ chapter, unit }) {
   const ready = s.understand?.comprehension != null;
   const stored = latestUnitNote(s.understand?.comprehension, chapter, unit)?.text ?? '';
   const [text, setText] = React.useState(stored);
-  React.useEffect(() => { setText(stored); }, [stored, chapter, unit.key]);
+  // E1 (adversarial round 5): a stored update must never CLOBBER a draft the
+  // user has typed since — sync from stored only while the box still shows
+  // the previous stored value; a diverged draft stays, and its dirty mark is
+  // re-asserted (the state layer clears dirty on ITS latest save's success,
+  // which cannot see text typed after that save started).
+  const prevStoredRef = React.useRef(stored);
+  const unitRef = React.useRef(unit.key);
+  React.useEffect(() => {
+    const unitChanged = unitRef.current !== unit.key;
+    unitRef.current = unit.key;
+    if (unitChanged || text === prevStoredRef.current) {
+      setText(stored);
+    } else if (text.trim() !== stored.trim()) {
+      actions.setNoteDirty(`${chapter}:${unit.head}`, true);
+    }
+    prevStoredRef.current = stored;
+  }, [stored, chapter, unit.key]);
   // Compare against the note the box DISPLAYS: notes are grow-only, so an
   // unchanged focus/blur must never append a duplicate (2026-08-27 Codex
   // review). unit.head is the RAW first verse key — a bridge ("4-5") keeps
