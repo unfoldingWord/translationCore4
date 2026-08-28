@@ -327,3 +327,37 @@ describe('DCS tag lookups paginate — a tag beyond the first page is still foun
     expect(await tagForCommitSha('git.door43.org/unfoldingWord/en_tn', manyTags[110].sha, fetchFn)).toBeNull();
   });
 });
+
+describe('round 20 — targetRepoPath: the pinned identity installs SIDE BY SIDE', () => {
+  const apiWith = (installed: string[]) => ({
+    getNetEnabled: async () => true,
+    postZippedBurrito: async (repoPath: string) => { installed.push(repoPath); },
+  });
+  const fetchReturning = (bytes: Uint8Array) =>
+    (async () => ({ ok: true, status: 200, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) })) as unknown as typeof fetch;
+
+  it('installs into the override path when the canonical one is occupied', async () => {
+    // The canonical path holds ANOTHER sha of the same repo: the importer
+    // refuses an existing target, and deleting the occupant could orphan a
+    // project pinned to it — so the exact identity goes to a side path.
+    const installed: string[] = [];
+    const side = `_local_/_sideloaded_/unfoldingword--en_twl--${(PIN.sha as string).slice(0, 12)}`;
+    const r = await fetchAndInstallPin(PIN, {
+      api: apiWith(installed) as never,
+      fetchFn: fetchReturning(wrappedZip(PIN.sha as string)),
+      targetRepoPath: side,
+    });
+    expect(installed).toEqual([side]);
+    expect(r.repoPath).toBe(side);
+    expect(r.revision).toBe(PIN.sha); // D23b still verified — identity intact
+  });
+
+  it('without the override, the canonical path is unchanged', async () => {
+    const installed: string[] = [];
+    await fetchAndInstallPin(PIN, {
+      api: apiWith(installed) as never,
+      fetchFn: fetchReturning(wrappedZip(PIN.sha as string)),
+    });
+    expect(installed).toEqual(['_local_/_sideloaded_/unfoldingword--en_twl']);
+  });
+});

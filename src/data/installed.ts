@@ -220,6 +220,37 @@ export const installedPathFor = (installed: InstalledMap, pin: ResourcePin): str
 export const isPinLocal = (installed: InstalledMap, pin: ResourcePin): boolean =>
   installedEntry(installed, pin) !== undefined;
 
+/** The open project's pinned identity for one local install target, when no
+ * install on this machine satisfies it. This is what a download of that repo
+ * must fetch: identity is (repoPath, sha) — D58 — so downloading the catalog's
+ * LATEST release cannot satisfy a project pinned to another commit, and an
+ * existing same-repo install at the wrong sha must not read as done
+ * (2026-08-28 adversarial round 20). The primary rung wins when both rungs pin
+ * the repo. Null when the project pins the repo nowhere, the pin carries no
+ * sha (D59: such a pin is satisfiable by no install), or the exact identity is
+ * already local. */
+export const unsatisfiedProjectPinFor = (
+  resources: { languageSets?: Record<string, LanguageSet> } | null | undefined,
+  localRepoPath: string,
+  installed: InstalledMap,
+): ResourcePin | null => {
+  for (const rung of ['primary', 'fallback']) {
+    const set = resources?.languageSets?.[rung];
+    for (const pin of Object.values(set ?? {})) {
+      if (
+        !!pin &&
+        typeof pin === 'object' &&
+        'repoPath' in pin &&
+        (pin as ResourcePin).sha &&
+        localRepoPathFromRepoPath((pin as ResourcePin).repoPath) === localRepoPath &&
+        !isPinLocal(installed, pin as ResourcePin)
+      )
+        return pin as ResourcePin;
+    }
+  }
+  return null;
+};
+
 /** Re-point a pin at the version this machine actually has, when it has one.
  *
  * Why this exists: the shipped default names specific versions, but a machine

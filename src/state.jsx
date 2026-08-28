@@ -20,7 +20,7 @@ import { seedBookFromSource } from './data/seed';
 import { BOOK_NAMES, bookName } from './data/bookNames';
 import { GATEWAYS, gatewayKey, DCS_HOST, orgForRepoName } from './data/gateways';
 import { fetchAndInstallPin, latestReleaseTag, identifyExistingInstall } from './data/resourceFetch';
-import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, mergeOptionalPins, isPinLocal, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk, flavorOfMetadata } from './data/installed';
+import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, mergeOptionalPins, isPinLocal, unsatisfiedProjectPinFor, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk, flavorOfMetadata } from './data/installed';
 import { TOOL_SLOT, preflightToolBook, resolutionRecord, resolveToolBook, resolveSetSlot } from './data/resolve';
 import {
   deriveForProject,
@@ -295,6 +295,7 @@ const initial = () => ({
   // the LIVE platform catalog for the chosen org, never from app config.
   src: { gateway: null, book: 'TIT', rows: [], loading: false, error: null, dl: null, exclude: {} },
   installedSrc: [], // [{ langKey, book }] packages this machine already has
+  installEpoch: 0, // bumped on EVERY successful install (round 20 F2) — resource readiness re-derives even when resources.json is unchanged
   checkable: [], // gatewayKeys whose COMPLETE helps suite is installed (D30.2)
   gatewayError: null, // a failed gateway-change commit, shown in the dialogue
   netEnabled: false, // mirrors the platform's net gate (GET /net/status)
@@ -355,6 +356,11 @@ function reducer(state, a) {
 
 /** Test hook: the reducer's atomic noteSaved merge (S1) is unit-tested. */
 export const __reducerForTests = reducer;
+
+/** Test hook (round 20): the pinned-identity install path is unit-tested —
+ * a project pin the catalog's latest release cannot satisfy must fetch its
+ * OWN identity, never `latestReleaseTag`. */
+export const __installPackageRowForTests = (...args) => installPackageRow(...args);
 
 const parseChapters = (raw) => {
   // Display parse (whole-book: chapters + headers — PLATFORM-NOTES #4).
@@ -561,14 +567,40 @@ async function identifyInstalledResource(apiClient, repoPath, target) {
   }
 }
 
-async function installPackageRow(apiClient, originGateway, row, local) {
+/** Install the EXACT identity the open project pins (round 20): fetching the
+ * catalog's latest release cannot satisfy a pin at another sha (D58), and the
+ * only exposed recovery path would strand the project permanently. When the
+ * canonical path is occupied by a different sha, the pinned identity installs
+ * side by side — the importer refuses an existing target, and deleting the
+ * occupant could orphan another project pinned to it. fetchAndInstallPin
+ * verifies the export's declared revision against the pinned sha (D23b), so a
+ * returned result IS the requested identity. */
+async function installPinnedRow(apiClient, row, wanted, local, target) {
+  const installPath = local.has(target) ? `${target}--${wanted.sha.slice(0, 12)}` : target;
+  const result = await fetchAndInstallPin(
+    { repoPath: wanted.repoPath, version: wanted.version, sha: wanted.sha, flavor: wanted.flavor ?? '' },
+    { api: apiClient, targetRepoPath: installPath === target ? undefined : installPath },
+  );
+  const flavor =
+    wanted.flavor || flavorOfMetadata(await apiClient.getMetadataRaw(installPath).catch(() => null));
+  await recordInstalled(apiClient, STORAGE_ID, installPath, {
+    repoPath: wanted.repoPath,
+    ...(wanted.version ? { version: wanted.version } : {}),
+    sha: result.revision,
+    flavor,
+  });
+  return { done: `${row.repo} ${wanted.version ?? result.revision.slice(0, 12)}` };
+}
+
+async function installPackageRow(apiClient, originGateway, row, local, wanted = null) {
   const repoPath = `${DCS_HOST}/${originGateway.org}/${row.repo}`;
   const target = localRepoPathFromRepoPath(repoPath);
-  if (local.has(target)) {
-    await identifyInstalledResource(apiClient, repoPath, target);
-    return { done: row.repo };
-  }
   try {
+    if (wanted) return await installPinnedRow(apiClient, row, wanted, local, target);
+    if (local.has(target)) {
+      await identifyInstalledResource(apiClient, repoPath, target);
+      return { done: row.repo };
+    }
     const tag = await latestReleaseTag(repoPath);
     const result = await fetchAndInstallPin({ repoPath, version: tag, flavor: '' }, { api: apiClient });
     const flavor = flavorOfMetadata(await apiClient.getMetadataRaw(target).catch(() => null));
@@ -1776,13 +1808,20 @@ export function AppProvider({ children }) {
         dispatch({ type: 'patchSrc', patch: { dl: 'run', error: null, progress: null } });
 
         const local = new Set(await api.listLocalRepos().catch(() => []));
+        // Round 20: the download must satisfy the OPEN project's pinned
+        // identities (D58) — resolve what the machine actually holds once, up
+        // front, so a pin the catalog's latest release cannot satisfy fetches
+        // its own version instead. A failed resolve degrades to the
+        // no-open-project behavior (latest release), never to a refusal.
+        const { installed } = await a.resolutionContext().catch(() => ({ installed: {} }));
         const done = [];
         const failed = [];
         for (const row of chosen) {
           const target = localRepoPathFromRepoPath(`${DCS_HOST}/${originGateway.org}/${row.repo}`);
-          if (!local.has(target))
+          const wanted = unsatisfiedProjectPinFor(stateRef.current.projectPins, target, installed);
+          if (wanted || !local.has(target))
             dispatch({ type: 'patchSrc', patch: { progress: t('sources.progress', { repo: row.repo }) } });
-          const result = await installPackageRow(api, originGateway, row, local);
+          const result = await installPackageRow(api, originGateway, row, local, wanted);
           if (result.done) done.push(result.done);
           if (result.failed) failed.push(result.failed);
         }
@@ -1796,6 +1835,12 @@ export function AppProvider({ children }) {
         });
         if (done.length) {
           recordInstalledPackage(stateRef, dispatch, originGateway, originBook);
+          // Round 20 (F2): a successful install may change NOTHING in
+          // resources.json — the pin already existed and only the machine's
+          // holdings changed — so pin adoption below dispatches nothing. Bump
+          // the epoch Understand's loader watches so readiness reflects every
+          // successful install.
+          dispatch({ type: 'set', patch: { installEpoch: stateRef.current.installEpoch + 1 } });
           // A download can COMPLETE a suite, which is what makes a language
           // offerable as the project's checking language.
           await a.refreshCheckable();

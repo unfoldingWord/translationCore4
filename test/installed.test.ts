@@ -5,6 +5,7 @@ import {
   coverageFromLocal,
   installedPathFor,
   isPinLocal,
+  unsatisfiedProjectPinFor,
   languageSetFromInstalled,
   localRepoPathFromRepoPath,
   readInstalled,
@@ -415,5 +416,62 @@ describe('the whole point: a Spanish suite on disk resolves to a language set', 
     expect(set?.translationNotes.version).toBeUndefined();
     expect(set?.translationWords.repoPath).toBe('git.door43.org/es-419_gl/es-419_tw');
     expect(set?.translationWordsLinks.repoPath).toBe('git.door43.org/es-419_gl/es-419_tw'); // D34
+  });
+});
+
+describe('round 20 — unsatisfiedProjectPinFor: a download must satisfy the PROJECT pin', () => {
+  const target = '_local_/_sideloaded_/unfoldingword--en_tq';
+  const setWith = (tq?: ResourcePin) => ({
+    languageSets: {
+      primary: {
+        gatewayLanguage: { languageId: 'en', owner: 'unfoldingWord' },
+        translationNotes: pin('unfoldingWord/en_tn', 'v89'),
+        translationWordsLinks: pin('unfoldingWord/en_tw', 'v89'),
+        translationWords: pin('unfoldingWord/en_tw', 'v89'),
+        translationAcademy: pin('unfoldingWord/en_ta', 'v89'),
+        ...(tq ? { translationQuestions: tq } : {}),
+      },
+      fallback: {
+        gatewayLanguage: { languageId: 'en', owner: 'unfoldingWord' },
+        translationNotes: pin('unfoldingWord/en_tn', 'v89'),
+        translationWordsLinks: pin('unfoldingWord/en_tw', 'v89'),
+        translationWords: pin('unfoldingWord/en_tw', 'v89'),
+        translationAcademy: pin('unfoldingWord/en_ta', 'v89'),
+      },
+    },
+  });
+
+  it('VERSION SKEW: a same-repo install at the catalog-latest sha does NOT satisfy the pin', () => {
+    // The project pins en_tq v88; the machine holds the latest release (v89,
+    // a different sha). Downloading "latest" again can never heal this — the
+    // pin's own identity is what must be fetched.
+    const wanted = pin('unfoldingWord/en_tq', 'v88');
+    const installedLatest: InstalledMap = {
+      ...INSTALLED,
+      [target]: pin('unfoldingWord/en_tq', 'v89'),
+    };
+    expect(unsatisfiedProjectPinFor(setWith(wanted), target, installedLatest)).toEqual(wanted);
+  });
+
+  it('an exact-identity install satisfies the pin — nothing to fetch', () => {
+    const wanted = pin('unfoldingWord/en_tq', 'v88');
+    const installedExact: InstalledMap = { ...INSTALLED, [`${target}--v88side`]: wanted };
+    expect(unsatisfiedProjectPinFor(setWith(wanted), target, installedExact)).toBeNull();
+  });
+
+  it('a repo the project does not pin has no wanted identity (latest is fine)', () => {
+    expect(unsatisfiedProjectPinFor(setWith(undefined), target, INSTALLED)).toBeNull();
+  });
+
+  it('null resources (no open project) and non-pin set fields are ignored', () => {
+    expect(unsatisfiedProjectPinFor(null, target, INSTALLED)).toBeNull();
+    // gatewayLanguage has no repoPath/sha — it must never be returned.
+    const tnTarget = '_local_/_sideloaded_/unfoldingword--en_tn';
+    expect(unsatisfiedProjectPinFor(setWith(undefined), tnTarget, INSTALLED)).toBeNull();
+  });
+
+  it('a sha-less pin is satisfiable by no install (D59) — and fetchable as no identity', () => {
+    const shaLess = { ...pin('unfoldingWord/en_tq', 'v88'), sha: undefined } as never;
+    expect(unsatisfiedProjectPinFor(setWith(shaLess), target, {})).toBeNull();
   });
 });

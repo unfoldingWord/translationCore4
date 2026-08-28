@@ -555,7 +555,10 @@ export default function Understand() {
     // bookRaw is a dependency (O2): openBook publishes the book before its
     // bytes; a cross-frame project needs the bytes to build sourceRefs, and
     // without the re-run it would render nothing for the new book.
-  }, [s.book, s.bookRaw, s.projectPins, s.netEnabled]);
+    // installEpoch (round 20 F2): a successful install can leave projectPins
+    // byte-identical (the pin already existed; only the machine's holdings
+    // changed) — without it a downloaded resource stays "fetch" until reload.
+  }, [s.book, s.bookRaw, s.projectPins, s.netEnabled, s.installEpoch]);
 
   if (!book) {
     return (

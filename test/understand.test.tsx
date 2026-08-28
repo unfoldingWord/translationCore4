@@ -562,3 +562,25 @@ describe('#106 — the persistence shape: §8.5 note.add seals and projects', ()
     expect((out.notes[0].target as Record<string, unknown>).verse).toBe('1');
   });
 });
+
+describe('2026-08-28 adversarial round 20 regression (F2)', () => {
+  beforeEach(() => { calls.length = 0; });
+
+  it('a bumped installEpoch re-runs loadUnderstand — an install that leaves resources.json byte-identical still refreshes readiness', () => {
+    const loads = () => calls.filter((c) => c.name === 'loadUnderstand').length;
+    const { rerender } = render(<Understand />);
+    const initial = loads();
+    expect(initial).toBeGreaterThan(0);
+
+    // Same deps → no re-run (the effect is keyed, not per-render).
+    rerender(<Understand />);
+    expect(loads()).toBe(initial);
+
+    // A successful download bumps the epoch even when projectPins did not
+    // change (the pin already existed; only the machine's holdings changed).
+    (state as { installEpoch?: number }).installEpoch = 1;
+    rerender(<Understand />);
+    expect(loads()).toBe(initial + 1);
+    delete (state as { installEpoch?: number }).installEpoch;
+  });
+});
