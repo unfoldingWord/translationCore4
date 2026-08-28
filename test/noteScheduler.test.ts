@@ -292,7 +292,6 @@ describe('2026-08-28 adversarial round 23 regressions', () => {
     const drained = drainBoth({
       schedulerRef: { current: verseSched },
       noteSchedulerRef: { current: noteSched },
-      storeRef: { current: null }, // no failure stands — the reconcile gate is idle here (round 30)
     });
     // let the drain reach the deferred verse write, then release it
     await new Promise((r) => setTimeout(r, 0));
@@ -319,6 +318,7 @@ describe('2026-08-28 adversarial round 25 regression — concurrent project open
       actions: {
         resolutionContext: async () => ({ installed: {}, coverage: {} }),
         openBook: async (code: unknown) => void openedBooks.push(code),
+        loadUnderstand: async () => void dispatched.push({ type: '__loadUnderstand' }),
       },
       apiClient: {
         setCurrentProject: async () => {},
@@ -333,6 +333,7 @@ describe('2026-08-28 adversarial round 25 regression — concurrent project open
     open,
     readResources: async () => null, // loadProjectPins: "no pins recorded"
     writeBook: async () => {},
+    reconcileStaged: async () => {},
   });
 
   it('the LATEST open exclusively owns the refs and the dispatched state — an earlier open resuming later assigns nothing', async () => {
@@ -381,4 +382,63 @@ describe('2026-08-28 adversarial round 25 regression — concurrent project open
     expect(dispatched.some((d) => (d.patch as Record<string, unknown>)?.bookError)).toBe(false);
     expect(dispatched.some((d) => (d.patch as Record<string, unknown>)?.view === 'home')).toBe(false);
   });
+
+  it('the production wiring refreshes the Understand notes when the note scheduler reconciles (round 31 F1)', async () => {
+    const { ctx, dispatched } = openCtx();
+    const storeB = fakeStore(async (repoPath) => ({ repoPath, name: 'B', scriptDirection: 'ltr', bookCodes: ['TIT'] }));
+    ctx.makeStore = (() => storeB) as never;
+    const { __performProjectOpenForTests: open } = await import('../src/state.jsx');
+    await open(ctx, 'repo/B', 'TIT');
+    const sched = ctx.noteSchedulerRef.current as InstanceType<typeof SaveScheduler>;
+    // Force a failure through the real writer (unregistered key throws),
+    // then retry: the injected reconcile must reconcile the store AND call
+    // actions.loadUnderstand so a recovered durable note is visible before
+    // any Saved claim (round 31 F1).
+    sched.seedIfAbsent('unregistered|TIT|1:1', '');
+    sched.markDirty('unregistered|TIT|1:1', 1, '1', 'will fail');
+    await sched.flushOnBlur();
+    expect(sched.getState()).toBe('error');
+    dispatched.length = 0;
+    sched.markDirty('unregistered|TIT|1:1', 1, '1', ''); // abandoned: buffer clean
+    await sched.retry();
+    expect(dispatched.some((d) => d.type === '__loadUnderstand')).toBe(true);
+    expect(sched.getState()).toBe('saved');
+  });
+});
+
+describe('2026-08-31-round hardening: the reconcile gate lives INSIDE the scheduler', () => {
+  const clock = () => ({ setTimeout: () => 0, clearTimeout: () => {} });
+
+  it('retry() runs reconcile BEFORE clearing a failure; a rejection keeps the error standing and writes nothing', async () => {
+    const order: string[] = [];
+    let reconcileFails = true;
+    const sched = new SaveScheduler({
+      splice: (_r, _c, _v, body) => body,
+      writeBook: async (_k, text) => {
+        order.push(`write:${text}`);
+        if (text === 'boom') throw new Error('write failed');
+      },
+      clock: clock(),
+      reconcile: async () => {
+        order.push('reconcile');
+        if (reconcileFails) throw new Error('outbox unreachable');
+      },
+    });
+    sched.seedIfAbsent('k', '');
+    sched.markDirty('k', 1, '1', 'boom');
+    await sched.flushOnBlur();
+    expect(sched.getState()).toBe('error');
+    // Rejecting reconcile: the failure STANDS — drain() refuses too, so no
+    // navigation or dispose path can claim rest over an unreconciled outbox.
+    await sched.retry();
+    expect(sched.getState()).toBe('error');
+    expect(await sched.drain()).toBe(false);
+    // Healed reconcile: the gate passes, the failure clears, the flush runs.
+    reconcileFails = false;
+    sched.markDirty('k', 1, '1', 'ok now');
+    expect(await sched.drain()).toBe(true);
+    expect(order.filter((o) => o === 'reconcile').length).toBeGreaterThanOrEqual(2);
+    expect(order[order.length - 1]).toBe('write:ok now');
+  });
+
 });

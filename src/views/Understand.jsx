@@ -228,13 +228,19 @@ function ArticleView({ article, onClose }) {
 
 /** One helps slot's designed non-ready state — absence is stated, never blank. */
 function SlotState({ slot }) {
+  const { actions } = useApp();
   const state = slot?.state ?? 'none';
   if (state === 'error') {
-    // A malformed resource is THIS slot's error (A3) — stated, never a false
-    // absence claim, and never fatal to the other tabs.
+    // A malformed resource OR a failed read is THIS slot's error (A3,
+    // round 31) — stated, never a false absence claim, never fatal to the
+    // other tabs, and retryable in place (a transient transport failure
+    // must not strand the tab until an unrelated navigation).
     return (
       <Callout tone="warn" role="alert" data-testid="helps-state-error" style={{ overflowWrap: 'anywhere' }}>
-        {t('understand.helpError')} {slot.error}
+        {t('understand.helpError')} {slot.error}{' '}
+        <Button size="sm" variant="outline" data-testid="helps-retry" onClick={() => actions.loadUnderstand()}>
+          {t('app.retry')}
+        </Button>
       </Callout>
     );
   }

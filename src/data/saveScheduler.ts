@@ -43,6 +43,14 @@ export interface SaveSchedulerOptions {
   debounceMs?: number;
   /** Injectable for tests; defaults to the global timers. */
   clock?: Clock;
+  /** Rest-claim reconciliation (round 31 hardening). A retained failure may
+   * hide durable intent the buffer cannot represent — the underlying write
+   * protocol has a third state (staged, acceptance unknown) that a rejected
+   * writeBook promise cannot express. When provided, retry() runs this hook
+   * BEFORE clearing the failure and refuses (failure standing, FR-32) when
+   * it rejects — so no drain, retry, or dispose path can claim rest over an
+   * unreconciled outbox, and no call site can forget the gate. */
+  reconcile?: () => Promise<void>;
 }
 
 const defaultClock: Clock = {
@@ -61,6 +69,8 @@ export class SaveScheduler {
   /** Last text known written (or loaded) per book. dirty ⇔ current ≠ persisted. */
   private readonly persisted = new Map<string, string>();
 
+  private readonly reconcile?: () => Promise<void>;
+
   private timer: unknown = null;
   private chain: Promise<void> = Promise.resolve();
   private writing = 0;
@@ -73,6 +83,7 @@ export class SaveScheduler {
     this.splice = options.splice;
     this.debounceMs = options.debounceMs ?? 2000;
     this.clock = options.clock ?? defaultClock;
+    this.reconcile = options.reconcile;
   }
 
   /** Seed a book's raw text (from the store read). Resets its dirty state.
@@ -166,10 +177,22 @@ export class SaveScheduler {
     return this.flush();
   }
 
-  /** Re-attempt after a failed write. Clears the failure, then flushes the
-   * retained dirty buffer (which still holds the failed edits, plus any made
-   * since). */
-  retry(): Promise<void> {
+  /** Re-attempt after a failed write. Runs the injected reconcile FIRST
+   * (round 31): a retained failure may hide durable staged intent, and with
+   * a clean buffer the flush below writes nothing — clearing the failure
+   * without reconciling would claim rest over an unresolved outbox. A
+   * rejecting reconcile keeps the failure standing and refuses. Then clears
+   * the failure and flushes the retained dirty buffer (which still holds
+   * the failed edits, plus any made since). */
+  async retry(): Promise<void> {
+    if (this.failure && this.reconcile) {
+      try {
+        await this.reconcile();
+      } catch {
+        this.notify();
+        return;
+      }
+    }
     this.failure = null;
     return this.flush();
   }

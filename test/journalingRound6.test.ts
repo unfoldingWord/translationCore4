@@ -564,21 +564,15 @@ describe('2026-08-28 adversarial round 29: a FAILED reconcile keeps the note err
       splice: (_r: string, _c: unknown, _v: unknown, body: string) => body,
       writeBook: (k: string, text: string) => writer(k, text),
       clock: { setTimeout: () => 0, clearTimeout: () => {} },
+      // Round 31 hardening: the gate lives IN the scheduler — retry() runs
+      // this on a retained failure and refuses when it rejects.
+      reconcile: () => store.reconcileStaged(),
     });
     const key = noteKeyFor(REPO, 'TIT', 1, '2');
     noteTargetsRef.current.set(key, {
       store, repoPath: REPO, book: 'TIT', chapter: 1, verse: '2', projectFrame: true,
     });
-    // The production retryNoteSave sequence (round 29 guard): a failed
-    // reconcile RETURNS without touching the scheduler.
-    const retrySequence = async () => {
-      try {
-        await store.reconcileStaged();
-      } catch {
-        return;
-      }
-      await sched.retry();
-    };
+    const retrySequence = () => sched.retry();
 
     // SUSTAINED transport failure on the journal segment routes: the write's
     // pre-check fails, the round-27 cancel probe fails (stage kept on
@@ -615,7 +609,7 @@ describe('2026-08-28 adversarial round 30: NAVIGATION drains reconcile staged no
   it('a navigation drain over a clean failed buffer blocks while reconcile rejects, and surfaces the note once when it heals', async () => {
     const { rig, kv, store } = await setup();
     const { SaveScheduler } = await import('../src/data/saveScheduler');
-    const { __makeNoteWriterForTests: makeNoteWriter, __drainNotesForTests: drainNotes, noteKeyFor } =
+    const { __makeNoteWriterForTests: makeNoteWriter, noteKeyFor } =
       await import('../src/state.jsx');
     const noteTargetsRef = { current: new Map() };
     const writer = makeNoteWriter({ noteTargetsRef, dispatch: () => {}, apiClient: {} });
@@ -623,12 +617,16 @@ describe('2026-08-28 adversarial round 30: NAVIGATION drains reconcile staged no
       splice: (_r: string, _c: unknown, _v: unknown, body: string) => body,
       writeBook: (k: string, text: string) => writer(k, text),
       clock: { setTimeout: () => 0, clearTimeout: () => {} },
+      // Round 31 hardening: navigation calls sched.drain() directly — the
+      // reconcile gate is INSIDE, so no call site can bypass it.
+      reconcile: () => store.reconcileStaged(),
     });
     const key = noteKeyFor(REPO, 'TIT', 1, '2');
     noteTargetsRef.current.set(key, {
       store, repoPath: REPO, book: 'TIT', chapter: 1, verse: '2', projectFrame: true,
     });
-    const refs = { noteSchedulerRef: { current: sched }, storeRef: { current: store } };
+    // Navigation calls the scheduler's own gated drain directly (round 31).
+    const drainNotes = () => sched.drain();
 
     // Failure with the stage KEPT (write pre-check and cancel probe both
     // fail), then the user clears the fresh draft: buffer clean, error
@@ -642,13 +640,13 @@ describe('2026-08-28 adversarial round 30: NAVIGATION drains reconcile staged no
 
     // Navigation while the transport is still down: the drain must REFUSE —
     // the third injected failure rejects the reconcile.
-    expect(await drainNotes(refs)).toBe(false);
+    expect(await drainNotes()).toBe(false);
     expect(sched.getState()).toBe('error'); // still standing, still blocking
     expect((await kv.keys('outbox:')).filter((k) => k.includes(REPO))).toHaveLength(1);
 
     // The transport heals: the SAME navigation reconciles (the kept intent
     // republishes toward durability, R-8.1.7/8), drains clean, and proceeds.
-    expect(await drainNotes(refs)).toBe(true);
+    expect(await drainNotes()).toBe(true);
     expect(sched.getState()).toBe('saved');
     const notes = store.readNotes('TIT').filter((n) => n.chapter === '1' && n.verse === '2');
     expect(notes.map((n) => n.text)).toEqual(['A navigating thought.']);

@@ -379,10 +379,15 @@ const verseText = (vObj) =>
     .trim();
 
 async function readTextIngredient(apiClient, repoPath, ipath) {
+  // Round 31: only a true NOT-FOUND means "the resource has nothing here".
+  // A transport or server failure PROPAGATES into settleHelp's error state
+  // (D30 honesty) — swallowing it told the translator the installed
+  // resource lacks the book, with no way to retry.
   try {
     return await apiClient.readIngredient(repoPath, ipath);
-  } catch {
-    return null;
+  } catch (error) {
+    if (error?.isNotFound) return null;
+    throw error;
   }
 }
 
@@ -682,34 +687,13 @@ function validateNewBible(form) {
  * drain) must be caught by another pass, never left for a later dispose to
  * discard (TOCTOU). Resolves true only when a full pass ends with both
  * schedulers reporting 'saved'. */
-/** Round 30: the note drain EVERY navigation uses. On a retained failure the
- * store's staged intents are reconciled BEFORE the scheduler drain —
- * drain()'s own retry() clears a failure even over a clean buffer (the
- * cleared-fresh-draft case), which would let navigation proceed, or a
- * project exit dispose the scheduler, while the outbox still holds an
- * unresolved permanent write. A rejecting reconcile keeps the error standing
- * and refuses (FR-32). */
-async function drainNotes({ noteSchedulerRef, storeRef }) {
-  const sched = noteSchedulerRef.current;
-  if (!sched) return true;
-  if (sched.getState() === 'error' && storeRef.current) {
-    try {
-      await storeRef.current.reconcileStaged();
-    } catch {
-      return false;
-    }
-  }
-  return sched.drain();
-}
-
-/** Test hook (round 30): the reconciliation-aware navigation drain is
- * unit-tested against the real store + scheduler. */
-export const __drainNotesForTests = drainNotes;
-
-async function drainBothSchedulers({ schedulerRef, noteSchedulerRef, storeRef }) {
+async function drainBothSchedulers({ schedulerRef, noteSchedulerRef }) {
+  // Round 30/31: the reconcile-before-rest gate lives INSIDE the note
+  // scheduler (a constructor-injected hook its own retry() runs on a
+  // retained failure), so no drain path here — or anywhere — can bypass it.
   const restState = (sched) => (sched ? sched.getState() : 'saved');
   for (;;) {
-    if (!(await drainNotes({ noteSchedulerRef, storeRef }))) return false;
+    if (noteSchedulerRef.current && !(await noteSchedulerRef.current.drain())) return false;
     if (schedulerRef.current && !(await schedulerRef.current.drain())) return false;
     if (restState(noteSchedulerRef.current) === 'saved' && restState(schedulerRef.current) === 'saved')
       return true;
@@ -721,8 +705,8 @@ async function drainBothSchedulers({ schedulerRef, noteSchedulerRef, storeRef })
 export const __drainBothSchedulersForTests = drainBothSchedulers;
 
 /** Every blocker is checked BEFORE anything is disposed (C3). */
-async function drainForProjectOpen({ schedulerRef, noteSchedulerRef, storeRef }) {
-  if (!(await drainBothSchedulers({ schedulerRef, noteSchedulerRef, storeRef }))) return false;
+async function drainForProjectOpen({ schedulerRef, noteSchedulerRef }) {
+  if (!(await drainBothSchedulers({ schedulerRef, noteSchedulerRef }))) return false;
   schedulerRef.current?.dispose();
   noteSchedulerRef.current?.dispose();
   return true;
@@ -787,7 +771,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
   // Never abandon unsaved work: drain BOTH schedulers first, and stay put if
   // a write failure remains (FR-32; B3/M1/M6; notes held to the same rule —
   // B1/D65).
-  const canOpen = await drainForProjectOpen({ schedulerRef, noteSchedulerRef, storeRef });
+  const canOpen = await drainForProjectOpen({ schedulerRef, noteSchedulerRef });
   if (!canOpen || superseded()) return;
   try {
     // R-E33-3: the versification frame cache is keyed by repoPath, which is
@@ -817,6 +801,15 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
     noteSchedulerRef.current = new SaveScheduler({
       writeBook: makeNoteWriter({ noteTargetsRef, dispatch, apiClient }),
       splice: (_raw, _chapter, _verse, body) => body,
+      // Round 31 hardening: the rest-claim gate lives IN the scheduler — a
+      // retained failure reconciles the store's staged intents (a rejecting
+      // reconcile keeps the failure standing, FR-32) and then REFRESHES the
+      // notes the screen displays, so a recovered durable note is visible
+      // before any Saved claim, on every retry/drain/navigation path alike.
+      reconcile: async () => {
+        await store.reconcileStaged();
+        await actions.loadUnderstand();
+      },
     });
     const noteSched = noteSchedulerRef.current;
     noteSched.subscribe((noteSaveState) => {
@@ -1042,10 +1035,18 @@ async function loadSimplifiedHelp({ store, st, book, coverage, installed, sets }
   try {
     const { usfm: raw } = await store.readSourceBook(localSourceRepo(pin), book);
     return { state: 'ready', pin, rung: resolved.rung, chapters: parseChapters(raw) };
-  } catch {
-    return { state: 'missing', pin, rung: resolved.rung };
+  } catch (error) {
+    // Round 31: absent book = missing; anything else (transport, parse)
+    // propagates to settleHelp's stated error (D30 honesty).
+    if (error?.isNotFound) return { state: 'missing', pin, rung: resolved.rung };
+    throw error;
   }
 }
+
+/** Test hook (round 31): the missing-vs-error split is unit-tested — only a
+ * true not-found reads as absence; transport failures propagate to the
+ * stated, retryable error state. */
+export const __helpReadsForTests = { readTextIngredient, loadSimplifiedHelp };
 
 const settleHelp = (promise) =>
   promise.then(
@@ -1266,7 +1267,7 @@ export function AppProvider({ children }) {
         // ruling 2026-08-28), and a FAILED write holds navigation exactly
         // like the verse scheduler does (FR-32). The failure is visible in
         // the Understand callout and the save indicator.
-        if (!(await drainNotes({ noteSchedulerRef, storeRef }))) return;
+        if (noteSchedulerRef.current && !(await noteSchedulerRef.current.drain())) return;
         dispatch({ type: 'set', patch: { view } });
       },
 
@@ -2226,7 +2227,7 @@ export function AppProvider({ children }) {
       openBook: async (code) => {
         // F2/D65: a book switch is a navigation like any other — flush the
         // note scheduler and refuse while a failure stands (FR-32).
-        if (!(await drainNotes({ noteSchedulerRef, storeRef }))) return;
+        if (noteSchedulerRef.current && !(await noteSchedulerRef.current.drain())) return;
         const store = storeRef.current;
         if (!store) return;
         // Drain before switching: loading over unsaved work resurrects stale
@@ -2418,23 +2419,11 @@ export function AppProvider({ children }) {
        * durable note, and Saved would show over hidden accepted work. Then
        * retry the buffer (the LATEST text — a stale payload structurally
        * cannot exist, round 21) and refresh the notes the screen displays. */
-      retryNoteSave: async () => {
-        // Round 29: a FAILED reconcile must keep the error standing. With a
-        // clean buffer (the cleared-fresh-draft case), retry() clears the
-        // failure and writes nothing — Saved would show while the outbox
-        // still holds an unresolved permanent write. Retry only after the
-        // store's staged state is provably reconciled; until then the
-        // standing scheduler error stays visible and keeps blocking (FR-32).
-        if (storeRef.current) {
-          try {
-            await storeRef.current.reconcileStaged();
-          } catch {
-            return;
-          }
-        }
-        await (noteSchedulerRef.current?.retry() ?? Promise.resolve());
-        await a.loadUnderstand();
-      },
+      retryNoteSave: () =>
+        // Rounds 29-31: the reconcile-before-rest gate (and the notes
+        // refresh a recovery needs) runs INSIDE the scheduler's retry — a
+        // rejecting reconcile keeps the failure standing (FR-32).
+        noteSchedulerRef.current?.retry() ?? Promise.resolve(),
 
       /** A help article behind an Understand card (tW word or tA module),
        * read from the INSTALLED burrito like C2.5; absence is stated. */
@@ -2475,14 +2464,14 @@ export function AppProvider({ children }) {
         // L1/D65: a chapter click is a navigation for the comprehension
         // boxes too — flush the note buffer and stay put only on a failure
         // (FR-32).
-        if (!(await drainNotes({ noteSchedulerRef, storeRef }))) return;
+        if (noteSchedulerRef.current && !(await noteSchedulerRef.current.drain())) return;
         dispatch({ type: 'set', patch: { chapter, editing: null } });
       },
       setSourceTab: async (sourceTab) => {
         // N2/D65: a tab switch re-chunks the passage — flush the note buffer
         // first so a draft can never be re-marked under a different target
         // mid-flight; a failure stays put (FR-32).
-        if (!(await drainNotes({ noteSchedulerRef, storeRef }))) return;
+        if (noteSchedulerRef.current && !(await noteSchedulerRef.current.drain())) return;
         dispatch({ type: 'set', patch: { sourceTab } });
       },
       toggleRail: () => dispatch({ type: 'toggle', key: 'rail' }),
@@ -2529,7 +2518,7 @@ export function AppProvider({ children }) {
         // working — both schedulers included — or the next edit throws.
         // Round 23: the loop re-checks both after each pass, so a note staged
         // while the verse drain awaited can never be disposed unflushed.
-        if (!(await drainBothSchedulers({ schedulerRef, noteSchedulerRef, storeRef }))) return;
+        if (!(await drainBothSchedulers({ schedulerRef, noteSchedulerRef }))) return;
         schedulerRef.current?.dispose();
         schedulerRef.current = null;
         noteSchedulerRef.current?.dispose();
