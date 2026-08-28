@@ -735,6 +735,128 @@ function adoptInstalledResources(current, installed) {
   return next;
 }
 
+/** Round 25: open one project, SEQUENCED. Project cards stay clickable while
+ * an open is in flight, so two opens can interleave — without a token the
+ * earlier one resumes after the later one replaced storeRef and the
+ * schedulers, dispatches ITS summary over the later project, and reads books
+ * through the later project's refs (the UI names project A while writes
+ * target project B). Every await is followed by a supersession check BEFORE
+ * any shared ref is assigned or any state dispatched; a stale FAILURE is
+ * dropped too (it must never route the successfully opened project Home). */
+async function performProjectOpen(ctx, repoPath, bookCode) {
+  const {
+    openProjectSeqRef,
+    schedulerRef,
+    noteSchedulerRef,
+    noteTargetsRef,
+    storeRef,
+    stateRef,
+    understandSeqRef,
+    dispatch,
+    actions,
+    apiClient,
+    makeStore,
+    markUsed,
+  } = ctx;
+  const seq = ++openProjectSeqRef.current;
+  const superseded = () => seq !== openProjectSeqRef.current;
+  // Never abandon unsaved work: drain BOTH schedulers first, and stay put if
+  // a write failure remains (FR-32; B3/M1/M6; notes held to the same rule —
+  // B1/D65).
+  const canOpen = await drainForProjectOpen({ schedulerRef, noteSchedulerRef });
+  if (!canOpen || superseded()) return;
+  try {
+    // R-E33-3: the versification frame cache is keyed by repoPath, which is
+    // NOT unique across a delete-and-recreate inside one session. Clear it
+    // on every open so a new project at a reused path never inherits the
+    // previous project's frame — that would key every check in the wrong
+    // numbering, and the journal keeps those keys permanently.
+    forgetProjectFrames();
+    const store = makeStore();
+    // open() runs the issue-#62 recovery pipeline: replay staged intents,
+    // classify derived state against the journal, seed a journal-less
+    // project universally, reconcile out-of-band USFM — or STOP with a
+    // diagnosable report (surfaced through bookError below).
+    const summary = await store.open(repoPath);
+    if (superseded()) return; // a newer open owns the refs
+    storeRef.current = store;
+    schedulerRef.current = new SaveScheduler({
+      writeBook: (book, whole) => store.writeBook(book, whole),
+      splice: spliceVerse,
+    });
+    schedulerRef.current.subscribe((saveState) => dispatch({ type: 'set', patch: { saveState } }));
+    // D65: the comprehension-note scheduler — same discipline, its own
+    // instance (a failing note must not park verse autosave: the failure
+    // slot is per instance). Its key is the fully-scoped note identity; the
+    // splice degenerates to the whole value.
+    noteTargetsRef.current = new Map();
+    noteSchedulerRef.current = new SaveScheduler({
+      writeBook: makeNoteWriter({ noteTargetsRef, dispatch, apiClient }),
+      splice: (_raw, _chapter, _verse, body) => body,
+    });
+    const noteSched = noteSchedulerRef.current;
+    noteSched.subscribe((noteSaveState) => {
+      // The mirror the indicator reads, plus the Understand callout's
+      // message on failure (cleared when the state recovers). The understand
+      // merge happens IN the reducer, from its own state — a snapshot spread
+      // here would clobber a concurrent noteSaved merge (S1 hazard class).
+      const failure = noteSched.getFailure();
+      dispatch({
+        type: 'noteSaveState',
+        state: noteSaveState,
+        saveError:
+          noteSaveState === 'error'
+            ? String(failure?.error?.message || failure?.error || noteSaveState)
+            : null,
+      });
+    });
+    apiClient.setCurrentProject(repoPath).catch(() => {});
+    markUsed(repoPath); // fire-and-forget; ordering refreshes next Home visit
+    // The platform summary reports script_direction "?" for app-created
+    // projects; the wizard recorded the user's choice in settings.json.
+    const { scriptDirection, projectScope } = await projectPresentation(apiClient, store, repoPath, summary);
+    if (superseded()) return;
+    // A2: the previous project's understand/pins must never survive into
+    // this one — clear both with the new project, and invalidate any
+    // in-flight loadUnderstand before its completion can land here.
+    understandSeqRef.current++;
+    dispatch({
+      type: 'set',
+      patch: {
+        project: { ...summary, scriptDirection, repoPath },
+        projectScope,
+        view: 'draft',
+        projectPins: null,
+        understand: null,
+      },
+    });
+    // The project's pins drive every check session (D30.3). Absent
+    // resources.json reads as null — "no pins recorded" — which the
+    // preflight reports distinctly from "pinned but not local".
+    //
+    // #16 / owner ruling 3c: on the way in, record book coverage on any pin
+    // that lacks it and whose resource IS on this machine. Best-effort; a
+    // failure never blocks opening. N1 (round 14): the detached chain binds
+    // every dispatch to the originating store instance and repo path.
+    loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatch });
+    // B12 — warm the install resolver BEFORE any book/source read, so
+    // resolveReadPath's installedCache is populated on a cold open.
+    await actions.resolutionContext().catch(() => {});
+    if (superseded()) return;
+    await actions.openBook(bookCode || summary.bookCodes[0]);
+  } catch (e) {
+    if (superseded()) return; // a stale failure must not route the OPEN project Home
+    dispatch({
+      type: 'set',
+      patch: { bookError: e?.reason || e?.message || String(e), view: 'home' },
+    });
+  }
+}
+
+/** Test hook (round 25): out-of-order open completions are unit-tested — the
+ * latest request exclusively owns the refs and the dispatched state. */
+export const __performProjectOpenForTests = performProjectOpen;
+
 function loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatch }) {
   const stillCurrent = () =>
     storeRef.current === store && stateRef.current.project?.repoPath === repoPath;
@@ -998,6 +1120,7 @@ export function AppProvider({ children }) {
   // the defect classes they bred.
   const noteSchedulerRef = useRef(null);
   const noteTargetsRef = useRef(new Map());
+  const openProjectSeqRef = useRef(0); // openProject sequence token (round 25): the latest open owns the refs
   const articleSeqRef = useRef(0); // help-article completion token (D3, adversarial round 4)
 
   // ---- derived display model -------------------------------------------------
@@ -2050,109 +2173,25 @@ export function AppProvider({ children }) {
         });
       },
 
-      openProject: async (repoPath, bookCode) => {
-        // Never abandon unsaved work: drain BOTH schedulers first, and stay
-        // put if a write failure remains (FR-32; review findings B3/M1/M6;
-        // comprehension notes held to the same rule — B1/D65).
-        const canOpen = await drainForProjectOpen({ schedulerRef, noteSchedulerRef });
-        if (!canOpen) return;
-        try {
-          // R-E33-3: the versification frame cache is keyed by repoPath, which is
-          // NOT unique across a delete-and-recreate inside one session. Clear it
-          // on every open so a new project at a reused path never inherits the
-          // previous project's frame — that would key every check in the wrong
-          // numbering, and the journal keeps those keys permanently.
-          forgetProjectFrames();
-          const store = new JournalingStore({ api });
-          // open() runs the issue-#62 recovery pipeline: replay staged intents,
-          // classify derived state against the journal, seed a journal-less
-          // project universally, reconcile out-of-band USFM — or STOP with a
-          // diagnosable report (surfaced through bookError below).
-          const summary = await store.open(repoPath);
-          storeRef.current = store;
-          schedulerRef.current = new SaveScheduler({
-            writeBook: (book, whole) => store.writeBook(book, whole),
-            splice: spliceVerse,
-          });
-          schedulerRef.current.subscribe((saveState) =>
-            dispatch({ type: 'set', patch: { saveState } }),
-          );
-          // D65: the comprehension-note scheduler — same discipline, its own
-          // instance (a failing note must not park verse autosave: the
-          // failure slot is per instance). Its key is the fully-scoped note
-          // identity; the splice degenerates to the whole value.
-          noteTargetsRef.current = new Map();
-          noteSchedulerRef.current = new SaveScheduler({
-            writeBook: makeNoteWriter({ noteTargetsRef, dispatch, apiClient: api }),
-            splice: (_raw, _chapter, _verse, body) => body,
-          });
-          noteSchedulerRef.current.subscribe((noteSaveState) => {
-            // The mirror the indicator reads, plus the Understand callout's
-            // message on failure (cleared when the state recovers). The
-            // understand merge happens IN the reducer, from its own state —
-            // a snapshot spread here would clobber a concurrent noteSaved
-            // merge (S1 hazard class).
-            const failure = noteSchedulerRef.current?.getFailure();
-            dispatch({
-              type: 'noteSaveState',
-              state: noteSaveState,
-              saveError:
-                noteSaveState === 'error'
-                  ? String(failure?.error?.message || failure?.error || noteSaveState)
-                  : null,
-            });
-          });
-          api.setCurrentProject(repoPath).catch(() => {});
-          markUsed(repoPath); // fire-and-forget; ordering refreshes next Home visit
-          // The platform summary reports script_direction "?" for app-created
-          // projects; the wizard recorded the user's choice in settings.json.
-          const { scriptDirection, projectScope } = await projectPresentation(api, store, repoPath, summary);
-          // A2: the previous project's understand/pins must never survive
-          // into this one — clear both with the new project, and invalidate
-          // any in-flight loadUnderstand before its completion can land here.
-          understandSeqRef.current++;
-          dispatch({
-            type: 'set',
-            patch: {
-              project: { ...summary, scriptDirection, repoPath },
-              projectScope,
-              view: 'draft',
-              projectPins: null,
-              understand: null,
-            },
-          });
-          // The project's pins drive every check session (D30.3). Absent
-          // resources.json reads as null — "no pins recorded" — which the
-          // preflight reports distinctly from "pinned but not local".
-          //
-          // #16 / owner ruling 3c: on the way in, record book coverage on any pin
-          // that lacks it and whose resource IS on this machine. That converts a
-          // pre-#16 project once, so the warned fallback stops firing for pins
-          // whose coverage was knowable all along. Pins whose resource is absent
-          // are left alone — that is the genuinely unknown case the warning is
-          // for. Best-effort: a failure here must never block opening a project,
-          // so the pins still load from whatever is on disk.
-          // N1 (adversarial round 14): this detached chain can settle after
-          // ANOTHER project opened — every dispatch is bound to the
-          // originating store instance and repo path.
-          loadProjectPins({ store, repoPath, storeRef, stateRef, actions: a, dispatch });
-          // B12 — warm the install resolver BEFORE any book/source read. openBook
-          // resolves its source panes through resolveReadPath, which needs
-          // installedCache populated; on a cold project open the cache is empty,
-          // so every seeded resource resolves to the wrong (owner-qualified) path
-          // and the ULT/UST panes never render. Installs are machine-scoped, so
-          // one warm-up here also covers later book switches. resolutionContext
-          // is self-healing (it swallows its own read failures), so this is safe
-          // offline. Awaited so the cache is ready before openBook reads.
-          await a.resolutionContext().catch(() => {});
-          await a.openBook(bookCode || summary.bookCodes[0]);
-        } catch (e) {
-          dispatch({
-            type: 'set',
-            patch: { bookError: e?.reason || e?.message || String(e), view: 'home' },
-          });
-        }
-      },
+      openProject: (repoPath, bookCode) =>
+        performProjectOpen(
+          {
+            openProjectSeqRef,
+            schedulerRef,
+            noteSchedulerRef,
+            noteTargetsRef,
+            storeRef,
+            stateRef,
+            understandSeqRef,
+            dispatch,
+            actions: a,
+            apiClient: api,
+            makeStore: () => new JournalingStore({ api }),
+            markUsed,
+          },
+          repoPath,
+          bookCode,
+        ),
 
       openBook: async (code) => {
         // F2/D65: a book switch is a navigation like any other — flush the

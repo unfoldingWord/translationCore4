@@ -301,3 +301,83 @@ describe('2026-08-28 adversarial round 23 regressions', () => {
     expect(noteSched.getState()).toBe('saved');
   });
 });
+
+describe('2026-08-28 adversarial round 25 regression — concurrent project opens', () => {
+  const openCtx = () => {
+    const dispatched: Array<Record<string, unknown>> = [];
+    const openedBooks: unknown[] = [];
+    const ctx = {
+      openProjectSeqRef: { current: 0 },
+      schedulerRef: { current: null as unknown },
+      noteSchedulerRef: { current: null as unknown },
+      noteTargetsRef: { current: new Map() },
+      storeRef: { current: null as unknown },
+      stateRef: { current: { project: null } },
+      understandSeqRef: { current: 0 },
+      dispatch: (a: Record<string, unknown>) => dispatched.push(a),
+      actions: {
+        resolutionContext: async () => ({ installed: {}, coverage: {} }),
+        openBook: async (code: unknown) => void openedBooks.push(code),
+      },
+      apiClient: {
+        setCurrentProject: async () => {},
+        getMetadataRaw: async () => ({}),
+      },
+      makeStore: () => ({}) as never, // overridden per call below
+      markUsed: () => {},
+    };
+    return { ctx, dispatched, openedBooks };
+  };
+  const fakeStore = (open: (repoPath: string) => Promise<Record<string, unknown>>) => ({
+    open,
+    readResources: async () => null, // loadProjectPins: "no pins recorded"
+    writeBook: async () => {},
+  });
+
+  it('the LATEST open exclusively owns the refs and the dispatched state — an earlier open resuming later assigns nothing', async () => {
+    const { ctx, dispatched, openedBooks } = openCtx();
+    let releaseA: (v: Record<string, unknown>) => void = () => {};
+    let aStarted: () => void = () => {};
+    const aStartedP = new Promise<void>((r) => { aStarted = r; });
+    const storeA = fakeStore(() => new Promise((r) => { releaseA = r; aStarted(); }));
+    const storeB = fakeStore(async (repoPath) => ({ repoPath, name: 'B', scriptDirection: 'ltr', bookCodes: ['TIT'] }));
+    const stores = [storeA, storeB];
+    ctx.makeStore = (() => stores.shift()) as never;
+
+    const { __performProjectOpenForTests: open } = await import('../src/state.jsx');
+    const openA = open(ctx, 'repo/A', 'GEN');
+    await aStartedP; // A's store.open is genuinely in flight before B begins
+    const openB = open(ctx, 'repo/B', 'TIT');
+    await openB; // B completes while A's store.open is still pending
+    expect(ctx.storeRef.current).toBe(storeB);
+    // A's open resolves AFTERWARDS — it must recognize it was superseded.
+    releaseA({ repoPath: 'repo/A', name: 'A', scriptDirection: 'ltr', bookCodes: ['GEN'] });
+    await openA;
+    expect(ctx.storeRef.current).toBe(storeB); // never reassigned to A
+    const projects = dispatched.filter((d) => (d.patch as Record<string, unknown>)?.project);
+    expect(projects.length).toBe(1); // only B's summary ever dispatched
+    expect(((projects[0].patch as Record<string, { name: string }>).project).name).toBe('B');
+    expect(openedBooks).toEqual(['TIT']); // only B's book opened
+  });
+
+  it("a STALE open's failure never routes the successfully opened project Home", async () => {
+    const { ctx, dispatched } = openCtx();
+    let failA: (e: Error) => void = () => {};
+    let aStarted: () => void = () => {};
+    const aStartedP = new Promise<void>((r) => { aStarted = r; });
+    const storeA = fakeStore(() => new Promise((_r, reject) => { failA = reject; aStarted(); }));
+    const storeB = fakeStore(async (repoPath) => ({ repoPath, name: 'B', scriptDirection: 'ltr', bookCodes: ['TIT'] }));
+    const stores = [storeA, storeB];
+    ctx.makeStore = (() => stores.shift()) as never;
+
+    const { __performProjectOpenForTests: open } = await import('../src/state.jsx');
+    const openA = open(ctx, 'repo/A', undefined);
+    await aStartedP; // A's store.open is genuinely in flight before B begins
+    const openB = open(ctx, 'repo/B', undefined);
+    await openB;
+    failA(new Error('repo A is corrupt'));
+    await openA;
+    expect(dispatched.some((d) => (d.patch as Record<string, unknown>)?.bookError)).toBe(false);
+    expect(dispatched.some((d) => (d.patch as Record<string, unknown>)?.view === 'home')).toBe(false);
+  });
+});
