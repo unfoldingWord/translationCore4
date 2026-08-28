@@ -63,7 +63,7 @@ const latestUnitNote = (comprehension, chapter, unit) => {
 
 /** The comprehension box (#106's only write): saves on blur through
  * actions.saveComprehension; everything else on the screen is read-only. */
-function ComprehensionBox({ chapter, unit }) {
+function ComprehensionBox({ book, chapter, unit }) {
   const { s, actions } = useApp();
   // DISABLED until the persisted notes have actually been read (A3, 2026-08-27
   // adversarial review): a writable empty box over an unread grow-only store
@@ -71,23 +71,31 @@ function ComprehensionBox({ chapter, unit }) {
   const ready = s.understand?.comprehension != null;
   const stored = latestUnitNote(s.understand?.comprehension, chapter, unit)?.text ?? '';
   const [text, setText] = React.useState(stored);
+  // The box's target identity is FULLY scoped (F1, adversarial round 6):
+  // unit keys like "s1"/"v1"/"whole" repeat across chapters and books, so
+  // book AND chapter are part of the identity — a chapter switch always
+  // resets to the new target's stored value and never re-marks the previous
+  // chapter's draft dirty under the new one. (Blur has already fired the
+  // previous target's save by the time the identity changes.)
+  const identity = `${book}|${chapter}|${unit.key}`;
+  const dirtyKey = `${book}|${chapter}:${unit.head}`;
   // E1 (adversarial round 5): a stored update must never CLOBBER a draft the
   // user has typed since — sync from stored only while the box still shows
   // the previous stored value; a diverged draft stays, and its dirty mark is
   // re-asserted (the state layer clears dirty on ITS latest save's success,
   // which cannot see text typed after that save started).
   const prevStoredRef = React.useRef(stored);
-  const unitRef = React.useRef(unit.key);
+  const identityRef = React.useRef(identity);
   React.useEffect(() => {
-    const unitChanged = unitRef.current !== unit.key;
-    unitRef.current = unit.key;
-    if (unitChanged || text === prevStoredRef.current) {
+    const identityChanged = identityRef.current !== identity;
+    identityRef.current = identity;
+    if (identityChanged || text === prevStoredRef.current) {
       setText(stored);
     } else if (text.trim() !== stored.trim()) {
-      actions.setNoteDirty(`${chapter}:${unit.head}`, true);
+      actions.setNoteDirty(dirtyKey, true);
     }
     prevStoredRef.current = stored;
-  }, [stored, chapter, unit.key]);
+  }, [stored, identity]);
   // Compare against the note the box DISPLAYS: notes are grow-only, so an
   // unchanged focus/blur must never append a duplicate (2026-08-27 Codex
   // review). unit.head is the RAW first verse key — a bridge ("4-5") keeps
@@ -104,8 +112,8 @@ function ComprehensionBox({ chapter, unit }) {
     <TextArea rows={2} value={text} disabled={!ready}
       onChange={(e) => {
         setText(e.target.value);
-        // Keyed per target (C2): this box's flag, nobody else's.
-        actions.setNoteDirty(`${chapter}:${unit.head}`, e.target.value.trim() !== stored.trim());
+        // Keyed per fully-scoped target (C2/F2): this box's flag, nobody else's.
+        actions.setNoteDirty(dirtyKey, e.target.value.trim() !== stored.trim());
       }}
       onBlur={save}
       placeholder={t('understand.commentsPlaceholder')} />
@@ -396,7 +404,7 @@ export default function Understand() {
                     </React.Fragment>
                   ))}
                 </p>
-                <ComprehensionBox chapter={chapter} unit={u} />
+                <ComprehensionBox book={book.code} chapter={chapter} unit={u} />
               </div>
             ))}
           </div>

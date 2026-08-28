@@ -1786,6 +1786,10 @@ export function AppProvider({ children }) {
       },
 
       openBook: async (code) => {
+        // F2: a book switch is a navigation like any other — drain in-flight
+        // note writes and refuse while a failure stands (FR-32).
+        await Promise.allSettled([...pendingNotesRef.current]);
+        if (Object.keys(noteSaveErrorsRef.current).length > 0) return;
         const store = storeRef.current;
         if (!store) return;
         // Drain before switching: loading over unsaved work resurrects stale
@@ -2015,7 +2019,10 @@ export function AppProvider({ children }) {
         // C2: failures are tracked PER TARGET — one map entry per
         // (project, chapter:verse) — so concurrent boxes never clear each
         // other's retry payload or dirty guard.
-        const errKey = `${repoPath}|${chapter}:${verseKey}`;
+        // F2 (adversarial round 6): the identity is FULLY scoped — repoPath,
+        // book, chapter, verse — so cross-book saves can never share a
+        // revision, an error entry, or a dirty mark.
+        const errKey = `${repoPath}|${book}|${chapter}:${verseKey}`;
         const rev = (noteRevisionsRef.current.get(errKey) ?? 0) + 1;
         noteRevisionsRef.current.set(errKey, rev);
         const isLatest = () => noteRevisionsRef.current.get(errKey) === rev;
@@ -2087,7 +2094,7 @@ export function AppProvider({ children }) {
         // C2: clear only THIS target's dirty mark and error entry — in the
         // synchronous ledger first (D1), then mirrored to state. The box
         // re-asserts dirty immediately if its draft has already diverged.
-        noteDirtyRef.current.delete(`${chapter}:${verseKey}`);
+        noteDirtyRef.current.delete(`${book}|${chapter}:${verseKey}`);
         const remaining = { ...noteSaveErrorsRef.current };
         delete remaining[errKey];
         noteSaveErrorsRef.current = remaining;
