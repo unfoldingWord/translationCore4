@@ -384,7 +384,10 @@ export function AppProvider({ children }) {
   // reload. Chaining per target orders appends by user INITIATION, and a
   // superseded revision never writes at all.
   const noteChainRef = useRef(new Map());
-  const noteInFlightRef = useRef(new Set()); // errKeys with an op past enqueue (Q1: dismissal must not race a live append)
+  // errKey -> COUNT of ops past enqueue (Q1/R1): a count, not a Set — with
+  // chained overlapping saves, one op's settle must never free a queued
+  // sibling's dismissal protection.
+  const noteInFlightRef = useRef(new Map());
 
   // ---- derived display model -------------------------------------------------
   const model = useMemo(() => {
@@ -2217,7 +2220,7 @@ export function AppProvider({ children }) {
         });
         noteChainRef.current.set(errKey, op.catch(() => {}));
         pendingNotesRef.current.add(op);
-        noteInFlightRef.current.add(errKey);
+        noteInFlightRef.current.set(errKey, (noteInFlightRef.current.get(errKey) ?? 0) + 1);
         syncNoteActivity();
         let ok = false;
         try {
@@ -2229,7 +2232,9 @@ export function AppProvider({ children }) {
           return;
         } finally {
           pendingNotesRef.current.delete(op);
-          noteInFlightRef.current.delete(errKey);
+          const inFlight = (noteInFlightRef.current.get(errKey) ?? 1) - 1;
+          if (inFlight <= 0) noteInFlightRef.current.delete(errKey);
+          else noteInFlightRef.current.set(errKey, inFlight);
           syncNoteActivity();
         }
         if (!ok) return; // refused (fail() already recorded it)
@@ -2336,7 +2341,7 @@ export function AppProvider({ children }) {
         // appending — advancing the revision NOW would make its success
         // 'stale' and skip reconciliation while the journal keeps the text.
         // The op's own settle reports the truth; dismissal waits for it.
-        if (noteInFlightRef.current.has(errKey)) return;
+        if ((noteInFlightRef.current.get(errKey) ?? 0) > 0) return;
         if (!(errKey in noteSaveErrorsRef.current)) return;
         noteRevisionsRef.current.set(errKey, (noteRevisionsRef.current.get(errKey) ?? 0) + 1);
         const remaining = { ...noteSaveErrorsRef.current };
