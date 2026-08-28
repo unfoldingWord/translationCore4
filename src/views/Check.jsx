@@ -131,7 +131,9 @@ function ArticlePanel({ article }) {
       </Callout>
     );
   }
-  const blocks = renderArticleBlocks(article.found.body).slice(0, 40);
+  // Round 37: never truncate real guidance — the committed en_ta fixture
+  // already exceeds the old 40-block cap.
+  const blocks = renderArticleBlocks(article.found.body);
   return (
     <details data-testid="article-panel" open
       style={{ border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '14px 18px', background: '#fff', margin: '0 0 14px' }}>

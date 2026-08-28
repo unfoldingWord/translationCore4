@@ -77,6 +77,7 @@ const state = {
   rail: false,
   helpsTab: 'notes',
   sourceTab: 'ult',
+  sourcePanes: ['ult', 'ust'], // round 37: chips render from the project's pane ids
   sources: { ult: { raw: RAW_ULT, chapters: srcChapters }, ust: { raw: RAW_ULT, chapters: srcChapters } },
   understand: {
     loading: false,
@@ -766,6 +767,82 @@ describe('2026-08-28 adversarial round 35 regression (F2 view)', () => {
       const retries = calls.filter((c) => c.name === 'loadHelpArticle');
       expect(retries.length).toBe(1);
       expect(retries[0].args[0]).toMatchObject({ kind: 'ta', slug: 'figs-metaphor' });
+    } finally {
+      state.understand = savedU;
+    }
+  });
+});
+
+describe('2026-08-28 adversarial round 37 regressions', () => {
+  beforeEach(() => { cleanup(); calls.length = 0; });
+
+  it('a chapter mapping entirely into ANOTHER book states that in the helps — never "nothing for this chapter" (F2)', () => {
+    const savedU = state.understand;
+    const savedCh = state.chapter;
+    try {
+      state.chapter = 11 as never;
+      state.helpsTab = 'questions';
+      state.understand = {
+        ...savedU,
+        sourceRefs: { '11': [{ crossBook: '11:1', to: 'NEH 1:1' }] },
+      } as never;
+      render(<Understand />);
+      expect(screen.getByTestId('helps-cross-book').textContent).toContain('NEH 1:1');
+      // and the simplified text never interpolates undefined refs
+      state.helpsTab = 'simplified';
+      state.understand = {
+        ...state.understand,
+        simplified: { state: 'ready', rung: 'primary', chapters: { '1': { '1': { verseObjects: [{ text: 'texto' }] } } } },
+      } as never;
+      cleanup();
+      render(<Understand />);
+      expect(screen.queryByText(/undefined:undefined/)).toBeNull();
+    } finally {
+      state.understand = savedU;
+      state.chapter = savedCh;
+      state.helpsTab = 'notes';
+    }
+  });
+
+  it('a project that pins NO source panes states it, with no chips and no defaults (F1, §5.3)', () => {
+    const savedPanes = (state as { sourcePanes?: string[] }).sourcePanes;
+    const savedSources = state.sources;
+    try {
+      (state as { sourcePanes?: string[] }).sourcePanes = [];
+      state.sources = {} as never;
+      render(<Understand />);
+      expect(screen.getByTestId('no-source-panes')).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'ULT' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'UST' })).toBeNull();
+    } finally {
+      (state as { sourcePanes?: string[] }).sourcePanes = savedPanes;
+      state.sources = savedSources;
+    }
+  });
+
+  it('a failed pane read is a stated, retryable error — never "not available for this book" (A3)', () => {
+    const savedSources = state.sources;
+    try {
+      state.sources = { ...savedSources, ult: { error: 'socket hang up' } } as never;
+      render(<Understand />);
+      expect(screen.getByTestId('source-pane-error').textContent).toContain('socket hang up');
+      fireEvent.click(screen.getByTestId('source-retry'));
+      expect(calls.some((c) => c.name === 'reloadSourcePanes')).toBe(true);
+    } finally {
+      state.sources = savedSources;
+    }
+  });
+
+  it('the Academy article renders EVERY block — the fixture-sized 42-block module keeps its final example (F3)', () => {
+    const savedU = state.understand;
+    try {
+      const body = Array.from({ length: 41 }, (_, i) => `Paragraph ${i + 1}.`).join('\n\n') + '\n\nTHE FINAL APPLIED EXAMPLE.';
+      state.understand = {
+        ...savedU,
+        article: { key: 'ta::abstractnouns', loading: false, found: { title: 'Abstract Nouns', body } },
+      } as never;
+      render(<Understand />);
+      expect(screen.getByText(/THE FINAL APPLIED EXAMPLE/)).toBeTruthy();
     } finally {
       state.understand = savedU;
     }

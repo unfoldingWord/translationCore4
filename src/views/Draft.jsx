@@ -4,7 +4,6 @@
 import React, { useRef, useEffect } from 'react';
 import { useApp } from '../state.jsx';
 import { bookName } from '../data/bookNames';
-import { SUITE_VERSION } from '../state.jsx';
 import { t } from '../i18n';
 import { FilterChip, IconButton, Overline, Button } from '../ds/index.js';
 import BookRail from './BookRail.jsx';
@@ -94,13 +93,17 @@ export default function Draft() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', maxWidth: 1100, margin: '0 auto' }}>
             <div style={{ position: 'sticky', top: 0, background: 'var(--surface-app)', zIndex: 2, padding: '10px 26px 8px', borderInlineEnd: hair, display: 'flex', alignItems: 'center', gap: 8 }}>
               {/* ULT/UST source tabs (C1b.3 — the orig pane comes with the alignment increment) */}
-              {['ult', 'ust'].map((id) => (
+              {(s.sourcePanes ?? []).map((id) => (
                 <FilterChip key={id} tone="ocean" selected={s.sourceTab === id} onClick={() => actions.setSourceTab(id)}
                   style={{ padding: '4px 10px', fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', borderWidth: 1 }}>
-                  {t(`source.${id}`)}
+                  {t(`source.${id}`, {}, id.toUpperCase())}
                 </FilterChip>
               ))}
-              <span style={{ fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', color: 'var(--text-tertiary)', fontWeight: 'var(--fw-medium)', marginInlineStart: 6 }}>{t('draft.pinned', { version: SUITE_VERSION })}</span>
+              {(s.sources?.[s.sourceTab]?.version || null) && (
+                // Round 37: the badge names the PANE's own pinned version —
+                // never the machine suite's literal.
+                <span style={{ fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', color: 'var(--text-tertiary)', fontWeight: 'var(--fw-medium)', marginInlineStart: 6 }}>{t('draft.pinned', { version: s.sources[s.sourceTab].version })}</span>
+              )}
             </div>
             <div style={{ position: 'sticky', top: 0, background: 'var(--surface-app)', zIndex: 2, padding: '15px 26px 8px' }}>
               <Overline tone="accent" style={{ letterSpacing: '.13em' }}>{s.project?.name} · {s.project?.languageTag}</Overline>

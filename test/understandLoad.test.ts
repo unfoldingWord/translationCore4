@@ -5,7 +5,7 @@
 // "no pins recorded"): the screen proceeds with unpinned help slots instead
 // of waiting forever.
 import { describe, expect, it } from 'vitest';
-import { __performLoadUnderstandForTests as loadUnderstand, __loadProjectPinsForTests as loadPins } from '../src/state.jsx';
+import { __performLoadUnderstandForTests as loadUnderstand, __loadProjectPinsForTests as loadPins, __loadSourcePanesForTests as loadSourcePanes } from '../src/state.jsx';
 
 const PIN = { repoPath: 'git.door43.org/unfoldingWord/en_ust', sha: 'a'.repeat(40), flavor: 'scripture/textTranslation' };
 const notFound = () => Object.assign(new Error('404'), { isNotFound: true });
@@ -156,5 +156,79 @@ describe('round 35 — a summaries outage is a stated, retryable slot error, nev
       expect(v.error).toContain('summaries endpoint down');
     }
     expect((understand!.comprehension as Record<string, { text: string }>)['1:1'].text).toBe('still readable');
+  });
+});
+
+describe('round 37 — the source panes come from the PROJECT pins (§5.3), never the machine suite', () => {
+  const paneCtx = (state: Record<string, unknown>, readSourceBook: (repo: string) => Promise<{ usfm: string }>) => {
+    const dispatched: Array<Record<string, unknown>> = [];
+    return {
+      dispatched,
+      run: () =>
+        loadSourcePanes({
+          store: { readSourceBook },
+          code: 'TIT',
+          seq: 1,
+          openSeqRef: { current: 1 },
+          stateRef: { current: { sourceTab: 'ult', ...state } },
+          dispatch: (a: Record<string, unknown>) => dispatched.push(a),
+          pins: undefined,
+        }),
+    };
+  };
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  it("the project's own entries drive ids, reads, and the pane version — the tab follows when its id is absent", async () => {
+    const entry = { id: 'glt', repoPath: 'git.door43.org/es-419_gl/es-419_glt', sha: 'd'.repeat(40), version: 'v12', flavor: 'scripture/textTranslation' };
+    const reads: string[] = [];
+    const { dispatched, run } = paneCtx(
+      { projectPins: { extraScripture: [entry] }, projectPinsLoaded: true },
+      async (repo) => { reads.push(repo); return { usfm: '\\id TIT\n\\c 1\n\\p\n\\v 1 uno\n' }; },
+    );
+    run();
+    await flush();
+    expect(dispatched[0].patch).toMatchObject({ sourcePanes: ['glt'], sourceTab: 'glt' });
+    expect(reads.some((r) => r.includes('es-419_glt') || r.includes('es-419_gl'))).toBe(true);
+    const pane = dispatched.find((d) => d.type === 'setSource') as Record<string, unknown>;
+    expect((pane.value as { version: string }).version).toBe('v12');
+  });
+
+  it('a project that legally OMITS extraScripture gets the stated no-panes state — never the defaults', async () => {
+    const { dispatched, run } = paneCtx({ projectPins: {}, projectPinsLoaded: true }, async () => {
+      throw new Error('must not read');
+    });
+    run();
+    await flush();
+    expect(dispatched[0].patch).toMatchObject({ sourcePanes: [] });
+    expect(dispatched.filter((d) => d.type === 'setSource')).toEqual([]);
+  });
+
+  it('pins still LOADING defers — nothing dispatched, nothing read', async () => {
+    const { dispatched, run } = paneCtx({ projectPins: null, projectPinsLoaded: false }, async () => {
+      throw new Error('must not read');
+    });
+    run();
+    await flush();
+    expect(dispatched).toEqual([]);
+  });
+
+  it("a pane read failure is a stated pane error; a confirmed not-found is 'missing' (A3/D30)", async () => {
+    const entry = { id: 'ult', repoPath: 'git.door43.org/unfoldingWord/en_ult', sha: 'a'.repeat(40), flavor: 'scripture/textTranslation' };
+    const down = paneCtx(
+      { projectPins: { extraScripture: [entry] }, projectPinsLoaded: true },
+      async () => { throw new Error('socket hang up'); },
+    );
+    down.run();
+    await flush();
+    const errPane = down.dispatched.find((d) => d.type === 'setSource') as Record<string, unknown>;
+    expect((errPane.value as { error: string }).error).toMatch(/socket hang up/);
+    const absent = paneCtx(
+      { projectPins: { extraScripture: [entry] }, projectPinsLoaded: true },
+      async () => { throw notFound(); },
+    );
+    absent.run();
+    await flush();
+    const missingPane = absent.dispatched.find((d) => d.type === 'setSource') as Record<string, unknown>;
+    expect(missingPane.value).toBe('missing');
   });
 });

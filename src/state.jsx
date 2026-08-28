@@ -303,6 +303,7 @@ const initial = () => ({
   projectPins: null, // the open project's resources.json (§5.3 v2 shape)
   projectPinsLoaded: false, // round 33: distinguishes pins LOADING (understand waits) from pins legally ABSENT (understand proceeds, slots unpinned)
   projectPinsError: null, // round 34: a REJECTED pins read — stated and retryable, never a false absence claim
+  sourcePanes: null, // round 37: the open project's §5.3 extraScripture pane ids — null while the pins load, [] when the project legally has none
   preflight: null, // { [tool]: Preflight } for the open book (C2.2)
   gatewayPreview: null, // a proposed gateway change awaiting confirmation
   aligning: false, // the align surface is open
@@ -884,6 +885,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
         projectPins: null,
         projectPinsLoaded: false,
         projectPinsError: null,
+        sourcePanes: null,
         understand: null,
       },
     });
@@ -1060,6 +1062,81 @@ function dispatchResolutionDown({ resolutionError, seq, understandSeqRef, dispat
 /** Test hook (round 33): the load/save interleavings are unit-tested. */
 export const __performLoadUnderstandForTests = performLoadUnderstand;
 
+/** Round 37 (§5.3, normative): "Readers use `extraScripture` to fill the
+ * source panes. Absence is legal." The panes therefore come from the OPEN
+ * PROJECT's pins — resolving by identity (sha, via resolveReadPath/B10) —
+ * never from the machine's INSTALLED_SUITE: a conforming imported project
+ * with different source shas must see ITS text, and one that omits the
+ * array gets a stated no-panes state, not the defaults. While the pins are
+ * still LOADING the panes stay unknown (sourcePanes: null) and the reload
+ * fires when they land. A failed read is 'missing' only when CONFIRMED
+ * absent; anything else is a stated, retryable pane error (D30). */
+function loadSourcePanes({ store, code, seq, openSeqRef, stateRef, dispatch, pins }) {
+  const st = stateRef.current;
+  // `pins` carries the JUST-READ document (loadProjectPins hands it over
+  // directly — the state dispatch has not rendered yet, so stateRef still
+  // holds the old value at that moment). Absent that, state decides.
+  const havePins = pins !== undefined || st.projectPins || st.projectPinsLoaded;
+  if (!havePins) return; // pins loading — reloadSourcePanes runs on arrival
+  const effective = pins !== undefined ? pins : st.projectPins;
+  const entries = effective?.extraScripture ?? [];
+  const ids = entries.map((e) => e.id);
+  dispatch({
+    type: 'set',
+    patch: {
+      sourcePanes: ids,
+      // Keep the tab valid: an imported project may name panes differently.
+      ...(ids.length > 0 && !ids.includes(st.sourceTab) ? { sourceTab: ids[0] } : {}),
+    },
+  });
+  for (const pin of entries) {
+    store
+      .readSourceBook(localSourceRepo(pin), code)
+      .then(({ usfm: srcRaw }) => {
+        if (seq !== openSeqRef.current) return;
+        dispatch({
+          type: 'setSource',
+          id: pin.id,
+          value: { raw: srcRaw, chapters: parseChapters(srcRaw), version: pin.version ?? null },
+        });
+      })
+      .catch((error) => {
+        if (seq !== openSeqRef.current) return;
+        dispatch({
+          type: 'setSource',
+          id: pin.id,
+          value: isNotFoundError(error) ? 'missing' : { error: String(error?.message || error) },
+        });
+      });
+  }
+}
+
+/** Test hook (round 37): pane resolution is unit-tested — project pins win,
+ * absence is a stated state, and pins-loading defers. */
+export const __loadSourcePanesForTests = loadSourcePanes;
+
+/** Round 37 (§5.3): seed a new book from the PROJECT's pinned source. A
+ * project without extraScripture — or a source that confirms it lacks the
+ * book / is structurally unseedable — keeps the SERVER SKELETON (the
+ * documented state, issue #62), never the machine suite's text. A transient
+ * read failure PROPAGATES (D30 sweep): journaling an unchunked skeleton is
+ * permanent (§8.5 grow-only). */
+async function seedInitialUsfm({ store, stateRef, code, projName }) {
+  const seedPin = stateRef.current.projectPins?.extraScripture?.[0];
+  if (!seedPin) return undefined;
+  try {
+    const src = await store.readSourceBook(localSourceRepo(seedPin), code);
+    return seedBookFromSource(src.usfm, {
+      bookCode: code,
+      bookName: bookName(code),
+      projectName: projName,
+    });
+  } catch (error) {
+    if (!isNotFoundError(error) && !error?.seedUnusable) throw error;
+    return undefined;
+  }
+}
+
 function loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatch }) {
   const stillCurrent = () =>
     storeRef.current === store && stateRef.current.project?.repoPath === repoPath;
@@ -1067,6 +1144,11 @@ function loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatc
     .then(async (pins) => {
       if (!stillCurrent()) return;
       dispatch({ type: 'set', patch: { projectPins: pins, projectPinsLoaded: true, projectPinsError: null } });
+      // Round 37: the source panes are pin-driven — resolve them now that
+      // the pins are known (openBook deferred while they were loading). The
+      // document is handed over DIRECTLY: the dispatch above has not
+      // rendered yet, so stateRef still holds the old pins.
+      actions.reloadSourcePanes?.(pins);
       if (!pins) return;
       try {
         const { installed, coverage } = await actions.resolutionContext();
@@ -2392,26 +2474,7 @@ export function AppProvider({ children }) {
             // self-contained §8.5 book.add carrying the book's REAL initial
             // state (issue #62). A book missing from the source journals the
             // server skeleton instead — absence is a state, not an error.
-            let initialUsfm;
-            try {
-              const src = await store.readSourceBook(
-                localSourceRepo(INSTALLED_SUITE.extraScripture[0]),
-                code,
-              );
-              initialUsfm = seedBookFromSource(src.usfm, {
-                bookCode: code,
-                bookName: bookName(code),
-                projectName: f.projName,
-              });
-            } catch (error) {
-              // Catch-to-absence sweep (D30): the server skeleton is the
-              // documented state for a book the source CONFIRMS it lacks. A
-              // transient failure journaling an unchunked skeleton is
-              // PERMANENT (§8.5 grow-only) — abort into the dialog's stated
-              // error instead.
-              if (!isNotFoundError(error) && !error?.seedUnusable) throw error;
-              initialUsfm = undefined; /* keep the server skeleton (confirmed absent or unseedable source) */
-            }
+            const initialUsfm = await seedInitialUsfm({ store, stateRef, code, projName: f.projName });
             await store.addBook({
               book_code: code,
               book_title: bookName(code),
@@ -2589,24 +2652,20 @@ export function AppProvider({ children }) {
         rawRef.current = raw;
         scheduler?.loadBook(code, raw);
         dispatch({ type: 'set', patch: { bookRaw: raw } });
-        // Load both source panes lazily; absence is a designed state.
-        const pins = INSTALLED_SUITE.extraScripture;
-        for (const pin of pins) {
-          store
-            .readSourceBook(localSourceRepo(pin), code)
-            .then(({ usfm: srcRaw }) => {
-              if (seq !== openSeqRef.current) return;
-              dispatch({
-                type: 'setSource',
-                id: pin.id,
-                value: { raw: srcRaw, chapters: parseChapters(srcRaw) },
-              });
-            })
-            .catch(() => {
-              if (seq !== openSeqRef.current) return;
-              dispatch({ type: 'setSource', id: pin.id, value: 'missing' });
-            });
-        }
+        // Round 37 (spec §5.3): the source panes come from the PROJECT's own
+        // extraScripture pins — never the machine suite. Deferred while the
+        // pins are still loading; loadProjectPins reloads on arrival.
+        loadSourcePanes({ store, code, seq, openSeqRef, stateRef, dispatch });
+      },
+
+      /** Round 37: re-resolve the open book's source panes (the pins landed
+       * after openBook, or changed). Bound to the CURRENT open sequence —
+       * never a new one, so a book switch mid-reload wins. */
+      reloadSourcePanes: (pins) => {
+        const store = storeRef.current;
+        const code = stateRef.current.book;
+        if (!store || !code) return;
+        loadSourcePanes({ store, code, seq: openSeqRef.current, openSeqRef, stateRef, dispatch, pins });
       },
 
       // ---- Understand (D63, #106) ---------------------------------------
@@ -2822,7 +2881,7 @@ export function AppProvider({ children }) {
         understandSeqRef.current++;
         dispatch({
           type: 'set',
-          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, saveState: 'saved', noteSaveState: 'saved', projectPins: null, projectPinsLoaded: false, projectPinsError: null, understand: null },
+          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, saveState: 'saved', noteSaveState: 'saved', projectPins: null, projectPinsLoaded: false, projectPinsError: null, sourcePanes: null, understand: null },
         });
         refreshProjects(); // re-order: the project just left goes to the top
       },

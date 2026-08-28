@@ -224,7 +224,7 @@ function ArticleView({ article, onClose, onRetry }) {
       )}
       {!article.loading && article.found && (
         <div data-testid="understand-article">
-          {renderArticleBlocks(article.found.body).slice(0, 40).map((b, i) => (
+          {renderArticleBlocks(article.found.body).map((b, i) => (
             <p key={i} style={{
               fontSize: b.kind === 'h' ? 'var(--fs-caption-lg)' : 'var(--fs-ui-sm)',
               fontWeight: b.kind === 'h' ? 'var(--fw-heavy)' : 'var(--fw-regular)',
@@ -368,7 +368,7 @@ const simplifiedChapterText = (simplified, sourceRefs, chapter) => {
   const mapped = sourceRefs?.[String(chapter)];
   const verses = mapped
     ? mapped
-        .filter((r) => !r.unmapped)
+        .filter((r) => !r.unmapped && !r.crossBook)
         .map((r) => `${r.c}:${r.v} ${verseText(simplified.chapters?.[String(r.c)]?.[String(r.v)])}`)
     : Object.entries(simplified.chapters?.[String(chapter)] ?? {})
         .filter(([k]) => /^\d/.test(k))
@@ -401,7 +401,21 @@ function AcademyTab({ notesSlot, slugs, actions }) {
   ));
 }
 
+/** Round 37: a chapter whose refs all map into ANOTHER book has no helps
+ * HERE by construction — say that, never "nothing for this chapter". */
+const chapterAllCrossBook = (u, chapter) => {
+  const refs = u?.sourceRefs?.[String(chapter)];
+  return !!refs && refs.length > 0 && refs.every((r) => r.crossBook);
+};
+
 function HelpsTab({ tab, u, chapter, actions }) {
+  if (chapterAllCrossBook(u, chapter)) {
+    return (
+      <Callout tone="info" data-testid="helps-cross-book" style={{ overflowWrap: 'anywhere' }}>
+        {t('understand.helpsCrossBook', { to: u.sourceRefs[String(chapter)][0].to })}
+      </Callout>
+    );
+  }
   const notes = itemsInChapter(u?.notes, chapter);
   if (tab === 'notes') return <NotesTab slot={u?.notes} notes={notes} actions={actions} />;
   if (tab === 'words') return <WordsTab slot={u?.words} words={itemsInChapter(u?.words, chapter)} actions={actions} />;
@@ -523,6 +537,51 @@ function UnderstandUnit({ unit, s, src, srcChapters, book, chapter }) {
   );
 }
 
+/** The passage area's status callouts: pins error, save error, pane
+ * states (no-panes, missing, failed), loading. One component so the
+ * Understand shell stays under the complexity gate. */
+function PassageStatus({ s, src, actions }) {
+  return (
+    <>
+            {s.projectPinsError && (
+              // Round 34: a rejected pins read is a stated, retryable error —
+              // never a false "the package lacks these resources" claim.
+              <Callout tone="warn" role="alert" data-testid="pins-error" style={{ marginTop: 10, overflowWrap: 'anywhere' }}>
+                {t('understand.pinsError')} {s.projectPinsError}{' '}
+                <Button size="sm" variant="outline" data-testid="pins-retry" onClick={() => actions.retryProjectPins()}>
+                  {t('app.retry')}
+                </Button>
+              </Callout>
+            )}
+            {s.understand?.saveError && (
+              <Callout tone="warn" role="alert" data-testid="understand-save-error" style={{ marginTop: 10, overflowWrap: 'anywhere' }}>
+                <strong>{t('understand.saveFailed')}</strong> {s.understand.saveError}
+              </Callout>
+            )}
+            {s.sourcePanes && s.sourcePanes.length === 0 && (
+              // §5.3: absence is legal — stated, never the machine defaults.
+              <Callout tone="info" data-testid="no-source-panes" style={{ marginTop: 10 }}>{t('understand.noSourcePanes')}</Callout>
+            )}
+            {src === 'missing' && (
+              <Callout tone="info" style={{ marginTop: 10 }}>{t('understand.sourceMissing')}</Callout>
+            )}
+            {src?.error && (
+              // Catch-to-absence sweep (D30/A3): a failed pane read is a
+              // stated, retryable error — never "not available for this book".
+              <Callout tone="warn" role="alert" data-testid="source-pane-error" style={{ marginTop: 10, overflowWrap: 'anywhere' }}>
+                {t('understand.sourceError')} {src.error}{' '}
+                <Button size="sm" variant="outline" data-testid="source-retry" onClick={() => actions.reloadSourcePanes()}>
+                  {t('app.retry')}
+                </Button>
+              </Callout>
+            )}
+            {!src && (
+              <p style={{ fontSize: 'var(--fs-ui-sm)', color: 'var(--text-tertiary)', marginTop: 10 }}>{t('understand.loading')}</p>
+            )}
+    </>
+  );
+}
+
 export default function Understand() {
   const { s, book, actions } = useApp();
   const [mode, setMode] = React.useState('section');
@@ -564,10 +623,12 @@ export default function Understand() {
         <div style={{ flex: 1, overflow: 'auto', minHeight: 0, background: 'var(--surface-app)' }}>
           <div style={{ maxWidth: 'var(--measure-read)', margin: '0 auto', padding: '22px 26px 60px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
-              {['ult', 'ust'].map((id) => (
+              {(s.sourcePanes ?? []).map((id) => (
+                // Round 37 (§5.3): the panes are the PROJECT's extraScripture
+                // pins — ids and count come from them, never a hardcoded pair.
                 <FilterChip key={id} tone="ocean" selected={s.sourceTab === id} onClick={() => actions.setSourceTab(id)}
                   style={{ padding: '4px 10px', fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', borderWidth: 1 }}>
-                  {t(`source.${id}`)}
+                  {t(`source.${id}`, {}, id.toUpperCase())}
                 </FilterChip>
               ))}
               <div style={{ flex: 1 }} />
@@ -584,27 +645,7 @@ export default function Understand() {
                 </>
               )}
             </div>
-            {s.projectPinsError && (
-              // Round 34: a rejected pins read is a stated, retryable error —
-              // never a false "the package lacks these resources" claim.
-              <Callout tone="warn" role="alert" data-testid="pins-error" style={{ marginTop: 10, overflowWrap: 'anywhere' }}>
-                {t('understand.pinsError')} {s.projectPinsError}{' '}
-                <Button size="sm" variant="outline" data-testid="pins-retry" onClick={() => actions.retryProjectPins()}>
-                  {t('app.retry')}
-                </Button>
-              </Callout>
-            )}
-            {s.understand?.saveError && (
-              <Callout tone="warn" role="alert" data-testid="understand-save-error" style={{ marginTop: 10, overflowWrap: 'anywhere' }}>
-                <strong>{t('understand.saveFailed')}</strong> {s.understand.saveError}
-              </Callout>
-            )}
-            {src === 'missing' && (
-              <Callout tone="info" style={{ marginTop: 10 }}>{t('understand.sourceMissing')}</Callout>
-            )}
-            {!src && (
-              <p style={{ fontSize: 'var(--fs-ui-sm)', color: 'var(--text-tertiary)', marginTop: 10 }}>{t('understand.loading')}</p>
-            )}
+            <PassageStatus s={s} src={src} actions={actions} />
             <FrameUnavailableNote understand={s.understand} unitCount={units.length} />
             {units.map((unit) => (
               <UnderstandUnit key={unit.key} unit={unit} s={s} src={src} srcChapters={srcChapters} book={book} chapter={chapter} />
