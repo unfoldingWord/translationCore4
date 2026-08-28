@@ -674,11 +674,31 @@ function validateNewBible(form) {
 
 /** D65 (round-22 checkpoint): comprehension notes ride their own
  * SaveScheduler, so navigation drains are ONE discipline — flush-and-go, and
- * a retained failure refuses (FR-32). Both schedulers must come to rest, and
- * every blocker is checked BEFORE anything is disposed (C3). */
+ * a retained failure refuses (FR-32).
+ *
+ * Round 23: bring BOTH schedulers to rest in a LOOP that re-checks both
+ * states after every pass — the screen stays editable while a drain awaits,
+ * so a note staged during the verse drain (or a verse edited during the note
+ * drain) must be caught by another pass, never left for a later dispose to
+ * discard (TOCTOU). Resolves true only when a full pass ends with both
+ * schedulers reporting 'saved'. */
+async function drainBothSchedulers({ schedulerRef, noteSchedulerRef }) {
+  const restState = (sched) => (sched ? sched.getState() : 'saved');
+  for (;;) {
+    if (noteSchedulerRef.current && !(await noteSchedulerRef.current.drain())) return false;
+    if (schedulerRef.current && !(await schedulerRef.current.drain())) return false;
+    if (restState(noteSchedulerRef.current) === 'saved' && restState(schedulerRef.current) === 'saved')
+      return true;
+  }
+}
+
+/** Test hook (round 23): the drain loop is unit-tested — work staged while
+ * the OTHER scheduler's drain awaited must flush before anything disposes. */
+export const __drainBothSchedulersForTests = drainBothSchedulers;
+
+/** Every blocker is checked BEFORE anything is disposed (C3). */
 async function drainForProjectOpen({ schedulerRef, noteSchedulerRef }) {
-  if (noteSchedulerRef.current && !(await noteSchedulerRef.current.drain())) return false;
-  if (schedulerRef.current && !(await schedulerRef.current.drain())) return false;
+  if (!(await drainBothSchedulers({ schedulerRef, noteSchedulerRef }))) return false;
   schedulerRef.current?.dispose();
   noteSchedulerRef.current?.dispose();
   return true;
@@ -909,6 +929,13 @@ export const noteKeyFor = (repoPath, book, chapter, verse) =>
  * through the noteSaved reducer action (S1 atomic merge). */
 function makeNoteWriter({ noteTargetsRef, dispatch, apiClient }) {
   return async (key, text) => {
+    // Round 23: G1's clear refusal must hold at the WRITE boundary too. A
+    // race can leave an empty value dirty (clear a fresh note while its
+    // first write is in flight: `persisted` advances to the in-flight text,
+    // making the staged '' diverge) — the grow-only journal must never
+    // receive it. Returning without writing lets the scheduler mark the
+    // empty snapshot persisted, so the buffer reconciles clean.
+    if (text.trim() === '') return;
     const target = noteTargetsRef.current.get(key);
     if (!target) throw new Error(`comprehension note target unknown: ${key}`);
     const { store, repoPath, book, chapter, verse, projectFrame } = target;
@@ -2398,13 +2425,11 @@ export function AppProvider({ children }) {
         // EVERY blocker is checked BEFORE anything is disposed (C3,
         // adversarial round 3): a refused exit must leave the project fully
         // working — both schedulers included — or the next edit throws.
-        if (noteSchedulerRef.current && !(await noteSchedulerRef.current.drain())) return;
-        if (schedulerRef.current) {
-          const clean = await schedulerRef.current.drain();
-          if (!clean) return;
-          schedulerRef.current.dispose();
-          schedulerRef.current = null;
-        }
+        // Round 23: the loop re-checks both after each pass, so a note staged
+        // while the verse drain awaited can never be disposed unflushed.
+        if (!(await drainBothSchedulers({ schedulerRef, noteSchedulerRef }))) return;
+        schedulerRef.current?.dispose();
+        schedulerRef.current = null;
         noteSchedulerRef.current?.dispose();
         noteSchedulerRef.current = null;
         noteTargetsRef.current = new Map();

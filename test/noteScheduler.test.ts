@@ -179,3 +179,84 @@ describe('D65 — the defect classes, restated against the REAL scheduler', () =
     expect(sched.getState()).toBe('dirty'); // k1's draft still owed
   });
 });
+
+describe('2026-08-28 adversarial round 23 regressions', () => {
+  const clock = () => ({ setTimeout: () => 0, clearTimeout: () => {} });
+  const passthroughSched = (writeBook: (k: string, t: string) => Promise<void>) =>
+    new SaveScheduler({ splice: (_r, _c, _v, body) => body, writeBook, clock: clock() });
+
+  it('the writer REFUSES empty text at the boundary — the grow-only journal never receives a clear (G1)', async () => {
+    const written: unknown[][] = [];
+    const key = noteKeyFor(REPO, 'TIT', 1, '1');
+    const { writer, dispatched } = writerWith(new Map([[key, targetFor(async (...a) => void written.push(a))]]));
+    await writer(key, '   ');
+    expect(written).toEqual([]);
+    expect(dispatched).toEqual([]);
+  });
+
+  it("F2: clearing a FRESH note while its first write is in flight never journals an empty note — the buffer reconciles clean", async () => {
+    const journal: string[] = [];
+    let release: () => void = () => {};
+    let started: () => void = () => {};
+    const startedP = new Promise<void>((r) => { started = r; });
+    let deferOnce = true;
+    const key = noteKeyFor(REPO, 'TIT', 1, '1');
+    const targets = new Map([[key, targetFor(async (_b, _c, _v, text) => void journal.push(text as string), { projectFrame: true })]]);
+    const { writer } = writerWith(targets);
+    const sched = passthroughSched(async (k, text) => {
+      if (deferOnce) {
+        deferOnce = false;
+        started();
+        await new Promise<void>((r) => { release = r; });
+      }
+      await writer(k, text);
+    });
+    // Fresh note: stored is ''. The user types A; the flush starts (held open).
+    sched.seedIfAbsent(key, '');
+    sched.markDirty(key, 1, '1', 'text A');
+    const flush = sched.flushOnBlur();
+    await startedP; // A's write is genuinely IN FLIGHT now
+    // While A is in flight the user CLEARS the box — the UI stages the stored
+    // text, which for a fresh note is ''.
+    sched.markDirty(key, 1, '1', '');
+    release();
+    await flush;
+    // persisted advanced to A, so the staged '' is dirty — the next flush
+    // hands '' to the writer, which REFUSES it; the buffer then reconciles.
+    expect(await sched.drain()).toBe(true);
+    expect(journal).toEqual(['text A']); // no empty note.add, ever
+    expect(sched.getState()).toBe('saved');
+  });
+
+  it('F1: a note staged while the VERSE drain awaited is flushed by the drain loop, never disposed unflushed', async () => {
+    const { __drainBothSchedulersForTests: drainBoth } = await import('../src/state.jsx');
+    const noteJournal: string[] = [];
+    const noteKey = noteKeyFor(REPO, 'TIT', 1, '1');
+    const noteSched = passthroughSched(async (_k, text) => void noteJournal.push(text));
+    noteSched.seedIfAbsent(noteKey, '');
+    // The verse write is held open; while it is in flight the user stages a
+    // comprehension note (the screen stays editable during a drain).
+    let releaseVerse: () => void = () => {};
+    const verseSched = new SaveScheduler({
+      splice: (_r, _c, _v, body) => body,
+      writeBook: async () => {
+        await new Promise<void>((r) => { releaseVerse = r; });
+        // the note lands mid-drain, AFTER the note scheduler's first pass
+        noteSched.markDirty(noteKey, 1, '1', 'typed during the verse drain');
+      },
+      clock: clock(),
+    });
+    verseSched.seedIfAbsent('TIT', 'old');
+    verseSched.markDirty('TIT', 1, '1', 'new verse text');
+    const drained = drainBoth({
+      schedulerRef: { current: verseSched },
+      noteSchedulerRef: { current: noteSched },
+    });
+    // let the drain reach the deferred verse write, then release it
+    await new Promise((r) => setTimeout(r, 0));
+    releaseVerse();
+    expect(await drained).toBe(true);
+    expect(noteJournal).toEqual(['typed during the verse drain']); // flushed, not lost
+    expect(noteSched.getState()).toBe('saved');
+  });
+});
