@@ -499,6 +499,49 @@ describe('2026-08-27 adversarial round 11 regressions', () => {
   });
 });
 
+describe('2026-08-27 adversarial round 19 regressions', () => {
+  beforeEach(() => { cleanup(); calls.length = 0; });
+
+  it('two concurrent successful saves both survive: the reducer merges noteSaved by key from ITS OWN state (S1)', async () => {
+    // The real module (not the mock): vi.mock only intercepts this file's
+    // static import of ../src/state.jsx, so pull the reducer via the actual
+    // path the mock resolves — importActual bypasses it.
+    const { __reducerForTests: reducer } = await vi.importActual<typeof import('../src/state.jsx')>('../src/state.jsx');
+    const base = {
+      book: 'TIT',
+      project: { repoPath: 'p1' },
+      noteSaveErrors: {},
+      understand: { book: 'TIT', comprehension: {} },
+    };
+    // Two completions dispatched back-to-back — the second must NOT drop the
+    // first's entry (the old snapshot-spread did exactly that).
+    const afterA = reducer(base, { type: 'noteSaved', noteSaveErrors: {}, repoPath: 'p1', book: 'TIT', key: '1:1', text: 'note A', ts: 't1' });
+    const afterB = reducer(afterA, { type: 'noteSaved', noteSaveErrors: {}, repoPath: 'p1', book: 'TIT', key: '1:2', text: 'note B', ts: 't2' });
+    expect(afterB.understand.comprehension['1:1'].text).toBe('note A');
+    expect(afterB.understand.comprehension['1:2'].text).toBe('note B');
+    // and a completion for a project/book the UI has left updates ONLY the
+    // error mirror, never the visible understand state
+    const foreign = reducer(afterB, { type: 'noteSaved', noteSaveErrors: {}, repoPath: 'p2', book: 'TIT', key: '1:3', text: 'foreign', ts: 't3' });
+    expect(foreign.understand.comprehension['1:3']).toBeUndefined();
+  });
+
+  it('cross-frame mode with ZERO refs suppresses the passage and states why — never a same-frame guess (S3)', () => {
+    const savedU = state.understand;
+    try {
+      // A known-non-eng frame whose mapping is unavailable: sourceRefs {} and
+      // comprehension null (boxes would be disabled if any rendered).
+      state.understand = { ...savedU, sourceRefs: {}, comprehension: null } as never;
+      render(<Understand />);
+      expect(screen.queryAllByPlaceholderText('What does this section mean in your own words?').length).toBe(0);
+      expect(screen.getByTestId('understand-frame-unavailable')).toBeTruthy();
+      // and no same-frame passage leaked through
+      expect(screen.queryByText(/In the beginning was the Word/)).toBeNull();
+    } finally {
+      state.understand = savedU;
+    }
+  });
+});
+
 describe('#106 — the persistence shape: §8.5 note.add seals and projects', () => {
   it('the exact event addNote() emits validates through the reference and folds into notes output', async () => {
     const { sealAction } = await import('../src/data/journal/seal');

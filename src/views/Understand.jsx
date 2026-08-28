@@ -86,6 +86,20 @@ const draftStash = new Map();
 /** Test hook: the stash is module state and must not leak between tests. */
 export const __draftStashForTests = draftStash;
 
+/** S3 (adversarial round 19): cross-frame mode with ZERO refs is the SAFE
+ * degraded state — the frame's mapping is unavailable or unknown, and the
+ * passage is suppressed rather than shown under a numbering the project does
+ * not have. This note says so. */
+function FrameUnavailableNote({ understand, unitCount }) {
+  const suppressed = understand?.sourceRefs != null && unitCount === 0 && !understand?.loading;
+  if (!suppressed) return null;
+  return (
+    <Callout tone="warn" data-testid="understand-frame-unavailable" style={{ marginTop: 10 }}>
+      {t('understand.frameUnavailable')}
+    </Callout>
+  );
+}
+
 /** The comprehension box (#106's only write): saves on blur through
  * actions.saveComprehension; everything else on the screen is read-only. */
 function ComprehensionBox({ book, chapter, unit }) {
@@ -590,6 +604,7 @@ export default function Understand() {
             {!src && (
               <p style={{ fontSize: 'var(--fs-ui-sm)', color: 'var(--text-tertiary)', marginTop: 10 }}>{t('understand.loading')}</p>
             )}
+            <FrameUnavailableNote understand={s.understand} unitCount={units.length} />
             {units.map((unit) => (
               <UnderstandUnit key={unit.key} unit={unit} s={s} src={src} srcChapters={srcChapters} book={book} chapter={chapter} />
             ))}

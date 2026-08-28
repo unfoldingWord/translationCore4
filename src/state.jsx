@@ -326,12 +326,35 @@ function reducer(state, a) {
       // Atomic per-key merge: two source fetches can resolve in one batch, and
       // a read-modify-write through a stale snapshot would clobber the sibling.
       return { ...state, sources: { ...state.sources, [a.id]: a.value } };
+    case 'noteSaved': {
+      // Atomic merge of ONE persisted comprehension note (S1, adversarial
+      // round 19): two per-target saves can complete in the same batch, and
+      // building the whole `understand` from a captured stateRef snapshot
+      // dropped the sibling's entry — the reducer's own state is the only
+      // safe base (same hazard class as patchSrc/setSource above).
+      const next = { ...state, noteSaveErrors: a.noteSaveErrors };
+      if (state.book !== a.book || state.project?.repoPath !== a.repoPath) return next;
+      return {
+        ...next,
+        understand: {
+          ...state.understand,
+          saveError: null,
+          comprehension: {
+            ...state.understand?.comprehension,
+            [a.key]: { text: a.text, ts: a.ts },
+          },
+        },
+      };
+    }
     case 'bump':
       return { ...state, tick: state.tick + 1, ...(a.patch || {}) };
     default:
       return state;
   }
 }
+
+/** Test hook: the reducer's atomic noteSaved merge (S1) is unit-tested. */
+export const __reducerForTests = reducer;
 
 const parseChapters = (raw) => {
   // Display parse (whole-book: chapters + headers — PLATFORM-NOTES #4).
@@ -680,6 +703,24 @@ function loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatc
     });
 }
 
+/** The loading-flag patch for a (re)load: a SAME-BOOK refresh keeps the
+ * screen's working surface standing (P1); a different book starts clean. */
+function understandLoadingPatch(prevU, book) {
+  return { understand: { ...(prevU && prevU.book === book ? prevU : {}), loading: true } };
+}
+
+/** The failure patch (A3/S3): comprehension rides along only when same-frame
+ * was CONFIRMED before the throw; otherwise cross-frame mode with zero refs
+ * and disabled boxes — never an eng-numbered guess. */
+function understandFailurePatch({ safeSameFrame, error, comprehension, book }) {
+  const message = String(error?.message || error);
+  return {
+    understand: safeSameFrame
+      ? { loading: false, error: message, comprehension }
+      : { loading: false, error: message, book, comprehension: null, sourceRefs: {} },
+  };
+}
+
 function latestComprehension(store, book, frame) {
   if (frame.state !== 'ready') return null;
   const built = {};
@@ -693,7 +734,13 @@ function latestComprehension(store, book, frame) {
 }
 
 async function mappedSourceReferences(st, book, frame) {
-  if (frame.state !== 'ready' || frame.name === RESOURCE_FRAME) return null;
+  // null = CONFIRMED same-frame (ready + eng): only then may the view index
+  // the eng source with project numbers. Everything else — a known non-eng
+  // frame, an unavailable one, an unknown one — is cross-frame mode; with no
+  // usable mapping it returns {} (zero refs: the passage is SUPPRESSED, never
+  // guessed) (S3, adversarial round 19; completes the round-18 finding).
+  if (frame.state === 'ready' && frame.name === RESOURCE_FRAME) return null;
+  if (frame.state !== 'ready') return {};
   const sourceRefs = {};
   for (const entry of indexBook(st.bookRaw ?? '')) {
     const list = (sourceRefs[String(entry.chapter)] ??= []);
@@ -889,9 +936,9 @@ function finishNoteOperation({ pendingNotesRef, noteInFlightRef, errKey, operati
 }
 
 function publishComprehensionSuccess({
-  stateRef,
   noteDirtyRef,
   noteSaveErrorsRef,
+  syncNoteActivity,
   dispatch,
   errKey,
   repoPath,
@@ -901,27 +948,23 @@ function publishComprehensionSuccess({
   trimmed,
 }) {
   noteDirtyRef.current.delete(`${book}|${chapter}:${verseKey}`);
+  // S2 (adversarial round 19): the finally-block sync ran BEFORE this dirty
+  // clear — without re-syncing here the indicator mirror stays
+  // {dirty:true} after every ordinary successful save.
+  syncNoteActivity();
   const remaining = { ...noteSaveErrorsRef.current };
   delete remaining[errKey];
   noteSaveErrorsRef.current = remaining;
-  const now = stateRef.current;
-  if (now.book !== book || now.project?.repoPath !== repoPath) {
-    dispatch({ type: 'set', patch: { noteSaveErrors: remaining } });
-    return;
-  }
+  // S1: the reducer merges by key from ITS OWN state — never from a captured
+  // snapshot that a concurrent sibling save may already have outrun.
   dispatch({
-    type: 'set',
-    patch: {
-      noteSaveErrors: remaining,
-      understand: {
-        ...now.understand,
-        saveError: null,
-        comprehension: {
-          ...now.understand?.comprehension,
-          [`${chapter}:${verseKey}`]: { text: trimmed, ts: `local-${Date.now()}` },
-        },
-      },
-    },
+    type: 'noteSaved',
+    noteSaveErrors: remaining,
+    repoPath,
+    book,
+    key: `${chapter}:${verseKey}`,
+    text: trimmed,
+    ts: `local-${Date.now()}`,
   });
 }
 
@@ -2215,19 +2258,21 @@ export function AppProvider({ children }) {
         // keeps comprehension and sourceRefs standing — wiping them mid-edit
         // unmounts cross-frame units (falling back to same-frame display) and
         // discards unblurred drafts. A different book starts clean.
-        const prevU = stateRef.current.understand;
-        dispatch({
-          type: 'set',
-          patch: { understand: { ...(prevU && prevU.book === book ? prevU : {}), loading: true } },
-        });
+        dispatch({ type: 'set', patch: understandLoadingPatch(stateRef.current.understand, book) });
         // Built before the help slots and carried onto BOTH dispatch paths
         // (A3): a failing optional resource must never hide persisted notes
         // behind writable empty boxes. null = "not read" — the UI disables
         // the boxes rather than treating it as empty.
         let comprehension = null;
+        // S3: only a CONFIRMED ready+eng frame may ever render same-frame.
+        // Until that is established (or when the load throws first), the
+        // failure path must not fall back to indexing the eng source with
+        // project numbers — nor leave boxes editable over it.
+        let safeSameFrame = false;
         try {
           const { installed, coverage } = await a.resolutionContext();
           const frame = await a.projectFrame();
+          safeSameFrame = frame.state === 'ready' && frame.name === RESOURCE_FRAME;
           // A1: note identities are journaled in the PROJECT frame (§8.4/§5.2
           // identity discipline); the display buckets in SOURCE (eng) space.
           // Map stored keys back when the frames differ; the uW default is
@@ -2275,12 +2320,7 @@ export function AppProvider({ children }) {
           });
         } catch (e) {
           if (seq !== understandSeqRef.current) return; // a stale failure never replaces current state
-          dispatch({
-            type: 'set',
-            // comprehension rides along when it was read before the failure;
-            // null keeps the boxes DISABLED (A3: no writable empties).
-            patch: { understand: { loading: false, error: String(e?.message || e), comprehension } },
-          });
+          dispatch({ type: 'set', patch: understandFailurePatch({ safeSameFrame, error: e, comprehension, book }) });
         }
       },
 
@@ -2352,9 +2392,9 @@ export function AppProvider({ children }) {
         if (!ok) return; // refused (fail() already recorded it)
         if (!isLatest()) return; // E1: a stale success must not clear a newer failure or publish over a newer edit
         publishComprehensionSuccess({
-          stateRef,
           noteDirtyRef,
           noteSaveErrorsRef,
+          syncNoteActivity,
           dispatch,
           errKey,
           repoPath,
