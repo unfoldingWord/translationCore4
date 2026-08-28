@@ -274,10 +274,12 @@ const initial = () => ({
   // check session (never stored), plus the translator's own comprehension
   // notes read back from the §8.5 journal.
   understand: null, // null | { loading } | { notes, questions, comprehension: {'c:v': text} }
-  // A failed comprehension write, held GLOBALLY so it survives leaving the
-  // Understand view (B1, 2026-08-27 adversarial round 2): carries what is
-  // needed to retry, blocks navigation like a scheduler failure (FR-32).
-  noteSaveError: null, // null | { message, book, chapter, verse, text }
+  // Failed comprehension writes, held GLOBALLY so they survive leaving the
+  // Understand view (B1) and tracked PER TARGET so concurrent saves never
+  // clear each other (C2). Key: `${repoPath}|${chapter}:${verse}`. Each entry
+  // carries what retryNoteSave needs, incl. the originating project (C1);
+  // any entry blocks navigation like a scheduler failure (FR-32).
+  noteSaveErrors: {},
   // Modals (the owner's design: creation, add-book, and settings are dialogs
   // over Home, not separate pages)
   modal: null, // null | 'newProject' | 'addBook' | 'settings' | 'sources'
@@ -346,8 +348,8 @@ export function AppProvider({ children }) {
   const stateRef = useRef(null); // live state for async closures
   const openSeqRef = useRef(0); // openBook sequence token (review finding M2)
   const understandSeqRef = useRef(0); // loadUnderstand sequence token (2026-08-27 Codex review)
-  const pendingNotesRef = useRef(new Set()); // in-flight note.add promises (A4: loss-prevention lifecycle)
-  const noteDirtyRef = useRef(false); // a comprehension box holds unsaved text (A4: unload guard)
+  const pendingNotesRef = useRef(new Set()); // in-flight note operations, registered before their first await (A4/C1)
+  const noteDirtyRef = useRef(new Set()); // 'chapter:verse' keys of boxes holding unsaved text (A4; per-target since C2)
 
   // ---- derived display model -------------------------------------------------
   const model = useMemo(() => {
@@ -409,8 +411,8 @@ export function AppProvider({ children }) {
       if (
         (sched && sched.getState() !== 'saved') ||
         pendingNotesRef.current.size > 0 ||
-        noteDirtyRef.current ||
-        stateRef.current?.noteSaveError
+        noteDirtyRef.current.size > 0 ||
+        Object.keys(stateRef.current?.noteSaveErrors ?? {}).length > 0
       ) {
         e.preventDefault();
         e.returnValue = '';
@@ -472,7 +474,7 @@ export function AppProvider({ children }) {
         // navigation, exactly like the verse scheduler does (FR-32). The
         // failure is visible in the Understand callout and the save indicator.
         await Promise.allSettled([...pendingNotesRef.current]);
-        if (stateRef.current.noteSaveError) return;
+        if (Object.keys(stateRef.current.noteSaveErrors ?? {}).length > 0) return;
         dispatch({ type: 'set', patch: { view } });
       },
 
@@ -1661,7 +1663,7 @@ export function AppProvider({ children }) {
         // Comprehension writes are held to the same rule (B1): drain the
         // in-flight ones BEFORE anything opens, and refuse while one failed.
         await Promise.allSettled([...pendingNotesRef.current]);
-        if (stateRef.current.noteSaveError) return;
+        if (Object.keys(stateRef.current.noteSaveErrors ?? {}).length > 0) return;
         if (schedulerRef.current) {
           const clean = await schedulerRef.current.drain();
           if (!clean) return;
@@ -1981,41 +1983,51 @@ export function AppProvider({ children }) {
        * grow-only). A no-op or emptied box writes nothing. */
       saveComprehension: async (chapter, verseKey, text) => {
         const st = stateRef.current;
+        // C1 (adversarial round 3): the WHOLE operation is bound to the
+        // project it started in — store, repoPath and book are captured
+        // before the first await, the operation is registered in
+        // pendingNotesRef from the start (so transitions drain the mapping
+        // phase too), and the error record carries the project identity.
         const store = storeRef.current;
         const book = st.book;
-        if (!store || !book) return;
+        const repoPath = st.project?.repoPath;
+        if (!store || !book || !repoPath) return;
         // The unchanged-text comparison lives in the ComprehensionBox against
         // the note it actually DISPLAYS (unit-membership retrieval) — an
         // exact-head compare here would miss it and append a duplicate
         // grow-only note on a plain focus/blur (2026-08-27 Codex review).
         const trimmed = (text ?? '').trim();
         if (trimmed === '') return;
+        // C2: failures are tracked PER TARGET — one map entry per
+        // (project, chapter:verse) — so concurrent boxes never clear each
+        // other's retry payload or dirty guard.
+        const errKey = `${repoPath}|${chapter}:${verseKey}`;
         const fail = (message) => {
           const now = stateRef.current;
-          // The GLOBAL record survives view/book changes (B1) and carries the
-          // replay payload for retryNoteSave; the view-local copy feeds the
-          // Understand callout when the screen is still up.
           dispatch({
             type: 'set',
             patch: {
-              noteSaveError: { message, book, chapter, verse: verseKey, text: trimmed },
-              ...(now.book === book
+              noteSaveErrors: {
+                ...now.noteSaveErrors,
+                [errKey]: { message, repoPath, book, chapter, verse: verseKey, text: trimmed },
+              },
+              ...(now.book === book && now.project?.repoPath === repoPath
                 ? { understand: { ...now.understand, saveError: message } }
                 : {}),
             },
           });
         };
-        // A1: the display buckets in SOURCE (eng) space, but a §8.5 note
-        // identity is permanent PROJECT-frame state — map before writing.
-        // Same-frame projects (the uW default) short-circuit; an unmappable
-        // or unresolved frame REFUSES the write and says so, because a note
-        // journaled under a wrong identity can never be repaired (grow-only).
-        let target = { chapter, verse: verseKey };
-        try {
-          const frame = await a.projectFrame();
+        const op = (async () => {
+          // A1: the display buckets in SOURCE (eng) space, but a §8.5 note
+          // identity is permanent PROJECT-frame state — map before writing.
+          // Same-frame projects (the uW default) short-circuit; an unmappable
+          // or unresolved frame REFUSES the write and says so, because a note
+          // journaled under a wrong identity can never be repaired (grow-only).
+          let target = { chapter, verse: verseKey };
+          const frame = await resolveProjectFrame(repoPath, { store, api });
           if (frame.state !== 'ready') {
             fail(t('understand.saveUnmappable'));
-            return;
+            return false;
           }
           if (frame.name !== RESOURCE_FRAME) {
             const out = await mapReference({
@@ -2026,42 +2038,44 @@ export function AppProvider({ children }) {
             });
             if (!out.ok) {
               fail(t('understand.saveUnmappable'));
-              return;
+              return false;
             }
             target = { chapter: out.reference.chapter, verse: out.reference.verse };
           }
-        } catch (e) {
-          fail(String(e?.reason || e?.message || e));
-          return;
-        }
-        // A4: register the in-flight write so the unload guard and project
-        // transitions can see (and drain) it — the verse scheduler knows
-        // nothing about journal-note writes.
-        const write = store.addNote(book, target.chapter, target.verse, trimmed);
-        pendingNotesRef.current.add(write);
+          // The captured store writes into the ORIGINATING project no matter
+          // what the UI shows by now.
+          await store.addNote(book, target.chapter, target.verse, trimmed);
+          return true;
+        })();
+        pendingNotesRef.current.add(op);
+        let ok = false;
         try {
-          await write;
+          ok = await op;
         } catch (e) {
           // Fired from a blur — an unhandled rejection would lose the note
           // SILENTLY. State the failure like every other write surface does.
           fail(String(e?.reason || e?.message || e));
           return;
         } finally {
-          pendingNotesRef.current.delete(write);
+          pendingNotesRef.current.delete(op);
         }
-        noteDirtyRef.current = false;
+        if (!ok) return; // refused (fail() already recorded it)
+        // C2: clear only THIS target's dirty mark and error entry.
+        noteDirtyRef.current.delete(`${chapter}:${verseKey}`);
         const now = stateRef.current;
-        // The user may have switched books while the write was in flight —
-        // never patch the old book's note into the new book's state. The
-        // GLOBAL error clears either way: the write succeeded.
-        if (now.book !== book) {
-          dispatch({ type: 'set', patch: { noteSaveError: null } });
+        const remaining = { ...now.noteSaveErrors };
+        delete remaining[errKey];
+        // The user may have moved on while the write was in flight — never
+        // patch the old book's note into the new state; the error entry
+        // clears either way: the write succeeded.
+        if (now.book !== book || now.project?.repoPath !== repoPath) {
+          dispatch({ type: 'set', patch: { noteSaveErrors: remaining } });
           return;
         }
         dispatch({
           type: 'set',
           patch: {
-            noteSaveError: null,
+            noteSaveErrors: remaining,
             understand: {
               ...now.understand,
               saveError: null,
@@ -2074,14 +2088,17 @@ export function AppProvider({ children }) {
         });
       },
 
-      /** Retry the failed comprehension write from wherever the user is —
-       * the save indicator's Retry (B1). Refuses when the project/book moved
-       * on: replaying into a different book would journal a wrong identity. */
+      /** Retry every failed comprehension write that belongs to the OPEN
+       * project (C1: repoPath AND book must match — a replay into another
+       * project would journal a wrong identity; foreign entries stay and
+       * keep holding navigation). */
       retryNoteSave: async () => {
-        const err = stateRef.current.noteSaveError;
-        if (!err) return;
-        if (stateRef.current.book !== err.book) return; // stays visible; navigation is already held
-        await a.saveComprehension(err.chapter, err.verse, err.text);
+        const now = stateRef.current;
+        const repoPath = now.project?.repoPath;
+        for (const err of Object.values(now.noteSaveErrors ?? {})) {
+          if (err.repoPath !== repoPath || err.book !== now.book) continue;
+          await a.saveComprehension(err.chapter, err.verse, err.text);
+        }
       },
 
       /** A help article behind an Understand card (tW word or tA module),
@@ -2120,9 +2137,11 @@ export function AppProvider({ children }) {
       },
       /** A comprehension box holds text that differs from its displayed note
        * (A4): the unload guard warns on it, exactly like a dirty verse. A ref,
-       * not state — this fires on every keystroke. */
-      setNoteDirty: (dirty) => {
-        noteDirtyRef.current = !!dirty;
+       * not state — this fires on every keystroke. Keyed per target (C2), so
+       * one box's save never clears another box's warning. */
+      setNoteDirty: (key, dirty) => {
+        if (dirty) noteDirtyRef.current.add(key);
+        else noteDirtyRef.current.delete(key);
       },
       closeHelpArticle: () => {
         const now = stateRef.current;
@@ -2170,18 +2189,17 @@ export function AppProvider({ children }) {
       retrySave: () => schedulerRef.current?.retry(),
       backToProjects: async () => {
         // Never navigate away from unsaved work or a visible failure (FR-32).
+        // EVERY blocker is checked BEFORE anything is disposed (C3,
+        // adversarial round 3): a refused exit must leave the project fully
+        // working — scheduler included — or the next verse edit throws.
+        await Promise.allSettled([...pendingNotesRef.current]);
+        if (Object.keys(stateRef.current.noteSaveErrors ?? {}).length > 0) return;
         if (schedulerRef.current) {
           const clean = await schedulerRef.current.drain();
           if (!clean) return;
           schedulerRef.current.dispose();
           schedulerRef.current = null;
         }
-        // Comprehension notes drain too (A4): an in-flight note.add still
-        // holds its store in closure, so waiting here is cheap and loses
-        // nothing to the transition. A FAILED note holds navigation exactly
-        // like a failed verse write does (B1, FR-32).
-        await Promise.allSettled([...pendingNotesRef.current]);
-        if (stateRef.current.noteSaveError) return;
         storeRef.current = null;
         // A2 (2026-08-27 adversarial review): understand + projectPins are
         // PROJECT state — leaving them set lets project B render (and journal

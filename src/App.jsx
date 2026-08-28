@@ -26,8 +26,9 @@ function SaveIndicator() {
   };
   // A failed comprehension write is a save failure like any other (B1,
   // 2026-08-27 adversarial round 2): it shows here globally — not only on
-  // the Understand screen — with its own retry.
-  const noteError = !!s.noteSaveError;
+  // the Understand screen — with its own retry. Per-target since round 3
+  // (C2): ANY standing entry is an error.
+  const noteError = Object.keys(s.noteSaveErrors ?? {}).length > 0;
   const m = noteError ? map.error : map[s.saveState] || map.saved;
   const isError = noteError || s.saveState === 'error';
   return (

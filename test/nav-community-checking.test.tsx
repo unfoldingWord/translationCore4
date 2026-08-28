@@ -34,7 +34,7 @@ const baseState = {
   progressByProject: {},
   projects: [],
   netEnabled: false,
-  noteSaveError: null,
+  noteSaveErrors: {},
 };
 
 const bookModel = {
@@ -88,7 +88,7 @@ describe('#108 — Publish moves into Check as Community Checking', () => {
   });
 
   it('a failed comprehension write surfaces on the GLOBAL save indicator with its own retry (2026-08-27 adversarial round 2, B1)', () => {
-    state = { ...baseState, noteSaveError: { message: 'refused', book: 'TIT', chapter: 1, verse: '1', text: 'x' } } as never;
+    state = { ...baseState, noteSaveErrors: { 'p1|1:1': { message: 'refused', repoPath: 'p1', book: 'TIT', chapter: 1, verse: '1', text: 'x' } } } as never;
     render(<App />);
     const indicator = screen.getByTestId('save-indicator');
     expect(indicator.getAttribute('data-state')).toBe('error');

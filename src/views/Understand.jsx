@@ -88,7 +88,8 @@ function ComprehensionBox({ chapter, unit }) {
     <TextArea rows={2} value={text} disabled={!ready}
       onChange={(e) => {
         setText(e.target.value);
-        actions.setNoteDirty(e.target.value.trim() !== stored.trim());
+        // Keyed per target (C2): this box's flag, nobody else's.
+        actions.setNoteDirty(`${chapter}:${unit.head}`, e.target.value.trim() !== stored.trim());
       }}
       onBlur={save}
       placeholder={t('understand.commentsPlaceholder')} />

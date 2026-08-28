@@ -237,10 +237,11 @@ describe('2026-08-27 adversarial-review regressions', () => {
     const box = screen.getAllByPlaceholderText('What does this section mean in your own words?')[0];
     fireEvent.change(box, { target: { value: 'unsaved text' } });
     const dirtyCalls = calls.filter((c) => c.name === 'setNoteDirty');
-    expect(dirtyCalls[dirtyCalls.length - 1].args[0]).toBe(true);
+    expect(dirtyCalls[dirtyCalls.length - 1].args[1]).toBe(true);
+    expect(String(dirtyCalls[dirtyCalls.length - 1].args[0])).toContain(':'); // per-target key (C2)
     fireEvent.change(box, { target: { value: '' } }); // back to the stored (empty) value
     const after = calls.filter((c) => c.name === 'setNoteDirty');
-    expect(after[after.length - 1].args[0]).toBe(false);
+    expect(after[after.length - 1].args[1]).toBe(false);
   });
 });
 
@@ -264,7 +265,7 @@ describe('2026-08-27 adversarial round 2 regressions', () => {
     fireEvent.change(box, { target: { value: 'about to fail' } });
     fireEvent.blur(box);
     // setNoteDirty(true) from the change; NO setNoteDirty(false) from the blur
-    const dirtyCalls = calls.filter((c) => c.name === 'setNoteDirty').map((c) => c.args[0]);
+    const dirtyCalls = calls.filter((c) => c.name === 'setNoteDirty').map((c) => c.args[1]);
     expect(dirtyCalls).toEqual([true]);
     expect(calls.filter((c) => c.name === 'saveComprehension').length).toBe(1);
   });
