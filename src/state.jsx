@@ -668,6 +668,30 @@ function validateNewBible(form) {
   return abbr ? { abbr } : { error: t('wizard.abbrRequired') };
 }
 
+/** Round 21 (2026-08-28 adversarial review): clicking the global Retry BLURS
+ * the edited box first, and the blur QUEUES the newer text. Reading the
+ * failure ledger immediately would re-queue the stale failed text as the
+ * NEWEST revision — the newer edit would be superseded and the OLD text
+ * persisted as the head note, silently. So: drain every pending lifecycle
+ * first (each settles only after its ledger update has landed — see the
+ * lifecycle registration in saveComprehension), then retry only the failures
+ * that REMAIN (a newer success clears its target's entry; a newer failure
+ * refreshes it with the newer text). */
+async function retryFailedNoteSaves({ pendingNotesRef, noteSaveErrorsRef, stateRef, save }) {
+  await Promise.allSettled([...pendingNotesRef.current]);
+  const now = stateRef.current;
+  const repoPath = now.project?.repoPath;
+  for (const err of Object.values(noteSaveErrorsRef.current)) {
+    if (err.repoPath !== repoPath || err.book !== now.book) continue;
+    await save(err.chapter, err.verse, err.text, { projectFrame: err.projectFrame });
+  }
+}
+
+/** Test hook (round 21): drain-before-retry is unit-tested — a retry must
+ * never re-queue ledger text that a pending newer write is about to
+ * supersede or clear. */
+export const __retryFailedNoteSavesForTests = retryFailedNoteSaves;
+
 async function drainForProjectOpen({ pendingNotesRef, noteSaveErrorsRef, noteDirtyRef, schedulerRef }) {
   await Promise.allSettled([...pendingNotesRef.current]);
   if (Object.keys(noteSaveErrorsRef.current).length > 0) return false;
@@ -959,8 +983,10 @@ async function writeComprehensionNote({
   return true;
 }
 
-function finishNoteOperation({ pendingNotesRef, noteInFlightRef, errKey, operation, syncNoteActivity }) {
-  pendingNotesRef.current.delete(operation);
+function finishNoteOperation({ noteInFlightRef, errKey, syncNoteActivity }) {
+  // pendingNotesRef holds the save's whole LIFECYCLE (round 21), removed by
+  // saveComprehension's own finally — not the write op, so nothing to delete
+  // here. Only the per-target in-flight count settles at op completion.
   const inFlight = (noteInFlightRef.current.get(errKey) ?? 1) - 1;
   if (inFlight <= 0) noteInFlightRef.current.delete(errKey);
   else noteInFlightRef.current.set(errKey, inFlight);
@@ -1014,14 +1040,7 @@ function comprehensionSaveContext(st, store, chapter, verseKey, text) {
   };
 }
 
-async function awaitNoteOperation({
-  operation,
-  fail,
-  pendingNotesRef,
-  noteInFlightRef,
-  errKey,
-  syncNoteActivity,
-}) {
+async function awaitNoteOperation({ operation, fail, noteInFlightRef, errKey, syncNoteActivity }) {
   try {
     return await operation;
   } catch (error) {
@@ -1029,10 +1048,8 @@ async function awaitNoteOperation({
     return false;
   } finally {
     finishNoteOperation({
-      pendingNotesRef,
       noteInFlightRef,
       errKey,
-      operation,
       syncNoteActivity,
     });
   }
@@ -2423,45 +2440,59 @@ export function AppProvider({ children }) {
           apiClient: api,
         }));
         noteChainRef.current.set(errKey, op.catch(() => {}));
-        pendingNotesRef.current.add(op);
+        // Round 21: what pendingNotesRef registers is the WHOLE lifecycle —
+        // through the ledger update a completion publishes — not just the
+        // write op. Every drain awaits pendingNotesRef and then decides FROM
+        // THE LEDGER; an op-only registration let a drain resume a microtask
+        // before the publish landed, so retryNoteSave could re-queue the
+        // stale failed text over a newer, just-blurred edit.
+        let settleLifecycle;
+        const lifecycle = new Promise((resolve) => {
+          settleLifecycle = resolve;
+        });
+        pendingNotesRef.current.add(lifecycle);
         noteInFlightRef.current.set(errKey, (noteInFlightRef.current.get(errKey) ?? 0) + 1);
         syncNoteActivity();
-        const ok = await awaitNoteOperation({
-          operation: op,
-          fail,
-          pendingNotesRef,
-          noteInFlightRef,
-          errKey,
-          syncNoteActivity,
-        });
-        if (!ok) return; // refused (fail() already recorded it)
-        if (!isLatest()) return; // E1: a stale success must not clear a newer failure or publish over a newer edit
-        publishComprehensionSuccess({
-          noteDirtyRef,
-          noteSaveErrorsRef,
-          syncNoteActivity,
-          dispatch,
-          errKey,
-          repoPath,
-          book,
-          chapter,
-          verseKey,
-          trimmed,
-        });
+        try {
+          const ok = await awaitNoteOperation({
+            operation: op,
+            fail,
+            noteInFlightRef,
+            errKey,
+            syncNoteActivity,
+          });
+          if (!ok) return; // refused (fail() already recorded it)
+          if (!isLatest()) return; // E1: a stale success must not clear a newer failure or publish over a newer edit
+          publishComprehensionSuccess({
+            noteDirtyRef,
+            noteSaveErrorsRef,
+            syncNoteActivity,
+            dispatch,
+            errKey,
+            repoPath,
+            book,
+            chapter,
+            verseKey,
+            trimmed,
+          });
+        } finally {
+          pendingNotesRef.current.delete(lifecycle);
+          settleLifecycle();
+          syncNoteActivity();
+        }
       },
 
       /** Retry every failed comprehension write that belongs to the OPEN
        * project (C1: repoPath AND book must match — a replay into another
        * project would journal a wrong identity; foreign entries stay and
        * keep holding navigation). */
-      retryNoteSave: async () => {
-        const now = stateRef.current;
-        const repoPath = now.project?.repoPath;
-        for (const err of Object.values(noteSaveErrorsRef.current)) {
-          if (err.repoPath !== repoPath || err.book !== now.book) continue;
-          await a.saveComprehension(err.chapter, err.verse, err.text, { projectFrame: err.projectFrame });
-        }
-      },
+      retryNoteSave: () =>
+        retryFailedNoteSaves({
+          pendingNotesRef,
+          noteSaveErrorsRef,
+          stateRef,
+          save: (chapter, verse, text, opts) => a.saveComprehension(chapter, verse, text, opts),
+        }),
 
       /** A help article behind an Understand card (tW word or tA module),
        * read from the INSTALLED burrito like C2.5; absence is stated. */
