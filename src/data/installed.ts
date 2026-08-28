@@ -50,12 +50,17 @@ export const flavorOfMetadata = (meta: unknown): string => {
 };
 
 export const readInstalled = async (api: ServerApi, storageId: string): Promise<InstalledMap> => {
+  // Catch-to-absence sweep (D30): {} means the machine CONFIRMS it has no
+  // install record (a rig without storage_id.json). A transport failure must
+  // PROPAGATE — swallowing it made every recorded install read as absent,
+  // presenting "your resources are not installed" for a settings blip.
   try {
     const settings = await api.getClientSettings(storageId);
     const raw = settings[INSTALLED_KEY];
     return raw && typeof raw === 'object' ? (raw as InstalledMap) : {};
-  } catch {
-    return {};
+  } catch (error) {
+    if ((error as { isNotFound?: boolean })?.isNotFound) return {};
+    throw error;
   }
 };
 
@@ -66,7 +71,16 @@ export const recordInstalled = async (
   localRepoPath: string,
   pin: ResourcePin,
 ): Promise<InstalledMap> => {
-  const settings = await api.getClientSettings(storageId).catch(() => ({}) as Record<string, unknown>);
+  // Catch-to-absence sweep (D30, destructive variant): a transient read
+  // failure here used to seed `current = {}`, and the write below then
+  // REPLACED the whole client-settings document — erasing every other
+  // recorded install and lastUsed. Only a confirmed-absent document may
+  // start empty; a failed read aborts the record (the callers' stated
+  // per-row failure reports it).
+  const settings = await api.getClientSettings(storageId).catch((error) => {
+    if ((error as { isNotFound?: boolean })?.isNotFound) return {} as Record<string, unknown>;
+    throw error;
+  });
   const current = (settings[INSTALLED_KEY] ?? {}) as InstalledMap;
   const next: InstalledMap = { ...current, [localRepoPath]: pin };
   await api.setClientSettings(storageId, { ...settings, [INSTALLED_KEY]: next });
@@ -102,6 +116,10 @@ export const discoverOnDisk = async (
   summaries: Record<string, RepoSummary>,
   recorded: InstalledMap,
   orgFor: OrgResolver = () => null,
+  /** Called for each per-resource metadata read that failed TRANSIENTLY
+   * (catch-to-absence sweep, D30): the discovery is then incomplete and the
+   * caller must state it rather than let readiness read as absence. */
+  onTransportFailure?: (error: unknown) => void,
 ): Promise<InstalledMap> => {
   const found: InstalledMap = {};
   const sideloaded = Object.keys(summaries).filter((p) => p.includes('/_sideloaded_/'));
@@ -109,35 +127,51 @@ export const discoverOnDisk = async (
     sideloaded.map(async (localPath) => {
       if (recorded[localPath]) return; // the record knows the tag; prefer it
       try {
-        const meta = (await api.getMetadataRaw(localPath)) as unknown as {
-          identification?: { primary?: { dcs?: Record<string, { revision?: string }> } };
-        };
-        const flavor = flavorOfMetadata(meta);
-        const dcs = meta.identification?.primary?.dcs ?? {};
-        const [key] = Object.keys(dcs);
-        const revision = Object.values(dcs)[0]?.revision;
-        if (!key || !revision) return;
-        // The local segment is `<owner>--<repo>` for installs written by the
-        // owner-qualified path; older installs are the bare `<repo>`. When the
-        // owner is in the path we know the exact DCS identity and need neither
-        // the resolver nor the (possibly stale) metadata org. Otherwise fall
-        // back: a configured org for this name, else the metadata key.
-        const seg = localPath.split('/').pop() as string;
-        const sep = seg.indexOf('--');
-        const ownerFromPath = sep > 0 ? seg.slice(0, sep) : null;
-        const repoName = sep > 0 ? seg.slice(sep + 2) : seg;
-        const org = ownerFromPath ?? orgFor(repoName);
-        const repoPath = org ? `git.door43.org/${org}/${repoName}` : `git.door43.org/${key}`;
-        // Both identity halves are factual — the burrito states its own
-        // flavor and revision (D58: the sha IS the identity). No version:
-        // nothing on disk knows the tag, and the label is optional.
-        found[localPath] = { repoPath, sha: revision, flavor };
-      } catch {
-        /* unreadable metadata: contributes nothing, the safe direction */
+        const pin = await discoverOne(api, localPath, orgFor);
+        if (pin) found[localPath] = pin;
+      } catch (error) {
+        // Catch-to-absence sweep (D30): confirmed-absent/garbage metadata
+        // contributes nothing (a real non-burrito dir). A TRANSPORT failure
+        // must not hide an on-disk resource — report the discovery as
+        // incomplete so readiness surfaces state it instead of claiming
+        // absence.
+        if (!(error as { isNotFound?: boolean })?.isNotFound) onTransportFailure?.(error);
       }
     }),
   );
   return { ...found, ...recorded };
+};
+
+/** Identify one sideloaded path from its own burrito metadata, or null when
+ * the metadata names no identity. */
+const discoverOne = async (
+  api: ServerApi,
+  localPath: string,
+  orgFor: OrgResolver,
+): Promise<ResourcePin | null> => {
+  const meta = (await api.getMetadataRaw(localPath)) as unknown as {
+    identification?: { primary?: { dcs?: Record<string, { revision?: string }> } };
+  };
+  const flavor = flavorOfMetadata(meta);
+  const dcs = meta.identification?.primary?.dcs ?? {};
+  const [key] = Object.keys(dcs);
+  const revision = Object.values(dcs)[0]?.revision;
+  if (!key || !revision) return null;
+  // The local segment is `<owner>--<repo>` for installs written by the
+  // owner-qualified path; older installs are the bare `<repo>`. When the
+  // owner is in the path we know the exact DCS identity and need neither
+  // the resolver nor the (possibly stale) metadata org. Otherwise fall
+  // back: a configured org for this name, else the metadata key.
+  const seg = localPath.split('/').pop() as string;
+  const sep = seg.indexOf('--');
+  const ownerFromPath = sep > 0 ? seg.slice(0, sep) : null;
+  const repoName = sep > 0 ? seg.slice(sep + 2) : seg;
+  const org = ownerFromPath ?? orgFor(repoName);
+  const repoPath = org ? `git.door43.org/${org}/${repoName}` : `git.door43.org/${key}`;
+  // Both identity halves are factual — the burrito states its own flavor and
+  // revision (D58: the sha IS the identity). No version: nothing on disk
+  // knows the tag, and the label is optional.
+  return { repoPath, sha: revision, flavor } as ResourcePin;
 };
 
 /** Build the resolver's coverage map from what is actually on disk.

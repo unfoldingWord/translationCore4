@@ -114,6 +114,16 @@ function ArticlePanel({ article }) {
   if (article.loading) {
     return <p style={{ fontSize: 'var(--fs-caption-lg)', color: 'var(--text-tertiary)', margin: '0 0 14px' }}>{t('check.articleLoading')}</p>;
   }
+  if (article.error) {
+    // Catch-to-absence sweep (D30): a failed read is stated and retryable —
+    // never "article missing". Selecting the item again re-requests it (the
+    // same-key guard admits errored articles).
+    return (
+      <Callout tone="warn" role="alert" data-testid="article-error" style={{ margin: '0 0 14px', overflowWrap: 'anywhere' }}>
+        {t('understand.articleError')} {article.error}
+      </Callout>
+    );
+  }
   if (!article.found) {
     return (
       <Callout tone="warn" data-testid="article-missing" style={{ margin: '0 0 14px' }}>
@@ -154,132 +164,46 @@ function ArticlePanel({ article }) {
 
 /** The check list for one tool: every derived item, its decision state, and
  * the item detail. Derived at load and never stored (§4.2). */
-function CheckSession() {
-  const { s, actions } = useApp();
-  const cs = s.checkSession;
-
-  // B23 — the tN/tW selection: the checker highlights the word(s) in their
-  // translation that render the item's quote. Hooks run before the early
-  // returns (rules-of-hooks). `verses` is on the session, so the target text
-  // never pollutes the stored §5.2 record.
-  const activeIndex = cs?.activeIndex ?? 0;
-  const activeItem = cs?.items?.[activeIndex];
-  const activeRef = activeItem
-    ? `${activeItem.contextId.reference.chapter}:${activeItem.contextId.reference.verse}`
-    : '';
-  const targetText = (cs?.verses && cs.verses[activeRef]) || '';
-  const words = React.useMemo(() => targetWords(targetText), [targetText]);
-  const [sel, setSel] = React.useState(() => new Set());
-  // Sync the tap-selection to the active item's stored selection when the item
-  // (or its verse text) changes — NOT on `selections`, so a save does not fight
-  // the user's live selection.
-  // Deps are deliberate: re-sync when the ACTIVE ITEM or its verse text changes,
-  // not on `selections` — a save must not fight the user's live tap-selection.
-  React.useEffect(() => {
-    setSel(new Set(tokenIndicesFromSelections(targetText, activeItem?.selections)));
-  }, [activeIndex, cs?.tool, cs?.book, targetText]);
-
-  if (cs?.loading) return <p style={{ fontSize: 'var(--fs-ui)', color: 'var(--text-tertiary)' }}>{t('check.deriving')}</p>;
-  if (cs?.error) {
-    return <p style={{ fontSize: 'var(--fs-ui)', color: 'var(--tc-invalid)', lineHeight: 'var(--lh-body)' }} data-testid="check-error">{cs.error}</p>;
-  }
-  if (!cs?.items) return null;
-
-  // C2.9 — designed empty states. The tool is genuinely usable; this book just
-  // has no checks in the pinned resource.
-  if (cs.empty) {
-    return (
-      <div data-testid="check-empty" data-empty={cs.empty}>
-        <Button variant="secondary" size="sm" onClick={actions.closeCheckTool} style={{ marginBottom: 16 }}>
-          {t('check.back')}
-        </Button>
-        <div style={{ border: 'var(--stroke-selected) dashed var(--border-dashed)', borderRadius: 'var(--radius-xl)', padding: '32px 26px', textAlign: 'center' }}>
-          <p style={{ fontSize: 'var(--fs-ui-md)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)', margin: '0 0 8px' }}>
-            {t(`check.empty.${cs.empty}.title`)}
-          </p>
-          <p style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', color: 'var(--text-secondary)', lineHeight: 'var(--lh-body)', margin: '0 auto', maxWidth: 460 }}>
-            {t(`check.empty.${cs.empty}.body`)}
-          </p>
-          {/* Surfaced even when the drop emptied the whole list. */}
-          <DroppedNote dropped={cs.dropped} style={{ margin: '14px auto 0', maxWidth: 460 }} />
-          {cs.resource && (
-            <p style={{ fontSize: 'var(--fs-meta)', color: 'var(--text-tertiary)', ...mono, margin: '14px 0 0' }}>
-              {cs.resource.repoPath} · {cs.resource.version}
-            </p>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  const item = cs.items[cs.activeIndex];
-  // Single source of truth with the progress meter — an Invalid triage counts
-  // as decided in BOTH, and a carry-over invalidation counts in neither (B23).
-  const decided = isDecided;
-  const quote = Array.isArray(item?.contextId.quote)
-    ? item.contextId.quote.map((w) => w.word).join(' ')
-    : item?.contextId.quoteString;
-
-  const toggleWord = (i) =>
-    setSel((prev) => {
-      const next = new Set(prev);
-      if (next.has(i)) next.delete(i);
-      else next.add(i);
-      return next;
-    });
-  const markValid = () => {
-    const selections = selectionsFromTokens(targetText, [...sel].sort((a, b) => a - b));
-    actions.recordDecision(
-      selections.length
-        ? { selections, nothingToSelect: false, status: 'valid' }
-        : { selections: false, nothingToSelect: true, status: 'valid' },
-    );
-  };
-  const markInvalid = () =>
-    actions.recordDecision({ selections: false, nothingToSelect: false, status: 'invalid' });
-  const markTodo = () => actions.recordDecision({ status: 'todo' });
-  const triageStyle = (active, tone) => ({
-    border: `var(--stroke-selected) solid ${active ? tone : 'var(--border-strong)'}`,
-    background: active ? tone : '#fff',
-    color: active ? '#fff' : 'var(--text-secondary)',
-    cursor: 'pointer',
-    fontFamily: 'var(--font-ui)',
-    fontWeight: 'var(--fw-heavy)',
-    fontSize: 'var(--fs-ui-sm)',
-    letterSpacing: 'var(--track-13)',
-    padding: '9px 16px',
-    borderRadius: 'var(--radius-md)',
-  });
-
+function CheckEmpty({ cs, actions }) {
   return (
-    <div data-testid="check-session">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <Button variant="secondary" size="sm" onClick={actions.closeCheckTool}>
-          {t('check.back')}
-        </Button>
-        <div style={{ flex: 1 }} />
-        <span data-testid="check-progress" style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)' }}>
-          {t('check.progress', { decided: cs.progress.decided, total: cs.progress.total })}
-        </span>
-      </div>
-
-      <ProgressBar value={cs.progress.total ? (cs.progress.decided / cs.progress.total) * 100 : 0}
-        height={6} style={{ marginBottom: 18 }} />
-      {/* #15: the denominator above EXCLUDES checks the project's versification
-        * has no verse for. Dropping them silently would make "0 of 415" look
-        * complete when the resource offered 417 — the same silence B20 fixed for
-        * the fallback. Null for an eng project, which is every project whose
-        * numbering matches the resource suite. */}
-      <DroppedNote dropped={cs.dropped}
-        style={{ background: 'var(--surface-warm)', border: 'var(--stroke) solid rgba(229,157,51,.35)', borderRadius: 'var(--radius-md)', padding: '10px 12px', margin: '0 0 10px' }} />
-
-      {cs.resource && (
-        <p style={{ fontSize: 'var(--fs-meta)', color: 'var(--text-tertiary)', ...mono, margin: '0 0 16px' }}>
-          {cs.resource.repoPath} · {cs.resource.version} · {t(`check.rung.${cs.resource.languageSet}`)}
+    <div data-testid="check-empty" data-empty={cs.empty}>
+      <Button variant="secondary" size="sm" onClick={actions.closeCheckTool} style={{ marginBottom: 16 }}>
+        {t('check.back')}
+      </Button>
+      <div style={{ border: 'var(--stroke-selected) dashed var(--border-dashed)', borderRadius: 'var(--radius-xl)', padding: '32px 26px', textAlign: 'center' }}>
+        <p style={{ fontSize: 'var(--fs-ui-md)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)', margin: '0 0 8px' }}>
+          {t(`check.empty.${cs.empty}.title`)}
         </p>
-      )}
+        <p style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', color: 'var(--text-secondary)', lineHeight: 'var(--lh-body)', margin: '0 auto', maxWidth: 460 }}>
+          {t(`check.empty.${cs.empty}.body`)}
+        </p>
+        {/* Surfaced even when the drop emptied the whole list. */}
+        <DroppedNote dropped={cs.dropped} style={{ margin: '14px auto 0', maxWidth: 460 }} />
+        {cs.resource && (
+          <p style={{ fontSize: 'var(--fs-meta)', color: 'var(--text-tertiary)', ...mono, margin: '14px 0 0' }}>
+            {cs.resource.repoPath} · {cs.resource.version}
+          </p>
+        )}
+      </div>
+    </div>
+    );
+}
 
-      {item && (
+const triageStyle = (active, tone) => ({
+  border: `var(--stroke-selected) solid ${active ? tone : 'var(--border-strong)'}`,
+  background: active ? tone : '#fff',
+  color: active ? '#fff' : 'var(--text-secondary)',
+  cursor: 'pointer',
+  fontFamily: 'var(--font-ui)',
+  fontWeight: 'var(--fw-heavy)',
+  fontSize: 'var(--fs-ui-sm)',
+  letterSpacing: 'var(--track-13)',
+  padding: '9px 16px',
+  borderRadius: 'var(--radius-md)',
+});
+
+function CheckItemCard({ item, quote, words, sel, toggleWord, markValid, markInvalid, markTodo }) {
+  return (
         <Card variant="flat" padding="18px 20px" style={{ border: 'var(--stroke) solid var(--border)', marginBottom: 14 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10 }}>
             <span style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', fontWeight: 'var(--fw-black)', color: 'var(--uw-ocean)' }}>
@@ -336,8 +260,12 @@ function CheckSession() {
             </button>
           </div>
         </Card>
-      )}
+  );
+}
 
+function CheckSessionNotices({ cs }) {
+  return (
+    <>
       {cs.warning && (
         <Callout tone="warn" data-testid="resolution-warning" style={{ margin: '0 0 14px' }}>
           <p style={{ fontSize: 'var(--fs-caption-lg)', fontWeight: 'var(--fw-heavy)', margin: '0 0 4px' }}>
@@ -365,12 +293,15 @@ function CheckSession() {
           {t('check.invalidatedNotice', { n: cs.invalidated })}
         </p>
       )}
+    </>
+  );
+}
 
-      <ArticlePanel article={cs.article} />
-
+function CheckItemGrid({ cs, decided, onSelect }) {
+  return (
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }} data-testid="check-list">
         {cs.items.map((it, i) => (
-          <button key={`${it.contextId.checkId}-${i}`} type="button" onClick={() => actions.setCheckIndex(i)}
+          <button key={`${it.contextId.checkId}-${i}`} type="button" onClick={() => onSelect(i)}
             title={`${it.contextId.reference.chapter}:${it.contextId.reference.verse} · ${it.contextId.groupId}`}
             data-ref={`${it.contextId.reference.chapter}:${it.contextId.reference.verse}`}
             data-decided={decided(it) ? '1' : '0'}
@@ -387,6 +318,115 @@ function CheckSession() {
           </button>
         ))}
       </div>
+  );
+}
+
+/** The active item's view primitives (B23): index, item, its ref, and the
+ * draft verse text — `verses` is on the session, so the target text never
+ * pollutes the stored §5.2 record. */
+function sessionView(cs) {
+  const activeIndex = cs?.activeIndex ?? 0;
+  const activeItem = cs?.items?.[activeIndex];
+  const activeRef = activeItem
+    ? `${activeItem.contextId.reference.chapter}:${activeItem.contextId.reference.verse}`
+    : '';
+  const targetText = (cs?.verses && cs.verses[activeRef]) || '';
+  return { activeIndex, activeItem, targetText, tool: cs?.tool, book: cs?.book };
+}
+
+/** The item's source quote — tN carries a word array, tW a plain string. */
+const quoteOf = (item) =>
+  Array.isArray(item?.contextId.quote)
+    ? item.contextId.quote.map((w) => w.word).join(' ')
+    : item?.contextId.quoteString;
+
+function CheckSession() {
+  const { s, actions } = useApp();
+  const cs = s.checkSession;
+
+  const { activeIndex, activeItem, targetText, tool, book } = sessionView(cs);
+  const words = React.useMemo(() => targetWords(targetText), [targetText]);
+  const [sel, setSel] = React.useState(() => new Set());
+  // Sync the tap-selection to the active item's stored selection when the item
+  // (or its verse text) changes — NOT on `selections`, so a save does not
+  // fight the user's live tap-selection.
+  React.useEffect(() => {
+    setSel(new Set(tokenIndicesFromSelections(targetText, activeItem?.selections)));
+  }, [activeIndex, tool, book, targetText]);
+
+  if (cs?.loading) return <p style={{ fontSize: 'var(--fs-ui)', color: 'var(--text-tertiary)' }}>{t('check.deriving')}</p>;
+  if (cs?.error) {
+    return <p style={{ fontSize: 'var(--fs-ui)', color: 'var(--tc-invalid)', lineHeight: 'var(--lh-body)' }} data-testid="check-error">{cs.error}</p>;
+  }
+  if (!cs?.items) return null;
+
+  // C2.9 — designed empty states. The tool is genuinely usable; this book just
+  // has no checks in the pinned resource.
+  if (cs.empty) return <CheckEmpty cs={cs} actions={actions} />;
+
+  const item = cs.items[cs.activeIndex];
+  // Single source of truth with the progress meter — an Invalid triage counts
+  // as decided in BOTH, and a carry-over invalidation counts in neither (B23).
+  const decided = isDecided;
+  const quote = quoteOf(item);
+
+  const toggleWord = (i) =>
+    setSel((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  const markValid = () => {
+    const selections = selectionsFromTokens(targetText, [...sel].sort((a, b) => a - b));
+    actions.recordDecision(
+      selections.length
+        ? { selections, nothingToSelect: false, status: 'valid' }
+        : { selections: false, nothingToSelect: true, status: 'valid' },
+    );
+  };
+  const markInvalid = () =>
+    actions.recordDecision({ selections: false, nothingToSelect: false, status: 'invalid' });
+  const markTodo = () => actions.recordDecision({ status: 'todo' });
+
+  return (
+    <div data-testid="check-session">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+        <Button variant="secondary" size="sm" onClick={actions.closeCheckTool}>
+          {t('check.back')}
+        </Button>
+        <div style={{ flex: 1 }} />
+        <span data-testid="check-progress" style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)' }}>
+          {t('check.progress', { decided: cs.progress.decided, total: cs.progress.total })}
+        </span>
+      </div>
+
+      <ProgressBar value={cs.progress.total ? (cs.progress.decided / cs.progress.total) * 100 : 0}
+        height={6} style={{ marginBottom: 18 }} />
+      {/* #15: the denominator above EXCLUDES checks the project's versification
+        * has no verse for. Dropping them silently would make "0 of 415" look
+        * complete when the resource offered 417 — the same silence B20 fixed for
+        * the fallback. Null for an eng project, which is every project whose
+        * numbering matches the resource suite. */}
+      <DroppedNote dropped={cs.dropped}
+        style={{ background: 'var(--surface-warm)', border: 'var(--stroke) solid rgba(229,157,51,.35)', borderRadius: 'var(--radius-md)', padding: '10px 12px', margin: '0 0 10px' }} />
+
+      {cs.resource && (
+        <p style={{ fontSize: 'var(--fs-meta)', color: 'var(--text-tertiary)', ...mono, margin: '0 0 16px' }}>
+          {cs.resource.repoPath} · {cs.resource.version} · {t(`check.rung.${cs.resource.languageSet}`)}
+        </p>
+      )}
+
+      {item && (
+        <CheckItemCard item={item} quote={quote} words={words} sel={sel} toggleWord={toggleWord}
+          markValid={markValid} markInvalid={markInvalid} markTodo={markTodo} />
+      )}
+
+      <CheckSessionNotices cs={cs} />
+
+      <ArticlePanel article={cs.article} />
+
+      <CheckItemGrid cs={cs} decided={decided} onSelect={(i) => actions.setCheckIndex(i)} />
     </div>
   );
 }
@@ -445,6 +485,16 @@ export default function Check() {
             {t('nav.sources')} →
           </Button>
         </div>
+        {s.preflightError && (
+          // Catch-to-absence sweep (D30): an identity-read outage is stated
+          // and retryable — never every tool shown 'unavailable'.
+          <Callout tone="warn" role="alert" data-testid="preflight-error" style={{ marginBottom: 16, overflowWrap: 'anywhere' }}>
+            {t('check.preflightError')} {s.preflightError}{' '}
+            <Button size="sm" variant="outline" data-testid="preflight-retry" onClick={() => actions.runPreflight()}>
+              {t('app.retry')}
+            </Button>
+          </Callout>
+        )}
 
         {pre === null && <p style={{ fontSize: 'var(--fs-ui)', color: 'var(--text-tertiary)' }}>{t('check.checking')}</p>}
 

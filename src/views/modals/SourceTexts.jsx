@@ -49,55 +49,8 @@ function PackageRow({ row, onToggle }) {
   );
 }
 
-export default function SourceTexts() {
-  const { s, actions } = useApp();
-  if (s.modal !== 'sources') return null;
-  const src = s.src;
-  const g = src.gateway;
-  const current = s.projectPins?.languageSets?.primary?.gatewayLanguage;
-  // Org names compare case-insensitively — see samePath (D37): the stored form
-  // is what DCS reports, but a project pinned by another tool may carry another
-  // casing of the same address, and it is the same org.
-  const isCurrent =
-    !!g && current?.languageId === g.id &&
-    (current?.owner ?? '').toLowerCase() === g.org.toLowerCase();
-  const isCheckable = !!g && (s.checkable ?? []).includes(gatewayKey(g));
-
+function GatewayStep({ s, g, src, isCheckable, isCurrent, actions }) {
   return (
-    <Modal width={640} data-testid="sources-modal" title={t('sources.title')} subtitle={t('sources.subtitle')}
-      closeLabel={t('common.close')} onClose={actions.closeModal}
-      footer={g ? <>
-        {src.dl === 'done' && (
-          <span style={{ fontSize: 'var(--fs-caption-lg)', letterSpacing: 'var(--track-12-5)', fontWeight: 'var(--fw-heavy)', color: 'var(--tc-valid-strong)' }} data-testid="sources-done">
-            {t('sources.ready', { book: bookName(src.book), lang: g.name })}
-          </span>
-        )}
-        {src.dl === 'run' && (
-          <span style={{ fontSize: 'var(--fs-caption-lg)', letterSpacing: 'var(--track-12-5)', fontWeight: 'var(--fw-bold)', color: 'var(--text-secondary)' }} data-testid="sources-progress">
-            {src.progress || t('sources.downloading')}
-          </span>
-        )}
-        <div style={{ flex: 1 }} />
-        <Button variant="secondary" onClick={actions.closeModal}>{t('common.close')}</Button>
-        {src.dl == null && src.rows.length > 0 && (
-          <Button onClick={actions.downloadPackage} data-testid="sources-download">{t('sources.download')}</Button>
-        )}
-      </> : null}>
-
-      {/* The platform is the net gate; going online is the user's choice. */}
-      {!s.netEnabled && (
-        <Callout tone="kindle" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ flex: 1 }}>{t('sources.offline')}</span>
-          <Button size="sm" onClick={actions.goOnline}
-            style={{ background: 'var(--uw-kindle)', flex: 'none' }}>{t('sources.goOnline')}</Button>
-        </Callout>
-      )}
-
-      {!g && (
-        <LanguageStep gateways={actions.sourceGateways()} installedCount={actions.installedCountFor} onPick={actions.pickGateway} />
-      )}
-
-      {g && (
         <>
           <Callout tone="info" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)' }}>{g.name} · {g.org}</span>
@@ -138,6 +91,11 @@ export default function SourceTexts() {
             {src.error && (
               <p style={{ fontSize: 'var(--fs-caption-lg)', color: 'var(--tc-invalid)', margin: 0, lineHeight: 'var(--lh-body)' }} data-testid="sources-error">{src.error}</p>
             )}
+            {s.checkableError && (
+              // Catch-to-absence sweep (D30): an identity-read outage is
+              // stated — never "this machine can check in no language".
+              <p style={{ fontSize: 'var(--fs-caption-lg)', color: 'var(--tc-invalid)', margin: 0, lineHeight: 'var(--lh-body)' }} data-testid="checkable-error">{t('sources.checkableError')} {s.checkableError}</p>
+            )}
             {!src.loading && !src.error && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                 {src.rows.length === 0 && (
@@ -152,7 +110,73 @@ export default function SourceTexts() {
             )}
           </div>
         </>
+  );
+}
+
+function SourcesFooter({ src, g, actions }) {
+  return (
+    <>
+        {src.dl === 'done' && (
+          <span style={{ fontSize: 'var(--fs-caption-lg)', letterSpacing: 'var(--track-12-5)', fontWeight: 'var(--fw-heavy)', color: 'var(--tc-valid-strong)' }} data-testid="sources-done">
+            {t('sources.ready', { book: bookName(src.book), lang: g.name })}
+          </span>
+        )}
+        {src.dl === 'run' && (
+          <span style={{ fontSize: 'var(--fs-caption-lg)', letterSpacing: 'var(--track-12-5)', fontWeight: 'var(--fw-bold)', color: 'var(--text-secondary)' }} data-testid="sources-progress">
+            {src.progress || t('sources.downloading')}
+          </span>
+        )}
+        <div style={{ flex: 1 }} />
+        <Button variant="secondary" onClick={actions.closeModal}>{t('common.close')}</Button>
+        {src.dl == null && src.rows.length > 0 && (
+          <Button onClick={actions.downloadPackage} data-testid="sources-download">{t('sources.download')}</Button>
+        )}
+    </>
+  );
+}
+
+/** Org names compare case-insensitively — see samePath (D37): the stored
+ * form is what DCS reports, but a project pinned by another tool may carry
+ * another casing of the same address, and it is the same org. */
+const isCurrentGateway = (s, g) => {
+  const current = s.projectPins?.languageSets?.primary?.gatewayLanguage;
+  return (
+    !!g && current?.languageId === g.id &&
+    (current?.owner ?? '').toLowerCase() === g.org.toLowerCase()
+  );
+};
+const isCheckableGateway = (s, g) => !!g && (s.checkable ?? []).includes(gatewayKey(g));
+
+export default function SourceTexts() {
+  const { s, actions } = useApp();
+  if (s.modal !== 'sources') return null;
+  const src = s.src;
+  const g = src.gateway;
+  // Org names compare case-insensitively — see samePath (D37): the stored form
+  // is what DCS reports, but a project pinned by another tool may carry another
+  // casing of the same address, and it is the same org.
+  const isCurrent = isCurrentGateway(s, g);
+  const isCheckable = isCheckableGateway(s, g);
+
+  return (
+    <Modal width={640} data-testid="sources-modal" title={t('sources.title')} subtitle={t('sources.subtitle')}
+      closeLabel={t('common.close')} onClose={actions.closeModal}
+      footer={g ? <SourcesFooter src={src} g={g} actions={actions} /> : null}>
+
+      {/* The platform is the net gate; going online is the user's choice. */}
+      {!s.netEnabled && (
+        <Callout tone="kindle" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ flex: 1 }}>{t('sources.offline')}</span>
+          <Button size="sm" onClick={actions.goOnline}
+            style={{ background: 'var(--uw-kindle)', flex: 'none' }}>{t('sources.goOnline')}</Button>
+        </Callout>
       )}
+
+      {!g && (
+        <LanguageStep gateways={actions.sourceGateways()} installedCount={actions.installedCountFor} onPick={actions.pickGateway} />
+      )}
+
+      {g && <GatewayStep s={s} g={g} src={src} isCheckable={isCheckable} isCurrent={isCurrent} actions={actions} />}
     </Modal>
   );
 }

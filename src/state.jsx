@@ -240,11 +240,14 @@ function isOldTestament(bookCode) {
 
 /** usfm-js verse objects for one verse of a source book — the aligner's input. */
 function verseObjectsFor(usfmText, chapter, verse) {
+  // Catch-to-absence sweep (D30): null = the text is PRESENT but could not
+  // be parsed — the alignment surface states 'unreadable', never the false
+  // "not on this computer" claim that sends the user to re-download.
   try {
     const json = usfm.toJSON(usfmText);
     return json?.chapters?.[String(chapter)]?.[String(verse)]?.verseObjects ?? [];
   } catch {
-    return [];
+    return null;
   }
 }
 
@@ -292,6 +295,8 @@ const initial = () => ({
   installedSrc: [], // [{ langKey, book }] packages this machine already has
   installEpoch: 0, // bumped on EVERY successful install (round 20 F2) — resource readiness re-derives even when resources.json is unchanged
   checkable: [], // gatewayKeys whose COMPLETE helps suite is installed (D30.2)
+  checkableError: null, // catch-to-absence sweep: an identity-read outage, stated — never "no language checkable"
+  preflightError: null, // catch-to-absence sweep: an identity-read outage on the Check preflight, stated
   gatewayError: null, // a failed gateway-change commit, shown in the dialogue
   netEnabled: false, // mirrors the platform's net gate (GET /net/status)
   projectPins: null, // the open project's resources.json (§5.3 v2 shape)
@@ -415,7 +420,11 @@ async function storedGatewayDecisions(store, books) {
   const md5s = {};
   for (const book of books) {
     for (const tool of Object.keys(TOOL_SLOT)) {
-      const got = await store.readDecisionsText(tool, book).catch(() => null);
+      // Catch-to-absence sweep (D30): readDecisionsText already returns
+      // {text:null} for a CONFIRMED absent file; a rejection here is a
+      // transient failure that would silently drop the book from the
+      // consequences the user consents to. Propagate to gatewayError.
+      const got = await store.readDecisionsText(tool, book);
       if (got?.text == null) continue;
       stored.push({ tool, book, file: JSON.parse(got.text), raw: got.text });
       md5s[`${tool}/${book}`] = got.md5;
@@ -453,9 +462,14 @@ async function prepareAlignmentSource(store, st, ref) {
   const pin = st.projectPins?.resources?.originalLanguage?.[testament];
   if (!pin?.repoPath) return { unavailable: 'unpinned' };
   let usfmText = null;
+  // Catch-to-absence sweep (D30): 'missing' means the text is CONFIRMED not
+  // on this computer (the screen sends the user to download it). A transient
+  // read failure must not make that claim — it propagates to the alignment
+  // surface's stated, retryable error.
   try {
     ({ usfm: usfmText } = await store.readSourceBook(resolveReadPath(pin), st.book));
-  } catch {
+  } catch (error) {
+    if (!error?.isNotFound) throw error;
     usfmText = null;
   }
   if (!usfmText) return { unavailable: 'missing' };
@@ -569,18 +583,19 @@ async function completedCheckSession({ store, st, tool, book, pre, derived, drop
 
 async function identifyInstalledResource(apiClient, repoPath, target) {
   if ((await readInstalled(apiClient, STORAGE_ID))[target]) return;
-  try {
-    const meta = await apiClient.getMetadataRaw(target);
-    const revision = Object.values(meta?.identification?.primary?.dcs || {})[0]?.revision;
-    const found = await identifyExistingInstall(repoPath, revision);
-    if (found)
-      await recordInstalled(apiClient, STORAGE_ID, target, {
-        ...found,
-        flavor: flavorOfMetadata(meta),
-      });
-  } catch {
-    // An unidentified existing install contributes no coverage.
-  }
+  // Catch-to-absence sweep (D30): "unidentified" is honest only when DCS
+  // CONFIRMS no tag names the revision (identifyExistingInstall → null). A
+  // transient failure PROPAGATES to the caller's stated per-row failure —
+  // the old swallow reported the row as done while the resource contributed
+  // no coverage ("installed" and "not checkable" at once).
+  const meta = await apiClient.getMetadataRaw(target);
+  const revision = Object.values(meta?.identification?.primary?.dcs || {})[0]?.revision;
+  const found = await identifyExistingInstall(repoPath, revision);
+  if (found)
+    await recordInstalled(apiClient, STORAGE_ID, target, {
+      ...found,
+      flavor: flavorOfMetadata(meta),
+    });
 }
 
 /** Install the EXACT identity the open project pins (round 20): fetching the
@@ -597,8 +612,13 @@ async function installPinnedRow(apiClient, row, wanted, local, target) {
     { repoPath: wanted.repoPath, version: wanted.version, sha: wanted.sha, flavor: wanted.flavor ?? '' },
     { api: apiClient, targetRepoPath: installPath === target ? undefined : installPath },
   );
-  const flavor =
-    wanted.flavor || flavorOfMetadata(await apiClient.getMetadataRaw(installPath).catch(() => null));
+  // Catch-to-absence sweep (D30/A17): a pin recorded with flavor '' is
+  // EXCLUDED from language sets (languageSetFromInstalled / mergeOptionalPins
+  // filter on !!flavor) — the download would report success while the
+  // language never becomes checkable. The metadata read is local and
+  // immediately post-install: a failure is transient and PROPAGATES to the
+  // stated per-row failure (a retry heals through the identify path).
+  const flavor = wanted.flavor || flavorOfMetadata(await apiClient.getMetadataRaw(installPath));
   await recordInstalled(apiClient, STORAGE_ID, installPath, {
     repoPath: wanted.repoPath,
     ...(wanted.version ? { version: wanted.version } : {}),
@@ -619,7 +639,9 @@ async function installPackageRow(apiClient, originGateway, row, local, wanted = 
     }
     const tag = await latestReleaseTag(repoPath);
     const result = await fetchAndInstallPin({ repoPath, version: tag, flavor: '' }, { api: apiClient });
-    const flavor = flavorOfMetadata(await apiClient.getMetadataRaw(target).catch(() => null));
+    // A17: same rule as installPinnedRow — never record flavor '' from a
+    // FAILED read; the row's stated failure + retry heals it.
+    const flavor = flavorOfMetadata(await apiClient.getMetadataRaw(target));
     await recordInstalled(apiClient, STORAGE_ID, target, {
       repoPath,
       version: tag,
@@ -722,16 +744,24 @@ async function drainForProjectOpen({ schedulerRef, noteSchedulerRef }) {
 async function projectPresentation(apiClient, store, repoPath, summary) {
   let scriptDirection = summary.scriptDirection;
   if (scriptDirection !== 'ltr' && scriptDirection !== 'rtl') {
-    const settings = await store.readSettings().catch(() => null);
+    // Catch-to-absence sweep (D30): 'ltr' is the default for a project
+    // GENUINELY without settings.json. A transient read failure must not
+    // render an RTL project left-to-right — it aborts the open into the
+    // stated bookError (performProjectOpen's catch).
+    const settings = await store.readSettings().catch((error) => {
+      if (error?.isNotFound) return null;
+      throw error;
+    });
     scriptDirection = settings?.textDirection === 'rtl' ? 'rtl' : 'ltr';
   }
-  let projectScope = {};
-  try {
-    const meta = await apiClient.getMetadataRaw(repoPath);
-    projectScope = meta?.type?.flavorType?.currentScope ?? {};
-  } catch {
-    projectScope = {};
-  }
+  // A failed metadata read must not DEFAULT the scope: scopeRangesFor({})
+  // means whole-book, silently disabling §4.2/D26 scope filtering — the
+  // journal side refuses this exact defaulting (journalingStore: "seeding or
+  // recovery with a defaulted scope would journal a widened scope
+  // permanently"). Propagate to the stated bookError; an absent currentScope
+  // key on a READABLE document stays {}.
+  const meta = await apiClient.getMetadataRaw(repoPath);
+  const projectScope = meta?.type?.flavorType?.currentScope ?? {};
   return { scriptDirection, projectScope };
 }
 
@@ -1061,6 +1091,16 @@ function loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatc
           patch: { projectPins: null, projectPinsLoaded: false, projectPinsError: String(error?.message || error) },
         });
     });
+}
+
+/** Catch-to-absence sweep (D30): one article read, failure STATED — never a
+ * false "article missing" (the callers render error and found distinctly). */
+async function settleArticleRead(apiClient, kind, sets, category, slug) {
+  try {
+    return { found: await readHelpArticle(apiClient, kind, sets, category, slug), error: null };
+  } catch (error) {
+    return { found: null, error: String(error?.message || error) };
+  }
 }
 
 /** Test hook (round 34): the pins-read outcomes are unit-tested — resolved
@@ -1422,7 +1462,10 @@ export function AppProvider({ children }) {
       );
       dispatch({ type: 'set', patch: { projects } });
     } catch (e) {
-      dispatch({ type: 'set', patch: { projects: [], bookError: String(e) } });
+      // Catch-to-absence sweep (D30): projects stays null (unknown), so the
+      // "No projects yet — Select New Bible" empty state never renders over
+      // a failed listing; the error banner + Retry state it instead.
+      dispatch({ type: 'set', patch: { projects: null, bookError: String(e) } });
     }
   }
 
@@ -1461,10 +1504,17 @@ export function AppProvider({ children }) {
        * assumed, because resources arrive by download, by rig seed, and by hand
        * sideload. */
       refreshCheckable: async () => {
-        const { installed } = await a.resolutionContext();
+        const { installed, resolutionError } = await a.resolutionContext();
+        if (resolutionError) {
+          // Catch-to-absence sweep (D30): an identity-read outage must not
+          // present as "this machine can check in no language" — keep the
+          // previous list standing and state the error.
+          dispatch({ type: 'set', patch: { checkableError: resolutionError } });
+          return stateRef.current.checkable;
+        }
         const checkable = GATEWAYS.filter((g) => languageSetFromInstalled(installed, g))
           .map(gatewayKey);
-        dispatch({ type: 'set', patch: { checkable: [...new Set(checkable)] } });
+        dispatch({ type: 'set', patch: { checkable: [...new Set(checkable)], checkableError: null } });
         return checkable;
       },
 
@@ -1548,7 +1598,11 @@ export function AppProvider({ children }) {
         // readiness check uses. Reading only the record made a seeded or
         // hand-sideloaded suite invisible, so a language the app had just
         // offered could not be pinned.
-        const { installed, coverage } = await a.resolutionContext();
+        const { installed, coverage, resolutionError } = await a.resolutionContext();
+        // Catch-to-absence sweep (D30): an identity-read outage must not be
+        // reported as "the suite is incomplete" for a complete suite — throw
+        // the outage itself (askGatewayChange states it as gatewayError).
+        if (resolutionError) throw new Error(resolutionError);
         const proposedPrimary = languageSetFromInstalled(installed, gateway);
         if (!proposedPrimary) throw new Error(t('sources.suiteIncomplete', { lang: gateway.name }));
         const { value: currentResources, md5: resourcesMd5 } = await store.readResourcesWithMd5();
@@ -1620,10 +1674,17 @@ export function AppProvider({ children }) {
       deriveItemsFor: async (tool, book, pin) => {
         const localRepo = resolveReadPath(pin);
         let tsv;
+        // Catch-to-absence sweep (D30): [] means the resource CONFIRMS it
+        // says nothing about this book (C2.9). A transient read failure must
+        // PROPAGATE — during a gateway change, [] flows into
+        // carryOverDecisions and permanently journals every stored decision
+        // as invalidated; the callers' stated error paths (gatewayError,
+        // checkSession.error) are the honest destination.
         try {
           tsv = await api.readIngredient(localRepo, `${book.toUpperCase()}.tsv`);
-        } catch {
-          return [];
+        } catch (error) {
+          if (error?.isNotFound) return [];
+          throw error;
         }
         if (tsv === null || tsv.startsWith('{"is_good":false')) return [];
         // §4.2 (D26): derivation MUST filter to the project scope — an out-of-scope
@@ -1660,7 +1721,16 @@ export function AppProvider({ children }) {
 
       /** Open the confirmation dialogue for a proposed gateway language. */
       askGatewayChange: async (gateway) => {
-        const preview = await a.previewGatewayChange(gateway);
+        // Catch-to-absence sweep (D30): the preview now PROPAGATES transient
+        // read failures (deriveItemsFor / readDecisionsText) instead of
+        // understating consequences — state them in the dialogue's error.
+        let preview;
+        try {
+          preview = await a.previewGatewayChange(gateway);
+        } catch (error) {
+          dispatch({ type: 'set', patch: { gatewayError: String(error?.message || error) } });
+          return null;
+        }
         const current = stateRef.current.projectPins?.languageSets?.primary?.gatewayLanguage;
         dispatch({
           type: 'set',
@@ -1760,7 +1830,14 @@ export function AppProvider({ children }) {
       runPreflight: async () => {
         const st = stateRef.current;
         if (!st.book) return;
-        const { installed, coverage } = await a.resolutionContext();
+        const { installed, coverage, resolutionError } = await a.resolutionContext();
+        if (resolutionError) {
+          // Catch-to-absence sweep (D30): an identity-read outage must not
+          // present every tool as 'unavailable'/'unpinned' — state it,
+          // retryable (the preflight re-runs on the next visit or retry).
+          dispatch({ type: 'set', patch: { preflight: null, preflightError: resolutionError } });
+          return null;
+        }
         const online = st.netEnabled;
         const out = {};
         for (const tool of Object.keys(TOOL_SLOT)) {
@@ -1770,7 +1847,7 @@ export function AppProvider({ children }) {
             online,
           });
         }
-        dispatch({ type: 'set', patch: { preflight: out } });
+        dispatch({ type: 'set', patch: { preflight: out, preflightError: null } });
         return out;
       },
 
@@ -1789,7 +1866,15 @@ export function AppProvider({ children }) {
           return;
         }
         dispatch({ type: 'set', patch: { alignSession: { loading: true } } });
-        const source = await prepareAlignmentSource(store, st, ref);
+        let source;
+        try {
+          source = await prepareAlignmentSource(store, st, ref);
+        } catch (error) {
+          // Catch-to-absence sweep (D30): a transient source read failure is
+          // a stated, retryable error — never the 'missing' download prompt.
+          dispatch({ type: 'set', patch: { alignSession: { error: String(error?.message || error) } } });
+          return;
+        }
         if (source.unavailable) {
           dispatch({ type: 'set', patch: { alignSession: { unavailable: source.unavailable } } });
           return;
@@ -1820,6 +1905,11 @@ export function AppProvider({ children }) {
           srcRef.reference.chapter,
           srcRef.reference.verse,
         );
+        if (origObjects === null) {
+          // The text is present but unparseable — say that (D30).
+          dispatch({ type: 'set', patch: { alignSession: { unavailable: 'unreadable' } } });
+          return;
+        }
         const mapped = { chapter, verse, reference: srcRef.reference };
         const session = await buildAlignmentSession(store, st, ref, source, mapped, origObjects);
         dispatch({
@@ -1939,15 +2029,19 @@ export function AppProvider({ children }) {
         const rung = cs.resource?.languageSet;
         const sets = st.projectPins?.languageSets?.[rung];
         const key = `${cs.tool}:${item.contextId.groupId}:${item.category}`;
-        if (cs.article?.key === key) return;
+        if (cs.article?.key === key && !cs.article.error) return;
         dispatch({ type: 'set', patch: { checkSession: { ...cs, article: { key, loading: true } } } });
         const kind = cs.tool === 'translationWords' ? 'tw' : 'ta';
-        const found = await readHelpArticle(api, kind, sets, item.category, item.contextId.groupId);
+        // Catch-to-absence sweep (D30): readHelpArticle now PROPAGATES
+        // transient failures (round 35) — without the settle the un-awaited
+        // call was an unhandled rejection and the panel spun forever. A
+        // failure is a stated, retryable article error, like Understand's.
+        const { found, error } = await settleArticleRead(api, kind, sets, item.category, item.contextId.groupId);
         const now = stateRef.current.checkSession;
         if (now?.article?.key !== key) return; // the user moved on
         dispatch({
           type: 'set',
-          patch: { checkSession: { ...now, article: { key, loading: false, found } } },
+          patch: { checkSession: { ...now, article: { key, loading: false, found, error } } },
         });
       },
 
@@ -1998,27 +2092,42 @@ export function AppProvider({ children }) {
       },
 
       resolutionContext: async () => {
-        // Round 35: a summaries outage must be REPORTED, not swallowed — an
-        // empty summary map yields empty coverage, and installed helps then
-        // resolve to a false "the package lacks this" absence (D30). The
-        // context stays usable (tolerant callers keep working), but carries
-        // the error for readiness-driving callers to surface.
-        let summariesError = null;
+        // Round 35 + catch-to-absence sweep (D30): an outage in ANY of the
+        // three identity reads (the install record, the summaries, the
+        // on-disk discovery) must be REPORTED, not swallowed — each collapse
+        // makes installed resources read as a false "this machine lacks it"
+        // absence. The context stays usable (tolerant callers keep working),
+        // but carries ONE resolutionError for readiness-driving callers
+        // (Understand slots, refreshCheckable, runPreflight, the gateway
+        // change) to surface as a stated, retryable state.
+        let resolutionError = null;
+        const noteFailure = (error) => {
+          resolutionError = resolutionError ?? String(error?.message || error);
+        };
         const [recorded, summaries] = await Promise.all([
-          readInstalled(api, STORAGE_ID),
+          readInstalled(api, STORAGE_ID).catch((error) => {
+            noteFailure(error);
+            return {};
+          }),
           api.getSummaries().catch((error) => {
-            summariesError = String(error?.message || error);
+            noteFailure(error);
             return {};
           }),
         ]);
         // Resources can be present without a record — a bundled install, a rig
         // seed, a hand sideload. Identify those from their own metadata so the
         // machine's real contents drive readiness (works offline).
-        const installed = await discoverOnDisk(api, summaries, recorded, orgForRepoName);
+        const installed = await discoverOnDisk(api, summaries, recorded, orgForRepoName, noteFailure);
         // Cache for resolveReadPath: reads resolve a pin to its ACTUAL on-disk
         // path by identity, not by recomputing (B10).
         installedCache = installed;
-        return { installed, coverage: coverageFromLocal(summaries, installed), summariesError };
+        return {
+          installed,
+          coverage: coverageFromLocal(summaries, installed),
+          resolutionError,
+          // Back-compat name consumed by dispatchSummariesDown (round 35).
+          summariesError: resolutionError,
+        };
       },
 
       /** C2.1 — fetch each selected resource's sb-zip, verify the SHA the
@@ -2099,10 +2208,15 @@ export function AppProvider({ children }) {
       //      books are added in the SEPARATE Add-a-book dialog) ----
       openNewProject: async () => {
         let versifications = ['eng'];
+        let versificationsError = null;
         try {
           versifications = await api.getVersifications();
-        } catch {
-          /* offline rig without the endpoint — keep the default */
+        } catch (error) {
+          // Catch-to-absence sweep (D30): a one-entry picker presented a
+          // failed listing as "the platform supports one scheme" — and the
+          // chosen scheme is journaled at creation, permanently. Keep the
+          // safe default usable but STATE the truncation in the dialog.
+          versificationsError = String(error?.message || error);
         }
         dispatch({
           type: 'set',
@@ -2116,6 +2230,7 @@ export function AppProvider({ children }) {
               font: SCRIPT_FONTS[0],
               versification: 'eng',
               versifications,
+              versificationsError,
               showAdvanced: false,
               busy: false,
               error: null,
@@ -2261,7 +2376,13 @@ export function AppProvider({ children }) {
                 bookName: bookName(code),
                 projectName: f.projName,
               });
-            } catch {
+            } catch (error) {
+              // Catch-to-absence sweep (D30): the server skeleton is the
+              // documented state for a book the source CONFIRMS it lacks. A
+              // transient failure journaling an unchunked skeleton is
+              // PERMANENT (§8.5 grow-only) — abort into the dialog's stated
+              // error instead.
+              if (!error?.isNotFound) throw error;
               initialUsfm = undefined; /* keep the server skeleton */
             }
             await store.addBook({
@@ -2314,8 +2435,13 @@ export function AppProvider({ children }) {
             langName: settings.languageName || '',
             loaded: true,
           });
-        } catch {
-          a.patchSt({ loaded: true });
+        } catch (error) {
+          // Catch-to-absence sweep (D30, writable variant): claiming
+          // loaded:true over hard-coded defaults let Save WRITE those
+          // defaults over the project's real direction/font (an RTL project
+          // silently became LTR). State the failure; Save stays disabled
+          // while unloaded.
+          a.patchSt({ loaded: false, error: String(error?.message || error) });
         }
       },
       patchSt: (patch) =>
@@ -2353,6 +2479,14 @@ export function AppProvider({ children }) {
         try {
           await reader.open(project.id);
         } catch {
+          // Catch-to-absence sweep (D30): mark each book's progress UNKNOWN
+          // (null) so Home renders "unavailable", never a false 0% bar.
+          const unknown = {};
+          for (const code of project.bookCodes) unknown[code] = null;
+          dispatch({
+            type: 'set',
+            patch: { progressByProject: { ...stateRef.current.progressByProject, [project.id]: unknown } },
+          });
           return;
         }
         const pcts = {};
@@ -2526,6 +2660,9 @@ export function AppProvider({ children }) {
       /** Round 34: re-run the failed pins read (bound to the OPEN project's
        * store); the error clears optimistically and returns if the read
        * fails again. */
+      /** Catch-to-absence sweep (D30): retry a failed project listing. */
+      refreshProjects: () => refreshProjects(),
+
       retryProjectPins: () => {
         const store = storeRef.current;
         const repoPath = stateRef.current.project?.repoPath;

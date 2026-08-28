@@ -112,9 +112,10 @@ describe('rezip — the importer needs explicit directory entries', () => {
 });
 
 describe('identifyExistingInstall — name an already-present resource by evidence', () => {
-  const tagsFetch = (tags: Array<{ name: string; sha: string }>, ok = true) =>
+  const tagsFetch = (tags: Array<{ name: string; sha: string }>, ok = true, status = ok ? 200 : 500) =>
     (async () => ({
       ok,
+      status,
       json: async () => tags.map((t) => ({ name: t.name, commit: { sha: t.sha } })),
     })) as unknown as typeof fetch;
 
@@ -139,9 +140,15 @@ describe('identifyExistingInstall — name an already-present resource by eviden
     )).toBeNull();
   });
 
-  it('stays unidentified with no revision, or when DCS is unreachable', async () => {
+  it('stays unidentified with no revision; a 404 listing is conclusive absence', async () => {
     expect(await identifyExistingInstall('git.door43.org/a/b', '', tagsFetch([]))).toBeNull();
-    expect(await identifyExistingInstall('git.door43.org/a/b', 'abc', tagsFetch([], false))).toBeNull();
+    expect(await identifyExistingInstall('git.door43.org/a/b', 'abc', tagsFetch([], false, 404))).toBeNull();
+  });
+
+  it('an UNREACHABLE DCS propagates — never a false "unidentified" (catch-to-absence sweep, D30)', async () => {
+    await expect(
+      identifyExistingInstall('git.door43.org/a/b', 'abc', tagsFetch([], false, 500)),
+    ).rejects.toThrow(/HTTP 500/);
   });
 });
 
@@ -267,7 +274,7 @@ describe('DCS tag lookups paginate — a tag beyond the first page is still foun
       const url = new URL(String(input));
       requests.push(url.search);
       const page = Number(url.searchParams.get('page') ?? '1');
-      if (opts.failOnPage === page) return { ok: false, json: async () => [] };
+      if (opts.failOnPage === page) return { ok: false, status: 502, json: async () => [] };
       const limit = Math.min(Number(url.searchParams.get('limit') ?? '50'), opts.clampTo ?? 50);
       const slice = allTags.slice((page - 1) * limit, page * limit);
       return {
@@ -322,9 +329,11 @@ describe('DCS tag lookups paginate — a tag beyond the first page is still foun
     expect(requests.length).toBe(3);
   });
 
-  it('a transport failure mid-walk yields null (unidentified), never a partial verdict', async () => {
+  it('a transport failure mid-walk PROPAGATES — a partial walk is never "no tag exists" (catch-to-absence sweep, D30)', async () => {
     const { fetchFn } = pagedTagsFetch(manyTags, { failOnPage: 2 });
-    expect(await tagForCommitSha('git.door43.org/unfoldingWord/en_tn', manyTags[110].sha, fetchFn)).toBeNull();
+    await expect(
+      tagForCommitSha('git.door43.org/unfoldingWord/en_tn', manyTags[110].sha, fetchFn),
+    ).rejects.toThrow(/HTTP 502/);
   });
 });
 

@@ -73,6 +73,24 @@ export default function Align() {
     return <p style={{ fontSize: 14, color: '#8A99A4' }}>{t('align.loading')}</p>;
   }
 
+  if (a.error) {
+    // Catch-to-absence sweep (D30): a failed source read is a stated,
+    // retryable error — never the 'missing' download prompt.
+    return (
+      <div data-testid="align-error">
+        <div style={{ marginBottom: 16 }}>{back}</div>
+        <div style={{ border: '1.5px dashed rgba(35,31,32,.18)', borderRadius: 14, padding: '30px 24px', textAlign: 'center' }}>
+          <p style={{ fontSize: 15, fontWeight: 800, color: '#014263', margin: '0 0 8px' }}>{t('align.error.title')}</p>
+          <p style={{ fontSize: 13.5, color: '#4F5E6A', lineHeight: 1.6, margin: '0 0 12px', overflowWrap: 'anywhere' }}>{a.error}</p>
+          <button type="button" data-testid="align-retry" onClick={() => actions.openAlign()}
+            style={{ border: '1.5px solid #014263', background: 'transparent', color: '#014263', borderRadius: 8, padding: '6px 14px', fontWeight: 800, cursor: 'pointer' }}>
+            {t('app.retry')}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (a.unavailable) {
     return (
       <div data-testid="align-unavailable">

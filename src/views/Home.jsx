@@ -43,9 +43,12 @@ function ProjectCard({ p }) {
         {p.bookCodes.map((code) => {
           const pct = prog[code];
           const hasPct = typeof pct === 'number';
+          // Catch-to-absence sweep (D30): pct null/undefined = UNKNOWN (not
+          // yet read, or the read failed) — an em-dash, never a false 0% bar
+          // claiming "no drafting has been done".
           return (
             <BookTile key={code} name={bookName(code)} percent={hasPct ? pct : 0}
-              meta={hasPct ? undefined : ''} onClick={() => actions.openProject(p.id, code)} />
+              meta={hasPct ? undefined : '—'} onClick={() => actions.openProject(p.id, code)} />
           );
         })}
         <button type="button" onClick={() => actions.openAddBook(p)} data-tc="surface"
@@ -85,11 +88,19 @@ export default function Home() {
         {s.bookError && (
           <Callout tone="warn" role="alert" data-testid="home-open-error"
             style={{ margin: '0 0 16px', overflowWrap: 'anywhere' }}>
-            <strong>{t('home.openError')}</strong> {s.bookError}
+            <strong>{t('home.openError')}</strong> {s.bookError}{' '}
+            {projects === null && (
+              // Catch-to-absence sweep (D30): a failed project LISTING keeps
+              // projects unknown — retry in place, never the "No projects
+              // yet" invitation to create a duplicate.
+              <Button size="sm" variant="outline" data-testid="projects-retry" onClick={() => actions.refreshProjects()}>
+                {t('app.retry')}
+              </Button>
+            )}
           </Callout>
         )}
 
-        {projects === null && (
+        {projects === null && !s.bookError && (
           <p style={{ fontSize: 'var(--fs-ui)', color: 'var(--text-tertiary)' }}>{t('home.loading')}</p>
         )}
 

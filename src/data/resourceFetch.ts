@@ -165,8 +165,15 @@ const findDcsTag = async (
   const base = `https://${path.slice(0, slash)}/api/v1/repos/${path.slice(slash + 1)}/tags`;
   let effectivePageSize: number | null = null;
   for (let page = 1; page <= TAG_PAGE_BOUND; page += 1) {
-    const response = await fetchFn(`${base}?limit=${TAG_PAGE_LIMIT}&page=${page}`).catch(() => null);
-    if (!response?.ok) return null;
+    // Catch-to-absence sweep (D30): null means DCS CONFIRMS no tag matches.
+    // A transport failure or server error must PROPAGATE — swallowing it made
+    // an identification read as "no tag exists", and the caller then claimed
+    // an install both succeeded and contributes nothing.
+    const response = await fetchFn(`${base}?limit=${TAG_PAGE_LIMIT}&page=${page}`);
+    if (!response.ok) {
+      if (response.status === 404) return null; // the repo/listing does not exist — conclusive
+      throw new Error(`tags listing for ${repoPath} failed (HTTP ${response.status})`);
+    }
     const tags = (await response.json()) as DcsTag[];
     if (!Array.isArray(tags) || tags.length === 0) return null; // the listing ended
     const hit = tags.find(match);

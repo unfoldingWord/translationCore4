@@ -475,3 +475,46 @@ describe('round 20 — unsatisfiedProjectPinFor: a download must satisfy the PRO
     expect(unsatisfiedProjectPinFor(setWith(shaLess), target, {})).toBeNull();
   });
 });
+
+describe('catch-to-absence sweep (D30) — the install-record reads', () => {
+  const notFound = () => Object.assign(new Error('404'), { isNotFound: true });
+
+  it('readInstalled: absent settings are {}; a transport failure PROPAGATES (never "nothing installed")', async () => {
+    const absent = { getClientSettings: async () => { throw notFound(); } } as never;
+    expect(await readInstalled(absent, 'sid')).toEqual({});
+    const down = { getClientSettings: async () => { throw new Error('settings endpoint down'); } } as never;
+    await expect(readInstalled(down, 'sid')).rejects.toThrow(/settings endpoint down/);
+  });
+
+  it('recordInstalled: a failed settings READ aborts — never a blind whole-document replacement', async () => {
+    const writes: unknown[] = [];
+    const down = {
+      getClientSettings: async () => { throw new Error('read failed'); },
+      setClientSettings: async (_: string, doc: unknown) => { writes.push(doc); },
+    } as never;
+    await expect(recordInstalled(down, 'sid', 'p', pin('unfoldingWord/en_tq', 'v89'))).rejects.toThrow(/read failed/);
+    expect(writes).toEqual([]); // the destructive write never happened
+    // A confirmed-absent document is the legitimate empty base.
+    const absent = {
+      getClientSettings: async () => { throw notFound(); },
+      setClientSettings: async (_: string, doc: unknown) => { writes.push(doc); },
+    } as never;
+    await recordInstalled(absent, 'sid', 'p', pin('unfoldingWord/en_tq', 'v89'));
+    expect(writes).toHaveLength(1);
+  });
+
+  it('discoverOnDisk: a transport failure reports INCOMPLETE discovery instead of hiding an on-disk resource', async () => {
+    const failures: unknown[] = [];
+    const api = { getMetadataRaw: async () => { throw new Error('metadata read failed'); } } as never;
+    const summaries = { '_local_/_sideloaded_/unfoldingword--en_tq': { book_codes: ['TIT'] } } as never;
+    const out = await discoverOnDisk(api, summaries, {}, () => null, (e) => failures.push(e));
+    expect(out).toEqual({}); // nothing invented…
+    expect(failures).toHaveLength(1); // …and the gap is REPORTED, not silent
+    // A confirmed not-found contributes nothing and reports nothing (a real
+    // non-burrito directory).
+    const failures2: unknown[] = [];
+    const api404 = { getMetadataRaw: async () => { throw notFound(); } } as never;
+    await discoverOnDisk(api404, summaries, {}, () => null, (e) => failures2.push(e));
+    expect(failures2).toEqual([]);
+  });
+});
