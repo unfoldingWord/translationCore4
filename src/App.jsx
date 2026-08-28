@@ -24,26 +24,20 @@ function SaveIndicator() {
     dirty: { status: 'warn', label: t('app.unsaved') },
     error: { status: 'invalid', label: t('app.saveError') },
   };
-  // A failed comprehension write is a save failure like any other (B1,
-  // 2026-08-27 adversarial round 2): it shows here globally — not only on
-  // the Understand screen — with its own retry. Per-target since round 3
-  // (C2): ANY standing entry is an error.
-  const noteError = Object.keys(s.noteSaveErrors ?? {}).length > 0;
-  // Comprehension activity counts as save state too (Q2, adversarial round
-  // 17): 'Saved' must never show while a note is dirty or a write is in
-  // flight — the priority is error > saving > dirty > the verse scheduler.
-  const act = s.noteActivity ?? {};
-  const effective = noteError
-    ? 'error'
-    : act.pending
-      ? 'saving'
-      : act.dirty
-        ? 'dirty'
-        : s.saveState;
-  const m = noteError ? map.error : map[effective] || map.saved;
-  const isError = noteError || effective === 'error';
+  // A failed comprehension write is a save failure like any other (B1): the
+  // note scheduler's state folds in here globally — not only on the
+  // Understand screen — with its own retry. The effective state is the WORST
+  // of the two schedulers (D65): error > saving > dirty > saved, so 'Saved'
+  // never shows while either machine holds work.
+  const rank = { error: 3, saving: 2, dirty: 1, saved: 0 };
+  const noteState = s.noteSaveState ?? 'saved';
+  const verseState = s.saveState ?? 'saved';
+  const effective = (rank[noteState] ?? 0) >= (rank[verseState] ?? 0) ? noteState : verseState;
+  const noteError = noteState === 'error';
+  const m = map[effective] || map.saved;
+  const isError = effective === 'error';
   return (
-    <div data-testid="save-indicator" data-state={noteError ? 'error' : effective}
+    <div data-testid="save-indicator" data-state={effective}
       style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', fontWeight: 'var(--fw-heavy)', display: 'flex', alignItems: 'center', gap: 6, color: isError ? 'var(--tc-invalid-inverse)' : 'rgba(255,255,255,.66)' }}>
       <StatusDot status={m.status} size={8} />
       {m.label}

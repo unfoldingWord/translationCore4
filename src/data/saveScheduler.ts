@@ -123,6 +123,17 @@ export class SaveScheduler {
     return this.current.get(book) ?? null;
   }
 
+  /** Seed a key only when it is ABSENT — never touches existing state, so the
+   * unsaved-work hazard loadBook's B3/M1 guard exists for cannot arise, and
+   * seeding one key while another is dirty is safe. The comprehension-note
+   * scheduler seeds each target lazily on its first edit (D65): the stored
+   * note becomes `persisted`, so a revert-to-stored compares clean. */
+  seedIfAbsent(book: string, rawBook: string): void {
+    if (this.current.has(book)) return;
+    this.current.set(book, rawBook);
+    this.persisted.set(book, rawBook);
+  }
+
   /** Record one verse edit. Applies the splice to the in-memory text at once
    * (the splice engine stays the only mutation path) and arms the debounce.
    * Throws if the book was never loaded, and propagates the splice engine's

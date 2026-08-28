@@ -34,8 +34,7 @@ const baseState = {
   progressByProject: {},
   projects: [],
   netEnabled: false,
-  noteSaveErrors: {},
-  noteActivity: { dirty: false, pending: false },
+  noteSaveState: 'saved',
 };
 
 const bookModel = {
@@ -88,22 +87,27 @@ describe('#108 — Publish moves into Check as Community Checking', () => {
     expect(go).toHaveBeenCalledWith('publish');
   });
 
-  it('a failed comprehension write surfaces on the GLOBAL save indicator with its own retry (2026-08-27 adversarial round 2, B1)', () => {
-    state = { ...baseState, noteSaveErrors: { 'p1|1:1': { message: 'refused', repoPath: 'p1', book: 'TIT', chapter: 1, verse: '1', text: 'x' } } } as never;
+  it('a failed comprehension write surfaces on the GLOBAL save indicator with its own retry (B1/D65)', () => {
+    state = { ...baseState, noteSaveState: 'error' } as never;
     render(<App />);
     const indicator = screen.getByTestId('save-indicator');
     expect(indicator.getAttribute('data-state')).toBe('error');
     expect(screen.getByTestId('retry-note-save')).toBeTruthy();
   });
 
-  it("the indicator never claims Saved while a note is dirty or a write is pending (adversarial round 17, Q2)", () => {
-    state = { ...baseState, noteActivity: { dirty: true, pending: false } } as never;
+  it("the indicator never claims Saved while the note scheduler holds work — the WORST of the two schedulers wins (Q2/D65)", () => {
+    state = { ...baseState, noteSaveState: 'dirty' } as never;
     render(<App />);
     expect(screen.getByTestId('save-indicator').getAttribute('data-state')).toBe('dirty');
     cleanup();
-    state = { ...baseState, noteActivity: { dirty: true, pending: true } } as never;
+    state = { ...baseState, noteSaveState: 'saving' } as never;
     render(<App />);
     expect(screen.getByTestId('save-indicator').getAttribute('data-state')).toBe('saving');
+    cleanup();
+    // and the verse scheduler's worse state wins symmetrically
+    state = { ...baseState, noteSaveState: 'dirty', saveState: 'error' } as never;
+    render(<App />);
+    expect(screen.getByTestId('save-indicator').getAttribute('data-state')).toBe('error');
   });
 
   it('the publish view is the typeset preview with both exports disabled', () => {

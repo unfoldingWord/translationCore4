@@ -9,15 +9,36 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 
 // Actions the Understand screen may call WITHOUT writing to the project.
+// stageNote/flushNotes are the write surface (D65: staging buffers into the
+// note SaveScheduler; flush/debounce journals) — everything else is read-only.
 const READ_SIDE = new Set([
   'loadUnderstand', 'setHelpsTab', 'setSourceTab', 'toggleRail', 'setChapter',
   'loadHelpArticle', 'closeHelpArticle', 'openBook', 'go',
-  'setNoteDirty', // an unload-guard flag on a ref — never a project write
-  'dismissNoteError', // removes a UI failure-ledger entry — never a project write
+  'stagedNote', // reads the scheduler buffer — never a project write
 ]);
 const calls: Array<{ name: string; args: unknown[] }> = [];
+// A faithful fake of the note scheduler's per-key latest-value buffer (D65):
+// stageNote seeds `persisted` with the displayed stored text on first touch
+// and overwrites `current`; stagedNote reads the buffer; dirty is derived by
+// comparison, exactly like src/data/saveScheduler.ts.
+const noteCurrent = new Map<string, string>();
+const notePersisted = new Map<string, string>();
+const noteKeyOf = (t: { chapter: unknown; verse: unknown }) => `${t.chapter}:${t.verse}`;
+const bufferDirty = () =>
+  [...noteCurrent].filter(([k, v]) => notePersisted.get(k) !== v).map(([k]) => k);
 const actionsProxy = new Proxy({}, {
-  get: (_, name: string) => (...args: unknown[]) => { calls.push({ name, args }); },
+  get: (_, name: string) => (...args: unknown[]) => {
+    calls.push({ name, args });
+    if (name === 'stageNote') {
+      const [target, text] = args as [{ chapter: unknown; verse: unknown; stored?: string }, string];
+      const k = noteKeyOf(target);
+      if (!noteCurrent.has(k)) notePersisted.set(k, target.stored ?? '');
+      noteCurrent.set(k, text);
+      return undefined;
+    }
+    if (name === 'stagedNote') return noteCurrent.get(noteKeyOf(args[0] as never)) ?? null;
+    return undefined;
+  },
 });
 
 const RAW_ULT = '\\id TIT\n\\c 1\n\\ts\\*\n\\p\n\\v 1 one\n\\v 2 two\n\\ts\\*\n\\p\n\\v 3 three\n\\v 4-5 bridge\n';
@@ -74,13 +95,11 @@ vi.mock('../src/state.jsx', () => ({
   SUITE_VERSION: 'v89',
 }));
 
-import Understand, { __draftStashForTests } from '../src/views/Understand.jsx';
+import Understand from '../src/views/Understand.jsx';
 
-// The draft stash is module state (survives unmounts BY DESIGN, round 15/16);
-// tests must not inherit each other's parked drafts. cleanup() FIRST: it is
-// the unmount that parks the previous test's drafts — clearing before it
-// would re-inherit them.
-beforeEach(() => { cleanup(); __draftStashForTests.clear(); });
+// The fake buffer stands in for the note scheduler (module state in the app,
+// but per-test here): clear it after cleanup() so tests never inherit drafts.
+beforeEach(() => { cleanup(); noteCurrent.clear(); notePersisted.clear(); });
 
 const writes = () => calls.filter((c) => !READ_SIDE.has(c.name));
 
@@ -147,24 +166,26 @@ describe('#106 — the Understand write boundary', () => {
       expect(box.value).toBe('the verse-2 note');
       fireEvent.change(box, { target: { value: 'the verse-2 note, edited' } });
       fireEvent.blur(box);
-      const w = writes();
-      expect(w.length).toBe(1);
-      expect(w[0].args[1]).toBe('2'); // the note's OWN target, not the head '1'
+      const staged = calls.filter((c) => c.name === 'stageNote');
+      expect((staged[staged.length - 1].args[0] as { verse: string }).verse).toBe('2'); // the note's OWN target, not the head '1'
+      expect(calls.filter((c) => c.name === 'flushNotes').length).toBe(1);
     } finally {
       state.understand.comprehension = saved;
     }
   });
 
-  it('the comprehension box is the ONLY write: blur with new text calls saveComprehension, and nothing else writes', () => {
+  it('the comprehension box is the ONLY write: typing stages into the buffer, blur flushes — nothing else writes', () => {
     render(<Understand />);
     const boxes = screen.getAllByPlaceholderText('What does this section mean in your own words?');
     fireEvent.change(boxes[0], { target: { value: 'God made everything through the Word.' } });
-    expect(writes()).toEqual([]); // typing alone writes nothing
+    // Typing stages (buffered, debounce-owned) but never flushes by itself.
+    expect(calls.filter((c) => c.name === 'flushNotes')).toEqual([]);
+    const staged = calls.filter((c) => c.name === 'stageNote');
+    expect(staged[staged.length - 1].args[1]).toBe('God made everything through the Word.');
     fireEvent.blur(boxes[0]);
-    const w = writes();
-    expect(w.length).toBe(1);
-    expect(w[0].name).toBe('saveComprehension');
-    expect(w[0].args[2]).toBe('God made everything through the Word.');
+    expect(calls.filter((c) => c.name === 'flushNotes').length).toBe(1);
+    // and the whole write surface is exactly those two actions
+    expect(writes().every((c) => c.name === 'stageNote' || c.name === 'flushNotes')).toBe(true);
   });
 });
 
@@ -204,9 +225,9 @@ describe('2026-08-27 Codex review regressions', () => {
     const bridgeBox = boxes[boxes.length - 1]; // last verse unit is 4-5
     fireEvent.change(bridgeBox, { target: { value: 'note on the bridge' } });
     fireEvent.blur(bridgeBox);
-    const w = writes();
-    expect(w.length).toBe(1);
-    expect(w[0].args[1]).toBe('4-5'); // §8.4 identity preserved
+    const staged = calls.filter((c) => c.name === 'stageNote');
+    expect((staged[staged.length - 1].args[0] as { verse: string }).verse).toBe('4-5'); // §8.4 identity preserved
+    expect(calls.filter((c) => c.name === 'flushNotes').length).toBe(1);
   });
 
   it('an unchanged focus/blur appends NO duplicate grow-only note', () => {
@@ -261,31 +282,29 @@ describe('2026-08-27 adversarial-review regressions', () => {
     }
   });
 
-  it('typing marks the note dirty for the unload guard; an unchanged edit clears it', () => {
+  it('typing makes the note buffer dirty (the unload guard reads it); an unchanged edit returns it to clean', () => {
     render(<Understand />);
     const box = screen.getAllByPlaceholderText('What does this section mean in your own words?')[0];
     fireEvent.change(box, { target: { value: 'unsaved text' } });
-    const dirtyCalls = calls.filter((c) => c.name === 'setNoteDirty');
-    expect(dirtyCalls[dirtyCalls.length - 1].args[1]).toBe(true);
-    expect(String(dirtyCalls[dirtyCalls.length - 1].args[0])).toContain(':'); // per-target key (C2)
+    // Dirty is DERIVED per target: current ≠ persisted for exactly this key (C2/F2).
+    expect(bufferDirty()).toEqual(['1:1']);
     fireEvent.change(box, { target: { value: '' } }); // back to the stored (empty) value
-    const after = calls.filter((c) => c.name === 'setNoteDirty');
-    expect(after[after.length - 1].args[1]).toBe(false);
+    expect(bufferDirty()).toEqual([]);
   });
 });
 
 describe('2026-08-27 adversarial round 2 regressions', () => {
   beforeEach(() => { cleanup(); calls.length = 0; });
 
-  it('blur does NOT clear the dirty flag — only a successful persist may (B1)', () => {
+  it('blur does NOT clear the buffer — only a successful persist may (B1: the scheduler sets persisted on write success)', () => {
     render(<Understand />);
     const box = screen.getAllByPlaceholderText('What does this section mean in your own words?')[0];
     fireEvent.change(box, { target: { value: 'about to fail' } });
     fireEvent.blur(box);
-    // setNoteDirty(true) from the change; NO setNoteDirty(false) from the blur
-    const dirtyCalls = calls.filter((c) => c.name === 'setNoteDirty').map((c) => c.args[1]);
-    expect(dirtyCalls).toEqual([true]);
-    expect(calls.filter((c) => c.name === 'saveComprehension').length).toBe(1);
+    // The flush was REQUESTED; the buffer stays dirty until the write lands
+    // (the real scheduler clears it only in writeDirty's success path).
+    expect(calls.filter((c) => c.name === 'flushNotes').length).toBe(1);
+    expect(bufferDirty()).toEqual(['1:1']);
   });
 });
 
@@ -304,9 +323,8 @@ describe('2026-08-27 adversarial round 5 regression', () => {
       rerender(<Understand />);
       // ...and the box KEEPS the newer draft instead of resetting to A
       expect(box().value).toBe('text B, typed while A saves');
-      // and the dirty mark is re-asserted for the unload guard
-      const dirty = calls.filter((c) => c.name === 'setNoteDirty');
-      expect(dirty[dirty.length - 1].args[1]).toBe(true);
+      // and the buffer still holds the draft for the unload guard
+      expect(bufferDirty()).toEqual(['1:1']);
     } finally {
       state.understand.comprehension = saved;
     }
@@ -341,9 +359,11 @@ describe('2026-08-27 adversarial round 7 regression', () => {
       fireEvent.blur(box);
       expect(box.value).toBe('a permanent note'); // restored
       expect(screen.getByTestId('understand-clear-refused')).toBeTruthy();
-      const dirty = calls.filter((c) => c.name === 'setNoteDirty');
-      expect(dirty[dirty.length - 1].args[1]).toBe(false); // reconciled
-      expect(writes()).toEqual([]); // grow-only store untouched
+      // The emptiness never entered the buffer: it reconciled to the stored
+      // text (clean by comparison), and nothing flushed — the grow-only
+      // store is untouched and no dirty state can strand (round 22).
+      expect(bufferDirty()).toEqual([]);
+      expect(calls.filter((c) => c.name === 'flushNotes')).toEqual([]);
     } finally {
       state.understand.comprehension = saved;
     }
@@ -376,11 +396,12 @@ describe('2026-08-27 adversarial round 8 regressions', () => {
       const box = screen.getAllByPlaceholderText('What does this section mean in your own words?')[1];
       fireEvent.change(box, { target: { value: 'note on project 2:2' } });
       fireEvent.blur(box);
-      const w = writes();
-      expect(w.length).toBe(1);
-      expect(w[0].args[0]).toBe(2); // the PROJECT chapter…
-      expect(w[0].args[1]).toBe('2'); // …and the PROJECT verse, verbatim
-      expect((w[0].args[3] as { projectFrame: boolean }).projectFrame).toBe(true);
+      const staged = calls.filter((c) => c.name === 'stageNote');
+      const target = staged[staged.length - 1].args[0] as { chapter: number; verse: string; projectFrame: boolean };
+      expect(target.chapter).toBe(2); // the PROJECT chapter…
+      expect(target.verse).toBe('2'); // …and the PROJECT verse, verbatim
+      expect(target.projectFrame).toBe(true);
+      expect(calls.filter((c) => c.name === 'flushNotes').length).toBe(1);
     } finally {
       state.understand = savedU;
       state.chapter = savedCh;
@@ -448,19 +469,18 @@ describe('2026-08-27 adversarial round 14 regression', () => {
 describe('2026-08-27 adversarial round 11 regressions', () => {
   beforeEach(() => { cleanup(); calls.length = 0; });
 
-  it('reverting a draft to the stored text dismisses the failed write for that exact target (K1)', () => {
+  it('reverting a draft to the stored text abandons it: the buffer returns to clean and nothing flushes (K1)', () => {
     const saved = state.understand.comprehension;
     state.understand.comprehension = { '1:1': { text: 'the stored note', ts: '2026-08-27T05:00:00.000Z|0000|a' } };
     try {
       render(<Understand />);
       const box = screen.getAllByPlaceholderText('What does this section mean in your own words?')[0];
       fireEvent.change(box, { target: { value: 'a failing edit' } });
+      expect(bufferDirty()).toEqual(['1:1']);
       fireEvent.change(box, { target: { value: 'the stored note' } }); // revert by typing
-      const dismissals = calls.filter((c) => c.name === 'dismissNoteError');
-      expect(dismissals.length).toBe(1);
-      expect(dismissals[0].args).toEqual([1, '1']);
-      fireEvent.blur(box); // and the equal-text blur dismisses too, writes nothing
-      expect(writes()).toEqual([]);
+      expect(bufferDirty()).toEqual([]); // clean by comparison — the failed draft is abandoned
+      fireEvent.blur(box); // and the equal-text blur writes nothing
+      expect(calls.filter((c) => c.name === 'flushNotes')).toEqual([]);
     } finally {
       state.understand.comprehension = saved;
     }
@@ -510,19 +530,34 @@ describe('2026-08-27 adversarial round 19 regressions', () => {
     const base = {
       book: 'TIT',
       project: { repoPath: 'p1' },
-      noteSaveErrors: {},
       understand: { book: 'TIT', comprehension: {} },
     };
     // Two completions dispatched back-to-back — the second must NOT drop the
     // first's entry (the old snapshot-spread did exactly that).
-    const afterA = reducer(base, { type: 'noteSaved', noteSaveErrors: {}, repoPath: 'p1', book: 'TIT', key: '1:1', text: 'note A', ts: 't1' });
-    const afterB = reducer(afterA, { type: 'noteSaved', noteSaveErrors: {}, repoPath: 'p1', book: 'TIT', key: '1:2', text: 'note B', ts: 't2' });
+    const afterA = reducer(base, { type: 'noteSaved', repoPath: 'p1', book: 'TIT', key: '1:1', text: 'note A', ts: 't1' });
+    const afterB = reducer(afterA, { type: 'noteSaved', repoPath: 'p1', book: 'TIT', key: '1:2', text: 'note B', ts: 't2' });
     expect(afterB.understand.comprehension['1:1'].text).toBe('note A');
     expect(afterB.understand.comprehension['1:2'].text).toBe('note B');
-    // and a completion for a project/book the UI has left updates ONLY the
-    // error mirror, never the visible understand state
-    const foreign = reducer(afterB, { type: 'noteSaved', noteSaveErrors: {}, repoPath: 'p2', book: 'TIT', key: '1:3', text: 'foreign', ts: 't3' });
+    // and a completion for a project/book the UI has left never touches the
+    // visible understand state (D65: no error-mirror side channel remains)
+    const foreign = reducer(afterB, { type: 'noteSaved', repoPath: 'p2', book: 'TIT', key: '1:3', text: 'foreign', ts: 't3' });
     expect(foreign.understand.comprehension['1:3']).toBeUndefined();
+    expect(foreign).toBe(afterB); // untouched, not merely similar
+  });
+
+  it("the noteSaveState mirror folds the scheduler's failure message into the Understand callout, from the reducer's own state", async () => {
+    const { __reducerForTests: reducer } = await vi.importActual<typeof import('../src/state.jsx')>('../src/state.jsx');
+    const base = { noteSaveState: 'saved', understand: { book: 'TIT', comprehension: {} } };
+    const failed = reducer(base, { type: 'noteSaveState', state: 'error', saveError: 'disk full' });
+    expect(failed.noteSaveState).toBe('error');
+    expect(failed.understand.saveError).toBe('disk full');
+    const recovered = reducer(failed, { type: 'noteSaveState', state: 'saved', saveError: null });
+    expect(recovered.noteSaveState).toBe('saved');
+    expect(recovered.understand.saveError).toBeNull();
+    // with no understand loaded, only the mirror moves
+    const bare = reducer({ noteSaveState: 'saved', understand: null }, { type: 'noteSaveState', state: 'dirty', saveError: null });
+    expect(bare.noteSaveState).toBe('dirty');
+    expect(bare.understand).toBeNull();
   });
 
   it('cross-frame mode with ZERO refs suppresses the passage and states why — never a same-frame guess (S3)', () => {
@@ -582,5 +617,42 @@ describe('2026-08-28 adversarial round 20 regression (F2)', () => {
     rerender(<Understand />);
     expect(loads()).toBe(initial + 1);
     delete (state as { installEpoch?: number }).installEpoch;
+  });
+});
+
+describe('2026-08-28 adversarial round 22 regression (D65: the class, not the symptom)', () => {
+  beforeEach(() => { cleanup(); calls.length = 0; noteCurrent.clear(); notePersisted.clear(); });
+
+  it('an emptied saved note whose box unmounts BEFORE blur leaves nothing dirty and nothing stranded', () => {
+    const saved = state.understand.comprehension;
+    state.understand.comprehension = { '1:1': { text: 'a saved note', ts: '2026-08-28T00:00:00.000Z|0000|a' } };
+    try {
+      render(<Understand />);
+      const box = screen.getAllByPlaceholderText('What does this section mean in your own words?')[0] as HTMLTextAreaElement;
+      fireEvent.change(box, { target: { value: '' } }); // clear, no blur
+      cleanup(); // a background refresh unmounts the box
+      // Round 22's stranded dirty guard is structurally impossible: the
+      // emptiness reconciled the buffer at CHANGE time, so nothing is dirty,
+      // nothing flushes, and navigation is free.
+      expect(bufferDirty()).toEqual([]);
+      expect(calls.filter((c) => c.name === 'flushNotes')).toEqual([]);
+      // and a remount shows the stored note again — nothing was lost
+      render(<Understand />);
+      const again = screen.getAllByPlaceholderText('What does this section mean in your own words?')[0] as HTMLTextAreaElement;
+      expect(again.value).toBe('a saved note');
+    } finally {
+      state.understand.comprehension = saved;
+    }
+  });
+
+  it('a DIVERGED draft whose box unmounts before blur survives in the buffer and restores on remount (P1/O1 structurally)', () => {
+    render(<Understand />);
+    const box = screen.getAllByPlaceholderText('What does this section mean in your own words?')[0] as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: 'an unblurred draft' } });
+    cleanup(); // unmount with unblurred text
+    expect(bufferDirty()).toEqual(['1:1']); // the draft is project work the drain will flush
+    render(<Understand />);
+    const again = screen.getAllByPlaceholderText('What does this section mean in your own words?')[0] as HTMLTextAreaElement;
+    expect(again.value).toBe('an unblurred draft');
   });
 });

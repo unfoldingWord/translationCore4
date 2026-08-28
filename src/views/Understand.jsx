@@ -76,16 +76,6 @@ const displayedUnitNote = (comprehension, chapter, unit) => {
   };
 };
 
-/** Unsaved drafts parked when a box's DURABLE TARGET changes underneath it
- * (O1, adversarial round 15): keyed by project|book|chapter:verse, restored by
- * whichever box next shows that target (e.g. the Verse-view box after an
- * exact-head note displaced the section box's display). Cleared on save,
- * dismissal, or when the stash equals the stored text. Module-level: survives
- * remounts, never touches the journal. */
-const draftStash = new Map();
-/** Test hook: the stash is module state and must not leak between tests. */
-export const __draftStashForTests = draftStash;
-
 /** S3 (adversarial round 19): cross-frame mode with ZERO refs is the SAFE
  * degraded state — the frame's mapping is unavailable or unknown, and the
  * passage is suppressed rather than shown under a numbering the project does
@@ -100,8 +90,11 @@ function FrameUnavailableNote({ understand, unitCount }) {
   );
 }
 
-/** The comprehension box (#106's only write): saves on blur through
- * actions.saveComprehension; everything else on the screen is read-only. */
+/** The comprehension box (#106's only write): stages every divergent edit
+ * into the note SaveScheduler (D65) and flushes on blur; everything else on
+ * the screen is read-only. The scheduler buffer is the draft store — it
+ * survives unmounts and identity flips (the old module stash and its
+ * park/restore effects are gone with the defect classes they bred). */
 function ComprehensionBox({ book, chapter, unit }) {
   const { s, actions } = useApp();
   // DISABLED until the persisted notes have actually been read (A3, 2026-08-27
@@ -121,125 +114,54 @@ function ComprehensionBox({ book, chapter, unit }) {
   const stored = shown.text;
   // The box's target identity is FULLY scoped (F1, adversarial round 6):
   // unit keys like "s1"/"v1"/"whole" repeat across chapters and books, so
-  // book AND chapter are part of the identity — a chapter switch always
-  // resets to the new target's stored value and never re-marks the previous
-  // chapter's draft dirty under the new one. (Blur has already fired the
-  // previous target's save by the time the identity changes.)
-  // The DURABLE TARGET and the source tab are part of the identity (N2,
-  // adversarial round 14): ULT and UST can share a unit key ('s1') with
-  // different ranges, and a same-key unit whose displayed note targets a
-  // DIFFERENT verse is a different editing context — the draft must reset,
-  // never carry over to be journaled under the new target.
+  // book AND chapter are part of the identity. The DURABLE TARGET and the
+  // source tab are part of it too (N2): ULT and UST can share a unit key
+  // ('s1') with different ranges — a different displayed target is a
+  // different editing context.
   const identity = `${book}|${chapter}|${s.sourceTab}|${unit.key}|${unit.project ? unit.project.verse : shown.targetVerse}`;
-  // A cross-frame unit's durable identity is its PROJECT reference (I1).
-  const dirtyKey = unit.project
-    ? `${book}|${unit.project.chapter}:${unit.project.verse}`
-    : `${book}|${chapter}:${shown.targetVerse}`;
-  // E1 (adversarial round 5): a stored update must never CLOBBER a draft the
-  // user has typed since — sync from stored only while the box still shows
-  // the previous stored value; a diverged draft stays, and its dirty mark is
-  // re-asserted (the state layer clears dirty on ITS latest save's success,
-  // which cannot see text typed after that save started).
-  const stashKey = `${s.project?.repoPath}|${dirtyKey}`;
-  // A freshly MOUNTED box also restores a parked draft (O1): a target that
-  // lost its section-box display reappears as a Verse-view unit, and its
-  // unsaved text must come back with it.
-  const [text, setText] = React.useState(() => {
-    const stash = draftStash.get(stashKey);
-    return stash != null && stash.trim() !== stored.trim() ? stash : stored;
-  });
-  React.useEffect(() => {
-    const stash = draftStash.get(stashKey);
-    if (stash != null && stash.trim() !== stored.trim()) actions.setNoteDirty(dirtyKey, true);
-    else if (stash != null) draftStash.delete(stashKey);
-    // mount-only: later target changes go through the identity effect below
-  }, []);
-  const prevStoredRef = React.useRef(stored);
+  // The save target's coordinates — a cross-frame unit's durable identity is
+  // its verbatim PROJECT reference (I1), written unmapped (projectFrame).
+  const target = unit.project
+    ? { chapter: unit.project.chapter, verse: unit.project.verse, projectFrame: true, stored }
+    : { chapter, verse: shown.targetVerse, projectFrame: false, stored };
+  // A freshly MOUNTED box restores its staged draft from the scheduler
+  // buffer (O1/P1 structurally): whatever was typed and not yet flushed —
+  // or flushed and persisted — is the buffer's latest value.
+  const [text, setText] = React.useState(() => actions.stagedNote(target) ?? stored);
   const identityRef = React.useRef(identity);
-  const prevStashKeyRef = React.useRef(stashKey);
-  // P1 (adversarial round 16): a background refresh can UNMOUNT this box
-  // (cross-frame units re-key) with unblurred text — park the diverged draft
-  // on unmount exactly like an identity change does; the mount-time restore
-  // brings it back.
-  const latestRef = React.useRef({ text: stored, stored, stashKey });
-  latestRef.current = { text, stored, stashKey };
-  React.useEffect(() => () => {
-    const last = latestRef.current;
-    if (last.text.trim() !== last.stored.trim() && last.text.trim() !== '') {
-      draftStash.set(last.stashKey, last.text);
-    }
-  }, []);
+  const prevStoredRef = React.useRef(stored);
   React.useEffect(() => {
     const identityChanged = identityRef.current !== identity;
     identityRef.current = identity;
     if (identityChanged) {
-      // O1: park a diverged draft under its OLD durable target before
-      // switching — its dirty flag stays set, and the box that next shows
-      // that target restores it. The draft is never silently discarded.
-      if (text !== prevStoredRef.current && text.trim() !== prevStoredRef.current.trim()) {
-        draftStash.set(prevStashKeyRef.current, text);
-      }
-      const stash = draftStash.get(stashKey);
-      if (stash != null && stash.trim() !== stored.trim()) {
-        setText(stash);
-        actions.setNoteDirty(dirtyKey, true);
-      } else {
-        draftStash.delete(stashKey);
-        setText(stored);
-      }
-    } else if (text === prevStoredRef.current) {
+      // The new target's editing context: its staged draft (if any) or its
+      // stored note. The OLD target's draft needs no parking — every
+      // divergent edit was already staged into the buffer (O1 structurally).
+      setText(actions.stagedNote(target) ?? stored);
+    } else if (text === prevStoredRef.current || text.trim() === stored.trim()) {
+      // E1: follow a stored update only while the box shows the previous
+      // stored value — a diverged draft stays.
       setText(stored);
-    } else if (text.trim() !== stored.trim()) {
-      actions.setNoteDirty(dirtyKey, true);
     }
     prevStoredRef.current = stored;
-    prevStashKeyRef.current = stashKey;
   }, [stored, identity]);
   // Compare against the note the box DISPLAYS: notes are grow-only, so an
   // unchanged focus/blur must never append a duplicate (2026-08-27 Codex
   // review). unit.head is the RAW first verse key — a bridge ("4-5") keeps
-  // its exact source-side key; the save action maps it into the project
-  // frame before journaling (A1).
-  // Dirty is NOT cleared here (B1): only a SUCCESSFUL persist clears it, in
-  // saveComprehension — otherwise a failed write after a tab switch loses
-  // the unload warning too.
+  // its exact source-side key; the writer maps it into the project frame
+  // before journaling (A1).
   // G1 (adversarial round 7): §8.5 v1 notes are grow-only — a CLEAR cannot
-  // persist. Rejecting it silently would strand the dirty flag and resurrect
-  // the old text later; instead the box restores the saved note, says why,
-  // and reconciles its dirty mark.
+  // persist. An emptied box is NEVER staged; blur restores the saved note
+  // and says why. Because the emptiness never reaches the buffer, no dirty
+  // state can strand (round 22 — the class is gone, not patched).
   const [clearRefused, setClearRefused] = React.useState(false);
-  // The save target's coordinates — also the failure-ledger identity (K1).
-  // Editing a DISPLAYED note continues that note's own durable target (M2);
-  // a fresh note targets the unit head.
-  const target = unit.project
-    ? { chapter: unit.project.chapter, verse: unit.project.verse }
-    : { chapter, verse: shown.targetVerse };
   const save = () => {
-    if (text.trim() === stored.trim()) {
-      // Reverted to the stored text: an earlier FAILED write for this target
-      // is abandoned — dismiss it, or navigation stays blocked and Retry
-      // would append the abandoned draft (K1).
-      draftStash.delete(stashKey);
-      actions.dismissNoteError(target.chapter, target.verse);
-      return;
-    }
     if (text.trim() === '' && stored.trim() !== '') {
       setText(stored);
-      draftStash.delete(stashKey);
-      actions.setNoteDirty(dirtyKey, false);
-      actions.dismissNoteError(target.chapter, target.verse);
       setClearRefused(true);
       return;
     }
-    draftStash.delete(stashKey); // the write (or its failure ledger) owns the text now
-    if (unit.project) {
-      // I1/J2: the exact project-frame reference is written VERBATIM and is
-      // also the storage/echo key.
-      actions.saveComprehension(unit.project.chapter, unit.project.verse, text, { projectFrame: true });
-    } else {
-      // M2: the displayed note's own target — never re-keyed to the head.
-      actions.saveComprehension(chapter, shown.targetVerse, text);
-    }
+    if (text.trim() !== stored.trim()) actions.flushNotes();
   };
   return (
     <>
@@ -247,11 +169,14 @@ function ComprehensionBox({ book, chapter, unit }) {
         onChange={(e) => {
           setText(e.target.value);
           setClearRefused(false);
-          const diverged = e.target.value.trim() !== stored.trim();
-          // Keyed per fully-scoped target (C2/F2): this box's flag, nobody else's.
-          actions.setNoteDirty(dirtyKey, diverged);
-          // Typing back to the stored text abandons a failed draft (K1).
-          if (!diverged) actions.dismissNoteError(target.chapter, target.verse);
+          const next = e.target.value;
+          // Stage every edit. An EMPTIED box stages the stored text instead
+          // (G1: a clear never becomes a buffered write — it reconciles the
+          // buffer to clean, for a fresh draft and a saved note alike, so no
+          // dirty state can strand and no deleted draft can autosave).
+          // Staging the stored text is also how a failed draft is abandoned
+          // (K1): the buffer returns to clean by comparison.
+          actions.stageNote(target, next.trim() === '' ? stored : next);
         }}
         onBlur={save}
         placeholder={t('understand.commentsPlaceholder')} />

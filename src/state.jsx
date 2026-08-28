@@ -275,16 +275,11 @@ const initial = () => ({
   // check session (never stored), plus the translator's own comprehension
   // notes read back from the §8.5 journal.
   understand: null, // null | { loading } | { notes, questions, comprehension: {'c:v': text} }
-  // Whether ANY comprehension box is dirty / ANY note write is pending —
-  // booleans mirrored from the refs so the save indicator can tell the truth
-  // (Q2, adversarial round 17) without a per-keystroke app re-render storm.
-  noteActivity: { dirty: false, pending: false },
-  // Failed comprehension writes, held GLOBALLY so they survive leaving the
-  // Understand view (B1) and tracked PER TARGET so concurrent saves never
-  // clear each other (C2). Key: `${repoPath}|${chapter}:${verse}`. Each entry
-  // carries what retryNoteSave needs, incl. the originating project (C1);
-  // any entry blocks navigation like a scheduler failure (FR-32).
-  noteSaveErrors: {},
+  // D65: the comprehension-note SaveScheduler's state, mirrored the same way
+  // saveState mirrors the verse scheduler (subscribe → dispatch on
+  // transitions only). It survives leaving the Understand view (B1) and any
+  // 'error' blocks navigation like a verse failure (FR-32).
+  noteSaveState: 'saved',
   // Modals (the owner's design: creation, add-book, and settings are dialogs
   // over Home, not separate pages)
   modal: null, // null | 'newProject' | 'addBook' | 'settings' | 'sources'
@@ -332,11 +327,12 @@ function reducer(state, a) {
       // round 19): two per-target saves can complete in the same batch, and
       // building the whole `understand` from a captured stateRef snapshot
       // dropped the sibling's entry — the reducer's own state is the only
-      // safe base (same hazard class as patchSrc/setSource above).
-      const next = { ...state, noteSaveErrors: a.noteSaveErrors };
-      if (state.book !== a.book || state.project?.repoPath !== a.repoPath) return next;
+      // safe base (same hazard class as patchSrc/setSource above). A foreign
+      // completion (project or book changed since the write was staged)
+      // updates nothing.
+      if (state.book !== a.book || state.project?.repoPath !== a.repoPath) return state;
       return {
-        ...next,
+        ...state,
         understand: {
           ...state.understand,
           saveError: null,
@@ -346,6 +342,14 @@ function reducer(state, a) {
           },
         },
       };
+    }
+    case 'noteSaveState': {
+      // D65: the note scheduler's state mirror, merged from the reducer's own
+      // state (S1 hazard class — never a captured snapshot). The Understand
+      // callout's failure message rides along and clears on recovery.
+      const next = { ...state, noteSaveState: a.state };
+      if (!state.understand) return next;
+      return { ...next, understand: { ...state.understand, saveError: a.saveError } };
     }
     case 'bump':
       return { ...state, tick: state.tick + 1, ...(a.patch || {}) };
@@ -668,37 +672,15 @@ function validateNewBible(form) {
   return abbr ? { abbr } : { error: t('wizard.abbrRequired') };
 }
 
-/** Round 21 (2026-08-28 adversarial review): clicking the global Retry BLURS
- * the edited box first, and the blur QUEUES the newer text. Reading the
- * failure ledger immediately would re-queue the stale failed text as the
- * NEWEST revision — the newer edit would be superseded and the OLD text
- * persisted as the head note, silently. So: drain every pending lifecycle
- * first (each settles only after its ledger update has landed — see the
- * lifecycle registration in saveComprehension), then retry only the failures
- * that REMAIN (a newer success clears its target's entry; a newer failure
- * refreshes it with the newer text). */
-async function retryFailedNoteSaves({ pendingNotesRef, noteSaveErrorsRef, stateRef, save }) {
-  await Promise.allSettled([...pendingNotesRef.current]);
-  const now = stateRef.current;
-  const repoPath = now.project?.repoPath;
-  for (const err of Object.values(noteSaveErrorsRef.current)) {
-    if (err.repoPath !== repoPath || err.book !== now.book) continue;
-    await save(err.chapter, err.verse, err.text, { projectFrame: err.projectFrame });
-  }
-}
-
-/** Test hook (round 21): drain-before-retry is unit-tested — a retry must
- * never re-queue ledger text that a pending newer write is about to
- * supersede or clear. */
-export const __retryFailedNoteSavesForTests = retryFailedNoteSaves;
-
-async function drainForProjectOpen({ pendingNotesRef, noteSaveErrorsRef, noteDirtyRef, schedulerRef }) {
-  await Promise.allSettled([...pendingNotesRef.current]);
-  if (Object.keys(noteSaveErrorsRef.current).length > 0) return false;
-  if (noteDirtyRef.current.size > 0) return false;
-  if (!schedulerRef.current) return true;
-  if (!(await schedulerRef.current.drain())) return false;
-  schedulerRef.current.dispose();
+/** D65 (round-22 checkpoint): comprehension notes ride their own
+ * SaveScheduler, so navigation drains are ONE discipline — flush-and-go, and
+ * a retained failure refuses (FR-32). Both schedulers must come to rest, and
+ * every blocker is checked BEFORE anything is disposed (C3). */
+async function drainForProjectOpen({ schedulerRef, noteSchedulerRef }) {
+  if (noteSchedulerRef.current && !(await noteSchedulerRef.current.drain())) return false;
+  if (schedulerRef.current && !(await schedulerRef.current.drain())) return false;
+  schedulerRef.current?.dispose();
+  noteSchedulerRef.current?.dispose();
   return true;
 }
 
@@ -905,155 +887,65 @@ const settleHelp = (promise) =>
     (error) => ({ state: 'error', error: String(error?.message || error) }),
   );
 
-function recordNoteSaveFailure({
-  isLatest,
-  stateRef,
-  noteSaveErrorsRef,
-  dispatch,
-  errKey,
-  repoPath,
-  book,
-  chapter,
-  verseKey,
-  trimmed,
-  projectFrame,
-  message,
-}) {
-  if (!isLatest()) return;
-  const now = stateRef.current;
-  noteSaveErrorsRef.current = {
-    ...noteSaveErrorsRef.current,
-    [errKey]: {
-      message,
+/** D65 (round-22 checkpoint): comprehension notes ride their OWN
+ * SaveScheduler — one write path, one dirty/drain/indicator discipline, the
+ * same one verses use. The scheduler key is the fully-scoped note identity
+ * `repoPath|book|chapter:verse` (C2/F2); the buffer is a per-key latest-value
+ * register, so a retry structurally replays only the NEWEST text (the round-21
+ * class cannot exist), and the buffer itself is the draft store across
+ * unmounts (the round-22 class cannot exist). Notes and verses do NOT share
+ * an instance: the scheduler's failure slot is global, and a failing note
+ * must not park verse autosave. */
+export const noteKeyFor = (repoPath, book, chapter, verse) =>
+  `${repoPath}|${book}|${chapter}:${verse}`;
+
+/** The note scheduler's write function. The target registry carries what the
+ * key alone cannot: the box's original (pre-mapping) reference and whether it
+ * is already a verbatim PROJECT reference (I1/J2: cross-frame boxes save
+ * their exact project ref and skip mapping). Same-frame saves resolve the
+ * project frame and map at write time; an unmappable target THROWS so the
+ * scheduler retains the buffer and shows the error (FR-32) — the §8.5 journal
+ * never receives a guessed reference. On success the persisted text is echoed
+ * through the noteSaved reducer action (S1 atomic merge). */
+function makeNoteWriter({ noteTargetsRef, dispatch, apiClient }) {
+  return async (key, text) => {
+    const target = noteTargetsRef.current.get(key);
+    if (!target) throw new Error(`comprehension note target unknown: ${key}`);
+    const { store, repoPath, book, chapter, verse, projectFrame } = target;
+    // C1: the write is bound to the store/project it was staged in — a
+    // project switch drains this scheduler and disposes it first (C3).
+    let ref = { chapter, verse };
+    if (!projectFrame) {
+      const frame = await resolveProjectFrame(repoPath, { store, api: apiClient });
+      if (frame.state !== 'ready') throw new Error(t('understand.saveUnmappable'));
+      if (frame.name !== RESOURCE_FRAME) {
+        const mapped = await mapReference({
+          from: RESOURCE_FRAME,
+          to: frame.name,
+          book,
+          chapter: Number(chapter),
+          verse: /^\d+$/.test(String(verse)) ? Number(verse) : String(verse),
+          schemes: frame.schemes,
+        });
+        if (!mapped.ok) throw new Error(t('understand.saveUnmappable'));
+        ref = { chapter: mapped.reference.chapter, verse: mapped.reference.verse };
+      }
+    }
+    await store.addNote(book, ref.chapter, ref.verse, text.trim());
+    dispatch({
+      type: 'noteSaved',
       repoPath,
       book,
-      chapter,
-      verse: verseKey,
-      text: trimmed,
-      projectFrame,
-    },
-  };
-  const understand =
-    now.book === book && now.project?.repoPath === repoPath
-      ? { understand: { ...now.understand, saveError: message } }
-      : {};
-  dispatch({
-    type: 'set',
-    patch: { noteSaveErrors: noteSaveErrorsRef.current, ...understand },
-  });
-}
-
-async function writeComprehensionNote({
-  isLatest,
-  fail,
-  store,
-  repoPath,
-  book,
-  chapter,
-  verseKey,
-  trimmed,
-  projectFrame,
-  apiClient,
-}) {
-  if (!isLatest()) return false;
-  let target = { chapter, verse: verseKey };
-  if (!projectFrame) {
-    const frame = await resolveProjectFrame(repoPath, { store, api: apiClient });
-    if (frame.state !== 'ready') {
-      fail(t('understand.saveUnmappable'));
-      return false;
-    }
-    if (frame.name !== RESOURCE_FRAME) {
-      const mapped = await mapReference({
-        from: RESOURCE_FRAME,
-        to: frame.name,
-        book,
-        chapter: Number(chapter),
-        verse: /^\d+$/.test(String(verseKey)) ? Number(verseKey) : String(verseKey),
-        schemes: frame.schemes,
-      });
-      if (!mapped.ok) {
-        fail(t('understand.saveUnmappable'));
-        return false;
-      }
-      target = { chapter: mapped.reference.chapter, verse: mapped.reference.verse };
-    }
-  }
-  await store.addNote(book, target.chapter, target.verse, trimmed);
-  return true;
-}
-
-function finishNoteOperation({ noteInFlightRef, errKey, syncNoteActivity }) {
-  // pendingNotesRef holds the save's whole LIFECYCLE (round 21), removed by
-  // saveComprehension's own finally — not the write op, so nothing to delete
-  // here. Only the per-target in-flight count settles at op completion.
-  const inFlight = (noteInFlightRef.current.get(errKey) ?? 1) - 1;
-  if (inFlight <= 0) noteInFlightRef.current.delete(errKey);
-  else noteInFlightRef.current.set(errKey, inFlight);
-  syncNoteActivity();
-}
-
-function publishComprehensionSuccess({
-  noteDirtyRef,
-  noteSaveErrorsRef,
-  syncNoteActivity,
-  dispatch,
-  errKey,
-  repoPath,
-  book,
-  chapter,
-  verseKey,
-  trimmed,
-}) {
-  noteDirtyRef.current.delete(`${book}|${chapter}:${verseKey}`);
-  // S2 (adversarial round 19): the finally-block sync ran BEFORE this dirty
-  // clear — without re-syncing here the indicator mirror stays
-  // {dirty:true} after every ordinary successful save.
-  syncNoteActivity();
-  const remaining = { ...noteSaveErrorsRef.current };
-  delete remaining[errKey];
-  noteSaveErrorsRef.current = remaining;
-  // S1: the reducer merges by key from ITS OWN state — never from a captured
-  // snapshot that a concurrent sibling save may already have outrun.
-  dispatch({
-    type: 'noteSaved',
-    noteSaveErrors: remaining,
-    repoPath,
-    book,
-    key: `${chapter}:${verseKey}`,
-    text: trimmed,
-    ts: `local-${Date.now()}`,
-  });
-}
-
-function comprehensionSaveContext(st, store, chapter, verseKey, text) {
-  const book = st.book;
-  const repoPath = st.project?.repoPath;
-  const trimmed = (text ?? '').trim();
-  if (!store || !book || !repoPath || trimmed === '') return null;
-  return {
-    store,
-    book,
-    repoPath,
-    trimmed,
-    errKey: `${repoPath}|${book}|${chapter}:${verseKey}`,
-  };
-}
-
-async function awaitNoteOperation({ operation, fail, noteInFlightRef, errKey, syncNoteActivity }) {
-  try {
-    return await operation;
-  } catch (error) {
-    fail(String(error?.reason || error?.message || error));
-    return false;
-  } finally {
-    finishNoteOperation({
-      noteInFlightRef,
-      errKey,
-      syncNoteActivity,
+      key: `${chapter}:${verse}`,
+      text: text.trim(),
+      ts: `local-${Date.now()}`,
     });
-  }
+  };
 }
+
+/** Test hook (D65): the note writer is unit-tested — frame mapping, the
+ * unmappable refusal, and the persisted-text echo. */
+export const __makeNoteWriterForTests = makeNoteWriter;
 
 export function AppProvider({ children }) {
   const [s, dispatch] = useReducer(reducer, undefined, initial);
@@ -1063,42 +955,15 @@ export function AppProvider({ children }) {
   const stateRef = useRef(null); // live state for async closures
   const openSeqRef = useRef(0); // openBook sequence token (review finding M2)
   const understandSeqRef = useRef(0); // loadUnderstand sequence token (2026-08-27 Codex review)
-  const pendingNotesRef = useRef(new Set()); // in-flight note operations, registered before their first await (A4/C1)
-  const noteDirtyRef = useRef(new Set()); // 'chapter:verse' keys of boxes holding unsaved text (A4; per-target since C2)
-  // D1 (adversarial round 4): the AUTHORITATIVE failure ledger is a ref,
-  // updated SYNCHRONOUSLY inside fail()/success — a React dispatch is async,
-  // so a navigation guard racing the settling promise would read a stale
-  // snapshot and proceed past a loss. State's noteSaveErrors is the render
-  // MIRROR of this ref, never the source the guards consult.
-  const noteSaveErrorsRef = useRef({});
+  // D65 (round-22 checkpoint): the comprehension-note SaveScheduler and the
+  // registry mapping each note key to its write target. The scheduler's
+  // buffer IS the draft store (survives unmounts) and its state IS the
+  // dirty/saving/error truth the guards consult — the old parallel refs
+  // (ledger, revisions, chains, in-flight counts, dirty set) are gone with
+  // the defect classes they bred.
+  const noteSchedulerRef = useRef(null);
+  const noteTargetsRef = useRef(new Map());
   const articleSeqRef = useRef(0); // help-article completion token (D3, adversarial round 4)
-  // E1 (adversarial round 5): per-target save revisions. Only the LATEST
-  // operation for a target may record/clear its error entry, clear its dirty
-  // mark, or publish its snapshot — an older completion can never erase a
-  // newer edit or a newer failure.
-  const noteRevisionsRef = useRef(new Map());
-  // Q2: boolean mirror for the save indicator — dispatched only on a 0↔n
-  // transition, so keystrokes do not storm the reducer.
-  const syncNoteActivity = () => {
-    const next = {
-      dirty: noteDirtyRef.current.size > 0,
-      pending: pendingNotesRef.current.size > 0,
-    };
-    const cur = stateRef.current?.noteActivity;
-    if (cur?.dirty !== next.dirty || cur?.pending !== next.pending) {
-      dispatch({ type: 'set', patch: { noteActivity: next } });
-    }
-  };
-  // H2 (adversarial round 8): per-target WRITE CHAIN. The §8.5 journal orders
-  // by append time, and frame/mapping latency could let a newer save reach
-  // addNote first — the older text would then carry the higher HLC and win on
-  // reload. Chaining per target orders appends by user INITIATION, and a
-  // superseded revision never writes at all.
-  const noteChainRef = useRef(new Map());
-  // errKey -> COUNT of ops past enqueue (Q1/R1): a count, not a Set — with
-  // chained overlapping saves, one op's settle must never free a queued
-  // sibling's dismissal protection.
-  const noteInFlightRef = useRef(new Map());
 
   // ---- derived display model -------------------------------------------------
   const model = useMemo(() => {
@@ -1153,22 +1018,20 @@ export function AppProvider({ children }) {
   // unsaved work, and attempt a best-effort flush when the page hides.
   useEffect(() => {
     const beforeUnload = (e) => {
-      const sched = schedulerRef.current;
-      // Comprehension notes are project work too (A4, 2026-08-27 adversarial
-      // review): warn while a note.add is in flight or a box holds unsaved
-      // text — the verse scheduler knows nothing about either.
-      if (
-        (sched && sched.getState() !== 'saved') ||
-        pendingNotesRef.current.size > 0 ||
-        noteDirtyRef.current.size > 0 ||
-        Object.keys(noteSaveErrorsRef.current).length > 0
-      ) {
+      // Comprehension notes are project work too (A4): both schedulers must
+      // be at rest before the window may close silently (D65 — the note
+      // scheduler now carries what the old refs tracked).
+      const unsaved = [schedulerRef.current, noteSchedulerRef.current].some(
+        (sched) => sched && sched.getState() !== 'saved',
+      );
+      if (unsaved) {
         e.preventDefault();
         e.returnValue = '';
       }
     };
     const onHide = () => {
       void schedulerRef.current?.drain();
+      void noteSchedulerRef.current?.drain();
     };
     window.addEventListener('beforeunload', beforeUnload);
     window.addEventListener('pagehide', onHide);
@@ -1217,17 +1080,11 @@ export function AppProvider({ children }) {
   const actions = useMemo(() => {
     const a = {
       go: async (view) => {
-        // B1 (2026-08-27 adversarial round 2): a comprehension write started
-        // by the leaving view's blur must finish — and a FAILED one must hold
-        // navigation, exactly like the verse scheduler does (FR-32). The
-        // failure is visible in the Understand callout and the save indicator.
-        await Promise.allSettled([...pendingNotesRef.current]);
-        // The REF, not state (D1): the failure is recorded synchronously, the
-        // state mirror may not have rendered yet when this drain resumes.
-        // Dirty boxes gate too (G1): in click flows blur has already saved or
-        // restored, so a standing entry means genuinely unreconciled text.
-        if (Object.keys(noteSaveErrorsRef.current).length > 0) return;
-        if (noteDirtyRef.current.size > 0) return;
+        // B1/D65: navigation drains the note scheduler — flush-and-go (owner
+        // ruling 2026-08-28), and a FAILED write holds navigation exactly
+        // like the verse scheduler does (FR-32). The failure is visible in
+        // the Understand callout and the save indicator.
+        if (noteSchedulerRef.current && !(await noteSchedulerRef.current.drain())) return;
         dispatch({ type: 'set', patch: { view } });
       },
 
@@ -2159,16 +2016,10 @@ export function AppProvider({ children }) {
       },
 
       openProject: async (repoPath, bookCode) => {
-        // Never abandon unsaved work: drain the old scheduler first, and stay
-        // put if a write failure remains (FR-32; review findings B3/M1/M6).
-        // Comprehension writes are held to the same rule (B1): drain the
-        // in-flight ones BEFORE anything opens, and refuse while one failed.
-        const canOpen = await drainForProjectOpen({
-          pendingNotesRef,
-          noteSaveErrorsRef,
-          noteDirtyRef,
-          schedulerRef,
-        });
+        // Never abandon unsaved work: drain BOTH schedulers first, and stay
+        // put if a write failure remains (FR-32; review findings B3/M1/M6;
+        // comprehension notes held to the same rule — B1/D65).
+        const canOpen = await drainForProjectOpen({ schedulerRef, noteSchedulerRef });
         if (!canOpen) return;
         try {
           // R-E33-3: the versification frame cache is keyed by repoPath, which is
@@ -2191,6 +2042,31 @@ export function AppProvider({ children }) {
           schedulerRef.current.subscribe((saveState) =>
             dispatch({ type: 'set', patch: { saveState } }),
           );
+          // D65: the comprehension-note scheduler — same discipline, its own
+          // instance (a failing note must not park verse autosave: the
+          // failure slot is per instance). Its key is the fully-scoped note
+          // identity; the splice degenerates to the whole value.
+          noteTargetsRef.current = new Map();
+          noteSchedulerRef.current = new SaveScheduler({
+            writeBook: makeNoteWriter({ noteTargetsRef, dispatch, apiClient: api }),
+            splice: (_raw, _chapter, _verse, body) => body,
+          });
+          noteSchedulerRef.current.subscribe((noteSaveState) => {
+            // The mirror the indicator reads, plus the Understand callout's
+            // message on failure (cleared when the state recovers). The
+            // understand merge happens IN the reducer, from its own state —
+            // a snapshot spread here would clobber a concurrent noteSaved
+            // merge (S1 hazard class).
+            const failure = noteSchedulerRef.current?.getFailure();
+            dispatch({
+              type: 'noteSaveState',
+              state: noteSaveState,
+              saveError:
+                noteSaveState === 'error'
+                  ? String(failure?.error?.message || failure?.error || noteSaveState)
+                  : null,
+            });
+          });
           api.setCurrentProject(repoPath).catch(() => {});
           markUsed(repoPath); // fire-and-forget; ordering refreshes next Home visit
           // The platform summary reports script_direction "?" for app-created
@@ -2200,7 +2076,6 @@ export function AppProvider({ children }) {
           // into this one — clear both with the new project, and invalidate
           // any in-flight loadUnderstand before its completion can land here.
           understandSeqRef.current++;
-          await Promise.allSettled([...pendingNotesRef.current]);
           dispatch({
             type: 'set',
             patch: {
@@ -2245,12 +2120,9 @@ export function AppProvider({ children }) {
       },
 
       openBook: async (code) => {
-        // F2: a book switch is a navigation like any other — drain in-flight
-        // note writes and refuse while a failure (or unreconciled dirty box,
-        // G1) stands (FR-32).
-        await Promise.allSettled([...pendingNotesRef.current]);
-        if (Object.keys(noteSaveErrorsRef.current).length > 0) return;
-        if (noteDirtyRef.current.size > 0) return;
+        // F2/D65: a book switch is a navigation like any other — flush the
+        // note scheduler and refuse while a failure stands (FR-32).
+        if (noteSchedulerRef.current && !(await noteSchedulerRef.current.drain())) return;
         const store = storeRef.current;
         if (!store) return;
         // Drain before switching: loading over unsaved work resurrects stale
@@ -2386,113 +2258,54 @@ export function AppProvider({ children }) {
         }
       },
 
-      /** The Understand screen's ONLY write (#106, owner ruling 2026-08-27):
-       * persist one comprehension note through the §8.5 journal (note.add,
-       * grow-only). A no-op or emptied box writes nothing. */
-      saveComprehension: async (chapter, verseKey, text, opts = {}) => {
+      /** The Understand screen's ONLY write (#106, owner ruling 2026-08-27),
+       * now staged through the note SaveScheduler (D65). The box calls this
+       * on every divergent edit: the buffer coalesces keystrokes per target
+       * (latest value wins), the debounce autosaves, blur flushes. An emptied
+       * box is never staged (G1 — the caller gates it); staging the STORED
+       * text reconciles the buffer back to clean (replaces the old
+       * dismissNoteError/revision machinery — K1). The unchanged-text
+       * comparison lives in the ComprehensionBox against the note it actually
+       * DISPLAYS (unit-membership retrieval, M2). */
+      stageNote: ({ chapter, verse, projectFrame = false, stored = '' }, text) => {
         const st = stateRef.current;
-        // C1 (adversarial round 3): the WHOLE operation is bound to the
-        // project it started in — store, repoPath and book are captured
-        // before the first await, the operation is registered in
-        // pendingNotesRef from the start (so transitions drain the mapping
-        // phase too), and the error record carries the project identity.
-        const context = comprehensionSaveContext(st, storeRef.current, chapter, verseKey, text);
-        if (!context) return;
-        const { store, book, repoPath, trimmed, errKey } = context;
-        // The unchanged-text comparison lives in the ComprehensionBox against
-        // the note it actually DISPLAYS (unit-membership retrieval) — an
-        // exact-head compare here would miss it and append a duplicate
-        // grow-only note on a plain focus/blur (2026-08-27 Codex review).
-        // C2: failures are tracked PER TARGET — one map entry per
-        // (project, chapter:verse) — so concurrent boxes never clear each
-        // other's retry payload or dirty guard.
-        // F2 (adversarial round 6): the identity is FULLY scoped — repoPath,
-        // book, chapter, verse — so cross-book saves can never share a
-        // revision, an error entry, or a dirty mark.
-        const rev = (noteRevisionsRef.current.get(errKey) ?? 0) + 1;
-        noteRevisionsRef.current.set(errKey, rev);
-        const isLatest = () => noteRevisionsRef.current.get(errKey) === rev;
-        const fail = (message) => recordNoteSaveFailure({
-          isLatest,
-          stateRef,
-          noteSaveErrorsRef,
-          dispatch,
-          errKey,
-          repoPath,
-          book,
-          chapter,
-          verseKey,
-          trimmed,
-          projectFrame: !!opts.projectFrame,
-          message,
-        });
-        const prevInChain = noteChainRef.current.get(errKey) ?? Promise.resolve();
-        const op = prevInChain.then(() => writeComprehensionNote({
-          isLatest,
-          fail,
+        const store = storeRef.current;
+        const sched = noteSchedulerRef.current;
+        const book = st.book;
+        const repoPath = st.project?.repoPath;
+        if (!store || !sched || !book || !repoPath) return;
+        const key = noteKeyFor(repoPath, book, chapter, verse);
+        // C1: the target is bound to the store/project it was staged in.
+        noteTargetsRef.current.set(key, {
           store,
           repoPath,
           book,
           chapter,
-          verseKey,
-          trimmed,
-          projectFrame: !!opts.projectFrame,
-          apiClient: api,
-        }));
-        noteChainRef.current.set(errKey, op.catch(() => {}));
-        // Round 21: what pendingNotesRef registers is the WHOLE lifecycle —
-        // through the ledger update a completion publishes — not just the
-        // write op. Every drain awaits pendingNotesRef and then decides FROM
-        // THE LEDGER; an op-only registration let a drain resume a microtask
-        // before the publish landed, so retryNoteSave could re-queue the
-        // stale failed text over a newer, just-blurred edit.
-        let settleLifecycle;
-        const lifecycle = new Promise((resolve) => {
-          settleLifecycle = resolve;
+          verse,
+          projectFrame: !!projectFrame,
         });
-        pendingNotesRef.current.add(lifecycle);
-        noteInFlightRef.current.set(errKey, (noteInFlightRef.current.get(errKey) ?? 0) + 1);
-        syncNoteActivity();
-        try {
-          const ok = await awaitNoteOperation({
-            operation: op,
-            fail,
-            noteInFlightRef,
-            errKey,
-            syncNoteActivity,
-          });
-          if (!ok) return; // refused (fail() already recorded it)
-          if (!isLatest()) return; // E1: a stale success must not clear a newer failure or publish over a newer edit
-          publishComprehensionSuccess({
-            noteDirtyRef,
-            noteSaveErrorsRef,
-            syncNoteActivity,
-            dispatch,
-            errKey,
-            repoPath,
-            book,
-            chapter,
-            verseKey,
-            trimmed,
-          });
-        } finally {
-          pendingNotesRef.current.delete(lifecycle);
-          settleLifecycle();
-          syncNoteActivity();
-        }
+        // First touch seeds `persisted` with the DISPLAYED stored note, so a
+        // revert-to-stored compares clean and re-blur writes nothing.
+        sched.seedIfAbsent(key, stored);
+        sched.markDirty(key, chapter, verse, text);
       },
 
-      /** Retry every failed comprehension write that belongs to the OPEN
-       * project (C1: repoPath AND book must match — a replay into another
-       * project would journal a wrong identity; foreign entries stay and
-       * keep holding navigation). */
-      retryNoteSave: () =>
-        retryFailedNoteSaves({
-          pendingNotesRef,
-          noteSaveErrorsRef,
-          stateRef,
-          save: (chapter, verse, text, opts) => a.saveComprehension(chapter, verse, text, opts),
-        }),
+      /** The buffered (unflushed or persisted) text for a note target, or
+       * null. The scheduler buffer IS the draft store — it survives unmounts
+       * and identity flips (O1/P1 are structural now). */
+      stagedNote: ({ chapter, verse }) => {
+        const st = stateRef.current;
+        const repoPath = st?.project?.repoPath;
+        if (!repoPath || !st.book) return null;
+        return noteSchedulerRef.current?.bookText(noteKeyFor(repoPath, st.book, chapter, verse)) ?? null;
+      },
+
+      /** Blur: flush the note buffer now (verse discipline — flushOnBlur). */
+      flushNotes: () => noteSchedulerRef.current?.flushOnBlur() ?? Promise.resolve(),
+
+      /** Retry after a failed note write: replays the LATEST buffered text —
+       * a stale payload structurally cannot exist (D65; round-21 class). */
+      retryNoteSave: () => noteSchedulerRef.current?.retry() ?? Promise.resolve(),
 
       /** A help article behind an Understand card (tW word or tA module),
        * read from the INSTALLED burrito like C2.5; absence is stated. */
@@ -2524,69 +2337,23 @@ export function AppProvider({ children }) {
           patch: { understand: { ...now.understand, article: { key, seq, loading: false, found } } },
         });
       },
-      /** K1 (adversarial round 11): the user reverted the box to the stored
-       * text — the failed write's retry payload is ABANDONED. Remove the
-       * ledger entry (ref first, mirror second) and advance the revision so
-       * a stale retry can never append the abandoned text. */
-      dismissNoteError: (chapter, verseKey) => {
-        const now = stateRef.current;
-        const repoPath = now.project?.repoPath;
-        const book = now.book;
-        if (!repoPath || !book) return;
-        const errKey = `${repoPath}|${book}|${chapter}:${verseKey}`;
-        // Q1 (adversarial round 17): an op past enqueue may already be
-        // appending — advancing the revision NOW would make its success
-        // 'stale' and skip reconciliation while the journal keeps the text.
-        // The op's own settle reports the truth; dismissal waits for it.
-        if ((noteInFlightRef.current.get(errKey) ?? 0) > 0) return;
-        if (!(errKey in noteSaveErrorsRef.current)) return;
-        noteRevisionsRef.current.set(errKey, (noteRevisionsRef.current.get(errKey) ?? 0) + 1);
-        const remaining = { ...noteSaveErrorsRef.current };
-        delete remaining[errKey];
-        noteSaveErrorsRef.current = remaining;
-        dispatch({
-          type: 'set',
-          patch: {
-            noteSaveErrors: remaining,
-            ...(now.understand?.saveError && Object.keys(remaining).length === 0
-              ? { understand: { ...now.understand, saveError: null } }
-              : {}),
-          },
-        });
-      },
-
-      /** A comprehension box holds text that differs from its displayed note
-       * (A4): the unload guard warns on it, exactly like a dirty verse. A ref,
-       * not state — this fires on every keystroke. Keyed per target (C2), so
-       * one box's save never clears another box's warning. */
-      setNoteDirty: (key, dirty) => {
-        if (dirty) noteDirtyRef.current.add(key);
-        else noteDirtyRef.current.delete(key);
-        syncNoteActivity();
-      },
       closeHelpArticle: () => {
         const now = stateRef.current;
         dispatch({ type: 'set', patch: { understand: { ...now.understand, article: null } } });
       },
 
       setChapter: async (chapter) => {
-        // L1 (adversarial round 12): a chapter click is a navigation for the
-        // comprehension boxes too — the click blurs a box and starts its
-        // save, then the identity change hides the draft. Drain the write
-        // and stay put on a failure or unreconciled text, like every other
-        // transition (FR-32).
-        await Promise.allSettled([...pendingNotesRef.current]);
-        if (Object.keys(noteSaveErrorsRef.current).length > 0) return;
-        if (noteDirtyRef.current.size > 0) return;
+        // L1/D65: a chapter click is a navigation for the comprehension
+        // boxes too — flush the note buffer and stay put only on a failure
+        // (FR-32).
+        if (noteSchedulerRef.current && !(await noteSchedulerRef.current.drain())) return;
         dispatch({ type: 'set', patch: { chapter, editing: null } });
       },
       setSourceTab: async (sourceTab) => {
-        // N2: a tab switch re-chunks the passage — drain the blur save it
-        // just triggered and stay put on a failure or unreconciled box, so a
-        // draft can never be re-marked under a different target mid-flight.
-        await Promise.allSettled([...pendingNotesRef.current]);
-        if (Object.keys(noteSaveErrorsRef.current).length > 0) return;
-        if (noteDirtyRef.current.size > 0) return;
+        // N2/D65: a tab switch re-chunks the passage — flush the note buffer
+        // first so a draft can never be re-marked under a different target
+        // mid-flight; a failure stays put (FR-32).
+        if (noteSchedulerRef.current && !(await noteSchedulerRef.current.drain())) return;
         dispatch({ type: 'set', patch: { sourceTab } });
       },
       toggleRail: () => dispatch({ type: 'toggle', key: 'rail' }),
@@ -2630,16 +2397,17 @@ export function AppProvider({ children }) {
         // Never navigate away from unsaved work or a visible failure (FR-32).
         // EVERY blocker is checked BEFORE anything is disposed (C3,
         // adversarial round 3): a refused exit must leave the project fully
-        // working — scheduler included — or the next verse edit throws.
-        await Promise.allSettled([...pendingNotesRef.current]);
-        if (Object.keys(noteSaveErrorsRef.current).length > 0) return; // the sync ledger (D1)
-        if (noteDirtyRef.current.size > 0) return; // unreconciled box (G1)
+        // working — both schedulers included — or the next edit throws.
+        if (noteSchedulerRef.current && !(await noteSchedulerRef.current.drain())) return;
         if (schedulerRef.current) {
           const clean = await schedulerRef.current.drain();
           if (!clean) return;
           schedulerRef.current.dispose();
           schedulerRef.current = null;
         }
+        noteSchedulerRef.current?.dispose();
+        noteSchedulerRef.current = null;
+        noteTargetsRef.current = new Map();
         storeRef.current = null;
         // A2 (2026-08-27 adversarial review): understand + projectPins are
         // PROJECT state — leaving them set lets project B render (and journal
@@ -2647,7 +2415,7 @@ export function AppProvider({ children }) {
         understandSeqRef.current++;
         dispatch({
           type: 'set',
-          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, saveState: 'saved', projectPins: null, understand: null },
+          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, saveState: 'saved', noteSaveState: 'saved', projectPins: null, understand: null },
         });
         refreshProjects(); // re-order: the project just left goes to the top
       },
