@@ -295,10 +295,16 @@ function HelpsPanel({ chapter }) {
                 <div style={{ border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 16, background: 'var(--surface-app)' }} data-testid="understand-simplified">
                   <Overline>{t('understand.simplifiedTitle')}</Overline>
                   <p style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-sm)', lineHeight: 'var(--lh-verse-sm)', color: 'var(--text-scripture)', margin: '10px 0 0' }}>
-                    {Object.entries(simplified.chapters?.[String(chapter)] ?? {})
-                      .filter(([k]) => /^\d/.test(k))
-                      .sort(([a], [b]) => leadingNum(a) - leadingNum(b))
-                      .map(([k, v]) => `${k} ${verseText(v)}`)
+                    {(u?.sourceRefs?.[String(chapter)]
+                      // H1: a cross-frame project reads the simplified text at
+                      // the MAPPED source references, never at its own number.
+                      ? u.sourceRefs[String(chapter)]
+                          .filter((r) => !r.unmapped)
+                          .map((r) => `${r.c}:${r.v} ${verseText(simplified.chapters?.[String(r.c)]?.[String(r.v)])}`)
+                      : Object.entries(simplified.chapters?.[String(chapter)] ?? {})
+                          .filter(([k]) => /^\d/.test(k))
+                          .sort(([a], [b]) => leadingNum(a) - leadingNum(b))
+                          .map(([k, v]) => `${k} ${verseText(v)}`))
                       .join(' ') || t('understand.noneForChapter')}
                   </p>
                 </div>
@@ -353,7 +359,22 @@ export default function Understand() {
       : t('understand.verseOne', { n: from });
   };
   const units = [];
-  if (mode === 'section' && starts.length > 0) {
+  // H1 (adversarial round 8): a cross-frame project must NOT index the
+  // eng-frame source with its own chapter number. loadUnderstand supplies
+  // per-project-chapter SOURCE references (mapped once per load); each ref
+  // becomes its own unit labeled with the source reference, and an
+  // unmappable project verse is stated, never guessed. Same-frame projects
+  // (sourceRefs null — the uW default) keep the section/verse chunking.
+  const crossRefs = s.understand?.sourceRefs?.[String(chapter)];
+  if (crossRefs) {
+    for (const r of crossRefs) {
+      if (r.unmapped) {
+        units.push({ key: `u${r.unmapped}`, unmapped: r.unmapped });
+      } else {
+        units.push({ key: `m${r.c}:${r.v}`, srcChapter: r.c, head: r.v, label: `${bookName(book.code)} ${r.c}:${r.v}`, verses: [r.v] });
+      }
+    }
+  } else if (mode === 'section' && starts.length > 0) {
     for (let i = 0; i < starts.length; i++) {
       const from = starts[i];
       const to = i + 1 < starts.length ? starts[i + 1] - 1 : Infinity;
@@ -408,22 +429,32 @@ export default function Understand() {
             {!src && (
               <p style={{ fontSize: 'var(--fs-ui-sm)', color: 'var(--text-tertiary)', marginTop: 10 }}>{t('understand.loading')}</p>
             )}
-            {units.map((u) => (
+            {units.map((u) => u.unmapped ? (
+              <Callout key={u.key} tone="info" data-testid={`understand-unit-${u.key}`} style={{ marginTop: 18 }}>
+                {t('understand.verseUnmapped', { ref: u.unmapped })}
+              </Callout>
+            ) : (
               <div key={u.key} data-testid={`understand-unit-${u.key}`} style={{ marginTop: 18, borderRadius: 'var(--radius-xl)', padding: '12px 16px', background: '#fff', border: 'var(--stroke) solid var(--border)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingBottom: 8, borderBottom: 'var(--stroke) solid var(--border)' }}>
                   <Overline>{u.label}</Overline>
                   <div style={{ flex: 1 }} />
-                  {latestUnitNote(s.understand?.comprehension, chapter, u) ? <StatusDot status="valid" size={7} /> : null}
+                  {latestUnitNote(s.understand?.comprehension, u.srcChapter ?? chapter, u) ? <StatusDot status="valid" size={7} /> : null}
                 </div>
                 <p style={{ direction: 'ltr', textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse)', color: 'var(--text-scripture)', margin: '10px 0 12px' }}>
-                  {u.verses.map((k) => (
-                    <React.Fragment key={k}>
-                      <sup style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', marginInlineEnd: 3, verticalAlign: 'super' }}>{k}</sup>
-                      {verseText(srcChapters[String(k)])}{' '}
-                    </React.Fragment>
-                  ))}
+                  {u.verses.map((k) => {
+                    // Cross-frame units carry their SOURCE chapter (H1).
+                    const chapVerses = u.srcChapter != null
+                      ? (src && src !== 'missing' ? src.chapters?.[String(u.srcChapter)] ?? {} : {})
+                      : srcChapters;
+                    return (
+                      <React.Fragment key={k}>
+                        <sup style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', marginInlineEnd: 3, verticalAlign: 'super' }}>{k}</sup>
+                        {verseText(chapVerses[String(k)])}{' '}
+                      </React.Fragment>
+                    );
+                  })}
                 </p>
-                <ComprehensionBox book={book.code} chapter={chapter} unit={u} />
+                <ComprehensionBox book={book.code} chapter={u.srcChapter ?? chapter} unit={u} />
               </div>
             ))}
           </div>

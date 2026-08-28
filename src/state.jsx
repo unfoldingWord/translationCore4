@@ -362,6 +362,12 @@ export function AppProvider({ children }) {
   // mark, or publish its snapshot — an older completion can never erase a
   // newer edit or a newer failure.
   const noteRevisionsRef = useRef(new Map());
+  // H2 (adversarial round 8): per-target WRITE CHAIN. The §8.5 journal orders
+  // by append time, and frame/mapping latency could let a newer save reach
+  // addNote first — the older text would then carry the higher HLC and win on
+  // reload. Chaining per target orders appends by user INITIATION, and a
+  // superseded revision never writes at all.
+  const noteChainRef = useRef(new Map());
 
   // ---- derived display model -------------------------------------------------
   const model = useMemo(() => {
@@ -1908,6 +1914,27 @@ export function AppProvider({ children }) {
             // boxes with some notes invisible (A3).
             comprehension = built;
           }
+          // H1 (adversarial round 8): the reading pane must NOT index the
+          // eng-frame source with a PROJECT-frame chapter number (eng JON
+          // 1:17 is rsc JON 2:1). For a cross-frame project, map every
+          // project verse to its source reference once per load; the view
+          // renders the mapped refs and states the unmappable ones. null =
+          // same frame — the view indexes directly, the common path.
+          let sourceRefs = null;
+          if (frame.state === 'ready' && frame.name !== RESOURCE_FRAME && st.bookRaw) {
+            sourceRefs = {};
+            for (const entry of indexBook(st.bookRaw)) {
+              const list = (sourceRefs[String(entry.chapter)] ??= []);
+              const out = await mapReference({
+                from: frame.name, to: RESOURCE_FRAME, book,
+                chapter: Number(entry.chapter),
+                verse: /^\d+$/.test(String(entry.verseKey)) ? Number(entry.verseKey) : String(entry.verseKey),
+                schemes: frame.schemes,
+              });
+              if (out.ok) list.push({ c: out.reference.chapter, v: String(out.reference.verse) });
+              else list.push({ unmapped: `${entry.chapter}:${entry.verseKey}` });
+            }
+          }
           const scopeRanges = scopeRangesFor(st.projectScope ?? {}, book.toUpperCase());
           const sets = st.projectPins.languageSets ?? {};
           const loadSlot = async (slot, tool, deriveOpts = {}) => {
@@ -1989,7 +2016,7 @@ export function AppProvider({ children }) {
           if (seq !== understandSeqRef.current) return; // superseded
           dispatch({
             type: 'set',
-            patch: { understand: { loading: false, book, notes, questions, words, simplified, comprehension, unmappedNotes } },
+            patch: { understand: { loading: false, book, notes, questions, words, simplified, comprehension, unmappedNotes, sourceRefs } },
           });
         } catch (e) {
           if (seq !== understandSeqRef.current) return; // a stale failure never replaces current state
@@ -2053,7 +2080,12 @@ export function AppProvider({ children }) {
             },
           });
         };
-        const op = (async () => {
+        const prevInChain = noteChainRef.current.get(errKey) ?? Promise.resolve();
+        const op = prevInChain.then(async () => {
+          // Superseded before this op's turn came: skip the write entirely —
+          // the latest revision carries the user's final text (H2), and a
+          // grow-only journal should not collect dead intermediates.
+          if (!isLatest()) return false;
           // A1: the display buckets in SOURCE (eng) space, but a §8.5 note
           // identity is permanent PROJECT-frame state — map before writing.
           // Same-frame projects (the uW default) short-circuit; an unmappable
@@ -2082,7 +2114,8 @@ export function AppProvider({ children }) {
           // what the UI shows by now.
           await store.addNote(book, target.chapter, target.verse, trimmed);
           return true;
-        })();
+        });
+        noteChainRef.current.set(errKey, op.catch(() => {}));
         pendingNotesRef.current.add(op);
         let ok = false;
         try {

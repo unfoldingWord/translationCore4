@@ -332,6 +332,40 @@ describe('2026-08-27 adversarial round 7 regression', () => {
   });
 });
 
+describe('2026-08-27 adversarial round 8 regressions', () => {
+  beforeEach(() => { cleanup(); calls.length = 0; });
+
+  it('a cross-frame project renders the passage at the MAPPED source refs, states the unmappable, and saves under the SOURCE chapter (H1)', () => {
+    const savedU = state.understand;
+    const savedCh = state.chapter;
+    try {
+      // Project chapter 2 maps to source 1:1 (plus one unmappable verse).
+      state.chapter = 2 as never;
+      state.understand = {
+        ...savedU,
+        sourceRefs: { '2': [{ c: 1, v: '1' }, { unmapped: '2:99' }] },
+      } as never;
+      render(<Understand />);
+      // the unit shows the SOURCE reference and the SOURCE chapter's text
+      expect(screen.getByText('Titus 1:1')).toBeTruthy();
+      expect(screen.getByText(/In the beginning was the Word/)).toBeTruthy();
+      // the unmappable project verse is stated, not guessed
+      expect(screen.getByTestId('understand-unit-u2:99').textContent).toContain('2:99');
+      // and a save from that unit targets the SOURCE chapter/verse
+      const box = screen.getAllByPlaceholderText('What does this section mean in your own words?')[0];
+      fireEvent.change(box, { target: { value: 'note on the mapped ref' } });
+      fireEvent.blur(box);
+      const w = writes();
+      expect(w.length).toBe(1);
+      expect(w[0].args[0]).toBe(1); // source chapter, not project chapter 2
+      expect(w[0].args[1]).toBe('1');
+    } finally {
+      state.understand = savedU;
+      state.chapter = savedCh;
+    }
+  });
+});
+
 describe('#106 — the persistence shape: §8.5 note.add seals and projects', () => {
   it('the exact event addNote() emits validates through the reference and folds into notes output', async () => {
     const { sealAction } = await import('../src/data/journal/seal');
