@@ -299,5 +299,6 @@
   "sources.checkableError": "The installed-resource record could not be read, so the checkable languages may be incomplete:",
   "wizard.versificationsError": "The platform's versification list could not be read — only the default (eng) is offered. Close and reopen this dialog to retry.",
   "understand.resolutionDown": "The installed-resource records could not be read, so the helps cannot resolve: {error}",
-  "sources.gatewayPreviewError": "The checking-language change could not be prepared:"
+  "sources.gatewayPreviewError": "The checking-language change could not be prepared:",
+  "understand.verseCrossBook": "Project verse {ref} corresponds to {to} in the source's numbering — a different book, so it cannot be shown here yet."
 }

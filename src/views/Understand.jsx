@@ -378,15 +378,16 @@ const simplifiedChapterText = (simplified, sourceRefs, chapter) => {
 };
 
 function SimplifiedTab({ slot, sourceRefs, chapter }) {
-  if (slot?.state !== 'ready') return <SlotState slot={slot} />;
-  return (
+  if (slot?.state !== 'ready') return <><SlotBanners slot={slot} /><SlotState slot={slot} /></>;
+  return (<>
+    <SlotBanners slot={slot} />
     <div style={{ border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 16, background: 'var(--surface-app)' }} data-testid="understand-simplified">
       <Overline>{t('understand.simplifiedTitle')}</Overline>
       <p style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-sm)', lineHeight: 'var(--lh-verse-sm)', color: 'var(--text-scripture)', margin: '10px 0 0' }}>
         {simplifiedChapterText(slot, sourceRefs, chapter)}
       </p>
     </div>
-  );
+  </>);
 }
 
 function AcademyTab({ notesSlot, slugs, actions }) {
@@ -450,6 +451,8 @@ const unitRangeLabel = (keys) => {
 
 const crossFrameUnits = (refs, book) => refs.map((r) => r.unmapped
   ? { key: `u${r.unmapped}`, unmapped: r.unmapped }
+  : r.crossBook
+  ? { key: `x${r.crossBook}`, crossBook: r.crossBook, to: r.to }
   : { key: `m${r.pc}:${r.pv}`, srcChapter: r.c, head: r.v, project: { chapter: r.pc, verse: r.pv }, label: `${bookName(book.code)} ${r.c}:${r.v}`, verses: [r.v] });
 
 const sectionUnits = (starts, verseKeys) => {
@@ -482,6 +485,16 @@ function UnderstandUnit({ unit, s, src, srcChapters, book, chapter }) {
     return (
       <Callout tone="info" data-testid={`understand-unit-${unit.key}`} style={{ marginTop: 18 }}>
         {t('understand.verseUnmapped', { ref: unit.unmapped })}
+      </Callout>
+    );
+  }
+  if (unit.crossBook) {
+    // Round 36: a cross-BOOK mapping is stated — rendering this book's text
+    // at another book's numbers would show unrelated scripture under a box
+    // that journals permanently.
+    return (
+      <Callout tone="info" data-testid={`understand-unit-${unit.key}`} style={{ marginTop: 18 }}>
+        {t('understand.verseCrossBook', { ref: unit.crossBook, to: unit.to })}
       </Callout>
     );
   }

@@ -1157,7 +1157,17 @@ async function mappedSourceReferences(st, book, frame) {
       verse: /^\d+$/.test(String(entry.verseKey)) ? Number(entry.verseKey) : String(entry.verseKey),
       schemes: frame.schemes,
     });
-    if (mapped.ok)
+    if (mapped.ok && mapped.reference.book.toUpperCase() !== book.toUpperCase())
+      // Round 36: a cross-BOOK mapping (LXX EZR 11 -> eng NEH 1) must never
+      // render THIS book's source at those numbers — that displays unrelated
+      // scripture under a box that journals permanently. Stated, like the
+      // unmapped case (owner precedent: round-32 stated limitation), until
+      // cross-book source loading exists (#119).
+      list.push({
+        crossBook: `${entry.chapter}:${entry.verseKey}`,
+        to: `${mapped.reference.book.toUpperCase()} ${mapped.reference.chapter}:${mapped.reference.verse}`,
+      });
+    else if (mapped.ok)
       list.push({
         c: mapped.reference.chapter,
         v: String(mapped.reference.verse),
@@ -1168,6 +1178,10 @@ async function mappedSourceReferences(st, book, frame) {
   }
   return sourceRefs;
 }
+
+/** Test hook (round 36): cross-BOOK mappings are stated, never rendered as
+ * this book's text at foreign numbers. */
+export const __mappedSourceReferencesForTests = mappedSourceReferences;
 
 function unavailableHelpSlot(st, resolved, sets, slot, installed) {
   if (!resolved.pin) {
@@ -1240,9 +1254,17 @@ async function loadSimplifiedHelp({ store, st, book, coverage, installed, sets }
   if (!pin) return { state: 'none' };
   if (!isPinLocal(installed, pin))
     return { state: st.netEnabled ? 'fetch' : 'unavailable', pin, rung: resolved.rung };
+  // Round 36: the D41 warned fallback applies to the simplified text like
+  // every other slot — English simplified text must never pass silently as
+  // the project's primary gateway language.
+  const primaryPin = sets.primary?.simplifiedText;
+  const unavailablePrimary =
+    resolved.rung === 'fallback' && primaryPin && !isPinLocal(installed, primaryPin)
+      ? primaryPin
+      : null;
   try {
     const { usfm: raw } = await store.readSourceBook(localSourceRepo(pin), book);
-    return { state: 'ready', pin, rung: resolved.rung, chapters: parseChapters(raw) };
+    return { state: 'ready', pin, rung: resolved.rung, unavailablePrimary, chapters: parseChapters(raw) };
   } catch (error) {
     // Round 31: absent book = missing; anything else (transport, parse)
     // propagates to settleHelp's stated error (D30 honesty).
