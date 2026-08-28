@@ -1,0 +1,36 @@
+/* Fonts.
+   UI type is Avenir (unfoldingWord brand). Avenir is not web-licensed here, so the
+   system substitutes Mulish — the closest free humanist sans.
+
+   Scripture is Charis SIL (SIL International, OFL) — drawn for long-form reading of
+   Latin and Cyrillic scripts at any resolution. It has no Greek, Hebrew or Arabic:
+   Noto Serif carries Koine Greek, Noto Serif Hebrew carries Hebrew, and Amiri carries
+   Arabic. See --fs-adjust-scripture: those faces are optically matched to Charis
+   rather than merely set at the same pixel size.
+
+   Nastaliq-style Arabic script (Urdu and the minority languages of south-west Asia) is
+   Awami Nastaliq — SIL's, and the only free font carrying every vowel diacritic and
+   nuqta those languages need. It is not on Google Fonts; the files are served from
+   assets/fonts/. Only the two weights scripture uses are registered (400 and 700) —
+   Awami also ships Medium, SemiBold and ExtraBold if a future need appears.
+
+   These are .ttf, straight from SIL's release. At 0.61 MB each that is ~1.2 MB on a
+   Nastaliq project. Converting the pair to .woff2 would cut it by roughly half and is
+   worth doing before this ships to translators on poor connections.
+
+   PT Serif is a fallback only. It is deliberately not fetched — a fallback exists to
+   render if Charis fails, and downloading a second full serif to do that costs the
+   translator bandwidth for nothing. */
+/* The Google-hosted families are loaded from index.html (same pattern the app
+   already used) so the browser starts the fetch before the CSS bundle parses. */
+
+@font-face {
+  font-family: "Awami Nastaliq";
+  src: local("Awami Nastaliq"), url("../assets/fonts/AwamiNastaliq-Regular.ttf") format("truetype");
+  font-weight: 400; font-display: swap;
+}
+@font-face {
+  font-family: "Awami Nastaliq";
+  src: local("Awami Nastaliq Bold"), url("../assets/fonts/AwamiNastaliq-Bold.ttf") format("truetype");
+  font-weight: 700; font-display: swap;
+}

@@ -1,0 +1,34 @@
+/* SURFACE CONTEXT — the ground a component is standing on.
+
+   A component should not need a variant for every background it might land on.
+   Instead a container declares its ground once, and everything inside reads
+   these four slots. Putting a Button, a StatusDot and an Overline into the
+   Ocean title bar then needs no inverse props at all.
+
+   Surface sets data-on automatically when it paints a dark fill; set it by
+   hand only on an element you have coloured yourself. */
+
+:root,
+[data-on="light"] {
+  --fg:            var(--text-body);
+  --fg-strong:     var(--uw-ocean);
+  --fg-muted:      var(--text-tertiary);
+  --fg-faint:      var(--text-faint);
+  --line:          var(--border);
+  --line-strong:   var(--border-input);
+  --fill-plain:       #FFFFFF;
+  --fill-quiet:       var(--surface-app);
+  --fill-quiet-hover: var(--surface-muted);
+}
+
+[data-on="dark"] {
+  --fg:            #FFFFFF;
+  --fg-strong:     #FFFFFF;
+  --fg-muted:      rgba(255,255,255,.60);
+  --fg-faint:      rgba(255,255,255,.40);
+  --line:          var(--border-inverse);
+  --line-strong:   rgba(255,255,255,.32);
+  --fill-plain:       rgba(255,255,255,.08);
+  --fill-quiet:       rgba(255,255,255,.08);
+  --fill-quiet-hover: rgba(255,255,255,.16);
+}
