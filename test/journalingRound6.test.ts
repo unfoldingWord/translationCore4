@@ -551,3 +551,62 @@ describe('2026-08-28 adversarial round 28: Retry surfaces a lost-response accept
     expect(store.readNotes('TIT').filter((n) => n.text === 'A durable thought.')).toHaveLength(1);
   });
 });
+
+describe('2026-08-28 adversarial round 29: a FAILED reconcile keeps the note error standing', () => {
+  it('clean failed buffer + rejecting reconcileStaged → still error, never Saved; a healed transport then surfaces the note once', async () => {
+    const { rig, kv, store } = await setup();
+    const { SaveScheduler } = await import('../src/data/saveScheduler');
+    const { __makeNoteWriterForTests: makeNoteWriter, noteKeyFor } =
+      await import('../src/state.jsx');
+    const noteTargetsRef = { current: new Map() };
+    const writer = makeNoteWriter({ noteTargetsRef, dispatch: () => {}, apiClient: {} });
+    const sched = new SaveScheduler({
+      splice: (_r: string, _c: unknown, _v: unknown, body: string) => body,
+      writeBook: (k: string, text: string) => writer(k, text),
+      clock: { setTimeout: () => 0, clearTimeout: () => {} },
+    });
+    const key = noteKeyFor(REPO, 'TIT', 1, '2');
+    noteTargetsRef.current.set(key, {
+      store, repoPath: REPO, book: 'TIT', chapter: 1, verse: '2', projectFrame: true,
+    });
+    // The production retryNoteSave sequence (round 29 guard): a failed
+    // reconcile RETURNS without touching the scheduler.
+    const retrySequence = async () => {
+      try {
+        await store.reconcileStaged();
+      } catch {
+        return;
+      }
+      await sched.retry();
+    };
+
+    // SUSTAINED transport failure on the journal segment routes: the write's
+    // pre-check fails, the round-27 cancel probe fails (stage kept on
+    // doubt), and the FIRST reconcile fails too — three consecutive hits.
+    rig.failOn((c) => (c.ipath ?? '').includes('/segments/'), 3);
+    sched.seedIfAbsent(key, '');
+    sched.markDirty(key, 1, '2', 'A held-up thought.');
+    await sched.flushOnBlur();
+    expect(sched.getState()).toBe('error');
+    // The stage was KEPT (the cancel probe could not prove it unpublished).
+    expect((await kv.keys('outbox:')).filter((k) => k.includes(REPO))).toHaveLength(1);
+
+    // The user CLEARS the fresh draft (buffer clean) and clicks Retry while
+    // the transport is still down: the reconcile REJECTS, and the guard must
+    // leave the error standing — never a false Saved over an unresolved
+    // permanent write.
+    sched.markDirty(key, 1, '2', '');
+    await retrySequence();
+    expect(sched.getState()).toBe('error');
+    expect((await kv.keys('outbox:')).filter((k) => k.includes(REPO))).toHaveLength(1);
+
+    // The transport heals; the SAME gesture now reconciles (the staged note
+    // republishes — a kept intent resolves toward durability, R-8.1.7/8),
+    // retries a clean buffer, and reports Saved honestly.
+    await retrySequence();
+    expect(sched.getState()).toBe('saved');
+    const notes = store.readNotes('TIT').filter((n) => n.chapter === '1' && n.verse === '2');
+    expect(notes.map((n) => n.text)).toEqual(['A held-up thought.']);
+    expect((await kv.keys('outbox:')).filter((k) => k.includes(REPO))).toHaveLength(0);
+  });
+});

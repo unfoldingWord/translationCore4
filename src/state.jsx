@@ -2395,10 +2395,18 @@ export function AppProvider({ children }) {
        * retry the buffer (the LATEST text — a stale payload structurally
        * cannot exist, round 21) and refresh the notes the screen displays. */
       retryNoteSave: async () => {
-        try {
-          await storeRef.current?.reconcileStaged();
-        } catch {
-          /* the scheduler retry below reports its own failure honestly */
+        // Round 29: a FAILED reconcile must keep the error standing. With a
+        // clean buffer (the cleared-fresh-draft case), retry() clears the
+        // failure and writes nothing — Saved would show while the outbox
+        // still holds an unresolved permanent write. Retry only after the
+        // store's staged state is provably reconciled; until then the
+        // standing scheduler error stays visible and keeps blocking (FR-32).
+        if (storeRef.current) {
+          try {
+            await storeRef.current.reconcileStaged();
+          } catch {
+            return;
+          }
         }
         await (noteSchedulerRef.current?.retry() ?? Promise.resolve());
         await a.loadUnderstand();
