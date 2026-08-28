@@ -292,6 +292,7 @@ describe('2026-08-28 adversarial round 23 regressions', () => {
     const drained = drainBoth({
       schedulerRef: { current: verseSched },
       noteSchedulerRef: { current: noteSched },
+      storeRef: { current: null }, // no failure stands — the reconcile gate is idle here (round 30)
     });
     // let the drain reach the deferred verse write, then release it
     await new Promise((r) => setTimeout(r, 0));

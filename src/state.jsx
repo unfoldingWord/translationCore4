@@ -682,10 +682,34 @@ function validateNewBible(form) {
  * drain) must be caught by another pass, never left for a later dispose to
  * discard (TOCTOU). Resolves true only when a full pass ends with both
  * schedulers reporting 'saved'. */
-async function drainBothSchedulers({ schedulerRef, noteSchedulerRef }) {
+/** Round 30: the note drain EVERY navigation uses. On a retained failure the
+ * store's staged intents are reconciled BEFORE the scheduler drain —
+ * drain()'s own retry() clears a failure even over a clean buffer (the
+ * cleared-fresh-draft case), which would let navigation proceed, or a
+ * project exit dispose the scheduler, while the outbox still holds an
+ * unresolved permanent write. A rejecting reconcile keeps the error standing
+ * and refuses (FR-32). */
+async function drainNotes({ noteSchedulerRef, storeRef }) {
+  const sched = noteSchedulerRef.current;
+  if (!sched) return true;
+  if (sched.getState() === 'error' && storeRef.current) {
+    try {
+      await storeRef.current.reconcileStaged();
+    } catch {
+      return false;
+    }
+  }
+  return sched.drain();
+}
+
+/** Test hook (round 30): the reconciliation-aware navigation drain is
+ * unit-tested against the real store + scheduler. */
+export const __drainNotesForTests = drainNotes;
+
+async function drainBothSchedulers({ schedulerRef, noteSchedulerRef, storeRef }) {
   const restState = (sched) => (sched ? sched.getState() : 'saved');
   for (;;) {
-    if (noteSchedulerRef.current && !(await noteSchedulerRef.current.drain())) return false;
+    if (!(await drainNotes({ noteSchedulerRef, storeRef }))) return false;
     if (schedulerRef.current && !(await schedulerRef.current.drain())) return false;
     if (restState(noteSchedulerRef.current) === 'saved' && restState(schedulerRef.current) === 'saved')
       return true;
@@ -697,8 +721,8 @@ async function drainBothSchedulers({ schedulerRef, noteSchedulerRef }) {
 export const __drainBothSchedulersForTests = drainBothSchedulers;
 
 /** Every blocker is checked BEFORE anything is disposed (C3). */
-async function drainForProjectOpen({ schedulerRef, noteSchedulerRef }) {
-  if (!(await drainBothSchedulers({ schedulerRef, noteSchedulerRef }))) return false;
+async function drainForProjectOpen({ schedulerRef, noteSchedulerRef, storeRef }) {
+  if (!(await drainBothSchedulers({ schedulerRef, noteSchedulerRef, storeRef }))) return false;
   schedulerRef.current?.dispose();
   noteSchedulerRef.current?.dispose();
   return true;
@@ -763,7 +787,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
   // Never abandon unsaved work: drain BOTH schedulers first, and stay put if
   // a write failure remains (FR-32; B3/M1/M6; notes held to the same rule —
   // B1/D65).
-  const canOpen = await drainForProjectOpen({ schedulerRef, noteSchedulerRef });
+  const canOpen = await drainForProjectOpen({ schedulerRef, noteSchedulerRef, storeRef });
   if (!canOpen || superseded()) return;
   try {
     // R-E33-3: the versification frame cache is keyed by repoPath, which is
@@ -1242,7 +1266,7 @@ export function AppProvider({ children }) {
         // ruling 2026-08-28), and a FAILED write holds navigation exactly
         // like the verse scheduler does (FR-32). The failure is visible in
         // the Understand callout and the save indicator.
-        if (noteSchedulerRef.current && !(await noteSchedulerRef.current.drain())) return;
+        if (!(await drainNotes({ noteSchedulerRef, storeRef }))) return;
         dispatch({ type: 'set', patch: { view } });
       },
 
@@ -2202,7 +2226,7 @@ export function AppProvider({ children }) {
       openBook: async (code) => {
         // F2/D65: a book switch is a navigation like any other — flush the
         // note scheduler and refuse while a failure stands (FR-32).
-        if (noteSchedulerRef.current && !(await noteSchedulerRef.current.drain())) return;
+        if (!(await drainNotes({ noteSchedulerRef, storeRef }))) return;
         const store = storeRef.current;
         if (!store) return;
         // Drain before switching: loading over unsaved work resurrects stale
@@ -2451,14 +2475,14 @@ export function AppProvider({ children }) {
         // L1/D65: a chapter click is a navigation for the comprehension
         // boxes too — flush the note buffer and stay put only on a failure
         // (FR-32).
-        if (noteSchedulerRef.current && !(await noteSchedulerRef.current.drain())) return;
+        if (!(await drainNotes({ noteSchedulerRef, storeRef }))) return;
         dispatch({ type: 'set', patch: { chapter, editing: null } });
       },
       setSourceTab: async (sourceTab) => {
         // N2/D65: a tab switch re-chunks the passage — flush the note buffer
         // first so a draft can never be re-marked under a different target
         // mid-flight; a failure stays put (FR-32).
-        if (noteSchedulerRef.current && !(await noteSchedulerRef.current.drain())) return;
+        if (!(await drainNotes({ noteSchedulerRef, storeRef }))) return;
         dispatch({ type: 'set', patch: { sourceTab } });
       },
       toggleRail: () => dispatch({ type: 'toggle', key: 'rail' }),
@@ -2505,7 +2529,7 @@ export function AppProvider({ children }) {
         // working — both schedulers included — or the next edit throws.
         // Round 23: the loop re-checks both after each pass, so a note staged
         // while the verse drain awaited can never be disposed unflushed.
-        if (!(await drainBothSchedulers({ schedulerRef, noteSchedulerRef }))) return;
+        if (!(await drainBothSchedulers({ schedulerRef, noteSchedulerRef, storeRef }))) return;
         schedulerRef.current?.dispose();
         schedulerRef.current = null;
         noteSchedulerRef.current?.dispose();
