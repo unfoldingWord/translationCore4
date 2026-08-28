@@ -111,17 +111,39 @@ describe('#106 — the Understand write boundary', () => {
     expect(screen.getByText(/In him was life/)).toBeTruthy();
   });
 
-  it('a note saved under a DIFFERENT chunking still surfaces: retrieval is by unit membership, latest ts wins (2026-08-27 review)', () => {
+  it('EXACT identity wins in a section holding several notes; the rest are announced, never timestamp-picked (M2)', () => {
     const saved = state.understand.comprehension;
-    // Two notes inside the first section (verses 1–2): the newer one shows.
     state.understand.comprehension = {
-      '1:1': { text: 'older note', ts: '2026-08-26T00:00:00.000Z|0000|a' },
-      '1:2': { text: 'newer note under the other chunking', ts: '2026-08-27T00:00:00.000Z|0000|a' },
+      '1:1': { text: 'note targeting verse 1', ts: '2026-08-26T00:00:00.000Z|0000|a' },
+      '1:2': { text: 'newer note targeting verse 2', ts: '2026-08-27T00:00:00.000Z|0000|a' },
     };
     try {
       render(<Understand />);
       const boxes = screen.getAllByPlaceholderText('What does this section mean in your own words?');
-      expect((boxes[0] as HTMLTextAreaElement).value).toBe('newer note under the other chunking');
+      // section 1–2: the HEAD's exact note shows (not the newer one), and the
+      // other target is announced
+      expect((boxes[0] as HTMLTextAreaElement).value).toBe('note targeting verse 1');
+      expect(screen.getByTestId('understand-notes-in-section').textContent).toContain('1');
+    } finally {
+      state.understand.comprehension = saved;
+    }
+  });
+
+  it("a single in-range note still surfaces under the other chunking, and EDITING it continues ITS OWN target (M2)", () => {
+    const saved = state.understand.comprehension;
+    // Only a verse-2 note exists; the section head is verse 1.
+    state.understand.comprehension = {
+      '1:2': { text: 'the verse-2 note', ts: '2026-08-27T00:00:00.000Z|0000|a' },
+    };
+    try {
+      render(<Understand />);
+      const box = screen.getAllByPlaceholderText('What does this section mean in your own words?')[0] as HTMLTextAreaElement;
+      expect(box.value).toBe('the verse-2 note');
+      fireEvent.change(box, { target: { value: 'the verse-2 note, edited' } });
+      fireEvent.blur(box);
+      const w = writes();
+      expect(w.length).toBe(1);
+      expect(w[0].args[1]).toBe('2'); // the note's OWN target, not the head '1'
     } finally {
       state.understand.comprehension = saved;
     }

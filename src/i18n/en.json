@@ -283,5 +283,7 @@
   "understand.helpError": "This resource failed to load:",
   "understand.saveUnmappable": "The note was not saved: this passage has no place in the project's verse numbering, so the note would get a wrong permanent identity.",
   "understand.cannotClear": "A saved note cannot be emptied — notes are permanent in this version. The saved text was restored; edit it instead.",
-  "understand.verseUnmapped": "Project verse {ref} has no place in the source's verse numbering — nothing to show for it here."
+  "understand.verseUnmapped": "Project verse {ref} has no place in the source's verse numbering — nothing to show for it here.",
+  "understand.notesInSection": "{n} more saved note(s) target other verses inside this section — switch to Verse view to see and edit each one.",
+  "sources.adoptFailed": "The download finished, but the project's pins were not updated: {error}. Re-open the project or run the download again to adopt the resource."
 }

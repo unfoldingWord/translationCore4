@@ -1317,6 +1317,12 @@ export function AppProvider({ children }) {
         const src = stateRef.current.src;
         const chosen = src.rows.filter((r) => r.fixed || r.on);
         if (chosen.length === 0) return;
+        // M1 (adversarial round 13): the adoption finalizer runs AFTER long
+        // downloads, and the modal stays closable meanwhile — bind the whole
+        // operation to what was open when the user clicked Download.
+        const originStore = storeRef.current;
+        const originRepoPath = stateRef.current.project?.repoPath ?? null;
+        const originGateway = stateRef.current.src.gateway;
         dispatch({ type: 'patchSrc', patch: { dl: 'run', error: null, progress: null } });
 
         const local = new Set(await api.listLocalRepos().catch(() => []));
@@ -1395,20 +1401,33 @@ export function AppProvider({ children }) {
           // pins never replaced; best-effort like the coverage backfill —
           // a failure here must not break the download flow.
           try {
-            const store = storeRef.current;
-            const gateway = stateRef.current.src.gateway;
-            if (store && stateRef.current.project && gateway) {
+            // Adoption is bound to the ORIGINATING project (M1): the user may
+            // have closed the modal and switched projects during the
+            // download. A switch means SKIP — never journal pins into
+            // whatever is open now. (A skipped project adopts on its next
+            // open — see openProject's adoption pass.)
+            const sameProject =
+              originStore && originRepoPath &&
+              storeRef.current === originStore &&
+              stateRef.current.project?.repoPath === originRepoPath;
+            if (sameProject && originGateway) {
               const { installed, coverage } = await a.resolutionContext();
-              if (mergeOptionalPins(stateRef.current.projectPins ?? {}, gateway, installed)) {
-                const next = await updateResources(store, (current) => {
-                  const merged = mergeOptionalPins(current, gateway, installed);
+              if (mergeOptionalPins(stateRef.current.projectPins ?? {}, originGateway, installed)) {
+                const next = await updateResources(originStore, (current) => {
+                  const merged = mergeOptionalPins(current, originGateway, installed);
                   if (!merged) return current;
                   return backfillCoverage(merged, coverage).resources;
                 });
-                dispatch({ type: 'set', patch: { projectPins: next } });
+                if (stateRef.current.project?.repoPath === originRepoPath) {
+                  dispatch({ type: 'set', patch: { projectPins: next } });
+                }
               }
             }
-          } catch { /* the pins stay as they were; the next gateway change or backfill picks the installs up */ }
+          } catch (e) {
+            // Stated, not swallowed (M1): the resource is installed but the
+            // project's pins were not updated.
+            dispatch({ type: 'patchSrc', patch: { error: t('sources.adoptFailed', { error: String(e?.message || e) }) } });
+          }
         }
       },
 
@@ -1785,12 +1804,29 @@ export function AppProvider({ children }) {
               dispatch({ type: 'set', patch: { projectPins: pins } });
               if (!pins) return;
               try {
-                const { coverage } = await a.resolutionContext();
-                if (!backfillCoverage(pins, coverage).changed) return;
-                // Re-run the backfill INSIDE the compare-and-swap so a concurrent
-                // pin edit is not clobbered (B7/W-5).
+                const { installed, coverage } = await a.resolutionContext();
+                // On the way in: record knowable coverage (#16, owner ruling
+                // 3c) AND adopt INSTALLED optional resources into matching
+                // rungs (D64 — the owner's "the book package includes them";
+                // covers pre-1.10 projects and downloads finished after a
+                // project switch, M1). Both compare-and-swapped together.
+                const adopt = (current) => {
+                  let next = current;
+                  for (const rung of Object.values(current.languageSets ?? {})) {
+                    const gl = rung?.gatewayLanguage;
+                    if (!gl?.languageId || !gl?.owner) continue;
+                    const merged = mergeOptionalPins(next, { id: gl.languageId, org: gl.owner }, installed);
+                    if (merged) next = merged;
+                  }
+                  return next;
+                };
+                const wouldChange =
+                  backfillCoverage(adopt(pins), coverage).changed || adopt(pins) !== pins;
+                if (!wouldChange) return;
+                // Re-run INSIDE the compare-and-swap so a concurrent pin edit
+                // is not clobbered (B7/W-5).
                 const next = await updateResources(store, (current) =>
-                  backfillCoverage(current, coverage).resources,
+                  backfillCoverage(adopt(current), coverage).resources,
                 );
                 dispatch({ type: 'set', patch: { projectPins: next } });
               } catch {

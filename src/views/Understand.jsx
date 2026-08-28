@@ -40,25 +40,40 @@ const sectionStarts = (raw, chapter) => {
 /** The last verse number a chapter key reaches ("4-5" → 5, "4" → 4). */
 const trailingNum = (key) => Number(String(key).split('-').pop());
 
-/** The latest comprehension note within a unit's verse range. Retrieval is by
- * NUMERIC MEMBERSHIP, not by exact head key: ULT and UST chunk chapters
- * differently AND bridge verses differently (one source's "4","5" is the
- * other's "4-5"), so a note journaled under one form must still surface under
- * the other (2026-08-27 reviews). Notes are grow-only (§8.5), so "latest" is
- * the highest ts among the notes landing in the unit's range. */
-const latestUnitNote = (comprehension, chapter, unit) => {
-  if (!comprehension || unit.verses.length === 0) return null;
+/** Every comprehension note whose target lands in the unit's numeric range,
+ * as [verseKey, note] pairs. Membership matters because ULT and UST chunk and
+ * bridge differently (one source's "4","5" is the other's "4-5"), so a note
+ * journaled under one form must still SURFACE under the other. */
+const unitNotes = (comprehension, chapter, unit) => {
+  if (!comprehension || unit.verses.length === 0) return [];
   const lo = leadingNum(unit.verses[0]);
   const hi = trailingNum(unit.verses[unit.verses.length - 1]);
-  let best = null;
+  const found = [];
   for (const [key, n] of Object.entries(comprehension)) {
     const [c, ...rest] = key.split(':');
     if (Number(c) !== Number(chapter)) continue;
-    const v = leadingNum(rest.join(':'));
-    if (v < lo || v > hi) continue;
-    if (!best || String(n.ts) > String(best.ts)) best = n;
+    const v = rest.join(':');
+    if (leadingNum(v) < lo || leadingNum(v) > hi) continue;
+    found.push([v, n]);
   }
-  return best;
+  return found;
+};
+
+/** Which note a unit's box DISPLAYS and EDITS — exact durable identities only
+ * (M2, adversarial round 13): an exact head match wins; otherwise a single
+ * in-range note is shown and edits CONTINUE that note's own target (the
+ * chunk-drift case); with several distinct targets and no exact match the box
+ * shows none — never a timestamp pick saved under a different identity. */
+const displayedUnitNote = (comprehension, chapter, unit) => {
+  const entries = unitNotes(comprehension, chapter, unit);
+  const exact = entries.find(([v]) => String(v) === String(unit.head));
+  const shown = exact ?? (entries.length === 1 ? entries[0] : null);
+  return {
+    text: shown ? shown[1].text : '',
+    targetVerse: shown ? shown[0] : unit.head,
+    hasAny: entries.length > 0,
+    hiddenCount: entries.length - (shown ? 1 : 0),
+  };
 };
 
 /** The comprehension box (#106's only write): saves on blur through
@@ -71,9 +86,15 @@ function ComprehensionBox({ book, chapter, unit }) {
   const ready = s.understand?.comprehension != null;
   // J2: a cross-frame unit reads its EXACT project reference — fan-out units
   // (two project verses, one source ref) keep their own distinct notes.
-  const stored = unit.project
-    ? (s.understand?.comprehension?.[`${unit.project.chapter}:${unit.project.verse}`]?.text ?? '')
-    : (latestUnitNote(s.understand?.comprehension, chapter, unit)?.text ?? '');
+  // Same-frame units follow the exact-identity display rule (M2).
+  const shown = unit.project
+    ? {
+        text: s.understand?.comprehension?.[`${unit.project.chapter}:${unit.project.verse}`]?.text ?? '',
+        targetVerse: unit.project.verse,
+        hiddenCount: 0,
+      }
+    : displayedUnitNote(s.understand?.comprehension, chapter, unit);
+  const stored = shown.text;
   const [text, setText] = React.useState(stored);
   // The box's target identity is FULLY scoped (F1, adversarial round 6):
   // unit keys like "s1"/"v1"/"whole" repeat across chapters and books, so
@@ -85,7 +106,7 @@ function ComprehensionBox({ book, chapter, unit }) {
   // A cross-frame unit's durable identity is its PROJECT reference (I1).
   const dirtyKey = unit.project
     ? `${book}|${unit.project.chapter}:${unit.project.verse}`
-    : `${book}|${chapter}:${unit.head}`;
+    : `${book}|${chapter}:${shown.targetVerse}`;
   // E1 (adversarial round 5): a stored update must never CLOBBER a draft the
   // user has typed since — sync from stored only while the box still shows
   // the previous stored value; a diverged draft stays, and its dirty mark is
@@ -117,9 +138,11 @@ function ComprehensionBox({ book, chapter, unit }) {
   // and reconciles its dirty mark.
   const [clearRefused, setClearRefused] = React.useState(false);
   // The save target's coordinates — also the failure-ledger identity (K1).
+  // Editing a DISPLAYED note continues that note's own durable target (M2);
+  // a fresh note targets the unit head.
   const target = unit.project
     ? { chapter: unit.project.chapter, verse: unit.project.verse }
-    : { chapter, verse: unit.head };
+    : { chapter, verse: shown.targetVerse };
   const save = () => {
     if (text.trim() === stored.trim()) {
       // Reverted to the stored text: an earlier FAILED write for this target
@@ -140,7 +163,8 @@ function ComprehensionBox({ book, chapter, unit }) {
       // also the storage/echo key.
       actions.saveComprehension(unit.project.chapter, unit.project.verse, text, { projectFrame: true });
     } else {
-      actions.saveComprehension(chapter, unit.head, text);
+      // M2: the displayed note's own target — never re-keyed to the head.
+      actions.saveComprehension(chapter, shown.targetVerse, text);
     }
   };
   return (
@@ -160,6 +184,13 @@ function ComprehensionBox({ book, chapter, unit }) {
       {clearRefused && (
         <p data-testid="understand-clear-refused" style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--tc-warn-text)', margin: '6px 0 0' }}>
           {t('understand.cannotClear')}
+        </p>
+      )}
+      {shown.hiddenCount > 0 && (
+        // M2: several distinct saved notes live inside this section — say so
+        // and point at Verse view; never pick one by timestamp.
+        <p data-testid="understand-notes-in-section" style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--text-tertiary)', margin: '6px 0 0' }}>
+          {t('understand.notesInSection', { n: shown.hiddenCount })}
         </p>
       )}
     </>
@@ -462,7 +493,7 @@ export default function Understand() {
                   <div style={{ flex: 1 }} />
                   {(u.project
                     ? s.understand?.comprehension?.[`${u.project.chapter}:${u.project.verse}`]
-                    : latestUnitNote(s.understand?.comprehension, chapter, u))
+                    : displayedUnitNote(s.understand?.comprehension, chapter, u).hasAny)
                     ? <StatusDot status="valid" size={7} /> : null}
                 </div>
                 <p style={{ direction: 'ltr', textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse)', color: 'var(--text-scripture)', margin: '10px 0 12px' }}>
