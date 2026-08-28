@@ -332,25 +332,112 @@ function SlotBanners({ slot }) {
   );
 }
 
+const itemsInChapter = (slot, chapter) =>
+  slot?.state === 'ready'
+    ? slot.items.filter((it) => Number(it.contextId.reference.chapter) === Number(chapter))
+    : [];
+
+const emptyChapter = (
+  <p style={{ fontSize: 'var(--fs-caption-lg)', color: 'var(--text-tertiary)', fontStyle: 'italic', margin: 0 }}>
+    {t('understand.noneForChapter')}
+  </p>
+);
+
+function NotesTab({ slot, notes, actions }) {
+  if (slot?.state !== 'ready') return <><SlotBanners slot={slot} /><SlotState slot={slot} /></>;
+  return <>
+    <SlotBanners slot={slot} />
+    {notes.length === 0 ? emptyChapter : notes.map((n, i) => (
+      <HelpCard key={`${n.contextId.checkId}-${i}`} kind="note" verse={n.contextId.reference.verse}
+        title={n.contextId.quoteString || n.contextId.groupId} body={n.contextId.occurrenceNote.slice(0, 400)}
+        actionLabel={t('understand.academyLink')}
+        onAction={n.contextId.groupId
+          ? () => actions.loadHelpArticle({ kind: 'ta', slug: n.contextId.groupId, rung: slot.rung })
+          : undefined} />
+    ))}
+  </>;
+}
+
+function WordsTab({ slot, words, actions }) {
+  if (slot?.state !== 'ready') return <><SlotBanners slot={slot} /><SlotState slot={slot} /></>;
+  return <>
+    <SlotBanners slot={slot} />
+    {words.length === 0 ? emptyChapter : words.map((w, i) => (
+      <HelpCard key={`${w.contextId.checkId}-${i}`} kind="word" verse={w.contextId.reference.verse}
+        title={w.contextId.quoteString || w.contextId.groupId} body={w.contextId.groupId}
+        actionLabel={t('understand.wordLink')}
+        onAction={() => actions.loadHelpArticle({ kind: 'tw', category: w.category, slug: w.contextId.groupId, rung: slot.rung })} />
+    ))}
+  </>;
+}
+
+function QuestionsTab({ slot, questions }) {
+  if (slot?.state !== 'ready') return <><SlotBanners slot={slot} /><SlotState slot={slot} /></>;
+  return <>
+    <SlotBanners slot={slot} />
+    {questions.length === 0 ? emptyChapter : questions.map((q, i) => (
+      <div key={`${q.contextId.checkId}-${i}`} data-testid="understand-question"
+        style={{ border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 14, background: '#fff' }}>
+        <p style={{ fontSize: 'var(--fs-ui-md)', letterSpacing: 'var(--track-14)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)', margin: '0 0 6px' }}>{q.question}</p>
+        <p style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', lineHeight: 'var(--lh-body)', color: 'var(--text-secondary)', margin: 0 }}>
+          <span style={{ color: 'var(--text-tertiary)', fontWeight: 'var(--fw-bold)' }}>{t('understand.answer')} · </span>{q.response}
+        </p>
+      </div>
+    ))}
+  </>;
+}
+
+const simplifiedChapterText = (simplified, sourceRefs, chapter) => {
+  const mapped = sourceRefs?.[String(chapter)];
+  const verses = mapped
+    ? mapped
+        .filter((r) => !r.unmapped)
+        .map((r) => `${r.c}:${r.v} ${verseText(simplified.chapters?.[String(r.c)]?.[String(r.v)])}`)
+    : Object.entries(simplified.chapters?.[String(chapter)] ?? {})
+        .filter(([k]) => /^\d/.test(k))
+        .sort(([a], [b]) => leadingNum(a) - leadingNum(b))
+        .map(([k, v]) => `${k} ${verseText(v)}`);
+  return verses.join(' ') || t('understand.noneForChapter');
+};
+
+function SimplifiedTab({ slot, sourceRefs, chapter }) {
+  if (slot?.state !== 'ready') return <SlotState slot={slot} />;
+  return (
+    <div style={{ border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 16, background: 'var(--surface-app)' }} data-testid="understand-simplified">
+      <Overline>{t('understand.simplifiedTitle')}</Overline>
+      <p style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-sm)', lineHeight: 'var(--lh-verse-sm)', color: 'var(--text-scripture)', margin: '10px 0 0' }}>
+        {simplifiedChapterText(slot, sourceRefs, chapter)}
+      </p>
+    </div>
+  );
+}
+
+function AcademyTab({ notesSlot, slugs, actions }) {
+  if (notesSlot?.state !== 'ready') return <SlotState slot={notesSlot} />;
+  if (slugs.length === 0) return emptyChapter;
+  return slugs.map((slug) => (
+    <Button key={slug} variant="secondary" onClick={() => actions.loadHelpArticle({ kind: 'ta', slug, rung: notesSlot.rung })}
+      style={{ justifyContent: 'space-between', width: '100%', borderRadius: 'var(--radius-lg)', textAlign: 'start' }}>
+      <span>{slug}</span><span style={{ color: 'var(--accent)' }}>→</span>
+    </Button>
+  ));
+}
+
+function HelpsTab({ tab, u, chapter, actions }) {
+  const notes = itemsInChapter(u?.notes, chapter);
+  if (tab === 'notes') return <NotesTab slot={u?.notes} notes={notes} actions={actions} />;
+  if (tab === 'words') return <WordsTab slot={u?.words} words={itemsInChapter(u?.words, chapter)} actions={actions} />;
+  if (tab === 'questions') return <QuestionsTab slot={u?.questions} questions={itemsInChapter(u?.questions, chapter)} />;
+  if (tab === 'simplified') return <SimplifiedTab slot={u?.simplified} sourceRefs={u?.sourceRefs} chapter={chapter} />;
+  const slugs = [...new Set(notes.map((n) => n.contextId.groupId))].filter(Boolean);
+  return <AcademyTab notesSlot={u?.notes} slugs={slugs} actions={actions} />;
+}
+
 function HelpsPanel({ chapter }) {
   const { s, actions } = useApp();
   const u = s.understand;
   const tab = s.helpsTab;
   const loading = !u || u.loading;
-  const inChapter = (slot) =>
-    slot?.state === 'ready'
-      ? slot.items.filter((it) => Number(it.contextId.reference.chapter) === Number(chapter))
-      : [];
-  const notes = inChapter(u?.notes);
-  const words = inChapter(u?.words);
-  const questions = inChapter(u?.questions);
-  // tA modules linked from this chapter's notes, deduped, in first-note order.
-  // A plain note (no SupportReference — kept for this read-only surface) has
-  // groupId '' and links nowhere.
-  const academySlugs = [...new Set(notes.map((n) => n.contextId.groupId))].filter(Boolean);
-  const empty = <p style={{ fontSize: 'var(--fs-caption-lg)', color: 'var(--text-tertiary)', fontStyle: 'italic', margin: 0 }}>{t('understand.noneForChapter')}</p>;
-  const simplified = u?.simplified;
-
   return (
     <aside data-testid="helps-panel" style={{ width: 'var(--helps-width)', flex: 'none', background: 'var(--surface-panel)', borderInlineStart: 'var(--stroke-hair) solid var(--border-hair)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <Tabs value={tab} onChange={actions.setHelpsTab} tabs={[
@@ -369,79 +456,80 @@ function HelpsPanel({ chapter }) {
         {!loading && u?.error && (
           <Callout tone="warn" role="alert" data-testid="understand-error" style={{ overflowWrap: 'anywhere' }}>{u.error}</Callout>
         )}
-        {!loading && !u?.error && (
-          <>
-            {tab === 'notes' && (<>
-              <SlotBanners slot={u?.notes} />
-              {u?.notes?.state !== 'ready' ? <SlotState slot={u?.notes} /> : notes.length === 0 ? empty
-                : notes.map((n, i) => (
-                  <HelpCard key={`${n.contextId.checkId}-${i}`} kind="note" verse={n.contextId.reference.verse}
-                    title={n.contextId.quoteString || n.contextId.groupId} body={n.contextId.occurrenceNote.slice(0, 400)}
-                    actionLabel={t('understand.academyLink')}
-                    onAction={n.contextId.groupId
-                      ? () => actions.loadHelpArticle({ kind: 'ta', slug: n.contextId.groupId, rung: u.notes.rung })
-                      : undefined} />
-                ))}
-            </>)}
-            {tab === 'words' && (<>
-              <SlotBanners slot={u?.words} />
-              {u?.words?.state !== 'ready' ? <SlotState slot={u?.words} /> : words.length === 0 ? empty
-                : words.map((w, i) => (
-                  <HelpCard key={`${w.contextId.checkId}-${i}`} kind="word" verse={w.contextId.reference.verse}
-                    title={w.contextId.quoteString || w.contextId.groupId} body={w.contextId.groupId}
-                    actionLabel={t('understand.wordLink')}
-                    onAction={() => actions.loadHelpArticle({ kind: 'tw', category: w.category, slug: w.contextId.groupId, rung: u.words.rung })} />
-                ))}
-            </>)}
-            {tab === 'questions' && (<>
-              <SlotBanners slot={u?.questions} />
-              {u?.questions?.state !== 'ready' ? <SlotState slot={u?.questions} /> : questions.length === 0 ? empty
-                : questions.map((q, i) => (
-                  <div key={`${q.contextId.checkId}-${i}`} data-testid="understand-question"
-                    style={{ border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 14, background: '#fff' }}>
-                    <p style={{ fontSize: 'var(--fs-ui-md)', letterSpacing: 'var(--track-14)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)', margin: '0 0 6px' }}>{q.question}</p>
-                    <p style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', lineHeight: 'var(--lh-body)', color: 'var(--text-secondary)', margin: 0 }}>
-                      <span style={{ color: 'var(--text-tertiary)', fontWeight: 'var(--fw-bold)' }}>{t('understand.answer')} · </span>{q.response}
-                    </p>
-                  </div>
-                ))}
-            </>)}
-            {tab === 'simplified' && (
-              // D64: the content is the resolved simplifiedText slot — the
-              // gateway's own simplified Bible when its set pins one.
-              simplified?.state === 'ready' ? (
-                <div style={{ border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 16, background: 'var(--surface-app)' }} data-testid="understand-simplified">
-                  <Overline>{t('understand.simplifiedTitle')}</Overline>
-                  <p style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-sm)', lineHeight: 'var(--lh-verse-sm)', color: 'var(--text-scripture)', margin: '10px 0 0' }}>
-                    {(u?.sourceRefs?.[String(chapter)]
-                      // H1: a cross-frame project reads the simplified text at
-                      // the MAPPED source references, never at its own number.
-                      ? u.sourceRefs[String(chapter)]
-                          .filter((r) => !r.unmapped)
-                          .map((r) => `${r.c}:${r.v} ${verseText(simplified.chapters?.[String(r.c)]?.[String(r.v)])}`)
-                      : Object.entries(simplified.chapters?.[String(chapter)] ?? {})
-                          .filter(([k]) => /^\d/.test(k))
-                          .sort(([a], [b]) => leadingNum(a) - leadingNum(b))
-                          .map(([k, v]) => `${k} ${verseText(v)}`))
-                      .join(' ') || t('understand.noneForChapter')}
-                  </p>
-                </div>
-              ) : <SlotState slot={simplified} />
-            )}
-            {tab === 'academy' && (<>
-              {u?.notes?.state !== 'ready' ? <SlotState slot={u?.notes} /> : academySlugs.length === 0 ? empty
-                : academySlugs.map((slug) => (
-                  <Button key={slug} variant="secondary" onClick={() => actions.loadHelpArticle({ kind: 'ta', slug, rung: u.notes.rung })}
-                    style={{ justifyContent: 'space-between', width: '100%', borderRadius: 'var(--radius-lg)', textAlign: 'start' }}>
-                    <span>{slug}</span><span style={{ color: 'var(--accent)' }}>→</span>
-                  </Button>
-                ))}
-            </>)}
-          </>
-        )}
+        {!loading && !u?.error && <HelpsTab tab={tab} u={u} chapter={chapter} actions={actions} />}
       </div>
       <ArticleView article={u?.article} onClose={actions.closeHelpArticle} />
     </aside>
+  );
+}
+
+const unitRangeLabel = (keys) => {
+  const from = keys[0];
+  const to = keys[keys.length - 1];
+  return keys.length > 1 || String(from).includes('-')
+    ? t('understand.versesRange', { from: leadingNum(from), to: String(to).includes('-') ? String(to).split('-')[1] : leadingNum(to) })
+    : t('understand.verseOne', { n: from });
+};
+
+const crossFrameUnits = (refs, book) => refs.map((r) => r.unmapped
+  ? { key: `u${r.unmapped}`, unmapped: r.unmapped }
+  : { key: `m${r.pc}:${r.pv}`, srcChapter: r.c, head: r.v, project: { chapter: r.pc, verse: r.pv }, label: `${bookName(book.code)} ${r.c}:${r.v}`, verses: [r.v] });
+
+const sectionUnits = (starts, verseKeys) => {
+  const units = [];
+  for (let i = 0; i < starts.length; i++) {
+    const from = starts[i];
+    const to = i + 1 < starts.length ? starts[i + 1] - 1 : Infinity;
+    const keys = verseKeys.filter((k) => leadingNum(k) >= from && leadingNum(k) <= to);
+    if (keys.length) units.push({ key: `s${from}`, head: keys[0], label: unitRangeLabel(keys), verses: keys });
+  }
+  return units;
+};
+
+const understandUnits = ({ s, book, chapter, src, srcChapters, mode }) => {
+  const verseKeys = Object.keys(srcChapters)
+    .filter((k) => /^\d+(-\d+)?$/.test(k))
+    .sort((a, b) => leadingNum(a) - leadingNum(b));
+  const crossFrame = s.understand?.sourceRefs != null;
+  if (crossFrame) return crossFrameUnits(s.understand.sourceRefs[String(chapter)] ?? [], book);
+  const starts = mode === 'section' && src && src !== 'missing' ? sectionStarts(src.raw, chapter) : [];
+  if (mode === 'section' && starts.length > 0) return sectionUnits(starts, verseKeys);
+  if (mode === 'section') return verseKeys.length
+    ? [{ key: 'whole', head: verseKeys[0], label: `${bookName(book.code)} ${chapter}`, verses: verseKeys }]
+    : [];
+  return verseKeys.map((k) => ({ key: `v${k}`, head: k, label: unitRangeLabel([k]), verses: [k] }));
+};
+
+function UnderstandUnit({ unit, s, src, srcChapters, book, chapter }) {
+  if (unit.unmapped) {
+    return (
+      <Callout tone="info" data-testid={`understand-unit-${unit.key}`} style={{ marginTop: 18 }}>
+        {t('understand.verseUnmapped', { ref: unit.unmapped })}
+      </Callout>
+    );
+  }
+  const hasNote = unit.project
+    ? s.understand?.comprehension?.[`${unit.project.chapter}:${unit.project.verse}`]
+    : displayedUnitNote(s.understand?.comprehension, chapter, unit).hasAny;
+  const chapterVerses = unit.srcChapter != null
+    ? (src && src !== 'missing' ? src.chapters?.[String(unit.srcChapter)] ?? {} : {})
+    : srcChapters;
+  return (
+    <div data-testid={`understand-unit-${unit.key}`} style={{ marginTop: 18, borderRadius: 'var(--radius-xl)', padding: '12px 16px', background: '#fff', border: 'var(--stroke) solid var(--border)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingBottom: 8, borderBottom: 'var(--stroke) solid var(--border)' }}>
+        <Overline>{unit.label}</Overline><div style={{ flex: 1 }} />
+        {hasNote ? <StatusDot status="valid" size={7} /> : null}
+      </div>
+      <p style={{ direction: 'ltr', textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse)', color: 'var(--text-scripture)', margin: '10px 0 12px' }}>
+        {unit.verses.map((k) => (
+          <React.Fragment key={k}>
+            <sup style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', marginInlineEnd: 3, verticalAlign: 'super' }}>{k}</sup>
+            {verseText(chapterVerses[String(k)])}{' '}
+          </React.Fragment>
+        ))}
+      </p>
+      <ComprehensionBox book={book.code} chapter={unit.srcChapter ?? chapter} unit={unit} />
+    </div>
   );
 }
 
@@ -466,54 +554,7 @@ export default function Understand() {
   const chapter = s.chapter;
   const src = s.sources[s.sourceTab];
   const srcChapters = src && src !== 'missing' ? src.chapters?.[String(chapter)] ?? {} : {};
-  // Chapter keys INCLUDING verse bridges ("17-18") — a span is a real verse
-  // that must render (2026-08-27 review); ordered by leading number.
-  const verseKeys = Object.keys(srcChapters)
-    .filter((k) => /^\d+(-\d+)?$/.test(k))
-    .sort((a, b) => leadingNum(a) - leadingNum(b));
-  const starts = mode === 'section' && src && src !== 'missing' ? sectionStarts(src.raw, chapter) : [];
-  const rangeLabel = (keys) => {
-    const from = keys[0];
-    const to = keys[keys.length - 1];
-    return keys.length > 1 || String(from).includes('-')
-      ? t('understand.versesRange', { from: leadingNum(from), to: String(to).includes('-') ? String(to).split('-')[1] : leadingNum(to) })
-      : t('understand.verseOne', { n: from });
-  };
-  const units = [];
-  // H1 (adversarial round 8): a cross-frame project must NOT index the
-  // eng-frame source with its own chapter number. loadUnderstand supplies
-  // per-project-chapter SOURCE references (mapped once per load); each ref
-  // becomes its own unit labeled with the source reference, and an
-  // unmappable project verse is stated, never guessed. Same-frame projects
-  // (sourceRefs null — the uW default) keep the section/verse chunking.
-  // sourceRefs != null means CROSS-FRAME — even with no refs yet (O2): the
-  // view must never fall back to indexing the eng source with project-frame
-  // chapter numbers while the book bytes load.
-  const crossFrame = s.understand?.sourceRefs != null;
-  const crossRefs = crossFrame ? s.understand.sourceRefs[String(chapter)] ?? [] : null;
-  if (crossFrame) {
-    for (const r of crossRefs) {
-      if (r.unmapped) {
-        units.push({ key: `u${r.unmapped}`, unmapped: r.unmapped });
-      } else {
-        // Keyed by the PROJECT ref (I1): fan-out gives two project verses the
-        // same source ref, and each must stay its own unit with its own
-        // exact journal identity.
-        units.push({ key: `m${r.pc}:${r.pv}`, srcChapter: r.c, head: r.v, project: { chapter: r.pc, verse: r.pv }, label: `${bookName(book.code)} ${r.c}:${r.v}`, verses: [r.v] });
-      }
-    }
-  } else if (mode === 'section' && starts.length > 0) {
-    for (let i = 0; i < starts.length; i++) {
-      const from = starts[i];
-      const to = i + 1 < starts.length ? starts[i + 1] - 1 : Infinity;
-      const keys = verseKeys.filter((k) => leadingNum(k) >= from && leadingNum(k) <= to);
-      if (keys.length) units.push({ key: `s${from}`, head: keys[0], label: rangeLabel(keys), verses: keys });
-    }
-  } else if (mode === 'section') {
-    if (verseKeys.length) units.push({ key: 'whole', head: verseKeys[0], label: `${bookName(book.code)} ${chapter}`, verses: verseKeys });
-  } else {
-    for (const k of verseKeys) units.push({ key: `v${k}`, head: k, label: rangeLabel([k]), verses: [k] });
-  }
+  const units = understandUnits({ s, book, chapter, src, srcChapters, mode });
 
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }} data-testid="understand">
@@ -549,36 +590,8 @@ export default function Understand() {
             {!src && (
               <p style={{ fontSize: 'var(--fs-ui-sm)', color: 'var(--text-tertiary)', marginTop: 10 }}>{t('understand.loading')}</p>
             )}
-            {units.map((u) => u.unmapped ? (
-              <Callout key={u.key} tone="info" data-testid={`understand-unit-${u.key}`} style={{ marginTop: 18 }}>
-                {t('understand.verseUnmapped', { ref: u.unmapped })}
-              </Callout>
-            ) : (
-              <div key={u.key} data-testid={`understand-unit-${u.key}`} style={{ marginTop: 18, borderRadius: 'var(--radius-xl)', padding: '12px 16px', background: '#fff', border: 'var(--stroke) solid var(--border)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingBottom: 8, borderBottom: 'var(--stroke) solid var(--border)' }}>
-                  <Overline>{u.label}</Overline>
-                  <div style={{ flex: 1 }} />
-                  {(u.project
-                    ? s.understand?.comprehension?.[`${u.project.chapter}:${u.project.verse}`]
-                    : displayedUnitNote(s.understand?.comprehension, chapter, u).hasAny)
-                    ? <StatusDot status="valid" size={7} /> : null}
-                </div>
-                <p style={{ direction: 'ltr', textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse)', color: 'var(--text-scripture)', margin: '10px 0 12px' }}>
-                  {u.verses.map((k) => {
-                    // Cross-frame units carry their SOURCE chapter (H1).
-                    const chapVerses = u.srcChapter != null
-                      ? (src && src !== 'missing' ? src.chapters?.[String(u.srcChapter)] ?? {} : {})
-                      : srcChapters;
-                    return (
-                      <React.Fragment key={k}>
-                        <sup style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', marginInlineEnd: 3, verticalAlign: 'super' }}>{k}</sup>
-                        {verseText(chapVerses[String(k)])}{' '}
-                      </React.Fragment>
-                    );
-                  })}
-                </p>
-                <ComprehensionBox book={book.code} chapter={u.srcChapter ?? chapter} unit={u} />
-              </div>
+            {units.map((unit) => (
+              <UnderstandUnit key={unit.key} unit={unit} s={s} src={src} srcChapters={srcChapters} book={book} chapter={chapter} />
             ))}
           </div>
         </div>

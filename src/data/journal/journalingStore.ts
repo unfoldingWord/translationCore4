@@ -255,6 +255,24 @@ interface OpenOptions {
   vrsName?: string;
 }
 
+interface DiskInventory {
+  books: Record<string, { usfm: string; scope: string[] }>;
+  decisionFiles: Record<string, DecisionFile>;
+  decisionFilesByBook: Record<string, Record<string, DecisionFile>>;
+  alignmentFiles: Record<string, AlignmentFile>;
+  resources: ResourcesFile | null;
+  settings: SettingsFile | null;
+  vrsBytes: string | null;
+  diskBytes: Record<string, string>;
+  unknown: string[];
+}
+
+interface DivergedPath {
+  ipath: string;
+  diskMd5: string | null;
+  projectedMd5: string | null;
+}
+
 // ---------------------------------------------------------------------------
 // The store
 // ---------------------------------------------------------------------------
@@ -698,19 +716,7 @@ export class JournalingStore implements BurritoStore {
   private async installAndConverge(affected: string[]): Promise<void> {
     const own = [...new Set(affected)];
     const foldOut = this.foldNow();
-    for (const ipath of own) {
-      const bytes = this.projectionBytes(foldOut, ipath);
-      if (bytes !== null) {
-        await this.installDerived(ipath, bytes);
-      } else if (
-        JournalingStore.isRemovableDerivedClass(ipath) &&
-        (await this.readIngredientOrNull(ipath)) !== null
-      ) {
-        // The projection disappeared (structural retirement / book.remove):
-        // converging means REMOVING the stale derived file (round 6 R1).
-        await this.removeDerived(ipath);
-      }
-    }
+    for (const ipath of own) await this.installOwnProjection(foldOut, ipath);
     // INTERIM round-5 rule 4 (RETRIES READ DURABLE STATE): an inline retry
     // projects under the LEDGER overlay — never under the bare in-memory
     // register, which rule 3 keeps clean but an earlier accepted intent may
@@ -720,38 +726,70 @@ export class JournalingStore implements BurritoStore {
     const journaledTs = new Set(this.events.map((e) => e.ts));
     const overlay = await this.ledgerResolutionOverlay(intents, journaledTs);
     const seen = new Set(own);
-    for (const record of intents) {
-      if (!this.intentGateSatisfied(record, journaledTs)) continue;
-      for (const ipath of record.affectedPaths) {
-        if (seen.has(ipath)) continue;
-        seen.add(ipath);
-        try {
-          const bytes = this.withResolutions(overlay, () => this.projectionBytes(foldOut, ipath));
-          const disk = await this.readIngredientOrNull(ipath);
-          if (bytes === null) {
-            // Projection disappeared: converging is REMOVAL (round 6 R1).
-            if (disk !== null && JournalingStore.isRemovableDerivedClass(ipath))
-              await this.removeDerived(ipath);
-            continue;
-          }
-          if (disk === bytes) continue; // already converged — nothing to retry
-          // An absent file whose projection is the §8.7 EMPTY document is
-          // "not yet checkpointed" — converged, never materialized here.
-          if (disk === null && EMPTY_CHECKPOINT_DOCUMENTS.has(bytes)) continue;
-          await this.installDerived(ipath, bytes);
-        } catch {
-          continue; // a still-failing retry never fails this mutation's own work
-        }
-        // A retried decision sidecar that materialized under its ledger
-        // overlay is now accepted-and-materialized state: the register may
-        // move (rule 3 allows stamps after acceptance only — this is after).
-        const dec = /^checking\/(translationWords|translationNotes)\/([A-Z0-9]{3})\.json$/.exec(ipath);
-        if (dec) {
-          const resource = overlay.get(`${dec[1]}\n${dec[2]}`);
-          if (resource !== undefined) this.resolutions.set(`${dec[1]}\n${dec[2]}`, resource);
-        }
-      }
+    for (const record of intents)
+      await this.retryIntentPaths(record, journaledTs, seen, overlay, foldOut);
+  }
+
+  private async installOwnProjection(foldOut: FoldOutput, ipath: string): Promise<void> {
+    const bytes = this.projectionBytes(foldOut, ipath);
+    if (bytes !== null) {
+      await this.installDerived(ipath, bytes);
+      return;
     }
+    if (!JournalingStore.isRemovableDerivedClass(ipath)) return;
+    if ((await this.readIngredientOrNull(ipath)) === null) return;
+    // The projection disappeared (structural retirement / book.remove):
+    // converging means REMOVING the stale derived file (round 6 R1).
+    await this.removeDerived(ipath);
+  }
+
+  private async retryIntentPaths(
+    record: IntentRecord,
+    journaledTs: ReadonlySet<string>,
+    seen: Set<string>,
+    overlay: Map<string, Record<string, unknown>>,
+    foldOut: FoldOutput,
+  ): Promise<void> {
+    if (!this.intentGateSatisfied(record, journaledTs)) return;
+    for (const ipath of record.affectedPaths) {
+      if (seen.has(ipath)) continue;
+      seen.add(ipath);
+      let installed = false;
+      try {
+        installed = await this.retryProjectedPath(foldOut, overlay, ipath);
+      } catch {
+        continue; // a still-failing retry never fails this mutation's own work
+      }
+      if (installed) this.acceptRetriedResolution(ipath, overlay);
+    }
+  }
+
+  private async retryProjectedPath(
+    foldOut: FoldOutput,
+    overlay: Map<string, Record<string, unknown>>,
+    ipath: string,
+  ): Promise<boolean> {
+    const bytes = this.withResolutions(overlay, () => this.projectionBytes(foldOut, ipath));
+    const disk = await this.readIngredientOrNull(ipath);
+    if (bytes === null) {
+      if (disk !== null && JournalingStore.isRemovableDerivedClass(ipath)) await this.removeDerived(ipath);
+      return false;
+    }
+    if (disk === bytes) return false;
+    if (disk === null && EMPTY_CHECKPOINT_DOCUMENTS.has(bytes)) return false;
+    await this.installDerived(ipath, bytes);
+    return true;
+  }
+
+  private acceptRetriedResolution(
+    ipath: string,
+    overlay: Map<string, Record<string, unknown>>,
+  ): void {
+    const dec = /^checking\/(translationWords|translationNotes)\/([A-Z0-9]{3})\.json$/.exec(ipath);
+    if (!dec) return;
+    const key = `${dec[1]}\n${dec[2]}`;
+    const resource = overlay.get(key);
+    if (resource !== undefined) this.resolutions.set(key, resource);
   }
 
   /** INTERIM round-5 rule 1 (REPLAY-BEFORE-DIFF): inside the per-project
@@ -1010,17 +1048,7 @@ export class JournalingStore implements BurritoStore {
   }
 
   /** Inventory every journal-derived surface on disk (the §8.8 seed input). */
-  private async inventoryDisk(): Promise<{
-    books: Record<string, { usfm: string; scope: string[] }>;
-    decisionFiles: Record<string, DecisionFile>;
-    decisionFilesByBook: Record<string, Record<string, DecisionFile>>;
-    alignmentFiles: Record<string, AlignmentFile>;
-    resources: ResourcesFile | null;
-    settings: SettingsFile | null;
-    vrsBytes: string | null;
-    diskBytes: Record<string, string>;
-    unknown: string[];
-  }> {
+  private async inventoryDisk(): Promise<DiskInventory> {
     const repo = this.mustRepo();
     // SORTED: a resumed seed recomputes its events from this inventory, and the
     // recomputation must be deterministic — event order (and so each event's
@@ -1028,15 +1056,17 @@ export class JournalingStore implements BurritoStore {
     const paths = (await this.api.listPaths(repo))
       .filter((p) => !p.startsWith('checking/journal/') && !isUnjournaledIngredient(p))
       .sort();
-    const books: Record<string, { usfm: string; scope: string[] }> = {};
-    const decisionFiles: Record<string, DecisionFile> = {};
-    const decisionFilesByBook: Record<string, Record<string, DecisionFile>> = {};
-    const alignmentFiles: Record<string, AlignmentFile> = {};
-    let resources: ResourcesFile | null = null;
-    let settings: SettingsFile | null = null;
-    let vrsBytes: string | null = null;
-    const diskBytes: Record<string, string> = {};
-    const unknown: string[] = [];
+    const inventory: DiskInventory = {
+      books: {},
+      decisionFiles: {},
+      decisionFilesByBook: {},
+      alignmentFiles: {},
+      resources: null,
+      settings: null,
+      vrsBytes: null,
+      diskBytes: {},
+      unknown: [],
+    };
 
     // A metadata-read FAILURE aborts (official review round 6, R4): scope is
     // journaled forever in book.add, and defaulting a failed read to {} gives
@@ -1058,65 +1088,58 @@ export class JournalingStore implements BurritoStore {
     for (const ipath of paths) {
       const text = await this.readIngredientOrNull(ipath);
       if (text === null) continue; // listed, then gone — treated as absent
-      diskBytes[ipath] = text;
-      const parsed = (label: string): unknown => {
-        try {
-          return JSON.parse(text);
-        } catch {
-          // Unparseable sidecar: not silently skipped — it surfaces as an
-          // unexplained path (the classifier's diagnosable stop).
-          unknown.push(label);
-          return undefined;
-        }
-      };
-      const book = /^([A-Z0-9]{3})\.usfm$/.exec(ipath)?.[1];
-      if (book) {
-        books[book] = { usfm: text, scope: scope[book] ?? [] };
-        continue;
-      }
-      const align = /^checking\/alignments\/([A-Z0-9]{3})\.json$/.exec(ipath)?.[1];
-      if (align) {
-        const file = parsed(ipath) as AlignmentFile | undefined;
-        if (file) alignmentFiles[align] = file;
-        continue;
-      }
-      const dec = /^checking\/(translationWords|translationNotes)\/([A-Z0-9]{3})\.json$/.exec(ipath);
-      if (dec) {
-        const file = parsed(ipath) as DecisionFile | undefined;
-        if (!file) continue;
-        // seedFromSidecars keys decision files by toolId; per-book bookkeeping
-        // stays here so resolutions and (tool, book) merging stay exact.
-        (decisionFilesByBook[dec[1]] ??= {})[dec[2]] = file;
-        const merged = decisionFiles[dec[1]] ?? { ...file, decisions: [] };
-        merged.decisions = [...merged.decisions, ...(file.decisions ?? [])];
-        decisionFiles[dec[1]] = merged;
-        continue;
-      }
-      if (ipath === RESOURCES_IPATH) {
-        resources = (parsed(ipath) as ResourcesFile | undefined) ?? null;
-        continue;
-      }
-      if (ipath === SETTINGS_IPATH) {
-        settings = (parsed(ipath) as SettingsFile | undefined) ?? null;
-        continue;
-      }
-      if (ipath === VRS_IPATH) {
-        vrsBytes = text;
-        continue;
-      }
-      unknown.push(ipath);
+      this.inventoryPath(inventory, scope, ipath, text);
     }
-    return {
-      books,
-      decisionFiles,
-      decisionFilesByBook,
-      alignmentFiles,
-      resources,
-      settings,
-      vrsBytes,
-      diskBytes,
-      unknown,
-    };
+    return inventory;
+  }
+
+  private inventoryPath(
+    inventory: DiskInventory,
+    scope: Record<string, string[]>,
+    ipath: string,
+    text: string,
+  ): void {
+    inventory.diskBytes[ipath] = text;
+    const book = /^([A-Z0-9]{3})\.usfm$/.exec(ipath)?.[1];
+    if (book) return void (inventory.books[book] = { usfm: text, scope: scope[book] ?? [] });
+    const align = /^checking\/alignments\/([A-Z0-9]{3})\.json$/.exec(ipath)?.[1];
+    if (align) {
+      const file = this.parseInventoryJson<AlignmentFile>(inventory, ipath, text);
+      if (file) inventory.alignmentFiles[align] = file;
+      return;
+    }
+    const dec = /^checking\/(translationWords|translationNotes)\/([A-Z0-9]{3})\.json$/.exec(ipath);
+    if (dec) return void this.inventoryDecisionFile(inventory, dec[1], dec[2], ipath, text);
+    if (ipath === RESOURCES_IPATH)
+      return void (inventory.resources = this.parseInventoryJson<ResourcesFile>(inventory, ipath, text) ?? null);
+    if (ipath === SETTINGS_IPATH)
+      return void (inventory.settings = this.parseInventoryJson<SettingsFile>(inventory, ipath, text) ?? null);
+    if (ipath === VRS_IPATH) return void (inventory.vrsBytes = text);
+    inventory.unknown.push(ipath);
+  }
+
+  private parseInventoryJson<T>(inventory: DiskInventory, ipath: string, text: string): T | undefined {
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      inventory.unknown.push(ipath);
+      return undefined;
+    }
+  }
+
+  private inventoryDecisionFile(
+    inventory: DiskInventory,
+    tool: string,
+    book: string,
+    ipath: string,
+    text: string,
+  ): void {
+    const file = this.parseInventoryJson<DecisionFile>(inventory, ipath, text);
+    if (!file) return;
+    (inventory.decisionFilesByBook[tool] ??= {})[book] = file;
+    const merged = inventory.decisionFiles[tool] ?? { ...file, decisions: [] };
+    merged.decisions = [...merged.decisions, ...(file.decisions ?? [])];
+    inventory.decisionFiles[tool] = merged;
   }
 
   /** §8.8 universal seeding: one all-or-nothing seed covering every existing
@@ -1135,6 +1158,31 @@ export class JournalingStore implements BurritoStore {
   ): Promise<void> {
     const journal = this.mustJournal();
     const disk = await this.inventoryDisk();
+    this.assertSeedInventory(disk);
+    if (await this.resumeSeedIfComplete(unionEvents, disk, report)) return;
+
+    const { seedSource, seedVrsName, seedEvents } = this.seedCandidate(
+      journal,
+      options,
+      seedRecord,
+      disk,
+    );
+    if (seedEvents.length === 0) {
+      // An empty repo has nothing to seed - and nothing to converge, so a
+      // leftover record from an interrupted seed of since-removed content is
+      // provably safe to prune.
+      if (seedRecord) await this.kv.delete(`${this.intentPrefix}${seedRecord.ts}`);
+      return;
+    }
+    const normalizedSeed = seedEvents.map(normalizeEvent);
+    this.assertSeedCandidate(normalizedSeed, unionEvents, disk);
+    await this.publishSeedCandidate(journal, seedEvents, normalizedSeed, seedSource, seedVrsName);
+    this.events = normalizedSeed;
+    this.foldCache = null;
+    await this.finishSeedConvergence(disk, report);
+  }
+
+  private assertSeedInventory(disk: DiskInventory): void {
     if (disk.unknown.length)
       throw new UnexplainedDivergenceError(
         this.mustRepo(),
@@ -1144,9 +1192,6 @@ export class JournalingStore implements BurritoStore {
           projectedMd5: null,
         })),
       );
-
-    // A sidecar record for a book with no USFM on disk has no generation root
-    // to stamp - refuse with the reason rather than seal a refusable event.
     const orphaned: string[] = [];
     for (const [tool, byBook] of Object.entries(disk.decisionFilesByBook))
       for (const book of Object.keys(byBook))
@@ -1158,77 +1203,75 @@ export class JournalingStore implements BurritoStore {
         this.mustRepo(),
         orphaned.map((o) => `${o}: a record without its book has no §8.5 generation root`),
       );
+  }
 
-    // RESUME (review of 2026-08-20, P1): the seed record routed us here with a
-    // non-empty union - segments the interrupted seed already published. When
-    // the union's fold fully covers the disk state, publication had completed
-    // and only the sidecar canonicalization remains: finish it. Otherwise the
-    // publication itself was partial; disk is still untouched pre-seed state
-    // (convergence writes only start after full publication), so the
-    // DETERMINISTIC candidate recomputed below reproduces the published
-    // segments byte-identically and re-staging is idempotent.
-    if (unionEvents.length > 0) {
-      this.events = unionEvents;
-      this.foldCache = null;
-      if (this.seedStateProblems(this.foldNow(), disk).length === 0) {
-        await this.finishSeedConvergence(disk, report);
-        return;
-      }
-    }
+  private async resumeSeedIfComplete(
+    unionEvents: JournalEvent[],
+    disk: DiskInventory,
+    report: OpenReport,
+  ): Promise<boolean> {
+    if (unionEvents.length === 0) return false;
+    this.events = unionEvents;
+    this.foldCache = null;
+    if (this.seedStateProblems(this.foldNow(), disk).length !== 0) return false;
+    await this.finishSeedConvergence(disk, report);
+    return true;
+  }
 
-    // The RECORDED resume parameters win over the caller's options: the
-    // recomputed seed must be deterministic across opens (R-8.8.3), and a
-    // creation seed resumed by a plain open() must keep its vrs name.
+  private seedCandidate(
+    journal: JournalStore,
+    options: OpenOptions,
+    seedRecord: IntentRecord | undefined,
+    disk: DiskInventory,
+  ): {
+    seedSource: 'creation' | 'sidecar-migration';
+    seedVrsName: string | undefined;
+    seedEvents: JournalEvent[];
+  } {
     const seedSource = seedRecord?.seed?.source ?? options.seedSource ?? 'sidecar-migration';
     const seedVrsName = seedRecord?.seed?.vrsName ?? options.vrsName;
-    const seedEvents = seedFromSidecars({
-      actor: journal.actorId,
-      books: disk.books,
-      decisionFiles: disk.decisionFiles as never,
-      alignmentFiles: disk.alignmentFiles as never,
-      resources: disk.resources,
-      settings: disk.settings,
-      meta: null,
-      vrs: disk.vrsBytes === null ? null : { name: seedVrsName ?? 'unrecorded', bytes: disk.vrsBytes },
-      source: seedSource,
-    });
-    if (seedEvents.length === 0) {
-      // An empty repo has nothing to seed - and nothing to converge, so a
-      // leftover record from an interrupted seed of since-removed content is
-      // provably safe to prune.
-      if (seedRecord) await this.kv.delete(`${this.intentPrefix}${seedRecord.ts}`);
-      return;
-    }
+    return {
+      seedSource,
+      seedVrsName,
+      seedEvents: seedFromSidecars({
+        actor: journal.actorId,
+        books: disk.books,
+        decisionFiles: disk.decisionFiles as never,
+        alignmentFiles: disk.alignmentFiles as never,
+        resources: disk.resources,
+        settings: disk.settings,
+        meta: null,
+        vrs: disk.vrsBytes === null ? null : { name: seedVrsName ?? 'unrecorded', bytes: disk.vrsBytes },
+        source: seedSource,
+      }),
+    };
+  }
 
-    // Verify BEFORE publishing (R-8.8.2): fold the seal-normalized form - what
-    // a reader will actually fold - and compare against the pre-seed state.
-    // USFM and vrs bytes must match EXACTLY; sidecars must match canonically
-    // (their bytes converge to the projection form right after).
-    const normalizedSeed = seedEvents.map(normalizeEvent);
+  private assertSeedCandidate(
+    normalizedSeed: JournalEvent[],
+    unionEvents: JournalEvent[],
+    disk: DiskInventory,
+  ): void {
     const mismatches = this.seedStateProblems(fold(normalizedSeed), disk);
     if (mismatches.length) throw new SeedMismatchError(this.mustRepo(), mismatches);
+    if (unionEvents.length === 0) return;
+    const candidate = new Map(normalizedSeed.map((e) => [e.ts, canonical(e)]));
+    const torn = unionEvents.filter((e) => candidate.get(e.ts) !== canonical(e)).map((e) => e.ts);
+    if (torn.length)
+      throw new Error(
+        `refuse to resume the interrupted seed of ${this.mustRepo()}: published seed events at ` +
+          `${torn.join(', ')} are not reproduced by the recomputed deterministic seed - ` +
+          `resolve by hand; nothing was overwritten (R-8.8.2/R-8.8.3)`,
+      );
+  }
 
-    // Torn-state guard for a resumed PARTIAL seed: every already-published
-    // event must be reproduced identically by the recomputed candidate, or the
-    // union is not this seed's prefix - a diagnosable stop, nothing overwritten.
-    if (unionEvents.length > 0) {
-      const candidate = new Map(normalizedSeed.map((e) => [e.ts, canonical(e)]));
-      const torn = unionEvents.filter((e) => candidate.get(e.ts) !== canonical(e)).map((e) => e.ts);
-      if (torn.length)
-        throw new Error(
-          `refuse to resume the interrupted seed of ${this.mustRepo()}: published seed events at ` +
-            `${torn.join(', ')} are not reproduced by the recomputed deterministic seed - ` +
-            `resolve by hand; nothing was overwritten (R-8.8.2/R-8.8.3)`,
-        );
-    }
-
-    // The durable 'seed' ledger record FIRST (an interrupted seed must resume,
-    // not fall into the ordinary classifier), then stage EVERY part, then
-    // publish the set (all-or-nothing: a crash mid-publication replays the
-    // remainder from the exact staged bytes, and the record routes the next
-    // open back here). The record is immutable: a resume re-appends the SAME
-    // record - the recompute is deterministic - which setIfAbsent accepts
-    // idempotently.
+  private async publishSeedCandidate(
+    journal: JournalStore,
+    seedEvents: JournalEvent[],
+    normalizedSeed: JournalEvent[],
+    seedSource: 'creation' | 'sidecar-migration',
+    seedVrsName: string | undefined,
+  ): Promise<void> {
     const seedMeta: IntentRecord['seed'] = { source: seedSource };
     if (seedVrsName !== undefined) seedMeta.vrsName = seedVrsName;
     await this.appendIntent({
@@ -1238,8 +1281,7 @@ export class JournalingStore implements BurritoStore {
       seed: seedMeta,
     });
     for (const chunk of await this.chunkForSealing(seedEvents)) await journal.stage(chunk);
-    const outcomes = await journal.replayStaged();
-    const failed = outcomes.filter(
+    const failed = (await journal.replayStaged()).filter(
       (o) => o.outcome !== 'republished' && o.outcome !== 'already-published',
     );
     if (failed.length)
@@ -1248,10 +1290,6 @@ export class JournalingStore implements BurritoStore {
           .map((f) => `${f.ts}: ${f.outcome}${f.reason ? ` (${f.reason})` : ''}`)
           .join('; ')}`,
       );
-
-    this.events = normalizedSeed;
-    this.foldCache = null;
-    await this.finishSeedConvergence(disk, report);
   }
 
   /** The seed's tail: converge legacy sidecar bytes to the canonical projection
@@ -1293,8 +1331,18 @@ export class JournalingStore implements BurritoStore {
    * silently dropped by convergence (R-8.8.2). */
   private seedStateProblems(
     folded: FoldOutput,
-    disk: Awaited<ReturnType<JournalingStore['inventoryDisk']>>,
+    disk: DiskInventory,
   ): string[] {
+    return [
+      ...this.seedBookAndVrsProblems(folded, disk),
+      ...this.seedDecisionProblems(folded, disk),
+      ...this.seedAlignmentProblems(folded, disk),
+      ...this.seedResourceProblems(folded, disk),
+      ...this.seedSettingsProblems(folded, disk),
+    ];
+  }
+
+  private seedBookAndVrsProblems(folded: FoldOutput, disk: DiskInventory): string[] {
     const problems: string[] = [];
     for (const [book, entry] of Object.entries(disk.books)) {
       if (folded.books[book]?.usfm !== entry.usfm)
@@ -1304,16 +1352,11 @@ export class JournalingStore implements BurritoStore {
       problems.push('vrs.json: fold-of-seed differs from disk bytes');
     if (disk.vrsBytes === null && folded.vrs !== null)
       problems.push('vrs.json: the fold carries a versification frame the disk lacks');
-    // Stored decision ORDER is byte form, not content: legacy files carry the
-    // writing tool's order, the fold projects contextId-sorted, and convergence
-    // rewrites the byte form right after — so both sides compare in the fold's
-    // own order. The comparison is the WHOLE document, not just the records:
-    // the checkpoint projection emits exactly {schemaVersion, tool, book,
-    // resource, decisions}, so an unknown top-level field is content the
-    // projection cannot represent and MUST refuse (R-8.8.2, round 6 B4) —
-    // convergence would otherwise drop it silently. Content loss (a co-present
-    // same-key record the fold collapses) still differs after sorting and
-    // still refuses.
+    return problems;
+  }
+
+  private seedDecisionProblems(folded: FoldOutput, disk: DiskInventory): string[] {
+    const problems: string[] = [];
     const inFoldOrder = <T extends { contextId: unknown }>(list: T[]): T[] =>
       [...list].sort((a, b) => (canonical(a.contextId) < canonical(b.contextId) ? -1 : 1));
     for (const [tool, byBook] of Object.entries(disk.decisionFilesByBook)) {
@@ -1348,6 +1391,11 @@ export class JournalingStore implements BurritoStore {
           );
       }
     }
+    return problems;
+  }
+
+  private seedAlignmentProblems(folded: FoldOutput, disk: DiskInventory): string[] {
+    const problems: string[] = [];
     for (const [book, file] of Object.entries(disk.alignmentFiles)) {
       // Same whole-document rule: the projection emits exactly
       // {schemaVersion, book, chapters} — an extra top-level field refuses.
@@ -1364,6 +1412,11 @@ export class JournalingStore implements BurritoStore {
             `(records differ, or a top-level field the projection cannot represent)`,
         );
     }
+    return problems;
+  }
+
+  private seedResourceProblems(folded: FoldOutput, disk: DiskInventory): string[] {
+    const problems: string[] = [];
     try {
       const projectedResources = JSON.parse(projectResources(folded.pins)) as unknown;
       if (disk.resources !== null) {
@@ -1375,6 +1428,11 @@ export class JournalingStore implements BurritoStore {
     } catch (error) {
       problems.push(`${RESOURCES_IPATH}: ${String((error as Error).message ?? error)}`);
     }
+    return problems;
+  }
+
+  private seedSettingsProblems(folded: FoldOutput, disk: DiskInventory): string[] {
+    const problems: string[] = [];
     const projectedSettings = JSON.parse(projectSettings(folded.settings)) as unknown;
     if (disk.settings !== null) {
       if (canonical(projectedSettings) !== canonical(disk.settings))
@@ -1416,6 +1474,153 @@ export class JournalingStore implements BurritoStore {
     }
   }
 
+  private compareDisk(foldOut: FoldOutput, disk: DiskInventory): DivergedPath[] {
+    const diverged: DivergedPath[] = [];
+    const expected = new Set(this.derivedPathsOf(foldOut));
+    for (const ipath of expected) {
+      let projected: string | null;
+      try {
+        projected = this.projectionBytes(foldOut, ipath);
+      } catch {
+        projected = null;
+      }
+      const onDisk = disk.diskBytes[ipath];
+      if (onDisk === undefined && projected !== null && EMPTY_CHECKPOINT_DOCUMENTS.has(projected)) continue;
+      if (projected !== (onDisk ?? null))
+        diverged.push({
+          ipath,
+          diskMd5: onDisk === undefined ? null : md5Hex(onDisk),
+          projectedMd5: projected === null ? null : md5Hex(projected),
+        });
+    }
+    for (const ipath of Object.keys(disk.diskBytes))
+      if (!expected.has(ipath))
+        diverged.push({ ipath, diskMd5: md5Hex(disk.diskBytes[ipath]), projectedMd5: null });
+    for (const ipath of disk.unknown)
+      if (!diverged.some((d) => d.ipath === ipath))
+        diverged.push({ ipath, diskMd5: md5Hex(disk.diskBytes[ipath] ?? ''), projectedMd5: null });
+    return diverged;
+  }
+
+  private explainedPaths(intents: IntentRecord[], journaledTs: ReadonlySet<string>): Set<string> {
+    const explained = new Set<string>();
+    for (const record of intents)
+      if (this.intentGateSatisfied(record, journaledTs))
+        for (const ipath of record.affectedPaths) explained.add(ipath);
+    return explained;
+  }
+
+  private isAheadExplained(ipath: string, explained: ReadonlySet<string>, foldOut: FoldOutput): boolean {
+    if (!explained.has(ipath)) return false;
+    try {
+      return (
+        this.projectionBytes(foldOut, ipath) !== null ||
+        JournalingStore.isRemovableDerivedClass(ipath)
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  private liveResolutionRecords(
+    intents: IntentRecord[],
+    journaledTs: ReadonlySet<string>,
+  ): IntentRecord[] {
+    return intents.filter(
+      (record) =>
+        record.resolutions !== undefined &&
+        Object.keys(record.resolutions).length > 0 &&
+        this.intentGateSatisfied(record, journaledTs),
+    );
+  }
+
+  private prefixMatchesDisk(
+    actions: Array<{ actor: string; ts: string; events: JournalEvent[] }>,
+    resolutionRecords: IntentRecord[],
+    harvested: Map<string, Record<string, unknown>>,
+    disk: DiskInventory,
+  ): boolean {
+    const maxPrefix = 8;
+    for (let drop = 1; drop <= Math.min(maxPrefix, actions.length); drop += 1) {
+      const prefixEvents = actions.slice(0, actions.length - drop).flatMap((action) => action.events);
+      let prefixFold: FoldOutput;
+      try {
+        prefixFold = fold(prefixEvents);
+      } catch {
+        break;
+      }
+      if (resolutionRecords.length === 0 && this.compareDisk(prefixFold, disk).length === 0) return true;
+      if (resolutionRecords.length === 0) continue;
+      const prefixTs = new Set(prefixEvents.map((event) => event.ts));
+      const prefixResolutions = new Map(harvested);
+      for (const record of resolutionRecords)
+        if (record.kind !== 'unconditional' && prefixTs.has(record.ts))
+          for (const [key, resource] of Object.entries(record.resolutions!))
+            prefixResolutions.set(key, resource);
+      if (this.withResolutions(prefixResolutions, () => this.compareDisk(prefixFold, disk).length === 0))
+        return true;
+    }
+    return false;
+  }
+
+  private reconciliationPaths(after: FoldOutput, disk: DiskInventory): string[] {
+    const sweep = new Set([
+      ...this.derivedPathsOf(after),
+      ...Object.keys(disk.diskBytes).filter((path) => JournalingStore.isRemovableDerivedClass(path)),
+    ]);
+    const paths: string[] = [];
+    for (const ipath of sweep) {
+      let bytes: string | null;
+      try {
+        bytes = this.projectionBytes(after, ipath);
+      } catch {
+        continue;
+      }
+      const onDisk = disk.diskBytes[ipath];
+      if (bytes === null) {
+        if (onDisk !== undefined) paths.push(ipath);
+        continue;
+      }
+      if (bytes === onDisk) continue;
+      if (onDisk === undefined && EMPTY_CHECKPOINT_DOCUMENTS.has(bytes)) continue;
+      paths.push(ipath);
+    }
+    return paths;
+  }
+
+  private async reconcileDivergence(
+    remainder: DivergedPath[],
+    disk: DiskInventory,
+    report: OpenReport,
+  ): Promise<void> {
+    const journal = this.mustJournal();
+    const clock = { issue: (): string => journal.issueTs() };
+    let lastReconcileTs: string | null = null;
+    for (const entry of remainder) {
+      const book = entry.ipath.slice(0, 3);
+      const committed = disk.diskBytes[entry.ipath];
+      if (committed === undefined) throw new UnexplainedDivergenceError(this.mustRepo(), [entry]);
+      const events = reconcileUsfm(book, committed, this.foldNow(), clock, journal.actorId);
+      if (events.length === 0) continue;
+      await journal.publish(events);
+      this.events.push(...events.map(normalizeEvent));
+      this.foldCache = null;
+      lastReconcileTs = events[events.length - 1].ts;
+      report.reconciledBooks.push(book);
+    }
+    const paths = this.reconciliationPaths(this.foldNow(), disk);
+    if (paths.length)
+      await this.appendIntent(
+        lastReconcileTs !== null
+          ? { ts: lastReconcileTs, kind: 'mutation', affectedPaths: paths }
+          : { ts: journal.issueTs(), kind: 'unconditional', affectedPaths: paths },
+      );
+    await this.installAndConverge(paths);
+    await this.api.remakeIngredients(this.mustRepo());
+    report.classification = 'reconciled';
+    report.regeneratedPaths = paths;
+  }
+
   /** Classify derived disk state against the journal projection and recover. */
   private async classifyAndRecover(
     actions: Array<{ actor: string; ts: string; events: JournalEvent[] }>,
@@ -1430,38 +1635,7 @@ export class JournalingStore implements BurritoStore {
     const disk = await this.inventoryDisk();
     const journaledTs = new Set(this.events.map((e) => e.ts));
 
-    const compare = (fo: FoldOutput): Array<{ ipath: string; diskMd5: string | null; projectedMd5: string | null }> => {
-      const diverged: Array<{ ipath: string; diskMd5: string | null; projectedMd5: string | null }> = [];
-      const expected = new Set(this.derivedPathsOf(fo));
-      for (const ipath of expected) {
-        let projected: string | null;
-        try {
-          projected = this.projectionBytes(fo, ipath);
-        } catch {
-          projected = null; // e.g. a decision file whose resolution record is gone
-        }
-        const onDisk = disk.diskBytes[ipath];
-        // An ABSENT file whose projection is the §8.7 EMPTY document has simply
-        // not been checkpointed yet - never divergence (the same tolerance the
-        // verifier and the checkpoint apply).
-        if (onDisk === undefined && projected !== null && EMPTY_CHECKPOINT_DOCUMENTS.has(projected))
-          continue;
-        if (projected !== (onDisk ?? null))
-          diverged.push({
-            ipath,
-            diskMd5: onDisk === undefined ? null : md5Hex(onDisk),
-            projectedMd5: projected === null ? null : md5Hex(projected),
-          });
-      }
-      for (const ipath of Object.keys(disk.diskBytes)) {
-        if (expected.has(ipath)) continue;
-        diverged.push({ ipath, diskMd5: md5Hex(disk.diskBytes[ipath]), projectedMd5: null });
-      }
-      for (const ipath of disk.unknown)
-        if (!diverged.some((d) => d.ipath === ipath))
-          diverged.push({ ipath, diskMd5: md5Hex(disk.diskBytes[ipath] ?? ''), projectedMd5: null });
-      return diverged;
-    };
+    const compare = (candidate: FoldOutput): DivergedPath[] => this.compareDisk(candidate, disk);
 
     const diverged = compare(foldOut);
     if (diverged.length === 0) {
@@ -1485,24 +1659,8 @@ export class JournalingStore implements BurritoStore {
     // intent automatically (round-5 rule 2): its record was appended before
     // its publish attempt, so the replay satisfying its gate is all it takes.
     // Each explained path must be one the fold actually derives forward.
-    const explained = new Set<string>();
-    for (const record of intents)
-      if (this.intentGateSatisfied(record, journaledTs))
-        for (const ipath of record.affectedPaths) explained.add(ipath);
-    const aheadExplained = (ipath: string): boolean => {
-      if (!explained.has(ipath)) return false;
-      try {
-        // A null projection on a removable class is still explained: the
-        // forward step is REMOVING the stale file (round 6 R1), which
-        // installAndConverge performs.
-        return (
-          this.projectionBytes(foldOut, ipath) !== null ||
-          JournalingStore.isRemovableDerivedClass(ipath)
-        );
-      } catch {
-        return false; // e.g. a decision file whose resolution record is gone
-      }
-    };
+    const explained = this.explainedPaths(intents, journaledTs);
+    const aheadExplained = (ipath: string): boolean => this.isAheadExplained(ipath, explained, foldOut);
     if (diverged.every((d) => aheadExplained(d.ipath))) {
       await regenerateForward();
       return;
@@ -1513,12 +1671,7 @@ export class JournalingStore implements BurritoStore {
     // DISK-HARVESTED resolutions, so what remains is materializing the
     // ledger's resolution intent - recovered forward like a journal-ahead
     // state.
-    const resolutionRecords = intents.filter(
-      (r) =>
-        r.resolutions !== undefined &&
-        Object.keys(r.resolutions).length > 0 &&
-        this.intentGateSatisfied(r, journaledTs),
-    );
+    const resolutionRecords = this.liveResolutionRecords(intents, journaledTs);
     if (
       resolutionRecords.length > 0 &&
       this.withResolutions(harvested, () => compare(foldOut).length === 0)
@@ -1531,36 +1684,9 @@ export class JournalingStore implements BurritoStore {
     // by the trailing action(s)) -> regenerate forward. Bounded walk. This
     // branch survives even a lost ledger record: the journal itself still
     // explains the lag.
-    const MAX_PREFIX = 8;
-    for (let drop = 1; drop <= Math.min(MAX_PREFIX, actions.length); drop += 1) {
-      const prefixEvents = actions.slice(0, actions.length - drop).flatMap((a) => a.events);
-      let prefixFold: FoldOutput;
-      try {
-        prefixFold = fold(prefixEvents);
-      } catch {
-        break; // a prefix that does not fold explains nothing
-      }
-      // Each resolution travels WITH its own gate: a prefix carries a record's
-      // overlay only when it contains that record's action ts - and an
-      // 'unconditional' record belongs to no action, so NO prefix carries it.
-      let prefixClean: boolean;
-      if (resolutionRecords.length === 0) {
-        prefixClean = compare(prefixFold).length === 0;
-      } else {
-        const prefixTs = new Set(prefixEvents.map((e) => e.ts));
-        const prefixResolutions = new Map(harvested);
-        // Records are ts-sorted, so the LAST record whose ts the prefix
-        // contains wins per key (ts order is causal order).
-        for (const record of resolutionRecords)
-          if (record.kind !== 'unconditional' && prefixTs.has(record.ts))
-            for (const [key, resource] of Object.entries(record.resolutions!))
-              prefixResolutions.set(key, resource);
-        prefixClean = this.withResolutions(prefixResolutions, () => compare(prefixFold).length === 0);
-      }
-      if (prefixClean) {
-        await regenerateForward();
-        return;
-      }
+    if (this.prefixMatchesDisk(actions, resolutionRecords, harvested, disk)) {
+      await regenerateForward();
+      return;
     }
 
     // (c) Every UNEXPLAINED diverged path is a book USFM (edited or created
@@ -1571,67 +1697,7 @@ export class JournalingStore implements BurritoStore {
     const remainder = diverged.filter((d) => !aheadExplained(d.ipath));
     const usfmOnly = remainder.every((d) => /^[A-Z0-9]{3}\.usfm$/.test(d.ipath));
     if (usfmOnly) {
-      const journal = this.mustJournal();
-      const clock = { issue: (): string => journal.issueTs() };
-      let lastReconcileTs: string | null = null;
-      for (const entry of remainder) {
-        const book = entry.ipath.slice(0, 3);
-        const committed = disk.diskBytes[entry.ipath];
-        if (committed === undefined)
-          throw new UnexplainedDivergenceError(this.mustRepo(), [entry]); // deleted out of band
-        const events = reconcileUsfm(book, committed, this.foldNow(), clock, journal.actorId);
-        if (events.length === 0) continue;
-        await this.mustJournal().publish(events);
-        this.events.push(...events.map(normalizeEvent));
-        this.foldCache = null;
-        lastReconcileTs = events[events.length - 1].ts;
-        report.reconciledBooks.push(book);
-      }
-      // Converge: sweep EVERY derived surface against the POST-RECONCILE fold,
-      // not just the paths that diverged before it (official review round 6,
-      // R2): a topology-changing out-of-band edit publishes
-      // text.structure.apply, which can invalidate alignment and decision
-      // projections that were clean before the event — and can retire a
-      // projection entirely (R1: converging that path means removal).
-      const after = this.foldNow();
-      const sweep = new Set([
-        ...this.derivedPathsOf(after),
-        ...Object.keys(disk.diskBytes).filter((p) => JournalingStore.isRemovableDerivedClass(p)),
-      ]);
-      const paths: string[] = [];
-      for (const ipath of sweep) {
-        let bytes: string | null;
-        try {
-          bytes = this.projectionBytes(after, ipath);
-        } catch {
-          continue; // e.g. a decision file whose resolution record is gone — surfaced elsewhere
-        }
-        const onDisk = disk.diskBytes[ipath];
-        if (bytes === null) {
-          if (onDisk !== undefined) paths.push(ipath); // stale file → removal
-          continue;
-        }
-        if (bytes === onDisk) continue;
-        if (onDisk === undefined && EMPTY_CHECKPOINT_DOCUMENTS.has(bytes)) continue;
-        paths.push(ipath);
-      }
-      // Durable cover for the convergence installs, exactly like a mutation's:
-      // gated on the last reconcile action when one published (it is in the
-      // journal now), otherwise the record is its own unconditional intent.
-      if (paths.length)
-        await this.appendIntent(
-          lastReconcileTs !== null
-            ? { ts: lastReconcileTs, kind: 'mutation', affectedPaths: paths }
-            : { ts: journal.issueTs(), kind: 'unconditional', affectedPaths: paths },
-        );
-      await this.installAndConverge(paths);
-      // A reconciled book may be NEW to the metadata (created out of band and
-      // never registered): rescan so currentScope converges with the fold -
-      // regeneration rescans the whole repo and rebuilds scope entries from
-      // disk (§6 W-2; the x-role wipe is the accepted condition, D28).
-      await this.api.remakeIngredients(this.mustRepo());
-      report.classification = 'reconciled';
-      report.regeneratedPaths = paths;
+      await this.reconcileDivergence(remainder, disk, report);
       return;
     }
 
@@ -1767,57 +1833,70 @@ export class JournalingStore implements BurritoStore {
    * publish one action of align.verse.set events — including the explicit
    * empty-state record when a stored record disappears (the §8.5 removal). */
   async writeAlignments(book: string, data: AlignmentFile, expectMd5?: string | null): Promise<void> {
-    return this.queue(async () => {
-      await this.replayOwnStagedBeforeDiff(); // round-5 rule 1: REPLAY-BEFORE-DIFF
-      const journal = this.mustJournal();
-      const code = book.toUpperCase();
-      await this.checkExpectMd5(alignmentsIpath(code), expectMd5);
-      const foldOut = this.foldNow();
-      const generation = foldOut.books[code] ? foldOut.headsTs[`book|${code}`] : undefined;
-      if (generation === undefined)
-        throw new Error(`writeAlignments(${code}): the journal projects no such book`);
-      const normalized = normalizeAlignmentFile(data);
-      const incoming: Record<string, AlignmentVerseRecord> = {};
-      for (const [chapter, verses] of Object.entries(normalized.chapters ?? {}))
-        for (const [verse, record] of Object.entries(verses)) incoming[`${chapter}:${verse}`] = record;
-      const projected = foldOut.alignments[code] ?? {};
+    return this.queue(() => this.writeAlignmentsQueued(book, data, expectMd5));
+  }
 
-      const events: JournalEvent[] = [];
-      const pushRecord = (vkey: string, record: Record<string, unknown>): void => {
-        const sep = vkey.indexOf(':');
-        events.push({
-          v: 1,
-          op: 'align.verse.set',
-          actor: journal.actorId,
-          ts: journal.issueTs(),
-          base: foldOut.headsTs[`align|${code}|${vkey}`] ?? null, // first write is ordinary (anchored by generation)
-          generation,
-          book: code,
-          chapter: vkey.slice(0, sep),
-          verse: vkey.slice(sep + 1),
-          ...record,
-        });
-      };
-      for (const [vkey, record] of Object.entries(incoming)) {
-        const current = projected[vkey];
-        if (current !== undefined && canonical(current) === canonical(record)) continue;
-        pushRecord(vkey, record as unknown as Record<string, unknown>);
-      }
-      for (const [vkey, record] of Object.entries(projected)) {
-        if (incoming[vkey] !== undefined) continue;
-        if (isEmptyAlignmentRecord(record)) continue; // already the removal state
-        // The DEFINED removal: an explicit empty record, projected, not absence
-        // (R-8.5.11). The validity hash tracks the current folded verse text.
-        const verseContent = foldOut.books[code]?.verses?.[vkey];
-        pushRecord(vkey, {
-          alignments: [],
-          wordBank: [],
-          targetVerseMd5:
-            verseContent !== undefined ? verseTextMd5(verseContent) : (record.targetVerseMd5 as string),
-        });
-      }
-      await this.publishAndRegenerate(events, [alignmentsIpath(code)]);
-    });
+  private async writeAlignmentsQueued(
+    book: string,
+    data: AlignmentFile,
+    expectMd5?: string | null,
+  ): Promise<void> {
+    await this.replayOwnStagedBeforeDiff();
+    const journal = this.mustJournal();
+    const code = book.toUpperCase();
+    await this.checkExpectMd5(alignmentsIpath(code), expectMd5);
+    const foldOut = this.foldNow();
+    const generation = foldOut.books[code] ? foldOut.headsTs[`book|${code}`] : undefined;
+    if (generation === undefined)
+      throw new Error(`writeAlignments(${code}): the journal projects no such book`);
+    const events = this.alignmentEvents(data, foldOut, journal, code, generation);
+    await this.publishAndRegenerate(events, [alignmentsIpath(code)]);
+  }
+
+  private alignmentEvents(
+    data: AlignmentFile,
+    foldOut: FoldOutput,
+    journal: JournalStore,
+    code: string,
+    generation: string,
+  ): JournalEvent[] {
+    const normalized = normalizeAlignmentFile(data);
+    const incoming: Record<string, AlignmentVerseRecord> = {};
+    for (const [chapter, verses] of Object.entries(normalized.chapters ?? {}))
+      for (const [verse, record] of Object.entries(verses)) incoming[`${chapter}:${verse}`] = record;
+    const projected = foldOut.alignments[code] ?? {};
+    const events: JournalEvent[] = [];
+    const pushRecord = (vkey: string, record: Record<string, unknown>): void => {
+      const sep = vkey.indexOf(':');
+      events.push({
+        v: 1,
+        op: 'align.verse.set',
+        actor: journal.actorId,
+        ts: journal.issueTs(),
+        base: foldOut.headsTs[`align|${code}|${vkey}`] ?? null,
+        generation,
+        book: code,
+        chapter: vkey.slice(0, sep),
+        verse: vkey.slice(sep + 1),
+        ...record,
+      });
+    };
+    for (const [vkey, record] of Object.entries(incoming)) {
+      const current = projected[vkey];
+      if (current !== undefined && canonical(current) === canonical(record)) continue;
+      pushRecord(vkey, record as unknown as Record<string, unknown>);
+    }
+    for (const [vkey, record] of Object.entries(projected)) {
+      if (incoming[vkey] !== undefined || isEmptyAlignmentRecord(record)) continue;
+      const verseContent = foldOut.books[code]?.verses?.[vkey];
+      pushRecord(vkey, {
+        alignments: [],
+        wordBank: [],
+        targetVerseMd5:
+          verseContent !== undefined ? verseTextMd5(verseContent) : (record.targetVerseMd5 as string),
+      });
+    }
+    return events;
   }
 
   /** §5.2 single-decision write: ONE check.decision.set preserving identity
@@ -1831,88 +1910,96 @@ export class JournalingStore implements BurritoStore {
     decision: Decision,
     resource?: { repoPath: string; version?: string; sha: string; languageSet?: string },
   ): Promise<void> {
-    return this.queue(async () => {
-      await this.replayOwnStagedBeforeDiff(); // round-5 rule 1: REPLAY-BEFORE-DIFF
-      const journal = this.mustJournal();
-      const code = book.toUpperCase();
-      const foldOut = this.foldNow();
-      const generation = foldOut.books[code] ? foldOut.headsTs[`book|${code}`] : undefined;
-      if (generation === undefined)
-        throw new Error(`upsertDecision(${tool}, ${code}): the journal projects no such book`);
+    return this.queue(() => this.upsertDecisionQueued(tool, book, decision, resource));
+  }
 
-      // §5.2 resolution record (D17/D30): stamped only when absent or agreeing —
-      // a decision write must never relabel a book's file to another resource.
-      const resolutionKey = `${tool}\n${code}`;
-      // Rule 4 posture for the OBSERVATION too: the effective stored
-      // resolution is the LEDGER OVERLAY's view, never the bare register — an
-      // accepted-but-unmaterialized (or just-replayed) resource intent must
-      // gate this write exactly as it gates regeneration.
-      const stored = (await this.ledgerResolutionOverlay()).get(resolutionKey) as
-        | { repoPath: string; version?: string; sha?: string }
-        | undefined;
-      // Rule 3 (round 5): the register is stamped after acceptance only — the
-      // effective resolution is computed here and travels WITH the action; it
-      // enters the register inside publishAndRegenerate once the publish is
-      // accepted, never before.
-      // Round 6 B3 / D59 §3: agreement is (repoPath + sha) — the version tag
-      // is a display label the guard never compares (D58). A sha disagreement
-      // (or a stored record with no sha at all) REFUSES toward the coordinated
-      // gateway-change/carry-over flow: this write must neither silently
-      // relabel the file's checked-against commit nor silently journal the
-      // decision under provenance the user was not looking at.
-      let effective = stored as Record<string, unknown> | undefined;
-      if (resource) {
-        if (!resource.sha)
-          throw new Error(
-            `upsertDecision(${tool}, ${code}): the session resolution carries no sha — ` +
-              `identity is (repoPath + sha) (D58/D59)`,
-          );
-        const agrees =
-          !stored ||
-          (samePath(stored.repoPath, resource.repoPath) && stored.sha === resource.sha);
-        if (!agrees)
-          throw new Error(
-            `upsertDecision(${tool}, ${code}): the stored §5.2 record ` +
-              `(${stored?.repoPath} @ ${stored?.sha ?? 'no sha'}) does not match the session's ` +
-              `resolution (${resource.repoPath} @ ${resource.sha}) — a decision write never ` +
-              `relabels the file; resolve through the gateway-change flow (D36/D59)`,
-          );
-        effective = resource as unknown as Record<string, unknown>;
-      }
-      if (effective === undefined)
-        throw new Error(
-          `upsertDecision(${tool}, ${code}): no (tool, book) resolution record — §5.2 requires ` +
-            `\`resource\` (D30); pass the session's resolution`,
-        );
-
-      const incoming = normalizeDecision(decision);
-      const key = decisionRegisterKey(tool, incoming);
-      const projected = (foldOut.decisions[tool] ?? []).find(
-        (d) => decisionRegisterKey(tool, d as unknown as Decision) === key,
-      );
-      if (projected && (projected as { contextId: { quoteString?: unknown } }).contextId.quoteString !== incoming.contextId.quoteString)
-        throw new Error(
-          `upsertDecision(${tool}, ${code}): the stored decision at this §5.2 identity key carries ` +
-            `a different quoteString — the resource behind this check changed; re-derive and carry ` +
-            `over (a warned update) instead of overwriting (§5.2, issue #62)`,
-        );
-      if (projected && canonical(projected) === canonical(incoming)) {
-        return; // byte-identical decision: nothing to record
-      }
-      const event: JournalEvent = {
-        v: 1,
-        op: 'check.decision.set',
-        actor: journal.actorId,
-        ts: journal.issueTs(),
-        base: foldOut.headsTs[key] ?? null, // a first write is ordinary (anchored by generation)
-        generation,
-        toolId: tool,
-        decision: incoming as unknown as Record<string, unknown>,
-      };
-      await this.publishAndRegenerate([event], [decisionsIpath(tool, code)], {
-        [resolutionKey]: effective,
-      });
+  private async upsertDecisionQueued(
+    tool: string,
+    book: string,
+    decision: Decision,
+    resource?: { repoPath: string; version?: string; sha: string; languageSet?: string },
+  ): Promise<void> {
+    await this.replayOwnStagedBeforeDiff();
+    const journal = this.mustJournal();
+    const code = book.toUpperCase();
+    const foldOut = this.foldNow();
+    const generation = foldOut.books[code] ? foldOut.headsTs[`book|${code}`] : undefined;
+    if (generation === undefined)
+      throw new Error(`upsertDecision(${tool}, ${code}): the journal projects no such book`);
+    const resolutionKey = `${tool}\n${code}`;
+    const effective = await this.effectiveDecisionResolution(tool, code, resolutionKey, resource);
+    const event = this.decisionEvent(tool, code, decision, foldOut, journal, generation);
+    if (!event) return;
+    await this.publishAndRegenerate([event], [decisionsIpath(tool, code)], {
+      [resolutionKey]: effective,
     });
+  }
+
+  private async effectiveDecisionResolution(
+    tool: string,
+    code: string,
+    resolutionKey: string,
+    resource?: { repoPath: string; version?: string; sha: string; languageSet?: string },
+  ): Promise<Record<string, unknown>> {
+    const stored = (await this.ledgerResolutionOverlay()).get(resolutionKey) as
+      | { repoPath: string; version?: string; sha?: string }
+      | undefined;
+    if (!resource && stored) return stored as unknown as Record<string, unknown>;
+    if (!resource)
+      throw new Error(
+        `upsertDecision(${tool}, ${code}): no (tool, book) resolution record — §5.2 requires ` +
+          `\`resource\` (D30); pass the session's resolution`,
+      );
+    if (!resource.sha)
+      throw new Error(
+        `upsertDecision(${tool}, ${code}): the session resolution carries no sha — ` +
+          `identity is (repoPath + sha) (D58/D59)`,
+      );
+    const agrees = !stored || (samePath(stored.repoPath, resource.repoPath) && stored.sha === resource.sha);
+    if (!agrees)
+      throw new Error(
+        `upsertDecision(${tool}, ${code}): the stored §5.2 record ` +
+          `(${stored?.repoPath} @ ${stored?.sha ?? 'no sha'}) does not match the session's ` +
+          `resolution (${resource.repoPath} @ ${resource.sha}) — a decision write never ` +
+          `relabels the file; resolve through the gateway-change flow (D36/D59)`,
+      );
+    return resource as unknown as Record<string, unknown>;
+  }
+
+  private decisionEvent(
+    tool: string,
+    code: string,
+    decision: Decision,
+    foldOut: FoldOutput,
+    journal: JournalStore,
+    generation: string,
+  ): JournalEvent | null {
+    const incoming = normalizeDecision(decision);
+    const key = decisionRegisterKey(tool, incoming);
+    const projected = (foldOut.decisions[tool] ?? []).find(
+      (candidate) => decisionRegisterKey(tool, candidate as unknown as Decision) === key,
+    );
+    const quoteChanged =
+      projected &&
+      (projected as { contextId: { quoteString?: unknown } }).contextId.quoteString !==
+        incoming.contextId.quoteString;
+    if (quoteChanged)
+      throw new Error(
+        `upsertDecision(${tool}, ${code}): the stored decision at this §5.2 identity key carries ` +
+          `a different quoteString — the resource behind this check changed; re-derive and carry ` +
+          `over (a warned update) instead of overwriting (§5.2, issue #62)`,
+      );
+    if (projected && canonical(projected) === canonical(incoming)) return null;
+    return {
+      v: 1,
+      op: 'check.decision.set',
+      actor: journal.actorId,
+      ts: journal.issueTs(),
+      base: foldOut.headsTs[key] ?? null,
+      generation,
+      toolId: tool,
+      decision: incoming as unknown as Record<string, unknown>,
+    };
   }
 
   /** Whole-file decision write: diff ALL records against the projection and
@@ -2253,102 +2340,100 @@ export class JournalingStore implements BurritoStore {
    * detect divergence (never silently repaired) → install and byte-verify →
    * rescan → verify the regenerated metadata semantics → server commit. */
   async commit(message: string): Promise<void> {
-    return this.queue(async () => {
-      const repo = this.mustRepo();
-      const foldOut = this.foldNow();
+    return this.queue(() => this.commitQueued(message));
+  }
 
-      // The §8.7 metadata overlay cannot be materialized over HTTP (D28: no
-      // metadata write route). Refuse loudly rather than emit a checkpoint the
-      // fold does not explain (R-8.7.4 posture).
-      if (Object.keys(foldOut.projectMeta).length || foldOut.projectMetaRemoved.length)
-        throw new Error(
-          `checkpoint refused: the journal carries a project.meta.set overlay ` +
-            `(${[...Object.keys(foldOut.projectMeta), ...foldOut.projectMetaRemoved].join(', ')}) ` +
-            `and the platform exposes no HTTP metadata write route (D28) — the derived ` +
-            `metadata.json cannot be regenerated to match the fold (§8.7)`,
-        );
+  private async commitQueued(message: string): Promise<void> {
+    const repo = this.mustRepo();
+    const foldOut = this.foldNow();
+    this.assertCheckpointMetadataWritable(foldOut);
+    const projections = await this.checkpointProjections(repo, foldOut);
+    const ledgerPaths = await this.checkpointLedgerPaths();
+    const toWrite = await this.checkpointWrites(repo, projections, ledgerPaths);
+    try {
+      await this.installAndConverge(toWrite.map((entry) => entry.ipath));
+    } finally {
+      await this.pruneConvergedIntents();
+    }
+    await this.api.remakeIngredients(repo);
+    await this.verifyCheckpointScope(repo, foldOut);
+    await this.api.addAndCommit(repo, message);
+  }
 
-      // Materialize the COMPLETE set in memory first — derivedProjections
-      // throws on any missing mandatory input or path-escaping key (§8.7).
-      const baseMetadata = await this.api.getMetadataRaw(repo);
-      const resolutions: Record<string, Record<string, unknown>> = {};
-      for (const [key, resource] of this.resolutions) {
-        const [tool, book] = key.split('\n');
-        (resolutions[tool] ??= {})[book] = resource;
+  private assertCheckpointMetadataWritable(foldOut: FoldOutput): void {
+    if (!Object.keys(foldOut.projectMeta).length && !foldOut.projectMetaRemoved.length) return;
+    throw new Error(
+      `checkpoint refused: the journal carries a project.meta.set overlay ` +
+        `(${[...Object.keys(foldOut.projectMeta), ...foldOut.projectMetaRemoved].join(', ')}) ` +
+        `and the platform exposes no HTTP metadata write route (D28) — the derived ` +
+        `metadata.json cannot be regenerated to match the fold (§8.7)`,
+    );
+  }
+
+  private async checkpointProjections(
+    repo: string,
+    foldOut: FoldOutput,
+  ): Promise<Record<string, string>> {
+    const baseMetadata = await this.api.getMetadataRaw(repo);
+    const resolutions: Record<string, Record<string, unknown>> = {};
+    for (const [key, resource] of this.resolutions) {
+      const [tool, book] = key.split('\n');
+      (resolutions[tool] ??= {})[book] = resource;
+    }
+    const projections = derivedProjections(foldOut, { baseMetadata, resolutions });
+    delete projections['metadata.json'];
+    return projections;
+  }
+
+  private async checkpointLedgerPaths(): Promise<Set<string>> {
+    const intents = await this.readIntents();
+    const journaledTs = new Set(this.events.map((event) => event.ts));
+    const ledgerPaths = new Set<string>();
+    for (const record of intents)
+      if (this.intentGateSatisfied(record, journaledTs))
+        for (const ipath of record.affectedPaths) ledgerPaths.add(ipath);
+    return ledgerPaths;
+  }
+
+  private async checkpointWrites(
+    repo: string,
+    projections: Record<string, string>,
+    ledgerPaths: ReadonlySet<string>,
+  ): Promise<Array<{ ipath: string; bytes: string }>> {
+    const stale: string[] = [];
+    const toWrite: Array<{ ipath: string; bytes: string }> = [];
+    const diskPaths = (await this.api.listPaths(repo)).filter(
+      (path) => !path.startsWith('checking/journal/') && !isUnjournaledIngredient(path),
+    );
+    for (const [ipath, bytes] of Object.entries(projections)) {
+      const disk = await this.readIngredientOrNull(ipath);
+      if (disk === bytes) continue;
+      if (ledgerPaths.has(ipath) || (disk === null && EMPTY_CHECKPOINT_DOCUMENTS.has(bytes))) {
+        toWrite.push({ ipath, bytes });
+        continue;
       }
-      const projections = derivedProjections(foldOut, { baseMetadata, resolutions });
-      delete projections['metadata.json']; // regenerated by the server rescan, not writable (D28)
-
-      // Divergence detection (R-8.7.5): enumerate from the fold's expected set
-      // and refuse an out-of-band edit or deletion — never silently repair it.
-      // Per-mutation regeneration keeps disk == projection for every folded
-      // path, so at checkpoint the only legitimate writes are (a) paths a
-      // leftover gate-satisfied ledger record explains (a recorded, not yet
-      // converged intent), and (b) the FIRST materialization of a
-      // §8.7-complete empty document (resources/settings with nothing folded
-      // yet) that no mutation has produced. Everything else that differs is
-      // out-of-band and refuses.
-      const intents = await this.readIntents();
-      const journaledTs = new Set(this.events.map((e) => e.ts));
-      const ledgerPaths = new Set<string>();
-      for (const record of intents)
-        if (this.intentGateSatisfied(record, journaledTs))
-          for (const p of record.affectedPaths) ledgerPaths.add(p);
-      const stale: string[] = [];
-      const toWrite: Array<{ ipath: string; bytes: string }> = [];
-      const diskPaths = (await this.api.listPaths(repo)).filter(
-        (p) => !p.startsWith('checking/journal/') && !isUnjournaledIngredient(p),
+      stale.push(`${ipath} (${disk === null ? 'deleted out of band' : 'edited out of band'})`);
+    }
+    for (const ipath of diskPaths)
+      if (!Object.hasOwn(projections, ipath)) stale.push(`${ipath} (on disk, not derived by the fold)`);
+    if (stale.length)
+      throw new Error(
+        `checkpoint refused: derived state diverges out-of-band at ${stale.join(', ')} — ` +
+          `never silently repaired (R-8.7.5); reopen the project to reconcile (§8.8)`,
       );
-      for (const [ipath, bytes] of Object.entries(projections)) {
-        const disk = await this.readIngredientOrNull(ipath);
-        if (disk === bytes) continue; // byte-verified in place
-        // Legitimate writes at checkpoint: a crash-era ledger record's paths,
-        // and the FIRST materialization of a §8.7-complete EMPTY document (an
-        // absent file per-mutation regeneration never produces). An absent file
-        // with a NON-empty projection was deleted out of band — refused.
-        if (ledgerPaths.has(ipath) || (disk === null && EMPTY_CHECKPOINT_DOCUMENTS.has(bytes))) {
-          toWrite.push({ ipath, bytes });
-          continue;
-        }
-        stale.push(
-          `${ipath} (${disk === null ? 'deleted out of band' : 'edited out of band'})`,
-        );
-      }
-      for (const ipath of diskPaths) {
-        if (Object.hasOwn(projections, ipath)) continue;
-        stale.push(`${ipath} (on disk, not derived by the fold)`);
-      }
-      if (stale.length)
-        throw new Error(
-          `checkpoint refused: derived state diverges out-of-band at ${stale.join(', ')} — ` +
-            `never silently repaired (R-8.7.5); reopen the project to reconcile (§8.8)`,
-        );
+    return toWrite;
+  }
 
-      // Install + byte-verify; installAndConverge also retries any older
-      // non-converged intent's path inline, and the lazy prune deletes only
-      // what the convergence check proves done.
-      try {
-        await this.installAndConverge(toWrite.map((w) => w.ipath));
-      } finally {
-        await this.pruneConvergedIntents();
-      }
-
-      // Rescan (registers everything; rebuilds the ingredients table and
-      // currentScope — the x-role wipe is the accepted condition, D28/W-2),
-      // then verify the regenerated scope against the fold (R-8.7.2).
-      await this.api.remakeIngredients(repo);
-      const after = await this.api.getMetadataRaw(repo);
-      const scopeAfter = (after?.type?.flavorType?.currentScope ?? {}) as Record<string, string[]>;
-      if (canonical(scopeAfter) !== canonical(foldOut.scope))
-        throw new Error(
-          `checkpoint refused before commit: the rescanned currentScope ` +
-            `(${canonical(scopeAfter)}) does not equal the fold's scope state ` +
-            `(${canonical(foldOut.scope)}) — R-8.7.2; the derived writes stand and the ` +
-            `journal remains authoritative`,
-        );
-
-      await this.api.addAndCommit(repo, message);
-    });
+  private async verifyCheckpointScope(repo: string, foldOut: FoldOutput): Promise<void> {
+    const after = await this.api.getMetadataRaw(repo);
+    const scopeAfter = (after?.type?.flavorType?.currentScope ?? {}) as Record<string, string[]>;
+    if (canonical(scopeAfter) === canonical(foldOut.scope)) return;
+    throw new Error(
+      `checkpoint refused before commit: the rescanned currentScope ` +
+        `(${canonical(scopeAfter)}) does not equal the fold's scope state ` +
+        `(${canonical(foldOut.scope)}) — R-8.7.2; the derived writes stand and the ` +
+        `journal remains authoritative`,
+    );
   }
 }
 

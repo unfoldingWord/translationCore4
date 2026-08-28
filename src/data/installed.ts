@@ -247,6 +247,29 @@ export const preferInstalledVersion = (installed: InstalledMap, pin: ResourcePin
  * the OPEN project, not only by future ones (2026-08-27 adversarial round
  * 11). Existing pins are never replaced (re-pinning is the explicit,
  * warned gateway-change path); returns null when nothing would change. */
+const mergeOptionalPinsIntoSet = (
+  set: LanguageSet,
+  gateway: { id: string; org: string },
+  built: Pick<LanguageSet, 'translationQuestions' | 'simplifiedText'>,
+): { set: LanguageSet; changed: boolean } => {
+  const matches =
+    set.gatewayLanguage?.languageId === gateway.id &&
+    (set.gatewayLanguage?.owner ?? '').toLowerCase() === gateway.org.toLowerCase();
+  if (!matches) return { set: { ...set }, changed: false };
+
+  const next = { ...set };
+  let changed = false;
+  if (built.translationQuestions && !set.translationQuestions) {
+    next.translationQuestions = built.translationQuestions;
+    changed = true;
+  }
+  if (built.simplifiedText && !set.simplifiedText) {
+    next.simplifiedText = built.simplifiedText;
+    changed = true;
+  }
+  return { set: next, changed };
+};
+
 export const mergeOptionalPins = <T extends { languageSets?: Record<string, LanguageSet> }>(
   resources: T,
   gateway: { id: string; org: string },
@@ -271,21 +294,9 @@ export const mergeOptionalPins = <T extends { languageSets?: Record<string, Lang
   let changed = false;
   const languageSets: Record<string, LanguageSet> = {};
   for (const [rung, set] of Object.entries(resources.languageSets ?? {})) {
-    const matches =
-      set.gatewayLanguage?.languageId === gateway.id &&
-      (set.gatewayLanguage?.owner ?? '').toLowerCase() === gateway.org.toLowerCase();
-    const next = { ...set };
-    if (matches) {
-      if (built.translationQuestions && !set.translationQuestions) {
-        next.translationQuestions = built.translationQuestions;
-        changed = true;
-      }
-      if (built.simplifiedText && !set.simplifiedText) {
-        next.simplifiedText = built.simplifiedText;
-        changed = true;
-      }
-    }
-    languageSets[rung] = next;
+    const merged = mergeOptionalPinsIntoSet(set, gateway, built);
+    changed ||= merged.changed;
+    languageSets[rung] = merged.set;
   }
   return changed ? { ...resources, languageSets } : null;
 };

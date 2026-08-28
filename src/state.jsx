@@ -37,6 +37,7 @@ import { TC_READY_TOPIC } from './data/serverApi';
 import { t } from './i18n';
 
 const AppCtx = createContext(null);
+const STORAGE_ID = 'uw-tc4';
 
 export const api = new ServerApi();
 
@@ -344,6 +345,624 @@ const verseText = (vObj) =>
     .join('')
     .trim();
 
+async function readTextIngredient(apiClient, repoPath, ipath) {
+  try {
+    return await apiClient.readIngredient(repoPath, ipath);
+  } catch {
+    return null;
+  }
+}
+
+async function readHelpArticle(apiClient, kind, set, category, slug) {
+  try {
+    if (kind === 'tw' && set?.translationWords)
+      return await readTwArticle(apiClient, resolveReadPath(set.translationWords), category, slug);
+    if (kind === 'ta' && set?.translationAcademy)
+      return await readTaArticle(apiClient, resolveReadPath(set.translationAcademy), slug);
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+async function storedGatewayDecisions(store, books) {
+  const stored = [];
+  const md5s = {};
+  for (const book of books) {
+    for (const tool of Object.keys(TOOL_SLOT)) {
+      const got = await store.readDecisionsText(tool, book).catch(() => null);
+      if (got?.text == null) continue;
+      stored.push({ tool, book, file: JSON.parse(got.text), raw: got.text });
+      md5s[`${tool}/${book}`] = got.md5;
+    }
+  }
+  return { stored, md5s };
+}
+
+async function gatewayChangePlan({ consequences, next, coverage, installed, stored, md5s, actions, blocked }) {
+  const keyOf = (entry) => `${entry.tool}/${entry.book}`;
+  const blockedSet = new Set(blocked.map(keyOf));
+  const plan = [];
+  for (const entry of consequences.affected) {
+    if (blockedSet.has(keyOf(entry))) continue;
+    const resolution = resolveToolBook(next, entry.tool, entry.book, coverage);
+    if (!resolution.pin || !isPinLocal(installed, resolution.pin)) {
+      blocked.push({ tool: entry.tool, book: entry.book });
+      blockedSet.add(keyOf(entry));
+      continue;
+    }
+    const source = stored.find((candidate) => candidate.tool === entry.tool && candidate.book === entry.book);
+    const derived = await actions.deriveItemsFor(entry.tool, entry.book, resolution.pin);
+    plan.push({
+      tool: entry.tool,
+      book: entry.book,
+      expectMd5: md5s[`${entry.tool}/${entry.book}`] ?? null,
+      ...carryOverDecisions(source.file, derived, resolutionRecord(resolution)),
+    });
+  }
+  return { plan, blocked };
+}
+
+async function prepareAlignmentSource(store, st, ref) {
+  const testament = isOldTestament(st.book) ? 'ot' : 'nt';
+  const pin = st.projectPins?.resources?.originalLanguage?.[testament];
+  if (!pin?.repoPath) return { unavailable: 'unpinned' };
+  let usfmText = null;
+  try {
+    ({ usfm: usfmText } = await store.readSourceBook(resolveReadPath(pin), st.book));
+  } catch {
+    usfmText = null;
+  }
+  if (!usfmText) return { unavailable: 'missing' };
+  return { testament, pin, usfmText, ref };
+}
+
+async function buildAlignmentSession(store, st, ref, source, mapped, origObjects) {
+  const targetText = verseTextIndex(st.bookRaw)[ref] ?? '';
+  if (!origObjects.length || !targetText) return { unavailable: 'missing' };
+  const { value: file, md5 } = await store.readAlignmentsWithMd5(st.book);
+  const stored = file?.chapters?.[mapped.chapter]?.[mapped.verse];
+  const sourceVersion = `dcs::${source.pin.repoPath.split('/').slice(-2).join('/')}@${source.pin.version}`;
+  const record = stored ?? bootstrapVerse(targetText, origObjects, sourceVersion);
+  return {
+    loading: false,
+    ref,
+    record,
+    md5,
+    targetText,
+    origObjects,
+    sourceVersion,
+    stale: alignmentIsStale(record, targetText),
+    armed: null,
+    targetDir: st.project?.scriptDirection === 'rtl' ? 'rtl' : 'ltr',
+    origDir: source.testament === 'ot' ? 'rtl' : 'ltr',
+  };
+}
+
+function understandArticleSet(st, kind, rung) {
+  const sets = st.projectPins?.languageSets;
+  const slotName = kind === 'tw' ? 'translationWords' : 'translationAcademy';
+  return [sets?.[rung ?? 'fallback'], sets?.fallback, sets?.primary]
+    .find((candidate) => candidate?.[slotName]);
+}
+
+function isCurrentArticleRequest(now, seq, currentSeq, repoPath, key) {
+  if (seq !== currentSeq) return false;
+  if (now.project?.repoPath !== repoPath) return false;
+  return now.understand?.article?.key === key;
+}
+
+function emptyCheckSession(tool, book, resolution, empty, dropped = null) {
+  return {
+    loading: false,
+    tool,
+    book,
+    items: [],
+    empty,
+    resource: resolutionRecord(resolution),
+    ...(dropped ? { dropped } : {}),
+  };
+}
+
+async function deriveCheckItems({ apiClient, actions, st, tool, book, pre }) {
+  const tsv = await readTextIngredient(apiClient, resolveReadPath(pre.resolution.pin), `${book.toUpperCase()}.tsv`);
+  if (tsv === null || tsv.startsWith('{"is_good":false'))
+    return { session: emptyCheckSession(tool, book, pre.resolution, 'missing') };
+  const frame = await actions.projectFrame();
+  if (frame.state !== 'ready')
+    return { session: emptyCheckSession(tool, book, pre.resolution, `versification-${frame.state}`) };
+  const scopeRanges = scopeRangesFor(st.projectScope ?? {}, book.toUpperCase());
+  const result = await deriveForProject({
+    tsv,
+    tool,
+    bookId: book.toLowerCase(),
+    from: RESOURCE_FRAME,
+    to: frame.name,
+    schemes: frame.schemes,
+    scopeRanges,
+  });
+  const dropped = result.unplaceable.length
+    ? {
+        count: result.unplaceable.length,
+        scheme: frame.name,
+        reasons: [...new Set(result.unplaceable.map((entry) => entry.reason))].sort(),
+      }
+    : null;
+  if (result.items.length === 0)
+    return { session: emptyCheckSession(tool, book, pre.resolution, dropped ? 'all-dropped' : 'none', dropped) };
+  return { derived: result.items, dropped };
+}
+
+async function completedCheckSession({ store, st, tool, book, pre, derived, dropped }) {
+  const savedFile = await store.readDecisions(tool, book);
+  const saved = savedFile?.decisions ?? [];
+  const slot = TOOL_SLOT[tool];
+  const rungPins = ['primary', 'fallback']
+    .map((rung) => st.projectPins?.languageSets?.[rung]?.[slot])
+    .filter(Boolean)
+    .map((pin) => ({ repoPath: pin.repoPath, version: pin.version, sha: pin.sha }));
+  const warning = resolutionWarning(savedFile?.resource, pre.resolution, rungPins);
+  const { items: merged, orphaned } = mergeAndReattach(derived, saved);
+  const verses = verseTextIndex(st.bookRaw);
+  const { items, invalidated } = revalidateAgainstDraft(merged, verses);
+  return {
+    loading: false,
+    tool,
+    book,
+    items,
+    progress: progressOf(items),
+    resource: resolutionRecord(pre.resolution),
+    categories: [...new Set(items.map((item) => item.category))].sort(),
+    activeIndex: 0,
+    invalidated,
+    warning,
+    orphaned,
+    dropped,
+    verses,
+  };
+}
+
+async function identifyInstalledResource(apiClient, repoPath, target) {
+  if ((await readInstalled(apiClient, STORAGE_ID))[target]) return;
+  try {
+    const meta = await apiClient.getMetadataRaw(target);
+    const revision = Object.values(meta?.identification?.primary?.dcs || {})[0]?.revision;
+    const found = await identifyExistingInstall(repoPath, revision);
+    if (found)
+      await recordInstalled(apiClient, STORAGE_ID, target, {
+        ...found,
+        flavor: flavorOfMetadata(meta),
+      });
+  } catch {
+    // An unidentified existing install contributes no coverage.
+  }
+}
+
+async function installPackageRow(apiClient, originGateway, row, local) {
+  const repoPath = `${DCS_HOST}/${originGateway.org}/${row.repo}`;
+  const target = localRepoPathFromRepoPath(repoPath);
+  if (local.has(target)) {
+    await identifyInstalledResource(apiClient, repoPath, target);
+    return { done: row.repo };
+  }
+  try {
+    const tag = await latestReleaseTag(repoPath);
+    const result = await fetchAndInstallPin({ repoPath, version: tag, flavor: '' }, { api: apiClient });
+    const flavor = flavorOfMetadata(await apiClient.getMetadataRaw(target).catch(() => null));
+    await recordInstalled(apiClient, STORAGE_ID, target, {
+      repoPath,
+      version: tag,
+      sha: result.revision,
+      flavor,
+    });
+    return { done: `${row.repo} ${tag}` };
+  } catch (error) {
+    return { failed: `${row.repo}: ${String(error?.message || error)}` };
+  }
+}
+
+function recordInstalledPackage(stateRef, dispatch, gateway, book) {
+  const langKey = gatewayKey(gateway);
+  const already = stateRef.current.installedSrc.some(
+    (entry) => entry.langKey === langKey && entry.book === book,
+  );
+  if (already) return;
+  dispatch({
+    type: 'set',
+    patch: { installedSrc: [...stateRef.current.installedSrc, { langKey, book }] },
+  });
+}
+
+async function adoptDownloadedPins({
+  originStore,
+  originRepoPath,
+  originGateway,
+  storeRef,
+  stateRef,
+  actions,
+  dispatch,
+}) {
+  const sameProject =
+    originStore &&
+    originRepoPath &&
+    storeRef.current === originStore &&
+    stateRef.current.project?.repoPath === originRepoPath;
+  if (!sameProject) return;
+  try {
+    const { installed, coverage } = await actions.resolutionContext();
+    if (!mergeOptionalPins(stateRef.current.projectPins ?? {}, originGateway, installed)) return;
+    const next = await updateResources(originStore, (current) => {
+      const merged = mergeOptionalPins(current, originGateway, installed);
+      return merged ? backfillCoverage(merged, coverage).resources : current;
+    });
+    if (stateRef.current.project?.repoPath === originRepoPath)
+      dispatch({ type: 'set', patch: { projectPins: next } });
+  } catch (error) {
+    dispatch({
+      type: 'patchSrc',
+      patch: { error: t('sources.adoptFailed', { error: String(error?.message || error) }) },
+    });
+  }
+}
+
+function validateNewBible(form) {
+  if (!form.name.trim()) return { error: t('wizard.nameRequired') };
+  if (!form.code.trim()) return { error: t('wizard.codeRequired') };
+  const slug = (value) => value.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  const abbr = slug(form.name) || slug(form.code);
+  return abbr ? { abbr } : { error: t('wizard.abbrRequired') };
+}
+
+async function drainForProjectOpen({ pendingNotesRef, noteSaveErrorsRef, noteDirtyRef, schedulerRef }) {
+  await Promise.allSettled([...pendingNotesRef.current]);
+  if (Object.keys(noteSaveErrorsRef.current).length > 0) return false;
+  if (noteDirtyRef.current.size > 0) return false;
+  if (!schedulerRef.current) return true;
+  if (!(await schedulerRef.current.drain())) return false;
+  schedulerRef.current.dispose();
+  return true;
+}
+
+async function projectPresentation(apiClient, store, repoPath, summary) {
+  let scriptDirection = summary.scriptDirection;
+  if (scriptDirection !== 'ltr' && scriptDirection !== 'rtl') {
+    const settings = await store.readSettings().catch(() => null);
+    scriptDirection = settings?.textDirection === 'rtl' ? 'rtl' : 'ltr';
+  }
+  let projectScope = {};
+  try {
+    const meta = await apiClient.getMetadataRaw(repoPath);
+    projectScope = meta?.type?.flavorType?.currentScope ?? {};
+  } catch {
+    projectScope = {};
+  }
+  return { scriptDirection, projectScope };
+}
+
+function adoptInstalledResources(current, installed) {
+  let next = current;
+  for (const rung of Object.values(current.languageSets ?? {})) {
+    const language = rung?.gatewayLanguage;
+    if (!language?.languageId || !language?.owner) continue;
+    const merged = mergeOptionalPins(
+      next,
+      { id: language.languageId, org: language.owner },
+      installed,
+    );
+    if (merged) next = merged;
+  }
+  return next;
+}
+
+function loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatch }) {
+  const stillCurrent = () =>
+    storeRef.current === store && stateRef.current.project?.repoPath === repoPath;
+  store.readResources()
+    .then(async (pins) => {
+      if (!stillCurrent()) return;
+      dispatch({ type: 'set', patch: { projectPins: pins } });
+      if (!pins) return;
+      try {
+        const { installed, coverage } = await actions.resolutionContext();
+        const adopted = adoptInstalledResources(pins, installed);
+        const wouldChange = backfillCoverage(adopted, coverage).changed || adopted !== pins;
+        if (!wouldChange) return;
+        const next = await updateResources(store, (current) =>
+          backfillCoverage(adoptInstalledResources(current, installed), coverage).resources,
+        );
+        if (stillCurrent()) dispatch({ type: 'set', patch: { projectPins: next } });
+      } catch {
+        // Coverage stays underived; the resolver falls back to warning.
+      }
+    })
+    .catch(() => {
+      if (stillCurrent()) dispatch({ type: 'set', patch: { projectPins: null } });
+    });
+}
+
+function latestComprehension(store, book, frame) {
+  if (frame.state !== 'ready') return null;
+  const built = {};
+  for (const note of store?.readNotes?.(book) ?? []) {
+    const key = `${note.chapter}:${note.verse}`;
+    const previous = built[key];
+    if (!previous || String(note.ts) > String(previous.ts))
+      built[key] = { text: note.text, ts: note.ts };
+  }
+  return built;
+}
+
+async function mappedSourceReferences(st, book, frame) {
+  if (frame.state !== 'ready' || frame.name === RESOURCE_FRAME) return null;
+  const sourceRefs = {};
+  for (const entry of indexBook(st.bookRaw ?? '')) {
+    const list = (sourceRefs[String(entry.chapter)] ??= []);
+    const mapped = await mapReference({
+      from: frame.name,
+      to: RESOURCE_FRAME,
+      book,
+      chapter: Number(entry.chapter),
+      verse: /^\d+$/.test(String(entry.verseKey)) ? Number(entry.verseKey) : String(entry.verseKey),
+      schemes: frame.schemes,
+    });
+    if (mapped.ok)
+      list.push({
+        c: mapped.reference.chapter,
+        v: String(mapped.reference.verse),
+        pc: entry.chapter,
+        pv: String(entry.verseKey),
+      });
+    else list.push({ unmapped: `${entry.chapter}:${entry.verseKey}` });
+  }
+  return sourceRefs;
+}
+
+function unavailableHelpSlot(st, resolved, sets, slot, installed) {
+  if (!resolved.pin) {
+    const anyPin = sets.primary?.[slot] ?? sets.fallback?.[slot];
+    if (anyPin && !isPinLocal(installed, anyPin))
+      return { state: st.netEnabled ? 'fetch' : 'unavailable', pin: anyPin };
+    return { state: 'none' };
+  }
+  if (!isPinLocal(installed, resolved.pin))
+    return {
+      state: st.netEnabled ? 'fetch' : 'unavailable',
+      pin: resolved.pin,
+      rung: resolved.rung,
+    };
+  return null;
+}
+
+async function loadUnderstandSlot({
+  apiClient,
+  st,
+  book,
+  coverage,
+  installed,
+  frame,
+  scopeRanges,
+  sets,
+  slot,
+  tool,
+  deriveOpts = {},
+}) {
+  const resolved = resolveSetSlot(st.projectPins, slot, book, coverage);
+  const unavailable = unavailableHelpSlot(st, resolved, sets, slot, installed);
+  if (unavailable) return unavailable;
+  const primaryPin = sets.primary?.[slot];
+  const unavailablePrimary =
+    resolved.rung === 'fallback' && primaryPin && !isPinLocal(installed, primaryPin)
+      ? primaryPin
+      : null;
+  const tsv = await readTextIngredient(
+    apiClient,
+    resolveReadPath(resolved.pin),
+    `${book.toUpperCase()}.tsv`,
+  );
+  if (tsv === null || tsv.startsWith('{"is_good":false'))
+    return { state: 'missing', pin: resolved.pin, rung: resolved.rung };
+  if (frame.state !== 'ready') return { state: `versification-${frame.state}` };
+  const { items, unplaceable } = await deriveForProject({
+    tsv,
+    tool,
+    bookId: book.toLowerCase(),
+    from: RESOURCE_FRAME,
+    to: frame.name,
+    schemes: frame.schemes,
+    scopeRanges,
+    ...deriveOpts,
+  });
+  return {
+    state: 'ready',
+    items,
+    pin: resolved.pin,
+    rung: resolved.rung,
+    unavailablePrimary,
+    dropped: unplaceable.length ? { count: unplaceable.length, scheme: frame.name } : null,
+  };
+}
+
+async function loadSimplifiedHelp({ store, st, book, coverage, installed, sets }) {
+  const resolved = resolveSetSlot(st.projectPins, 'simplifiedText', book, coverage);
+  const pin = resolved.pin ?? sets.primary?.simplifiedText ?? sets.fallback?.simplifiedText;
+  if (!pin) return { state: 'none' };
+  if (!isPinLocal(installed, pin))
+    return { state: st.netEnabled ? 'fetch' : 'unavailable', pin, rung: resolved.rung };
+  try {
+    const { usfm: raw } = await store.readSourceBook(localSourceRepo(pin), book);
+    return { state: 'ready', pin, rung: resolved.rung, chapters: parseChapters(raw) };
+  } catch {
+    return { state: 'missing', pin, rung: resolved.rung };
+  }
+}
+
+const settleHelp = (promise) =>
+  promise.then(
+    (value) => value,
+    (error) => ({ state: 'error', error: String(error?.message || error) }),
+  );
+
+function recordNoteSaveFailure({
+  isLatest,
+  stateRef,
+  noteSaveErrorsRef,
+  dispatch,
+  errKey,
+  repoPath,
+  book,
+  chapter,
+  verseKey,
+  trimmed,
+  projectFrame,
+  message,
+}) {
+  if (!isLatest()) return;
+  const now = stateRef.current;
+  noteSaveErrorsRef.current = {
+    ...noteSaveErrorsRef.current,
+    [errKey]: {
+      message,
+      repoPath,
+      book,
+      chapter,
+      verse: verseKey,
+      text: trimmed,
+      projectFrame,
+    },
+  };
+  const understand =
+    now.book === book && now.project?.repoPath === repoPath
+      ? { understand: { ...now.understand, saveError: message } }
+      : {};
+  dispatch({
+    type: 'set',
+    patch: { noteSaveErrors: noteSaveErrorsRef.current, ...understand },
+  });
+}
+
+async function writeComprehensionNote({
+  isLatest,
+  fail,
+  store,
+  repoPath,
+  book,
+  chapter,
+  verseKey,
+  trimmed,
+  projectFrame,
+  apiClient,
+}) {
+  if (!isLatest()) return false;
+  let target = { chapter, verse: verseKey };
+  if (!projectFrame) {
+    const frame = await resolveProjectFrame(repoPath, { store, api: apiClient });
+    if (frame.state !== 'ready') {
+      fail(t('understand.saveUnmappable'));
+      return false;
+    }
+    if (frame.name !== RESOURCE_FRAME) {
+      const mapped = await mapReference({
+        from: RESOURCE_FRAME,
+        to: frame.name,
+        book,
+        chapter: Number(chapter),
+        verse: /^\d+$/.test(String(verseKey)) ? Number(verseKey) : String(verseKey),
+        schemes: frame.schemes,
+      });
+      if (!mapped.ok) {
+        fail(t('understand.saveUnmappable'));
+        return false;
+      }
+      target = { chapter: mapped.reference.chapter, verse: mapped.reference.verse };
+    }
+  }
+  await store.addNote(book, target.chapter, target.verse, trimmed);
+  return true;
+}
+
+function finishNoteOperation({ pendingNotesRef, noteInFlightRef, errKey, operation, syncNoteActivity }) {
+  pendingNotesRef.current.delete(operation);
+  const inFlight = (noteInFlightRef.current.get(errKey) ?? 1) - 1;
+  if (inFlight <= 0) noteInFlightRef.current.delete(errKey);
+  else noteInFlightRef.current.set(errKey, inFlight);
+  syncNoteActivity();
+}
+
+function publishComprehensionSuccess({
+  stateRef,
+  noteDirtyRef,
+  noteSaveErrorsRef,
+  dispatch,
+  errKey,
+  repoPath,
+  book,
+  chapter,
+  verseKey,
+  trimmed,
+}) {
+  noteDirtyRef.current.delete(`${book}|${chapter}:${verseKey}`);
+  const remaining = { ...noteSaveErrorsRef.current };
+  delete remaining[errKey];
+  noteSaveErrorsRef.current = remaining;
+  const now = stateRef.current;
+  if (now.book !== book || now.project?.repoPath !== repoPath) {
+    dispatch({ type: 'set', patch: { noteSaveErrors: remaining } });
+    return;
+  }
+  dispatch({
+    type: 'set',
+    patch: {
+      noteSaveErrors: remaining,
+      understand: {
+        ...now.understand,
+        saveError: null,
+        comprehension: {
+          ...now.understand?.comprehension,
+          [`${chapter}:${verseKey}`]: { text: trimmed, ts: `local-${Date.now()}` },
+        },
+      },
+    },
+  });
+}
+
+function comprehensionSaveContext(st, store, chapter, verseKey, text) {
+  const book = st.book;
+  const repoPath = st.project?.repoPath;
+  const trimmed = (text ?? '').trim();
+  if (!store || !book || !repoPath || trimmed === '') return null;
+  return {
+    store,
+    book,
+    repoPath,
+    trimmed,
+    errKey: `${repoPath}|${book}|${chapter}:${verseKey}`,
+  };
+}
+
+async function awaitNoteOperation({
+  operation,
+  fail,
+  pendingNotesRef,
+  noteInFlightRef,
+  errKey,
+  syncNoteActivity,
+}) {
+  try {
+    return await operation;
+  } catch (error) {
+    fail(String(error?.reason || error?.message || error));
+    return false;
+  } finally {
+    finishNoteOperation({
+      pendingNotesRef,
+      noteInFlightRef,
+      errKey,
+      operation,
+      syncNoteActivity,
+    });
+  }
+}
+
 export function AppProvider({ children }) {
   const [s, dispatch] = useReducer(reducer, undefined, initial);
   const storeRef = useRef(null);
@@ -471,7 +1090,6 @@ export function AppProvider({ children }) {
   // "Use" is user-machine state, so it lives in the platform's per-client
   // settings (0.18.4 endpoint, inside the D31 pin) — never in the project
   // (Phase-2 sync must not carry my open times) and never in localStorage.
-  const STORAGE_ID = 'uw-tc4';
   async function markUsed(repoPath) {
     try {
       const cs = await api.getClientSettings(STORAGE_ID);
@@ -641,19 +1259,7 @@ export function AppProvider({ children }) {
 
         // Read every stored decision file this project has, so the count is
         // real rather than estimated.
-        const stored = [];
-        const md5s = {};
-        for (const book of st.project.bookCodes ?? []) {
-          for (const tool of Object.keys(TOOL_SLOT)) {
-            // Read the raw bytes once: parse for the carry-over computation and
-            // hash the exact text for the coordinated action's preconditions.
-            const got = await store.readDecisionsText(tool, book).catch(() => null);
-            if (got?.text != null) {
-              stored.push({ tool, book, file: JSON.parse(got.text), raw: got.text });
-              md5s[`${tool}/${book}`] = got.md5;
-            }
-          }
-        }
+        const { stored, md5s } = await storedGatewayDecisions(store, st.project.bookCodes ?? []);
         // Affectedness is judged against the POST-CHANGE resolution (D30's
         // per-(tool, book) ladder), so the counting needs the coverage map.
         const consequences = consequencesOfGatewayChange(
@@ -687,41 +1293,23 @@ export function AppProvider({ children }) {
         // scheme (unknown) — telling an offline user to install a suite
         // cannot unblock them. Coverage-blocked entries carry no reason.
         const frame = await a.projectFrame();
-        const blocked =
-          frame.state === 'ready'
-            ? uncoveredByChange(consequences.affected, next, coverage)
-            : consequences.affected.map((e) => ({
-                tool: e.tool,
-                book: e.book,
-                reason: `versification-${frame.state}`,
-              }));
-        const blockedKey = (e) => `${e.tool}/${e.book}`;
-        const blockedSet = new Set(blocked.map(blockedKey));
-        const plan = [];
-        for (const entry of consequences.affected) {
-          if (blockedSet.has(blockedKey(entry))) continue; // blocked, never planned
-          const resolution = resolveToolBook(next, entry.tool, entry.book, coverage);
-          // Round-7 extension: a rung can cover a book by RECORD (pin.books
-          // travels with the project) while the resource is absent from this
-          // machine. The derive below would then read nothing, and an empty
-          // list invalidates every decision on confirm — so a resolved pin
-          // that is not local blocks the book instead of planning from it.
-          if (!resolution.pin || !isPinLocal(installed, resolution.pin)) {
-            blocked.push({ tool: entry.tool, book: entry.book });
-            blockedSet.add(blockedKey(entry));
-            continue;
-          }
-          const source = stored.find((s) => s.tool === entry.tool && s.book === entry.book);
-          const derived = await a.deriveItemsFor(entry.tool, entry.book, resolution.pin);
-          const record = resolutionRecord(resolution);
-          const result = carryOverDecisions(source.file, derived, record);
-          plan.push({
-            tool: entry.tool,
-            book: entry.book,
-            expectMd5: md5s[`${entry.tool}/${entry.book}`] ?? null,
-            ...result,
-          });
-        }
+        const initiallyBlocked = frame.state === 'ready'
+          ? uncoveredByChange(consequences.affected, next, coverage)
+          : consequences.affected.map((entry) => ({
+              tool: entry.tool,
+              book: entry.book,
+              reason: `versification-${frame.state}`,
+            }));
+        const { plan, blocked } = await gatewayChangePlan({
+          consequences,
+          next,
+          coverage,
+          installed,
+          stored,
+          md5s,
+          actions: a,
+          blocked: initiallyBlocked,
+        });
         const carried = plan.reduce((n, p) => n + p.carried, 0);
         const invalidated = plan.reduce((n, p) => n + p.invalidated, 0);
         return { gateway, primary, consequences, next, plan, blocked, carried, invalidated, resourcesMd5 };
@@ -902,104 +1490,42 @@ export function AppProvider({ children }) {
           return;
         }
         dispatch({ type: 'set', patch: { alignSession: { loading: true } } });
-
-        const testament = isOldTestament(st.book) ? 'ot' : 'nt';
-        const origPin = st.projectPins?.resources?.originalLanguage?.[testament];
-        if (!origPin?.repoPath) {
-          dispatch({ type: 'set', patch: { alignSession: { unavailable: 'unpinned' } } });
+        const source = await prepareAlignmentSource(store, st, ref);
+        if (source.unavailable) {
+          dispatch({ type: 'set', patch: { alignSession: { unavailable: source.unavailable } } });
           return;
         }
-        let origUsfm = null;
-        try {
-          const local = resolveReadPath(origPin);
-          ({ usfm: origUsfm } = await store.readSourceBook(local, st.book));
-        } catch {
-          origUsfm = null;
-        }
-        if (!origUsfm) {
-          dispatch({ type: 'set', patch: { alignSession: { unavailable: 'missing' } } });
-          return;
-        }
-
-        const [chapter, verse] = ref.split(':');
-        // #15: `ref` comes from the DRAFT, so it is in the PROJECT's versification
-        // frame. The original-language texts (UGNT/UHB) are eng-framed — measured:
-        // 929 UHB chapters and 260 UGNT chapters, zero exceeding eng, and UHB
-        // PSA 3 ends at verse 8 where org would have 9. So for a non-eng project
-        // the same chapter:verse names a DIFFERENT verse in the source, and
-        // reading it unmapped silently aligns against the wrong Greek/Hebrew.
-        //
-        // Map project frame -> resource frame for the LOOKUP only. This is not an
-        // identity operation: the alignment record stays keyed by the
-        // project-frame reference (§5.1), exactly like the draft it belongs to.
-        // An eng project short-circuits and behaves exactly as before.
-        const alignFrame = await a.projectFrame();
-        // R-E33-6 applies here too: a frame that cannot map is a designed state,
-        // never "the source verse is missing" — that message misattributes a
-        // transient fetch failure (`unavailable`) or an unidentifiable project
-        // versification (`unknown`) to the text itself, with no reconnect-and-
-        // retry path. The eng default is always `ready`, so this never fires
-        // for it.
-        if (alignFrame.state !== 'ready') {
+        const frame = await a.projectFrame();
+        if (frame.state !== 'ready') {
           dispatch({
             type: 'set',
-            patch: { alignSession: { unavailable: `versification-${alignFrame.state}` } },
+            patch: { alignSession: { unavailable: `versification-${frame.state}` } },
           });
           return;
         }
+        const [chapter, verse] = ref.split(':');
         const srcRef = await mapReference({
-          from: alignFrame.name,
+          from: frame.name,
           to: RESOURCE_FRAME,
           book: st.book,
           chapter: Number(chapter),
           verse,
-          schemes: alignFrame.schemes,
+          schemes: frame.schemes,
         });
-        // Both refusals below are MAPPING outcomes, never 'missing': the source
-        // text IS installed, and R-E33-6 forbids blaming the text for a
-        // numbering mismatch — 'missing' would advise a download that cannot
-        // help. `no-counterpart` says what is true: no single source verse
-        // corresponds to this project-frame verse.
-        if (!srcRef.ok) {
-          dispatch({ type: 'set', patch: { alignSession: { unavailable: 'no-counterpart' } } });
-          return;
-        }
-        // A contiguous fan-out maps one project verse onto a SPAN ('9-10',
-        // [decided 2026-08-24]). UGNT/UHB JSON is keyed by single verses, so an
-        // exact lookup with a span key returns nothing — refuse honestly
-        // instead of reporting the installed text as absent. No shipped scheme
-        // fans out inside the 66-book canon today; schemes come from the
-        // platform, so the data can change underneath.
-        if (String(srcRef.reference.verse).includes('-')) {
+        if (!srcRef.ok || String(srcRef.reference.verse).includes('-')) {
           dispatch({ type: 'set', patch: { alignSession: { unavailable: 'no-counterpart' } } });
           return;
         }
         const origObjects = verseObjectsFor(
-          origUsfm,
+          source.usfmText,
           srcRef.reference.chapter,
           srcRef.reference.verse,
         );
-        const targetText = verseTextIndex(st.bookRaw)[ref] ?? '';
-        if (!origObjects.length || !targetText) {
-          dispatch({ type: 'set', patch: { alignSession: { unavailable: 'missing' } } });
-          return;
-        }
-
-        const { value: file, md5 } = await store.readAlignmentsWithMd5(st.book);
-        const stored = file?.chapters?.[chapter]?.[verse];
-        const sourceVersion = `dcs::${origPin.repoPath.split('/').slice(-2).join('/')}@${origPin.version}`;
-        const record = stored ?? bootstrapVerse(targetText, origObjects, sourceVersion);
+        const mapped = { chapter, verse, reference: srcRef.reference };
+        const session = await buildAlignmentSession(store, st, ref, source, mapped, origObjects);
         dispatch({
           type: 'set',
-          patch: {
-            alignSession: {
-              loading: false, ref, record, md5, targetText, origObjects, sourceVersion,
-              stale: alignmentIsStale(record, targetText),
-              armed: null,
-              targetDir: st.project?.scriptDirection === 'rtl' ? 'rtl' : 'ltr',
-              origDir: testament === 'ot' ? 'rtl' : 'ltr',
-            },
-          },
+          patch: { alignSession: session },
         });
       },
 
@@ -1061,149 +1587,23 @@ export function AppProvider({ children }) {
         const st = stateRef.current;
         const pre = st.preflight?.[tool];
         if (!pre || pre.state !== 'ready' || !pre.resolution?.pin) return;
-        const pin = pre.resolution.pin;
         const book = st.book;
         dispatch({ type: 'set', patch: { checkTool: tool, checkSession: { loading: true } } });
         try {
-          const localRepo = resolveReadPath(pin);
-          // C2.9 — a resource can be pinned, local, and still have nothing to
-          // say about this book. That is a designed state, not an error: the
-          // catalog's book_codes and the resource's actual files can disagree.
-          let tsv;
-          try {
-            tsv = await api.readIngredient(localRepo, `${book.toUpperCase()}.tsv`);
-          } catch {
-            tsv = null;
-          }
-          if (tsv === null || tsv.startsWith('{"is_good":false')) {
-            dispatch({
-              type: 'set',
-              patch: {
-                checkTool: tool,
-                checkSession: {
-                  loading: false, tool, book, items: [], empty: 'missing',
-                  resource: resolutionRecord(pre.resolution),
-                },
-              },
-            });
+          const result = await deriveCheckItems({ apiClient: api, actions: a, st, tool, book, pre });
+          if (result.session) {
+            dispatch({ type: 'set', patch: { checkTool: tool, checkSession: result.session } });
             return;
           }
-          // §4.2 (D26): filter to the project scope before anything counts or shows it.
-          const scopeRanges = scopeRangesFor(
-            stateRef.current.projectScope ?? {},
-            book.toUpperCase(),
-          );
-          // #15: map into the project's frame BEFORE scope filtering and before
-          // any decision is keyed — the §8.5 journal is append-only, so a
-          // mapped-after-the-fact reference would be a second, conflicting
-          // identity. An eng project short-circuits and is unchanged.
-          const frame = await a.projectFrame();
-          // R-E33-6/R-E33-7: a frame that cannot MAP is a designed empty state,
-          // never dropped checks. Mapping every reference would return
-          // unknown-frame and the book would read "0 checks / no verse in this
-          // numbering" — false, and alarming, for what is either a transient
-          // network condition (`unavailable`) or an unidentifiable project
-          // versification (`unknown`). Each gets its own honest message; the
-          // eng default is always `ready`, so this never fires for it.
-          if (frame.state !== 'ready') {
-            dispatch({
-              type: 'set',
-              patch: {
-                checkTool: tool,
-                checkSession: {
-                  loading: false, tool, book, items: [],
-                  empty: `versification-${frame.state}`,
-                  resource: resolutionRecord(pre.resolution),
-                },
-              },
-            });
-            return;
-          }
-          const { items: derived, unplaceable } = await deriveForProject({
-            tsv,
+          const session = await completedCheckSession({
+            store: storeRef.current,
+            st: stateRef.current,
             tool,
-            bookId: book.toLowerCase(),
-            from: RESOURCE_FRAME,
-            to: frame.name,
-            schemes: frame.schemes,
-            scopeRanges,
+            book,
+            pre,
+            derived: result.derived,
+            dropped: result.dropped,
           });
-          // Never silent (the B20 principle): a check the project's numbering
-          // has no home for is DROPPED, which silently shrinks the progress
-          // denominator — "0 of 415" where the resource offered 417. Carry the
-          // count and reasons onto the session so the check view can say so.
-          const dropped = unplaceable.length
-            ? {
-                count: unplaceable.length,
-                scheme: frame.name,
-                reasons: [...new Set(unplaceable.map((u) => u.reason))].sort(),
-              }
-            : null;
-          if (derived.length === 0) {
-            // §5.2: the dropped count MUST be surfaced. When mapping dropped
-            // EVERY check, "the resource lists no checks — nothing is wrong"
-            // would be false; a dedicated empty state says what happened, and
-            // the check view renders the count alongside it.
-            dispatch({
-              type: 'set',
-              patch: {
-                checkTool: tool,
-                checkSession: {
-                  loading: false, tool, book, items: [],
-                  empty: dropped ? 'all-dropped' : 'none',
-                  resource: resolutionRecord(pre.resolution), dropped,
-                },
-              },
-            });
-            return;
-          }
-          const savedFile = await storeRef.current.readDecisions(tool, book);
-          const saved = savedFile?.decisions ?? [];
-          // C2.8 (2) — D17: has the resource behind this file changed?
-          // Safety net only: pass BOTH rungs so a file recorded against the
-          // other rung (the ladder working) is silent. The consequences of a
-          // real gateway change are shown at the change (D23a/D30.2).
-          const slot = TOOL_SLOT[tool];
-          const rungPins = ['primary', 'fallback']
-            .map((r) => st.projectPins?.languageSets?.[r]?.[slot])
-            .filter(Boolean)
-            // The sha rides along: identity is (repoPath + sha) — D58/D59 —
-            // and resolutionWarning's ladder suppression compares by sha, so
-            // dropping it here would make every fallback-recorded file warn.
-            .map((p2) => ({ repoPath: p2.repoPath, version: p2.version, sha: p2.sha }));
-          const warning = resolutionWarning(savedFile?.resource, pre.resolution, rungPins);
-
-          // Identity key first, then D17's cross-language fallback for whatever
-          // it could not place. Unconditional by design — see mergeAndReattach.
-          const { items: merged, orphaned } = mergeAndReattach(derived, saved);
-
-          // C2.8 (1) — the draft may have moved under stored selections (I-3).
-          // Verse text comes from the model the drafting view already builds,
-          // so revalidation reads the SAME bytes the translator sees.
-          // Built from the live raw book, not from `model`: the actions memo
-          // has empty deps, so a `model` reference here would capture the first
-          // render's empty book (the stale-closure hazard this file already
-          // guards against elsewhere with stateRef).
-          const verses = verseTextIndex(stateRef.current.bookRaw);
-          const { items, invalidated } = revalidateAgainstDraft(merged, verses);
-
-          const session = {
-            loading: false, tool, book, items,
-            progress: progressOf(items),
-            resource: resolutionRecord(pre.resolution),
-            categories: [...new Set(items.map((i) => i.category))].sort(),
-            activeIndex: 0,
-            invalidated,
-            warning,
-            orphaned,
-            // #15: checks the project's numbering has no home for. Non-null only
-            // for a cross-frame project; the check view surfaces the count.
-            dropped,
-            // Per-verse target text for the tN/tW selection UI (B23). Kept on the
-            // SESSION, never on the items — recordDecision spreads the item into
-            // the §5.2 write, so target text must not ride along and pollute it.
-            verses,
-          };
           dispatch({ type: 'set', patch: { checkSession: session } });
           a.loadActiveArticle(session);
         } catch (e) {
@@ -1242,23 +1642,8 @@ export function AppProvider({ children }) {
         const key = `${cs.tool}:${item.contextId.groupId}:${item.category}`;
         if (cs.article?.key === key) return;
         dispatch({ type: 'set', patch: { checkSession: { ...cs, article: { key, loading: true } } } });
-        let found = null;
-        try {
-          if (cs.tool === 'translationWords' && sets?.translationWords) {
-            found = await readTwArticle(
-              api,
-              resolveReadPath(sets.translationWords),
-              item.category,
-              item.contextId.groupId,
-            );
-          } else if (sets?.translationAcademy) {
-            found = await readTaArticle(
-              api,
-              resolveReadPath(sets.translationAcademy),
-              item.contextId.groupId,
-            );
-          }
-        } catch { /* reported as absence below */ }
+        const kind = cs.tool === 'translationWords' ? 'tw' : 'ta';
+        const found = await readHelpArticle(api, kind, sets, item.category, item.contextId.groupId);
         const now = stateRef.current.checkSession;
         if (now?.article?.key !== key) return; // the user moved on
         dispatch({
@@ -1351,51 +1736,12 @@ export function AppProvider({ children }) {
         const done = [];
         const failed = [];
         for (const row of chosen) {
-          // P2 (adversarial round 16): every row downloads from the gateway
-          // SNAPSHOTTED at initiation — the modal stays interactive during
-          // long downloads, and a live read could mix organizations or throw
-          // on a cleared gateway mid-run.
-          const repoPath = `${DCS_HOST}/${originGateway.org}/${row.repo}`;
-          // Owner-qualified target (B9): `Xenizo/fr_tn` and `MVHS/fr_tn` get
-          // DISTINCT local paths, so selecting the second gateway no longer
-          // collides with the first and is no longer skipped as "installed".
-          const target = localRepoPathFromRepoPath(repoPath);
-          if (local.has(target)) {
-            // Already on disk. If nothing recorded which release it is (rig
-            // seeds, older installs), identify it from its own metadata
-            // revision + the DCS tag list — evidence, not assumption.
-            if (!(await readInstalled(api, STORAGE_ID))[target]) {
-              try {
-                const meta = await api.getMetadataRaw(target);
-                const rev = Object.values(meta?.identification?.primary?.dcs || {})[0]?.revision;
-                const found = await identifyExistingInstall(repoPath, rev);
-                // The metadata is already in hand — record the factual flavor
-                // with the identified tag (§8.5 schema needs both, D57).
-                if (found) await recordInstalled(api, STORAGE_ID, target, { ...found, flavor: flavorOfMetadata(meta) });
-              } catch { /* stays unidentified — contributes no coverage */ }
-            }
-            done.push(row.repo);
-            continue;
-          }
-          dispatch({ type: 'patchSrc', patch: { progress: t('sources.progress', { repo: row.repo }) } });
-          try {
-            const tag = await latestReleaseTag(repoPath);
-            const result = await fetchAndInstallPin(
-              { repoPath, version: tag, flavor: '' },
-              { api },
-            );
-            done.push(`${row.repo} ${tag}`);
-            // The export's own revision becomes this resource's pinned SHA,
-            // recorded per MACHINE (an install is shared by every project).
-            // The flavor comes from the installed burrito's own metadata — a
-            // pin needs a non-empty flavor to journal (§8.5 schema, D57).
-            const flavor = flavorOfMetadata(await api.getMetadataRaw(target).catch(() => null));
-            await recordInstalled(api, STORAGE_ID, target, {
-              repoPath, version: tag, sha: result.revision, flavor,
-            });
-          } catch (e) {
-            failed.push(`${row.repo}: ${String(e?.message || e)}`);
-          }
+          const target = localRepoPathFromRepoPath(`${DCS_HOST}/${originGateway.org}/${row.repo}`);
+          if (!local.has(target))
+            dispatch({ type: 'patchSrc', patch: { progress: t('sources.progress', { repo: row.repo }) } });
+          const result = await installPackageRow(api, originGateway, row, local);
+          if (result.done) done.push(result.done);
+          if (result.failed) failed.push(result.failed);
         }
         dispatch({
           type: 'patchSrc',
@@ -1406,54 +1752,19 @@ export function AppProvider({ children }) {
           },
         });
         if (done.length) {
-          const langKey = gatewayKey(originGateway); // the snapshot, not the live modal (P2)
-          const book = originBook;
-          const already = stateRef.current.installedSrc.some(
-            (x) => x.langKey === langKey && x.book === book,
-          );
-          if (!already) {
-            dispatch({
-              type: 'set',
-              patch: { installedSrc: [...stateRef.current.installedSrc, { langKey, book }] },
-            });
-          }
+          recordInstalledPackage(stateRef, dispatch, originGateway, originBook);
           // A download can COMPLETE a suite, which is what makes a language
           // offerable as the project's checking language.
           await a.refreshCheckable();
-          // K2 (adversarial round 11): an explicit download of the D64
-          // optional resources must reach the OPEN project too — a pre-1.10
-          // project (or one that fetched tq/simplified later) would otherwise
-          // keep resolving the slots as absent. Compare-and-swap, existing
-          // pins never replaced; best-effort like the coverage backfill —
-          // a failure here must not break the download flow.
-          try {
-            // Adoption is bound to the ORIGINATING project (M1): the user may
-            // have closed the modal and switched projects during the
-            // download. A switch means SKIP — never journal pins into
-            // whatever is open now. (A skipped project adopts on its next
-            // open — see openProject's adoption pass.)
-            const sameProject =
-              originStore && originRepoPath &&
-              storeRef.current === originStore &&
-              stateRef.current.project?.repoPath === originRepoPath;
-            if (sameProject && originGateway) {
-              const { installed, coverage } = await a.resolutionContext();
-              if (mergeOptionalPins(stateRef.current.projectPins ?? {}, originGateway, installed)) {
-                const next = await updateResources(originStore, (current) => {
-                  const merged = mergeOptionalPins(current, originGateway, installed);
-                  if (!merged) return current;
-                  return backfillCoverage(merged, coverage).resources;
-                });
-                if (stateRef.current.project?.repoPath === originRepoPath) {
-                  dispatch({ type: 'set', patch: { projectPins: next } });
-                }
-              }
-            }
-          } catch (e) {
-            // Stated, not swallowed (M1): the resource is installed but the
-            // project's pins were not updated.
-            dispatch({ type: 'patchSrc', patch: { error: t('sources.adoptFailed', { error: String(e?.message || e) }) } });
-          }
+          await adoptDownloadedPins({
+            originStore,
+            originRepoPath,
+            originGateway,
+            storeRef,
+            stateRef,
+            actions: a,
+            dispatch,
+          });
         }
       },
 
@@ -1491,13 +1802,9 @@ export function AppProvider({ children }) {
       createBible: async () => {
         const w = stateRef.current.np;
         if (w.busy) return; // reentrancy guard: one create at a time
-        if (!w.name.trim()) return a.patchNp({ error: t('wizard.nameRequired') });
-        if (!w.code.trim()) return a.patchNp({ error: t('wizard.codeRequired') });
-        // The folder name derives from the name (no separate field — owner,
-        // 2026-07-31); a non-Latin name falls back to the language code.
-        const slug = (x) => x.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-        const abbr = slug(w.name) || slug(w.code);
-        if (!abbr) return a.patchNp({ error: t('wizard.abbrRequired') });
+        const validation = validateNewBible(w);
+        if (validation.error) return a.patchNp({ error: validation.error });
+        const { abbr } = validation;
         a.patchNp({ busy: true, error: null });
         const store = new JournalingStore({ api });
         // Friendly-name pre-check only: the boundary's createProject does its
@@ -1751,14 +2058,13 @@ export function AppProvider({ children }) {
         // put if a write failure remains (FR-32; review findings B3/M1/M6).
         // Comprehension writes are held to the same rule (B1): drain the
         // in-flight ones BEFORE anything opens, and refuse while one failed.
-        await Promise.allSettled([...pendingNotesRef.current]);
-        if (Object.keys(noteSaveErrorsRef.current).length > 0) return; // the sync ledger (D1)
-        if (noteDirtyRef.current.size > 0) return; // unreconciled box (G1)
-        if (schedulerRef.current) {
-          const clean = await schedulerRef.current.drain();
-          if (!clean) return;
-          schedulerRef.current.dispose();
-        }
+        const canOpen = await drainForProjectOpen({
+          pendingNotesRef,
+          noteSaveErrorsRef,
+          noteDirtyRef,
+          schedulerRef,
+        });
+        if (!canOpen) return;
         try {
           // R-E33-3: the versification frame cache is keyed by repoPath, which is
           // NOT unique across a delete-and-recreate inside one session. Clear it
@@ -1784,21 +2090,7 @@ export function AppProvider({ children }) {
           markUsed(repoPath); // fire-and-forget; ordering refreshes next Home visit
           // The platform summary reports script_direction "?" for app-created
           // projects; the wizard recorded the user's choice in settings.json.
-          let scriptDirection = summary.scriptDirection;
-          if (scriptDirection !== 'ltr' && scriptDirection !== 'rtl') {
-            const settings = await store.readSettings().catch(() => null);
-            scriptDirection = settings?.textDirection === 'rtl' ? 'rtl' : 'ltr';
-          }
-          // §4.2 (D26): the project scope gates every derived list. It lives in
-          // metadata `type.flavorType.currentScope`. Absent or unreadable metadata
-          // reads as {} — whole book for every code, which is the pre-D26 behaviour.
-          let projectScope = {};
-          try {
-            const meta = await api.getMetadataRaw(repoPath);
-            projectScope = meta?.type?.flavorType?.currentScope ?? {};
-          } catch {
-            projectScope = {};
-          }
+          const { scriptDirection, projectScope } = await projectPresentation(api, store, repoPath, summary);
           // A2: the previous project's understand/pins must never survive
           // into this one — clear both with the new project, and invalidate
           // any in-flight loadUnderstand before its completion can land here.
@@ -1828,48 +2120,7 @@ export function AppProvider({ children }) {
           // N1 (adversarial round 14): this detached chain can settle after
           // ANOTHER project opened — every dispatch is bound to the
           // originating store instance and repo path.
-          const stillThisProject = () =>
-            storeRef.current === store && stateRef.current.project?.repoPath === repoPath;
-          store.readResources()
-            .then(async (pins) => {
-              if (!stillThisProject()) return;
-              dispatch({ type: 'set', patch: { projectPins: pins } });
-              if (!pins) return;
-              try {
-                const { installed, coverage } = await a.resolutionContext();
-                // On the way in: record knowable coverage (#16, owner ruling
-                // 3c) AND adopt INSTALLED optional resources into matching
-                // rungs (D64 — the owner's "the book package includes them";
-                // covers pre-1.10 projects and downloads finished after a
-                // project switch, M1). Both compare-and-swapped together.
-                const adopt = (current) => {
-                  let next = current;
-                  for (const rung of Object.values(current.languageSets ?? {})) {
-                    const gl = rung?.gatewayLanguage;
-                    if (!gl?.languageId || !gl?.owner) continue;
-                    const merged = mergeOptionalPins(next, { id: gl.languageId, org: gl.owner }, installed);
-                    if (merged) next = merged;
-                  }
-                  return next;
-                };
-                const wouldChange =
-                  backfillCoverage(adopt(pins), coverage).changed || adopt(pins) !== pins;
-                if (!wouldChange) return;
-                // Re-run INSIDE the compare-and-swap so a concurrent pin edit
-                // is not clobbered (B7/W-5).
-                const next = await updateResources(store, (current) =>
-                  backfillCoverage(adopt(current), coverage).resources,
-                );
-                if (!stillThisProject()) return;
-                dispatch({ type: 'set', patch: { projectPins: next } });
-              } catch {
-                /* coverage stays underived; the resolver falls back to warning */
-              }
-            })
-            .catch(() => {
-              if (!stillThisProject()) return; // a stale failure never clears the CURRENT project's pins
-              dispatch({ type: 'set', patch: { projectPins: null } });
-            });
+          loadProjectPins({ store, repoPath, storeRef, stateRef, actions: a, dispatch });
           // B12 — warm the install resolver BEFORE any book/source read. openBook
           // resolves its source panes through resolveReadPath, which needs
           // installedCache populated; on a cold project open the cache is empty,
@@ -1988,125 +2239,34 @@ export function AppProvider({ children }) {
           // targets (rsc NEH 7:67 vs 7:68) keep their distinct notes. A frame
           // that is not ready leaves comprehension null — boxes disabled,
           // matching the save path's refusal.
-          if (frame.state === 'ready') {
-            const built = {};
-            for (const n of storeRef.current?.readNotes?.(book) ?? []) {
-              const key = `${n.chapter}:${n.verse}`;
-              const prev = built[key];
-              if (!prev || String(n.ts) > String(prev.ts)) built[key] = { text: n.text, ts: n.ts };
-            }
-            // Assigned only once COMPLETE: a partial read must not enable the
-            // boxes with some notes invisible (A3).
-            comprehension = built;
-          }
+          comprehension = latestComprehension(storeRef.current, book, frame);
           // H1 (adversarial round 8): the reading pane must NOT index the
           // eng-frame source with a PROJECT-frame chapter number (eng JON
           // 1:17 is rsc JON 2:1). For a cross-frame project, map every
           // project verse to its source reference once per load; the view
           // renders the mapped refs and states the unmappable ones. null =
           // same frame — the view indexes directly, the common path.
-          let sourceRefs = null;
-          if (frame.state === 'ready' && frame.name !== RESOURCE_FRAME) {
-            // O2 (adversarial round 15): a cross-frame project NEVER renders
-            // same-frame chunking — when the book bytes are not here yet
-            // (openBook publishes the book before bookRaw), sourceRefs stays
-            // an EMPTY map (cross-frame, refs pending) and the effect re-runs
-            // when bookRaw lands (it is a dependency).
-            sourceRefs = {};
-            for (const entry of indexBook(st.bookRaw ?? '')) {
-              const list = (sourceRefs[String(entry.chapter)] ??= []);
-              const out = await mapReference({
-                from: frame.name, to: RESOURCE_FRAME, book,
-                chapter: Number(entry.chapter),
-                verse: /^\d+$/.test(String(entry.verseKey)) ? Number(entry.verseKey) : String(entry.verseKey),
-                schemes: frame.schemes,
-              });
-              // I1 (adversarial round 9): the EXACT project reference rides
-              // along — the source ref is for display only, and the save
-              // writes the project ref verbatim. A reverse-mapped identity is
-              // lossy under fan-out (rsc NEH 7:67 and 7:68 both read eng
-              // 7:67; reversing yields a synthetic '67-68' span).
-              if (out.ok) list.push({ c: out.reference.chapter, v: String(out.reference.verse), pc: entry.chapter, pv: String(entry.verseKey) });
-              else list.push({ unmapped: `${entry.chapter}:${entry.verseKey}` });
-            }
-          }
+          const sourceRefs = await mappedSourceReferences(st, book, frame);
           const scopeRanges = scopeRangesFor(st.projectScope ?? {}, book.toUpperCase());
           const sets = st.projectPins.languageSets ?? {};
-          const loadSlot = async (slot, tool, deriveOpts = {}) => {
-            const r = resolveSetSlot(st.projectPins, slot, book, coverage);
-            if (!r.pin) {
-              // No rung COVERS the book — but a pinned-yet-not-downloaded
-              // resource is "get it", not "the package lacks it" (D30 honesty).
-              const anyPin = sets.primary?.[slot] ?? sets.fallback?.[slot];
-              if (anyPin && !isPinLocal(installed, anyPin)) {
-                return { state: st.netEnabled ? 'fetch' : 'unavailable', pin: anyPin };
-              }
-              return { state: 'none' };
-            }
-            if (!isPinLocal(installed, r.pin)) {
-              return { state: st.netEnabled ? 'fetch' : 'unavailable', pin: r.pin, rung: r.rung };
-            }
-            // B20/D41: the fallback answering while the pinned PRIMARY is
-            // absent from this computer is never silent (same rule as the
-            // check preflight's unavailablePrimary).
-            const primaryPin = sets.primary?.[slot];
-            const unavailablePrimary =
-              r.rung === 'fallback' && primaryPin && !isPinLocal(installed, primaryPin)
-                ? primaryPin
-                : null;
-            let tsv;
-            try {
-              tsv = await api.readIngredient(resolveReadPath(r.pin), `${book.toUpperCase()}.tsv`);
-            } catch {
-              tsv = null;
-            }
-            if (tsv === null || tsv.startsWith('{"is_good":false')) {
-              return { state: 'missing', pin: r.pin, rung: r.rung };
-            }
-            if (frame.state !== 'ready') return { state: `versification-${frame.state}` };
-            const { items, unplaceable } = await deriveForProject({
-              tsv, tool, bookId: book.toLowerCase(),
-              from: RESOURCE_FRAME, to: frame.name, schemes: frame.schemes, scopeRanges,
-              ...deriveOpts,
-            });
-            return {
-              state: 'ready', items, pin: r.pin, rung: r.rung, unavailablePrimary,
-              dropped: unplaceable.length ? { count: unplaceable.length, scheme: frame.name } : null,
-            };
+          const slotArgs = {
+            apiClient: api,
+            st,
+            book,
+            coverage,
+            installed,
+            frame,
+            scopeRanges,
+            sets,
           };
-          // The Simplified tab's content resolves the D64 simplifiedText slot
-          // (the gateway's own `_gst`/`_ust` when installed) — never only the
-          // shipped English source pane.
-          const loadSimplified = async () => {
-            const r = resolveSetSlot(st.projectPins, 'simplifiedText', book, coverage);
-            const pin = r.pin ?? sets.primary?.simplifiedText ?? sets.fallback?.simplifiedText;
-            if (!pin) return { state: 'none' };
-            if (!isPinLocal(installed, pin)) {
-              return { state: st.netEnabled ? 'fetch' : 'unavailable', pin, rung: r.rung };
-            }
-            try {
-              const { usfm: raw } = await storeRef.current.readSourceBook(localSourceRepo(pin), book);
-              return { state: 'ready', pin, rung: r.rung, chapters: parseChapters(raw) };
-            } catch {
-              return { state: 'missing', pin, rung: r.rung };
-            }
-          };
-          // Per-slot isolation (A3): one malformed resource (a strict-header
-          // refusal, a derive throw) becomes THAT slot's error state — it
-          // never takes down the other tabs or the comprehension notes.
-          const settle = (p) =>
-            p.then(
-              (v) => v,
-              (e) => ({ state: 'error', error: String(e?.message || e) }),
-            );
           const [notes, questions, words, simplified] = await Promise.all([
             // keepPlainNotes: the read-only surface shows EVERY note the
             // resource carries, incl. rows without a SupportReference that
             // checking rightly skips (deriveTnItems).
-            settle(loadSlot('translationNotes', 'translationNotes', { keepPlainNotes: true })),
-            settle(loadSlot('translationQuestions', 'translationQuestions')),
-            settle(loadSlot('translationWordsLinks', 'translationWords')),
-            settle(loadSimplified()),
+            settleHelp(loadUnderstandSlot({ ...slotArgs, slot: 'translationNotes', tool: 'translationNotes', deriveOpts: { keepPlainNotes: true } })),
+            settleHelp(loadUnderstandSlot({ ...slotArgs, slot: 'translationQuestions', tool: 'translationQuestions' })),
+            settleHelp(loadUnderstandSlot({ ...slotArgs, slot: 'translationWordsLinks', tool: 'translationWords' })),
+            settleHelp(loadSimplifiedHelp({ store: storeRef.current, st, book, coverage, installed, sets })),
           ]);
           if (seq !== understandSeqRef.current) return; // superseded
           dispatch({
@@ -2134,141 +2294,74 @@ export function AppProvider({ children }) {
         // before the first await, the operation is registered in
         // pendingNotesRef from the start (so transitions drain the mapping
         // phase too), and the error record carries the project identity.
-        const store = storeRef.current;
-        const book = st.book;
-        const repoPath = st.project?.repoPath;
-        if (!store || !book || !repoPath) return;
+        const context = comprehensionSaveContext(st, storeRef.current, chapter, verseKey, text);
+        if (!context) return;
+        const { store, book, repoPath, trimmed, errKey } = context;
         // The unchanged-text comparison lives in the ComprehensionBox against
         // the note it actually DISPLAYS (unit-membership retrieval) — an
         // exact-head compare here would miss it and append a duplicate
         // grow-only note on a plain focus/blur (2026-08-27 Codex review).
-        const trimmed = (text ?? '').trim();
-        if (trimmed === '') return;
         // C2: failures are tracked PER TARGET — one map entry per
         // (project, chapter:verse) — so concurrent boxes never clear each
         // other's retry payload or dirty guard.
         // F2 (adversarial round 6): the identity is FULLY scoped — repoPath,
         // book, chapter, verse — so cross-book saves can never share a
         // revision, an error entry, or a dirty mark.
-        const errKey = `${repoPath}|${book}|${chapter}:${verseKey}`;
         const rev = (noteRevisionsRef.current.get(errKey) ?? 0) + 1;
         noteRevisionsRef.current.set(errKey, rev);
         const isLatest = () => noteRevisionsRef.current.get(errKey) === rev;
-        const fail = (message) => {
-          // A superseded operation's outcome is the NEWER operation's to
-          // report (E1) — recording it here could overwrite that one's state.
-          if (!isLatest()) return;
-          const now = stateRef.current;
-          // Ledger FIRST, synchronously (D1): the guard that resumes when
-          // this operation settles must already see the failure.
-          noteSaveErrorsRef.current = {
-            ...noteSaveErrorsRef.current,
-            // projectFrame rides along (J1): a retry must replay the EXACT
-            // save semantics — re-mapping an already-project-framed reference
-            // would journal a wrong identity.
-            [errKey]: { message, repoPath, book, chapter, verse: verseKey, text: trimmed, projectFrame: !!opts.projectFrame },
-          };
-          dispatch({
-            type: 'set',
-            patch: {
-              noteSaveErrors: noteSaveErrorsRef.current,
-              ...(now.book === book && now.project?.repoPath === repoPath
-                ? { understand: { ...now.understand, saveError: message } }
-                : {}),
-            },
-          });
-        };
-        const prevInChain = noteChainRef.current.get(errKey) ?? Promise.resolve();
-        const op = prevInChain.then(async () => {
-          // Superseded before this op's turn came: skip the write entirely —
-          // the latest revision carries the user's final text (H2), and a
-          // grow-only journal should not collect dead intermediates.
-          if (!isLatest()) return false;
-          // A1: the display buckets in SOURCE (eng) space, but a §8.5 note
-          // identity is permanent PROJECT-frame state — map before writing.
-          // Same-frame projects (the uW default) short-circuit; an unmappable
-          // or unresolved frame REFUSES the write and says so, because a note
-          // journaled under a wrong identity can never be repaired (grow-only).
-          let target = { chapter, verse: verseKey };
-          // I1: a cross-frame unit already carries its EXACT project-frame
-          // reference — write it verbatim; mapping a display (source) ref
-          // back would be lossy under fan-out.
-          if (!opts.projectFrame) {
-          const frame = await resolveProjectFrame(repoPath, { store, api });
-          if (frame.state !== 'ready') {
-            fail(t('understand.saveUnmappable'));
-            return false;
-          }
-          if (frame.name !== RESOURCE_FRAME) {
-            const out = await mapReference({
-              from: RESOURCE_FRAME, to: frame.name, book,
-              chapter: Number(chapter),
-              verse: /^\d+$/.test(String(verseKey)) ? Number(verseKey) : String(verseKey),
-              schemes: frame.schemes,
-            });
-            if (!out.ok) {
-              fail(t('understand.saveUnmappable'));
-              return false;
-            }
-            target = { chapter: out.reference.chapter, verse: out.reference.verse };
-          }
-          }
-          // The captured store writes into the ORIGINATING project no matter
-          // what the UI shows by now.
-          await store.addNote(book, target.chapter, target.verse, trimmed);
-          return true;
+        const fail = (message) => recordNoteSaveFailure({
+          isLatest,
+          stateRef,
+          noteSaveErrorsRef,
+          dispatch,
+          errKey,
+          repoPath,
+          book,
+          chapter,
+          verseKey,
+          trimmed,
+          projectFrame: !!opts.projectFrame,
+          message,
         });
+        const prevInChain = noteChainRef.current.get(errKey) ?? Promise.resolve();
+        const op = prevInChain.then(() => writeComprehensionNote({
+          isLatest,
+          fail,
+          store,
+          repoPath,
+          book,
+          chapter,
+          verseKey,
+          trimmed,
+          projectFrame: !!opts.projectFrame,
+          apiClient: api,
+        }));
         noteChainRef.current.set(errKey, op.catch(() => {}));
         pendingNotesRef.current.add(op);
         noteInFlightRef.current.set(errKey, (noteInFlightRef.current.get(errKey) ?? 0) + 1);
         syncNoteActivity();
-        let ok = false;
-        try {
-          ok = await op;
-        } catch (e) {
-          // Fired from a blur — an unhandled rejection would lose the note
-          // SILENTLY. State the failure like every other write surface does.
-          fail(String(e?.reason || e?.message || e));
-          return;
-        } finally {
-          pendingNotesRef.current.delete(op);
-          const inFlight = (noteInFlightRef.current.get(errKey) ?? 1) - 1;
-          if (inFlight <= 0) noteInFlightRef.current.delete(errKey);
-          else noteInFlightRef.current.set(errKey, inFlight);
-          syncNoteActivity();
-        }
+        const ok = await awaitNoteOperation({
+          operation: op,
+          fail,
+          pendingNotesRef,
+          noteInFlightRef,
+          errKey,
+          syncNoteActivity,
+        });
         if (!ok) return; // refused (fail() already recorded it)
         if (!isLatest()) return; // E1: a stale success must not clear a newer failure or publish over a newer edit
-        // C2: clear only THIS target's dirty mark and error entry — in the
-        // synchronous ledger first (D1), then mirrored to state. The box
-        // re-asserts dirty immediately if its draft has already diverged.
-        noteDirtyRef.current.delete(`${book}|${chapter}:${verseKey}`);
-        const remaining = { ...noteSaveErrorsRef.current };
-        delete remaining[errKey];
-        noteSaveErrorsRef.current = remaining;
-        const now = stateRef.current;
-        // The user may have moved on while the write was in flight — never
-        // patch the old book's note into the new state; the error entry
-        // clears either way: the write succeeded.
-        if (now.book !== book || now.project?.repoPath !== repoPath) {
-          dispatch({ type: 'set', patch: { noteSaveErrors: remaining } });
-          return;
-        }
-        dispatch({
-          type: 'set',
-          patch: {
-            noteSaveErrors: remaining,
-            understand: {
-              ...now.understand,
-              saveError: null,
-              comprehension: {
-                ...now.understand?.comprehension,
-                // The echo key IS the note's project-frame key — the same
-                // space comprehension is stored in (J2).
-                [`${chapter}:${verseKey}`]: { text: trimmed, ts: `local-${Date.now()}` },
-              },
-            },
-          },
+        publishComprehensionSuccess({
+          stateRef,
+          noteDirtyRef,
+          noteSaveErrorsRef,
+          dispatch,
+          errKey,
+          repoPath,
+          book,
+          chapter,
+          verseKey,
+          trimmed,
         });
       },
 
@@ -2289,15 +2382,12 @@ export function AppProvider({ children }) {
        * read from the INSTALLED burrito like C2.5; absence is stated. */
       loadHelpArticle: async ({ kind, category, slug, rung }) => {
         const st = stateRef.current;
-        const sets = st.projectPins?.languageSets;
         // The article set must actually CARRY the slot: a primary set can
         // resolve the notes while only the fallback pins tA/tW — take the
         // resolved rung's set first, then the first set holding the pin
         // (2026-08-27 review; readTw/TaArticle still state absence when the
         // repo lacks the module).
-        const slotName = kind === 'tw' ? 'translationWords' : 'translationAcademy';
-        const set = [sets?.[rung ?? 'fallback'], sets?.fallback, sets?.primary]
-          .find((candidate) => candidate?.[slotName]);
+        const set = understandArticleSet(st, kind, rung);
         const key = `${kind}:${category ?? ''}:${slug}`;
         if (st.understand?.article?.key === key) return;
         // D3 (adversarial round 4): the same slug exists across projects and
@@ -2310,18 +2400,9 @@ export function AppProvider({ children }) {
           type: 'set',
           patch: { understand: { ...st.understand, article: { key, seq, loading: true } } },
         });
-        let found = null;
-        try {
-          if (kind === 'tw' && set?.translationWords) {
-            found = await readTwArticle(api, resolveReadPath(set.translationWords), category, slug);
-          } else if (kind === 'ta' && set?.translationAcademy) {
-            found = await readTaArticle(api, resolveReadPath(set.translationAcademy), slug);
-          }
-        } catch { /* reported as absence below */ }
+        const found = await readHelpArticle(api, kind, set, category, slug);
         const now = stateRef.current;
-        if (seq !== articleSeqRef.current) return; // a newer request took over
-        if (now.project?.repoPath !== repoPath) return; // the project moved on
-        if (now.understand?.article?.key !== key) return; // the user moved on
+        if (!isCurrentArticleRequest(now, seq, articleSeqRef.current, repoPath, key)) return;
         dispatch({
           type: 'set',
           patch: { understand: { ...now.understand, article: { key, seq, loading: false, found } } },
