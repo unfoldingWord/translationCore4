@@ -296,6 +296,7 @@ const initial = () => ({
   netEnabled: false, // mirrors the platform's net gate (GET /net/status)
   projectPins: null, // the open project's resources.json (§5.3 v2 shape)
   projectPinsLoaded: false, // round 33: distinguishes pins LOADING (understand waits) from pins legally ABSENT (understand proceeds, slots unpinned)
+  projectPinsError: null, // round 34: a REJECTED pins read — stated and retryable, never a false absence claim
   preflight: null, // { [tool]: Preflight } for the open book (C2.2)
   gatewayPreview: null, // a proposed gateway change awaiting confirmation
   aligning: false, // the align surface is open
@@ -846,6 +847,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
         view: 'draft',
         projectPins: null,
         projectPinsLoaded: false,
+        projectPinsError: null,
         understand: null,
       },
     });
@@ -1000,7 +1002,7 @@ function loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatc
   store.readResources()
     .then(async (pins) => {
       if (!stillCurrent()) return;
-      dispatch({ type: 'set', patch: { projectPins: pins, projectPinsLoaded: true } });
+      dispatch({ type: 'set', patch: { projectPins: pins, projectPinsLoaded: true, projectPinsError: null } });
       if (!pins) return;
       try {
         const { installed, coverage } = await actions.resolutionContext();
@@ -1015,12 +1017,22 @@ function loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatc
         // Coverage stays underived; the resolver falls back to warning.
       }
     })
-    .catch(() => {
-      // Round 33: a FAILED pins read still resolves the loading question —
-      // understand proceeds with unpinned slots rather than waiting forever.
-      if (stillCurrent()) dispatch({ type: 'set', patch: { projectPins: null, projectPinsLoaded: true } });
+    .catch((error) => {
+      // Round 34: a REJECTED pins read is not "no pins recorded" — reporting
+      // it as loaded-but-absent told the translator the package lacks the
+      // helps (a false absence claim, D30). It is a stated, retryable error;
+      // understand keeps waiting rather than resolving every slot to none.
+      if (stillCurrent())
+        dispatch({
+          type: 'set',
+          patch: { projectPins: null, projectPinsLoaded: false, projectPinsError: String(error?.message || error) },
+        });
     });
 }
+
+/** Test hook (round 34): the pins-read outcomes are unit-tested — resolved
+ * null is loaded-but-absent; a rejection is a stated, retryable error. */
+export const __loadProjectPinsForTests = loadProjectPins;
 
 /** The loading-flag patch for a (re)load: a SAME-BOOK refresh keeps the
  * screen's working surface standing (P1); a different book starts clean. */
@@ -2347,16 +2359,16 @@ export function AppProvider({ children }) {
         ),
 
       openBook: async (code) => {
-        // F2/D65: a book switch is a navigation like any other — flush the
-        // note scheduler and refuse while a failure stands (FR-32).
-        if (noteSchedulerRef.current && !(await noteSchedulerRef.current.drain())) return;
+        // F2/D65/round 34: a book switch is a navigation like any other —
+        // bring BOTH schedulers to rest in the re-checking loop (a note
+        // staged while the verse drain awaited is caught by the next pass,
+        // never carried out of its book's context), and refuse while a
+        // failure stands (FR-32; B3/M1: loading over unsaved work
+        // resurrects stale bytes).
         const store = storeRef.current;
         if (!store) return;
-        // Drain before switching: loading over unsaved work resurrects stale
-        // bytes (review finding B3). A retained failure keeps us on the
-        // current book with the error visible (FR-32; finding M1).
+        if (!(await drainBothSchedulers({ schedulerRef, noteSchedulerRef }))) return;
         const scheduler = schedulerRef.current;
-        if (scheduler && !(await scheduler.drain())) return;
         // Sequence token: two rapid opens must not interleave (finding M2) —
         // only the latest open may install its bytes and sources.
         const seq = ++openSeqRef.current;
@@ -2469,6 +2481,17 @@ export function AppProvider({ children }) {
        * durable note, and Saved would show over hidden accepted work. Then
        * retry the buffer (the LATEST text — a stale payload structurally
        * cannot exist, round 21) and refresh the notes the screen displays. */
+      /** Round 34: re-run the failed pins read (bound to the OPEN project's
+       * store); the error clears optimistically and returns if the read
+       * fails again. */
+      retryProjectPins: () => {
+        const store = storeRef.current;
+        const repoPath = stateRef.current.project?.repoPath;
+        if (!store || !repoPath) return;
+        dispatch({ type: 'set', patch: { projectPinsError: null } });
+        loadProjectPins({ store, repoPath, storeRef, stateRef, actions: a, dispatch });
+      },
+
       retryNoteSave: () =>
         // Rounds 29-31: the reconcile-before-rest gate (and the notes
         // refresh a recovery needs) runs INSIDE the scheduler's retry — a
@@ -2581,7 +2604,7 @@ export function AppProvider({ children }) {
         understandSeqRef.current++;
         dispatch({
           type: 'set',
-          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, saveState: 'saved', noteSaveState: 'saved', projectPins: null, projectPinsLoaded: false, understand: null },
+          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, saveState: 'saved', noteSaveState: 'saved', projectPins: null, projectPinsLoaded: false, projectPinsError: null, understand: null },
         });
         refreshProjects(); // re-order: the project just left goes to the top
       },

@@ -5,7 +5,7 @@
 // "no pins recorded"): the screen proceeds with unpinned help slots instead
 // of waiting forever.
 import { describe, expect, it } from 'vitest';
-import { __performLoadUnderstandForTests as loadUnderstand } from '../src/state.jsx';
+import { __performLoadUnderstandForTests as loadUnderstand, __loadProjectPinsForTests as loadPins } from '../src/state.jsx';
 
 const PIN = { repoPath: 'git.door43.org/unfoldingWord/en_ust', sha: 'a'.repeat(40), flavor: 'scripture/textTranslation' };
 const notFound = () => Object.assign(new Error('404'), { isNotFound: true });
@@ -98,5 +98,42 @@ describe('round 33 F2 — pins loaded-but-absent proceeds; pins still loading wa
     (ctx.stateRef.current as Record<string, unknown>).understand = { book: 'OLD' };
     await loadUnderstand(ctx);
     expect(dispatched).toEqual([{ type: 'set', patch: { understand: null } }]);
+  });
+});
+
+describe('round 34 — the three pins-read outcomes are distinct', () => {
+  const pinsCtx = (readResources: () => Promise<unknown>) => {
+    const dispatched: Array<Record<string, unknown>> = [];
+    const store = { readResources };
+    return {
+      dispatched,
+      run: () =>
+        new Promise<void>((resolve) => {
+          loadPins({
+            store,
+            repoPath: 'repo/p',
+            storeRef: { current: store },
+            stateRef: { current: { project: { repoPath: 'repo/p' } } },
+            actions: { resolutionContext: async () => ({ installed: {}, coverage: {} }) },
+            dispatch: (a: Record<string, unknown>) => {
+              dispatched.push(a);
+              resolve();
+            },
+          });
+        }),
+    };
+  };
+
+  it('a RESOLVED-null read is loaded-but-absent (understand proceeds)', async () => {
+    const { dispatched, run } = pinsCtx(async () => null);
+    await run();
+    expect(dispatched[0].patch).toMatchObject({ projectPins: null, projectPinsLoaded: true, projectPinsError: null });
+  });
+
+  it('a REJECTED read is a stated error — never loaded-but-absent (no false absence claim, D30)', async () => {
+    const { dispatched, run } = pinsCtx(async () => { throw new Error('sidecar corrupt'); });
+    await run();
+    expect(dispatched[0].patch).toMatchObject({ projectPins: null, projectPinsLoaded: false });
+    expect(String((dispatched[0].patch as Record<string, unknown>).projectPinsError)).toMatch(/sidecar corrupt/);
   });
 });

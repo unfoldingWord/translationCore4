@@ -289,5 +289,6 @@
   "understand.frameUnavailable": "This project's verse numbering could not be loaded, so the passage cannot be shown safely here. Go online (or retry) and reopen the book.",
   "understand.crossFrameVerseOnly": "Verse view. This project's verse numbering differs from the source, so sections are not available.",
   "understand.showMore": "Show more",
-  "understand.showLess": "Show less"
+  "understand.showLess": "Show less",
+  "understand.pinsError": "The project's resource pins could not be read, so the helps cannot resolve:"
 }

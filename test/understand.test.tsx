@@ -732,3 +732,19 @@ describe('2026-08-28 adversarial round 33 regression (F3)', () => {
     }
   });
 });
+
+describe('2026-08-28 adversarial round 34 regression (F1 view)', () => {
+  beforeEach(() => { cleanup(); calls.length = 0; });
+
+  it('a rejected pins read shows a stated error with a retry that re-runs the pins load — never a false absence', () => {
+    (state as { projectPinsError?: string }).projectPinsError = 'sidecar corrupt';
+    try {
+      render(<Understand />);
+      expect(screen.getByTestId('pins-error').textContent).toContain('sidecar corrupt');
+      fireEvent.click(screen.getByTestId('pins-retry'));
+      expect(calls.some((c) => c.name === 'retryProjectPins')).toBe(true);
+    } finally {
+      delete (state as { projectPinsError?: string }).projectPinsError;
+    }
+  });
+});

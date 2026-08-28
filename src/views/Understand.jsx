@@ -561,6 +561,16 @@ export default function Understand() {
                 </>
               )}
             </div>
+            {s.projectPinsError && (
+              // Round 34: a rejected pins read is a stated, retryable error —
+              // never a false "the package lacks these resources" claim.
+              <Callout tone="warn" role="alert" data-testid="pins-error" style={{ marginTop: 10, overflowWrap: 'anywhere' }}>
+                {t('understand.pinsError')} {s.projectPinsError}{' '}
+                <Button size="sm" variant="outline" data-testid="pins-retry" onClick={() => actions.retryProjectPins()}>
+                  {t('app.retry')}
+                </Button>
+              </Callout>
+            )}
             {s.understand?.saveError && (
               <Callout tone="warn" role="alert" data-testid="understand-save-error" style={{ marginTop: 10, overflowWrap: 'anywhere' }}>
                 <strong>{t('understand.saveFailed')}</strong> {s.understand.saveError}
