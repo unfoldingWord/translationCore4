@@ -291,13 +291,32 @@ const emptyChapter = (
   </p>
 );
 
+/** Round 33: real tN notes exceed 400 characters (the shipped Titus fixture
+ * carries 425-940+), and a silent cut removes the guidance's qualifications
+ * and examples. Long bodies collapse to a preview with an accessible control
+ * that reveals the exact full text. */
+function ExpandableNote({ text }) {
+  const [expanded, setExpanded] = React.useState(false);
+  if (text.length <= 400) return text;
+  return (
+    <>
+      {expanded ? text : `${text.slice(0, 400)}\u2026 `}
+      <button type="button" data-testid="note-expand" aria-expanded={expanded}
+        onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v); }}
+        style={{ border: 0, background: 'transparent', cursor: 'pointer', fontFamily: 'var(--font-ui)', fontWeight: 'var(--fw-bold)', fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--accent)', padding: 0 }}>
+        {expanded ? t('understand.showLess') : t('understand.showMore')}
+      </button>
+    </>
+  );
+}
+
 function NotesTab({ slot, notes, actions }) {
   if (slot?.state !== 'ready') return <><SlotBanners slot={slot} /><SlotState slot={slot} /></>;
   return <>
     <SlotBanners slot={slot} />
     {notes.length === 0 ? emptyChapter : notes.map((n, i) => (
       <HelpCard key={`${n.contextId.checkId}-${i}`} kind="note" verse={n.contextId.reference.verse}
-        title={n.contextId.quoteString || n.contextId.groupId} body={n.contextId.occurrenceNote.slice(0, 400)}
+        title={n.contextId.quoteString || n.contextId.groupId} body={<ExpandableNote text={n.contextId.occurrenceNote} />}
         actionLabel={t('understand.academyLink')}
         onAction={n.contextId.groupId
           ? () => actions.loadHelpArticle({ kind: 'ta', slug: n.contextId.groupId, rung: slot.rung })
@@ -492,7 +511,9 @@ export default function Understand() {
     // installEpoch (round 20 F2): a successful install can leave projectPins
     // byte-identical (the pin already existed; only the machine's holdings
     // changed) — without it a downloaded resource stays "fetch" until reload.
-  }, [s.book, s.bookRaw, s.projectPins, s.netEnabled, s.installEpoch]);
+    // projectPinsLoaded (round 33): pins loaded-but-ABSENT is a legal state
+    // the screen proceeds in — the flag's flip is what re-runs the load.
+  }, [s.book, s.bookRaw, s.projectPins, s.projectPinsLoaded, s.netEnabled, s.installEpoch]);
 
   if (!book) {
     return (

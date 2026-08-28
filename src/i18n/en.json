@@ -287,5 +287,7 @@
   "understand.notesInSection": "{n} more saved note(s) target other verses inside this section — switch to Verse view to see and edit each one.",
   "sources.adoptFailed": "The download finished, but the project's pins were not updated: {error}. Re-open the project or run the download again to adopt the resource.",
   "understand.frameUnavailable": "This project's verse numbering could not be loaded, so the passage cannot be shown safely here. Go online (or retry) and reopen the book.",
-  "understand.crossFrameVerseOnly": "Verse view. This project's verse numbering differs from the source, so sections are not available."
+  "understand.crossFrameVerseOnly": "Verse view. This project's verse numbering differs from the source, so sections are not available.",
+  "understand.showMore": "Show more",
+  "understand.showLess": "Show less"
 }

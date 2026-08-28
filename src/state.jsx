@@ -295,6 +295,7 @@ const initial = () => ({
   gatewayError: null, // a failed gateway-change commit, shown in the dialogue
   netEnabled: false, // mirrors the platform's net gate (GET /net/status)
   projectPins: null, // the open project's resources.json (§5.3 v2 shape)
+  projectPinsLoaded: false, // round 33: distinguishes pins LOADING (understand waits) from pins legally ABSENT (understand proceeds, slots unpinned)
   preflight: null, // { [tool]: Preflight } for the open book (C2.2)
   gatewayPreview: null, // a proposed gateway change awaiting confirmation
   aligning: false, // the align surface is open
@@ -844,6 +845,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
         projectScope,
         view: 'draft',
         projectPins: null,
+        projectPinsLoaded: false,
         understand: null,
       },
     });
@@ -874,13 +876,131 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
  * latest request exclusively owns the refs and the dispatched state. */
 export const __performProjectOpenForTests = performProjectOpen;
 
+/** Load the read-only helps for the open book (extracted round 33 for the
+ * interleaving regressions): tN notes, tQ questions and tW links, each
+ * resolved over the §5.3 ladder (D64) and derived exactly like a check
+ * session — disposable, never stored (§4.2). The translator's own
+ * comprehension notes are read back from the journal. */
+async function performLoadUnderstand(ctx) {
+  const { stateRef, storeRef, understandSeqRef, dispatch, actions, apiClient } = ctx;
+  const st = stateRef.current;
+  const book = st.book;
+  // A2: while the pins are still LOADING, a previous project's
+  // understand data must not keep rendering — clear and invalidate.
+  // Round 33: pins LOADED-BUT-ABSENT is a legal state (D30.3, "no pins
+  // recorded") — the journal's comprehension notes and the passage are
+  // independent of the helps pins, so the screen proceeds with every
+  // help slot honestly unpinned instead of loading forever.
+  if (!book || (!st.projectPins && !st.projectPinsLoaded)) {
+    understandSeqRef.current++;
+    if (stateRef.current.understand) dispatch({ type: 'set', patch: { understand: null } });
+    return;
+  }
+  // Sequence token: pins/net/project can change while a load is pending,
+  // and two projects can both hold the same book code — a book-only
+  // guard lets an OLDER completion (or failure) overwrite the newer
+  // state. Only the latest call may dispatch, on BOTH paths.
+  const seq = ++understandSeqRef.current;
+  // P1 (adversarial round 16): a SAME-BOOK refresh (pins/net change)
+  // keeps comprehension and sourceRefs standing — wiping them mid-edit
+  // unmounts cross-frame units (falling back to same-frame display) and
+  // discards unblurred drafts. A different book starts clean.
+  dispatch({ type: 'set', patch: understandLoadingPatch(stateRef.current.understand, book) });
+  // Built before the help slots and carried onto BOTH dispatch paths
+  // (A3): a failing optional resource must never hide persisted notes
+  // behind writable empty boxes. null = "not read" — the UI disables
+  // the boxes rather than treating it as empty.
+  let comprehension = null;
+  // C1/N1: every read below binds to the store this load STARTED in.
+  const store = storeRef.current;
+  // For the round-33 catch-path re-read: the frame once established.
+  let frameForNotes = null;
+  // S3: only a CONFIRMED ready+eng frame may ever render same-frame.
+  // Until that is established (or when the load throws first), the
+  // failure path must not fall back to indexing the eng source with
+  // project numbers — nor leave boxes editable over it.
+  let safeSameFrame = false;
+  try {
+    const { installed, coverage } = await actions.resolutionContext();
+    const frame = await actions.projectFrame();
+    safeSameFrame = frame.state === 'ready' && frame.name === RESOURCE_FRAME;
+    // A1: note identities are journaled in the PROJECT frame (§8.4/§5.2
+    // identity discipline); the display buckets in SOURCE (eng) space.
+    // Map stored keys back when the frames differ; the uW default is
+    // same-frame and short-circuits.
+    // J2 (adversarial round 10): comprehension is keyed by each note's
+    // OWN project-frame chapter:verse — never re-mapped. Same-frame
+    // units read it by numeric membership (identical spaces); a
+    // cross-frame unit reads its EXACT project reference, so fan-out
+    // targets (rsc NEH 7:67 vs 7:68) keep their distinct notes. A frame
+    // that is not ready leaves comprehension null — boxes disabled,
+    // matching the save path's refusal.
+    comprehension = latestComprehension(store, book, frame);
+    frameForNotes = frame;
+    // H1 (adversarial round 8): the reading pane must NOT index the
+    // eng-frame source with a PROJECT-frame chapter number (eng JON
+    // 1:17 is rsc JON 2:1). For a cross-frame project, map every
+    // project verse to its source reference once per load; the view
+    // renders the mapped refs and states the unmappable ones. null =
+    // same frame — the view indexes directly, the common path.
+    const sourceRefs = await mappedSourceReferences(st, book, frame);
+    const scopeRanges = scopeRangesFor(st.projectScope ?? {}, book.toUpperCase());
+    const sets = st.projectPins?.languageSets ?? {};
+    // Round 33: with pins loaded-but-absent, every slot resolver sees an
+    // EMPTY languageSets — each slot resolves to its honest none/unpinned
+    // state instead of crashing on null.
+    const stForSlots = st.projectPins ? st : { ...st, projectPins: { languageSets: {} } };
+    const slotArgs = {
+      apiClient,
+      st: stForSlots,
+      book,
+      coverage,
+      installed,
+      frame,
+      scopeRanges,
+      sets,
+    };
+    const [notes, questions, words, simplified] = await Promise.all([
+      // keepPlainNotes: the read-only surface shows EVERY note the
+      // resource carries, incl. rows without a SupportReference that
+      // checking rightly skips (deriveTnItems).
+      settleHelp(loadUnderstandSlot({ ...slotArgs, slot: 'translationNotes', tool: 'translationNotes', deriveOpts: { keepPlainNotes: true } })),
+      settleHelp(loadUnderstandSlot({ ...slotArgs, slot: 'translationQuestions', tool: 'translationQuestions' })),
+      settleHelp(loadUnderstandSlot({ ...slotArgs, slot: 'translationWordsLinks', tool: 'translationWords' })),
+      settleHelp(loadSimplifiedHelp({ store, st: stForSlots, book, coverage, installed, sets })),
+    ]);
+    if (seq !== understandSeqRef.current) return; // superseded
+    // Round 33: `comprehension` was snapshotted BEFORE the help awaits —
+    // a note saved while they ran would be clobbered by dispatching the
+    // stale snapshot (the box follows the reverted stored text, and
+    // re-editing it appends obsolete content). Re-read the store's fold
+    // NOW, under the same sequence guard: readNotes is synchronous, and
+    // a write still in flight re-merges through its own noteSaved echo.
+    comprehension = latestComprehension(store, book, frame);
+    dispatch({
+      type: 'set',
+      patch: { understand: { loading: false, book, notes, questions, words, simplified, comprehension, sourceRefs } },
+    });
+  } catch (e) {
+    if (seq !== understandSeqRef.current) return; // a stale failure never replaces current state
+    // Round 33: the failure patch replaces understand wholesale — the
+    // same stale-snapshot hazard as the success path. Re-read when the
+    // frame was established; before that, comprehension is still null.
+    if (frameForNotes) comprehension = latestComprehension(store, book, frameForNotes);
+    dispatch({ type: 'set', patch: understandFailurePatch({ safeSameFrame, error: e, comprehension, book }) });
+  }
+}
+
+/** Test hook (round 33): the load/save interleavings are unit-tested. */
+export const __performLoadUnderstandForTests = performLoadUnderstand;
+
 function loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatch }) {
   const stillCurrent = () =>
     storeRef.current === store && stateRef.current.project?.repoPath === repoPath;
   store.readResources()
     .then(async (pins) => {
       if (!stillCurrent()) return;
-      dispatch({ type: 'set', patch: { projectPins: pins } });
+      dispatch({ type: 'set', patch: { projectPins: pins, projectPinsLoaded: true } });
       if (!pins) return;
       try {
         const { installed, coverage } = await actions.resolutionContext();
@@ -896,7 +1016,9 @@ function loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatc
       }
     })
     .catch(() => {
-      if (stillCurrent()) dispatch({ type: 'set', patch: { projectPins: null } });
+      // Round 33: a FAILED pins read still resolves the loading question —
+      // understand proceeds with unpinned slots rather than waiting forever.
+      if (stillCurrent()) dispatch({ type: 'set', patch: { projectPins: null, projectPinsLoaded: true } });
     });
 }
 
@@ -2277,91 +2399,8 @@ export function AppProvider({ children }) {
        * and tW links, each resolved over the §5.3 ladder (D64) and derived
        * exactly like a check session — disposable, never stored (§4.2). The
        * translator's own comprehension notes are read back from the journal. */
-      loadUnderstand: async () => {
-        const st = stateRef.current;
-        const book = st.book;
-        if (!book || !st.projectPins) {
-          // A2 (2026-08-27 adversarial review): "no pins yet" is a legal
-          // state — but a PREVIOUS project's understand data must not keep
-          // rendering (and accepting notes) behind it. Clear and invalidate.
-          understandSeqRef.current++;
-          if (stateRef.current.understand) dispatch({ type: 'set', patch: { understand: null } });
-          return;
-        }
-        // Sequence token: pins/net/project can change while a load is pending,
-        // and two projects can both hold the same book code — a book-only
-        // guard lets an OLDER completion (or failure) overwrite the newer
-        // state. Only the latest call may dispatch, on BOTH paths.
-        const seq = ++understandSeqRef.current;
-        // P1 (adversarial round 16): a SAME-BOOK refresh (pins/net change)
-        // keeps comprehension and sourceRefs standing — wiping them mid-edit
-        // unmounts cross-frame units (falling back to same-frame display) and
-        // discards unblurred drafts. A different book starts clean.
-        dispatch({ type: 'set', patch: understandLoadingPatch(stateRef.current.understand, book) });
-        // Built before the help slots and carried onto BOTH dispatch paths
-        // (A3): a failing optional resource must never hide persisted notes
-        // behind writable empty boxes. null = "not read" — the UI disables
-        // the boxes rather than treating it as empty.
-        let comprehension = null;
-        // S3: only a CONFIRMED ready+eng frame may ever render same-frame.
-        // Until that is established (or when the load throws first), the
-        // failure path must not fall back to indexing the eng source with
-        // project numbers — nor leave boxes editable over it.
-        let safeSameFrame = false;
-        try {
-          const { installed, coverage } = await a.resolutionContext();
-          const frame = await a.projectFrame();
-          safeSameFrame = frame.state === 'ready' && frame.name === RESOURCE_FRAME;
-          // A1: note identities are journaled in the PROJECT frame (§8.4/§5.2
-          // identity discipline); the display buckets in SOURCE (eng) space.
-          // Map stored keys back when the frames differ; the uW default is
-          // same-frame and short-circuits.
-          // J2 (adversarial round 10): comprehension is keyed by each note's
-          // OWN project-frame chapter:verse — never re-mapped. Same-frame
-          // units read it by numeric membership (identical spaces); a
-          // cross-frame unit reads its EXACT project reference, so fan-out
-          // targets (rsc NEH 7:67 vs 7:68) keep their distinct notes. A frame
-          // that is not ready leaves comprehension null — boxes disabled,
-          // matching the save path's refusal.
-          comprehension = latestComprehension(storeRef.current, book, frame);
-          // H1 (adversarial round 8): the reading pane must NOT index the
-          // eng-frame source with a PROJECT-frame chapter number (eng JON
-          // 1:17 is rsc JON 2:1). For a cross-frame project, map every
-          // project verse to its source reference once per load; the view
-          // renders the mapped refs and states the unmappable ones. null =
-          // same frame — the view indexes directly, the common path.
-          const sourceRefs = await mappedSourceReferences(st, book, frame);
-          const scopeRanges = scopeRangesFor(st.projectScope ?? {}, book.toUpperCase());
-          const sets = st.projectPins.languageSets ?? {};
-          const slotArgs = {
-            apiClient: api,
-            st,
-            book,
-            coverage,
-            installed,
-            frame,
-            scopeRanges,
-            sets,
-          };
-          const [notes, questions, words, simplified] = await Promise.all([
-            // keepPlainNotes: the read-only surface shows EVERY note the
-            // resource carries, incl. rows without a SupportReference that
-            // checking rightly skips (deriveTnItems).
-            settleHelp(loadUnderstandSlot({ ...slotArgs, slot: 'translationNotes', tool: 'translationNotes', deriveOpts: { keepPlainNotes: true } })),
-            settleHelp(loadUnderstandSlot({ ...slotArgs, slot: 'translationQuestions', tool: 'translationQuestions' })),
-            settleHelp(loadUnderstandSlot({ ...slotArgs, slot: 'translationWordsLinks', tool: 'translationWords' })),
-            settleHelp(loadSimplifiedHelp({ store: storeRef.current, st, book, coverage, installed, sets })),
-          ]);
-          if (seq !== understandSeqRef.current) return; // superseded
-          dispatch({
-            type: 'set',
-            patch: { understand: { loading: false, book, notes, questions, words, simplified, comprehension, sourceRefs } },
-          });
-        } catch (e) {
-          if (seq !== understandSeqRef.current) return; // a stale failure never replaces current state
-          dispatch({ type: 'set', patch: understandFailurePatch({ safeSameFrame, error: e, comprehension, book }) });
-        }
-      },
+      loadUnderstand: () =>
+        performLoadUnderstand({ stateRef, storeRef, understandSeqRef, dispatch, actions: a, apiClient: api }),
 
       /** The Understand screen's ONLY write (#106, owner ruling 2026-08-27),
        * now staged through the note SaveScheduler (D65). The box calls this
@@ -2542,7 +2581,7 @@ export function AppProvider({ children }) {
         understandSeqRef.current++;
         dispatch({
           type: 'set',
-          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, saveState: 'saved', noteSaveState: 'saved', projectPins: null, understand: null },
+          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, saveState: 'saved', noteSaveState: 'saved', projectPins: null, projectPinsLoaded: false, understand: null },
         });
         refreshProjects(); // re-order: the project just left goes to the top
       },

@@ -707,3 +707,28 @@ describe('2026-08-28 adversarial round 32 regressions', () => {
     expect(screen.queryByTestId('understand-verse-only')).toBeNull();
   });
 });
+
+describe('2026-08-28 adversarial round 33 regression (F3)', () => {
+  beforeEach(() => { cleanup(); calls.length = 0; });
+
+  it('a long translation note is never silently truncated: the full text is reachable through Show more', () => {
+    const savedItems = state.understand.notes.items;
+    const longNote = `${'Guidance that matters. '.repeat(25)}THE QUALIFICATION AT THE END.`; // > 400 chars
+    expect(longNote.length).toBeGreaterThan(400);
+    state.understand.notes = { ...state.understand.notes, items: [noteItem(1, 'the Word', longNote)] };
+    try {
+      render(<Understand />);
+      // Collapsed: a visible preview plus an accessible expansion control.
+      const toggle = screen.getByTestId('note-expand');
+      expect(toggle.getAttribute('aria-expanded')).toBe('false');
+      expect(screen.queryByText(/THE QUALIFICATION AT THE END/)).toBeNull();
+      fireEvent.click(toggle);
+      expect(toggle.getAttribute('aria-expanded')).toBe('true');
+      expect(screen.getByText(/THE QUALIFICATION AT THE END/)).toBeTruthy();
+      // Short notes render whole, with no control.
+      expect(writes()).toEqual([]); // expansion is read-only
+    } finally {
+      state.understand.notes = { ...state.understand.notes, items: savedItems };
+    }
+  });
+});
