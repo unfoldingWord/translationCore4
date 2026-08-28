@@ -8,7 +8,7 @@
 // This module owns the machine side. The pin record is persisted through the
 // platform's per-client settings (`/api/client-settings/<storage_id>`), which
 // is exactly the "belongs to this machine, not to the project" store.
-import type { ResourcePin } from './burritoStore';
+import type { LanguageSet, ResourcePin } from './burritoStore';
 import { pinKey, samePath } from './resolve';
 import type { Coverage } from './resolve';
 import type { RepoSummary, ServerApi } from './serverApi';

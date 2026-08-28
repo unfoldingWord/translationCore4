@@ -418,10 +418,10 @@ describe('2026-08-27 adversarial round 11 regressions', () => {
       },
     };
     const installed = { a: pin('es-419_tn'), b: pin('es-419_tw'), c: pin('es-419_ta'), d: pin('es-419_tq'), e: pin('es-419_gst') };
-    const merged = mergeOptionalPins(resources as never, { id: 'es-419', org: 'es-419_gl' }, installed as never);
-    expect(merged?.languageSets.primary.translationQuestions?.repoPath).toContain('es-419_tq');
-    expect(merged?.languageSets.primary.simplifiedText?.repoPath).toContain('es-419_gst');
-    expect(merged?.languageSets.fallback.translationQuestions).toBeUndefined(); // non-matching rung untouched
+    const merged = mergeOptionalPins(resources as unknown as Parameters<typeof mergeOptionalPins>[0], { id: 'es-419', org: 'es-419_gl' }, installed as never);
+    expect(merged?.languageSets?.primary.translationQuestions?.repoPath).toContain('es-419_tq');
+    expect(merged?.languageSets?.primary.simplifiedText?.repoPath).toContain('es-419_gst');
+    expect(merged?.languageSets?.fallback.translationQuestions).toBeUndefined(); // non-matching rung untouched
     // idempotent: nothing new to add -> null (no write)
     expect(mergeOptionalPins(merged as never, { id: 'es-419', org: 'es-419_gl' }, installed as never)).toBeNull();
   });
