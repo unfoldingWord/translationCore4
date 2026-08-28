@@ -1880,33 +1880,17 @@ export function AppProvider({ children }) {
           // identity discipline); the display buckets in SOURCE (eng) space.
           // Map stored keys back when the frames differ; the uW default is
           // same-frame and short-circuits.
-          // B2 (2026-08-27 adversarial round 2): a project-frame key is NEVER
-          // usable as a source-frame bucket. When the frames differ, only a
-          // SUCCESSFUL reverse mapping places a note; a failed mapping is
-          // counted and surfaced, not assigned to a guessed verse. A frame
-          // that is not ready leaves comprehension null — the boxes stay
-          // disabled, matching the save path's refusal.
-          let unmappedNotes = 0;
+          // J2 (adversarial round 10): comprehension is keyed by each note's
+          // OWN project-frame chapter:verse — never re-mapped. Same-frame
+          // units read it by numeric membership (identical spaces); a
+          // cross-frame unit reads its EXACT project reference, so fan-out
+          // targets (rsc NEH 7:67 vs 7:68) keep their distinct notes. A frame
+          // that is not ready leaves comprehension null — boxes disabled,
+          // matching the save path's refusal.
           if (frame.state === 'ready') {
             const built = {};
-            const sameFrame = frame.name === RESOURCE_FRAME;
             for (const n of storeRef.current?.readNotes?.(book) ?? []) {
-              let key = null;
-              if (sameFrame) {
-                key = `${n.chapter}:${n.verse}`;
-              } else {
-                const out = await mapReference({
-                  from: frame.name, to: RESOURCE_FRAME, book,
-                  chapter: Number(n.chapter),
-                  verse: /^\d+$/.test(n.verse) ? Number(n.verse) : n.verse,
-                  schemes: frame.schemes,
-                });
-                if (out.ok) key = `${out.reference.chapter}:${out.reference.verse}`;
-              }
-              if (key === null) {
-                unmappedNotes++;
-                continue;
-              }
+              const key = `${n.chapter}:${n.verse}`;
               const prev = built[key];
               if (!prev || String(n.ts) > String(prev.ts)) built[key] = { text: n.text, ts: n.ts };
             }
@@ -2021,7 +2005,7 @@ export function AppProvider({ children }) {
           if (seq !== understandSeqRef.current) return; // superseded
           dispatch({
             type: 'set',
-            patch: { understand: { loading: false, book, notes, questions, words, simplified, comprehension, unmappedNotes, sourceRefs } },
+            patch: { understand: { loading: false, book, notes, questions, words, simplified, comprehension, sourceRefs } },
           });
         } catch (e) {
           if (seq !== understandSeqRef.current) return; // a stale failure never replaces current state
@@ -2073,7 +2057,10 @@ export function AppProvider({ children }) {
           // this operation settles must already see the failure.
           noteSaveErrorsRef.current = {
             ...noteSaveErrorsRef.current,
-            [errKey]: { message, repoPath, book, chapter, verse: verseKey, text: trimmed },
+            // projectFrame rides along (J1): a retry must replay the EXACT
+            // save semantics — re-mapping an already-project-framed reference
+            // would journal a wrong identity.
+            [errKey]: { message, repoPath, book, chapter, verse: verseKey, text: trimmed, projectFrame: !!opts.projectFrame },
           };
           dispatch({
             type: 'set',
@@ -2164,9 +2151,9 @@ export function AppProvider({ children }) {
               saveError: null,
               comprehension: {
                 ...now.understand?.comprehension,
-                // The local echo lives in DISPLAY (source) space; a
-                // cross-frame save names it explicitly (I1).
-                [opts.echoKey ?? `${chapter}:${verseKey}`]: { text: trimmed, ts: `local-${Date.now()}` },
+                // The echo key IS the note's project-frame key — the same
+                // space comprehension is stored in (J2).
+                [`${chapter}:${verseKey}`]: { text: trimmed, ts: `local-${Date.now()}` },
               },
             },
           },
@@ -2182,7 +2169,7 @@ export function AppProvider({ children }) {
         const repoPath = now.project?.repoPath;
         for (const err of Object.values(noteSaveErrorsRef.current)) {
           if (err.repoPath !== repoPath || err.book !== now.book) continue;
-          await a.saveComprehension(err.chapter, err.verse, err.text);
+          await a.saveComprehension(err.chapter, err.verse, err.text, { projectFrame: err.projectFrame });
         }
       },
 

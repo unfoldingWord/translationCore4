@@ -248,17 +248,6 @@ describe('2026-08-27 adversarial-review regressions', () => {
 describe('2026-08-27 adversarial round 2 regressions', () => {
   beforeEach(() => { cleanup(); calls.length = 0; });
 
-  it('notes with no place in this numbering are counted in a callout, never bucketed under a guessed verse (B2)', () => {
-    const saved = state.understand;
-    state.understand = { ...saved, unmappedNotes: 2 } as never;
-    try {
-      render(<Understand />);
-      expect(screen.getByTestId('understand-unmapped-notes').textContent).toContain('2');
-    } finally {
-      state.understand = saved;
-    }
-  });
-
   it('blur does NOT clear the dirty flag — only a successful persist may (B1)', () => {
     render(<Understand />);
     const box = screen.getAllByPlaceholderText('What does this section mean in your own words?')[0];
@@ -362,8 +351,34 @@ describe('2026-08-27 adversarial round 8 regressions', () => {
       expect(w.length).toBe(1);
       expect(w[0].args[0]).toBe(2); // the PROJECT chapter…
       expect(w[0].args[1]).toBe('2'); // …and the PROJECT verse, verbatim
-      expect((w[0].args[3] as { projectFrame: boolean; echoKey: string }).projectFrame).toBe(true);
-      expect((w[0].args[3] as { echoKey: string }).echoKey).toBe('1:1');
+      expect((w[0].args[3] as { projectFrame: boolean }).projectFrame).toBe(true);
+    } finally {
+      state.understand = savedU;
+      state.chapter = savedCh;
+    }
+  });
+});
+
+describe('2026-08-27 adversarial round 10 regression', () => {
+  beforeEach(() => { cleanup(); calls.length = 0; });
+
+  it('fan-out units keep their DISTINCT notes: each box reads its exact project reference (J2)', () => {
+    const savedU = state.understand;
+    const savedCh = state.chapter;
+    try {
+      state.chapter = 2 as never;
+      state.understand = {
+        ...savedU,
+        sourceRefs: { '2': [{ c: 1, v: '1', pc: 2, pv: '1' }, { c: 1, v: '1', pc: 2, pv: '2' }] },
+        comprehension: {
+          '2:1': { text: 'note for project 2:1', ts: '2026-08-27T04:00:00.000Z|0000|a' },
+          '2:2': { text: 'note for project 2:2', ts: '2026-08-27T04:00:01.000Z|0000|a' },
+        },
+      } as never;
+      render(<Understand />);
+      const boxes = screen.getAllByPlaceholderText('What does this section mean in your own words?');
+      expect((boxes[0] as HTMLTextAreaElement).value).toBe('note for project 2:1');
+      expect((boxes[1] as HTMLTextAreaElement).value).toBe('note for project 2:2');
     } finally {
       state.understand = savedU;
       state.chapter = savedCh;

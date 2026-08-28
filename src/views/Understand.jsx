@@ -69,7 +69,11 @@ function ComprehensionBox({ book, chapter, unit }) {
   // adversarial review): a writable empty box over an unread grow-only store
   // invites irreversible duplicates. null = not read; {} = read and empty.
   const ready = s.understand?.comprehension != null;
-  const stored = latestUnitNote(s.understand?.comprehension, chapter, unit)?.text ?? '';
+  // J2: a cross-frame unit reads its EXACT project reference — fan-out units
+  // (two project verses, one source ref) keep their own distinct notes.
+  const stored = unit.project
+    ? (s.understand?.comprehension?.[`${unit.project.chapter}:${unit.project.verse}`]?.text ?? '')
+    : (latestUnitNote(s.understand?.comprehension, chapter, unit)?.text ?? '');
   const [text, setText] = React.useState(stored);
   // The box's target identity is FULLY scoped (F1, adversarial round 6):
   // unit keys like "s1"/"v1"/"whole" repeat across chapters and books, so
@@ -121,10 +125,9 @@ function ComprehensionBox({ book, chapter, unit }) {
       return;
     }
     if (unit.project) {
-      // I1: the exact project-frame reference is written VERBATIM; the source
-      // ref only names the display bucket for the local echo.
-      actions.saveComprehension(unit.project.chapter, unit.project.verse, text,
-        { projectFrame: true, echoKey: `${chapter}:${unit.head}` });
+      // I1/J2: the exact project-frame reference is written VERBATIM and is
+      // also the storage/echo key.
+      actions.saveComprehension(unit.project.chapter, unit.project.verse, text, { projectFrame: true });
     } else {
       actions.saveComprehension(chapter, unit.head, text);
     }
@@ -423,14 +426,6 @@ export default function Understand() {
               <SegmentedControl size="sm" tone="ocean" value={mode} onChange={setMode}
                 options={[{ value: 'section', label: t('understand.bySection') }, { value: 'verse', label: t('understand.byVerse') }]} />
             </div>
-            {(s.understand?.unmappedNotes ?? 0) > 0 && (
-              // B2: notes whose project-frame identity has no place in this
-              // source's numbering are COUNTED, never shown under a guessed
-              // verse.
-              <Callout tone="warn" data-testid="understand-unmapped-notes" style={{ marginTop: 10 }}>
-                {t('understand.unmappedNotes', { n: s.understand.unmappedNotes })}
-              </Callout>
-            )}
             {s.understand?.saveError && (
               <Callout tone="warn" role="alert" data-testid="understand-save-error" style={{ marginTop: 10, overflowWrap: 'anywhere' }}>
                 <strong>{t('understand.saveFailed')}</strong> {s.understand.saveError}
@@ -451,7 +446,10 @@ export default function Understand() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingBottom: 8, borderBottom: 'var(--stroke) solid var(--border)' }}>
                   <Overline>{u.label}</Overline>
                   <div style={{ flex: 1 }} />
-                  {latestUnitNote(s.understand?.comprehension, u.srcChapter ?? chapter, u) ? <StatusDot status="valid" size={7} /> : null}
+                  {(u.project
+                    ? s.understand?.comprehension?.[`${u.project.chapter}:${u.project.verse}`]
+                    : latestUnitNote(s.understand?.comprehension, chapter, u))
+                    ? <StatusDot status="valid" size={7} /> : null}
                 </div>
                 <p style={{ direction: 'ltr', textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse)', color: 'var(--text-scripture)', margin: '10px 0 12px' }}>
                   {u.verses.map((k) => {
