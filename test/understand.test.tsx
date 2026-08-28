@@ -426,8 +426,13 @@ describe('2026-08-27 adversarial round 14 regression', () => {
         '1:2': { text: 'the verse-2 note', ts: '2026-08-27T06:00:00.000Z|0000|a' },
       };
       rerender(<Understand />);
-      // The draft is RESET, not carried onto the new target.
+      // The box follows its NEW target — the draft is never carried onto it…
       expect(box().value).toBe('exact head note');
+      // …and never DISCARDED either (O1, round 15): the parked draft is
+      // restored by the box that shows its own durable target (Verse view).
+      fireEvent.click(screen.getByRole('button', { name: 'Verse' }));
+      const boxes = screen.getAllByPlaceholderText('What does this section mean in your own words?');
+      expect((boxes[1] as HTMLTextAreaElement).value).toBe('draft typed against target 2');
     } finally {
       state.understand.comprehension = saved;
     }

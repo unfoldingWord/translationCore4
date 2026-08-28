@@ -1972,9 +1972,14 @@ export function AppProvider({ children }) {
           // renders the mapped refs and states the unmappable ones. null =
           // same frame — the view indexes directly, the common path.
           let sourceRefs = null;
-          if (frame.state === 'ready' && frame.name !== RESOURCE_FRAME && st.bookRaw) {
+          if (frame.state === 'ready' && frame.name !== RESOURCE_FRAME) {
+            // O2 (adversarial round 15): a cross-frame project NEVER renders
+            // same-frame chunking — when the book bytes are not here yet
+            // (openBook publishes the book before bookRaw), sourceRefs stays
+            // an EMPTY map (cross-frame, refs pending) and the effect re-runs
+            // when bookRaw lands (it is a dependency).
             sourceRefs = {};
-            for (const entry of indexBook(st.bookRaw)) {
+            for (const entry of indexBook(st.bookRaw ?? '')) {
               const list = (sourceRefs[String(entry.chapter)] ??= []);
               const out = await mapReference({
                 from: frame.name, to: RESOURCE_FRAME, book,

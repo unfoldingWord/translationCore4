@@ -76,6 +76,14 @@ const displayedUnitNote = (comprehension, chapter, unit) => {
   };
 };
 
+/** Unsaved drafts parked when a box's DURABLE TARGET changes underneath it
+ * (O1, adversarial round 15): keyed by project|book|chapter:verse, restored by
+ * whichever box next shows that target (e.g. the Verse-view box after an
+ * exact-head note displaced the section box's display). Cleared on save,
+ * dismissal, or when the stash equals the stored text. Module-level: survives
+ * remounts, never touches the journal. */
+const draftStash = new Map();
+
 /** The comprehension box (#106's only write): saves on blur through
  * actions.saveComprehension; everything else on the screen is read-only. */
 function ComprehensionBox({ book, chapter, unit }) {
@@ -95,7 +103,6 @@ function ComprehensionBox({ book, chapter, unit }) {
       }
     : displayedUnitNote(s.understand?.comprehension, chapter, unit);
   const stored = shown.text;
-  const [text, setText] = React.useState(stored);
   // The box's target identity is FULLY scoped (F1, adversarial round 6):
   // unit keys like "s1"/"v1"/"whole" repeat across chapters and books, so
   // book AND chapter are part of the identity — a chapter switch always
@@ -117,17 +124,48 @@ function ComprehensionBox({ book, chapter, unit }) {
   // the previous stored value; a diverged draft stays, and its dirty mark is
   // re-asserted (the state layer clears dirty on ITS latest save's success,
   // which cannot see text typed after that save started).
+  const stashKey = `${s.project?.repoPath}|${dirtyKey}`;
+  // A freshly MOUNTED box also restores a parked draft (O1): a target that
+  // lost its section-box display reappears as a Verse-view unit, and its
+  // unsaved text must come back with it.
+  const [text, setText] = React.useState(() => {
+    const stash = draftStash.get(stashKey);
+    return stash != null && stash.trim() !== stored.trim() ? stash : stored;
+  });
+  React.useEffect(() => {
+    const stash = draftStash.get(stashKey);
+    if (stash != null && stash.trim() !== stored.trim()) actions.setNoteDirty(dirtyKey, true);
+    else if (stash != null) draftStash.delete(stashKey);
+    // mount-only: later target changes go through the identity effect below
+  }, []);
   const prevStoredRef = React.useRef(stored);
   const identityRef = React.useRef(identity);
+  const prevStashKeyRef = React.useRef(stashKey);
   React.useEffect(() => {
     const identityChanged = identityRef.current !== identity;
     identityRef.current = identity;
-    if (identityChanged || text === prevStoredRef.current) {
+    if (identityChanged) {
+      // O1: park a diverged draft under its OLD durable target before
+      // switching — its dirty flag stays set, and the box that next shows
+      // that target restores it. The draft is never silently discarded.
+      if (text !== prevStoredRef.current && text.trim() !== prevStoredRef.current.trim()) {
+        draftStash.set(prevStashKeyRef.current, text);
+      }
+      const stash = draftStash.get(stashKey);
+      if (stash != null && stash.trim() !== stored.trim()) {
+        setText(stash);
+        actions.setNoteDirty(dirtyKey, true);
+      } else {
+        draftStash.delete(stashKey);
+        setText(stored);
+      }
+    } else if (text === prevStoredRef.current) {
       setText(stored);
     } else if (text.trim() !== stored.trim()) {
       actions.setNoteDirty(dirtyKey, true);
     }
     prevStoredRef.current = stored;
+    prevStashKeyRef.current = stashKey;
   }, [stored, identity]);
   // Compare against the note the box DISPLAYS: notes are grow-only, so an
   // unchanged focus/blur must never append a duplicate (2026-08-27 Codex
@@ -153,16 +191,19 @@ function ComprehensionBox({ book, chapter, unit }) {
       // Reverted to the stored text: an earlier FAILED write for this target
       // is abandoned — dismiss it, or navigation stays blocked and Retry
       // would append the abandoned draft (K1).
+      draftStash.delete(stashKey);
       actions.dismissNoteError(target.chapter, target.verse);
       return;
     }
     if (text.trim() === '' && stored.trim() !== '') {
       setText(stored);
+      draftStash.delete(stashKey);
       actions.setNoteDirty(dirtyKey, false);
       actions.dismissNoteError(target.chapter, target.verse);
       setClearRefused(true);
       return;
     }
+    draftStash.delete(stashKey); // the write (or its failure ledger) owns the text now
     if (unit.project) {
       // I1/J2: the exact project-frame reference is written VERBATIM and is
       // also the storage/echo key.
@@ -395,7 +436,10 @@ export default function Understand() {
   const [mode, setMode] = React.useState('section');
   React.useEffect(() => {
     actions.loadUnderstand();
-  }, [s.book, s.projectPins, s.netEnabled]);
+    // bookRaw is a dependency (O2): openBook publishes the book before its
+    // bytes; a cross-frame project needs the bytes to build sourceRefs, and
+    // without the re-run it would render nothing for the new book.
+  }, [s.book, s.bookRaw, s.projectPins, s.netEnabled]);
 
   if (!book) {
     return (
@@ -428,8 +472,12 @@ export default function Understand() {
   // becomes its own unit labeled with the source reference, and an
   // unmappable project verse is stated, never guessed. Same-frame projects
   // (sourceRefs null — the uW default) keep the section/verse chunking.
-  const crossRefs = s.understand?.sourceRefs?.[String(chapter)];
-  if (crossRefs) {
+  // sourceRefs != null means CROSS-FRAME — even with no refs yet (O2): the
+  // view must never fall back to indexing the eng source with project-frame
+  // chapter numbers while the book bytes load.
+  const crossFrame = s.understand?.sourceRefs != null;
+  const crossRefs = crossFrame ? s.understand.sourceRefs[String(chapter)] ?? [] : null;
+  if (crossFrame) {
     for (const r of crossRefs) {
       if (r.unmapped) {
         units.push({ key: `u${r.unmapped}`, unmapped: r.unmapped });
