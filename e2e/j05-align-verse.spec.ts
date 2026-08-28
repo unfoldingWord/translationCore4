@@ -191,7 +191,9 @@ test.describe('J5 — a translator aligns a verse', () => {
     'without an original-language text pinned, alignment says so instead of failing (C2.9 pattern)',
     { tag: ['@inc2', '@J5'] },
     async ({ page }) => {
-      writeProjectPins(SEEDED_PROJECT, PINS()); // no originalLanguage pins
+      // This spec NEEDS the originalLanguage pins absent — drop the seed's
+      // resources groups explicitly (the helper now carries them forward).
+      writeProjectPins(SEEDED_PROJECT, PINS(), { dropResources: true });
       await page.goto('/');
       await page
         .getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`)

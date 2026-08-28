@@ -192,6 +192,7 @@ export function writeProjectPins(
     tw: { repoPath: string; version: string; sha?: string; flavor: string };
     ta: { repoPath: string; version: string; sha?: string; flavor: string };
   },
+  opts: { dropResources?: boolean } = {},
 ): void {
   const set = {
     gatewayLanguage: { languageId: 'en', owner: 'unfoldingWord' },
@@ -204,22 +205,25 @@ export function writeProjectPins(
   // groups and an empty extraScripture are OMITTED by projectResources, so a
   // hand-written file that spells them out refuses to seed (D56). Write what
   // the app itself would checkpoint.
-  const file: {
-    schemaVersion: number;
-    languageSets: { primary: typeof set; fallback: typeof set };
-    extraScripture?: unknown[];
-  } = {
+  const file: Record<string, unknown> = {
     schemaVersion: 2,
     languageSets: { primary: set, fallback: set },
   };
   const dir = path.join(rigRepo(repo), 'ingredients', 'checking');
-  // Carry the seed's extraScripture (ULT/UST source-pane pins) forward: this
-  // helper rewrites the WHOLE document, and silently dropping the pins left
-  // the shared project with no source texts after a journey run (issue #123).
+  // This helper rewrites the WHOLE document, so every top-level field it does
+  // not own is carried forward: extraScripture (the ULT/UST source-pane pins)
+  // and the resources groups (originalLanguage/lexicon) were both silently
+  // dropped, leaving the shared project contaminated after a journey run
+  // (issue #123 + the #124 adversarial review). A test that NEEDS the
+  // resources groups absent says so explicitly via dropResources.
   const p = path.join(dir, 'resources.json');
   if (fs.existsSync(p)) {
-    const existing = JSON.parse(fs.readFileSync(p, 'utf8')) as { extraScripture?: unknown[] };
-    if (existing.extraScripture?.length) file.extraScripture = existing.extraScripture;
+    const existing = JSON.parse(fs.readFileSync(p, 'utf8')) as Record<string, unknown>;
+    for (const [key, value] of Object.entries(existing)) {
+      if (key === 'schemaVersion' || key === 'languageSets') continue;
+      if (key === 'resources' && opts.dropResources) continue;
+      file[key] = value;
+    }
   }
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(p, `${JSON.stringify(file, null, 2)}\n`);

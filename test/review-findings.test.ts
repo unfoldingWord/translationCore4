@@ -103,18 +103,19 @@ describe('M4 — upsertDecision matches identity key AND quoteString together', 
     // A SCRATCH project, never the shared seeded one: these raw-store writes
     // bypass the journal, so on a journaled project they are exactly the
     // derived-state divergence the open guard refuses (issue #123, F1).
+    // The name is unique per run (#124 review): a fixed name could collide
+    // with — and the cleanup delete — a real project or a concurrent run.
     const { HttpStore } = await import('../src/data/httpStore');
+    const { isNotFoundError } = await import('../src/data/serverApi');
     const store = new HttpStore({ baseUrl: 'http://127.0.0.1:19998/api' });
-    const SCRATCH = '_local_/_local_/m4_scratch';
-    await store.api.deleteRepo(SCRATCH).catch(() => {}); // leftover from a crashed run
-    await store.createProject({
+    const { repoPath } = await store.createProject({
       content_name: 'M4 scratch',
-      content_abbr: 'm4_scratch',
+      content_abbr: `m4scratch${Date.now().toString(36)}`,
       content_language_code: 'en',
       add_book: false,
       versification: 'eng',
     });
-    await store.open(SCRATCH);
+    await store.open(repoPath);
     const mk = (quote: string, comment: string) => ({
       contextId: {
         checkId: 'm4regress',
@@ -144,8 +145,16 @@ describe('M4 — upsertDecision matches identity key AND quoteString together', 
       // exactly two records: the orphaned old-quote one and ONE current-quote one
       expect(mine).toHaveLength(2);
       expect(mine.find((d) => d.contextId.quoteString === 'new')?.comments).toBe('v4');
+      // Cleanup is part of the contract: a failed delete (other than a
+      // confirmed not-found) leaves residue on the rig and must FAIL, never
+      // be swallowed (#124 review). It runs here, after the assertions, so a
+      // cleanup failure never masks a primary one.
+      await store.api.deleteRepo(repoPath).catch((error) => {
+        if (!isNotFoundError(error)) throw error;
+      });
     } finally {
-      await store.api.deleteRepo(SCRATCH).catch(() => {});
+      // Best-effort sweep for the assertion-failure path only.
+      await store.api.deleteRepo(repoPath).catch(() => {});
     }
   });
 });

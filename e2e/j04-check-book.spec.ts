@@ -61,6 +61,27 @@ test.beforeEach(() => {
 
 test.describe('J4 — a checker works a book', () => {
   test(
+    'writeProjectPins carries the seed document forward: resources groups and extraScripture survive a pin rewrite (#123/#124 review)',
+    { tag: ['@inc2', '@J4'] },
+    async () => {
+      writeProjectPins(SEEDED_PROJECT, PINS());
+      const file = JSON.parse(
+        fs.readFileSync(
+          path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'resources.json'),
+          'utf8',
+        ),
+      ) as {
+        resources?: Record<string, unknown>;
+        extraScripture?: Array<{ id: string }>;
+      };
+      expect(Object.keys(file.resources ?? {})).toEqual(
+        expect.arrayContaining(['originalLanguage', 'lexicon']),
+      );
+      expect((file.extraScripture ?? []).map((e) => e.id)).toEqual(['ult', 'ust']);
+    },
+  );
+
+  test(
     'opening a checking session derives the item list from the pinned TSV — the list is never stored (FR-13)',
     { tag: ['@inc2', '@J4'] },
     async ({ page }) => {
@@ -406,11 +427,15 @@ test.describe('J4 — a checker works a book', () => {
       };
       const dir = path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking');
       const p = path.join(dir, 'resources.json');
-      // Carry the seed's extraScripture forward — same rule as writeProjectPins
-      // (issue #123: a whole-document rewrite must not drop the source-pane pins).
+      // Same carry-forward rule as writeProjectPins (issue #123/#124 review):
+      // a whole-document rewrite keeps every top-level field it does not own
+      // (extraScripture, the resources groups).
       if (fs.existsSync(p)) {
-        const existing = JSON.parse(fs.readFileSync(p, 'utf8')) as { extraScripture?: unknown[] };
-        if (existing.extraScripture?.length) file.extraScripture = existing.extraScripture;
+        const existing = JSON.parse(fs.readFileSync(p, 'utf8')) as Record<string, unknown>;
+        for (const [key, value] of Object.entries(existing)) {
+          if (key === 'schemaVersion' || key === 'languageSets') continue;
+          file[key] = value;
+        }
       }
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(p, `${JSON.stringify(file, null, 2)}\n`);
