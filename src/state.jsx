@@ -2370,22 +2370,39 @@ export function AppProvider({ children }) {
         sched.markDirty(key, chapter, verse, text);
       },
 
-      /** The buffered (unflushed or persisted) text for a note target, or
-       * null. The scheduler buffer IS the draft store — it survives unmounts
-       * and identity flips (O1/P1 are structural now). */
+      /** The buffered DRAFT for a note target, or null. Only a DIRTY buffer
+       * value is a draft (round 28): a clean value equals what the scheduler
+       * believes persisted, and restore paths must prefer the stored/durable
+       * note over it. The buffer survives unmounts and identity flips (O1/P1
+       * are structural now). */
       stagedNote: ({ chapter, verse }) => {
         const st = stateRef.current;
         const repoPath = st?.project?.repoPath;
-        if (!repoPath || !st.book) return null;
-        return noteSchedulerRef.current?.bookText(noteKeyFor(repoPath, st.book, chapter, verse)) ?? null;
+        const sched = noteSchedulerRef.current;
+        if (!repoPath || !st.book || !sched) return null;
+        const key = noteKeyFor(repoPath, st.book, chapter, verse);
+        return sched.isDirty(key) ? sched.bookText(key) : null;
       },
 
       /** Blur: flush the note buffer now (verse discipline — flushOnBlur). */
       flushNotes: () => noteSchedulerRef.current?.flushOnBlur() ?? Promise.resolve(),
 
-      /** Retry after a failed note write: replays the LATEST buffered text —
-       * a stale payload structurally cannot exist (D65; round-21 class). */
-      retryNoteSave: () => noteSchedulerRef.current?.retry() ?? Promise.resolve(),
+      /** Retry after a failed note write. Reconcile the STORE first
+       * (round 28): a lost-response accept keeps its stage (round 27), and a
+       * cleared fresh draft leaves the buffer clean — retry() alone would
+       * clear the failure without ever running the replay that surfaces the
+       * durable note, and Saved would show over hidden accepted work. Then
+       * retry the buffer (the LATEST text — a stale payload structurally
+       * cannot exist, round 21) and refresh the notes the screen displays. */
+      retryNoteSave: async () => {
+        try {
+          await storeRef.current?.reconcileStaged();
+        } catch {
+          /* the scheduler retry below reports its own failure honestly */
+        }
+        await (noteSchedulerRef.current?.retry() ?? Promise.resolve());
+        await a.loadUnderstand();
+      },
 
       /** A help article behind an Understand card (tW word or tA module),
        * read from the INSTALLED burrito like C2.5; absence is stated. */

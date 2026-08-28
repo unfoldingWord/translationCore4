@@ -129,6 +129,14 @@ export class SaveScheduler {
     return this.current.get(book) ?? null;
   }
 
+  /** Whether this key holds an unpersisted edit (round 28): a buffered value
+   * that equals `persisted` is not a DRAFT — restore paths must prefer the
+   * stored/durable value over a clean buffer, or a reconciled-empty key would
+   * display blank over a durable note. */
+  isDirty(book: string): boolean {
+    return this.current.has(book) && this.persisted.get(book) !== this.current.get(book);
+  }
+
   /** Seed a key only when it is ABSENT — never touches existing state, so the
    * unsaved-work hazard loadBook's B3/M1 guard exists for cannot arise, and
    * seeding one key while another is dirty is safe. The comprehension-note

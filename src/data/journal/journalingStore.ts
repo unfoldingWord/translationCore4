@@ -2251,6 +2251,18 @@ export class JournalingStore implements BurritoStore {
     });
   }
 
+  /** Replay this actor's staged outbox intents and refresh the fold, WITHOUT
+   * mutating anything (round 28): the note Retry path must surface a
+   * lost-response ACCEPT (whose stage round 27 deliberately keeps) even when
+   * the scheduler buffer is clean and no write will run — otherwise the
+   * indicator claims Saved while a durable grow-only note stays hidden until
+   * some later mutation replays it as a surprise. */
+  async reconcileStaged(): Promise<void> {
+    return this.queue(async () => {
+      await this.replayOwnStagedBeforeDiff();
+    });
+  }
+
   /** Verse-targeted notes of one book from the fold, in journal order (so the
    * last entry per target is the latest — the one the Understand screen shows). */
   readNotes(book: string): Array<{ ts: string; chapter: string; verse: string; text: string }> {

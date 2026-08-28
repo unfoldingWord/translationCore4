@@ -491,3 +491,63 @@ describe('2026-08-28 adversarial round 27: an ABANDONED failed note never resurr
     expect(store.readNotes('TIT').map((n) => n.text)).toEqual(['A kept thought.']);
   });
 });
+
+describe('2026-08-28 adversarial round 28: Retry surfaces a lost-response accept even over a CLEAN buffer', () => {
+  it('fresh note → accepted/response lost → clear → Retry: the durable note appears immediately, exactly once, and Saved is honest', async () => {
+    const { kv, store } = await setup();
+    const { SaveScheduler } = await import('../src/data/saveScheduler');
+    const { __makeNoteWriterForTests: makeNoteWriter, noteKeyFor } =
+      await import('../src/state.jsx');
+
+    // The real D65 wiring: the note scheduler writes through the real store.
+    const noteTargetsRef = { current: new Map() };
+    const dispatched: Array<Record<string, unknown>> = [];
+    const writer = makeNoteWriter({
+      noteTargetsRef,
+      dispatch: (a: Record<string, unknown>) => dispatched.push(a),
+      apiClient: {},
+    });
+    const sched = new SaveScheduler({
+      splice: (_r: string, _c: unknown, _v: unknown, body: string) => body,
+      writeBook: (k: string, text: string) => writer(k, text),
+      clock: { setTimeout: () => 0, clearTimeout: () => {} },
+    });
+    const key = noteKeyFor(REPO, 'TIT', 1, '2');
+    noteTargetsRef.current.set(key, {
+      store, repoPath: REPO, book: 'TIT', chapter: 1, verse: '2', projectFrame: true,
+    });
+
+    // Fresh note: the user types A; the write is ACCEPTED but the response is
+    // lost (the stage-key delete fails after the segment landed — B1 window).
+    let lostResponses = 1;
+    const rawDelete = kv.delete.bind(kv);
+    kv.delete = async (k: string): Promise<void> => {
+      if (lostResponses > 0 && k.startsWith('outbox:')) {
+        lostResponses -= 1;
+        throw new Error('injected failure: lost response after accept');
+      }
+      return rawDelete(k);
+    };
+    sched.seedIfAbsent(key, '');
+    sched.markDirty(key, 1, '2', 'A durable thought.');
+    await sched.flushOnBlur();
+    expect(sched.getState()).toBe('error');
+
+    // The user CLEARS the failed fresh draft: the box stages the stored text
+    // (empty) — the buffer is clean, so retry() alone would write nothing.
+    sched.markDirty(key, 1, '2', '');
+
+    // The retryNoteSave sequence (round 28): reconcile the store FIRST, then
+    // retry the buffer, then re-read the notes the screen displays.
+    await store.reconcileStaged();
+    await sched.retry();
+    expect(sched.getState()).toBe('saved'); // honest: nothing is pending or failed…
+    const notes = store.readNotes('TIT').filter((n) => n.chapter === '1' && n.verse === '2');
+    expect(notes.map((n) => n.text)).toEqual(['A durable thought.']); // …and the accepted note is VISIBLE, once
+    expect((await kv.keys('outbox:')).filter((k) => k.includes(REPO))).toHaveLength(0); // the stage reconciled
+
+    // A later mutation replays nothing new — no surprise resurrection.
+    await store.writeBook('TIT', TIT_USFM.replace('___', 'Nueva vida.'));
+    expect(store.readNotes('TIT').filter((n) => n.text === 'A durable thought.')).toHaveLength(1);
+  });
+});
