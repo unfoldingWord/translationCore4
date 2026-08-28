@@ -350,6 +350,13 @@ export function AppProvider({ children }) {
   const understandSeqRef = useRef(0); // loadUnderstand sequence token (2026-08-27 Codex review)
   const pendingNotesRef = useRef(new Set()); // in-flight note operations, registered before their first await (A4/C1)
   const noteDirtyRef = useRef(new Set()); // 'chapter:verse' keys of boxes holding unsaved text (A4; per-target since C2)
+  // D1 (adversarial round 4): the AUTHORITATIVE failure ledger is a ref,
+  // updated SYNCHRONOUSLY inside fail()/success — a React dispatch is async,
+  // so a navigation guard racing the settling promise would read a stale
+  // snapshot and proceed past a loss. State's noteSaveErrors is the render
+  // MIRROR of this ref, never the source the guards consult.
+  const noteSaveErrorsRef = useRef({});
+  const articleSeqRef = useRef(0); // help-article completion token (D3, adversarial round 4)
 
   // ---- derived display model -------------------------------------------------
   const model = useMemo(() => {
@@ -412,7 +419,7 @@ export function AppProvider({ children }) {
         (sched && sched.getState() !== 'saved') ||
         pendingNotesRef.current.size > 0 ||
         noteDirtyRef.current.size > 0 ||
-        Object.keys(stateRef.current?.noteSaveErrors ?? {}).length > 0
+        Object.keys(noteSaveErrorsRef.current).length > 0
       ) {
         e.preventDefault();
         e.returnValue = '';
@@ -474,7 +481,9 @@ export function AppProvider({ children }) {
         // navigation, exactly like the verse scheduler does (FR-32). The
         // failure is visible in the Understand callout and the save indicator.
         await Promise.allSettled([...pendingNotesRef.current]);
-        if (Object.keys(stateRef.current.noteSaveErrors ?? {}).length > 0) return;
+        // The REF, not state (D1): the failure is recorded synchronously, the
+        // state mirror may not have rendered yet when this drain resumes.
+        if (Object.keys(noteSaveErrorsRef.current).length > 0) return;
         dispatch({ type: 'set', patch: { view } });
       },
 
@@ -1663,7 +1672,7 @@ export function AppProvider({ children }) {
         // Comprehension writes are held to the same rule (B1): drain the
         // in-flight ones BEFORE anything opens, and refuse while one failed.
         await Promise.allSettled([...pendingNotesRef.current]);
-        if (Object.keys(stateRef.current.noteSaveErrors ?? {}).length > 0) return;
+        if (Object.keys(noteSaveErrorsRef.current).length > 0) return; // the sync ledger (D1)
         if (schedulerRef.current) {
           const clean = await schedulerRef.current.drain();
           if (!clean) return;
@@ -2004,13 +2013,16 @@ export function AppProvider({ children }) {
         const errKey = `${repoPath}|${chapter}:${verseKey}`;
         const fail = (message) => {
           const now = stateRef.current;
+          // Ledger FIRST, synchronously (D1): the guard that resumes when
+          // this operation settles must already see the failure.
+          noteSaveErrorsRef.current = {
+            ...noteSaveErrorsRef.current,
+            [errKey]: { message, repoPath, book, chapter, verse: verseKey, text: trimmed },
+          };
           dispatch({
             type: 'set',
             patch: {
-              noteSaveErrors: {
-                ...now.noteSaveErrors,
-                [errKey]: { message, repoPath, book, chapter, verse: verseKey, text: trimmed },
-              },
+              noteSaveErrors: noteSaveErrorsRef.current,
               ...(now.book === book && now.project?.repoPath === repoPath
                 ? { understand: { ...now.understand, saveError: message } }
                 : {}),
@@ -2060,11 +2072,13 @@ export function AppProvider({ children }) {
           pendingNotesRef.current.delete(op);
         }
         if (!ok) return; // refused (fail() already recorded it)
-        // C2: clear only THIS target's dirty mark and error entry.
+        // C2: clear only THIS target's dirty mark and error entry — in the
+        // synchronous ledger first (D1), then mirrored to state.
         noteDirtyRef.current.delete(`${chapter}:${verseKey}`);
-        const now = stateRef.current;
-        const remaining = { ...now.noteSaveErrors };
+        const remaining = { ...noteSaveErrorsRef.current };
         delete remaining[errKey];
+        noteSaveErrorsRef.current = remaining;
+        const now = stateRef.current;
         // The user may have moved on while the write was in flight — never
         // patch the old book's note into the new state; the error entry
         // clears either way: the write succeeded.
@@ -2095,7 +2109,7 @@ export function AppProvider({ children }) {
       retryNoteSave: async () => {
         const now = stateRef.current;
         const repoPath = now.project?.repoPath;
-        for (const err of Object.values(now.noteSaveErrors ?? {})) {
+        for (const err of Object.values(noteSaveErrorsRef.current)) {
           if (err.repoPath !== repoPath || err.book !== now.book) continue;
           await a.saveComprehension(err.chapter, err.verse, err.text);
         }
@@ -2116,9 +2130,15 @@ export function AppProvider({ children }) {
           .find((candidate) => candidate?.[slotName]);
         const key = `${kind}:${category ?? ''}:${slug}`;
         if (st.understand?.article?.key === key) return;
+        // D3 (adversarial round 4): the same slug exists across projects and
+        // pins, so a key-only guard lets a DELAYED read from a previous
+        // project land as this project's article. Completion requires the
+        // sequence token AND the originating project to still match.
+        const seq = ++articleSeqRef.current;
+        const repoPath = st.project?.repoPath;
         dispatch({
           type: 'set',
-          patch: { understand: { ...st.understand, article: { key, loading: true } } },
+          patch: { understand: { ...st.understand, article: { key, seq, loading: true } } },
         });
         let found = null;
         try {
@@ -2129,10 +2149,12 @@ export function AppProvider({ children }) {
           }
         } catch { /* reported as absence below */ }
         const now = stateRef.current;
+        if (seq !== articleSeqRef.current) return; // a newer request took over
+        if (now.project?.repoPath !== repoPath) return; // the project moved on
         if (now.understand?.article?.key !== key) return; // the user moved on
         dispatch({
           type: 'set',
-          patch: { understand: { ...now.understand, article: { key, loading: false, found } } },
+          patch: { understand: { ...now.understand, article: { key, seq, loading: false, found } } },
         });
       },
       /** A comprehension box holds text that differs from its displayed note
@@ -2193,7 +2215,7 @@ export function AppProvider({ children }) {
         // adversarial round 3): a refused exit must leave the project fully
         // working — scheduler included — or the next verse edit throws.
         await Promise.allSettled([...pendingNotesRef.current]);
-        if (Object.keys(stateRef.current.noteSaveErrors ?? {}).length > 0) return;
+        if (Object.keys(noteSaveErrorsRef.current).length > 0) return; // the sync ledger (D1)
         if (schedulerRef.current) {
           const clean = await schedulerRef.current.drain();
           if (!clean) return;
