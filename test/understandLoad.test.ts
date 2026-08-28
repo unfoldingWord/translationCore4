@@ -137,3 +137,24 @@ describe('round 34 — the three pins-read outcomes are distinct', () => {
     expect(String((dispatched[0].patch as Record<string, unknown>).projectPinsError)).toMatch(/sidecar corrupt/);
   });
 });
+
+describe('round 35 — a summaries outage is a stated, retryable slot error, never a false absence', () => {
+  it('every help slot reports the outage; the passage and comprehension stay usable', async () => {
+    const store = { readNotes: () => [{ ts: 't1', chapter: '1', verse: '1', text: 'still readable' }] };
+    const { ctx, dispatched } = ctxWith({ pins: { languageSets: {} }, pinsLoaded: true, store });
+    (ctx.actions as Record<string, unknown>).resolutionContext = async () => ({
+      installed: {},
+      coverage: {},
+      summariesError: 'summaries endpoint down',
+    });
+    await loadUnderstand(ctx);
+    const understand = finalUnderstand(dispatched);
+    expect(understand).toBeTruthy();
+    for (const slot of ['notes', 'questions', 'words', 'simplified'] as const) {
+      const v = understand![slot] as { state: string; error: string };
+      expect(v.state, slot).toBe('error');
+      expect(v.error).toContain('summaries endpoint down');
+    }
+    expect((understand!.comprehension as Record<string, { text: string }>)['1:1'].text).toBe('still readable');
+  });
+});

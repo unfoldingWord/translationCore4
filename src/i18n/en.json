@@ -290,5 +290,7 @@
   "understand.crossFrameVerseOnly": "Verse view. This project's verse numbering differs from the source, so sections are not available.",
   "understand.showMore": "Show more",
   "understand.showLess": "Show less",
-  "understand.pinsError": "The project's resource pins could not be read, so the helps cannot resolve:"
+  "understand.pinsError": "The project's resource pins could not be read, so the helps cannot resolve:",
+  "understand.summariesDown": "The installed-resource summaries could not be read, so the helps cannot resolve: {error}",
+  "understand.articleError": "The article could not be read:"
 }

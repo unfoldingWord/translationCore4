@@ -199,7 +199,7 @@ function ComprehensionBox({ book, chapter, unit }) {
   );
 }
 
-function ArticleView({ article, onClose }) {
+function ArticleView({ article, onClose, onRetry }) {
   if (!article) return null;
   return (
     <div style={{ borderTop: 'var(--stroke-hair) solid var(--border-hair)', padding: 16, overflow: 'auto', maxHeight: '45%', flex: 'none', background: '#fff' }}>
@@ -209,7 +209,17 @@ function ArticleView({ article, onClose }) {
         </span>
         <IconButton size={26} title={t('common.close')} onClick={onClose}>✕</IconButton>
       </div>
-      {!article.loading && !article.found && (
+      {!article.loading && article.error && (
+        // Round 35: a failed read is a stated, retryable error — never a
+        // false "this article does not exist" claim (D30).
+        <Callout tone="warn" role="alert" data-testid="understand-article-error" style={{ overflowWrap: 'anywhere' }}>
+          {t('understand.articleError')} {article.error}{' '}
+          <Button size="sm" variant="outline" data-testid="article-retry" onClick={onRetry}>
+            {t('app.retry')}
+          </Button>
+        </Callout>
+      )}
+      {!article.loading && !article.error && !article.found && (
         <Callout tone="warn" data-testid="understand-article-missing">{t('check.articleMissing')}</Callout>
       )}
       {!article.loading && article.found && (
@@ -425,7 +435,7 @@ function HelpsPanel({ chapter }) {
         )}
         {!loading && !u?.error && <HelpsTab tab={tab} u={u} chapter={chapter} actions={actions} />}
       </div>
-      <ArticleView article={u?.article} onClose={actions.closeHelpArticle} />
+      <ArticleView article={u?.article} onClose={actions.closeHelpArticle} onRetry={() => u?.article?.request && actions.loadHelpArticle(u.article.request)} />
     </aside>
   );
 }

@@ -394,13 +394,18 @@ async function readTextIngredient(apiClient, repoPath, ipath) {
 }
 
 async function readHelpArticle(apiClient, kind, set, category, slug) {
+  // Round 35: null means CONFIRMED absent (the resource lacks the module —
+  // ArticleView states that). A transport or server failure PROPAGATES to a
+  // stated, retryable article error — labeling it "missing" told the
+  // translator a linked article does not exist (D30).
   try {
     if (kind === 'tw' && set?.translationWords)
       return await readTwArticle(apiClient, resolveReadPath(set.translationWords), category, slug);
     if (kind === 'ta' && set?.translationAcademy)
       return await readTaArticle(apiClient, resolveReadPath(set.translationAcademy), slug);
-  } catch {
-    return null;
+  } catch (error) {
+    if (error?.isNotFound) return null;
+    throw error;
   }
   return null;
 }
@@ -923,7 +928,7 @@ async function performLoadUnderstand(ctx) {
   // project numbers — nor leave boxes editable over it.
   let safeSameFrame = false;
   try {
-    const { installed, coverage } = await actions.resolutionContext();
+    const { installed, coverage, summariesError } = await actions.resolutionContext();
     const frame = await actions.projectFrame();
     safeSameFrame = frame.state === 'ready' && frame.name === RESOURCE_FRAME;
     // A1: note identities are journaled in the PROJECT frame (§8.4/§5.2
@@ -946,6 +951,7 @@ async function performLoadUnderstand(ctx) {
     // renders the mapped refs and states the unmappable ones. null =
     // same frame — the view indexes directly, the common path.
     const sourceRefs = await mappedSourceReferences(st, book, frame);
+    if (dispatchSummariesDown({ summariesError, seq, understandSeqRef, dispatch, book, store, frame, sourceRefs })) return;
     const scopeRanges = scopeRangesFor(st.projectScope ?? {}, book.toUpperCase());
     const sets = st.projectPins?.languageSets ?? {};
     // Round 33: with pins loaded-but-absent, every slot resolver sees an
@@ -991,6 +997,33 @@ async function performLoadUnderstand(ctx) {
     if (frameForNotes) comprehension = latestComprehension(store, book, frameForNotes);
     dispatch({ type: 'set', patch: understandFailurePatch({ safeSameFrame, error: e, comprehension, book }) });
   }
+}
+
+/** Round 35: with the summaries read down, coverage is EMPTY and every
+ * installed help would resolve to a false absence (D30). State the outage on
+ * each slot instead — the slot error is retryable in place (the round-31
+ * Retry re-runs the load, and with it the summaries read). The passage and
+ * comprehension stay fully usable. Returns true when it handled the load. */
+function dispatchSummariesDown({ summariesError, seq, understandSeqRef, dispatch, book, store, frame, sourceRefs }) {
+  if (!summariesError) return false;
+  if (seq !== understandSeqRef.current) return true; // superseded — nothing to dispatch
+  const errSlot = { state: 'error', error: t('understand.summariesDown', { error: summariesError }) };
+  dispatch({
+    type: 'set',
+    patch: {
+      understand: {
+        loading: false,
+        book,
+        notes: errSlot,
+        questions: errSlot,
+        words: errSlot,
+        simplified: errSlot,
+        comprehension: latestComprehension(store, book, frame),
+        sourceRefs,
+      },
+    },
+  });
+  return true;
 }
 
 /** Test hook (round 33): the load/save interleavings are unit-tested. */
@@ -1180,7 +1213,7 @@ async function loadSimplifiedHelp({ store, st, book, coverage, installed, sets }
 /** Test hook (round 31): the missing-vs-error split is unit-tested — only a
  * true not-found reads as absence; transport failures propagate to the
  * stated, retryable error state. */
-export const __helpReadsForTests = { readTextIngredient, loadSimplifiedHelp };
+export const __helpReadsForTests = { readTextIngredient, loadSimplifiedHelp, readHelpArticle };
 
 const settleHelp = (promise) =>
   promise.then(
@@ -1965,9 +1998,18 @@ export function AppProvider({ children }) {
       },
 
       resolutionContext: async () => {
+        // Round 35: a summaries outage must be REPORTED, not swallowed — an
+        // empty summary map yields empty coverage, and installed helps then
+        // resolve to a false "the package lacks this" absence (D30). The
+        // context stays usable (tolerant callers keep working), but carries
+        // the error for readiness-driving callers to surface.
+        let summariesError = null;
         const [recorded, summaries] = await Promise.all([
           readInstalled(api, STORAGE_ID),
-          api.getSummaries().catch(() => ({})),
+          api.getSummaries().catch((error) => {
+            summariesError = String(error?.message || error);
+            return {};
+          }),
         ]);
         // Resources can be present without a record — a bundled install, a rig
         // seed, a hand sideload. Identify those from their own metadata so the
@@ -1976,7 +2018,7 @@ export function AppProvider({ children }) {
         // Cache for resolveReadPath: reads resolve a pin to its ACTUAL on-disk
         // path by identity, not by recomputing (B10).
         installedCache = installed;
-        return { installed, coverage: coverageFromLocal(summaries, installed) };
+        return { installed, coverage: coverageFromLocal(summaries, installed), summariesError };
       },
 
       /** C2.1 — fetch each selected resource's sb-zip, verify the SHA the
@@ -2509,25 +2551,37 @@ export function AppProvider({ children }) {
         // repo lacks the module).
         const set = understandArticleSet(st, kind, rung);
         const key = `${kind}:${category ?? ''}:${slug}`;
-        if (st.understand?.article?.key === key) return;
+        // Same-key guard — but an ERRORED article stays re-requestable
+        // (round 35): its Retry re-runs this exact request in place.
+        if (st.understand?.article?.key === key && !st.understand.article.error) return;
         // D3 (adversarial round 4): the same slug exists across projects and
         // pins, so a key-only guard lets a DELAYED read from a previous
         // project land as this project's article. Completion requires the
         // sequence token AND the originating project to still match.
         const seq = ++articleSeqRef.current;
         const repoPath = st.project?.repoPath;
+        const request = { kind, category, slug, rung };
         dispatch({
           type: 'set',
-          patch: { understand: { ...st.understand, article: { key, seq, loading: true } } },
+          patch: { understand: { ...st.understand, article: { key, seq, loading: true, request } } },
         });
-        const found = await readHelpArticle(api, kind, set, category, slug);
+        let found = null;
+        let articleError = null;
+        try {
+          found = await readHelpArticle(api, kind, set, category, slug);
+        } catch (error) {
+          // Round 35: a failed read is a stated, retryable error — never
+          // "this article does not exist" (D30).
+          articleError = String(error?.message || error);
+        }
         const now = stateRef.current;
         if (!isCurrentArticleRequest(now, seq, articleSeqRef.current, repoPath, key)) return;
         dispatch({
           type: 'set',
-          patch: { understand: { ...now.understand, article: { key, seq, loading: false, found } } },
+          patch: { understand: { ...now.understand, article: { key, seq, loading: false, found, error: articleError, request } } },
         });
       },
+
       closeHelpArticle: () => {
         const now = stateRef.current;
         dispatch({ type: 'set', patch: { understand: { ...now.understand, article: null } } });

@@ -748,3 +748,26 @@ describe('2026-08-28 adversarial round 34 regression (F1 view)', () => {
     }
   });
 });
+
+describe('2026-08-28 adversarial round 35 regression (F2 view)', () => {
+  beforeEach(() => { cleanup(); calls.length = 0; });
+
+  it('a failed article read shows a stated error with an in-place retry — never "article missing"', () => {
+    const savedU = state.understand;
+    try {
+      state.understand = {
+        ...savedU,
+        article: { key: 'ta::figs-metaphor', loading: false, found: null, error: 'socket hang up', request: { kind: 'ta', slug: 'figs-metaphor', rung: 'primary' } },
+      } as never;
+      render(<Understand />);
+      expect(screen.getByTestId('understand-article-error').textContent).toContain('socket hang up');
+      expect(screen.queryByTestId('understand-article-missing')).toBeNull(); // no false absence
+      fireEvent.click(screen.getByTestId('article-retry'));
+      const retries = calls.filter((c) => c.name === 'loadHelpArticle');
+      expect(retries.length).toBe(1);
+      expect(retries[0].args[0]).toMatchObject({ kind: 'ta', slug: 'figs-metaphor' });
+    } finally {
+      state.understand = savedU;
+    }
+  });
+});

@@ -44,3 +44,24 @@ describe('round 31 — loadSimplifiedHelp (the UST/GST read)', () => {
     ).rejects.toThrow(/gateway timeout/);
   });
 });
+
+describe('round 35 — readHelpArticle (the tW/tA article read)', () => {
+  const { readHelpArticle } = __helpReadsForTests;
+  const PIN_TW = { repoPath: 'git.door43.org/unfoldingWord/en_tw', sha: 'b'.repeat(40), flavor: 'x' };
+  const set = { translationWords: PIN_TW };
+
+  it('a transport failure PROPAGATES — never a false "article missing" claim', async () => {
+    // readTwArticle's first read goes through the api client — reject it.
+    const api = { readIngredient: async () => { throw new Error('socket hang up'); } };
+    await expect(readHelpArticle(api, 'tw', set, 'kt', 'god')).rejects.toThrow(/socket hang up/);
+  });
+
+  it('a confirmed NOT-FOUND reads as null (the missing state)', async () => {
+    const api = { readIngredient: async () => { throw notFound(); } };
+    expect(await readHelpArticle(api, 'tw', set, 'kt', 'god')).toBeNull();
+  });
+
+  it('a set without the slot reads as null — absence, not error', async () => {
+    expect(await readHelpArticle({}, 'tw', {}, 'kt', 'god')).toBeNull();
+  });
+});

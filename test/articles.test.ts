@@ -5,7 +5,10 @@ import { readTaArticle, readTwArticle, renderArticleBlocks, TA_SECTIONS } from '
 const fakeApi = (files: Record<string, string>) => ({
   readIngredient: async (repo: string, ipath: string) => {
     const key = `${repo}::${ipath}`;
-    if (!(key in files)) throw new Error('not found');
+    // The real ServerApi contract: an absent ingredient throws with
+    // isNotFound (round 35: transport failures now PROPAGATE past readOrNull,
+    // so the fake must model true absence the way the platform does).
+    if (!(key in files)) throw Object.assign(new Error('not found'), { isNotFound: true });
     return files[key];
   },
 });
