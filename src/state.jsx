@@ -20,6 +20,7 @@ import { seedBookFromSource } from './data/seed';
 import { BOOK_NAMES, bookName } from './data/bookNames';
 import { GATEWAYS, gatewayKey, DCS_HOST, orgForRepoName } from './data/gateways';
 import { fetchAndInstallPin, latestReleaseTag, identifyExistingInstall } from './data/resourceFetch';
+import { isNotFoundError } from './data/serverApi';
 import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, mergeOptionalPins, isPinLocal, unsatisfiedProjectPinFor, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk, flavorOfMetadata } from './data/installed';
 import { TOOL_SLOT, preflightToolBook, resolutionRecord, resolveToolBook, resolveSetSlot } from './data/resolve';
 import {
@@ -393,7 +394,7 @@ async function readTextIngredient(apiClient, repoPath, ipath) {
   try {
     return await apiClient.readIngredient(repoPath, ipath);
   } catch (error) {
-    if (error?.isNotFound) return null;
+    if (isNotFoundError(error)) return null;
     throw error;
   }
 }
@@ -409,7 +410,7 @@ async function readHelpArticle(apiClient, kind, set, category, slug) {
     if (kind === 'ta' && set?.translationAcademy)
       return await readTaArticle(apiClient, resolveReadPath(set.translationAcademy), slug);
   } catch (error) {
-    if (error?.isNotFound) return null;
+    if (isNotFoundError(error)) return null;
     throw error;
   }
   return null;
@@ -469,7 +470,7 @@ async function prepareAlignmentSource(store, st, ref) {
   try {
     ({ usfm: usfmText } = await store.readSourceBook(resolveReadPath(pin), st.book));
   } catch (error) {
-    if (!error?.isNotFound) throw error;
+    if (!isNotFoundError(error)) throw error;
     usfmText = null;
   }
   if (!usfmText) return { unavailable: 'missing' };
@@ -749,7 +750,7 @@ async function projectPresentation(apiClient, store, repoPath, summary) {
     // render an RTL project left-to-right — it aborts the open into the
     // stated bookError (performProjectOpen's catch).
     const settings = await store.readSettings().catch((error) => {
-      if (error?.isNotFound) return null;
+      if (isNotFoundError(error)) return null;
       throw error;
     });
     scriptDirection = settings?.textDirection === 'rtl' ? 'rtl' : 'ltr';
@@ -958,7 +959,7 @@ async function performLoadUnderstand(ctx) {
   // project numbers — nor leave boxes editable over it.
   let safeSameFrame = false;
   try {
-    const { installed, coverage, summariesError } = await actions.resolutionContext();
+    const { installed, coverage, resolutionError } = await actions.resolutionContext();
     const frame = await actions.projectFrame();
     safeSameFrame = frame.state === 'ready' && frame.name === RESOURCE_FRAME;
     // A1: note identities are journaled in the PROJECT frame (§8.4/§5.2
@@ -981,7 +982,7 @@ async function performLoadUnderstand(ctx) {
     // renders the mapped refs and states the unmappable ones. null =
     // same frame — the view indexes directly, the common path.
     const sourceRefs = await mappedSourceReferences(st, book, frame);
-    if (dispatchSummariesDown({ summariesError, seq, understandSeqRef, dispatch, book, store, frame, sourceRefs })) return;
+    if (dispatchResolutionDown({ resolutionError, seq, understandSeqRef, dispatch, book, store, frame, sourceRefs })) return;
     const scopeRanges = scopeRangesFor(st.projectScope ?? {}, book.toUpperCase());
     const sets = st.projectPins?.languageSets ?? {};
     // Round 33: with pins loaded-but-absent, every slot resolver sees an
@@ -1034,10 +1035,10 @@ async function performLoadUnderstand(ctx) {
  * each slot instead — the slot error is retryable in place (the round-31
  * Retry re-runs the load, and with it the summaries read). The passage and
  * comprehension stay fully usable. Returns true when it handled the load. */
-function dispatchSummariesDown({ summariesError, seq, understandSeqRef, dispatch, book, store, frame, sourceRefs }) {
-  if (!summariesError) return false;
+function dispatchResolutionDown({ resolutionError, seq, understandSeqRef, dispatch, book, store, frame, sourceRefs }) {
+  if (!resolutionError) return false;
   if (seq !== understandSeqRef.current) return true; // superseded — nothing to dispatch
-  const errSlot = { state: 'error', error: t('understand.summariesDown', { error: summariesError }) };
+  const errSlot = { state: 'error', error: t('understand.resolutionDown', { error: resolutionError }) };
   dispatch({
     type: 'set',
     patch: {
@@ -1245,7 +1246,7 @@ async function loadSimplifiedHelp({ store, st, book, coverage, installed, sets }
   } catch (error) {
     // Round 31: absent book = missing; anything else (transport, parse)
     // propagates to settleHelp's stated error (D30 honesty).
-    if (error?.isNotFound) return { state: 'missing', pin, rung: resolved.rung };
+    if (isNotFoundError(error)) return { state: 'missing', pin, rung: resolved.rung };
     throw error;
   }
 }
@@ -1460,7 +1461,13 @@ export function AppProvider({ children }) {
           Math.max(lastUsed[b.id] || 0, b.timestamp || 0) -
           Math.max(lastUsed[a.id] || 0, a.timestamp || 0),
       );
-      dispatch({ type: 'set', patch: { projects } });
+      // Review of the D30 sweep: a successful listing clears the LISTING
+      // failure's banner (projects was null) — an open-failure banner from
+      // performProjectOpen is left alone (projects was already an array).
+      dispatch({
+        type: 'set',
+        patch: { projects, ...(stateRef.current.projects === null ? { bookError: null } : {}) },
+      });
     } catch (e) {
       // Catch-to-absence sweep (D30): projects stays null (unknown), so the
       // "No projects yet — Select New Bible" empty state never renders over
@@ -1683,7 +1690,7 @@ export function AppProvider({ children }) {
         try {
           tsv = await api.readIngredient(localRepo, `${book.toUpperCase()}.tsv`);
         } catch (error) {
-          if (error?.isNotFound) return [];
+          if (isNotFoundError(error)) return [];
           throw error;
         }
         if (tsv === null || tsv.startsWith('{"is_good":false')) return [];
@@ -1804,7 +1811,10 @@ export function AppProvider({ children }) {
       setProjectGateway: async (gateway) => {
         const store = storeRef.current;
         if (!store) throw new Error('no project is open');
-        const { installed, coverage } = await a.resolutionContext();
+        const { installed, coverage, resolutionError } = await a.resolutionContext();
+        // Review of the D30 sweep: an identity-read outage must not report a
+        // complete suite as incomplete (mirrors previewGatewayChange).
+        if (resolutionError) throw new Error(resolutionError);
         const primary = languageSetFromInstalled(installed, gateway);
         if (!primary) {
           throw new Error(t('sources.suiteIncomplete', { lang: gateway.name }));
@@ -1866,15 +1876,13 @@ export function AppProvider({ children }) {
           return;
         }
         dispatch({ type: 'set', patch: { alignSession: { loading: true } } });
-        let source;
+        // Catch-to-absence sweep review: the try covers the WHOLE load —
+        // frame resolution, reference mapping, and the stored-record read
+        // can all reject transiently, and each used to strand the surface
+        // at {loading:true} with an unhandled rejection. Any failure is a
+        // stated, retryable error — never the 'missing' download prompt.
         try {
-          source = await prepareAlignmentSource(store, st, ref);
-        } catch (error) {
-          // Catch-to-absence sweep (D30): a transient source read failure is
-          // a stated, retryable error — never the 'missing' download prompt.
-          dispatch({ type: 'set', patch: { alignSession: { error: String(error?.message || error) } } });
-          return;
-        }
+        const source = await prepareAlignmentSource(store, st, ref);
         if (source.unavailable) {
           dispatch({ type: 'set', patch: { alignSession: { unavailable: source.unavailable } } });
           return;
@@ -1916,6 +1924,9 @@ export function AppProvider({ children }) {
           type: 'set',
           patch: { alignSession: session },
         });
+        } catch (error) {
+          dispatch({ type: 'set', patch: { alignSession: { error: String(error?.message || error) } } });
+        }
       },
 
       startAligning: () => dispatch({ type: 'set', patch: { aligning: true, alignSession: null } }),
@@ -2121,13 +2132,7 @@ export function AppProvider({ children }) {
         // Cache for resolveReadPath: reads resolve a pin to its ACTUAL on-disk
         // path by identity, not by recomputing (B10).
         installedCache = installed;
-        return {
-          installed,
-          coverage: coverageFromLocal(summaries, installed),
-          resolutionError,
-          // Back-compat name consumed by dispatchSummariesDown (round 35).
-          summariesError: resolutionError,
-        };
+        return { installed, coverage: coverageFromLocal(summaries, installed), resolutionError };
       },
 
       /** C2.1 — fetch each selected resource's sb-zip, verify the SHA the
@@ -2382,8 +2387,8 @@ export function AppProvider({ children }) {
               // transient failure journaling an unchunked skeleton is
               // PERMANENT (§8.5 grow-only) — abort into the dialog's stated
               // error instead.
-              if (!error?.isNotFound) throw error;
-              initialUsfm = undefined; /* keep the server skeleton */
+              if (!isNotFoundError(error) && !error?.seedUnusable) throw error;
+              initialUsfm = undefined; /* keep the server skeleton (confirmed absent or unseedable source) */
             }
             await store.addBook({
               book_code: code,
@@ -2471,7 +2476,12 @@ export function AppProvider({ children }) {
 
       // ---- Home: lazy per-book draft progress (design shows a bar per tile) ----
       loadProgress: async (project) => {
-        if (stateRef.current.progressByProject[project.id]) return;
+        // Review of the D30 sweep: a cached map with UNKNOWN (null) entries
+        // must not block a re-read — one transient failure would pin the
+        // tiles to em-dash for the whole session. Only a fully-known map is
+        // final.
+        const cached = stateRef.current.progressByProject[project.id];
+        if (cached && !Object.values(cached).includes(null)) return;
         if ((project.bookCodes || []).length === 0 || project.bookCodes.length > 12) return;
         // Read-only: the Home tiles must not run open-recovery or claim the
         // shell's current-project slot (ProjectReader does neither).
@@ -2479,14 +2489,9 @@ export function AppProvider({ children }) {
         try {
           await reader.open(project.id);
         } catch {
-          // Catch-to-absence sweep (D30): mark each book's progress UNKNOWN
-          // (null) so Home renders "unavailable", never a false 0% bar.
-          const unknown = {};
-          for (const code of project.bookCodes) unknown[code] = null;
-          dispatch({
-            type: 'set',
-            patch: { progressByProject: { ...stateRef.current.progressByProject, [project.id]: unknown } },
-          });
+          // Catch-to-absence sweep (D30), reviewed: cache NOTHING on a
+          // failed open — Home already renders missing entries as unknown
+          // (em-dash), and the next render retries.
           return;
         }
         const pcts = {};

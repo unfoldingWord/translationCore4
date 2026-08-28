@@ -496,7 +496,9 @@ export default function Check() {
           </Callout>
         )}
 
-        {pre === null && <p style={{ fontSize: 'var(--fs-ui)', color: 'var(--text-tertiary)' }}>{t('check.checking')}</p>}
+        {pre === null && !s.preflightError && (
+          <p style={{ fontSize: 'var(--fs-ui)', color: 'var(--text-tertiary)' }}>{t('check.checking')}</p>
+        )}
 
         {pre && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

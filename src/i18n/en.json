@@ -291,12 +291,13 @@
   "understand.showMore": "Show more",
   "understand.showLess": "Show less",
   "understand.pinsError": "The project's resource pins could not be read, so the helps cannot resolve:",
-  "understand.summariesDown": "The installed-resource summaries could not be read, so the helps cannot resolve: {error}",
   "understand.articleError": "The article could not be read:",
   "align.error.title": "The source text could not be read",
   "align.unavailable.unreadable.title": "The original-language text could not be read",
   "align.unavailable.unreadable.body": "The text for {book} is on this computer but could not be parsed. Re-download the source texts, or report the resource.",
   "check.preflightError": "The installed-resource record could not be read, so tool readiness cannot resolve:",
   "sources.checkableError": "The installed-resource record could not be read, so the checkable languages may be incomplete:",
-  "wizard.versificationsError": "The platform's versification list could not be read — only the default (eng) is offered. Close and reopen this dialog to retry."
+  "wizard.versificationsError": "The platform's versification list could not be read — only the default (eng) is offered. Close and reopen this dialog to retry.",
+  "understand.resolutionDown": "The installed-resource records could not be read, so the helps cannot resolve: {error}",
+  "sources.gatewayPreviewError": "The checking-language change could not be prepared:"
 }

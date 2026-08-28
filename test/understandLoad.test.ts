@@ -145,7 +145,7 @@ describe('round 35 — a summaries outage is a stated, retryable slot error, nev
     (ctx.actions as Record<string, unknown>).resolutionContext = async () => ({
       installed: {},
       coverage: {},
-      summariesError: 'summaries endpoint down',
+      resolutionError: 'summaries endpoint down',
     });
     await loadUnderstand(ctx);
     const understand = finalUnderstand(dispatched);

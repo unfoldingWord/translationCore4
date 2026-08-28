@@ -11,6 +11,7 @@
 import type { LanguageSet, ResourcePin } from './burritoStore';
 import { pinKey, samePath } from './resolve';
 import type { Coverage } from './resolve';
+import { isNotFoundError } from './serverApi';
 import type { RepoSummary, ServerApi } from './serverApi';
 
 /** Key under which the installed-resource record lives in client settings. */
@@ -59,7 +60,7 @@ export const readInstalled = async (api: ServerApi, storageId: string): Promise<
     const raw = settings[INSTALLED_KEY];
     return raw && typeof raw === 'object' ? (raw as InstalledMap) : {};
   } catch (error) {
-    if ((error as { isNotFound?: boolean })?.isNotFound) return {};
+    if (isNotFoundError(error)) return {};
     throw error;
   }
 };
@@ -78,7 +79,7 @@ export const recordInstalled = async (
   // start empty; a failed read aborts the record (the callers' stated
   // per-row failure reports it).
   const settings = await api.getClientSettings(storageId).catch((error) => {
-    if ((error as { isNotFound?: boolean })?.isNotFound) return {} as Record<string, unknown>;
+    if (isNotFoundError(error)) return {} as Record<string, unknown>;
     throw error;
   });
   const current = (settings[INSTALLED_KEY] ?? {}) as InstalledMap;
@@ -135,7 +136,7 @@ export const discoverOnDisk = async (
         // must not hide an on-disk resource — report the discovery as
         // incomplete so readiness surfaces state it instead of claiming
         // absence.
-        if (!(error as { isNotFound?: boolean })?.isNotFound) onTransportFailure?.(error);
+        if (!isNotFoundError(error)) onTransportFailure?.(error);
       }
     }),
   );

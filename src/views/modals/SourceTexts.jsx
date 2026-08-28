@@ -66,6 +66,15 @@ function GatewayStep({ s, g, src, isCheckable, isCurrent, actions }) {
             * when the COMPLETE suite is installed (§5.3 coherence) and it is
             * not already the project's checking language. Confirmation, with
             * the consequences, happens in the GatewayChange dialogue. */}
+          {s.gatewayError && !s.gatewayPreview && (
+            // Review of the D30 sweep: a failed gateway-change PREVIEW never
+            // opens the dialogue, so its error must render HERE, where the
+            // gesture happened — a dispatched-but-unrenderable error is a
+            // swallow with extra steps.
+            <Callout tone="warn" role="alert" data-testid="gateway-preview-error" style={{ overflowWrap: 'anywhere' }}>
+              {t('sources.gatewayPreviewError')} {s.gatewayError}
+            </Callout>
+          )}
           {isCheckable && !isCurrent && s.project && (
             <Callout tone="info" style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--surface-accent-soft)', borderColor: 'rgba(49,173,227,.35)', color: 'var(--uw-ocean)' }}>
               <span style={{ flex: 1 }}>{t('sources.checkInPrompt', { lang: g.name })}</span>
