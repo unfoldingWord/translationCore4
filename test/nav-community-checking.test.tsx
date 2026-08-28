@@ -34,6 +34,7 @@ const baseState = {
   progressByProject: {},
   projects: [],
   netEnabled: false,
+  noteSaveError: null,
 };
 
 const bookModel = {
@@ -84,6 +85,14 @@ describe('#108 — Publish moves into Check as Community Checking', () => {
     expect(screen.getByTestId('community-checking-card')).toBeTruthy();
     fireEvent.click(screen.getByTestId('open-community-checking'));
     expect(go).toHaveBeenCalledWith('publish');
+  });
+
+  it('a failed comprehension write surfaces on the GLOBAL save indicator with its own retry (2026-08-27 adversarial round 2, B1)', () => {
+    state = { ...baseState, noteSaveError: { message: 'refused', book: 'TIT', chapter: 1, verse: '1', text: 'x' } } as never;
+    render(<App />);
+    const indicator = screen.getByTestId('save-indicator');
+    expect(indicator.getAttribute('data-state')).toBe('error');
+    expect(screen.getByTestId('retry-note-save')).toBeTruthy();
   });
 
   it('the publish view is the typeset preview with both exports disabled', () => {

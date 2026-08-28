@@ -77,9 +77,11 @@ function ComprehensionBox({ chapter, unit }) {
   // review). unit.head is the RAW first verse key — a bridge ("4-5") keeps
   // its exact source-side key; the save action maps it into the project
   // frame before journaling (A1).
+  // Dirty is NOT cleared here (B1): only a SUCCESSFUL persist clears it, in
+  // saveComprehension — otherwise a failed write after a tab switch loses
+  // the unload warning too.
   const save = () => {
     if (text.trim() === stored.trim()) return;
-    actions.setNoteDirty(false);
     actions.saveComprehension(chapter, unit.head, text);
   };
   return (
@@ -343,6 +345,14 @@ export default function Understand() {
               <SegmentedControl size="sm" tone="ocean" value={mode} onChange={setMode}
                 options={[{ value: 'section', label: t('understand.bySection') }, { value: 'verse', label: t('understand.byVerse') }]} />
             </div>
+            {(s.understand?.unmappedNotes ?? 0) > 0 && (
+              // B2: notes whose project-frame identity has no place in this
+              // source's numbering are COUNTED, never shown under a guessed
+              // verse.
+              <Callout tone="warn" data-testid="understand-unmapped-notes" style={{ marginTop: 10 }}>
+                {t('understand.unmappedNotes', { n: s.understand.unmappedNotes })}
+              </Callout>
+            )}
             {s.understand?.saveError && (
               <Callout tone="warn" role="alert" data-testid="understand-save-error" style={{ marginTop: 10, overflowWrap: 'anywhere' }}>
                 <strong>{t('understand.saveFailed')}</strong> {s.understand.saveError}

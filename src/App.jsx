@@ -24,14 +24,20 @@ function SaveIndicator() {
     dirty: { status: 'warn', label: t('app.unsaved') },
     error: { status: 'invalid', label: t('app.saveError') },
   };
-  const m = map[s.saveState] || map.saved;
+  // A failed comprehension write is a save failure like any other (B1,
+  // 2026-08-27 adversarial round 2): it shows here globally — not only on
+  // the Understand screen — with its own retry.
+  const noteError = !!s.noteSaveError;
+  const m = noteError ? map.error : map[s.saveState] || map.saved;
+  const isError = noteError || s.saveState === 'error';
   return (
-    <div data-testid="save-indicator" data-state={s.saveState}
-      style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', fontWeight: 'var(--fw-heavy)', display: 'flex', alignItems: 'center', gap: 6, color: s.saveState === 'error' ? 'var(--tc-invalid-inverse)' : 'rgba(255,255,255,.66)' }}>
+    <div data-testid="save-indicator" data-state={noteError ? 'error' : s.saveState}
+      style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', fontWeight: 'var(--fw-heavy)', display: 'flex', alignItems: 'center', gap: 6, color: isError ? 'var(--tc-invalid-inverse)' : 'rgba(255,255,255,.66)' }}>
       <StatusDot status={m.status} size={8} />
       {m.label}
-      {s.saveState === 'error' && (
-        <Button size="sm" variant="outline" onClick={actions.retrySave}
+      {isError && (
+        <Button size="sm" variant="outline" data-testid={noteError ? 'retry-note-save' : undefined}
+          onClick={noteError ? actions.retryNoteSave : actions.retrySave}
           style={{ background: 'transparent', color: 'var(--tc-invalid-inverse)', borderColor: 'var(--tc-invalid-inverse)', padding: '3px 10px', fontSize: 'var(--fs-label)' }}>
           {t('app.retry')}
         </Button>

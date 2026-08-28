@@ -274,6 +274,10 @@ const initial = () => ({
   // check session (never stored), plus the translator's own comprehension
   // notes read back from the §8.5 journal.
   understand: null, // null | { loading } | { notes, questions, comprehension: {'c:v': text} }
+  // A failed comprehension write, held GLOBALLY so it survives leaving the
+  // Understand view (B1, 2026-08-27 adversarial round 2): carries what is
+  // needed to retry, blocks navigation like a scheduler failure (FR-32).
+  noteSaveError: null, // null | { message, book, chapter, verse, text }
   // Modals (the owner's design: creation, add-book, and settings are dialogs
   // over Home, not separate pages)
   modal: null, // null | 'newProject' | 'addBook' | 'settings' | 'sources'
@@ -405,7 +409,8 @@ export function AppProvider({ children }) {
       if (
         (sched && sched.getState() !== 'saved') ||
         pendingNotesRef.current.size > 0 ||
-        noteDirtyRef.current
+        noteDirtyRef.current ||
+        stateRef.current?.noteSaveError
       ) {
         e.preventDefault();
         e.returnValue = '';
@@ -461,7 +466,15 @@ export function AppProvider({ children }) {
   // ---- actions ----------------------------------------------------------------
   const actions = useMemo(() => {
     const a = {
-      go: (view) => dispatch({ type: 'set', patch: { view } }),
+      go: async (view) => {
+        // B1 (2026-08-27 adversarial round 2): a comprehension write started
+        // by the leaving view's blur must finish — and a FAILED one must hold
+        // navigation, exactly like the verse scheduler does (FR-32). The
+        // failure is visible in the Understand callout and the save indicator.
+        await Promise.allSettled([...pendingNotesRef.current]);
+        if (stateRef.current.noteSaveError) return;
+        dispatch({ type: 'set', patch: { view } });
+      },
 
       closeModal: () => dispatch({ type: 'set', patch: { modal: null, np: null, ab: null, st: null } }),
 
@@ -1645,6 +1658,10 @@ export function AppProvider({ children }) {
       openProject: async (repoPath, bookCode) => {
         // Never abandon unsaved work: drain the old scheduler first, and stay
         // put if a write failure remains (FR-32; review findings B3/M1/M6).
+        // Comprehension writes are held to the same rule (B1): drain the
+        // in-flight ones BEFORE anything opens, and refuse while one failed.
+        await Promise.allSettled([...pendingNotesRef.current]);
+        if (stateRef.current.noteSaveError) return;
         if (schedulerRef.current) {
           const clean = await schedulerRef.current.drain();
           if (!clean) return;
@@ -1831,24 +1848,40 @@ export function AppProvider({ children }) {
           // identity discipline); the display buckets in SOURCE (eng) space.
           // Map stored keys back when the frames differ; the uW default is
           // same-frame and short-circuits.
-          const built = {};
-          for (const n of storeRef.current?.readNotes?.(book) ?? []) {
-            let key = `${n.chapter}:${n.verse}`;
-            if (frame.state === 'ready' && frame.name !== RESOURCE_FRAME) {
-              const out = await mapReference({
-                from: frame.name, to: RESOURCE_FRAME, book,
-                chapter: Number(n.chapter),
-                verse: /^\d+$/.test(n.verse) ? Number(n.verse) : n.verse,
-                schemes: frame.schemes,
-              });
-              if (out.ok) key = `${out.reference.chapter}:${out.reference.verse}`;
+          // B2 (2026-08-27 adversarial round 2): a project-frame key is NEVER
+          // usable as a source-frame bucket. When the frames differ, only a
+          // SUCCESSFUL reverse mapping places a note; a failed mapping is
+          // counted and surfaced, not assigned to a guessed verse. A frame
+          // that is not ready leaves comprehension null — the boxes stay
+          // disabled, matching the save path's refusal.
+          let unmappedNotes = 0;
+          if (frame.state === 'ready') {
+            const built = {};
+            const sameFrame = frame.name === RESOURCE_FRAME;
+            for (const n of storeRef.current?.readNotes?.(book) ?? []) {
+              let key = null;
+              if (sameFrame) {
+                key = `${n.chapter}:${n.verse}`;
+              } else {
+                const out = await mapReference({
+                  from: frame.name, to: RESOURCE_FRAME, book,
+                  chapter: Number(n.chapter),
+                  verse: /^\d+$/.test(n.verse) ? Number(n.verse) : n.verse,
+                  schemes: frame.schemes,
+                });
+                if (out.ok) key = `${out.reference.chapter}:${out.reference.verse}`;
+              }
+              if (key === null) {
+                unmappedNotes++;
+                continue;
+              }
+              const prev = built[key];
+              if (!prev || String(n.ts) > String(prev.ts)) built[key] = { text: n.text, ts: n.ts };
             }
-            const prev = built[key];
-            if (!prev || String(n.ts) > String(prev.ts)) built[key] = { text: n.text, ts: n.ts };
+            // Assigned only once COMPLETE: a partial read must not enable the
+            // boxes with some notes invisible (A3).
+            comprehension = built;
           }
-          // Assigned only once COMPLETE: a partial read must not enable the
-          // boxes with some notes invisible (A3).
-          comprehension = built;
           const scopeRanges = scopeRangesFor(st.projectScope ?? {}, book.toUpperCase());
           const sets = st.projectPins.languageSets ?? {};
           const loadSlot = async (slot, tool, deriveOpts = {}) => {
@@ -1930,7 +1963,7 @@ export function AppProvider({ children }) {
           if (seq !== understandSeqRef.current) return; // superseded
           dispatch({
             type: 'set',
-            patch: { understand: { loading: false, book, notes, questions, words, simplified, comprehension } },
+            patch: { understand: { loading: false, book, notes, questions, words, simplified, comprehension, unmappedNotes } },
           });
         } catch (e) {
           if (seq !== understandSeqRef.current) return; // a stale failure never replaces current state
@@ -1959,10 +1992,17 @@ export function AppProvider({ children }) {
         if (trimmed === '') return;
         const fail = (message) => {
           const now = stateRef.current;
-          if (now.book !== book) return;
+          // The GLOBAL record survives view/book changes (B1) and carries the
+          // replay payload for retryNoteSave; the view-local copy feeds the
+          // Understand callout when the screen is still up.
           dispatch({
             type: 'set',
-            patch: { understand: { ...now.understand, saveError: message } },
+            patch: {
+              noteSaveError: { message, book, chapter, verse: verseKey, text: trimmed },
+              ...(now.book === book
+                ? { understand: { ...now.understand, saveError: message } }
+                : {}),
+            },
           });
         };
         // A1: the display buckets in SOURCE (eng) space, but a §8.5 note
@@ -2012,11 +2052,16 @@ export function AppProvider({ children }) {
         noteDirtyRef.current = false;
         const now = stateRef.current;
         // The user may have switched books while the write was in flight —
-        // never patch the old book's note into the new book's state.
-        if (now.book !== book) return;
+        // never patch the old book's note into the new book's state. The
+        // GLOBAL error clears either way: the write succeeded.
+        if (now.book !== book) {
+          dispatch({ type: 'set', patch: { noteSaveError: null } });
+          return;
+        }
         dispatch({
           type: 'set',
           patch: {
+            noteSaveError: null,
             understand: {
               ...now.understand,
               saveError: null,
@@ -2027,6 +2072,16 @@ export function AppProvider({ children }) {
             },
           },
         });
+      },
+
+      /** Retry the failed comprehension write from wherever the user is —
+       * the save indicator's Retry (B1). Refuses when the project/book moved
+       * on: replaying into a different book would journal a wrong identity. */
+      retryNoteSave: async () => {
+        const err = stateRef.current.noteSaveError;
+        if (!err) return;
+        if (stateRef.current.book !== err.book) return; // stays visible; navigation is already held
+        await a.saveComprehension(err.chapter, err.verse, err.text);
       },
 
       /** A help article behind an Understand card (tW word or tA module),
@@ -2123,8 +2178,10 @@ export function AppProvider({ children }) {
         }
         // Comprehension notes drain too (A4): an in-flight note.add still
         // holds its store in closure, so waiting here is cheap and loses
-        // nothing to the transition.
+        // nothing to the transition. A FAILED note holds navigation exactly
+        // like a failed verse write does (B1, FR-32).
         await Promise.allSettled([...pendingNotesRef.current]);
+        if (stateRef.current.noteSaveError) return;
         storeRef.current = null;
         // A2 (2026-08-27 adversarial review): understand + projectPins are
         // PROJECT state — leaving them set lets project B render (and journal

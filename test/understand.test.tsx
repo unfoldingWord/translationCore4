@@ -244,6 +244,32 @@ describe('2026-08-27 adversarial-review regressions', () => {
   });
 });
 
+describe('2026-08-27 adversarial round 2 regressions', () => {
+  beforeEach(() => { cleanup(); calls.length = 0; });
+
+  it('notes with no place in this numbering are counted in a callout, never bucketed under a guessed verse (B2)', () => {
+    const saved = state.understand;
+    state.understand = { ...saved, unmappedNotes: 2 } as never;
+    try {
+      render(<Understand />);
+      expect(screen.getByTestId('understand-unmapped-notes').textContent).toContain('2');
+    } finally {
+      state.understand = saved;
+    }
+  });
+
+  it('blur does NOT clear the dirty flag — only a successful persist may (B1)', () => {
+    render(<Understand />);
+    const box = screen.getAllByPlaceholderText('What does this section mean in your own words?')[0];
+    fireEvent.change(box, { target: { value: 'about to fail' } });
+    fireEvent.blur(box);
+    // setNoteDirty(true) from the change; NO setNoteDirty(false) from the blur
+    const dirtyCalls = calls.filter((c) => c.name === 'setNoteDirty').map((c) => c.args[0]);
+    expect(dirtyCalls).toEqual([true]);
+    expect(calls.filter((c) => c.name === 'saveComprehension').length).toBe(1);
+  });
+});
+
 describe('#106 — the persistence shape: §8.5 note.add seals and projects', () => {
   it('the exact event addNote() emits validates through the reference and folds into notes output', async () => {
     const { sealAction } = await import('../src/data/journal/seal');

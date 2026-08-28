@@ -281,5 +281,6 @@
   "understand.saveFailed": "The note was not saved — edit the box and leave it again to retry.",
   "understand.helpFallback": "Shown from the English fallback: the primary language's resource is not on this computer.",
   "understand.helpError": "This resource failed to load:",
-  "understand.saveUnmappable": "The note was not saved: this passage has no place in the project's verse numbering, so the note would get a wrong permanent identity."
+  "understand.saveUnmappable": "The note was not saved: this passage has no place in the project's verse numbering, so the note would get a wrong permanent identity.",
+  "understand.unmappedNotes": "{n} saved note(s) have no place in this text's verse numbering and are not shown here. They stay safe in the project."
 }
