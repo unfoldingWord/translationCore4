@@ -104,19 +104,38 @@ function ComprehensionBox({ book, chapter, unit }) {
   // Dirty is NOT cleared here (B1): only a SUCCESSFUL persist clears it, in
   // saveComprehension — otherwise a failed write after a tab switch loses
   // the unload warning too.
+  // G1 (adversarial round 7): §8.5 v1 notes are grow-only — a CLEAR cannot
+  // persist. Rejecting it silently would strand the dirty flag and resurrect
+  // the old text later; instead the box restores the saved note, says why,
+  // and reconciles its dirty mark.
+  const [clearRefused, setClearRefused] = React.useState(false);
   const save = () => {
     if (text.trim() === stored.trim()) return;
+    if (text.trim() === '' && stored.trim() !== '') {
+      setText(stored);
+      actions.setNoteDirty(dirtyKey, false);
+      setClearRefused(true);
+      return;
+    }
     actions.saveComprehension(chapter, unit.head, text);
   };
   return (
-    <TextArea rows={2} value={text} disabled={!ready}
-      onChange={(e) => {
-        setText(e.target.value);
-        // Keyed per fully-scoped target (C2/F2): this box's flag, nobody else's.
-        actions.setNoteDirty(dirtyKey, e.target.value.trim() !== stored.trim());
-      }}
-      onBlur={save}
-      placeholder={t('understand.commentsPlaceholder')} />
+    <>
+      <TextArea rows={2} value={text} disabled={!ready}
+        onChange={(e) => {
+          setText(e.target.value);
+          setClearRefused(false);
+          // Keyed per fully-scoped target (C2/F2): this box's flag, nobody else's.
+          actions.setNoteDirty(dirtyKey, e.target.value.trim() !== stored.trim());
+        }}
+        onBlur={save}
+        placeholder={t('understand.commentsPlaceholder')} />
+      {clearRefused && (
+        <p data-testid="understand-clear-refused" style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--tc-warn-text)', margin: '6px 0 0' }}>
+          {t('understand.cannotClear')}
+        </p>
+      )}
+    </>
   );
 }
 

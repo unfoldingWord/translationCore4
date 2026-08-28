@@ -488,7 +488,10 @@ export function AppProvider({ children }) {
         await Promise.allSettled([...pendingNotesRef.current]);
         // The REF, not state (D1): the failure is recorded synchronously, the
         // state mirror may not have rendered yet when this drain resumes.
+        // Dirty boxes gate too (G1): in click flows blur has already saved or
+        // restored, so a standing entry means genuinely unreconciled text.
         if (Object.keys(noteSaveErrorsRef.current).length > 0) return;
+        if (noteDirtyRef.current.size > 0) return;
         dispatch({ type: 'set', patch: { view } });
       },
 
@@ -1678,6 +1681,7 @@ export function AppProvider({ children }) {
         // in-flight ones BEFORE anything opens, and refuse while one failed.
         await Promise.allSettled([...pendingNotesRef.current]);
         if (Object.keys(noteSaveErrorsRef.current).length > 0) return; // the sync ledger (D1)
+        if (noteDirtyRef.current.size > 0) return; // unreconciled box (G1)
         if (schedulerRef.current) {
           const clean = await schedulerRef.current.drain();
           if (!clean) return;
@@ -1787,9 +1791,11 @@ export function AppProvider({ children }) {
 
       openBook: async (code) => {
         // F2: a book switch is a navigation like any other — drain in-flight
-        // note writes and refuse while a failure stands (FR-32).
+        // note writes and refuse while a failure (or unreconciled dirty box,
+        // G1) stands (FR-32).
         await Promise.allSettled([...pendingNotesRef.current]);
         if (Object.keys(noteSaveErrorsRef.current).length > 0) return;
+        if (noteDirtyRef.current.size > 0) return;
         const store = storeRef.current;
         if (!store) return;
         // Drain before switching: loading over unsaved work resurrects stale
@@ -2236,6 +2242,7 @@ export function AppProvider({ children }) {
         // working — scheduler included — or the next verse edit throws.
         await Promise.allSettled([...pendingNotesRef.current]);
         if (Object.keys(noteSaveErrorsRef.current).length > 0) return; // the sync ledger (D1)
+        if (noteDirtyRef.current.size > 0) return; // unreconciled box (G1)
         if (schedulerRef.current) {
           const clean = await schedulerRef.current.drain();
           if (!clean) return;

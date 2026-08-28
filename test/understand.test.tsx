@@ -309,6 +309,29 @@ describe('2026-08-27 adversarial round 5 regression', () => {
   });
 });
 
+describe('2026-08-27 adversarial round 7 regression', () => {
+  beforeEach(() => { cleanup(); calls.length = 0; });
+
+  it('clearing a saved note is REFUSED: the text restores, the reason shows, the dirty mark reconciles, nothing writes (G1)', () => {
+    const saved = state.understand.comprehension;
+    state.understand.comprehension = { '1:1': { text: 'a permanent note', ts: '2026-08-27T03:00:00.000Z|0000|a' } };
+    try {
+      render(<Understand />);
+      const box = screen.getAllByPlaceholderText('What does this section mean in your own words?')[0] as HTMLTextAreaElement;
+      expect(box.value).toBe('a permanent note');
+      fireEvent.change(box, { target: { value: '' } });
+      fireEvent.blur(box);
+      expect(box.value).toBe('a permanent note'); // restored
+      expect(screen.getByTestId('understand-clear-refused')).toBeTruthy();
+      const dirty = calls.filter((c) => c.name === 'setNoteDirty');
+      expect(dirty[dirty.length - 1].args[1]).toBe(false); // reconciled
+      expect(writes()).toEqual([]); // grow-only store untouched
+    } finally {
+      state.understand.comprehension = saved;
+    }
+  });
+});
+
 describe('#106 — the persistence shape: §8.5 note.add seals and projects', () => {
   it('the exact event addNote() emits validates through the reference and folds into notes output', async () => {
     const { sealAction } = await import('../src/data/journal/seal');
