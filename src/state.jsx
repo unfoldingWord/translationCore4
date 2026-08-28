@@ -342,6 +342,8 @@ export function AppProvider({ children }) {
   const stateRef = useRef(null); // live state for async closures
   const openSeqRef = useRef(0); // openBook sequence token (review finding M2)
   const understandSeqRef = useRef(0); // loadUnderstand sequence token (2026-08-27 Codex review)
+  const pendingNotesRef = useRef(new Set()); // in-flight note.add promises (A4: loss-prevention lifecycle)
+  const noteDirtyRef = useRef(false); // a comprehension box holds unsaved text (A4: unload guard)
 
   // ---- derived display model -------------------------------------------------
   const model = useMemo(() => {
@@ -397,7 +399,14 @@ export function AppProvider({ children }) {
   useEffect(() => {
     const beforeUnload = (e) => {
       const sched = schedulerRef.current;
-      if (sched && sched.getState() !== 'saved') {
+      // Comprehension notes are project work too (A4, 2026-08-27 adversarial
+      // review): warn while a note.add is in flight or a box holds unsaved
+      // text — the verse scheduler knows nothing about either.
+      if (
+        (sched && sched.getState() !== 'saved') ||
+        pendingNotesRef.current.size > 0 ||
+        noteDirtyRef.current
+      ) {
         e.preventDefault();
         e.returnValue = '';
       }
@@ -1681,12 +1690,19 @@ export function AppProvider({ children }) {
           } catch {
             projectScope = {};
           }
+          // A2: the previous project's understand/pins must never survive
+          // into this one — clear both with the new project, and invalidate
+          // any in-flight loadUnderstand before its completion can land here.
+          understandSeqRef.current++;
+          await Promise.allSettled([...pendingNotesRef.current]);
           dispatch({
             type: 'set',
             patch: {
               project: { ...summary, scriptDirection, repoPath },
               projectScope,
               view: 'draft',
+              projectPins: null,
+              understand: null,
             },
           });
           // The project's pins drive every check session (D30.3). Absent
@@ -1789,16 +1805,50 @@ export function AppProvider({ children }) {
       loadUnderstand: async () => {
         const st = stateRef.current;
         const book = st.book;
-        if (!book || !st.projectPins) return;
+        if (!book || !st.projectPins) {
+          // A2 (2026-08-27 adversarial review): "no pins yet" is a legal
+          // state — but a PREVIOUS project's understand data must not keep
+          // rendering (and accepting notes) behind it. Clear and invalidate.
+          understandSeqRef.current++;
+          if (stateRef.current.understand) dispatch({ type: 'set', patch: { understand: null } });
+          return;
+        }
         // Sequence token: pins/net/project can change while a load is pending,
         // and two projects can both hold the same book code — a book-only
         // guard lets an OLDER completion (or failure) overwrite the newer
         // state. Only the latest call may dispatch, on BOTH paths.
         const seq = ++understandSeqRef.current;
         dispatch({ type: 'set', patch: { understand: { loading: true } } });
+        // Built before the help slots and carried onto BOTH dispatch paths
+        // (A3): a failing optional resource must never hide persisted notes
+        // behind writable empty boxes. null = "not read" — the UI disables
+        // the boxes rather than treating it as empty.
+        let comprehension = null;
         try {
           const { installed, coverage } = await a.resolutionContext();
           const frame = await a.projectFrame();
+          // A1: note identities are journaled in the PROJECT frame (§8.4/§5.2
+          // identity discipline); the display buckets in SOURCE (eng) space.
+          // Map stored keys back when the frames differ; the uW default is
+          // same-frame and short-circuits.
+          const built = {};
+          for (const n of storeRef.current?.readNotes?.(book) ?? []) {
+            let key = `${n.chapter}:${n.verse}`;
+            if (frame.state === 'ready' && frame.name !== RESOURCE_FRAME) {
+              const out = await mapReference({
+                from: frame.name, to: RESOURCE_FRAME, book,
+                chapter: Number(n.chapter),
+                verse: /^\d+$/.test(n.verse) ? Number(n.verse) : n.verse,
+                schemes: frame.schemes,
+              });
+              if (out.ok) key = `${out.reference.chapter}:${out.reference.verse}`;
+            }
+            const prev = built[key];
+            if (!prev || String(n.ts) > String(prev.ts)) built[key] = { text: n.text, ts: n.ts };
+          }
+          // Assigned only once COMPLETE: a partial read must not enable the
+          // boxes with some notes invisible (A3).
+          comprehension = built;
           const scopeRanges = scopeRangesFor(st.projectScope ?? {}, book.toUpperCase());
           const sets = st.projectPins.languageSets ?? {};
           const loadSlot = async (slot, tool, deriveOpts = {}) => {
@@ -1860,22 +1910,23 @@ export function AppProvider({ children }) {
               return { state: 'missing', pin, rung: r.rung };
             }
           };
+          // Per-slot isolation (A3): one malformed resource (a strict-header
+          // refusal, a derive throw) becomes THAT slot's error state — it
+          // never takes down the other tabs or the comprehension notes.
+          const settle = (p) =>
+            p.then(
+              (v) => v,
+              (e) => ({ state: 'error', error: String(e?.message || e) }),
+            );
           const [notes, questions, words, simplified] = await Promise.all([
             // keepPlainNotes: the read-only surface shows EVERY note the
             // resource carries, incl. rows without a SupportReference that
             // checking rightly skips (deriveTnItems).
-            loadSlot('translationNotes', 'translationNotes', { keepPlainNotes: true }),
-            loadSlot('translationQuestions', 'translationQuestions'),
-            loadSlot('translationWordsLinks', 'translationWords'),
-            loadSimplified(),
+            settle(loadSlot('translationNotes', 'translationNotes', { keepPlainNotes: true })),
+            settle(loadSlot('translationQuestions', 'translationQuestions')),
+            settle(loadSlot('translationWordsLinks', 'translationWords')),
+            settle(loadSimplified()),
           ]);
-          // Per-verse latest note, ts kept: the display bucket is the SECTION,
-          // so a unit shows the newest note among all its verses — a durable
-          // rule that survives ULT/UST chunk drift (2026-08-27 review).
-          const comprehension = {};
-          for (const n of storeRef.current?.readNotes?.(book) ?? []) {
-            comprehension[`${n.chapter}:${n.verse}`] = { text: n.text, ts: n.ts };
-          }
           if (seq !== understandSeqRef.current) return; // superseded
           dispatch({
             type: 'set',
@@ -1885,7 +1936,9 @@ export function AppProvider({ children }) {
           if (seq !== understandSeqRef.current) return; // a stale failure never replaces current state
           dispatch({
             type: 'set',
-            patch: { understand: { loading: false, error: String(e?.message || e) } },
+            // comprehension rides along when it was read before the failure;
+            // null keeps the boxes DISABLED (A3: no writable empties).
+            patch: { understand: { loading: false, error: String(e?.message || e), comprehension } },
           });
         }
       },
@@ -1904,19 +1957,59 @@ export function AppProvider({ children }) {
         // grow-only note on a plain focus/blur (2026-08-27 Codex review).
         const trimmed = (text ?? '').trim();
         if (trimmed === '') return;
-        try {
-          await store.addNote(book, chapter, verseKey, trimmed);
-        } catch (e) {
-          // Fired from a blur — an unhandled rejection would lose the note
-          // SILENTLY. State the failure like every other write surface does.
+        const fail = (message) => {
           const now = stateRef.current;
           if (now.book !== book) return;
           dispatch({
             type: 'set',
-            patch: { understand: { ...now.understand, saveError: String(e?.reason || e?.message || e) } },
+            patch: { understand: { ...now.understand, saveError: message } },
           });
+        };
+        // A1: the display buckets in SOURCE (eng) space, but a §8.5 note
+        // identity is permanent PROJECT-frame state — map before writing.
+        // Same-frame projects (the uW default) short-circuit; an unmappable
+        // or unresolved frame REFUSES the write and says so, because a note
+        // journaled under a wrong identity can never be repaired (grow-only).
+        let target = { chapter, verse: verseKey };
+        try {
+          const frame = await a.projectFrame();
+          if (frame.state !== 'ready') {
+            fail(t('understand.saveUnmappable'));
+            return;
+          }
+          if (frame.name !== RESOURCE_FRAME) {
+            const out = await mapReference({
+              from: RESOURCE_FRAME, to: frame.name, book,
+              chapter: Number(chapter),
+              verse: /^\d+$/.test(String(verseKey)) ? Number(verseKey) : String(verseKey),
+              schemes: frame.schemes,
+            });
+            if (!out.ok) {
+              fail(t('understand.saveUnmappable'));
+              return;
+            }
+            target = { chapter: out.reference.chapter, verse: out.reference.verse };
+          }
+        } catch (e) {
+          fail(String(e?.reason || e?.message || e));
           return;
         }
+        // A4: register the in-flight write so the unload guard and project
+        // transitions can see (and drain) it — the verse scheduler knows
+        // nothing about journal-note writes.
+        const write = store.addNote(book, target.chapter, target.verse, trimmed);
+        pendingNotesRef.current.add(write);
+        try {
+          await write;
+        } catch (e) {
+          // Fired from a blur — an unhandled rejection would lose the note
+          // SILENTLY. State the failure like every other write surface does.
+          fail(String(e?.reason || e?.message || e));
+          return;
+        } finally {
+          pendingNotesRef.current.delete(write);
+        }
+        noteDirtyRef.current = false;
         const now = stateRef.current;
         // The user may have switched books while the write was in flight —
         // never patch the old book's note into the new book's state.
@@ -1970,6 +2063,12 @@ export function AppProvider({ children }) {
           patch: { understand: { ...now.understand, article: { key, loading: false, found } } },
         });
       },
+      /** A comprehension box holds text that differs from its displayed note
+       * (A4): the unload guard warns on it, exactly like a dirty verse. A ref,
+       * not state — this fires on every keystroke. */
+      setNoteDirty: (dirty) => {
+        noteDirtyRef.current = !!dirty;
+      },
       closeHelpArticle: () => {
         const now = stateRef.current;
         dispatch({ type: 'set', patch: { understand: { ...now.understand, article: null } } });
@@ -2022,10 +2121,18 @@ export function AppProvider({ children }) {
           schedulerRef.current.dispose();
           schedulerRef.current = null;
         }
+        // Comprehension notes drain too (A4): an in-flight note.add still
+        // holds its store in closure, so waiting here is cheap and loses
+        // nothing to the transition.
+        await Promise.allSettled([...pendingNotesRef.current]);
         storeRef.current = null;
+        // A2 (2026-08-27 adversarial review): understand + projectPins are
+        // PROJECT state — leaving them set lets project B render (and journal
+        // into!) project A's data. Invalidate any in-flight load as well.
+        understandSeqRef.current++;
         dispatch({
           type: 'set',
-          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, saveState: 'saved' },
+          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, saveState: 'saved', projectPins: null, understand: null },
         });
         refreshProjects(); // re-order: the project just left goes to the top
       },

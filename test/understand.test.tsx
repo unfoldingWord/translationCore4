@@ -12,6 +12,7 @@ import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 const READ_SIDE = new Set([
   'loadUnderstand', 'setHelpsTab', 'setSourceTab', 'toggleRail', 'setChapter',
   'loadHelpArticle', 'closeHelpArticle', 'openBook', 'go',
+  'setNoteDirty', // an unload-guard flag on a ref — never a project write
 ]);
 const calls: Array<{ name: string; args: unknown[] }> = [];
 const actionsProxy = new Proxy({}, {
@@ -192,6 +193,54 @@ describe('2026-08-27 Codex review regressions', () => {
     } finally {
       state.understand.comprehension = saved;
     }
+  });
+});
+
+describe('2026-08-27 adversarial-review regressions', () => {
+  beforeEach(() => { cleanup(); calls.length = 0; });
+
+  it('comprehension boxes are DISABLED while the persisted notes are unread (comprehension: null) — no writable empties over a grow-only store', () => {
+    const saved = state.understand;
+    state.understand = { loading: false, error: 'resolution blew up', comprehension: null } as never;
+    try {
+      render(<Understand />);
+      for (const box of screen.getAllByPlaceholderText('What does this section mean in your own words?')) {
+        expect((box as HTMLTextAreaElement).disabled).toBe(true);
+      }
+      expect(writes()).toEqual([]);
+    } finally {
+      state.understand = saved;
+    }
+  });
+
+  it("a malformed optional resource is ITS slot's error — stated in the tab, other tabs and notes untouched", () => {
+    const saved = state.understand;
+    state.understand = {
+      ...saved,
+      questions: { state: 'error', error: 'unversioned/unknown tQ TSV header' },
+    } as never;
+    state.helpsTab = 'questions';
+    try {
+      render(<Understand />);
+      expect(screen.getByTestId('helps-state-error').textContent).toContain('unversioned/unknown tQ TSV header');
+      // the passage boxes stay enabled — comprehension was read
+      const box = screen.getAllByPlaceholderText('What does this section mean in your own words?')[0];
+      expect((box as HTMLTextAreaElement).disabled).toBe(false);
+    } finally {
+      state.understand = saved;
+      state.helpsTab = 'notes';
+    }
+  });
+
+  it('typing marks the note dirty for the unload guard; an unchanged edit clears it', () => {
+    render(<Understand />);
+    const box = screen.getAllByPlaceholderText('What does this section mean in your own words?')[0];
+    fireEvent.change(box, { target: { value: 'unsaved text' } });
+    const dirtyCalls = calls.filter((c) => c.name === 'setNoteDirty');
+    expect(dirtyCalls[dirtyCalls.length - 1].args[0]).toBe(true);
+    fireEvent.change(box, { target: { value: '' } }); // back to the stored (empty) value
+    const after = calls.filter((c) => c.name === 'setNoteDirty');
+    expect(after[after.length - 1].args[0]).toBe(false);
   });
 });
 

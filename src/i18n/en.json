@@ -279,5 +279,7 @@
   "understand.verseOne": "Verse {n}",
   "understand.versesRange": "Verses {from}–{to}",
   "understand.saveFailed": "The note was not saved — edit the box and leave it again to retry.",
-  "understand.helpFallback": "Shown from the English fallback: the primary language's resource is not on this computer."
+  "understand.helpFallback": "Shown from the English fallback: the primary language's resource is not on this computer.",
+  "understand.helpError": "This resource failed to load:",
+  "understand.saveUnmappable": "The note was not saved: this passage has no place in the project's verse numbering, so the note would get a wrong permanent identity."
 }

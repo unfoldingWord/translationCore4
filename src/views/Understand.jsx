@@ -65,19 +65,29 @@ const latestUnitNote = (comprehension, chapter, unit) => {
  * actions.saveComprehension; everything else on the screen is read-only. */
 function ComprehensionBox({ chapter, unit }) {
   const { s, actions } = useApp();
+  // DISABLED until the persisted notes have actually been read (A3, 2026-08-27
+  // adversarial review): a writable empty box over an unread grow-only store
+  // invites irreversible duplicates. null = not read; {} = read and empty.
+  const ready = s.understand?.comprehension != null;
   const stored = latestUnitNote(s.understand?.comprehension, chapter, unit)?.text ?? '';
   const [text, setText] = React.useState(stored);
   React.useEffect(() => { setText(stored); }, [stored, chapter, unit.key]);
   // Compare against the note the box DISPLAYS: notes are grow-only, so an
   // unchanged focus/blur must never append a duplicate (2026-08-27 Codex
   // review). unit.head is the RAW first verse key — a bridge ("4-5") keeps
-  // its exact §8.4 identity in the journal.
+  // its exact source-side key; the save action maps it into the project
+  // frame before journaling (A1).
   const save = () => {
     if (text.trim() === stored.trim()) return;
+    actions.setNoteDirty(false);
     actions.saveComprehension(chapter, unit.head, text);
   };
   return (
-    <TextArea rows={2} value={text} onChange={(e) => setText(e.target.value)}
+    <TextArea rows={2} value={text} disabled={!ready}
+      onChange={(e) => {
+        setText(e.target.value);
+        actions.setNoteDirty(e.target.value.trim() !== stored.trim());
+      }}
       onBlur={save}
       placeholder={t('understand.commentsPlaceholder')} />
   );
@@ -116,6 +126,15 @@ function ArticleView({ article, onClose }) {
 /** One helps slot's designed non-ready state — absence is stated, never blank. */
 function SlotState({ slot }) {
   const state = slot?.state ?? 'none';
+  if (state === 'error') {
+    // A malformed resource is THIS slot's error (A3) — stated, never a false
+    // absence claim, and never fatal to the other tabs.
+    return (
+      <Callout tone="warn" role="alert" data-testid="helps-state-error" style={{ overflowWrap: 'anywhere' }}>
+        {t('understand.helpError')} {slot.error}
+      </Callout>
+    );
+  }
   const map = {
     none: t('understand.helpNone'),
     unavailable: t('understand.helpUnavailable'),
