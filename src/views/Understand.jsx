@@ -575,7 +575,10 @@ function PassageStatus({ s, src, actions }) {
                 </Button>
               </Callout>
             )}
-            {!src && (
+            {!src && s.sourcePanes?.length !== 0 && (
+              // A project with NO panes ([] — the stated no-source-panes state
+              // above) has nothing pending: rendering the loading line beside
+              // that callout contradicted it and never resolved (issue #123).
               <p style={{ fontSize: 'var(--fs-ui-sm)', color: 'var(--text-tertiary)', marginTop: 10 }}>{t('understand.loading')}</p>
             )}
     </>

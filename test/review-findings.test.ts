@@ -100,9 +100,21 @@ describe('M4 — upsertDecision matches identity key AND quoteString together', 
       console.warn('M4 leg skipped: rig not running');
       return;
     }
+    // A SCRATCH project, never the shared seeded one: these raw-store writes
+    // bypass the journal, so on a journaled project they are exactly the
+    // derived-state divergence the open guard refuses (issue #123, F1).
     const { HttpStore } = await import('../src/data/httpStore');
     const store = new HttpStore({ baseUrl: 'http://127.0.0.1:19998/api' });
-    await store.open('_local_/_local_/sample_burrito');
+    const SCRATCH = '_local_/_local_/m4_scratch';
+    await store.api.deleteRepo(SCRATCH).catch(() => {}); // leftover from a crashed run
+    await store.createProject({
+      content_name: 'M4 scratch',
+      content_abbr: 'm4_scratch',
+      content_language_code: 'en',
+      add_book: false,
+      versification: 'eng',
+    });
+    await store.open(SCRATCH);
     const mk = (quote: string, comment: string) => ({
       contextId: {
         checkId: 'm4regress',
@@ -122,15 +134,19 @@ describe('M4 — upsertDecision matches identity key AND quoteString together', 
       verseEdits: false,
       invalidated: false,
     });
-    await store.upsertDecision('translationWords', 'TIT', mk('old', 'v1'));
-    await store.upsertDecision('translationWords', 'TIT', mk('new', 'v2'));
-    await store.upsertDecision('translationWords', 'TIT', mk('new', 'v3'));
-    await store.upsertDecision('translationWords', 'TIT', mk('new', 'v4'));
-    const file = await store.readDecisions('translationWords', 'TIT');
-    const mine = (file?.decisions ?? []).filter((d) => d.contextId.checkId === 'm4regress');
-    // exactly two records: the orphaned old-quote one and ONE current-quote one
-    expect(mine).toHaveLength(2);
-    expect(mine.find((d) => d.contextId.quoteString === 'new')?.comments).toBe('v4');
+    try {
+      await store.upsertDecision('translationWords', 'TIT', mk('old', 'v1'));
+      await store.upsertDecision('translationWords', 'TIT', mk('new', 'v2'));
+      await store.upsertDecision('translationWords', 'TIT', mk('new', 'v3'));
+      await store.upsertDecision('translationWords', 'TIT', mk('new', 'v4'));
+      const file = await store.readDecisions('translationWords', 'TIT');
+      const mine = (file?.decisions ?? []).filter((d) => d.contextId.checkId === 'm4regress');
+      // exactly two records: the orphaned old-quote one and ONE current-quote one
+      expect(mine).toHaveLength(2);
+      expect(mine.find((d) => d.contextId.quoteString === 'new')?.comments).toBe('v4');
+    } finally {
+      await store.api.deleteRepo(SCRATCH).catch(() => {});
+    }
   });
 });
 

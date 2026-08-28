@@ -204,13 +204,25 @@ export function writeProjectPins(
   // groups and an empty extraScripture are OMITTED by projectResources, so a
   // hand-written file that spells them out refuses to seed (D56). Write what
   // the app itself would checkpoint.
-  const file = {
+  const file: {
+    schemaVersion: number;
+    languageSets: { primary: typeof set; fallback: typeof set };
+    extraScripture?: unknown[];
+  } = {
     schemaVersion: 2,
     languageSets: { primary: set, fallback: set },
   };
   const dir = path.join(rigRepo(repo), 'ingredients', 'checking');
+  // Carry the seed's extraScripture (ULT/UST source-pane pins) forward: this
+  // helper rewrites the WHOLE document, and silently dropping the pins left
+  // the shared project with no source texts after a journey run (issue #123).
+  const p = path.join(dir, 'resources.json');
+  if (fs.existsSync(p)) {
+    const existing = JSON.parse(fs.readFileSync(p, 'utf8')) as { extraScripture?: unknown[] };
+    if (existing.extraScripture?.length) file.extraScripture = existing.extraScripture;
+  }
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, 'resources.json'), `${JSON.stringify(file, null, 2)}\n`);
+  fs.writeFileSync(p, `${JSON.stringify(file, null, 2)}\n`);
 }
 
 /** The project's §5.3 pin file as it stands on disk. */

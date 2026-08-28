@@ -391,7 +391,7 @@ test.describe('J4 — a checker works a book', () => {
         translationWords: tw,
         translationAcademy: ta,
       });
-      const file = {
+      const file: Record<string, unknown> = {
         schemaVersion: 2,
         languageSets: {
           primary: setFor(
@@ -405,8 +405,15 @@ test.describe('J4 — a checker works a book', () => {
         // Projection form only: empty groups are omitted (D56 seedability).
       };
       const dir = path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking');
+      const p = path.join(dir, 'resources.json');
+      // Carry the seed's extraScripture forward — same rule as writeProjectPins
+      // (issue #123: a whole-document rewrite must not drop the source-pane pins).
+      if (fs.existsSync(p)) {
+        const existing = JSON.parse(fs.readFileSync(p, 'utf8')) as { extraScripture?: unknown[] };
+        if (existing.extraScripture?.length) file.extraScripture = existing.extraScripture;
+      }
       fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(path.join(dir, 'resources.json'), `${JSON.stringify(file, null, 2)}\n`);
+      fs.writeFileSync(p, `${JSON.stringify(file, null, 2)}\n`);
 
       await openCheck(page);
       // The card is READY (the fallback works) — the fallback never blocks…
