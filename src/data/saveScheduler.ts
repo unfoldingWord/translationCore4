@@ -71,6 +71,11 @@ export class SaveScheduler {
 
   private readonly reconcile?: () => Promise<void>;
 
+  /** Keys reverted to persisted while a write may be in flight (round 32):
+   * the landing write re-syncs `current` to the NEW persisted value, so a
+   * revert can never be outrun into staging a stale snapshot. */
+  private readonly reverted = new Set<string>();
+
   private timer: unknown = null;
   private chain: Promise<void> = Promise.resolve();
   private writing = 0;
@@ -107,6 +112,7 @@ export class SaveScheduler {
     }
     this.current.set(book, rawBook);
     this.persisted.set(book, rawBook);
+    this.reverted.delete(book);
     this.notify();
   }
 
@@ -166,8 +172,22 @@ export class SaveScheduler {
   markDirty(book: string, chapter: string | number, verseKey: string, newBody: string): void {
     const raw = this.current.get(book);
     if (raw === undefined) throw new Error(`SaveScheduler: book not loaded: ${book}`);
+    this.reverted.delete(book); // a real edit supersedes a pending revert (round 32)
     this.current.set(book, this.splice(raw, chapter, verseKey, newBody));
     this.armDebounce();
+    this.notify();
+  }
+
+  /** Revert one key to its latest PERSISTED value (round 32): the G1 clear
+   * refusal must never stage a render-time snapshot — an in-flight write can
+   * make that snapshot stale, and staging it would journal the OLD text over
+   * the newer one. The revert is version-aware: the key is marked so a write
+   * that lands afterwards re-syncs `current` to the NEW persisted value; a
+   * real edit (markDirty) supersedes the mark. A never-loaded key is a no-op. */
+  revertToPersisted(book: string): void {
+    if (!this.current.has(book)) return;
+    this.reverted.add(book);
+    this.current.set(book, this.persisted.get(book) as string);
     this.notify();
   }
 
@@ -275,6 +295,13 @@ export class SaveScheduler {
           } else {
             // Edits made during the write keep the book dirty (current moved on).
             this.persisted.set(book, snapshot);
+          }
+          // Round 32: a revert issued while this write was in flight targets
+          // whatever persisted BECOMES — re-sync now, so the stale pre-write
+          // value can never turn dirty and journal over the newer text.
+          if (this.reverted.has(book)) {
+            this.current.set(book, this.persisted.get(book) as string);
+            this.reverted.delete(book);
           }
         } catch (error) {
           this.failure = { book, usfm: snapshot, error };

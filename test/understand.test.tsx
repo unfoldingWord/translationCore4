@@ -37,6 +37,13 @@ const actionsProxy = new Proxy({}, {
       return undefined;
     }
     if (name === 'stagedNote') return noteCurrent.get(noteKeyOf(args[0] as never)) ?? null;
+    if (name === 'revertNote') {
+      // Round 32: the version-aware clear — revert to the buffer's persisted
+      // value, never a render-time snapshot.
+      const k = noteKeyOf(args[0] as never);
+      if (noteCurrent.has(k)) noteCurrent.set(k, notePersisted.get(k) ?? '');
+      return undefined;
+    }
     return undefined;
   },
 });
@@ -654,5 +661,49 @@ describe('2026-08-28 adversarial round 22 regression (D65: the class, not the sy
     render(<Understand />);
     const again = screen.getAllByPlaceholderText('What does this section mean in your own words?')[0] as HTMLTextAreaElement;
     expect(again.value).toBe('an unblurred draft');
+  });
+});
+
+describe('2026-08-28 adversarial round 32 regressions', () => {
+  beforeEach(() => { cleanup(); calls.length = 0; noteCurrent.clear(); notePersisted.clear(); });
+
+  it('an EMPTIED box reverts the target instead of staging the render-time stored snapshot (F1)', () => {
+    const saved = state.understand.comprehension;
+    state.understand.comprehension = { '1:1': { text: 'note A', ts: '2026-08-28T00:00:00.000Z|0000|a' } };
+    try {
+      render(<Understand />);
+      const box = screen.getAllByPlaceholderText('What does this section mean in your own words?')[0];
+      fireEvent.change(box, { target: { value: 'note B' } }); // staged
+      fireEvent.change(box, { target: { value: '' } }); // cleared mid-edit
+      const reverts = calls.filter((c) => c.name === 'revertNote');
+      expect(reverts.length).toBe(1); // the clear is a REVERT op…
+      const staged = calls.filter((c) => c.name === 'stageNote');
+      expect(staged[staged.length - 1].args[1]).toBe('note B'); // …never a stage of the stale stored text
+      expect(bufferDirty()).toEqual([]);
+    } finally {
+      state.understand.comprehension = saved;
+    }
+  });
+
+  it('cross-frame projects state "Verse view" instead of offering a Section control that does nothing (F2, D30)', () => {
+    const savedU = state.understand;
+    try {
+      state.understand = {
+        ...savedU,
+        sourceRefs: { '1': [{ c: 1, v: '1', pc: 1, pv: '1' }] },
+      } as never;
+      render(<Understand />);
+      expect(screen.queryByRole('button', { name: 'Verse' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Section' })).toBeNull();
+      expect(screen.getByTestId('understand-verse-only')).toBeTruthy();
+    } finally {
+      state.understand = savedU;
+    }
+  });
+
+  it('same-frame projects keep the Section/Verse control', () => {
+    render(<Understand />);
+    expect(screen.getByRole('button', { name: 'Verse' })).toBeTruthy();
+    expect(screen.queryByTestId('understand-verse-only')).toBeNull();
   });
 });

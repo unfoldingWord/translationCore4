@@ -170,13 +170,16 @@ function ComprehensionBox({ book, chapter, unit }) {
           setText(e.target.value);
           setClearRefused(false);
           const next = e.target.value;
-          // Stage every edit. An EMPTIED box stages the stored text instead
-          // (G1: a clear never becomes a buffered write — it reconciles the
-          // buffer to clean, for a fresh draft and a saved note alike, so no
-          // dirty state can strand and no deleted draft can autosave).
-          // Staging the stored text is also how a failed draft is abandoned
-          // (K1): the buffer returns to clean by comparison.
-          actions.stageNote(target, next.trim() === '' ? stored : next);
+          // Stage every edit. An EMPTIED box REVERTS the target to the
+          // scheduler's latest persisted value instead (G1 + round 32: a
+          // clear never becomes a buffered write, and staging the
+          // render-time stored snapshot could journal a STALE text over an
+          // in-flight newer one — the version-aware revert cannot be
+          // outrun). Typing back to the stored text still stages it — that
+          // is the user's own typed content, and it abandons a failed draft
+          // by comparison (K1).
+          if (next.trim() === '') actions.revertNote(target);
+          else actions.stageNote(target, next);
         }}
         onBlur={save}
         placeholder={t('understand.commentsPlaceholder')} />
@@ -500,6 +503,7 @@ export default function Understand() {
   }
 
   const chapter = s.chapter;
+  const crossFrame = s.understand?.sourceRefs != null;
   const src = s.sources[s.sourceTab];
   const srcChapters = src && src !== 'missing' ? src.chapters?.[String(chapter)] ?? {} : {};
   const units = understandUnits({ s, book, chapter, src, srcChapters, mode });
@@ -523,9 +527,18 @@ export default function Understand() {
                 </FilterChip>
               ))}
               <div style={{ flex: 1 }} />
-              <Overline style={{ letterSpacing: '.1em' }}>{t('understand.commentsBy')}</Overline>
-              <SegmentedControl size="sm" tone="ocean" value={mode} onChange={setMode}
-                options={[{ value: 'section', label: t('understand.bySection') }, { value: 'verse', label: t('understand.byVerse') }]} />
+              {crossFrame ? (
+                // Round 32 (D30 honesty): cross-frame units are one-per-project-
+                // verse — a Section/Verse control would be two labels for one
+                // rendering. State the designed limitation instead of lying.
+                <Overline data-testid="understand-verse-only" style={{ letterSpacing: '.1em' }}>{t('understand.crossFrameVerseOnly')}</Overline>
+              ) : (
+                <>
+                  <Overline style={{ letterSpacing: '.1em' }}>{t('understand.commentsBy')}</Overline>
+                  <SegmentedControl size="sm" tone="ocean" value={mode} onChange={setMode}
+                    options={[{ value: 'section', label: t('understand.bySection') }, { value: 'verse', label: t('understand.byVerse') }]} />
+                </>
+              )}
             </div>
             {s.understand?.saveError && (
               <Callout tone="warn" role="alert" data-testid="understand-save-error" style={{ marginTop: 10, overflowWrap: 'anywhere' }}>

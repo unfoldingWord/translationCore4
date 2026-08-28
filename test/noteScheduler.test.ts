@@ -442,3 +442,69 @@ describe('2026-08-31-round hardening: the reconcile gate lives INSIDE the schedu
   });
 
 });
+
+describe('2026-08-28 adversarial round 32: a clear during an in-flight save can never journal the stale text', () => {
+  it('existing A → in-flight B → clear: only B is journaled, and the buffer re-syncs to B when it lands', async () => {
+    const journal: string[] = [];
+    let release: () => void = () => {};
+    let started: () => void = () => {};
+    const startedP = new Promise<void>((r) => { started = r; });
+    const key = noteKeyFor(REPO, 'TIT', 1, '1');
+    const sched = new SaveScheduler({
+      splice: (_r, _c, _v, body) => body,
+      writeBook: async (_k, text) => {
+        started();
+        await new Promise<void>((r) => { release = r; });
+        journal.push(text);
+      },
+      clock: { setTimeout: () => 0, clearTimeout: () => {} },
+    });
+    // Existing note A is the persisted baseline; the user edits it to B.
+    sched.seedIfAbsent(key, 'note A');
+    sched.markDirty(key, 1, '1', 'note B');
+    const flush = sched.flushOnBlur();
+    await startedP; // B's write is genuinely in flight
+    // The user CLEARS the box: the version-aware revert targets whatever
+    // persisted BECOMES — never the stale render-time value A.
+    sched.revertToPersisted(key);
+    expect(sched.bookText(key)).toBe('note A'); // pre-landing: persisted is still A
+    release();
+    await flush;
+    // B landed: persisted advanced to B and the pending revert re-synced.
+    expect(sched.bookText(key)).toBe('note B');
+    expect(await sched.drain()).toBe(true);
+    expect(journal).toEqual(['note B']); // A is NEVER re-journaled over B
+  });
+
+  it('a real edit typed after the revert supersedes it — the new text writes, the revert never clobbers it', async () => {
+    const journal: string[] = [];
+    let release: () => void = () => {};
+    let started: () => void = () => {};
+    const startedP = new Promise<void>((r) => { started = r; });
+    let deferOnce = true;
+    const key = noteKeyFor(REPO, 'TIT', 1, '1');
+    const sched = new SaveScheduler({
+      splice: (_r, _c, _v, body) => body,
+      writeBook: async (_k, text) => {
+        if (deferOnce) {
+          deferOnce = false;
+          started();
+          await new Promise<void>((r) => { release = r; });
+        }
+        journal.push(text);
+      },
+      clock: { setTimeout: () => 0, clearTimeout: () => {} },
+    });
+    sched.seedIfAbsent(key, 'note A');
+    sched.markDirty(key, 1, '1', 'note B');
+    const flush = sched.flushOnBlur();
+    await startedP;
+    sched.revertToPersisted(key); // clear…
+    sched.markDirty(key, 1, '1', 'note C'); // …then a NEW edit before B lands
+    release();
+    await flush;
+    expect(await sched.drain()).toBe(true);
+    expect(journal).toEqual(['note B', 'note C']); // C written; A never resurfaces
+    expect(sched.bookText(key)).toBe('note C');
+  });
+});

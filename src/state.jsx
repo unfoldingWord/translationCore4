@@ -2409,6 +2409,17 @@ export function AppProvider({ children }) {
         return sched.isDirty(key) ? sched.bookText(key) : null;
       },
 
+      /** G1's clear refusal, version-aware (round 32): revert the target to
+       * the scheduler's latest PERSISTED value — never stage the render-time
+       * stored snapshot, which an in-flight write can make stale (journaling
+       * the OLD text over the newer one). A never-staged target is a no-op. */
+      revertNote: ({ chapter, verse }) => {
+        const st = stateRef.current;
+        const repoPath = st?.project?.repoPath;
+        if (!repoPath || !st.book) return;
+        noteSchedulerRef.current?.revertToPersisted(noteKeyFor(repoPath, st.book, chapter, verse));
+      },
+
       /** Blur: flush the note buffer now (verse discipline — flushOnBlur). */
       flushNotes: () => noteSchedulerRef.current?.flushOnBlur() ?? Promise.resolve(),
 
