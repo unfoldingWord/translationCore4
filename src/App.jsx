@@ -29,10 +29,21 @@ function SaveIndicator() {
   // the Understand screen — with its own retry. Per-target since round 3
   // (C2): ANY standing entry is an error.
   const noteError = Object.keys(s.noteSaveErrors ?? {}).length > 0;
-  const m = noteError ? map.error : map[s.saveState] || map.saved;
-  const isError = noteError || s.saveState === 'error';
+  // Comprehension activity counts as save state too (Q2, adversarial round
+  // 17): 'Saved' must never show while a note is dirty or a write is in
+  // flight — the priority is error > saving > dirty > the verse scheduler.
+  const act = s.noteActivity ?? {};
+  const effective = noteError
+    ? 'error'
+    : act.pending
+      ? 'saving'
+      : act.dirty
+        ? 'dirty'
+        : s.saveState;
+  const m = noteError ? map.error : map[effective] || map.saved;
+  const isError = noteError || effective === 'error';
   return (
-    <div data-testid="save-indicator" data-state={noteError ? 'error' : s.saveState}
+    <div data-testid="save-indicator" data-state={noteError ? 'error' : effective}
       style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', fontWeight: 'var(--fw-heavy)', display: 'flex', alignItems: 'center', gap: 6, color: isError ? 'var(--tc-invalid-inverse)' : 'rgba(255,255,255,.66)' }}>
       <StatusDot status={m.status} size={8} />
       {m.label}

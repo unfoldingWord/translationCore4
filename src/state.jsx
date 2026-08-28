@@ -274,6 +274,10 @@ const initial = () => ({
   // check session (never stored), plus the translator's own comprehension
   // notes read back from the §8.5 journal.
   understand: null, // null | { loading } | { notes, questions, comprehension: {'c:v': text} }
+  // Whether ANY comprehension box is dirty / ANY note write is pending —
+  // booleans mirrored from the refs so the save indicator can tell the truth
+  // (Q2, adversarial round 17) without a per-keystroke app re-render storm.
+  noteActivity: { dirty: false, pending: false },
   // Failed comprehension writes, held GLOBALLY so they survive leaving the
   // Understand view (B1) and tracked PER TARGET so concurrent saves never
   // clear each other (C2). Key: `${repoPath}|${chapter}:${verse}`. Each entry
@@ -362,12 +366,25 @@ export function AppProvider({ children }) {
   // mark, or publish its snapshot — an older completion can never erase a
   // newer edit or a newer failure.
   const noteRevisionsRef = useRef(new Map());
+  // Q2: boolean mirror for the save indicator — dispatched only on a 0↔n
+  // transition, so keystrokes do not storm the reducer.
+  const syncNoteActivity = () => {
+    const next = {
+      dirty: noteDirtyRef.current.size > 0,
+      pending: pendingNotesRef.current.size > 0,
+    };
+    const cur = stateRef.current?.noteActivity;
+    if (cur?.dirty !== next.dirty || cur?.pending !== next.pending) {
+      dispatch({ type: 'set', patch: { noteActivity: next } });
+    }
+  };
   // H2 (adversarial round 8): per-target WRITE CHAIN. The §8.5 journal orders
   // by append time, and frame/mapping latency could let a newer save reach
   // addNote first — the older text would then carry the higher HLC and win on
   // reload. Chaining per target orders appends by user INITIATION, and a
   // superseded revision never writes at all.
   const noteChainRef = useRef(new Map());
+  const noteInFlightRef = useRef(new Set()); // errKeys with an op past enqueue (Q1: dismissal must not race a live append)
 
   // ---- derived display model -------------------------------------------------
   const model = useMemo(() => {
@@ -2200,6 +2217,8 @@ export function AppProvider({ children }) {
         });
         noteChainRef.current.set(errKey, op.catch(() => {}));
         pendingNotesRef.current.add(op);
+        noteInFlightRef.current.add(errKey);
+        syncNoteActivity();
         let ok = false;
         try {
           ok = await op;
@@ -2210,6 +2229,8 @@ export function AppProvider({ children }) {
           return;
         } finally {
           pendingNotesRef.current.delete(op);
+          noteInFlightRef.current.delete(errKey);
+          syncNoteActivity();
         }
         if (!ok) return; // refused (fail() already recorded it)
         if (!isLatest()) return; // E1: a stale success must not clear a newer failure or publish over a newer edit
@@ -2311,6 +2332,11 @@ export function AppProvider({ children }) {
         const book = now.book;
         if (!repoPath || !book) return;
         const errKey = `${repoPath}|${book}|${chapter}:${verseKey}`;
+        // Q1 (adversarial round 17): an op past enqueue may already be
+        // appending — advancing the revision NOW would make its success
+        // 'stale' and skip reconciliation while the journal keeps the text.
+        // The op's own settle reports the truth; dismissal waits for it.
+        if (noteInFlightRef.current.has(errKey)) return;
         if (!(errKey in noteSaveErrorsRef.current)) return;
         noteRevisionsRef.current.set(errKey, (noteRevisionsRef.current.get(errKey) ?? 0) + 1);
         const remaining = { ...noteSaveErrorsRef.current };
@@ -2334,6 +2360,7 @@ export function AppProvider({ children }) {
       setNoteDirty: (key, dirty) => {
         if (dirty) noteDirtyRef.current.add(key);
         else noteDirtyRef.current.delete(key);
+        syncNoteActivity();
       },
       closeHelpArticle: () => {
         const now = stateRef.current;

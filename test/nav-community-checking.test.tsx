@@ -35,6 +35,7 @@ const baseState = {
   projects: [],
   netEnabled: false,
   noteSaveErrors: {},
+  noteActivity: { dirty: false, pending: false },
 };
 
 const bookModel = {
@@ -93,6 +94,16 @@ describe('#108 — Publish moves into Check as Community Checking', () => {
     const indicator = screen.getByTestId('save-indicator');
     expect(indicator.getAttribute('data-state')).toBe('error');
     expect(screen.getByTestId('retry-note-save')).toBeTruthy();
+  });
+
+  it("the indicator never claims Saved while a note is dirty or a write is pending (adversarial round 17, Q2)", () => {
+    state = { ...baseState, noteActivity: { dirty: true, pending: false } } as never;
+    render(<App />);
+    expect(screen.getByTestId('save-indicator').getAttribute('data-state')).toBe('dirty');
+    cleanup();
+    state = { ...baseState, noteActivity: { dirty: true, pending: true } } as never;
+    render(<App />);
+    expect(screen.getByTestId('save-indicator').getAttribute('data-state')).toBe('saving');
   });
 
   it('the publish view is the typeset preview with both exports disabled', () => {
