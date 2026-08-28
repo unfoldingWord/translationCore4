@@ -409,6 +409,31 @@ describe('2026-08-27 adversarial round 10 regression', () => {
   });
 });
 
+describe('2026-08-27 adversarial round 14 regression', () => {
+  beforeEach(() => { cleanup(); calls.length = 0; });
+
+  it("a draft never survives a change of the box's DURABLE TARGET: the identity flip resets it (N2)", () => {
+    const saved = state.understand.comprehension;
+    // Only a verse-2 note: the section box displays it (target 2).
+    state.understand.comprehension = { '1:2': { text: 'the verse-2 note', ts: '2026-08-27T06:00:00.000Z|0000|a' } };
+    try {
+      const { rerender } = render(<Understand />);
+      const box = () => screen.getAllByPlaceholderText('What does this section mean in your own words?')[0] as HTMLTextAreaElement;
+      fireEvent.change(box(), { target: { value: 'draft typed against target 2' } });
+      // An exact verse-1 note lands: the displayed target flips 2 -> 1.
+      state.understand.comprehension = {
+        '1:1': { text: 'exact head note', ts: '2026-08-27T06:00:02.000Z|0000|a' },
+        '1:2': { text: 'the verse-2 note', ts: '2026-08-27T06:00:00.000Z|0000|a' },
+      };
+      rerender(<Understand />);
+      // The draft is RESET, not carried onto the new target.
+      expect(box().value).toBe('exact head note');
+    } finally {
+      state.understand.comprehension = saved;
+    }
+  });
+});
+
 describe('2026-08-27 adversarial round 11 regressions', () => {
   beforeEach(() => { cleanup(); calls.length = 0; });
 

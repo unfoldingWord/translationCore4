@@ -1799,8 +1799,14 @@ export function AppProvider({ children }) {
           // are left alone — that is the genuinely unknown case the warning is
           // for. Best-effort: a failure here must never block opening a project,
           // so the pins still load from whatever is on disk.
+          // N1 (adversarial round 14): this detached chain can settle after
+          // ANOTHER project opened — every dispatch is bound to the
+          // originating store instance and repo path.
+          const stillThisProject = () =>
+            storeRef.current === store && stateRef.current.project?.repoPath === repoPath;
           store.readResources()
             .then(async (pins) => {
+              if (!stillThisProject()) return;
               dispatch({ type: 'set', patch: { projectPins: pins } });
               if (!pins) return;
               try {
@@ -1828,12 +1834,16 @@ export function AppProvider({ children }) {
                 const next = await updateResources(store, (current) =>
                   backfillCoverage(adopt(current), coverage).resources,
                 );
+                if (!stillThisProject()) return;
                 dispatch({ type: 'set', patch: { projectPins: next } });
               } catch {
                 /* coverage stays underived; the resolver falls back to warning */
               }
             })
-            .catch(() => dispatch({ type: 'set', patch: { projectPins: null } }));
+            .catch(() => {
+              if (!stillThisProject()) return; // a stale failure never clears the CURRENT project's pins
+              dispatch({ type: 'set', patch: { projectPins: null } });
+            });
           // B12 — warm the install resolver BEFORE any book/source read. openBook
           // resolves its source panes through resolveReadPath, which needs
           // installedCache populated; on a cold project open the cache is empty,
@@ -2322,7 +2332,15 @@ export function AppProvider({ children }) {
         if (noteDirtyRef.current.size > 0) return;
         dispatch({ type: 'set', patch: { chapter, editing: null } });
       },
-      setSourceTab: (sourceTab) => dispatch({ type: 'set', patch: { sourceTab } }),
+      setSourceTab: async (sourceTab) => {
+        // N2: a tab switch re-chunks the passage — drain the blur save it
+        // just triggered and stay put on a failure or unreconciled box, so a
+        // draft can never be re-marked under a different target mid-flight.
+        await Promise.allSettled([...pendingNotesRef.current]);
+        if (Object.keys(noteSaveErrorsRef.current).length > 0) return;
+        if (noteDirtyRef.current.size > 0) return;
+        dispatch({ type: 'set', patch: { sourceTab } });
+      },
       toggleRail: () => dispatch({ type: 'toggle', key: 'rail' }),
       toggleHelps: () => dispatch({ type: 'toggle', key: 'helps' }),
       setHelpsTab: (helpsTab) => dispatch({ type: 'set', patch: { helpsTab } }),

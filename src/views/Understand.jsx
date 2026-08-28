@@ -102,7 +102,12 @@ function ComprehensionBox({ book, chapter, unit }) {
   // resets to the new target's stored value and never re-marks the previous
   // chapter's draft dirty under the new one. (Blur has already fired the
   // previous target's save by the time the identity changes.)
-  const identity = `${book}|${chapter}|${unit.key}`;
+  // The DURABLE TARGET and the source tab are part of the identity (N2,
+  // adversarial round 14): ULT and UST can share a unit key ('s1') with
+  // different ranges, and a same-key unit whose displayed note targets a
+  // DIFFERENT verse is a different editing context — the draft must reset,
+  // never carry over to be journaled under the new target.
+  const identity = `${book}|${chapter}|${s.sourceTab}|${unit.key}|${unit.project ? unit.project.verse : shown.targetVerse}`;
   // A cross-frame unit's durable identity is its PROJECT reference (I1).
   const dirtyKey = unit.project
     ? `${book}|${unit.project.chapter}:${unit.project.verse}`
