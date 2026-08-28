@@ -2230,7 +2230,24 @@ export class JournalingStore implements BurritoStore {
         text: toNfc(text) as string,
         generation,
       };
-      await this.publishAndRegenerate([event], []);
+      try {
+        await this.publishAndRegenerate([event], []);
+      } catch (error) {
+        // Round 27: a failed note the user then ABANDONS (clear + retry over
+        // a clean buffer) must not linger as a staged intent — replayStaged
+        // would republish it on the next mutation or reopen, and a grow-only
+        // note.add cannot be deleted. Withdraw only what is provably
+        // unpublished; a lost-response accept keeps its stage (replay plus
+        // the round-26 content-equality reconcile own that case). On any
+        // doubt (the probe itself fails) the durable intent stays.
+        try {
+          if ((await this.mustJournal().cancelStagedIfUnpublished(event.ts)) === 'cancelled')
+            await this.kv.delete(`${this.intentPrefix}${event.ts}`);
+        } catch {
+          /* ambiguous — keep the durable intent */
+        }
+        throw error;
+      }
     });
   }
 

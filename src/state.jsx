@@ -1835,6 +1835,12 @@ export function AppProvider({ children }) {
         const originStore = storeRef.current;
         const originRepoPath = stateRef.current.project?.repoPath ?? null;
         const originGateway = stateRef.current.src.gateway;
+        // Round 27: the pins consulted per row are the ORIGINATING project's,
+        // snapshotted when Download starts — the modal stays closable during
+        // long downloads, and reading live state after the awaits below could
+        // resolve a row against ANOTHER project's pinned sha (fetching the
+        // wrong artifact for the project the user clicked from).
+        const originPins = stateRef.current.projectPins;
         const originBook = src.book;
         if (!originGateway) return;
         dispatch({ type: 'patchSrc', patch: { dl: 'run', error: null, progress: null } });
@@ -1850,7 +1856,7 @@ export function AppProvider({ children }) {
         const failed = [];
         for (const row of chosen) {
           const target = localRepoPathFromRepoPath(`${DCS_HOST}/${originGateway.org}/${row.repo}`);
-          const wanted = unsatisfiedProjectPinFor(stateRef.current.projectPins, target, installed);
+          const wanted = unsatisfiedProjectPinFor(originPins, target, installed);
           if (wanted || !local.has(target))
             dispatch({ type: 'patchSrc', patch: { progress: t('sources.progress', { repo: row.repo }) } });
           const result = await installPackageRow(api, originGateway, row, local, wanted);

@@ -429,3 +429,65 @@ describe('2026-08-28 adversarial round 26: a note retry after a lost publish res
     expect(store2.lastOpenReport?.classification).toBe('converged');
   });
 });
+
+describe('2026-08-28 adversarial round 27: an ABANDONED failed note never resurrects from the outbox', () => {
+  it('a provably-unpublished staged note.add is withdrawn on failure — a later mutation does not republish it', async () => {
+    const { rig, api, kv, store, restart } = await setup();
+
+    // PRE-accept transport failure: the segment write itself fails, so the
+    // staged intent is provably unpublished. Without the round-27 withdrawal
+    // the stage would linger, and the next mutation's replayStaged would
+    // REPUBLISH the note the user has since abandoned — permanently
+    // (grow-only, no delete).
+    rig.failOn((c) => c.method === 'POST' && (c.ipath ?? '').includes('/segments/'), 1);
+    await expect(store.addNote('TIT', 1, '2', 'An abandoned thought.')).rejects.toThrow(/injected failure/);
+
+    // Nothing landed, and neither the stage nor its ledger record lingers.
+    expect(segmentPaths(rig).filter((p) =>
+      (rig.repos.get(REPO)?.files.get(p) ?? '').includes('An abandoned thought.'),
+    )).toHaveLength(0);
+    expect((await kv.keys('outbox:')).filter((k) => k.includes(REPO))).toHaveLength(0);
+    expect((await kv.keys('intent:')).filter((k) => k.includes(REPO))).toHaveLength(0);
+
+    // The user clears the box and moves on; a later UNRELATED mutation (which
+    // runs replayStaged first) must not resurrect the abandoned note.
+    await store.writeBook('TIT', TIT_USFM.replace('___', 'Nueva vida.'));
+    expect(store.readNotes('TIT')).toHaveLength(0);
+    expect(segmentPaths(rig).filter((p) =>
+      (rig.repos.get(REPO)?.files.get(p) ?? '').includes('An abandoned thought.'),
+    )).toHaveLength(0);
+
+    // The project verifies and a reopen converges quietly.
+    const report = await verifyProjectAgainstJournal(api, REPO);
+    expect(report.ok, describeVerifierReport(report)).toBe(true);
+    const store2 = restart();
+    await store2.open(REPO);
+    expect(store2.lastOpenReport?.classification).toBe('converged');
+    expect(store2.readNotes('TIT')).toHaveLength(0);
+  });
+
+  it('a lost-response accept KEEPS its stage — the accepted note is durable truth, never withdrawn', async () => {
+    const { rig, kv, store } = await setup();
+    // Post-accept window (B1): the stage-key delete fails after the segment
+    // landed. The withdrawal probe finds the exact bytes on the server and
+    // returns "accepted" — the stage stays for replay to reconcile.
+    let lostResponses = 1;
+    const rawDelete = kv.delete.bind(kv);
+    kv.delete = async (key: string): Promise<void> => {
+      if (lostResponses > 0 && key.startsWith('outbox:')) {
+        lostResponses -= 1;
+        throw new Error('injected failure: lost response after accept');
+      }
+      return rawDelete(key);
+    };
+    await expect(store.addNote('TIT', 1, '2', 'A kept thought.')).rejects.toThrow(/lost response/);
+    // The note IS on the server, and the stage survived the failure handling.
+    expect(segmentPaths(rig).filter((p) =>
+      (rig.repos.get(REPO)?.files.get(p) ?? '').includes('A kept thought.'),
+    )).toHaveLength(1);
+    expect((await kv.keys('outbox:')).filter((k) => k.includes(REPO))).toHaveLength(1);
+    // Replay reconciles on the next mutation; the accepted note is readable.
+    await store.writeBook('TIT', TIT_USFM.replace('___', 'Nueva vida.'));
+    expect(store.readNotes('TIT').map((n) => n.text)).toEqual(['A kept thought.']);
+  });
+});
