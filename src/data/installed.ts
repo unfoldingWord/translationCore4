@@ -242,6 +242,40 @@ export const preferInstalledVersion = (installed: InstalledMap, pin: ResourcePin
   return next;
 };
 
+/** Merge newly INSTALLED optional pins (tq / simplifiedText, D64) into the
+ * rungs whose gateway matches — an explicit download must become usable by
+ * the OPEN project, not only by future ones (2026-08-27 adversarial round
+ * 11). Existing pins are never replaced (re-pinning is the explicit,
+ * warned gateway-change path); returns null when nothing would change. */
+export const mergeOptionalPins = <T extends { languageSets?: Record<string, LanguageSet> }>(
+  resources: T,
+  gateway: { id: string; org: string },
+  installed: InstalledMap,
+): T | null => {
+  const built = languageSetFromInstalled(installed, gateway);
+  if (!built || (!built.translationQuestions && !built.simplifiedText)) return null;
+  let changed = false;
+  const languageSets: Record<string, LanguageSet> = {};
+  for (const [rung, set] of Object.entries(resources.languageSets ?? {})) {
+    const matches =
+      set.gatewayLanguage?.languageId === gateway.id &&
+      (set.gatewayLanguage?.owner ?? '').toLowerCase() === gateway.org.toLowerCase();
+    const next = { ...set };
+    if (matches) {
+      if (built.translationQuestions && !set.translationQuestions) {
+        next.translationQuestions = built.translationQuestions;
+        changed = true;
+      }
+      if (built.simplifiedText && !set.simplifiedText) {
+        next.simplifiedText = built.simplifiedText;
+        changed = true;
+      }
+    }
+    languageSets[rung] = next;
+  }
+  return changed ? { ...resources, languageSets } : null;
+};
+
 /** Apply `preferInstalledVersion` across a whole §5.3 resources file. */
 export const pinsPreferringInstalled = <T extends { languageSets?: Record<string, Record<string, unknown>> }>(
   resources: T,

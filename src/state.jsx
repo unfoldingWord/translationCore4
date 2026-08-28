@@ -20,7 +20,7 @@ import { seedBookFromSource } from './data/seed';
 import { BOOK_NAMES, bookName } from './data/bookNames';
 import { GATEWAYS, gatewayKey, DCS_HOST, orgForRepoName } from './data/gateways';
 import { fetchAndInstallPin, latestReleaseTag, identifyExistingInstall } from './data/resourceFetch';
-import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, isPinLocal, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk, flavorOfMetadata } from './data/installed';
+import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, mergeOptionalPins, isPinLocal, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk, flavorOfMetadata } from './data/installed';
 import { TOOL_SLOT, preflightToolBook, resolutionRecord, resolveToolBook, resolveSetSlot } from './data/resolve';
 import {
   deriveForProject,
@@ -1388,6 +1388,27 @@ export function AppProvider({ children }) {
           // A download can COMPLETE a suite, which is what makes a language
           // offerable as the project's checking language.
           await a.refreshCheckable();
+          // K2 (adversarial round 11): an explicit download of the D64
+          // optional resources must reach the OPEN project too — a pre-1.10
+          // project (or one that fetched tq/simplified later) would otherwise
+          // keep resolving the slots as absent. Compare-and-swap, existing
+          // pins never replaced; best-effort like the coverage backfill —
+          // a failure here must not break the download flow.
+          try {
+            const store = storeRef.current;
+            const gateway = stateRef.current.src.gateway;
+            if (store && stateRef.current.project && gateway) {
+              const { installed, coverage } = await a.resolutionContext();
+              if (mergeOptionalPins(stateRef.current.projectPins ?? {}, gateway, installed)) {
+                const next = await updateResources(store, (current) => {
+                  const merged = mergeOptionalPins(current, gateway, installed);
+                  if (!merged) return current;
+                  return backfillCoverage(merged, coverage).resources;
+                });
+                dispatch({ type: 'set', patch: { projectPins: next } });
+              }
+            }
+          } catch { /* the pins stay as they were; the next gateway change or backfill picks the installs up */ }
         }
       },
 
@@ -2215,6 +2236,32 @@ export function AppProvider({ children }) {
           patch: { understand: { ...now.understand, article: { key, seq, loading: false, found } } },
         });
       },
+      /** K1 (adversarial round 11): the user reverted the box to the stored
+       * text — the failed write's retry payload is ABANDONED. Remove the
+       * ledger entry (ref first, mirror second) and advance the revision so
+       * a stale retry can never append the abandoned text. */
+      dismissNoteError: (chapter, verseKey) => {
+        const now = stateRef.current;
+        const repoPath = now.project?.repoPath;
+        const book = now.book;
+        if (!repoPath || !book) return;
+        const errKey = `${repoPath}|${book}|${chapter}:${verseKey}`;
+        if (!(errKey in noteSaveErrorsRef.current)) return;
+        noteRevisionsRef.current.set(errKey, (noteRevisionsRef.current.get(errKey) ?? 0) + 1);
+        const remaining = { ...noteSaveErrorsRef.current };
+        delete remaining[errKey];
+        noteSaveErrorsRef.current = remaining;
+        dispatch({
+          type: 'set',
+          patch: {
+            noteSaveErrors: remaining,
+            ...(now.understand?.saveError && Object.keys(remaining).length === 0
+              ? { understand: { ...now.understand, saveError: null } }
+              : {}),
+          },
+        });
+      },
+
       /** A comprehension box holds text that differs from its displayed note
        * (A4): the unload guard warns on it, exactly like a dirty verse. A ref,
        * not state — this fires on every keystroke. Keyed per target (C2), so

@@ -116,11 +116,22 @@ function ComprehensionBox({ book, chapter, unit }) {
   // the old text later; instead the box restores the saved note, says why,
   // and reconciles its dirty mark.
   const [clearRefused, setClearRefused] = React.useState(false);
+  // The save target's coordinates — also the failure-ledger identity (K1).
+  const target = unit.project
+    ? { chapter: unit.project.chapter, verse: unit.project.verse }
+    : { chapter, verse: unit.head };
   const save = () => {
-    if (text.trim() === stored.trim()) return;
+    if (text.trim() === stored.trim()) {
+      // Reverted to the stored text: an earlier FAILED write for this target
+      // is abandoned — dismiss it, or navigation stays blocked and Retry
+      // would append the abandoned draft (K1).
+      actions.dismissNoteError(target.chapter, target.verse);
+      return;
+    }
     if (text.trim() === '' && stored.trim() !== '') {
       setText(stored);
       actions.setNoteDirty(dirtyKey, false);
+      actions.dismissNoteError(target.chapter, target.verse);
       setClearRefused(true);
       return;
     }
@@ -138,8 +149,11 @@ function ComprehensionBox({ book, chapter, unit }) {
         onChange={(e) => {
           setText(e.target.value);
           setClearRefused(false);
+          const diverged = e.target.value.trim() !== stored.trim();
           // Keyed per fully-scoped target (C2/F2): this box's flag, nobody else's.
-          actions.setNoteDirty(dirtyKey, e.target.value.trim() !== stored.trim());
+          actions.setNoteDirty(dirtyKey, diverged);
+          // Typing back to the stored text abandons a failed draft (K1).
+          if (!diverged) actions.dismissNoteError(target.chapter, target.verse);
         }}
         onBlur={save}
         placeholder={t('understand.commentsPlaceholder')} />

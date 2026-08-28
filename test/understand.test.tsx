@@ -13,6 +13,7 @@ const READ_SIDE = new Set([
   'loadUnderstand', 'setHelpsTab', 'setSourceTab', 'toggleRail', 'setChapter',
   'loadHelpArticle', 'closeHelpArticle', 'openBook', 'go',
   'setNoteDirty', // an unload-guard flag on a ref — never a project write
+  'dismissNoteError', // removes a UI failure-ledger entry — never a project write
 ]);
 const calls: Array<{ name: string; args: unknown[] }> = [];
 const actionsProxy = new Proxy({}, {
@@ -383,6 +384,46 @@ describe('2026-08-27 adversarial round 10 regression', () => {
       state.understand = savedU;
       state.chapter = savedCh;
     }
+  });
+});
+
+describe('2026-08-27 adversarial round 11 regressions', () => {
+  beforeEach(() => { cleanup(); calls.length = 0; });
+
+  it('reverting a draft to the stored text dismisses the failed write for that exact target (K1)', () => {
+    const saved = state.understand.comprehension;
+    state.understand.comprehension = { '1:1': { text: 'the stored note', ts: '2026-08-27T05:00:00.000Z|0000|a' } };
+    try {
+      render(<Understand />);
+      const box = screen.getAllByPlaceholderText('What does this section mean in your own words?')[0];
+      fireEvent.change(box, { target: { value: 'a failing edit' } });
+      fireEvent.change(box, { target: { value: 'the stored note' } }); // revert by typing
+      const dismissals = calls.filter((c) => c.name === 'dismissNoteError');
+      expect(dismissals.length).toBe(1);
+      expect(dismissals[0].args).toEqual([1, '1']);
+      fireEvent.blur(box); // and the equal-text blur dismisses too, writes nothing
+      expect(writes()).toEqual([]);
+    } finally {
+      state.understand.comprehension = saved;
+    }
+  });
+
+  it('the merge of downloaded optional pins never replaces an existing pin and targets only the matching rung (K2)', async () => {
+    const { mergeOptionalPins } = await import('../src/data/installed');
+    const pin = (repo: string) => ({ repoPath: `git.door43.org/es-419_gl/${repo}`, sha: 'f'.repeat(40), flavor: 'x' });
+    const resources = {
+      languageSets: {
+        primary: { gatewayLanguage: { languageId: 'es-419', owner: 'es-419_gl' }, translationNotes: pin('es-419_tn') },
+        fallback: { gatewayLanguage: { languageId: 'en', owner: 'unfoldingWord' }, translationNotes: pin('en_tn') },
+      },
+    };
+    const installed = { a: pin('es-419_tn'), b: pin('es-419_tw'), c: pin('es-419_ta'), d: pin('es-419_tq'), e: pin('es-419_gst') };
+    const merged = mergeOptionalPins(resources as never, { id: 'es-419', org: 'es-419_gl' }, installed as never);
+    expect(merged?.languageSets.primary.translationQuestions?.repoPath).toContain('es-419_tq');
+    expect(merged?.languageSets.primary.simplifiedText?.repoPath).toContain('es-419_gst');
+    expect(merged?.languageSets.fallback.translationQuestions).toBeUndefined(); // non-matching rung untouched
+    // idempotent: nothing new to add -> null (no write)
+    expect(mergeOptionalPins(merged as never, { id: 'es-419', org: 'es-419_gl' }, installed as never)).toBeNull();
   });
 });
 
