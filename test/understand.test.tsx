@@ -425,6 +425,20 @@ describe('2026-08-27 adversarial round 11 regressions', () => {
     // idempotent: nothing new to add -> null (no write)
     expect(mergeOptionalPins(merged as never, { id: 'es-419', org: 'es-419_gl' }, installed as never)).toBeNull();
   });
+
+  it('optional pins adopt WITHOUT the required suite being local: a tq-only download reaches the matching rung (adversarial round 12, L2)', async () => {
+    const { mergeOptionalPins } = await import('../src/data/installed');
+    const pin = (repo: string) => ({ repoPath: `git.door43.org/es-419_gl/${repo}`, sha: 'f'.repeat(40), flavor: 'x' });
+    const resources = {
+      languageSets: {
+        primary: { gatewayLanguage: { languageId: 'es-419', owner: 'es-419_gl' }, translationNotes: pin('es-419_tn') },
+      },
+    };
+    // ONLY the optional repo is installed — no tn/tw/ta on this machine.
+    const installed = { d: pin('es-419_tq') };
+    const merged = mergeOptionalPins(resources as unknown as Parameters<typeof mergeOptionalPins>[0], { id: 'es-419', org: 'es-419_gl' }, installed as never);
+    expect(merged?.languageSets?.primary.translationQuestions?.repoPath).toContain('es-419_tq');
+  });
 });
 
 describe('#106 — the persistence shape: §8.5 note.add seals and projects', () => {

@@ -2275,7 +2275,17 @@ export function AppProvider({ children }) {
         dispatch({ type: 'set', patch: { understand: { ...now.understand, article: null } } });
       },
 
-      setChapter: (chapter) => dispatch({ type: 'set', patch: { chapter, editing: null } }),
+      setChapter: async (chapter) => {
+        // L1 (adversarial round 12): a chapter click is a navigation for the
+        // comprehension boxes too — the click blurs a box and starts its
+        // save, then the identity change hides the draft. Drain the write
+        // and stay put on a failure or unreconciled text, like every other
+        // transition (FR-32).
+        await Promise.allSettled([...pendingNotesRef.current]);
+        if (Object.keys(noteSaveErrorsRef.current).length > 0) return;
+        if (noteDirtyRef.current.size > 0) return;
+        dispatch({ type: 'set', patch: { chapter, editing: null } });
+      },
       setSourceTab: (sourceTab) => dispatch({ type: 'set', patch: { sourceTab } }),
       toggleRail: () => dispatch({ type: 'toggle', key: 'rail' }),
       toggleHelps: () => dispatch({ type: 'toggle', key: 'helps' }),

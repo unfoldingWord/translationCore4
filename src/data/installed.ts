@@ -252,8 +252,22 @@ export const mergeOptionalPins = <T extends { languageSets?: Record<string, Lang
   gateway: { id: string; org: string },
   installed: InstalledMap,
 ): T | null => {
-  const built = languageSetFromInstalled(installed, gateway);
-  if (!built || (!built.translationQuestions && !built.simplifiedText)) return null;
+  // The optional repos are discovered INDEPENDENTLY of the required suite
+  // (L2, adversarial round 12): a user may download only tq and/or the
+  // simplified text for a project whose language set is already pinned —
+  // requiring tn/tw/ta to be local (languageSetFromInstalled's completeness
+  // rule) would silently drop exactly the resources just fetched.
+  const org = gateway.org.toLowerCase();
+  const ofOrg = Object.values(installed)
+    .filter((p) => p.repoPath.toLowerCase().includes(`/${org}/`))
+    .filter((p) => !!p.sha && !!p.flavor);
+  const byName = (name: string) =>
+    ofOrg.find((p) => (p.repoPath.split('/').pop() ?? '').toLowerCase() === name.toLowerCase());
+  const built = {
+    translationQuestions: byName(`${gateway.id}_tq`),
+    simplifiedText: byName(`${gateway.id}_ust`) ?? byName(`${gateway.id}_gst`),
+  };
+  if (!built.translationQuestions && !built.simplifiedText) return null;
   let changed = false;
   const languageSets: Record<string, LanguageSet> = {};
   for (const [rung, set] of Object.entries(resources.languageSets ?? {})) {
