@@ -112,8 +112,13 @@ describe('M4 — upsertDecision matches identity key AND quoteString together', 
     // delete it on EVERY exit — a rejected create can leave a git-initialized
     // debris repo (PLATFORM-NOTES #28), and a rejected open leaves the created
     // repo behind (#124 review round 2). createProject returns this same path.
-    const abbr = `m4scratch${Date.now().toString(36)}`;
+    // deleteRepo's contract (serverApi.ts) requires proof the path did not
+    // exist before our attempt (#124 round 3): the name carries a random nonce
+    // on top of the timestamp, and positive absence is asserted before create.
+    const abbr = `m4scratch${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
     const scratchPath = `_local_/_local_/${abbr}`;
+    const preexisting = await store.api.listLocalRepos();
+    expect(preexisting.some((r) => r.includes(abbr))).toBe(false);
     const mk = (quote: string, comment: string) => ({
       contextId: {
         checkId: 'm4regress',

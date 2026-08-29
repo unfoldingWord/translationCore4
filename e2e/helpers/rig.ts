@@ -192,38 +192,53 @@ export function writeProjectPins(
     tw: { repoPath: string; version: string; sha?: string; flavor: string };
     ta: { repoPath: string; version: string; sha?: string; flavor: string };
   },
-  opts: { dropResources?: boolean } = {},
+  opts: { dropOriginalLanguage?: boolean } = {},
 ): void {
-  const set = {
+  const newSet = (): Record<string, unknown> => ({
     gatewayLanguage: { languageId: 'en', owner: 'unfoldingWord' },
     translationNotes: pins.tn,
     translationWordsLinks: pins.tw, // D34: one repo serves both tW slots
     translationWords: pins.tw,
     translationAcademy: pins.ta,
-  };
+  });
+  const dir = path.join(rigRepo(repo), 'ingredients', 'checking');
+  const p = path.join(dir, 'resources.json');
+  const existing: Record<string, unknown> = fs.existsSync(p)
+    ? (JSON.parse(fs.readFileSync(p, 'utf8')) as Record<string, unknown>)
+    : {};
+  // This helper rewrites the WHOLE document, so everything it does not own is
+  // carried forward (issue #123 + the #124 adversarial review, rounds 1–3):
+  //  - top-level fields: extraScripture (the ULT/UST source-pane pins) and the
+  //    resources groups (originalLanguage/lexicon);
+  //  - per-set OPTIONAL slots (§5.3/D64: translationQuestions, simplifiedText),
+  //    carried only when the existing set's gatewayLanguage identity equals
+  //    the one being written — slots of a DIFFERENT gateway never leak in.
+  // A test that NEEDS the original-language pins absent says so explicitly
+  // via dropOriginalLanguage (the independent lexicon group is kept).
+  const languageSets: Record<string, Record<string, unknown>> = {};
+  const existingSets = (existing.languageSets ?? {}) as Record<string, Record<string, unknown>>;
+  for (const setName of ['primary', 'fallback']) {
+    const set = newSet();
+    const old = existingSets[setName];
+    if (old && JSON.stringify(old.gatewayLanguage) === JSON.stringify(set.gatewayLanguage)) {
+      for (const [slot, entry] of Object.entries(old)) if (!(slot in set)) set[slot] = entry;
+    }
+    languageSets[setName] = set;
+  }
   // The §8.8 seed round-trip requires the CHECKPOINT PROJECTION form: empty
   // groups and an empty extraScripture are OMITTED by projectResources, so a
   // hand-written file that spells them out refuses to seed (D56). Write what
   // the app itself would checkpoint.
-  const file: Record<string, unknown> = {
-    schemaVersion: 2,
-    languageSets: { primary: set, fallback: set },
-  };
-  const dir = path.join(rigRepo(repo), 'ingredients', 'checking');
-  // This helper rewrites the WHOLE document, so every top-level field it does
-  // not own is carried forward: extraScripture (the ULT/UST source-pane pins)
-  // and the resources groups (originalLanguage/lexicon) were both silently
-  // dropped, leaving the shared project contaminated after a journey run
-  // (issue #123 + the #124 adversarial review). A test that NEEDS the
-  // resources groups absent says so explicitly via dropResources.
-  const p = path.join(dir, 'resources.json');
-  if (fs.existsSync(p)) {
-    const existing = JSON.parse(fs.readFileSync(p, 'utf8')) as Record<string, unknown>;
-    for (const [key, value] of Object.entries(existing)) {
-      if (key === 'schemaVersion' || key === 'languageSets') continue;
-      if (key === 'resources' && opts.dropResources) continue;
-      file[key] = value;
+  const file: Record<string, unknown> = { schemaVersion: 2, languageSets };
+  for (const [key, value] of Object.entries(existing)) {
+    if (key === 'schemaVersion' || key === 'languageSets') continue;
+    if (key === 'resources' && opts.dropOriginalLanguage) {
+      const groups = { ...(value as Record<string, unknown>) };
+      delete groups.originalLanguage;
+      if (Object.keys(groups).length) file.resources = groups; // D56: omit empty
+      continue;
     }
+    file[key] = value;
   }
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(p, `${JSON.stringify(file, null, 2)}\n`);

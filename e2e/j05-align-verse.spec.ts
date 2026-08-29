@@ -207,9 +207,9 @@ test.describe('J5 — a translator aligns a verse', () => {
     'without an original-language text pinned, alignment says so instead of failing (C2.9 pattern)',
     { tag: ['@inc2', '@J5'] },
     async ({ page }) => {
-      // This spec NEEDS the originalLanguage pins absent — drop the seed's
-      // resources groups explicitly (the helper now carries them forward).
-      writeProjectPins(SEEDED_PROJECT, PINS(), { dropResources: true });
+      // This spec NEEDS the originalLanguage pins absent — drop exactly that
+      // group (the helper carries everything else forward, lexicon included).
+      writeProjectPins(SEEDED_PROJECT, PINS(), { dropOriginalLanguage: true });
       await page.goto('/');
       await page
         .getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`)
@@ -228,5 +228,12 @@ test.describe('J5 — a translator aligns a verse', () => {
 // Issue #62 teardown: after this journey's mutations, every journaled local
 // project must be a verified byte-for-byte materialization of its journal.
 test.afterAll(async () => {
-  await verifyAllJournaledProjects();
+  try {
+    await verifyAllJournaledProjects();
+  } finally {
+    // Leave the shared fixture as we found it (#124 review round 3): this
+    // file hand-mutates the seeded project's pins, and without the restore a
+    // targeted or failed run leaves the rig stripped for the next user.
+    resetSeededChecking();
+  }
 });

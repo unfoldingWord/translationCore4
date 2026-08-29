@@ -61,23 +61,32 @@ test.beforeEach(() => {
 
 test.describe('J4 — a checker works a book', () => {
   test(
-    'writeProjectPins carries the seed document forward: resources groups and extraScripture survive a pin rewrite (#123/#124 review)',
+    'writeProjectPins carries the seed document forward: resources groups, extraScripture, and same-gateway optional slots survive a pin rewrite (#123/#124 review)',
     { tag: ['@inc2', '@J4'] },
     async () => {
+      const p = path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'resources.json');
+      const seed = JSON.parse(fs.readFileSync(p, 'utf8'));
       writeProjectPins(SEEDED_PROJECT, PINS());
-      const file = JSON.parse(
-        fs.readFileSync(
-          path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'resources.json'),
-          'utf8',
-        ),
-      ) as {
-        resources?: Record<string, unknown>;
-        extraScripture?: Array<{ id: string }>;
-      };
+      const file = JSON.parse(fs.readFileSync(p, 'utf8'));
       expect(Object.keys(file.resources ?? {})).toEqual(
         expect.arrayContaining(['originalLanguage', 'lexicon']),
       );
-      expect((file.extraScripture ?? []).map((e) => e.id)).toEqual(['ult', 'ust']);
+      expect((file.extraScripture ?? []).map((e: { id: string }) => e.id)).toEqual(['ult', 'ust']);
+      // §5.3/D64 optional slots: the seed's fallback set is the SAME gateway
+      // (en/unfoldingWord) as the one written, so its extra slots carry over…
+      expect(file.languageSets.fallback.simplifiedText).toEqual(
+        seed.languageSets.fallback.simplifiedText,
+      );
+      expect(file.languageSets.fallback.translationQuestions).toEqual(
+        seed.languageSets.fallback.translationQuestions,
+      );
+      // …while the seed's primary (es-419_gl) is a DIFFERENT gateway identity:
+      // it is replaced wholesale, and none of its slots leak into the new set.
+      expect(file.languageSets.primary.gatewayLanguage).toEqual({
+        languageId: 'en',
+        owner: 'unfoldingWord',
+      });
+      expect(file.languageSets.primary.translationNotes.repoPath).not.toContain('es-419');
     },
   );
 
@@ -476,5 +485,12 @@ test.describe('J4 — a checker works a book', () => {
 // Issue #62 teardown: after this journey's mutations, every journaled local
 // project must be a verified byte-for-byte materialization of its journal.
 test.afterAll(async () => {
-  await verifyAllJournaledProjects();
+  try {
+    await verifyAllJournaledProjects();
+  } finally {
+    // Leave the shared fixture as we found it (#124 review round 3): this
+    // file hand-mutates the seeded project's pins, and without the restore a
+    // targeted or failed run leaves the rig stripped for the next user.
+    resetSeededChecking();
+  }
 });
