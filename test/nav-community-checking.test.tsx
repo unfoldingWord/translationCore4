@@ -114,7 +114,11 @@ describe('#108 — Publish moves into Check as Community Checking', () => {
     render(<App />);
     const readyCard = screen.getByTestId('preflight-translationWords');
     // A checking resource is local in the normal flow, so saying so is noise.
-    expect(readyCard.textContent).toContain('Check every key term');
+    expect(readyCard.textContent).toContain('Check the key terms');
+    // The description must not promise completeness the derivation does not
+    // deliver: tN skips rows without a SupportReference (derive.ts:208; 49 of
+    // 206 rows in en_tn Titus v86) and both tools derive within project scope.
+    expect(readyCard.textContent).not.toMatch(/every key term|every note/);
     expect(readyCard.textContent).not.toContain('Ready');
     expect(readyCard.textContent).not.toContain('on this computer');
     expect(readyCard.textContent).not.toContain('git.door43.org');
