@@ -13,6 +13,7 @@ import {
   SEEDED_PROJECT,
   pinForSideloaded,
   writeProjectPins,
+  readProjectPins,
   resetSeededChecking,
   sideloadedRepo,
   listSideloaded,
@@ -55,6 +56,25 @@ test.describe('J3 — a facilitator fetches the project’s resources', () => {
         expect(pin.version).not.toBe('master');
         expect(pin.sha).toMatch(/^[0-9a-f]{40}$/);
         expect(pin.repoPath).toMatch(/^git\.door43\.org\//);
+      }
+      // The version above is an argument this helper echoes back, so it proves
+      // nothing on its own. Locality is an exact (repoPath + sha) match
+      // (D58/D59): a cache holding a DIFFERENT commit than the project pins
+      // would leave isLocal() false, and the Understand helps would read
+      // fetch/unavailable instead of showing content. Compare the two
+      // independent sources — the resource's own metadata against the
+      // project's §5.3 pin file.
+      const fallback = readProjectPins(SEEDED_PROJECT).languageSets.fallback as Record<
+        string,
+        { repoPath: string; sha: string } | undefined
+      >;
+      for (const [slot, repo] of [
+        ['translationQuestions', 'en_tq'],
+        ['simplifiedText', 'en_ust'],
+      ] as const) {
+        const pinned = fallback[slot];
+        expect(pinned, `the seeded project must pin fallback.${slot} (D64)`).toBeTruthy();
+        expect(pinForSideloaded(repo, 'v89').sha, `${repo} cache vs pinned sha`).toBe(pinned!.sha);
       }
     },
   );
