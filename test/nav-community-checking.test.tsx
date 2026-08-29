@@ -123,6 +123,28 @@ describe('#108 — Publish moves into Check as Community Checking', () => {
     expect(problemCard.textContent).toContain('No resources pinned');
   });
 
+  it('a WARNED FALLBACK still names the resource the checks derive from, even though it is ready (D41/B20)', () => {
+    // The substitute is local, so the state is 'ready' — but suppressing the
+    // citation here would leave the user checking against English with only
+    // the MISSING primary named. Both identities have to be visible.
+    state = {
+      ...baseState,
+      preflight: {
+        translationWords: { state: 'unpinned' },
+        translationNotes: {
+          state: 'ready',
+          resolution: { pin: { repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v89' }, rung: 'fallback', usedFallback: true },
+          unavailablePrimary: { repoPath: 'git.door43.org/es-419_gl/es-419_tn', version: 'v66' },
+        },
+      },
+    } as never;
+    render(<App />);
+    const card = screen.getByTestId('preflight-translationNotes');
+    expect(card.textContent).toContain('git.door43.org/es-419_gl/es-419_tn'); // missing primary
+    expect(card.textContent).toContain('git.door43.org/unfoldingWord/en_tn'); // what is actually used
+    expect(card.textContent).toContain('English fallback');
+  });
+
   it('a failed comprehension write surfaces on the GLOBAL save indicator with its own retry (B1/D65)', () => {
     state = { ...baseState, noteSaveState: 'error' } as never;
     render(<App />);

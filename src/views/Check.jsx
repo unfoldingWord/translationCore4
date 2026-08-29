@@ -61,7 +61,11 @@ const TONE = {
  * staged-complexity gate. */
 function ToolNeeds({ pre }) {
   const { actions } = useApp();
-  if (pre.state === 'ready') return null;
+  // A warned fallback resolves to state 'ready' (the substitute IS local) while
+  // `unavailablePrimary` names the pin that is missing. The warning names what
+  // is absent; only the citation names what the checks will actually derive
+  // from, so this is the one ready state that must still print it.
+  if (pre.state === 'ready' && !pre.unavailablePrimary) return null;
   const pin = pre.resolution?.pin || pre.needs;
   const rung = pre.resolution?.rung;
 
