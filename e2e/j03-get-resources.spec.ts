@@ -45,7 +45,10 @@ test.describe('J3 — a facilitator fetches the project’s resources', () => {
     async () => {
       // Every installed resource carries its own declared commit revision, and
       // the pin names a release tag (vNN) — never "master" or a branch.
-      for (const name of ['en_tn', 'en_tw', 'en_ta']) {
+      // en_tq and en_ust are part of the shipped English package too: D64/#110
+      // made `translationQuestions` and `simplifiedText` §5.3 slots, and the
+      // package the app ships pins both.
+      for (const name of ['en_tn', 'en_tw', 'en_ta', 'en_tq', 'en_ust']) {
         expect(listSideloaded()).toContain(name);
         const pin = pinForSideloaded(name, 'v89');
         expect(pin.version).toMatch(/^v[\d.]+$/);
