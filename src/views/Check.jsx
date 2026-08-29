@@ -39,32 +39,34 @@ function DroppedNote({ dropped, style }) {
   );
 }
 
+// Exception-based (owner ruling 2026-08-29, issue #108): a checking resource
+// is local in the normal flow, so "Ready / the pinned resource is on this
+// computer" states the obvious and spends the card's best space doing it. A
+// ready card is therefore a PLAIN card carrying what the tool does; the badge,
+// the state explanation and the resource citation appear only when something
+// is actually wrong. The citation still travels with the open session, which
+// prints it in the tool header.
 const TONE = {
-  ready: { bg: 'var(--tc-valid-surface)', border: 'rgba(60,143,92,.35)', fg: 'var(--tc-valid-strong)' },
+  ready: { bg: '#fff', border: 'var(--border)', fg: 'var(--tc-valid-strong)' },
   fetch: { bg: 'var(--surface-accent-soft)', border: 'rgba(49,173,227,.4)', fg: 'var(--tc-suggest-fg)' },
   unavailable: { bg: 'var(--surface-warm)', border: 'rgba(229,157,51,.4)', fg: 'var(--tc-warn-text)' },
   unpinned: { bg: 'var(--surface-app)', border: 'var(--border-input)', fg: 'var(--text-secondary)' },
   'not-covered': { bg: 'var(--surface-app)', border: 'var(--border-input)', fg: 'var(--text-secondary)' },
 };
 
-function ToolCard({ tool, pre, book }) {
+/** The not-ready half of a tool card: which resource the tool wants, and the
+ * one action that fixes it. A ready tool renders nothing here — its resource
+ * is local, which is the normal case and not worth saying (owner ruling
+ * 2026-08-29, #108). Kept out of ToolCard so that component stays inside the
+ * staged-complexity gate. */
+function ToolNeeds({ pre }) {
   const { actions } = useApp();
-  const tone = TONE[pre.state] ?? TONE.unpinned;
-  const rung = pre.resolution?.rung;
+  if (pre.state === 'ready') return null;
   const pin = pre.resolution?.pin || pre.needs;
+  const rung = pre.resolution?.rung;
 
   return (
-    <div data-testid={`preflight-${tool}`} data-state={pre.state}
-      style={{ border: `var(--stroke) solid ${tone.border}`, background: tone.bg, borderRadius: 'var(--radius-lg)', padding: '16px 18px', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 }}>
-        <span style={{ fontSize: 'var(--fs-ui-md)', letterSpacing: 'var(--track-14)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)' }}>{t(`check.tool.${tool}`)}</span>
-        <span style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-heavy)', letterSpacing: '.06em', textTransform: 'uppercase', color: tone.fg }}>
-          {t(`check.state.${pre.state}`)}
-        </span>
-      </div>
-      <p style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', color: 'var(--text-secondary)', lineHeight: 'var(--lh-body)', margin: '0 0 10px', flex: 1 }}>
-        {t(`check.explain.${pre.state}`, { book: bookName(book) })}
-      </p>
+    <>
       {pin && (
         <p style={{ fontSize: 'var(--fs-meta)', color: 'var(--text-tertiary)', ...mono, margin: '0 0 10px' }}>
           {pin.repoPath} · {pin.version}
@@ -80,6 +82,30 @@ function ToolCard({ tool, pre, book }) {
       {(pre.state === 'unpinned' || pre.state === 'not-covered') && (
         <Button size="sm" variant="secondary" onClick={actions.openSources} style={{ color: 'var(--uw-ocean)' }}>{t('check.fix.getResources')}</Button>
       )}
+    </>
+  );
+}
+
+function ToolCard({ tool, pre, book }) {
+  const { actions } = useApp();
+  const tone = TONE[pre.state] ?? TONE.unpinned;
+  const ready = pre.state === 'ready';
+
+  return (
+    <div data-testid={`preflight-${tool}`} data-state={pre.state}
+      style={{ border: `var(--stroke) solid ${tone.border}`, background: tone.bg, borderRadius: 'var(--radius-lg)', padding: '16px 18px', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 }}>
+        <span style={{ fontSize: 'var(--fs-ui-md)', letterSpacing: 'var(--track-14)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)' }}>{t(`check.tool.${tool}`)}</span>
+        {!ready && (
+          <span style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-heavy)', letterSpacing: '.06em', textTransform: 'uppercase', color: tone.fg }}>
+            {t(`check.state.${pre.state}`)}
+          </span>
+        )}
+      </div>
+      <p style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', color: 'var(--text-secondary)', lineHeight: 'var(--lh-body)', margin: '0 0 10px', flex: 1 }}>
+        {ready ? t(`check.desc.${tool}`) : t(`check.explain.${pre.state}`, { book: bookName(book) })}
+      </p>
+      <ToolNeeds pre={pre} />
       {/* B20 warned fallback (D41): the resolver opened the installed fallback
         * because the pinned PRIMARY is not on this computer. That is not silent —
         * say which primary is missing and offer to download it. The card still

@@ -103,6 +103,26 @@ describe('#108 — Publish moves into Check as Community Checking', () => {
     expect([...parents][0]?.style.display).toBe('grid');
   });
 
+  it('a READY tool card says what the tool does — no state badge, no resource citation (owner ruling, #108)', () => {
+    state = {
+      ...baseState,
+      preflight: {
+        translationWords: { state: 'ready', resolution: { pin: { repoPath: 'git.door43.org/es-419_gl/es-419_tw', version: 'v37' }, rung: 'primary' } },
+        translationNotes: { state: 'unpinned' },
+      },
+    } as never;
+    render(<App />);
+    const readyCard = screen.getByTestId('preflight-translationWords');
+    // A checking resource is local in the normal flow, so saying so is noise.
+    expect(readyCard.textContent).toContain('Check every key term');
+    expect(readyCard.textContent).not.toContain('Ready');
+    expect(readyCard.textContent).not.toContain('on this computer');
+    expect(readyCard.textContent).not.toContain('git.door43.org');
+    // …but a card that needs something still states it, with its citation.
+    const problemCard = screen.getByTestId('preflight-translationNotes');
+    expect(problemCard.textContent).toContain('No resources pinned');
+  });
+
   it('a failed comprehension write surfaces on the GLOBAL save indicator with its own retry (B1/D65)', () => {
     state = { ...baseState, noteSaveState: 'error' } as never;
     render(<App />);

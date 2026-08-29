@@ -154,6 +154,8 @@
   "check.checking": "Checking what is available…",
   "check.tool.translationWords": "Translation Words",
   "check.tool.translationNotes": "Translation Notes",
+  "check.desc.translationWords": "Check every key term in the book against its definition.",
+  "check.desc.translationNotes": "Work through every note the source text carries for this book.",
   "check.state.ready": "Ready",
   "check.state.fetch": "Needs downloading",
   "check.state.unavailable": "Unavailable offline",
