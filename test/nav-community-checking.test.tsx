@@ -87,6 +87,22 @@ describe('#108 — Publish moves into Check as Community Checking', () => {
     expect(go).toHaveBeenCalledWith('publish');
   });
 
+  it('every checking tool is a PEER in one card grid — the two derived tools, Align and Community Checking', () => {
+    render(<App />);
+    // The mockup lays the picker out as one responsive grid (App.jsx L445), so
+    // the cards must be siblings in a single container. They used to be three
+    // stacked blocks, which no arrangement of that container could line up.
+    const cards = [
+      screen.getByTestId('preflight-translationWords'),
+      screen.getByTestId('preflight-translationNotes'),
+      screen.getByTestId('align-card'),
+      screen.getByTestId('community-checking-card'),
+    ];
+    const parents = new Set(cards.map((c) => c.parentElement));
+    expect(parents.size).toBe(1);
+    expect([...parents][0]?.style.display).toBe('grid');
+  });
+
   it('a failed comprehension write surfaces on the GLOBAL save indicator with its own retry (B1/D65)', () => {
     state = { ...baseState, noteSaveState: 'error' } as never;
     render(<App />);
