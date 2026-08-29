@@ -108,14 +108,12 @@ describe('M4 — upsertDecision matches identity key AND quoteString together', 
     const { HttpStore } = await import('../src/data/httpStore');
     const { isNotFoundError } = await import('../src/data/serverApi');
     const store = new HttpStore({ baseUrl: 'http://127.0.0.1:19998/api' });
-    const { repoPath } = await store.createProject({
-      content_name: 'M4 scratch',
-      content_abbr: `m4scratch${Date.now().toString(36)}`,
-      content_language_code: 'en',
-      add_book: false,
-      versification: 'eng',
-    });
-    await store.open(repoPath);
+    // The scratch path is computed BEFORE creation so the cleanup scope can
+    // delete it on EVERY exit — a rejected create can leave a git-initialized
+    // debris repo (PLATFORM-NOTES #28), and a rejected open leaves the created
+    // repo behind (#124 review round 2). createProject returns this same path.
+    const abbr = `m4scratch${Date.now().toString(36)}`;
+    const scratchPath = `_local_/_local_/${abbr}`;
     const mk = (quote: string, comment: string) => ({
       contextId: {
         checkId: 'm4regress',
@@ -135,7 +133,21 @@ describe('M4 — upsertDecision matches identity key AND quoteString together', 
       verseEdits: false,
       invalidated: false,
     });
+    // Cleanup is part of the contract (#124 review): the finally sweep runs on
+    // EVERY exit — including a rejected create or open — without masking the
+    // primary error; a cleanup failure other than a confirmed not-found fails
+    // the test on the success path.
+    let cleanupError: unknown = null;
     try {
+      const { repoPath } = await store.createProject({
+        content_name: 'M4 scratch',
+        content_abbr: abbr,
+        content_language_code: 'en',
+        add_book: false,
+        versification: 'eng',
+      });
+      expect(repoPath).toBe(scratchPath);
+      await store.open(repoPath);
       await store.upsertDecision('translationWords', 'TIT', mk('old', 'v1'));
       await store.upsertDecision('translationWords', 'TIT', mk('new', 'v2'));
       await store.upsertDecision('translationWords', 'TIT', mk('new', 'v3'));
@@ -145,17 +157,15 @@ describe('M4 — upsertDecision matches identity key AND quoteString together', 
       // exactly two records: the orphaned old-quote one and ONE current-quote one
       expect(mine).toHaveLength(2);
       expect(mine.find((d) => d.contextId.quoteString === 'new')?.comments).toBe('v4');
-      // Cleanup is part of the contract: a failed delete (other than a
-      // confirmed not-found) leaves residue on the rig and must FAIL, never
-      // be swallowed (#124 review). It runs here, after the assertions, so a
-      // cleanup failure never masks a primary one.
-      await store.api.deleteRepo(repoPath).catch((error) => {
-        if (!isNotFoundError(error)) throw error;
-      });
     } finally {
-      // Best-effort sweep for the assertion-failure path only.
-      await store.api.deleteRepo(repoPath).catch(() => {});
+      await store.api.deleteRepo(scratchPath).catch((error) => {
+        if (!isNotFoundError(error)) {
+          console.warn(`M4 scratch cleanup failed for ${scratchPath}:`, error);
+          cleanupError = error;
+        }
+      });
     }
+    if (cleanupError) throw cleanupError;
   });
 });
 
