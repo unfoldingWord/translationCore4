@@ -130,3 +130,9 @@ test.describe('J3 — a facilitator fetches the project’s resources', () => {
     },
   );
 });
+
+// Leave the shared fixture as we found it (#124 review round 3): this file
+// hand-mutates the seeded project's pins via writeProjectPins.
+test.afterAll(() => {
+  resetSeededChecking();
+});

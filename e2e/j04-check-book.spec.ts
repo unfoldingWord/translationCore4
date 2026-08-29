@@ -61,6 +61,36 @@ test.beforeEach(() => {
 
 test.describe('J4 — a checker works a book', () => {
   test(
+    'writeProjectPins carries the seed document forward: resources groups, extraScripture, and same-gateway optional slots survive a pin rewrite (#123/#124 review)',
+    { tag: ['@inc2', '@J4'] },
+    async () => {
+      const p = path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'resources.json');
+      const seed = JSON.parse(fs.readFileSync(p, 'utf8'));
+      writeProjectPins(SEEDED_PROJECT, PINS());
+      const file = JSON.parse(fs.readFileSync(p, 'utf8'));
+      expect(Object.keys(file.resources ?? {})).toEqual(
+        expect.arrayContaining(['originalLanguage', 'lexicon']),
+      );
+      expect((file.extraScripture ?? []).map((e: { id: string }) => e.id)).toEqual(['ult', 'ust']);
+      // §5.3/D64 optional slots: the seed's fallback set is the SAME gateway
+      // (en/unfoldingWord) as the one written, so its extra slots carry over…
+      expect(file.languageSets.fallback.simplifiedText).toEqual(
+        seed.languageSets.fallback.simplifiedText,
+      );
+      expect(file.languageSets.fallback.translationQuestions).toEqual(
+        seed.languageSets.fallback.translationQuestions,
+      );
+      // …while the seed's primary (es-419_gl) is a DIFFERENT gateway identity:
+      // it is replaced wholesale, and none of its slots leak into the new set.
+      expect(file.languageSets.primary.gatewayLanguage).toEqual({
+        languageId: 'en',
+        owner: 'unfoldingWord',
+      });
+      expect(file.languageSets.primary.translationNotes.repoPath).not.toContain('es-419');
+    },
+  );
+
+  test(
     'opening a checking session derives the item list from the pinned TSV — the list is never stored (FR-13)',
     { tag: ['@inc2', '@J4'] },
     async ({ page }) => {
@@ -391,7 +421,7 @@ test.describe('J4 — a checker works a book', () => {
         translationWords: tw,
         translationAcademy: ta,
       });
-      const file = {
+      const file: Record<string, unknown> = {
         schemaVersion: 2,
         languageSets: {
           primary: setFor(
@@ -405,8 +435,19 @@ test.describe('J4 — a checker works a book', () => {
         // Projection form only: empty groups are omitted (D56 seedability).
       };
       const dir = path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking');
+      const p = path.join(dir, 'resources.json');
+      // Same carry-forward rule as writeProjectPins (issue #123/#124 review):
+      // a whole-document rewrite keeps every top-level field it does not own
+      // (extraScripture, the resources groups).
+      if (fs.existsSync(p)) {
+        const existing = JSON.parse(fs.readFileSync(p, 'utf8')) as Record<string, unknown>;
+        for (const [key, value] of Object.entries(existing)) {
+          if (key === 'schemaVersion' || key === 'languageSets') continue;
+          file[key] = value;
+        }
+      }
       fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(path.join(dir, 'resources.json'), `${JSON.stringify(file, null, 2)}\n`);
+      fs.writeFileSync(p, `${JSON.stringify(file, null, 2)}\n`);
 
       await openCheck(page);
       // The card is READY (the fallback works) — the fallback never blocks…
@@ -444,5 +485,12 @@ test.describe('J4 — a checker works a book', () => {
 // Issue #62 teardown: after this journey's mutations, every journaled local
 // project must be a verified byte-for-byte materialization of its journal.
 test.afterAll(async () => {
-  await verifyAllJournaledProjects();
+  try {
+    await verifyAllJournaledProjects();
+  } finally {
+    // Leave the shared fixture as we found it (#124 review round 3): this
+    // file hand-mutates the seeded project's pins, and without the restore a
+    // targeted or failed run leaves the rig stripped for the next user.
+    resetSeededChecking();
+  }
 });

@@ -814,6 +814,9 @@ describe('2026-08-28 adversarial round 37 regressions', () => {
       expect(screen.getByTestId('no-source-panes')).toBeTruthy();
       expect(screen.queryByRole('button', { name: 'ULT' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'UST' })).toBeNull();
+      // No panes means nothing is pending: the loading line must not render
+      // beside (and contradict) the no-source-panes callout (issue #123).
+      expect(screen.queryByText(/Loading the passage/)).toBeNull();
     } finally {
       (state as { sourcePanes?: string[] }).sourcePanes = savedPanes;
       state.sources = savedSources;

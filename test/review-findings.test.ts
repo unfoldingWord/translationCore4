@@ -100,9 +100,25 @@ describe('M4 — upsertDecision matches identity key AND quoteString together', 
       console.warn('M4 leg skipped: rig not running');
       return;
     }
+    // A SCRATCH project, never the shared seeded one: these raw-store writes
+    // bypass the journal, so on a journaled project they are exactly the
+    // derived-state divergence the open guard refuses (issue #123, F1).
+    // The name is unique per run (#124 review): a fixed name could collide
+    // with — and the cleanup delete — a real project or a concurrent run.
     const { HttpStore } = await import('../src/data/httpStore');
+    const { isNotFoundError } = await import('../src/data/serverApi');
     const store = new HttpStore({ baseUrl: 'http://127.0.0.1:19998/api' });
-    await store.open('_local_/_local_/sample_burrito');
+    // The scratch path is computed BEFORE creation so the cleanup scope can
+    // delete it on EVERY exit — a rejected create can leave a git-initialized
+    // debris repo (PLATFORM-NOTES #28), and a rejected open leaves the created
+    // repo behind (#124 review round 2). createProject returns this same path.
+    // deleteRepo's contract (serverApi.ts) requires proof the path did not
+    // exist before our attempt (#124 round 3): the name carries a random nonce
+    // on top of the timestamp, and positive absence is asserted before create.
+    const abbr = `m4scratch${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    const scratchPath = `_local_/_local_/${abbr}`;
+    const preexisting = await store.api.listLocalRepos();
+    expect(preexisting.some((r) => r.includes(abbr))).toBe(false);
     const mk = (quote: string, comment: string) => ({
       contextId: {
         checkId: 'm4regress',
@@ -122,15 +138,39 @@ describe('M4 — upsertDecision matches identity key AND quoteString together', 
       verseEdits: false,
       invalidated: false,
     });
-    await store.upsertDecision('translationWords', 'TIT', mk('old', 'v1'));
-    await store.upsertDecision('translationWords', 'TIT', mk('new', 'v2'));
-    await store.upsertDecision('translationWords', 'TIT', mk('new', 'v3'));
-    await store.upsertDecision('translationWords', 'TIT', mk('new', 'v4'));
-    const file = await store.readDecisions('translationWords', 'TIT');
-    const mine = (file?.decisions ?? []).filter((d) => d.contextId.checkId === 'm4regress');
-    // exactly two records: the orphaned old-quote one and ONE current-quote one
-    expect(mine).toHaveLength(2);
-    expect(mine.find((d) => d.contextId.quoteString === 'new')?.comments).toBe('v4');
+    // Cleanup is part of the contract (#124 review): the finally sweep runs on
+    // EVERY exit — including a rejected create or open — without masking the
+    // primary error; a cleanup failure other than a confirmed not-found fails
+    // the test on the success path.
+    let cleanupError: unknown = null;
+    try {
+      const { repoPath } = await store.createProject({
+        content_name: 'M4 scratch',
+        content_abbr: abbr,
+        content_language_code: 'en',
+        add_book: false,
+        versification: 'eng',
+      });
+      expect(repoPath).toBe(scratchPath);
+      await store.open(repoPath);
+      await store.upsertDecision('translationWords', 'TIT', mk('old', 'v1'));
+      await store.upsertDecision('translationWords', 'TIT', mk('new', 'v2'));
+      await store.upsertDecision('translationWords', 'TIT', mk('new', 'v3'));
+      await store.upsertDecision('translationWords', 'TIT', mk('new', 'v4'));
+      const file = await store.readDecisions('translationWords', 'TIT');
+      const mine = (file?.decisions ?? []).filter((d) => d.contextId.checkId === 'm4regress');
+      // exactly two records: the orphaned old-quote one and ONE current-quote one
+      expect(mine).toHaveLength(2);
+      expect(mine.find((d) => d.contextId.quoteString === 'new')?.comments).toBe('v4');
+    } finally {
+      await store.api.deleteRepo(scratchPath).catch((error) => {
+        if (!isNotFoundError(error)) {
+          console.warn(`M4 scratch cleanup failed for ${scratchPath}:`, error);
+          cleanupError = error;
+        }
+      });
+    }
+    if (cleanupError) throw cleanupError;
   });
 });
 

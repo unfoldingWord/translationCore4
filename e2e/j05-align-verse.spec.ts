@@ -27,9 +27,11 @@ function writePinsWithOriginal() {
   writeProjectPins(SEEDED_PROJECT, PINS());
   const p = path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'resources.json');
   const file = JSON.parse(fs.readFileSync(p, 'utf8'));
-  // writeProjectPins writes the projection form, which omits an empty
-  // `resources` group (D56) — create it here with real content.
+  // MERGE the originalLanguage group in — replacing the whole `resources`
+  // object dropped the seed's lexicon group that writeProjectPins carries
+  // forward (#124 review round 2, same unrelated-state loss as issue #123).
   file.resources = {
+    ...(file.resources ?? {}),
     originalLanguage: {
       nt: pinForSideloaded('el-x-koine_ugnt', 'v0.34'),
       ot: { repoPath: 'git.door43.org/unfoldingWord/hbo_uhb', version: 'v2.1.30', sha: '106a441a788d9465846cd427538ea80b8cec6770', flavor: 'scripture/textTranslation' },
@@ -59,6 +61,20 @@ test.beforeEach(() => {
 });
 
 test.describe('J5 — a translator aligns a verse', () => {
+  test(
+    'writePinsWithOriginal merges, never replaces: the seed lexicon group and extraScripture survive (#123/#124 review)',
+    { tag: ['@inc2', '@J5'] },
+    async () => {
+      const p = path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'resources.json');
+      const seed = JSON.parse(fs.readFileSync(p, 'utf8'));
+      writePinsWithOriginal();
+      const after = JSON.parse(fs.readFileSync(p, 'utf8'));
+      expect(after.resources.lexicon).toEqual(seed.resources.lexicon);
+      expect(after.extraScripture).toEqual(seed.extraScripture);
+      expect(Object.keys(after.resources.originalLanguage)).toEqual(['nt', 'ot']);
+    },
+  );
+
   test(
     'the alignment surface loads the stored §5.1 record: word bank + one card per original word (FR-19)',
     { tag: ['@inc2', '@J5'] },
@@ -191,7 +207,9 @@ test.describe('J5 — a translator aligns a verse', () => {
     'without an original-language text pinned, alignment says so instead of failing (C2.9 pattern)',
     { tag: ['@inc2', '@J5'] },
     async ({ page }) => {
-      writeProjectPins(SEEDED_PROJECT, PINS()); // no originalLanguage pins
+      // This spec NEEDS the originalLanguage pins absent — drop exactly that
+      // group (the helper carries everything else forward, lexicon included).
+      writeProjectPins(SEEDED_PROJECT, PINS(), { dropOriginalLanguage: true });
       await page.goto('/');
       await page
         .getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`)
@@ -210,5 +228,12 @@ test.describe('J5 — a translator aligns a verse', () => {
 // Issue #62 teardown: after this journey's mutations, every journaled local
 // project must be a verified byte-for-byte materialization of its journal.
 test.afterAll(async () => {
-  await verifyAllJournaledProjects();
+  try {
+    await verifyAllJournaledProjects();
+  } finally {
+    // Leave the shared fixture as we found it (#124 review round 3): this
+    // file hand-mutates the seeded project's pins, and without the restore a
+    // targeted or failed run leaves the rig stripped for the next user.
+    resetSeededChecking();
+  }
 });
