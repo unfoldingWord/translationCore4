@@ -74,7 +74,15 @@ test.describe('J3 — a facilitator fetches the project’s resources', () => {
       ] as const) {
         const pinned = fallback[slot];
         expect(pinned, `the seeded project must pin fallback.${slot} (D64)`).toBeTruthy();
-        expect(pinForSideloaded(repo, 'v89').sha, `${repo} cache vs pinned sha`).toBe(pinned!.sha);
+        const cached = pinForSideloaded(repo, 'v89');
+        expect(cached.sha, `${repo} cache vs pinned sha`).toBe(pinned!.sha);
+        // BOTH halves of the identity, not just the sha: a cache from a fork or
+        // a renamed org can carry the same commit under a different repoPath,
+        // and isLocal() would still be false. Paths compare case-insensitively,
+        // as samePath does (D37).
+        expect(cached.repoPath.toLowerCase(), `${repo} cache vs pinned repoPath`).toBe(
+          pinned!.repoPath.toLowerCase(),
+        );
       }
     },
   );
