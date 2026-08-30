@@ -312,15 +312,27 @@ function previewBlocks(blocks, limit) {
   const out = [];
   let used = 0;
   for (const b of blocks) {
-    if (used >= limit) break;
     const room = limit - used;
+    if (room <= 0) break;
     if (b.text.length <= room) {
       out.push(b);
       used += b.text.length;
       continue;
     }
-    out.push({ ...b, text: `${b.text.slice(0, room).replace(/\s+\S*$/, '')}…` });
+    const slice = b.text.slice(0, room);
+    // Cut on a word boundary. A budget too small to hold even this block's
+    // FIRST whole word would leave a fragment on screen ("… Prophecy delayed
+    // Acc…", en_tn@v86 JON 4:intro), so stop before the block instead.
+    if (!/\s/.test(slice)) break;
+    out.push({ ...b, text: `${slice.replace(/\s+\S*$/, '')}…` });
     used = limit;
+    break;
+  }
+  // When the loop stopped before a block rather than inside one, the ellipsis
+  // still has to say that something follows.
+  const last = out[out.length - 1];
+  if (last && out.length < blocks.length && !last.text.endsWith('…')) {
+    out[out.length - 1] = { ...last, text: `${last.text}…` };
   }
   return out;
 }

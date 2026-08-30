@@ -780,6 +780,39 @@ describe('#106 — note bodies are markdown, and are rendered as such', () => {
     }
   });
 
+  it('a preview never ends on a word fragment, even when the budget runs out mid-block', () => {
+    // en_tn@v86 JON 4:intro: earlier blocks consume ~397 characters, leaving a
+    // budget too small for the next block's first word — which used to print
+    // "Prophecy delayed Acc…".
+    const jon = fsMod.readFileSync(
+      pathMod.join(HERE, 'fixtures', 'resources', 'en_tn@v86', 'JON.tsv'),
+      'utf8',
+    );
+    const header = jon.split('\n')[0].split('\t');
+    const row = jon.split('\n').find((l) => l.startsWith('4:intro\t'));
+    if (!row) throw new Error('the vendored en_tn JON.tsv has no 4:intro row');
+    const note = row.split('\t')[header.indexOf('Note')];
+    const savedItems = state.understand.notes.items;
+    state.understand.notes = { ...state.understand.notes, items: [noteItem(1, '', note, '')] };
+    try {
+      render(<Understand />);
+      const card = screen.getByTestId('note-expand').closest('[data-tc="surface"]');
+      const shown = card!.textContent ?? '';
+      // The word before the ellipsis must be a WHOLE word of the source, not a
+      // fragment: "Acc…" is a fragment of "According", and `\bAcc\b` does not
+      // appear in the note, while the correct last word does.
+      const tail = shown.match(/(\S+)…/);
+      expect(tail, 'the collapsed preview must end with an ellipsis').toBeTruthy();
+      const lastWord = tail![1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      expect(
+        new RegExp(`\\b${lastWord}\\b`).test(note),
+        `"${tail![1]}" is not a whole word of the note`,
+      ).toBe(true);
+    } finally {
+      state.understand.notes = { ...state.understand.notes, items: savedItems };
+    }
+  });
+
   it('a note with no quoted phrase renders no empty quotation marks', () => {
     const savedItems = state.understand.notes.items;
     // A chapter introduction has NEITHER a quoted phrase nor a groupId to fall
