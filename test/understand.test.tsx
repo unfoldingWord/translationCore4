@@ -734,6 +734,51 @@ describe('2026-08-28 adversarial round 33 regression (F3)', () => {
   });
 });
 
+describe('#106 — note bodies are markdown, and are rendered as such', () => {
+  beforeEach(() => { cleanup(); calls.length = 0; });
+
+  // A real chapter-introduction note: no quoted phrase, and its line breaks
+  // arrive ESCAPED from the TSV, not as real newlines.
+  const INTRO =
+    '# Titus 1: General Notes\\n\\n## Structure and formatting\\n\\n' +
+    '**Paul** presents this letter formally. See [[rc://en/ta/man/translate/figs-abstractnouns]].';
+
+  it('renders the markdown instead of printing it — no ##, no **, no literal escapes', () => {
+    const savedItems = state.understand.notes.items;
+    state.understand.notes = { ...state.understand.notes, items: [noteItem(1, '', INTRO)] };
+    try {
+      render(<Understand />);
+      const card = screen.getByText(/Titus 1: General Notes/).closest('[data-tc="surface"]');
+      expect(card).toBeTruthy();
+      const shown = card!.textContent ?? '';
+      // The heading text survives; the syntax does not.
+      expect(shown).toContain('Titus 1: General Notes');
+      expect(shown).toContain('Structure and formatting');
+      expect(shown).toContain('Paul');
+      expect(shown).not.toContain('#');
+      expect(shown).not.toContain('**');
+      expect(shown).not.toContain('\\n');
+      expect(shown).not.toContain('[[');
+      expect(writes()).toEqual([]); // still read-only
+    } finally {
+      state.understand.notes = { ...state.understand.notes, items: savedItems };
+    }
+  });
+
+  it('a note with no quoted phrase renders no empty quotation marks', () => {
+    const savedItems = state.understand.notes.items;
+    // A chapter introduction has NEITHER a quoted phrase nor a groupId to fall
+    // back to — the title is genuinely empty, which is what printed “”.
+    state.understand.notes = { ...state.understand.notes, items: [noteItem(1, '', INTRO, '')] };
+    try {
+      render(<Understand />);
+      expect(screen.queryByText('“”')).toBeNull();
+    } finally {
+      state.understand.notes = { ...state.understand.notes, items: savedItems };
+    }
+  });
+});
+
 describe('2026-08-28 adversarial round 34 regression (F1 view)', () => {
   beforeEach(() => { cleanup(); calls.length = 0; });
 

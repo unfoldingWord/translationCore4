@@ -301,16 +301,45 @@ const emptyChapter = (
   </p>
 );
 
+/** Note-body markdown, rendered with the same block shapes the Academy article
+ * panel uses above — headings, list items and paragraphs. Inline `<span>`s, not
+ * `<p>`s: the last block has to sit on the same line as the Show more control. */
+function NoteBlocks({ text }) {
+  const blocks = renderArticleBlocks(text);
+  return (
+    <>
+      {blocks.map((b, i) => (
+        <span key={i} style={{
+          display: 'block',
+          fontWeight: b.kind === 'h' ? 'var(--fw-heavy)' : 'var(--fw-regular)',
+          color: b.kind === 'h' ? 'var(--uw-ocean)' : 'inherit',
+          margin: b.kind === 'h' ? '8px 0 2px' : '0 0 6px',
+          paddingInlineStart: b.kind === 'li' ? 14 : 0,
+        }}>{b.kind === 'li' ? `• ${b.text}` : b.text}</span>
+      ))}
+    </>
+  );
+}
+
 /** Round 33: real tN notes exceed 400 characters (the shipped Titus fixture
  * carries 425-940+), and a silent cut removes the guidance's qualifications
  * and examples. Long bodies collapse to a preview with an accessible control
  * that reveals the exact full text. */
 function ExpandableNote({ text }) {
   const [expanded, setExpanded] = React.useState(false);
-  if (text.length <= 400) return text;
+  // TSV note bodies are markdown: `##` headings, `**` emphasis, `[[rc://\u2026]]`
+  // links \u2014 and their line breaks arrive ESCAPED (a literal backslash-n) where
+  // an Academy article carries real ones. They were printed raw. Unescape ONCE,
+  // before measuring and slicing, so a preview cut can never land inside an
+  // escape sequence; the blocks then render through the same renderer the
+  // article panel above uses, so the two can never drift.
+  const full = text.replace(/\\n/g, '\n');
+  const long = full.length > 400;
+  const blocks = <NoteBlocks text={long && !expanded ? `${full.slice(0, 400)}\u2026` : full} />;
+  if (!long) return blocks;
   return (
     <>
-      {expanded ? text : `${text.slice(0, 400)}\u2026 `}
+      {blocks}
       <button type="button" data-testid="note-expand" aria-expanded={expanded}
         onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v); }}
         style={{ border: 0, background: 'transparent', cursor: 'pointer', fontFamily: 'var(--font-ui)', fontWeight: 'var(--fw-bold)', fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--accent)', padding: 0 }}>
