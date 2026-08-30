@@ -301,11 +301,34 @@ const emptyChapter = (
   </p>
 );
 
+const PREVIEW_CHARS = 400;
+
+/** Shorten RENDERED blocks, never the markdown source. A cut taken on the
+ * source lands inside a token — 12 notes in the two vendored Titus fixtures cut
+ * inside `[[rc://…]]` or a `[label](target)` link, leaving a dangling `[1 ` on
+ * screen. After renderArticleBlocks the text carries no syntax at all, so a cut
+ * here can only ever fall between words. */
+function previewBlocks(blocks, limit) {
+  const out = [];
+  let used = 0;
+  for (const b of blocks) {
+    if (used >= limit) break;
+    const room = limit - used;
+    if (b.text.length <= room) {
+      out.push(b);
+      used += b.text.length;
+      continue;
+    }
+    out.push({ ...b, text: `${b.text.slice(0, room).replace(/\s+\S*$/, '')}…` });
+    used = limit;
+  }
+  return out;
+}
+
 /** Note-body markdown, rendered with the same block shapes the Academy article
  * panel uses above — headings, list items and paragraphs. Inline `<span>`s, not
  * `<p>`s: the last block has to sit on the same line as the Show more control. */
-function NoteBlocks({ text }) {
-  const blocks = renderArticleBlocks(text);
+function NoteBlocks({ blocks }) {
   return (
     <>
       {blocks.map((b, i) => (
@@ -329,13 +352,13 @@ function ExpandableNote({ text }) {
   const [expanded, setExpanded] = React.useState(false);
   // TSV note bodies are markdown: `##` headings, `**` emphasis, `[[rc://\u2026]]`
   // links \u2014 and their line breaks arrive ESCAPED (a literal backslash-n) where
-  // an Academy article carries real ones. They were printed raw. Unescape ONCE,
-  // before measuring and slicing, so a preview cut can never land inside an
-  // escape sequence; the blocks then render through the same renderer the
-  // article panel above uses, so the two can never drift.
-  const full = text.replace(/\\n/g, '\n');
-  const long = full.length > 400;
-  const blocks = <NoteBlocks text={long && !expanded ? `${full.slice(0, 400)}\u2026` : full} />;
+  // an Academy article carries real ones. They were printed raw. The blocks
+  // render through the same renderer the article panel above uses, so the two
+  // can never drift.
+  const all = renderArticleBlocks(text.replace(/\\n/g, '\n'));
+  const total = all.reduce((n, b) => n + b.text.length, 0);
+  const long = total > PREVIEW_CHARS;
+  const blocks = <NoteBlocks blocks={long && !expanded ? previewBlocks(all, PREVIEW_CHARS) : all} />;
   if (!long) return blocks;
   return (
     <>
