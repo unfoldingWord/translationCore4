@@ -44,8 +44,11 @@ function VerseEditor({ chapter, verse, dir }) {
           outline: 'none',
           resize: 'vertical',
           fontFamily: 'var(--font-scripture)',
-          fontSize: 'var(--fs-verse-sm)',
-          lineHeight: 'var(--lh-verse-sm)',
+          // The editor types at the SAME size the drafted verse displays at
+          // (--fs-verse-md, the mockup's editing-card size): at -sm the text
+          // shrank the moment a verse was clicked and grew again on save.
+          fontSize: 'var(--fs-verse-md)',
+          lineHeight: 'var(--lh-verse-md)',
           color: 'var(--text-scripture)',
           background: 'transparent',
         }}

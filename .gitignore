@@ -13,3 +13,8 @@ dev-env/server/target/
 
 # graft's local graph cache — regenerable, not committed (run `graft build`).
 /graft/
+
+# Playwright MCP scratch output (console logs, snapshots) from browser-driven
+# design audits — regenerable, and untracked files here retarget a review at
+# the working tree instead of the branch.
+/.playwright-mcp/
