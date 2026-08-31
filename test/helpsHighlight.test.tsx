@@ -157,3 +157,44 @@ describe('F2 — Translate mounts the shared helps panel', () => {
     expect(calls.some((c) => c.name === 'loadUnderstand')).toBe(true);
   });
 });
+
+describe('cross-frame projects (2026-08-31 Codex adversarial finding)', () => {
+  // The reviewer's exact shape: the note references PROJECT 2:2, the source
+  // renders at SOURCE 1:1 through a mapped sourceRefs row. Before the fix the
+  // frames were compared raw — no highlight ever fired and the title fell
+  // back to Greek.
+  const crossFrame = () => {
+    state.chapter = 2;
+    (state.understand as Record<string, unknown>).sourceRefs = {
+      '2': [
+        { c: 1, v: '1', pc: 2, pv: '1' },
+        { c: 1, v: '1', pc: 2, pv: '2' },
+      ],
+    };
+    (state.understand as { notes: { items: unknown[] } }).notes.items = [
+      { ...noteItem, contextId: { ...noteItem.contextId, reference: { bookId: 'tit', chapter: 2, verse: 2 } } },
+    ];
+  };
+
+  it('a help at project 2:2 highlights source 1:1 — in ITS fan-out unit only', () => {
+    crossFrame();
+    const { rerender } = render(<Understand />);
+    // Fan-out: two units both render source 1:1.
+    expect(screen.getAllByText(/servant/).length).toBe(2);
+    fireEvent.mouseEnter(screen.getByText(/A note about the elect/));
+    rerender(<Understand />);
+    // The highlight lands once — in the project-2:2 unit — not in both
+    // renderings of the same source verse.
+    expect(highlightedWords()).toEqual(['chosen', 'of', 'God']);
+    const unit = screen.getByTestId('understand-unit-m2:2');
+    expect(unit.querySelectorAll('[data-testid="source-hl"]').length).toBe(3);
+    expect(screen.getByTestId('understand-unit-m2:1').querySelectorAll('[data-testid="source-hl"]').length).toBe(0);
+  });
+
+  it('the gateway title resolves through the mapped row, not the project coordinates', () => {
+    crossFrame();
+    render(<Understand />);
+    expect(screen.getByText('“chosen of God”')).toBeTruthy();
+    expect(screen.queryByText(/ἐκλεκτῶν/)).toBeNull();
+  });
+});

@@ -326,33 +326,49 @@ function HelpsTab({ tab, u, chapter, actions, cardFocus }) {
  * 2026-08-31): the shipped TSV7 helps carry no GLQuote column, so the gateway
  * text is derived from the active pane's alignment; the original-language
  * quoteString is only the fallback when nothing resolves. */
-const glTitleFor = (srcChapter) => {
+const glTitleFor = (src, chapter, refRows) => {
   // Per-verse token cache + per-item title cache: hover re-renders the whole
   // panel through the app reducer, and titles must not recompute per hover
   // (2026-08-31 review R5). Both caches live only as long as the useMemo in
   // HelpsPanel keeps this resolver — a pane or chapter switch drops them.
   const tokens = new Map();
   const titles = new Map();
+  const chapterOf = (c) => (src && src !== 'missing' ? src.chapters?.[String(c)] ?? {} : {});
   return (it) => {
     const id = `${it.contextId.checkId}:${it.contextId.reference.verse}:${it.contextId.quoteString ?? ''}:${it.contextId.occurrence ?? 1}`;
     if (titles.has(id)) return titles.get(id);
-    const key = Object.keys(srcChapter).find((k) => keyCarries(k, it.contextId.reference.verse));
+    // The item's reference is PROJECT-frame. refRows (understand.sourceRefs
+    // for this chapter) is non-null exactly when the source lives in another
+    // frame — resolve through its mapped rows; identity indexing is valid
+    // only in same-frame mode (2026-08-31 Codex adversarial finding).
+    const cands = refRows
+      ? refRows
+          .filter((r) => r.pv != null && keyCarries(String(r.pv), it.contextId.reference.verse))
+          .map((r) => ({ c: r.c, v: r.v }))
+      : [{ c: chapter, v: it.contextId.reference.verse }];
     let title = null;
-    if (key) {
-      if (!tokens.has(key)) tokens.set(key, tokenizeVerse(srcChapter[key]));
+    for (const cand of cands) {
+      const srcChapter = chapterOf(cand.c);
+      const key = Object.keys(srcChapter).find((k) => keyCarries(k, cand.v));
+      if (!key) continue;
+      const tKey = `${cand.c}:${key}`;
+      if (!tokens.has(tKey)) tokens.set(tKey, tokenizeVerse(srcChapter[key]));
       title = gatewayQuote(
-        tokens.get(key),
+        tokens.get(tKey),
         it.contextId.quote?.length ? it.contextId.quote : (it.contextId.quoteString ?? ''),
         it.contextId.occurrence ?? 1,
       );
+      if (title) break;
     }
     titles.set(id, title);
     return title;
   };
 };
 
-const paneChapter = (src, chapter) =>
-  src && src !== 'missing' ? (src.chapters?.[String(chapter)] ?? {}) : {};
+/** The mapped project↔source rows for this chapter, or null in CONFIRMED
+ * same-frame mode (the sourceRefs null contract) — null lets glTitleFor index
+ * the source at the project coordinates directly. */
+const mappedRows = (u, chapter) => (u?.sourceRefs != null ? (u.sourceRefs[String(chapter)] ?? []) : null);
 
 /** Load the derived helps for the open book. Shared by Understand and
  * Translate so the dependency story cannot fork (2026-08-31 review R2). The
@@ -377,7 +393,8 @@ export function HelpsPanel({ chapter }) {
   const tab = s.helpsTab;
   // F3 focus wiring: hover is transient, click toggles the sticky focus.
   const src = s.sources?.[s.sourceTab];
-  const glTitle = React.useMemo(() => glTitleFor(paneChapter(src, chapter)), [src, chapter]);
+  const refRows = mappedRows(u, chapter);
+  const glTitle = React.useMemo(() => glTitleFor(src, chapter, refRows), [src, chapter, refRows]);
   const cardFocus = { activeId: s.helpsActive?.id ?? null, hover: actions.hoverHelp, focus: actions.focusHelp, glTitle };
   const loading = !u || u.loading;
   return (

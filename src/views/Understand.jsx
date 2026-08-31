@@ -9,7 +9,7 @@ import { bookName } from '../data/bookNames';
 import { t } from '../i18n';
 import BookRail from './BookRail.jsx';
 import { HelpsPanel, leadingNum, useLoadHelps } from './HelpsPanel.jsx';
-import { SourceVerse } from './SourceVerse.jsx';
+import { keyCarries, SourceVerse } from './SourceVerse.jsx';
 import { FilterChip, IconButton, Overline, SegmentedControl, StatusDot, TextArea, Callout, Button } from '../ds/index.js';
 
 // Section starts for one chapter, from the source's own \ts\* chunk markers.
@@ -235,6 +235,18 @@ const understandUnits = ({ s, book, chapter, src, srcChapters, mode }) => {
   return verseKeys.map((k) => ({ key: `v${k}`, head: k, label: unitRangeLabel([k]), verses: [k] }));
 };
 
+/** Cross-frame units render SOURCE-frame verse keys, but help references were
+ * mapped into the PROJECT frame (deriveForProject) — comparing them raw
+ * suppresses every highlight (2026-08-31 Codex adversarial finding). A mapped
+ * unit carries its own project↔source row, so translate the focus through it:
+ * focus applies iff it names THIS unit's project verse, and the pane then
+ * highlights at the unit's source key. */
+const paneFocus = (rawFocus, unit) => {
+  if (!unit.project) return rawFocus;
+  if (rawFocus == null || !keyCarries(String(unit.project.verse), rawFocus.verse)) return null;
+  return { ...rawFocus, verse: unit.verses[0] };
+};
+
 function UnderstandUnit({ unit, s, src, srcChapters, book, chapter }) {
   if (unit.unmapped) {
     return (
@@ -259,6 +271,7 @@ function UnderstandUnit({ unit, s, src, srcChapters, book, chapter }) {
   const chapterVerses = unit.srcChapter != null
     ? (src && src !== 'missing' ? src.chapters?.[String(unit.srcChapter)] ?? {} : {})
     : srcChapters;
+  const focus = paneFocus(s.helpsHover ?? s.helpsActive, unit);
   return (
     <div data-testid={`understand-unit-${unit.key}`} style={{ marginTop: 18, borderRadius: 'var(--radius-xl)', padding: '12px 16px', background: '#fff', border: 'var(--stroke) solid var(--border)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingBottom: 8, borderBottom: 'var(--stroke) solid var(--border)' }}>
@@ -269,7 +282,7 @@ function UnderstandUnit({ unit, s, src, srcChapters, book, chapter }) {
         {unit.verses.map((k) => (
           <React.Fragment key={k}>
             <sup style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', marginInlineEnd: 3, verticalAlign: 'super' }}>{k}</sup>
-            <SourceVerse vObj={chapterVerses[String(k)]} verseKey={k} focus={s.helpsHover ?? s.helpsActive} />{' '}
+            <SourceVerse vObj={chapterVerses[String(k)]} verseKey={k} focus={focus} />{' '}
           </React.Fragment>
         ))}
       </p>
