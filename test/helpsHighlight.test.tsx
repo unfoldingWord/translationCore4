@@ -133,6 +133,15 @@ describe('F3 — helps cards highlight their quote in the source passage', () =>
   });
 });
 
+describe('gateway titles (owner ruling 2026-08-31)', () => {
+  it('the note card titles in the GATEWAY language derived from the alignment, not the original', () => {
+    render(<Understand />);
+    // quote ἐκλεκτῶν Θεοῦ → the aligned fixture's "chosen of God".
+    expect(screen.getByText('“chosen of God”')).toBeTruthy();
+    expect(screen.queryByText(/ἐκλεκτῶν/)).toBeNull();
+  });
+});
+
 describe('F2 — Translate mounts the shared helps panel', () => {
   it('renders the panel with its tabs, and the header toggle hides it', () => {
     const { rerender } = render(<Draft />);

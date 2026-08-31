@@ -4,7 +4,7 @@ import { verseText } from './verseText.js';
 
 /** Does this verse key (a number, or a span like "8-9") carry the verse the
  * focused help names? */
-const keyCarries = (key, verse) => {
+export const keyCarries = (key, verse) => {
   const want = Number(verse);
   if (!Number.isFinite(want)) return false;
   const m = String(key).match(/^(\d+)(?:-(\d+))?$/);

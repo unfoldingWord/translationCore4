@@ -9,6 +9,8 @@ import { useApp } from '../state.jsx';
 import { renderArticleBlocks } from '../data/articles';
 import { t } from '../i18n';
 import { verseText } from './verseText.js';
+import { keyCarries } from './SourceVerse.jsx';
+import { gatewayQuote, tokenizeVerse } from '../data/sourceHighlight';
 import { Button, Callout, HelpCard, IconButton, Overline, Tabs } from '../ds/index.js';
 
 // The leading verse number of a chapter key — span keys ("17-18") are real
@@ -218,7 +220,7 @@ function NotesTab({ slot, notes, actions, cardFocus }) {
         active={cardFocus.activeId === n.contextId.checkId}
         onClick={() => cardFocus.focus(focusOf(n))}
         onMouseEnter={() => cardFocus.hover(focusOf(n))} onMouseLeave={() => cardFocus.hover(null)}
-        title={n.contextId.quoteString || n.contextId.groupId} body={<ExpandableNote text={n.contextId.occurrenceNote} />}
+        title={cardFocus.glTitle(n) || n.contextId.quoteString || n.contextId.groupId} body={<ExpandableNote text={n.contextId.occurrenceNote} />}
         actionLabel={t('understand.academyLink')}
         onAction={n.contextId.groupId
           ? () => actions.loadHelpArticle({ kind: 'ta', slug: n.contextId.groupId, rung: slot.rung })
@@ -236,7 +238,7 @@ function WordsTab({ slot, words, actions, cardFocus }) {
         active={cardFocus.activeId === w.contextId.checkId}
         onClick={() => cardFocus.focus(focusOf(w))}
         onMouseEnter={() => cardFocus.hover(focusOf(w))} onMouseLeave={() => cardFocus.hover(null)}
-        title={w.contextId.quoteString || w.contextId.groupId} body={w.contextId.groupId}
+        title={cardFocus.glTitle(w) || w.contextId.quoteString || w.contextId.groupId} body={w.contextId.groupId}
         actionLabel={t('understand.wordLink')}
         onAction={() => actions.loadHelpArticle({ kind: 'tw', category: w.category, slug: w.contextId.groupId, rung: slot.rung })} />
     ))}
@@ -320,12 +322,30 @@ function HelpsTab({ tab, u, chapter, actions, cardFocus }) {
   return <AcademyTab notesSlot={u?.notes} slugs={slugs} actions={actions} />;
 }
 
+/** Card titles show the GATEWAY rendering of the quote (owner ruling
+ * 2026-08-31): the shipped TSV7 helps carry no GLQuote column, so the gateway
+ * text is derived from the active pane's alignment; the original-language
+ * quoteString is only the fallback when nothing resolves. */
+const glTitleFor = (srcChapter) => (it) => {
+  const key = Object.keys(srcChapter).find((k) => keyCarries(k, it.contextId.reference.verse));
+  if (!key) return null;
+  return gatewayQuote(
+    tokenizeVerse(srcChapter[key]),
+    it.contextId.quote?.length ? it.contextId.quote : (it.contextId.quoteString ?? ''),
+    it.contextId.occurrence ?? 1,
+  );
+};
+
+const paneChapter = (src, chapter) =>
+  src && src !== 'missing' ? (src.chapters?.[String(chapter)] ?? {}) : {};
+
 export function HelpsPanel({ chapter }) {
   const { s, actions } = useApp();
   const u = s.understand;
   const tab = s.helpsTab;
   // F3 focus wiring: hover is transient, click toggles the sticky focus.
-  const cardFocus = { activeId: s.helpsActive?.id ?? null, hover: actions.hoverHelp, focus: actions.focusHelp };
+  const glTitle = glTitleFor(paneChapter(s.sources?.[s.sourceTab], chapter));
+  const cardFocus = { activeId: s.helpsActive?.id ?? null, hover: actions.hoverHelp, focus: actions.focusHelp, glTitle };
   const loading = !u || u.loading;
   return (
     <aside data-testid="helps-panel" style={{ width: 'var(--helps-width)', flex: 'none', background: 'var(--surface-panel)', borderInlineStart: 'var(--stroke-hair) solid var(--border-hair)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>

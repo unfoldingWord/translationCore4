@@ -182,3 +182,30 @@ export const matchQuote = (
   return hits;
 };
 
+/** The GATEWAY-language rendering of a quote — the words matchQuote resolves,
+ * joined in verse order, with an ellipsis where the quote is discontinuous.
+ * The shipped TSV7 helps carry only the original-language quote (the TSV9
+ * GLQuote column is gone), so the gateway text the user reads is DERIVED from
+ * the alignment, exactly like the highlight. Null when nothing resolves —
+ * callers fall back to the original-language quoteString. */
+export const gatewayQuote = (
+  tokens: SourceToken[],
+  quote: Array<{ word: string }> | string,
+  occurrence: number,
+): string | null => {
+  const hits = matchQuote(tokens, quote, occurrence);
+  if (hits.size === 0) return null;
+  const parts: string[] = [];
+  let sawGap = false;
+  tokens.forEach((tok, i) => {
+    if (!tok.word) return;
+    if (hits.has(i)) {
+      if (sawGap && parts.length > 0) parts.push('…');
+      parts.push(tok.text);
+      sawGap = false;
+    } else {
+      sawGap = true;
+    }
+  });
+  return parts.join(' ');
+};

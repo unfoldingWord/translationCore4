@@ -6,7 +6,7 @@
 // orig word rendered by two gateway groups (ἐκλεκτῶν → "chosen" + "people").
 import { describe, expect, it } from 'vitest';
 import { usfmjs } from '../src/data/vendor';
-import { matchQuote, quoteToWords, tokenizeVerse, tokensText } from '../src/data/sourceHighlight';
+import { gatewayQuote, matchQuote, quoteToWords, tokenizeVerse, tokensText } from '../src/data/sourceHighlight';
 import { tnQuoteWords } from '../src/data/derive';
 import { verseText } from '../src/views/verseText.js';
 
@@ -92,3 +92,23 @@ describe('matchQuote', () => {
   });
 });
 
+describe('gatewayQuote (owner ruling 2026-08-31: cards title in the gateway language)', () => {
+  const gl = (c: string, v: string, quote: string, occ = 1) => {
+    const tokens = tokenizeVerse(verse(c, v));
+    return gatewayQuote(tokens, quote, occ);
+  };
+
+  it('renders the quote in gateway words, occurrence-exact', () => {
+    expect(gl('1', '1', 'ἐκλεκτῶν Θεοῦ')).toBe('of the chosen people of God');
+    expect(gl('1', '1', 'Θεοῦ', 1)).toBe('of God');
+  });
+
+  it('marks a discontinuous quote with an ellipsis', () => {
+    expect(gl('1', '1', 'πίστιν & ἀληθείας')).toBe('the faith … of the truth');
+  });
+
+  it('returns null when nothing resolves — callers keep the original-language fallback', () => {
+    expect(gl('1', '1', 'λόγος')).toBeNull();
+    expect(gl('1', '1', '')).toBeNull();
+  });
+});
