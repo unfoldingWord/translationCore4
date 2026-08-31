@@ -39,32 +39,38 @@ function DroppedNote({ dropped, style }) {
   );
 }
 
+// Exception-based (owner ruling 2026-08-29, issue #108): a checking resource
+// is local in the normal flow, so "Ready / the pinned resource is on this
+// computer" states the obvious and spends the card's best space doing it. A
+// ready card is therefore a PLAIN card carrying what the tool does; the badge,
+// the state explanation and the resource citation appear only when something
+// is actually wrong. The citation still travels with the open session, which
+// prints it in the tool header.
 const TONE = {
-  ready: { bg: 'var(--tc-valid-surface)', border: 'rgba(60,143,92,.35)', fg: 'var(--tc-valid-strong)' },
+  ready: { bg: '#fff', border: 'var(--border)', fg: 'var(--tc-valid-strong)' },
   fetch: { bg: 'var(--surface-accent-soft)', border: 'rgba(49,173,227,.4)', fg: 'var(--tc-suggest-fg)' },
   unavailable: { bg: 'var(--surface-warm)', border: 'rgba(229,157,51,.4)', fg: 'var(--tc-warn-text)' },
   unpinned: { bg: 'var(--surface-app)', border: 'var(--border-input)', fg: 'var(--text-secondary)' },
   'not-covered': { bg: 'var(--surface-app)', border: 'var(--border-input)', fg: 'var(--text-secondary)' },
 };
 
-function ToolCard({ tool, pre, book }) {
+/** The not-ready half of a tool card: which resource the tool wants, and the
+ * one action that fixes it. A ready tool renders nothing here — its resource
+ * is local, which is the normal case and not worth saying (owner ruling
+ * 2026-08-29, #108). Kept out of ToolCard so that component stays inside the
+ * staged-complexity gate. */
+function ToolNeeds({ pre }) {
   const { actions } = useApp();
-  const tone = TONE[pre.state] ?? TONE.unpinned;
-  const rung = pre.resolution?.rung;
+  // A warned fallback resolves to state 'ready' (the substitute IS local) while
+  // `unavailablePrimary` names the pin that is missing. The warning names what
+  // is absent; only the citation names what the checks will actually derive
+  // from, so this is the one ready state that must still print it.
+  if (pre.state === 'ready' && !pre.unavailablePrimary) return null;
   const pin = pre.resolution?.pin || pre.needs;
+  const rung = pre.resolution?.rung;
 
   return (
-    <div data-testid={`preflight-${tool}`} data-state={pre.state}
-      style={{ border: `var(--stroke) solid ${tone.border}`, background: tone.bg, borderRadius: 'var(--radius-lg)', padding: '16px 18px' }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 }}>
-        <span style={{ fontSize: 'var(--fs-ui-md)', letterSpacing: 'var(--track-14)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)' }}>{t(`check.tool.${tool}`)}</span>
-        <span style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-heavy)', letterSpacing: '.06em', textTransform: 'uppercase', color: tone.fg }}>
-          {t(`check.state.${pre.state}`)}
-        </span>
-      </div>
-      <p style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', color: 'var(--text-secondary)', lineHeight: 'var(--lh-body)', margin: '0 0 10px' }}>
-        {t(`check.explain.${pre.state}`, { book: bookName(book) })}
-      </p>
+    <>
       {pin && (
         <p style={{ fontSize: 'var(--fs-meta)', color: 'var(--text-tertiary)', ...mono, margin: '0 0 10px' }}>
           {pin.repoPath} · {pin.version}
@@ -80,6 +86,30 @@ function ToolCard({ tool, pre, book }) {
       {(pre.state === 'unpinned' || pre.state === 'not-covered') && (
         <Button size="sm" variant="secondary" onClick={actions.openSources} style={{ color: 'var(--uw-ocean)' }}>{t('check.fix.getResources')}</Button>
       )}
+    </>
+  );
+}
+
+function ToolCard({ tool, pre, book }) {
+  const { actions } = useApp();
+  const tone = TONE[pre.state] ?? TONE.unpinned;
+  const ready = pre.state === 'ready';
+
+  return (
+    <div data-testid={`preflight-${tool}`} data-state={pre.state}
+      style={{ border: `var(--stroke) solid ${tone.border}`, background: tone.bg, borderRadius: 'var(--radius-lg)', padding: '16px 18px', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 }}>
+        <span style={{ fontSize: 'var(--fs-ui-md)', letterSpacing: 'var(--track-14)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)' }}>{t(`check.tool.${tool}`)}</span>
+        {!ready && (
+          <span style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-heavy)', letterSpacing: '.06em', textTransform: 'uppercase', color: tone.fg }}>
+            {t(`check.state.${pre.state}`)}
+          </span>
+        )}
+      </div>
+      <p style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', color: 'var(--text-secondary)', lineHeight: 'var(--lh-body)', margin: '0 0 10px', flex: 1 }}>
+        {ready ? t(`check.desc.${tool}`) : t(`check.explain.${pre.state}`, { book: bookName(book) })}
+      </p>
+      <ToolNeeds pre={pre} />
       {/* B20 warned fallback (D41): the resolver opened the installed fallback
         * because the pinned PRIMARY is not on this computer. That is not silent —
         * say which primary is missing and offer to download it. The card still
@@ -471,7 +501,10 @@ export default function Check() {
 
   return (
     <main style={{ flex: 1, overflow: 'auto', padding: '32px 40px 64px' }}>
-      <div style={{ maxWidth: 760, margin: '0 auto' }}>
+      {/* --measure-page is the token defined for "home + tool picker"
+        * (ds/tokens/spacing.css); the picker was pinned to 760px, too narrow
+        * for the mockup's card grid to reach its three columns. */}
+      <div style={{ maxWidth: 'var(--measure-page)', margin: '0 auto' }}>
         <h1 style={{ fontSize: 'var(--fs-h1)', letterSpacing: 'var(--track-32)', margin: '0 0 6px' }}>
           {t('check.title', { book: bookName(s.book) })}
         </h1>
@@ -502,45 +535,46 @@ export default function Check() {
           <p style={{ fontSize: 'var(--fs-ui)', color: 'var(--text-tertiary)' }}>{t('check.checking')}</p>
         )}
 
+        {/* One responsive card grid, as the mockup lays the picker out
+          * (App.jsx L445: repeat(auto-fit,minmax(270px,1fr))). Every checking
+          * tool is a peer here — the two derived tools, Align (D30.5: an
+          * unavailable (tool, book) never blocks other work) and, since D63 /
+          * #108 retired the Publish tab, Community Checking, whose card is its
+          * only entry. */}
         {pre && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(270px,1fr))', gap: 16 }}>
             {TOOLS.map((tool) => (
               <ToolCard key={tool} tool={tool} pre={pre[tool]} book={s.book} />
             ))}
+
+            <Card variant="flat" padding="16px 18px" data-testid="align-card"
+              style={{ border: 'var(--stroke) solid var(--border)', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 }}>
+                <span style={{ fontSize: 'var(--fs-ui-md)', letterSpacing: 'var(--track-14)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)' }}>{t('nav.align')}</span>
+              </div>
+              <p style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', color: 'var(--text-secondary)', lineHeight: 'var(--lh-body)', margin: '0 0 10px', flex: 1 }}>
+                {t('align.cardBody')}
+              </p>
+              <Button size="sm" onClick={actions.startAligning} data-testid="open-align"
+                style={{ alignSelf: 'flex-start' }}>
+                {t('align.open')}
+              </Button>
+            </Card>
+
+            <Card variant="flat" padding="16px 18px" data-testid="community-checking-card"
+              style={{ border: 'var(--stroke) solid var(--border)', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 }}>
+                <span style={{ fontSize: 'var(--fs-ui-md)', letterSpacing: 'var(--track-14)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)' }}>{t('cc.title')}</span>
+              </div>
+              <p style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', color: 'var(--text-secondary)', lineHeight: 'var(--lh-body)', margin: '0 0 10px', flex: 1 }}>
+                {t('cc.cardDesc')}
+              </p>
+              <Button size="sm" onClick={() => actions.go('publish')} data-testid="open-community-checking"
+                style={{ alignSelf: 'flex-start' }}>
+                {t('cc.open')}
+              </Button>
+            </Card>
           </div>
-        )}
-
-        {/* D30.5: an unavailable (tool, book) never blocks other work. */}
-        {pre && (
-          <Card variant="flat" padding="16px 18px" data-testid="align-card"
-            style={{ border: 'var(--stroke) solid var(--border)', marginTop: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 }}>
-              <span style={{ fontSize: 'var(--fs-ui-md)', letterSpacing: 'var(--track-14)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)' }}>{t('nav.align')}</span>
-            </div>
-            <p style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', color: 'var(--text-secondary)', lineHeight: 'var(--lh-body)', margin: '0 0 10px' }}>
-              {t('align.cardBody')}
-            </p>
-            <Button size="sm" onClick={actions.startAligning} data-testid="open-align">
-              {t('align.open')}
-            </Button>
-          </Card>
-        )}
-
-        {/* D63 / #108: Publish is no longer a top-level tab — Community
-          * Checking is a checking tool, and this card is its only entry. */}
-        {pre && (
-          <Card variant="flat" padding="16px 18px" data-testid="community-checking-card"
-            style={{ border: 'var(--stroke) solid var(--border)', marginTop: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 }}>
-              <span style={{ fontSize: 'var(--fs-ui-md)', letterSpacing: 'var(--track-14)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)' }}>{t('cc.title')}</span>
-            </div>
-            <p style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', color: 'var(--text-secondary)', lineHeight: 'var(--lh-body)', margin: '0 0 10px' }}>
-              {t('cc.cardDesc')}
-            </p>
-            <Button size="sm" onClick={() => actions.go('publish')} data-testid="open-community-checking">
-              {t('cc.open')}
-            </Button>
-          </Card>
         )}
 
         {pre && Object.values(pre).some((p) => p.state !== 'ready') && (

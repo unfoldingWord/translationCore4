@@ -13,6 +13,7 @@ import {
   SEEDED_PROJECT,
   pinForSideloaded,
   writeProjectPins,
+  readProjectPins,
   resetSeededChecking,
   sideloadedRepo,
   listSideloaded,
@@ -45,13 +46,43 @@ test.describe('J3 — a facilitator fetches the project’s resources', () => {
     async () => {
       // Every installed resource carries its own declared commit revision, and
       // the pin names a release tag (vNN) — never "master" or a branch.
-      for (const name of ['en_tn', 'en_tw', 'en_ta']) {
+      // en_tq and en_ust are part of the shipped English package too: D64/#110
+      // made `translationQuestions` and `simplifiedText` §5.3 slots, and the
+      // package the app ships pins both.
+      for (const name of ['en_tn', 'en_tw', 'en_ta', 'en_tq', 'en_ust']) {
         expect(listSideloaded()).toContain(name);
         const pin = pinForSideloaded(name, 'v89');
         expect(pin.version).toMatch(/^v[\d.]+$/);
         expect(pin.version).not.toBe('master');
         expect(pin.sha).toMatch(/^[0-9a-f]{40}$/);
         expect(pin.repoPath).toMatch(/^git\.door43\.org\//);
+      }
+      // The version above is an argument this helper echoes back, so it proves
+      // nothing on its own. Locality is an exact (repoPath + sha) match
+      // (D58/D59): a cache holding a DIFFERENT commit than the project pins
+      // would leave isLocal() false, and the Understand helps would read
+      // fetch/unavailable instead of showing content. Compare the two
+      // independent sources — the resource's own metadata against the
+      // project's §5.3 pin file.
+      const fallback = readProjectPins(SEEDED_PROJECT).languageSets.fallback as Record<
+        string,
+        { repoPath: string; sha: string } | undefined
+      >;
+      for (const [slot, repo] of [
+        ['translationQuestions', 'en_tq'],
+        ['simplifiedText', 'en_ust'],
+      ] as const) {
+        const pinned = fallback[slot];
+        expect(pinned, `the seeded project must pin fallback.${slot} (D64)`).toBeTruthy();
+        const cached = pinForSideloaded(repo, 'v89');
+        expect(cached.sha, `${repo} cache vs pinned sha`).toBe(pinned!.sha);
+        // BOTH halves of the identity, not just the sha: a cache from a fork or
+        // a renamed org can carry the same commit under a different repoPath,
+        // and isLocal() would still be false. Paths compare case-insensitively,
+        // as samePath does (D37).
+        expect(cached.repoPath.toLowerCase(), `${repo} cache vs pinned repoPath`).toBe(
+          pinned!.repoPath.toLowerCase(),
+        );
       }
     },
   );

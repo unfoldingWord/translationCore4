@@ -87,6 +87,68 @@ describe('#108 — Publish moves into Check as Community Checking', () => {
     expect(go).toHaveBeenCalledWith('publish');
   });
 
+  it('every checking tool is a PEER in one card grid — the two derived tools, Align and Community Checking', () => {
+    render(<App />);
+    // The mockup lays the picker out as one responsive grid (App.jsx L445), so
+    // the cards must be siblings in a single container. They used to be three
+    // stacked blocks, which no arrangement of that container could line up.
+    const cards = [
+      screen.getByTestId('preflight-translationWords'),
+      screen.getByTestId('preflight-translationNotes'),
+      screen.getByTestId('align-card'),
+      screen.getByTestId('community-checking-card'),
+    ];
+    const parents = new Set(cards.map((c) => c.parentElement));
+    expect(parents.size).toBe(1);
+    expect([...parents][0]?.style.display).toBe('grid');
+  });
+
+  it('a READY tool card says what the tool does — no state badge, no resource citation (owner ruling, #108)', () => {
+    state = {
+      ...baseState,
+      preflight: {
+        translationWords: { state: 'ready', resolution: { pin: { repoPath: 'git.door43.org/es-419_gl/es-419_tw', version: 'v37' }, rung: 'primary' } },
+        translationNotes: { state: 'unpinned' },
+      },
+    } as never;
+    render(<App />);
+    const readyCard = screen.getByTestId('preflight-translationWords');
+    // A checking resource is local in the normal flow, so saying so is noise.
+    expect(readyCard.textContent).toContain('Check the key terms');
+    // The description must not promise completeness the derivation does not
+    // deliver: tN skips rows without a SupportReference (derive.ts:208; 49 of
+    // 206 rows in en_tn Titus v86) and both tools derive within project scope.
+    expect(readyCard.textContent).not.toMatch(/every key term|every note/);
+    expect(readyCard.textContent).not.toContain('Ready');
+    expect(readyCard.textContent).not.toContain('on this computer');
+    expect(readyCard.textContent).not.toContain('git.door43.org');
+    // …but a card that needs something still states it, with its citation.
+    const problemCard = screen.getByTestId('preflight-translationNotes');
+    expect(problemCard.textContent).toContain('No resources pinned');
+  });
+
+  it('a WARNED FALLBACK still names the resource the checks derive from, even though it is ready (D41/B20)', () => {
+    // The substitute is local, so the state is 'ready' — but suppressing the
+    // citation here would leave the user checking against English with only
+    // the MISSING primary named. Both identities have to be visible.
+    state = {
+      ...baseState,
+      preflight: {
+        translationWords: { state: 'unpinned' },
+        translationNotes: {
+          state: 'ready',
+          resolution: { pin: { repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v89' }, rung: 'fallback', usedFallback: true },
+          unavailablePrimary: { repoPath: 'git.door43.org/es-419_gl/es-419_tn', version: 'v66' },
+        },
+      },
+    } as never;
+    render(<App />);
+    const card = screen.getByTestId('preflight-translationNotes');
+    expect(card.textContent).toContain('git.door43.org/es-419_gl/es-419_tn'); // missing primary
+    expect(card.textContent).toContain('git.door43.org/unfoldingWord/en_tn'); // what is actually used
+    expect(card.textContent).toContain('English fallback');
+  });
+
   it('a failed comprehension write surfaces on the GLOBAL save indicator with its own retry (B1/D65)', () => {
     state = { ...baseState, noteSaveState: 'error' } as never;
     render(<App />);

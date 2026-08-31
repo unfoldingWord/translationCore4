@@ -38,7 +38,10 @@ fi
 # verified fetch — provenance (release tag + commit revision per resource) is in
 # resources-cache/helps-provenance.json. If a cache entry is absent the rig still
 # seeds, just without that resource.
-for R in en_ult:v89 en_ust:v89 en_tn:v89 en_tw:v89 en_ta:v89 el-x-koine_ugnt:v0.34 \
+# en_tq rides with the English package: D64/#110 made `translationQuestions` a
+# §5.3 slot and the shipped English package pins it, so a rig without it cannot
+# exercise the Understand screen's Questions tab.
+for R in en_ult:v89 en_ust:v89 en_tn:v89 en_tw:v89 en_ta:v89 en_tq:v89 el-x-koine_ugnt:v0.34 \
          es-419_tn:v66 es-419_tw:v37 es-419_ta:v4; do
   N="${R%%:*}"; V="${R##*:}"
   Z="$DEV/resources-cache/$N-$V-unwrapped.zip"
