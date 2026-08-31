@@ -35,7 +35,7 @@ export const tokenizeVerse = (vObj?: { verseObjects?: VerseObject[] }): SourceTo
   const out: SourceToken[] = [];
   const walk = (vos: VerseObject[], stack: SourceToken['orig']) => {
     for (const vo of vos) {
-      if (vo.type === 'footnote' || vo.tag === 'f' || vo.type === 'section') continue;
+      if (vo.type === 'footnote' || vo.tag === 'f') continue;
       if (vo.tag === 'zaln' && vo.type === 'milestone') {
         const ref =
           vo.content != null
@@ -48,7 +48,10 @@ export const tokenizeVerse = (vObj?: { verseObjects?: VerseObject[] }): SourceTo
         out.push({ text: vo.text ?? '', word: true, orig: stack });
         continue;
       }
-      if (vo.text != null) {
+      // Same content rule as verseText historically applied: a section node's
+      // own text is dropped but its children are walked; any other node with
+      // text contributes the text and its children are NOT walked.
+      if (vo.text != null && vo.type !== 'section') {
         out.push({ text: vo.text, word: false, orig: [] });
         continue;
       }
@@ -113,15 +116,25 @@ const groupHas = (g: GroupInstance, word: string, occurrence?: number): boolean 
 
 /** Resolve a quote to the token indices to highlight.
  *
- * The quote's `occurrence` is verse-level for the WHOLE quote. Alignment
- * groups appear in gateway word order, which for the aligned literal texts is
- * locally monotone with the origin — so the N-th greedy subsequence match of
- * the quote words over the groups is the N-th occurrence of the quote. This
- * resolves the real repeated-word case exactly (en_tn TIT 1:1 "κατὰ πίστιν
- * ἐκλεκτῶν Θεοῦ…": the verse has two Θεοῦ instances and the scan picks the
- * second, because it follows ἐκλεκτῶν). If no full subsequence match exists
- * (an unaligned word, a cross-verse quote), fall back to per-word matching —
- * exact when the note names a single word, content-wide otherwise. */
+ * A quote is contiguous in the ORIGIN text (\u0026-spans aside), and its
+ * `occurrence` is verse-level for the whole quote. We cannot see origin word
+ * order directly — only alignment groups in gateway order, each naming its
+ * origin word INSTANCES (content + verse-level occurrence). So:
+ *
+ * 1. CANDIDATES — anchor at every group carrying the first quote word and
+ *    greedy-match forward; a later word may sit in the SAME group (one zaln
+ *    group often renders several quote words).
+ * 2. CLASSES — candidates sharing ANY matched origin instance are the same
+ *    occurrence of the quote (distinct occurrences use disjoint instances);
+ *    within a class the TIGHTEST span is the real rendering. This is what
+ *    kills the wrong-anchor match: en_tn TIT 2:2 "τῇ ἀγάπῃ" anchors at τῇ#1
+ *    ("in faith") AND τῇ#2 ("in love"); both share ἀγάπῃ#1, and the τῇ#2
+ *    candidate spans one group, so "in love" wins (2026-08-31 review R1).
+ * 3. The N-th class in verse order is the N-th occurrence; fewer classes than
+ *    N means NO match — fall back to per-word matching, exact when the note
+ *    names a single word (2026-08-31 review R3: never return occurrence 1's
+ *    words for occurrence 2).
+ */
 export const matchQuote = (
   tokens: SourceToken[],
   quote: Array<{ word: string }> | string,
@@ -132,47 +145,64 @@ export const matchQuote = (
   if (words.length === 0) return hits;
   const groups = groupInstances(tokens);
 
-  // N-th greedy subsequence scan over group instances in gateway order.
-  const want = Math.max(1, Number(occurrence) || 1);
-  let found = 0;
+  const instancesOf = (g: GroupInstance, word: string): string[] =>
+    g.orig.filter((o) => normalizeWord(o.content) === word).map((o) => `${o.content}#${o.occurrence}`);
+
+  interface Cand {
+    picked: number[];
+    instances: Set<string>;
+    span: number;
+  }
+  const cands: Cand[] = [];
   for (let start = 0; start < groups.length; start++) {
     if (!groupHas(groups[start], words[0])) continue;
     const picked = [start];
     let at = start;
+    let complete = true;
     for (let w = 1; w < words.length; w++) {
       let next = -1;
-      for (let j = at + 1; j < groups.length; j++) {
+      for (let j = at; j < groups.length; j++) {
         if (groupHas(groups[j], words[w])) {
           next = j;
           break;
         }
       }
-      if (next === -1) break;
+      if (next === -1) {
+        complete = false;
+        break;
+      }
       picked.push(next);
       at = next;
     }
-    if (picked.length === words.length) {
-      found += 1;
-      if (found === want) {
-        // Expand each picked group to every group naming the SAME orig word
-        // instance: one origin word is often rendered by several gateway
-        // groups (en_ult TIT 1:1 carries ἐκλεκτῶν#1 twice — "chosen" and
-        // "people"), and the quote covers the whole rendering.
-        const pairs = new Set(
-          picked.flatMap((g) => groups[g].orig.map((o) => `${o.content}#${o.occurrence}`)),
-        );
-        groups.forEach((g) => {
-          if (g.orig.some((o) => pairs.has(`${o.content}#${o.occurrence}`)))
-            g.tokenIdxs.forEach((i) => hits.add(i));
-        });
-        return hits;
-      }
-      // Overlapping restarts are wrong for whole-quote occurrences: resume
-      // after this match's first group.
-    }
+    if (!complete) continue;
+    const instances = new Set(picked.flatMap((g, i) => instancesOf(groups[g], words[i])));
+    cands.push({ picked, instances, span: picked[picked.length - 1] - picked[0] });
   }
 
-  // Fallback: no full subsequence at that occurrence. A single-word quote
+  // Classes in verse order; a candidate joins the first class it shares an
+  // instance with, and the tightest candidate represents the class.
+  const classes: Cand[][] = [];
+  for (const c of cands) {
+    const cls = classes.find((k) => k.some((m) => [...m.instances].some((i) => c.instances.has(i))));
+    if (cls) cls.push(c);
+    else classes.push([c]);
+  }
+  const want = Math.max(1, Number(occurrence) || 1);
+  const cls = classes[want - 1];
+  if (cls) {
+    const best = cls.reduce((a, b) => (b.span < a.span ? b : a));
+    // Expand each matched instance to EVERY group naming it: one origin word
+    // is often rendered by several gateway groups (en_ult TIT 1:1 carries
+    // ἐκλεκτῶν#1 twice — "of" and "the chosen people") and the quote covers
+    // the whole rendering.
+    groups.forEach((g) => {
+      if (g.orig.some((o) => best.instances.has(`${o.content}#${o.occurrence}`)))
+        g.tokenIdxs.forEach((i) => hits.add(i));
+    });
+    return hits;
+  }
+
+  // Fallback: no such occurrence of the whole quote. A single-word quote
   // still resolves exactly through the zaln verse-level occurrence attribute;
   // a multi-word one degrades to content matching (visible, never invented).
   const exactOcc = words.length === 1 ? want : undefined;

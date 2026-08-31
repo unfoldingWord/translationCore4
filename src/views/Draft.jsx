@@ -7,7 +7,7 @@ import { bookName } from '../data/bookNames';
 import { t } from '../i18n';
 import { FilterChip, IconButton, Overline, Button } from '../ds/index.js';
 import BookRail from './BookRail.jsx';
-import { HelpsPanel } from './HelpsPanel.jsx';
+import { HelpsPanel, useLoadHelps } from './HelpsPanel.jsx';
 import { SourceVerse } from './SourceVerse.jsx';
 import { verseText as sourceText } from './verseText.js';
 
@@ -70,11 +70,7 @@ function VerseEditor({ chapter, verse, dir }) {
 
 export default function Draft() {
   const { s, book, sourceModel, actions } = useApp();
-  React.useEffect(() => {
-    // The helps panel (F2) shows the SAME derived helps as Understand — same
-    // load, same dependency story (see Understand's effect for why each dep).
-    actions.loadUnderstand();
-  }, [s.book, s.bookRaw, s.projectPins, s.projectPinsLoaded, s.netEnabled, s.installEpoch]);
+  useLoadHelps();
 
   if (!book) {
     return (

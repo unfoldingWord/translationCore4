@@ -1,15 +1,9 @@
 // Plain display text for one source verse (verseObjects from usfm-js —
 // aligned USFM collapses to its text/word content; display only, never
-// re-serialized). ONE flattener for every view (2026-08-27 review).
-export const verseText = (vObj) => {
-  const walk = (vos) =>
-    (vos || [])
-      .map((vo) => {
-        if (vo.type === 'footnote' || vo.tag === 'f') return '';
-        if (vo.text != null && vo.type !== 'section') return vo.text;
-        if (vo.children) return walk(vo.children);
-        return '';
-      })
-      .join('');
-  return walk(vObj?.verseObjects).replace(/\s+/g, ' ').trim();
-};
+// re-serialized). ONE flattener for every view (2026-08-27 review): since the
+// 2026-08-31 review (R6) the walk itself lives in sourceHighlight.ts —
+// tokenizeVerse is the single walker, and this is its collapsed-text form, so
+// the highlighted token stream can never diverge from the plain flatten.
+import { tokenizeVerse, tokensText } from '../data/sourceHighlight';
+
+export const verseText = (vObj) => tokensText(tokenizeVerse(vObj)).replace(/\s+/g, ' ').trim();

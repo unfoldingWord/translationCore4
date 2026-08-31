@@ -82,6 +82,32 @@ describe('matchQuote', () => {
     expect(highlighted('1', '1', 'Θεοῦ', 2)).not.toContain('servant');
   });
 
+
+  it('R1 regression: a repeated FIRST word anchors at the tightest rendering, not the earliest', () => {
+    // Real en_tn TIT 2:2 quote: the verse renders τῇ three times ("in faith,
+    // in love, in patience"); the review caught "in faith in love".
+    const words = highlighted('2', '2', 'τῇ ἀγάπῃ');
+    expect(words).toContain('love');
+    expect(words).not.toContain('faith');
+    expect(words).not.toContain('patience');
+  });
+
+  it('R1 regression: a long quote never invents a phrase from the wrong clause (TIT 1:15)', () => {
+    const words = highlighted('1', '15', 'τοῖς δὲ μεμιαμμένοις καὶ ἀπίστοις, οὐδὲν καθαρόν');
+    expect(words).toContain('corrupted');
+    expect(words).toContain('unbelieving');
+    expect(words).toContain('pure');
+    // The wrong-anchor match dragged in the FIRST clause ("to the ones who
+    // are pure all things are pure") — its words must stay dark.
+    expect(words).not.toContain('all');
+  });
+
+  it('R3 regression: an out-of-range occurrence falls back, never returns occurrence 1', () => {
+    // TIT 1:1 has ONE ἐκλεκτῶν, rendered by two gateway groups — which must
+    // count as ONE occurrence of the quote, so occurrence 2 has no match.
+    expect(highlighted('1', '1', 'ἐκλεκτῶν', 2)).toEqual([]);
+  });
+
   it('returns nothing for an intro note with an empty quote', () => {
     expect(highlighted('1', '1', '', 0)).toEqual([]);
     expect(highlighted('1', '1', tnQuoteWords(''), 0)).toEqual([]);

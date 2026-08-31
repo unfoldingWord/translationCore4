@@ -3,15 +3,19 @@ import { tokenizeVerse, matchQuote } from '../data/sourceHighlight';
 import { verseText } from './verseText.js';
 
 /** Does this verse key (a number, or a span like "8-9") carry the verse the
- * focused help names? */
+ * focused help names? The help's reference can itself be a range — a TSV row
+ * like "1:1-3" keeps its raw verse string (derive.ts refPart), exactly the
+ * shape state.jsx already guards for — so both sides parse as ranges and
+ * carry = overlap (2026-08-31 review R4). */
 export const keyCarries = (key, verse) => {
-  const want = Number(verse);
-  if (!Number.isFinite(want)) return false;
-  const m = String(key).match(/^(\d+)(?:-(\d+))?$/);
-  if (!m) return false;
-  const from = Number(m[1]);
-  const to = m[2] ? Number(m[2]) : from;
-  return want >= from && want <= to;
+  const km = String(key).match(/^(\d+)(?:-(\d+))?$/);
+  const vm = String(verse).match(/^(\d+)(?:-(\d+))?$/);
+  if (!km || !vm) return false;
+  const kFrom = Number(km[1]);
+  const kTo = km[2] ? Number(km[2]) : kFrom;
+  const vFrom = Number(vm[1]);
+  const vTo = vm[2] ? Number(vm[2]) : vFrom;
+  return vFrom <= kTo && kFrom <= vTo;
 };
 
 /** One source verse, tokenized so the focused help's quote can highlight the

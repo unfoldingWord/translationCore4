@@ -8,7 +8,7 @@ import { useApp } from '../state.jsx';
 import { bookName } from '../data/bookNames';
 import { t } from '../i18n';
 import BookRail from './BookRail.jsx';
-import { HelpsPanel, leadingNum } from './HelpsPanel.jsx';
+import { HelpsPanel, leadingNum, useLoadHelps } from './HelpsPanel.jsx';
 import { SourceVerse } from './SourceVerse.jsx';
 import { FilterChip, IconButton, Overline, SegmentedControl, StatusDot, TextArea, Callout, Button } from '../ds/index.js';
 
@@ -329,17 +329,7 @@ function PassageStatus({ s, src, actions }) {
 export default function Understand() {
   const { s, book, actions } = useApp();
   const [mode, setMode] = React.useState('section');
-  React.useEffect(() => {
-    actions.loadUnderstand();
-    // bookRaw is a dependency (O2): openBook publishes the book before its
-    // bytes; a cross-frame project needs the bytes to build sourceRefs, and
-    // without the re-run it would render nothing for the new book.
-    // installEpoch (round 20 F2): a successful install can leave projectPins
-    // byte-identical (the pin already existed; only the machine's holdings
-    // changed) — without it a downloaded resource stays "fetch" until reload.
-    // projectPinsLoaded (round 33): pins loaded-but-ABSENT is a legal state
-    // the screen proceeds in — the flag's flip is what re-runs the load.
-  }, [s.book, s.bookRaw, s.projectPins, s.projectPinsLoaded, s.netEnabled, s.installEpoch]);
+  useLoadHelps();
 
   if (!book) {
     return (

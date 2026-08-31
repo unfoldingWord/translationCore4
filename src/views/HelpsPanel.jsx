@@ -326,25 +326,58 @@ function HelpsTab({ tab, u, chapter, actions, cardFocus }) {
  * 2026-08-31): the shipped TSV7 helps carry no GLQuote column, so the gateway
  * text is derived from the active pane's alignment; the original-language
  * quoteString is only the fallback when nothing resolves. */
-const glTitleFor = (srcChapter) => (it) => {
-  const key = Object.keys(srcChapter).find((k) => keyCarries(k, it.contextId.reference.verse));
-  if (!key) return null;
-  return gatewayQuote(
-    tokenizeVerse(srcChapter[key]),
-    it.contextId.quote?.length ? it.contextId.quote : (it.contextId.quoteString ?? ''),
-    it.contextId.occurrence ?? 1,
-  );
+const glTitleFor = (srcChapter) => {
+  // Per-verse token cache + per-item title cache: hover re-renders the whole
+  // panel through the app reducer, and titles must not recompute per hover
+  // (2026-08-31 review R5). Both caches live only as long as the useMemo in
+  // HelpsPanel keeps this resolver — a pane or chapter switch drops them.
+  const tokens = new Map();
+  const titles = new Map();
+  return (it) => {
+    const id = `${it.contextId.checkId}:${it.contextId.reference.verse}:${it.contextId.quoteString ?? ''}:${it.contextId.occurrence ?? 1}`;
+    if (titles.has(id)) return titles.get(id);
+    const key = Object.keys(srcChapter).find((k) => keyCarries(k, it.contextId.reference.verse));
+    let title = null;
+    if (key) {
+      if (!tokens.has(key)) tokens.set(key, tokenizeVerse(srcChapter[key]));
+      title = gatewayQuote(
+        tokens.get(key),
+        it.contextId.quote?.length ? it.contextId.quote : (it.contextId.quoteString ?? ''),
+        it.contextId.occurrence ?? 1,
+      );
+    }
+    titles.set(id, title);
+    return title;
+  };
 };
 
 const paneChapter = (src, chapter) =>
   src && src !== 'missing' ? (src.chapters?.[String(chapter)] ?? {}) : {};
+
+/** Load the derived helps for the open book. Shared by Understand and
+ * Translate so the dependency story cannot fork (2026-08-31 review R2). The
+ * deps' rationale is unchanged from Understand's original effect (O2, round
+ * 20 F2, round 33) with ONE change: bookRaw participates as PRESENCE, not
+ * content. openBook nulls it before publishing bytes (state.jsx), so the flag
+ * flips on every open — but editVerse replaces non-null with non-null, so
+ * typing in Translate no longer re-derives the helps per keystroke. The cost:
+ * a structural edit that changes verse keys mid-session is not re-mapped
+ * until the next chapter/book change (cross-frame projects only — #118). */
+export function useLoadHelps() {
+  const { s, actions } = useApp();
+  const bookBytesReady = s.bookRaw != null;
+  React.useEffect(() => {
+    actions.loadUnderstand();
+  }, [s.book, bookBytesReady, s.projectPins, s.projectPinsLoaded, s.netEnabled, s.installEpoch]);
+}
 
 export function HelpsPanel({ chapter }) {
   const { s, actions } = useApp();
   const u = s.understand;
   const tab = s.helpsTab;
   // F3 focus wiring: hover is transient, click toggles the sticky focus.
-  const glTitle = glTitleFor(paneChapter(s.sources?.[s.sourceTab], chapter));
+  const src = s.sources?.[s.sourceTab];
+  const glTitle = React.useMemo(() => glTitleFor(paneChapter(src, chapter)), [src, chapter]);
   const cardFocus = { activeId: s.helpsActive?.id ?? null, hover: actions.hoverHelp, focus: actions.focusHelp, glTitle };
   const loading = !u || u.loading;
   return (
