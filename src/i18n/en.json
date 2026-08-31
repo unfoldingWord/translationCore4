@@ -108,6 +108,7 @@
   "draft.loadError": "The book could not be loaded.",
   "draft.books": "Books",
   "draft.toggleRail": "Toggle book list",
+  "draft.toggleHelps": "Toggle helps panel",
   "draft.editVerse": "Edit this verse",
   "draft.verseLabel": "Verse {n}",
   "draft.pinned": "{version} · pinned",
