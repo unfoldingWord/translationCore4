@@ -734,6 +734,99 @@ describe('2026-08-28 adversarial round 33 regression (F3)', () => {
   });
 });
 
+describe('#106 — note bodies are markdown, and are rendered as such', () => {
+  beforeEach(() => { cleanup(); calls.length = 0; });
+
+  // The REAL chapter-introduction note, read from the vendored en_tn@v86 TSV —
+  // not a hand-written literal. It is the note that exposed both defects: no
+  // quoted phrase, escaped line breaks, `#`/`##` headings, `**` emphasis, and
+  // a 400-character cut that lands inside a `[1 Timothy 3](…)` link.
+  const fsMod = process.getBuiltinModule('node:fs');
+  const pathMod = process.getBuiltinModule('node:path');
+  const HERE = pathMod.dirname(new URL(import.meta.url).pathname);
+  const TSV = fsMod.readFileSync(
+    pathMod.join(HERE, 'fixtures', 'resources', 'en_tn@v86', 'TIT.tsv'),
+    'utf8',
+  );
+  const INTRO = (() => {
+    const header = TSV.split('\n')[0].split('\t');
+    const noteCol = header.indexOf('Note');
+    const row = TSV.split('\n').find((l) => l.startsWith('1:intro\t'));
+    if (!row) throw new Error('the vendored en_tn TIT.tsv has no 1:intro row');
+    return row.split('\t')[noteCol];
+  })();
+
+  it('renders the markdown instead of printing it — no ##, no **, no literal escapes', () => {
+    const savedItems = state.understand.notes.items;
+    state.understand.notes = { ...state.understand.notes, items: [noteItem(1, '', INTRO)] };
+    try {
+      render(<Understand />);
+      const card = screen.getByTestId('note-expand').closest('[data-tc="surface"]');
+      expect(card).toBeTruthy();
+      const shown = card!.textContent ?? '';
+      // The heading text survives; the syntax does not.
+      expect(shown).toContain('Titus 1 Chapter Introduction');
+      expect(shown).toContain('Structure and Formatting');
+      expect(shown).not.toContain('#');
+      expect(shown).not.toContain('**');
+      expect(shown).not.toContain('\\n');
+      expect(shown).not.toContain('[[');
+      // The COLLAPSED preview must not end mid-token: cutting the markdown
+      // source at 400 characters left a dangling "[1 " from "[1 Timothy 3](…)".
+      expect(shown).not.toMatch(/\[[^\]]*…/);
+      expect(writes()).toEqual([]); // still read-only
+    } finally {
+      state.understand.notes = { ...state.understand.notes, items: savedItems };
+    }
+  });
+
+  it('a preview never ends on a word fragment, even when the budget runs out mid-block', () => {
+    // en_tn@v86 JON 4:intro: earlier blocks consume ~397 characters, leaving a
+    // budget too small for the next block's first word — which used to print
+    // "Prophecy delayed Acc…".
+    const jon = fsMod.readFileSync(
+      pathMod.join(HERE, 'fixtures', 'resources', 'en_tn@v86', 'JON.tsv'),
+      'utf8',
+    );
+    const header = jon.split('\n')[0].split('\t');
+    const row = jon.split('\n').find((l) => l.startsWith('4:intro\t'));
+    if (!row) throw new Error('the vendored en_tn JON.tsv has no 4:intro row');
+    const note = row.split('\t')[header.indexOf('Note')];
+    const savedItems = state.understand.notes.items;
+    state.understand.notes = { ...state.understand.notes, items: [noteItem(1, '', note, '')] };
+    try {
+      render(<Understand />);
+      const card = screen.getByTestId('note-expand').closest('[data-tc="surface"]');
+      const shown = card!.textContent ?? '';
+      // The word before the ellipsis must be a WHOLE word of the source, not a
+      // fragment: "Acc…" is a fragment of "According", and `\bAcc\b` does not
+      // appear in the note, while the correct last word does.
+      const tail = shown.match(/(\S+)…/);
+      expect(tail, 'the collapsed preview must end with an ellipsis').toBeTruthy();
+      const lastWord = tail![1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      expect(
+        new RegExp(`\\b${lastWord}\\b`).test(note),
+        `"${tail![1]}" is not a whole word of the note`,
+      ).toBe(true);
+    } finally {
+      state.understand.notes = { ...state.understand.notes, items: savedItems };
+    }
+  });
+
+  it('a note with no quoted phrase renders no empty quotation marks', () => {
+    const savedItems = state.understand.notes.items;
+    // A chapter introduction has NEITHER a quoted phrase nor a groupId to fall
+    // back to — the title is genuinely empty, which is what printed “”.
+    state.understand.notes = { ...state.understand.notes, items: [noteItem(1, '', INTRO, '')] };
+    try {
+      render(<Understand />);
+      expect(screen.queryByText('“”')).toBeNull();
+    } finally {
+      state.understand.notes = { ...state.understand.notes, items: savedItems };
+    }
+  });
+});
+
 describe('2026-08-28 adversarial round 34 regression (F1 view)', () => {
   beforeEach(() => { cleanup(); calls.length = 0; });
 

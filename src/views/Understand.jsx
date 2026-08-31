@@ -301,16 +301,80 @@ const emptyChapter = (
   </p>
 );
 
+const PREVIEW_CHARS = 400;
+
+/** Shorten RENDERED blocks, never the markdown source. A cut taken on the
+ * source lands inside a token — 12 notes in the two vendored Titus fixtures cut
+ * inside `[[rc://…]]` or a `[label](target)` link, leaving a dangling `[1 ` on
+ * screen. After renderArticleBlocks the text carries no syntax at all, so a cut
+ * here can only ever fall between words. */
+function previewBlocks(blocks, limit) {
+  const out = [];
+  let used = 0;
+  for (const b of blocks) {
+    const room = limit - used;
+    if (room <= 0) break;
+    if (b.text.length <= room) {
+      out.push(b);
+      used += b.text.length;
+      continue;
+    }
+    const slice = b.text.slice(0, room);
+    // Cut on a word boundary. A budget too small to hold even this block's
+    // FIRST whole word would leave a fragment on screen ("… Prophecy delayed
+    // Acc…", en_tn@v86 JON 4:intro), so stop before the block instead.
+    if (!/\s/.test(slice)) break;
+    out.push({ ...b, text: `${slice.replace(/\s+\S*$/, '')}…` });
+    used = limit;
+    break;
+  }
+  // When the loop stopped before a block rather than inside one, the ellipsis
+  // still has to say that something follows.
+  const last = out[out.length - 1];
+  if (last && out.length < blocks.length && !last.text.endsWith('…')) {
+    out[out.length - 1] = { ...last, text: `${last.text}…` };
+  }
+  return out;
+}
+
+/** Note-body markdown, rendered with the same block shapes the Academy article
+ * panel uses above — headings, list items and paragraphs. Inline `<span>`s, not
+ * `<p>`s: the last block has to sit on the same line as the Show more control. */
+function NoteBlocks({ blocks }) {
+  return (
+    <>
+      {blocks.map((b, i) => (
+        <span key={i} style={{
+          display: 'block',
+          fontWeight: b.kind === 'h' ? 'var(--fw-heavy)' : 'var(--fw-regular)',
+          color: b.kind === 'h' ? 'var(--uw-ocean)' : 'inherit',
+          margin: b.kind === 'h' ? '8px 0 2px' : '0 0 6px',
+          paddingInlineStart: b.kind === 'li' ? 14 : 0,
+        }}>{b.kind === 'li' ? `• ${b.text}` : b.text}</span>
+      ))}
+    </>
+  );
+}
+
 /** Round 33: real tN notes exceed 400 characters (the shipped Titus fixture
  * carries 425-940+), and a silent cut removes the guidance's qualifications
  * and examples. Long bodies collapse to a preview with an accessible control
  * that reveals the exact full text. */
 function ExpandableNote({ text }) {
   const [expanded, setExpanded] = React.useState(false);
-  if (text.length <= 400) return text;
+  // TSV note bodies are markdown: `##` headings, `**` emphasis, `[[rc://\u2026]]`
+  // links \u2014 and their line breaks arrive ESCAPED (a literal backslash-n) where
+  // an Academy article carries real ones. They were printed raw. The blocks
+  // render through the same renderer the article panel above uses, so the two
+  // can never drift.
+  const all = renderArticleBlocks(text.replace(/\\n/g, '\n'));
+  const total = all.reduce((n, b) => n + b.text.length, 0);
+  const long = total > PREVIEW_CHARS;
+  const blocks = <NoteBlocks blocks={long && !expanded ? previewBlocks(all, PREVIEW_CHARS) : all} />;
+  if (!long) return blocks;
   return (
     <>
-      {expanded ? text : `${text.slice(0, 400)}\u2026 `}
+      {blocks}
       <button type="button" data-testid="note-expand" aria-expanded={expanded}
         onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v); }}
         style={{ border: 0, background: 'transparent', cursor: 'pointer', fontFamily: 'var(--font-ui)', fontWeight: 'var(--fw-bold)', fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--accent)', padding: 0 }}>

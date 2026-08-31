@@ -12,11 +12,17 @@ export function HelpCard({ kind = 'note', verse, title, body, active, onClick, a
         <Badge tone={kind === 'word' ? 'cultivate' : 'accent'}>{kind === 'word' ? 'Key word' : 'Note'}</Badge>
         {verse ? <span style={{ fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', color: 'var(--text-tertiary)', fontWeight: 'var(--fw-bold)' }}>v{verse}</span> : null}
       </div>
-      <p style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-sm)',
-        lineHeight: 'var(--lh-verse-sm)', fontWeight: 'var(--fw-bold)', color: 'var(--uw-ocean)', margin: '0 0 5px' }}>
-        {kind === 'word' ? title : '\u201C' + title + '\u201D'}
-      </p>
-      <p style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', lineHeight: 'var(--lh-body)', color: 'var(--text-secondary)', margin: 0 }}>{body}</p>
+      {/* A note with no quoted phrase (a chapter introduction) has no title to
+        * quote \u2014 rendering the quotes anyway printed a bare \u201C\u201D. */}
+      {title ? (
+        <p style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-sm)',
+          lineHeight: 'var(--lh-verse-sm)', fontWeight: 'var(--fw-bold)', color: 'var(--uw-ocean)', margin: '0 0 5px' }}>
+          {kind === 'word' ? title : '\u201C' + title + '\u201D'}
+        </p>
+      ) : null}
+      {/* A div, not a p: the body carries rendered markdown blocks, and a <p>
+        * inside a <p> is invalid \u2014 the browser closes the outer one early. */}
+      <div style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', lineHeight: 'var(--lh-body)', color: 'var(--text-secondary)', margin: 0 }}>{body}</div>
       {onAction ? <button type="button" data-tc="text" onClick={e => { e.stopPropagation(); onAction(); }} style={{ marginTop: 9, border: 0,
         background: 'transparent', cursor: 'pointer', fontFamily: 'var(--font-ui)', fontWeight: 'var(--fw-bold)',
         fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--accent)', padding: 0 }}>{actionLabel}</button> : null}
