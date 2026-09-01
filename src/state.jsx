@@ -501,8 +501,11 @@ async function gatewayChangePlan({ consequences, next, coverage, installed, stor
  * marks the designed empty/warning session shapes, which carry no items. */
 async function assembleCheckSession({ api, actions, store, stateRef, st, tool, book, pre, seq }) {
   const result = await deriveCheckItems({ apiClient: api, actions, st, tool, book, pre });
-  const frame = await actions.projectFrame();
-  const crossFrame = frame?.state !== 'ready' || frame?.name !== 'eng';
+  // ONE frame verdict per session — the one the derivation itself used
+  // (review round 3: a second projectFrame() call could disagree with it).
+  // A missing-TSV session resolves no frame; it has no panes to gate.
+  const { frame } = result;
+  const crossFrame = frame ? frame.state !== 'ready' || frame.name !== 'eng' : false;
   if (result.session) return { session: { ...result.session, seq, crossFrame }, partial: true };
   const session = {
     ...(await completedCheckSession({
@@ -609,7 +612,7 @@ async function deriveCheckItems({ apiClient, actions, st, tool, book, pre }) {
     return { session: emptyCheckSession(tool, book, pre.resolution, 'missing') };
   const frame = await actions.projectFrame();
   if (frame.state !== 'ready')
-    return { session: emptyCheckSession(tool, book, pre.resolution, `versification-${frame.state}`) };
+    return { session: emptyCheckSession(tool, book, pre.resolution, `versification-${frame.state}`), frame };
   const scopeRanges = scopeRangesFor(st.projectScope ?? {}, book.toUpperCase());
   const result = await deriveForProject({
     tsv,
@@ -628,8 +631,8 @@ async function deriveCheckItems({ apiClient, actions, st, tool, book, pre }) {
       }
     : null;
   if (result.items.length === 0)
-    return { session: emptyCheckSession(tool, book, pre.resolution, dropped ? 'all-dropped' : 'none', dropped) };
-  return { derived: result.items, dropped };
+    return { session: emptyCheckSession(tool, book, pre.resolution, dropped ? 'all-dropped' : 'none', dropped), frame };
+  return { derived: result.items, dropped, frame };
 }
 
 async function completedCheckSession({ store, st, tool, book, pre, derived, dropped }) {

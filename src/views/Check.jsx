@@ -295,7 +295,10 @@ function ultAbsence(source, sourcePanes, crossFrame) {
 }
 
 /** The gateway verse to render — never indexed cross-frame: a non-eng
- * project's (c, v) is in the PROJECT's numbering, not this book's. */
+ * project's (c, v) is in the PROJECT's numbering, not this book's. An
+ * eng-framed project indexes its panes directly, the same frame-naive read
+ * Translate's source pane makes — an extraScripture pin whose OWN frame
+ * differs is #131's scope, here as there. */
 const ultVerseObj = (source, crossFrame, c, v) =>
   !crossFrame && source && source !== 'missing' && !source.error
     ? source.chapters?.[String(c)]?.[String(v)]
