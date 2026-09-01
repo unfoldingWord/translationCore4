@@ -272,8 +272,14 @@ const initial = () => ({
   editing: null, // { key: "1:3", before: <body before this edit session> } | null
   saveState: 'saved', // saved | dirty | saving | error
   rail: true,
-  helps: false,
+  helps: true,
   helpsTab: 'notes',
+  // Helps-card focus (epic #104 fidelity, F3): the hovered and the clicked
+  // card, each { verse, quote, occurrence, id } — the mockup's
+  // hoverNote/activeNote pair. Hover wins while present; both are transient
+  // UI state, never persisted.
+  helpsHover: null,
+  helpsActive: null,
   academy: null,
   // Understand (D63, #106): read-only helps for the open book, derived like a
   // check session (never stored), plus the translator's own comprehension
@@ -2638,7 +2644,7 @@ export function AppProvider({ children }) {
         // Sequence token: two rapid opens must not interleave (finding M2) —
         // only the latest open may install its bytes and sources.
         const seq = ++openSeqRef.current;
-        dispatch({ type: 'set', patch: { book: code, chapter: 1, bookRaw: null, bookError: null, sources: {}, editing: null } });
+        dispatch({ type: 'set', patch: { book: code, chapter: 1, bookRaw: null, bookError: null, sources: {}, editing: null, helpsHover: null, helpsActive: null } });
         let raw;
         try {
           ({ usfm: raw } = await store.readBook(code));
@@ -2815,7 +2821,9 @@ export function AppProvider({ children }) {
         // boxes too — flush the note buffer and stay put only on a failure
         // (FR-32).
         if (noteSchedulerRef.current && !(await noteSchedulerRef.current.drain())) return;
-        dispatch({ type: 'set', patch: { chapter, editing: null } });
+        // F3: a helps focus names a verse in THIS chapter — carrying it across
+        // would highlight an unrelated verse that shares the number.
+        dispatch({ type: 'set', patch: { chapter, editing: null, helpsHover: null, helpsActive: null } });
       },
       setSourceTab: async (sourceTab) => {
         // N2/D65: a tab switch re-chunks the passage — flush the note buffer
@@ -2827,6 +2835,14 @@ export function AppProvider({ children }) {
       toggleRail: () => dispatch({ type: 'toggle', key: 'rail' }),
       toggleHelps: () => dispatch({ type: 'toggle', key: 'helps' }),
       setHelpsTab: (helpsTab) => dispatch({ type: 'set', patch: { helpsTab } }),
+      // F3: hover is transient; click toggles the sticky focus (mockup
+      // hoverNote/activeNote). Payload: { verse, quote, occurrence, id }|null.
+      hoverHelp: (helpsHover) => dispatch({ type: 'set', patch: { helpsHover } }),
+      focusHelp: (item) =>
+        dispatch({
+          type: 'set',
+          patch: { helpsActive: stateRef.current.helpsActive?.id === item?.id ? null : item },
+        }),
       openAcademy: (id) => dispatch({ type: 'set', patch: { academy: id } }),
       closeAcademy: () => dispatch({ type: 'set', patch: { academy: null } }),
 

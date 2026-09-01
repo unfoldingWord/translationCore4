@@ -7,6 +7,8 @@ import { bookName } from '../data/bookNames';
 import { t } from '../i18n';
 import { FilterChip, IconButton, Overline, Button } from '../ds/index.js';
 import BookRail from './BookRail.jsx';
+import { HelpsPanel, useLoadHelps } from './HelpsPanel.jsx';
+import { SourceVerse } from './SourceVerse.jsx';
 import { verseText as sourceText } from './verseText.js';
 
 const hair = 'var(--stroke-hair) solid var(--border-hair)';
@@ -66,8 +68,17 @@ function VerseEditor({ chapter, verse, dir }) {
   );
 }
 
+/** Translate's source pane is frame-naive: it indexes the source by PROJECT
+ * coordinates (#131). In a cross-frame project (understand.sourceRefs
+ * non-null) the pane may show a different verse than the number implies, so a
+ * help's highlight must never land on it — suppress focus until the pane
+ * resolves through the mapped rows (2026-08-31 Codex adversarial re-review). */
+const crossFrameSafeFocus = (s) =>
+  s.understand?.sourceRefs != null ? null : (s.helpsHover ?? s.helpsActive);
+
 export default function Draft() {
   const { s, book, sourceModel, actions } = useApp();
+  useLoadHelps();
 
   if (!book) {
     return (
@@ -78,6 +89,7 @@ export default function Draft() {
   }
 
   const verses = book.byChapter[String(s.chapter)] || [];
+  const paneFocus = crossFrameSafeFocus(s);
   const dir = s.project?.scriptDirection === 'rtl' ? 'rtl' : 'ltr';
 
   return (
@@ -90,6 +102,7 @@ export default function Draft() {
           <h2 style={{ fontSize: 'var(--fs-title)', letterSpacing: 'var(--track-17)', margin: 0 }}>{bookName(book.code)} {s.chapter}</h2>
           <span style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--text-tertiary)' }}>{t('nav.draft')}</span>
           <div style={{ flex: 1 }} />
+          <IconButton title={t('draft.toggleHelps')} onClick={actions.toggleHelps}>≣</IconButton>
         </div>
 
         <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
@@ -125,7 +138,7 @@ export default function Draft() {
                     ) : srcTxt ? (
                       <p style={{ direction: 'ltr', textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-sm)', lineHeight: 'var(--lh-verse)', color: 'var(--text-scripture)', margin: 0 }}>
                         <sup style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', marginInlineEnd: 3, verticalAlign: 'super' }}>{v.n}</sup>
-                        {srcTxt}
+                        <SourceVerse vObj={srcVerse} verseKey={v.n} focus={paneFocus} />
                       </p>
                     ) : (
                       <p style={{ fontSize: 'var(--fs-ui-sm)', color: 'var(--uw-haze)', fontStyle: 'italic', margin: '6px 0 0' }}>
@@ -161,6 +174,7 @@ export default function Draft() {
           </div>
         </div>
       </main>
+      {s.helps && <HelpsPanel chapter={s.chapter} />}
     </div>
   );
 }
