@@ -187,7 +187,7 @@ function NoteBlocks({ blocks }) {
  * carries 425-940+), and a silent cut removes the guidance's qualifications
  * and examples. Long bodies collapse to a preview with an accessible control
  * that reveals the exact full text. */
-function ExpandableNote({ text }) {
+export function ExpandableNote({ text }) {
   const [expanded, setExpanded] = React.useState(false);
   // TSV note bodies are markdown: `##` headings, `**` emphasis, `[[rc://\u2026]]`
   // links \u2014 and their line breaks arrive ESCAPED (a literal backslash-n) where

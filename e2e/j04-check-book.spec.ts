@@ -117,7 +117,7 @@ test.describe('J4 — a checker works a book', () => {
       // re-attached from the sample's stored decisions (D17), so it is not
       // asserted as zero — only the denominator is the derivation's promise.
       await expect(page.getByTestId('check-progress')).toHaveText(
-        new RegExp(`\\d+ of ${expected} decided`),
+        new RegExp(`\\d+ of ${expected} resolved`),
       );
       await expect(page.getByTestId('check-list').getByRole('button')).toHaveCount(expected);
 
@@ -264,9 +264,10 @@ test.describe('J4 — a checker works a book', () => {
         page.getByTestId('check-list').locator('button[data-decided="1"]').count();
       const beforeMark = await countDecided();
 
-      // Decide an item that is not already decided, and remember which one.
+      // Decide an item that is not already decided, and remember which one —
+      // by its title (`c:v · groupId`), which is stable across a re-derive.
       const target = page.getByTestId('check-list').locator('button[data-decided="0"]').first();
-      const targetLabel = await target.textContent();
+      const targetTitle = await target.getAttribute('title');
       await target.click();
       await page.getByTestId('mark-valid').click();
       await expect
@@ -286,7 +287,7 @@ test.describe('J4 — a checker works a book', () => {
       await expect(
         page
           .getByTestId('check-list')
-          .locator(`button[data-decided="1"]:text-is("${targetLabel}")`)
+          .locator(`button[data-decided="1"][title="${targetTitle}"]`)
           .first(),
       ).toBeVisible();
     },
@@ -472,10 +473,12 @@ test.describe('J4 — a checker works a book', () => {
       await openCheck(page);
       await page.getByTestId('open-translationWords').click();
       await expect(page.getByTestId('check-progress')).toHaveText(
-        new RegExp(`\\d+ of ${expected} decided`),
+        new RegExp(`\\d+ of ${expected} resolved`),
       );
       // The article comes out of the very same burrito (payload/…), proving the
-      // one-pin-per-language rule end to end.
+      // one-pin-per-language rule end to end. Since F1 it sits behind the
+      // Academy drawer.
+      await page.getByTestId('open-academy').click();
       await expect(page.getByTestId('article-panel')).toBeVisible();
       await expect(page.getByTestId('article-panel')).toContainText('payload/');
     },

@@ -19,8 +19,11 @@ import { renderArticleBlocks } from '../data/articles';
 import Align from './Align.jsx';
 import { isLanguageSwitch } from '../data/revalidate';
 import { targetWords, selectionsFromTokens, tokenIndicesFromSelections } from '../data/selections';
+import { tokenizeVerse, matchQuote } from '../data/sourceHighlight';
+import { verseText } from './verseText.js';
+import { ExpandableNote } from './HelpsPanel.jsx';
 import { t } from '../i18n';
-import { Button, Card, Callout, Overline, ProgressBar, Badge } from '../ds/index.js';
+import { Button, Card, Callout, Drawer, Overline, ProgressBar } from '../ds/index.js';
 
 const TOOLS = Object.keys(TOOL_SLOT);
 const mono = { fontFamily: 'var(--font-mono)' };
@@ -138,59 +141,61 @@ function ToolCard({ tool, pre, book }) {
 }
 
 /** The help article behind the active item (C2.5), read from the installed
- * burrito. Absence is stated, never rendered as an empty panel. */
-function ArticlePanel({ article }) {
-  if (!article) return null;
-  if (article.loading) {
-    return <p style={{ fontSize: 'var(--fs-caption-lg)', color: 'var(--text-tertiary)', margin: '0 0 14px' }}>{t('check.articleLoading')}</p>;
+ * burrito — presented as the mockup's right-side Drawer (F1, INVENTORY §6),
+ * not an inline card. Absence is stated, never rendered as an empty panel. */
+function ArticleBody({ article }) {
+  if (!article || article.loading) {
+    return <p style={{ fontSize: 'var(--fs-caption-lg)', color: 'var(--text-tertiary)', margin: 0 }}>{t('check.articleLoading')}</p>;
   }
   if (article.error) {
     // Catch-to-absence sweep (D30): a failed read is stated and retryable —
     // never "article missing". Selecting the item again re-requests it (the
     // same-key guard admits errored articles).
     return (
-      <Callout tone="warn" role="alert" data-testid="article-error" style={{ margin: '0 0 14px', overflowWrap: 'anywhere' }}>
+      <Callout tone="warn" role="alert" data-testid="article-error" style={{ overflowWrap: 'anywhere' }}>
         {t('understand.articleError')} {article.error}
       </Callout>
     );
   }
   if (!article.found) {
-    return (
-      <Callout tone="warn" data-testid="article-missing" style={{ margin: '0 0 14px' }}>
-        {t('check.articleMissing')}
-      </Callout>
-    );
+    return <Callout tone="warn" data-testid="article-missing">{t('check.articleMissing')}</Callout>;
   }
   // Round 37: never truncate real guidance — the committed en_ta fixture
   // already exceeds the old 40-block cap.
   const blocks = renderArticleBlocks(article.found.body);
   return (
-    <details data-testid="article-panel" open
-      style={{ border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '14px 18px', background: '#fff', margin: '0 0 14px' }}>
-      <summary style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)', cursor: 'pointer' }}>
-        {article.found.title}
-      </summary>
-      <div style={{ marginTop: 10 }}>
-        {blocks.map((b, i) => {
-          if (b.kind === 'h') {
-            return (
-              <p key={i} style={{ fontSize: 'var(--fs-caption-lg)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)', margin: '12px 0 4px', letterSpacing: '.02em' }}>{b.text}</p>
-            );
-          }
-          if (b.kind === 'li') {
-            return (
-              <p key={i} style={{ fontSize: 'var(--fs-ui-sm)', color: 'var(--text-secondary)', lineHeight: 'var(--lh-body)', margin: '0 0 4px', paddingInlineStart: 14 }}>{b.text}</p>
-            );
-          }
+    <div data-testid="article-panel">
+      {blocks.map((b, i) => {
+        if (b.kind === 'h') {
           return (
-            <p key={i} style={{ fontSize: 'var(--fs-ui-sm)', color: 'var(--text-secondary)', lineHeight: 'var(--lh-body)', margin: '0 0 8px' }}>{b.text}</p>
+            <p key={i} style={{ fontSize: 'var(--fs-caption-lg)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)', margin: '12px 0 4px', letterSpacing: '.02em' }}>{b.text}</p>
           );
-        })}
-      </div>
+        }
+        if (b.kind === 'li') {
+          return (
+            <p key={i} style={{ fontSize: 'var(--fs-body)', color: 'var(--text-body)', lineHeight: 1.7, margin: '0 0 4px', paddingInlineStart: 14 }}>{b.text}</p>
+          );
+        }
+        return (
+          <p key={i} style={{ fontSize: 'var(--fs-body)', color: 'var(--text-body)', lineHeight: 1.7, margin: '0 0 16px' }}>{b.text}</p>
+        );
+      })}
       <p style={{ fontSize: 'var(--fs-micro)', color: 'var(--text-tertiary)', ...mono, margin: '10px 0 0' }}>
         {article.found.ipath}
       </p>
-    </details>
+    </div>
+  );
+}
+
+/* The design system's own end-edge slide-over ('Translation Academy' is its
+ * documented purpose); the article prose inherits the document direction. */
+function AcademyDrawer({ article, cat, onClose }) {
+  return (
+    <Drawer data-testid="academy-drawer" width="var(--drawer-width)" onClose={onClose}
+      eyebrow={t('check.academyEyebrow', { cat })}
+      title={article?.found?.title ?? t('check.academyFallback')}>
+      <ArticleBody article={article} />
+    </Drawer>
   );
 }
 
@@ -221,77 +226,228 @@ function CheckEmpty({ cs, actions }) {
     );
 }
 
+/* The mockup's three large block triage buttons (F1): each carries its own
+ * tone both idle and active, not the old small white outline pills. */
+const TRIAGE_TONES = {
+  valid: { activeBg: 'var(--tc-valid-strong)', idleFg: 'var(--tc-valid-strong)', idleBorder: 'rgba(88,193,122,.55)' },
+  invalid: { activeBg: 'var(--tc-invalid)', idleFg: 'var(--tc-invalid)', idleBorder: 'var(--border-danger)' },
+  todo: { activeBg: 'var(--uw-black)', idleFg: 'var(--text-secondary)', idleBorder: 'var(--border-strong)' },
+};
 const triageStyle = (active, tone) => ({
-  border: `var(--stroke-selected) solid ${active ? tone : 'var(--border-strong)'}`,
-  background: active ? tone : '#fff',
-  color: active ? '#fff' : 'var(--text-secondary)',
+  border: `var(--stroke-selected) solid ${active ? tone.activeBg : tone.idleBorder}`,
+  background: active ? tone.activeBg : 'var(--surface-card)',
+  color: active ? 'var(--text-inverse)' : tone.idleFg,
   cursor: 'pointer',
   fontFamily: 'var(--font-ui)',
   fontWeight: 'var(--fw-heavy)',
-  fontSize: 'var(--fs-ui-sm)',
-  letterSpacing: 'var(--track-13)',
-  padding: '9px 16px',
+  fontSize: 'var(--fs-ui-md)',
+  padding: '11px 20px',
   borderRadius: 'var(--radius-md)',
 });
 
-function CheckItemCard({ item, quote, words, sel, toggleWord, markValid, markInvalid, markTodo }) {
-  return (
-        <Card variant="flat" padding="18px 20px" style={{ border: 'var(--stroke) solid var(--border)', marginBottom: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10 }}>
-            <span style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', fontWeight: 'var(--fw-black)', color: 'var(--uw-ocean)' }}>
-              {t('check.ref', { c: item.contextId.reference.chapter, v: item.contextId.reference.verse })}
-            </span>
-            <Badge tone="neutral">{item.category}</Badge>
-            <span style={{ fontSize: 'var(--fs-meta)', color: 'var(--text-tertiary)', ...mono }}>{item.contextId.groupId}</span>
-          </div>
-          {/* Highlighted source: the quote the checker must find in the draft. */}
-          <p lang="el" data-testid="check-quote" style={{ fontFamily: 'var(--font-greek)', fontSize: 20, lineHeight: 1.7, color: 'var(--text-scripture)', margin: '0 0 10px' }}>
-            <span style={{ background: 'var(--tc-highlight-soft)', borderRadius: 4, padding: '0 .12em' }}>{quote}</span>
-          </p>
-          {item.contextId.occurrenceNote && (
-            <p data-testid="check-note" style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', color: 'var(--text-secondary)', lineHeight: 'var(--lh-body)', margin: '0 0 14px' }}>
-              {item.contextId.occurrenceNote.slice(0, 400)}
-            </p>
-          )}
+const paneLabelRow = { padding: '16px 20px', borderBottom: 'var(--stroke-hair) solid var(--border-hair)' };
+const paneAbsent = (text) => (
+  <p style={{ fontSize: 'var(--fs-ui-md)', color: 'var(--text-tertiary)', fontStyle: 'italic', margin: '8px 0 0' }}>{text}</p>
+);
 
-          {/* Your translation: tap the word(s) that render the quote (B23). */}
-          <Overline tone="accent" style={{ letterSpacing: '.08em', margin: '0 0 6px', display: 'block' }}>
-            {t('check.yourTranslation')}
-          </Overline>
+/** The compare card's ORIGINAL-language row: the full source verse behind the
+ * quote (INVENTORY §6 — the labeled row the old card never had). */
+function OrigPane({ orig, c, v }) {
+  if (!orig) return null; // one whole-book read is in flight
+  const ot = orig.testament === 'ot';
+  let body;
+  if (orig.state === 'ready') {
+    const text = verseText(orig.chapters?.[String(c)]?.[String(v)]);
+    body = text ? (
+      <p dir={ot ? 'rtl' : 'ltr'} lang={ot ? 'hbo' : 'el'}
+        style={{ textAlign: 'start', fontFamily: ot ? 'var(--font-hebrew)' : 'var(--font-greek)', fontSize: 'var(--fs-verse-md)', lineHeight: 'var(--lh-verse-md)', color: 'var(--text-scripture)', margin: '8px 0 0' }}>
+        {text}
+      </p>
+    ) : paneAbsent(t('check.paneAbsent'));
+  } else if (orig.state === 'cross-frame') {
+    // #131 class: the project's numbering differs from the source's frame.
+    body = paneAbsent(t('check.crossFrame'));
+  } else if (orig.state === 'error') {
+    body = paneAbsent(orig.error);
+  } else {
+    body = paneAbsent(t('check.origUnavailable'));
+  }
+  return (
+    <div data-testid="orig-pane" style={paneLabelRow}>
+      <Overline tone="muted">{t(`check.origLabel.${orig.testament}`)}</Overline>
+      {body}
+    </div>
+  );
+}
+
+/** Why the gateway pane has no verse to show — or null while pane ids / the
+ * book text are still loading. Missing and a transient read error stay
+ * distinct statements (D30). */
+function ultAbsence(source, sourcePanes, crossFrame) {
+  // #131 class: the project's numbering differs from the source's frame.
+  if (crossFrame) return t('check.crossFrame');
+  // Round 37 (§5.3): a project may legally declare no extraScripture.
+  if (sourcePanes && sourcePanes.length === 0) return t('check.noGateway');
+  if (sourcePanes === null || source === undefined) return null;
+  if (source === 'missing') return t('check.ultUnavailable');
+  if (source?.error) return source.error;
+  return t('check.paneAbsent');
+}
+
+/** The gateway verse to render — never indexed cross-frame: a non-eng
+ * project's (c, v) is in the PROJECT's numbering, not this book's. An
+ * eng-framed project indexes its panes directly, the same frame-naive read
+ * Translate's source pane makes — an extraScripture pin whose OWN frame
+ * differs is #131's scope, here as there. */
+const ultVerseObj = (source, crossFrame, c, v) =>
+  !crossFrame && source && source !== 'missing' && !source.error
+    ? source.chapters?.[String(c)]?.[String(v)]
+    : null;
+
+/** The compare card's GATEWAY row: the project's §5.3 extraScripture verse
+ * with the quote's tokens highlighted through the alignment (same matcher as
+ * the helps panel). Pane ids are the project's own — 'ult' is preferred when
+ * present, otherwise the first declared pane; a project with none states so. */
+function UltPane({ sources, sourcePanes, item, c, v, crossFrame }) {
+  const paneId = sourcePanes?.includes('ult') ? 'ult' : sourcePanes?.[0];
+  const source = paneId ? sources?.[paneId] : undefined;
+  const vObj = ultVerseObj(source, crossFrame, c, v);
+  const tokens = React.useMemo(() => (vObj ? tokenizeVerse(vObj) : []), [vObj]);
+  const hits = React.useMemo(
+    () => (tokens.length
+      ? matchQuote(tokens, item.contextId.quote ?? item.contextId.quoteString ?? '', item.contextId.occurrence ?? 1)
+      : new Set()),
+    [tokens, item],
+  );
+  let body;
+  if (tokens.length) {
+    // Token stream rendered the SourceVerse way: raw text nodes with <mark>
+    // on the quote's hits, so the USFM's own spacing survives.
+    body = (
+      <p data-testid="ult-pane-text" dir="auto" style={{ textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse-md)', color: 'var(--text-scripture)', margin: '8px 0 0' }}>
+        {tokens.map((tok, i) =>
+          hits.has(i) ? (
+            <mark key={i} data-testid="ult-hl" style={{ background: 'var(--tc-highlight-soft)', color: 'var(--text-heading)', borderRadius: 'var(--radius-xs)', padding: '0 .06em' }}>
+              {tok.text}
+            </mark>
+          ) : (
+            <React.Fragment key={i}>{tok.text}</React.Fragment>
+          ),
+        )}
+      </p>
+    );
+  } else {
+    const absent = ultAbsence(source, sourcePanes, crossFrame);
+    body = absent == null ? null : paneAbsent(absent);
+  }
+  return (
+    <div data-testid="ult-pane" style={{ ...paneLabelRow, background: 'var(--surface-app)' }}>
+      <Overline tone="muted">
+        {paneId && paneId !== 'ult' ? t('check.gatewayLabel', { name: paneId.toUpperCase() }) : t('check.ultLabel')}
+      </Overline>
+      {body}
+    </div>
+  );
+}
+
+/** The detail column (F1): ref + item counter header, serif phrase h1, the
+ * "What to check" note box, the Academy link, the compare card, and the three
+ * block triage buttons — the mockup's L1044–1196 region. */
+function CheckDetail({ cs, item, sources, sourcePanes, words, sel, toggleWord, markValid, markInvalid, markTodo, onOpenAcademy, onNav }) {
+  const c = item.contextId.reference.chapter;
+  const v = item.contextId.reference.verse;
+  const quote = quoteOf(item);
+  const idx = cs.activeIndex;
+  const canPrev = idx > 0;
+  const canNext = idx < cs.items.length - 1;
+  const navStyle = (enabled) => ({
+    border: 'var(--stroke) solid', background: 'var(--surface-card)', fontFamily: 'inherit',
+    fontWeight: 'var(--fw-heavy)', fontSize: 'var(--fs-ui-sm)', width: 30, height: 30, borderRadius: 'var(--radius-sm)',
+    color: enabled ? 'var(--text-heading)' : 'var(--uw-mist)',
+    borderColor: enabled ? 'var(--border-strong)' : 'var(--border)',
+    cursor: enabled ? 'pointer' : 'default',
+  });
+
+  return (
+    <div style={{ maxWidth: 760, margin: '0 auto', padding: '28px 32px 60px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+        <span style={{ fontSize: 'var(--fs-ui-sm)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)' }}>
+          {bookName(cs.book)} {t('check.ref', { c, v })}
+        </span>
+        <div style={{ flex: 1 }} />
+        <span data-testid="check-item-counter" style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+          {t('check.itemOf', { n: idx + 1, total: cs.items.length })}
+        </span>
+        <button type="button" data-testid="check-prev" title={t('check.prevItem')} disabled={!canPrev}
+          onClick={() => canPrev && onNav(idx - 1)} style={navStyle(canPrev)}>←</button>
+        <button type="button" data-testid="check-next" title={t('check.nextItem')} disabled={!canNext}
+          onClick={() => canNext && onNav(idx + 1)} style={navStyle(canNext)}>→</button>
+      </div>
+
+      <h1 data-testid="check-quote" style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-h1)', fontWeight: 'var(--fw-bold)', color: 'var(--text-heading)', margin: '0 0 14px' }}>
+        “{quote}”
+      </h1>
+
+      {item.contextId.occurrenceNote && (
+        <div data-testid="check-note" style={{ maxWidth: '62ch', marginBottom: 8, borderRadius: 'var(--radius-lg)', padding: '16px 18px', background: 'var(--surface-warm)', border: 'var(--stroke) solid var(--tc-warn-border)' }}>
+          <Overline style={{ color: 'var(--tc-warn-text-2)' }}>{t('check.whatToCheck')}</Overline>
+          <div style={{ fontSize: 'var(--fs-title-sm)', letterSpacing: 'var(--track-16)', lineHeight: 'var(--lh-body)', fontWeight: 'var(--fw-medium)', color: 'var(--uw-ink)', margin: '7px 0 0' }}>
+            {/* Keyed by item: the expanded/collapsed state must not leak from
+              * one check to the next. */}
+            <ExpandableNote key={idx} text={item.contextId.occurrenceNote} />
+          </div>
+        </div>
+      )}
+
+      <Button variant="ghost" data-testid="open-academy" onClick={onOpenAcademy} style={{ margin: '0 0 16px' }}>
+        {t('check.learnMore', { title: cs.article?.found?.title ?? t('check.academyFallback') })}
+      </Button>
+
+      <CheckSessionNotices cs={cs} />
+
+      {/* The compare card: original → gateway → your translation, one stacked
+        * card (mockup L1152–1187). */}
+      <div style={{ background: 'var(--surface-card)', border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-xl)', overflow: 'hidden', boxShadow: 'var(--shadow-card)' }}>
+        <OrigPane orig={cs.orig} c={c} v={v} />
+        <UltPane sources={sources} sourcePanes={sourcePanes} item={item} c={c} v={v} crossFrame={cs.crossFrame} />
+        <div style={{ padding: '16px 20px' }}>
+          <Overline tone="accent">{t('check.yourTranslation')}</Overline>
           {words.length === 0 ? (
-            <p data-testid="check-target" data-drafted="0" style={{ fontSize: 'var(--fs-ui)', color: 'var(--text-tertiary)', fontStyle: 'italic', margin: '0 0 14px' }}>
+            <p data-testid="check-target" data-drafted="0" style={{ fontSize: 'var(--fs-ui-md)', color: 'var(--text-tertiary)', fontStyle: 'italic', margin: '8px 0 0' }}>
               {t('check.notDrafted')}
             </p>
           ) : (
             <>
-              <p data-testid="check-target" data-drafted="1" style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-sm)', lineHeight: 'var(--lh-verse-md)', color: 'var(--text-scripture)', margin: '0 0 8px' }}>
+              <p data-testid="check-target" data-drafted="1" style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-title-lg)', lineHeight: 1.9, color: 'var(--text-scripture)', margin: '8px 0 0' }}>
                 {words.map((w, i) => (
                   <span key={i} data-testid={`tw-${i}`} data-selected={sel.has(i) ? '1' : '0'}
                     onClick={() => toggleWord(i)}
-                    style={{ cursor: 'pointer', borderRadius: 4, padding: '0 .1em', marginInlineEnd: '.24em', background: sel.has(i) ? 'var(--tc-highlight-soft)' : 'transparent' }}>
+                    style={{ cursor: 'pointer', borderRadius: 4, padding: '0 .1em', marginInlineEnd: '.22em', background: sel.has(i) ? 'var(--tc-highlight-soft)' : 'transparent' }}>
                     {w}
                   </span>
                 ))}
               </p>
-              <p style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--text-tertiary)', margin: '0 0 14px' }}>{t('check.selectHint')}</p>
+              <p style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--text-tertiary)', margin: '8px 0 0' }}>{t('check.selectHint')}</p>
             </>
           )}
+        </div>
+      </div>
 
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button type="button" data-testid="mark-valid" onClick={markValid}
-              style={triageStyle(item.status === 'valid', 'var(--tc-valid-strong)')}>
-              {t('check.markValid')}
-            </button>
-            <button type="button" data-testid="mark-invalid" onClick={markInvalid}
-              style={triageStyle(item.status === 'invalid', 'var(--tc-invalid)')}>
-              {t('check.markInvalid')}
-            </button>
-            <button type="button" data-testid="mark-todo" onClick={markTodo}
-              style={triageStyle(item.status === 'todo', 'var(--tc-warn-text)')}>
-              {t('check.markTodo')}
-            </button>
-          </div>
-        </Card>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 22, flexWrap: 'wrap' }}>
+        <button type="button" data-testid="mark-valid" onClick={markValid}
+          style={triageStyle(item.status === 'valid', TRIAGE_TONES.valid)}>
+          {t('check.markValid')}
+        </button>
+        <button type="button" data-testid="mark-invalid" onClick={markInvalid}
+          style={triageStyle(item.status === 'invalid', TRIAGE_TONES.invalid)}>
+          {t('check.markInvalid')}
+        </button>
+        <button type="button" data-testid="mark-todo" onClick={markTodo}
+          style={triageStyle(item.status === 'todo', TRIAGE_TONES.todo)}>
+          {t('check.markTodo')}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -329,27 +485,157 @@ function CheckSessionNotices({ cs }) {
   );
 }
 
-function CheckItemGrid({ cs, decided, onSelect }) {
+/* ---- Left rail (F1): tool header, progress, filter + sort chips, and the
+ * status-dot item list — the mockup's 300px aside (L999–1042). ---- */
+
+const railChip = (on) => ({
+  border: 'var(--stroke) solid',
+  cursor: 'pointer', fontFamily: 'inherit', fontWeight: 'var(--fw-bold)',
+  fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', padding: '5px 10px',
+  borderRadius: 'var(--radius-pill)', whiteSpace: 'nowrap',
+  background: on ? 'var(--uw-ocean)' : 'var(--surface-card)',
+  color: on ? 'var(--text-inverse)' : 'var(--text-secondary)',
+  borderColor: on ? 'var(--uw-ocean)' : 'var(--border-input)',
+});
+
+const statusOf = (it) => (it.status === 'valid' || it.status === 'invalid' ? it.status : 'todo');
+const DOT = { valid: 'var(--tc-valid)', invalid: 'var(--tc-invalid)', todo: 'var(--text-tertiary)' };
+
+/** Sort modes per tool (mockup L1971–2000): tW groups by term or lists by
+ * verse; tN lists by verse or groups by category. */
+const SORTS = {
+  translationWords: { modes: ['byWord', 'byVerse'], default: 'byWord' },
+  translationNotes: { modes: ['byVerse', 'byCategory'], default: 'byVerse' },
+};
+
+/** Reference fields are number | string (derive.ts CheckReference): 'front',
+ * comma lists and letter verses are legal — they sort ahead of any number
+ * instead of poisoning the comparator with NaN. */
+const refNum = (x) => {
+  const n = Number(x);
+  return Number.isFinite(n) ? n : -1;
+};
+
+export function railGroupsOf({ items, sortMode, book }) {
+  const rows = items.slice().sort((a, z) =>
+    refNum(a.it.contextId.reference.chapter) - refNum(z.it.contextId.reference.chapter)
+    || refNum(a.it.contextId.reference.verse) - refNum(z.it.contextId.reference.verse));
+  if (sortMode === 'byWord') {
+    const terms = [...new Set(rows.map((r) => r.it.contextId.groupId))].sort((a, z) => a.localeCompare(z));
+    return terms.map((term) => ({ label: term, rows: rows.filter((r) => r.it.contextId.groupId === term) }));
+  }
+  if (sortMode === 'byCategory') {
+    const cats = [...new Set(rows.map((r) => r.it.category))];
+    return cats.map((cat) => ({ label: cat, rows: rows.filter((r) => r.it.category === cat) }));
+  }
+  return [{ label: bookName(book), rows }];
+}
+
+function CheckRail({ cs, filter, setFilter, sortMode, setSortMode, onSelect }) {
+  const { actions } = useApp();
+  const decided = isDecided;
+  const indexed = cs.items.map((it, i) => ({ it, i }));
+  const counts = {
+    all: indexed.length,
+    todo: indexed.filter(({ it }) => !decided(it)).length,
+    invalid: indexed.filter(({ it }) => it.status === 'invalid').length,
+  };
+  const filtered = indexed.filter(({ it }) =>
+    filter === 'all' ? true : filter === 'todo' ? !decided(it) : it.status === 'invalid');
+  const sorts = SORTS[cs.tool];
+  const groups = railGroupsOf({ items: filtered, tool: cs.tool, sortMode, book: cs.book });
+
   return (
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }} data-testid="check-list">
-        {cs.items.map((it, i) => (
-          <button key={`${it.contextId.checkId}-${i}`} type="button" onClick={() => onSelect(i)}
-            title={`${it.contextId.reference.chapter}:${it.contextId.reference.verse} · ${it.contextId.groupId}`}
-            data-ref={`${it.contextId.reference.chapter}:${it.contextId.reference.verse}`}
-            data-decided={decided(it) ? '1' : '0'}
-            data-invalid={it.invalidated === true ? '1' : '0'}
-            style={{
-              border: i === cs.activeIndex ? 'var(--stroke-control) solid var(--accent)' : 'var(--stroke) solid var(--border-input)',
-              background: it.invalidated === true ? 'var(--tc-invalid-surface)' : decided(it) ? 'var(--tc-valid-surface)' : '#fff',
-              cursor: 'pointer', fontFamily: 'var(--font-ui)',
-              fontWeight: 'var(--fw-heavy)', fontSize: 'var(--fs-label)', width: 34, height: 28, borderRadius: 'var(--radius-xs)',
-              color: it.invalidated === true ? 'var(--tc-invalid)' : decided(it) ? 'var(--tc-valid-strong)' : 'var(--text-tertiary)',
-              padding: 0,
-            }}>
-            {t('check.ref', { c: it.contextId.reference.chapter, v: it.contextId.reference.verse })}
-          </button>
-        ))}
+    <aside data-testid="check-rail" style={{ width: 'var(--rail-width-wide)', flex: 'none', background: 'var(--surface-card)', borderInlineEnd: 'var(--stroke-hair) solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div style={{ padding: '14px 18px', borderBottom: 'var(--stroke-hair) solid var(--border-hair)', flex: 'none' }}>
+        <Button variant="ghost" size="sm" onClick={actions.closeCheckTool} style={{ padding: 0, marginBottom: 8 }}>
+          {t('check.back')}
+        </Button>
+        <h2 style={{ fontSize: 'var(--fs-title-sm)', letterSpacing: 'var(--track-16)', fontWeight: 'var(--fw-black)', color: 'var(--text-heading)', margin: '0 0 2px' }}>
+          {t(`check.tool.${cs.tool}`)}
+        </h2>
+        <p style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--text-tertiary)', margin: '0 0 10px', fontWeight: 'var(--fw-medium)' }}>
+          {bookName(cs.book)}
+        </p>
+        <ProgressBar value={cs.progress.total ? (cs.progress.decided / cs.progress.total) * 100 : 0} height={7} />
+        <p data-testid="check-progress" style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--text-secondary)', margin: '8px 0 12px', fontWeight: 'var(--fw-medium)' }}>
+          {t('check.progress', { decided: cs.progress.decided, total: cs.progress.total })}
+        </p>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {['all', 'todo', 'invalid'].map((k) => (
+            <button key={k} type="button" data-testid={`filter-${k}`} onClick={() => setFilter(k)} style={railChip(filter === k)}>
+              {t(`check.filter.${k}`)} · {counts[k]}
+            </button>
+          ))}
+        </div>
+        {sorts && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
+            <Overline tone="muted">{t('check.sort')}</Overline>
+            {sorts.modes.map((m) => (
+              <button key={m} type="button" data-testid={`sort-${m}`} onClick={() => setSortMode(m)} style={railChip(sortMode === m)}>
+                {t(`check.sort.${m}`)}
+              </button>
+            ))}
+          </div>
+        )}
+        {/* #15: the dropped count travels with the progress it qualifies. */}
+        <DroppedNote dropped={cs.dropped} style={{ marginTop: 10 }} />
+        {cs.resource && (
+          <p style={{ fontSize: 'var(--fs-micro)', color: 'var(--text-tertiary)', ...mono, margin: '10px 0 0', overflowWrap: 'anywhere' }}>
+            {cs.resource.repoPath} · {cs.resource.version} · {t(`check.rung.${cs.resource.languageSet}`)}
+          </p>
+        )}
       </div>
+      <div data-testid="check-list" style={{ flex: 1, overflow: 'auto', padding: 14, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {groups.map((grp) => (
+          <div key={grp.label}>
+            <Overline tone="muted" as="p" style={{ margin: '0 0 6px' }}>{grp.label}</Overline>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {grp.rows.map(({ it, i }) => {
+                const st = statusOf(it);
+                const activeRow = i === cs.activeIndex;
+                return (
+                  <button key={`${it.contextId.checkId}-${i}`} type="button" onClick={() => onSelect(i)}
+                    title={`${it.contextId.reference.chapter}:${it.contextId.reference.verse} · ${it.contextId.groupId}`}
+                    data-ref={`${it.contextId.reference.chapter}:${it.contextId.reference.verse}`}
+                    data-decided={decided(it) ? '1' : '0'}
+                    data-invalid={it.invalidated === true ? '1' : '0'}
+                    style={{
+                      border: `var(--stroke) solid ${activeRow ? 'var(--accent)' : 'var(--border)'}`,
+                      textAlign: 'start', cursor: 'pointer', fontFamily: 'inherit',
+                      borderRadius: 'var(--radius-md)', padding: '10px 12px', width: '100%',
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      background: activeRow ? 'var(--surface-accent-soft)' : 'var(--surface-card)',
+                    }}>
+                    <span style={{ width: 9, height: 9, borderRadius: 'var(--radius-pill)', flex: 'none', background: it.invalidated === true ? DOT.invalid : DOT[st] }} />
+                    <span style={{ flex: 1, fontSize: 'var(--fs-ui-sm)', fontWeight: 'var(--fw-bold)', color: 'var(--text-body)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      “{quoteOf(it) || it.contextId.groupId}”
+                    </span>
+                    <span style={{ fontSize: 'var(--fs-badge)', letterSpacing: 'var(--track-10)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                      {t('check.ref', { c: it.contextId.reference.chapter, v: it.contextId.reference.verse })}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+        {filtered.length === 0 && (
+          <p data-testid="rail-empty" style={{ fontSize: 'var(--fs-caption-lg)', letterSpacing: 'var(--track-12-5)', color: 'var(--text-tertiary)', fontStyle: 'italic', margin: '6px 2px' }}>
+            {t('check.railEmpty')}
+          </p>
+        )}
+      </div>
+      <div style={{ padding: '12px 16px', borderTop: 'var(--stroke-hair) solid var(--border-hair)' }}>
+        {/* Close the session before leaving: a kept-alive session would render
+          * stale target text and decisions after the user edits in Translate —
+          * re-opening the tool re-derives and re-runs invalidation. */}
+        <Button variant="ghost" size="sm" style={{ padding: 0 }}
+          onClick={() => { actions.closeCheckTool(); actions.go('draft'); }}>
+          {t('check.backToTranslating')}
+        </Button>
+      </div>
+    </aside>
   );
 }
 
@@ -386,21 +672,33 @@ function CheckSession() {
     setSel(new Set(tokenIndicesFromSelections(targetText, activeItem?.selections)));
   }, [activeIndex, tool, book, targetText]);
 
-  if (cs?.loading) return <p style={{ fontSize: 'var(--fs-ui)', color: 'var(--text-tertiary)' }}>{t('check.deriving')}</p>;
+  // View-only rail state (F1). Filter and sort reset when the tool or book
+  // changes; the Academy drawer closes with them.
+  const [filter, setFilter] = React.useState('all');
+  const [sortMode, setSortMode] = React.useState(SORTS[tool]?.default);
+  const [academyOpen, setAcademyOpen] = React.useState(false);
+  React.useEffect(() => {
+    setFilter('all');
+    setSortMode(SORTS[tool]?.default);
+    setAcademyOpen(false);
+  }, [tool, book]);
+
+  const centered = (child) => (
+    <main style={{ flex: 1, overflow: 'auto', padding: '32px 40px 64px' }}>
+      <div style={{ maxWidth: 760, margin: '0 auto' }}>{child}</div>
+    </main>
+  );
+  if (cs?.loading) return centered(<p style={{ fontSize: 'var(--fs-ui)', color: 'var(--text-tertiary)' }}>{t('check.deriving')}</p>);
   if (cs?.error) {
-    return <p style={{ fontSize: 'var(--fs-ui)', color: 'var(--tc-invalid)', lineHeight: 'var(--lh-body)' }} data-testid="check-error">{cs.error}</p>;
+    return centered(<p style={{ fontSize: 'var(--fs-ui)', color: 'var(--tc-invalid)', lineHeight: 'var(--lh-body)' }} data-testid="check-error">{cs.error}</p>);
   }
   if (!cs?.items) return null;
 
   // C2.9 — designed empty states. The tool is genuinely usable; this book just
   // has no checks in the pinned resource.
-  if (cs.empty) return <CheckEmpty cs={cs} actions={actions} />;
+  if (cs.empty) return centered(<CheckEmpty cs={cs} actions={actions} />);
 
   const item = cs.items[cs.activeIndex];
-  // Single source of truth with the progress meter — an Invalid triage counts
-  // as decided in BOTH, and a carry-over invalidation counts in neither (B23).
-  const decided = isDecided;
-  const quote = quoteOf(item);
 
   const toggleWord = (i) =>
     setSel((prev) => {
@@ -421,44 +719,25 @@ function CheckSession() {
     actions.recordDecision({ selections: false, nothingToSelect: false, status: 'invalid' });
   const markTodo = () => actions.recordDecision({ status: 'todo' });
 
+  /* #15 note carried into the rail: the progress denominator EXCLUDES checks
+   * the project's versification has no verse for — DroppedNote states the
+   * count beside it, never a silently smaller total. */
   return (
-    <div data-testid="check-session">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <Button variant="secondary" size="sm" onClick={actions.closeCheckTool}>
-          {t('check.back')}
-        </Button>
-        <div style={{ flex: 1 }} />
-        <span data-testid="check-progress" style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)' }}>
-          {t('check.progress', { decided: cs.progress.decided, total: cs.progress.total })}
-        </span>
-      </div>
-
-      <ProgressBar value={cs.progress.total ? (cs.progress.decided / cs.progress.total) * 100 : 0}
-        height={6} style={{ marginBottom: 18 }} />
-      {/* #15: the denominator above EXCLUDES checks the project's versification
-        * has no verse for. Dropping them silently would make "0 of 415" look
-        * complete when the resource offered 417 — the same silence B20 fixed for
-        * the fallback. Null for an eng project, which is every project whose
-        * numbering matches the resource suite. */}
-      <DroppedNote dropped={cs.dropped}
-        style={{ background: 'var(--surface-warm)', border: 'var(--stroke) solid rgba(229,157,51,.35)', borderRadius: 'var(--radius-md)', padding: '10px 12px', margin: '0 0 10px' }} />
-
-      {cs.resource && (
-        <p style={{ fontSize: 'var(--fs-meta)', color: 'var(--text-tertiary)', ...mono, margin: '0 0 16px' }}>
-          {cs.resource.repoPath} · {cs.resource.version} · {t(`check.rung.${cs.resource.languageSet}`)}
-        </p>
+    <div data-testid="check-session" style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+      <CheckRail cs={cs} filter={filter} setFilter={setFilter}
+        sortMode={sortMode} setSortMode={setSortMode}
+        onSelect={(i) => actions.setCheckIndex(i)} />
+      <main style={{ flex: 1, overflow: 'auto', minWidth: 0, background: 'var(--surface-app)' }}>
+        {item && (
+          <CheckDetail cs={cs} item={item} sources={s.sources} sourcePanes={s.sourcePanes} words={words} sel={sel}
+            toggleWord={toggleWord} markValid={markValid} markInvalid={markInvalid} markTodo={markTodo}
+            onOpenAcademy={() => setAcademyOpen(true)}
+            onNav={(i) => actions.setCheckIndex(i)} />
+        )}
+      </main>
+      {academyOpen && (
+        <AcademyDrawer article={cs.article} cat={item?.category} onClose={() => setAcademyOpen(false)} />
       )}
-
-      {item && (
-        <CheckItemCard item={item} quote={quote} words={words} sel={sel} toggleWord={toggleWord}
-          markValid={markValid} markInvalid={markInvalid} markTodo={markTodo} />
-      )}
-
-      <CheckSessionNotices cs={cs} />
-
-      <ArticlePanel article={cs.article} />
-
-      <CheckItemGrid cs={cs} decided={decided} onSelect={(i) => actions.setCheckIndex(i)} />
     </div>
   );
 }
@@ -486,18 +765,10 @@ export default function Check() {
     );
   }
 
-  if (s.checkTool) {
-    return (
-      <main style={{ flex: 1, overflow: 'auto', padding: '32px 40px 64px' }}>
-        <div style={{ maxWidth: 760, margin: '0 auto' }}>
-          <h1 style={{ fontSize: 'var(--fs-h2)', letterSpacing: 'var(--track-22)', margin: '0 0 18px' }}>
-            {t(`check.tool.${s.checkTool}`)} · {bookName(s.book)}
-          </h1>
-          <CheckSession />
-        </div>
-      </main>
-    );
-  }
+  // F1 (epic #104 fidelity): the session owns the whole area — a 300px rail
+  // and the detail column, the mockup's two-pane workspace. The tool name and
+  // book moved into the rail header.
+  if (s.checkTool) return <CheckSession />;
 
   return (
     <main style={{ flex: 1, overflow: 'auto', padding: '32px 40px 64px' }}>

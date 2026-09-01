@@ -96,8 +96,10 @@ test.describe('J3 — a facilitator fetches the project’s resources', () => {
       await context.route(/^https?:\/\/(?!localhost|127\.0\.0\.1)/, (route) => route.abort());
 
       await openTool(page, 'translationNotes');
-      await expect(page.getByTestId('check-progress')).toHaveText(/\d+ of \d+ decided/);
-      // …including the article, which must come from the installed burrito.
+      await expect(page.getByTestId('check-progress')).toHaveText(/\d+ of \d+ resolved/);
+      // …including the article, which must come from the installed burrito —
+      // behind the F1 Academy drawer now.
+      await page.getByTestId('open-academy').click();
       await expect(page.getByTestId('article-panel')).toBeVisible();
     },
   );
@@ -153,10 +155,14 @@ test.describe('J3 — a facilitator fetches the project’s resources', () => {
 
       // tW: the article lives in the same burrito as the links (D34).
       await openTool(page, 'translationWords');
+      await page.getByTestId('open-academy').click();
       await expect(page.getByTestId('article-panel')).toContainText('payload/');
+      // The drawer closes from its scrim (the DS Drawer's overlay).
+      await page.getByTestId('academy-drawer').click({ position: { x: 10, y: 10 } });
 
       // tN: the groupId is a tA module, resolved inside the pinned en_ta.
       await openTool(page, 'translationNotes');
+      await page.getByTestId('open-academy').click();
       await expect(page.getByTestId('article-panel')).toContainText(/translate\/|checking\//);
     },
   );

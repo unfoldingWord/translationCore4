@@ -321,7 +321,36 @@ const initial = () => ({
   tick: 0,
 });
 
+/** Monotonic identity for check sessions (see patchCheckSession). */
+let checkSessionSeq = 0;
+
+/** Atomic merge into the live check session (same hazard class as setSource):
+ * the orig-book read and the article read resolve concurrently, and a
+ * stale-snapshot spread in either would clobber the other's result. The seq
+ * is the session's identity — a completion from a closed/replaced session
+ * (even for the same tool and book, or another project) updates nothing. */
+function patchCheckSession(state, a) {
+  const cs = state.checkSession;
+  if (!cs?.items || cs.seq !== a.seq) return state;
+  return { ...state, checkSession: { ...cs, ...a.patch } };
+}
+
+/** One saved decision merged item-by-item (never a whole-array snapshot):
+ * two decisions can be in flight through the store queue at once, and the
+ * later completion of a stale array would overwrite the earlier item. */
+function checkDecisionSaved(state, a) {
+  const cs = state.checkSession;
+  if (!cs?.items || cs.seq !== a.seq) return state;
+  const items = cs.items.map((it, i) => (i === a.index ? a.item : it));
+  return { ...state, checkSession: { ...cs, items, progress: progressOf(items), saveError: null } };
+}
+
+/** Check-session merge actions, table-dispatched ahead of the main switch. */
+const CHECK_SESSION_CASES = { patchCheckSession, checkDecisionSaved };
+
 function reducer(state, a) {
+  const checkCase = CHECK_SESSION_CASES[a.type];
+  if (checkCase) return checkCase(state, a);
   switch (a.type) {
     case 'set':
       return { ...state, ...a.patch };
@@ -465,6 +494,52 @@ async function gatewayChangePlan({ consequences, next, coverage, installed, stor
   return { plan, blocked };
 }
 
+/** Derive one tool's check session: the item list, and the project-frame
+ * verdict the compare panes need. #131 class: a non-eng-framed project
+ * numbers its items in ITS frame, while the source books stay in their own —
+ * the panes cannot line verses up until the mapping lands there. `partial`
+ * marks the designed empty/warning session shapes, which carry no items. */
+async function assembleCheckSession({ api, actions, store, stateRef, st, tool, book, pre, seq }) {
+  const result = await deriveCheckItems({ apiClient: api, actions, st, tool, book, pre });
+  // ONE frame verdict per session — the one the derivation itself used
+  // (review round 3: a second projectFrame() call could disagree with it).
+  // A missing-TSV session resolves no frame; it has no panes to gate.
+  const { frame } = result;
+  const crossFrame = frame ? frame.state !== 'ready' || frame.name !== 'eng' : false;
+  if (result.session) return { session: { ...result.session, seq, crossFrame }, partial: true };
+  const session = {
+    ...(await completedCheckSession({
+      store,
+      st: stateRef.current,
+      tool,
+      book,
+      pre,
+      derived: result.derived,
+      dropped: result.dropped,
+    })),
+    seq,
+    crossFrame,
+  };
+  return { session, partial: false };
+}
+
+/** F1 (epic #104 fidelity): the ORIGINAL-language chapters behind the check
+ * detail's compare card — one whole-book read + parse per session, from the
+ * same pinned originalLanguage resource Align reads. Absence is a stated
+ * state, never an error (D30). */
+async function readCheckOrigChapters(store, pin, book) {
+  const testament = isOldTestament(book) ? 'ot' : 'nt';
+  if (!pin?.repoPath) return { state: 'unpinned', testament };
+  try {
+    const { usfm: usfmText } = await store.readSourceBook(resolveReadPath(pin), book);
+    if (!usfmText) return { state: 'missing', testament };
+    return { state: 'ready', testament, chapters: parseChapters(usfmText) };
+  } catch (e) {
+    if (isNotFoundError(e)) return { state: 'missing', testament };
+    return { state: 'error', testament, error: String(e?.message || e) };
+  }
+}
+
 async function prepareAlignmentSource(store, st, ref) {
   const testament = isOldTestament(st.book) ? 'ot' : 'nt';
   const pin = st.projectPins?.resources?.originalLanguage?.[testament];
@@ -537,7 +612,7 @@ async function deriveCheckItems({ apiClient, actions, st, tool, book, pre }) {
     return { session: emptyCheckSession(tool, book, pre.resolution, 'missing') };
   const frame = await actions.projectFrame();
   if (frame.state !== 'ready')
-    return { session: emptyCheckSession(tool, book, pre.resolution, `versification-${frame.state}`) };
+    return { session: emptyCheckSession(tool, book, pre.resolution, `versification-${frame.state}`), frame };
   const scopeRanges = scopeRangesFor(st.projectScope ?? {}, book.toUpperCase());
   const result = await deriveForProject({
     tsv,
@@ -556,8 +631,8 @@ async function deriveCheckItems({ apiClient, actions, st, tool, book, pre }) {
       }
     : null;
   if (result.items.length === 0)
-    return { session: emptyCheckSession(tool, book, pre.resolution, dropped ? 'all-dropped' : 'none', dropped) };
-  return { derived: result.items, dropped };
+    return { session: emptyCheckSession(tool, book, pre.resolution, dropped ? 'all-dropped' : 'none', dropped), frame };
+  return { derived: result.items, dropped, frame };
 }
 
 async function completedCheckSession({ store, st, tool, book, pre, derived, dropped }) {
@@ -2098,40 +2173,41 @@ export function AppProvider({ children }) {
         const pre = st.preflight?.[tool];
         if (!pre || pre.state !== 'ready' || !pre.resolution?.pin) return;
         const book = st.book;
-        dispatch({ type: 'set', patch: { checkTool: tool, checkSession: { loading: true } } });
+        // The seq is this session's identity, taken BEFORE any await: a stale
+        // open's completion (or failure) must never replace a newer session,
+        // and closing the tool or the project invalidates in-flight opens.
+        const seq = ++checkSessionSeq;
+        dispatch({ type: 'set', patch: { checkTool: tool, checkSession: { loading: true, seq } } });
         try {
-          const result = await deriveCheckItems({ apiClient: api, actions: a, st, tool, book, pre });
-          if (result.session) {
-            dispatch({ type: 'set', patch: { checkTool: tool, checkSession: result.session } });
-            return;
-          }
-          const session = await completedCheckSession({
-            store: storeRef.current,
-            st: stateRef.current,
-            tool,
-            book,
-            pre,
-            derived: result.derived,
-            dropped: result.dropped,
+          const { session, partial } = await assembleCheckSession({
+            api, actions: a, store: storeRef.current, stateRef, st, tool, book, pre, seq,
           });
-          dispatch({ type: 'set', patch: { checkSession: session } });
+          if (seq !== checkSessionSeq) return; // a newer open or close won
+          dispatch({ type: 'set', patch: { checkTool: tool, checkSession: session } });
+          if (partial) return;
           a.loadActiveArticle(session);
+          a.loadCheckOrigSource(session);
         } catch (e) {
+          if (seq !== checkSessionSeq) return;
           dispatch({
             type: 'set',
-            patch: { checkSession: { loading: false, error: String(e?.message || e) } },
+            patch: { checkSession: { loading: false, error: String(e?.message || e), seq } },
           });
         }
       },
 
-      closeCheckTool: () => dispatch({ type: 'set', patch: { checkTool: null, checkSession: null } }),
+      closeCheckTool: () => {
+        checkSessionSeq++; // invalidate any in-flight open or completion
+        dispatch({ type: 'set', patch: { checkTool: null, checkSession: null } });
+      },
 
       setCheckIndex: (activeIndex) => {
         const cs = stateRef.current.checkSession;
         if (!cs) return;
-        const next = { ...cs, activeIndex };
-        dispatch({ type: 'set', patch: { checkSession: next } });
-        a.loadActiveArticle(next);
+        // Reducer-side merge: a concurrently-landing orig/article result must
+        // not be clobbered by this snapshot (patchCheckSession hazard note).
+        dispatch({ type: 'patchCheckSession', seq: cs.seq, patch: { activeIndex } });
+        a.loadActiveArticle({ ...cs, activeIndex });
       },
 
       /** C2.5 — the help article behind the active item, read from the
@@ -2151,7 +2227,9 @@ export function AppProvider({ children }) {
         const sets = st.projectPins?.languageSets?.[rung];
         const key = `${cs.tool}:${item.contextId.groupId}:${item.category}`;
         if (cs.article?.key === key && !cs.article.error) return;
-        dispatch({ type: 'set', patch: { checkSession: { ...cs, article: { key, loading: true } } } });
+        // Reducer-side merges (patchCheckSession): the orig-book read resolves
+        // concurrently, and a stale-snapshot spread here dropped its result.
+        dispatch({ type: 'patchCheckSession', seq: cs.seq, patch: { article: { key, loading: true } } });
         const kind = cs.tool === 'translationWords' ? 'tw' : 'ta';
         // Catch-to-absence sweep (D30): readHelpArticle now PROPAGATES
         // transient failures (round 35) — without the settle the un-awaited
@@ -2161,9 +2239,33 @@ export function AppProvider({ children }) {
         const now = stateRef.current.checkSession;
         if (now?.article?.key !== key) return; // the user moved on
         dispatch({
-          type: 'set',
-          patch: { checkSession: { ...now, article: { key, loading: false, found, error } } },
+          type: 'patchCheckSession',
+          seq: cs.seq,
+          patch: { article: { key, loading: false, found, error } },
         });
+      },
+
+      /** F1 (epic #104 fidelity): the ORIGINAL-language verse row of the
+       * check detail's compare card. One whole-book read + parse per session,
+       * from the same pinned originalLanguage resource Align reads (D30 —
+       * absence is a stated state, never an error). */
+      loadCheckOrigSource: async (session) => {
+        const cs = session ?? stateRef.current.checkSession;
+        const store = storeRef.current;
+        if (!cs?.items || !store) return;
+        const { book } = cs;
+        const testament = isOldTestament(book) ? 'ot' : 'nt';
+        if (cs.crossFrame) {
+          // #131 class: the source book is numbered in its own frame — no
+          // verse-by-verse lookup until the mapping lands. Skip the read.
+          dispatch({ type: 'patchCheckSession', seq: cs.seq, patch: { orig: { state: 'cross-frame', testament } } });
+          return;
+        }
+        const pin = stateRef.current.projectPins?.resources?.originalLanguage?.[testament];
+        const orig = await readCheckOrigChapters(store, pin, book);
+        // Reducer-side merge (patchCheckSession): the article read resolves
+        // concurrently, and a stale-snapshot spread here would clobber it.
+        dispatch({ type: 'patchCheckSession', seq: cs.seq, patch: { orig } });
       },
 
       /** C2.6 — write one decision through the store. The full §5.2 record is
@@ -2184,18 +2286,16 @@ export function AppProvider({ children }) {
           // disagrees (by sha) with the file's stored §5.2 record — surface the
           // refusal on the session; the way through is the gateway-change flow.
           dispatch({
-            type: 'set',
-            patch: { checkSession: { ...cs, saveError: String(e?.message ?? e) } },
+            type: 'patchCheckSession',
+            seq: cs.seq,
+            patch: { saveError: String(e?.message ?? e) },
           });
           return;
         }
-        const items = cs.items.map((it, i) => (i === cs.activeIndex ? next : it));
-        dispatch({
-          type: 'set',
-          patch: {
-            checkSession: { ...cs, items, progress: progressOf(items), saveError: null },
-          },
-        });
+        // Item-level merge (checkDecisionSaved): two decisions can be in
+        // flight at once, and a stale whole-array snapshot from the later
+        // completion would overwrite the earlier item.
+        dispatch({ type: 'checkDecisionSaved', seq: cs.seq, index: cs.activeIndex, item: next });
       },
 
       /** The resolver's inputs for THIS machine + THIS project: what is
@@ -2894,10 +2994,13 @@ export function AppProvider({ children }) {
         // A2 (2026-08-27 adversarial review): understand + projectPins are
         // PROJECT state — leaving them set lets project B render (and journal
         // into!) project A's data. Invalidate any in-flight load as well.
+        // The check session is the same class (PR #132 review round 2):
+        // clear it and invalidate its in-flight completions.
         understandSeqRef.current++;
+        checkSessionSeq++;
         dispatch({
           type: 'set',
-          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, saveState: 'saved', noteSaveState: 'saved', projectPins: null, projectPinsLoaded: false, projectPinsError: null, sourcePanes: null, understand: null },
+          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, saveState: 'saved', noteSaveState: 'saved', projectPins: null, projectPinsLoaded: false, projectPinsError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null },
         });
         refreshProjects(); // re-order: the project just left goes to the top
       },
