@@ -31,7 +31,7 @@ import {
 } from './data/derive';
 import { readTwArticle, readTaArticle } from './data/articles';
 import { revalidateAgainstDraft, resolutionWarning } from './data/revalidate';
-import { bootstrapVerse, linkWord, unlinkWord, stampTargetVerse, alignmentIsStale } from './data/align/edit';
+import { bootstrapVerse, linkWord, unlinkWord, moveWord, mergeAlignments, splitAlignment, stampTargetVerse, alignmentIsStale } from './data/align/edit';
 import { consequencesOfGatewayChange, applyGatewayChange, uncoveredByChange } from './data/gatewayChange';
 import { carryOverDecisions } from './data/carryOver';
 import { TC_READY_TOPIC } from './data/serverApi';
@@ -579,6 +579,10 @@ async function buildAlignmentSession(store, st, ref, source, mapped, origObjects
     armed: null,
     targetDir: st.project?.scriptDirection === 'rtl' ? 'rtl' : 'ltr',
     origDir: source.testament === 'ot' ? 'rtl' : 'ltr',
+    // #129: the editor's gateway lens needs the testament (mode labels) and
+    // the project frame — an eng-framed project may index the gateway pane
+    // by this ref; any other frame disables the lens (#131 class).
+    testament: source.testament,
   };
 }
 
@@ -2135,7 +2139,7 @@ export function AppProvider({ children }) {
         const session = await buildAlignmentSession(store, st, ref, source, mapped, origObjects);
         dispatch({
           type: 'set',
-          patch: { alignSession: session },
+          patch: { alignSession: session.unavailable ? session : { ...session, frameName: frame.name } },
         });
         } catch (error) {
           dispatch({ type: 'set', patch: { alignSession: { error: String(error?.message || error) } } });
@@ -2191,6 +2195,41 @@ export function AppProvider({ children }) {
         const a2 = stateRef.current.alignSession;
         if (!a2) return;
         const next = unlinkWord(a2.record, cardIndex, word);
+        if (next === a2.record) return;
+        await a.persistAlign({ ...a2, record: next });
+      },
+
+      /** #129 drag-and-drop: place a banked word without the arm step. */
+      placeAlignWordAt: async (cardIndex, word) => {
+        const a2 = stateRef.current.alignSession;
+        if (!a2) return;
+        const next = linkWord(a2.record, cardIndex, word);
+        if (next === a2.record) return;
+        await a.persistAlign({ ...a2, record: next, armed: null });
+      },
+
+      /** #129 drag-and-drop: move a placed word between cards in one write. */
+      moveAlignWord: async (fromIndex, toIndex, word) => {
+        const a2 = stateRef.current.alignSession;
+        if (!a2) return;
+        const next = moveWord(a2.record, fromIndex, toIndex, word);
+        if (next === a2.record) return;
+        await a.persistAlign({ ...a2, record: next });
+      },
+
+      /** #129 phrase alignment: merge two cards / split a phrase card. */
+      mergeAlignCards: async (fromIndex, toIndex) => {
+        const a2 = stateRef.current.alignSession;
+        if (!a2) return;
+        const next = mergeAlignments(a2.record, fromIndex, toIndex);
+        if (next === a2.record) return;
+        await a.persistAlign({ ...a2, record: next });
+      },
+
+      splitAlignCard: async (cardIndex) => {
+        const a2 = stateRef.current.alignSession;
+        if (!a2) return;
+        const next = splitAlignment(a2.record, cardIndex);
         if (next === a2.record) return;
         await a.persistAlign({ ...a2, record: next });
       },

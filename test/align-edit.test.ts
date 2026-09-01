@@ -147,3 +147,62 @@ describe('I-3 — the draft hash makes a later edit detectable', () => {
     expect(restamped.invalid).toBe(false);
   });
 });
+
+// #129 — phrase alignment (merge/split) and the one-step move for drag.
+import { mergeAlignments, splitAlignment, moveWord } from '../src/data/align/edit';
+
+describe('#129 merge / split — phrase alignments stay original-anchored', () => {
+  it('merge concatenates topWords and bottomWords in index order at the lower index', () => {
+    let rec = boot();
+    rec = linkWord(rec, 0, wordIn(rec.wordBank, 'Pablo'));
+    rec = linkWord(rec, 1, wordIn(rec.wordBank, 'siervo'));
+    const merged = mergeAlignments(rec, 1, 0);
+    expect(merged.alignments).toHaveLength(1);
+    expect(merged.alignments[0].topWords.map((w) => w.word)).toEqual(['Παῦλος', 'δοῦλος']);
+    expect(merged.alignments[0].bottomWords.map((w) => w.word)).toEqual(['Pablo', 'siervo']);
+    // No word entered or left the verse.
+    expect(allTargetWords(merged)).toHaveLength(allTargetWords(rec).length);
+  });
+
+  it('merge with an out-of-range or identical index changes nothing', () => {
+    const rec = boot();
+    expect(mergeAlignments(rec, 0, 0)).toBe(rec);
+    expect(mergeAlignments(rec, 0, 99)).toBe(rec);
+  });
+
+  it('split restores single-word groups, linked words staying on the first', () => {
+    let rec = boot();
+    rec = linkWord(rec, 0, wordIn(rec.wordBank, 'Pablo'));
+    rec = mergeAlignments(rec, 0, 1);
+    const split = splitAlignment(rec, 0);
+    expect(split.alignments).toHaveLength(2);
+    expect(split.alignments[0].topWords.map((w) => w.word)).toEqual(['Παῦλος']);
+    expect(split.alignments[0].bottomWords.map((w) => w.word)).toEqual(['Pablo']);
+    expect(split.alignments[1].bottomWords).toHaveLength(0);
+  });
+
+  it('split on a single-word group changes nothing', () => {
+    const rec = boot();
+    expect(splitAlignment(rec, 0)).toBe(rec);
+  });
+});
+
+describe('#129 moveWord — a drag between cards is one record step', () => {
+  it('moves a placed word from one alignment to another, bank untouched', () => {
+    let rec = boot();
+    rec = linkWord(rec, 0, wordIn(rec.wordBank, 'Pablo'));
+    const bankBefore = rec.wordBank.length;
+    const moved = moveWord(rec, 0, 1, { word: 'Pablo', occurrence: 1, occurrences: 1 });
+    expect(moved.alignments[0].bottomWords).toHaveLength(0);
+    expect(moved.alignments[1].bottomWords.map((w) => w.word)).toEqual(['Pablo']);
+    expect(moved.wordBank).toHaveLength(bankBefore);
+  });
+
+  it('a move to a missing target or onto itself changes nothing', () => {
+    let rec = boot();
+    rec = linkWord(rec, 0, wordIn(rec.wordBank, 'Pablo'));
+    const w = { word: 'Pablo', occurrence: 1, occurrences: 1 };
+    expect(moveWord(rec, 0, 0, w)).toBe(rec);
+    expect(moveWord(rec, 0, 99, w)).toBe(rec);
+  });
+});

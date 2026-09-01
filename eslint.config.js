@@ -47,7 +47,7 @@ export default [
           ignoreProps: true,
           // 'translationCore' + '4' compose the brand wordmark — a product
           // name, not UI language; it is never translated.
-          allowedStrings: ['≡', '≣', '→', '←', '+', '·', '%', '✕', '▾', '▸', '⟷', '(', ')', '—', '🌱', '4', 'translationCore', '®', '“', '”'],
+          allowedStrings: ['≡', '≣', '→', '←', '+', '·', '%', '✕', '▾', '▸', '⟷', '(', ')', '—', '🌱', '4', 'translationCore', '®', '“', '”', 'ℹ'],
         },
       ],
     },

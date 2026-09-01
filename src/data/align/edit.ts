@@ -134,6 +134,76 @@ export const unlinkWord = (
   };
 };
 
+/**
+ * #129 — merge two alignments into one phrase alignment. The group at the
+ * LOWER index keeps its position; topWords and bottomWords concatenate in
+ * index order, so the phrase reads in original-language word order. Returns
+ * the record unchanged when either index is out of range or they are equal.
+ */
+export const mergeAlignments = (
+  record: AlignmentVerseRecord,
+  fromIndex: number,
+  toIndex: number,
+): AlignmentVerseRecord => {
+  const from = record.alignments[fromIndex];
+  const to = record.alignments[toIndex];
+  if (!from || !to || fromIndex === toIndex) return record;
+  const [first, second] = fromIndex < toIndex ? [from, to] : [to, from];
+  const merged: Alignment = {
+    topWords: [...first.topWords, ...second.topWords],
+    bottomWords: [...first.bottomWords, ...second.bottomWords],
+  };
+  const keep = Math.min(fromIndex, toIndex);
+  const drop = Math.max(fromIndex, toIndex);
+  return {
+    ...record,
+    alignments: record.alignments
+      .map((a, i) => (i === keep ? merged : a))
+      .filter((_, i) => i !== drop),
+  };
+};
+
+/**
+ * #129 — split one phrase alignment back into single-word alignments. The
+ * linked target words stay on the FIRST resulting group (the aligner re-drags
+ * them from there), matching the mockup's split behavior. A single-word
+ * group returns unchanged.
+ */
+export const splitAlignment = (
+  record: AlignmentVerseRecord,
+  index: number,
+): AlignmentVerseRecord => {
+  const group = record.alignments[index];
+  if (!group || group.topWords.length < 2) return record;
+  const singles: Alignment[] = group.topWords.map((tw, k) => ({
+    topWords: [tw],
+    bottomWords: k === 0 ? group.bottomWords : [],
+  }));
+  return {
+    ...record,
+    alignments: [
+      ...record.alignments.slice(0, index),
+      ...singles,
+      ...record.alignments.slice(index + 1),
+    ],
+  };
+};
+
+/** #129 — move a linked target word from one alignment to another in ONE
+ * record step (drag between cards), so a failed persist can never strand the
+ * word half-moved. */
+export const moveWord = (
+  record: AlignmentVerseRecord,
+  fromIndex: number,
+  toIndex: number,
+  word: AlignedWord,
+): AlignmentVerseRecord => {
+  if (!record.alignments[toIndex] || fromIndex === toIndex) return record;
+  const unlinked = unlinkWord(record, fromIndex, word);
+  if (unlinked === record) return record;
+  return linkWord(unlinked, toIndex, word);
+};
+
 /** Re-stamp the draft hash after the alignment is edited against a verse. */
 export const stampTargetVerse = (
   record: AlignmentVerseRecord,
