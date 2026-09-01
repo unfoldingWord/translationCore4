@@ -142,6 +142,21 @@ function CardProgress({ entry, kind = 'check' }) {
   );
 }
 
+/** Whole-card activation with keyboard parity (review round 1): a clickable
+ * div needs role, tab stop, and Enter/Space — sighted-mouse-only cards are
+ * not acceptable. */
+const clickableCard = (open) => ({
+  onClick: open,
+  role: 'button',
+  tabIndex: 0,
+  onKeyDown: (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      open();
+    }
+  },
+});
+
 function ToolCard({ tool, pre, book, progress }) {
   const { actions } = useApp();
   const tone = TONE[pre.state] ?? TONE.unpinned;
@@ -150,7 +165,7 @@ function ToolCard({ tool, pre, book, progress }) {
 
   return (
     <div data-testid={`preflight-${tool}`} data-state={pre.state}
-      onClick={ready ? open : undefined}
+      {...(ready ? clickableCard(open) : {})}
       style={{ border: `var(--stroke) solid ${tone.border}`, background: tone.bg, borderRadius: 'var(--radius-lg)', padding: '16px 18px', display: 'flex', flexDirection: 'column', cursor: ready ? 'pointer' : 'default' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 }}>
         <span style={{ fontSize: 'var(--fs-ui-md)', letterSpacing: 'var(--track-14)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)' }}>{t(`check.tool.${tool}`)}</span>
@@ -175,7 +190,10 @@ function ToolCard({ tool, pre, book, progress }) {
             version: pre.unavailablePrimary.version,
           })}
           <div style={{ marginTop: 8 }}>
-            <Button size="sm" variant="secondary" onClick={actions.openSources} data-testid={`fetch-primary-${tool}`}
+            {/* Inside a whole-card click target (review round 1): the nested
+              * action must not ALSO open the tool. */}
+            <Button size="sm" variant="secondary" data-testid={`fetch-primary-${tool}`}
+              onClick={(e) => { e.stopPropagation(); actions.openSources(); }}
               style={{ color: 'var(--tc-warn-text)', borderColor: 'rgba(229,157,51,.5)' }}>
               {t('check.fix.download')}
             </Button>
@@ -925,10 +943,13 @@ export default function Check() {
   // #136 (D3d): derive the picker cards' progress on demand — on entering
   // the picker and on returning to it (a closed session flips atPicker back
   // on, so counts reflect the decisions just made). Never stored (§4.2).
+  // bookRaw is a dependency (review round 1): preflight can finish before
+  // the book read, and a derivation against a null draft would both fail the
+  // Align entry and revalidate the tools against nothing.
   const atPicker = !s.checkTool && !s.aligning;
   React.useEffect(() => {
-    if (pre && atPicker) actions.loadPickerProgress();
-  }, [pre, atPicker]);
+    if (pre && atPicker && s.bookRaw) actions.loadPickerProgress();
+  }, [pre, atPicker, s.bookRaw]);
 
   if (!s.book) return null;
 
@@ -991,7 +1012,7 @@ export default function Check() {
             ))}
 
             <Card variant="flat" padding="16px 18px" data-testid="align-card"
-              onClick={actions.startAligning}
+              {...clickableCard(actions.startAligning)}
               style={{ border: 'var(--stroke) solid var(--border)', display: 'flex', flexDirection: 'column', cursor: 'pointer' }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 }}>
                 <span style={{ fontSize: 'var(--fs-ui-md)', letterSpacing: 'var(--track-14)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)' }}>{t('nav.align')}</span>
@@ -1008,7 +1029,7 @@ export default function Check() {
             </Card>
 
             <Card variant="flat" padding="16px 18px" data-testid="community-checking-card"
-              onClick={() => actions.go('publish')}
+              {...clickableCard(() => actions.go('publish'))}
               style={{ border: 'var(--stroke) solid var(--border)', display: 'flex', flexDirection: 'column', cursor: 'pointer' }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 }}>
                 <span style={{ fontSize: 'var(--fs-ui-md)', letterSpacing: 'var(--track-14)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)' }}>{t('cc.title')}</span>

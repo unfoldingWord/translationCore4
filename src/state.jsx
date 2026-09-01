@@ -2234,9 +2234,15 @@ export function AppProvider({ children }) {
         alignSessionSeq++;
         // #136: open at the remembered verse, else the picker's next
         // unaligned verse, else the default (first drafted, via openAlign).
+        // A remembered verse whose draft was since emptied is skipped
+        // (review round 1) — resuming it would open an unavailable session
+        // instead of falling through the chain.
         const st = stateRef.current;
+        const texts = verseTextIndex(st.bookRaw);
         const alignVerse =
-          st.toolPos?.[`align:${st.book}`] ?? st.pickerProgress?.align?.nextRef ?? null;
+          [st.toolPos?.[`align:${st.book}`], st.pickerProgress?.align?.nextRef].find(
+            (ref) => ref && texts[ref],
+          ) ?? null;
         dispatch({ type: 'set', patch: { aligning: true, alignSession: null, alignVerse } });
       },
 
@@ -2426,7 +2432,9 @@ export function AppProvider({ children }) {
       loadPickerProgress: async () => {
         const st = stateRef.current;
         const store = storeRef.current;
-        if (!st.book || !store || !st.preflight) return;
+        // bookRaw is required (review round 1): revalidation against a
+        // not-yet-loaded draft would misreport every decided count.
+        if (!st.book || !store || !st.preflight || !st.bookRaw) return;
         const book = st.book;
         const seq = ++pickerProgressSeq;
         dispatch({ type: 'set', patch: { pickerProgress: { seq } } });
