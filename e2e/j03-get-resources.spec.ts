@@ -157,7 +157,8 @@ test.describe('J3 — a facilitator fetches the project’s resources', () => {
       await openTool(page, 'translationWords');
       await page.getByTestId('open-academy').click();
       await expect(page.getByTestId('article-panel')).toContainText('payload/');
-      await page.getByTestId('close-academy').click();
+      // The drawer closes from its scrim (the DS Drawer's overlay).
+      await page.getByTestId('academy-drawer').click({ position: { x: 10, y: 10 } });
 
       // tN: the groupId is a tA module, resolved inside the pinned en_ta.
       await openTool(page, 'translationNotes');

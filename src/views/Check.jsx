@@ -23,7 +23,7 @@ import { tokenizeVerse, matchQuote } from '../data/sourceHighlight';
 import { verseText } from './verseText.js';
 import { ExpandableNote } from './HelpsPanel.jsx';
 import { t } from '../i18n';
-import { Button, Card, Callout, Overline, ProgressBar } from '../ds/index.js';
+import { Button, Card, Callout, Drawer, Overline, ProgressBar } from '../ds/index.js';
 
 const TOOLS = Object.keys(TOOL_SLOT);
 const mono = { fontFamily: 'var(--font-mono)' };
@@ -187,29 +187,15 @@ function ArticleBody({ article }) {
   );
 }
 
+/* The design system's own end-edge slide-over ('Translation Academy' is its
+ * documented purpose); the article prose inherits the document direction. */
 function AcademyDrawer({ article, cat, onClose }) {
   return (
-    <div data-testid="academy-drawer" onClick={onClose}
-      style={{ position: 'fixed', inset: 0, background: 'var(--scrim-drawer)', zIndex: 50, display: 'flex', justifyContent: 'flex-end' }}>
-      <div onClick={(e) => e.stopPropagation()}
-        style={{ width: 440, maxWidth: '90vw', height: '100%', background: 'var(--surface-card)', boxShadow: 'var(--shadow-drawer)', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '20px 24px', borderBottom: 'var(--stroke-hair) solid var(--border)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-          <div>
-            <Overline tone="accent" as="p" style={{ margin: '0 0 4px' }}>{t('check.academyEyebrow', { cat })}</Overline>
-            <h2 style={{ fontSize: 'var(--fs-h2)', letterSpacing: 'var(--track-22)', fontWeight: 'var(--fw-black)', color: 'var(--text-heading)', margin: 0 }}>
-              {article?.found?.title ?? t('check.academyFallback')}
-            </h2>
-          </div>
-          <button type="button" data-testid="close-academy" onClick={onClose} aria-label="Close"
-            style={{ border: 0, background: 'transparent', cursor: 'pointer', fontSize: 'var(--fs-ui-md)', color: 'var(--text-tertiary)', width: 32, height: 32, borderRadius: 'var(--radius-sm)', flex: 'none' }}>
-            ✕
-          </button>
-        </div>
-        <div style={{ flex: 1, overflow: 'auto', padding: 24 }} dir="ltr">
-          <ArticleBody article={article} />
-        </div>
-      </div>
-    </div>
+    <Drawer data-testid="academy-drawer" width="var(--drawer-width)" onClose={onClose}
+      eyebrow={t('check.academyEyebrow', { cat })}
+      title={article?.found?.title ?? t('check.academyFallback')}>
+      <ArticleBody article={article} />
+    </Drawer>
   );
 }
 
@@ -291,9 +277,25 @@ function OrigPane({ orig, c, v }) {
   );
 }
 
-/** The compare card's GATEWAY row: the ULT verse with the quote's tokens
- * highlighted through the alignment (same matcher as the helps panel). */
-function UltPane({ source, item, c, v }) {
+/** Why the gateway pane has no verse to show — or null while pane ids / the
+ * book text are still loading. Missing and a transient read error stay
+ * distinct statements (D30). */
+function ultAbsence(source, sourcePanes) {
+  // Round 37 (§5.3): a project may legally declare no extraScripture.
+  if (sourcePanes && sourcePanes.length === 0) return t('check.noGateway');
+  if (sourcePanes === null || source === undefined) return null;
+  if (source === 'missing') return t('check.ultUnavailable');
+  if (source?.error) return source.error;
+  return t('check.paneAbsent');
+}
+
+/** The compare card's GATEWAY row: the project's §5.3 extraScripture verse
+ * with the quote's tokens highlighted through the alignment (same matcher as
+ * the helps panel). Pane ids are the project's own — 'ult' is preferred when
+ * present, otherwise the first declared pane; a project with none states so. */
+function UltPane({ sources, sourcePanes, item, c, v }) {
+  const paneId = sourcePanes?.includes('ult') ? 'ult' : sourcePanes?.[0];
+  const source = paneId ? sources?.[paneId] : undefined;
   const vObj = source && source !== 'missing' && !source.error
     ? source.chapters?.[String(c)]?.[String(v)]
     : null;
@@ -321,14 +323,15 @@ function UltPane({ source, item, c, v }) {
         )}
       </p>
     );
-  } else if (source === undefined) {
-    body = null; // the book open is still loading this pane
   } else {
-    body = paneAbsent(source === 'missing' || source?.error ? t('check.origUnavailable') : t('check.paneAbsent'));
+    const absent = ultAbsence(source, sourcePanes);
+    body = absent == null ? null : paneAbsent(absent);
   }
   return (
     <div data-testid="ult-pane" style={{ ...paneLabelRow, background: 'var(--surface-app)' }}>
-      <Overline tone="muted">{t('check.ultLabel')}</Overline>
+      <Overline tone="muted">
+        {paneId && paneId !== 'ult' ? t('check.gatewayLabel', { name: paneId.toUpperCase() }) : t('check.ultLabel')}
+      </Overline>
       {body}
     </div>
   );
@@ -337,7 +340,7 @@ function UltPane({ source, item, c, v }) {
 /** The detail column (F1): ref + item counter header, serif phrase h1, the
  * "What to check" note box, the Academy link, the compare card, and the three
  * block triage buttons — the mockup's L1044–1196 region. */
-function CheckDetail({ cs, item, sources, words, sel, toggleWord, markValid, markInvalid, markTodo, onOpenAcademy, onNav }) {
+function CheckDetail({ cs, item, sources, sourcePanes, words, sel, toggleWord, markValid, markInvalid, markTodo, onOpenAcademy, onNav }) {
   const c = item.contextId.reference.chapter;
   const v = item.contextId.reference.verse;
   const quote = quoteOf(item);
@@ -391,7 +394,7 @@ function CheckDetail({ cs, item, sources, words, sel, toggleWord, markValid, mar
         * card (mockup L1152–1187). */}
       <div style={{ background: 'var(--surface-card)', border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-xl)', overflow: 'hidden', boxShadow: 'var(--shadow-card)' }}>
         <OrigPane orig={cs.orig} c={c} v={v} />
-        <UltPane source={sources?.ult} item={item} c={c} v={v} />
+        <UltPane sources={sources} sourcePanes={sourcePanes} item={item} c={c} v={v} />
         <div style={{ padding: '16px 20px' }}>
           <Overline tone="accent">{t('check.yourTranslation')}</Overline>
           {words.length === 0 ? (
@@ -490,10 +493,18 @@ const SORTS = {
   translationNotes: { modes: ['byVerse', 'byCategory'], default: 'byVerse' },
 };
 
-function railGroupsOf({ items, sortMode, book }) {
+/** Reference fields are number | string (derive.ts CheckReference): 'front',
+ * comma lists and letter verses are legal — they sort ahead of any number
+ * instead of poisoning the comparator with NaN. */
+const refNum = (x) => {
+  const n = Number(x);
+  return Number.isFinite(n) ? n : -1;
+};
+
+export function railGroupsOf({ items, sortMode, book }) {
   const rows = items.slice().sort((a, z) =>
-    a.it.contextId.reference.chapter - z.it.contextId.reference.chapter
-    || a.it.contextId.reference.verse - z.it.contextId.reference.verse);
+    refNum(a.it.contextId.reference.chapter) - refNum(z.it.contextId.reference.chapter)
+    || refNum(a.it.contextId.reference.verse) - refNum(z.it.contextId.reference.verse));
   if (sortMode === 'byWord') {
     const terms = [...new Set(rows.map((r) => r.it.contextId.groupId))].sort((a, z) => a.localeCompare(z));
     return terms.map((term) => ({ label: term, rows: rows.filter((r) => r.it.contextId.groupId === term) }));
@@ -520,7 +531,7 @@ function CheckRail({ cs, filter, setFilter, sortMode, setSortMode, onSelect }) {
   const groups = railGroupsOf({ items: filtered, tool: cs.tool, sortMode, book: cs.book });
 
   return (
-    <aside data-testid="check-rail" style={{ width: 300, flex: 'none', background: 'var(--surface-card)', borderInlineEnd: 'var(--stroke-hair) solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+    <aside data-testid="check-rail" style={{ width: 'var(--rail-width-wide)', flex: 'none', background: 'var(--surface-card)', borderInlineEnd: 'var(--stroke-hair) solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <div style={{ padding: '14px 18px', borderBottom: 'var(--stroke-hair) solid var(--border-hair)', flex: 'none' }}>
         <Button variant="ghost" size="sm" onClick={actions.closeCheckTool} style={{ padding: 0, marginBottom: 8 }}>
           {t('check.back')}
@@ -601,7 +612,11 @@ function CheckRail({ cs, filter, setFilter, sortMode, setSortMode, onSelect }) {
         )}
       </div>
       <div style={{ padding: '12px 16px', borderTop: 'var(--stroke-hair) solid var(--border-hair)' }}>
-        <Button variant="ghost" size="sm" onClick={() => actions.go('draft')} style={{ padding: 0 }}>
+        {/* Close the session before leaving: a kept-alive session would render
+          * stale target text and decisions after the user edits in Translate —
+          * re-opening the tool re-derives and re-runs invalidation. */}
+        <Button variant="ghost" size="sm" style={{ padding: 0 }}
+          onClick={() => { actions.closeCheckTool(); actions.go('draft'); }}>
           {t('check.backToTranslating')}
         </Button>
       </div>
@@ -699,7 +714,7 @@ function CheckSession() {
         onSelect={(i) => actions.setCheckIndex(i)} />
       <main style={{ flex: 1, overflow: 'auto', minWidth: 0, background: 'var(--surface-app)' }}>
         {item && (
-          <CheckDetail cs={cs} item={item} sources={s.sources} words={words} sel={sel}
+          <CheckDetail cs={cs} item={item} sources={s.sources} sourcePanes={s.sourcePanes} words={words} sel={sel}
             toggleWord={toggleWord} markValid={markValid} markInvalid={markInvalid} markTodo={markTodo}
             onOpenAcademy={() => setAcademyOpen(true)}
             onNav={(i) => actions.setCheckIndex(i)} />

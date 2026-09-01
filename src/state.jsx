@@ -321,17 +321,36 @@ const initial = () => ({
   tick: 0,
 });
 
+/** Monotonic identity for check sessions (see patchCheckSession). */
+let checkSessionSeq = 0;
+
 /** Atomic merge into the live check session (same hazard class as setSource):
  * the orig-book read and the article read resolve concurrently, and a
- * stale-snapshot spread in either would clobber the other's result. A foreign
- * completion (tool or book moved on) updates nothing. */
+ * stale-snapshot spread in either would clobber the other's result. The seq
+ * is the session's identity — a completion from a closed/replaced session
+ * (even for the same tool and book, or another project) updates nothing. */
 function patchCheckSession(state, a) {
   const cs = state.checkSession;
-  if (!cs?.items || cs.tool !== a.tool || cs.book !== a.book) return state;
+  if (!cs?.items || cs.seq !== a.seq) return state;
   return { ...state, checkSession: { ...cs, ...a.patch } };
 }
 
+/** One saved decision merged item-by-item (never a whole-array snapshot):
+ * two decisions can be in flight through the store queue at once, and the
+ * later completion of a stale array would overwrite the earlier item. */
+function checkDecisionSaved(state, a) {
+  const cs = state.checkSession;
+  if (!cs?.items || cs.seq !== a.seq) return state;
+  const items = cs.items.map((it, i) => (i === a.index ? a.item : it));
+  return { ...state, checkSession: { ...cs, items, progress: progressOf(items), saveError: null } };
+}
+
+/** Check-session merge actions, table-dispatched ahead of the main switch. */
+const CHECK_SESSION_CASES = { patchCheckSession, checkDecisionSaved };
+
 function reducer(state, a) {
+  const checkCase = CHECK_SESSION_CASES[a.type];
+  if (checkCase) return checkCase(state, a);
   switch (a.type) {
     case 'set':
       return { ...state, ...a.patch };
@@ -347,8 +366,6 @@ function reducer(state, a) {
       // Atomic per-key merge: two source fetches can resolve in one batch, and
       // a read-modify-write through a stale snapshot would clobber the sibling.
       return { ...state, sources: { ...state.sources, [a.id]: a.value } };
-    case 'patchCheckSession':
-      return patchCheckSession(state, a);
     case 'noteSaved': {
       // Atomic merge of ONE persisted comprehension note (S1, adversarial
       // round 19): two per-target saves can complete in the same batch, and
@@ -2130,19 +2147,26 @@ export function AppProvider({ children }) {
         dispatch({ type: 'set', patch: { checkTool: tool, checkSession: { loading: true } } });
         try {
           const result = await deriveCheckItems({ apiClient: api, actions: a, st, tool, book, pre });
+          // The seq is this session's identity for async completions
+          // (patchCheckSession): a later session — even the same tool and
+          // book, or another project — never receives this one's results.
+          const seq = ++checkSessionSeq;
           if (result.session) {
-            dispatch({ type: 'set', patch: { checkTool: tool, checkSession: result.session } });
+            dispatch({ type: 'set', patch: { checkTool: tool, checkSession: { ...result.session, seq } } });
             return;
           }
-          const session = await completedCheckSession({
-            store: storeRef.current,
-            st: stateRef.current,
-            tool,
-            book,
-            pre,
-            derived: result.derived,
-            dropped: result.dropped,
-          });
+          const session = {
+            ...(await completedCheckSession({
+              store: storeRef.current,
+              st: stateRef.current,
+              tool,
+              book,
+              pre,
+              derived: result.derived,
+              dropped: result.dropped,
+            })),
+            seq,
+          };
           dispatch({ type: 'set', patch: { checkSession: session } });
           a.loadActiveArticle(session);
           a.loadCheckOrigSource(session);
@@ -2161,7 +2185,7 @@ export function AppProvider({ children }) {
         if (!cs) return;
         // Reducer-side merge: a concurrently-landing orig/article result must
         // not be clobbered by this snapshot (patchCheckSession hazard note).
-        dispatch({ type: 'patchCheckSession', tool: cs.tool, book: cs.book, patch: { activeIndex } });
+        dispatch({ type: 'patchCheckSession', seq: cs.seq, patch: { activeIndex } });
         a.loadActiveArticle({ ...cs, activeIndex });
       },
 
@@ -2184,7 +2208,7 @@ export function AppProvider({ children }) {
         if (cs.article?.key === key && !cs.article.error) return;
         // Reducer-side merges (patchCheckSession): the orig-book read resolves
         // concurrently, and a stale-snapshot spread here dropped its result.
-        dispatch({ type: 'patchCheckSession', tool: cs.tool, book: cs.book, patch: { article: { key, loading: true } } });
+        dispatch({ type: 'patchCheckSession', seq: cs.seq, patch: { article: { key, loading: true } } });
         const kind = cs.tool === 'translationWords' ? 'tw' : 'ta';
         // Catch-to-absence sweep (D30): readHelpArticle now PROPAGATES
         // transient failures (round 35) — without the settle the un-awaited
@@ -2195,8 +2219,7 @@ export function AppProvider({ children }) {
         if (now?.article?.key !== key) return; // the user moved on
         dispatch({
           type: 'patchCheckSession',
-          tool: cs.tool,
-          book: cs.book,
+          seq: cs.seq,
           patch: { article: { key, loading: false, found, error } },
         });
       },
@@ -2209,14 +2232,14 @@ export function AppProvider({ children }) {
         const cs = session ?? stateRef.current.checkSession;
         const store = storeRef.current;
         if (!cs?.items || !store) return;
-        const { tool, book } = cs;
+        const { book } = cs;
         const pin = stateRef.current.projectPins?.resources?.originalLanguage?.[
           isOldTestament(book) ? 'ot' : 'nt'
         ];
         const orig = await readCheckOrigChapters(store, pin, book);
         // Reducer-side merge (patchCheckSession): the article read resolves
         // concurrently, and a stale-snapshot spread here would clobber it.
-        dispatch({ type: 'patchCheckSession', tool, book, patch: { orig } });
+        dispatch({ type: 'patchCheckSession', seq: cs.seq, patch: { orig } });
       },
 
       /** C2.6 — write one decision through the store. The full §5.2 record is
@@ -2238,19 +2261,15 @@ export function AppProvider({ children }) {
           // refusal on the session; the way through is the gateway-change flow.
           dispatch({
             type: 'patchCheckSession',
-            tool: cs.tool,
-            book: cs.book,
+            seq: cs.seq,
             patch: { saveError: String(e?.message ?? e) },
           });
           return;
         }
-        const items = cs.items.map((it, i) => (i === cs.activeIndex ? next : it));
-        dispatch({
-          type: 'patchCheckSession',
-          tool: cs.tool,
-          book: cs.book,
-          patch: { items, progress: progressOf(items), saveError: null },
-        });
+        // Item-level merge (checkDecisionSaved): two decisions can be in
+        // flight at once, and a stale whole-array snapshot from the later
+        // completion would overwrite the earlier item.
+        dispatch({ type: 'checkDecisionSaved', seq: cs.seq, index: cs.activeIndex, item: next });
       },
 
       /** The resolver's inputs for THIS machine + THIS project: what is
