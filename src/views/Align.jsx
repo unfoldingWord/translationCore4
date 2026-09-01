@@ -279,16 +279,21 @@ export default function Align({ embedded = false }) {
   const placed = a.record.alignments.reduce((n, x) => n + x.bottomWords.length, 0);
   const total = placed + a.record.wordBank.length;
 
+  // Payloads cross a string boundary — validate the shape, never assume it
+  // (a malformed drop must be a no-op, not a crash in the record algebra).
+  const hasWord = (p) => typeof p?.word?.word === 'string';
+  const hasFrom = (p) => typeof p?.from === 'number';
   const onDropOnCard = (index, payload) => {
-    if (!payload) return;
-    if (payload.kind === 'bank') actions.placeAlignWordAt(index, payload.word);
-    else if (payload.kind === 'placed') actions.moveAlignWord(payload.from, index, payload.word);
-    else if (payload.kind === 'card') actions.mergeAlignCards(payload.from, index);
+    if (payload?.kind === 'bank' && hasWord(payload)) actions.placeAlignWordAt(index, payload.word);
+    else if (payload?.kind === 'placed' && hasWord(payload) && hasFrom(payload)) actions.moveAlignWord(payload.from, index, payload.word);
+    else if (payload?.kind === 'card' && hasFrom(payload)) actions.mergeAlignCards(payload.from, index);
   };
   const onDropOnBank = (e) => {
     e.preventDefault();
     const payload = dragPayload(e);
-    if (payload?.kind === 'placed') actions.unplaceAlignWord(payload.from, payload.word);
+    if (payload?.kind === 'placed' && hasWord(payload) && hasFrom(payload)) {
+      actions.unplaceAlignWord(payload.from, payload.word);
+    }
   };
 
   return (

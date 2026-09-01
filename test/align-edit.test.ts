@@ -206,3 +206,40 @@ describe('#129 moveWord — a drag between cards is one record step', () => {
     expect(moveWord(rec, 0, 99, w)).toBe(rec);
   });
 });
+
+// PR #135 review round 1 — the hardened contracts.
+describe('#129 review round 1 — merge adjacency and move purity', () => {
+  const THREE_ORIG = [
+    ...ORIG,
+    { tag: 'w', type: 'word', text: 'Θεοῦ', strong: 'G23160', lemma: 'θεός', morph: 'Gr,N', occurrence: 1, occurrences: 1 },
+  ];
+  const boot3 = () => bootstrapVerse(TARGET, THREE_ORIG, SOURCE);
+
+  it('a NON-adjacent merge is rejected — flattened topWords must stay in verse order', () => {
+    const rec = boot3();
+    expect(rec.alignments).toHaveLength(3);
+    expect(mergeAlignments(rec, 0, 2)).toBe(rec);
+    expect(mergeAlignments(rec, 2, 0)).toBe(rec);
+  });
+
+  it('adjacent merges keep verse order regardless of drag direction', () => {
+    const rec = boot3();
+    const down = mergeAlignments(rec, 2, 1);
+    expect(down.alignments[1].topWords.map((w) => w.word)).toEqual(['δοῦλος', 'Θεοῦ']);
+    const up = mergeAlignments(rec, 0, 1);
+    expect(up.alignments[0].topWords.map((w) => w.word)).toEqual(['Παῦλος', 'δοῦλος']);
+  });
+
+  it('moveWord leaves the bank IDENTICAL — order included, never re-sorted', () => {
+    let rec = boot();
+    rec = linkWord(rec, 0, wordIn(rec.wordBank, 'Pablo'));
+    const bankBefore = rec.wordBank.map((w) => `${w.word}:${w.occurrence}`);
+    const moved = moveWord(rec, 0, 1, { word: 'Pablo', occurrence: 1, occurrences: 1 });
+    expect(moved.wordBank.map((w) => `${w.word}:${w.occurrence}`)).toEqual(bankBefore);
+  });
+
+  it('moveWord of a word not linked at fromIndex changes nothing', () => {
+    const rec = boot();
+    expect(moveWord(rec, 0, 1, { word: 'Pablo', occurrence: 1, occurrences: 1 })).toBe(rec);
+  });
+});

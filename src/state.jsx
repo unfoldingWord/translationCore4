@@ -325,6 +325,13 @@ const initial = () => ({
 /** Monotonic identity for check sessions (see patchCheckSession). */
 let checkSessionSeq = 0;
 
+/** #129 (PR #135 review round 1): align-session identity, the align rail's
+ * read ordering, and the serialized §5.1 write queue — persistAlign never
+ * rejects, so one failure cannot wedge the chain. */
+let alignSessionSeq = 0;
+let alignIndexSeq = 0;
+let alignWriteQueue = Promise.resolve();
+
 /** Atomic merge into the live check session (same hazard class as setSource):
  * the orig-book read and the article read resolve concurrently, and a
  * stale-snapshot spread in either would clobber the other's result. The seq
@@ -570,6 +577,7 @@ async function buildAlignmentSession(store, st, ref, source, mapped, origObjects
   return {
     loading: false,
     ref,
+    book: st.book,
     record,
     md5,
     targetText,
@@ -607,7 +615,9 @@ function alignVerseStatus(rec, text) {
   if (!text) return { status: 'undrafted', placed: 0, total: 0 };
   const placed = rec ? rec.alignments.reduce((n, x) => n + x.bottomWords.length, 0) : 0;
   const total = rec ? placed + rec.wordBank.length : 0;
-  if (rec && alignmentIsStale(rec, text)) return { status: 'invalid', placed, total };
+  // §5.1's own re-review flag outranks the hash check — either means the
+  // record no longer vouches for the draft (PR #135 review round 1).
+  if (rec && (rec.invalid === true || alignmentIsStale(rec, text))) return { status: 'invalid', placed, total };
   if (rec && rec.wordBank.length === 0 && placed > 0) return { status: 'valid', placed, total };
   return { status: 'todo', placed, total };
 }
@@ -2087,12 +2097,16 @@ export function AppProvider({ children }) {
         const st = stateRef.current;
         const store = storeRef.current;
         if (!st.book || !store) return;
+        // Session identity (PR #135 review round 1): rapid rail selection
+        // starts overlapping opens — only the LATEST one may dispatch, or a
+        // slower stale load would display (and then edit) the wrong verse.
+        const seq = ++alignSessionSeq;
+        const settle = (alignSession) => {
+          if (seq === alignSessionSeq) dispatch({ type: 'set', patch: { alignSession } });
+        };
         const ref = st.alignVerse ?? firstDraftedRef(st.bookRaw);
-        if (!ref) {
-          dispatch({ type: 'set', patch: { alignSession: { unavailable: 'undrafted' } } });
-          return;
-        }
-        dispatch({ type: 'set', patch: { alignSession: { loading: true } } });
+        if (!ref) return settle({ unavailable: 'undrafted' });
+        settle({ loading: true });
         // Catch-to-absence sweep review: the try covers the WHOLE load —
         // frame resolution, reference mapping, and the stored-record read
         // can all reject transiently, and each used to strand the surface
@@ -2100,18 +2114,9 @@ export function AppProvider({ children }) {
         // stated, retryable error — never the 'missing' download prompt.
         try {
         const source = await prepareAlignmentSource(store, st, ref);
-        if (source.unavailable) {
-          dispatch({ type: 'set', patch: { alignSession: { unavailable: source.unavailable } } });
-          return;
-        }
+        if (source.unavailable) return settle({ unavailable: source.unavailable });
         const frame = await a.projectFrame();
-        if (frame.state !== 'ready') {
-          dispatch({
-            type: 'set',
-            patch: { alignSession: { unavailable: `versification-${frame.state}` } },
-          });
-          return;
-        }
+        if (frame.state !== 'ready') return settle({ unavailable: `versification-${frame.state}` });
         const [chapter, verse] = ref.split(':');
         const srcRef = await mapReference({
           from: frame.name,
@@ -2122,8 +2127,7 @@ export function AppProvider({ children }) {
           schemes: frame.schemes,
         });
         if (!srcRef.ok || String(srcRef.reference.verse).includes('-')) {
-          dispatch({ type: 'set', patch: { alignSession: { unavailable: 'no-counterpart' } } });
-          return;
+          return settle({ unavailable: 'no-counterpart' });
         }
         const origObjects = verseObjectsFor(
           source.usfmText,
@@ -2132,24 +2136,25 @@ export function AppProvider({ children }) {
         );
         if (origObjects === null) {
           // The text is present but unparseable — say that (D30).
-          dispatch({ type: 'set', patch: { alignSession: { unavailable: 'unreadable' } } });
-          return;
+          return settle({ unavailable: 'unreadable' });
         }
         const mapped = { chapter, verse, reference: srcRef.reference };
         const session = await buildAlignmentSession(store, st, ref, source, mapped, origObjects);
-        dispatch({
-          type: 'set',
-          patch: { alignSession: session.unavailable ? session : { ...session, frameName: frame.name } },
-        });
+        settle(session.unavailable ? session : { ...session, frameName: frame.name });
         } catch (error) {
-          dispatch({ type: 'set', patch: { alignSession: { error: String(error?.message || error) } } });
+          settle({ error: String(error?.message || error) });
         }
       },
 
-      startAligning: () => dispatch({ type: 'set', patch: { aligning: true, alignSession: null } }),
+      startAligning: () => {
+        alignSessionSeq++;
+        dispatch({ type: 'set', patch: { aligning: true, alignSession: null } });
+      },
 
-      closeAlign: () =>
-        dispatch({ type: 'set', patch: { aligning: false, alignSession: null, alignVerse: null, alignIndex: null } }),
+      closeAlign: () => {
+        alignSessionSeq++; // invalidate in-flight opens and persist refreshes
+        dispatch({ type: 'set', patch: { aligning: false, alignSession: null, alignVerse: null, alignIndex: null } });
+      },
 
       /** #129: the align rail's per-verse item list — every verse of the open
        * book with its derived alignment status. Derived from the §5.1 sidecar
@@ -2159,6 +2164,10 @@ export function AppProvider({ children }) {
         const st = stateRef.current;
         const store = storeRef.current;
         if (!st.book || !store || !st.bookRaw) return;
+        // Only the latest read may land (PR #135 review round 1): the
+        // workspace refires this on verse switches and completed edits, and
+        // an older sidecar read finishing last would regress the rail dots.
+        const seq = ++alignIndexSeq;
         const book = st.book;
         let alignIndex;
         try {
@@ -2169,13 +2178,15 @@ export function AppProvider({ children }) {
           alignIndex = { error: String(error?.message || error) };
         }
         const now = stateRef.current;
-        if (now.book !== book || !now.aligning) return; // the user moved on
+        if (seq !== alignIndexSeq || now.book !== book || !now.aligning) return;
         dispatch({ type: 'set', patch: { alignIndex } });
       },
 
       /** #129: the rail picks the verse; the session effect re-opens on it. */
-      setAlignVerse: (ref) =>
-        dispatch({ type: 'set', patch: { alignVerse: ref, alignSession: null } }),
+      setAlignVerse: (ref) => {
+        alignSessionSeq++; // the old verse's in-flight completions are foreign now
+        dispatch({ type: 'set', patch: { alignVerse: ref, alignSession: null } });
+      },
 
       /** Select (or clear) the banked word the next card click will place. */
       armAlignWord: (word) => {
@@ -2183,78 +2194,81 @@ export function AppProvider({ children }) {
         if (a2) dispatch({ type: 'set', patch: { alignSession: { ...a2, armed: word } } });
       },
 
-      placeAlignWord: async (cardIndex) => {
+      /** #129 (PR #135 review round 1) — ONE path for every alignment edit.
+       * The session record updates optimistically and synchronously, so each
+       * successive edit builds on the previous one instead of a stale render
+       * snapshot; the §5.1 writes are SERIALIZED through one queue, so two
+       * rapid edits can never interleave their read-modify-write and clobber
+       * each other or trip the compare-and-swap (#17). */
+      applyAlignEdit: (mutate, disarm = false) => {
         const a2 = stateRef.current.alignSession;
-        if (!a2?.armed) return;
-        const next = linkWord(a2.record, cardIndex, a2.armed);
+        if (!a2?.record) return;
+        const next = mutate(a2.record);
         if (next === a2.record) return;
-        await a.persistAlign({ ...a2, record: next, armed: null });
+        const optimistic = { ...a2, ...(disarm ? { armed: null } : {}), record: next };
+        dispatch({ type: 'set', patch: { alignSession: optimistic } });
+        alignWriteQueue = alignWriteQueue.then(() => a.persistAlign(optimistic));
       },
 
-      unplaceAlignWord: async (cardIndex, word) => {
-        const a2 = stateRef.current.alignSession;
-        if (!a2) return;
-        const next = unlinkWord(a2.record, cardIndex, word);
-        if (next === a2.record) return;
-        await a.persistAlign({ ...a2, record: next });
+      placeAlignWord: (cardIndex) => {
+        const armed = stateRef.current.alignSession?.armed;
+        if (!armed) return;
+        a.applyAlignEdit((record) => linkWord(record, cardIndex, armed), true);
       },
+
+      unplaceAlignWord: (cardIndex, word) =>
+        a.applyAlignEdit((record) => unlinkWord(record, cardIndex, word)),
 
       /** #129 drag-and-drop: place a banked word without the arm step. */
-      placeAlignWordAt: async (cardIndex, word) => {
-        const a2 = stateRef.current.alignSession;
-        if (!a2) return;
-        const next = linkWord(a2.record, cardIndex, word);
-        if (next === a2.record) return;
-        await a.persistAlign({ ...a2, record: next, armed: null });
-      },
+      placeAlignWordAt: (cardIndex, word) =>
+        a.applyAlignEdit((record) => linkWord(record, cardIndex, word), true),
 
-      /** #129 drag-and-drop: move a placed word between cards in one write. */
-      moveAlignWord: async (fromIndex, toIndex, word) => {
-        const a2 = stateRef.current.alignSession;
-        if (!a2) return;
-        const next = moveWord(a2.record, fromIndex, toIndex, word);
-        if (next === a2.record) return;
-        await a.persistAlign({ ...a2, record: next });
-      },
+      /** #129 drag-and-drop: move a placed word between cards in one step. */
+      moveAlignWord: (fromIndex, toIndex, word) =>
+        a.applyAlignEdit((record) => moveWord(record, fromIndex, toIndex, word)),
 
-      /** #129 phrase alignment: merge two cards / split a phrase card. */
-      mergeAlignCards: async (fromIndex, toIndex) => {
-        const a2 = stateRef.current.alignSession;
-        if (!a2) return;
-        const next = mergeAlignments(a2.record, fromIndex, toIndex);
-        if (next === a2.record) return;
-        await a.persistAlign({ ...a2, record: next });
-      },
+      /** #129 phrase alignment: merge two ADJACENT cards / split a phrase. */
+      mergeAlignCards: (fromIndex, toIndex) =>
+        a.applyAlignEdit((record) => mergeAlignments(record, fromIndex, toIndex)),
 
-      splitAlignCard: async (cardIndex) => {
-        const a2 = stateRef.current.alignSession;
-        if (!a2) return;
-        const next = splitAlignment(a2.record, cardIndex);
-        if (next === a2.record) return;
-        await a.persistAlign({ ...a2, record: next });
-      },
+      splitAlignCard: (cardIndex) =>
+        a.applyAlignEdit((record) => splitAlignment(record, cardIndex)),
 
       /** Write the §5.1 sidecar under compare-and-swap (#17). The record is
-       * re-stamped against the draft it was edited on (I-3). */
+       * re-stamped against the draft it was edited on (I-3). Never throws —
+       * it runs on the serialized queue, where a rejection would wedge every
+       * later write. A superseded write (the session already carries a newer
+       * record) completes on disk but leaves the session refresh to its
+       * successor; a failure is a stated, retryable session error unless the
+       * user has already moved on. */
       persistAlign: async (session) => {
-        const st = stateRef.current;
         const store = storeRef.current;
-        const [chapter, verse] = session.ref.split(':');
-        const record = stampTargetVerse(session.record, session.targetText);
-        const { value: current, md5 } = await store.readAlignmentsWithMd5(st.book);
-        const file = current ?? { schemaVersion: 1, book: st.book.toUpperCase(), chapters: {} };
-        file.chapters = {
-          ...file.chapters,
-          [chapter]: { ...(file.chapters?.[chapter] ?? {}), [verse]: record },
-        };
-        await store.writeAlignments(st.book, file, md5);
-        const after = await store.readAlignmentsWithMd5(st.book);
-        dispatch({
-          type: 'set',
-          patch: {
-            alignSession: { ...session, record, md5: after.md5, stale: false },
-          },
-        });
+        const book = session.book;
+        if (!store || !book) return;
+        try {
+          const [chapter, verse] = session.ref.split(':');
+          const record = stampTargetVerse(session.record, session.targetText);
+          const { value: current, md5 } = await store.readAlignmentsWithMd5(book);
+          const file = current ?? { schemaVersion: 1, book: book.toUpperCase(), chapters: {} };
+          file.chapters = {
+            ...file.chapters,
+            [chapter]: { ...(file.chapters?.[chapter] ?? {}), [verse]: record },
+          };
+          await store.writeAlignments(book, file, md5);
+          const after = await store.readAlignmentsWithMd5(book);
+          const cur = stateRef.current.alignSession;
+          if (cur?.ref === session.ref && cur.record === session.record) {
+            dispatch({
+              type: 'set',
+              patch: { alignSession: { ...cur, record, md5: after.md5, stale: false } },
+            });
+          }
+        } catch (e) {
+          const cur = stateRef.current.alignSession;
+          if (cur?.ref === session.ref) {
+            dispatch({ type: 'set', patch: { alignSession: { error: String(e?.message || e) } } });
+          }
+        }
       },
 
       /** C2.3/C2.4 — open a checking session for one tool on the open book.
@@ -3091,9 +3105,10 @@ export function AppProvider({ children }) {
         // clear it and invalidate its in-flight completions.
         understandSeqRef.current++;
         checkSessionSeq++;
+        alignSessionSeq++;
         dispatch({
           type: 'set',
-          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, saveState: 'saved', noteSaveState: 'saved', projectPins: null, projectPinsLoaded: false, projectPinsError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null },
+          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, saveState: 'saved', noteSaveState: 'saved', projectPins: null, projectPinsLoaded: false, projectPinsError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null },
         });
         refreshProjects(); // re-order: the project just left goes to the top
       },
