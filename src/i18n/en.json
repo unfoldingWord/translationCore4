@@ -233,6 +233,8 @@
   "gateway.current": "what you have",
   "gateway.change": "Change to {lang}",
   "align.loading": "Opening the alignment…",
+  "align.progressVerses": "{done} of {total} verses aligned",
+  "align.notDraftedShort": "Not drafted yet",
   "align.ref": "{book} {ref}",
   "align.placed": "{placed} of {total} words placed",
   "align.bank": "Word bank · your translation",

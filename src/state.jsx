@@ -313,6 +313,7 @@ const initial = () => ({
   preflight: null, // { [tool]: Preflight } for the open book (C2.2)
   gatewayPreview: null, // a proposed gateway change awaiting confirmation
   aligning: false, // the align surface is open
+  alignIndex: null, // #129: { items: [{ref, text, status, placed, total}] } | { error } — the rail's derived verse list
   alignVerse: null, // "chapter:verse" being aligned, or null for the first drafted
   alignSession: null, // { record, armed, ref, … } — the open alignment surface
   checkTool: null, // the open checking tool, or null at the preflight screen
@@ -592,6 +593,33 @@ function isCurrentArticleRequest(now, seq, currentSeq, repoPath, key) {
   if (seq !== currentSeq) return false;
   if (now.project?.repoPath !== repoPath) return false;
   return now.understand?.article?.key === key;
+}
+
+/** #129: one verse's alignment status for the align rail. Mirrors the shared
+ * check status model: 'valid' = every target word placed, 'invalid' = the
+ * draft changed under the record (align.stale), 'todo' = unplaced words —
+ * plus 'undrafted', which the other tools do not have. */
+function alignVerseStatus(rec, text) {
+  if (!text) return { status: 'undrafted', placed: 0, total: 0 };
+  const placed = rec ? rec.alignments.reduce((n, x) => n + x.bottomWords.length, 0) : 0;
+  const total = rec ? placed + rec.wordBank.length : 0;
+  if (rec && alignmentIsStale(rec, text)) return { status: 'invalid', placed, total };
+  if (rec && rec.wordBank.length === 0 && placed > 0) return { status: 'valid', placed, total };
+  return { status: 'todo', placed, total };
+}
+
+/** #129: the align rail's rows — every verse of the book in document order,
+ * with the verse text and its derived status. */
+function alignIndexItems(bookRaw, file) {
+  const texts = verseTextIndex(bookRaw);
+  const items = [];
+  for (const e of indexBook(bookRaw)) {
+    const ref = `${e.chapter}:${e.verseKey}`;
+    const text = texts[ref] ?? '';
+    const rec = file?.chapters?.[String(e.chapter)]?.[String(e.verseKey)];
+    items.push({ ref, text, ...alignVerseStatus(rec, text) });
+  }
+  return items;
 }
 
 function emptyCheckSession(tool, book, resolution, empty, dropped = null) {
@@ -2117,7 +2145,33 @@ export function AppProvider({ children }) {
       startAligning: () => dispatch({ type: 'set', patch: { aligning: true, alignSession: null } }),
 
       closeAlign: () =>
-        dispatch({ type: 'set', patch: { aligning: false, alignSession: null, alignVerse: null } }),
+        dispatch({ type: 'set', patch: { aligning: false, alignSession: null, alignVerse: null, alignIndex: null } }),
+
+      /** #129: the align rail's per-verse item list — every verse of the open
+       * book with its derived alignment status. Derived from the §5.1 sidecar
+       * and the draft, never stored (§4.2). One read per call; the workspace
+       * refreshes it on verse switch so rail dots track the edits. */
+      loadAlignIndex: async () => {
+        const st = stateRef.current;
+        const store = storeRef.current;
+        if (!st.book || !store || !st.bookRaw) return;
+        const book = st.book;
+        let alignIndex;
+        try {
+          const { value: file } = await store.readAlignmentsWithMd5(book);
+          alignIndex = { items: alignIndexItems(st.bookRaw, file) };
+        } catch (error) {
+          // Catch-to-absence sweep (D30): a failed read is stated, retryable.
+          alignIndex = { error: String(error?.message || error) };
+        }
+        const now = stateRef.current;
+        if (now.book !== book || !now.aligning) return; // the user moved on
+        dispatch({ type: 'set', patch: { alignIndex } });
+      },
+
+      /** #129: the rail picks the verse; the session effect re-opens on it. */
+      setAlignVerse: (ref) =>
+        dispatch({ type: 'set', patch: { alignVerse: ref, alignSession: null } }),
 
       /** Select (or clear) the banked word the next card click will place. */
       armAlignWord: (word) => {

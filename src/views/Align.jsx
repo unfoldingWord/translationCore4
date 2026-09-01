@@ -52,7 +52,9 @@ function WordCard({ card, armed, onPlace, onRemove }) {
   );
 }
 
-export default function Align() {
+/** `embedded` (#129): inside the Check rail+detail workspace the rail header
+ * carries the back link, so the editor's own back button is not rendered. */
+export default function Align({ embedded = false }) {
   const { s, actions } = useApp();
   const a = s.alignSession;
 
@@ -62,7 +64,7 @@ export default function Align() {
 
   if (!s.book) return null;
 
-  const back = (
+  const back = embedded ? null : (
     <button type="button" onClick={actions.closeAlign}
       style={{ border: '1px solid rgba(35,31,32,.16)', background: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 800, fontSize: 12.5, padding: '7px 14px', borderRadius: 999, color: '#4F5E6A' }}>
       {t('check.back')}
