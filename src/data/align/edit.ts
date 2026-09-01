@@ -134,6 +134,90 @@ export const unlinkWord = (
   };
 };
 
+/**
+ * #129 — merge two ADJACENT alignments into one phrase alignment. Adjacency
+ * is required, not a convenience: group order is original-language verse
+ * order, and the zaln export reads the flattened topWords in that order — a
+ * non-adjacent merge would emit the phrase's words out of verse order
+ * (PR #135 review round 1). Adjacent merges of contiguous groups keep every
+ * span contiguous by induction. The group at the lower index keeps its
+ * position; topWords and bottomWords concatenate in index order.
+ */
+export const mergeAlignments = (
+  record: AlignmentVerseRecord,
+  fromIndex: number,
+  toIndex: number,
+): AlignmentVerseRecord => {
+  const from = record.alignments[fromIndex];
+  const to = record.alignments[toIndex];
+  if (!from || !to || Math.abs(fromIndex - toIndex) !== 1) return record;
+  const keep = Math.min(fromIndex, toIndex);
+  const drop = Math.max(fromIndex, toIndex);
+  const first = record.alignments[keep];
+  const second = record.alignments[drop];
+  const merged: Alignment = {
+    topWords: [...first.topWords, ...second.topWords],
+    bottomWords: [...first.bottomWords, ...second.bottomWords],
+  };
+  return {
+    ...record,
+    alignments: record.alignments
+      .map((a, i) => (i === keep ? merged : a))
+      .filter((_, i) => i !== drop),
+  };
+};
+
+/**
+ * #129 — split one phrase alignment back into single-word alignments. The
+ * linked target words stay on the FIRST resulting group (the aligner re-drags
+ * them from there), matching the mockup's split behavior. A single-word
+ * group returns unchanged.
+ */
+export const splitAlignment = (
+  record: AlignmentVerseRecord,
+  index: number,
+): AlignmentVerseRecord => {
+  const group = record.alignments[index];
+  if (!group || group.topWords.length < 2) return record;
+  const singles: Alignment[] = group.topWords.map((tw, k) => ({
+    topWords: [tw],
+    bottomWords: k === 0 ? group.bottomWords : [],
+  }));
+  return {
+    ...record,
+    alignments: [
+      ...record.alignments.slice(0, index),
+      ...singles,
+      ...record.alignments.slice(index + 1),
+    ],
+  };
+};
+
+/** #129 — move a linked target word from one alignment to another in ONE
+ * record step (drag between cards). The word never passes through the bank,
+ * so a failed persist cannot strand it half-moved and the bank's order is
+ * untouched (PR #135 review round 1: routing through unlink re-sorted the
+ * whole bank as a side effect). */
+export const moveWord = (
+  record: AlignmentVerseRecord,
+  fromIndex: number,
+  toIndex: number,
+  word: AlignedWord,
+): AlignmentVerseRecord => {
+  const from = record.alignments[fromIndex];
+  if (!from || !record.alignments[toIndex] || fromIndex === toIndex) return record;
+  if (!from.bottomWords.some((w) => sameWord(w, word))) return record;
+  const moved = normalizeOccurrences(word);
+  return {
+    ...record,
+    alignments: record.alignments.map((a, i) => {
+      if (i === fromIndex) return { ...a, bottomWords: a.bottomWords.filter((w) => !sameWord(w, word)) };
+      if (i === toIndex) return { ...a, bottomWords: [...a.bottomWords, moved] };
+      return a;
+    }),
+  };
+};
+
 /** Re-stamp the draft hash after the alignment is edited against a verse. */
 export const stampTargetVerse = (
   record: AlignmentVerseRecord,

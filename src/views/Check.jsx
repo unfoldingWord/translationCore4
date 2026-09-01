@@ -639,6 +639,123 @@ function CheckRail({ cs, filter, setFilter, sortMode, setSortMode, onSelect }) {
   );
 }
 
+/* ---- Align workspace (#129): the third checking tool on the same rail+detail
+ * architecture. The rail lists every verse of the book with its derived
+ * alignment status (valid = fully placed, invalid = draft changed under the
+ * record, todo = unplaced words, undrafted = nothing to align yet); the
+ * detail pane hosts the existing editor unchanged — every write still goes
+ * through the §5.1 sidecar (D65). ---- */
+
+const ALIGN_FILTERS = {
+  all: () => true,
+  todo: (it) => it.status === 'todo' || it.status === 'undrafted',
+  invalid: (it) => it.status === 'invalid',
+};
+
+function AlignRail({ index, activeRef, filter, setFilter, onSelect }) {
+  const { s, actions } = useApp();
+  const items = index?.items ?? [];
+  const counts = Object.fromEntries(
+    Object.entries(ALIGN_FILTERS).map(([k, fn]) => [k, items.filter(fn).length]),
+  );
+  const filtered = items.filter(ALIGN_FILTERS[filter]);
+  const drafted = items.filter((it) => it.status !== 'undrafted');
+  const done = drafted.filter((it) => it.status === 'valid').length;
+
+  return (
+    <aside data-testid="align-rail" style={{ width: 'var(--rail-width-wide)', flex: 'none', background: 'var(--surface-card)', borderInlineEnd: 'var(--stroke-hair) solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div style={{ padding: '14px 18px', borderBottom: 'var(--stroke-hair) solid var(--border-hair)', flex: 'none' }}>
+        <Button variant="ghost" size="sm" onClick={actions.closeAlign} style={{ padding: 0, marginBottom: 8 }}>
+          {t('check.back')}
+        </Button>
+        <h2 style={{ fontSize: 'var(--fs-title-sm)', letterSpacing: 'var(--track-16)', fontWeight: 'var(--fw-black)', color: 'var(--text-heading)', margin: '0 0 2px' }}>
+          {t('nav.align')}
+        </h2>
+        <p style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--text-tertiary)', margin: '0 0 10px', fontWeight: 'var(--fw-medium)' }}>
+          {bookName(s.book)}
+        </p>
+        <ProgressBar value={drafted.length ? (done / drafted.length) * 100 : 0} height={7} />
+        <p data-testid="align-rail-progress" style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--text-secondary)', margin: '8px 0 12px', fontWeight: 'var(--fw-medium)' }}>
+          {t('align.progressVerses', { done, total: drafted.length })}
+        </p>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {Object.keys(ALIGN_FILTERS).map((k) => (
+            <button key={k} type="button" data-testid={`align-filter-${k}`} onClick={() => setFilter(k)} style={railChip(filter === k)}>
+              {t(`check.filter.${k}`)} · {counts[k]}
+            </button>
+          ))}
+        </div>
+        {index?.error && (
+          <p style={{ fontSize: 'var(--fs-caption-lg)', color: 'var(--tc-invalid)', lineHeight: 'var(--lh-body)', margin: '10px 0 0', overflowWrap: 'anywhere' }}>
+            {index.error}
+          </p>
+        )}
+      </div>
+      <div data-testid="align-verse-list" style={{ flex: 1, overflow: 'auto', padding: 14, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {filtered.map((it) => {
+          const undrafted = it.status === 'undrafted';
+          const activeRow = it.ref === activeRef;
+          return (
+            <button key={it.ref} type="button" disabled={undrafted}
+              onClick={() => !undrafted && onSelect(it.ref)}
+              data-ref={it.ref} data-status={it.status}
+              style={{
+                border: `var(--stroke) solid ${activeRow ? 'var(--accent)' : 'var(--border)'}`,
+                textAlign: 'start', cursor: undrafted ? 'default' : 'pointer', fontFamily: 'inherit',
+                borderRadius: 'var(--radius-md)', padding: '10px 12px', width: '100%',
+                display: 'flex', alignItems: 'center', gap: 10,
+                background: activeRow ? 'var(--surface-accent-soft)' : 'var(--surface-card)',
+                opacity: undrafted ? 0.55 : 1,
+              }}>
+              <span style={{ width: 9, height: 9, borderRadius: 'var(--radius-pill)', flex: 'none', background: DOT[it.status] ?? 'var(--uw-mist)' }} />
+              <span style={{ fontSize: 'var(--fs-badge)', letterSpacing: 'var(--track-10)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                {it.ref}
+              </span>
+              <span style={{ flex: 1, fontSize: 'var(--fs-ui-sm)', fontWeight: 'var(--fw-bold)', color: 'var(--text-body)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: undrafted ? 'italic' : 'normal' }}>
+                {undrafted ? t('align.notDraftedShort') : it.text}
+              </span>
+            </button>
+          );
+        })}
+        {filtered.length === 0 && (
+          <p data-testid="align-rail-empty" style={{ fontSize: 'var(--fs-caption-lg)', letterSpacing: 'var(--track-12-5)', color: 'var(--text-tertiary)', fontStyle: 'italic', margin: '6px 2px' }}>
+            {t('check.railEmpty')}
+          </p>
+        )}
+      </div>
+      <div style={{ padding: '12px 16px', borderTop: 'var(--stroke-hair) solid var(--border-hair)' }}>
+        <Button variant="ghost" size="sm" style={{ padding: 0 }}
+          onClick={() => { actions.closeAlign(); actions.go('draft'); }}>
+          {t('check.backToTranslating')}
+        </Button>
+      </div>
+    </aside>
+  );
+}
+
+function AlignWorkspace() {
+  const { s, actions } = useApp();
+  const [filter, setFilter] = React.useState('all');
+  // The rail's statuses derive from the sidecar + the draft: refresh when the
+  // verse changes and after each edit lands on the session record.
+  React.useEffect(() => {
+    actions.loadAlignIndex();
+  }, [s.book, s.alignVerse, s.alignSession?.record]);
+
+  const activeRef = s.alignVerse ?? s.alignSession?.ref ?? null;
+  return (
+    <div data-testid="align-workspace" style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+      <AlignRail index={s.alignIndex} activeRef={activeRef} filter={filter} setFilter={setFilter}
+        onSelect={(ref) => actions.setAlignVerse(ref)} />
+      <main style={{ flex: 1, overflow: 'auto', minWidth: 0, background: 'var(--surface-app)' }}>
+        <div style={{ maxWidth: 900, margin: '0 auto', padding: '28px 32px 60px' }}>
+          <Align embedded />
+        </div>
+      </main>
+    </div>
+  );
+}
+
 /** The active item's view primitives (B23): index, item, its ref, and the
  * draft verse text — `verses` is on the session, so the target text never
  * pollutes the stored §5.2 record. */
@@ -752,18 +869,9 @@ export default function Check() {
 
   if (!s.book) return null;
 
-  if (s.aligning) {
-    return (
-      <main style={{ flex: 1, overflow: 'auto', padding: '32px 40px 64px' }}>
-        <div style={{ maxWidth: 900, margin: '0 auto' }}>
-          <h1 style={{ fontSize: 'var(--fs-h2)', letterSpacing: 'var(--track-22)', margin: '0 0 18px' }}>
-            {t('nav.align')}
-          </h1>
-          <Align />
-        </div>
-      </main>
-    );
-  }
+  // #129: Align opens inside the same rail+detail workspace as the derived
+  // tools — no separate top-level Align screen.
+  if (s.aligning) return <AlignWorkspace />;
 
   // F1 (epic #104 fidelity): the session owns the whole area — a 300px rail
   // and the detail column, the mockup's two-pane workspace. The tool name and
