@@ -93,14 +93,65 @@ function ToolNeeds({ pre }) {
   );
 }
 
-function ToolCard({ tool, pre, book }) {
+/* ---- #136 (D3d): the picker card's progress block — bar, count, next line,
+ * dropped note — from the on-demand derivation (mockup L977–979). A missing
+ * entry is still loading (quiet placeholder); an errored one is stated and
+ * never blocks the card's open action (D30). ---- */
+
+const CTA_STYLE = { display: 'inline-flex', alignItems: 'center', gap: 7, fontWeight: 'var(--fw-heavy)', fontSize: 'var(--fs-ui)', color: 'var(--text-accent)' };
+const cardCaption = { fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', margin: '6px 0 2px' };
+
+/** The CTA text by state (mockup L1951): Start / Continue / Review. */
+export function ctaFor(entry) {
+  if (!entry || entry.error != null || !entry.total) return t('check.open');
+  if (entry.done === 0) return t('check.cta.start');
+  if (entry.done >= entry.total) return t('check.cta.review');
+  return t('check.cta.continue');
+}
+
+function nextLineFor(entry, kind) {
+  if (!entry || entry.error != null || !entry.total) return '';
+  if (entry.done >= entry.total) return t('check.allResolved');
+  if (kind === 'align') return entry.nextRef ? t('align.nextVerse', { ref: entry.nextRef }) : '';
+  const it = entry.nextItem;
+  if (!it) return '';
+  return t('check.next', { quote: quoteOf(it) || it.contextId.groupId, c: it.contextId.reference.chapter, v: it.contextId.reference.verse });
+}
+
+function CardProgress({ entry, kind = 'check' }) {
+  const countLabel = () => {
+    if (!entry) return '—';
+    if (entry.error != null) return t('check.progressError');
+    if (!entry.total) return t('check.noItems');
+    const args = { decided: entry.done, done: entry.done, total: entry.total };
+    return kind === 'align' ? t('align.progressVerses', args) : t('check.progress', args);
+  };
+  const next = nextLineFor(entry, kind);
+  return (
+    <div data-testid={`picker-progress-${kind}`} data-loaded={entry ? '1' : '0'} style={{ marginBottom: 10 }}>
+      <ProgressBar value={entry?.total ? (entry.done / entry.total) * 100 : 0} height={6} />
+      <p style={{ ...cardCaption, fontWeight: 'var(--fw-bold)', color: entry?.error != null ? 'var(--tc-warn-text)' : 'var(--text-secondary)' }}>
+        {countLabel()}
+      </p>
+      {next !== '' && (
+        <p style={{ ...cardCaption, color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{next}</p>
+      )}
+      {/* #15: a denominator shrunk by versification is never silent. */}
+      <DroppedNote dropped={entry?.dropped} style={{ marginTop: 4 }} />
+    </div>
+  );
+}
+
+function ToolCard({ tool, pre, book, progress }) {
   const { actions } = useApp();
   const tone = TONE[pre.state] ?? TONE.unpinned;
   const ready = pre.state === 'ready';
+  const open = () => actions.openCheckTool(tool);
 
   return (
     <div data-testid={`preflight-${tool}`} data-state={pre.state}
-      style={{ border: `var(--stroke) solid ${tone.border}`, background: tone.bg, borderRadius: 'var(--radius-lg)', padding: '16px 18px', display: 'flex', flexDirection: 'column' }}>
+      onClick={ready ? open : undefined}
+      style={{ border: `var(--stroke) solid ${tone.border}`, background: tone.bg, borderRadius: 'var(--radius-lg)', padding: '16px 18px', display: 'flex', flexDirection: 'column', cursor: ready ? 'pointer' : 'default' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 }}>
         <span style={{ fontSize: 'var(--fs-ui-md)', letterSpacing: 'var(--track-14)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)' }}>{t(`check.tool.${tool}`)}</span>
         {!ready && (
@@ -132,9 +183,13 @@ function ToolCard({ tool, pre, book }) {
         </Callout>
       )}
       {pre.state === 'ready' && (
-        <Button size="sm" onClick={() => actions.openCheckTool(tool)} data-testid={`open-${tool}`}>
-          {t('check.open')}
-        </Button>
+        <>
+          <CardProgress entry={progress} />
+          <button type="button" data-testid={`open-${tool}`} onClick={(e) => { e.stopPropagation(); open(); }}
+            style={{ ...CTA_STYLE, border: 0, background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', padding: 0, alignSelf: 'flex-start' }}>
+            {ctaFor(progress)} {'→'}
+          </button>
+        </>
       )}
     </div>
   );
@@ -867,6 +922,14 @@ export default function Check() {
     actions.runPreflight();
   }, [s.book, s.projectPins, s.netEnabled, s.tick]);
 
+  // #136 (D3d): derive the picker cards' progress on demand — on entering
+  // the picker and on returning to it (a closed session flips atPicker back
+  // on, so counts reflect the decisions just made). Never stored (§4.2).
+  const atPicker = !s.checkTool && !s.aligning;
+  React.useEffect(() => {
+    if (pre && atPicker) actions.loadPickerProgress();
+  }, [pre, atPicker]);
+
   if (!s.book) return null;
 
   // #129: Align opens inside the same rail+detail workspace as the derived
@@ -885,7 +948,7 @@ export default function Check() {
         * for the mockup's card grid to reach its three columns. */}
       <div style={{ maxWidth: 'var(--measure-page)', margin: '0 auto' }}>
         <h1 style={{ fontSize: 'var(--fs-h1)', letterSpacing: 'var(--track-32)', margin: '0 0 6px' }}>
-          {t('check.title', { book: bookName(s.book) })}
+          {t('check.title')}
         </h1>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, margin: '0 0 24px' }}>
           <p style={{ fontSize: 'var(--fs-ui)', letterSpacing: 'var(--track-13-5)', color: 'var(--text-tertiary)', margin: 0, lineHeight: 'var(--lh-body)', flex: 1 }}>
@@ -923,35 +986,41 @@ export default function Check() {
         {pre && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(270px,1fr))', gap: 16 }}>
             {TOOLS.map((tool) => (
-              <ToolCard key={tool} tool={tool} pre={pre[tool]} book={s.book} />
+              <ToolCard key={tool} tool={tool} pre={pre[tool]} book={s.book}
+                progress={s.pickerProgress?.[tool]} />
             ))}
 
             <Card variant="flat" padding="16px 18px" data-testid="align-card"
-              style={{ border: 'var(--stroke) solid var(--border)', display: 'flex', flexDirection: 'column' }}>
+              onClick={actions.startAligning}
+              style={{ border: 'var(--stroke) solid var(--border)', display: 'flex', flexDirection: 'column', cursor: 'pointer' }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 }}>
                 <span style={{ fontSize: 'var(--fs-ui-md)', letterSpacing: 'var(--track-14)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)' }}>{t('nav.align')}</span>
               </div>
               <p style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', color: 'var(--text-secondary)', lineHeight: 'var(--lh-body)', margin: '0 0 10px', flex: 1 }}>
                 {t('align.cardBody')}
               </p>
-              <Button size="sm" onClick={actions.startAligning} data-testid="open-align"
-                style={{ alignSelf: 'flex-start' }}>
-                {t('align.open')}
-              </Button>
+              <CardProgress entry={s.pickerProgress?.align} kind="align" />
+              <button type="button" data-testid="open-align"
+                onClick={(e) => { e.stopPropagation(); actions.startAligning(); }}
+                style={{ ...CTA_STYLE, border: 0, background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', padding: 0, alignSelf: 'flex-start' }}>
+                {ctaFor(s.pickerProgress?.align)} {'→'}
+              </button>
             </Card>
 
             <Card variant="flat" padding="16px 18px" data-testid="community-checking-card"
-              style={{ border: 'var(--stroke) solid var(--border)', display: 'flex', flexDirection: 'column' }}>
+              onClick={() => actions.go('publish')}
+              style={{ border: 'var(--stroke) solid var(--border)', display: 'flex', flexDirection: 'column', cursor: 'pointer' }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 }}>
                 <span style={{ fontSize: 'var(--fs-ui-md)', letterSpacing: 'var(--track-14)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)' }}>{t('cc.title')}</span>
               </div>
               <p style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', color: 'var(--text-secondary)', lineHeight: 'var(--lh-body)', margin: '0 0 10px', flex: 1 }}>
                 {t('cc.cardDesc')}
               </p>
-              <Button size="sm" onClick={() => actions.go('publish')} data-testid="open-community-checking"
-                style={{ alignSelf: 'flex-start' }}>
+              <button type="button" data-testid="open-community-checking"
+                onClick={(e) => { e.stopPropagation(); actions.go('publish'); }}
+                style={{ ...CTA_STYLE, border: 0, background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', padding: 0, alignSelf: 'flex-start' }}>
                 {t('cc.open')}
-              </Button>
+              </button>
             </Card>
           </div>
         )}
