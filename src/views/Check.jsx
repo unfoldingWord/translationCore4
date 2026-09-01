@@ -264,6 +264,9 @@ function OrigPane({ orig, c, v }) {
         {text}
       </p>
     ) : paneAbsent(t('check.paneAbsent'));
+  } else if (orig.state === 'cross-frame') {
+    // #131 class: the project's numbering differs from the source's frame.
+    body = paneAbsent(t('check.crossFrame'));
   } else if (orig.state === 'error') {
     body = paneAbsent(orig.error);
   } else {
@@ -280,7 +283,9 @@ function OrigPane({ orig, c, v }) {
 /** Why the gateway pane has no verse to show — or null while pane ids / the
  * book text are still loading. Missing and a transient read error stay
  * distinct statements (D30). */
-function ultAbsence(source, sourcePanes) {
+function ultAbsence(source, sourcePanes, crossFrame) {
+  // #131 class: the project's numbering differs from the source's frame.
+  if (crossFrame) return t('check.crossFrame');
   // Round 37 (§5.3): a project may legally declare no extraScripture.
   if (sourcePanes && sourcePanes.length === 0) return t('check.noGateway');
   if (sourcePanes === null || source === undefined) return null;
@@ -289,16 +294,21 @@ function ultAbsence(source, sourcePanes) {
   return t('check.paneAbsent');
 }
 
+/** The gateway verse to render — never indexed cross-frame: a non-eng
+ * project's (c, v) is in the PROJECT's numbering, not this book's. */
+const ultVerseObj = (source, crossFrame, c, v) =>
+  !crossFrame && source && source !== 'missing' && !source.error
+    ? source.chapters?.[String(c)]?.[String(v)]
+    : null;
+
 /** The compare card's GATEWAY row: the project's §5.3 extraScripture verse
  * with the quote's tokens highlighted through the alignment (same matcher as
  * the helps panel). Pane ids are the project's own — 'ult' is preferred when
  * present, otherwise the first declared pane; a project with none states so. */
-function UltPane({ sources, sourcePanes, item, c, v }) {
+function UltPane({ sources, sourcePanes, item, c, v, crossFrame }) {
   const paneId = sourcePanes?.includes('ult') ? 'ult' : sourcePanes?.[0];
   const source = paneId ? sources?.[paneId] : undefined;
-  const vObj = source && source !== 'missing' && !source.error
-    ? source.chapters?.[String(c)]?.[String(v)]
-    : null;
+  const vObj = ultVerseObj(source, crossFrame, c, v);
   const tokens = React.useMemo(() => (vObj ? tokenizeVerse(vObj) : []), [vObj]);
   const hits = React.useMemo(
     () => (tokens.length
@@ -311,7 +321,7 @@ function UltPane({ sources, sourcePanes, item, c, v }) {
     // Token stream rendered the SourceVerse way: raw text nodes with <mark>
     // on the quote's hits, so the USFM's own spacing survives.
     body = (
-      <p data-testid="ult-pane-text" style={{ direction: 'ltr', textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse-md)', color: 'var(--text-scripture)', margin: '8px 0 0' }}>
+      <p data-testid="ult-pane-text" dir="auto" style={{ textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse-md)', color: 'var(--text-scripture)', margin: '8px 0 0' }}>
         {tokens.map((tok, i) =>
           hits.has(i) ? (
             <mark key={i} data-testid="ult-hl" style={{ background: 'var(--tc-highlight-soft)', color: 'var(--text-heading)', borderRadius: 'var(--radius-xs)', padding: '0 .06em' }}>
@@ -324,7 +334,7 @@ function UltPane({ sources, sourcePanes, item, c, v }) {
       </p>
     );
   } else {
-    const absent = ultAbsence(source, sourcePanes);
+    const absent = ultAbsence(source, sourcePanes, crossFrame);
     body = absent == null ? null : paneAbsent(absent);
   }
   return (
@@ -379,7 +389,9 @@ function CheckDetail({ cs, item, sources, sourcePanes, words, sel, toggleWord, m
         <div data-testid="check-note" style={{ maxWidth: '62ch', marginBottom: 8, borderRadius: 'var(--radius-lg)', padding: '16px 18px', background: 'var(--surface-warm)', border: 'var(--stroke) solid var(--tc-warn-border)' }}>
           <Overline style={{ color: 'var(--tc-warn-text-2)' }}>{t('check.whatToCheck')}</Overline>
           <div style={{ fontSize: 'var(--fs-title-sm)', letterSpacing: 'var(--track-16)', lineHeight: 'var(--lh-body)', fontWeight: 'var(--fw-medium)', color: 'var(--uw-ink)', margin: '7px 0 0' }}>
-            <ExpandableNote text={item.contextId.occurrenceNote} />
+            {/* Keyed by item: the expanded/collapsed state must not leak from
+              * one check to the next. */}
+            <ExpandableNote key={idx} text={item.contextId.occurrenceNote} />
           </div>
         </div>
       )}
@@ -394,7 +406,7 @@ function CheckDetail({ cs, item, sources, sourcePanes, words, sel, toggleWord, m
         * card (mockup L1152–1187). */}
       <div style={{ background: 'var(--surface-card)', border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-xl)', overflow: 'hidden', boxShadow: 'var(--shadow-card)' }}>
         <OrigPane orig={cs.orig} c={c} v={v} />
-        <UltPane sources={sources} sourcePanes={sourcePanes} item={item} c={c} v={v} />
+        <UltPane sources={sources} sourcePanes={sourcePanes} item={item} c={c} v={v} crossFrame={cs.crossFrame} />
         <div style={{ padding: '16px 20px' }}>
           <Overline tone="accent">{t('check.yourTranslation')}</Overline>
           {words.length === 0 ? (

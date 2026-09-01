@@ -494,6 +494,32 @@ async function gatewayChangePlan({ consequences, next, coverage, installed, stor
   return { plan, blocked };
 }
 
+/** Derive one tool's check session: the item list, and the project-frame
+ * verdict the compare panes need. #131 class: a non-eng-framed project
+ * numbers its items in ITS frame, while the source books stay in their own —
+ * the panes cannot line verses up until the mapping lands there. `partial`
+ * marks the designed empty/warning session shapes, which carry no items. */
+async function assembleCheckSession({ api, actions, store, stateRef, st, tool, book, pre, seq }) {
+  const result = await deriveCheckItems({ apiClient: api, actions, st, tool, book, pre });
+  const frame = await actions.projectFrame();
+  const crossFrame = frame?.state !== 'ready' || frame?.name !== 'eng';
+  if (result.session) return { session: { ...result.session, seq, crossFrame }, partial: true };
+  const session = {
+    ...(await completedCheckSession({
+      store,
+      st: stateRef.current,
+      tool,
+      book,
+      pre,
+      derived: result.derived,
+      dropped: result.dropped,
+    })),
+    seq,
+    crossFrame,
+  };
+  return { session, partial: false };
+}
+
 /** F1 (epic #104 fidelity): the ORIGINAL-language chapters behind the check
  * detail's compare card — one whole-book read + parse per session, from the
  * same pinned originalLanguage resource Align reads. Absence is a stated
@@ -2144,41 +2170,33 @@ export function AppProvider({ children }) {
         const pre = st.preflight?.[tool];
         if (!pre || pre.state !== 'ready' || !pre.resolution?.pin) return;
         const book = st.book;
-        dispatch({ type: 'set', patch: { checkTool: tool, checkSession: { loading: true } } });
+        // The seq is this session's identity, taken BEFORE any await: a stale
+        // open's completion (or failure) must never replace a newer session,
+        // and closing the tool or the project invalidates in-flight opens.
+        const seq = ++checkSessionSeq;
+        dispatch({ type: 'set', patch: { checkTool: tool, checkSession: { loading: true, seq } } });
         try {
-          const result = await deriveCheckItems({ apiClient: api, actions: a, st, tool, book, pre });
-          // The seq is this session's identity for async completions
-          // (patchCheckSession): a later session — even the same tool and
-          // book, or another project — never receives this one's results.
-          const seq = ++checkSessionSeq;
-          if (result.session) {
-            dispatch({ type: 'set', patch: { checkTool: tool, checkSession: { ...result.session, seq } } });
-            return;
-          }
-          const session = {
-            ...(await completedCheckSession({
-              store: storeRef.current,
-              st: stateRef.current,
-              tool,
-              book,
-              pre,
-              derived: result.derived,
-              dropped: result.dropped,
-            })),
-            seq,
-          };
-          dispatch({ type: 'set', patch: { checkSession: session } });
+          const { session, partial } = await assembleCheckSession({
+            api, actions: a, store: storeRef.current, stateRef, st, tool, book, pre, seq,
+          });
+          if (seq !== checkSessionSeq) return; // a newer open or close won
+          dispatch({ type: 'set', patch: { checkTool: tool, checkSession: session } });
+          if (partial) return;
           a.loadActiveArticle(session);
           a.loadCheckOrigSource(session);
         } catch (e) {
+          if (seq !== checkSessionSeq) return;
           dispatch({
             type: 'set',
-            patch: { checkSession: { loading: false, error: String(e?.message || e) } },
+            patch: { checkSession: { loading: false, error: String(e?.message || e), seq } },
           });
         }
       },
 
-      closeCheckTool: () => dispatch({ type: 'set', patch: { checkTool: null, checkSession: null } }),
+      closeCheckTool: () => {
+        checkSessionSeq++; // invalidate any in-flight open or completion
+        dispatch({ type: 'set', patch: { checkTool: null, checkSession: null } });
+      },
 
       setCheckIndex: (activeIndex) => {
         const cs = stateRef.current.checkSession;
@@ -2233,9 +2251,14 @@ export function AppProvider({ children }) {
         const store = storeRef.current;
         if (!cs?.items || !store) return;
         const { book } = cs;
-        const pin = stateRef.current.projectPins?.resources?.originalLanguage?.[
-          isOldTestament(book) ? 'ot' : 'nt'
-        ];
+        const testament = isOldTestament(book) ? 'ot' : 'nt';
+        if (cs.crossFrame) {
+          // #131 class: the source book is numbered in its own frame — no
+          // verse-by-verse lookup until the mapping lands. Skip the read.
+          dispatch({ type: 'patchCheckSession', seq: cs.seq, patch: { orig: { state: 'cross-frame', testament } } });
+          return;
+        }
+        const pin = stateRef.current.projectPins?.resources?.originalLanguage?.[testament];
         const orig = await readCheckOrigChapters(store, pin, book);
         // Reducer-side merge (patchCheckSession): the article read resolves
         // concurrently, and a stale-snapshot spread here would clobber it.
@@ -2968,10 +2991,13 @@ export function AppProvider({ children }) {
         // A2 (2026-08-27 adversarial review): understand + projectPins are
         // PROJECT state — leaving them set lets project B render (and journal
         // into!) project A's data. Invalidate any in-flight load as well.
+        // The check session is the same class (PR #132 review round 2):
+        // clear it and invalidate its in-flight completions.
         understandSeqRef.current++;
+        checkSessionSeq++;
         dispatch({
           type: 'set',
-          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, saveState: 'saved', noteSaveState: 'saved', projectPins: null, projectPinsLoaded: false, projectPinsError: null, sourcePanes: null, understand: null },
+          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, saveState: 'saved', noteSaveState: 'saved', projectPins: null, projectPinsLoaded: false, projectPinsError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null },
         });
         refreshProjects(); // re-order: the project just left goes to the top
       },

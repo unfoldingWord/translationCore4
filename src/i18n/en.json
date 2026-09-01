@@ -198,6 +198,7 @@
   "check.origUnavailable": "The original-language text is not on this computer.",
   "check.ultUnavailable": "The gateway source text is not on this computer.",
   "check.noGateway": "This project lists no gateway source text.",
+  "check.crossFrame": "This project's verse numbering differs from this text's. The app cannot line them up yet.",
   "check.prevItem": "Previous item",
   "check.nextItem": "Next item",
   "check.nothingToSelect": "Nothing to select",
