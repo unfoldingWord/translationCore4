@@ -321,6 +321,16 @@ const initial = () => ({
   tick: 0,
 });
 
+/** Atomic merge into the live check session (same hazard class as setSource):
+ * the orig-book read and the article read resolve concurrently, and a
+ * stale-snapshot spread in either would clobber the other's result. A foreign
+ * completion (tool or book moved on) updates nothing. */
+function patchCheckSession(state, a) {
+  const cs = state.checkSession;
+  if (!cs?.items || cs.tool !== a.tool || cs.book !== a.book) return state;
+  return { ...state, checkSession: { ...cs, ...a.patch } };
+}
+
 function reducer(state, a) {
   switch (a.type) {
     case 'set':
@@ -337,6 +347,8 @@ function reducer(state, a) {
       // Atomic per-key merge: two source fetches can resolve in one batch, and
       // a read-modify-write through a stale snapshot would clobber the sibling.
       return { ...state, sources: { ...state.sources, [a.id]: a.value } };
+    case 'patchCheckSession':
+      return patchCheckSession(state, a);
     case 'noteSaved': {
       // Atomic merge of ONE persisted comprehension note (S1, adversarial
       // round 19): two per-target saves can complete in the same batch, and
@@ -463,6 +475,23 @@ async function gatewayChangePlan({ consequences, next, coverage, installed, stor
     });
   }
   return { plan, blocked };
+}
+
+/** F1 (epic #104 fidelity): the ORIGINAL-language chapters behind the check
+ * detail's compare card — one whole-book read + parse per session, from the
+ * same pinned originalLanguage resource Align reads. Absence is a stated
+ * state, never an error (D30). */
+async function readCheckOrigChapters(store, pin, book) {
+  const testament = isOldTestament(book) ? 'ot' : 'nt';
+  if (!pin?.repoPath) return { state: 'unpinned', testament };
+  try {
+    const { usfm: usfmText } = await store.readSourceBook(resolveReadPath(pin), book);
+    if (!usfmText) return { state: 'missing', testament };
+    return { state: 'ready', testament, chapters: parseChapters(usfmText) };
+  } catch (e) {
+    if (isNotFoundError(e)) return { state: 'missing', testament };
+    return { state: 'error', testament, error: String(e?.message || e) };
+  }
 }
 
 async function prepareAlignmentSource(store, st, ref) {
@@ -2116,6 +2145,7 @@ export function AppProvider({ children }) {
           });
           dispatch({ type: 'set', patch: { checkSession: session } });
           a.loadActiveArticle(session);
+          a.loadCheckOrigSource(session);
         } catch (e) {
           dispatch({
             type: 'set',
@@ -2129,9 +2159,10 @@ export function AppProvider({ children }) {
       setCheckIndex: (activeIndex) => {
         const cs = stateRef.current.checkSession;
         if (!cs) return;
-        const next = { ...cs, activeIndex };
-        dispatch({ type: 'set', patch: { checkSession: next } });
-        a.loadActiveArticle(next);
+        // Reducer-side merge: a concurrently-landing orig/article result must
+        // not be clobbered by this snapshot (patchCheckSession hazard note).
+        dispatch({ type: 'patchCheckSession', tool: cs.tool, book: cs.book, patch: { activeIndex } });
+        a.loadActiveArticle({ ...cs, activeIndex });
       },
 
       /** C2.5 — the help article behind the active item, read from the
@@ -2151,7 +2182,9 @@ export function AppProvider({ children }) {
         const sets = st.projectPins?.languageSets?.[rung];
         const key = `${cs.tool}:${item.contextId.groupId}:${item.category}`;
         if (cs.article?.key === key && !cs.article.error) return;
-        dispatch({ type: 'set', patch: { checkSession: { ...cs, article: { key, loading: true } } } });
+        // Reducer-side merges (patchCheckSession): the orig-book read resolves
+        // concurrently, and a stale-snapshot spread here dropped its result.
+        dispatch({ type: 'patchCheckSession', tool: cs.tool, book: cs.book, patch: { article: { key, loading: true } } });
         const kind = cs.tool === 'translationWords' ? 'tw' : 'ta';
         // Catch-to-absence sweep (D30): readHelpArticle now PROPAGATES
         // transient failures (round 35) — without the settle the un-awaited
@@ -2161,9 +2194,29 @@ export function AppProvider({ children }) {
         const now = stateRef.current.checkSession;
         if (now?.article?.key !== key) return; // the user moved on
         dispatch({
-          type: 'set',
-          patch: { checkSession: { ...now, article: { key, loading: false, found, error } } },
+          type: 'patchCheckSession',
+          tool: cs.tool,
+          book: cs.book,
+          patch: { article: { key, loading: false, found, error } },
         });
+      },
+
+      /** F1 (epic #104 fidelity): the ORIGINAL-language verse row of the
+       * check detail's compare card. One whole-book read + parse per session,
+       * from the same pinned originalLanguage resource Align reads (D30 —
+       * absence is a stated state, never an error). */
+      loadCheckOrigSource: async (session) => {
+        const cs = session ?? stateRef.current.checkSession;
+        const store = storeRef.current;
+        if (!cs?.items || !store) return;
+        const { tool, book } = cs;
+        const pin = stateRef.current.projectPins?.resources?.originalLanguage?.[
+          isOldTestament(book) ? 'ot' : 'nt'
+        ];
+        const orig = await readCheckOrigChapters(store, pin, book);
+        // Reducer-side merge (patchCheckSession): the article read resolves
+        // concurrently, and a stale-snapshot spread here would clobber it.
+        dispatch({ type: 'patchCheckSession', tool, book, patch: { orig } });
       },
 
       /** C2.6 — write one decision through the store. The full §5.2 record is
@@ -2184,17 +2237,19 @@ export function AppProvider({ children }) {
           // disagrees (by sha) with the file's stored §5.2 record — surface the
           // refusal on the session; the way through is the gateway-change flow.
           dispatch({
-            type: 'set',
-            patch: { checkSession: { ...cs, saveError: String(e?.message ?? e) } },
+            type: 'patchCheckSession',
+            tool: cs.tool,
+            book: cs.book,
+            patch: { saveError: String(e?.message ?? e) },
           });
           return;
         }
         const items = cs.items.map((it, i) => (i === cs.activeIndex ? next : it));
         dispatch({
-          type: 'set',
-          patch: {
-            checkSession: { ...cs, items, progress: progressOf(items), saveError: null },
-          },
+          type: 'patchCheckSession',
+          tool: cs.tool,
+          book: cs.book,
+          patch: { items, progress: progressOf(items), saveError: null },
         });
       },
 

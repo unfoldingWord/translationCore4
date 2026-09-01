@@ -295,7 +295,7 @@ test.describe('J13 — changing the project’s checking language', () => {
       await page.getByRole('button', { name: /Close/ }).first().click();
 
       await page.getByTestId('open-translationNotes').click();
-      await expect(page.getByTestId('check-progress')).toHaveText(/\d+ of \d+ decided/);
+      await expect(page.getByTestId('check-progress')).toHaveText(/\d+ of \d+ resolved/);
       // The session states which resource it derived from, and it is Spanish.
       await expect(page.getByTestId('check-session')).toContainText('es-419_tn');
       // The note prose the user reads is Spanish now.
