@@ -3117,11 +3117,19 @@ export function AppProvider({ children }) {
         // Round 23: the loop re-checks both after each pass, so a note staged
         // while the verse drain awaited can never be disposed unflushed.
         if (!(await drainBothSchedulers({ schedulerRef, noteSchedulerRef }))) return;
-        // #129 (PR #135 review round 2): the alignment write queue drains the
-        // same way — flush-and-go — so a queued §5.1 write can never execute
-        // after this project's store is gone (or worse, into the next
-        // project's). The queue never rejects, so the await is safe.
-        await alignWriteQueue;
+        // #129 (PR #135 review rounds 2–3): the alignment write queue drains
+        // the same way — flush-and-go — so a queued §5.1 write can never
+        // execute after this project's store is gone. Drained to a STABLE
+        // tail: the editor stays live during the await, and an edit appended
+        // meanwhile would otherwise run after this continuation (round 3,
+        // confirmed by ordering control). The queue never rejects. From the
+        // stable tail to the store teardown below is synchronous, so nothing
+        // can enqueue in between.
+        let alignTail;
+        do {
+          alignTail = alignWriteQueue;
+          await alignTail;
+        } while (alignTail !== alignWriteQueue);
         schedulerRef.current?.dispose();
         schedulerRef.current = null;
         noteSchedulerRef.current?.dispose();
