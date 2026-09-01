@@ -198,3 +198,14 @@ describe('cross-frame projects (2026-08-31 Codex adversarial finding)', () => {
     expect(screen.queryByText(/ἐκλεκτῶν/)).toBeNull();
   });
 });
+
+describe('cross-frame Translate (2026-08-31 Codex adversarial re-review)', () => {
+  it('never highlights the frame-naive source pane — suppressed until #131 maps it', () => {
+    state.chapter = 1;
+    (state.understand as Record<string, unknown>).sourceRefs = { '1': [{ c: 1, v: '1', pc: 1, pv: '1' }] };
+    const { rerender } = render(<Draft />);
+    fireEvent.mouseEnter(screen.getByText(/A note about the elect/));
+    rerender(<Draft />);
+    expect(highlightedWords()).toEqual([]);
+  });
+});
