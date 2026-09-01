@@ -622,6 +622,19 @@ function alignVerseStatus(rec, text) {
   return { status: 'todo', placed, total };
 }
 
+/** The §5.1 file with one verse's record replaced (persistAlign's merge). */
+function alignFileWith(current, book, ref, record) {
+  const [chapter, verse] = ref.split(':');
+  const file = current ?? { schemaVersion: 1, book: book.toUpperCase(), chapters: {} };
+  return {
+    ...file,
+    chapters: {
+      ...file.chapters,
+      [chapter]: { ...(file.chapters?.[chapter] ?? {}), [verse]: record },
+    },
+  };
+}
+
 /** #129: the align rail's rows — every verse of the book in document order,
  * with the verse text and its derived status. */
 function alignIndexItems(bookRaw, file) {
@@ -2101,8 +2114,11 @@ export function AppProvider({ children }) {
         // starts overlapping opens — only the LATEST one may dispatch, or a
         // slower stale load would display (and then edit) the wrong verse.
         const seq = ++alignSessionSeq;
+        // The seq travels ON the session too: persistAlign's success and
+        // failure dispatches check it, so a completion from a replaced
+        // session can never overwrite a newer one (review round 2).
         const settle = (alignSession) => {
-          if (seq === alignSessionSeq) dispatch({ type: 'set', patch: { alignSession } });
+          if (seq === alignSessionSeq) dispatch({ type: 'set', patch: { alignSession: { ...alignSession, seq } } });
         };
         const ref = st.alignVerse ?? firstDraftedRef(st.bookRaw);
         if (!ref) return settle({ unavailable: 'undrafted' });
@@ -2113,6 +2129,10 @@ export function AppProvider({ children }) {
         // at {loading:true} with an unhandled rejection. Any failure is a
         // stated, retryable error — never the 'missing' download prompt.
         try {
+        // Read AFTER every queued write lands (review round 2): reopening a
+        // verse whose write is still in flight must load the written record,
+        // not the stale file. The queue never rejects.
+        await alignWriteQueue;
         const source = await prepareAlignmentSource(store, st, ref);
         if (source.unavailable) return settle({ unavailable: source.unavailable });
         const frame = await a.projectFrame();
@@ -2171,6 +2191,7 @@ export function AppProvider({ children }) {
         const book = st.book;
         let alignIndex;
         try {
+          await alignWriteQueue; // the rail must reflect every landed write
           const { value: file } = await store.readAlignmentsWithMd5(book);
           alignIndex = { items: alignIndexItems(st.bookRaw, file) };
         } catch (error) {
@@ -2207,7 +2228,11 @@ export function AppProvider({ children }) {
         if (next === a2.record) return;
         const optimistic = { ...a2, ...(disarm ? { armed: null } : {}), record: next };
         dispatch({ type: 'set', patch: { alignSession: optimistic } });
-        alignWriteQueue = alignWriteQueue.then(() => a.persistAlign(optimistic));
+        // The STORE is bound at enqueue time (review round 2): a queued write
+        // must land in the project it was made in, never in whichever store
+        // happens to be current when the queue reaches it.
+        const store = storeRef.current;
+        alignWriteQueue = alignWriteQueue.then(() => a.persistAlign(optimistic, store));
       },
 
       placeAlignWord: (cardIndex) => {
@@ -2241,32 +2266,32 @@ export function AppProvider({ children }) {
        * record) completes on disk but leaves the session refresh to its
        * successor; a failure is a stated, retryable session error unless the
        * user has already moved on. */
-      persistAlign: async (session) => {
-        const store = storeRef.current;
+      persistAlign: async (session, boundStore) => {
+        const store = boundStore ?? storeRef.current;
         const book = session.book;
         if (!store || !book) return;
         try {
-          const [chapter, verse] = session.ref.split(':');
           const record = stampTargetVerse(session.record, session.targetText);
           const { value: current, md5 } = await store.readAlignmentsWithMd5(book);
-          const file = current ?? { schemaVersion: 1, book: book.toUpperCase(), chapters: {} };
-          file.chapters = {
-            ...file.chapters,
-            [chapter]: { ...(file.chapters?.[chapter] ?? {}), [verse]: record },
-          };
-          await store.writeAlignments(book, file, md5);
+          await store.writeAlignments(book, alignFileWith(current, book, session.ref, record), md5);
           const after = await store.readAlignmentsWithMd5(book);
           const cur = stateRef.current.alignSession;
-          if (cur?.ref === session.ref && cur.record === session.record) {
+          if (cur?.seq === session.seq && cur.ref === session.ref && cur.record === session.record) {
             dispatch({
               type: 'set',
               patch: { alignSession: { ...cur, record, md5: after.md5, stale: false } },
             });
           }
         } catch (e) {
+          // A failure surfaces ONLY on the session and record it belongs to
+          // (review round 2): each queued write carries the verse's FULL
+          // record, so a failed intermediate is superseded by its successor,
+          // and a stale failure must never erase a newer session. The stated
+          // error's retry reloads from disk — the un-persisted edit is
+          // announced as lost, never silently kept as false UI state.
           const cur = stateRef.current.alignSession;
-          if (cur?.ref === session.ref) {
-            dispatch({ type: 'set', patch: { alignSession: { error: String(e?.message || e) } } });
+          if (cur?.seq === session.seq && cur.record === session.record) {
+            dispatch({ type: 'set', patch: { alignSession: { error: String(e?.message || e), seq: session.seq } } });
           }
         }
       },
@@ -3092,6 +3117,11 @@ export function AppProvider({ children }) {
         // Round 23: the loop re-checks both after each pass, so a note staged
         // while the verse drain awaited can never be disposed unflushed.
         if (!(await drainBothSchedulers({ schedulerRef, noteSchedulerRef }))) return;
+        // #129 (PR #135 review round 2): the alignment write queue drains the
+        // same way — flush-and-go — so a queued §5.1 write can never execute
+        // after this project's store is gone (or worse, into the next
+        // project's). The queue never rejects, so the await is safe.
+        await alignWriteQueue;
         schedulerRef.current?.dispose();
         schedulerRef.current = null;
         noteSchedulerRef.current?.dispose();
