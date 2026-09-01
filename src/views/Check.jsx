@@ -150,6 +150,10 @@ const clickableCard = (open) => ({
   role: 'button',
   tabIndex: 0,
   onKeyDown: (e) => {
+    // Only the card's OWN key events activate it (review round 2): a nested
+    // button's Enter/Space bubbles here and must stay the button's alone —
+    // the click path already stops propagation; the key path must match.
+    if (e.target !== e.currentTarget) return;
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       open();
