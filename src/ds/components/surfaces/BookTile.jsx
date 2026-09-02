@@ -5,10 +5,10 @@ import { ProgressBar } from '../core/ProgressBar.jsx';
 export function BookTile({ name, percent = 0, meta, layout = 'tile', active, onClick, style, ...rest }) {
   const row = layout === 'row';
   const nameStyle = row
-    ? { fontSize: 'var(--fs-ui-md)', letterSpacing: 'var(--track-14)', fontWeight: 'var(--fw-heavy)' }
+    ? { fontSize: 'var(--fs-ui-md)', fontWeight: 'var(--fw-heavy)' }
     : { fontSize: 'var(--fs-ui)', fontWeight: 'var(--fw-black)' };
   return (
-    <button type="button" data-tc={row ? 'row' : 'surface'} data-tc-selected={active ? 'true' : undefined} onClick={onClick} style={{
+    <button type="button" data-tc={row ? 'rail' : 'surface'} data-tc-selected={active ? 'true' : undefined} onClick={onClick} style={{
       border: row ? 0 : 'var(--stroke) solid var(--border)', background: active ? 'var(--surface-accent-soft)' : (row ? 'transparent' : 'var(--surface-app)'),
       cursor: 'pointer', borderRadius: 'var(--radius-md)', padding: row ? '10px 12px' : '10px 12px',
       textAlign: 'start', fontFamily: 'var(--font-ui)', minWidth: 0, width: row ? '100%' : undefined,

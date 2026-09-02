@@ -110,7 +110,7 @@ export default function Draft() {
             <div style={{ position: 'sticky', top: 0, background: 'var(--surface-app)', zIndex: 2, padding: '10px 26px 8px', borderInlineEnd: hair, display: 'flex', alignItems: 'center', gap: 8 }}>
               {/* ULT/UST source tabs (C1b.3 — the orig pane comes with the alignment increment) */}
               {(s.sourcePanes ?? []).map((id) => (
-                <FilterChip key={id} tone="ocean" selected={s.sourceTab === id} onClick={() => actions.setSourceTab(id)}
+                <FilterChip key={id} data-testid={`source-tab-${id}`} tone="ocean" selected={s.sourceTab === id} onClick={() => actions.setSourceTab(id)}
                   style={{ padding: '4px 10px', fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', borderWidth: 1 }}>
                   {t(`source.${id}`, {}, id.toUpperCase())}
                 </FilterChip>

@@ -8,9 +8,36 @@ import { useApp } from '../state.jsx';
 import { bookName } from '../data/bookNames';
 import { t } from '../i18n';
 import BookRail from './BookRail.jsx';
-import { HelpsPanel, leadingNum, useLoadHelps } from './HelpsPanel.jsx';
+import { HelpsPanel, leadingNum, useLoadHelps, focusOf } from './HelpsPanel.jsx';
 import { keyCarries, SourceVerse } from './SourceVerse.jsx';
-import { FilterChip, IconButton, Overline, SegmentedControl, StatusDot, TextArea, Callout, Button } from '../ds/index.js';
+import { FilterChip, IconButton, Overline, SegmentedControl, StatusDot, Callout, Button } from '../ds/index.js';
+
+// The design's rail toggle: a sidebar glyph, not a text character.
+const RailIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <rect x="1.5" y="2.5" width="13" height="11" rx="2" stroke="currentColor" strokeWidth="1.5" />
+    <line x1="6" y1="3" x2="6" y2="13" stroke="currentColor" strokeWidth="1.5" />
+  </svg>
+);
+
+// A USFM paragraph-level marker inside a verse's objects (usfm-js keeps `\p`,
+// `\m`, `\q…` as paragraph objects in the verse where they fall).
+const isParaMark = (vo) => !!vo && (vo.type === 'paragraph' || /^(p|m|pi\d?|pm|pmo|nb|b|q\d?|li\d?)$/.test(vo.tag ?? ''));
+
+/** Group a unit's verse keys into display paragraphs: a verse opens a new
+ * paragraph when the previous verse ends with a paragraph marker or it starts
+ * with one — the design's `para: true`. Display only, never re-serialized. */
+const paragraphsOf = (keys, chapterVerses) => {
+  const paras = [];
+  keys.forEach((k, i) => {
+    const objs = chapterVerses[String(k)]?.verseObjects ?? [];
+    const prev = i > 0 ? chapterVerses[String(keys[i - 1])]?.verseObjects ?? [] : [];
+    const breaks = i === 0 || isParaMark(prev[prev.length - 1]) || isParaMark(objs[0]);
+    if (breaks) paras.push([]);
+    paras[paras.length - 1].push(k);
+  });
+  return paras;
+};
 
 // Section starts for one chapter, from the source's own \ts\* chunk markers.
 // Display-only: a source without markers yields one whole-chapter section.
@@ -91,8 +118,9 @@ function FrameUnavailableNote({ understand, unitCount }) {
  * the screen is read-only. The scheduler buffer is the draft store — it
  * survives unmounts and identity flips (the old module stash and its
  * park/restore effects are gone with the defect classes they bred). */
-function ComprehensionBox({ book, chapter, unit }) {
+function ComprehensionBox({ book, chapter, unit, mode }) {
   const { s, actions } = useApp();
+  const dir = s.project?.scriptDirection === 'rtl' ? 'rtl' : 'ltr';
   // DISABLED until the persisted notes have actually been read (A3, 2026-08-27
   // adversarial review): a writable empty box over an unread grow-only store
   // invites irreversible duplicates. null = not read; {} = read and empty.
@@ -161,7 +189,9 @@ function ComprehensionBox({ book, chapter, unit }) {
   };
   return (
     <>
-      <TextArea rows={2} value={text} disabled={!ready}
+      {/* The design's box: scripture face at reading size, on the paper tint. */}
+      <textarea data-tc="field" rows={3} dir={dir} value={text} disabled={!ready}
+        style={{ width: '100%', boxSizing: 'border-box', marginTop: 4, border: 'var(--stroke) solid var(--border-input)', borderRadius: 'var(--radius-md)', padding: '11px 13px', outline: 'none', resize: 'vertical', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse)', color: 'var(--text-scripture)', background: 'var(--surface-app)' }}
         onChange={(e) => {
           setText(e.target.value);
           setClearRefused(false);
@@ -178,7 +208,7 @@ function ComprehensionBox({ book, chapter, unit }) {
           else actions.stageNote(target, next);
         }}
         onBlur={save}
-        placeholder={t('understand.commentsPlaceholder')} />
+        placeholder={mode === 'verse' ? t('understand.commentsPlaceholderVerse') : t('understand.commentsPlaceholder')} />
       {clearRefused && (
         <p data-testid="understand-clear-refused" style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--tc-warn-text)', margin: '6px 0 0' }}>
           {t('understand.cannotClear')}
@@ -196,12 +226,14 @@ function ComprehensionBox({ book, chapter, unit }) {
 }
 
 
-const unitRangeLabel = (keys) => {
+/** The design's unit label: "John 1:1–2", book chapter:range. */
+const refLabel = (book, chapter, keys) => {
   const from = keys[0];
   const to = keys[keys.length - 1];
-  return keys.length > 1 || String(from).includes('-')
-    ? t('understand.versesRange', { from: leadingNum(from), to: String(to).includes('-') ? String(to).split('-')[1] : leadingNum(to) })
-    : t('understand.verseOne', { n: from });
+  const span = keys.length > 1 || String(from).includes('-')
+    ? `${leadingNum(from)}–${String(to).includes('-') ? String(to).split('-')[1] : leadingNum(to)}`
+    : String(from);
+  return `${bookName(book.code)} ${chapter}:${span}`;
 };
 
 const crossFrameUnits = (refs, book) => refs.map((r) => r.unmapped
@@ -210,13 +242,13 @@ const crossFrameUnits = (refs, book) => refs.map((r) => r.unmapped
   ? { key: `x${r.crossBook}`, crossBook: r.crossBook, to: r.to }
   : { key: `m${r.pc}:${r.pv}`, srcChapter: r.c, head: r.v, project: { chapter: r.pc, verse: r.pv }, label: `${bookName(book.code)} ${r.c}:${r.v}`, verses: [r.v] });
 
-const sectionUnits = (starts, verseKeys) => {
+const sectionUnits = (starts, verseKeys, book, chapter) => {
   const units = [];
   for (let i = 0; i < starts.length; i++) {
     const from = starts[i];
     const to = i + 1 < starts.length ? starts[i + 1] - 1 : Infinity;
     const keys = verseKeys.filter((k) => leadingNum(k) >= from && leadingNum(k) <= to);
-    if (keys.length) units.push({ key: `s${from}`, head: keys[0], label: unitRangeLabel(keys), verses: keys });
+    if (keys.length) units.push({ key: `s${from}`, head: keys[0], label: refLabel(book, chapter, keys), verses: keys });
   }
   return units;
 };
@@ -228,11 +260,11 @@ const understandUnits = ({ s, book, chapter, src, srcChapters, mode }) => {
   const crossFrame = s.understand?.sourceRefs != null;
   if (crossFrame) return crossFrameUnits(s.understand.sourceRefs[String(chapter)] ?? [], book);
   const starts = mode === 'section' && src && src !== 'missing' ? sectionStarts(src.raw, chapter) : [];
-  if (mode === 'section' && starts.length > 0) return sectionUnits(starts, verseKeys);
+  if (mode === 'section' && starts.length > 0) return sectionUnits(starts, verseKeys, book, chapter);
   if (mode === 'section') return verseKeys.length
     ? [{ key: 'whole', head: verseKeys[0], label: `${bookName(book.code)} ${chapter}`, verses: verseKeys }]
     : [];
-  return verseKeys.map((k) => ({ key: `v${k}`, head: k, label: unitRangeLabel([k]), verses: [k] }));
+  return verseKeys.map((k) => ({ key: `v${k}`, head: k, label: refLabel(book, chapter, [k]), verses: [k] }));
 };
 
 /** Cross-frame units render SOURCE-frame verse keys, but help references were
@@ -247,49 +279,71 @@ const paneFocus = (rawFocus, unit) => {
   return { ...rawFocus, verse: unit.verses[0] };
 };
 
-function UnderstandUnit({ unit, s, src, srcChapters, book, chapter }) {
-  if (unit.unmapped) {
+// The design's two unit states: the focused unit is a raised card, the rest
+// sit flat on the page.
+const UNIT_FOCUSED = { background: 'var(--surface-card)', border: 'var(--stroke) solid var(--accent-ring)', boxShadow: '0 2px 10px rgba(1,66,99,.07)' };
+const UNIT_REST = { background: 'transparent', border: 'var(--stroke) solid transparent', boxShadow: 'none' };
+
+/** A unit with no passage to show: the project verse has no place in the
+ * source numbering, or maps into another book. Round 36: a cross-BOOK mapping
+ * is stated — rendering this book's text at another book's numbers would show
+ * unrelated scripture under a box that journals permanently. */
+const unitNotice = (unit) => {
+  if (unit.unmapped) return t('understand.verseUnmapped', { ref: unit.unmapped });
+  if (unit.crossBook) return t('understand.verseCrossBook', { ref: unit.crossBook, to: unit.to });
+  return null;
+};
+
+const unitHasNote = (s, chapter, unit) => (unit.project
+  ? !!s.understand?.comprehension?.[`${unit.project.chapter}:${unit.project.verse}`]
+  : displayedUnitNote(s.understand?.comprehension, chapter, unit).hasAny);
+
+const unitChapterVerses = (unit, src, srcChapters) => {
+  if (unit.srcChapter == null) return srcChapters;
+  return src && src !== 'missing' ? src.chapters?.[String(unit.srcChapter)] ?? {} : {};
+};
+
+function UnderstandUnit({ unit, s, src, srcChapters, book, chapter, mode, focused, onFocus }) {
+  const notice = unitNotice(unit);
+  if (notice) {
     return (
-      <Callout tone="info" data-testid={`understand-unit-${unit.key}`} style={{ marginTop: 18 }}>
-        {t('understand.verseUnmapped', { ref: unit.unmapped })}
-      </Callout>
+      <Callout tone="info" data-testid={`understand-unit-${unit.key}`} style={{ marginBottom: 18 }}>{notice}</Callout>
     );
   }
-  if (unit.crossBook) {
-    // Round 36: a cross-BOOK mapping is stated — rendering this book's text
-    // at another book's numbers would show unrelated scripture under a box
-    // that journals permanently.
-    return (
-      <Callout tone="info" data-testid={`understand-unit-${unit.key}`} style={{ marginTop: 18 }}>
-        {t('understand.verseCrossBook', { ref: unit.crossBook, to: unit.to })}
-      </Callout>
-    );
-  }
-  const hasNote = unit.project
-    ? s.understand?.comprehension?.[`${unit.project.chapter}:${unit.project.verse}`]
-    : displayedUnitNote(s.understand?.comprehension, chapter, unit).hasAny;
-  const chapterVerses = unit.srcChapter != null
-    ? (src && src !== 'missing' ? src.chapters?.[String(unit.srcChapter)] ?? {} : {})
-    : srcChapters;
+  const hasNote = unitHasNote(s, chapter, unit);
+  const chapterVerses = unitChapterVerses(unit, src, srcChapters);
   const focus = paneFocus(s.helpsHover ?? s.helpsActive, unit);
   return (
-    <div data-testid={`understand-unit-${unit.key}`} style={{ marginTop: 18, borderRadius: 'var(--radius-xl)', padding: '12px 16px', background: '#fff', border: 'var(--stroke) solid var(--border)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingBottom: 8, borderBottom: 'var(--stroke) solid var(--border)' }}>
+    <div data-testid={`understand-unit-${unit.key}`} data-focused={focused ? 'true' : undefined} onClick={onFocus}
+      style={{ marginBottom: 18, borderRadius: 'var(--radius-xl)', padding: '12px 16px 14px', cursor: 'pointer', ...(focused ? UNIT_FOCUSED : UNIT_REST) }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingBottom: 8, borderBottom: 'var(--stroke-hair) solid var(--border)' }}>
         <Overline>{unit.label}</Overline><div style={{ flex: 1 }} />
         {hasNote ? <StatusDot status="valid" size={7} /> : null}
       </div>
-      <p style={{ direction: 'ltr', textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse)', color: 'var(--text-scripture)', margin: '10px 0 12px' }}>
-        {unit.verses.map((k) => (
-          <React.Fragment key={k}>
-            <sup style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', marginInlineEnd: 3, verticalAlign: 'super' }}>{k}</sup>
-            <SourceVerse vObj={chapterVerses[String(k)]} verseKey={k} focus={focus} />{' '}
-          </React.Fragment>
-        ))}
-      </p>
-      <ComprehensionBox book={book.code} chapter={unit.srcChapter ?? chapter} unit={unit} />
+      {paragraphsOf(unit.verses, chapterVerses).map((keys) => (
+        <p key={keys[0]} style={{ direction: 'ltr', textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-lg)', lineHeight: 'var(--lh-verse-lg)', color: 'var(--text-scripture)', margin: '10px 0' }}>
+          {keys.map((k) => (
+            <React.Fragment key={k}>
+              <sup style={{ fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', marginInlineEnd: 3, verticalAlign: 'super' }}>{k}</sup>
+              <SourceVerse vObj={chapterVerses[String(k)]} verseKey={k} focus={focus} />{' '}
+            </React.Fragment>
+          ))}
+        </p>
+      ))}
+      <ComprehensionBox book={book.code} chapter={unit.srcChapter ?? chapter} unit={unit} mode={mode} />
     </div>
   );
 }
+
+/** Focusing a unit also selects the first help card in its verse range (the
+ * design's `firstHelpIn`). Cross-frame units keep their own verse numbering,
+ * so only same-frame units pick a card. */
+const firstHelpIn = (s, chapter, unit) => {
+  if (unit.project) return null;
+  const items = s.understand?.notes?.state === 'ready' ? s.understand.notes.items : [];
+  return items.find((it) => Number(it.contextId.reference.chapter) === Number(chapter)
+    && unit.verses.some((k) => keyCarries(k, it.contextId.reference.verse))) ?? null;
+};
 
 /** The passage area's status callouts: pins error, save error, pane
  * states (no-panes, missing, failed), loading. One component so the
@@ -342,6 +396,7 @@ function PassageStatus({ s, src, actions }) {
 export default function Understand() {
   const { s, book, actions } = useApp();
   const [mode, setMode] = React.useState('section');
+  const [activeKey, setActiveKey] = React.useState(null);
   useLoadHelps();
 
   if (!book) {
@@ -357,14 +412,21 @@ export default function Understand() {
   const src = s.sources[s.sourceTab];
   const srcChapters = src && src !== 'missing' ? src.chapters?.[String(chapter)] ?? {} : {};
   const units = understandUnits({ s, book, chapter, src, srcChapters, mode });
+  // The focused unit: the one clicked, else the first (the design's default).
+  const focusedKey = units.some((u) => u.key === activeKey) ? activeKey : units[0]?.key;
+  const focusUnit = (unit) => {
+    setActiveKey(unit.key);
+    const item = firstHelpIn(s, chapter, unit);
+    if (item && s.helpsActive?.id !== item.contextId.checkId) actions.focusHelp(focusOf(item));
+  };
 
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }} data-testid="understand">
       {s.rail && <BookRail />}
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 22px', borderBottom: 'var(--stroke-hair) solid var(--border-hair)', background: '#fff', flex: 'none' }}>
-          <IconButton title={t('draft.toggleRail')} onClick={actions.toggleRail}>≡</IconButton>
-          <h2 style={{ fontSize: 'var(--fs-title)', letterSpacing: 'var(--track-17)', margin: 0 }}>{bookName(book.code)} {chapter}</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '10px 26px', borderBottom: 'var(--stroke-hair) solid var(--border-hair)', background: 'var(--surface-card)', flex: 'none', minWidth: 0, overflow: 'hidden' }}>
+          <IconButton title={t('draft.toggleRail')} onClick={actions.toggleRail}><RailIcon /></IconButton>
+          <h2 style={{ fontSize: 'var(--fs-title)', letterSpacing: 'var(--track-17)', margin: 0, flex: 'none' }}>{bookName(book.code)} {chapter}</h2>
           <span style={{ fontSize: 'var(--fs-caption-lg)', letterSpacing: 'var(--track-12-5)', color: 'var(--text-tertiary)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t('understand.note')}</span>
         </div>
         <div style={{ flex: 1, overflow: 'auto', minHeight: 0, background: 'var(--surface-app)' }}>
@@ -373,8 +435,13 @@ export default function Understand() {
               {(s.sourcePanes ?? []).map((id) => (
                 // Round 37 (§5.3): the panes are the PROJECT's extraScripture
                 // pins — ids and count come from them, never a hardcoded pair.
-                <FilterChip key={id} tone="ocean" selected={s.sourceTab === id} onClick={() => actions.setSourceTab(id)}
-                  style={{ padding: '4px 10px', fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', borderWidth: 1 }}>
+                // The design's source pills: Inspire fill when active, heading
+                // text on white otherwise; block display so the cap trim applies.
+                <FilterChip key={id} data-testid={`source-tab-${id}`} selected={s.sourceTab === id} onClick={() => actions.setSourceTab(id)}
+                  style={{ display: 'inline-block', padding: '4px 10px', fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', borderWidth: 1,
+                    ...(s.sourceTab === id
+                      ? { background: 'var(--accent)', color: 'var(--text-inverse)', borderColor: 'var(--accent)' }
+                      : { background: 'var(--surface-card)', color: 'var(--text-heading)', borderColor: 'var(--border-input)' }) }}>
                   {t(`source.${id}`, {}, id.toUpperCase())}
                 </FilterChip>
               ))}
@@ -383,19 +450,25 @@ export default function Understand() {
                 // Round 32 (D30 honesty): cross-frame units are one-per-project-
                 // verse — a Section/Verse control would be two labels for one
                 // rendering. State the designed limitation instead of lying.
-                <Overline data-testid="understand-verse-only" style={{ letterSpacing: '.1em' }}>{t('understand.crossFrameVerseOnly')}</Overline>
+                <Overline data-testid="understand-verse-only">{t('understand.crossFrameVerseOnly')}</Overline>
               ) : (
                 <>
-                  <Overline style={{ letterSpacing: '.1em' }}>{t('understand.commentsBy')}</Overline>
+                  <Overline>{t('understand.commentsBy')}</Overline>
                   <SegmentedControl size="sm" tone="ocean" value={mode} onChange={setMode}
                     options={[{ value: 'section', label: t('understand.bySection') }, { value: 'verse', label: t('understand.byVerse') }]} />
                 </>
               )}
             </div>
+            {s.sourceTab && (
+              <p data-testid="understand-source-name" style={{ fontSize: 'var(--fs-meta)', letterSpacing: 'var(--track-11-5)', color: 'var(--text-tertiary)', fontWeight: 'var(--fw-medium)', margin: '0 0 14px' }}>
+                {t(`source.${s.sourceTab}.name`, {}, String(s.sourceTab).toUpperCase())}
+              </p>
+            )}
             <PassageStatus s={s} src={src} actions={actions} />
             <FrameUnavailableNote understand={s.understand} unitCount={units.length} />
             {units.map((unit) => (
-              <UnderstandUnit key={unit.key} unit={unit} s={s} src={src} srcChapters={srcChapters} book={book} chapter={chapter} />
+              <UnderstandUnit key={unit.key} unit={unit} s={s} src={src} srcChapters={srcChapters} book={book} chapter={chapter}
+                mode={mode} focused={unit.key === focusedKey} onFocus={() => focusUnit(unit)} />
             ))}
           </div>
         </div>

@@ -87,7 +87,7 @@ test.describe('J2 — a translator drafts a verse', () => {
       // ULT is the default tab: real pinned text for Titus 1:1
       await expect(page.getByText('an apostle of Jesus Christ')).toBeVisible({ timeout: 20_000 });
       // Switch to UST: a genuinely different rendering of the same verse
-      await page.getByRole('button', { name: 'UST' }).click();
+      await page.getByTestId('source-tab-ust').click();
       await expect(page.getByText('a representative of Jesus the Messiah')).toBeVisible();
       await expect(page.getByText('an apostle of Jesus Christ')).not.toBeVisible();
     },
