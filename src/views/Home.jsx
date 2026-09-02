@@ -18,12 +18,15 @@ const HEADER_ACTION = { border: 0, background: 'transparent', cursor: 'pointer',
 function ProjectCard({ p }) {
   const { s, actions } = useApp();
   const [expanded, setExpanded] = useState(false);
-  // loadProgress caches by repoPath and no-ops on a warm cache, so the id is
-  // the only dependency that matters.
+  const prog = s.progressByProject[p.id] || {};
+  // loadProgress caches by repoPath and no-ops on a fully-known cache. It
+  // re-runs when the cache is dropped (an edit, a new book) or still carries
+  // an unknown entry from a failed read, so a transient failure never pins the
+  // card (Codex review of #138).
+  const cacheKey = s.progressByProject[p.id] ? `${Object.keys(prog).length}:${Object.values(prog).includes(null)}` : 'none';
   useEffect(() => {
     actions.loadProgress(p);
-  }, [p.id]);
-  const prog = s.progressByProject[p.id] || {};
+  }, [p.id, cacheKey]);
   const dir = p.scriptDirection === 'rtl' ? 'rtl' : 'ltr';
 
   const known = (code) => typeof prog[code] === 'number';

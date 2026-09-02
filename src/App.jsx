@@ -42,7 +42,7 @@ function SaveIndicator() {
       <StatusDot status={m.status} size={8} />
       {m.label}
       {isError && (
-        <Button size="sm" variant="outline" data-testid={noteError ? 'retry-note-save' : undefined}
+        <Button size="sm" variant="outline" data-tc="quiet-inverse" data-testid={noteError ? 'retry-note-save' : undefined}
           onClick={noteError ? actions.retryNoteSave : actions.retrySave}
           style={{ background: 'transparent', color: 'var(--tc-invalid-inverse)', borderColor: 'var(--tc-invalid-inverse)', padding: '3px 10px', fontSize: 'var(--fs-label)' }}>
           {t('app.retry')}
