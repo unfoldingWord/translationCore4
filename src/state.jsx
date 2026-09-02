@@ -946,17 +946,21 @@ async function drainForProjectOpen({ schedulerRef, noteSchedulerRef }) {
 
 async function projectPresentation(apiClient, store, repoPath, summary) {
   let scriptDirection = summary.scriptDirection;
-  if (scriptDirection !== 'ltr' && scriptDirection !== 'rtl') {
-    // Catch-to-absence sweep (D30): 'ltr' is the default for a project
-    // GENUINELY without settings.json. A transient read failure must not
-    // render an RTL project left-to-right — it aborts the open into the
-    // stated bookError (performProjectOpen's catch).
-    const settings = await store.readSettings().catch((error) => {
-      if (isNotFoundError(error)) return null;
+  const directionKnown = scriptDirection === 'ltr' || scriptDirection === 'rtl';
+  // Catch-to-absence sweep (D30): 'ltr' is the default for a project
+  // GENUINELY without settings.json. A transient read failure must not
+  // render an RTL project left-to-right — it aborts the open into the
+  // stated bookError (performProjectOpen's catch). The script FONT rides
+  // on the same read; when the direction is already known a failed read
+  // only costs the font (the scripture face is its default), never the open.
+  const settings = await Promise.resolve()
+    .then(() => store.readSettings())
+    .catch((error) => {
+      if (isNotFoundError(error) || directionKnown) return null;
       throw error;
     });
-    scriptDirection = settings?.textDirection === 'rtl' ? 'rtl' : 'ltr';
-  }
+  if (!directionKnown) scriptDirection = settings?.textDirection === 'rtl' ? 'rtl' : 'ltr';
+  const textFont = settings?.textFont ?? null;
   // A failed metadata read must not DEFAULT the scope: scopeRangesFor({})
   // means whole-book, silently disabling §4.2/D26 scope filtering — the
   // journal side refuses this exact defaulting (journalingStore: "seeding or
@@ -965,7 +969,7 @@ async function projectPresentation(apiClient, store, repoPath, summary) {
   // key on a READABLE document stays {}.
   const meta = await apiClient.getMetadataRaw(repoPath);
   const projectScope = meta?.type?.flavorType?.currentScope ?? {};
-  return { scriptDirection, projectScope };
+  return { scriptDirection, textFont, projectScope };
 }
 
 function adoptInstalledResources(current, installed) {
@@ -1071,7 +1075,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
     markUsed(repoPath); // fire-and-forget; ordering refreshes next Home visit
     // The platform summary reports script_direction "?" for app-created
     // projects; the wizard recorded the user's choice in settings.json.
-    const { scriptDirection, projectScope } = await projectPresentation(apiClient, store, repoPath, summary);
+    const { scriptDirection, textFont, projectScope } = await projectPresentation(apiClient, store, repoPath, summary);
     if (superseded()) return;
     // A2: the previous project's understand/pins must never survive into
     // this one — clear both with the new project, and invalidate any
@@ -1080,7 +1084,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
     dispatch({
       type: 'set',
       patch: {
-        project: { ...summary, scriptDirection, repoPath },
+        project: { ...summary, scriptDirection, textFont, repoPath },
         projectScope,
         view: 'draft',
         projectPins: null,
