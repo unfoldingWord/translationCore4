@@ -19,7 +19,7 @@ export const leadingNum = (key) => Number(String(key).split('-')[0]);
 
 /** The focus payload a helps card publishes (F3): enough to find the quoted
  * words in the rendered source verse. */
-const focusOf = (it) => ({
+export const focusOf = (it) => ({
   id: it.contextId.checkId,
   verse: it.contextId.reference.verse,
   quote: it.contextId.quote,
@@ -280,23 +280,41 @@ function SimplifiedTab({ slot, sourceRefs, chapter }) {
     <SlotBanners slot={slot} />
     <div style={{ border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 16, background: 'var(--surface-app)' }} data-testid="understand-simplified">
       <Overline>{t('understand.simplifiedTitle')}</Overline>
-      <p style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-sm)', lineHeight: 'var(--lh-verse-sm)', color: 'var(--text-scripture)', margin: '10px 0 0' }}>
+      <p style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse)', color: 'var(--text-scripture)', margin: '10px 0 0' }}>
         {simplifiedChapterText(slot, sourceRefs, chapter)}
       </p>
     </div>
   </>);
 }
 
+/** The article rows show the tA slug as their title: titles and categories are
+ * read only when an article is opened (owner ruling 2026-09-02 — the row style
+ * is the design's; the words come later). */
 function AcademyTab({ notesSlot, slugs, actions }) {
   if (notesSlot?.state !== 'ready') return <SlotState slot={notesSlot} />;
   if (slugs.length === 0) return emptyChapter;
-  return slugs.map((slug) => (
-    <Button key={slug} variant="secondary" onClick={() => actions.loadHelpArticle({ kind: 'ta', slug, rung: notesSlot.rung })}
-      style={{ justifyContent: 'space-between', width: '100%', borderRadius: 'var(--radius-lg)', textAlign: 'start' }}>
-      <span>{slug}</span><span style={{ color: 'var(--accent)' }}>→</span>
-    </Button>
-  ));
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <p style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--text-tertiary)', margin: '0 0 4px', lineHeight: 1.5 }}>
+        {t('understand.academyIntro')}
+      </p>
+      {slugs.map((slug) => (
+        <button key={slug} type="button" data-tc="outline" data-testid="academy-article" onClick={() => actions.loadHelpArticle({ kind: 'ta', slug, rung: notesSlot.rung })}
+          style={{ border: 'var(--stroke) solid var(--border)', background: 'var(--surface-card)', cursor: 'pointer', textAlign: 'start', borderRadius: 'var(--radius-lg)', padding: '13px 14px', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, fontFamily: 'var(--font-ui)' }}>
+          <span style={{ fontSize: 'var(--fs-ui-md)', fontWeight: 'var(--fw-heavy)', color: 'var(--text-heading)' }}>{slug}</span>
+          <span style={{ color: 'var(--text-accent)', fontWeight: 'var(--fw-heavy)' }}>→</span>
+        </button>
+      ))}
+    </div>
+  );
 }
+
+/** The simplified tab is named after the pinned simplified text ("UST" for
+ * en_ust, the gateway language's own abbreviation when one is pinned). */
+const simplifiedLabel = (u) => {
+  const m = String(u?.simplified?.pin?.repoPath ?? '').match(/_([a-z0-9]+)$/i);
+  return m ? m[1].toUpperCase() : t('source.ust');
+};
 
 /** Round 37: a chapter whose refs all map into ANOTHER book has no helps
  * HERE by construction — say that, never "nothing for this chapter". */
@@ -398,12 +416,12 @@ export function HelpsPanel({ chapter }) {
   const cardFocus = { activeId: s.helpsActive?.id ?? null, hover: actions.hoverHelp, focus: actions.focusHelp, glTitle };
   const loading = !u || u.loading;
   return (
-    <aside data-testid="helps-panel" style={{ width: 'var(--helps-width)', flex: 'none', background: 'var(--surface-panel)', borderInlineStart: 'var(--stroke-hair) solid var(--border-hair)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+    <aside data-testid="helps-panel" style={{ width: 'var(--helps-width)', flex: 'none', background: 'var(--surface-panel)', borderInlineStart: 'var(--stroke-hair) solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <Tabs value={tab} onChange={actions.setHelpsTab} tabs={[
         { value: 'notes', label: t('helps.notes') },
         { value: 'words', label: t('helps.words') },
         { value: 'questions', label: t('helps.questions') },
-        { value: 'simplified', label: t('helps.simplified') },
+        { value: 'simplified', label: simplifiedLabel(u) },
         { value: 'academy', label: t('helps.academy') },
       ]} />
       <div style={{ flex: 1, overflow: 'auto', padding: 16, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>

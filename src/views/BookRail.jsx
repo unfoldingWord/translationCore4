@@ -14,7 +14,7 @@ export default function BookRail() {
   return (
     <aside style={{ width: 'var(--rail-width)', flex: 'none', background: 'var(--surface-panel)', borderInlineEnd: 'var(--stroke-hair) solid var(--border-hair)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <div style={{ padding: '16px 16px 10px' }}>
-        <Overline style={{ letterSpacing: '.14em' }}>{t('draft.books')} · {(s.project?.bookCodes || []).length}</Overline>
+        <Overline>{t('draft.books')} · {(s.project?.bookCodes || []).length}</Overline>
       </div>
       <div style={{ padding: '0 10px 14px', display: 'flex', flexDirection: 'column', gap: 4, overflow: 'auto', flex: 1, minHeight: 0 }}>
         {(s.project?.bookCodes || []).map((code) => {

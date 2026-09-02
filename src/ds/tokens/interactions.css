@@ -34,6 +34,14 @@
    must not repaint to the soft accent tint. */
 [data-tc="surface"]:not([data-tc-selected="true"]):hover { border-color: var(--accent) !important; background: var(--surface-accent-soft) !important; }
 
+/* Helps card: the border answers, the surface never tints (notes accent, key words cultivate) */
+[data-tc="outline"]:hover { border-color: var(--accent) !important; }
+[data-tc="outline-cultivate"]:hover { border-color: var(--uw-cultivate) !important; }
+
+/* Book-rail row: paper tint at rest, a deeper accent tint on the open book */
+[data-tc="rail"]:not([data-tc-selected="true"]):hover { background: var(--surface-app) !important; }
+[data-tc="rail"][data-tc-selected="true"]:hover { background: var(--uw-inspire-100) !important; }
+
 /* Raised card: lifts, never tints, never scales */
 [data-tc="card"]:hover { border-color: var(--accent) !important; box-shadow: var(--shadow-hover) !important; }
 

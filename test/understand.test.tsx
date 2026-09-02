@@ -6,7 +6,7 @@
 // projects through the conformance reference.
 import React from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, within } from '@testing-library/react';
 
 // Actions the Understand screen may call WITHOUT writing to the project.
 // stageNote/flushNotes are the write surface (D65: staging buffers into the
@@ -118,12 +118,14 @@ describe('#106 — the Understand write boundary', () => {
     render(<Understand />);
     expect(screen.getByTestId('understand')).toBeTruthy();
     // exercise every read-only control
-    fireEvent.click(screen.getByRole('button', { name: 'UST' }));
+    // The source pill and the helps tab are both labelled by the pinned
+    // simplified text ("UST"), so each is addressed inside its own region.
+    fireEvent.click(screen.getByTestId('source-tab-ust'));
     fireEvent.click(screen.getByRole('button', { name: 'Verse' }));
     fireEvent.click(screen.getByRole('button', { name: 'Questions' }));
     fireEvent.click(screen.getByRole('button', { name: 'Notes' }));
     fireEvent.click(screen.getByRole('button', { name: 'Academy' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Simplified' }));
+    fireEvent.click(within(screen.getByTestId('helps-panel')).getByRole('button', { name: 'UST' }));
     expect(writes()).toEqual([]);
   });
 
@@ -152,7 +154,7 @@ describe('#106 — the Understand write boundary', () => {
     };
     try {
       render(<Understand />);
-      const boxes = screen.getAllByPlaceholderText('What does this section mean in your own words?');
+      const boxes = screen.getAllByPlaceholderText('What is this section saying? Who is speaking, to whom, and what will be hard to render?');
       // section 1–2: the HEAD's exact note shows (not the newer one), and the
       // other target is announced
       expect((boxes[0] as HTMLTextAreaElement).value).toBe('note targeting verse 1');
@@ -170,7 +172,7 @@ describe('#106 — the Understand write boundary', () => {
     };
     try {
       render(<Understand />);
-      const box = screen.getAllByPlaceholderText('What does this section mean in your own words?')[0] as HTMLTextAreaElement;
+      const box = screen.getAllByPlaceholderText('What is this section saying? Who is speaking, to whom, and what will be hard to render?')[0] as HTMLTextAreaElement;
       expect(box.value).toBe('the verse-2 note');
       fireEvent.change(box, { target: { value: 'the verse-2 note, edited' } });
       fireEvent.blur(box);
@@ -184,7 +186,7 @@ describe('#106 — the Understand write boundary', () => {
 
   it('the comprehension box is the ONLY write: typing stages into the buffer, blur flushes — nothing else writes', () => {
     render(<Understand />);
-    const boxes = screen.getAllByPlaceholderText('What does this section mean in your own words?');
+    const boxes = screen.getAllByPlaceholderText('What is this section saying? Who is speaking, to whom, and what will be hard to render?');
     fireEvent.change(boxes[0], { target: { value: 'God made everything through the Word.' } });
     // Typing stages (buffered, debounce-owned) but never flushes by itself.
     expect(calls.filter((c) => c.name === 'flushNotes')).toEqual([]);
@@ -219,7 +221,7 @@ describe('2026-08-27 Codex review regressions', () => {
     try {
       render(<Understand />);
       // section mode: the second section (verses 3 + 4-5) shows the note
-      const boxes = screen.getAllByPlaceholderText('What does this section mean in your own words?');
+      const boxes = screen.getAllByPlaceholderText('What is this section saying? Who is speaking, to whom, and what will be hard to render?');
       expect((boxes[1] as HTMLTextAreaElement).value).toBe('bridge note');
     } finally {
       state.understand.comprehension = saved;
@@ -229,7 +231,7 @@ describe('2026-08-27 Codex review regressions', () => {
   it('saving from a bridge unit targets the EXACT span key, never its leading number', () => {
     render(<Understand />);
     fireEvent.click(screen.getByRole('button', { name: 'Verse' }));
-    const boxes = screen.getAllByPlaceholderText('What does this section mean in your own words?');
+    const boxes = screen.getAllByPlaceholderText('What does this verse mean, and what will be hard to render?');
     const bridgeBox = boxes[boxes.length - 1]; // last verse unit is 4-5
     fireEvent.change(bridgeBox, { target: { value: 'note on the bridge' } });
     fireEvent.blur(bridgeBox);
@@ -243,7 +245,7 @@ describe('2026-08-27 Codex review regressions', () => {
     state.understand.comprehension = { '1:1': { text: 'existing note', ts: '2026-08-27T01:00:00.000Z|0000|a' } };
     try {
       render(<Understand />);
-      const box = screen.getAllByPlaceholderText('What does this section mean in your own words?')[0];
+      const box = screen.getAllByPlaceholderText('What is this section saying? Who is speaking, to whom, and what will be hard to render?')[0];
       expect((box as HTMLTextAreaElement).value).toBe('existing note');
       fireEvent.focus(box);
       fireEvent.blur(box);
@@ -262,7 +264,7 @@ describe('2026-08-27 adversarial-review regressions', () => {
     state.understand = { loading: false, error: 'resolution blew up', comprehension: null } as never;
     try {
       render(<Understand />);
-      for (const box of screen.getAllByPlaceholderText('What does this section mean in your own words?')) {
+      for (const box of screen.getAllByPlaceholderText('What is this section saying? Who is speaking, to whom, and what will be hard to render?')) {
         expect((box as HTMLTextAreaElement).disabled).toBe(true);
       }
       expect(writes()).toEqual([]);
@@ -282,7 +284,7 @@ describe('2026-08-27 adversarial-review regressions', () => {
       render(<Understand />);
       expect(screen.getByTestId('helps-state-error').textContent).toContain('unversioned/unknown tQ TSV header');
       // the passage boxes stay enabled — comprehension was read
-      const box = screen.getAllByPlaceholderText('What does this section mean in your own words?')[0];
+      const box = screen.getAllByPlaceholderText('What is this section saying? Who is speaking, to whom, and what will be hard to render?')[0];
       expect((box as HTMLTextAreaElement).disabled).toBe(false);
     } finally {
       state.understand = saved;
@@ -292,7 +294,7 @@ describe('2026-08-27 adversarial-review regressions', () => {
 
   it('typing makes the note buffer dirty (the unload guard reads it); an unchanged edit returns it to clean', () => {
     render(<Understand />);
-    const box = screen.getAllByPlaceholderText('What does this section mean in your own words?')[0];
+    const box = screen.getAllByPlaceholderText('What is this section saying? Who is speaking, to whom, and what will be hard to render?')[0];
     fireEvent.change(box, { target: { value: 'unsaved text' } });
     // Dirty is DERIVED per target: current ≠ persisted for exactly this key (C2/F2).
     expect(bufferDirty()).toEqual(['1:1']);
@@ -306,7 +308,7 @@ describe('2026-08-27 adversarial round 2 regressions', () => {
 
   it('blur does NOT clear the buffer — only a successful persist may (B1: the scheduler sets persisted on write success)', () => {
     render(<Understand />);
-    const box = screen.getAllByPlaceholderText('What does this section mean in your own words?')[0];
+    const box = screen.getAllByPlaceholderText('What is this section saying? Who is speaking, to whom, and what will be hard to render?')[0];
     fireEvent.change(box, { target: { value: 'about to fail' } });
     fireEvent.blur(box);
     // The flush was REQUESTED; the buffer stays dirty until the write lands
@@ -323,7 +325,7 @@ describe('2026-08-27 adversarial round 5 regression', () => {
     const saved = state.understand.comprehension;
     try {
       const { rerender } = render(<Understand />);
-      const box = () => screen.getAllByPlaceholderText('What does this section mean in your own words?')[0] as HTMLTextAreaElement;
+      const box = () => screen.getAllByPlaceholderText('What is this section saying? Who is speaking, to whom, and what will be hard to render?')[0] as HTMLTextAreaElement;
       // user blurs A (save starts), refocuses and types B while A is pending
       fireEvent.change(box(), { target: { value: 'text B, typed while A saves' } });
       // A's completion publishes its snapshot into comprehension...
@@ -342,7 +344,7 @@ describe('2026-08-27 adversarial round 5 regression', () => {
     const saved = state.understand.comprehension;
     try {
       const { rerender } = render(<Understand />);
-      const box = () => screen.getAllByPlaceholderText('What does this section mean in your own words?')[0] as HTMLTextAreaElement;
+      const box = () => screen.getAllByPlaceholderText('What is this section saying? Who is speaking, to whom, and what will be hard to render?')[0] as HTMLTextAreaElement;
       expect(box().value).toBe('');
       state.understand.comprehension = { '1:1': { text: 'saved elsewhere', ts: '2026-08-27T02:00:00.000Z|0000|a' } };
       rerender(<Understand />);
@@ -361,7 +363,7 @@ describe('2026-08-27 adversarial round 7 regression', () => {
     state.understand.comprehension = { '1:1': { text: 'a permanent note', ts: '2026-08-27T03:00:00.000Z|0000|a' } };
     try {
       render(<Understand />);
-      const box = screen.getAllByPlaceholderText('What does this section mean in your own words?')[0] as HTMLTextAreaElement;
+      const box = screen.getAllByPlaceholderText('What is this section saying? Who is speaking, to whom, and what will be hard to render?')[0] as HTMLTextAreaElement;
       expect(box.value).toBe('a permanent note');
       fireEvent.change(box, { target: { value: '' } });
       fireEvent.blur(box);
@@ -401,7 +403,7 @@ describe('2026-08-27 adversarial round 8 regressions', () => {
       // and a save from the SECOND unit writes ITS exact project ref
       // verbatim (never a reverse-mapped span), with the source ref only
       // naming the display echo bucket
-      const box = screen.getAllByPlaceholderText('What does this section mean in your own words?')[1];
+      const box = screen.getAllByPlaceholderText('What is this section saying? Who is speaking, to whom, and what will be hard to render?')[1];
       fireEvent.change(box, { target: { value: 'note on project 2:2' } });
       fireEvent.blur(box);
       const staged = calls.filter((c) => c.name === 'stageNote');
@@ -434,7 +436,7 @@ describe('2026-08-27 adversarial round 10 regression', () => {
         },
       } as never;
       render(<Understand />);
-      const boxes = screen.getAllByPlaceholderText('What does this section mean in your own words?');
+      const boxes = screen.getAllByPlaceholderText('What is this section saying? Who is speaking, to whom, and what will be hard to render?');
       expect((boxes[0] as HTMLTextAreaElement).value).toBe('note for project 2:1');
       expect((boxes[1] as HTMLTextAreaElement).value).toBe('note for project 2:2');
     } finally {
@@ -453,7 +455,7 @@ describe('2026-08-27 adversarial round 14 regression', () => {
     state.understand.comprehension = { '1:2': { text: 'the verse-2 note', ts: '2026-08-27T06:00:00.000Z|0000|a' } };
     try {
       const { rerender } = render(<Understand />);
-      const box = () => screen.getAllByPlaceholderText('What does this section mean in your own words?')[0] as HTMLTextAreaElement;
+      const box = () => screen.getAllByPlaceholderText('What is this section saying? Who is speaking, to whom, and what will be hard to render?')[0] as HTMLTextAreaElement;
       fireEvent.change(box(), { target: { value: 'draft typed against target 2' } });
       // An exact verse-1 note lands: the displayed target flips 2 -> 1.
       state.understand.comprehension = {
@@ -466,7 +468,7 @@ describe('2026-08-27 adversarial round 14 regression', () => {
       // …and never DISCARDED either (O1, round 15): the parked draft is
       // restored by the box that shows its own durable target (Verse view).
       fireEvent.click(screen.getByRole('button', { name: 'Verse' }));
-      const boxes = screen.getAllByPlaceholderText('What does this section mean in your own words?');
+      const boxes = screen.getAllByPlaceholderText('What does this verse mean, and what will be hard to render?');
       expect((boxes[1] as HTMLTextAreaElement).value).toBe('draft typed against target 2');
     } finally {
       state.understand.comprehension = saved;
@@ -482,7 +484,7 @@ describe('2026-08-27 adversarial round 11 regressions', () => {
     state.understand.comprehension = { '1:1': { text: 'the stored note', ts: '2026-08-27T05:00:00.000Z|0000|a' } };
     try {
       render(<Understand />);
-      const box = screen.getAllByPlaceholderText('What does this section mean in your own words?')[0];
+      const box = screen.getAllByPlaceholderText('What is this section saying? Who is speaking, to whom, and what will be hard to render?')[0];
       fireEvent.change(box, { target: { value: 'a failing edit' } });
       expect(bufferDirty()).toEqual(['1:1']);
       fireEvent.change(box, { target: { value: 'the stored note' } }); // revert by typing
@@ -575,7 +577,7 @@ describe('2026-08-27 adversarial round 19 regressions', () => {
       // comprehension null (boxes would be disabled if any rendered).
       state.understand = { ...savedU, sourceRefs: {}, comprehension: null } as never;
       render(<Understand />);
-      expect(screen.queryAllByPlaceholderText('What does this section mean in your own words?').length).toBe(0);
+      expect(screen.queryAllByPlaceholderText('What is this section saying? Who is speaking, to whom, and what will be hard to render?').length).toBe(0);
       expect(screen.getByTestId('understand-frame-unavailable')).toBeTruthy();
       // and no same-frame passage leaked through
       expect(screen.queryByText(/In the beginning was the Word/)).toBeNull();
@@ -636,7 +638,7 @@ describe('2026-08-28 adversarial round 22 regression (D65: the class, not the sy
     state.understand.comprehension = { '1:1': { text: 'a saved note', ts: '2026-08-28T00:00:00.000Z|0000|a' } };
     try {
       render(<Understand />);
-      const box = screen.getAllByPlaceholderText('What does this section mean in your own words?')[0] as HTMLTextAreaElement;
+      const box = screen.getAllByPlaceholderText('What is this section saying? Who is speaking, to whom, and what will be hard to render?')[0] as HTMLTextAreaElement;
       fireEvent.change(box, { target: { value: '' } }); // clear, no blur
       cleanup(); // a background refresh unmounts the box
       // Round 22's stranded dirty guard is structurally impossible: the
@@ -646,7 +648,7 @@ describe('2026-08-28 adversarial round 22 regression (D65: the class, not the sy
       expect(calls.filter((c) => c.name === 'flushNotes')).toEqual([]);
       // and a remount shows the stored note again — nothing was lost
       render(<Understand />);
-      const again = screen.getAllByPlaceholderText('What does this section mean in your own words?')[0] as HTMLTextAreaElement;
+      const again = screen.getAllByPlaceholderText('What is this section saying? Who is speaking, to whom, and what will be hard to render?')[0] as HTMLTextAreaElement;
       expect(again.value).toBe('a saved note');
     } finally {
       state.understand.comprehension = saved;
@@ -655,12 +657,12 @@ describe('2026-08-28 adversarial round 22 regression (D65: the class, not the sy
 
   it('a DIVERGED draft whose box unmounts before blur survives in the buffer and restores on remount (P1/O1 structurally)', () => {
     render(<Understand />);
-    const box = screen.getAllByPlaceholderText('What does this section mean in your own words?')[0] as HTMLTextAreaElement;
+    const box = screen.getAllByPlaceholderText('What is this section saying? Who is speaking, to whom, and what will be hard to render?')[0] as HTMLTextAreaElement;
     fireEvent.change(box, { target: { value: 'an unblurred draft' } });
     cleanup(); // unmount with unblurred text
     expect(bufferDirty()).toEqual(['1:1']); // the draft is project work the drain will flush
     render(<Understand />);
-    const again = screen.getAllByPlaceholderText('What does this section mean in your own words?')[0] as HTMLTextAreaElement;
+    const again = screen.getAllByPlaceholderText('What is this section saying? Who is speaking, to whom, and what will be hard to render?')[0] as HTMLTextAreaElement;
     expect(again.value).toBe('an unblurred draft');
   });
 });
@@ -673,7 +675,7 @@ describe('2026-08-28 adversarial round 32 regressions', () => {
     state.understand.comprehension = { '1:1': { text: 'note A', ts: '2026-08-28T00:00:00.000Z|0000|a' } };
     try {
       render(<Understand />);
-      const box = screen.getAllByPlaceholderText('What does this section mean in your own words?')[0];
+      const box = screen.getAllByPlaceholderText('What is this section saying? Who is speaking, to whom, and what will be hard to render?')[0];
       fireEvent.change(box, { target: { value: 'note B' } }); // staged
       fireEvent.change(box, { target: { value: '' } }); // cleared mid-edit
       const reverts = calls.filter((c) => c.name === 'revertNote');
@@ -761,7 +763,7 @@ describe('#106 — note bodies are markdown, and are rendered as such', () => {
     state.understand.notes = { ...state.understand.notes, items: [noteItem(1, '', INTRO)] };
     try {
       render(<Understand />);
-      const card = screen.getByTestId('note-expand').closest('[data-tc="surface"]');
+      const card = screen.getByTestId('note-expand').closest('[data-tc="outline"]');
       expect(card).toBeTruthy();
       const shown = card!.textContent ?? '';
       // The heading text survives; the syntax does not.
@@ -796,7 +798,7 @@ describe('#106 — note bodies are markdown, and are rendered as such', () => {
     state.understand.notes = { ...state.understand.notes, items: [noteItem(1, '', note, '')] };
     try {
       render(<Understand />);
-      const card = screen.getByTestId('note-expand').closest('[data-tc="surface"]');
+      const card = screen.getByTestId('note-expand').closest('[data-tc="outline"]');
       const shown = card!.textContent ?? '';
       // The word before the ellipsis must be a WHOLE word of the source, not a
       // fragment: "Acc…" is a fragment of "According", and `\bAcc\b` does not
@@ -905,8 +907,10 @@ describe('2026-08-28 adversarial round 37 regressions', () => {
       state.sources = {} as never;
       render(<Understand />);
       expect(screen.getByTestId('no-source-panes')).toBeTruthy();
-      expect(screen.queryByRole('button', { name: 'ULT' })).toBeNull();
-      expect(screen.queryByRole('button', { name: 'UST' })).toBeNull();
+      expect(screen.queryByTestId('source-tab-ult')).toBeNull();
+      expect(screen.queryByTestId('source-tab-ust')).toBeNull();
+      // No pane, no source name (Codex review of #140).
+      expect(screen.queryByTestId('understand-source-name')).toBeNull();
       // No panes means nothing is pending: the loading line must not render
       // beside (and contradict) the no-source-panes callout (issue #123).
       expect(screen.queryByText(/Loading the passage/)).toBeNull();
@@ -941,6 +945,64 @@ describe('2026-08-28 adversarial round 37 regressions', () => {
       expect(screen.getByText(/THE FINAL APPLIED EXAMPLE/)).toBeTruthy();
     } finally {
       state.understand = savedU;
+    }
+  });
+});
+
+describe('#104 fidelity — the focused-unit model (Codex review of #140)', () => {
+  beforeEach(() => { cleanup(); calls.length = 0; });
+
+  it('the first unit is focused by default; clicking another moves the focus and nothing writes', () => {
+    render(<Understand />);
+    const units = screen.getAllByTestId(/^understand-unit-/);
+    expect(units[0].getAttribute('data-focused')).toBe('true');
+    expect(units[1].getAttribute('data-focused')).toBeNull();
+    fireEvent.click(units[1]);
+    expect(units[1].getAttribute('data-focused')).toBe('true');
+    expect(units[0].getAttribute('data-focused')).toBeNull();
+    expect(writes()).toEqual([]);
+  });
+
+  it('a unit is keyboard-operable: Tab stop, Enter and Space focus it', () => {
+    render(<Understand />);
+    const units = screen.getAllByTestId(/^understand-unit-/);
+    expect(units[1].getAttribute('tabindex')).toBe('0');
+    fireEvent.keyDown(units[1], { key: 'Enter' });
+    expect(units[1].getAttribute('data-focused')).toBe('true');
+    fireEvent.keyDown(units[0], { key: ' ' });
+    expect(units[0].getAttribute('data-focused')).toBe('true');
+    expect(units[0].getAttribute('aria-current')).toBe('true');
+  });
+
+  it('focusing a unit selects the first help card in its range; a unit without one clears the selection', () => {
+    render(<Understand />);
+    const units = screen.getAllByTestId(/^understand-unit-/);
+    fireEvent.click(units[0]); // verses 1–2 carry the fixture's verse-1 note
+    const focused = calls.filter((c) => c.name === 'focusHelp');
+    expect(focused.length).toBe(1);
+    expect((focused[0].args[0] as { id: string }).id).toBe('n1');
+    // With a card active, a unit that has no help clears it (focusHelp(null)).
+    (state as unknown as { helpsActive: { id: string } | null }).helpsActive = { id: 'n1' };
+    try {
+      fireEvent.click(units[1]); // verses 3–5: no notes, no words
+      const after = calls.filter((c) => c.name === 'focusHelp');
+      expect(after.length).toBe(2);
+      expect(after[1].args[0]).toBeNull();
+    } finally {
+      (state as unknown as { helpsActive: unknown }).helpsActive = undefined;
+    }
+  });
+
+  it('a paragraph marker inside a verse opens a new <p>; the unit renders one paragraph otherwise', () => {
+    const saved = srcChapters['1']['2'];
+    (srcChapters['1'] as Record<string, unknown>)['2'] = { verseObjects: [{ tag: 'p', type: 'paragraph' }, { text: 'He was with God.' }] };
+    try {
+      render(<Understand />);
+      const units = screen.getAllByTestId(/^understand-unit-/);
+      expect(units[0].querySelectorAll('p').length).toBe(2);
+      expect(units[1].querySelectorAll('p').length).toBe(1);
+    } finally {
+      (srcChapters['1'] as Record<string, unknown>)['2'] = saved;
     }
   });
 });
