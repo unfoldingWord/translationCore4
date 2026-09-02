@@ -1,13 +1,16 @@
-# Desktop packaging (#57)
+# Desktop packaging (#57, #119)
 
-This document records the build recipe for the unsigned desktop artifact.
-Issue #44 extends this recipe. It must not replace it.
+This document records the build recipe for the unsigned desktop artifacts.
+Issue #119 added Linux x64 beside the proven macOS arm64 path. Issue #44
+extends this recipe with Windows and with signing. It must not replace it.
 
 ## What the pipeline does
 
-`scripts/package-desktop.zsh` builds one unsigned macOS artifact.
-`.github/workflows/package-desktop.yml` runs the script on every merge to
-`main` and uploads the zip as a workflow artifact.
+`scripts/package-desktop.zsh` builds one unsigned artifact for the host it
+runs on: macOS arm64, or Linux x64.
+`.github/workflows/package-desktop.yml` runs the script on two runners
+(`macos-15` and `ubuntu-24.04`) on every merge to `main`, and uploads each
+zip as a workflow artifact.
 
 Two build variants exist (`--debug` selects the second):
 
@@ -103,7 +106,8 @@ Steps, in order:
 5. Stage the artifact: Electronite + app dir + license files +
    `THIRD-PARTY-NOTICES.md` + `BUILD-MANIFEST.json` (every input with its
    exact version, commit, and checksum — also echoed in the build log).
-6. Smoke test **through the shipped entry point**: run `start-tc4.command`
+6. Smoke test **through the shipped entry point**: run the shipped launcher
+   (`start-tc4.command` on macOS, `start-tc4.sh` on Linux)
    with a fresh `HOME` and no app-specific environment overrides. The app
    must self-spawn its bundled server (first free port from 19119) and serve
    `303` from `/` to `/clients/uw-tc4`, then `200` from the client page. The
@@ -122,12 +126,75 @@ architectures. This satisfies D20 (Graphite-enabled wrapper). Evidence:
 Graphite font shaping in the packaged app is not proven yet. That proof is the
 second acceptance item of #32.
 
+## Linux x64 (#119)
+
+The `linux-x64` job runs the same script on `ubuntu-24.04`. Only the
+host-specific steps differ.
+
+### Artifact layout
+
+The zip holds one folder, `translationCore4/` (`translationCore4 DEBUG/` for
+the debug variant). That folder holds:
+
+| Item | What it is |
+|---|---|
+| `start-tc4.sh` | the launcher — the only entry point |
+| `electronite/` | the unpacked Electronite release (`electron` binary, `chrome-sandbox`, Chromium data) |
+| `electron/` | the template startup files plus `tc4-main.js` (the #4 single-instance guard) |
+| `bin/server.bin` | the pinned pankosmia-web server |
+| `lib/` | clients, app resources, templates, webfonts |
+| `Rocket.toml`, `LICENSE`, `licenses/`, `THIRD-PARTY-NOTICES.md`, `BUILD-MANIFEST.json` | the same as macOS |
+
+The macOS artifact keeps `Electron.app` at this level. The Linux release is a
+flat directory, not an app bundle, so the build stages it as `electronite/`.
+That name prevents a collision with the template's `electron/` startup
+directory.
+
+### Install and launch
+
+1. Download `tc4-desktop-linux-x64-unsigned` from the workflow run.
+2. Unpack the zip with `unzip`. Do not use an archiver that drops permission
+   bits.
+3. Run `./translationCore4/start-tc4.sh`.
+
+There is no installer and no desktop entry. #44 owns that work.
+
+### The Chromium sandbox
+
+Electron needs `chrome-sandbox` to be mode 4755 and owned by root. A zip
+cannot carry a setuid bit. The launcher therefore tests the file:
+
+- If the bit is set, the launcher starts Electronite with the sandbox.
+- If the bit is not set, the launcher prints a note and starts Electronite
+  with `--no-sandbox`.
+
+To enable the sandbox:
+
+```
+sudo chown root:root ./translationCore4/electronite/chrome-sandbox
+sudo chmod 4755 ./translationCore4/electronite/chrome-sandbox
+```
+
+### CI runner assumptions
+
+The job installs these packages before the build:
+
+- `zsh` and `zip` — the script's shell and its archiver.
+- `pkg-config`, `libssl-dev`, `zlib1g-dev` — `openssl-sys` and `libgit2-sys`
+  link the system libraries. `dev-env/server` enables no vendored feature.
+- Electron's shared libraries (the GTK, NSS, ALSA, and X11 sets).
+- `xvfb` — the smoke test opens a real window. The job runs the script under
+  `xvfb-run -a`.
+
+On a failure the job uploads `dist-desktop/smoke-*.log` as
+`tc4-desktop-linux-x64-smoke-logs`.
+
 ## Pins
 
 | Input | Pin | Where |
 |---|---|---|
 | pankosmia-web | 0.18.5, rev `99fd9be` | `dev-env/server/Cargo.toml` |
-| Electronite | `v37.1.0-graphite`, zip sha256 verified (`a3dde44e…f59488` for darwin-arm64) | `scripts/package-desktop.zsh` |
+| Electronite | `v37.1.0-graphite`, zip sha256 verified — `a3dde44e…f59488` (darwin-arm64), `41218aa3…d8f8540` (linux-x64) | `scripts/package-desktop.zsh` |
 | desktop-app-template | `4cb7576` | `scripts/package-desktop.zsh` |
 | resource-core | `54802be780af18ab02e426dd59014bc6adb158af` | `scripts/package-desktop.zsh` |
 | webfonts-core | `eb52ccdad6806b5729ea8b45b1c59c793ffa32c3` | `scripts/package-desktop.zsh` |
@@ -137,7 +204,13 @@ Every artifact carries `BUILD-MANIFEST.json` at its root with the same data.
 
 ## Known limits (start of the pipeline, not the end)
 
-- **One OS**: macOS arm64 only. #44 adds Linux, Windows, x64, and signing.
+- **Two platforms**: macOS arm64 (#57) and Linux x64 (#119). Windows x64,
+  macOS x64, and signing are #44.
+- **Linux is unsigned and un-installed**: the artifact is a plain zip with no
+  installer, no desktop entry, and no signature. Most desktops refuse to run
+  it from the file manager, so the user must run `start-tc4.sh` from a
+  terminal. The launcher also drops the Chromium sandbox when
+  `chrome-sandbox` is not setuid root — see "The Chromium sandbox" above.
 - **Minimal client set**: the artifact bundles only `uw-tc4`. The core
   Pankosmia clients (dashboard, content, workspace, content handlers) are not
   bundled. Reason: the template builds them from source at branch tiers
@@ -165,8 +238,8 @@ Every artifact carries `BUILD-MANIFEST.json` at its root with the same data.
     unsigned apps; `xattr -dr com.apple.quarantine` remains the terminal
     workaround.
 - **Archive structure diverges from the template**: the spike ships a plain
-  folder (`Electron.app` + `electron/` + `bin/` + `lib/` + a
-  `start-tc4.command` launcher). The template instead builds a single
+  folder (`Electron.app` or `electronite/`, plus `electron/` + `bin/` +
+  `lib/` + a `start-tc4` launcher). The template instead builds a single
   self-contained `<App>.app` bundle and wraps it in a `.pkg` installer
   (`macos/install/makeInstallElectronite.sh`: payload `APP_NAME.app`, a
   `Contents/MacOS` launcher script, `pkgbuild`). The divergence is deliberate

@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Build an UNSIGNED macOS desktop artifact for tC4 (#57).
+# Build an UNSIGNED desktop artifact for tC4: macOS arm64 (#57), Linux x64 (#119).
 #
 # The recipe follows the Pankosmia desktop-app-template (read-only reference,
 # MIT license). The wrapper is Electronite v37.1.0-graphite, the Graphite-enabled
@@ -8,7 +8,7 @@
 # 99fd9be), and the runtime resources. See docs/PACKAGING.md.
 #
 # The smoke test launches the STAGED ARTIFACT THROUGH ITS OWN ENTRY POINT
-# (start-tc4.command -> Electronite -> electronStartup.js), with a fresh HOME
+# (the start-tc4 launcher -> Electronite -> electronStartup.js), with a fresh HOME
 # and no app-specific environment overrides. The app must self-spawn its
 # bundled server and serve the tC4 client (303 from /, 200 from
 # /clients/uw-tc4) before the zip is written.
@@ -25,9 +25,11 @@
 # repo_dir to a tC4-owned path, and the smoke test FAILS the build if the
 # booted app resolves repo_dir to the shared store — both variants.
 #
-# Output: dist-desktop/tC4-<version>[-debug]-macos-<arch>-unsigned.zip
+# Output: dist-desktop/tC4-<version>[-debug]-<os>-<arch>-unsigned.zip
 #
-# Requirements: node >= 20, npm, cargo, curl, unzip, git, shasum.
+# Requirements: node >= 20, npm, cargo, curl, unzip, git, and sha256sum or shasum.
+#   Linux also needs zsh, the zip command, Electron's shared libraries, and a
+#   display for the smoke test. CI runs the script under `xvfb-run -a` (#119).
 set -e
 
 REPO=${0:a:h:h}
@@ -35,6 +37,23 @@ BUILD="$REPO/dist-desktop"
 PACK="$BUILD/pack"
 ARCH=$(uname -m | sed 's/x86_64/x64/')
 VERSION=$(node -p "require('$REPO/package.json').version")
+
+# Build host (#119). OS names the artifact; EL_OS names the Electronite asset.
+case "$(uname -s)" in
+  Darwin) OS=macos; EL_OS=darwin ;;
+  Linux)  OS=linux; EL_OS=linux  ;;
+  *) echo "Unsupported build host '$(uname -s)' — macOS and Linux only." >&2; exit 1 ;;
+esac
+
+# Portable helpers: the two hosts differ on these two tools.
+sha256_of() {    # coreutils on Linux, BSD shasum on macOS
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'
+  else shasum -a 256 "$1" | awk '{print $1}'; fi
+}
+sed_inplace() {  # BSD sed demands an empty backup suffix; GNU sed refuses one
+  local expr=$1; shift
+  if [ "$OS" = macos ]; then sed -i '' "$expr" "$@"; else sed -i "$expr" "$@"; fi
+}
 
 # Build variant (#70).
 VARIANT=production
@@ -52,7 +71,8 @@ fi
 
 # Pins. Change them together with docs/PACKAGING.md.
 ELECTRONITE_TAG="v37.1.0-graphite"
-ELECTRONITE_SHA256_ARM64="a3dde44e03a076bc778f952f7a7a5ed6d8e5037d46ea6c1ba2deb6a11df59488"
+ELECTRONITE_SHA256_MACOS_ARM64="a3dde44e03a076bc778f952f7a7a5ed6d8e5037d46ea6c1ba2deb6a11df59488"
+ELECTRONITE_SHA256_LINUX_X64="41218aa3cd79f3449cfc360384ad4ef6064fe871e4c40a38ae859f2ddd8f8540"
 TEMPLATE_REPO="https://github.com/pankosmia/desktop-app-template.git"
 TEMPLATE_REV="4cb757601b9310b3fccd52f77a6ae2238ceec9f4"   # 2026-08-14
 RESOURCE_CORE_REPO="https://github.com/pankosmia/resource-core.git"
@@ -69,11 +89,12 @@ if [ "$VARIANT" = "debug" ]; then
   VERSION="$VERSION-debug"
 fi
 
-# Pin one checksum per artifact arch. Only arm64 is recorded so far; a new
-# arch needs its checksum recorded here first.
-case "$ARCH" in
-  arm64) ELECTRONITE_SHA256="$ELECTRONITE_SHA256_ARM64" ;;
-  *) echo "No recorded Electronite checksum for arch '$ARCH' — record one first." >&2
+# Pin one checksum per artifact platform. A new platform needs its checksum
+# recorded above first.
+case "$OS-$ARCH" in
+  macos-arm64) ELECTRONITE_SHA256="$ELECTRONITE_SHA256_MACOS_ARM64" ;;
+  linux-x64)   ELECTRONITE_SHA256="$ELECTRONITE_SHA256_LINUX_X64"   ;;
+  *) echo "No recorded Electronite checksum for platform '$OS-$ARCH' — record one first." >&2
      exit 1 ;;
 esac
 
@@ -100,19 +121,26 @@ fetch_pinned "$TEMPLATE_REPO"      "$BUILD/upstream/desktop-app-template" "$TEMP
 fetch_pinned "$RESOURCE_CORE_REPO" "$BUILD/upstream/resource-core"        "$RESOURCE_CORE_REV"
 fetch_pinned "$WEBFONTS_CORE_REPO" "$BUILD/upstream/webfonts-core"        "$WEBFONTS_CORE_REV"
 
-ELECTRONITE_ZIP="electronite-$ELECTRONITE_TAG-darwin-$ARCH.zip"
+ELECTRONITE_ZIP="electronite-$ELECTRONITE_TAG-$EL_OS-$ARCH.zip"
 if [ ! -f "$BUILD/$ELECTRONITE_ZIP" ]; then
-  echo "== downloading Electronite $ELECTRONITE_TAG darwin-$ARCH"
-  curl -sL -o "$BUILD/$ELECTRONITE_ZIP" \
+  echo "== downloading Electronite $ELECTRONITE_TAG $EL_OS-$ARCH"
+  # --fail --retry: a silent truncation here reaches the checksum test below
+  # as a mismatch, which reads like a bad pin. Fail at the download instead.
+  curl -sL --fail --retry 5 --retry-all-errors -o "$BUILD/$ELECTRONITE_ZIP" \
     "https://github.com/unfoldingWord/electronite/releases/download/$ELECTRONITE_TAG/$ELECTRONITE_ZIP"
 fi
-ACTUAL_SHA=$(shasum -a 256 "$BUILD/$ELECTRONITE_ZIP" | awk '{print $1}')
+ACTUAL_SHA=$(sha256_of "$BUILD/$ELECTRONITE_ZIP")
 if [ "$ACTUAL_SHA" != "$ELECTRONITE_SHA256" ]; then
   echo "Electronite checksum mismatch: expected $ELECTRONITE_SHA256, got $ACTUAL_SHA" >&2
   exit 1
 fi
 echo "Electronite sha256 OK: $ACTUAL_SHA"
-if [ ! -d "$BUILD/electronite/Electron.app" ]; then
+# macOS ships an app bundle; Linux ships a flat directory with an `electron`
+# binary. Both unpack into $BUILD/electronite, and both put LICENSE and
+# LICENSES.chromium.html at that root.
+if [ "$OS" = macos ]; then EL_UNPACKED="$BUILD/electronite/Electron.app"
+else                       EL_UNPACKED="$BUILD/electronite/electron"; fi
+if [ ! -e "$EL_UNPACKED" ]; then
   mkdir -p "$BUILD/electronite"
   unzip -qq -o "$BUILD/$ELECTRONITE_ZIP" -d "$BUILD/electronite"
 fi
@@ -124,7 +152,7 @@ mkdir -p "$PACK/bin" "$PACK/lib/setup" "$PACK/lib/clients/uw-tc4" "$PACK/lib/pro
 T="$BUILD/upstream/desktop-app-template"
 cp -R "$T/buildResources/electron" "$PACK/electron"
 cp "$T/globalBuildResources/favicon.png" "$PACK/electron/"
-sed -i '' "s/\${APP_NAME}/$APP_NAME/g; s/\${APP_VERSION}/$VERSION/g" \
+sed_inplace "s/\${APP_NAME}/$APP_NAME/g; s/\${APP_VERSION}/$VERSION/g" \
   "$PACK/electron/electronStartup.js" "$PACK/electron/package.json"
 # Runtime deps of electronStartup.js (template package.json dependencies),
 # pinned exactly; the lockfile ships inside the artifact.
@@ -240,6 +268,7 @@ STAGE="$BUILD/stage"
 rm -rf "$STAGE"
 mkdir -p "$STAGE/$APP_NAME/licenses"
 APPDIR="$STAGE/$APP_NAME"
+if [ "$OS" = macos ]; then
 cp -R "$BUILD/electronite/Electron.app" "$APPDIR/Electron.app"
 # Re-seal the wrapper with a VALID ad-hoc signature (#57, measured 2026-08-25).
 # The upstream Electronite release ships an app bundle whose signature FAILS
@@ -254,44 +283,80 @@ cp -R "$BUILD/electronite/Electron.app" "$APPDIR/Electron.app"
 codesign --force --deep --sign - "$APPDIR/Electron.app"
 codesign --verify --deep --strict "$APPDIR/Electron.app" \
   || { echo "FATAL: Electron.app does not verify after the ad-hoc re-seal (#57)"; exit 1 }
+else
+# Linux (#119): the release is a flat directory, not an app bundle, and it
+# carries no signature to re-seal. Stage it under electronite/ so it never
+# collides with the template's electron/ startup directory.
+mkdir -p "$APPDIR/electronite"
+cp -R "$BUILD/electronite/." "$APPDIR/electronite/"
+chmod +x "$APPDIR/electronite/electron" "$APPDIR/electronite/chrome_crashpad_handler"
+# chrome-sandbox must be mode 4755 owned by root. A zip cannot carry a setuid
+# bit, so the launcher below detects that and falls back to --no-sandbox.
+fi
 cp -R "$PACK/electron" "$APPDIR/electron"
 cp -R "$PACK/bin" "$APPDIR/bin"
 cp -R "$PACK/lib" "$APPDIR/lib"
 cp "$PACK/Rocket.toml" "$APPDIR/Rocket.toml"
+
+# The launcher differs per OS in three places only: its filename, how it
+# finds its own directory, and how it invokes Electronite. The debug seeding
+# step below is identical on both.
+if [ "$OS" = macos ]; then
+  LAUNCHER="start-tc4.command"
+  LAUNCH_SHEBANG="#!/bin/zsh"
+  LAUNCH_CD='cd "${0:a:h}"'
+  LAUNCH_EXEC='exec ./Electron.app/Contents/MacOS/Electron ./electron'
+else
+  LAUNCHER="start-tc4.sh"
+  LAUNCH_SHEBANG="#!/bin/sh"
+  LAUNCH_CD='cd "$(dirname "$(readlink -f "$0")")"'
+  # An unpacked zip cannot keep chrome-sandbox setuid root, and Electron
+  # refuses to start with a sandbox helper it cannot trust. Use the sandbox
+  # when the unpacked copy has it; otherwise say why we are dropping it.
+  LAUNCH_EXEC='SANDBOX=./electronite/chrome-sandbox
+if [ -u "$SANDBOX" ] && [ "$(stat -c %u "$SANDBOX" 2>/dev/null)" = "0" ]; then
+  exec ./electronite/electron ./electron
+else
+  echo "note: chrome-sandbox is not setuid root in this unpacked copy; starting with --no-sandbox." >&2
+  echo "      to enable it: sudo chown root:root $SANDBOX && sudo chmod 4755 $SANDBOX" >&2
+  exec ./electronite/electron --no-sandbox ./electron
+fi'
+fi
+
 if [ "$VARIANT" = "debug" ]; then
   # Ruling clauses 2/3 (#70): curated test projects go into the SEPARATE
   # debug-only store, seeded by the debug launcher on first run. Production
   # ships neither the seeds nor this launcher.
   mkdir -p "$APPDIR/debug-seeds"
   cp -R "$REPO/conformance/sample-burrito" "$APPDIR/debug-seeds/sample_burrito"
-  cat > "$APPDIR/start-tc4.command" <<'LAUNCH'
-#!/bin/zsh
+  cat > "$APPDIR/$LAUNCHER" <<LAUNCH
+$LAUNCH_SHEBANG
 # Unsigned DEBUG artifact. Seeds the debug-only project store on first run
-# (never the shared $HOME/pankosmia_repos), then starts Electronite; the
+# (never the shared \$HOME/pankosmia_repos), then starts Electronite; the
 # startup script spawns the bundled server itself.
-cd "${0:a:h}"
-STORE="$HOME/pankosmia/tc4-projects-debug"
-SEED="$STORE/_local_/_local_/sample_burrito"
-if [ ! -d "$SEED" ] && command -v git >/dev/null; then
-  mkdir -p "$STORE/_local_/_local_"
-  cp -R ./debug-seeds/sample_burrito "$SEED"
+$LAUNCH_CD
+STORE="\$HOME/pankosmia/tc4-projects-debug"
+SEED="\$STORE/_local_/_local_/sample_burrito"
+if [ ! -d "\$SEED" ] && command -v git >/dev/null; then
+  mkdir -p "\$STORE/_local_/_local_"
+  cp -R ./debug-seeds/sample_burrito "\$SEED"
   # Initial commit: the platform's add-and-commit panics on a repo with
   # zero commits (PLATFORM-NOTES #20).
-  (cd "$SEED" && git init -q -b main . && git add -A \
+  (cd "\$SEED" && git init -q -b main . && git add -A \\
     && git -c user.email=debug@tc4.local -c user.name=tc4-debug commit -qm seed)
 fi
-exec ./Electron.app/Contents/MacOS/Electron ./electron
+$LAUNCH_EXEC
 LAUNCH
 else
-  cat > "$APPDIR/start-tc4.command" <<'LAUNCH'
-#!/bin/zsh
+  cat > "$APPDIR/$LAUNCHER" <<LAUNCH
+$LAUNCH_SHEBANG
 # Unsigned development artifact. Starts Electronite; the startup script
 # spawns the bundled server itself.
-cd "${0:a:h}"
-exec ./Electron.app/Contents/MacOS/Electron ./electron
+$LAUNCH_CD
+$LAUNCH_EXEC
 LAUNCH
 fi
-chmod +x "$APPDIR/start-tc4.command"
+chmod +x "$APPDIR/$LAUNCHER"
 
 # Licenses. The startup files in electron/ are modified copies from the MIT
 # desktop-app-template; Electronite ships its own LICENSE files in the zip.
@@ -321,10 +386,10 @@ npm dependency license texts remain in electron/node_modules/*/LICENSE.
 NOTICES
 
 # Input manifest: every component with its exact version/commit/checksum.
-SERVER_SHA=$(shasum -a 256 "$APPDIR/bin/server.bin" | awk '{print $1}')
+SERVER_SHA=$(sha256_of "$APPDIR/bin/server.bin")
 cat > "$APPDIR/BUILD-MANIFEST.json" <<MANIFEST
 {
-  "artifact": "tC4-$VERSION-macos-$ARCH-unsigned",
+  "artifact": "tC4-$VERSION-$OS-$ARCH-unsigned",
   "variant": "$VARIANT",
   "project_store": "\$HOME/$STORE_LEAF (#70 — never \$HOME/pankosmia_repos)",
   "built_utc": "$DATETIME",
@@ -351,10 +416,11 @@ echo "== 6/7 smoke test: launch the artifact through its own entry point"
 SMOKE_HOME="$BUILD/smoke-home"
 rm -rf "$SMOKE_HOME"
 mkdir -p "$SMOKE_HOME"
-HOME="$SMOKE_HOME" "$APPDIR/start-tc4.command" > "$BUILD/smoke-entrypoint.log" 2>&1 &
+HOME="$SMOKE_HOME" "$APPDIR/$LAUNCHER" > "$BUILD/smoke-entrypoint.log" 2>&1 &
 SMOKE_PID=$!
 cleanup_smoke() {
-  pkill -f "$APPDIR/Electron.app" 2>/dev/null || true
+  if [ "$OS" = macos ]; then pkill -f "$APPDIR/Electron.app" 2>/dev/null || true
+  else                       pkill -f "$APPDIR/electronite/electron" 2>/dev/null || true; fi
   kill $SMOKE_PID 2>/dev/null || true
 }
 trap cleanup_smoke EXIT
@@ -385,7 +451,7 @@ echo "root: $ROOT; /clients/uw-tc4: $CLIENT"
 # port, and the first server must still answer. Without the tc4-main.js
 # wrapper this fails: the template's port scan starts a second server over
 # the same project store.
-HOME="$SMOKE_HOME" "$APPDIR/start-tc4.command" > "$BUILD/smoke-second-instance.log" 2>&1 &
+HOME="$SMOKE_HOME" "$APPDIR/$LAUNCHER" > "$BUILD/smoke-second-instance.log" 2>&1 &
 SECOND_PID=$!
 SECOND_DEAD=""
 for i in {1..30}; do
@@ -447,10 +513,16 @@ else
 fi
 
 echo "== 7/7 zip the artifact"
-ZIP="$BUILD/tC4-$VERSION-macos-$ARCH-unsigned.zip"
+ZIP="$BUILD/tC4-$VERSION-$OS-$ARCH-unsigned.zip"
 rm -f "$ZIP"
 cd "$STAGE"
-ditto -c -k --keepParent "$APP_NAME" "$ZIP"
+if [ "$OS" = macos ]; then
+  ditto -c -k --keepParent "$APP_NAME" "$ZIP"
+else
+  # -y stores symlinks as symlinks; zip keeps the executable bits the
+  # launcher and the Electronite binaries need.
+  zip -qry "$ZIP" "$APP_NAME"
+fi
 echo "artifact: $ZIP"
 echo "inputs: electronite $ELECTRONITE_TAG ($ELECTRONITE_SHA256); template $TEMPLATE_REV;"
 echo "        resource-core $RESOURCE_CORE_REV; webfonts-core $WEBFONTS_CORE_REV;"
