@@ -101,6 +101,7 @@ typecheck, test, build and the dependency audit, plus the conformance suite in
 
 | Question | Read |
 |---|---|
+| What is the product, who is it for, and how do we prioritize it? | `docs/VISION.md` |
 | What is the project format? | `docs/BURRITO-SPEC.md` — **normative** |
 | What do we build, and why? | `docs/ARCHITECTURE.md` |
 | What does the platform actually do? | `docs/PLATFORM-NOTES.md` (verification rules are its final section) |

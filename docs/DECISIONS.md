@@ -709,6 +709,10 @@ happened under the D55 gate (rule-id coverage enforced by a live-check gate, the
 data-loss defects fixed red-first); D51's conditions remain the standing bar for the sync
 sections and for per-statement mutation hardening]
 
+[publication note: branch `s8-normative-flip` archived 2026-09-03 as tag
+`archive/s8-normative-flip` (74b7270), then deleted; its work landed as #82, #85, #86,
+#89 and #97. The tag keeps the measurements above resolvable.]
+
 ## D52 (2026-08-17, project-owner ruling) **The custom change journal is retained. A
 proven open-source merge library does not replace it.** Issue #77 asked whether one
 should, and set the bar at overwhelming evidence: a library MUST meet every requirement,
@@ -1095,3 +1099,23 @@ verses); it refuses only while a write failure stands (FR-32). A cleared box
 never reaches the buffer as a write — the clear refusal (G1) stays, and a
 cleared box no longer blocks navigation. The checkpoint trigger itself was
 also ruled per subsystem, not per global round number.
+
+## D66 (2026-08-29, project-owner ruling) **Open Bible Stories is a first-class project kind. OBS projects follow the `gloss/textStories` content model and stay distinct from the Bible `scripture/textTranslation` model.** [docs/VISION.md; feature epic #64; format question #147]
+
+For the first public release, tC4 supports Open Bible Stories as a project kind
+alongside Bible projects, represented on Home and in the workflow as its own kind.
+OBS work follows the `gloss/textStories` content model: stories and frames, not
+books, chapters and verses. Forcing illustrated stories through USFM books and
+verse locators would make the domain inaccurate and constrain drafting, checking,
+import and delivery. OBS projects deliver Markdown, a review PDF and a Scripture
+Burrito (VISION.md, "Deliverables"). The domain terms are in `CONTEXT.md`.
+
+Status of the format: BURRITO-SPEC 1.10 defines the Bible project only. This
+decision is incomplete until the spec and the conformance harness carry the OBS
+format in one change set (§9) — that work is issue #147. Until then the OBS scope
+in VISION.md is a target, not a claim about the current format or the pilot
+roadmap.
+
+[publication note: recorded 2026-09-03 from the owner's architecture record of
+2026-08-29 (`docs/adr/0001`), folded into this log — D-numbers are the one
+decision channel (authority contract, D43).]
