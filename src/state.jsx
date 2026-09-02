@@ -322,6 +322,7 @@ const initial = () => ({
   pickerProgress: null, // #136 (D3d): { seq, [tool]: {done,total,dropped,nextItem}|{error}, align: {…,nextRef} } — derived on picker open, never stored
   toolPos: {}, // #136: in-memory only — "your place is saved in each tool", keyed `${tool}:${book}`; dies with the app (§4.2)
   progressByProject: {}, // repoPath -> { CODE: draftPct } (lazy Home cache)
+  lastEdit: null, // { repoPath, book, chapter, verse, snippet, at } — the Home Resume card; per-client settings, never the project
   tick: 0,
 });
 
@@ -1727,6 +1728,7 @@ export function AppProvider({ children }) {
     const onHide = () => {
       void schedulerRef.current?.drain();
       void noteSchedulerRef.current?.drain();
+      void flushLastEdit();
     };
     window.addEventListener('beforeunload', beforeUnload);
     window.addEventListener('pagehide', onHide);
@@ -1740,14 +1742,62 @@ export function AppProvider({ children }) {
   // "Use" is user-machine state, so it lives in the platform's per-client
   // settings (0.18.4 endpoint, inside the D31 pin) — never in the project
   // (Phase-2 sync must not carry my open times) and never in localStorage.
-  async function markUsed(repoPath) {
-    try {
-      const cs = await api.getClientSettings(STORAGE_ID);
-      const lastUsed = { ...(cs.lastUsed || {}), [repoPath]: Date.now() };
-      await api.setClientSettings(STORAGE_ID, { ...cs, lastUsed });
-    } catch {
-      /* rig without storage_id.json — ordering falls back to creation date */
-    }
+  // ONE writer for the per-client settings document (Codex review of #138):
+  // every mutation is a read-modify-write of the LATEST document, applied in
+  // order, so lastUsed and lastEdit can never clobber each other and a slow
+  // earlier write can never land after a later one.
+  let settingsChain = Promise.resolve();
+  function updateClientSettings(mutate) {
+    const run = settingsChain
+      .then(async () => {
+        const cs = await api.getClientSettings(STORAGE_ID);
+        await api.setClientSettings(STORAGE_ID, mutate(cs));
+      })
+      .catch(() => {
+        /* rig without storage_id.json — the record lives for this session only */
+      });
+    settingsChain = run;
+    return run;
+  }
+
+  function markUsed(repoPath) {
+    return updateClientSettings((cs) => ({ ...cs, lastUsed: { ...(cs.lastUsed || {}), [repoPath]: Date.now() } }));
+  }
+
+  // The Home Resume card's target: the same per-client settings record as
+  // lastUsed (user-machine state, never the project). Debounced, because
+  // editVerse fires per keystroke and the settings write is a server call.
+  // The write reads the NEWEST pending record when it runs (never a captured
+  // older one), and flushLastEdit forces it before anything reads the document.
+  let lastEditTimer = null;
+  let pendingLastEdit = null;
+  function flushLastEdit() {
+    clearTimeout(lastEditTimer);
+    lastEditTimer = null;
+    if (!pendingLastEdit) return settingsChain;
+    return updateClientSettings((cs) => {
+      const rec = pendingLastEdit;
+      pendingLastEdit = null;
+      return rec ? { ...cs, lastEdit: rec } : cs;
+    });
+  }
+  // Home's progress cache for one project: dropped, with a generation bump so
+  // an older in-flight loadProgress cannot repopulate it (Codex review of #138).
+  const progressGen = new Map();
+  function invalidateProgress(repoPath) {
+    progressGen.set(repoPath, (progressGen.get(repoPath) || 0) + 1);
+    const progressByProject = { ...stateRef.current.progressByProject };
+    delete progressByProject[repoPath];
+    dispatch({ type: 'set', patch: { progressByProject } });
+  }
+  function recordLastEdit(rec) {
+    // The edit changes this project's draft percentages, so its cached Home
+    // progress is stale; Home re-reads it on the next visit.
+    invalidateProgress(rec.repoPath);
+    dispatch({ type: 'set', patch: { lastEdit: rec } });
+    pendingLastEdit = rec;
+    clearTimeout(lastEditTimer);
+    lastEditTimer = setTimeout(() => { void flushLastEdit(); }, 1000);
   }
 
   async function refreshProjects() {
@@ -1755,22 +1805,35 @@ export function AppProvider({ children }) {
       const reader = new ProjectReader({ api });
       const projects = await reader.listProjects();
       let lastUsed = {};
+      let lastEdit = null;
       try {
-        lastUsed = (await api.getClientSettings(STORAGE_ID)).lastUsed || {};
+        // A pending Resume record is written before the document is read, so
+        // a Home visit within the debounce never reads an older record.
+        await flushLastEdit();
+        const cs = await api.getClientSettings(STORAGE_ID);
+        lastUsed = cs.lastUsed || {};
+        lastEdit = cs.lastEdit || null;
       } catch {
         /* fall back to creation-date order from listProjects */
       }
+      // Never regress the in-session record to an older persisted one (a rig
+      // without client settings keeps the session's record).
+      const local = stateRef.current.lastEdit;
+      if (local && (!lastEdit || (local.at || 0) >= (lastEdit.at || 0))) lastEdit = local;
       projects.sort(
         (a, b) =>
           Math.max(lastUsed[b.id] || 0, b.timestamp || 0) -
           Math.max(lastUsed[a.id] || 0, a.timestamp || 0),
       );
+      // A record for a project that no longer exists (deleted, other rig)
+      // must not offer a Resume into nothing.
+      const resumable = lastEdit && projects.some((p) => p.id === lastEdit.repoPath && (p.bookCodes || []).includes(lastEdit.book));
       // Review of the D30 sweep: a successful listing clears the LISTING
       // failure's banner (projects was null) — an open-failure banner from
       // performProjectOpen is left alone (projects was already an array).
       dispatch({
         type: 'set',
-        patch: { projects, ...(stateRef.current.projects === null ? { bookError: null } : {}) },
+        patch: { projects, lastEdit: resumable ? lastEdit : null, ...(stateRef.current.projects === null ? { bookError: null } : {}) },
       });
     } catch (e) {
       // Catch-to-absence sweep (D30): projects stays null (unknown), so the
@@ -2867,6 +2930,7 @@ export function AppProvider({ children }) {
             });
           }
           await store.commit(`Add ${codes.join(', ')} (tC4)`);
+          invalidateProgress(f.repoPath); // the new book's tile must not stay unknown
           await refreshProjects();
           a.closeModal();
           await a.openProject(f.repoPath, codes[0]);
@@ -2950,7 +3014,13 @@ export function AppProvider({ children }) {
         // final.
         const cached = stateRef.current.progressByProject[project.id];
         if (cached && !Object.values(cached).includes(null)) return;
-        if ((project.bookCodes || []).length === 0 || project.bookCodes.length > 12) return;
+        // An invalidation during the read (an edit, a new book) must win over
+        // these soon-stale percentages.
+        const gen = progressGen.get(project.id) || 0;
+        // No upper bound on book count: a project with more than 12 books
+        // shows only its in-progress books by default, and that filter needs
+        // every book's progress.
+        if ((project.bookCodes || []).length === 0) return;
         // Read-only: the Home tiles must not run open-recovery or claim the
         // shell's current-project slot (ProjectReader does neither).
         const reader = new ProjectReader({ api });
@@ -2976,6 +3046,7 @@ export function AppProvider({ children }) {
             pcts[code] = null;
           }
         }
+        if ((progressGen.get(project.id) || 0) !== gen) return;
         dispatch({
           type: 'set',
           patch: {
@@ -3237,6 +3308,11 @@ export function AppProvider({ children }) {
         rawRef.current = spliceVerse(rawRef.current, chapter, verseKey, body);
         schedulerRef.current.markDirty(stateRef.current.book, chapter, verseKey, body);
         dispatch({ type: 'set', patch: { bookRaw: rawRef.current } });
+        const st = stateRef.current;
+        const repoPath = st.project?.repoPath || st.project?.id;
+        if (repoPath && st.book) {
+          recordLastEdit({ repoPath, book: st.book, chapter, verse: verseKey, snippet: body === '___' ? '' : text.trim().slice(0, 90), at: Date.now() });
+        }
       },
       blurVerse: () => {
         dispatch({ type: 'set', patch: { editing: null } });
@@ -3249,6 +3325,14 @@ export function AppProvider({ children }) {
           const body = e.before.trim() === '' ? '___' : e.before;
           rawRef.current = spliceVerse(rawRef.current, chapter, verseKey, body);
           schedulerRef.current.markDirty(stateRef.current.book, chapter, verseKey, body);
+          // The Resume snippet follows the restored text, never the cancelled
+          // draft (Codex review of #138).
+          const st = stateRef.current;
+          const repoPath = st.project?.repoPath || st.project?.id;
+          if (repoPath && st.lastEdit?.repoPath === repoPath && st.lastEdit?.book === st.book
+            && String(st.lastEdit.verse) === String(verseKey) && Number(st.lastEdit.chapter) === Number(chapter)) {
+            recordLastEdit({ ...st.lastEdit, snippet: e.before.trim().slice(0, 90), at: Date.now() });
+          }
         }
         dispatch({ type: 'set', patch: { editing: null, bookRaw: rawRef.current } });
         schedulerRef.current?.flushOnBlur();

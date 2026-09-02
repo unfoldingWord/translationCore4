@@ -1,7 +1,10 @@
 /* Shared hover / press states.
    Inline styles cannot express :hover, so every interactive primitive carries a
    data-tc attribute and picks its states up from here. One definition per state,
-   so a Button, a Card and a row can never drift apart. */
+   so a Button, a Card and a row can never drift apart.
+   Every state declaration is !important: the primitives set their resting
+   border/background inline, and an inline style beats any stylesheet rule that
+   is not !important — without it these states never render. */
 
 [data-tc] { transition: background var(--dur-hover) var(--ease-standard), border-color var(--dur-hover) var(--ease-standard), box-shadow var(--dur-hover) var(--ease-standard), color var(--dur-hover) var(--ease-standard); }
 [data-tc][disabled], [data-tc][aria-disabled="true"] { pointer-events: none; }
@@ -19,23 +22,28 @@
 [data-tc="fill-valid"]:active { background: var(--tc-valid-press) !important; box-shadow: none !important; }
 
 /* White / hairline action */
-[data-tc="quiet"]:hover  { background: var(--surface-muted); }
-[data-tc="quiet"]:active { background: var(--uw-mist); }
+[data-tc="quiet"]:hover  { background: var(--surface-muted) !important; }
+[data-tc="quiet"]:active { background: var(--uw-mist) !important; }
 
 /* Text-only action */
-[data-tc="text"]:hover  { color: var(--link-hover); }
-[data-tc="text"]:active { opacity: .7; }
+[data-tc="text"]:hover  { color: var(--link-hover) !important; }
+[data-tc="text"]:active { opacity: .7 !important; }
 
-/* Any bordered surface that can be chosen or opened: card, option row, chip, tile, help card */
-[data-tc="surface"]:hover { border-color: var(--accent); background: var(--surface-accent-soft); }
-[data-tc="surface"][data-tc-selected="true"]:hover { background: var(--surface-accent-soft); }
+/* Any bordered surface that can be chosen or opened: card, option row, chip, tile, help card.
+   A selected surface keeps its own (inline) selected look on hover — an ocean-filled chip
+   must not repaint to the soft accent tint. */
+[data-tc="surface"]:not([data-tc-selected="true"]):hover { border-color: var(--accent) !important; background: var(--surface-accent-soft) !important; }
 
 /* Raised card: lifts, never tints, never scales */
-[data-tc="card"]:hover { border-color: var(--accent); box-shadow: var(--shadow-hover); }
+[data-tc="card"]:hover { border-color: var(--accent) !important; box-shadow: var(--shadow-hover) !important; }
 
-/* Menu / list row inside a panel */
-[data-tc="row"]:hover  { background: var(--surface-muted); }
-[data-tc="row"]:active { background: var(--uw-mist); }
+/* Menu / list row inside a panel. A selected row keeps its own (inline) selected look. */
+[data-tc="row"]:not([data-tc-selected="true"]):hover  { background: var(--surface-muted) !important; }
+[data-tc="row"]:not([data-tc-selected="true"]):active { background: var(--uw-mist) !important; }
+
+/* Hairline action on the Ocean header: a translucent lift, never the light muted fill */
+[data-tc="quiet-inverse"]:hover  { background: rgba(255,255,255,.12) !important; }
+[data-tc="quiet-inverse"]:active { background: rgba(255,255,255,.2) !important; }
 
 /* Text inputs */
-[data-tc="field"]:focus, [data-tc="field"]:focus-within { border-color: var(--accent); background: #fff; }
+[data-tc="field"]:focus, [data-tc="field"]:focus-within { border-color: var(--accent) !important; background: #fff !important; }

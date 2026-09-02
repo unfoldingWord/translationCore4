@@ -6,6 +6,8 @@ import { Divider } from '../core/Divider.jsx';
  * `switchTitle` localizes the project chip's tooltip. */
 export function AppHeader({ tone = 'ocean', logoSrc, projectInitials, projectName, projectMeta, switchTitle = 'Switch project', center, right, onBrandClick, onProjectClick }) {
   const dark = tone === 'ocean';
+  const text = dark ? '#fff' : 'var(--uw-ocean)';
+  const dim = dark ? 'rgba(255,255,255,.6)' : 'var(--text-tertiary)';
   return (
     <header style={{ display: 'flex', alignItems: 'center', gap: 14, height: 'var(--header-height)', flex: 'none',
       padding: '0 16px', zIndex: 30,
@@ -13,8 +15,9 @@ export function AppHeader({ tone = 'ocean', logoSrc, projectInitials, projectNam
       borderBottom: dark ? 'none' : 'var(--stroke-hair) solid var(--border)' }}>
       <div onClick={onBrandClick} style={{ display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer' }}>
         {logoSrc ? <img src={logoSrc} alt="translationCore" style={{ height: 28, width: 'auto', display: 'block' }} /> : null}
-        <span style={{ fontWeight: 'var(--fw-heavy)', fontSize: 'var(--fs-wordmark)', letterSpacing: 'var(--track-15-5)', color: dark ? '#fff' : 'var(--uw-ocean)' }}>
-          translationCore<span style={{ fontSize: 'var(--fs-micro)', letterSpacing: 'var(--track-9)', fontWeight: 'var(--fw-bold)', verticalAlign: 'super', marginInlineStart: 1, color: dark ? 'rgba(255,255,255,.6)' : 'var(--text-tertiary)' }}>®</span>
+        {/* -.015em has no track token; the design's wordmark uses this literal. */}
+        <span style={{ fontWeight: 'var(--fw-heavy)', fontSize: 'var(--fs-wordmark)', letterSpacing: '-.015em', lineHeight: 1, color: text }}>
+          translationCore<span style={{ fontSize: 'var(--fs-micro)', letterSpacing: 'var(--track-9)', fontWeight: 'var(--fw-bold)', verticalAlign: 'super', marginInlineStart: 1, color: dim }}>®</span>
         </span>
       </div>
       <Divider orientation="vertical" inverse={dark} />
@@ -26,8 +29,8 @@ export function AppHeader({ tone = 'ocean', logoSrc, projectInitials, projectNam
           <span style={{ width: 26, height: 26, borderRadius: 'var(--radius-xs)', color: '#fff', background: dark ? 'var(--accent)' : 'var(--uw-ocean)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'var(--fw-heavy)', fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', flex: 'none' }}>{projectInitials}</span>
           <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.15, textAlign: 'start' }}>
-            <span style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', fontWeight: 'var(--fw-heavy)', color: dark ? '#fff' : 'var(--uw-ocean)' }}>{projectName}</span>
-            <span style={{ fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', color: dark ? 'rgba(255,255,255,.6)' : 'var(--text-tertiary)' }}>{projectMeta}</span>
+            <span style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', fontWeight: 'var(--fw-heavy)', color: text }}>{projectName}</span>
+            <span style={{ fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', color: dim }}>{projectMeta}</span>
           </span>
         </button>
       ) : null}
@@ -36,7 +39,7 @@ export function AppHeader({ tone = 'ocean', logoSrc, projectInitials, projectNam
       <div style={{ flex: 1 }} />
       {right != null ? right : (
         <span style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', fontWeight: 'var(--fw-bold)', display: 'flex', alignItems: 'center', gap: 6,
-          color: dark ? 'rgba(255,255,255,.6)' : 'var(--text-tertiary)' }}><StatusDot status="valid" size={8} />Saved</span>
+          color: dim }}><StatusDot status="valid" size={8} />Saved</span>
       )}
     </header>
   );
