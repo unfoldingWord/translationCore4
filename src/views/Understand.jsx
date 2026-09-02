@@ -12,6 +12,7 @@ import { HelpsPanel, leadingNum, useLoadHelps, focusOf } from './HelpsPanel.jsx'
 import { keyCarries, SourceVerse } from './SourceVerse.jsx';
 import { FilterChip, IconButton, Overline, SegmentedControl, StatusDot, Callout, Button } from '../ds/index.js';
 import { RailIcon } from './PanelIcons.jsx';
+import { targetTypeFor, projectDir } from './scriptStyle.js';
 
 // A USFM paragraph-level marker inside a verse's objects (usfm-js keeps `\p`,
 // `\m`, `\q…`, list markers as paragraph objects in the verse where they
@@ -130,7 +131,7 @@ function FrameUnavailableNote({ understand, unitCount }) {
  * park/restore effects are gone with the defect classes they bred). */
 function ComprehensionBox({ book, chapter, unit, mode }) {
   const { s, actions } = useApp();
-  const dir = s.project?.scriptDirection === 'rtl' ? 'rtl' : 'ltr';
+  const dir = projectDir(s);
   // DISABLED until the persisted notes have actually been read (A3, 2026-08-27
   // adversarial review): a writable empty box over an unread grow-only store
   // invites irreversible duplicates. null = not read; {} = read and empty.
@@ -201,7 +202,7 @@ function ComprehensionBox({ book, chapter, unit, mode }) {
     <>
       {/* The design's box: scripture face at reading size, on the paper tint. */}
       <textarea data-tc="field" rows={3} dir={dir} value={text} disabled={!ready}
-        style={{ width: '100%', boxSizing: 'border-box', marginTop: 4, border: 'var(--stroke) solid var(--border-input)', borderRadius: 'var(--radius-md)', padding: '11px 13px', outline: 'none', resize: 'vertical', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse)', color: 'var(--text-scripture)', background: 'var(--surface-app)' }}
+        style={{ width: '100%', boxSizing: 'border-box', marginTop: 4, border: 'var(--stroke) solid var(--border-input)', borderRadius: 'var(--radius-md)', padding: '11px 13px', outline: 'none', resize: 'vertical', ...targetTypeFor(s, 'verse'), color: 'var(--text-scripture)', background: 'var(--surface-app)' }}
         onChange={(e) => {
           setText(e.target.value);
           setClearRefused(false);

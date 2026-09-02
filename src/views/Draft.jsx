@@ -7,6 +7,7 @@ import { bookName } from '../data/bookNames';
 import { t } from '../i18n';
 import { FilterChip, IconButton, Overline, Button } from '../ds/index.js';
 import { RailIcon, HelpsIcon } from './PanelIcons.jsx';
+import { targetTypeFor, projectDir } from './scriptStyle.js';
 import BookRail from './BookRail.jsx';
 import { HelpsPanel, useLoadHelps } from './HelpsPanel.jsx';
 import { SourceVerse } from './SourceVerse.jsx';
@@ -19,7 +20,7 @@ const hair = 'var(--stroke-hair) solid var(--border-hair)';
 // preventDefault so the textarea's blur does not fire first and close the
 // editor before the click lands — without it Cancel would be swallowed by the
 // blur-close and never restore the verse.
-function VerseEditor({ chapter, verse, dir }) {
+function VerseEditor({ chapter, verse, dir, type }) {
   const { actions } = useApp();
   const ref = useRef(null);
   useEffect(() => {
@@ -45,13 +46,12 @@ function VerseEditor({ chapter, verse, dir }) {
           border: 0,
           outline: 'none',
           resize: 'vertical',
-          fontFamily: 'var(--font-scripture)',
-          // The editor types at the SAME size the drafted verse displays at
-          // (--fs-verse-lg, the design's reading size): at a smaller size the
-          // text shrank the moment a verse was clicked and grew again on save.
-          // The design's 19.5px editor is the section card's (#141).
-          fontSize: 'var(--fs-verse-lg)',
-          lineHeight: 'var(--lh-verse-lg)',
+          // The editor types in the SAME face and size the drafted verse
+          // displays at (the project's script at the design's reading step):
+          // at a smaller size the text shrank the moment a verse was clicked
+          // and grew again on save. The design's 19.5px editor is the section
+          // card's (#141).
+          ...type,
           color: 'var(--text-scripture)',
           background: 'transparent',
         }}
@@ -91,7 +91,9 @@ export default function Draft() {
 
   const verses = book.byChapter[String(s.chapter)] || [];
   const paneFocus = crossFrameSafeFocus(s);
-  const dir = s.project?.scriptDirection === 'rtl' ? 'rtl' : 'ltr';
+  const dir = projectDir(s);
+  // Target-language type from the project's script font (Nastaliq takes its own step).
+  const type = targetTypeFor(s, 'lg');
 
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
@@ -158,10 +160,10 @@ export default function Draft() {
                   </div>
                   <div style={{ padding: '14px 26px 20px', borderTop: 'var(--stroke-hair) solid var(--border-hair)', position: 'relative' }}>
                     {s.editing?.key === `${s.chapter}:${v.n}` ? (
-                      <VerseEditor chapter={s.chapter} verse={v} dir={dir} />
+                      <VerseEditor chapter={s.chapter} verse={v} dir={dir} type={type} />
                     ) : v.drafted ? (
                       <p onClick={() => actions.startVerse(s.chapter, v.n)} title={t('draft.editVerse')}
-                        style={{ direction: dir, textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-lg)', lineHeight: 'var(--lh-verse-lg)', color: 'var(--text-scripture)', margin: 0, cursor: 'text' }}>
+                        style={{ direction: dir, textAlign: 'start', ...type, color: 'var(--text-scripture)', margin: 0, cursor: 'text' }}>
                         <sup style={{ fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', marginInlineEnd: 3, verticalAlign: 'super' }}>{v.n}</sup>
                         {v.text}
                       </p>
@@ -169,7 +171,7 @@ export default function Draft() {
                       // The design's undrafted verse: the number, then an inline
                       // dashed "Draft verse N" pill in the paragraph flow. The
                       // accessible name stays "start this verse" (journeys J1/J14).
-                      <p style={{ direction: dir, textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-lg)', lineHeight: 'var(--lh-verse-lg)', margin: 0 }}>
+                      <p style={{ direction: dir, textAlign: 'start', ...type, margin: 0 }}>
                         <sup style={{ fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', marginInlineEnd: 3, verticalAlign: 'super' }}>{v.n}</sup>
                         <button type="button" data-tc="surface" aria-label={t('draft.startVerse')} onClick={() => actions.startVerse(s.chapter, v.n)}
                           style={{ border: 'var(--stroke-selected) dashed var(--border-strong)', background: 'transparent', borderRadius: 'var(--radius-sm)', padding: '2px 10px', marginInlineEnd: '.3em', cursor: 'pointer', fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption-lg)', letterSpacing: 'var(--track-12-5)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', verticalAlign: 'middle' }}>
