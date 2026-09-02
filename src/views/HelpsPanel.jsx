@@ -344,7 +344,7 @@ function HelpsTab({ tab, u, chapter, actions, cardFocus }) {
  * 2026-08-31): the shipped TSV7 helps carry no GLQuote column, so the gateway
  * text is derived from the active pane's alignment; the original-language
  * quoteString is only the fallback when nothing resolves. */
-const glTitleFor = (src, chapter, refRows) => {
+export const glTitleFor = (src, chapter, refRows) => {
   // Per-verse token cache + per-item title cache: hover re-renders the whole
   // panel through the app reducer, and titles must not recompute per hover
   // (2026-08-31 review R5). Both caches live only as long as the useMemo in

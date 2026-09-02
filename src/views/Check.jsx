@@ -19,9 +19,9 @@ import { renderArticleBlocks } from '../data/articles';
 import Align from './Align.jsx';
 import { isLanguageSwitch } from '../data/revalidate';
 import { targetWords, selectionsFromTokens, tokenIndicesFromSelections } from '../data/selections';
-import { tokenizeVerse, matchQuote, gatewayQuote } from '../data/sourceHighlight';
+import { tokenizeVerse, matchQuote } from '../data/sourceHighlight';
 import { verseText } from './verseText.js';
-import { ExpandableNote } from './HelpsPanel.jsx';
+import { ExpandableNote, glTitleFor } from './HelpsPanel.jsx';
 import { t } from '../i18n';
 import { Button, Callout, Drawer, Overline, ProgressBar } from '../ds/index.js';
 
@@ -399,7 +399,7 @@ function UltPane({ sources, sourcePanes, item, c, v, crossFrame }) {
   const tokens = React.useMemo(() => (vObj ? tokenizeVerse(vObj) : []), [vObj]);
   const hits = React.useMemo(
     () => (tokens.length
-      ? matchQuote(tokens, item.contextId.quote ?? item.contextId.quoteString ?? '', item.contextId.occurrence ?? 1)
+      ? matchQuote(tokens, item.contextId.quote?.length ? item.contextId.quote : (item.contextId.quoteString ?? ''), item.contextId.occurrence ?? 1)
       : new Set()),
     [tokens, item],
   );
@@ -854,42 +854,32 @@ function sessionView(cs) {
 }
 
 /** The item's ORIGINAL-language quote — tN carries a word array, tW a plain
- * string. The fallback title only (owner ruling 2026-08-31: titles show the
- * gateway rendering; the original appears when nothing resolves). */
+ * string. The fallback title only [decided 2026-08-31 — titles show the
+ * gateway rendering; the original appears when nothing resolves]. */
 const quoteOf = (item) =>
-  (Array.isArray(item?.contextId.quote)
+  (Array.isArray(item?.contextId.quote) && item.contextId.quote.length
     ? item.contextId.quote.map((w) => w.word).join(' ')
     : item?.contextId.quoteString) || item?.contextId.groupId || '';
 
-/** A title resolver for check items: the GATEWAY rendering of the quote, read
- * through the ULT pane's alignment (the same matcher the helps panel and the
- * compare card use), falling back to the original-language quote. Same-frame
- * only — a cross-frame project's (c, v) is not this pane's numbering (#131),
- * so it keeps the original. Tokens are cached per verse, titles per item. */
-function gatewayTitleFor(sources, sourcePanes, crossFrame) {
+/** A title resolver for check items: the GATEWAY rendering of the quote
+ * [decided 2026-08-31], falling back to the original-language quote. It is the
+ * helps panel's own resolver (glTitleFor: the ULT pane's alignment, bridge keys
+ * via keyCarries, mapped rows for a cross-frame project), one per chapter.
+ * While the helps load there is no frame verdict yet, so every title is the
+ * original — never a same-frame guess (Codex review of #150). Memoize the
+ * result on (sources, sourcePanes, understand): the caches live as long as it does. */
+export function gatewayTitleFor(sources, sourcePanes, understand) {
+  if (!understand || understand.loading) return quoteOf;
   const paneId = sourcePanes?.includes('ult') ? 'ult' : sourcePanes?.[0];
-  const source = paneId ? sources?.[paneId] : undefined;
-  const tokens = new Map();
-  const titles = new Map();
+  const src = paneId ? sources?.[paneId] : undefined;
+  const perChapter = new Map();
   return (item) => {
     const c = item.contextId.reference.chapter;
-    const v = item.contextId.reference.verse;
-    const id = `${item.contextId.checkId}:${c}:${v}:${item.contextId.quoteString ?? ''}:${item.contextId.occurrence ?? 1}`;
-    if (titles.has(id)) return titles.get(id);
-    let title = null;
-    const vObj = ultVerseObj(source, crossFrame, c, v);
-    if (vObj) {
-      const key = `${c}:${v}`;
-      if (!tokens.has(key)) tokens.set(key, tokenizeVerse(vObj));
-      title = gatewayQuote(
-        tokens.get(key),
-        item.contextId.quote?.length ? item.contextId.quote : (item.contextId.quoteString ?? ''),
-        item.contextId.occurrence ?? 1,
-      );
+    if (!perChapter.has(c)) {
+      const refRows = understand.sourceRefs != null ? (understand.sourceRefs[String(c)] ?? []) : null;
+      perChapter.set(c, glTitleFor(src, c, refRows));
     }
-    const out = title || quoteOf(item);
-    titles.set(id, out);
-    return out;
+    return perChapter.get(c)(item) || quoteOf(item);
   };
 }
 
@@ -917,6 +907,12 @@ function CheckSession() {
     setSortMode(SORTS[tool]?.default);
     setAcademyOpen(false);
   }, [tool, book]);
+  // One title resolver for the rail, the heading and the next-line
+  // [decided 2026-08-31 — gateway rendering]; its caches survive re-renders.
+  const titleOf = React.useMemo(
+    () => gatewayTitleFor(s.sources, s.sourcePanes, s.understand),
+    [s.sources, s.sourcePanes, s.understand],
+  );
 
   const centered = (child) => (
     <main style={{ flex: 1, overflow: 'auto', padding: '32px 40px 64px' }}>
@@ -934,9 +930,6 @@ function CheckSession() {
   if (cs.empty) return centered(<CheckEmpty cs={cs} actions={actions} />);
 
   const item = cs.items[cs.activeIndex];
-  // Titles in the gateway text (owner ruling 2026-08-31), one resolver per
-  // session render: the rail, the heading and the picker's next-line agree.
-  const titleOf = gatewayTitleFor(s.sources, s.sourcePanes, cs.crossFrame);
 
   const toggleWord = (i) =>
     setSel((prev) => {
@@ -999,12 +992,14 @@ export default function Check() {
     if (pre && atPicker && s.bookRaw) actions.loadPickerProgress();
   }, [pre, atPicker, s.bookRaw]);
 
-  if (!s.book) return null;
+  // The picker's "Next: …" line shows the gateway title too [decided
+  // 2026-08-31]; the frame verdict is the understand load's (sourceRefs).
+  const pickerTitleOf = React.useMemo(
+    () => gatewayTitleFor(s.sources, s.sourcePanes, s.understand),
+    [s.sources, s.sourcePanes, s.understand],
+  );
 
-  // The picker's "Next: …" line shows the gateway title too. Cross-frame is
-  // the understand load's verdict (sourceRefs non-null), the same signal the
-  // session records as cs.crossFrame.
-  const pickerTitleOf = gatewayTitleFor(s.sources, s.sourcePanes, s.understand?.sourceRefs != null);
+  if (!s.book) return null;
 
   // #129: Align opens inside the same rail+detail workspace as the derived
   // tools — no separate top-level Align screen.
