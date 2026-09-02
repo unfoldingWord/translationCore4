@@ -23,7 +23,7 @@ import { tokenizeVerse, matchQuote } from '../data/sourceHighlight';
 import { verseText } from './verseText.js';
 import { ExpandableNote } from './HelpsPanel.jsx';
 import { t } from '../i18n';
-import { Button, Card, Callout, Drawer, Overline, ProgressBar } from '../ds/index.js';
+import { Button, Callout, Drawer, Overline, ProgressBar } from '../ds/index.js';
 
 const TOOLS = Object.keys(TOOL_SLOT);
 const mono = { fontFamily: 'var(--font-mono)' };
@@ -50,7 +50,7 @@ function DroppedNote({ dropped, style }) {
 // is actually wrong. The citation still travels with the open session, which
 // prints it in the tool header.
 const TONE = {
-  ready: { bg: '#fff', border: 'var(--border)', fg: 'var(--tc-valid-strong)' },
+  ready: { bg: 'var(--surface-card)', border: 'var(--border)', fg: 'var(--tc-valid-strong)' },
   fetch: { bg: 'var(--surface-accent-soft)', border: 'rgba(49,173,227,.4)', fg: 'var(--tc-suggest-fg)' },
   unavailable: { bg: 'var(--surface-warm)', border: 'rgba(229,157,51,.4)', fg: 'var(--tc-warn-text)' },
   unpinned: { bg: 'var(--surface-app)', border: 'var(--border-input)', fg: 'var(--text-secondary)' },
@@ -99,7 +99,13 @@ function ToolNeeds({ pre }) {
  * never blocks the card's open action (D30). ---- */
 
 const CTA_STYLE = { display: 'inline-flex', alignItems: 'center', gap: 7, fontWeight: 'var(--fw-heavy)', fontSize: 'var(--fs-ui)', color: 'var(--text-accent)' };
-const cardCaption = { fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', margin: '6px 0 2px' };
+const cardCaption = { fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', margin: '0 0 2px' };
+
+// The design's tool card: a raised 16px card, 19px black title, description
+// that fills, then the progress block and the CTA.
+const PICKER_CARD = { border: 'var(--stroke) solid var(--border)', background: 'var(--surface-card)', borderRadius: 'var(--radius-2xl)', padding: 22, textAlign: 'start', display: 'flex', flexDirection: 'column', boxShadow: 'var(--shadow-card)' };
+const PICKER_TITLE = { fontSize: 'var(--fs-title-lg)', letterSpacing: 'var(--track-19)', fontWeight: 'var(--fw-black)', color: 'var(--text-heading)', margin: '0 0 6px' };
+const PICKER_DESC = { fontSize: 'var(--fs-ui-sm)', color: 'var(--text-secondary)', lineHeight: 1.55, margin: '0 0 18px', flex: 1 };
 
 /** The CTA text by state (mockup L1951): Start / Continue / Review. */
 export function ctaFor(entry) {
@@ -128,8 +134,8 @@ function CardProgress({ entry, kind = 'check' }) {
   };
   const next = nextLineFor(entry, kind);
   return (
-    <div data-testid={`picker-progress-${kind}`} data-loaded={entry ? '1' : '0'} style={{ marginBottom: 10 }}>
-      <ProgressBar value={entry?.total ? (entry.done / entry.total) * 100 : 0} height={6} />
+    <div data-testid={`picker-progress-${kind}`} data-loaded={entry ? '1' : '0'} style={{ marginBottom: 16 }}>
+      <ProgressBar tone="valid" value={entry?.total ? (entry.done / entry.total) * 100 : 0} height={6} style={{ marginBottom: 9 }} />
       <p style={{ ...cardCaption, fontWeight: 'var(--fw-bold)', color: entry?.error != null ? 'var(--tc-warn-text)' : 'var(--text-secondary)' }}>
         {countLabel()}
       </p>
@@ -168,18 +174,18 @@ function ToolCard({ tool, pre, book, progress }) {
   const open = () => actions.openCheckTool(tool);
 
   return (
-    <div data-testid={`preflight-${tool}`} data-state={pre.state}
+    <div data-testid={`preflight-${tool}`} data-state={pre.state} data-tc={ready ? 'card' : undefined}
       {...(ready ? clickableCard(open) : {})}
-      style={{ border: `var(--stroke) solid ${tone.border}`, background: tone.bg, borderRadius: 'var(--radius-lg)', padding: '16px 18px', display: 'flex', flexDirection: 'column', cursor: ready ? 'pointer' : 'default' }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 }}>
-        <span style={{ fontSize: 'var(--fs-ui-md)', letterSpacing: 'var(--track-14)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)' }}>{t(`check.tool.${tool}`)}</span>
+      style={{ ...PICKER_CARD, border: `var(--stroke) solid ${tone.border}`, background: tone.bg, boxShadow: ready ? 'var(--shadow-card)' : 'none', cursor: ready ? 'pointer' : 'default' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, ...PICKER_TITLE }}>
+        <span>{t(`check.tool.${tool}`)}</span>
         {!ready && (
           <span style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-heavy)', letterSpacing: '.06em', textTransform: 'uppercase', color: tone.fg }}>
             {t(`check.state.${pre.state}`)}
           </span>
         )}
       </div>
-      <p style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', color: 'var(--text-secondary)', lineHeight: 'var(--lh-body)', margin: '0 0 10px', flex: 1 }}>
+      <p style={PICKER_DESC}>
         {ready ? t(`check.desc.${tool}`) : t(`check.explain.${pre.state}`, { book: bookName(book) })}
       </p>
       <ToolNeeds pre={pre} />
@@ -337,7 +343,7 @@ function OrigPane({ orig, c, v }) {
     const text = verseText(orig.chapters?.[String(c)]?.[String(v)]);
     body = text ? (
       <p dir={ot ? 'rtl' : 'ltr'} lang={ot ? 'hbo' : 'el'}
-        style={{ textAlign: 'start', fontFamily: ot ? 'var(--font-hebrew)' : 'var(--font-greek)', fontSize: 'var(--fs-verse-md)', lineHeight: 'var(--lh-verse-md)', color: 'var(--text-scripture)', margin: '8px 0 0' }}>
+        style={{ textAlign: 'start', fontFamily: ot ? 'var(--font-hebrew)' : 'var(--font-greek)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse-md)', color: 'var(--text-scripture)', margin: '8px 0 0' }}>
         {text}
       </p>
     ) : paneAbsent(t('check.paneAbsent'));
@@ -476,7 +482,7 @@ function CheckDetail({ cs, item, sources, sourcePanes, words, sel, toggleWord, m
         </div>
       )}
 
-      <Button variant="ghost" data-testid="open-academy" onClick={onOpenAcademy} style={{ margin: '0 0 16px' }}>
+      <Button variant="ghost" data-testid="open-academy" onClick={onOpenAcademy} style={{ margin: '0 0 24px' }}>
         {t('check.learnMore', { title: cs.article?.found?.title ?? t('check.academyFallback') })}
       </Button>
 
@@ -634,13 +640,13 @@ function CheckRail({ cs, filter, setFilter, sortMode, setSortMode, onSelect }) {
         <p style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--text-tertiary)', margin: '0 0 10px', fontWeight: 'var(--fw-medium)' }}>
           {bookName(cs.book)}
         </p>
-        <ProgressBar value={cs.progress.total ? (cs.progress.decided / cs.progress.total) * 100 : 0} height={7} />
+        <ProgressBar tone="valid" value={cs.progress.total ? (cs.progress.decided / cs.progress.total) * 100 : 0} height={7} />
         <p data-testid="check-progress" style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--text-secondary)', margin: '8px 0 12px', fontWeight: 'var(--fw-medium)' }}>
           {t('check.progress', { decided: cs.progress.decided, total: cs.progress.total })}
         </p>
         <div style={{ display: 'flex', gap: 6 }}>
           {['all', 'todo', 'invalid'].map((k) => (
-            <button key={k} type="button" data-testid={`filter-${k}`} onClick={() => setFilter(k)} style={railChip(filter === k)}>
+            <button key={k} type="button" data-trim="cap" data-testid={`filter-${k}`} onClick={() => setFilter(k)} style={railChip(filter === k)}>
               {t(`check.filter.${k}`)} · {counts[k]}
             </button>
           ))}
@@ -649,7 +655,7 @@ function CheckRail({ cs, filter, setFilter, sortMode, setSortMode, onSelect }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
             <Overline tone="muted">{t('check.sort')}</Overline>
             {sorts.modes.map((m) => (
-              <button key={m} type="button" data-testid={`sort-${m}`} onClick={() => setSortMode(m)} style={railChip(sortMode === m)}>
+              <button key={m} type="button" data-trim="cap" data-testid={`sort-${m}`} onClick={() => setSortMode(m)} style={railChip(sortMode === m)}>
                 {t(`check.sort.${m}`)}
               </button>
             ))}
@@ -672,7 +678,7 @@ function CheckRail({ cs, filter, setFilter, sortMode, setSortMode, onSelect }) {
                 const st = statusOf(it);
                 const activeRow = i === cs.activeIndex;
                 return (
-                  <button key={`${it.contextId.checkId}-${i}`} type="button" onClick={() => onSelect(i)}
+                  <button key={`${it.contextId.checkId}-${i}`} type="button" data-tc="rail-item" onClick={() => onSelect(i)}
                     title={`${it.contextId.reference.chapter}:${it.contextId.reference.verse} · ${it.contextId.groupId}`}
                     data-ref={`${it.contextId.reference.chapter}:${it.contextId.reference.verse}`}
                     data-decided={decided(it) ? '1' : '0'}
@@ -751,13 +757,13 @@ function AlignRail({ index, activeRef, filter, setFilter, onSelect }) {
         <p style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--text-tertiary)', margin: '0 0 10px', fontWeight: 'var(--fw-medium)' }}>
           {bookName(s.book)}
         </p>
-        <ProgressBar value={drafted.length ? (done / drafted.length) * 100 : 0} height={7} />
+        <ProgressBar tone="valid" value={drafted.length ? (done / drafted.length) * 100 : 0} height={7} />
         <p data-testid="align-rail-progress" style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--text-secondary)', margin: '8px 0 12px', fontWeight: 'var(--fw-medium)' }}>
           {t('align.progressVerses', { done, total: drafted.length })}
         </p>
         <div style={{ display: 'flex', gap: 6 }}>
           {Object.keys(ALIGN_FILTERS).map((k) => (
-            <button key={k} type="button" data-testid={`align-filter-${k}`} onClick={() => setFilter(k)} style={railChip(filter === k)}>
+            <button key={k} type="button" data-trim="cap" data-testid={`align-filter-${k}`} onClick={() => setFilter(k)} style={railChip(filter === k)}>
               {t(`check.filter.${k}`)} · {counts[k]}
             </button>
           ))}
@@ -773,7 +779,7 @@ function AlignRail({ index, activeRef, filter, setFilter, onSelect }) {
           const undrafted = it.status === 'undrafted';
           const activeRow = it.ref === activeRef;
           return (
-            <button key={it.ref} type="button" disabled={undrafted}
+            <button key={it.ref} type="button" disabled={undrafted} data-tc={undrafted ? undefined : 'rail-item'}
               onClick={() => !undrafted && onSelect(it.ref)}
               data-ref={it.ref} data-status={it.status}
               style={{
@@ -825,7 +831,7 @@ function AlignWorkspace() {
       <AlignRail index={s.alignIndex} activeRef={activeRef} filter={filter} setFilter={setFilter}
         onSelect={(ref) => actions.setAlignVerse(ref)} />
       <main style={{ flex: 1, overflow: 'auto', minWidth: 0, background: 'var(--surface-app)' }}>
-        <div style={{ maxWidth: 900, margin: '0 auto', padding: '28px 32px 60px' }}>
+        <div style={{ maxWidth: 1280, margin: '0 auto', padding: '28px 32px 60px' }}>
           <Align embedded />
         </div>
       </main>
@@ -967,7 +973,7 @@ export default function Check() {
   if (s.checkTool) return <CheckSession />;
 
   return (
-    <main style={{ flex: 1, overflow: 'auto', padding: '32px 40px 64px' }}>
+    <main style={{ flex: 1, overflow: 'auto', padding: '44px 40px 64px', background: 'var(--surface-app)' }}>
       {/* --measure-page is the token defined for "home + tool picker"
         * (ds/tokens/spacing.css); the picker was pinned to 760px, too narrow
         * for the mockup's card grid to reach its three columns. */}
@@ -975,8 +981,8 @@ export default function Check() {
         <h1 style={{ fontSize: 'var(--fs-h1)', letterSpacing: 'var(--track-32)', margin: '0 0 6px' }}>
           {t('check.title')}
         </h1>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, margin: '0 0 24px' }}>
-          <p style={{ fontSize: 'var(--fs-ui)', letterSpacing: 'var(--track-13-5)', color: 'var(--text-tertiary)', margin: 0, lineHeight: 'var(--lh-body)', flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, margin: '0 0 30px' }}>
+          <p style={{ fontSize: 'var(--fs-body)', letterSpacing: 'var(--track-15)', color: 'var(--text-secondary)', margin: 0, maxWidth: 640, flex: 1 }}>
             {t('check.subtitle')}
           </p>
           {/* The checking language is a property of the PROJECT (D30.2), so its
@@ -1015,38 +1021,37 @@ export default function Check() {
                 progress={s.pickerProgress?.[tool]} />
             ))}
 
-            <Card variant="flat" padding="16px 18px" data-testid="align-card"
+            <div data-testid="align-card" data-tc="card"
               {...clickableCard(actions.startAligning)}
-              style={{ border: 'var(--stroke) solid var(--border)', display: 'flex', flexDirection: 'column', cursor: 'pointer' }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 }}>
-                <span style={{ fontSize: 'var(--fs-ui-md)', letterSpacing: 'var(--track-14)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)' }}>{t('nav.align')}</span>
-              </div>
-              <p style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', color: 'var(--text-secondary)', lineHeight: 'var(--lh-body)', margin: '0 0 10px', flex: 1 }}>
-                {t('align.cardBody')}
-              </p>
+              style={{ ...PICKER_CARD, cursor: 'pointer' }}>
+              <div style={PICKER_TITLE}>{t('nav.align')}</div>
+              <p style={PICKER_DESC}>{t('align.cardBody')}</p>
               <CardProgress entry={s.pickerProgress?.align} kind="align" />
               <button type="button" data-testid="open-align"
                 onClick={(e) => { e.stopPropagation(); actions.startAligning(); }}
                 style={{ ...CTA_STYLE, border: 0, background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', padding: 0, alignSelf: 'flex-start' }}>
                 {ctaFor(s.pickerProgress?.align)} {'→'}
               </button>
-            </Card>
+            </div>
 
-            <Card variant="flat" padding="16px 18px" data-testid="community-checking-card"
+            <div data-testid="community-checking-card" data-tc="card"
               {...clickableCard(() => actions.go('publish'))}
-              style={{ border: 'var(--stroke) solid var(--border)', display: 'flex', flexDirection: 'column', cursor: 'pointer' }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 }}>
-                <span style={{ fontSize: 'var(--fs-ui-md)', letterSpacing: 'var(--track-14)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)' }}>{t('cc.title')}</span>
+              style={{ ...PICKER_CARD, cursor: 'pointer' }}>
+              <div style={PICKER_TITLE}>{t('cc.title')}</div>
+              <p style={PICKER_DESC}>{t('cc.cardDesc')}</p>
+              {/* The design's progress block: a whole-chapter pass has no count
+                * yet, so the bar stays empty and the next line names the read. */}
+              <div style={{ marginBottom: 16 }}>
+                <ProgressBar tone="valid" value={0} height={6} style={{ marginBottom: 9 }} />
+                <p style={{ ...cardCaption, fontWeight: 'var(--fw-bold)', color: 'var(--text-secondary)' }}>{t('cc.wholeChapter')}</p>
+                <p style={{ ...cardCaption, color: 'var(--text-tertiary)' }}>{t('cc.nextRead', { ref: `${bookName(s.book)} ${s.chapter}` })}</p>
               </div>
-              <p style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', color: 'var(--text-secondary)', lineHeight: 'var(--lh-body)', margin: '0 0 10px', flex: 1 }}>
-                {t('cc.cardDesc')}
-              </p>
               <button type="button" data-testid="open-community-checking"
                 onClick={(e) => { e.stopPropagation(); actions.go('publish'); }}
                 style={{ ...CTA_STYLE, border: 0, background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', padding: 0, alignSelf: 'flex-start' }}>
                 {t('cc.open')}
               </button>
-            </Card>
+            </div>
           </div>
         )}
 

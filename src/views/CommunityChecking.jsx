@@ -34,11 +34,11 @@ export default function CommunityChecking() {
       <main style={{ flex: 1, overflow: 'auto', minWidth: 0, background: 'var(--surface-muted)', padding: '34px 24px 60px' }}>
         <div style={{ maxWidth: 680, margin: '0 auto', background: '#fff', boxShadow: 'var(--shadow-page)', borderRadius: 4, padding: '64px 72px' }}>
           <p style={{ textAlign: 'center', fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-heavy)', letterSpacing: 'var(--tracking-eyebrow)', textTransform: 'uppercase', color: 'var(--text-tertiary)', margin: '0 0 4px' }}>{t('cc.eyebrow')}</p>
-          <h1 style={{ textAlign: 'center', fontFamily: 'var(--font-scripture)', fontSize: 40, lineHeight: '48px', fontWeight: 'var(--fw-bold)', color: 'var(--uw-ocean)', margin: '0 0 6px' }}>{bookName(book.code)}</h1>
+          <h1 style={{ textAlign: 'center', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-display)', fontWeight: 'var(--fw-bold)', color: 'var(--text-heading)', margin: '0 0 6px' }}>{bookName(book.code)}</h1>
           <div style={{ height: 1, background: 'var(--border)', margin: '0 auto 30px', width: 70 }} />
           {chapters.map(({ c, verses }) => (
-            <div key={c} dir={dir} style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse)', color: 'var(--text-scripture)', textAlign: 'justify', columnCount: Number(cols), columnGap: 28, marginBottom: 26 }}>
-              {dropCap ? <span style={{ float: 'inline-start', fontSize: 'var(--fs-dropcap)', lineHeight: 0.8, fontWeight: 'var(--fw-bold)', color: 'var(--accent)', marginInlineEnd: 10, marginTop: 6 }}>{c}</span> : null}
+            <div key={c} dir={dir} style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-md)', lineHeight: 'var(--lh-verse-md)', color: 'var(--text-scripture)', textAlign: 'justify', columnCount: Number(cols), columnGap: 28, marginBottom: 26 }}>
+              {dropCap ? <span style={{ float: 'inline-start', fontSize: 'var(--fs-dropcap)', lineHeight: 0.8, fontWeight: 'var(--fw-bold)', color: 'var(--text-accent)', marginInlineEnd: 10, marginTop: 6 }}>{c}</span> : null}
               {verses.map((v) => v.drafted && v.text
                 ? <span key={v.n}>{verseNums ? <sup style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', marginInlineEnd: 2, verticalAlign: 'super' }}>{v.n}</sup> : null}{v.text} </span>
                 : <span key={v.n} style={{ color: 'var(--text-tertiary)' }}><sup style={{ fontSize: 11, fontWeight: 700, verticalAlign: 'super' }}>{v.n}</sup>{t('cc.notYetDrafted')} </span>)}
@@ -46,7 +46,7 @@ export default function CommunityChecking() {
           ))}
         </div>
       </main>
-      <aside style={{ width: 'var(--rail-width-wide)', flex: 'none', background: '#fff', borderInlineStart: 'var(--stroke-hair) solid var(--border-hair)', padding: 22, display: 'flex', flexDirection: 'column', gap: 16, overflow: 'auto' }}>
+      <aside style={{ width: 'var(--rail-width-wide)', flex: 'none', background: 'var(--surface-card)', borderInlineStart: 'var(--stroke-hair) solid var(--border)', padding: 22, display: 'flex', flexDirection: 'column', gap: 16, overflow: 'auto' }}>
         <Button variant="ghost" onClick={() => actions.go('check')} style={{ alignSelf: 'flex-start' }}>{t('cc.back')}</Button>
         <h2 style={{ fontSize: 'var(--fs-title-sm)', letterSpacing: 'var(--track-16)', margin: 0 }}>{t('cc.title')}</h2>
         {/* J7 delivers the real exports; until then the buttons state the truth. */}
@@ -60,8 +60,12 @@ export default function CommunityChecking() {
               <span>{t('cc.columns')}</span>
               <span style={{ display: 'flex', gap: 4 }}>
                 {['1', '2'].map((c) => (
-                  <FilterChip key={c} tone="ocean" selected={cols === c} onClick={() => setCols(c)}
-                    style={{ padding: '5px 11px', fontSize: '11.5px', borderWidth: 1 }}>{c}</FilterChip>
+                  // The design's page-setup pills: Inspire fill when active.
+                  <FilterChip key={c} selected={cols === c} onClick={() => setCols(c)}
+                    style={{ display: 'inline-block', padding: '5px 11px', fontSize: 'var(--fs-meta)', letterSpacing: 'var(--track-11-5)', borderWidth: 1,
+                      ...(cols === c
+                        ? { background: 'var(--accent)', color: 'var(--text-inverse)', borderColor: 'var(--accent)' }
+                        : { background: 'var(--surface-card)', color: 'var(--text-secondary)', borderColor: 'var(--border-input)' }) }}>{c}</FilterChip>
                 ))}
               </span>
             </div>

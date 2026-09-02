@@ -19,6 +19,7 @@ import { bookName } from '../data/bookNames';
 import { tokenizeVerse } from '../data/sourceHighlight';
 import { verseText } from './verseText.js';
 import { t } from '../i18n';
+import { Button, Overline } from '../ds/index.js';
 
 const dragPayload = (e) => {
   try {
@@ -50,24 +51,23 @@ function CardHeader({ card, mode, gwTokens, onSplit }) {
     <div draggable
       onDragStart={(e) => { e.stopPropagation(); setDragPayload(e, { kind: 'card', from: card.index }); }}
       title={t('align.mergeHint')}
-      style={{ padding: '7px 10px 6px', background: '#F7FAFC', borderBottom: '1px solid rgba(35,31,32,.08)', textAlign: 'center', cursor: 'grab', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+      style={{ padding: '7px 10px 6px', background: 'var(--surface-app)', borderBottom: 'var(--stroke-hair) solid var(--border)', textAlign: 'center', cursor: 'grab', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
       <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
         <span lang={usingGw ? undefined : 'el'}
-          style={{ fontFamily: usingGw ? 'var(--font-ui)' : 'var(--font-greek)', fontSize: 16.5, fontWeight: 700, color: '#014263', whiteSpace: 'nowrap' }}>
+          style={{ fontFamily: usingGw ? 'var(--font-scripture)' : 'var(--font-greek)', fontSize: 'var(--fs-title)', letterSpacing: 'var(--track-17)', fontWeight: 'var(--fw-bold)', color: 'var(--text-heading)', whiteSpace: 'nowrap' }}>
           {usingGw ? gwLabel : origLabel}
         </span>
         {card.topWords.length > 1 && (
-          <button type="button" data-testid={`align-split-${card.index}`}
+          <Button variant="secondary" size="sm" data-testid={`align-split-${card.index}`}
             onClick={(e) => { e.stopPropagation(); onSplit(card.index); }}
-            title={t('align.splitHint')}
-            style={{ border: '1px solid rgba(35,31,32,.2)', background: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 800, fontSize: 9, letterSpacing: '.08em', padding: '2px 6px', borderRadius: 6, color: '#4F5E6A' }}>
+            title={t('align.splitHint')}>
             {t('align.split')}
-          </button>
+          </Button>
         )}
       </span>
       {usingGw && (
         <span lang="el" title={t('align.subHint')}
-          style={{ fontFamily: 'var(--font-greek)', fontSize: 'var(--fs-meta)', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+          style={{ fontFamily: 'var(--font-greek)', fontSize: 'var(--fs-meta)', letterSpacing: 'var(--track-11-5)', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
           {origLabel}
         </span>
       )}
@@ -75,39 +75,49 @@ function CardHeader({ card, mode, gwTokens, onSplit }) {
   );
 }
 
+// The design's three card states: a drop hovering over it, a word armed for
+// placement (any card may take it), and at rest.
+const cardState = (over, armed) => (over
+  ? { borderColor: 'var(--accent)', background: 'var(--surface-accent-soft)' }
+  : armed
+    ? { borderColor: 'rgba(49,173,227,.55)', background: 'var(--surface-card)', cursor: 'pointer' }
+    : { borderColor: 'var(--border-input)', background: 'var(--surface-card)' });
+
 function WordCard({ card, armed, mode, gwTokens, onPlace, onRemove, onDropOnCard, onSplit }) {
   const canDrop = armed !== null;
+  const [over, setOver] = React.useState(false);
   return (
     <div
       data-testid={`align-card-${card.index}`}
       data-count={card.bottomWords.length}
       onClick={canDrop ? () => onPlace(card.index) : undefined}
+      onDragEnter={() => setOver(true)}
+      onDragLeave={() => setOver(false)}
       onDragOver={allowDrop}
-      onDrop={(e) => { e.preventDefault(); onDropOnCard(card.index, dragPayload(e)); }}
+      onDrop={(e) => { e.preventDefault(); setOver(false); onDropOnCard(card.index, dragPayload(e)); }}
       style={{
-        border: `1.5px solid ${canDrop ? '#31ADE3' : 'rgba(35,31,32,.14)'}`,
-        borderRadius: 10,
+        border: 'var(--stroke-selected) solid',
+        borderRadius: 'var(--radius-md)',
         display: 'flex',
         flexDirection: 'column',
-        minWidth: 86,
+        minWidth: 78,
         overflow: 'hidden',
-        cursor: canDrop ? 'pointer' : 'default',
-        background: canDrop ? '#F0FAFE' : '#fff',
+        ...cardState(over, canDrop),
       }}
     >
       <CardHeader card={card} mode={mode} gwTokens={gwTokens} onSplit={onSplit} />
-      <div style={{ padding: 6, display: 'flex', flexWrap: 'wrap', gap: 4, flex: 1, minHeight: 38, alignContent: 'flex-start' }}>
+      <div style={{ padding: 6, display: 'flex', flexWrap: 'wrap', gap: 4, flex: 1, minHeight: 38, alignItems: 'flex-start', alignContent: 'flex-start' }}>
         {card.bottomWords.map((w) => (
           <button key={`${w.word}-${w.occurrence}`} type="button" draggable
             onDragStart={(e) => setDragPayload(e, { kind: 'placed', from: card.index, word: w })}
             onClick={(e) => { e.stopPropagation(); onRemove(card.index, w); }}
             title={t('align.clickToUnalign')}
-            style={{ fontFamily: 'var(--font-scripture)', fontSize: 14, color: '#231F20', background: '#fff', border: '1px solid rgba(35,31,32,.16)', borderRadius: 7, padding: '3px 9px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-ui-md)', color: 'var(--text-scripture)', background: 'var(--surface-card)', border: 'var(--stroke) solid var(--border-input)', borderRadius: 'var(--radius-chip)', padding: '3px 9px', cursor: 'pointer', whiteSpace: 'nowrap', boxShadow: '0 1px 2px rgba(1,66,99,.08)' }}>
             {w.word}
           </button>
         ))}
         {card.bottomWords.length === 0 && (
-          <span style={{ flex: 1, border: '1.5px dashed rgba(35,31,32,.14)', borderRadius: 7, minHeight: 26 }} />
+          <span style={{ flex: 1, border: 'var(--stroke-selected) dashed var(--border-input)', borderRadius: 'var(--radius-chip)', minHeight: 26 }} />
         )}
       </div>
     </div>
@@ -137,7 +147,7 @@ const isBlocked = (a) => !a || a.loading || a.error || a.unavailable;
 /** The loading / error / unavailable states — null when the session is live. */
 function AlignBlocked({ a, back, book, onRetry }) {
   if (!a || a.loading) {
-    return <p style={{ fontSize: 14, color: '#8A99A4' }}>{t('align.loading')}</p>;
+    return <p style={{ fontSize: 'var(--fs-ui-md)', color: 'var(--text-tertiary)' }}>{t('align.loading')}</p>;
   }
   if (a.error) {
     // Catch-to-absence sweep (D30): a failed source read is a stated,
@@ -145,13 +155,12 @@ function AlignBlocked({ a, back, book, onRetry }) {
     return (
       <div data-testid="align-error">
         <div style={{ marginBottom: 16 }}>{back}</div>
-        <div style={{ border: '1.5px dashed rgba(35,31,32,.18)', borderRadius: 14, padding: '30px 24px', textAlign: 'center' }}>
-          <p style={{ fontSize: 15, fontWeight: 800, color: '#014263', margin: '0 0 8px' }}>{t('align.error.title')}</p>
-          <p style={{ fontSize: 13.5, color: '#4F5E6A', lineHeight: 1.6, margin: '0 0 12px', overflowWrap: 'anywhere' }}>{a.error}</p>
-          <button type="button" data-testid="align-retry" onClick={onRetry}
-            style={{ border: '1.5px solid #014263', background: 'transparent', color: '#014263', borderRadius: 8, padding: '6px 14px', fontWeight: 800, cursor: 'pointer' }}>
+        <div style={{ border: 'var(--stroke-selected) dashed var(--border-strong)', borderRadius: 'var(--radius-xl)', padding: '30px 24px', textAlign: 'center' }}>
+          <p style={{ fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-heavy)', color: 'var(--text-heading)', margin: '0 0 8px' }}>{t('align.error.title')}</p>
+          <p style={{ fontSize: 'var(--fs-ui)', color: 'var(--text-secondary)', lineHeight: 1.6, margin: '0 0 12px', overflowWrap: 'anywhere' }}>{a.error}</p>
+          <Button size="sm" variant="outline" data-testid="align-retry" onClick={onRetry}>
             {t('app.retry')}
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -160,11 +169,11 @@ function AlignBlocked({ a, back, book, onRetry }) {
     return (
       <div data-testid="align-unavailable">
         <div style={{ marginBottom: 16 }}>{back}</div>
-        <div style={{ border: '1.5px dashed rgba(35,31,32,.18)', borderRadius: 14, padding: '30px 24px', textAlign: 'center' }}>
-          <p style={{ fontSize: 15, fontWeight: 800, color: '#014263', margin: '0 0 8px' }}>
+        <div style={{ border: 'var(--stroke-selected) dashed var(--border-strong)', borderRadius: 'var(--radius-xl)', padding: '30px 24px', textAlign: 'center' }}>
+          <p style={{ fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-heavy)', color: 'var(--text-heading)', margin: '0 0 8px' }}>
             {t(`align.unavailable.${a.unavailable}.title`)}
           </p>
-          <p style={{ fontSize: 13.5, color: '#4F5E6A', lineHeight: 1.6, margin: 0 }}>
+          <p style={{ fontSize: 'var(--fs-ui)', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
             {t(`align.unavailable.${a.unavailable}.body`, { book: bookName(book) })}
           </p>
         </div>
@@ -182,7 +191,7 @@ function HowToggle() {
     <>
       <button type="button" data-testid="align-how" aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        style={{ border: 0, background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 'var(--fs-caption-lg)', letterSpacing: 'var(--track-12-5)', color: 'var(--text-tertiary)', padding: 0, margin: '0 0 12px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        style={{ border: 0, background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 'var(--fs-caption-lg)', letterSpacing: 'var(--track-12-5)', color: 'var(--text-tertiary)', padding: 0, margin: '0 0 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
         <span aria-hidden style={{ width: 16, height: 16, borderRadius: 'var(--radius-pill)', border: 'var(--stroke-selected) solid currentColor', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--fs-badge)', fontWeight: 800, flex: 'none' }}>{'ℹ'}</span>
         {t('align.howTitle')}
       </button>
@@ -201,12 +210,12 @@ function ModeBar({ effMode, gwAvailable, testament, setMode }) {
   return (
     <div style={{ padding: '12px 20px', borderBottom: 'var(--stroke-hair) solid var(--border-hair)', background: 'var(--surface-app)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
       <div style={{ display: 'flex', gap: 3, padding: 3, background: 'var(--surface-muted)', borderRadius: 'var(--radius-pill)' }}>
-        <button type="button" data-testid="align-mode-gw" disabled={!gwAvailable}
+        <button type="button" data-trim="cap" data-testid="align-mode-gw" disabled={!gwAvailable}
           onClick={() => setMode('gw')} title={t('align.modeGwHint')}
           style={{ ...modeChip(effMode === 'gw'), opacity: gwAvailable ? 1 : 0.5, cursor: gwAvailable ? 'pointer' : 'default' }}>
           {t('align.modeGw')}
         </button>
-        <button type="button" data-testid="align-mode-orig"
+        <button type="button" data-trim="cap" data-testid="align-mode-orig"
           onClick={() => setMode('orig')} title={t('align.modeOrigHint')}
           style={modeChip(effMode === 'orig')}>
           {t(`align.modeOrig.${testament}`)}
@@ -227,9 +236,7 @@ function RefBand({ effMode, gwTokens, a }) {
   if (!text) return null;
   return (
     <div data-testid="align-ref-text" style={{ padding: '13px 20px', borderBottom: 'var(--stroke-hair) solid var(--border-hair)' }}>
-      <span style={{ fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
-        {effMode === 'gw' ? t('check.ultLabel') : t(`check.origLabel.${a.testament ?? 'nt'}`)}
-      </span>
+      <Overline>{effMode === 'gw' ? t('check.ultLabel') : t(`check.origLabel.${a.testament ?? 'nt'}`)}</Overline>
       <p dir={effMode === 'orig' ? a.origDir : 'ltr'}
         style={{ textAlign: 'start', fontFamily: effMode === 'orig' ? 'var(--font-greek)' : 'var(--font-scripture)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse)', color: 'var(--text-secondary)', margin: '6px 0 0' }}>
         {text}
@@ -238,14 +245,53 @@ function RefBand({ effMode, gwTokens, a }) {
   );
 }
 
+// The design's anchor-mode pill: Inspire fill when on, heading text when off.
 const modeChip = (on) => ({
-  border: 0, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 800,
+  border: 0, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 'var(--fw-heavy)',
   fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', padding: '6px 13px',
   borderRadius: 'var(--radius-pill)',
-  background: on ? 'var(--surface-card)' : 'transparent',
-  color: on ? 'var(--text-heading)' : 'var(--text-secondary)',
-  boxShadow: on ? '0 1px 2px rgba(1,66,99,.2)' : 'none',
+  background: on ? 'var(--accent)' : 'transparent',
+  color: on ? 'var(--text-inverse)' : 'var(--text-heading)',
+  boxShadow: on ? 'var(--shadow-raised)' : 'none',
 });
+
+/** The design's detail header: reference, "Item n of total", previous / next
+ * verse — over the drafted verses of the book (the rail's own list). */
+function AlignHeader({ a, index, book, actions }) {
+  const items = (index?.items ?? []).filter((it) => it.status !== 'undrafted');
+  const idx = items.findIndex((it) => it.ref === a.ref);
+  const canPrev = idx > 0;
+  const canNext = idx >= 0 && idx < items.length - 1;
+  const nav = (enabled) => ({
+    border: 'var(--stroke) solid', background: 'var(--surface-card)', fontFamily: 'inherit',
+    fontWeight: 'var(--fw-heavy)', fontSize: 'var(--fs-ui-sm)', width: 30, height: 30, borderRadius: 'var(--radius-sm)',
+    color: enabled ? 'var(--text-heading)' : 'var(--uw-mist)',
+    borderColor: enabled ? 'var(--border-strong)' : 'var(--border)',
+    cursor: enabled ? 'pointer' : 'default',
+  });
+  return (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+        <span style={{ fontSize: 'var(--fs-ui-sm)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)' }}>
+          {t('align.ref', { book: bookName(book), ref: a.ref })}
+        </span>
+        <div style={{ flex: 1 }} />
+        {idx >= 0 && (
+          <span data-testid="align-item-counter" style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+            {t('check.itemOf', { n: idx + 1, total: items.length })}
+          </span>
+        )}
+        <button type="button" data-testid="align-prev" title={t('check.prevItem')} disabled={!canPrev}
+          onClick={() => canPrev && actions.setAlignVerse(items[idx - 1].ref)} style={nav(canPrev)}>←</button>
+        <button type="button" data-testid="align-next" title={t('check.nextItem')} disabled={!canNext}
+          onClick={() => canNext && actions.setAlignVerse(items[idx + 1].ref)} style={nav(canNext)}>→</button>
+      </div>
+      <h1 style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-h1)', fontWeight: 'var(--fw-bold)', color: 'var(--text-heading)', margin: '0 0 14px' }}>
+        “{t('align.ref', { book: bookName(book), ref: a.ref })}”
+      </h1>
+    </>
+  );
+}
 
 export default function Align({ embedded = false }) {
   const { s, actions } = useApp();
@@ -266,10 +312,7 @@ export default function Align({ embedded = false }) {
   if (!s.book) return null;
 
   const back = embedded ? null : (
-    <button type="button" onClick={actions.closeAlign}
-      style={{ border: '1px solid rgba(35,31,32,.16)', background: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 800, fontSize: 12.5, padding: '7px 14px', borderRadius: 999, color: '#4F5E6A' }}>
-      {t('check.back')}
-    </button>
+    <Button variant="secondary" size="sm" onClick={actions.closeAlign}>{t('check.back')}</Button>
   );
 
   if (isBlocked(a)) {
@@ -298,21 +341,13 @@ export default function Align({ embedded = false }) {
 
   return (
     <div data-testid="align-session">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-        {back}
-        <span style={{ fontSize: 13, fontWeight: 800, color: '#014263' }}>
-          {t('align.ref', { book: bookName(s.book), ref: a.ref })}
-        </span>
-        <div style={{ flex: 1 }} />
-        <span data-testid="align-progress" style={{ fontSize: 12.5, fontWeight: 700, color: '#8A99A4' }}>
-          {t('align.placed', { placed, total })}
-        </span>
-      </div>
+      {back && <div style={{ marginBottom: 14 }}>{back}</div>}
+      <AlignHeader a={a} index={s.alignIndex} book={s.book} actions={actions} />
 
       <HowToggle />
 
       {a.stale && (
-        <p data-testid="align-stale" style={{ fontSize: 12.5, color: '#8A6A22', background: '#F6EEDC', border: '1px solid rgba(229,157,51,.35)', borderRadius: 10, padding: '10px 12px', margin: '0 0 14px', lineHeight: 1.5 }}>
+        <p data-testid="align-stale" style={{ fontSize: 'var(--fs-caption-lg)', color: 'var(--tc-warn-text)', background: 'var(--surface-warm)', border: 'var(--stroke) solid var(--tc-warn-border)', borderRadius: 'var(--radius-md)', padding: '10px 12px', margin: '0 0 14px', lineHeight: 1.5 }}>
           {t('align.stale')}
         </p>
       )}
@@ -321,16 +356,14 @@ export default function Align({ embedded = false }) {
         <ModeBar effMode={effMode} gwAvailable={gwAvailable} testament={a.testament ?? 'nt'} setMode={setMode} />
         <RefBand effMode={effMode} gwTokens={gwTokens} a={a} />
 
-        {/* Word bank — the target words not yet placed. */}
+        {/* Word bank — the target words not yet placed, on the paper tint. */}
         <div onDragOver={allowDrop} onDrop={onDropOnBank}
-          style={{ padding: '14px 20px 16px', borderBottom: 'var(--stroke-hair) solid var(--border-hair)' }}>
+          style={{ padding: '14px 20px 16px', borderBottom: 'var(--stroke-hair) solid var(--border-hair)', background: 'var(--surface-app)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-            <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.13em', textTransform: 'uppercase', color: '#31ADE3' }}>
-              {t('align.bank')}
-            </span>
+            <Overline tone="accent">{t('align.bank')}</Overline>
             <div style={{ flex: 1 }} />
-            <span style={{ fontSize: 11.5, color: '#8A99A4' }}>
-              {a.armed ? t('align.hintArmed') : t('align.hintIdle')}
+            <span data-testid="align-progress" style={{ fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)' }}>
+              {t('align.placed', { placed, total })}
             </span>
           </div>
           {a.record.wordBank.length > 0 ? (
@@ -342,13 +375,14 @@ export default function Align({ embedded = false }) {
                   <button key={`${w.word}-${w.occurrence}`} type="button" draggable
                     onDragStart={(e) => setDragPayload(e, { kind: 'bank', word: w })}
                     onClick={() => actions.armAlignWord(isArmed ? null : w)}
+                    title={a.armed ? t('align.hintArmed') : t('align.hintIdle')}
                     data-armed={isArmed ? '1' : '0'}
                     style={{
-                      fontFamily: 'var(--font-scripture)', fontSize: 15, borderRadius: 8, padding: '5px 11px',
-                      cursor: 'pointer',
-                      border: isArmed ? '2px solid #31ADE3' : '1px solid rgba(35,31,32,.16)',
-                      background: isArmed ? '#eaf6fc' : '#fff',
-                      color: '#231F20',
+                      fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-body)', borderRadius: 'var(--radius-sm)', padding: '5px 11px',
+                      cursor: 'pointer', border: 'var(--stroke) solid var(--accent)',
+                      ...(isArmed
+                        ? { background: 'var(--accent)', color: 'var(--text-inverse)', boxShadow: 'var(--shadow-focus)' }
+                        : { background: 'var(--surface-card)', color: 'var(--text-heading)', boxShadow: 'var(--shadow-chip)' }),
                     }}>
                     {w.word}
                   </button>
@@ -356,7 +390,7 @@ export default function Align({ embedded = false }) {
               })}
             </div>
           ) : (
-            <p data-testid="align-bank-empty" style={{ fontSize: 13, color: '#8A99A4', fontStyle: 'italic', margin: 0 }}>
+            <p data-testid="align-bank-empty" style={{ fontSize: 'var(--fs-ui-sm)', color: 'var(--text-tertiary)', fontStyle: 'italic', margin: 0 }}>
               {t('align.bankEmpty')}
             </p>
           )}
