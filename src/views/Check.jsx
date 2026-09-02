@@ -213,10 +213,11 @@ function ToolCard({ tool, pre, book, progress }) {
       {pre.state === 'ready' && (
         <>
           <CardProgress entry={progress} />
-          <button type="button" data-testid={`open-${tool}`} onClick={(e) => { e.stopPropagation(); open(); }}
-            style={{ ...CTA_STYLE, border: 0, background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', padding: 0, alignSelf: 'flex-start' }}>
+          {/* The card is the control (role=button); the CTA is its label, not
+            * a nested button (Codex round 1, a11y). Clicks bubble to the card. */}
+          <span data-testid={`open-${tool}`} style={{ ...CTA_STYLE, alignSelf: 'flex-start' }}>
             {ctaFor(progress)} {'→'}
-          </button>
+          </span>
         </>
       )}
     </div>
@@ -678,7 +679,7 @@ function CheckRail({ cs, filter, setFilter, sortMode, setSortMode, onSelect }) {
                 const st = statusOf(it);
                 const activeRow = i === cs.activeIndex;
                 return (
-                  <button key={`${it.contextId.checkId}-${i}`} type="button" data-tc="rail-item" onClick={() => onSelect(i)}
+                  <button key={`${it.contextId.checkId}-${i}`} type="button" data-tc="rail-item" data-tc-selected={activeRow ? 'true' : undefined} onClick={() => onSelect(i)}
                     title={`${it.contextId.reference.chapter}:${it.contextId.reference.verse} · ${it.contextId.groupId}`}
                     data-ref={`${it.contextId.reference.chapter}:${it.contextId.reference.verse}`}
                     data-decided={decided(it) ? '1' : '0'}
@@ -779,7 +780,7 @@ function AlignRail({ index, activeRef, filter, setFilter, onSelect }) {
           const undrafted = it.status === 'undrafted';
           const activeRow = it.ref === activeRef;
           return (
-            <button key={it.ref} type="button" disabled={undrafted} data-tc={undrafted ? undefined : 'rail-item'}
+            <button key={it.ref} type="button" disabled={undrafted} data-tc={undrafted ? undefined : 'rail-item'} data-tc-selected={activeRow ? 'true' : undefined}
               onClick={() => !undrafted && onSelect(it.ref)}
               data-ref={it.ref} data-status={it.status}
               style={{
@@ -1027,11 +1028,9 @@ export default function Check() {
               <div style={PICKER_TITLE}>{t('nav.align')}</div>
               <p style={PICKER_DESC}>{t('align.cardBody')}</p>
               <CardProgress entry={s.pickerProgress?.align} kind="align" />
-              <button type="button" data-testid="open-align"
-                onClick={(e) => { e.stopPropagation(); actions.startAligning(); }}
-                style={{ ...CTA_STYLE, border: 0, background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', padding: 0, alignSelf: 'flex-start' }}>
+              <span data-testid="open-align" style={{ ...CTA_STYLE, alignSelf: 'flex-start' }}>
                 {ctaFor(s.pickerProgress?.align)} {'→'}
-              </button>
+              </span>
             </div>
 
             <div data-testid="community-checking-card" data-tc="card"
@@ -1046,11 +1045,9 @@ export default function Check() {
                 <p style={{ ...cardCaption, fontWeight: 'var(--fw-bold)', color: 'var(--text-secondary)' }}>{t('cc.wholeChapter')}</p>
                 <p style={{ ...cardCaption, color: 'var(--text-tertiary)' }}>{t('cc.nextRead', { ref: `${bookName(s.book)} ${s.chapter}` })}</p>
               </div>
-              <button type="button" data-testid="open-community-checking"
-                onClick={(e) => { e.stopPropagation(); actions.go('publish'); }}
-                style={{ ...CTA_STYLE, border: 0, background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', padding: 0, alignSelf: 'flex-start' }}>
+              <span data-testid="open-community-checking" style={{ ...CTA_STYLE, alignSelf: 'flex-start' }}>
                 {t('cc.open')}
-              </button>
+              </span>
             </div>
           </div>
         )}

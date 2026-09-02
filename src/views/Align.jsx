@@ -92,7 +92,9 @@ function WordCard({ card, armed, mode, gwTokens, onPlace, onRemove, onDropOnCard
       data-count={card.bottomWords.length}
       onClick={canDrop ? () => onPlace(card.index) : undefined}
       onDragEnter={() => setOver(true)}
-      onDragLeave={() => setOver(false)}
+      // Drag events bubble from the header and the placed-word chips: only a
+      // leave that actually exits the card clears the highlight (Codex round 1).
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOver(false); }}
       onDragOver={allowDrop}
       onDrop={(e) => { e.preventDefault(); setOver(false); onDropOnCard(card.index, dragPayload(e)); }}
       style={{
