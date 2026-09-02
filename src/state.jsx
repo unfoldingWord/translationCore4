@@ -25,6 +25,7 @@ import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInsta
 import { TOOL_SLOT, preflightToolBook, resolutionRecord, resolveToolBook, resolveSetSlot } from './data/resolve';
 import {
   deriveForProject,
+  isDecided,
   mergeAndReattach,
   progressOf,
   scopeRangesFor,
@@ -318,6 +319,8 @@ const initial = () => ({
   alignSession: null, // { record, armed, ref, … } — the open alignment surface
   checkTool: null, // the open checking tool, or null at the preflight screen
   checkSession: null, // { items, progress, resource, activeIndex } — derived, never stored
+  pickerProgress: null, // #136 (D3d): { seq, [tool]: {done,total,dropped,nextItem}|{error}, align: {…,nextRef} } — derived on picker open, never stored
+  toolPos: {}, // #136: in-memory only — "your place is saved in each tool", keyed `${tool}:${book}`; dies with the app (§4.2)
   progressByProject: {}, // repoPath -> { CODE: draftPct } (lazy Home cache)
   tick: 0,
 });
@@ -331,6 +334,67 @@ let checkSessionSeq = 0;
 let alignSessionSeq = 0;
 let alignIndexSeq = 0;
 let alignWriteQueue = Promise.resolve();
+let pickerProgressSeq = 0;
+
+/** #136 (D3d): one picker-progress derivation run's identity. The seq is
+ * stored ON state.pickerProgress, and the reducer merge refuses entries from
+ * any other run — three tools settle concurrently, and a stale run's entry
+ * (book switched, picker re-entered) must never land. */
+function pickerToolEntry(state, a) {
+  if (state.pickerProgress?.seq !== a.seq) return state;
+  return { ...state, pickerProgress: { ...state.pickerProgress, [a.tool]: a.entry } };
+}
+
+/** #136: the card's numbers, taken from the SAME assembled session the tool
+ * would open — one counting rule (isDecided/progressOf), never a second. */
+function pickerEntryFromSession(session) {
+  return {
+    done: session.progress.decided,
+    total: session.progress.total,
+    dropped: session.dropped ?? null,
+    nextItem: session.items.find((it) => !isDecided(it)) ?? null,
+  };
+}
+
+/** #136: the Align card's numbers, from the same derivation as the align
+ * rail (alignIndexItems). Verses count when drafted; done = fully placed. */
+function alignPickerEntry(items) {
+  const drafted = items.filter((it) => it.status !== 'undrafted');
+  return {
+    done: drafted.filter((it) => it.status === 'valid').length,
+    total: drafted.length,
+    dropped: null,
+    nextRef: drafted.find((it) => it.status === 'todo' || it.status === 'invalid')?.ref ?? null,
+  };
+}
+
+/** #136: one item's remembered position — content identity, not an index,
+ * so a re-derived (or re-ordered) list still finds the same check. */
+const checkPosOf = (item) => ({
+  c: item.contextId.reference.chapter,
+  v: item.contextId.reference.verse,
+  groupId: item.contextId.groupId,
+  occurrence: item.contextId.occurrence ?? 1,
+});
+const samePos = (item, pos) => {
+  const p = checkPosOf(item);
+  return p.c === pos.c && p.v === pos.v && p.groupId === pos.groupId && p.occurrence === pos.occurrence;
+};
+
+/** #136: where a tool opens — remembered place, else first undecided, else
+ * item 1. */
+function checkStartIndex(items, pos) {
+  const byPos = pos ? items.findIndex((it) => samePos(it, pos)) : -1;
+  if (byPos >= 0) return byPos;
+  const todo = items.findIndex((it) => !isDecided(it));
+  return todo >= 0 ? todo : 0;
+}
+
+/** Test hooks (#136): the picker card model is unit-tested. */
+export const __pickerEntryFromSessionForTests = pickerEntryFromSession;
+export const __alignPickerEntryForTests = alignPickerEntry;
+export const __checkStartIndexForTests = checkStartIndex;
+export const __checkPosOfForTests = checkPosOf;
 
 /** Atomic merge into the live check session (same hazard class as setSource):
  * the orig-book read and the article read resolve concurrently, and a
@@ -354,7 +418,7 @@ function checkDecisionSaved(state, a) {
 }
 
 /** Check-session merge actions, table-dispatched ahead of the main switch. */
-const CHECK_SESSION_CASES = { patchCheckSession, checkDecisionSaved };
+const CHECK_SESSION_CASES = { patchCheckSession, checkDecisionSaved, pickerToolEntry };
 
 function reducer(state, a) {
   const checkCase = CHECK_SESSION_CASES[a.type];
@@ -2168,7 +2232,18 @@ export function AppProvider({ children }) {
 
       startAligning: () => {
         alignSessionSeq++;
-        dispatch({ type: 'set', patch: { aligning: true, alignSession: null } });
+        // #136: open at the remembered verse, else the picker's next
+        // unaligned verse, else the default (first drafted, via openAlign).
+        // A remembered verse whose draft was since emptied is skipped
+        // (review round 1) — resuming it would open an unavailable session
+        // instead of falling through the chain.
+        const st = stateRef.current;
+        const texts = verseTextIndex(st.bookRaw);
+        const alignVerse =
+          [st.toolPos?.[`align:${st.book}`], st.pickerProgress?.align?.nextRef].find(
+            (ref) => ref && texts[ref],
+          ) ?? null;
+        dispatch({ type: 'set', patch: { aligning: true, alignSession: null, alignVerse } });
       },
 
       closeAlign: () => {
@@ -2206,7 +2281,16 @@ export function AppProvider({ children }) {
       /** #129: the rail picks the verse; the session effect re-opens on it. */
       setAlignVerse: (ref) => {
         alignSessionSeq++; // the old verse's in-flight completions are foreign now
-        dispatch({ type: 'set', patch: { alignVerse: ref, alignSession: null } });
+        const st = stateRef.current;
+        dispatch({
+          type: 'set',
+          patch: {
+            alignVerse: ref,
+            alignSession: null,
+            // #136: remember the place per book — in memory only (§4.2).
+            toolPos: { ...st.toolPos, [`align:${st.book}`]: ref },
+          },
+        });
       },
 
       /** Select (or clear) the banked word the next card click will place. */
@@ -2315,6 +2399,11 @@ export function AppProvider({ children }) {
             api, actions: a, store: storeRef.current, stateRef, st, tool, book, pre, seq,
           });
           if (seq !== checkSessionSeq) return; // a newer open or close won
+          // #136: open at the remembered in-memory position, else the first
+          // undecided item, else item 1 ("your place is saved in each tool").
+          if (!partial) {
+            session.activeIndex = checkStartIndex(session.items, stateRef.current.toolPos?.[`${tool}:${book}`]);
+          }
           dispatch({ type: 'set', patch: { checkTool: tool, checkSession: session } });
           if (partial) return;
           a.loadActiveArticle(session);
@@ -2333,12 +2422,68 @@ export function AppProvider({ children }) {
         dispatch({ type: 'set', patch: { checkTool: null, checkSession: null } });
       },
 
+      /** #136 (D3d, ruled 2026-09-01): per-tool progress for the picker
+       * cards, derived on demand — NEVER stored (§4.2). Each ready tool
+       * assembles the SAME session the tool would open (one counting rule);
+       * Align reuses the rail's derivation. Entries land through a
+       * seq-guarded reducer merge, so a stale run cannot regress a newer
+       * one; a failed derivation is a stated per-card error and never
+       * blocks opening the tool (D30). */
+      loadPickerProgress: async () => {
+        const st = stateRef.current;
+        const store = storeRef.current;
+        // bookRaw is required (review round 1): revalidation against a
+        // not-yet-loaded draft would misreport every decided count.
+        if (!st.book || !store || !st.preflight || !st.bookRaw) return;
+        const book = st.book;
+        const seq = ++pickerProgressSeq;
+        dispatch({ type: 'set', patch: { pickerProgress: { seq } } });
+        const entry = (tool, value) => dispatch({ type: 'pickerToolEntry', seq, tool, entry: value });
+        const toolRuns = Object.entries(st.preflight)
+          .filter(([, pre]) => pre?.state === 'ready' && pre.resolution?.pin)
+          .map(async ([tool, pre]) => {
+            try {
+              const result = await deriveCheckItems({ apiClient: api, actions: a, st, tool, book, pre });
+              if (result.session) {
+                entry(tool, { done: 0, total: 0, dropped: result.session.dropped ?? null, nextItem: null, empty: result.session.empty });
+                return;
+              }
+              const session = await completedCheckSession({
+                store, st: stateRef.current, tool, book, pre,
+                derived: result.derived, dropped: result.dropped,
+              });
+              entry(tool, pickerEntryFromSession(session));
+            } catch (e) {
+              entry(tool, { error: String(e?.message || e) });
+            }
+          });
+        const alignRun = (async () => {
+          try {
+            if (!st.bookRaw) return;
+            const { value: file } = await store.readAlignmentsWithMd5(book);
+            entry('align', alignPickerEntry(alignIndexItems(st.bookRaw, file)));
+          } catch (e) {
+            entry('align', { error: String(e?.message || e) });
+          }
+        })();
+        await Promise.all([...toolRuns, alignRun]);
+      },
+
       setCheckIndex: (activeIndex) => {
         const cs = stateRef.current.checkSession;
         if (!cs) return;
         // Reducer-side merge: a concurrently-landing orig/article result must
         // not be clobbered by this snapshot (patchCheckSession hazard note).
         dispatch({ type: 'patchCheckSession', seq: cs.seq, patch: { activeIndex } });
+        // #136: remember the place per (tool, book) — in memory only (§4.2).
+        const item = cs.items?.[activeIndex];
+        if (item) {
+          const st2 = stateRef.current;
+          dispatch({
+            type: 'set',
+            patch: { toolPos: { ...st2.toolPos, [`${cs.tool}:${cs.book}`]: checkPosOf(item) } },
+          });
+        }
         a.loadActiveArticle({ ...cs, activeIndex });
       },
 
@@ -2876,7 +3021,7 @@ export function AppProvider({ children }) {
         // Sequence token: two rapid opens must not interleave (finding M2) —
         // only the latest open may install its bytes and sources.
         const seq = ++openSeqRef.current;
-        dispatch({ type: 'set', patch: { book: code, chapter: 1, bookRaw: null, bookError: null, sources: {}, editing: null, helpsHover: null, helpsActive: null } });
+        dispatch({ type: 'set', patch: { book: code, chapter: 1, bookRaw: null, bookError: null, sources: {}, editing: null, helpsHover: null, helpsActive: null, pickerProgress: null } });
         let raw;
         try {
           ({ usfm: raw } = await store.readBook(code));
@@ -3146,7 +3291,7 @@ export function AppProvider({ children }) {
         alignSessionSeq++;
         dispatch({
           type: 'set',
-          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, saveState: 'saved', noteSaveState: 'saved', projectPins: null, projectPinsLoaded: false, projectPinsError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null },
+          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, saveState: 'saved', noteSaveState: 'saved', projectPins: null, projectPinsLoaded: false, projectPinsError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, pickerProgress: null, toolPos: {} },
         });
         refreshProjects(); // re-order: the project just left goes to the top
       },
