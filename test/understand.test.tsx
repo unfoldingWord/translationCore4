@@ -909,6 +909,8 @@ describe('2026-08-28 adversarial round 37 regressions', () => {
       expect(screen.getByTestId('no-source-panes')).toBeTruthy();
       expect(screen.queryByTestId('source-tab-ult')).toBeNull();
       expect(screen.queryByTestId('source-tab-ust')).toBeNull();
+      // No pane, no source name (Codex review of #140).
+      expect(screen.queryByTestId('understand-source-name')).toBeNull();
       // No panes means nothing is pending: the loading line must not render
       // beside (and contradict) the no-source-panes callout (issue #123).
       expect(screen.queryByText(/Loading the passage/)).toBeNull();
@@ -943,6 +945,64 @@ describe('2026-08-28 adversarial round 37 regressions', () => {
       expect(screen.getByText(/THE FINAL APPLIED EXAMPLE/)).toBeTruthy();
     } finally {
       state.understand = savedU;
+    }
+  });
+});
+
+describe('#104 fidelity — the focused-unit model (Codex review of #140)', () => {
+  beforeEach(() => { cleanup(); calls.length = 0; });
+
+  it('the first unit is focused by default; clicking another moves the focus and nothing writes', () => {
+    render(<Understand />);
+    const units = screen.getAllByTestId(/^understand-unit-/);
+    expect(units[0].getAttribute('data-focused')).toBe('true');
+    expect(units[1].getAttribute('data-focused')).toBeNull();
+    fireEvent.click(units[1]);
+    expect(units[1].getAttribute('data-focused')).toBe('true');
+    expect(units[0].getAttribute('data-focused')).toBeNull();
+    expect(writes()).toEqual([]);
+  });
+
+  it('a unit is keyboard-operable: Tab stop, Enter and Space focus it', () => {
+    render(<Understand />);
+    const units = screen.getAllByTestId(/^understand-unit-/);
+    expect(units[1].getAttribute('tabindex')).toBe('0');
+    fireEvent.keyDown(units[1], { key: 'Enter' });
+    expect(units[1].getAttribute('data-focused')).toBe('true');
+    fireEvent.keyDown(units[0], { key: ' ' });
+    expect(units[0].getAttribute('data-focused')).toBe('true');
+    expect(units[0].getAttribute('aria-current')).toBe('true');
+  });
+
+  it('focusing a unit selects the first help card in its range; a unit without one clears the selection', () => {
+    render(<Understand />);
+    const units = screen.getAllByTestId(/^understand-unit-/);
+    fireEvent.click(units[0]); // verses 1–2 carry the fixture's verse-1 note
+    const focused = calls.filter((c) => c.name === 'focusHelp');
+    expect(focused.length).toBe(1);
+    expect((focused[0].args[0] as { id: string }).id).toBe('n1');
+    // With a card active, a unit that has no help clears it (focusHelp(null)).
+    (state as unknown as { helpsActive: { id: string } | null }).helpsActive = { id: 'n1' };
+    try {
+      fireEvent.click(units[1]); // verses 3–5: no notes, no words
+      const after = calls.filter((c) => c.name === 'focusHelp');
+      expect(after.length).toBe(2);
+      expect(after[1].args[0]).toBeNull();
+    } finally {
+      (state as unknown as { helpsActive: unknown }).helpsActive = undefined;
+    }
+  });
+
+  it('a paragraph marker inside a verse opens a new <p>; the unit renders one paragraph otherwise', () => {
+    const saved = srcChapters['1']['2'];
+    (srcChapters['1'] as Record<string, unknown>)['2'] = { verseObjects: [{ tag: 'p', type: 'paragraph' }, { text: 'He was with God.' }] };
+    try {
+      render(<Understand />);
+      const units = screen.getAllByTestId(/^understand-unit-/);
+      expect(units[0].querySelectorAll('p').length).toBe(2);
+      expect(units[1].querySelectorAll('p').length).toBe(1);
+    } finally {
+      (srcChapters['1'] as Record<string, unknown>)['2'] = saved;
     }
   });
 });
