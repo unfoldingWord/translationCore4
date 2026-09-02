@@ -21,7 +21,7 @@ import { isLanguageSwitch } from '../data/revalidate';
 import { targetWords, selectionsFromTokens, tokenIndicesFromSelections } from '../data/selections';
 import { tokenizeVerse, matchQuote } from '../data/sourceHighlight';
 import { verseText } from './verseText.js';
-import { ExpandableNote } from './HelpsPanel.jsx';
+import { ExpandableNote, glTitleFor } from './HelpsPanel.jsx';
 import { t } from '../i18n';
 import { Button, Callout, Drawer, Overline, ProgressBar } from '../ds/index.js';
 
@@ -115,16 +115,16 @@ export function ctaFor(entry) {
   return t('check.cta.continue');
 }
 
-function nextLineFor(entry, kind) {
+function nextLineFor(entry, kind, titleOf) {
   if (!entry || entry.error != null || !entry.total) return '';
   if (entry.done >= entry.total) return t('check.allResolved');
   if (kind === 'align') return entry.nextRef ? t('align.nextVerse', { ref: entry.nextRef }) : '';
   const it = entry.nextItem;
   if (!it) return '';
-  return t('check.next', { quote: quoteOf(it) || it.contextId.groupId, c: it.contextId.reference.chapter, v: it.contextId.reference.verse });
+  return t('check.next', { quote: titleOf(it), c: it.contextId.reference.chapter, v: it.contextId.reference.verse });
 }
 
-function CardProgress({ entry, kind = 'check' }) {
+function CardProgress({ entry, kind = 'check', titleOf = quoteOf }) {
   const countLabel = () => {
     if (!entry) return '—';
     if (entry.error != null) return t('check.progressError');
@@ -132,7 +132,7 @@ function CardProgress({ entry, kind = 'check' }) {
     const args = { decided: entry.done, done: entry.done, total: entry.total };
     return kind === 'align' ? t('align.progressVerses', args) : t('check.progress', args);
   };
-  const next = nextLineFor(entry, kind);
+  const next = nextLineFor(entry, kind, titleOf);
   return (
     <div data-testid={`picker-progress-${kind}`} data-loaded={entry ? '1' : '0'} style={{ marginBottom: 16 }}>
       <ProgressBar tone="valid" value={entry?.total ? (entry.done / entry.total) * 100 : 0} height={6} style={{ marginBottom: 9 }} />
@@ -167,7 +167,7 @@ const clickableCard = (open) => ({
   },
 });
 
-function ToolCard({ tool, pre, book, progress }) {
+function ToolCard({ tool, pre, book, progress, titleOf }) {
   const { actions } = useApp();
   const tone = TONE[pre.state] ?? TONE.unpinned;
   const ready = pre.state === 'ready';
@@ -212,7 +212,7 @@ function ToolCard({ tool, pre, book, progress }) {
       )}
       {pre.state === 'ready' && (
         <>
-          <CardProgress entry={progress} />
+          <CardProgress entry={progress} titleOf={titleOf} />
           {/* The card is the control (role=button); the CTA is its label, not
             * a nested button (Codex round 1, a11y). Clicks bubble to the card. */}
           <span data-testid={`open-${tool}`} style={{ ...CTA_STYLE, alignSelf: 'flex-start' }}>
@@ -399,7 +399,7 @@ function UltPane({ sources, sourcePanes, item, c, v, crossFrame }) {
   const tokens = React.useMemo(() => (vObj ? tokenizeVerse(vObj) : []), [vObj]);
   const hits = React.useMemo(
     () => (tokens.length
-      ? matchQuote(tokens, item.contextId.quote ?? item.contextId.quoteString ?? '', item.contextId.occurrence ?? 1)
+      ? matchQuote(tokens, item.contextId.quote?.length ? item.contextId.quote : (item.contextId.quoteString ?? ''), item.contextId.occurrence ?? 1)
       : new Set()),
     [tokens, item],
   );
@@ -437,10 +437,10 @@ function UltPane({ sources, sourcePanes, item, c, v, crossFrame }) {
 /** The detail column (F1): ref + item counter header, serif phrase h1, the
  * "What to check" note box, the Academy link, the compare card, and the three
  * block triage buttons — the mockup's L1044–1196 region. */
-function CheckDetail({ cs, item, sources, sourcePanes, words, sel, toggleWord, markValid, markInvalid, markTodo, onOpenAcademy, onNav }) {
+function CheckDetail({ cs, item, title, sources, sourcePanes, words, sel, toggleWord, markValid, markInvalid, markTodo, onOpenAcademy, onNav, targetDirection = 'ltr' }) {
   const c = item.contextId.reference.chapter;
   const v = item.contextId.reference.verse;
-  const quote = quoteOf(item);
+  const quote = title;
   const idx = cs.activeIndex;
   const canPrev = idx > 0;
   const canNext = idx < cs.items.length - 1;
@@ -502,11 +502,11 @@ function CheckDetail({ cs, item, sources, sourcePanes, words, sel, toggleWord, m
             </p>
           ) : (
             <>
-              <p data-testid="check-target" data-drafted="1" style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-title-lg)', lineHeight: 1.9, color: 'var(--text-scripture)', margin: '8px 0 0' }}>
+              <p data-testid="check-target" data-drafted="1" style={{ direction: targetDirection, textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-title-lg)', lineHeight: 1.9, color: 'var(--text-scripture)', margin: '8px 0 0' }}>
                 {words.map((w, i) => (
                   <span key={i} data-testid={`tw-${i}`} data-selected={sel.has(i) ? '1' : '0'}
                     onClick={() => toggleWord(i)}
-                    style={{ cursor: 'pointer', borderRadius: 4, padding: '0 .1em', marginInlineEnd: '.22em', background: sel.has(i) ? 'var(--tc-highlight-soft)' : 'transparent' }}>
+                    style={{ display: 'inline-block', cursor: 'pointer', borderRadius: 4, padding: '0 .1em', marginInlineEnd: '.22em', background: sel.has(i) ? 'var(--tc-highlight-soft)' : 'transparent' }}>
                     {w}
                   </span>
                 ))}
@@ -615,7 +615,7 @@ export function railGroupsOf({ items, sortMode, book }) {
   return [{ label: bookName(book), rows }];
 }
 
-function CheckRail({ cs, filter, setFilter, sortMode, setSortMode, onSelect }) {
+function CheckRail({ cs, filter, setFilter, sortMode, setSortMode, onSelect, titleOf }) {
   const { actions } = useApp();
   const decided = isDecided;
   const indexed = cs.items.map((it, i) => ({ it, i }));
@@ -693,7 +693,7 @@ function CheckRail({ cs, filter, setFilter, sortMode, setSortMode, onSelect }) {
                     }}>
                     <span style={{ width: 9, height: 9, borderRadius: 'var(--radius-pill)', flex: 'none', background: it.invalidated === true ? DOT.invalid : DOT[st] }} />
                     <span style={{ flex: 1, fontSize: 'var(--fs-ui-sm)', fontWeight: 'var(--fw-bold)', color: 'var(--text-body)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      “{quoteOf(it) || it.contextId.groupId}”
+                      “{titleOf(it)}”
                     </span>
                     <span style={{ fontSize: 'var(--fs-badge)', letterSpacing: 'var(--track-10)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
                       {t('check.ref', { c: it.contextId.reference.chapter, v: it.contextId.reference.verse })}
@@ -853,11 +853,35 @@ function sessionView(cs) {
   return { activeIndex, activeItem, targetText, tool: cs?.tool, book: cs?.book };
 }
 
-/** The item's source quote — tN carries a word array, tW a plain string. */
+/** The item's ORIGINAL-language quote — tN carries a word array, tW a plain
+ * string. The fallback title only [decided 2026-08-31 — titles show the
+ * gateway rendering; the original appears when nothing resolves]. */
 const quoteOf = (item) =>
-  Array.isArray(item?.contextId.quote)
+  (Array.isArray(item?.contextId.quote) && item.contextId.quote.length
     ? item.contextId.quote.map((w) => w.word).join(' ')
-    : item?.contextId.quoteString;
+    : item?.contextId.quoteString) || item?.contextId.groupId || '';
+
+/** A title resolver for check items: the GATEWAY rendering of the quote
+ * [decided 2026-08-31], falling back to the original-language quote. It is the
+ * helps panel's own resolver (glTitleFor: the ULT pane's alignment, bridge keys
+ * via keyCarries, mapped rows for a cross-frame project), one per chapter.
+ * While the helps load there is no frame verdict yet, so every title is the
+ * original — never a same-frame guess (Codex review of #150). Memoize the
+ * result on (sources, sourcePanes, understand): the caches live as long as it does. */
+export function gatewayTitleFor(sources, sourcePanes, understand) {
+  if (!understand || understand.loading) return quoteOf;
+  const paneId = sourcePanes?.includes('ult') ? 'ult' : sourcePanes?.[0];
+  const src = paneId ? sources?.[paneId] : undefined;
+  const perChapter = new Map();
+  return (item) => {
+    const c = item.contextId.reference.chapter;
+    if (!perChapter.has(c)) {
+      const refRows = understand.sourceRefs != null ? (understand.sourceRefs[String(c)] ?? []) : null;
+      perChapter.set(c, glTitleFor(src, c, refRows));
+    }
+    return perChapter.get(c)(item) || quoteOf(item);
+  };
+}
 
 function CheckSession() {
   const { s, actions } = useApp();
@@ -883,6 +907,12 @@ function CheckSession() {
     setSortMode(SORTS[tool]?.default);
     setAcademyOpen(false);
   }, [tool, book]);
+  // One title resolver for the rail, the heading and the next-line
+  // [decided 2026-08-31 — gateway rendering]; its caches survive re-renders.
+  const titleOf = React.useMemo(
+    () => gatewayTitleFor(s.sources, s.sourcePanes, s.understand),
+    [s.sources, s.sourcePanes, s.understand],
+  );
 
   const centered = (child) => (
     <main style={{ flex: 1, overflow: 'auto', padding: '32px 40px 64px' }}>
@@ -926,11 +956,12 @@ function CheckSession() {
   return (
     <div data-testid="check-session" style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       <CheckRail cs={cs} filter={filter} setFilter={setFilter}
-        sortMode={sortMode} setSortMode={setSortMode}
+        sortMode={sortMode} setSortMode={setSortMode} titleOf={titleOf}
         onSelect={(i) => actions.setCheckIndex(i)} />
       <main style={{ flex: 1, overflow: 'auto', minWidth: 0, background: 'var(--surface-app)' }}>
         {item && (
-          <CheckDetail cs={cs} item={item} sources={s.sources} sourcePanes={s.sourcePanes} words={words} sel={sel}
+          <CheckDetail cs={cs} item={item} title={titleOf(item)} sources={s.sources} sourcePanes={s.sourcePanes} words={words} sel={sel}
+            targetDirection={s.project?.scriptDirection === 'rtl' ? 'rtl' : 'ltr'}
             toggleWord={toggleWord} markValid={markValid} markInvalid={markInvalid} markTodo={markTodo}
             onOpenAcademy={() => setAcademyOpen(true)}
             onNav={(i) => actions.setCheckIndex(i)} />
@@ -961,6 +992,13 @@ export default function Check() {
   React.useEffect(() => {
     if (pre && atPicker && s.bookRaw) actions.loadPickerProgress();
   }, [pre, atPicker, s.bookRaw]);
+
+  // The picker's "Next: …" line shows the gateway title too [decided
+  // 2026-08-31]; the frame verdict is the understand load's (sourceRefs).
+  const pickerTitleOf = React.useMemo(
+    () => gatewayTitleFor(s.sources, s.sourcePanes, s.understand),
+    [s.sources, s.sourcePanes, s.understand],
+  );
 
   if (!s.book) return null;
 
@@ -1019,7 +1057,7 @@ export default function Check() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(270px,1fr))', gap: 16 }}>
             {TOOLS.map((tool) => (
               <ToolCard key={tool} tool={tool} pre={pre[tool]} book={s.book}
-                progress={s.pickerProgress?.[tool]} />
+                progress={s.pickerProgress?.[tool]} titleOf={pickerTitleOf} />
             ))}
 
             <div data-testid="align-card" data-tc="card"
