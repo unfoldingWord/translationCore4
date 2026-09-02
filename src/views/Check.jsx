@@ -19,7 +19,7 @@ import { renderArticleBlocks } from '../data/articles';
 import Align from './Align.jsx';
 import { isLanguageSwitch } from '../data/revalidate';
 import { targetWords, selectionsFromTokens, tokenIndicesFromSelections } from '../data/selections';
-import { tokenizeVerse, matchQuote } from '../data/sourceHighlight';
+import { tokenizeVerse, matchQuote, gatewayQuote } from '../data/sourceHighlight';
 import { verseText } from './verseText.js';
 import { ExpandableNote } from './HelpsPanel.jsx';
 import { t } from '../i18n';
@@ -115,16 +115,16 @@ export function ctaFor(entry) {
   return t('check.cta.continue');
 }
 
-function nextLineFor(entry, kind) {
+function nextLineFor(entry, kind, titleOf) {
   if (!entry || entry.error != null || !entry.total) return '';
   if (entry.done >= entry.total) return t('check.allResolved');
   if (kind === 'align') return entry.nextRef ? t('align.nextVerse', { ref: entry.nextRef }) : '';
   const it = entry.nextItem;
   if (!it) return '';
-  return t('check.next', { quote: quoteOf(it) || it.contextId.groupId, c: it.contextId.reference.chapter, v: it.contextId.reference.verse });
+  return t('check.next', { quote: titleOf(it), c: it.contextId.reference.chapter, v: it.contextId.reference.verse });
 }
 
-function CardProgress({ entry, kind = 'check' }) {
+function CardProgress({ entry, kind = 'check', titleOf = quoteOf }) {
   const countLabel = () => {
     if (!entry) return '—';
     if (entry.error != null) return t('check.progressError');
@@ -132,7 +132,7 @@ function CardProgress({ entry, kind = 'check' }) {
     const args = { decided: entry.done, done: entry.done, total: entry.total };
     return kind === 'align' ? t('align.progressVerses', args) : t('check.progress', args);
   };
-  const next = nextLineFor(entry, kind);
+  const next = nextLineFor(entry, kind, titleOf);
   return (
     <div data-testid={`picker-progress-${kind}`} data-loaded={entry ? '1' : '0'} style={{ marginBottom: 16 }}>
       <ProgressBar tone="valid" value={entry?.total ? (entry.done / entry.total) * 100 : 0} height={6} style={{ marginBottom: 9 }} />
@@ -167,7 +167,7 @@ const clickableCard = (open) => ({
   },
 });
 
-function ToolCard({ tool, pre, book, progress }) {
+function ToolCard({ tool, pre, book, progress, titleOf }) {
   const { actions } = useApp();
   const tone = TONE[pre.state] ?? TONE.unpinned;
   const ready = pre.state === 'ready';
@@ -212,7 +212,7 @@ function ToolCard({ tool, pre, book, progress }) {
       )}
       {pre.state === 'ready' && (
         <>
-          <CardProgress entry={progress} />
+          <CardProgress entry={progress} titleOf={titleOf} />
           {/* The card is the control (role=button); the CTA is its label, not
             * a nested button (Codex round 1, a11y). Clicks bubble to the card. */}
           <span data-testid={`open-${tool}`} style={{ ...CTA_STYLE, alignSelf: 'flex-start' }}>
@@ -437,10 +437,10 @@ function UltPane({ sources, sourcePanes, item, c, v, crossFrame }) {
 /** The detail column (F1): ref + item counter header, serif phrase h1, the
  * "What to check" note box, the Academy link, the compare card, and the three
  * block triage buttons — the mockup's L1044–1196 region. */
-function CheckDetail({ cs, item, sources, sourcePanes, words, sel, toggleWord, markValid, markInvalid, markTodo, onOpenAcademy, onNav }) {
+function CheckDetail({ cs, item, title, sources, sourcePanes, words, sel, toggleWord, markValid, markInvalid, markTodo, onOpenAcademy, onNav }) {
   const c = item.contextId.reference.chapter;
   const v = item.contextId.reference.verse;
-  const quote = quoteOf(item);
+  const quote = title;
   const idx = cs.activeIndex;
   const canPrev = idx > 0;
   const canNext = idx < cs.items.length - 1;
@@ -615,7 +615,7 @@ export function railGroupsOf({ items, sortMode, book }) {
   return [{ label: bookName(book), rows }];
 }
 
-function CheckRail({ cs, filter, setFilter, sortMode, setSortMode, onSelect }) {
+function CheckRail({ cs, filter, setFilter, sortMode, setSortMode, onSelect, titleOf }) {
   const { actions } = useApp();
   const decided = isDecided;
   const indexed = cs.items.map((it, i) => ({ it, i }));
@@ -693,7 +693,7 @@ function CheckRail({ cs, filter, setFilter, sortMode, setSortMode, onSelect }) {
                     }}>
                     <span style={{ width: 9, height: 9, borderRadius: 'var(--radius-pill)', flex: 'none', background: it.invalidated === true ? DOT.invalid : DOT[st] }} />
                     <span style={{ flex: 1, fontSize: 'var(--fs-ui-sm)', fontWeight: 'var(--fw-bold)', color: 'var(--text-body)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      “{quoteOf(it) || it.contextId.groupId}”
+                      “{titleOf(it)}”
                     </span>
                     <span style={{ fontSize: 'var(--fs-badge)', letterSpacing: 'var(--track-10)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
                       {t('check.ref', { c: it.contextId.reference.chapter, v: it.contextId.reference.verse })}
@@ -853,11 +853,45 @@ function sessionView(cs) {
   return { activeIndex, activeItem, targetText, tool: cs?.tool, book: cs?.book };
 }
 
-/** The item's source quote — tN carries a word array, tW a plain string. */
+/** The item's ORIGINAL-language quote — tN carries a word array, tW a plain
+ * string. The fallback title only (owner ruling 2026-08-31: titles show the
+ * gateway rendering; the original appears when nothing resolves). */
 const quoteOf = (item) =>
-  Array.isArray(item?.contextId.quote)
+  (Array.isArray(item?.contextId.quote)
     ? item.contextId.quote.map((w) => w.word).join(' ')
-    : item?.contextId.quoteString;
+    : item?.contextId.quoteString) || item?.contextId.groupId || '';
+
+/** A title resolver for check items: the GATEWAY rendering of the quote, read
+ * through the ULT pane's alignment (the same matcher the helps panel and the
+ * compare card use), falling back to the original-language quote. Same-frame
+ * only — a cross-frame project's (c, v) is not this pane's numbering (#131),
+ * so it keeps the original. Tokens are cached per verse, titles per item. */
+function gatewayTitleFor(sources, sourcePanes, crossFrame) {
+  const paneId = sourcePanes?.includes('ult') ? 'ult' : sourcePanes?.[0];
+  const source = paneId ? sources?.[paneId] : undefined;
+  const tokens = new Map();
+  const titles = new Map();
+  return (item) => {
+    const c = item.contextId.reference.chapter;
+    const v = item.contextId.reference.verse;
+    const id = `${item.contextId.checkId}:${c}:${v}:${item.contextId.quoteString ?? ''}:${item.contextId.occurrence ?? 1}`;
+    if (titles.has(id)) return titles.get(id);
+    let title = null;
+    const vObj = ultVerseObj(source, crossFrame, c, v);
+    if (vObj) {
+      const key = `${c}:${v}`;
+      if (!tokens.has(key)) tokens.set(key, tokenizeVerse(vObj));
+      title = gatewayQuote(
+        tokens.get(key),
+        item.contextId.quote?.length ? item.contextId.quote : (item.contextId.quoteString ?? ''),
+        item.contextId.occurrence ?? 1,
+      );
+    }
+    const out = title || quoteOf(item);
+    titles.set(id, out);
+    return out;
+  };
+}
 
 function CheckSession() {
   const { s, actions } = useApp();
@@ -900,6 +934,9 @@ function CheckSession() {
   if (cs.empty) return centered(<CheckEmpty cs={cs} actions={actions} />);
 
   const item = cs.items[cs.activeIndex];
+  // Titles in the gateway text (owner ruling 2026-08-31), one resolver per
+  // session render: the rail, the heading and the picker's next-line agree.
+  const titleOf = gatewayTitleFor(s.sources, s.sourcePanes, cs.crossFrame);
 
   const toggleWord = (i) =>
     setSel((prev) => {
@@ -926,11 +963,11 @@ function CheckSession() {
   return (
     <div data-testid="check-session" style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       <CheckRail cs={cs} filter={filter} setFilter={setFilter}
-        sortMode={sortMode} setSortMode={setSortMode}
+        sortMode={sortMode} setSortMode={setSortMode} titleOf={titleOf}
         onSelect={(i) => actions.setCheckIndex(i)} />
       <main style={{ flex: 1, overflow: 'auto', minWidth: 0, background: 'var(--surface-app)' }}>
         {item && (
-          <CheckDetail cs={cs} item={item} sources={s.sources} sourcePanes={s.sourcePanes} words={words} sel={sel}
+          <CheckDetail cs={cs} item={item} title={titleOf(item)} sources={s.sources} sourcePanes={s.sourcePanes} words={words} sel={sel}
             toggleWord={toggleWord} markValid={markValid} markInvalid={markInvalid} markTodo={markTodo}
             onOpenAcademy={() => setAcademyOpen(true)}
             onNav={(i) => actions.setCheckIndex(i)} />
@@ -963,6 +1000,11 @@ export default function Check() {
   }, [pre, atPicker, s.bookRaw]);
 
   if (!s.book) return null;
+
+  // The picker's "Next: …" line shows the gateway title too. Cross-frame is
+  // the understand load's verdict (sourceRefs non-null), the same signal the
+  // session records as cs.crossFrame.
+  const pickerTitleOf = gatewayTitleFor(s.sources, s.sourcePanes, s.understand?.sourceRefs != null);
 
   // #129: Align opens inside the same rail+detail workspace as the derived
   // tools — no separate top-level Align screen.
@@ -1019,7 +1061,7 @@ export default function Check() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(270px,1fr))', gap: 16 }}>
             {TOOLS.map((tool) => (
               <ToolCard key={tool} tool={tool} pre={pre[tool]} book={s.book}
-                progress={s.pickerProgress?.[tool]} />
+                progress={s.pickerProgress?.[tool]} titleOf={pickerTitleOf} />
             ))}
 
             <div data-testid="align-card" data-tc="card"
