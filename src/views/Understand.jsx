@@ -11,14 +11,7 @@ import BookRail from './BookRail.jsx';
 import { HelpsPanel, leadingNum, useLoadHelps, focusOf } from './HelpsPanel.jsx';
 import { keyCarries, SourceVerse } from './SourceVerse.jsx';
 import { FilterChip, IconButton, Overline, SegmentedControl, StatusDot, Callout, Button } from '../ds/index.js';
-
-// The design's rail toggle: a sidebar glyph, not a text character.
-const RailIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-    <rect x="1.5" y="2.5" width="13" height="11" rx="2" stroke="currentColor" strokeWidth="1.5" />
-    <line x1="6" y1="3" x2="6" y2="13" stroke="currentColor" strokeWidth="1.5" />
-  </svg>
-);
+import { RailIcon } from './PanelIcons.jsx';
 
 // A USFM paragraph-level marker inside a verse's objects (usfm-js keeps `\p`,
 // `\m`, `\q…`, list markers as paragraph objects in the verse where they

@@ -45,7 +45,8 @@ describe('#107 — the Translate editing card', () => {
     const display = screen.getByTitle(/edit/i);
     const displaySize = display.style.fontSize;
     const displayLine = display.style.lineHeight;
-    expect(displaySize).toBe('var(--fs-verse-md)');
+    // The design's reading size for both Translate columns (epic #104).
+    expect(displaySize).toBe('var(--fs-verse-lg)');
 
     cleanup();
     state.editing = { key: '1:1' };
