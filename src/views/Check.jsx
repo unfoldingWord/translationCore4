@@ -437,7 +437,7 @@ function UltPane({ sources, sourcePanes, item, c, v, crossFrame }) {
 /** The detail column (F1): ref + item counter header, serif phrase h1, the
  * "What to check" note box, the Academy link, the compare card, and the three
  * block triage buttons — the mockup's L1044–1196 region. */
-function CheckDetail({ cs, item, title, sources, sourcePanes, words, sel, toggleWord, markValid, markInvalid, markTodo, onOpenAcademy, onNav }) {
+function CheckDetail({ cs, item, title, sources, sourcePanes, words, sel, toggleWord, markValid, markInvalid, markTodo, onOpenAcademy, onNav, tgtDir = 'ltr' }) {
   const c = item.contextId.reference.chapter;
   const v = item.contextId.reference.verse;
   const quote = title;
@@ -502,11 +502,11 @@ function CheckDetail({ cs, item, title, sources, sourcePanes, words, sel, toggle
             </p>
           ) : (
             <>
-              <p data-testid="check-target" data-drafted="1" style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-title-lg)', lineHeight: 1.9, color: 'var(--text-scripture)', margin: '8px 0 0' }}>
+              <p data-testid="check-target" data-drafted="1" style={{ direction: tgtDir, textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-title-lg)', lineHeight: 1.9, color: 'var(--text-scripture)', margin: '8px 0 0' }}>
                 {words.map((w, i) => (
                   <span key={i} data-testid={`tw-${i}`} data-selected={sel.has(i) ? '1' : '0'}
                     onClick={() => toggleWord(i)}
-                    style={{ cursor: 'pointer', borderRadius: 4, padding: '0 .1em', marginInlineEnd: '.22em', background: sel.has(i) ? 'var(--tc-highlight-soft)' : 'transparent' }}>
+                    style={{ display: 'inline-block', cursor: 'pointer', borderRadius: 4, padding: '0 .1em', marginInlineEnd: '.22em', background: sel.has(i) ? 'var(--tc-highlight-soft)' : 'transparent' }}>
                     {w}
                   </span>
                 ))}
@@ -961,6 +961,7 @@ function CheckSession() {
       <main style={{ flex: 1, overflow: 'auto', minWidth: 0, background: 'var(--surface-app)' }}>
         {item && (
           <CheckDetail cs={cs} item={item} title={titleOf(item)} sources={s.sources} sourcePanes={s.sourcePanes} words={words} sel={sel}
+            tgtDir={s.project?.scriptDirection === 'rtl' ? 'rtl' : 'ltr'}
             toggleWord={toggleWord} markValid={markValid} markInvalid={markInvalid} markTodo={markTodo}
             onOpenAcademy={() => setAcademyOpen(true)}
             onNav={(i) => actions.setCheckIndex(i)} />
