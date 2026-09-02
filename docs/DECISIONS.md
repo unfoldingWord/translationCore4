@@ -709,6 +709,10 @@ happened under the D55 gate (rule-id coverage enforced by a live-check gate, the
 data-loss defects fixed red-first); D51's conditions remain the standing bar for the sync
 sections and for per-statement mutation hardening]
 
+[publication note: branch `s8-normative-flip` archived 2026-09-03 as tag
+`archive/s8-normative-flip` (74b7270), then deleted; its work landed as #82, #85, #86,
+#89 and #97. The tag keeps the measurements above resolvable.]
+
 ## D52 (2026-08-17, project-owner ruling) **The custom change journal is retained. A
 proven open-source merge library does not replace it.** Issue #77 asked whether one
 should, and set the bar at overwhelming evidence: a library MUST meet every requirement,
