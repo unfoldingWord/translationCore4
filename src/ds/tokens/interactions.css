@@ -38,6 +38,9 @@
 [data-tc="outline"]:hover { border-color: var(--accent) !important; }
 [data-tc="outline-cultivate"]:hover { border-color: var(--uw-cultivate) !important; }
 
+/* Checking-tool rail item: the border answers in the light accent */
+[data-tc="rail-item"]:not([data-tc-selected="true"]):hover { border-color: var(--uw-inspire-300) !important; }
+
 /* Book-rail row: paper tint at rest, a deeper accent tint on the open book */
 [data-tc="rail"]:not([data-tc-selected="true"]):hover { background: var(--surface-app) !important; }
 [data-tc="rail"][data-tc-selected="true"]:hover { background: var(--uw-inspire-100) !important; }
