@@ -1128,9 +1128,12 @@ pankosmia-web 0.18.5 (99fd9be), unit 827 passed, rig integration 41 passed]. It 
 the stored format and the fold sound, and it found one unproven step in the sync
 protocol: a receive rebuilds the working repository from team main and the actor's
 publication only, so the actor's unsent segments and outbox are not inputs. A
-standalone simulation reproduced the gap and showed two designs that close it
-[VERIFIED — `receive-with-unsent.mjs`, 15/15, real git, reference modules unchanged;
-recorded in the sync plan]. The audit also found that the sync protocol is proven by
+standalone simulation, `receive-with-unsent.mjs`, reproduced the gap over real git
+repositories with the reference modules unchanged (15/15) and showed two designs that
+close it. That file was not retained when the audit worktree was removed [noted
+2026-09-03]. The result is recorded here as observed on 2026-09-01 and is not
+rerunnable. The sync plan's X2 item rebuilds it as a committed scenario file with the
+checks written out (`docs/plans/TEAM-SYNC-PLAN.md` X2). The audit also found that the sync protocol is proven by
 two hand-written suites (J18–J20 over git; `validate:transport` over HTTP) that will
 drift, and that the fold report has no reader at runtime.
 
@@ -1155,13 +1158,22 @@ Carry-over of the actor's own old copy is zero-trust: foreign-actor, misnamed,
 differs-from-accepted, and invalid segments are refused and reported. The outbox is
 cleared only after the verified replacement is the live working repository. The
 replacement lands at the same repository path, because the actor id derives from it
-(D53c; `identity.ts`). These become `[R-8.7.x]` rules in the S1 change set; until then
-they are [PROPOSED] and §8.7's sync block stays as D55 left it.
+(D53(c); `src/data/journal/identity.ts:10-15`). Files under `ingredients/audio/` are
+carried into the replacement byte-identical, or the receive refuses; rebuild-and-swap
+would otherwise delete them, and R-8.7.3 says they are never touched [added 2026-09-03
+after the PR #151 review]. The format-facing rules become `[R-8.7.7]` to `[R-8.7.14]`
+in the S1 change set; until then they are [PROPOSED] and §8.7's sync block stays as D55
+left it. Path identity and fork legibility are app rules under the D55 addendum: no
+`R-` id, tested by the app increment that implements them (S5, S6).
 
 **(4) Five rulings.**
 - (a) **Swap recovery is a record, not an endpoint.** Receive swaps by two
-  `git/copy?delete_src=true` moves. An intent record written before the first move lets
-  the next open finish forward or roll back. No upstream rename request.
+  `git/copy?delete_src=true` moves [VERIFIED — pankosmia-web 0.18.5 (99fd9be,
+  2026-07-30), `src/endpoints/git2/copy_repo.rs:19-24,120-130`: the handler copies the
+  tree, then `remove_dir_all` on the source; unchanged at 0.18.7 (c43c40d, 2026-08-11)].
+  A crash between the copy and the delete leaves two copies. An intent record written
+  before the first move lets the next open finish forward or roll back. No upstream
+  rename request.
 - (b) **One integrator per offline team.** A USB team names one device that carries the
   team main mirror, runs intake, and exports the integrated main as a zip. Main is a
   union of publications and is rebuildable from them. Online teams use the Door43 main
@@ -1171,12 +1183,19 @@ they are [PROPOSED] and §8.7's sync block stays as D55 left it.
   person show two actor ids under one name; that is a child issue of #78. Secret export
   is declined until a team reports the cost.
 - (d) **Anyone may integrate.** Intake is zero-trust, so integration is a social act, not
-  a data risk. Online teams that want gatekeeping use Door43 branch permissions. No role
-  setting in the app.
+  a data risk. Online teams that want gatekeeping use the branch protection of their git
+  host [PROPOSED — Door43 runs Gitea, which has branch protection; not verified against
+  git.door43.org]. No role setting in the app.
 - (e) **The reference modules move to a root `journal/` package** that `conformance/` and
   `src/` both import, in one mechanical change set with all suites green before and
   after, before any sync module lands. This is step L-0 of the legibility increment.
 
 Supersedes in part: D55's "sync operations stay [PROPOSED]" remains true until S1;
-D67(2) fixes the order in which that changes. ARCHITECTURE §9's "ports of the reference
-implementation" wording is corrected in legibility step L-2.
+D67(2) fixes the order in which that changes. D55's app-rule addendum is not superseded.
+ARCHITECTURE §9's "ports of the reference implementation" wording is corrected in
+legibility step L-2. BURRITO-SPEC §1's "no companion repos, no copies" sentence is
+amended in S1, through §9, to name the publication and team main mirrors
+(`docs/plans/TEAM-SYNC-PLAN.md` Section 4).
+
+[revised 2026-09-03 — a second-model review of PR #151 returned 23 findings; the plans
+and this entry were corrected in the same pull request. No ruling changed.]
