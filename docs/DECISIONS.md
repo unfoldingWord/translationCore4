@@ -1130,10 +1130,10 @@ protocol: a receive rebuilds the working repository from team main and the actor
 publication only, so the actor's unsent segments and outbox are not inputs. A
 standalone simulation, `receive-with-unsent.mjs`, reproduced the gap over real git
 repositories with the reference modules unchanged (15/15) and showed two designs that
-close it. That file was not retained when the audit worktree was removed [noted
-2026-09-03]. The result is recorded here as observed on 2026-09-01 and is not
-rerunnable. The sync plan's X2 item rebuilds it as a committed scenario file with the
-checks written out (`docs/plans/TEAM-SYNC-PLAN.md` X2). The audit also found that the sync protocol is proven by
+close it [VERIFIED — executed 2026-09-01 at 60be039 by the audit session; the file was
+not retained when the audit worktree was removed, so the run is not repeatable;
+recorded 2026-09-03]. The sync plan's X2 item rebuilds it as a committed scenario file
+with the checks written out (`docs/plans/TEAM-SYNC-PLAN.md` X2). The audit also found that the sync protocol is proven by
 two hand-written suites (J18–J20 over git; `validate:transport` over HTTP) that will
 drift, and that the fold report has no reader at runtime.
 
@@ -1161,7 +1161,7 @@ replacement lands at the same repository path, because the actor id derives from
 (D53(c); `src/data/journal/identity.ts:10-15`). Files under `ingredients/audio/` are
 carried into the replacement byte-identical, or the receive refuses; rebuild-and-swap
 would otherwise delete them, and R-8.7.3 says they are never touched [added 2026-09-03
-after the PR #151 review]. The format-facing rules become `[R-8.7.7]` to `[R-8.7.14]`
+after the PR #151 review]. The format-facing rules become `[R-8.7.7]` to `[R-8.7.13]`
 in the S1 change set; until then they are [PROPOSED] and §8.7's sync block stays as D55
 left it. Path identity and fork legibility are app rules under the D55 addendum: no
 `R-` id, tested by the app increment that implements them (S5, S6).
@@ -1197,5 +1197,6 @@ legibility step L-2. BURRITO-SPEC §1's "no companion repos, no copies" sentence
 amended in S1, through §9, to name the publication and team main mirrors
 (`docs/plans/TEAM-SYNC-PLAN.md` Section 4).
 
-[revised 2026-09-03 — a second-model review of PR #151 returned 23 findings; the plans
-and this entry were corrected in the same pull request. No ruling changed.]
+[revised 2026-09-03 — two rounds of second-model review of PR #151 returned 23 and 18
+findings; the plans and this entry were corrected in the same pull request. No ruling
+changed.]

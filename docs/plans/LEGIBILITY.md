@@ -2,8 +2,10 @@
 
 Status: [decided 2026-09-02 — D67(2)]. This increment closes before any sync feature
 starts. It adds infrastructure and documentation only. No item adds a user-facing
-feature, changes `docs/BURRITO-SPEC.md` §8.1–8.6, or rewrites a stored byte. Revised
-2026-09-03 after a second-model review of PR #151.
+feature, changes `docs/BURRITO-SPEC.md` §8.1–8.6, or rewrites a stored byte. One step
+touches the spec text: L-0 updates the reference-implementation path sentence in §8.9
+and ships with the harness move in the same change set, per §9. No other step edits the
+spec. Revised 2026-09-03 after two rounds of second-model review of PR #151.
 
 How to read this document: Section 1 states five problems, each with an observation and
 its cause. Section 2 states one fix per problem. Section 3 is the sequence of change
@@ -85,7 +87,7 @@ because it had no engine, only scenarios.
 
 - **L-1 `prove` and the manifest.** One root command runs every suite that applies,
   detects the rig, checks the rig is pristine before rig suites, and writes
-  `evidence/manifest.json` (commit, server version and hash, per-suite counts,
+  `docs/evidence/manifest.json` (commit, server version and hash, per-suite counts,
   durations, date). CI runs it and uploads the manifest. `validate-roundtrip.mjs` R7
   stops hard-coding 30. It runs the Phase-1 suite on the pristine sample first, parses
   the suite's own summary line for the Stage-1 count, and expects the same count on the
@@ -99,15 +101,17 @@ because it had no engine, only scenarios.
   <!-- manifest:<json-path> -->VALUE<!-- /manifest -->
   ```
 
-  `<json-path>` is a dotted path into `evidence/manifest.json`, for example
+  `<json-path>` is a dotted path into `docs/evidence/manifest.json`, for example
   `suites.phase1.checks` or `server.version`. `VALUE` is the literal that the gate
   compares, as a string. Unmarked prose is not checked, so the gate starts small and
-  grows as documents adopt the marker. Two controls land with the gate: a positive
-  control (one marked statement that matches, and the gate passes) and a negative
-  control (a pull request with one stale marked count, and CI fails). The spec header
-  counts are marked, not edited. A correction to a count in the spec header is its own
-  change set: it bumps the spec version and ships with the harness run that produced
-  the count, per §9. L-2 itself changes no spec text.
+  grows as documents adopt the marker. The gate ships with `test/docsGate.test.ts` and
+  two fixtures under `test/fixtures/docs-gate/`: `fresh.md`, whose marked values match
+  a fixture manifest (the gate must pass), and `stale.md`, with one wrong value (the
+  gate must fail and name the file, line and path). Verify: `npm run verify`. L-2 marks
+  statements in `docs/PLATFORM-NOTES.md`, `docs/ARCHITECTURE.md` and `README.md`. It
+  does not edit `docs/BURRITO-SPEC.md`. The spec header counts get their markers in the
+  next change set that already changes the spec and the harness together (S1 at the
+  latest), per §9.
 - **L-3 One report shape.** `Report v1` and the refusal-code table in one module
   (`TEAM-SYNC-PLAN.md` 1.2 and 1.3). Layer 4 store operations emit it. Every thrown
   refusal carries a code bound to a rule id. Codes bound to a rule that S1 will create
@@ -115,8 +119,11 @@ because it had no engine, only scenarios.
   the ops log and a dev-only Inspector panel. Tests assert codes, not strings.
 - **L-4 Scenario files and one runner.** Promote `StepSpec` to a schema under
   `conformance/scenarios/`; a runner executes a file against the reference fold and the
-  in-memory store. The first files are the receive-with-unsent scenario defined in
-  `TEAM-SYNC-PLAN.md` X2 and the J18–J20 steps rewritten as data.
+  in-memory store. The first files are the J18–J20 steps rewritten as data. The
+  receive-with-unsent scenario (`TEAM-SYNC-PLAN.md` X2) needs the sync engine and lands
+  with X2, after this increment. The schema must already express its steps (`edit`,
+  `send`, `integrate`, `receive`, `kill`, `open`) and its expectations, so that X2 adds
+  a file and no schema change.
 - **L-5 The repository port.** Define `RepoPort`; extract the git adapter from J18–J20
   and the HTTP adapter from `validate-transport.mjs`; rewrite J18–J20 as scenario files
   that run over both adapters with identical assertions. This is a refactor of the
@@ -133,12 +140,12 @@ before and after.
 
 | Step | Change set | Removes | Evidence at merge |
 |---|---|---|---|
-| L-0 | Move the reference modules to a root `journal/` package; update import paths; no logic change (D67(4e)) | the misnamed directory | all suites green; the diff holds file moves and import-path edits only, no other hunk; `journalRuntime.test.ts` parity holds |
-| L-1 | `npm run prove`, `evidence/manifest.json`, CI upload, rig pristine check, R7 reads the Stage-1 count from the suite summary | eight commands; residue false-failures; the R7 constant | manifest committed from the CI run; `prove` on a clean clone passes and lists skips with reasons; R7 green on a reseeded rig, recorded |
+| L-0 | Move the reference modules to a root `journal/` package; update import paths; update the one spec sentence that names the path (`docs/BURRITO-SPEC.md` §8.9, "reference implementation under `journal/`" in `conformance/`); no logic change (D67(4e)) | the misnamed directory | all suites green; the diff holds file moves, import-path edits and the §8.9 path sentence only, no other hunk; `journalRuntime.test.ts` parity holds; the harness moves in the same change set, so §9 is met |
+| L-1 | `npm run prove`, `docs/evidence/manifest.json`, CI upload, rig pristine check, R7 reads the Stage-1 count from the suite summary | eight commands; residue false-failures; the R7 constant | manifest committed from the CI run; `prove` on a clean clone passes and lists skips with reasons; R7 green on a reseeded rig, recorded |
 | L-1b | Rig container for CI (the dev-env devcontainer follow-up) | the missing rig job | the rig job runs the rig-gated suites on `main` and on demand; never a pankosmia remote or token |
-| L-2 | Docs gate; mark recipe counts and spec header counts with the L-2 marker; correct ARCHITECTURE §9 "ports" wording | stale numbers; the "ports" sentence | positive control passes; a negative-control pull request fails CI; no spec text other than markers changes |
+| L-2 | Docs gate with `test/docsGate.test.ts` and its two fixtures; mark recipe counts in PLATFORM-NOTES, ARCHITECTURE and README; correct ARCHITECTURE §9 "ports" wording | stale numbers; the "ports" sentence | `fresh.md` passes and `stale.md` fails in `npm run verify`; the gate runs in CI; `docs/BURRITO-SPEC.md` is not in the diff |
 | L-3 | `Report v1`, refusal codes, ops log for layer 4, dev Inspector; tests assert codes | the unread fold report; string-matched failures | gate: every live code names a live rule and has a negative control; `[PROPOSED]` codes are listed and excluded |
-| L-4 | Scenario schema and runner over the reference fold and memory store; first scenario files | hand-written probes | receive-with-unsent scenario and its negative control (X2 checks 1–7) plus J18–J20 as files, all green; `tc4 scenario` verb |
+| L-4 | Scenario schema and runner over the reference fold and memory store; J18–J20 as scenario files | hand-written probes | J18–J20 green as files with the same assertions as the suite; a schema fixture that contains every step kind X2 needs parses; `tc4 scenario` verb; an invalid-reference step (`TIT 99:1`) is refused by the schema |
 | L-5 | `RepoPort`, git and HTTP adapters; J18–J20 and transport as one scenario set | two drifting suites | the same files green on git and rig runners; evidence record with version, hash, date |
 | L-6 | `docs/SYSTEM.md` | orientation across eight surfaces | the orientation test (Section 4) meets its budget, recorded |
 | L-7 | RISKS rows (scale, identity store, power loss, sync loss); #79 ticks | unrecorded risks | rows present; each names the check that mitigates it; `docs/LEGACY-IDS.md` is frozen (D44(b)) and is not edited |
@@ -150,34 +157,39 @@ the engine slots into. L-6 is last because its content is the outcome of L-1 to 
 
 ## 4. Acceptance: the orientation test
 
-The increment closes when a fresh agent session, given only `docs/SYSTEM.md` and the
-repository, answers the twelve questions below and fills the verdict table within the
-budget. Budget: one `npm run prove` run, at most ten file reads, no subagents, no
-hand-written probes. The session's tool-call count is recorded in
-`docs/evidence/orientation-<date>.md` beside the manifest, with the verdict table and
-the commit hash.
+`docs/SYSTEM.md` is the surface under test. The correct answers never come from it. They
+come from executable sources: the manifest, the gates' own output, the file system, and
+the code. An examiner (the project owner or a second agent session) computes the
+correct answers with the commands in the table, before the test session starts, and
+writes them into the record.
 
-The questions. Each has one correct answer that `SYSTEM.md` plus the manifest must give.
+Procedure. A fresh agent session is given only `docs/SYSTEM.md` and the repository at
+one commit. It answers the twelve questions below. Budget: one `npm run prove` run, at
+most ten file reads, no subagents, no hand-written probes. The examiner counts tool
+calls from the session transcript. The record is `docs/evidence/orientation-<date>.md`
+in the same directory as the manifest, and holds: the commit hash, the correct answers
+with the command that produced each, the session's answers, the tool-call count, and
+one pass or fail per row.
 
-| # | Question | Source of the correct answer |
+| # | Question | Command that gives the correct answer |
 |---|---|---|
-| Q1 | Which suites exist, and what count did each report at this commit? | `evidence/manifest.json` |
-| Q2 | Which of those suites need the rig, and did the rig run? | manifest `suites.*.skipped` and reasons |
-| Q3 | Which `R-8.x.y` ids are live, and which are `[PROPOSED]`? | `SYSTEM.md` rule table; normative gate output |
-| Q4 | Which refusal codes exist, and which rule does each enforce? | `SYSTEM.md` refusal table |
-| Q5 | What does the app import from the reference modules, and from where? | `SYSTEM.md` tower; `journal/` package |
-| Q6 | What happens to unsent own work at receive? | the receive-with-unsent scenario file and its `Report` |
-| Q7 | Which repositories exist on one device for one project, and which is canonical? | `SYSTEM.md` repository table |
-| Q8 | Which operations write an ops record, and where is the record read? | `SYSTEM.md` ops log section |
-| Q9 | Which scenario files exist, and which runners ran each? | `conformance/scenarios/` and the manifest |
-| Q10 | Is the working tree trustworthy after `pull-repo`? | `SYSTEM.md` platform constraints (PLATFORM-NOTES #21) |
-| Q11 | Which spec version and server version does this commit claim, and does the manifest agree? | `SYSTEM.md` markers; manifest `server.*` |
-| Q12 | Which one command proves layer N, for each of the seven layers? | `SYSTEM.md` tower, "proves it" column |
+| Q1 | Which suites exist, and what count did each report at this commit? | `jq .suites docs/evidence/manifest.json` |
+| Q2 | Which of those suites need the rig, and did the rig run? | `jq '.suites[] \| select(.skipped)' docs/evidence/manifest.json` |
+| Q3 | Which `R-8.x.y` ids are live, and which are `[PROPOSED]`? | `node conformance/normative/check.mjs` (live ids); `grep -n PROPOSED docs/BURRITO-SPEC.md` |
+| Q4 | Which refusal codes exist, and which rule does each enforce? | the exported table in the report module (`node -e` print of the codes) |
+| Q5 | What does the app import from the reference modules, and from where? | `grep -rn "from '.*journal/" src/data/journal/` |
+| Q6 | What happens to unsent own work at receive? | `tc4 scenario conformance/scenarios/receive-with-unsent.json` after X2; before X2, the answer is "not yet executable; the scenario is defined in TEAM-SYNC-PLAN X2" |
+| Q7 | Which repositories exist on one device for one project, and which is canonical? | the repository table in `TEAM-SYNC-PLAN.md` Section 4 (a plan fact until S2; the `tc4 report` output after S2) |
+| Q8 | Which operations write an ops record, and where is the record read? | `grep -rn "opsLog\." src/` |
+| Q9 | Which scenario files exist, and which runners ran each? | `ls conformance/scenarios/`; `jq .scenarios docs/evidence/manifest.json` |
+| Q10 | Is the working tree trustworthy after `pull-repo`? | `docs/PLATFORM-NOTES.md` #21 (a verified platform record; the answer is no) |
+| Q11 | Which spec version and server version does this commit claim, and does the manifest agree? | `head -3 docs/BURRITO-SPEC.md`; `jq .server docs/evidence/manifest.json`; the docs gate result |
+| Q12 | Which one command proves layer N, for each of the seven layers? | the `prove` verbose listing (`npm run prove -- --list`) |
 
-The verdict table has one row per question: the answer given, the source the session
-read, and pass or fail against the correct answer. The test passes when all twelve rows
-pass inside the budget. A failed row names the surface that was wrong or missing, and
-that surface is fixed before the increment closes.
+The test passes when all twelve rows pass inside the budget. A failed row names the
+surface that was wrong or missing in `SYSTEM.md`, and that surface is fixed and the
+test rerun before the increment closes. The test is repeatable: the same commit, the
+same questions, a new session.
 
 Secondary measures from the manifest: hand-typed counts remaining in `docs/` without an
 L-2 marker (target zero); protocol assertions that exist in only one runner (target

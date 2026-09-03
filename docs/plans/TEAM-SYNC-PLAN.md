@@ -3,8 +3,9 @@
 Status: [PROPOSED] plan, adopted as the shape of epic #24 by D67 (2026-09-02). Rules
 named here become normative only when the S1 change set lands them in
 `docs/BURRITO-SPEC.md` with their checks (§9). Written against `main` after the audit of
-2026-09-01 [VERIFIED — worktree at 60be039, see D67]. Revised 2026-09-03 after a
-second-model review of PR #151 (23 findings; all addressed in this revision).
+2026-09-01 [VERIFIED — worktree at 60be039, see D67]. Revised 2026-09-03 after two
+rounds of second-model review of PR #151 (23 and 18 findings). Each finding was either
+fixed or answered in the pull request.
 
 Prerequisite: the legibility increment (`LEGIBILITY.md`) closes first (D67(2)).
 
@@ -25,14 +26,19 @@ Prerequisite: the legibility increment (`LEGIBILITY.md`) closes first (D67(2)).
 - Decision parts are written `D67(4a)` and `D53(c)`, the same way the decision log
   writes them. The code comments write `D53c` for the same part (`identity.ts:15`).
 - Every acceptance criterion names a check that can fail. "Recorded" means an evidence
-  record exists in `docs/evidence/` with version, hash and date. It is not a pass.
+  record exists in `docs/evidence/` with version, hash and date. It is not a pass. A
+  measurement that is recorded without a threshold is marked "measurement, not
+  acceptance".
+- Evidence lives in `docs/evidence/`. The `prove` manifest is
+  `docs/evidence/manifest.json`. There is no root `evidence/` directory.
 
 ## 1. The system
 
 ### 1.1 The tower
 
 The system has seven layers. Each layer has six faces: a typed input and output, the
-rules it guarantees (`R-` ids), a report in the shared vocabulary, one reference
+rules it guarantees (`R-` ids for format-facing rules; app rules without an id under the
+D55 addendum, Section 2), a report in the shared vocabulary, one reference
 implementation that the app imports, a harness with one negative control per rule,
 and one verb in the `tc4` command line.
 
@@ -65,7 +71,8 @@ already closed (R-8.6.9) and is reused as is.
 
 ```
 Report {
-  op:        open | publish | checkpoint | seed | reconcile | send | integrate | receive | verify
+  op:        open | publish | checkpoint | seed | reconcile | send | integrate | receive
+             | verify | fold | explain | bench
   ts:        HLC ts of the operation (its identity)
   actor:     actorId
   repo:      repoPath
@@ -99,10 +106,10 @@ assert these codes by code name, never by a future rule id.
 | `segment.misnamed` | R-8.1.2 | yes | refuse the contribution |
 | `checkpoint.divergence` | R-8.7.5 | yes | reopen to reconcile |
 | `seed.mismatch` | R-8.8.2 | yes | stop; show the mismatch set |
-| `intake.shared-path` | R-8.7.9 (S1) | no | refuse the contribution |
-| `receive.own-ts-missing` | R-8.7.12 (S1) | no | keep the working repository; report the missing `ts` |
-| `receive.audio-missing` | R-8.7.14 (S1) | no | keep the working repository; report the missing path |
-| `swap.incomplete` | R-8.7.13 (S1) | no | finish forward or roll back on open |
+| `intake.shared-path` | R-8.7.9 (S1; I5) | no | refuse the contribution |
+| `receive.own-ts-missing` | R-8.7.11 (S1; I4) | no | keep the working repository; report the missing `ts` |
+| `receive.audio-missing` | R-8.7.13 (S1; I9) | no | keep the working repository; report the missing path |
+| `swap.incomplete` | R-8.7.12 (S1; I6) | no | finish forward or roll back on open |
 
 The normative gate checks that every code marked live names a live rule and has a
 negative control. After S1, every row is live and the `[PROPOSED]` marks are removed.
@@ -125,7 +132,7 @@ to a schema (L-4). Three runners execute one file: reference (memory port), git
 
 ### 1.6 Evidence accretes
 
-`npm run prove` writes `evidence/manifest.json`. A docs gate fails when a
+`npm run prove` writes `docs/evidence/manifest.json`. A docs gate fails when a
 manifest-derived statement in `docs/` disagrees with it (L-2). Each release freezes the
 journey-written journals and their fold hashes under `conformance/golden/<version>/`;
 one check folds every frozen corpus.
@@ -142,13 +149,26 @@ renders the same `Report` and `explain` output.
 ## 2. Invariants
 
 Two kinds. Format-facing invariants bind the stored bytes and the receive result. They
-become `R-8.7.7` to `R-8.7.14` in S1 and get conformance checks. App-facing invariants
+become `R-8.7.7` to `R-8.7.13` in S1 and get conformance checks. App-facing invariants
 bind the application, not the stored format. Per the D55 addendum of 2026-08-18, an app
 rule carries no `R-` id and is exempt from the coverage gate. It is marked
 "(D53, app rule)" in place, and its test lands with the app increment that implements
 it. This plan does not supersede that addendum.
 
 ### 2.1 Format-facing (become `R-8.7.x` in S1)
+
+Seven invariants, seven ids. The mapping is fixed here so that S1 and the refusal-code
+table (1.3) agree:
+
+| Invariant | Rule id in S1 | Refusal code |
+|---|---|---|
+| I1 | R-8.7.7 | none (asserted by the S2 spy test) |
+| I2 | R-8.7.8 | none (asserted by the S2 flush test) |
+| I5 | R-8.7.9 | `intake.shared-path`; the four segment codes |
+| I3 | R-8.7.10 | none (asserted by the S5 kill sweep) |
+| I4 | R-8.7.11 | `receive.own-ts-missing` |
+| I6 | R-8.7.12 | `swap.incomplete` |
+| I9 | R-8.7.13 | `receive.audio-missing` |
 
 - I1 Publication isolation. A publication commit touches only the actor's own
   `ingredients/checking/journal/<actor>/segments/`.
@@ -177,8 +197,10 @@ it. This plan does not supersede that addendum.
 
 ## 3. Platform constraints
 
-[VERIFIED — pankosmia-web 0.18.5 (99fd9be, 2026-07-30), the rig pin; `git2` endpoint
-inventory re-read 2026-09-03 in `upstream/pankosmia-web/src/endpoints/git2/`]
+[VERIFIED — pankosmia-web 0.18.5 (99fd9be, 2026-07-30), the rig pin, read in
+`upstream/pankosmia-web/src/endpoints/git2/` on 2026-09-03; upstream `main` re-read the
+same day at 0.18.7 (c43c40d, 2026-08-11) in `upstream/pankosmia-web-main/`; the two
+inventories agree on every endpoint named below]
 
 - One merge endpoint, `POST /git/pull-repo/<remote>/<repo>`, no branch parameter
   (PLATFORM-NOTES #17, #33). One publication repository per actor with one branch makes
@@ -221,11 +243,14 @@ Until S1, §1 stands as written and this table is [PROPOSED].
 | Scratch (disposable) | `_local_/_scratch_/<name>-<hlc>` | any | S4, S5; deleted after use | a copy under construction |
 | Previous working (recovery copy) | `_local_/_prev_/<name>` | `main` | S5 swap; deleted at the next checkpoint | the working projection before the swap |
 
-The publication repository keeps `metadata.json` and runs `remake-ingredients` after the
-deletes, so its ingredients table matches its files. It is therefore a structurally
-valid Scripture Burrito with a scoped ingredient set, and the zip import accepts it
-(Section 3, last bullet). It is not a complete project: `verifyProjectAgainstJournal`
-does not apply to it (Section 7).
+The publication repository is a journal-only mirror. It keeps `metadata.json` with
+`type.flavorType.currentScope` set to `{}` (no book in scope, so §3 rule 4 requires no
+book file) and runs `remake-ingredients` after the deletes, so the `ingredients` table
+lists exactly the journal files (§3 rule 5). That is enough for the zip import, which
+requires a root `metadata.json` and an `ingredients/` directory (Section 3, last
+bullet). It is not a conforming tC4 project and never claims to be: it has no book, no
+derived files, and no checkpoint. `verifyProjectAgainstJournal` does not apply to it
+(Section 7). The S1 amendment to BURRITO-SPEC §1 names it with these words.
 
 ## 5. Work items
 
@@ -238,7 +263,7 @@ numbering so that epic #24's checklist reads in one sequence.
 | Item | Delivered by | Content |
 |---|---|---|
 | X0 | L-0 | reference modules move to root `journal/` (D67(4e)) |
-| X1 | L-1 | `npm run prove` and `evidence/manifest.json` |
+| X1 | L-1 | `npm run prove` and `docs/evidence/manifest.json` |
 | X2 | this epic | sync engine as a reference module |
 | X3 | L-3 | `Report v1`, refusal codes, ops log for layer 4 |
 | X4 | this epic | `tc4` command line and Inspector |
@@ -258,7 +283,7 @@ X4 CLI + Inspector    X5 ops log for sync    X7 golden corpus    S7 performance 
 ```
 
 Rule for items before S1 (X2, X4, X5): their tests assert invariants I1–I9 by name and
-refusal codes by code name. They never cite an `R-8.7.7` to `R-8.7.14` id, because
+refusal codes by code name. They never cite an `R-8.7.7` to `R-8.7.13` id, because
 those ids do not exist until S1. S1 rewrites the claims to `[covers R-8.7.n]` in the
 same change set that creates the ids.
 
@@ -269,15 +294,19 @@ ctx)`: orchestrations over the repository port that return a `Report`. The app i
 the engine as it imports the fold.
 
 The audit of 2026-09-01 wrote a standalone simulation, `receive-with-unsent.mjs`, that
-ran 15 checks over real git repositories and reproduced the receive gap. That file was
-not retained when the audit worktree was removed [noted 2026-09-03]. Its result cannot
-be rerun. X2 rebuilds it as a committed scenario file. The scenario is defined here so
-that it does not depend on the lost file:
+ran 15 checks over real git repositories and reproduced the receive gap [VERIFIED —
+executed 2026-09-01 at 60be039 by the audit session; the file was not retained when the
+audit worktree was removed, so the run is not repeatable; recorded 2026-09-03]. X2
+rebuilds it as a committed scenario file. The scenario is defined here so that it does
+not depend on the lost file. Verse references use the sample project
+`conformance/sample-burrito/`, whose scope is `TIT` and `JON`
+(`conformance/sample-burrito/metadata.json:69-71` [VERIFIED — 1eb39c1, 2026-09-03]).
 
-`conformance/scenarios/receive-with-unsent.json`: actors A and B on one project. Steps:
-A edits 1:2 and sends. B edits 1:3, sends, integrates, receives. A, offline, edits 1:1,
-edits 1:3 to a different text, and holds one more edit in the outbox with no segment
-written yet. A receives. Expectations, in `Report` terms:
+`conformance/scenarios/receive-with-unsent.json`: actors A and B on one project seeded
+from the sample. Steps: A edits TIT 1:2 and sends. B edits TIT 1:3, sends, integrates,
+receives. A, offline, edits TIT 1:1, edits TIT 1:3 to a different text, and holds one
+more edit (TIT 1:4) in the outbox with no segment written yet. A receives.
+Expectations, in `Report` terms:
 
 1. `outcome` is `done`.
 2. `carried.copied` lists every A segment `ts` that was in A's working repository
@@ -286,10 +315,13 @@ written yet. A receives. Expectations, in `Report` terms:
 4. 1:3 is a fork with two live heads, A's and B's. Both events name the same `base`
    (A never received B's edit before making its own) and come from different actors
    (R-8.3.2). `fold.forks` lists the key with both heads and names the provisional one.
-5. No other key is forked. A's 1:1 and 1:2 are linear.
+5. No other key is forked. A's TIT 1:1 and TIT 1:2 are linear.
 6. The replacement's fold equals `fold(main ∪ publication(A) ∪ working(A) ∪ outbox(A))`.
 7. A negative control: the receive is run with I4 disabled in the engine, and check 3
    fails. This proves the checks are not vacuous.
+8. An input control: a scenario step that edits `TIT 99:1` (outside the sample's
+   versification) is refused by the runner's schema check before any repository is
+   touched. This proves the runner rejects invented references.
 
 Acceptance: the scenario passes over the memory port with its negative control failing;
 J18–J20 pass as scenario files over the git port; the same files pass over HTTP on the
@@ -309,7 +341,7 @@ As in 1.7. Each verb has one oracle:
 | `explain` | for a forked verse: names both heads, their bases, and R-8.6.4; for a linear verse: names the head and its base chain |
 | `scenario` | runs one scenario file and exits non-zero on the first failed expectation; the negative-control scenario exits non-zero |
 | `prove` | as L-1: writes the manifest; exits non-zero when any suite fails |
-| `bench` | prints the S7 measurements as a `Report` with `durations`; no pass condition |
+| `bench` | emits a `Report` with `op: bench` and one `durations` entry per measured phase, each a positive number; the test fails when a phase is missing or zero; no threshold is applied here (S7 owns thresholds) |
 
 Acceptance: every row above has a test that fails when its oracle is violated, and the
 Inspector renders the same `Report` and `explain` output as the command line for one
@@ -323,11 +355,16 @@ names the state that the next `open()` must produce.
 
 | Kill point | State on disk | Required result on next open |
 |---|---|---|
-| K1 before the intent record is written | working at its path; scratch validated | scratch is deleted; working is untouched; report `outcome: refused` |
-| K2 after the record, before move 1 | as K1 plus the record | same as K1; the record is closed as rolled back |
-| K3 after move 1 (working → prev), before move 2 | no repository at the working path; prev and scratch exist | finish forward: move scratch to the working path; `outcome: recovered` |
-| K4 after move 2, before the outbox clear | replacement at the working path; prev exists; outbox entries still marked carried | finish forward: clear the carried entries; close the record |
-| K5 during a single `copy?delete_src` (copy done, delete not done) | source and target both exist | the source is deleted after the target verifies; then the K3 or K4 rule applies |
+| K1 before the intent record is written | working at its path; a validated scratch under `_local_/_scratch_/`; no record | `open()` finds no record. It lists `_local_/_scratch_/<name>-*`, deletes every entry, and opens working. It writes one new record with `op: receive`, `outcome: refused`, `refusals: [{code: swap.incomplete, subject: <scratch path>}]` so the cleanup is visible |
+| K2 after the record, before move 1 | as K1 plus an open record in phase `intent` | roll back: delete scratch; close the record with `outcome: refused`; working untouched |
+| K3 after move 1 (working → prev), before move 2 | no repository at the working path; prev and scratch exist; record in phase `moved-prev` | finish forward: move scratch to the working path; set phase `moved-scratch`; continue as K4; `outcome: recovered` |
+| K4 after move 2, before the outbox clear | replacement at the working path; prev exists; record in phase `moved-scratch`; carried outbox entries still present | finish forward: verify the working path folds; clear the carried entries; close the record with `outcome: recovered` |
+| K5 during a single `copy?delete_src` (copy done, delete not done) | source and target both exist | the recovery reads the phase, verifies the target folds, deletes the source, then applies the K3 or K4 rule |
+
+Two repositories at the working path are impossible because a path holds one
+repository. "Never two candidates" means: after recovery there is exactly one of
+{working, prev, scratch} at the working path, and the others are deleted or parked at
+their own paths.
 
 Acceptance: a kill sweep that stops at each of K1–K5 and at every durable boundary
 between them ends, after one `open()`, with exactly one repository at the working path,
@@ -337,22 +374,27 @@ how many kills it ran at each point (non-vacuity).
 
 ### X7 — Golden corpus accretion
 
-The release script freezes the journey-written journals under
-`conformance/golden/<version>/`. One check folds every frozen corpus and compares
-hashes. Acceptance: the first corpus is frozen by the first `4.0.0-alpha.N` pre-release
-cut after X7 merges (D46), and its check is green in CI; a one-byte change to a frozen
-segment fails with `segment.invalid`.
+`npm run golden:freeze` copies the journals that the e2e journey wrote in the current
+run to `conformance/golden/<package.json version>/` with their fold hashes. One check
+folds every frozen corpus and compares hashes. The release procedure in
+`docs/PACKAGING.md` gains the freeze step before `scripts/package-desktop.zsh`; a
+release is a manual GitHub Release (D46), so no script cuts it.
+
+Acceptance, all inside the X7 change set: the first corpus is frozen from the e2e run
+at that commit and committed with the code; the golden check is green in CI; a one-byte
+change to a frozen segment fails with `segment.invalid`; `docs/PACKAGING.md` names the
+freeze step.
 
 ### S1 — Ratify §8.7 as rules and scenarios
 
 Scope of the change set, all in one commit per §9:
 
-- BURRITO-SPEC §8.7: I1–I6 and I9 become `R-8.7.7` to `R-8.7.14`; the refusal codes
+- BURRITO-SPEC §8.7: I1–I6 and I9 become `R-8.7.7` to `R-8.7.13`; the refusal codes
   (1.3) are listed with their rules; the two platform caveats of the current
   [PROPOSED] block stay. The `[PROPOSED]` mark on the sync block is removed.
 - BURRITO-SPEC §1: the sentence "There are no companion repos, no copies, and no
-  export/import loop" is amended to name the publication mirror and the team main
-  mirror (Section 4). The spec version bumps.
+  export/import loop" is amended to name the publication mirror (a journal-only mirror
+  with an empty scope, Section 4) and the team main mirror. The spec version bumps.
 - Harness: scenario files for receive with unsent work (X2), swap ordering,
   flush-then-receive equivalence, and the carry-over refusals; the J32 two-device
   property (D55 calls it J32f; Appendix A indexes it as J32) gains a `receive` step;
@@ -379,10 +421,12 @@ foreign segment is refused and surfaced with `segment.foreign-actor`.
 
 Door43 send: `remote/add` then `git/push`. Receive side: `clone-repo?branch=<actorId>`
 or `remote/add` plus `pull-repo` into a single-branch scratch. Sneakernet: export the
-publication repository as a wrapped zip (PLATFORM-NOTES #26 trap b); import under
-`_local_/_sideloaded_/`. The publication repository is a valid Burrito (Section 4), so
-the standard import accepts it. Team main travels as a Door43 branch or a zip
-(D67(4b)).
+publication repository with the server's zip export, which produces the unwrapped shape
+(`metadata.json` at the zip root). `POST /burrito/zipped` requires that shape and
+accepts the server's own export unchanged (PLATFORM-NOTES #22 [VERIFIED — rig 0.17.0,
+2026-07-27]; #26 trap (b)). Import under `_local_/_sideloaded_/`. The publication
+repository satisfies the importer's structural rule (Section 4). Team main travels as a
+Door43 branch or a zip (D67(4b)).
 
 Acceptance: push and clone pass in CI against a git remote the rig job controls (a
 bare repository served over HTTP, or the rig's gitea if one exists); a publication zip
@@ -413,11 +457,12 @@ never between.
 4. Carry over tolerated unjournaled ingredients: copy every file under
    `ingredients/audio/` from the working repository into scratch, byte-identical (I9).
    A copy failure refuses the whole receive with `receive.audio-missing`.
-5. Verify: every own `ts` from working ∪ outbox is in the scratch union; every audio
-   path from working is in scratch; fold; `verifyProjectAgainstJournal`
-   (`src/data/journal/verify.ts`) on the regenerated scratch. On failure delete scratch
-   and report; the working repository is untouched.
-6. Regenerate derived files; `remake-ingredients`; commit.
+5. Fold the scratch union; regenerate derived files; `remake-ingredients`; commit.
+6. Verify: every own `ts` from working ∪ outbox is in the scratch union; every audio
+   path from working is in scratch; `verifyProjectAgainstJournal`
+   (`src/data/journal/verify.ts`) on the regenerated, committed scratch. The verifier
+   compares disk files with the projection, so it runs after step 5, never before. On
+   failure delete scratch and report; the working repository is untouched.
 7. Swap: write the intent record; move working to `_local_/_prev_/<name>`; move
    scratch to the working path; update the phase after each move; then clear the
    carried outbox entries and the record (D67(4a); kill points K1–K5 in X5).
@@ -481,12 +526,12 @@ after receive; no modal wall. This is the test obligation of I8.
 Finish #95 (one journal scan per open) and #94 (fold in a Web Worker). #92 and #93 are
 closed [VERIFIED — GitHub, 2026-09-03]. Add `tc4 bench --receive`.
 
-Acceptance: New Testament receive under 10 s on the reference machine. The reference
-machine is the one named in the first `bench --receive` evidence record; later records
-cite the same machine or state the change. The whole-Bible receive completes with a
-determinate progress bar and its time is recorded. No threshold is set for whole Bible
-until it is measured; the record states this. No UI-thread fold runs during receive
-(asserted by the worker test of #94).
+Acceptance: New Testament receive under 10 s on the reference machine, which is the
+machine of the existing fold benchmarks: Apple M2 Pro (10 cores), 16 GB, macOS
+(`docs/evidence/bench-fold-2026-08-25.md:4` [VERIFIED — 1eb39c1, 2026-09-03]). A record
+from another machine names it and is not the acceptance. No UI-thread fold runs during
+receive (asserted by the worker test of #94). Measurement, not acceptance: the
+whole-Bible receive completes with a determinate progress bar and its time is recorded.
 
 ### S8 — Journey proof and CI
 
@@ -524,7 +569,7 @@ next open completes or rolls back the swap; no own byte is missing.
 
 ## 7. Epic acceptance
 
-- §8.7 sync block is normative with `R-8.7.7` to `R-8.7.14` ids, §1 is amended, and the
+- §8.7 sync block is normative with `R-8.7.7` to `R-8.7.13` ids, §1 is amended, and the
   normative gate passes (S1).
 - The journey passes as an e2e on the rig, and transport T5–T7 are green (S8).
 - `verifyProjectAgainstJournal` holds on every working repository and every team main
