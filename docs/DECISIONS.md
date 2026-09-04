@@ -1159,13 +1159,12 @@ Carry-over of the actor's own old copy is zero-trust: foreign-actor, misnamed,
 differs-from-accepted, and invalid segments are refused and reported. The outbox is
 cleared only after the verified replacement is the live working repository. The
 replacement lands at the same repository path, because the actor id derives from it
-(D53(c); `src/data/journal/identity.ts:10-15`). Files under `ingredients/audio/` are
-carried into the replacement byte-identical, or the receive refuses; rebuild-and-swap
-would otherwise delete them, and R-8.7.3 says they are never touched [added 2026-09-03
-after the PR #151 review]. The format-facing rules become `[R-8.7.7]` to `[R-8.7.13]`
-in the S1 change set; until then they are [PROPOSED] and §8.7's sync block stays as D55
-left it. Path identity and fork legibility are app rules under the D55 addendum: no
-`R-` id, tested by the app increment that implements them (S5, S6).
+(D53(c); `src/data/journal/identity.ts:10-15`). The format-facing rules become
+`[R-8.7.7]` to `[R-8.7.12]` in the S1 change set; until then they are [PROPOSED] and
+§8.7's sync block stays as D55 left it. Path identity and fork legibility are app rules
+under the D55 addendum: no `R-` id, tested by the app increment that implements them
+(S5, S6). Rebuild-and-swap must not drop a tolerated unjournaled ingredient class
+(R-8.7.3, `ingredients/audio/`); none is in use, and the rule is decided when one is.
 
 **(4) Five rulings.**
 - (a) **Swap recovery is a record, not an endpoint.** Receive swaps by two
@@ -1198,6 +1197,5 @@ legibility step L-2. BURRITO-SPEC §1's "no companion repos, no copies" sentence
 amended in S1, through §9, to name the publication and team main mirrors
 (`docs/plans/TEAM-SYNC-PLAN.md` Section 4).
 
-[revised 2026-09-03 — seven rounds of second-model review of PR #151 returned 23, 18,
-13, 12, 18, 12 and 14 findings; the plans and this entry were corrected in the same pull request. No ruling
-changed.]
+[revised 2026-09-03 — a second-model review of PR #151 and a consolidation pass
+corrected the plans and this entry in the same pull request. No ruling changed.]
