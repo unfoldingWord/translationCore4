@@ -21,6 +21,7 @@ import { isLanguageSwitch } from '../data/revalidate';
 import { targetWords, selectionsFromTokens, tokenIndicesFromSelections } from '../data/selections';
 import { tokenizeVerse, matchQuote } from '../data/sourceHighlight';
 import { verseText } from './verseText.js';
+import { isSourceAbsent } from '../data/sourceState';
 import { ExpandableNote, glTitleFor } from './HelpsPanel.jsx';
 import { t } from '../i18n';
 import { Button, Callout, Drawer, Overline, ProgressBar } from '../ds/index.js';
@@ -373,7 +374,8 @@ function ultAbsence(source, sourcePanes, crossFrame) {
   // Round 37 (§5.3): a project may legally declare no extraScripture.
   if (sourcePanes && sourcePanes.length === 0) return t('check.noGateway');
   if (sourcePanes === null || source === undefined) return null;
-  if (source === 'missing') return t('check.ultUnavailable');
+  if (source === 'not-installed') return t('check.ultUnavailable');
+  if (source === 'missing') return t('source.unavailable');
   if (source?.error) return source.error;
   return t('check.paneAbsent');
 }
@@ -384,7 +386,7 @@ function ultAbsence(source, sourcePanes, crossFrame) {
  * Translate's source pane makes — an extraScripture pin whose OWN frame
  * differs is #131's scope, here as there. */
 const ultVerseObj = (source, crossFrame, c, v) =>
-  !crossFrame && source && source !== 'missing' && !source.error
+  !crossFrame && source && !isSourceAbsent(source) && !source.error
     ? source.chapters?.[String(c)]?.[String(v)]
     : null;
 

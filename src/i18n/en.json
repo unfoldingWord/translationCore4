@@ -123,6 +123,7 @@
   "source.ult": "ULT",
   "source.ust": "UST",
   "source.unavailable": "This source is not available for this book.",
+  "source.notInstalled": "This source text is not on this computer.",
   "check.title": "Choose a checking tool",
   "check.valid": "Valid",
   "check.invalid": "Invalid",

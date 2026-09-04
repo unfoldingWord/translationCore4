@@ -17,6 +17,7 @@ import { RESOURCE_FRAME, forgetProjectFrames, resolveProjectFrame } from './data
 import { backfillCoverage } from './data/coverageBackfill';
 import { mapReference } from './data/mapReference';
 import { seedBookFromSource } from './data/seed';
+import { SOURCE_MISSING, SOURCE_NOT_INSTALLED, isSourceAbsent } from './data/sourceState';
 import { BOOK_NAMES, bookName } from './data/bookNames';
 import { GATEWAYS, gatewayKey, DCS_HOST, orgForRepoName } from './data/gateways';
 import { fetchAndInstallPin, latestReleaseTag, identifyExistingInstall } from './data/resourceFetch';
@@ -178,9 +179,9 @@ export function packageRows(repos, book, exclude = {}) {
 // by recomputing the path, which missed every legacy/seeded resource and made
 // checking sessions time out. Falls back to the owner-qualified derivation for
 // a pin that is not (yet) installed (a fresh download's target).
-let installedCache = {};
+let installedCache = null; // null until resolutionContext has run once (B12); then the InstalledMap, possibly empty
 const resolveReadPath = (pin) =>
-  installedPathFor(installedCache, pin) ?? localRepoPathFromRepoPath(pin.repoPath);
+  installedPathFor(installedCache ?? {}, pin) ?? localRepoPathFromRepoPath(pin.repoPath);
 
 // Resolution of a pin to its local repo, for READING. Delegates to the
 // identity-based resolver above.
@@ -1310,7 +1311,7 @@ function loadSourcePanes({ store, code, seq, openSeqRef, stateRef, dispatch, pin
         dispatch({
           type: 'setSource',
           id: pin.id,
-          value: isNotFoundError(error) ? 'missing' : { error: String(error?.message || error) },
+          value: isNotFoundError(error) ? sourceAbsence(pin) : { error: String(error?.message || error) },
         });
       });
   }
@@ -1319,6 +1320,17 @@ function loadSourcePanes({ store, code, seq, openSeqRef, stateRef, dispatch, pin
 /** Test hook (round 37): pane resolution is unit-tested — project pins win,
  * absence is a stated state, and pins-loading defers. */
 export const __loadSourcePanesForTests = loadSourcePanes;
+
+/** #164: which absence a CONFIRMED not-found pane read means. The platform answers
+ * "no such repository" and "no such book" with the same not-found, so the pin is
+ * looked up in the install resolver's cache: absent there (and the cache HAS run)
+ * = the source is not on this computer; present = it lacks the book. Before the
+ * resolver has run the answer is unknown and the older, weaker statement stands. */
+const sourceAbsence = (pin) =>
+  installedCache !== null && installedPathFor(installedCache, pin) == null ? SOURCE_NOT_INSTALLED : SOURCE_MISSING;
+export const __setInstalledCacheForTests = (installed) => {
+  installedCache = installed;
+};
 
 /** Round 37 (§5.3): seed a new book from the PROJECT's pinned source. A
  * project without extraScripture — or a source that confirms it lacks the
@@ -1699,7 +1711,7 @@ export function AppProvider({ children }) {
 
   const sourceModel = useMemo(() => {
     const src = s.sources[s.sourceTab];
-    if (!src || src === 'missing') return src || null;
+    if (!src || isSourceAbsent(src)) return src || null;
     return src.chapters;
   }, [s.sources, s.sourceTab]);
 

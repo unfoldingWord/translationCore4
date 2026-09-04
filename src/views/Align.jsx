@@ -18,6 +18,7 @@ import { useApp } from '../state.jsx';
 import { bookName } from '../data/bookNames';
 import { tokenizeVerse } from '../data/sourceHighlight';
 import { verseText } from './verseText.js';
+import { isSourceAbsent } from '../data/sourceState';
 import { t } from '../i18n';
 import { Button, Overline } from '../ds/index.js';
 
@@ -132,7 +133,7 @@ function WordCard({ card, armed, mode, gwTokens, onPlace, onRemove, onDropOnCard
 function gatewayPaneVerse(sources, sourcePanes, c, v) {
   const paneId = sourcePanes?.includes('ult') ? 'ult' : sourcePanes?.[0];
   const src = paneId ? sources?.[paneId] : undefined;
-  return src && src !== 'missing' && !src.error ? src.chapters?.[String(c)]?.[String(v)] : null;
+  return src && !isSourceAbsent(src) && !src.error ? src.chapters?.[String(c)]?.[String(v)] : null;
 }
 
 function gatewayTokensFor(a, sources, sourcePanes) {

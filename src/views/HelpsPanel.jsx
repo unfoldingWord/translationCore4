@@ -9,6 +9,7 @@ import { useApp } from '../state.jsx';
 import { renderArticleBlocks } from '../data/articles';
 import { t } from '../i18n';
 import { verseText } from './verseText.js';
+import { isSourceAbsent } from '../data/sourceState';
 import { keyCarries } from './SourceVerse.jsx';
 import { gatewayQuote, tokenizeVerse } from '../data/sourceHighlight';
 import { Button, Callout, HelpCard, IconButton, Overline, Tabs } from '../ds/index.js';
@@ -351,7 +352,7 @@ export const glTitleFor = (src, chapter, refRows) => {
   // HelpsPanel keeps this resolver — a pane or chapter switch drops them.
   const tokens = new Map();
   const titles = new Map();
-  const chapterOf = (c) => (src && src !== 'missing' ? src.chapters?.[String(c)] ?? {} : {});
+  const chapterOf = (c) => (src && !isSourceAbsent(src) ? src.chapters?.[String(c)] ?? {} : {});
   return (it) => {
     const id = `${it.contextId.checkId}:${it.contextId.reference.verse}:${it.contextId.quoteString ?? ''}:${it.contextId.occurrence ?? 1}`;
     if (titles.has(id)) return titles.get(id);

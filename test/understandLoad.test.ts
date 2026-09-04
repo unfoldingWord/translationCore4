@@ -5,7 +5,8 @@
 // "no pins recorded"): the screen proceeds with unpinned help slots instead
 // of waiting forever.
 import { describe, expect, it } from 'vitest';
-import { __performLoadUnderstandForTests as loadUnderstand, __loadProjectPinsForTests as loadPins, __loadSourcePanesForTests as loadSourcePanes } from '../src/state.jsx';
+import { __performLoadUnderstandForTests as loadUnderstand, __loadProjectPinsForTests as loadPins, __loadSourcePanesForTests as loadSourcePanes, __setInstalledCacheForTests as setInstalledCache } from '../src/state.jsx';
+import en from '../src/i18n/en.json';
 
 const PIN = { repoPath: 'git.door43.org/unfoldingWord/en_ust', sha: 'a'.repeat(40), flavor: 'scripture/textTranslation' };
 const notFound = () => Object.assign(new Error('404'), { isNotFound: true });
@@ -230,5 +231,71 @@ describe('round 37 — the source panes come from the PROJECT pins (§5.3), neve
     await flush();
     const missingPane = absent.dispatched.find((d) => d.type === 'setSource') as Record<string, unknown>;
     expect(missingPane.value).toBe('missing');
+  });
+});
+
+describe('#164 — a confirmed not-found pane read names WHICH absence (D30)', () => {
+  const entry = { id: 'ult', repoPath: 'git.door43.org/unfoldingWord/en_ult', sha: 'b'.repeat(40), flavor: 'scripture/textTranslation' };
+  const notFoundRead = async () => { throw notFound(); };
+  const paneCtx = (state: Record<string, unknown>, readSourceBook: (repo: string) => Promise<{ usfm: string }>) => {
+    const dispatched: Array<Record<string, unknown>> = [];
+    return {
+      dispatched,
+      run: () =>
+        loadSourcePanes({
+          store: { readSourceBook },
+          code: 'GEN',
+          seq: 1,
+          openSeqRef: { current: 1 },
+          stateRef: { current: { sourceTab: 'ult', projectPins: { extraScripture: [entry] }, projectPinsLoaded: true, ...state } },
+          dispatch: (a: Record<string, unknown>) => dispatched.push(a),
+          pins: undefined,
+        }),
+    };
+  };
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+  const paneValue = (dispatched: Array<Record<string, unknown>>) =>
+    (dispatched.find((d) => d.type === 'setSource') as Record<string, unknown>).value;
+
+  it("the pinned source is not on this computer → 'not-installed', never 'missing'", async () => {
+    // The resolver HAS run and found nothing: the pilot's offline install (#163).
+    setInstalledCache({});
+    const { dispatched, run } = paneCtx({}, notFoundRead);
+    run();
+    await flush();
+    expect(paneValue(dispatched)).toBe('not-installed');
+  });
+
+  it("the source is installed at the pinned identity and lacks the book → 'missing'", async () => {
+    setInstalledCache({ '_local_/_sideloaded_/en_ult': entry });
+    const { dispatched, run } = paneCtx({}, notFoundRead);
+    run();
+    await flush();
+    expect(paneValue(dispatched)).toBe('missing');
+  });
+
+  it("before the resolver has run the answer is unknown → the weaker 'missing' stands", async () => {
+    setInstalledCache(null);
+    const { dispatched, run } = paneCtx({}, notFoundRead);
+    run();
+    await flush();
+    expect(paneValue(dispatched)).toBe('missing');
+  });
+
+  it('a transient read failure is still a stated pane error, whatever the install state', async () => {
+    setInstalledCache({});
+    const { dispatched, run } = paneCtx({}, async () => { throw new Error('socket hang up'); });
+    run();
+    await flush();
+    expect((paneValue(dispatched) as { error: string }).error).toMatch(/socket hang up/);
+  });
+
+  it('the two absences have two different statements in every view that renders them', () => {
+    // Draft/Understand/Check each branch on 'not-installed' vs 'missing'; the
+    // catalog carries a distinct sentence for each (no view reuses one for both).
+    expect(en['source.notInstalled']).toMatch(/not on this computer/);
+    expect(en['source.unavailable']).toMatch(/not available for this book/);
+    expect(en['check.ultUnavailable']).toMatch(/not on this computer/);
+    expect(en['understand.sourceMissing']).toMatch(/not on this computer/);
   });
 });
