@@ -21,7 +21,7 @@ import { isLanguageSwitch } from '../data/revalidate';
 import { targetWords, selectionsFromTokens, tokenIndicesFromSelections } from '../data/selections';
 import { tokenizeVerse, matchQuote } from '../data/sourceHighlight';
 import { verseText } from './verseText.js';
-import { isSourceAbsent } from '../data/sourceState';
+import { absenceMessageKey, isSourceAbsent } from '../data/sourceState';
 import { ExpandableNote, glTitleFor } from './HelpsPanel.jsx';
 import { t } from '../i18n';
 import { Button, Callout, Drawer, Overline, ProgressBar } from '../ds/index.js';
@@ -374,8 +374,7 @@ function ultAbsence(source, sourcePanes, crossFrame) {
   // Round 37 (§5.3): a project may legally declare no extraScripture.
   if (sourcePanes && sourcePanes.length === 0) return t('check.noGateway');
   if (sourcePanes === null || source === undefined) return null;
-  if (source === 'not-installed') return t('check.ultUnavailable');
-  if (source === 'missing') return t('source.unavailable');
+  if (isSourceAbsent(source)) return t(absenceMessageKey(source));
   if (source?.error) return source.error;
   return t('check.paneAbsent');
 }

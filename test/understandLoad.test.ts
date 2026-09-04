@@ -5,7 +5,9 @@
 // "no pins recorded"): the screen proceeds with unpinned help slots instead
 // of waiting forever.
 import { describe, expect, it } from 'vitest';
-import { __performLoadUnderstandForTests as loadUnderstand, __loadProjectPinsForTests as loadPins, __loadSourcePanesForTests as loadSourcePanes, __setInstalledCacheForTests as setInstalledCache } from '../src/state.jsx';
+import { __performLoadUnderstandForTests as loadUnderstand, __loadProjectPinsForTests as loadPins, __loadSourcePanesForTests as loadSourcePanes, __setInstalledCacheForTests as setInstalledCache, __INSTALLED_SUITE_FOR_TESTS as INSTALLED_SUITE } from '../src/state.jsx';
+import { localRepoPathFromRepoPath } from '../src/data/installed';
+import { absenceMessageKey } from '../src/data/sourceState';
 import en from '../src/i18n/en.json';
 
 const PIN = { repoPath: 'git.door43.org/unfoldingWord/en_ust', sha: 'a'.repeat(40), flavor: 'scripture/textTranslation' };
@@ -235,7 +237,11 @@ describe('round 37 — the source panes come from the PROJECT pins (§5.3), neve
 });
 
 describe('#164 — a confirmed not-found pane read names WHICH absence (D30)', () => {
-  const entry = { id: 'ult', repoPath: 'git.door43.org/unfoldingWord/en_ult', sha: 'b'.repeat(40), flavor: 'scripture/textTranslation' };
+  // Inputs come from the system under test, never from memory (AGENTS.md): the pin is
+  // the shipped English package's own `ult` entry (repoPath, version, sha as pinned in
+  // src/state.jsx), and the install key is the path the installer derives for it.
+  const entry = INSTALLED_SUITE.extraScripture.find((e: { id: string }) => e.id === 'ult')!;
+  const installKey = localRepoPathFromRepoPath(entry.repoPath);
   const notFoundRead = async () => { throw notFound(); };
   const paneCtx = (state: Record<string, unknown>, readSourceBook: (repo: string) => Promise<{ usfm: string }>) => {
     const dispatched: Array<Record<string, unknown>> = [];
@@ -257,6 +263,12 @@ describe('#164 — a confirmed not-found pane read names WHICH absence (D30)', (
   const paneValue = (dispatched: Array<Record<string, unknown>>) =>
     (dispatched.find((d) => d.type === 'setSource') as Record<string, unknown>).value;
 
+  it('the pin is a real identity, not an invented one', () => {
+    expect(entry.repoPath).toMatch(/^git\.door43\.org\//);
+    expect(entry.sha).toMatch(/^[0-9a-f]{40}$/);
+    expect(installKey).toMatch(/^_local_\/_sideloaded_\//);
+  });
+
   it("the pinned source is not on this computer → 'not-installed', never 'missing'", async () => {
     // The resolver HAS run and found nothing: the pilot's offline install (#163).
     setInstalledCache({});
@@ -267,11 +279,20 @@ describe('#164 — a confirmed not-found pane read names WHICH absence (D30)', (
   });
 
   it("the source is installed at the pinned identity and lacks the book → 'missing'", async () => {
-    setInstalledCache({ '_local_/_sideloaded_/en_ult': entry });
+    setInstalledCache({ [installKey]: entry });
     const { dispatched, run } = paneCtx({}, notFoundRead);
     run();
     await flush();
     expect(paneValue(dispatched)).toBe('missing');
+  });
+
+  it("negative control: the same repository installed at ANOTHER commit is not this pin → 'not-installed' (D58/D59 exact identity)", async () => {
+    const otherSha = entry.sha.endsWith('0') ? `${entry.sha.slice(0, -1)}1` : `${entry.sha.slice(0, -1)}0`;
+    setInstalledCache({ [installKey]: { ...entry, sha: otherSha } });
+    const { dispatched, run } = paneCtx({}, notFoundRead);
+    run();
+    await flush();
+    expect(paneValue(dispatched)).toBe('not-installed');
   });
 
   it("before the resolver has run the answer is unknown → the weaker 'missing' stands", async () => {
@@ -290,12 +311,10 @@ describe('#164 — a confirmed not-found pane read names WHICH absence (D30)', (
     expect((paneValue(dispatched) as { error: string }).error).toMatch(/socket hang up/);
   });
 
-  it('the two absences have two different statements in every view that renders them', () => {
-    // Draft/Understand/Check each branch on 'not-installed' vs 'missing'; the
-    // catalog carries a distinct sentence for each (no view reuses one for both).
+  it('the two absences map to two different sentences through ONE function', () => {
+    expect(absenceMessageKey('not-installed')).toBe('source.notInstalled');
+    expect(absenceMessageKey('missing')).toBe('source.unavailable');
     expect(en['source.notInstalled']).toMatch(/not on this computer/);
     expect(en['source.unavailable']).toMatch(/not available for this book/);
-    expect(en['check.ultUnavailable']).toMatch(/not on this computer/);
-    expect(en['understand.sourceMissing']).toMatch(/not on this computer/);
   });
 });

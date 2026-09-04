@@ -189,6 +189,8 @@ const localSourceRepo = (pin) => resolveReadPath(pin);
 
 // The source-pane badge shows the actual pinned version, never a literal.
 export const SUITE_VERSION = INSTALLED_SUITE.extraScripture[0].version;
+/** Test hook (#164): tests source pins from the shipped package, never from memory. */
+export const __INSTALLED_SUITE_FOR_TESTS = INSTALLED_SUITE;
 
 // B7 — `checking/resources.json` is ONE shared whole-file document (every
 // project pin). A read-modify-write that writes blindly loses a concurrent
@@ -1323,7 +1325,8 @@ export const __loadSourcePanesForTests = loadSourcePanes;
 
 /** #164: which absence a CONFIRMED not-found pane read means. The platform answers
  * "no such repository" and "no such book" with the same not-found, so the pin is
- * looked up in the install resolver's cache: absent there (and the cache HAS run)
+ * looked up in the install resolver's cache (evidence for the platform claim: the
+ * [VERIFIED] tag in src/data/sourceState.ts): absent there (and the cache HAS run)
  * = the source is not on this computer; present = it lacks the book. Before the
  * resolver has run the answer is unknown and the older, weaker statement stands. */
 const sourceAbsence = (pin) =>

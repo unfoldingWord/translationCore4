@@ -10,7 +10,7 @@ import { t } from '../i18n';
 import BookRail from './BookRail.jsx';
 import { HelpsPanel, leadingNum, useLoadHelps, focusOf } from './HelpsPanel.jsx';
 import { keyCarries, SourceVerse } from './SourceVerse.jsx';
-import { isSourceAbsent } from '../data/sourceState';
+import { absenceMessageKey, isSourceAbsent } from '../data/sourceState';
 import { FilterChip, IconButton, Overline, SegmentedControl, StatusDot, Callout, Button } from '../ds/index.js';
 import { RailIcon } from './PanelIcons.jsx';
 import { targetTypeFor, projectDir } from './scriptStyle.js';
@@ -393,7 +393,7 @@ function PassageStatus({ s, src, actions }) {
               <Callout tone="info" data-testid="no-source-panes" style={{ marginTop: 10 }}>{t('understand.noSourcePanes')}</Callout>
             )}
             {isSourceAbsent(src) && (
-              <Callout tone="info" style={{ marginTop: 10 }}>{t(src === 'not-installed' ? 'understand.sourceMissing' : 'source.unavailable')}</Callout>
+              <Callout tone="info" style={{ marginTop: 10 }}>{t(absenceMessageKey(src))}</Callout>
             )}
             {src?.error && (
               // Catch-to-absence sweep (D30/A3): a failed pane read is a
