@@ -1150,7 +1150,7 @@ the fold's pattern applied to layer 5; see `docs/plans/TEAM-SYNC-PLAN.md` §1.1.
 docs gate over manifest-derived statements, one `Report` shape with a refusal-code
 vocabulary, scenario files with one runner, the repository port with its adapters, and
 `docs/SYSTEM.md`. The increment closes on a measured orientation test (LEGIBILITY.md
-Part 4).
+Section 4).
 
 **(3) Receive inputs.** A receive rebuilds from four inputs: team main, the actor's own
 publication, the actor's own unsent working segments, and the actor's outbox. Every own
@@ -1198,6 +1198,6 @@ legibility step L-2. BURRITO-SPEC §1's "no companion repos, no copies" sentence
 amended in S1, through §9, to name the publication and team main mirrors
 (`docs/plans/TEAM-SYNC-PLAN.md` Section 4).
 
-[revised 2026-09-03 — five rounds of second-model review of PR #151 returned 23, 18,
-13, 12 and 18 findings; the plans and this entry were corrected in the same pull request. No ruling
+[revised 2026-09-03 — six rounds of second-model review of PR #151 returned 23, 18,
+13, 12, 18 and 12 findings; the plans and this entry were corrected in the same pull request. No ruling
 changed.]

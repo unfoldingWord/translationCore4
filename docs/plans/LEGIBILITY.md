@@ -11,7 +11,7 @@ Appendix A (`docs/BURRITO-SPEC.md:523`) names `conformance/journal/*.mjs` outrig
 the harness move in the same change set, per §9. L-0 also corrects the same path in
 `docs/ARCHITECTURE.md:190` ("in `conformance/journal/`"), which is not a spec sentence
 and needs no §9 pairing; the "ports" wording on that line waits for L-2. No other step edits the
-spec. Revised 2026-09-03 after five rounds of second-model review of PR #151.
+spec. Revised 2026-09-03 after six rounds of second-model review of PR #151.
 
 How to read this document: Section 1 states five problems, each with an observation and
 its cause. Section 2 states one fix per problem. Section 3 is the sequence of change
@@ -73,8 +73,8 @@ step language, the `StepSpec` interface in `test/journalingInterleavings.test.ts
 Observed: `open()` computes forks, retained heads, pending structural events and
 auto-merges into `lastOpenReport` (`src/data/journal/journalingStore.ts`). No other
 module in `src/` reads it [VERIFIED — grep at 9a9ac40, 2026-09-03: the only file that
-names `lastOpenReport` is `journalingStore.ts`]. Refusals surface as a Home banner
-string.
+names `lastOpenReport` is `journalingStore.ts`]. An open failure surfaces as an error
+banner string on Home [VERIFIED — `src/state.jsx:1836-1845`, f1c07ff, 2026-09-03].
 
 Cause: the report was built for tests; the fork UI (#25) is Post-4.0; there was no
 intermediate consumer.
@@ -156,7 +156,7 @@ before and after.
 
 | Step | Change set | Removes | Evidence at merge |
 |---|---|---|---|
-| L-0 | Move the reference modules to a root `journal/` package; update import paths; update the two spec sentences that locate the path (`docs/BURRITO-SPEC.md:512` in §8.9 and `:523` in Appendix A) and the path in `docs/ARCHITECTURE.md:190`; no logic change (D67(4e)) | the misnamed directory | all suites green; the diff holds file moves, import-path edits and the three path sentences only, no other hunk; `grep -rn 'conformance/journal' docs/` returns nothing; `journalRuntime.test.ts` parity holds; the harness moves in the same change set, so §9 is met |
+| L-0 | Move the reference modules to a root `journal/` package; update import paths; update the two spec sentences that locate the path (`docs/BURRITO-SPEC.md:512` in §8.9 and `:523` in Appendix A) and the path in `docs/ARCHITECTURE.md:190`; no logic change (D67(4e)) | the misnamed directory | all suites green; the diff holds file moves, import-path edits and the three path sentences only, no other hunk; `grep -n 'conformance/journal' docs/BURRITO-SPEC.md docs/ARCHITECTURE.md` returns nothing (historical records under `docs/evidence/` and past D-numbers keep the old path); `journalRuntime.test.ts` parity holds; the harness moves in the same change set, so §9 is met |
 | L-1 | `npm run prove`, `docs/evidence/manifest.json`, CI upload, rig pristine check, R7 reads the Stage-1 count from the suite summary | eight commands; residue false-failures; the R7 constant | manifest committed from the CI run; `prove` on a clean clone passes and lists skips with reasons; R7 green on a reseeded rig, recorded |
 | L-1b | Rig container for CI (the dev-env devcontainer follow-up) | the missing rig job | the rig job runs the rig-gated suites on `main` and on demand; never a pankosmia remote or token |
 | L-2 | Docs gate with `test/docsGate.test.ts` and its two fixtures; correct and mark the recipe counts in PLATFORM-NOTES, ARCHITECTURE, the root README and `conformance/README.md`; correct ARCHITECTURE §9 "ports" wording | stale numbers; the "ports" sentence | `fresh.md` passes and `stale.md` fails in `npm run verify`; the gate runs in CI; `docs/BURRITO-SPEC.md` is not in the diff |
@@ -195,10 +195,10 @@ one pass or fail per row.
 | Q4 | Which refusal codes exist, and which rule does each enforce? | `node -e "import('./journal/report.mjs').then(m => console.table(m.REFUSAL_CODES))"` |
 | Q5 | What does the app import from the reference modules, and from where? | `grep -rn "from '.*journal/" src/data/journal/` |
 | Q6 | What happens to unsent own work at receive? | `ls conformance/scenarios/` shows whether `receive-with-unsent.json` exists. Before X2 it does not, and the correct answer is "receive is [PROPOSED]; no executable scenario exists", proven by the `ls` and by `grep -n PROPOSED docs/BURRITO-SPEC.md`. After X2, `tc4 scenario conformance/scenarios/receive-with-unsent.json` |
-| Q7 | Which repositories exist on one device for one project, and which is canonical? | `curl -s <rig>/burrito/metadata/summaries` lists every repository the rig holds. Before S2 only `_local_/_local_/<name>` exists for a project, and the correct answer is "one, the working projection". After S2, the listing shows the mirrors and `tc4 report` names the canonical one |
+| Q7 | Which repositories exist on one device for one project, and which is canonical? | `curl -s http://127.0.0.1:19998/api/burrito/metadata/summaries` (the rig API base that the e2e helpers use, `e2e/helpers/journal.ts:12`) lists every repository the rig holds. Before S2 only `_local_/_local_/<name>` exists for a project, and the correct answer is "one, the working projection". After S2, the listing shows the mirrors and `tc4 report` names the canonical one |
 | Q8 | Which operations write an ops record, and where is the record read? | `grep -rn "opsLog\." src/` |
 | Q9 | Which scenario files exist, and which runners ran each? | `ls conformance/scenarios/`; `jq .scenarios docs/evidence/manifest.json` |
-| Q10 | Is the working tree trustworthy after `pull-repo`? | `docs/PLATFORM-NOTES.md` #21 (a verified platform record; the answer is no) |
+| Q10 | Is the working tree trustworthy after `pull-repo`? | `grep -n '^21\. ' docs/PLATFORM-NOTES.md` prints the verified platform record; the answer is no |
 | Q11 | Which spec version and server version does this commit claim, and does the manifest agree? | `head -3 docs/BURRITO-SPEC.md`; `jq .server docs/evidence/manifest.json`; the docs gate result |
 | Q12 | Which one command proves layer N, for each of the seven layers? | the `prove` verbose listing (`npm run prove -- --list`) |
 

@@ -3,8 +3,8 @@
 Status: [PROPOSED] plan, adopted as the shape of epic #24 by D67 (2026-09-02). Rules
 named here become normative only when the S1 change set lands them in
 `docs/BURRITO-SPEC.md` with their checks (§9). Written against `main` after the audit of
-2026-09-01 [VERIFIED — worktree at 60be039, see D67]. Revised 2026-09-03 after five
-rounds of second-model review of PR #151 (23, 18, 13, 12 and 18 findings). Each
+2026-09-01 [VERIFIED — worktree at 60be039, see D67]. Revised 2026-09-03 after six
+rounds of second-model review of PR #151 (23, 18, 13, 12, 18 and 12 findings). Each
 finding was either fixed or answered in the pull request.
 
 Prerequisite: the legibility increment (`LEGIBILITY.md`) closes first (D67(2)).
@@ -192,14 +192,13 @@ table (1.3) agree:
 | I6 | R-8.7.12 | `swap.incomplete` |
 | I9 | R-8.7.13 | `receive.audio-missing` |
 
-- I1 Publication isolation. Every publication commit after the creation commit touches
-  only the actor's own `ingredients/checking/journal/<actor>/` and the `ingredients`
-  table entries of `metadata.json` that describe those files (the table is
-  server-owned and must list every file, §3 rule 5). No other path and no other
-  metadata field changes. The creation commit is the one exception and is fully
-  defined: it is the first commit on the `<actorId>` branch, it removes every ingredient
-  outside the own journal directory, sets `currentScope` to `{}`, and remakes the
-  table (S2). The S2 spy test skips that one commit and checks every later one.
+- I1 Publication isolation. Every commit on the `<actorId>` branch touches only the
+  actor's own `ingredients/checking/journal/<actor>/` and the `ingredients` table
+  entries of `metadata.json` that describe those files (the table is server-owned and
+  must list every file, §3 rule 5). No other path and no other metadata field changes.
+  The branch is created on a `git/copy` of the working projection and starts with no
+  commit of its own, so there is no creation exception (S2). The S2 spy test checks
+  every commit on the branch.
 - I2 Send without receive. A send never needs a receive first and never merges another
   actor's bytes into the working repository.
 - I3 Receive is rebuild-and-swap. The working repository is never merged into.
@@ -271,19 +270,26 @@ Until S1, §1 stands as written and this table is [PROPOSED].
 | Role | Path | Branch | Written by | Content |
 |---|---|---|---|---|
 | Working projection (canonical) | `_local_/_local_/<name>` | `main` | the app, every mutation | full Burrito: derived files, all journals, audio |
-| Own publication | `_local_/_pub_/<name>` | `<actorId>` | send (S2) | `metadata.json` with a re-made ingredients table, plus `ingredients/checking/journal/<actorId>/` only |
+| Own publication | `_local_/_pub_/<name>` | `<actorId>` | send (S2) | a full copy of the working projection at creation; after that, only `ingredients/checking/journal/<actorId>/` and its ingredients-table entries change |
 | Team main mirror | `_local_/_team_/<name>` | `main` | integrate (S4), receive (S5) | full Burrito: derived files and every accepted journal |
 | Scratch (disposable) | `_local_/_scratch_/<name>-<hlc>` | any | S4, S5; deleted after use | a copy under construction |
 | Previous working (recovery copy) | `_local_/_prev_/<name>` | `main` | S5 swap; deleted at the next checkpoint | the working projection before the swap |
 
-The publication repository is a journal-only mirror. It keeps `metadata.json` with
-`type.flavorType.currentScope` set to `{}` (no book in scope, so §3 rule 4 requires no
-book file) and runs `remake-ingredients` after the deletes, so the `ingredients` table
-lists exactly the journal files (§3 rule 5). That is enough for the zip import, which
-requires a root `metadata.json` and an `ingredients/` directory (Section 3, last
-bullet). It is not a conforming tC4 project and never claims to be: it has no book, no
-derived files, and no checkpoint. `verifyProjectAgainstJournal` does not apply to it
-(Section 7). The S1 amendment to BURRITO-SPEC §1 names it with these words.
+The publication repository is the shape that J19 and transport T3 already prove and
+that ARCHITECTURE §9 describes (`publicationStore`, "a persistent `actor-<actorId>`
+repo/branch") [VERIFIED — `docs/ARCHITECTURE.md:190`, `conformance/validate-transport.mjs:207-210`,
+f1c07ff, 2026-09-03]: a `git/copy` of the working projection, with a `<actorId>` branch
+created on the copy. Nothing is deleted and no metadata field is edited, because no
+HTTP route writes `metadata.json` (D28 addendum; `src/data/serverApi.ts:145`). The
+copied derived files are a frozen snapshot: every later commit on the branch touches
+only the own journal directory and the ingredients-table entries that
+`remake-ingredients` adds for new segments (I1). Because the branch point is a copy of
+main's ancestor state and only journal paths change after it, a merge of the branch
+into scratch brings only journal paths; that is what T3 asserts today. The copy is a
+structurally valid Scripture Burrito, so the zip import accepts it. Its derived files
+do not track its own fold, so `verifyProjectAgainstJournal` does not apply to it
+(Section 7); the S2 path whitelist is its check. The S1 amendment to BURRITO-SPEC §1
+names it as a mirror of the project, not a second project.
 
 ## 5. Work items
 
@@ -383,7 +389,7 @@ As in 1.7. Each verb has one oracle:
 
 | Verb | Oracle |
 |---|---|
-| `open`, `send`, `receive`, `integrate`, `verify`, `fold` | rig-gated test: the verb's `Report` equals the app's `Report` for the same action on the same repository, field for field, `durations` excluded |
+| `open`, `send`, `receive`, `integrate`, `verify`, `fold` | rig-gated test: the verb's `Report` equals the app's `Report` for the same action on the same repository, field for field, `ts` and `durations` excluded (`ts` is each run's own HLC stamp; `actor` is the same because both run on one installation) |
 | `report`, `ops` | the printed record equals the stored ops record byte for byte |
 | `explain` | for a forked verse: names both heads, their bases, and R-8.6.4; for a linear verse: names the head and its base chain |
 | `scenario` | runs one scenario file and exits non-zero on the first failed expectation; the negative-control scenario exits non-zero |
@@ -411,14 +417,12 @@ kill points whose recovery differs; every other k must land in one of those five
 states or in "nothing changed".
 
 | Kill point | State on disk | Required result on next open |
-
-| Kill point | State on disk | Required result on next open |
 |---|---|---|
 | K1 after the record is written, before or during scratch work (S5 steps 2–6) | working at its path; a record in phase `start`; zero or one scratch under `_local_/_scratch_/` | roll back: delete any scratch named in the record; close the record with `outcome: refused`, `refusals: [{code: swap.incomplete}]`; working untouched. A scratch directory with no record (a crash before the record's own barrier completed) is deleted by the same sweep of `_local_/_scratch_/<name>-*` and reported the same way |
 | K2 after phase `intent`, before move 1 | as K1 with a validated, committed scratch and the record in phase `intent` | roll back: delete scratch; close the record with `outcome: refused`; working untouched |
 | K3 after move 1 (working → prev), before move 2 | no repository at the working path; prev and scratch exist; record in phase `moved-prev` | finish forward: move scratch to the working path; set phase `moved-scratch`; continue as K4; `outcome: recovered` |
 | K4 after move 2, before the outbox clear | replacement at the working path; prev exists; record in phase `moved-scratch`; carried outbox entries still present | finish forward: verify the working path folds; clear the carried entries; close the record with `outcome: recovered` |
-| K5 during a single `copy?delete_src` (copy done, delete not done) | source and target both exist | the recovery reads the phase, verifies the target folds, deletes the source, then applies the K3 or K4 rule |
+| K5 the server dies inside one `copy?delete_src` call (copy done, delete not done) | source and target both exist; record in phase `intent` or `moved-prev` | the recovery reads the phase, verifies the target folds, deletes the source, then applies the K3 or K4 rule. The port-call kill sweep cannot produce this state over HTTP, because the copy and the delete are one request. K5 is therefore a fixture-seeded scenario: the test builds the on-disk state (both directories, the record in the given phase) directly, then runs `open()`. It runs on every port |
 
 S2 and S4 have no swap, so their kill sweep asserts only their own acceptance: for S2,
 after `open()` every own segment in working ∪ outbox is in the publication or still in
@@ -462,8 +466,8 @@ Scope of the change set, all in one commit per §9:
   (1.3) are listed with their rules; the two platform caveats of the current
   [PROPOSED] block stay. The `[PROPOSED]` mark on the sync block is removed.
 - BURRITO-SPEC §1: the sentence "There are no companion repos, no copies, and no
-  export/import loop" is amended to name the publication mirror (a journal-only mirror
-  with an empty scope, Section 4) and the team main mirror. The spec version bumps.
+  export/import loop" is amended to name the publication mirror (a copy of the project
+  with an actor branch, Section 4) and the team main mirror. The spec version bumps.
 - Harness: scenario files for receive with unsent work (X2), swap ordering,
   flush-then-receive equivalence, and the carry-over refusals; the J32 two-device
   property (D55 calls it J32f; Appendix A indexes it as J32) gains a `receive` step;
@@ -479,17 +483,19 @@ superseded.
 
 ### S2 — Send (adapter over `sync.send`)
 
-First send creates `_local_/_pub_/<name>` by `git/copy`, `new-branch/<actorId>`,
-ingredient deletes outside the own journal directory, a metadata write that sets
-`type.flavorType.currentScope` to `{}` (the copy inherits the project's scope and would
-otherwise advertise books it no longer holds), `remake-ingredients`, `add-and-commit`. `send()` is a flush: own segments not yet in the publication,
-validated, then the outbox replayed into both working and publication, then one
-commit. Idempotent. Works with the net gate off. Acceptance: publication commits touch
-only own journal paths and the `ingredients` table entries for them (spy test that
-diffs `metadata.json` field by field and fails on any other field); the publication's
-`currentScope` is `{}` after the first send; after `send()` every own segment
-in working ∪ outbox is in the publication byte-identical under a kill sweep; a planted
-foreign segment is refused and surfaced with `segment.foreign-actor`.
+First send creates `_local_/_pub_/<name>` by `git/copy` of the working projection and
+`new-branch/<actorId>` on the copy. Nothing is deleted and no metadata field is edited
+(Section 4). `send()` is a flush: own segments not yet in the publication, validated,
+then the outbox replayed into both working and publication, then `remake-ingredients`
+and one `add-and-commit` on the publication. Idempotent. Works with the net gate off.
+
+Acceptance: every commit on the `<actorId>` branch touches only own journal paths and
+the `ingredients` table entries for them (spy test: `git diff --name-only` per commit
+is a subset of the own journal directory plus `metadata.json`, and a field-by-field
+diff of `metadata.json` shows changes only inside `ingredients` for those paths); after
+`send()` every own segment in working ∪ outbox is in the publication byte-identical
+under the X5 kill sweep; a planted foreign segment is refused and surfaced with
+`segment.foreign-actor`.
 
 ### S3 — Transports: Door43 and sneakernet
 
@@ -502,8 +508,7 @@ on 2026-07-27 in `docs/evidence/zip-roundtrip-correction-2026-07-27.md`; that re
 carries no commit hash, so it does not meet the citation rule and this plan treats the
 claim as [PROPOSED] until S3 re-verifies it at the rig pin 0.18.5 (99fd9be) and records
 version, hash and date; #26 trap (b)). Import under `_local_/_sideloaded_/`. The publication
-repository satisfies the importer's structural rule (Section 3, last bullet; its
-content is defined in Section 4). Team main travels as a
+repository is a valid Burrito (Section 4), so the importer accepts it. Team main travels as a
 Door43 branch or a zip (D67(4b)).
 
 Acceptance: push and clone pass in CI against a git remote the rig job controls (a
@@ -511,7 +516,9 @@ bare repository served over HTTPS with a certificate the rig trusts, because
 `clone-repo` is https-only (Section 3), or the rig's gitea if one exists); a publication zip
 round-trips through export and import with `metadata.json` and every file under
 `ingredients/` byte-identical (`.git/` and `.DS_Store` are excluded, as in the #22
-record, which compared the 10 non-`.git` files); net off disables the Door43
+record, which compared the 10 non-`.git` files); a team main zip exported by the
+integrator (D67(4b)) round-trips the same way and, imported on a second device, folds to
+the same state as the integrator's team main; net off disables the Door43
 controls and leaves sneakernet working. A run against live git.door43.org is a manual
 evidence record, not the acceptance. S3 stays open until the CI remote test is green.
 
@@ -587,8 +594,9 @@ Acceptance:
   reported once.
 - The I4 negative control (X2 check 7) fails under the fault `skip-outbox-replay`.
 - Every `ingredients/audio/` file present before receive is present after, byte for
-  byte, and the I9 negative control (an audio file deleted from scratch before the
-  swap) refuses.
+  byte, and the I9 negative control (the fault `drop-audio-carry`, which skips step 4
+  for one file; the second named fault after `skip-outbox-replay`, X2 check 7) refuses
+  with `receive.audio-missing`.
 - The X5 kill sweep across K1–K5 ends with one working repository at the original path,
   every own byte present, actor id unchanged.
 - The two moves are exercised on the rig, recorded with version, hash and date.
@@ -608,9 +616,9 @@ after receive; no modal wall. This is the test obligation of I8.
 ### S7 — Performance prerequisites (#94, #95)
 
 Finish #95 (one journal scan per open) and #94 (fold in a Web Worker). #92 and #93 are
-closed (GitHub issue state read with `gh issue view` on 2026-09-03:
+closed [VERIFIED — GitHub issue state, read with `gh issue view` on 2026-09-03:
 https://github.com/unfoldingWord/translationCore4/issues/92 and /issues/93; an issue
-state is not a code or platform claim, so it carries no `[VERIFIED]` tag). Add
+state has no version or commit hash, so the URL and the date are the citation]. Add
 `tc4 bench --receive`.
 
 Acceptance: `tc4 bench --receive` over the existing default bench corpus (an aligned
@@ -650,15 +658,18 @@ names a check that exists in the repository.
 ## 6. The journey
 
 Actor A and actor B each open the same project, seeded from the sample burrito (X2
-names the source; all references are to `TIT`), on separate installations. A drafts
-TIT 1:2 and sends. B drafts TIT 1:3, sends, and receives. A, offline, drafts TIT 1:1,
-edits TIT 1:3 to a different text with the same `base` as B's edit, and has one action
-(TIT 1:4) still in the outbox. A receives. Expected: A's working repository has A's
-TIT 1:1, 1:2, 1:3 and the former outbox action as a committed segment, and A's outbox
-is empty (S5 step 7); TIT 1:3 shows a fork with A's head and B's head (R-8.3.2); A
-picks one; the resolution sends; B receives; B sees no fork and A's chosen TIT 1:3;
-both projects fold to
-the same state. Then A's device loses power during a receive between the two moves; the
+names the source; all references are to `TIT`), on separate installations. B's device
+is the team's integrator (D67(4b)); it holds the team main mirror, and every
+publication reaches team main through `integrate` (S4) on that device. A drafts
+TIT 1:2 and sends; B integrates A's publication. B drafts TIT 1:3, sends, integrates
+its own publication, and receives. A, offline, drafts TIT 1:1, edits TIT 1:3 to a
+different text with the same `base` as B's edit, and has one action (TIT 1:4) still in
+the outbox. A comes online and receives (team main now holds A's 1:2 and B's 1:3).
+Expected: A's working repository has A's TIT 1:1, 1:2, 1:3 and the former outbox
+action as a committed segment, and A's outbox is empty (S5 step 7); TIT 1:3 shows a
+fork with A's head and B's head (R-8.3.2); A picks one; the resolution sends; B
+integrates A's publication and receives; B sees no fork and A's chosen TIT 1:3; both
+projects fold to the same state. Then A's device loses power during a receive between the two moves; the
 next open completes or rolls back the swap; no own byte is missing.
 
 ## 7. Epic acceptance
