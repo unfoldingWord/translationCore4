@@ -166,9 +166,10 @@ Rules the command follows:
   the rig answers but is not pristine; the refusal names the extra repos and the reseed
   commands. The rig suites themselves leave the rig non-pristine, so a reseed precedes
   every rig run.
-- When the rig answers but the rig suites cannot run (refused, or not seeded), the plain
-  `vitest` suite excludes the `*.integration.test.ts` files, which would otherwise run
-  against that rig on their own. With no rig they self-skip and stay included.
+- When the rig answers, the plain `vitest` suite excludes the `*.integration.test.ts`
+  files: they run once, in `vitest:rig`, after the transport and round-trip suites, so
+  the project they create and keep never precedes a state-sensitive suite. With no rig
+  they self-skip and stay included.
 - The rig suites do not run on Windows: the round-trip suite shells out to `zip`, `unzip`
   and `mv`. The skip names this.
 - `bench:fold` runs only with `--bench` (about one minute); `--list` runs nothing.

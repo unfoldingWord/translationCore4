@@ -88,24 +88,29 @@ const parsers = {
 const integrationFiles = () =>
   fs.readdirSync(path.join(ROOT, 'test')).filter((f) => f.endsWith('.integration.test.ts')).map((f) => `test/${f}`).sort();
 
-// Set after rig detection: the rig answers but the rig suites will not run (refused, or
-// unusable for another named reason). The integration vitest files detect the rig
-// themselves and would run against it inside the plain `vitest` suite, so that suite
-// excludes them in this case; with no rig they skip on their own and stay included.
-let rigAnsweredButUnusable = false;
+// Set after rig detection. The integration vitest files detect the rig themselves and
+// run against it from inside the plain `vitest` suite. When the rig answers, the plain
+// suite excludes them: on a pristine rig they would run twice (here and in `vitest:rig`)
+// and leave a repository behind BEFORE the state-sensitive transport and round-trip
+// suites; on an unusable rig they would run live against it. With no rig they skip on
+// their own and stay included. (test/review-findings.test.ts M4 also probes the rig, but
+// it creates a uniquely named scratch project and deletes it on every exit.)
+let rigAnswered = false;
 
 const SUITES = [
   { id: 'lint', layer: 'verify', cwd: ROOT, cmd: 'npm', args: ['run', 'lint'], parse: 'none' },
   { id: 'typecheck', layer: 'verify', cwd: ROOT, cmd: 'npm', args: ['run', 'typecheck'], parse: 'none' },
-  { id: 'vitest', layer: 'unit', cwd: ROOT, cmd: 'npx', args: () => ['vitest', 'run', ...(rigAnsweredButUnusable ? ['--exclude', 'test/**/*.integration.test.ts'] : [])], parse: 'vitest' },
+  { id: 'vitest', layer: 'unit', cwd: ROOT, cmd: 'npx', args: () => ['vitest', 'run', ...(rigAnswered ? ['--exclude', 'test/**/*.integration.test.ts'] : [])], parse: 'vitest' },
   { id: 'build', layer: 'verify', cwd: ROOT, cmd: 'npm', args: ['run', 'build'], parse: 'none' },
   { id: 'conformance:generate', layer: 'conformance', cwd: CONF, cmd: 'node', args: ['generate.mjs'], parse: 'none' },
   { id: 'conformance:validate', layer: 'conformance', cwd: CONF, cmd: 'node', args: ['validate.mjs'], parse: 'phase1' },
   { id: 'conformance:journal', layer: 'conformance', cwd: CONF, cmd: 'node', args: ['validate-journal.mjs'], parse: 'journal' },
   { id: 'conformance:normative', layer: 'conformance', cwd: CONF, cmd: 'node', args: ['normative/check.mjs'], parse: 'normative' },
-  { id: 'vitest:rig', layer: 'rig', cwd: ROOT, cmd: 'npx', args: () => ['vitest', 'run', ...integrationFiles()], parse: 'vitest', needsRig: true },
+  // Rig order: the two suites that read rig state first, the integration files (which
+  // create and keep a project) last.
   { id: 'conformance:transport', layer: 'rig', cwd: CONF, cmd: 'node', args: ['validate-transport.mjs'], parse: 'transport', needsRig: true },
   { id: 'conformance:roundtrip', layer: 'rig', cwd: CONF, cmd: 'node', args: ['validate-roundtrip.mjs'], parse: 'roundtrip', needsRig: true },
+  { id: 'vitest:rig', layer: 'rig', cwd: ROOT, cmd: 'npx', args: () => ['vitest', 'run', ...integrationFiles()], parse: 'vitest', needsRig: true },
   { id: 'bench:fold', layer: 'bench', cwd: CONF, cmd: 'node', args: ['bench-fold.mjs'], parse: 'bench', optIn: '--bench' },
 ];
 
@@ -186,7 +191,7 @@ if (process.platform === 'win32') {
   }
 }
 const refused = rigReason?.startsWith('REFUSED') ?? false;
-rigAnsweredButUnusable = rig.detected && rigReason !== null;
+rigAnswered = rig.detected;
 
 if (!fs.existsSync(path.join(CONF, 'node_modules'))) {
   console.error('conformance/node_modules is missing: run  cd conformance && npm ci  first (the harness has its own lockfile).');
