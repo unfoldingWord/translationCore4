@@ -3,9 +3,11 @@
 Status: [decided 2026-09-02 — D67(2)]. This increment closes before any sync feature
 starts. It adds infrastructure and documentation only. No item adds a user-facing
 feature, changes `docs/BURRITO-SPEC.md` §8.1–8.6, or rewrites a stored byte. One step
-touches the spec text: L-0 updates the reference-implementation path sentence in §8.9
-and ships with the harness move in the same change set, per §9. No other step edits the
-spec. Revised 2026-09-03 after two rounds of second-model review of PR #151.
+touches the spec text: L-0 updates the two sentences that name the reference
+implementation's path, in §8.9 (`docs/BURRITO-SPEC.md:512`) and in Appendix A
+(`docs/BURRITO-SPEC.md:523`, `conformance/journal/*.mjs`) [VERIFIED — 089cc8a,
+2026-09-03], and ships with the harness move in the same change set, per §9. No other step edits the
+spec. Revised 2026-09-03 after four rounds of second-model review of PR #151.
 
 How to read this document: Section 1 states five problems, each with an observation and
 its cause. Section 2 states one fix per problem. Section 3 is the sequence of change
@@ -93,8 +95,11 @@ because it had no engine, only scenarios.
   the suite's own summary line for the Stage-1 count, and expects the same count on the
   server-touched copy. This follows the spec's rule that the suite's own summary line
   is the authoritative count (`docs/BURRITO-SPEC.md:7`).
-- **L-2 The docs gate.** A check reads every statement in `docs/` and in the root
-  `README.md` that is marked as manifest-derived and fails when the value disagrees. Marker grammar, inline in
+- **L-2 The docs gate.** A check reads every statement in `docs/`, in the root
+  `README.md` and in `conformance/README.md` that is marked as manifest-derived and
+  fails when the value disagrees. `conformance/README.md` states 34 checks and Stage-1
+  30 today while the spec header states 40 and 35 (`conformance/README.md:17-18`,
+  `docs/BURRITO-SPEC.md:3` [VERIFIED — 089cc8a, 2026-09-03]); it is marked in L-2. Marker grammar, inline in
   Markdown:
 
   ```
@@ -108,13 +113,15 @@ because it had no engine, only scenarios.
   two fixtures under `test/fixtures/docs-gate/`: `fresh.md`, whose marked values match
   a fixture manifest (the gate must pass), and `stale.md`, with one wrong value (the
   gate must fail and name the file, line and path). Verify: `npm run verify`. L-2 marks
-  statements in `docs/PLATFORM-NOTES.md`, `docs/ARCHITECTURE.md` and `README.md`. It
-  does not edit `docs/BURRITO-SPEC.md`. The spec header counts get their markers in the
+  statements in `docs/PLATFORM-NOTES.md`, `docs/ARCHITECTURE.md`, `README.md` and
+  `conformance/README.md`. It does not edit `docs/BURRITO-SPEC.md`. The spec header counts get their markers in the
   next change set that already changes the spec and the harness together (S1 at the
   latest), per §9.
 - **L-3 One report shape.** `Report v1` and the refusal-code table in one module,
   `journal/report.mjs`, exporting `REPORT_SCHEMA` and `REFUSAL_CODES`
-  (`TEAM-SYNC-PLAN.md` 1.2 and 1.3). Layer 4 store operations emit it. Every thrown
+  (`TEAM-SYNC-PLAN.md` 1.2 and 1.3). L-3 also extends the normative gate with the
+  negative-control convention of `TEAM-SYNC-PLAN.md` 1.3: every rule id and live code
+  introduced after the extension needs exactly one `[negative …]` sibling check. Layer 4 store operations emit it. Every thrown
   refusal carries a code bound to a rule id. Codes bound to a rule that S1 will create
   are marked `[PROPOSED]` and are excluded from the gate until S1. Two cheap readers:
   the ops log and a dev-only Inspector panel. Tests assert codes, not strings.
@@ -141,11 +148,11 @@ before and after.
 
 | Step | Change set | Removes | Evidence at merge |
 |---|---|---|---|
-| L-0 | Move the reference modules to a root `journal/` package; update import paths; update the one spec sentence that names the path (`docs/BURRITO-SPEC.md` §8.9, "reference implementation under `journal/`" in `conformance/`); no logic change (D67(4e)) | the misnamed directory | all suites green; the diff holds file moves, import-path edits and the §8.9 path sentence only, no other hunk; `journalRuntime.test.ts` parity holds; the harness moves in the same change set, so §9 is met |
+| L-0 | Move the reference modules to a root `journal/` package; update import paths; update the two spec sentences that name the path (`docs/BURRITO-SPEC.md:512` in §8.9 and `:523` in Appendix A); no logic change (D67(4e)) | the misnamed directory | all suites green; the diff holds file moves, import-path edits and the two path sentences only, no other hunk; `grep -n 'conformance/journal' docs/BURRITO-SPEC.md` returns nothing; `journalRuntime.test.ts` parity holds; the harness moves in the same change set, so §9 is met |
 | L-1 | `npm run prove`, `docs/evidence/manifest.json`, CI upload, rig pristine check, R7 reads the Stage-1 count from the suite summary | eight commands; residue false-failures; the R7 constant | manifest committed from the CI run; `prove` on a clean clone passes and lists skips with reasons; R7 green on a reseeded rig, recorded |
 | L-1b | Rig container for CI (the dev-env devcontainer follow-up) | the missing rig job | the rig job runs the rig-gated suites on `main` and on demand; never a pankosmia remote or token |
-| L-2 | Docs gate with `test/docsGate.test.ts` and its two fixtures; mark recipe counts in PLATFORM-NOTES, ARCHITECTURE and README; correct ARCHITECTURE §9 "ports" wording | stale numbers; the "ports" sentence | `fresh.md` passes and `stale.md` fails in `npm run verify`; the gate runs in CI; `docs/BURRITO-SPEC.md` is not in the diff |
-| L-3 | `Report v1`, refusal codes, ops log for layer 4, dev Inspector; tests assert codes | the unread fold report; string-matched failures | gate: every live code names a live rule and has a negative control; `[PROPOSED]` codes are listed and excluded |
+| L-2 | Docs gate with `test/docsGate.test.ts` and its two fixtures; mark recipe counts in PLATFORM-NOTES, ARCHITECTURE, the root README and `conformance/README.md`; correct ARCHITECTURE §9 "ports" wording | stale numbers; the "ports" sentence | `fresh.md` passes and `stale.md` fails in `npm run verify`; the gate runs in CI; `docs/BURRITO-SPEC.md` is not in the diff |
+| L-3 | `Report v1`, refusal codes, ops log for layer 4, dev Inspector; tests assert codes; normative gate extended with the `[negative …]` claim rule | the unread fold report; string-matched failures | gate: every live code names a live rule and has exactly one `[negative <code>]` sibling; `[PROPOSED]` codes are listed and excluded; a fixture suite with a code and no sibling fails the gate |
 | L-4 | Scenario schema and runner over the reference fold and memory store; J18–J20 as scenario files | hand-written probes | J18–J20 green as files with the same assertions as the suite; a schema fixture that contains every step kind X2 needs parses; `tc4 scenario` verb; an invalid-reference step (`TIT 99:1`) is refused by the schema |
 | L-5 | `RepoPort`, git and HTTP adapters; J18–J20 and transport as one scenario set | two drifting suites | the same files green on git and rig runners; evidence record with version, hash, date |
 | L-6 | `docs/SYSTEM.md` | orientation across eight surfaces | the orientation test (Section 4) meets its budget, recorded |

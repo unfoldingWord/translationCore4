@@ -3,8 +3,8 @@
 Status: [PROPOSED] plan, adopted as the shape of epic #24 by D67 (2026-09-02). Rules
 named here become normative only when the S1 change set lands them in
 `docs/BURRITO-SPEC.md` with their checks (§9). Written against `main` after the audit of
-2026-09-01 [VERIFIED — worktree at 60be039, see D67]. Revised 2026-09-03 after two
-rounds of second-model review of PR #151 (23, 18 and 13 findings). Each finding was
+2026-09-01 [VERIFIED — worktree at 60be039, see D67]. Revised 2026-09-03 after four
+rounds of second-model review of PR #151 (23, 18, 13 and 12 findings). Each finding was
 either fixed or answered in the pull request.
 
 Prerequisite: the legibility increment (`LEGIBILITY.md`) closes first (D67(2)).
@@ -123,6 +123,15 @@ assert these codes by code name, never by a future rule id.
 The normative gate checks that every code marked live names a live rule and has a
 negative control. After S1, every row is live and the `[PROPOSED]` marks are removed.
 
+Negative-control convention. Today the gate (`conformance/normative/check.mjs`) proves
+only that each `R-` id is claimed by a live check named `[covers R-x]`; per-rule
+mutation proof is an open D55 residual. From L-3 onward, a new check that claims a rule
+or a code has a sibling check whose name carries `[negative R-x]` or
+`[negative <code>]`. The sibling feeds one violating input and asserts the refusal by
+code. L-3 extends the gate: every `R-` id and every live code introduced after the gate
+extension must have exactly one `[negative …]` claim, or the gate fails. Rules that
+predate the extension are not required to have one; that remains the D55 residual.
+
 ### 1.4 Every operation leaves a record
 
 Each layer 4 and layer 5 operation writes one ops record (a `Report`) to the
@@ -179,10 +188,14 @@ table (1.3) agree:
 | I6 | R-8.7.12 | `swap.incomplete` |
 | I9 | R-8.7.13 | `receive.audio-missing` |
 
-- I1 Publication isolation. A publication commit touches only the actor's own
-  `ingredients/checking/journal/<actor>/` and the `ingredients` table entries of
-  `metadata.json` that describe those files (the table is server-owned and must list
-  every file, §3 rule 5). No other path and no other metadata field changes.
+- I1 Publication isolation. Every publication commit after the creation commit touches
+  only the actor's own `ingredients/checking/journal/<actor>/` and the `ingredients`
+  table entries of `metadata.json` that describe those files (the table is
+  server-owned and must list every file, §3 rule 5). No other path and no other
+  metadata field changes. The creation commit is the one exception and is fully
+  defined: it is the first commit on the `<actorId>` branch, it removes every ingredient
+  outside the own journal directory, sets `currentScope` to `{}`, and remakes the
+  table (S2). The S2 spy test skips that one commit and checks every later one.
 - I2 Send without receive. A send never needs a receive first and never merges another
   actor's bytes into the working repository.
 - I3 Receive is rebuild-and-swap. The working repository is never merged into.
@@ -401,14 +414,20 @@ how many kills it ran at each point (non-vacuity).
 
 ### X7 — Golden corpus accretion
 
-`npm run golden:freeze` copies the journals that the e2e journey wrote in the current
-run to `conformance/golden/<package.json version>/` with their fold hashes. One check
+`npm run golden:freeze` copies the journals that the Playwright journeys (`npm run
+journeys`, specs `e2e/j01-*.spec.ts` to `e2e/j07-*.spec.ts` today [VERIFIED — 089cc8a,
+2026-09-03]) wrote into their fixture projects during the current run to
+`conformance/golden/<package.json version>/` with their fold hashes. The journeys write
+the journals into the rig's `_local_/_local_/` projects; the freeze step reads them
+from there. X7 does not wait for the S8 two-actor journey; when S8 lands, its journals
+join the next corpus. One check
 folds every frozen corpus and compares hashes. The release procedure in
 `docs/PACKAGING.md` gains the freeze step before `scripts/package-desktop.zsh`; a
 release is a manual GitHub Release (D46), so no script cuts it.
 
-Acceptance, all inside the X7 change set: the first corpus is frozen from the e2e run
-at that commit and committed with the code; the golden check is green in CI; a one-byte
+Acceptance, all inside the X7 change set: `npm run journeys` then `npm run
+golden:freeze` at that commit produce the first corpus, which is committed with the
+code; the golden check is green in CI; a one-byte
 change to a frozen segment fails with `segment.invalid`; `docs/PACKAGING.md` names the
 freeze step.
 
@@ -453,15 +472,18 @@ Door43 send: `remote/add` then `git/push`. Receive side: `clone-repo?branch=<act
 or `remote/add` plus `pull-repo` into a single-branch scratch. Sneakernet: export the
 publication repository with the server's zip export, which produces the unwrapped shape
 (`metadata.json` at the zip root). `POST /burrito/zipped` requires that shape and
-accepts the server's own export unchanged (PLATFORM-NOTES #22 [VERIFIED — rig 0.17.0,
-2026-07-27, `docs/evidence/zip-roundtrip-correction-2026-07-27.md`; that record has no
-commit hash, so S3 re-verifies at the rig pin 0.18.5 (99fd9be) and records it]; #26
-trap (b)). Import under `_local_/_sideloaded_/`. The publication
-repository satisfies the importer's structural rule (Section 4). Team main travels as a
+accepts the server's own export unchanged (PLATFORM-NOTES #22, recorded at rig 0.17.0
+on 2026-07-27 in `docs/evidence/zip-roundtrip-correction-2026-07-27.md`; that record
+carries no commit hash, so it does not meet the citation rule and this plan treats the
+claim as [PROPOSED] until S3 re-verifies it at the rig pin 0.18.5 (99fd9be) and records
+version, hash and date; #26 trap (b)). Import under `_local_/_sideloaded_/`. The publication
+repository satisfies the importer's structural rule (Section 3, last bullet; its
+content is defined in Section 4). Team main travels as a
 Door43 branch or a zip (D67(4b)).
 
 Acceptance: push and clone pass in CI against a git remote the rig job controls (a
-bare repository served over HTTP, or the rig's gitea if one exists); a publication zip
+bare repository served over HTTPS with a certificate the rig trusts, because
+`clone-repo` is https-only (Section 3), or the rig's gitea if one exists); a publication zip
 round-trips through export and import with `metadata.json` and every file under
 `ingredients/` byte-identical (`.git/` and `.DS_Store` are excluded, as in the #22
 record, which compared the 10 non-`.git` files); net off disables the Door43
@@ -472,7 +494,7 @@ evidence record, not the acceptance. S3 stays open until the CI remote test is g
 
 The T3/T4 recipe: copy team main to scratch; add remote; `pull-repo`; read the
 contribution's segments from the contribution repository, never the scratch worktree
-(PLATFORM-NOTES #21); whitelist check (I5, becomes R-8.7.9; it enforces I1 on the contribution); write accepted segments by
+(PLATFORM-NOTES #21); whitelist check (I5, becomes R-8.7.9: the contribution may add files only under its own actor directory; anything else is `intake.shared-path`); write accepted segments by
 ingredient writes; fold; regenerate; `remake-ingredients`; commit; fast-forward team
 main; delete scratch. Anyone may integrate (D67(4d)). Acceptance: every J20 rejection
 case is reproduced with main HEAD unchanged; two contributions integrate in either
@@ -538,7 +560,7 @@ Acceptance:
 - Each of the four carry-over refusals (`segment.invalid`, `segment.misnamed`,
   `segment.foreign-actor`, `segment.differs-from-accepted`) is planted once and
   reported once.
-- The I4 negative control (X2 check 7) fails when I4 is disabled.
+- The I4 negative control (X2 check 7) fails under the fault `skip-outbox-replay`.
 - Every `ingredients/audio/` file present before receive is present after, byte for
   byte, and the I9 negative control (an audio file deleted from scratch before the
   swap) refuses.
@@ -561,8 +583,9 @@ after receive; no modal wall. This is the test obligation of I8.
 ### S7 — Performance prerequisites (#94, #95)
 
 Finish #95 (one journal scan per open) and #94 (fold in a Web Worker). #92 and #93 are
-closed [VERIFIED — `gh issue view 92` and `gh issue view 93` on
-github.com/unfoldingWord/translationCore4 report state CLOSED, 2026-09-03]. Add `tc4 bench --receive`.
+closed [VERIFIED — https://github.com/unfoldingWord/translationCore4/issues/92 and
+/issues/93, state CLOSED, read with `gh issue view` on 2026-09-03; an issue state has no
+version or commit hash, so the URL and date are the citation]. Add `tc4 bench --receive`.
 
 Acceptance: New Testament receive under 10 s on the reference machine, which is the
 machine of the existing fold benchmarks: Apple M2 Pro (10 cores), 16 GB, macOS

@@ -1197,6 +1197,6 @@ legibility step L-2. BURRITO-SPEC §1's "no companion repos, no copies" sentence
 amended in S1, through §9, to name the publication and team main mirrors
 (`docs/plans/TEAM-SYNC-PLAN.md` Section 4).
 
-[revised 2026-09-03 — three rounds of second-model review of PR #151 returned 23, 18
-and 13 findings; the plans and this entry were corrected in the same pull request. No ruling
+[revised 2026-09-03 — four rounds of second-model review of PR #151 returned 23, 18,
+13 and 12 findings; the plans and this entry were corrected in the same pull request. No ruling
 changed.]
