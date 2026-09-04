@@ -10,6 +10,7 @@ import { t } from '../i18n';
 import BookRail from './BookRail.jsx';
 import { HelpsPanel, leadingNum, useLoadHelps, focusOf } from './HelpsPanel.jsx';
 import { keyCarries, SourceVerse } from './SourceVerse.jsx';
+import { absenceMessageKey, isSourceAbsent } from '../data/sourceState';
 import { FilterChip, IconButton, Overline, SegmentedControl, StatusDot, Callout, Button } from '../ds/index.js';
 import { RailIcon } from './PanelIcons.jsx';
 import { targetTypeFor, projectDir } from './scriptStyle.js';
@@ -270,7 +271,7 @@ const understandUnits = ({ s, book, chapter, src, srcChapters, mode }) => {
     .sort((a, b) => leadingNum(a) - leadingNum(b));
   const crossFrame = s.understand?.sourceRefs != null;
   if (crossFrame) return crossFrameUnits(s.understand.sourceRefs[String(chapter)] ?? [], book);
-  const starts = mode === 'section' && src && src !== 'missing' ? sectionStarts(src.raw, chapter) : [];
+  const starts = mode === 'section' && src && !isSourceAbsent(src) ? sectionStarts(src.raw, chapter) : [];
   if (mode === 'section' && starts.length > 0) return sectionUnits(starts, verseKeys, book, chapter);
   if (mode === 'section') return verseKeys.length
     ? [{ key: 'whole', head: verseKeys[0], label: `${bookName(book.code)} ${chapter}`, verses: verseKeys }]
@@ -311,7 +312,7 @@ const unitHasNote = (s, chapter, unit) => (unit.project
 
 const unitChapterVerses = (unit, src, srcChapters) => {
   if (unit.srcChapter == null) return srcChapters;
-  return src && src !== 'missing' ? src.chapters?.[String(unit.srcChapter)] ?? {} : {};
+  return src && !isSourceAbsent(src) ? src.chapters?.[String(unit.srcChapter)] ?? {} : {};
 };
 
 function UnderstandUnit({ unit, s, src, srcChapters, book, chapter, mode, focused, onFocus }) {
@@ -391,8 +392,8 @@ function PassageStatus({ s, src, actions }) {
               // §5.3: absence is legal — stated, never the machine defaults.
               <Callout tone="info" data-testid="no-source-panes" style={{ marginTop: 10 }}>{t('understand.noSourcePanes')}</Callout>
             )}
-            {src === 'missing' && (
-              <Callout tone="info" style={{ marginTop: 10 }}>{t('understand.sourceMissing')}</Callout>
+            {isSourceAbsent(src) && (
+              <Callout tone="info" style={{ marginTop: 10 }}>{t(absenceMessageKey(src))}</Callout>
             )}
             {src?.error && (
               // Catch-to-absence sweep (D30/A3): a failed pane read is a
@@ -434,7 +435,7 @@ export default function Understand() {
   const chapter = s.chapter;
   const crossFrame = s.understand?.sourceRefs != null;
   const src = s.sources[s.sourceTab];
-  const srcChapters = src && src !== 'missing' ? src.chapters?.[String(chapter)] ?? {} : {};
+  const srcChapters = src && !isSourceAbsent(src) ? src.chapters?.[String(chapter)] ?? {} : {};
   const units = understandUnits({ s, book, chapter, src, srcChapters, mode });
   // The focused unit: the one clicked, else the first (the design's default).
   const focusedKey = units.some((u) => u.key === activeKey) ? activeKey : units[0]?.key;

@@ -12,6 +12,7 @@ import BookRail from './BookRail.jsx';
 import { HelpsPanel, useLoadHelps } from './HelpsPanel.jsx';
 import { SourceVerse } from './SourceVerse.jsx';
 import { verseText as sourceText } from './verseText.js';
+import { absenceMessageKey, isSourceAbsent } from '../data/sourceState';
 
 const hair = 'var(--stroke-hair) solid var(--border-hair)';
 
@@ -138,14 +139,14 @@ export default function Draft() {
             </div>
 
             {verses.map((v) => {
-              const srcVerse = sourceModel && sourceModel !== 'missing' ? sourceModel[String(s.chapter)]?.[v.n] : null;
+              const srcVerse = sourceModel && !isSourceAbsent(sourceModel) ? sourceModel[String(s.chapter)]?.[v.n] : null;
               const srcTxt = srcVerse ? sourceText(srcVerse) : null;
               return (
                 <React.Fragment key={v.n}>
                   <div style={{ padding: '14px 26px 20px', borderInlineEnd: hair, borderTop: 'var(--stroke-hair) solid var(--border-hair)' }}>
-                    {sourceModel === 'missing' ? (
+                    {isSourceAbsent(sourceModel) ? (
                       <p style={{ fontSize: 'var(--fs-ui-sm)', color: 'var(--uw-haze)', fontStyle: 'italic', margin: '6px 0 0' }}>
-                        <sup style={{ fontFamily: 'var(--font-scripture)', fontSize: 13, fontWeight: 'var(--fw-bold)', marginInlineEnd: 3 }}>{v.n}</sup>{t('source.unavailable')}
+                        <sup style={{ fontFamily: 'var(--font-scripture)', fontSize: 13, fontWeight: 'var(--fw-bold)', marginInlineEnd: 3 }}>{v.n}</sup>{t(absenceMessageKey(sourceModel))}
                       </p>
                     ) : srcTxt ? (
                       <p style={{ direction: 'ltr', textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-lg)', lineHeight: 'var(--lh-verse-lg)', color: 'var(--text-scripture)', margin: 0 }}>

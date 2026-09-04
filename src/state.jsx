@@ -17,6 +17,7 @@ import { RESOURCE_FRAME, forgetProjectFrames, resolveProjectFrame } from './data
 import { backfillCoverage } from './data/coverageBackfill';
 import { mapReference } from './data/mapReference';
 import { seedBookFromSource } from './data/seed';
+import { SOURCE_MISSING, SOURCE_NOT_INSTALLED, isSourceAbsent } from './data/sourceState';
 import { BOOK_NAMES, bookName } from './data/bookNames';
 import { GATEWAYS, gatewayKey, DCS_HOST, orgForRepoName } from './data/gateways';
 import { fetchAndInstallPin, latestReleaseTag, identifyExistingInstall } from './data/resourceFetch';
@@ -37,78 +38,13 @@ import { consequencesOfGatewayChange, applyGatewayChange, uncoveredByChange } fr
 import { carryOverDecisions } from './data/carryOver';
 import { TC_READY_TOPIC } from './data/serverApi';
 import { t } from './i18n';
+import { INSTALLED_SUITE, SUITE_VERSION } from './data/installedSuite';
+export { SUITE_VERSION }; // the AddBook badge imports it from here
 
 const AppCtx = createContext(null);
 const STORAGE_ID = 'uw-tc4';
 
 export const api = new ServerApi();
-
-// The English suite that ships with the install (§5 default #1). Real evidenced
-// values — DCS sb-zip exports fetched + SHA-verified 2026-07-30 / 2026-07-31.
-// Each entry is a §5.3 pin: {repoPath, version, flavor} + OPTIONAL 40-hex sha.
-// D34 (2026-08-03): for the tW tool BOTH slots name `<lang>_tw`. That repo's
-// sb-zip export carries the per-book TWL link TSVs AND the payload articles, so
-// one pin and one fetch serve both tool inputs; `<lang>_twl` is never fetched.
-const EN_TW = { repoPath: 'git.door43.org/unfoldingWord/en_tw', version: 'v87', sha: 'eaeb7bfefcf84132d0cbcbed185f3ea2be3d86dd', flavor: 'parascriptural/x-bcvarticles' };
-const EN_HELPS = {
-  gatewayLanguage: { languageId: 'en', owner: 'unfoldingWord' },
-  translationNotes: { repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v86', sha: 'c354b8ae66a23c485bf6f38fd35bd8f7ef81e4e5', flavor: 'parascriptural/x-bcvnotes' },
-  translationWordsLinks: { ...EN_TW },
-  translationWords: { ...EN_TW },
-  translationAcademy: { repoPath: 'git.door43.org/unfoldingWord/en_ta', version: 'v86', sha: 'c7caddfb474efd713f36b35a3ffc927866c7b180', flavor: 'peripheral/x-peripheralArticles' },
-  // §5.3 1.10 OPTIONAL slots (D64, #110). tq sha = the v89 tag commit, equal to
-  // the sb-zip export revision [VERIFIED 2026-08-27 — /sb/v89.zip metadata].
-  // simplifiedText reuses the shipped en_ust identity (same pin as the 'ust'
-  // extraScripture source-pane entry).
-  translationQuestions: { repoPath: 'git.door43.org/unfoldingWord/en_tq', version: 'v89', sha: '97c0a13e3b84d46d0e643ba2e8e9f1c295547a58', flavor: 'parascriptural/x-bcvquestions' },
-  simplifiedText: { repoPath: 'git.door43.org/unfoldingWord/en_ust', version: 'v89', sha: '37ec223166bbd73fb55abc7840be8310c0fee7f2', flavor: 'scripture/textTranslation' },
-};
-
-// Increment 2: pins are the normative BURRITO-SPEC §5.3 **schemaVersion 2**
-// two-language-set shape (D17/D30, landed 2026-07-31 — OPEN-QUESTIONS #28):
-// `languageSets` holds exactly `primary` (the project's gateway language) and
-// `fallback` (the installed English suite). At creation the project has not
-// chosen a gateway language yet, so primary === fallback — the §5.3 migration
-// rule's initial state; picking a gateway language rewrites `primary` only.
-// `originalLanguage`/`lexicon` are set-independent; `extraScripture` is the
-// top-level source-pane array (NOT nested inside `resources`).
-const INSTALLED_SUITE = {
-  schemaVersion: 2,
-  languageSets: {
-    primary: { ...EN_HELPS },
-    fallback: { ...EN_HELPS },
-  },
-  resources: {
-    // Real identities, sha-verified against the DCS tags API 2026-08-22 (D58).
-    // The old lexicon tags (en_ugl v2, en_uhl v1) never existed upstream —
-    // en_ugl tops at v0.5 and en_uhl has no tags at all, so its pin is
-    // sha-only (the version label is optional and never invented).
-    originalLanguage: {
-      nt: { repoPath: 'git.door43.org/unfoldingWord/el-x-koine_ugnt', version: 'v0.34', sha: 'fc95b2b8aad08bb65ab54628ab685413a1139e97', flavor: 'scripture/textTranslation' },
-      ot: { repoPath: 'git.door43.org/unfoldingWord/hbo_uhb', version: 'v2.1.30', sha: '106a441a788d9465846cd427538ea80b8cec6770', flavor: 'scripture/textTranslation' },
-    },
-    lexicon: {
-      nt: { repoPath: 'git.door43.org/unfoldingWord/en_ugl', version: 'v0.5', sha: '8fa6eb60c0fe7afa61a80264c7326d63db5f1e70', flavor: 'peripheral/x-lexicon' },
-      ot: { repoPath: 'git.door43.org/unfoldingWord/en_uhl', sha: 'db0098f3582814066f1a69c0aa2743a3ad0e8c81', flavor: 'peripheral/x-lexicon' },
-    },
-  },
-  extraScripture: [
-    {
-      id: 'ult',
-      repoPath: 'git.door43.org/unfoldingWord/en_ult',
-      version: 'v89',
-      sha: '84c73ba00fc8a95a9033f9efb14bb905a2a52ee4',
-      flavor: 'scripture/textTranslation',
-    },
-    {
-      id: 'ust',
-      repoPath: 'git.door43.org/unfoldingWord/en_ust',
-      version: 'v89',
-      sha: '37ec223166bbd73fb55abc7840be8310c0fee7f2',
-      flavor: 'scripture/textTranslation',
-    },
-  ],
-};
 
 // ---- source-package rows (J3) ------------------------------------------------
 // Role assignment uses the catalog's SB flavor where that flavor is
@@ -178,16 +114,14 @@ export function packageRows(repos, book, exclude = {}) {
 // by recomputing the path, which missed every legacy/seeded resource and made
 // checking sessions time out. Falls back to the owner-qualified derivation for
 // a pin that is not (yet) installed (a fresh download's target).
-let installedCache = {};
+let installedCache = null; // null until resolutionContext has run once (B12); then the InstalledMap, possibly empty
 const resolveReadPath = (pin) =>
-  installedPathFor(installedCache, pin) ?? localRepoPathFromRepoPath(pin.repoPath);
+  installedPathFor(installedCache ?? {}, pin) ?? localRepoPathFromRepoPath(pin.repoPath);
 
 // Resolution of a pin to its local repo, for READING. Delegates to the
 // identity-based resolver above.
 const localSourceRepo = (pin) => resolveReadPath(pin);
 
-// The source-pane badge shows the actual pinned version, never a literal.
-export const SUITE_VERSION = INSTALLED_SUITE.extraScripture[0].version;
 
 // B7 — `checking/resources.json` is ONE shared whole-file document (every
 // project pin). A read-modify-write that writes blindly loses a concurrent
@@ -1310,7 +1244,7 @@ function loadSourcePanes({ store, code, seq, openSeqRef, stateRef, dispatch, pin
         dispatch({
           type: 'setSource',
           id: pin.id,
-          value: isNotFoundError(error) ? 'missing' : { error: String(error?.message || error) },
+          value: isNotFoundError(error) ? sourceAbsence(pin) : { error: String(error?.message || error) },
         });
       });
   }
@@ -1319,6 +1253,18 @@ function loadSourcePanes({ store, code, seq, openSeqRef, stateRef, dispatch, pin
 /** Test hook (round 37): pane resolution is unit-tested — project pins win,
  * absence is a stated state, and pins-loading defers. */
 export const __loadSourcePanesForTests = loadSourcePanes;
+
+/** #164: which absence a CONFIRMED not-found pane read means. The platform answers
+ * "no such repository" and "no such book" with the same not-found, so the pin is
+ * looked up in the install resolver's cache (evidence for the platform claim: the
+ * [VERIFIED] tag in src/data/sourceState.ts): absent there (and the cache HAS run)
+ * = the source is not on this computer; present = it lacks the book. Before the
+ * resolver has run the answer is unknown and the older, weaker statement stands. */
+const sourceAbsence = (pin) =>
+  installedCache !== null && installedPathFor(installedCache, pin) == null ? SOURCE_NOT_INSTALLED : SOURCE_MISSING;
+export const __setInstalledCacheForTests = (installed) => {
+  installedCache = installed;
+};
 
 /** Round 37 (§5.3): seed a new book from the PROJECT's pinned source. A
  * project without extraScripture — or a source that confirms it lacks the
@@ -1699,7 +1645,7 @@ export function AppProvider({ children }) {
 
   const sourceModel = useMemo(() => {
     const src = s.sources[s.sourceTab];
-    if (!src || src === 'missing') return src || null;
+    if (!src || isSourceAbsent(src)) return src || null;
     return src.chapters;
   }, [s.sources, s.sourceTab]);
 
