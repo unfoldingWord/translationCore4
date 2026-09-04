@@ -240,7 +240,7 @@ describe('round 37 — the source panes come from the PROJECT pins (§5.3), neve
 describe('#164 — a confirmed not-found pane read names WHICH absence (D30)', () => {
   // Inputs come from the system under test, never from memory (AGENTS.md): the pin is
   // the shipped English package's own `ult` entry (repoPath, version, sha as pinned in
-  // src/state.jsx), and the install key is the path the installer derives for it.
+  // src/data/installedSuite.js), and the install key is the path the installer derives for it.
   const entry = INSTALLED_SUITE.extraScripture.find((e: { id: string }) => e.id === 'ult')!;
   const installKey = localRepoPathFromRepoPath(entry.repoPath);
   const notFoundRead = async () => { throw notFound(); };
