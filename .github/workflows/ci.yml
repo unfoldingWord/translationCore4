@@ -7,7 +7,8 @@
 # commit that is not in the branch history), never from a developer machine.
 # Rig-gated suites (validate:transport, validate:roundtrip, the *.integration vitest
 # files) are SKIPPED here with a named reason — a clean clone has no Pankosmia rig. They
-# run on the developer machine and in the rig job (rig.yml, L-1b): merges to main, on demand.
+# run on the developer machine and in the rig job (rig.yml, L-1b): every pull request,
+# merges to main, and on demand.
 # ⛔ Never add a pankosmia remote, token, or upstream trigger to this workflow.
 name: ci
 permissions:

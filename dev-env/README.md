@@ -40,9 +40,9 @@ crates.io `=` pin when 0.18.5+ publishes (see `docs/RISKS.md` #1).
   `TC4_RIG_PORT`).
 - `scripts/stop.zsh` — stop the server.
 - `scripts/cache-resource.zsh` — cache a Door43 resource locally for offline work,
-  through the app's own fetch path. `seed.zsh` sideloads every cached resource it
-  finds. The rig-gated HttpStore suite reads `en_ult`, so a rig that runs
-  `npm run prove` needs at least:
+  through the app's own fetch path. `seed.zsh` sideloads each resource on its own
+  fixed list whose cache entry exists (see the loop in `seed.zsh`). The rig-gated
+  HttpStore suite reads `en_ult`, so a rig that runs `npm run prove` needs at least:
   `zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_ult v89 <sha from src/data/installedSuite.js>`.
 
 Smoke test:
@@ -68,7 +68,8 @@ set, so the rig-gated suites execute. It runs on every pull request, on merges t
 `main`, and on demand. Its manifest is uploaded as
 `prove-manifest-rig`; the committed manifest stays the clean-clone one. The rig runs as
 a process on the runner, not in a container: the recipe needs no isolation the runner
-does not already give.
+does not already give. [VERIFIED — `docs/evidence/rig-job-ci-2026-09-04.md`: two runs on
+ubuntu-24.04, 2026-09-04, both controls green, about 3 minutes each with a warm cargo cache]
 
 ## Rules
 

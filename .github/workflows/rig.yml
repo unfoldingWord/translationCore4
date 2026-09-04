@@ -11,12 +11,15 @@
 #
 # Negative control (docs/plans/LEGIBILITY.md §5: a gate must be able to fail): after the
 # suites ran, the rig is no longer pristine. A second `prove` must REFUSE the rig suites
-# and exit non-zero. It runs on pull requests and when the dispatch input asks for it.
+# and exit non-zero. It runs on pull requests and when the dispatch input asks for it,
+# and only after a green positive run: a rig the suites never touched is not the dirty
+# rig this control is about, and the job is already red.
 #
 # ⛔ The job talks only to the rig it started. Never a pankosmia remote, token, or
 # upstream trigger. The clones in setup-from-pins.zsh are read-only, at pinned commits.
-# The one download outside GitHub is the pinned en_ult v89 export from git.door43.org,
-# read through the app's own fetch path (dev-env/scripts/cache-resource.zsh) and cached.
+# The one rig resource fetched from outside GitHub is the pinned en_ult v89 export from
+# git.door43.org, read through the app's own fetch path (dev-env/scripts/cache-resource.zsh)
+# and cached. (apt, npm and cargo dependencies download as in every other workflow.)
 name: rig
 permissions:
   contents: read
