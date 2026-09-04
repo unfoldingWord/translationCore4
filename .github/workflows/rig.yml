@@ -133,7 +133,7 @@ jobs:
             const stale = [];
             if (m.commit !== process.env.GITHUB_SHA) stale.push(`commit ${m.commit} is not ${process.env.GITHUB_SHA}`);
             if (!(Date.parse(m.date) >= start)) stale.push(`date ${m.date} is before the prove step started`);
-            if (stale.length) { console.error("the manifest on disk is not this run's:", stale.join("; ")); process.exit(1); }
+            if (stale.length) { console.error("the manifest on disk is not from this run:", stale.join("; ")); process.exit(1); }
             console.log(`manifest: commit ${m.commit.slice(0, 7)}, ${m.date}, dirty=${m.dirty}`);
           '
 
@@ -174,7 +174,7 @@ jobs:
             import fs from "node:fs";
             const m = JSON.parse(fs.readFileSync("docs/evidence/manifest.json", "utf8"));
             const start = Number(fs.readFileSync(process.env.RUNNER_TEMP + "/negative-start", "utf8")) * 1000;
-            if (m.commit !== process.env.GITHUB_SHA || !(Date.parse(m.date) >= start)) { console.error("the manifest on disk is not the negative-control run's:", m.commit, m.date); process.exit(1); }
+            if (m.commit !== process.env.GITHUB_SHA || !(Date.parse(m.date) >= start)) { console.error("the manifest on disk is not from the negative-control run:", m.commit, m.date); process.exit(1); }
             if (m.rig.pristine !== false) { console.error("manifest.rig.pristine is", m.rig.pristine, "— expected false"); process.exit(1); }
             const rig = m.suites.filter((s) => s.needsRig);
             const bad = rig.filter((s) => s.ran || !String(s.skipped).startsWith("REFUSED: rig not pristine"));
