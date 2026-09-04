@@ -6,9 +6,8 @@
 # validate:roundtrip and the *.integration vitest files execute. The manifest is
 # uploaded like the clean-clone one (prove-manifest-rig); it is not committed.
 #
-# Runs on merges to `main` and on demand, until it is fast enough for every pull
-# request. It also runs on pull requests that change the rig recipe itself (this file,
-# dev-env/), so a recipe change carries its own evidence.
+# Runs on every pull request, on merges to `main`, and on demand. The first run took
+# 3 min 7 s with a warm cargo cache (owner decision 2026-09-04, PR #168).
 #
 # Negative control (docs/plans/LEGIBILITY.md §5: a gate must be able to fail): after the
 # suites ran, the rig is no longer pristine. A second `prove` must REFUSE the rig suites
@@ -25,9 +24,6 @@ on:
   push:
     branches: [main]
   pull_request:
-    paths:
-      - .github/workflows/rig.yml
-      - dev-env/**
   workflow_dispatch:
     inputs:
       negative_control:
@@ -108,11 +104,18 @@ jobs:
             if curl -sf --max-time 2 "$RIG_API/version" > "$RUNNER_TEMP/version.json"; then break; fi
             sleep 1
           done
-          cat "$RUNNER_TEMP/version.json" || { echo "rig did not answer at $RIG_API within 60s"; cat "$RUNNER_TEMP/rig.log"; exit 1; }
+          # A failed curl leaves an empty file; -s requires a non-empty answer.
+          [ -s "$RUNNER_TEMP/version.json" ] || { echo "rig did not answer at $RIG_API after 60 tries"; cat "$RUNNER_TEMP/rig.log"; exit 1; }
+          cat "$RUNNER_TEMP/version.json"
           echo
 
+      # The checked-out manifest is the clean-clone one. Remove it first, so a prove that
+      # stops before writing cannot pass off the committed file as this run's result.
+      # (prove excludes the manifest path from its dirty check.)
       - name: prove (rig suites included)
-        run: RIG_REPOS="$GITHUB_WORKSPACE/dev-env/state/work/repos" npm run prove
+        run: |
+          rm docs/evidence/manifest.json
+          RIG_REPOS="$GITHUB_WORKSPACE/dev-env/state/work/repos" npm run prove
 
       - name: The rig suites ran and passed (read the manifest, not the log)
         run: |
@@ -136,18 +139,22 @@ jobs:
         if: github.event_name == 'pull_request' || inputs.negative_control
         run: |
           LOG="$RUNNER_TEMP/negative-control.log"
+          rm docs/evidence/manifest.json
           if RIG_REPOS="$GITHUB_WORKSPACE/dev-env/state/work/repos" npm run prove > "$LOG" 2>&1; then
             echo "prove exited 0 on a rig the previous run dirtied — the gate cannot fail"
             cat "$LOG"
             exit 1
           fi
-          grep -E '^rig suites: REFUSED' "$LOG" || { echo "prove failed, but not with a REFUSED rig"; cat "$LOG"; exit 1; }
+          # The one REFUSED reason this control proves: a rig that is not pristine. The other
+          # REFUSED reasons (no list, no sample) would mean the rig broke, not that the gate held.
+          grep -E '^rig suites: REFUSED: rig not pristine' "$LOG" || { echo "prove failed, but not with a not-pristine rig"; cat "$LOG"; exit 1; }
           node --input-type=module -e '
             import fs from "node:fs";
             const m = JSON.parse(fs.readFileSync("docs/evidence/manifest.json", "utf8"));
+            if (m.rig.pristine !== false) { console.error("manifest.rig.pristine is", m.rig.pristine, "— expected false"); process.exit(1); }
             const rig = m.suites.filter((s) => s.needsRig);
-            const bad = rig.filter((s) => s.ran || !String(s.skipped).startsWith("REFUSED"));
-            if (bad.length) { console.error("a rig suite ran, or skipped without REFUSED:", bad.map((s) => s.id)); process.exit(1); }
+            const bad = rig.filter((s) => s.ran || !String(s.skipped).startsWith("REFUSED: rig not pristine"));
+            if (bad.length) { console.error("a rig suite ran, or skipped for another reason:", bad.map((s) => s.id)); process.exit(1); }
             console.log("negative control: every rig suite skipped with", rig[0].skipped);
           '
       - uses: actions/upload-artifact@v4

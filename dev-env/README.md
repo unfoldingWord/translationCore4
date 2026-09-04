@@ -64,8 +64,8 @@ comment before you change it (`docs/PLATFORM-NOTES.md` #26a).
 
 `.github/workflows/rig.yml` (L-1b of #154) builds this rig on a GitHub runner with
 `setup-from-pins.zsh`, seeds it, starts it, and runs `npm run prove` with `RIG_REPOS`
-set, so the rig-gated suites execute. It runs on merges to `main`, on demand, and on
-pull requests that change this directory or the workflow. Its manifest is uploaded as
+set, so the rig-gated suites execute. It runs on every pull request, on merges to
+`main`, and on demand. Its manifest is uploaded as
 `prove-manifest-rig`; the committed manifest stays the clean-clone one. The rig runs as
 a process on the runner, not in a container: the recipe needs no isolation the runner
 does not already give.
