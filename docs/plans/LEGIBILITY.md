@@ -11,7 +11,7 @@ Appendix A (`docs/BURRITO-SPEC.md:523`) names `conformance/journal/*.mjs` outrig
 the harness move in the same change set, per §9. L-0 also corrects the same path in
 `docs/ARCHITECTURE.md:190` ("in `conformance/journal/`"), which is not a spec sentence
 and needs no §9 pairing; the "ports" wording on that line waits for L-2. No other step edits the
-spec. Revised 2026-09-03 after six rounds of second-model review of PR #151.
+spec. Revised 2026-09-03 after seven rounds of second-model review of PR #151.
 
 How to read this document: Section 1 states five problems, each with an observation and
 its cause. Section 2 states one fix per problem. Section 3 is the sequence of change
@@ -93,8 +93,10 @@ because it had no engine, only scenarios.
 
 - **L-1 `prove` and the manifest.** One root command runs every suite that applies,
   detects the rig, checks the rig is pristine before rig suites, and writes
-  `docs/evidence/manifest.json` (commit, server version and hash, per-suite counts,
-  durations, date). CI runs it and uploads the manifest. `validate-roundtrip.mjs` R7
+  `docs/evidence/manifest.json`: `commit`, `date`, `server.version`, `server.hash`,
+  and one `suites.<name>` entry per suite with `layer`, `command`, `needsRig`
+  (boolean), `ran` (boolean), `skipped` (reason string or null), `checks` (count),
+  `passed`, `failed`, `durationMs`. CI runs it and uploads the manifest. `validate-roundtrip.mjs` R7
   stops hard-coding 30. It runs the Phase-1 suite on the pristine sample first, parses
   the suite's own summary line for the Stage-1 count, and expects the same count on the
   server-touched copy. This follows the spec's rule that the suite's own summary line
@@ -190,7 +192,7 @@ one pass or fail per row.
 | # | Question | Command that gives the correct answer |
 |---|---|---|
 | Q1 | Which suites exist, and what count did each report at this commit? | `jq .suites docs/evidence/manifest.json` |
-| Q2 | Which of those suites need the rig, and did the rig run? | `jq '.suites[] \| select(.skipped)' docs/evidence/manifest.json` |
+| Q2 | Which of those suites need the rig, and did the rig run? | `jq 'to_entries[] \| select(.value.needsRig) \| {suite: .key, ran: .value.ran, skipped: .value.skipped}' docs/evidence/manifest.json` (reads `.suites` after `jq .suites`) |
 | Q3 | Which `R-8.x.y` ids are live, and which are `[PROPOSED]`? | `grep -o '\[R-8\.[0-9]*\.[0-9]*\]' docs/BURRITO-SPEC.md \| sort -u` lists every id; `node conformance/normative/check.mjs` exits 0 when every id is claimed by a live check (it prints counts, not ids); `grep -n 'PROPOSED' docs/BURRITO-SPEC.md` marks the proposed block |
 | Q4 | Which refusal codes exist, and which rule does each enforce? | `node -e "import('./journal/report.mjs').then(m => console.table(m.REFUSAL_CODES))"` |
 | Q5 | What does the app import from the reference modules, and from where? | `grep -rn "from '.*journal/" src/data/journal/` |

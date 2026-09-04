@@ -3,8 +3,8 @@
 Status: [PROPOSED] plan, adopted as the shape of epic #24 by D67 (2026-09-02). Rules
 named here become normative only when the S1 change set lands them in
 `docs/BURRITO-SPEC.md` with their checks (§9). Written against `main` after the audit of
-2026-09-01 [VERIFIED — worktree at 60be039, see D67]. Revised 2026-09-03 after six
-rounds of second-model review of PR #151 (23, 18, 13, 12, 18 and 12 findings). Each
+2026-09-01 [VERIFIED — worktree at 60be039, see D67]. Revised 2026-09-03 after seven
+rounds of second-model review of PR #151 (23, 18, 13, 12, 18, 12 and 14 findings). Each
 finding was either fixed or answered in the pull request.
 
 Prerequisite: the legibility increment (`LEGIBILITY.md`) closes first (D67(2)).
@@ -88,6 +88,10 @@ Report {
 }
 ```
 
+The existing `OpenReport` interface (`src/data/journal/journalingStore.ts:208`) is
+retired in L-3: `open()` returns a `Report` with `op: open`, and what `OpenReport`
+carried lives under `fold`. S6 reads `Report`. No second report type remains.
+
 `carried` (receive only) partitions the actor's own segments that existed in the
 working repository or the outbox before the receive: `copied` are those absent from
 the scratch union and written into it; `identical` are those already present in scratch
@@ -121,8 +125,11 @@ assert these codes by code name, never by a future rule id.
 | `receive.audio-missing` | R-8.7.13 (S1; I9) | no | keep the working repository; report the missing path |
 | `swap.incomplete` | R-8.7.12 (S1; I6) | no | finish forward or roll back on open |
 
-The normative gate checks that every code marked live names a live rule and has a
-negative control. After S1, every row is live and the `[PROPOSED]` marks are removed.
+The normative gate checks that every code marked live names a live rule. Codes and
+rules introduced from L-3 onward also need a negative control (next paragraph); the
+six codes live today are bound to rules that predate L-3 and fall under the same
+exemption until each gains a sibling check. After S1, every row is live and the
+`[PROPOSED]` marks are removed.
 
 Negative-control convention. Today the gate (`conformance/normative/check.mjs`) proves
 only that each `R-` id is claimed by a live check named `[covers R-x]`; per-rule
@@ -130,8 +137,9 @@ mutation proof is an open D55 residual. From L-3 onward, a new check that claims
 or a code has a sibling check whose name carries `[negative R-x]` or
 `[negative <code>]`. The sibling feeds one violating input and asserts the refusal by
 code. L-3 extends the gate: every `R-` id and every live code introduced after the gate
-extension must have exactly one `[negative …]` claim, or the gate fails. Rules that
-predate the extension are not required to have one; that remains the D55 residual.
+extension must have exactly one `[negative …]` claim, or the gate fails. Rules and
+codes that predate the extension are not required to have one; that remains the D55
+residual, and the gate lists them as "unhardened" so the count is visible.
 
 ### 1.4 Every operation leaves a record
 
@@ -192,13 +200,14 @@ table (1.3) agree:
 | I6 | R-8.7.12 | `swap.incomplete` |
 | I9 | R-8.7.13 | `receive.audio-missing` |
 
-- I1 Publication isolation. Every commit on the `<actorId>` branch touches only the
-  actor's own `ingredients/checking/journal/<actor>/` and the `ingredients` table
-  entries of `metadata.json` that describe those files (the table is server-owned and
-  must list every file, §3 rule 5). No other path and no other metadata field changes.
-  The branch is created on a `git/copy` of the working projection and starts with no
-  commit of its own, so there is no creation exception (S2). The S2 spy test checks
-  every commit on the branch.
+- I1 Publication isolation. Every commit that the `<actorId>` branch adds after its
+  branch point (the commits in `git log main..<actorId>` inside the publication
+  repository) touches only the actor's own `ingredients/checking/journal/<actor>/` and
+  the `ingredients` table entries of `metadata.json` that describe those files (the
+  table is server-owned and must list every file, §3 rule 5). No other path and no
+  other metadata field changes. The commits inherited from the copied working
+  projection are the branch point's history, not publication commits, and are outside
+  I1. The S2 spy test checks exactly the `main..<actorId>` range.
 - I2 Send without receive. A send never needs a receive first and never merges another
   actor's bytes into the working repository.
 - I3 Receive is rebuild-and-swap. The working repository is never merged into.
@@ -347,9 +356,11 @@ and 15 verses (`conformance/sample-burrito/ingredients/vrs.json:1242-1245`), and
 `TIT 99:1` is outside the versification.
 
 `conformance/scenarios/receive-with-unsent.json`: actors A and B on one project seeded
-from the sample. Steps: A edits TIT 1:2 and sends. B edits TIT 1:3, sends, integrates,
-receives. A, offline, edits TIT 1:1, edits TIT 1:3 to a different text, and holds one
-more edit (TIT 1:4) in the outbox with no segment written yet. A receives.
+from the sample. B's device is the integrator. Steps: A edits TIT 1:2 and sends. B
+integrates A's publication into team main. B edits TIT 1:3, sends, integrates its own
+publication, receives. A, offline, edits TIT 1:1, edits TIT 1:3 to a different text,
+and holds one more edit (TIT 1:4) in the outbox with no segment written yet. A
+receives.
 Expectations, in `Report` terms:
 
 1. `outcome` is `done`.
@@ -365,8 +376,12 @@ Expectations, in `Report` terms:
    (R-8.3.2). `fold.forks` lists the key with both heads and names the provisional one.
 5. No other key is forked. A's TIT 1:1 and TIT 1:2 are linear.
 6. The replacement's fold equals `fold(main ∪ publication(A) ∪ working(A) ∪ outbox(A))`.
-7. A negative control: the receive is run with the fault `skip-outbox-replay` and check
-   3 fails. Faults are the engine's test-only switch: `receive(port, {..., faults})`
+7. A negative control: the receive is run with the fault `skip-outbox-replay`. The
+   expected `Report` has `outcome: refused` and one refusal `receive.own-ts-missing`
+   naming the outbox `ts`, the working repository is byte-identical to its state before
+   the call, and no scratch remains. A `done` outcome, or any change to working, fails
+   the scenario. (Check 3 fails by construction; the control asserts the refusal, not
+   the absence of the expectation.) Faults are the engine's test-only switch: `receive(port, {..., faults})`
    accepts a closed list of named faults only when `ctx.testMode` is true; in the app
    `testMode` is never set and a non-empty `faults` list is refused before any
    repository is touched. The list is defined in `journal/sync.mjs` and each fault has
@@ -389,7 +404,7 @@ As in 1.7. Each verb has one oracle:
 
 | Verb | Oracle |
 |---|---|
-| `open`, `send`, `receive`, `integrate`, `verify`, `fold` | rig-gated test: the verb's `Report` equals the app's `Report` for the same action on the same repository, field for field, `ts` and `durations` excluded (`ts` is each run's own HLC stamp; `actor` is the same because both run on one installation) |
+| `open`, `send`, `receive`, `integrate`, `verify`, `fold` | rig-gated test: one fixture snapshot is restored twice (`git/copy` from a frozen fixture under `_local_/_fixture_/`); the app runs the action on one copy, the CLI on the other; the two `Report`s are equal field for field, `ts` and `durations` excluded (`ts` is each run's own HLC stamp; `actor` is the same because both run on one installation) |
 | `report`, `ops` | the printed record equals the stored ops record byte for byte |
 | `explain` | for a forked verse: names both heads, their bases, and R-8.6.4; for a linear verse: names the head and its base chain |
 | `scenario` | runs one scenario file and exits non-zero on the first failed expectation; the negative-control scenario exits non-zero |
@@ -408,9 +423,10 @@ phases are `intent`, `moved-prev`, `moved-scratch`, `cleared`. `open()` recovery
 the last incomplete record.
 
 Kill mechanism, shared by S2, S4 and S5: every port call goes through the repository
-port, and the port counts calls. A kill sweep runs the operation once to learn the call
-count N, then runs it N more times, killing the process after call k for k in 1..N,
-and runs `open()` after each kill. This is the mechanism the interleavings test uses
+port, and the port counts calls. A kill sweep restores the fixture snapshot, runs the
+operation once to learn the call count N, then for each k in 1..N restores the same
+snapshot again, runs the operation, kills the process after call k, and runs `open()`.
+Every run starts from the identical state, so k indexes the same call each time. This is the mechanism the interleavings test uses
 today (`test/journalingInterleavings.test.ts`) applied to the port. The sweep reports N
 and the number of kills, so non-vacuity is visible. The S5 table below names the five
 kill points whose recovery differs; every other k must land in one of those five
@@ -486,13 +502,18 @@ superseded.
 First send creates `_local_/_pub_/<name>` by `git/copy` of the working projection and
 `new-branch/<actorId>` on the copy. Nothing is deleted and no metadata field is edited
 (Section 4). `send()` is a flush: own segments not yet in the publication, validated,
-then the outbox replayed into both working and publication, then `remake-ingredients`
-and one `add-and-commit` on the publication. Idempotent. Works with the net gate off.
+then the outbox replayed into both working and publication, each segment written with
+the presence-only `update_ingredients` flag so the server registers that one file
+(`src/data/serverApi.ts:143,373` [VERIFIED — e5ae471, 2026-09-03]; BURRITO-SPEC §6
+W-2), then one `add-and-commit` on the publication. `remake-ingredients` is never
+called on the publication: a full rescan rewrites every `role` (PLATFORM-NOTES #5, D28)
+and would breach I1. Idempotent. Works with the net gate off.
 
-Acceptance: every commit on the `<actorId>` branch touches only own journal paths and
-the `ingredients` table entries for them (spy test: `git diff --name-only` per commit
-is a subset of the own journal directory plus `metadata.json`, and a field-by-field
-diff of `metadata.json` shows changes only inside `ingredients` for those paths); after
+Acceptance: every commit in `main..<actorId>` touches only own journal paths and the
+`ingredients` table entries for them (spy test: `git diff --name-only` per commit is a
+subset of the own journal directory plus `metadata.json`, and a field-by-field diff of
+`metadata.json` shows added entries only under `ingredients` for those paths and no
+change to any existing entry or field); after
 `send()` every own segment in working ∪ outbox is in the publication byte-identical
 under the X5 kill sweep; a planted foreign segment is refused and surfaced with
 `segment.foreign-actor`.
@@ -508,7 +529,8 @@ on 2026-07-27 in `docs/evidence/zip-roundtrip-correction-2026-07-27.md`; that re
 carries no commit hash, so it does not meet the citation rule and this plan treats the
 claim as [PROPOSED] until S3 re-verifies it at the rig pin 0.18.5 (99fd9be) and records
 version, hash and date; #26 trap (b)). Import under `_local_/_sideloaded_/`. The publication
-repository is a valid Burrito (Section 4), so the importer accepts it. Team main travels as a
+repository is a valid Burrito (its shape: Section 4; the importer's rule: Section 3,
+last bullet), so the importer accepts it. Team main travels as a
 Door43 branch or a zip (D67(4b)).
 
 Acceptance: push and clone pass in CI against a git remote the rig job controls (a
@@ -537,7 +559,13 @@ never between.
 
 1. Drain the `SaveScheduler` (`src/data/saveScheduler.ts`); refuse while a write
    failure stands. Write the ops record for this receive in phase `start` (1.4, X5).
-2. Copy team main to scratch; add the own publication as a remote; `pull-repo`.
+2. Copy team main to scratch. Bring in the own publication the way S4 brings in any
+   contribution (I5): read its segments from the publication repository, never from a
+   merged worktree (PLATFORM-NOTES #21); apply the path whitelist, filename rule,
+   actor binding, checksum and accepted-bytes checks; write the accepted segments into
+   scratch by ingredient writes. A failed check refuses the whole receive with its
+   code. The actor's own publication gets no trust the team's contributions do not
+   get.
 3. Carry over own journal work: each own segment in the working repository is
    validated, filename-checked, actor-checked. A path present in scratch with identical
    bytes is recorded as `identical`. A path absent from scratch is written and recorded
@@ -557,11 +585,16 @@ never between.
 7. Swap: set the record's phase to `intent`; move working to `_local_/_prev_/<name>`;
    move scratch to the working path; advance the phase after each move; then clear the
    carried outbox entries and close the record (D67(4a); kill points K1–K5 in X5).
-8. Recovery on open: an incomplete record is finished forward when scratch validates,
-   or rolled back when the previous copy exists and the working path is absent.
-9. Report: the fold's forks, retained, pending structural, plus the carry-over report,
-   become the `OpenReport` (`src/data/journal/journalingStore.ts`) for S6. Ratchet the
-   HLC over the received union (R-8.2.4).
+8. Recovery on open: an incomplete record is resolved by its phase, per the X5 table.
+   Phase `start` or `intent`: roll back (delete scratch, working untouched). Phase
+   `moved-prev`: finish forward (move scratch to the working path). Phase
+   `moved-scratch`: finish forward (clear carried entries, close). The phase, not the
+   presence of directories, selects the rule; directory presence is checked against
+   what the phase implies and a mismatch is `swap.incomplete` with the working
+   repository left as found.
+9. Report: the `Report` with `op: receive` carries the fold's forks, retained and
+   pending structural under `fold`, and the carry-over under `carried`; S6 reads it
+   (1.2). Ratchet the HLC over the received union (R-8.2.4).
 10. The previous copy is deleted at the next successful checkpoint.
 
 Design B (flush, then receive) is the documented alternative for step 3. The plan
@@ -616,9 +649,8 @@ after receive; no modal wall. This is the test obligation of I8.
 ### S7 — Performance prerequisites (#94, #95)
 
 Finish #95 (one journal scan per open) and #94 (fold in a Web Worker). #92 and #93 are
-closed [VERIFIED — GitHub issue state, read with `gh issue view` on 2026-09-03:
-https://github.com/unfoldingWord/translationCore4/issues/92 and /issues/93; an issue
-state has no version or commit hash, so the URL and the date are the citation]. Add
+closed [VERIFIED — both closed 2026-08-25 by PR #97, merge commit 97016a8; issue state
+read with `gh issue view` on 2026-09-03]. Add
 `tc4 bench --receive`.
 
 Acceptance: `tc4 bench --receive` over the existing default bench corpus (an aligned
