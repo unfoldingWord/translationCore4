@@ -1,13 +1,16 @@
 name: package-desktop
 
-# #57: produce an unsigned desktop artifact on every merge to main (one OS),
-# and on pull requests that touch the packaging inputs — PR artifacts upload
-# too (short retention), so a packaging fix can be downloaded and taken
-# through the real Gatekeeper path BEFORE merge (PR #98 review). The recipe
-# lives in scripts/package-desktop.zsh. #44 extends this workflow with more
-# OSes and signing. The script smoke-tests the staged artifact THROUGH ITS
-# OWN ENTRY POINT (self-spawned server; root 303 -> /clients/uw-tc4, then
-# 200) before it zips.
+# #57: produce an unsigned desktop artifact on every merge to main, and on
+# pull requests that touch the packaging inputs — PR artifacts upload too
+# (short retention), so a packaging fix can be downloaded and taken through
+# the real Gatekeeper path BEFORE merge (PR #98 review). The recipe lives in
+# scripts/package-desktop.zsh. The script smoke-tests the staged artifact
+# THROUGH ITS OWN ENTRY POINT (self-spawned server; root 303 ->
+# /clients/uw-tc4, then 200) before it zips.
+#
+# #119 adds the linux-x64 job beside the proven macos-arm64 one. Both run the
+# same script; only the host differs. Windows x64 and signed/notarized
+# installers remain #44's.
 
 on:
   push:
@@ -69,6 +72,77 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: tc4-desktop-macos-arm64-unsigned-pr
+          path: dist-desktop/tC4-*-unsigned.zip
+          if-no-files-found: error
+          retention-days: 3
+
+  linux-x64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Build and runtime dependencies
+        run: |
+          sudo apt-get update
+          # zsh and zip: the packaging script's shell and its archiver.
+          # pkg-config, libssl-dev, zlib1g-dev: openssl-sys and libgit2-sys
+          #   link the system libraries — dev-env/server enables no vendored
+          #   feature.
+          # The remaining packages are Electron's shared libraries, plus xvfb:
+          #   the smoke test starts the artifact through its own launcher, and
+          #   Electronite opens a real window.
+          sudo apt-get install -y --no-install-recommends \
+            zsh zip xvfb \
+            pkg-config libssl-dev zlib1g-dev \
+            libnss3 libnspr4 libatk1.0-0t64 libatk-bridge2.0-0t64 \
+            libcups2t64 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 \
+            libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 \
+            libasound2t64 libatspi2.0-0t64 libgtk-3-0t64
+
+      - name: Rust toolchain
+        run: rustup toolchain install stable --profile minimal
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            dev-env/server/target
+          key: cargo-package-desktop-${{ runner.os }}-${{ hashFiles('dev-env/server/Cargo.lock', 'dev-env/server/Cargo.toml') }}
+
+      - name: Build the artifact
+        run: xvfb-run -a zsh scripts/package-desktop.zsh
+
+      - name: Upload the smoke-test logs (failures only)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tc4-desktop-linux-x64-smoke-logs
+          path: dist-desktop/smoke-*.log
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload the artifact (merges to main — 30-day retention)
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tc4-desktop-linux-x64-unsigned
+          path: dist-desktop/tC4-*-unsigned.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload the artifact (pull requests — short retention; same name as the main build, #119)
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tc4-desktop-linux-x64-unsigned
           path: dist-desktop/tC4-*-unsigned.zip
           if-no-files-found: error
           retention-days: 3
