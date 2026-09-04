@@ -199,10 +199,12 @@ GitHub renders the comment as nothing, so the reader sees only the value.
 
 `VALUE` is the first token after the comment. Markdown emphasis, backticks and brackets
 before it are skipped, so `**809**`, `` `809` `` and `(809)` all read as `809`; a trailing
-`.` or `-` at a sentence end is not part of the value. The comparison is exact against the
-manifest value's string form. A marker inside a fenced
-code block or an inline code span (as in this table) is an example, not a claim, and is
-not checked. Unmarked prose is not checked.
+`.` or `-` at a sentence end is not part of the value. A number compares exactly. A string
+value (`commit`, `date`, `node`) compares exactly or by a prefix of at least 7 characters,
+so a `[VERIFIED]` tag can cite the manifest's commit as `674c1bf` and its date as
+`2026-09-04` and still be gate-checked (CONTRIBUTING rule 2 asks for version, hash and
+date). A marker inside a fenced code block or an inline code span (as in this table) is an
+example, not a claim, and is not checked. Unmarked prose is not checked.
 
 **The findings.** One line each, naming the file, the line, the marker and both values:
 
@@ -221,6 +223,13 @@ and on the real documents against the committed manifest. Negative: a stale valu
 and the finding names the file, the line and the marker path, on a fixture and through the
 CLI against the real documents with one manifest count altered; a marker over a skipped
 suite and a marker with no value also fail.
+
+**A change set that changes a count.** Adding tests changes the `vitest` count; CI's
+`prove` then writes a manifest that disagrees with the marked documents and the gate fails
+in CI. That failure is the gate working. The change set completes by taking the manifest
+from its own push-event CI run (3.1), committing it, and updating the marked statements
+in the same PR. L-2 itself was the first case: its own controls moved the `vitest` count
+from 809 (the failing CI run and the refreshed manifest are linked from the PR).
 
 **Two consequences of reading the manifest on disk.** (a) On a developer machine, `prove`
 with a rig writes a manifest from a different surface (the plain `vitest` suite excludes

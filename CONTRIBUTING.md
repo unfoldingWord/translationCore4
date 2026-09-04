@@ -44,8 +44,9 @@ npm run prove
 `npm run verify` runs lint, typecheck, the tests, the build and the docs gate. On a clean
 clone, expect <!-- manifest: vitest passed -->809 tests passed and
 <!-- manifest: vitest skippedTests -->37 tests skipped [VERIFIED — the two counts are read
-from `docs/evidence/manifest.json`, the record of the CI run on a clean clone;
-`npm run docs:gate` fails when this sentence disagrees with it].
+from `docs/evidence/manifest.json`, the record of the CI run on a clean clone at commit
+<!-- manifest: commit -->674c1bf, <!-- manifest: date -->2026-09-04; `npm run docs:gate`
+fails when this sentence disagrees with it].
 A skipped test names the prerequisite that it needs. A skip is not a failure.
 
 ## Hard rules

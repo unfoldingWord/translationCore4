@@ -33,12 +33,14 @@ groups:
   the scan rebuilds the table from disk. Non-durable BY DESIGN (D28) — tC4 re-asserts its
   roles after each remake; no upstream fix is pending.
 - **Phase-2 (<!-- manifest: conformance:validate summary[Phase-2] -->3):** two-actor
-  journal merge — reproduces the metadata.json conflict, proves the §8.4
+  journal merge — reproduces the metadata.json conflict, proves the §8.7
   resolve+regenerate rule, and checks that the fixture journals are the §8.1
   sealed-segment stream form (needs git).
 
-The counts above are marked as manifest-derived. `npm run docs:gate` (repository root)
-fails when they disagree with `docs/evidence/manifest.json`, which `npm run prove` writes.
+[VERIFIED — the group descriptions are the check names in `validate.mjs` at 29a794e,
+2026-09-04. The counts are marked as manifest-derived: `npm run docs:gate` (repository
+root) reads them against `../docs/evidence/manifest.json`, which `npm run prove` writes and
+which records the commit, date and Node version of the run.]
 
 Two more scripts exist here but are rig-gated: `npm run validate:transport` and
 `npm run validate:roundtrip` need a running Pankosmia rig (set `RIG_REPOS` to its

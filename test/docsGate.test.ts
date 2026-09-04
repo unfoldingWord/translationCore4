@@ -8,7 +8,7 @@
 // the file, the line and the manifest path — on a fixture, and through the CLI against
 // the real documents with one manifest count altered.
 import { describe, expect, it } from 'vitest';
-import { DOC_ROOTS, checkFiles, checkText, resolveMarker } from '../scripts/docs-gate.mjs';
+import { DOC_ROOTS, agrees, checkFiles, checkText, resolveMarker } from '../scripts/docs-gate.mjs';
 
 // vite-plugin-node-polyfills aliases node builtins even under the node environment; the
 // real ones come through process.getBuiltinModule (same workaround as noBypass.test.ts).
@@ -115,14 +115,34 @@ describe('docs gate: marker grammar', () => {
     const text = [
       '```',
       '<!-- manifest: vitest passed -->460',
+      '~~~ a different fence string inside a ``` block does not close it',
+      '<!-- manifest: vitest passed -->460',
       '```',
-      'grammar: `<!-- manifest: <suite-id> <field> -->VALUE` and `<!-- manifest: vitest passed -->460`',
+      'grammar: `<!-- manifest: <suite-id> <field> -->VALUE` and `<!--  manifest: vitest passed -->460`',
       'live: <!-- manifest: vitest passed -->809',
+      '~~~~',
+      '<!-- manifest: vitest passed -->460',
+      '~~~~',
+      'live again: <!-- manifest: vitest passed -->809',
     ].join('\n');
     const r = checkText(text, fixture, 'x.md');
     expect(r.findings).toEqual([]);
-    expect(r.checked).toHaveLength(1);
-    expect(r.checked[0].line).toBe(5);
+    expect(r.checked.map((c) => c.line)).toEqual([7, 11]);
+  });
+
+  it('compares numbers exactly and accepts a prefix of at least 7 characters for a string', () => {
+    expect(agrees('809', 809)).toBe(true);
+    expect(agrees('80', 809)).toBe(false);
+    expect(agrees('abc1234', fixture.commit)).toBe(true);
+    expect(agrees('abc123', fixture.commit)).toBe(false);
+    expect(agrees('abc1235', fixture.commit)).toBe(false);
+    expect(agrees('2026-09-04', '2026-09-04T20:02:02.607Z')).toBe(true);
+    const r = checkText(
+      'CI run on commit <!-- manifest: commit -->abc1234, <!-- manifest: commit -->abd1234.',
+      fixture,
+      'x.md',
+    );
+    expect(r.findings).toMatchObject([{ kind: 'stale', marker: 'commit', doc: 'abd1234' }]);
   });
 });
 

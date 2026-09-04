@@ -48,7 +48,8 @@ Do the steps that follow:
 Expect this result on a clean clone: <!-- manifest: vitest passed -->**809 tests passed**,
 <!-- manifest: vitest skippedTests -->**37 tests skipped**
 [VERIFIED — the two counts are read from `docs/evidence/manifest.json`, the record of the
-CI run on a clean clone; `npm run docs:gate` fails when this sentence disagrees with it].
+CI run on a clean clone at commit <!-- manifest: commit -->674c1bf, <!-- manifest: date -->2026-09-04;
+`npm run docs:gate` fails when this sentence disagrees with it].
 
 The `.npmrc` file sets `legacy-peer-deps=true`. This setting is necessary.
 `word-aligner@1.0.3` declares a `usfm-js ^2` peer dependency, but the proven pairing is

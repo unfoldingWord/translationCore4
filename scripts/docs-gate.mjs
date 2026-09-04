@@ -20,8 +20,9 @@
 //   reads; a suite's summary line is the authoritative count).
 //   VALUE is the first token after the comment; markdown emphasis, backticks and brackets
 //   before it are skipped, so `**809**` and `(809)` both read as 809; a trailing `.` or
-//   `-` (sentence end) is not part of the value. Equality is exact on the manifest
-//   value's string form.
+//   `-` (sentence end) is not part of the value. Numbers compare exactly. A string value
+//   (commit, date, node) also accepts a prefix of at least 7 characters: `674c1bf` for
+//   the commit, `2026-09-04` for the date.
 //
 // Findings, one line each, name the file, the line, the marker path, the document's
 // value and the manifest's value:
@@ -75,20 +76,38 @@ export function resolveMarker(manifest, first, second) {
 }
 
 /**
+ * Does the document's token agree with the manifest value? Numbers and booleans: exact.
+ * Strings (commit hash, ISO date, node version): exact, or the token is a prefix of at
+ * least PREFIX_MIN characters — a 7-character hash or a YYYY-MM-DD date is how documents
+ * cite them.
+ */
+export const PREFIX_MIN = 7;
+export function agrees(doc, value) {
+  const s = String(value);
+  if (doc === s) return true;
+  return typeof value === 'string' && doc.length >= PREFIX_MIN && s.startsWith(doc);
+}
+
+/**
  * Check one document's text. Returns every marker found (checked) and the findings.
  * @param {string} text  @param {object} manifest  @param {string} file  the path printed in findings
  */
 export function checkText(text, manifest, file) {
   const checked = /** @type {Checked[]} */ ([]);
   const findings = /** @type {Finding[]} */ ([]);
-  let fenced = false;
+  let fence = null; // the opening fence string (``` or ~~~); only the same string closes it
   text.split('\n').forEach((lineText, i) => {
-    if (/^\s*(```|~~~)/.test(lineText)) { fenced = !fenced; return; }
-    if (fenced) return;
+    const f = /^\s*(```+|~~~+)/.exec(lineText);
+    if (f) {
+      if (fence === null) fence = f[1];
+      else if (f[1][0] === fence[0] && f[1].length >= fence.length) fence = null;
+      return;
+    }
+    if (fence !== null) return;
     const line = i + 1;
     // an inline code span that holds a marker is an example too; blank it (same length, so
     // indices hold). A plain code span such as `37` after a marker is still a value.
-    const live = lineText.replace(/`[^`]*`/g, (s) => (s.includes('<!-- manifest:') ? ' '.repeat(s.length) : s));
+    const live = lineText.replace(/`[^`]*`/g, (s) => (/<!--\s*manifest:/.test(s) ? ' '.repeat(s.length) : s));
     for (const m of live.matchAll(MARKER_RE)) {
       const marker = m[2] === undefined ? m[1] : `${m[1]} ${m[2]}`;
       const rest = live.slice(m.index + m[0].length);
@@ -104,7 +123,7 @@ export function checkText(text, manifest, file) {
       }
       const expected = String(r.value);
       checked.push({ ...base, doc, manifest: expected });
-      if (doc !== expected) findings.push({ ...base, kind: 'stale', doc, manifest: expected, detail: `document says ${doc}, manifest says ${expected}` });
+      if (!agrees(doc, r.value)) findings.push({ ...base, kind: 'stale', doc, manifest: expected, detail: `document says ${doc}, manifest says ${expected}` });
     }
   });
   return { checked, findings };
