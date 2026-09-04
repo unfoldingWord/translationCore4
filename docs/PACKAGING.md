@@ -152,21 +152,32 @@ directory.
 
 ### Install and launch
 
-1. Download `tc4-desktop-linux-x64-unsigned` from the workflow run.
-2. Unpack the zip with `unzip`. Do not use an archiver that drops permission
-   bits.
+1. Download `tc4-desktop-linux-x64-unsigned` from the workflow run. Pull
+   request builds and merges to `main` use the same artifact name; only the
+   retention differs (7 days and 30 days).
+2. Unpack twice. GitHub wraps every artifact in its own zip, so the download
+   contains `tC4-<version>-linux-x64-unsigned.zip`. Unpack the download, then
+   unpack the inner zip with `unzip`. Do not use an archiver that drops
+   permission bits. [VERIFIED — clean-machine witness on Debian 13.6 x86_64, artifact 9854372667 from run 33649518351, 2026-09-04, recorded on PR #146]
 3. Run `./translationCore4/start-tc4.sh`.
 
 There is no installer and no desktop entry. #44 owns that work.
 
 ### The Chromium sandbox
 
-Electron needs `chrome-sandbox` to be mode 4755 and owned by root. A zip
-cannot carry a setuid bit. The launcher therefore tests the file:
+Electron needs `chrome-sandbox` to be mode 4755 and owned by root. After
+`unzip`, the file is not setuid [VERIFIED — clean-machine witness on Debian 13.6 x86_64, artifact 9854372667 from run 33649518351, 2026-09-04, recorded on PR #146]. The launcher therefore
+tests the file:
 
 - If the bit is set, the launcher starts Electronite with the sandbox.
 - If the bit is not set, the launcher prints a note and starts Electronite
-  with `--no-sandbox`.
+  with `--no-sandbox` [VERIFIED — clean-machine witness on Debian 13.6 x86_64, artifact 9854372667 from run 33649518351, 2026-09-04, recorded on PR #146].
+
+On the witness host the first launch opened the "translationCore 4" window with
+an empty project list; the project store was `$HOME/pankosmia/tc4-projects`
+with no `pankosmia_repos` directory; a second launch exited in about one second
+and left the first instance serving (303 from `/`, 200 from `/clients/uw-tc4`)
+[VERIFIED — clean-machine witness on Debian 13.6 x86_64, artifact 9854372667 from run 33649518351, 2026-09-04, recorded on PR #146].
 
 To enable the sandbox:
 
@@ -177,7 +188,7 @@ sudo chmod 4755 ./translationCore4/electronite/chrome-sandbox
 
 ### CI runner assumptions
 
-The job installs these packages before the build:
+The job installs these packages before the build [VERIFIED — the `linux-x64` job of run 33649518351 on PR #146, 2026-09-04]:
 
 - `zsh` and `zip` — the script's shell and its archiver.
 - `pkg-config`, `libssl-dev`, `zlib1g-dev` — `openssl-sys` and `libgit2-sys`
