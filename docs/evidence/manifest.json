@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "tool": "scripts/prove.mjs",
-  "commit": "d7f830e4a9a978253db46d0dd9defde7da30e536",
+  "commit": "674c1bfc3111c1ad2f3b0b1af7ad9d736e0bbbc6",
   "dirty": false,
-  "date": "2026-09-04T18:39:40.837Z",
+  "date": "2026-09-04T20:02:02.607Z",
   "node": "v22.23.2",
   "platform": "linux-x64",
   "ci": true,
@@ -32,7 +32,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [],
-      "durationMs": 5905
+      "durationMs": 5305
     },
     {
       "id": "typecheck",
@@ -47,7 +47,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [],
-      "durationMs": 4843
+      "durationMs": 4542
     },
     {
       "id": "vitest",
@@ -65,7 +65,7 @@
         "Test Files  51 passed | 5 skipped (56)",
         "Tests  809 passed | 37 skipped (846)"
       ],
-      "durationMs": 31540
+      "durationMs": 28372
     },
     {
       "id": "build",
@@ -80,9 +80,9 @@
       "failed": null,
       "skippedTests": null,
       "summary": [
-        "✓ built in 7.26s"
+        "✓ built in 6.81s"
       ],
-      "durationMs": 7725
+      "durationMs": 7270
     },
     {
       "id": "conformance:generate",
@@ -97,7 +97,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [],
-      "durationMs": 205
+      "durationMs": 190
     },
     {
       "id": "conformance:validate",
@@ -117,7 +117,7 @@
         "Phase-2 (journal-merge design checks, §8.7): 3 passed, 0 failed",
         "40 passed, 0 failed"
       ],
-      "durationMs": 622
+      "durationMs": 587
     },
     {
       "id": "conformance:journal",
@@ -134,7 +134,7 @@
       "summary": [
         "Journal suite: 339 passed, 0 failed (fast-check seed 20260707)"
       ],
-      "durationMs": 3311
+      "durationMs": 3074
     },
     {
       "id": "conformance:normative",
@@ -154,22 +154,7 @@
         "uncovered          : 0",
         "stale claims       : 0"
       ],
-      "durationMs": 75
-    },
-    {
-      "id": "vitest:rig",
-      "layer": "rig",
-      "command": ".$ npx vitest run test/httpStore.integration.test.ts test/journalStore.integration.test.ts test/serverApi.integration.test.ts",
-      "needsRig": true,
-      "ran": false,
-      "skipped": "no rig at http://127.0.0.1:19998/api (dev-env/scripts/run.zsh)",
-      "ok": null,
-      "exitCode": null,
-      "passed": null,
-      "failed": null,
-      "skippedTests": null,
-      "summary": [],
-      "durationMs": null
+      "durationMs": 76
     },
     {
       "id": "conformance:transport",
@@ -190,6 +175,21 @@
       "id": "conformance:roundtrip",
       "layer": "rig",
       "command": "conformance$ node validate-roundtrip.mjs",
+      "needsRig": true,
+      "ran": false,
+      "skipped": "no rig at http://127.0.0.1:19998/api (dev-env/scripts/run.zsh)",
+      "ok": null,
+      "exitCode": null,
+      "passed": null,
+      "failed": null,
+      "skippedTests": null,
+      "summary": [],
+      "durationMs": null
+    },
+    {
+      "id": "vitest:rig",
+      "layer": "rig",
+      "command": ".$ npx vitest run test/httpStore.integration.test.ts test/journalStore.integration.test.ts test/serverApi.integration.test.ts",
       "needsRig": true,
       "ran": false,
       "skipped": "no rig at http://127.0.0.1:19998/api (dev-env/scripts/run.zsh)",
