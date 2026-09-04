@@ -6,8 +6,8 @@ import { createRequire } from 'module';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import { scopeError } from './journal/grammar.mjs';
-import { writeActionSegment, validateSegment, validateActorDoc, segmentName, readSegments, actorDirFor } from './journal/files.mjs';
+import { scopeError } from '../journal/grammar.mjs';
+import { writeActionSegment, validateSegment, validateActorDoc, segmentName, readSegments, actorDirFor } from '../journal/files.mjs';
 
 const require = createRequire(import.meta.url);
 const usfmjs = require('usfm-js');

@@ -20,7 +20,7 @@ import {
   type Coverage,
 } from '../src/data/resolve';
 import type { ResourcePin, ResourcesFile } from '../src/data/burritoStore';
-import { pinEntryError } from '../conformance/journal/grammar.mjs';
+import { pinEntryError } from '../journal/grammar.mjs';
 
 const sha = (s: string): string =>
   s

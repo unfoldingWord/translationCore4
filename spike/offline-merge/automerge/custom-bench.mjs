@@ -1,9 +1,9 @@
 import crypto from 'node:crypto';
 import { zipSync } from 'fflate';
-import { fold } from '../../../conformance/journal/fold.mjs';
-import { makeClock } from '../../../conformance/journal/hlc.mjs';
-import { decompose } from '../../../conformance/journal/skeleton.mjs';
-import { sealAction } from '../../../conformance/journal/files.mjs';
+import { fold } from '../../../journal/fold.mjs';
+import { makeClock } from '../../../journal/hlc.mjs';
+import { decompose } from '../../../journal/skeleton.mjs';
+import { sealAction } from '../../../journal/files.mjs';
 
 const ACTIONS = Number(process.env.ACTIONS || 50000);
 const VERSES = 1292;

@@ -2,10 +2,10 @@ import crypto from 'node:crypto';
 import zlib from 'node:zlib';
 import * as A from '@automerge/automerge';
 import { zipSync } from 'fflate';
-import { fold } from '../../../conformance/journal/fold.mjs';
-import { makeClock } from '../../../conformance/journal/hlc.mjs';
-import { decompose } from '../../../conformance/journal/skeleton.mjs';
-import { sealAction } from '../../../conformance/journal/files.mjs';
+import { fold } from '../../../journal/fold.mjs';
+import { makeClock } from '../../../journal/hlc.mjs';
+import { decompose } from '../../../journal/skeleton.mjs';
+import { sealAction } from '../../../journal/files.mjs';
 import {
   appendAction, appendActionChange, applyBundle, bundleChanges, createActor, createProject, extractEvents, loadProject,
 } from './model.mjs';

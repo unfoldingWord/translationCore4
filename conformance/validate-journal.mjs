@@ -6,23 +6,23 @@ import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
 import { execSync } from 'child_process';
-import { makeClock, parseTs, compareTs } from './journal/hlc.mjs';
-import { SLOT, decompose, recompose } from './journal/skeleton.mjs';
-import { fold, verseTextMd5, slotKeysOf, headIdentity } from './journal/fold.mjs';
-import { validateAction, KNOWN_OPS } from './journal/schema.mjs';
-import { BOOK_CODES, identityKeyOf, identityKeyError, ipathError, pinEntryError, noteRekeyError, splitDecisionKey } from './journal/grammar.mjs';
-import { reconcileUsfm, seedFromSidecars } from './journal/reconcile.mjs';
+import { makeClock, parseTs, compareTs } from '../journal/hlc.mjs';
+import { SLOT, decompose, recompose } from '../journal/skeleton.mjs';
+import { fold, verseTextMd5, slotKeysOf, headIdentity } from '../journal/fold.mjs';
+import { validateAction, KNOWN_OPS } from '../journal/schema.mjs';
+import { BOOK_CODES, identityKeyOf, identityKeyError, ipathError, pinEntryError, noteRekeyError, splitDecisionKey } from '../journal/grammar.mjs';
+import { reconcileUsfm, seedFromSidecars } from '../journal/reconcile.mjs';
 import {
   sealAction, writeActionSegment, validateSegment, validateActorDoc, segmentName,
   readSegments, readUnion, actorDirFor, SEGMENT_LIMIT,
-} from './journal/files.mjs';
-import * as filesAll from './journal/files.mjs';
+} from '../journal/files.mjs';
+import * as filesAll from '../journal/files.mjs';
 const republishSegment = filesAll.republishSegment
   || (() => { throw new Error('republishSegment not implemented'); });
 import {
   projectResources, projectSettings, projectAlignments, projectMetadata, derivedProjections,
   classifyDivergence, isUnjournaledIngredient,
-} from './journal/checkpoint.mjs';
+} from '../journal/checkpoint.mjs';
 
 const require = createRequire(import.meta.url);
 const fc = require('fast-check');
@@ -4374,7 +4374,7 @@ const sameRegister = (a, b) => {
 
 // ---------- §8.6 retained[] reason vocabulary — a closed set (drift guard) ----------
 {
-  const src = fs.readFileSync(path.resolve('./journal/fold.mjs'), 'utf8');
+  const src = fs.readFileSync(path.resolve('../journal/fold.mjs'), 'utf8');
   const VOCAB = ['superseded', 'prior-generation', 'absent-book', 'orphaned-text', 'prefix-collision',
     'rootless-base', 'rootless-structural', 'no-structural-ancestor', 'unselected-structural-branch'];
   const lines = src.split('\n').filter((l) => l.includes('reason:'));

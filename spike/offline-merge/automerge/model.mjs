@@ -1,8 +1,8 @@
 import * as A from '@automerge/automerge';
 import crypto from 'node:crypto';
-import { sealAction } from '../../../conformance/journal/files.mjs';
-import { validateAction } from '../../../conformance/journal/schema.mjs';
-import { fold } from '../../../conformance/journal/fold.mjs';
+import { sealAction } from '../../../journal/files.mjs';
+import { validateAction } from '../../../journal/schema.mjs';
+import { fold } from '../../../journal/fold.mjs';
 
 export const FORMAT_VERSION = 1;
 export const MAX_BUNDLE_BYTES = 4 * 1024 * 1024;

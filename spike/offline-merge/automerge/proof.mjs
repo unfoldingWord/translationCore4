@@ -9,10 +9,10 @@ import * as A2 from 'automerge-2';
 import * as A30 from 'automerge-3-0';
 import fc from 'fast-check';
 import { strToU8, unzipSync, zipSync } from 'fflate';
-import { fold } from '../../../conformance/journal/fold.mjs';
-import { decompose } from '../../../conformance/journal/skeleton.mjs';
-import { seedFromSidecars } from '../../../conformance/journal/reconcile.mjs';
-import { sealAction } from '../../../conformance/journal/files.mjs';
+import { fold } from '../../../journal/fold.mjs';
+import { decompose } from '../../../journal/skeleton.mjs';
+import { seedFromSidecars } from '../../../journal/reconcile.mjs';
+import { sealAction } from '../../../journal/files.mjs';
 import {
   MAX_BUNDLE_BYTES, appendAction, applyBundle, canonical, createActor, createProject,
   extractEvents, historyView, loadProject, replayBundles, sha256, unsafeBundleForProof,

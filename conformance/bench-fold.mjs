@@ -34,10 +34,10 @@ import os from 'os';
 import path from 'path';
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
-import { fold, verseTextMd5, slotKeysOf } from './journal/fold.mjs';
-import { decompose, SLOT } from './journal/skeleton.mjs';
-import { makeClock } from './journal/hlc.mjs';
-import { writeActionSegment, readUnion, actorDirFor } from './journal/files.mjs';
+import { fold, verseTextMd5, slotKeysOf } from '../journal/fold.mjs';
+import { decompose, SLOT } from '../journal/skeleton.mjs';
+import { makeClock } from '../journal/hlc.mjs';
+import { writeActionSegment, readUnion, actorDirFor } from '../journal/files.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const QUICK = process.argv.includes('--quick');

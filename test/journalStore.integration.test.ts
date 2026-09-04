@@ -13,12 +13,12 @@ import { JournalStore } from '../src/data/journal/journalStore';
 import type { KvStore } from '../src/data/journal/identity';
 import type { JournalEvent } from '../src/data/journal/seal';
 
-// conformance/journal/files.mjs is Node-bound (fs, node:crypto); loaded via a
+// journal/files.mjs is Node-bound (fs, node:crypto); loaded via a
 // NATIVE require outside the vite pipeline (vite-plugin-node-polyfills aliases
 // node builtins to browser mocks even under the Vitest node environment — same
 // workaround as test/s0a-aligner-headless.test.ts).
 const nodeRequire = process.getBuiltinModule('node:module').createRequire(`${process.cwd()}/`);
-const refFiles = nodeRequire('./conformance/journal/files.mjs') as {
+const refFiles = nodeRequire('./journal/files.mjs') as {
   validateActorDoc(raw: unknown, actorId: string): { ok: boolean; reason?: string };
   validateSegment(raw: string): { ok: boolean; reason?: string };
 };

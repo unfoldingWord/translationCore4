@@ -1,7 +1,7 @@
 // Runtime fold/materialization parity — issue #62 ("Provide a production
 // fold/materialization library that shares or imports the reference conformance
 // semantics. Do not maintain an independent untested interpretation. Run the
-// runtime implementation against the same vectors as conformance/journal/.")
+// runtime implementation against the same vectors as journal/.")
 //
 // src/data/journal/runtime.ts IMPORTS the reference modules, so the only way the
 // two could diverge is the pipeline itself: the app bundle resolves the modules
@@ -29,21 +29,21 @@ import { md5Hex as productMd5Hex } from '../src/data/httpStore';
 // The NATIVE reference, loaded outside the vite pipeline (the same workaround as
 // test/journalStore.test.ts: Node >=22 supports require of ESM).
 const nodeRequire = process.getBuiltinModule('node:module').createRequire(`${process.cwd()}/`);
-const refFold = nodeRequire('./conformance/journal/fold.mjs') as {
+const refFold = nodeRequire('./journal/fold.mjs') as {
   fold(events: unknown[]): unknown;
   verseTextMd5(content: string): string;
 };
-const refCheckpoint = nodeRequire('./conformance/journal/checkpoint.mjs') as {
+const refCheckpoint = nodeRequire('./journal/checkpoint.mjs') as {
   derivedProjections(foldOut: unknown, opts: unknown): Record<string, string>;
 };
-const refReconcile = nodeRequire('./conformance/journal/reconcile.mjs') as {
+const refReconcile = nodeRequire('./journal/reconcile.mjs') as {
   seedFromSidecars(inputs: unknown): unknown[];
   reconcileUsfm(...args: unknown[]): unknown[];
 };
-const refSkeleton = nodeRequire('./conformance/journal/skeleton.mjs') as {
+const refSkeleton = nodeRequire('./journal/skeleton.mjs') as {
   decompose(usfm: string): { skeleton: string; verses: Record<string, string> };
 };
-const refMd5 = nodeRequire('./conformance/journal/md5.mjs') as {
+const refMd5 = nodeRequire('./journal/md5.mjs') as {
   md5Hex(text: string): string;
 };
 

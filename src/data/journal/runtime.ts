@@ -11,8 +11,8 @@
 //
 // Types are deliberately loose-but-named (the vendor.d.ts discipline): shapes are
 // asserted behaviorally by the conformance suite, not re-invented here.
-import { fold as foldRef, verseTextMd5 as verseTextMd5Ref } from '../../../conformance/journal/fold.mjs';
-import { decompose as decomposeRef, recompose as recomposeRef, slotKeysOf as slotKeysOfRef, SLOT as SLOT_REF } from '../../../conformance/journal/skeleton.mjs';
+import { fold as foldRef, verseTextMd5 as verseTextMd5Ref } from '../../../journal/fold.mjs';
+import { decompose as decomposeRef, recompose as recomposeRef, slotKeysOf as slotKeysOfRef, SLOT as SLOT_REF } from '../../../journal/skeleton.mjs';
 import {
   derivedProjections as derivedProjectionsRef,
   classifyDivergence as classifyDivergenceRef,
@@ -20,11 +20,11 @@ import {
   projectAlignments as projectAlignmentsRef,
   projectResources as projectResourcesRef,
   projectSettings as projectSettingsRef,
-} from '../../../conformance/journal/checkpoint.mjs';
-import { reconcileUsfm as reconcileUsfmRef, seedFromSidecars as seedFromSidecarsRef } from '../../../conformance/journal/reconcile.mjs';
-import { makeClock as makeClockRef } from '../../../conformance/journal/hlc.mjs';
-import { normalizeEvent as normalizeEventRef } from '../../../conformance/journal/schema.mjs';
-import { toNfc as toNfcRef } from '../../../conformance/journal/grammar.mjs';
+} from '../../../journal/checkpoint.mjs';
+import { reconcileUsfm as reconcileUsfmRef, seedFromSidecars as seedFromSidecarsRef } from '../../../journal/reconcile.mjs';
+import { makeClock as makeClockRef } from '../../../journal/hlc.mjs';
+import { normalizeEvent as normalizeEventRef } from '../../../journal/schema.mjs';
+import { toNfc as toNfcRef } from '../../../journal/grammar.mjs';
 import type { JournalEvent } from './seal';
 
 /** One live head as the fold reports it (liveHeads values). */
