@@ -93,8 +93,8 @@ because it had no engine, only scenarios.
   the suite's own summary line for the Stage-1 count, and expects the same count on the
   server-touched copy. This follows the spec's rule that the suite's own summary line
   is the authoritative count (`docs/BURRITO-SPEC.md:7`).
-- **L-2 The docs gate.** A check reads every statement in `docs/` that is marked as
-  manifest-derived and fails when the value disagrees. Marker grammar, inline in
+- **L-2 The docs gate.** A check reads every statement in `docs/` and in the root
+  `README.md` that is marked as manifest-derived and fails when the value disagrees. Marker grammar, inline in
   Markdown:
 
   ```
@@ -112,7 +112,8 @@ because it had no engine, only scenarios.
   does not edit `docs/BURRITO-SPEC.md`. The spec header counts get their markers in the
   next change set that already changes the spec and the harness together (S1 at the
   latest), per §9.
-- **L-3 One report shape.** `Report v1` and the refusal-code table in one module
+- **L-3 One report shape.** `Report v1` and the refusal-code table in one module,
+  `journal/report.mjs`, exporting `REPORT_SCHEMA` and `REFUSAL_CODES`
   (`TEAM-SYNC-PLAN.md` 1.2 and 1.3). Layer 4 store operations emit it. Every thrown
   refusal carries a code bound to a rule id. Codes bound to a rule that S1 will create
   are marked `[PROPOSED]` and are excluded from the gate until S1. Two cheap readers:
@@ -175,8 +176,8 @@ one pass or fail per row.
 |---|---|---|
 | Q1 | Which suites exist, and what count did each report at this commit? | `jq .suites docs/evidence/manifest.json` |
 | Q2 | Which of those suites need the rig, and did the rig run? | `jq '.suites[] \| select(.skipped)' docs/evidence/manifest.json` |
-| Q3 | Which `R-8.x.y` ids are live, and which are `[PROPOSED]`? | `node conformance/normative/check.mjs` (live ids); `grep -n PROPOSED docs/BURRITO-SPEC.md` |
-| Q4 | Which refusal codes exist, and which rule does each enforce? | the exported table in the report module (`node -e` print of the codes) |
+| Q3 | Which `R-8.x.y` ids are live, and which are `[PROPOSED]`? | `grep -o '\[R-8\.[0-9]*\.[0-9]*\]' docs/BURRITO-SPEC.md \| sort -u` lists every id; `node conformance/normative/check.mjs` exits 0 when every id is claimed by a live check (it prints counts, not ids); `grep -n 'PROPOSED' docs/BURRITO-SPEC.md` marks the proposed block |
+| Q4 | Which refusal codes exist, and which rule does each enforce? | `node -e "import('./journal/report.mjs').then(m => console.table(m.REFUSAL_CODES))"` |
 | Q5 | What does the app import from the reference modules, and from where? | `grep -rn "from '.*journal/" src/data/journal/` |
 | Q6 | What happens to unsent own work at receive? | `tc4 scenario conformance/scenarios/receive-with-unsent.json` after X2; before X2, the answer is "not yet executable; the scenario is defined in TEAM-SYNC-PLAN X2" |
 | Q7 | Which repositories exist on one device for one project, and which is canonical? | the repository table in `TEAM-SYNC-PLAN.md` Section 4 (a plan fact until S2; the `tc4 report` output after S2) |

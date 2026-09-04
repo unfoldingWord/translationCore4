@@ -4,8 +4,8 @@ Status: [PROPOSED] plan, adopted as the shape of epic #24 by D67 (2026-09-02). R
 named here become normative only when the S1 change set lands them in
 `docs/BURRITO-SPEC.md` with their checks (§9). Written against `main` after the audit of
 2026-09-01 [VERIFIED — worktree at 60be039, see D67]. Revised 2026-09-03 after two
-rounds of second-model review of PR #151 (23 and 18 findings). Each finding was either
-fixed or answered in the pull request.
+rounds of second-model review of PR #151 (23, 18 and 13 findings). Each finding was
+either fixed or answered in the pull request.
 
 Prerequisite: the legibility increment (`LEGIBILITY.md`) closes first (D67(2)).
 
@@ -58,8 +58,9 @@ reference fold). Layer 5 must obey it, or the protocol exists in three places.
 
 ### 1.2 One report vocabulary
 
-Every operation reports in one closed schema, `Report v1`, defined in one module and
-validated by one check.
+Every operation reports in one closed schema, `Report v1`, defined in one module,
+`journal/report.mjs` (root package after L-0; exports `REPORT_SCHEMA` and
+`REFUSAL_CODES`), and validated by one check.
 
 Today the fold returns `FoldOutput` (`src/data/journal/runtime.ts:38-65`). It holds fold
 state and the fold's own findings: `forks`, `retained`, `autoMerged`, `invalid`,
@@ -80,11 +81,19 @@ Report {
   outcome:   done | refused | partial | recovered
   refusals:  [{ code, rule, subject, action }]     // closed code vocabulary (1.3)
   fold:      { forks, retained, autoMerged, pendingStructural, invalid, supersedeRefused }
-  carried:   { copied, identical, refused }        // receive only
+  carried:   { copied, identical, refused }        // receive only; see below
   upheld:    [ rule ids this run verified ]
   durations: { phase: ms }
 }
 ```
+
+`carried` (receive only) partitions the actor's own segments that existed in the
+working repository or the outbox before the receive: `copied` are those absent from
+the scratch union and written into it; `identical` are those already present in scratch
+with the same bytes (they arrived through the actor's own publication); `refused` are
+those that failed a check, with their code. I4 holds when `copied ∪ identical` covers
+every own `ts` and `refused` is empty. `outcome` for a receive is `done`, `refused` or
+`recovered`; a receive never reports `partial`.
 
 The UI renders `Report`. The command line prints `Report`. Tests assert on fields, not
 on message strings. Evidence records are arrays of `Report` with a header.
@@ -171,12 +180,19 @@ table (1.3) agree:
 | I9 | R-8.7.13 | `receive.audio-missing` |
 
 - I1 Publication isolation. A publication commit touches only the actor's own
-  `ingredients/checking/journal/<actor>/segments/`.
+  `ingredients/checking/journal/<actor>/` and the `ingredients` table entries of
+  `metadata.json` that describe those files (the table is server-owned and must list
+  every file, §3 rule 5). No other path and no other metadata field changes.
 - I2 Send without receive. A send never needs a receive first and never merges another
   actor's bytes into the working repository.
 - I3 Receive is rebuild-and-swap. The working repository is never merged into.
 - I4 No own byte is lost at receive. Every own segment in the working repository or the
-  outbox before receive is in the replacement, byte-identical, or the receive refuses.
+  outbox before receive is in the replacement, byte-identical, or the whole receive
+  refuses. One exception is defined: a segment that fails its checksum (R-8.1.6) and
+  whose `ts` is in the outbox is replayed from the outbox, because the outbox is its
+  durable source. Every other failed check on an own-directory file (misnamed,
+  foreign actor, differs from accepted) refuses the whole receive; the working
+  repository is untouched.
 - I5 Zero trust everywhere, including the actor's own old copy: validator, filename rule
   (R-8.1.2), actor binding (R-8.1.12), accepted bytes (R-8.1.5).
 - I6 Swap ordering. The outbox and the recovery copy are cleared only after the
@@ -300,7 +316,11 @@ audit worktree was removed, so the run is not repeatable; recorded 2026-09-03]. 
 rebuilds it as a committed scenario file. The scenario is defined here so that it does
 not depend on the lost file. Verse references use the sample project
 `conformance/sample-burrito/`, whose scope is `TIT` and `JON`
-(`conformance/sample-burrito/metadata.json:69-71` [VERIFIED — 1eb39c1, 2026-09-03]).
+(`conformance/sample-burrito/metadata.json:69-71`). `TIT` has three chapters of 16, 15
+and 15 verses (`conformance/sample-burrito/ingredients/vrs.json:1242-1245`), and
+`TIT.usfm` carries chapter 1 verses 1 to 5 and beyond (`ingredients/TIT.usfm:8-14`)
+[VERIFIED — 7fb8681, 2026-09-03]. So `TIT 1:1` to `TIT 1:4` are valid inputs and
+`TIT 99:1` is outside the versification.
 
 `conformance/scenarios/receive-with-unsent.json`: actors A and B on one project seeded
 from the sample. Steps: A edits TIT 1:2 and sends. B edits TIT 1:3, sends, integrates,
@@ -309,19 +329,26 @@ more edit (TIT 1:4) in the outbox with no segment written yet. A receives.
 Expectations, in `Report` terms:
 
 1. `outcome` is `done`.
-2. `carried.copied` lists every A segment `ts` that was in A's working repository
-   before the receive (I4).
+2. `carried.copied ∪ carried.identical` covers every A segment `ts` that was in A's
+   working repository before the receive, and `carried.refused` is empty (I4). A's
+   TIT 1:2 segment, which B already integrated, is `identical`; TIT 1:1 and TIT 1:3 are
+   `copied`.
 3. Every outbox entry `ts` is present in the replacement's segment set (I4).
 4. 1:3 is a fork with two live heads, A's and B's. Both events name the same `base`
    (A never received B's edit before making its own) and come from different actors
    (R-8.3.2). `fold.forks` lists the key with both heads and names the provisional one.
 5. No other key is forked. A's TIT 1:1 and TIT 1:2 are linear.
 6. The replacement's fold equals `fold(main ∪ publication(A) ∪ working(A) ∪ outbox(A))`.
-7. A negative control: the receive is run with I4 disabled in the engine, and check 3
-   fails. This proves the checks are not vacuous.
-8. An input control: a scenario step that edits `TIT 99:1` (outside the sample's
-   versification) is refused by the runner's schema check before any repository is
-   touched. This proves the runner rejects invented references.
+7. A negative control: the receive is run with the fault `skip-outbox-replay` and check
+   3 fails. Faults are the engine's test-only switch: `receive(port, {..., faults})`
+   accepts a closed list of named faults only when `ctx.testMode` is true; in the app
+   `testMode` is never set and a non-empty `faults` list is refused before any
+   repository is touched. The list is defined in `journal/sync.mjs` and each fault has
+   exactly one scenario that uses it. This proves the checks are not vacuous.
+8. An input control: a scenario step that edits `TIT 99:1` (chapter 99 does not exist
+   in the sample's `vrs.json`) is refused by the runner's reference check against the
+   project's versification before any repository is touched. This proves the runner
+   rejects invented references.
 
 Acceptance: the scenario passes over the memory port with its negative control failing;
 J18–J20 pass as scenario files over the git port; the same files pass over HTTP on the
@@ -409,11 +436,14 @@ superseded.
 ### S2 — Send (adapter over `sync.send`)
 
 First send creates `_local_/_pub_/<name>` by `git/copy`, `new-branch/<actorId>`,
-ingredient deletes outside the own journal directory, `remake-ingredients`,
-`add-and-commit`. `send()` is a flush: own segments not yet in the publication,
+ingredient deletes outside the own journal directory, a metadata write that sets
+`type.flavorType.currentScope` to `{}` (the copy inherits the project's scope and would
+otherwise advertise books it no longer holds), `remake-ingredients`, `add-and-commit`. `send()` is a flush: own segments not yet in the publication,
 validated, then the outbox replayed into both working and publication, then one
 commit. Idempotent. Works with the net gate off. Acceptance: publication commits touch
-only `metadata.json` and own journal paths (spy test); after `send()` every own segment
+only own journal paths and the `ingredients` table entries for them (spy test that
+diffs `metadata.json` field by field and fails on any other field); the publication's
+`currentScope` is `{}` after the first send; after `send()` every own segment
 in working ∪ outbox is in the publication byte-identical under a kill sweep; a planted
 foreign segment is refused and surfaced with `segment.foreign-actor`.
 
@@ -424,13 +454,17 @@ or `remote/add` plus `pull-repo` into a single-branch scratch. Sneakernet: expor
 publication repository with the server's zip export, which produces the unwrapped shape
 (`metadata.json` at the zip root). `POST /burrito/zipped` requires that shape and
 accepts the server's own export unchanged (PLATFORM-NOTES #22 [VERIFIED — rig 0.17.0,
-2026-07-27]; #26 trap (b)). Import under `_local_/_sideloaded_/`. The publication
+2026-07-27, `docs/evidence/zip-roundtrip-correction-2026-07-27.md`; that record has no
+commit hash, so S3 re-verifies at the rig pin 0.18.5 (99fd9be) and records it]; #26
+trap (b)). Import under `_local_/_sideloaded_/`. The publication
 repository satisfies the importer's structural rule (Section 4). Team main travels as a
 Door43 branch or a zip (D67(4b)).
 
 Acceptance: push and clone pass in CI against a git remote the rig job controls (a
 bare repository served over HTTP, or the rig's gitea if one exists); a publication zip
-round-trips byte-identically through export and import; net off disables the Door43
+round-trips through export and import with `metadata.json` and every file under
+`ingredients/` byte-identical (`.git/` and `.DS_Store` are excluded, as in the #22
+record, which compared the 10 non-`.git` files); net off disables the Door43
 controls and leaves sneakernet working. A run against live git.door43.org is a manual
 evidence record, not the acceptance. S3 stays open until the CI remote test is green.
 
@@ -438,7 +472,7 @@ evidence record, not the acceptance. S3 stays open until the CI remote test is g
 
 The T3/T4 recipe: copy team main to scratch; add remote; `pull-repo`; read the
 contribution's segments from the contribution repository, never the scratch worktree
-(PLATFORM-NOTES #21); whitelist check (I1, becomes R-8.7.9); write accepted segments by
+(PLATFORM-NOTES #21); whitelist check (I5, becomes R-8.7.9; it enforces I1 on the contribution); write accepted segments by
 ingredient writes; fold; regenerate; `remake-ingredients`; commit; fast-forward team
 main; delete scratch. Anyone may integrate (D67(4d)). Acceptance: every J20 rejection
 case is reproduced with main HEAD unchanged; two contributions integrate in either
@@ -451,9 +485,12 @@ never between.
    failure stands.
 2. Copy team main to scratch; add the own publication as a remote; `pull-repo`.
 3. Carry over own journal work: each own segment in the working repository is
-   validated, filename-checked, actor-checked; a path present in scratch with different
-   bytes refuses the whole receive with `segment.differs-from-accepted`; otherwise
-   written. Replay every outbox entry into scratch. Record the refused list.
+   validated, filename-checked, actor-checked. A path present in scratch with identical
+   bytes is recorded as `identical`. A path absent from scratch is written and recorded
+   as `copied`. Any failed check refuses the whole receive with its code, except a
+   checksum failure whose `ts` is in the outbox, which is replayed from the outbox (I4).
+   Replay every outbox entry into scratch. Delete scratch on refusal; the working
+   repository is untouched.
 4. Carry over tolerated unjournaled ingredients: copy every file under
    `ingredients/audio/` from the working repository into scratch, byte-identical (I9).
    A copy failure refuses the whole receive with `receive.audio-missing`.
@@ -524,7 +561,8 @@ after receive; no modal wall. This is the test obligation of I8.
 ### S7 — Performance prerequisites (#94, #95)
 
 Finish #95 (one journal scan per open) and #94 (fold in a Web Worker). #92 and #93 are
-closed [VERIFIED — GitHub, 2026-09-03]. Add `tc4 bench --receive`.
+closed [VERIFIED — `gh issue view 92` and `gh issue view 93` on
+github.com/unfoldingWord/translationCore4 report state CLOSED, 2026-09-03]. Add `tc4 bench --receive`.
 
 Acceptance: New Testament receive under 10 s on the reference machine, which is the
 machine of the existing fold benchmarks: Apple M2 Pro (10 cores), 16 GB, macOS
@@ -562,7 +600,8 @@ Actor A and actor B each open the same project on separate installations. A draf
 and sends. B drafts 1:3, sends, and receives. A, offline, drafts 1:1, edits 1:3 to a
 different text with the same `base` as B's edit, and has one action still in the
 outbox. A receives. Expected: A's working repository has A's 1:1, 1:2, 1:3 and the
-outbox action; 1:3 shows a fork with A's head and B's head (R-8.3.2); A picks one; the
+former outbox action as a committed segment, and A's outbox is empty (S5 step 7); 1:3
+shows a fork with A's head and B's head (R-8.3.2); A picks one; the
 resolution sends; B receives; B sees no fork and A's chosen 1:3; both projects fold to
 the same state. Then A's device loses power during a receive between the two moves; the
 next open completes or rolls back the swap; no own byte is missing.
