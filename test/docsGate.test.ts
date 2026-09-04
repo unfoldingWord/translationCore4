@@ -122,12 +122,14 @@ describe('docs gate: marker grammar', () => {
       'live: <!-- manifest: vitest passed -->809',
       '~~~~',
       '<!-- manifest: vitest passed -->460',
-      '~~~~',
+      '~~~ a shorter fence of the same character does not close a ~~~~ block',
+      '<!-- manifest: vitest passed -->460',
+      '~~~~~ a longer one does',
       'live again: <!-- manifest: vitest passed -->809',
     ].join('\n');
     const r = checkText(text, fixture, 'x.md');
     expect(r.findings).toEqual([]);
-    expect(r.checked.map((c) => c.line)).toEqual([7, 11]);
+    expect(r.checked.map((c) => c.line)).toEqual([7, 13]);
   });
 
   it('compares exactly: a 7-character prefix of a string value is stale', () => {

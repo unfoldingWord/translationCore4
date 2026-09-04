@@ -22,8 +22,8 @@
 //   before it are skipped, so `**809**` and `(809)` both read as 809; a trailing `.` or
 //   `-` (sentence end) is not part of the value. Equality is exact on the manifest
 //   value's string form.
-//   Mark only values that are the same in every run at one commit: suite counts and
-//   rig.rev (the pinned revision). Never commit, date or node: CI runs the gate against
+//   Mark only values that are the same in every clean-clone CI run at one commit: suite
+//   counts and rig.rev (the pinned revision). Never commit, date or node: CI runs the gate against
 //   the manifest its own run writes, so those are always the run's own and a document
 //   can never cite them correctly.
 //

@@ -204,7 +204,7 @@ the manifest value's string form. A marker inside a fenced code block or an inli
 span (as in this table) is an example, not a claim, and is not checked. Unmarked prose is
 not checked.
 
-**Mark only values that are the same in every run at one commit**: the suite counts and
+**Mark only values that are the same in every clean-clone CI run at one commit**: the suite counts and
 `rig.rev` (the pinned revision). Never `commit`, `date` or `node`. CI runs the gate
 against the manifest its own run writes, so those fields are always the run's own, and a
 document can never cite them correctly (CI run 33921706415 on 9949a34 showed this: three
