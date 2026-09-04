@@ -137,7 +137,8 @@ the engine slots into. L-6 is last because its content is the outcome of L-1 to 
 ### 3.1 L-1 record: the manifest (decided in #154, 2026-09-04)
 
 `npm run prove` (`scripts/prove.mjs`) writes `docs/evidence/manifest.json`. The copy in the
-repository is taken from a CI run. Field names:
+repository is taken from the PUSH-event CI run, never the pull_request-event run: that one
+checks out a synthetic merge commit that is not in the branch history. Field names:
 
 | Field | Meaning |
 |---|---|

@@ -3,7 +3,8 @@
 # tests, the build, and the four conformance suites, and writes
 # docs/evidence/manifest.json (commit, server pin, per-suite command / counts / duration).
 # The manifest is uploaded as an artifact; the copy committed under docs/evidence/ is
-# taken from a CI run, never from a developer machine.
+# taken from the PUSH-event run (the pull_request-event run checks out a synthetic merge
+# commit that is not in the branch history), never from a developer machine.
 # Rig-gated suites (validate:transport, validate:roundtrip, the *.integration vitest
 # files) are SKIPPED here with a named reason — a clean clone has no Pankosmia rig. They
 # run on the developer machine (and in the rig job of L-1b once it exists).
