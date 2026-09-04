@@ -84,12 +84,15 @@ jobs:
       - name: Assemble the rig from the pinned inputs and build the server
         run: zsh dev-env/scripts/setup-from-pins.zsh
 
+      # The key names the pin and the fetch path that produced the cached bytes: a change to
+      # the app's fetch, unwrap or re-zip code, or to the cache script, misses the cache and
+      # fetches again through the new code. seed.zsh unzips cached bytes without checking them.
       - name: Cache the pinned en_ult export
         id: en-ult
         uses: actions/cache@v4
         with:
           path: dev-env/resources-cache
-          key: rig-resources-en_ult-${{ env.EN_ULT_TAG }}-${{ env.EN_ULT_SHA }}
+          key: rig-resources-en_ult-${{ env.EN_ULT_TAG }}-${{ env.EN_ULT_SHA }}-${{ hashFiles('dev-env/scripts/cache-resource.ts', 'dev-env/scripts/cache-resource.zsh', 'src/data/resourceFetch.ts') }}
       - name: Fetch the pinned en_ult export (cache miss only; SHA mismatch aborts)
         if: steps.en-ult.outputs.cache-hit != 'true'
         run: zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_ult "$EN_ULT_TAG" "$EN_ULT_SHA"
