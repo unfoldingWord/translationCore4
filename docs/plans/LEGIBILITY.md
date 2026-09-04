@@ -177,6 +177,81 @@ Rules the command follows:
 - The Phase-1 summary line is also what round-trip R7 reads for its expected Stage-1
   count (evidence: `docs/evidence/roundtrip-r7-2026-09-04.md`).
 
+### 3.2 L-2 record: the docs gate (decided in #155, 2026-09-04)
+
+`npm run docs:gate` (`scripts/docs-gate.mjs`) reads every statement that is marked as
+manifest-derived and compares it with `docs/evidence/manifest.json`. `npm run verify`
+ends with the gate; CI runs it after `prove`, against the manifest that run wrote.
+
+**The document set.** `docs/` (every `.md`, recursively), `README.md`, `CONTRIBUTING.md`
+and `conformance/README.md`. `docs/BURRITO-SPEC.md` is scanned but carries no marker yet:
+its header counts get their markers in the next change set that changes the spec and the
+harness together (§9).
+
+**The marker.** An HTML comment placed immediately before the value it vouches for.
+GitHub renders the comment as nothing, so the reader sees only the value.
+
+| Form | Meaning |
+|---|---|
+| `<!-- manifest: <suite-id> <field> -->VALUE` | a count of one `suites[]` entry; `<field>` is `passed`, `failed` or `skippedTests` |
+| `<!-- manifest: <suite-id> summary[<prefix>] -->VALUE` | the `N passed` of the suite's own summary line that starts with `<prefix>` (`Stage-1`, `Stage-2`, `Phase-2`); the same line round-trip R7 reads |
+| `<!-- manifest: <path> -->VALUE` | a top-level field, dotted (`commit`, `rig.rev`, `node`) |
+
+`VALUE` is the first token after the comment. Markdown emphasis, backticks and brackets
+before it are skipped, so `**809**`, `` `809` `` and `(809)` all read as `809`; a trailing
+`.` or `-` at a sentence end is not part of the value. The comparison is exact against
+the manifest value's string form. A marker inside a fenced code block or an inline code
+span (as in this table) is an example, not a claim, and is not checked. Unmarked prose is
+not checked.
+
+**Mark only values that are the same in every clean-clone CI run at one commit**: the suite counts and
+`rig.rev` (the pinned revision). Never `commit`, `date` or `node`. CI runs the gate
+against the manifest its own run writes, so those fields are always the run's own, and a
+document can never cite them correctly (CI run 33921706415 on 9949a34 showed this: three
+`commit` markers stale by construction). A `[VERIFIED]` tag on a manifest-derived count
+therefore names `docs/evidence/manifest.json` as its source and says that the file carries
+the run's commit, date and Node version; the hash and date CONTRIBUTING rule 2 asks for
+are in the cited file, not retyped.
+
+**The findings.** One line each, naming the file, the line, the marker and both values:
+
+| Kind | Condition |
+|---|---|
+| `stale` | the document's value and the manifest's value differ |
+| `no-evidence` | the manifest holds `null` at the path (the suite was skipped; the skip reason is printed). A marked claim without evidence fails |
+| `grammar` | the marker names an unknown suite, field or path, or no value follows it |
+
+Exit 0 when every marked statement agrees; 1 on any finding; 2 when the manifest cannot
+be read. `--manifest <path>` reads another manifest (the controls use it).
+
+**The controls** (`test/docsGate.test.ts`, in the plain `vitest` suite, so in `verify`,
+`prove` and CI). Positive: a marked statement that matches passes, on a fixture manifest
+and on the real documents against the committed manifest. Negative: a stale value fails
+and the finding names the file, the line and the marker path, on a fixture and through the
+CLI against the real documents with one manifest count altered; a marker over a skipped
+suite and a marker with no value also fail.
+
+**A change set that changes a count.** Adding tests changes the `vitest` count; CI's
+`prove` then writes a manifest that disagrees with the marked documents and the gate fails
+in CI. That failure is the gate working. The change set completes by taking the manifest
+from its own push-event CI run (3.1), committing it, and updating the marked statements
+in the same PR. L-2 itself was the first case: the committed manifest (674c1bf) said 809;
+CI on the L-2 branch said 828, because PR #165 had added 7 tests after that manifest was
+recorded and L-2's controls added 12. The gate named the stale markers (CI run
+33921454776, push event, 2066b73); the refreshed manifest and the corrected documents
+landed in the next commits of PR #169.
+
+**Two consequences of reading the manifest on disk.** (a) On a developer machine, `prove`
+with a rig writes a manifest from a different surface (the plain `vitest` suite excludes
+the integration files, so its count differs from the clean-clone count the documents
+state). The gate then reports those differences and prints a note; restore the committed
+manifest (`git checkout docs/evidence/manifest.json`) before `npm run verify`. (b) The
+rig suites (`conformance:transport`, `conformance:roundtrip`, `vitest:rig`) are `null` in
+the committed manifest, so their counts (10, 12, 41) stay unmarked prose until L-1b's
+rig job records them; a marker over them today would fail as `no-evidence`. L-2 marked
+the counts the manifest on `main` holds: `vitest` passed and skipped, `conformance:validate`
+total and the three group lines, `conformance:journal`, `conformance:normative`.
+
 ## 4. Acceptance: the orientation test
 
 `docs/SYSTEM.md` is the surface under test. A fresh agent session, given only

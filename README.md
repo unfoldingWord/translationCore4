@@ -45,9 +45,11 @@ Do the steps that follow:
 2. Type this command: `npm ci`
 3. Type this command: `npm test`
 
-Expect this result on a clean clone: **460 tests passed, 37 tests skipped**
-[VERIFIED — measured 2026-08-24 on a fresh clone of this branch at commit 7074212,
-with no Pankosmia rig running and no sibling `sample-burrito` checkout].
+Expect this result on a clean clone: <!-- manifest: vitest passed -->**828 tests passed**,
+<!-- manifest: vitest skippedTests -->**37 tests skipped**
+[VERIFIED — the two counts are read from `docs/evidence/manifest.json`, the record of the
+CI run on a clean clone; that file names the run's commit, date and Node version;
+`npm run docs:gate` fails when this sentence disagrees with it].
 
 The `.npmrc` file sets `legacy-peer-deps=true`. This setting is necessary.
 `word-aligner@1.0.3` declares a `usfm-js ^2` peer dependency, but the proven pairing is
@@ -61,13 +63,14 @@ The `.npmrc` file sets `legacy-peer-deps=true`. This setting is necessary.
 | `npm run build` | Build the client. |
 | `npm run lint` | Run ESLint. |
 | `npm run typecheck` | Run the TypeScript compiler with `--noEmit`. |
-| `npm run verify` | Run lint, typecheck, test and build. |
+| `npm run verify` | Run lint, typecheck, test, build and the docs gate. |
+| `npm run docs:gate` | Check every count that is marked as manifest-derived in `docs/`, `README.md`, `CONTRIBUTING.md` and `conformance/README.md` against `docs/evidence/manifest.json`. |
 | `npm run prove` | Run every automated suite that applies: verify, the conformance suites, and the rig suites when a pristine rig answers. Not included: the Playwright journeys. Needs `cd conformance && npm ci` once. Writes `docs/evidence/manifest.json`. `npm run prove -- --list` prints the suites and runs nothing. |
 | `npm run test:e2e` | Run the Playwright journey tests. See the limit below. |
 
 ## Tests that this repository cannot run alone
 
-37 tests skip on a clean clone. They skip; they do not fail. Each skipped test names the
+<!-- manifest: vitest skippedTests -->37 tests skip on a clean clone. They skip; they do not fail. Each skipped test names the
 prerequisite that it needs.
 
 Two prerequisites are outside this repository:
