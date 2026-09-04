@@ -112,13 +112,30 @@ jobs:
           cat "$RUNNER_TEMP/version.json"
           echo
 
-      # The checked-out manifest is the clean-clone one. Remove it first, so a prove that
-      # stops before writing cannot pass off the committed file as this run's result.
-      # (prove excludes the manifest path from its dirty check.)
+      # The checked-out manifest is the committed clean-clone one, and it stays in place:
+      # the docs gate's tests read it (test/docsGate.test.ts, L-2), and deleting it marks the
+      # tree dirty. Freshness is checked instead: the manifest prove writes must name this
+      # run's commit and a date after the step started. A prove that stops before writing
+      # leaves the committed file, which fails that check and is not uploaded.
       - name: prove (rig suites included)
         run: |
-          rm docs/evidence/manifest.json
+          date -u +%s > "$RUNNER_TEMP/prove-start"
           RIG_REPOS="$GITHUB_WORKSPACE/dev-env/state/work/repos" npm run prove
+
+      - name: The manifest is this run's (commit and date)
+        id: fresh
+        if: always()
+        run: |
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const m = JSON.parse(fs.readFileSync("docs/evidence/manifest.json", "utf8"));
+            const start = Number(fs.readFileSync(process.env.RUNNER_TEMP + "/prove-start", "utf8")) * 1000;
+            const stale = [];
+            if (m.commit !== process.env.GITHUB_SHA) stale.push(`commit ${m.commit} is not ${process.env.GITHUB_SHA}`);
+            if (!(Date.parse(m.date) >= start)) stale.push(`date ${m.date} is before the prove step started`);
+            if (stale.length) { console.error("the manifest on disk is not this run's:", stale.join("; ")); process.exit(1); }
+            console.log(`manifest: commit ${m.commit.slice(0, 7)}, ${m.date}, dirty=${m.dirty}`);
+          '
 
       - name: The rig suites ran and passed (read the manifest, not the log)
         run: |
@@ -131,18 +148,20 @@ jobs:
             if (rig.length === 0 || bad.length) { console.error("rig suites did not all run and pass:", bad.map((s) => s.id)); process.exit(1); }
           '
 
+      # Uploaded whenever the manifest is this run's, red or green; never the committed file.
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && steps.fresh.outcome == 'success'
         with:
           name: prove-manifest-rig
           path: docs/evidence/manifest.json
           if-no-files-found: error
 
       - name: Negative control — prove must REFUSE the rig suites on the dirtied rig
+        id: negative
         if: github.event_name == 'pull_request' || inputs.negative_control
         run: |
           LOG="$RUNNER_TEMP/negative-control.log"
-          rm docs/evidence/manifest.json
+          date -u +%s > "$RUNNER_TEMP/negative-start"
           if RIG_REPOS="$GITHUB_WORKSPACE/dev-env/state/work/repos" npm run prove > "$LOG" 2>&1; then
             echo "prove exited 0 on a rig the previous run dirtied — the gate cannot fail"
             cat "$LOG"
@@ -154,6 +173,8 @@ jobs:
           node --input-type=module -e '
             import fs from "node:fs";
             const m = JSON.parse(fs.readFileSync("docs/evidence/manifest.json", "utf8"));
+            const start = Number(fs.readFileSync(process.env.RUNNER_TEMP + "/negative-start", "utf8")) * 1000;
+            if (m.commit !== process.env.GITHUB_SHA || !(Date.parse(m.date) >= start)) { console.error("the manifest on disk is not the negative-control run's:", m.commit, m.date); process.exit(1); }
             if (m.rig.pristine !== false) { console.error("manifest.rig.pristine is", m.rig.pristine, "— expected false"); process.exit(1); }
             const rig = m.suites.filter((s) => s.needsRig);
             const bad = rig.filter((s) => s.ran || !String(s.skipped).startsWith("REFUSED: rig not pristine"));
@@ -161,7 +182,7 @@ jobs:
             console.log("negative control: every rig suite skipped with", rig[0].skipped);
           '
       - uses: actions/upload-artifact@v4
-        if: always() && (github.event_name == 'pull_request' || inputs.negative_control)
+        if: always() && steps.negative.outcome == 'success'
         with:
           name: prove-manifest-rig-negative-control
           path: docs/evidence/manifest.json
