@@ -62,6 +62,7 @@ The `.npmrc` file sets `legacy-peer-deps=true`. This setting is necessary.
 | `npm run lint` | Run ESLint. |
 | `npm run typecheck` | Run the TypeScript compiler with `--noEmit`. |
 | `npm run verify` | Run lint, typecheck, test and build. |
+| `npm run prove` | Run every suite that applies (verify + the conformance suites + the rig suites when a pristine rig answers) and write `docs/evidence/manifest.json`. `npm run prove -- --list` prints the suites and runs nothing. |
 | `npm run test:e2e` | Run the Playwright journey tests. See the limit below. |
 
 ## Tests that this repository cannot run alone
@@ -124,7 +125,7 @@ Report a defect or a request in the GitHub issues of this repository.
 
 Before you send a pull request:
 
-1. Run this command: `npm run verify`
+1. Run this command: `npm run prove`
 2. Put the test output in the pull request.
 
 Two rules apply to code that speaks to the platform:

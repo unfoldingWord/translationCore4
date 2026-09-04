@@ -134,6 +134,42 @@ L-0 to L-3 are independent of sync and can start now. L-4 and L-5 are the sync e
 first two steps in disguise: no user-visible change, and the proof ends in the shape
 the engine slots into. L-6 is last because its content is the outcome of L-1 to L-5.
 
+### 3.1 L-1 record: the manifest (decided in #154, 2026-09-04)
+
+`npm run prove` (`scripts/prove.mjs`) writes `docs/evidence/manifest.json`. The copy in the
+repository is taken from a CI run. Field names:
+
+| Field | Meaning |
+|---|---|
+| `schemaVersion` | `1` |
+| `tool` | `scripts/prove.mjs` |
+| `commit`, `dirty` | the HEAD commit; `dirty` is true when the working tree had uncommitted changes other than the manifest |
+| `date` | ISO 8601, when the run ended |
+| `node`, `platform`, `ci` | the Node version, `<platform>-<arch>`, and whether `CI` was set |
+| `rig.api`, `rig.detected`, `rig.version`, `rig.product` | the rig URL; whether `GET /version` answered; its `pkg_version` and `product_name` |
+| `rig.rev`, `rig.revSource` | the pinned pankosmia-web revision, read from `dev-env/server/Cargo.toml` (the HTTP API reports no hash) |
+| `rig.repos`, `rig.pristine`, `rig.extraRepos` | the repos directory used (`RIG_REPOS`); whether `_local_/_local_` holds only `sample_burrito`; the extra repos when it does not |
+| `suites[]` | one entry per suite, in run order (see below) |
+| `ok` | true when every suite that ran passed and no rig suite was refused |
+
+Each `suites[]` entry: `id`, `layer` (`verify`, `unit`, `conformance`, `rig`, `bench`),
+`command` (`<cwd>$ <argv>`), `needsRig`, `ran`, `skipped` (the reason, or null),
+`ok`, `exitCode`, `passed`, `failed`, `skippedTests` (from the suite's own summary line;
+null when the suite prints no counts), `summary` (the summary lines, verbatim),
+`durationMs`.
+
+Rules the command follows:
+
+- A suite's own summary line is the authoritative count. `prove` reads it and never
+  counts checks itself.
+- A skip names its prerequisite. A rig suite is **refused**, and `prove` exits 1, when
+  the rig answers but is not pristine; the refusal names the extra repos and the reseed
+  commands. The rig suites themselves leave the rig non-pristine, so a reseed precedes
+  every rig run.
+- `bench:fold` runs only with `--bench` (about one minute); `--list` runs nothing.
+- The Phase-1 summary line is also what round-trip R7 reads for its expected Stage-1
+  count (evidence: `docs/evidence/roundtrip-r7-2026-09-04.md`).
+
 ## 4. Acceptance: the orientation test
 
 `docs/SYSTEM.md` is the surface under test. A fresh agent session, given only

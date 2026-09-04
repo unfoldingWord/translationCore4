@@ -14,6 +14,7 @@ import { sealAction, validateSegment, validateActorDoc, segmentName } from '../j
 
 const API = process.env.RIG_API || 'http://127.0.0.1:19998/api';
 const REPOS = process.env.RIG_REPOS || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dev-env/state/work/repos'); // script-relative (round 8), never cwd-relative
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 const LOCAL = '_local_/_local_';
 const SRC = `${LOCAL}/sample_burrito`;
 const RT = `${LOCAL}/rt_burrito`;
@@ -176,22 +177,32 @@ const run = async () => {
   }
 
   // ---------- R7: the verdict — conformance harness on the server-touched copy ----------
-  const env = { ...process.env, BURRITO: dirOf(RT) };
-  const out = spawnSync('node', ['validate.mjs'], { env, encoding: 'utf8' });
-  const tail = (out.stdout || '').trim().split('\n');
-  const s1 = tail.find((l) => l.startsWith('Stage-1')) || '';
-  const s2 = tail.find((l) => l.startsWith('Stage-2')) || '';
-  console.log(`  harness on server-touched copy → ${s1} | ${s2}`);
-  // Count constant — must track the pristine Stage-1 total (BURRITO-SPEC §7). Stage-1 is
-  // path-derivable, so a server rescan must not change it. 30 as of spec 1.7-draft (D36
-  // carry-over check, 2026-08-04); was 29 at 1.6-draft. NOT YET RE-RUN AGAINST THE LIVE RIG
-  // at 30 — this suite needs dev-env. See docs/OPEN-QUESTIONS.md.
-  const s1pass = /Stage-1.*: 30 passed, 0 failed/.test(s1);
+  // The expected Stage-1 count is READ from the Phase-1 suite's own summary line on the
+  // harness's own sample (BURRITO-SPEC header: "the suite's own summary line is the
+  // authoritative check count"), never a constant (#154 L-1; the constant 30 went stale
+  // at 35 and produced false failures). Stage-1 is path-derivable, so a server rescan
+  // must not change it: the server-touched copy must report the SAME count, 0 failed.
+  const harness = (dir) => {
+    const env = { ...process.env };
+    if (dir) env.BURRITO = dir; else delete env.BURRITO;
+    const out = spawnSync('node', ['validate.mjs'], { cwd: HERE, env, encoding: 'utf8' });
+    const rows = (out.stdout || '').trim().split('\n');
+    const pick = (p) => rows.find((l) => l.startsWith(p)) || '';
+    const counts = (l) => { const m = /: (\d+) passed, (\d+) failed/.exec(l); return m ? { passed: +m[1], failed: +m[2] } : null; };
+    return { s1: pick('Stage-1'), s2: pick('Stage-2'), stage1: counts(pick('Stage-1')), status: out.status };
+  };
+  const reference = harness(null); // the harness's own sample: the authoritative count
+  const touched = harness(dirOf(RT));
+  console.log(`  harness on own sample          → ${reference.s1}`);
+  console.log(`  harness on server-touched copy → ${touched.s1} | ${touched.s2}`);
   // NOTE: the rt copy gained 3 journal files the sample lacks, so the exact-file-set check and
   // role-count check are evaluated by the harness against the enriched copy — Stage-2 outcome
   // depends on whether the server preserved roles/relationships above.
-  check('R7: Stage-1 conformance (30 checks) holds on the server-touched copy — the format survives today\'s server at the level the spec claims',
-    s1pass, s1 || `harness exit=${out.status}`);
+  const expected = reference.stage1;
+  const s1pass = !!expected && expected.failed === 0 && expected.passed > 0
+    && !!touched.stage1 && touched.stage1.passed === expected.passed && touched.stage1.failed === 0;
+  check(`R7: Stage-1 conformance (${expected ? expected.passed : '?'} checks, the Phase-1 suite's own count) holds on the server-touched copy — the format survives today's server at the level the spec claims`,
+    s1pass, touched.s1 || `harness exit=${touched.status}`);
 
   console.log(`\nRound-trip suite: ${pass} passed, ${fail} failed (server ${API})`);
   process.exit(fail ? 1 : 0);
