@@ -13,8 +13,9 @@
     "lint:staged": "lint-staged",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write src/data test",
-    "verify": "npm run lint && npm run typecheck && npm test && npm run build",
+    "verify": "npm run lint && npm run typecheck && npm test && npm run build && npm run docs:gate",
     "prove": "node scripts/prove.mjs",
+    "docs:gate": "node scripts/docs-gate.mjs",
     "prepare": "husky"
   },
   "dependencies": {
