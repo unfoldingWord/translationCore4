@@ -8,7 +8,7 @@
 // the file, the line and the manifest path — on a fixture, and through the CLI against
 // the real documents with one manifest count altered.
 import { describe, expect, it } from 'vitest';
-import { DOC_ROOTS, agrees, checkFiles, checkText, resolveMarker } from '../scripts/docs-gate.mjs';
+import { DOC_ROOTS, checkFiles, checkText, resolveMarker } from '../scripts/docs-gate.mjs';
 
 // vite-plugin-node-polyfills aliases node builtins even under the node environment; the
 // real ones come through process.getBuiltinModule (same workaround as noBypass.test.ts).
@@ -130,19 +130,14 @@ describe('docs gate: marker grammar', () => {
     expect(r.checked.map((c) => c.line)).toEqual([7, 11]);
   });
 
-  it('compares numbers exactly and accepts a prefix of at least 7 characters for a string', () => {
-    expect(agrees('809', 809)).toBe(true);
-    expect(agrees('80', 809)).toBe(false);
-    expect(agrees('abc1234', fixture.commit)).toBe(true);
-    expect(agrees('abc123', fixture.commit)).toBe(false);
-    expect(agrees('abc1235', fixture.commit)).toBe(false);
-    expect(agrees('2026-09-04', '2026-09-04T20:02:02.607Z')).toBe(true);
+  it('compares exactly: a 7-character prefix of a string value is stale', () => {
     const r = checkText(
-      'CI run on commit <!-- manifest: commit -->abc1234, <!-- manifest: commit -->abd1234.',
+      'pinned <!-- manifest: rig.rev -->99fd9be; commit <!-- manifest: commit -->abc1234.',
       fixture,
       'x.md',
     );
-    expect(r.findings).toMatchObject([{ kind: 'stale', marker: 'commit', doc: 'abd1234' }]);
+    expect(r.findings).toMatchObject([{ kind: 'stale', marker: 'commit', doc: 'abc1234' }]);
+    expect(r.checked.map((c) => c.marker)).toEqual(['rig.rev', 'commit']);
   });
 });
 

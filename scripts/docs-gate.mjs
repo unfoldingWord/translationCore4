@@ -20,9 +20,12 @@
 //   reads; a suite's summary line is the authoritative count).
 //   VALUE is the first token after the comment; markdown emphasis, backticks and brackets
 //   before it are skipped, so `**809**` and `(809)` both read as 809; a trailing `.` or
-//   `-` (sentence end) is not part of the value. Numbers compare exactly. A string value
-//   (commit, date, node) also accepts a prefix of at least 7 characters: `674c1bf` for
-//   the commit, `2026-09-04` for the date.
+//   `-` (sentence end) is not part of the value. Equality is exact on the manifest
+//   value's string form.
+//   Mark only values that are the same in every run at one commit: suite counts and
+//   rig.rev (the pinned revision). Never commit, date or node: CI runs the gate against
+//   the manifest its own run writes, so those are always the run's own and a document
+//   can never cite them correctly.
 //
 // Findings, one line each, name the file, the line, the marker path, the document's
 // value and the manifest's value:
@@ -76,19 +79,6 @@ export function resolveMarker(manifest, first, second) {
 }
 
 /**
- * Does the document's token agree with the manifest value? Numbers and booleans: exact.
- * Strings (commit hash, ISO date, node version): exact, or the token is a prefix of at
- * least PREFIX_MIN characters — a 7-character hash or a YYYY-MM-DD date is how documents
- * cite them.
- */
-export const PREFIX_MIN = 7;
-export function agrees(doc, value) {
-  const s = String(value);
-  if (doc === s) return true;
-  return typeof value === 'string' && doc.length >= PREFIX_MIN && s.startsWith(doc);
-}
-
-/**
  * Check one document's text. Returns every marker found (checked) and the findings.
  * @param {string} text  @param {object} manifest  @param {string} file  the path printed in findings
  */
@@ -123,7 +113,7 @@ export function checkText(text, manifest, file) {
       }
       const expected = String(r.value);
       checked.push({ ...base, doc, manifest: expected });
-      if (!agrees(doc, r.value)) findings.push({ ...base, kind: 'stale', doc, manifest: expected, detail: `document says ${doc}, manifest says ${expected}` });
+      if (doc !== expected) findings.push({ ...base, kind: 'stale', doc, manifest: expected, detail: `document says ${doc}, manifest says ${expected}` });
     }
   });
   return { checked, findings };

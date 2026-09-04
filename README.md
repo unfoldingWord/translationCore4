@@ -48,7 +48,7 @@ Do the steps that follow:
 Expect this result on a clean clone: <!-- manifest: vitest passed -->**828 tests passed**,
 <!-- manifest: vitest skippedTests -->**37 tests skipped**
 [VERIFIED — the two counts are read from `docs/evidence/manifest.json`, the record of the
-CI run on a clean clone at commit <!-- manifest: commit -->2066b73, <!-- manifest: date -->2026-09-04;
+CI run on a clean clone; that file names the run's commit, date and Node version;
 `npm run docs:gate` fails when this sentence disagrees with it].
 
 The `.npmrc` file sets `legacy-peer-deps=true`. This setting is necessary.

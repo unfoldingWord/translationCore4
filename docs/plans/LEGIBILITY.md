@@ -199,12 +199,19 @@ GitHub renders the comment as nothing, so the reader sees only the value.
 
 `VALUE` is the first token after the comment. Markdown emphasis, backticks and brackets
 before it are skipped, so `**809**`, `` `809` `` and `(809)` all read as `809`; a trailing
-`.` or `-` at a sentence end is not part of the value. A number compares exactly. A string
-value (`commit`, `date`, `node`) compares exactly or by a prefix of at least 7 characters,
-so a `[VERIFIED]` tag can cite the manifest's commit as `674c1bf` and its date as
-`2026-09-04` and still be gate-checked (CONTRIBUTING rule 2 asks for version, hash and
-date). A marker inside a fenced code block or an inline code span (as in this table) is an
-example, not a claim, and is not checked. Unmarked prose is not checked.
+`.` or `-` at a sentence end is not part of the value. The comparison is exact against
+the manifest value's string form. A marker inside a fenced code block or an inline code
+span (as in this table) is an example, not a claim, and is not checked. Unmarked prose is
+not checked.
+
+**Mark only values that are the same in every run at one commit**: the suite counts and
+`rig.rev` (the pinned revision). Never `commit`, `date` or `node`. CI runs the gate
+against the manifest its own run writes, so those fields are always the run's own, and a
+document can never cite them correctly (CI run 33921706415 on 9949a34 showed this: three
+`commit` markers stale by construction). A `[VERIFIED]` tag on a manifest-derived count
+therefore names `docs/evidence/manifest.json` as its source and says that the file carries
+the run's commit, date and Node version; the hash and date CONTRIBUTING rule 2 asks for
+are in the cited file, not retyped.
 
 **The findings.** One line each, naming the file, the line, the marker and both values:
 
@@ -230,9 +237,9 @@ in CI. That failure is the gate working. The change set completes by taking the 
 from its own push-event CI run (3.1), committing it, and updating the marked statements
 in the same PR. L-2 itself was the first case: the committed manifest (674c1bf) said 809;
 CI on the L-2 branch said 828, because PR #165 had added 7 tests after that manifest was
-recorded and L-2's controls added 12. The gate named all five stale markers (CI run
+recorded and L-2's controls added 12. The gate named the stale markers (CI run
 33921454776, push event, 2066b73); the refreshed manifest and the corrected documents
-landed in the next commit of PR #169.
+landed in the next commits of PR #169.
 
 **Two consequences of reading the manifest on disk.** (a) On a developer machine, `prove`
 with a rig writes a manifest from a different surface (the plain `vitest` suite excludes
