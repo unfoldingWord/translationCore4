@@ -68,8 +68,8 @@ set, so the rig-gated suites execute. It runs on every pull request, on merges t
 `main`, and on demand. Its manifest is uploaded as
 `prove-manifest-rig`; the committed manifest stays the clean-clone one. The rig runs as
 a process on the runner, not in a container: the recipe needs no isolation the runner
-does not already give. [VERIFIED — `docs/evidence/rig-job-ci-2026-09-04.md`: run 33926954276 on
-ubuntu-24.04, 2026-09-04, both controls green, 3 min 2 s with a warm cargo cache]
+does not already give. [VERIFIED — `docs/evidence/rig-job-ci-2026-09-04.md`: run 33929372286 at commit 57fc8e8 on
+ubuntu-24.04, 2026-09-04, both controls green, 2 min 36 s with a warm cargo cache]
 
 ## Rules
 
