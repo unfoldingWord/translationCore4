@@ -1,8 +1,13 @@
-# CI derived from TEST-PLAN §1 (guided build, Increment 1). Runs the aggregate
-# verify (lint + typecheck + unit tests + build) and the dependency audit (P-2).
-# Rig-dependent integration/journey rows are NOT run here — they need the local
-# pankosmia dev rig; they run on the developer machine and their evidence is
-# pasted into the PHASE-SUMMARY (VERIFICATION_GATE).
+# CI derived from TEST-PLAN §1 (guided build, Increment 1). Since L-1 (#154, D67) the
+# job runs the ONE proof command, `npm run prove`, which runs lint, typecheck, the unit
+# tests, the build, and the four conformance suites, and writes
+# docs/evidence/manifest.json (commit, server pin, per-suite command / counts / duration).
+# The manifest is uploaded as an artifact; the copy committed under docs/evidence/ is
+# taken from the PUSH-event run (the pull_request-event run checks out a synthetic merge
+# commit that is not in the branch history), never from a developer machine.
+# Rig-gated suites (validate:transport, validate:roundtrip, the *.integration vitest
+# files) are SKIPPED here with a named reason — a clean clone has no Pankosmia rig. They
+# run on the developer machine (and in the rig job of L-1b once it exists).
 # ⛔ Never add a pankosmia remote, token, or upstream trigger to this workflow.
 name: ci
 permissions:
@@ -21,35 +26,23 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            conformance/package-lock.json
       - run: npm ci
-      - run: npm run lint
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm run build
+      # The harness has its own lockfile (.npmrc: legacy-peer-deps); the reference
+      # modules in journal/ resolve usfm-js from the ROOT install (L-0).
+      - run: npm ci
+        working-directory: conformance
+      # The suites' own summary lines are the authoritative counts; prove only reads them.
+      - run: npm run prove
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: prove-manifest
+          path: docs/evidence/manifest.json
+          if-no-files-found: error
       # P-2 dependency audit: report level high; the legacy-peer-deps pairing
       # (usfm-js 3.4.3 + word-aligner 1.0.3) is proven and MUST NOT be "fixed".
       - run: npm audit --audit-level=high || true
       - run: npm audit --audit-level=critical
-
-  conformance:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: conformance
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: conformance/package-lock.json
-      # The reference modules live in the root `journal/` package (L-0, D67(4e)) and
-      # import `usfm-js` from the ROOT node_modules, so the root install is needed too.
-      - run: npm ci
-        working-directory: .
-      - run: npm ci
-      - run: npm run generate
-      # The suites' own summary lines are the authoritative counts; the
-      # normative gate (validate:normative) must exit 0 (BURRITO-SPEC §7/§8).
-      # The transport suite (validate:transport) is rig-gated and does NOT run here.
-      - run: npm run validate:all

@@ -37,7 +37,8 @@ You do not have to trust the documentation. Run the proof:
 
 ```bash
 npm ci
-npm run verify
+cd conformance && npm ci && cd ..
+npm run prove
 ```
 
 `npm run verify` runs lint, typecheck, the tests and the build. On a clean clone, expect
@@ -70,7 +71,7 @@ A skipped test names the prerequisite that it needs. A skip is not a failure.
 
 Before you send a pull request:
 
-1. Run `npm run verify`.
+1. Run `npm run prove` (or `npm run verify` for the quick subset).
 2. Paste the test output into the pull request description.
 
 "Done" means: the acceptance criteria pass, with pasted evidence.
