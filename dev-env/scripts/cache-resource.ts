@@ -10,7 +10,7 @@
 // an unverified download is not installable evidence (D23b / OPEN-QUESTIONS #24).
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { sbZipUrl, unwrapExport, rezip } from '../../translationCore4/src/data/resourceFetch';
+import { sbZipUrl, unwrapExport, rezip } from '../../src/data/resourceFetch';
 
 const [ownerRepo, tag, expectedSha] = process.argv.slice(2);
 if (!ownerRepo || !tag) {

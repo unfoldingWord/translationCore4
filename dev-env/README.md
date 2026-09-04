@@ -13,13 +13,22 @@ crates.io `=` pin when 0.18.5+ publishes (see `docs/RISKS.md` #1).
 ## Prerequisites
 
 - Rust (stable) with `cargo`.
-- An assembled Pankosmia desktop-app build. The rig assembles its `app-resources/`
-  from one — set `PANKOSMIA_ASSEMBLED_LIB` to that build's `lib` directory (the one
-  that holds `app_resources`, `templates`, `webfonts`, `clients`, `setup`).
-- Node 22 (for `scripts/cache-resource.ts`).
+- Node 22, `python3`, `git`, `zip`, `unzip`.
+- One of two sources for `app-resources/`:
+  - none: `scripts/setup-from-pins.zsh` fetches the pinned upstream inputs (read-only
+    clones) and registers only the tC4 client. This is what CI uses.
+  - an assembled Pankosmia desktop-app build: set `PANKOSMIA_ASSEMBLED_LIB` to that
+    build's `lib` directory (the one that holds `app_resources`, `templates`,
+    `webfonts`, `clients`, `setup`) and use `scripts/setup.zsh`. This route carries
+    the core clients too.
 
 ## Scripts
 
+- `scripts/setup-from-pins.zsh` — run once, after `npm run build`. Clones
+  `resource-core`, `webfonts-core` and `desktop-app-template` at the commits
+  `scripts/package-desktop.zsh` pins (the script fails if the two files drift),
+  assembles `app-resources/`, registers `dist/` as `/clients/uw-tc4`, patches
+  isolation, writes `product/product.json`, and builds the server shim.
 - `scripts/setup.zsh` — run once. Assembles `app-resources/` from
   `$PANKOSMIA_ASSEMBLED_LIB`, patches isolation (`repo_dir` → the rig working
   directory, never `$HOME`), writes `product/product.json` (0.17.0+ requires it;
@@ -30,7 +39,11 @@ crates.io `=` pin when 0.18.5+ publishes (see `docs/RISKS.md` #1).
 - `scripts/run.zsh` — start the server at `127.0.0.1:19998` (override:
   `TC4_RIG_PORT`).
 - `scripts/stop.zsh` — stop the server.
-- `scripts/cache-resource.zsh` — cache a Door43 resource locally for offline work.
+- `scripts/cache-resource.zsh` — cache a Door43 resource locally for offline work,
+  through the app's own fetch path. `seed.zsh` sideloads every cached resource it
+  finds. The rig-gated HttpStore suite reads `en_ult`, so a rig that runs
+  `npm run prove` needs at least:
+  `zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_ult v89 <sha from src/data/installedSuite.js>`.
 
 Smoke test:
 
@@ -42,12 +55,20 @@ Expect `pkg_version 0.18.5`.
 
 ## What is not in this directory
 
-`app-resources/`, `resources-cache/`, `state/`, and `server/target/` are assembled,
-disposable, and not published. The `scripts/` and `server/` sources are the durable
-part. `server/Rocket.toml` exists on purpose — read its header comment before you
-change it (`docs/PLATFORM-NOTES.md` #26a).
+`app-resources/`, `resources-cache/`, `state/`, `upstream/`, and `server/target/` are
+assembled, disposable, gitignored, and not published. The `scripts/` and `server/`
+sources are the durable part. `server/Rocket.toml` exists on purpose — read its header
+comment before you change it (`docs/PLATFORM-NOTES.md` #26a).
 
-A devcontainer for this rig is a tracked follow-up (see the issue list).
+## The rig in CI
+
+`.github/workflows/rig.yml` (L-1b of #154) builds this rig on a GitHub runner with
+`setup-from-pins.zsh`, seeds it, starts it, and runs `npm run prove` with `RIG_REPOS`
+set, so the rig-gated suites execute. It runs on merges to `main`, on demand, and on
+pull requests that change this directory or the workflow. Its manifest is uploaded as
+`prove-manifest-rig`; the committed manifest stays the clean-clone one. The rig runs as
+a process on the runner, not in a container: the recipe needs no isolation the runner
+does not already give.
 
 ## Rules
 

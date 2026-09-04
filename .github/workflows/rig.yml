@@ -1,0 +1,172 @@
+# The rig job (L-1b of #154, D67). The `verify` job in ci.yml runs `npm run prove` on a
+# clean clone, where every rig-gated suite skips. This job builds the pinned Pankosmia
+# server (dev-env/server, pankosmia-web 0.18.5 at 99fd9be), assembles the rig from the
+# pinned upstream inputs (dev-env/scripts/setup-from-pins.zsh), seeds it, starts it on
+# 127.0.0.1:19998, and runs `prove` with RIG_REPOS set, so validate:transport,
+# validate:roundtrip and the *.integration vitest files execute. The manifest is
+# uploaded like the clean-clone one (prove-manifest-rig); it is not committed.
+#
+# Runs on merges to `main` and on demand, until it is fast enough for every pull
+# request. It also runs on pull requests that change the rig recipe itself (this file,
+# dev-env/), so a recipe change carries its own evidence.
+#
+# Negative control (docs/plans/LEGIBILITY.md §5: a gate must be able to fail): after the
+# suites ran, the rig is no longer pristine. A second `prove` must REFUSE the rig suites
+# and exit non-zero. It runs on pull requests and when the dispatch input asks for it.
+#
+# ⛔ The job talks only to the rig it started. Never a pankosmia remote, token, or
+# upstream trigger. The clones in setup-from-pins.zsh are read-only, at pinned commits.
+# The one download outside GitHub is the pinned en_ult v89 export from git.door43.org,
+# read through the app's own fetch path (dev-env/scripts/cache-resource.zsh) and cached.
+name: rig
+permissions:
+  contents: read
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - .github/workflows/rig.yml
+      - dev-env/**
+  workflow_dispatch:
+    inputs:
+      negative_control:
+        description: 'After the run, prove again on the dirtied rig and require a REFUSED result'
+        type: boolean
+        default: false
+
+jobs:
+  rig:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      RIG_API: http://127.0.0.1:19998/api
+      # The pinned English source text the HttpStore integration suite reads
+      # (test/httpStore.integration.test.ts, test 6). Pin from src/data/installedSuite.js.
+      EN_ULT_TAG: v89
+      EN_ULT_SHA: 84c73ba00fc8a95a9033f9efb14bb905a2a52ee4
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and runtime dependencies
+        run: |
+          sudo apt-get update
+          # zsh: the rig scripts' shell. zip/unzip: validate-roundtrip.mjs and seed.zsh.
+          # pkg-config, libssl-dev, zlib1g-dev: openssl-sys and libgit2-sys link the
+          #   system libraries (same as package-desktop.yml).
+          sudo apt-get install -y --no-install-recommends zsh zip unzip pkg-config libssl-dev zlib1g-dev
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            conformance/package-lock.json
+      - run: npm ci
+      - run: npm ci
+        working-directory: conformance
+
+      - name: Rust toolchain
+        run: rustup toolchain install stable --profile minimal
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            dev-env/server/target
+          # Same key as package-desktop.yml: it is the same server build.
+          key: cargo-package-desktop-${{ runner.os }}-${{ hashFiles('dev-env/server/Cargo.lock', 'dev-env/server/Cargo.toml') }}
+
+      - name: Build the client (registered as /clients/uw-tc4)
+        run: npm run build
+
+      - name: Assemble the rig from the pinned inputs and build the server
+        run: zsh dev-env/scripts/setup-from-pins.zsh
+
+      - name: Cache the pinned en_ult export
+        id: en-ult
+        uses: actions/cache@v4
+        with:
+          path: dev-env/resources-cache
+          key: rig-resources-en_ult-${{ env.EN_ULT_TAG }}-${{ env.EN_ULT_SHA }}
+      - name: Fetch the pinned en_ult export (cache miss only; SHA mismatch aborts)
+        if: steps.en-ult.outputs.cache-hit != 'true'
+        run: zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_ult "$EN_ULT_TAG" "$EN_ULT_SHA"
+
+      - name: Seed the rig (pristine)
+        run: zsh dev-env/scripts/seed.zsh
+
+      # Logs and the pid live outside the checkout: an untracked file would mark the
+      # manifest `dirty`.
+      - name: Start the rig
+        run: |
+          nohup zsh dev-env/scripts/run.zsh > "$RUNNER_TEMP/rig.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/rig.pid"
+          for i in $(seq 1 60); do
+            if curl -sf --max-time 2 "$RIG_API/version" > "$RUNNER_TEMP/version.json"; then break; fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/version.json" || { echo "rig did not answer at $RIG_API within 60s"; cat "$RUNNER_TEMP/rig.log"; exit 1; }
+          echo
+
+      - name: prove (rig suites included)
+        run: RIG_REPOS="$GITHUB_WORKSPACE/dev-env/state/work/repos" npm run prove
+
+      - name: The rig suites ran and passed (read the manifest, not the log)
+        run: |
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const m = JSON.parse(fs.readFileSync("docs/evidence/manifest.json", "utf8"));
+            const rig = m.suites.filter((s) => s.needsRig);
+            for (const s of rig) console.log(`${s.id}: ran=${s.ran} ok=${s.ok} ${s.summary.join(" | ")}`);
+            const bad = rig.filter((s) => !(s.ran && s.ok));
+            if (rig.length === 0 || bad.length) { console.error("rig suites did not all run and pass:", bad.map((s) => s.id)); process.exit(1); }
+          '
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: prove-manifest-rig
+          path: docs/evidence/manifest.json
+          if-no-files-found: error
+
+      - name: Negative control — prove must REFUSE the rig suites on the dirtied rig
+        if: github.event_name == 'pull_request' || inputs.negative_control
+        run: |
+          LOG="$RUNNER_TEMP/negative-control.log"
+          if RIG_REPOS="$GITHUB_WORKSPACE/dev-env/state/work/repos" npm run prove > "$LOG" 2>&1; then
+            echo "prove exited 0 on a rig the previous run dirtied — the gate cannot fail"
+            cat "$LOG"
+            exit 1
+          fi
+          grep -E '^rig suites: REFUSED' "$LOG" || { echo "prove failed, but not with a REFUSED rig"; cat "$LOG"; exit 1; }
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const m = JSON.parse(fs.readFileSync("docs/evidence/manifest.json", "utf8"));
+            const rig = m.suites.filter((s) => s.needsRig);
+            const bad = rig.filter((s) => s.ran || !String(s.skipped).startsWith("REFUSED"));
+            if (bad.length) { console.error("a rig suite ran, or skipped without REFUSED:", bad.map((s) => s.id)); process.exit(1); }
+            console.log("negative control: every rig suite skipped with", rig[0].skipped);
+          '
+      - uses: actions/upload-artifact@v4
+        if: always() && (github.event_name == 'pull_request' || inputs.negative_control)
+        with:
+          name: prove-manifest-rig-negative-control
+          path: docs/evidence/manifest.json
+          if-no-files-found: ignore
+
+      - name: Stop the rig
+        if: always()
+        run: kill "$(cat "$RUNNER_TEMP/rig.pid")" 2>/dev/null || true
+      - name: Upload the rig log (failures only)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rig-log
+          path: |
+            ${{ runner.temp }}/rig.log
+            ${{ runner.temp }}/negative-control.log
+          if-no-files-found: ignore
+          retention-days: 7

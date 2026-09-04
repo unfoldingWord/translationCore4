@@ -10,6 +10,12 @@ playwright-report/
 .claude/
 dist-desktop/
 dev-env/server/target/
+# The rig's assembled, disposable parts (dev-env/README.md "What is not in this
+# directory"); setup-from-pins.zsh and seed.zsh recreate them.
+dev-env/app-resources/
+dev-env/resources-cache/
+dev-env/state/
+dev-env/upstream/
 
 # graft's local graph cache — regenerable, not committed (run `graft build`).
 /graft/
