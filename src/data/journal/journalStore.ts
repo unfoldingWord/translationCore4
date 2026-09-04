@@ -5,12 +5,12 @@
 // project and owns the four-way recovery classifier; this store guarantees only
 // staged-intent-then-publish and exposes replayStaged() (the D50 split).
 //
-// The reference implementation of these semantics is conformance/journal/ — the
+// The reference implementation of these semantics is journal/ — the
 // pure modules (grammar, schema, hlc) are imported directly; the fs branches of
 // files.mjs are replaced by HTTP branches here (R-8.1.4/5 over readIngredient +
 // writeIngredient).
-import { makeClock } from '../../../conformance/journal/hlc.mjs';
-import { actorSlugError, ipathError, isTs } from '../../../conformance/journal/grammar.mjs';
+import { makeClock } from '../../../journal/hlc.mjs';
+import { actorSlugError, ipathError, isTs } from '../../../journal/grammar.mjs';
 import { ServerApi, ServerApiError } from '../serverApi';
 import { withPathLock } from '../httpStore';
 import { actorIdFor, type KvStore } from './identity';
@@ -35,7 +35,7 @@ export interface JournalStoreInit {
 /** One correctly named, VALID segment of one actor. `ts` is the first event's ts
  * (= the filename, R-8.1.2); `maxTs` is the LAST event's ts, which is the
  * action's maximum because validateAction refuses an action whose events are not
- * strictly ascending in ts (conformance/journal/schema.mjs, 'ts-order'). */
+ * strictly ascending in ts (journal/schema.mjs, 'ts-order'). */
 interface ValidSegment {
   name: string;
   ts: string;

@@ -8,7 +8,7 @@
 //   (4) online + pinned version absent -> fetch it (sb-zip + SHA);
 //   (5) offline + pinned version absent -> that (tool, book) is UNAVAILABLE as a
 //       first-class state, never an error, never a block on other work.
-import { WHOLE_COLLECTION } from '../../conformance/journal/grammar.mjs';
+import { WHOLE_COLLECTION } from '../../journal/grammar.mjs';
 import { LADDER } from './burritoStore';
 import type { LanguageSet, ResourcePin, ResourcesFile, Rung } from './burritoStore';
 

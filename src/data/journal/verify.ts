@@ -19,7 +19,7 @@
 // teardown after every journey that mutates a project (e2e/helpers/rig.ts).
 import { ServerApi, ServerApiError } from '../serverApi';
 import { md5Hex } from '../httpStore';
-import { actorSlugError, isTs } from '../../../conformance/journal/grammar.mjs';
+import { actorSlugError, isTs } from '../../../journal/grammar.mjs';
 import { segmentName, segmentTs, validateSegment, type JournalEvent } from './seal';
 import {
   classifyDivergence,

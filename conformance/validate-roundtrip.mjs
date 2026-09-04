@@ -10,7 +10,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { execSync, spawnSync } from 'child_process';
-import { sealAction, validateSegment, validateActorDoc, segmentName } from './journal/files.mjs';
+import { sealAction, validateSegment, validateActorDoc, segmentName } from '../journal/files.mjs';
 
 const API = process.env.RIG_API || 'http://127.0.0.1:19998/api';
 const REPOS = process.env.RIG_REPOS || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dev-env/state/work/repos'); // script-relative (round 8), never cwd-relative

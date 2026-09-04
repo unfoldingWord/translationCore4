@@ -2,7 +2,7 @@
 // model). Each describe names the #61 acceptance checkbox it proves. The store
 // runs against a FAKE fetch that captures the exact HTTP payload bytes; the
 // captured bytes are then judged by the CONFORMANCE REFERENCE
-// (conformance/journal/files.mjs) — the harness validates what the store writes.
+// (journal/files.mjs) — the harness validates what the store writes.
 import { describe, expect, it } from 'vitest';
 import { ServerApi } from '../src/data/serverApi';
 import { forgetSharedClocks, JournalStore } from '../src/data/journal/journalStore';
@@ -13,9 +13,9 @@ import {
   SEGMENT_LIMIT,
   type JournalEvent,
 } from '../src/data/journal/seal';
-import { SLOT } from '../conformance/journal/grammar.mjs';
+import { SLOT } from '../journal/grammar.mjs';
 
-// conformance/journal/files.mjs is Node-bound (fs, node:crypto). The app's
+// journal/files.mjs is Node-bound (fs, node:crypto). The app's
 // vite-plugin-node-polyfills aliases node builtins to browser mocks even under
 // the Vitest node environment [VERIFIED in this toolchain — same workaround as
 // test/s0a-aligner-headless.test.ts], so the reference is loaded via a NATIVE
@@ -26,7 +26,7 @@ interface RefSegmentVerdict {
   events: Record<string, unknown>[];
 }
 const nodeRequire = process.getBuiltinModule('node:module').createRequire(`${process.cwd()}/`);
-const refFiles = nodeRequire('./conformance/journal/files.mjs') as {
+const refFiles = nodeRequire('./journal/files.mjs') as {
   sealAction(events: unknown[]): string;
   segmentName(ts: string): string;
   validateActorDoc(raw: unknown, actorId: string): { ok: boolean; reason?: string };

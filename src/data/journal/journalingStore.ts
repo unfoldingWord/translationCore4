@@ -15,7 +15,7 @@
 // regeneration, and verification. Different projects do not block one another.
 //
 // The fold itself is the REFERENCE implementation (src/data/journal/runtime.ts
-// imports conformance/journal/ directly — no port, no drift).
+// imports journal/ directly — no port, no drift).
 import type {
   AddBookParams,
   BurritoStore,
@@ -77,7 +77,7 @@ const RESOURCES_IPATH = 'checking/resources.json';
 const SETTINGS_IPATH = 'checking/settings.json';
 const VRS_IPATH = 'vrs.json';
 
-/** The checkpoint's own byte form (conformance/journal/checkpoint.mjs
+/** The checkpoint's own byte form (journal/checkpoint.mjs
  * `serialize`) — every regenerated sidecar uses EXACTLY this, so per-mutation
  * regeneration, the §8.7 checkpoint, and the fold-compare verifier agree
  * byte-for-byte. */
@@ -99,7 +99,7 @@ const canonical = (value: unknown): string => {
 };
 
 /** The journal's §5.2 decision register key: dec|toolId|checkId|bookId|chapter|verse|occurrence
- * — the SAME string conformance/journal/fold.mjs keys on (identityKeyOf parts). */
+ * — the SAME string journal/fold.mjs keys on (identityKeyOf parts). */
 const decisionRegisterKey = (tool: string, decision: Decision): string => {
   const c = decision.contextId;
   const r = c.reference;
@@ -107,7 +107,7 @@ const decisionRegisterKey = (tool: string, decision: Decision): string => {
 };
 
 /** Flatten a §5.3 resources document into pin-slot entries — the SAME walk the
- * reference seeder applies (conformance/journal/reconcile.mjs seedFromSidecars),
+ * reference seeder applies (journal/reconcile.mjs seedFromSidecars),
  * restated over the typed document. Slot grammar violations surface at seal. */
 const flattenPins = (resources: ResourcesFile): Array<{ slot: string; entry: unknown }> => {
   const out: Array<{ slot: string; entry: unknown }> = [];

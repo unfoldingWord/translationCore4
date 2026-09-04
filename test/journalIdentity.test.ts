@@ -11,9 +11,9 @@ import {
   type KvStore,
 } from '../src/data/journal/identity';
 import { JournalStore } from '../src/data/journal/journalStore';
-import { ACTOR_RE, SLOT } from '../conformance/journal/grammar.mjs';
+import { ACTOR_RE, SLOT } from '../journal/grammar.mjs';
 
-// conformance/journal/fold.mjs is Node-bound (node:crypto, createRequire). The
+// journal/fold.mjs is Node-bound (node:crypto, createRequire). The
 // app's vite-plugin-node-polyfills aliases node builtins to browser mocks even
 // under the Vitest node environment [VERIFIED in this toolchain — same
 // workaround as test/s0a-aligner-headless.test.ts], so the reference fold is
@@ -25,7 +25,7 @@ interface FoldResult {
   liveHeads: Record<string, { ts: string }[]>;
 }
 const nodeRequire = process.getBuiltinModule('node:module').createRequire(`${process.cwd()}/`);
-const { fold } = nodeRequire('./conformance/journal/fold.mjs') as {
+const { fold } = nodeRequire('./journal/fold.mjs') as {
   fold(events: unknown[]): FoldResult;
 };
 

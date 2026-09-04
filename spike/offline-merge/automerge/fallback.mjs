@@ -1,4 +1,4 @@
-import { decompose, recompose } from '../../../conformance/journal/skeleton.mjs';
+import { decompose, recompose } from '../../../journal/skeleton.mjs';
 import { sha256 } from './model.mjs';
 
 // Disaster recovery, not journal reconstruction. It conserves both source files and

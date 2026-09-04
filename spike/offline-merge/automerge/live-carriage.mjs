@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { appendAction, appendActionChange, bundleChanges, canonical, createActor, createProject, sha256 } from './model.mjs';
-import { makeClock } from '../../../conformance/journal/hlc.mjs';
+import { makeClock } from '../../../journal/hlc.mjs';
 
 const API = process.env.RIG_API || 'http://127.0.0.1:19998/api';
 const REPOS = process.env.RIG_REPOS || path.resolve(new URL('../../../../dev-env/state/work/repos', import.meta.url).pathname);

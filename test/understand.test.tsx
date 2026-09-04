@@ -591,8 +591,8 @@ describe('#106 — the persistence shape: §8.5 note.add seals and projects', ()
   it('the exact event addNote() emits validates through the reference and folds into notes output', async () => {
     const { sealAction } = await import('../src/data/journal/seal');
     const nodeRequire = process.getBuiltinModule('node:module').createRequire(`${process.cwd()}/`);
-    const refFold = nodeRequire('./conformance/journal/fold.mjs') as { fold(events: unknown[]): { notes: Array<Record<string, unknown>> } };
-    const refSkeleton = nodeRequire('./conformance/journal/skeleton.mjs') as { decompose(usfm: string): { skeleton: string; verses: Record<string, string> } };
+    const refFold = nodeRequire('./journal/fold.mjs') as { fold(events: unknown[]): { notes: Array<Record<string, unknown>> } };
+    const refSkeleton = nodeRequire('./journal/skeleton.mjs') as { decompose(usfm: string): { skeleton: string; verses: Record<string, string> } };
     const { skeleton, verses } = refSkeleton.decompose('\\id TIT\n\\c 1\n\\p\n\\v 1 one\n');
     const addTs = '2026-08-27T00:00:00.000Z|0000|actor-a';
     const events = [

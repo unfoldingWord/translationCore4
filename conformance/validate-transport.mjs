@@ -10,9 +10,9 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
-import { fold } from './journal/fold.mjs';
-import { readUnion, writeActionSegment, sealAction, validateSegment, validateActorDoc, segmentName } from './journal/files.mjs';
-import { SLOT } from './journal/skeleton.mjs';
+import { fold } from '../journal/fold.mjs';
+import { readUnion, writeActionSegment, sealAction, validateSegment, validateActorDoc, segmentName } from '../journal/files.mjs';
+import { SLOT } from '../journal/skeleton.mjs';
 
 const API = process.env.RIG_API || 'http://127.0.0.1:19998/api';
 // The default rig repos directory is resolved RELATIVE TO THIS SCRIPT, never to the

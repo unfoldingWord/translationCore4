@@ -1,20 +1,20 @@
 // Sealing and validation of journal segments over Web Crypto — BURRITO-SPEC §8.1.
 //
-// The PURE reference modules (conformance/journal/{grammar,schema,hlc}.mjs) are
+// The PURE reference modules (journal/{grammar,schema,hlc}.mjs) are
 // imported DIRECTLY — one validator, never a port that can drift. Only the pieces
-// of conformance/journal/files.mjs that are welded to Node (fs paths, Buffer,
+// of journal/files.mjs that are welded to Node (fs paths, Buffer,
 // node:crypto's synchronous sha256) are restated here over TextEncoder +
 // crypto.subtle, and a conformance test asserts BYTE-equality of this seal with
 // the reference sealAction for the same events (test/journalStore.test.ts, group
 // A), so the two cannot drift silently.
-import { validateAction, normalizeEvent } from '../../../conformance/journal/schema.mjs';
+import { validateAction, normalizeEvent } from '../../../journal/schema.mjs';
 import {
   tsError,
   actorSlugError,
   isoInstantError,
   isObj,
   isStr,
-} from '../../../conformance/journal/grammar.mjs';
+} from '../../../journal/grammar.mjs';
 
 /** One journal event as the store handles it. Shape/grammar validation is the
  * reference schema's job (validateAction/validateEvent) — this type only states

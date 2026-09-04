@@ -162,7 +162,7 @@ const getInstallationSecret = async (kv: KvStore): Promise<string> => {
 
 /** The §8.1 actor-slug grammar the derived id must satisfy (R-8.1.11). Stated
  * here for the derivation's own postcondition check; the one authoritative copy
- * is conformance/journal/grammar.mjs ACTOR_RE. */
+ * is journal/grammar.mjs ACTOR_RE. */
 const ACTOR_SLUG_RE = /^[a-z0-9-]{4,32}$/;
 
 /** Derive the per-project actor id: 'a' + the first 15 hex chars of

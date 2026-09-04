@@ -509,7 +509,7 @@ A **checkpoint** (session close, book done, pre-sync) is: fold → write **all**
 
 ### 8.9 Conformance (journal suite)
 
-`npm run validate:journal` in `conformance/` (reference implementation under `journal/`) executes the journal suite per Appendix A — the suite's own summary line is the authoritative check count. `npm run validate:all` runs it with the Phase 1 suite. Coverage of this section's `[R-…]` rules is enforced by `node conformance/normative/check.mjs` (D55): every rule id is claimed inside a live check's name, and the gate fails on any uncovered rule, any stale claim, and any duplicate id. The gate tracks ids, not text: a reworded rule keeps its id and its claim, and the rewording is visible in the spec diff itself. Per-statement mutation hardening — the proof that each check fails when its rule is violated — remains open (D55 residuals). The reference implementation is the contract for the app's `foldEngine` port (ARCHITECTURE §9). If this section and the harness disagree, this section wins and the harness must be corrected (§9).
+`npm run validate:journal` in `conformance/` (reference implementation: the root `journal/` package) executes the journal suite per Appendix A — the suite's own summary line is the authoritative check count. `npm run validate:all` runs it with the Phase 1 suite. Coverage of this section's `[R-…]` rules is enforced by `node conformance/normative/check.mjs` (D55): every rule id is claimed inside a live check's name, and the gate fails on any uncovered rule, any stale claim, and any duplicate id. The gate tracks ids, not text: a reworded rule keeps its id and its claim, and the rewording is visible in the spec diff itself. Per-statement mutation hardening — the proof that each check fails when its rule is violated — remains open (D55 residuals). The reference implementation is the contract for the app's `foldEngine` port (ARCHITECTURE §9). If this section and the harness disagree, this section wins and the harness must be corrected (§9).
 
 ## 9. Spec evolution
 
@@ -520,7 +520,7 @@ Bump a sidecar's `schemaVersion` only for a breaking payload change. Readers MUS
 ## Appendix A — Journal conformance test plan (§8 companion)
 
 **Version:** 2.0 · 2026-08-18 · companion to BURRITO-SPEC 1.8 §8. (2.0 replaces the 1.x hand-maintained coverage table: coverage of §8's `[R-…]` rules is now MACHINE-CHECKED — each rule id is claimed inside a live check's name as `[covers R-…]`, and `node conformance/normative/check.mjs` fails on any uncovered rule, stale claim, or duplicate id. The gate tracks ids, not text: a rewording keeps its claim and is visible in the spec diff; per-statement mutation hardening remains open (D55 residuals). This appendix is an index, not a second source of truth.)
-**Suite:** `conformance/validate-journal.mjs` (reference implementation: `conformance/journal/*.mjs`). Run: `npm run validate:journal`. Property tests use `fast-check` with a fixed seed (reproducible) and 200 runs per property. The suite's own summary line is the authoritative check count.
+**Suite:** `conformance/validate-journal.mjs` (reference implementation: `journal/*.mjs`). Run: `npm run validate:journal`. Property tests use `fast-check` with a fixed seed (reproducible) and 200 runs per property. The suite's own summary line is the authoritative check count.
 **Rule (spec §9):** any change to BURRITO-SPEC §8 changes the suite in the same change set.
 
 ### Check-group index

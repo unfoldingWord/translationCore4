@@ -43,6 +43,10 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: conformance/package-lock.json
+      # The reference modules live in the root `journal/` package (L-0, D67(4e)) and
+      # import `usfm-js` from the ROOT node_modules, so the root install is needed too.
+      - run: npm ci
+        working-directory: .
       - run: npm ci
       - run: npm run generate
       # The suites' own summary lines are the authoritative counts; the
