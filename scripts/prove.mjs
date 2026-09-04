@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // prove.mjs — ONE proof command (legibility step L-1, issue #154, D67).
 //
-// Runs every suite that applies, detects the Pankosmia rig, refuses the rig-gated
+// Runs every automated suite that applies (the Playwright journeys, `npm run test:e2e`,
+// are NOT included: they reseed the rig themselves), detects the Pankosmia rig, refuses the rig-gated
 // suites when the rig is not pristine, and writes docs/evidence/manifest.json: the
 // commit, the date, the server version and pinned revision, and per suite the
 // command, whether it needs the rig, whether it ran, the counts, and the duration.
@@ -87,10 +88,16 @@ const parsers = {
 const integrationFiles = () =>
   fs.readdirSync(path.join(ROOT, 'test')).filter((f) => f.endsWith('.integration.test.ts')).map((f) => `test/${f}`).sort();
 
+// Set after rig detection: the rig answers but the rig suites will not run (refused, or
+// unusable for another named reason). The integration vitest files detect the rig
+// themselves and would run against it inside the plain `vitest` suite, so that suite
+// excludes them in this case; with no rig they skip on their own and stay included.
+let rigAnsweredButUnusable = false;
+
 const SUITES = [
   { id: 'lint', layer: 'verify', cwd: ROOT, cmd: 'npm', args: ['run', 'lint'], parse: 'none' },
   { id: 'typecheck', layer: 'verify', cwd: ROOT, cmd: 'npm', args: ['run', 'typecheck'], parse: 'none' },
-  { id: 'vitest', layer: 'unit', cwd: ROOT, cmd: 'npx', args: ['vitest', 'run'], parse: 'vitest' },
+  { id: 'vitest', layer: 'unit', cwd: ROOT, cmd: 'npx', args: () => ['vitest', 'run', ...(rigAnsweredButUnusable ? ['--exclude', 'test/**/*.integration.test.ts'] : [])], parse: 'vitest' },
   { id: 'build', layer: 'verify', cwd: ROOT, cmd: 'npm', args: ['run', 'build'], parse: 'none' },
   { id: 'conformance:generate', layer: 'conformance', cwd: CONF, cmd: 'node', args: ['generate.mjs'], parse: 'none' },
   { id: 'conformance:validate', layer: 'conformance', cwd: CONF, cmd: 'node', args: ['validate.mjs'], parse: 'phase1' },
@@ -118,7 +125,8 @@ if (LIST) {
 const git = (...a) => spawnSync('git', a, { cwd: ROOT, encoding: 'utf8' }).stdout.trim();
 const commit = git('rev-parse', 'HEAD');
 const relOut = path.relative(ROOT, OUT);
-const dirtyFiles = git('status', '--porcelain').split('\n').filter((l) => l && !l.endsWith(relOut));
+// porcelain rows are `XY <path>` (or `XY <old> -> <new>` for renames); only the exact manifest path is excluded
+const dirtyFiles = git('status', '--porcelain').split('\n').filter((l) => l && l.slice(3).split(' -> ').pop() !== relOut);
 
 const serverRev = (() => {
   const toml = fs.readFileSync(path.join(ROOT, 'dev-env/server/Cargo.toml'), 'utf8');
@@ -148,22 +156,37 @@ const rig = {
   extraRepos: [],
 };
 
-let rigReason = null; // why the rig suites do not run
-if (!rig.detected) {
+let rigReason = null; // why the rig suites do not run; a REFUSED reason also fails the run
+if (process.platform === 'win32') {
+  rigReason = 'rig suites need zip, unzip and mv (conformance/validate-roundtrip.mjs shells out to them); not supported on Windows';
+} else if (!rig.detected) {
   rigReason = `no rig at ${RIG_API} (dev-env/scripts/run.zsh)`;
 } else {
   const repos = process.env.RIG_REPOS || path.join(ROOT, 'dev-env/state/work/repos');
-  if (!fs.existsSync(path.join(repos, ...SAMPLE.split('/'), 'metadata.json'))) {
-    rigReason = `RIG_REPOS is not set and ${path.relative(ROOT, repos)} has no ${SAMPLE}`;
+  const sampleOnDisk = path.join(repos, ...SAMPLE.split('/'), 'metadata.json');
+  if (!fs.existsSync(sampleOnDisk)) {
+    rigReason = process.env.RIG_REPOS
+      ? `RIG_REPOS=${process.env.RIG_REPOS} has no ${SAMPLE}/metadata.json`
+      : `RIG_REPOS is not set and ${path.relative(ROOT, repos)} has no ${SAMPLE}/metadata.json (set RIG_REPOS to the rig's repos directory)`;
   } else {
     rig.repos = repos;
-    const list = (await fetchJson(`${RIG_API}/git/list-local-repos`)) || [];
-    rig.extraRepos = list.filter((r) => r.startsWith('_local_/_local_/') && r !== SAMPLE).sort();
-    rig.pristine = rig.extraRepos.length === 0;
-    if (!rig.pristine) rigReason = `REFUSED: rig not pristine — extra repos under _local_/_local_: ${rig.extraRepos.join(', ')} (dev-env/scripts/stop.zsh; seed.zsh; run.zsh)`;
+    // The list is the authority on what the RIG holds (array of "<org>/<owner>/<repo>"
+    // strings, list_local_repos.rs). An unreadable list or a missing sample is not
+    // "pristine": both mean the rig cannot be trusted for the rig suites.
+    const list = await fetchJson(`${RIG_API}/git/list-local-repos`);
+    if (!Array.isArray(list)) {
+      rigReason = `REFUSED: ${RIG_API}/version answered but /git/list-local-repos did not return a list`;
+    } else if (!list.includes(SAMPLE)) {
+      rigReason = `REFUSED: rig does not list ${SAMPLE} (not seeded? dev-env/scripts/seed.zsh)`;
+    } else {
+      rig.extraRepos = list.filter((r) => r.startsWith('_local_/_local_/') && r !== SAMPLE).sort();
+      rig.pristine = rig.extraRepos.length === 0;
+      if (!rig.pristine) rigReason = `REFUSED: rig not pristine — extra repos under _local_/_local_: ${rig.extraRepos.join(', ')} (dev-env/scripts/stop.zsh; seed.zsh; run.zsh)`;
+    }
   }
 }
 const refused = rigReason?.startsWith('REFUSED') ?? false;
+rigAnsweredButUnusable = rig.detected && rigReason !== null;
 
 if (!fs.existsSync(path.join(CONF, 'node_modules'))) {
   console.error('conformance/node_modules is missing: run  cd conformance && npm ci  first (the harness has its own lockfile).');

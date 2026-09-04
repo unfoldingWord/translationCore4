@@ -3,7 +3,7 @@
 **Question:** does check R7 of the round-trip suite hold on a reseeded rig when it takes
 the expected Stage-1 count from the Phase-1 suite's own summary line instead of a constant?
 
-**Method:** `cd conformance && RIG_REPOS=<rig repos> node validate-roundtrip.mjs` against
+**Method:** `cd conformance && RIG_REPOS=/Users/birch/Development/tC4/dev-env/state/work/repos node validate-roundtrip.mjs` against
 the dev-env rig, pankosmia-web 0.18.5 (pinned rev `99fd9bea8a9f3d14ac6a61f8e2213f1c5d42ed2a`,
 `dev-env/server/Cargo.toml`), on 2026-09-04, at working tree of `main` 4490820 plus the
 L-1 change set (issue #154). The rig was stopped, reseeded with `dev-env/scripts/seed.zsh`,
@@ -19,6 +19,8 @@ and started before the run. R7 runs `validate.mjs` twice: once on the harness's 
 PASS  R7: Stage-1 conformance (35 checks, the Phase-1 suite's own count) holds on the server-touched copy — the format survives today's server at the level the spec claims
 Round-trip suite: 12 passed, 0 failed (server http://127.0.0.1:19998/api)
 ```
+
+[VERIFIED — pankosmia-web 0.18.5 (99fd9be, 2026-07-30); conformance/validate-roundtrip.mjs at the L-1 change set; run 2026-09-04 on macOS, Node v22.14.0]
 
 The Stage-2 failure on the server-touched copy is the designed, non-durable role table
 (D28); it is not part of R7.
