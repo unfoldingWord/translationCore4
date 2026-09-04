@@ -119,7 +119,7 @@ jobs:
       # leaves the committed file, which fails that check and is not uploaded.
       - name: prove (rig suites included)
         run: |
-          date -u +%s > "$RUNNER_TEMP/prove-start"
+          node -e 'console.log(Date.now())' > "$RUNNER_TEMP/prove-start"   # milliseconds, like the manifest date
           RIG_REPOS="$GITHUB_WORKSPACE/dev-env/state/work/repos" npm run prove
 
       - name: The manifest is this run's (commit and date)
@@ -129,7 +129,7 @@ jobs:
           node --input-type=module -e '
             import fs from "node:fs";
             const m = JSON.parse(fs.readFileSync("docs/evidence/manifest.json", "utf8"));
-            const start = Number(fs.readFileSync(process.env.RUNNER_TEMP + "/prove-start", "utf8")) * 1000;
+            const start = Number(fs.readFileSync(process.env.RUNNER_TEMP + "/prove-start", "utf8"));
             const stale = [];
             if (m.commit !== process.env.GITHUB_SHA) stale.push(`commit ${m.commit} is not ${process.env.GITHUB_SHA}`);
             if (!(Date.parse(m.date) >= start)) stale.push(`date ${m.date} is before the prove step started`);
@@ -156,13 +156,36 @@ jobs:
           path: docs/evidence/manifest.json
           if-no-files-found: error
 
-      - name: Negative control — prove must REFUSE the rig suites on the dirtied rig
-        id: negative
+      # Same shape as the positive run: prove, then a freshness check that gates the upload,
+      # then the assertions. The negative prove is expected to exit non-zero, so its exit code
+      # is recorded, not acted on, until the assertion step.
+      - name: Negative control — prove on the dirtied rig (expected to fail)
+        id: negative-prove
         if: github.event_name == 'pull_request' || inputs.negative_control
         run: |
+          node -e 'console.log(Date.now())' > "$RUNNER_TEMP/negative-start"
+          set +e
+          RIG_REPOS="$GITHUB_WORKSPACE/dev-env/state/work/repos" npm run prove > "$RUNNER_TEMP/negative-control.log" 2>&1
+          echo $? > "$RUNNER_TEMP/negative-exit"
+          echo "prove exit $(cat "$RUNNER_TEMP/negative-exit")"
+
+      - name: Negative control — the manifest is from that prove
+        id: negative-fresh
+        if: always() && steps.negative-prove.outcome == 'success'
+        run: |
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const m = JSON.parse(fs.readFileSync("docs/evidence/manifest.json", "utf8"));
+            const start = Number(fs.readFileSync(process.env.RUNNER_TEMP + "/negative-start", "utf8"));
+            if (m.commit !== process.env.GITHUB_SHA || !(Date.parse(m.date) >= start)) { console.error("the manifest on disk is not from the negative-control prove:", m.commit, m.date); process.exit(1); }
+            console.log(`manifest: commit ${m.commit.slice(0, 7)}, ${m.date}, pristine=${m.rig.pristine}`);
+          '
+
+      - name: Negative control — prove must have REFUSED the rig suites (rig not pristine)
+        if: steps.negative-prove.outcome == 'success'
+        run: |
           LOG="$RUNNER_TEMP/negative-control.log"
-          date -u +%s > "$RUNNER_TEMP/negative-start"
-          if RIG_REPOS="$GITHUB_WORKSPACE/dev-env/state/work/repos" npm run prove > "$LOG" 2>&1; then
+          if [ "$(cat "$RUNNER_TEMP/negative-exit")" = "0" ]; then
             echo "prove exited 0 on a rig the previous run dirtied — the gate cannot fail"
             cat "$LOG"
             exit 1
@@ -173,16 +196,15 @@ jobs:
           node --input-type=module -e '
             import fs from "node:fs";
             const m = JSON.parse(fs.readFileSync("docs/evidence/manifest.json", "utf8"));
-            const start = Number(fs.readFileSync(process.env.RUNNER_TEMP + "/negative-start", "utf8")) * 1000;
-            if (m.commit !== process.env.GITHUB_SHA || !(Date.parse(m.date) >= start)) { console.error("the manifest on disk is not from the negative-control run:", m.commit, m.date); process.exit(1); }
             if (m.rig.pristine !== false) { console.error("manifest.rig.pristine is", m.rig.pristine, "— expected false"); process.exit(1); }
             const rig = m.suites.filter((s) => s.needsRig);
             const bad = rig.filter((s) => s.ran || !String(s.skipped).startsWith("REFUSED: rig not pristine"));
             if (bad.length) { console.error("a rig suite ran, or skipped for another reason:", bad.map((s) => s.id)); process.exit(1); }
             console.log("negative control: every rig suite skipped with", rig[0].skipped);
           '
+      # Uploaded whenever the negative prove wrote a manifest, whatever the assertions said.
       - uses: actions/upload-artifact@v4
-        if: always() && steps.negative.outcome == 'success'
+        if: always() && steps.negative-fresh.outcome == 'success'
         with:
           name: prove-manifest-rig-negative-control
           path: docs/evidence/manifest.json
