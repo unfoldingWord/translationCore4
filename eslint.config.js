@@ -10,7 +10,18 @@ import react from 'eslint-plugin-react';
 import prettier from 'eslint-config-prettier';
 
 export default [
-  { ignores: ['node_modules/', 'dist/', 'coverage/'] },
+  // The rig's assembled parts (dev-env/README.md) hold upstream and built JS: not ours to lint.
+  {
+    ignores: [
+      'node_modules/',
+      'dist/',
+      'coverage/',
+      'dev-env/app-resources/',
+      'dev-env/resources-cache/',
+      'dev-env/state/',
+      'dev-env/upstream/',
+    ],
+  },
 
   // Prototype app + config files (JS/JSX)
   {

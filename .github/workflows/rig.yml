@@ -1,0 +1,228 @@
+# The rig job (L-1b of #154, D67). The `verify` job in ci.yml runs `npm run prove` on a
+# clean clone, where every rig-gated suite skips. This job builds the pinned Pankosmia
+# server (dev-env/server, pankosmia-web 0.18.5 at 99fd9be), assembles the rig from the
+# pinned upstream inputs (dev-env/scripts/setup-from-pins.zsh), seeds it, starts it on
+# 127.0.0.1:19998, and runs `prove` with RIG_REPOS set, so validate:transport,
+# validate:roundtrip and the *.integration vitest files execute. The manifest is
+# uploaded like the clean-clone one (prove-manifest-rig); it is not committed.
+#
+# Runs on every pull request, on merges to `main`, and on demand. The first run took
+# 3 min 7 s with a warm cargo cache (owner decision 2026-09-04, PR #168).
+#
+# Negative control (docs/plans/LEGIBILITY.md §5: a gate must be able to fail): after the
+# suites ran, the rig is no longer pristine. A second `prove` must REFUSE the rig suites
+# and exit non-zero. It runs on pull requests and when the dispatch input asks for it,
+# and only after a green positive run: a rig the suites never touched is not the dirty
+# rig this control is about, and the job is already red.
+#
+# ⛔ The job talks only to the rig it started. Never a pankosmia remote, token, or
+# upstream trigger. The clones in setup-from-pins.zsh are read-only, at pinned commits.
+# The one rig resource fetched from outside GitHub is the pinned en_ult v89 export from
+# git.door43.org, read through the app's own fetch path (dev-env/scripts/cache-resource.zsh)
+# and cached. (apt, npm and cargo dependencies download as in every other workflow.)
+name: rig
+permissions:
+  contents: read
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      negative_control:
+        description: 'After the run, prove again on the dirtied rig and require a REFUSED result'
+        type: boolean
+        default: false
+
+jobs:
+  rig:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      RIG_API: http://127.0.0.1:19998/api
+      # The pinned English source text the HttpStore integration suite reads
+      # (test/httpStore.integration.test.ts, test 6). Pin from src/data/installedSuite.js.
+      EN_ULT_TAG: v89
+      EN_ULT_SHA: 84c73ba00fc8a95a9033f9efb14bb905a2a52ee4
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and runtime dependencies
+        run: |
+          sudo apt-get update
+          # zsh: the rig scripts' shell. zip/unzip: validate-roundtrip.mjs and seed.zsh.
+          # pkg-config, libssl-dev, zlib1g-dev: openssl-sys and libgit2-sys link the
+          #   system libraries (same as package-desktop.yml).
+          sudo apt-get install -y --no-install-recommends zsh zip unzip pkg-config libssl-dev zlib1g-dev
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            conformance/package-lock.json
+      - run: npm ci
+      - run: npm ci
+        working-directory: conformance
+
+      - name: Rust toolchain
+        run: rustup toolchain install stable --profile minimal
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            dev-env/server/target
+          # Same key as package-desktop.yml: it is the same server build.
+          key: cargo-package-desktop-${{ runner.os }}-${{ hashFiles('dev-env/server/Cargo.lock', 'dev-env/server/Cargo.toml') }}
+
+      - name: Build the client (registered as /clients/uw-tc4)
+        run: npm run build
+
+      - name: Assemble the rig from the pinned inputs and build the server
+        run: zsh dev-env/scripts/setup-from-pins.zsh
+
+      # The key names the pin and the fetch path that produced the cached bytes: a change to
+      # the app's fetch, unwrap or re-zip code, or to the cache script, misses the cache and
+      # fetches again through the new code. seed.zsh unzips cached bytes without checking them.
+      - name: Cache the pinned en_ult export
+        id: en-ult
+        uses: actions/cache@v4
+        with:
+          path: dev-env/resources-cache
+          key: rig-resources-en_ult-${{ env.EN_ULT_TAG }}-${{ env.EN_ULT_SHA }}-${{ hashFiles('dev-env/scripts/cache-resource.ts', 'dev-env/scripts/cache-resource.zsh', 'src/data/resourceFetch.ts') }}
+      - name: Fetch the pinned en_ult export (cache miss only; SHA mismatch aborts)
+        if: steps.en-ult.outputs.cache-hit != 'true'
+        run: zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_ult "$EN_ULT_TAG" "$EN_ULT_SHA"
+
+      - name: Seed the rig (pristine)
+        run: zsh dev-env/scripts/seed.zsh
+
+      # Logs and the pid live outside the checkout: an untracked file would mark the
+      # manifest `dirty`.
+      - name: Start the rig
+        run: |
+          nohup zsh dev-env/scripts/run.zsh > "$RUNNER_TEMP/rig.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/rig.pid"
+          for i in $(seq 1 60); do
+            if curl -sf --max-time 2 "$RIG_API/version" > "$RUNNER_TEMP/version.json"; then break; fi
+            sleep 1
+          done
+          # A failed curl leaves an empty file; -s requires a non-empty answer.
+          [ -s "$RUNNER_TEMP/version.json" ] || { echo "rig did not answer at $RIG_API after 60 tries"; cat "$RUNNER_TEMP/rig.log"; exit 1; }
+          cat "$RUNNER_TEMP/version.json"
+          echo
+
+      # The checked-out manifest is the committed clean-clone one, and it stays in place:
+      # the docs gate's tests read it (test/docsGate.test.ts, L-2), and deleting it marks the
+      # tree dirty. Freshness is checked instead: the manifest prove writes must name this
+      # run's commit and a date after the step started. A prove that stops before writing
+      # leaves the committed file, which fails that check and is not uploaded.
+      - name: prove (rig suites included)
+        run: |
+          node -e 'console.log(Date.now())' > "$RUNNER_TEMP/prove-start"   # milliseconds, like the manifest date
+          RIG_REPOS="$GITHUB_WORKSPACE/dev-env/state/work/repos" npm run prove
+
+      - name: The manifest is this run's (commit and date)
+        id: fresh
+        if: always()
+        run: |
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const m = JSON.parse(fs.readFileSync("docs/evidence/manifest.json", "utf8"));
+            const start = Number(fs.readFileSync(process.env.RUNNER_TEMP + "/prove-start", "utf8"));
+            const stale = [];
+            if (m.commit !== process.env.GITHUB_SHA) stale.push(`commit ${m.commit} is not ${process.env.GITHUB_SHA}`);
+            if (!(Date.parse(m.date) >= start)) stale.push(`date ${m.date} is before the prove step started`);
+            if (stale.length) { console.error("the manifest on disk is not from this run:", stale.join("; ")); process.exit(1); }
+            console.log(`manifest: commit ${m.commit.slice(0, 7)}, ${m.date}, dirty=${m.dirty}`);
+          '
+
+      - name: The rig suites ran and passed (read the manifest, not the log)
+        run: |
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const m = JSON.parse(fs.readFileSync("docs/evidence/manifest.json", "utf8"));
+            const rig = m.suites.filter((s) => s.needsRig);
+            for (const s of rig) console.log(`${s.id}: ran=${s.ran} ok=${s.ok} ${s.summary.join(" | ")}`);
+            const bad = rig.filter((s) => !(s.ran && s.ok));
+            if (rig.length === 0 || bad.length) { console.error("rig suites did not all run and pass:", bad.map((s) => s.id)); process.exit(1); }
+          '
+
+      # Uploaded whenever the manifest is this run's, red or green; never the committed file.
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.fresh.outcome == 'success'
+        with:
+          name: prove-manifest-rig
+          path: docs/evidence/manifest.json
+          if-no-files-found: error
+
+      # Same shape as the positive run: prove, then a freshness check that gates the upload,
+      # then the assertions. The negative prove is expected to exit non-zero, so its exit code
+      # is recorded, not acted on, until the assertion step.
+      - name: Negative control — prove on the dirtied rig (expected to fail)
+        id: negative-prove
+        if: github.event_name == 'pull_request' || inputs.negative_control
+        run: |
+          node -e 'console.log(Date.now())' > "$RUNNER_TEMP/negative-start"
+          set +e
+          RIG_REPOS="$GITHUB_WORKSPACE/dev-env/state/work/repos" npm run prove > "$RUNNER_TEMP/negative-control.log" 2>&1
+          echo $? > "$RUNNER_TEMP/negative-exit"
+          echo "prove exit $(cat "$RUNNER_TEMP/negative-exit")"
+
+      - name: Negative control — the manifest is from that prove
+        id: negative-fresh
+        if: always() && steps.negative-prove.outcome == 'success'
+        run: |
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const m = JSON.parse(fs.readFileSync("docs/evidence/manifest.json", "utf8"));
+            const start = Number(fs.readFileSync(process.env.RUNNER_TEMP + "/negative-start", "utf8"));
+            if (m.commit !== process.env.GITHUB_SHA || !(Date.parse(m.date) >= start)) { console.error("the manifest on disk is not from the negative-control prove:", m.commit, m.date); process.exit(1); }
+            console.log(`manifest: commit ${m.commit.slice(0, 7)}, ${m.date}, pristine=${m.rig.pristine}`);
+          '
+
+      - name: Negative control — prove must have REFUSED the rig suites (rig not pristine)
+        if: steps.negative-prove.outcome == 'success'
+        run: |
+          LOG="$RUNNER_TEMP/negative-control.log"
+          if [ "$(cat "$RUNNER_TEMP/negative-exit")" = "0" ]; then
+            echo "prove exited 0 on a rig the previous run dirtied — the gate cannot fail"
+            cat "$LOG"
+            exit 1
+          fi
+          # The one REFUSED reason this control proves: a rig that is not pristine. The other
+          # REFUSED reasons (no list, no sample) would mean the rig broke, not that the gate held.
+          grep -E '^rig suites: REFUSED: rig not pristine' "$LOG" || { echo "prove failed, but not with a not-pristine rig"; cat "$LOG"; exit 1; }
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const m = JSON.parse(fs.readFileSync("docs/evidence/manifest.json", "utf8"));
+            if (m.rig.pristine !== false) { console.error("manifest.rig.pristine is", m.rig.pristine, "— expected false"); process.exit(1); }
+            const rig = m.suites.filter((s) => s.needsRig);
+            const bad = rig.filter((s) => s.ran || !String(s.skipped).startsWith("REFUSED: rig not pristine"));
+            if (bad.length) { console.error("a rig suite ran, or skipped for another reason:", bad.map((s) => s.id)); process.exit(1); }
+            console.log("negative control: every rig suite skipped with", rig[0].skipped);
+          '
+      # Uploaded whenever the negative prove wrote a manifest, whatever the assertions said.
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.negative-fresh.outcome == 'success'
+        with:
+          name: prove-manifest-rig-negative-control
+          path: docs/evidence/manifest.json
+          if-no-files-found: ignore
+
+      - name: Stop the rig
+        if: always()
+        run: kill "$(cat "$RUNNER_TEMP/rig.pid")" 2>/dev/null || true
+      - name: Upload the rig log (failures only)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rig-log
+          path: |
+            ${{ runner.temp }}/rig.log
+            ${{ runner.temp }}/negative-control.log
+          if-no-files-found: ignore
+          retention-days: 7
