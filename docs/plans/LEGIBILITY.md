@@ -3,11 +3,15 @@
 Status: [decided 2026-09-02 — D67(2)]. This increment closes before any sync feature
 starts. It adds infrastructure and documentation only. No item adds a user-facing
 feature, changes `docs/BURRITO-SPEC.md` §8.1–8.6, or rewrites a stored byte. One step
-touches the spec text: L-0 updates the two sentences that name the reference
-implementation's path, in §8.9 (`docs/BURRITO-SPEC.md:512`) and in Appendix A
-(`docs/BURRITO-SPEC.md:523`, `conformance/journal/*.mjs`) [VERIFIED — 089cc8a,
-2026-09-03], and ships with the harness move in the same change set, per §9. No other step edits the
-spec. Revised 2026-09-03 after four rounds of second-model review of PR #151.
+touches the spec text: L-0 updates the two sentences that locate the reference
+implementation. §8.9 (`docs/BURRITO-SPEC.md:512`) says "in `conformance/` (reference
+implementation under `journal/`)", which places `journal/` inside `conformance/`;
+Appendix A (`docs/BURRITO-SPEC.md:523`) names `conformance/journal/*.mjs` outright
+[VERIFIED — 6f1bafc, 2026-09-03]. Both become the root `journal/` path. L-0 ships with
+the harness move in the same change set, per §9. L-0 also corrects the same path in
+`docs/ARCHITECTURE.md:190` ("in `conformance/journal/`"), which is not a spec sentence
+and needs no §9 pairing; the "ports" wording on that line waits for L-2. No other step edits the
+spec. Revised 2026-09-03 after five rounds of second-model review of PR #151.
 
 How to read this document: Section 1 states five problems, each with an observation and
 its cause. Section 2 states one fix per problem. Section 3 is the sequence of change
@@ -94,12 +98,16 @@ because it had no engine, only scenarios.
   stops hard-coding 30. It runs the Phase-1 suite on the pristine sample first, parses
   the suite's own summary line for the Stage-1 count, and expects the same count on the
   server-touched copy. This follows the spec's rule that the suite's own summary line
-  is the authoritative count (`docs/BURRITO-SPEC.md:7`).
+  is the authoritative count (`docs/BURRITO-SPEC.md:7`). `npm run prove -- --list`
+  prints, without running anything, one line per suite: the layer it proves (Section 1
+  of `TEAM-SYNC-PLAN.md`), the command, and whether it needs the rig. This listing is
+  the source for orientation question Q12.
 - **L-2 The docs gate.** A check reads every statement in `docs/`, in the root
   `README.md` and in `conformance/README.md` that is marked as manifest-derived and
   fails when the value disagrees. `conformance/README.md` states 34 checks and Stage-1
   30 today while the spec header states 40 and 35 (`conformance/README.md:17-18`,
-  `docs/BURRITO-SPEC.md:3` [VERIFIED — 089cc8a, 2026-09-03]); it is marked in L-2. Marker grammar, inline in
+  `docs/BURRITO-SPEC.md:3` [VERIFIED — 089cc8a, 2026-09-03]). L-2 corrects those two
+  values to the manifest's and marks them, so the gate holds them from then on. Marker grammar, inline in
   Markdown:
 
   ```
@@ -148,12 +156,12 @@ before and after.
 
 | Step | Change set | Removes | Evidence at merge |
 |---|---|---|---|
-| L-0 | Move the reference modules to a root `journal/` package; update import paths; update the two spec sentences that name the path (`docs/BURRITO-SPEC.md:512` in §8.9 and `:523` in Appendix A); no logic change (D67(4e)) | the misnamed directory | all suites green; the diff holds file moves, import-path edits and the two path sentences only, no other hunk; `grep -n 'conformance/journal' docs/BURRITO-SPEC.md` returns nothing; `journalRuntime.test.ts` parity holds; the harness moves in the same change set, so §9 is met |
+| L-0 | Move the reference modules to a root `journal/` package; update import paths; update the two spec sentences that locate the path (`docs/BURRITO-SPEC.md:512` in §8.9 and `:523` in Appendix A) and the path in `docs/ARCHITECTURE.md:190`; no logic change (D67(4e)) | the misnamed directory | all suites green; the diff holds file moves, import-path edits and the three path sentences only, no other hunk; `grep -rn 'conformance/journal' docs/` returns nothing; `journalRuntime.test.ts` parity holds; the harness moves in the same change set, so §9 is met |
 | L-1 | `npm run prove`, `docs/evidence/manifest.json`, CI upload, rig pristine check, R7 reads the Stage-1 count from the suite summary | eight commands; residue false-failures; the R7 constant | manifest committed from the CI run; `prove` on a clean clone passes and lists skips with reasons; R7 green on a reseeded rig, recorded |
 | L-1b | Rig container for CI (the dev-env devcontainer follow-up) | the missing rig job | the rig job runs the rig-gated suites on `main` and on demand; never a pankosmia remote or token |
-| L-2 | Docs gate with `test/docsGate.test.ts` and its two fixtures; mark recipe counts in PLATFORM-NOTES, ARCHITECTURE, the root README and `conformance/README.md`; correct ARCHITECTURE §9 "ports" wording | stale numbers; the "ports" sentence | `fresh.md` passes and `stale.md` fails in `npm run verify`; the gate runs in CI; `docs/BURRITO-SPEC.md` is not in the diff |
+| L-2 | Docs gate with `test/docsGate.test.ts` and its two fixtures; correct and mark the recipe counts in PLATFORM-NOTES, ARCHITECTURE, the root README and `conformance/README.md`; correct ARCHITECTURE §9 "ports" wording | stale numbers; the "ports" sentence | `fresh.md` passes and `stale.md` fails in `npm run verify`; the gate runs in CI; `docs/BURRITO-SPEC.md` is not in the diff |
 | L-3 | `Report v1`, refusal codes, ops log for layer 4, dev Inspector; tests assert codes; normative gate extended with the `[negative …]` claim rule | the unread fold report; string-matched failures | gate: every live code names a live rule and has exactly one `[negative <code>]` sibling; `[PROPOSED]` codes are listed and excluded; a fixture suite with a code and no sibling fails the gate |
-| L-4 | Scenario schema and runner over the reference fold and memory store; J18–J20 as scenario files | hand-written probes | J18–J20 green as files with the same assertions as the suite; a schema fixture that contains every step kind X2 needs parses; `tc4 scenario` verb; an invalid-reference step (`TIT 99:1`) is refused by the schema |
+| L-4 | Scenario schema and runner over the reference fold and memory store; J18–J20 as scenario files | hand-written probes | J18–J20 green as files with the same assertions as the suite; a schema fixture that contains every step kind X2 needs parses; `tc4 scenario` verb; the runner reads the seed project's `vrs.json` and refuses a step whose reference is outside it (`TIT 99:1` against the sample) before any repository is touched |
 | L-5 | `RepoPort`, git and HTTP adapters; J18–J20 and transport as one scenario set | two drifting suites | the same files green on git and rig runners; evidence record with version, hash, date |
 | L-6 | `docs/SYSTEM.md` | orientation across eight surfaces | the orientation test (Section 4) meets its budget, recorded |
 | L-7 | RISKS rows (scale, identity store, power loss, sync loss); #79 ticks | unrecorded risks | rows present; each names the check that mitigates it; `docs/LEGACY-IDS.md` is frozen (D44(b)) and is not edited |
@@ -186,8 +194,8 @@ one pass or fail per row.
 | Q3 | Which `R-8.x.y` ids are live, and which are `[PROPOSED]`? | `grep -o '\[R-8\.[0-9]*\.[0-9]*\]' docs/BURRITO-SPEC.md \| sort -u` lists every id; `node conformance/normative/check.mjs` exits 0 when every id is claimed by a live check (it prints counts, not ids); `grep -n 'PROPOSED' docs/BURRITO-SPEC.md` marks the proposed block |
 | Q4 | Which refusal codes exist, and which rule does each enforce? | `node -e "import('./journal/report.mjs').then(m => console.table(m.REFUSAL_CODES))"` |
 | Q5 | What does the app import from the reference modules, and from where? | `grep -rn "from '.*journal/" src/data/journal/` |
-| Q6 | What happens to unsent own work at receive? | `tc4 scenario conformance/scenarios/receive-with-unsent.json` after X2; before X2, the answer is "not yet executable; the scenario is defined in TEAM-SYNC-PLAN X2" |
-| Q7 | Which repositories exist on one device for one project, and which is canonical? | the repository table in `TEAM-SYNC-PLAN.md` Section 4 (a plan fact until S2; the `tc4 report` output after S2) |
+| Q6 | What happens to unsent own work at receive? | `ls conformance/scenarios/` shows whether `receive-with-unsent.json` exists. Before X2 it does not, and the correct answer is "receive is [PROPOSED]; no executable scenario exists", proven by the `ls` and by `grep -n PROPOSED docs/BURRITO-SPEC.md`. After X2, `tc4 scenario conformance/scenarios/receive-with-unsent.json` |
+| Q7 | Which repositories exist on one device for one project, and which is canonical? | `curl -s <rig>/burrito/metadata/summaries` lists every repository the rig holds. Before S2 only `_local_/_local_/<name>` exists for a project, and the correct answer is "one, the working projection". After S2, the listing shows the mirrors and `tc4 report` names the canonical one |
 | Q8 | Which operations write an ops record, and where is the record read? | `grep -rn "opsLog\." src/` |
 | Q9 | Which scenario files exist, and which runners ran each? | `ls conformance/scenarios/`; `jq .scenarios docs/evidence/manifest.json` |
 | Q10 | Is the working tree trustworthy after `pull-repo`? | `docs/PLATFORM-NOTES.md` #21 (a verified platform record; the answer is no) |

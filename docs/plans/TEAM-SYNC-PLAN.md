@@ -3,9 +3,9 @@
 Status: [PROPOSED] plan, adopted as the shape of epic #24 by D67 (2026-09-02). Rules
 named here become normative only when the S1 change set lands them in
 `docs/BURRITO-SPEC.md` with their checks (§9). Written against `main` after the audit of
-2026-09-01 [VERIFIED — worktree at 60be039, see D67]. Revised 2026-09-03 after four
-rounds of second-model review of PR #151 (23, 18, 13 and 12 findings). Each finding was
-either fixed or answered in the pull request.
+2026-09-01 [VERIFIED — worktree at 60be039, see D67]. Revised 2026-09-03 after five
+rounds of second-model review of PR #151 (23, 18, 13, 12 and 18 findings). Each
+finding was either fixed or answered in the pull request.
 
 Prerequisite: the legibility increment (`LEGIBILITY.md`) closes first (D67(2)).
 
@@ -39,8 +39,9 @@ Prerequisite: the legibility increment (`LEGIBILITY.md`) closes first (D67(2)).
 The system has seven layers. Each layer has six faces: a typed input and output, the
 rules it guarantees (`R-` ids for format-facing rules; app rules without an id under the
 D55 addendum, Section 2), a report in the shared vocabulary, one reference
-implementation that the app imports, a harness with one negative control per rule,
-and one verb in the `tc4` command line.
+implementation that the app imports, a harness with one negative control per rule
+introduced from L-3 onward (older rules stay under the D55 residual, 1.3), and one
+verb in the `tc4` command line.
 
 | L | Layer | Atom or operation | Pure | Today | After this epic |
 |---|---|---|---|---|---|
@@ -135,8 +136,11 @@ predate the extension are not required to have one; that remains the D55 residua
 ### 1.4 Every operation leaves a record
 
 Each layer 4 and layer 5 operation writes one ops record (a `Report`) to the
-installation store before it starts and rewrites it once at the end, with the same
-durable barrier the outbox uses. Recovery on open reads the last incomplete record. The
+installation store before its first side effect and rewrites it at each phase change
+and once at the end, with the same durable barrier the outbox uses. For a receive the
+record covers the whole operation, from scratch creation to the outbox clear; the swap
+intent of D67(4a) is the record's `moved-prev` and `moved-scratch` phases, not a
+separate record. Recovery on open reads the last incomplete record. The
 ops log is device-local and never enters the burrito, so journal `v: 1` is untouched.
 
 ### 1.5 Scenarios are data
@@ -250,7 +254,7 @@ inventories agree on every endpoint named below]
   `src/data/serverApi.ts`).
 - Zip import (`POST /burrito/zipped/<repo_path>`) requires a root `metadata.json` and an
   `ingredients/` directory in the zip, and a target under `_local_/_sideloaded_/`
-  (ARCHITECTURE §5 endpoint table; PLATFORM-NOTES #22).
+  (ARCHITECTURE §3.1 endpoint table; PLATFORM-NOTES #22).
 
 ## 4. Repositories per device per project
 
@@ -331,7 +335,8 @@ not depend on the lost file. Verse references use the sample project
 `conformance/sample-burrito/`, whose scope is `TIT` and `JON`
 (`conformance/sample-burrito/metadata.json:69-71`). `TIT` has three chapters of 16, 15
 and 15 verses (`conformance/sample-burrito/ingredients/vrs.json:1242-1245`), and
-`TIT.usfm` carries chapter 1 verses 1 to 5 and beyond (`ingredients/TIT.usfm:8-14`)
+`TIT.usfm` carries chapter 1 verses 1 to 5 and beyond
+(`conformance/sample-burrito/ingredients/TIT.usfm:8-14`)
 [VERIFIED — 7fb8681, 2026-09-03]. So `TIT 1:1` to `TIT 1:4` are valid inputs and
 `TIT 99:1` is outside the versification.
 
@@ -346,7 +351,9 @@ Expectations, in `Report` terms:
    working repository before the receive, and `carried.refused` is empty (I4). A's
    TIT 1:2 segment, which B already integrated, is `identical`; TIT 1:1 and TIT 1:3 are
    `copied`.
-3. Every outbox entry `ts` is present in the replacement's segment set (I4).
+3. Every outbox entry `ts` is present in the replacement's segment set and is listed
+   in `carried.copied` (I4). The report accounts for outbox work the same way it
+   accounts for working segments.
 4. 1:3 is a fork with two live heads, A's and B's. Both events name the same `base`
    (A never received B's edit before making its own) and come from different actors
    (R-8.3.2). `fold.forks` lists the key with both heads and names the provisional one.
@@ -389,20 +396,36 @@ fixture (component test).
 
 ### X5 — Ops log for sync operations
 
-Layer 5 operations write ops records (1.4). The swap intent is an ops record; `open()`
-recovery reads it. The kill boundaries for the S5 swap are the five points below. Each
-names the state that the next `open()` must produce.
+Layer 5 operations write ops records (1.4). A receive writes its record before it
+creates scratch (S5 step 1) and advances the record's phase at each step; the swap
+phases are `intent`, `moved-prev`, `moved-scratch`, `cleared`. `open()` recovery reads
+the last incomplete record.
+
+Kill mechanism, shared by S2, S4 and S5: every port call goes through the repository
+port, and the port counts calls. A kill sweep runs the operation once to learn the call
+count N, then runs it N more times, killing the process after call k for k in 1..N,
+and runs `open()` after each kill. This is the mechanism the interleavings test uses
+today (`test/journalingInterleavings.test.ts`) applied to the port. The sweep reports N
+and the number of kills, so non-vacuity is visible. The S5 table below names the five
+kill points whose recovery differs; every other k must land in one of those five
+states or in "nothing changed".
+
+| Kill point | State on disk | Required result on next open |
 
 | Kill point | State on disk | Required result on next open |
 |---|---|---|
-| K1 before the intent record is written | working at its path; a validated scratch under `_local_/_scratch_/`; no record | `open()` finds no record. It lists `_local_/_scratch_/<name>-*`, deletes every entry, and opens working. It writes one new record with `op: receive`, `outcome: refused`, `refusals: [{code: swap.incomplete, subject: <scratch path>}]` so the cleanup is visible |
-| K2 after the record, before move 1 | as K1 plus an open record in phase `intent` | roll back: delete scratch; close the record with `outcome: refused`; working untouched |
+| K1 after the record is written, before or during scratch work (S5 steps 2–6) | working at its path; a record in phase `start`; zero or one scratch under `_local_/_scratch_/` | roll back: delete any scratch named in the record; close the record with `outcome: refused`, `refusals: [{code: swap.incomplete}]`; working untouched. A scratch directory with no record (a crash before the record's own barrier completed) is deleted by the same sweep of `_local_/_scratch_/<name>-*` and reported the same way |
+| K2 after phase `intent`, before move 1 | as K1 with a validated, committed scratch and the record in phase `intent` | roll back: delete scratch; close the record with `outcome: refused`; working untouched |
 | K3 after move 1 (working → prev), before move 2 | no repository at the working path; prev and scratch exist; record in phase `moved-prev` | finish forward: move scratch to the working path; set phase `moved-scratch`; continue as K4; `outcome: recovered` |
 | K4 after move 2, before the outbox clear | replacement at the working path; prev exists; record in phase `moved-scratch`; carried outbox entries still present | finish forward: verify the working path folds; clear the carried entries; close the record with `outcome: recovered` |
 | K5 during a single `copy?delete_src` (copy done, delete not done) | source and target both exist | the recovery reads the phase, verifies the target folds, deletes the source, then applies the K3 or K4 rule |
 
-Two repositories at the working path are impossible because a path holds one
-repository. "Never two candidates" means: after recovery there is exactly one of
+S2 and S4 have no swap, so their kill sweep asserts only their own acceptance: for S2,
+after `open()` every own segment in working ∪ outbox is in the publication or still in
+the outbox (nothing lost, the next send finishes the flush); for S4, team main is at the
+pre-integration head or the post-integration head, never a partial commit, and no
+scratch remains. Two repositories at the working path are impossible because a path
+holds one repository. "Never two candidates" means: after recovery there is exactly one of
 {working, prev, scratch} at the working path, and the others are deleted or parked at
 their own paths.
 
@@ -444,7 +467,9 @@ Scope of the change set, all in one commit per §9:
 - Harness: scenario files for receive with unsent work (X2), swap ordering,
   flush-then-receive equivalence, and the carry-over refusals; the J32 two-device
   property (D55 calls it J32f; Appendix A indexes it as J32) gains a `receive` step;
-  `validate-transport.mjs` gains T5–T7 (S8).
+  `validate-transport.mjs` gains T5 receive-with-unsent, T6 swap kill, T7 carry-over
+  refusals (10 checks today [VERIFIED — 9a9ac40, 2026-09-03]; 13 after). S1 owns these
+  three checks; S8 runs them in the rig CI job.
 - The pre-S1 test claims by invariant name are rewritten as `[covers R-8.7.n]`.
 
 Acceptance: the normative gate passes with the new ids; every new check has a negative
@@ -504,7 +529,7 @@ never between.
 ### S5 — Receive (adapter over `sync.receive`)
 
 1. Drain the `SaveScheduler` (`src/data/saveScheduler.ts`); refuse while a write
-   failure stands.
+   failure stands. Write the ops record for this receive in phase `start` (1.4, X5).
 2. Copy team main to scratch; add the own publication as a remote; `pull-repo`.
 3. Carry over own journal work: each own segment in the working repository is
    validated, filename-checked, actor-checked. A path present in scratch with identical
@@ -522,9 +547,9 @@ never between.
    (`src/data/journal/verify.ts`) on the regenerated, committed scratch. The verifier
    compares disk files with the projection, so it runs after step 5, never before. On
    failure delete scratch and report; the working repository is untouched.
-7. Swap: write the intent record; move working to `_local_/_prev_/<name>`; move
-   scratch to the working path; update the phase after each move; then clear the
-   carried outbox entries and the record (D67(4a); kill points K1–K5 in X5).
+7. Swap: set the record's phase to `intent`; move working to `_local_/_prev_/<name>`;
+   move scratch to the working path; advance the phase after each move; then clear the
+   carried outbox entries and close the record (D67(4a); kill points K1–K5 in X5).
 8. Recovery on open: an incomplete record is finished forward when scratch validates,
    or rolled back when the previous copy exists and the working path is absent.
 9. Report: the fold's forks, retained, pending structural, plus the carry-over report,
@@ -583,13 +608,18 @@ after receive; no modal wall. This is the test obligation of I8.
 ### S7 — Performance prerequisites (#94, #95)
 
 Finish #95 (one journal scan per open) and #94 (fold in a Web Worker). #92 and #93 are
-closed [VERIFIED — https://github.com/unfoldingWord/translationCore4/issues/92 and
-/issues/93, state CLOSED, read with `gh issue view` on 2026-09-03; an issue state has no
-version or commit hash, so the URL and date are the citation]. Add `tc4 bench --receive`.
+closed (GitHub issue state read with `gh issue view` on 2026-09-03:
+https://github.com/unfoldingWord/translationCore4/issues/92 and /issues/93; an issue
+state is not a code or platform claim, so it carries no `[VERIFIED]` tag). Add
+`tc4 bench --receive`.
 
-Acceptance: New Testament receive under 10 s on the reference machine, which is the
-machine of the existing fold benchmarks: Apple M2 Pro (10 cores), 16 GB, macOS
-(`docs/evidence/bench-fold-2026-08-25.md:4` [VERIFIED — 1eb39c1, 2026-09-03]). A record
+Acceptance: `tc4 bench --receive` over the existing default bench corpus (an aligned
+New Testament: 27 books, 7,959 verses, 15,945 events, `conformance/bench-fold.mjs`;
+`docs/evidence/bench-fold-2026-08-25.md:25-27` [VERIFIED — 6f1bafc, 2026-09-03]) placed
+in team main, received into a working repository that holds ten own unsent segments,
+completes in under 10 s wall clock from the `receive` call to the closed record, on the
+reference machine, which is the machine of the existing fold benchmarks: Apple M2 Pro
+(10 cores), 16 GB, macOS (`docs/evidence/bench-fold-2026-08-25.md:4`). A record
 from another machine names it and is not the acceptance. No UI-thread fold runs during
 receive (asserted by the worker test of #94). Measurement, not acceptance: the
 whole-Bible receive completes with a determinate progress bar and its time is recorded.
@@ -597,10 +627,9 @@ whole-Bible receive completes with a determinate progress bar and its time is re
 ### S8 — Journey proof and CI
 
 The two-actor journey (Section 6) as a scenario file on the rig runner plus a
-Playwright e2e that compares the UI's `Report` with the command line's.
-`validate-transport.mjs` gains T5 receive-with-unsent, T6 swap kill, T7 carry-over
-refusals (10 checks today [VERIFIED — 9a9ac40, 2026-09-03]; 13 after). A rig CI job
-runs the rig-gated suites (never on a clean clone; never with a pankosmia remote).
+Playwright e2e that compares the UI's `Report` with the command line's. The transport
+checks T5–T7 that S1 added run in a rig CI job with the other rig-gated suites (never
+on a clean clone; never with a pankosmia remote).
 Acceptance: e2e green with an evidence record; transport 13/13; the CI job's last run
 linked from the record.
 
@@ -610,8 +639,9 @@ linked from the record.
   its `syncEngine` and `publicationStore` paragraph with a pointer to `docs/SYSTEM.md`.
 - RISKS gains rows for journal scale, identity store loss, power-loss durability, and
   sync data loss. Each row cites the check that mitigates it.
-- The invariant ids I1–I9 are recorded in `docs/SYSTEM.md` beside their `R-8.7.n` ids.
-  `docs/LEGACY-IDS.md` is frozen (D44(b)) and is not edited.
+- The invariant ids I1–I9 are recorded in `docs/SYSTEM.md`: I1–I6 and I9 beside their
+  `R-8.7.n` ids (Section 2.1 table), I7 and I8 marked "(D53, app rule)" with no id
+  (Section 2.2). `docs/LEGACY-IDS.md` is frozen (D44(b)) and is not edited.
 - Issue #79's two covered criteria are ticked, each with the test name that covers it.
 
 Acceptance: the docs gate (L-2) is green; `npm run verify` is green; each RISKS row
@@ -619,13 +649,15 @@ names a check that exists in the repository.
 
 ## 6. The journey
 
-Actor A and actor B each open the same project on separate installations. A drafts 1:2
-and sends. B drafts 1:3, sends, and receives. A, offline, drafts 1:1, edits 1:3 to a
-different text with the same `base` as B's edit, and has one action still in the
-outbox. A receives. Expected: A's working repository has A's 1:1, 1:2, 1:3 and the
-former outbox action as a committed segment, and A's outbox is empty (S5 step 7); 1:3
-shows a fork with A's head and B's head (R-8.3.2); A picks one; the
-resolution sends; B receives; B sees no fork and A's chosen 1:3; both projects fold to
+Actor A and actor B each open the same project, seeded from the sample burrito (X2
+names the source; all references are to `TIT`), on separate installations. A drafts
+TIT 1:2 and sends. B drafts TIT 1:3, sends, and receives. A, offline, drafts TIT 1:1,
+edits TIT 1:3 to a different text with the same `base` as B's edit, and has one action
+(TIT 1:4) still in the outbox. A receives. Expected: A's working repository has A's
+TIT 1:1, 1:2, 1:3 and the former outbox action as a committed segment, and A's outbox
+is empty (S5 step 7); TIT 1:3 shows a fork with A's head and B's head (R-8.3.2); A
+picks one; the resolution sends; B receives; B sees no fork and A's chosen TIT 1:3;
+both projects fold to
 the same state. Then A's device loses power during a receive between the two moves; the
 next open completes or rolls back the swap; no own byte is missing.
 

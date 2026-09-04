@@ -1117,8 +1117,9 @@ in VISION.md is a target, not a claim about the current format or the pilot
 roadmap.
 
 [publication note: recorded 2026-09-03 from the owner's architecture record of
-2026-08-29 (`docs/adr/0001`), folded into this log — D-numbers are the one
-decision channel (authority contract, D43).]
+2026-08-29 (the owner's architecture record `docs/adr/0001`, which is not in this repository), folded into this log
+in full — D-numbers are the one decision channel (authority contract, D43), so this
+entry is the reviewable form and the record is not a dependency.]
 
 ## D67 (2026-09-02, project-owner rulings) **Team sync is built as one imported reference engine over a repository port, after a legibility increment. Five sync rulings.** [epic #24; plans `docs/plans/TEAM-SYNC-PLAN.md` and `docs/plans/LEGIBILITY.md`]
 
@@ -1197,6 +1198,6 @@ legibility step L-2. BURRITO-SPEC §1's "no companion repos, no copies" sentence
 amended in S1, through §9, to name the publication and team main mirrors
 (`docs/plans/TEAM-SYNC-PLAN.md` Section 4).
 
-[revised 2026-09-03 — four rounds of second-model review of PR #151 returned 23, 18,
-13 and 12 findings; the plans and this entry were corrected in the same pull request. No ruling
+[revised 2026-09-03 — five rounds of second-model review of PR #151 returned 23, 18,
+13, 12 and 18 findings; the plans and this entry were corrected in the same pull request. No ruling
 changed.]
