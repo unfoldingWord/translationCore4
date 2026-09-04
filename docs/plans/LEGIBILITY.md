@@ -228,8 +228,11 @@ suite and a marker with no value also fail.
 `prove` then writes a manifest that disagrees with the marked documents and the gate fails
 in CI. That failure is the gate working. The change set completes by taking the manifest
 from its own push-event CI run (3.1), committing it, and updating the marked statements
-in the same PR. L-2 itself was the first case: its own controls moved the `vitest` count
-from 809 (the failing CI run and the refreshed manifest are linked from the PR).
+in the same PR. L-2 itself was the first case: the committed manifest (674c1bf) said 809;
+CI on the L-2 branch said 828, because PR #165 had added 7 tests after that manifest was
+recorded and L-2's controls added 12. The gate named all five stale markers (CI run
+33921454776, push event, 2066b73); the refreshed manifest and the corrected documents
+landed in the next commit of PR #169.
 
 **Two consequences of reading the manifest on disk.** (a) On a developer machine, `prove`
 with a rig writes a manifest from a different surface (the plain `vitest` suite excludes
