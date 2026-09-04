@@ -58,7 +58,8 @@ i18n key audit (#12), auto-merge of concurrent edits (#27), OBS layouts (#11),
 verse move/span operations (format-touching — waits for D47's contract), and the
 whole Phase 2 team-collaboration app (#23–#26). **4.0.0 is a single-translator
 release.** Team sync arrives in Phase 2, folding the journal 4.0.0 has been
-writing all along.
+writing all along. The sync plan is `docs/plans/TEAM-SYNC-PLAN.md` (epic #24). It
+starts after the legibility increment in `docs/plans/LEGIBILITY.md` closes (D67).
 
 ## Standing rules that bind the plan
 

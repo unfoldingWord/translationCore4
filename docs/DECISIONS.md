@@ -1116,6 +1116,86 @@ format in one change set (§9) — that work is issue #147. Until then the OBS s
 in VISION.md is a target, not a claim about the current format or the pilot
 roadmap.
 
-[publication note: recorded 2026-09-03 from the owner's architecture record of
-2026-08-29 (`docs/adr/0001`), folded into this log — D-numbers are the one
-decision channel (authority contract, D43).]
+[publication note: recorded 2026-09-03 from the owner's architecture notes of
+2026-08-29, which are held outside this repository and are not cited as evidence. This
+entry is the complete and reviewable form — D-numbers are the one decision channel
+(authority contract, D43).]
+
+## D67 (2026-09-02, project-owner rulings) **Team sync is built as one imported reference engine over a repository port, after a legibility increment. Five sync rulings.** [epic #24; plans `docs/plans/TEAM-SYNC-PLAN.md` and `docs/plans/LEGIBILITY.md`]
+
+Context. An audit of the journal architecture ran on 2026-09-01 [VERIFIED — worktree at
+60be039: Phase-1 40/40, journal 339/339, normative 72/72, transport 10/10 on
+pankosmia-web 0.18.5 (99fd9be), unit 827 passed, rig integration 41 passed]. It found
+the stored format and the fold sound, and it found one unproven step in the sync
+protocol: a receive rebuilds the working repository from team main and the actor's
+publication only, so the actor's unsent segments and outbox are not inputs. A
+standalone simulation, `receive-with-unsent.mjs`, reproduced the gap over real git
+repositories with the reference modules unchanged (15/15) and showed two designs that
+close it [VERIFIED — executed 2026-09-01 at 60be039 by the audit session; the file was
+not retained when the audit worktree was removed, so the run is not repeatable;
+recorded 2026-09-03]. The sync plan's X2 item rebuilds it as a committed scenario file
+with the checks written out (`docs/plans/TEAM-SYNC-PLAN.md` X2). The audit also found that the sync protocol is proven by
+two hand-written suites (J18–J20 over git; `validate:transport` over HTTP) that will
+drift, and that the fold report has no reader at runtime.
+
+**(1) Architecture.** The sync engine (`send`, `integrate`, `receive`) is written once as
+an environment-agnostic reference module over a repository port, and the app imports
+it, the way the app imports the fold (`src/data/journal/runtime.ts`). The port has
+three adapters: memory, git on the filesystem, and the pankosmia-web HTTP API. J18–J20
+and the transport suite become one scenario set that runs over all adapters. This is
+the fold's pattern applied to layer 5; see `docs/plans/TEAM-SYNC-PLAN.md` §1.1.
+
+**(2) Order.** No sync feature starts until the legibility increment
+(`docs/plans/LEGIBILITY.md`) closes: one `prove` command with an evidence manifest, a
+docs gate over manifest-derived statements, one `Report` shape with a refusal-code
+vocabulary, scenario files with one runner, the repository port with its adapters, and
+`docs/SYSTEM.md`. The increment closes on a measured orientation test (LEGIBILITY.md
+Section 4).
+
+**(3) Receive inputs.** A receive rebuilds from four inputs: team main, the actor's own
+publication, the actor's own unsent working segments, and the actor's outbox. Every own
+`ts` present before the receive is present in the replacement or the receive refuses.
+Carry-over of the actor's own old copy is zero-trust: foreign-actor, misnamed,
+differs-from-accepted, and invalid segments are refused and reported. The outbox is
+cleared only after the verified replacement is the live working repository. The
+replacement lands at the same repository path, because the actor id derives from it
+(D53(c); `src/data/journal/identity.ts:10-15`). The format-facing rules become
+`[R-8.7.7]` to `[R-8.7.12]` in the S1 change set; until then they are [PROPOSED] and
+§8.7's sync block stays as D55 left it. Path identity and fork legibility are app rules
+under the D55 addendum: no `R-` id, tested by the app increment that implements them
+(S5, S6). Rebuild-and-swap must not drop a tolerated unjournaled ingredient class
+(R-8.7.3, `ingredients/audio/`); none is in use, and the rule is decided when one is.
+
+**(4) Five rulings.**
+- (a) **Swap recovery is a record, not an endpoint.** Receive swaps by two
+  `git/copy?delete_src=true` moves [VERIFIED — pankosmia-web 0.18.5 (99fd9be,
+  2026-07-30), `src/endpoints/git2/copy_repo.rs:19-24,120-130`: the handler copies the
+  tree, then `remove_dir_all` on the source; unchanged at 0.18.7 (c43c40d, 2026-08-11)].
+  A crash between the copy and the delete leaves two copies. An intent record written
+  before the first move lets the next open finish forward or roll back. No upstream
+  rename request.
+- (b) **One integrator per offline team.** A USB team names one device that carries the
+  team main mirror, runs intake, and exports the integrated main as a zip. Main is a
+  union of publications and is rebuildable from them. Online teams use the Door43 main
+  branch.
+- (c) **A new device is a new actor.** The installation secret is not exported. A person
+  who replaces a device continues as a second actor. The history view (#78) may let a
+  person show two actor ids under one name; that is a child issue of #78. Secret export
+  is declined until a team reports the cost.
+- (d) **Anyone may integrate.** Intake is zero-trust, so integration is a social act, not
+  a data risk. Online teams that want gatekeeping use the branch protection of their git
+  host [PROPOSED — Door43 runs Gitea, which has branch protection; not verified against
+  git.door43.org]. No role setting in the app.
+- (e) **The reference modules move to a root `journal/` package** that `conformance/` and
+  `src/` both import, in one mechanical change set with all suites green before and
+  after, before any sync module lands. This is step L-0 of the legibility increment.
+
+Supersedes in part: D55's "sync operations stay [PROPOSED]" remains true until S1;
+D67(2) fixes the order in which that changes. D55's app-rule addendum is not superseded.
+ARCHITECTURE §9's "ports of the reference implementation" wording is corrected in
+legibility step L-2. BURRITO-SPEC §1's "no companion repos, no copies" sentence is
+amended in S1, through §9, to name the publication and team main mirrors
+(`docs/plans/TEAM-SYNC-PLAN.md` Section 4).
+
+[revised 2026-09-03 — a second-model review of PR #151 and a consolidation pass
+corrected the plans and this entry in the same pull request. No ruling changed.]
