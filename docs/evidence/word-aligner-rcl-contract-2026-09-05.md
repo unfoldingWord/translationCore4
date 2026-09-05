@@ -7,9 +7,10 @@ suggestions one increment ahead of #1; tC4 builds its own suggesting-aligner com
 which talks to the fork's base aligner surface; record what gatewayEdit and Bible Editor
 use (§4).
 
-**Method:** a source read. The published package ships bundles and source maps only. The
-fork's source files were extracted from the source map of the installed package. The
-command, run from the repository root:
+**Method:** a source read. The published package ships no unbundled implementation
+source: its files are `dist/` bundles with source maps, `README.md`, `LICENSE` and
+`package.json`. The fork's source files were extracted from the source map of the
+installed package. The command, run from the repository root:
 
 ```
 node -e '
@@ -35,10 +36,12 @@ published source map; `wordmap-lexer` 0.3.6 (integrity above); tC4 `main` 4fb458
 ## 1. How tC4 uses the fork today: it does not
 
 - The fork is a `devDependency` (`package.json:37`), not a dependency (`:21-31`).
-- No file under `src/`, `test/` or `e2e/` imports it. `grep -rn "word-aligner-rcl"` over
-  the repository, excluding `node_modules` and the lockfile, finds only `package.json:37`
-  and `docs/ARCHITECTURE.md:145`. `git log -S'word-aligner-rcl' -- src` is empty: no
-  source file ever imported it.
+- No file under `src/`, `test/` or `e2e/` imports it. The command
+  `grep -rn --exclude-dir=node_modules --exclude=package-lock.json -e 'word-aligner-rcl' .`
+  at this change set's head finds `package.json:37`, `docs/ARCHITECTURE.md:145`, and the
+  two documents of this change set (this record and `docs/PLATFORM-NOTES.md:118-119`);
+  nothing under `src/`, `test/` or `e2e/`. `git log -S'word-aligner-rcl' -- src` prints
+  nothing: no source file ever imported it.
 - `docs/ARCHITECTURE.md:145` (A-5, 2026-07-06): the check and alignment surfaces are
   design-native; the fork's UI is not embedded.
 - tC4's alignment screen is `src/views/Align.jsx`. It reads the §5.1 record directly
@@ -73,8 +76,12 @@ Three components: `WordAligner`, `SuggestingWordAligner`, `WordAlignmentTool`
 required set plus optional `suggester`, `asyncSuggester`, `hasRenderedSuggestions`
 (default `true`), `suggestionsOnly`, `handleInfoClick`, `style`.
 
-`WordAligner` only passes `contextId` back in `onChange` (`WordAligner.jsx:392`).
-`WordAlignmentTool` reads `contextId.reference` (`src/components/WordAlignmentTool.jsx:225`).
+`contextId` has a required shape: `{ reference: { chapter, verse, ... } }`. `WordAligner`
+reads `contextId?.reference?.verse` and `contextId?.reference?.chapter` for the word list
+(`WordAligner.jsx:584`, `:586`), passes the whole object to `AlignmentGrid` (`:609`), which
+renders an empty `<div/>` when it is missing (`src/components/AlignmentGrid.jsx:87-89`),
+and echoes it in `onChange` (`:392`). `WordAlignmentTool` reads `contextId.reference` too
+(`src/components/WordAlignmentTool.jsx:225`).
 `sourceLanguage === 'hbo'` selects Hebrew handling (`WordAligner.jsx:558`; `OT_ORIG_LANG`
 in `src/common/constants.js`).
 
@@ -144,11 +151,21 @@ same version tC4 pins (`package.json:27`). The fork's own manifest lists
 
 ```
 $ npm ls string-punctuation-tokenizer wordmap-lexer --all
+uw-tc4@4.0.0-alpha.3 /Users/birch/Development/tC4/translationCore4
 +-- @gabrielaillet/word-aligner-rcl@1.3.18
 | +-- string-punctuation-tokenizer@2.2.0
+| +-- word-aligner@1.0.2
+| | `-- string-punctuation-tokenizer@2.0.0
 | +-- wordmap-lexer@0.3.6
 | | `-- string-punctuation-tokenizer@2.0.0 deduped
+| `-- wordmap@0.6.2
+|   `-- wordmap-lexer@0.3.6 deduped
 +-- string-punctuation-tokenizer@2.0.0
++-- word-aligner-lib@1.0.1
+| +-- string-punctuation-tokenizer@2.2.0
+| `-- wordmap-lexer@0.3.6 deduped
+`-- word-aligner@1.0.3
+  `-- string-punctuation-tokenizer@2.0.0 deduped
 ```
 
 Other fork dependencies (its `package.json`): `usfm-js` 3.4.3, `word-aligner` 1.0.2,
@@ -168,13 +185,13 @@ AlignmentVerseRecord   { alignments: Alignment[], wordBank: AlignedWord[], inval
 |---|---|---|
 | Alignment pairs of source and target words | `topWords`/`bottomWords` (`zaln.ts:21-24`) | Same data. The fork's names are `sourceNgram`/`targetNgram`; its converters do the rename (`alignmentHelpers.js:158`, `:180`, `:287`). |
 | `text` field | `word` (`zaln.ts:15`) | Rename needed; the fork's converters do it. |
-| `occurrence`, `occurrences` as numbers | `number \| string` in the type. Writers coerce with `Number()` at the store boundary (`occurrences.ts:13-17`; applied in `httpStore.ts:203-215`, used by `writeAlignments` `:486-491`). No integer check and no rejection of `NaN`. | Meets for the values the app writes. The fork would `parseInt` strings anyway. |
-| `strong`, `lemma`, `morph` on source words | present on `AlignedWord` (`zaln.ts:10-12`) | Meets. |
+| `occurrence`, `occurrences` as numbers | `number \| string` in the type. Writers coerce with `Number()` at the store boundary (`occurrences.ts:13-17`; applied in `httpStore.ts:203-215`, used by `writeAlignments` `:486-491`, serialized with `JSON.stringify` `:429-434`). No integer check and no rejection. | Meets when the stored value is an integer or an integer-like string. `"1.5"` persists as `1.5`; a non-numeric string becomes `NaN` and serializes as `null`. Nothing in tC4 is shown to write such values; nothing rejects them either. |
+| `strong`, `lemma`, `morph` on source words | optional on `AlignedWord` (`zaln.ts:10-12`) | **Type mismatch.** The fork's typedef declares all three as required strings (`WordAligner.jsx:246-253`). Its converters copy them through without a check (`alignmentHelpers.js:290-294`), so an absent value becomes `undefined`. Whether the components accept that is not tested here. |
 | `index` on every word | not a named field of `AlignedWord`. The index signature (`zaln.ts:16-18`) lets extra keys through; nothing in tC4 writes one. | **Does not meet.** tC4 stores no token position. A bridge computes it from the verse's token order, as the fork's converters do (`alignmentHelpers.js:160-166`, `183-191`). |
 | `targetWords` = all target tokens with `disabled` | `wordBank` = the unaligned target words only (`zaln.ts:29`; BURRITO-SPEC §5.1 line 164) | **Does not meet.** The fork's `targetWords` is the whole token set. tC4 holds it in two parts: `wordBank` (unaligned) and the `bottomWords` of `alignments` (aligned). A bridge tokenizes the verse and marks as `disabled` the tokens found in `bottomWords` (`alignmentHelpers.js:240-267`). |
 | `alignment.index`, `isSuggestion` | absent | Fork-internal state. `alignmentCleanup` assigns `index`; `isSuggestion` is transient UI state. Not stored by tC4 and need not be. |
 | Tokenization | regex on Unicode letter, mark and number runs (`edit.ts:21-24`); occurrence counted per exact token string (`:33`, `:41`) | **Not verified equal** to `string-punctuation-tokenizer` 2.0.0 as `wordmap-lexer` calls it (`Lexer.js:59-60`). Same library version on both sides, but tC4's `edit.ts` does not call it. If the two split a verse differently, `occurrence` counts differ and word identity with them. |
-| `contextId` | tC4 has no aligner `contextId`. Its checks carry a `contextId` (`src/data/derive.ts:113`, `224`, `255`; `httpStore.ts:237-268`). | The fork only echoes it (`WordAligner.jsx:392`); `WordAlignmentTool` reads `.reference`. Trivial to supply. |
+| `contextId` = `{ reference: { chapter, verse } }` | tC4 has no aligner `contextId`. Its checks carry a `contextId` with a `reference` (`src/data/derive.ts:113`, `224`, `255`; `httpStore.ts:237-268`). | **Does not meet as stored**, but the parts exist: the Align screen knows book, chapter and verse. A bridge builds the object; without it the grid renders empty (§2.1). |
 | `translate`, `loadLexiconEntry`, `showPopover` | `translate`: tC4 has an English-only catalog scaffold; the switch to platform i18n is future work (`src/i18n/index.js:1-4`). `loadLexiconEntry`: the lexicon layout is described in `docs/ARCHITECTURE.md:141`; a reader is not verified implemented. `showPopover`: none. | Callbacks to write. No stored-data mismatch. |
 
 **Summary.** The word-level data is the same data under different field names.
@@ -184,26 +201,25 @@ things the fork requires are not held by tC4: a token `index` on every word, and
 whole-verse `targetWords` list with `disabled` flags. Both derive from the verse text plus
 the record. The one unmeasured risk is tokenizer agreement (occurrence counts).
 
-## 4. Reference integrations (the owner's findings, 2026-08-13)
+## 4. Reference integrations: where the owner's findings live
 
-Recorded by the owner on the issue
-(https://github.com/unfoldingWord/translationCore4/issues/13#issuecomment-5285882599),
-not re-read here [VERIFIED by the owner, 2026-08-13]:
+This record does not measure gatewayEdit or Bible Editor. The owner recorded those
+findings on the issue on 2026-08-13, and they stay there as their own record:
 
-- gatewayEdit (`unfoldingWord/gateway-edit` v2.4.13) pins `enhanced-word-aligner-rcl@1.4.8`,
-  which wraps `SuggestingWordAligner` from `word-aligner-rcl` and generates suggestions
-  with wordMAP plus `uw-wordmapbooster`, trained locally on the project's own completed
-  alignments in a web worker. No global model.
-- Bible Editor (`unfoldingWord/bible-editor` v0.0.1) has no aligner dependency.
+- the ruling to study them: https://github.com/unfoldingWord/translationCore4/issues/13#issuecomment-5285799184
+- the findings (gatewayEdit v2.4.13 pins `enhanced-word-aligner-rcl@1.4.8`, which wraps
+  `SuggestingWordAligner` and suggests with wordMAP plus `uw-wordmapbooster` trained
+  locally in a web worker; Bible Editor v0.0.1 has no aligner dependency):
+  https://github.com/unfoldingWord/translationCore4/issues/13#issuecomment-5285882599
+- the scope update (tC4 builds its own suggesting-aligner component):
+  https://github.com/unfoldingWord/translationCore4/issues/13#issuecomment-5286663502
 
-Relation to the pinned fork, read here: the fork's `README.md` is titled
+What this record adds about the fork, read here: the fork's `README.md` is titled
 `word-aligner-rcl` and links the upstream `unfoldingWord/word-aligner-rcl` in its first
-paragraph; the fork ships the same `SuggestingWordAligner` surface
-(`src/components/SuggestingWordAligner.jsx` in the source map; §2.3). Its suggester
-callback signature is the one `enhanced-word-aligner-rcl` fills with wordMAP (the fork's
-`README.md` names `AbstractWordMapWrapper.predict` of `wordmapbooster` as the matching
-signature). The owner's scope update of 2026-08-13 stands: tC4 builds its own
-suggesting-aligner component; the engine question is issue #133.
+paragraph. The fork ships the `SuggestingWordAligner` surface
+(`src/components/SuggestingWordAligner.jsx` in the source map; §2.3). Its `README.md`
+names `AbstractWordMapWrapper.predict` of `wordmapbooster` as the signature its
+`suggester` prop matches. The engine question for tC4 is issue #133.
 
 ## 5. Not measured here
 
@@ -212,4 +228,5 @@ suggesting-aligner component; the engine question is issue #133.
 - Tokenizer agreement between `edit.ts` and `wordmap-lexer` on real drafts (§3).
 - `WordAlignmentTool`'s further props (scripture panes, verse selector). tC4 does not
   plan to embed it (A-5).
-- The gatewayEdit and Bible Editor facts in §4; they are the owner's reading.
+- Whether the components accept `undefined` for `strong`, `lemma` or `morph` (§3).
+- The gatewayEdit and Bible Editor facts; §4 points at the owner's record of them.
