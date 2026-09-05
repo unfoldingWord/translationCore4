@@ -51,7 +51,7 @@ async function openAlign(page: import('@playwright/test').Page) {
     .getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`)
     .getByRole('button', { name: /Titus/ })
     .click();
-  await page.getByRole('button', { name: 'Check', exact: true }).click();
+  await page.getByRole('tab', { name: 'Check', exact: true }).click();
   await page.getByTestId('open-align').click();
   await expect(page.getByTestId('align-session')).toBeVisible();
 }
@@ -215,7 +215,7 @@ test.describe('J5 — a translator aligns a verse', () => {
         .getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`)
         .getByRole('button', { name: /Titus/ })
         .click();
-      await page.getByRole('button', { name: 'Check', exact: true }).click();
+      await page.getByRole('tab', { name: 'Check', exact: true }).click();
       await page.getByTestId('open-align').click();
 
       const unavailable = page.getByTestId('align-unavailable');

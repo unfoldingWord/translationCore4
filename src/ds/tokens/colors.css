@@ -54,9 +54,15 @@
   --tc-kindle-hover:   #D48E28;
   --tc-kindle-press:   #C07F20;
   --tc-invalid-surface:#FAEDEB; /* derived: the only red tint in the system */
-  --tc-invalid-inverse:#FF8B8B; /* error text/dot on the Ocean header — --tc-invalid fails there */
   --tc-invalid-hover:  #8C1008;
   --tc-invalid-press:  #760D06;
+
+  /* Tone values for a dark ground. --tc-invalid #A21309 is unreadable on Ocean
+     (1.3:1), so the invalid tone needs a light counterpart rather than a
+     translucent one — a tint of red over dark blue reads brown. Derived, like
+     --tc-invalid-surface, and the only other red in the system.
+     Consumed by tokens/context.css under [data-on="dark"]. */
+  --tc-invalid-on-dark: #F2938A; /* 5.1:1 on --uw-ocean */
 
   /* ---- Semantic surfaces ---- */
   --surface-app:     var(--uw-paper);

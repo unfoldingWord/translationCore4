@@ -32,7 +32,7 @@ export default function BookRail() {
                   {book.chapterNums.map((c) => {
                     const sel = c === s.chapter;
                     return (
-                      <button key={c} onClick={() => actions.setChapter(c)} type="button" data-tc={sel ? undefined : 'surface'}
+                      <button key={c} onClick={() => actions.setChapter(c)} type="button" data-i={sel ? undefined : 'choice'} data-tone="accent"
                         style={{ cursor: 'pointer', fontFamily: 'var(--font-ui)', fontWeight: 'var(--fw-heavy)', fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', height: 32, borderRadius: 'var(--radius-sm)', borderWidth: 'var(--stroke)', borderStyle: 'solid',
                           ...(sel ? { background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)' }
                             : { background: '#fff', color: 'var(--text-tertiary)', borderColor: 'var(--border)' }) }}>{c}</button>

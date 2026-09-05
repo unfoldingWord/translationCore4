@@ -146,7 +146,7 @@ describe('F2 — Translate mounts the shared helps panel', () => {
   it('renders the panel with its tabs, and the header toggle hides it', () => {
     const { rerender } = render(<Draft />);
     expect(screen.getByTestId('helps-panel')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Notes' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Notes' })).toBeTruthy();
     fireEvent.click(screen.getByTitle('Toggle helps panel'));
     rerender(<Draft />);
     expect(screen.queryByTestId('helps-panel')).toBeNull();

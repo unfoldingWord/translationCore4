@@ -1,26 +1,21 @@
-import React from 'react';
+/* SHIM. This component's name and props are unchanged, but nothing is drawn
+   here any more: it composes the primitives. Kept so an application built on
+   the old system keeps working while its call sites migrate one at a time.
+   The composition it delegates to is written out in AUDIT.md; MIGRATION.md has
+   the swap. Delete this file once your last call site is gone. */
 
-/** Square check control. 18px box, Inspire fill when checked. */
+import React from 'react';
+import { Field } from '../primitives/Field.jsx';
+import { Choice } from '../primitives/Choice.jsx';
+
+/** Square check control for independent options inside a form. */
 export function Checkbox({ checked, indeterminate, disabled, label, description, onChange, style, ...rest }) {
-  const box = (
-    <span style={{
-      width: 18, height: 18, flex: 'none', borderRadius: 'var(--radius-xs)',
-      border: 'var(--stroke-control) solid ' + (checked || indeterminate ? 'var(--accent)' : 'var(--border-strong)'),
-      background: disabled ? 'var(--disabled-bg)' : (checked || indeterminate ? 'var(--accent)' : '#fff'),
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      color: '#fff', fontSize: 11, fontWeight: 'var(--fw-black)', lineHeight: 1,
-      transition: 'background var(--dur-hover) var(--ease-standard), border-color var(--dur-hover) var(--ease-standard)',
-    }}>{indeterminate ? '–' : (checked ? '✓' : '')}</span>
-  );
-  if (!label) return <span onClick={disabled ? undefined : onChange} style={{ cursor: disabled ? 'default' : 'pointer', ...style }} {...rest}>{box}</span>;
+  const mark = <Choice mark="check" checked={checked} indeterminate={indeterminate}
+    disabled={disabled} onChange={onChange} />;
+  if (!label) return <span style={style} {...rest}>{mark}</span>;
   return (
-    <label onClick={disabled ? undefined : onChange} style={{ display: 'flex', alignItems: 'flex-start', gap: 10,
-      cursor: disabled ? 'default' : 'pointer', ...style }} {...rest}>
-      {box}
-      <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <span style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', fontWeight: 'var(--fw-bold)', color: disabled ? 'var(--text-tertiary)' : 'var(--text-body)', lineHeight: 1.3 }}>{label}</span>
-        {description ? <span style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--text-tertiary)', lineHeight: 'var(--lh-ui)' }}>{description}</span> : null}
-      </span>
-    </label>
+    <Field label={label} hint={description} disabled={disabled} placement="end" style={style} {...rest}>
+      {mark}
+    </Field>
   );
 }

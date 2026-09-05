@@ -1,21 +1,26 @@
-import React from 'react';
+/* SHIM. This component's name and props are unchanged, but nothing is drawn
+   here any more: it composes the primitives. Kept so an application built on
+   the old system keeps working while its call sites migrate one at a time.
+   The composition it delegates to is written out in AUDIT.md; MIGRATION.md has
+   the swap. Delete this file once your last call site is gone. */
 
-/** Ancestry trail. Separated by the system's middle dot. */
-export function Breadcrumb({ items = [], style }) {
+import React from 'react';
+import { Stack } from '../primitives/Stack.jsx';
+import { Text } from '../primitives/Text.jsx';
+import { Action } from '../primitives/Action.jsx';
+
+/** Ancestry trail: Bible · Book · Chapter · Tool. */
+export function Breadcrumb({ items = [], style, ...rest }) {
   return (
-    <nav aria-label="Breadcrumb" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 7, ...style }}>
+    <Stack as="nav" direction="row" gap={7} align="center" wrap aria-label="Breadcrumb" style={style} {...rest}>
       {items.map((it, i) => (
         <React.Fragment key={i}>
-          {i > 0 ? <span aria-hidden="true" style={{ color: 'var(--text-faint)', fontSize: 'var(--fs-caption-lg)', letterSpacing: 'var(--track-12-5)' }}>·</span> : null}
-          {it.onClick ? (
-            <button type="button" data-trim="cap" onClick={it.onClick} style={{ border: 0, background: 'transparent', cursor: 'pointer', padding: 0,
-              fontFamily: 'var(--font-ui)', fontWeight: 'var(--fw-heavy)', fontSize: 'var(--fs-caption-lg)', letterSpacing: 'var(--track-12-5)', color: 'var(--text-accent)' }}>{it.label}</button>
-          ) : (
-            <span aria-current="page" data-trim="cap" style={{ fontFamily: 'var(--font-ui)', fontWeight: 'var(--fw-heavy)',
-              fontSize: 'var(--fs-caption-lg)', letterSpacing: 'var(--track-12-5)', color: 'var(--text-secondary)' }}>{it.label}</span>
-          )}
+          {i ? <Text role="caption" tone="faint" aria-hidden="true">·</Text> : null}
+          {it.onClick
+            ? <Action weight="text" onClick={it.onClick}>{it.label}</Action>
+            : <Text role="captionStrong" aria-current="page">{it.label}</Text>}
         </React.Fragment>
       ))}
-    </nav>
+    </Stack>
   );
 }

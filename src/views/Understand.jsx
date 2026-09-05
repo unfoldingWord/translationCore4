@@ -11,7 +11,7 @@ import BookRail from './BookRail.jsx';
 import { HelpsPanel, leadingNum, useLoadHelps, focusOf } from './HelpsPanel.jsx';
 import { keyCarries, SourceVerse } from './SourceVerse.jsx';
 import { absenceMessageKey, isSourceAbsent } from '../data/sourceState';
-import { FilterChip, IconButton, Overline, SegmentedControl, StatusDot, Callout, Button } from '../ds/index.js';
+import { FilterChip, IconButton, Overline, Switcher, StatusDot, Callout, Button } from '../ds/index.js';
 import { RailIcon } from './PanelIcons.jsx';
 import { targetTypeFor, projectDir } from './scriptStyle.js';
 
@@ -202,7 +202,7 @@ function ComprehensionBox({ book, chapter, unit, mode }) {
   return (
     <>
       {/* The design's box: scripture face at reading size, on the paper tint. */}
-      <textarea data-tc="field" rows={3} dir={dir} value={text} disabled={!ready}
+      <textarea data-i="field" rows={3} dir={dir} value={text} disabled={!ready}
         style={{ width: '100%', boxSizing: 'border-box', marginTop: 4, border: 'var(--stroke) solid var(--border-input)', borderRadius: 'var(--radius-md)', padding: '11px 13px', outline: 'none', resize: 'vertical', ...targetTypeFor(s, 'verse'), color: 'var(--text-scripture)', background: 'var(--surface-app)' }}
         onChange={(e) => {
           setText(e.target.value);
@@ -480,7 +480,7 @@ export default function Understand() {
               ) : (
                 <>
                   <Overline>{t('understand.commentsBy')}</Overline>
-                  <SegmentedControl size="sm" tone="ocean" value={mode} onChange={setMode}
+                  <Switcher indicator="pill" size="sm" tone="ocean" value={mode} onChange={setMode}
                     options={[{ value: 'section', label: t('understand.bySection') }, { value: 'verse', label: t('understand.byVerse') }]} />
                 </>
               )}

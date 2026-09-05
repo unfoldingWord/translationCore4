@@ -51,7 +51,7 @@ test.describe('J1 — a translator creates a project', () => {
       });
 
       await test.step('pick the book Titus and create it — the new project opens in Draft', async () => {
-        await page.getByLabel('Book').selectOption('TIT');
+        await page.getByLabel('Book', { exact: true }).selectOption('TIT');
         await page.getByRole('button', { name: 'Create book' }).click();
         await expect(page.getByText('Equipo Rig — Tito').first()).toBeVisible({ timeout: 20_000 });
         await expect(page.getByRole('button', { name: 'start this verse' }).first()).toBeVisible({

@@ -1,19 +1,30 @@
+/* SHIM. This component's name and props are unchanged, but nothing is drawn
+   here any more: it composes the primitives. Kept so an application built on
+   the old system keeps working while its call sites migrate one at a time.
+   The composition it delegates to is written out in AUDIT.md; MIGRATION.md has
+   the swap. Delete this file once your last call site is gone. */
+
 import React from 'react';
-/** White surface on the paper background. The base container for everything. */
-export function Card({ variant = 'default', interactive, padding, children, style, onClick, ...rest }) {
-  const v = {
-    default: { background: 'var(--surface-card)', border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-2xl)', boxShadow: 'var(--shadow-card)' },
-    flat:    { background: 'var(--surface-card)', border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-lg)', boxShadow: 'none' },
-    muted:   { background: 'var(--surface-app)', border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-lg)', boxShadow: 'none' },
-    ocean:   { background: 'var(--uw-ocean)', border: 0, borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-hero)', color: 'var(--text-inverse)' },
-    paper:   { background: '#fff', border: 0, borderRadius: 'var(--radius-xs)', boxShadow: 'var(--shadow-page)' },
-  }[variant];
-  // A card you can click is a control: it takes focus and answers Enter and Space.
-  const clickable = interactive && onClick;
-  const a11y = clickable ? {
-    role: 'button', tabIndex: 0,
-    onKeyDown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(e); } },
-  } : null;
-  return <div data-tc={interactive ? 'card' : undefined} onClick={onClick} {...a11y} style={{ padding: padding == null ? 22 : padding,
-    cursor: clickable ? 'pointer' : undefined, ...v, ...style }} {...rest}>{children}</div>;
+import { Surface } from '../primitives/Surface.jsx';
+
+/* Five variants were a fill × radius × elevation product. */
+const VARIANT = {
+  default: { fill: 'card',  border: 'line', radius: '2xl', elevation: 'card' },
+  flat:    { fill: 'card',  border: 'line', radius: 'lg' },
+  muted:   { fill: 'app',   border: 'line', radius: 'lg' },
+  ocean:   { fill: 'solid', tone: 'ocean',  radius: 'xl', elevation: 'hero' },
+  paper:   { fill: 'paper', radius: 'xs',   elevation: 'page' },
+};
+
+/** White surface container on the paper background. */
+export function Card({ variant = 'default', interactive, padding, children, onClick, style, ...rest }) {
+  const v = VARIANT[variant] || VARIANT.default;
+  /* Surface derives role="button", tabIndex and the Enter/Space handler from
+     onClick rather than from the flag, so `interactive` without `onClick` — a
+     hover lift with no keyboard path — is no longer possible. */
+  return (
+    <Surface tone={v.tone} fill={v.fill} border={v.border} radius={v.radius} elevation={v.elevation}
+      interactive={interactive ? 'card' : undefined} onClick={onClick}
+      pad={padding == null ? 'lg' : padding} style={style} {...rest}>{children}</Surface>
+  );
 }

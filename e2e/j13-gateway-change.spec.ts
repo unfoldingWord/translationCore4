@@ -43,7 +43,7 @@ async function openCheck(page: import('@playwright/test').Page) {
     .getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`)
     .getByRole('button', { name: /Titus/ })
     .click();
-  await page.getByRole('button', { name: 'Check', exact: true }).click();
+  await page.getByRole('tab', { name: 'Check', exact: true }).click();
 }
 
 /** A check the ENGLISH notes ask about that the Spanish notes cannot place by

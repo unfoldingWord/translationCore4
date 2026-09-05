@@ -74,8 +74,8 @@ describe('#108 — Publish moves into Check as Community Checking', () => {
 
   it('the top navigation offers Translate and Check, and no Publish tab', () => {
     render(<App />);
-    expect(screen.getByRole('button', { name: 'Translate' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Check' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Translate' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Check' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Publish' })).toBeNull();
     expect(screen.queryByText('Publish')).toBeNull();
   });

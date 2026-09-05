@@ -1,35 +1,41 @@
+/* SHIM. This component's name and props are unchanged, but nothing is drawn
+   here any more: it composes the primitives. Kept so an application built on
+   the old system keeps working while its call sites migrate one at a time.
+   The composition it delegates to is written out in AUDIT.md; MIGRATION.md has
+   the swap. Delete this file once your last call site is gone. */
+
 import React from 'react';
+import { Surface } from '../primitives/Surface.jsx';
+import { Stack } from '../primitives/Stack.jsx';
+import { Text } from '../primitives/Text.jsx';
+import { Choice } from '../primitives/Choice.jsx';
 import { Badge } from '../core/Badge.jsx';
 
-/** Selectable row: export formats, gateway languages, import methods. */
+/** Full-width selectable row with title, description and optional radio or icon tile.
+ * tC4 local: `recommendedLabel` localizes the Recommended badge. */
 export function OptionCard({ selected, control = 'none', icon, title, description, meta, recommended, recommendedLabel = 'Recommended', trailing, onClick, style, ...rest }) {
   return (
-    <button type="button" data-tc="surface" data-tc-selected={selected ? 'true' : undefined} onClick={onClick} style={{
-      display: 'flex', alignItems: control === 'radio' ? 'flex-start' : 'center', gap: '12px', width: '100%',
-      textAlign: 'start', cursor: 'pointer', fontFamily: 'var(--font-ui)',
-      border: 'var(--stroke-selected) solid ' + (selected ? 'var(--accent)' : 'var(--border-input)'),
-      background: selected ? 'var(--surface-accent-soft)' : '#fff',
-      borderRadius: 'var(--radius-lg)', padding: '13px 14px',
-      ...style,
-    }} {...rest}>
-      {control === 'radio' ? (
-        <span style={{ width: 18, height: 18, borderRadius: 'var(--radius-pill)', border: 'var(--stroke-control) solid ' + (selected ? 'var(--accent)' : 'var(--border-strong)'),
-          flex: 'none', marginTop: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <span style={{ width: 8, height: 8, borderRadius: 'var(--radius-pill)', background: selected ? 'var(--accent)' : 'transparent' }} />
-        </span>
-      ) : null}
-      {icon ? <span style={{ width: 42, height: 42, borderRadius: 'var(--radius-md)', background: 'var(--surface-accent-soft)',
-        color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', fontWeight: 'var(--fw-black)', flex: 'none' }}>{icon}</span> : null}
-      <span style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: 1, minWidth: 0 }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          <span data-trim="cap" style={{ fontSize: 'var(--fs-ui-lg)', letterSpacing: 'var(--track-14-5)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)' }}>{title}</span>
-          {meta ? <span style={{ fontSize: 'var(--fs-meta)', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>{meta}</span> : null}
-          {recommended ? <Badge tone="accentSoft" size="sm">{recommendedLabel}</Badge> : null}
-        </span>
-        {description ? <span style={{ fontSize: 'var(--fs-caption-lg)', letterSpacing: 'var(--track-12-5)', color: 'var(--text-secondary)', lineHeight: 'var(--lh-ui)' }}>{description}</span> : null}
-      </span>
-      {trailing ? <span style={{ flex: 'none', color: 'var(--text-tertiary)', fontWeight: 'var(--fw-heavy)' }}>{trailing}</span> : null}
-    </button>
+    <Surface as="button" tone="accent" interactive="choice" border="choice" selected={selected}
+      radius="md" onClick={onClick}
+      style={{ width: '100%', padding: '14px 16px', textAlign: 'start', cursor: 'pointer', font: 'inherit', ...style }} {...rest}>
+      <Stack direction="row" gap={12} align={control === 'radio' ? 'start' : 'center'}>
+        {control === 'radio' ? <Choice mark="radio" checked={selected} /> : null}
+        {icon ? (
+          <Surface fill="soft" radius="md" style={{ width: 42, height: 42, flex: 'none',
+            display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Text role="labelMicro" tone="accent">{icon}</Text>
+          </Surface>
+        ) : null}
+        <Stack direction="column" gap={3} grow>
+          <Stack direction="row" gap={8} align="center" wrap>
+            <Text role="strong">{title}</Text>
+            {recommended ? <Badge tone="accentSoft" size="sm">{recommendedLabel}</Badge> : null}
+          </Stack>
+          {description ? <Text role="caption">{description}</Text> : null}
+          {meta ? <Text role="meta">{meta}</Text> : null}
+        </Stack>
+        {trailing ? <Text role="ui" tone="muted" aria-hidden="true">{trailing}</Text> : null}
+      </Stack>
+    </Surface>
   );
 }

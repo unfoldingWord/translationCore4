@@ -52,7 +52,7 @@ function ProjectCard({ p }) {
             {p.languageTag} · {p.bookCodes.length} {p.bookCodes.length === 1 ? t('home.book') : t('home.books')} · {t('home.inProgress', { n: inProgress.length })}
           </span>
         </div>
-        <button type="button" data-tc="quiet" title={t('home.settings')} onClick={() => actions.openSettings(p)} style={HEADER_ACTION}>
+        <button type="button" data-i="quiet" title={t('home.settings')} onClick={() => actions.openSettings(p)} style={HEADER_ACTION}>
           {t('home.settings')}
         </button>
       </div>
@@ -69,7 +69,7 @@ function ProjectCard({ p }) {
               meta={hasPct ? undefined : '—'} onClick={() => actions.openProject(p.id, code)} />
           );
         })}
-        <button type="button" onClick={() => actions.openAddBook(p)} data-tc="surface"
+        <button type="button" onClick={() => actions.openAddBook(p)} data-i="choice" data-tone="accent"
           style={{ border: 'var(--stroke-selected) dashed var(--border-strong)', background: 'transparent', cursor: 'pointer', borderRadius: 'var(--radius-md)', padding: '10px 12px', minHeight: 62, fontFamily: 'var(--font-ui)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, color: 'var(--text-tertiary)' }}>
           <span style={{ fontSize: 'var(--fs-title-sm)', letterSpacing: 'var(--track-16)', fontWeight: 'var(--fw-heavy)', color: 'var(--text-accent)', lineHeight: 1 }}>+</span>
           <span style={{ fontSize: 'var(--fs-meta)', letterSpacing: 'var(--track-11-5)', fontWeight: 'var(--fw-heavy)' }}>{t('home.addBookTile')}</span>
@@ -108,7 +108,7 @@ function ResumeCard({ edit, projects }) {
           {edit.snippet ? t('home.lastEdited', { v: edit.verse, text: edit.snippet }) : t('home.lastEditedEmpty', { v: edit.verse })}
         </p>
       </div>
-      <span data-tc="fill" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '11px 20px', background: 'var(--accent)', color: 'var(--text-inverse)', borderRadius: 'var(--radius-pill)', fontWeight: 'var(--fw-heavy)', fontSize: 'var(--fs-ui-md)', whiteSpace: 'nowrap' }}>
+      <span data-i="fill" data-tone="accent" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '11px 20px', background: 'var(--accent)', color: 'var(--text-inverse)', borderRadius: 'var(--radius-pill)', fontWeight: 'var(--fw-heavy)', fontSize: 'var(--fs-ui-md)', whiteSpace: 'nowrap' }}>
         {t('home.resume')} →
       </span>
     </div>

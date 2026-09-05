@@ -175,7 +175,7 @@ function ToolCard({ tool, pre, book, progress, titleOf }) {
   const open = () => actions.openCheckTool(tool);
 
   return (
-    <div data-testid={`preflight-${tool}`} data-state={pre.state} data-tc={ready ? 'card' : undefined}
+    <div data-testid={`preflight-${tool}`} data-state={pre.state} data-i={ready ? 'card' : undefined} data-tone="accent"
       {...(ready ? clickableCard(open) : {})}
       style={{ ...PICKER_CARD, border: `var(--stroke) solid ${tone.border}`, background: tone.bg, boxShadow: ready ? 'var(--shadow-card)' : 'none', cursor: ready ? 'pointer' : 'default' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, ...PICKER_TITLE }}>
@@ -680,7 +680,7 @@ function CheckRail({ cs, filter, setFilter, sortMode, setSortMode, onSelect, tit
                 const st = statusOf(it);
                 const activeRow = i === cs.activeIndex;
                 return (
-                  <button key={`${it.contextId.checkId}-${i}`} type="button" data-tc="rail-item" data-tc-selected={activeRow ? 'true' : undefined} onClick={() => onSelect(i)}
+                  <button key={`${it.contextId.checkId}-${i}`} type="button" data-i="choice" data-tone="accent" data-selected={activeRow ? 'true' : undefined} onClick={() => onSelect(i)}
                     title={`${it.contextId.reference.chapter}:${it.contextId.reference.verse} · ${it.contextId.groupId}`}
                     data-ref={`${it.contextId.reference.chapter}:${it.contextId.reference.verse}`}
                     data-decided={decided(it) ? '1' : '0'}
@@ -781,7 +781,7 @@ function AlignRail({ index, activeRef, filter, setFilter, onSelect }) {
           const undrafted = it.status === 'undrafted';
           const activeRow = it.ref === activeRef;
           return (
-            <button key={it.ref} type="button" disabled={undrafted} data-tc={undrafted ? undefined : 'rail-item'} data-tc-selected={activeRow ? 'true' : undefined}
+            <button key={it.ref} type="button" disabled={undrafted} data-i={undrafted ? undefined : 'choice'} data-tone="accent" data-selected={activeRow ? 'true' : undefined}
               onClick={() => !undrafted && onSelect(it.ref)}
               data-ref={it.ref} data-status={it.status}
               style={{
@@ -1061,7 +1061,7 @@ export default function Check() {
                 progress={s.pickerProgress?.[tool]} titleOf={pickerTitleOf} />
             ))}
 
-            <div data-testid="align-card" data-tc="card"
+            <div data-testid="align-card" data-i="card" data-tone="accent"
               {...clickableCard(actions.startAligning)}
               style={{ ...PICKER_CARD, cursor: 'pointer' }}>
               <div style={PICKER_TITLE}>{t('nav.align')}</div>
@@ -1072,7 +1072,7 @@ export default function Check() {
               </span>
             </div>
 
-            <div data-testid="community-checking-card" data-tc="card"
+            <div data-testid="community-checking-card" data-i="card" data-tone="accent"
               {...clickableCard(() => actions.go('publish'))}
               style={{ ...PICKER_CARD, cursor: 'pointer' }}>
               <div style={PICKER_TITLE}>{t('cc.title')}</div>

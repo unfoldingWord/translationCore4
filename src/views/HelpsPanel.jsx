@@ -12,7 +12,7 @@ import { verseText } from './verseText.js';
 import { isSourceAbsent } from '../data/sourceState';
 import { keyCarries } from './SourceVerse.jsx';
 import { gatewayQuote, tokenizeVerse } from '../data/sourceHighlight';
-import { Button, Callout, HelpCard, IconButton, Overline, Tabs } from '../ds/index.js';
+import { Button, Callout, HelpCard, IconButton, Overline, Switcher } from '../ds/index.js';
 
 // The leading verse number of a chapter key — span keys ("17-18") are real
 // USFM verse bridges (see usfm/indexer.ts) and MUST NOT be dropped.
@@ -300,7 +300,7 @@ function AcademyTab({ notesSlot, slugs, actions }) {
         {t('understand.academyIntro')}
       </p>
       {slugs.map((slug) => (
-        <button key={slug} type="button" data-tc="outline" data-testid="academy-article" onClick={() => actions.loadHelpArticle({ kind: 'ta', slug, rung: notesSlot.rung })}
+        <button key={slug} type="button" data-i="choice" data-tone="accent" data-testid="academy-article" onClick={() => actions.loadHelpArticle({ kind: 'ta', slug, rung: notesSlot.rung })}
           style={{ border: 'var(--stroke) solid var(--border)', background: 'var(--surface-card)', cursor: 'pointer', textAlign: 'start', borderRadius: 'var(--radius-lg)', padding: '13px 14px', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, fontFamily: 'var(--font-ui)' }}>
           <span style={{ fontSize: 'var(--fs-ui-md)', fontWeight: 'var(--fw-heavy)', color: 'var(--text-heading)' }}>{slug}</span>
           <span style={{ color: 'var(--text-accent)', fontWeight: 'var(--fw-heavy)' }}>→</span>
@@ -418,7 +418,7 @@ export function HelpsPanel({ chapter }) {
   const loading = !u || u.loading;
   return (
     <aside data-testid="helps-panel" style={{ width: 'var(--helps-width)', flex: 'none', background: 'var(--surface-panel)', borderInlineStart: 'var(--stroke-hair) solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      <Tabs value={tab} onChange={actions.setHelpsTab} tabs={[
+      <Switcher indicator="underline" value={tab} onChange={actions.setHelpsTab} options={[
         { value: 'notes', label: t('helps.notes') },
         { value: 'words', label: t('helps.words') },
         { value: 'questions', label: t('helps.questions') },
