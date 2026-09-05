@@ -96,22 +96,40 @@ Before you send a pull request:
 
 ### Claim an issue
 
-Assignment is the claim. A collaborator self-assigns. If you cannot self-assign, comment
-"claiming" and a maintainer assigns you. Seven days with no linked activity releases the
-claim — a maintainer unassigns, and the issue is claimable again.
+Assignment is the claim. If you have write or triage access to this repository, assign
+yourself. If you do not (an outside contributor), comment "claiming" and a maintainer
+assigns you; GitHub does not let you assign yourself. Seven days with no linked activity
+releases the claim — a maintainer unassigns, and the issue is claimable again.
+
+To see what is claimable: on the web, open the
+[project board](https://github.com/orgs/unfoldingWord/projects/6) and read the `Status`
+column; `Ready` and unassigned is claimable. From the command line, `gh issue view` does
+not show the board status; use
+`gh project item-list 6 --owner unfoldingWord --format json` and read the `status` field
+of the item. An issue with no label and no board status is not yet triaged; ask in a
+comment before you start it.
+
+### Found a defect while working another issue?
+
+Fix it inline when it is inside the issue's own scope (the same defect class the issue
+targets, in the files the issue touches), and say so in the pull request. Otherwise open a
+new issue, link it from the pull request, and leave the fix out. Never fold an unrelated
+fix into a change set.
 
 ### Labels
 
 | Label | Meaning |
 |---|---|
 | `Priority/Critical` … `Priority/Low` | Priority. |
-| `needs-rig` | The item needs the local Pankosmia development rig. CI cannot verify it. |
+| `needs-rig` | The item needs the Pankosmia development rig. The `rig` job in CI runs the rig-backed suites on every pull request; the label marks work whose acceptance must be checked on the rig, not only on a clean clone. |
 | `question` | An open question. Answering it is the work. |
 | `upstream` | The item depends on or observes an upstream (Pankosmia / Door43) behavior. |
 | `epic` | A tracking issue that groups sub-issues. |
 | `good first issue` | A bounded item with a clear verification command. |
 
-Add a label only when a query needs it.
+Add a label only when a query needs it. Applying a label needs triage access. If you do
+not have it, write the label you want in the issue or pull request body (for example
+"needs `needs-rig`"), and a maintainer applies it.
 
 ## Tests that need more than this repository
 
@@ -122,8 +140,24 @@ Two prerequisites are outside this repository:
 - **A sibling `sample-burrito` checkout** — the three S-0 smoke tests need it.
 
 Without them, the affected tests skip and name what they need. Work that touches the
-platform boundary gets the `needs-rig` label; a maintainer runs the rig-backed suites
-before merge.
+platform boundary gets the `needs-rig` label (ask for it in the body if you cannot apply
+it); the rig job in CI and a maintainer run the rig-backed suites before merge.
+
+## Write a test that reads files
+
+The build plugin `vite-plugin-node-polyfills` (`vite.config.js`) aliases node builtins to
+browser mocks, and it does so under Vitest too, even with `environment: 'node'`. So
+`import fs from 'node:fs'` gives you `null`, and `node:url` gives a browser proxy that
+crashes. Get the real builtins from the runtime instead:
+
+```ts
+const fs = process.getBuiltinModule('node:fs');
+const path = process.getBuiltinModule('node:path');
+```
+
+Every test in `test/` that reads files uses this pattern; `test/indexer.test.ts` is a
+short example. Resolve paths from `process.cwd()`, which is the repository root under
+Vitest.
 
 ## Style
 
