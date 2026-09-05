@@ -9,8 +9,8 @@ name: package-desktop
 # /clients/uw-tc4, then 200) before it zips.
 #
 # #119 adds the linux-x64 job beside the proven macos-arm64 one. Both run the
-# same script; only the host differs. Windows x64 and signed/notarized
-# installers remain #44's.
+# same script; only the host differs. Windows x64 is #181 (Increment 6);
+# signed/notarized installers remain #44's.
 
 on:
   push:
@@ -61,7 +61,8 @@ jobs:
       # Single-layer download (#119): `archive: false` uploads the zip as one file, so the
       # download IS that zip and the execute bits inside survive. The action then ignores
       # `name` and names the artifact after the file: tC4-<version>-macos-arm64-unsigned.zip.
-      # (v4 re-zipped the upload and every file came back 644; testers unpacked twice.)
+      # (The action's own archive normalizes what it packs to mode 644, which is why the
+      # build zips first; v4 then wrapped that zip in its archive, and testers unpacked twice.)
       - name: Upload the artifact (merges to main — 30-day retention)
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v7

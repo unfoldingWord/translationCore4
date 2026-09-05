@@ -1,8 +1,9 @@
 # Desktop packaging (#57, #119)
 
 This document records the build recipe for the unsigned desktop artifacts.
-Issue #119 added Linux x64 beside the proven macOS arm64 path. Issue #44
-extends this recipe with Windows and with signing. It must not replace it.
+Issue #119 added Linux x64 beside the proven macOS arm64 path, and the
+single-layer download. Issue #181 adds Windows x64 (Increment 6); issue #44
+adds signing. Neither must replace this recipe.
 
 ## What the pipeline does
 
@@ -13,14 +14,38 @@ runs on: macOS arm64, or Linux x64.
 that touch packaging inputs, and uploads each zip as a workflow artifact.
 
 The upload is a single layer. The workflow uses `actions/upload-artifact@v7`
-with `archive: false`, which uploads the zip as one file. The artifact is
-therefore named after the file, `tC4-<version>-<os>-<arch>-unsigned.zip`, and
-the download is that file. Unpack it once. The execute bits of the launcher and
-the Electronite binaries survive, because the action does not re-zip the
-upload. (With the v4 action the download was a zip of the zip, and every file
-inside came back mode 644; testers unpacked twice.) Pull request builds and
-merges to `main` produce the same file name; only the retention differs (3 days
-and 30 days).
+with `archive: false`, which uploads the zip as one file. The action then
+ignores `name`: the artifact is named after the file,
+`tC4-<version>-<os>-<arch>-unsigned.zip`, and the download is that file
+[VERIFIED — `actions/upload-artifact` v7 `action.yml` `archive` input and
+`src/upload/upload-artifact.ts:60-63`, read 2026-09-05; v7.0.0 release note].
+Unpack it once. The execute bits of the launcher and the Electronite binaries
+are the ones the build's own zip recorded, because nothing re-archives it.
+
+History: the action's own archive normalizes every file it packs to mode 644
+(its README, "Permission Loss"), so the build has always zipped the artifact
+itself before upload. With the v4 action that zip was then wrapped in the
+action's archive, and the download was a zip of the zip; testers unpacked
+twice. `archive: false` removes the outer layer.
+
+Pull request builds and merges to `main` produce the same file name; only the
+retention differs (3 days and 30 days).
+
+macOS witness of the single-layer download [VERIFIED — run 33981389105 (PR
+#182), artifact 9973915962, `tC4-4.0.0-alpha.3-macos-arm64-unsigned.zip`,
+142556909 bytes, sha256
+`8600c6454e5291afd0f43440feb7db09e04c7378b1b23ce6a136dd43a9b44b72`; macOS
+26.5.1 arm64, 2026-09-05]: the raw artifact download (`gh api
+.../actions/artifacts/9973915962/zip`) is the zip itself (`file`: Zip archive
+data, compression method=store). One `unzip` gave `translationCore4/` with
+`start-tc4.command`, `bin/server.bin` and
+`Electron.app/Contents/MacOS/Electron` all mode `-rwxr-xr-x`. With a fresh
+`HOME`, `start-tc4.command` started the server on port 19119; `/` answered
+`303` to `/clients/uw-tc4` and the client `200`; a second launch left one
+server answering; `user_settings.json` resolved `repo_dir` to
+`$HOME/pankosmia/tc4-projects`, empty. Note that `gh run download` extracts
+the artifact archive, so with `archive: false` it yields the unpacked
+`translationCore4/` folder directly, with the same modes.
 
 Two build variants exist (`--debug` selects the second):
 
@@ -166,9 +191,11 @@ directory.
    request builds and merges to `main` use the same file name; only the
    retention differs (3 days and 30 days).
 2. Unpack once, with `unzip`. Do not use an archiver that drops permission
-   bits. (Before 2026-09-05 the download was a zip of this zip and had to be
-   unpacked twice; that layer is gone, see "What the pipeline does". The
-   Debian witness below unpacked the two-layer download of PR #146.)
+   bits. Before 2026-09-05 the download was a zip of this zip and had to be
+   unpacked twice [VERIFIED — clean-machine witness on Debian 13.6 x86_64, artifact 9854372667 from run 33649518351, 2026-09-04, recorded on PR #146]; that layer is
+   gone, see "What the pipeline does". The Debian witness below unpacked that
+   two-layer download; the single layer is witnessed on macOS above and awaits
+   its own Linux clean-machine witness.
 3. Run `./translationCore4/start-tc4.sh`.
 
 There is no installer and no desktop entry. #44 owns that work.
