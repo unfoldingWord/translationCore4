@@ -9,8 +9,18 @@ extends this recipe with Windows and with signing. It must not replace it.
 `scripts/package-desktop.zsh` builds one unsigned artifact for the host it
 runs on: macOS arm64, or Linux x64.
 `.github/workflows/package-desktop.yml` runs the script on two runners
-(`macos-15` and `ubuntu-24.04`) on every merge to `main`, and uploads each
-zip as a workflow artifact.
+(`macos-15` and `ubuntu-24.04`) on every merge to `main` and on pull requests
+that touch packaging inputs, and uploads each zip as a workflow artifact.
+
+The upload is a single layer. The workflow uses `actions/upload-artifact@v7`
+with `archive: false`, which uploads the zip as one file. The artifact is
+therefore named after the file, `tC4-<version>-<os>-<arch>-unsigned.zip`, and
+the download is that file. Unpack it once. The execute bits of the launcher and
+the Electronite binaries survive, because the action does not re-zip the
+upload. (With the v4 action the download was a zip of the zip, and every file
+inside came back mode 644; testers unpacked twice.) Pull request builds and
+merges to `main` produce the same file name; only the retention differs (3 days
+and 30 days).
 
 Two build variants exist (`--debug` selects the second):
 
@@ -152,13 +162,13 @@ directory.
 
 ### Install and launch
 
-1. Download `tc4-desktop-linux-x64-unsigned` from the workflow run. Pull
-   request builds and merges to `main` use the same artifact name; only the
-   retention differs (7 days and 30 days).
-2. Unpack twice. GitHub wraps every artifact in its own zip, so the download
-   contains `tC4-<version>-linux-x64-unsigned.zip`. Unpack the download, then
-   unpack the inner zip with `unzip`. Do not use an archiver that drops
-   permission bits. [VERIFIED — clean-machine witness on Debian 13.6 x86_64, artifact 9854372667 from run 33649518351, 2026-09-04, recorded on PR #146]
+1. Download `tC4-<version>-linux-x64-unsigned.zip` from the workflow run. Pull
+   request builds and merges to `main` use the same file name; only the
+   retention differs (3 days and 30 days).
+2. Unpack once, with `unzip`. Do not use an archiver that drops permission
+   bits. (Before 2026-09-05 the download was a zip of this zip and had to be
+   unpacked twice; that layer is gone, see "What the pipeline does". The
+   Debian witness below unpacked the two-layer download of PR #146.)
 3. Run `./translationCore4/start-tc4.sh`.
 
 There is no installer and no desktop entry. #44 owns that work.
@@ -215,8 +225,8 @@ Every artifact carries `BUILD-MANIFEST.json` at its root with the same data.
 
 ## Known limits (start of the pipeline, not the end)
 
-- **Two platforms**: macOS arm64 (#57) and Linux x64 (#119). Windows x64,
-  macOS x64, and signing are #44.
+- **Two platforms**: macOS arm64 (#57) and Linux x64 (#119). Windows x64 is
+  #181 (Increment 6); macOS x64 and signing are #44.
 - **Linux is unsigned and un-installed**: the artifact is a plain zip with no
   installer, no desktop entry, and no signature. Most desktops refuse to run
   it from the file manager, so the user must run `start-tc4.sh` from a
