@@ -8,6 +8,7 @@ import React from 'react';
 import { Rule } from '../primitives/Rule.jsx';
 
 /** Hairline rule between groups. */
+/* tC4 local: the ignored prop is destructured as `_inverse` for the repository's lint. */
 export function Divider({ orientation = 'horizontal', label, inverse: _inverse, style, ...rest }) {
   /* `inverse` is unnecessary now — Rule reads --line from the surface context,
      so a rule inside a data-on="dark" container is already correct. Accepted

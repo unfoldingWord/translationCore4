@@ -29,10 +29,20 @@ in the file:
 - `tokens/states.css`: every `[data-i]` state declaration is `!important`. The
   primitives set their resting background, border and shadow inline, and an
   inline style beats a stylesheet rule that is not `!important`, so as shipped
-  no hover, press or focus state rendered (verified 2026-09-04 with a
-  computed-style probe: Button, BookTile and the app's `data-i` elements did
-  not change on hover; on the previous version all did). The retired
-  `interactions.css` carried the same flags for the same reason.
+  no hover, press or focus state rendered [VERIFIED — Playwright computed-style
+  hover probe on the rig-served build: Button, BookTile and the app's `data-i`
+  elements did not change on hover with the package as shipped; on `main`
+  21e7348 all did; 2026-09-04]. The retired `interactions.css` carried the same
+  flags for the same reason. The `choice` hover rule excludes selected surfaces
+  (`aria-checked`, `aria-pressed`, `data-selected`), as the old rule did: with
+  the flags, the package's selected-hover tint would repaint a solid-filled
+  selected chip pale under white text.
+- `primitives/Surface`: `disabled` reaches the DOM — a native `disabled` on a
+  button, `aria-disabled` otherwise — so a disabled `OptionCard` is not
+  focusable and is announced as disabled, as the old `<button disabled>` was.
+- `OptionCard`: `trailing` is not `aria-hidden`; the app puts an "Always
+  included" badge and installed counts there, which are part of the row's
+  accessible name.
 - `tokens/fonts.css`: the Google Fonts `@import` is replaced by the `<link>`
   in `index.html` (the app's existing pattern), so the fetch starts before the
   CSS bundle parses.

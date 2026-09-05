@@ -34,7 +34,9 @@ export function OptionCard({ selected, control = 'none', icon, title, descriptio
           {description ? <Text role="caption">{description}</Text> : null}
           {meta ? <Text role="meta">{meta}</Text> : null}
         </Stack>
-        {trailing ? <Text role="ui" tone="muted" aria-hidden="true">{trailing}</Text> : null}
+        {/* tC4 local: not aria-hidden — the app's trailing slot carries an
+            "Always included" badge and installed counts, part of the row's name. */}
+        {trailing ? <Text role="ui" tone="muted">{trailing}</Text> : null}
       </Stack>
     </Surface>
   );

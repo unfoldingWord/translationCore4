@@ -24,10 +24,10 @@
 /* tC4 local: every state declaration below is !important. The primitives set
    their resting background, border and shadow INLINE, and an inline style beats
    any stylesheet rule that is not !important — so without the flag none of these
-   states ever renders (verified 2026-09-04 with a computed-style probe on the
-   package as shipped: Button, BookTile and app data-i elements did not change on
-   hover). The pre-primitive interactions.css carried the same flags for the same
-   reason. To sync back to the design master. */
+   states ever renders [VERIFIED — Playwright computed-style hover probe on the
+   rig-served build, main 21e7348 (all change) vs this package as shipped (none
+   change), 2026-09-04]. The pre-primitive interactions.css carried the same flags
+   for the same reason. To sync back to the design master. */
 
 /* Solid tone fill: primary and every other filled action. */
 [data-i="fill"]:hover  { background: var(--tone-hover) !important; }
@@ -45,11 +45,13 @@
 [data-i="text"]:hover  { color: var(--link-hover) !important; }
 [data-i="text"]:active { opacity: .7 !important; }
 
-/* A bordered surface offered as a choice: hovering previews choosing. */
-[data-i="choice"]:hover { border-color: var(--tone-border) !important; background: var(--tone-soft) !important; }
-[data-i="choice"][aria-checked="true"]:hover,
-[data-i="choice"][aria-pressed="true"]:hover,
-[data-i="choice"][data-selected="true"]:hover { background: var(--tone-soft) !important; }
+/* A bordered surface offered as a choice: hovering previews choosing. A SELECTED
+   choice keeps its own (inline) selected look on hover — with the flags above, a
+   tint here would repaint a solid-filled selected chip pale under white text
+   (tC4 local; the retired interactions.css excluded selected surfaces the same way). */
+[data-i="choice"]:not([aria-checked="true"]):not([aria-pressed="true"]):not([data-selected="true"]):hover {
+  border-color: var(--tone-border) !important; background: var(--tone-soft) !important;
+}
 
 /* A container you can open. It lifts; it never tints, because it is not a choice. */
 [data-i="card"]:hover { border-color: var(--tone-border) !important; box-shadow: var(--shadow-hover) !important; }
