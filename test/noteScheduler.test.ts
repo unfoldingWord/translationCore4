@@ -383,6 +383,30 @@ describe('2026-08-28 adversarial round 25 regression — concurrent project open
     expect(dispatched.some((d) => (d.patch as Record<string, unknown>)?.view === 'home')).toBe(false);
   });
 
+  it("#95: a newer request whose drain REFUSES clears the earlier request's progress record — no indicator is left standing", async () => {
+    const { ctx, dispatched } = openCtx();
+    let releaseA: (v: Record<string, unknown>) => void = () => {};
+    let aStarted: () => void = () => {};
+    const aStartedP = new Promise<void>((r) => { aStarted = r; });
+    const storeA = fakeStore(() => new Promise((r) => { releaseA = r; aStarted(); }));
+    ctx.makeStore = (() => storeA) as never;
+    const { __performProjectOpenForTests: open } = await import('../src/state.jsx');
+    const openA = open(ctx, 'repo/A', 'GEN');
+    await aStartedP; // A has dispatched its `opening` record and is reading its journal
+    const openingPatches = () => dispatched.filter((d) => 'opening' in ((d.patch as Record<string, unknown>) ?? {}));
+    expect(openingPatches().length).toBe(1);
+    expect((openingPatches()[0].patch as { opening: { repoPath: string } }).opening.repoPath).toBe('repo/A');
+    // B arrives while A is in flight, and B's drain refuses (a retained save failure).
+    ctx.schedulerRef.current = { drain: async () => false, getState: () => 'error', dispose: () => {} };
+    await open(ctx, 'repo/B', 'TIT');
+    const last = openingPatches().at(-1)!.patch as { opening: unknown };
+    expect(last.opening).toBeNull(); // B, the latest request, cleared A's record
+    // A resolves afterwards, superseded: it must not resurrect a record.
+    releaseA({ repoPath: 'repo/A', name: 'A', scriptDirection: 'ltr', bookCodes: ['GEN'] });
+    await openA;
+    expect((openingPatches().at(-1)!.patch as { opening: unknown }).opening).toBeNull();
+  });
+
   it('the production wiring refreshes the Understand notes when the note scheduler reconciles (round 31 F1)', async () => {
     const { ctx, dispatched } = openCtx();
     const storeB = fakeStore(async (repoPath) => ({ repoPath, name: 'B', scriptDirection: 'ltr', bookCodes: ['TIT'] }));

@@ -51,11 +51,13 @@ export function OpenProgressView({ opening, now = () => Date.now() }) {
   return (
     <Layer open level="overlay" scrim="modal" placement="center" role="dialog"
       label={t('open.title')} dismiss="" animate={false} trapFocus
+      /* Nothing inside is focusable, so Layer's trap focuses its panel itself, and its
+         Tab handler steps aside when it finds no focusable children. The keydown lands on
+         the panel (Layer spreads extra props onto it), so it is swallowed here: focus
+         stays on the dialog until the open ends (Codex, rounds 1 and 2). */
+      onKeyDown={(e) => { if (e.key === 'Tab') e.preventDefault(); }}
       scrimProps={{ 'data-testid': 'open-progress', 'data-stage': opening.stage }}>
-      {/* Nothing here is focusable, so Layer's trap focuses the panel itself; a Tab
-          from there would leave for the covered page — keep it here (Codex, round 1). */}
-      <Surface fill="card" radius="2xl" elevation="modal" pad="lg" style={{ width: 420, maxWidth: '100%' }}
-        onKeyDown={(e) => { if (e.key === 'Tab') e.preventDefault(); }}>
+      <Surface fill="card" radius="2xl" elevation="modal" pad="lg" style={{ width: 420, maxWidth: '100%' }}>
         <Stack direction="column" gap={12}>
           <Text role="h3">{t('open.title')}</Text>
           <Text role="caption" aria-live="polite" data-testid="open-progress-stage">

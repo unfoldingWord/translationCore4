@@ -61,6 +61,16 @@ describe('#95: OpenProgressView', () => {
     expect(screen.queryByTestId('open-progress')).toBeNull();
   });
 
+  it('keeps keyboard focus on the dialog: it is focused, and a Tab there is swallowed', () => {
+    const late = () => 5_000_000;
+    render(<OpenProgressView opening={opening({ done: 10, total: 100, startedAt: 1 })} now={late} />);
+    const dialog = screen.getByRole('dialog');
+    expect(document.activeElement).toBe(dialog);
+    const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    dialog.dispatchEvent(tab);
+    expect(tab.defaultPrevented).toBe(true);
+  });
+
   it('the two short stages show an indeterminate bar, and clearing the record removes it', () => {
     const late = () => 5_000_000;
     const { rerender } = render(<OpenProgressView opening={opening({ stage: 'state', startedAt: 1 })} now={late} />);
