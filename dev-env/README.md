@@ -36,6 +36,10 @@ crates.io `=` pin when 0.18.5+ publishes (see `docs/RISKS.md` #1).
   `/clients/<homepage>`), and builds the server shim (`server/`).
 - `scripts/seed.zsh` — reset the environment to pristine. Recreates `state/work`
   from templates; no first-boot variance.
+  Seeds two local projects: `sample_burrito` (the conformance sample) and
+  `sample_burrito_large` (issue #95: Titus with 4000 saved edits, one journal segment
+  each, built by `scripts/seed-large-project.mjs` from the reference modules; the
+  slow-open journey J15 opens it and watches the progress indicator).
 - `scripts/run.zsh` — start the server at `127.0.0.1:19998` (override:
   `TC4_RIG_PORT`).
 - `scripts/stop.zsh` — stop the server.

@@ -198,6 +198,10 @@ const initial = () => ({
   view: 'home', // home | read (Understand) | draft (Translate) | check | publish (Community Checking)
   projects: null, // null = loading; [] = none
   project: null, // ProjectSummary + repoPath
+  // Issue #95: the open in flight, or null. { repoPath, stage: 'journal' |
+  // 'state' | 'prepare', done, total, startedAt }. The OpenProgress view shows
+  // it only after a show-threshold, so a fast open flashes nothing.
+  opening: null,
   book: null,
   chapter: 1,
   bookRaw: null, // raw USFM string — the editing source of truth
@@ -951,6 +955,19 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
   // B1/D65).
   const canOpen = await drainForProjectOpen({ schedulerRef, noteSchedulerRef });
   if (!canOpen || superseded()) return;
+  // Issue #95: the open's progress record. Every stage transition and every
+  // ~1% of the journal read lands here; the view decides whether to show it.
+  const startedAt = Date.now();
+  const progress = (stage, done = 0, total = 0) => ({ repoPath, stage, done, total, startedAt });
+  let lastReported = -1;
+  const onProgress = (p) => {
+    if (superseded()) return;
+    const step = Math.max(1, Math.floor(p.total / 100));
+    if (p.stage === 'journal' && p.done !== p.total && p.done - lastReported < step) return;
+    lastReported = p.done;
+    dispatch({ type: 'set', patch: { opening: progress(p.stage, p.done, p.total) } });
+  };
+  dispatch({ type: 'set', patch: { opening: progress('journal') } });
   try {
     // R-E33-3: the versification frame cache is keyed by repoPath, which is
     // NOT unique across a delete-and-recreate inside one session. Clear it
@@ -963,8 +980,9 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
     // classify derived state against the journal, seed a journal-less
     // project universally, reconcile out-of-band USFM — or STOP with a
     // diagnosable report (surfaced through bookError below).
-    const summary = await store.open(repoPath);
+    const summary = await store.open(repoPath, { onProgress });
     if (superseded()) return; // a newer open owns the refs
+    dispatch({ type: 'set', patch: { opening: progress('prepare') } });
     storeRef.current = store;
     schedulerRef.current = new SaveScheduler({
       writeBook: (book, whole) => store.writeBook(book, whole),
@@ -1042,11 +1060,14 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
     await actions.resolutionContext().catch(() => {});
     if (superseded()) return;
     await actions.openBook(bookCode || summary.bookCodes[0]);
+    if (superseded()) return;
+    dispatch({ type: 'set', patch: { opening: null } });
   } catch (e) {
     if (superseded()) return; // a stale failure must not route the OPEN project Home
+    // A failed open surfaces its diagnosable report and never a stuck bar (#95).
     dispatch({
       type: 'set',
-      patch: { bookError: e?.reason || e?.message || String(e), view: 'home' },
+      patch: { bookError: e?.reason || e?.message || String(e), view: 'home', opening: null },
     });
   }
 }

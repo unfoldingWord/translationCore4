@@ -149,7 +149,7 @@ checks out a synthetic merge commit that is not in the branch history. Field nam
 | `node`, `platform`, `ci` | the Node version, `<platform>-<arch>`, and whether `CI` was set |
 | `rig.api`, `rig.detected`, `rig.version`, `rig.product` | the rig URL; whether `GET /version` answered; its `pkg_version` and `product_name` |
 | `rig.rev`, `rig.revSource` | the pinned pankosmia-web revision, read from `dev-env/server/Cargo.toml` (the HTTP API reports no hash) |
-| `rig.repos`, `rig.pristine`, `rig.extraRepos` | the repos directory used (`RIG_REPOS`); whether `_local_/_local_` holds only `sample_burrito`; the extra repos when it does not |
+| `rig.repos`, `rig.pristine`, `rig.extraRepos` | the repos directory used (`RIG_REPOS`); whether `_local_/_local_` holds only the seeded projects (`sample_burrito`, and `sample_burrito_large` since issue #95); the extra repos when it does not |
 | `suites[]` | one entry per suite, in run order (see below) |
 | `ok` | true when every suite that ran passed and no rig suite was refused |
 

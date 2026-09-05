@@ -26,6 +26,11 @@ cp -R "$ROOT/conformance/sample-burrito" "$WORK/repos/_local_/_local_/sample_bur
 if [ ! -d "$WORK/repos/_local_/_local_/sample_burrito/.git" ]; then
   (cd "$WORK/repos/_local_/_local_/sample_burrito" && git init -q -b main . && git add -A && git -c user.email=rig@local -c user.name=rig commit -qm seed)
 fi
+# Issue #95: the LARGE fixture — Titus with 4000 saved edits, one journal segment
+# each, built offline from the reference modules and converged by construction, so
+# a project open reads thousands of segments and the slow-open journey can watch
+# the progress indicator. Deterministic (same bytes every seed).
+node "$ROOT/scripts/seed-large-project.mjs" "$WORK/repos/_local_/_local_/sample_burrito_large" --edits 4000
 # A SECOND gateway-language suite (es-419_gl) rides along, so the two-language-set
 # path (D17/D30 ladder, D23a gateway change, D36 carry-over) is exercisable on the
 # rig. es-419_tn v66 covers 3JN/JON/RUT/TIT — TIT and JON are the rig's books, so a

@@ -255,6 +255,19 @@ interface OpenOptions {
   vrsName?: string;
 }
 
+/** Progress of one open() (issue #95). `journal`: segments read of the total
+ * the path listing announced — determinate. `state`: the classifier and any
+ * regeneration — no count, so `total` is 0. */
+export interface OpenProgress {
+  stage: 'journal' | 'state';
+  done: number;
+  total: number;
+}
+
+export interface OpenHooks {
+  onProgress?: (progress: OpenProgress) => void;
+}
+
 interface DiskInventory {
   books: Record<string, { usfm: string; scope: string[] }>;
   decisionFiles: Record<string, DecisionFile>;
@@ -916,20 +929,31 @@ export class JournalingStore implements BurritoStore {
     return { repoPath };
   }
 
-  async open(repoPath: string): Promise<ProjectSummary> {
-    return this.openInternal(repoPath, {});
+  /** Open a project. `hooks.onProgress` (issue #95) reports the journal read
+   * segment by segment, then the state check; the app shows a determinate
+   * indicator from it when an open is slow. */
+  async open(repoPath: string, hooks: OpenHooks = {}): Promise<ProjectSummary> {
+    return this.openInternal(repoPath, {}, hooks);
   }
 
-  private async openInternal(repoPath: string, options: OpenOptions): Promise<ProjectSummary> {
+  private async openInternal(
+    repoPath: string,
+    options: OpenOptions,
+    hooks: OpenHooks = {},
+  ): Promise<ProjectSummary> {
     const summary = await this.raw.open(repoPath); // binds raw + setCurrentProject
     this.boundRepoPath = repoPath;
     this.journal = new JournalStore({ api: this.api, repoPath, kv: this.kv, now: this.now });
     this.events = [];
     this.foldCache = null;
     this.resolutions.clear();
-    await this.journal.open(); // actor repair + HLC ratchet (issue #62 / #61)
+    // Actor repair + the outbox half of the HLC ratchet (issue #62 / #61). The
+    // segment half is DEFERRED to the union read below, so an open scans the
+    // journal once, not twice (issue #95); the journal store refuses to mint a
+    // ts until that read completes (R-8.2.4).
+    await this.journal.open({ ratchet: 'deferred' });
     return inProjectQueue(repoPath, async () => {
-      await this.recoverAndConverge(options);
+      await this.recoverAndConverge(options, hooks);
       return summary;
     });
   }
@@ -939,8 +963,9 @@ export class JournalingStore implements BurritoStore {
    * state as seeded / converged / journal-ahead (regenerate forward) /
    * out-of-band (reconcile via §8.8) — anything else is a visible,
    * diagnosable stop. */
-  private async recoverAndConverge(options: OpenOptions): Promise<void> {
+  private async recoverAndConverge(options: OpenOptions, hooks: OpenHooks = {}): Promise<void> {
     const journal = this.mustJournal();
+    const report_ = hooks.onProgress;
 
     // 1. Replay any durable staged intent with its EXACT bytes (R-8.1.8).
     const replayed = await journal.replayStaged();
@@ -952,8 +977,13 @@ export class JournalingStore implements BurritoStore {
           `surfaced, never silently dropped (R-8.1.7/R-8.1.8)`,
       );
 
-    // 2. The union. A corrupt segment is never treated as absent history.
-    const union = await journal.readUnion();
+    // 2. The union — the one journal scan of this open; it also completes the
+    // deferred R-8.2.4 ratchet (issue #95). A corrupt segment is never treated
+    // as absent history.
+    const union = await journal.readUnion({
+      onProgress: report_ ? (p) => report_({ stage: 'journal', ...p }) : undefined,
+    });
+    report_?.({ stage: 'state', done: 0, total: 0 });
     if (union.invalid.length || union.misnamed.length)
       throw new Error(
         `refuse to open ${this.mustRepo()}: the journal holds unusable files — ` +

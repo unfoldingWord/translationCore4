@@ -70,6 +70,18 @@ interface SegmentListing {
 
 export type OwnSegmentListing = SegmentListing;
 
+/** open() options (issue #95). `ratchet: 'deferred'` skips the segment scan in
+ * open(): the union read that follows ratchets the clock from every segment it
+ * reads, so one scan serves both. Until that read completes, issueTs(),
+ * stage() and publish() refuse (R-8.2.4 must hold before any ts is minted).
+ * The outbox ratchet still runs in open() (kv reads, no HTTP). */
+export interface JournalOpenOptions {
+  ratchet?: 'now' | 'deferred';
+}
+
+/** Progress of one union read: `done` segments read of `total` listed (issue #95). */
+export type UnionProgress = (progress: { done: number; total: number }) => void;
+
 const JOURNAL_PREFIX = 'checking/journal/';
 
 /** Group every `checking/journal/<actorId>/segments/<name>` path of ONE paths
@@ -151,6 +163,9 @@ export class JournalStore {
   private readonly now: () => number;
   private boundActorId: string | null = null;
   private clock: ReturnType<typeof makeClock> | null = null;
+  /** True between open({ ratchet: 'deferred' }) and the readUnion() that
+   * completes the R-8.2.4 ratchet (issue #95). */
+  private ratchetPending = false;
 
   constructor(init: JournalStoreInit) {
     this.api = init.api;
@@ -201,8 +216,12 @@ export class JournalStore {
 
   /** Derive the actor id (D53c), provision-or-validate actor.json (R-8.1.13),
    * and ratchet the HLC past everything this actor has already published
-   * (R-8.2.4) — after a restart the store never re-mints a ts. */
-  async open(): Promise<{ actorId: string; actorDoc: ActorDoc }> {
+   * (R-8.2.4) — after a restart the store never re-mints a ts.
+   *
+   * With `ratchet: 'deferred'` (issue #95) the segment scan is left to the
+   * readUnion() that the caller performs next, so an open() reads the journal
+   * once, not twice; the outbox ratchet still happens here. */
+  async open(options: JournalOpenOptions = {}): Promise<{ actorId: string; actorDoc: ActorDoc }> {
     this.boundActorId = await actorIdFor(this.kv, this.repoPath);
     const actorId = this.boundActorId;
 
@@ -250,11 +269,30 @@ export class JournalStore {
     });
 
     // The SHARED clock for this identity (§8.2), then RATCHET it (R-8.2.4) past
-    // EVERY ts this store can see.
+    // EVERY ts this store can see — the segments now, or in the union read that
+    // follows (deferred), plus the outbox either way.
     this.clock = clockFor(this.repoPath, actorId, this.now);
-    await this.ratchetFromJournal(this.clock, actorId);
+    if (options.ratchet === 'deferred') {
+      this.ratchetPending = true;
+      await this.ratchetFromOutbox(this.clock);
+    } else {
+      await this.ratchetFromJournal(this.clock, actorId);
+      this.ratchetPending = false;
+    }
 
     return { actorId, actorDoc };
+  }
+
+  /** The clock is safe to issue from: open() completed its ratchet, or the
+   * deferred ratchet was completed by readUnion() (issue #95). */
+  private mustBeRatcheted(what: string): ReturnType<typeof makeClock> {
+    if (this.clock === null) throw new Error('JournalStore: not open — call open() first');
+    if (this.ratchetPending)
+      throw new Error(
+        `JournalStore: refuse to ${what} — open({ ratchet: 'deferred' }) needs readUnion() first, ` +
+          'so the clock is ratcheted past every visible ts (R-8.2.4, issue #95)',
+      );
+    return this.clock;
   }
 
   /** Ratchet the clock past the maximum ts of every event this store can see
@@ -292,6 +330,12 @@ export class JournalStore {
       if (actor === actorId)
         for (const entry of listing.invalid) clock.ratchet(segmentTs(entry.name));
     }
+    await this.ratchetFromOutbox(clock);
+  }
+
+  /** The outbox part of the R-8.2.4 ratchet: this actor's staged-but-unpublished
+   * intents (kv, no HTTP). */
+  private async ratchetFromOutbox(clock: ReturnType<typeof makeClock>): Promise<void> {
     for (const key of await this.kv.keys(this.outboxPrefix)) {
       const ts = key.slice(this.outboxPrefix.length);
       if (isTs(ts)) clock.ratchet(ts); // the key suffix — the action's FIRST ts
@@ -308,7 +352,11 @@ export class JournalStore {
    * every event must carry the directory's actor (R-8.1.12), and the filename
    * must equal the first event's ts (R-8.1.2). Every listed file lands in exactly
    * one of the three arrays — nothing is dropped in silence (R-8.1.7). */
-  private async classifySegments(actorId: string, names: string[]): Promise<SegmentListing> {
+  private async classifySegments(
+    actorId: string,
+    names: string[],
+    onRead?: () => void,
+  ): Promise<SegmentListing> {
     const dir = `${JOURNAL_PREFIX}${actorId}/segments`;
     const segments: ValidSegment[] = [];
     const misnamed: string[] = [];
@@ -317,9 +365,11 @@ export class JournalStore {
       const ts = segmentTs(name);
       if (!isTs(ts) || segmentName(ts) !== name) {
         misnamed.push(name);
+        onRead?.(); // listed, judged without a read — still one of `total`
         continue;
       }
       const raw = await this.readOrNull(`${dir}/${name}`);
+      onRead?.();
       if (raw === null) {
         invalid.push({ name, reason: 'vanished' }); // listed, then gone
         continue;
@@ -353,8 +403,7 @@ export class JournalStore {
 
   /** Issue the next §8.2 HLC ts for this actor. */
   issueTs(): string {
-    if (this.clock === null) throw new Error('JournalStore: not open — call open() first');
-    return this.clock.issue();
+    return this.mustBeRatcheted('issue a ts').issue();
   }
 
   /** List this actor's own published segments over HTTP. The platform's
@@ -378,8 +427,14 @@ export class JournalStore {
    * complete account of everything unusable (R-8.1.7: nothing dropped in
    * silence). Issue #62's open() folds this union; its recovery classifier
    * decides what an `invalid` entry means (an own invalid segment may be
-   * republished from the outbox; any left over is a diagnosable stop). */
-  async readUnion(): Promise<{
+   * republished from the outbox; any left over is a diagnosable stop).
+   *
+   * This read also RATCHETS the clock (R-8.2.4) from every segment it accepts
+   * and from every own invalid filename, exactly as ratchetFromJournal does, and
+   * completes a deferred open() ratchet (issue #95: one scan per open). The
+   * ratchet is a maximum, so doing it here after open() ratcheted already is
+   * harmless. `onProgress` is called once per listed segment. */
+  async readUnion(options: { onProgress?: UnionProgress } = {}): Promise<{
     events: JournalEvent[];
     /** One entry per accepted SEGMENT (= one action), ts-sorted across actors —
      * the recovery classifier's "journal is ahead by the last action" prefix
@@ -390,19 +445,37 @@ export class JournalStore {
     invalid: Array<{ actor: string; name: string; reason: string }>;
   }> {
     const own = this.actorId; // throws before any read when not open
+    const clock = this.clock;
+    if (clock === null) throw new Error('JournalStore: not open — call open() first');
     const byActor = groupSegmentPaths(await this.api.listPaths(this.repoPath));
     if (!byActor.has(own)) byActor.set(own, []);
     const actions: Array<{ actor: string; ts: string; events: JournalEvent[] }> = [];
     const misnamed: Array<{ actor: string; name: string }> = [];
     const invalid: Array<{ actor: string; name: string; reason: string }> = [];
     const actors = [...byActor.keys()].sort();
+    let total = 0;
+    for (const actor of actors) total += (byActor.get(actor) ?? []).length;
+    let done = 0;
+    options.onProgress?.({ done, total });
+    const onRead = (): void => {
+      done += 1;
+      options.onProgress?.({ done, total });
+    };
     for (const actor of actors) {
-      const listing = await this.classifySegments(actor, byActor.get(actor) ?? []);
+      const listing = await this.classifySegments(actor, byActor.get(actor) ?? [], onRead);
       for (const name of listing.misnamed) misnamed.push({ actor, name });
-      for (const entry of listing.invalid) invalid.push({ actor, ...entry });
-      for (const segment of listing.segments)
+      for (const entry of listing.invalid) {
+        invalid.push({ actor, ...entry });
+        // An OWN invalid segment's filename ts was minted here and may yet be
+        // republished from a staged intent: never re-issue it (P1-1 rule).
+        if (actor === own) clock.ratchet(segmentTs(entry.name));
+      }
+      for (const segment of listing.segments) {
         actions.push({ actor, ts: segment.ts, events: segment.events });
+        clock.ratchet(segment.maxTs);
+      }
     }
+    this.ratchetPending = false;
     actions.sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
     return { events: actions.flatMap((a) => a.events), actions, actors, misnamed, invalid };
   }
@@ -414,6 +487,7 @@ export class JournalStore {
    * setIfAbsent duplicate refusal as publish(). Returns the staged ts. */
   async stage(events: JournalEvent[]): Promise<string> {
     const actorId = this.actorId;
+    this.mustBeRatcheted('stage');
     const sealed = await sealAction(events);
     const foreign = events.find((event) => event.actor !== actorId);
     if (foreign)
@@ -438,6 +512,7 @@ export class JournalStore {
    * existing INVALID bytes → refuse (recovery only via replayStaged). */
   async publish(events: JournalEvent[]): Promise<PublishResult> {
     const actorId = this.actorId; // throws before any work when not open
+    this.mustBeRatcheted('publish');
     // Seal first (validate → normalize → re-validate → size cap R-8.1.9): a
     // malformed or oversize action creates nothing — not even a staged intent.
     const sealed = await sealAction(events);
