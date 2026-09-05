@@ -1205,10 +1205,12 @@ corrected the plans and this entry in the same pull request. No ruling changed.]
 Context. R-8.5.6 listed `text.verse.set` among the operations that MUST carry `generation`,
 and said omission refuses the fold. The reference schema stamped only `align.verse.set`,
 `check.decision.set` and `note.add` (`journal/schema.mjs`, `GENERATION_OPS`); the app's writer
-(`writeBook`) and the benchmark corpus never stamped a verse edit; every journal written so
-far lacks the field on verse edits. A Codex review of the issue #95 pull request found the
-disagreement [VERIFIED — spec line 468 vs `journal/schema.mjs:341`, `journalingStore.ts`
-`writeBook`, `conformance/bench-fold.mjs:119`; 2026-09-05].
+(`writeBook`), the reference reconcile writer and the benchmark corpus never stamp a verse
+edit, so the journals those writers produced carry no stamp there; the seeded large fixture
+of issue #95 does stamp its edits. A Codex review of the issue #95 pull request found the
+disagreement [VERIFIED — BURRITO-SPEC 1.10 line 468 vs `journal/schema.mjs:341`,
+`journal/reconcile.mjs:106`, `src/data/journal/journalingStore.ts` `writeBook`,
+`conformance/bench-fold.mjs:119`, all at `main` 807ba4e; 2026-09-05].
 
 Ruling. The sentence was over-broad relative to the design, not the implementations. The
 stamp exists for records whose first write MAY be rootless (R-8.5.15), because for them
@@ -1217,9 +1219,12 @@ nothing else names the generation. A `text.verse.set` MUST NOT be rootless on a 
 already resolves it that way (`journal/fold.mjs`, `headSancFor` and `inGeneration`).
 Making the stamp mandatory would refuse every existing journal for no new information.
 
-What changes: R-8.5.6 names the three operations; a `text.verse.set` MAY carry the stamp,
-which MUST be an §8.2 ts when present, and a stamp naming a root other than its chain's is
-retained as `prior-generation` and never projected. Writers are not required to stamp verse
+What changes: R-8.5.6 names the three operations and says why `note.add` is among them (it
+is grow-only, with no structural ancestry); a `text.verse.set` MAY carry the stamp, which
+MUST be an §8.2 ts when present, a stamp that does not resolve to its chain's generation root
+is retained as `prior-generation` and never projected, and the stamp never anchors a verse
+edit whose `base` is unknown (`journal/fold.mjs` `headSancFor`: the stamp fallback is limited
+to the three operations). Writers are not required to stamp verse
 edits; the seeded large fixture (`scripts/seed-large-project.mjs`) does. What was rejected:
 O1, making the stamp mandatory on verse edits, with an acceptance rule for old journals —
 that rule is this ruling with more words.

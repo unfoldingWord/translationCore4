@@ -163,9 +163,8 @@ const OPS = {
     const k = verseRefError(e.chapter, e.verse);
     if (k) return `text.verse.set chapter/verse do not form a §8.4 register key — ${k}`;
     if (!isStr(e.text)) return 'text.verse.set without text';
-    // R-8.5.6 (D68): the stamp is OPTIONAL here — the base chain carries the generation
-    // (R-8.5.15) — but a stamp that is present must be an §8.2 ts.
-    if (e.generation !== undefined) { const g = tsError(e.generation); if (g) return `text.verse.set generation ${g}`; }
+    // R-8.5.6 (D68): `generation` is OPTIONAL here — the base chain carries the
+    // generation (R-8.5.15). A present stamp's grammar is checked once for every op below.
     const t = journaledTextError(e.text);
     return t ? `text.verse.set text ${t}` : null;
   },

@@ -2613,6 +2613,15 @@ try {
   check('J29f: a text.verse.set whose stamp names a root OTHER than its chain\'s is retained as prior-generation and its text never projects [covers R-8.5.6]',
     outC.books.TIT.verses['1:1'] !== 'sello ajeno\n' && outC.retained.some((r) => r.ts === badStamp.ts && r.reason === 'prior-generation'),
     JSON.stringify({ verse: outC.books.TIT?.verses?.['1:1'], retained: outC.retained }));
+  // (e) an UNKNOWN base is not rescued by a stamp naming the current root: the chain is the
+  //     generation, and an edit whose chain is unresolved stays unanchored (never a head)
+  const orphan = E('text.verse.set', 'drafter-a', t(7, 0, 'drafter-a'), t(6, 5, 'nobody-x'), { book: 'TIT', chapter: '1', verse: '1', text: 'huérfano\n', generation: add2.ts });
+  const outE = fold([add1, remove, add2, orphan]);
+  //     (What the key projects while the base is missing — today the slot stub, because an
+  //     unknown-base edit displaces the standing head — is the subject of issue #179.)
+  check('J29f: a text.verse.set with an UNKNOWN base and a current-root stamp does not project — the stamp never stands in for the base chain [covers R-8.5.6 R-8.5.15]',
+    outE.books.TIT.verses['1:1'] !== 'huérfano\n' && outE.retained.some((r) => r.ts === orphan.ts),
+    JSON.stringify({ verse: outE.books.TIT?.verses?.['1:1'], retained: outE.retained.filter((r) => r.ts === orphan.ts) }));
   // (d) a stamp that is not an §8.2 ts is refused at the schema
   let refused = '';
   try { fold([add2, verse({ ts: t(6, 0, 'drafter-a'), text: 'mal sello\n', generation: 'not-a-ts' })]); } catch (e) { refused = e.message; }

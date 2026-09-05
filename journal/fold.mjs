@@ -191,11 +191,17 @@ export const fold = (eventsIn) => {
   // stamp is mandatory for exactly the ops whose first write is legitimately rootless
   // (`align.verse.set`, `check.decision.set`, `note.add`), which is what lets two genuine
   // concurrent first writes fork instead of silently agreeing to be branch-agnostic.
+  // D68 (R-8.5.6): the stamp anchors ONLY the operations that must carry it. A
+  // text.verse.set takes its generation from its base chain; when that chain is
+  // unresolved the edit is unanchored (pending its base), and an optional stamp on it
+  // must not stand in — otherwise a verse edit with an unknown base and a plausible
+  // stamp would join a live head and project (Codex review of #175).
+  const STAMP_ANCHORED = new Set(['align.verse.set', 'check.decision.set', 'note.add']);
   const headSancFor = (e) => {
     if (e.op === 'book.add' || e.op === 'text.structure.apply') return e.ts;
     const a = sancOf(e.base ?? null);
     if (a != null) return a;
-    return e.generation != null ? aliasTs(e.generation) : null;
+    return STAMP_ANCHORED.has(e.op) && e.generation != null ? aliasTs(e.generation) : null;
   };
 
   // 3. per-key live-head sets. Head = {ts, actor, sanc, book, event}.
