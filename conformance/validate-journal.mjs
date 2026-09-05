@@ -2614,7 +2614,7 @@ try {
     outC.books.TIT.verses['1:1'] !== 'sello ajeno\n' && outC.retained.some((r) => r.ts === badStamp.ts && r.reason === 'prior-generation'),
     JSON.stringify({ verse: outC.books.TIT?.verses?.['1:1'], retained: outC.retained }));
   // (e) an UNKNOWN base is not rescued by a stamp naming the current root: the chain is the
-  //     generation, and an edit whose chain is unresolved stays unanchored (never a head)
+  //     generation, and an edit whose chain is unresolved remains an unanchored live head that never projects
   const orphan = E('text.verse.set', 'drafter-a', t(7, 0, 'drafter-a'), t(6, 5, 'nobody-x'), { book: 'TIT', chapter: '1', verse: '1', text: 'huérfano\n', generation: add2.ts });
   const outE = fold([add1, remove, add2, orphan]);
   //     (What the key projects while the base is missing — today the slot stub, because an

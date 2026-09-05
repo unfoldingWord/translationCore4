@@ -8,7 +8,7 @@
 // static ESM import (Node's CJS interop and the app bundler both resolve it).
 import usfmjs from 'usfm-js';
 import { slotKeysOf, recompose } from './skeleton.mjs';
-import { validateEvent, PAYLOAD_FIELDS } from './schema.mjs';
+import { validateEvent, PAYLOAD_FIELDS, GENERATION_OPS } from './schema.mjs';
 import { identityKeyOf, noteRekeyError, journaledTextError, MAX_JSON_DEPTH } from './grammar.mjs';
 import { md5Hex as md5 } from './md5.mjs';
 export { slotKeysOf }; // kept on this module for existing importers
@@ -196,12 +196,11 @@ export const fold = (eventsIn) => {
   // unresolved the edit is unanchored (pending its base), and an optional stamp on it
   // must not stand in — otherwise a verse edit with an unknown base and a plausible
   // stamp would join a live head and project (Codex review of #175).
-  const STAMP_ANCHORED = new Set(['align.verse.set', 'check.decision.set', 'note.add']);
   const headSancFor = (e) => {
     if (e.op === 'book.add' || e.op === 'text.structure.apply') return e.ts;
     const a = sancOf(e.base ?? null);
     if (a != null) return a;
-    return STAMP_ANCHORED.has(e.op) && e.generation != null ? aliasTs(e.generation) : null;
+    return GENERATION_OPS.has(e.op) && e.generation != null ? aliasTs(e.generation) : null;
   };
 
   // 3. per-key live-head sets. Head = {ts, actor, sanc, book, event}.
