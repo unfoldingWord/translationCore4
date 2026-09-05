@@ -9,8 +9,8 @@ name: package-desktop
 # /clients/uw-tc4, then 200) before it zips.
 #
 # #119 adds the linux-x64 job beside the proven macos-arm64 one. Both run the
-# same script; only the host differs. Windows x64 and signed/notarized
-# installers remain #44's.
+# same script; only the host differs. Windows x64 is #181 (Increment 6);
+# signed/notarized installers remain #44's.
 
 on:
   push:
@@ -58,21 +58,27 @@ jobs:
       - name: Build the artifact
         run: zsh scripts/package-desktop.zsh
 
+      # Single-layer download (#119): `archive: false` uploads the zip as one file, so the
+      # download IS that zip and the execute bits inside survive. The action then ignores
+      # `name` and names the artifact after the file: tC4-<version>-macos-arm64-unsigned.zip.
+      # (The action's own archive normalizes what it packs to mode 644, which is why the
+      # build zips first; v4 then wrapped that zip in its archive, and testers unpacked twice.
+      # Evidence and citations: docs/PACKAGING.md, "What the pipeline does".)
       - name: Upload the artifact (merges to main — 30-day retention)
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: tc4-desktop-macos-arm64-unsigned
           path: dist-desktop/tC4-*-unsigned.zip
+          archive: false
           if-no-files-found: error
           retention-days: 30
 
       - name: Upload the artifact (pull requests — short retention, for pre-merge Gatekeeper testing)
         if: github.event_name == 'pull_request'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: tc4-desktop-macos-arm64-unsigned-pr
           path: dist-desktop/tC4-*-unsigned.zip
+          archive: false
           if-no-files-found: error
           retention-days: 3
 
@@ -122,27 +128,29 @@ jobs:
 
       - name: Upload the smoke-test logs (failures only)
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: tc4-desktop-linux-x64-smoke-logs
           path: dist-desktop/smoke-*.log
           if-no-files-found: warn
           retention-days: 7
 
+      # Single-layer download (#119): one file, `archive: false`; the artifact is named after
+      # the file, tC4-<version>-linux-x64-unsigned.zip, and the execute bits inside survive.
       - name: Upload the artifact (merges to main — 30-day retention)
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: tc4-desktop-linux-x64-unsigned
           path: dist-desktop/tC4-*-unsigned.zip
+          archive: false
           if-no-files-found: error
           retention-days: 30
 
       - name: Upload the artifact (pull requests — short retention; same name as the main build, #119)
         if: github.event_name == 'pull_request'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: tc4-desktop-linux-x64-unsigned
           path: dist-desktop/tC4-*-unsigned.zip
+          archive: false
           if-no-files-found: error
           retention-days: 3
