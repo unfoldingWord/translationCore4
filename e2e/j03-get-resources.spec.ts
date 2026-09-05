@@ -31,7 +31,7 @@ async function openTool(page: import('@playwright/test').Page, tool: string) {
     .getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`)
     .getByRole('button', { name: /Titus/ })
     .click();
-  await page.getByRole('button', { name: 'Check', exact: true }).click();
+  await page.getByRole('tab', { name: 'Check', exact: true }).click();
   await page.getByTestId(`open-${tool}`).click();
 }
 

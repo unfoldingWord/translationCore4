@@ -10,7 +10,7 @@ import SourceTexts from './views/modals/SourceTexts.jsx';
 import GatewayChange from './views/modals/GatewayChange.jsx';
 import CommunityChecking from './views/CommunityChecking.jsx';
 import Understand from './views/Understand.jsx';
-import { AppHeader, SegmentedControl, StatusDot, Button } from './ds/index.js';
+import { AppHeader, Switcher, StatusDot, Button } from './ds/index.js';
 import { t } from './i18n';
 
 // FR-32: the indicator binds to the ACTUAL write promise via the SaveScheduler
@@ -38,13 +38,13 @@ function SaveIndicator() {
   const isError = effective === 'error';
   return (
     <div data-testid="save-indicator" data-state={effective}
-      style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', fontWeight: 'var(--fw-heavy)', display: 'flex', alignItems: 'center', gap: 6, color: isError ? 'var(--tc-invalid-inverse)' : 'rgba(255,255,255,.66)' }}>
+      style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', fontWeight: 'var(--fw-heavy)', display: 'flex', alignItems: 'center', gap: 6, color: isError ? 'var(--tc-invalid-on-dark)' : 'rgba(255,255,255,.66)' }}>
       <StatusDot status={m.status} size={8} />
       {m.label}
       {isError && (
-        <Button size="sm" variant="outline" data-tc="quiet-inverse" data-testid={noteError ? 'retry-note-save' : undefined}
+        <Button size="sm" variant="outline" data-i="quiet" data-testid={noteError ? 'retry-note-save' : undefined}
           onClick={noteError ? actions.retryNoteSave : actions.retrySave}
-          style={{ background: 'transparent', color: 'var(--tc-invalid-inverse)', borderColor: 'var(--tc-invalid-inverse)', padding: '3px 10px', fontSize: 'var(--fs-label)' }}>
+          style={{ background: 'transparent', color: 'var(--tc-invalid-on-dark)', borderColor: 'var(--tc-invalid-on-dark)', padding: '3px 10px', fontSize: 'var(--fs-label)' }}>
           {t('app.retry')}
         </Button>
       )}
@@ -68,7 +68,7 @@ function TopBar() {
       center={inProject ? (
         // D63: Publish is retired as a top-level tab — the publish flow lives
         // inside Check as the Community Checking tool (#108).
-        <SegmentedControl tone="inverse" value={s.view === 'publish' ? 'check' : s.view} onChange={(v) => actions.go(v)}
+        <Switcher indicator="pill" value={s.view === 'publish' ? 'check' : s.view} onChange={(v) => actions.go(v)}
           options={[
             { value: 'read', label: t('nav.understand') },
             { value: 'draft', label: t('nav.draft') },

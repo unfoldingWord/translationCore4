@@ -57,7 +57,7 @@ async function createProject(page: import('@playwright/test').Page, name: string
   await page.getByRole('button', { name: 'Left to right' }).click();
   await page.getByRole('button', { name: 'Create Bible' }).click();
   await page.getByRole('button', { name: 'Start a blank book' }).click({ timeout: 20_000 });
-  await page.getByLabel('Book').selectOption('TIT');
+  await page.getByLabel('Book', { exact: true }).selectOption('TIT');
   await page.getByRole('button', { name: 'Create book' }).click();
   await expect(page.getByText(name).first()).toBeVisible({ timeout: 20_000 });
   await expect(page.getByRole('button', { name: 'start this verse' }).first()).toBeVisible({

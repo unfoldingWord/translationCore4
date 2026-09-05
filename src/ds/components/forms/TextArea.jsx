@@ -1,21 +1,18 @@
-import React from 'react';
-import { Overline } from '../core/Overline.jsx';
+/* SHIM. This component's name and props are unchanged, but nothing is drawn
+   here any more: it composes the primitives. Kept so an application built on
+   the old system keeps working while its call sites migrate one at a time.
+   The composition it delegates to is written out in AUDIT.md; MIGRATION.md has
+   the swap. Delete this file once your last call site is gone. */
 
-/** Multi-line entry. Defaults to UI type; `variant="scripture"` renders Charis SIL at
-    reading size and is required for any box holding translated text. */
-export function TextArea({ label, variant = 'ui', rows = 3, dir, value, onChange, placeholder, style, ...rest }) {
-  const serif = variant === 'scripture';
+import React from 'react';
+import { Field } from '../primitives/Field.jsx';
+import { Input } from '../primitives/Input.jsx';
+
+/** Multi-line entry for translator comments and draft text. */
+export function TextArea({ label, variant = 'ui', dir, rows = 3, style, ...rest }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', ...style }}>
-      {label ? <Overline as="label" style={{ marginBottom: '6px' }}>{label}</Overline> : null}
-      <textarea data-tc="field" rows={rows} dir={dir} value={value} onChange={onChange} placeholder={placeholder} style={{
-        width: '100%', boxSizing: 'border-box', border: 'var(--stroke) solid var(--border-input)',
-        borderRadius: 'var(--radius-input)', padding: '11px 13px', outline: 'none', resize: 'vertical',
-        fontFamily: serif ? 'var(--font-scripture)' : 'var(--font-ui)',
-        fontSize: serif ? 'var(--fs-verse-sm)' : 'var(--fs-ui-md)',
-        lineHeight: serif ? 'var(--lh-verse-sm)' : 'var(--lh-body)',
-        color: serif ? 'var(--text-scripture)' : 'var(--text-body)', background: 'var(--surface-app)',
-      }} {...rest} />
-    </div>
+    <Field label={label} style={style}>
+      <Input as="textarea" variant={variant} dir={dir} rows={rows} {...rest} />
+    </Field>
   );
 }

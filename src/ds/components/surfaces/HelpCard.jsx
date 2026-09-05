@@ -1,38 +1,37 @@
-import React from 'react';
-import { Badge } from '../core/Badge.jsx';
+/* SHIM. This component's name and props are unchanged, but nothing is drawn
+   here any more: it composes the primitives. Kept so an application built on
+   the old system keeps working while its call sites migrate one at a time.
+   The composition it delegates to is written out in AUDIT.md; MIGRATION.md has
+   the swap. Delete this file once your last call site is gone. */
 
-/** Helps-panel card: a translation note or key word tied to a verse. */
-export function HelpCard({ kind = 'note', verse, title, body, active, onClick, actionLabel = 'Translation Academy →', onAction, style, ...rest }) {
-  // A key word is named by its title and carries no verse label; a note quotes
-  // its phrase under a verse label.
-  const k = kind === 'word'
-    ? { tc: 'outline-cultivate', tone: 'cultivate', badge: 'Key word', headGap: 0, titleSize: 'var(--fs-title-sm)', titleMargin: '7px 0 5px', quote: (s) => s, verseLabel: false }
-    : { tc: 'outline', tone: 'accent', badge: 'Note', headGap: 6, titleSize: 'var(--fs-body)', titleMargin: '0 0 5px', quote: (s) => '\u201C' + s + '\u201D', verseLabel: true };
-  const state = active
-    ? { borderColor: 'var(--accent)', background: 'var(--surface-accent-soft)' }
-    : { borderColor: 'var(--border)', background: 'var(--surface-card)' };
+import React from 'react';
+import { Surface } from '../primitives/Surface.jsx';
+import { Stack } from '../primitives/Stack.jsx';
+import { Text } from '../primitives/Text.jsx';
+import { Action } from '../primitives/Action.jsx';
+
+/** Helps-panel card carrying one translation note or key word.
+ * tC4 local (carried from the first vendoring, #104/#106): a key word is named
+ * by its title and carries no verse label; a note with no quoted phrase (a
+ * chapter introduction) prints no bare quotes; the body is a div, because it
+ * carries rendered markdown blocks and a <p> inside a <p> is invalid. */
+export function HelpCard({ kind = 'note', verse, title, body, active, actionLabel = 'Translation Academy →', onAction, onClick, style, ...rest }) {
+  const word = kind === 'word';
+  /* The inner badge inherits the tone from the outer Surface, so note/word
+     switches four values at once from one prop. */
   return (
-    <div data-tc={k.tc} data-tc-selected={active ? 'true' : undefined} onClick={onClick} style={{ cursor: 'pointer', border: 'var(--stroke) solid ' + state.borderColor,
-      borderRadius: 'var(--radius-lg)', padding: 14, background: state.background,
-      ...style }} {...rest}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: k.headGap }}>
-        <Badge tone={k.tone}>{k.badge}</Badge>
-        {verse && k.verseLabel ? <span style={{ fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', color: 'var(--text-tertiary)', fontWeight: 'var(--fw-bold)' }}>v{verse}</span> : null}
-      </div>
-      {/* A note with no quoted phrase (a chapter introduction) has no title to
-        * quote \u2014 rendering the quotes anyway printed a bare \u201C\u201D. */}
-      {title ? (
-        <p style={{ fontFamily: 'var(--font-scripture)', fontSize: k.titleSize,
-          lineHeight: 'var(--lh-body)', fontWeight: 'var(--fw-bold)', color: 'var(--text-heading)', margin: k.titleMargin }}>
-          {k.quote(title)}
-        </p>
-      ) : null}
-      {/* A div, not a p: the body carries rendered markdown blocks, and a <p>
-        * inside a <p> is invalid \u2014 the browser closes the outer one early. */}
-      <div style={{ fontSize: 'var(--fs-ui-sm)', lineHeight: 'var(--lh-body)', color: 'var(--text-secondary)', margin: 0 }}>{body}</div>
-      {onAction ? <button type="button" data-tc="text" onClick={e => { e.stopPropagation(); onAction(); }} style={{ marginTop: 9, border: 0,
-        background: 'transparent', cursor: 'pointer', fontFamily: 'var(--font-ui)', fontWeight: 'var(--fw-heavy)',
-        fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--accent)', padding: 0 }}>{actionLabel}</button> : null}
-    </div>
+    <Surface tone={word ? 'cultivate' : 'accent'} interactive="choice" border="line"
+      selected={active} fill="card" radius="lg" pad="md" onClick={onClick} style={style} {...rest}>
+      <Stack direction="row" gap={7} align="center" style={{ marginBottom: 6 }}>
+        <Surface fill="solid" radius="pill" style={{ display: 'inline-flex', padding: '2px 7px' }}>
+          <Text role="label" style={{ color: 'var(--tone-on-fill)' }}>{word ? 'Key word' : 'Note'}</Text>
+        </Surface>
+        {verse != null && !word ? <Text role="labelNum">v{verse}</Text> : null}
+      </Stack>
+      {title ? <Text role="quote" as="p" style={{ marginBottom: 5 }}>{word ? title : '\u201C' + title + '\u201D'}</Text> : null}
+      <Text role="body" as="div" tone="muted" style={{ fontSize: 'var(--fs-ui-sm)' }}>{body}</Text>
+      {onAction ? <Action weight="text" size="sm" style={{ marginTop: 9 }}
+        onClick={e => { e.stopPropagation(); onAction(); }}>{actionLabel}</Action> : null}
+    </Surface>
   );
 }

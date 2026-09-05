@@ -174,7 +174,7 @@ export default function Draft() {
                       // accessible name stays "start this verse" (journeys J1/J14).
                       <p style={{ direction: dir, textAlign: 'start', ...type, margin: 0 }}>
                         <sup style={{ fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', marginInlineEnd: 3, verticalAlign: 'super' }}>{v.n}</sup>
-                        <button type="button" data-tc="surface" aria-label={t('draft.startVerse')} onClick={() => actions.startVerse(s.chapter, v.n)}
+                        <button type="button" data-i="choice" data-tone="accent" aria-label={t('draft.startVerse')} onClick={() => actions.startVerse(s.chapter, v.n)}
                           style={{ border: 'var(--stroke-selected) dashed var(--border-strong)', background: 'transparent', borderRadius: 'var(--radius-sm)', padding: '2px 10px', marginInlineEnd: '.3em', cursor: 'pointer', fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption-lg)', letterSpacing: 'var(--track-12-5)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', verticalAlign: 'middle' }}>
                           {t('draft.draftVerse', { n: v.n })}
                         </button>

@@ -1,17 +1,25 @@
-import React from 'react';
-import { Overline } from '../core/Overline.jsx';
+/* SHIM. This component's name and props are unchanged, but nothing is drawn
+   here any more: it composes the primitives. Kept so an application built on
+   the old system keeps working while its call sites migrate one at a time.
+   The composition it delegates to is written out in AUDIT.md; MIGRATION.md has
+   the swap. Delete this file once your last call site is gone. */
 
-/** Labelled single-line input. The label is always an Overline above the field. */
-export function TextField({ label, hint, value, onChange, placeholder, invalid, id, style, ...rest }) {
+import React from 'react';
+import { Field } from '../primitives/Field.jsx';
+import { Input } from '../primitives/Input.jsx';
+
+/** Labelled single-line text input.
+ * tC4 local: an `id` goes to the Field, so the label's htmlFor reaches the
+ * control (accessibility + getByLabel tests). */
+export function TextField({ label, hint, invalid, id, style, ...rest }) {
+  /* The old `invalid` was a boolean with no message, and it suppressed the
+     field's own focus treatment — an invalid input had no focus ring at all.
+     Field takes an `error` string instead, which also wires aria-invalid,
+     aria-describedby and role="alert". A bare boolean can only produce the red
+     border, so that is what it maps to; pass a message to gain the rest. */
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', ...style }}>
-      {label ? <Overline as="label" htmlFor={id} style={{ marginBottom: '6px' }}>{label}</Overline> : null}
-      <input id={id} data-tc={invalid ? undefined : 'field'} value={value} onChange={onChange} placeholder={placeholder} style={{
-        width: '100%', border: 'var(--stroke) solid ' + (invalid ? 'var(--tc-invalid)' : 'var(--border-input)'),
-        borderRadius: 'var(--radius-input)', padding: '10px 12px', fontFamily: 'var(--font-ui)',
-        fontSize: 'var(--fs-ui-md)', letterSpacing: 'var(--track-14)', color: 'var(--text-body)', background: '#fff', outline: 'none',
-      }} {...rest} />
-      {hint ? <p style={{ fontSize: 'var(--fs-caption-lg)', letterSpacing: 'var(--track-12-5)', color: 'var(--text-tertiary)', margin: '8px 0 0', lineHeight: 'var(--lh-ui)' }}>{hint}</p> : null}
-    </div>
+    <Field label={label} hint={hint} id={id} style={style}>
+      <Input invalid={invalid} {...rest} />
+    </Field>
   );
 }

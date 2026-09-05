@@ -1,19 +1,22 @@
+/* SHIM. This component's name and props are unchanged, but nothing is drawn
+   here any more: it composes the primitives. Kept so an application built on
+   the old system keeps working while its call sites migrate one at a time.
+   The composition it delegates to is written out in AUDIT.md; MIGRATION.md has
+   the swap. Delete this file once your last call site is gone. */
+
 import React from 'react';
-/** 34×20 switch. On is Inspire, off is mist. Never animates beyond the 150ms slide. */
-export function Toggle({ checked, onChange, label, disabled, style }) {
-  const sw = (
-    <span onClick={disabled ? undefined : onChange} style={{
-      width: 34, height: 20, borderRadius: 'var(--radius-pill)', position: 'relative', flex: 'none',
-      background: checked ? 'var(--accent)' : 'var(--uw-mist)', cursor: disabled ? 'default' : 'pointer',
-      transition: 'background var(--dur-hover) var(--ease-standard)',
-    }}>
-      <span style={{ position: 'absolute', top: 2, insetInlineStart: checked ? 16 : 2, width: 16, height: 16,
-        borderRadius: 'var(--radius-pill)', background: '#fff',
-        transition: 'inset-inline-start var(--dur-hover) var(--ease-standard)' }} />
-    </span>
+import { Field } from '../primitives/Field.jsx';
+import { Choice } from '../primitives/Choice.jsx';
+
+/** Setting switch used in side panels (page setup, export options). */
+export function Toggle({ checked, onChange, label, disabled, style, ...rest }) {
+  const mark = <Choice mark="switch" checked={checked} disabled={disabled} onChange={onChange} />;
+  if (!label) return <span style={style} {...rest}>{mark}</span>;
+  /* placement="start" is the entire difference between this row and Checkbox's —
+     the thing the two old components hard-coded separately. */
+  return (
+    <Field label={label} disabled={disabled} placement="start" style={style} {...rest}>
+      {mark}
+    </Field>
   );
-  if (!label) return sw;
-  return <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px',
-    fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', color: disabled ? 'var(--text-tertiary)' : 'var(--text-body)', ...style }}>
-    <span>{label}</span>{sw}</label>;
 }

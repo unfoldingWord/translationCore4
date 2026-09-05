@@ -1,14 +1,24 @@
+/* SHIM. This component's name and props are unchanged, but nothing is drawn
+   here any more: it composes the primitives. Kept so an application built on
+   the old system keeps working while its call sites migrate one at a time.
+   The composition it delegates to is written out in AUDIT.md; MIGRATION.md has
+   the swap. Delete this file once your last call site is gone. */
+
 import React from 'react';
-/** Bordered pill toggle: rail filters, book selection, include-options. */
-export function FilterChip({ selected, onClick, mark, tone = 'accent', children, style, ...rest }) {
-  const on = tone === 'ocean'
-    ? { background: 'var(--uw-ocean)', color: '#fff', borderColor: 'var(--uw-ocean)' }
-    : { background: 'var(--surface-accent-soft)', color: 'var(--uw-ocean)', borderColor: 'var(--accent)' };
-  return <button type="button" data-trim="cap" data-tc="surface" data-tc-selected={selected ? 'true' : undefined} onClick={onClick} style={{
-    border: 'var(--stroke-selected) solid', borderRadius: 'var(--radius-pill)', padding: '7px 14px', cursor: 'pointer',
-    fontFamily: 'var(--font-ui)', fontWeight: 'var(--fw-heavy)', fontSize: 'var(--fs-caption-lg)', letterSpacing: 'var(--track-12-5)',
-    display: 'inline-flex', alignItems: 'center', gap: '7px', whiteSpace: 'nowrap',
-    ...(selected ? on : { background: '#fff', color: 'var(--text-tertiary)', borderColor: 'var(--border-input)' }),
-    ...style,
-  }} {...rest}>{mark ? <span style={{ fontWeight: 'var(--fw-black)' }}>{mark}</span> : null}{children}</button>;
+import { Surface } from '../primitives/Surface.jsx';
+import { Text } from '../primitives/Text.jsx';
+
+/** Bordered pill toggle for multi-select and filtering. */
+export function FilterChip({ selected, mark, tone = 'accent', children, onClick, style, ...rest }) {
+  const solid = tone === 'ocean' && selected;
+  return (
+    <Surface as="button" tone={tone} interactive="choice" border="choice" selected={selected}
+      fill={solid ? 'solid' : undefined} radius="pill" onClick={onClick}
+      style={{ padding: '7px 14px', cursor: 'pointer', font: 'inherit', ...style }} {...rest}>
+      <Text role="caption" tone={solid ? undefined : (selected ? 'tone' : 'muted')}
+        style={{ fontWeight: 'var(--fw-heavy)', ...(solid ? { color: 'var(--tone-on-fill)' } : null) }}>
+        {mark ? mark + ' ' : ''}{children}
+      </Text>
+    </Surface>
+  );
 }

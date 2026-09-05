@@ -21,8 +21,8 @@
    PT Serif is a fallback only. It is deliberately not fetched — a fallback exists to
    render if Charis fails, and downloading a second full serif to do that costs the
    translator bandwidth for nothing. */
-/* The Google-hosted families are loaded from index.html (same pattern the app
-   already used) so the browser starts the fetch before the CSS bundle parses. */
+/* tC4 local: the Google-hosted families are loaded from index.html (the app's
+   existing pattern) so the browser starts the fetch before the CSS bundle parses. */
 
 @font-face {
   font-family: "Awami Nastaliq";

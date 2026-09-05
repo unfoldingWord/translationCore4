@@ -1,36 +1,49 @@
-import React from 'react';
+/* SHIM. This component's name and props are unchanged, but nothing is drawn
+   here any more: it composes the primitives. Kept so an application built on
+   the old system keeps working while its call sites migrate one at a time.
+   The composition it delegates to is written out in AUDIT.md; MIGRATION.md has
+   the swap. Delete this file once your last call site is gone. */
 
-/** Single circular radio. For a full labelled set use RadioGroup. */
-export function Radio({ checked, disabled, label, description, onChange, style, ...rest }) {
-  const dot = (
-    <span style={{ width: 18, height: 18, flex: 'none', borderRadius: 'var(--radius-pill)',
-      border: 'var(--stroke-control) solid ' + (checked ? 'var(--accent)' : 'var(--border-strong)'),
-      background: disabled ? 'var(--disabled-bg)' : '#fff',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      transition: 'border-color var(--dur-hover) var(--ease-standard)' }}>
-      <span style={{ width: 8, height: 8, borderRadius: 'var(--radius-pill)', background: checked ? 'var(--accent)' : 'transparent' }} />
-    </span>
-  );
-  if (!label) return <span onClick={disabled ? undefined : onChange} style={{ cursor: disabled ? 'default' : 'pointer', ...style }} {...rest}>{dot}</span>;
+import React from 'react';
+import { Field } from '../primitives/Field.jsx';
+import { FieldGroup } from '../primitives/FieldGroup.jsx';
+import { Choice } from '../primitives/Choice.jsx';
+
+/** Circular single-choice control. */
+export function Radio({ checked, disabled, label, description, onChange, name, value, style, ...rest }) {
+  const mark = <Choice mark="radio" checked={checked} disabled={disabled}
+    name={name} value={value} onChange={onChange} />;
+  if (!label) return <span style={style} {...rest}>{mark}</span>;
   return (
-    <label onClick={disabled ? undefined : onChange} style={{ display: 'flex', alignItems: 'flex-start', gap: 10,
-      cursor: disabled ? 'default' : 'pointer', ...style }} {...rest}>
-      {dot}
-      <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <span style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', fontWeight: 'var(--fw-bold)', color: disabled ? 'var(--text-tertiary)' : 'var(--text-body)', lineHeight: 1.3 }}>{label}</span>
-        {description ? <span style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--text-tertiary)', lineHeight: 'var(--lh-ui)' }}>{description}</span> : null}
-      </span>
-    </label>
+    <Field label={label} hint={description} disabled={disabled} placement="end" style={style} {...rest}>
+      {mark}
+    </Field>
   );
 }
 
-/** Vertical set of radios sharing one value. */
-export function RadioGroup({ options = [], value, onChange, style }) {
-  return <div style={{ display: 'flex', flexDirection: 'column', gap: 10, ...style }}>
-    {options.map(o => {
-      const v = typeof o === 'string' ? o : o.value;
-      return <Radio key={v} checked={v === value} label={typeof o === 'string' ? o : o.label}
-        description={typeof o === 'string' ? undefined : o.description} onChange={() => onChange && onChange(v)} />;
-    })}
-  </div>;
+let gseq = 0;
+
+/** Vertical radio set sharing one value. */
+export function RadioGroup({ options = [], value, onChange, legend, style, ...rest }) {
+  /* The old component had no role="radiogroup", no fieldset and no group label,
+     so a screen reader announced each option without ever saying what the
+     choice was for. FieldGroup supplies all three. `legend` is new and
+     optional — without it the group is still unnamed, which is why the
+     migration guide asks you to add one. */
+  const nameRef = React.useRef(null);
+  if (nameRef.current == null) { gseq += 1; nameRef.current = 'tc-rg' + gseq; }
+  return (
+    <FieldGroup legend={legend} role="radiogroup" name={nameRef.current} style={style} {...rest}>
+      {options.map(o => {
+        const v = typeof o === 'string' ? o : o.value;
+        const l = typeof o === 'string' ? o : o.label;
+        const d = typeof o === 'string' ? undefined : o.description;
+        return (
+          <Field key={v} label={l} hint={d} placement="end" id={nameRef.current + '-' + v}>
+            <Choice mark="radio" value={v} checked={value === v} onChange={() => onChange && onChange(v)} />
+          </Field>
+        );
+      })}
+    </FieldGroup>
+  );
 }

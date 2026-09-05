@@ -121,11 +121,11 @@ describe('#106 — the Understand write boundary', () => {
     // The source pill and the helps tab are both labelled by the pinned
     // simplified text ("UST"), so each is addressed inside its own region.
     fireEvent.click(screen.getByTestId('source-tab-ust'));
-    fireEvent.click(screen.getByRole('button', { name: 'Verse' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Questions' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Notes' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Academy' }));
-    fireEvent.click(within(screen.getByTestId('helps-panel')).getByRole('button', { name: 'UST' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Verse' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Questions' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Notes' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Academy' }));
+    fireEvent.click(within(screen.getByTestId('helps-panel')).getByRole('tab', { name: 'UST' }));
     expect(writes()).toEqual([]);
   });
 
@@ -230,7 +230,7 @@ describe('2026-08-27 Codex review regressions', () => {
 
   it('saving from a bridge unit targets the EXACT span key, never its leading number', () => {
     render(<Understand />);
-    fireEvent.click(screen.getByRole('button', { name: 'Verse' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Verse' }));
     const boxes = screen.getAllByPlaceholderText('What does this verse mean, and what will be hard to render?');
     const bridgeBox = boxes[boxes.length - 1]; // last verse unit is 4-5
     fireEvent.change(bridgeBox, { target: { value: 'note on the bridge' } });
@@ -467,7 +467,7 @@ describe('2026-08-27 adversarial round 14 regression', () => {
       expect(box().value).toBe('exact head note');
       // …and never DISCARDED either (O1, round 15): the parked draft is
       // restored by the box that shows its own durable target (Verse view).
-      fireEvent.click(screen.getByRole('button', { name: 'Verse' }));
+      fireEvent.click(screen.getByRole('tab', { name: 'Verse' }));
       const boxes = screen.getAllByPlaceholderText('What does this verse mean, and what will be hard to render?');
       expect((boxes[1] as HTMLTextAreaElement).value).toBe('draft typed against target 2');
     } finally {
@@ -696,8 +696,8 @@ describe('2026-08-28 adversarial round 32 regressions', () => {
         sourceRefs: { '1': [{ c: 1, v: '1', pc: 1, pv: '1' }] },
       } as never;
       render(<Understand />);
-      expect(screen.queryByRole('button', { name: 'Verse' })).toBeNull();
-      expect(screen.queryByRole('button', { name: 'Section' })).toBeNull();
+      expect(screen.queryByRole('tab', { name: 'Verse' })).toBeNull();
+      expect(screen.queryByRole('tab', { name: 'Section' })).toBeNull();
       expect(screen.getByTestId('understand-verse-only')).toBeTruthy();
     } finally {
       state.understand = savedU;
@@ -706,7 +706,7 @@ describe('2026-08-28 adversarial round 32 regressions', () => {
 
   it('same-frame projects keep the Section/Verse control', () => {
     render(<Understand />);
-    expect(screen.getByRole('button', { name: 'Verse' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Verse' })).toBeTruthy();
     expect(screen.queryByTestId('understand-verse-only')).toBeNull();
   });
 });
@@ -763,7 +763,7 @@ describe('#106 — note bodies are markdown, and are rendered as such', () => {
     state.understand.notes = { ...state.understand.notes, items: [noteItem(1, '', INTRO)] };
     try {
       render(<Understand />);
-      const card = screen.getByTestId('note-expand').closest('[data-tc="outline"]');
+      const card = screen.getByTestId('note-expand').closest('[data-i="choice"]');
       expect(card).toBeTruthy();
       const shown = card!.textContent ?? '';
       // The heading text survives; the syntax does not.
@@ -798,7 +798,7 @@ describe('#106 — note bodies are markdown, and are rendered as such', () => {
     state.understand.notes = { ...state.understand.notes, items: [noteItem(1, '', note, '')] };
     try {
       render(<Understand />);
-      const card = screen.getByTestId('note-expand').closest('[data-tc="outline"]');
+      const card = screen.getByTestId('note-expand').closest('[data-i="choice"]');
       const shown = card!.textContent ?? '';
       // The word before the ellipsis must be a WHOLE word of the source, not a
       // fragment: "Acc…" is a fragment of "According", and `\bAcc\b` does not

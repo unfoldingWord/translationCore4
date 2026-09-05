@@ -1,16 +1,24 @@
-import React from 'react';
+/* SHIM. This component's name and props are unchanged, but nothing is drawn
+   here any more: it composes the primitives. Kept so an application built on
+   the old system keeps working while its call sites migrate one at a time.
+   The composition it delegates to is written out in AUDIT.md; MIGRATION.md has
+   the swap. Delete this file once your last call site is gone. */
 
-/** Grid of small labelled facts — the import-review summary pattern. */
-export function KeyValueGrid({ items = [], columns = 2, style }) {
+import React from 'react';
+import { Surface } from '../primitives/Surface.jsx';
+import { Stack } from '../primitives/Stack.jsx';
+import { Text } from '../primitives/Text.jsx';
+
+/** Grid of small labelled facts. */
+export function KeyValueGrid({ items = [], columns = 2, style, ...rest }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(' + columns + ',1fr)', gap: 10, ...style }}>
+    <Stack columns={columns} gap={10} style={style} {...rest}>
       {items.map((it, i) => (
-        <div key={i} style={{ border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-md)', padding: '10px 12px' }}>
-          <span style={{ display: 'block', fontSize: 'var(--fs-badge)', fontWeight: 'var(--fw-heavy)',
-            letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 3 }}>{it.k}</span>
-          <span style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)' }}>{it.v}</span>
-        </div>
+        <Surface key={i} border="line" radius="md" pad="10px 12px">
+          <Text role="label" as="div" style={{ marginBottom: 3 }}>{it.k}</Text>
+          <Text role="strong" style={{ fontSize: 'var(--fs-ui-sm)' }}>{it.v}</Text>
+        </Surface>
       ))}
-    </div>
+    </Stack>
   );
 }

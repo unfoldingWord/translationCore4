@@ -1,27 +1,28 @@
-import React from 'react';
-import { ProgressBar } from '../core/ProgressBar.jsx';
+/* SHIM. This component's name and props are unchanged, but nothing is drawn
+   here any more: it composes the primitives. Kept so an application built on
+   the old system keeps working while its call sites migrate one at a time.
+   The composition it delegates to is written out in AUDIT.md; MIGRATION.md has
+   the swap. Delete this file once your last call site is gone. */
 
-/** Compact book button with a progress rail. Grid tile on Home, full row in the rail. */
+import React from 'react';
+import { Surface } from '../primitives/Surface.jsx';
+import { Stack } from '../primitives/Stack.jsx';
+import { Text } from '../primitives/Text.jsx';
+import { Progress } from '../primitives/Progress.jsx';
+
+/** Book button with its drafting progress. */
 export function BookTile({ name, percent = 0, meta, layout = 'tile', active, onClick, style, ...rest }) {
   const row = layout === 'row';
-  const nameStyle = row
-    ? { fontSize: 'var(--fs-ui-md)', fontWeight: 'var(--fw-heavy)' }
-    : { fontSize: 'var(--fs-ui)', fontWeight: 'var(--fw-black)' };
   return (
-    <button type="button" data-tc={row ? 'rail' : 'surface'} data-tc-selected={active ? 'true' : undefined} onClick={onClick} style={{
-      border: row ? 0 : 'var(--stroke) solid var(--border)', background: active ? 'var(--surface-accent-soft)' : (row ? 'transparent' : 'var(--surface-app)'),
-      cursor: 'pointer', borderRadius: 'var(--radius-md)', padding: row ? '10px 12px' : '10px 12px',
-      textAlign: 'start', fontFamily: 'var(--font-ui)', minWidth: 0, width: row ? '100%' : undefined,
-      ...style,
-    }} {...rest}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 6, marginBottom: row ? 7 : 8 }}>
-        {/* No cap trim here: the trimmed box plus overflow:hidden clips the
-            descending hook of Mulish's J ("Jonah" rendered as "Ionah"). */}
-        <span style={{ ...nameStyle, color: 'var(--text-heading)',
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
-        <span style={{ fontSize: 'var(--fs-badge)', letterSpacing: 'var(--track-10)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', whiteSpace: 'nowrap', flex: 'none' }}>{meta != null ? meta : percent + '%'}</span>
-      </div>
-      <ProgressBar value={percent} height={row ? 5 : 4} />
-    </button>
+    <Surface as="button" tone="accent" interactive={row ? 'row' : 'choice'} selected={active}
+      border={row ? 'none' : 'line'} fill={row ? 'none' : 'app'} radius="md" onClick={onClick}
+      style={{ padding: '10px 12px', width: row ? '100%' : undefined,
+               textAlign: 'start', cursor: 'pointer', font: 'inherit', ...style }} {...rest}>
+      <Stack direction="row" gap={6} justify="between" align="baseline" style={{ marginBottom: row ? 7 : 8 }}>
+        <Text role="ui" truncate style={{ fontSize: row ? 'var(--fs-ui-md)' : 'var(--fs-ui)' }}>{name}</Text>
+        <Text role="labelNum">{meta != null ? meta : percent + '%'}</Text>
+      </Stack>
+      <Progress value={percent} height={row ? 5 : 4} />
+    </Surface>
   );
 }

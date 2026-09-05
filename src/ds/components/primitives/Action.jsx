@@ -20,10 +20,16 @@ const TFS= { sm: 'var(--fs-caption)', md: 'var(--fs-caption-lg)', lg: 'var(--fs-
  * no `primary` tone.
  */
 export function Action({
-  weight = 'fill', tone = 'accent', size = 'md', shape = 'pill',
+  weight = 'fill', tone, size = 'md', shape = 'pill',
   iconOnly, title, disabled, as = 'button', href, onClick, children, style, ...rest
 }) {
   const w = WEIGHT[weight] || WEIGHT.fill;
+  /* `row` and `soft` take their colour from --fg, which is right for an ordinary
+     menu row and wrong for a destructive one. Both now read --tone-text when a
+     tone was actually asked for, so a delete row is red without an inline
+     override at every call site. "neutral" counts as no tone: it names the
+     absence. AUDIT.md CANNOT-EXPRESS #10. */
+  const toned = !!tone && tone !== 'neutral';
   const Tag = href ? 'a' : as;
   const square = shape === 'square' || iconOnly;
   const flat = weight === 'text' || weight === 'row';
@@ -39,6 +45,7 @@ export function Action({
     cursor: disabled ? 'default' : 'pointer', flex: 'none', lineHeight: 1.2, whiteSpace: 'nowrap',
     fontSize: weight === 'text' ? TFS[size] : FS[size],
     ...w,
+    ...(toned && (weight === 'row' || weight === 'soft') ? { color: 'var(--tone-text)' } : null),
     borderRadius: shape === 'block' ? 'var(--radius-md)' : shape === 'square' ? 'var(--radius-sm)' : 'var(--radius-pill)',
     ...(square ? { width: H[size], height: H[size], padding: 0 } : null),
     ...(!square && !flat ? { height: H[size], paddingInline: PX[size], paddingBlock: 0 } : null),
@@ -52,7 +59,7 @@ export function Action({
   return (
     <Tag
       type={Tag === 'button' ? 'button' : undefined}
-      href={href} data-tone={tone} data-i={disabled ? undefined : w.i}
+      href={href} data-tone={tone || 'accent'} data-i={disabled ? undefined : w.i}
       disabled={Tag === 'button' ? disabled : undefined}
       aria-disabled={Tag !== 'button' && disabled ? 'true' : undefined}
       title={title} aria-label={iconOnly ? title : undefined}

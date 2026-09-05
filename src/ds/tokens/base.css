@@ -10,9 +10,52 @@ body {
 }
 *, *::before, *::after { box-sizing: border-box; }
 ::selection { background: var(--tc-highlight-soft); }
+
+/* ---- Scrollbars ----
+
+   Ocean-tinted like every shadow and line in the system, never neutral grey. The
+   2px transparent inset with background-clip: padding-box is what makes the thumb
+   read as a floating capsule rather than as a filled gutter — there is no track,
+   so the paper shows through.
+
+   Two engines, two mechanisms, and they are MUTUALLY EXCLUSIVE rather than
+   layered. Setting scrollbar-width or scrollbar-color to anything but `auto`
+   makes Chromium ignore every ::-webkit-scrollbar rule on the page — so
+   declaring the standard pair globally and expecting the pseudo-elements to
+   override it silently switched off the whole design: both widths collapsed to
+   the platform default, and the hover and press states never fired, because
+   scrollbar-color has no interaction states to give.
+
+   Hence the guard. Firefox does not implement the pseudo-elements, so
+   `not selector(::-webkit-scrollbar-thumb)` is true there and it gets the thin
+   tinted pair; Chromium and Safari do implement them, the block is skipped, and
+   they keep the finer control. The standard pair is a fallback, never a
+   companion.
+
+   data-scroll="thin" is the 6px rail variant: a 230px book rail loses too much of
+   its width to a 10px gutter. data-on="dark" restates both, because an Ocean thumb
+   on an Ocean panel is invisible. */
+
+@supports not selector(::-webkit-scrollbar-thumb) {
+  * { scrollbar-width: thin; scrollbar-color: rgba(1,66,99,.28) transparent; }
+  [data-on="dark"], [data-on="dark"] * { scrollbar-color: rgba(255,255,255,.32) transparent; }
+}
+
 ::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-corner { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(1,66,99,.18); border-radius: var(--radius-pill); border: 2px solid transparent; background-clip: padding-box; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(1,66,99,.32); background-clip: padding-box; }
+::-webkit-scrollbar-thumb:active { background: rgba(1,66,99,.42); background-clip: padding-box; }
+
+/* The rail variant. 6px with a 1px inset, because a 2px inset on a 6px gutter
+   leaves a 2px thumb — too thin to grab. */
+[data-scroll="thin"]::-webkit-scrollbar { width: 6px; height: 6px; }
+[data-scroll="thin"]::-webkit-scrollbar-thumb { border-width: 1px; }
+
+[data-on="dark"]::-webkit-scrollbar-thumb { background: rgba(255,255,255,.22); background-clip: padding-box; }
+[data-on="dark"]::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.38); background-clip: padding-box; }
+[data-on="dark"]::-webkit-scrollbar-thumb:active { background: rgba(255,255,255,.50); background-clip: padding-box; }
 
 /* Headings take their tracking from the optical curve, one value per size, not a
    single --tracking-tight across a 16→32px range. */

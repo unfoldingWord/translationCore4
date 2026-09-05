@@ -152,6 +152,10 @@ export function Surface({
       data-i={disabled ? undefined : interactive}
       data-selected={selected ? 'true' : undefined}
       onClick={disabled ? undefined : onClick}
+      /* tC4 local: disabled reaches the DOM, so a disabled button Surface is not
+         focusable and is announced as disabled (the old shims spread it natively). */
+      disabled={disabled && Tag === 'button' ? true : undefined}
+      aria-disabled={disabled && Tag !== 'button' ? 'true' : undefined}
       {...(control ? {
         role: 'button', tabIndex: disabled ? -1 : 0,
         onKeyDown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(e); } },

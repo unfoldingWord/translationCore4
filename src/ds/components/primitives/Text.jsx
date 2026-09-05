@@ -24,6 +24,12 @@ const ROLE = {
      table header, a fact key). Never mix the two tracking values at one size. */
   overline:  { fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-heavy)', letterSpacing: 'var(--tracking-overline)', textTransform: 'uppercase', lineHeight: 'var(--lh-ui)', color: 'var(--fg-muted)' },
   label:     { fontSize: 'var(--fs-badge)', fontWeight: 'var(--fw-heavy)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', lineHeight: 'var(--lh-ui)', color: 'var(--fg-muted)' },
+  /* Same size and weight as `label`, without the uppercasing and the tracking,
+     and with tabular figures. It exists because sixteen call sites appended
+     `textTransform: 'none', letterSpacing: 0` to role="label" for a trailing
+     metric, a verse reference or a count — which meant the role was not naming
+     what was actually used. AUDIT.md CANNOT-EXPRESS #18. */
+  labelNum:  { fontSize: 'var(--fs-badge)', fontWeight: 'var(--fw-heavy)', letterSpacing: 0, fontVariantNumeric: 'tabular-nums', lineHeight: 'var(--lh-ui)', color: 'var(--fg-muted)' },
   labelMicro:{ fontSize: 'var(--fs-micro)', fontWeight: 'var(--fw-heavy)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', lineHeight: 'var(--lh-ui)', color: 'var(--fg-muted)' },
   meta:      { fontSize: 'var(--fs-meta)', fontFamily: 'var(--font-mono)', fontWeight: 'var(--fw-regular)', lineHeight: 'var(--lh-ui)', letterSpacing: 'var(--track-11-5)', color: 'var(--fg-muted)' },
   /* Serif means Scripture. If a string is Scripture or quotes Scripture, it is Charis. */
@@ -57,8 +63,12 @@ const SCRIPT = {
 };
 const RTL = { hebrew: 1, arabic: 1, nastaliq: 1 };
 
+/* Reading measures are tokens, not numbers at the call site — they are the
+   dimensions a designer adjusts, so they are the ones that drift. */
+const MEASURE = { read: 'var(--measure-read)', prose: 'var(--measure-prose)', narrow: 'var(--measure-narrow)' };
+
 /** A run of text in one of the system's type roles. */
-export function Text({ role = 'ui', as, tone = 'default', script, align, truncate, trim, dir, children, style, ...rest }) {
+export function Text({ role = 'ui', as, tone = 'default', script, align, truncate, trim, measure, dir, children, style, ...rest }) {
   const Tag = as || (role === 'body' || role === 'caption' ? 'p' : 'span');
   const { trim: roleTrim, ...s } = ROLE[role] || ROLE.ui;
   const sc = script ? SCRIPT[script] : null;
@@ -71,6 +81,7 @@ export function Text({ role = 'ui', as, tone = 'default', script, align, truncat
         fontFamily: 'var(--font-ui)', margin: 0, ...s, ...sc,
         color: TONE[tone] || s.color,
         textAlign: align,
+        ...(measure ? { maxWidth: MEASURE[measure === true ? 'read' : measure] || measure } : null),
         ...(truncate ? { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 } : null),
         ...style,
       }}
