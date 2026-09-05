@@ -557,13 +557,19 @@ let mergedVerseObjects = null;
 {
   const { execSync } = require('child_process');
   const T = path.resolve('tmp-merge-test');
-  const rmT = () => fs.rmSync(T, { recursive: true, force: true });
+  // Removal of the scratch repo raced once in CI (#178): ENOTEMPTY on `.git` while the tree
+  // was being walked. Two guards, each documented by its tool: rmSync retries the
+  // ENOTEMPTY/EBUSY class with linear backoff (Node fs.rmSync `maxRetries`/`retryDelay`), and
+  // every git call disables the background work git documents as running after a commit or
+  // merge returns (`gc.auto=0` stops automatic packing, `maintenance.auto=false` stops the
+  // post-command `git maintenance run --auto`; git-config(1)).
+  const rmT = () => fs.rmSync(T, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   rmT();
   fs.mkdirSync(T, { recursive: true });
   fs.cpSync(path.join(BURRITO, 'ingredients'), path.join(T, 'ingredients'), { recursive: true });
   fs.copyFileSync(path.join(BURRITO, 'metadata.json'), path.join(T, 'metadata.json'));
   fs.writeFileSync(path.join(T, '.gitignore'), '**/*.bak\n');
-  const git = args => execSync(`git ${args}`, { cwd: T, stdio: 'pipe' }).toString();
+  const git = args => execSync(`git -c gc.auto=0 -c maintenance.auto=false ${args}`, { cwd: T, stdio: 'pipe' }).toString();
 
   const walkF = (dir, base = '') => fs.readdirSync(dir, { withFileTypes: true }).flatMap(e => {
     const rel = base ? `${base}/${e.name}` : e.name;
