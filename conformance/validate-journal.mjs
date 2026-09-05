@@ -2582,6 +2582,54 @@ try {
     seedRefused ? `"${seedRefused.slice(0, 70)}"` : `projected: ${JSON.stringify(seedOut?.decisions)}`);
 }
 
+// ---------- J29f (D68, issue #175): the stamp is OPTIONAL on text.verse.set — the base chain is its generation ----------
+{
+  const E = (op, actor, ts, base, extra) => mkEvent({ op, actor, ts, base, ...extra });
+  const t = (s, c, a) => `2026-08-13T03:00:${String(s).padStart(2, '0')}.000Z|000${c}|${a}`;
+  const skel = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}`;
+  const add1 = E('book.add', 'drafter-a', t(0, 0, 'drafter-a'), null, { book: 'TIT', scope: [], skeleton: skel, initialVerses: { '1:1': 'uno\n' } });
+  const remove = E('book.remove', 'drafter-a', t(1, 0, 'drafter-a'), add1.ts, { book: 'TIT' });
+  const add2 = E('book.add', 'drafter-a', t(2, 0, 'drafter-a'), remove.ts, { book: 'TIT', scope: [], skeleton: skel, initialVerses: { '1:1': 'nuevo\n' } });
+  const verse = (extra) => E('text.verse.set', 'drafter-a', extra.ts, add2.ts, { book: 'TIT', chapter: '1', verse: '1', text: extra.text, ...(extra.generation ? { generation: extra.generation } : {}) });
+  // (a) no stamp: the chain (base → add2) is the generation; the edit projects
+  const noStamp = verse({ ts: t(3, 0, 'drafter-a'), text: 'sin sello\n' });
+  const outA = fold([add1, remove, add2, noStamp]);
+  check('J29f: a text.verse.set WITHOUT a generation stamp folds and projects — its base chain is its generation (R-8.5.15), the stamp is not mandatory here [covers R-8.5.6]',
+    outA.books.TIT.verses['1:1'] === 'sin sello\n' && outA.retained.every((r) => r.ts !== noStamp.ts),
+    JSON.stringify({ verse: outA.books.TIT?.verses?.['1:1'], retained: outA.retained }));
+  // (b) a stamp naming the CURRENT root projects like an unstamped edit
+  const goodStamp = verse({ ts: t(4, 0, 'drafter-a'), text: 'con sello\n', generation: add2.ts });
+  const outB = fold([add1, remove, add2, goodStamp]);
+  check('J29f: a text.verse.set whose stamp names the chain\'s own root projects — the optional stamp agrees with the chain [covers R-8.5.6]',
+    outB.books.TIT.verses['1:1'] === 'con sello\n',
+    JSON.stringify({ verse: outB.books.TIT?.verses?.['1:1'], retained: outB.retained }));
+  // (c) a stamp naming ANOTHER root — the removed generation — is retained, never projected,
+  //     even though the base chain is current: the disagreement is surfaced, not resolved
+  const badStamp = verse({ ts: t(5, 0, 'drafter-a'), text: 'sello ajeno\n', generation: add1.ts });
+  const outC = fold([add1, remove, add2, badStamp]);
+  //     Quarantine semantics are the same as for any prior-generation record: the edit
+  //     consumed its chain predecessor and is itself retained, so the key projects its
+  //     slot stub until a human resolves the report — never the disputed text.
+  check('J29f: a text.verse.set whose stamp names a root OTHER than its chain\'s is retained as prior-generation and its text never projects [covers R-8.5.6]',
+    outC.books.TIT.verses['1:1'] !== 'sello ajeno\n' && outC.retained.some((r) => r.ts === badStamp.ts && r.reason === 'prior-generation'),
+    JSON.stringify({ verse: outC.books.TIT?.verses?.['1:1'], retained: outC.retained }));
+  // (e) an UNKNOWN base is not rescued by a stamp naming the current root: the chain is the
+  //     generation, and an edit whose chain is unresolved remains an unanchored live head that never projects
+  const orphan = E('text.verse.set', 'drafter-a', t(7, 0, 'drafter-a'), t(6, 5, 'nobody-x'), { book: 'TIT', chapter: '1', verse: '1', text: 'huérfano\n', generation: add2.ts });
+  const outE = fold([add1, remove, add2, orphan]);
+  //     (What the key projects while the base is missing — today the slot stub, because an
+  //     unknown-base edit displaces the standing head — is the subject of issue #179.)
+  check('J29f: a text.verse.set with an UNKNOWN base and a current-root stamp does not project — the stamp never stands in for the base chain [covers R-8.5.6 R-8.5.15]',
+    outE.books.TIT.verses['1:1'] !== 'huérfano\n' && outE.retained.some((r) => r.ts === orphan.ts),
+    JSON.stringify({ verse: outE.books.TIT?.verses?.['1:1'], retained: outE.retained.filter((r) => r.ts === orphan.ts) }));
+  // (d) a stamp that is not an §8.2 ts is refused at the schema
+  let refused = '';
+  try { fold([add2, verse({ ts: t(6, 0, 'drafter-a'), text: 'mal sello\n', generation: 'not-a-ts' })]); } catch (e) { refused = e.message; }
+  check('J29f: a text.verse.set generation stamp that is not an §8.2 ts is REFUSED as malformed [covers R-8.5.6]',
+    refused.includes('generation'),
+    refused ? `"${refused.slice(0, 80)}"` : 'accepted');
+}
+
 // ---------- J30: unjournaled-ingredient tolerance + whole-surface divergence detection (§8.5/§8.8) ----------
 {
   const { events, decisionFiles } = buildSeed();

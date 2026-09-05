@@ -163,6 +163,8 @@ const OPS = {
     const k = verseRefError(e.chapter, e.verse);
     if (k) return `text.verse.set chapter/verse do not form a §8.4 register key — ${k}`;
     if (!isStr(e.text)) return 'text.verse.set without text';
+    // R-8.5.6 (D68): `generation` is OPTIONAL here — the base chain carries the
+    // generation (R-8.5.15). A present stamp's grammar is checked once for every op below.
     const t = journaledTextError(e.text);
     return t ? `text.verse.set text ${t}` : null;
   },
@@ -338,7 +340,8 @@ export const PAYLOAD_FIELDS = {
 const VRS_SEED_SOURCES = new Set(['creation', 'sidecar-migration', 'tc3-import']);
 
 // §8.5: these ops MUST carry the causal `generation` stamp — unconditionally.
-const GENERATION_OPS = new Set(['align.verse.set', 'check.decision.set', 'note.add']);
+// Exported: journal/fold.mjs anchors by the stamp for exactly this set (R-8.5.6, D68).
+export const GENERATION_OPS = new Set(['align.verse.set', 'check.decision.set', 'note.add']);
 
 // ---------- I-4 (§8.5): ONE write chokepoint, and ONE list of what it may not touch ----
 // Invariant I-4 said "writers MUST normalize" and no writer did. The rule now has an
