@@ -20,11 +20,19 @@ const FIXTURE_ACTOR = 'fixture-large';
  * every mount of the indicator and every progressbar value it shows. */
 async function watchProgress(page: Page): Promise<void> {
   await page.evaluate(() => {
-    const w = window as unknown as { __open: { mounts: number; values: number[]; stages: string[] } };
-    w.__open = { mounts: 0, values: [], stages: [] };
+    const w = window as unknown as { __open: { mounts: number; values: number[]; stages: string[]; texts: string[]; unmountedAt: number | null; readyAt: number | null } };
+    w.__open = { mounts: 0, values: [], stages: [], texts: [], unmountedAt: null, readyAt: null };
+    let mounted = false;
     const record = () => {
+      if (w.__open.readyAt == null && /\(edición \d+\)/.test(document.body.textContent ?? '')) w.__open.readyAt = performance.now();
       const el = document.querySelector('[data-testid="open-progress"]');
-      if (!el) return;
+      if (!el) {
+        if (mounted && w.__open.unmountedAt == null) w.__open.unmountedAt = performance.now();
+        return;
+      }
+      mounted = true;
+      const text = el.querySelector('[data-testid="open-progress-stage"]')?.textContent ?? '';
+      if (w.__open.texts.at(-1) !== text) w.__open.texts.push(text);
       const stage = el.getAttribute('data-stage') ?? '';
       if (w.__open.stages.at(-1) !== stage) w.__open.stages.push(stage);
       const bar = el.querySelector('[role="progressbar"]');
@@ -44,8 +52,8 @@ async function watchProgress(page: Page): Promise<void> {
   });
 }
 
-async function watched(page: Page): Promise<{ mounts: number; values: number[]; stages: string[] }> {
-  return page.evaluate(() => (window as unknown as { __open: { mounts: number; values: number[]; stages: string[] } }).__open);
+async function watched(page: Page): Promise<{ mounts: number; values: number[]; stages: string[]; texts: string[]; unmountedAt: number | null; readyAt: number | null }> {
+  return page.evaluate(() => (window as unknown as { __open: { mounts: number; values: number[]; stages: string[]; texts: string[]; unmountedAt: number | null; readyAt: number | null } }).__open);
 }
 
 function segmentFiles(): string[] {
@@ -91,10 +99,23 @@ test.describe('J15 — a translator opens a project', () => {
       const seen = await watched(page);
       console.log(`J15 open-time: ${LARGE} · ${segments} segments · ${openMs} ms click-to-text · stages ${seen.stages.join('>')} · ${seen.values.length} distinct values, first ${seen.values[0]}, last ${seen.values.at(-1)}`);
       expect(seen.stages[0]).toBe('journal');
+      // Real counts: every displayed total is the fixture's own segment count, and the
+      // last journal count is within the 1% reporting step of it. (The final "N of N"
+      // dispatch lands in the same React batch as the state-stage dispatch that follows
+      // it, so it is never painted on its own.)
+      const counts = seen.texts.map((t) => /(\d+) of (\d+) saved actions/.exec(t)).filter((m): m is RegExpExecArray => m !== null);
+      expect(counts.length).toBeGreaterThanOrEqual(2);
+      expect(counts.every((m) => Number(m[2]) === segments)).toBe(true);
+      expect(Number(counts.at(-1)![1])).toBeGreaterThanOrEqual(segments - Math.max(1, Math.floor(segments / 100)));
+      expect(seen.stages).toEqual(['journal', 'state', 'prepare']);
       // Determinate: at least two distinct rising values, all within 0..100.
       expect(seen.values.length).toBeGreaterThanOrEqual(2);
       for (let i = 1; i < seen.values.length; i++) expect(seen.values[i]).toBeGreaterThan(seen.values[i - 1]);
       expect(Math.max(...seen.values)).toBeLessThanOrEqual(100);
+      // Alive until ready: the indicator left the page no earlier than the book text arrived.
+      expect(seen.readyAt).not.toBeNull();
+      expect(seen.unmountedAt).not.toBeNull();
+      expect(seen.unmountedAt!).toBeGreaterThanOrEqual(seen.readyAt!);
     },
   );
 

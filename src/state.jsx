@@ -954,7 +954,14 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
   // a write failure remains (FR-32; B3/M1/M6; notes held to the same rule —
   // B1/D65).
   const canOpen = await drainForProjectOpen({ schedulerRef, noteSchedulerRef });
-  if (!canOpen || superseded()) return;
+  if (!canOpen) {
+    // A refused drain ends THIS request. If it is still the latest one, no open
+    // proceeds, so an earlier request's progress record (superseded by this one
+    // before it could clear its own) must not be left standing (#95, Codex round 1).
+    if (!superseded()) dispatch({ type: 'set', patch: { opening: null } });
+    return;
+  }
+  if (superseded()) return;
   // Issue #95: the open's progress record. Every stage transition and every
   // ~1% of the journal read lands here; the view decides whether to show it.
   const startedAt = Date.now();

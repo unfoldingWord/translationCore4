@@ -184,8 +184,9 @@ if (process.platform === 'win32') {
     const list = await fetchJson(`${RIG_API}/git/list-local-repos`);
     if (!Array.isArray(list)) {
       rigReason = `REFUSED: ${RIG_API}/version answered but /git/list-local-repos did not return a list`;
-    } else if (!list.includes(SAMPLE)) {
-      rigReason = `REFUSED: rig does not list ${SAMPLE} (not seeded? dev-env/scripts/seed.zsh)`;
+    } else if ([...SEEDED].some((r) => !list.includes(r))) {
+      const missing = [...SEEDED].filter((r) => !list.includes(r));
+      rigReason = `REFUSED: rig does not list ${missing.join(', ')} (not seeded? dev-env/scripts/seed.zsh)`;
     } else {
       rig.extraRepos = list.filter((r) => r.startsWith('_local_/_local_/') && !SEEDED.has(r)).sort();
       rig.pristine = rig.extraRepos.length === 0;

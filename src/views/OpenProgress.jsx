@@ -46,12 +46,16 @@ export function OpenProgressView({ opening, now = () => Date.now() }) {
   if (!opening || !shown) return null;
 
   const determinate = opening.stage === 'journal' && opening.total > 0;
-  const pct = determinate ? Math.round((100 * opening.done) / opening.total) : null;
+  // floor, never round: 100 means every segment is read, not "nearly".
+  const pct = determinate ? Math.floor((100 * opening.done) / opening.total) : null;
   return (
     <Layer open level="overlay" scrim="modal" placement="center" role="dialog"
-      label={t('open.title')} dismiss="" animate={false}
+      label={t('open.title')} dismiss="" animate={false} trapFocus
       scrimProps={{ 'data-testid': 'open-progress', 'data-stage': opening.stage }}>
-      <Surface fill="card" radius="2xl" elevation="modal" pad="lg" style={{ width: 420, maxWidth: '100%' }}>
+      {/* Nothing here is focusable, so Layer's trap focuses the panel itself; a Tab
+          from there would leave for the covered page — keep it here (Codex, round 1). */}
+      <Surface fill="card" radius="2xl" elevation="modal" pad="lg" style={{ width: 420, maxWidth: '100%' }}
+        onKeyDown={(e) => { if (e.key === 'Tab') e.preventDefault(); }}>
         <Stack direction="column" gap={12}>
           <Text role="h3">{t('open.title')}</Text>
           <Text role="caption" aria-live="polite" data-testid="open-progress-stage">

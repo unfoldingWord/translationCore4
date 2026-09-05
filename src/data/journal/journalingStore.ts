@@ -965,7 +965,7 @@ export class JournalingStore implements BurritoStore {
    * diagnosable stop. */
   private async recoverAndConverge(options: OpenOptions, hooks: OpenHooks = {}): Promise<void> {
     const journal = this.mustJournal();
-    const report_ = hooks.onProgress;
+    const reportProgress = hooks.onProgress;
 
     // 1. Replay any durable staged intent with its EXACT bytes (R-8.1.8).
     const replayed = await journal.replayStaged();
@@ -981,9 +981,9 @@ export class JournalingStore implements BurritoStore {
     // deferred R-8.2.4 ratchet (issue #95). A corrupt segment is never treated
     // as absent history.
     const union = await journal.readUnion({
-      onProgress: report_ ? (p) => report_({ stage: 'journal', ...p }) : undefined,
+      onProgress: reportProgress ? (p) => reportProgress({ stage: 'journal', ...p }) : undefined,
     });
-    report_?.({ stage: 'state', done: 0, total: 0 });
+    reportProgress?.({ stage: 'state', done: 0, total: 0 });
     if (union.invalid.length || union.misnamed.length)
       throw new Error(
         `refuse to open ${this.mustRepo()}: the journal holds unusable files — ` +
