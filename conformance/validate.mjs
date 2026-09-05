@@ -561,11 +561,11 @@ let mergedVerseObjects = null;
   // was being walked [VERIFIED — run 33976695938 at cb87b66, attempt 1 red, attempt 2 green,
   // 2026-09-05]. Two guards, each documented by its tool: rmSync retries EBUSY, EMFILE,
   // ENFILE, ENOTEMPTY and EPERM with linear backoff (`maxRetries`/`retryDelay`, recursive
-  // mode only) [VERIFIED — Node v22.14.0 fs.rmSync reference (tag v22.14.0 = ddf66ac),
+  // mode only) [VERIFIED — Node v22.14.0 fs.rmSync reference (release commit 5d2feb2),
   // read 2026-09-05], and every git call disables the automatic gc and maintenance that
   // `git commit` and `git merge` run after their own work (`gc.auto=0`,
-  // `maintenance.auto=false`) [VERIFIED — git v2.46.0 (tag 75a062f): git-config(1) gc.auto,
-  // gc.autoDetach, maintenance.auto; the call sites builtin/commit.c:1872 and
+  // `maintenance.auto=false`) [VERIFIED — git v2.46.0 (release commit 39bf06a): git-config(1)
+  // gc.auto, gc.autoDetach, maintenance.auto; the call sites builtin/commit.c:1872 and
   // builtin/merge.c:464 `run_auto_maintenance`; read 2026-09-05]. The cause is inferred from
   // the error and the code shape; the retry covers the error class whatever the writer.
   const rmT = () => fs.rmSync(T, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
