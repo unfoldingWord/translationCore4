@@ -407,6 +407,27 @@ describe('2026-08-28 adversarial round 25 regression — concurrent project open
     expect((openingPatches().at(-1)!.patch as { opening: unknown }).opening).toBeNull();
   });
 
+  it("#95: a newer request whose drain THROWS surfaces the error and clears the earlier request's progress record", async () => {
+    const { ctx, dispatched } = openCtx();
+    let releaseA: (v: Record<string, unknown>) => void = () => {};
+    let aStarted: () => void = () => {};
+    const aStartedP = new Promise<void>((r) => { aStarted = r; });
+    const storeA = fakeStore(() => new Promise((r) => { releaseA = r; aStarted(); }));
+    ctx.makeStore = (() => storeA) as never;
+    const { __performProjectOpenForTests: open } = await import('../src/state.jsx');
+    const openA = open(ctx, 'repo/A', 'GEN');
+    await aStartedP;
+    ctx.schedulerRef.current = { drain: async () => { throw new Error('flush exploded'); }, getState: () => 'error', dispose: () => {} };
+    await open(ctx, 'repo/B', 'TIT');
+    const last = dispatched.at(-1)!.patch as { opening: unknown; bookError: string };
+    expect(last.opening).toBeNull();
+    expect(last.bookError).toMatch(/flush exploded/);
+    releaseA({ repoPath: 'repo/A', name: 'A', scriptDirection: 'ltr', bookCodes: ['GEN'] });
+    await openA;
+    const openingPatches = dispatched.filter((d) => 'opening' in ((d.patch as Record<string, unknown>) ?? {}));
+    expect((openingPatches.at(-1)!.patch as { opening: unknown }).opening).toBeNull();
+  });
+
   it('the production wiring refreshes the Understand notes when the note scheduler reconciles (round 31 F1)', async () => {
     const { ctx, dispatched } = openCtx();
     const storeB = fakeStore(async (repoPath) => ({ repoPath, name: 'B', scriptDirection: 'ltr', bookCodes: ['TIT'] }));

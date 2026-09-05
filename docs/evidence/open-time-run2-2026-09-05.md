@@ -12,6 +12,13 @@ measurement, which is taken before that line). The spec was corrected and run ag
 tree. `docs/evidence/README.md` rule 3: a record is never edited to change a measurement, so the
 second run is its own record.
 
+## Command
+
+```bash
+dev-env/scripts/stop.zsh; dev-env/scripts/seed.zsh; dev-env/scripts/run.zsh   # the workspace rig, reseeded
+npx playwright test e2e/j15-slow-open.spec.ts
+```
+
 ## What was measured
 
 The same as the first record: the app's own open path — `JournalingStore.open()` over HTTP — on

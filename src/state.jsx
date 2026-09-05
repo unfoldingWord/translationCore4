@@ -933,6 +933,29 @@ function adoptInstalledResources(current, installed) {
  * target project B). Every await is followed by a supersession check BEFORE
  * any shared ref is assigned or any state dispatched; a stale FAILURE is
  * dropped too (it must never route the successfully opened project Home). */
+/** The drain gate before an open. Never abandon unsaved work: drain BOTH
+ * schedulers first, and stay put if a write failure remains (FR-32; B3/M1/M6;
+ * notes held to the same rule — B1/D65). Returns true when the open may
+ * proceed. A refusal or a throwing drain ends the request; when that request
+ * is still the latest one, no open proceeds, so an earlier request's progress
+ * record (superseded before it could clear its own) is cleared here, and a
+ * thrown error is surfaced in the Home banner (#95, Codex rounds 1 and 3). */
+async function gateProjectOpen({ schedulerRef, noteSchedulerRef, dispatch, superseded }) {
+  let canOpen;
+  try {
+    canOpen = await drainForProjectOpen({ schedulerRef, noteSchedulerRef });
+  } catch (e) {
+    if (!superseded())
+      dispatch({ type: 'set', patch: { bookError: e?.reason || e?.message || String(e), view: 'home', opening: null } });
+    return false;
+  }
+  if (!canOpen) {
+    if (!superseded()) dispatch({ type: 'set', patch: { opening: null } });
+    return false;
+  }
+  return !superseded();
+}
+
 async function performProjectOpen(ctx, repoPath, bookCode) {
   const {
     openProjectSeqRef,
@@ -950,18 +973,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
   } = ctx;
   const seq = ++openProjectSeqRef.current;
   const superseded = () => seq !== openProjectSeqRef.current;
-  // Never abandon unsaved work: drain BOTH schedulers first, and stay put if
-  // a write failure remains (FR-32; B3/M1/M6; notes held to the same rule —
-  // B1/D65).
-  const canOpen = await drainForProjectOpen({ schedulerRef, noteSchedulerRef });
-  if (!canOpen) {
-    // A refused drain ends THIS request. If it is still the latest one, no open
-    // proceeds, so an earlier request's progress record (superseded by this one
-    // before it could clear its own) must not be left standing (#95, Codex round 1).
-    if (!superseded()) dispatch({ type: 'set', patch: { opening: null } });
-    return;
-  }
-  if (superseded()) return;
+  if (!(await gateProjectOpen({ schedulerRef, noteSchedulerRef, dispatch, superseded }))) return;
   // Issue #95: the open's progress record. Every stage transition and every
   // ~1% of the journal read lands here; the view decides whether to show it.
   const startedAt = Date.now();

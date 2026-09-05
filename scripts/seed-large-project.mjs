@@ -85,8 +85,11 @@ for (let i = 0; i < EDITS; i++) {
   const key = drafted[i % drafted.length];
   const sep = key.indexOf(':');
   const ts = clock.issue();
+  // `generation` is the book.add ts (R-8.5.6). The app's writer omits it today and the
+  // reference schema does not demand it — that disagreement is issue #175 — but a new
+  // fixture follows the specification, which wins (CONTRIBUTING hard rule 3).
   actions.push([{
-    v: 1, op: 'text.verse.set', actor: ACTOR, ts, base: headOf.get(key), book: 'TIT',
+    v: 1, op: 'text.verse.set', actor: ACTOR, ts, base: headOf.get(key), generation: bookAddTs, book: 'TIT',
     chapter: key.slice(0, sep), verse: key.slice(sep + 1),
     text: `${verses[key].trimEnd()} (edición ${i + 1})\n`,
   }]);
@@ -98,6 +101,9 @@ const events = actions.flat();
 const foldOut = fold(events);
 if (foldOut.forks.length || foldOut.retained.length || foldOut.invalid.length || foldOut.pendingStructural.length)
   throw new Error(`the fixture journal does not fold clean: forks=${foldOut.forks.length} retained=${foldOut.retained.length} invalid=${foldOut.invalid.length} pending=${foldOut.pendingStructural.length}`);
+for (const e of events)
+  if (e.op === 'text.verse.set' && e.generation !== bookAddTs)
+    throw new Error(`fixture event ${e.ts} lacks the R-8.5.6 generation stamp`);
 
 // metadata.json is the sample's, renamed and re-scoped; its ingredients table is
 // rebuilt from the files actually written (the server re-scans it anyway — D28).
@@ -133,15 +139,15 @@ for (const action of actions) writeActionSegment(actorDir, action);
 // Self-check: every derived file on disk equals its projection (the §8.8 divergence
 // classifier, run from the fold's expected set). metadata.json is server-owned bytes and
 // verified semantically (currentScope) by the app's verifier; it is not compared here.
+// Every file under ingredients/, as ingredient-relative paths, sorted.
+const listFiles = (dir, base = '') => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+  const rel = base ? `${base}/${e.name}` : e.name;
+  return e.isDirectory() ? listFiles(path.join(dir, e.name), rel) : [rel];
+}).sort();
+const files = listFiles(ing);
 const diskFiles = {};
-const walk = (dir, base = '') => {
-  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    const rel = base ? `${base}/${e.name}` : e.name;
-    if (e.isDirectory()) walk(path.join(dir, e.name), rel);
-    else if (!rel.startsWith('checking/journal/')) diskFiles[rel] = fs.readFileSync(path.join(dir, e.name), 'utf8');
-  }
-};
-walk(ing);
+for (const rel of files)
+  if (!rel.startsWith('checking/journal/')) diskFiles[rel] = fs.readFileSync(path.join(ing, rel), 'utf8');
 const expected = { ...projections };
 delete expected['metadata.json'];
 const verdict = classifyDivergence(diskFiles, expected);
@@ -151,16 +157,7 @@ if (verdict.diverged.length) throw new Error(`fixture diverges from its own proj
 const md5 = (f) => crypto.createHash('md5').update(fs.readFileSync(f)).digest('hex');
 const metaDoc = JSON.parse(projections['metadata.json']);
 const ingredients = {};
-const files = [];
-const collect = (dir, base = '') => {
-  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    const rel = base ? `${base}/${e.name}` : e.name;
-    if (e.isDirectory()) collect(path.join(dir, e.name), rel);
-    else files.push(rel);
-  }
-};
-collect(ing);
-for (const rel of files.sort()) {
+for (const rel of files) {
   const full = path.join(ing, rel);
   const entry = { checksum: { md5: md5(full) }, mimeType: rel.endsWith('.usfm') ? 'text/plain' : 'application/json', size: fs.statSync(full).size };
   if (rel === 'TIT.usfm') entry.scope = { TIT: [] };
