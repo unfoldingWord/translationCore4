@@ -62,7 +62,8 @@ jobs:
       # download IS that zip and the execute bits inside survive. The action then ignores
       # `name` and names the artifact after the file: tC4-<version>-macos-arm64-unsigned.zip.
       # (The action's own archive normalizes what it packs to mode 644, which is why the
-      # build zips first; v4 then wrapped that zip in its archive, and testers unpacked twice.)
+      # build zips first; v4 then wrapped that zip in its archive, and testers unpacked twice.
+      # Evidence and citations: docs/PACKAGING.md, "What the pipeline does".)
       - name: Upload the artifact (merges to main — 30-day retention)
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v7

@@ -17,35 +17,41 @@ The upload is a single layer. The workflow uses `actions/upload-artifact@v7`
 with `archive: false`, which uploads the zip as one file. The action then
 ignores `name`: the artifact is named after the file,
 `tC4-<version>-<os>-<arch>-unsigned.zip`, and the download is that file
-[VERIFIED — `actions/upload-artifact` v7 `action.yml` `archive` input and
-`src/upload/upload-artifact.ts:60-63`, read 2026-09-05; v7.0.0 release note].
+[VERIFIED — `actions/upload-artifact` v7.0.1 (tag `v7` = `043fb46d`, 2026-04-10):
+`action.yml` `archive` input; `src/upload/upload-artifact.ts:60-63` (the single-file
+check) and `:81-82` (`skipArchive`); the v7.0.0 release note; read 2026-09-05].
 Unpack it once. The execute bits of the launcher and the Electronite binaries
 are the ones the build's own zip recorded, because nothing re-archives it.
 
 History: the action's own archive normalizes every file it packs to mode 644
-(its README, "Permission Loss"), so the build has always zipped the artifact
-itself before upload. With the v4 action that zip was then wrapped in the
-action's archive, and the download was a zip of the zip; testers unpacked
-twice. `archive: false` removes the outer layer.
+(its README, "Permission Loss"), so the build zips the artifact itself before
+upload (`scripts/package-desktop.zsh:515-524` at `main` a513f1c). With the v4
+action that zip was then wrapped in the action's archive, and the download was
+a zip of the zip; testers unpacked twice. `archive: false` removes the outer
+layer. [VERIFIED — README "Permission Loss" at `043fb46d`; the two-layer
+download witnessed on Debian, run 33649518351 (head `fb888537`, PR #146), see
+the tag in "Install and launch"; read 2026-09-05]
 
 Pull request builds and merges to `main` produce the same file name; only the
 retention differs (3 days and 30 days).
 
 macOS witness of the single-layer download [VERIFIED — run 33981389105 (PR
-#182), artifact 9973915962, `tC4-4.0.0-alpha.3-macos-arm64-unsigned.zip`,
-142556909 bytes, sha256
+#182, head `7f22ab7`; the build checked out the merge commit `e738c69`, per
+`BUILD-MANIFEST.json`), artifact 9973915962,
+`tC4-4.0.0-alpha.3-macos-arm64-unsigned.zip`, 142556909 bytes, sha256
 `8600c6454e5291afd0f43440feb7db09e04c7378b1b23ce6a136dd43a9b44b72`; macOS
-26.5.1 arm64, 2026-09-05]: the raw artifact download (`gh api
-.../actions/artifacts/9973915962/zip`) is the zip itself (`file`: Zip archive
-data, compression method=store). One `unzip` gave `translationCore4/` with
-`start-tc4.command`, `bin/server.bin` and
+26.5.1 arm64, gh 2.86.0, 2026-09-05]: the raw artifact download (`gh api
+repos/unfoldingWord/translationCore4/actions/artifacts/9973915962/zip`) is the
+zip itself (`file`: Zip archive data, compression method=store). One `unzip`
+gave `translationCore4/` with `start-tc4.command`, `bin/server.bin` and
 `Electron.app/Contents/MacOS/Electron` all mode `-rwxr-xr-x`. With a fresh
 `HOME`, `start-tc4.command` started the server on port 19119; `/` answered
 `303` to `/clients/uw-tc4` and the client `200`; a second launch left one
 server answering; `user_settings.json` resolved `repo_dir` to
-`$HOME/pankosmia/tc4-projects`, empty. Note that `gh run download` extracts
-the artifact archive, so with `archive: false` it yields the unpacked
-`translationCore4/` folder directly, with the same modes.
+`$HOME/pankosmia/tc4-projects`, empty. Measured in the same session: `gh run
+download -n <file name>` (gh 2.86.0) extracts the artifact archive, so it
+yields the unpacked `translationCore4/` folder directly, with the same three
+files at mode `-rwxr-xr-x`.
 
 Two build variants exist (`--debug` selects the second):
 
@@ -192,7 +198,7 @@ directory.
    retention differs (3 days and 30 days).
 2. Unpack once, with `unzip`. Do not use an archiver that drops permission
    bits. Before 2026-09-05 the download was a zip of this zip and had to be
-   unpacked twice [VERIFIED — clean-machine witness on Debian 13.6 x86_64, artifact 9854372667 from run 33649518351, 2026-09-04, recorded on PR #146]; that layer is
+   unpacked twice [VERIFIED — clean-machine witness on Debian 13.6 x86_64, artifact 9854372667 from run 33649518351 (head `fb888537`), 2026-09-04, recorded on PR #146]; that layer is
    gone, see "What the pipeline does". The Debian witness below unpacked that
    two-layer download; the single layer is witnessed on macOS above and awaits
    its own Linux clean-machine witness.
@@ -203,18 +209,18 @@ There is no installer and no desktop entry. #44 owns that work.
 ### The Chromium sandbox
 
 Electron needs `chrome-sandbox` to be mode 4755 and owned by root. After
-`unzip`, the file is not setuid [VERIFIED — clean-machine witness on Debian 13.6 x86_64, artifact 9854372667 from run 33649518351, 2026-09-04, recorded on PR #146]. The launcher therefore
+`unzip`, the file is not setuid [VERIFIED — clean-machine witness on Debian 13.6 x86_64, artifact 9854372667 from run 33649518351 (head `fb888537`), 2026-09-04, recorded on PR #146]. The launcher therefore
 tests the file:
 
 - If the bit is set, the launcher starts Electronite with the sandbox.
 - If the bit is not set, the launcher prints a note and starts Electronite
-  with `--no-sandbox` [VERIFIED — clean-machine witness on Debian 13.6 x86_64, artifact 9854372667 from run 33649518351, 2026-09-04, recorded on PR #146].
+  with `--no-sandbox` [VERIFIED — clean-machine witness on Debian 13.6 x86_64, artifact 9854372667 from run 33649518351 (head `fb888537`), 2026-09-04, recorded on PR #146].
 
 On the witness host the first launch opened the "translationCore 4" window with
 an empty project list; the project store was `$HOME/pankosmia/tc4-projects`
 with no `pankosmia_repos` directory; a second launch exited in about one second
 and left the first instance serving (303 from `/`, 200 from `/clients/uw-tc4`)
-[VERIFIED — clean-machine witness on Debian 13.6 x86_64, artifact 9854372667 from run 33649518351, 2026-09-04, recorded on PR #146].
+[VERIFIED — clean-machine witness on Debian 13.6 x86_64, artifact 9854372667 from run 33649518351 (head `fb888537`), 2026-09-04, recorded on PR #146].
 
 To enable the sandbox:
 
