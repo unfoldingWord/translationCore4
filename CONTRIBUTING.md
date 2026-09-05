@@ -96,22 +96,39 @@ Before you send a pull request:
 
 ### Claim an issue
 
-Assignment is the claim. A collaborator self-assigns. If you cannot self-assign, comment
-"claiming" and a maintainer assigns you. Seven days with no linked activity releases the
-claim — a maintainer unassigns, and the issue is claimable again.
+Assignment is the claim. If you have write or triage access to this repository, assign
+yourself. If you do not, comment "claiming" and a maintainer assigns you. GitHub does not
+let you assign yourself without that access. Seven days with no linked activity releases
+the claim — a maintainer unassigns, and the issue is claimable again.
+
+An issue is claimable when its board status is `Ready` and nobody is assigned. On the
+web, read the `Status` column of the
+[project board](https://github.com/orgs/unfoldingWord/projects/6). From the command line,
+run `gh issue view <number>`; the `projects:` line shows the status in parentheses. An
+issue with no board status is not yet triaged. Ask in a comment before you start it.
+[VERIFIED — gh 2.86.0 against the board, 2026-09-04; GitHub's repository roles: triage
+or higher assigns issues and applies labels]
+
+### Found a defect while working another issue?
+
+Fix it inline when it is inside the issue's own scope: the same defect class the issue
+targets, in the files the issue touches. Say so in the pull request. Otherwise open a new
+issue and link it from the pull request. Leave that fix out of the change set.
 
 ### Labels
 
 | Label | Meaning |
 |---|---|
 | `Priority/Critical` … `Priority/Low` | Priority. |
-| `needs-rig` | The item needs the local Pankosmia development rig. CI cannot verify it. |
+| `needs-rig` | The item needs the Pankosmia development rig. Its acceptance is checked on the rig, not only on a clean clone. The `rig` job in CI runs the rig-backed suites on every pull request. |
 | `question` | An open question. Answering it is the work. |
 | `upstream` | The item depends on or observes an upstream (Pankosmia / Door43) behavior. |
 | `epic` | A tracking issue that groups sub-issues. |
 | `good first issue` | A bounded item with a clear verification command. |
 
-Add a label only when a query needs it.
+Add a label only when a query needs it. Applying a label needs triage access. If you do
+not have it, name the label in the issue or pull request body, for example
+"needs `needs-rig`". A maintainer applies it.
 
 ## Tests that need more than this repository
 
@@ -122,8 +139,28 @@ Two prerequisites are outside this repository:
 - **A sibling `sample-burrito` checkout** — the three S-0 smoke tests need it.
 
 Without them, the affected tests skip and name what they need. Work that touches the
-platform boundary gets the `needs-rig` label; a maintainer runs the rig-backed suites
-before merge.
+platform boundary gets the `needs-rig` label. Ask for it in the body if you cannot apply
+it. The `rig` job in CI runs the rig-backed suites on every pull request
+[VERIFIED — `.github/workflows/rig.yml`, PR #168, 2026-09-04]; a maintainer may also run
+them before merge.
+
+## Write a test that reads files
+
+The build plugin `vite-plugin-node-polyfills` (`vite.config.js`) aliases node builtins to
+browser mocks. It does so under Vitest too, even with `environment: 'node'`. So
+`import fs from 'node:fs'` gives you `null`, and `node:url` gives a browser proxy that
+crashes. Get the real builtins from the runtime instead:
+
+```ts
+const fs = process.getBuiltinModule('node:fs');
+const path = process.getBuiltinModule('node:path');
+```
+
+Every test in `test/` that reads files uses this pattern. `test/indexer.test.ts` is a
+short example. Resolve paths from `process.cwd()`; under Vitest that is the repository
+root. [VERIFIED — `vite.config.js` lines 3-6 and 20-24, `vite-plugin-node-polyfills`
+0.24.0; a search of `test/` on 2026-09-04 found 28 files with the pattern and none that
+imports a node builtin directly]
 
 ## Style
 

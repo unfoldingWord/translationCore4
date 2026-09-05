@@ -83,9 +83,11 @@ Two prerequisites are outside this repository:
   (`../sample-burrito`), so the sibling-checkout instruction still applies to the S-0
   tests until a code PR updates that path.
 
-The continuous-integration workflow does not supply either prerequisite. CI runs lint,
-typecheck, test, build and the dependency audit, plus the conformance suite in
-`conformance/` (generate + validate:all).
+CI has two jobs. `verify` runs `npm run prove` on a clean clone, where the rig-backed
+tests and the S-0 tests skip. `rig` builds and seeds the Pankosmia development rig on
+the runner and runs the rig-backed suites, on every pull request and on `main`
+[VERIFIED — `.github/workflows/ci.yml` and `rig.yml`, PR #168, 2026-09-04]. No job
+supplies the sibling `sample-burrito` checkout.
 
 ## Repository layout
 
