@@ -45,7 +45,7 @@ Do the steps that follow:
 2. Type this command: `npm ci`
 3. Type this command: `npm test`
 
-Expect this result on a clean clone: <!-- manifest: vitest passed -->**828 tests passed**,
+Expect this result on a clean clone: <!-- manifest: vitest passed -->**841 tests passed**,
 <!-- manifest: vitest skippedTests -->**37 tests skipped**
 [VERIFIED — the two counts are read from `docs/evidence/manifest.json`, the record of the
 CI run on a clean clone; that file names the run's commit, date and Node version;

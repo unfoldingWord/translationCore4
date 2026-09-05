@@ -28,6 +28,9 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CONF = path.join(ROOT, 'conformance');
 const RIG_API = process.env.RIG_API || 'http://127.0.0.1:19998/api';
 const SAMPLE = '_local_/_local_/sample_burrito';
+// The seeded set (dev-env/scripts/seed.zsh): the sample and, since issue #95, the large
+// fixture the slow-open journey reads. A pristine rig holds exactly these under _local_/_local_.
+const SEEDED = new Set([SAMPLE, '_local_/_local_/sample_burrito_large']);
 
 const args = process.argv.slice(2);
 const flag = (f) => args.includes(f);
@@ -181,10 +184,11 @@ if (process.platform === 'win32') {
     const list = await fetchJson(`${RIG_API}/git/list-local-repos`);
     if (!Array.isArray(list)) {
       rigReason = `REFUSED: ${RIG_API}/version answered but /git/list-local-repos did not return a list`;
-    } else if (!list.includes(SAMPLE)) {
-      rigReason = `REFUSED: rig does not list ${SAMPLE} (not seeded? dev-env/scripts/seed.zsh)`;
+    } else if ([...SEEDED].some((r) => !list.includes(r))) {
+      const missing = [...SEEDED].filter((r) => !list.includes(r));
+      rigReason = `REFUSED: rig does not list ${missing.join(', ')} (not seeded? dev-env/scripts/seed.zsh)`;
     } else {
-      rig.extraRepos = list.filter((r) => r.startsWith('_local_/_local_/') && r !== SAMPLE).sort();
+      rig.extraRepos = list.filter((r) => r.startsWith('_local_/_local_/') && !SEEDED.has(r)).sort();
       rig.pristine = rig.extraRepos.length === 0;
       if (!rig.pristine) rigReason = `REFUSED: rig not pristine — extra repos under _local_/_local_: ${rig.extraRepos.join(', ')} (dev-env/scripts/stop.zsh; seed.zsh; run.zsh)`;
     }

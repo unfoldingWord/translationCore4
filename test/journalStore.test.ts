@@ -721,3 +721,88 @@ describe('#61 review P2: a correctly named segment is listed valid only when its
     expect(restarted.issueTs() > minted).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// I. Issue #95 — one journal scan per open.
+//
+// open() scanned every segment for the R-8.2.4 ratchet, then the recovery
+// pipeline's readUnion() scanned every segment again. open({ ratchet:
+// 'deferred' }) leaves the segment half of the ratchet to the union read that
+// follows, and the store refuses to mint a ts until that read completes.
+// ---------------------------------------------------------------------------
+
+describe('#95: a deferred open ratchets in the union read, and refuses to mint before it', () => {
+  const restartedStore = (rig: ReturnType<typeof fakeRig>, kv: ReturnType<typeof memKv>, now: () => number) =>
+    new JournalStore({
+      api: new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: rig.fetchFn }),
+      repoPath: REPO,
+      kv,
+      now,
+    });
+
+  it('issueTs, stage and publish refuse between a deferred open and readUnion', async () => {
+    const { rig, kv } = await openStore();
+    forgetSharedClocks();
+    const store = restartedStore(rig, kv, tickingNow('2026-09-05T09:00:00.000Z').now);
+    await store.open({ ratchet: 'deferred' });
+    expect(() => store.issueTs()).toThrow(/readUnion\(\) first/);
+    const ts = `2026-09-05T09:00:01.000Z|0000|${store.actorId}`;
+    await expect(store.stage([verseEvent(store.actorId, ts, 'antes\n')])).rejects.toThrow(/readUnion\(\) first/);
+    await expect(store.publish([verseEvent(store.actorId, ts, 'antes\n')])).rejects.toThrow(/readUnion\(\) first/);
+    await store.readUnion();
+    expect(typeof store.issueTs()).toBe('string');
+  });
+
+  it('after readUnion the clock is past EVERY visible ts: own multi-event action, foreign future segment, own invalid filename', async () => {
+    const frozen = () => Date.parse('2026-09-05T09:10:00.000Z');
+    const rig = fakeRig();
+    const foreign = 'a-foreign-actor';
+    const foreignTs = `2030-01-01T00:00:00.000Z|0000|${foreign}`;
+    rig.files.set(
+      rig.key(REPO, `checking/journal/${foreign}/segments/${refSegmentName(foreignTs)}`),
+      refSealAction([verseEvent(foreign, foreignTs, 'del futuro\n')]),
+    );
+    const { kv, store } = await openStore({ rig, now: frozen });
+    const events = [
+      verseEvent(store.actorId, store.issueTs(), 'primero\n'),
+      settingsEvent(store.actorId, store.issueTs(), 'segundo'),
+    ];
+    await store.publish(events);
+    const torn = store.issueTs();
+    rig.files.set(rig.key(REPO, `checking/journal/${store.actorId}/segments/${refSegmentName(torn)}`), 'torn');
+
+    forgetSharedClocks();
+    const restarted = restartedStore(rig, kv, frozen);
+    await restarted.open({ ratchet: 'deferred' });
+    const union = await restarted.readUnion();
+    expect(union.invalid.map((s) => s.name)).toEqual([refSegmentName(torn)]);
+    const next = restarted.issueTs();
+    for (const event of events) expect(next > event.ts).toBe(true);
+    expect(next > torn).toBe(true);
+    expect(next > foreignTs).toBe(true);
+  });
+
+  it('readUnion reports progress once per listed segment, and the total is known before the first read', async () => {
+    const { rig, kv, store } = await openStore();
+    for (const text of ['uno\n', 'dos\n', 'tres\n']) await store.publish([verseEvent(store.actorId, store.issueTs(), text)]);
+    forgetSharedClocks();
+    const restarted = restartedStore(rig, kv, tickingNow('2026-09-05T09:20:00.000Z').now);
+    await restarted.open({ ratchet: 'deferred' });
+    const seen: Array<{ done: number; total: number }> = [];
+    await restarted.readUnion({ onProgress: (p) => seen.push({ ...p }) });
+    expect(seen[0]).toEqual({ done: 0, total: 3 });
+    expect(seen.map((p) => p.done)).toEqual([0, 1, 2, 3]);
+    expect(seen.every((p) => p.total === 3)).toBe(true);
+  });
+
+  it("open() without the option still ratchets in open() itself — the primitive's contract holds", async () => {
+    const frozen = () => Date.parse('2026-09-05T09:30:00.000Z');
+    const { rig, kv, store } = await openStore({ now: frozen });
+    const minted = store.issueTs();
+    await store.publish([verseEvent(store.actorId, minted, 'publicado\n')]);
+    forgetSharedClocks();
+    const restarted = restartedStore(rig, kv, frozen);
+    await restarted.open();
+    expect(restarted.issueTs() > minted).toBe(true);
+  });
+});

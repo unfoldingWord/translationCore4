@@ -10,6 +10,7 @@ import SourceTexts from './views/modals/SourceTexts.jsx';
 import GatewayChange from './views/modals/GatewayChange.jsx';
 import CommunityChecking from './views/CommunityChecking.jsx';
 import Understand from './views/Understand.jsx';
+import OpenProgress from './views/OpenProgress.jsx';
 import { AppHeader, Switcher, StatusDot, Button } from './ds/index.js';
 import { t } from './i18n';
 
@@ -98,6 +99,7 @@ export default function App() {
       <ProjectSettings />
       <SourceTexts />
       <GatewayChange />
+      <OpenProgress />
     </div>
   );
 }
