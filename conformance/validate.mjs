@@ -558,11 +558,14 @@ let mergedVerseObjects = null;
   const { execSync } = require('child_process');
   const T = path.resolve('tmp-merge-test');
   // Removal of the scratch repo raced once in CI (#178): ENOTEMPTY on `.git` while the tree
-  // was being walked. Two guards, each documented by its tool: rmSync retries the
-  // ENOTEMPTY/EBUSY class with linear backoff (Node fs.rmSync `maxRetries`/`retryDelay`), and
-  // every git call disables the background work git documents as running after a commit or
-  // merge returns (`gc.auto=0` stops automatic packing, `maintenance.auto=false` stops the
-  // post-command `git maintenance run --auto`; git-config(1)).
+  // was being walked [VERIFIED — run 33976695938, attempt 1 red, attempt 2 green on the same
+  // commit, 2026-09-05]. Two guards, each documented by its tool: rmSync retries EBUSY,
+  // EMFILE, ENFILE, ENOTEMPTY and EPERM with linear backoff (`maxRetries`/`retryDelay`,
+  // recursive mode only) [VERIFIED — Node v22 fs.rmSync reference, read 2026-09-05; runtime
+  // v22.14.0], and every git call disables the automatic gc and maintenance git documents as
+  // running after a commit or merge returns (`gc.auto=0`, `maintenance.auto=false`)
+  // [VERIFIED — git-config(1) at git 2.46.0, 2026-09-05]. The cause is inferred from the error
+  // and the code shape; the retry covers the error class whatever the writer.
   const rmT = () => fs.rmSync(T, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   rmT();
   fs.mkdirSync(T, { recursive: true });
