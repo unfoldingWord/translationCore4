@@ -89,8 +89,10 @@ start_app() {  # $1 = label
     sleep 1
   done
   [ -n "$PORT" ] || fail "$1 start: no tc4 server on 19119-19139 after 60 s (log: $LOGDIR/tc4-smoke-$1.log)"
-  local version
-  version=$(curl -s --max-time 2 "http://127.0.0.1:$PORT/api/version" | sed -n 's/.*"pkg_version":"\([^"]*\)".*/\1/p')
+  local version body
+  body=$(curl -s --max-time 5 "http://127.0.0.1:$PORT/api/version") || fail "$1 start: curl exit $? on GET /api/version"
+  version=$(printf '%s' "$body" | sed -n 's/.*"pkg_version":"\([^"]*\)".*/\1/p')
+  [ -n "$version" ] || fail "$1 start: /api/version carries no pkg_version: ${body:0:200}"
   SERVER_PIDS=$(port_pids)
   [ -n "$SERVER_PIDS" ] || fail "$1 start: no process listens on port $PORT (lsof)"
   # The desktop app itself must be running, not only the server it spawned.
