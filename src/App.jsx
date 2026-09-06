@@ -14,6 +14,14 @@ import OpenProgress from './views/OpenProgress.jsx';
 import { AppHeader, Switcher, StatusDot, Button } from './ds/index.js';
 import { t } from './i18n';
 
+/** Which failure the indicator's Retry button retries: a note save, a
+ * checkpoint commit (#183), or the verse save. */
+function retryFor({ noteError, commitOnly, actions }) {
+  if (noteError) return { testId: 'retry-note-save', onClick: actions.retryNoteSave };
+  if (commitOnly) return { testId: 'retry-checkpoint', onClick: actions.retryCheckpoint };
+  return { testId: undefined, onClick: actions.retrySave };
+}
+
 // FR-32: the indicator binds to the ACTUAL write promise via the SaveScheduler
 // state machine — never optimistic.
 function SaveIndicator() {
@@ -34,17 +42,21 @@ function SaveIndicator() {
   const noteState = s.noteSaveState ?? 'saved';
   const verseState = s.saveState ?? 'saved';
   const effective = (rank[noteState] ?? 0) >= (rank[verseState] ?? 0) ? noteState : verseState;
-  const noteError = noteState === 'error';
-  const m = map[effective] || map.saved;
-  const isError = effective === 'error';
+  // #183: a failed checkpoint commit is an error like a failed save, with its
+  // own retry; it never blocked the navigation that triggered it. A save
+  // failure outranks it: the save's retry is the one offered.
+  const commitOnly = effective !== 'error' && !!s.commitError;
+  const m = commitOnly ? { status: 'invalid', label: t('app.commitError') } : (map[effective] || map.saved);
+  const isError = effective === 'error' || commitOnly;
+  const retry = retryFor({ noteError: noteState === 'error', commitOnly, actions });
   return (
     <div data-testid="save-indicator" data-state={effective}
       style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', fontWeight: 'var(--fw-heavy)', display: 'flex', alignItems: 'center', gap: 6, color: isError ? 'var(--tc-invalid-on-dark)' : 'rgba(255,255,255,.66)' }}>
       <StatusDot status={m.status} size={8} />
       {m.label}
       {isError && (
-        <Button size="sm" variant="outline" data-i="quiet" data-testid={noteError ? 'retry-note-save' : undefined}
-          onClick={noteError ? actions.retryNoteSave : actions.retrySave}
+        <Button size="sm" variant="outline" data-i="quiet" data-testid={retry.testId}
+          onClick={retry.onClick}
           style={{ background: 'transparent', color: 'var(--tc-invalid-on-dark)', borderColor: 'var(--tc-invalid-on-dark)', padding: '3px 10px', fontSize: 'var(--fs-label)' }}>
           {t('app.retry')}
         </Button>

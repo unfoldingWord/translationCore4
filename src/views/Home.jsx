@@ -141,6 +141,15 @@ export default function Home() {
         {/* A refused open (e.g. the #62 seed pipeline's diagnosable STOP) routes
             back here with bookError set; without this banner the click looked
             like it did nothing (found 2026-08-22, rig journey run). */}
+        {/* #183: the checkpoint commit of the project just left failed. The work
+            is saved (every save is a journal segment); the commit is pending and
+            it is retried when that project is opened again. */}
+        {s.commitError && (
+          <Callout tone="warn" role="alert" data-testid="home-checkpoint-error"
+            style={{ margin: '0 0 16px', overflowWrap: 'anywhere' }}>
+            {s.commitError} {t('home.commitErrorHint')}
+          </Callout>
+        )}
         {s.bookError && (
           <Callout tone="warn" role="alert" data-testid="home-open-error"
             style={{ margin: '0 0 16px', overflowWrap: 'anywhere' }}>

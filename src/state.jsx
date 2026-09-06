@@ -38,6 +38,7 @@ import { consequencesOfGatewayChange, applyGatewayChange, uncoveredByChange } fr
 import { carryOverDecisions } from './data/carryOver';
 import { TC_READY_TOPIC } from './data/serverApi';
 import { t } from './i18n';
+import { checkpointMessage } from './data/checkpoint';
 import { INSTALLED_SUITE, SUITE_VERSION } from './data/installedSuite';
 export { SUITE_VERSION }; // the AddBook badge imports it from here
 
@@ -45,6 +46,12 @@ const AppCtx = createContext(null);
 const STORAGE_ID = 'uw-tc4';
 
 export const api = new ServerApi();
+// The mode a view is, for a checkpoint message (#183). Views not listed keep their id.
+const MODE_NAME = { read: 'Understand', draft: 'Translate', check: 'Check', publish: 'Community Checking' };
+// A leave-project checkpoint still running after its store was torn down
+// (#183), by repoPath. An open of the same project waits for it, so it never
+// reads a half-regenerated tree.
+const leaveCheckpoints = new Map();
 
 // ---- source-package rows (J3) ------------------------------------------------
 // Role assignment uses the catalog's SB flavor where that flavor is
@@ -229,6 +236,14 @@ const initial = () => ({
   // transitions only). It survives leaving the Understand view (B1) and any
   // 'error' blocks navigation like a verse failure (FR-32).
   noteSaveState: 'saved',
+  // #183: a checkpoint commit (D9: leaving the project, switching mode) that
+  // failed. Shown in the save indicator's error state with a Retry; a commit
+  // never blocks navigation.
+  commitError: null,
+  // The repoPath that owes a checkpoint after leaving it failed (#183). The
+  // checkpoint is retried when that project opens again; no store is opened
+  // for a project that is not current (open() sets the shell's current project).
+  commitErrorRepo: null,
   // Modals (the owner's design: creation, add-book, and settings are dialogs
   // over Home, not separate pages)
   modal: null, // null | 'newProject' | 'addBook' | 'settings' | 'sources'
@@ -933,6 +948,56 @@ function adoptInstalledResources(current, installed) {
  * target project B). Every await is followed by a supersession check BEFORE
  * any shared ref is assigned or any state dispatched; a stale FAILURE is
  * dropped too (it must never route the successfully opened project Home). */
+/** A checkpoint commit (D9, #183): commit the project's pending changes with
+ * a message derived from them, or do nothing when the tree is clean (the
+ * platform records an empty commit otherwise — PLATFORM-NOTES #9). The store
+ * queue runs status and commit as one step behind any save in flight. Returns
+ * the message it committed, or null. Throws on failure; the caller decides
+ * where that shows. */
+async function checkpointCommit(store, reason) {
+  return store.commitPending((changes) => checkpointMessage(reason, changes));
+}
+
+/** Start a checkpoint without awaiting it: the screen moves on at once, the
+ * store queue runs the commit behind any save in flight, and the outcome lands
+ * in commitError only while that store is still the current one. */
+function startCheckpoint({ store, storeRef, dispatch }, reason) {
+  checkpointCommit(store, reason)
+    .then(() => { if (storeRef.current === store) dispatch({ type: 'set', patch: { commitError: null } }); })
+    .catch((e) => { if (storeRef.current === store) dispatch({ type: 'set', patch: { commitError: e?.reason || e?.message || String(e) } }); });
+}
+
+/** The project just opened owes the checkpoint that failed when it was left
+ * (#183): retry it now, through the store that is open. */
+function retryOwedCheckpoint({ store, storeRef, stateRef, dispatch }, repoPath) {
+  if (stateRef.current.commitErrorRepo !== repoPath) return;
+  dispatch({ type: 'set', patch: { commitErrorRepo: null } });
+  startCheckpoint({ store, storeRef, dispatch }, 'retry');
+}
+
+/** The leave-project checkpoint (D9, #183), started after the store was torn
+ * down: the captured store still owns its per-project queue, so the commit
+ * runs behind every drained write, and the screen never waits on it. On
+ * failure the project owes the checkpoint (commitErrorRepo) and retries it
+ * when opened again; the banner shows on Home, or in that project if it is
+ * already open again. Only the latest failure is remembered: an earlier
+ * project's pending work is durable in its journal and commits at its own
+ * next checkpoint. */
+function startLeaveCheckpoint({ store, repoPath, stateRef, dispatch }) {
+  const run = checkpointCommit(store, 'leaving the project')
+    .then(() => {
+      if (stateRef.current.commitErrorRepo === repoPath) dispatch({ type: 'set', patch: { commitError: null, commitErrorRepo: null } });
+    })
+    .catch((e) => {
+      const st = stateRef.current;
+      const visible = st.view === 'home' || st.project?.repoPath === repoPath;
+      const message = `${t('app.commitError')}: ${e?.reason || e?.message || String(e)}`;
+      dispatch({ type: 'set', patch: { commitErrorRepo: repoPath, ...(visible ? { commitError: message } : {}) } });
+    })
+    .finally(() => { if (leaveCheckpoints.get(repoPath) === run) leaveCheckpoints.delete(repoPath); });
+  leaveCheckpoints.set(repoPath, run);
+}
+
 /** The drain gate before an open. Never abandon unsaved work: drain BOTH
  * schedulers first, and stay put if a write failure remains (FR-32; B3/M1/M6;
  * notes held to the same rule — B1/D65). Returns true when the open may
@@ -995,6 +1060,10 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
     // numbering, and the journal keeps those keys permanently.
     forgetProjectFrames();
     const store = makeStore();
+    // #183: the leave-checkpoint of this same project may still be regenerating
+    // its shared files; open behind it, never against a half-written tree.
+    await leaveCheckpoints.get(repoPath);
+    if (superseded()) return;
     // open() runs the issue-#62 recovery pipeline: replay staged intents,
     // classify derived state against the journal, seed a journal-less
     // project universally, reconcile out-of-band USFM — or STOP with a
@@ -1080,7 +1149,12 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
     if (superseded()) return;
     await actions.openBook(bookCode || summary.bookCodes[0]);
     if (superseded()) return;
-    dispatch({ type: 'set', patch: { opening: null } });
+    // #183: the Home banner for a failed leave-checkpoint is cleared once a
+    // project is open (a failed open keeps it beside the open error). When the
+    // project opened is the one that owes that checkpoint, the checkpoint is
+    // retried now, through its store; a failure shows in the save indicator.
+    dispatch({ type: 'set', patch: { opening: null, commitError: null } });
+    retryOwedCheckpoint({ store, storeRef, stateRef, dispatch }, repoPath);
   } catch (e) {
     if (superseded()) return; // a stale failure must not route the OPEN project Home
     // A failed open surfaces its diagnosable report and never a stuck bar (#95).
@@ -1842,7 +1916,31 @@ export function AppProvider({ children }) {
         // like the verse scheduler does (FR-32). The failure is visible in
         // the Understand callout and the save indicator.
         if (noteSchedulerRef.current && !(await noteSchedulerRef.current.drain())) return;
+        const st = stateRef.current;
+        const from = st.view;
         dispatch({ type: 'set', patch: { view } });
+        // #183 (D9): a mode switch is a checkpoint. Started, not awaited: a
+        // failure lands in commitError, never in the way.
+        if (st.project && storeRef.current && from !== view && from !== 'home') {
+          const store = storeRef.current;
+          // Behind the alignment write chain (its own queue, #129): an alignment
+          // edit made before the switch reaches the project queue before status
+          // is read. The chain never rejects.
+          alignWriteQueue.then(() => startCheckpoint({ store, storeRef, dispatch }, `leaving ${MODE_NAME[from] ?? from}`));
+        }
+      },
+
+      /** Retry the last failed checkpoint commit (#183). */
+      retryCheckpoint: async () => {
+        const st = stateRef.current;
+        const store = storeRef.current;
+        if (!st.project || !store) return;
+        try {
+          await checkpointCommit(store, 'retry');
+          dispatch({ type: 'set', patch: { commitError: null } });
+        } catch (e) {
+          dispatch({ type: 'set', patch: { commitError: e?.reason || e?.message || String(e) } });
+        }
       },
 
       closeModal: () => dispatch({ type: 'set', patch: { modal: null, np: null, ab: null, st: null } }),
@@ -3349,6 +3447,11 @@ export function AppProvider({ children }) {
           alignTail = alignWriteQueue;
           await alignTail;
         } while (alignTail !== alignWriteQueue);
+        // #183 (D9): leaving the project is a checkpoint. It is started AFTER
+        // this synchronous teardown, on the captured store (startLeaveCheckpoint):
+        // an await here would reopen the window the stable tail just closed.
+        const leaving = stateRef.current.project;
+        const leavingStore = storeRef.current;
         schedulerRef.current?.dispose();
         schedulerRef.current = null;
         noteSchedulerRef.current?.dispose();
@@ -3365,9 +3468,10 @@ export function AppProvider({ children }) {
         alignSessionSeq++;
         dispatch({
           type: 'set',
-          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, saveState: 'saved', noteSaveState: 'saved', projectPins: null, projectPinsLoaded: false, projectPinsError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, pickerProgress: null, toolPos: {} },
+          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, saveState: 'saved', noteSaveState: 'saved', commitError: null, projectPins: null, projectPinsLoaded: false, projectPinsError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, pickerProgress: null, toolPos: {} },
         });
         refreshProjects(); // re-order: the project just left goes to the top
+        if (leaving && leavingStore) startLeaveCheckpoint({ store: leavingStore, repoPath: leaving.repoPath, stateRef, dispatch });
       },
     };
     return a;

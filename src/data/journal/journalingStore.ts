@@ -2427,6 +2427,20 @@ export class JournalingStore implements BurritoStore {
     return this.queue(() => this.commitQueued(message));
   }
 
+  async commitPending(
+    messageFor: (changes: Array<{ path: string; change_type: string }>) => string | null,
+  ): Promise<string | null> {
+    // Status and commit inside ONE queued step: a second checkpoint queued
+    // behind this one reads the tree this one leaves, never the tree it saw.
+    return this.queue(async () => {
+      const changes = await this.api.gitStatus(this.mustRepo());
+      const message = messageFor(changes);
+      if (message === null) return null;
+      await this.commitQueued(message);
+      return message;
+    });
+  }
+
   private async commitQueued(message: string): Promise<void> {
     const repo = this.mustRepo();
     const foldOut = this.foldNow();

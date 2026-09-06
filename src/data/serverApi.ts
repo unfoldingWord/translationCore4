@@ -350,6 +350,14 @@ export class ServerApi {
     return this.requestJson(`/burrito/paths/${encodeRepoPath(repoPath)}`);
   }
 
+  /** GET /git/status/<repoPath> — the pending (uncommitted) changes of the
+   * repository as `{path, change_type}` entries; an empty list is a clean tree.
+   * A checkpoint (#183) reads this first: `add-and-commit` on a clean tree
+   * records an EMPTY commit [VERIFIED live 0.18.5 (99fd9be), 2026-09-05; PLATFORM-NOTES #9]. */
+  async gitStatus(repoPath: string): Promise<Array<{ path: string; change_type: string }>> {
+    return this.requestJson(`/git/status/${encodeRepoPath(repoPath)}`);
+  }
+
   // ---- write surface (W-1..W-3 encoded here, once) --------------------------
 
   /** POST /burrito/ingredient/raw/<repoPath>?ipath=…&<presence-only flags>,
@@ -397,7 +405,8 @@ export class ServerApi {
   }
 
   /** POST /git/add-and-commit/<repoPath> — sweeps ALL pending changes (W-4).
-   * A commit with nothing pending also succeeds [VERIFIED live 0.18.5]. */
+   * A commit with nothing pending also succeeds, and records an EMPTY commit
+   * [VERIFIED live 0.18.5 (99fd9be), 2026-09-05] — look at gitStatus() first. */
   async addAndCommit(repoPath: string, commitMessage: string): Promise<void> {
     await this.post(`/git/add-and-commit/${encodeRepoPath(repoPath)}`, {
       commit_message: commitMessage,
