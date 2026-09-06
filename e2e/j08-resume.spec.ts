@@ -14,6 +14,7 @@ import path from 'node:path';
 import {
   SEEDED_PROJECT,
   commitCount,
+  committedIngredient,
   lastCommitMessage,
   listLocalRepos,
   readLastEdit,
@@ -245,7 +246,9 @@ function pinEnglishAndRestateNotesRecord(): void {
   const p = path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'translationNotes', 'TIT.json');
   fs.writeFileSync(p, `${JSON.stringify(file, null, 2)}\n`);
 }
-const decidedCount = () => readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')?.decisions.length ?? 0;
+type Decision = { status?: string; contextId?: { groupId?: string; reference?: { chapter?: number; verse?: number } } };
+const decisions = (): Decision[] => (readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')?.decisions ?? []) as Decision[];
+const decisionKey = (d: Decision) => `${d.contextId?.reference?.chapter}:${d.contextId?.reference?.verse} · ${d.contextId?.groupId}`;
 
 test.describe('J8 — the Increment 4 journey: open, resume, and share a project (#185)', () => {
   test(
@@ -253,9 +256,15 @@ test.describe('J8 — the Increment 4 journey: open, resume, and share a project
     { tag: ['@inc4', '@J8'] },
     async ({ page }) => {
       test.setTimeout(180_000);
+      // The reset below erases what the earlier tests journaled; verify their
+      // materialization first, so this test does not hide a mismatch they left.
+      await verifyAllJournaledProjects();
       pinEnglishAndRestateNotesRecord();
       const commitsBefore = commitCount(SEEDED_PROJECT);
-      const decidedBefore = decidedCount();
+      // The seeded sample is mid-check: an undecided item may already carry a record
+      // (status todo), so the proof is this item's status, not a new record.
+      const statusOf = (list: Decision[], key: string | null) => list.find((d) => decisionKey(d) === key)?.status ?? 'absent';
+      const itemKeyFor: { value: string | null } = { value: null };
       const drafted = 'Reprende con toda autoridad (viaje completo).';
 
       await test.step('open the seeded project at Titus 2 and draft a verse', async () => {
@@ -270,15 +279,23 @@ test.describe('J8 — the Increment 4 journey: open, resume, and share a project
         await page.getByRole('tab', { name: 'Check', exact: true }).click();
         await expect.poll(() => commitCount(SEEDED_PROJECT), { timeout: 30_000 }).toBe(commitsBefore + 1);
         expect(lastCommitMessage(SEEDED_PROJECT)).toMatch(/^Checkpoint, leaving Translate: .*TIT text/);
+        // The COMMITTED book carries the draft, not only the working tree.
+        expect(committedIngredient(SEEDED_PROJECT, 'TIT.usfm')).toContain(drafted);
       });
 
       await test.step('mark one Translation Notes item Valid; the decision lands in the sidecar', async () => {
         await expect(page.getByTestId('preflight-translationNotes')).toHaveAttribute('data-state', 'ready', { timeout: 30_000 });
         await page.getByTestId('open-translationNotes').click();
         await expect(page.getByTestId('check-progress')).toBeVisible({ timeout: 30_000 });
-        await page.getByTestId('check-list').locator('button[data-decided="0"]').first().click();
+        const item = page.getByTestId('check-list').locator('button[data-decided="0"]').first();
+        // The item's title is `c:v · groupId` (Check.jsx); the sidecar record must be this one.
+        const itemKey = await item.getAttribute('title');
+        expect(itemKey).toBeTruthy();
+        itemKeyFor.value = itemKey;
+        expect(statusOf(decisions(), itemKey)).not.toBe('valid');
+        await item.click();
         await page.getByTestId('mark-valid').click();
-        await expect.poll(decidedCount, { timeout: 10_000 }).toBe(decidedBefore + 1);
+        await expect.poll(() => statusOf(decisions(), itemKey), { timeout: 10_000 }).toBe('valid');
         await expect(page.getByTestId('save-error')).toHaveCount(0);
       });
 
@@ -287,6 +304,10 @@ test.describe('J8 — the Increment 4 journey: open, resume, and share a project
         await expect(page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`)).toBeVisible({ timeout: 30_000 });
         await expect.poll(() => commitCount(SEEDED_PROJECT), { timeout: 30_000 }).toBe(commitsBefore + 2);
         expect(lastCommitMessage(SEEDED_PROJECT)).toMatch(/^Checkpoint, leaving the project: .*TIT/);
+        // The COMMITTED sidecar carries the decision.
+        const committed = committedIngredient(SEEDED_PROJECT, 'checking/translationNotes/TIT.json');
+        expect(committed).not.toBeNull();
+        expect(statusOf(JSON.parse(committed!).decisions as Decision[], itemKeyFor.value)).toBe('valid');
         await expect(page.getByTestId('home-checkpoint-error')).toHaveCount(0);
       });
 
