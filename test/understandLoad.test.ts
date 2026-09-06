@@ -371,6 +371,23 @@ describe('#189 — no pin write after the project is left during the resolver aw
     expect(h.writes).toHaveLength(1);
   });
 
+  it('a write still in flight when the same repository reopens under ANOTHER store dispatches nothing into it', async () => {
+    const h = harness('never');
+    const dispatched: unknown[] = [];
+    let release: () => void = () => {};
+    h.store.writeResources = async (next: unknown) => {
+      h.writes.push(next);
+      await new Promise<void>((r) => { release = r; });
+    };
+    const run = adoptDownloaded({ originStore: h.store, originRepoPath: 'repo/p', originGateway: { id: 'es-419', org: 'es-419_gl' }, storeRef: h.storeRef, stateRef: h.stateRef, actions: h.actions, dispatch: (a: unknown) => dispatched.push(a) });
+    await settle();
+    expect(h.writes).toHaveLength(1); // the write started under the old store
+    h.storeRef.current = { other: true }; // the repository reopened: same repoPath, a new store
+    release();
+    await run;
+    expect(dispatched).toHaveLength(0);
+  });
+
   for (const leaveAt of ['resolve', 'md5read'] as const) {
     it(`adoptDownloadedPins: left during the ${leaveAt} await → no write`, async () => {
       const h = harness(leaveAt);
