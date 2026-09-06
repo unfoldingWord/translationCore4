@@ -1,5 +1,5 @@
 // J2 — Open book → draft verses beside sources → autosave → progress updates
-// JOURNEYS-AND-GAPS §2 J2 (the hole in the middle) · PRD FR-6..FR-10 · TEST-PLAN E-J2
+// docs/JOURNEYS.md J2 · shipped v4.0.0-alpha.1 · run LTR and RTL (the J10 axis)
 // Increment 1 slice (@inc1): draft one verse in the seeded project and prove on disk —
 //   · the typed text was saved to ingredients/TIT.usfm through the store (FR-6)
 //   · D8 byte-strict: nothing outside the edited verse changed (FR-7)

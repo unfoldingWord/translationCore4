@@ -1,5 +1,5 @@
 // J7 — Publish: typeset preview → PDF → aligned USFM export
-// JOURNEYS-AND-GAPS §2 J7 · PRD FR-27, FR-28 · TEST-PLAN E-J7 · Increment 4
+// docs/JOURNEYS.md J7 · Increment 7 (#19) · run LTR and RTL (the J10 axis)
 import { test } from '@playwright/test';
 
 test.describe('J7 — a facilitator publishes the book', () => {

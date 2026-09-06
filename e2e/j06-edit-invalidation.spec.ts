@@ -1,5 +1,5 @@
 // J6 — Edit a checked verse → affected checks flag for re-review
-// JOURNEYS-AND-GAPS §2 J6 · PRD FR-11 · TEST-PLAN E-J6 · Increment 2 (owner-approved)
+// docs/JOURNEYS.md J6 · shipped v4.0.0-alpha.2
 //
 // Two independent "the ground moved" cases, and the same promise in both:
 // nothing is discarded, the user is told.

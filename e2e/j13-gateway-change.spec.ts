@@ -1,5 +1,5 @@
 // J13 — Two gateway-language resource sets: the ladder, the change, the cost
-// JOURNEYS-AND-GAPS §2 J3/J12 · PRD FR-12/FR-22 · BURRITO-SPEC §5.2/§5.3
+// docs/JOURNEYS.md J13 · shipped v4.0.0-alpha.2
 // D17/D30 (two rungs) · D23a/D30.2 (the change is explicit, with consequences)
 // D36 (the resource is the primary key)
 //

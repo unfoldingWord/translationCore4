@@ -1,5 +1,5 @@
 // Transport rig — BURRITO-SPEC §8.7 over the REAL pankosmia-web HTTP API (dev-env server).
-// Re-proves the J19 delayed-receive lifecycle and J20 zero-trust intake with every git
+// Re-proves the JC-19 delayed-receive lifecycle and JC-20 zero-trust intake with every git
 // transport operation performed through server endpoints (copy, remote/add, pull-repo,
 // add-and-commit, delete), plus the OPEN-QUESTIONS #23 probes (named-branch integration).
 // Journals are SEALED ACTION SEGMENTS — the only stream form (§8.1; converted from the
@@ -57,7 +57,7 @@ const mkEvent = (o) => ({ v: 1, base: null, ...o });
 const ts = (s, actor) => `2026-06-01T00:00:${String(s).padStart(2, '0')}.000Z|0000|${actor}`;
 const foldRepo = (repo3) => fold(readUnion(path.join(dirOf(repo3), 'ingredients/checking/journal')));
 
-// Rig fixtures are created directly on disk (like J19's `git init` fixtures); ops on them are HTTP.
+// Rig fixtures are created directly on disk (like JC-19's `git init` fixtures); ops on them are HTTP.
 const initRepo = (repo3, branch = 'main') => {
   const d = dirOf(repo3);
   fs.mkdirSync(d, { recursive: true });
@@ -150,7 +150,7 @@ const run = async () => {
     p1.merged !== 'none' && p2.merged !== 'none');
   console.log(`  #23 probe verdict: ${headSteered ? 'FETCH_HEAD follows the publication repo HEAD' : orderSteered ? `ordering-steered (${p1.merged}) — UNSAFE, confirms #23 caution` : p1.merged === 'both' ? 'merges octopus/all — investigate' : 'mixed — UNSAFE'}`);
 
-  // ---------- T3: J19 lifecycle over HTTP with SINGLE-BRANCH publication repos ----------
+  // ---------- T3: JC-19 lifecycle over HTTP with SINGLE-BRANCH publication repos ----------
   const pubA = `${LOCAL}/rig_pub_a`, pubB = `${LOCAL}/rig_pub_b`, workA = `${LOCAL}/rig_work_a`;
   for (const [repo, from] of [[pubA, P], [pubB, P], [workA, P]]) {
     const r = await copyRepo(from, repo);
@@ -173,7 +173,7 @@ const run = async () => {
     if (pull.status !== 200 || conflicts) { await deleteRepo(S); return { conflict: true, before, after: head(P) }; }
     // PLATFORM FINDING (0.17.0): after a NORMAL pull-repo merge, files added by the merge are in
     // the merge COMMIT but not the WORKING TREE (non-force checkout); a subsequent add-and-commit
-    // would commit their deletion. The correct §8.7/J20 posture is also the workaround: the
+    // would commit their deletion. The correct §8.7/JC-20 posture is also the workaround: the
     // integrator writes the VALIDATED UNION explicitly — every actor journal it accepted — via
     // ingredient writes, then regenerates and commits. Never trust the merged worktree.
     const union = new Map(); // repo-relative journal path -> bytes (accepted union)
@@ -238,7 +238,7 @@ const run = async () => {
     head(workA) !== workAHeadBeforeIntegrations /* it advanced by A's own commits only */ &&
     foldRepo(workA).books.TIT.verses['1:3'] === 'tres\n' /* B1 never leaked into old working repo */);
 
-  // ---------- T4: J20 zero-trust intake over HTTP ----------
+  // ---------- T4: JC-20 zero-trust intake over HTTP ----------
   const intakeViolations = (S, incomingActor) => {
     const changed = git(`diff --name-only ${head(P)} HEAD`, S).split('\n').filter(Boolean);
     const allowedPrefix = `ingredients/checking/journal/${incomingActor}/`;
@@ -250,7 +250,7 @@ const run = async () => {
       if (fs.existsSync(path.join(dirOf(P), f))) { bad.push(`${f} (modifies an accepted segment — immutable, §8.1)`); continue; }
       if (f === `${allowedPrefix}actor.json`) {
         // §8.7: actor.json must PARSE and validate — shape + actorId = directory
-        // (the same validator J20's in-process intake applies; round 7 unification)
+        // (the same validator JC-20's in-process intake applies; round 7 unification)
         const a = validateActorDoc(git(`show HEAD:"${f}"`, S), incomingActor);
         if (!a.ok) bad.push(`${f} (invalid actor.json: ${a.reason})`);
         continue;

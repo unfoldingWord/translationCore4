@@ -1,5 +1,5 @@
 // J4 — Check a book: derived tW/tN item list → read note/article → triage
-// JOURNEYS-AND-GAPS §2 J4 · PRD FR-5, FR-13, FR-16..FR-18 · TEST-PLAN E-J4 · Increment 2
+// docs/JOURNEYS.md J4 · shipped v4.0.0-alpha.2 · run LTR and RTL (the J10 axis)
 //
 // Ground truth is the rig's disk, never UI state alone: the derived list must
 // come from the pinned resource's own TSV, and every decision must land in the

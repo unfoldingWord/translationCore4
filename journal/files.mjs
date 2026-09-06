@@ -191,7 +191,7 @@ export const republishSegment = (actorDir, stagedBytes) => {
 };
 
 // Validate one actor.json's bytes against §8.1/§8.7 — ONE validator (round 7), shared by
-// the in-process intake (J20) and the live transport intake. §8.1 records
+// the in-process intake (JC-20) and the live transport intake. §8.1 records
 // `{schemaVersion: 1, actorId, displayName, device, createdAt}`, `displayName`/`device`
 // OPTIONAL. Round 8: the actorId carries the §8.1 SLUG GRAMMAR (it is a directory name —
 // a structural position), `createdAt` is REQUIRED and is a fixed-width ISO-8601 UTC

@@ -1,5 +1,5 @@
 // J8 — Resume work across sessions/books; multi-book navigation
-// JOURNEYS-AND-GAPS §2 J8 · PRD FR-29, FR-34 · TEST-PLAN E-J8 · Increment 4
+// docs/JOURNEYS.md J8 · built in Increment 4 (#184, #185); the share leg waits on #120
 //
 // The last test is the Increment 4 journey end to end (#185): open, draft, mark a
 // check, leave (a checkpoint commits), reload, resume, share. The share leg is a

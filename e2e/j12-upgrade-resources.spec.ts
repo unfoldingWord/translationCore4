@@ -1,5 +1,5 @@
 // J12 — Upgrade pinned resources: explicit upgrade → re-derive → carry over / invalidate
-// JOURNEYS-AND-GAPS §2 J12 · PRD FR-22 · TEST-PLAN E-J12 · Increment 5
+// docs/JOURNEYS.md J12 · Increment 6 (#40)
 import { test } from '@playwright/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
 

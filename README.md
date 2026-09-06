@@ -111,7 +111,9 @@ supplies the sibling `sample-burrito` checkout.
 | What is the project format? | `docs/BURRITO-SPEC.md` — **normative** |
 | What do we build, and why? | `docs/ARCHITECTURE.md` |
 | What does the platform actually do? | `docs/PLATFORM-NOTES.md` (verification rules are its final section) |
+| What does a user do, and what is on disk when it is done? | `docs/JOURNEYS.md` — cite journeys as `Jn` |
 | What was decided, and when? | `docs/DECISIONS.md` — cite decisions as `Dnn` |
+| Where is every document, and what does each ID prefix mean? | `docs/MAP.md` |
 | What are the known risks? | `docs/RISKS.md` — cite risks as `Ledger #n` |
 | What proves a claim? | `docs/evidence/` — dated measurement records |
 | What is the Phase-2 journal design? | `docs/BURRITO-SPEC.md` §8 + Appendix A — the journal WRITE side ships in 4.0.0 (D47); the fold/sync features stay Phase 2 |

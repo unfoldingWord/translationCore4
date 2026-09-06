@@ -1,5 +1,5 @@
 // J1 — First run → create project (language, direction, name) → add book(s)
-// JOURNEYS-AND-GAPS §2 J1 · PRD FR-1..FR-5 · TEST-PLAN E-J1 (Increment-1 subset)
+// docs/JOURNEYS.md J1 · shipped v4.0.0-alpha.1
 // Increment 1 slice (@inc1): the create flow with source selection — a conforming
 // Scripture Burrito git repo appears on disk in the rig, with vrs.json (D25),
 // the installed-suite pins incl. extraScripture (D10/#13), and books seeded

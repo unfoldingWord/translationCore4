@@ -66,7 +66,8 @@ starts after the legibility increment in `docs/plans/LEGIBILITY.md` closes (D67)
 - Reuse before build: for the journal, versification, and fonts, what pankosmia
   and the Proskomma ecosystem already provide is checked and used first (owner
   directive 2026-08-12; recorded on the issues).
-- An increment completes a journey, not a screen; nothing is done without pasted
-  test evidence; each close tags a pre-release.
+- An increment moves at least one user journey (`Jn`, `docs/JOURNEYS.md`) to shipped,
+  not a screen; nothing is done without pasted test evidence; each close tags a
+  pre-release. Only a person has a journey; an increment is a development unit (D69).
 - The format specification and its conformance harness change in the same change
   set (BURRITO-SPEC §9), and from Increment 3 the harness runs in CI.
