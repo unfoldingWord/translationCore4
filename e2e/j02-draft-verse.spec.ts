@@ -6,9 +6,12 @@
 //   · no alignment markup written at rest (FR-8, I-1)
 //   · no auto-commit — commits happen only at checkpoints (FR-34, W-4)
 import { test, expect } from '@playwright/test';
+import fs from 'node:fs';
+import path from 'node:path';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import {
   SEEDED_PROJECT,
+  TC4_ROOT,
   readIngredient,
   commitCount,
   byteStrictViolation,
@@ -123,6 +126,7 @@ test.describe('J2 — a translator drafts a verse', () => {
       // The one local host is the dev client (baseURL), which proxies /api to the rig
       // (vite.config.js); everything else is a network dependency. Two are known and open (#3: the fonts come from Google's
       // CDN); the list shrinks to nothing when #3 lands. A new host fails the test.
+      const OFFLINE_DRAFT = 'Recuérdales que estén dispuestos a toda buena obra.';
       const KNOWN_OFFLINE_DEFECTS: Record<string, string> = {
         'fonts.googleapis.com': '#3',
         'fonts.gstatic.com': '#3',
@@ -143,12 +147,25 @@ test.describe('J2 — a translator drafts a verse', () => {
       await page.getByRole('button', { name: '3', exact: true }).click();
       await page.getByRole('button', { name: 'Start this verse' }).first().click();
       const editor = page.getByRole('textbox', { name: /Verse/ });
-      await editor.fill('Recuérdales que estén dispuestos a toda buena obra.');
+      await editor.fill(OFFLINE_DRAFT);
       await editor.blur();
       await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
-      // A request that follows the save (the debounced Resume record, a checkpoint that
-      // is not expected here) lands inside this window, so the snapshot sees it.
-      await page.waitForTimeout(2500);
+      // The save's follow-up is the debounced Resume record: a queued read then a write
+      // of the client-settings document (src/state.jsx, recordLastEdit/flushLastEdit).
+      // Wait for THAT write to land on the rig's disk, not for a fixed time, then a
+      // short window for anything that trails it.
+      const settingsFile = path.join(TC4_ROOT, 'dev-env', 'state', 'work', 'client_settings', 'uw-tc4.json');
+      await expect
+        .poll(() => {
+          try {
+            const doc = JSON.parse(fs.readFileSync(settingsFile, 'utf8')) as { lastEdit?: { snippet?: string } };
+            return doc.lastEdit?.snippet ?? null;
+          } catch {
+            return null;
+          }
+        }, { timeout: 10_000 })
+        .toBe(OFFLINE_DRAFT);
+      await page.waitForTimeout(1000);
       // No service worker: a worker's requests bypass the page's request event, so
       // its absence is asserted rather than assumed.
       const workers = await page.evaluate(() =>

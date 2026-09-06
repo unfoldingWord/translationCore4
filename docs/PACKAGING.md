@@ -260,9 +260,10 @@ between runs; it does not replace the run.
 
 1. Install the artifact as "Install and launch" above describes, on a machine that never
    ran tC4 (or under a fresh `HOME`). Do not start the app yet.
-2. Run the post-install smoke test once, online: `zsh smoke-installed.zsh` in the unpacked
-   folder (#45; the script ships in artifacts built after pull request #192 merged; see
-   "Smoke tests" above). Expected: `SMOKE OK`.
+2. If the unpacked folder contains `smoke-installed.zsh` (#45; artifacts built after pull
+   request #192 merged carry it, and the section "Smoke tests" describes it), run it once,
+   online: `zsh smoke-installed.zsh`. Expected: `SMOKE OK`. An older artifact has no such
+   file; skip this step and say so in the record.
 3. Optional, for a project with source text: start the app online once, create a project,
    open Home › `Source texts`, and download the English package. Then quit the app. Without
    this step, the source pane shows "This source text is not on this computer." offline
@@ -290,9 +291,9 @@ between runs; it does not replace the run.
 | 3 | Mode tab `Understand`. | The passage's helps area shows for chapter 1. With no English package on this computer, the source text reads "This source text is not on this computer." and the helps read "The pinned resource is not on this computer and the app is offline." (#163). |
 | 4 | Mode tab `Translate`. Chapter 1. | The chapter's verses show. The source pane shows ULT/UST text, or the #163 message "This source text is not on this computer." |
 | 5 | `Draft verse 1` (the dashed pill), type a verse, click outside the editor. | The save indicator shows `Saved`. |
-| 6 | Mode tab `Check`. On the Translation Notes card, `Start checking` (or `Continue`). Pick one item; `✓ Mark valid`. | The item is decided; the progress line `N of M resolved` counts it. If the card reads `Unavailable offline`, that is the #163 case: name it and continue. |
-| 7 | `← All checking tools`, then `Align`. Click one word in the bank, then one card. | The word moves into the card; the bank has one word fewer. If the screen reads "The original-language text is not on this computer", name #163 and continue. |
-| 8 | Leave the project (`Switch project`), then open Titus again from Home. Look at `Translate`, then `Check` › Translation Notes, then `← All checking tools` › `Align`. | Home lists the project. The drafted verse is on screen; the progress line still counts the decision; the aligned word is still in its card. |
+| 6 | Mode tab `Check`. On the Translation Notes card, `Start checking` (or `Continue`). Pick one item; `✓ Mark valid`. | The item is decided; the progress line `N of M resolved` counts it. If the card reads `Unavailable offline`, that is the #163 case: name it, stay on the tool picker, and go to step 7. |
+| 7 | On the tool picker (`← All checking tools` first, if a tool is open), `Align`. Click one word in the bank, then one card. | The word moves into the card; the bank has one word fewer. If the screen reads "The original-language text is not on this computer", name #163 and continue. |
+| 8 | Leave the project (`Switch project`), then open Titus again from Home. Look at `Translate`; then at `Check` › Translation Notes and `Align` for each of steps 6 and 7 that you could do. | Home lists the project. The drafted verse is on screen. Each decision and alignment you made is still there: the progress line still counts the decision; the aligned word is still in its card. A step you could not do (#163) has nothing to check here. |
 | 9 | Export the book. | Not yet possible: #19 (export) is not built. Skip and name #19. |
 | 10 | Quit the app. Turn the network on again. | |
 
