@@ -5,7 +5,7 @@
 // repository, never from UI state (e2e/helpers/rig.ts).
 import { test, expect, type Page } from '@playwright/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
-import { SEEDED_PROJECT, commitCount, lastCommitMessage, listLocalRepos, readLastEdit } from './helpers/rig';
+import { SEEDED_PROJECT, commitCount, lastCommitMessage, listLocalRepos, readLastEdit, resetLargeFixture } from './helpers/rig';
 
 // The seeded large fixture (issue #95): Titus with 4000 journaled edits, so its
 // open shows the progress indicator (J15) and a resume into it must wait it out.
@@ -112,26 +112,37 @@ test.describe('J8 — a translator resumes where they left off', () => {
     { tag: ['@inc4', '@J8'] },
     async ({ page }) => {
       test.setTimeout(300_000);
-      await openTitusAt(page, '2', LARGE);
-      const drafted = 'Enseña a los ancianos a ser sobrios (proyecto grande, reanudar).';
-      await draftFirstStub(page, drafted);
-      await waitForResumeRecord(LARGE, 2, drafted);
+      try {
+        await openTitusAt(page, '2', LARGE);
+        // Opening and reading a project is not an edit: past the write debounce
+        // (1 s, src/state.jsx recordLastEdit), the Resume record still names no
+        // large-fixture position (Codex review, round 3).
+        await page.waitForTimeout(1500);
+        expect(readLastEdit()?.repoPath ?? null).not.toBe(`_local_/_local_/${LARGE}`);
 
-      await page.reload();
-      await expectAllProjectsListed(page);
-      const card = page.getByTestId('resume-card');
-      await expect(card).toBeVisible({ timeout: 30_000 });
-      await expect(card).toContainText(LARGE_NAME);
-      await expect(card).toContainText('Titus 2');
-      await card.click();
-      // The slow open shows its determinate indicator (issue #95) ...
-      const progress = page.getByTestId('open-progress');
-      await expect(progress).toBeVisible({ timeout: 20_000 });
-      await expect(progress).toHaveAttribute('data-stage', /journal|state|prepare/);
-      // ... and then the app lands where the translator stopped.
-      await expect(page.getByText(drafted)).toBeVisible({ timeout: 120_000 });
-      await expect(progress).toHaveCount(0);
-      await expectTranslateAt(page, '2', drafted);
+        const drafted = 'Enseña a los ancianos a ser sobrios (proyecto grande, reanudar).';
+        await draftFirstStub(page, drafted);
+        await waitForResumeRecord(LARGE, 2, drafted);
+
+        await page.reload();
+        await expectAllProjectsListed(page);
+        const card = page.getByTestId('resume-card');
+        await expect(card).toBeVisible({ timeout: 30_000 });
+        await expect(card).toContainText(LARGE_NAME);
+        await expect(card).toContainText('Titus 2');
+        await card.click();
+        // The slow open shows its determinate indicator (issue #95) ...
+        const progress = page.getByTestId('open-progress');
+        await expect(progress).toBeVisible({ timeout: 20_000 });
+        await expect(progress).toHaveAttribute('data-stage', /journal|state|prepare/);
+        // ... and then the app lands where the translator stopped.
+        await expect(page.getByText(drafted)).toBeVisible({ timeout: 120_000 });
+        await expect(progress).toHaveCount(0);
+        await expectTranslateAt(page, '2', drafted);
+      } finally {
+        // Leave the shared fixture as this test found it: J15 counts its segments.
+        resetLargeFixture();
+      }
     },
   );
 

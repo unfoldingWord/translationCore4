@@ -318,3 +318,16 @@ export function resetSeededChecking(): void {
   fs.rmSync(checkingDst, { recursive: true, force: true });
   fs.cpSync(path.join(source, 'checking'), checkingDst, { recursive: true });
 }
+
+/**
+ * Restore the seeded LARGE fixture (issue #95) to its seed commit. The fixture is a
+ * git repository with one commit; a journey that drafts in it (J8's resume case) adds
+ * this app's actor segments, and J15 asserts the progress indicator's total against
+ * the fixture actor's segment count alone. Restoring keeps J15's arithmetic true when
+ * J8 runs before it (Codex review of #184, round 3).
+ */
+export function resetLargeFixture(): void {
+  const repo = rigRepo('sample_burrito_large');
+  execFileSync('git', ['-C', repo, 'checkout', '-q', '--', '.']);
+  execFileSync('git', ['-C', repo, 'clean', '-qfd']);
+}
