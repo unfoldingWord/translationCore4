@@ -8,8 +8,9 @@
 - `Jn` is a stable identifier. A retired number is never reassigned.
 - Journal conformance checks are `JC-n`, not `Jn` (BURRITO-SPEC Appendix A).
 - Steps are in the actor's terms. Their order is not prescribed.
-- Every `Jn` has one primary activity, one owner, and one proof row. `docs:gate` fails
-  when a proof row does not resolve or when a spec cites `JOURNEYS-AND-GAPS`.
+- Every `Jn` has one primary activity, one owner, and one proof row. A proof row that does
+  not resolve, or a spec that cites `JOURNEYS-AND-GAPS`, is a defect. The `docs:gate` check
+  for this rule is a follow-up.
 - The proof steps are build and test requirements. They are never gates for the user.
 - "An increment moves at least one `Jn` to shipped" replaces the ROADMAP rule "an increment
   completes a journey."

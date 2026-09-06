@@ -1236,8 +1236,9 @@ Passage sets (D26) are unaffected: they are a book's `scope` on `book.add`, a di
 1. A journey is a goal one actor (translator, facilitator; consultant in Phase 2) pursues,
    defined by the state of the project on disk when done. UI state never counts. `Jn` is a
    stable id; retired numbers are never reassigned.
-2. `docs/JOURNEYS.md` is the only journey list. Epics cite `Jn`. `docs:gate` fails when a
-   `Jn` has no resolvable proof row or owner, or when a spec cites `JOURNEYS-AND-GAPS`.
+2. `docs/JOURNEYS.md` is the only journey list. Epics cite `Jn`. A `Jn` without a resolvable
+   proof row or owner, or a spec that cites `JOURNEYS-AND-GAPS`, is a defect; the `docs:gate`
+   check is a follow-up (rule 10).
 3. Journal conformance checks are renamed `Jn` → `JC-n`, same numbers (BURRITO-SPEC 1.12 §8 and
    Appendix A 2.1, the 415 check names in `conformance/validate-journal.mjs`, cross-references in
    DECISIONS, ARCHITECTURE, and code comments). Rule coverage (`[covers R-…]`) is untouched.

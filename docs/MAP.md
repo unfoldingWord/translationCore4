@@ -1,7 +1,8 @@
 # tC4 document and vocabulary map
 
 **Status:** live index [decided 2026-09-06 — D69]. Rendered by GitHub. No HTML (D43).
-`docs:gate` checks that every file under `docs/` and every id prefix in use appears here.
+Rule (D69): every file under `docs/` and every id prefix in use appears here. The `docs:gate`
+check for this rule is a follow-up.
 
 ## Documents
 
