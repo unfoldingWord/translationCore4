@@ -243,6 +243,54 @@ The job installs these packages before the build [VERIFIED — the `linux-x64` j
 On a failure the job uploads `dist-desktop/smoke-*.log` as
 `tc4-desktop-linux-x64-smoke-logs`.
 
+## Smoke tests: build-time and post-install (#45)
+
+Two smoke tests exist. They answer two different questions.
+
+| | Build-time smoke test | Post-install smoke test |
+|---|---|---|
+| Where | `scripts/package-desktop.zsh`, step 6/7, on the staged folder, before the zip is written | `smoke-installed.zsh`, shipped in the artifact folder; the source is `scripts/smoke-installed.zsh` |
+| Question | Can this artifact start on the build host? | Does the installed app work for a pilot? |
+| What it proves | The launcher self-spawns the server; `/` answers 303 to `/clients/uw-tc4` and the client 200; a second launch exits by itself (#4); `repo_dir` is the isolated store and the production store is empty (#70) | The same start and client checks on the INSTALLED folder; the store path (#70); a project created through the app's own HTTP surface with one book; one verse written and found on disk in the store; the app stopped and started again; the verse read back; the smoke project removed |
+| Runs | In every build, in CI and by hand | On a fresh CI runner after every build (`smoke-macos-arm64`, `smoke-linux-x64` in `package-desktop.yml`), and by a person on a clean machine |
+| Fails the build | Yes | The CI job fails; the tag rule (epic #59) needs the run to pass on each platform before a pre-release tags |
+
+### Run the post-install smoke test
+
+On the installed machine, from the unpacked folder:
+
+```bash
+zsh smoke-installed.zsh
+```
+
+The script needs `zsh`, `curl`, `lsof` and the folder. No `npm`, no checkout, no rig.
+The JSON steps run under the artifact's own Electron in Node mode
+(`ELECTRON_RUN_AS_NODE=1`), so the machine needs no `node`, `python` or `jq`.
+
+Each step prints one line: `ok <step>: <what was seen>` or `FAIL <step>: <what was seen>`.
+The script exits non-zero at the first failure. The last line of a good run is
+`SMOKE OK: <folder> under HOME=<home>, store <repo_dir>`. Paste the whole output into the
+pre-release notes.
+
+Options:
+
+- `TC4_SMOKE_HOME=<dir>`: the HOME the app runs under. CI passes a fresh directory. A pilot
+  runs with the real HOME; the script then uses the real store and removes its smoke project
+  at the end.
+- `TC4_SMOKE_KEEP=1`: keep the smoke project (`_local_/_local_/smoke_<epoch>`).
+- `TC4_SMOKE_LOGDIR=<dir>`: where the launcher's own output goes (`tc4-smoke-first.log`,
+  `tc4-smoke-second.log`); default `$TMPDIR` or `/tmp`. CI uploads that directory with the
+  transcript as the `smoke-installed-<platform>` artifact.
+- A first argument names the folder when the script does not sit in it:
+  `zsh scripts/smoke-installed.zsh /path/to/translationCore4`.
+
+The smoke project is `smoke_<epoch>`, language `fr`, one book (Titus, `eng`
+versification). The verse write goes through `POST /burrito/ingredient/raw/<repo>?ipath=TIT.usfm`,
+the endpoint the client uses; it writes the raw ingredient and no journal segment, so the
+project is a pre-journal project until the app opens it (universal seeding journals it then).
+
+Records of runs live in `docs/evidence/` (one per close, machine, OS version, artifact id,
+commit, date): see "Evidence" below.
 ## The offline run (#43)
 
 tC4 is built for offline field use. This procedure proves one full session with the
@@ -390,3 +438,6 @@ Every artifact carries `BUILD-MANIFEST.json` at its root with the same data.
 
 Witnessed boots (rig and packaged artifact, with screenshots):
 `docs/evidence/desktop-packaging-spike-2026-08-14.md`.
+
+Post-install smoke test on fresh runners, both platforms (#45):
+`docs/evidence/smoke-installed-2026-09-06.md`.

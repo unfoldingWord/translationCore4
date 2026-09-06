@@ -361,6 +361,11 @@ chmod +x "$APPDIR/$LAUNCHER"
 # Licenses. The startup files in electron/ are modified copies from the MIT
 # desktop-app-template; Electronite ships its own LICENSE files in the zip.
 cp "$REPO/LICENSE" "$APPDIR/LICENSE"
+# #45: the post-install smoke test travels with the artifact, so a pilot on a clean
+# machine can run it (zsh smoke-installed.zsh) with nothing but the folder and a
+# shell. CI runs this shipped copy on a fresh runner (package-desktop.yml, smoke-*).
+cp "$REPO/scripts/smoke-installed.zsh" "$APPDIR/smoke-installed.zsh"
+chmod +x "$APPDIR/smoke-installed.zsh"
 cp "$T/LICENSE" "$APPDIR/licenses/LICENSE.desktop-app-template"
 cp "$BUILD/electronite/LICENSE" "$APPDIR/licenses/LICENSE.electronite"
 cp "$BUILD/electronite/LICENSES.chromium.html" "$APPDIR/licenses/LICENSES.chromium.html"
