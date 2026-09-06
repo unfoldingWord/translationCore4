@@ -388,6 +388,19 @@ describe('#189 — no pin write after the project is left during the resolver aw
     expect(dispatched).toHaveLength(0);
   });
 
+  it('a write that FAILS after the project was left reports nothing (the error belongs to no screen)', async () => {
+    const h = harness('never');
+    const dispatched: unknown[] = [];
+    let fail: (e: Error) => void = () => {};
+    h.store.writeResources = async () => { await new Promise<void>((_, reject) => { fail = reject; }); };
+    const run = adoptDownloaded({ originStore: h.store, originRepoPath: 'repo/p', originGateway: { id: 'es-419', org: 'es-419_gl' }, storeRef: h.storeRef, stateRef: h.stateRef, actions: h.actions, dispatch: (a: unknown) => dispatched.push(a) });
+    await settle();
+    h.storeRef.current = null; // left the project while the write was in flight
+    fail(new Error('disk full'));
+    await run;
+    expect(dispatched).toHaveLength(0);
+  });
+
   for (const leaveAt of ['resolve', 'md5read'] as const) {
     it(`adoptDownloadedPins: left during the ${leaveAt} await → no write`, async () => {
       const h = harness(leaveAt);

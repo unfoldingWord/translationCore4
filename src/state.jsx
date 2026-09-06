@@ -853,6 +853,9 @@ async function adoptDownloadedPins({
     }, 4, sameProject);
     if (next && sameProject()) dispatch({ type: 'set', patch: { projectPins: next } });
   } catch (error) {
+    // #189: a failure that arrives after the project was left belongs to no
+    // screen; shown, it would land in Home or in the next project's Sources.
+    if (!sameProject()) return;
     dispatch({
       type: 'patchSrc',
       patch: { error: t('sources.adoptFailed', { error: String(error?.message || error) }) },
