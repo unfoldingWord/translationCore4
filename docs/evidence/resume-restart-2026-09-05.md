@@ -1,9 +1,19 @@
 # Resume across a rig restart — the issue #184 record
 
 **Date:** 2026-09-05 (22:11 EDT; the timestamps below are UTC). **Commit:** `2d6571e` on branch
-`i184-resume-proof` (parent `c265b99`, `main` at that time). **Machine:** Apple M2 Pro (`hw.memsize` 17179869184 bytes),
-macOS 26.5.1, Node v22.14.0, `pankosmia-web` 0.18.5 rig (git rev `99fd9be`), the Vite dev server
-(`npm run dev`) at :5199, Chromium via Playwright 1.61.1.
+`i184-resume-proof` (parent `c265b99`, `main` at that time).
+
+**Machine**, each value read on the day by the command beside it:
+
+| Value | Command | Output |
+|---|---|---|
+| CPU | `sysctl -n machdep.cpu.brand_string` | `Apple M2 Pro` |
+| Memory | `sysctl -n hw.memsize` | `17179869184` |
+| OS | `sw_vers` | `ProductName: macOS`, `ProductVersion: 26.5.1`, `BuildVersion: 25F80` |
+| Node | `node --version` | `v22.14.0` |
+| Rig | `curl -s http://127.0.0.1:19998/api/version` | `"pkg_version":"0.18.5"`, `"product_name":"tC4 dev rig"` (the rig binary is built from git rev `99fd9be`, `dev-env/server`) |
+| Playwright | `grep '"version"' node_modules/@playwright/test/package.json` | `1.61.1` (Chromium is the one this version bundles) |
+| Client | `npm run dev` | the Vite dev server at `http://localhost:5199` |
 
 ## What was measured
 
@@ -20,7 +30,11 @@ This run checks that record on disk at each step.
 
 1. `dev-env/scripts/seed.zsh` (pristine rig: `sample_burrito`, `sample_burrito_large`, the
    sideloaded suites, no Resume record).
-2. A Playwright script drives Chromium against the dev server. In order:
+2. The script `docs/evidence/tools/resume-restart-2026-09-05.mjs` drives Chromium against the
+   dev server. It ran from the repository root as
+   `node ./.resume-restart-tmp.mjs` (a copy of the script placed at the root so that
+   `@playwright/test` resolves; the copy was deleted after the run). Its header gives the launch
+   procedure. In order:
    1. Open `sample_burrito` › Titus, chapter 2. Draft the first undrafted verse with the text
       `La gracia de Dios se ha manifestado para salvación (reinicio del servidor).` Wait for the
       save indicator to show `saved`. Read the client-settings file until it carries `lastEdit`.
@@ -71,9 +85,28 @@ One run, one machine.
 
 - Development build (the Vite dev server), not the packaged application. The packaged
   application's server restart is the post-install smoke test (issue #45).
-- The rig server restarted in about 200 ms; a slow server start was not measured.
+- The rig server start was fast: the script spawned `run.zsh` right after the log line at
+  `02:11:34.424Z` and `GET /api/version` answered at `02:11:34.638Z`. A slow server start was
+  not measured.
 - The app-restart half (a page reload with the rig up) is not in this record: it is the first
-  J8 test, run by `npx playwright test e2e/j08-resume.spec.ts` (4 passed on this tree before the commit; no file changed after that run). The rig job in CI runs no Playwright journey, so this proof is local.
+  J8 test. The run below is `npx playwright test e2e/j08-resume.spec.ts` on the spec as
+  committed in the same change set as this paragraph (the round-1 review repair), 2026-09-05,
+  reseeded rig:
+
+  ```
+  Running 4 tests using 1 worker
+
+    ✓  1 e2e/j08-resume.spec.ts:72:3 › J8 — a translator resumes where they left off › after a restart, all projects are listed and the last position (project/book/chapter/mode) is restored (FR-29, #184) @inc4 @J8 (3.5s)
+    ✓  2 e2e/j08-resume.spec.ts:110:3 › J8 — a translator resumes where they left off › resume into a project with a large journal shows the open progress, then lands on the remembered chapter (#184, #95) @inc4 @J8 (11.9s)
+    ✓  3 e2e/j08-resume.spec.ts:138:3 › J8 — a translator resumes where they left off › commits happen at exactly the checkpoints — a mode switch and leaving the project commit pending work; a switch with nothing pending commits nothing (FR-34 / W-4, D9, #183) @inc4 @J8 (4.0s)
+    ✓  4 e2e/j08-resume.spec.ts:176:3 › J8 — a translator resumes where they left off › typing never produces a commit (FR-34) @inc4 @J8 (3.4s)
+
+    4 passed (30.2s)
+  ```
+
+  The same spec after `e2e/j02-draft-verse.spec.ts` on one seed (the order of a full
+  `npm run journeys`): 8 passed (40.0s). The rig job in CI runs no Playwright journey, so
+  this proof is local.
 - Not measured: a resume after a checkpoint commit, a second actor, a project that was
   deleted while the rig was down (the app hides the card when the project is gone,
   `refreshProjects` in `src/state.jsx`; not exercised here).

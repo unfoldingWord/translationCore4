@@ -31,14 +31,17 @@ async function openTitusAt(page: Page, chapter: string, project = SEEDED_PROJECT
 }
 
 /** The Resume record is written to the rig a second after the edit (debounced).
- * A reload before that write would lose it, so wait for the disk, not a timer. */
-async function waitForResumeRecord(project: string, chapter: number) {
+ * A reload before that write would lose it, so wait for the disk, not a timer.
+ * The wait keys on THIS edit's snippet: an earlier journey (J2) drafts in the same
+ * project and chapter, and its older record would satisfy a project+chapter match
+ * before the new write lands (found in the J2+J8 run, Codex round 1 repair). */
+async function waitForResumeRecord(project: string, chapter: number, snippetStart: string) {
   await expect
     .poll(() => {
       const rec = readLastEdit();
-      return rec ? `${rec.repoPath}@${rec.chapter}` : null;
+      return rec ? `${rec.repoPath}@${rec.chapter}:${(rec.snippet ?? '').slice(0, 24)}` : null;
     }, { timeout: 10_000 })
-    .toBe(`_local_/_local_/${project}@${chapter}`);
+    .toBe(`_local_/_local_/${project}@${chapter}:${snippetStart.slice(0, 24)}`);
 }
 
 /** After a full reload the app knows only what the server holds: every local
@@ -71,17 +74,19 @@ test.describe('J8 — a translator resumes where they left off', () => {
     { tag: ['@inc4', '@J8'] },
     async ({ page }) => {
       test.setTimeout(120_000);
-      // A fresh seed holds no Resume record (seed.zsh rebuilds the client settings):
-      // no project has been edited, so Home offers no Resume card.
-      expect(readLastEdit()).toBeNull();
+      // Journeys share one seed per run, and earlier specs (J2) draft in the seeded
+      // project, so a Resume card MAY already stand here. What never stands is a card
+      // for the large fixture: no journey before this one edits it (Codex review,
+      // round 1). That is the "never edited, no card" criterion, stated as a
+      // property that holds in a single-file run and in the full run alike.
       await page.goto('/');
       await expectAllProjectsListed(page);
-      await expect(page.getByTestId('resume-card')).toHaveCount(0);
+      await expect(page.getByTestId('resume-card').filter({ hasText: LARGE_NAME })).toHaveCount(0);
 
       await openTitusAt(page, '2');
       const drafted = 'Porque la gracia de Dios se ha manifestado (reanudar).';
       await draftFirstStub(page, drafted);
-      await waitForResumeRecord(SEEDED_PROJECT, 2);
+      await waitForResumeRecord(SEEDED_PROJECT, 2, drafted);
 
       // A full app restart: in-memory state is gone; what comes back comes from
       // the server (the project list) and the per-installation record (lastEdit).
@@ -110,7 +115,7 @@ test.describe('J8 — a translator resumes where they left off', () => {
       await openTitusAt(page, '2', LARGE);
       const drafted = 'Enseña a los ancianos a ser sobrios (proyecto grande, reanudar).';
       await draftFirstStub(page, drafted);
-      await waitForResumeRecord(LARGE, 2);
+      await waitForResumeRecord(LARGE, 2, drafted);
 
       await page.reload();
       await expectAllProjectsListed(page);
