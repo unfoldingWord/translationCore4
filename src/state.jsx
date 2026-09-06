@@ -831,14 +831,17 @@ async function adoptDownloadedPins({
   actions,
   dispatch,
 }) {
-  const sameProject =
+  const sameProject = () =>
     originStore &&
     originRepoPath &&
     storeRef.current === originStore &&
     stateRef.current.project?.repoPath === originRepoPath;
-  if (!sameProject) return;
+  if (!sameProject()) return;
   try {
     const { installed, coverage } = await actions.resolutionContext();
+    // #189: the project may have been left during that await; a write now
+    // would land behind its leave checkpoint (#183), or beside a new store.
+    if (!sameProject()) return;
     if (!mergeOptionalPins(stateRef.current.projectPins ?? {}, originGateway, installed)) return;
     const next = await updateResources(originStore, (current) => {
       const merged = mergeOptionalPins(current, originGateway, installed);
@@ -1417,6 +1420,7 @@ function loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatc
       if (!pins) return;
       try {
         const { installed, coverage } = await actions.resolutionContext();
+        if (!stillCurrent()) return; // #189: left during the await — no write behind the leave checkpoint
         const adopted = adoptInstalledResources(pins, installed);
         const wouldChange = backfillCoverage(adopted, coverage).changed || adopted !== pins;
         if (!wouldChange) return;
@@ -1454,6 +1458,7 @@ async function settleArticleRead(apiClient, kind, sets, category, slug) {
 /** Test hook (round 34): the pins-read outcomes are unit-tested — resolved
  * null is loaded-but-absent; a rejection is a stated, retryable error. */
 export const __loadProjectPinsForTests = loadProjectPins;
+export const __adoptDownloadedPinsForTests = adoptDownloadedPins;
 
 /** The loading-flag patch for a (re)load: a SAME-BOOK refresh keeps the
  * screen's working surface standing (P1); a different book starts clean. */
