@@ -15,6 +15,7 @@ export default [
     ignores: [
       'node_modules/',
       'dist/',
+      'dist-desktop/', // scripts/package-desktop.zsh output: vendored Electron, template and resource files (#45)
       'coverage/',
       'dev-env/app-resources/',
       'dev-env/resources-cache/',
