@@ -74,6 +74,17 @@ export function lastCommitMessage(repo: string): string {
   return execFileSync('git', ['-C', rigRepo(repo), 'log', '-1', '--format=%s'], { encoding: 'utf8' }).trim();
 }
 
+/** One ingredient as the LAST COMMIT holds it (git show HEAD:...), or null when the
+ * commit does not carry that path. A checkpoint assertion that reads the working tree
+ * proves a save, not a commit (Codex review of #185). */
+export function committedIngredient(repo: string, ipath: string): string | null {
+  try {
+    return execFileSync('git', ['-C', rigRepo(repo), 'show', `HEAD:ingredients/${ipath}`], { encoding: 'utf8' });
+  } catch {
+    return null;
+  }
+}
+
 export function commitCount(repo: string): number {
   const out = execFileSync('git', ['-C', rigRepo(repo), 'rev-list', '--count', 'HEAD'], {
     encoding: 'utf8',
