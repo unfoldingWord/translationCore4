@@ -29,11 +29,14 @@ check for this rule is a follow-up.
 |---|---|---|
 | `Dnn` | decision | DECISIONS.md |
 | `Jn` | user journey | JOURNEYS.md |
-| `JC-n` | journal conformance check | JOURNAL-TEST-PLAN.md, BURRITO-SPEC §8 |
+| `JC-n` | journal conformance check group | BURRITO-SPEC Appendix A |
 | `R-x.y.z` | normative rule | BURRITO-SPEC |
 | `§n` | BURRITO-SPEC section | BURRITO-SPEC |
 | `FR-nn` | legacy PRD requirement | LEGACY-IDS |
-| `E-Jn` | legacy test-plan id | LEGACY-IDS |
+| `E-Jn`, `Tn`, `M-n` | legacy test-plan ids | LEGACY-IDS |
+| `OPEN-QUESTIONS #n`, `OQ#n` | legacy open question | LEGACY-IDS |
+| `Mn`, `En.n`, `In.n.n` | legacy milestone, epic, work item | LEGACY-IDS |
+| `Cn.n` | legacy checklist row | LEGACY-IDS |
 | `@incN` | e2e test tag | `e2e/` |
 | `#n` | GitHub issue or PR | github.com/unfoldingWord/translationCore4 |
 | `Ledger #n` | risk | RISKS.md |

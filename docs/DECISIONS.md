@@ -1240,7 +1240,7 @@ Passage sets (D26) are unaffected: they are a book's `scope` on `book.add`, a di
    proof row or owner, or a spec that cites `JOURNEYS-AND-GAPS`, is a defect; the `docs:gate`
    check is a follow-up (rule 10).
 3. Journal conformance checks are renamed `Jn` → `JC-n`, same numbers (BURRITO-SPEC 1.12 §8 and
-   Appendix A 2.1, the 415 check names in `conformance/validate-journal.mjs`, cross-references in
+   Appendix A 2.1, the check names and comments in `conformance/validate-journal.mjs`, cross-references in
    DECISIONS, ARCHITECTURE, and code comments). Rule coverage (`[covers R-…]`) is untouched.
    LEGACY-IDS gets a `JC-n` row.
 4. Retired: J10 (RTL is a fixture axis on J2, J4, J5, J7), J14 (MUST NOT row on J1 and J2),

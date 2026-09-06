@@ -30,7 +30,7 @@ Owner of increment numbers: the GitHub milestones, mirrored in `docs/ROADMAP.md`
 | J4 | translator | Check | Check a book with tN and tW | shipped alpha.2 | `e2e/j04-check-book.spec.ts` |
 | J5 | translator | Check | Align a verse | shipped alpha.2 | `e2e/j05-align-verse.spec.ts` |
 | J6 | translator | Translate | Edit a checked verse and see the checks flag | shipped alpha.2 | `e2e/j06-edit-invalidation.spec.ts` |
-| J7 | facilitator | Deliver | Export the book | increment 7 | `e2e/j07-publish.spec.ts` (fixme) |
+| J7 | facilitator | Deliver | Export the book | increment 7 (#19); PDF #20 and RTL #29 Post-4.0 | `e2e/j07-publish.spec.ts` (fixme) |
 | J8 | translator | Translate | Resume work across sessions and books | built (2026-09-05) | `e2e/j08-resume.spec.ts` |
 | J9a | facilitator | Exchange | Import a tC3 project | increment 7 | `e2e/j09-import.spec.ts` (fixme) |
 | J9b | facilitator | Exchange | Import an x-tcore project | increment 7 | `e2e/j09-import.spec.ts` (fixme) |
@@ -63,8 +63,9 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 - Precondition: fresh install (first run and UI language choice are steps here).
 - Steps: first run · choose UI language · choose target language and script direction · name the
   project · add one or more books.
-- End state: one new git repository that is a valid Scripture Burrito at its first commit; one
-  USFM ingredient per added book; its own actor id.
+- End state: one new git repository that is a valid Scripture Burrito after the create-project and
+  add-book checkpoints (three commits or more, D9); one USFM ingredient per added book; its own
+  actor id.
 - MUST NOT: touch any other project repository (from J14: a second project is a second repo with
   a different actor id, and the first stays byte-identical).
 - Proof: `e2e/j01-create-project.spec.ts` + `e2e/j14-join-isolation.spec.ts`.
@@ -85,24 +86,30 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 
 - Actor: facilitator. Activity: Start.
 - Steps: choose the gateway language · pick the resource set · download.
-- End state: §5.3 pins with `sha`, `repoPath`, optional `version`; ingredients sideloaded only for
-  the project's books; text ingredients byte-identical.
-- Proof: `e2e/j03-get-resources.spec.ts`. Owner: shipped alpha.2.
+- End state: §5.3 pins with `sha`, `repoPath`, and a `version` that is not `master`; the pinned
+  resources are installed and match the pins; the helps open offline; a missing resource shows
+  its missing state.
+- Proof: `e2e/j03-get-resources.spec.ts` (installed state, pins, offline, missing states);
+  `test/resourceFetch.test.ts` (download and sha verification). Pending: a proof that text
+  ingredients are unchanged. Owner: shipped alpha.2.
 
 ### J4 Check a book
 
 - Actor: translator. Activity: Check.
 - Steps: open the derived tW/tN list · read a note or article · triage an item.
 - End state: `check.decision.set` segments in the journal; §5.2 sidecar at checkpoint; text
-  byte-identical.
-- Proof: `e2e/j04-check-book.spec.ts`, LTR and RTL. Owner: shipped alpha.2.
+  unchanged.
+- Proof: `e2e/j04-check-book.spec.ts`, LTR and RTL. The teardown verifier proves the project
+  matches its journal. Pending: a direct before-and-after compare of the book bytes. Owner:
+  shipped alpha.2.
 
 ### J5 Align a verse
 
 - Actor: translator. Activity: Check.
 - Steps: link and unlink word pairs.
-- End state: `align.verse.set` segments; §5.1 sidecar at checkpoint; text byte-identical.
-- Proof: `e2e/j05-align-verse.spec.ts`, LTR and RTL. Owner: shipped alpha.2.
+- End state: `align.verse.set` segments; §5.1 sidecar at checkpoint; text unchanged.
+- Proof: `e2e/j05-align-verse.spec.ts`, LTR and RTL. Pending: a direct before-and-after compare
+  of the book bytes (same as J4). Owner: shipped alpha.2.
 
 ### J6 Edit a checked verse
 
@@ -120,13 +127,16 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   date if the format allows; plain USFM without alignment; a Scripture Burrito. The project is
   byte-identical except the D9 checkpoint commit. No publish record in the project.
 - MUST NOT: write anything else into the project.
-- Proof: `e2e/j07-publish.spec.ts`, LTR and RTL. Owner: increment 7 (#19).
+- Proof: `e2e/j07-publish.spec.ts`, LTR and RTL.
+- Owner: Increment 7 (#19) for the aligned USFM, plain USFM, and Scripture Burrito exports.
+  The dated PDF (#20) and the RTL run (#29) are Post-4.0 on the board (ROADMAP, "Deliberately
+  after 4.0.0"). J7 is shipped only when all four outputs have proof.
 
 ### J8 Resume work
 
 - Actor: translator. Activity: Translate.
 - Steps: leave Translate or the project · come back later · open another book.
-- End state: leaving with unsaved edits makes exactly one checkpoint commit, message prefixed
+- End state: leaving with uncommitted changes makes exactly one checkpoint commit, message prefixed
   `Checkpoint, leaving Translate:` or `Checkpoint, leaving the project:`; leaving without changes
   makes none; the last draft is what reopens.
 - Proof: `e2e/j08-resume.spec.ts` (#184, #185; the share leg is fixme until #120). Owner: built in Increment 4; tag pending.
@@ -158,9 +168,11 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 ### J13 Change the gateway-language resource set
 
 - Actor: facilitator. Activity: Start.
-- Steps: open sources · choose a second gateway language · download.
-- End state: pins for the second set with `version`, `sha`, `repoPath`; sideloaded ingredients only
-  for the project's books; text byte-identical. The sources modal is a step.
+- Precondition: two gateway-language suites are installed (the rig holds English and Spanish).
+- Steps: open sources · choose the other language for checking · confirm the change explicitly.
+- End state: the primary pins name the new language set with `version`, `sha`, `repoPath`; the
+  old set stays as the fallback; decisions re-attach to the new set, or are invalidated and
+  retained (D36). The sources modal and its confirmation are steps.
 - Proof: `e2e/j13-gateway-change.spec.ts`. Owner: shipped alpha.2.
 
 ### J16 Read a passage with helps and record a user comment

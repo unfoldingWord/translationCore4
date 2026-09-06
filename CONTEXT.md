@@ -41,8 +41,9 @@ Check, Exchange, Deliver. A journey has one primary activity and may touch other
 _Avoid_: mode, screen, phase (reserved for Phase 1 / Phase 2 delivery)
 
 **Export**:
-The set of files a Deliver journey writes outside the project: a dated PDF, a dated aligned
-USFM, a plain USFM without alignment, and a Scripture Burrito. Never a record inside the project.
+The set of files a Deliver journey writes outside the project. For a Bible project: a dated PDF,
+a dated aligned USFM, a plain USFM without alignment, and a Scripture Burrito. For an OBS
+project: Markdown, a PDF, and a Scripture Burrito. Never a record inside the project.
 _Avoid_: publish (the retired tab name), output
 
 **Increment**:
@@ -82,7 +83,8 @@ segment in the journal (BURRITO-SPEC §8.5). The op name is not renamed.
 _Avoid_: note (collides with translation Notes), comprehension note, annotation
 
 **Journal check**:
-One executable check in the BURRITO-SPEC §8 journal conformance suite, identified as `JC-n`.
+A group of executable checks in the BURRITO-SPEC §8 journal conformance suite, identified as
+`JC-n` (Appendix A).
 _Avoid_: `Jn` (reserved for user journeys), journey
 
 **OBS checking**:
