@@ -128,11 +128,15 @@ test.describe('J2 — a translator drafts a verse', () => {
         'fonts.gstatic.com': '#3',
       };
       const hosts = new Map<string, Set<string>>();
-      page.on('request', (req) => {
-        const u = new URL(req.url());
+      const seen = (url: string, label = '') => {
+        const u = new URL(url);
         if (!hosts.has(u.host)) hosts.set(u.host, new Set());
-        hosts.get(u.host)!.add(u.pathname);
-      });
+        hosts.get(u.host)!.add(label + u.pathname);
+      };
+      page.on('request', (req) => seen(req.url()));
+      // Playwright's request event does not cover WebSockets; record them too (the dev
+      // client's HMR socket is local; a remote one would be a dependency).
+      page.on('websocket', (ws) => seen(ws.url(), 'ws:'));
       await page.goto('/');
       await page.getByTestId('project-_local_/_local_/sample_burrito').getByRole('button', { name: /Titus/ }).click();
       await expect(page.getByText('an apostle of Jesus Christ')).toBeVisible({ timeout: 20_000 });
@@ -142,6 +146,14 @@ test.describe('J2 — a translator drafts a verse', () => {
       await editor.fill('Recuérdales que estén dispuestos a toda buena obra.');
       await editor.blur();
       await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
+      // A request that follows the save (the debounced Resume record, a checkpoint that
+      // is not expected here) lands inside this window, so the snapshot sees it.
+      await page.waitForTimeout(2500);
+      // No service worker: a worker's requests bypass the page's request event, so
+      // its absence is asserted rather than assumed.
+      const workers = await page.evaluate(() =>
+        'serviceWorker' in navigator ? navigator.serviceWorker.getRegistrations().then((r) => r.length) : 0);
+      expect(workers, 'service workers registered').toBe(0);
 
       const local = new Set(['localhost:5199']);
       const external = [...hosts.keys()].filter((h) => !local.has(h)).sort();

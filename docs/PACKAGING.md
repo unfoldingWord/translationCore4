@@ -261,16 +261,23 @@ between runs; it does not replace the run.
 1. Install the artifact as "Install and launch" above describes, on a machine that never
    ran tC4 (or under a fresh `HOME`). Do not start the app yet.
 2. Run the post-install smoke test once, online: `zsh smoke-installed.zsh` in the unpacked
-   folder (see "Smoke tests" above). Expected: `SMOKE OK`.
+   folder (#45; the script ships in artifacts built after pull request #192 merged; see
+   "Smoke tests" above). Expected: `SMOKE OK`.
 3. Optional, for a project with source text: start the app online once, create a project,
    open Home › `Source texts`, and download the English package. Then quit the app. Without
-   this step, the source pane shows "This source is not available for this book" offline
-   (#163): expected until #163 lands.
+   this step, the source pane shows "This source text is not on this computer." offline
+   (#163): expected until #163 lands. Note: an online start also lets Electron cache the
+   fonts from Google's CDN, so after this step the font observation below no longer tests
+   #3; skip this step when the run is about #3.
 4. Turn the network off at the operating-system level, not in the app:
    - macOS: System Settings › Network, or the menu bar: turn Wi-Fi off and unplug Ethernet.
    - Linux: `nmcli networking off`, or `rfkill block all` plus unplug Ethernet. For a scripted
-     run, `unshare -rn ./translationCore4/start-tc4.sh` starts the app in a network namespace
-     that has no interface but loopback.
+     run without touching the machine's network, start the app in its own network namespace
+     with only the loopback interface, which `unshare` creates DOWN and the launcher does
+     not bring up:
+     `unshare -rn sh -c 'ip link set lo up && exec ./translationCore4/start-tc4.sh'`.
+     Then every check below is made from inside that namespace, or by reading the app's
+     screens; a browser or `ping` outside it is on the machine's normal network.
    - Windows: not covered until #181.
    Check: a browser cannot open any web page; `ping 1.1.1.1` fails.
 
@@ -279,13 +286,13 @@ between runs; it does not replace the run.
 | Step | Do | Expected |
 |---|---|---|
 | 1 | Start the app (`start-tc4.command` or `start-tc4.sh`). | The window opens on Home within 30 s. No error banner. |
-| 2 | `+ New Bible`: name, language code, direction; `Create project`. Then `Add a book`: pick Titus, `Create book`. | The project card lists Titus. |
-| 3 | Open Titus. Mode tab `Understand`. | The passage and its helps show for chapter 1. With no English package on this computer, the source pane reads "This source is not available for this book" and the helps read "The pinned resource is not on this computer and the app is offline" (#163). |
-| 4 | Mode tab `Translate`. Chapter 1. | The chapter's verses show. The source pane shows ULT/UST text, or the #163 message. |
+| 2 | `+ New Bible`: name, language code, direction; `Create Bible →`. The `Add a book` dialog opens: `Start a blank book`, pick Titus, `Create book`. | Titus opens directly in `Translate` at chapter 1. |
+| 3 | Mode tab `Understand`. | The passage's helps area shows for chapter 1. With no English package on this computer, the source text reads "This source text is not on this computer." and the helps read "The pinned resource is not on this computer and the app is offline." (#163). |
+| 4 | Mode tab `Translate`. Chapter 1. | The chapter's verses show. The source pane shows ULT/UST text, or the #163 message "This source text is not on this computer." |
 | 5 | `Draft verse 1` (the dashed pill), type a verse, click outside the editor. | The save indicator shows `Saved`. |
-| 6 | Mode tab `Check`. `Open this tool` on Translation Notes. Pick one item; `Valid`. | The item is decided; the progress line `N of M resolved` counts it. If the tool card reads `Unavailable offline`, that is the #163 case: name it and continue. |
-| 7 | In `Check`, open `Align`. Click one word in the bank, then one card. | The word moves into the card; the bank has one word fewer. If the screen reads that the original-language text is not on this computer, name #163 and continue. |
-| 8 | Leave the project (`Switch project`), then open it again from Home. | Home lists the project. The drafted verse is on screen; the decision and the alignment are still there. |
+| 6 | Mode tab `Check`. On the Translation Notes card, `Start checking` (or `Continue`). Pick one item; `✓ Mark valid`. | The item is decided; the progress line `N of M resolved` counts it. If the card reads `Unavailable offline`, that is the #163 case: name it and continue. |
+| 7 | `← All checking tools`, then `Align`. Click one word in the bank, then one card. | The word moves into the card; the bank has one word fewer. If the screen reads "The original-language text is not on this computer", name #163 and continue. |
+| 8 | Leave the project (`Switch project`), then open Titus again from Home. Look at `Translate`, then `Check` › Translation Notes, then `← All checking tools` › `Align`. | Home lists the project. The drafted verse is on screen; the progress line still counts the decision; the aligned word is still in its card. |
 | 9 | Export the book. | Not yet possible: #19 (export) is not built. Skip and name #19. |
 | 10 | Quit the app. Turn the network on again. | |
 
@@ -304,9 +311,10 @@ and the screen it broke). Paste the step lines into the pre-release notes.
 ### The regression check between runs
 
 `e2e/j02-draft-verse.spec.ts` carries the test "a drafting session talks to no host but the
-local server (FR-31, #43)". It records every request the client makes while a project is
-opened and a verse is drafted, and fails when a host outside the local server appears that
-is not on the known-defect list. That list is `fonts.googleapis.com` and `fonts.gstatic.com`
+local server (FR-31, #43)". It records every request and every WebSocket the client opens
+while a project is opened and a verse is drafted, waits out the save's follow-up writes,
+checks that no service worker is registered (a worker's requests would not be seen), and
+fails when a host outside the local server appears that is not on the known-defect list. That list is `fonts.googleapis.com` and `fonts.gstatic.com`
 (#3); it shrinks to nothing in the pull request that closes #3. The check runs on the dev
 client against the rig, not on the packaged app; the packaged app's offline behavior is this
 procedure's subject.
