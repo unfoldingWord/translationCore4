@@ -557,13 +557,24 @@ let mergedVerseObjects = null;
 {
   const { execSync } = require('child_process');
   const T = path.resolve('tmp-merge-test');
-  const rmT = () => fs.rmSync(T, { recursive: true, force: true });
+  // Removal of the scratch repo raced once in CI (#178): ENOTEMPTY on `.git` while the tree
+  // was being walked [VERIFIED — run 33976695938 at cb87b66, attempt 1 red, attempt 2 green,
+  // 2026-09-05]. Two guards, each documented by its tool: rmSync retries EBUSY, EMFILE,
+  // ENFILE, ENOTEMPTY and EPERM with linear backoff (`maxRetries`/`retryDelay`, recursive
+  // mode only) [VERIFIED — Node v22.14.0 fs.rmSync reference (release commit 5d2feb2),
+  // read 2026-09-05], and every git call disables the automatic gc and maintenance that
+  // `git commit` and `git merge` run after their own work (`gc.auto=0`,
+  // `maintenance.auto=false`) [VERIFIED — git v2.46.0 (release commit 39bf06a): git-config(1)
+  // gc.auto, gc.autoDetach, maintenance.auto; the call sites builtin/commit.c:1872 and
+  // builtin/merge.c:464 `run_auto_maintenance`; read 2026-09-05]. The cause is inferred from
+  // the error and the code shape; the retry covers the error class whatever the writer.
+  const rmT = () => fs.rmSync(T, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   rmT();
   fs.mkdirSync(T, { recursive: true });
   fs.cpSync(path.join(BURRITO, 'ingredients'), path.join(T, 'ingredients'), { recursive: true });
   fs.copyFileSync(path.join(BURRITO, 'metadata.json'), path.join(T, 'metadata.json'));
   fs.writeFileSync(path.join(T, '.gitignore'), '**/*.bak\n');
-  const git = args => execSync(`git ${args}`, { cwd: T, stdio: 'pipe' }).toString();
+  const git = args => execSync(`git -c gc.auto=0 -c maintenance.auto=false ${args}`, { cwd: T, stdio: 'pipe' }).toString();
 
   const walkF = (dir, base = '') => fs.readdirSync(dir, { withFileTypes: true }).flatMap(e => {
     const rel = base ? `${base}/${e.name}` : e.name;
