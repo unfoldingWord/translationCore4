@@ -6,6 +6,7 @@
   "app.unsaved": "Unsaved changes",
   "app.saveError": "Save failed — retry",
   "app.retry": "Retry",
+  "app.commitError": "Checkpoint not saved",
   "nav.draft": "Translate",
   "nav.check": "Check",
   "home.yourBibles": "Your Bibles",

@@ -43,6 +43,10 @@ export function ingredientExists(repo: string, ipath: string): boolean {
   return fs.existsSync(path.join(rigRepo(repo), ipath));
 }
 
+export function lastCommitMessage(repo: string): string {
+  return execFileSync('git', ['-C', rigRepo(repo), 'log', '-1', '--format=%s'], { encoding: 'utf8' }).trim();
+}
+
 export function commitCount(repo: string): number {
   const out = execFileSync('git', ['-C', rigRepo(repo), 'rev-list', '--count', 'HEAD'], {
     encoding: 'utf8',

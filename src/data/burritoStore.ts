@@ -280,4 +280,11 @@ export interface BurritoStore {
    * complete derived set, refuse incomplete/path-escaping output, install and
    * byte-verify, rescan, then the server commit. */
   commit(message: string): Promise<void>;
+  /** A checkpoint commit (#183, D9): read the repository's pending changes and
+   * commit them with the message `messageFor` derives from them, or do nothing
+   * and return null when `messageFor` returns null (a clean tree — the platform
+   * would record an EMPTY commit, PLATFORM-NOTES #9). The read and the commit
+   * run as ONE queued operation, so two checkpoints that overlap cannot both see
+   * the same pending changes. Returns the message committed, or null. */
+  commitPending(messageFor: (changes: Array<{ path: string; change_type: string }>) => string | null): Promise<string | null>;
 }

@@ -14,6 +14,8 @@ export interface RigProject {
   files: Map<string, string>; // ipath -> text
   meta: Record<string, unknown>;
   commits: string[];
+  /** ipaths written since the last add-and-commit — what GET /git/status lists (#183). */
+  dirty: Set<string>;
 }
 
 export interface FailureRule {
@@ -60,7 +62,7 @@ export const journalingRig = () => {
   };
 
   const createRepo = (repoPath: string, files: Record<string, string> = {}): RigProject => {
-    const project: RigProject = { files: new Map(Object.entries(files)), meta: baseMeta(), commits: [] };
+    const project: RigProject = { files: new Map(Object.entries(files)), meta: baseMeta(), commits: [], dirty: new Set() };
     rescan(project);
     repos.set(repoPath, project);
     return project;
@@ -102,6 +104,7 @@ export const journalingRig = () => {
       }
       const body = JSON.parse(String(init?.body)) as { payload: string };
       project.files.set(ipath, body.payload);
+      project.dirty.add(ipath);
       writes.push({ repo, ipath, payload: body.payload });
       if (url.searchParams.has('update_ingredients')) rescan(project);
       return ok();
@@ -165,8 +168,16 @@ export const journalingRig = () => {
       const project = repos.get(repo);
       if (!project) return notFound(`no such repo ${repo}`);
       const body = JSON.parse(String(init?.body)) as { commit_message: string };
-      project.commits.push(body.commit_message);
+      project.commits.push(body.commit_message); // the real platform commits an EMPTY commit on a clean tree too
+      project.dirty.clear();
       return ok();
+    }
+
+    if (parts[1] === 'git' && parts[2] === 'status') {
+      const repo = repoAt(3);
+      const project = repos.get(repo);
+      if (!project) return notFound(`no such repo ${repo}`);
+      return ok([...project.dirty].sort().map((ipath) => ({ path: `ingredients/${ipath}`, change_type: 'modified' })));
     }
 
     if (parts[1] === 'git' && parts[2] === 'new-text-translation') {

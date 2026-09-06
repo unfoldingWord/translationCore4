@@ -687,4 +687,13 @@ export class HttpStore {
   async commit(message: string): Promise<void> {
     await this.api.addAndCommit(this.repo(), message);
   }
+
+  async commitPending(
+    messageFor: (changes: Array<{ path: string; change_type: string }>) => string | null,
+  ): Promise<string | null> {
+    const message = messageFor(await this.api.gitStatus(this.repo()));
+    if (message === null) return null;
+    await this.commit(message);
+    return message;
+  }
 }

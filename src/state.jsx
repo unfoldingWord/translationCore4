@@ -38,6 +38,7 @@ import { consequencesOfGatewayChange, applyGatewayChange, uncoveredByChange } fr
 import { carryOverDecisions } from './data/carryOver';
 import { TC_READY_TOPIC } from './data/serverApi';
 import { t } from './i18n';
+import { checkpointMessage } from './data/checkpoint';
 import { INSTALLED_SUITE, SUITE_VERSION } from './data/installedSuite';
 export { SUITE_VERSION }; // the AddBook badge imports it from here
 
@@ -45,6 +46,8 @@ const AppCtx = createContext(null);
 const STORAGE_ID = 'uw-tc4';
 
 export const api = new ServerApi();
+// The mode a view is, for a checkpoint message (#183). Views not listed keep their id.
+const MODE_NAME = { read: 'Understand', draft: 'Translate', check: 'Check', publish: 'Community Checking' };
 
 // ---- source-package rows (J3) ------------------------------------------------
 // Role assignment uses the catalog's SB flavor where that flavor is
@@ -229,6 +232,10 @@ const initial = () => ({
   // transitions only). It survives leaving the Understand view (B1) and any
   // 'error' blocks navigation like a verse failure (FR-32).
   noteSaveState: 'saved',
+  // #183: a checkpoint commit (D9: leaving the project, switching mode) that
+  // failed. Shown in the save indicator's error state with a Retry; a commit
+  // never blocks navigation.
+  commitError: null,
   // Modals (the owner's design: creation, add-book, and settings are dialogs
   // over Home, not separate pages)
   modal: null, // null | 'newProject' | 'addBook' | 'settings' | 'sources'
@@ -933,6 +940,16 @@ function adoptInstalledResources(current, installed) {
  * target project B). Every await is followed by a supersession check BEFORE
  * any shared ref is assigned or any state dispatched; a stale FAILURE is
  * dropped too (it must never route the successfully opened project Home). */
+/** A checkpoint commit (D9, #183): commit the project's pending changes with
+ * a message derived from them, or do nothing when the tree is clean (the
+ * platform records an empty commit otherwise — PLATFORM-NOTES #9). The store
+ * queue runs status and commit as one step behind any save in flight. Returns
+ * the message it committed, or null. Throws on failure; the caller decides
+ * where that shows. */
+async function checkpointCommit(store, reason) {
+  return store.commitPending((changes) => checkpointMessage(reason, changes));
+}
+
 /** The drain gate before an open. Never abandon unsaved work: drain BOTH
  * schedulers first, and stay put if a write failure remains (FR-32; B3/M1/M6;
  * notes held to the same rule — B1/D65). Returns true when the open may
@@ -986,7 +1003,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
     lastReported = p.done;
     dispatch({ type: 'set', patch: { opening: progress(p.stage, p.done, p.total) } });
   };
-  dispatch({ type: 'set', patch: { opening: progress('journal') } });
+  dispatch({ type: 'set', patch: { opening: progress('journal'), commitError: null } });
   try {
     // R-E33-3: the versification frame cache is keyed by repoPath, which is
     // NOT unique across a delete-and-recreate inside one session. Clear it
@@ -1842,7 +1859,31 @@ export function AppProvider({ children }) {
         // like the verse scheduler does (FR-32). The failure is visible in
         // the Understand callout and the save indicator.
         if (noteSchedulerRef.current && !(await noteSchedulerRef.current.drain())) return;
+        const st = stateRef.current;
+        const from = st.view;
         dispatch({ type: 'set', patch: { view } });
+        // #183 (D9): a mode switch is a checkpoint. Started, not awaited — the
+        // screen changes at once; the store queue runs the commit behind any
+        // save in flight, and a failure lands in commitError, never in the way.
+        if (st.project && storeRef.current && from !== view && from !== 'home') {
+          const store = storeRef.current;
+          checkpointCommit(store, `leaving ${MODE_NAME[from] ?? from}`)
+            .then(() => { if (storeRef.current === store) dispatch({ type: 'set', patch: { commitError: null } }); })
+            .catch((e) => { if (storeRef.current === store) dispatch({ type: 'set', patch: { commitError: e?.reason || e?.message || String(e) } }); });
+        }
+      },
+
+      /** Retry the last failed checkpoint commit (#183). */
+      retryCheckpoint: async () => {
+        const st = stateRef.current;
+        const store = storeRef.current;
+        if (!st.project || !store) return;
+        try {
+          await checkpointCommit(store, 'retry');
+          dispatch({ type: 'set', patch: { commitError: null } });
+        } catch (e) {
+          dispatch({ type: 'set', patch: { commitError: e?.reason || e?.message || String(e) } });
+        }
       },
 
       closeModal: () => dispatch({ type: 'set', patch: { modal: null, np: null, ab: null, st: null } }),
@@ -3349,6 +3390,18 @@ export function AppProvider({ children }) {
           alignTail = alignWriteQueue;
           await alignTail;
         } while (alignTail !== alignWriteQueue);
+        // #183 (D9): leaving the project is a checkpoint. Awaited: the store
+        // is torn down right after, so this is the last write it makes. A
+        // failure never keeps the user in the project; Home shows it (commitError).
+        let leaveError = null;
+        const leaving = stateRef.current.project;
+        if (leaving && storeRef.current) {
+          try {
+            await checkpointCommit(storeRef.current, 'leaving the project');
+          } catch (e) {
+            leaveError = `${t('app.commitError')}: ${e?.reason || e?.message || String(e)}`;
+          }
+        }
         schedulerRef.current?.dispose();
         schedulerRef.current = null;
         noteSchedulerRef.current?.dispose();
@@ -3365,7 +3418,7 @@ export function AppProvider({ children }) {
         alignSessionSeq++;
         dispatch({
           type: 'set',
-          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, saveState: 'saved', noteSaveState: 'saved', projectPins: null, projectPinsLoaded: false, projectPinsError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, pickerProgress: null, toolPos: {} },
+          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, saveState: 'saved', noteSaveState: 'saved', commitError: leaveError, projectPins: null, projectPinsLoaded: false, projectPinsError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, pickerProgress: null, toolPos: {} },
         });
         refreshProjects(); // re-order: the project just left goes to the top
       },
