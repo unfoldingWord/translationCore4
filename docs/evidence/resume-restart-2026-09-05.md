@@ -105,8 +105,24 @@ One run, one machine.
   ```
 
   The same spec after `e2e/j02-draft-verse.spec.ts` on one seed (the order of a full
-  `npm run journeys`): 8 passed (40.0s). The rig job in CI runs no Playwright journey, so
-  this proof is local.
+  `npm run journeys`), `npx playwright test e2e/j02-draft-verse.spec.ts e2e/j08-resume.spec.ts`:
+
+  ```
+  Running 8 tests using 1 worker
+
+    ✓  1 e2e/j02-draft-verse.spec.ts:24:3 › J2 — a translator drafts a verse › open the seeded project, draft verse Titus 2:1, and the save is byte-strict with no auto-commit @inc1 @J2 (1.9s)
+    ✓  2 e2e/j02-draft-verse.spec.ts:81:3 › J2 — a translator drafts a verse › source panes render beside the draft: ULT/UST tabs from pinned extraScripture (FR-10 — the orig pane is the alignment increment, D24a) @inc1 @J2 (729ms)
+    ✓  3 e2e/j02-draft-verse.spec.ts:96:3 › J2 — a translator drafts a verse › idle debounce also saves — no blur — and the indicator binds to the actual write (FR-6/FR-32) @inc1 @J2 (3.1s)
+    ✓  4 e2e/j02-draft-verse.spec.ts:118:3 › J2 — a translator drafts a verse › drafting an undrafted verse updates the progress display (FR-9) @inc1 @J2 (821ms)
+    ✓  5 e2e/j08-resume.spec.ts:72:3 › J8 — a translator resumes where they left off › after a restart, all projects are listed and the last position (project/book/chapter/mode) is restored (FR-29, #184) @inc4 @J8 (3.4s)
+    ✓  6 e2e/j08-resume.spec.ts:110:3 › J8 — a translator resumes where they left off › resume into a project with a large journal shows the open progress, then lands on the remembered chapter (#184, #95) @inc4 @J8 (13.4s)
+    ✓  7 e2e/j08-resume.spec.ts:138:3 › J8 — a translator resumes where they left off › commits happen at exactly the checkpoints — a mode switch and leaving the project commit pending work; a switch with nothing pending commits nothing (FR-34 / W-4, D9, #183) @inc4 @J8 (4.0s)
+    ✓  8 e2e/j08-resume.spec.ts:176:3 › J8 — a translator resumes where they left off › typing never produces a commit (FR-34) @inc4 @J8 (3.4s)
+
+    8 passed (40.0s)
+  ```
+
+  The rig job in CI runs no Playwright journey, so this proof is local.
 - Not measured: a resume after a checkpoint commit, a second actor, a project that was
   deleted while the rig was down (the app hides the card when the project is gone,
   `refreshProjects` in `src/state.jsx`; not exercised here).
