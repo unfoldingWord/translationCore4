@@ -6,9 +6,12 @@
 //   · no alignment markup written at rest (FR-8, I-1)
 //   · no auto-commit — commits happen only at checkpoints (FR-34, W-4)
 import { test, expect } from '@playwright/test';
+import fs from 'node:fs';
+import path from 'node:path';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import {
   SEEDED_PROJECT,
+  TC4_ROOT,
   readIngredient,
   commitCount,
   byteStrictViolation,
@@ -112,6 +115,90 @@ test.describe('J2 — a translator drafts a verse', () => {
           timeout: 10_000,
         })
         .toContain(TEXT);
+    },
+  );
+
+  test(
+    'a drafting session talks to no host but the local server (FR-31, #43)',
+    { tag: ['@inc4', '@J2'] },
+    async ({ page }) => {
+      // Every request the client makes from the first paint through a saved draft.
+      // The one local host is the dev client (baseURL), which proxies /api to the rig
+      // (vite.config.js); everything else is a network dependency. Two are known and open (#3: the fonts come from Google's
+      // CDN); the list shrinks to nothing when #3 lands. A new host fails the test.
+      const OFFLINE_DRAFT = 'Recuérdales que estén dispuestos a toda buena obra.';
+      const KNOWN_OFFLINE_DEFECTS: Record<string, string> = {
+        'fonts.googleapis.com': '#3',
+        'fonts.gstatic.com': '#3',
+      };
+      const hosts = new Map<string, Set<string>>();
+      const seen = (url: string, label = '') => {
+        const u = new URL(url);
+        if (!hosts.has(u.host)) hosts.set(u.host, new Set());
+        hosts.get(u.host)!.add(label + u.pathname);
+      };
+      page.on('request', (req) => seen(req.url()));
+      // Playwright's request event does not cover WebSockets; record them too (the dev
+      // client's HMR socket is local; a remote one would be a dependency).
+      page.on('websocket', (ws) => seen(ws.url(), 'ws:'));
+      // A worker's requests bypass the page listeners (Playwright detaches shared-worker
+      // targets), so any worker the client constructs is recorded and refused below.
+      await page.addInitScript(() => {
+        const w = window as unknown as { __workers: string[]; Worker: typeof Worker; SharedWorker: typeof SharedWorker };
+        w.__workers = [];
+        for (const name of ['Worker', 'SharedWorker'] as const) {
+          const Orig = w[name];
+          if (typeof Orig !== 'function') continue;
+          const Patched = function (this: unknown, url: string | URL, opts?: unknown) {
+            w.__workers.push(`${name} ${String(url)}`);
+            return new (Orig as unknown as new (u: string | URL, o?: unknown) => unknown)(url, opts);
+          };
+          Patched.prototype = Orig.prototype;
+          (w as unknown as Record<string, unknown>)[name] = Patched;
+        }
+      });
+      await page.goto('/');
+      await page.getByTestId('project-_local_/_local_/sample_burrito').getByRole('button', { name: /Titus/ }).click();
+      await expect(page.getByText('an apostle of Jesus Christ')).toBeVisible({ timeout: 20_000 });
+      await page.getByRole('button', { name: '3', exact: true }).click();
+      await page.getByRole('button', { name: 'Start this verse' }).first().click();
+      const editor = page.getByRole('textbox', { name: /Verse/ });
+      await editor.fill(OFFLINE_DRAFT);
+      await editor.blur();
+      await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
+      // The save's follow-up is the debounced Resume record: a queued read then a write
+      // of the client-settings document (src/state.jsx, recordLastEdit/flushLastEdit).
+      // Wait for THAT write to land on the rig's disk, not for a fixed time, then a
+      // short window for anything that trails it.
+      const settingsFile = path.join(TC4_ROOT, 'dev-env', 'state', 'work', 'client_settings', 'uw-tc4.json');
+      await expect
+        .poll(() => {
+          try {
+            const doc = JSON.parse(fs.readFileSync(settingsFile, 'utf8')) as { lastEdit?: { snippet?: string } };
+            return doc.lastEdit?.snippet ?? null;
+          } catch {
+            return null;
+          }
+        }, { timeout: 10_000 })
+        .toBe(OFFLINE_DRAFT);
+      await page.waitForTimeout(1000);
+      // No worker of any kind: a worker's requests bypass the page's request event, so
+      // the absence is asserted rather than assumed (constructed workers were recorded
+      // by the init script; service workers are read from their registry).
+      const workers = await page.evaluate(() => (window as unknown as { __workers: string[] }).__workers);
+      expect(workers, 'workers constructed by the client').toEqual([]);
+      const serviceWorkers = await page.evaluate(() =>
+        'serviceWorker' in navigator ? navigator.serviceWorker.getRegistrations().then((r) => r.length) : 0);
+      expect(serviceWorkers, 'service workers registered').toBe(0);
+
+      const local = new Set(['localhost:5199']);
+      const external = [...hosts.keys()].filter((h) => !local.has(h)).sort();
+      console.log(`J2 offline check: hosts contacted = ${[...hosts.keys()].sort().join(', ')}`);
+      for (const h of external) console.log(`  external ${h} (${KNOWN_OFFLINE_DEFECTS[h] ?? 'NO ISSUE'}): ${[...hosts.get(h)!].slice(0, 3).join(' ')}`);
+      const unknown = external.filter((h) => !Object.hasOwn(KNOWN_OFFLINE_DEFECTS, h));
+      expect(unknown, `hosts contacted with no open offline issue: ${unknown.join(', ')}`).toEqual([]);
+      // The rig was reached through the proxy: the session was a real one, not an empty page.
+      expect([...(hosts.get('localhost:5199') ?? [])].some((p) => p.startsWith('/api/'))).toBe(true);
     },
   );
 
