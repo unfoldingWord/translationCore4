@@ -38,6 +38,7 @@ REPO="_local_/_local_/$ABBR"
 MARKER="tC4 smoke verse $STAMP"
 PORT=""
 APP_PID=""
+LOGDIR=${TMPDIR:-/tmp}
 
 fail() { echo "FAIL $1"; cleanup_app; exit 1; }
 ok()   { echo "ok $1"; }
@@ -69,14 +70,14 @@ find_port() {  # sets PORT to the port of a tc4 server, or leaves it empty
 }
 
 start_app() {  # $1 = label
-  HOME="$SMOKE_HOME" "$LAUNCHER" > "$SMOKE_HOME/tc4-smoke-$1.log" 2>&1 &
+  HOME="$SMOKE_HOME" "$LAUNCHER" > "$LOGDIR/tc4-smoke-$1.log" 2>&1 &
   APP_PID=$!
   local i
   for i in {1..60}; do
     find_port && break
     sleep 1
   done
-  [ -n "$PORT" ] || fail "$1 start: no tc4 server on 19119-19139 after 60 s (log: $SMOKE_HOME/tc4-smoke-$1.log)"
+  [ -n "$PORT" ] || fail "$1 start: no tc4 server on 19119-19139 after 60 s (log: $LOGDIR/tc4-smoke-$1.log)"
   local version
   version=$(curl -s --max-time 2 "http://127.0.0.1:$PORT/api/version" | sed -n 's/.*"pkg_version":"\([^"]*\)".*/\1/p')
   ok "$1 start: server on port $PORT, pkg_version $version"
@@ -193,7 +194,7 @@ async function getText(route) {
 '
 run_steps() { node_run -e "$STEPS_JS" -- "http://127.0.0.1:$PORT" "$REPO" "$ABBR" "$MARKER" "$1"; }
 
-run_steps create || fail "steps: create did not complete"
+run_steps create || { cleanup_app; exit 1; }
 ON_DISK="$STORE/$REPO/ingredients/TIT.usfm"
 [ -f "$ON_DISK" ] || fail "store write: $ON_DISK does not exist"
 grep -q "$MARKER" "$ON_DISK" && ok "store write: the verse is on disk at $ON_DISK" \
@@ -202,13 +203,13 @@ grep -q "$MARKER" "$ON_DISK" && ok "store write: the verse is on disk at $ON_DIS
 # ---- 6: restart and read back ----------------------------------------------------
 stop_app first
 start_app second
-run_steps readback || fail "steps: read back did not complete"
+run_steps readback || { cleanup_app; exit 1; }
 
 # ---- 7: clean up -----------------------------------------------------------------
 if [ "${TC4_SMOKE_KEEP:-0}" = "1" ]; then
   ok "delete: skipped (TC4_SMOKE_KEEP=1), $REPO stays in $STORE"
 else
-  run_steps delete || fail "steps: delete did not complete"
+  run_steps delete || { cleanup_app; exit 1; }
 fi
 stop_app second
 echo "SMOKE OK: $APPDIR under HOME=$SMOKE_HOME, store $STORE"
