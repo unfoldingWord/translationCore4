@@ -30,7 +30,7 @@ Owner of increment numbers: the GitHub milestones, mirrored in `docs/ROADMAP.md`
 | J4 | translator | Check | Check a book with tN and tW | shipped alpha.2 | `e2e/j04-check-book.spec.ts` |
 | J5 | translator | Check | Align a verse | shipped alpha.2 | `e2e/j05-align-verse.spec.ts` |
 | J6 | translator | Translate | Edit a checked verse and see the checks flag | shipped alpha.2 | `e2e/j06-edit-invalidation.spec.ts` |
-| J7 | facilitator | Deliver | Export the book | increment 7 (#19); PDF #20 and RTL #29 Post-4.0 | `e2e/j07-publish.spec.ts` (fixme) |
+| J7 | facilitator | Deliver | Export the book | increment 7 (#19 USFM, #20 PDF); RTL run #29 Post-4.0 | `e2e/j07-publish.spec.ts` (fixme) |
 | J8 | translator | Translate | Resume work across sessions and books | built (2026-09-05) | `e2e/j08-resume.spec.ts` |
 | J9a | facilitator | Exchange | Import a tC3 project | increment 7 | `e2e/j09-import.spec.ts` (fixme) |
 | J9b | facilitator | Exchange | Import an x-tcore project | increment 7 | `e2e/j09-import.spec.ts` (fixme) |
@@ -128,9 +128,9 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   byte-identical except the D9 checkpoint commit. No publish record in the project.
 - MUST NOT: write anything else into the project.
 - Proof: `e2e/j07-publish.spec.ts`, LTR and RTL.
-- Owner: Increment 7 (#19) for the aligned USFM, plain USFM, and Scripture Burrito exports.
-  The dated PDF (#20) and the RTL run (#29) are Post-4.0 on the board (ROADMAP, "Deliberately
-  after 4.0.0"). J7 is shipped only when all four outputs have proof.
+- Owner: Increment 7: #19 for the aligned USFM, plain USFM, and Scripture Burrito exports; #20
+  for the dated PDF (moved from Post-4.0, owner ruling 2026-09-06). The RTL run (#29) stays
+  Post-4.0. J7 is shipped only when all four outputs have proof.
 
 ### J8 Resume work
 

@@ -38,7 +38,7 @@ has verified since August.
 | **4 — Open, resume, share** | Multi-project work, resume with fresh proof, first share, platform integration; the pilot program starts at this close (#58), and #13 de-risks Increment 6's suggestions one increment ahead | Sep 5 | #39, #7, #8, #13, #58 |
 | **5 — Drafting for real** | Section-primary drafting, formatting UX, book introductions | Sep 19 | #53, #54, #55 |
 | **6 — Suggestions & resources** | Alignment suggestions (off by default, propose-only), comments and bookmarks, resource upgrade flow, guided fix | Oct 3 | #1, #13, #50, #40, #9 |
-| **7 — Publish & import** | Aligned USFM export; the fixture-heavy importers: tC3 zip, x-tcore migration, damaged projects | Oct 10 | #19, #21, #14, #41, #2 |
+| **7 — Publish & import** | Aligned USFM export and the print-ready PDF (owner ruling 2026-09-06: #20 moved here from Post-4.0); the fixture-heavy importers: tC3 zip, x-tcore migration, raw USFM, Scripture Burrito, damaged projects | Oct 10 | #19, #20, #21, #14, #195, #196, #41, #2 |
 | **8 — Ship** | Installers, smoke test, rollback plan, witnessed offline run, local fonts, keyboard basics | **Oct 16 → v4.0.0** | #44, #45, #46, #43, #3, #32, #42 |
 
 ## Who October 16 is for — the pilot posture
@@ -53,7 +53,7 @@ starting with alpha.4 on September 5; the schedule lives in #58. Broad adoption 
 ## Deliberately after 4.0.0
 
 Safe by the data-accrual test, and said out loud so nobody assumes otherwise:
-print-ready PDF (#20), the RTL rendering proof (#29), the full screen-reader pass,
+the RTL rendering proof (#29), the full screen-reader pass,
 i18n key audit (#12), auto-merge of concurrent edits (#27), OBS layouts (#11),
 verse move/span operations (format-touching — waits for D47's contract), and the
 whole Phase 2 team-collaboration app (#23–#26). **4.0.0 is a single-translator
