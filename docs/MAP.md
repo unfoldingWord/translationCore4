@@ -37,6 +37,7 @@ check for this rule is a follow-up.
 | `OPEN-QUESTIONS #n`, `OQ#n` | legacy open question | LEGACY-IDS |
 | `Mn`, `En.n`, `In.n.n` | legacy milestone, epic, work item | LEGACY-IDS |
 | `Cn.n` | legacy checklist row | LEGACY-IDS |
+| `INCREMENT-n`, `PHASE-n-SUMMARY` | legacy planning and verification documents | LEGACY-IDS |
 | `@incN` | e2e test tag | `e2e/` |
 | `#n` | GitHub issue or PR | github.com/unfoldingWord/translationCore4 |
 | `Ledger #n` | risk | RISKS.md |

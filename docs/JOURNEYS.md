@@ -171,7 +171,7 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 - Precondition: two gateway-language suites are installed (the rig holds English and Spanish).
 - Steps: open sources · choose the other language for checking · confirm the change explicitly.
 - End state: the primary pins name the new language set with `version`, `sha`, `repoPath`; the
-  old set stays as the fallback; decisions re-attach to the new set, or are invalidated and
+  English fallback set stays unchanged (D30, §5.3); decisions re-attach to the new set, or are invalidated and
   retained (D36). The sources modal and its confirmation are steps.
 - Proof: `e2e/j13-gateway-change.spec.ts`. Owner: shipped alpha.2.
 
