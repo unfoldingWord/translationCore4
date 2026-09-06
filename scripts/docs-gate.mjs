@@ -151,10 +151,37 @@ const NO_PROOF_STATUSES = ['retired', 'phase 2', 'vision'];
 const DEAD_CITATIONS = /JOURNEYS-AND-GAPS|PRD FR-|TEST-PLAN E-J/;
 const E2E_PATH_RE = /`(e2e\/[^`]+\.spec\.ts)`/g;
 
-/** The number of `test(` calls in a spec that are not `test.fixme(`. */
+/** A spec with its block comments and whole-line `//` comments removed. */
+const uncommented = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+/**
+ * The number of `test(` calls in a spec that are not `test.fixme(` (nor `test.describe(`,
+ * `test.step(`, `test.skip(`, `test.only(`, hooks — none of those is a bare `test(`).
+ * Comments are removed first, so a commented-out spec counts zero.
+ */
 export function liveTestCount(specText) {
-  return (specText.match(/(^|[^.\w])test\(/gm) || []).length;
+  return (uncommented(specText).match(/(^|[^.\w])test\(/gm) || []).length;
 }
+
+/** The leading comment region of a spec: every line up to the first line of code. */
+export function leadingComment(specText) {
+  const out = [];
+  let inBlock = false;
+  for (const line of specText.split('\n')) {
+    const t = line.trim();
+    if (inBlock) { out.push(line); if (t.includes('*/')) inBlock = false; continue; }
+    if (t === '' || t.startsWith('//')) { out.push(line); continue; }
+    if (t.startsWith('/*')) { out.push(line); inBlock = !t.includes('*/'); continue; }
+    break;
+  }
+  return out.join('\n');
+}
+
+/** Split one markdown table row into trimmed cells; `\|` inside a cell is not a delimiter. */
+const cellsOf = (row) => row.split(/(?<!\\)\|/).slice(1, -1).map((c) => c.trim().replaceAll('\\|', '|'));
+
+const TO_WRITE_RE = /\(to write(?:,\s*[^)]*)?\)/;
+const leadingStatus = (statusLc) => /^(retired|phase 2|vision)\b/.exec(statusLc)?.[1];
 
 /**
  * Check the index table of docs/JOURNEYS.md against the e2e specs.
@@ -174,20 +201,20 @@ export function checkJourneys(journeysText, specs) {
     if (!m) return;
     const line = i + 1;
     const id = m[1];
-    const cells = lineText.split('|').slice(1, -1).map((c) => c.trim());
-    if (cells.length < 6) { finding(file, line, id, `row has ${cells.length} cells, expected 6 (ID, Actor, Activity, Goal, Status, Proof)`); return; }
+    const cells = cellsOf(lineText);
+    if (cells.length !== 6) { finding(file, line, id, `row has ${cells.length} cells, expected 6 (ID, Actor, Activity, Goal, Status, Proof)`); return; }
     const status = cells[4];
     const proofCell = cells[5];
     const statusLc = status.toLowerCase();
-    const noProof = NO_PROOF_STATUSES.some((k) => statusLc.includes(k));
+    const noProof = NO_PROOF_STATUSES.includes(leadingStatus(statusLc));
     const paths = [...proofCell.matchAll(E2E_PATH_RE)].map((x) => x[1]);
     paths.forEach((p) => cited.add(p));
     checked.push({ id, status, proof: paths });
 
     if (!status) { finding(file, line, id, 'empty Status: every journey needs an owner'); return; }
     if (!noProof && paths.length === 0) { finding(file, line, id, `Proof names no e2e spec: "${proofCell || '(empty)'}"`); return; }
-    const toWrite = /\(to write/.test(proofCell);
-    const shipped = statusLc.includes('shipped');
+    const toWrite = TO_WRITE_RE.test(proofCell);
+    const shipped = /^shipped\b/.test(statusLc);
     for (const p of paths) {
       const text = specs[p];
       if (text === undefined) {
@@ -200,7 +227,7 @@ export function checkJourneys(journeysText, specs) {
   });
 
   for (const [p, text] of Object.entries(specs)) {
-    if (DEAD_CITATIONS.test(text.split('\n').slice(0, 5).join('\n'))) {
+    if (DEAD_CITATIONS.test(leadingComment(text))) {
       finding(p, 1, p, 'header cites a document that does not exist (JOURNEYS-AND-GAPS, PRD FR-, TEST-PLAN E-J); cite docs/JOURNEYS.md');
     }
     if (/^e2e\/j\d+/.test(p) && !cited.has(p)) finding(p, 1, p, 'journey spec is cited by no row of docs/JOURNEYS.md');
