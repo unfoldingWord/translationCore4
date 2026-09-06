@@ -16,8 +16,8 @@ const SEEDED_NAME = 'Equipo Ejemplo — Tito y Jonás';
 const LARGE_NAME = 'Equipo Ejemplo — Tito (proyecto grande)';
 
 // "Open" means the book text is on screen. The seeded project pins ULT/UST, so its
-// source pane carries this phrase; the large fixture pins no sources, so its own
-// last edit ("(edición N)", as J15 waits for it) is the marker.
+// source pane carries this phrase; the large fixture's resources.json carries no
+// extraScripture, so its own last edit ("(edición N)", as J15 waits for it) is the marker.
 const READY: Record<string, RegExp> = {
   [SEEDED_PROJECT]: /an apostle of Jesus Christ/,
   [LARGE]: /\(edición \d+\)/,
