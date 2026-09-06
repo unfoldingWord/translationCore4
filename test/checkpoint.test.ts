@@ -39,6 +39,7 @@ describe('#183 checkpointMessage', () => {
 // checkpoints cannot both see the same pending changes and record an empty
 // second commit (the platform would: PLATFORM-NOTES #9).
 import { ServerApi } from '../src/data/serverApi';
+import { HttpStore } from '../src/data/httpStore';
 import { JournalingStore, forgetProjectQueues } from '../src/data/journal/journalingStore';
 import { forgetSharedClocks } from '../src/data/journal/journalStore';
 import { journalingRig, memKv, tickingNow } from './helpers/journalingRig';
@@ -69,7 +70,7 @@ describe('#183 commitPending', () => {
   });
 
   it('pending changes commit once with the derived message; a second overlapping checkpoint commits nothing', async () => {
-    const { store, project } = await seeded();
+    const { rig, store, project } = await seeded();
     await store.writeBook('TIT', TIT.replace('\\v 2 ___', '\\v 2 Nueva vida.'));
     const n = project.commits.length;
     const [a, b] = await Promise.all([
@@ -80,5 +81,17 @@ describe('#183 commitPending', () => {
     expect(b).toBeNull();
     expect(project.commits.length).toBe(n + 1);
     expect(project.commits.at(-1)).toBe(a);
+
+    // The raw store holds the same contract (it is what the boundary drives).
+    const raw = new HttpStore({ fetchFn: rig.fetchFn, baseUrl: 'http://rig.test/api' });
+    await raw.open(REPO);
+    project.dirty.add('TIT.usfm');
+    const [c, d] = await Promise.all([
+      raw.commitPending((changes) => checkpointMessage('leaving Check', changes)),
+      raw.commitPending((changes) => checkpointMessage('leaving the project', changes)),
+    ]);
+    expect(c).toBe('Checkpoint, leaving Check: TIT text (tC4)');
+    expect(d).toBeNull();
+    expect(project.commits.length).toBe(n + 2);
   });
 });

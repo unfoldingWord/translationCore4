@@ -308,6 +308,7 @@ export const normalizeDecision = (decision: Decision): Decision => {
 export class HttpStore {
   readonly api: ServerApi;
   private boundRepoPath: string | null;
+  private commitChain: Promise<unknown> = Promise.resolve();
 
   constructor(init: HttpStoreInit = {}) {
     this.api = init.api ?? new ServerApi({ baseUrl: init.baseUrl, fetchFn: init.fetchFn });
@@ -691,9 +692,15 @@ export class HttpStore {
   async commitPending(
     messageFor: (changes: Array<{ path: string; change_type: string }>) => string | null,
   ): Promise<string | null> {
-    const message = messageFor(await this.api.gitStatus(this.repo()));
-    if (message === null) return null;
-    await this.commit(message);
-    return message;
+    // One step at a time (the BurritoStore contract): two overlapping
+    // checkpoints never both see the same pending changes.
+    const run = this.commitChain.then(async () => {
+      const message = messageFor(await this.api.gitStatus(this.repo()));
+      if (message === null) return null;
+      await this.commit(message);
+      return message;
+    });
+    this.commitChain = run.then(() => undefined, () => undefined);
+    return run;
   }
 }
