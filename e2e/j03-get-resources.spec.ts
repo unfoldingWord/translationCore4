@@ -1,5 +1,5 @@
 // J3 — Get resources (orig, tN, tW, tA at pinned versions)
-// JOURNEYS-AND-GAPS §2 J3 · PRD FR-12, FR-14, FR-15 · TEST-PLAN E-J3 · Increment 2
+// docs/JOURNEYS.md J3 · shipped v4.0.0-alpha.2
 //
 // The fetch itself (sb-zip + SHA verification, refusal on mismatch) is proven
 // in test/resourceFetch.test.ts, which can exercise failure paths a live

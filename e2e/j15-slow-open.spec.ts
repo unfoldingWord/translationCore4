@@ -1,3 +1,4 @@
+// docs/JOURNEYS.md: J15 is retired. This file is a quality requirement on opening a project.
 // J15 — Opening a project: a small one shows nothing new; a large one shows
 // determinate progress; a broken one shows its error, never a stuck bar.
 // Issue #95 · needs-rig · the seeded large fixture is sample_burrito_large

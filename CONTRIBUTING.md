@@ -21,6 +21,7 @@ below: do not open issues or pull requests there.)
 | Question | The document that wins |
 |---|---|
 | The project format | `docs/BURRITO-SPEC.md`, proven by the conformance harness |
+| User journeys and their end states | `docs/JOURNEYS.md`; cite journeys as `Jn` |
 | Product decisions | `docs/DECISIONS.md` — the decision log; cite decisions as `Dnn` |
 | Platform behavior | `docs/PLATFORM-NOTES.md` + `docs/evidence/` records |
 | Known risks | `docs/RISKS.md`; cite risks as `Ledger #n` |

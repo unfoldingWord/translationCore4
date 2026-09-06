@@ -1,6 +1,6 @@
 // J10 — RTL project end-to-end (Arabic-script drafting/checking/publishing)
-// JOURNEYS-AND-GAPS §2 J10 · PRD FR-30 · TEST-PLAN E-J10 (E-J2/E-J4/E-J7 parameterized
-// with the RTL fixture) · Increment 6
+// docs/JOURNEYS.md: J10 is retired. RTL is a fixture axis on J2, J4, J5 and J7 (both runs in their
+// proof rows). This file stays until those runs exist; the number is never reassigned.
 import { test } from '@playwright/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
 

@@ -216,7 +216,7 @@ table is [PROPOSED].
 | Scratch (disposable) | `_local_/_scratch_/<name>-<hlc>` | any | S4, S5; deleted after use |
 | Previous working (recovery copy) | `_local_/_prev_/<name>` | `main` | S5 swap; deleted at the next checkpoint |
 
-The publication repository has the shape that J19 and transport T3 already prove and
+The publication repository has the shape that JC-19 and transport T3 already prove and
 that ARCHITECTURE §9 describes as `publicationStore` [VERIFIED — `docs/ARCHITECTURE.md:190`,
 `conformance/validate-transport.mjs:207-210`, f1c07ff, 2026-09-03]: a `git/copy` of the
 working projection with a `<actorId>` branch created on the copy. Nothing is deleted
@@ -266,7 +266,7 @@ equals `fold(main ∪ publication ∪ working ∪ outbox)`, the four inputs of D
 
 Acceptance: the scenario passes over the memory port and has a negative control that
 makes the receive refuse with `receive.own-ts-missing` (the mechanism is decided in
-X2); J18–J20 pass as scenario files over the git port and over HTTP on the rig,
+X2); JC-18–JC-20 pass as scenario files over the git port and over HTTP on the rig,
 recorded; a two-device property over `edit`, `send`, `integrate`, `receive`, `kill`
 upholds conservation, exclusivity and I4 with non-vacuity asserted.
 
@@ -303,7 +303,7 @@ set, its check is green, and a one-byte change to a frozen segment fails with
 One change set per §9: BURRITO-SPEC §8.7 gains `R-8.7.7` to `R-8.7.12` (Section 2.1)
 and lists the refusal codes; the `[PROPOSED]` mark on the sync block is removed; §1 is
 amended to name the publication and team main mirrors (Section 4); the version bumps.
-Harness: the X2 scenario files, the J32 two-device property (D55 calls it J32f) gains a
+Harness: the X2 scenario files, the JC-32 two-device property (D55 calls it JC-32f) gains a
 `receive` step, `validate-transport.mjs` gains T5 receive-with-unsent, T6 swap kill,
 T7 carry-over refusals (10 checks today [VERIFIED — 9a9ac40, 2026-09-03]). Acceptance:
 the normative gate passes with the new ids; `npm run validate:transport` reports 13/13,
@@ -341,7 +341,7 @@ contribution's segments from the contribution repository, never the scratch work
 (PLATFORM-NOTES #21); whitelist check (I5): the contribution may add files only under
 its own actor directory; write accepted segments by ingredient writes; fold;
 regenerate; `remake-ingredients`; commit; fast-forward team main; delete scratch.
-Anyone may integrate (D67(4d)). Acceptance: every J20 rejection case is reproduced with
+Anyone may integrate (D67(4d)). Acceptance: every JC-20 rejection case is reproduced with
 main HEAD unchanged; two contributions integrate in either order to the same fold; a
 kill at every port call leaves main at the old head or the new head, never between.
 

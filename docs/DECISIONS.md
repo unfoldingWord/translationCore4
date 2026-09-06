@@ -55,7 +55,7 @@ All upstream communication is owner-routed and issue-sized.
 
 ## D16 (2026-07-10) Corrected Phase 2 topology: separate full working projection + persistent
 per-actor publication branch (commits touch only the owned journal); named-branch integration
-in disposable scratch; receive = validated rebuild-and-swap. J19/J20 prove it; named-branch
+in disposable scratch; receive = validated rebuild-and-swap. JC-19/JC-20 prove it; named-branch
 route verification is OPEN-QUESTIONS #23.
 
 ## D17 (2026-07-12) **Pin sets + per-book resolution** (driven by partial-coverage GLs —
@@ -92,7 +92,7 @@ check records, index-pair alignments, blanket `no_bak`, whole-book writes. New P
 ## D19 (2026-07-18) Dev-env rig built (pre-coding infrastructure, project-owner directive):
 scripted seeded server (`dev-env/`, pinned to the latest published crate `pankosmia_web
 =0.17.0`), fully isolated workspace, launch config, deterministic reset. Transport suite
-(`validate:transport`, 10/10) re-proves J19 delayed-receive + J20 zero-trust intake with all
+(`validate:transport`, 10/10) re-proves JC-19 delayed-receive + JC-20 zero-trust intake with all
 git ops through real HTTP endpoints. **OPEN-QUESTIONS #23 CLOSED:** single-branch publication
 repos make `pull-repo` deterministic — named-branch integration works on existing endpoints,
 no upstream change; multi-branch `pull-repo` measured ordering-steered (unsafe). Two platform
@@ -802,7 +802,7 @@ translation is REFUSED: it makes an account a precondition of starting work, whi
 barrier this product exists to remove. Sharing is opt-in and happens later. Door43 is one
 transport among several, never a requirement. A burrito delivered by any means is an equal
 transport, because §8.7 intake is zero-trust — a contribution is validated in a disposable
-copy and the accepted project stays byte-identical (J20). [Note: that protects project
+copy and the accepted project stays byte-identical (JC-20). [Note: that protects project
 DATA. It does not make physical media safe; media risk is a transport concern, not a format
 concern.]
 
@@ -902,7 +902,7 @@ a claim EXISTS and is live; per-statement mutation proof (the check fails when i
 violated) is demonstrated for the fixed defect classes, not yet for every rule — that
 remains D51's standing condition for hardening; (b) the master single-union generator
 constructs events serially against one shared fold, so it cannot itself build forks or
-pending ancestry; the two-device property (J32f) carries the concurrent-writer burden —
+pending ancestry; the two-device property (JC-32f) carries the concurrent-writer burden —
 it reaches and pins forks, pending states, converged joins and removes, and asserts
 conservation and exclusivity over each union — and generation of three-or-more-device
 joins remains open (D51 condition 2, narrowed 2026-08-18 after the PR #85 review).
@@ -1135,13 +1135,13 @@ close it [VERIFIED — executed 2026-09-01 at 60be039 by the audit session; the 
 not retained when the audit worktree was removed, so the run is not repeatable;
 recorded 2026-09-03]. The sync plan's X2 item rebuilds it as a committed scenario file
 with the checks written out (`docs/plans/TEAM-SYNC-PLAN.md` X2). The audit also found that the sync protocol is proven by
-two hand-written suites (J18–J20 over git; `validate:transport` over HTTP) that will
+two hand-written suites (JC-18–JC-20 over git; `validate:transport` over HTTP) that will
 drift, and that the fold report has no reader at runtime.
 
 **(1) Architecture.** The sync engine (`send`, `integrate`, `receive`) is written once as
 an environment-agnostic reference module over a repository port, and the app imports
 it, the way the app imports the fold (`src/data/journal/runtime.ts`). The port has
-three adapters: memory, git on the filesystem, and the pankosmia-web HTTP API. J18–J20
+three adapters: memory, git on the filesystem, and the pankosmia-web HTTP API. JC-18–JC-20
 and the transport suite become one scenario set that runs over all adapters. This is
 the fold's pattern applied to layer 5; see `docs/plans/TEAM-SYNC-PLAN.md` §1.1.
 
@@ -1200,7 +1200,7 @@ amended in S1, through §9, to name the publication and team main mirrors
 [revised 2026-09-03 — a second-model review of PR #151 and a consolidation pass
 corrected the plans and this entry in the same pull request. No ruling changed.]
 
-## D68 (2026-09-05, project-owner ruling) **The mandatory `generation` stamp belongs to the three operations whose first write may be rootless. A verse edit takes its generation from its `base` chain and MAY carry the stamp.** [issue #175; BURRITO-SPEC 1.11, R-8.5.6; journal suite J29f]
+## D68 (2026-09-05, project-owner ruling) **The mandatory `generation` stamp belongs to the three operations whose first write may be rootless. A verse edit takes its generation from its `base` chain and MAY carry the stamp.** [issue #175; BURRITO-SPEC 1.11, R-8.5.6; journal suite JC-29f]
 
 Context. R-8.5.6 listed `text.verse.set` among the operations that MUST carry `generation`,
 and said omission refuses the fold. The reference schema stamped only `align.verse.set`,
@@ -1231,3 +1231,28 @@ that rule is this ruling with more words.
 
 Passage sets (D26) are unaffected: they are a book's `scope` on `book.add`, a different axis.
 
+## D69 (2026-09-06, project-owner rulings) **User journeys are defined by an on-disk end state in `docs/JOURNEYS.md`; journal checks become `JC-n`.** [grill-with-docs session 2026-09-06; issues #195, #196, #197]
+
+1. A journey is a goal one actor (translator, facilitator; consultant in Phase 2) pursues,
+   defined by the state of the project on disk when done. UI state never counts. `Jn` is a
+   stable id; retired numbers are never reassigned.
+2. `docs/JOURNEYS.md` is the only journey list. Epics cite `Jn`. A `Jn` without a resolvable
+   proof row or owner, or a spec that cites `JOURNEYS-AND-GAPS`, is a defect; the `docs:gate`
+   check is a follow-up (rule 10).
+3. Journal conformance checks are renamed `Jn` → `JC-n`, same numbers (BURRITO-SPEC 1.12 §8 and
+   Appendix A 2.1, the check names and comments in `conformance/validate-journal.mjs`, cross-references in
+   DECISIONS, ARCHITECTURE, and code comments). Rule coverage (`[covers R-…]`) is untouched.
+   LEGACY-IDS gets a `JC-n` row.
+4. Retired: J10 (RTL is a fixture axis on J2, J4, J5, J7), J14 (MUST NOT row on J1 and J2),
+   J15 (quality requirement on opening a project). Their specs stay.
+5. Split: J9 → J9a tC3, J9b x-tcore, J9c raw USFM, J9d Scripture Burrito, one shared end state.
+6. New: J16 Understand (user comment bound to a passage); J11, J17–J19 Phase 2; J20–J24 OBS vision.
+7. J7 Deliver writes only outside the project: dated PDF, dated aligned USFM, plain USFM,
+   Scripture Burrito. No publish record. The project changes only by the D9 checkpoint commit.
+8. ROADMAP rule reads "an increment moves at least one `Jn` to shipped." The development unit
+   is called increment or milestone, never journey.
+9. Vocabulary: "user comment" replaces "note" in UI and docs; the journal op stays `note.add`.
+10. `docs/MAP.md` lists every published doc, its authority, and every id prefix. The `docs:gate`
+    checks for rules 2 and 10 are a follow-up issue; this ruling defines them.
+
+Proof steps in JOURNEYS.md are build and test requirements, never gates for the user.

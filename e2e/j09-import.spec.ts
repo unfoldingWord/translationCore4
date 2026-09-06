@@ -1,5 +1,5 @@
 // J9 — Import a tC3 project / an x-tcore project
-// JOURNEYS-AND-GAPS §2 J9 · PRD FR-23..FR-26 · TEST-PLAN E-J9 · Increment 6
+// docs/JOURNEYS.md J9a–J9d · Increment 7 (#21 tC3, #14 x-tcore, #195 USFM, #196 Burrito, #41 damaged input)
 import { test } from '@playwright/test';
 
 test.describe('J9 — a facilitator imports existing work', () => {

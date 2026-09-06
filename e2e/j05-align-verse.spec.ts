@@ -1,5 +1,5 @@
 // J5 — Align a verse: link/unlink pairs → persists in the §5.1 sidecar
-// JOURNEYS-AND-GAPS §2 J5 · PRD FR-19..FR-21 · TEST-PLAN E-J5 · Increment 2
+// docs/JOURNEYS.md J5 · shipped v4.0.0-alpha.2 · run LTR and RTL (the J10 axis)
 // (owner-approved placement, 2026-08-03).
 //
 // Ground truth is the sidecar on disk. Wordmap suggestions (AD-7) are deferred

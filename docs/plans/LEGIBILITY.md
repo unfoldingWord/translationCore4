@@ -68,7 +68,7 @@ intermediate consumer.
 
 ### 1.5 The sync protocol is proven twice by hand
 
-Observed: J18–J20 drive git by hand in `conformance/validate-journal.mjs`;
+Observed: JC-18–JC-20 drive git by hand in `conformance/validate-journal.mjs`;
 `conformance/validate-transport.mjs` drives HTTP by hand; both assert the same
 protocol [VERIFIED — 9a9ac40, 2026-09-03]; they were last recorded green on different
 dates [VERIFIED — 60be039, 2026-09-01].
@@ -101,11 +101,11 @@ because it had no engine, only scenarios.
   How negative controls are named and gated is decided in L-3.
 - **L-4 Scenario files and one runner.** Promote `StepSpec` to a schema under
   `conformance/scenarios/`; a runner executes a file against the reference fold and the
-  in-memory store; the first files are J18–J20 rewritten as data. The schema must
+  in-memory store; the first files are JC-18–JC-20 rewritten as data. The schema must
   already express the step kinds X2 needs, so that X2 adds a file and no schema change.
   The receive-with-unsent scenario itself needs the sync engine and lands with X2.
-- **L-5 The repository port.** Define `RepoPort`; extract the git adapter from J18–J20
-  and the HTTP adapter from `validate-transport.mjs`; rewrite J18–J20 as scenario files
+- **L-5 The repository port.** Define `RepoPort`; extract the git adapter from JC-18–JC-20
+  and the HTTP adapter from `validate-transport.mjs`; rewrite JC-18–JC-20 as scenario files
   that run over both adapters with identical assertions. This is a refactor of the
   proof, not a feature. It lands before any engine code.
 - **L-6 `docs/SYSTEM.md`.** The tower, the report schema, the refusal codes, the
@@ -124,8 +124,8 @@ before and after.
 | L-1b | Rig container for CI (the dev-env devcontainer follow-up) | the missing rig job | the rig job runs the rig-gated suites on `main` and on demand; never a pankosmia remote or token |
 | L-2 | Docs gate; correct and mark the stale counts of 1.1; correct ARCHITECTURE §9 "ports" wording | stale numbers; the "ports" sentence | the gate's negative control fails and its positive control passes in `npm run verify`; `docs/BURRITO-SPEC.md` is not in the diff |
 | L-3 | `Report`, refusal codes, ops log for layer 4, dev Inspector; tests assert codes | the unread fold report; string-matched failures | gate: every live code names a live rule; codes bound to S1 rules are listed and excluded |
-| L-4 | Scenario schema and runner; J18–J20 as scenario files | hand-written probes | J18–J20 green as files with the same assertions as the suite; a fixture with every step kind X2 needs parses; `tc4 scenario` verb |
-| L-5 | `RepoPort`, git and HTTP adapters; J18–J20 and transport as one scenario set | two drifting suites | the same files green on git and rig runners; evidence record with version, hash, date |
+| L-4 | Scenario schema and runner; JC-18–JC-20 as scenario files | hand-written probes | JC-18–JC-20 green as files with the same assertions as the suite; a fixture with every step kind X2 needs parses; `tc4 scenario` verb |
+| L-5 | `RepoPort`, git and HTTP adapters; JC-18–JC-20 and transport as one scenario set | two drifting suites | the same files green on git and rig runners; evidence record with version, hash, date |
 | L-6 | `docs/SYSTEM.md` | orientation across eight surfaces | the orientation test (Section 4) passes, recorded |
 | L-7 | RISKS rows (scale, identity store, power loss, sync loss); #79 ticks | unrecorded risks | rows present; each names the check that mitigates it; `docs/LEGACY-IDS.md` is frozen (D44(b)) and not edited |
 | L-8 | Issue under #78: the history view may show two actor ids under one name (D67(4c)) | the two-names cost after a device change | issue filed with acceptance criteria and a Verify command |

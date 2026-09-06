@@ -1,5 +1,5 @@
 // J14 — Joining is not merging (D53/D55; issue #62).
-//
+// docs/JOURNEYS.md: J14 is retired. This file proves the MUST NOT rows of J1 and J2.
 // The app-level obligation the format suite cannot assert: working in — or
 // joining — one project NEVER scans for, suggests, or automatically combines a
 // deliberately similar local project. Matching language, book set, or naming

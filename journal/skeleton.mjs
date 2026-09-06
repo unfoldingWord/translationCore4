@@ -1,7 +1,7 @@
 // Book decomposition: skeleton + verse slots — BURRITO-SPEC §8.4 reference implementation.
 // Verse content = every byte after "\v <key> " up to the next "\v " or "\c " marker (or EOF).
 // Skeleton = everything else, with each verse's content replaced by SLOT+key+SLOT.
-// INVARIANT (J2): recompose(decompose(usfm)) is byte-identical to the input.
+// INVARIANT (JC-2): recompose(decompose(usfm)) is byte-identical to the input.
 
 // The slot delimiter and the region-boundary marker are stated ONCE, in grammar.mjs —
 // the codec scans for them here and the schema refuses them inside journaled verse

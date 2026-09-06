@@ -14,7 +14,7 @@
 //     DIFFERING write is issued to an accepted segment path;
 //   - idempotent replay of a torn/absent segment to the SAME bytes is allowed
 //     (R-8.1.5/R-8.1.8) and must not trip the contract.
-// Server byte-stability is out of scope here — J20/J23b in the conformance
+// Server byte-stability is out of scope here — JC-20/JC-23b in the conformance
 // journal suite already prove committed segment bytes stay untouched.
 import { describe, expect, it } from 'vitest';
 import { ServerApi } from '../src/data/serverApi';
