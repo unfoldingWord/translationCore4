@@ -55,7 +55,8 @@ test.describe('J8 — a translator resumes where they left off', () => {
       await page.waitForTimeout(2500);
       expect(commitCount(SEEDED_PROJECT)).toBe(before + 1);
 
-      // Checkpoint 2: leaving the project, after another edit — awaited by the app before teardown.
+      // Checkpoint 2: leaving the project, after another edit. The app starts it after the
+      // synchronous store teardown and does not await it, so poll the disk.
       await page.getByRole('button', { name: '2', exact: true }).click();
       await draftFirstStub(page, 'Enseña a los ancianos a ser sobrios.');
       await page.getByTitle('Switch project').click();
