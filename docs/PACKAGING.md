@@ -258,8 +258,11 @@ between runs; it does not replace the run.
 
 ### Before you start
 
-1. Install the artifact as "Install and launch" above describes, on a machine that never
-   ran tC4 (or under a fresh `HOME`). Do not start the app yet.
+1. Install the artifact on a machine that never ran tC4 (or under a fresh `HOME`): download
+   the zip for the platform, unpack it once with `unzip`. Linux: "Install and launch" above.
+   macOS: the first launch of the unsigned app meets Gatekeeper; allow it through System
+   Settings › Privacy & Security › "Open Anyway" ("Known limits" below). Do not start the
+   app before step 4 unless step 3 says so.
 2. If the unpacked folder contains `smoke-installed.zsh` (#45; artifacts built after pull
    request #192 merged carry it, and the section "Smoke tests" describes it), run it once,
    online: `zsh smoke-installed.zsh`. Expected: `SMOKE OK`. An older artifact has no such
@@ -291,8 +294,8 @@ between runs; it does not replace the run.
 | 3 | Mode tab `Understand`. | The passage's helps area shows for chapter 1. With no English package on this computer, the source text reads "This source text is not on this computer." and the helps read "The pinned resource is not on this computer and the app is offline." (#163). |
 | 4 | Mode tab `Translate`. Chapter 1. | The chapter's verses show. The source pane shows ULT/UST text, or the #163 message "This source text is not on this computer." |
 | 5 | `Draft verse 1` (the dashed pill), type a verse, click outside the editor. | The save indicator shows `Saved`. |
-| 6 | Mode tab `Check`. On the Translation Notes card, `Start checking` (or `Continue`). Pick one item; `✓ Mark valid`. | The item is decided; the progress line `N of M resolved` counts it. If the card reads `Unavailable offline`, that is the #163 case: name it, stay on the tool picker, and go to step 7. |
-| 7 | On the tool picker (`← All checking tools` first, if a tool is open), `Align`. Click one word in the bank, then one card. | The word moves into the card; the bank has one word fewer. If the screen reads "The original-language text is not on this computer", name #163 and continue. |
+| 6 | Mode tab `Check`. On the Translation Notes card, `Start checking` (or `Continue`). Pick one item; `✓ Mark valid`. | The item is decided; the progress line `N of M resolved` counts it. If the card reads `Unavailable offline`, read which resource it names: a resource of the English package that the artifact does not ship (`en_tn`, `en_tw`, `en_ta`, `en_tq`, `en_ult`, `en_ust`, `el-x-koine_ugnt`, `hbo_uhb`; #163) is the known case; name it, stay on the tool picker, and go to step 7. Any other missing resource is a new finding: file its issue. |
+| 7 | On the tool picker (`← All checking tools` first, if a tool is open), `Align`. Click one word in the bank, then one card. | The word moves into the card; the bank has one word fewer. If the screen reads "The original-language text is not on this computer", that is the Greek text of the English package (#163) on a clean install; with the package downloaded in step 3, it is a new finding: file its issue. |
 | 8 | Leave the project (`Switch project`), then open Titus again from Home. Look at `Translate`; then at `Check` › Translation Notes and `Align` for each of steps 6 and 7 that you could do. | Home lists the project. The drafted verse is on screen. Each decision and alignment you made is still there: the progress line still counts the decision; the aligned word is still in its card. A step you could not do (#163) has nothing to check here. |
 | 9 | Export the book. | Not yet possible: #19 (export) is not built. Skip and name #19. |
 | 10 | Quit the app. Turn the network on again. | |
