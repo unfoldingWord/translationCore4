@@ -16,11 +16,11 @@
 # rig this control is about, and the job is already red.
 #
 # The Playwright journeys (e2e/*.spec.ts, `npm run journeys`) are needs-rig and do NOT run
-# in this job (#185): they need Playwright's Chromium and the Vite dev client on :5199
-# (playwright.config.ts starts the client and the rig through `webServer`; global-setup.ts
-# reseeds the rig), and this job installs neither the browser nor the dev client. They run
-# locally against the workspace rig; each journey pull request pastes its run. Wiring them
-# into this job is a separate item.
+# in this job (#185): they need Playwright's Chromium, which this job does not install
+# (`npm ci` brings Vite; playwright.config.ts starts the dev client on :5199 and the rig
+# through `webServer`, and global-setup.ts reseeds the rig). They run locally against the
+# workspace rig; each journey pull request pastes its run. Adding the browser install and
+# the journeys to this job is a separate item.
 #
 # ⛔ The job talks only to the rig it started. Never a pankosmia remote, token, or
 # upstream trigger. The clones in setup-from-pins.zsh are read-only, at pinned commits.
