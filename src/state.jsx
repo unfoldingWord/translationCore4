@@ -136,9 +136,13 @@ const localSourceRepo = (pin) => resolveReadPath(pin);
 // second save restores the first's pin to its stale value. Do it under
 // compare-and-swap; on a refused (stale) write, re-read and re-apply the
 // mutation against the fresh bytes so BOTH changes survive.
-const updateResources = async (store, mutate, tries = 4) => {
+// `stillCurrent` (#189): re-checked after the md5 read, right before the
+// write — the project may have been left during that read, and a write then
+// would land behind its leave checkpoint (#183). Returns null when it declines.
+const updateResources = async (store, mutate, tries = 4, stillCurrent = () => true) => {
   for (let attempt = 0; ; attempt += 1) {
     const { value, md5 } = await store.readResourcesWithMd5();
+    if (!stillCurrent()) return null;
     const next = mutate(value ?? INSTALLED_SUITE);
     try {
       await store.writeResources(next, md5);
@@ -846,9 +850,8 @@ async function adoptDownloadedPins({
     const next = await updateResources(originStore, (current) => {
       const merged = mergeOptionalPins(current, originGateway, installed);
       return merged ? backfillCoverage(merged, coverage).resources : current;
-    });
-    if (stateRef.current.project?.repoPath === originRepoPath)
-      dispatch({ type: 'set', patch: { projectPins: next } });
+    }, 4, sameProject);
+    if (next && sameProject()) dispatch({ type: 'set', patch: { projectPins: next } });
   } catch (error) {
     dispatch({
       type: 'patchSrc',
@@ -1426,8 +1429,8 @@ function loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatc
         if (!wouldChange) return;
         const next = await updateResources(store, (current) =>
           backfillCoverage(adoptInstalledResources(current, installed), coverage).resources,
-        );
-        if (stillCurrent()) dispatch({ type: 'set', patch: { projectPins: next } });
+        4, stillCurrent);
+        if (next && stillCurrent()) dispatch({ type: 'set', patch: { projectPins: next } });
       } catch {
         // Coverage stays underived; the resolver falls back to warning.
       }

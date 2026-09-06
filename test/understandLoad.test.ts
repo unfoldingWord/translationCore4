@@ -329,48 +329,53 @@ describe('#189 — no pin write after the project is left during the resolver aw
   const installed = { d: pin('es-419_tq') }; // an optional pin the project lacks: a write WOULD follow
   const settle = () => new Promise((r) => setTimeout(r, 20));
 
-  const harness = (leaveDuringResolve: boolean) => {
+  // `leaveAt`: which await the project is left during — what backToProjects
+  // does: storeRef null, project null, projectPins null.
+  const harness = (leaveAt: 'never' | 'resolve' | 'md5read') => {
     const writes: unknown[] = [];
+    const storeRef = { current: null as unknown };
+    const stateRef = { current: { project: { repoPath: 'repo/p' }, projectPins: pins } };
+    const leave = () => { storeRef.current = null; stateRef.current = { project: null, projectPins: null } as never; };
     const store = {
       readResources: async () => pins,
-      readResourcesWithMd5: async () => ({ value: pins, md5: 'm1' }),
+      readResourcesWithMd5: async () => { if (leaveAt === 'md5read') leave(); return { value: pins, md5: 'm1' }; },
       writeResources: async (next: unknown) => { writes.push(next); },
     };
-    const storeRef = { current: store as unknown };
-    const stateRef = { current: { project: { repoPath: 'repo/p' }, projectPins: pins } };
+    storeRef.current = store;
     const actions = {
       reloadSourcePanes: () => {},
-      resolutionContext: async () => {
-        if (leaveDuringResolve) { storeRef.current = null; stateRef.current = { project: null, projectPins: null } as never; }
-        return { installed, coverage: {} };
-      },
+      resolutionContext: async () => { if (leaveAt === 'resolve') leave(); return { installed, coverage: {} }; },
     };
     return { writes, store, storeRef, stateRef, actions, dispatch: () => {} };
   };
 
   it('control: with the project still open, loadProjectPins adopts the pin (one write)', async () => {
-    const h = harness(false);
+    const h = harness('never');
     loadPins({ store: h.store, repoPath: 'repo/p', storeRef: h.storeRef, stateRef: h.stateRef, actions: h.actions, dispatch: h.dispatch });
     await settle();
     expect(h.writes).toHaveLength(1);
   });
 
-  it('loadProjectPins: left during the await → no write', async () => {
-    const h = harness(true);
-    loadPins({ store: h.store, repoPath: 'repo/p', storeRef: h.storeRef, stateRef: h.stateRef, actions: h.actions, dispatch: h.dispatch });
-    await settle();
-    expect(h.writes).toHaveLength(0);
-  });
+  for (const leaveAt of ['resolve', 'md5read'] as const) {
+    it(`loadProjectPins: left during the ${leaveAt} await → no write`, async () => {
+      const h = harness(leaveAt);
+      loadPins({ store: h.store, repoPath: 'repo/p', storeRef: h.storeRef, stateRef: h.stateRef, actions: h.actions, dispatch: h.dispatch });
+      await settle();
+      expect(h.writes).toHaveLength(0);
+    });
+  }
 
   it('control: with the project still open, adoptDownloadedPins adopts the pin (one write)', async () => {
-    const h = harness(false);
+    const h = harness('never');
     await adoptDownloaded({ originStore: h.store, originRepoPath: 'repo/p', originGateway: { id: 'es-419', org: 'es-419_gl' }, storeRef: h.storeRef, stateRef: h.stateRef, actions: h.actions, dispatch: h.dispatch });
     expect(h.writes).toHaveLength(1);
   });
 
-  it('adoptDownloadedPins: left during the await → no write', async () => {
-    const h = harness(true);
-    await adoptDownloaded({ originStore: h.store, originRepoPath: 'repo/p', originGateway: { id: 'es-419', org: 'es-419_gl' }, storeRef: h.storeRef, stateRef: h.stateRef, actions: h.actions, dispatch: h.dispatch });
-    expect(h.writes).toHaveLength(0);
-  });
+  for (const leaveAt of ['resolve', 'md5read'] as const) {
+    it(`adoptDownloadedPins: left during the ${leaveAt} await → no write`, async () => {
+      const h = harness(leaveAt);
+      await adoptDownloaded({ originStore: h.store, originRepoPath: 'repo/p', originGateway: { id: 'es-419', org: 'es-419_gl' }, storeRef: h.storeRef, stateRef: h.stateRef, actions: h.actions, dispatch: h.dispatch });
+      expect(h.writes).toHaveLength(0);
+    });
+  }
 });
