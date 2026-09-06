@@ -45,7 +45,7 @@ jobs:
       EN_ULT_TAG: v89
       EN_ULT_SHA: 84c73ba00fc8a95a9033f9efb14bb905a2a52ee4
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build and runtime dependencies
         run: |
@@ -55,7 +55,7 @@ jobs:
           #   system libraries (same as package-desktop.yml).
           sudo apt-get install -y --no-install-recommends zsh zip unzip pkg-config libssl-dev zlib1g-dev
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -69,7 +69,7 @@ jobs:
       - name: Rust toolchain
         run: rustup toolchain install stable --profile minimal
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -89,7 +89,7 @@ jobs:
       # fetches again through the new code. seed.zsh unzips cached bytes without checking them.
       - name: Cache the pinned en_ult export
         id: en-ult
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: dev-env/resources-cache
           key: rig-resources-en_ult-${{ env.EN_ULT_TAG }}-${{ env.EN_ULT_SHA }}-${{ hashFiles('dev-env/scripts/cache-resource.ts', 'dev-env/scripts/cache-resource.zsh', 'src/data/resourceFetch.ts') }}
@@ -152,7 +152,7 @@ jobs:
           '
 
       # Uploaded whenever the manifest is this run's, red or green; never the committed file.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always() && steps.fresh.outcome == 'success'
         with:
           name: prove-manifest-rig
@@ -206,7 +206,7 @@ jobs:
             console.log("negative control: every rig suite skipped with", rig[0].skipped);
           '
       # Uploaded whenever the negative prove wrote a manifest, whatever the assertions said.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always() && steps.negative-fresh.outcome == 'success'
         with:
           name: prove-manifest-rig-negative-control
@@ -218,7 +218,7 @@ jobs:
         run: kill "$(cat "$RUNNER_TEMP/rig.pid")" 2>/dev/null || true
       - name: Upload the rig log (failures only)
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: rig-log
           path: |
