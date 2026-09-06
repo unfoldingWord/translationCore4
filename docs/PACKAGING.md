@@ -278,6 +278,9 @@ Options:
   runs with the real HOME; the script then uses the real store and removes its smoke project
   at the end.
 - `TC4_SMOKE_KEEP=1`: keep the smoke project (`_local_/_local_/smoke_<epoch>`).
+- `TC4_SMOKE_LOGDIR=<dir>`: where the launcher's own output goes (`tc4-smoke-first.log`,
+  `tc4-smoke-second.log`); default `$TMPDIR` or `/tmp`. CI uploads that directory with the
+  transcript as the `smoke-installed-<platform>` artifact.
 - A first argument names the folder when the script does not sit in it:
   `zsh scripts/smoke-installed.zsh /path/to/translationCore4`.
 

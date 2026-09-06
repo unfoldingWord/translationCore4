@@ -24,6 +24,8 @@
 #   TC4_SMOKE_HOME=<dir>   the HOME the app runs under (default: $HOME). CI passes a
 #                          fresh directory; a pilot runs with the real HOME.
 #   TC4_SMOKE_KEEP=1       keep the smoke project instead of deleting it.
+#   TC4_SMOKE_LOGDIR=<dir> where the launcher's own output goes (tc4-smoke-first.log,
+#                          tc4-smoke-second.log); default: $TMPDIR or /tmp. CI uploads it.
 #
 # The build-time smoke test in scripts/package-desktop.zsh stays: it checks the
 # staged folder inside the build. This script is the post-install half.
@@ -38,7 +40,7 @@ REPO="_local_/_local_/$ABBR"
 MARKER="tC4 smoke verse $STAMP"
 PORT=""
 APP_PID=""
-LOGDIR=${TMPDIR:-/tmp}
+LOGDIR=${TC4_SMOKE_LOGDIR:-${TMPDIR:-/tmp}}
 
 fail() { echo "FAIL $1"; cleanup_app; exit 1; }
 ok()   { echo "ok $1"; }
@@ -91,7 +93,9 @@ start_app() {  # $1 = label
   version=$(curl -s --max-time 2 "http://127.0.0.1:$PORT/api/version" | sed -n 's/.*"pkg_version":"\([^"]*\)".*/\1/p')
   SERVER_PIDS=$(port_pids)
   [ -n "$SERVER_PIDS" ] || fail "$1 start: no process listens on port $PORT (lsof)"
-  ok "$1 start: server on port $PORT (pid $SERVER_PIDS), pkg_version $version, electron pid $APP_PID"
+  # The desktop app itself must be running, not only the server it spawned.
+  alive "$APP_PID" || fail "$1 start: the server answers but electron (pid $APP_PID) has exited (log: $LOGDIR/tc4-smoke-$1.log)"
+  ok "$1 start: server on port $PORT (pid $SERVER_PIDS), pkg_version $version, electron pid $APP_PID alive"
 }
 
 port_answers() { curl -s --max-time 1 "http://127.0.0.1:$PORT/api/version" | grep -q '"product_short_name":"tc4"'; }
@@ -105,6 +109,11 @@ stop_app() {  # $1 = label. The launcher execs Electron, so APP_PID is Electron'
               # reported, not failed.
   local victims="$APP_PID $SERVER_PIDS"
   local pid i forced=""
+  # Both must still be running when the stop begins: an app that died during the
+  # test is a failure, not a stop.
+  for pid in ${=victims}; do
+    alive "$pid" || fail "$1 stop: pid $pid (of electron $APP_PID, server $SERVER_PIDS) was already dead before the stop (log: $LOGDIR/tc4-smoke-$1.log)"
+  done
   for pid in ${=victims}; do kill "$pid" 2>/dev/null; done
   for i in {1..40}; do
     local left=""
@@ -143,8 +152,8 @@ if find_port; then
 fi
 ok "precondition: no tC4 server on 19119-19139 before the launch"
 start_app first
-ROOT=$(curl -s --max-time 10 -o /dev/null -w '%{http_code} %{redirect_url}' "http://127.0.0.1:$PORT/")
-CLIENT=$(curl -s --max-time 10 -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/clients/uw-tc4")
+ROOT=$(curl -s --max-time 10 -o /dev/null -w '%{http_code} %{redirect_url}' "http://127.0.0.1:$PORT/") || fail "root: curl exit $? on GET /"
+CLIENT=$(curl -s --max-time 10 -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/clients/uw-tc4") || fail "client: curl exit $? on GET /clients/uw-tc4"
 case "$ROOT" in
   303*"/clients/uw-tc4") ok "root: $ROOT" ;;
   *) fail "root: expected 303 to /clients/uw-tc4, got '$ROOT'" ;;
@@ -178,25 +187,30 @@ const enc = (r) => r.split("/").map(encodeURIComponent).join("/");
 const url = (route) => base + route;
 const fail = (step, seen) => { console.log("FAIL " + step + ": " + seen); process.exit(1); };
 const ok = (step, seen) => console.log("ok " + step + ": " + seen);
-// The platform reports some failures as HTTP 200 with {"is_good":false,"reason":...};
-// the client (src/data/serverApi.ts) rejects those, and so does this test.
-function refuse(route, status, t) {
-  if (status < 200 || status >= 300) throw new Error(route + " -> " + status + " " + t.slice(0, 200));
-  let j = null;
-  try { j = JSON.parse(t); } catch { return; }
-  if (j && typeof j === "object" && j.is_good === false) throw new Error(route + " -> is_good:false " + (j.reason || t.slice(0, 200)));
-}
+// A POST answer must be the success shape the client enforces (src/data/serverApi.ts
+// post(): HTTP ok AND a JSON body with is_good true); anything else is a failure there
+// and here. A GET returns the raw text; only its status is checked.
 async function post(route, body) {
   const r = await fetch(url(route), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   const t = await r.text();
-  refuse(route, r.status, t);
+  if (!r.ok) throw new Error(route + " -> " + r.status + " " + t.slice(0, 200));
+  let j;
+  try { j = JSON.parse(t); } catch { throw new Error(route + " -> unparseable POST response body: " + t.slice(0, 200)); }
+  if (!j || typeof j !== "object" || j.is_good !== true) throw new Error(route + " -> is_good is not true: " + (j && j.reason ? j.reason : t.slice(0, 200)));
   return t;
 }
 async function getText(route) {
   const r = await fetch(url(route));
   const t = await r.text();
-  refuse(route, r.status, t);
+  if (!r.ok) throw new Error(route + " -> " + r.status + " " + t.slice(0, 200));
   return t;
+}
+// The text of TIT 1:1: what follows the first "\\v 1 " up to the end of its line.
+function verse11(usfm) {
+  const at = usfm.indexOf("\\v 1 ");
+  if (at < 0) return null;
+  const eol = usfm.indexOf("\n", at);
+  return usfm.slice(at + 5, eol < 0 ? usfm.length : eol);
 }
 (async () => {
   const ipath = "TIT.usfm"; // ingredient-relative, as /burrito/paths lists them
@@ -220,12 +234,12 @@ async function getText(route) {
     const edited = usfm.slice(0, at) + "\\v 1 " + marker + usfm.slice(end);
     await post("/api/burrito/ingredient/raw/" + enc(repo) + "?ipath=" + encodeURIComponent(ipath), { payload: edited })
       .catch((e) => fail("write verse", e.message));
-    const back = await getText(rawRoute);
-    if (!back.includes(marker)) fail("write verse", "marker not in the read-back");
+    const back = verse11(await getText(rawRoute));
+    if (back !== marker) fail("write verse", "TIT 1:1 read back as " + JSON.stringify(back) + ", expected " + JSON.stringify(marker));
     ok("write verse", "TIT 1:1 = \"" + marker + "\"");
   } else if (mode === "readback") {
-    const usfm = await getText(rawRoute).catch((e) => fail("read back", e.message));
-    if (!usfm.includes(marker)) fail("read back", "marker absent after the restart");
+    const v = verse11(await getText(rawRoute).catch((e) => fail("read back", e.message)));
+    if (v !== marker) fail("read back", "TIT 1:1 is " + JSON.stringify(v) + " after the restart, expected " + JSON.stringify(marker));
     ok("read back", "TIT 1:1 still \"" + marker + "\" after the restart");
   } else if (mode === "delete") {
     await post("/api/git/delete/" + enc(repo), {}).catch((e) => fail("delete", e.message));
@@ -240,8 +254,9 @@ run_steps() { node_run -e "$STEPS_JS" -- "http://127.0.0.1:$PORT" "$REPO" "$ABBR
 run_steps create || { cleanup_app; exit 1; }
 ON_DISK="$STORE/$REPO/ingredients/TIT.usfm"
 [ -f "$ON_DISK" ] || fail "store write: $ON_DISK does not exist"
-grep -q "$MARKER" "$ON_DISK" && ok "store write: the verse is on disk at $ON_DISK" \
-  || fail "store write: the verse is not in $ON_DISK"
+DISK_V11=$(sed -n 's/^\\v 1 \(.*\)$/\1/p' "$ON_DISK" | head -1)
+[ "$DISK_V11" = "$MARKER" ] && ok "store write: TIT 1:1 on disk at $ON_DISK is the written verse" \
+  || fail "store write: TIT 1:1 on disk is '$DISK_V11', expected '$MARKER' ($ON_DISK)"
 
 # ---- 6: restart and read back ----------------------------------------------------
 FIRST_SERVER="$SERVER_PIDS"

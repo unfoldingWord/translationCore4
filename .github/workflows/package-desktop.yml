@@ -195,15 +195,15 @@ jobs:
 
       - name: Run the shipped smoke test under a fresh HOME
         run: |
-          mkdir -p "$RUNNER_TEMP/smoke-home"
+          mkdir -p "$RUNNER_TEMP/smoke-home" smoke-logs
           set -o pipefail
-          TC4_SMOKE_HOME="$RUNNER_TEMP/smoke-home" zsh install/translationCore4/smoke-installed.zsh install/translationCore4 | tee smoke-installed-macos-arm64.log
+          TC4_SMOKE_HOME="$RUNNER_TEMP/smoke-home" TC4_SMOKE_LOGDIR="$PWD/smoke-logs" zsh install/translationCore4/smoke-installed.zsh install/translationCore4 2>&1 | tee smoke-logs/smoke-installed-macos-arm64.log
 
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: smoke-installed-macos-arm64
-          path: smoke-installed-macos-arm64.log
+          path: smoke-logs/
           retention-days: 30
 
   # #45 post-install smoke test, Linux: the same, with Electron's shared libraries and xvfb.
@@ -250,13 +250,13 @@ jobs:
 
       - name: Run the shipped smoke test under a fresh HOME
         run: |
-          mkdir -p "$RUNNER_TEMP/smoke-home"
+          mkdir -p "$RUNNER_TEMP/smoke-home" smoke-logs
           set -o pipefail
-          TC4_SMOKE_HOME="$RUNNER_TEMP/smoke-home" xvfb-run -a zsh install/translationCore4/smoke-installed.zsh install/translationCore4 | tee smoke-installed-linux-x64.log
+          TC4_SMOKE_HOME="$RUNNER_TEMP/smoke-home" TC4_SMOKE_LOGDIR="$PWD/smoke-logs" xvfb-run -a zsh install/translationCore4/smoke-installed.zsh install/translationCore4 2>&1 | tee smoke-logs/smoke-installed-linux-x64.log
 
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: smoke-installed-linux-x64
-          path: smoke-installed-linux-x64.log
+          path: smoke-logs/
           retention-days: 30
