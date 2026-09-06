@@ -94,24 +94,37 @@ start_app() {  # $1 = label
   ok "$1 start: server on port $PORT (pid $SERVER_PIDS), pkg_version $version, electron pid $APP_PID"
 }
 
+port_answers() { curl -s --max-time 1 "http://127.0.0.1:$PORT/api/version" | grep -q '"product_short_name":"tc4"'; }
+
 stop_app() {  # $1 = label. The launcher execs Electron, so APP_PID is Electron's; the
               # server is its child, found by the port it listens on. A stop is proven
-              # when both processes are gone AND the port is silent.
+              # when both processes are gone AND the port is silent. SIGTERM first; a
+              # process still alive after 10 s gets SIGKILL (a macOS CI runner kept
+              # Electron alive past 30 s of SIGTERM, run 34008006559). The test proves
+              # persistence across a restart, not a graceful quit, so a forced stop is
+              # reported, not failed.
   local victims="$APP_PID $SERVER_PIDS"
-  local pid
+  local pid i forced=""
   for pid in ${=victims}; do kill "$pid" 2>/dev/null; done
-  local i gone
-  for i in {1..30}; do
-    gone=1
-    for pid in ${=victims}; do alive "$pid" && gone=0; done
-    if [ "$gone" = 1 ] && ! curl -s --max-time 1 "http://127.0.0.1:$PORT/api/version" | grep -q '"product_short_name":"tc4"'; then
-      ok "$1 stop: electron and server exited (pids $victims), port $PORT no longer answers"
+  for i in {1..40}; do
+    local left=""
+    for pid in ${=victims}; do alive "$pid" && left="$left $pid"; done
+    if [ -z "$left" ] && ! port_answers; then
+      ok "$1 stop: electron and server exited (pids $victims${forced:+; SIGKILL needed for$forced}), port $PORT no longer answers"
       APP_PID=""; return 0
+    fi
+    if [ "$i" = 10 ] && [ -n "$left" ]; then
+      forced="$left"
+      for pid in ${=left}; do kill -9 "$pid" 2>/dev/null; done
     fi
     sleep 1
   done
-  for pid in ${=victims}; do kill -9 "$pid" 2>/dev/null; done
-  fail "$1 stop: a process of $victims was still alive, or port $PORT still answered, 30 s after the kill"
+  local still=""
+  for pid in ${=victims}; do alive "$pid" && still="$still $pid"; done
+  echo "-- diagnostics: processes still alive:${still:- none}; port $PORT answers: $(port_answers && echo yes || echo no)"
+  [ -n "$still" ] && ps -o pid,stat,etime,command -p ${=still} 2>/dev/null | cut -c1-200
+  echo "-- launcher log tail ($LOGDIR/tc4-smoke-$1.log):"; tail -20 "$LOGDIR/tc4-smoke-$1.log" 2>/dev/null
+  fail "$1 stop: after SIGTERM and SIGKILL, still alive:${still:- none}; port $PORT answers: $(port_answers && echo yes || echo no)"
 }
 
 cleanup_app() {
