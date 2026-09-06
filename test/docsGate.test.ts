@@ -8,7 +8,7 @@
 // the file, the line and the manifest path — on a fixture, and through the CLI against
 // the real documents with one manifest count altered.
 import { describe, expect, it } from 'vitest';
-import { DOC_ROOTS, checkFiles, checkText, resolveMarker } from '../scripts/docs-gate.mjs';
+import { DOC_ROOTS, checkFiles, checkJourneys, checkText, liveTestCount, resolveMarker } from '../scripts/docs-gate.mjs';
 
 // vite-plugin-node-polyfills aliases node builtins even under the node environment; the
 // real ones come through process.getBuiltinModule (same workaround as noBypass.test.ts).
@@ -256,5 +256,83 @@ describe('docs gate: controls', () => {
     });
     expect(r.stdout).toContain('DOCS GATE OK');
     expect(r.status).toBe(0);
+  });
+});
+
+// Journeys (issue #199, D69 rule 2): every row of the docs/JOURNEYS.md index resolves to a
+// proof file and an owner. The gate checks that things resolve; it never runs a test.
+describe('docs gate: journeys', () => {
+  const row = (id: string, status: string, proof: string) =>
+    `| ${id} | translator | Translate | a goal | ${status} | ${proof} |`;
+  const table = (...rows: string[]) =>
+    ['# Journeys', '', '| ID | Actor | Activity | Goal | Status | Proof |', '|---|---|---|---|---|---|', ...rows].join('\n');
+  const live = "// docs/JOURNEYS.md J1\nimport { test } from '@playwright/test';\ntest('a', async () => {});\n";
+  const fixmeOnly = "// docs/JOURNEYS.md J7\nimport { test } from '@playwright/test';\ntest.fixme('a', async () => {});\n";
+
+  it('counts live tests: test( counts, test.fixme( does not', () => {
+    expect(liveTestCount(live)).toBe(1);
+    expect(liveTestCount(fixmeOnly)).toBe(0);
+    expect(liveTestCount(live + fixmeOnly)).toBe(1);
+  });
+
+  it('positive control (fixture): shipped with a live spec, fixme with an owner, "to write" with an owner, retired, Phase 2 and vision all pass', () => {
+    const specs = { 'e2e/j01-a.spec.ts': live, 'e2e/j07-b.spec.ts': fixmeOnly, 'e2e/j10-c.spec.ts': fixmeOnly };
+    const text = table(
+      row('J1', 'shipped alpha.1', '`e2e/j01-a.spec.ts`'),
+      row('J7', 'increment 7 (#19)', '`e2e/j07-b.spec.ts` (fixme)'),
+      row('J9c', 'increment 7 (#195)', '`e2e/j09-x.spec.ts` (to write)'),
+      row('J10', 'retired', '`e2e/j10-c.spec.ts` stays'),
+      row('J11', 'Phase 2', 'none'),
+      row('J20', 'vision (D66)', 'none'),
+    );
+    const r = checkJourneys(text, specs);
+    expect(r.findings).toEqual([]);
+    expect(r.checked.map((c) => c.id)).toEqual(['J1', 'J7', 'J9c', 'J10', 'J11', 'J20']);
+  });
+
+  it('negative control (fixture): a proof file that does not exist names the row', () => {
+    const r = checkJourneys(table(row('J1', 'shipped alpha.1', '`e2e/j01-missing.spec.ts`')), {});
+    expect(r.findings.map((f) => [f.file, f.line, f.marker, f.kind])).toEqual([['docs/JOURNEYS.md', 5, 'J1', 'journey']]);
+    expect(r.findings[0].detail).toContain('e2e/j01-missing.spec.ts does not exist');
+  });
+
+  it('negative control (fixture): a shipped row cannot be "to write", and cannot cite a fixme-only spec', () => {
+    const r1 = checkJourneys(table(row('J1', 'shipped alpha.1', '`e2e/j01-a.spec.ts` (to write)')), {});
+    expect(r1.findings.map((f) => f.detail)).toEqual([expect.stringContaining('a shipped row cannot be "to write"')]);
+    const r2 = checkJourneys(table(row('J7', 'shipped alpha.3', '`e2e/j07-b.spec.ts`')), { 'e2e/j07-b.spec.ts': fixmeOnly });
+    expect(r2.findings.map((f) => f.detail)).toEqual([expect.stringContaining('no test outside test.fixme')]);
+  });
+
+  it('negative control (fixture): an empty Status, or an owned row with no e2e path, is a finding', () => {
+    const r = checkJourneys(table(row('J1', '', '`e2e/j01-a.spec.ts`'), row('J2', 'increment 5', 'none yet')), { 'e2e/j01-a.spec.ts': live });
+    expect(r.findings.map((f) => [f.marker, f.detail])).toEqual([
+      ['J1', expect.stringContaining('empty Status')],
+      ['J2', expect.stringContaining('Proof names no e2e spec')],
+    ]);
+  });
+
+  it('negative control (fixture): a spec header citing a dead document, or a journey spec cited by no row, is a finding on the spec', () => {
+    const dead = '// J3 — get resources\n// JOURNEYS-AND-GAPS §2 J3 · PRD FR-12 · TEST-PLAN E-J3\n' + live;
+    const r = checkJourneys(table(row('J1', 'shipped alpha.1', '`e2e/j01-a.spec.ts`')), {
+      'e2e/j01-a.spec.ts': live,
+      'e2e/j03-dead.spec.ts': dead,
+      'e2e/helpers.spec.ts': live,
+    });
+    expect(r.findings.map((f) => [f.file, f.detail])).toEqual([
+      ['e2e/j03-dead.spec.ts', expect.stringContaining('header cites a document that does not exist')],
+      ['e2e/j03-dead.spec.ts', expect.stringContaining('cited by no row')],
+    ]);
+  });
+
+  it('positive control (real surface): every journey in docs/JOURNEYS.md resolves, and every e2e/j*.spec.ts is cited', () => {
+    const specs = Object.fromEntries(
+      fs
+        .readdirSync(path.join(ROOT, 'e2e'))
+        .filter((n: string) => n.endsWith('.spec.ts'))
+        .map((n: string) => [`e2e/${n}`, fs.readFileSync(path.join(ROOT, 'e2e', n), 'utf8')]),
+    );
+    const r = checkJourneys(fs.readFileSync(path.join(ROOT, 'docs/JOURNEYS.md'), 'utf8'), specs);
+    expect(r.findings).toEqual([]);
+    expect(r.checked.length).toBeGreaterThanOrEqual(24);
   });
 });
