@@ -359,3 +359,6 @@ Every artifact carries `BUILD-MANIFEST.json` at its root with the same data.
 
 Witnessed boots (rig and packaged artifact, with screenshots):
 `docs/evidence/desktop-packaging-spike-2026-08-14.md`.
+
+Post-install smoke test on fresh runners, both platforms (#45):
+`docs/evidence/smoke-installed-2026-09-06.md`.
