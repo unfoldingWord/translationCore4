@@ -11,6 +11,11 @@ name: package-desktop
 # #119 adds the linux-x64 job beside the proven macos-arm64 one. Both run the
 # same script; only the host differs. Windows x64 is #181 (Increment 6);
 # signed/notarized installers remain #44's.
+#
+# #45 adds one smoke-* job per platform: a FRESH runner downloads the artifact the
+# build job uploaded, unpacks it once, and runs the shipped post-install smoke test
+# (smoke-installed.zsh) under a fresh HOME. A fresh runner is a clean machine; the
+# job log is the pasteable evidence the tag rule wants (epic #59).
 
 on:
   push:
@@ -154,3 +159,79 @@ jobs:
           archive: false
           if-no-files-found: error
           retention-days: 3
+
+  # #45 post-install smoke test, macOS: a fresh runner, the uploaded artifact, one unzip.
+  smoke-macos-arm64:
+    needs: macos-arm64
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: tC4-*-macos-arm64-unsigned.zip
+          merge-multiple: true
+          path: download
+
+      - name: Unpack once
+        run: |
+          set -e
+          ls -la download
+          # archive: false uploads the zip as one file; unpack it once (docs/PACKAGING.md).
+          # If a future action version extracts on download, the folder is already there.
+          if ls download/*.zip >/dev/null 2>&1; then unzip -q download/*.zip -d install; else mv download install; fi
+          ls -la install/translationCore4
+
+      - name: Run the shipped smoke test under a fresh HOME
+        run: |
+          mkdir -p "$RUNNER_TEMP/smoke-home"
+          set -o pipefail
+          TC4_SMOKE_HOME="$RUNNER_TEMP/smoke-home" zsh install/translationCore4/smoke-installed.zsh install/translationCore4 | tee smoke-installed-macos-arm64.log
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: smoke-installed-macos-arm64
+          path: smoke-installed-macos-arm64.log
+          retention-days: 30
+
+  # #45 post-install smoke test, Linux: the same, with Electron's shared libraries and xvfb.
+  smoke-linux-x64:
+    needs: linux-x64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Runtime dependencies (what a pilot's desktop already has)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            zsh unzip curl lsof xvfb \
+            libnss3 libnspr4 libatk1.0-0t64 libatk-bridge2.0-0t64 \
+            libcups2t64 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 \
+            libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 \
+            libasound2t64 libatspi2.0-0t64 libgtk-3-0t64
+
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: tC4-*-linux-x64-unsigned.zip
+          merge-multiple: true
+          path: download
+
+      - name: Unpack once
+        run: |
+          set -e
+          ls -la download
+          if ls download/*.zip >/dev/null 2>&1; then unzip -q download/*.zip -d install; else mv download install; fi
+          ls -la install/translationCore4
+
+      - name: Run the shipped smoke test under a fresh HOME
+        run: |
+          mkdir -p "$RUNNER_TEMP/smoke-home"
+          set -o pipefail
+          TC4_SMOKE_HOME="$RUNNER_TEMP/smoke-home" xvfb-run -a zsh install/translationCore4/smoke-installed.zsh install/translationCore4 | tee smoke-installed-linux-x64.log
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: smoke-installed-linux-x64
+          path: smoke-installed-linux-x64.log
+          retention-days: 30
