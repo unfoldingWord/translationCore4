@@ -236,8 +236,9 @@ const initial = () => ({
   // failed. Shown in the save indicator's error state with a Retry; a commit
   // never blocks navigation.
   commitError: null,
-  // The repoPath a failed leave-project checkpoint belongs to (#183): Home's
-  // Retry commits it directly, since no store is open on Home.
+  // The repoPath that owes a checkpoint after leaving it failed (#183). The
+  // checkpoint is retried when that project opens again; no store is opened
+  // for a project that is not current (open() sets the shell's current project).
   commitErrorRepo: null,
   // Modals (the owner's design: creation, add-book, and settings are dialogs
   // over Home, not separate pages)
@@ -953,6 +954,15 @@ async function checkpointCommit(store, reason) {
   return store.commitPending((changes) => checkpointMessage(reason, changes));
 }
 
+/** Start a checkpoint without awaiting it: the screen moves on at once, the
+ * store queue runs the commit behind any save in flight, and the outcome lands
+ * in commitError only while that store is still the current one. */
+function startCheckpoint({ store, storeRef, dispatch }, reason) {
+  checkpointCommit(store, reason)
+    .then(() => { if (storeRef.current === store) dispatch({ type: 'set', patch: { commitError: null } }); })
+    .catch((e) => { if (storeRef.current === store) dispatch({ type: 'set', patch: { commitError: e?.reason || e?.message || String(e) } }); });
+}
+
 /** The drain gate before an open. Never abandon unsaved work: drain BOTH
  * schedulers first, and stay put if a write failure remains (FR-32; B3/M1/M6;
  * notes held to the same rule — B1/D65). Returns true when the open may
@@ -1100,9 +1110,13 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
     if (superseded()) return;
     await actions.openBook(bookCode || summary.bookCodes[0]);
     if (superseded()) return;
-    // #183: a checkpoint failure of the project LEFT is cleared only once a
-    // project is open; a failed open keeps it beside the open error.
-    dispatch({ type: 'set', patch: { opening: null, commitError: null, commitErrorRepo: null } });
+    // #183: the Home banner for a failed leave-checkpoint is cleared once a
+    // project is open (a failed open keeps it beside the open error). When the
+    // project opened is the one that owes that checkpoint, the checkpoint is
+    // retried now, through its store; a failure shows in the save indicator.
+    const owes = stateRef.current.commitErrorRepo === repoPath;
+    dispatch({ type: 'set', patch: { opening: null, commitError: null, ...(owes ? { commitErrorRepo: null } : {}) } });
+    if (owes) startCheckpoint({ store, storeRef, dispatch }, 'retry');
   } catch (e) {
     if (superseded()) return; // a stale failure must not route the OPEN project Home
     // A failed open surfaces its diagnosable report and never a stuck bar (#95).
@@ -1867,14 +1881,10 @@ export function AppProvider({ children }) {
         const st = stateRef.current;
         const from = st.view;
         dispatch({ type: 'set', patch: { view } });
-        // #183 (D9): a mode switch is a checkpoint. Started, not awaited — the
-        // screen changes at once; the store queue runs the commit behind any
-        // save in flight, and a failure lands in commitError, never in the way.
+        // #183 (D9): a mode switch is a checkpoint. Started, not awaited: a
+        // failure lands in commitError, never in the way.
         if (st.project && storeRef.current && from !== view && from !== 'home') {
-          const store = storeRef.current;
-          checkpointCommit(store, `leaving ${MODE_NAME[from] ?? from}`)
-            .then(() => { if (storeRef.current === store) dispatch({ type: 'set', patch: { commitError: null } }); })
-            .catch((e) => { if (storeRef.current === store) dispatch({ type: 'set', patch: { commitError: e?.reason || e?.message || String(e) } }); });
+          startCheckpoint({ store: storeRef.current, storeRef, dispatch }, `leaving ${MODE_NAME[from] ?? from}`);
         }
       },
 
@@ -1888,23 +1898,6 @@ export function AppProvider({ children }) {
           dispatch({ type: 'set', patch: { commitError: null } });
         } catch (e) {
           dispatch({ type: 'set', patch: { commitError: e?.reason || e?.message || String(e) } });
-        }
-      },
-
-      /** Retry the checkpoint that failed on leaving a project (#183). Home has
-       * no open store for that repository, and a checkpoint is more than a raw
-       * commit (it regenerates the shared files from the journal, §8.7), so a
-       * store is opened for the retry and commits through the boundary. */
-      retryLeaveCheckpoint: async () => {
-        const repo = stateRef.current.commitErrorRepo;
-        if (!repo) return;
-        try {
-          const store = new JournalingStore({ api });
-          await store.open(repo);
-          await checkpointCommit(store, 'leaving the project');
-          dispatch({ type: 'set', patch: { commitError: null, commitErrorRepo: null } });
-        } catch (e) {
-          dispatch({ type: 'set', patch: { commitError: `${t('app.commitError')}: ${e?.reason || e?.message || String(e)}` } });
         }
       },
 

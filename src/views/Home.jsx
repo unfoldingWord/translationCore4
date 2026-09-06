@@ -143,16 +143,11 @@ export default function Home() {
             like it did nothing (found 2026-08-22, rig journey run). */}
         {/* #183: the checkpoint commit of the project just left failed. The work
             is saved (every save is a journal segment); the commit is pending and
-            the next checkpoint carries it. Retry commits it from here. */}
+            it is retried when that project is opened again. */}
         {s.commitError && (
           <Callout tone="warn" role="alert" data-testid="home-checkpoint-error"
             style={{ margin: '0 0 16px', overflowWrap: 'anywhere' }}>
-            {s.commitError}{' '}
-            {s.commitErrorRepo && (
-              <Button size="sm" variant="outline" data-testid="retry-leave-checkpoint" onClick={() => actions.retryLeaveCheckpoint()}>
-                {t('app.retry')}
-              </Button>
-            )}
+            {s.commitError} {t('home.commitErrorHint')}
           </Callout>
         )}
         {s.bookError && (
