@@ -5,7 +5,7 @@
 // "no pins recorded"): the screen proceeds with unpinned help slots instead
 // of waiting forever.
 import { describe, expect, it } from 'vitest';
-import { __performLoadUnderstandForTests as loadUnderstand, __loadProjectPinsForTests as loadPins, __loadSourcePanesForTests as loadSourcePanes, __setInstalledCacheForTests as setInstalledCache} from '../src/state.jsx';
+import { __performLoadUnderstandForTests as loadUnderstand, __loadProjectPinsForTests as loadPins, __loadSourcePanesForTests as loadSourcePanes, __setInstalledCacheForTests as setInstalledCache, __adoptDownloadedPinsForTests as adoptDownloaded } from '../src/state.jsx';
 import { INSTALLED_SUITE } from '../src/data/installedSuite';
 import { localRepoPathFromRepoPath } from '../src/data/installed';
 import { absenceMessageKey } from '../src/data/sourceState';
@@ -318,4 +318,94 @@ describe('#164 — a confirmed not-found pane read names WHICH absence (D30)', (
     expect(en['source.notInstalled']).toMatch(/not on this computer/);
     expect(en['source.unavailable']).toMatch(/not available for this book/);
   });
+});
+
+// #189 — a pin write must not land after the project was left during the
+// resolver await: it would arrive behind the leave checkpoint (#183), or
+// beside a new store for the same repository.
+describe('#189 — no pin write after the project is left during the resolver await', () => {
+  const pin = (repo: string) => ({ repoPath: `git.door43.org/es-419_gl/${repo}`, sha: 'f'.repeat(40), flavor: 'x' });
+  const pins = { languageSets: { primary: { gatewayLanguage: { languageId: 'es-419', owner: 'es-419_gl' }, translationNotes: pin('es-419_tn') } } };
+  const installed = { d: pin('es-419_tq') }; // an optional pin the project lacks: a write WOULD follow
+  const settle = () => new Promise((r) => setTimeout(r, 20));
+
+  // `leaveAt`: which await the project is left during — what backToProjects
+  // does: storeRef null, project null, projectPins null.
+  const harness = (leaveAt: 'never' | 'resolve' | 'md5read') => {
+    const writes: unknown[] = [];
+    const storeRef = { current: null as unknown };
+    const stateRef = { current: { project: { repoPath: 'repo/p' }, projectPins: pins } };
+    const leave = () => { storeRef.current = null; stateRef.current = { project: null, projectPins: null } as never; };
+    const store = {
+      readResources: async () => pins,
+      readResourcesWithMd5: async () => { if (leaveAt === 'md5read') leave(); return { value: pins, md5: 'm1' }; },
+      writeResources: async (next: unknown) => { writes.push(next); },
+    };
+    storeRef.current = store;
+    const actions = {
+      reloadSourcePanes: () => {},
+      resolutionContext: async () => { if (leaveAt === 'resolve') leave(); return { installed, coverage: {} }; },
+    };
+    return { writes, store, storeRef, stateRef, actions, dispatch: () => {} };
+  };
+
+  it('control: with the project still open, loadProjectPins adopts the pin (one write)', async () => {
+    const h = harness('never');
+    loadPins({ store: h.store, repoPath: 'repo/p', storeRef: h.storeRef, stateRef: h.stateRef, actions: h.actions, dispatch: h.dispatch });
+    await settle();
+    expect(h.writes).toHaveLength(1);
+  });
+
+  for (const leaveAt of ['resolve', 'md5read'] as const) {
+    it(`loadProjectPins: left during the ${leaveAt} await → no write`, async () => {
+      const h = harness(leaveAt);
+      loadPins({ store: h.store, repoPath: 'repo/p', storeRef: h.storeRef, stateRef: h.stateRef, actions: h.actions, dispatch: h.dispatch });
+      await settle();
+      expect(h.writes).toHaveLength(0);
+    });
+  }
+
+  it('control: with the project still open, adoptDownloadedPins adopts the pin (one write)', async () => {
+    const h = harness('never');
+    await adoptDownloaded({ originStore: h.store, originRepoPath: 'repo/p', originGateway: { id: 'es-419', org: 'es-419_gl' }, storeRef: h.storeRef, stateRef: h.stateRef, actions: h.actions, dispatch: h.dispatch });
+    expect(h.writes).toHaveLength(1);
+  });
+
+  it('a write still in flight when the same repository reopens under ANOTHER store dispatches nothing into it', async () => {
+    const h = harness('never');
+    const dispatched: unknown[] = [];
+    let release: () => void = () => {};
+    h.store.writeResources = async (next: unknown) => {
+      h.writes.push(next);
+      await new Promise<void>((r) => { release = r; });
+    };
+    const run = adoptDownloaded({ originStore: h.store, originRepoPath: 'repo/p', originGateway: { id: 'es-419', org: 'es-419_gl' }, storeRef: h.storeRef, stateRef: h.stateRef, actions: h.actions, dispatch: (a: unknown) => dispatched.push(a) });
+    await settle();
+    expect(h.writes).toHaveLength(1); // the write started under the old store
+    h.storeRef.current = { other: true }; // the repository reopened: same repoPath, a new store
+    release();
+    await run;
+    expect(dispatched).toHaveLength(0);
+  });
+
+  it('a write that FAILS after the project was left reports nothing (the error belongs to no screen)', async () => {
+    const h = harness('never');
+    const dispatched: unknown[] = [];
+    let fail: (e: Error) => void = () => {};
+    h.store.writeResources = async () => { await new Promise<void>((_, reject) => { fail = reject; }); };
+    const run = adoptDownloaded({ originStore: h.store, originRepoPath: 'repo/p', originGateway: { id: 'es-419', org: 'es-419_gl' }, storeRef: h.storeRef, stateRef: h.stateRef, actions: h.actions, dispatch: (a: unknown) => dispatched.push(a) });
+    await settle();
+    h.storeRef.current = null; // left the project while the write was in flight
+    fail(new Error('disk full'));
+    await run;
+    expect(dispatched).toHaveLength(0);
+  });
+
+  for (const leaveAt of ['resolve', 'md5read'] as const) {
+    it(`adoptDownloadedPins: left during the ${leaveAt} await → no write`, async () => {
+      const h = harness(leaveAt);
+      await adoptDownloaded({ originStore: h.store, originRepoPath: 'repo/p', originGateway: { id: 'es-419', org: 'es-419_gl' }, storeRef: h.storeRef, stateRef: h.stateRef, actions: h.actions, dispatch: h.dispatch });
+      expect(h.writes).toHaveLength(0);
+    });
+  }
 });

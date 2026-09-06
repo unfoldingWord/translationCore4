@@ -136,9 +136,13 @@ const localSourceRepo = (pin) => resolveReadPath(pin);
 // second save restores the first's pin to its stale value. Do it under
 // compare-and-swap; on a refused (stale) write, re-read and re-apply the
 // mutation against the fresh bytes so BOTH changes survive.
-const updateResources = async (store, mutate, tries = 4) => {
+// `stillCurrent` (#189): re-checked after the md5 read, right before the
+// write — the project may have been left during that read, and a write then
+// would land behind its leave checkpoint (#183). Returns null when it declines.
+const updateResources = async (store, mutate, tries = 4, stillCurrent = () => true) => {
   for (let attempt = 0; ; attempt += 1) {
     const { value, md5 } = await store.readResourcesWithMd5();
+    if (!stillCurrent()) return null;
     const next = mutate(value ?? INSTALLED_SUITE);
     try {
       await store.writeResources(next, md5);
@@ -831,22 +835,27 @@ async function adoptDownloadedPins({
   actions,
   dispatch,
 }) {
-  const sameProject =
+  const sameProject = () =>
     originStore &&
     originRepoPath &&
     storeRef.current === originStore &&
     stateRef.current.project?.repoPath === originRepoPath;
-  if (!sameProject) return;
+  if (!sameProject()) return;
   try {
     const { installed, coverage } = await actions.resolutionContext();
+    // #189: the project may have been left during that await; a write now
+    // would land behind its leave checkpoint (#183), or beside a new store.
+    if (!sameProject()) return;
     if (!mergeOptionalPins(stateRef.current.projectPins ?? {}, originGateway, installed)) return;
     const next = await updateResources(originStore, (current) => {
       const merged = mergeOptionalPins(current, originGateway, installed);
       return merged ? backfillCoverage(merged, coverage).resources : current;
-    });
-    if (stateRef.current.project?.repoPath === originRepoPath)
-      dispatch({ type: 'set', patch: { projectPins: next } });
+    }, 4, sameProject);
+    if (next && sameProject()) dispatch({ type: 'set', patch: { projectPins: next } });
   } catch (error) {
+    // #189: a failure that arrives after the project was left belongs to no
+    // screen; shown, it would land in Home or in the next project's Sources.
+    if (!sameProject()) return;
     dispatch({
       type: 'patchSrc',
       patch: { error: t('sources.adoptFailed', { error: String(error?.message || error) }) },
@@ -1417,13 +1426,14 @@ function loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatc
       if (!pins) return;
       try {
         const { installed, coverage } = await actions.resolutionContext();
+        if (!stillCurrent()) return; // #189: left during the await — no write behind the leave checkpoint
         const adopted = adoptInstalledResources(pins, installed);
         const wouldChange = backfillCoverage(adopted, coverage).changed || adopted !== pins;
         if (!wouldChange) return;
         const next = await updateResources(store, (current) =>
           backfillCoverage(adoptInstalledResources(current, installed), coverage).resources,
-        );
-        if (stillCurrent()) dispatch({ type: 'set', patch: { projectPins: next } });
+        4, stillCurrent);
+        if (next && stillCurrent()) dispatch({ type: 'set', patch: { projectPins: next } });
       } catch {
         // Coverage stays underived; the resolver falls back to warning.
       }
@@ -1454,6 +1464,7 @@ async function settleArticleRead(apiClient, kind, sets, category, slug) {
 /** Test hook (round 34): the pins-read outcomes are unit-tested — resolved
  * null is loaded-but-absent; a rejection is a stated, retryable error. */
 export const __loadProjectPinsForTests = loadProjectPins;
+export const __adoptDownloadedPinsForTests = adoptDownloadedPins;
 
 /** The loading-flag patch for a (re)load: a SAME-BOOK refresh keeps the
  * screen's working surface standing (P1); a different book starts clean. */
