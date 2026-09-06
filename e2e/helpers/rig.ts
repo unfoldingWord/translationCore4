@@ -22,6 +22,33 @@ export const RIG_LOCAL_REPOS = path.join(
 
 export const SEEDED_PROJECT = 'sample_burrito';
 
+// The per-client settings document the app writes through
+// POST /client-settings/uw-tc4 (src/state.jsx: lastUsed, lastEdit). The rig
+// keeps it on disk under work/client_settings, so it survives a rig restart
+// and is wiped by a reseed (seed.zsh rebuilds state/work).
+export const RIG_CLIENT_SETTINGS = path.join(
+  TC4_ROOT,
+  'dev-env',
+  'state',
+  'work',
+  'client_settings',
+  'uw-tc4.json',
+);
+
+/** The app's Resume record as the rig holds it on disk, or null when none is stored. */
+export function readLastEdit(): {
+  repoPath: string;
+  book: string;
+  chapter: number | string;
+  verse: number | string;
+  snippet?: string;
+  at?: number;
+} | null {
+  if (!fs.existsSync(RIG_CLIENT_SETTINGS)) return null;
+  const doc = JSON.parse(fs.readFileSync(RIG_CLIENT_SETTINGS, 'utf8')) as { lastEdit?: unknown };
+  return (doc.lastEdit as ReturnType<typeof readLastEdit>) ?? null;
+}
+
 export function rigRepo(name: string): string {
   return path.join(RIG_LOCAL_REPOS, name);
 }
