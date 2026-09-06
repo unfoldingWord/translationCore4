@@ -116,6 +116,45 @@ test.describe('J2 — a translator drafts a verse', () => {
   );
 
   test(
+    'a drafting session talks to no host but the local server (FR-31, #43)',
+    { tag: ['@inc4', '@J2'] },
+    async ({ page }) => {
+      // Every request the client makes from the first paint through a saved draft.
+      // The one local host is the dev client (baseURL), which proxies /api to the rig
+      // (vite.config.js); everything else is a network dependency. Two are known and open (#3: the fonts come from Google's
+      // CDN); the list shrinks to nothing when #3 lands. A new host fails the test.
+      const KNOWN_OFFLINE_DEFECTS: Record<string, string> = {
+        'fonts.googleapis.com': '#3',
+        'fonts.gstatic.com': '#3',
+      };
+      const hosts = new Map<string, Set<string>>();
+      page.on('request', (req) => {
+        const u = new URL(req.url());
+        if (!hosts.has(u.host)) hosts.set(u.host, new Set());
+        hosts.get(u.host)!.add(u.pathname);
+      });
+      await page.goto('/');
+      await page.getByTestId('project-_local_/_local_/sample_burrito').getByRole('button', { name: /Titus/ }).click();
+      await expect(page.getByText('an apostle of Jesus Christ')).toBeVisible({ timeout: 20_000 });
+      await page.getByRole('button', { name: '3', exact: true }).click();
+      await page.getByRole('button', { name: 'Start this verse' }).first().click();
+      const editor = page.getByRole('textbox', { name: /Verse/ });
+      await editor.fill('Recuérdales que estén dispuestos a toda buena obra.');
+      await editor.blur();
+      await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
+
+      const local = new Set(['localhost:5199']);
+      const external = [...hosts.keys()].filter((h) => !local.has(h)).sort();
+      console.log(`J2 offline check: hosts contacted = ${[...hosts.keys()].sort().join(', ')}`);
+      for (const h of external) console.log(`  external ${h} (${KNOWN_OFFLINE_DEFECTS[h] ?? 'NO ISSUE'}): ${[...hosts.get(h)!].slice(0, 3).join(' ')}`);
+      const unknown = external.filter((h) => !(h in KNOWN_OFFLINE_DEFECTS));
+      expect(unknown, `hosts contacted with no open offline issue: ${unknown.join(', ')}`).toEqual([]);
+      // The rig was reached through the proxy: the session was a real one, not an empty page.
+      expect([...(hosts.get('localhost:5199') ?? [])].some((p) => p.startsWith('/api/'))).toBe(true);
+    },
+  );
+
+  test(
     'drafting an undrafted verse updates the progress display (FR-9)',
     { tag: ['@inc1', '@J2'] },
     async ({ page }) => {

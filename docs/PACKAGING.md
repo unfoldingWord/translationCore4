@@ -243,6 +243,74 @@ The job installs these packages before the build [VERIFIED — the `linux-x64` j
 On a failure the job uploads `dist-desktop/smoke-*.log` as
 `tc4-desktop-linux-x64-smoke-logs`.
 
+## The offline run (#43)
+
+tC4 is built for offline field use. This procedure proves one full session with the
+network off, on the installed app, on a clean machine. Under the standing tag rule (epic
+#59), a pre-release from `v4.0.0-alpha.4` on tags only after this run passed once, or after
+every step that failed names its open issue. Two offline defects are known and open before
+the first run: the artifact ships no English scripture (#163), and the fonts load from
+Google's CDN (#3). A run that reaches the end with only those two named is a pass under the
+rule.
+
+The run is done by a person and recorded. The Playwright check below catches regressions
+between runs; it does not replace the run.
+
+### Before you start
+
+1. Install the artifact as "Install and launch" above describes, on a machine that never
+   ran tC4 (or under a fresh `HOME`). Do not start the app yet.
+2. Run the post-install smoke test once, online: `zsh smoke-installed.zsh` in the unpacked
+   folder (see "Smoke tests" above). Expected: `SMOKE OK`.
+3. Optional, for a project with source text: start the app online once, create a project,
+   open Home › `Source texts`, and download the English package. Then quit the app. Without
+   this step, the source pane shows "This source is not available for this book" offline
+   (#163): expected until #163 lands.
+4. Turn the network off at the operating-system level, not in the app:
+   - macOS: System Settings › Network, or the menu bar: turn Wi-Fi off and unplug Ethernet.
+   - Linux: `nmcli networking off`, or `rfkill block all` plus unplug Ethernet. For a scripted
+     run, `unshare -rn ./translationCore4/start-tc4.sh` starts the app in a network namespace
+     that has no interface but loopback.
+   - Windows: not covered until #181.
+   Check: a browser cannot open any web page; `ping 1.1.1.1` fails.
+
+### Steps and expected results
+
+| Step | Do | Expected |
+|---|---|---|
+| 1 | Start the app (`start-tc4.command` or `start-tc4.sh`). | The window opens on Home within 30 s. No error banner. |
+| 2 | `+ New Bible`: name, language code, direction; `Create project`. Then `Add a book`: pick Titus, `Create book`. | The project card lists Titus. |
+| 3 | Open Titus. Mode tab `Understand`. | The passage and its helps show for chapter 1. With no English package on this computer, the source pane reads "This source is not available for this book" and the helps read "The pinned resource is not on this computer and the app is offline" (#163). |
+| 4 | Mode tab `Translate`. Chapter 1. | The chapter's verses show. The source pane shows ULT/UST text, or the #163 message. |
+| 5 | `Draft verse 1` (the dashed pill), type a verse, click outside the editor. | The save indicator shows `Saved`. |
+| 6 | Mode tab `Check`. `Open this tool` on Translation Notes. Pick one item; `Valid`. | The item is decided; the progress line `N of M resolved` counts it. If the tool card reads `Unavailable offline`, that is the #163 case: name it and continue. |
+| 7 | In `Check`, open `Align`. Click one word in the bank, then one card. | The word moves into the card; the bank has one word fewer. If the screen reads that the original-language text is not on this computer, name #163 and continue. |
+| 8 | Leave the project (`Switch project`), then open it again from Home. | Home lists the project. The drafted verse is on screen; the decision and the alignment are still there. |
+| 9 | Export the book. | Not yet possible: #19 (export) is not built. Skip and name #19. |
+| 10 | Quit the app. Turn the network on again. | |
+
+Look at the screen fonts during the run. With the network off, the interface uses system
+fonts instead of Mulish, Charis SIL, Noto Serif and Amiri (#3). Right-to-left projects are
+hit hardest. Name #3 in the record; do not stop.
+
+### Record the run
+
+Write `docs/evidence/offline-run-<date>.md` per `docs/evidence/README.md`: machine, OS
+version, how the network was turned off and how you checked it, artifact id and sha256,
+commit, date; then one line per step with what the screen showed. Every step that failed
+names its issue; a network dependency without an issue gets one (the request's host or URL,
+and the screen it broke). Paste the step lines into the pre-release notes.
+
+### The regression check between runs
+
+`e2e/j02-draft-verse.spec.ts` carries the test "a drafting session talks to no host but the
+local server (FR-31, #43)". It records every request the client makes while a project is
+opened and a verse is drafted, and fails when a host outside the local server appears that
+is not on the known-defect list. That list is `fonts.googleapis.com` and `fonts.gstatic.com`
+(#3); it shrinks to nothing in the pull request that closes #3. The check runs on the dev
+client against the rig, not on the packaged app; the packaged app's offline behavior is this
+procedure's subject.
+
 ## Pins
 
 | Input | Pin | Where |
