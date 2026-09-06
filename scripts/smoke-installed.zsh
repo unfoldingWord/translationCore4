@@ -44,15 +44,20 @@ fail() { echo "FAIL $1"; cleanup_app; exit 1; }
 ok()   { echo "ok $1"; }
 
 # ---- the artifact's own binaries -------------------------------------------------
-if [ -x "$APPDIR/start-tc4.command" ]; then
+# An unpacker that drops permission bits leaves the launcher present but not
+# executable (seen with actions/download-artifact, CI run 34007702506); say which.
+if [ -f "$APPDIR/start-tc4.command" ]; then
   LAUNCHER="$APPDIR/start-tc4.command"; ELECTRON="$APPDIR/Electron.app/Contents/MacOS/Electron"
-elif [ -x "$APPDIR/start-tc4.sh" ]; then
+elif [ -f "$APPDIR/start-tc4.sh" ]; then
   LAUNCHER="$APPDIR/start-tc4.sh"; ELECTRON="$APPDIR/electronite/electron"
 else
   echo "FAIL launcher: no start-tc4.command or start-tc4.sh in $APPDIR"; exit 1
 fi
-[ -x "$ELECTRON" ] || { echo "FAIL electron: $ELECTRON is not executable"; exit 1; }
-ok "artifact: $APPDIR ($(basename "$LAUNCHER"))"
+for bin in "$LAUNCHER" "$ELECTRON"; do
+  [ -f "$bin" ] || { echo "FAIL artifact: $bin is missing"; exit 1; }
+  [ -x "$bin" ] || { echo "FAIL artifact: $bin exists but is not executable ($(ls -l "$bin" | cut -d' ' -f1)); the unpacker dropped the permission bits. Unpack the downloaded zip once with unzip."; exit 1; }
+done
+ok "artifact: $APPDIR ($(basename "$LAUNCHER") and $(basename "$ELECTRON") are executable)"
 
 # Node mode of the shipped Electron: the JSON steps below run through it.
 node_run() { ELECTRON_RUN_AS_NODE=1 "$ELECTRON" "$@"; }
@@ -69,6 +74,10 @@ find_port() {  # sets PORT to the port of a tc4 server, or leaves it empty
   return 1
 }
 
+port_pids() { lsof -ti "tcp:$PORT" -sTCP:LISTEN 2>/dev/null | sort -u | tr '\n' ' ' | sed 's/ *$//'; }
+alive() { kill -0 "$1" 2>/dev/null; }
+
+SERVER_PIDS=""
 start_app() {  # $1 = label
   HOME="$SMOKE_HOME" "$LAUNCHER" > "$LOGDIR/tc4-smoke-$1.log" 2>&1 &
   APP_PID=$!
@@ -80,42 +89,49 @@ start_app() {  # $1 = label
   [ -n "$PORT" ] || fail "$1 start: no tc4 server on 19119-19139 after 60 s (log: $LOGDIR/tc4-smoke-$1.log)"
   local version
   version=$(curl -s --max-time 2 "http://127.0.0.1:$PORT/api/version" | sed -n 's/.*"pkg_version":"\([^"]*\)".*/\1/p')
-  ok "$1 start: server on port $PORT, pkg_version $version"
+  SERVER_PIDS=$(port_pids)
+  [ -n "$SERVER_PIDS" ] || fail "$1 start: no process listens on port $PORT (lsof)"
+  ok "$1 start: server on port $PORT (pid $SERVER_PIDS), pkg_version $version, electron pid $APP_PID"
 }
 
-port_pids() { lsof -ti "tcp:$PORT" 2>/dev/null; }
-
 stop_app() {  # $1 = label. The launcher execs Electron, so APP_PID is Electron's; the
-              # server is its child, found by the port it listens on.
-  [ -n "$APP_PID" ] && kill "$APP_PID" 2>/dev/null
-  sleep 1
-  local pids
-  pids=$(port_pids)
-  [ -n "$pids" ] && kill $pids 2>/dev/null
-  local i
+              # server is its child, found by the port it listens on. A stop is proven
+              # when both processes are gone AND the port is silent.
+  local victims="$APP_PID $SERVER_PIDS"
+  local pid
+  for pid in ${=victims}; do kill "$pid" 2>/dev/null; done
+  local i gone
   for i in {1..30}; do
-    if ! curl -s --max-time 1 "http://127.0.0.1:$PORT/api/version" | grep -q '"product_short_name":"tc4"'; then
-      ok "$1 stop: port $PORT no longer answers"
+    gone=1
+    for pid in ${=victims}; do alive "$pid" && gone=0; done
+    if [ "$gone" = 1 ] && ! curl -s --max-time 1 "http://127.0.0.1:$PORT/api/version" | grep -q '"product_short_name":"tc4"'; then
+      ok "$1 stop: electron and server exited (pids $victims), port $PORT no longer answers"
       APP_PID=""; return 0
     fi
     sleep 1
   done
-  fail "$1 stop: port $PORT still answers 30 s after the kill"
+  for pid in ${=victims}; do kill -9 "$pid" 2>/dev/null; done
+  fail "$1 stop: a process of $victims was still alive, or port $PORT still answered, 30 s after the kill"
 }
 
 cleanup_app() {
-  [ -n "$APP_PID" ] && kill "$APP_PID" 2>/dev/null
-  local pids
-  [ -n "$PORT" ] && pids=$(port_pids) && [ -n "$pids" ] && kill $pids 2>/dev/null
+  local pid
+  for pid in ${=APP_PID} ${=SERVER_PIDS}; do kill "$pid" 2>/dev/null; done
   return 0
 }
 trap cleanup_app INT TERM
 
 # ---- 1-2: start, serve the client ------------------------------------------------
 mkdir -p "$SMOKE_HOME"
+# The server this test finds must be the one it launches: another tC4 already running
+# on the scan range would be found, tested and killed in its place.
+if find_port; then
+  echo "FAIL precondition: a tC4 server already answers on port $PORT; close that translationCore4 first"; exit 1
+fi
+ok "precondition: no tC4 server on 19119-19139 before the launch"
 start_app first
-ROOT=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' "http://127.0.0.1:$PORT/")
-CLIENT=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/clients/uw-tc4")
+ROOT=$(curl -s --max-time 10 -o /dev/null -w '%{http_code} %{redirect_url}' "http://127.0.0.1:$PORT/")
+CLIENT=$(curl -s --max-time 10 -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/clients/uw-tc4")
 case "$ROOT" in
   303*"/clients/uw-tc4") ok "root: $ROOT" ;;
   *) fail "root: expected 303 to /clients/uw-tc4, got '$ROOT'" ;;
@@ -130,8 +146,14 @@ STORE=$(sed -n 's/.*"repo_dir"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$US"
 case "$STORE" in
   *pankosmia_repos*) fail "store: repo_dir is the shared store '$STORE' (#70 forbids it)" ;;
 esac
+# The build pins repo_dir to %%HOMEDIR%%/pankosmia/tc4-projects (debug: -debug);
+# BUILD-MANIFEST.json names the variant (scripts/package-desktop.zsh).
+VARIANT=$(sed -n 's/.*"variant"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$APPDIR/BUILD-MANIFEST.json" 2>/dev/null | head -1)
+if [ "$VARIANT" = "debug" ]; then EXPECTED_STORE="$SMOKE_HOME/pankosmia/tc4-projects-debug"
+else EXPECTED_STORE="$SMOKE_HOME/pankosmia/tc4-projects"; fi
+[ "$STORE" = "$EXPECTED_STORE" ] || fail "store: repo_dir '$STORE' is not this build's tC4-owned store '$EXPECTED_STORE' (variant ${VARIANT:-unknown})"
 [ -d "$STORE" ] || fail "store: repo_dir '$STORE' does not exist"
-ok "store: repo_dir $STORE (tC4-owned, not pankosmia_repos)"
+ok "store: repo_dir $STORE (the ${VARIANT:-production} build's tC4-owned store; not pankosmia_repos)"
 
 # ---- 4-5: create a project and write one verse, through the app's HTTP surface ----
 # The same endpoints the client uses (src/data/serverApi.ts): POST
@@ -143,16 +165,24 @@ const enc = (r) => r.split("/").map(encodeURIComponent).join("/");
 const url = (route) => base + route;
 const fail = (step, seen) => { console.log("FAIL " + step + ": " + seen); process.exit(1); };
 const ok = (step, seen) => console.log("ok " + step + ": " + seen);
+// The platform reports some failures as HTTP 200 with {"is_good":false,"reason":...};
+// the client (src/data/serverApi.ts) rejects those, and so does this test.
+function refuse(route, status, t) {
+  if (status < 200 || status >= 300) throw new Error(route + " -> " + status + " " + t.slice(0, 200));
+  let j = null;
+  try { j = JSON.parse(t); } catch { return; }
+  if (j && typeof j === "object" && j.is_good === false) throw new Error(route + " -> is_good:false " + (j.reason || t.slice(0, 200)));
+}
 async function post(route, body) {
   const r = await fetch(url(route), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   const t = await r.text();
-  if (!r.ok) throw new Error(route + " -> " + r.status + " " + t.slice(0, 200));
+  refuse(route, r.status, t);
   return t;
 }
 async function getText(route) {
   const r = await fetch(url(route));
   const t = await r.text();
-  if (!r.ok) throw new Error(route + " -> " + r.status + " " + t.slice(0, 200));
+  refuse(route, r.status, t);
   return t;
 }
 (async () => {
@@ -201,8 +231,11 @@ grep -q "$MARKER" "$ON_DISK" && ok "store write: the verse is on disk at $ON_DIS
   || fail "store write: the verse is not in $ON_DISK"
 
 # ---- 6: restart and read back ----------------------------------------------------
+FIRST_SERVER="$SERVER_PIDS"
 stop_app first
 start_app second
+[ "$SERVER_PIDS" != "$FIRST_SERVER" ] || fail "restart: the server pid did not change ($FIRST_SERVER); the app was not restarted"
+ok "restart: a new server process (pid $FIRST_SERVER before, $SERVER_PIDS after)"
 run_steps readback || { cleanup_app; exit 1; }
 
 # ---- 7: clean up -----------------------------------------------------------------

@@ -23,6 +23,7 @@ on:
   pull_request:
     paths:
       - scripts/package-desktop.zsh
+      - scripts/smoke-installed.zsh
       - .github/workflows/package-desktop.yml
       - src/**
       - public/**
@@ -165,20 +166,31 @@ jobs:
     needs: macos-arm64
     runs-on: macos-15
     timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
     steps:
-      - uses: actions/download-artifact@v7
-        with:
-          pattern: tC4-*-macos-arm64-unsigned.zip
-          merge-multiple: true
-          path: download
+      # actions/download-artifact extracts the zip itself and drops the execute bits
+      # (run 34007702506: start-tc4 at mode 644, the smoke test refused it). A pilot's
+      # browser download is the raw zip, so the job takes the same path: the API's raw
+      # artifact zip, unpacked once with unzip (docs/PACKAGING.md, "Install and launch").
+      - name: Download the artifact as a pilot does (raw zip, one unzip)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          ID=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts" --jq '.artifacts[] | select(.name | test("^tC4-.*-macos-arm64-unsigned\\.zip$")) | .id')
+          test -n "$ID"
+          echo "artifact id: $ID"
+          mkdir -p download
+          gh api "repos/${{ github.repository }}/actions/artifacts/$ID/zip" > download/artifact.zip
+          ls -la download
+          shasum -a 256 download/artifact.zip || sha256sum download/artifact.zip
 
       - name: Unpack once
         run: |
           set -e
-          ls -la download
-          # archive: false uploads the zip as one file; unpack it once (docs/PACKAGING.md).
-          # If a future action version extracts on download, the folder is already there.
-          if ls download/*.zip >/dev/null 2>&1; then unzip -q download/*.zip -d install; else mv download install; fi
+          unzip -q download/artifact.zip -d install
           ls -la install/translationCore4
 
       - name: Run the shipped smoke test under a fresh HOME
@@ -199,6 +211,9 @@ jobs:
     needs: linux-x64
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
     steps:
       - name: Runtime dependencies (what a pilot's desktop already has)
         run: |
@@ -210,17 +225,27 @@ jobs:
             libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 \
             libasound2t64 libatspi2.0-0t64 libgtk-3-0t64
 
-      - uses: actions/download-artifact@v7
-        with:
-          pattern: tC4-*-linux-x64-unsigned.zip
-          merge-multiple: true
-          path: download
+      # actions/download-artifact extracts the zip itself and drops the execute bits
+      # (run 34007702506: start-tc4 at mode 644, the smoke test refused it). A pilot's
+      # browser download is the raw zip, so the job takes the same path: the API's raw
+      # artifact zip, unpacked once with unzip (docs/PACKAGING.md, "Install and launch").
+      - name: Download the artifact as a pilot does (raw zip, one unzip)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          ID=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts" --jq '.artifacts[] | select(.name | test("^tC4-.*-linux-x64-unsigned\\.zip$")) | .id')
+          test -n "$ID"
+          echo "artifact id: $ID"
+          mkdir -p download
+          gh api "repos/${{ github.repository }}/actions/artifacts/$ID/zip" > download/artifact.zip
+          ls -la download
+          shasum -a 256 download/artifact.zip || sha256sum download/artifact.zip
 
       - name: Unpack once
         run: |
           set -e
-          ls -la download
-          if ls download/*.zip >/dev/null 2>&1; then unzip -q download/*.zip -d install; else mv download install; fi
+          unzip -q download/artifact.zip -d install
           ls -la install/translationCore4
 
       - name: Run the shipped smoke test under a fresh HOME
