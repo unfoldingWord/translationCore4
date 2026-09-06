@@ -9,8 +9,9 @@
 - Journal conformance checks are `JC-n`, not `Jn` (BURRITO-SPEC Appendix A).
 - Steps are in the actor's terms. Their order is not prescribed.
 - Every `Jn` has one primary activity, one owner, and one proof row. A proof row that does
-  not resolve, or a spec that cites `JOURNEYS-AND-GAPS`, is a defect. The `docs:gate` check
-  for this rule is a follow-up.
+  not resolve, or a spec that cites `JOURNEYS-AND-GAPS`, is a defect. `npm run docs:gate`
+  checks this (#199): a cited spec exists, a shipped row cites a live test, and every
+  `e2e/j*.spec.ts` is cited by a row. The gate never runs a test.
 - The proof steps are build and test requirements. They are never gates for the user.
 - "An increment moves at least one `Jn` to shipped" replaces the ROADMAP rule "an increment
   completes a journey."
@@ -36,7 +37,7 @@ Owner of increment numbers: the GitHub milestones, mirrored in `docs/ROADMAP.md`
 | J9b | facilitator | Exchange | Import an x-tcore project | increment 7 | `e2e/j09-import.spec.ts` (fixme) |
 | J9c | facilitator | Exchange | Import raw USFM | increment 7 (#195) | `e2e/j09-import.spec.ts` (to write) |
 | J9d | facilitator | Exchange | Import a Scripture Burrito | increment 7 (#196) | `e2e/j09-import.spec.ts` (to write) |
-| J10 | — | — | retired: RTL is a fixture axis on J2, J4, J5, J7 | retired | both runs listed on each of those rows |
+| J10 | — | — | retired: RTL is a fixture axis on J2, J4, J5, J7 | retired | both runs listed on each of those rows; `e2e/j10-rtl.spec.ts` stays until they exist |
 | J11 | facilitator | Exchange | Send the project to Door43 | Phase 2 | none |
 | J12 | facilitator | Start | Upgrade the pinned resources | increment 6 | `e2e/j12-upgrade-resources.spec.ts` (fixme) |
 | J13 | facilitator | Start | Change the gateway-language resource set | shipped alpha.2 | `e2e/j13-gateway-change.spec.ts` |

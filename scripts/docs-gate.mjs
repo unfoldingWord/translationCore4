@@ -36,6 +36,15 @@
 // A marker inside a fenced code block or an inline code span is an example, not a claim,
 // and is not checked.
 //
+// Journeys (issue #199, D69 rule 2). The gate also reads the index table of docs/JOURNEYS.md
+// and every e2e/*.spec.ts, and fails when a journey does not resolve:
+//   journey      a row has an empty Status or Proof (unless retired, Phase 2 or vision); a
+//                cited e2e path does not exist (a "(to write)" cell is allowed while the
+//                status is not shipped); a shipped row cites a spec with no test outside
+//                test.fixme; a spec header cites JOURNEYS-AND-GAPS, PRD FR- or TEST-PLAN E-J;
+//                or an e2e/j*.spec.ts is cited by no row.
+// The gate checks that things resolve. It never runs a test.
+//
 // Exit code: 0 when every marked statement agrees; 1 on any finding; 2 when the manifest
 // cannot be read. The pure functions are exported for test/docsGate.test.ts (the gate's
 // positive and negative controls); only main() touches the file system.
@@ -45,7 +54,7 @@ const VALUE_RE = /^[\s*_`([]*([A-Za-z0-9][A-Za-z0-9.-]*)/;
 const FIELDS = new Set(['passed', 'failed', 'skippedTests']);
 
 /** @typedef {{ file: string, line: number, marker: string, doc: string, manifest: string }} Checked */
-/** @typedef {{ file: string, line: number, marker: string, kind: 'stale'|'no-evidence'|'grammar', doc: string|null, manifest: string|null, detail: string }} Finding */
+/** @typedef {{ file: string, line: number, marker: string, kind: 'stale'|'no-evidence'|'grammar'|'journey', doc: string|null, manifest: string|null, detail: string }} Finding */
 
 /** The document set the gate scans, relative to the repository root (LEGIBILITY 3.2). */
 export const DOC_ROOTS = ['docs', 'README.md', 'CONTRIBUTING.md', 'conformance/README.md'];
@@ -133,6 +142,100 @@ export function checkFiles(files, manifest) {
 export const formatFinding = (f) => `${f.kind.toUpperCase().padEnd(11)} ${f.file}:${f.line}  ${f.marker}: ${f.detail}`;
 
 // ---------------------------------------------------------------------------
+// Journeys (issue #199, D69 rule 2). Pure: the texts come in, findings come out.
+// ---------------------------------------------------------------------------
+
+/** A row with one of these words in Status needs no proof row. */
+const NO_PROOF_STATUSES = ['retired', 'phase 2', 'vision'];
+/** Header citations of documents that do not exist (LEGACY-IDS rule 2). */
+const DEAD_CITATIONS = /JOURNEYS-AND-GAPS|PRD FR-|TEST-PLAN E-J/;
+const E2E_PATH_RE = /`(e2e\/[^`]+\.spec\.ts)`/g;
+
+/** A spec with its block comments and whole-line `//` comments removed. */
+const uncommented = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+/**
+ * The number of `test(` calls in a spec that are not `test.fixme(` (nor `test.describe(`,
+ * `test.step(`, `test.skip(`, `test.only(`, hooks — none of those is a bare `test(`).
+ * Comments are removed first, so a commented-out spec counts zero.
+ */
+export function liveTestCount(specText) {
+  return (uncommented(specText).match(/(^|[^.\w])test\(/gm) || []).length;
+}
+
+/** The leading comment region of a spec: every line up to the first line of code. */
+export function leadingComment(specText) {
+  const out = [];
+  let inBlock = false;
+  for (const line of specText.split('\n')) {
+    const t = line.trim();
+    if (inBlock) { out.push(line); if (t.includes('*/')) inBlock = false; continue; }
+    if (t === '' || t.startsWith('//')) { out.push(line); continue; }
+    if (t.startsWith('/*')) { out.push(line); inBlock = !t.includes('*/'); continue; }
+    break;
+  }
+  return out.join('\n');
+}
+
+/** Split one markdown table row into trimmed cells; `\|` inside a cell is not a delimiter. */
+const cellsOf = (row) => row.split(/(?<!\\)\|/).slice(1, -1).map((c) => c.trim().replaceAll('\\|', '|'));
+
+const TO_WRITE_RE = /\(to write(?:,\s*[^)]*)?\)/;
+const leadingStatus = (statusLc) => /^(retired|phase 2|vision)\b/.exec(statusLc)?.[1];
+
+/**
+ * Check the index table of docs/JOURNEYS.md against the e2e specs.
+ * @param {string} journeysText  the text of docs/JOURNEYS.md
+ * @param {Record<string, string>} specs  spec texts by repo-relative path (`e2e/j01-….spec.ts`)
+ * @returns {{ checked: {id: string, status: string, proof: string[]}[], findings: Finding[] }}
+ */
+export function checkJourneys(journeysText, specs) {
+  const file = 'docs/JOURNEYS.md';
+  const checked = [];
+  const findings = [];
+  const cited = new Set();
+  const finding = (f, line, marker, detail) => findings.push({ file: f, line, marker, kind: 'journey', doc: null, manifest: null, detail });
+
+  journeysText.split('\n').forEach((lineText, i) => {
+    const m = /^\|\s*(J\d+[a-z]?)\s*\|/.exec(lineText);
+    if (!m) return;
+    const line = i + 1;
+    const id = m[1];
+    const cells = cellsOf(lineText);
+    if (cells.length !== 6) { finding(file, line, id, `row has ${cells.length} cells, expected 6 (ID, Actor, Activity, Goal, Status, Proof)`); return; }
+    const status = cells[4];
+    const proofCell = cells[5];
+    const statusLc = status.toLowerCase();
+    const noProof = NO_PROOF_STATUSES.includes(leadingStatus(statusLc));
+    const paths = [...proofCell.matchAll(E2E_PATH_RE)].map((x) => x[1]);
+    paths.forEach((p) => cited.add(p));
+    checked.push({ id, status, proof: paths });
+
+    if (!status) { finding(file, line, id, 'empty Status: every journey needs an owner'); return; }
+    if (!noProof && paths.length === 0) { finding(file, line, id, `Proof names no e2e spec: "${proofCell || '(empty)'}"`); return; }
+    const toWrite = TO_WRITE_RE.test(proofCell);
+    const shipped = /^shipped\b/.test(statusLc);
+    for (const p of paths) {
+      const text = specs[p];
+      if (text === undefined) {
+        if (toWrite && !shipped) continue;
+        finding(file, line, id, `proof ${p} does not exist${shipped && toWrite ? ' (a shipped row cannot be "to write")' : ''}`);
+      } else if (shipped && liveTestCount(text) === 0) {
+        finding(file, line, id, `status is shipped but ${p} has no test outside test.fixme`);
+      }
+    }
+  });
+
+  for (const [p, text] of Object.entries(specs)) {
+    if (DEAD_CITATIONS.test(leadingComment(text))) {
+      finding(p, 1, p, 'header cites a document that does not exist (JOURNEYS-AND-GAPS, PRD FR-, TEST-PLAN E-J); cite docs/JOURNEYS.md');
+    }
+    if (/^e2e\/j\d+/.test(p) && !cited.has(p)) finding(p, 1, p, 'journey spec is cited by no row of docs/JOURNEYS.md');
+  }
+  return { checked, findings };
+}
+
+// ---------------------------------------------------------------------------
 // CLI. The builtins come through process.getBuiltinModule so that this module can also be
 // imported by the Vitest controls, where vite-plugin-node-polyfills aliases `node:fs`.
 // ---------------------------------------------------------------------------
@@ -164,6 +267,15 @@ async function main() {
 
   const { checked, findings } = checkFiles(files, manifest);
   for (const c of checked) console.log(`OK          ${c.file}:${c.line}  ${c.marker} = ${c.manifest}`);
+  const markerFindings = findings.length;
+
+  const specs = Object.fromEntries(
+    fs.readdirSync(path.join(ROOT, 'e2e')).filter((n) => n.endsWith('.spec.ts')).sort()
+      .map((n) => [`e2e/${n}`, fs.readFileSync(path.join(ROOT, 'e2e', n), 'utf8')]),
+  );
+  const journeys = checkJourneys(fs.readFileSync(path.join(ROOT, 'docs/JOURNEYS.md'), 'utf8'), specs);
+  for (const j of journeys.checked) console.log(`OK          journey ${j.id.padEnd(4)} ${j.status} → ${j.proof.join(', ') || '(no proof row required)'}`);
+  findings.push(...journeys.findings);
   for (const f of findings) console.log(formatFinding(f));
   const rig = manifest.rig?.detected ? `rig ${manifest.rig.version}` : 'no rig';
   console.log('');
@@ -172,8 +284,8 @@ async function main() {
     console.log('note: this manifest is from a local run; the committed manifest is the clean-clone record (git checkout docs/evidence/manifest.json)');
   }
   // every marker is either checked (agree or stale) or a finding of another kind
-  const markers = checked.length + findings.filter((f) => f.kind !== 'stale').length;
-  console.log(`docs gate: ${files.length} files, ${markers} marked statements, ${findings.length} findings`);
+  const markers = checked.length + findings.slice(0, markerFindings).filter((f) => f.kind !== 'stale').length;
+  console.log(`docs gate: ${files.length} files, ${markers} marked statements, ${journeys.checked.length} journeys, ${findings.length} findings`);
   console.log(findings.length === 0 ? 'DOCS GATE OK' : 'DOCS GATE FAILED');
   process.exit(findings.length === 0 ? 0 : 1);
 }

@@ -8,7 +8,7 @@
 // the file, the line and the manifest path — on a fixture, and through the CLI against
 // the real documents with one manifest count altered.
 import { describe, expect, it } from 'vitest';
-import { DOC_ROOTS, checkFiles, checkText, resolveMarker } from '../scripts/docs-gate.mjs';
+import { DOC_ROOTS, checkFiles, checkJourneys, checkText, leadingComment, liveTestCount, resolveMarker } from '../scripts/docs-gate.mjs';
 
 // vite-plugin-node-polyfills aliases node builtins even under the node environment; the
 // real ones come through process.getBuiltinModule (same workaround as noBypass.test.ts).
@@ -256,5 +256,163 @@ describe('docs gate: controls', () => {
     });
     expect(r.stdout).toContain('DOCS GATE OK');
     expect(r.status).toBe(0);
+  });
+});
+
+// Journeys (issue #199, D69 rule 2): every row of the docs/JOURNEYS.md index resolves to a
+// proof file and an owner. The gate checks that things resolve; it never runs a test.
+// One control per rule, so deleting any rule fails at least one test.
+describe('docs gate: journeys', () => {
+  const row = (id: string, status: string, proof: string, goal = 'a goal') =>
+    `| ${id} | translator | Translate | ${goal} | ${status} | ${proof} |`;
+  const table = (...rows: string[]) =>
+    ['# Journeys', '', '| ID | Actor | Activity | Goal | Status | Proof |', '|---|---|---|---|---|---|', ...rows].join('\n');
+  const HEAD = "// docs/JOURNEYS.md J1\nimport { test } from '@playwright/test';\n";
+  const live = HEAD + "test('a', async () => {});\n";
+  const fixmeOnly = HEAD + "test.fixme('a', async () => {});\n";
+  const details = (r: { findings: { detail: string }[] }) => r.findings.map((f) => f.detail);
+
+  describe('liveTestCount', () => {
+    it('counts bare test( and nothing else Playwright exports', () => {
+      expect(liveTestCount(live)).toBe(1);
+      expect(liveTestCount(fixmeOnly)).toBe(0);
+      expect(liveTestCount(live + fixmeOnly)).toBe(1);
+      const others = HEAD + [
+        "test.describe('d', () => {});",
+        "test.step('s', async () => {});",
+        "test.skip('k', async () => {});",
+        "test.only('o', async () => {});",
+        'test.beforeAll(async () => {});',
+        'test.afterAll(async () => {});',
+        "test.describe.serial('x', () => {});",
+      ].join('\n');
+      expect(liveTestCount(others)).toBe(0);
+      expect(liveTestCount(others + "\ntest('t', async () => {});")).toBe(1);
+    });
+
+    it('a commented-out spec counts zero (line comments and block comments)', () => {
+      const lineCommented = live.split('\n').map((l) => `// ${l}`).join('\n');
+      expect(liveTestCount(lineCommented)).toBe(0);
+      expect(liveTestCount(HEAD + "/*\ntest('a', async () => {});\n*/\n")).toBe(0);
+      expect(liveTestCount(HEAD + "/* off */ test('a', async () => {});\n  // test('b', async () => {});\n")).toBe(1);
+    });
+  });
+
+  describe('leadingComment', () => {
+    it('covers every comment line before the first code line, however many, including a block comment', () => {
+      const long = ['// 1', '// 2', '// 3', '// 4', '// 5', '// 6 JOURNEYS-AND-GAPS', '/* 7', ' 8 */', '', "import x from 'y';", '// after code'].join('\n');
+      const lead = leadingComment(long);
+      expect(lead).toContain('// 6 JOURNEYS-AND-GAPS');
+      expect(lead).toContain(' 8 */');
+      expect(lead).not.toContain('import');
+      expect(lead).not.toContain('after code');
+    });
+  });
+
+  describe('rows', () => {
+    it('positive control: shipped with a live spec, fixme with an owner, "to write" with an owner (both forms), retired, Phase 2 and vision pass', () => {
+      const specs = { 'e2e/j01-a.spec.ts': live, 'e2e/j07-b.spec.ts': fixmeOnly, 'e2e/j10-c.spec.ts': fixmeOnly };
+      const r = checkJourneys(
+        table(
+          row('J1', 'shipped alpha.1', '`e2e/j01-a.spec.ts`'),
+          row('J7', 'increment 7 (#19)', '`e2e/j07-b.spec.ts` (fixme)'),
+          row('J9c', 'increment 7 (#195)', '`e2e/j09-x.spec.ts` (to write)'),
+          row('J16', 'built in Increment 4 (#104); proof in Increment 5 (#197)', '`e2e/j16-y.spec.ts` (to write, #197)'),
+          row('J10', 'retired', '`e2e/j10-c.spec.ts` stays'),
+          row('J11', 'Phase 2', 'none'),
+          row('J20', 'vision (D66)', 'none'),
+        ),
+        specs,
+      );
+      expect(r.findings).toEqual([]);
+      expect(r.checked.map((c) => c.id)).toEqual(['J1', 'J7', 'J9c', 'J16', 'J10', 'J11', 'J20']);
+    });
+
+    it('an escaped pipe inside a cell is not a delimiter; a row without six cells is a finding', () => {
+      const ok = checkJourneys(table(row('J1', 'shipped alpha.1', '`e2e/j01-a.spec.ts`', 'draft a \\| verse')), { 'e2e/j01-a.spec.ts': live });
+      expect(ok.findings).toEqual([]);
+      const short = checkJourneys(table('| J2 | translator | Translate | a goal | shipped alpha.1 |'), {});
+      expect(details(short)).toEqual([expect.stringContaining('row has 5 cells, expected 6')]);
+    });
+
+    it('a proof file that does not exist names the row, with or without an owner', () => {
+      const r = checkJourneys(table(row('J1', 'shipped alpha.1', '`e2e/j01-missing.spec.ts`'), row('J2', 'increment 5 (#1)', '`e2e/j02-missing.spec.ts` (fixme)')), {});
+      expect(r.findings.map((f) => [f.file, f.line, f.marker, f.kind])).toEqual([
+        ['docs/JOURNEYS.md', 5, 'J1', 'journey'],
+        ['docs/JOURNEYS.md', 6, 'J2', 'journey'],
+      ]);
+      expect(details(r)).toEqual([expect.stringContaining('e2e/j01-missing.spec.ts does not exist'), expect.stringContaining('e2e/j02-missing.spec.ts does not exist')]);
+    });
+
+    it('"(to write)" excuses a missing file only in its exact form: "(to write-off)" does not', () => {
+      const r = checkJourneys(table(row('J16', 'increment 5 (#197)', '`e2e/j16-y.spec.ts` (to write-off)')), {});
+      expect(details(r)).toEqual([expect.stringContaining('does not exist')]);
+    });
+
+    it('a shipped row cannot be "to write", and cannot cite a fixme-only spec', () => {
+      const r1 = checkJourneys(table(row('J1', 'shipped alpha.1', '`e2e/j01-a.spec.ts` (to write)')), {});
+      expect(details(r1)).toEqual([expect.stringContaining('a shipped row cannot be "to write"')]);
+      const r2 = checkJourneys(table(row('J7', 'shipped alpha.3', '`e2e/j07-b.spec.ts`')), { 'e2e/j07-b.spec.ts': fixmeOnly });
+      expect(details(r2)).toEqual([expect.stringContaining('no test outside test.fixme')]);
+    });
+
+    it('status words match at the start of the cell: "revision" is not "vision", "unshipped" is not "shipped"', () => {
+      const r1 = checkJourneys(table(row('J16', 'increment 5 (revision #197)', 'none')), {});
+      expect(details(r1)).toEqual([expect.stringContaining('Proof names no e2e spec')]);
+      const r2 = checkJourneys(table(row('J7', 'unshipped', '`e2e/j07-b.spec.ts`')), { 'e2e/j07-b.spec.ts': fixmeOnly });
+      expect(r2.findings).toEqual([]);
+    });
+
+    it('an empty Status is a finding; an empty Proof on an owned row is a finding; retired without a proof is not', () => {
+      const r = checkJourneys(
+        table(row('J1', '', '`e2e/j01-a.spec.ts`'), row('J2', 'increment 5', ''), row('J3', 'increment 5', 'none yet'), row('J14', 'retired', '')),
+        { 'e2e/j01-a.spec.ts': live },
+      );
+      expect(r.findings.map((f) => [f.marker, f.detail])).toEqual([
+        ['J1', expect.stringContaining('empty Status')],
+        ['J2', expect.stringContaining('Proof names no e2e spec: "(empty)"')],
+        ['J3', expect.stringContaining('Proof names no e2e spec')],
+      ]);
+    });
+  });
+
+  describe('specs', () => {
+    const cite = (line: string) => `// J3 — get resources\n${line}\n` + live;
+    const rowJ1 = table(row('J1', 'shipped alpha.1', '`e2e/j01-a.spec.ts`'));
+
+    it.each([
+      ['JOURNEYS-AND-GAPS §2 J3'],
+      ['PRD FR-12, FR-14'],
+      ['TEST-PLAN E-J3'],
+    ])('a header citing %s (a document that does not exist) is a finding on the spec', (dead) => {
+      const r = checkJourneys(table(row('J1', 'shipped alpha.1', '`e2e/j01-a.spec.ts`'), row('J3', 'shipped alpha.2', '`e2e/j03-d.spec.ts`')), {
+        'e2e/j01-a.spec.ts': live,
+        'e2e/j03-d.spec.ts': cite(`// ${dead}`),
+      });
+      expect(r.findings.map((f) => [f.file, f.detail])).toEqual([['e2e/j03-d.spec.ts', expect.stringContaining('header cites a document that does not exist')]]);
+    });
+
+    it('a dead citation on the sixth header line is still a finding', () => {
+      const six = '// 1\n// 2\n// 3\n// 4\n// 5\n// JOURNEYS-AND-GAPS §2 J3\n' + live;
+      const r = checkJourneys(table(row('J1', 'shipped alpha.1', '`e2e/j01-a.spec.ts`'), row('J3', 'shipped alpha.2', '`e2e/j03-d.spec.ts`')), { 'e2e/j01-a.spec.ts': live, 'e2e/j03-d.spec.ts': six });
+      expect(details(r)).toEqual([expect.stringContaining('header cites a document that does not exist')]);
+    });
+
+    it('a journey spec (e2e/j*.spec.ts) cited by no row is a finding; a non-journey spec is not', () => {
+      const r = checkJourneys(rowJ1, { 'e2e/j01-a.spec.ts': live, 'e2e/j03-orphan.spec.ts': live, 'e2e/helpers.spec.ts': live });
+      expect(r.findings.map((f) => [f.file, f.detail])).toEqual([['e2e/j03-orphan.spec.ts', expect.stringContaining('cited by no row')]]);
+    });
+  });
+
+  it('positive control (real surface): every journey in docs/JOURNEYS.md resolves, and every e2e/j*.spec.ts is cited', () => {
+    const specs = Object.fromEntries(
+      fs
+        .readdirSync(path.join(ROOT, 'e2e'))
+        .filter((n: string) => n.endsWith('.spec.ts'))
+        .map((n: string) => [`e2e/${n}`, fs.readFileSync(path.join(ROOT, 'e2e', n), 'utf8')]),
+    );
+    const r = checkJourneys(fs.readFileSync(path.join(ROOT, 'docs/JOURNEYS.md'), 'utf8'), specs);
+    expect(r.findings).toEqual([]);
+    expect(r.checked.length).toBeGreaterThanOrEqual(24);
   });
 });
