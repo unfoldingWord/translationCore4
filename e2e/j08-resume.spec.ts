@@ -1,11 +1,29 @@
 // J8 — Resume work across sessions/books; multi-book navigation
 // JOURNEYS-AND-GAPS §2 J8 · PRD FR-29, FR-34 · TEST-PLAN E-J8 · Increment 4
 //
+// The last test is the Increment 4 journey end to end (#185): open, draft, mark a
+// check, leave (a checkpoint commits), reload, resume, share. The share leg is a
+// fixme until #120 (runtime server parameter, first-push identity) lands.
+//
 // Ground truth is the rig's disk: commit counts and messages come from the
 // repository, never from UI state (e2e/helpers/rig.ts).
 import { test, expect, type Page } from '@playwright/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
-import { SEEDED_PROJECT, commitCount, lastCommitMessage, listLocalRepos, readLastEdit, resetLargeFixture } from './helpers/rig';
+import fs from 'node:fs';
+import path from 'node:path';
+import {
+  SEEDED_PROJECT,
+  commitCount,
+  lastCommitMessage,
+  listLocalRepos,
+  readLastEdit,
+  resetLargeFixture,
+  rigRepo,
+  pinForSideloaded,
+  writeProjectPins,
+  readDecisionFile,
+  resetSeededChecking,
+} from './helpers/rig';
 
 // The seeded large fixture (issue #95): Titus with 4000 journaled edits, so its
 // open shows the progress indicator (J15) and a resume into it must wait it out.
@@ -200,6 +218,96 @@ test.describe('J8 — a translator resumes where they left off', () => {
       await page.waitForTimeout(2500);
       expect(commitCount(SEEDED_PROJECT)).toBe(before);
     },
+  );
+});
+
+// ---- #185: the Increment 4 journey end to end ----------------------------------
+
+// The English checking suite the rig sideloads (the J4 pattern). The seeded sample's
+// Translation Notes decision file records es-419; a decision write against a drifted
+// record refuses toward the gateway-change flow (D59 §3), so the record is restated
+// as the pin the project now holds before the journey marks a check.
+const PINS = () => ({
+  tn: pinForSideloaded('en_tn', 'v89'),
+  tw: pinForSideloaded('en_tw', 'v89'),
+  ta: pinForSideloaded('en_ta', 'v89'),
+});
+function pinEnglishAndRestateNotesRecord(): void {
+  // Start from the seeded checking surface (the J4 pattern): a pin or decision file
+  // hand-written over files the app already journaled in an earlier test disagrees
+  // with that journal, and the open refuses (found running J8 as a whole).
+  resetSeededChecking();
+  writeProjectPins(SEEDED_PROJECT, PINS());
+  const en = PINS();
+  const file = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT');
+  if (!file) return;
+  (file as { resource?: unknown }).resource = { repoPath: en.tn.repoPath, version: en.tn.version, sha: en.tn.sha, languageSet: 'primary' };
+  const p = path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'translationNotes', 'TIT.json');
+  fs.writeFileSync(p, `${JSON.stringify(file, null, 2)}\n`);
+}
+const decidedCount = () => readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')?.decisions.length ?? 0;
+
+test.describe('J8 — the Increment 4 journey: open, resume, and share a project (#185)', () => {
+  test(
+    'open the project, draft, mark one check, leave (a checkpoint commits), reload, resume into the remembered place',
+    { tag: ['@inc4', '@J8'] },
+    async ({ page }) => {
+      test.setTimeout(180_000);
+      pinEnglishAndRestateNotesRecord();
+      const commitsBefore = commitCount(SEEDED_PROJECT);
+      const decidedBefore = decidedCount();
+      const drafted = 'Reprende con toda autoridad (viaje completo).';
+
+      await test.step('open the seeded project at Titus 2 and draft a verse', async () => {
+        await openTitusAt(page, '2');
+        await draftFirstStub(page, drafted);
+        await waitForResumeRecord(SEEDED_PROJECT, 2, drafted);
+        // Saving is not a checkpoint (D9).
+        expect(commitCount(SEEDED_PROJECT)).toBe(commitsBefore);
+      });
+
+      await test.step('switch to Check: the mode switch commits the pending text', async () => {
+        await page.getByRole('tab', { name: 'Check', exact: true }).click();
+        await expect.poll(() => commitCount(SEEDED_PROJECT), { timeout: 30_000 }).toBe(commitsBefore + 1);
+        expect(lastCommitMessage(SEEDED_PROJECT)).toMatch(/^Checkpoint, leaving Translate: .*TIT text/);
+      });
+
+      await test.step('mark one Translation Notes item Valid; the decision lands in the sidecar', async () => {
+        await expect(page.getByTestId('preflight-translationNotes')).toHaveAttribute('data-state', 'ready', { timeout: 30_000 });
+        await page.getByTestId('open-translationNotes').click();
+        await expect(page.getByTestId('check-progress')).toBeVisible({ timeout: 30_000 });
+        await page.getByTestId('check-list').locator('button[data-decided="0"]').first().click();
+        await page.getByTestId('mark-valid').click();
+        await expect.poll(decidedCount, { timeout: 10_000 }).toBe(decidedBefore + 1);
+        await expect(page.getByTestId('save-error')).toHaveCount(0);
+      });
+
+      await test.step('leave the project: the leave checkpoint commits the decision', async () => {
+        await page.getByTitle('Switch project').click();
+        await expect(page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`)).toBeVisible({ timeout: 30_000 });
+        await expect.poll(() => commitCount(SEEDED_PROJECT), { timeout: 30_000 }).toBe(commitsBefore + 2);
+        expect(lastCommitMessage(SEEDED_PROJECT)).toMatch(/^Checkpoint, leaving the project: .*TIT/);
+        await expect(page.getByTestId('home-checkpoint-error')).toHaveCount(0);
+      });
+
+      await test.step('reload the app and resume from Home into Translate at Titus 2', async () => {
+        await page.reload();
+        await expectAllProjectsListed(page);
+        const card = page.getByTestId('resume-card');
+        await expect(card).toBeVisible({ timeout: 30_000 });
+        await expect(card).toContainText(SEEDED_NAME);
+        await expect(card).toContainText('Titus 2');
+        await card.click();
+        await expect(page.getByText(drafted)).toBeVisible({ timeout: 30_000 });
+        await expectTranslateAt(page, '2', drafted);
+      });
+    },
+  );
+
+  test.fixme(
+    'share for the first time: the app asks for a name and an email once, pushes to the configured test server, and the journey reads the pushed commit from the remote, not from the app (#120; L-3 #156 first)',
+    { tag: ['@inc4', '@J8'] },
+    async () => {},
   );
 });
 

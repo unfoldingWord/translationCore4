@@ -15,6 +15,12 @@
 # and only after a green positive run: a rig the suites never touched is not the dirty
 # rig this control is about, and the job is already red.
 #
+# The Playwright journeys (e2e/*.spec.ts, `npm run journeys`) are needs-rig and do NOT run
+# in this job (#185): they need the Vite dev client on :5199 and a Chromium beside the rig,
+# and their global setup reseeds the rig by hand between runs. They run locally against the
+# workspace rig; each journey pull request pastes its run. Wiring them into this job is a
+# separate item.
+#
 # ⛔ The job talks only to the rig it started. Never a pankosmia remote, token, or
 # upstream trigger. The clones in setup-from-pins.zsh are read-only, at pinned commits.
 # The one rig resource fetched from outside GitHub is the pinned en_ult v89 export from
