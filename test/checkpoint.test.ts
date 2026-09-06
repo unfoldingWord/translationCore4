@@ -19,8 +19,9 @@ describe('#183 checkpointMessage', () => {
       ch('ingredients/TIT.usfm'),
       ch('ingredients/JON.usfm'),
       ch('metadata.json'),
+      ch('ingredients/audio/TIT/01.mp3', 'new'),
     ]);
-    expect(msg).toBe('Checkpoint, leaving Translate: TIT text, TIT checks, TIT alignment, JON text (tC4)');
+    expect(msg).toBe('Checkpoint, leaving Translate: TIT text, TIT checks, TIT alignment, JON text, audio (tC4)');
   });
 
   it('a checkpoint that carries only journal segments and metadata says so', () => {

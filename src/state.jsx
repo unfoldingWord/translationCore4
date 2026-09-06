@@ -236,6 +236,9 @@ const initial = () => ({
   // failed. Shown in the save indicator's error state with a Retry; a commit
   // never blocks navigation.
   commitError: null,
+  // The repoPath a failed leave-project checkpoint belongs to (#183): Home's
+  // Retry commits it directly, since no store is open on Home.
+  commitErrorRepo: null,
   // Modals (the owner's design: creation, add-book, and settings are dialogs
   // over Home, not separate pages)
   modal: null, // null | 'newProject' | 'addBook' | 'settings' | 'sources'
@@ -1003,7 +1006,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
     lastReported = p.done;
     dispatch({ type: 'set', patch: { opening: progress(p.stage, p.done, p.total) } });
   };
-  dispatch({ type: 'set', patch: { opening: progress('journal'), commitError: null } });
+  dispatch({ type: 'set', patch: { opening: progress('journal') } });
   try {
     // R-E33-3: the versification frame cache is keyed by repoPath, which is
     // NOT unique across a delete-and-recreate inside one session. Clear it
@@ -1097,7 +1100,9 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
     if (superseded()) return;
     await actions.openBook(bookCode || summary.bookCodes[0]);
     if (superseded()) return;
-    dispatch({ type: 'set', patch: { opening: null } });
+    // #183: a checkpoint failure of the project LEFT is cleared only once a
+    // project is open; a failed open keeps it beside the open error.
+    dispatch({ type: 'set', patch: { opening: null, commitError: null, commitErrorRepo: null } });
   } catch (e) {
     if (superseded()) return; // a stale failure must not route the OPEN project Home
     // A failed open surfaces its diagnosable report and never a stuck bar (#95).
@@ -1883,6 +1888,23 @@ export function AppProvider({ children }) {
           dispatch({ type: 'set', patch: { commitError: null } });
         } catch (e) {
           dispatch({ type: 'set', patch: { commitError: e?.reason || e?.message || String(e) } });
+        }
+      },
+
+      /** Retry the checkpoint that failed on leaving a project (#183). Home has
+       * no open store for that repository, and a checkpoint is more than a raw
+       * commit (it regenerates the shared files from the journal, §8.7), so a
+       * store is opened for the retry and commits through the boundary. */
+      retryLeaveCheckpoint: async () => {
+        const repo = stateRef.current.commitErrorRepo;
+        if (!repo) return;
+        try {
+          const store = new JournalingStore({ api });
+          await store.open(repo);
+          await checkpointCommit(store, 'leaving the project');
+          dispatch({ type: 'set', patch: { commitError: null, commitErrorRepo: null } });
+        } catch (e) {
+          dispatch({ type: 'set', patch: { commitError: `${t('app.commitError')}: ${e?.reason || e?.message || String(e)}` } });
         }
       },
 
@@ -3418,7 +3440,7 @@ export function AppProvider({ children }) {
         alignSessionSeq++;
         dispatch({
           type: 'set',
-          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, saveState: 'saved', noteSaveState: 'saved', commitError: leaveError, projectPins: null, projectPinsLoaded: false, projectPinsError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, pickerProgress: null, toolPos: {} },
+          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, saveState: 'saved', noteSaveState: 'saved', commitError: leaveError, commitErrorRepo: leaveError ? leaving.repoPath : null, projectPins: null, projectPinsLoaded: false, projectPinsError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, pickerProgress: null, toolPos: {} },
         });
         refreshProjects(); // re-order: the project just left goes to the top
       },

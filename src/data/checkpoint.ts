@@ -26,6 +26,7 @@ const kindOf = (path: string): { book: string | null; kind: string } => {
     return { book: m[2], kind };
   }
   if (path.startsWith('ingredients/checking/journal/')) return { book: null, kind: 'journal' };
+  if (path.startsWith('ingredients/audio/')) return { book: null, kind: 'audio' }; // tolerated class, BURRITO-SPEC R-8.7.1
   if (path === 'ingredients/checking/resources.json') return { book: null, kind: 'sources' };
   if (path === 'ingredients/checking/settings.json') return { book: null, kind: 'settings' };
   if (path === 'metadata.json') return { book: null, kind: 'metadata' };
