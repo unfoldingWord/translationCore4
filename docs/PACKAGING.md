@@ -57,8 +57,8 @@ Two build variants exist (`--debug` selects the second):
 
 | | production (default) | debug (`--debug`) |
 |---|---|---|
-| Project store | `$HOME/pankosmia/tc4-projects` — starts EMPTY | `$HOME/pankosmia/tc4-projects-debug` — separate store |
-| Seeds | none | the conformance sample burrito, seeded by the launcher on first run |
+| Project store | `$HOME/pankosmia/tc4-projects` — isolated store (#70) | `$HOME/pankosmia/tc4-projects-debug` — separate store |
+| Seeds | the English suite, seeded by the launcher on first run (#163) | the English suite (#163) plus the conformance sample burrito, seeded by the launcher on first run |
 | Marking | none | app name `translationCore4 DEBUG`; version suffix `-debug`; artifact name suffix `-debug` |
 
 ## Project-store isolation (#70)
@@ -251,7 +251,7 @@ Two smoke tests exist. They answer two different questions.
 |---|---|---|
 | Where | `scripts/package-desktop.zsh`, step 6/7, on the staged folder, before the zip is written | `smoke-installed.zsh`, shipped in the artifact folder; the source is `scripts/smoke-installed.zsh` |
 | Question | Can this artifact start on the build host? | Does the installed app work for a pilot? |
-| What it proves | The launcher self-spawns the server; `/` answers 303 to `/clients/uw-tc4` and the client 200; a second launch exits by itself (#4); `repo_dir` is the isolated store and the production store is empty (#70) | The same start and client checks on the INSTALLED folder; the store path (#70); a project created through the app's own HTTP surface with one book; one verse written and found on disk in the store; the app stopped and started again; the verse read back; the smoke project removed |
+| What it proves | The launcher self-spawns the server; `/` answers 303 to `/clients/uw-tc4` and the client 200; a second launch exits by itself (#4); `repo_dir` is the isolated store and holds only the seeded English suite (#70, #163) | The same start and client checks on the INSTALLED folder; the store path (#70); bundled source text is readable offline (`source`, #163); a project created through the app's own HTTP surface with one book; one verse written and found on disk in the store; the app stopped and started again; the verse read back; the smoke project removed |
 | Runs | In every build, in CI and by hand | On a fresh CI runner after every build (`smoke-macos-arm64`, `smoke-linux-x64` in `package-desktop.yml`), and by a person on a clean machine |
 | Fails the build | Yes | The CI job fails; the tag rule (epic #59) needs the run to pass on each platform before a pre-release tags |
 
@@ -294,11 +294,9 @@ commit, date): see "Evidence" below.
 ## The offline run (#43)
 
 tC4 is built for offline field use. This procedure proves one full session with the
-network off, on the installed app, on a clean machine. Under the standing tag rule (epic
-#59), a pre-release from `v4.0.0-alpha.4` on tags only after this run passed once, or after
-every step that failed names its open issue. Two offline defects are known and open before
-the first run: the artifact ships no English scripture (#163), and the fonts load from
-Google's CDN (#3). A run that reaches the end with only those two named is a pass under the
+network off, on the installed app, on a clean machine. Under the standing tag rule (epic #59), a pre-release from `v4.0.0-alpha.4` on tags only after this run passed once, or after
+every step that failed names its open issue. One offline defect is known and open before
+the first run: the fonts load from Google's CDN (#3). A run that reaches the end with only that named is a pass under the
 rule.
 
 The run is done by a person and recorded. The Playwright check below catches regressions
@@ -315,12 +313,9 @@ between runs; it does not replace the run.
    request #192 merged carry it, and the section "Smoke tests" describes it), run it once,
    online: `zsh smoke-installed.zsh`. Expected: `SMOKE OK`. An older artifact has no such
    file; skip this step and say so in the record.
-3. Optional, for a project with source text: start the app online once, create a project,
-   open Home › `Source texts`, and download the English package. Then quit the app. Without
-   this step, the source pane shows "This source text is not on this computer." offline
-   (#163): expected until #163 lands. Note: an online start also lets Electron cache the
-   fonts from Google's CDN, so after this step the font observation below no longer tests
-   #3; skip this step when the run is about #3.
+3. Optional: start the app online once, create a project, open Home › `Source texts`.
+   Note: an online start also lets Electron cache the fonts from Google's CDN, so after this
+   step the font observation below no longer tests #3; skip this step when the run is about #3.
 4. Turn the network off at the operating-system level, not in the app:
    - macOS: System Settings › Network, or the menu bar: turn Wi-Fi off and unplug Ethernet.
    - Linux: `nmcli networking off`, or `rfkill block all` plus unplug Ethernet. For a scripted
@@ -339,12 +334,12 @@ between runs; it does not replace the run.
 |---|---|---|
 | 1 | Start the app (`start-tc4.command` or `start-tc4.sh`). | The window opens on Home within 30 s. No error banner. |
 | 2 | `+ New Bible`: name, language code, direction; `Create Bible →`. The `Add a book` dialog opens: `Start a blank book`, pick Titus, `Create book`. | Titus opens directly in `Translate` at chapter 1. |
-| 3 | Mode tab `Understand`. | The passage's helps area shows for chapter 1. With no English package on this computer, the source text reads "This source text is not on this computer." and the helps read "The pinned resource is not on this computer and the app is offline." (#163). |
-| 4 | Mode tab `Translate`. Chapter 1. | The chapter's verses show. The source pane shows ULT/UST text, or the #163 message "This source text is not on this computer." |
+| 3 | Mode tab `Understand`. | The passage's helps area shows for chapter 1 with English translation notes and translation questions. |
+| 4 | Mode tab `Translate`. Chapter 1. | The chapter's verses show. The source pane shows ULT/UST text. |
 | 5 | `Draft verse 1` (the dashed pill), type a verse, click outside the editor. | The save indicator shows `Saved`. |
-| 6 | Mode tab `Check`. On the Translation Notes card, `Start checking` (or `Continue`). Pick one item; `✓ Mark valid`. | The item is decided; the progress line `N of M resolved` counts it. If the card reads `Unavailable offline`, read which resource it names: a resource of the English package that the artifact does not ship (`en_tn`, `en_tw`, `en_ta`, `en_tq`, `en_ult`, `en_ust`, `el-x-koine_ugnt`, `hbo_uhb`; #163) is the known case; name it, stay on the tool picker, and go to step 7. Any other missing resource is a new finding: file its issue. |
-| 7 | On the tool picker (`← All checking tools` first, if a tool is open), `Align`. Click one word in the bank, then one card. | The word moves into the card; the bank has one word fewer. If the screen reads "The original-language text is not on this computer", that is the Greek text of the English package (#163) on a clean install; with the package downloaded in step 3, it is a new finding: file its issue. |
-| 8 | Leave the project (`Switch project`), then open Titus again from Home. Look at `Translate`; then at `Check` › Translation Notes and `Align` for each of steps 6 and 7 that you could do. | Home lists the project. The drafted verse is on screen. Each decision and alignment you made is still there: the progress line still counts the decision; the aligned word is still in its card. A step you could not do (#163) has nothing to check here. |
+| 6 | Mode tab `Check`. On the Translation Notes card, `Start checking` (or `Continue`). Pick one item; `✓ Mark valid`. | The item is decided; the progress line `N of M resolved` counts it. If the card reads `Unavailable offline`, read which resource it names: a lexicon (`en_ugl`, `en_uhl`; #218) is the known case; name it and go on. Any other missing resource is a new finding: file its issue. |
+| 7 | On the tool picker (`← All checking tools` first, if a tool is open), `Align`. Click one word in the bank, then one card. | The word moves into the card; the bank has one word fewer. If the screen reads "The original-language text is not on this computer", that is a new finding: file its issue. A missing lexicon entry (`en_ugl`, `en_uhl`; #218) is the known case. |
+| 8 | Leave the project (`Switch project`), then open Titus again from Home. Look at `Translate`; then at `Check` › Translation Notes and `Align` for each of steps 6 and 7 that you could do. | Home lists the project. The drafted verse is on screen. Each decision and alignment you made is still there: the progress line still counts the decision; the aligned word is still in its card. |
 | 9 | Export the book. | Not yet possible: #19 (export) is not built. Skip and name #19. |
 | 10 | Quit the app. Turn the network on again. | |
 
@@ -381,8 +376,29 @@ procedure's subject.
 | resource-core | `54802be780af18ab02e426dd59014bc6adb158af` | `scripts/package-desktop.zsh` |
 | webfonts-core | `eb52ccdad6806b5729ea8b45b1c59c793ffa32c3` | `scripts/package-desktop.zsh` |
 | puppeteer-core / @puppeteer/browsers | `24.43.1` / `2.13.1`, exact; lockfile ships in the artifact (`electron/package-lock.json`) | `scripts/package-desktop.zsh` |
+| en_ult | v89, sha `84c73ba00fc8a95a9033f9efb14bb905a2a52ee4` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
+| en_ust | v89, sha `37ec223166bbd73fb55abc7840be8310c0fee7f2` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
+| el-x-koine_ugnt | v0.34, sha `fc95b2b8aad08bb65ab54628ab685413a1139e97` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
+| hbo_uhb | v2.1.30, sha `106a441a788d9465846cd427538ea80b8cec6770` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
+| en_tn | v86, sha `c354b8ae66a23c485bf6f38fd35bd8f7ef81e4e5` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
+| en_tw | v87, sha `eaeb7bfefcf84132d0cbcbed185f3ea2be3d86dd` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
+| en_ta | v86, sha `c7caddfb474efd713f36b35a3ffc927866c7b180` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
+| en_tq | v89, sha `97c0a13e3b84d46d0e643ba2e8e9f1c295547a58` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 
 Every artifact carries `BUILD-MANIFEST.json` at its root with the same data.
+
+## Bundled English suite (#163)
+
+Per D70 and #163, the desktop artifact bundles the installed English suite (eight pinned repos: `en_ult`, `en_ust`, `el-x-koine_ugnt`, `hbo_uhb`, `en_tn`, `en_tw`, `en_ta`, `en_tq`). The unpacker stages each resource at `<APPDIR>/resources/unfoldingword--<repo>/`, and the launcher copies missing resources into the project store at `$HOME/pankosmia/tc4-projects/_local_/_sideloaded_/` before starting the application.
+
+Artifact sizes before and after bundling the English suite:
+
+| Platform | Before (#163, macOS alpha.3) | After (#163, alpha.4) |
+|---|---|---|
+| macOS arm64 | 142556909 bytes | 173313348 bytes |
+| Linux x64 | — | 180227460 bytes |
+
+Both "after" sizes are from the `package-desktop` CI run 34145714423 artifact listing (PR #217, 2026-09-07). A local macOS arm64 build of the same commit measured 174980433 bytes.
 
 ## Known limits (start of the pipeline, not the end)
 
