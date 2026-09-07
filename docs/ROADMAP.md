@@ -36,9 +36,9 @@ has verified since August.
 |---|---|---|---|
 | **3 — Data foundations & journal** | Versification mapping, version stamps, coverage records; CI format guardians; ratify the journal design and ship write-only journaling. Also started immediately (owner ruling 2026-08-13): the CI packaging pipeline (#57), single-instance behavior (#4), and the Electronite/Graphite confirmation (#32) — packaging surprises must surface now, not in the release week | Aug 29 | #33 (#15 #16 #28), #17, #47, #22, #52, #57, #4, #32 |
 | **4 — Open, resume, share** | Multi-project work, resume with fresh proof, first share, platform integration; the pilot program starts at this close (#58), and #13 de-risks Increment 6's suggestions one increment ahead | Sep 5 | #39, #7, #8, #13, #58 |
-| **5 — Drafting for real** | Section-primary drafting, formatting UX, book introductions | Sep 19 | #53, #54, #55 |
+| **5 — Drafting for real** | Section drafting on the design's flow, verse spans (D70), formatting UX, async save for aligning and checking, the English suite in the artifact, the Windows build; ships J2 revised and J16 | Sep 18 | #141, #63, #54, #100, #163, #181, #197, #207 |
 | **6 — Suggestions & resources** | Alignment suggestions (off by default, propose-only), comments and bookmarks, resource upgrade flow, guided fix | Oct 3 | #1, #13, #50, #40, #9 |
-| **7 — Publish & import** | Aligned USFM export and the print-ready PDF (owner ruling 2026-09-06: #20 moved here from Post-4.0); the fixture-heavy importers: tC3 zip, x-tcore migration, raw USFM, Scripture Burrito, damaged projects | Oct 10 | #19, #20, #21, #14, #195, #196, #41, #2 |
+| **7 — Publish & import** | Aligned USFM export and the print-ready PDF (owner ruling 2026-09-06: #20 moved here from Post-4.0); the fixture-heavy importers: tC3 zip, x-tcore migration, raw USFM, Scripture Burrito, damaged projects; the first share (#120, after #156); verse renumbering and the re-key rules (D70); book introductions | Oct 10 | #19, #20, #21, #14, #195, #196, #41, #2, #120, #156, #55 |
 | **8 — Ship** | Installers, smoke test, rollback plan, witnessed offline run, local fonts, keyboard basics | **Oct 16 → v4.0.0** | #44, #45, #46, #43, #3, #32, #42 |
 
 ## Who October 16 is for — the pilot posture
@@ -54,8 +54,7 @@ starting with alpha.4 on September 5; the schedule lives in #58. Broad adoption 
 
 Safe by the data-accrual test, and said out loud so nobody assumes otherwise:
 the RTL rendering proof (#29), the full screen-reader pass,
-i18n key audit (#12), auto-merge of concurrent edits (#27), OBS layouts (#11),
-verse move/span operations (format-touching — waits for D47's contract), and the
+i18n key audit (#12), auto-merge of concurrent edits (#27), OBS layouts (#11), and the
 whole Phase 2 team-collaboration app (#23–#26). **4.0.0 is a single-translator
 release.** Team sync arrives in Phase 2, folding the journal 4.0.0 has been
 writing all along. The sync plan is `docs/plans/TEAM-SYNC-PLAN.md` (epic #24). It

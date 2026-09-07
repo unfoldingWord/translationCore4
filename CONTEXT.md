@@ -59,6 +59,22 @@ opposed to an OBS project.
 _Avoid_: text-translation project, scripture project
 
 
+**Section**:
+A run of consecutive verses that a translator drafts as one unit, marked in the book by
+`\ts\*` milestones. Presentation only: a section never changes the stored verse text.
+_Avoid_: chunk, translator section, passage (for the unit of drafting)
+
+**Verse span**:
+One verse key that covers consecutive verse numbers, written `\v 9-10` and keyed by the exact
+string `"9-10"`. A span is a legal verse key everywhere a single verse is.
+_Avoid_: bridge, bridged verses, verse range
+
+**Structural change**:
+An edit that changes the set of verse keys in a book: creating or breaking a verse span,
+renumbering, adding or removing verses or chapters. Recorded as one all-or-nothing journal
+action (BURRITO-SPEC §8.5). Editing the text inside a verse is never a structural change.
+_Avoid_: verse move, restructuring, skeleton edit (an implementation term)
+
 **OBS project**:
 A first-class tC4 translation project for Open Bible Stories, represented alongside
 Bible projects and governed by the OBS content model rather than by Bible book and

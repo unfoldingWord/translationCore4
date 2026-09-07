@@ -574,7 +574,9 @@ side ships in 4.0.0 (issue #52, after #22 ratifies §8): every 4.0.0 project car
 per-action history from day one, verified in CI by folding the app-written journal with the
 reference implementation and comparing to actual state. The fold/sync/review app work stays
 Phase 2. (d) Verse move/span operations are post-4.0 under clause (a) — they re-key stored
-alignments and decisions.
+alignments and decisions. [superseded by D70, 2026-09-06 — verse spans are 4.0.0 scope in
+Increment 5 under BURRITO-SPEC §8.5 with the conservative disposition; renumbering and the
+re-key rules are Increment 7 work]
 
 **D42 addendum (2026-08-14, project-owner convention, recorded after the independent
 Increment-3 readiness review):** the journey rule applies to feature increments. An
@@ -1256,3 +1258,45 @@ Passage sets (D26) are unaffected: they are a book's `scope` on `book.add`, a di
     checks for rules 2 and 10 are a follow-up issue; this ruling defines them.
 
 Proof steps in JOURNEYS.md are build and test requirements, never gates for the user.
+
+## D70 (2026-09-06, project-owner rulings) **Verse spans are 4.0.0 scope. Increment 5 is defined: two journeys, one epic, the date holds.** [grill-with-docs session 2026-09-06; issues #63, #141, #197]
+
+Context. D47(d) parked verse move and span operations after 4.0.0 because they re-key stored
+alignments and decisions. Since then, D55 made BURRITO-SPEC §8.5 normative, and the structural
+action `text.structure.apply` (R-8.5.4, R-8.5.5, R-8.5.16, R-8.5.18) states how a change to the
+verse set carries its transitions and dispositions. The journal package, the store and the
+conformance suite implement it. Span keys such as `"9-10"` are legal in §5.1 and §5.2. The
+format no longer blocks the feature; only the editor and the sidecar handling are missing.
+
+1. **Verse spans ship in 4.0.0, in Increment 5.** Creating and breaking a span is a
+   structural change recorded as one `text.structure.apply` action. Increment 5 uses the
+   conservative disposition only: alignments and decisions on the affected verses are
+   `invalidate-retain`, never re-keyed. The translator re-aligns and re-checks the span.
+   No specification change is needed for this form.
+2. **Renumbering and the re-key rules are Increment 7 work**, designed first and
+   owner-approved before build. D47(a) makes a post-release re-key rule a schema bump and a
+   migration, so this lands before 4.0.0. Issue #63 is narrowed to spans; renumbering gets
+   its own issue.
+3. **The gesture.** In the section's verse-number placement flow, the translator drags verse
+   numbers, never text. Verse numbers keep numerical order and can never pass one another.
+   Two or more verse numbers stacked with no text between them form one span (`\v 9-10`,
+   `\v 9-11`); the span's text is the verses' text in order. Dragging a verse number past
+   text so that text falls between it and its neighbour breaks the span there. This follows
+   translationStudio's marker drag (`src/js/render.js`, `ts-target-review.html` in
+   `unfoldingWord-dev/ts-desktop` at 83ee25a), with two differences: stacked markers make a
+   span, not an empty verse, and order is enforced.
+4. **Increment 5 ships two journeys.** J2 with a revised end state (section drafting, verse
+   spans) and J16 (its proof, #197). One increment epic carries both and every work item;
+   the packaging items #163 and #181 are listed there and owned by epic #59.
+5. **Increment 5 scope.** In: #141 (section drafting, the design's flow; #53 closes as
+   superseded), #63 (spans), #54 (formatting), #100 (async save for aligning and checking),
+   #111, #117, #163 (the English suite in the artifact, all eleven pinned resources), #181
+   (Windows x64 build; the Windows tester is the clean-machine witness), #197, #207, and the
+   alpha.5 release issue. Out: #139 to Increment 6; #55 to Increment 7 beside export; #94 to
+   Increment 6 (moved 2026-09-06 for #181).
+6. **The date holds** (2026-09-18). What does not fit moves forward under the intake rule
+   (CONTRIBUTING, review findings and milestone intake), and the move names its reason.
+7. **Vocabulary** (`CONTEXT.md`): "section" (avoid chunk, translator section), "verse span"
+   (avoid bridge), "structural change" (avoid verse move).
+
+ROADMAP and issue #18 carry the amendment. D47(d) is annotated superseded.

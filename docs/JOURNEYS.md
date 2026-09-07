@@ -26,7 +26,7 @@ Owner of increment numbers: the GitHub milestones, mirrored in `docs/ROADMAP.md`
 | ID | Actor | Activity | Goal | Status | Proof |
 |---|---|---|---|---|---|
 | J1 | facilitator | Start | Create a Bible project and add books | shipped alpha.1 | `e2e/j01-create-project.spec.ts` |
-| J2 | translator | Translate | Draft verses beside the sources | shipped alpha.1 | `e2e/j02-draft-verse.spec.ts` |
+| J2 | translator | Translate | Draft verses beside the sources | shipped alpha.1; revised end state ships Increment 5 (D70) | `e2e/j02-draft-verse.spec.ts` |
 | J3 | facilitator | Start | Get pinned resources | shipped alpha.2 | `e2e/j03-get-resources.spec.ts` |
 | J4 | translator | Check | Check a book with tN and tW | shipped alpha.2 | `e2e/j04-check-book.spec.ts` |
 | J5 | translator | Check | Align a verse | shipped alpha.2 | `e2e/j05-align-verse.spec.ts` |
@@ -76,12 +76,21 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 
 - Actor: translator. Activity: Translate.
 - Precondition: J1.
-- Steps: open a book · read the sources · type a verse · leave the verse · see progress update.
-- End state: the verse text in the book's USFM ingredient; a `text.verse.set` segment in the journal;
-  save indicator at `saved` is a step, not the end state.
-- MUST NOT: write to any other project (J14 rule); commit on every save (D9: commits at checkpoints).
-- Proof: `e2e/j02-draft-verse.spec.ts`, run LTR and RTL (J10 axis).
-- Owner: shipped alpha.1.
+- Steps: open a book · read the sources · type a section straight through · place the verse
+  numbers · stack two verse numbers to make a verse span, or drag one past text to break one ·
+  leave the section · see progress update. The verse-by-verse form (type one verse, leave it)
+  stays available.
+- End state (revised 2026-09-06, D70): the section's verse texts in the book's USFM ingredient
+  with every verse number placed; text outside the edited verses byte-identical; one
+  `text.verse.set` segment per changed verse; when a span was created or broken, one
+  `text.structure.apply` action with the new skeleton and conservative dispositions, and the
+  alignments and decisions on the affected verses marked invalid and kept. Save indicator at
+  `saved` is a step, not the end state.
+- MUST NOT: write to any other project (J14 rule); commit on every save (D9: commits at
+  checkpoints); re-key an alignment or a decision (Increment 5 uses `invalidate-retain` only).
+- Proof: `e2e/j02-draft-verse.spec.ts`, run LTR and RTL (J10 axis); the section and span cases
+  are added by #141 and #63.
+- Owner: shipped alpha.1 (verse form); revised end state ships Increment 5 (#141, #63).
 
 ### J3 Get pinned resources
 
