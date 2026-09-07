@@ -1081,12 +1081,12 @@ Per-gateway availability recorded in `gateways.ts` (`hasTq`/`hasSimplified`,
 [VERIFIED 2026-08-27 — DCS org queries]). Spec + harness changed in the same
 change set per §9 (suite → 40 checks, Stage-1 35).
 
-## D65 (2026-08-28, project-owner ruling) **Comprehension notes save through their own SaveScheduler — one write discipline for the whole app. Navigation is flush-and-go.** [epic #104, issue #106; round-22 review checkpoint]
+## D65 (2026-08-28, project-owner ruling) **User comments save through their own SaveScheduler — one write discipline for the whole app. Navigation is flush-and-go.** [epic #104, issue #106; round-22 review checkpoint]
 
 Twenty-two adversarial-review rounds put ~21 findings in one subsystem: the
 hand-rolled note-save machinery (per-target revisions, write chains, a failure
 ledger, in-flight counts, a module draft stash, a separate dirty map). The
-owner stopped the patch loop and ruled: route comprehension notes through the
+owner stopped the patch loop and ruled: route user comments through the
 SaveScheduler discipline that verses use. A second scheduler instance carries
 the notes (the failure slot is per instance — a failing note must not park
 verse autosave). The key is the full note identity `repoPath|book|chapter:verse`.
