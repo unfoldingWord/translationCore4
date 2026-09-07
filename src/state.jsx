@@ -11,7 +11,7 @@ import { ServerApi } from './data/serverApi';
 import { StaleWriteError } from './data/httpStore';
 import { JournalingStore, ProjectReader } from './data/journal/journalingStore';
 import { SaveScheduler } from './data/saveScheduler';
-import { spliceSection, spliceVerse, verseBody } from './data/usfm/splice';
+import { gapMarkerOf, spliceSection, spliceVerse, spliceVerseGap, verseBody } from './data/usfm/splice';
 import { indexBook } from './data/usfm/indexer';
 import { RESOURCE_FRAME, forgetProjectFrames, resolveProjectFrame } from './data/projectFrame';
 import { backfillCoverage } from './data/coverageBackfill';
@@ -1775,6 +1775,39 @@ function makeNoteWriter({ noteTargetsRef, dispatch, apiClient }) {
  * unmappable refusal, and the persisted-text echo. */
 export const __makeNoteWriterForTests = makeNoteWriter;
 
+function buildChapterVerses(bookRaw, chapters, entries) {
+  const byChapter = {};
+  const PARA_IN_GAP = /\\(?:p|m|pi\d?|pm|pmo|nb|b|q\d?|li\d?|lh|lf|lim\d?)\b/;
+  let prev = null;
+  for (const e of entries) {
+    const body = bookRaw.slice(e.start, e.end).trim();
+    const drafted = body !== '' && body !== '___';
+    const sameCh = prev && prev.chapter === e.chapter;
+    const gap = sameCh ? bookRaw.slice(prev.end, e.start) : '';
+    const para = !sameCh || PARA_IN_GAP.test(gap);
+    const format = sameCh ? gapMarkerOf(gap) : null;
+    (byChapter[e.chapter] ||= []).push({
+      n: e.verseKey,
+      drafted,
+      para,
+      format,
+      text: drafted ? verseText(chapters[e.chapter]?.[e.verseKey]) : '',
+      body: drafted ? body : '',
+    });
+    prev = e;
+  }
+  return byChapter;
+}
+
+function calcDraftPct(entries, bookRaw) {
+  if (!entries.length) return 0;
+  const draftedCount = entries.filter((e) => {
+    const b = bookRaw.slice(e.start, e.end).trim();
+    return b !== '' && b !== '___';
+  }).length;
+  return Math.round((draftedCount / entries.length) * 100);
+}
+
 export function AppProvider({ children }) {
   const [s, dispatch] = useReducer(reducer, undefined, initial);
   const storeRef = useRef(null);
@@ -1802,38 +1835,11 @@ export function AppProvider({ children }) {
     if (!s.project || !s.book || s.bookRaw == null) return { book: null, progress: {} };
     const chapters = parseChapters(s.bookRaw);
     const entries = indexBook(s.bookRaw);
-    const byChapter = {};
-    // A paragraph-level marker in the gap before a verse's `\v` opens a new
-    // display paragraph (#141: Translate flows a section's verses as
-    // paragraphs). The chapter's first verse always opens one.
-    const PARA_IN_GAP = /\\(?:p|m|pi\d?|pm|pmo|nb|b|q\d?|li\d?|lh|lf|lim\d?)\b/;
-    let prev = null;
-    for (const e of entries) {
-      const body = s.bookRaw.slice(e.start, e.end).trim();
-      const drafted = body !== '' && body !== '___';
-      const para = !prev || prev.chapter !== e.chapter || PARA_IN_GAP.test(s.bookRaw.slice(prev.end, e.start));
-      (byChapter[e.chapter] ||= []).push({
-        n: e.verseKey,
-        drafted,
-        para,
-        text: drafted ? verseText(chapters[e.chapter]?.[e.verseKey]) : '',
-        body: drafted ? body : '',
-      });
-      prev = e;
-    }
+    const byChapter = buildChapterVerses(s.bookRaw, chapters, entries);
     const chapterNums = Object.keys(byChapter)
       .map(Number)
       .sort((a, b) => a - b);
-    const draftPct = entries.length
-      ? Math.round(
-          (entries.filter((e) => {
-            const b = s.bookRaw.slice(e.start, e.end).trim();
-            return b !== '' && b !== '___';
-          }).length /
-            entries.length) *
-            100,
-        )
-      : 0;
+    const draftPct = calcDraftPct(entries, s.bookRaw);
     return { book: { code: s.book, byChapter, chapterNums, draftPct }, progress: {} };
   }, [s.project, s.book, s.bookRaw, s.tick]);
 
@@ -3501,20 +3507,29 @@ export function AppProvider({ children }) {
       // (editVerse's empty rule) — never a stale copy beside the moved words.
       // `newKeys` (#63): the verse keys the card produced; a changed list is a
       // verse span created or broken — one structural action, not splices.
-      saveSection: (chapter, keys, texts, newKeys = keys) => {
+      saveSection: (chapter, keys, texts, newKeys = keys, formats = {}) => {
         if (newKeys.join('\n') !== keys.join('\n')) {
           stageStructuralSection({ rawRef, schedulerRef, structuralRef, stateRef, dispatch }, chapter, keys, texts, newKeys);
-          a.blurVerse();
-          return;
+        } else {
+          for (const verseKey of keys) {
+            const stored = verseBody(rawRef.current, chapter, verseKey);
+            if (stored == null) continue;
+            const current = stored.trim() === '___' ? '' : stored.trim();
+            const text = texts[verseKey] ?? '';
+            if (text.trim() === current) continue;
+            a.editVerse(chapter, verseKey, text);
+          }
         }
-        for (const verseKey of keys) {
-          const stored = verseBody(rawRef.current, chapter, verseKey);
-          if (stored == null) continue;
-          const current = stored.trim() === '___' ? '' : stored.trim();
-          const text = texts[verseKey] ?? '';
-          if (text.trim() === current) continue;
-          a.editVerse(chapter, verseKey, text);
+        let entries = indexBook(rawRef.current);
+        for (const [key, marker] of Object.entries(formats)) {
+          const next = spliceVerseGap(rawRef.current, chapter, key, marker, entries);
+          if (next !== rawRef.current) {
+            rawRef.current = next;
+            entries = indexBook(rawRef.current);
+          }
         }
+        schedulerRef.current?.replaceBook(stateRef.current.book, rawRef.current);
+        dispatch({ type: 'set', patch: { bookRaw: rawRef.current } });
         a.blurVerse();
       },
       cancelVerse: (chapter, verseKey) => {

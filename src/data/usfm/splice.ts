@@ -3,7 +3,7 @@
 // splice; every byte outside the replaced range stays identical (FR-7).
 // The result feeds BurritoStore.writeBook whole-file — callers never pass
 // re-serialized USFM (D8: usfm-js never re-serializes).
-import { findVerse, indexBook } from './indexer';
+import { findVerse, indexBook, VerseEntry } from './indexer';
 
 /** Typed failure: the raw book does not contain the addressed verse. Partial
  * books are legal (D26), so "not found" is a normal, catchable condition. */
@@ -93,3 +93,109 @@ export const spliceSection = (
   const end = old[old.length - 1 - hi].entry.end;
   return rawBook.slice(0, start) + verses.slice(lo, verses.length - hi).map(line).join('\n') + rawBook.slice(end);
 };
+
+interface GapMarkerMatch {
+  marker: 'p' | 'q1' | 'q2';
+  start: number;
+  end: number;
+}
+
+/** Scan a gap string for a line that is exactly \p, \q1 or \q2 (#54). */
+export const gapMarkerOf = (gapText: string): 'p' | 'q1' | 'q2' | null => {
+  let pos = 0;
+  while (pos < gapText.length) {
+    const nextNl = gapText.indexOf('\n', pos);
+    const lineEnd = nextNl === -1 ? gapText.length : nextNl;
+    let line = gapText.slice(pos, lineEnd);
+    if (line.endsWith('\r')) line = line.slice(0, -1);
+    if (line === '\\p' || line === '\\q1' || line === '\\q2') {
+      return line.slice(1) as 'p' | 'q1' | 'q2';
+    }
+    pos = nextNl === -1 ? gapText.length : nextNl + 1;
+  }
+  return null;
+};
+
+/** Boundaries [start, end) of the gap between a verse body and the next verse / chapter marker. */
+const getVerseGap = (
+  rawBook: string,
+  chapter: string | number,
+  verseKey: string,
+  entries: VerseEntry[] = indexBook(rawBook),
+): { start: number; end: number } => {
+  const idx = entries.findIndex((e) => e.chapter === String(chapter) && e.verseKey === verseKey);
+  if (idx === -1) throw new VerseNotFoundError(String(chapter), verseKey);
+  const gapStart = entries[idx].end;
+  let gapEnd = rawBook.length;
+  if (idx + 1 < entries.length && entries[idx + 1].chapter === String(chapter)) {
+    gapEnd = markerStart(rawBook, entries[idx + 1]);
+  } else {
+    const rest = rawBook.slice(gapStart);
+    const m = /\r?\n\\c[ \t]/.exec(rest);
+    if (m) gapEnd = gapStart + m.index + m[0].indexOf('\\');
+  }
+  return { start: gapStart, end: gapEnd };
+};
+
+const findGapMarker = (rawBook: string, gapStart: number, gapEnd: number): GapMarkerMatch | null => {
+  const gap = rawBook.slice(gapStart, gapEnd);
+  const marker = gapMarkerOf(gap);
+  if (!marker) return null;
+  let pos = 0;
+  while (pos < gap.length) {
+    const nextNl = gap.indexOf('\n', pos);
+    const lineEnd = nextNl === -1 ? gap.length : nextNl;
+    const nextPos = nextNl === -1 ? gap.length : nextNl + 1;
+    let line = gap.slice(pos, lineEnd);
+    if (line.endsWith('\r')) line = line.slice(0, -1);
+    if (line === `\\${marker}`) {
+      return {
+        marker,
+        start: gapStart + pos,
+        end: gapStart + nextPos,
+      };
+    }
+    pos = nextPos;
+  }
+  return null;
+};
+
+/** Read any paragraph/poetry marker line (\p, \q1, \q2) in the gap after a verse body (#54). */
+export const verseGapMarker = (
+  rawBook: string,
+  chapter: string | number,
+  verseKey: string,
+  entries?: VerseEntry[],
+): 'p' | 'q1' | 'q2' | null => {
+  const gap = getVerseGap(rawBook, chapter, verseKey, entries);
+  const match = findGapMarker(rawBook, gap.start, gap.end);
+  return match ? match.marker : null;
+};
+
+/**
+ * Rewrite only \p/\q1/\q2 lines in the gap after the verse body. Inserting
+ * places the marker line ending the preceding verse's slot; removing restores
+ * the exact prior bytes (#54, R-8.4.1).
+ */
+export const spliceVerseGap = (
+  rawBook: string,
+  chapter: string | number,
+  verseKey: string,
+  marker: 'p' | 'q1' | 'q2' | null,
+  entries?: VerseEntry[],
+): string => {
+  const gap = getVerseGap(rawBook, chapter, verseKey, entries);
+  const match = findGapMarker(rawBook, gap.start, gap.end);
+  if (match) {
+    if (marker === match.marker) return rawBook;
+    if (marker === null) {
+      return rawBook.slice(0, match.start) + rawBook.slice(match.end);
+    }
+    const nl = rawBook.slice(match.start, match.end).endsWith('\r\n') ? '\r\n' : '\n';
+    return rawBook.slice(0, match.start) + '\\' + marker + nl + rawBook.slice(match.end);
+  }
+  if (marker === null) return rawBook;
+  const nl = rawBook.slice(gap.start, gap.end).includes('\r\n') || rawBook.includes('\r\n') ? '\r\n' : '\n';
+  return rawBook.slice(0, gap.end) + '\\' + marker + nl + rawBook.slice(gap.end);
+};
+

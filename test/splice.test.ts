@@ -3,7 +3,7 @@
 // range identical (FR-7). Corpora as in indexer.test.ts.
 import { describe, expect, it } from 'vitest';
 import { indexBook } from '../src/data/usfm/indexer';
-import { spliceSection, spliceVerse, verseBody, VerseNotFoundError } from '../src/data/usfm/splice';
+import { spliceSection, spliceVerse, spliceVerseGap, verseBody, verseGapMarker, VerseNotFoundError } from '../src/data/usfm/splice';
 
 // Real node builtins via the runtime, NOT `import 'node:fs'` — the app's
 // vite-plugin-node-polyfills aliases node builtins to browser mocks (fs → null)
@@ -207,3 +207,47 @@ describe('#63 — spliceSection', () => {
     expect(back).toBe(tit);
   });
 });
+
+// ---------------------------------------------------------------------------
+// #54 — spliceVerseGap and verseGapMarker
+// ---------------------------------------------------------------------------
+describe('#54 — spliceVerseGap and verseGapMarker', () => {
+  it.each(Object.entries(corpora))('gap insert → remove is byte-identical on every corpus (%s)', (_name, raw) => {
+    for (const e of indexBook(raw)) {
+      const initialMarker = verseGapMarker(raw, e.chapter, e.verseKey);
+      const withQ1 = spliceVerseGap(raw, e.chapter, e.verseKey, 'q1');
+      expect(verseGapMarker(withQ1, e.chapter, e.verseKey)).toBe('q1');
+      const removed = spliceVerseGap(withQ1, e.chapter, e.verseKey, initialMarker);
+      expect(removed).toBe(raw);
+    }
+  });
+
+  it('the gap parser ignores \\ts\\*, \\s1 and blank lines', () => {
+    const rawTs = ['\\id TST', '\\c 1', '\\v 1 one', '\\ts\\*', '\\v 2 two', ''].join('\n');
+    expect(verseGapMarker(rawTs, 1, '1')).toBeNull();
+    const withP = spliceVerseGap(rawTs, 1, '1', 'p');
+    expect(withP).toBe(['\\id TST', '\\c 1', '\\v 1 one', '\\ts\\*', '\\p', '\\v 2 two', ''].join('\n'));
+    expect(spliceVerseGap(withP, 1, '1', null)).toBe(rawTs);
+
+    const rawS1 = ['\\id TST', '\\c 1', '\\v 1 one', '\\s1 Heading', '\\v 2 two', ''].join('\n');
+    expect(verseGapMarker(rawS1, 1, '1')).toBeNull();
+    const withQ2 = spliceVerseGap(rawS1, 1, '1', 'q2');
+    expect(withQ2).toBe(['\\id TST', '\\c 1', '\\v 1 one', '\\s1 Heading', '\\q2', '\\v 2 two', ''].join('\n'));
+    expect(spliceVerseGap(withQ2, 1, '1', null)).toBe(rawS1);
+
+    const rawBlank = ['\\id TST', '\\c 1', '\\v 1 one', '', '\\p', '\\v 2 two', ''].join('\n');
+    expect(verseGapMarker(rawBlank, 1, '1')).toBe('p');
+    const withQ1 = spliceVerseGap(rawBlank, 1, '1', 'q1');
+    expect(withQ1).toBe(['\\id TST', '\\c 1', '\\v 1 one', '', '\\q1', '\\v 2 two', ''].join('\n'));
+    const stripped = spliceVerseGap(withQ1, 1, '1', null);
+    expect(stripped).toBe(['\\id TST', '\\c 1', '\\v 1 one', '', '\\v 2 two', ''].join('\n'));
+  });
+
+  it('span verse gap round-trip: spliceVerseGap(raw, ch, "9-10", "q1") puts \\q1 before \\v 11 and null restores byte-identical raw', () => {
+    const raw = ['\\id TST', '\\c 1', '\\v 9-10 nine and ten', '\\v 11 eleven', ''].join('\n');
+    const withQ1 = spliceVerseGap(raw, 1, '9-10', 'q1');
+    expect(withQ1).toBe(['\\id TST', '\\c 1', '\\v 9-10 nine and ten', '\\q1', '\\v 11 eleven', ''].join('\n'));
+    expect(spliceVerseGap(withQ1, 1, '9-10', null)).toBe(raw);
+  });
+});
+

@@ -13,19 +13,52 @@ const carriesText = (vo) => vo?.type === 'text' || vo?.type === 'word' || (vo?.t
 const leading = (objs) => { const i = objs.findIndex(carriesText); return i === -1 ? objs : objs.slice(0, i); };
 const trailing = (objs) => { let i = objs.length - 1; while (i >= 0 && !carriesText(objs[i])) i--; return objs.slice(i + 1); };
 
+const isBreak = (k, i, keys, chapterVerses) => {
+  if (typeof k === 'object' && k !== null && 'para' in k) return i === 0 || k.para;
+  const objs = chapterVerses?.[String(k)]?.verseObjects ?? [];
+  const prev = i > 0 ? chapterVerses?.[String(keys[i - 1])]?.verseObjects ?? [] : [];
+  return i === 0 || trailing(prev).some(isParaMark) || leading(objs).some(isParaMark);
+};
+
 /** Group a unit's verse keys into display paragraphs: a verse opens a new
  * paragraph when the previous verse ends with a paragraph marker or it starts
- * with one — the design's `para: true`. */
+ * with one — the design's `para: true`. Supports keys or model verse objects. */
 export const paragraphsOf = (keys, chapterVerses) => {
   const paras = [];
   keys.forEach((k, i) => {
-    const objs = chapterVerses[String(k)]?.verseObjects ?? [];
-    const prev = i > 0 ? chapterVerses[String(keys[i - 1])]?.verseObjects ?? [] : [];
-    const breaks = i === 0 || trailing(prev).some(isParaMark) || leading(objs).some(isParaMark);
-    if (breaks) paras.push([]);
+    if (isBreak(k, i, keys, chapterVerses)) paras.push([]);
     paras[paras.length - 1].push(k);
   });
   return paras;
+};
+
+const levelOfTag = (tag) => {
+  const m = tag?.match(/^q(\d+)$/);
+  return m ? Number(m[1]) : (tag === 'q' ? 1 : 0);
+};
+
+const levelFromObjs = (chapterVerses, key, prevKey = null) => {
+  const objs = chapterVerses?.[String(key)]?.verseObjects ?? [];
+  const lead = leading(objs).find(isParaMark);
+  if (lead) return levelOfTag(lead.tag);
+  if (!prevKey) return 0;
+  const prevObjs = chapterVerses[String(prevKey)]?.verseObjects ?? [];
+  const trail = [...trailing(prevObjs)].reverse().find(isParaMark);
+  return trail ? levelOfTag(trail.tag) : 0;
+};
+
+/**
+ * Poetry indent level (1 for \q1, 2 for \q2, 0 for plain / \p) from the opening
+ * paragraph object's tag or model verse format (#54).
+ */
+export const paragraphLevel = (para, chapterVerses = {}, prevKey = null) => {
+  if (!para || para.length === 0) return 0;
+  const first = para[0];
+  if (typeof first === 'object' && first !== null && 'format' in first) {
+    return first.format === 'q1' ? 1 : first.format === 'q2' ? 2 : 0;
+  }
+  const firstKey = typeof first === 'string' ? first : first?.n;
+  return firstKey ? levelFromObjs(chapterVerses, firstKey, prevKey) : 0;
 };
 
 /** Section starts for one chapter, from the source's own \ts\* chunk markers.

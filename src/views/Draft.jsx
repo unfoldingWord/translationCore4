@@ -16,7 +16,7 @@ import { HelpsPanel, useLoadHelps } from './HelpsPanel.jsx';
 import { SourceVerse } from './SourceVerse.jsx';
 import { verseText as sourceText } from './verseText.js';
 import { absenceMessageKey, isSourceAbsent } from '../data/sourceState';
-import { paragraphsOf, rangeSpan, sectionRanges, sectionStarts } from './sections.js';
+import { paragraphLevel, paragraphsOf, rangeSpan, sectionRanges, sectionStarts } from './sections.js';
 import { SectionEditor } from './SectionEditor.jsx';
 
 const hair = 'var(--stroke-hair) solid var(--border-hair)';
@@ -100,13 +100,9 @@ const chapterSections = (s, verses) => {
   return sectionRanges(source ? sectionStarts(source, s.chapter) : [], keys);
 };
 
-/** Group a section's target verses into display paragraphs by the model's
- * `para` flag (a paragraph marker before the verse). */
-const targetParagraphs = (verses) => verses.reduce((acc, v, i) => {
-  if (i === 0 || v.para) acc.push([]);
-  acc[acc.length - 1].push(v);
-  return acc;
-}, []);
+/** Group a section's target verses into display paragraphs through sections.js (#54). */
+const targetParagraphs = (verses) => paragraphsOf(verses);
+const indentStyle = (level) => (level === 1 ? { paddingInlineStart: '1.5em' } : level === 2 ? { paddingInlineStart: '3em' } : {});
 
 function SourceCell({ s, keys, sourceModel, paneFocus, label }) {
   const chapterVerses = sourceModel && !isSourceAbsent(sourceModel) ? sourceModel[String(s.chapter)] ?? {} : {};
@@ -191,7 +187,7 @@ function TargetCell({ s, verses, keys, byKey, span, dir, type, editType, actions
             </Button>
           </div>
           {targetParagraphs(verses).map((para) => (
-            <p key={para[0].n} style={{ direction: dir, textAlign: 'start', ...type, color: 'var(--text-scripture)', margin: '0 0 10px' }}>
+            <p key={para[0].n} style={{ direction: dir, textAlign: 'start', ...type, color: 'var(--text-scripture)', margin: '0 0 10px', ...indentStyle(paragraphLevel(para)) }}>
               {para.map((v) => (
                 <React.Fragment key={v.n}>
                   <sup style={SUP}>{v.n}</sup>

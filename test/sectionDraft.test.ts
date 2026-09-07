@@ -2,7 +2,7 @@
 // placement never loses or reorders text, a pin never passes another pin, and
 // the section's first verse number is fixed.
 import { describe, expect, it } from 'vitest';
-import { canDrop, dropPin, expandKeys, initialDraftText, parseDraft, sectionKeys, sectionVerses, serializeDraft, spanEnd } from '../src/views/sectionDraft.js';
+import { canDrop, dropPin, expandKeys, indentLine, initialDraftText, parseDraft, sectionKeys, sectionVerses, serializeDraft, spanEnd } from '../src/views/sectionDraft.js';
 
 const KEYS = ['9', '10'];
 const THREE = ['3', '4', '5'];
@@ -36,8 +36,8 @@ describe('#141 — parseDraft', () => {
   });
 
   it('an empty section has no words and no markers', () => {
-    expect(parseDraft('', KEYS)).toEqual({ words: [], seps: [], markers: {} });
-    expect(parseDraft('  \n ', KEYS)).toEqual({ words: [], seps: [], markers: {} });
+    expect(parseDraft('', KEYS)).toEqual({ words: [], seps: [], markers: {}, blocks: {} });
+    expect(parseDraft('  \n ', KEYS)).toEqual({ words: [], seps: [], markers: {}, blocks: {} });
   });
 
   it('a stub verse before a drafted one keeps the text with ITS OWN verse (Codex round 1)', () => {
@@ -279,3 +279,86 @@ describe('#63 — stacked pins are one span', () => {
     expect(dropPin({ '9': 0, '10': 2 }, KEYS, '10', 0)).toEqual({ '9': 0, '10': 0 });
   });
 });
+
+// ---------------------------------------------------------------------------
+// #54 — Paragraph breaks and poetry lines (rules 1–5)
+// ---------------------------------------------------------------------------
+describe('#54 — paragraph breaks and poetry lines from Type pane', () => {
+  it('rule 1: leading tabs are stripped before marker match', () => {
+    const d1 = parseDraft('\t10 no defraudando', KEYS);
+    expect(d1.markers['10']).toBe(0);
+    expect(d1.blocks[0]).toBe('q1');
+    const dSpan = parseDraft('\t9-10 no defraudando', ['9-10']);
+    expect(dSpan.markers['9-10']).toBe(0);
+    expect(dSpan.blocks[0]).toBe('q1');
+  });
+
+  it('rule 2: Enter opens a paragraph (preceded by blank line or no marker line)', () => {
+    const dBlank = parseDraft('9 a\n\n10 b', KEYS);
+    expect(dBlank.blocks[1]).toBe('p');
+    const dNoMarker = parseDraft('9 todo\nno defraudando', KEYS);
+    expect(dNoMarker.blocks[1]).toBe('p');
+    const dPlain = parseDraft('9 a\n10 b', KEYS);
+    expect(dPlain.blocks[1]).toBeUndefined();
+  });
+
+  it('rule 3: Tab gives q1 and second tab gives q2; tabs win over a blank line', () => {
+    const dQ1 = parseDraft('9 a\n\t10 b', KEYS);
+    expect(dQ1.blocks[1]).toBe('q1');
+    const dQ2 = parseDraft('9 a\n\t\t10 b', KEYS);
+    expect(dQ2.blocks[1]).toBe('q2');
+    const dWin = parseDraft('9 a\n\n\t10 b', KEYS);
+    expect(dWin.blocks[1]).toBe('q1');
+
+    // indentLine tests
+    expect(indentLine('10 b', 0, 1)).toEqual({ text: '\t10 b', caret: 1 });
+    expect(indentLine('\t10 b', 1, 1)).toEqual({ text: '\t\t10 b', caret: 2 });
+    expect(indentLine('\t\t10 b', 2, 1)).toEqual({ text: '\t\t10 b', caret: 2 }); // max two: no-op
+    expect(indentLine('\t\t10 b', 2, -1)).toEqual({ text: '\t10 b', caret: 1 });
+    expect(indentLine('\t10 b', 1, -1)).toEqual({ text: '10 b', caret: 0 });
+    expect(indentLine('10 b', 0, -1)).toEqual({ text: '10 b', caret: 0 }); // no tabs: no-op
+  });
+
+  it('rule 4: blocks attached to words survive pin placement', () => {
+    const d = parseDraft('9 a b\n\t10 c d', KEYS);
+    expect(d.blocks[2]).toBe('q1');
+    // Move pin 10 to word index 3 ('d')
+    const moved = dropPin(d.markers, KEYS, '10', 3);
+    expect(moved['10']).toBe(3);
+    expect(d.blocks[2]).toBe('q1');
+  });
+
+  it('rule 5: initialDraftText writes stored formats', () => {
+    const verses = [
+      { n: '9', drafted: true, body: 'a' },
+      { n: '10', drafted: true, body: 'b', format: 'q1' },
+    ];
+    expect(initialDraftText(verses, KEYS)).toBe('9 a\n\t10 b');
+    const versesQ2 = [
+      { n: '9', drafted: true, body: 'a' },
+      { n: '10', drafted: true, body: 'b', format: 'q2' },
+    ];
+    expect(initialDraftText(versesQ2, KEYS)).toBe('9 a\n\t\t10 b');
+    const versesP = [
+      { n: '9', drafted: true, body: 'a' },
+      { n: '10', drafted: true, body: 'b', format: 'p' },
+    ];
+    expect(initialDraftText(versesP, KEYS)).toBe('9 a\n\n10 b');
+  });
+
+  it('round trips: serializeDraft(parseDraft(x)) === x for all required cases', () => {
+    const cases = [
+      { text: '9 a\n\n10 b', keys: KEYS },
+      { text: '9 a\n\t10 b', keys: KEYS },
+      { text: '9 a\n\t\t10 b', keys: KEYS },
+      { text: '9 a\n10 b', keys: KEYS },
+      { text: '9-10 a\n\t11 b', keys: ['9-10', '11'] },
+    ];
+    for (const { text, keys } of cases) {
+      const pins = expandKeys(keys);
+      const d = parseDraft(text, pins);
+      expect(serializeDraft(d.words, d.seps, d.markers, pins, keys, d.blocks)).toBe(text);
+    }
+  });
+});
+
