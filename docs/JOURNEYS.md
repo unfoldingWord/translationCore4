@@ -43,7 +43,7 @@ Owner of increment numbers: the GitHub milestones, mirrored in `docs/ROADMAP.md`
 | J13 | facilitator | Start | Change the gateway-language resource set | shipped alpha.2 | `e2e/j13-gateway-change.spec.ts` |
 | J14 | — | — | retired: isolation is a MUST NOT row on J1 and J2 | retired | `e2e/j14-join-isolation.spec.ts` stays |
 | J15 | — | — | retired: slow open is a quality requirement on opening a project | retired | `e2e/j15-slow-open.spec.ts` stays, cited by a FR |
-| J16 | translator | Understand | Read a passage with helps and record a user comment | built in Increment 4 (#104); proof in Increment 5 (#197) | `e2e/j16-understand.spec.ts` (to write, #197) |
+| J16 | translator | Understand | Read a passage with helps and record a user comment | shipped alpha.5 | `e2e/j16-understand.spec.ts` |
 | J17 | translator | Exchange | Receive a project and continue offline | Phase 2 | none |
 | J18 | translator | Check | Resolve a verse fork | Phase 2 | none |
 | J19 | consultant | Check | Record findings on a translation | Phase 2 | none |
@@ -194,7 +194,7 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 - End state: one `note.add` segment bound to the passage; text ingredients byte-identical.
   Reading without a comment is not a journey.
 - Term: the user-facing word is "user comment". The journal op stays `note.add` (BURRITO-SPEC §8.5).
-- Proof: `e2e/j16-understand.spec.ts` (to write, #197; #117 adds the non-eng frame axis). Owner: built Increment 4 (#104); proof Increment 5 (#197).
+- Proof: `e2e/j16-understand.spec.ts` (#117 adds the non-eng frame axis). Owner: built Increment 4 (#104); proof Increment 5 (#197).
 
 ### J17–J19 (Phase 2)
 
