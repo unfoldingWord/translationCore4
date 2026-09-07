@@ -310,6 +310,39 @@ function AcademyTab({ notesSlot, slugs, actions }) {
   );
 }
 
+function CommentsTab({ comprehension, chapter }) {
+  if (!comprehension) return emptyChapter;
+  const list = Object.entries(comprehension)
+    .filter(([key]) => Number(key.split(':')[0]) === Number(chapter))
+    .map(([key, entry]) => {
+      const verseKey = key.split(':')[1];
+      return { key, verseKey, entry };
+    })
+    .sort((a, b) => {
+      const diff = leadingNum(a.verseKey) - leadingNum(b.verseKey);
+      if (diff !== 0) return diff;
+      return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
+    });
+  if (list.length === 0) return emptyChapter;
+  return (
+    <>
+      {list.map(({ key, verseKey, entry }) => {
+        const parts = verseKey.split('-');
+        const label = parts.length > 1
+          ? t('understand.versesRange', { from: parts[0], to: parts[1] })
+          : t('understand.verseOne', { n: verseKey });
+        return (
+          <div key={key} data-testid="helps-comment"
+            style={{ border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 14, background: '#fff' }}>
+            <Overline>{label}</Overline>
+            <p style={{ whiteSpace: 'pre-wrap' }}>{entry.text}</p>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 /** The simplified tab is named after the pinned simplified text ("UST" for
  * en_ust, the gateway language's own abbreviation when one is pinned). */
 const simplifiedLabel = (u) => {
@@ -332,13 +365,15 @@ function HelpsTab({ tab, u, chapter, actions, cardFocus }) {
       </Callout>
     );
   }
-  const notes = itemsInChapter(u?.notes, chapter);
-  if (tab === 'notes') return <NotesTab slot={u?.notes} notes={notes} actions={actions} cardFocus={cardFocus} />;
+  const notesSlot = u?.notes;
+  const notes = itemsInChapter(notesSlot, chapter);
+  if (tab === 'notes') return <NotesTab slot={notesSlot} notes={notes} actions={actions} cardFocus={cardFocus} />;
   if (tab === 'words') return <WordsTab slot={u?.words} words={itemsInChapter(u?.words, chapter)} actions={actions} cardFocus={cardFocus} />;
   if (tab === 'questions') return <QuestionsTab slot={u?.questions} questions={itemsInChapter(u?.questions, chapter)} />;
   if (tab === 'simplified') return <SimplifiedTab slot={u?.simplified} sourceRefs={u?.sourceRefs} chapter={chapter} />;
+  if (tab === 'comments') return <CommentsTab comprehension={u?.comprehension} chapter={chapter} />;
   const slugs = [...new Set(notes.map((n) => n.contextId.groupId))].filter(Boolean);
-  return <AcademyTab notesSlot={u?.notes} slugs={slugs} actions={actions} />;
+  return <AcademyTab notesSlot={notesSlot} slugs={slugs} actions={actions} />;
 }
 
 /** Card titles show the GATEWAY rendering of the quote (owner ruling
@@ -424,6 +459,7 @@ export function HelpsPanel({ chapter }) {
         { value: 'questions', label: t('helps.questions') },
         { value: 'simplified', label: simplifiedLabel(u) },
         { value: 'academy', label: t('helps.academy') },
+        { value: 'comments', label: t('helps.comments') },
       ]} />
       <div style={{ flex: 1, overflow: 'auto', padding: 16, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
         {/* Loading and a failed load are their OWN states — never rendered as
