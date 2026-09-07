@@ -1742,15 +1742,23 @@ export function AppProvider({ children }) {
     const chapters = parseChapters(s.bookRaw);
     const entries = indexBook(s.bookRaw);
     const byChapter = {};
+    // A paragraph-level marker in the gap before a verse's `\v` opens a new
+    // display paragraph (#141: Translate flows a section's verses as
+    // paragraphs). The chapter's first verse always opens one.
+    const PARA_IN_GAP = /\\(?:p|m|pi\d?|pm|pmo|nb|b|q\d?|li\d?|lh|lf|lim\d?)\b/;
+    let prev = null;
     for (const e of entries) {
       const body = s.bookRaw.slice(e.start, e.end).trim();
       const drafted = body !== '' && body !== '___';
+      const para = !prev || prev.chapter !== e.chapter || PARA_IN_GAP.test(s.bookRaw.slice(prev.end, e.start));
       (byChapter[e.chapter] ||= []).push({
         n: e.verseKey,
         drafted,
+        para,
         text: drafted ? verseText(chapters[e.chapter]?.[e.verseKey]) : '',
         body: drafted ? body : '',
       });
+      prev = e;
     }
     const chapterNums = Object.keys(byChapter)
       .map(Number)
@@ -3416,6 +3424,29 @@ export function AppProvider({ children }) {
       blurVerse: () => {
         dispatch({ type: 'set', patch: { editing: null } });
         schedulerRef.current?.flushOnBlur();
+      },
+      // #141: the section editing card. It holds its own text until Save, so
+      // opening it writes nothing; `keys` are the section's verse keys.
+      startSection: (chapter, keys) => {
+        dispatch({ type: 'set', patch: { editing: { key: `${chapter}:s${keys[0]}`, keys } } });
+      },
+      // Save a section: the saved verses equal what the card shows. Each
+      // CHANGED verse goes through editVerse — the one splice path, the
+      // scheduler owns the write (W-5) — then the blur flush. A verse whose
+      // text equals its stored body is not touched, so the file outside the
+      // edited verses stays byte-identical. `texts` maps verse key to text; a
+      // section verse with no text in the card returns to the `___` stub
+      // (editVerse's empty rule) — never a stale copy beside the moved words.
+      saveSection: (chapter, keys, texts) => {
+        for (const verseKey of keys) {
+          const stored = verseBody(rawRef.current, chapter, verseKey);
+          if (stored == null) continue;
+          const current = stored.trim() === '___' ? '' : stored.trim();
+          const text = texts[verseKey] ?? '';
+          if (text.trim() === current) continue;
+          a.editVerse(chapter, verseKey, text);
+        }
+        a.blurVerse();
       },
       cancelVerse: (chapter, verseKey) => {
         // Restore the pre-edit body (still the one splice path), then close.

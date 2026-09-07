@@ -43,7 +43,8 @@ beforeEach(() => {
 describe('#107 — the Translate editing card', () => {
   it('types at the size the drafted verse displays at (no jump on click)', () => {
     render(<Draft />);
-    const display = screen.getByTitle(/edit/i);
+    // #141: the verse is a span inside its section paragraph; the type sits on the <p>.
+    const display = screen.getByTitle(/edit/i).closest('p')!;
     const displaySize = display.style.fontSize;
     const displayLine = display.style.lineHeight;
     // The design's reading size for both Translate columns (epic #104).
@@ -64,7 +65,7 @@ describe('#107 — the Translate editing card', () => {
     state.editing = null;
     try {
       render(<Draft />);
-      const display = screen.getByTitle(/edit/i);
+      const display = screen.getByTitle(/edit/i).closest('p')!;
       expect(display.style.fontSize).toBe('var(--fs-verse-nastaliq)');
       expect(display.style.lineHeight).toBe('var(--lh-nastaliq)');
       expect(display.style.fontFamily).toBe('var(--font-nastaliq)');
