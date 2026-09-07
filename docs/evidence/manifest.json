@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "tool": "scripts/prove.mjs",
-  "commit": "a4883dae7ac52f206fc99a9899359bac4589028c",
+  "commit": "f41e8cd9e49020d068c7967825d14442c7370e7c",
   "dirty": false,
-  "date": "2026-09-07T15:34:38.222Z",
+  "date": "2026-09-07T16:38:27.397Z",
   "node": "v22.23.2",
   "platform": "linux-x64",
   "ci": true,
@@ -32,7 +32,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [],
-      "durationMs": 5701
+      "durationMs": 5769
     },
     {
       "id": "typecheck",
@@ -47,7 +47,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [],
-      "durationMs": 5047
+      "durationMs": 5300
     },
     {
       "id": "vitest",
@@ -58,14 +58,14 @@
       "skipped": null,
       "ok": true,
       "exitCode": 0,
-      "passed": 899,
+      "passed": 919,
       "failed": 0,
       "skippedTests": 37,
       "summary": [
         "Test Files  57 passed | 5 skipped (62)",
-        "Tests  899 passed | 37 skipped (936)"
+        "Tests  919 passed | 37 skipped (956)"
       ],
-      "durationMs": 29762
+      "durationMs": 29919
     },
     {
       "id": "build",
@@ -80,9 +80,9 @@
       "failed": null,
       "skippedTests": null,
       "summary": [
-        "✓ built in 7.00s"
+        "✓ built in 7.21s"
       ],
-      "durationMs": 7462
+      "durationMs": 7674
     },
     {
       "id": "conformance:generate",
@@ -117,7 +117,7 @@
         "Phase-2 (journal-merge design checks, §8.7): 3 passed, 0 failed",
         "40 passed, 0 failed"
       ],
-      "durationMs": 578
+      "durationMs": 575
     },
     {
       "id": "conformance:journal",
@@ -134,7 +134,7 @@
       "summary": [
         "Journal suite: 344 passed, 0 failed (fast-check seed 20260707)"
       ],
-      "durationMs": 3059
+      "durationMs": 3137
     },
     {
       "id": "conformance:normative",
