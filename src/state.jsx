@@ -397,6 +397,15 @@ function checkDecisionSaved(state, a) {
 /** Check-session merge actions, table-dispatched ahead of the main switch. */
 const CHECK_SESSION_CASES = { patchCheckSession, checkDecisionSaved, pickerToolEntry };
 
+function setSourceEntry(state, a) {
+  if (a.value === undefined || a.value === null) {
+    const next = { ...state.sources };
+    delete next[a.id];
+    return { ...state, sources: next };
+  }
+  return { ...state, sources: { ...state.sources, [a.id]: a.value } };
+}
+
 function reducer(state, a) {
   const checkCase = CHECK_SESSION_CASES[a.type];
   if (checkCase) return checkCase(state, a);
@@ -414,7 +423,7 @@ function reducer(state, a) {
     case 'setSource':
       // Atomic per-key merge: two source fetches can resolve in one batch, and
       // a read-modify-write through a stale snapshot would clobber the sibling.
-      return { ...state, sources: { ...state.sources, [a.id]: a.value } };
+      return setSourceEntry(state, a);
     case 'noteSaved': {
       // Atomic merge of ONE persisted comprehension note (S1, adversarial
       // round 19): two per-target saves can complete in the same batch, and
@@ -1382,7 +1391,10 @@ function dispatchResolutionDown({ resolutionError, seq, understandSeqRef, dispat
 /** Test hook (round 33): the load/save interleavings are unit-tested. */
 export const __performLoadUnderstandForTests = performLoadUnderstand;
 
-function loadOrigPane({ store, origPin, code, seq, openSeqRef, dispatch, testament }) {
+function loadOrigPane({ store, origPin, code, seq, openSeqRef, stateRef, dispatch, testament }) {
+  if (stateRef?.current?.sources?.orig) {
+    dispatch({ type: 'setSource', id: 'orig', value: undefined });
+  }
   if (!origPin) return;
   readCheckOrigChapters(store, origPin, code)
     .then((res) => {
@@ -1469,7 +1481,7 @@ function loadSourcePanes({ store, code, seq, openSeqRef, stateRef, dispatch, pin
       ...(ids.length > 0 && !ids.includes(st.sourceTab) && !(st.sourceTab === 'orig' && origPin) ? { sourceTab: ids[0] } : {}),
     },
   });
-  loadOrigPane({ store, origPin, code, seq, openSeqRef, dispatch, testament });
+  loadOrigPane({ store, origPin, code, seq, openSeqRef, stateRef, dispatch, testament });
   loadExtraScripturePanes({ store, entries, code, seq, openSeqRef, dispatch });
 }
 

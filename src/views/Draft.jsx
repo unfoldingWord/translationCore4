@@ -5,9 +5,8 @@
 // level in SectionEditor (Type / Place verse numbers); the verse-by-verse
 // card (VerseEditor) stays for revising one verse alone.
 import React, { useRef, useEffect } from 'react';
-import { useApp } from '../state.jsx';
-import { bookName, BOOK_NAMES } from '../data/bookNames';
-const isOldTestament = (code) => Object.keys(BOOK_NAMES).indexOf(String(code).toUpperCase()) < 39;
+import { useApp, isOldTestament } from '../state.jsx';
+import { bookName } from '../data/bookNames';
 import { t } from '../i18n';
 import { FilterChip, IconButton, Overline, Button } from '../ds/index.js';
 import { RailIcon, HelpsIcon } from './PanelIcons.jsx';
@@ -105,11 +104,11 @@ const chapterSections = (s, verses) => {
 const targetParagraphs = (verses) => paragraphsOf(verses);
 const indentStyle = (level) => (level === 1 ? { paddingInlineStart: '1.5em' } : level === 2 ? { paddingInlineStart: '3em' } : {});
 
-function SourceCell({ s, keys, sourceModel, paneFocus, label }) {
+function SourceCell({ s, bookCode, keys, sourceModel, paneFocus, label }) {
   const chapterVerses = sourceModel && !isSourceAbsent(sourceModel) ? sourceModel[String(s.chapter)] ?? {} : {};
   const italic = { fontSize: 'var(--fs-ui-sm)', color: 'var(--uw-haze)', fontStyle: 'italic', margin: '6px 0 0' };
   const isOrig = s.sourceTab === 'orig';
-  const testament = s.sources?.orig?.testament ?? (isOldTestament(s.book) ? 'ot' : 'nt');
+  const testament = s.sources?.orig?.testament ?? (isOldTestament(bookCode) ? 'ot' : 'nt');
   const ot = testament === 'ot';
   return (
     <div style={{ ...CELL, borderInlineEnd: hair }}>
@@ -299,7 +298,7 @@ export default function Draft() {
               const sectionVerses = keys.map((k) => byKey.get(k));
               return (
                 <React.Fragment key={keys[0]}>
-                  <SourceCell s={s} keys={keys} sourceModel={sourceModel} paneFocus={paneFocus} label={`${bookName(book.code)} ${s.chapter}:${span}`} />
+                  <SourceCell s={s} bookCode={book.code} keys={keys} sourceModel={sourceModel} paneFocus={paneFocus} label={`${bookName(book.code)} ${s.chapter}:${span}`} />
                   <TargetCell s={s} verses={sectionVerses} keys={keys} byKey={byKey} span={span} dir={dir} type={type} editType={editType} actions={actions} />
                 </React.Fragment>
               );

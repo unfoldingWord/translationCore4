@@ -283,7 +283,6 @@ export const unsatisfiedProjectPinFor = (
     | {
         languageSets?: Record<string, LanguageSet>;
         resources?: { originalLanguage?: { nt?: ResourcePin; ot?: ResourcePin } };
-        originalLanguage?: { nt?: ResourcePin; ot?: ResourcePin };
       }
     | null
     | undefined,
@@ -296,7 +295,7 @@ export const unsatisfiedProjectPinFor = (
       if (isMatchingUnsatisfiedPin(pin, localRepoPath, installed)) return pin;
     }
   }
-  const orig = resources?.resources?.originalLanguage ?? resources?.originalLanguage;
+  const orig = resources?.resources?.originalLanguage;
   if (orig) {
     for (const testament of ['nt', 'ot'] as const) {
       const pin = orig[testament];

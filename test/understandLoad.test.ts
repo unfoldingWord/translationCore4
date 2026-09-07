@@ -5,7 +5,7 @@
 // "no pins recorded"): the screen proceeds with unpinned help slots instead
 // of waiting forever.
 import { describe, expect, it } from 'vitest';
-import { __performLoadUnderstandForTests as loadUnderstand, __loadProjectPinsForTests as loadPins, __loadSourcePanesForTests as loadSourcePanes, __setInstalledCacheForTests as setInstalledCache, __adoptDownloadedPinsForTests as adoptDownloaded } from '../src/state.jsx';
+import { __performLoadUnderstandForTests as loadUnderstand, __loadProjectPinsForTests as loadPins, __loadSourcePanesForTests as loadSourcePanes, __setInstalledCacheForTests as setInstalledCache, __adoptDownloadedPinsForTests as adoptDownloaded, __reducerForTests as reducer } from '../src/state.jsx';
 import { INSTALLED_SUITE } from '../src/data/installedSuite';
 import { localRepoPathFromRepoPath } from '../src/data/installed';
 import { absenceMessageKey } from '../src/data/sourceState';
@@ -234,6 +234,127 @@ describe('round 37 — the source panes come from the PROJECT pins (§5.3), neve
     await flush();
     const missingPane = absent.dispatched.find((d) => d.type === 'setSource') as Record<string, unknown>;
     expect(missingPane.value).toBe('missing');
+  });
+});
+
+type TestSourcesState = {
+  sources?: Record<string, { raw?: string; chapters?: Record<string, Record<string, unknown>>; version?: string | null; testament?: string }>;
+  sourceTab?: string;
+};
+
+describe('orig pane handling in loadSourcePanes (#207 / C2)', () => {
+  const ntPin = { repoPath: 'git.door43.org/unfoldingWord/el-x-koine_ugnt', sha: 'b'.repeat(40), version: 'v0.34', flavor: 'scripture/textTranslation' };
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  it('(a) NT book with an NT pin → sources.orig set from the reader', async () => {
+    let state: TestSourcesState = { sources: {}, sourceTab: 'ult' };
+    const dispatched: Array<Record<string, unknown>> = [];
+    const dispatch = (a: Record<string, unknown>) => {
+      dispatched.push(a);
+      state = reducer(state, a) as TestSourcesState;
+    };
+    loadSourcePanes({
+      store: {
+        readSourceBook: async (_repo: string, book: string) => ({ usfm: `\\id ${book}\n\\c 1\n\\v 1 Παῦλος\n` }),
+      },
+      code: 'TIT',
+      seq: 1,
+      openSeqRef: { current: 1 },
+      stateRef: { current: state },
+      dispatch,
+      pins: {
+        extraScripture: [{ id: 'ult', repoPath: 'git.door43.org/unfoldingWord/en_ult', sha: 'a'.repeat(40), flavor: 'scripture/textTranslation' }],
+        resources: { originalLanguage: { nt: ntPin } },
+      },
+    });
+    await flush();
+    expect(state.sources?.orig).toBeDefined();
+    expect(state.sources?.orig?.version).toBe('v0.34');
+    expect(state.sources?.orig?.testament).toBe('nt');
+    expect(state.sources?.orig?.chapters?.['1']?.['1']).toBeDefined();
+  });
+
+  it('(b) no pin → no sources.orig', async () => {
+    let state: TestSourcesState = { sources: {}, sourceTab: 'ult' };
+    const dispatched: Array<Record<string, unknown>> = [];
+    const dispatch = (a: Record<string, unknown>) => {
+      dispatched.push(a);
+      state = reducer(state, a) as TestSourcesState;
+    };
+    loadSourcePanes({
+      store: { readSourceBook: async () => { throw new Error('must not read'); } },
+      code: 'TIT',
+      seq: 1,
+      openSeqRef: { current: 1 },
+      stateRef: { current: state },
+      dispatch,
+      pins: {
+        extraScripture: [{ id: 'ult', repoPath: 'git.door43.org/unfoldingWord/en_ult', sha: 'a'.repeat(40), flavor: 'scripture/textTranslation' }],
+        resources: {},
+      },
+    });
+    await flush();
+    expect(state.sources?.orig).toBeUndefined();
+    expect(state.sources && 'orig' in state.sources).toBe(false);
+  });
+
+  it('(c) a previous sources.orig then a book on a testament with no pin → sources.orig gone', async () => {
+    let state: TestSourcesState = {
+      sources: {
+        orig: { raw: 'stale', chapters: {}, version: 'v0.34', testament: 'nt' },
+        ult: { raw: 'ult', chapters: {}, version: 'v1' },
+      },
+      sourceTab: 'ult',
+    };
+    const dispatched: Array<Record<string, unknown>> = [];
+    const dispatch = (a: Record<string, unknown>) => {
+      dispatched.push(a);
+      state = reducer(state, a) as TestSourcesState;
+    };
+    // GEN is an Old Testament book; project pins only have NT pin
+    loadSourcePanes({
+      store: { readSourceBook: async () => ({ usfm: '\\id GEN\n\\c 1\n\\v 1 In the beginning\n' }) },
+      code: 'GEN',
+      seq: 1,
+      openSeqRef: { current: 1 },
+      stateRef: { current: state },
+      dispatch,
+      pins: {
+        extraScripture: [{ id: 'ult', repoPath: 'git.door43.org/unfoldingWord/en_ult', sha: 'a'.repeat(40), flavor: 'scripture/textTranslation' }],
+        resources: { originalLanguage: { nt: ntPin } },
+      },
+    });
+    await flush();
+    expect(state.sources?.orig).toBeUndefined();
+    expect(state.sources && 'orig' in state.sources).toBe(false);
+    expect(state.sources?.ult).toBeDefined();
+  });
+
+  it('(d) sourceTab: "orig" with no pin snaps to ids[0]', async () => {
+    let state: TestSourcesState = { sources: {}, sourceTab: 'orig' };
+    const dispatched: Array<Record<string, unknown>> = [];
+    const dispatch = (a: Record<string, unknown>) => {
+      dispatched.push(a);
+      state = reducer(state, a) as TestSourcesState;
+    };
+    loadSourcePanes({
+      store: { readSourceBook: async () => ({ usfm: '\\id TIT\n\\c 1\n\\v 1 Paul\n' }) },
+      code: 'TIT',
+      seq: 1,
+      openSeqRef: { current: 1 },
+      stateRef: { current: state },
+      dispatch,
+      pins: {
+        extraScripture: [
+          { id: 'ult', repoPath: 'git.door43.org/unfoldingWord/en_ult', sha: 'a'.repeat(40), flavor: 'scripture/textTranslation' },
+          { id: 'ust', repoPath: 'git.door43.org/unfoldingWord/en_ust', sha: 'c'.repeat(40), flavor: 'scripture/textTranslation' },
+        ],
+        resources: {},
+      },
+    });
+    await flush();
+    expect(state.sourceTab).toBe('ult');
+    expect(dispatched[0].patch).toMatchObject({ sourcePanes: ['ult', 'ust'], sourceTab: 'ult' });
   });
 });
 

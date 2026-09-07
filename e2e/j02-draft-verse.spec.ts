@@ -641,6 +641,7 @@ test.describe('J2 — a translator drafts a verse', () => {
         const para = page.locator('p[dir="ltr"]', { hasText: greek });
         await expect(para).toBeVisible();
         await expect(para).toHaveAttribute('dir', 'ltr');
+        await expect(para).toHaveAttribute('lang', 'el');
         await expect(para).toContainText(greek);
       });
 

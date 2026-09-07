@@ -88,6 +88,7 @@ vi.mock('../src/state.jsx', () => ({
   AppProvider: ({ children }: { children: unknown }) => children,
   SCRIPT_FONTS: [],
   SUITE_VERSION: 'v89',
+  isOldTestament: () => false,
 }));
 
 import Understand from '../src/views/Understand.jsx';
