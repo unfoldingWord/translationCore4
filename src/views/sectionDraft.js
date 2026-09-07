@@ -13,7 +13,31 @@
 //     may share an index only when the earlier verse has no words (a stub
 //     verse before a drafted one); a drop can never create that state (#63).
 
-const LINE = /^\s*(\d+(?:-\d+)?)(?:\s+|$)([\s\S]*)$/;
+// A line that BEGINS with one of the section's verse keys begins that verse.
+// The key must sit at column 0: a verse body may wrap onto a line that starts
+// with a number of its own ("…y le dio\n10 talentos"), and reading that as a
+// marker would move the words and rewrite a verse nobody edited (Codex review,
+// round 2). Such a body line is written out indented by one space, and the
+// parser takes that one space back off — the escape is invisible in the file.
+const LINE = /^(\d+(?:-\d+)?)(?:\s+|$)([\s\S]*)$/;
+
+const markerKey = (line, keys) => {
+  const m = String(line).match(LINE);
+  return m && keys.includes(m[1]) ? m : null;
+};
+
+/** Indent every continuation line of a body that would read as a marker. */
+const escapeBody = (body, keys) => String(body)
+  .split('\n')
+  .map((line, i) => (i > 0 && markerKey(line, keys) ? ` ${line}` : line))
+  .join('\n');
+
+/** The card's opening text: one "key body" line per verse, a stub verse an
+ * empty one, and nothing at all for a section with no draft yet. Without the
+ * stub's own line a stub first verse would take the next verse's words. */
+export const initialDraftText = (verses, keys) => (verses.some((v) => v.drafted)
+  ? verses.map((v) => `${v.n} ${v.drafted ? escapeBody(v.body, keys) : ''}`).join('\n')
+  : '');
 
 /** Read the typed section into words, separators and pins. A pin that would
  * pass an earlier pin is dropped (it returns to the bank). */
@@ -31,10 +55,12 @@ export const parseDraft = (text, keys) => {
   const lines = String(text ?? '').split('\n');
   lines.forEach((line, li) => {
     let rest = line;
-    const m = rest.match(LINE);
-    if (m && keys.includes(m[1])) {
+    const m = markerKey(rest, keys);
+    if (m) {
       found[m[1]] = { at: words.length, line: li };
       rest = m[2];
+    } else if (rest.startsWith(' ') && markerKey(rest.slice(1), keys)) {
+      rest = rest.slice(1); // an escaped body line: the words are text, not a marker
     }
     const tokens = rest.split(/(\s+)/);
     for (let i = 0; i < tokens.length; i++) {
@@ -87,7 +113,7 @@ export const sectionVerses = (words, seps, markers, keys) => {
 /** Write the pinned word list back out as Type-mode text, one verse per line. */
 export const serializeDraft = (words, seps, markers, keys) => {
   const verses = sectionVerses(words, seps, markers, keys);
-  return keys.filter((k) => verses[k]).map((k) => `${k} ${verses[k]}`).join('\n');
+  return keys.filter((k) => verses[k]).map((k) => `${k} ${escapeBody(verses[k], keys)}`).join('\n');
 };
 
 /** May `pin` begin at word `index`? Never the first verse (fixed), never on or

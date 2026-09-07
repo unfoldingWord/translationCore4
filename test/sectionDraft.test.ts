@@ -2,7 +2,7 @@
 // placement never loses or reorders text, a pin never passes another pin, and
 // the section's first verse number is fixed.
 import { describe, expect, it } from 'vitest';
-import { canDrop, parseDraft, sectionVerses, serializeDraft, spanEnd } from '../src/views/sectionDraft.js';
+import { canDrop, initialDraftText, parseDraft, sectionVerses, serializeDraft, spanEnd } from '../src/views/sectionDraft.js';
 
 const KEYS = ['9', '10'];
 const THREE = ['3', '4', '5'];
@@ -136,5 +136,50 @@ describe('#141 — spanEnd', () => {
     expect(spanEnd(markers, 0, null, 6)).toBe(2);
     expect(spanEnd(markers, 1, '4', 6)).toBe(4);
     expect(spanEnd(markers, 4, null, 6)).toBe(6);
+  });
+});
+
+describe('#141 — a verse body that wraps onto a marker-shaped line (Codex round 2)', () => {
+  // Verse 9 wraps, and its second line begins with the number 10 — which is
+  // also this section's next verse key. Reading it as a marker would move
+  // "talentos" into verse 10 and rewrite verse 9, which nobody edited.
+  const verses = [
+    { n: '9', drafted: true, body: 'y le dio\n10 talentos' },
+    { n: '10', drafted: true, body: 'no defraudando' },
+  ];
+
+  it('the card writes that line escaped, and the parse gives every verse its own words back', () => {
+    const text = initialDraftText(verses, KEYS);
+    expect(text).toBe('9 y le dio\n 10 talentos\n10 no defraudando');
+    const d = parseDraft(text, KEYS);
+    expect(sectionVerses(d.words, d.seps, d.markers, KEYS)).toEqual({
+      '9': 'y le dio\n10 talentos',
+      '10': 'no defraudando',
+    });
+  });
+
+  it('the escape survives a Type → Place → Type round trip', () => {
+    const d = parseDraft(initialDraftText(verses, KEYS), KEYS);
+    const back = serializeDraft(d.words, d.seps, d.markers, KEYS);
+    expect(back).toBe('9 y le dio\n 10 talentos\n10 no defraudando');
+    const again = parseDraft(back, KEYS);
+    expect(sectionVerses(again.words, again.seps, again.markers, KEYS)).toEqual({
+      '9': 'y le dio\n10 talentos',
+      '10': 'no defraudando',
+    });
+  });
+
+  it('a number that is not one of the section keys needs no escape (the negative control)', () => {
+    const other = [{ n: '9', drafted: true, body: 'y le dio\n12 talentos' }, verses[1]];
+    expect(initialDraftText(other, KEYS)).toBe('9 y le dio\n12 talentos\n10 no defraudando');
+    const d = parseDraft(initialDraftText(other, KEYS), KEYS);
+    expect(sectionVerses(d.words, d.seps, d.markers, KEYS)).toEqual({
+      '9': 'y le dio\n12 talentos',
+      '10': 'no defraudando',
+    });
+  });
+
+  it('a section with no draft opens empty', () => {
+    expect(initialDraftText([{ n: '9', drafted: false, body: '' }, { n: '10', drafted: false, body: '' }], KEYS)).toBe('');
   });
 });

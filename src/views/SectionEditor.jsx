@@ -8,18 +8,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from '../state.jsx';
 import { t } from '../i18n';
 import { Button, Overline, Switcher, VerseMarker } from '../ds/index.js';
-import { canDrop, parseDraft, sectionVerses, serializeDraft, spanEnd } from './sectionDraft.js';
+import { canDrop, initialDraftText, parseDraft, sectionVerses, serializeDraft, spanEnd } from './sectionDraft.js';
 
 const SUP = { fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', marginInlineEnd: 3, verticalAlign: 'super' };
 const WORD = { display: 'inline-block', borderRadius: 'var(--radius-xs)', padding: '0 .06em' };
-
-/** The initial Type-mode text. An undrafted section starts empty — "type it
- * straight through". Once any verse is drafted, EVERY verse gets its own
- * numbered line, a stub verse an empty one: without it a stub first verse
- * would take the next verse's words (Codex review, round 1). */
-const initialText = (verses) => (verses.some((v) => v.drafted)
-  ? verses.map((v) => (v.drafted ? `${v.n} ${v.body}` : `${v.n} `)).join('\n')
-  : '');
 
 /** The hover title of a word while a pin is in hand: why it can or cannot land here. */
 const wordTitle = (held, pinAt, ok, w) => {
@@ -136,7 +128,7 @@ function PlaceView({ keys, words, markers, setMarkers, dir, editType }) {
 export function SectionEditor({ chapter, keys, verses, span, dir, editType }) {
   const { actions } = useApp();
   const [mode, setMode] = useState('type');
-  const [text, setText] = useState(() => initialText(verses));
+  const [text, setText] = useState(() => initialDraftText(verses, keys));
   const [placed, setPlaced] = useState({ words: [], seps: [], markers: {} });
   const ref = useRef(null);
   useEffect(() => { if (mode === 'type') ref.current?.focus(); }, [mode]);
