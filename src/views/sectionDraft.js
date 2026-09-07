@@ -250,3 +250,37 @@ export const keyMapping = (oldKeys, newKeys) => {
   const byNum = (a, b) => Number(expandKeys([a])[0]) - Number(expandKeys([b])[0]);
   return groups.map(({ from, to }) => ({ from: [...from].sort(byNum), to: [...to].sort(byNum) }));
 };
+
+/** The verse numbers a scoped key ("2:9-10") covers, scoped ("2:9", "2:10"). */
+const scopedNums = (key) => {
+  const sep = String(key).indexOf(':');
+  const chapter = String(key).slice(0, sep);
+  return expandKeys([String(key).slice(sep + 1)]).map((n) => `${chapter}:${n}`);
+};
+
+/** Compose a pending old/new key mapping (scoped keys, "2:9") with the next
+ * one staged before the pending write landed: the result maps the keys the
+ * store still projects to the keys the buffer now holds. A key an earlier
+ * step produced and a later step consumed ("2:11-12" in create-then-extend)
+ * is on neither side. */
+export const composeMappings = (pending, next) => {
+  const groups = [];
+  for (const m of [...pending, ...next]) {
+    const nums = [...m.from, ...m.to].flatMap(scopedNums);
+    const hits = groups.filter((g) => g.nums.some((n) => nums.includes(n)));
+    const g = hits[0] ?? { nums: [], from: [], to: [] };
+    for (const h of hits.slice(1)) {
+      g.nums.push(...h.nums); g.from.push(...h.from); g.to.push(...h.to);
+      groups.splice(groups.indexOf(h), 1);
+    }
+    if (!hits.length) groups.push(g);
+    g.nums.push(...nums); g.from.push(...m.from); g.to.push(...m.to);
+  }
+  const byNum = (a, b) => Number(scopedNums(a)[0].split(':')[1]) - Number(scopedNums(b)[0].split(':')[1]);
+  return groups
+    .map(({ from, to }) => ({
+      from: [...new Set(from.filter((k) => !to.includes(k)))].sort(byNum),
+      to: [...new Set(to.filter((k) => !from.includes(k)))].sort(byNum),
+    }))
+    .filter((g) => g.from.length || g.to.length);
+};

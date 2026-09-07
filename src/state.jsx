@@ -12,7 +12,7 @@ import { StaleWriteError } from './data/httpStore';
 import { JournalingStore, ProjectReader } from './data/journal/journalingStore';
 import { SaveScheduler } from './data/saveScheduler';
 import { spliceSection, spliceVerse, verseBody } from './data/usfm/splice';
-import { keyMapping } from './views/sectionDraft.js';
+import { composeMappings, keyMapping } from './views/sectionDraft.js';
 import { indexBook } from './data/usfm/indexer';
 import { RESOURCE_FRAME, forgetProjectFrames, resolveProjectFrame } from './data/projectFrame';
 import { backfillCoverage } from './data/coverageBackfill';
@@ -24,7 +24,7 @@ import { GATEWAYS, gatewayKey, DCS_HOST, orgForRepoName } from './data/gateways'
 import { fetchAndInstallPin, latestReleaseTag, identifyExistingInstall } from './data/resourceFetch';
 import { isNotFoundError } from './data/serverApi';
 import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, mergeOptionalPins, isPinLocal, unsatisfiedProjectPinFor, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk, flavorOfMetadata } from './data/installed';
-import { TOOL_SLOT, preflightToolBook, resolutionRecord, resolveToolBook, resolveSetSlot } from './data/resolve';
+import { TOOL_SLOT, preflightToolBook, recordMatchesResolution, resolutionRecord, resolveToolBook, resolveSetSlot } from './data/resolve';
 import {
   deriveForProject,
   isDecided,
@@ -745,7 +745,11 @@ async function completedCheckSession({ store, st, tool, book, pre, derived, drop
     .filter(Boolean)
     .map((pin) => ({ repoPath: pin.repoPath, version: pin.version, sha: pin.sha }));
   const warning = resolutionWarning(savedFile?.resource, pre.resolution, rungPins);
-  const { items: merged, orphaned } = mergeAndReattach(derived, saved);
+  // #63: with the file's resource unchanged there was no re-pin, so a saved
+  // `invalidated` is the journal's structural one — kept until re-checked.
+  const { items: merged, orphaned } = mergeAndReattach(derived, saved, {
+    keepInvalidated: recordMatchesResolution(savedFile?.resource, pre.resolution),
+  });
   const verses = withSpanMembers(verseTextIndex(st.bookRaw));
   const { items, invalidated } = revalidateAgainstDraft(merged, verses);
   return {
@@ -923,7 +927,10 @@ function stageStructuralSection({ rawRef, schedulerRef, structuralRef, stateRef,
     from: m.from.map((k) => `${chapter}:${k}`),
     to: m.to.map((k) => `${chapter}:${k}`),
   }));
-  structuralRef.current.set(book, [...(structuralRef.current.get(book) ?? []), ...scoped]);
+  // A save staged while an earlier structural write is still in flight (or
+  // retained after a failure) composes onto it: the store sees one mapping
+  // from the keys it projects to the keys the buffer holds (Codex round 1).
+  structuralRef.current.set(book, composeMappings(structuralRef.current.get(book) ?? [], scoped));
   schedulerRef.current.replaceBook(book, rawRef.current);
   dispatch({ type: 'set', patch: { bookRaw: rawRef.current } });
 }

@@ -2,7 +2,7 @@
 // placement never loses or reorders text, a pin never passes another pin, and
 // the section's first verse number is fixed.
 import { describe, expect, it } from 'vitest';
-import { canDrop, dropPin, expandKeys, initialDraftText, keyMapping, parseDraft, sectionKeys, sectionVerses, serializeDraft, spanEnd } from '../src/views/sectionDraft.js';
+import { canDrop, composeMappings, dropPin, expandKeys, initialDraftText, keyMapping, parseDraft, sectionKeys, sectionVerses, serializeDraft, spanEnd } from '../src/views/sectionDraft.js';
 
 const KEYS = ['9', '10'];
 const THREE = ['3', '4', '5'];
@@ -285,5 +285,22 @@ describe('#63 — stacked pins are one span', () => {
     expect(keyMapping(['3', '4', '5'], ['3-4', '5'])).toEqual([{ from: ['3', '4'], to: ['3-4'] }]);
     expect(keyMapping(['3', '4', '5'], ['3', '4', '5'])).toEqual([]);
     expect(keyMapping(['3-4', '5', '6'], ['3', '4', '5-6'])).toEqual([{ from: ['3-4'], to: ['3', '4'] }, { from: ['5', '6'], to: ['5-6'] }]);
+  });
+});
+
+describe('#63 — composeMappings: a second structural save composes onto a pending one (Codex round 1)', () => {
+  it('create then extend before the first write lands maps the projected keys to the final span', () => {
+    const pending = [{ from: ['2:11', '2:12'], to: ['2:11-12'] }];
+    const next = [{ from: ['2:11-12', '2:13'], to: ['2:11-13'] }];
+    expect(composeMappings(pending, next)).toEqual([{ from: ['2:11', '2:12', '2:13'], to: ['2:11-13'] }]);
+  });
+
+  it('create then break back cancels out; unrelated groups stay separate', () => {
+    expect(composeMappings([{ from: ['2:9', '2:10'], to: ['2:9-10'] }], [{ from: ['2:9-10'], to: ['2:9', '2:10'] }])).toEqual([]);
+    expect(composeMappings([{ from: ['2:9', '2:10'], to: ['2:9-10'] }], [{ from: ['2:14', '2:15'], to: ['2:14-15'] }])).toEqual([
+      { from: ['2:9', '2:10'], to: ['2:9-10'] },
+      { from: ['2:14', '2:15'], to: ['2:14-15'] },
+    ]);
+    expect(composeMappings([], [{ from: ['2:9', '2:10'], to: ['2:9-10'] }])).toEqual([{ from: ['2:9', '2:10'], to: ['2:9-10'] }]);
   });
 });
