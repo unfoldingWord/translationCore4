@@ -129,7 +129,7 @@ describe('F3 — helps cards highlight their quote in the source passage', () =>
     rerender(<Draft />);
     expect(highlightedWords()).toEqual(['chosen', 'of', 'God']);
     // The drafted target text carries no <mark> — highlight is source-only.
-    expect(screen.getByText(/siervo de Dios/).querySelector('[data-testid="source-hl"]')).toBeNull();
+    expect(screen.getByTitle('Edit this verse').querySelector('[data-testid="source-hl"]')).toBeNull();
   });
 });
 

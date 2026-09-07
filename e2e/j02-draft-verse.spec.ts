@@ -13,8 +13,10 @@ import {
   SEEDED_PROJECT,
   TC4_ROOT,
   readIngredient,
+  rigRepo,
   commitCount,
   byteStrictViolation,
+  verseTextSpan,
 } from './helpers/rig';
 
 const BOOK_IPATH = 'ingredients/TIT.usfm';
@@ -22,6 +24,25 @@ const BOOK_IPATH = 'ingredients/TIT.usfm';
 const CHAPTER = 2;
 const VERSE = 1;
 const DRAFT_TEXT = 'Pero tú habla lo que está de acuerdo con la sana doctrina.';
+
+/** The seeded project's journal segment files (every actor), newest last. */
+function segmentFiles(): string[] {
+  const journal = path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'journal');
+  if (!fs.existsSync(journal)) return [];
+  return fs
+    .readdirSync(journal)
+    .flatMap((actor) => {
+      const dir = path.join(journal, actor, 'segments');
+      return fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.action.json')).map((f) => path.join(dir, f)) : [];
+    })
+    .sort();
+}
+
+/** The events of one segment file (the §8.1 container: `body` is the JSON text of `{ events }`). */
+function readSegmentEvents(file: string): Array<{ op: string; chapter?: string; verse?: string; text?: string }> {
+  const container = JSON.parse(fs.readFileSync(file, 'utf8')) as { body: string };
+  return (JSON.parse(container.body) as { events: Array<{ op: string; chapter?: string; verse?: string; text?: string }> }).events;
+}
 
 test.describe('J2 — a translator drafts a verse', () => {
   test(
@@ -77,6 +98,84 @@ test.describe('J2 — a translator drafts a verse', () => {
 
       await test.step('nothing auto-committed — commits are checkpoint-only (FR-34 / W-4)', async () => {
         expect(commitCount(SEEDED_PROJECT)).toBe(commitsBefore);
+      });
+    },
+  );
+
+  test(
+    'draft a two-verse section (Titus 2:9–10): type it straight through, place verse 10, save — the bytes and one text.verse.set per verse land on disk (#141, J2 revised)',
+    { tag: ['@inc5', '@J2'] },
+    async ({ page }) => {
+      // ULT chunks Titus 2 at 1, 3, 6, 9, 11, 14, 15 (\ts\* markers in the
+      // sideloaded en_ult TIT.usfm), so 9–10 is a two-verse section no sibling
+      // test touches. Verse 10 is placed at "no".
+      const VERSE_9 = 'Exhorta a los siervos a que se sujeten a sus amos y a que agraden en todo';
+      const VERSE_10 = 'no defraudando sino mostrando toda buena fe';
+      const bytesBefore = readIngredient(SEEDED_PROJECT, BOOK_IPATH);
+      const segmentsBefore = new Set(segmentFiles());
+
+      await page.goto('/');
+      await page.getByTestId('project-_local_/_local_/sample_burrito').getByRole('button', { name: /Titus/ }).click();
+      await page.getByRole('button', { name: '2', exact: true }).click();
+
+      await test.step('the section row exists and opens the section card in Type mode', async () => {
+        await page.getByRole('button', { name: 'Draft section 9–10' }).click();
+        await expect(page.getByText('Drafting 9–10')).toBeVisible();
+        await page.getByRole('textbox', { name: 'Section 9–10' }).fill(`${VERSE_9} ${VERSE_10}`);
+      });
+
+      await test.step('Place verse numbers: pick up 10 from the bank, drop it on "no"', async () => {
+        await page.getByRole('tab', { name: 'Place verse numbers' }).click();
+        // Verse 9 begins the section and is fixed: no pin for it in the bank.
+        await expect(page.getByTestId('pin-bank').getByRole('button', { name: 'Move where verse 9 begins' })).toHaveCount(0);
+        await page.getByTestId('pin-bank').getByRole('button', { name: 'Move where verse 10 begins' }).click();
+        await page.getByRole('button', { name: 'Begin verse 10 at no' }).click();
+        // Placed: the bank is empty and the pin sits in the text before "no".
+        await expect(page.getByTestId('pin-bank').getByRole('button', { name: /Move where verse/ })).toHaveCount(0);
+        await expect(page.getByTestId('place-words').getByRole('button', { name: 'Move where verse 10 begins' })).toBeVisible();
+      });
+
+      await test.step('Save section writes through the scheduler', async () => {
+        await page.getByRole('button', { name: 'Save section' }).click();
+        await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
+        await expect(page.getByTestId('section-editor')).toHaveCount(0);
+      });
+
+      await test.step('the file is the seeded file with exactly those two stubs replaced (FR-7 / D8)', async () => {
+        // The WHOLE expected file, not a permitted window: a window between the
+        // two edits would also accept duplicated text or a stray marker
+        // (Codex round 1). Every other byte must be the seeded byte.
+        const before = bytesBefore.toString('utf8');
+        // Splice by SPAN, not by text: `\v 9 ___` also occurs in Titus 1 and 3.
+        // Verse 10 first — replacing it does not move verse 9's offsets.
+        const put = (usfm: string, verse: number, text: string) => {
+          const span = verseTextSpan(usfm, CHAPTER, verse);
+          expect(usfm.slice(span.start, span.end)).toBe('___\n'); // the seeded stub
+          return usfm.slice(0, span.start) + text + '\n' + usfm.slice(span.end);
+        };
+        const expected = put(put(before, 10, VERSE_10), 9, VERSE_9);
+        await expect
+          .poll(() => readIngredient(SEEDED_PROJECT, BOOK_IPATH).toString('utf8'), { timeout: 10_000 })
+          .toBe(expected);
+      });
+
+      await test.step('the journal carries exactly one text.verse.set per edited verse', async () => {
+        const events = segmentFiles()
+          .filter((f) => !segmentsBefore.has(f))
+          .flatMap((f) => readSegmentEvents(f))
+          .filter((e) => e.op === 'text.verse.set');
+        const slots = events.map((e) => `${e.chapter}:${e.verse}`).sort();
+        expect(slots).toEqual(['2:10', '2:9']);
+        // A §8.4 slot's text runs to the next marker, line terminator included.
+        expect(events.find((e) => e.verse === '9')?.text?.trim()).toBe(VERSE_9);
+        expect(events.find((e) => e.verse === '10')?.text?.trim()).toBe(VERSE_10);
+      });
+
+      await test.step('the verse-by-verse form is still there: a drafted verse opens alone', async () => {
+        await page.getByTitle('Edit this verse').filter({ hasText: 'defraudando' }).click();
+        await expect(page.getByRole('textbox', { name: 'Verse 10' })).toHaveValue(VERSE_10);
+        await page.getByRole('button', { name: 'Cancel' }).click();
+        await expect(page.getByRole('textbox', { name: 'Verse 10' })).toHaveCount(0);
       });
     },
   );

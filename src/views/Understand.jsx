@@ -14,15 +14,7 @@ import { absenceMessageKey, isSourceAbsent } from '../data/sourceState';
 import { FilterChip, IconButton, Overline, Switcher, StatusDot, Callout, Button } from '../ds/index.js';
 import { RailIcon } from './PanelIcons.jsx';
 import { targetTypeFor, projectDir } from './scriptStyle.js';
-
-// A USFM paragraph-level marker inside a verse's objects (usfm-js keeps `\p`,
-// `\m`, `\q…`, list markers as paragraph objects in the verse where they
-// fall; the list markers `lh`/`lf`/`lim` arrive without type "paragraph").
-const isParaMark = (vo) => !!vo && (vo.type === 'paragraph' || /^(p|m|pi\d?|pm|pmo|nb|b|q\d?|li\d?|lh|lf|lim\d?)$/.test(vo.tag ?? ''));
-const carriesText = (vo) => vo?.type === 'text' || vo?.type === 'word' || (vo?.text ?? '') !== '';
-// The objects before a verse's first text (leading) and after its last (trailing).
-const leading = (objs) => { const i = objs.findIndex(carriesText); return i === -1 ? objs : objs.slice(0, i); };
-const trailing = (objs) => { let i = objs.length - 1; while (i >= 0 && !carriesText(objs[i])) i--; return objs.slice(i + 1); };
+import { paragraphsOf, sectionStarts } from './sections.js';
 
 /** A unit's verse keys as they exist in the source chapter: a mapped range key
  * ("1-2") that the source keeps as separate verses expands to the verses it
@@ -35,42 +27,6 @@ const verseKeysIn = (keys, chapterVerses) => keys.flatMap((k) => {
   for (let n = Number(m[1]); n <= Number(m[2]); n++) if (chapterVerses[String(n)]) out.push(String(n));
   return out.length ? out : [k];
 });
-
-/** Group a unit's verse keys into display paragraphs: a verse opens a new
- * paragraph when the previous verse ends with a paragraph marker or it starts
- * with one — the design's `para: true`. Display only, never re-serialized. */
-const paragraphsOf = (keys, chapterVerses) => {
-  const paras = [];
-  keys.forEach((k, i) => {
-    const objs = chapterVerses[String(k)]?.verseObjects ?? [];
-    const prev = i > 0 ? chapterVerses[String(keys[i - 1])]?.verseObjects ?? [] : [];
-    const breaks = i === 0 || trailing(prev).some(isParaMark) || leading(objs).some(isParaMark);
-    if (breaks) paras.push([]);
-    paras[paras.length - 1].push(k);
-  });
-  return paras;
-};
-
-// Section starts for one chapter, from the source's own \ts\* chunk markers.
-// Display-only: a source without markers yields one whole-chapter section.
-const sectionStarts = (raw, chapter) => {
-  if (!raw) return [];
-  const chapters = raw.split(/\\c\s+(\d+)/);
-  const i = chapters.findIndex((part, idx) => idx % 2 === 1 && Number(part) === Number(chapter));
-  if (i === -1) return [];
-  const body = chapters[i + 1] ?? '';
-  const starts = [];
-  // A \ts\* often sits BEFORE \c (closing the previous chunk), so the
-  // chapter's first verse always starts a section even when no in-body marker
-  // precedes it.
-  const first = body.match(/\\v\s+(\d+)/);
-  if (first) starts.push(Number(first[1]));
-  for (const seg of body.split(/\\ts\\\*/).slice(1)) {
-    const m = seg.match(/\\v\s+(\d+)/);
-    if (m && !starts.includes(Number(m[1]))) starts.push(Number(m[1]));
-  }
-  return starts.sort((a, b) => a - b);
-};
 
 /** The last verse number a chapter key reaches ("4-5" → 5, "4" → 4). */
 const trailingNum = (key) => Number(String(key).split('-').pop());
