@@ -337,8 +337,8 @@ between runs; it does not replace the run.
 | 3 | Mode tab `Understand`. | The passage's helps area shows for chapter 1 with English translation notes and translation questions. |
 | 4 | Mode tab `Translate`. Chapter 1. | The chapter's verses show. The source pane shows ULT/UST text. |
 | 5 | `Draft verse 1` (the dashed pill), type a verse, click outside the editor. | The save indicator shows `Saved`. |
-| 6 | Mode tab `Check`. On the Translation Notes card, `Start checking` (or `Continue`). Pick one item; `✓ Mark valid`. | The item is decided; the progress line `N of M resolved` counts it. If the card reads `Unavailable offline`, read which resource it names: any missing resource is a new finding: file its issue. |
-| 7 | On the tool picker (`← All checking tools` first, if a tool is open), `Align`. Click one word in the bank, then one card. | The word moves into the card; the bank has one word fewer. If the screen reads "The original-language text is not on this computer", that is a new finding: file its issue. |
+| 6 | Mode tab `Check`. On the Translation Notes card, `Start checking` (or `Continue`). Pick one item; `✓ Mark valid`. | The item is decided; the progress line `N of M resolved` counts it. If the card reads `Unavailable offline`, read which resource it names: a lexicon (`en_ugl`, `en_uhl`; #218) is the known case; name it and go on. Any other missing resource is a new finding: file its issue. |
+| 7 | On the tool picker (`← All checking tools` first, if a tool is open), `Align`. Click one word in the bank, then one card. | The word moves into the card; the bank has one word fewer. If the screen reads "The original-language text is not on this computer", that is a new finding: file its issue. A missing lexicon entry (`en_ugl`, `en_uhl`; #218) is the known case. |
 | 8 | Leave the project (`Switch project`), then open Titus again from Home. Look at `Translate`; then at `Check` › Translation Notes and `Align` for each of steps 6 and 7 that you could do. | Home lists the project. The drafted verse is on screen. Each decision and alignment you made is still there: the progress line still counts the decision; the aligned word is still in its card. |
 | 9 | Export the book. | Not yet possible: #19 (export) is not built. Skip and name #19. |
 | 10 | Quit the app. Turn the network on again. | |
@@ -395,8 +395,10 @@ Artifact sizes before and after bundling the English suite:
 
 | Platform | Before (#163, macOS alpha.3) | After (#163, alpha.4) |
 |---|---|---|
-| macOS arm64 | 142556909 bytes | 174980433 bytes |
-| Linux x64 | — | pending CI run |
+| macOS arm64 | 142556909 bytes | 173313348 bytes |
+| Linux x64 | — | 180227460 bytes |
+
+Both "after" sizes are from the `package-desktop` CI run 34145714423 artifact listing (PR #217, 2026-09-07). A local macOS arm64 build of the same commit measured 174980433 bytes.
 
 ## Known limits (start of the pipeline, not the end)
 
