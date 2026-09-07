@@ -15,6 +15,10 @@ import { splitDecisionKey } from './grammar.mjs';
 // transitions, same complete dispositions — but it is an in-app action, not
 // migrated/imported data, so it passes `seed: null` to omit the marker. One
 // builder for both, so the app cannot drift from the reference (§8.8 discipline).
+// `opts.sources`: destination slot key to the OLD slot keys whose text it carries
+// forward (#63, D70: a verse span created or broken names its verses — the JC-21
+// form; reconcile alone cannot know the intent). `opts.alignmentAction`: the
+// disposition for a live alignment on a removed key, `orphan-review` by default.
 export const reconcileUsfm = (book, committedUsfm, foldOut, clock, actor, opts = {}) => {
   const { skeleton, verses } = decompose(committedUsfm);
   const projected = foldOut.books[book];
@@ -45,11 +49,17 @@ export const reconcileUsfm = (book, committedUsfm, foldOut, clock, actor, opts =
   }
 
   if (slotsChanged) {
+    const carried = opts.sources ?? {};
+    const alignmentAction = opts.alignmentAction ?? 'orphan-review';
     const transitions = {};
     for (const k of newSlots) {
       const sources = [];
       const headTs = foldOut.headsTs[`text|${book}|${k}`];
       if (oldSlots.includes(k) && headTs) sources.push({ key: k, ts: headTs }); // identity where possible
+      for (const s of carried[k] ?? []) {
+        const ts = foldOut.headsTs[`text|${book}|${s}`];
+        if (ts && oldSlots.includes(s) && !newSlots.includes(s)) sources.push({ key: s, ts });
+      }
       transitions[k] = { text: verses[k], sources };
     }
     // COMPLETE conservative dispositions: every LIVE text, alignment, decision and
@@ -72,7 +82,7 @@ export const reconcileUsfm = (book, committedUsfm, foldOut, clock, actor, opts =
       for (const h of liveOn(`text|${book}|${k}`))
         if (!claimed.has(`${k}|${h.ts}`)) dispositions.push({ surface: 'text', key: k, ts: h.ts, action: 'orphan-review' });
       for (const h of liveOn(`align|${book}|${k}`))
-        dispositions.push({ surface: 'alignment', key: k, ts: h.ts, action: 'orphan-review' });
+        dispositions.push({ surface: 'alignment', key: k, ts: h.ts, action: alignmentAction });
       for (const dk of Object.keys(foldOut.liveHeads || {})) {
         if (!dk.startsWith('dec|')) continue;
         // decompose with the ONE §5.2 key splitter (grammar.mjs) — never by index

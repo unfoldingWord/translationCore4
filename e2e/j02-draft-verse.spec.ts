@@ -39,10 +39,30 @@ function segmentFiles(): string[] {
 }
 
 /** The events of one segment file (the §8.1 container: `body` is the JSON text of `{ events }`). */
-function readSegmentEvents(file: string): Array<{ op: string; chapter?: string; verse?: string; text?: string }> {
+function readSegmentEvents(file: string): SegmentEvent[] {
   const container = JSON.parse(fs.readFileSync(file, 'utf8')) as { body: string };
-  return (JSON.parse(container.body) as { events: Array<{ op: string; chapter?: string; verse?: string; text?: string }> }).events;
+  return (JSON.parse(container.body) as { events: SegmentEvent[] }).events;
 }
+
+type SegmentEvent = {
+  op: string;
+  chapter?: string;
+  verse?: string;
+  text?: string;
+  skeleton?: string;
+  transitions?: Record<string, { text: string; sources: Array<{ key: string; ts: string }> }>;
+  dispositions?: Array<{ surface: string; key?: string; action: string }>;
+};
+
+/** The events published since `before` — the journey's own writes. */
+const eventsSince = (before: Set<string>): SegmentEvent[] =>
+  segmentFiles().filter((f) => !before.has(f)).flatMap((f) => readSegmentEvents(f));
+
+/** The whole verse line `\\v <key> <body>\n` of one verse of Titus 2 in the file. */
+const verseLine = (usfm: string, verse: number): { start: number; end: number } => {
+  const span = verseTextSpan(usfm, CHAPTER, verse);
+  return { start: span.start - `\\v ${verse} `.length, end: span.end };
+};
 
 test.describe('J2 — a translator drafts a verse', () => {
   test(
@@ -176,6 +196,169 @@ test.describe('J2 — a translator drafts a verse', () => {
         await expect(page.getByRole('textbox', { name: 'Verse 10' })).toHaveValue(VERSE_10);
         await page.getByRole('button', { name: 'Cancel' }).click();
         await expect(page.getByRole('textbox', { name: 'Verse 10' })).toHaveCount(0);
+      });
+    },
+  );
+
+  test(
+    'create a verse span (Titus 2:9-10): stack verse 10 on verse 9 in Place mode, save — one \\v 9-10 line and one text.structure.apply on disk (#63, D70)',
+    { tag: ['@inc5', '@J2'] },
+    async ({ page }) => {
+      const VERSE_9 = 'Exhorta a los siervos a que se sujeten a sus amos y a que agraden en todo';
+      const VERSE_10 = 'no defraudando sino mostrando toda buena fe';
+      const bytesBefore = readIngredient(SEEDED_PROJECT, BOOK_IPATH);
+      const segmentsBefore = new Set(segmentFiles());
+
+      await page.goto('/');
+      await page.getByTestId('project-_local_/_local_/sample_burrito').getByRole('button', { name: /Titus/ }).click();
+      await page.getByRole('button', { name: '2', exact: true }).click();
+
+      await test.step('type the section, then stack verse 10 on the first word', async () => {
+        await page.getByRole('button', { name: 'Draft section 9–10' }).click();
+        await page.getByRole('textbox', { name: 'Section 9–10' }).fill(`${VERSE_9} ${VERSE_10}`);
+        await page.getByRole('tab', { name: 'Place verse numbers' }).click();
+        await page.getByTestId('pin-bank').getByRole('button', { name: 'Move where verse 10 begins' }).click();
+        // The first word carries the fixed verse 9: dropping 10 there joins them.
+        await page.getByRole('button', { name: 'Join verse 10 to verse 9 at Exhorta' }).click();
+        await expect(page.getByTestId('pin-bank').getByRole('button', { name: /Move where verse/ })).toHaveCount(0);
+        await expect(page.getByTestId('place-words').getByRole('button', { name: 'Move where verse 10 begins' })).toBeVisible();
+      });
+
+      await test.step('Save section writes the structural change through the scheduler', async () => {
+        await page.getByRole('button', { name: 'Save section' }).click();
+        await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
+        await expect(page.getByTestId('section-editor')).toHaveCount(0);
+        // The row now holds the one span verse.
+        await expect(page.getByRole('button', { name: 'Draft section 9-10' })).toBeVisible();
+      });
+
+      await test.step('the file is the previous file with the two verse lines replaced by one \\v 9-10 line (AC1, AC6)', async () => {
+        // The sibling #141 case drafted 9 and 10 before this one: whatever the
+        // two lines held, exactly they are replaced; every other byte stays.
+        const before = bytesBefore.toString('utf8');
+        const from = verseLine(before, 9);
+        const to = verseLine(before, 10);
+        const expected = `${before.slice(0, from.start)}\\v 9-10 ${VERSE_9} ${VERSE_10}\n${before.slice(to.end)}`;
+        await expect
+          .poll(() => readIngredient(SEEDED_PROJECT, BOOK_IPATH).toString('utf8'), { timeout: 10_000 })
+          .toBe(expected);
+      });
+
+      await test.step('the journal carries ONE text.structure.apply: the span claims both verses; every disposition is invalidate-retain (AC4)', async () => {
+        const events = eventsSince(segmentsBefore);
+        const structural = events.filter((e) => e.op === 'text.structure.apply');
+        expect(structural).toHaveLength(1);
+        expect(events.filter((e) => e.op === 'text.verse.set')).toEqual([]);
+        const [action] = structural;
+        expect(action.skeleton).toContain('\\v 9-10 ');
+        expect(action.transitions?.['2:9-10']?.text.trim()).toBe(`${VERSE_9} ${VERSE_10}`);
+        expect(action.transitions?.['2:9-10']?.sources.map((s) => s.key)).toEqual(['2:9', '2:10']);
+        expect(action.dispositions?.every((d) => d.action === 'invalidate-retain')).toBe(true);
+      });
+
+      await test.step('the span can be re-aligned and re-checked: Align opens 2:9-10, and the verse-9 note reads the span text (AC5)', async () => {
+        // The seeded project pins the original-language text (UGNT v0.34) and
+        // the helps already; nothing is written on disk here.
+        await page.goto('/');
+        await page.getByTestId('project-_local_/_local_/sample_burrito').getByRole('button', { name: /Titus/ }).click();
+        await page.getByRole('tab', { name: 'Check', exact: true }).click();
+        await page.getByTestId('open-align').click();
+        await expect(page.getByTestId('align-session')).toBeVisible();
+        const row = page.getByTestId('align-verse-list').locator('button[data-ref="2:9-10"]');
+        // Nothing was aligned on 9 or 10 before the span: the span is to do, not invalid.
+        await expect(row).toHaveAttribute('data-status', 'todo');
+        await row.click();
+        await expect(page.getByTestId('align-session')).toBeVisible();
+        // The original text of BOTH verses is the anchor, and every word of
+        // the span — verse 10's too — is in the bank, ready to place.
+        await expect(page.getByTestId('align-ref-text')).toBeVisible();
+        await expect(page.getByTestId('align-bank')).toContainText('defraudando');
+        await expect(page.getByTestId('align-bank')).toContainText('Exhorta');
+        // Check: the note on verse 9 shows the span's words as its translation.
+        await page.goto('/');
+        await page.getByTestId('project-_local_/_local_/sample_burrito').getByRole('button', { name: /Titus/ }).click();
+        await page.getByRole('tab', { name: 'Check', exact: true }).click();
+        await page.getByTestId('open-translationNotes').click();
+        await expect(page.getByTestId('check-progress')).toBeVisible();
+        await page.getByTestId('check-list').locator('button[data-ref="2:9"]').first().click();
+        await expect(page.getByTestId('check-target')).toHaveAttribute('data-drafted', '1');
+        await expect(page.getByTestId('check-target')).toContainText('defraudando');
+      });
+    },
+  );
+
+  test(
+    'break a verse span (Titus 2:11-12): drag verse 12 past text in Place mode, save — two verse lines again, verse 13 byte-identical (#63, D70)',
+    { tag: ['@inc5', '@J2'] },
+    async ({ page }) => {
+      // The 11–13 section: 11 and 12 become a span with 13 placed after it,
+      // then the span is broken. Verse 13 is not touched by the break.
+      const VERSE_11 = 'Porque la gracia de Dios se ha manifestado';
+      const VERSE_12 = 'enseñándonos a vivir sobria y justamente';
+      const VERSE_13 = 'aguardando la esperanza bienaventurada';
+      const bytesBefore = readIngredient(SEEDED_PROJECT, BOOK_IPATH);
+
+      await page.goto('/');
+      await page.getByTestId('project-_local_/_local_/sample_burrito').getByRole('button', { name: /Titus/ }).click();
+      await page.getByRole('button', { name: '2', exact: true }).click();
+
+      await test.step('make the span: place 13, stack 12 on 11, save', async () => {
+        await page.getByRole('button', { name: 'Draft section 11–13' }).click();
+        await page.getByRole('textbox', { name: 'Section 11–13' }).fill(`${VERSE_11} ${VERSE_12} ${VERSE_13}`);
+        await page.getByRole('tab', { name: 'Place verse numbers' }).click();
+        await page.getByTestId('pin-bank').getByRole('button', { name: 'Move where verse 13 begins' }).click();
+        await page.getByRole('button', { name: 'Begin verse 13 at aguardando' }).click();
+        await page.getByTestId('pin-bank').getByRole('button', { name: 'Move where verse 12 begins' }).click();
+        await page.getByRole('button', { name: 'Join verse 12 to verse 11 at Porque' }).click();
+        await page.getByRole('button', { name: 'Save section' }).click();
+        await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
+        const before = bytesBefore.toString('utf8');
+        const from = verseLine(before, 11);
+        const to = verseLine(before, 13);
+        const expected = `${before.slice(0, from.start)}\\v 11-12 ${VERSE_11} ${VERSE_12}\n\\v 13 ${VERSE_13}\n${before.slice(to.end)}`;
+        await expect
+          .poll(() => readIngredient(SEEDED_PROJECT, BOOK_IPATH).toString('utf8'), { timeout: 10_000 })
+          .toBe(expected);
+      });
+
+      const spanned = readIngredient(SEEDED_PROJECT, BOOK_IPATH).toString('utf8');
+      const segmentsBefore = new Set(segmentFiles());
+
+      await test.step('reopen the section: the span opens as one line, its pins stacked; drag 12 onto its first word', async () => {
+        await page.getByRole('button', { name: 'Draft section 11–13' }).click();
+        await expect(page.getByRole('textbox', { name: 'Section 11–13' })).toHaveValue(`11-12 ${VERSE_11} ${VERSE_12}\n13 ${VERSE_13}`);
+        await page.getByRole('tab', { name: 'Place verse numbers' }).click();
+        // Verse 12's pin sits on the first word beside the fixed 11. A placed
+        // pin is picked up on pointerdown and dropped on pointerup (D70.3 is a
+        // drag), so the keyboard gesture picks it up here: Enter on the pin,
+        // then the word it begins at.
+        await page.getByTestId('place-words').getByRole('button', { name: 'Move where verse 12 begins' }).press('Enter');
+        await page.getByRole('button', { name: 'Begin verse 12 at enseñándonos' }).click();
+        await page.getByRole('button', { name: 'Save section' }).click();
+        await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
+      });
+
+      await test.step('the file has verses 11 and 12 again; verse 13 and everything else is byte-identical (AC2, AC6)', async () => {
+        const line = `\\v 11-12 ${VERSE_11} ${VERSE_12}`;
+        expect(spanned).toContain(line);
+        const expected = spanned.replace(line, `\\v 11 ${VERSE_11}\n\\v 12 ${VERSE_12}`);
+        await expect
+          .poll(() => readIngredient(SEEDED_PROJECT, BOOK_IPATH).toString('utf8'), { timeout: 10_000 })
+          .toBe(expected);
+      });
+
+      await test.step('the journal carries ONE text.structure.apply: verse 11 claims the span head, verse 12 states its text (AC4)', async () => {
+        const events = eventsSince(segmentsBefore);
+        const structural = events.filter((e) => e.op === 'text.structure.apply');
+        expect(structural).toHaveLength(1);
+        const [action] = structural;
+        expect(action.skeleton).toContain('\\v 11 ');
+        expect(action.skeleton).toContain('\\v 12 ');
+        expect(action.transitions?.['2:11']?.sources.map((s) => s.key)).toEqual(['2:11-12']);
+        expect(action.transitions?.['2:12']).toMatchObject({ sources: [] });
+        expect(action.transitions?.['2:12']?.text.trim()).toBe(VERSE_12);
+        expect(action.transitions?.['2:13']?.sources.map((s) => s.key)).toEqual(['2:13']);
+        expect(action.dispositions?.every((d) => d.action === 'invalidate-retain')).toBe(true);
       });
     },
   );

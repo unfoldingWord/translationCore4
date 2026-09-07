@@ -311,6 +311,11 @@ const crossKey = (c: CheckContextId): string =>
 export const mergeAndReattach = (
   derived: CheckItem[],
   saved: CheckItem[],
+  /** #63: `keepInvalidated` when the saved file's resource IS the current
+   * resolution — no re-pin happened, so an `invalidated` flag is the journal's
+   * (a verse span created or broken under the decision, §8.5
+   * invalidate-retain) and must survive until the translator re-checks. */
+  opts: { keepInvalidated?: boolean } = {},
 ): { items: CheckItem[]; orphaned: number; unplaced: CheckItem[]; placed: Set<CheckItem> } => {
   const byKey = new Map(saved.map((d) => [mergeKey(d.contextId), d]));
   const placedSaved = new Set<CheckItem>();
@@ -335,7 +340,7 @@ export const mergeAndReattach = (
     // status, comments, reminders) but adopt the DERIVED item's `contextId`, so
     // the check the user sees is the new resource's, never a stale note.
     let out: CheckItem;
-    if (hit.invalidated) {
+    if (hit.invalidated && !opts.keepInvalidated) {
       // `status: "invalid"` was set BY the invalidation of a formerly-VALID
       // decision (§5.2), so it clears with the invalidation. A `"todo"` the
       // user set is preserved through the cycle (carryOver keeps it on

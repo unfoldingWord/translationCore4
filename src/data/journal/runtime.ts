@@ -115,7 +115,12 @@ export const reconcileUsfm = reconcileUsfmRef as (
   foldOut: FoldOutput,
   clock: { issue(): string },
   actor: string,
-  opts?: { seed?: { source: string; batch?: string } | null },
+  opts?: {
+    seed?: { source: string; batch?: string } | null;
+    /** #63: destination slot key to the old slot keys whose text it carries forward. */
+    sources?: Record<string, string[]>;
+    alignmentAction?: 'invalidate-retain' | 'orphan-review';
+  },
 ) => JournalEvent[];
 
 export interface SeedInputs {

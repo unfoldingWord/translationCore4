@@ -459,7 +459,12 @@ describe('PR91-3 — a mapping outcome never reports the installed source text a
     const src = stateSource();
     const openAlign = src.slice(src.indexOf('openAlign:'), src.indexOf('startAligning:'));
     expect(openAlign).toContain("unavailable: 'no-counterpart'");
-    expect(openAlign).toContain(".includes('-')");
+    // #63 (D70): a span counterpart is no longer refused — it is aligned as one
+    // text; verseObjectsFor reads every member verse of "a-b" in order.
+    expect(openAlign).not.toContain(".includes('-')");
+    const objectsFor = src.slice(src.indexOf('function verseObjectsFor'), src.indexOf('function firstDraftedRef'));
+    expect(objectsFor).toContain('flatMap');
+    expect(objectsFor).toMatch(/\(\\d\+\)-\(\\d\+\)/);
     // Between the mapping call and the source lookup — the two mapping-outcome
     // refusals — 'missing' must not appear: the text IS installed there.
     const mappingOutcomes = openAlign.slice(
