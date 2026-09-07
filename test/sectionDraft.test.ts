@@ -169,6 +169,25 @@ describe('#141 — a verse body that wraps onto a marker-shaped line (Codex roun
     });
   });
 
+  it('a body line that ALREADY begins with a space keeps that space (Codex round 3)', () => {
+    // The escape must be reversible whatever the line started with: one space
+    // is added, one space is taken off.
+    const indented = [{ n: '9', drafted: true, body: 'y le dio\n 10 talentos' }, verses[1]];
+    const text = initialDraftText(indented, KEYS);
+    expect(text).toBe('9 y le dio\n  10 talentos\n10 no defraudando');
+    const d = parseDraft(text, KEYS);
+    expect(sectionVerses(d.words, d.seps, d.markers, KEYS)).toEqual({
+      '9': 'y le dio\n 10 talentos',
+      '10': 'no defraudando',
+    });
+    // …and through a Place round trip.
+    const again = parseDraft(serializeDraft(d.words, d.seps, d.markers, KEYS), KEYS);
+    expect(sectionVerses(again.words, again.seps, again.markers, KEYS)).toEqual({
+      '9': 'y le dio\n 10 talentos',
+      '10': 'no defraudando',
+    });
+  });
+
   it('a number that is not one of the section keys needs no escape (the negative control)', () => {
     const other = [{ n: '9', drafted: true, body: 'y le dio\n12 talentos' }, verses[1]];
     expect(initialDraftText(other, KEYS)).toBe('9 y le dio\n12 talentos\n10 no defraudando');

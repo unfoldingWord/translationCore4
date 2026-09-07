@@ -26,10 +26,19 @@ const markerKey = (line, keys) => {
   return m && keys.includes(m[1]) ? m : null;
 };
 
+/** A body line that needs the escape: a section key under any number of
+ * leading spaces. Counting the ALREADY-indented forms too is what makes the
+ * escape reversible — one space is added, one space is taken off, whatever the
+ * line started with (Codex review, round 3). */
+const escapable = (line, keys) => {
+  const m = String(line).match(/^( *)(\d+(?:-\d+)?)(?:\s|$)/);
+  return !!m && keys.includes(m[2]);
+};
+
 /** Indent every continuation line of a body that would read as a marker. */
 const escapeBody = (body, keys) => String(body)
   .split('\n')
-  .map((line, i) => (i > 0 && markerKey(line, keys) ? ` ${line}` : line))
+  .map((line, i) => (i > 0 && escapable(line, keys) ? ` ${line}` : line))
   .join('\n');
 
 /** The card's opening text: one "key body" line per verse, a stub verse an
@@ -59,7 +68,7 @@ export const parseDraft = (text, keys) => {
     if (m) {
       found[m[1]] = { at: words.length, line: li };
       rest = m[2];
-    } else if (rest.startsWith(' ') && markerKey(rest.slice(1), keys)) {
+    } else if (rest.startsWith(' ') && escapable(rest.slice(1), keys)) {
       rest = rest.slice(1); // an escaped body line: the words are text, not a marker
     }
     const tokens = rest.split(/(\s+)/);
