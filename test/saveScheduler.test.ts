@@ -278,3 +278,37 @@ describe('composition and guards', () => {
     expect(scheduler.bookText(BOOK)).toBe(initial);
   });
 });
+
+describe('#63 — replaceBook: a whole-book replacement is one dirty write', () => {
+  it('stages the given text as the book, arms the debounce, and writes exactly it', async () => {
+    const w = makeWrite();
+    const scheduler = makeScheduler(w.write, 500);
+    const states: SaveState[] = [];
+    scheduler.subscribe((st) => states.push(st));
+    const replaced = initial.replace('\\v 1 uno\n\\v 2 dos', '\\v 1-2 uno dos');
+    scheduler.replaceBook(BOOK, replaced);
+    expect(scheduler.getState()).toBe('dirty');
+    expect(scheduler.bookText(BOOK)).toBe(replaced);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(w.calls).toEqual([{ book: BOOK, usfm: replaced }]);
+    expect(scheduler.getState()).toBe('saved');
+    expect(states).toEqual(['saved', 'dirty', 'saving', 'saved']);
+  });
+
+  it('a later verse edit splices into the replaced text, not the loaded one', async () => {
+    const w = makeWrite();
+    const scheduler = makeScheduler(w.write, 500);
+    const replaced = initial.replace('\\v 1 uno\n\\v 2 dos', '\\v 1-2 uno dos');
+    scheduler.replaceBook(BOOK, replaced);
+    scheduler.markDirty(BOOK, 1, '1-2', 'uno y dos');
+    await vi.advanceTimersByTimeAsync(500);
+    expect(w.calls).toHaveLength(1);
+    expect(w.calls[0].usfm).toContain('\\v 1-2 uno y dos');
+  });
+
+  it('refuses a book that was never loaded', () => {
+    const w = makeWrite();
+    const scheduler = new SaveScheduler({ writeBook: w.write, splice: spliceVerse });
+    expect(() => scheduler.replaceBook('NOPE', 'x')).toThrow(/not loaded/);
+  });
+});

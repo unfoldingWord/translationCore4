@@ -180,6 +180,16 @@ export interface GatewayChangePlan {
  * before any derived file changes. State and feature code MUST NOT call the raw
  * HttpStore mutation surface (test/noBypass.test.ts enforces this).
  */
+/** #63: `intent: 'spans'` says the slot-set change is verse spans created or
+ * broken. The store maps the keys it projects to the new keys by the verse
+ * numbers they share ("2:9","2:10" to "2:9-10" is a create; the reverse a
+ * break) — from ITS projection at write time, never from the app's
+ * bookkeeping (Codex rounds 1–2: a retained failure or a replay makes any
+ * app-side guess of the projected keys wrong). */
+export interface StructuralEditOptions {
+  intent?: 'spans';
+}
+
 export interface BurritoStore {
   listProjects(): Promise<ProjectSummary[]>;
   open(repoPath: string): Promise<ProjectSummary>;
@@ -205,8 +215,13 @@ export interface BurritoStore {
 
   /** The explicit structural-edit operation (issue #62): ONE §8.5
    * text.structure.apply carrying the complete transition/disposition set,
-   * built conservatively from the new whole-book USFM. */
-  applyStructuralEdit(book: string, usfm: string): Promise<void>;
+   * built conservatively from the new whole-book USFM. With `intent: 'spans'`
+   * (#63) the old and new slot keys of each verse span created or broken are
+   * mapped by shared verse numbers: the new slot claims the old text heads as
+   * its sources, alignments and decisions on the old keys are
+   * `invalidate-retain`, and each new key gets an empty `invalid` §5.1 record
+   * when an alignment was affected (D70). */
+  applyStructuralEdit(book: string, usfm: string, opts?: StructuralEditOptions): Promise<void>;
 
   readAlignments(book: string): Promise<AlignmentFile | null>;
   /** MUST normalize occurrence/occurrences to integers at this boundary (I-2). */

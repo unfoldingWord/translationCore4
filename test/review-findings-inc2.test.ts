@@ -232,6 +232,18 @@ describe('R3 — re-pinning the old resource restores a decided item (D36)', () 
     expect(items[0].selections).toHaveLength(1);
   });
 
+  it('#63: with the SAME resource (no re-pin) the invalidation is the journal\'s and survives the merge', () => {
+    // A verse span created or broken under a decision: the fold retains it
+    // `invalidated` (§8.5 invalidate-retain). No selections, so revalidation
+    // could never re-flag it — the merge must not clear it.
+    const invalidated = item({ contextId: ctx, nothingToSelect: true, invalidated: true, status: 'invalid' });
+    const { items } = mergeAndReattach([item({ contextId: ctx })], [invalidated], { keepInvalidated: true });
+    expect(items).toHaveLength(1);
+    expect(items[0].invalidated).toBe(true);
+    expect(items[0].status).toBe('invalid');
+    expect(progressOf(items)).toEqual({ decided: 0, total: 1 });
+  });
+
   it('an invalidated decision does NOT count toward progress (§5.2 MUST)', () => {
     const stillInvalid = item({
       contextId: ctx,

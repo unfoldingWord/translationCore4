@@ -82,6 +82,19 @@ WEBFONTS_CORE_REV="eb52ccdad6806b5729ea8b45b1c59c793ffa32c3"   # 2026-08-14
 PUPPETEER_CORE_VER="24.43.1"       # template package.json: ^24.43.1
 PUPPETEER_BROWSERS_VER="2.13.1"    # template package.json: ^2.13.1
 
+# Bundled English suite (#163, D70). Eight repos pinned from src/data/installedSuite.js.
+# en_tw serves both translationWords and translationWordsLinks (D34).
+BUNDLED_RESOURCES=(
+  "en_ult:v89:84c73ba00fc8a95a9033f9efb14bb905a2a52ee4"
+  "en_ust:v89:37ec223166bbd73fb55abc7840be8310c0fee7f2"
+  "el-x-koine_ugnt:v0.34:fc95b2b8aad08bb65ab54628ab685413a1139e97"
+  "hbo_uhb:v2.1.30:106a441a788d9465846cd427538ea80b8cec6770"
+  "en_tn:v86:c354b8ae66a23c485bf6f38fd35bd8f7ef81e4e5"
+  "en_tw:v87:eaeb7bfefcf84132d0cbcbed185f3ea2be3d86dd"
+  "en_ta:v86:c7caddfb474efd713f36b35a3ffc927866c7b180"
+  "en_tq:v89:97c0a13e3b84d46d0e643ba2e8e9f1c295547a58"
+)
+
 APP_NAME="translationCore4"
 if [ "$VARIANT" = "debug" ]; then
   # Ruling clause 3: a debug build must be visibly distinguishable.
@@ -145,9 +158,29 @@ if [ ! -e "$EL_UNPACKED" ]; then
   unzip -qq -o "$BUILD/$ELECTRONITE_ZIP" -d "$BUILD/electronite"
 fi
 
+echo "== fetching bundled English suite (8 repos, #163)"
+for entry in "${BUNDLED_RESOURCES[@]}"; do
+  repo="${entry%%:*}"
+  rest="${entry#*:}"
+  tag="${rest%%:*}"
+  sha="${rest#*:}"
+  zsh "$REPO/dev-env/scripts/cache-resource.zsh" "unfoldingWord/$repo" "$tag" "$sha"
+  echo "SHA OK: unfoldingWord/$repo $tag ($sha)"
+done
+
 echo "== 4/7 assemble the app directory"
 rm -rf "$PACK"
-mkdir -p "$PACK/bin" "$PACK/lib/setup" "$PACK/lib/clients/uw-tc4" "$PACK/lib/product"
+mkdir -p "$PACK/bin" "$PACK/lib/setup" "$PACK/lib/clients/uw-tc4" "$PACK/lib/product" "$PACK/resources"
+for entry in "${BUNDLED_RESOURCES[@]}"; do
+  repo="${entry%%:*}"
+  rest="${entry#*:}"
+  tag="${rest%%:*}"
+  unwrapped="$REPO/dev-env/resources-cache/$repo-$tag-unwrapped.zip"
+  target="$PACK/resources/unfoldingword--$repo"
+  rm -rf "$target"
+  mkdir -p "$target"
+  unzip -qq -o "$unwrapped" -d "$target"
+done
 
 T="$BUILD/upstream/desktop-app-template"
 cp -R "$T/buildResources/electron" "$PACK/electron"
@@ -296,6 +329,7 @@ fi
 cp -R "$PACK/electron" "$APPDIR/electron"
 cp -R "$PACK/bin" "$APPDIR/bin"
 cp -R "$PACK/lib" "$APPDIR/lib"
+cp -R "$PACK/resources" "$APPDIR/resources"
 cp "$PACK/Rocket.toml" "$APPDIR/Rocket.toml"
 
 # The launcher differs per OS in three places only: its filename, how it
@@ -336,6 +370,17 @@ $LAUNCH_SHEBANG
 # startup script spawns the bundled server itself.
 $LAUNCH_CD
 STORE="\$HOME/pankosmia/tc4-projects-debug"
+if [ -d "./resources" ]; then
+  for res in ./resources/*; do
+    [ -d "\$res" ] || continue
+    seg="\${res##*/}"
+    dest="\$STORE/_local_/_sideloaded_/\$seg"
+    if [ ! -d "\$dest" ]; then
+      mkdir -p "\$STORE/_local_/_sideloaded_"
+      cp -R "\$res" "\$dest"
+    fi
+  done
+fi
 SEED="\$STORE/_local_/_local_/sample_burrito"
 if [ ! -d "\$SEED" ] && command -v git >/dev/null; then
   mkdir -p "\$STORE/_local_/_local_"
@@ -353,6 +398,18 @@ $LAUNCH_SHEBANG
 # Unsigned development artifact. Starts Electronite; the startup script
 # spawns the bundled server itself.
 $LAUNCH_CD
+STORE="\$HOME/pankosmia/tc4-projects"
+if [ -d "./resources" ]; then
+  for res in ./resources/*; do
+    [ -d "\$res" ] || continue
+    seg="\${res##*/}"
+    dest="\$STORE/_local_/_sideloaded_/\$seg"
+    if [ ! -d "\$dest" ]; then
+      mkdir -p "\$STORE/_local_/_sideloaded_"
+      cp -R "\$res" "\$dest"
+    fi
+  done
+fi
 $LAUNCH_EXEC
 LAUNCH
 fi
@@ -386,18 +443,45 @@ This build bundles the components below. Full texts are in licenses/.
 | webfonts-core (lib/webfonts; fonts carry their own licenses, mostly SIL OFL) | $WEBFONTS_CORE_REV | MIT (repo); per-font licenses inside | github.com/pankosmia/webfonts-core |
 | puppeteer-core (electron/node_modules) | $PUPPETEER_CORE_VER | Apache-2.0 | github.com/puppeteer/puppeteer |
 | @puppeteer/browsers (electron/node_modules) | $PUPPETEER_BROWSERS_VER | Apache-2.0 | github.com/puppeteer/puppeteer |
+NOTICES
+for entry in "${BUNDLED_RESOURCES[@]}"; do
+  repo="${entry%%:*}"
+  rest="${entry#*:}"
+  tag="${rest%%:*}"
+  echo "| unfoldingWord/$repo | $tag | CC BY-SA 4.0 | git.door43.org/unfoldingWord/$repo |" >> "$APPDIR/THIRD-PARTY-NOTICES.md"
+done
+cat >> "$APPDIR/THIRD-PARTY-NOTICES.md" <<NOTICES
 
 npm dependency license texts remain in electron/node_modules/*/LICENSE.
 NOTICES
 
 # Input manifest: every component with its exact version/commit/checksum.
 SERVER_SHA=$(sha256_of "$APPDIR/bin/server.bin")
+BUNDLED_MANIFEST_ENTRIES=""
+for entry in "${BUNDLED_RESOURCES[@]}"; do
+  repo="${entry%%:*}"
+  rest="${entry#*:}"
+  tag="${rest%%:*}"
+  sha="${rest#*:}"
+  zip_sha=$(sha256_of "$REPO/dev-env/resources-cache/$repo-$tag-unwrapped.zip")
+  line="    { \"repoPath\": \"git.door43.org/unfoldingWord/$repo\", \"version\": \"$tag\", \"sha\": \"$sha\", \"zip_sha256\": \"$zip_sha\" }"
+  if [ -n "$BUNDLED_MANIFEST_ENTRIES" ]; then
+    BUNDLED_MANIFEST_ENTRIES="$BUNDLED_MANIFEST_ENTRIES,
+$line"
+  else
+    BUNDLED_MANIFEST_ENTRIES="$line"
+  fi
+done
+
 cat > "$APPDIR/BUILD-MANIFEST.json" <<MANIFEST
 {
   "artifact": "tC4-$VERSION-$OS-$ARCH-unsigned",
   "variant": "$VARIANT",
   "project_store": "\$HOME/$STORE_LEAF (#70 — never \$HOME/pankosmia_repos)",
   "built_utc": "$DATETIME",
+  "bundled_resources": [
+$BUNDLED_MANIFEST_ENTRIES
+  ],
   "inputs": {
     "uw-tc4_client": { "version": "$VERSION", "commit": "$(git -C $REPO rev-parse HEAD)" },
     "pankosmia_web_server": { "version": "0.18.5", "rev": "99fd9bea8a9f3d14ac6a61f8e2213f1c5d42ed2a", "bin_sha256": "$SERVER_SHA" },
@@ -510,11 +594,40 @@ if [ "$VARIANT" = "debug" ]; then
     echo "#70 GUARD FAILED: debug store missing the seeded sample burrito" >&2; exit 1; }
   echo "debug store seeded at $RESOLVED_REPO_DIR (separate from production store)"
 else
-  if [ -n "$(ls -A "$RESOLVED_REPO_DIR" 2>/dev/null)" ]; then
-    echo "#70 GUARD FAILED: production store is not empty on first boot" >&2
+  if [ -e "$RESOLVED_REPO_DIR/_local_/_local_" ]; then
+    echo "#70 GUARD FAILED: production store contains _local_/_local_ entry" >&2
     ls -R "$RESOLVED_REPO_DIR" >&2; exit 1
   fi
-  echo "production store is empty on first boot (isolated at $RESOLVED_REPO_DIR)"
+  top_entries=($(ls -A "$RESOLVED_REPO_DIR" 2>/dev/null))
+  if [ "${#top_entries[@]}" -ne 1 ] || [ "${top_entries[1]}" != "_local_" ]; then
+    echo "#70 GUARD FAILED: production store top-level holds entries other than _local_: ${top_entries[*]}" >&2
+    ls -R "$RESOLVED_REPO_DIR" >&2; exit 1
+  fi
+  local_entries=($(ls -A "$RESOLVED_REPO_DIR/_local_" 2>/dev/null))
+  if [ "${#local_entries[@]}" -ne 1 ] || [ "${local_entries[1]}" != "_sideloaded_" ]; then
+    echo "#70 GUARD FAILED: production store _local_ holds entries other than _sideloaded_: ${local_entries[*]}" >&2
+    ls -R "$RESOLVED_REPO_DIR" >&2; exit 1
+  fi
+  sideloaded_entries=($(ls -A "$RESOLVED_REPO_DIR/_local_/_sideloaded_" 2>/dev/null | sort))
+  expected_segments=()
+  for entry in "${BUNDLED_RESOURCES[@]}"; do
+    repo="${entry%%:*}"
+    expected_segments+=("unfoldingword--$repo")
+  done
+  expected_segments=($(printf '%s\n' "${expected_segments[@]}" | sort))
+  if [ "${sideloaded_entries[*]}" != "${expected_segments[*]}" ]; then
+    echo "#70 GUARD FAILED: production store seeded segments mismatch" >&2
+    echo "  expected: ${expected_segments[*]}" >&2
+    echo "  got:      ${sideloaded_entries[*]}" >&2
+    exit 1
+  fi
+  for seg in "${expected_segments[@]}"; do
+    if [ ! -f "$RESOLVED_REPO_DIR/_local_/_sideloaded_/$seg/metadata.json" ]; then
+      echo "#70 GUARD FAILED: production store missing metadata.json in $seg" >&2
+      exit 1
+    fi
+  done
+  echo "production store holds only _local_/_sideloaded_/ with seeded English suite on first boot (isolated at $RESOLVED_REPO_DIR)"
 fi
 
 echo "== 7/7 zip the artifact"

@@ -133,6 +133,7 @@
   "draft.pickHint": "Pick a number up, then click the word it begins at.",
   "draft.dropHint": "Click the word where verse {n} begins",
   "draft.beginAt": "Begin verse {n} at {w}",
+  "draft.joinAt": "Join verse {n} to verse {m} at {w}",
   "draft.occupied": "Verse {n} already begins here",
   "draft.cannotPass": "Verse {n} cannot pass another verse number",
   "draft.firstFixed": "Verse {n} begins the section and is fixed",

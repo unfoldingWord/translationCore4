@@ -5,10 +5,11 @@
 #   1. the app starts through its own launcher and its bundled server answers;
 #   2. the server serves the tC4 client (303 from /, 200 from /clients/uw-tc4);
 #   3. the project store is the tC4-owned path, never $HOME/pankosmia_repos (#70);
-#   4. a project is created through the app's own HTTP surface, with one book;
-#   5. one verse is written into that book and lands in the store on disk;
-#   6. the app is stopped and started again; the verse reads back;
-#   7. the smoke project is removed; the app is stopped.
+#   4. the bundled source text (en_ult) is readable offline (source, #163);
+#   5. a project is created through the app's own HTTP surface, with one book;
+#   6. one verse is written into that book and lands in the store on disk;
+#   7. the app is stopped and started again; the verse reads back;
+#   8. the smoke project is removed; the app is stopped.
 #
 # Each step prints one line, "ok <step>: <what was seen>" or "FAIL <step>: <what was
 # seen>", and the script exits non-zero at the first failure. The output is what the
@@ -179,7 +180,6 @@ else EXPECTED_STORE="$SMOKE_HOME/pankosmia/tc4-projects"; fi
 [ -d "$STORE" ] || fail "store: repo_dir '$STORE' does not exist"
 ok "store: repo_dir $STORE (the ${VARIANT:-production} build's tC4-owned store; not pankosmia_repos)"
 
-# ---- 4-5: create a project and write one verse, through the app's HTTP surface ----
 # The same endpoints the client uses (src/data/serverApi.ts): POST
 # /git/new-text-translation, GET /git/list-local-repos, GET and POST
 # /burrito/ingredient/raw/<repo>?ipath=TIT.usfm. Each line is one step.
@@ -217,7 +217,13 @@ function verse11(usfm) {
 (async () => {
   const ipath = "TIT.usfm"; // ingredient-relative, as /burrito/paths lists them
   const rawRoute = "/api/burrito/ingredient/raw/" + enc(repo) + "?ipath=" + encodeURIComponent(ipath);
-  if (mode === "create") {
+  if (mode === "source") {
+    const srcRoute = "/api/burrito/ingredient/raw/_local_/_sideloaded_/unfoldingword--en_ult?ipath=TIT.usfm";
+    const usfm = await getText(srcRoute).catch((e) => fail("source", e.message));
+    const v = verse11(usfm);
+    if (!v) fail("source", "no text for TIT 1:1 in " + srcRoute);
+    ok("source", "en_ult TIT 1:1 = \"" + v + "\"");
+  } else if (mode === "create") {
     const before = JSON.parse(await getText("/api/git/list-local-repos"));
     if (before.includes(repo)) fail("create", repo + " already exists");
     await post("/api/git/new-text-translation", {
@@ -252,6 +258,11 @@ function verse11(usfm) {
 })().catch((e) => fail(mode, e.message));
 '
 run_steps() { node_run -e "$STEPS_JS" -- "http://127.0.0.1:$PORT" "$REPO" "$ABBR" "$MARKER" "$1"; }
+
+# ---- source: bundled English suite (en_ult) is readable offline (#163) ----------
+run_steps source || { cleanup_app; exit 1; }
+
+# ---- 4-5: create a project and write one verse, through the app's HTTP surface ----
 
 run_steps create || { cleanup_app; exit 1; }
 ON_DISK="$STORE/$REPO/ingredients/TIT.usfm"

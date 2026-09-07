@@ -11,7 +11,7 @@ import { ServerApi } from './data/serverApi';
 import { StaleWriteError } from './data/httpStore';
 import { JournalingStore, ProjectReader } from './data/journal/journalingStore';
 import { SaveScheduler } from './data/saveScheduler';
-import { spliceVerse, verseBody } from './data/usfm/splice';
+import { spliceSection, spliceVerse, verseBody } from './data/usfm/splice';
 import { indexBook } from './data/usfm/indexer';
 import { RESOURCE_FRAME, forgetProjectFrames, resolveProjectFrame } from './data/projectFrame';
 import { backfillCoverage } from './data/coverageBackfill';
@@ -23,7 +23,7 @@ import { GATEWAYS, gatewayKey, DCS_HOST, orgForRepoName } from './data/gateways'
 import { fetchAndInstallPin, latestReleaseTag, identifyExistingInstall } from './data/resourceFetch';
 import { isNotFoundError } from './data/serverApi';
 import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, mergeOptionalPins, isPinLocal, unsatisfiedProjectPinFor, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk, flavorOfMetadata } from './data/installed';
-import { TOOL_SLOT, preflightToolBook, resolutionRecord, resolveToolBook, resolveSetSlot } from './data/resolve';
+import { TOOL_SLOT, preflightToolBook, recordMatchesResolution, resolutionRecord, resolveToolBook, resolveSetSlot } from './data/resolve';
 import {
   deriveForProject,
   isDecided,
@@ -165,6 +165,21 @@ export const SCRIPT_FONTS = [
   'Padauk — Myanmar',
 ];
 
+/** #63: a check item is keyed by its resource verse. When the draft holds
+ * that verse inside a span ("2:9-10"), the span's text is the verse's text —
+ * so the item can be re-checked against the span, and a decision on it
+ * revalidates against the words it can actually see. */
+function withSpanMembers(index) {
+  const out = { ...index };
+  for (const [ref, text] of Object.entries(index)) {
+    const [chapter, key] = ref.split(':');
+    const m = /^(\d+)-(\d+)$/.exec(key);
+    if (!m) continue;
+    for (let n = Number(m[1]); n <= Number(m[2]); n++) out[`${chapter}:${n}`] ??= text;
+  }
+  return out;
+}
+
 /** "chapter:verse" -> current draft text, for I-3 revalidation (C2.8). Reads
  * the raw book so it always reflects what is on disk right now. */
 function verseTextIndex(bookRaw) {
@@ -185,14 +200,18 @@ function isOldTestament(bookCode) {
   return Object.keys(BOOK_NAMES).indexOf(bookCode.toUpperCase()) < 39;
 }
 
-/** usfm-js verse objects for one verse of a source book — the aligner's input. */
+/** usfm-js verse objects for one verse of a source book — the aligner's
+ * input. A span ("9-10", #63) is its member verses' objects in order: the
+ * span's draft is aligned against both original verses as one text. */
 function verseObjectsFor(usfmText, chapter, verse) {
   // Catch-to-absence sweep (D30): null = the text is PRESENT but could not
   // be parsed — the alignment surface states 'unreadable', never the false
   // "not on this computer" claim that sends the user to re-download.
   try {
-    const json = usfm.toJSON(usfmText);
-    return json?.chapters?.[String(chapter)]?.[String(verse)]?.verseObjects ?? [];
+    const verses = usfm.toJSON(usfmText)?.chapters?.[String(chapter)] ?? {};
+    const m = /^(\d+)-(\d+)$/.exec(String(verse));
+    const members = m ? Array.from({ length: Number(m[2]) - Number(m[1]) + 1 }, (_, i) => String(Number(m[1]) + i)) : [String(verse)];
+    return members.flatMap((v) => verses[v]?.verseObjects ?? []);
   } catch {
     return null;
   }
@@ -595,7 +614,11 @@ async function buildAlignmentSession(store, st, ref, source, mapped, origObjects
   const { value: file, md5 } = await store.readAlignmentsWithMd5(st.book);
   const stored = file?.chapters?.[mapped.chapter]?.[mapped.verse];
   const sourceVersion = `dcs::${source.pin.repoPath.split('/').slice(-2).join('/')}@${source.pin.version}`;
-  const record = stored ?? bootstrapVerse(targetText, origObjects, sourceVersion);
+  // A stored record with no alignments — the §8.5 removal form, or the
+  // `invalid` record a span create/break leaves on the new key (#63) — has
+  // nothing to edit: the editor starts from the bootstrap; the file keeps
+  // its flag until the translator saves an alignment.
+  const record = stored?.alignments?.length ? stored : bootstrapVerse(targetText, origObjects, sourceVersion);
   return {
     loading: false,
     ref,
@@ -721,8 +744,12 @@ async function completedCheckSession({ store, st, tool, book, pre, derived, drop
     .filter(Boolean)
     .map((pin) => ({ repoPath: pin.repoPath, version: pin.version, sha: pin.sha }));
   const warning = resolutionWarning(savedFile?.resource, pre.resolution, rungPins);
-  const { items: merged, orphaned } = mergeAndReattach(derived, saved);
-  const verses = verseTextIndex(st.bookRaw);
+  // #63: with the file's resource unchanged there was no re-pin, so a saved
+  // `invalidated` is the journal's structural one — kept until re-checked.
+  const { items: merged, orphaned } = mergeAndReattach(derived, saved, {
+    keepInvalidated: recordMatchesResolution(savedFile?.resource, pre.resolution),
+  });
+  const verses = withSpanMembers(verseTextIndex(st.bookRaw));
   const { items, invalidated } = revalidateAgainstDraft(merged, verses);
   return {
     loading: false,
@@ -869,6 +896,35 @@ function validateNewBible(form) {
   const slug = (value) => value.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
   const abbr = slug(form.name) || slug(form.code);
   return abbr ? { abbr } : { error: t('wizard.abbrRequired') };
+}
+
+/** The book scheduler's writer (#63). A book flagged by a section save that
+ * created or broke a verse span goes through the ONE §8.5 action with
+ * `intent: 'spans'`; every other write is the per-verse path (writeBook
+ * refuses a slot-set change by design, #62). The store derives the key
+ * mapping from what IT projects at write time, so the flag is all the app
+ * keeps: taken before the write, put back when the write fails (the retry
+ * carries the same buffer), re-set by any later span save. */
+function writeBookOrStructure({ store, structuralRef }, book, whole) {
+  if (!structuralRef.current.has(book)) return store.writeBook(book, whole);
+  structuralRef.current.delete(book);
+  return store.applyStructuralEdit(book, whole, { intent: 'spans' }).catch((error) => {
+    structuralRef.current.add(book);
+    throw error;
+  });
+}
+
+/** #63: stage a section save whose verse keys changed (a span created or
+ * broken, D70). The book is rewritten ONCE over the affected verses — never
+ * spliced verse by verse, which would pass through a slot set no action
+ * describes — and the book is flagged for the scheduler's writer. */
+function stageStructuralSection({ rawRef, schedulerRef, structuralRef, stateRef, dispatch }, chapter, keys, texts, newKeys) {
+  const book = stateRef.current.book;
+  const verses = newKeys.map((key) => ({ key, body: (texts[key] ?? '').trim() }));
+  rawRef.current = spliceSection(rawRef.current, chapter, keys, verses);
+  structuralRef.current.add(book);
+  schedulerRef.current.replaceBook(book, rawRef.current);
+  dispatch({ type: 'set', patch: { bookRaw: rawRef.current } });
 }
 
 /** D65 (round-22 checkpoint): comprehension notes ride their own
@@ -1034,6 +1090,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
   const {
     openProjectSeqRef,
     schedulerRef,
+    structuralRef,
     noteSchedulerRef,
     noteTargetsRef,
     storeRef,
@@ -1081,8 +1138,9 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
     if (superseded()) return; // a newer open owns the refs
     dispatch({ type: 'set', patch: { opening: progress('prepare') } });
     storeRef.current = store;
+    structuralRef.current = new Set();
     schedulerRef.current = new SaveScheduler({
-      writeBook: (book, whole) => store.writeBook(book, whole),
+      writeBook: (book, whole) => writeBookOrStructure({ store, structuralRef }, book, whole),
       splice: spliceVerse,
     });
     schedulerRef.current.subscribe((saveState) => dispatch({ type: 'set', patch: { saveState } }));
@@ -1721,6 +1779,9 @@ export function AppProvider({ children }) {
   const [s, dispatch] = useReducer(reducer, undefined, initial);
   const storeRef = useRef(null);
   const schedulerRef = useRef(null);
+  // #63: the books whose next write is a verse-span change (a section save
+  // that changed the verse set), for the scheduler's writer (writeBookOrStructure).
+  const structuralRef = useRef(new Set());
   const rawRef = useRef(null); // authoritative raw book text, updated synchronously
   const stateRef = useRef(null); // live state for async closures
   const openSeqRef = useRef(0); // openBook sequence token (review finding M2)
@@ -2380,9 +2441,9 @@ export function AppProvider({ children }) {
           verse,
           schemes: frame.schemes,
         });
-        if (!srcRef.ok || String(srcRef.reference.verse).includes('-')) {
-          return settle({ unavailable: 'no-counterpart' });
-        }
+        // A span counterpart ("9-10") is aligned as one text (#63): its
+        // member verses' objects, in order (verseObjectsFor).
+        if (!srcRef.ok) return settle({ unavailable: 'no-counterpart' });
         const origObjects = verseObjectsFor(
           source.usfmText,
           srcRef.reference.chapter,
@@ -3170,6 +3231,7 @@ export function AppProvider({ children }) {
           {
             openProjectSeqRef,
             schedulerRef,
+            structuralRef,
             noteSchedulerRef,
             noteTargetsRef,
             storeRef,
@@ -3437,7 +3499,14 @@ export function AppProvider({ children }) {
       // edited verses stays byte-identical. `texts` maps verse key to text; a
       // section verse with no text in the card returns to the `___` stub
       // (editVerse's empty rule) — never a stale copy beside the moved words.
-      saveSection: (chapter, keys, texts) => {
+      // `newKeys` (#63): the verse keys the card produced; a changed list is a
+      // verse span created or broken — one structural action, not splices.
+      saveSection: (chapter, keys, texts, newKeys = keys) => {
+        if (newKeys.join('\n') !== keys.join('\n')) {
+          stageStructuralSection({ rawRef, schedulerRef, structuralRef, stateRef, dispatch }, chapter, keys, texts, newKeys);
+          a.blurVerse();
+          return;
+        }
         for (const verseKey of keys) {
           const stored = verseBody(rawRef.current, chapter, verseKey);
           if (stored == null) continue;

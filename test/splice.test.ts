@@ -3,7 +3,7 @@
 // range identical (FR-7). Corpora as in indexer.test.ts.
 import { describe, expect, it } from 'vitest';
 import { indexBook } from '../src/data/usfm/indexer';
-import { spliceVerse, verseBody, VerseNotFoundError } from '../src/data/usfm/splice';
+import { spliceSection, spliceVerse, verseBody, VerseNotFoundError } from '../src/data/usfm/splice';
 
 // Real node builtins via the runtime, NOT `import 'node:fs'` — the app's
 // vite-plugin-node-polyfills aliases node builtins to browser mocks (fs → null)
@@ -156,5 +156,54 @@ describe('VerseNotFoundError', () => {
     expect(e.name).toBe('VerseNotFoundError');
     expect(e.chapter).toBe('9');
     expect(e.verseKey).toBe('99');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #63 — spliceSection: a verse span created or broken rewrites ONLY the verses
+// that change, from the first to the last of them; every other byte stays.
+// ---------------------------------------------------------------------------
+describe('#63 — spliceSection', () => {
+  const raw = ['\\id TST', '\\c 2', '\\p', '\\v 8 ocho', '\\v 9 ___', '\\v 10 ___', '\\v 11 once', ''].join('\n');
+
+  it('creates a span: two stubs become one \\v 9-10 line, the rest byte-identical', () => {
+    const out = spliceSection(raw, 2, ['9', '10'], [{ key: '9-10', body: 'nueve y diez' }]);
+    expect(out).toBe(['\\id TST', '\\c 2', '\\p', '\\v 8 ocho', '\\v 9-10 nueve y diez', '\\v 11 once', ''].join('\n'));
+  });
+
+  it('breaks a span: one line becomes two; an empty body is the ___ stub', () => {
+    const spanned = spliceSection(raw, 2, ['9', '10'], [{ key: '9-10', body: 'nueve y diez' }]);
+    const out = spliceSection(spanned, 2, ['9-10'], [{ key: '9', body: 'nueve y diez' }, { key: '10', body: '' }]);
+    expect(out).toBe(['\\id TST', '\\c 2', '\\p', '\\v 8 ocho', '\\v 9 nueve y diez', '\\v 10 ___', '\\v 11 once', ''].join('\n'));
+  });
+
+  it('rewrites only the changed verses of a longer section', () => {
+    const out = spliceSection(raw, 2, ['8', '9', '10', '11'], [
+      { key: '8', body: 'ocho' },
+      { key: '9-10', body: 'nueve y diez' },
+      { key: '11', body: 'once' },
+    ]);
+    // Verses 8 and 11 are untouched: their bytes were not rewritten at all.
+    expect(out.slice(0, out.indexOf('\\v 9-10'))).toBe(raw.slice(0, raw.indexOf('\\v 9 ')));
+    expect(out.slice(out.indexOf('\\v 11'))).toBe(raw.slice(raw.indexOf('\\v 11')));
+    expect(out).toContain('\\v 9-10 nueve y diez\n\\v 11 once');
+  });
+
+  it('a section written back unchanged is the same string; an unknown key throws', () => {
+    expect(spliceSection(raw, 2, ['9', '10'], [{ key: '9', body: '' }, { key: '10', body: '' }])).toBe(raw);
+    expect(() => spliceSection(raw, 2, ['9', '12'], [{ key: '9-12', body: 'x' }])).toThrow(VerseNotFoundError);
+  });
+
+  it('the real corpora: a span create then break round-trips to the original bytes', () => {
+    const tit = corpora['sample TIT (plain draft)'];
+    const entries = indexBook(tit).filter((e) => e.chapter === '2');
+    const [a, b] = [entries[3], entries[4]]; // two neighbouring verses of chapter 2
+    const bodyA = verseBody(tit, '2', a.verseKey) as string;
+    const bodyB = verseBody(tit, '2', b.verseKey) as string;
+    const key = `${a.verseKey}-${b.verseKey}`;
+    const spanned = spliceSection(tit, '2', [a.verseKey, b.verseKey], [{ key, body: `${bodyA} ${bodyB}` }]);
+    expect(indexBook(spanned).some((e) => e.chapter === '2' && e.verseKey === key)).toBe(true);
+    const back = spliceSection(spanned, '2', [key], [{ key: a.verseKey, body: bodyA }, { key: b.verseKey, body: bodyB }]);
+    expect(back).toBe(tit);
   });
 });
