@@ -119,8 +119,7 @@ export function verseTextSpan(
 
 /**
  * D8 / FR-7 byte-strict assertion: given the book bytes before and after an edit
- * to (chapter, verse) — or to the run (chapter, verse..toVerse) — every byte
- * outside that text span must be identical.
+ * to (chapter, verse), every byte outside that verse's text span must be identical.
  * Returns null when byte-strict holds, else a human-readable violation.
  */
 export function byteStrictViolation(
@@ -128,12 +127,9 @@ export function byteStrictViolation(
   after: Buffer,
   chapter: number,
   verse: number,
-  toVerse: number = verse,
 ): string | null {
   const beforeStr = before.toString('utf8');
-  // A section save edits a run of verses (#141): the window runs from the
-  // first edited verse's text to the last one's.
-  const span = { start: verseTextSpan(beforeStr, chapter, verse).start, end: verseTextSpan(beforeStr, chapter, toVerse).end };
+  const span = verseTextSpan(beforeStr, chapter, verse);
 
   // Length of the unchanged common prefix / suffix between the two byte sequences.
   let prefix = 0;

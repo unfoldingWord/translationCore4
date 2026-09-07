@@ -3,65 +3,90 @@
 // over a section's verse KEYS in order (["9", "10"], or a bridge ["9-10"]).
 //
 // Type mode holds the section as text: a line that starts with one of the
-// section's verse keys begins that verse. Place mode holds a flat word list
-// plus one pin index per verse (`markers[key] = index of the word the verse
-// begins at`). Invariants the functions keep:
-//   · words are never changed or reordered — only pins move;
+// section's verse keys begins that verse. Place mode holds a flat word list,
+// the whitespace that followed each word (`seps`, so an untouched verse
+// serializes back byte-for-byte), and one pin index per verse
+// (`markers[key] = index of the word the verse begins at`). Invariants:
+//   · words and their separators are never changed or reordered — only pins move;
 //   · the section's first verse is fixed at word 0;
-//   · a pin can never pass a neighbouring pin (canDrop refuses it).
+//   · a pin can never pass a neighbouring pin (canDrop refuses it). Two pins
+//     may share an index only when the earlier verse has no words (a stub
+//     verse before a drafted one); a drop can never create that state (#63).
 
-const LINE = /^(\d+(?:-\d+)?)(?:\s+(.*))?$/s;
+const LINE = /^\s*(\d+(?:-\d+)?)(?:\s+|$)([\s\S]*)$/;
 
-/** Read the typed section into words and pins. Pins out of order are dropped
- * (they return to the bank) so the marker set is always monotonic. */
+/** Read the typed section into words, separators and pins. A pin that would
+ * pass an earlier pin is dropped (it returns to the bank). */
 export const parseDraft = (text, keys) => {
   /** @type {string[]} */
   const words = [];
-  /** @type {Record<string, number>} */
+  /** @type {string[]} */
+  const seps = [];
+  /** Each key found in the text: the word index it marks, and the LINE it was
+   * written on. The line settles a tie — two keys at the same word index are
+   * an empty leading verse followed by its neighbour only when they were
+   * written in that order (Codex round 1). */
+  /** @type {Record<string, { at: number, line: number }>} */
   const found = {};
-  for (const line of String(text ?? '').split(/\n+/)) {
-    let rest = line.trim();
-    if (!rest) continue;
+  const lines = String(text ?? '').split('\n');
+  lines.forEach((line, li) => {
+    let rest = line;
     const m = rest.match(LINE);
     if (m && keys.includes(m[1])) {
-      found[m[1]] = words.length;
-      rest = m[2] ?? '';
+      found[m[1]] = { at: words.length, line: li };
+      rest = m[2];
     }
-    for (const w of rest.split(/\s+/)) if (w) words.push(w);
-  }
+    const tokens = rest.split(/(\s+)/);
+    for (let i = 0; i < tokens.length; i++) {
+      if (i % 2 === 0) {
+        if (tokens[i] !== '') { words.push(tokens[i]); seps.push(''); }
+      } else if (words.length) {
+        seps[words.length - 1] += tokens[i];
+      }
+    }
+    if (li < lines.length - 1 && words.length) seps[words.length - 1] += '\n';
+  });
   /** @type {Record<string, number>} */
   const markers = {};
-  if (words.length === 0) return { words, markers };
+  if (words.length === 0) return { words, seps, markers };
   markers[keys[0]] = 0;
-  let last = 0;
+  let last = { at: 0, line: found[keys[0]]?.line ?? -1 };
   for (const k of keys.slice(1)) {
-    const at = found[k];
-    if (at === undefined || at <= last || at >= words.length) continue;
-    markers[k] = at;
-    last = at;
+    const f = found[k];
+    if (f === undefined || f.at >= words.length) continue;
+    // Later in the words than the verse before it — or at the same word, when
+    // that verse was written first and so owns no words (a stub before a
+    // drafted verse). Anything else is out of order: the pin goes to the bank.
+    if (f.at < last.at || (f.at === last.at && f.line <= last.line)) continue;
+    markers[k] = f.at;
+    last = f;
   }
-  return { words, markers };
+  return { words, seps, markers };
 };
 
 /** The text of each verse from the pinned word list: a verse runs from its pin
- * to the next pin. Only verses with text are returned. */
-export const sectionVerses = (words, markers, keys) => {
+ * to the next pin, words joined by their own separators. Only verses with text
+ * are returned. */
+export const sectionVerses = (words, seps, markers, keys) => {
   const at = {};
-  for (const k of Object.keys(markers)) at[markers[k]] = k;
+  for (const k of keys) if (markers[k] !== undefined) at[markers[k]] = k; // a later key wins a shared index
   const buf = {};
   let cur = keys[0];
   words.forEach((w, i) => {
     if (at[i] !== undefined) cur = at[i];
-    buf[cur] = buf[cur] ? `${buf[cur]} ${w}` : w;
+    buf[cur] = (buf[cur] ?? '') + w + (seps[i] ?? '');
   });
   const out = {};
-  for (const k of keys) if (buf[k]) out[k] = buf[k];
+  for (const k of keys) {
+    const t = (buf[k] ?? '').trim();
+    if (t) out[k] = t;
+  }
   return out;
 };
 
 /** Write the pinned word list back out as Type-mode text, one verse per line. */
-export const serializeDraft = (words, markers, keys) => {
-  const verses = sectionVerses(words, markers, keys);
+export const serializeDraft = (words, seps, markers, keys) => {
+  const verses = sectionVerses(words, seps, markers, keys);
   return keys.filter((k) => verses[k]).map((k) => `${k} ${verses[k]}`).join('\n');
 };
 

@@ -36,8 +36,16 @@ describe('#141 — parseDraft', () => {
   });
 
   it('an empty section has no words and no markers', () => {
-    expect(parseDraft('', KEYS)).toEqual({ words: [], markers: {} });
-    expect(parseDraft('  \n ', KEYS)).toEqual({ words: [], markers: {} });
+    expect(parseDraft('', KEYS)).toEqual({ words: [], seps: [], markers: {} });
+    expect(parseDraft('  \n ', KEYS)).toEqual({ words: [], seps: [], markers: {} });
+  });
+
+  it('a stub verse before a drafted one keeps the text with ITS OWN verse (Codex round 1)', () => {
+    // The card writes an empty numbered line for an undrafted verse; without
+    // it verse 10's words would be saved as verse 9's.
+    const d = parseDraft('9 \n10 no defraudando', KEYS);
+    expect(d.markers).toEqual({ '9': 0, '10': 0 });
+    expect(sectionVerses(d.words, d.seps, d.markers, KEYS)).toEqual({ '10': 'no defraudando' });
   });
 
   it('bridged keys work as markers ("9-10")', () => {
@@ -45,25 +53,42 @@ describe('#141 — parseDraft', () => {
     expect(d.markers).toEqual({ '9-10': 0 });
     expect(d.words[0]).toBe('Exhorta');
   });
+
+  it('every separator inside a verse survives the round trip — a save must not rewrite untouched text (Codex round 1)', () => {
+    // A verse body may hold a line break or a non-breaking space (the indexer
+    // permits multiline bodies); rebuilding it with ASCII spaces would write
+    // every other verse of the section back changed.
+    const body9 = 'l\u00ednea uno\nl\u00ednea dos';
+    const body10 = 'no\u00a0defraudando';
+    const d = parseDraft(`9 ${body9}\n10 ${body10}`, KEYS);
+    expect(sectionVerses(d.words, d.seps, d.markers, KEYS)).toEqual({ '9': body9, '10': body10 });
+  });
 });
 
 describe('#141 — serializeDraft / sectionVerses keep every word in order', () => {
   const words = ['a', 'b', 'c', 'd', 'e'];
+  const seps = [' ', ' ', ' ', ' ', ''];
 
   it('round-trips through Type-mode text', () => {
-    const text = serializeDraft(words, { '3': 0, '4': 2, '5': 4 }, THREE);
+    const markers = { '3': 0, '4': 2, '5': 4 };
+    const text = serializeDraft(words, seps, markers, THREE);
     expect(text).toBe('3 a b\n4 c d\n5 e');
-    expect(parseDraft(text, THREE)).toEqual({ words, markers: { '3': 0, '4': 2, '5': 4 } });
+    const back = parseDraft(text, THREE);
+    expect(back.words).toEqual(words);
+    expect(back.markers).toEqual(markers);
+    // The line breaks the serializer wrote are separators, not lost bytes.
+    expect(back.seps).toEqual([' ', '\n', ' ', '\n', '']);
+    expect(serializeDraft(back.words, back.seps, back.markers, THREE)).toBe(text);
   });
 
   it('an unplaced verse gets no text; its words stay with the verse before it', () => {
-    expect(sectionVerses(words, { '3': 0, '5': 3 }, THREE)).toEqual({ '3': 'a b c', '5': 'd e' });
-    expect(serializeDraft(words, { '3': 0 }, THREE)).toBe('3 a b c d e');
+    expect(sectionVerses(words, seps, { '3': 0, '5': 3 }, THREE)).toEqual({ '3': 'a b c', '5': 'd e' });
+    expect(serializeDraft(words, seps, { '3': 0 }, THREE)).toBe('3 a b c d e');
   });
 
   it('the words of every placement concatenate back to the original list', () => {
     for (const markers of [{ '3': 0 }, { '3': 0, '4': 1 }, { '3': 0, '4': 1, '5': 2 }, { '3': 0, '5': 4 }]) {
-      const verses = sectionVerses(words, markers, THREE);
+      const verses = sectionVerses(words, seps, markers, THREE);
       expect(Object.values(verses).join(' ').split(' ')).toEqual(words);
     }
   });

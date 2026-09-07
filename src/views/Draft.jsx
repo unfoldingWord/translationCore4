@@ -93,9 +93,11 @@ const chapterSections = (s, verses) => {
   const keys = verses.map((v) => v.n);
   if (s.understand?.sourceRefs != null) return keys.map((k) => [k]);
   const src = s.sources?.[s.sourceTab];
-  const fromSource = src && !isSourceAbsent(src) ? sectionStarts(src.raw, s.chapter) : [];
-  const starts = fromSource.length ? fromSource : sectionStarts(s.bookRaw, s.chapter);
-  return sectionRanges(starts, keys);
+  // sectionStarts always seeds the chapter's first verse, so the fallback
+  // asks whether the text carries any `\ts\*` at all (Codex review, round 1).
+  const marked = (raw) => /\\ts\\\*/.test(String(raw ?? ''));
+  const source = src && !isSourceAbsent(src) && marked(src.raw) ? src.raw : marked(s.bookRaw) ? s.bookRaw : null;
+  return sectionRanges(source ? sectionStarts(source, s.chapter) : [], keys);
 };
 
 /** Group a section's target verses into display paragraphs by the model's
@@ -168,14 +170,18 @@ function TargetVerse({ v, chapter, editing, actions }) {
   );
 }
 
-function TargetCell({ s, verses, keys, span, dir, type, editType, actions }) {
+function TargetCell({ s, verses, keys, byKey, span, dir, type, editType, actions }) {
   const editingKey = s.editing?.key;
-  const sectionOpen = editingKey === `${s.chapter}:s${keys[0]}`;
+  // The open card keeps the verse set it was opened with (startSection's
+  // keys), whatever the rows regroup to after a source switch — the row that
+  // holds its first verse hosts it (Codex review, round 1).
+  const editKeys = s.editing?.keys;
+  const sectionOpen = !!editKeys && editingKey === `${s.chapter}:s${editKeys[0]}` && keys.includes(editKeys[0]);
   const verseOpen = verses.find((v) => editingKey === `${s.chapter}:${v.n}`);
   return (
     <div style={{ ...CELL, position: 'relative' }}>
       {sectionOpen ? (
-        <SectionEditor chapter={s.chapter} keys={keys} verses={verses} span={span} dir={dir} editType={editType} />
+        <SectionEditor chapter={s.chapter} keys={editKeys} verses={editKeys.map((k) => byKey.get(k)).filter(Boolean)} span={rangeSpan(editKeys)} dir={dir} editType={editType} />
       ) : (
         <>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 6, minHeight: 14 }}>
@@ -271,7 +277,7 @@ export default function Draft() {
               return (
                 <React.Fragment key={keys[0]}>
                   <SourceCell s={s} keys={keys} sourceModel={sourceModel} paneFocus={paneFocus} label={`${bookName(book.code)} ${s.chapter}:${span}`} />
-                  <TargetCell s={s} verses={sectionVerses} keys={keys} span={span} dir={dir} type={type} editType={editType} actions={actions} />
+                  <TargetCell s={s} verses={sectionVerses} keys={keys} byKey={byKey} span={span} dir={dir} type={type} editType={editType} actions={actions} />
                 </React.Fragment>
               );
             })}

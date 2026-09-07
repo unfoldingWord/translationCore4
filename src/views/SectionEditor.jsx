@@ -13,9 +13,13 @@ import { canDrop, parseDraft, sectionVerses, serializeDraft, spanEnd } from './s
 const SUP = { fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', marginInlineEnd: 3, verticalAlign: 'super' };
 const WORD = { display: 'inline-block', borderRadius: 'var(--radius-xs)', padding: '0 .06em' };
 
-/** The initial Type-mode text: one "key body" line per drafted verse. An
- * undrafted section starts empty — "type it straight through". */
-const initialText = (verses) => verses.filter((v) => v.drafted).map((v) => `${v.n} ${v.body}`).join('\n');
+/** The initial Type-mode text. An undrafted section starts empty — "type it
+ * straight through". Once any verse is drafted, EVERY verse gets its own
+ * numbered line, a stub verse an empty one: without it a stub first verse
+ * would take the next verse's words (Codex review, round 1). */
+const initialText = (verses) => (verses.some((v) => v.drafted)
+  ? verses.map((v) => (v.drafted ? `${v.n} ${v.body}` : `${v.n} `)).join('\n')
+  : '');
 
 /** The hover title of a word while a pin is in hand: why it can or cannot land here. */
 const wordTitle = (held, pinAt, ok, w) => {
@@ -24,28 +28,32 @@ const wordTitle = (held, pinAt, ok, w) => {
   return ok ? t('draft.beginAt', { n: held, w }) : t('draft.cannotPass', { n: held });
 };
 
-/** What sits before a word: the held pin's ghost where it may land, the fixed
- * first number, or the pin of the verse that begins here. */
-function PinBefore({ i, first, pinAt, held, hover, ok, drop, pick }) {
-  if (hover === i && held != null && ok) {
-    // The ghost shows where the held pin would land. It is positioned OUT of
-    // the flow (the word's wrapper is the containing block): an in-flow ghost
-    // shifted the text under the pointer on every hover, so a click aimed at
-    // a word landed beside it. It takes the drop too.
-    return (
-      <VerseMarker n={held} state="dragging" onPickUp={() => drop(i)} aria-hidden="true" tabIndex={-1}
-        style={{ position: 'absolute', insetInlineEnd: '100%', top: '50%', transform: 'translateY(-60%)', zIndex: 1 }} />
-    );
-  }
-  if (!pinAt) return null;
-  if (pinAt === first) return <sup title={t('draft.firstFixed', { n: first })} style={SUP}>{first}</sup>;
-  return <VerseMarker n={pinAt} state="idle" data-testid={`pin-${pinAt}`} onPickUp={() => pick(pinAt)} style={{ marginInlineEnd: '.12em' }} />;
+/** What sits before a word: the held pin's ghost where it may land, then every
+ * pin of a verse that begins here (the fixed first number as a plain
+ * superscript; a stub verse's pin can share the index of the next). */
+function PinBefore({ i, first, pinsAt, held, hover, ok, drop, pick }) {
+  return (
+    <>
+      {hover === i && held != null && ok && (
+        // The ghost shows where the held pin would land. It is positioned OUT of
+        // the flow (the word's wrapper is the containing block): an in-flow ghost
+        // shifted the text under the pointer on every hover, so a click aimed at
+        // a word landed beside it. It takes the drop too (press or release).
+        <VerseMarker n={held} state="dragging" onPickUp={() => drop(i)} onPointerUp={() => drop(i)} aria-hidden="true" tabIndex={-1}
+          style={{ position: 'absolute', insetInlineEnd: '100%', top: '50%', transform: 'translateY(-60%)', zIndex: 1 }} />
+      )}
+      {pinsAt.map((k) => (k === first
+        ? <sup key={k} title={t('draft.firstFixed', { n: first })} style={SUP}>{first}</sup>
+        : <VerseMarker key={k} n={k} state="idle" data-testid={`pin-${k}`} onPickUp={() => pick(k)} style={{ marginInlineEnd: '.12em' }} />))}
+    </>
+  );
 }
 
 /** One word in Place mode: the pin (or ghost, or fixed number) before it, then
  * the word itself, a real control while a pin is in hand and may land here. */
 function PlaceWord({ w, i, keys, markers, held, hover, setHover, drop, pick, cancel, dir }) {
-  const pinAt = Object.keys(markers).find((k) => markers[k] === i && k !== held);
+  const pinsAt = keys.filter((k) => markers[k] === i && k !== held);
+  const pinAt = pinsAt[pinsAt.length - 1];
   const ok = held != null && canDrop(markers, keys, held, i);
   const over = held != null ? () => setHover(i) : undefined;
   const onKeyDown = (e) => {
@@ -54,7 +62,7 @@ function PlaceWord({ w, i, keys, markers, held, hover, setHover, drop, pick, can
   };
   return (
     <>
-      <PinBefore i={i} first={keys[0]} pinAt={pinAt} held={held} hover={hover} ok={ok} drop={drop} pick={pick} />
+      <PinBefore i={i} first={keys[0]} pinsAt={pinsAt} held={held} hover={hover} ok={ok} drop={drop} pick={pick} />
       <span
         dir={dir}
         role={ok ? 'button' : undefined}
@@ -64,6 +72,10 @@ function PlaceWord({ w, i, keys, markers, held, hover, setHover, drop, pick, can
         onMouseEnter={over}
         onFocus={over}
         onClick={ok ? () => drop(i) : undefined}
+        // D70.3 is a drag: press the pin, move, release on the word. The pin's
+        // pointerdown picks it up, so the release here places it; a plain
+        // click still places it too.
+        onPointerUp={ok ? () => drop(i) : undefined}
         onKeyDown={held != null ? onKeyDown : undefined}
         style={{ ...WORD, cursor: held == null ? 'default' : ok ? 'copy' : 'not-allowed' }}>
         {w}
@@ -125,21 +137,21 @@ export function SectionEditor({ chapter, keys, verses, span, dir, editType }) {
   const { actions } = useApp();
   const [mode, setMode] = useState('type');
   const [text, setText] = useState(() => initialText(verses));
-  const [placed, setPlaced] = useState({ words: [], markers: {} });
+  const [placed, setPlaced] = useState({ words: [], seps: [], markers: {} });
   const ref = useRef(null);
   useEffect(() => { if (mode === 'type') ref.current?.focus(); }, [mode]);
 
   const switchMode = (next) => {
     if (next === mode) return;
     if (next === 'place') setPlaced(parseDraft(text, keys));
-    else setText(serializeDraft(placed.words, placed.markers, keys));
+    else setText(serializeDraft(placed.words, placed.seps, placed.markers, keys));
     setMode(next);
   };
   const draft = mode === 'place' ? placed : parseDraft(text, keys);
   const canSave = draft.words.length > 0;
   const save = () => {
     if (!canSave) return;
-    actions.saveSection(chapter, keys, sectionVerses(draft.words, draft.markers, keys));
+    actions.saveSection(chapter, keys, sectionVerses(draft.words, draft.seps, draft.markers, keys));
   };
 
   return (
@@ -164,7 +176,7 @@ export function SectionEditor({ chapter, keys, verses, span, dir, editType }) {
           style={{ width: '100%', boxSizing: 'border-box', border: 0, outline: 'none', resize: 'vertical', ...editType, color: 'var(--text-scripture)', background: 'transparent' }}
         />
       ) : (
-        <PlaceView keys={keys} words={placed.words} markers={placed.markers} setMarkers={(markers) => setPlaced({ words: placed.words, markers })} dir={dir} editType={editType} />
+        <PlaceView keys={keys} words={placed.words} markers={placed.markers} setMarkers={(markers) => setPlaced({ ...placed, markers })} dir={dir} editType={editType} />
       )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
         <Button size="sm" disabled={!canSave} onClick={save}>{t('draft.saveSection')}</Button>

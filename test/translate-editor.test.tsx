@@ -8,18 +8,24 @@ import React from 'react';
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 
-const verse = { n: 1, drafted: true, text: 'Pablo, siervo de Dios', body: 'Pablo, siervo de Dios' };
+const verse = { n: '1', drafted: true, para: true, text: 'Pablo, siervo de Dios', body: 'Pablo, siervo de Dios' };
+const verse2 = { n: '2', drafted: false, para: false, text: '', body: '' };
+const verse3 = { n: '3', drafted: false, para: false, text: '', body: '' };
+// A source that chunks the chapter 1–2 | 3, and one with no \ts\* at all.
+const CHUNKED = '\\id TIT\n\\c 1\n\\p\n\\v 1 a\n\\v 2 b\n\\ts\\*\n\\v 3 c\n';
+const FLAT = '\\id TIT\n\\c 1\n\\p\n\\v 1 a\n\\v 2 b\n\\v 3 c\n';
 const state = {
   chapter: 1,
   rail: false,
-  editing: null as { key: string } | null,
+  editing: null as { key: string; keys?: string[] } | null,
   project: { name: 'Equipo', languageTag: 'es-419', scriptDirection: 'ltr', textFont: null as string | null },
   sourceTab: 'ult',
   sourcePanes: ['ult'],
-  sources: { ult: { raw: '', chapters: {}, version: 'v89' } },
+  sources: { ult: { raw: '', chapters: {}, version: 'v89' } } as Record<string, { raw: string; chapters: object; version: string }>,
+  bookRaw: '',
   bookError: null,
 };
-const bookModel = { code: 'TIT', chapterNums: [1], byChapter: { '1': [verse] } };
+const bookModel = { code: 'TIT', chapterNums: [1], byChapter: { '1': [verse] } as Record<string, object[]> };
 
 vi.mock('../src/state.jsx', () => ({
   useApp: () => ({
@@ -38,6 +44,9 @@ import Draft from '../src/views/Draft.jsx';
 beforeEach(() => {
   cleanup();
   state.editing = null;
+  state.sourceTab = 'ult';
+  state.sources = { ult: { raw: '', chapters: {}, version: 'v89' } };
+  bookModel.byChapter = { '1': [verse] };
 });
 
 describe('#107 — the Translate editing card', () => {
@@ -78,6 +87,52 @@ describe('#107 — the Translate editing card', () => {
     } finally {
       state.project.textFont = saved;
       state.editing = null;
+    }
+  });
+});
+
+describe('#141 — the section card keeps the verses it was opened with', () => {
+  const openThreeVerseChapter = () => {
+    bookModel.byChapter = { '1': [verse, verse2, verse3] };
+    state.sources = { ult: { raw: CHUNKED, chapters: {}, version: 'v89' }, ust: { raw: FLAT, chapters: {}, version: 'v89' } };
+  };
+
+  it('rows are the source\u2019s \\ts\\* sections', () => {
+    openThreeVerseChapter();
+    render(<Draft />);
+    expect(screen.getByRole('button', { name: 'Draft section 1\u20132' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Draft section 3' })).toBeTruthy();
+  });
+
+  it('a source switch that regroups the rows does not widen the open card\u2019s save targets', () => {
+    // Codex round 1: the card saves the keys it holds. If the row it sits in
+    // regrouped to 1\u20133, saving would write verse 3 back to a stub.
+    openThreeVerseChapter();
+    state.editing = { key: '1:s1', keys: ['1', '2'] };
+    const { rerender } = render(<Draft />);
+    expect(screen.getByRole('textbox', { name: 'Section 1\u20132' })).toBeTruthy();
+    state.sourceTab = 'ust'; // no \ts\*: the chapter is one row again
+    rerender(<Draft />);
+    expect(screen.getByRole('textbox', { name: 'Section 1\u20132' })).toBeTruthy();
+    expect(screen.queryByRole('textbox', { name: 'Section 1\u20133' })).toBeNull();
+  });
+
+  it('with no \\ts\\* anywhere the chapter is one section', () => {
+    openThreeVerseChapter();
+    state.sources = { ult: { raw: FLAT, chapters: {}, version: 'v89' } };
+    render(<Draft />);
+    expect(screen.getByRole('button', { name: 'Draft section 1\u20133' })).toBeTruthy();
+  });
+
+  it('the book\u2019s own \\ts\\* groups the rows when the source has none', () => {
+    openThreeVerseChapter();
+    state.sources = { ult: { raw: FLAT, chapters: {}, version: 'v89' } };
+    state.bookRaw = CHUNKED;
+    try {
+      render(<Draft />);
+      expect(screen.getByRole('button', { name: 'Draft section 1\u20132' })).toBeTruthy();
+    } finally {
+      state.bookRaw = '';
     }
   });
 });

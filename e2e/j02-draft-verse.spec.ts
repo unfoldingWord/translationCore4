@@ -140,13 +140,21 @@ test.describe('J2 — a translator drafts a verse', () => {
         await expect(page.getByTestId('section-editor')).toHaveCount(0);
       });
 
-      await test.step('both verses are on disk; nothing outside 2:9–10 changed (FR-7 / D8)', async () => {
+      await test.step('the file is the seeded file with exactly those two stubs replaced (FR-7 / D8)', async () => {
+        // The WHOLE expected file, not a permitted window: a window between the
+        // two edits would also accept duplicated text or a stray marker
+        // (Codex round 1). Every other byte must be the seeded byte.
+        const before = bytesBefore.toString('utf8');
+        const expected = before
+          .replace(`\\v 9 ___\n`, `\\v 9 ${VERSE_9}\n`)
+          .replace(`\\v 10 ___\n`, `\\v 10 ${VERSE_10}\n`);
+        // The fixture really held both stubs — otherwise `expected` is `before`
+        // and the comparison below would assert nothing.
+        expect(expected.split('\n').length).toBe(before.split('\n').length);
+        expect(expected).not.toBe(before);
         await expect
           .poll(() => readIngredient(SEEDED_PROJECT, BOOK_IPATH).toString('utf8'), { timeout: 10_000 })
-          .toContain(`\\v 10 ${VERSE_10}`);
-        const after = readIngredient(SEEDED_PROJECT, BOOK_IPATH);
-        expect(after.toString('utf8')).toContain(`\\v 9 ${VERSE_9}`);
-        expect(byteStrictViolation(bytesBefore, after, CHAPTER, 9, 10)).toBeNull();
+          .toBe(expected);
       });
 
       await test.step('the journal carries exactly one text.verse.set per edited verse', async () => {
