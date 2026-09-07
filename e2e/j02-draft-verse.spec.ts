@@ -16,6 +16,7 @@ import {
   rigRepo,
   commitCount,
   byteStrictViolation,
+  verseTextSpan,
 } from './helpers/rig';
 
 const BOOK_IPATH = 'ingredients/TIT.usfm';
@@ -145,13 +146,14 @@ test.describe('J2 — a translator drafts a verse', () => {
         // two edits would also accept duplicated text or a stray marker
         // (Codex round 1). Every other byte must be the seeded byte.
         const before = bytesBefore.toString('utf8');
-        const expected = before
-          .replace(`\\v 9 ___\n`, `\\v 9 ${VERSE_9}\n`)
-          .replace(`\\v 10 ___\n`, `\\v 10 ${VERSE_10}\n`);
-        // The fixture really held both stubs — otherwise `expected` is `before`
-        // and the comparison below would assert nothing.
-        expect(expected.split('\n').length).toBe(before.split('\n').length);
-        expect(expected).not.toBe(before);
+        // Splice by SPAN, not by text: `\v 9 ___` also occurs in Titus 1 and 3.
+        // Verse 10 first — replacing it does not move verse 9's offsets.
+        const put = (usfm: string, verse: number, text: string) => {
+          const span = verseTextSpan(usfm, CHAPTER, verse);
+          expect(usfm.slice(span.start, span.end)).toBe('___\n'); // the seeded stub
+          return usfm.slice(0, span.start) + text + '\n' + usfm.slice(span.end);
+        };
+        const expected = put(put(before, 10, VERSE_10), 9, VERSE_9);
         await expect
           .poll(() => readIngredient(SEEDED_PROJECT, BOOK_IPATH).toString('utf8'), { timeout: 10_000 })
           .toBe(expected);
