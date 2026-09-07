@@ -3,12 +3,14 @@
 // shows every word as a span and every verse as a pin (VerseMarker), with a
 // "To place" bank for the unplaced pins. The card keeps its draft locally —
 // nothing is written until Save, which sends each verse through editVerse
-// (state.saveSection). The pure rules live in sectionDraft.js.
-import React, { useEffect, useRef, useState } from 'react';
+// (state.saveSection). The pure rules live in sectionDraft.js. Pins that share
+// a word form a verse span (#63, D70.3): the save then goes through one
+// structural action instead of the per-verse splice.
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../state.jsx';
 import { t } from '../i18n';
 import { Button, Overline, Switcher, VerseMarker } from '../ds/index.js';
-import { canDrop, initialDraftText, parseDraft, sectionVerses, serializeDraft, spanEnd } from './sectionDraft.js';
+import { canDrop, dropPin, expandKeys, initialDraftText, parseDraft, sectionKeys, sectionVerses, serializeDraft, spanEnd } from './sectionDraft.js';
 
 const SUP = { fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', marginInlineEnd: 3, verticalAlign: 'super' };
 const WORD = { display: 'inline-block', borderRadius: 'var(--radius-xs)', padding: '0 .06em' };
@@ -16,13 +18,13 @@ const WORD = { display: 'inline-block', borderRadius: 'var(--radius-xs)', paddin
 /** The hover title of a word while a pin is in hand: why it can or cannot land here. */
 const wordTitle = (held, pinAt, ok, w) => {
   if (held == null) return '';
-  if (pinAt) return t('draft.occupied', { n: pinAt });
-  return ok ? t('draft.beginAt', { n: held, w }) : t('draft.cannotPass', { n: held });
+  if (ok) return pinAt ? t('draft.joinAt', { n: held, m: pinAt, w }) : t('draft.beginAt', { n: held, w });
+  return pinAt ? t('draft.occupied', { n: pinAt }) : t('draft.cannotPass', { n: held });
 };
 
 /** What sits before a word: the held pin's ghost where it may land, then every
  * pin of a verse that begins here (the fixed first number as a plain
- * superscript; a stub verse's pin can share the index of the next). */
+ * superscript; pins that share a word are one span). */
 function PinBefore({ i, first, pinsAt, held, hover, ok, drop, pick }) {
   return (
     <>
@@ -59,7 +61,7 @@ function PlaceWord({ w, i, keys, markers, held, hover, setHover, drop, pick, can
         dir={dir}
         role={ok ? 'button' : undefined}
         tabIndex={ok ? 0 : -1}
-        aria-label={ok ? t('draft.beginAt', { n: held, w }) : undefined}
+        aria-label={ok ? wordTitle(held, pinAt, ok, w) : undefined}
         title={wordTitle(held, pinAt, ok, w)}
         onMouseEnter={over}
         onFocus={over}
@@ -80,13 +82,15 @@ function PlaceWord({ w, i, keys, markers, held, hover, setHover, drop, pick, can
 function PlaceView({ keys, words, markers, setMarkers, dir, editType }) {
   const [held, setHeld] = useState(null);
   const [hover, setHover] = useState(null);
-  const bank = keys.filter((k) => markers[k] === undefined);
+  // The first verse has no pin: it is fixed at word 0 (a stub first verse
+  // takes the words back when its neighbour moves on, dropPin).
+  const bank = keys.slice(1).filter((k) => markers[k] === undefined);
   // Pick a pin up (or put the held one back); Escape on a word also puts it back.
   const pick = (k) => { setHeld((h) => (h === k ? null : k)); setHover(null); };
   const cancel = () => { setHeld(null); setHover(null); };
   const drop = (i) => {
     if (held == null || !canDrop(markers, keys, held, i)) return;
-    setMarkers({ ...markers, [held]: i });
+    setMarkers(dropPin(markers, keys, held, i));
     setHeld(null);
     setHover(null);
   };
@@ -128,22 +132,25 @@ function PlaceView({ keys, words, markers, setMarkers, dir, editType }) {
 export function SectionEditor({ chapter, keys, verses, span, dir, editType }) {
   const { actions } = useApp();
   const [mode, setMode] = useState('type');
-  const [text, setText] = useState(() => initialDraftText(verses, keys));
+  // The pins are the section's single verse numbers; `keys` stay the verse
+  // keys the book has, so the save knows which keys changed (#63).
+  const pins = useMemo(() => expandKeys(keys), [keys]);
+  const [text, setText] = useState(() => initialDraftText(verses, pins));
   const [placed, setPlaced] = useState({ words: [], seps: [], markers: {} });
   const ref = useRef(null);
   useEffect(() => { if (mode === 'type') ref.current?.focus(); }, [mode]);
 
   const switchMode = (next) => {
     if (next === mode) return;
-    if (next === 'place') setPlaced(parseDraft(text, keys));
-    else setText(serializeDraft(placed.words, placed.seps, placed.markers, keys));
+    if (next === 'place') setPlaced(parseDraft(text, pins));
+    else setText(serializeDraft(placed.words, placed.seps, placed.markers, pins, keys));
     setMode(next);
   };
-  const draft = mode === 'place' ? placed : parseDraft(text, keys);
+  const draft = mode === 'place' ? placed : parseDraft(text, pins);
   const canSave = draft.words.length > 0;
   const save = () => {
     if (!canSave) return;
-    actions.saveSection(chapter, keys, sectionVerses(draft.words, draft.seps, draft.markers, keys));
+    actions.saveSection(chapter, keys, sectionVerses(draft.words, draft.seps, draft.markers, pins, keys), sectionKeys(draft.markers, pins, keys));
   };
 
   return (
@@ -168,7 +175,7 @@ export function SectionEditor({ chapter, keys, verses, span, dir, editType }) {
           style={{ width: '100%', boxSizing: 'border-box', border: 0, outline: 'none', resize: 'vertical', ...editType, color: 'var(--text-scripture)', background: 'transparent' }}
         />
       ) : (
-        <PlaceView keys={keys} words={placed.words} markers={placed.markers} setMarkers={(markers) => setPlaced({ ...placed, markers })} dir={dir} editType={editType} />
+        <PlaceView keys={pins} words={placed.words} markers={placed.markers} setMarkers={(markers) => setPlaced({ ...placed, markers })} dir={dir} editType={editType} />
       )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
         <Button size="sm" disabled={!canSave} onClick={save}>{t('draft.saveSection')}</Button>

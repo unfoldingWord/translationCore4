@@ -178,6 +178,18 @@ export class SaveScheduler {
     this.notify();
   }
 
+  /** Record a whole-book replacement (#63): a section save that changed the
+   * verse set — a span created or broken — is rewritten once over the
+   * affected verses by the caller, never spliced verse by verse. Arms the
+   * debounce like markDirty; the writer decides the action (state.jsx). */
+  replaceBook(book: string, rawBook: string): void {
+    if (!this.current.has(book)) throw new Error(`SaveScheduler: book not loaded: ${book}`);
+    this.reverted.delete(book);
+    this.current.set(book, rawBook);
+    this.armDebounce();
+    this.notify();
+  }
+
   /** Revert one key to its latest PERSISTED value (round 32): the G1 clear
    * refusal must never stage a render-time snapshot — an in-flight write can
    * make that snapshot stale, and staging it would journal the OLD text over
