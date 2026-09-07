@@ -134,6 +134,42 @@ const isEmptyAlignmentRecord = (record: Record<string, unknown>): boolean =>
   Array.isArray(record.wordBank) &&
   (record.wordBank as unknown[]).length === 0;
 
+/** The verse numbers a slot key covers, scoped: "2:9-10" is "2:9" and "2:10". */
+const slotNumbers = (key: string): string[] => {
+  const sep = key.indexOf(':');
+  const chapter = key.slice(0, sep);
+  const m = /^(\d+)-(\d+)$/.exec(key.slice(sep + 1));
+  if (!m) return [key];
+  const out: string[] = [];
+  for (let n = Number(m[1]); n <= Number(m[2]); n++) out.push(`${chapter}:${n}`);
+  return out;
+};
+
+/** #63: how the slot set changed as verse spans, from the keys the journal
+ * projects to the keys the new USFM holds: the removed and added keys are
+ * grouped by the verse numbers they share. A create is {from: ["2:9","2:10"],
+ * to: ["2:9-10"]}; a break the reverse; a key on both sides is in no group. */
+const spanMapping = (oldSlots: string[], newSlots: string[]): Array<{ from: string[]; to: string[] }> => {
+  const groups: Array<{ nums: string[]; from: string[]; to: string[] }> = [];
+  const place = (key: string, side: 'from' | 'to'): void => {
+    const nums = slotNumbers(key);
+    const hits = groups.filter((g) => g.nums.some((n) => nums.includes(n)));
+    const g = hits[0] ?? { nums: [], from: [], to: [] };
+    for (const h of hits.slice(1)) {
+      g.nums.push(...h.nums);
+      g.from.push(...h.from);
+      g.to.push(...h.to);
+      groups.splice(groups.indexOf(h), 1);
+    }
+    if (!hits.length) groups.push(g);
+    g.nums.push(...nums);
+    g[side].push(key);
+  };
+  for (const k of oldSlots) if (!newSlots.includes(k)) place(k, 'from');
+  for (const k of newSlots) if (!oldSlots.includes(k)) place(k, 'to');
+  return groups.map(({ from, to }) => ({ from, to }));
+};
+
 // ---------------------------------------------------------------------------
 // The per-project mutation queue (D50)
 // ---------------------------------------------------------------------------
@@ -1846,13 +1882,17 @@ export class JournalingStore implements BurritoStore {
           `applyStructuralEdit(${code}): the journal projects no such book — creation goes through addBook`,
         );
       const clock = { issue: (): string => journal.issueTs() };
-      const mapping = opts.mapping ?? [];
+      const nfc = toNfc(usfm);
+      const mapping =
+        opts.intent === 'spans'
+          ? spanMapping(slotKeysOf(decompose(foldOut.books[code].usfm).skeleton), slotKeysOf(decompose(nfc).skeleton))
+          : [];
       // #63 (D70): the first new key of a group carries every old key's text
       // forward (JC-21's span form: one source head is claimed once); the
       // affected alignments and decisions are invalidated and retained.
       const sources: Record<string, string[]> = {};
       for (const m of mapping) if (m.to.length) sources[m.to[0]] = m.from;
-      const events = reconcileUsfm(code, toNfc(usfm), foldOut, clock, journal.actorId, {
+      const events = reconcileUsfm(code, nfc, foldOut, clock, journal.actorId, {
         seed: null,
         sources,
         ...(mapping.length ? { alignmentAction: 'invalidate-retain' } : {}),

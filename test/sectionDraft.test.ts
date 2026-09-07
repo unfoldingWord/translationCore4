@@ -2,7 +2,7 @@
 // placement never loses or reorders text, a pin never passes another pin, and
 // the section's first verse number is fixed.
 import { describe, expect, it } from 'vitest';
-import { canDrop, composeMappings, dropPin, expandKeys, initialDraftText, keyMapping, parseDraft, sectionKeys, sectionVerses, serializeDraft, spanEnd } from '../src/views/sectionDraft.js';
+import { canDrop, dropPin, expandKeys, initialDraftText, parseDraft, sectionKeys, sectionVerses, serializeDraft, spanEnd } from '../src/views/sectionDraft.js';
 
 const KEYS = ['9', '10'];
 const THREE = ['3', '4', '5'];
@@ -277,30 +277,5 @@ describe('#63 — stacked pins are one span', () => {
     // A stub first verse (unplaced) whose neighbour sat at word 0.
     expect(dropPin({ '10': 0 }, KEYS, '10', 2)).toEqual({ '9': 0, '10': 2 });
     expect(dropPin({ '9': 0, '10': 2 }, KEYS, '10', 0)).toEqual({ '9': 0, '10': 0 });
-  });
-
-  it('keyMapping groups the changed keys by the verse numbers they share', () => {
-    expect(keyMapping(['9', '10'], ['9-10'])).toEqual([{ from: ['9', '10'], to: ['9-10'] }]);
-    expect(keyMapping(['9-10', '11'], ['9', '10', '11'])).toEqual([{ from: ['9-10'], to: ['9', '10'] }]);
-    expect(keyMapping(['3', '4', '5'], ['3-4', '5'])).toEqual([{ from: ['3', '4'], to: ['3-4'] }]);
-    expect(keyMapping(['3', '4', '5'], ['3', '4', '5'])).toEqual([]);
-    expect(keyMapping(['3-4', '5', '6'], ['3', '4', '5-6'])).toEqual([{ from: ['3-4'], to: ['3', '4'] }, { from: ['5', '6'], to: ['5-6'] }]);
-  });
-});
-
-describe('#63 — composeMappings: a second structural save composes onto a pending one (Codex round 1)', () => {
-  it('create then extend before the first write lands maps the projected keys to the final span', () => {
-    const pending = [{ from: ['2:11', '2:12'], to: ['2:11-12'] }];
-    const next = [{ from: ['2:11-12', '2:13'], to: ['2:11-13'] }];
-    expect(composeMappings(pending, next)).toEqual([{ from: ['2:11', '2:12', '2:13'], to: ['2:11-13'] }]);
-  });
-
-  it('create then break back cancels out; unrelated groups stay separate', () => {
-    expect(composeMappings([{ from: ['2:9', '2:10'], to: ['2:9-10'] }], [{ from: ['2:9-10'], to: ['2:9', '2:10'] }])).toEqual([]);
-    expect(composeMappings([{ from: ['2:9', '2:10'], to: ['2:9-10'] }], [{ from: ['2:14', '2:15'], to: ['2:14-15'] }])).toEqual([
-      { from: ['2:9', '2:10'], to: ['2:9-10'] },
-      { from: ['2:14', '2:15'], to: ['2:14-15'] },
-    ]);
-    expect(composeMappings([], [{ from: ['2:9', '2:10'], to: ['2:9-10'] }])).toEqual([{ from: ['2:9', '2:10'], to: ['2:9-10'] }]);
   });
 });

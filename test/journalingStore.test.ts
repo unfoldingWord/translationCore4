@@ -596,7 +596,7 @@ describe('#62 serialization: one per-project queue', () => {
 // alignments and decisions on the affected verses, and leaves an `invalid`
 // §5.1 record on each new key so Align shows the span as invalid.
 // ---------------------------------------------------------------------------
-describe('#63 mapping: applyStructuralEdit with a span mapping', () => {
+describe('#63 mapping: applyStructuralEdit with intent spans', () => {
   const SPANNED = TIT_USFM.replace('\\v 1 Pablo, siervo de Dios.\n\\v 2 ___', '\\v 1-2 Pablo, siervo de Dios.');
   const aligned = {
     alignments: [
@@ -621,7 +621,7 @@ describe('#63 mapping: applyStructuralEdit with a span mapping', () => {
     const { rig, api, store } = await withRecords();
     // Both text heads are still the book.add that created the slots.
     const bookAddTs = (await segmentsOf(rig)).flatMap((s) => s.events).find((e) => e.op === 'book.add')?.ts;
-    await store.applyStructuralEdit('TIT', SPANNED, { mapping: [{ from: ['1:1', '1:2'], to: ['1:1-2'] }] });
+    await store.applyStructuralEdit('TIT', SPANNED, { intent: 'spans' });
     const segments = await segmentsOf(rig);
     const action = segments[segments.length - 1].events;
     expect(action.map((e) => e.op)).toEqual(['text.structure.apply', 'align.verse.set']);
@@ -654,9 +654,9 @@ describe('#63 mapping: applyStructuralEdit with a span mapping', () => {
 
   it('span break (1:1-2 to 1:1, 1:2): the first new slot claims the span head; the second states its text with no source', async () => {
     const { rig, api, store } = await withRecords();
-    await store.applyStructuralEdit('TIT', SPANNED, { mapping: [{ from: ['1:1', '1:2'], to: ['1:1-2'] }] });
+    await store.applyStructuralEdit('TIT', SPANNED, { intent: 'spans' });
     const spanHead = (await segmentsOf(rig)).flatMap((s) => s.events).find((e) => e.op === 'text.structure.apply')?.ts;
-    await store.applyStructuralEdit('TIT', TIT_USFM, { mapping: [{ from: ['1:1-2'], to: ['1:1', '1:2'] }] });
+    await store.applyStructuralEdit('TIT', TIT_USFM, { intent: 'spans' });
     const segments = await segmentsOf(rig);
     const action = segments[segments.length - 1].events;
     expect(action.map((e) => e.op)).toEqual(['text.structure.apply', 'align.verse.set', 'align.verse.set']);
@@ -679,7 +679,7 @@ describe('#63 mapping: applyStructuralEdit with a span mapping', () => {
 
   it('without an affected alignment no invalid record is written, and the plain (#62) path is unchanged', async () => {
     const { rig, store } = await setup();
-    await store.applyStructuralEdit('TIT', SPANNED, { mapping: [{ from: ['1:1', '1:2'], to: ['1:1-2'] }] });
+    await store.applyStructuralEdit('TIT', SPANNED, { intent: 'spans' });
     const segments = await segmentsOf(rig);
     expect(segments[segments.length - 1].events.map((e) => e.op)).toEqual(['text.structure.apply']);
     expect(rig.repos.get(REPO)?.files.has('checking/alignments/TIT.json')).toBe(false);

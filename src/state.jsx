@@ -12,7 +12,6 @@ import { StaleWriteError } from './data/httpStore';
 import { JournalingStore, ProjectReader } from './data/journal/journalingStore';
 import { SaveScheduler } from './data/saveScheduler';
 import { spliceSection, spliceVerse, verseBody } from './data/usfm/splice';
-import { composeMappings, keyMapping } from './views/sectionDraft.js';
 import { indexBook } from './data/usfm/indexer';
 import { RESOURCE_FRAME, forgetProjectFrames, resolveProjectFrame } from './data/projectFrame';
 import { backfillCoverage } from './data/coverageBackfill';
@@ -899,18 +898,18 @@ function validateNewBible(form) {
   return abbr ? { abbr } : { error: t('wizard.abbrRequired') };
 }
 
-/** The book scheduler's writer (#63). A book with a pending structural
- * intent — a section save that created or broke a verse span — goes through
- * the ONE §8.5 action with its key mapping; every other write is the
- * per-verse path (writeBook refuses a slot-set change by design, #62). The
- * intent is taken before the write, so a second structural save during the
- * flight starts its own; a failed write puts it back for the retry. */
+/** The book scheduler's writer (#63). A book flagged by a section save that
+ * created or broke a verse span goes through the ONE §8.5 action with
+ * `intent: 'spans'`; every other write is the per-verse path (writeBook
+ * refuses a slot-set change by design, #62). The store derives the key
+ * mapping from what IT projects at write time, so the flag is all the app
+ * keeps: taken before the write, put back when the write fails (the retry
+ * carries the same buffer), re-set by any later span save. */
 function writeBookOrStructure({ store, structuralRef }, book, whole) {
-  const mapping = structuralRef.current.get(book);
-  if (!mapping) return store.writeBook(book, whole);
+  if (!structuralRef.current.has(book)) return store.writeBook(book, whole);
   structuralRef.current.delete(book);
-  return store.applyStructuralEdit(book, whole, { mapping }).catch((error) => {
-    structuralRef.current.set(book, [...mapping, ...(structuralRef.current.get(book) ?? [])]);
+  return store.applyStructuralEdit(book, whole, { intent: 'spans' }).catch((error) => {
+    structuralRef.current.add(book);
     throw error;
   });
 }
@@ -918,19 +917,12 @@ function writeBookOrStructure({ store, structuralRef }, book, whole) {
 /** #63: stage a section save whose verse keys changed (a span created or
  * broken, D70). The book is rewritten ONCE over the affected verses — never
  * spliced verse by verse, which would pass through a slot set no action
- * describes — and the scheduler carries the whole book with its mapping. */
+ * describes — and the book is flagged for the scheduler's writer. */
 function stageStructuralSection({ rawRef, schedulerRef, structuralRef, stateRef, dispatch }, chapter, keys, texts, newKeys) {
   const book = stateRef.current.book;
   const verses = newKeys.map((key) => ({ key, body: (texts[key] ?? '').trim() }));
   rawRef.current = spliceSection(rawRef.current, chapter, keys, verses);
-  const scoped = keyMapping(keys, newKeys).map((m) => ({
-    from: m.from.map((k) => `${chapter}:${k}`),
-    to: m.to.map((k) => `${chapter}:${k}`),
-  }));
-  // A save staged while an earlier structural write is still in flight (or
-  // retained after a failure) composes onto it: the store sees one mapping
-  // from the keys it projects to the keys the buffer holds (Codex round 1).
-  structuralRef.current.set(book, composeMappings(structuralRef.current.get(book) ?? [], scoped));
+  structuralRef.current.add(book);
   schedulerRef.current.replaceBook(book, rawRef.current);
   dispatch({ type: 'set', patch: { bookRaw: rawRef.current } });
 }
@@ -1146,7 +1138,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
     if (superseded()) return; // a newer open owns the refs
     dispatch({ type: 'set', patch: { opening: progress('prepare') } });
     storeRef.current = store;
-    structuralRef.current = new Map();
+    structuralRef.current = new Set();
     schedulerRef.current = new SaveScheduler({
       writeBook: (book, whole) => writeBookOrStructure({ store, structuralRef }, book, whole),
       splice: spliceVerse,
@@ -1787,9 +1779,9 @@ export function AppProvider({ children }) {
   const [s, dispatch] = useReducer(reducer, undefined, initial);
   const storeRef = useRef(null);
   const schedulerRef = useRef(null);
-  // #63: per book, the old/new key mapping of a section save that changed the
-  // verse set, waiting for the scheduler's next write (writeBookOrStructure).
-  const structuralRef = useRef(new Map());
+  // #63: the books whose next write is a verse-span change (a section save
+  // that changed the verse set), for the scheduler's writer (writeBookOrStructure).
+  const structuralRef = useRef(new Set());
   const rawRef = useRef(null); // authoritative raw book text, updated synchronously
   const stateRef = useRef(null); // live state for async closures
   const openSeqRef = useRef(0); // openBook sequence token (review finding M2)
