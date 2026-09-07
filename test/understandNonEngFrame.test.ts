@@ -253,6 +253,9 @@ describe('Understand comment round-trip on non-eng frame (#117)', () => {
   });
 
   it('refusal: frame unavailable loads nothing', async () => {
+    // A note IS on disk under the project key; an unavailable frame must not
+    // surface it under a guessed identity (antagonist round 1).
+    notes.push({ ts: '0001', chapter: '2', verse: '1', text: 'stored under syn 2:1' });
     const failingApi = {
       ...api,
       getVersification: async (n: string) => {
