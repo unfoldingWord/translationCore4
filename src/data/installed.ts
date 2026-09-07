@@ -264,23 +264,43 @@ export const isPinLocal = (installed: InstalledMap, pin: ResourcePin): boolean =
  * the repo. Null when the project pins the repo nowhere, the pin carries no
  * sha (D59: such a pin is satisfiable by no install), or the exact identity is
  * already local. */
+const isMatchingUnsatisfiedPin = (
+  pin: unknown,
+  localRepoPath: string,
+  installed: InstalledMap,
+): pin is ResourcePin =>
+  Boolean(
+    pin &&
+      typeof pin === 'object' &&
+      'repoPath' in pin &&
+      (pin as ResourcePin).sha &&
+      localRepoPathFromRepoPath((pin as ResourcePin).repoPath) === localRepoPath &&
+      !isPinLocal(installed, pin as ResourcePin),
+  );
+
 export const unsatisfiedProjectPinFor = (
-  resources: { languageSets?: Record<string, LanguageSet> } | null | undefined,
+  resources:
+    | {
+        languageSets?: Record<string, LanguageSet>;
+        resources?: { originalLanguage?: { nt?: ResourcePin; ot?: ResourcePin } };
+        originalLanguage?: { nt?: ResourcePin; ot?: ResourcePin };
+      }
+    | null
+    | undefined,
   localRepoPath: string,
   installed: InstalledMap,
 ): ResourcePin | null => {
   for (const rung of ['primary', 'fallback']) {
     const set = resources?.languageSets?.[rung];
     for (const pin of Object.values(set ?? {})) {
-      if (
-        !!pin &&
-        typeof pin === 'object' &&
-        'repoPath' in pin &&
-        (pin as ResourcePin).sha &&
-        localRepoPathFromRepoPath((pin as ResourcePin).repoPath) === localRepoPath &&
-        !isPinLocal(installed, pin as ResourcePin)
-      )
-        return pin as ResourcePin;
+      if (isMatchingUnsatisfiedPin(pin, localRepoPath, installed)) return pin;
+    }
+  }
+  const orig = resources?.resources?.originalLanguage ?? resources?.originalLanguage;
+  if (orig) {
+    for (const testament of ['nt', 'ot'] as const) {
+      const pin = orig[testament];
+      if (isMatchingUnsatisfiedPin(pin, localRepoPath, installed)) return pin;
     }
   }
   return null;

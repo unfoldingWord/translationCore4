@@ -76,7 +76,7 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 
 - Actor: translator. Activity: Translate.
 - Precondition: J1.
-- Steps: open a book · read the sources · type a section straight through · place the verse
+- Steps: open a book · read the sources · read the original-language pane · type a section straight through · place the verse
   numbers · stack two verse numbers to make a verse span, or drag one past text to break one ·
   leave the section · see progress update. The verse-by-verse form (type one verse, leave it)
   stays available.
