@@ -80,6 +80,21 @@ Before you send a pull request:
 
 "Done" means: the acceptance criteria pass, with pasted evidence.
 
+### Review findings
+
+Adopted 2026-09-06, after Increment 4. One pull request ran 37 review rounds
+(https://github.com/unfoldingWord/translationCore4/pull/116); 99 of the 252 commits on
+`main` between 2026-08-26 and 2026-09-06 were review-fix commits. An adversarial reviewer
+always finds something. These two rules end the loop.
+
+1. **A finding is fixed in the pull request only if it fails one of two tests:** it fails
+   an acceptance criterion of the issue, or it breaks a rule in this document. Any other
+   finding gets one line in the pull request: "filed as issue N" or "dropped: <reason>".
+   Triage every finding against these two tests before the first fix commit.
+2. **A pull request gets at most three review rounds.** After round three, the pull
+   request is ready to merge or it goes back to the issue for a new definition. A fourth
+   round needs the owner's word, in a comment on the pull request.
+
 ## How work moves
 
 - **Issues** hold work. An issue states its acceptance criteria and its Verify command.
