@@ -10,10 +10,21 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../state.jsx';
 import { t } from '../i18n';
 import { Button, Overline, Switcher, VerseMarker } from '../ds/index.js';
-import { canDrop, dropPin, expandKeys, initialDraftText, parseDraft, sectionKeys, sectionVerses, serializeDraft, spanEnd } from './sectionDraft.js';
+import { canDrop, dropPin, expandKeys, indentLine, initialDraftText, parseDraft, sectionGroups, sectionKeys, sectionVerses, serializeDraft, spanEnd } from './sectionDraft.js';
 
 const SUP = { fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', marginInlineEnd: 3, verticalAlign: 'super' };
 const WORD = { display: 'inline-block', borderRadius: 'var(--radius-xs)', padding: '0 .06em' };
+
+/** Formats for preceding keys from non-first groups (#54). */
+const groupFormats = (groups, blocks) => {
+  const formats = {};
+  for (let i = 1; i < groups.length; i++) {
+    const prevKey = groups[i - 1].key;
+    const at = groups[i].at;
+    formats[prevKey] = (at !== undefined ? blocks?.[at] : null) ?? null;
+  }
+  return formats;
+};
 
 /** The hover title of a word while a pin is in hand: why it can or cannot land here. */
 const wordTitle = (held, pinAt, ok, w) => {
@@ -136,21 +147,49 @@ export function SectionEditor({ chapter, keys, verses, span, dir, editType }) {
   // keys the book has, so the save knows which keys changed (#63).
   const pins = useMemo(() => expandKeys(keys), [keys]);
   const [text, setText] = useState(() => initialDraftText(verses, pins));
-  const [placed, setPlaced] = useState({ words: [], seps: [], markers: {} });
+  const [placed, setPlaced] = useState({ words: [], seps: [], markers: {}, blocks: {} });
   const ref = useRef(null);
+  const caretRef = useRef(null);
   useEffect(() => { if (mode === 'type') ref.current?.focus(); }, [mode]);
+  useEffect(() => {
+    if (caretRef.current != null && ref.current) {
+      ref.current.setSelectionRange(caretRef.current, caretRef.current);
+      caretRef.current = null;
+    }
+  }, [text]);
+
+  const onTypeKeyDown = (e) => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const delta = e.shiftKey ? -1 : 1;
+      const caret = e.target.selectionStart;
+      const next = indentLine(text, caret, delta);
+      if (next.text !== text) {
+        caretRef.current = next.caret;
+        setText(next.text);
+      }
+    }
+  };
 
   const switchMode = (next) => {
     if (next === mode) return;
     if (next === 'place') setPlaced(parseDraft(text, pins));
-    else setText(serializeDraft(placed.words, placed.seps, placed.markers, pins, keys));
+    else setText(serializeDraft(placed.words, placed.seps, placed.markers, pins, keys, placed.blocks));
     setMode(next);
   };
   const draft = mode === 'place' ? placed : parseDraft(text, pins);
   const canSave = draft.words.length > 0;
   const save = () => {
     if (!canSave) return;
-    actions.saveSection(chapter, keys, sectionVerses(draft.words, draft.seps, draft.markers, pins, keys), sectionKeys(draft.markers, pins, keys));
+    const groups = sectionGroups(draft.markers, pins, keys);
+    const formats = groupFormats(groups, draft.blocks);
+    actions.saveSection(
+      chapter,
+      keys,
+      sectionVerses(draft.words, draft.seps, draft.markers, pins, keys),
+      sectionKeys(draft.markers, pins, keys),
+      formats,
+    );
   };
 
   return (
@@ -170,6 +209,7 @@ export function SectionEditor({ chapter, keys, verses, span, dir, editType }) {
           dir={dir}
           value={text}
           onChange={(e) => setText(e.target.value)}
+          onKeyDown={onTypeKeyDown}
           placeholder={t('draft.sectionPlaceholder')}
           rows={6}
           style={{ width: '100%', boxSizing: 'border-box', border: 0, outline: 'none', resize: 'vertical', ...editType, color: 'var(--text-scripture)', background: 'transparent' }}

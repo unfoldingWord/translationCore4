@@ -126,7 +126,7 @@
   "draft.sectionPlaceholder": "Type your translation of this section…",
   "draft.modeType": "Type",
   "draft.modePlace": "Place verse numbers",
-  "draft.typeHint": "Type the section straight through. Place the verse numbers next.",
+  "draft.typeHint": "Enter for paragraph, Tab for poetry. Place the verse numbers next.",
   "draft.toPlace": "To place",
   "draft.bankEmpty": "Every verse is placed. Pick a number up to move where its verse begins.",
   "draft.markerEmpty": "Nothing is drafted yet. Type the section first, then place its verse numbers.",

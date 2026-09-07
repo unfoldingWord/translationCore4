@@ -516,6 +516,68 @@ test.describe('J2 — a translator drafts a verse', () => {
       });
     },
   );
+
+  test(
+    'paragraph breaks and poetry lines from the section editing card (Titus 2:11-13): \\q1 and \\p formats save as preceding verse slots (#54)',
+    { tag: ['@inc5', '@J2'] },
+    async ({ page }) => {
+      const bytesBefore = readIngredient(SEEDED_PROJECT, BOOK_IPATH);
+      const before = bytesBefore.toString('utf8');
+      const v11Span = verseTextSpan(before, CHAPTER, 11);
+      const v12Span = verseTextSpan(before, CHAPTER, 12);
+      const v13Span = verseTextSpan(before, CHAPTER, 13);
+      const v11 = before.slice(v11Span.start, v11Span.end).trim();
+      const v12 = before.slice(v12Span.start, v12Span.end).trim();
+      const v13 = before.slice(v13Span.start, v13Span.end).trim();
+      const segmentsBefore = new Set(segmentFiles());
+
+      await page.goto('/');
+      await page.getByTestId('project-_local_/_local_/sample_burrito').getByRole('button', { name: /Titus/ }).click();
+      await page.getByRole('button', { name: '2', exact: true }).click();
+
+      await test.step('open Draft section 11–13, fill formatted text, and save', async () => {
+        await page.getByRole('button', { name: 'Draft section 11–13' }).click();
+        const textbox = page.getByRole('textbox', { name: 'Section 11–13' });
+        await textbox.fill(`11 ${v11}\n\t12 ${v12}\n\n13 ${v13}`);
+        await page.getByRole('button', { name: 'Save section' }).click();
+        await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
+        await expect(page.getByTestId('section-editor')).toHaveCount(0);
+      });
+
+      await test.step('assert the WHOLE file equals prior file with \\q1 after verse 11 line and \\p after verse 12 line', async () => {
+        const line11 = verseLine(before, 11);
+        const line12 = verseLine(before, 12);
+        const expected =
+          before.slice(0, line11.end) +
+          '\\q1\n' +
+          before.slice(line11.end, line12.end) +
+          '\\p\n' +
+          before.slice(line12.end);
+        await expect
+          .poll(() => readIngredient(SEEDED_PROJECT, BOOK_IPATH).toString('utf8'), { timeout: 10_000 })
+          .toBe(expected);
+      });
+
+      await test.step('eventsSince holds text.verse.set for exactly [2:11, 2:12], no text.structure.apply', async () => {
+        const events = eventsSince(segmentsBefore);
+        const verseSets = events.filter((e) => e.op === 'text.verse.set');
+        expect(verseSets.map((e) => `${e.chapter}:${e.verse}`).sort()).toEqual(['2:11', '2:12']);
+        expect(events.filter((e) => e.op === 'text.structure.apply')).toEqual([]);
+      });
+
+      await test.step('reopen: textbox shows what was filled; fill unformatted, save: prior bytes', async () => {
+        await page.getByRole('button', { name: 'Draft section 11–13' }).click();
+        const textbox = page.getByRole('textbox', { name: 'Section 11–13' });
+        await expect(textbox).toHaveValue(`11 ${v11}\n\t12 ${v12}\n\n13 ${v13}`);
+        await textbox.fill(`11 ${v11}\n12 ${v12}\n13 ${v13}`);
+        await page.getByRole('button', { name: 'Save section' }).click();
+        await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
+        await expect
+          .poll(() => readIngredient(SEEDED_PROJECT, BOOK_IPATH).toString('utf8'), { timeout: 10_000 })
+          .toBe(before);
+      });
+    },
+  );
 });
 
 // Issue #62 teardown: after this journey's mutations, every journaled local

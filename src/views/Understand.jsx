@@ -14,7 +14,7 @@ import { absenceMessageKey, isSourceAbsent } from '../data/sourceState';
 import { FilterChip, IconButton, Overline, Switcher, StatusDot, Callout, Button } from '../ds/index.js';
 import { RailIcon } from './PanelIcons.jsx';
 import { targetTypeFor, projectDir } from './scriptStyle.js';
-import { paragraphsOf, sectionStarts } from './sections.js';
+import { paragraphLevel, paragraphsOf, sectionStarts } from './sections.js';
 
 /** A unit's verse keys as they exist in the source chapter: a mapped range key
  * ("1-2") that the source keeps as separate verses expands to the verses it
@@ -293,16 +293,20 @@ function UnderstandUnit({ unit, s, src, srcChapters, book, chapter, mode, focuse
         <Overline>{unit.label}</Overline><div style={{ flex: 1 }} />
         {hasNote ? <StatusDot status="valid" size={7} /> : null}
       </div>
-      {paragraphsOf(keysIn, chapterVerses).map((keys) => (
-        <p key={keys[0]} style={{ direction: 'ltr', textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-lg)', lineHeight: 'var(--lh-verse-lg)', color: 'var(--text-scripture)', margin: '10px 0' }}>
-          {keys.map((k) => (
-            <React.Fragment key={k}>
-              <sup style={{ fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', marginInlineEnd: 3, verticalAlign: 'super' }}>{k}</sup>
-              <SourceVerse vObj={chapterVerses[String(k)]} verseKey={k} focus={focus} />{' '}
-            </React.Fragment>
-          ))}
-        </p>
-      ))}
+      {paragraphsOf(keysIn, chapterVerses).map((keys) => {
+        const level = paragraphLevel(keys, chapterVerses);
+        const padding = level === 1 ? '1.5em' : level === 2 ? '3em' : undefined;
+        return (
+          <p key={keys[0]} style={{ direction: 'ltr', textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-lg)', lineHeight: 'var(--lh-verse-lg)', color: 'var(--text-scripture)', margin: '10px 0', ...(padding ? { paddingInlineStart: padding } : {}) }}>
+            {keys.map((k) => (
+              <React.Fragment key={k}>
+                <sup style={{ fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', marginInlineEnd: 3, verticalAlign: 'super' }}>{k}</sup>
+                <SourceVerse vObj={chapterVerses[String(k)]} verseKey={k} focus={focus} />{' '}
+              </React.Fragment>
+            ))}
+          </p>
+        );
+      })}
       <ComprehensionBox book={book.code} chapter={unit.srcChapter ?? chapter} unit={unit} mode={mode} />
     </div>
   );

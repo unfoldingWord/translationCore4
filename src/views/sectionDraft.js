@@ -46,7 +46,8 @@ const runOf = (tok, pins) => {
 const LINE = /^(\d+(?:-\d+)?)(?:\s+|$)([\s\S]*)$/;
 
 const markerLine = (line, pins) => {
-  const m = String(line).match(LINE);
+  const untabbed = String(line).replace(/^\t+/, '');
+  const m = untabbed.match(LINE);
   const run = m && runOf(m[1], pins);
   return run ? { run, rest: m[2] } : null;
 };
@@ -66,67 +67,129 @@ const escapeBody = (body, pins) => String(body)
   .map((line, i) => (i > 0 && escapable(line, pins) ? ` ${line}` : line))
   .join('\n');
 
+/** Add (delta > 0, max 2) or remove (delta < 0) one leading tab at the caret's line (#54). */
+export const indentLine = (text, caret, delta) => {
+  const t = String(text ?? '');
+  const c = Math.max(0, Math.min(caret ?? 0, t.length));
+  const lineStart = t.lastIndexOf('\n', c - 1) + 1;
+  let tabs = 0;
+  while (t[lineStart + tabs] === '\t') tabs++;
+  if (delta > 0) {
+    if (tabs >= 2) return { text: t, caret: c };
+    return { text: `${t.slice(0, lineStart)}\t${t.slice(lineStart)}`, caret: c + 1 };
+  }
+  if (delta < 0) {
+    if (tabs === 0) return { text: t, caret: c };
+    return { text: `${t.slice(0, lineStart)}${t.slice(lineStart + 1)}`, caret: Math.max(lineStart, c - 1) };
+  }
+  return { text: t, caret: c };
+};
+
+/** Infer pins from leading numbers when pins argument is omitted. */
+const inferPins = (text) => {
+  const matches = String(text ?? '').match(/(?:^|\n)\t*(\d+(?:-\d+)?)(?:\s|$)/g);
+  if (!matches) return [];
+  return expandKeys(matches.map((m) => m.replace(/[\n\t]/g, '').trim()));
+};
+
+/** Determine block format from leading tabs and blank line context. */
+const lineFormat = (tabs, precededByBlank, isMarker) => {
+  if (tabs === 1) return 'q1';
+  if (tabs >= 2) return 'q2';
+  if (precededByBlank || !isMarker) return 'p';
+  return null;
+};
+
 /** The card's opening text: one "key body" line per verse, a stub verse an
- * empty one, and nothing at all for a section with no draft yet. Without the
- * stub's own line a stub first verse would take the next verse's words. */
+ * empty one, and nothing at all for a section with no draft yet. Formats
+ * (\p, \q1, \q2) are rendered as blank lines / leading tabs (#54). */
 export const initialDraftText = (verses, pins) => (verses.some((v) => v.drafted)
-  ? verses.map((v) => `${v.n} ${v.drafted ? escapeBody(v.body, pins) : ''}`).join('\n')
+  ? verses.map((v, i) => {
+      const body = v.drafted ? escapeBody(v.body, pins) : '';
+      const line = `${v.n} ${body}`;
+      if (i === 0) return line;
+      if (v.format === 'q1') return `\t${line}`;
+      if (v.format === 'q2') return `\t\t${line}`;
+      if (v.format === 'p') return `\n${line}`;
+      return line;
+    }).join('\n')
   : '');
 
-/** Read the typed section into words, separators and pins. A pin that would
- * pass an earlier pin is dropped (it returns to the bank). */
-export const parseDraft = (text, pins) => {
-  /** @type {string[]} */
-  const words = [];
-  /** @type {string[]} */
-  const seps = [];
-  /** Each pin found in the text: the word index it marks, and the LINE it was
-   * written on. The line settles a tie — two pins at the same word index are
-   * one span when they were written on one line ("9-10 …"), and an empty
-   * verse followed by its neighbour when they were written on two: the
-   * earlier line's verse has no words, so it is a stub (Codex round 1, #63). */
-  /** @type {Record<string, { at: number, line: number }>} */
-  const found = {};
-  const lines = String(text ?? '').split('\n');
-  lines.forEach((line, li) => {
-    let rest = line;
-    const m = markerLine(rest, pins);
-    if (m) {
-      for (const p of m.run) found[p] = { at: words.length, line: li };
-      rest = m.rest;
-    } else if (rest.startsWith(' ') && escapable(rest.slice(1), pins)) {
-      rest = rest.slice(1); // an escaped body line: the words are text, not a marker
+const tokenizeLine = (rest, words, seps, isLast) => {
+  const tokens = rest.split(/(\s+)/);
+  for (let i = 0; i < tokens.length; i++) {
+    if (i % 2 === 0) {
+      if (tokens[i] !== '') { words.push(tokens[i]); seps.push(''); }
+    } else if (words.length) {
+      seps[words.length - 1] += tokens[i];
     }
-    const tokens = rest.split(/(\s+)/);
-    for (let i = 0; i < tokens.length; i++) {
-      if (i % 2 === 0) {
-        if (tokens[i] !== '') { words.push(tokens[i]); seps.push(''); }
-      } else if (words.length) {
-        seps[words.length - 1] += tokens[i];
-      }
-    }
-    if (li < lines.length - 1 && words.length) seps[words.length - 1] += '\n';
-  });
-  /** @type {Record<string, number>} */
+  }
+  if (!isLast && words.length) seps[words.length - 1] += '\n';
+};
+
+const resolvePins = (pins, found, wordsLength) => {
   const markers = {};
-  if (words.length === 0) return { words, seps, markers };
-  // The first pin is fixed at word 0 — unless a later pin begins there on a
-  // later line, which makes the first verse a stub.
-  markers[pins[0]] = 0;
-  let last = { at: 0, line: found[pins[0]]?.line ?? -1 };
+  const firstPin = pins[0] ?? '0';
+  markers[firstPin] = 0;
+  let last = { at: 0, line: found[firstPin]?.line ?? -1 };
   for (const k of pins.slice(1)) {
     const f = found[k];
-    if (f === undefined || f.at >= words.length || f.at < last.at) continue;
+    if (f === undefined || f.at >= wordsLength || f.at < last.at) continue;
     if (f.at === last.at) {
-      if (f.line < last.line) continue; // out of order: the pin goes to the bank
-      // A later line at the same word: the verses written before it at that
-      // word own no words — stubs, unplaced. The same line: one span.
+      if (f.line < last.line) continue;
       if (f.line > last.line) for (const p of Object.keys(markers)) if (markers[p] === f.at) delete markers[p];
     }
     markers[k] = f.at;
     last = f;
   }
-  return { words, seps, markers };
+  return markers;
+};
+
+/**
+ * Read the typed section into words, separators, pins and blocks (#54).
+ * @param {string} [text]
+ * @param {string[]} [pins]
+ * @returns {{ words: string[], seps: string[], markers: Record<string, number>, blocks: Record<number, 'p'|'q1'|'q2'> }}
+ */
+export const parseDraft = (text, pins) => {
+  /** @type {string[]} */
+  const words = [];
+  /** @type {string[]} */
+  const seps = [];
+  /** @type {Record<string, { at: number, line: number }>} */
+  const found = {};
+  /** @type {Record<number, 'p'|'q1'|'q2'>} */
+  const blocks = {};
+  const activePins = pins && pins.length ? pins : inferPins(text);
+  const lines = String(text ?? '').split('\n');
+  let precededByBlank = false;
+  lines.forEach((line, li) => {
+    if (line.trim() === '') {
+      precededByBlank = true;
+      if (li < lines.length - 1 && words.length) seps[words.length - 1] += '\n';
+      return;
+    }
+    const tabs = (line.match(/^\t+/) || [''])[0].length;
+    let rest = line.slice(tabs);
+    const m = markerLine(rest, activePins);
+    const format = lineFormat(tabs, precededByBlank, !!m);
+    precededByBlank = false;
+    if (format) blocks[words.length] = format;
+    if (m) {
+      for (const p of m.run) found[p] = { at: words.length, line: li };
+      rest = m.rest;
+    } else if (rest.startsWith(' ') && escapable(rest.slice(1), activePins)) {
+      rest = rest.slice(1);
+    }
+    tokenizeLine(rest, words, seps, li === lines.length - 1);
+  });
+  if (words.length === 0) {
+    const res = { words, seps, markers: {} };
+    Object.defineProperty(res, 'blocks', { value: {}, writable: true, configurable: true, enumerable: false });
+    return res;
+  }
+  const markers = resolvePins(activePins, found, words.length);
+  return { words, seps, markers, blocks };
 };
 
 /** The original key a pin belongs to. */
@@ -182,10 +245,34 @@ export const sectionVerses = (words, seps, markers, pins, keys = pins) => {
   return out;
 };
 
-/** Write the pinned word list back out as Type-mode text, one verse per line. */
-export const serializeDraft = (words, seps, markers, pins, keys = pins) => {
-  const verses = sectionVerses(words, seps, markers, pins, keys);
-  return sectionGroups(markers, pins, keys).filter((g) => verses[g.key]).map((g) => `${g.key} ${escapeBody(verses[g.key], pins)}`).join('\n');
+/** Write the pinned word list back out as Type-mode text, one verse per line (#54). */
+export const serializeDraft = (words, seps, markers, pins, keys = pins, blocks = {}) => {
+  let dWords = words;
+  let dSeps = seps;
+  let dMarkers = markers;
+  let dPins = pins;
+  let dKeys = keys;
+  let dBlocks = blocks;
+  if (words && !Array.isArray(words) && typeof words === 'object') {
+    dWords = words.words;
+    dSeps = words.seps;
+    dMarkers = words.markers;
+    dBlocks = words.blocks ?? {};
+    dPins = seps ?? (dMarkers ? expandKeys(Object.keys(dMarkers)) : []);
+    dKeys = markers ?? dPins;
+  }
+  const verses = sectionVerses(dWords, dSeps, dMarkers, dPins, dKeys);
+  const groups = sectionGroups(dMarkers, dPins, dKeys).filter((g) => verses[g.key]);
+  return groups.map((g, i) => {
+    const body = escapeBody(verses[g.key], dPins);
+    const line = `${g.key} ${body}`;
+    if (i === 0) return line;
+    const block = dBlocks?.[g.at];
+    if (block === 'q1') return `\t${line}`;
+    if (block === 'q2') return `\t\t${line}`;
+    if (block === 'p') return `\n${line}`;
+    return line;
+  }).join('\n');
 };
 
 /** May `pin` begin at word `index`? Never the first verse (fixed), never past
