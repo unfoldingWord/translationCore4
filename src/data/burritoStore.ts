@@ -180,6 +180,13 @@ export interface GatewayChangePlan {
  * before any derived file changes. State and feature code MUST NOT call the raw
  * HttpStore mutation surface (test/noBypass.test.ts enforces this).
  */
+/** #63: how a section's verse keys changed, as groups of old and new keys
+ * (from "2:9","2:10" to "2:9-10" is a span create; the reverse a break).
+ * Keys are "chapter:verse". */
+export interface StructuralEditOptions {
+  mapping?: Array<{ from: string[]; to: string[] }>;
+}
+
 export interface BurritoStore {
   listProjects(): Promise<ProjectSummary[]>;
   open(repoPath: string): Promise<ProjectSummary>;
@@ -205,8 +212,12 @@ export interface BurritoStore {
 
   /** The explicit structural-edit operation (issue #62): ONE §8.5
    * text.structure.apply carrying the complete transition/disposition set,
-   * built conservatively from the new whole-book USFM. */
-  applyStructuralEdit(book: string, usfm: string): Promise<void>;
+   * built conservatively from the new whole-book USFM. `mapping` (#63) names
+   * the old and new slot keys of a verse span created or broken: the new slot
+   * claims the old text heads as its sources, alignments and decisions on
+   * the old keys are `invalidate-retain`, and each new key gets an empty
+   * `invalid` §5.1 record when an alignment was affected (D70). */
+  applyStructuralEdit(book: string, usfm: string, opts?: StructuralEditOptions): Promise<void>;
 
   readAlignments(book: string): Promise<AlignmentFile | null>;
   /** MUST normalize occurrence/occurrences to integers at this boundary (I-2). */

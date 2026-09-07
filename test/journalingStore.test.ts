@@ -589,3 +589,99 @@ describe('#62 serialization: one per-project queue', () => {
     await expectVerified(api, '_local_/_local_/otra');
   });
 });
+
+// ---------------------------------------------------------------------------
+// #63 (D70) — a verse span created or broken is ONE text.structure.apply that
+// names its verses as transition sources, invalidates and retains the
+// alignments and decisions on the affected verses, and leaves an `invalid`
+// §5.1 record on each new key so Align shows the span as invalid.
+// ---------------------------------------------------------------------------
+describe('#63 mapping: applyStructuralEdit with a span mapping', () => {
+  const SPANNED = TIT_USFM.replace('\\v 1 Pablo, siervo de Dios.\n\\v 2 ___', '\\v 1-2 Pablo, siervo de Dios.');
+  const aligned = {
+    alignments: [
+      {
+        topWords: [{ word: 'Παῦλος', strong: 'G39720', lemma: 'Παῦλος', morph: 'Gr,N,,,,,NMS,', occurrence: 1, occurrences: 1 }],
+        bottomWords: [{ word: 'Pablo', occurrence: 1, occurrences: 1 }],
+      },
+    ],
+    wordBank: [{ word: 'siervo', occurrence: 1, occurrences: 1 }],
+    targetVerseMd5: md5Hex('Pablo, siervo de Dios.'),
+    sourceVersion: 'dcs::unfoldingWord/el-x-koine_ugnt@v0.34',
+  };
+
+  const withRecords = async () => {
+    const ctx = await setup();
+    await ctx.store.writeAlignments('TIT', { schemaVersion: 1, book: 'TIT', chapters: { '1': { '1': aligned as never } } });
+    await ctx.store.upsertDecision('translationWords', 'TIT', decision('t1g7'), RESOLUTION);
+    return ctx;
+  };
+
+  it('span create (1:1, 1:2 to 1:1-2): the new slot claims both text heads; alignment and decision are invalidate-retain; nothing is re-keyed', async () => {
+    const { rig, api, store } = await withRecords();
+    // Both text heads are still the book.add that created the slots.
+    const bookAddTs = (await segmentsOf(rig)).flatMap((s) => s.events).find((e) => e.op === 'book.add')?.ts;
+    await store.applyStructuralEdit('TIT', SPANNED, { mapping: [{ from: ['1:1', '1:2'], to: ['1:1-2'] }] });
+    const segments = await segmentsOf(rig);
+    const action = segments[segments.length - 1].events;
+    expect(action.map((e) => e.op)).toEqual(['text.structure.apply', 'align.verse.set']);
+    const structural = action[0] as unknown as {
+      transitions: Record<string, { text: string; sources: Array<{ key: string; ts: string }> }>;
+      dispositions: Array<{ surface: string; key: string; action: string }>;
+    };
+    expect(Object.keys(structural.transitions).sort()).toEqual(['1:1-2', '2:1']);
+    expect(structural.transitions['1:1-2'].sources.map((s) => s.key)).toEqual(['1:1', '1:2']);
+    expect(structural.transitions['1:1-2'].sources.every((s) => s.ts === bookAddTs)).toBe(true);
+    expect(structural.dispositions.map((d) => [d.surface, d.action]).sort()).toEqual([
+      ['alignment', 'invalidate-retain'],
+      ['decision', 'invalidate-retain'],
+    ]);
+    expect(structural.dispositions.some((d) => d.action === 're-key')).toBe(false);
+    // The Align rail's signal: an empty, invalid record on the span key.
+    expect(action[1]).toMatchObject({ book: 'TIT', chapter: '1', verse: '1-2', alignments: [], wordBank: [], invalid: true });
+    const alignFile = JSON.parse(rig.repos.get(REPO)?.files.get('checking/alignments/TIT.json') ?? '');
+    expect(Object.keys(alignFile.chapters['1'])).toEqual(['1-2']);
+    expect(alignFile.chapters['1']['1-2'].invalid).toBe(true);
+    // The Check tool's signal: the decision is retained, flagged invalid.
+    const decFile = JSON.parse(rig.repos.get(REPO)?.files.get('checking/translationWords/TIT.json') ?? '') as DecisionFile;
+    expect(decFile.decisions).toHaveLength(1);
+    expect(decFile.decisions[0]).toMatchObject({ invalidated: true, status: 'invalid' });
+    expect(rig.repos.get(REPO)?.files.get('TIT.usfm')).toBe(SPANNED);
+    const report = await verifyProjectAgainstJournal(api, REPO);
+    expect(report.ok, describeVerifierReport(report)).toBe(true);
+    expect(report.foldReports.pendingStructural).toEqual([]);
+  });
+
+  it('span break (1:1-2 to 1:1, 1:2): the first new slot claims the span head; the second states its text with no source', async () => {
+    const { rig, api, store } = await withRecords();
+    await store.applyStructuralEdit('TIT', SPANNED, { mapping: [{ from: ['1:1', '1:2'], to: ['1:1-2'] }] });
+    const spanHead = (await segmentsOf(rig)).flatMap((s) => s.events).find((e) => e.op === 'text.structure.apply')?.ts;
+    await store.applyStructuralEdit('TIT', TIT_USFM, { mapping: [{ from: ['1:1-2'], to: ['1:1', '1:2'] }] });
+    const segments = await segmentsOf(rig);
+    const action = segments[segments.length - 1].events;
+    expect(action.map((e) => e.op)).toEqual(['text.structure.apply', 'align.verse.set', 'align.verse.set']);
+    const structural = action[0] as unknown as {
+      transitions: Record<string, { text: string; sources: Array<{ key: string; ts: string }> }>;
+      dispositions: Array<{ surface: string; key: string; action: string }>;
+    };
+    expect(structural.transitions['1:1'].sources).toEqual([{ key: '1:1-2', ts: spanHead }]);
+    expect(structural.transitions['1:2']).toEqual({ text: '___\n', sources: [] });
+    // The span's own invalid record is the affected alignment this time.
+    expect(structural.dispositions).toEqual([expect.objectContaining({ surface: 'alignment', key: '1:1-2', action: 'invalidate-retain' })]);
+    const alignFile = JSON.parse(rig.repos.get(REPO)?.files.get('checking/alignments/TIT.json') ?? '');
+    expect(Object.keys(alignFile.chapters['1']).sort()).toEqual(['1', '2']);
+    expect(alignFile.chapters['1']['1'].invalid).toBe(true);
+    expect(rig.repos.get(REPO)?.files.get('TIT.usfm')).toBe(TIT_USFM);
+    const report = await verifyProjectAgainstJournal(api, REPO);
+    expect(report.ok, describeVerifierReport(report)).toBe(true);
+    expect(report.foldReports.pendingStructural).toEqual([]);
+  });
+
+  it('without an affected alignment no invalid record is written, and the plain (#62) path is unchanged', async () => {
+    const { rig, store } = await setup();
+    await store.applyStructuralEdit('TIT', SPANNED, { mapping: [{ from: ['1:1', '1:2'], to: ['1:1-2'] }] });
+    const segments = await segmentsOf(rig);
+    expect(segments[segments.length - 1].events.map((e) => e.op)).toEqual(['text.structure.apply']);
+    expect(rig.repos.get(REPO)?.files.has('checking/alignments/TIT.json')).toBe(false);
+  });
+});

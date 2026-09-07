@@ -309,6 +309,7 @@ describe('2026-08-28 adversarial round 25 regression — concurrent project open
     const ctx = {
       openProjectSeqRef: { current: 0 },
       schedulerRef: { current: null as unknown },
+      structuralRef: { current: new Map() },
       noteSchedulerRef: { current: null as unknown },
       noteTargetsRef: { current: new Map() },
       storeRef: { current: null as unknown },

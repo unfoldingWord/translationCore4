@@ -26,6 +26,7 @@ import type {
   ProjectSummary,
   ResourcesFile,
   SettingsFile,
+  StructuralEditOptions,
 } from '../burritoStore';
 import type { VrsRegister } from '../versification';
 import type { AlignmentFile, AlignmentVerseRecord } from '../align/zaln';
@@ -1834,7 +1835,7 @@ export class JournalingStore implements BurritoStore {
    * text.structure.apply with the complete transition/disposition set, built
    * by the SAME conservative builder as §8.8 reconcile (no seed marker — this
    * is an in-app user action, not migrated data). */
-  async applyStructuralEdit(book: string, usfm: string): Promise<void> {
+  async applyStructuralEdit(book: string, usfm: string, opts: StructuralEditOptions = {}): Promise<void> {
     return this.queue(async () => {
       await this.replayOwnStagedBeforeDiff(); // round-5 rule 1: REPLAY-BEFORE-DIFF
       const journal = this.mustJournal();
@@ -1845,9 +1846,18 @@ export class JournalingStore implements BurritoStore {
           `applyStructuralEdit(${code}): the journal projects no such book — creation goes through addBook`,
         );
       const clock = { issue: (): string => journal.issueTs() };
+      const mapping = opts.mapping ?? [];
+      // #63 (D70): the first new key of a group carries every old key's text
+      // forward (JC-21's span form: one source head is claimed once); the
+      // affected alignments and decisions are invalidated and retained.
+      const sources: Record<string, string[]> = {};
+      for (const m of mapping) if (m.to.length) sources[m.to[0]] = m.from;
       const events = reconcileUsfm(code, toNfc(usfm), foldOut, clock, journal.actorId, {
         seed: null,
+        sources,
+        ...(mapping.length ? { alignmentAction: 'invalidate-retain' } : {}),
       });
+      events.push(...this.spanInvalidRecords(code, mapping, foldOut, journal, events));
       // Affected surfaces: the book itself, plus every sidecar its dispositions
       // may have re-keyed/invalidated (alignments + each tool's decision file).
       const affected = [bookIpath(code)];
@@ -1857,6 +1867,53 @@ export class JournalingStore implements BurritoStore {
           affected.push(decisionsIpath(tool, code));
       await this.publishAndRegenerate(events, affected);
     });
+  }
+
+  /** #63: an alignment on a verse that a span create or break took away no
+   * longer describes any slot; the fold retains it. So that Align shows the
+   * span as invalid — not as never aligned — each new key of a group whose old
+   * keys carried a live alignment gets an EMPTY §5.1 record with `invalid:
+   * true` (the §5.1 re-review flag; the empty form is the §8.5 removal
+   * shape), in the same action as the structural event. Re-aligning the span
+   * replaces it. Nothing without an affected alignment is written. */
+  private spanInvalidRecords(
+    code: string,
+    mapping: Array<{ from: string[]; to: string[] }>,
+    foldOut: FoldOutput,
+    journal: JournalStore,
+    events: JournalEvent[],
+  ): JournalEvent[] {
+    const structural = events.find((e) => e.op === 'text.structure.apply') as
+      | { transitions: Record<string, { text: string }> }
+      | undefined;
+    if (!structural) return [];
+    const generation = foldOut.headsTs[`book|${code}`];
+    const out: JournalEvent[] = [];
+    for (const m of mapping) {
+      const affected = m.from.some((k) => (foldOut.liveHeads?.[`align|${code}|${k}`] ?? []).length > 0);
+      if (!affected) continue;
+      for (const vkey of m.to) {
+        const text = structural.transitions[vkey]?.text;
+        if (text === undefined) continue;
+        const sep = vkey.indexOf(':');
+        out.push({
+          v: 1,
+          op: 'align.verse.set',
+          actor: journal.actorId,
+          ts: journal.issueTs(),
+          base: null,
+          generation,
+          book: code,
+          chapter: vkey.slice(0, sep),
+          verse: vkey.slice(sep + 1),
+          alignments: [],
+          wordBank: [],
+          targetVerseMd5: verseTextMd5(text),
+          invalid: true,
+        });
+      }
+    }
+    return out;
   }
 
   /** §5.1 write: diff the affected verse records against the projection and

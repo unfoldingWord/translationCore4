@@ -2,7 +2,7 @@
 // placement never loses or reorders text, a pin never passes another pin, and
 // the section's first verse number is fixed.
 import { describe, expect, it } from 'vitest';
-import { canDrop, initialDraftText, parseDraft, sectionVerses, serializeDraft, spanEnd } from '../src/views/sectionDraft.js';
+import { canDrop, dropPin, expandKeys, initialDraftText, keyMapping, parseDraft, sectionKeys, sectionVerses, serializeDraft, spanEnd } from '../src/views/sectionDraft.js';
 
 const KEYS = ['9', '10'];
 const THREE = ['3', '4', '5'];
@@ -42,10 +42,12 @@ describe('#141 — parseDraft', () => {
 
   it('a stub verse before a drafted one keeps the text with ITS OWN verse (Codex round 1)', () => {
     // The card writes an empty numbered line for an undrafted verse; without
-    // it verse 10's words would be saved as verse 9's.
+    // it verse 10's words would be saved as verse 9's. Since #63 two pins on
+    // one word are a span, so the stub is UNPLACED, not stacked.
     const d = parseDraft('9 \n10 no defraudando', KEYS);
-    expect(d.markers).toEqual({ '9': 0, '10': 0 });
+    expect(d.markers).toEqual({ '10': 0 });
     expect(sectionVerses(d.words, d.seps, d.markers, KEYS)).toEqual({ '10': 'no defraudando' });
+    expect(sectionKeys(d.markers, KEYS)).toEqual(['9', '10']); // no span: the keys are unchanged
   });
 
   it('bridged keys work as markers ("9-10")', () => {
@@ -102,26 +104,27 @@ describe('#141 — canDrop: a pin never passes another pin; the first is fixed',
     expect(canDrop(markers, THREE, '3', 0)).toBe(false);
   });
 
-  it('a middle pin may move only strictly between its neighbours', () => {
+  it('a middle pin may move between its neighbours, onto either (a span, #63), never past', () => {
     expect(canDrop(markers, THREE, '4', 1)).toBe(true);
     expect(canDrop(markers, THREE, '4', 3)).toBe(true);
-    expect(canDrop(markers, THREE, '4', 0)).toBe(false); // on the fixed first pin
-    expect(canDrop(markers, THREE, '4', 4)).toBe(false); // on verse 5's pin
+    expect(canDrop(markers, THREE, '4', 0)).toBe(true); // onto the fixed first pin: span 3-4
+    expect(canDrop(markers, THREE, '4', 4)).toBe(true); // onto verse 5's pin: span 4-5
     expect(canDrop(markers, THREE, '4', 5)).toBe(false); // past verse 5
   });
 
-  it('the last pin may move anywhere after the pin before it', () => {
+  it('the last pin may move anywhere from the pin before it on', () => {
     expect(canDrop(markers, THREE, '5', 3)).toBe(true);
     expect(canDrop(markers, THREE, '5', 9)).toBe(true);
-    expect(canDrop(markers, THREE, '5', 2)).toBe(false);
+    expect(canDrop(markers, THREE, '5', 2)).toBe(true); // onto verse 4's pin: span 4-5
     expect(canDrop(markers, THREE, '5', 1)).toBe(false);
   });
 
   it('an unplaced pin obeys the same order against the placed ones', () => {
     expect(canDrop({ '3': 0, '5': 4 }, THREE, '4', 2)).toBe(true);
-    expect(canDrop({ '3': 0, '5': 4 }, THREE, '4', 4)).toBe(false);
+    expect(canDrop({ '3': 0, '5': 4 }, THREE, '4', 4)).toBe(true); // onto verse 5's pin
     expect(canDrop({ '3': 0, '5': 4 }, THREE, '4', 6)).toBe(false);
-    expect(canDrop({ '3': 0, '4': 2 }, THREE, '5', 2)).toBe(false);
+    expect(canDrop({ '3': 0, '4': 2 }, THREE, '5', 2)).toBe(true); // onto verse 4's pin
+    expect(canDrop({ '3': 0, '4': 2 }, THREE, '5', 1)).toBe(false);
     expect(canDrop({ '3': 0, '4': 2 }, THREE, '5', 3)).toBe(true);
   });
 
@@ -200,5 +203,87 @@ describe('#141 — a verse body that wraps onto a marker-shaped line (Codex roun
 
   it('a section with no draft opens empty', () => {
     expect(initialDraftText([{ n: '9', drafted: false, body: '' }, { n: '10', drafted: false, body: '' }], KEYS)).toBe('');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #63 (D70.3) — verse spans: pins that share a word are one span; a pin can
+// never pass another; a stub is an unplaced pin.
+// ---------------------------------------------------------------------------
+describe('#63 — stacked pins are one span', () => {
+  const words = ['a', 'b', 'c', 'd'];
+  const seps = [' ', ' ', ' ', ''];
+
+  it('expandKeys turns a span key into its verse numbers', () => {
+    expect(expandKeys(['9-10', '11'])).toEqual(['9', '10', '11']);
+    expect(expandKeys(['9', '10'])).toEqual(['9', '10']);
+  });
+
+  it('two pins on the first word write one span key with the joined text', () => {
+    const markers = { '9': 0, '10': 0 };
+    expect(sectionKeys(markers, KEYS)).toEqual(['9-10']);
+    expect(sectionVerses(words, seps, markers, KEYS)).toEqual({ '9-10': 'a b c d' });
+    expect(serializeDraft(words, seps, markers, KEYS)).toBe('9-10 a b c d');
+  });
+
+  it('three stacked pins write 3-5; a pin moved past text breaks the span there', () => {
+    expect(sectionKeys({ '3': 0, '4': 0, '5': 0 }, THREE)).toEqual(['3-5']);
+    expect(sectionVerses(words, seps, { '3': 0, '4': 0, '5': 2 }, THREE)).toEqual({ '3-4': 'a b', '5': 'c d' });
+    expect(sectionKeys({ '3': 0, '4': 2, '5': 2 }, THREE)).toEqual(['3', '4-5']);
+  });
+
+  it('Type mode reads and writes a span as one "9-10" line', () => {
+    const d = parseDraft('9-10 a b c d', KEYS);
+    expect(d.markers).toEqual({ '9': 0, '10': 0 });
+    expect(serializeDraft(d.words, d.seps, d.markers, KEYS)).toBe('9-10 a b c d');
+    const three = parseDraft('3-4 a b\n5 c d', THREE);
+    expect(three.markers).toEqual({ '3': 0, '4': 0, '5': 2 });
+    // A run that is not the section's pins is text.
+    expect(parseDraft('9-12 a', KEYS).words).toEqual(['9-12', 'a']);
+  });
+
+  it('a section that already holds a span opens with its pins stacked, and keeps the span until a pin moves', () => {
+    const keys = ['9-10', '11'];
+    const pins = expandKeys(keys);
+    const text = initialDraftText([{ n: '9-10', drafted: true, body: 'a b' }, { n: '11', drafted: true, body: 'c d' }], pins);
+    expect(text).toBe('9-10 a b\n11 c d');
+    const d = parseDraft(text, pins);
+    expect(d.markers).toEqual({ '9': 0, '10': 0, '11': 2 });
+    expect(sectionKeys(d.markers, pins, keys)).toEqual(keys);
+    // The break: verse 10 moves onto "b".
+    expect(canDrop(d.markers, pins, '10', 1)).toBe(true);
+    const broken = dropPin(d.markers, pins, '10', 1);
+    expect(sectionKeys(broken, pins, keys)).toEqual(['9', '10', '11']);
+    expect(sectionVerses(d.words, d.seps, broken, pins, keys)).toEqual({ '9': 'a', '10': 'b', '11': 'c d' });
+  });
+
+  it('a stub span stays one stub key while all its pins are unplaced', () => {
+    const keys = ['9-10', '11'];
+    const pins = expandKeys(keys);
+    const d = parseDraft('9-10 \n11 c d', pins);
+    expect(d.markers).toEqual({ '11': 0 });
+    expect(sectionKeys(d.markers, pins, keys)).toEqual(['9-10', '11']);
+  });
+
+  it('a pin never passes another; a stack cannot swallow an unplaced pin', () => {
+    // 5 onto 3's word with 4 unplaced would put a stub inside 3-5: refused.
+    expect(canDrop({ '3': 0 }, THREE, '5', 0)).toBe(false);
+    expect(canDrop({ '3': 0, '4': 0 }, THREE, '5', 0)).toBe(true);
+    expect(canDrop({ '3': 0, '5': 2 }, THREE, '4', 3)).toBe(false); // past 5
+    expect(canDrop({ '3': 0, '5': 2 }, THREE, '4', 2)).toBe(true); // onto 5: span 4-5
+  });
+
+  it('dropPin gives the first verse its words back when no pin begins at word 0 any more', () => {
+    // A stub first verse (unplaced) whose neighbour sat at word 0.
+    expect(dropPin({ '10': 0 }, KEYS, '10', 2)).toEqual({ '9': 0, '10': 2 });
+    expect(dropPin({ '9': 0, '10': 2 }, KEYS, '10', 0)).toEqual({ '9': 0, '10': 0 });
+  });
+
+  it('keyMapping groups the changed keys by the verse numbers they share', () => {
+    expect(keyMapping(['9', '10'], ['9-10'])).toEqual([{ from: ['9', '10'], to: ['9-10'] }]);
+    expect(keyMapping(['9-10', '11'], ['9', '10', '11'])).toEqual([{ from: ['9-10'], to: ['9', '10'] }]);
+    expect(keyMapping(['3', '4', '5'], ['3-4', '5'])).toEqual([{ from: ['3', '4'], to: ['3-4'] }]);
+    expect(keyMapping(['3', '4', '5'], ['3', '4', '5'])).toEqual([]);
+    expect(keyMapping(['3-4', '5', '6'], ['3', '4', '5-6'])).toEqual([{ from: ['3-4'], to: ['3', '4'] }, { from: ['5', '6'], to: ['5-6'] }]);
   });
 });
