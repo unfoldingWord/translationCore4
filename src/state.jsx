@@ -11,7 +11,7 @@ import { ServerApi } from './data/serverApi';
 import { StaleWriteError } from './data/httpStore';
 import { JournalingStore, ProjectReader } from './data/journal/journalingStore';
 import { SaveScheduler } from './data/saveScheduler';
-import { spliceSection, spliceVerse, spliceVerseGap, verseBody, verseGapMarker } from './data/usfm/splice';
+import { gapMarkerOf, spliceSection, spliceVerse, spliceVerseGap, verseBody } from './data/usfm/splice';
 import { indexBook } from './data/usfm/indexer';
 import { RESOURCE_FRAME, forgetProjectFrames, resolveProjectFrame } from './data/projectFrame';
 import { backfillCoverage } from './data/coverageBackfill';
@@ -1785,7 +1785,7 @@ function buildChapterVerses(bookRaw, chapters, entries) {
     const sameCh = prev && prev.chapter === e.chapter;
     const gap = sameCh ? bookRaw.slice(prev.end, e.start) : '';
     const para = !sameCh || PARA_IN_GAP.test(gap);
-    const format = sameCh ? verseGapMarker(bookRaw, prev.chapter, prev.verseKey) : null;
+    const format = sameCh ? gapMarkerOf(gap) : null;
     (byChapter[e.chapter] ||= []).push({
       n: e.verseKey,
       drafted,
@@ -3520,8 +3520,13 @@ export function AppProvider({ children }) {
             a.editVerse(chapter, verseKey, text);
           }
         }
+        let entries = indexBook(rawRef.current);
         for (const [key, marker] of Object.entries(formats)) {
-          rawRef.current = spliceVerseGap(rawRef.current, chapter, key, marker);
+          const next = spliceVerseGap(rawRef.current, chapter, key, marker, entries);
+          if (next !== rawRef.current) {
+            rawRef.current = next;
+            entries = indexBook(rawRef.current);
+          }
         }
         schedulerRef.current?.replaceBook(stateRef.current.book, rawRef.current);
         dispatch({ type: 'set', patch: { bookRaw: rawRef.current } });

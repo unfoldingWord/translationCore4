@@ -37,14 +37,12 @@ const levelOfTag = (tag) => {
   return m ? Number(m[1]) : (tag === 'q' ? 1 : 0);
 };
 
-const levelFromObjs = (chapterVerses, key) => {
+const levelFromObjs = (chapterVerses, key, prevKey = null) => {
   const objs = chapterVerses?.[String(key)]?.verseObjects ?? [];
   const lead = leading(objs).find(isParaMark);
   if (lead) return levelOfTag(lead.tag);
-  const keys = Object.keys(chapterVerses ?? {});
-  const idx = keys.indexOf(String(key));
-  if (idx <= 0) return 0;
-  const prevObjs = chapterVerses[keys[idx - 1]]?.verseObjects ?? [];
+  if (!prevKey) return 0;
+  const prevObjs = chapterVerses[String(prevKey)]?.verseObjects ?? [];
   const trail = [...trailing(prevObjs)].reverse().find(isParaMark);
   return trail ? levelOfTag(trail.tag) : 0;
 };
@@ -53,14 +51,14 @@ const levelFromObjs = (chapterVerses, key) => {
  * Poetry indent level (1 for \q1, 2 for \q2, 0 for plain / \p) from the opening
  * paragraph object's tag or model verse format (#54).
  */
-export const paragraphLevel = (para, chapterVerses = {}) => {
+export const paragraphLevel = (para, chapterVerses = {}, prevKey = null) => {
   if (!para || para.length === 0) return 0;
   const first = para[0];
   if (typeof first === 'object' && first !== null && 'format' in first) {
     return first.format === 'q1' ? 1 : first.format === 'q2' ? 2 : 0;
   }
   const firstKey = typeof first === 'string' ? first : first?.n;
-  return firstKey ? levelFromObjs(chapterVerses, firstKey) : 0;
+  return firstKey ? levelFromObjs(chapterVerses, firstKey, prevKey) : 0;
 };
 
 /** Section starts for one chapter, from the source's own \ts\* chunk markers.

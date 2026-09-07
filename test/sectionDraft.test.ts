@@ -36,8 +36,8 @@ describe('#141 — parseDraft', () => {
   });
 
   it('an empty section has no words and no markers', () => {
-    expect(parseDraft('', KEYS)).toEqual({ words: [], seps: [], markers: {} });
-    expect(parseDraft('  \n ', KEYS)).toEqual({ words: [], seps: [], markers: {} });
+    expect(parseDraft('', KEYS)).toEqual({ words: [], seps: [], markers: {}, blocks: {} });
+    expect(parseDraft('  \n ', KEYS)).toEqual({ words: [], seps: [], markers: {}, blocks: {} });
   });
 
   it('a stub verse before a drafted one keeps the text with ITS OWN verse (Codex round 1)', () => {
@@ -348,14 +348,16 @@ describe('#54 — paragraph breaks and poetry lines from Type pane', () => {
 
   it('round trips: serializeDraft(parseDraft(x)) === x for all required cases', () => {
     const cases = [
-      '9 a\n\n10 b',
-      '9 a\n\t10 b',
-      '9 a\n\t\t10 b',
-      '9 a\n10 b',
-      '9-10 a\n\t11 b',
+      { text: '9 a\n\n10 b', keys: KEYS },
+      { text: '9 a\n\t10 b', keys: KEYS },
+      { text: '9 a\n\t\t10 b', keys: KEYS },
+      { text: '9 a\n10 b', keys: KEYS },
+      { text: '9-10 a\n\t11 b', keys: ['9-10', '11'] },
     ];
-    for (const x of cases) {
-      expect(serializeDraft(parseDraft(x))).toBe(x);
+    for (const { text, keys } of cases) {
+      const pins = expandKeys(keys);
+      const d = parseDraft(text, pins);
+      expect(serializeDraft(d.words, d.seps, d.markers, pins, keys, d.blocks)).toBe(text);
     }
   });
 });

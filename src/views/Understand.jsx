@@ -293,8 +293,9 @@ function UnderstandUnit({ unit, s, src, srcChapters, book, chapter, mode, focuse
         <Overline>{unit.label}</Overline><div style={{ flex: 1 }} />
         {hasNote ? <StatusDot status="valid" size={7} /> : null}
       </div>
-      {paragraphsOf(keysIn, chapterVerses).map((keys) => {
-        const level = paragraphLevel(keys, chapterVerses);
+      {paragraphsOf(keysIn, chapterVerses).map((keys, i, arr) => {
+        const prevKey = i > 0 ? arr[i - 1][arr[i - 1].length - 1] : null;
+        const level = paragraphLevel(keys, chapterVerses, prevKey);
         const padding = level === 1 ? '1.5em' : level === 2 ? '3em' : undefined;
         return (
           <p key={keys[0]} style={{ direction: 'ltr', textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-lg)', lineHeight: 'var(--lh-verse-lg)', color: 'var(--text-scripture)', margin: '10px 0', ...(padding ? { paddingInlineStart: padding } : {}) }}>

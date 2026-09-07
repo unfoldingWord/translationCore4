@@ -85,13 +85,6 @@ export const indentLine = (text, caret, delta) => {
   return { text: t, caret: c };
 };
 
-/** Infer pins from leading numbers when pins argument is omitted. */
-const inferPins = (text) => {
-  const matches = String(text ?? '').match(/(?:^|\n)\t*(\d+(?:-\d+)?)(?:\s|$)/g);
-  if (!matches) return [];
-  return expandKeys(matches.map((m) => m.replace(/[\n\t]/g, '').trim()));
-};
-
 /** Determine block format from leading tabs and blank line context. */
 const lineFormat = (tabs, precededByBlank, isMarker) => {
   if (tabs === 1) return 'q1';
@@ -151,7 +144,7 @@ const resolvePins = (pins, found, wordsLength) => {
  * @param {string[]} [pins]
  * @returns {{ words: string[], seps: string[], markers: Record<string, number>, blocks: Record<number, 'p'|'q1'|'q2'> }}
  */
-export const parseDraft = (text, pins) => {
+export const parseDraft = (text, pins = []) => {
   /** @type {string[]} */
   const words = [];
   /** @type {string[]} */
@@ -160,7 +153,7 @@ export const parseDraft = (text, pins) => {
   const found = {};
   /** @type {Record<number, 'p'|'q1'|'q2'>} */
   const blocks = {};
-  const activePins = pins && pins.length ? pins : inferPins(text);
+  const activePins = pins ?? [];
   const lines = String(text ?? '').split('\n');
   let precededByBlank = false;
   lines.forEach((line, li) => {
@@ -184,9 +177,7 @@ export const parseDraft = (text, pins) => {
     tokenizeLine(rest, words, seps, li === lines.length - 1);
   });
   if (words.length === 0) {
-    const res = { words, seps, markers: {} };
-    Object.defineProperty(res, 'blocks', { value: {}, writable: true, configurable: true, enumerable: false });
-    return res;
+    return { words, seps, markers: {}, blocks: {} };
   }
   const markers = resolvePins(activePins, found, words.length);
   return { words, seps, markers, blocks };
@@ -247,27 +238,13 @@ export const sectionVerses = (words, seps, markers, pins, keys = pins) => {
 
 /** Write the pinned word list back out as Type-mode text, one verse per line (#54). */
 export const serializeDraft = (words, seps, markers, pins, keys = pins, blocks = {}) => {
-  let dWords = words;
-  let dSeps = seps;
-  let dMarkers = markers;
-  let dPins = pins;
-  let dKeys = keys;
-  let dBlocks = blocks;
-  if (words && !Array.isArray(words) && typeof words === 'object') {
-    dWords = words.words;
-    dSeps = words.seps;
-    dMarkers = words.markers;
-    dBlocks = words.blocks ?? {};
-    dPins = seps ?? (dMarkers ? expandKeys(Object.keys(dMarkers)) : []);
-    dKeys = markers ?? dPins;
-  }
-  const verses = sectionVerses(dWords, dSeps, dMarkers, dPins, dKeys);
-  const groups = sectionGroups(dMarkers, dPins, dKeys).filter((g) => verses[g.key]);
+  const verses = sectionVerses(words, seps, markers, pins, keys);
+  const groups = sectionGroups(markers, pins, keys).filter((g) => verses[g.key]);
   return groups.map((g, i) => {
-    const body = escapeBody(verses[g.key], dPins);
+    const body = escapeBody(verses[g.key], pins);
     const line = `${g.key} ${body}`;
     if (i === 0) return line;
-    const block = dBlocks?.[g.at];
+    const block = blocks?.[g.at];
     if (block === 'q1') return `\t${line}`;
     if (block === 'q2') return `\t\t${line}`;
     if (block === 'p') return `\n${line}`;

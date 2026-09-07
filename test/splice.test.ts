@@ -242,5 +242,12 @@ describe('#54 — spliceVerseGap and verseGapMarker', () => {
     const stripped = spliceVerseGap(withQ1, 1, '1', null);
     expect(stripped).toBe(['\\id TST', '\\c 1', '\\v 1 one', '', '\\v 2 two', ''].join('\n'));
   });
+
+  it('span verse gap round-trip: spliceVerseGap(raw, ch, "9-10", "q1") puts \\q1 before \\v 11 and null restores byte-identical raw', () => {
+    const raw = ['\\id TST', '\\c 1', '\\v 9-10 nine and ten', '\\v 11 eleven', ''].join('\n');
+    const withQ1 = spliceVerseGap(raw, 1, '9-10', 'q1');
+    expect(withQ1).toBe(['\\id TST', '\\c 1', '\\v 9-10 nine and ten', '\\q1', '\\v 11 eleven', ''].join('\n'));
+    expect(spliceVerseGap(withQ1, 1, '9-10', null)).toBe(raw);
+  });
 });
 

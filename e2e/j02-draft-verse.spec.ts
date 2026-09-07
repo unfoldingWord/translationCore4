@@ -576,6 +576,46 @@ test.describe('J2 — a translator drafts a verse', () => {
           .poll(() => readIngredient(SEEDED_PROJECT, BOOK_IPATH).toString('utf8'), { timeout: 10_000 })
           .toBe(before);
       });
+
+      await test.step('fill changed text for verse 13 together with the two formats, save, and assert file bytes and events', async () => {
+        const segmentsBefore13 = new Set(segmentFiles());
+        const newV13 = `${v13} editado`;
+        await page.getByRole('button', { name: 'Draft section 11–13' }).click();
+        const textbox = page.getByRole('textbox', { name: 'Section 11–13' });
+        await textbox.fill(`11 ${v11}\n\t12 ${v12}\n\n13 ${newV13}`);
+        await page.getByRole('button', { name: 'Save section' }).click();
+        await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
+        await expect(page.getByTestId('section-editor')).toHaveCount(0);
+
+        const line11 = verseLine(before, 11);
+        const line12 = verseLine(before, 12);
+        const expected =
+          before.slice(0, line11.end) +
+          '\\q1\n' +
+          before.slice(line11.end, line12.end) +
+          '\\p\n' +
+          before.slice(line12.end, v13Span.start) +
+          newV13 +
+          '\n' +
+          before.slice(v13Span.end);
+        await expect
+          .poll(() => readIngredient(SEEDED_PROJECT, BOOK_IPATH).toString('utf8'), { timeout: 10_000 })
+          .toBe(expected);
+
+        const events = eventsSince(segmentsBefore13);
+        const verseSets = events.filter((e) => e.op === 'text.verse.set');
+        expect(verseSets.map((e) => `${e.chapter}:${e.verse}`).sort()).toEqual(['2:11', '2:12', '2:13']);
+        expect(events.filter((e) => e.op === 'text.structure.apply')).toEqual([]);
+
+        // Restore: fill original three lines without tabs/blank line and assert prior bytes
+        await page.getByRole('button', { name: 'Draft section 11–13' }).click();
+        await page.getByRole('textbox', { name: 'Section 11–13' }).fill(`11 ${v11}\n12 ${v12}\n13 ${v13}`);
+        await page.getByRole('button', { name: 'Save section' }).click();
+        await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
+        await expect
+          .poll(() => readIngredient(SEEDED_PROJECT, BOOK_IPATH).toString('utf8'), { timeout: 10_000 })
+          .toBe(before);
+      });
     },
   );
 });

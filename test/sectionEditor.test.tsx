@@ -44,24 +44,20 @@ describe('#54 — SectionEditor Type mode Tab indent', () => {
     // Position caret at the start of verse 10's line (index 4)
     textarea.setSelectionRange(4, 4);
 
-    // 1. Tab adds one tab and keeps focus
-    fireEvent.keyDown(textarea, { key: 'Tab' });
-    expect(document.activeElement).toBe(textarea);
+    // 1. Tab adds one tab and keeps focus (default prevented)
+    expect(fireEvent.keyDown(textarea, { key: 'Tab' })).toBe(false);
     expect(textarea.value).toBe('9 a\n\t10 b');
 
     // 2. A second Tab gives two tabs
-    fireEvent.keyDown(textarea, { key: 'Tab' });
-    expect(document.activeElement).toBe(textarea);
+    expect(fireEvent.keyDown(textarea, { key: 'Tab' })).toBe(false);
     expect(textarea.value).toBe('9 a\n\t\t10 b');
 
     // 3. A third Tab does nothing (max two tabs)
-    fireEvent.keyDown(textarea, { key: 'Tab' });
-    expect(document.activeElement).toBe(textarea);
+    expect(fireEvent.keyDown(textarea, { key: 'Tab' })).toBe(false);
     expect(textarea.value).toBe('9 a\n\t\t10 b');
 
     // 4. Shift+Tab removes one tab
-    fireEvent.keyDown(textarea, { key: 'Tab', shiftKey: true });
-    expect(document.activeElement).toBe(textarea);
+    expect(fireEvent.keyDown(textarea, { key: 'Tab', shiftKey: true })).toBe(false);
     expect(textarea.value).toBe('9 a\n\t10 b');
   });
 });
