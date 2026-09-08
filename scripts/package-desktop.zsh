@@ -594,10 +594,13 @@ SMOKE_PID=$LAUNCH_PID
 cleanup_smoke() {
   if [ "$OS" = macos ]; then pkill -f "$APPDIR/Electron.app" 2>/dev/null || true
   elif [ "$OS" = windows ]; then
-    # taskkill by image: the Electron tree (/T takes the spawned server too),
-    # then the server by name in case it was detached from the tree.
-    MSYS2_ARG_CONV_EXCL='*' taskkill /F /T /IM electron.exe >/dev/null 2>&1 || true
-    MSYS2_ARG_CONV_EXCL='*' taskkill /F /IM server.exe >/dev/null 2>&1 || true
+    # Stop only the processes that run from the staged folder (the same path
+    # filter as the pkill -f branches): electron.exe and the server it spawned,
+    # matched by executable path, never by name alone (Codex review round 1).
+    local appwin; appwin="$(cygpath -w "$APPDIR")"
+    MSYS2_ARG_CONV_EXCL='*' powershell -NoProfile -Command \
+      "Get-Process electron,server -ErrorAction SilentlyContinue | Where-Object { \$_.Path -and \$_.Path.StartsWith('$appwin', [System.StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force" \
+      >/dev/null 2>&1 || true
   else                       pkill -f "$APPDIR/electronite/electron" 2>/dev/null || true; fi
   kill $SMOKE_PID 2>/dev/null || true
 }

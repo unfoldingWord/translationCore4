@@ -173,6 +173,13 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 90
     steps:
+      # Windows git defaults to core.autocrlf=true. A CRLF package-desktop.zsh does
+      # not parse under zsh, and CRLF sample-burrito bytes would break the debug
+      # seed. Check every file out as committed (Codex review round 1, PR #226).
+      - name: Keep LF line endings on checkout
+        shell: pwsh
+        run: git config --global core.autocrlf false
+
       - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v7
