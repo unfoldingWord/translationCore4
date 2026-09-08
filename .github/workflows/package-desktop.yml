@@ -1,12 +1,18 @@
 name: package-desktop
 
 # #57: produce an unsigned desktop artifact on every merge to main, and on
-# pull requests that touch the packaging inputs — PR artifacts upload too
+# pull requests that touch the packaging recipe — PR artifacts upload too
 # (short retention), so a packaging fix can be downloaded and taken through
 # the real Gatekeeper path BEFORE merge (PR #98 review). The recipe lives in
 # scripts/package-desktop.zsh. The script smoke-tests the staged artifact
 # THROUGH ITS OWN ENTRY POINT (self-spawned server; root 303 ->
 # /clients/uw-tc4, then 200) before it zips.
+#
+# Owner ruling 2026-09-08 (after PR #226): a pull request builds only when it
+# changes the recipe itself — the two scripts, this workflow, or the server
+# crate. A change to the app (src/, public/, rig/, package.json, vite config)
+# is proven by the `ci` and `rig` workflows on the PR and packaged on merge;
+# three desktop builds per app PR cost more time than they caught.
 #
 # #119 adds the linux-x64 job beside the proven macos-arm64 one. Both run the
 # same script; only the host differs. #181 adds windows-x64: the same script
@@ -26,13 +32,7 @@ on:
       - scripts/package-desktop.zsh
       - scripts/smoke-installed.zsh
       - .github/workflows/package-desktop.yml
-      - src/**
-      - public/**
-      - rig/**
       - dev-env/server/**
-      - package.json
-      - package-lock.json
-      - vite.config.js
   workflow_dispatch:
 
 permissions:
