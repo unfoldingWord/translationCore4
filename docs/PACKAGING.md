@@ -329,10 +329,16 @@ and focuses the first window (#4).
 - **Unsigned.** SmartScreen warns on every clean machine until #44.
 - **A console window.** The launcher is a batch file. A launcher without a
   console is part of #44's installer work.
-- **Witness pending.** The clean-machine witness (unpack once, launch without
-  a developer checkout, reach the dashboard, second launch refused or focused)
-  is the last acceptance item of #181. Record here: the run id, the artifact
-  sha256, the Windows version, and a screenshot.
+- **Witnessed on a real machine, one step open.** Windows 10 Pro 10.0.19045,
+  no developer checkout, artifact 10056395396 (run 34227273789, head `8fbb62f`,
+  188,346,325 bytes, sha256 `20582ef6…8d0cba`): unpacked once, launched,
+  created a project, reached the tC4 dashboard with the bundled English suite
+  and the Hebrew pane [VERIFIED — the owner, 2026-09-08; record and
+  screenshot: `docs/evidence/desktop-windows-witness-2026-09-08.md`]. The
+  first `main` artifact (10054337157) showed an error dialog at project
+  creation; that was #228, fixed in PR #229 and absent from every later build.
+  Still open on a real machine: the second-launch check (#4) and the
+  SmartScreen step above; CI proves the first on every build.
 
 ### Evidence
 
@@ -344,7 +350,8 @@ the working directory under the smoke home; the #70 guard ("production store
 holds only `_local_/_sideloaded_/` with seeded English suite on first boot");
 artifact `tC4-4.0.0-alpha.4-windows-x64-unsigned.zip`, 188345159 bytes,
 artifact id 10038663195. The server built with the MSVC toolchain in 7m14s
-uncached (run 34174403634). The witness record above is still open.
+uncached (run 34174403634). The real-machine witness is
+`docs/evidence/desktop-windows-witness-2026-09-08.md`.
 
 ## Smoke tests: build-time and post-install (#45)
 
