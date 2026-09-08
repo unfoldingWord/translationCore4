@@ -330,6 +330,18 @@ and focuses the first window (#4).
   is the last acceptance item of #181. Record here: the run id, the artifact
   sha256, the Windows version, and a screenshot.
 
+### Evidence
+
+First green `windows-x64` job [VERIFIED — run 34179734677 on PR #226 (head
+`84aa25c`), `windows-2025`, 2026-09-08]: `electron.exe --version` v37.1.0;
+self-spawned server on port 19119; `/` 303 to `/clients/uw-tc4` and the
+client 200; the #4 guard ("second launch exited by itself; one server only");
+the working directory under the smoke home; the #70 guard ("production store
+holds only `_local_/_sideloaded_/` with seeded English suite on first boot");
+artifact `tC4-4.0.0-alpha.4-windows-x64-unsigned.zip`, 188345159 bytes,
+artifact id 10038663195. The server built with the MSVC toolchain in 7m14s
+uncached (run 34174403634). The witness record above is still open.
+
 ## Smoke tests: build-time and post-install (#45)
 
 Two smoke tests exist. They answer two different questions.
@@ -484,6 +496,7 @@ Artifact sizes before and after bundling the English suite:
 |---|---|---|
 | macOS arm64 | 142556909 bytes | 173313348 bytes |
 | Linux x64 | — | 180227460 bytes |
+| Windows x64 (#181) | — | 188345159 bytes (run 34179734677, PR #226) |
 
 Both "after" sizes are from the `package-desktop` CI run 34145714423 artifact listing (PR #217, 2026-09-07). A local macOS arm64 build of the same commit measured 174980433 bytes.
 

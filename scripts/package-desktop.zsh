@@ -723,7 +723,7 @@ trap - EXIT
 US="$SMOKE_HOME/pankosmia/tc4/user_settings.json"
 [ -f "$US" ] || { echo "#70 GUARD FAILED: no user_settings.json at $US" >&2; exit 1; }
 RESOLVED_REPO_DIR=$(node -p "require('$(npath "$US")').repo_dir")
-echo "resolved repo_dir: $RESOLVED_REPO_DIR"
+print -r -- "resolved repo_dir: $RESOLVED_REPO_DIR"   # print -r: a Windows path holds \t and \a
 case "$RESOLVED_REPO_DIR" in
   *pankosmia_repos*)
     echo "#70 GUARD FAILED: resolved repo_dir is the shared pankosmia_repos store — release-blocking (owner ruling 2026-08-14)" >&2
