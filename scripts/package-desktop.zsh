@@ -609,7 +609,42 @@ if [ "$OS" = windows ]; then
   # Does the wrapper run at all on this host? --version exits at once; node
   # mode proves the binary loads without a window. Both print exit codes.
   echo "electron.exe --version: $(env $(win_env) "$APPDIR/electronite/electron.exe" --version 2>&1 | tr -d '\r' | head -2 | tr '\n' ' '; echo "(exit ${pipestatus[1]})")"
-  echo "electron.exe node mode: $(env $(win_env) ELECTRON_RUN_AS_NODE=1 "$APPDIR/electronite/electron.exe" -p 'process.versions.electron + \" node \" + process.versions.node' 2>&1 | tr -d '\r' | head -2 | tr '\n' ' '; echo "(exit ${pipestatus[1]})")"
+  echo "electron.exe node mode: $(env $(win_env) ELECTRON_RUN_AS_NODE=1 "$APPDIR/electronite/electron.exe" -p 'process.versions.electron' 2>&1 | tr -d '\r' | head -2 | tr '\n' ' '; echo "(exit ${pipestatus[1]})")"
+  # Launch matrix (run 34177669869: the app crashed with EXCEPTION_BREAKPOINT
+  # before Chromium's logging came up). Each variant runs 8 s from the app
+  # folder with --enable-logging=stderr, so the CHECK message reaches its log;
+  # "alive" means the variant boots. The matrix isolates the cause: our app,
+  # the sandbox, the GPU, the default app, the overridden profile.
+  win_try() {  # $1 = label, $2 = env override ("-" = win_env), $3.. = args after electron.exe
+    local label=$1 envspec=$2; shift 2
+    local log="$BUILD/smoke-try-$label.log"
+    local e; if [ "$envspec" = "-" ]; then e=$(win_env); else e=$envspec; fi
+    ( cd "$APPDIR" && env ${=e} "$APPDIR/electronite/electron.exe" --enable-logging=stderr "$@" > "$log" 2>&1 ) &
+    local pid=$! i
+    for i in {1..8}; do sleep 1; kill -0 $pid 2>/dev/null || break; done
+    if kill -0 $pid 2>/dev/null; then
+      echo "try [$label]: alive after 8 s (boots)"
+      cleanup_smoke_windows
+      kill $pid 2>/dev/null || true
+    else
+      wait $pid; local rc=$?
+      echo "try [$label]: exited $rc; log:"
+      cat -v "$log" | grep -v -E "^\s+(v8::|uv_|Cr_z|BaseThread|RtlUser)" | head -12
+    fi
+  }
+  cleanup_smoke_windows() {
+    local appwin; appwin="$(cygpath -w "$APPDIR")"
+    MSYS2_ARG_CONV_EXCL='*' powershell -NoProfile -Command \
+      "Get-Process electron,server -ErrorAction SilentlyContinue | Where-Object { \$_.Path -and \$_.Path.StartsWith('$appwin', [System.StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force" \
+      >/dev/null 2>&1 || true
+  }
+  win_try app - electron
+  win_try app-no-sandbox - --no-sandbox electron
+  win_try app-disable-gpu - --disable-gpu electron
+  win_try default-app -
+  win_try app-real-profile "TEMP=$(cygpath -w "$SMOKE_HOME/tmp") TMP=$(cygpath -w "$SMOKE_HOME/tmp") MSYS2_ARG_CONV_EXCL=*" electron
+  cleanup_smoke_windows
+  rm -rf "$SMOKE_HOME/pankosmia"   # the matrix must not pre-create the store the guards inspect
 fi
 launch_entry_point "$BUILD/smoke-entrypoint.log"
 SMOKE_PID=$LAUNCH_PID
