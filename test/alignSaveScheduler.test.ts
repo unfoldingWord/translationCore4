@@ -24,7 +24,7 @@ const makeStore = () => {
   let md5: string | null = null;
   const writes: Write[] = [];
   let failNext: Error | null = null;
-  let holdRead: Promise<void> | null = null;
+  const holdReads: Promise<void>[] = [];
   return {
     writes,
     get file() {
@@ -41,19 +41,17 @@ const makeStore = () => {
       file = data;
       md5 = `md5-outside-${writes.length}`;
     },
-    /** Hold the next read until the returned release is called (a slow sidecar read). */
+    /** Hold the next read until the returned release is called (a slow sidecar
+     * read); each call holds one more read, in order. */
     holdNextRead() {
       let release!: () => void;
-      holdRead = new Promise<void>((resolve) => (release = resolve));
+      holdReads.push(new Promise<void>((resolve) => (release = resolve)));
       return release;
     },
     readAlignmentsWithMd5: async () => {
       const snapshot = { value: file, md5 };
-      if (holdRead) {
-        const gate = holdRead;
-        holdRead = null;
-        await gate;
-      }
+      const gate = holdReads.shift();
+      if (gate) await gate;
       return snapshot;
     },
     writeAlignments: async (book: string, data: Write['data'], expectMd5?: string | null) => {
@@ -197,6 +195,26 @@ describe('#100 (Codex round 1) — a clean buffer follows the disk; a working bu
     await settle();
     expect(store.file!.chapters['1']['1']).toEqual(record(1)); // the earlier save survives the next write
     expect(store.file!.chapters['1']['2']).toEqual(record(2));
+  });
+
+  it('two reads overlapping a structural rewrite land in order: the newer bytes win, and the next save keeps them (Codex round 3)', async () => {
+    const store = makeStore();
+    const sched = new SaveScheduler({ writeBook: makeAlignWriter({ store }), splice: spliceAlignRecord });
+    const releaseOlder = store.holdNextRead();
+    const releaseNewer = store.holdNextRead();
+    const older = alignFileFor(store, sched, BOOK); // buffer absent, captured the empty file
+    store.setDisk(outside(7)); // the structural edit rewrote the sidecar
+    const newer = alignFileFor(store, sched, BOOK); // writeBookOrStructure's refresh
+    releaseOlder();
+    await older;
+    releaseNewer();
+    const { file } = await newer;
+    expect(file.chapters['2']['1']).toEqual(record(7));
+    expect(JSON.parse(sched.bookText(BOOK)!).chapters['2']['1']).toEqual(record(7));
+    sched.markDirty(BOOK, '1', '1', JSON.stringify(record(1)));
+    await settle();
+    expect(store.file!.chapters['2']['1']).toEqual(record(7)); // the structural change survives
+    expect(store.file!.chapters['1']['1']).toEqual(record(1));
   });
 
   it('while the buffer holds work — dirty, or retained after a failure — the read keeps it', async () => {

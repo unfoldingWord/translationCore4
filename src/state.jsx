@@ -1960,10 +1960,25 @@ function spliceAlignRecord(json, chapter, verse, recordJson) {
  * stale buffer would write the old file over that edit with a fresh md5 and
  * pass the compare-and-swap. `loadBook` cannot throw at rest. */
 async function alignFileFor(store, sched, book) {
-  const restBefore = sched?.getState() === 'saved';
-  const textBefore = sched?.bookText(book);
+  if (!sched) {
+    const { value: disk, md5 } = await store.readAlignmentsWithMd5(book);
+    return { file: disk, md5 };
+  }
+  // Codex round 3: reads are serialized per scheduler, so an older read can
+  // never land its bytes after a newer one — the newer read (the refresh
+  // after a structural edit included) starts only when the older has landed.
+  const prev = alignReadChains.get(sched) ?? Promise.resolve();
+  const run = prev.catch(() => {}).then(() => alignFileForSerial(store, sched, book));
+  alignReadChains.set(sched, run);
+  return run;
+}
+
+const alignReadChains = new WeakMap();
+
+async function alignFileForSerial(store, sched, book) {
+  const restBefore = sched.getState() === 'saved';
+  const textBefore = sched.bookText(book);
   const { value: disk, md5 } = await store.readAlignmentsWithMd5(book);
-  if (!sched) return { file: disk, md5 };
   const fresh = alignFileJson(disk, book);
   // Codex round 2: reload only when nothing moved during the read — at rest
   // before and after, and the buffer text unchanged. An edit staged or a
