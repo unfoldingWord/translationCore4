@@ -99,18 +99,33 @@ WEBFONTS_CORE_REV="eb52ccdad6806b5729ea8b45b1c59c793ffa32c3"   # 2026-08-14
 PUPPETEER_CORE_VER="24.43.1"       # template package.json: ^24.43.1
 PUPPETEER_BROWSERS_VER="2.13.1"    # template package.json: ^2.13.1
 
-# Bundled English suite (#163, D70). Eight repos pinned from src/data/installedSuite.js.
-# en_tw serves both translationWords and translationWordsLinks (D34).
+# Bundled English suite (#163, D70). Ten repos pinned from src/data/installedSuite.js,
+# as `<owner>/<repo>:<tag>:<sha>`. en_tw serves both translationWords and
+# translationWordsLinks (D34). The two lexicons (#218, D71) are the `uW`-org
+# burritos: no tag exists, so the tag field is empty and the cache fetches the
+# commit archive by sha. The store segment is `<owner lowercased>--<repo>`
+# (src/data/installed.ts localRepoPathFromRepoPath).
 BUNDLED_RESOURCES=(
-  "en_ult:v89:84c73ba00fc8a95a9033f9efb14bb905a2a52ee4"
-  "en_ust:v89:37ec223166bbd73fb55abc7840be8310c0fee7f2"
-  "el-x-koine_ugnt:v0.34:fc95b2b8aad08bb65ab54628ab685413a1139e97"
-  "hbo_uhb:v2.1.30:106a441a788d9465846cd427538ea80b8cec6770"
-  "en_tn:v86:c354b8ae66a23c485bf6f38fd35bd8f7ef81e4e5"
-  "en_tw:v87:eaeb7bfefcf84132d0cbcbed185f3ea2be3d86dd"
-  "en_ta:v86:c7caddfb474efd713f36b35a3ffc927866c7b180"
-  "en_tq:v89:97c0a13e3b84d46d0e643ba2e8e9f1c295547a58"
+  "unfoldingWord/en_ult:v89:84c73ba00fc8a95a9033f9efb14bb905a2a52ee4"
+  "unfoldingWord/en_ust:v89:37ec223166bbd73fb55abc7840be8310c0fee7f2"
+  "unfoldingWord/el-x-koine_ugnt:v0.34:fc95b2b8aad08bb65ab54628ab685413a1139e97"
+  "unfoldingWord/hbo_uhb:v2.1.30:106a441a788d9465846cd427538ea80b8cec6770"
+  "unfoldingWord/en_tn:v86:c354b8ae66a23c485bf6f38fd35bd8f7ef81e4e5"
+  "unfoldingWord/en_tw:v87:eaeb7bfefcf84132d0cbcbed185f3ea2be3d86dd"
+  "unfoldingWord/en_ta:v86:c7caddfb474efd713f36b35a3ffc927866c7b180"
+  "unfoldingWord/en_tq:v89:97c0a13e3b84d46d0e643ba2e8e9f1c295547a58"
+  "uW/en_ugl::d9d29e2d589258ce27f92b59f753a3af03ab7a72"
+  "uW/en_uhl::72df5ac25acf9d51e826b20e3ad883a5a657ef4e"
 )
+# Split one BUNDLED_RESOURCES entry into owner, repo, tag, sha, the cache-file
+# label (tag, or the first 12 sha characters) and the store segment.
+bundled_fields() {
+  local ownerRepo="${1%%:*}" rest="${1#*:}"
+  owner="${ownerRepo%%/*}"; repo="${ownerRepo#*/}"
+  tag="${rest%%:*}"; sha="${rest#*:}"
+  label="${tag:-${sha[1,12]}}"
+  seg="${(L)owner}--$repo"
+}
 
 APP_NAME="translationCore4"
 if [ "$VARIANT" = "debug" ]; then
@@ -176,25 +191,20 @@ if [ ! -e "$EL_UNPACKED" ]; then
   unzip -qq -o "$BUILD/$ELECTRONITE_ZIP" -d "$BUILD/electronite"
 fi
 
-echo "== fetching bundled English suite (8 repos, #163)"
+echo "== fetching bundled English suite (10 repos, #163, #218)"
 for entry in "${BUNDLED_RESOURCES[@]}"; do
-  repo="${entry%%:*}"
-  rest="${entry#*:}"
-  tag="${rest%%:*}"
-  sha="${rest#*:}"
-  zsh "$REPO/dev-env/scripts/cache-resource.zsh" "unfoldingWord/$repo" "$tag" "$sha"
-  echo "SHA OK: unfoldingWord/$repo $tag ($sha)"
+  bundled_fields "$entry"
+  zsh "$REPO/dev-env/scripts/cache-resource.zsh" "$owner/$repo" "$tag" "$sha"
+  echo "SHA OK: $owner/$repo ${tag:-(sha-only)} ($sha)"
 done
 
 echo "== 4/7 assemble the app directory"
 rm -rf "$PACK"
 mkdir -p "$PACK/bin" "$PACK/lib/setup" "$PACK/lib/clients/uw-tc4" "$PACK/lib/product" "$PACK/resources"
 for entry in "${BUNDLED_RESOURCES[@]}"; do
-  repo="${entry%%:*}"
-  rest="${entry#*:}"
-  tag="${rest%%:*}"
-  unwrapped="$REPO/dev-env/resources-cache/$repo-$tag-unwrapped.zip"
-  target="$PACK/resources/unfoldingword--$repo"
+  bundled_fields "$entry"
+  unwrapped="$REPO/dev-env/resources-cache/$repo-$label-unwrapped.zip"
+  target="$PACK/resources/$seg"
   rm -rf "$target"
   mkdir -p "$target"
   unzip -qq -o "$unwrapped" -d "$target"
@@ -520,10 +530,8 @@ This build bundles the components below. Full texts are in licenses/.
 | @puppeteer/browsers (electron/node_modules) | $PUPPETEER_BROWSERS_VER | Apache-2.0 | github.com/puppeteer/puppeteer |
 NOTICES
 for entry in "${BUNDLED_RESOURCES[@]}"; do
-  repo="${entry%%:*}"
-  rest="${entry#*:}"
-  tag="${rest%%:*}"
-  echo "| unfoldingWord/$repo | $tag | CC BY-SA 4.0 | git.door43.org/unfoldingWord/$repo |" >> "$APPDIR/THIRD-PARTY-NOTICES.md"
+  bundled_fields "$entry"
+  echo "| $owner/$repo | ${tag:-commit ${sha[1,12]}} | CC BY-SA 4.0 | git.door43.org/$owner/$repo |" >> "$APPDIR/THIRD-PARTY-NOTICES.md"
 done
 cat >> "$APPDIR/THIRD-PARTY-NOTICES.md" <<NOTICES
 
@@ -534,12 +542,11 @@ NOTICES
 SERVER_SHA=$(sha256_of "$APPDIR/bin/$SERVER_BIN")
 BUNDLED_MANIFEST_ENTRIES=""
 for entry in "${BUNDLED_RESOURCES[@]}"; do
-  repo="${entry%%:*}"
-  rest="${entry#*:}"
-  tag="${rest%%:*}"
-  sha="${rest#*:}"
-  zip_sha=$(sha256_of "$REPO/dev-env/resources-cache/$repo-$tag-unwrapped.zip")
-  line="    { \"repoPath\": \"git.door43.org/unfoldingWord/$repo\", \"version\": \"$tag\", \"sha\": \"$sha\", \"zip_sha256\": \"$zip_sha\" }"
+  bundled_fields "$entry"
+  zip_sha=$(sha256_of "$REPO/dev-env/resources-cache/$repo-$label-unwrapped.zip")
+  # A sha-only pin has no version label (never invented): JSON null.
+  if [ -n "$tag" ]; then version_json="\"$tag\""; else version_json="null"; fi
+  line="    { \"repoPath\": \"git.door43.org/$owner/$repo\", \"version\": $version_json, \"sha\": \"$sha\", \"zip_sha256\": \"$zip_sha\" }"
   if [ -n "$BUNDLED_MANIFEST_ENTRIES" ]; then
     BUNDLED_MANIFEST_ENTRIES="$BUNDLED_MANIFEST_ENTRIES,
 $line"
@@ -772,8 +779,8 @@ else
   sideloaded_entries=($(ls -A "$RESOLVED_REPO_DIR/_local_/_sideloaded_" 2>/dev/null | sort))
   expected_segments=()
   for entry in "${BUNDLED_RESOURCES[@]}"; do
-    repo="${entry%%:*}"
-    expected_segments+=("unfoldingword--$repo")
+    bundled_fields "$entry"
+    expected_segments+=("$seg")
   done
   expected_segments=($(printf '%s\n' "${expected_segments[@]}" | sort))
   if [ "${sideloaded_entries[*]}" != "${expected_segments[*]}" ]; then

@@ -494,20 +494,24 @@ procedure's subject.
 | en_tw | v87, sha `eaeb7bfefcf84132d0cbcbed185f3ea2be3d86dd` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | en_ta | v86, sha `c7caddfb474efd713f36b35a3ffc927866c7b180` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | en_tq | v89, sha `97c0a13e3b84d46d0e643ba2e8e9f1c295547a58` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
+| uW/en_ugl (#218, D71) | no tag; sha `d9d29e2d589258ce27f92b59f753a3af03ab7a72`, fetched as the commit archive `archive/<sha>.zip` and verified against the zip's archive comment | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
+| uW/en_uhl (#218, D71) | no tag; sha `72df5ac25acf9d51e826b20e3ad883a5a657ef4e`, same fetch path | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 
-Every artifact carries `BUILD-MANIFEST.json` at its root with the same data.
+Every artifact carries `BUILD-MANIFEST.json` at its root with the same data. A sha-only pin has `"version": null` there.
 
-## Bundled English suite (#163)
+The eight `unfoldingWord` repos are fetched as the DCS sb-zip export `/sb/<tag>.zip`. The two lexicons come from the `uW` org on DCS (D71): those repos have no tag and no sb-zip export (`/sb/` answers 404), so the build fetches the Gitea commit archive `archive/<sha>.zip` and verifies the sha Gitea records in the zip's archive comment against the pin. Both paths run through the app's own fetch code (`src/data/resourceFetch.ts` `downloadPin`), called by `dev-env/scripts/cache-resource.zsh`.
 
-Per D70 and #163, the desktop artifact bundles the installed English suite (eight pinned repos: `en_ult`, `en_ust`, `el-x-koine_ugnt`, `hbo_uhb`, `en_tn`, `en_tw`, `en_ta`, `en_tq`). The unpacker stages each resource at `<APPDIR>/resources/unfoldingword--<repo>/`, and the launcher copies missing resources into the project store at `$HOME/pankosmia/tc4-projects/_local_/_sideloaded_/` before starting the application.
+## Bundled English suite (#163, #218)
+
+Per D70, #163 and #218, the desktop artifact bundles the installed English suite (ten pinned repos: `en_ult`, `en_ust`, `el-x-koine_ugnt`, `hbo_uhb`, `en_tn`, `en_tw`, `en_ta`, `en_tq` from `unfoldingWord`; `en_ugl`, `en_uhl` from `uW`). The unpacker stages each resource at `<APPDIR>/resources/<owner lowercased>--<repo>/` (`unfoldingword--en_ult`, `uw--en_ugl`), and the launcher copies missing resources into the project store at `$HOME/pankosmia/tc4-projects/_local_/_sideloaded_/` before starting the application.
 
 Artifact sizes before and after bundling the English suite:
 
-| Platform | Before (#163, macOS alpha.3) | After (#163, alpha.4) |
-|---|---|---|
-| macOS arm64 | 142556909 bytes | 173313348 bytes |
-| Linux x64 | — | 180227460 bytes |
-| Windows x64 (#181) | — | 188345159 bytes (run 34179734677, PR #226) |
+| Platform | Before (#163, macOS alpha.3) | After (#163, alpha.4) | After the lexicons (#218) |
+|---|---|---|---|
+| macOS arm64 | 142556909 bytes | 173313348 bytes | pending the CI run of this change |
+| Linux x64 | — | 180227460 bytes | pending |
+| Windows x64 (#181) | — | 188345159 bytes (run 34179734677, PR #226) | pending |
 
 Both "after" sizes are from the `package-desktop` CI run 34145714423 artifact listing (PR #217, 2026-09-07). A local macOS arm64 build of the same commit measured 174980433 bytes.
 

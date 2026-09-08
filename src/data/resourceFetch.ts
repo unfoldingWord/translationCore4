@@ -9,6 +9,13 @@
 // (that would let the archive self-certify). Never a default branch; never an
 // RC tag with a local conversion.
 //
+// A sha-only pin whose commit no tag names (D58) has no sb-zip to fetch. It is
+// fetched as the Gitea commit archive `/archive/<sha>.zip` instead [D71, #218:
+// the `uW`-org lexicon burritos]. The archive is addressed by the pinned sha,
+// and Gitea records the commit it packed as the zip's archive comment; that
+// comment is verified against the pin the same way the export's declared
+// revision is. Still never a branch: the request names the commit.
+//
 // Three verified platform facts shape this module (PLATFORM-NOTES #26, re-checked
 // 2026-08-03):
 //   1. `POST /burrito/zipped/<repo_path>` is the general import. The target
@@ -33,6 +40,30 @@ export const sbZipUrl = (pin: FetchPin & { version: string }): string => {
   const slash = path.indexOf('/');
   if (slash < 0) throw new Error(`pin repoPath is not <host>/<owner>/<repo>: ${pin.repoPath}`);
   return `https://${path.slice(0, slash)}/${path.slice(slash + 1)}/sb/${pin.version}.zip`;
+};
+
+/** The Gitea commit archive for a sha-only pin (#218): addressed by the pinned
+ * commit, so the URL itself names what is expected back. */
+export const archiveZipUrl = (pin: FetchPin & { sha: string }): string => {
+  const path = pin.repoPath.replace(/^https?:\/\//, '');
+  const slash = path.indexOf('/');
+  if (slash < 0) throw new Error(`pin repoPath is not <host>/<owner>/<repo>: ${pin.repoPath}`);
+  return `https://${path.slice(0, slash)}/${path.slice(slash + 1)}/archive/${pin.sha}.zip`;
+};
+
+/** The zip archive comment (end-of-central-directory record, APPNOTE 4.3.16),
+ * or null when there is none. Gitea writes the packed commit's sha there
+ * [VERIFIED 2026-09-08 — `unzip -z` on git.door43.org/uW/en_ugl/archive/<sha>.zip].
+ * fflate does not expose it, so the record is read here: its signature is
+ * searched backwards from the end, the comment length sits at offset 20. */
+export const zipArchiveComment = (bytes: Uint8Array): string | null => {
+  for (let i = bytes.length - 22; i >= 0; i--) {
+    if (bytes[i] !== 0x50 || bytes[i + 1] !== 0x4b || bytes[i + 2] !== 0x05 || bytes[i + 3] !== 0x06) continue;
+    const length = bytes[i + 20] | (bytes[i + 21] << 8);
+    if (length === 0) return null;
+    return new TextDecoder().decode(bytes.subarray(i + 22, i + 22 + length)).trim() || null;
+  }
+  return null;
 };
 
 /** The local repo a pin installs into. Delegates to the ONE canonical identity
@@ -311,32 +342,57 @@ export const fetchAndInstallPin = async (
     throw new Error('the app is offline — go online to download resources');
   }
 
-  // The sb-zip endpoint is tag-addressed. A sha-only pin (D58) resolves its
-  // tag from DCS; a commit no tag names cannot be fetched this way — refuse
-  // with the reason rather than downloading something else.
-  const version =
-    pin.version ?? (pin.sha ? await tagForCommitSha(pin.repoPath, pin.sha, doFetch) : null);
-  if (!version) {
-    throw new Error(
-      `cannot fetch ${pin.repoPath}: the pin names no release tag and DCS lists no tag ` +
-        `for its commit${pin.sha ? ` ${pin.sha.slice(0, 12)}…` : ''} — not installed`,
-    );
-  }
-
   opts.onStage?.('download');
-  const url = sbZipUrl({ ...pin, version });
+  const downloaded = await downloadPin(pin, doFetch);
+
+  opts.onStage?.('verify');
+  await verifyExportRevision(pin, downloaded.version, downloaded.revision, doFetch);
+
+  opts.onStage?.('install');
+  const repoPath = opts.targetRepoPath ?? localRepoPathFor(pin);
+  await opts.api.postZippedBurrito(repoPath, rezip(downloaded.files));
+  return { repoPath, revision: downloaded.revision, bytes: downloaded.bytes };
+};
+
+export interface DownloadedPin extends UnwrappedBurrito {
+  url: string;
+  /** The release tag the sb-zip was fetched by, or the commit label of a
+   * sha-only pin fetched as a Gitea archive (#218). */
+  version: string;
+  bytes: number;
+}
+
+/** Download one pin and unwrap it, WITHOUT verifying or installing. The sb-zip
+ * endpoint is tag-addressed: a pin with a tag fetches `/sb/<tag>.zip`; a
+ * sha-only pin (D58) resolves its tag from DCS, and when no tag names the
+ * commit it fetches the Gitea archive `/archive/<sha>.zip` whose archive
+ * comment records the packed commit (D71, #218). A pin with neither a tag nor
+ * a sha names nothing fetchable. The build's resource cache uses this same
+ * step (dev-env/scripts/cache-resource.ts), so a bundled resource is what an
+ * in-app download would have produced. */
+export const downloadPin = async (
+  pin: FetchPin,
+  doFetch: typeof fetch = ((...a: Parameters<typeof fetch>) => fetch(...a)),
+): Promise<DownloadedPin> => {
+  const tag = pin.version ?? (pin.sha ? await tagForCommitSha(pin.repoPath, pin.sha, doFetch) : null);
+  if (!tag && !pin.sha) {
+    throw new Error(`cannot fetch ${pin.repoPath}: the pin names neither a release tag nor a commit — not installed`);
+  }
+  const url = tag ? sbZipUrl({ ...pin, version: tag }) : archiveZipUrl({ ...pin, sha: pin.sha as string });
   const response = await doFetch(url);
   if (!response.ok) {
     throw new Error(`could not download ${url} (HTTP ${response.status})`);
   }
   const bytes = new Uint8Array(await response.arrayBuffer());
-
-  opts.onStage?.('verify');
-  const { files, revision } = unwrapExport(bytes);
-  await verifyExportRevision(pin, version, revision, doFetch);
-
-  opts.onStage?.('install');
-  const repoPath = opts.targetRepoPath ?? localRepoPathFor(pin);
-  await opts.api.postZippedBurrito(repoPath, rezip(files));
-  return { repoPath, revision, bytes: bytes.length };
+  const unwrapped = unwrapExport(bytes);
+  // A commit archive declares its revision in the zip comment, not in the
+  // metadata (the uW burritos carry no DCS identity there).
+  const revision = tag ? unwrapped.revision : (zipArchiveComment(bytes) ?? unwrapped.revision);
+  return {
+    ...unwrapped,
+    revision,
+    url,
+    version: tag ?? `commit ${(pin.sha as string).slice(0, 12)}`,
+    bytes: bytes.length,
+  };
 };
