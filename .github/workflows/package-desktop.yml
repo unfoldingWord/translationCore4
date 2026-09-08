@@ -9,8 +9,9 @@ name: package-desktop
 # /clients/uw-tc4, then 200) before it zips.
 #
 # #119 adds the linux-x64 job beside the proven macos-arm64 one. Both run the
-# same script; only the host differs. Windows x64 is #181 (Increment 6);
-# signed/notarized installers remain #44's.
+# same script; only the host differs. #181 adds windows-x64: the same script
+# again, under MSYS2's zsh on a Windows runner. Signed/notarized installers
+# remain #44's.
 #
 # #45 adds one smoke-* job per platform: a FRESH runner downloads the artifact the
 # build job uploaded, unpacks it once, and runs the shipped post-install smoke test
@@ -153,6 +154,77 @@ jobs:
           retention-days: 30
 
       - name: Upload the artifact (pull requests — short retention; same name as the main build, #119)
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          path: dist-desktop/tC4-*-unsigned.zip
+          archive: false
+          if-no-files-found: error
+          retention-days: 3
+
+  # #181: the Windows x64 artifact. The same script runs under MSYS2's zsh
+  # (preinstalled on the runner; setup-msys2 adds zsh, zip, unzip and curl and
+  # keeps the Windows node, cargo and git on the PATH). The server builds with
+  # the MSVC toolchain and needs no OpenSSL there (git2 uses WinHTTP, ureq uses
+  # rustls). The smoke test opens a real window on the runner's desktop session.
+  # There is no smoke-windows-x64 post-install job yet: the shipped
+  # smoke-installed.zsh is macOS/Linux (docs/PACKAGING.md, "Windows x64").
+  windows-x64:
+    runs-on: windows-2025
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MSYS
+          update: false
+          path-type: inherit
+          install: zsh zip unzip curl
+
+      - name: Rust toolchain
+        shell: pwsh
+        run: rustup toolchain install stable --profile minimal
+
+      - name: Cache cargo
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            dev-env/server/target
+          key: cargo-package-desktop-${{ runner.os }}-${{ hashFiles('dev-env/server/Cargo.lock', 'dev-env/server/Cargo.toml') }}
+
+      - name: Build the artifact
+        shell: msys2 {0}
+        run: zsh scripts/package-desktop.zsh
+
+      - name: Upload the smoke-test logs (failures only)
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: tc4-desktop-windows-x64-smoke-logs
+          path: dist-desktop/smoke-*.log
+          if-no-files-found: warn
+          retention-days: 7
+
+      # Single-layer download (#119): one file, `archive: false`; the artifact is named after
+      # the file, tC4-<version>-windows-x64-unsigned.zip. Permission bits do not apply.
+      - name: Upload the artifact (merges to main — 30-day retention)
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          path: dist-desktop/tC4-*-unsigned.zip
+          archive: false
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload the artifact (pull requests — short retention; same name as the main build)
         if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v7
         with:

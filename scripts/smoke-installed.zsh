@@ -53,8 +53,13 @@ if [ -f "$APPDIR/start-tc4.command" ]; then
   LAUNCHER="$APPDIR/start-tc4.command"; ELECTRON="$APPDIR/Electron.app/Contents/MacOS/Electron"
 elif [ -f "$APPDIR/start-tc4.sh" ]; then
   LAUNCHER="$APPDIR/start-tc4.sh"; ELECTRON="$APPDIR/electronite/electron"
+elif [ -f "$APPDIR/start-tc4.cmd" ]; then
+  # #181: the Windows artifact ships this script for parity, but the script needs
+  # zsh, lsof and a POSIX launcher. The build-time smoke test in CI covers the
+  # Windows guards (docs/PACKAGING.md, "Windows x64", known limits).
+  echo "FAIL launcher: $APPDIR is the Windows artifact (start-tc4.cmd); this smoke test does not run on Windows yet (#181)"; exit 1
 else
-  echo "FAIL launcher: no start-tc4.command or start-tc4.sh in $APPDIR"; exit 1
+  echo "FAIL launcher: no start-tc4.command, start-tc4.sh or start-tc4.cmd in $APPDIR"; exit 1
 fi
 for bin in "$LAUNCHER" "$ELECTRON"; do
   [ -f "$bin" ] || { echo "FAIL artifact: $bin is missing"; exit 1; }
