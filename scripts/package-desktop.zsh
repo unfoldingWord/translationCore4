@@ -584,18 +584,33 @@ mkdir -p "$SMOKE_HOME"
 # reads USERPROFILE first (pankosmia-web utils/paths.rs), so the fresh profile
 # is passed as USERPROFILE in Windows form. The launcher is a batch file: cmd
 # runs it, with MSYS2's argument conversion off so the path stays as given.
+# Windows: the MSYS2 profile exports TMP=/tmp and TEMP=/tmp (POSIX form) to
+# every native process it starts. Chromium creates temp and crash-handler paths
+# at startup; CI run 34176032154 died there with EXCEPTION_BREAKPOINT before
+# the server was spawned. The launch gets a Windows-form temp directory.
+win_env() {  # the environment of a native Windows launch from this shell
+  mkdir -p "$SMOKE_HOME/tmp"
+  local wtmp; wtmp="$(cygpath -w "$SMOKE_HOME/tmp")"
+  print -r -- "USERPROFILE=$(cygpath -w "$SMOKE_HOME") HOME=$SMOKE_HOME TEMP=$wtmp TMP=$wtmp MSYS2_ARG_CONV_EXCL=*"
+}
 launch_entry_point() {  # $1 = log file; sets LAUNCH_PID
   if [ "$OS" = windows ]; then
-    # ELECTRON_ENABLE_LOGGING: a Windows GUI process prints nothing to the
-    # redirect otherwise, and the launcher log is the only trace of the boot.
-    USERPROFILE="$(cygpath -w "$SMOKE_HOME")" HOME="$SMOKE_HOME" MSYS2_ARG_CONV_EXCL='*' \
-      ELECTRON_ENABLE_LOGGING=1 ELECTRON_ENABLE_STACK_DUMPING=1 \
+    # ELECTRON_ENABLE_LOGGING=file: a Windows GUI process prints nothing to the
+    # redirect; the main process logs to ${1%.log}-electron.log instead.
+    env $(win_env) ELECTRON_ENABLE_LOGGING=file ELECTRON_LOG_FILE="$(cygpath -w "${1%.log}-electron.log")" \
+      ELECTRON_ENABLE_STACK_DUMPING=1 \
       cmd /c "$(cygpath -w "$APPDIR/$LAUNCHER")" > "$1" 2>&1 &
   else
     HOME="$SMOKE_HOME" "$APPDIR/$LAUNCHER" > "$1" 2>&1 &
   fi
   LAUNCH_PID=$!
 }
+if [ "$OS" = windows ]; then
+  # Does the wrapper run at all on this host? --version exits at once; node
+  # mode proves the binary loads without a window. Both print exit codes.
+  echo "electron.exe --version: $(env $(win_env) "$APPDIR/electronite/electron.exe" --version 2>&1 | tr -d '\r' | head -2 | tr '\n' ' '; echo "(exit ${pipestatus[1]})")"
+  echo "electron.exe node mode: $(env $(win_env) ELECTRON_RUN_AS_NODE=1 "$APPDIR/electronite/electron.exe" -p 'process.versions.electron + \" node \" + process.versions.node' 2>&1 | tr -d '\r' | head -2 | tr '\n' ' '; echo "(exit ${pipestatus[1]})")"
+fi
 launch_entry_point "$BUILD/smoke-entrypoint.log"
 SMOKE_PID=$LAUNCH_PID
 cleanup_smoke() {
@@ -627,10 +642,21 @@ smoke_diagnostics() {
 }
 [ "$OS" = windows ] && echo "probe of a closed port before the wait: $("$CURL" -s --max-time 2 -o /dev/null -w 'http %{http_code}, %{time_total}s' "http://127.0.0.1:19999/api/version" 2>&1; echo " exit $?")"
 
+# The ports worth probing. macOS and Linux refuse a closed port at once, so
+# every scan port is cheap. On this Windows runner a closed loopback port
+# times out (2.6 s, run 34176032154), so netstat names the listeners first.
+scan_ports() {
+  if [ "$OS" = windows ]; then
+    MSYS2_ARG_CONV_EXCL='*' netstat -ano -p tcp 2>/dev/null | grep LISTENING | grep -oE ':191(19|[23][0-9]) ' | tr -d ': ' | sort -u | tr '\n' ' '
+  else
+    echo {19119..19139}
+  fi
+}
+
 # Find the self-chosen port (electronStartup starts at 19119).
 SMOKE_PORT=""
 for i in {1..40}; do
-  for p in {19119..19139}; do
+  for p in $(scan_ports); do
     if "$CURL" -s --max-time 1 "http://127.0.0.1:$p/api/version" | grep -q '"product_short_name":"tc4"'; then
       SMOKE_PORT=$p; break
     fi
@@ -667,7 +693,7 @@ done
   exit 1
 }
 SECOND_SERVERS=0
-for p in {19119..19139}; do
+for p in $(scan_ports); do
   [ "$p" = "$SMOKE_PORT" ] && continue
   "$CURL" -s --max-time 1 "http://127.0.0.1:$p/api/version" | grep -q '"product_short_name":"tc4"' && SECOND_SERVERS=$((SECOND_SERVERS+1))
 done
