@@ -647,12 +647,7 @@ async function prepareAlignmentSource(store, st, ref) {
 async function buildAlignmentSession(store, sched, st, ref, source, mapped, origObjects) {
   const targetText = verseTextIndex(st.bookRaw)[ref] ?? '';
   if (!origObjects.length || !targetText) return { unavailable: 'missing' };
-  const { value: disk, md5 } = await store.readAlignmentsWithMd5(st.book);
-  // #100: the align scheduler's buffered file wins over the disk file once
-  // the book is seeded — it holds edits still in flight, or retained after a
-  // failed write (FR-32), which the disk cannot show yet.
-  sched?.seedIfAbsent(st.book, alignFileJson(disk, st.book));
-  const file = sched ? JSON.parse(sched.bookText(st.book)) : disk;
+  const { file, md5 } = await alignFileFor(store, sched, st.book);
   const stored = file?.chapters?.[mapped.chapter]?.[mapped.verse];
   const sourceVersion = `dcs::${source.pin.repoPath.split('/').slice(-2).join('/')}@${source.pin.version}`;
   // A stored record with no alignments — the §8.5 removal form, or the
@@ -946,13 +941,18 @@ function validateNewBible(form) {
  * mapping from what IT projects at write time, so the flag is all the app
  * keeps: taken before the write, put back when the write fails (the retry
  * carries the same buffer), re-set by any later span save. */
-function writeBookOrStructure({ store, structuralRef }, book, whole) {
+async function writeBookOrStructure({ store, structuralRef, alignSchedulerRef }, book, whole) {
   if (!structuralRef.current.has(book)) return store.writeBook(book, whole);
   structuralRef.current.delete(book);
-  return store.applyStructuralEdit(book, whole, { intent: 'spans' }).catch((error) => {
+  try {
+    await store.applyStructuralEdit(book, whole, { intent: 'spans' });
+  } catch (error) {
     structuralRef.current.add(book);
     throw error;
-  });
+  }
+  // #100 (Codex round 1): the structural edit rewrote the alignment sidecar
+  // outside the align scheduler — refresh its clean buffer from disk now.
+  await alignFileFor(store, alignSchedulerRef?.current, book);
 }
 
 /** #63: stage a section save whose verse keys changed (a span created or
@@ -1054,9 +1054,15 @@ function installAlignCheckSchedulers({ alignSchedulerRef, checkSchedulerRef, che
 async function releaseParkedDecision(checkSched, tool, book) {
   const parked = checkSched?.getFailure();
   if (!parked || !parked.book.startsWith(`${tool}|${book}|`)) return;
-  checkSched.revertToPersisted(parked.book);
+  // Codex round 1: only a D59 refusal is released by reverting. An ordinary
+  // write failure (I/O, a stale file) keeps its payload; the retry carries it.
+  if (isDecisionRefusal(parked.error)) checkSched.revertToPersisted(parked.book);
   await checkSched.retry();
 }
+
+/** The store's D59 refusal (journalingStore.upsertDecision) ends its message
+ * with the decision reference; nothing else the writer throws does. */
+const isDecisionRefusal = (error) => /\(D36\/D59\)/.test(String(error?.message ?? error));
 
 /** Every blocker is checked BEFORE anything is disposed (C3). */
 async function drainForProjectOpen({ saveRefs }) {
@@ -1196,6 +1202,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
     structuralRef,
     noteSchedulerRef,
     noteTargetsRef,
+    alignSchedulerRef,
     storeRef,
     stateRef,
     understandSeqRef,
@@ -1244,7 +1251,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
     storeRef.current = store;
     structuralRef.current = new Set();
     schedulerRef.current = new SaveScheduler({
-      writeBook: (book, whole) => writeBookOrStructure({ store, structuralRef }, book, whole),
+      writeBook: (book, whole) => writeBookOrStructure({ store, structuralRef, alignSchedulerRef }, book, whole),
       splice: spliceVerse,
     });
     schedulerRef.current.subscribe((saveState) => dispatch({ type: 'set', patch: { saveState } }));
@@ -1945,6 +1952,22 @@ function spliceAlignRecord(json, chapter, verse, recordJson) {
  * instance, so each write edits the state the previous one left; a stale
  * file (StaleWriteError) is a retained failure with Retry, never a silent
  * overwrite. Bound to the store of the project it was made in (C1). */
+/** #100 (Codex round 1): the align buffer is the truth for the open book only
+ * while it holds work — an edit in flight, or one retained after a failed
+ * write (FR-32), which the disk cannot show yet. At rest it is reloaded from
+ * disk on every read, because a §8.5 structural edit (#63: a span created or
+ * broken) rewrites the alignment sidecar outside this scheduler; a clean but
+ * stale buffer would write the old file over that edit with a fresh md5 and
+ * pass the compare-and-swap. `loadBook` cannot throw at rest. */
+async function alignFileFor(store, sched, book) {
+  const { value: disk, md5 } = await store.readAlignmentsWithMd5(book);
+  if (!sched) return { file: disk, md5 };
+  const fresh = alignFileJson(disk, book);
+  if (sched.getState() === 'saved') sched.loadBook(book, fresh);
+  else sched.seedIfAbsent(book, fresh);
+  return { file: JSON.parse(sched.bookText(book)), md5 };
+}
+
 function makeAlignWriter({ store }) {
   return async (book, json) => {
     const { md5 } = await store.readAlignmentsWithMd5(book);
@@ -1971,7 +1994,7 @@ function makeCheckWriter({ store, checkTargetsRef }) {
 /** Test hooks (#100): the two writers and the align splice are unit-tested
  * against the real scheduler — N rapid saves, md5 chaining, the D59 refusal
  * landing on its key with later decisions retained. */
-export const __alignSaveForTests = { makeAlignWriter, spliceAlignRecord, makeCheckWriter };
+export const __alignSaveForTests = { makeAlignWriter, spliceAlignRecord, makeCheckWriter, alignFileFor, releaseParkedDecision };
 
 function buildChapterVerses(bookRaw, chapters, entries) {
   const byChapter = {};
@@ -2702,13 +2725,9 @@ export function AppProvider({ children }) {
         const book = st.book;
         let alignIndex;
         try {
-          // #100: the rail reflects every edit, landed or buffered — the
-          // scheduler's file wins over the disk file once the book is seeded.
-          const sched = alignSchedulerRef.current;
-          const { value: file } = await store.readAlignmentsWithMd5(book);
-          sched?.seedIfAbsent(book, alignFileJson(file, book));
-          const effective = sched ? JSON.parse(sched.bookText(book)) : file;
-          alignIndex = { items: alignIndexItems(st.bookRaw, effective) };
+          // #100: the rail reflects every edit, landed or buffered.
+          const { file } = await alignFileFor(store, alignSchedulerRef.current, book);
+          alignIndex = { items: alignIndexItems(st.bookRaw, file) };
         } catch (error) {
           // Catch-to-absence sweep (D30): a failed read is stated, retryable.
           alignIndex = { error: String(error?.message || error) };
@@ -2793,11 +2812,12 @@ export function AppProvider({ children }) {
         const pre = st.preflight?.[tool];
         if (!pre || pre.state !== 'ready' || !pre.resolution?.pin) return;
         const book = st.book;
-        await releaseParkedDecision(checkSchedulerRef.current, tool, book); // #100
         // The seq is this session's identity, taken BEFORE any await: a stale
         // open's completion (or failure) must never replace a newer session,
         // and closing the tool or the project invalidates in-flight opens.
         const seq = ++checkSessionSeq;
+        await releaseParkedDecision(checkSchedulerRef.current, tool, book); // #100
+        if (seq !== checkSessionSeq) return; // a newer open or close won during the release
         dispatch({ type: 'set', patch: { checkTool: tool, checkSession: { loading: true, seq } } });
         try {
           const { session, partial } = await assembleCheckSession({

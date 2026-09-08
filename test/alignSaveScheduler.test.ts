@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SaveScheduler } from '../src/data/saveScheduler';
 import { __alignSaveForTests, __drainSchedulersForTests, alignFileJson } from '../src/state.jsx';
 
-const { makeAlignWriter, spliceAlignRecord } = __alignSaveForTests;
+const { makeAlignWriter, spliceAlignRecord, alignFileFor } = __alignSaveForTests;
 const BOOK = 'TIT';
 
 interface Write {
@@ -34,6 +34,11 @@ const makeStore = () => {
     },
     failNextWrite(error: Error) {
       failNext = error;
+    },
+    /** A write outside the scheduler (#63 applyStructuralEdit rewrites the sidecar). */
+    setDisk(data: Write['data']) {
+      file = data;
+      md5 = `md5-outside-${writes.length}`;
     },
     readAlignmentsWithMd5: async () => ({ value: file, md5 }),
     writeAlignments: async (book: string, data: Write['data'], expectMd5?: string | null) => {
@@ -138,5 +143,37 @@ describe('#100 — a failed alignment write is retained, shown, retried, and blo
     // Now the store accepts: the drain's retry lands the write.
     expect(await __drainSchedulersForTests(refs)).toBe(true);
     expect(store.writes).toHaveLength(1);
+  });
+});
+
+describe('#100 (Codex round 1) — a clean buffer follows the disk; a working buffer is kept', () => {
+  const outside = (n: number) => ({ schemaVersion: 1, book: BOOK, chapters: { '2': { '1': record(n) } } });
+
+  it('at rest, a read reloads the buffer from disk, so the next write merges onto the sidecar a structural edit left', async () => {
+    const store = makeStore();
+    const sched = new SaveScheduler({ writeBook: makeAlignWriter({ store }), splice: spliceAlignRecord });
+        expect((await alignFileFor(store, sched, BOOK)).file.chapters).toEqual({});
+    store.setDisk(outside(7)); // the sidecar changed outside the scheduler
+    const { file, md5 } = await alignFileFor(store, sched, BOOK);
+    expect(file.chapters['2']['1']).toEqual(record(7));
+    expect(md5).toBe(store.md5);
+    sched.markDirty(BOOK, '1', '1', JSON.stringify(record(1)));
+    await settle();
+    expect(store.writes).toHaveLength(1);
+    expect(store.file!.chapters['2']['1']).toEqual(record(7)); // kept, not overwritten by a stale snapshot
+    expect(store.file!.chapters['1']['1']).toEqual(record(1));
+  });
+
+  it('while the buffer holds work — dirty, or retained after a failure — the read keeps it', async () => {
+    const store = makeStore();
+    const sched = new SaveScheduler({ writeBook: makeAlignWriter({ store }), splice: spliceAlignRecord });
+    await alignFileFor(store, sched, BOOK);
+    sched.markDirty(BOOK, '1', '1', JSON.stringify(record(1)));
+    store.setDisk(outside(7));
+    expect((await alignFileFor(store, sched, BOOK)).file.chapters['1']['1']).toEqual(record(1));
+    store.failNextWrite(new Error('disk full'));
+    await settle();
+    expect(sched.getState()).toBe('error');
+    expect((await alignFileFor(store, sched, BOOK)).file.chapters['1']['1']).toEqual(record(1));
   });
 });

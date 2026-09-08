@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SaveScheduler } from '../src/data/saveScheduler';
 import { __alignSaveForTests, __reducerForTests as reducer, checkKeyFor } from '../src/state.jsx';
 
-const { makeCheckWriter } = __alignSaveForTests;
+const { makeCheckWriter, releaseParkedDecision } = __alignSaveForTests;
 const TOOL = 'translationNotes';
 const BOOK = 'TIT';
 const RESOURCE = { repoPath: 'git.door43.org/unfoldingWord/en_tn', sha: 'abc', version: 'v86' };
@@ -18,11 +18,15 @@ const item = (checkId: string, status = 'todo') => ({
   status,
 });
 
-const makeStore = (refuse: string) => {
+const makeStore = (refuse: string, failOnce?: string) => {
   const writes: Array<{ tool: string; book: string; decision: { contextId: { checkId: string }; status: string }; resource: unknown }> = [];
   return {
     writes,
     upsertDecision: async (tool: string, book: string, decision: { contextId: { checkId: string }; status: string }, resource?: unknown) => {
+      if (decision.contextId.checkId === failOnce) {
+        failOnce = undefined;
+        throw new Error('EIO: write failed');
+      }
       if (decision.contextId.checkId === refuse)
         throw new Error(`upsertDecision(${tool}, ${book}): the stored §5.2 record does not match the session's resolution (D36/D59)`);
       writes.push({ tool, book, decision, resource });
@@ -83,6 +87,36 @@ describe('#100 — decisions return at once; a D59 refusal lands on its item; la
     expect(store.writes.map((w) => w.decision.contextId.checkId)).toEqual(['A', 'C']);
     expect(sched.getState()).toBe('saved');
     expect(JSON.parse(sched.bookText(keyB)!).status).toBe('todo');
+  });
+
+  it('re-opening the tool releases a D59 refusal by reverting it, but keeps a decision behind an ordinary write failure (Codex round 1)', async () => {
+    const store = makeStore('B', 'A');
+    const targets = { current: new Map() };
+    const sched = new SaveScheduler({
+      writeBook: makeCheckWriter({ store, checkTargetsRef: targets }),
+      splice: (_raw, _c, _v, body) => body,
+    });
+    const keyA = record(sched, targets.current, item('A'), { status: 'valid' });
+    await settle();
+    // A failed on I/O: the payload is retained, and the release RETRIES it as is.
+    expect(sched.getFailure()?.book).toBe(keyA);
+    await releaseParkedDecision(sched, TOOL, BOOK);
+    expect(store.writes.map((w) => w.decision.contextId.checkId)).toEqual(['A']);
+    expect(store.writes[0].decision.status).toBe('valid');
+    expect(sched.getState()).toBe('saved');
+    // B is a D59 refusal: the release reverts it to the stored item.
+    const keyB = record(sched, targets.current, item('B'), { status: 'valid' });
+    await settle();
+    expect(sched.getFailure()?.book).toBe(keyB);
+    await releaseParkedDecision(sched, TOOL, BOOK);
+    expect(sched.getState()).toBe('saved');
+    expect(JSON.parse(sched.bookText(keyB)!).status).toBe('todo');
+    // Another tool's failure is not this tool's to release.
+    const other = record(sched, targets.current, item('B'), { status: 'invalid' });
+    await settle();
+    expect(sched.getFailure()?.book).toBe(other);
+    await releaseParkedDecision(sched, 'translationWords', BOOK);
+    expect(sched.getState()).toBe('error');
   });
 
   it('an unregistered key throws instead of guessing a target', async () => {
