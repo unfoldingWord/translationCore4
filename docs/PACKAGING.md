@@ -11,8 +11,12 @@ adds signing; it must not replace this recipe.
 runs on: macOS arm64, Linux x64, or Windows x64.
 `.github/workflows/package-desktop.yml` runs the script on three runners
 (`macos-15`, `ubuntu-24.04` and `windows-2025`) on every merge to `main` and on
-pull requests that touch packaging inputs, and uploads each zip as a workflow
-artifact.
+pull requests that touch the packaging recipe (the two scripts, the workflow,
+or `dev-env/server/`), and uploads each zip as a workflow artifact. A pull
+request that changes only the app does not build the artifacts; the `ci` and
+`rig` workflows prove it, and the merge to `main` packages it [decided
+2026-09-08 — owner, after PR #226]. `workflow_dispatch` builds any branch on
+demand.
 
 The upload is a single layer. The workflow uses `actions/upload-artifact@v7`
 with `archive: false`, which uploads the zip as one file. The action then
