@@ -26,7 +26,7 @@ Owner of increment numbers: the GitHub milestones, mirrored in `docs/ROADMAP.md`
 | ID | Actor | Activity | Goal | Status | Proof |
 |---|---|---|---|---|---|
 | J1 | facilitator | Start | Create a Bible project and add books | shipped alpha.1 | `e2e/j01-create-project.spec.ts` |
-| J2 | translator | Translate | Draft verses beside the sources | shipped alpha.1; revised end state ships Increment 5 (D70) | `e2e/j02-draft-verse.spec.ts` |
+| J2 | translator | Translate | Draft verses beside the sources | shipped alpha.1; revised end state (D70) shipped alpha.5 | `e2e/j02-draft-verse.spec.ts` |
 | J3 | facilitator | Start | Get pinned resources | shipped alpha.2 | `e2e/j03-get-resources.spec.ts` |
 | J4 | translator | Check | Check a book with tN and tW | shipped alpha.2 | `e2e/j04-check-book.spec.ts` |
 | J5 | translator | Check | Align a verse | shipped alpha.2 | `e2e/j05-align-verse.spec.ts` |
@@ -90,7 +90,7 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   checkpoints); re-key an alignment or a decision (Increment 5 uses `invalidate-retain` only).
 - Proof: `e2e/j02-draft-verse.spec.ts`, run LTR and RTL (J10 axis); the section and span cases
   are added by #141 and #63.
-- Owner: shipped alpha.1 (verse form); revised end state ships Increment 5 (#141, #63).
+- Owner: shipped alpha.1 (verse form); revised end state shipped alpha.5 (#141, #63).
 
 ### J3 Get pinned resources
 
