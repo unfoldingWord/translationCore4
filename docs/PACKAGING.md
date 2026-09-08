@@ -509,9 +509,11 @@ Artifact sizes before and after bundling the English suite:
 
 | Platform | Before (#163, macOS alpha.3) | After (#163, alpha.4) | After the lexicons (#218) |
 |---|---|---|---|
-| macOS arm64 | 142556909 bytes | 173313348 bytes | pending the CI run of this change |
-| Linux x64 | — | 180227460 bytes | pending |
-| Windows x64 (#181) | — | 188345159 bytes (run 34179734677, PR #226) | pending |
+| macOS arm64 | 142556909 bytes | 173313348 bytes | 178591597 bytes |
+| Linux x64 | — | 180227460 bytes | 185618191 bytes |
+| Windows x64 (#181) | — | 188345159 bytes (run 34179734677, PR #226) | 193731895 bytes |
+
+The "after the lexicons" sizes are from the `package-desktop` CI run 34274905470 artifact listing (PR #232, 2026-09-08). That run's `BUILD-MANIFEST.json` lists ten `bundled_resources`; the Linux artifact stages `uw--en_ugl` (5408 entries) and `uw--en_uhl` (8674 entries) under `resources/`.
 
 Both "after" sizes are from the `package-desktop` CI run 34145714423 artifact listing (PR #217, 2026-09-07). A local macOS arm64 build of the same commit measured 174980433 bytes.
 
