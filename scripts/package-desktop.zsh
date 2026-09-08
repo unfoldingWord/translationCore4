@@ -63,6 +63,10 @@ npath() {        # a path for the Windows node.exe: MSYS2 /d/a/x -> D:/a/x (#181
   if [ "$OS" = windows ]; then cygpath -m "$1"; else printf '%s' "$1"; fi
 }
 VERSION=$(node -p "require('$(npath "$REPO/package.json")').version")
+# The smoke test's HTTP probe. On Windows, Windows' own curl.exe: the MSYS2 curl
+# timed out (not refused) on every closed loopback port in CI run 34174403634.
+CURL=curl
+if [ "$OS" = windows ] && [ -x /c/Windows/System32/curl.exe ]; then CURL=/c/Windows/System32/curl.exe; fi
 # The server binary and the home-directory variable as the platform names them.
 if [ "$OS" = windows ]; then EXE=".exe"; SERVER_BIN="server.exe"; HOME_LABEL='%USERPROFILE%'
 else                         EXE="";     SERVER_BIN="server.bin"; HOME_LABEL='$HOME'; fi
@@ -582,7 +586,10 @@ mkdir -p "$SMOKE_HOME"
 # runs it, with MSYS2's argument conversion off so the path stays as given.
 launch_entry_point() {  # $1 = log file; sets LAUNCH_PID
   if [ "$OS" = windows ]; then
+    # ELECTRON_ENABLE_LOGGING: a Windows GUI process prints nothing to the
+    # redirect otherwise, and the launcher log is the only trace of the boot.
     USERPROFILE="$(cygpath -w "$SMOKE_HOME")" HOME="$SMOKE_HOME" MSYS2_ARG_CONV_EXCL='*' \
+      ELECTRON_ENABLE_LOGGING=1 ELECTRON_ENABLE_STACK_DUMPING=1 \
       cmd /c "$(cygpath -w "$APPDIR/$LAUNCHER")" > "$1" 2>&1 &
   else
     HOME="$SMOKE_HOME" "$APPDIR/$LAUNCHER" > "$1" 2>&1 &
@@ -606,11 +613,25 @@ cleanup_smoke() {
 }
 trap cleanup_smoke EXIT
 
+# Windows (#181): what the runner can tell when the boot goes wrong. Printed on
+# a failed wait, and the probe timing once before it: a closed loopback port
+# must answer "refused" in milliseconds, not time out.
+smoke_diagnostics() {
+  [ "$OS" = windows ] || return 0
+  echo "-- diagnostics (windows) --"
+  echo "probe of a closed port: $("$CURL" -s --max-time 2 -o /dev/null -w 'http %{http_code}, %{time_total}s' "http://127.0.0.1:19999/api/version" 2>&1; echo " exit $?")"
+  echo "processes:"; MSYS2_ARG_CONV_EXCL='*' tasklist 2>/dev/null | grep -i -E "electron|server\.exe|cmd\.exe" || echo "  (no electron/server/cmd)"
+  echo "listeners 191xx:"; MSYS2_ARG_CONV_EXCL='*' netstat -ano -p tcp 2>/dev/null | grep -E ":191[0-9][0-9] " || echo "  (none)"
+  echo "smoke home:"; find "$SMOKE_HOME" -maxdepth 3 2>/dev/null | head -20
+  for f in "$BUILD"/smoke-*.log; do echo "-- $f --"; cat -v "$f" | tail -40; done
+}
+[ "$OS" = windows ] && echo "probe of a closed port before the wait: $("$CURL" -s --max-time 2 -o /dev/null -w 'http %{http_code}, %{time_total}s' "http://127.0.0.1:19999/api/version" 2>&1; echo " exit $?")"
+
 # Find the self-chosen port (electronStartup starts at 19119).
 SMOKE_PORT=""
 for i in {1..40}; do
   for p in {19119..19139}; do
-    if curl -s --max-time 1 "http://127.0.0.1:$p/api/version" | grep -q '"product_short_name":"tc4"'; then
+    if "$CURL" -s --max-time 1 "http://127.0.0.1:$p/api/version" | grep -q '"product_short_name":"tc4"'; then
       SMOKE_PORT=$p; break
     fi
   done
@@ -618,11 +639,11 @@ for i in {1..40}; do
   sleep 1
 done
 [ -n "$SMOKE_PORT" ] || { echo "SMOKE TEST FAILED: self-spawned server not found on 19119-19139" >&2
-  tail -20 "$BUILD/smoke-entrypoint.log" >&2; exit 1; }
+  tail -20 "$BUILD/smoke-entrypoint.log" >&2; smoke_diagnostics >&2; exit 1; }
 echo "self-spawned server found on port $SMOKE_PORT"
 
-ROOT=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' "http://127.0.0.1:$SMOKE_PORT/")
-CLIENT=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$SMOKE_PORT/clients/uw-tc4")
+ROOT=$("$CURL" -s -o /dev/null -w '%{http_code} %{redirect_url}' "http://127.0.0.1:$SMOKE_PORT/")
+CLIENT=$("$CURL" -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$SMOKE_PORT/clients/uw-tc4")
 echo "root: $ROOT; /clients/uw-tc4: $CLIENT"
 
 # #4 GUARD (D39): a second launch must NOT become a second running copy.
@@ -648,13 +669,13 @@ done
 SECOND_SERVERS=0
 for p in {19119..19139}; do
   [ "$p" = "$SMOKE_PORT" ] && continue
-  curl -s --max-time 1 "http://127.0.0.1:$p/api/version" | grep -q '"product_short_name":"tc4"' && SECOND_SERVERS=$((SECOND_SERVERS+1))
+  "$CURL" -s --max-time 1 "http://127.0.0.1:$p/api/version" | grep -q '"product_short_name":"tc4"' && SECOND_SERVERS=$((SECOND_SERVERS+1))
 done
 [ "$SECOND_SERVERS" = "0" ] || {
   echo "#4 GUARD FAILED: a second tc4 server appeared on another port — the second launch spawned a server" >&2
   exit 1
 }
-curl -s --max-time 2 "http://127.0.0.1:$SMOKE_PORT/api/version" | grep -q '"product_short_name":"tc4"' || {
+"$CURL" -s --max-time 2 "http://127.0.0.1:$SMOKE_PORT/api/version" | grep -q '"product_short_name":"tc4"' || {
   echo "#4 GUARD FAILED: the FIRST server stopped answering after the second launch" >&2
   exit 1
 }
