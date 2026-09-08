@@ -1,17 +1,18 @@
-# Desktop packaging (#57, #119)
+# Desktop packaging (#57, #119, #181)
 
 This document records the build recipe for the unsigned desktop artifacts.
 Issue #119 added Linux x64 beside the proven macOS arm64 path, and the
-single-layer download. Issue #181 adds Windows x64 (Increment 6); issue #44
-adds signing. Neither must replace this recipe.
+single-layer download. Issue #181 added Windows x64 (Increment 5). Issue #44
+adds signing; it must not replace this recipe.
 
 ## What the pipeline does
 
 `scripts/package-desktop.zsh` builds one unsigned artifact for the host it
-runs on: macOS arm64, or Linux x64.
-`.github/workflows/package-desktop.yml` runs the script on two runners
-(`macos-15` and `ubuntu-24.04`) on every merge to `main` and on pull requests
-that touch packaging inputs, and uploads each zip as a workflow artifact.
+runs on: macOS arm64, Linux x64, or Windows x64.
+`.github/workflows/package-desktop.yml` runs the script on three runners
+(`macos-15`, `ubuntu-24.04` and `windows-2025`) on every merge to `main` and on
+pull requests that touch packaging inputs, and uploads each zip as a workflow
+artifact.
 
 The upload is a single layer. The workflow uses `actions/upload-artifact@v7`
 with `archive: false`, which uploads the zip as one file. The action then
@@ -243,6 +244,104 @@ The job installs these packages before the build [VERIFIED — the `linux-x64` j
 On a failure the job uploads `dist-desktop/smoke-*.log` as
 `tc4-desktop-linux-x64-smoke-logs`.
 
+## Windows x64 (#181)
+
+The `windows-x64` job runs the same script on `windows-2025`, under MSYS2's
+`zsh`. Only the host-specific steps differ. Nothing is signed; signing and an
+installer are #44.
+
+### Artifact layout
+
+The zip holds one folder, `translationCore4\` (`translationCore4 DEBUG\` for
+the debug variant). That folder holds:
+
+| Item | What it is |
+|---|---|
+| `start-tc4.cmd` | the launcher — the only entry point (a batch file) |
+| `electronite\` | the unpacked Electronite release (`electron.exe`, Chromium data) |
+| `electron\` | the template startup files plus `tc4-main.js` (the #4 single-instance guard) |
+| `bin\server.exe` | the pinned pankosmia-web server; the template's startup script spawns `bin\server.exe` on Windows |
+| `lib\`, `resources\` | clients, app resources, templates, webfonts; the bundled English suite (#163) |
+| `Rocket.toml`, `LICENSE`, `licenses\`, `THIRD-PARTY-NOTICES.md`, `BUILD-MANIFEST.json` | the same as macOS and Linux |
+| `smoke-installed.zsh` | shipped for parity; it does not run on Windows yet (see "Known limits") |
+
+### Install and launch
+
+1. Download `tC4-<version>-windows-x64-unsigned.zip` from the workflow run.
+2. Unpack it once. Explorer's `Extract All…`, `Expand-Archive` in PowerShell,
+   or any archiver works: Windows has no permission bits to lose.
+3. Run `translationCore4\start-tc4.cmd` (double-click, or from a terminal). A
+   console window stays open while the app runs. Closing that window stops
+   the app.
+4. The build is unsigned. On the first launch Windows SmartScreen can show
+   "Windows protected your PC". Click `More info`, then `Run anyway`. If the
+   browser marked the download, Explorer keeps the mark on every extracted
+   file, and the same dialog appears; `Unblock` in the zip's Properties before
+   you extract it avoids that. [PROPOSED — to be witnessed on a clean machine;
+   the witness record goes under "Known limits"]
+
+The project store is `%USERPROFILE%\pankosmia\tc4-projects` (#70); the server's
+working directory is `%USERPROFILE%\pankosmia\tc4`. The app never touches
+`%USERPROFILE%\pankosmia_repos`. On the first run the launcher copies the
+bundled English suite into the store (#163). A second launch exits by itself
+and focuses the first window (#4).
+
+### CI runner assumptions
+
+- `windows-2025`, with MSYS2 preinstalled. `msys2/setup-msys2@v2`
+  (`msystem: MSYS`, `path-type: inherit`) installs `zsh`, `zip`, `unzip` and
+  `curl` and keeps the runner's `node`, `cargo` and `git` on the PATH. The
+  script is one file for the three platforms; MSYS2 supplies the shell it needs.
+- Node 22 from `actions/setup-node`; the Rust stable MSVC toolchain from
+  `rustup`; `cmake` for `libgit2-sys`'s bundled libgit2. No OpenSSL: on
+  Windows `git2` uses WinHTTP and `ureq` uses rustls [VERIFIED — pankosmia-web
+  `99fd9be` `Cargo.toml`; the desktop-app-template at `4cb7576` builds the same
+  server with a plain `cargo build --release` on `windows-2025`
+  (`.github/workflows/windows-build-steps.yml`); read 2026-09-07].
+- The smoke test opens a real window on the runner's desktop session; no
+  `xvfb`.
+- The server resolves its profile through the `home` crate, which reads
+  `USERPROFILE` first [VERIFIED — pankosmia-web `99fd9be`
+  `src/utils/paths.rs:139`, read 2026-09-07]. The smoke test sets `USERPROFILE`
+  to a fresh directory for both launches, creates `AppData\Local` and
+  `AppData\Roaming` in it, and points `APPDATA` and `LOCALAPPDATA` at them:
+  Windows expands its shell folders from `%USERPROFILE%`, and Chromium stops
+  with `EXCEPTION_BREAKPOINT` before its logging starts when those folders do
+  not exist [VERIFIED — CI runs 34176032154 to 34178970511 on PR #226: every
+  launch with the override and no `AppData` died; the same launch under the
+  runner's real profile booted; 2026-09-08]. Electron's `userData`, and with it
+  the #4 singleton lock, then live under the smoke home. The MSYS2 shell also
+  exports `TMP=/tmp` and `TEMP=/tmp`; the launch gets a Windows-form temp
+  directory.
+- On a failure the job uploads `dist-desktop/smoke-*.log` as
+  `tc4-desktop-windows-x64-smoke-logs`.
+
+### Known limits
+
+- **No post-install smoke job on Windows.** `smoke-installed.zsh` needs `zsh`,
+  `lsof` and a POSIX launcher. On the Windows artifact it stops with one line
+  that says so. The build-time smoke test in the `windows-x64` job covers the
+  same guards (#4, #70, root 303, client 200).
+- **Unsigned.** SmartScreen warns on every clean machine until #44.
+- **A console window.** The launcher is a batch file. A launcher without a
+  console is part of #44's installer work.
+- **Witness pending.** The clean-machine witness (unpack once, launch without
+  a developer checkout, reach the dashboard, second launch refused or focused)
+  is the last acceptance item of #181. Record here: the run id, the artifact
+  sha256, the Windows version, and a screenshot.
+
+### Evidence
+
+First green `windows-x64` job [VERIFIED — run 34179734677 on PR #226 (head
+`84aa25c`), `windows-2025`, 2026-09-08]: `electron.exe --version` v37.1.0;
+self-spawned server on port 19119; `/` 303 to `/clients/uw-tc4` and the
+client 200; the #4 guard ("second launch exited by itself; one server only");
+the working directory under the smoke home; the #70 guard ("production store
+holds only `_local_/_sideloaded_/` with seeded English suite on first boot");
+artifact `tC4-4.0.0-alpha.4-windows-x64-unsigned.zip`, 188345159 bytes,
+artifact id 10038663195. The server built with the MSVC toolchain in 7m14s
+uncached (run 34174403634). The witness record above is still open.
+
 ## Smoke tests: build-time and post-install (#45)
 
 Two smoke tests exist. They answer two different questions.
@@ -325,7 +424,7 @@ between runs; it does not replace the run.
      `unshare -rn sh -c 'ip link set lo up && exec ./translationCore4/start-tc4.sh'`.
      Then every check below is made from inside that namespace, or by reading the app's
      screens; a browser or `ping` outside it is on the machine's normal network.
-   - Windows: not covered until #181.
+   - Windows: Settings › Network & internet › Airplane mode on, and unplug Ethernet.
    Check: a browser cannot open any web page; `ping 1.1.1.1` fails.
 
 ### Steps and expected results
@@ -371,7 +470,7 @@ procedure's subject.
 | Input | Pin | Where |
 |---|---|---|
 | pankosmia-web | 0.18.5, rev `99fd9be` | `dev-env/server/Cargo.toml` |
-| Electronite | `v37.1.0-graphite`, zip sha256 verified — `a3dde44e…f59488` (darwin-arm64), `41218aa3…d8f8540` (linux-x64) | `scripts/package-desktop.zsh` |
+| Electronite | `v37.1.0-graphite`, zip sha256 verified — `a3dde44e…f59488` (darwin-arm64), `41218aa3…d8f8540` (linux-x64), `8146ca21…371b52` (win32-x64; matches the release asset digest, measured 2026-09-07) | `scripts/package-desktop.zsh` |
 | desktop-app-template | `4cb7576` | `scripts/package-desktop.zsh` |
 | resource-core | `54802be780af18ab02e426dd59014bc6adb158af` | `scripts/package-desktop.zsh` |
 | webfonts-core | `eb52ccdad6806b5729ea8b45b1c59c793ffa32c3` | `scripts/package-desktop.zsh` |
@@ -397,13 +496,14 @@ Artifact sizes before and after bundling the English suite:
 |---|---|---|
 | macOS arm64 | 142556909 bytes | 173313348 bytes |
 | Linux x64 | — | 180227460 bytes |
+| Windows x64 (#181) | — | 188345159 bytes (run 34179734677, PR #226) |
 
 Both "after" sizes are from the `package-desktop` CI run 34145714423 artifact listing (PR #217, 2026-09-07). A local macOS arm64 build of the same commit measured 174980433 bytes.
 
 ## Known limits (start of the pipeline, not the end)
 
-- **Two platforms**: macOS arm64 (#57) and Linux x64 (#119). Windows x64 is
-  #181 (Increment 6); macOS x64 and signing are #44.
+- **Three platforms**: macOS arm64 (#57), Linux x64 (#119) and Windows x64
+  (#181). macOS x64 and signing are #44.
 - **Linux is unsigned and un-installed**: the artifact is a plain zip with no
   installer, no desktop entry, and no signature. Most desktops refuse to run
   it from the file manager, so the user must run `start-tc4.sh` from a

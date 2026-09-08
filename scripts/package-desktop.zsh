@@ -1,5 +1,6 @@
 #!/bin/zsh
-# Build an UNSIGNED desktop artifact for tC4: macOS arm64 (#57), Linux x64 (#119).
+# Build an UNSIGNED desktop artifact for tC4: macOS arm64 (#57), Linux x64 (#119),
+# Windows x64 (#181).
 #
 # The recipe follows the Pankosmia desktop-app-template (read-only reference,
 # MIT license). The wrapper is Electronite v37.1.0-graphite, the Graphite-enabled
@@ -30,23 +31,27 @@
 # Requirements: node >= 20, npm, cargo, curl, unzip, git, and sha256sum or shasum.
 #   Linux also needs zsh, the zip command, Electron's shared libraries, and a
 #   display for the smoke test. CI runs the script under `xvfb-run -a` (#119).
+#   Windows runs the script under MSYS2's zsh (packages zsh, zip, unzip, curl)
+#   with the Windows node, cargo (MSVC) and git on the PATH; the smoke test
+#   opens a real window on the runner's desktop (#181).
 set -e
 
 REPO=${0:a:h:h}
 BUILD="$REPO/dist-desktop"
 PACK="$BUILD/pack"
 ARCH=$(uname -m | sed 's/x86_64/x64/')
-VERSION=$(node -p "require('$REPO/package.json').version")
 
-# Build host (#119). OS names the artifact; EL_OS names the Electronite asset.
+# Build host (#119, #181). OS names the artifact; EL_OS names the Electronite
+# asset. MSYS2 reports MSYS_NT-* (or MINGW64_NT-*) for a Windows host.
 case "$(uname -s)" in
-  Darwin) OS=macos; EL_OS=darwin ;;
-  Linux)  OS=linux; EL_OS=linux  ;;
-  *) echo "Unsupported build host '$(uname -s)' — macOS and Linux only." >&2; exit 1 ;;
+  Darwin)                 OS=macos;   EL_OS=darwin ;;
+  Linux)                  OS=linux;   EL_OS=linux  ;;
+  MSYS*|MINGW*|CYGWIN*)   OS=windows; EL_OS=win32  ;;
+  *) echo "Unsupported build host '$(uname -s)' — macOS, Linux and Windows (MSYS2) only." >&2; exit 1 ;;
 esac
 
-# Portable helpers: the two hosts differ on these two tools.
-sha256_of() {    # coreutils on Linux, BSD shasum on macOS
+# Portable helpers: the hosts differ on these tools.
+sha256_of() {    # coreutils on Linux and MSYS2, BSD shasum on macOS
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'
   else shasum -a 256 "$1" | awk '{print $1}'; fi
 }
@@ -54,6 +59,17 @@ sed_inplace() {  # BSD sed demands an empty backup suffix; GNU sed refuses one
   local expr=$1; shift
   if [ "$OS" = macos ]; then sed -i '' "$expr" "$@"; else sed -i "$expr" "$@"; fi
 }
+npath() {        # a path for the Windows node.exe: MSYS2 /d/a/x -> D:/a/x (#181)
+  if [ "$OS" = windows ]; then cygpath -m "$1"; else printf '%s' "$1"; fi
+}
+VERSION=$(node -p "require('$(npath "$REPO/package.json")').version")
+# The smoke test's HTTP probe. On Windows, Windows' own curl.exe: the MSYS2 curl
+# timed out (not refused) on every closed loopback port in CI run 34174403634.
+CURL=curl
+if [ "$OS" = windows ] && [ -x /c/Windows/System32/curl.exe ]; then CURL=/c/Windows/System32/curl.exe; fi
+# The server binary and the home-directory variable as the platform names them.
+if [ "$OS" = windows ]; then EXE=".exe"; SERVER_BIN="server.exe"; HOME_LABEL='%USERPROFILE%'
+else                         EXE="";     SERVER_BIN="server.bin"; HOME_LABEL='$HOME'; fi
 
 # Build variant (#70).
 VARIANT=production
@@ -73,6 +89,7 @@ fi
 ELECTRONITE_TAG="v37.1.0-graphite"
 ELECTRONITE_SHA256_MACOS_ARM64="a3dde44e03a076bc778f952f7a7a5ed6d8e5037d46ea6c1ba2deb6a11df59488"
 ELECTRONITE_SHA256_LINUX_X64="41218aa3cd79f3449cfc360384ad4ef6064fe871e4c40a38ae859f2ddd8f8540"
+ELECTRONITE_SHA256_WINDOWS_X64="8146ca21fa090e12bca01a8af73d234d9a31d90f51da0da86bb0e1731c371b52"   # #181, measured 2026-09-07
 TEMPLATE_REPO="https://github.com/pankosmia/desktop-app-template.git"
 TEMPLATE_REV="4cb757601b9310b3fccd52f77a6ae2238ceec9f4"   # 2026-08-14
 RESOURCE_CORE_REPO="https://github.com/pankosmia/resource-core.git"
@@ -107,6 +124,7 @@ fi
 case "$OS-$ARCH" in
   macos-arm64) ELECTRONITE_SHA256="$ELECTRONITE_SHA256_MACOS_ARM64" ;;
   linux-x64)   ELECTRONITE_SHA256="$ELECTRONITE_SHA256_LINUX_X64"   ;;
+  windows-x64) ELECTRONITE_SHA256="$ELECTRONITE_SHA256_WINDOWS_X64" ;;
   *) echo "No recorded Electronite checksum for platform '$OS-$ARCH' — record one first." >&2
      exit 1 ;;
 esac
@@ -148,11 +166,11 @@ if [ "$ACTUAL_SHA" != "$ELECTRONITE_SHA256" ]; then
   exit 1
 fi
 echo "Electronite sha256 OK: $ACTUAL_SHA"
-# macOS ships an app bundle; Linux ships a flat directory with an `electron`
-# binary. Both unpack into $BUILD/electronite, and both put LICENSE and
-# LICENSES.chromium.html at that root.
+# macOS ships an app bundle; Linux and Windows ship a flat directory with an
+# `electron` (`electron.exe`) binary. All unpack into $BUILD/electronite, and
+# all put LICENSE and LICENSES.chromium.html at that root.
 if [ "$OS" = macos ]; then EL_UNPACKED="$BUILD/electronite/Electron.app"
-else                       EL_UNPACKED="$BUILD/electronite/electron"; fi
+else                       EL_UNPACKED="$BUILD/electronite/electron$EXE"; fi
 if [ ! -e "$EL_UNPACKED" ]; then
   mkdir -p "$BUILD/electronite"
   unzip -qq -o "$BUILD/$ELECTRONITE_ZIP" -d "$BUILD/electronite"
@@ -202,7 +220,7 @@ npm install --no-audit --no-fund --save-exact \
 # without a window or a server, and the first window is focused instead.
 # The patch refuses to run if the template's entry point changed shape
 # (same discipline as the #70 repo_dir patch).
-TEMPLATE_MAIN=$(node -p "require('$PACK/electron/package.json').main")
+TEMPLATE_MAIN=$(node -p "require('$(npath "$PACK/electron/package.json")').main")
 [ "$TEMPLATE_MAIN" = "electronStartup.js" ] || {
   echo "FATAL: template electron main is '$TEMPLATE_MAIN' (expected electronStartup.js) — re-verify the #4 single-instance wrapper before building" >&2
   exit 1
@@ -235,14 +253,16 @@ if (!app.requestSingleInstanceLock()) {
 MAIN_EOF
 node -e "
 const fs = require('fs');
-const p = '$PACK/electron/package.json';
+const p = '$(npath "$PACK/electron/package.json")';
 const j = JSON.parse(fs.readFileSync(p, 'utf8'));
 j.main = 'tc4-main.js';
 fs.writeFileSync(p, JSON.stringify(j, null, 2) + '\n');
 "
 fi
 
-cp "$REPO/dev-env/server/target/release/tc4_dev_server" "$PACK/bin/server.bin"
+# The template's startup script spawns ./bin/server.bin, or ./bin/server.exe on
+# win32 (electronStartup.js, WIN_SERVER_PATH).
+cp "$REPO/dev-env/server/target/release/tc4_dev_server$EXE" "$PACK/bin/$SERVER_BIN"
 cp "$REPO/dev-env/server/Rocket.toml" "$PACK/Rocket.toml"
 
 # lib: runtime resources per the template's app_config.env asset map.
@@ -255,17 +275,21 @@ cp -R "$BUILD/upstream/resource-core/templates" "$PACK/lib/templates"
 # the smoke-test guard actually fails a build that resolves to the shared
 # store. Never set it for a real build; the guard will (and must) fail.
 if [ "${TC4_TEST_FORCE_SHARED_STORE:-0}" != "1" ]; then
-  python3 - "$PACK/lib/templates/user_settings.json" "$STORE_LEAF" <<'PY'
-import json, sys
-p, leaf = sys.argv[1], sys.argv[2]
-d = json.load(open(p))
-default = "%%HOMEDIR%%/pankosmia_repos"
-if d.get("repo_dir") != default:
-    raise SystemExit(f"user_settings template changed upstream: repo_dir is {d.get('repo_dir')!r}, expected {default!r} — re-verify #70 isolation before building")
-d["repo_dir"] = f"%%HOMEDIR%%/{leaf}"
-json.dump(d, open(p, "w"), indent=2)
-print(f"repo_dir pinned to %%HOMEDIR%%/{leaf} (#70)")
-PY
+  # node, not python: node is a build requirement on every host; python is not
+  # on the MSYS2 shell's PATH (#181). Same check, same patch, same output.
+  node -e '
+const fs = require("fs");
+const [p, leaf] = process.argv.slice(1);
+const d = JSON.parse(fs.readFileSync(p, "utf8"));
+const dflt = "%%HOMEDIR%%/pankosmia_repos";
+if (d.repo_dir !== dflt) {
+  console.error(`user_settings template changed upstream: repo_dir is ${JSON.stringify(d.repo_dir)}, expected ${JSON.stringify(dflt)} — re-verify #70 isolation before building`);
+  process.exit(1);
+}
+d.repo_dir = `%%HOMEDIR%%/${leaf}`;
+fs.writeFileSync(p, JSON.stringify(d, null, 2));
+console.log(`repo_dir pinned to %%HOMEDIR%%/${leaf} (#70)`);
+' "$(npath "$PACK/lib/templates/user_settings.json")" "$STORE_LEAF"
 else
   echo "!!! TC4_TEST_FORCE_SHARED_STORE=1: leaving the platform default repo_dir (guard self-test)"
 fi
@@ -316,6 +340,11 @@ cp -R "$BUILD/electronite/Electron.app" "$APPDIR/Electron.app"
 codesign --force --deep --sign - "$APPDIR/Electron.app"
 codesign --verify --deep --strict "$APPDIR/Electron.app" \
   || { echo "FATAL: Electron.app does not verify after the ad-hoc re-seal (#57)"; exit 1 }
+elif [ "$OS" = windows ]; then
+# Windows (#181): a flat directory with electron.exe, no signature, no
+# permission bits. Stage it under electronite/ like Linux.
+mkdir -p "$APPDIR/electronite"
+cp -R "$BUILD/electronite/." "$APPDIR/electronite/"
 else
 # Linux (#119): the release is a flat directory, not an app bundle, and it
 # carries no signature to re-seal. Stage it under electronite/ so it never
@@ -334,8 +363,50 @@ cp "$PACK/Rocket.toml" "$APPDIR/Rocket.toml"
 
 # The launcher differs per OS in three places only: its filename, how it
 # finds its own directory, and how it invokes Electronite. The debug seeding
-# step below is identical on both.
-if [ "$OS" = macos ]; then
+# step below is identical on macOS and Linux. Windows is a batch file with the
+# same steps (#181), written by write_windows_launcher below.
+write_windows_launcher() {  # $1 = store leaf, $2 = variant
+  local leaf_win=${1//\//\\}
+  # print -r, not echo: zsh's echo turns the "\t" of "\tc4-projects" into a tab.
+  {
+    print -r -- '@echo off'
+    if [ "$2" = debug ]; then
+      print -r -- 'rem Unsigned DEBUG artifact. Seeds the debug-only project store on first run'
+      print -r -- 'rem (never the shared %USERPROFILE%\pankosmia_repos), then starts Electronite;'
+      print -r -- 'rem the startup script spawns the bundled server itself.'
+    else
+      print -r -- 'rem Unsigned development artifact. Starts Electronite; the startup script'
+      print -r -- 'rem spawns the bundled server itself.'
+    fi
+    print -r -- 'cd /d "%~dp0"'
+    print -r -- "set \"STORE=%USERPROFILE%\\$leaf_win\""
+    print -r -- 'if exist "resources\" ('
+    print -r -- '  for /d %%R in ("resources\*") do ('
+    print -r -- '    if not exist "%STORE%\_local_\_sideloaded_\%%~nxR\" ('
+    print -r -- '      if not exist "%STORE%\_local_\_sideloaded_\" mkdir "%STORE%\_local_\_sideloaded_"'
+    print -r -- '      xcopy /E /I /Q /Y "%%R" "%STORE%\_local_\_sideloaded_\%%~nxR" >nul'
+    print -r -- '    )'
+    print -r -- '  )'
+    print -r -- ')'
+    if [ "$2" = debug ]; then
+      print -r -- 'set "SEED=%STORE%\_local_\_local_\sample_burrito"'
+      print -r -- 'where git >nul 2>&1'
+      print -r -- 'if not errorlevel 1 if not exist "%SEED%\" ('
+      print -r -- '  if not exist "%STORE%\_local_\_local_\" mkdir "%STORE%\_local_\_local_"'
+      print -r -- '  xcopy /E /I /Q /Y "debug-seeds\sample_burrito" "%SEED%" >nul'
+      print -r -- '  rem Initial commit: the platform add-and-commit panics on a repo with'
+      print -r -- '  rem zero commits (PLATFORM-NOTES #20).'
+      print -r -- '  pushd "%SEED%"'
+      print -r -- '  git init -q -b main . && git add -A && git -c user.email=debug@tc4.local -c user.name=tc4-debug commit -qm seed'
+      print -r -- '  popd'
+      print -r -- ')'
+    fi
+    print -r -- 'electronite\electron.exe electron'
+  } > "$APPDIR/$LAUNCHER"
+}
+if [ "$OS" = windows ]; then
+  LAUNCHER="start-tc4.cmd"
+elif [ "$OS" = macos ]; then
   LAUNCHER="start-tc4.command"
   LAUNCH_SHEBANG="#!/bin/zsh"
   LAUNCH_CD='cd "${0:a:h}"'
@@ -363,6 +434,10 @@ if [ "$VARIANT" = "debug" ]; then
   # ships neither the seeds nor this launcher.
   mkdir -p "$APPDIR/debug-seeds"
   cp -R "$REPO/conformance/sample-burrito" "$APPDIR/debug-seeds/sample_burrito"
+fi
+if [ "$OS" = windows ]; then
+  write_windows_launcher "$STORE_LEAF" "$VARIANT"
+elif [ "$VARIANT" = "debug" ]; then
   cat > "$APPDIR/$LAUNCHER" <<LAUNCH
 $LAUNCH_SHEBANG
 # Unsigned DEBUG artifact. Seeds the debug-only project store on first run
@@ -438,7 +513,7 @@ This build bundles the components below. Full texts are in licenses/.
 |---|---|---|---|
 | Electronite (Graphite-enabled Electron) | $ELECTRONITE_TAG | MIT (+ Chromium notices) | github.com/unfoldingWord/electronite |
 | desktop-app-template startup files (electron/, modified) | $TEMPLATE_REV | MIT | github.com/pankosmia/desktop-app-template |
-| pankosmia-web server (bin/server.bin) | 0.18.5 (99fd9be) | MIT | github.com/pankosmia/pankosmia-web |
+| pankosmia-web server (bin/$SERVER_BIN) | 0.18.5 (99fd9be) | MIT | github.com/pankosmia/pankosmia-web |
 | resource-core (lib/app_resources, lib/templates) | $RESOURCE_CORE_REV | MIT | github.com/pankosmia/resource-core |
 | webfonts-core (lib/webfonts; fonts carry their own licenses, mostly SIL OFL) | $WEBFONTS_CORE_REV | MIT (repo); per-font licenses inside | github.com/pankosmia/webfonts-core |
 | puppeteer-core (electron/node_modules) | $PUPPETEER_CORE_VER | Apache-2.0 | github.com/puppeteer/puppeteer |
@@ -456,7 +531,7 @@ npm dependency license texts remain in electron/node_modules/*/LICENSE.
 NOTICES
 
 # Input manifest: every component with its exact version/commit/checksum.
-SERVER_SHA=$(sha256_of "$APPDIR/bin/server.bin")
+SERVER_SHA=$(sha256_of "$APPDIR/bin/$SERVER_BIN")
 BUNDLED_MANIFEST_ENTRIES=""
 for entry in "${BUNDLED_RESOURCES[@]}"; do
   repo="${entry%%:*}"
@@ -477,7 +552,7 @@ cat > "$APPDIR/BUILD-MANIFEST.json" <<MANIFEST
 {
   "artifact": "tC4-$VERSION-$OS-$ARCH-unsigned",
   "variant": "$VARIANT",
-  "project_store": "\$HOME/$STORE_LEAF (#70 — never \$HOME/pankosmia_repos)",
+  "project_store": "$HOME_LABEL/$STORE_LEAF (#70 — never $HOME_LABEL/pankosmia_repos)",
   "built_utc": "$DATETIME",
   "bundled_resources": [
 $BUNDLED_MANIFEST_ENTRIES
@@ -505,20 +580,95 @@ echo "== 6/7 smoke test: launch the artifact through its own entry point"
 SMOKE_HOME="$BUILD/smoke-home"
 rm -rf "$SMOKE_HOME"
 mkdir -p "$SMOKE_HOME"
-HOME="$SMOKE_HOME" "$APPDIR/$LAUNCHER" > "$BUILD/smoke-entrypoint.log" 2>&1 &
-SMOKE_PID=$!
+# Windows (#181): the server resolves its home through the `home` crate, which
+# reads USERPROFILE first (pankosmia-web utils/paths.rs), so the fresh profile
+# is passed as USERPROFILE in Windows form. The launcher is a batch file: cmd
+# runs it, with MSYS2's argument conversion off so the path stays as given.
+# Windows: the fresh profile is passed as USERPROFILE (the server's `home`
+# crate reads it first). Two things must come with it, measured in CI runs
+# 34176032154-34178970511 (#181): Windows expands its shell folders from
+# %USERPROFILE% (AppData\Local, AppData\Roaming), and Chromium dies with
+# EXCEPTION_BREAKPOINT before its logging starts when they do not exist, so
+# the smoke home gets them and APPDATA/LOCALAPPDATA name them (Electron's
+# userData, and with it the #4 singleton lock, then live under the smoke
+# home too); and the MSYS2 profile exports TMP=/tmp and TEMP=/tmp (POSIX
+# form) to every native child, so the launch gets a Windows-form temp dir.
+win_env() {  # fills WIN_ENV, one VAR=value per element (a path may hold spaces; Codex round 3)
+  mkdir -p "$SMOKE_HOME/tmp" "$SMOKE_HOME/AppData/Local" "$SMOKE_HOME/AppData/Roaming"
+  local whome wtmp; whome="$(cygpath -w "$SMOKE_HOME")"; wtmp="$(cygpath -w "$SMOKE_HOME/tmp")"
+  WIN_ENV=(
+    "USERPROFILE=$whome" "HOME=$SMOKE_HOME"
+    "APPDATA=$whome\\AppData\\Roaming" "LOCALAPPDATA=$whome\\AppData\\Local"
+    "TEMP=$wtmp" "TMP=$wtmp"
+    "MSYS2_ARG_CONV_EXCL=*" "ELECTRON_ENABLE_STACK_DUMPING=1"
+  )
+}
+launch_entry_point() {  # $1 = log file; sets LAUNCH_PID
+  if [ "$OS" = windows ]; then
+    # ELECTRON_ENABLE_LOGGING=file: a Windows GUI process prints nothing to the
+    # redirect; the main process logs to ${1%.log}-electron.log instead.
+    win_env
+    env "${WIN_ENV[@]}" ELECTRON_ENABLE_LOGGING=file ELECTRON_LOG_FILE="$(cygpath -w "${1%.log}-electron.log")" \
+      cmd /c "$(cygpath -w "$APPDIR/$LAUNCHER")" > "$1" 2>&1 &
+  else
+    HOME="$SMOKE_HOME" "$APPDIR/$LAUNCHER" > "$1" 2>&1 &
+  fi
+  LAUNCH_PID=$!
+}
+if [ "$OS" = windows ]; then
+  # Does the wrapper run at all on this host? --version exits at once; node
+  # mode proves the binary loads without a window. Both print exit codes.
+  win_env
+  echo "electron.exe --version: $(env "${WIN_ENV[@]}" "$APPDIR/electronite/electron.exe" --version 2>&1 | tr -d '\r' | head -2 | tr '\n' ' '; echo "(exit ${pipestatus[1]})")"
+  echo "electron.exe node mode: $(env "${WIN_ENV[@]}" ELECTRON_RUN_AS_NODE=1 "$APPDIR/electronite/electron.exe" -p 'process.versions.electron' 2>&1 | tr -d '\r' | head -2 | tr '\n' ' '; echo "(exit ${pipestatus[1]})")"
+fi
+launch_entry_point "$BUILD/smoke-entrypoint.log"
+SMOKE_PID=$LAUNCH_PID
 cleanup_smoke() {
   if [ "$OS" = macos ]; then pkill -f "$APPDIR/Electron.app" 2>/dev/null || true
+  elif [ "$OS" = windows ]; then
+    # Stop only the processes that run from the staged folder (the same path
+    # filter as the pkill -f branches): electron.exe and the server it spawned,
+    # matched by executable path, never by name alone (Codex review round 1).
+    local appwin; appwin="$(cygpath -w "$APPDIR")"
+    MSYS2_ARG_CONV_EXCL='*' powershell -NoProfile -Command \
+      "Get-Process electron,server -ErrorAction SilentlyContinue | Where-Object { \$_.Path -and \$_.Path.StartsWith('$appwin', [System.StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force" \
+      >/dev/null 2>&1 || true
   else                       pkill -f "$APPDIR/electronite/electron" 2>/dev/null || true; fi
   kill $SMOKE_PID 2>/dev/null || true
 }
 trap cleanup_smoke EXIT
 
+# Windows (#181): what the runner can tell when the boot goes wrong. Printed on
+# a failed wait, and the probe timing once before it: a closed loopback port
+# must answer "refused" in milliseconds, not time out.
+smoke_diagnostics() {
+  [ "$OS" = windows ] || return 0
+  echo "-- diagnostics (windows) --"
+  echo "probe of a closed port: $("$CURL" -s --max-time 2 -o /dev/null -w 'http %{http_code}, %{time_total}s' "http://127.0.0.1:19999/api/version" 2>&1; echo " exit $?")"
+  echo "processes:"; MSYS2_ARG_CONV_EXCL='*' tasklist 2>/dev/null | grep -i -E "electron|server\.exe|cmd\.exe" || echo "  (no electron/server/cmd)"
+  echo "listeners 191xx:"; MSYS2_ARG_CONV_EXCL='*' netstat -ano -p tcp 2>/dev/null | grep -E ":191[0-9][0-9] " || echo "  (none)"
+  echo "smoke home:"; find "$SMOKE_HOME" -maxdepth 3 2>/dev/null | head -20
+  for f in "$BUILD"/smoke-*.log; do echo "-- $f --"; cat -v "$f" | tail -40; done
+}
+[ "$OS" = windows ] && echo "probe of a closed port before the wait: $("$CURL" -s --max-time 2 -o /dev/null -w 'http %{http_code}, %{time_total}s' "http://127.0.0.1:19999/api/version" 2>&1; echo " exit $?")"
+
+# The ports worth probing. macOS and Linux refuse a closed port at once, so
+# every scan port is cheap. On this Windows runner a closed loopback port
+# times out (2.6 s, run 34176032154), so netstat names the listeners first.
+scan_ports() {
+  if [ "$OS" = windows ]; then
+    MSYS2_ARG_CONV_EXCL='*' netstat -ano -p tcp 2>/dev/null | grep LISTENING | grep -oE ':191(19|[23][0-9]) ' | tr -d ': ' | sort -u | tr '\n' ' '
+  else
+    echo {19119..19139}
+  fi
+}
+
 # Find the self-chosen port (electronStartup starts at 19119).
 SMOKE_PORT=""
 for i in {1..40}; do
-  for p in {19119..19139}; do
-    if curl -s --max-time 1 "http://127.0.0.1:$p/api/version" | grep -q '"product_short_name":"tc4"'; then
+  for p in $(scan_ports); do
+    if "$CURL" -s --max-time 1 "http://127.0.0.1:$p/api/version" | grep -q '"product_short_name":"tc4"'; then
       SMOKE_PORT=$p; break
     fi
   done
@@ -526,11 +676,11 @@ for i in {1..40}; do
   sleep 1
 done
 [ -n "$SMOKE_PORT" ] || { echo "SMOKE TEST FAILED: self-spawned server not found on 19119-19139" >&2
-  tail -20 "$BUILD/smoke-entrypoint.log" >&2; exit 1; }
+  tail -20 "$BUILD/smoke-entrypoint.log" >&2; smoke_diagnostics >&2; exit 1; }
 echo "self-spawned server found on port $SMOKE_PORT"
 
-ROOT=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' "http://127.0.0.1:$SMOKE_PORT/")
-CLIENT=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$SMOKE_PORT/clients/uw-tc4")
+ROOT=$("$CURL" -s -o /dev/null -w '%{http_code} %{redirect_url}' "http://127.0.0.1:$SMOKE_PORT/")
+CLIENT=$("$CURL" -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$SMOKE_PORT/clients/uw-tc4")
 echo "root: $ROOT; /clients/uw-tc4: $CLIENT"
 
 # #4 GUARD (D39): a second launch must NOT become a second running copy.
@@ -540,8 +690,8 @@ echo "root: $ROOT; /clients/uw-tc4: $CLIENT"
 # port, and the first server must still answer. Without the tc4-main.js
 # wrapper this fails: the template's port scan starts a second server over
 # the same project store.
-HOME="$SMOKE_HOME" "$APPDIR/$LAUNCHER" > "$BUILD/smoke-second-instance.log" 2>&1 &
-SECOND_PID=$!
+launch_entry_point "$BUILD/smoke-second-instance.log"
+SECOND_PID=$LAUNCH_PID
 SECOND_DEAD=""
 for i in {1..30}; do
   kill -0 $SECOND_PID 2>/dev/null || { SECOND_DEAD=1; break }
@@ -554,15 +704,15 @@ done
   exit 1
 }
 SECOND_SERVERS=0
-for p in {19119..19139}; do
+for p in $(scan_ports); do
   [ "$p" = "$SMOKE_PORT" ] && continue
-  curl -s --max-time 1 "http://127.0.0.1:$p/api/version" | grep -q '"product_short_name":"tc4"' && SECOND_SERVERS=$((SECOND_SERVERS+1))
+  "$CURL" -s --max-time 1 "http://127.0.0.1:$p/api/version" | grep -q '"product_short_name":"tc4"' && SECOND_SERVERS=$((SECOND_SERVERS+1))
 done
 [ "$SECOND_SERVERS" = "0" ] || {
   echo "#4 GUARD FAILED: a second tc4 server appeared on another port — the second launch spawned a server" >&2
   exit 1
 }
-curl -s --max-time 2 "http://127.0.0.1:$SMOKE_PORT/api/version" | grep -q '"product_short_name":"tc4"' || {
+"$CURL" -s --max-time 2 "http://127.0.0.1:$SMOKE_PORT/api/version" | grep -q '"product_short_name":"tc4"' || {
   echo "#4 GUARD FAILED: the FIRST server stopped answering after the second launch" >&2
   exit 1
 }
@@ -578,17 +728,28 @@ trap - EXIT
 # booted app must never be the shared pankosmia_repos store.
 US="$SMOKE_HOME/pankosmia/tc4/user_settings.json"
 [ -f "$US" ] || { echo "#70 GUARD FAILED: no user_settings.json at $US" >&2; exit 1; }
-RESOLVED_REPO_DIR=$(node -p "require('$US').repo_dir")
-echo "resolved repo_dir: $RESOLVED_REPO_DIR"
+RESOLVED_REPO_DIR=$(node -p "require('$(npath "$US")').repo_dir")
+print -r -- "resolved repo_dir: $RESOLVED_REPO_DIR"   # print -r: a Windows path holds \t and \a
 case "$RESOLVED_REPO_DIR" in
   *pankosmia_repos*)
     echo "#70 GUARD FAILED: resolved repo_dir is the shared pankosmia_repos store — release-blocking (owner ruling 2026-08-14)" >&2
     exit 1 ;;
 esac
 EXPECTED_REPO_DIR="$SMOKE_HOME/$STORE_LEAF"
-[ "$RESOLVED_REPO_DIR" = "$EXPECTED_REPO_DIR" ] || {
-  echo "#70 GUARD FAILED: repo_dir '$RESOLVED_REPO_DIR' is not the expected isolated store '$EXPECTED_REPO_DIR'" >&2
-  exit 1; }
+if [ "$OS" = windows ]; then
+  # The server writes the profile in Windows form (C:\Users\...\smoke-home,
+  # then the template's forward slashes). Compare and use the MSYS2 form; the
+  # file system is case-insensitive, so compare lower-case.
+  RESOLVED_REPO_DIR=$(cygpath -u "$RESOLVED_REPO_DIR")
+  [ "${RESOLVED_REPO_DIR:l}" = "${EXPECTED_REPO_DIR:l}" ] || {
+    echo "#70 GUARD FAILED: repo_dir '$RESOLVED_REPO_DIR' is not the expected isolated store '$EXPECTED_REPO_DIR'" >&2
+    exit 1; }
+  RESOLVED_REPO_DIR="$EXPECTED_REPO_DIR"
+else
+  [ "$RESOLVED_REPO_DIR" = "$EXPECTED_REPO_DIR" ] || {
+    echo "#70 GUARD FAILED: repo_dir '$RESOLVED_REPO_DIR' is not the expected isolated store '$EXPECTED_REPO_DIR'" >&2
+    exit 1; }
+fi
 if [ "$VARIANT" = "debug" ]; then
   [ -f "$RESOLVED_REPO_DIR/_local_/_local_/sample_burrito/metadata.json" ] || {
     echo "#70 GUARD FAILED: debug store missing the seeded sample burrito" >&2; exit 1; }
@@ -638,7 +799,8 @@ if [ "$OS" = macos ]; then
   ditto -c -k --keepParent "$APP_NAME" "$ZIP"
 else
   # -y stores symlinks as symlinks; zip keeps the executable bits the
-  # launcher and the Electronite binaries need.
+  # launcher and the Electronite binaries need. Windows (#181) uses the same
+  # zip (MSYS2 package); permission bits do not apply there.
   zip -qry "$ZIP" "$APP_NAME"
 fi
 echo "artifact: $ZIP"
