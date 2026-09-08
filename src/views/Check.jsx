@@ -685,6 +685,7 @@ function CheckRail({ cs, filter, setFilter, sortMode, setSortMode, onSelect, tit
                     data-ref={`${it.contextId.reference.chapter}:${it.contextId.reference.verse}`}
                     data-decided={decided(it) ? '1' : '0'}
                     data-invalid={it.invalidated === true ? '1' : '0'}
+                    data-save-error={cs.saveErrorKey === `${cs.tool}|${cs.book}|${it.contextId.checkId}` ? '1' : '0'}
                     style={{
                       border: `var(--stroke) solid ${activeRow ? 'var(--accent)' : 'var(--border)'}`,
                       textAlign: 'start', cursor: 'pointer', fontFamily: 'inherit',

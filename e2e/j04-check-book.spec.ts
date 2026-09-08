@@ -273,6 +273,10 @@ test.describe('J4 — a checker works a book', () => {
       await expect
         .poll(countDecided, { timeout: 10_000 })
         .toBe(beforeMark + 1);
+      // #100: the list moves at once; the write rides the check scheduler.
+      // The indicator says Saved when the decision is durable — a reload
+      // before that is the beforeunload case, not a restart.
+      await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
 
       // Full reload: the list is re-derived from the TSV, and the saved
       // decisions must come back with it. The promise is that nothing is lost —
@@ -388,10 +392,13 @@ test.describe('J4 — a checker works a book', () => {
       ).toBeVisible();
 
       // On disk it is a real invalid decision, not an invalidation carry-over.
-      const file = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT');
-      const inv = file!.decisions.find(
-        (x) => (x as { status?: string }).status === 'invalid',
-      ) as { status: string; invalidated?: boolean; selections?: unknown };
+      // #100: the write lands behind the click; poll the file like the meter.
+      const invalidOnDisk = () =>
+        readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')?.decisions.find(
+          (x) => (x as { status?: string }).status === 'invalid',
+        ) as { status: string; invalidated?: boolean; selections?: unknown } | undefined;
+      await expect.poll(() => invalidOnDisk()?.status, { timeout: 10_000 }).toBe('invalid');
+      const inv = invalidOnDisk()!;
       expect(inv.status).toBe('invalid');
       expect(inv.invalidated).not.toBe(true);
       expect(inv.selections).toBe(false);

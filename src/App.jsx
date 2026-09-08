@@ -35,13 +35,15 @@ function SaveIndicator() {
   };
   // A failed comprehension write is a save failure like any other (B1): the
   // note scheduler's state folds in here globally — not only on the
-  // Understand screen — with its own retry. The effective state is the WORST
-  // of the two schedulers (D65): error > saving > dirty > saved, so 'Saved'
-  // never shows while either machine holds work.
+  // Understand screen — with its own retry. #100: alignments and decisions
+  // fold in the same way. The effective state is the WORST of the four
+  // schedulers (D65): error > saving > dirty > saved, so 'Saved' never shows
+  // while any machine holds work.
   const rank = { error: 3, saving: 2, dirty: 1, saved: 0 };
   const noteState = s.noteSaveState ?? 'saved';
-  const verseState = s.saveState ?? 'saved';
-  const effective = (rank[noteState] ?? 0) >= (rank[verseState] ?? 0) ? noteState : verseState;
+  const effective = [s.saveState, s.noteSaveState, s.alignSaveState, s.checkSaveState]
+    .map((state) => state ?? 'saved')
+    .reduce((worst, state) => ((rank[state] ?? 0) > (rank[worst] ?? 0) ? state : worst), 'saved');
   // #183: a failed checkpoint commit is an error like a failed save, with its
   // own retry; it never blocked the navigation that triggered it. A save
   // failure outranks it: the save's retry is the one offered.

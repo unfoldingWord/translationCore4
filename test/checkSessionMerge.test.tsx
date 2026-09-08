@@ -99,7 +99,9 @@ describe('checkDecisionSaved — item-level completion', () => {
     expect(next.checkSession.items[0]).toBe(state.checkSession.items[0]);
     expect(next.checkSession.items[1].status).toBe('valid');
     expect(next.checkSession.progress).toEqual({ decided: 1, total: 2 });
-    expect(next.checkSession.saveError).toBeNull();
+    // #100: the merge is optimistic and no longer owns saveError — the
+    // checkSaveState mirror clears it on recovery (checkSaveScheduler.test.ts).
+    expect(next.checkSession.saveError).toBe(state.checkSession.saveError);
   });
 
   it('two in-flight decisions land independently — the later never erases the earlier', () => {
