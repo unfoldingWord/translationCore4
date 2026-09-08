@@ -303,8 +303,16 @@ and focuses the first window (#4).
 - The server resolves its profile through the `home` crate, which reads
   `USERPROFILE` first [VERIFIED — pankosmia-web `99fd9be`
   `src/utils/paths.rs:139`, read 2026-09-07]. The smoke test sets `USERPROFILE`
-  to a fresh directory for both launches. Electron's own `userData` (the
-  singleton lock of #4) stays in the runner's real `%APPDATA%`.
+  to a fresh directory for both launches, creates `AppData\Local` and
+  `AppData\Roaming` in it, and points `APPDATA` and `LOCALAPPDATA` at them:
+  Windows expands its shell folders from `%USERPROFILE%`, and Chromium stops
+  with `EXCEPTION_BREAKPOINT` before its logging starts when those folders do
+  not exist [VERIFIED — CI runs 34176032154 to 34178970511 on PR #226: every
+  launch with the override and no `AppData` died; the same launch under the
+  runner's real profile booted; 2026-09-08]. Electron's `userData`, and with it
+  the #4 singleton lock, then live under the smoke home. The MSYS2 shell also
+  exports `TMP=/tmp` and `TEMP=/tmp`; the launch gets a Windows-form temp
+  directory.
 - On a failure the job uploads `dist-desktop/smoke-*.log` as
   `tc4-desktop-windows-x64-smoke-logs`.
 

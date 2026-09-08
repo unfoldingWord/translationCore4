@@ -584,14 +584,19 @@ mkdir -p "$SMOKE_HOME"
 # reads USERPROFILE first (pankosmia-web utils/paths.rs), so the fresh profile
 # is passed as USERPROFILE in Windows form. The launcher is a batch file: cmd
 # runs it, with MSYS2's argument conversion off so the path stays as given.
-# Windows: the MSYS2 profile exports TMP=/tmp and TEMP=/tmp (POSIX form) to
-# every native process it starts. Chromium creates temp and crash-handler paths
-# at startup; CI run 34176032154 died there with EXCEPTION_BREAKPOINT before
-# the server was spawned. The launch gets a Windows-form temp directory.
+# Windows: the fresh profile is passed as USERPROFILE (the server's `home`
+# crate reads it first). Two things must come with it, measured in CI runs
+# 34176032154-34178970511 (#181): Windows expands its shell folders from
+# %USERPROFILE% (AppData\Local, AppData\Roaming), and Chromium dies with
+# EXCEPTION_BREAKPOINT before its logging starts when they do not exist, so
+# the smoke home gets them and APPDATA/LOCALAPPDATA name them (Electron's
+# userData, and with it the #4 singleton lock, then live under the smoke
+# home too); and the MSYS2 profile exports TMP=/tmp and TEMP=/tmp (POSIX
+# form) to every native child, so the launch gets a Windows-form temp dir.
 win_env() {  # the environment of a native Windows launch from this shell
-  mkdir -p "$SMOKE_HOME/tmp"
-  local wtmp; wtmp="$(cygpath -w "$SMOKE_HOME/tmp")"
-  print -r -- "USERPROFILE=$(cygpath -w "$SMOKE_HOME") HOME=$SMOKE_HOME TEMP=$wtmp TMP=$wtmp MSYS2_ARG_CONV_EXCL=* ELECTRON_ENABLE_STACK_DUMPING=1"
+  mkdir -p "$SMOKE_HOME/tmp" "$SMOKE_HOME/AppData/Local" "$SMOKE_HOME/AppData/Roaming"
+  local whome wtmp; whome="$(cygpath -w "$SMOKE_HOME")"; wtmp="$(cygpath -w "$SMOKE_HOME/tmp")"
+  print -r -- "USERPROFILE=$whome HOME=$SMOKE_HOME APPDATA=$whome\\AppData\\Roaming LOCALAPPDATA=$whome\\AppData\\Local TEMP=$wtmp TMP=$wtmp MSYS2_ARG_CONV_EXCL=* ELECTRON_ENABLE_STACK_DUMPING=1"
 }
 launch_entry_point() {  # $1 = log file; sets LAUNCH_PID
   if [ "$OS" = windows ]; then
@@ -610,63 +615,6 @@ if [ "$OS" = windows ]; then
   # mode proves the binary loads without a window. Both print exit codes.
   echo "electron.exe --version: $(env $(win_env) "$APPDIR/electronite/electron.exe" --version 2>&1 | tr -d '\r' | head -2 | tr '\n' ' '; echo "(exit ${pipestatus[1]})")"
   echo "electron.exe node mode: $(env $(win_env) ELECTRON_RUN_AS_NODE=1 "$APPDIR/electronite/electron.exe" -p 'process.versions.electron' 2>&1 | tr -d '\r' | head -2 | tr '\n' ' '; echo "(exit ${pipestatus[1]})")"
-  # Launch matrix (run 34177669869: the app crashed with EXCEPTION_BREAKPOINT
-  # before Chromium's logging came up). Each variant runs 8 s from the app
-  # folder with --enable-logging=stderr, so the CHECK message reaches its log;
-  # "alive" means the variant boots. The matrix isolates the cause: our app,
-  # the sandbox, the GPU, the default app, the overridden profile.
-  win_try() {  # $1 = label, $2 = env override ("-" = win_env), $3.. = args after electron.exe
-    local label=$1 envspec=$2; shift 2
-    local log="$BUILD/smoke-try-$label.log"
-    local e; if [ "$envspec" = "-" ]; then e=$(win_env); else e=$envspec; fi
-    ( cd "$APPDIR" && env ${=e} "$APPDIR/electronite/electron.exe" --enable-logging=stderr "$@" > "$log" 2>&1 ) &
-    local pid=$! i
-    for i in {1..8}; do sleep 1; kill -0 $pid 2>/dev/null || break; done
-    if kill -0 $pid 2>/dev/null; then
-      echo "try [$label]: alive after 8 s (boots)"
-      cleanup_smoke_windows
-      kill $pid 2>/dev/null || true
-    else
-      local rc=0; wait $pid || rc=$?   # a crash status must not trip set -e (run 34178399464 died here)
-      echo "try [$label]: exited $rc; log:"
-      cat -v "$log" | grep -v -E "^\s+(v8::|uv_|Cr_z|BaseThread|RtlUser)" | head -12
-    fi
-  }
-  cleanup_smoke_windows() {
-    local appwin; appwin="$(cygpath -w "$APPDIR")"
-    MSYS2_ARG_CONV_EXCL='*' powershell -NoProfile -Command \
-      "Get-Process electron,server -ErrorAction SilentlyContinue | Where-Object { \$_.Path -and \$_.Path.StartsWith('$appwin', [System.StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force" \
-      >/dev/null 2>&1 || true
-  }
-  # A native parent: PowerShell's Start-Process, the same environment. Every
-  # crashing launch so far had an MSYS2 process as its parent (zsh -> cmd, or
-  # zsh -> electron.exe); a user launches from Explorer, which is native.
-  win_try_ps() {  # $1 = label, $2.. = args after electron.exe
-    local label=$1; shift
-    local exe appwin log err args
-    exe="$(cygpath -w "$APPDIR/electronite/electron.exe")"; appwin="$(cygpath -w "$APPDIR")"
-    log="$(cygpath -w "$BUILD/smoke-try-$label.log")"; err="$(cygpath -w "$BUILD/smoke-try-$label-err.log")"
-    args=""; for a in "$@"; do args="$args,'$a'"; done; args="${args#,}"
-    MSYS2_ARG_CONV_EXCL='*' powershell -NoProfile -Command "
-\$env:USERPROFILE='$(cygpath -w "$SMOKE_HOME")'; \$env:TEMP='$(cygpath -w "$SMOKE_HOME/tmp")'; \$env:TMP=\$env:TEMP; \$env:ELECTRON_ENABLE_STACK_DUMPING='1'
-\$p = Start-Process -FilePath '$exe' -ArgumentList @('--enable-logging=stderr'${args:+,$args}) -WorkingDirectory '$appwin' -PassThru -RedirectStandardOutput '$log' -RedirectStandardError '$err'
-Start-Sleep -Seconds 8
-if (\$p.HasExited) { Write-Output ('try [$label]: exited ' + \$p.ExitCode) } else { Write-Output 'try [$label]: alive after 8 s (boots)'; Stop-Process -Id \$p.Id -Force }
-" 2>&1 | tr -d '\r'
-    cleanup_smoke_windows
-    for f in "$BUILD/smoke-try-$label.log" "$BUILD/smoke-try-$label-err.log"; do
-      [ -s "$f" ] && { echo "-- $(basename "$f") --"; cat -v "$f" | grep -v -E "^\s+(v8::|uv_|Cr_z|BaseThread|RtlUser)" | head -12; }
-    done
-  }
-  win_try_ps ps-start electron
-  win_try_ps ps-start-no-sandbox --no-sandbox electron
-  win_try app - electron
-  win_try app-no-sandbox - --no-sandbox electron
-  win_try app-disable-gpu - --disable-gpu electron
-  win_try default-app -
-  win_try app-real-profile "TEMP=$(cygpath -w "$SMOKE_HOME/tmp") TMP=$(cygpath -w "$SMOKE_HOME/tmp") MSYS2_ARG_CONV_EXCL=*" electron
-  cleanup_smoke_windows
-  rm -rf "$SMOKE_HOME/pankosmia"   # the matrix must not pre-create the store the guards inspect
 fi
 launch_entry_point "$BUILD/smoke-entrypoint.log"
 SMOKE_PID=$LAUNCH_PID
