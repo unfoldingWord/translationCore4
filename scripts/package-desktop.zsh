@@ -591,7 +591,7 @@ mkdir -p "$SMOKE_HOME"
 win_env() {  # the environment of a native Windows launch from this shell
   mkdir -p "$SMOKE_HOME/tmp"
   local wtmp; wtmp="$(cygpath -w "$SMOKE_HOME/tmp")"
-  print -r -- "USERPROFILE=$(cygpath -w "$SMOKE_HOME") HOME=$SMOKE_HOME TEMP=$wtmp TMP=$wtmp MSYS2_ARG_CONV_EXCL=*"
+  print -r -- "USERPROFILE=$(cygpath -w "$SMOKE_HOME") HOME=$SMOKE_HOME TEMP=$wtmp TMP=$wtmp MSYS2_ARG_CONV_EXCL=* ELECTRON_ENABLE_STACK_DUMPING=1"
 }
 launch_entry_point() {  # $1 = log file; sets LAUNCH_PID
   if [ "$OS" = windows ]; then
@@ -627,7 +627,7 @@ if [ "$OS" = windows ]; then
       cleanup_smoke_windows
       kill $pid 2>/dev/null || true
     else
-      wait $pid; local rc=$?
+      local rc=0; wait $pid || rc=$?   # a crash status must not trip set -e (run 34178399464 died here)
       echo "try [$label]: exited $rc; log:"
       cat -v "$log" | grep -v -E "^\s+(v8::|uv_|Cr_z|BaseThread|RtlUser)" | head -12
     fi
@@ -638,6 +638,28 @@ if [ "$OS" = windows ]; then
       "Get-Process electron,server -ErrorAction SilentlyContinue | Where-Object { \$_.Path -and \$_.Path.StartsWith('$appwin', [System.StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force" \
       >/dev/null 2>&1 || true
   }
+  # A native parent: PowerShell's Start-Process, the same environment. Every
+  # crashing launch so far had an MSYS2 process as its parent (zsh -> cmd, or
+  # zsh -> electron.exe); a user launches from Explorer, which is native.
+  win_try_ps() {  # $1 = label, $2.. = args after electron.exe
+    local label=$1; shift
+    local exe appwin log err args
+    exe="$(cygpath -w "$APPDIR/electronite/electron.exe")"; appwin="$(cygpath -w "$APPDIR")"
+    log="$(cygpath -w "$BUILD/smoke-try-$label.log")"; err="$(cygpath -w "$BUILD/smoke-try-$label-err.log")"
+    args=""; for a in "$@"; do args="$args,'$a'"; done; args="${args#,}"
+    MSYS2_ARG_CONV_EXCL='*' powershell -NoProfile -Command "
+\$env:USERPROFILE='$(cygpath -w "$SMOKE_HOME")'; \$env:TEMP='$(cygpath -w "$SMOKE_HOME/tmp")'; \$env:TMP=\$env:TEMP; \$env:ELECTRON_ENABLE_STACK_DUMPING='1'
+\$p = Start-Process -FilePath '$exe' -ArgumentList @('--enable-logging=stderr'${args:+,$args}) -WorkingDirectory '$appwin' -PassThru -RedirectStandardOutput '$log' -RedirectStandardError '$err'
+Start-Sleep -Seconds 8
+if (\$p.HasExited) { Write-Output ('try [$label]: exited ' + \$p.ExitCode) } else { Write-Output 'try [$label]: alive after 8 s (boots)'; Stop-Process -Id \$p.Id -Force }
+" 2>&1 | tr -d '\r'
+    cleanup_smoke_windows
+    for f in "$BUILD/smoke-try-$label.log" "$BUILD/smoke-try-$label-err.log"; do
+      [ -s "$f" ] && { echo "-- $(basename "$f") --"; cat -v "$f" | grep -v -E "^\s+(v8::|uv_|Cr_z|BaseThread|RtlUser)" | head -12; }
+    done
+  }
+  win_try_ps ps-start electron
+  win_try_ps ps-start-no-sandbox --no-sandbox electron
   win_try app - electron
   win_try app-no-sandbox - --no-sandbox electron
   win_try app-disable-gpu - --disable-gpu electron
