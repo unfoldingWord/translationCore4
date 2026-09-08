@@ -1960,10 +1960,16 @@ function spliceAlignRecord(json, chapter, verse, recordJson) {
  * stale buffer would write the old file over that edit with a fresh md5 and
  * pass the compare-and-swap. `loadBook` cannot throw at rest. */
 async function alignFileFor(store, sched, book) {
+  const restBefore = sched?.getState() === 'saved';
+  const textBefore = sched?.bookText(book);
   const { value: disk, md5 } = await store.readAlignmentsWithMd5(book);
   if (!sched) return { file: disk, md5 };
   const fresh = alignFileJson(disk, book);
-  if (sched.getState() === 'saved') sched.loadBook(book, fresh);
+  // Codex round 2: reload only when nothing moved during the read — at rest
+  // before and after, and the buffer text unchanged. An edit staged or a
+  // save landed meanwhile is newer than the bytes this read returned.
+  const stillAtRest = restBefore && sched.getState() === 'saved' && sched.bookText(book) === textBefore;
+  if (stillAtRest) sched.loadBook(book, fresh);
   else sched.seedIfAbsent(book, fresh);
   return { file: JSON.parse(sched.bookText(book)), md5 };
 }

@@ -24,6 +24,7 @@ const makeStore = () => {
   let md5: string | null = null;
   const writes: Write[] = [];
   let failNext: Error | null = null;
+  let holdRead: Promise<void> | null = null;
   return {
     writes,
     get file() {
@@ -40,7 +41,21 @@ const makeStore = () => {
       file = data;
       md5 = `md5-outside-${writes.length}`;
     },
-    readAlignmentsWithMd5: async () => ({ value: file, md5 }),
+    /** Hold the next read until the returned release is called (a slow sidecar read). */
+    holdNextRead() {
+      let release!: () => void;
+      holdRead = new Promise<void>((resolve) => (release = resolve));
+      return release;
+    },
+    readAlignmentsWithMd5: async () => {
+      const snapshot = { value: file, md5 };
+      if (holdRead) {
+        const gate = holdRead;
+        holdRead = null;
+        await gate;
+      }
+      return snapshot;
+    },
     writeAlignments: async (book: string, data: Write['data'], expectMd5?: string | null) => {
       if (failNext) {
         const e = failNext;
@@ -162,6 +177,26 @@ describe('#100 (Codex round 1) — a clean buffer follows the disk; a working bu
     expect(store.writes).toHaveLength(1);
     expect(store.file!.chapters['2']['1']).toEqual(record(7)); // kept, not overwritten by a stale snapshot
     expect(store.file!.chapters['1']['1']).toEqual(record(1));
+  });
+
+  it('a read that started before a save and completed after it does not reload the older bytes over the buffer (Codex round 2)', async () => {
+    const store = makeStore();
+    const sched = new SaveScheduler({ writeBook: makeAlignWriter({ store }), splice: spliceAlignRecord });
+    await alignFileFor(store, sched, BOOK);
+    const release = store.holdNextRead();
+    const slowRead = alignFileFor(store, sched, BOOK); // captured the empty file
+    sched.markDirty(BOOK, '1', '1', JSON.stringify(record(1)));
+    await settle(); // the save landed while the read was still out
+    expect(store.writes).toHaveLength(1);
+    expect(sched.getState()).toBe('saved');
+    release();
+    const { file } = await slowRead;
+    expect(file.chapters['1']['1']).toEqual(record(1)); // the buffer, not the old bytes
+    expect(JSON.parse(sched.bookText(BOOK)!).chapters['1']['1']).toEqual(record(1));
+    sched.markDirty(BOOK, '1', '2', JSON.stringify(record(2)));
+    await settle();
+    expect(store.file!.chapters['1']['1']).toEqual(record(1)); // the earlier save survives the next write
+    expect(store.file!.chapters['1']['2']).toEqual(record(2));
   });
 
   it('while the buffer holds work — dirty, or retained after a failure — the read keeps it', async () => {
