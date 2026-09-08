@@ -385,9 +385,10 @@ export const downloadPin = async (
   }
   const bytes = new Uint8Array(await response.arrayBuffer());
   const unwrapped = unwrapExport(bytes);
-  // A commit archive declares its revision in the zip comment, not in the
-  // metadata (the uW burritos carry no DCS identity there).
-  const revision = tag ? unwrapped.revision : (zipArchiveComment(bytes) ?? unwrapped.revision);
+  // A commit archive's revision is the zip comment Gitea wrote, ONLY. The
+  // metadata is the archive's own claim (the uW burritos carry no DCS identity
+  // there anyway), so it never stands in for the comment (D23b, Codex round 1).
+  const revision = tag ? unwrapped.revision : zipArchiveComment(bytes);
   return {
     ...unwrapped,
     revision,

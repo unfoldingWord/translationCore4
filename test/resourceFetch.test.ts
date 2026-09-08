@@ -389,10 +389,14 @@ describe('sha-only pin with no tag — the Gitea commit archive (D71, #218)', ()
     out.set(text, zip.length);
     return out;
   };
-  /** A uW burrito: metadata carries NO dcs revision; the archive is wrapped in `<repo>/`. */
-  const archiveZip = (comment: string | null) => {
+  /** A uW burrito: metadata carries NO dcs revision (unless `declared` is given —
+   * the archive's OWN claim); the archive is wrapped in `<repo>/`. */
+  const archiveZip = (comment: string | null, declared: string | null = null) => {
+    const identification = declared
+      ? { primary: { dcs: { 'uW/en_ugl': { revision: declared } } } }
+      : { primary: { uWBurritos: { TA: { revision: '1' } } } };
     const zip = zipSync({
-      'en_ugl/metadata.json': strToU8(JSON.stringify({ format: 'scripture burrito', identification: { primary: { uWBurritos: { TA: { revision: '1' } } } } })),
+      'en_ugl/metadata.json': strToU8(JSON.stringify({ format: 'scripture burrito', identification })),
       'en_ugl/ingredients/content/1.json': strToU8('{"brief":"alpha"}'),
     });
     return comment ? withArchiveComment(zip, comment) : zip;
@@ -428,8 +432,10 @@ describe('sha-only pin with no tag — the Gitea commit archive (D71, #218)', ()
     expect(installed).toEqual(['_local_/_sideloaded_/uw--en_ugl']);
   });
 
-  it('REFUSES an archive whose comment names another commit, or none', async () => {
-    for (const bad of [archiveZip('0'.repeat(40)), archiveZip(null)]) {
+  it('REFUSES an archive whose comment names another commit, or none — even when its OWN metadata claims the pinned sha', async () => {
+    // The third case is the self-certifying archive (D23b): no Gitea comment,
+    // but a metadata.json that declares exactly the pinned sha. Never enough.
+    for (const bad of [archiveZip('0'.repeat(40)), archiveZip(null), archiveZip(null, SHA)]) {
       const installed: string[] = [];
       await expect(fetchAndInstallPin(LEXICON, { api: apiWith(installed) as never, fetchFn: dcsWithArchive(bad, []) }))
         .rejects.toThrow(/SHA mismatch|cannot be verified/);
