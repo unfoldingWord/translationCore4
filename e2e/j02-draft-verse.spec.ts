@@ -17,6 +17,7 @@ import {
   commitCount,
   byteStrictViolation,
   verseTextSpan,
+  sideloadedIngredient,
 } from './helpers/rig';
 
 const BOOK_IPATH = 'ingredients/TIT.usfm';
@@ -615,6 +616,39 @@ test.describe('J2 — a translator drafts a verse', () => {
         await expect
           .poll(() => readIngredient(SEEDED_PROJECT, BOOK_IPATH).toString('utf8'), { timeout: 10_000 })
           .toBe(before);
+      });
+    },
+  );
+
+  test(
+    'read original-language pane (Titus 1): click source-tab-orig, verify Greek text, dir, and zero writes (#207)',
+    { tag: ['@inc5', '@J2'] },
+    async ({ page }) => {
+      const bytesBefore = readIngredient(SEEDED_PROJECT, BOOK_IPATH);
+      const commitsBefore = commitCount(SEEDED_PROJECT);
+
+      await page.goto('/');
+      await page.getByTestId('project-_local_/_local_/sample_burrito').getByRole('button', { name: /Titus/ }).click();
+      await page.getByRole('button', { name: '1', exact: true }).click();
+
+      await test.step('click source-tab-orig and verify Greek text and dir="ltr"', async () => {
+        await page.getByTestId('source-tab-orig').click();
+        const text = sideloadedIngredient('el-x-koine_ugnt', 'TIT.usfm');
+        const span = verseTextSpan(text.replace(/\\v (\d+)\n/g, '\\v $1 '), 1, 1);
+        const rawSpan = text.slice(span.start, span.end);
+        const greek = rawSpan.replace(/\\w\s+([^|]+)\|[^\\]*\\w\*/g, '$1').replace(/\s+/g, ' ').trim();
+
+        const para = page.locator('p[dir="ltr"]', { hasText: greek });
+        await expect(para).toBeVisible();
+        await expect(para).toHaveAttribute('dir', 'ltr');
+        await expect(para).toHaveAttribute('lang', 'el');
+        await expect(para).toContainText(greek);
+      });
+
+      await test.step('switching the tab writes nothing to disk and creates no commit (FR-34 / W-4)', async () => {
+        const bytesAfter = readIngredient(SEEDED_PROJECT, BOOK_IPATH);
+        expect(bytesAfter.equals(bytesBefore)).toBe(true);
+        expect(commitCount(SEEDED_PROJECT)).toBe(commitsBefore);
       });
     },
   );

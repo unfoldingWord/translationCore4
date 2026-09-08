@@ -474,6 +474,36 @@ describe('round 20 — unsatisfiedProjectPinFor: a download must satisfy the PRO
     const shaLess = { ...pin('unfoldingWord/en_tq', 'v88'), sha: undefined } as never;
     expect(unsatisfiedProjectPinFor(setWith(shaLess), target, {})).toBeNull();
   });
+
+  it('originalLanguage.nt pin whose sha is not local → returned', () => {
+    const ugntTarget = '_local_/_sideloaded_/unfoldingword--el-x-koine_ugnt';
+    const ugntPin = pin('unfoldingWord/el-x-koine_ugnt', 'v0.34');
+    const resources = {
+      resources: { originalLanguage: { nt: ugntPin } },
+    };
+    expect(unsatisfiedProjectPinFor(resources, ugntTarget, {})).toEqual(ugntPin);
+  });
+
+  it('originalLanguage.nt pin whose sha is local → null', () => {
+    const ugntTarget = '_local_/_sideloaded_/unfoldingword--el-x-koine_ugnt';
+    const ugntPin = pin('unfoldingWord/el-x-koine_ugnt', 'v0.34');
+    const resources = {
+      resources: { originalLanguage: { nt: ugntPin } },
+    };
+    const installed: InstalledMap = { [ugntTarget]: ugntPin };
+    expect(unsatisfiedProjectPinFor(resources, ugntTarget, installed)).toBeNull();
+  });
+
+  it('languageSets still checked first', () => {
+    const ugntTarget = '_local_/_sideloaded_/unfoldingword--el-x-koine_ugnt';
+    const lsPin = { ...pin('unfoldingWord/el-x-koine_ugnt', 'v1'), sha: '1'.repeat(40) };
+    const origPin = { ...pin('unfoldingWord/el-x-koine_ugnt', 'v2'), sha: '2'.repeat(40) };
+    const resources = {
+      ...setWith(lsPin),
+      resources: { originalLanguage: { nt: origPin } },
+    };
+    expect(unsatisfiedProjectPinFor(resources, ugntTarget, {})).toEqual(lsPin);
+  });
 });
 
 describe('catch-to-absence sweep (D30) — the install-record reads', () => {

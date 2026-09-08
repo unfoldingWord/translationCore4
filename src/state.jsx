@@ -196,7 +196,7 @@ function verseTextIndex(bookRaw) {
 
 /** OT/NT split for choosing the original-language resource. BOOK_NAMES is in
  * canonical order, so the first 39 entries are the Old Testament. */
-function isOldTestament(bookCode) {
+export function isOldTestament(bookCode) {
   return Object.keys(BOOK_NAMES).indexOf(bookCode.toUpperCase()) < 39;
 }
 
@@ -397,6 +397,15 @@ function checkDecisionSaved(state, a) {
 /** Check-session merge actions, table-dispatched ahead of the main switch. */
 const CHECK_SESSION_CASES = { patchCheckSession, checkDecisionSaved, pickerToolEntry };
 
+function setSourceEntry(state, a) {
+  if (a.value === undefined || a.value === null) {
+    const next = { ...state.sources };
+    delete next[a.id];
+    return { ...state, sources: next };
+  }
+  return { ...state, sources: { ...state.sources, [a.id]: a.value } };
+}
+
 function reducer(state, a) {
   const checkCase = CHECK_SESSION_CASES[a.type];
   if (checkCase) return checkCase(state, a);
@@ -414,7 +423,7 @@ function reducer(state, a) {
     case 'setSource':
       // Atomic per-key merge: two source fetches can resolve in one batch, and
       // a read-modify-write through a stale snapshot would clobber the sibling.
-      return { ...state, sources: { ...state.sources, [a.id]: a.value } };
+      return setSourceEntry(state, a);
     case 'noteSaved': {
       // Atomic merge of ONE persisted comprehension note (S1, adversarial
       // round 19): two per-target saves can complete in the same batch, and
@@ -582,7 +591,7 @@ async function readCheckOrigChapters(store, pin, book) {
   try {
     const { usfm: usfmText } = await store.readSourceBook(resolveReadPath(pin), book);
     if (!usfmText) return { state: 'missing', testament };
-    return { state: 'ready', testament, chapters: parseChapters(usfmText) };
+    return { state: 'ready', testament, raw: usfmText, chapters: parseChapters(usfmText) };
   } catch (e) {
     if (isNotFoundError(e)) return { state: 'missing', testament };
     return { state: 'error', testament, error: String(e?.message || e) };
@@ -1382,33 +1391,45 @@ function dispatchResolutionDown({ resolutionError, seq, understandSeqRef, dispat
 /** Test hook (round 33): the load/save interleavings are unit-tested. */
 export const __performLoadUnderstandForTests = performLoadUnderstand;
 
-/** Round 37 (§5.3, normative): "Readers use `extraScripture` to fill the
- * source panes. Absence is legal." The panes therefore come from the OPEN
- * PROJECT's pins — resolving by identity (sha, via resolveReadPath/B10) —
- * never from the machine's INSTALLED_SUITE: a conforming imported project
- * with different source shas must see ITS text, and one that omits the
- * array gets a stated no-panes state, not the defaults. While the pins are
- * still LOADING the panes stay unknown (sourcePanes: null) and the reload
- * fires when they land. A failed read is 'missing' only when CONFIRMED
- * absent; anything else is a stated, retryable pane error (D30). */
-function loadSourcePanes({ store, code, seq, openSeqRef, stateRef, dispatch, pins }) {
-  const st = stateRef.current;
-  // `pins` carries the JUST-READ document (loadProjectPins hands it over
-  // directly — the state dispatch has not rendered yet, so stateRef still
-  // holds the old value at that moment). Absent that, state decides.
-  const havePins = pins !== undefined || st.projectPins || st.projectPinsLoaded;
-  if (!havePins) return; // pins loading — reloadSourcePanes runs on arrival
-  const effective = pins !== undefined ? pins : st.projectPins;
-  const entries = effective?.extraScripture ?? [];
-  const ids = entries.map((e) => e.id);
-  dispatch({
-    type: 'set',
-    patch: {
-      sourcePanes: ids,
-      // Keep the tab valid: an imported project may name panes differently.
-      ...(ids.length > 0 && !ids.includes(st.sourceTab) ? { sourceTab: ids[0] } : {}),
-    },
-  });
+function loadOrigPane({ store, origPin, code, seq, openSeqRef, stateRef, dispatch, testament }) {
+  if (stateRef?.current?.sources?.orig) {
+    dispatch({ type: 'setSource', id: 'orig', value: undefined });
+  }
+  if (!origPin) return;
+  readCheckOrigChapters(store, origPin, code)
+    .then((res) => {
+      if (seq !== openSeqRef.current) return;
+      if (res.state === 'ready') {
+        dispatch({
+          type: 'setSource',
+          id: 'orig',
+          value: { raw: res.raw, chapters: res.chapters, version: origPin.version ?? null, testament },
+        });
+      } else if (res.state === 'missing') {
+        dispatch({
+          type: 'setSource',
+          id: 'orig',
+          value: sourceAbsence(origPin),
+        });
+      } else if (res.state === 'error') {
+        dispatch({
+          type: 'setSource',
+          id: 'orig',
+          value: { error: res.error },
+        });
+      }
+    })
+    .catch((error) => {
+      if (seq !== openSeqRef.current) return;
+      dispatch({
+        type: 'setSource',
+        id: 'orig',
+        value: { error: String(error?.message || error) },
+      });
+    });
+}
+
+function loadExtraScripturePanes({ store, entries, code, seq, openSeqRef, dispatch }) {
   for (const pin of entries) {
     store
       .readSourceBook(localSourceRepo(pin), code)
@@ -1429,6 +1450,39 @@ function loadSourcePanes({ store, code, seq, openSeqRef, stateRef, dispatch, pin
         });
       });
   }
+}
+
+/** Round 37 (§5.3, normative): "Readers use `extraScripture` to fill the
+ * source panes. Absence is legal." The panes therefore come from the OPEN
+ * PROJECT's pins — resolving by identity (sha, via resolveReadPath/B10) —
+ * never from the machine's INSTALLED_SUITE: a conforming imported project
+ * with different source shas must see ITS text, and one that omits the
+ * array gets a stated no-panes state, not the defaults. While the pins are
+ * still LOADING the panes stay unknown (sourcePanes: null) and the reload
+ * fires when they land. A failed read is 'missing' only when CONFIRMED
+ * absent; anything else is a stated, retryable pane error (D30). */
+function loadSourcePanes({ store, code, seq, openSeqRef, stateRef, dispatch, pins }) {
+  const st = stateRef.current;
+  // `pins` carries the JUST-READ document (loadProjectPins hands it over
+  // directly — the state dispatch has not rendered yet, so stateRef still
+  // holds the old value at that moment). Absent that, state decides.
+  const havePins = pins !== undefined || st.projectPins || st.projectPinsLoaded;
+  if (!havePins) return; // pins loading — reloadSourcePanes runs on arrival
+  const effective = pins !== undefined ? pins : st.projectPins;
+  const entries = effective?.extraScripture ?? [];
+  const ids = entries.map((e) => e.id);
+  const testament = isOldTestament(code) ? 'ot' : 'nt';
+  const origPin = effective?.resources?.originalLanguage?.[testament];
+  dispatch({
+    type: 'set',
+    patch: {
+      sourcePanes: ids,
+      // Keep the tab valid: an imported project may name panes differently.
+      ...(ids.length > 0 && !ids.includes(st.sourceTab) && !(st.sourceTab === 'orig' && origPin) ? { sourceTab: ids[0] } : {}),
+    },
+  });
+  loadOrigPane({ store, origPin, code, seq, openSeqRef, stateRef, dispatch, testament });
+  loadExtraScripturePanes({ store, entries, code, seq, openSeqRef, dispatch });
 }
 
 /** Test hook (round 37): pane resolution is unit-tested — project pins win,

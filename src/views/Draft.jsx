@@ -5,7 +5,7 @@
 // level in SectionEditor (Type / Place verse numbers); the verse-by-verse
 // card (VerseEditor) stays for revising one verse alone.
 import React, { useRef, useEffect } from 'react';
-import { useApp } from '../state.jsx';
+import { useApp, isOldTestament } from '../state.jsx';
 import { bookName } from '../data/bookNames';
 import { t } from '../i18n';
 import { FilterChip, IconButton, Overline, Button } from '../ds/index.js';
@@ -104,16 +104,20 @@ const chapterSections = (s, verses) => {
 const targetParagraphs = (verses) => paragraphsOf(verses);
 const indentStyle = (level) => (level === 1 ? { paddingInlineStart: '1.5em' } : level === 2 ? { paddingInlineStart: '3em' } : {});
 
-function SourceCell({ s, keys, sourceModel, paneFocus, label }) {
+function SourceCell({ s, bookCode, keys, sourceModel, paneFocus, label }) {
   const chapterVerses = sourceModel && !isSourceAbsent(sourceModel) ? sourceModel[String(s.chapter)] ?? {} : {};
   const italic = { fontSize: 'var(--fs-ui-sm)', color: 'var(--uw-haze)', fontStyle: 'italic', margin: '6px 0 0' };
+  const isOrig = s.sourceTab === 'orig';
+  const testament = s.sources?.orig?.testament ?? (isOldTestament(bookCode) ? 'ot' : 'nt');
+  const ot = testament === 'ot';
   return (
     <div style={{ ...CELL, borderInlineEnd: hair }}>
       <Overline tone="muted" style={{ marginBottom: 6 }}>{label}</Overline>
       {isSourceAbsent(sourceModel) ? (
         <p style={italic}>{t(absenceMessageKey(sourceModel))}</p>
       ) : paragraphsOf(keys, chapterVerses).map((para) => (
-        <p key={para[0]} style={{ direction: 'ltr', textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-lg)', lineHeight: 'var(--lh-verse-lg)', color: 'var(--text-scripture)', margin: '0 0 10px' }}>
+        <p key={para[0]} dir={isOrig ? (ot ? 'rtl' : 'ltr') : undefined} lang={isOrig ? (ot ? 'hbo' : 'el') : undefined}
+          style={{ direction: isOrig ? (ot ? 'rtl' : 'ltr') : 'ltr', textAlign: 'start', fontFamily: isOrig ? (ot ? 'var(--font-hebrew)' : 'var(--font-greek)') : 'var(--font-scripture)', fontSize: 'var(--fs-verse-lg)', lineHeight: 'var(--lh-verse-lg)', color: 'var(--text-scripture)', margin: '0 0 10px' }}>
           {para.map((k) => {
             const srcVerse = chapterVerses[String(k)];
             return (
@@ -203,6 +207,49 @@ function TargetCell({ s, verses, keys, byKey, span, dir, type, editType, actions
   );
 }
 
+const chipStyle = (active) => ({
+  display: 'inline-block',
+  padding: '3px 9px',
+  fontSize: 'var(--fs-label)',
+  letterSpacing: 'var(--track-11)',
+  borderWidth: 1,
+  ...(active
+    ? { background: 'var(--accent)', color: 'var(--text-inverse)', borderColor: 'var(--accent)' }
+    : { background: 'var(--surface-card)', color: 'var(--text-heading)', borderColor: 'var(--border-input)' }),
+});
+
+function SourceTabs({ s, actions, origTestament }) {
+  const isOrig = s.sourceTab === 'orig';
+  const showCaption = (s.sourcePanes ?? []).includes(s.sourceTab) || isOrig;
+  const captionName = isOrig
+    ? t(`source.orig.${origTestament}.name`)
+    : t(`source.${s.sourceTab}.name`, {}, String(s.sourceTab).toUpperCase());
+  const version = s.sources?.[s.sourceTab]?.version;
+
+  return (
+    <div style={{ position: 'sticky', top: 0, background: 'var(--surface-app)', zIndex: 2, padding: '13px 26px 8px', borderInlineEnd: hair }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
+        {(s.sourcePanes ?? []).map((id) => (
+          <FilterChip key={id} data-testid={`source-tab-${id}`} selected={s.sourceTab === id} onClick={() => actions.setSourceTab(id)} style={chipStyle(s.sourceTab === id)}>
+            {t(`source.${id}`, {}, id.toUpperCase())}
+          </FilterChip>
+        ))}
+        {s.sources?.orig && (
+          <FilterChip data-testid="source-tab-orig" selected={isOrig} onClick={() => actions.setSourceTab('orig')} style={chipStyle(isOrig)}>
+            {t(`source.orig.${origTestament}`)}
+          </FilterChip>
+        )}
+      </div>
+      {showCaption && (
+        <span data-testid="source-name" style={{ fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', color: 'var(--text-tertiary)', fontWeight: 'var(--fw-medium)' }}>
+          {captionName}
+          {version ? ` · ${t('draft.pinned', { version })}` : ''}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export default function Draft() {
   const { s, book, sourceModel, actions } = useApp();
   useLoadHelps();
@@ -225,6 +272,7 @@ export default function Draft() {
   const editType = { ...type, fontSize: type.fontSize === 'var(--fs-verse-lg)' ? 'var(--fs-verse-md)' : type.fontSize };
   const byKey = new Map(verses.map((v) => [v.n, v]));
   const sections = chapterSections(s, verses);
+  const origTestament = s.sources?.orig?.testament ?? (isOldTestament(book.code) ? 'ot' : 'nt');
 
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
@@ -240,29 +288,7 @@ export default function Draft() {
 
         <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', maxWidth: 1100, margin: '0 auto' }}>
-            <div style={{ position: 'sticky', top: 0, background: 'var(--surface-app)', zIndex: 2, padding: '13px 26px 8px', borderInlineEnd: hair }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
-                {/* ULT/UST source tabs (C1b.3 — the orig pane comes with the alignment increment).
-                    The design's pills: Inspire fill when active, heading text on white otherwise. */}
-                {(s.sourcePanes ?? []).map((id) => (
-                  <FilterChip key={id} data-testid={`source-tab-${id}`} selected={s.sourceTab === id} onClick={() => actions.setSourceTab(id)}
-                    style={{ display: 'inline-block', padding: '3px 9px', fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', borderWidth: 1,
-                      ...(s.sourceTab === id
-                        ? { background: 'var(--accent)', color: 'var(--text-inverse)', borderColor: 'var(--accent)' }
-                        : { background: 'var(--surface-card)', color: 'var(--text-heading)', borderColor: 'var(--border-input)' }) }}>
-                    {t(`source.${id}`, {}, id.toUpperCase())}
-                  </FilterChip>
-                ))}
-              </div>
-              {(s.sourcePanes ?? []).includes(s.sourceTab) && (
-                // The design's pane caption: the full source name (falls back to the
-                // machine suite's literal).
-                <span data-testid="source-name" style={{ fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', color: 'var(--text-tertiary)', fontWeight: 'var(--fw-medium)' }}>
-                  {t(`source.${s.sourceTab}.name`, {}, String(s.sourceTab).toUpperCase())}
-                  {s.sources?.[s.sourceTab]?.version ? ` · ${t('draft.pinned', { version: s.sources[s.sourceTab].version })}` : ''}
-                </span>
-              )}
-            </div>
+            <SourceTabs s={s} actions={actions} origTestament={origTestament} />
             <div style={{ position: 'sticky', top: 0, background: 'var(--surface-app)', zIndex: 2, padding: '13px 26px 8px' }}>
               <Overline tone="accent">{s.project?.name} · {s.project?.languageTag}</Overline>
             </div>
@@ -272,7 +298,7 @@ export default function Draft() {
               const sectionVerses = keys.map((k) => byKey.get(k));
               return (
                 <React.Fragment key={keys[0]}>
-                  <SourceCell s={s} keys={keys} sourceModel={sourceModel} paneFocus={paneFocus} label={`${bookName(book.code)} ${s.chapter}:${span}`} />
+                  <SourceCell s={s} bookCode={book.code} keys={keys} sourceModel={sourceModel} paneFocus={paneFocus} label={`${bookName(book.code)} ${s.chapter}:${span}`} />
                   <TargetCell s={s} verses={sectionVerses} keys={keys} byKey={byKey} span={span} dir={dir} type={type} editType={editType} actions={actions} />
                 </React.Fragment>
               );

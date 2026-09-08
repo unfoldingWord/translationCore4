@@ -37,6 +37,7 @@ vi.mock('../src/state.jsx', () => ({
   AppProvider: ({ children }: { children: unknown }) => children,
   SCRIPT_FONTS: [],
   SUITE_VERSION: 'v89',
+  isOldTestament: () => false,
 }));
 
 import Draft from '../src/views/Draft.jsx';
