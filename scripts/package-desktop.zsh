@@ -593,17 +593,22 @@ mkdir -p "$SMOKE_HOME"
 # userData, and with it the #4 singleton lock, then live under the smoke
 # home too); and the MSYS2 profile exports TMP=/tmp and TEMP=/tmp (POSIX
 # form) to every native child, so the launch gets a Windows-form temp dir.
-win_env() {  # the environment of a native Windows launch from this shell
+win_env() {  # fills WIN_ENV, one VAR=value per element (a path may hold spaces; Codex round 3)
   mkdir -p "$SMOKE_HOME/tmp" "$SMOKE_HOME/AppData/Local" "$SMOKE_HOME/AppData/Roaming"
   local whome wtmp; whome="$(cygpath -w "$SMOKE_HOME")"; wtmp="$(cygpath -w "$SMOKE_HOME/tmp")"
-  print -r -- "USERPROFILE=$whome HOME=$SMOKE_HOME APPDATA=$whome\\AppData\\Roaming LOCALAPPDATA=$whome\\AppData\\Local TEMP=$wtmp TMP=$wtmp MSYS2_ARG_CONV_EXCL=* ELECTRON_ENABLE_STACK_DUMPING=1"
+  WIN_ENV=(
+    "USERPROFILE=$whome" "HOME=$SMOKE_HOME"
+    "APPDATA=$whome\\AppData\\Roaming" "LOCALAPPDATA=$whome\\AppData\\Local"
+    "TEMP=$wtmp" "TMP=$wtmp"
+    "MSYS2_ARG_CONV_EXCL=*" "ELECTRON_ENABLE_STACK_DUMPING=1"
+  )
 }
 launch_entry_point() {  # $1 = log file; sets LAUNCH_PID
   if [ "$OS" = windows ]; then
     # ELECTRON_ENABLE_LOGGING=file: a Windows GUI process prints nothing to the
     # redirect; the main process logs to ${1%.log}-electron.log instead.
-    env $(win_env) ELECTRON_ENABLE_LOGGING=file ELECTRON_LOG_FILE="$(cygpath -w "${1%.log}-electron.log")" \
-      ELECTRON_ENABLE_STACK_DUMPING=1 \
+    win_env
+    env "${WIN_ENV[@]}" ELECTRON_ENABLE_LOGGING=file ELECTRON_LOG_FILE="$(cygpath -w "${1%.log}-electron.log")" \
       cmd /c "$(cygpath -w "$APPDIR/$LAUNCHER")" > "$1" 2>&1 &
   else
     HOME="$SMOKE_HOME" "$APPDIR/$LAUNCHER" > "$1" 2>&1 &
@@ -613,8 +618,9 @@ launch_entry_point() {  # $1 = log file; sets LAUNCH_PID
 if [ "$OS" = windows ]; then
   # Does the wrapper run at all on this host? --version exits at once; node
   # mode proves the binary loads without a window. Both print exit codes.
-  echo "electron.exe --version: $(env $(win_env) "$APPDIR/electronite/electron.exe" --version 2>&1 | tr -d '\r' | head -2 | tr '\n' ' '; echo "(exit ${pipestatus[1]})")"
-  echo "electron.exe node mode: $(env $(win_env) ELECTRON_RUN_AS_NODE=1 "$APPDIR/electronite/electron.exe" -p 'process.versions.electron' 2>&1 | tr -d '\r' | head -2 | tr '\n' ' '; echo "(exit ${pipestatus[1]})")"
+  win_env
+  echo "electron.exe --version: $(env "${WIN_ENV[@]}" "$APPDIR/electronite/electron.exe" --version 2>&1 | tr -d '\r' | head -2 | tr '\n' ' '; echo "(exit ${pipestatus[1]})")"
+  echo "electron.exe node mode: $(env "${WIN_ENV[@]}" ELECTRON_RUN_AS_NODE=1 "$APPDIR/electronite/electron.exe" -p 'process.versions.electron' 2>&1 | tr -d '\r' | head -2 | tr '\n' ' '; echo "(exit ${pipestatus[1]})")"
 fi
 launch_entry_point "$BUILD/smoke-entrypoint.log"
 SMOKE_PID=$LAUNCH_PID
