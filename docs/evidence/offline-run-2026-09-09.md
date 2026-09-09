@@ -7,14 +7,15 @@ machine, one offline run passed on one of them?
 **Artifacts:** package-desktop run 34293254911, the push-event run on `main` at
 `1c8b376` (the merge of PR #233, the version bump). Jobs `linux-x64`, `macos-arm64`,
 `windows-x64`, `smoke-linux-x64`, `smoke-macos-arm64`: all success. Sizes from the run's
-artifact listing (`gh api .../actions/runs/34293254911/artifacts`), 2026-09-09. The Linux
-hash was measured on the downloaded file by the tester (`sha256sum`).
+artifact listing (`gh api .../actions/runs/34293254911/artifacts`), 2026-09-09. Hashes
+measured on the API downloads (`gh api .../actions/artifacts/<id>/zip`, `shasum -a 256`),
+2026-09-09; the Linux hash equals the one the tester measured on their own download.
 
 | Artifact | Id | Bytes | SHA-256 |
 |---|---|---|---|
 | `tC4-4.0.0-alpha.5-linux-x64-unsigned.zip` | 10082201368 | 185618183 | `eeee0701d14309579cc94198d0f54aded5324e5b2f196307888252376eb3433d` |
-| `tC4-4.0.0-alpha.5-macos-arm64-unsigned.zip` | 10082301082 | 178591591 | not recorded |
-| `tC4-4.0.0-alpha.5-windows-x64-unsigned.zip` | 10082254332 | 193731891 | not recorded |
+| `tC4-4.0.0-alpha.5-macos-arm64-unsigned.zip` | 10082301082 | 178591591 | `94347cf5cb1daa83c6e0a0f4129346f244ffa1a77a82c224968aee4a83ba5e2f` |
+| `tC4-4.0.0-alpha.5-windows-x64-unsigned.zip` | 10082254332 | 193731891 | `9f14b58a0a3b4c7799ee0258f76bb563ef556cf880f80acc611e32a1cd3b213b` |
 
 ## Post-install smoke test (#45)
 
