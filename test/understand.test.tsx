@@ -124,7 +124,6 @@ describe('#106 — the Understand write boundary', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Verse' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Questions' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Notes' }));
-    fireEvent.click(screen.getByRole('tab', { name: 'Academy' }));
     fireEvent.click(within(screen.getByTestId('helps-panel')).getByRole('tab', { name: 'UST' }));
     expect(writes()).toEqual([]);
   });

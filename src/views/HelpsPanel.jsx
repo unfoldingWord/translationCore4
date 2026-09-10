@@ -288,28 +288,6 @@ function SimplifiedTab({ slot, sourceRefs, chapter }) {
   </>);
 }
 
-/** The article rows show the tA slug as their title: titles and categories are
- * read only when an article is opened (owner ruling 2026-09-02 — the row style
- * is the design's; the words come later). */
-function AcademyTab({ notesSlot, slugs, actions }) {
-  if (notesSlot?.state !== 'ready') return <SlotState slot={notesSlot} />;
-  if (slugs.length === 0) return emptyChapter;
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <p style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--text-tertiary)', margin: '0 0 4px', lineHeight: 1.5 }}>
-        {t('understand.academyIntro')}
-      </p>
-      {slugs.map((slug) => (
-        <button key={slug} type="button" data-i="choice" data-tone="accent" data-testid="academy-article" onClick={() => actions.loadHelpArticle({ kind: 'ta', slug, rung: notesSlot.rung })}
-          style={{ border: 'var(--stroke) solid var(--border)', background: 'var(--surface-card)', cursor: 'pointer', textAlign: 'start', borderRadius: 'var(--radius-lg)', padding: '13px 14px', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, fontFamily: 'var(--font-ui)' }}>
-          <span style={{ fontSize: 'var(--fs-ui-md)', fontWeight: 'var(--fw-heavy)', color: 'var(--text-heading)' }}>{slug}</span>
-          <span style={{ color: 'var(--text-accent)', fontWeight: 'var(--fw-heavy)' }}>→</span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function CommentsTab({ comprehension, chapter }) {
   if (!comprehension) return emptyChapter;
   const list = Object.entries(comprehension)
@@ -372,8 +350,7 @@ function HelpsTab({ tab, u, chapter, actions, cardFocus }) {
   if (tab === 'questions') return <QuestionsTab slot={u?.questions} questions={itemsInChapter(u?.questions, chapter)} />;
   if (tab === 'simplified') return <SimplifiedTab slot={u?.simplified} sourceRefs={u?.sourceRefs} chapter={chapter} />;
   if (tab === 'comments') return <CommentsTab comprehension={u?.comprehension} chapter={chapter} />;
-  const slugs = [...new Set(notes.map((n) => n.contextId.groupId))].filter(Boolean);
-  return <AcademyTab notesSlot={notesSlot} slugs={slugs} actions={actions} />;
+  return null;
 }
 
 /** Card titles show the GATEWAY rendering of the quote (owner ruling
@@ -458,7 +435,6 @@ export function HelpsPanel({ chapter }) {
         { value: 'words', label: t('helps.words') },
         { value: 'questions', label: t('helps.questions') },
         { value: 'simplified', label: simplifiedLabel(u) },
-        { value: 'academy', label: t('helps.academy') },
         { value: 'comments', label: t('helps.comments') },
       ]} />
       <div style={{ flex: 1, overflow: 'auto', padding: 16, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
