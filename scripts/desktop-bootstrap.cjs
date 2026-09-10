@@ -1,4 +1,4 @@
-// First-run assets for the Finder-launched Mac app. Called under the singleton
+// First-run assets for the Mac app and Windows shortcuts. Called under the singleton
 // lock, before the server initializes its own working directory (#243, #70).
 const fs = require('node:fs');
 const path = require('node:path');

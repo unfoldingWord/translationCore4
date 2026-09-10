@@ -32,6 +32,10 @@ on:
       - scripts/package-desktop.zsh
       - scripts/smoke-installed.zsh
       - scripts/*mac*
+      - scripts/*windows*
+      - scripts/desktop-bootstrap*
+      - scripts/smoke-*
+      - scripts/tc4.iss
       - branding/**
       - .github/workflows/package-desktop.yml
       - dev-env/server/**
@@ -182,8 +186,7 @@ jobs:
   # keeps the Windows node, cargo and git on the PATH). The server builds with
   # the MSVC toolchain and needs no OpenSSL there (git2 uses WinHTTP, ureq uses
   # rustls). The smoke test opens a real window on the runner's desktop session.
-  # There is no smoke-windows-x64 post-install job yet: the shipped
-  # smoke-installed.zsh is macOS/Linux (docs/PACKAGING.md, "Windows x64").
+  # #242 adds the production installer and a separate installed-app proof below.
   windows-x64:
     runs-on: windows-2025
     timeout-minutes: 90
@@ -254,6 +257,94 @@ jobs:
           archive: false
           if-no-files-found: error
           retention-days: 3
+
+      - name: Upload the Windows installer
+        uses: actions/upload-artifact@v7
+        with:
+          path: dist-desktop/tC4-*-windows-x64-unsigned.exe
+          archive: false
+          if-no-files-found: error
+          retention-days: ${{ github.event_name == 'pull_request' && 3 || 30 }}
+
+  smoke-windows-x64:
+    needs: windows-x64
+    runs-on: windows-2025
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      actions: read
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Download and install the unsigned artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force download, smoke-logs | Out-Null
+          $artifacts = gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Artifact listing failed' }
+          $matches = @($artifacts.artifacts | Where-Object { $_.name -match '^tC4-.*-windows-x64-unsigned\.exe$' })
+          if ($matches.Count -ne 1) { throw 'Expected exactly one Windows installer' }
+          # gh returns raw bytes for archive:false. PowerShell 7 preserves native
+          # stdout bytes with > (the runner ships PowerShell 7.4 or later).
+          gh api "repos/${{ github.repository }}/actions/artifacts/$($matches[0].id)/zip" > download/installer.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Installer download failed' }
+          Get-FileHash download/installer.exe -Algorithm SHA256
+          $installDir = Join-Path $env:LOCALAPPDATA 'Programs\tC4 Installed Smoke'
+          "TC4_INSTALL_DIR=$installDir" >> $env:GITHUB_ENV
+          $argsList = @('/VERYSILENT','/SUPPRESSMSGBOXES','/SP-','/NORESTART','/TASKS=desktopicon',"/DIR=`"$installDir`"", "/LOG=`"$PWD\smoke-logs\install.log`"")
+          $p = Start-Process "$PWD\download\installer.exe" -ArgumentList $argsList -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Installer exit $($p.ExitCode)" }
+          $shell = New-Object -ComObject WScript.Shell
+          $links = @(
+            (Join-Path ([Environment]::GetFolderPath('Programs')) 'translationCore4.lnk'),
+            (Join-Path ([Environment]::GetFolderPath('Desktop')) 'translationCore4.lnk')
+          )
+          foreach ($link in $links) {
+            if (!(Test-Path -LiteralPath $link)) { throw "Missing shortcut $link" }
+            $shortcut = $shell.CreateShortcut($link)
+            if ($shortcut.TargetPath -ine "$installDir\electronite\electron.exe" -or $shortcut.Arguments -cne "`"$installDir\electron`"" -or $shortcut.WorkingDirectory -ine $installDir) { throw "Wrong shortcut target: $link" }
+          }
+          Write-Host 'ok installed Start menu and desktop shortcuts'
+          Get-Content "$installDir\BUILD-MANIFEST.json"
+      - name: Installed app smoke with no development tools on PATH
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot;$env:SystemRoot\System32\Wbem"
+          $smokeHome = Join-Path $env:RUNNER_TEMP 'tC4 Pilot Profile'
+          & "$env:TC4_INSTALL_DIR\smoke-installed.ps1" -AppDir $env:TC4_INSTALL_DIR -SmokeHome $smokeHome -LogDir "$PWD\smoke-logs" -KeepProject *>&1 | Tee-Object smoke-logs/smoke-installed-windows.log
+          if (!$?) { throw 'Installed smoke failed' }
+      - name: Reinstall and uninstall preserve user data
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $smokeHome = Join-Path $env:RUNNER_TEMP 'tC4 Pilot Profile'
+          $store = Join-Path $smokeHome 'pankosmia\tc4-projects'
+          $book = @(Get-ChildItem "$store\_local_\_local_\smoke_*\ingredients\TIT.usfm")
+          if ($book.Count -ne 1) { throw 'Expected one persisted smoke project' }
+          $hash = (Get-FileHash -LiteralPath $book[0].FullName).Hash
+          $argsList = @('/VERYSILENT','/SUPPRESSMSGBOXES','/SP-','/NORESTART',"/DIR=`"$env:TC4_INSTALL_DIR`"", "/LOG=`"$PWD\smoke-logs\reinstall.log`"")
+          $p = Start-Process "$PWD\download\installer.exe" -ArgumentList $argsList -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Reinstall exit $($p.ExitCode)" }
+          & "$env:TC4_INSTALL_DIR\smoke-installed.ps1" -AppDir $env:TC4_INSTALL_DIR -SmokeHome $smokeHome -LogDir "$PWD\smoke-logs" *>&1 | Tee-Object smoke-logs/smoke-reinstalled-windows.log
+          if (!$?) { throw 'Reinstalled smoke failed' }
+          if ((Get-FileHash -LiteralPath $book[0].FullName).Hash -cne $hash) { throw 'Reinstall or bootstrap changed existing user data' }
+          $p = Start-Process "$env:TC4_INSTALL_DIR\unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Uninstaller exit $($p.ExitCode)" }
+          if (Test-Path "$env:TC4_INSTALL_DIR\electronite\electron.exe") { throw 'Uninstaller left the executable' }
+          foreach ($folder in @('Programs','Desktop')) {
+            if (Test-Path (Join-Path ([Environment]::GetFolderPath($folder)) 'translationCore4.lnk')) { throw "Uninstaller left $folder shortcut" }
+          }
+          if ((Get-FileHash -LiteralPath $book[0].FullName).Hash -cne $hash) { throw 'Uninstall changed user data' }
+          Write-Host 'ok reinstall/uninstall preserved user project; app and shortcuts removed'
+      - name: Upload the Windows install evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: smoke-installed-windows-x64
+          path: smoke-logs/
+          retention-days: 30
 
   # #243: install the production pkg; also prove both zip routes on fresh runners.
   # This checks payload/boot, not the interactive Gatekeeper acceptance witness.

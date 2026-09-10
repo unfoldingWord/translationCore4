@@ -164,7 +164,7 @@ esac
 
 echo "== 1/7 build the tC4 client"
 cd "$REPO"
-if [ "$OS" = macos ]; then node --test "$REPO/scripts/mac-bootstrap.test.cjs"; fi
+if [ "$OS" != linux ]; then node --test "$REPO/scripts/desktop-bootstrap.test.cjs"; fi
 npm ci --no-audit --no-fund
 npm run build
 
@@ -261,6 +261,7 @@ cat > "$PACK/electron/tc4-main.js" <<'MAIN_EOF'
 // same project store — the exact overlap D39 rules out. tC3 enforced the
 // same rule at the Electron layer.
 const { app, BrowserWindow } = require('electron');
+if (process.platform === 'win32') app.setAppUserModelId('org.unfoldingword.translationcore4');
 if (!app.requestSingleInstanceLock()) {
   app.quit(); // second copy: no window, no server, exit
 } else {
@@ -271,7 +272,7 @@ if (!app.requestSingleInstanceLock()) {
       win.focus();
     }
   });
-  if (process.platform === 'darwin') {
+  if (process.platform === 'darwin' || process.platform === 'win32') {
     try {
       require('./tc4-bootstrap.cjs').bootstrap({
         ...require('./tc4-bootstrap.json'),
@@ -393,45 +394,16 @@ cp "$PACK/Rocket.toml" "$APPDIR/Rocket.toml"
 # finds its own directory, and how it invokes Electronite. The debug seeding
 # step below is identical on macOS and Linux. Windows is a batch file with the
 # same steps (#181), written by write_windows_launcher below.
-write_windows_launcher() {  # $1 = store leaf, $2 = variant
-  local leaf_win=${1//\//\\}
-  # print -r, not echo: zsh's echo turns the "\t" of "\tc4-projects" into a tab.
+write_windows_launcher() {
+  # Bootstrap belongs to tc4-main.js so installed shortcuts and portable launches
+  # share the same guarded first-run behavior.
   {
     print -r -- '@echo off'
-    if [ "$2" = debug ]; then
-      print -r -- 'rem Unsigned DEBUG artifact. Seeds the debug-only project store on first run'
-      print -r -- 'rem (never the shared %USERPROFILE%\pankosmia_repos), then starts Electronite;'
-      print -r -- 'rem the startup script spawns the bundled server itself.'
-    else
-      print -r -- 'rem Unsigned development artifact. Starts Electronite; the startup script'
-      print -r -- 'rem spawns the bundled server itself.'
-    fi
     print -r -- 'cd /d "%~dp0"'
-    print -r -- "set \"STORE=%USERPROFILE%\\$leaf_win\""
-    print -r -- 'if exist "resources\" ('
-    print -r -- '  for /d %%R in ("resources\*") do ('
-    print -r -- '    if not exist "%STORE%\_local_\_sideloaded_\%%~nxR\" ('
-    print -r -- '      if not exist "%STORE%\_local_\_sideloaded_\" mkdir "%STORE%\_local_\_sideloaded_"'
-    print -r -- '      xcopy /E /I /Q /Y "%%R" "%STORE%\_local_\_sideloaded_\%%~nxR" >nul'
-    print -r -- '    )'
-    print -r -- '  )'
-    print -r -- ')'
-    if [ "$2" = debug ]; then
-      print -r -- 'set "SEED=%STORE%\_local_\_local_\sample_burrito"'
-      print -r -- 'where git >nul 2>&1'
-      print -r -- 'if not errorlevel 1 if not exist "%SEED%\" ('
-      print -r -- '  if not exist "%STORE%\_local_\_local_\" mkdir "%STORE%\_local_\_local_"'
-      print -r -- '  xcopy /E /I /Q /Y "debug-seeds\sample_burrito" "%SEED%" >nul'
-      print -r -- '  rem Initial commit: the platform add-and-commit panics on a repo with'
-      print -r -- '  rem zero commits (PLATFORM-NOTES #20).'
-      print -r -- '  pushd "%SEED%"'
-      print -r -- '  git init -q -b main . && git add -A && git -c user.email=debug@tc4.local -c user.name=tc4-debug commit -qm seed'
-      print -r -- '  popd'
-      print -r -- ')'
-    fi
     print -r -- 'electronite\electron.exe electron'
   } > "$APPDIR/$LAUNCHER"
 }
+
 if [ "$OS" = windows ]; then
   LAUNCHER="start-tc4.cmd"
 elif [ "$OS" = macos ]; then
@@ -463,7 +435,11 @@ fi
 if [ "$OS" = macos ]; then
   : # Finder launches the bundle; bootstrap runs in tc4-main.js.
 elif [ "$OS" = windows ]; then
-  write_windows_launcher "$STORE_LEAF" "$VARIANT"
+  write_windows_launcher
+  cp "$REPO/scripts/desktop-bootstrap.cjs" "$APPDIR/electron/tc4-bootstrap.cjs"
+  printf '{"storeLeaf":"%s","variant":"%s"}\n' "$STORE_LEAF" "$VARIANT" > "$APPDIR/electron/tc4-bootstrap.json"
+  cp "$REPO/branding/icon.ico" "$APPDIR/icon.ico"
+  node "$REPO/scripts/brand-windows.mjs" "$(npath "$APPDIR/electronite/electron.exe")" "$(npath "$APPDIR/icon.ico")" "$VERSION"
 elif [ "$VARIANT" = "debug" ]; then
   cat > "$APPDIR/$LAUNCHER" <<LAUNCH
 $LAUNCH_SHEBANG
@@ -596,9 +572,15 @@ MANIFEST
 echo "-- BUILD-MANIFEST.json --"
 cat "$APPDIR/BUILD-MANIFEST.json"
 
+cp "$REPO/scripts/smoke-api.cjs" "$APPDIR/smoke-api.cjs"
 if [ "$OS" = macos ]; then
   zsh "$REPO/scripts/package-macos.zsh" "$APPDIR" "$APP_NAME" "$VERSION" "$VARIANT" "$STORE_LEAF"
   LAUNCHER="$APP_NAME.app/Contents/MacOS/Electron"
+fi
+
+if [ "$OS" = windows ]; then
+  cp "$REPO/scripts/README-windows.txt" "$APPDIR/README.txt"
+  cp "$REPO/scripts/smoke-installed.ps1" "$APPDIR/"
 fi
 
 echo "== 6/7 smoke test: launch the artifact through its own entry point"
@@ -826,6 +808,12 @@ if [ "$OS" = macos ]; then
   if [ "$VARIANT" = production ] && [ "$MAKE_PKG" = true ]; then
     zsh "$REPO/scripts/build-macos-pkg.zsh" "$APPDIR/$APP_NAME.app" "$VERSION" "$BUILD/tC4-$VERSION-$OS-$ARCH-unsigned.pkg"
   fi
+fi
+
+if [ "$OS" = windows ] && [ "$VARIANT" = production ] && [ "$MAKE_PKG" = true ]; then
+  ISCC="${TC4_ISCC:-/c/Program Files (x86)/Inno Setup 6/ISCC.exe}"
+  [ -f "$ISCC" ] || { echo "Inno Setup 6 compiler not found: $ISCC" >&2; exit 1; }
+  MSYS2_ARG_CONV_EXCL='*' "$ISCC" "/DPayload=$(cygpath -w "$APPDIR")" "/DOutput=$(cygpath -w "$BUILD")" "/DVersion=$VERSION" "$(cygpath -w "$REPO/scripts/tc4.iss")"
 fi
 
 echo "== 7/7 zip the artifact"

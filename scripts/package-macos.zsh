@@ -15,13 +15,13 @@ mv "$APPDIR/electron" "$RESOURCES/app"
 mv "$APPDIR/bin/server.bin" "$BUNDLE/Contents/MacOS/server.bin"
 zsh "$REPO/scripts/check-macos-server.zsh" "$BUNDLE/Contents/MacOS/server.bin"
 rmdir "$APPDIR/bin"
-for item in lib resources Rocket.toml LICENSE licenses THIRD-PARTY-NOTICES.md BUILD-MANIFEST.json smoke-installed.zsh; do
+for item in lib resources Rocket.toml LICENSE licenses THIRD-PARTY-NOTICES.md BUILD-MANIFEST.json smoke-installed.zsh smoke-api.cjs; do
   mv "$APPDIR/$item" "$RESOURCES/$item"
 done
 if [ "$VARIANT" = debug ]; then mv "$APPDIR/debug-seeds" "$RESOURCES/debug-seeds"; fi
 cp "$REPO/scripts/README-macos.txt" "$APPDIR/README.txt"
 cp "$REPO/scripts/README-macos.txt" "$RESOURCES/README.txt"
-cp "$REPO/scripts/mac-bootstrap.cjs" "$RESOURCES/app/tc4-bootstrap.cjs"
+cp "$REPO/scripts/desktop-bootstrap.cjs" "$RESOURCES/app/tc4-bootstrap.cjs"
 cp "$REPO/branding/icon.icns" "$RESOURCES/electron.icns"
 
 # Carry the native libraries' license texts from the exact Cargo inputs used by
