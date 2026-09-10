@@ -40,6 +40,8 @@ if [[ "$APPDIR" = *.app ]] && [ -d "$APPDIR/Contents" ]; then
   BUNDLE="$APPDIR"
 elif [[ "$APPDIR" = *.app/Contents/Resources ]]; then
   BUNDLE="${APPDIR:h:h}"
+elif [ -f "$APPDIR/start-tc4.command" ]; then
+  : # Older flat Mac zips also contain Electron.app; keep their launcher path.
 else
   bundles=("$APPDIR"/*.app(N/))
   if [ "${#bundles}" -eq 1 ]; then BUNDLE="${bundles[1]}"; fi

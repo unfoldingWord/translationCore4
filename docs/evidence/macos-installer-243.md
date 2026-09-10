@@ -33,7 +33,11 @@ the pilot process was left intact. Full artifact boot results come from CI below
 PR: [#251](https://github.com/unfoldingWord/translationCore4/pull/251).
 Independent source reviews of `a39efca` against `f061e2b` on 2026-09-10:
 Standards — 0 actionable findings; Spec — 0 actionable findings.
-Final CI artifact results will be recorded after the run completes.
+Final CI run links and artifact smoke results are recorded in the PR description.
+A second independent review of the native-library fix (`d1286ec..4d32f9f`)
+also found 0 actionable Standards findings and 0 actionable Spec findings.
+The artifact-discovery block was exercised against both an old flat Mac artifact
+and the new .app; both resolved their own executable and manifest locations.
 
 ## Native dependency finding
 
