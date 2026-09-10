@@ -61,3 +61,29 @@ describe('#54 — SectionEditor Type mode Tab indent', () => {
     expect(textarea.value).toBe('9 a\n\t10 b');
   });
 });
+
+describe('#241 — A held verse marker no longer selects the text it passes over', () => {
+  it('prevents default on pointer down and disables user selection while a marker is held', () => {
+    render(
+      <SectionEditor
+        chapter={2}
+        keys={['9', '10']}
+        verses={[
+          { n: '9', drafted: true, body: 'a' },
+          { n: '10', drafted: true, body: 'b' },
+        ]}
+        span="9–10"
+        dir="ltr"
+        editType={{}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Place verse numbers' }));
+
+    expect(fireEvent.pointerDown(screen.getByTestId('pin-10'))).toBe(false);
+    expect(screen.getByTestId('place-words').style.userSelect).toBe('none');
+
+    fireEvent.keyDown(screen.getByText('a'), { key: 'Escape' });
+    expect(screen.getByTestId('place-words').style.userSelect).toBe('');
+  });
+});
