@@ -13,6 +13,7 @@ import { RailIcon, HelpsIcon } from './PanelIcons.jsx';
 import { targetTypeFor, projectDir } from './scriptStyle.js';
 import BookRail from './BookRail.jsx';
 import { HelpsPanel, useLoadHelps } from './HelpsPanel.jsx';
+import { editingFocus } from './helpsFocus.js';
 import { SourceVerse } from './SourceVerse.jsx';
 import { verseText as sourceText } from './verseText.js';
 import { absenceMessageKey, isSourceAbsent } from '../data/sourceState';
@@ -306,7 +307,7 @@ export default function Draft() {
           </div>
         </div>
       </main>
-      {s.helps && <HelpsPanel chapter={s.chapter} />}
+      {s.helps && <HelpsPanel chapter={s.chapter} focusVerses={editingFocus(s.editing, s.chapter)} />}
     </div>
   );
 }

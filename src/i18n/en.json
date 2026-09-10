@@ -358,6 +358,7 @@
   "understand.answer": "Answer",
   "understand.simplifiedTitle": "Simplified Text · meaning-based",
   "understand.noneForChapter": "Nothing in this chapter.",
+  "understand.noneInFocus": "Nothing for the verses in focus.",
   "understand.helpNone": "This language's book package does not include this resource.",
   "understand.helpUnavailable": "The pinned resource is not on this computer and the app is offline.",
   "understand.helpFetch": "The pinned resource is not on this computer yet. Get it from Source texts.",
