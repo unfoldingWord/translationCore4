@@ -18,7 +18,7 @@ export function VerseMarker({ n, size = 32, state = 'idle', onPickUp, style, ...
   const digits = String(n).length;
   return (
     <span role="button" tabIndex={0} aria-label={'Move where verse ' + n + ' begins'}
-      onPointerDown={onPickUp}
+      onPointerDown={e => { e.preventDefault(); onPickUp && onPickUp(e); }}
       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPickUp && onPickUp(e); } }}
       style={{ display: 'inline-flex', width: w, height: size, verticalAlign: 'text-bottom',
         cursor: dragging ? 'grabbing' : 'grab', flex: 'none',

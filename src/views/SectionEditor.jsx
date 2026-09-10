@@ -126,7 +126,7 @@ function PlaceView({ keys, words, markers, setMarkers, dir, editType }) {
       {words.length === 0 ? (
         <span style={{ fontStyle: 'italic', fontSize: 'var(--fs-ui-sm)', color: 'var(--text-tertiary)' }}>{t('draft.markerEmpty')}</span>
       ) : (
-        <p dir={dir} data-testid="place-words" style={{ textAlign: 'start', ...editType, color: 'var(--text-scripture)', margin: 0 }}>
+        <p dir={dir} data-testid="place-words" style={{ textAlign: 'start', ...editType, color: 'var(--text-scripture)', margin: 0, userSelect: held != null ? 'none' : undefined }}>
           {words.map((w, i) => (
             <React.Fragment key={i}>
               <span style={{ position: 'relative', ...(preview && i >= preview[0] && i < preview[1] ? { background: 'var(--tc-highlight-soft)', borderRadius: 'var(--radius-xs)' } : {}) }}>
