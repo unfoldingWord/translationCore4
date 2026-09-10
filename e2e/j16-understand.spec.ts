@@ -78,8 +78,7 @@ test.describe('J16 — read a passage with helps and record a user comment', () 
       await page.getByTestId('note-expand').first().click();
       await expect(page.getByTestId('note-expand').first()).toHaveAttribute('aria-expanded', 'true');
 
-      await page.getByRole('tab', { name: 'Academy', exact: true }).click();
-      await page.getByTestId('academy-article').first().click();
+      await page.getByRole('button', { name: 'Translation Academy →', exact: true }).first().click();
       await expect(page.getByTestId('understand-article')).toBeVisible({ timeout: 30_000 });
 
       const segmentsBefore = new Set(segmentFiles());
