@@ -10,7 +10,7 @@ signing, notarization, and the remaining platform installer work.
 ## What the pipeline does
 
 `scripts/package-desktop.zsh` builds unsigned artifacts for macOS arm64,
-Linux x64, or Windows x64. Mac production builds emit a .pkg and a fallback zip;
+Linux x64, or Windows x64. Mac production builds emit a .pkg and a fallback zip; Windows production emits an .exe installer and a zip;
 Mac debug builds emit a zip. Other platforms keep their existing zip format.
 `.github/workflows/package-desktop.yml` runs the script on three runners
 (`macos-15`, `ubuntu-24.04` and `windows-2025`) on every merge to `main` and on
@@ -310,6 +310,15 @@ sudo chmod 4755 ./translationCore4/electronite/chrome-sandbox
 
 ### CI runner assumptions
 
+[VERIFIED — source read 2026-09-10] The Windows Server 2025 runner image
+`20260830.247.1` lists Inno Setup 6.7.1 ([runner inventory](https://github.com/actions/runner-images/blob/main/images/windows/Windows2025-Readme.md)).
+The recipe invokes its compiler through MSYS2 with argument conversion disabled.
+The pinned `rcedit@5.0.2` build tool embeds the existing tC4 mark into Electron
+before smoke. It is not a runtime dependency. Inno Setup documents that
+[`PrivilegesRequired=lowest`](https://jrsoftware.org/ishelp/topic_setup_privilegesrequired.htm)
+does not request elevation. The installed smoke runs on a separate runner and
+checks reinstall/uninstall preserve a project that it wrote through the app.
+
 The job installs these packages before the build [VERIFIED — the `linux-x64` job of run 33649518351 on PR #146, 2026-09-04]:
 
 - `zsh` and `zip` — the script's shell and its archiver.
@@ -325,8 +334,8 @@ On a failure the job uploads `dist-desktop/smoke-*.log` as
 ## Windows x64 (#181)
 
 The `windows-x64` job runs the same script on `windows-2025`, under MSYS2's
-`zsh`. Only the host-specific steps differ. Nothing is signed; signing and an
-installer are #44.
+`zsh`. Only the host-specific steps differ. Nothing is signed; signing and
+notarization remain #44. Issue #242 adds the Windows installer.
 
 ### Artifact layout
 
@@ -335,36 +344,72 @@ the debug variant). That folder holds:
 
 | Item | What it is |
 |---|---|
-| `start-tc4.cmd` | the launcher — the only entry point (a batch file) |
+| `start-tc4.cmd` | portable zip launcher; installed shortcuts launch Electron directly |
 | `electronite\` | the unpacked Electronite release (`electron.exe`, Chromium data) |
 | `electron\` | the template startup files plus `tc4-main.js` (the #4 single-instance guard) |
 | `bin\server.exe` | the pinned pankosmia-web server; the template's startup script spawns `bin\server.exe` on Windows |
 | `lib\`, `resources\` | clients, app resources, templates, webfonts; the bundled English suite (#163) |
 | `Rocket.toml`, `LICENSE`, `licenses\`, `THIRD-PARTY-NOTICES.md`, `BUILD-MANIFEST.json` | the same as macOS and Linux |
-| `smoke-installed.zsh` | shipped for parity; it does not run on Windows yet (see "Known limits") |
+| `smoke-installed.ps1`, `smoke-api.cjs` | post-install proof using PowerShell and the bundled runtime |
+| `icon.ico`, `README.txt` | tC4 icon and unsigned pilot instructions |
 
 ### Install and launch
 
-1. Download `tC4-<version>-windows-x64-unsigned.zip` from the workflow run.
-2. Unpack it once. Explorer's `Extract All…`, `Expand-Archive` in PowerShell,
-   or any archiver works: Windows has no permission bits to lose.
-3. Run `translationCore4\start-tc4.cmd` (double-click, or from a terminal). A
-   console window stays open while the app runs. Closing that window stops
-   the app.
-4. The build is unsigned. On the first launch Windows SmartScreen can show
-   "Windows protected your PC". Click `More info`, then `Run anyway`. If the
-   browser marked the download, Explorer keeps the mark on every extracted
-   file, and the same dialog appears; `Unblock` in the zip's Properties before
-   you extract it avoids that. [PROPOSED — to be witnessed on a clean machine;
-   the witness record goes under "Known limits"]
+The production build emits `tC4-<version>-windows-x64-unsigned.exe` and the
+portable zip. The installer uses the same tested staged payload, excluding the
+batch launcher and POSIX smoke script. Debug builds remain portable zips.
+
+1. Download the `.exe` installer from the workflow run and open it.
+2. Read the unsigned pilot note. Install for your current Windows user. The
+   default folder is `%LOCALAPPDATA%\Programs\translationCore4`; it needs no
+   administrator elevation. You can choose a different writable folder.
+3. Choose whether to create a desktop shortcut. A Start menu entry is included.
+4. Open **translationCore4** from Start. The shortcut launches the application
+   directly without a batch console. To keep it on the taskbar, use Windows'
+   **Pin to taskbar** command.
+
+The app is unsigned. If Windows shows **Windows protected your PC**, select
+**More info**, then **Run anyway**, if available and you trust the source.
+Organizational policy may block this route. Record actual prompts in the pilot
+witness; a fixed warning count is not promised. The interactive Windows 11
+witness remains pending (see `docs/evidence/windows-installer-242.md`).
+
+Portable fallback: extract the zip once and run `start-tc4.cmd`. The installed
+and portable production copies use the same store. Close one before opening
+the other. The debug zip uses its separate debug store; seeding the debug
+sample requires Git. The production application needs no separate Node, Rust
+or Git installation.
 
 The project store is `%USERPROFILE%\pankosmia\tc4-projects` (#70); the server's
-working directory is `%USERPROFILE%\pankosmia\tc4`. The app never touches
-`%USERPROFILE%\pankosmia_repos`. On the first run the launcher copies the
-bundled English suite into the store (#163). A second launch exits by itself
-and focuses the first window (#4).
+working directory is `%USERPROFILE%\pankosmia\tc4`. The shared bootstrap runs
+under the singleton lock before server startup. It copies missing bundled
+resources atomically and preserves existing resources and user projects.
+
+Close tC4 before reinstalling. To uninstall, use **Settings > Apps > Installed
+apps > translationCore4**. The uninstaller removes the application and its
+shortcuts. It leaves projects, resources and settings in the user's profile.
+
+Close the app before running the shipped post-install proof:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Programs\translationCore4\smoke-installed.ps1" -AppDir "$env:LOCALAPPDATA\Programs\translationCore4"
+```
+
+It reads bundled English source, creates a temporary project, writes a verse,
+restarts the app, reads the verse back, and deletes that project. It refuses
+to run if another tC4 server already answers. `-SmokeHome <path>` selects a
+separate test profile; `-LogDir <path>` selects the log directory.
 
 ### CI runner assumptions
+
+[VERIFIED — source read 2026-09-10] The Windows Server 2025 runner image
+`20260830.247.1` lists Inno Setup 6.7.1 ([runner inventory](https://github.com/actions/runner-images/blob/main/images/windows/Windows2025-Readme.md)).
+The recipe invokes its compiler through MSYS2 with argument conversion disabled.
+The pinned `rcedit@5.0.2` build tool embeds the existing tC4 mark into Electron
+before smoke. It is not a runtime dependency. Inno Setup documents that
+[`PrivilegesRequired=lowest`](https://jrsoftware.org/ishelp/topic_setup_privilegesrequired.htm)
+does not request elevation. The installed smoke runs on a separate runner and
+checks reinstall/uninstall preserve a project that it wrote through the app.
 
 - `windows-2025`, with MSYS2 preinstalled. `msys2/setup-msys2@v2`
   (`msystem: MSYS`, `path-type: inherit`) installs `zsh`, `zip`, `unzip` and
@@ -396,13 +441,13 @@ and focuses the first window (#4).
 
 ### Known limits
 
-- **No post-install smoke job on Windows.** `smoke-installed.zsh` needs `zsh`,
-  `lsof` and a POSIX launcher. On the Windows artifact it stops with one line
-  that says so. The build-time smoke test in the `windows-x64` job covers the
-  same guards (#4, #70, root 303, client 200).
-- **Unsigned.** SmartScreen warns on every clean machine until #44.
-- **A console window.** The launcher is a batch file. A launcher without a
-  console is part of #44's installer work.
+- **Unsigned.** Signing remains #44. Security prompts and icon appearance still
+  need a browser-download witness on Windows 11. The earlier Windows 10 zip
+  witness does not prove this installer.
+- **CI is Windows Server 2025.** The installed-app job uses a fresh runner and
+  profile, validates shortcuts and project persistence, and removes developer
+  tools from PATH. It does not represent every DLL/runtime configuration of a
+  clean Windows 11 installation.
 - **Witnessed on a real machine, one step open.** Windows 10 Pro 10.0.19045,
   no developer checkout, artifact 10056395396 (run 34227273789, head `8fbb62f`,
   188,346,325 bytes, sha256 `20582ef6…8d0cba`): unpacked once, launched,
