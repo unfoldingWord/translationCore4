@@ -304,6 +304,7 @@ const initial = () => ({
   pickerProgress: null, // #136 (D3d): { seq, [tool]: {done,total,dropped,nextItem}|{error}, align: {…,nextRef} } — derived on picker open, never stored
   toolPos: {}, // #136: in-memory only — "your place is saved in each tool", keyed `${tool}:${book}`; dies with the app (§4.2)
   progressByProject: {}, // repoPath -> { CODE: draftPct } (lazy Home cache)
+  draftUnits: {}, // repoPath -> 'section' | 'verse'
   lastEdit: null, // { repoPath, book, chapter, verse, snippet, at } — the Home Resume card; per-client settings, never the project
   tick: 0,
 });
@@ -2201,6 +2202,7 @@ export function AppProvider({ children }) {
       const projects = await reader.listProjects();
       let lastUsed = {};
       let lastEdit = null;
+      let draftUnits = {};
       try {
         // A pending Resume record is written before the document is read, so
         // a Home visit within the debounce never reads an older record.
@@ -2208,6 +2210,7 @@ export function AppProvider({ children }) {
         const cs = await api.getClientSettings(STORAGE_ID);
         lastUsed = cs.lastUsed || {};
         lastEdit = cs.lastEdit || null;
+        draftUnits = cs.draftUnits || {};
       } catch {
         /* fall back to creation-date order from listProjects */
       }
@@ -2228,7 +2231,7 @@ export function AppProvider({ children }) {
       // performProjectOpen is left alone (projects was already an array).
       dispatch({
         type: 'set',
-        patch: { projects, lastEdit: resumable ? lastEdit : null, ...(stateRef.current.projects === null ? { bookError: null } : {}) },
+        patch: { projects, lastEdit: resumable ? lastEdit : null, draftUnits, ...(stateRef.current.projects === null ? { bookError: null } : {}) },
       });
     } catch (e) {
       // Catch-to-absence sweep (D30): projects stays null (unknown), so the
@@ -2273,6 +2276,14 @@ export function AppProvider({ children }) {
       },
 
       closeModal: () => dispatch({ type: 'set', patch: { modal: null, np: null, ab: null, st: null } }),
+
+      setDraftUnit: (unit) => {
+        const st = stateRef.current;
+        const key = st.project?.repoPath || st.project?.id;
+        if (!key) return;
+        dispatch({ type: 'set', patch: { draftUnits: { ...st.draftUnits, [key]: unit } } });
+        return updateClientSettings((cs) => ({ ...cs, draftUnits: { ...(cs.draftUnits || {}), [key]: unit } }));
+      },
 
       // ---- Source texts (J3): book packages from Door43 ----
       // The platform has no catalog-wide search (0.18.5), so the org comes from

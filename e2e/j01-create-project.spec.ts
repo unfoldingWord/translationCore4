@@ -54,7 +54,7 @@ test.describe('J1 — a translator creates a project', () => {
         await page.getByLabel('Book', { exact: true }).selectOption('TIT');
         await page.getByRole('button', { name: 'Create book' }).click();
         await expect(page.getByText('Equipo Rig — Tito').first()).toBeVisible({ timeout: 20_000 });
-        await expect(page.getByRole('button', { name: 'start this verse' }).first()).toBeVisible({
+        await expect(page.getByRole('button', { name: /^Draft section/ }).first()).toBeVisible({
           timeout: 20_000,
         });
       });

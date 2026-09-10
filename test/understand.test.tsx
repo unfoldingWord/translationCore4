@@ -14,7 +14,7 @@ import { render, screen, fireEvent, cleanup, within } from '@testing-library/rea
 const READ_SIDE = new Set([
   'loadUnderstand', 'setHelpsTab', 'setSourceTab', 'toggleRail', 'setChapter',
   'loadHelpArticle', 'closeHelpArticle', 'openBook', 'go',
-  'stagedNote', // reads the scheduler buffer — never a project write
+  'stagedNote', 'setDraftUnit', // reads the scheduler buffer — never a project write
 ]);
 const calls: Array<{ name: string; args: unknown[] }> = [];
 // A faithful fake of the note scheduler's per-key latest-value buffer (D65):

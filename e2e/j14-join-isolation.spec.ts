@@ -60,7 +60,7 @@ async function createProject(page: import('@playwright/test').Page, name: string
   await page.getByLabel('Book', { exact: true }).selectOption('TIT');
   await page.getByRole('button', { name: 'Create book' }).click();
   await expect(page.getByText(name).first()).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByRole('button', { name: 'start this verse' }).first()).toBeVisible({
+  await expect(page.getByRole('button', { name: /^Draft section/ }).first()).toBeVisible({
     timeout: 20_000,
   });
   const created = listLocalRepos().filter((r) => !before.includes(r));
@@ -91,6 +91,7 @@ test.describe('J14 — joining is not merging: similar projects stay separate', 
       const snapshotA = snapshotRepo(repoA);
 
       await test.step('work in project B: draft a verse (B is already open in Draft)', async () => {
+        await page.getByRole('tab', { name: 'Verse', exact: true }).click();
         await page.getByRole('button', { name: 'Start this verse' }).first().click();
         const editor = page.getByRole('textbox', { name: 'Verse 1' });
         await editor.fill('Pablo, siervo de Dios — borrador del gemelo dos.');

@@ -368,10 +368,13 @@ const unitFocusVerses = (unit) => {
   if (!unit) return null;
   return unit.project ? [unit.project.verse] : unit.verses;
 };
+const persistedDraftUnit = (s) => s.draftUnits?.[s.project?.repoPath ?? s.project?.id] ?? 'section';
 
 export default function Understand() {
   const { s, book, actions } = useApp();
-  const [mode, setMode] = React.useState('section');
+  const persisted = persistedDraftUnit(s);
+  const [mode, setMode] = React.useState(persisted);
+  React.useEffect(() => setMode(persisted), [persisted]);
   const [activeKey, setActiveKey] = React.useState(null);
   useLoadHelps();
   // Unit keys repeat across chapters and books ("v2", "s1"): a navigation
@@ -435,7 +438,7 @@ export default function Understand() {
               ) : (
                 <>
                   <Overline>{t('understand.commentsBy')}</Overline>
-                  <Switcher indicator="pill" size="sm" tone="ocean" value={mode} onChange={setMode}
+                  <Switcher indicator="pill" size="sm" tone="ocean" value={mode} onChange={(v) => { setMode(v); actions.setDraftUnit(v); }}
                     options={[{ value: 'section', label: t('understand.bySection') }, { value: 'verse', label: t('understand.byVerse') }]} />
                 </>
               )}
