@@ -27,7 +27,7 @@
 # booted app resolves repo_dir to the shared store — both variants.
 #
 # Output: dist-desktop/tC4-<version>[-debug]-<os>-<arch>-unsigned.zip
-# macOS production also emits .pkg (default pilot path); --zip skips the installer.
+# Production emits a Mac .pkg or Windows .exe; --zip skips the installer.
 #
 # Requirements: node >= 20, npm, cargo, curl, unzip, git, and sha256sum or shasum.
 #   Linux also needs zsh, the zip command, Electron's shared libraries, and a
@@ -392,8 +392,8 @@ cp "$PACK/Rocket.toml" "$APPDIR/Rocket.toml"
 
 # The launcher differs per OS in three places only: its filename, how it
 # finds its own directory, and how it invokes Electronite. The debug seeding
-# step below is identical on macOS and Linux. Windows is a batch file with the
-# same steps (#181), written by write_windows_launcher below.
+# Linux keeps shell bootstrap; Mac and Windows bootstrap under tc4-main.js.
+# The portable Windows batch file only starts Electron.
 write_windows_launcher() {
   # Bootstrap belongs to tc4-main.js so installed shortcuts and portable launches
   # share the same guarded first-run behavior.
@@ -439,6 +439,7 @@ elif [ "$OS" = windows ]; then
   cp "$REPO/scripts/desktop-bootstrap.cjs" "$APPDIR/electron/tc4-bootstrap.cjs"
   printf '{"storeLeaf":"%s","variant":"%s"}\n' "$STORE_LEAF" "$VARIANT" > "$APPDIR/electron/tc4-bootstrap.json"
   cp "$REPO/branding/icon.ico" "$APPDIR/icon.ico"
+  cp "$REPO/branding/icon-1024.png" "$APPDIR/electron/favicon.png"
   node "$REPO/scripts/brand-windows.mjs" "$(npath "$APPDIR/electronite/electron.exe")" "$(npath "$APPDIR/icon.ico")" "$VERSION"
 elif [ "$VARIANT" = "debug" ]; then
   cat > "$APPDIR/$LAUNCHER" <<LAUNCH
