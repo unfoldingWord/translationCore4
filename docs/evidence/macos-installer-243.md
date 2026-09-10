@@ -16,8 +16,23 @@ The icon compiled and round-tripped to ten iconset files. Bootstrap tests includ
 negative controls (missing packaged input), resource preservation on repeated
 launch, retry after a failed debug seed, initial Git commit, and store isolation.
 
-Packaging/post-install results and CI run links will be recorded here after the
-final artifact is tested.
+The local unsigned pkg built successfully (173897170 bytes; SHA-256
+`e6a3fb6cd738b604401e9df6a96b299352579fdde67cd04acdaf3322d3e0f401`).
+`pkgutil --expand` confirmed the Installer README, an app-only payload targeting
+`/Applications`, no relocation entries, and no installer scripts. `pkgutil
+--check-signature` reported no package signature, as intended; `codesign --verify
+--deep --strict` accepted the application bundle.
+
+The local full smoke was interrupted by an existing tC4 app running from Downloads.
+It held the singleton lock and its server answered the old build probe; the final
+fresh-HOME check correctly failed. The recipe now rejects that precondition before
+building. A negative-control run returned exit 1 with the running server's port;
+the pilot process was left intact. Full artifact boot results come from CI below.
+
+PR: [#251](https://github.com/unfoldingWord/translationCore4/pull/251).
+Independent source reviews of `a39efca` against `f061e2b` on 2026-09-10:
+Standards — 0 actionable findings; Spec — 0 actionable findings.
+Final CI artifact results will be recorded after the run completes.
 
 ## Required clean macOS 15 witness
 

@@ -164,6 +164,7 @@ esac
 
 echo "== 1/7 build the tC4 client"
 cd "$REPO"
+if [ "$OS" = macos ]; then node --test "$REPO/scripts/mac-bootstrap.test.cjs"; fi
 npm ci --no-audit --no-fund
 npm run build
 
