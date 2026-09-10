@@ -3,6 +3,7 @@
 // per `\ts\*` section, verses running on inside a paragraph unless the USFM
 // marks a break. Display only, never re-serialized.
 import { leadingNum } from './HelpsPanel.jsx';
+import { keyCarries } from './SourceVerse.jsx';
 
 // A USFM paragraph-level marker inside a verse's objects (usfm-js keeps `\p`,
 // `\m`, `\q…`, list markers as paragraph objects in the verse where they
@@ -105,4 +106,28 @@ export const rangeSpan = (keys) => {
   const to = keys[keys.length - 1];
   if (keys.length === 1) return String(from);
   return `${leadingNum(from)}–${String(to).split('-').pop()}`;
+};
+
+/** A unit's verse keys as they exist in the source chapter: a mapped range key
+ * ("1-2") that the source keeps as separate verses expands to the verses it
+ * spans (Codex review of #140). */
+export const verseKeysIn = (keys, chapterVerses) => keys.flatMap((k) => {
+  if (chapterVerses[String(k)]) return [k];
+  const m = String(k).match(/^(\d+)-(\d+)$/);
+  if (!m) return [k];
+  const out = [];
+  for (let n = Number(m[1]); n <= Number(m[2]); n++) if (chapterVerses[String(n)]) out.push(String(n));
+  return out.length ? out : [k];
+});
+
+/** Source verse keys for the given unit keys. Expands range keys and resolves bridged source keys. */
+export const sourceKeysFor = (keys, chapterVerses = {}) => {
+  const expanded = verseKeysIn(keys, chapterVerses);
+  const sourceKeys = Object.keys(chapterVerses);
+  const out = expanded.map((k) => {
+    if (chapterVerses[String(k)]) return k;
+    const match = sourceKeys.find((sk) => keyCarries(sk, k));
+    return match ?? k;
+  });
+  return [...new Set(out)];
 };
