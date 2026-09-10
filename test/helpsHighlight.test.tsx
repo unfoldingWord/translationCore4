@@ -125,6 +125,7 @@ describe('F3 — helps cards highlight their quote in the source passage', () =>
   });
 
   it('Translate: the source pane highlights the same way; the target column never does', () => {
+    state.draftUnits = { p1: 'verse' };
     const { rerender } = render(<Draft />);
     fireEvent.mouseEnter(screen.getByText(/A note about the elect/));
     rerender(<Draft />);

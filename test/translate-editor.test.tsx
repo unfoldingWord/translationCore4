@@ -17,13 +17,15 @@ const FLAT = '\\id TIT\n\\c 1\n\\p\n\\v 1 a\n\\v 2 b\n\\v 3 c\n';
 const state = {
   chapter: 1,
   rail: false,
-  editing: null as { key: string; keys?: string[] } | null,
-  project: { name: 'Equipo', languageTag: 'es-419', scriptDirection: 'ltr', textFont: null as string | null },
+  editing: null as { key: string; keys?: string[]; before?: string } | null,
+  project: { id: 'p1', name: 'Equipo', languageTag: 'es-419', scriptDirection: 'ltr', textFont: null as string | null },
   sourceTab: 'ult',
   sourcePanes: ['ult'],
   sources: { ult: { raw: '', chapters: {}, version: 'v89' } } as Record<string, { raw: string; chapters: object; version: string }>,
   bookRaw: '',
   bookError: null,
+  draftUnits: {} as Record<string, string>,
+  understand: null as { sourceRefs?: object } | null,
 };
 const bookModel = { code: 'TIT', chapterNums: [1], byChapter: { '1': [verse] } as Record<string, object[]> };
 
@@ -48,10 +50,13 @@ beforeEach(() => {
   state.sourceTab = 'ult';
   state.sources = { ult: { raw: '', chapters: {}, version: 'v89' } };
   bookModel.byChapter = { '1': [verse] };
+  state.draftUnits = {};
+  state.understand = null;
 });
 
 describe('#107 — the Translate editing card', () => {
   it('types at the size the drafted verse displays at (no jump on click)', () => {
+    state.draftUnits = { p1: 'verse' };
     render(<Draft />);
     // #141: the verse is a span inside its section paragraph; the type sits on the <p>.
     const display = screen.getByTitle(/edit/i).closest('p')!;
@@ -73,6 +78,7 @@ describe('#107 — the Translate editing card', () => {
     const saved = state.project.textFont;
     state.project.textFont = 'Awami Nastaliq — Nastaliq';
     state.editing = null;
+    state.draftUnits = { p1: 'verse' };
     try {
       render(<Draft />);
       const display = screen.getByTitle(/edit/i).closest('p')!;
@@ -92,12 +98,12 @@ describe('#107 — the Translate editing card', () => {
   });
 });
 
-describe('#141 — the section card keeps the verses it was opened with', () => {
-  const openThreeVerseChapter = () => {
-    bookModel.byChapter = { '1': [verse, verse2, verse3] };
-    state.sources = { ult: { raw: CHUNKED, chapters: {}, version: 'v89' }, ust: { raw: FLAT, chapters: {}, version: 'v89' } };
-  };
+const openThreeVerseChapter = () => {
+  bookModel.byChapter = { '1': [verse, verse2, verse3] };
+  state.sources = { ult: { raw: CHUNKED, chapters: {}, version: 'v89' }, ust: { raw: FLAT, chapters: {}, version: 'v89' } };
+};
 
+describe('#141 — the section card keeps the verses it was opened with', () => {
   it('rows are the source\u2019s \\ts\\* sections', () => {
     openThreeVerseChapter();
     render(<Draft />);
@@ -135,5 +141,38 @@ describe('#141 — the section card keeps the verses it was opened with', () => 
     } finally {
       state.bookRaw = '';
     }
+  });
+});
+
+describe('#238 — one Section/Verse switch', () => {
+  it('default: Section selected, start this verse absent, Draft section 1 exists', () => {
+    render(<Draft />);
+    expect(screen.getByRole('tab', { name: 'Section' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.queryByRole('button', { name: 'start this verse' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Draft section 1' })).toBeTruthy();
+  });
+
+  it('state.draftUnits = { p1: "verse" } with the three-verse chapter: tab Verse selected, Draft section button absent, start this verse button present', () => {
+    state.draftUnits = { p1: 'verse' };
+    openThreeVerseChapter();
+    render(<Draft />);
+    expect(screen.getByRole('tab', { name: 'Verse' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.queryByRole('button', { name: /^Draft section/ })).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'start this verse' }).length).toBeGreaterThan(0);
+  });
+
+  it('state.editing = { key: "1:1", before: "" }: both tabs have disabled === true', () => {
+    state.editing = { key: '1:1', before: '' };
+    render(<Draft />);
+    expect((screen.getByRole('tab', { name: 'Section' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('tab', { name: 'Verse' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('state.understand = { sourceRefs: {} }: no tab roles, getByTestId("draft-verse-only") exists, no Draft section button', () => {
+    state.understand = { sourceRefs: {} };
+    render(<Draft />);
+    expect(screen.queryByRole('tab')).toBeNull();
+    expect(screen.getByTestId('draft-verse-only')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Draft section/ })).toBeNull();
   });
 });
