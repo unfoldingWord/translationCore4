@@ -13,6 +13,7 @@ RESOURCES="$BUNDLE/Contents/Resources"
 mv "$APPDIR/Electron.app" "$BUNDLE"
 mv "$APPDIR/electron" "$RESOURCES/app"
 mv "$APPDIR/bin/server.bin" "$BUNDLE/Contents/MacOS/server.bin"
+zsh "$REPO/scripts/check-macos-server.zsh" "$BUNDLE/Contents/MacOS/server.bin"
 rmdir "$APPDIR/bin"
 for item in lib resources Rocket.toml LICENSE licenses THIRD-PARTY-NOTICES.md BUILD-MANIFEST.json smoke-installed.zsh; do
   mv "$APPDIR/$item" "$RESOURCES/$item"
@@ -22,6 +23,30 @@ cp "$REPO/scripts/README-macos.txt" "$APPDIR/README.txt"
 cp "$REPO/scripts/README-macos.txt" "$RESOURCES/README.txt"
 cp "$REPO/scripts/mac-bootstrap.cjs" "$RESOURCES/app/tc4-bootstrap.cjs"
 cp "$REPO/branding/icon.icns" "$RESOURCES/electron.icns"
+
+# Carry the native libraries' license texts from the exact Cargo inputs used by
+# this build, rather than maintaining a second set of versioned copies.
+HOST_TARGET=$(rustc -vV | sed -n 's/^host: //p')
+cargo metadata --manifest-path "$REPO/dev-env/server/Cargo.toml" --locked --offline \
+  --format-version 1 --filter-platform "$HOST_TARGET" > "$REPO/dist-desktop/cargo-metadata.json"
+node - "$REPO/dist-desktop/cargo-metadata.json" "$RESOURCES" <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const [metadataFile, resources] = process.argv.slice(2);
+const { packages } = JSON.parse(fs.readFileSync(metadataFile, 'utf8'));
+for (const [name, files, license] of [
+  ['libgit2-sys', ['libgit2/COPYING', 'libgit2/deps/pcre/COPYING', 'libgit2/deps/llhttp/LICENSE-MIT'], 'GPL-2.0 with linking exception; bundled dependency notices'],
+  ['libssh2-sys', ['libssh2/COPYING'], 'BSD-3-Clause'],
+  ['openssl-src', ['openssl/LICENSE.txt'], 'Apache-2.0'],
+]) {
+  const pkg = packages.find((entry) => entry.name === name);
+  if (!pkg) throw new Error(`Missing vendored native library: ${name}`);
+  const contents = files.map((file) => fs.readFileSync(path.join(path.dirname(pkg.manifest_path), file), 'utf8')).join('\n\n');
+  fs.writeFileSync(path.join(resources, 'licenses', `LICENSE.${name}`), contents);
+  fs.appendFileSync(path.join(resources, 'THIRD-PARTY-NOTICES.md'),
+    `| ${name} (statically linked native library) | ${pkg.version} | ${license} | ${pkg.repository} |\n`);
+}
+NODE
 
 # Keep the pinned template's resource cwd; change only its Mac executable path.
 # A pin change must fail loudly rather than silently shipping a broken launcher.

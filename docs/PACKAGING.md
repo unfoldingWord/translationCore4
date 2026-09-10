@@ -181,6 +181,11 @@ second acceptance item of #32.
 [decided 2026-09-10 — owner: make Mac pilot testing easy, including a full app
 installation and application/Dock icons; the zip-only wording of #243 was replaced.]
 
+The Mac server statically links its native libgit2/OpenSSL dependencies. The build
+rejects any server dependency outside `/System/Library` or `/usr/lib`, so a build
+host's Homebrew installation cannot mask a missing pilot dependency. Native
+library license texts come from the resolved Cargo sources.
+
 ### Install and launch
 
 1. Download `tC4-<version>-macos-arm64-unsigned.pkg` from `package-desktop`.
