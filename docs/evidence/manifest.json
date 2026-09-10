@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "tool": "scripts/prove.mjs",
-  "commit": "5a940f38db1c8627d66ef0ea00cd6aec72aa63c5",
+  "commit": "b1dcbef16cb55213e5bf941a0cf2912662079f53",
   "dirty": false,
-  "date": "2026-09-10T18:45:46.599Z",
+  "date": "2026-09-10T19:27:39.196Z",
   "node": "v22.23.2",
   "platform": "linux-x64",
   "ci": true,
@@ -32,7 +32,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [],
-      "durationMs": 5923
+      "durationMs": 5960
     },
     {
       "id": "typecheck",
@@ -47,7 +47,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [],
-      "durationMs": 5232
+      "durationMs": 5302
     },
     {
       "id": "vitest",
@@ -58,14 +58,14 @@
       "skipped": null,
       "ok": true,
       "exitCode": 0,
-      "passed": 970,
+      "passed": 972,
       "failed": 0,
       "skippedTests": 37,
       "summary": [
-        "Test Files  62 passed | 5 skipped (67)",
-        "Tests  970 passed | 37 skipped (1007)"
+        "Test Files  63 passed | 5 skipped (68)",
+        "Tests  972 passed | 37 skipped (1009)"
       ],
-      "durationMs": 29461
+      "durationMs": 30881
     },
     {
       "id": "build",
@@ -80,9 +80,9 @@
       "failed": null,
       "skippedTests": null,
       "summary": [
-        "✓ built in 7.37s"
+        "✓ built in 7.15s"
       ],
-      "durationMs": 7847
+      "durationMs": 7586
     },
     {
       "id": "conformance:generate",
@@ -97,7 +97,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [],
-      "durationMs": 187
+      "durationMs": 195
     },
     {
       "id": "conformance:validate",
@@ -117,7 +117,7 @@
         "Phase-2 (journal-merge design checks, §8.7): 3 passed, 0 failed",
         "40 passed, 0 failed"
       ],
-      "durationMs": 577
+      "durationMs": 584
     },
     {
       "id": "conformance:journal",
@@ -134,7 +134,7 @@
       "summary": [
         "Journal suite: 344 passed, 0 failed (fast-check seed 20260707)"
       ],
-      "durationMs": 3152
+      "durationMs": 3181
     },
     {
       "id": "conformance:normative",
@@ -154,7 +154,7 @@
         "uncovered          : 0",
         "stale claims       : 0"
       ],
-      "durationMs": 78
+      "durationMs": 76
     },
     {
       "id": "conformance:transport",

@@ -16,7 +16,7 @@ import { HelpsPanel, useLoadHelps } from './HelpsPanel.jsx';
 import { SourceVerse } from './SourceVerse.jsx';
 import { verseText as sourceText } from './verseText.js';
 import { absenceMessageKey, isSourceAbsent } from '../data/sourceState';
-import { paragraphLevel, paragraphsOf, rangeSpan, sectionRanges, sectionStarts } from './sections.js';
+import { paragraphLevel, paragraphsOf, rangeSpan, sectionRanges, sectionStarts, sourceKeysFor } from './sections.js';
 import { SectionEditor } from './SectionEditor.jsx';
 
 const hair = 'var(--stroke-hair) solid var(--border-hair)';
@@ -115,7 +115,7 @@ function SourceCell({ s, bookCode, keys, sourceModel, paneFocus, label }) {
       <Overline tone="muted" style={{ marginBottom: 6 }}>{label}</Overline>
       {isSourceAbsent(sourceModel) ? (
         <p style={italic}>{t(absenceMessageKey(sourceModel))}</p>
-      ) : paragraphsOf(keys, chapterVerses).map((para) => (
+      ) : paragraphsOf(sourceKeysFor(keys, chapterVerses), chapterVerses).map((para) => (
         <p key={para[0]} dir={isOrig ? (ot ? 'rtl' : 'ltr') : undefined} lang={isOrig ? (ot ? 'hbo' : 'el') : undefined}
           style={{ direction: isOrig ? (ot ? 'rtl' : 'ltr') : 'ltr', textAlign: 'start', fontFamily: isOrig ? (ot ? 'var(--font-hebrew)' : 'var(--font-greek)') : 'var(--font-scripture)', fontSize: 'var(--fs-verse-lg)', lineHeight: 'var(--lh-verse-lg)', color: 'var(--text-scripture)', margin: '0 0 10px' }}>
           {para.map((k) => {

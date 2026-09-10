@@ -14,19 +14,7 @@ import { absenceMessageKey, isSourceAbsent } from '../data/sourceState';
 import { FilterChip, IconButton, Overline, Switcher, StatusDot, Callout, Button } from '../ds/index.js';
 import { RailIcon } from './PanelIcons.jsx';
 import { targetTypeFor, projectDir } from './scriptStyle.js';
-import { paragraphLevel, paragraphsOf, sectionStarts } from './sections.js';
-
-/** A unit's verse keys as they exist in the source chapter: a mapped range key
- * ("1-2") that the source keeps as separate verses expands to the verses it
- * spans (Codex review of #140). */
-const verseKeysIn = (keys, chapterVerses) => keys.flatMap((k) => {
-  if (chapterVerses[String(k)]) return [k];
-  const m = String(k).match(/^(\d+)-(\d+)$/);
-  if (!m) return [k];
-  const out = [];
-  for (let n = Number(m[1]); n <= Number(m[2]); n++) if (chapterVerses[String(n)]) out.push(String(n));
-  return out.length ? out : [k];
-});
+import { paragraphLevel, paragraphsOf, sectionStarts, verseKeysIn } from './sections.js';
 
 /** The last verse number a chapter key reaches ("4-5" → 5, "4" → 4). */
 const trailingNum = (key) => Number(String(key).split('-').pop());
