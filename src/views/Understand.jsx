@@ -376,6 +376,11 @@ function PassageStatus({ s, src, actions }) {
   );
 }
 
+const unitFocusVerses = (unit) => {
+  if (!unit) return null;
+  return unit.project ? [unit.project.verse] : unit.verses;
+};
+
 export default function Understand() {
   const { s, book, actions } = useApp();
   const [mode, setMode] = React.useState('section');
@@ -400,6 +405,7 @@ export default function Understand() {
   const units = understandUnits({ s, book, chapter, src, srcChapters, mode });
   // The focused unit: the one clicked, else the first (the design's default).
   const focusedKey = units.some((u) => u.key === activeKey) ? activeKey : units[0]?.key;
+  const focusVerses = unitFocusVerses(units.find((u) => u.key === focusedKey));
   const focusUnit = (unit) => {
     setActiveKey(unit.key);
     const item = firstHelpIn(s, chapter, unit);
@@ -460,7 +466,7 @@ export default function Understand() {
           </div>
         </div>
       </main>
-      <HelpsPanel chapter={chapter} />
+      <HelpsPanel chapter={chapter} focusVerses={focusVerses} />
     </div>
   );
 }
