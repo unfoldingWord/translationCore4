@@ -343,7 +343,7 @@ export default function Draft() {
           </div>
         </div>
       </main>
-      {s.helps && <HelpsPanel chapter={s.chapter} focusVerses={editingFocus(s.editing, s.chapter)} />}
+      {s.helps && <HelpsPanel chapter={s.chapter} focusVerses={editingFocus(s.editing, s.chapter)} comments />}
     </div>
   );
 }

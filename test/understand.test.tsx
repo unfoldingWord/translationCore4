@@ -128,6 +128,15 @@ describe('#106 — the Understand write boundary', () => {
     expect(writes()).toEqual([]);
   });
 
+  it('#252 — the helps strip has no Comments tab; a stale comments tab id falls back to Notes', () => {
+    state.helpsTab = 'comments'; // left over from Translate, where the tab exists
+    render(<Understand />);
+    const panel = within(screen.getByTestId('helps-panel'));
+    expect(panel.queryByRole('tab', { name: 'Comments' })).toBeNull();
+    expect(panel.getByRole('tab', { name: 'Notes' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.queryByTestId('helps-comment')).toBeNull();
+  });
+
   it('the tQ questions render with their answers (read-only)', () => {
     state.helpsTab = 'questions'; // the tab lives in app state; the mock is static
     try {
