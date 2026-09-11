@@ -998,7 +998,8 @@ holds is the export metadata's declared revision [VERIFIED — pankosmia-web 0.1
 
 The ruling:
 1. **The tC3 import (FR-23, Increment 6) attempts a DCS tag→sha lookup when the user is
-   online.** A resolved tag imports as a full D58 pin (sha identity + version label). A
+   online.** [annotated 2026-09-11 — the tC3 import (#21) is Increment 7 work on the
+   milestone board; the ruling is unchanged, only the increment named here is stale] A resolved tag imports as a full D58 pin (sha identity + version label). A
    lookup that fails (offline, moved tag, renamed org — PLATFORM-NOTES #30) imports as
    FR-25's marked-unresolved state; the re-pin flow re-attaches decisions.
 2. **Every version-identity fallback in the app is deleted, not guarded** (nothing uses
@@ -1300,3 +1301,59 @@ format no longer blocks the feature; only the editor and the sidecar handling ar
    (avoid bridge), "structural change" (avoid verse move).
 
 ROADMAP and issue #18 carry the amendment. D47(d) is annotated superseded.
+
+## D71 (2026-09-11, project-owner rulings) **Increment 6 is defined: three journeys, one epic, the date holds. Suggestions learn from the project's own alignments and are never saved unconfirmed.** [grill-with-docs session 2026-09-11; epic #261; issues #1, #9, #40, #50, #94, #134, #213, #255–#262]
+
+Context. Increment 5 closed its drafting journeys ahead of its date. Increment 6 held nine
+issues with no epic, no release issue, and one journey (J12). The session defined the
+increment on the board and settled the open design questions behind alignment suggestions
+(#1, #133), check comments and bookmarks (#50), and the resource upgrade flow (#40).
+
+1. **Three journeys close the increment.** J12 "Upgrade the pinned resources" ships. J5
+   "Align a verse" and J4 "Check a book" ship revised end states (`docs/JOURNEYS.md`).
+   One increment epic (#261) carries every work item; #40 is the J12 sub-epic; #262 is
+   the J5 sub-epic, because its four issues share one save path. J4 is one issue (#50).
+2. **The date holds** (2026-10-02; alpha.6 to the pilots on Oct 3, #58). What does not
+   fit moves forward under the intake rule, and the move names its reason. Moved out:
+   #139 to Increment 7. Closed: #119 (superseded by PR #146 and #181), #133 (answered),
+   #18 (every parked idea has an issue). Taken in: #134.
+3. **Alignment suggestions** (#1). The engine is wordMAP plus `uw-wordmapbooster` inside
+   tC4's own component (reaffirms the 2026-08-13 ruling). It learns **only from the
+   project's own confirmed alignments**, across all books; a project with no alignments
+   has no suggestions, and they grow as the translator aligns. No other corpus, no spike.
+   Training runs in a Web Worker, built when the Align tool opens and refreshed after each
+   confirmed save. gatewayEdit's defaults are adopted as-is: one whole-verse suggestion,
+   no confidence cut, time-boxed training [VERIFIED — `uw-wordmapbooster` 1.0.5
+   `dist/wordmap_tools.js:208-214`; `enhanced-word-aligner-rcl` 1.4.8
+   `dist/common/constants.js`; 2026-09-11]. The interface is the Align mockup: dashed
+   per-chip confirm, Accept all, Reject all, Suggest, Reset. **An unconfirmed suggestion
+   is never written**, is discarded on leaving the verse, is excluded from the placed and
+   resolved counts, and **Mark valid is refused while any suggestion stands.** The switch
+   sits in the Suggestions row, off by default, stored per client per project in the
+   platform's per-client settings record; nothing about it enters the project. Order on
+   the alignment save path: #255 (one tokenizer, with the agreement test) → #134 → #213 →
+   #1.
+4. **Check comments and bookmarks** (#50). A **check comment** is the §5.2 `comments`
+   field, editable and clearable, written by `check.decision.set`; a **bookmark** is the
+   `reminders` field. Neither is a J16 user comment (`note.add`), and neither changes
+   progress. The interface is the Translation Notes check mockup: five rail chips (All,
+   To do, Invalid, Bookmarked, Commented), row glyphs, a Bookmark button, a right-aligned
+   comment button with an inline editor. The mockup's "Only you see this" line is not
+   built: it describes a limitation that ends with team sync. Check comments show only in
+   the Check tool this increment. `CONTEXT.md` gains translation note, check comment,
+   bookmark and alignment suggestion.
+5. **Resource upgrade** (#40, #256, #257). Help-resource language sets only. Discovery is
+   an on-demand "Check for updates" in the sources modal, online only; no automatic check
+   (#259, Post-4.0). One offer per language set; each set upgrades in its own confirmed
+   step with the D36 carry-over report; the pins move only after every resource of the
+   release is installed and sha-verified, so a failed download changes nothing. An
+   upgrade of the original-language text or a gateway Bible is #258 (Increment 7, beside
+   #209): the affected alignments are **invalidated and retained**, never re-keyed.
+6. **The guided fix screen** (#9) is design-native on the existing preflight, fetch and
+   compare-and-swap code, with Pankosmia providers behind the interface where they exist.
+   D29 holds: no `pankosmia-rcl` visual components; `PanDownload` is not adopted.
+7. **Vocabulary** (`CONTEXT.md`): "check comment" (avoid: comment alone, note),
+   "bookmark" (avoid: reminder, flag), "alignment suggestion" (avoid: prediction,
+   auto-alignment), "translation note" (avoid: note alone).
+
+ROADMAP row 6, JOURNEYS J4/J5/J12 and the D59 annotation carry the amendment.
