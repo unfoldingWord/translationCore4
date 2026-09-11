@@ -1,31 +1,34 @@
-# Desktop packaging (#57, #119, #181)
+# Desktop packaging (#57, #119, #181, #243)
 
 This document records the build recipe for the unsigned desktop artifacts.
 Issue #119 added Linux x64 beside the proven macOS arm64 path, and the
-single-layer download. Issue #181 added Windows x64 (Increment 5). Issue #44
-adds signing; it must not replace this recipe.
+single-layer download. Issue #181 added Windows x64 (Increment 5). Issue #243
+adds the unsigned Mac installer and app icons (Increment 5.5). Issue #44 retains
+signing, notarization, and the remaining platform installer work.
+[decided 2026-09-10 — owner clarification on #243]
 
 ## What the pipeline does
 
-`scripts/package-desktop.zsh` builds one unsigned artifact for the host it
-runs on: macOS arm64, Linux x64, or Windows x64.
+`scripts/package-desktop.zsh` builds unsigned artifacts for macOS arm64,
+Linux x64, or Windows x64. Mac production builds emit a .pkg and a fallback zip;
+Mac debug builds emit a zip. Other platforms keep their existing zip format.
 `.github/workflows/package-desktop.yml` runs the script on three runners
 (`macos-15`, `ubuntu-24.04` and `windows-2025`) on every merge to `main` and on
-pull requests that touch the packaging recipe (the two scripts, the workflow,
-or `dev-env/server/`), and uploads each zip as a workflow artifact. A pull
+pull requests that touch the packaging recipe (the packaging/smoke scripts, Mac helpers and branding, workflow,
+or `dev-env/server/`), and uploads each package or zip as a workflow artifact. A pull
 request that changes only the app does not build the artifacts; the `ci` and
 `rig` workflows prove it, and the merge to `main` packages it [decided
 2026-09-08 — owner, after PR #226]. `workflow_dispatch` builds any branch on
 demand.
 
 The upload is a single layer. The workflow uses `actions/upload-artifact@v7`
-with `archive: false`, which uploads the zip as one file. The action then
+with `archive: false`, which uploads each pkg or zip as one file. The action then
 ignores `name`: the artifact is named after the file,
 `tC4-<version>-<os>-<arch>-unsigned.zip`, and the download is that file
 [VERIFIED — `actions/upload-artifact` v7.0.1 (tag `v7` = `043fb46d`, 2026-04-10):
 `action.yml` `archive` input; `src/upload/upload-artifact.ts:60-63` (the single-file
 check) and `:81-82` (`skipArchive`); the v7.0.0 release note; read 2026-09-05].
-Unpack it once. The execute bits of the launcher and the Electronite binaries
+Open the Mac pkg in Installer; unpack a zip once. The execute bits of the launcher and the Electronite binaries
 are the ones the build's own zip recorded, because nothing re-archives it.
 
 History: the action's own archive normalizes every file it packs to mode 644
@@ -109,9 +112,9 @@ and that enforcement is a packaging/shell responsibility. Facts, measured
 - tC3's launcher (`electronite/index.js`) calls
   `app.requestSingleInstanceLock()` but never checks the result and never
   quits the second copy; in practice macOS enforces single-instance for
-  `.app` bundles at the Finder level. Our artifact launches through
-  `start-tc4.command`, which Finder runs as many times as it is clicked —
-  so an explicit guard is load-bearing here.
+  `.app` bundles at the Finder level. The old artifact launched through
+  `start-tc4.command`, which Finder ran as many times as it was clicked.
+  The new Mac bundle retains the explicit guard, including direct executable launches.
 - **Mechanism:** the build writes a tC4-owned `electron/tc4-main.js` that
   acquires Electron's singleton lock BEFORE the template startup loads. A
   refused second launch exits with no window and no server; the first
@@ -153,13 +156,14 @@ Steps, in order:
    `THIRD-PARTY-NOTICES.md` + `BUILD-MANIFEST.json` (every input with its
    exact version, commit, and checksum — also echoed in the build log).
 6. Smoke test **through the shipped entry point**: run the shipped launcher
-   (`start-tc4.command` on macOS, `start-tc4.sh` on Linux)
+   (`translationCore4.app/Contents/MacOS/Electron` on macOS, `start-tc4.sh` on Linux)
    with a fresh `HOME` and no app-specific environment overrides. The app
    must self-spawn its bundled server (first free port from 19119) and serve
    `303` from `/` to `/clients/uw-tc4`, then `200` from the client page. The
    working directory must appear under the fresh `$HOME/pankosmia/tc4`, and
    the #70 store guard must pass (see "Project-store isolation").
-7. Zip.
+7. Re-verify the Mac signature after execution, build the production installer, and zip
+   the portable artifact. `--zip` skips the Mac installer; `--debug` builds the debug zip.
 
 ## The wrapper is Electronite [VERIFIED — desktop-app-template 4cb7576, 2026-08-14]
 
@@ -171,6 +175,76 @@ architectures. This satisfies D20 (Graphite-enabled wrapper). Evidence:
 
 Graphite font shaping in the packaged app is not proven yet. That proof is the
 second acceptance item of #32.
+
+## macOS arm64 installer (#243)
+
+[decided 2026-09-10 — owner: make Mac pilot testing easy, including a full app
+installation and application/Dock icons; the zip-only wording of #243 was replaced.]
+
+The Mac server statically links its native libgit2/OpenSSL dependencies. The build
+rejects any server dependency outside `/System/Library` or `/usr/lib`, so a build
+host's Homebrew installation cannot mask a missing pilot dependency. Native
+library license texts come from the resolved Cargo sources.
+
+### Install and launch
+
+1. Download `tC4-<version>-macos-arm64-unsigned.pkg` from `package-desktop`.
+2. Double-click the pkg. If blocked, use System Settings → Privacy & Security →
+   Open Anyway. Installer shows the README before installation and asks for an
+   administrator password. Read [the pilot instructions](../scripts/README-macos.txt).
+3. Open Applications → translationCore4, or select it in Launchpad. The app uses
+   the translationCore mark in Finder and the Dock. To keep a permanent shortcut,
+   Control-click the running Dock icon → Options → Keep in Dock.
+4. Quit tC4 before installing another version. To uninstall, quit and move the app
+   to Trash. Projects in `~/pankosmia/tc4-projects` are retained.
+
+No shell launcher or terminal command is needed on the intended pkg path. The
+installer is unsigned; the app is ad-hoc signed and not notarized. The target is
+at most one Gatekeeper/Open Anyway approval across install and first launch,
+separate from the administrator password. **The clean macOS 15 witness is pending**;
+report additional prompts on #243 rather than treating a boot test as that proof.
+
+Without administrator access, use the production zip. Unpack it and move the app
+to a writable folder such as `~/Applications`. The README includes:
+
+```sh
+xattr -dr com.apple.quarantine "$HOME/Applications/translationCore4.app"
+```
+
+The debug zip contains `translationCore4 DEBUG.app`, with its own project store
+and sample seed; Git is required for the debug seed's initial commit. Both zip
+variants include a README beside the app. CI smoke-tests the production installer,
+production zip fallback, and debug zip separately.
+
+### Application layout
+
+```text
+translationCore4.app/
+  Contents/Info.plist
+  Contents/MacOS/Electron
+  Contents/MacOS/server.bin
+  Contents/Frameworks/                   Electronite framework and helpers
+  Contents/Resources/
+    electron.icns                       translationCore mark
+    app/                                startup, bootstrap, dependencies
+    lib/                                client, templates, runtime resources
+    resources/                          bundled English suite
+    debug-seeds/                        debug only
+    Rocket.toml
+    README.txt, LICENSE, licenses/, THIRD-PARTY-NOTICES.md
+    BUILD-MANIFEST.json, smoke-installed.zsh
+```
+
+The pinned startup retains `Contents/Resources` as its server working directory;
+only the Mac executable path changes to `../MacOS/server.bin`. First-run copying
+runs under the existing singleton lock, before startup, and leaves existing
+resources/projects alone. Completed copies are renamed into place so a failed
+copy can be retried. Runtime state remains under HOME. The package payload contains
+only the app; there are no installer scripts, config resets, or loose support files
+installed into `/Applications`. Reinstallation replaces the bundle at that path.
+
+The icon assets and reproduction commands are in [branding](../branding/README.md).
+Local/CI evidence is recorded in [the #243 evidence note](evidence/macos-installer-243.md).
 
 ## Linux x64 (#119)
 
@@ -191,7 +265,7 @@ the debug variant). That folder holds:
 | `lib/` | clients, app resources, templates, webfonts |
 | `Rocket.toml`, `LICENSE`, `licenses/`, `THIRD-PARTY-NOTICES.md`, `BUILD-MANIFEST.json` | the same as macOS |
 
-The macOS artifact keeps `Electron.app` at this level. The Linux release is a
+The macOS artifact embeds its payload in `translationCore4.app` (see above). The Linux release is a
 flat directory, not an app bundle, so the build stages it as `electronite/`.
 That name prevents a collision with the template's `electron/` startup
 directory.
@@ -367,7 +441,13 @@ Two smoke tests exist. They answer two different questions.
 
 ### Run the post-install smoke test
 
-On the installed machine, from the unpacked folder:
+On macOS, close tC4 and run the shipped test with an explicitly fresh HOME:
+
+```sh
+TC4_SMOKE_HOME="$(mktemp -d)" zsh "/Applications/translationCore4.app/Contents/Resources/smoke-installed.zsh" "/Applications/translationCore4.app"
+```
+
+For a Linux or older flat artifact, from the unpacked folder:
 
 ```bash
 zsh smoke-installed.zsh
@@ -378,7 +458,7 @@ The JSON steps run under the artifact's own Electron in Node mode
 (`ELECTRON_RUN_AS_NODE=1`), so the machine needs no `node`, `python` or `jq`.
 
 Each step prints one line: `ok <step>: <what was seen>` or `FAIL <step>: <what was seen>`.
-The script exits non-zero at the first failure. The last line of a good run is
+The script exits non-zero at the first failure. A good run includes
 `SMOKE OK: <folder> under HOME=<home>, store <repo_dir>`. Paste the whole output into the
 pre-release notes.
 
@@ -415,9 +495,8 @@ between runs; it does not replace the run.
 ### Before you start
 
 1. Install the artifact on a machine that never ran tC4 (or under a fresh `HOME`): download
-   the zip for the platform, unpack it once with `unzip`. Linux: "Install and launch" above.
-   macOS: the first launch of the unsigned app meets Gatekeeper; allow it through System
-   Settings › Privacy & Security › "Open Anyway" ("Known limits" below). Do not start the
+   the Mac pkg or the zip for the other platforms. Follow that platform’s
+   "Install and launch" instructions above. Do not start the
    app before step 4 unless step 3 says so.
 2. If the unpacked folder contains `smoke-installed.zsh` (#45; artifacts built after pull
    request #192 merged carry it, and the section "Smoke tests" describes it), run it once,
@@ -534,33 +613,16 @@ Both "after" sizes are from the `package-desktop` CI run 34145714423 artifact li
   `minServerVersion`/`maxServerVersion` mismatch (`bootstrap.rs` version
   check). Picking and proving a client set is issue
   [#71](https://github.com/unfoldingWord/translationCore4/issues/71).
-- **Unsigned**: macOS Gatekeeper blocks the app on a clean machine.
-  Signing and notarization are #44. Two facts, measured 2026-08-25:
-  - The upstream Electronite v37.1.0-graphite release ships an app bundle
-    whose signature FAILS verification (`codesign --verify` on the pristine
-    zip: "code has no resources but signature indicates they must be
-    present"). A quarantined download of such a bundle gets Gatekeeper's
-    "damaged — move to Trash" verdict, and macOS offers NO "Open Anyway" for
-    that verdict. The build therefore RE-SEALS `Electron.app` with a forced
-    ad-hoc signature (`codesign --force --deep --sign -`) and fails if the
-    result does not verify. The witnessed "damaged" dialog came from the
-    2026-08-25 CI artifact on macOS 15 (owner's machine).
-  - With the valid ad-hoc seal, Gatekeeper still blocks the first launch
-    (unidentified developer), but the ordinary escape works: System
-    Settings → Privacy & Security → "Open Anyway". Pilot install
-    instructions MUST include that step until #44 ships signing.
-    On macOS 15, right-click → Open no longer bypasses Gatekeeper for
-    unsigned apps; `xattr -dr com.apple.quarantine` remains the terminal
-    workaround.
-- **Archive structure diverges from the template**: the spike ships a plain
-  folder (`Electron.app` or `electronite/`, plus `electron/` + `bin/` +
-  `lib/` + a `start-tc4` launcher). The template instead builds a single
-  self-contained `<App>.app` bundle and wraps it in a `.pkg` installer
-  (`macos/install/makeInstallElectronite.sh`: payload `APP_NAME.app`, a
-  `Contents/MacOS` launcher script, `pkgbuild`). The divergence is deliberate
-  for the spike — it keeps the recipe inspectable and avoids the installer
-  toolchain before signing exists. #44 MUST converge on the template's
-  app-bundle + installer structure.
+- **Unsigned Mac installer**: #243 installs a self-contained, ad-hoc-signed app.
+  The pkg itself is unsigned. Developer ID signing and notarization remain #44.
+  Installer instructions include Open Anyway. A clean macOS 15 Safari-download →
+  Installer → Finder witness must record the approval count before #243 closes;
+  automated boot/signature checks do not establish that count.
+- **Zip quarantine fallback**: pilots without administrator access can use the Mac
+  zip and the exact command in its README. The old flat zip required separate
+  approvals for its launcher, Electron, and server; it is no longer the primary
+  Mac pilot path. The valid ad-hoc re-seal introduced for #57 is retained on the
+  completed bundle, including an explicitly signed embedded server.
 - **Shared project store — RESOLVED by #70** (history: the earlier "demo
   seed data" claim was wrong, see the evidence record; the platform default
   `repo_dir` is the shared `$HOME/pankosmia_repos`). The build now pins an

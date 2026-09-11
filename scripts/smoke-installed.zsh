@@ -34,6 +34,19 @@ set -u
 
 APPDIR=${1:-${0:a:h}}
 APPDIR=${APPDIR:a}
+# Accept the .app, a zip's containing folder, or the shipped Resources script.
+BUNDLE=""
+if [[ "$APPDIR" = *.app ]] && [ -d "$APPDIR/Contents" ]; then
+  BUNDLE="$APPDIR"
+elif [[ "$APPDIR" = *.app/Contents/Resources ]]; then
+  BUNDLE="${APPDIR:h:h}"
+elif [ -f "$APPDIR/start-tc4.command" ]; then
+  : # Older flat Mac zips also contain Electron.app; keep their launcher path.
+else
+  bundles=("$APPDIR"/*.app(N/))
+  if [ "${#bundles}" -eq 1 ]; then BUNDLE="${bundles[1]}"; fi
+fi
+if [ -n "$BUNDLE" ]; then APPDIR="$BUNDLE/Contents/Resources"; fi
 SMOKE_HOME=${TC4_SMOKE_HOME:-$HOME}
 STAMP=$(date +%s)
 ABBR="smoke_$STAMP"
@@ -49,7 +62,11 @@ ok()   { echo "ok $1"; }
 # ---- the artifact's own binaries -------------------------------------------------
 # An unpacker that drops permission bits leaves the launcher present but not
 # executable (seen with actions/download-artifact, CI run 34007702506); say which.
-if [ -f "$APPDIR/start-tc4.command" ]; then
+if [ -n "$BUNDLE" ]; then
+  LAUNCHER="$BUNDLE/Contents/MacOS/Electron"; ELECTRON="$LAUNCHER"
+  codesign --verify --strict "$BUNDLE/Contents/MacOS/server.bin" || { echo 'FAIL server signature'; exit 1; }
+  codesign --verify --deep --strict "$BUNDLE" || { echo 'FAIL app signature'; exit 1; }
+elif [ -f "$APPDIR/start-tc4.command" ]; then
   LAUNCHER="$APPDIR/start-tc4.command"; ELECTRON="$APPDIR/Electron.app/Contents/MacOS/Electron"
 elif [ -f "$APPDIR/start-tc4.sh" ]; then
   LAUNCHER="$APPDIR/start-tc4.sh"; ELECTRON="$APPDIR/electronite/electron"
@@ -291,4 +308,12 @@ else
   run_steps delete || { cleanup_app; exit 1; }
 fi
 stop_app second
+
+# Runtime writes must not invalidate the installed app's seal (#243).
+if [ -n "$BUNDLE" ]; then
+  codesign --verify --strict "$BUNDLE/Contents/MacOS/server.bin" || fail 'server signature after smoke'
+  codesign --verify --deep --strict "$BUNDLE" || fail 'app signature after smoke'
+  ok 'bundle signatures remain valid after smoke'
+fi
+
 echo "SMOKE OK: $APPDIR under HOME=$SMOKE_HOME, store $STORE"

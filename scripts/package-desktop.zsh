@@ -14,7 +14,7 @@
 # bundled server and serve the tC4 client (303 from /, 200 from
 # /clients/uw-tc4) before the zip is written.
 #
-# Usage: zsh scripts/package-desktop.zsh [--debug]
+# Usage: zsh scripts/package-desktop.zsh [--debug] [--zip]
 #   (no flag)  production variant: isolated EMPTY project store.
 #   --debug    debug/demo variant: separate debug-only store, seeded with the
 #              conformance sample burrito on first launch, visibly marked
@@ -27,6 +27,7 @@
 # booted app resolves repo_dir to the shared store — both variants.
 #
 # Output: dist-desktop/tC4-<version>[-debug]-<os>-<arch>-unsigned.zip
+# macOS production also emits .pkg (default pilot path); --zip skips the installer.
 #
 # Requirements: node >= 20, npm, cargo, curl, unzip, git, and sha256sum or shasum.
 #   Linux also needs zsh, the zip command, Electron's shared libraries, and a
@@ -73,7 +74,24 @@ else                         EXE="";     SERVER_BIN="server.bin"; HOME_LABEL='$H
 
 # Build variant (#70).
 VARIANT=production
-[ "$1" = "--debug" ] && VARIANT=debug
+MAKE_PKG=true
+for arg in "$@"; do
+  case "$arg" in
+    --debug) VARIANT=debug ;;
+    --zip) MAKE_PKG=false ;;
+    *) echo "Unknown argument: $arg (expected --debug or --zip)" >&2; exit 1 ;;
+  esac
+done
+if [ "$OS" = macos ]; then
+  # Do not mistake a pilot's already-running app for this build's smoke server.
+  # In particular, the existing app can hold Electron's native singleton lock.
+  for smoke_port in {19119..19139}; do
+    if "$CURL" -s --max-time 1 "http://127.0.0.1:$smoke_port/api/version" | grep -q '"product_short_name":"tc4"'; then
+      echo "FAIL precondition: quit the running tC4 app (port $smoke_port) before packaging smoke." >&2
+      exit 1
+    fi
+  done
+fi
 if [ "$VARIANT" = "debug" ]; then
   STORE_LEAF="pankosmia/tc4-projects-debug"   # separate debug-only store
 else
@@ -146,6 +164,7 @@ esac
 
 echo "== 1/7 build the tC4 client"
 cd "$REPO"
+if [ "$OS" = macos ]; then node --test "$REPO/scripts/mac-bootstrap.test.cjs"; fi
 npm ci --no-audit --no-fund
 npm run build
 
@@ -235,12 +254,6 @@ TEMPLATE_MAIN=$(node -p "require('$(npath "$PACK/electron/package.json")').main"
   echo "FATAL: template electron main is '$TEMPLATE_MAIN' (expected electronStartup.js) — re-verify the #4 single-instance wrapper before building" >&2
   exit 1
 }
-if [ -n "$TC4_TEST_NO_SINGLE_INSTANCE" ]; then
-  # TEST-ONLY (the #70 guard-self-test pattern): skip the wrapper so the #4
-  # smoke guard's FAILURE path can be exercised. A build with this set MUST
-  # fail at the guard.
-  echo "TEST-ONLY: TC4_TEST_NO_SINGLE_INSTANCE set — skipping the #4 wrapper; the smoke guard MUST fail"
-else
 cat > "$PACK/electron/tc4-main.js" <<'MAIN_EOF'
 // tC4 single-instance guard (#4, D39). This file is tC4's own, not the
 // template's. It MUST run before electronStartup.js: the template's free-port
@@ -258,9 +271,27 @@ if (!app.requestSingleInstanceLock()) {
       win.focus();
     }
   });
+  if (process.platform === 'darwin') {
+    try {
+      require('./tc4-bootstrap.cjs').bootstrap({
+        ...require('./tc4-bootstrap.json'),
+        resourcesDir: require('path').join(__dirname, '..'),
+        home: require('os').homedir(),
+      });
+    } catch (error) {
+      require('electron').dialog.showErrorBox('translationCore4 could not start',
+        'The bundled resources could not be prepared. Please quit and try again.\n' + error.message);
+      app.exit(1);
+    }
+  }
   require('./electronStartup.js');
 }
 MAIN_EOF
+if [ -n "$TC4_TEST_NO_SINGLE_INSTANCE" ]; then
+  # Keep bootstrap intact: this control must fail at the second-instance guard.
+  echo "TEST-ONLY: skipping singleton lock; the smoke guard MUST fail"
+  sed_inplace 's/!app.requestSingleInstanceLock()/false/' "$PACK/electron/tc4-main.js"
+fi
 node -e "
 const fs = require('fs');
 const p = '$(npath "$PACK/electron/package.json")';
@@ -268,7 +299,6 @@ const j = JSON.parse(fs.readFileSync(p, 'utf8'));
 j.main = 'tc4-main.js';
 fs.writeFileSync(p, JSON.stringify(j, null, 2) + '\n');
 "
-fi
 
 # The template's startup script spawns ./bin/server.bin, or ./bin/server.exe on
 # win32 (electronStartup.js, WIN_SERVER_PATH).
@@ -337,19 +367,7 @@ mkdir -p "$STAGE/$APP_NAME/licenses"
 APPDIR="$STAGE/$APP_NAME"
 if [ "$OS" = macos ]; then
 cp -R "$BUILD/electronite/Electron.app" "$APPDIR/Electron.app"
-# Re-seal the wrapper with a VALID ad-hoc signature (#57, measured 2026-08-25).
-# The upstream Electronite release ships an app bundle whose signature FAILS
-# verification ("code has no resources but signature indicates they must be
-# present" — codesign --verify, pristine v37.1.0-graphite zip). A quarantined
-# download therefore gets Gatekeeper's "damaged — move to Trash" verdict, with
-# NO "Open Anyway" escape. A forced ad-hoc re-sign produces a bundle that
-# VERIFIES, so Gatekeeper downgrades to the ordinary unidentified-developer
-# flow (System Settings -> Privacy & Security -> Open Anyway). Real signing +
-# notarization is #44's job; this step only makes the unsigned artifact
-# openable at all. The guard below fails the build if the seal did not take.
-codesign --force --deep --sign - "$APPDIR/Electron.app"
-codesign --verify --deep --strict "$APPDIR/Electron.app" \
-  || { echo "FATAL: Electron.app does not verify after the ad-hoc re-seal (#57)"; exit 1 }
+# The completed bundle is sealed after all payload files are staged (#243).
 elif [ "$OS" = windows ]; then
 # Windows (#181): a flat directory with electron.exe, no signature, no
 # permission bits. Stage it under electronite/ like Linux.
@@ -417,10 +435,7 @@ write_windows_launcher() {  # $1 = store leaf, $2 = variant
 if [ "$OS" = windows ]; then
   LAUNCHER="start-tc4.cmd"
 elif [ "$OS" = macos ]; then
-  LAUNCHER="start-tc4.command"
-  LAUNCH_SHEBANG="#!/bin/zsh"
-  LAUNCH_CD='cd "${0:a:h}"'
-  LAUNCH_EXEC='exec ./Electron.app/Contents/MacOS/Electron ./electron'
+  LAUNCHER="" # set after package-macos.zsh stages the bundle
 else
   LAUNCHER="start-tc4.sh"
   LAUNCH_SHEBANG="#!/bin/sh"
@@ -445,7 +460,9 @@ if [ "$VARIANT" = "debug" ]; then
   mkdir -p "$APPDIR/debug-seeds"
   cp -R "$REPO/conformance/sample-burrito" "$APPDIR/debug-seeds/sample_burrito"
 fi
-if [ "$OS" = windows ]; then
+if [ "$OS" = macos ]; then
+  : # Finder launches the bundle; bootstrap runs in tc4-main.js.
+elif [ "$OS" = windows ]; then
   write_windows_launcher "$STORE_LEAF" "$VARIANT"
 elif [ "$VARIANT" = "debug" ]; then
   cat > "$APPDIR/$LAUNCHER" <<LAUNCH
@@ -498,7 +515,7 @@ fi
 $LAUNCH_EXEC
 LAUNCH
 fi
-chmod +x "$APPDIR/$LAUNCHER"
+if [ "$OS" != macos ]; then chmod +x "$APPDIR/$LAUNCHER"; fi
 
 # Licenses. The startup files in electron/ are modified copies from the MIT
 # desktop-app-template; Electronite ships its own LICENSE files in the zip.
@@ -579,6 +596,11 @@ MANIFEST
 echo "-- BUILD-MANIFEST.json --"
 cat "$APPDIR/BUILD-MANIFEST.json"
 
+if [ "$OS" = macos ]; then
+  zsh "$REPO/scripts/package-macos.zsh" "$APPDIR" "$APP_NAME" "$VERSION" "$VARIANT" "$STORE_LEAF"
+  LAUNCHER="$APP_NAME.app/Contents/MacOS/Electron"
+fi
+
 echo "== 6/7 smoke test: launch the artifact through its own entry point"
 # Fresh HOME so the app's self-created working dir (~/pankosmia/tc4) is
 # isolated. No app-specific environment overrides: the entry point must
@@ -632,7 +654,7 @@ fi
 launch_entry_point "$BUILD/smoke-entrypoint.log"
 SMOKE_PID=$LAUNCH_PID
 cleanup_smoke() {
-  if [ "$OS" = macos ]; then pkill -f "$APPDIR/Electron.app" 2>/dev/null || true
+  if [ "$OS" = macos ]; then pkill -f "$APPDIR/$APP_NAME.app" 2>/dev/null || true
   elif [ "$OS" = windows ]; then
     # Stop only the processes that run from the staged folder (the same path
     # filter as the pkill -f branches): electron.exe and the server it spawned,
@@ -796,6 +818,14 @@ else
     fi
   done
   echo "production store holds only _local_/_sideloaded_/ with seeded English suite on first boot (isolated at $RESOLVED_REPO_DIR)"
+fi
+
+if [ "$OS" = macos ]; then
+  codesign --verify --strict "$APPDIR/$APP_NAME.app/Contents/MacOS/server.bin"
+  codesign --verify --deep --strict "$APPDIR/$APP_NAME.app"
+  if [ "$VARIANT" = production ] && [ "$MAKE_PKG" = true ]; then
+    zsh "$REPO/scripts/build-macos-pkg.zsh" "$APPDIR/$APP_NAME.app" "$VERSION" "$BUILD/tC4-$VERSION-$OS-$ARCH-unsigned.pkg"
+  fi
 fi
 
 echo "== 7/7 zip the artifact"
