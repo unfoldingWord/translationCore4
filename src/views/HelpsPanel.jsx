@@ -420,10 +420,22 @@ export function useLoadHelps() {
   }, [s.book, bookBytesReady, s.projectPins, s.projectPinsLoaded, s.netEnabled, s.installEpoch]);
 }
 
-export function HelpsPanel({ chapter, focusVerses = null }) {
+/** `comments` is Translate-only (#252): Understand writes those notes in its
+ * main window, so the helps strip there omits the tab. The tab id lives in
+ * shared app state, so a stale 'comments' on Understand falls back to Notes. */
+const shownTab = (helpsTab, comments) => ((!comments && helpsTab === 'comments') ? 'notes' : helpsTab);
+const tabOptions = (u, comments) => [
+  { value: 'notes', label: t('helps.notes') },
+  { value: 'words', label: t('helps.words') },
+  { value: 'questions', label: t('helps.questions') },
+  { value: 'simplified', label: simplifiedLabel(u) },
+  ...(comments ? [{ value: 'comments', label: t('helps.comments') }] : []),
+];
+
+export function HelpsPanel({ chapter, focusVerses = null, comments = false }) {
   const { s, actions } = useApp();
   const u = s.understand;
-  const tab = s.helpsTab;
+  const tab = shownTab(s.helpsTab, comments);
   // F3 focus wiring: hover is transient, click toggles the sticky focus.
   const src = s.sources?.[s.sourceTab];
   const refRows = mappedRows(u, chapter);
@@ -432,13 +444,7 @@ export function HelpsPanel({ chapter, focusVerses = null }) {
   const loading = !u || u.loading;
   return (
     <aside data-testid="helps-panel" style={{ width: 'var(--helps-width)', flex: 'none', background: 'var(--surface-panel)', borderInlineStart: 'var(--stroke-hair) solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      <Switcher indicator="underline" value={tab} onChange={actions.setHelpsTab} options={[
-        { value: 'notes', label: t('helps.notes') },
-        { value: 'words', label: t('helps.words') },
-        { value: 'questions', label: t('helps.questions') },
-        { value: 'simplified', label: simplifiedLabel(u) },
-        { value: 'comments', label: t('helps.comments') },
-      ]} />
+      <Switcher indicator="underline" value={tab} onChange={actions.setHelpsTab} options={tabOptions(u, comments)} />
       <div style={{ flex: 1, overflow: 'auto', padding: 16, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
         {/* Loading and a failed load are their OWN states — never rendered as
             "the package lacks this resource" (D30 honesty; 2026-08-27 review). */}
