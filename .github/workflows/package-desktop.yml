@@ -1,12 +1,18 @@
 name: package-desktop
 
 # #57: produce an unsigned desktop artifact on every merge to main, and on
-# pull requests that touch the packaging inputs — PR artifacts upload too
+# pull requests that touch the packaging recipe — PR artifacts upload too
 # (short retention), so a packaging fix can be downloaded and taken through
 # the real Gatekeeper path BEFORE merge (PR #98 review). The recipe lives in
 # scripts/package-desktop.zsh. The script smoke-tests the staged artifact
 # THROUGH ITS OWN ENTRY POINT (self-spawned server; root 303 ->
 # /clients/uw-tc4, then 200) before it zips.
+#
+# Owner ruling 2026-09-08 (after PR #226): a pull request builds only when it
+# changes the recipe itself — the two scripts, this workflow, or the server
+# crate. A change to the app (src/, public/, rig/, package.json, vite config)
+# is proven by the `ci` and `rig` workflows on the PR and packaged on merge;
+# three desktop builds per app PR cost more time than they caught.
 #
 # #119 adds the linux-x64 job beside the proven macos-arm64 one. Both run the
 # same script; only the host differs. #181 adds windows-x64: the same script
@@ -25,14 +31,14 @@ on:
     paths:
       - scripts/package-desktop.zsh
       - scripts/smoke-installed.zsh
+      - scripts/*mac*
+      - scripts/*windows*
+      - scripts/desktop-bootstrap*
+      - scripts/smoke-*
+      - scripts/tc4.iss
+      - branding/**
       - .github/workflows/package-desktop.yml
-      - src/**
-      - public/**
-      - rig/**
       - dev-env/server/**
-      - package.json
-      - package-lock.json
-      - vite.config.js
   workflow_dispatch:
 
 permissions:
@@ -40,6 +46,10 @@ permissions:
 
 jobs:
   macos-arm64:
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [production, debug]
     runs-on: macos-15
     timeout-minutes: 60
     steps:
@@ -63,7 +73,7 @@ jobs:
           key: cargo-package-desktop-${{ runner.os }}-${{ hashFiles('dev-env/server/Cargo.lock', 'dev-env/server/Cargo.toml') }}
 
       - name: Build the artifact
-        run: zsh scripts/package-desktop.zsh
+        run: zsh scripts/package-desktop.zsh ${{ matrix.variant == 'debug' && '--debug' || '' }}
 
       # Single-layer download (#119): `archive: false` uploads the zip as one file, so the
       # download IS that zip and the execute bits inside survive. The action then ignores
@@ -88,6 +98,15 @@ jobs:
           archive: false
           if-no-files-found: error
           retention-days: 3
+
+      - name: Upload the Mac installer
+        if: matrix.variant == 'production'
+        uses: actions/upload-artifact@v7
+        with:
+          path: dist-desktop/tC4-*-macos-arm64-unsigned.pkg
+          archive: false
+          if-no-files-found: error
+          retention-days: ${{ github.event_name == 'pull_request' && 3 || 30 }}
 
   linux-x64:
     runs-on: ubuntu-24.04
@@ -167,8 +186,7 @@ jobs:
   # keeps the Windows node, cargo and git on the PATH). The server builds with
   # the MSVC toolchain and needs no OpenSSL there (git2 uses WinHTTP, ureq uses
   # rustls). The smoke test opens a real window on the runner's desktop session.
-  # There is no smoke-windows-x64 post-install job yet: the shipped
-  # smoke-installed.zsh is macOS/Linux (docs/PACKAGING.md, "Windows x64").
+  # #242 adds the production installer and a separate installed-app proof below.
   windows-x64:
     runs-on: windows-2025
     timeout-minutes: 90
@@ -240,52 +258,166 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
-  # #45 post-install smoke test, macOS: a fresh runner, the uploaded artifact, one unzip.
+      - name: Upload the Windows installer
+        uses: actions/upload-artifact@v7
+        with:
+          path: dist-desktop/tC4-*-windows-x64-unsigned.exe
+          archive: false
+          if-no-files-found: error
+          retention-days: ${{ github.event_name == 'pull_request' && 3 || 30 }}
+
+  smoke-windows-x64:
+    needs: windows-x64
+    runs-on: windows-2025
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      actions: read
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Download and install the unsigned artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force download, smoke-logs | Out-Null
+          $artifacts = gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Artifact listing failed' }
+          $matches = @($artifacts.artifacts | Where-Object { $_.name -match '^tC4-.*-windows-x64-unsigned\.exe$' })
+          if ($matches.Count -ne 1) { throw 'Expected exactly one Windows installer' }
+          # gh returns raw bytes for archive:false. PowerShell 7 preserves native
+          # stdout bytes with > (the runner ships PowerShell 7.4 or later).
+          gh api "repos/${{ github.repository }}/actions/artifacts/$($matches[0].id)/zip" > download/installer.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Installer download failed' }
+          Get-FileHash download/installer.exe -Algorithm SHA256
+          $installDir = Join-Path $env:LOCALAPPDATA 'Programs\tC4 Installed Smoke'
+          "TC4_INSTALL_DIR=$installDir" >> $env:GITHUB_ENV
+          $argsList = @('/VERYSILENT','/SUPPRESSMSGBOXES','/SP-','/NORESTART','/TASKS=desktopicon',"/DIR=`"$installDir`"", "/LOG=`"$PWD\smoke-logs\install.log`"")
+          $p = Start-Process "$PWD\download\installer.exe" -ArgumentList $argsList -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Installer exit $($p.ExitCode)" }
+          $shell = New-Object -ComObject WScript.Shell
+          $links = @(
+            (Join-Path ([Environment]::GetFolderPath('Programs')) 'translationCore4.lnk'),
+            (Join-Path ([Environment]::GetFolderPath('Desktop')) 'translationCore4.lnk')
+          )
+          foreach ($link in $links) {
+            if (!(Test-Path -LiteralPath $link)) { throw "Missing shortcut $link" }
+            $shortcut = $shell.CreateShortcut($link)
+            if ($shortcut.TargetPath -ine "$installDir\electronite\electron.exe" -or $shortcut.Arguments -cne "`"$installDir\electron`"" -or $shortcut.WorkingDirectory -ine $installDir) { throw "Wrong shortcut target: $link" }
+          }
+          Write-Host 'ok installed Start menu and desktop shortcuts'
+          Get-Content "$installDir\BUILD-MANIFEST.json"
+      - name: Installed app smoke with no development tools on PATH
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot;$env:SystemRoot\System32\Wbem"
+          $smokeHome = Join-Path $env:RUNNER_TEMP 'tC4 Pilot Profile'
+          & "$env:TC4_INSTALL_DIR\smoke-installed.ps1" -AppDir $env:TC4_INSTALL_DIR -SmokeHome $smokeHome -LogDir "$PWD\smoke-logs" -KeepProject *>&1 | Tee-Object smoke-logs/smoke-installed-windows.log
+          if (!$?) { throw 'Installed smoke failed' }
+      - name: Reinstall and uninstall preserve user data
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $smokeHome = Join-Path $env:RUNNER_TEMP 'tC4 Pilot Profile'
+          $store = Join-Path $smokeHome 'pankosmia\tc4-projects'
+          $book = @(Get-ChildItem "$store\_local_\_local_\smoke_*\ingredients\TIT.usfm")
+          if ($book.Count -ne 1) { throw 'Expected one persisted smoke project' }
+          $hash = (Get-FileHash -LiteralPath $book[0].FullName).Hash
+          $argsList = @('/VERYSILENT','/SUPPRESSMSGBOXES','/SP-','/NORESTART',"/DIR=`"$env:TC4_INSTALL_DIR`"", "/LOG=`"$PWD\smoke-logs\reinstall.log`"")
+          $p = Start-Process "$PWD\download\installer.exe" -ArgumentList $argsList -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Reinstall exit $($p.ExitCode)" }
+          & "$env:TC4_INSTALL_DIR\smoke-installed.ps1" -AppDir $env:TC4_INSTALL_DIR -SmokeHome $smokeHome -LogDir "$PWD\smoke-logs" *>&1 | Tee-Object smoke-logs/smoke-reinstalled-windows.log
+          if (!$?) { throw 'Reinstalled smoke failed' }
+          if ((Get-FileHash -LiteralPath $book[0].FullName).Hash -cne $hash) { throw 'Reinstall or bootstrap changed existing user data' }
+          $p = Start-Process "$env:TC4_INSTALL_DIR\unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Uninstaller exit $($p.ExitCode)" }
+          if (Test-Path "$env:TC4_INSTALL_DIR\electronite\electron.exe") { throw 'Uninstaller left the executable' }
+          foreach ($folder in @('Programs','Desktop')) {
+            if (Test-Path (Join-Path ([Environment]::GetFolderPath($folder)) 'translationCore4.lnk')) { throw "Uninstaller left $folder shortcut" }
+          }
+          if ((Get-FileHash -LiteralPath $book[0].FullName).Hash -cne $hash) { throw 'Uninstall changed user data' }
+          Write-Host 'ok reinstall/uninstall preserved user project; app and shortcuts removed'
+      - name: Upload the Windows install evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: smoke-installed-windows-x64
+          path: smoke-logs/
+          retention-days: 30
+
+  # #243: install the production pkg; also prove both zip routes on fresh runners.
+  # This checks payload/boot, not the interactive Gatekeeper acceptance witness.
   smoke-macos-arm64:
     needs: macos-arm64
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [production, debug, fallback]
     runs-on: macos-15
     timeout-minutes: 20
     permissions:
       contents: read
       actions: read
     steps:
-      # actions/download-artifact extracts the zip itself and drops the execute bits
-      # (run 34007702506: start-tc4 at mode 644, the smoke test refused it). A pilot's
-      # browser download is the raw zip, so the job takes the same path: the API's raw
-      # artifact zip, unpacked once with unzip (docs/PACKAGING.md, "Install and launch").
-      - name: Download the artifact as a pilot does (raw zip, one unzip)
+      - name: Download and install the pilot artifact
         env:
           GH_TOKEN: ${{ github.token }}
+          VARIANT: ${{ matrix.variant }}
         run: |
-          set -e
-          ID=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts" --jq '.artifacts[] | select(.name | test("^tC4-.*-macos-arm64-unsigned\\.zip$")) | .id')
+          set -euo pipefail
+          mkdir -p download install
+          if [ "$VARIANT" = production ]; then
+            PATTERN='^tC4-.*-macos-arm64-unsigned\.pkg$'
+            FILE=download/artifact.pkg
+          elif [ "$VARIANT" = debug ]; then
+            PATTERN='^tC4-.*-debug-macos-arm64-unsigned\.zip$'
+            FILE=download/artifact.zip
+          else
+            PATTERN='^tC4-.*-macos-arm64-unsigned\.zip$'
+            FILE=download/artifact.zip
+          fi
+          gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts" > download/artifacts.json
+          ID=$(jq -er --arg pattern "$PATTERN" --arg variant "$VARIANT" '
+            [.artifacts[] | select(.name | test($pattern)) |
+             select((.name | contains("-debug-")) == ($variant == "debug"))] |
+            if length == 1 then .[0].id else error("Expected exactly one Mac artifact") end
+          ' download/artifacts.json)
           test -n "$ID"
-          echo "artifact id: $ID"
-          mkdir -p download
-          gh api "repos/${{ github.repository }}/actions/artifacts/$ID/zip" > download/artifact.zip
-          ls -la download
-          shasum -a 256 download/artifact.zip || sha256sum download/artifact.zip
-
-      - name: Unpack once
+          gh api "repos/${{ github.repository }}/actions/artifacts/$ID/zip" > "$FILE"
+          shasum -a 256 "$FILE"
+          if [ "$VARIANT" = production ]; then
+            pkgutil --expand "$FILE" download/expanded
+            test -f download/expanded/Resources/README.txt
+            sudo installer -pkg "$FILE" -target /
+            APP=/Applications/translationCore4.app
+          else
+            ditto -x -k "$FILE" install
+            APP=$(find "$PWD/install" -maxdepth 2 -name '*.app' -type d)
+          fi
+          test -d "$APP"
+          test -x "$APP/Contents/MacOS/Electron"
+          test -x "$APP/Contents/MacOS/server.bin"
+          test -f "$APP/Contents/Resources/README.txt"
+          test -f "$APP/Contents/Resources/BUILD-MANIFEST.json"
+          echo "TC4_INSTALLED_APP=$APP" >> "$GITHUB_ENV"
+      - name: Post-install smoke (fresh HOME, installed binaries)
+        env:
+          VARIANT: ${{ matrix.variant }}
         run: |
-          set -e
-          unzip -q download/artifact.zip -d install
-          ls -la install/translationCore4
-
-      - name: Run the shipped smoke test under a fresh HOME
-        run: |
+          set -euo pipefail
           mkdir -p "$RUNNER_TEMP/smoke-home" smoke-logs
-          set -o pipefail
-          TC4_SMOKE_HOME="$RUNNER_TEMP/smoke-home" TC4_SMOKE_LOGDIR="$PWD/smoke-logs" zsh install/translationCore4/smoke-installed.zsh install/translationCore4 2>&1 | tee smoke-logs/smoke-installed-macos-arm64.log
-
-      - uses: actions/upload-artifact@v7
+          TC4_SMOKE_HOME="$RUNNER_TEMP/smoke-home" TC4_SMOKE_LOGDIR="$PWD/smoke-logs" \
+            zsh "$TC4_INSTALLED_APP/Contents/Resources/smoke-installed.zsh" "$TC4_INSTALLED_APP" \
+            2>&1 | tee "smoke-logs/smoke-installed-macos-$VARIANT.log"
+      - name: Upload the smoke evidence
         if: always()
+        uses: actions/upload-artifact@v7
         with:
-          name: smoke-installed-macos-arm64
+          name: smoke-installed-macos-${{ matrix.variant }}
           path: smoke-logs/
           retention-days: 30
 
-  # #45 post-install smoke test, Linux: the same, with Electron's shared libraries and xvfb.
   smoke-linux-x64:
     needs: linux-x64
     runs-on: ubuntu-24.04

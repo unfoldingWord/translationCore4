@@ -13,6 +13,7 @@ import { isSourceAbsent } from '../data/sourceState';
 import { keyCarries } from './SourceVerse.jsx';
 import { gatewayQuote, tokenizeVerse } from '../data/sourceHighlight';
 import { Button, Callout, HelpCard, IconButton, Overline, Switcher } from '../ds/index.js';
+import { inFocus } from './helpsFocus.js';
 
 // The leading verse number of a chapter key — span keys ("17-18") are real
 // USFM verse bridges (see usfm/indexer.ts) and MUST NOT be dropped.
@@ -118,14 +119,14 @@ function SlotBanners({ slot }) {
   );
 }
 
-const itemsInChapter = (slot, chapter) =>
+const itemsInChapter = (slot, chapter, focusVerses) =>
   slot?.state === 'ready'
-    ? slot.items.filter((it) => Number(it.contextId.reference.chapter) === Number(chapter))
+    ? slot.items.filter((it) => Number(it.contextId.reference.chapter) === Number(chapter) && inFocus(it.contextId.reference, focusVerses))
     : [];
 
-const emptyChapter = (
+const emptyTab = (focusVerses) => (
   <p style={{ fontSize: 'var(--fs-caption-lg)', color: 'var(--text-tertiary)', fontStyle: 'italic', margin: 0 }}>
-    {t('understand.noneForChapter')}
+    {t(focusVerses != null ? 'understand.noneInFocus' : 'understand.noneForChapter')}
   </p>
 );
 
@@ -212,11 +213,11 @@ export function ExpandableNote({ text }) {
   );
 }
 
-function NotesTab({ slot, notes, actions, cardFocus }) {
+function NotesTab({ slot, notes, actions, cardFocus, focusVerses }) {
   if (slot?.state !== 'ready') return <><SlotBanners slot={slot} /><SlotState slot={slot} /></>;
   return <>
     <SlotBanners slot={slot} />
-    {notes.length === 0 ? emptyChapter : notes.map((n, i) => (
+    {notes.length === 0 ? emptyTab(focusVerses) : notes.map((n, i) => (
       <HelpCard key={`${n.contextId.checkId}-${i}`} kind="note" verse={n.contextId.reference.verse}
         active={cardFocus.activeId === n.contextId.checkId}
         onClick={() => cardFocus.focus(focusOf(n))}
@@ -230,11 +231,11 @@ function NotesTab({ slot, notes, actions, cardFocus }) {
   </>;
 }
 
-function WordsTab({ slot, words, actions, cardFocus }) {
+function WordsTab({ slot, words, actions, cardFocus, focusVerses }) {
   if (slot?.state !== 'ready') return <><SlotBanners slot={slot} /><SlotState slot={slot} /></>;
   return <>
     <SlotBanners slot={slot} />
-    {words.length === 0 ? emptyChapter : words.map((w, i) => (
+    {words.length === 0 ? emptyTab(focusVerses) : words.map((w, i) => (
       <HelpCard key={`${w.contextId.checkId}-${i}`} kind="word" verse={w.contextId.reference.verse}
         active={cardFocus.activeId === w.contextId.checkId}
         onClick={() => cardFocus.focus(focusOf(w))}
@@ -246,11 +247,11 @@ function WordsTab({ slot, words, actions, cardFocus }) {
   </>;
 }
 
-function QuestionsTab({ slot, questions }) {
+function QuestionsTab({ slot, questions, focusVerses }) {
   if (slot?.state !== 'ready') return <><SlotBanners slot={slot} /><SlotState slot={slot} /></>;
   return <>
     <SlotBanners slot={slot} />
-    {questions.length === 0 ? emptyChapter : questions.map((q, i) => (
+    {questions.length === 0 ? emptyTab(focusVerses) : questions.map((q, i) => (
       <div key={`${q.contextId.checkId}-${i}`} data-testid="understand-question"
         style={{ border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 14, background: '#fff' }}>
         <p style={{ fontSize: 'var(--fs-ui-md)', letterSpacing: 'var(--track-14)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)', margin: '0 0 6px' }}>{q.question}</p>
@@ -262,68 +263,47 @@ function QuestionsTab({ slot, questions }) {
   </>;
 }
 
-const simplifiedChapterText = (simplified, sourceRefs, chapter) => {
+const simplifiedChapterText = (simplified, sourceRefs, chapter, focusVerses) => {
   const mapped = sourceRefs?.[String(chapter)];
   const verses = mapped
     ? mapped
-        .filter((r) => !r.unmapped && !r.crossBook)
+        .filter((r) => !r.unmapped && !r.crossBook && inFocus({ chapter, verse: r.pv }, focusVerses))
         .map((r) => `${r.c}:${r.v} ${verseText(simplified.chapters?.[String(r.c)]?.[String(r.v)])}`)
     : Object.entries(simplified.chapters?.[String(chapter)] ?? {})
-        .filter(([k]) => /^\d/.test(k))
+        .filter(([k]) => /^\d/.test(k) && inFocus({ chapter, verse: k }, focusVerses))
         .sort(([a], [b]) => leadingNum(a) - leadingNum(b))
         .map(([k, v]) => `${k} ${verseText(v)}`);
-  return verses.join(' ') || t('understand.noneForChapter');
+  return verses.join(' ') || t(focusVerses != null ? 'understand.noneInFocus' : 'understand.noneForChapter');
 };
 
-function SimplifiedTab({ slot, sourceRefs, chapter }) {
+function SimplifiedTab({ slot, sourceRefs, chapter, focusVerses }) {
   if (slot?.state !== 'ready') return <><SlotBanners slot={slot} /><SlotState slot={slot} /></>;
   return (<>
     <SlotBanners slot={slot} />
     <div style={{ border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 16, background: 'var(--surface-app)' }} data-testid="understand-simplified">
       <Overline>{t('understand.simplifiedTitle')}</Overline>
       <p style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse)', color: 'var(--text-scripture)', margin: '10px 0 0' }}>
-        {simplifiedChapterText(slot, sourceRefs, chapter)}
+        {simplifiedChapterText(slot, sourceRefs, chapter, focusVerses)}
       </p>
     </div>
   </>);
 }
 
-/** The article rows show the tA slug as their title: titles and categories are
- * read only when an article is opened (owner ruling 2026-09-02 — the row style
- * is the design's; the words come later). */
-function AcademyTab({ notesSlot, slugs, actions }) {
-  if (notesSlot?.state !== 'ready') return <SlotState slot={notesSlot} />;
-  if (slugs.length === 0) return emptyChapter;
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <p style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--text-tertiary)', margin: '0 0 4px', lineHeight: 1.5 }}>
-        {t('understand.academyIntro')}
-      </p>
-      {slugs.map((slug) => (
-        <button key={slug} type="button" data-i="choice" data-tone="accent" data-testid="academy-article" onClick={() => actions.loadHelpArticle({ kind: 'ta', slug, rung: notesSlot.rung })}
-          style={{ border: 'var(--stroke) solid var(--border)', background: 'var(--surface-card)', cursor: 'pointer', textAlign: 'start', borderRadius: 'var(--radius-lg)', padding: '13px 14px', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, fontFamily: 'var(--font-ui)' }}>
-          <span style={{ fontSize: 'var(--fs-ui-md)', fontWeight: 'var(--fw-heavy)', color: 'var(--text-heading)' }}>{slug}</span>
-          <span style={{ color: 'var(--text-accent)', fontWeight: 'var(--fw-heavy)' }}>→</span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function CommentsTab({ comprehension, chapter }) {
-  if (!comprehension) return emptyChapter;
+function CommentsTab({ comprehension, chapter, focusVerses }) {
+  if (!comprehension) return emptyTab(focusVerses);
   const list = Object.entries(comprehension)
     .filter(([key]) => Number(key.split(':')[0]) === Number(chapter))
     .map(([key, entry]) => {
       const verseKey = key.split(':')[1];
       return { key, verseKey, entry };
     })
+    .filter(({ verseKey }) => inFocus({ chapter, verse: verseKey }, focusVerses))
     .sort((a, b) => {
       const diff = leadingNum(a.verseKey) - leadingNum(b.verseKey);
       if (diff !== 0) return diff;
       return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
     });
-  if (list.length === 0) return emptyChapter;
+  if (list.length === 0) return emptyTab(focusVerses);
   return (
     <>
       {list.map(({ key, verseKey, entry }) => {
@@ -357,7 +337,7 @@ const chapterAllCrossBook = (u, chapter) => {
   return !!refs && refs.length > 0 && refs.every((r) => r.crossBook);
 };
 
-function HelpsTab({ tab, u, chapter, actions, cardFocus }) {
+function HelpsTab({ tab, u, chapter, actions, cardFocus, focusVerses }) {
   if (chapterAllCrossBook(u, chapter)) {
     return (
       <Callout tone="info" data-testid="helps-cross-book" style={{ overflowWrap: 'anywhere' }}>
@@ -366,14 +346,13 @@ function HelpsTab({ tab, u, chapter, actions, cardFocus }) {
     );
   }
   const notesSlot = u?.notes;
-  const notes = itemsInChapter(notesSlot, chapter);
-  if (tab === 'notes') return <NotesTab slot={notesSlot} notes={notes} actions={actions} cardFocus={cardFocus} />;
-  if (tab === 'words') return <WordsTab slot={u?.words} words={itemsInChapter(u?.words, chapter)} actions={actions} cardFocus={cardFocus} />;
-  if (tab === 'questions') return <QuestionsTab slot={u?.questions} questions={itemsInChapter(u?.questions, chapter)} />;
-  if (tab === 'simplified') return <SimplifiedTab slot={u?.simplified} sourceRefs={u?.sourceRefs} chapter={chapter} />;
-  if (tab === 'comments') return <CommentsTab comprehension={u?.comprehension} chapter={chapter} />;
-  const slugs = [...new Set(notes.map((n) => n.contextId.groupId))].filter(Boolean);
-  return <AcademyTab notesSlot={notesSlot} slugs={slugs} actions={actions} />;
+  const notes = itemsInChapter(notesSlot, chapter, focusVerses);
+  if (tab === 'notes') return <NotesTab slot={notesSlot} notes={notes} actions={actions} cardFocus={cardFocus} focusVerses={focusVerses} />;
+  if (tab === 'words') return <WordsTab slot={u?.words} words={itemsInChapter(u?.words, chapter, focusVerses)} actions={actions} cardFocus={cardFocus} focusVerses={focusVerses} />;
+  if (tab === 'questions') return <QuestionsTab slot={u?.questions} questions={itemsInChapter(u?.questions, chapter, focusVerses)} focusVerses={focusVerses} />;
+  if (tab === 'simplified') return <SimplifiedTab slot={u?.simplified} sourceRefs={u?.sourceRefs} chapter={chapter} focusVerses={focusVerses} />;
+  if (tab === 'comments') return <CommentsTab comprehension={u?.comprehension} chapter={chapter} focusVerses={focusVerses} />;
+  return null;
 }
 
 /** Card titles show the GATEWAY rendering of the quote (owner ruling
@@ -441,10 +420,22 @@ export function useLoadHelps() {
   }, [s.book, bookBytesReady, s.projectPins, s.projectPinsLoaded, s.netEnabled, s.installEpoch]);
 }
 
-export function HelpsPanel({ chapter }) {
+/** `comments` is Translate-only (#252): Understand writes those notes in its
+ * main window, so the helps strip there omits the tab. The tab id lives in
+ * shared app state, so a stale 'comments' on Understand falls back to Notes. */
+const shownTab = (helpsTab, comments) => ((!comments && helpsTab === 'comments') ? 'notes' : helpsTab);
+const tabOptions = (u, comments) => [
+  { value: 'notes', label: t('helps.notes') },
+  { value: 'words', label: t('helps.words') },
+  { value: 'questions', label: t('helps.questions') },
+  { value: 'simplified', label: simplifiedLabel(u) },
+  ...(comments ? [{ value: 'comments', label: t('helps.comments') }] : []),
+];
+
+export function HelpsPanel({ chapter, focusVerses = null, comments = false }) {
   const { s, actions } = useApp();
   const u = s.understand;
-  const tab = s.helpsTab;
+  const tab = shownTab(s.helpsTab, comments);
   // F3 focus wiring: hover is transient, click toggles the sticky focus.
   const src = s.sources?.[s.sourceTab];
   const refRows = mappedRows(u, chapter);
@@ -453,14 +444,7 @@ export function HelpsPanel({ chapter }) {
   const loading = !u || u.loading;
   return (
     <aside data-testid="helps-panel" style={{ width: 'var(--helps-width)', flex: 'none', background: 'var(--surface-panel)', borderInlineStart: 'var(--stroke-hair) solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      <Switcher indicator="underline" value={tab} onChange={actions.setHelpsTab} options={[
-        { value: 'notes', label: t('helps.notes') },
-        { value: 'words', label: t('helps.words') },
-        { value: 'questions', label: t('helps.questions') },
-        { value: 'simplified', label: simplifiedLabel(u) },
-        { value: 'academy', label: t('helps.academy') },
-        { value: 'comments', label: t('helps.comments') },
-      ]} />
+      <Switcher indicator="underline" value={tab} onChange={actions.setHelpsTab} options={tabOptions(u, comments)} />
       <div style={{ flex: 1, overflow: 'auto', padding: 16, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
         {/* Loading and a failed load are their OWN states — never rendered as
             "the package lacks this resource" (D30 honesty; 2026-08-27 review). */}
@@ -470,7 +454,7 @@ export function HelpsPanel({ chapter }) {
         {!loading && u?.error && (
           <Callout tone="warn" role="alert" data-testid="understand-error" style={{ overflowWrap: 'anywhere' }}>{u.error}</Callout>
         )}
-        {!loading && !u?.error && <HelpsTab tab={tab} u={u} chapter={chapter} actions={actions} cardFocus={cardFocus} />}
+        {!loading && !u?.error && <HelpsTab tab={tab} u={u} chapter={chapter} actions={actions} cardFocus={cardFocus} focusVerses={focusVerses} />}
       </div>
       <ArticleView article={u?.article} onClose={actions.closeHelpArticle} onRetry={() => u?.article?.request && actions.loadHelpArticle(u.article.request)} />
     </aside>

@@ -14,7 +14,7 @@ import { render, screen, fireEvent, cleanup, within } from '@testing-library/rea
 const READ_SIDE = new Set([
   'loadUnderstand', 'setHelpsTab', 'setSourceTab', 'toggleRail', 'setChapter',
   'loadHelpArticle', 'closeHelpArticle', 'openBook', 'go',
-  'stagedNote', // reads the scheduler buffer — never a project write
+  'stagedNote', 'setDraftUnit', // reads the scheduler buffer — never a project write
 ]);
 const calls: Array<{ name: string; args: unknown[] }> = [];
 // A faithful fake of the note scheduler's per-key latest-value buffer (D65):
@@ -124,9 +124,17 @@ describe('#106 — the Understand write boundary', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Verse' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Questions' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Notes' }));
-    fireEvent.click(screen.getByRole('tab', { name: 'Academy' }));
     fireEvent.click(within(screen.getByTestId('helps-panel')).getByRole('tab', { name: 'UST' }));
     expect(writes()).toEqual([]);
+  });
+
+  it('#252 — the helps strip has no Comments tab; a stale comments tab id falls back to Notes', () => {
+    state.helpsTab = 'comments'; // left over from Translate, where the tab exists
+    render(<Understand />);
+    const panel = within(screen.getByTestId('helps-panel'));
+    expect(panel.queryByRole('tab', { name: 'Comments' })).toBeNull();
+    expect(panel.getByRole('tab', { name: 'Notes' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.queryByTestId('helps-comment')).toBeNull();
   });
 
   it('the tQ questions render with their answers (read-only)', () => {

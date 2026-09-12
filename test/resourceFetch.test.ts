@@ -6,6 +6,8 @@ import { describe, expect, it } from 'vitest';
 import { zipSync, unzipSync, strToU8 } from 'fflate';
 import {
   sbZipUrl,
+  archiveZipUrl,
+  zipArchiveComment,
   localRepoPathFor,
   unwrapExport,
   rezip,
@@ -14,6 +16,7 @@ import {
   releaseCommitSha,
   tagForCommitSha,
 } from '../src/data/resourceFetch';
+import type { FetchPin } from '../src/data/resourceFetch';
 import type { ResourcePin } from '../src/data/burritoStore';
 
 const PIN: ResourcePin & { version: string } = {
@@ -368,5 +371,75 @@ describe('round 20 — targetRepoPath: the pinned identity installs SIDE BY SIDE
       fetchFn: fetchReturning(wrappedZip(PIN.sha as string)),
     });
     expect(installed).toEqual(['_local_/_sideloaded_/unfoldingword--en_twl']);
+  });
+});
+
+describe('sha-only pin with no tag — the Gitea commit archive (D71, #218)', () => {
+  const SHA = 'd9d29e2d589258ce27f92b59f753a3af03ab7a72';
+  const LEXICON: FetchPin = { repoPath: 'git.door43.org/uW/en_ugl', sha: SHA, flavor: 'peripheral/x-lexicon' };
+
+  /** fflate writes no archive comment; append one to the end-of-central-directory
+   * record the way Gitea does (comment length at offset 20, then the bytes). */
+  const withArchiveComment = (zip: Uint8Array, comment: string): Uint8Array => {
+    const text = strToU8(comment);
+    const out = new Uint8Array(zip.length + text.length);
+    out.set(zip);
+    out[zip.length - 2] = text.length & 0xff;
+    out[zip.length - 1] = text.length >> 8;
+    out.set(text, zip.length);
+    return out;
+  };
+  /** A uW burrito: metadata carries NO dcs revision (unless `declared` is given —
+   * the archive's OWN claim); the archive is wrapped in `<repo>/`. */
+  const archiveZip = (comment: string | null, declared: string | null = null) => {
+    const identification = declared
+      ? { primary: { dcs: { 'uW/en_ugl': { revision: declared } } } }
+      : { primary: { uWBurritos: { TA: { revision: '1' } } } };
+    const zip = zipSync({
+      'en_ugl/metadata.json': strToU8(JSON.stringify({ format: 'scripture burrito', identification })),
+      'en_ugl/ingredients/content/1.json': strToU8('{"brief":"alpha"}'),
+    });
+    return comment ? withArchiveComment(zip, comment) : zip;
+  };
+  /** DCS lists no tag for the repo (the real uW lexicons have none); the archive GET answers. */
+  const dcsWithArchive = (bytes: Uint8Array, seen: string[]) =>
+    (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      seen.push(url);
+      if (url.includes('/api/v1/repos/')) return { ok: true, status: 200, json: async () => [] };
+      return { ok: true, status: 200, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) };
+    }) as unknown as typeof fetch;
+  const apiWith = (installed: string[]) => ({
+    getNetEnabled: async () => true,
+    postZippedBurrito: async (repoPath: string) => { installed.push(repoPath); },
+  });
+
+  it('builds the /archive/<sha>.zip URL from the pin', () => {
+    expect(archiveZipUrl({ ...LEXICON, sha: SHA })).toBe(`https://git.door43.org/uW/en_ugl/archive/${SHA}.zip`);
+  });
+
+  it('reads the archive comment, and reports none when the record has none', () => {
+    expect(zipArchiveComment(archiveZip(SHA))).toBe(SHA);
+    expect(zipArchiveComment(archiveZip(null))).toBeNull();
+  });
+
+  it('fetches the commit archive when DCS names no tag, and installs when the comment matches the pin', async () => {
+    const installed: string[] = [];
+    const seen: string[] = [];
+    const r = await fetchAndInstallPin(LEXICON, { api: apiWith(installed) as never, fetchFn: dcsWithArchive(archiveZip(SHA), seen) });
+    expect(seen.at(-1)).toBe(`https://git.door43.org/uW/en_ugl/archive/${SHA}.zip`);
+    expect(r.revision).toBe(SHA);
+    expect(installed).toEqual(['_local_/_sideloaded_/uw--en_ugl']);
+  });
+
+  it('REFUSES an archive whose comment names another commit, or none — even when its OWN metadata claims the pinned sha', async () => {
+    // The third case is the self-certifying archive (D23b): no Gitea comment,
+    // but a metadata.json that declares exactly the pinned sha. Never enough.
+    for (const bad of [archiveZip('0'.repeat(40)), archiveZip(null), archiveZip(null, SHA)]) {
+      const installed: string[] = [];
+      await expect(fetchAndInstallPin(LEXICON, { api: apiWith(installed) as never, fetchFn: dcsWithArchive(bad, []) }))
+        .rejects.toThrow(/SHA mismatch|cannot be verified/);
+      expect(installed).toEqual([]);
+    }
   });
 });

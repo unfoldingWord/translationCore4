@@ -14,7 +14,7 @@
 # bundled server and serve the tC4 client (303 from /, 200 from
 # /clients/uw-tc4) before the zip is written.
 #
-# Usage: zsh scripts/package-desktop.zsh [--debug]
+# Usage: zsh scripts/package-desktop.zsh [--debug] [--zip]
 #   (no flag)  production variant: isolated EMPTY project store.
 #   --debug    debug/demo variant: separate debug-only store, seeded with the
 #              conformance sample burrito on first launch, visibly marked
@@ -27,6 +27,7 @@
 # booted app resolves repo_dir to the shared store — both variants.
 #
 # Output: dist-desktop/tC4-<version>[-debug]-<os>-<arch>-unsigned.zip
+# Production emits a Mac .pkg or Windows .exe; --zip skips the installer.
 #
 # Requirements: node >= 20, npm, cargo, curl, unzip, git, and sha256sum or shasum.
 #   Linux also needs zsh, the zip command, Electron's shared libraries, and a
@@ -73,7 +74,24 @@ else                         EXE="";     SERVER_BIN="server.bin"; HOME_LABEL='$H
 
 # Build variant (#70).
 VARIANT=production
-[ "$1" = "--debug" ] && VARIANT=debug
+MAKE_PKG=true
+for arg in "$@"; do
+  case "$arg" in
+    --debug) VARIANT=debug ;;
+    --zip) MAKE_PKG=false ;;
+    *) echo "Unknown argument: $arg (expected --debug or --zip)" >&2; exit 1 ;;
+  esac
+done
+if [ "$OS" = macos ]; then
+  # Do not mistake a pilot's already-running app for this build's smoke server.
+  # In particular, the existing app can hold Electron's native singleton lock.
+  for smoke_port in {19119..19139}; do
+    if "$CURL" -s --max-time 1 "http://127.0.0.1:$smoke_port/api/version" | grep -q '"product_short_name":"tc4"'; then
+      echo "FAIL precondition: quit the running tC4 app (port $smoke_port) before packaging smoke." >&2
+      exit 1
+    fi
+  done
+fi
 if [ "$VARIANT" = "debug" ]; then
   STORE_LEAF="pankosmia/tc4-projects-debug"   # separate debug-only store
 else
@@ -99,18 +117,33 @@ WEBFONTS_CORE_REV="eb52ccdad6806b5729ea8b45b1c59c793ffa32c3"   # 2026-08-14
 PUPPETEER_CORE_VER="24.43.1"       # template package.json: ^24.43.1
 PUPPETEER_BROWSERS_VER="2.13.1"    # template package.json: ^2.13.1
 
-# Bundled English suite (#163, D70). Eight repos pinned from src/data/installedSuite.js.
-# en_tw serves both translationWords and translationWordsLinks (D34).
+# Bundled English suite (#163, D70). Ten repos pinned from src/data/installedSuite.js,
+# as `<owner>/<repo>:<tag>:<sha>`. en_tw serves both translationWords and
+# translationWordsLinks (D34). The two lexicons (#218, D71) are the `uW`-org
+# burritos: no tag exists, so the tag field is empty and the cache fetches the
+# commit archive by sha. The store segment is `<owner lowercased>--<repo>`
+# (src/data/installed.ts localRepoPathFromRepoPath).
 BUNDLED_RESOURCES=(
-  "en_ult:v89:84c73ba00fc8a95a9033f9efb14bb905a2a52ee4"
-  "en_ust:v89:37ec223166bbd73fb55abc7840be8310c0fee7f2"
-  "el-x-koine_ugnt:v0.34:fc95b2b8aad08bb65ab54628ab685413a1139e97"
-  "hbo_uhb:v2.1.30:106a441a788d9465846cd427538ea80b8cec6770"
-  "en_tn:v86:c354b8ae66a23c485bf6f38fd35bd8f7ef81e4e5"
-  "en_tw:v87:eaeb7bfefcf84132d0cbcbed185f3ea2be3d86dd"
-  "en_ta:v86:c7caddfb474efd713f36b35a3ffc927866c7b180"
-  "en_tq:v89:97c0a13e3b84d46d0e643ba2e8e9f1c295547a58"
+  "unfoldingWord/en_ult:v89:84c73ba00fc8a95a9033f9efb14bb905a2a52ee4"
+  "unfoldingWord/en_ust:v89:37ec223166bbd73fb55abc7840be8310c0fee7f2"
+  "unfoldingWord/el-x-koine_ugnt:v0.34:fc95b2b8aad08bb65ab54628ab685413a1139e97"
+  "unfoldingWord/hbo_uhb:v2.1.30:106a441a788d9465846cd427538ea80b8cec6770"
+  "unfoldingWord/en_tn:v86:c354b8ae66a23c485bf6f38fd35bd8f7ef81e4e5"
+  "unfoldingWord/en_tw:v87:eaeb7bfefcf84132d0cbcbed185f3ea2be3d86dd"
+  "unfoldingWord/en_ta:v86:c7caddfb474efd713f36b35a3ffc927866c7b180"
+  "unfoldingWord/en_tq:v89:97c0a13e3b84d46d0e643ba2e8e9f1c295547a58"
+  "uW/en_ugl::d9d29e2d589258ce27f92b59f753a3af03ab7a72"
+  "uW/en_uhl::72df5ac25acf9d51e826b20e3ad883a5a657ef4e"
 )
+# Split one BUNDLED_RESOURCES entry into owner, repo, tag, sha, the cache-file
+# label (tag, or the first 12 sha characters) and the store segment.
+bundled_fields() {
+  local ownerRepo="${1%%:*}" rest="${1#*:}"
+  owner="${ownerRepo%%/*}"; repo="${ownerRepo#*/}"
+  tag="${rest%%:*}"; sha="${rest#*:}"
+  label="${tag:-${sha[1,12]}}"
+  seg="${(L)owner}--$repo"
+}
 
 APP_NAME="translationCore4"
 if [ "$VARIANT" = "debug" ]; then
@@ -131,6 +164,7 @@ esac
 
 echo "== 1/7 build the tC4 client"
 cd "$REPO"
+if [ "$OS" != linux ]; then node --test "$REPO/scripts/desktop-bootstrap.test.cjs"; fi
 npm ci --no-audit --no-fund
 npm run build
 
@@ -176,25 +210,20 @@ if [ ! -e "$EL_UNPACKED" ]; then
   unzip -qq -o "$BUILD/$ELECTRONITE_ZIP" -d "$BUILD/electronite"
 fi
 
-echo "== fetching bundled English suite (8 repos, #163)"
+echo "== fetching bundled English suite (10 repos, #163, #218)"
 for entry in "${BUNDLED_RESOURCES[@]}"; do
-  repo="${entry%%:*}"
-  rest="${entry#*:}"
-  tag="${rest%%:*}"
-  sha="${rest#*:}"
-  zsh "$REPO/dev-env/scripts/cache-resource.zsh" "unfoldingWord/$repo" "$tag" "$sha"
-  echo "SHA OK: unfoldingWord/$repo $tag ($sha)"
+  bundled_fields "$entry"
+  zsh "$REPO/dev-env/scripts/cache-resource.zsh" "$owner/$repo" "$tag" "$sha"
+  echo "SHA OK: $owner/$repo ${tag:-(sha-only)} ($sha)"
 done
 
 echo "== 4/7 assemble the app directory"
 rm -rf "$PACK"
 mkdir -p "$PACK/bin" "$PACK/lib/setup" "$PACK/lib/clients/uw-tc4" "$PACK/lib/product" "$PACK/resources"
 for entry in "${BUNDLED_RESOURCES[@]}"; do
-  repo="${entry%%:*}"
-  rest="${entry#*:}"
-  tag="${rest%%:*}"
-  unwrapped="$REPO/dev-env/resources-cache/$repo-$tag-unwrapped.zip"
-  target="$PACK/resources/unfoldingword--$repo"
+  bundled_fields "$entry"
+  unwrapped="$REPO/dev-env/resources-cache/$repo-$label-unwrapped.zip"
+  target="$PACK/resources/$seg"
   rm -rf "$target"
   mkdir -p "$target"
   unzip -qq -o "$unwrapped" -d "$target"
@@ -225,12 +254,6 @@ TEMPLATE_MAIN=$(node -p "require('$(npath "$PACK/electron/package.json")').main"
   echo "FATAL: template electron main is '$TEMPLATE_MAIN' (expected electronStartup.js) — re-verify the #4 single-instance wrapper before building" >&2
   exit 1
 }
-if [ -n "$TC4_TEST_NO_SINGLE_INSTANCE" ]; then
-  # TEST-ONLY (the #70 guard-self-test pattern): skip the wrapper so the #4
-  # smoke guard's FAILURE path can be exercised. A build with this set MUST
-  # fail at the guard.
-  echo "TEST-ONLY: TC4_TEST_NO_SINGLE_INSTANCE set — skipping the #4 wrapper; the smoke guard MUST fail"
-else
 cat > "$PACK/electron/tc4-main.js" <<'MAIN_EOF'
 // tC4 single-instance guard (#4, D39). This file is tC4's own, not the
 // template's. It MUST run before electronStartup.js: the template's free-port
@@ -238,6 +261,7 @@ cat > "$PACK/electron/tc4-main.js" <<'MAIN_EOF'
 // same project store — the exact overlap D39 rules out. tC3 enforced the
 // same rule at the Electron layer.
 const { app, BrowserWindow } = require('electron');
+if (process.platform === 'win32') app.setAppUserModelId('org.unfoldingword.translationcore4');
 if (!app.requestSingleInstanceLock()) {
   app.quit(); // second copy: no window, no server, exit
 } else {
@@ -248,9 +272,27 @@ if (!app.requestSingleInstanceLock()) {
       win.focus();
     }
   });
+  if (process.platform === 'darwin' || process.platform === 'win32') {
+    try {
+      require('./tc4-bootstrap.cjs').bootstrap({
+        ...require('./tc4-bootstrap.json'),
+        resourcesDir: require('path').join(__dirname, '..'),
+        home: require('os').homedir(),
+      });
+    } catch (error) {
+      require('electron').dialog.showErrorBox('translationCore4 could not start',
+        'The bundled resources could not be prepared. Please quit and try again.\n' + error.message);
+      app.exit(1);
+    }
+  }
   require('./electronStartup.js');
 }
 MAIN_EOF
+if [ -n "$TC4_TEST_NO_SINGLE_INSTANCE" ]; then
+  # Keep bootstrap intact: this control must fail at the second-instance guard.
+  echo "TEST-ONLY: skipping singleton lock; the smoke guard MUST fail"
+  sed_inplace 's/!app.requestSingleInstanceLock()/false/' "$PACK/electron/tc4-main.js"
+fi
 node -e "
 const fs = require('fs');
 const p = '$(npath "$PACK/electron/package.json")';
@@ -258,7 +300,6 @@ const j = JSON.parse(fs.readFileSync(p, 'utf8'));
 j.main = 'tc4-main.js';
 fs.writeFileSync(p, JSON.stringify(j, null, 2) + '\n');
 "
-fi
 
 # The template's startup script spawns ./bin/server.bin, or ./bin/server.exe on
 # win32 (electronStartup.js, WIN_SERVER_PATH).
@@ -327,19 +368,7 @@ mkdir -p "$STAGE/$APP_NAME/licenses"
 APPDIR="$STAGE/$APP_NAME"
 if [ "$OS" = macos ]; then
 cp -R "$BUILD/electronite/Electron.app" "$APPDIR/Electron.app"
-# Re-seal the wrapper with a VALID ad-hoc signature (#57, measured 2026-08-25).
-# The upstream Electronite release ships an app bundle whose signature FAILS
-# verification ("code has no resources but signature indicates they must be
-# present" — codesign --verify, pristine v37.1.0-graphite zip). A quarantined
-# download therefore gets Gatekeeper's "damaged — move to Trash" verdict, with
-# NO "Open Anyway" escape. A forced ad-hoc re-sign produces a bundle that
-# VERIFIES, so Gatekeeper downgrades to the ordinary unidentified-developer
-# flow (System Settings -> Privacy & Security -> Open Anyway). Real signing +
-# notarization is #44's job; this step only makes the unsigned artifact
-# openable at all. The guard below fails the build if the seal did not take.
-codesign --force --deep --sign - "$APPDIR/Electron.app"
-codesign --verify --deep --strict "$APPDIR/Electron.app" \
-  || { echo "FATAL: Electron.app does not verify after the ad-hoc re-seal (#57)"; exit 1 }
+# The completed bundle is sealed after all payload files are staged (#243).
 elif [ "$OS" = windows ]; then
 # Windows (#181): a flat directory with electron.exe, no signature, no
 # permission bits. Stage it under electronite/ like Linux.
@@ -363,54 +392,22 @@ cp "$PACK/Rocket.toml" "$APPDIR/Rocket.toml"
 
 # The launcher differs per OS in three places only: its filename, how it
 # finds its own directory, and how it invokes Electronite. The debug seeding
-# step below is identical on macOS and Linux. Windows is a batch file with the
-# same steps (#181), written by write_windows_launcher below.
-write_windows_launcher() {  # $1 = store leaf, $2 = variant
-  local leaf_win=${1//\//\\}
-  # print -r, not echo: zsh's echo turns the "\t" of "\tc4-projects" into a tab.
+# Linux keeps shell bootstrap; Mac and Windows bootstrap under tc4-main.js.
+# The portable Windows batch file only starts Electron.
+write_windows_launcher() {
+  # Bootstrap belongs to tc4-main.js so installed shortcuts and portable launches
+  # share the same guarded first-run behavior.
   {
     print -r -- '@echo off'
-    if [ "$2" = debug ]; then
-      print -r -- 'rem Unsigned DEBUG artifact. Seeds the debug-only project store on first run'
-      print -r -- 'rem (never the shared %USERPROFILE%\pankosmia_repos), then starts Electronite;'
-      print -r -- 'rem the startup script spawns the bundled server itself.'
-    else
-      print -r -- 'rem Unsigned development artifact. Starts Electronite; the startup script'
-      print -r -- 'rem spawns the bundled server itself.'
-    fi
     print -r -- 'cd /d "%~dp0"'
-    print -r -- "set \"STORE=%USERPROFILE%\\$leaf_win\""
-    print -r -- 'if exist "resources\" ('
-    print -r -- '  for /d %%R in ("resources\*") do ('
-    print -r -- '    if not exist "%STORE%\_local_\_sideloaded_\%%~nxR\" ('
-    print -r -- '      if not exist "%STORE%\_local_\_sideloaded_\" mkdir "%STORE%\_local_\_sideloaded_"'
-    print -r -- '      xcopy /E /I /Q /Y "%%R" "%STORE%\_local_\_sideloaded_\%%~nxR" >nul'
-    print -r -- '    )'
-    print -r -- '  )'
-    print -r -- ')'
-    if [ "$2" = debug ]; then
-      print -r -- 'set "SEED=%STORE%\_local_\_local_\sample_burrito"'
-      print -r -- 'where git >nul 2>&1'
-      print -r -- 'if not errorlevel 1 if not exist "%SEED%\" ('
-      print -r -- '  if not exist "%STORE%\_local_\_local_\" mkdir "%STORE%\_local_\_local_"'
-      print -r -- '  xcopy /E /I /Q /Y "debug-seeds\sample_burrito" "%SEED%" >nul'
-      print -r -- '  rem Initial commit: the platform add-and-commit panics on a repo with'
-      print -r -- '  rem zero commits (PLATFORM-NOTES #20).'
-      print -r -- '  pushd "%SEED%"'
-      print -r -- '  git init -q -b main . && git add -A && git -c user.email=debug@tc4.local -c user.name=tc4-debug commit -qm seed'
-      print -r -- '  popd'
-      print -r -- ')'
-    fi
     print -r -- 'electronite\electron.exe electron'
   } > "$APPDIR/$LAUNCHER"
 }
+
 if [ "$OS" = windows ]; then
   LAUNCHER="start-tc4.cmd"
 elif [ "$OS" = macos ]; then
-  LAUNCHER="start-tc4.command"
-  LAUNCH_SHEBANG="#!/bin/zsh"
-  LAUNCH_CD='cd "${0:a:h}"'
-  LAUNCH_EXEC='exec ./Electron.app/Contents/MacOS/Electron ./electron'
+  LAUNCHER="" # set after package-macos.zsh stages the bundle
 else
   LAUNCHER="start-tc4.sh"
   LAUNCH_SHEBANG="#!/bin/sh"
@@ -435,8 +432,15 @@ if [ "$VARIANT" = "debug" ]; then
   mkdir -p "$APPDIR/debug-seeds"
   cp -R "$REPO/conformance/sample-burrito" "$APPDIR/debug-seeds/sample_burrito"
 fi
-if [ "$OS" = windows ]; then
-  write_windows_launcher "$STORE_LEAF" "$VARIANT"
+if [ "$OS" = macos ]; then
+  : # Finder launches the bundle; bootstrap runs in tc4-main.js.
+elif [ "$OS" = windows ]; then
+  write_windows_launcher
+  cp "$REPO/scripts/desktop-bootstrap.cjs" "$APPDIR/electron/tc4-bootstrap.cjs"
+  printf '{"storeLeaf":"%s","variant":"%s"}\n' "$STORE_LEAF" "$VARIANT" > "$APPDIR/electron/tc4-bootstrap.json"
+  cp "$REPO/branding/icon.ico" "$APPDIR/icon.ico"
+  cp "$REPO/branding/icon-1024.png" "$APPDIR/electron/favicon.png"
+  node "$REPO/scripts/brand-windows.mjs" "$(npath "$APPDIR/electronite/electron.exe")" "$(npath "$APPDIR/icon.ico")" "$VERSION"
 elif [ "$VARIANT" = "debug" ]; then
   cat > "$APPDIR/$LAUNCHER" <<LAUNCH
 $LAUNCH_SHEBANG
@@ -488,7 +492,7 @@ fi
 $LAUNCH_EXEC
 LAUNCH
 fi
-chmod +x "$APPDIR/$LAUNCHER"
+if [ "$OS" != macos ]; then chmod +x "$APPDIR/$LAUNCHER"; fi
 
 # Licenses. The startup files in electron/ are modified copies from the MIT
 # desktop-app-template; Electronite ships its own LICENSE files in the zip.
@@ -520,10 +524,8 @@ This build bundles the components below. Full texts are in licenses/.
 | @puppeteer/browsers (electron/node_modules) | $PUPPETEER_BROWSERS_VER | Apache-2.0 | github.com/puppeteer/puppeteer |
 NOTICES
 for entry in "${BUNDLED_RESOURCES[@]}"; do
-  repo="${entry%%:*}"
-  rest="${entry#*:}"
-  tag="${rest%%:*}"
-  echo "| unfoldingWord/$repo | $tag | CC BY-SA 4.0 | git.door43.org/unfoldingWord/$repo |" >> "$APPDIR/THIRD-PARTY-NOTICES.md"
+  bundled_fields "$entry"
+  echo "| $owner/$repo | ${tag:-commit ${sha[1,12]}} | CC BY-SA 4.0 | git.door43.org/$owner/$repo |" >> "$APPDIR/THIRD-PARTY-NOTICES.md"
 done
 cat >> "$APPDIR/THIRD-PARTY-NOTICES.md" <<NOTICES
 
@@ -534,12 +536,11 @@ NOTICES
 SERVER_SHA=$(sha256_of "$APPDIR/bin/$SERVER_BIN")
 BUNDLED_MANIFEST_ENTRIES=""
 for entry in "${BUNDLED_RESOURCES[@]}"; do
-  repo="${entry%%:*}"
-  rest="${entry#*:}"
-  tag="${rest%%:*}"
-  sha="${rest#*:}"
-  zip_sha=$(sha256_of "$REPO/dev-env/resources-cache/$repo-$tag-unwrapped.zip")
-  line="    { \"repoPath\": \"git.door43.org/unfoldingWord/$repo\", \"version\": \"$tag\", \"sha\": \"$sha\", \"zip_sha256\": \"$zip_sha\" }"
+  bundled_fields "$entry"
+  zip_sha=$(sha256_of "$REPO/dev-env/resources-cache/$repo-$label-unwrapped.zip")
+  # A sha-only pin has no version label (never invented): JSON null.
+  if [ -n "$tag" ]; then version_json="\"$tag\""; else version_json="null"; fi
+  line="    { \"repoPath\": \"git.door43.org/$owner/$repo\", \"version\": $version_json, \"sha\": \"$sha\", \"zip_sha256\": \"$zip_sha\" }"
   if [ -n "$BUNDLED_MANIFEST_ENTRIES" ]; then
     BUNDLED_MANIFEST_ENTRIES="$BUNDLED_MANIFEST_ENTRIES,
 $line"
@@ -571,6 +572,17 @@ $BUNDLED_MANIFEST_ENTRIES
 MANIFEST
 echo "-- BUILD-MANIFEST.json --"
 cat "$APPDIR/BUILD-MANIFEST.json"
+
+cp "$REPO/scripts/smoke-api.cjs" "$APPDIR/smoke-api.cjs"
+if [ "$OS" = macos ]; then
+  zsh "$REPO/scripts/package-macos.zsh" "$APPDIR" "$APP_NAME" "$VERSION" "$VARIANT" "$STORE_LEAF"
+  LAUNCHER="$APP_NAME.app/Contents/MacOS/Electron"
+fi
+
+if [ "$OS" = windows ]; then
+  cp "$REPO/scripts/README-windows.txt" "$APPDIR/README.txt"
+  cp "$REPO/scripts/smoke-installed.ps1" "$APPDIR/"
+fi
 
 echo "== 6/7 smoke test: launch the artifact through its own entry point"
 # Fresh HOME so the app's self-created working dir (~/pankosmia/tc4) is
@@ -625,7 +637,7 @@ fi
 launch_entry_point "$BUILD/smoke-entrypoint.log"
 SMOKE_PID=$LAUNCH_PID
 cleanup_smoke() {
-  if [ "$OS" = macos ]; then pkill -f "$APPDIR/Electron.app" 2>/dev/null || true
+  if [ "$OS" = macos ]; then pkill -f "$APPDIR/$APP_NAME.app" 2>/dev/null || true
   elif [ "$OS" = windows ]; then
     # Stop only the processes that run from the staged folder (the same path
     # filter as the pkill -f branches): electron.exe and the server it spawned,
@@ -772,8 +784,8 @@ else
   sideloaded_entries=($(ls -A "$RESOLVED_REPO_DIR/_local_/_sideloaded_" 2>/dev/null | sort))
   expected_segments=()
   for entry in "${BUNDLED_RESOURCES[@]}"; do
-    repo="${entry%%:*}"
-    expected_segments+=("unfoldingword--$repo")
+    bundled_fields "$entry"
+    expected_segments+=("$seg")
   done
   expected_segments=($(printf '%s\n' "${expected_segments[@]}" | sort))
   if [ "${sideloaded_entries[*]}" != "${expected_segments[*]}" ]; then
@@ -789,6 +801,20 @@ else
     fi
   done
   echo "production store holds only _local_/_sideloaded_/ with seeded English suite on first boot (isolated at $RESOLVED_REPO_DIR)"
+fi
+
+if [ "$OS" = macos ]; then
+  codesign --verify --strict "$APPDIR/$APP_NAME.app/Contents/MacOS/server.bin"
+  codesign --verify --deep --strict "$APPDIR/$APP_NAME.app"
+  if [ "$VARIANT" = production ] && [ "$MAKE_PKG" = true ]; then
+    zsh "$REPO/scripts/build-macos-pkg.zsh" "$APPDIR/$APP_NAME.app" "$VERSION" "$BUILD/tC4-$VERSION-$OS-$ARCH-unsigned.pkg"
+  fi
+fi
+
+if [ "$OS" = windows ] && [ "$VARIANT" = production ] && [ "$MAKE_PKG" = true ]; then
+  ISCC="${TC4_ISCC:-/c/Program Files (x86)/Inno Setup 6/ISCC.exe}"
+  [ -f "$ISCC" ] || { echo "Inno Setup 6 compiler not found: $ISCC" >&2; exit 1; }
+  MSYS2_ARG_CONV_EXCL='*' "$ISCC" "/DPayload=$(cygpath -w "$APPDIR")" "/DOutput=$(cygpath -w "$BUILD")" "/DVersion=$VERSION" "$(cygpath -w "$REPO/scripts/tc4.iss")"
 fi
 
 echo "== 7/7 zip the artifact"

@@ -1,6 +1,6 @@
 {
   "name": "uw-tc4",
-  "version": "4.0.0-alpha.4",
+  "version": "4.0.0-alpha.5",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,10 +13,11 @@
     "lint:staged": "lint-staged",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write src/data test",
-    "verify": "npm run lint && npm run typecheck && npm test && npm run build && npm run docs:gate",
+    "verify": "npm run lint && npm run typecheck && npm test && npm run test:desktop && npm run build && npm run docs:gate",
     "prove": "node scripts/prove.mjs",
     "docs:gate": "node scripts/docs-gate.mjs",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test:desktop": "node --test scripts/desktop-bootstrap.test.cjs"
   },
   "dependencies": {
     "bible-reference-range": "1.1.1",
@@ -49,6 +50,7 @@
     "lint-staged": "16.4.0",
     "prettier": "3.9.4",
     "prop-types": "15.8.1",
+    "rcedit": "5.0.2",
     "react-redux": "7.2.9",
     "typescript": "5.9.3",
     "typescript-eslint": "8.63.0",

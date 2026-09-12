@@ -86,6 +86,7 @@ test.describe('J2 — a translator drafts a verse', () => {
       });
 
       await test.step('verse 1 is undrafted — start it (the first stub in the chapter)', async () => {
+        await page.getByRole('tab', { name: 'Verse', exact: true }).click();
         await page.getByRole('button', { name: 'Start this verse' }).first().click();
       });
 
@@ -97,6 +98,7 @@ test.describe('J2 — a translator drafts a verse', () => {
 
       await test.step('the save indicator confirms a real write', async () => {
         await expect(page.getByText('Saved')).toBeVisible();
+        await page.getByRole('tab', { name: 'Section', exact: true }).click();
       });
 
       await test.step('the typed text is on disk in ingredients/TIT.usfm (FR-6)', async () => {
@@ -193,10 +195,12 @@ test.describe('J2 — a translator drafts a verse', () => {
       });
 
       await test.step('the verse-by-verse form is still there: a drafted verse opens alone', async () => {
+        await page.getByRole('tab', { name: 'Verse', exact: true }).click();
         await page.getByTitle('Edit this verse').filter({ hasText: 'defraudando' }).click();
         await expect(page.getByRole('textbox', { name: 'Verse 10' })).toHaveValue(VERSE_10);
         await page.getByRole('button', { name: 'Cancel' }).click();
         await expect(page.getByRole('textbox', { name: 'Verse 10' })).toHaveCount(0);
+        await page.getByRole('tab', { name: 'Section', exact: true }).click();
       });
     },
   );
@@ -387,6 +391,7 @@ test.describe('J2 — a translator drafts a verse', () => {
       await page.goto('/');
       await page.getByTestId('project-_local_/_local_/sample_burrito').getByRole('button', { name: /Titus/ }).click();
       await page.getByRole('button', { name: '2', exact: true }).click();
+      await page.getByRole('tab', { name: 'Verse', exact: true }).click();
       await page.getByRole('button', { name: 'Start this verse' }).first().click();
       await page.getByRole('textbox', { name: /Verse/ }).fill(TEXT);
       // Do NOT blur. The 2 s idle debounce must flush the write on its own.
@@ -444,6 +449,7 @@ test.describe('J2 — a translator drafts a verse', () => {
       await page.getByTestId('project-_local_/_local_/sample_burrito').getByRole('button', { name: /Titus/ }).click();
       await expect(page.getByText('an apostle of Jesus Christ')).toBeVisible({ timeout: 20_000 });
       await page.getByRole('button', { name: '3', exact: true }).click();
+      await page.getByRole('tab', { name: 'Verse', exact: true }).click();
       await page.getByRole('button', { name: 'Start this verse' }).first().click();
       const editor = page.getByRole('textbox', { name: /Verse/ });
       await editor.fill(OFFLINE_DRAFT);
@@ -501,9 +507,11 @@ test.describe('J2 — a translator drafts a verse', () => {
           .textContent();
       const before = parseInt((await pctText()) || '0', 10);
       await page.getByRole('button', { name: '3', exact: true }).click();
+      await page.getByRole('tab', { name: 'Verse', exact: true }).click();
       await page.getByRole('button', { name: 'Start this verse' }).first().click();
       await page.getByRole('textbox', { name: /Verse/ }).fill('Recuérdales que se sometan.');
       await page.getByRole('textbox', { name: /Verse/ }).blur();
+      await page.getByRole('tab', { name: 'Section', exact: true }).click();
       await expect
         .poll(async () => parseInt((await pctText()) || '0', 10))
         .toBeGreaterThan(before);

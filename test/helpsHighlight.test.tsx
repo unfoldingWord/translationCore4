@@ -125,6 +125,7 @@ describe('F3 — helps cards highlight their quote in the source passage', () =>
   });
 
   it('Translate: the source pane highlights the same way; the target column never does', () => {
+    state.draftUnits = { p1: 'verse' };
     const { rerender } = render(<Draft />);
     fireEvent.mouseEnter(screen.getByText(/A note about the elect/));
     rerender(<Draft />);
@@ -182,6 +183,8 @@ describe('cross-frame projects (2026-08-31 Codex adversarial finding)', () => {
     const { rerender } = render(<Understand />);
     // Fan-out: two units both render source 1:1.
     expect(screen.getAllByText(/servant/).length).toBe(2);
+    fireEvent.click(screen.getByTestId('understand-unit-m2:2'));
+    rerender(<Understand />);
     fireEvent.mouseEnter(screen.getByText(/A note about the elect/));
     rerender(<Understand />);
     // The highlight lands once — in the project-2:2 unit — not in both
@@ -194,7 +197,9 @@ describe('cross-frame projects (2026-08-31 Codex adversarial finding)', () => {
 
   it('the gateway title resolves through the mapped row, not the project coordinates', () => {
     crossFrame();
-    render(<Understand />);
+    const { rerender } = render(<Understand />);
+    fireEvent.click(screen.getByTestId('understand-unit-m2:2'));
+    rerender(<Understand />);
     expect(screen.getByText('“chosen of God”')).toBeTruthy();
     expect(screen.queryByText(/ἐκλεκτῶν/)).toBeNull();
   });

@@ -259,6 +259,12 @@ const initial = () => ({
   // transitions only). It survives leaving the Understand view (B1) and any
   // 'error' blocks navigation like a verse failure (FR-32).
   noteSaveState: 'saved',
+  // #100: the align and check SaveSchedulers' states, mirrored the same way.
+  // The indicator folds all four (worst wins); every navigation gate drains
+  // all four (saveRefs), so a failed alignment or decision write blocks a
+  // switch exactly like a failed verse write (FR-32).
+  alignSaveState: 'saved',
+  checkSaveState: 'saved',
   // #183: a checkpoint commit (D9: leaving the project, switching mode) that
   // failed. Shown in the save indicator's error state with a Retry; a commit
   // never blocks navigation.
@@ -298,6 +304,7 @@ const initial = () => ({
   pickerProgress: null, // #136 (D3d): { seq, [tool]: {done,total,dropped,nextItem}|{error}, align: {…,nextRef} } — derived on picker open, never stored
   toolPos: {}, // #136: in-memory only — "your place is saved in each tool", keyed `${tool}:${book}`; dies with the app (§4.2)
   progressByProject: {}, // repoPath -> { CODE: draftPct } (lazy Home cache)
+  draftUnits: {}, // repoPath -> 'section' | 'verse'
   lastEdit: null, // { repoPath, book, chapter, verse, snippet, at } — the Home Resume card; per-client settings, never the project
   tick: 0,
 });
@@ -305,12 +312,12 @@ const initial = () => ({
 /** Monotonic identity for check sessions (see patchCheckSession). */
 let checkSessionSeq = 0;
 
-/** #129 (PR #135 review round 1): align-session identity, the align rail's
- * read ordering, and the serialized §5.1 write queue — persistAlign never
- * rejects, so one failure cannot wedge the chain. */
+/** #129 (PR #135 review round 1): align-session identity and the align
+ * rail's read ordering. The §5.1 writes themselves ride the align
+ * SaveScheduler since #100 (one write discipline, D65); the old module-level
+ * promise chain is gone with it. */
 let alignSessionSeq = 0;
 let alignIndexSeq = 0;
-let alignWriteQueue = Promise.resolve();
 let pickerProgressSeq = 0;
 
 /** #136 (D3d): one picker-progress derivation run's identity. The seq is
@@ -384,18 +391,39 @@ function patchCheckSession(state, a) {
   return { ...state, checkSession: { ...cs, ...a.patch } };
 }
 
-/** One saved decision merged item-by-item (never a whole-array snapshot):
- * two decisions can be in flight through the store queue at once, and the
- * later completion of a stale array would overwrite the earlier item. */
+/** One decision merged item-by-item (never a whole-array snapshot): two
+ * decisions can be in flight at once, and a stale array would overwrite the
+ * earlier item. Since #100 the merge is OPTIMISTIC (the write rides the check
+ * scheduler); the session's saveError is owned by the checkSaveState mirror,
+ * which clears it when the scheduler recovers — never by a later decision. */
 function checkDecisionSaved(state, a) {
   const cs = state.checkSession;
   if (!cs?.items || cs.seq !== a.seq) return state;
   const items = cs.items.map((it, i) => (i === a.index ? a.item : it));
-  return { ...state, checkSession: { ...cs, items, progress: progressOf(items), saveError: null } };
+  return { ...state, checkSession: { ...cs, items, progress: progressOf(items) } };
 }
 
-/** Check-session merge actions, table-dispatched ahead of the main switch. */
-const CHECK_SESSION_CASES = { patchCheckSession, checkDecisionSaved, pickerToolEntry };
+/** #100: the align scheduler's state mirror. */
+function alignSaveState(state, a) {
+  return { ...state, alignSaveState: a.state };
+}
+
+/** #100: the check scheduler's mirror. A retained failure names its key
+ * (tool|book|checkId) so the session marks the RIGHT item after the fact
+ * (D59 refusal); recovery clears both. Merged from the reducer's own state
+ * (S1 hazard class), like noteSaveState. */
+function checkSaveState(state, a) {
+  const next = { ...state, checkSaveState: a.state };
+  if (!state.checkSession?.items) return next;
+  return {
+    ...next,
+    checkSession: { ...state.checkSession, saveError: a.saveError ?? null, saveErrorKey: a.saveErrorKey ?? null },
+  };
+}
+
+/** Check-session and save-mirror merge actions, table-dispatched ahead of
+ * the main switch. */
+const CHECK_SESSION_CASES = { patchCheckSession, checkDecisionSaved, pickerToolEntry, alignSaveState, checkSaveState };
 
 function setSourceEntry(state, a) {
   if (a.value === undefined || a.value === null) {
@@ -617,10 +645,10 @@ async function prepareAlignmentSource(store, st, ref) {
   return { testament, pin, usfmText, ref };
 }
 
-async function buildAlignmentSession(store, st, ref, source, mapped, origObjects) {
+async function buildAlignmentSession(store, sched, st, ref, source, mapped, origObjects) {
   const targetText = verseTextIndex(st.bookRaw)[ref] ?? '';
   if (!origObjects.length || !targetText) return { unavailable: 'missing' };
-  const { value: file, md5 } = await store.readAlignmentsWithMd5(st.book);
+  const { file, md5 } = await alignFileFor(store, sched, st.book);
   const stored = file?.chapters?.[mapped.chapter]?.[mapped.verse];
   const sourceVersion = `dcs::${source.pin.repoPath.split('/').slice(-2).join('/')}@${source.pin.version}`;
   // A stored record with no alignments — the §8.5 removal form, or the
@@ -914,13 +942,18 @@ function validateNewBible(form) {
  * mapping from what IT projects at write time, so the flag is all the app
  * keeps: taken before the write, put back when the write fails (the retry
  * carries the same buffer), re-set by any later span save. */
-function writeBookOrStructure({ store, structuralRef }, book, whole) {
+async function writeBookOrStructure({ store, structuralRef, alignSchedulerRef }, book, whole) {
   if (!structuralRef.current.has(book)) return store.writeBook(book, whole);
   structuralRef.current.delete(book);
-  return store.applyStructuralEdit(book, whole, { intent: 'spans' }).catch((error) => {
+  try {
+    await store.applyStructuralEdit(book, whole, { intent: 'spans' });
+  } catch (error) {
     structuralRef.current.add(book);
     throw error;
-  });
+  }
+  // #100 (Codex round 1): the structural edit rewrote the alignment sidecar
+  // outside the align scheduler — refresh its clean buffer from disk now.
+  await alignFileFor(store, alignSchedulerRef?.current, book);
 }
 
 /** #63: stage a section save whose verse keys changed (a span created or
@@ -946,28 +979,96 @@ function stageStructuralSection({ rawRef, schedulerRef, structuralRef, stateRef,
  * drain) must be caught by another pass, never left for a later dispose to
  * discard (TOCTOU). Resolves true only when a full pass ends with both
  * schedulers reporting 'saved'. */
-async function drainBothSchedulers({ schedulerRef, noteSchedulerRef }) {
-  // Round 30/31: the reconcile-before-rest gate lives INSIDE the note
-  // scheduler (a constructor-injected hook its own retry() runs on a
-  // retained failure), so no drain path here — or anywhere — can bypass it.
+async function drainSchedulers(refs) {
+  // Round 30/31: the reconcile-before-rest gate lives INSIDE each scheduler
+  // (a constructor-injected hook its own retry() runs on a retained
+  // failure), so no drain path here — or anywhere — can bypass it.
+  // #100: ONE registry (saveRefs: verse, note, align, check) feeds every
+  // drain, dispose and navigation gate, so a new scheduler can never be left
+  // out of a gate by a call site that forgot it.
   const restState = (sched) => (sched ? sched.getState() : 'saved');
   for (;;) {
-    if (noteSchedulerRef.current && !(await noteSchedulerRef.current.drain())) return false;
-    if (schedulerRef.current && !(await schedulerRef.current.drain())) return false;
-    if (restState(noteSchedulerRef.current) === 'saved' && restState(schedulerRef.current) === 'saved')
-      return true;
+    for (const ref of refs) {
+      if (ref.current && !(await ref.current.drain())) return false;
+    }
+    if (refs.every((ref) => restState(ref.current) === 'saved')) return true;
   }
+}
+
+/** The pre-#100 shape, kept for the round-23 test and any two-scheduler caller. */
+async function drainBothSchedulers({ schedulerRef, noteSchedulerRef }) {
+  return drainSchedulers([noteSchedulerRef, schedulerRef]);
 }
 
 /** Test hook (round 23): the drain loop is unit-tested — work staged while
  * the OTHER scheduler's drain awaited must flush before anything disposes. */
 export const __drainBothSchedulersForTests = drainBothSchedulers;
+export const __drainSchedulersForTests = drainSchedulers;
+
+/** #100: the scheduler registry of an open context — the pre-#100 test
+ * callers pass only the verse and note refs; production passes all four. */
+const saveRefsOf = (ctx) =>
+  [ctx.schedulerRef, ctx.noteSchedulerRef, ctx.alignSchedulerRef, ctx.checkSchedulerRef].filter(Boolean);
+
+/** #100: aligning and checking ride the same discipline as verses and notes,
+ * each on its own instance (a failing decision must not park alignment
+ * saves, and neither parks verses). The align buffer holds the whole §5.1
+ * file as JSON, one key per book; the check buffer holds one decision per
+ * key (tool|book|checkId), like notes. Both reconcile the store's staged
+ * intents before any rest-claim (round 31), inside the machine. */
+function installAlignCheckSchedulers({ alignSchedulerRef, checkSchedulerRef, checkTargetsRef, dispatch }, store) {
+  if (alignSchedulerRef) {
+    const alignSched = new SaveScheduler({
+      writeBook: makeAlignWriter({ store }),
+      splice: spliceAlignRecord,
+      reconcile: () => store.reconcileStaged(),
+    });
+    alignSchedulerRef.current = alignSched;
+    alignSched.subscribe((state) => dispatch({ type: 'alignSaveState', state }));
+  }
+  if (checkSchedulerRef) {
+    checkTargetsRef.current = new Map();
+    const checkSched = new SaveScheduler({
+      writeBook: makeCheckWriter({ store, checkTargetsRef }),
+      splice: (_raw, _chapter, _verse, body) => body,
+      reconcile: () => store.reconcileStaged(),
+    });
+    checkSchedulerRef.current = checkSched;
+    checkSched.subscribe((state) => {
+      const failure = checkSched.getFailure();
+      dispatch({
+        type: 'checkSaveState',
+        state,
+        saveError: state === 'error' ? String(failure?.error?.message || failure?.error || state) : null,
+        saveErrorKey: state === 'error' ? (failure?.book ?? null) : null,
+      });
+    });
+  }
+}
+
+/** #100: a decision the store REFUSED (D59) for this tool and book is
+ * released when the tool re-opens — the way through a refusal is the
+ * gateway-change flow, after which the user decides again. The refused
+ * decision reverts to what is on disk, and the retry writes whatever else
+ * was buffered behind it: a policy refusal must never park navigation
+ * forever. */
+async function releaseParkedDecision(checkSched, tool, book) {
+  const parked = checkSched?.getFailure();
+  if (!parked || !parked.book.startsWith(`${tool}|${book}|`)) return;
+  // Codex round 1: only a D59 refusal is released by reverting. An ordinary
+  // write failure (I/O, a stale file) keeps its payload; the retry carries it.
+  if (isDecisionRefusal(parked.error)) checkSched.revertToPersisted(parked.book);
+  await checkSched.retry();
+}
+
+/** The store's D59 refusal (journalingStore.upsertDecision) ends its message
+ * with the decision reference; nothing else the writer throws does. */
+const isDecisionRefusal = (error) => /\(D36\/D59\)/.test(String(error?.message ?? error));
 
 /** Every blocker is checked BEFORE anything is disposed (C3). */
-async function drainForProjectOpen({ schedulerRef, noteSchedulerRef }) {
-  if (!(await drainBothSchedulers({ schedulerRef, noteSchedulerRef }))) return false;
-  schedulerRef.current?.dispose();
-  noteSchedulerRef.current?.dispose();
+async function drainForProjectOpen({ saveRefs }) {
+  if (!(await drainSchedulers(saveRefs))) return false;
+  for (const ref of saveRefs) ref.current?.dispose();
   return true;
 }
 
@@ -1079,10 +1180,10 @@ function startLeaveCheckpoint({ store, repoPath, stateRef, dispatch }) {
  * is still the latest one, no open proceeds, so an earlier request's progress
  * record (superseded before it could clear its own) is cleared here, and a
  * thrown error is surfaced in the Home banner (#95, Codex rounds 1 and 3). */
-async function gateProjectOpen({ schedulerRef, noteSchedulerRef, dispatch, superseded }) {
+async function gateProjectOpen({ saveRefs, dispatch, superseded }) {
   let canOpen;
   try {
-    canOpen = await drainForProjectOpen({ schedulerRef, noteSchedulerRef });
+    canOpen = await drainForProjectOpen({ saveRefs });
   } catch (e) {
     if (!superseded())
       dispatch({ type: 'set', patch: { bookError: e?.reason || e?.message || String(e), view: 'home', opening: null } });
@@ -1102,6 +1203,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
     structuralRef,
     noteSchedulerRef,
     noteTargetsRef,
+    alignSchedulerRef,
     storeRef,
     stateRef,
     understandSeqRef,
@@ -1111,9 +1213,10 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
     makeStore,
     markUsed,
   } = ctx;
+  const saveRefs = saveRefsOf(ctx);
   const seq = ++openProjectSeqRef.current;
   const superseded = () => seq !== openProjectSeqRef.current;
-  if (!(await gateProjectOpen({ schedulerRef, noteSchedulerRef, dispatch, superseded }))) return;
+  if (!(await gateProjectOpen({ saveRefs, dispatch, superseded }))) return;
   // Issue #95: the open's progress record. Every stage transition and every
   // ~1% of the journal read lands here; the view decides whether to show it.
   const startedAt = Date.now();
@@ -1149,7 +1252,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
     storeRef.current = store;
     structuralRef.current = new Set();
     schedulerRef.current = new SaveScheduler({
-      writeBook: (book, whole) => writeBookOrStructure({ store, structuralRef }, book, whole),
+      writeBook: (book, whole) => writeBookOrStructure({ store, structuralRef, alignSchedulerRef }, book, whole),
       splice: spliceVerse,
     });
     schedulerRef.current.subscribe((saveState) => dispatch({ type: 'set', patch: { saveState } }));
@@ -1187,6 +1290,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
             : null,
       });
     });
+    installAlignCheckSchedulers(ctx, store);
     apiClient.setCurrentProject(repoPath).catch(() => {});
     markUsed(repoPath); // fire-and-forget; ordering refreshes next Home visit
     // The platform summary reports script_direction "?" for app-created
@@ -1829,6 +1933,91 @@ function makeNoteWriter({ noteTargetsRef, dispatch, apiClient }) {
  * unmappable refusal, and the persisted-text echo. */
 export const __makeNoteWriterForTests = makeNoteWriter;
 
+/** #100: the align scheduler's buffer value — the §5.1 file as JSON. An
+ * absent file starts as the empty file for the book, so the first record
+ * lands in a well-formed file and a later verse's record never wipes it. */
+export const alignFileJson = (file, book) =>
+  JSON.stringify(file ?? { schemaVersion: 1, book: book.toUpperCase(), chapters: {} });
+
+/** The align scheduler's splice: one verse's record into the buffered file
+ * (alignFileWith is the merge persistAlign used). Rapid edits on several
+ * verses coalesce into one write; the journal diffs the whole file into one
+ * align.verse.set per changed verse (journalingStore.alignmentEvents). */
+function spliceAlignRecord(json, chapter, verse, recordJson) {
+  const file = JSON.parse(json);
+  return JSON.stringify(alignFileWith(file, file.book, `${chapter}:${verse}`, JSON.parse(recordJson)));
+}
+
+/** The align scheduler's write: the compare-and-swap of #17, chained on the
+ * md5 read right before the write. The scheduler serializes writes per
+ * instance, so each write edits the state the previous one left; a stale
+ * file (StaleWriteError) is a retained failure with Retry, never a silent
+ * overwrite. Bound to the store of the project it was made in (C1). */
+/** #100 (Codex round 1): the align buffer is the truth for the open book only
+ * while it holds work — an edit in flight, or one retained after a failed
+ * write (FR-32), which the disk cannot show yet. At rest it is reloaded from
+ * disk on every read, because a §8.5 structural edit (#63: a span created or
+ * broken) rewrites the alignment sidecar outside this scheduler; a clean but
+ * stale buffer would write the old file over that edit with a fresh md5 and
+ * pass the compare-and-swap. `loadBook` cannot throw at rest. */
+async function alignFileFor(store, sched, book) {
+  if (!sched) {
+    const { value: disk, md5 } = await store.readAlignmentsWithMd5(book);
+    return { file: disk, md5 };
+  }
+  // Codex round 3: reads are serialized per scheduler, so an older read can
+  // never land its bytes after a newer one — the newer read (the refresh
+  // after a structural edit included) starts only when the older has landed.
+  const prev = alignReadChains.get(sched) ?? Promise.resolve();
+  const run = prev.catch(() => {}).then(() => alignFileForSerial(store, sched, book));
+  alignReadChains.set(sched, run);
+  return run;
+}
+
+const alignReadChains = new WeakMap();
+
+async function alignFileForSerial(store, sched, book) {
+  const restBefore = sched.getState() === 'saved';
+  const textBefore = sched.bookText(book);
+  const { value: disk, md5 } = await store.readAlignmentsWithMd5(book);
+  const fresh = alignFileJson(disk, book);
+  // Codex round 2: reload only when nothing moved during the read — at rest
+  // before and after, and the buffer text unchanged. An edit staged or a
+  // save landed meanwhile is newer than the bytes this read returned.
+  const stillAtRest = restBefore && sched.getState() === 'saved' && sched.bookText(book) === textBefore;
+  if (stillAtRest) sched.loadBook(book, fresh);
+  else sched.seedIfAbsent(book, fresh);
+  return { file: JSON.parse(sched.bookText(book)), md5 };
+}
+
+function makeAlignWriter({ store }) {
+  return async (book, json) => {
+    const { md5 } = await store.readAlignmentsWithMd5(book);
+    await store.writeAlignments(book, JSON.parse(json), md5);
+  };
+}
+
+/** The check scheduler's key: one live register per decision (§8.5). */
+export const checkKeyFor = (tool, book, checkId) => `${tool}|${book}|${checkId}`;
+
+/** The check scheduler's write: one §5.2 decision through the store, with
+ * the session's resolution from the target registry (the note-writer
+ * pattern). A D59 refusal throws; the scheduler retains the decision and
+ * the mirror names the key, so the refusal reaches the RIGHT item after the
+ * fact and later decisions stay buffered, never lost (FR-32). */
+function makeCheckWriter({ store, checkTargetsRef }) {
+  return async (key, json) => {
+    const target = checkTargetsRef.current.get(key);
+    if (!target) throw new Error(`decision target unknown: ${key}`);
+    await store.upsertDecision(target.tool, target.book, JSON.parse(json), target.resource ?? undefined);
+  };
+}
+
+/** Test hooks (#100): the two writers and the align splice are unit-tested
+ * against the real scheduler — N rapid saves, md5 chaining, the D59 refusal
+ * landing on its key with later decisions retained. */
+export const __alignSaveForTests = { makeAlignWriter, spliceAlignRecord, makeCheckWriter, alignFileFor, releaseParkedDecision };
+
 function buildChapterVerses(bookRaw, chapters, entries) {
   const byChapter = {};
   const PARA_IN_GAP = /\\(?:p|m|pi\d?|pm|pmo|nb|b|q\d?|li\d?|lh|lf|lim\d?)\b/;
@@ -1881,6 +2070,12 @@ export function AppProvider({ children }) {
   // the defect classes they bred.
   const noteSchedulerRef = useRef(null);
   const noteTargetsRef = useRef(new Map());
+  // #100: the align and check schedulers and the decision target registry.
+  // saveRefs is THE list every drain, dispose and gate iterates.
+  const alignSchedulerRef = useRef(null);
+  const checkSchedulerRef = useRef(null);
+  const checkTargetsRef = useRef(new Map());
+  const saveRefs = useRef([schedulerRef, noteSchedulerRef, alignSchedulerRef, checkSchedulerRef]).current;
   const openProjectSeqRef = useRef(0); // openProject sequence token (round 25): the latest open owns the refs
   const articleSeqRef = useRef(0); // help-article completion token (D3, adversarial round 4)
 
@@ -1918,20 +2113,17 @@ export function AppProvider({ children }) {
   // unsaved work, and attempt a best-effort flush when the page hides.
   useEffect(() => {
     const beforeUnload = (e) => {
-      // Comprehension notes are project work too (A4): both schedulers must
-      // be at rest before the window may close silently (D65 — the note
-      // scheduler now carries what the old refs tracked).
-      const unsaved = [schedulerRef.current, noteSchedulerRef.current].some(
-        (sched) => sched && sched.getState() !== 'saved',
-      );
+      // Comprehension notes, alignments and decisions are project work too
+      // (A4, #100): every scheduler must be at rest before the window may
+      // close silently.
+      const unsaved = saveRefs.some((ref) => ref.current && ref.current.getState() !== 'saved');
       if (unsaved) {
         e.preventDefault();
         e.returnValue = '';
       }
     };
     const onHide = () => {
-      void schedulerRef.current?.drain();
-      void noteSchedulerRef.current?.drain();
+      for (const ref of saveRefs) void ref.current?.drain();
       void flushLastEdit();
     };
     window.addEventListener('beforeunload', beforeUnload);
@@ -2010,6 +2202,7 @@ export function AppProvider({ children }) {
       const projects = await reader.listProjects();
       let lastUsed = {};
       let lastEdit = null;
+      let draftUnits = {};
       try {
         // A pending Resume record is written before the document is read, so
         // a Home visit within the debounce never reads an older record.
@@ -2017,6 +2210,7 @@ export function AppProvider({ children }) {
         const cs = await api.getClientSettings(STORAGE_ID);
         lastUsed = cs.lastUsed || {};
         lastEdit = cs.lastEdit || null;
+        draftUnits = cs.draftUnits || {};
       } catch {
         /* fall back to creation-date order from listProjects */
       }
@@ -2037,7 +2231,7 @@ export function AppProvider({ children }) {
       // performProjectOpen is left alone (projects was already an array).
       dispatch({
         type: 'set',
-        patch: { projects, lastEdit: resumable ? lastEdit : null, ...(stateRef.current.projects === null ? { bookError: null } : {}) },
+        patch: { projects, lastEdit: resumable ? lastEdit : null, draftUnits, ...(stateRef.current.projects === null ? { bookError: null } : {}) },
       });
     } catch (e) {
       // Catch-to-absence sweep (D30): projects stays null (unknown), so the
@@ -2051,11 +2245,12 @@ export function AppProvider({ children }) {
   const actions = useMemo(() => {
     const a = {
       go: async (view) => {
-        // B1/D65: navigation drains the note scheduler — flush-and-go (owner
-        // ruling 2026-08-28), and a FAILED write holds navigation exactly
-        // like the verse scheduler does (FR-32). The failure is visible in
-        // the Understand callout and the save indicator.
-        if (noteSchedulerRef.current && !(await noteSchedulerRef.current.drain())) return;
+        // B1/D65: navigation is flush-and-go (owner ruling 2026-08-28), and a
+        // FAILED write holds navigation (FR-32). #100: every scheduler — an
+        // alignment or decision made before the switch is on disk before the
+        // checkpoint below reads the project, and the failure is visible in
+        // the save indicator.
+        if (!(await drainSchedulers(saveRefs))) return;
         const st = stateRef.current;
         const from = st.view;
         dispatch({ type: 'set', patch: { view } });
@@ -2063,10 +2258,7 @@ export function AppProvider({ children }) {
         // failure lands in commitError, never in the way.
         if (st.project && storeRef.current && from !== view && from !== 'home') {
           const store = storeRef.current;
-          // Behind the alignment write chain (its own queue, #129): an alignment
-          // edit made before the switch reaches the project queue before status
-          // is read. The chain never rejects.
-          alignWriteQueue.then(() => startCheckpoint({ store, storeRef, dispatch }, `leaving ${MODE_NAME[from] ?? from}`));
+          startCheckpoint({ store, storeRef, dispatch }, `leaving ${MODE_NAME[from] ?? from}`);
         }
       },
 
@@ -2084,6 +2276,14 @@ export function AppProvider({ children }) {
       },
 
       closeModal: () => dispatch({ type: 'set', patch: { modal: null, np: null, ab: null, st: null } }),
+
+      setDraftUnit: (unit) => {
+        const st = stateRef.current;
+        const key = st.project?.repoPath || st.project?.id;
+        if (!key) return;
+        dispatch({ type: 'set', patch: { draftUnits: { ...st.draftUnits, [key]: unit } } });
+        return updateClientSettings((cs) => ({ ...cs, draftUnits: { ...(cs.draftUnits || {}), [key]: unit } }));
+      },
 
       // ---- Source texts (J3): book packages from Door43 ----
       // The platform has no catalog-wide search (0.18.5), so the org comes from
@@ -2484,10 +2684,10 @@ export function AppProvider({ children }) {
         // at {loading:true} with an unhandled rejection. Any failure is a
         // stated, retryable error — never the 'missing' download prompt.
         try {
-        // Read AFTER every queued write lands (review round 2): reopening a
-        // verse whose write is still in flight must load the written record,
-        // not the stale file. The queue never rejects.
-        await alignWriteQueue;
+        // #100: the align scheduler's buffer is the truth for the open book —
+        // buildAlignmentSession reads the buffered file (edits pending, or a
+        // retained failure) over the disk file, so reopening a verse whose
+        // write is still in flight loads the edited record, never the stale one.
         const source = await prepareAlignmentSource(store, st, ref);
         if (source.unavailable) return settle({ unavailable: source.unavailable });
         const frame = await a.projectFrame();
@@ -2514,7 +2714,7 @@ export function AppProvider({ children }) {
           return settle({ unavailable: 'unreadable' });
         }
         const mapped = { chapter, verse, reference: srcRef.reference };
-        const session = await buildAlignmentSession(store, st, ref, source, mapped, origObjects);
+        const session = await buildAlignmentSession(store, alignSchedulerRef.current, st, ref, source, mapped, origObjects);
         settle(session.unavailable ? session : { ...session, frameName: frame.name });
         } catch (error) {
           settle({ error: String(error?.message || error) });
@@ -2557,8 +2757,8 @@ export function AppProvider({ children }) {
         const book = st.book;
         let alignIndex;
         try {
-          await alignWriteQueue; // the rail must reflect every landed write
-          const { value: file } = await store.readAlignmentsWithMd5(book);
+          // #100: the rail reflects every edit, landed or buffered.
+          const { file } = await alignFileFor(store, alignSchedulerRef.current, book);
           alignIndex = { items: alignIndexItems(st.bookRaw, file) };
         } catch (error) {
           // Catch-to-absence sweep (D30): a failed read is stated, retryable.
@@ -2593,21 +2793,22 @@ export function AppProvider({ children }) {
       /** #129 (PR #135 review round 1) — ONE path for every alignment edit.
        * The session record updates optimistically and synchronously, so each
        * successive edit builds on the previous one instead of a stale render
-       * snapshot; the §5.1 writes are SERIALIZED through one queue, so two
-       * rapid edits can never interleave their read-modify-write and clobber
-       * each other or trip the compare-and-swap (#17). */
+       * snapshot. #100: the record is stamped against the draft it was edited
+       * on (I-3) and STAGED on the align scheduler — the edit returns at once;
+       * the scheduler serializes the §5.1 writes per instance, so two rapid
+       * edits can never interleave their read-modify-write or trip the
+       * compare-and-swap (#17), and a failed write is retained with Retry. */
       applyAlignEdit: (mutate, disarm = false) => {
         const a2 = stateRef.current.alignSession;
-        if (!a2?.record) return;
+        const sched = alignSchedulerRef.current;
+        if (!a2?.record || !sched || !sched.bookText(a2.book)) return;
         const next = mutate(a2.record);
         if (next === a2.record) return;
-        const optimistic = { ...a2, ...(disarm ? { armed: null } : {}), record: next };
+        const record = stampTargetVerse(next, a2.targetText);
+        const optimistic = { ...a2, ...(disarm ? { armed: null } : {}), record, stale: false };
         dispatch({ type: 'set', patch: { alignSession: optimistic } });
-        // The STORE is bound at enqueue time (review round 2): a queued write
-        // must land in the project it was made in, never in whichever store
-        // happens to be current when the queue reaches it.
-        const store = storeRef.current;
-        alignWriteQueue = alignWriteQueue.then(() => a.persistAlign(optimistic, store));
+        const [chapter, verse] = a2.ref.split(':');
+        sched.markDirty(a2.book, chapter, verse, JSON.stringify(record));
       },
 
       placeAlignWord: (cardIndex) => {
@@ -2634,43 +2835,6 @@ export function AppProvider({ children }) {
       splitAlignCard: (cardIndex) =>
         a.applyAlignEdit((record) => splitAlignment(record, cardIndex)),
 
-      /** Write the §5.1 sidecar under compare-and-swap (#17). The record is
-       * re-stamped against the draft it was edited on (I-3). Never throws —
-       * it runs on the serialized queue, where a rejection would wedge every
-       * later write. A superseded write (the session already carries a newer
-       * record) completes on disk but leaves the session refresh to its
-       * successor; a failure is a stated, retryable session error unless the
-       * user has already moved on. */
-      persistAlign: async (session, boundStore) => {
-        const store = boundStore ?? storeRef.current;
-        const book = session.book;
-        if (!store || !book) return;
-        try {
-          const record = stampTargetVerse(session.record, session.targetText);
-          const { value: current, md5 } = await store.readAlignmentsWithMd5(book);
-          await store.writeAlignments(book, alignFileWith(current, book, session.ref, record), md5);
-          const after = await store.readAlignmentsWithMd5(book);
-          const cur = stateRef.current.alignSession;
-          if (cur?.seq === session.seq && cur.ref === session.ref && cur.record === session.record) {
-            dispatch({
-              type: 'set',
-              patch: { alignSession: { ...cur, record, md5: after.md5, stale: false } },
-            });
-          }
-        } catch (e) {
-          // A failure surfaces ONLY on the session and record it belongs to
-          // (review round 2): each queued write carries the verse's FULL
-          // record, so a failed intermediate is superseded by its successor,
-          // and a stale failure must never erase a newer session. The stated
-          // error's retry reloads from disk — the un-persisted edit is
-          // announced as lost, never silently kept as false UI state.
-          const cur = stateRef.current.alignSession;
-          if (cur?.seq === session.seq && cur.record === session.record) {
-            dispatch({ type: 'set', patch: { alignSession: { error: String(e?.message || e), seq: session.seq } } });
-          }
-        }
-      },
-
       /** C2.3/C2.4 — open a checking session for one tool on the open book.
        * Derives the check list from the RESOLVED pin's own TSV (never a
        * fixture), merges the stored §5.2 decisions, and reports progress.
@@ -2684,6 +2848,8 @@ export function AppProvider({ children }) {
         // open's completion (or failure) must never replace a newer session,
         // and closing the tool or the project invalidates in-flight opens.
         const seq = ++checkSessionSeq;
+        await releaseParkedDecision(checkSchedulerRef.current, tool, book); // #100
+        if (seq !== checkSessionSeq) return; // a newer open or close won during the release
         dispatch({ type: 'set', patch: { checkTool: tool, checkSession: { loading: true, seq } } });
         try {
           const { session, partial } = await assembleCheckSession({
@@ -2838,32 +3004,38 @@ export function AppProvider({ children }) {
 
       /** C2.6 — write one decision through the store. The full §5.2 record is
        * written, with the resolution record stamped on the file. */
-      recordDecision: async (patch) => {
+      /** C2.6 / #100 — record one decision: the item merges at once and the
+       * §5.2 write rides the check scheduler, so the checker's next click
+       * never waits on the previous save. A D59 refusal (the store refuses a
+       * write whose session resolution disagrees by sha with the stored
+       * record) is retained by the scheduler and named on the session's
+       * saveErrorKey after the fact; the way through is the gateway-change
+       * flow. Later decisions stay buffered behind it, never lost. */
+      recordDecision: (patch) => {
         const cs = stateRef.current.checkSession;
-        if (!cs?.items) return;
+        const sched = checkSchedulerRef.current;
+        if (!cs?.items || !sched) return;
         const item = cs.items[cs.activeIndex];
         const next = {
           ...item,
           ...patch,
           modifiedTimestamp: new Date().toISOString(),
         };
-        try {
-          await storeRef.current.upsertDecision(cs.tool, cs.book, next, cs.resource ?? undefined);
-        } catch (e) {
-          // D59 §3: the store REFUSES a decision write whose session resolution
-          // disagrees (by sha) with the file's stored §5.2 record — surface the
-          // refusal on the session; the way through is the gateway-change flow.
-          dispatch({
-            type: 'patchCheckSession',
-            seq: cs.seq,
-            patch: { saveError: String(e?.message ?? e) },
-          });
-          return;
-        }
+        const key = checkKeyFor(cs.tool, cs.book, item.contextId.checkId);
+        checkTargetsRef.current.set(key, { tool: cs.tool, book: cs.book, resource: cs.resource ?? null });
+        // The item as the session holds it is the buffer's persisted value:
+        // a refused write reverts to it (openCheckTool), and an unchanged
+        // decision compares clean.
+        sched.seedIfAbsent(key, JSON.stringify(item));
         // Item-level merge (checkDecisionSaved): two decisions can be in
-        // flight at once, and a stale whole-array snapshot from the later
-        // completion would overwrite the earlier item.
+        // flight at once, and a stale whole-array snapshot would overwrite
+        // the earlier item.
         dispatch({ type: 'checkDecisionSaved', seq: cs.seq, index: cs.activeIndex, item: next });
+        sched.markDirty(key, 0, '0', JSON.stringify(next)); // whole-value key: chapter/verse are inert
+        // A decision is a completed act, like a verse blur: it flushes at
+        // once (serialized behind any write in flight), not after the idle
+        // window. Not awaited — the checker's next click never waits on it.
+        void sched.flushOnBlur();
       },
 
       /** The resolver's inputs for THIS machine + THIS project: what is
@@ -3294,6 +3466,9 @@ export function AppProvider({ children }) {
             structuralRef,
             noteSchedulerRef,
             noteTargetsRef,
+            alignSchedulerRef,
+            checkSchedulerRef,
+            checkTargetsRef,
             storeRef,
             stateRef,
             understandSeqRef,
@@ -3316,7 +3491,7 @@ export function AppProvider({ children }) {
         // resurrects stale bytes).
         const store = storeRef.current;
         if (!store) return;
-        if (!(await drainBothSchedulers({ schedulerRef, noteSchedulerRef }))) return;
+        if (!(await drainSchedulers(saveRefs))) return;
         const scheduler = schedulerRef.current;
         // Sequence token: two rapid opens must not interleave (finding M2) —
         // only the latest open may install its bytes and sources.
@@ -3605,7 +3780,10 @@ export function AppProvider({ children }) {
         dispatch({ type: 'set', patch: { editing: null, bookRaw: rawRef.current } });
         schedulerRef.current?.flushOnBlur();
       },
-      retrySave: () => schedulerRef.current?.retry(),
+      // #100: the indicator's Retry re-attempts every scheduler holding a
+      // failure (each retry reconciles inside the machine, round 31).
+      retrySave: () =>
+        Promise.all(saveRefs.map((ref) => (ref.current?.getFailure() ? ref.current.retry() : Promise.resolve()))),
       backToProjects: async () => {
         // Never navigate away from unsaved work or a visible failure (FR-32).
         // EVERY blocker is checked BEFORE anything is disposed (C3,
@@ -3613,29 +3791,22 @@ export function AppProvider({ children }) {
         // working — both schedulers included — or the next edit throws.
         // Round 23: the loop re-checks both after each pass, so a note staged
         // while the verse drain awaited can never be disposed unflushed.
-        if (!(await drainBothSchedulers({ schedulerRef, noteSchedulerRef }))) return;
-        // #129 (PR #135 review rounds 2–3): the alignment write queue drains
-        // the same way — flush-and-go — so a queued §5.1 write can never
-        // execute after this project's store is gone. Drained to a STABLE
-        // tail: the editor stays live during the await, and an edit appended
-        // meanwhile would otherwise run after this continuation (round 3,
-        // confirmed by ordering control). The queue never rejects. From the
-        // stable tail to the store teardown below is synchronous, so nothing
-        // can enqueue in between.
-        let alignTail;
-        do {
-          alignTail = alignWriteQueue;
-          await alignTail;
-        } while (alignTail !== alignWriteQueue);
+        // #100: all four schedulers (verse, note, align, check) drain in the
+        // one loop, so a buffered §5.1 or §5.2 write can never execute after
+        // this project's store is gone (#129 rounds 2–3 kept their guarantee
+        // through the registry, not a second queue). From the drain to the
+        // store teardown below is synchronous, so nothing can stage in between.
+        if (!(await drainSchedulers(saveRefs))) return;
         // #183 (D9): leaving the project is a checkpoint. It is started AFTER
         // this synchronous teardown, on the captured store (startLeaveCheckpoint):
-        // an await here would reopen the window the stable tail just closed.
+        // an await here would reopen the window the drain just closed.
         const leaving = stateRef.current.project;
         const leavingStore = storeRef.current;
-        schedulerRef.current?.dispose();
-        schedulerRef.current = null;
-        noteSchedulerRef.current?.dispose();
-        noteSchedulerRef.current = null;
+        for (const ref of saveRefs) {
+          ref.current?.dispose();
+          ref.current = null;
+        }
+        checkTargetsRef.current = new Map();
         noteTargetsRef.current = new Map();
         storeRef.current = null;
         // A2 (2026-08-27 adversarial review): understand + projectPins are
@@ -3648,7 +3819,7 @@ export function AppProvider({ children }) {
         alignSessionSeq++;
         dispatch({
           type: 'set',
-          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, saveState: 'saved', noteSaveState: 'saved', commitError: null, projectPins: null, projectPinsLoaded: false, projectPinsError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, pickerProgress: null, toolPos: {} },
+          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, saveState: 'saved', noteSaveState: 'saved', alignSaveState: 'saved', checkSaveState: 'saved', commitError: null, projectPins: null, projectPinsLoaded: false, projectPinsError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, pickerProgress: null, toolPos: {} },
         });
         refreshProjects(); // re-order: the project just left goes to the top
         if (leaving && leavingStore) startLeaveCheckpoint({ store: leavingStore, repoPath: leaving.repoPath, stateRef, dispatch });

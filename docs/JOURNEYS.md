@@ -26,10 +26,10 @@ Owner of increment numbers: the GitHub milestones, mirrored in `docs/ROADMAP.md`
 | ID | Actor | Activity | Goal | Status | Proof |
 |---|---|---|---|---|---|
 | J1 | facilitator | Start | Create a Bible project and add books | shipped alpha.1 | `e2e/j01-create-project.spec.ts` |
-| J2 | translator | Translate | Draft verses beside the sources | shipped alpha.1; revised end state ships Increment 5 (D70) | `e2e/j02-draft-verse.spec.ts` |
+| J2 | translator | Translate | Draft verses beside the sources | shipped alpha.1; revised end state (D70) shipped alpha.5 | `e2e/j02-draft-verse.spec.ts` |
 | J3 | facilitator | Start | Get pinned resources | shipped alpha.2 | `e2e/j03-get-resources.spec.ts` |
-| J4 | translator | Check | Check a book with tN and tW | shipped alpha.2; revised end state ships Increment 6 (D71) | `e2e/j04-check-book.spec.ts` |
-| J5 | translator | Check | Align a verse | shipped alpha.2; revised end state ships Increment 6 (D71) | `e2e/j05-align-verse.spec.ts` |
+| J4 | translator | Check | Check a book with tN and tW | shipped alpha.2; revised end state ships Increment 6 (D72) | `e2e/j04-check-book.spec.ts` |
+| J5 | translator | Check | Align a verse | shipped alpha.2; revised end state ships Increment 6 (D72) | `e2e/j05-align-verse.spec.ts` |
 | J6 | translator | Translate | Edit a checked verse and see the checks flag | shipped alpha.2 | `e2e/j06-edit-invalidation.spec.ts` |
 | J7 | facilitator | Deliver | Export the book | increment 7 (#19 USFM, #20 PDF); RTL run #29 Post-4.0 | `e2e/j07-publish.spec.ts` (fixme) |
 | J8 | translator | Translate | Resume work across sessions and books | built (2026-09-05) | `e2e/j08-resume.spec.ts` |
@@ -39,7 +39,7 @@ Owner of increment numbers: the GitHub milestones, mirrored in `docs/ROADMAP.md`
 | J9d | facilitator | Exchange | Import a Scripture Burrito | increment 7 (#196) | `e2e/j09-import.spec.ts` (to write) |
 | J10 | — | — | retired: RTL is a fixture axis on J2, J4, J5, J7 | retired | both runs listed on each of those rows; `e2e/j10-rtl.spec.ts` stays until they exist |
 | J11 | facilitator | Exchange | Send the project to Door43 | Phase 2 | none |
-| J12 | facilitator | Start | Upgrade the pinned resources | increment 6 (D71) | `e2e/j12-upgrade-resources.spec.ts` (fixme) |
+| J12 | facilitator | Start | Upgrade the pinned resources | increment 6 (D72) | `e2e/j12-upgrade-resources.spec.ts` (fixme) |
 | J13 | facilitator | Start | Change the gateway-language resource set | shipped alpha.2 | `e2e/j13-gateway-change.spec.ts` |
 | J14 | — | — | retired: isolation is a MUST NOT row on J1 and J2 | retired | `e2e/j14-join-isolation.spec.ts` stays |
 | J15 | — | — | retired: slow open is a quality requirement on opening a project | retired | `e2e/j15-slow-open.spec.ts` stays, cited by a FR |
@@ -90,7 +90,7 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   checkpoints); re-key an alignment or a decision (Increment 5 uses `invalidate-retain` only).
 - Proof: `e2e/j02-draft-verse.spec.ts`, run LTR and RTL (J10 axis); the section and span cases
   are added by #141 and #63.
-- Owner: shipped alpha.1 (verse form); revised end state ships Increment 5 (#141, #63).
+- Owner: shipped alpha.1 (verse form); revised end state shipped alpha.5 (#141, #63).
 
 ### J3 Get pinned resources
 
@@ -108,7 +108,7 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 - Actor: translator. Activity: Check.
 - Steps: open the derived tW/tN list · read a note or article · triage an item · write a check
   comment · set a bookmark.
-- End state (revised 2026-09-11, D71): `check.decision.set` segments in the journal; §5.2
+- End state (revised 2026-09-11, D72): `check.decision.set` segments in the journal; §5.2
   sidecar at checkpoint; text unchanged. A check comment and a bookmark are fields of the same
   decision record (`comments`, `reminders`) and survive reopening; clearing a comment writes
   the field back to `false`. Neither changes progress.
@@ -124,7 +124,7 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 - Actor: translator. Activity: Check.
 - Steps: link and unlink word pairs · turn suggestions on · confirm or reject each suggested
   link, or accept or reject them all.
-- End state (revised 2026-09-11, D71): `align.verse.set` segments; §5.1 sidecar at checkpoint;
+- End state (revised 2026-09-11, D72): `align.verse.set` segments; §5.1 sidecar at checkpoint;
   text unchanged. When suggestions are on, an accepted suggestion writes the same segment as a
   manual link, and a suggestion that was shown and not accepted leaves no trace in the journal
   or the sidecar.
@@ -185,7 +185,7 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 - Actor: facilitator. Activity: Start (touches Check).
 - Precondition: J3; the app is online.
 - Steps: check for updates · see the offer per language set · accept explicitly · re-derive.
-- End state (defined 2026-09-11, D71): the set's §5.3 pins carry the new release's `sha` and
+- End state (defined 2026-09-11, D72): the set's §5.3 pins carry the new release's `sha` and
   `version`; every affected book's decisions are carried over or invalidated and retained
   (D36); the other language set's pins are unchanged; text ingredients byte-identical; a
   failed or interrupted download changes nothing.

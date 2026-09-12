@@ -8,15 +8,16 @@ import React, { useRef, useEffect } from 'react';
 import { useApp, isOldTestament } from '../state.jsx';
 import { bookName } from '../data/bookNames';
 import { t } from '../i18n';
-import { FilterChip, IconButton, Overline, Button } from '../ds/index.js';
+import { FilterChip, IconButton, Overline, Button, Switcher } from '../ds/index.js';
 import { RailIcon, HelpsIcon } from './PanelIcons.jsx';
 import { targetTypeFor, projectDir } from './scriptStyle.js';
 import BookRail from './BookRail.jsx';
 import { HelpsPanel, useLoadHelps } from './HelpsPanel.jsx';
+import { editingFocus } from './helpsFocus.js';
 import { SourceVerse } from './SourceVerse.jsx';
 import { verseText as sourceText } from './verseText.js';
 import { absenceMessageKey, isSourceAbsent } from '../data/sourceState';
-import { paragraphLevel, paragraphsOf, rangeSpan, sectionRanges, sectionStarts } from './sections.js';
+import { paragraphLevel, paragraphsOf, rangeSpan, sectionRanges, sectionStarts, sourceKeysFor } from './sections.js';
 import { SectionEditor } from './SectionEditor.jsx';
 
 const hair = 'var(--stroke-hair) solid var(--border-hair)';
@@ -115,7 +116,7 @@ function SourceCell({ s, bookCode, keys, sourceModel, paneFocus, label }) {
       <Overline tone="muted" style={{ marginBottom: 6 }}>{label}</Overline>
       {isSourceAbsent(sourceModel) ? (
         <p style={italic}>{t(absenceMessageKey(sourceModel))}</p>
-      ) : paragraphsOf(keys, chapterVerses).map((para) => (
+      ) : paragraphsOf(sourceKeysFor(keys, chapterVerses), chapterVerses).map((para) => (
         <p key={para[0]} dir={isOrig ? (ot ? 'rtl' : 'ltr') : undefined} lang={isOrig ? (ot ? 'hbo' : 'el') : undefined}
           style={{ direction: isOrig ? (ot ? 'rtl' : 'ltr') : 'ltr', textAlign: 'start', fontFamily: isOrig ? (ot ? 'var(--font-hebrew)' : 'var(--font-greek)') : 'var(--font-scripture)', fontSize: 'var(--fs-verse-lg)', lineHeight: 'var(--lh-verse-lg)', color: 'var(--text-scripture)', margin: '0 0 10px' }}>
           {para.map((k) => {
@@ -140,7 +141,7 @@ function SourceCell({ s, bookCode, keys, sourceModel, paneFocus, label }) {
 /** One target verse inside a paragraph: drafted words (click = revise this
  * verse alone), the design's inline "Draft verse N" pill, or the "Editing
  * below" pill while its own card is open under the paragraph. */
-function TargetVerse({ v, chapter, editing, actions }) {
+function TargetVerse({ v, chapter, editing, actions, mode }) {
   if (editing) {
     return (
       <span style={{ display: 'inline-block', borderRadius: 'var(--radius-sm)', padding: '2px 10px', marginInlineEnd: '.3em', background: 'var(--surface-accent-soft)', fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption-lg)', letterSpacing: 'var(--track-12-5)', fontWeight: 'var(--fw-bold)', color: 'var(--text-accent)', verticalAlign: 'middle' }}>
@@ -149,10 +150,15 @@ function TargetVerse({ v, chapter, editing, actions }) {
     );
   }
   if (v.drafted) {
+    const verseProps = mode === 'verse' ? {
+      title: t('draft.editVerse'),
+      onClick: () => actions.startVerse(chapter, v.n),
+      style: { cursor: 'text' },
+    } : {};
     return (
       // Real spaces between the word spans: the verse's text content stays the
       // sentence (copy, find, the journeys' getByText), not the words run together.
-      <span title={t('draft.editVerse')} onClick={() => actions.startVerse(chapter, v.n)} style={{ cursor: 'text' }}>
+      <span {...verseProps}>
         {v.text.split(/\s+/).filter(Boolean).map((w, i) => (
           <React.Fragment key={i}>
             <span data-i="quiet" style={{ display: 'inline-block', borderRadius: 'var(--radius-xs)', padding: '0 .06em' }}>{w}</span>{' '}
@@ -161,6 +167,7 @@ function TargetVerse({ v, chapter, editing, actions }) {
       </span>
     );
   }
+  if (mode === 'section') return null;
   // The accessible name stays "start this verse" (journeys J1/J14).
   return (
     <button type="button" data-i="choice" data-tone="accent" aria-label={t('draft.startVerse')} onClick={() => actions.startVerse(chapter, v.n)}
@@ -170,7 +177,7 @@ function TargetVerse({ v, chapter, editing, actions }) {
   );
 }
 
-function TargetCell({ s, verses, keys, byKey, span, dir, type, editType, actions }) {
+function TargetCell({ s, verses, keys, byKey, span, dir, type, editType, actions, mode }) {
   const editingKey = s.editing?.key;
   // The open card keeps the verse set it was opened with (startSection's
   // keys), whatever the rows regroup to after a source switch — the row that
@@ -185,17 +192,19 @@ function TargetCell({ s, verses, keys, byKey, span, dir, type, editType, actions
       ) : (
         <>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 6, minHeight: 14 }}>
-            <Button variant="ghost" size="sm" onClick={() => actions.startSection(s.chapter, keys)}
-              style={{ color: 'var(--text-tertiary)', fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)' }}>
-              {t('draft.draftSection', { span })}
-            </Button>
+            {mode === 'section' && (
+              <Button variant="ghost" size="sm" onClick={() => actions.startSection(s.chapter, keys)}
+                style={{ color: 'var(--text-tertiary)', fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)' }}>
+                {t('draft.draftSection', { span })}
+              </Button>
+            )}
           </div>
           {targetParagraphs(verses).map((para) => (
             <p key={para[0].n} style={{ direction: dir, textAlign: 'start', ...type, color: 'var(--text-scripture)', margin: '0 0 10px', ...indentStyle(paragraphLevel(para)) }}>
               {para.map((v) => (
                 <React.Fragment key={v.n}>
                   <sup style={SUP}>{v.n}</sup>
-                  <TargetVerse v={v} chapter={s.chapter} editing={verseOpen?.n === v.n} actions={actions} />
+                  <TargetVerse v={v} chapter={s.chapter} editing={verseOpen?.n === v.n} actions={actions} mode={mode} />
                 </React.Fragment>
               ))}
             </p>
@@ -250,8 +259,34 @@ function SourceTabs({ s, actions, origTestament }) {
   );
 }
 
+const persistedDraftUnit = (s) => s.draftUnits?.[s.project?.repoPath ?? s.project?.id] ?? 'section';
+
+function DraftUnitSwitch({ mode, onChange, disabled, crossFrame }) {
+  if (crossFrame) {
+    return <Overline data-testid="draft-verse-only">{t('understand.crossFrameVerseOnly')}</Overline>;
+  }
+  return (
+    <Switcher
+      indicator="pill"
+      size="sm"
+      tone="ocean"
+      value={mode}
+      onChange={onChange}
+      options={[
+        { value: 'section', label: t('understand.bySection'), disabled: Boolean(disabled) },
+        { value: 'verse', label: t('understand.byVerse'), disabled: Boolean(disabled) },
+      ]}
+    />
+  );
+}
+
 export default function Draft() {
   const { s, book, sourceModel, actions } = useApp();
+  const crossFrame = s.understand?.sourceRefs != null;
+  const persisted = persistedDraftUnit(s);
+  const [mode, setMode] = React.useState(persisted);
+  React.useEffect(() => setMode(persisted), [persisted]);
+  const effectiveMode = crossFrame ? 'verse' : mode;
   useLoadHelps();
 
   if (!book) {
@@ -289,8 +324,10 @@ export default function Draft() {
         <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', maxWidth: 1100, margin: '0 auto' }}>
             <SourceTabs s={s} actions={actions} origTestament={origTestament} />
-            <div style={{ position: 'sticky', top: 0, background: 'var(--surface-app)', zIndex: 2, padding: '13px 26px 8px' }}>
+            <div style={{ position: 'sticky', top: 0, background: 'var(--surface-app)', zIndex: 2, padding: '13px 26px 8px', display: 'flex', alignItems: 'center' }}>
               <Overline tone="accent">{s.project?.name} · {s.project?.languageTag}</Overline>
+              <div style={{ flex: 1 }} />
+              <DraftUnitSwitch mode={effectiveMode} onChange={(v) => { setMode(v); actions.setDraftUnit(v); }} disabled={s.editing != null} crossFrame={crossFrame} />
             </div>
 
             {sections.map((keys) => {
@@ -299,14 +336,14 @@ export default function Draft() {
               return (
                 <React.Fragment key={keys[0]}>
                   <SourceCell s={s} bookCode={book.code} keys={keys} sourceModel={sourceModel} paneFocus={paneFocus} label={`${bookName(book.code)} ${s.chapter}:${span}`} />
-                  <TargetCell s={s} verses={sectionVerses} keys={keys} byKey={byKey} span={span} dir={dir} type={type} editType={editType} actions={actions} />
+                  <TargetCell s={s} verses={sectionVerses} keys={keys} byKey={byKey} span={span} dir={dir} type={type} editType={editType} actions={actions} mode={effectiveMode} />
                 </React.Fragment>
               );
             })}
           </div>
         </div>
       </main>
-      {s.helps && <HelpsPanel chapter={s.chapter} />}
+      {s.helps && <HelpsPanel chapter={s.chapter} focusVerses={editingFocus(s.editing, s.chapter)} comments />}
     </div>
   );
 }

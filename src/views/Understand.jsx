@@ -14,19 +14,7 @@ import { absenceMessageKey, isSourceAbsent } from '../data/sourceState';
 import { FilterChip, IconButton, Overline, Switcher, StatusDot, Callout, Button } from '../ds/index.js';
 import { RailIcon } from './PanelIcons.jsx';
 import { targetTypeFor, projectDir } from './scriptStyle.js';
-import { paragraphLevel, paragraphsOf, sectionStarts } from './sections.js';
-
-/** A unit's verse keys as they exist in the source chapter: a mapped range key
- * ("1-2") that the source keeps as separate verses expands to the verses it
- * spans (Codex review of #140). */
-const verseKeysIn = (keys, chapterVerses) => keys.flatMap((k) => {
-  if (chapterVerses[String(k)]) return [k];
-  const m = String(k).match(/^(\d+)-(\d+)$/);
-  if (!m) return [k];
-  const out = [];
-  for (let n = Number(m[1]); n <= Number(m[2]); n++) if (chapterVerses[String(n)]) out.push(String(n));
-  return out.length ? out : [k];
-});
+import { paragraphLevel, paragraphsOf, sectionStarts, verseKeysIn } from './sections.js';
 
 /** The last verse number a chapter key reaches ("4-5" → 5, "4" → 4). */
 const trailingNum = (key) => Number(String(key).split('-').pop());
@@ -376,9 +364,17 @@ function PassageStatus({ s, src, actions }) {
   );
 }
 
+const unitFocusVerses = (unit) => {
+  if (!unit) return null;
+  return unit.project ? [unit.project.verse] : unit.verses;
+};
+const persistedDraftUnit = (s) => s.draftUnits?.[s.project?.repoPath ?? s.project?.id] ?? 'section';
+
 export default function Understand() {
   const { s, book, actions } = useApp();
-  const [mode, setMode] = React.useState('section');
+  const persisted = persistedDraftUnit(s);
+  const [mode, setMode] = React.useState(persisted);
+  React.useEffect(() => setMode(persisted), [persisted]);
   const [activeKey, setActiveKey] = React.useState(null);
   useLoadHelps();
   // Unit keys repeat across chapters and books ("v2", "s1"): a navigation
@@ -400,6 +396,7 @@ export default function Understand() {
   const units = understandUnits({ s, book, chapter, src, srcChapters, mode });
   // The focused unit: the one clicked, else the first (the design's default).
   const focusedKey = units.some((u) => u.key === activeKey) ? activeKey : units[0]?.key;
+  const focusVerses = unitFocusVerses(units.find((u) => u.key === focusedKey));
   const focusUnit = (unit) => {
     setActiveKey(unit.key);
     const item = firstHelpIn(s, chapter, unit);
@@ -441,7 +438,7 @@ export default function Understand() {
               ) : (
                 <>
                   <Overline>{t('understand.commentsBy')}</Overline>
-                  <Switcher indicator="pill" size="sm" tone="ocean" value={mode} onChange={setMode}
+                  <Switcher indicator="pill" size="sm" tone="ocean" value={mode} onChange={(v) => { setMode(v); actions.setDraftUnit(v); }}
                     options={[{ value: 'section', label: t('understand.bySection') }, { value: 'verse', label: t('understand.byVerse') }]} />
                 </>
               )}
@@ -460,7 +457,7 @@ export default function Understand() {
           </div>
         </div>
       </main>
-      <HelpsPanel chapter={chapter} />
+      <HelpsPanel chapter={chapter} focusVerses={focusVerses} />
     </div>
   );
 }

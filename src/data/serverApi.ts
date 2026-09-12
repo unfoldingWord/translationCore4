@@ -165,13 +165,17 @@ export class ServerApiError extends Error {
   }
 
   /** True when the failure means "this ingredient file does not exist".
-   * The server answers HTTP 400 with an ENOENT reason [VERIFIED live 0.18.5]:
-   * {"is_good":false,"reason":"could not read ingredient content: No such
-   * file or directory (os error 2)"}. 404 is accepted too, defensively. */
+   * The server answers HTTP 400 with the platform's ENOENT text [VERIFIED live
+   * 0.18.5]: on Unix {"is_good":false,"reason":"could not read ingredient
+   * content: No such file or directory (os error 2)"}; on Windows the same
+   * read says "The system cannot find the file specified. (os error 2)" or,
+   * for a missing directory in the path, "The system cannot find the path
+   * specified. (os error 3)" [VERIFIED — the #181 witness run, 2026-09-08,
+   * issue #228]. 404 is accepted too, defensively. */
   get isNotFound(): boolean {
     return (
       (this.status === 400 || this.status === 404) &&
-      /No such file or directory/i.test(this.reason)
+      /No such file or directory|cannot find the (?:file|path) specified|\(os error [23]\)/i.test(this.reason)
     );
   }
 }
