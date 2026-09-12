@@ -74,6 +74,18 @@ declare module 'bible-reference-range' {
 // total occurrences (for the §5.2 selection's `occurrences`).
 declare module 'string-punctuation-tokenizer' {
   export function tokenize(options: { text: string }): string[];
+  /** `verbose` keeps the classifier's typed tokens (`word`, `number`,
+   * `punctuation`, `whitespace`) instead of the bare strings — the form
+   * src/data/align/tokenize.ts uses to keep separators (#255). */
+  export function tokenize(options: {
+    text: string;
+    includeWords?: boolean;
+    includeNumbers?: boolean;
+    includePunctuation?: boolean;
+    includeWhitespace?: boolean;
+    greedy?: boolean;
+    verbose: true;
+  }): Array<{ token: string; type: string }>;
   export function occurrencesInString(text: string, subString: string): number;
 }
 

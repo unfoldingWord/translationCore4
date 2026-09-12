@@ -15,34 +15,23 @@
 import { usfmjs, wordaligner } from '../vendor';
 import { md5Hex } from '../httpStore';
 import { normalizeOccurrences } from './occurrences';
+import { tokenizeVerse } from './tokenize';
 import type { AlignedWord, Alignment, AlignmentVerseRecord } from './zaln';
-
-/** Split a verse into word and separator tokens, preserving punctuation. */
-const tokenize = (text: string): string[] =>
-  text.match(/[\p{L}\p{M}\p{N}]+|[^\p{L}\p{M}\p{N}]+/gu) ?? [];
-
-const isWord = (token: string): boolean => /[\p{L}\p{M}\p{N}]/u.test(token);
 
 /** Render a plain draft verse as USFM3 `\w` tokens carrying occurrence data.
  * word-aligner's `unmerge` only banks words it can see as word objects, so a
  * plain-text verse yields an EMPTY wordBank [VERIFIED 2026-08-03] — the verse
- * must be tokenized first for the bootstrap to have anything to offer. */
-export const tokenizeTargetVerse = (text: string): string => {
-  const tokens = tokenize(text);
-  const totals: { [word: string]: number } = {};
-  for (const token of tokens) if (isWord(token)) totals[token] = (totals[token] ?? 0) + 1;
-  const seen: { [word: string]: number } = {};
-  let out = '';
-  for (const token of tokens) {
-    if (!isWord(token)) {
-      out += token;
-      continue;
-    }
-    seen[token] = (seen[token] ?? 0) + 1;
-    out += `\\w ${token}|x-occurrence="${seen[token]}" x-occurrences="${totals[token]}"\\w*`;
-  }
-  return out;
-};
+ * must be tokenized first for the bootstrap to have anything to offer. The
+ * split is the one tokenizer of tokenize.ts (#255), shared with the
+ * suggestion bridge, so the bank's word identity and the engine's agree. */
+export const tokenizeTargetVerse = (text: string): string =>
+  tokenizeVerse(text)
+    .map((t) =>
+      t.isWord
+        ? `\\w ${t.text}|x-occurrence="${t.occurrence}" x-occurrences="${t.occurrences}"\\w*`
+        : t.text,
+    )
+    .join('');
 
 const asWords = (list: unknown[]): AlignedWord[] =>
   (list as AlignedWord[]).map((w) => normalizeOccurrences(w));
