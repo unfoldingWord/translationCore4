@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "tool": "scripts/prove.mjs",
-  "commit": "157bdabb8b4e887da850fbacac84a4245e2200f8",
+  "commit": "9f65a02afec0898c6999c745f2b460a0de5a87ec",
   "dirty": false,
-  "date": "2026-09-12T15:26:28.060Z",
+  "date": "2026-09-12T18:46:18.941Z",
   "node": "v22.23.2",
   "platform": "linux-x64",
   "ci": true,
@@ -32,7 +32,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [],
-      "durationMs": 5890
+      "durationMs": 5920
     },
     {
       "id": "typecheck",
@@ -47,7 +47,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [],
-      "durationMs": 5273
+      "durationMs": 4994
     },
     {
       "id": "vitest",
@@ -58,14 +58,14 @@
       "skipped": null,
       "ok": true,
       "exitCode": 0,
-      "passed": 1001,
+      "passed": 1009,
       "failed": 0,
       "skippedTests": 37,
       "summary": [
-        "Test Files  67 passed | 5 skipped (72)",
-        "Tests  1001 passed | 37 skipped (1038)"
+        "Test Files  68 passed | 5 skipped (73)",
+        "Tests  1009 passed | 37 skipped (1046)"
       ],
-      "durationMs": 31564
+      "durationMs": 30177
     },
     {
       "id": "build",
@@ -80,9 +80,9 @@
       "failed": null,
       "skippedTests": null,
       "summary": [
-        "✓ built in 7.00s"
+        "✓ built in 6.99s"
       ],
-      "durationMs": 7443
+      "durationMs": 7467
     },
     {
       "id": "conformance:generate",
@@ -97,7 +97,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [],
-      "durationMs": 194
+      "durationMs": 189
     },
     {
       "id": "conformance:validate",
@@ -108,16 +108,16 @@
       "skipped": null,
       "ok": true,
       "exitCode": 0,
-      "passed": 40,
+      "passed": 41,
       "failed": 0,
       "skippedTests": null,
       "summary": [
-        "Stage-1 (path-authoritative — holds on today's pankosmia-web): 35 passed, 0 failed",
+        "Stage-1 (path-authoritative — holds on today's pankosmia-web): 36 passed, 0 failed",
         "Stage-2 (role/relationships durability — x-roles non-durable by design, D28; client re-asserts after remake): 2 passed, 0 failed",
         "Phase-2 (journal-merge design checks, §8.7): 3 passed, 0 failed",
-        "40 passed, 0 failed"
+        "41 passed, 0 failed"
       ],
-      "durationMs": 578
+      "durationMs": 580
     },
     {
       "id": "conformance:journal",
@@ -134,7 +134,7 @@
       "summary": [
         "Journal suite: 344 passed, 0 failed (fast-check seed 20260707)"
       ],
-      "durationMs": 3092
+      "durationMs": 3068
     },
     {
       "id": "conformance:normative",
@@ -154,7 +154,7 @@
         "uncovered          : 0",
         "stale claims       : 0"
       ],
-      "durationMs": 73
+      "durationMs": 76
     },
     {
       "id": "conformance:transport",

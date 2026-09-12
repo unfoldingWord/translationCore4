@@ -414,6 +414,31 @@ export default function Align({ embedded = false }) {
           ))}
         </div>
       </div>
+
+      <MarkValidBar record={a.record} stale={a.stale} onMark={actions.markAlignValid} />
+    </div>
+  );
+}
+
+/** #271 (D73): the translator says when this verse is done — the same
+ * control, in the same place, as the Check tools' Mark valid. Active while
+ * the record is done, vouches for the current draft (I-3) and is not flagged
+ * for re-review (§5.1 `invalid`). */
+function MarkValidBar({ record, stale, onMark }) {
+  const done = record.done === true && !stale && record.invalid !== true;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 22, flexWrap: 'wrap' }}>
+      <button type="button" data-testid="align-mark-valid" onClick={onMark}
+        data-active={done ? '1' : '0'} title={t('align.markValidHint')}
+        style={{
+          border: `var(--stroke-selected) solid ${done ? 'var(--tc-valid-strong)' : 'rgba(88,193,122,.55)'}`,
+          background: done ? 'var(--tc-valid-strong)' : 'var(--surface-card)',
+          color: done ? 'var(--text-inverse)' : 'var(--tc-valid-strong)',
+          cursor: 'pointer', fontFamily: 'var(--font-ui)', fontWeight: 'var(--fw-heavy)',
+          fontSize: 'var(--fs-ui-md)', padding: '11px 20px', borderRadius: 'var(--radius-md)',
+        }}>
+        {t('align.markValid')}
+      </button>
     </div>
   );
 }

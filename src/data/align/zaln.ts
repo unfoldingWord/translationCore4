@@ -30,6 +30,11 @@ export interface AlignmentVerseRecord {
   invalid: boolean;
   targetVerseMd5: string;
   sourceVersion: string;
+  /** OPTIONAL, additive (#271, D73): the translator's "this verse is done" —
+   * set when every word is placed, or by Mark valid with words still in the
+   * bank; cleared by any alignment edit. Absent means not done. Read together
+   * with I-3: a stale record is not done whatever the flag says. */
+  done?: boolean;
 }
 
 /** checking/alignments/<BOOK>.json ingredient (role x-alignment). */

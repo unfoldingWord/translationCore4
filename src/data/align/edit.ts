@@ -223,6 +223,36 @@ export const allTargetWords = (record: AlignmentVerseRecord): AlignedWord[] => [
   ...record.alignments.flatMap((a: Alignment) => a.bottomWords),
 ];
 
+/** #271 — every target word is placed and no source group is left without a
+ * target word (tC3's `areAlgnmentsComplete`). An empty record is not aligned. */
+export const isFullyAligned = (record: AlignmentVerseRecord): boolean =>
+  record.wordBank.length === 0 &&
+  record.alignments.some((a) => a.bottomWords.length > 0) &&
+  record.alignments.every((a) => a.topWords.length === 0 || a.bottomWords.length > 0);
+
+/** #271 — the `done` flag after an alignment edit: set when the verse is now
+ * fully aligned (D73: "all aligned is done"), otherwise removed — any edit
+ * takes back an earlier Mark valid, exactly as tC3 unchecked "Alignment
+ * complete" on every change. Absent, never `false`, so a record that was
+ * never done keeps its bytes. */
+export const settleDone = (record: AlignmentVerseRecord): AlignmentVerseRecord => {
+  if (isFullyAligned(record)) return { ...record, done: true };
+  if (!('done' in record)) return record;
+  const rest: AlignmentVerseRecord = { ...record };
+  delete rest.done;
+  return rest;
+};
+
+/** #271 — Mark valid: the translator says this verse is done, words in the
+ * bank or not. The record vouches for the CURRENT text (I-3 restamp) and the
+ * re-review flag is cleared (tC3 reset "invalidated" on finish), so a stale
+ * or flagged record marked valid reads valid again. */
+export const markDone = (record: AlignmentVerseRecord, targetText: string): AlignmentVerseRecord => ({
+  ...stampTargetVerse(record, targetText),
+  invalid: false,
+  done: true,
+});
+
 /**
  * #213 — reflow after a verse edit: keep every link whose target word is
  * still in the new text, drop the rest, and rebuild the bank from the new
@@ -260,5 +290,7 @@ export const reflowAlignment = (
   const wordBank: AlignedWord[] = words
     .filter((t) => !kept.has(`${t.text} ${t.occurrence}`))
     .map((t) => ({ word: t.text, occurrence: t.occurrence, occurrences: t.occurrences }));
-  return { ...record, alignments, wordBank, invalid: false, targetVerseMd5: md5Hex(targetText) };
+  // #271: a reflow is an edit — `done` follows the reflowed record (set when
+  // every surviving word is placed and the bank is empty, else removed).
+  return settleDone({ ...record, alignments, wordBank, invalid: false, targetVerseMd5: md5Hex(targetText) });
 };

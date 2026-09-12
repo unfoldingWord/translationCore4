@@ -308,6 +308,32 @@ describe('#62 mapping: writeAlignments diffs the affected records', () => {
     sourceVersion: 'dcs::unfoldingWord/el-x-koine_ugnt@v0.34',
   });
 
+  it('#271: the §5.1 done flag rides the align.verse.set event, and removing it is a change', async () => {
+    const { rig, api, store } = await setup();
+    await store.writeAlignments('TIT', {
+      schemaVersion: 1,
+      book: 'TIT',
+      chapters: { '1': { '1': { ...alignmentRecord(1), done: true } as never } },
+    });
+    let segments = await segmentsOf(rig);
+    let action = segments[segments.length - 1].events;
+    expect(action).toHaveLength(1);
+    expect(action[0]).toMatchObject({ op: 'align.verse.set', chapter: '1', verse: '1', done: true });
+    // The same record without the flag is a change the diff sees (an edit took Mark valid back).
+    await store.writeAlignments('TIT', {
+      schemaVersion: 1,
+      book: 'TIT',
+      chapters: { '1': { '1': alignmentRecord(1) as never } },
+    });
+    segments = await segmentsOf(rig);
+    action = segments[segments.length - 1].events;
+    expect(action).toHaveLength(1);
+    expect(action[0].op).toBe('align.verse.set');
+    expect('done' in action[0]).toBe(false);
+    const report = await verifyProjectAgainstJournal(api, REPO);
+    expect(report.ok, describeVerifierReport(report)).toBe(true);
+  });
+
   it('publishes one action of changed align.verse.set events with generation + observed base, I-2 normalized', async () => {
     const { rig, api, store } = await setup();
     const bookAddTs = (await segmentsOf(rig)).flatMap((s) => s.events).find((e) => e.op === 'book.add')?.ts;
