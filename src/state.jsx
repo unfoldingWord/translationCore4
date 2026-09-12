@@ -33,7 +33,7 @@ import {
 } from './data/derive';
 import { readTwArticle, readTaArticle } from './data/articles';
 import { revalidateAgainstDraft, resolutionWarning } from './data/revalidate';
-import { bootstrapVerse, linkWord, unlinkWord, moveWord, mergeAlignments, splitAlignment, stampTargetVerse, alignmentIsStale, reflowAlignment } from './data/align/edit';
+import { bootstrapVerse, linkWord, unlinkWord, moveWord, mergeAlignments, splitAlignment, stampTargetVerse, alignmentIsStale, reflowAlignment, settleDone, markDone } from './data/align/edit';
 import { consequencesOfGatewayChange, applyGatewayChange, uncoveredByChange } from './data/gatewayChange';
 import { carryOverDecisions } from './data/carryOver';
 import { TC_READY_TOPIC } from './data/serverApi';
@@ -714,9 +714,10 @@ function isCurrentArticleRequest(now, seq, currentSeq, repoPath, key) {
 }
 
 /** #129: one verse's alignment status for the align rail. Mirrors the shared
- * check status model: 'valid' = every target word placed, 'invalid' = the
- * draft changed under the record (align.stale), 'todo' = unplaced words —
- * plus 'undrafted', which the other tools do not have. */
+ * check status model: 'valid' = the record says `done` (#271, D73 — set when
+ * every word is placed, or by Mark valid), 'invalid' = the draft changed
+ * under the record (align.stale), 'todo' = otherwise — plus 'undrafted',
+ * which the other tools do not have. */
 function alignVerseStatus(rec, text) {
   if (!text) return { status: 'undrafted', placed: 0, total: 0 };
   const placed = rec ? rec.alignments.reduce((n, x) => n + x.bottomWords.length, 0) : 0;
@@ -724,9 +725,10 @@ function alignVerseStatus(rec, text) {
   // §5.1's own re-review flag outranks the hash check — either means the
   // record no longer vouches for the draft (PR #135 review round 1).
   if (rec && (rec.invalid === true || alignmentIsStale(rec, text))) return { status: 'invalid', placed, total };
-  if (rec && rec.wordBank.length === 0 && placed > 0) return { status: 'valid', placed, total };
+  if (rec && rec.done === true) return { status: 'valid', placed, total };
   return { status: 'todo', placed, total };
 }
+export const __alignVerseStatusForTests = alignVerseStatus;
 
 /** The §5.1 file with one verse's record replaced (persistAlign's merge). */
 function alignFileWith(current, book, ref, record) {
@@ -2833,7 +2835,9 @@ export function AppProvider({ children }) {
         if (!a2?.record || !sched || !sched.bookText(a2.book)) return;
         const next = mutate(a2.record);
         if (next === a2.record) return;
-        const record = stampTargetVerse(next, a2.targetText);
+        // #271: `done` follows the edit — set when the verse is now fully
+        // aligned, removed otherwise (an edit takes back Mark valid).
+        const record = settleDone(stampTargetVerse(next, a2.targetText));
         const optimistic = { ...a2, ...(disarm ? { armed: null } : {}), record, stale: false };
         dispatch({ type: 'set', patch: { alignSession: optimistic } });
         const [chapter, verse] = a2.ref.split(':');
@@ -2863,6 +2867,20 @@ export function AppProvider({ children }) {
 
       splitAlignCard: (cardIndex) =>
         a.applyAlignEdit((record) => splitAlignment(record, cardIndex)),
+
+      /** #271 — Mark valid: the translator declares this verse's alignment
+       * done, words in the bank or not (D73). The record is restamped to the
+       * current draft (I-3) and carries `done: true`, through the same staged
+       * write as every other alignment edit. */
+      markAlignValid: () => {
+        const a2 = stateRef.current.alignSession;
+        const sched = alignSchedulerRef.current;
+        if (!a2?.record || !sched || !sched.bookText(a2.book)) return;
+        const record = markDone(a2.record, a2.targetText);
+        dispatch({ type: 'set', patch: { alignSession: { ...a2, record, stale: false } } });
+        const [chapter, verse] = a2.ref.split(':');
+        sched.markDirty(a2.book, chapter, verse, JSON.stringify(record));
+      },
 
       /** C2.3/C2.4 — open a checking session for one tool on the open book.
        * Derives the check list from the RESOLVED pin's own TSV (never a

@@ -297,6 +297,8 @@
   "align.hintArmed": "Now click the card this word belongs under.",
   "align.clickToUnalign": "Click to un-align",
   "align.stale": "The draft changed since this alignment was made. Check that the words still line up.",
+  "align.markValid": "✓ Mark valid",
+  "align.markValidHint": "This verse's alignment is done, even if some words stay unplaced. Any later change takes it back.",
   "align.unavailable.undrafted.title": "Nothing to align yet",
   "align.unavailable.undrafted.body": "Draft a verse in {book} first — alignment links your words to the original.",
   "align.unavailable.unpinned.title": "No original-language text pinned",

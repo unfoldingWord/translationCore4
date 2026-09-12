@@ -204,6 +204,37 @@ test.describe('J5 — a translator aligns a verse', () => {
   );
 
   test(
+    '#271 Mark valid: the translator says the verse is done with words in the bank; an edit takes it back; Mark valid again restores it',
+    { tag: ['@inc6', '@J5'] },
+    async ({ page }) => {
+      writePinsWithOriginal();
+      await openAlign(page);
+      const button = page.getByTestId('align-mark-valid');
+      await expect(button).toHaveAttribute('data-active', '0');
+      expect(alignmentFile()!.chapters['1']['1'].done).toBeUndefined();
+
+      // Mark valid with 21 words still in the bank (the seeded 1:1).
+      await button.click();
+      await expect(button).toHaveAttribute('data-active', '1');
+      await expect.poll(() => alignmentFile()?.chapters?.['1']?.['1']?.done, { timeout: 10_000 }).toBe(true);
+      const marked = alignmentFile()!.chapters['1']['1'];
+      expect(marked.wordBank.length).toBeGreaterThan(0);
+      expect(marked.targetVerseMd5).toMatch(/^[0-9a-f]{32}$/);
+
+      // Un-align one placed word: the edit takes Mark valid back, on screen and on disk.
+      const placedChip = page.locator('[data-testid^="align-card-"][data-count="1"]').first().getByRole('button').first();
+      await placedChip.click();
+      await expect(button).toHaveAttribute('data-active', '0');
+      await expect.poll(() => 'done' in (alignmentFile()?.chapters?.['1']?.['1'] ?? {}), { timeout: 10_000 }).toBe(false);
+
+      // Mark valid again: valid again, with the word now in the bank.
+      await button.click();
+      await expect(button).toHaveAttribute('data-active', '1');
+      await expect.poll(() => alignmentFile()?.chapters?.['1']?.['1']?.done, { timeout: 10_000 }).toBe(true);
+    },
+  );
+
+  test(
     'without an original-language text pinned, alignment says so instead of failing (C2.9 pattern)',
     { tag: ['@inc2', '@J5'] },
     async ({ page }) => {

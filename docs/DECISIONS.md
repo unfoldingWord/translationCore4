@@ -1388,3 +1388,33 @@ increment on the board and settled the open design questions behind alignment su
    auto-alignment), "translation note" (avoid: note alone).
 
 ROADMAP row 6, JOURNEYS J4/J5/J12 and the D59 annotation carry the amendment.
+
+## D73 (2026-09-12, project-owner rulings) **A verse's alignment is done when every word is placed, or when the translator marks it valid; the fact is the §5.1 record's optional `done` flag.** [session 2026-09-12 while reviewing #1 for currency; issue #271; BURRITO-SPEC 1.13]
+
+Context. The Align tool derived "valid" from "the word bank is empty". A translator who
+considered a verse finished with a word left unplaced could never say so, and a verse that
+happened to have every word placed read as done whether or not anyone had reviewed it. #1's
+rule "Mark valid is refused while a suggestion stands" had no control to attach to. tC3
+solved this with a per-verse "Alignment complete" checkbox (auto-checked when the last word
+was placed, unchecked by any later edit) [VERIFIED — `unfoldingWord/wordAlignment`
+`src/Api.js` `setVerseFinished`, `src/components/Container.js` `handleToggleComplete`, read
+2026-09-12].
+
+1. **All aligned is done.** When an alignment edit leaves every target word placed and no
+   source group without a target word, the record is written with `done: true`.
+2. **Mark valid, like the other checks.** The Align tool has a Mark valid control in the
+   position the Check tools use. It writes `done: true` with the I-3 hash restamped to the
+   current draft and `invalid` cleared (the translator has re-reviewed, as tC3 reset its
+   invalidated flag on finish), words in the bank or not.
+3. **Any edit takes it back.** Every alignment edit of the verse — link, unlink, move,
+   merge, split, and the reflow of #213 — recomputes `done` from rule 1, so an earlier
+   Mark valid does not survive a change. Invalidation (`invalid`, or an I-3 mismatch)
+   outranks the flag: a stale record is not done whatever it says.
+4. **Storage.** `done` is an OPTIONAL, additive field on the §5.1 verse record (the D2
+   `status` precedent); absent means not done; there is no `false` form; `schemaVersion`
+   stays 1. The `align.verse.set` event carries it with the record; the zaln export ignores
+   it. Nothing is migrated: existing files read as not done until edited.
+5. **Status.** The align rail and the picker report `valid` only from `done` (and not
+   stale); "bank empty" no longer means valid on its own.
+
+Lands before #1 in the #262 chain (#255 → #134 → #213 → #271 → #1).
