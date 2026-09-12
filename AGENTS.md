@@ -61,6 +61,37 @@ request #75, review of 2026-08-17].
 proposal. If you believe a decision is wrong, say so to the owner with evidence — do not
 silently build the alternative.
 
+## What "we use Pankosmia" means
+
+Three decisions are easy to read as one. Keep them apart.
+
+**1. tC4 uses the Pankosmia platform.** The product is one client on the `pankosmia-web`
+server (path B, [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §1 "Why one client"). The
+server keeps the git-backed storage, the Scripture Burrito metadata, the authenticated DCS
+download proxy, versification, i18n and the 3-OS packaging. tC4 does not rebuild those. The client registers for the
+`textTranslation` flavor and is served at `/clients/uw-tc4`.
+
+**2. tC4 does not ship the local prototype.** The product repository is
+`github.com/unfoldingWord/translationCore4`. The `uw-tc4/` directory in the planning
+workspace stays a local prototype and carries no design weight
+([D24(b)](docs/DECISIONS.md)). Upstream clones under `upstream/` are read-only reference.
+
+**3. [D29](docs/DECISIONS.md) and [D33](docs/DECISIONS.md) govern HOW the platform's client
+library is adopted.** D29: adopt the `pankosmia-rcl` **contexts only** — no `Pan*` visual components, all surfaces are our own
+designs. D33: mount `Spa` + `AppWrapper` as an invisible infrastructure shell, under the
+five bounds that keep it UX-neutral, with the fallback guard to a thin tC4 provider. D72
+adds the working rule for new build paths: where Pankosmia provides a provider that can
+serve behind our own interface (a context, an endpoint, a download function), use it;
+where it provides chrome, we design our own.
+
+So "no `pankosmia-rcl` visual components" does NOT mean "we left the platform", and no
+`pankosmia-rcl` entry in `package.json` does not mean the decision changed. The dependency
+is not installed yet [VERIFIED — `package.json` read at commit 51ec9de, 9 dependencies,
+none from Pankosmia]: **when** the contexts and the
+notification stream get adopted, and by which path, is open question
+[#222](https://github.com/unfoldingWord/translationCore4/issues/222). Do not decide
+that in passing while you build something else.
+
 ## Skips are not failures
 
 37 tests skip on a clean clone. Each names its missing prerequisite (the Pankosmia rig,
