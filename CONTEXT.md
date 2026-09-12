@@ -98,6 +98,28 @@ Free text a translator writes about a passage in Understand. Stored as a grow-on
 segment in the journal (BURRITO-SPEC §8.5). The op name is not renamed.
 _Avoid_: note (collides with translation Notes), comprehension note, annotation
 
+**Translation note**:
+An entry in the pinned Translation Notes resource that explains a phrase of a passage. A
+translator reads it; nobody in the project writes one.
+_Avoid_: note (alone), comment
+
+**Check comment**:
+Free text a translator writes on one check item, for the next person who works that check.
+It can be edited and cleared. It lives in the check's decision record and is a tC3 feature
+carried forward.
+_Avoid_: comment (alone), note, user comment (that is the Understand passage comment)
+
+**Bookmark**:
+A flag a translator sets on one check item to come back to it later. It can be set and
+cleared. It lives in the check's decision record.
+_Avoid_: reminder (the stored field name), flag, star
+
+**Alignment suggestion**:
+A link between a target word and an original-language word that the app proposes from the
+project's own confirmed alignments. A suggestion is never saved until the translator confirms
+it; a project with no alignments has no suggestions.
+_Avoid_: prediction, auto-alignment, machine alignment
+
 **Journal check**:
 A group of executable checks in the BURRITO-SPEC §8 journal conformance suite, identified as
 `JC-n` (Appendix A).
