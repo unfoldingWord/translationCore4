@@ -645,11 +645,16 @@ async function prepareAlignmentSource(store, st, ref) {
   return { testament, pin, usfmText, ref };
 }
 
-async function buildAlignmentSession(store, sched, st, ref, source, mapped, origObjects) {
+/** The §5.1 record is keyed by the PROJECT-frame ref — the draft's own
+ * chapter:verse, the key applyAlignEdit writes under. The eng-frame mapping
+ * that fetched `origObjects` is a lookup for the source text only and never
+ * reaches this read (#134; test/align-session-frame.test.ts). */
+async function buildAlignmentSession(store, sched, st, ref, source, origObjects) {
   const targetText = verseTextIndex(st.bookRaw)[ref] ?? '';
   if (!origObjects.length || !targetText) return { unavailable: 'missing' };
   const { file, md5 } = await alignFileFor(store, sched, st.book);
-  const stored = file?.chapters?.[mapped.chapter]?.[mapped.verse];
+  const [chapter, verse] = ref.split(':');
+  const stored = file?.chapters?.[chapter]?.[verse];
   const sourceVersion = `dcs::${source.pin.repoPath.split('/').slice(-2).join('/')}@${source.pin.version}`;
   // A stored record with no alignments — the §8.5 removal form, or the
   // `invalid` record a span create/break leaves on the new key (#63) — has
@@ -2017,6 +2022,9 @@ function makeCheckWriter({ store, checkTargetsRef }) {
  * against the real scheduler — N rapid saves, md5 chaining, the D59 refusal
  * landing on its key with later decisions retained. */
 export const __alignSaveForTests = { makeAlignWriter, spliceAlignRecord, makeCheckWriter, alignFileFor, releaseParkedDecision };
+/** Test hook (#134): the session build, driven on a cross-frame project so the
+ * read key and the write key are proven to be the same project-frame ref. */
+export const __buildAlignmentSessionForTests = buildAlignmentSession;
 
 function buildChapterVerses(bookRaw, chapters, entries) {
   const byChapter = {};
@@ -2713,8 +2721,7 @@ export function AppProvider({ children }) {
           // The text is present but unparseable — say that (D30).
           return settle({ unavailable: 'unreadable' });
         }
-        const mapped = { chapter, verse, reference: srcRef.reference };
-        const session = await buildAlignmentSession(store, alignSchedulerRef.current, st, ref, source, mapped, origObjects);
+        const session = await buildAlignmentSession(store, alignSchedulerRef.current, st, ref, source, origObjects);
         settle(session.unavailable ? session : { ...session, frameName: frame.name });
         } catch (error) {
           settle({ error: String(error?.message || error) });
