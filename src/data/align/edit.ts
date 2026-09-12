@@ -15,7 +15,7 @@
 import { usfmjs, wordaligner } from '../vendor';
 import { md5Hex } from '../httpStore';
 import { normalizeOccurrences } from './occurrences';
-import { tokenizeVerse } from './tokenize';
+import { tokenizeVerse, wordTokens } from './tokenize';
 import type { AlignedWord, Alignment, AlignmentVerseRecord } from './zaln';
 
 /** Render a plain draft verse as USFM3 `\w` tokens carrying occurrence data.
@@ -222,3 +222,43 @@ export const allTargetWords = (record: AlignmentVerseRecord): AlignedWord[] => [
   ...record.wordBank,
   ...record.alignments.flatMap((a: Alignment) => a.bottomWords),
 ];
+
+/**
+ * #213 — reflow after a verse edit: keep every link whose target word is
+ * still in the new text, drop the rest, and rebuild the bank from the new
+ * text. Word identity is text plus occurrence (I-2), from the one tokenizer
+ * of #255; occurrence totals are recomputed for the new text. The source
+ * side of a link is never touched, and no link is created (that is #1).
+ *
+ * Returns null when there is nothing to reflow — the record is absent, already
+ * flagged `invalid` (a span create/break, #63), holds no placed word, or still
+ * matches the text — and when the new text has no words at all. In every null
+ * case the caller leaves the record exactly as it is: invalidate-and-retain
+ * (D36) stays the outcome the I-3 hash already produces.
+ */
+export const reflowAlignment = (
+  record: AlignmentVerseRecord | undefined,
+  targetText: string,
+): AlignmentVerseRecord | null => {
+  if (!record || record.invalid === true) return null;
+  if (!record.alignments.some((a) => a.bottomWords.length)) return null;
+  if (!alignmentIsStale(record, targetText)) return null;
+  const words = wordTokens(targetText);
+  if (!words.length) return null;
+  const present = new Map(words.map((t) => [`${t.text} ${t.occurrence}`, t]));
+  const kept = new Set<string>();
+  const alignments: Alignment[] = record.alignments.map((a) => ({
+    ...a,
+    bottomWords: a.bottomWords.flatMap((w): AlignedWord[] => {
+      const key = `${w.word} ${Number(w.occurrence)}`;
+      const now = present.get(key);
+      if (!now) return [];
+      kept.add(key);
+      return [normalizeOccurrences({ ...w, occurrence: now.occurrence, occurrences: now.occurrences })];
+    }),
+  }));
+  const wordBank: AlignedWord[] = words
+    .filter((t) => !kept.has(`${t.text} ${t.occurrence}`))
+    .map((t) => ({ word: t.text, occurrence: t.occurrence, occurrences: t.occurrences }));
+  return { ...record, alignments, wordBank, invalid: false, targetVerseMd5: md5Hex(targetText) };
+};
