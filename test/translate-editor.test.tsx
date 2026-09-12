@@ -6,7 +6,7 @@
 // A Nastaliq project takes its own step (--fs-verse-nastaliq / --lh-nastaliq).
 import React from 'react';
 import { describe, expect, it, beforeEach, vi } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 
 const verse = { n: '1', drafted: true, para: true, text: 'Pablo, siervo de Dios', body: 'Pablo, siervo de Dios' };
 const verse2 = { n: '2', drafted: false, para: false, text: '', body: '' };
@@ -166,6 +166,15 @@ describe('#238 — one Section/Verse switch', () => {
     render(<Draft />);
     expect((screen.getByRole('tab', { name: 'Section' }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole('tab', { name: 'Verse' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('mousedown on disabled Verse tab is default-prevented and mode stays Section', () => {
+    state.editing = { key: '1:1', before: '' };
+    render(<Draft />);
+    const verseTab = screen.getByRole('tab', { name: 'Verse' });
+    expect(fireEvent.mouseDown(verseTab)).toBe(false);
+    fireEvent.click(verseTab);
+    expect(screen.getByRole('tab', { name: 'Section' }).getAttribute('aria-selected')).toBe('true');
   });
 
   it('state.understand = { sourceRefs: {} }: no tab roles, getByTestId("draft-verse-only") exists, no Draft section button', () => {
