@@ -205,6 +205,17 @@ let mergedVerseObjects = null;
     JSON.stringify(bankProj(re.wordBank)) === JSON.stringify(bankProj(stored.wordBank)), `${re.wordBank.length} words`);
   check('alignment: staleness guard — targetVerseMd5 matches current draft verse',
     stored.targetVerseMd5 === md5(Buffer.from(verseText.trim())));
+  // §5.1 `done` (1.13, D73): a record-level, additive flag about the translator's work.
+  // The zaln export is built from alignments/wordBank alone, so a record carrying
+  // done:true exports byte-identically; where the field is present it is a boolean.
+  const withDone = { ...stored, done: true };
+  const usfmWithDone = wal.UsfmFileConversionHelpers.convertVerseDataToUSFM({
+    verseObjects: wordaligner.merge(withDone.alignments, withDone.wordBank, verseText.trim(), true),
+  });
+  const everyRecord = Object.values(alignIng.chapters).flatMap(ch => Object.values(ch));
+  check('alignment: done is additive — a record with done:true exports the same zaln and the field is boolean where present',
+    usfmWithDone === usfmOut && everyRecord.every(r => !('done' in r) || typeof r.done === 'boolean'),
+    `${everyRecord.length} records, ${everyRecord.filter(r => 'done' in r).length} carry done`);
 }
 
 // ---------- 5. Selections validity against the draft text (RCL invalidation machinery) ----------
