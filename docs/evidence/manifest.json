@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "tool": "scripts/prove.mjs",
-  "commit": "cafc26ebef60491d5cf0bcb927f5399caf2e2ed9",
+  "commit": "62a0e703bb98c02eabd7e3eab5fc329d98d1f00b",
   "dirty": false,
-  "date": "2026-09-10T20:19:58.918Z",
+  "date": "2026-09-11T13:08:34.720Z",
   "node": "v22.23.2",
   "platform": "linux-x64",
   "ci": true,
@@ -32,7 +32,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [],
-      "durationMs": 6170
+      "durationMs": 5987
     },
     {
       "id": "typecheck",
@@ -47,7 +47,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [],
-      "durationMs": 5610
+      "durationMs": 5003
     },
     {
       "id": "vitest",
@@ -58,14 +58,14 @@
       "skipped": null,
       "ok": true,
       "exitCode": 0,
-      "passed": 982,
+      "passed": 983,
       "failed": 0,
       "skippedTests": 37,
       "summary": [
         "Test Files  64 passed | 5 skipped (69)",
-        "Tests  982 passed | 37 skipped (1019)"
+        "Tests  983 passed | 37 skipped (1020)"
       ],
-      "durationMs": 31611
+      "durationMs": 29402
     },
     {
       "id": "build",
@@ -80,9 +80,9 @@
       "failed": null,
       "skippedTests": null,
       "summary": [
-        "✓ built in 7.26s"
+        "✓ built in 7.04s"
       ],
-      "durationMs": 7732
+      "durationMs": 7510
     },
     {
       "id": "conformance:generate",
@@ -97,7 +97,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [],
-      "durationMs": 194
+      "durationMs": 193
     },
     {
       "id": "conformance:validate",
@@ -117,7 +117,7 @@
         "Phase-2 (journal-merge design checks, §8.7): 3 passed, 0 failed",
         "40 passed, 0 failed"
       ],
-      "durationMs": 596
+      "durationMs": 599
     },
     {
       "id": "conformance:journal",
@@ -134,7 +134,7 @@
       "summary": [
         "Journal suite: 344 passed, 0 failed (fast-check seed 20260707)"
       ],
-      "durationMs": 3172
+      "durationMs": 3155
     },
     {
       "id": "conformance:normative",
