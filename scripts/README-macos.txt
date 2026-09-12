@@ -4,6 +4,13 @@ INSTALL
 1. Open the .pkg file. This pilot installer is unsigned. If macOS blocks it,
    open System Settings > Privacy & Security, find the blocked installer,
    and choose Open Anyway. Then continue in Installer.
+   If Open Anyway does nothing (seen on macOS 26), clear the download flag:
+   open Terminal, type the following command including the trailing space,
+   drag the .pkg from Finder into Terminal, press Return, then open the .pkg
+   again.
+
+   xattr -d com.apple.quarantine
+
 2. Enter an administrator password when Installer asks for it.
 3. Open Applications > translationCore4 (or find it in Launchpad).
 
