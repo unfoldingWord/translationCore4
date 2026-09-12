@@ -265,9 +265,10 @@ function DraftUnitSwitch({ mode, onChange, disabled, crossFrame }) {
   if (crossFrame) {
     return <Overline data-testid="draft-verse-only">{t('understand.crossFrameVerseOnly')}</Overline>;
   }
-  // Disabled tabs still take mousedown in Chromium, which blurs the open
-  // editor textarea (save-and-close) and re-enables the switch before click.
-  // Capture-preventDefault keeps focus on the textarea — same idea as Save/Cancel.
+  // Chromium does not dispatch mousedown to a disabled button; the real
+  // sequence is pointerdown → focusout(textarea) → mouseup. Capture-
+  // preventDefault on pointerdown keeps focus on the textarea — same idea
+  // as Save/Cancel.
   const switcher = (
     <Switcher
       indicator="pill"
@@ -282,7 +283,7 @@ function DraftUnitSwitch({ mode, onChange, disabled, crossFrame }) {
     />
   );
   if (disabled) {
-    return <span onMouseDownCapture={(e) => e.preventDefault()}>{switcher}</span>;
+    return <span onPointerDownCapture={(e) => e.preventDefault()}>{switcher}</span>;
   }
   return switcher;
 }

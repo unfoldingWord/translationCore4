@@ -168,11 +168,11 @@ describe('#238 — one Section/Verse switch', () => {
     expect((screen.getByRole('tab', { name: 'Verse' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('mousedown on disabled Verse tab is default-prevented and mode stays Section', () => {
+  it('pointerdown on disabled Verse tab is default-prevented and mode stays Section', () => {
     state.editing = { key: '1:1', before: '' };
     render(<Draft />);
     const verseTab = screen.getByRole('tab', { name: 'Verse' });
-    expect(fireEvent.mouseDown(verseTab)).toBe(false);
+    expect(fireEvent.pointerDown(verseTab)).toBe(false);
     fireEvent.click(verseTab);
     expect(screen.getByRole('tab', { name: 'Section' }).getAttribute('aria-selected')).toBe('true');
   });
