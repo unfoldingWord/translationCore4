@@ -61,9 +61,12 @@ zero actionable findings. The subsequent icon correction applies the same
 tC4 mark to the template's running-window favicon; native build and smoke
 include that correction. The repository graph was refreshed with `graft build`.
 
-## Manual Windows 11 witness — pending
+## Manual Windows 11 witness — partial (2026-09-11)
 
-Use the exact CI installer and record:
+The owner installed build `7ebedc6` on a Windows 11 machine and the
+installation worked — recorded in `windows-11-witness-2026-09-11.md`. That
+record is partial: it holds the OS and the commit only. The observations
+below are still not witnessed. Use the exact CI installer and record:
 
 - machine, Windows version/build, date, artifact ID, SHA-256 and source commit;
 - browser used for the download, every security prompt and chosen action;
