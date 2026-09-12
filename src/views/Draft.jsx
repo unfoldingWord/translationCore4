@@ -265,7 +265,11 @@ function DraftUnitSwitch({ mode, onChange, disabled, crossFrame }) {
   if (crossFrame) {
     return <Overline data-testid="draft-verse-only">{t('understand.crossFrameVerseOnly')}</Overline>;
   }
-  return (
+  // Chromium does not dispatch mousedown to a disabled button; the real
+  // sequence is pointerdown → focusout(textarea) → mouseup. Capture-
+  // preventDefault on pointerdown keeps focus on the textarea — same idea
+  // as Save/Cancel.
+  const switcher = (
     <Switcher
       indicator="pill"
       size="sm"
@@ -278,6 +282,10 @@ function DraftUnitSwitch({ mode, onChange, disabled, crossFrame }) {
       ]}
     />
   );
+  if (disabled) {
+    return <span onPointerDownCapture={(e) => e.preventDefault()}>{switcher}</span>;
+  }
+  return switcher;
 }
 
 export default function Draft() {
