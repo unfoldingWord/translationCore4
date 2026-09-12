@@ -157,6 +157,19 @@ describe('#213 reflowAlignedVerses — the changed verse is staged, the untouche
     expect(JSON.stringify(store.file!.chapters['1']['2'])).toBe(v2Bytes);
   });
 
+  it('the project was left while the sidecar read was in flight — nothing is staged on the disposed scheduler', async () => {
+    const store = makeStore();
+    const { md5 } = await store.readAlignmentsWithMd5();
+    await store.writeAlignments(BOOK, JSON.parse(spliceAlignRecord(alignFileJson(null, BOOK), '1', '1', JSON.stringify(linkedRecord()))), md5);
+    const bytes = JSON.stringify(store.file);
+    const sched = new SaveScheduler({ writeBook: makeAlignWriter({ store }), splice: spliceAlignRecord });
+    const newText = 'Pablo, siervo de Dios y apóstol de Dios';
+    await reflowAlignedVerses({ store, sched, book: BOOK, bookRaw: raw(newText, TEXT), stillCurrent: () => false }, ['1:1']);
+    await settle();
+    expect(sched.getState()).toBe('saved');
+    expect(JSON.stringify(store.file)).toBe(bytes);
+  });
+
   it('a verse the reflow cannot account for is not staged at all — invalidate-and-retain stays', async () => {
     const store = makeStore();
     const v1 = { ...linkedRecord(), invalid: true };

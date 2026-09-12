@@ -650,9 +650,13 @@ async function prepareAlignmentSource(store, st, ref) {
  * has links to keep or drop; a verse the reflow cannot account for (or that
  * the save did not change) is not staged, so its record stays byte-identical
  * and the I-3 hash keeps reporting it invalid-and-retained. */
-async function reflowAlignedVerses({ store, sched, book, bookRaw }, refs) {
+async function reflowAlignedVerses({ store, sched, book, bookRaw, stillCurrent = () => true }, refs) {
   const texts = verseTextIndex(bookRaw);
   const { file } = await alignFileFor(store, sched, book);
+  // The read awaited; leaving the project meanwhile drained and disposed this
+  // scheduler (#100 teardown) — staging now would write project A's sidecar
+  // through its torn-down store, after the D9 leave checkpoint. Refuse.
+  if (!stillCurrent()) return;
   for (const ref of refs) {
     const [chapter, verse] = ref.split(':');
     const next = reflowAlignment(file?.chapters?.[chapter]?.[verse], texts[ref] ?? '');
@@ -3755,14 +3759,18 @@ export function AppProvider({ children }) {
       /** #213: after a verse edit, keep the alignment links whose target words
        * are still in the new text and return the rest to the bank, through the
        * align scheduler (the one §5.1 save path). Fire-and-forget: the draft
-       * save never waits on the sidecar read; a failure is a retained align
-       * write, never a lost draft. */
+       * save never waits on the sidecar read. A write that fails after staging
+       * is the scheduler's retained failure (Retry). A read that fails BEFORE
+       * staging stages nothing: the record stays as it was, the I-3 hash keeps
+       * the verse `invalid` on the rail, and the translator re-links it — the
+       * pre-#213 outcome, never a lost draft (Codex round 1, P2). */
       reflowAlignedVerses: (refs) => {
         const store = storeRef.current;
         const sched = alignSchedulerRef.current;
         const book = stateRef.current.book;
         if (!store || !sched || !book) return;
-        void reflowAlignedVerses({ store, sched, book, bookRaw: rawRef.current }, refs).catch(() => {});
+        const stillCurrent = () => storeRef.current === store && alignSchedulerRef.current === sched;
+        void reflowAlignedVerses({ store, sched, book, bookRaw: rawRef.current, stillCurrent }, refs).catch(() => {});
       },
       // #141: the section editing card. It holds its own text until Save, so
       // opening it writes nothing; `keys` are the section's verse keys.
