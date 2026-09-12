@@ -33,7 +33,7 @@ import {
 } from './data/derive';
 import { readTwArticle, readTaArticle } from './data/articles';
 import { revalidateAgainstDraft, resolutionWarning } from './data/revalidate';
-import { bootstrapVerse, linkWord, unlinkWord, moveWord, mergeAlignments, splitAlignment, stampTargetVerse, alignmentIsStale } from './data/align/edit';
+import { bootstrapVerse, linkWord, unlinkWord, moveWord, mergeAlignments, splitAlignment, stampTargetVerse, alignmentIsStale, reflowAlignment } from './data/align/edit';
 import { consequencesOfGatewayChange, applyGatewayChange, uncoveredByChange } from './data/gatewayChange';
 import { carryOverDecisions } from './data/carryOver';
 import { TC_READY_TOPIC } from './data/serverApi';
@@ -643,6 +643,21 @@ async function prepareAlignmentSource(store, st, ref) {
   }
   if (!usfmText) return { unavailable: 'missing' };
   return { testament, pin, usfmText, ref };
+}
+
+/** #213: reflow the alignment records of the verses a draft save changed.
+ * One buffered read of the §5.1 file, then one staged record per verse that
+ * has links to keep or drop; a verse the reflow cannot account for (or that
+ * the save did not change) is not staged, so its record stays byte-identical
+ * and the I-3 hash keeps reporting it invalid-and-retained. */
+async function reflowAlignedVerses({ store, sched, book, bookRaw }, refs) {
+  const texts = verseTextIndex(bookRaw);
+  const { file } = await alignFileFor(store, sched, book);
+  for (const ref of refs) {
+    const [chapter, verse] = ref.split(':');
+    const next = reflowAlignment(file?.chapters?.[chapter]?.[verse], texts[ref] ?? '');
+    if (next) sched.markDirty(book, chapter, verse, JSON.stringify(next));
+  }
 }
 
 /** The §5.1 record is keyed by the PROJECT-frame ref — the draft's own
@@ -2025,6 +2040,9 @@ export const __alignSaveForTests = { makeAlignWriter, spliceAlignRecord, makeChe
 /** Test hook (#134): the session build, driven on a cross-frame project so the
  * read key and the write key are proven to be the same project-frame ref. */
 export const __buildAlignmentSessionForTests = buildAlignmentSession;
+/** Test hook (#213): the reflow over the real align scheduler — changed verses
+ * staged, untouched verses byte-identical. */
+export const __reflowAlignedVersesForTests = reflowAlignedVerses;
 
 function buildChapterVerses(bookRaw, chapters, entries) {
   const byChapter = {};
@@ -3726,8 +3744,25 @@ export function AppProvider({ children }) {
         }
       },
       blurVerse: () => {
+        const editing = stateRef.current.editing;
         dispatch({ type: 'set', patch: { editing: null } });
         schedulerRef.current?.flushOnBlur();
+        // #213: the verse card's text is committed — keep the alignment links
+        // its words still carry. A section key (`c:s<k>`) is reflowed by
+        // saveSection per changed verse, not here.
+        if (editing?.key && !editing.keys) a.reflowAlignedVerses([editing.key]);
+      },
+      /** #213: after a verse edit, keep the alignment links whose target words
+       * are still in the new text and return the rest to the bank, through the
+       * align scheduler (the one §5.1 save path). Fire-and-forget: the draft
+       * save never waits on the sidecar read; a failure is a retained align
+       * write, never a lost draft. */
+      reflowAlignedVerses: (refs) => {
+        const store = storeRef.current;
+        const sched = alignSchedulerRef.current;
+        const book = stateRef.current.book;
+        if (!store || !sched || !book) return;
+        void reflowAlignedVerses({ store, sched, book, bookRaw: rawRef.current }, refs).catch(() => {});
       },
       // #141: the section editing card. It holds its own text until Save, so
       // opening it writes nothing; `keys` are the section's verse keys.
@@ -3747,6 +3782,7 @@ export function AppProvider({ children }) {
         if (newKeys.join('\n') !== keys.join('\n')) {
           stageStructuralSection({ rawRef, schedulerRef, structuralRef, stateRef, dispatch }, chapter, keys, texts, newKeys);
         } else {
+          const changed = [];
           for (const verseKey of keys) {
             const stored = verseBody(rawRef.current, chapter, verseKey);
             if (stored == null) continue;
@@ -3754,7 +3790,11 @@ export function AppProvider({ children }) {
             const text = texts[verseKey] ?? '';
             if (text.trim() === current) continue;
             a.editVerse(chapter, verseKey, text);
+            changed.push(`${chapter}:${verseKey}`);
           }
+          // #213: only the verses this save changed — an untouched verse keeps
+          // its alignment record byte for byte.
+          if (changed.length) a.reflowAlignedVerses(changed);
         }
         let entries = indexBook(rawRef.current);
         for (const [key, marker] of Object.entries(formats)) {
