@@ -949,6 +949,45 @@ function assertOfferCurrent(st, offer, currentResources) {
   }
 }
 
+const projectPathOf = (st) => st.project?.repoPath ?? null;
+
+/** Why a previewed upgrade may not be applied now, as the slice patch to
+ * dispatch — or null when it may. The preview was planned against ONE
+ * project's store and pins and is applied only there (Codex round 2); a
+ * blocked book refuses it exactly as confirmGatewayChange refuses. */
+function upgradeRefusal(preview, store, st) {
+  if (preview.store !== store || preview.repoPath !== projectPathOf(st)) {
+    return { preview: null, error: t('upgrade.failed', { reason: t('upgrade.stale') }) };
+  }
+  if (preview.blocked?.length) {
+    return { error: t('gateway.blockedError', { books: preview.blocked.map((b) => b.book).join(', ') }) };
+  }
+  return null;
+}
+
+/** After a confirmed upgrade this set is at the release it was offered; the
+ * other set's offer stands. */
+function offersAfterUpgrade(offers, preview) {
+  return {
+    ...(offers ?? {}),
+    [preview.rung]: {
+      rung: preview.rung,
+      upgrades: [],
+      current: preview.offer.upgrades.map((u) => u.repoPath).concat(preview.offer.current),
+    },
+  };
+}
+
+/** The new release is on disk: resolve again so coverage and the installed
+ * map include it, then plan the D36 carry-over against the upgraded pins. */
+async function planUpgradeAfterInstall(a, offer, currentResources) {
+  const { installed, coverage, resolutionError } = await a.resolutionContext();
+  if (resolutionError) throw new Error(resolutionError);
+  const next = upgradedResources(currentResources, offer, coverage);
+  const planned = await a.planResourcesChange({ next, installed, coverage });
+  return { next, planned };
+}
+
 /** The pin file after ONE set's upgrade. Coverage is recorded for the NEW
  * pins only (D41): the other set's pins, the groups and extraScripture stay
  * the very objects the file holds, so an upgrade of one set leaves the rest
@@ -2673,6 +2712,12 @@ export function AppProvider({ children }) {
         const st = stateRef.current;
         const offer = st.upgrade.offers?.[rung];
         if (!store || !offer?.upgrades.length) return null;
+        // The downloads are long and the modal stays closable: a project
+        // switch meanwhile makes every later step stale (Codex round 2, the
+        // #213 stillCurrent pattern). A stale completion dispatches nothing —
+        // the installs it made are harmless machine holdings.
+        const repoPath = projectPathOf(st);
+        const stillCurrent = () => storeRef.current === store && projectPathOf(stateRef.current) === repoPath;
         dispatch({ type: 'patchUpgrade', patch: { installing: rung, error: null, progress: null } });
         try {
           const { value: currentResources, md5: resourcesMd5 } = await store.readResourcesWithMd5();
@@ -2680,25 +2725,25 @@ export function AppProvider({ children }) {
           const local = new Set(await api.listLocalRepos());
           const before = await a.resolutionContext();
           if (before.resolutionError) throw new Error(before.resolutionError);
-          await installReleaseSet(api, offer.upgrades, local, before.installed, (repo) =>
-            dispatch({ type: 'patchUpgrade', patch: { progress: t('sources.progress', { repo }) } }));
-          // The new release is on disk: resolve again so coverage and the
-          // installed map include it, then plan against the upgraded pins.
-          const { installed, coverage, resolutionError } = await a.resolutionContext();
-          if (resolutionError) throw new Error(resolutionError);
-          const next = upgradedResources(currentResources, offer, coverage);
-          const planned = await a.planResourcesChange({ next, installed, coverage });
+          await installReleaseSet(api, offer.upgrades, local, before.installed, (repo) => {
+            if (stillCurrent()) dispatch({ type: 'patchUpgrade', patch: { progress: t('sources.progress', { repo }) } });
+          });
+          if (!stillCurrent()) return null;
+          const { next, planned } = await planUpgradeAfterInstall(a, offer, currentResources);
+          if (!stillCurrent()) return null;
           dispatch({
             type: 'patchUpgrade',
-            patch: { installing: null, progress: null, preview: { rung, offer, next, resourcesMd5, ...planned } },
+            patch: { installing: null, progress: null, preview: { rung, offer, next, resourcesMd5, store, repoPath, ...planned } },
           });
           dispatch({ type: 'set', patch: { installEpoch: stateRef.current.installEpoch + 1 } });
           return next;
         } catch (error) {
-          dispatch({
-            type: 'patchUpgrade',
-            patch: { installing: null, progress: null, error: t('upgrade.failed', { reason: String(error?.message || error) }) },
-          });
+          if (stillCurrent()) {
+            dispatch({
+              type: 'patchUpgrade',
+              patch: { installing: null, progress: null, error: t('upgrade.failed', { reason: String(error?.message || error) }) },
+            });
+          }
           return null;
         }
       },
@@ -2711,11 +2756,9 @@ export function AppProvider({ children }) {
       confirmUpgrade: async (preview) => {
         const store = storeRef.current;
         if (!store || !preview) return;
-        if (preview.blocked?.length) {
-          dispatch({
-            type: 'patchUpgrade',
-            patch: { error: t('gateway.blockedError', { books: preview.blocked.map((b) => b.book).join(', ') }) },
-          });
+        const refusal = upgradeRefusal(preview, store, stateRef.current);
+        if (refusal) {
+          dispatch({ type: 'patchUpgrade', patch: refusal });
           return;
         }
         try {
@@ -2733,16 +2776,10 @@ export function AppProvider({ children }) {
           dispatch({ type: 'patchUpgrade', patch: { error: t('upgrade.failed', { reason: e?.reason || e?.message || String(e) }) } });
           return;
         }
-        const offers = stateRef.current.upgrade.offers ?? {};
         dispatch({ type: 'set', patch: { projectPins: preview.next } });
         dispatch({
           type: 'patchUpgrade',
-          patch: {
-            preview: null,
-            error: null,
-            // This set is now at the release it was offered; the other set's offer stands.
-            offers: { ...offers, [preview.rung]: { rung: preview.rung, upgrades: [], current: preview.offer.upgrades.map((u) => u.repoPath).concat(preview.offer.current) } },
-          },
+          patch: { preview: null, error: null, offers: offersAfterUpgrade(stateRef.current.upgrade.offers, preview) },
         });
         if (stateRef.current.book) await a.runPreflight();
       },
