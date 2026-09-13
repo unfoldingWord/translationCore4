@@ -114,9 +114,11 @@ describe('#1 bridge — the engine sees positions, the editor sees words', () =>
     const merged = { ...r, alignments: [{ topWords: [...r.alignments[0].topWords, ...r.alignments[1].topWords], bottomWords: [] }, r.alignments[2]] };
     const rebound = rebindSuggestions(merged, links)!;
     expect(rebound.map((l) => `${l.cardIndex}:${l.word.word}`)).toEqual(['0:Dios', '1:Padre']);
-    // Placing Padre by hand spends its proposal; nothing left → null.
-    const placed = linkWord(merged, 1, bankWord(merged, 'Padre'));
-    expect(rebindSuggestions(placed, rebound)).toBeNull();
+    // Placing Padre by hand spends its proposal; Dios's stands; placing Dios too leaves none → null.
+    const placedPadre = linkWord(merged, 1, bankWord(merged, 'Padre'));
+    expect(rebindSuggestions(placedPadre, rebound)!.map((l) => l.word.word)).toEqual(['Dios']);
+    const placedBoth = linkWord(placedPadre, 0, bankWord(placedPadre, 'Dios'));
+    expect(rebindSuggestions(placedBoth, rebound)).toBeNull();
   });
 
   it('targetSeeds is the #255 tokenizer with positions', () => {
