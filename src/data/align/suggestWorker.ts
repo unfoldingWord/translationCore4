@@ -20,11 +20,13 @@ import type { SessionInput, Testament, TrainingVerse } from './suggest';
 
 export type WorkerRequest =
   | { type: 'train'; id: number; testament: Testament; verses: TrainingVerse[] }
-  | { type: 'suggest'; id: number; testament: Testament; input: SessionInput };
+  | { type: 'suggest'; id: number; testament: Testament; input: SessionInput; ref: string; session: number };
 
 export type WorkerReply =
   | { type: 'trained'; id: number; testament: Testament; verses: number; tooFew?: boolean }
-  | { type: 'suggestions'; id: number; testament: Testament; links: ReturnType<typeof predictLinks> }
+  /** `ref` and `session` echo the request, so the main thread applies the
+   * answer only to the verse and session that asked (Codex round 1). */
+  | { type: 'suggestions'; id: number; testament: Testament; links: ReturnType<typeof predictLinks>; ref: string; session: number }
   | { type: 'error'; id: number; message: string };
 
 const models: Partial<Record<Testament, TrainedModel>> = {};
@@ -39,7 +41,7 @@ export const handle = async (req: WorkerRequest): Promise<WorkerReply> => {
     }
     const trained = models[req.testament];
     const links = trained ? predictLinks(trained, req.input) : [];
-    return { type: 'suggestions', id: req.id, testament: req.testament, links };
+    return { type: 'suggestions', id: req.id, testament: req.testament, links, ref: req.ref, session: req.session };
   } catch (e) {
     return { type: 'error', id: req.id, message: String((e as Error)?.message ?? e) };
   }

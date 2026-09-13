@@ -34,7 +34,7 @@ import {
 import { readTwArticle, readTaArticle } from './data/articles';
 import { revalidateAgainstDraft, resolutionWarning } from './data/revalidate';
 import { bootstrapVerse, linkWord, unlinkWord, moveWord, mergeAlignments, splitAlignment, stampTargetVerse, alignmentIsStale, reflowAlignment, settleDone, markDone } from './data/align/edit';
-import { linksFor, sessionInputFor, trainingVersesFor } from './data/align/suggest';
+import { linksFor, rebindSuggestions, sessionInputFor, trainingVersesFor } from './data/align/suggest';
 import { consequencesOfGatewayChange, applyGatewayChange, uncoveredByChange } from './data/gatewayChange';
 import { carryOverDecisions } from './data/carryOver';
 import { TC_READY_TOPIC } from './data/serverApi';
@@ -2131,6 +2131,10 @@ export function AppProvider({ children }) {
   const suggestWorkerRef = useRef(null);
   const suggestSeqRef = useRef(0);
   const suggestRetrainRef = useRef(null);
+  // One training in flight at a time; a request that arrives meanwhile is
+  // remembered once and runs after (a training is minutes, not milliseconds).
+  const suggestTrainingRef = useRef(false);
+  const suggestPendingRef = useRef(false);
   const checkSchedulerRef = useRef(null);
   const checkTargetsRef = useRef(new Map());
   const saveRefs = useRef([schedulerRef, noteSchedulerRef, alignSchedulerRef, checkSchedulerRef]).current;
@@ -2882,10 +2886,11 @@ export function AppProvider({ children }) {
         // #271: `done` follows the edit — set when the verse is now fully
         // aligned, removed otherwise (an edit takes back Mark valid).
         const record = settleDone(stampTargetVerse(next, a2.targetText));
-        // #1: a proposal for a word this edit placed is spent; the rest stand.
-        const bank = new Set(record.wordBank.map((w) => `${w.word} ${Number(w.occurrence)}`));
-        const suggestions = a2.suggestions?.filter((s) => bank.has(`${s.word.word} ${Number(s.word.occurrence)}`)) ?? null;
-        const optimistic = { ...a2, ...(disarm ? { armed: null } : {}), record, stale: false, suggestions: suggestions?.length ? suggestions : null, refusal: null };
+        // #1: a proposal for a word this edit placed is spent; the rest are
+        // re-bound to their card by its first original word (a merge or split
+        // moved the indexes) and dropped when that card is gone.
+        const suggestions = rebindSuggestions(record, a2.suggestions);
+        const optimistic = { ...a2, ...(disarm ? { armed: null } : {}), record, stale: false, suggestions, refusal: null };
         dispatch({ type: 'set', patch: { alignSession: optimistic } });
         const [chapter, verse] = a2.ref.split(':');
         sched.markDirty(a2.book, chapter, verse, JSON.stringify(record));
@@ -2961,6 +2966,9 @@ export function AppProvider({ children }) {
         suggestWorkerRef.current?.terminate();
         suggestWorkerRef.current = null;
         suggestSeqRef.current++;
+        clearTimeout(suggestRetrainRef.current);
+        suggestTrainingRef.current = false;
+        suggestPendingRef.current = false;
         const a2 = stateRef.current.alignSession;
         dispatch({
           type: 'set',
@@ -2978,22 +2986,44 @@ export function AppProvider({ children }) {
         const store = storeRef.current;
         const key = st.project?.repoPath || st.project?.id;
         if (!store || !st.book || !key || !st.alignSuggestions?.[key]) return;
+        // Coalesce: a training already runs in the worker — remember that one
+        // more is wanted and let the running one finish (Codex round 1).
+        if (suggestTrainingRef.current) {
+          suggestPendingRef.current = true;
+          return;
+        }
+        suggestTrainingRef.current = true;
+        suggestPendingRef.current = false;
         const testament = isOldTestament(st.book) ? 'ot' : 'nt';
         const id = ++suggestSeqRef.current;
         dispatch({ type: 'set', patch: { alignSuggest: { status: 'training', testament, verses: 0, error: null } } });
         void collectTrainingVerses({ store, sched: alignSchedulerRef.current, project: st.project, book: st.book, bookRaw: rawRef.current, testament })
           .then((verses) => {
-            if (id !== suggestSeqRef.current || storeRef.current !== store) return;
+            if (id !== suggestSeqRef.current || storeRef.current !== store) {
+              a.settleTraining();
+              return;
+            }
             if (!verses.length) {
               dispatch({ type: 'set', patch: { alignSuggest: { status: 'none', testament, verses: 0, error: null } } });
+              a.settleTraining();
               return;
             }
             a.ensureSuggestWorker().postMessage({ type: 'train', id, testament, verses });
           })
           .catch((e) => {
-            if (id !== suggestSeqRef.current) return;
-            dispatch({ type: 'set', patch: { alignSuggest: { status: 'error', verses: 0, error: String(e?.message || e) } } });
+            if (id === suggestSeqRef.current)
+              dispatch({ type: 'set', patch: { alignSuggest: { status: 'error', testament, verses: 0, error: String(e?.message || e) } } });
+            a.settleTraining();
           });
+      },
+
+      /** A training ended (any way): run the one that was asked for meanwhile. */
+      settleTraining: () => {
+        suggestTrainingRef.current = false;
+        if (suggestPendingRef.current) {
+          suggestPendingRef.current = false;
+          a.trainAlignSuggestions();
+        }
       },
 
       /** After a confirmed save: retrain once the saves settle (debounced). */
@@ -3006,6 +3036,7 @@ export function AppProvider({ children }) {
       },
 
       onSuggestReply: (reply) => {
+        if (reply.type === 'trained' || reply.type === 'error') a.settleTraining();
         if (reply.id !== suggestSeqRef.current) return; // a stale train/suggest — ignore
         if (reply.type === 'trained') {
           const status = reply.verses ? 'ready' : reply.tooFew ? 'few' : 'none';
@@ -3013,11 +3044,14 @@ export function AppProvider({ children }) {
           return;
         }
         if (reply.type === 'error') {
-          dispatch({ type: 'set', patch: { alignSuggest: { status: 'error', verses: 0, error: reply.message } } });
+          dispatch({ type: 'set', patch: { alignSuggest: { status: 'error', testament: stateRef.current.alignSuggest.testament, verses: 0, error: reply.message } } });
           return;
         }
+        // Bound to the verse and session that asked (Codex round 1): a reply
+        // for a verse the translator has since left is discarded, never mapped
+        // onto the verse now open.
         const a2 = stateRef.current.alignSession;
-        if (!a2?.record) return;
+        if (!a2?.record || a2.ref !== reply.ref || a2.seq !== reply.session) return;
         const links = linksFor(a2.record, a2.targetText, reply.links);
         dispatch({ type: 'set', patch: { alignSession: { ...a2, suggestions: links, suggesting: false, refusal: null } } });
       },
@@ -3032,7 +3066,7 @@ export function AppProvider({ children }) {
         if (!a2?.record || !worker || st.alignSuggest.status !== 'ready' || st.alignSuggest.testament !== testament) return;
         const id = suggestSeqRef.current;
         dispatch({ type: 'set', patch: { alignSession: { ...a2, suggesting: true, refusal: null } } });
-        worker.postMessage({ type: 'suggest', id, testament, input: sessionInputFor(a2.record, a2.targetText) });
+        worker.postMessage({ type: 'suggest', id, testament, input: sessionInputFor(a2.record, a2.targetText), ref: a2.ref, session: a2.seq });
       },
 
       /** Confirm one proposal: the same linkWord edit a manual placement makes. */
@@ -4057,6 +4091,8 @@ export function AppProvider({ children }) {
         suggestWorkerRef.current?.terminate();
         suggestWorkerRef.current = null;
         suggestSeqRef.current++;
+        suggestTrainingRef.current = false;
+        suggestPendingRef.current = false;
         checkTargetsRef.current = new Map();
         noteTargetsRef.current = new Map();
         storeRef.current = null;

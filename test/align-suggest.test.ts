@@ -9,7 +9,7 @@
 // a manual link through the same save path.
 import { describe, expect, it } from 'vitest';
 import { bootstrapVerse, linkWord, stampTargetVerse } from '../src/data/align/edit';
-import { linksFor, sessionInputFor, trainingVersesFor, targetSeeds } from '../src/data/align/suggest';
+import { linksFor, rebindSuggestions, sessionInputFor, trainingVersesFor, targetSeeds } from '../src/data/align/suggest';
 import { boundCorpus, predictLinks, trainModel } from '../src/data/align/suggestEngine';
 import { handle } from '../src/data/align/suggestWorker';
 import type { AlignedWord, AlignmentFile, AlignmentVerseRecord } from '../src/data/align/zaln';
@@ -82,6 +82,32 @@ describe('#1 bridge — the engine sees positions, the editor sees words', () =>
     expect(typeof links[0].word.occurrence).toBe('number');
   });
 
+  it('a prediction whose source words sit on two cards is omitted, never truncated to the first card', () => {
+    const r = bootstrapVerse(V14.text, V14.orig, SOURCE);
+    const raw = [
+      { source: [0, 1], target: [1], confidence: 0.9 }, // Τίτῳ+Θεοῦ → Tito: two cards — omitted
+      { source: [2], target: [4], confidence: 0.8 }, // Πατρὸς → Padre: one card — kept
+    ];
+    const links = linksFor(r, V14.text, raw);
+    expect(links.map((l) => `${l.cardIndex}:${l.word.word}`)).toEqual(['2:Padre']);
+    expect(links[0].source).toEqual({ word: 'Πατρὸς', occurrence: 1 });
+  });
+
+  it('rebindSuggestions follows a card through a merge and drops a placed word', () => {
+    const r = bootstrapVerse(V14.text, V14.orig, SOURCE);
+    const links = linksFor(r, V14.text, [
+      { source: [1], target: [3], confidence: 0.9 }, // Θεοῦ → Dios on card 1
+      { source: [2], target: [4], confidence: 0.8 }, // Πατρὸς → Padre on card 2
+    ]);
+    // Merge cards 0 and 1: Θεοῦ is now inside card 0 (not its first word); Πατρὸς moves to index 1.
+    const merged = { ...r, alignments: [{ topWords: [...r.alignments[0].topWords, ...r.alignments[1].topWords], bottomWords: [] }, r.alignments[2]] };
+    const rebound = rebindSuggestions(merged, links)!;
+    expect(rebound.map((l) => `${l.cardIndex}:${l.word.word}`)).toEqual(['1:Padre']);
+    // Placing Padre by hand spends its proposal; nothing left → null.
+    const placed = linkWord(merged, 1, bankWord(merged, 'Padre'));
+    expect(rebindSuggestions(placed, rebound)).toBeNull();
+  });
+
   it('targetSeeds is the #255 tokenizer with positions', () => {
     expect(targetSeeds('Pablo, siervo de Dios y de Dios').map((t) => `${t.text}/${t.occurrence}/${t.occurrences}@${t.position}`)).toEqual([
       'Pablo/1/1@0', 'siervo/1/1@1', 'de/1/2@2', 'Dios/1/2@3', 'y/1/1@4', 'de/2/2@5', 'Dios/2/2@6',
@@ -150,10 +176,10 @@ describe('#1 engine — trains on confirmed alignments, proposes for the bank, n
     const trained = await handle({ type: 'train', id: 1, testament: 'nt', verses });
     expect(trained).toMatchObject({ type: 'trained', id: 1, testament: 'nt', verses: 2 });
     const r = bootstrapVerse('de Dios Padre', [V14.orig[1], V14.orig[2]], SOURCE);
-    const nt = await handle({ type: 'suggest', id: 2, testament: 'nt', input: sessionInputFor(r, 'de Dios Padre') });
-    expect(nt.type).toBe('suggestions');
+    const nt = await handle({ type: 'suggest', id: 2, testament: 'nt', input: sessionInputFor(r, 'de Dios Padre'), ref: '1:4', session: 7 });
+    expect(nt).toMatchObject({ type: 'suggestions', ref: '1:4', session: 7 }); // echoed: the reply binds to its verse and session
     expect((nt as { links: unknown[] }).links.length).toBeGreaterThan(0);
-    const ot = await handle({ type: 'suggest', id: 3, testament: 'ot', input: sessionInputFor(r, 'de Dios Padre') });
+    const ot = await handle({ type: 'suggest', id: 3, testament: 'ot', input: sessionInputFor(r, 'de Dios Padre'), ref: '1:4', session: 7 });
     expect(ot).toMatchObject({ type: 'suggestions', id: 3, links: [] });
   });
 });
