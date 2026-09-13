@@ -14,13 +14,13 @@
 // `targetVerseMd5` recording the draft it was made against (I-3) and
 // occurrences normalized to integers at the boundary (I-2).
 import React from 'react';
-import { useApp } from '../state.jsx';
+import { useApp, isOldTestament } from '../state.jsx';
 import { bookName } from '../data/bookNames';
 import { tokenizeVerse } from '../data/sourceHighlight';
 import { verseText } from './verseText.js';
 import { isSourceAbsent } from '../data/sourceState';
 import { t } from '../i18n';
-import { Button, Overline } from '../ds/index.js';
+import { Button, Overline, WordChip } from '../ds/index.js';
 
 const dragPayload = (e) => {
   try {
@@ -84,7 +84,7 @@ const cardState = (over, armed) => (over
     ? { borderColor: 'rgba(49,173,227,.55)', background: 'var(--surface-card)', cursor: 'pointer' }
     : { borderColor: 'var(--border-input)', background: 'var(--surface-card)' });
 
-function WordCard({ card, armed, mode, gwTokens, onPlace, onRemove, onDropOnCard, onSplit }) {
+function WordCard({ card, armed, mode, gwTokens, suggested = [], onPlace, onRemove, onConfirm, onDropOnCard, onSplit }) {
   const canDrop = armed !== null;
   const [over, setOver] = React.useState(false);
   return (
@@ -119,7 +119,17 @@ function WordCard({ card, armed, mode, gwTokens, onPlace, onRemove, onDropOnCard
             {w.word}
           </button>
         ))}
-        {card.bottomWords.length === 0 && (
+        {/* #1: a suggested link — dashed, with its check mark to confirm. It
+         * is not in the record until confirmed; Reject sends it back. */}
+        {suggested.map((sg) => (
+          <WordChip key={`sg-${sg.word.word}-${sg.word.occurrence}`} state="suggested" draggable={false}
+            data-testid={`align-suggested-${card.index}`} title={t('align.suggest.confirm')}
+            onClick={(e) => { e.stopPropagation(); onConfirm(card.index, sg.word); }}>
+            {sg.word.word}
+            <span aria-hidden="true" style={{ fontWeight: 'var(--fw-heavy)' }}>{t('align.suggest.confirmMark')}</span>
+          </WordChip>
+        ))}
+        {card.bottomWords.length === 0 && suggested.length === 0 && (
           <span style={{ flex: 1, border: 'var(--stroke-selected) dashed var(--border-input)', borderRadius: 'var(--radius-chip)', minHeight: 26 }} />
         )}
       </div>
@@ -305,6 +315,8 @@ export default function Align({ embedded = false }) {
     actions.openAlign();
   }, [s.book, s.alignVerse, s.projectPins]);
 
+  const suggestOn = useSuggestionsSwitch(s, actions);
+
   const gwTokens = React.useMemo(
     () => gatewayTokensFor(a, s.sources, s.sourcePanes),
     [a?.ref, a?.frameName, s.sources, s.sourcePanes],
@@ -324,6 +336,7 @@ export default function Align({ embedded = false }) {
 
   const placed = a.record.alignments.reduce((n, x) => n + x.bottomWords.length, 0);
   const total = placed + a.record.wordBank.length;
+  const suggestedKeys = suggestedKeySet(a);
 
   // Payloads cross a string boundary — validate the shape, never assume it
   // (a malformed drop must be a no-op, not a crash in the record algebra).
@@ -359,7 +372,11 @@ export default function Align({ embedded = false }) {
         <ModeBar effMode={effMode} gwAvailable={gwAvailable} testament={a.testament ?? 'nt'} setMode={setMode} />
         <RefBand effMode={effMode} gwTokens={gwTokens} a={a} />
 
-        {/* Word bank — the target words not yet placed, on the paper tint. */}
+        <SuggestionsRow a={a} suggest={s.alignSuggest} on={suggestOn} actions={actions} />
+
+        {/* Word bank — the target words not yet placed, on the paper tint. A
+         * word with a standing suggestion shows on its card as a dashed chip
+         * instead (#1): it is still in the record's bank until confirmed. */}
         <div onDragOver={allowDrop} onDrop={onDropOnBank}
           style={{ padding: '14px 20px 16px', borderBottom: 'var(--stroke-hair) solid var(--border-hair)', background: 'var(--surface-app)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
@@ -371,7 +388,7 @@ export default function Align({ embedded = false }) {
           </div>
           {a.record.wordBank.length > 0 ? (
             <div data-testid="align-bank" style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }} dir={a.targetDir}>
-              {a.record.wordBank.map((w) => {
+              {a.record.wordBank.filter((w) => !suggestedKeys.has(wordKey(w))).map((w) => {
                 const isArmed = a.armed && a.armed.word === w.word
                   && Number(a.armed.occurrence) === Number(w.occurrence);
                 return (
@@ -407,15 +424,72 @@ export default function Align({ embedded = false }) {
               armed={a.armed ?? null}
               mode={effMode}
               gwTokens={gwTokens}
+              suggested={(a.suggestions ?? []).filter((sg) => sg.cardIndex === i)}
               onPlace={actions.placeAlignWord}
               onRemove={actions.unplaceAlignWord}
+              onConfirm={actions.acceptAlignSuggestion}
               onDropOnCard={onDropOnCard}
               onSplit={actions.splitAlignCard} />
           ))}
         </div>
       </div>
 
-      <MarkValidBar record={a.record} stale={a.stale} onMark={actions.markAlignValid} />
+      <MarkValidBar record={a.record} stale={a.stale} refusal={a.refusal} onMark={actions.markAlignValid} />
+    </div>
+  );
+}
+
+const wordKey = (w) => `${w.word} ${Number(w.occurrence)}`;
+
+/** #1: words with a standing suggestion render on their card, not in the bank. */
+const suggestedKeySet = (a) => new Set((a.suggestions ?? []).map((sg) => wordKey(sg.word)));
+
+/** #1: the suggestions switch is per client per project; with it on, the
+ * engine trains when the Align tool opens for a book (D72) and is idle until. */
+function useSuggestionsSwitch(s, actions) {
+  const on = !!s.alignSuggestions?.[s.project?.repoPath || s.project?.id];
+  const testament = s.book ? (isOldTestament(s.book) ? 'ot' : 'nt') : null;
+  React.useEffect(() => {
+    // Train on open, and again when the book crosses to the other testament:
+    // Jonah after Titus needs the Hebrew model, not the Greek one.
+    if (on && testament && (s.alignSuggest.status === 'off' || s.alignSuggest.testament !== testament)) actions.trainAlignSuggestions();
+  }, [s.book, on, testament]);
+  return on;
+}
+
+/** #1 (D72): the Suggestions row above the word bank — the switch (per client
+ * per project), what the engine knows, and Suggest / Accept all / Reject all /
+ * Reset. A proposal is never saved: Accept confirms it through linkWord,
+ * Reject and Reset send the proposed words back to the bank (they never left
+ * the record's bank). */
+function SuggestionsRow({ a, suggest, on, actions }) {
+  const standing = a.suggestions?.length ?? 0;
+  const status = !on ? 'off' : suggest.status;
+  const text = status === 'ready'
+    ? t('align.suggest.ready', { n: suggest.verses })
+    : status === 'error'
+      ? t('align.suggest.error', { error: suggest.error ?? '' })
+      : t(`align.suggest.${status}`);
+  return (
+    <div data-testid="align-suggestions" data-status={status}
+      style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '12px 20px', borderBottom: 'var(--stroke-hair) solid var(--border-hair)', background: 'var(--surface-card)' }}>
+      <Overline tone="accent">{t('align.suggest.title')}</Overline>
+      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--fs-ui-sm)', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+        <input type="checkbox" data-testid="align-suggest-switch" checked={on} onChange={(e) => actions.setAlignSuggestions(e.target.checked)} />
+        {t('align.suggest.switch')}
+      </label>
+      <span data-testid="align-suggest-status" style={{ fontSize: 'var(--fs-caption-lg)', color: 'var(--text-tertiary)', flex: 1, minWidth: 160 }}>
+        {text}
+        {a.suggestions && standing === 0 ? ` ${t('align.suggest.nothing')}` : ''}
+      </span>
+      {on && (
+        <span style={{ display: 'inline-flex', gap: 6 }}>
+          <Button size="sm" variant="secondary" data-testid="align-suggest" disabled={status !== 'ready' || a.suggesting} onClick={actions.suggestAlign}>{t('align.suggest.suggest')}</Button>
+          <Button size="sm" data-testid="align-suggest-accept-all" disabled={!standing} onClick={actions.acceptAllAlignSuggestions}>{t('align.suggest.acceptAll')}</Button>
+          <Button size="sm" variant="outline" data-testid="align-suggest-reject-all" disabled={!standing} onClick={actions.rejectAlignSuggestions}>{t('align.suggest.rejectAll')}</Button>
+          <Button size="sm" variant="ghost" data-testid="align-suggest-reset" disabled={!a.suggestions} onClick={actions.rejectAlignSuggestions}>{t('align.suggest.reset')}</Button>
+        </span>
+      )}
     </div>
   );
 }
@@ -424,10 +498,15 @@ export default function Align({ embedded = false }) {
  * control, in the same place, as the Check tools' Mark valid. Active while
  * the record is done, vouches for the current draft (I-3) and is not flagged
  * for re-review (§5.1 `invalid`). */
-function MarkValidBar({ record, stale, onMark }) {
+function MarkValidBar({ record, stale, refusal, onMark }) {
   const done = record.done === true && !stale && record.invalid !== true;
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 22, flexWrap: 'wrap' }}>
+      {refusal === 'suggestions' && (
+        <span data-testid="align-mark-valid-refused" style={{ fontSize: 'var(--fs-caption-lg)', color: 'var(--tc-warn-text)' }}>
+          {t('align.markValidRefused')}
+        </span>
+      )}
       <button type="button" data-testid="align-mark-valid" onClick={onMark}
         data-active={done ? '1' : '0'} title={t('align.markValidHint')}
         style={{
