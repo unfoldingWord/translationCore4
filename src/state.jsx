@@ -37,6 +37,8 @@ import { bootstrapVerse, linkWord, unlinkWord, moveWord, mergeAlignments, splitA
 import { linksFor, rebindSuggestions, sessionInputFor, trainingVersesFor } from './data/align/suggest';
 import { consequencesOfGatewayChange, applyGatewayChange, uncoveredByChange } from './data/gatewayChange';
 import { carryOverDecisions } from './data/carryOver';
+import { applyUpgrade, latestRelease, offerForSet, reposOfSet } from './data/upgrade';
+import { LADDER } from './data/burritoStore';
 import { TC_READY_TOPIC } from './data/serverApi';
 import { t } from './i18n';
 import { checkpointMessage } from './data/checkpoint';
@@ -296,6 +298,10 @@ const initial = () => ({
   sourcePanes: null, // round 37: the open project's §5.3 extraScripture pane ids — null while the pins load, [] when the project legally has none
   preflight: null, // { [tool]: Preflight } for the open book (C2.2)
   gatewayPreview: null, // a proposed gateway change awaiting confirmation
+  // J12 (#256): the on-demand resource upgrade. `offers` is per rung after a
+  // "Check for updates"; `installing` names the rung whose release is being
+  // downloaded; `preview` is the confirmation awaiting the user (D72 point 5).
+  upgrade: { checking: false, offers: null, error: null, installing: null, progress: null, preview: null },
   aligning: false, // the align surface is open
   alignIndex: null, // #129: { items: [{ref, text, status, placed, total}] } | { error } — the rail's derived verse list
   alignVerse: null, // "chapter:verse" being aligned, or null for the first drafted
@@ -427,9 +433,15 @@ function checkSaveState(state, a) {
   };
 }
 
-/** Check-session and save-mirror merge actions, table-dispatched ahead of
- * the main switch. */
-const CHECK_SESSION_CASES = { patchCheckSession, checkDecisionSaved, pickerToolEntry, alignSaveState, checkSaveState };
+/** J12 (#256): atomic merge into the upgrade slice — same hazard as patchSrc
+ * (an action awaits between dispatches, so a captured snapshot would clobber). */
+function patchUpgrade(state, a) {
+  return { ...state, upgrade: { ...state.upgrade, ...a.patch } };
+}
+
+/** Check-session, save-mirror and slice merge actions, table-dispatched ahead
+ * of the main switch. */
+const CHECK_SESSION_CASES = { patchCheckSession, checkDecisionSaved, pickerToolEntry, alignSaveState, checkSaveState, patchUpgrade };
 
 function setSourceEntry(state, a) {
   if (a.value === undefined || a.value === null) {
@@ -898,6 +910,28 @@ async function installPinnedRow(apiClient, row, wanted, local, target) {
   });
   return { done: `${row.repo} ${wanted.version ?? result.revision.slice(0, 12)}` };
 }
+
+/** J12 (#256): install every resource of a set's new release, all or nothing.
+ * Each repo goes through installPinnedRow — the D23b sha gate, the occupied-
+ * path rule and the install record are the same as a project-pin download. A
+ * release identity this machine already holds is not fetched again (it was
+ * verified when it was installed). The FIRST failure throws with the repo
+ * named, and the caller has written nothing to the project yet: the pins, the
+ * decision files and the old release's install are all as they were (D72). */
+async function installReleaseSet(apiClient, upgrades, local, installed, onProgress = () => {}) {
+  for (const u of upgrades) {
+    if (isPinLocal(installed, u.to)) continue;
+    const repo = u.repoPath.split('/').pop();
+    onProgress(repo);
+    const target = localRepoPathFromRepoPath(u.repoPath);
+    try {
+      await installPinnedRow(apiClient, { repo }, u.to, local, target);
+    } catch (error) {
+      throw new Error(`${repo} ${u.to.version ?? ''}: ${String(error?.message || error)}`.trim());
+    }
+  }
+}
+export const __installReleaseSetForTests = (...args) => installReleaseSet(...args);
 
 async function installPackageRow(apiClient, originGateway, row, local, wanted = null) {
   const repoPath = `${DCS_HOST}/${originGateway.org}/${row.repo}`;
@@ -2491,7 +2525,19 @@ export function AppProvider({ children }) {
         const current = currentResources ?? INSTALLED_SUITE;
         const next = backfillCoverage(applyGatewayChange(current, proposedPrimary), coverage).resources;
         const primary = next.languageSets.primary;
+        const planned = await a.planResourcesChange({ next, installed, coverage });
+        return { gateway, primary, next, resourcesMd5, ...planned };
+      },
 
+      /** The D36 carry-over plan for ANY change of the pin file — a gateway
+       * change (D23a) or a release upgrade of one set (J12, #256) — computed
+       * against the POST-CHANGE resolution, so the dialogue states the exact
+       * outcome per (tool, book). Every pin `next` names must be installed:
+       * the derives below read local bytes. */
+      planResourcesChange: async ({ next, installed, coverage }) => {
+        const store = storeRef.current;
+        const st = stateRef.current;
+        const primary = next.languageSets.primary;
         // Read every stored decision file this project has, so the count is
         // real rather than estimated.
         const { stored, md5s } = await storedGatewayDecisions(store, st.project.bookCodes ?? []);
@@ -2507,8 +2553,8 @@ export function AppProvider({ children }) {
         // check list derived from the NEW resource is the work. Compute that
         // list HERE, so the dialogue states the exact outcome — how many
         // decisions carry over and how many checks come back — instead of a
-        // count "at risk". The new suite is installed (languageSetFromInstalled
-        // proved it), so every derive below reads local bytes.
+        // count "at risk". The new suite is installed (the caller proved it),
+        // so every derive below reads local bytes.
         // An affected book NEITHER rung covers after the change BLOCKS it
         // (official review round 7): writing its file would leave a §5.2
         // record matching no rung — a state the conformance rules forbid —
@@ -2547,7 +2593,132 @@ export function AppProvider({ children }) {
         });
         const carried = plan.reduce((n, p) => n + p.carried, 0);
         const invalidated = plan.reduce((n, p) => n + p.invalidated, 0);
-        return { gateway, primary, consequences, next, plan, blocked, carried, invalidated, resourcesMd5 };
+        return { consequences, plan, blocked, carried, invalidated };
+      },
+
+      // ---- J12 (#256): upgrade a language set to a newer release ---------
+      /** Ask DCS for the newest release of every repo each set pins, and
+       * offer what differs from the pin — per set, on demand, online only
+       * (D72 point 5). Nothing here writes: an offer is a fact on screen. */
+      checkForUpdates: async () => {
+        const st = stateRef.current;
+        const pins = st.projectPins;
+        if (!pins?.languageSets) return null;
+        if (!st.netEnabled) {
+          dispatch({ type: 'patchUpgrade', patch: { error: t('upgrade.offline') } });
+          return null;
+        }
+        dispatch({ type: 'patchUpgrade', patch: { checking: true, error: null, offers: null } });
+        try {
+          const offers = {};
+          for (const rung of LADDER) {
+            const set = pins.languageSets[rung];
+            if (!set) continue;
+            const latest = {};
+            for (const repo of reposOfSet(set)) latest[repo.repoPath] = await latestRelease(repo.repoPath);
+            offers[rung] = offerForSet(rung, set, latest);
+          }
+          dispatch({ type: 'patchUpgrade', patch: { checking: false, offers } });
+          return offers;
+        } catch (error) {
+          dispatch({
+            type: 'patchUpgrade',
+            patch: { checking: false, error: t('upgrade.checkFailed', { reason: String(error?.message || error) }) },
+          });
+          return null;
+        }
+      },
+
+      /** Accept one set's offer: install every resource of the release (sha-
+       * verified, all or nothing), then compute the D36 carry-over against
+       * the new pins and open the confirmation. The pins move only in
+       * confirmUpgrade, after the user has read the counts. */
+      upgradeSet: async (rung) => {
+        const store = storeRef.current;
+        const offer = stateRef.current.upgrade.offers?.[rung];
+        if (!store || !offer?.upgrades.length) return null;
+        dispatch({ type: 'patchUpgrade', patch: { installing: rung, error: null, progress: null } });
+        try {
+          const local = new Set(await api.listLocalRepos());
+          const before = await a.resolutionContext();
+          if (before.resolutionError) throw new Error(before.resolutionError);
+          await installReleaseSet(api, offer.upgrades, local, before.installed, (repo) =>
+            dispatch({ type: 'patchUpgrade', patch: { progress: t('sources.progress', { repo }) } }));
+          // The new release is on disk: resolve again so coverage and the
+          // installed map include it, then plan against the upgraded pins.
+          const { installed, coverage, resolutionError } = await a.resolutionContext();
+          if (resolutionError) throw new Error(resolutionError);
+          const { value: currentResources, md5: resourcesMd5 } = await store.readResourcesWithMd5();
+          if (!currentResources) throw new Error('the project has no pin file');
+          // Coverage is recorded for the NEW pins only (D41): the other set's
+          // pins stay the very objects the file holds, so an upgrade of one
+          // set leaves the other byte-identical (D72, #256 AC).
+          const upgraded = applyUpgrade(currentResources, offer);
+          const filled = backfillCoverage(upgraded, coverage).resources;
+          const next = {
+            ...filled,
+            languageSets: { ...currentResources.languageSets, [rung]: filled.languageSets[rung] },
+            ...(currentResources.resources !== undefined ? { resources: currentResources.resources } : {}),
+            ...(currentResources.extraScripture !== undefined ? { extraScripture: currentResources.extraScripture } : {}),
+          };
+          const planned = await a.planResourcesChange({ next, installed, coverage });
+          dispatch({
+            type: 'patchUpgrade',
+            patch: { installing: null, progress: null, preview: { rung, offer, next, resourcesMd5, ...planned } },
+          });
+          dispatch({ type: 'set', patch: { installEpoch: stateRef.current.installEpoch + 1 } });
+          return next;
+        } catch (error) {
+          dispatch({
+            type: 'patchUpgrade',
+            patch: { installing: null, progress: null, error: t('upgrade.failed', { reason: String(error?.message || error) }) },
+          });
+          return null;
+        }
+      },
+
+      cancelUpgrade: () => dispatch({ type: 'patchUpgrade', patch: { preview: null } }),
+
+      /** Move the set's pins and reconcile the decisions — ONE journal action,
+       * the same one the gateway change publishes (issue #62). Refused while
+       * any book is blocked, exactly as confirmGatewayChange refuses. */
+      confirmUpgrade: async (preview) => {
+        const store = storeRef.current;
+        if (!store || !preview) return;
+        if (preview.blocked?.length) {
+          dispatch({
+            type: 'patchUpgrade',
+            patch: { error: t('gateway.blockedError', { books: preview.blocked.map((b) => b.book).join(', ') }) },
+          });
+          return;
+        }
+        try {
+          await store.applyGatewayChange({
+            resources: preview.next,
+            resourcesMd5: preview.resourcesMd5 ?? null,
+            decisions: (preview.plan ?? []).map((p) => ({
+              tool: p.tool,
+              book: p.book,
+              file: p.file,
+              expectMd5: p.expectMd5 ?? null,
+            })),
+          });
+        } catch (e) {
+          dispatch({ type: 'patchUpgrade', patch: { error: t('upgrade.failed', { reason: e?.reason || e?.message || String(e) }) } });
+          return;
+        }
+        const offers = stateRef.current.upgrade.offers ?? {};
+        dispatch({ type: 'set', patch: { projectPins: preview.next } });
+        dispatch({
+          type: 'patchUpgrade',
+          patch: {
+            preview: null,
+            error: null,
+            // This set is now at the release it was offered; the other set's offer stands.
+            offers: { ...offers, [preview.rung]: { rung: preview.rung, upgrades: [], current: preview.offer.upgrades.map((u) => u.repoPath).concat(preview.offer.current) } },
+          },
+        });
+        if (stateRef.current.book) await a.runPreflight();
       },
 
       /** Derive one book's check list from a given pin. Returns [] when the
