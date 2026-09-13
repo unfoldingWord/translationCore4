@@ -641,6 +641,18 @@ The "after the lexicons" sizes are from the `package-desktop` CI run 34274905470
 
 Both "after" sizes are from the `package-desktop` CI run 34145714423 artifact listing (PR #217, 2026-09-07). A local macOS arm64 build of the same commit measured 174980433 bytes.
 
+### Client bundle: the suggestion engine (#1)
+
+Alignment suggestions (D72 point 3) add three exact-pinned packages to the client: `uw-wordmapbooster` 1.0.5, `wordmap` 0.6.2 and `wordmap-lexer` 0.3.6 (the lexer was a devDependency for the #255 agreement test; it is now a runtime dependency because the bridge builds its tokens). The engine loads only inside its Web Worker, so it is a separate chunk that the main page never parses:
+
+| `vite build` output | Before #1 (`20dd9f4`) | With #1 | Delta |
+|---|---|---|---|
+| `dist/` total (`du -sk`) | 3664 kB | 3952 kB | +288 kB |
+| worker chunk `suggestWorker-*.js` | — | 279.55 kB (uncompressed) | new |
+| main entry chunks (`index-*.js`) | 1020 kB + 1048 kB | 1042.79 kB + 1082.25 kB | +57 kB |
+
+Measured locally on 2026-09-12 (macOS arm64, Node 22); the desktop artifact grows by the same client bytes and nothing else.
+
 ## Known limits (start of the pipeline, not the end)
 
 - **Three platforms**: macOS arm64 (#57), Linux x64 (#119) and Windows x64

@@ -10,6 +10,11 @@ export default defineConfig(({ command }) => ({
   // the slash-less path, where relative ('./') asset URLs resolve wrongly and the
   // page renders blank — so the build uses the ABSOLUTE client base (cf. PLATFORM-NOTES #18).
   base: command === 'build' ? '/clients/uw-tc4/' : '/',
+  // #1: the suggestion engine loads only inside its Web Worker, on the first
+  // Suggest. Pre-bundle it, or the dev server discovers the three CJS packages
+  // at that moment and reloads the page ("new dependencies optimized") — mid-
+  // session, and under the e2e journeys.
+  optimizeDeps: { include: ['uw-wordmapbooster', 'wordmap', 'wordmap-lexer'] },
   server: {
     port: 5199,
     strictPort: true,

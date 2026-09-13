@@ -235,6 +235,95 @@ test.describe('J5 — a translator aligns a verse', () => {
   );
 
   test(
+    '#1 suggestions: off until switched on; a shown, unconfirmed suggestion leaves no trace; Mark valid is refused while it stands',
+    { tag: ['@inc6', '@J5'] },
+    async ({ page }) => {
+      writePinsWithOriginal();
+      await openAlign(page);
+      const row = page.getByTestId('align-suggestions');
+      const toggle = page.getByTestId('align-suggest-switch');
+      // The switch is per client (platform client-settings); start from OFF
+      // whatever an earlier run left, then prove OFF offers nothing.
+      if (await toggle.isChecked()) await toggle.click();
+      await expect(row).toHaveAttribute('data-status', 'off');
+      await expect(page.getByTestId('align-suggest')).toHaveCount(0);
+
+      // ON: the engine trains on the one aligned verse of the seed and says so.
+      await toggle.click();
+      await expect(row).toHaveAttribute('data-status', 'ready', { timeout: 30_000 });
+      await expect(page.getByTestId('align-suggest-status')).toContainText('1 verses');
+
+      const before = JSON.stringify(alignmentFile());
+      const segmentsBefore = fs.readdirSync(path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'journal')).length;
+      await page.getByTestId('align-suggest').click();
+      const chips = page.locator('[data-testid^="align-suggested-"]');
+      await expect(chips.first()).toBeVisible({ timeout: 15_000 });
+      // Shown, not written: the sidecar and the journal are byte-identical,
+      // the placed count ignores the proposal.
+      await expect(page.getByTestId('align-progress')).toContainText('6 of 27');
+      expect(JSON.stringify(alignmentFile())).toBe(before);
+      expect(fs.readdirSync(path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'journal')).length).toBe(segmentsBefore);
+      // Mark valid is refused while a suggestion stands.
+      await page.getByTestId('align-mark-valid').click();
+      await expect(page.getByTestId('align-mark-valid-refused')).toBeVisible();
+      expect(alignmentFile()!.chapters['1']['1'].done).toBeUndefined();
+      // Reject all: the words are back in the bank; still nothing on disk.
+      await page.getByTestId('align-suggest-reject-all').click();
+      await expect(chips).toHaveCount(0);
+      expect(JSON.stringify(alignmentFile())).toBe(before);
+      // Leaving the verse discards a fresh proposal too.
+      await page.getByTestId('align-suggest').click();
+      await expect(chips.first()).toBeVisible({ timeout: 15_000 });
+      await page.getByTestId('align-next').click();
+      await expect(page.getByTestId('align-ref-text')).not.toContainText('1:1');
+      expect(JSON.stringify(alignmentFile())).toBe(before);
+    },
+  );
+
+  test(
+    '#1 suggestions: an accepted suggestion writes exactly what a manual link writes, through the same save path',
+    { tag: ['@inc6', '@J5'] },
+    async ({ page }) => {
+      writePinsWithOriginal();
+      await openAlign(page);
+      const toggle = page.getByTestId('align-suggest-switch');
+      if (!(await toggle.isChecked())) await toggle.click();
+      await expect(page.getByTestId('align-suggestions')).toHaveAttribute('data-status', 'ready', { timeout: 30_000 });
+      await page.getByTestId('align-suggest').click();
+      const chip = page.locator('[data-testid^="align-suggested-"]').first();
+      await expect(chip).toBeVisible({ timeout: 15_000 });
+      const cardIndex = Number((await chip.getAttribute('data-testid'))!.replace('align-suggested-', ''));
+      const word = ((await chip.textContent()) ?? '').replace('✓', '').trim();
+      const recordBefore = alignmentFile()!.chapters['1']['1'];
+      const placedBefore = recordBefore.alignments.reduce((n: number, a: { bottomWords: unknown[] }) => n + a.bottomWords.length, 0);
+
+      // Confirm the one chip by its check mark.
+      await chip.click();
+      await expect
+        .poll(() => alignmentFile()?.chapters?.['1']?.['1']?.alignments?.[cardIndex]?.bottomWords?.some((w: { word: string }) => w.word === word), { timeout: 10_000 })
+        .toBe(true);
+      const rec = alignmentFile()!.chapters['1']['1'];
+      // The same shape a manual link writes (FR-20 case above): the word left
+      // the bank, sits under the card, integers throughout, hash restamped.
+      expect(rec.alignments.reduce((n: number, a: { bottomWords: unknown[] }) => n + a.bottomWords.length, 0)).toBe(placedBefore + 1);
+      // Exactly one bank entry left, and it is this word (other occurrences of
+      // the same text — "de" has five — stay banked).
+      expect(recordBefore.wordBank.length - rec.wordBank.length).toBe(1);
+      const gone = (recordBefore.wordBank as Array<{ word: string; occurrence: number }>).filter(
+        (b) => !rec.wordBank.some((w: { word: string; occurrence: number }) => w.word === b.word && w.occurrence === b.occurrence),
+      );
+      expect(gone.map((w) => w.word)).toEqual([word]);
+      const everyWord = [...rec.wordBank, ...rec.alignments.flatMap((a: { bottomWords: unknown[] }) => a.bottomWords)] as Array<{ occurrence: unknown; occurrences: unknown }>;
+      expect(everyWord.every((w) => typeof w.occurrence === 'number' && typeof w.occurrences === 'number')).toBe(true);
+      expect(rec.targetVerseMd5).toBe(recordBefore.targetVerseMd5);
+      expect(rec.done).toBeUndefined(); // words remain in the bank
+      // Un-aligning it by hand returns the word to the bank — the two paths meet.
+      await page.locator(`[data-testid="align-card-${cardIndex}"]`).getByRole('button', { name: word }).click();
+      await expect.poll(() => alignmentFile()?.chapters?.['1']?.['1']?.wordBank?.some((w: { word: string }) => w.word === word), { timeout: 10_000 }).toBe(true);
+    },
+  );
+
+  test(
     'without an original-language text pinned, alignment says so instead of failing (C2.9 pattern)',
     { tag: ['@inc2', '@J5'] },
     async ({ page }) => {
