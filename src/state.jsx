@@ -2957,6 +2957,13 @@ export function AppProvider({ children }) {
         worker.onmessage = (event) => a.onSuggestReply(event.data);
         worker.onerror = (event) => {
           dispatch({ type: 'set', patch: { alignSuggest: { status: 'error', testament: stateRef.current.alignSuggest.testament, verses: 0, error: String(event?.message || 'worker') } } });
+          // The worker is dead: drop it BEFORE settling, so a pending retrain
+          // gets a fresh worker from ensureSuggestWorker instead of posting
+          // into the corpse and waiting forever (Codex round 3).
+          if (suggestWorkerRef.current === worker) {
+            worker.terminate();
+            suggestWorkerRef.current = null;
+          }
           a.settleTraining(suggestSeqRef.current); // the running training died with the worker
         };
         suggestWorkerRef.current = worker;
