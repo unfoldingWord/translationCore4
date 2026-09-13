@@ -93,16 +93,27 @@ describe('#1 bridge — the engine sees positions, the editor sees words', () =>
     expect(links[0].source).toEqual({ word: 'Πατρὸς', occurrence: 1 });
   });
 
+  it('rebindSuggestions follows the predicted ORIGINAL word through a split (Codex round 2)', () => {
+    // Τίτῳ and Θεοῦ merged into one card; the engine proposes Dios for Θεοῦ.
+    const r = bootstrapVerse(V14.text, V14.orig, SOURCE);
+    const merged = { ...r, alignments: [{ topWords: [...r.alignments[0].topWords, ...r.alignments[1].topWords], bottomWords: [] }, r.alignments[2]] };
+    const links = linksFor(merged, V14.text, [{ source: [1], target: [3], confidence: 0.9 }]); // position 1 = Θεοῦ
+    expect(links.map((l) => `${l.cardIndex}:${l.source.word}→${l.word.word}`)).toEqual(['0:Θεοῦ→Dios']);
+    // Split the merged card back into Τίτῳ | Θεοῦ: the proposal must sit on Θεοῦ's card (index 1), not Τίτῳ's.
+    const rebound = rebindSuggestions(r, links)!;
+    expect(rebound.map((l) => `${l.cardIndex}:${l.word.word}`)).toEqual(['1:Dios']);
+  });
+
   it('rebindSuggestions follows a card through a merge and drops a placed word', () => {
     const r = bootstrapVerse(V14.text, V14.orig, SOURCE);
     const links = linksFor(r, V14.text, [
       { source: [1], target: [3], confidence: 0.9 }, // Θεοῦ → Dios on card 1
       { source: [2], target: [4], confidence: 0.8 }, // Πατρὸς → Padre on card 2
     ]);
-    // Merge cards 0 and 1: Θεοῦ is now inside card 0 (not its first word); Πατρὸς moves to index 1.
+    // Merge cards 0 and 1: Θεοῦ is now inside card 0, so its proposal follows it there; Πατρὸς moves to index 1.
     const merged = { ...r, alignments: [{ topWords: [...r.alignments[0].topWords, ...r.alignments[1].topWords], bottomWords: [] }, r.alignments[2]] };
     const rebound = rebindSuggestions(merged, links)!;
-    expect(rebound.map((l) => `${l.cardIndex}:${l.word.word}`)).toEqual(['1:Padre']);
+    expect(rebound.map((l) => `${l.cardIndex}:${l.word.word}`)).toEqual(['0:Dios', '1:Padre']);
     // Placing Padre by hand spends its proposal; nothing left → null.
     const placed = linkWord(merged, 1, bankWord(merged, 'Padre'));
     expect(rebindSuggestions(placed, rebound)).toBeNull();

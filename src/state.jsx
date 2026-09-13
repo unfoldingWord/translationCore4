@@ -2956,7 +2956,8 @@ export function AppProvider({ children }) {
         const worker = new Worker(new URL('./data/align/suggestWorker.ts', import.meta.url), { type: 'module' });
         worker.onmessage = (event) => a.onSuggestReply(event.data);
         worker.onerror = (event) => {
-          dispatch({ type: 'set', patch: { alignSuggest: { status: 'error', verses: 0, error: String(event?.message || 'worker') } } });
+          dispatch({ type: 'set', patch: { alignSuggest: { status: 'error', testament: stateRef.current.alignSuggest.testament, verses: 0, error: String(event?.message || 'worker') } } });
+          a.settleTraining(suggestSeqRef.current); // the running training died with the worker
         };
         suggestWorkerRef.current = worker;
         return worker;
@@ -2999,26 +3000,28 @@ export function AppProvider({ children }) {
         dispatch({ type: 'set', patch: { alignSuggest: { status: 'training', testament, verses: 0, error: null } } });
         void collectTrainingVerses({ store, sched: alignSchedulerRef.current, project: st.project, book: st.book, bookRaw: rawRef.current, testament })
           .then((verses) => {
-            if (id !== suggestSeqRef.current || storeRef.current !== store) {
-              a.settleTraining();
-              return;
-            }
+            // An obsolete collection (the switch was cycled, or the project
+            // left) owns no lock any more — a newer training may hold it
+            // (Codex round 2). Only the CURRENT training settles.
+            if (id !== suggestSeqRef.current || storeRef.current !== store) return;
             if (!verses.length) {
               dispatch({ type: 'set', patch: { alignSuggest: { status: 'none', testament, verses: 0, error: null } } });
-              a.settleTraining();
+              a.settleTraining(id);
               return;
             }
             a.ensureSuggestWorker().postMessage({ type: 'train', id, testament, verses });
           })
           .catch((e) => {
-            if (id === suggestSeqRef.current)
-              dispatch({ type: 'set', patch: { alignSuggest: { status: 'error', testament, verses: 0, error: String(e?.message || e) } } });
-            a.settleTraining();
+            if (id !== suggestSeqRef.current) return;
+            dispatch({ type: 'set', patch: { alignSuggest: { status: 'error', testament, verses: 0, error: String(e?.message || e) } } });
+            a.settleTraining(id);
           });
       },
 
-      /** A training ended (any way): run the one that was asked for meanwhile. */
-      settleTraining: () => {
+      /** The CURRENT training ended (any way): release the lock and run the
+       * one that was asked for meanwhile. A stale id releases nothing. */
+      settleTraining: (id) => {
+        if (id !== suggestSeqRef.current) return;
         suggestTrainingRef.current = false;
         if (suggestPendingRef.current) {
           suggestPendingRef.current = false;
@@ -3036,7 +3039,7 @@ export function AppProvider({ children }) {
       },
 
       onSuggestReply: (reply) => {
-        if (reply.type === 'trained' || reply.type === 'error') a.settleTraining();
+        if (reply.type === 'trained' || reply.type === 'error') a.settleTraining(reply.id);
         if (reply.id !== suggestSeqRef.current) return; // a stale train/suggest — ignore
         if (reply.type === 'trained') {
           const status = reply.verses ? 'ready' : reply.tooFew ? 'few' : 'none';
