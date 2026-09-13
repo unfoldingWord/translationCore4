@@ -15,6 +15,7 @@ import { BOOK_NAMES, bookName } from '../../data/bookNames';
 import { gatewayKey } from '../../data/gateways';
 import { t } from '../../i18n';
 import { Modal, Select, OptionCard, Overline, Button, Badge, Callout } from '../../ds/index.js';
+import ResourceUpdates from './ResourceUpdates.jsx';
 
 function LanguageStep({ gateways, installedCount, onPick }) {
   return (
@@ -180,6 +181,10 @@ export default function SourceTexts() {
             style={{ background: 'var(--uw-kindle)', flex: 'none' }}>{t('sources.goOnline')}</Button>
         </Callout>
       )}
+
+      {/* J12 (#256): the open project's pinned help sets, and whether a newer
+        * release exists — asked for on demand, never on its own (D72). */}
+      {!g && <ResourceUpdates />}
 
       {!g && (
         <LanguageStep gateways={actions.sourceGateways()} installedCount={actions.installedCountFor} onPick={actions.pickGateway} />

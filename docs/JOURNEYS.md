@@ -39,7 +39,7 @@ Owner of increment numbers: the GitHub milestones, mirrored in `docs/ROADMAP.md`
 | J9d | facilitator | Exchange | Import a Scripture Burrito | increment 7 (#196) | `e2e/j09-import.spec.ts` (to write) |
 | J10 | — | — | retired: RTL is a fixture axis on J2, J4, J5, J7 | retired | both runs listed on each of those rows; `e2e/j10-rtl.spec.ts` stays until they exist |
 | J11 | facilitator | Exchange | Send the project to Door43 | Phase 2 | none |
-| J12 | facilitator | Start | Upgrade the pinned resources | increment 6 (D72) | `e2e/j12-upgrade-resources.spec.ts` (fixme) |
+| J12 | facilitator | Start | Upgrade the pinned resources | built 2026-09-13 (#256, #257; D72); ships alpha.6 (#260) | `e2e/j12-upgrade-resources.spec.ts` |
 | J13 | facilitator | Start | Change the gateway-language resource set | shipped alpha.2 | `e2e/j13-gateway-change.spec.ts` |
 | J14 | — | — | retired: isolation is a MUST NOT row on J1 and J2 | retired | `e2e/j14-join-isolation.spec.ts` stays |
 | J15 | — | — | retired: slow open is a quality requirement on opening a project | retired | `e2e/j15-slow-open.spec.ts` stays, cited by a FR |

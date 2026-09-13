@@ -49,6 +49,20 @@ crates.io `=` pin when 0.18.5+ publishes (see `docs/RISKS.md` #1).
   HttpStore suite reads `en_ult`, so a rig that runs `npm run prove` needs at least:
   `zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_ult v89 <sha from src/data/installedSuite.js>`.
 
+J12 (`e2e/j12-upgrade-resources.spec.ts`, issues #256/#257) needs a NEWER release of
+the English helps than the seeded v89. The rig does not sideload it: the spec serves it
+as the mocked Door43 (a Playwright route on `git.door43.org`), so the journey runs offline
+and does not move when Door43 publishes again. Cache the exports once, through the app's
+own fetch path (the sha is the commit the DCS tags API names for the tag):
+
+```bash
+zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tn v90 e137f93c4de4d64281e36c84d57a68e405cb20ab
+zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tw v90 014524aebf4f997c123777e952856d24e3b246d2
+zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_ta v90 be50fc8626b561c2fd36cfb98aee834b14a16a1c
+```
+
+Without the three `*-v90-unwrapped.zip` entries the J12 cases skip and say so.
+
 Smoke test:
 
 ```bash
