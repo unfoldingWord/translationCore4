@@ -290,6 +290,7 @@
   "upgrade.offline": "The app is offline. Go online to check for updates.",
   "upgrade.checkFailed": "Could not check for updates: {reason}",
   "upgrade.failed": "The upgrade was not applied: {reason}",
+  "upgrade.stale": "this offer is out of date — the project's pins changed. Check for updates again.",
   "upgrade.set.primary": "Primary set · {lang}",
   "upgrade.set.fallback": "Fallback set · {lang}",
   "upgrade.upToDate": "✓ Up to date",

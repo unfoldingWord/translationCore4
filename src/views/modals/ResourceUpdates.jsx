@@ -73,7 +73,8 @@ export default function ResourceUpdates() {
       {up.error && (
         <Callout tone="warn" role="alert" data-testid="upgrade-error" style={{ overflowWrap: 'anywhere' }}>{up.error}</Callout>
       )}
-      {up.offers && Object.keys(up.offers).map((rung) => (
+      {/* Offers render only for the project they were computed for. */}
+      {up.offers && up.offersFor === s.project.repoPath && Object.keys(up.offers).map((rung) => (
         <OfferCard key={rung} rung={rung} offer={up.offers[rung]} set={sets[rung]} installing={up.installing} onUpgrade={actions.upgradeSet} />
       ))}
     </div>

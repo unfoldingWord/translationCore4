@@ -143,6 +143,17 @@ export const applyUpgrade = (resources: ResourcesFile, offer: SetOffer): Resourc
   },
 });
 
+/** True when an offer no longer describes this set: some slot it would move
+ * does not hold the pin the offer was computed FROM (Codex review round 1 —
+ * an offer computed in one project must never be applied in another, nor
+ * after the pins changed under it). Identity is the sha (D58). */
+export const offerIsStale = (offer: SetOffer, set: LanguageSet | undefined): boolean =>
+  offer.upgrades.some((u) =>
+    u.slots.some((slot) => {
+      const current = set?.[slot];
+      return !current || !samePath(current.repoPath, u.from.repoPath) || current.sha !== u.from.sha;
+    }));
+
 /** A short label for the release a repo moves to, for the offer row. */
 export const releaseDateLabel = (publishedAt: string | null): string =>
   publishedAt ? publishedAt.slice(0, 10) : '';

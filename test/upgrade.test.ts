@@ -1,7 +1,7 @@
 // J12 (#256) — the offer computation from a release listing, the per-set
 // separation, and the all-or-nothing install of a set's release.
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { applyUpgrade, latestRelease, offerForSet, reposOfSet, upgradedSet } from '../src/data/upgrade';
+import { applyUpgrade, latestRelease, offerForSet, offerIsStale, reposOfSet, upgradedSet } from '../src/data/upgrade';
 import type { ReleaseInfo } from '../src/data/upgrade';
 import type { LanguageSet, ResourcePin, ResourcesFile } from '../src/data/burritoStore';
 
@@ -120,6 +120,26 @@ describe('applyUpgrade — per-set separation (D72: one offer, one step, per set
     const afterBoth = applyUpgrade(afterPrimary, fallback);
     expect(afterBoth.languageSets.fallback.translationNotes.sha).toBe(sha('e'));
     expect(afterBoth.languageSets.primary).toBe(afterPrimary.languageSets.primary);
+  });
+});
+
+describe('offerIsStale — an offer applies only to the set it was computed from (Codex round 1)', () => {
+  const latest = { 'git.door43.org/unfoldingWord/en_tn': release('v90', 'e') };
+  const offer = offerForSet('primary', EN, latest);
+
+  it('the set it was computed from is not stale', () => {
+    expect(offerIsStale(offer, EN)).toBe(false);
+  });
+
+  it('another project\'s set — a different pinned commit, or another language — is stale', () => {
+    expect(offerIsStale(offer, { ...EN, translationNotes: pin('en_tn', 'v88', 'z') })).toBe(true);
+    const ES: LanguageSet = { ...EN, gatewayLanguage: { languageId: 'es-419', owner: 'es-419_gl' }, translationNotes: { ...pin('es-419_tn', 'v66', 'x'), repoPath: 'git.door43.org/es-419_gl/es-419_tn' } };
+    expect(offerIsStale(offer, ES)).toBe(true);
+    expect(offerIsStale(offer, undefined)).toBe(true);
+  });
+
+  it('pins that moved to the OFFERED release already are stale too — nothing left to move', () => {
+    expect(offerIsStale(offer, upgradedSet(EN, offer))).toBe(true);
   });
 });
 

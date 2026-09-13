@@ -37,7 +37,7 @@ import { bootstrapVerse, linkWord, unlinkWord, moveWord, mergeAlignments, splitA
 import { linksFor, rebindSuggestions, sessionInputFor, trainingVersesFor } from './data/align/suggest';
 import { consequencesOfGatewayChange, applyGatewayChange, uncoveredByChange } from './data/gatewayChange';
 import { carryOverDecisions } from './data/carryOver';
-import { applyUpgrade, latestRelease, offerForSet, reposOfSet } from './data/upgrade';
+import { applyUpgrade, latestRelease, offerForSet, offerIsStale, reposOfSet } from './data/upgrade';
 import { LADDER } from './data/burritoStore';
 import { TC_READY_TOPIC } from './data/serverApi';
 import { t } from './i18n';
@@ -47,6 +47,11 @@ export { SUITE_VERSION }; // the AddBook badge imports it from here
 
 const AppCtx = createContext(null);
 const STORAGE_ID = 'uw-tc4';
+
+/** J12 (#256): the upgrade slice at rest — the value it resets to when a
+ * project opens or closes, so an offer never outlives the project it was
+ * computed for (Codex review round 1). */
+const UPGRADE_IDLE = { checking: false, offers: null, offersFor: null, error: null, installing: null, progress: null, preview: null };
 
 export const api = new ServerApi();
 // The mode a view is, for a checkpoint message (#183). Views not listed keep their id.
@@ -299,9 +304,10 @@ const initial = () => ({
   preflight: null, // { [tool]: Preflight } for the open book (C2.2)
   gatewayPreview: null, // a proposed gateway change awaiting confirmation
   // J12 (#256): the on-demand resource upgrade. `offers` is per rung after a
-  // "Check for updates"; `installing` names the rung whose release is being
+  // "Check for updates" and is bound to the project it was computed for
+  // (`offersFor`); `installing` names the rung whose release is being
   // downloaded; `preview` is the confirmation awaiting the user (D72 point 5).
-  upgrade: { checking: false, offers: null, error: null, installing: null, progress: null, preview: null },
+  upgrade: UPGRADE_IDLE,
   aligning: false, // the align surface is open
   alignIndex: null, // #129: { items: [{ref, text, status, placed, total}] } | { error } — the rail's derived verse list
   alignVerse: null, // "chapter:verse" being aligned, or null for the first drafted
@@ -933,6 +939,30 @@ async function installReleaseSet(apiClient, upgrades, local, installed, onProgre
 }
 export const __installReleaseSetForTests = (...args) => installReleaseSet(...args);
 
+/** The offer must still describe THIS project's set (Codex round 1): computed
+ * for another project, or for pins that have since moved, it is refused
+ * before anything is downloaded. */
+function assertOfferCurrent(st, offer, currentResources) {
+  if (!currentResources) throw new Error('the project has no pin file');
+  if (st.upgrade.offersFor !== st.project?.repoPath || offerIsStale(offer, currentResources.languageSets?.[offer.rung])) {
+    throw new Error(t('upgrade.stale'));
+  }
+}
+
+/** The pin file after ONE set's upgrade. Coverage is recorded for the NEW
+ * pins only (D41): the other set's pins, the groups and extraScripture stay
+ * the very objects the file holds, so an upgrade of one set leaves the rest
+ * byte-identical (D72, #256 AC). */
+function upgradedResources(currentResources, offer, coverage) {
+  const filled = backfillCoverage(applyUpgrade(currentResources, offer), coverage).resources;
+  return {
+    ...filled,
+    languageSets: { ...currentResources.languageSets, [offer.rung]: filled.languageSets[offer.rung] },
+    ...(currentResources.resources !== undefined ? { resources: currentResources.resources } : {}),
+    ...(currentResources.extraScripture !== undefined ? { extraScripture: currentResources.extraScripture } : {}),
+  };
+}
+
 async function installPackageRow(apiClient, originGateway, row, local, wanted = null) {
   const repoPath = `${DCS_HOST}/${originGateway.org}/${row.repo}`;
   const target = localRepoPathFromRepoPath(repoPath);
@@ -1393,6 +1423,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
         projectPinsError: null,
         sourcePanes: null,
         understand: null,
+        upgrade: UPGRADE_IDLE,
       },
     });
     // The project's pins drive every check session (D30.3). Absent
@@ -2608,7 +2639,8 @@ export function AppProvider({ children }) {
           dispatch({ type: 'patchUpgrade', patch: { error: t('upgrade.offline') } });
           return null;
         }
-        dispatch({ type: 'patchUpgrade', patch: { checking: true, error: null, offers: null } });
+        const offersFor = st.project?.repoPath ?? null;
+        dispatch({ type: 'patchUpgrade', patch: { checking: true, error: null, offers: null, offersFor } });
         try {
           const offers = {};
           for (const rung of LADDER) {
@@ -2618,6 +2650,9 @@ export function AppProvider({ children }) {
             for (const repo of reposOfSet(set)) latest[repo.repoPath] = await latestRelease(repo.repoPath);
             offers[rung] = offerForSet(rung, set, latest);
           }
+          // Bound to the project the check was made for (Codex round 1): a
+          // project switch during the awaits above drops the answer.
+          if (stateRef.current.project?.repoPath !== offersFor) return null;
           dispatch({ type: 'patchUpgrade', patch: { checking: false, offers } });
           return offers;
         } catch (error) {
@@ -2635,10 +2670,13 @@ export function AppProvider({ children }) {
        * confirmUpgrade, after the user has read the counts. */
       upgradeSet: async (rung) => {
         const store = storeRef.current;
-        const offer = stateRef.current.upgrade.offers?.[rung];
+        const st = stateRef.current;
+        const offer = st.upgrade.offers?.[rung];
         if (!store || !offer?.upgrades.length) return null;
         dispatch({ type: 'patchUpgrade', patch: { installing: rung, error: null, progress: null } });
         try {
+          const { value: currentResources, md5: resourcesMd5 } = await store.readResourcesWithMd5();
+          assertOfferCurrent(st, offer, currentResources);
           const local = new Set(await api.listLocalRepos());
           const before = await a.resolutionContext();
           if (before.resolutionError) throw new Error(before.resolutionError);
@@ -2648,19 +2686,7 @@ export function AppProvider({ children }) {
           // installed map include it, then plan against the upgraded pins.
           const { installed, coverage, resolutionError } = await a.resolutionContext();
           if (resolutionError) throw new Error(resolutionError);
-          const { value: currentResources, md5: resourcesMd5 } = await store.readResourcesWithMd5();
-          if (!currentResources) throw new Error('the project has no pin file');
-          // Coverage is recorded for the NEW pins only (D41): the other set's
-          // pins stay the very objects the file holds, so an upgrade of one
-          // set leaves the other byte-identical (D72, #256 AC).
-          const upgraded = applyUpgrade(currentResources, offer);
-          const filled = backfillCoverage(upgraded, coverage).resources;
-          const next = {
-            ...filled,
-            languageSets: { ...currentResources.languageSets, [rung]: filled.languageSets[rung] },
-            ...(currentResources.resources !== undefined ? { resources: currentResources.resources } : {}),
-            ...(currentResources.extraScripture !== undefined ? { extraScripture: currentResources.extraScripture } : {}),
-          };
+          const next = upgradedResources(currentResources, offer, coverage);
           const planned = await a.planResourcesChange({ next, installed, coverage });
           dispatch({
             type: 'patchUpgrade',
@@ -4287,7 +4313,7 @@ export function AppProvider({ children }) {
         alignSessionSeq++;
         dispatch({
           type: 'set',
-          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, saveState: 'saved', noteSaveState: 'saved', alignSaveState: 'saved', checkSaveState: 'saved', commitError: null, projectPins: null, projectPinsLoaded: false, projectPinsError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, alignSuggest: { status: 'off', verses: 0, error: null }, pickerProgress: null, toolPos: {} },
+          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, saveState: 'saved', noteSaveState: 'saved', alignSaveState: 'saved', checkSaveState: 'saved', commitError: null, projectPins: null, projectPinsLoaded: false, projectPinsError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, alignSuggest: { status: 'off', verses: 0, error: null }, pickerProgress: null, toolPos: {}, upgrade: UPGRADE_IDLE },
         });
         refreshProjects(); // re-order: the project just left goes to the top
         if (leaving && leavingStore) startLeaveCheckpoint({ store: leavingStore, repoPath: leaving.repoPath, stateRef, dispatch });
