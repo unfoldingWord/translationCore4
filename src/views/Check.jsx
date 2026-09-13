@@ -23,6 +23,7 @@ import { tokenizeVerse, matchQuote } from '../data/sourceHighlight';
 import { verseText } from './verseText.js';
 import { absenceMessageKey, isSourceAbsent } from '../data/sourceState';
 import { ExpandableNote, glTitleFor } from './HelpsPanel.jsx';
+import { RAIL_FILTERS, RAIL_FILTER_ORDER, hasComment, isBookmarked, railCounts } from './checkFilters.js';
 import { t } from '../i18n';
 import { Button, Callout, Drawer, Overline, ProgressBar } from '../ds/index.js';
 
@@ -438,7 +439,7 @@ function UltPane({ sources, sourcePanes, item, c, v, crossFrame }) {
 /** The detail column (F1): ref + item counter header, serif phrase h1, the
  * "What to check" note box, the Academy link, the compare card, and the three
  * block triage buttons — the mockup's L1044–1196 region. */
-function CheckDetail({ cs, item, title, sources, sourcePanes, words, sel, toggleWord, markValid, markInvalid, markTodo, onOpenAcademy, onNav, targetDirection = 'ltr' }) {
+function CheckDetail({ cs, item, title, sources, sourcePanes, words, sel, toggleWord, markValid, markInvalid, markTodo, onBookmark, onComment, onOpenAcademy, onNav, targetDirection = 'ltr' }) {
   const c = item.contextId.reference.chapter;
   const v = item.contextId.reference.verse;
   const quote = title;
@@ -532,6 +533,8 @@ function CheckDetail({ cs, item, title, sources, sourcePanes, words, sel, toggle
           {t('check.markTodo')}
         </button>
       </div>
+
+      <CheckMarks item={item} idx={idx} onBookmark={onBookmark} onComment={onComment} />
     </div>
   );
 }
@@ -583,6 +586,67 @@ const railChip = (on) => ({
   borderColor: on ? 'var(--uw-ocean)' : 'var(--border-input)',
 });
 
+/** #50 (D72 point 4): the translator's own marks on one check — a Bookmark
+ * button on the left, the check-comment button right-aligned, and the inline
+ * comment editor (mockup "TN check"). Both write the §5.2 record through
+ * recordDecision like a triage click; neither moves progress. The mockup's
+ * "Only you see this" line is not built (owner ruling 2026-09-11). */
+function CheckMarks({ item, idx, onBookmark, onComment }) {
+  const bookmarked = isBookmarked(item);
+  const written = hasComment(item);
+  const [open, setOpen] = React.useState(false);
+  const [draft, setDraft] = React.useState(written ? item.comments : '');
+  // A new item closes the editor and takes its own stored text.
+  React.useEffect(() => {
+    setOpen(false);
+    setDraft(hasComment(item) ? item.comments : '');
+  }, [idx]);
+  const done = () => {
+    const text = draft.trim();
+    if (text !== (written ? item.comments : '')) onComment(text || false);
+    setOpen(false);
+  };
+  const remove = () => {
+    setDraft('');
+    if (written) onComment(false);
+    setOpen(false);
+  };
+  const chip = (active) => ({
+    ...railChip(active), fontSize: 'var(--fs-ui-sm)', padding: '8px 14px', borderRadius: 'var(--radius-md)',
+    display: 'inline-flex', alignItems: 'center', gap: 6,
+  });
+  return (
+    <div data-testid="check-marks" style={{ marginTop: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <button type="button" data-testid="bookmark" data-active={bookmarked ? '1' : '0'} onClick={onBookmark}
+          title={t(bookmarked ? 'check.bookmark.removeHint' : 'check.bookmark.hint')} style={chip(bookmarked)}>
+          <span aria-hidden="true">{t('check.glyph.bookmark')}</span>
+          {t(bookmarked ? 'check.bookmark.on' : 'check.bookmark.off')}
+        </button>
+        <div style={{ flex: 1 }} />
+        <button type="button" data-testid="comment-toggle" data-written={written ? '1' : '0'} data-open={open ? '1' : '0'}
+          onClick={() => setOpen((o) => !o)} style={chip(open)}>
+          <span aria-hidden="true">{t('check.glyph.comment')}</span>
+          {t(open ? 'check.comment.hide' : written ? 'check.comment.written' : 'check.comment.add')}
+        </button>
+      </div>
+      {open && (
+        <div data-testid="comment-editor" style={{ marginTop: 12, background: 'var(--surface-card)', border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '14px 16px' }}>
+          <Overline tone="accent">{t('check.comment.title')}</Overline>
+          <textarea data-testid="comment-text" rows={3} value={draft} onChange={(e) => setDraft(e.target.value)}
+            placeholder={t('check.comment.placeholder')}
+            style={{ width: '100%', boxSizing: 'border-box', marginTop: 8, border: 'var(--stroke) solid var(--border-input)', borderRadius: 'var(--radius-md)', padding: '10px 12px', fontFamily: 'inherit', fontSize: 'var(--fs-ui-md)', lineHeight: 'var(--lh-body)', color: 'var(--text-body)', background: 'var(--surface-app)', resize: 'vertical', outline: 'none' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+            <Button size="sm" data-testid="comment-done" onClick={done}>{t('check.comment.done')}</Button>
+            <div style={{ flex: 1 }} />
+            <Button size="sm" variant="ghost" data-testid="comment-delete" disabled={!written && !draft} onClick={remove}>{t('check.comment.delete')}</Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const statusOf = (it) => (it.status === 'valid' || it.status === 'invalid' ? it.status : 'todo');
 const DOT = { valid: 'var(--tc-valid)', invalid: 'var(--tc-invalid)', todo: 'var(--text-tertiary)' };
 
@@ -620,13 +684,10 @@ function CheckRail({ cs, filter, setFilter, sortMode, setSortMode, onSelect, tit
   const { actions } = useApp();
   const decided = isDecided;
   const indexed = cs.items.map((it, i) => ({ it, i }));
-  const counts = {
-    all: indexed.length,
-    todo: indexed.filter(({ it }) => !decided(it)).length,
-    invalid: indexed.filter(({ it }) => it.status === 'invalid').length,
-  };
-  const filtered = indexed.filter(({ it }) =>
-    filter === 'all' ? true : filter === 'todo' ? !decided(it) : it.status === 'invalid');
+  // #50: five chips — All, To do, Invalid, Bookmarked, Commented — counted and
+  // filtered by the same predicates (checkFilters.js).
+  const counts = railCounts(cs.items);
+  const filtered = indexed.filter(({ it }) => (RAIL_FILTERS[filter] ?? RAIL_FILTERS.all)(it));
   const sorts = SORTS[cs.tool];
   const groups = railGroupsOf({ items: filtered, tool: cs.tool, sortMode, book: cs.book });
 
@@ -646,9 +707,9 @@ function CheckRail({ cs, filter, setFilter, sortMode, setSortMode, onSelect, tit
         <p data-testid="check-progress" style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--text-secondary)', margin: '8px 0 12px', fontWeight: 'var(--fw-medium)' }}>
           {t('check.progress', { decided: cs.progress.decided, total: cs.progress.total })}
         </p>
-        <div style={{ display: 'flex', gap: 6 }}>
-          {['all', 'todo', 'invalid'].map((k) => (
-            <button key={k} type="button" data-trim="cap" data-testid={`filter-${k}`} onClick={() => setFilter(k)} style={railChip(filter === k)}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {RAIL_FILTER_ORDER.map((k) => (
+            <button key={k} type="button" data-trim="cap" data-testid={`filter-${k}`} data-count={counts[k]} onClick={() => setFilter(k)} style={railChip(filter === k)}>
               {t(`check.filter.${k}`)} · {counts[k]}
             </button>
           ))}
@@ -683,8 +744,11 @@ function CheckRail({ cs, filter, setFilter, sortMode, setSortMode, onSelect, tit
                   <button key={`${it.contextId.checkId}-${i}`} type="button" data-i="choice" data-tone="accent" data-selected={activeRow ? 'true' : undefined} onClick={() => onSelect(i)}
                     title={`${it.contextId.reference.chapter}:${it.contextId.reference.verse} · ${it.contextId.groupId}`}
                     data-ref={`${it.contextId.reference.chapter}:${it.contextId.reference.verse}`}
+                    data-check-id={it.contextId.checkId}
                     data-decided={decided(it) ? '1' : '0'}
                     data-invalid={it.invalidated === true ? '1' : '0'}
+                    data-bookmarked={isBookmarked(it) ? '1' : '0'}
+                    data-commented={hasComment(it) ? '1' : '0'}
                     data-save-error={cs.saveErrorKey === `${cs.tool}|${cs.book}|${it.contextId.checkId}` ? '1' : '0'}
                     style={{
                       border: `var(--stroke) solid ${activeRow ? 'var(--accent)' : 'var(--border)'}`,
@@ -697,6 +761,13 @@ function CheckRail({ cs, filter, setFilter, sortMode, setSortMode, onSelect, tit
                     <span style={{ flex: 1, fontSize: 'var(--fs-ui-sm)', fontWeight: 'var(--fw-bold)', color: 'var(--text-body)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       “{titleOf(it)}”
                     </span>
+                    {/* #50: the row glyphs — a bookmark, a comment (mockup "TN check"). */}
+                    {isBookmarked(it) && (
+                      <span data-testid="row-bookmark" aria-label={t('check.filter.bookmarked')} style={{ fontSize: 'var(--fs-badge)', color: 'var(--uw-kindle, #E59D33)', flex: 'none' }}>{t('check.glyph.bookmark')}</span>
+                    )}
+                    {hasComment(it) && (
+                      <span data-testid="row-comment" aria-label={t('check.filter.commented')} style={{ fontSize: 'var(--fs-badge)', color: 'var(--text-tertiary)', flex: 'none' }}>{t('check.glyph.comment')}</span>
+                    )}
                     <span style={{ fontSize: 'var(--fs-badge)', letterSpacing: 'var(--track-10)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
                       {t('check.ref', { c: it.contextId.reference.chapter, v: it.contextId.reference.verse })}
                     </span>
@@ -951,6 +1022,11 @@ function CheckSession() {
   const markInvalid = () =>
     actions.recordDecision({ selections: false, nothingToSelect: false, status: 'invalid' });
   const markTodo = () => actions.recordDecision({ status: 'todo' });
+  // #50: a bookmark and a check comment are fields of the same §5.2 record —
+  // the patch touches only its own field, so triage and progress stay as they
+  // are (a record with no decision yet is created with its defaults).
+  const toggleBookmark = () => actions.recordDecision({ reminders: !isBookmarked(item) });
+  const setComment = (text) => actions.recordDecision({ comments: text });
 
   /* #15 note carried into the rail: the progress denominator EXCLUDES checks
    * the project's versification has no verse for — DroppedNote states the
@@ -965,6 +1041,7 @@ function CheckSession() {
           <CheckDetail cs={cs} item={item} title={titleOf(item)} sources={s.sources} sourcePanes={s.sourcePanes} words={words} sel={sel}
             targetDirection={s.project?.scriptDirection === 'rtl' ? 'rtl' : 'ltr'}
             toggleWord={toggleWord} markValid={markValid} markInvalid={markInvalid} markTodo={markTodo}
+            onBookmark={toggleBookmark} onComment={setComment}
             onOpenAcademy={() => setAcademyOpen(true)}
             onNav={(i) => actions.setCheckIndex(i)} />
         )}

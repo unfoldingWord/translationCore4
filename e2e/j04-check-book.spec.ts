@@ -44,6 +44,25 @@ function restateRecordAsEnglish(tool: string, book: string): void {
   writeDecisionFile(SEEDED_PROJECT, tool, book, file);
 }
 
+/** Every ingredient byte outside the checking sidecars (#50: the text must
+ * not move when a translator bookmarks or comments a check). */
+function textIngredients(repo: string): Record<string, string> {
+  const root = path.join(rigRepo(repo), 'ingredients');
+  const out: Record<string, string> = {};
+  const walk = (dir: string) => {
+    for (const name of fs.readdirSync(dir)) {
+      const p = path.join(dir, name);
+      if (fs.statSync(p).isDirectory()) {
+        if (path.relative(root, p) !== 'checking') walk(p);
+      } else {
+        out[path.relative(root, p)] = fs.readFileSync(p, 'utf8');
+      }
+    }
+  };
+  walk(root);
+  return out;
+}
+
 /** Open the seeded project's Titus and land on the Check view. */
 async function openCheck(page: import('@playwright/test').Page) {
   await page.goto('/');
@@ -466,6 +485,87 @@ test.describe('J4 — a checker works a book', () => {
       await expect(warn).toBeVisible();
       await expect(warn).toContainText('fr_tn');
       await expect(page.getByTestId('fetch-primary-translationNotes')).toBeVisible();
+    },
+  );
+
+  test(
+    'a bookmark and a check comment persist in the §5.2 record, filter the rail, move no progress, and touch no text (#50, D72 point 4)',
+    { tag: ['@inc6', '@J4'] },
+    async ({ page }) => {
+      writeProjectPins(SEEDED_PROJECT, PINS());
+      restateRecordAsEnglish('translationNotes', 'TIT');
+      const textBefore = textIngredients(SEEDED_PROJECT);
+      const decisions = () => readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')?.decisions ?? [];
+      const record = (id: string) => decisions().find((d) => (d.contextId as { checkId: string }).checkId === id);
+      const count = async (chip: string) => Number(await page.getByTestId(`filter-${chip}`).getAttribute('data-count'));
+
+      await openCheck(page);
+      await page.getByTestId('open-translationNotes').click();
+      await expect(page.getByTestId('check-progress')).toBeVisible();
+      const progress = await page.getByTestId('check-progress').textContent();
+      const before = decisions().length;
+      const bookmarkedBefore = await count('bookmarked');
+      const commentedBefore = await count('commented');
+
+      // Pick an undecided check; its row tells us which disk record to watch.
+      const row = page.getByTestId('check-list').locator('button[data-decided="0"]').first();
+      const id = (await row.getAttribute('data-check-id')) as string;
+      await row.click();
+
+      // Bookmark → a §5.2 record with reminders:true and NO decision in it.
+      await page.getByTestId('bookmark').click();
+      await expect.poll(() => record(id)?.reminders, { timeout: 10_000 }).toBe(true);
+      expect(decisions().length).toBe(before + 1);
+      expect(record(id)?.selections).toBe(false);
+      expect(record(id)?.nothingToSelect).not.toBe(true);
+      const rowById = page.locator(`[data-check-id="${id}"]`);
+      await expect(rowById).toHaveAttribute('data-bookmarked', '1');
+      await expect(rowById).toHaveAttribute('data-decided', '0');
+      await expect(rowById.getByTestId('row-bookmark')).toBeVisible();
+      await expect(page.getByTestId('filter-bookmarked')).toHaveAttribute('data-count', String(bookmarkedBefore + 1));
+      await expect(page.getByTestId('check-progress')).toHaveText(progress as string); // no progress moved
+
+      // Comment → the same record's comments field, still no decision.
+      await page.getByTestId('comment-toggle').click();
+      await page.getByTestId('comment-text').fill('Ask the team about this one.');
+      await page.getByTestId('comment-done').click();
+      await expect.poll(() => record(id)?.comments, { timeout: 10_000 }).toBe('Ask the team about this one.');
+      expect(decisions().length).toBe(before + 1);
+      await expect(rowById).toHaveAttribute('data-commented', '1');
+      await expect(rowById.getByTestId('row-comment')).toBeVisible();
+      await expect(page.getByTestId('comment-toggle')).toHaveAttribute('data-written', '1');
+      await expect(page.getByTestId('filter-commented')).toHaveAttribute('data-count', String(commentedBefore + 1));
+      await expect(page.getByTestId('check-progress')).toHaveText(progress as string);
+
+      // Reopen the project: both marks come back from disk, the chips filter to them.
+      await openCheck(page);
+      await page.getByTestId('open-translationNotes').click();
+      await expect(page.getByTestId('check-progress')).toHaveText(progress as string);
+      await page.getByTestId('filter-commented').click();
+      await expect(page.getByTestId('check-list').locator('button')).toHaveCount(commentedBefore + 1);
+      await expect(rowById).toHaveAttribute('data-bookmarked', '1');
+      await expect(rowById).toHaveAttribute('data-commented', '1');
+      await page.getByTestId('filter-bookmarked').click();
+      await expect(page.getByTestId('check-list').locator('button')).toHaveCount(bookmarkedBefore + 1);
+      await rowById.click();
+      await page.getByTestId('comment-toggle').click();
+      await expect(page.getByTestId('comment-text')).toHaveValue('Ask the team about this one.');
+
+      // Edit, then delete the comment; clear the bookmark. The record stays, the fields reset.
+      await page.getByTestId('comment-text').fill('Resolved with the team.');
+      await page.getByTestId('comment-done').click();
+      await expect.poll(() => record(id)?.comments, { timeout: 10_000 }).toBe('Resolved with the team.');
+      await page.getByTestId('comment-toggle').click();
+      await page.getByTestId('comment-delete').click();
+      await expect.poll(() => record(id)?.comments, { timeout: 10_000 }).toBe(false);
+      await expect(page.getByTestId('comment-toggle')).toHaveAttribute('data-written', '0');
+      await page.getByTestId('bookmark').click();
+      await expect.poll(() => record(id)?.reminders, { timeout: 10_000 }).toBe(false);
+      expect(decisions().length).toBe(before + 1);
+      await expect(page.getByTestId('check-progress')).toHaveText(progress as string);
+
+      // The text ingredients are byte-identical: marks live in the sidecar only.
+      expect(textIngredients(SEEDED_PROJECT)).toEqual(textBefore);
     },
   );
 
