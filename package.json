@@ -18,7 +18,7 @@
     "docs:gate": "node scripts/docs-gate.mjs",
     "prepare": "husky",
     "test:desktop": "node --test scripts/desktop-bootstrap.test.cjs",
-    "dev:annotate": "node scripts/annotate-i18n.mjs && concurrently -k -n vite,annotate -c cyan,magenta \"vite\" \"react-grab-annotate --dir \\\"$HOME\\\" --base-dir .tc4-annotations\""
+    "dev:annotate": "node scripts/annotate-i18n.mjs && concurrently -k -n vite,annotate -c cyan,magenta \"vite --mode annotate\" \"react-grab-annotate --dir \\\"$HOME\\\" --base-dir .tc4-annotations\""
   },
   "dependencies": {
     "bible-reference-range": "1.1.1",
