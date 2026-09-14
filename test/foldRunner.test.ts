@@ -217,6 +217,36 @@ describe('#94 — a synchronous reader during a pending fold sees the last compl
   });
 });
 
+describe('#94 — a worker refusal after an accepted publish never lets a later save diff against the snapshot (Codex round 2)', () => {
+  it('the next save refolds first, so B→A publishes instead of comparing A against a stale A', async () => {
+    const inline = inlineFoldRunner();
+    let failNext = false;
+    const runner: FoldRunner = {
+      fold: async (events) => {
+        if (failNext) { failNext = false; throw new Error('fold worker failed: simulated'); }
+        return inline.fold(events);
+      },
+      dispose: () => {},
+    };
+    const { rig, store } = await project(runner);
+    const settings = () => JSON.parse(rig.repos.get(REPO)!.files.get('checking/settings.json')!);
+    const segments = () => [...rig.repos.get(REPO)!.files.keys()].filter((k) => /journal\/[a-z0-9-]+\/segments\//.test(k)).length;
+    expect(settings().textFont).toBe('Noto Sans (default)'); // A
+    const before = segments();
+
+    // A→B: the publish is accepted, then the worker refuses the fold.
+    failNext = true;
+    await expect(store.writeSettings({ schemaVersion: 1, textDirection: 'ltr', textFont: 'Charis SIL' })).rejects.toThrow(/simulated/);
+    expect(segments()).toBe(before + 1); // B is journaled
+
+    // B→A: must be a real change against the CURRENT fold (B), not a no-op against the stale snapshot (A).
+    await store.writeSettings({ schemaVersion: 1, textDirection: 'ltr', textFont: 'Noto Sans (default)' });
+    expect(segments()).toBe(before + 2);
+    expect(settings().textFont).toBe('Noto Sans (default)');
+    await expect(store.readVersification()).resolves.toBeTruthy();
+  });
+});
+
 describe('#94 — save ordering per project is unchanged across the worker boundary', () => {
   it('overlapping saves through a jittery runner fold to the sequential result', async () => {
     const sequential = await project(inlineFoldRunner());

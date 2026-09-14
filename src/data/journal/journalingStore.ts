@@ -911,7 +911,14 @@ export class JournalingStore implements BurritoStore {
           `valid segment (${conflicts.map((r) => r.ts).join(', ')}) — diffing over it would ` +
           `build on a fold this actor cannot explain (R-8.1.5/R-8.1.8)`,
       );
-    if (replayed.length === 0) return;
+    // A mutation diffs against the CURRENT fold, never the snapshot synchronous
+    // readers may see (Codex round 2): a worker refusal after an accepted
+    // publish leaves the cache cold and lastFold behind — refold here (or fail
+    // again, loudly) before any diff is computed.
+    if (replayed.length === 0) {
+      await this.ensureFold();
+      return;
+    }
     // 'republished' AND 'already-published' both prove the journal holds an
     // accepted action the in-memory fold may lack: 'already-published' is the
     // lost-response window — publish() wrote the segment, threw before the
@@ -2591,7 +2598,7 @@ export class JournalingStore implements BurritoStore {
 
   private async commitQueued(message: string): Promise<void> {
     const repo = this.mustRepo();
-    const foldOut = this.foldNow();
+    const foldOut = await this.ensureFold(); // never checkpoint a snapshot (Codex round 2)
     this.assertCheckpointMetadataWritable(foldOut);
     const projections = await this.checkpointProjections(repo, foldOut);
     const ledgerPaths = await this.checkpointLedgerPaths();
