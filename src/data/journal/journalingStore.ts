@@ -429,6 +429,10 @@ export class JournalingStore implements BurritoStore {
     return this.raw.readSettings();
   }
 
+  readSettingsWithMd5(): Promise<{ value: SettingsFile | null; md5: string | null }> {
+    return this.raw.readSettingsWithMd5();
+  }
+
   /** The versification register from the FOLD, not from disk (issue #15).
    *
    * The fold is the authority here because the scheme NAME exists only in the
@@ -2269,10 +2273,13 @@ export class JournalingStore implements BurritoStore {
   }
 
   /** §5.4 write: diff per settings path into settings.set events; a folded
-   * top-level path absent from the document removes with removed: true. */
-  async writeSettings(settings: SettingsFile): Promise<void> {
+   * top-level path absent from the document removes with removed: true.
+   * `expectMd5` (#9): the same compare-and-swap as writeResources — a stale
+   * document is refused before anything is diffed or published. */
+  async writeSettings(settings: SettingsFile, expectMd5?: string | null): Promise<void> {
     return this.queue(async () => {
       await this.replayOwnStagedBeforeDiff(); // round-5 rule 1: REPLAY-BEFORE-DIFF
+      await this.checkExpectMd5(SETTINGS_IPATH, expectMd5);
       const journal = this.mustJournal();
       const foldOut = this.foldNow();
       const events: JournalEvent[] = [];

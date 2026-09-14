@@ -264,9 +264,15 @@ export interface BurritoStore {
   writeResources(resources: ResourcesFile, expectMd5?: string | null): Promise<void>;
 
   readSettings(): Promise<SettingsFile | null>;
+  /** #9: the settings document AND the md5 of the bytes read — hand it back
+   * as `expectMd5` so a concurrent write is refused, not overwritten (the
+   * same compare-and-swap every other sidecar already has, OPEN-QUESTIONS #17). */
+  readSettingsWithMd5(): Promise<{ value: SettingsFile | null; md5: string | null }>;
   /** Issue #62: diffed per settings path into settings.set events; a folded
-   * path absent from the document removes with {removed: true}. */
-  writeSettings(settings: SettingsFile): Promise<void>;
+   * path absent from the document removes with {removed: true}. `expectMd5`
+   * (#9): refuse with StaleWriteError when the file no longer hashes to it;
+   * `null` = must still be absent (a first write); omitted = no check. */
+  writeSettings(settings: SettingsFile, expectMd5?: string | null): Promise<void>;
 
   /** The project's versification register (issue #15) — the scheme NAME chosen
    * at creation plus the exact `ingredients/vrs.json` bytes. `null` when the

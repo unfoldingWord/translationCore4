@@ -657,8 +657,15 @@ export class HttpStore {
     return this.readJsonSidecar<SettingsFile>(SETTINGS_IPATH);
   }
 
-  async writeSettings(settings: SettingsFile): Promise<void> {
-    await this.writeJsonSidecar(SETTINGS_IPATH, settings);
+  /** #9: settings with the md5 of the bytes read, for `writeSettings`' CAS. */
+  async readSettingsWithMd5(): Promise<{ value: SettingsFile | null; md5: string | null }> {
+    return this.readJsonSidecarWithMd5<SettingsFile>(SETTINGS_IPATH);
+  }
+
+  /** `expectMd5` (#9) opts into the same compare-and-swap the other sidecars
+   * have: a stale write throws StaleWriteError instead of overwriting. */
+  async writeSettings(settings: SettingsFile, expectMd5?: string | null): Promise<void> {
+    await this.writeJsonSidecar(SETTINGS_IPATH, settings, expectMd5);
   }
 
   /** The versification register, read straight from the ingredient.

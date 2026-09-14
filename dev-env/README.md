@@ -63,6 +63,13 @@ zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_ta v90 be50fc8626b561c2f
 
 Without the three `*-v90-unwrapped.zip` entries the J12 cases skip and say so.
 
+The guided fix screen's proof (`e2e/guided-fix.spec.ts`, issue #9) also needs `en_tn` v88 —
+a release the rig lacks and J12 never installs:
+
+```bash
+zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tn v88 c3be6e4f2d279327249ef5b14bf5d5c8b7549e35
+```
+
 Smoke test:
 
 ```bash

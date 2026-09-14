@@ -20,10 +20,10 @@ import { seedBookFromSource } from './data/seed';
 import { SOURCE_MISSING, SOURCE_NOT_INSTALLED, isSourceAbsent } from './data/sourceState';
 import { BOOK_NAMES, bookName } from './data/bookNames';
 import { GATEWAYS, gatewayKey, DCS_HOST, orgForRepoName } from './data/gateways';
-import { fetchAndInstallPin, latestReleaseTag, identifyExistingInstall } from './data/resourceFetch';
+import { fetchAndInstallPin, latestReleaseTag, identifyExistingInstall, rezip, unwrapExport, verifySideload } from './data/resourceFetch';
 import { isNotFoundError } from './data/serverApi';
 import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, mergeOptionalPins, isPinLocal, unsatisfiedProjectPinFor, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk, flavorOfMetadata } from './data/installed';
-import { TOOL_SLOT, preflightToolBook, recordMatchesResolution, resolutionRecord, resolveToolBook, resolveSetSlot } from './data/resolve';
+import { TOOL_SLOT, coverageFor, preflightToolBook, recordMatchesResolution, resolutionRecord, resolveToolBook, resolveSetSlot, samePath } from './data/resolve';
 import {
   deriveForProject,
   isDecided,
@@ -37,7 +37,7 @@ import { bootstrapVerse, linkWord, unlinkWord, moveWord, mergeAlignments, splitA
 import { linksFor, rebindSuggestions, sessionInputFor, trainingVersesFor } from './data/align/suggest';
 import { consequencesOfGatewayChange, applyGatewayChange, uncoveredByChange } from './data/gatewayChange';
 import { carryOverDecisions } from './data/carryOver';
-import { applyUpgrade, latestRelease, offerForSet, offerIsStale, reposOfSet } from './data/upgrade';
+import { applyUpgrade, latestRelease, offerForSet, offerIsStale, repinOffer, reposOfSet } from './data/upgrade';
 import { LADDER } from './data/burritoStore';
 import { TC_READY_TOPIC } from './data/serverApi';
 import { t } from './i18n';
@@ -283,10 +283,13 @@ const initial = () => ({
   commitErrorRepo: null,
   // Modals (the owner's design: creation, add-book, and settings are dialogs
   // over Home, not separate pages)
-  modal: null, // null | 'newProject' | 'addBook' | 'settings' | 'sources'
+  modal: null, // null | 'newProject' | 'addBook' | 'settings' | 'sources' | 'fix'
   np: null, // New Bible form
   ab: null, // Add-a-book form
   st: null, // Project-settings form
+  // #9: the guided fix screen for a pinned resource this machine lacks —
+  // { tool, pin, candidates: ResourcePin[], busy: 'fetch'|'sideload'|null, error, progress }
+  fix: null,
   // Source-texts (J3): gateway is null on the language step. `rows` come from
   // the LIVE platform catalog for the chosen org, never from app config.
   src: { gateway: null, book: 'TIT', rows: [], loading: false, error: null, dl: null, exclude: {} },
@@ -329,6 +332,7 @@ const initial = () => ({
 
 /** Monotonic identity for check sessions (see patchCheckSession). */
 let checkSessionSeq = 0;
+let fixSeq = 0; // #9: identity of the open guided-fix screen (completions bind to it)
 
 /** #129 (PR #135 review round 1): align-session identity and the align
  * rail's read ordering. The §5.1 writes themselves ride the align
@@ -944,12 +948,23 @@ export const __installReleaseSetForTests = (...args) => installReleaseSet(...arg
  * before anything is downloaded. */
 function assertOfferCurrent(st, offer, currentResources) {
   if (!currentResources) throw new Error('the project has no pin file');
-  if (st.upgrade.offersFor !== st.project?.repoPath || offerIsStale(offer, currentResources.languageSets?.[offer.rung])) {
+  // A re-pin offer (#9) is built from the open project's pins on the spot, so
+  // it carries no "checked for" project; its currency is the pin match alone.
+  const bound = offer.kind === 'repin' || st.upgrade.offersFor === st.project?.repoPath;
+  if (!bound || offerIsStale(offer, currentResources.languageSets?.[offer.rung])) {
     throw new Error(t('upgrade.stale'));
   }
 }
 
 const projectPathOf = (st) => st.project?.repoPath ?? null;
+
+/** #9: which rung pins `pin` in `slot` (D58 identity), or null. */
+function rungPinning(resources, slot, pin) {
+  return LADDER.find((rung) => {
+    const p = resources?.languageSets?.[rung]?.[slot];
+    return !!p && samePath(p.repoPath, pin.repoPath) && p.sha === pin.sha;
+  }) ?? null;
+}
 
 /** Why a previewed upgrade may not be applied now, as the slice patch to
  * dispatch — or null when it may. The preview was planned against ONE
@@ -2443,7 +2458,7 @@ export function AppProvider({ children }) {
         }
       },
 
-      closeModal: () => dispatch({ type: 'set', patch: { modal: null, np: null, ab: null, st: null } }),
+      closeModal: () => dispatch({ type: 'set', patch: { modal: null, np: null, ab: null, st: null, fix: null } }),
 
       setDraftUnit: (unit) => {
         const st = stateRef.current;
@@ -2708,10 +2723,21 @@ export function AppProvider({ children }) {
        * the new pins and open the confirmation. The pins move only in
        * confirmUpgrade, after the user has read the counts. */
       upgradeSet: async (rung) => {
-        const store = storeRef.current;
         const st = stateRef.current;
         const offer = st.upgrade.offers?.[rung];
-        if (!store || !offer?.upgrades.length) return null;
+        if (!offer?.upgrades.length) return null;
+        return a.applyOffer(offer);
+      },
+
+      /** Install what an offer needs, then plan the D36 carry-over against the
+       * moved pins and open the confirmation. Shared by the release upgrade
+       * (#256) and the guided fix's re-pin (#9), whose offer names a release
+       * this machine already holds. The pins move only in confirmUpgrade. */
+      applyOffer: async (offer) => {
+        const store = storeRef.current;
+        const st = stateRef.current;
+        const rung = offer.rung;
+        if (!store) return null;
         // The downloads are long and the modal stays closable: a project
         // switch meanwhile makes every later step stale (Codex round 2, the
         // #213 stillCurrent pattern). A stale completion dispatches nothing —
@@ -2749,6 +2775,139 @@ export function AppProvider({ children }) {
       },
 
       cancelUpgrade: () => dispatch({ type: 'patchUpgrade', patch: { preview: null } }),
+
+      // ---- #9: the guided fix screen for a pinned resource this machine lacks --
+      /** Open the fix screen for a tool whose preflight found the pinned
+       * resource missing. It names the pin and offers the three ways out
+       * (D72 point 6): fetch it, re-pin to an installed version of the same
+       * repo, or sideload it from a file. Nothing is written by opening. */
+      openFix: async (tool) => {
+        const st = stateRef.current;
+        const pre = st.preflight?.[tool];
+        if (!pre) return;
+        await a.refreshNet();
+        const { installed, coverage, resolutionError } = await a.resolutionContext();
+        // The pin to fix: what the preflight said it must fetch, else the pin it
+        // resolved to, else — offline, with the pinned copy's coverage unknown
+        // (the preflight's `unfetched` branch names nothing) — the pin THAT
+        // branch would have named: the first slot pin of the ladder whose
+        // coverage is unknown and which this machine lacks (Codex round 1: a
+        // pin recorded as NOT covering the book must never be offered).
+        const slot = TOOL_SLOT[tool];
+        const pin = pre.needs ?? pre.resolution?.pin
+          ?? LADDER.map((rung) => st.projectPins?.languageSets?.[rung]?.[slot])
+            .filter((p) => p && coverageFor(coverage, p).source === 'none')
+            .find((p) => !isPinLocal(installed, p))
+          ?? null;
+        if (!pin) return;
+        const rung = rungPinning(st.projectPins, slot, pin) ?? 'primary';
+        // The re-pin candidates: installed copies of the SAME repo at another
+        // commit (D58 identity). An identity-read outage is stated, not "none".
+        // One dispatch: the slice must exist before any patchFix can land.
+        const candidates = Object.values(installed).filter(
+          (p) => samePath(p.repoPath, pin.repoPath) && !!p.sha && p.sha !== pin.sha,
+        );
+        // `id` binds every later completion to THIS screen (Codex round 1): a
+        // fetch that finishes after the user closed it and opened another
+        // dialog must not close or patch that dialog.
+        dispatch({
+          type: 'set',
+          patch: { modal: 'fix', fix: { id: ++fixSeq, tool, pin, rung, candidates, busy: null, error: resolutionError ?? null, progress: null } },
+        });
+      },
+
+      /** Patch the fix screen — only while it is still the screen `id` names. */
+      patchFix: (id, patch) => {
+        const fix = stateRef.current.fix;
+        if (fix && fix.id === id) dispatch({ type: 'set', patch: { fix: { ...fix, ...patch } } });
+      },
+
+      /** Fetch the pinned identity itself (sb-zip + D23b sha gate), through the
+       * same install path a project-pin download takes. */
+      fixFetch: async () => {
+        const fix = stateRef.current.fix;
+        if (!fix || fix.busy) return;
+        const { id } = fix;
+        if (!stateRef.current.netEnabled) {
+          a.patchFix(id, { error: t('fix.offline') });
+          return;
+        }
+        a.patchFix(id, { busy: 'fetch', error: null, progress: t('sources.progress', { repo: fix.pin.repoPath.split('/').pop() }) });
+        try {
+          const local = new Set(await api.listLocalRepos());
+          await installPinnedRow(api, { repo: fix.pin.repoPath.split('/').pop() }, fix.pin, local, localRepoPathFromRepoPath(fix.pin.repoPath));
+          await a.finishFix(id);
+        } catch (error) {
+          a.patchFix(id, { busy: null, progress: null, error: t('fix.failed', { reason: String(error?.message || error) }) });
+        }
+      },
+
+      /** Sideload: a Scripture Burrito zip from a file. Verified against the
+       * pin BEFORE anything is installed (verifySideload); a wrapped DCS
+       * export or a flat archive both unwrap. */
+      fixSideload: async (file) => {
+        const fix = stateRef.current.fix;
+        if (!fix || fix.busy || !file) return;
+        const { id } = fix;
+        a.patchFix(id, { busy: 'sideload', error: null, progress: t('fix.sideload.reading', { name: file.name }) });
+        try {
+          const unwrapped = unwrapExport(new Uint8Array(await file.arrayBuffer()));
+          verifySideload(fix.pin, unwrapped);
+          const local = new Set(await api.listLocalRepos());
+          const target = localRepoPathFromRepoPath(fix.pin.repoPath);
+          // Same occupied-path rule as installPinnedRow (round 20): the exact
+          // identity installs side by side rather than over another commit.
+          const installPath = local.has(target) ? `${target}--${fix.pin.sha.slice(0, 12)}` : target;
+          await api.postZippedBurrito(installPath, rezip(unwrapped.files));
+          const flavor = fix.pin.flavor || flavorOfMetadata(await api.getMetadataRaw(installPath));
+          await recordInstalled(api, STORAGE_ID, installPath, {
+            repoPath: fix.pin.repoPath,
+            ...(fix.pin.version ? { version: fix.pin.version } : {}),
+            sha: fix.pin.sha,
+            flavor,
+          });
+          await a.finishFix(id);
+        } catch (error) {
+          a.patchFix(id, { busy: null, progress: null, error: t('fix.failed', { reason: String(error?.message || error) }) });
+        }
+      },
+
+      /** Re-pin: move the slot(s) pinning the missing identity onto an
+       * installed version of the same repo — the #256 offer flow, so the
+       * D36 counts are shown and confirmed before the pins move. The fix
+       * screen stays open until the confirmation exists (Codex round 1): a
+       * planning failure is shown HERE, with the other two ways still at hand. */
+      fixRepin: async (candidate) => {
+        const store = storeRef.current;
+        const fix = stateRef.current.fix;
+        if (!store || !fix || fix.busy) return;
+        const { id } = fix;
+        a.patchFix(id, { busy: 'repin', error: null });
+        const current = await store.readResources().catch(() => null);
+        const offer = current ? repinOffer(current, fix.rung, fix.pin, candidate) : null;
+        if (!offer?.upgrades.length) {
+          a.patchFix(id, { busy: null, error: t('upgrade.stale') });
+          return;
+        }
+        const next = await a.applyOffer(offer);
+        if (!next) {
+          a.patchFix(id, { busy: null, error: stateRef.current.upgrade.error ?? t('upgrade.stale') });
+          return;
+        }
+        // The confirmation exists: it takes over from this screen (one dialogue
+        // at a time — two stacked layers fight over focus and scroll).
+        if (stateRef.current.modal === 'fix' && stateRef.current.fix?.id === id) a.closeModal();
+      },
+
+      /** The resource is on this machine now: refresh what the machine holds
+       * and the preflight so the tool card turns ready; close the screen only
+       * if it is still the one this operation started from. */
+      finishFix: async (id) => {
+        dispatch({ type: 'set', patch: { installEpoch: stateRef.current.installEpoch + 1 } });
+        await a.refreshCheckable();
+        await a.runPreflight();
+        if (stateRef.current.modal === 'fix' && stateRef.current.fix?.id === id) a.closeModal();
+      },
 
       /** Move the set's pins and reconcile the decisions — ONE journal action,
        * the same one the gateway change publishes (issue #62). Refused while
@@ -3757,7 +3916,7 @@ export function AppProvider({ children }) {
             textDirection: w.dir,
             textFont: w.font,
             languageName: w.langName.trim() || null,
-          });
+          }, null); // #9: a first write — the file must still be absent
           await store.commit('Project created (tC4 Increment 1)');
           await markUsed(repoPath); // creation counts as use (owner, 2026-07-31)
           await refreshProjects();
@@ -3889,13 +4048,17 @@ export function AppProvider({ children }) {
         try {
           const store = new JournalingStore({ api });
           await store.open(f.repoPath);
-          const settings = (await store.readSettings()) || { schemaVersion: 1 };
+          // #9: compare-and-swap like every other sidecar — the md5 of what
+          // was read travels with the write, and a concurrent editor's
+          // change is refused (StaleWriteError), never overwritten.
+          const { value: current, md5 } = await store.readSettingsWithMd5();
+          const settings = current || { schemaVersion: 1 };
           await store.writeSettings({
             ...settings,
             schemaVersion: 1,
             textDirection: f.dir,
             textFont: f.font,
-          });
+          }, md5);
           await store.commit('Update settings (tC4)');
           await refreshProjects();
           a.closeModal();

@@ -388,6 +388,25 @@ describe('#62 mapping: writeAlignments diffs the affected records', () => {
     await expectVerified(api);
   });
 
+  it('#9: a stale settings.json write is refused before anything publishes; the md5 the read handed out is accepted', async () => {
+    const { rig, store } = await setup();
+    const count = (await segmentsOf(rig)).length;
+    const before = JSON.parse(rig.repos.get(REPO)?.files.get('checking/settings.json') ?? '');
+    // Stale: the document changed under this writer (a wrong md5 stands in for
+    // the concurrent edit) — refused, nothing published, the file untouched.
+    await expect(
+      store.writeSettings({ schemaVersion: 1, textDirection: 'rtl', textFont: 'Charis SIL' }, '不-a-real-md5'),
+    ).rejects.toThrow(StaleWriteError);
+    expect(await segmentsOf(rig)).toHaveLength(count);
+    expect(JSON.parse(rig.repos.get(REPO)?.files.get('checking/settings.json') ?? '')).toEqual(before);
+    // Fresh: the md5 of the bytes just read is the ticket for the write.
+    const { value, md5 } = await store.readSettingsWithMd5();
+    expect(value?.textDirection).toBe('ltr');
+    await store.writeSettings({ ...(value as object), schemaVersion: 1, textDirection: 'rtl' } as never, md5);
+    expect((await store.readSettings())?.textDirection).toBe('rtl');
+    expect((await segmentsOf(rig)).length).toBeGreaterThan(count);
+  });
+
   it('a stale compare-and-swap is rejected before anything publishes', async () => {
     const { rig, store } = await setup();
     const count = (await segmentsOf(rig)).length;
