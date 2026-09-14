@@ -93,7 +93,13 @@ function ResumeCard({ edit, projects }) {
   if (!project) return null;
   const resume = async () => {
     await actions.openProject(edit.repoPath, edit.book);
-    if (edit.chapter && edit.chapter !== 1) actions.setChapter(edit.chapter);
+    if (edit.chapter && edit.chapter !== 1) await actions.setChapter(edit.chapter);
+    // #268: restore the mode (and Check tool) last used; absent mode → Translate.
+    if (edit.mode === 'read') await actions.go('read');
+    if (edit.mode === 'check') {
+      await actions.go('check');
+      if (edit.tool) await actions.resumeCheckTool(edit.tool);
+    }
   };
   const dir = project.scriptDirection === 'rtl' ? 'rtl' : 'ltr';
   return (
