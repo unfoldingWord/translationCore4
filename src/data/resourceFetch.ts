@@ -328,6 +328,26 @@ const verifyExportRevision = async (
   }
 };
 
+/** #9 (guided fix, sideload): a Scripture Burrito zip the user chose from a
+ * file is installable for a pin ONLY when the export's own declared revision
+ * IS the pinned commit (D58: the sha is the identity; D23b: verify at every
+ * import). A pin without a sha is satisfiable by no file (D59). Pure; throws
+ * with the reason, and the caller installs nothing on a throw. */
+export const verifySideload = (pin: FetchPin, unwrapped: UnwrappedBurrito): void => {
+  if (!pin.sha) {
+    throw new Error(`${pin.repoPath} is pinned without a commit, so no file can be verified against it — not installed`);
+  }
+  if (!unwrapped.revision) {
+    throw new Error(`the chosen file declares no revision, so it cannot be verified against ${pin.repoPath} — not installed`);
+  }
+  if (unwrapped.revision !== pin.sha) {
+    throw new Error(
+      `the chosen file is ${pin.repoPath} at ${unwrapped.revision.slice(0, 12)}…, but the project pins ` +
+        `${pin.sha.slice(0, 12)}…${pin.version ? ` (${pin.version})` : ''} — not installed`,
+    );
+  }
+};
+
 /** Fetch one pinned resource and install it. Refuses rather than guessing:
  * a pin whose declared SHA does not match the export's own metadata is never
  * installed (D23b — "verify the SHA at each import"). */

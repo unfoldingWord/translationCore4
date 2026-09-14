@@ -82,11 +82,13 @@ function ToolNeeds({ pre }) {
           {rung ? ` · ${t(`check.rung.${rung}`)}` : ''}
         </p>
       )}
-      {pre.state === 'fetch' && (
-        <Button size="sm" onClick={actions.openSources}>{t('check.fix.download')}</Button>
-      )}
-      {pre.state === 'unavailable' && (
-        <Button size="sm" onClick={actions.goOnline} style={{ background: 'var(--uw-kindle)' }}>{t('sources.goOnline')}</Button>
+      {/* #9: a pinned resource this machine lacks opens the guided fix screen —
+        * fetch it, re-pin to an installed version, or sideload it from a file. */}
+      {(pre.state === 'fetch' || pre.state === 'unavailable') && (
+        <Button size="sm" data-testid={`fix-${pre.tool}`} onClick={() => actions.openFix(pre.tool)}
+          style={pre.state === 'unavailable' ? { background: 'var(--uw-kindle)' } : undefined}>
+          {t('check.fix.open')}
+        </Button>
       )}
       {(pre.state === 'unpinned' || pre.state === 'not-covered') && (
         <Button size="sm" variant="secondary" onClick={actions.openSources} style={{ color: 'var(--uw-ocean)' }}>{t('check.fix.getResources')}</Button>

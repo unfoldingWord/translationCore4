@@ -83,12 +83,15 @@ export default function UpgradeSet() {
   const lang = preview.next.languageSets[preview.rung]?.gatewayLanguage?.languageId ?? '';
 
   return (
-    <Modal data-testid="upgrade-confirm" title={t('upgrade.confirmTitle', { set: t(`upgrade.set.${preview.rung}`, { lang }) })}
+    <Modal data-testid="upgrade-confirm" data-kind={preview.offer.kind ?? 'upgrade'}
+      title={preview.offer.kind === 'repin'
+        ? t('fix.repin.confirmTitle', { set: t(`upgrade.set.${preview.rung}`, { lang }) })
+        : t('upgrade.confirmTitle', { set: t(`upgrade.set.${preview.rung}`, { lang }) })}
       closeLabel={t('common.close')} onClose={actions.cancelUpgrade}
       footer={<>
         <Button variant="secondary" onClick={actions.cancelUpgrade} data-testid="upgrade-cancel">{t('upgrade.keep')}</Button>
         <Button onClick={() => actions.confirmUpgrade(preview)} data-testid="upgrade-apply" disabled={blocked} style={applyStyle(blocked, harmless)}>
-          {t('upgrade.apply')}
+          {preview.offer.kind === 'repin' ? t('fix.repin.apply') : t('upgrade.apply')}
         </Button>
       </>}>
       <div data-harmless={harmless ? '1' : '0'} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

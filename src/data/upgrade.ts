@@ -91,7 +91,32 @@ export interface SetOffer {
   upgrades: RepoUpgrade[];
   /** Repos already at the newest release. */
   current: string[];
+  /** `repin` (#9, guided fix): the target is a release this machine already
+   * holds, chosen to replace a pinned one it lacks — the same move, the same
+   * D36 carry-over, no download. Absent = a release upgrade. */
+  kind?: 'repin';
 }
+
+/** #9 (guided fix, re-pin): the offer that moves every slot of `rung` pinning
+ * the missing identity `from` onto the installed identity `to` (same repo,
+ * another commit). Empty when the rung pins `from` nowhere. */
+export const repinOffer = (resources: ResourcesFile, rung: Rung, from: ResourcePin, to: ResourcePin): SetOffer => {
+  const set = resources.languageSets?.[rung];
+  const slots = SET_SLOTS.filter((slot) => {
+    const pin = set?.[slot];
+    return !!pin && samePath(pin.repoPath, from.repoPath) && pin.sha === from.sha;
+  });
+  const upgrades: RepoUpgrade[] = slots.length
+    ? [{
+        repoPath: from.repoPath,
+        slots: [...slots],
+        from,
+        to: { repoPath: from.repoPath, ...(to.version ? { version: to.version } : {}), sha: to.sha, flavor: from.flavor || to.flavor },
+        publishedAt: null,
+      }]
+    : [];
+  return { rung, upgrades, current: [], kind: 'repin' };
+};
 
 /** Compute one set's offer from what DCS reported per repo. A repo is offered
  * when the newest release names a commit other than the pinned one (D58: the
