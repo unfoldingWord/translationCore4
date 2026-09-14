@@ -43,11 +43,11 @@ import { samePath } from '../resolve';
 import { JournalStore } from './journalStore';
 import { idbKvStore, type KvStore } from './identity';
 import { sealAction, type JournalEvent } from './seal';
+import { defaultFoldRunner, type FoldRunner } from './foldRunner';
 import {
   decompose,
   derivedProjections,
   EMPTY_CHECKPOINT_DOCUMENTS,
-  fold,
   isUnjournaledIngredient,
   normalizeEvent,
   projectAlignments,
@@ -283,6 +283,9 @@ export interface JournalingStoreInit {
   kv?: KvStore;
   /** Injectable physical clock for tests; defaults to Date.now. */
   now?: () => number;
+  /** Where the fold runs (#94): a Web Worker in the browser by default, inline
+   * in Node. Tests inject a runner to shape its timing. */
+  foldRunner?: FoldRunner;
 }
 
 interface OpenOptions {
@@ -332,12 +335,17 @@ export class JournalingStore implements BurritoStore {
   private readonly raw: HttpStore;
   private readonly kv: KvStore;
   private readonly now: () => number;
+  private readonly runner: FoldRunner;
 
   private boundRepoPath: string | null = null;
   private journal: JournalStore | null = null;
   /** The accepted-event union this session observed (open + own publishes). */
   private events: JournalEvent[] = [];
   private foldCache: FoldOutput | null = null;
+  /** The last COMPLETED fold (#94): what a synchronous reader sees while a
+   * newer fold is still computing in the worker. Replaced, never cleared,
+   * until the next open. */
+  private lastFold: FoldOutput | null = null;
   /** Derive-time (tool, BOOK) resolution records (§5.2/D30) — checkpoint input. */
   private readonly resolutions = new Map<string, Record<string, unknown>>();
   /** Diagnostics of the last open(), for tests and the UI. */
@@ -348,6 +356,12 @@ export class JournalingStore implements BurritoStore {
     this.raw = new HttpStore({ api: this.api });
     this.kv = init.kv ?? idbKvStore();
     this.now = init.now ?? (() => Date.now());
+    this.runner = init.foldRunner ?? defaultFoldRunner();
+  }
+
+  /** Release the fold worker (#94). The store is unusable afterwards. */
+  dispose(): void {
+    this.runner.dispose();
   }
 
   get repoPath(): string | null {
@@ -371,9 +385,30 @@ export class JournalingStore implements BurritoStore {
     return this.journal;
   }
 
+  /** The fold of the current event set, computed by the runner (#94: off the
+   * main thread in the browser) and cached until the set changes. Every path
+   * that changes `this.events` awaits this before reading the fold again. */
+  private async ensureFold(): Promise<FoldOutput> {
+    const out = this.foldCache ?? (await this.runner.fold(this.events));
+    this.adoptFold(out);
+    return out;
+  }
+
+  private adoptFold(out: FoldOutput): void {
+    this.foldCache = out;
+    this.lastFold = out;
+  }
+
+  /** The fold for a reader: the current one, or — while a newer fold is in
+   * the worker (Codex round 1) — the last completed one, so a synchronous
+   * reader during a save sees the state just before it rather than throwing.
+   * Mutation paths never take that branch: each awaits ensureFold first. A
+   * store that never folded (no open) is a programming error, stated — never a
+   * fold on this thread. */
   private foldNow(): FoldOutput {
-    this.foldCache ??= fold(this.events);
-    return this.foldCache;
+    const out = this.foldCache ?? this.lastFold;
+    if (!out) throw new Error('JournalingStore: the fold is not ready — call open(repoPath) first');
+    return out;
   }
 
   private queue<T>(fn: () => Promise<T>): Promise<T> {
@@ -742,6 +777,7 @@ export class JournalingStore implements BurritoStore {
     await this.mustJournal().publish(stamped);
     this.events.push(...stamped.map(normalizeEvent));
     this.foldCache = null;
+    await this.ensureFold();
     // INTERIM round-5 rule 3 (REGISTER STAMPS AFTER ACCEPTANCE ONLY): the
     // in-memory resolution register moves only once the action is PUBLISHED —
     // a seal-rejected or otherwise failed publish leaves no trace in it, so a
@@ -875,7 +911,20 @@ export class JournalingStore implements BurritoStore {
           `valid segment (${conflicts.map((r) => r.ts).join(', ')}) — diffing over it would ` +
           `build on a fold this actor cannot explain (R-8.1.5/R-8.1.8)`,
       );
-    if (replayed.length === 0) return;
+    // A mutation diffs against the CURRENT fold, never the snapshot synchronous
+    // readers may see (Codex round 2): a worker refusal after an accepted
+    // publish leaves the cache cold and lastFold behind — refold here (or fail
+    // again, loudly) before any diff is computed. A cold cache here means
+    // exactly that: the failed save's derived paths were never regenerated,
+    // so its ledger intent is still outstanding — converge it now, as the
+    // replayed branch below does, or a same-value retry that diffs to nothing
+    // would report success over stale files (Codex round 3).
+    if (replayed.length === 0) {
+      const cold = this.foldCache === null;
+      await this.ensureFold();
+      if (cold) await this.installAndConverge([]);
+      return;
+    }
     // 'republished' AND 'already-published' both prove the journal holds an
     // accepted action the in-memory fold may lack: 'already-published' is the
     // lost-response window — publish() wrote the segment, threw before the
@@ -884,6 +933,7 @@ export class JournalingStore implements BurritoStore {
     const union = await journal.readUnion();
     this.events = union.events;
     this.foldCache = null;
+    await this.ensureFold();
     // The replayed action's derived paths are still the FAILED attempt's disk
     // state. A retry that then diffs to nothing returns before any
     // installAndConverge, so converge the outstanding ledger paths here —
@@ -987,6 +1037,7 @@ export class JournalingStore implements BurritoStore {
     this.journal = new JournalStore({ api: this.api, repoPath, kv: this.kv, now: this.now });
     this.events = [];
     this.foldCache = null;
+    this.lastFold = null; // a new project: no snapshot of the old one may leak (#94)
     this.resolutions.clear();
     // Actor repair + the outbox half of the HLC ratchet (issue #62 / #61). The
     // segment half is DEFERRED to the union read below, so an open scans the
@@ -1077,6 +1128,7 @@ export class JournalingStore implements BurritoStore {
     } else {
       this.events = union.events;
       this.foldCache = null;
+      await this.ensureFold();
       await this.harvestResolutions();
       const harvested = new Map(this.resolutions);
       // The register regenerates under the LEDGER OVERLAY: per (tool, BOOK)
@@ -1246,10 +1298,11 @@ export class JournalingStore implements BurritoStore {
       return;
     }
     const normalizedSeed = seedEvents.map(normalizeEvent);
-    this.assertSeedCandidate(normalizedSeed, unionEvents, disk);
-    await this.publishSeedCandidate(journal, seedEvents, normalizedSeed, seedSource, seedVrsName);
+    const seedFold = await this.runner.fold(normalizedSeed);
+    this.assertSeedCandidate(seedFold, normalizedSeed, unionEvents, disk);
+    await this.publishSeedCandidate(journal, seedEvents, normalizedSeed, seedFold, seedSource, seedVrsName);
     this.events = normalizedSeed;
-    this.foldCache = null;
+    this.adoptFold(seedFold); // the fold of exactly this set — no second fold
     await this.finishSeedConvergence(disk, report);
   }
 
@@ -1284,6 +1337,7 @@ export class JournalingStore implements BurritoStore {
     if (unionEvents.length === 0) return false;
     this.events = unionEvents;
     this.foldCache = null;
+    await this.ensureFold();
     if (this.seedStateProblems(this.foldNow(), disk).length !== 0) return false;
     await this.finishSeedConvergence(disk, report);
     return true;
@@ -1319,11 +1373,12 @@ export class JournalingStore implements BurritoStore {
   }
 
   private assertSeedCandidate(
+    seedFold: FoldOutput,
     normalizedSeed: JournalEvent[],
     unionEvents: JournalEvent[],
     disk: DiskInventory,
   ): void {
-    const mismatches = this.seedStateProblems(fold(normalizedSeed), disk);
+    const mismatches = this.seedStateProblems(seedFold, disk);
     if (mismatches.length) throw new SeedMismatchError(this.mustRepo(), mismatches);
     if (unionEvents.length === 0) return;
     const candidate = new Map(normalizedSeed.map((e) => [e.ts, canonical(e)]));
@@ -1340,6 +1395,7 @@ export class JournalingStore implements BurritoStore {
     journal: JournalStore,
     seedEvents: JournalEvent[],
     normalizedSeed: JournalEvent[],
+    seedFold: FoldOutput,
     seedSource: 'creation' | 'sidecar-migration',
     seedVrsName: string | undefined,
   ): Promise<void> {
@@ -1348,7 +1404,7 @@ export class JournalingStore implements BurritoStore {
     await this.appendIntent({
       ts: normalizedSeed[0].ts,
       kind: 'seed',
-      affectedPaths: this.derivedPathsOf(fold(normalizedSeed)),
+      affectedPaths: this.derivedPathsOf(seedFold),
       seed: seedMeta,
     });
     for (const chunk of await this.chunkForSealing(seedEvents)) await journal.stage(chunk);
@@ -1605,18 +1661,18 @@ export class JournalingStore implements BurritoStore {
     );
   }
 
-  private prefixMatchesDisk(
+  private async prefixMatchesDisk(
     actions: Array<{ actor: string; ts: string; events: JournalEvent[] }>,
     resolutionRecords: IntentRecord[],
     harvested: Map<string, Record<string, unknown>>,
     disk: DiskInventory,
-  ): boolean {
+  ): Promise<boolean> {
     const maxPrefix = 8;
     for (let drop = 1; drop <= Math.min(maxPrefix, actions.length); drop += 1) {
       const prefixEvents = actions.slice(0, actions.length - drop).flatMap((action) => action.events);
       let prefixFold: FoldOutput;
       try {
-        prefixFold = fold(prefixEvents);
+        prefixFold = await this.runner.fold(prefixEvents);
       } catch {
         break;
       }
@@ -1676,6 +1732,7 @@ export class JournalingStore implements BurritoStore {
       await journal.publish(events);
       this.events.push(...events.map(normalizeEvent));
       this.foldCache = null;
+      await this.ensureFold();
       lastReconcileTs = events[events.length - 1].ts;
       report.reconciledBooks.push(book);
     }
@@ -1755,7 +1812,7 @@ export class JournalingStore implements BurritoStore {
     // by the trailing action(s)) -> regenerate forward. Bounded walk. This
     // branch survives even a lost ledger record: the journal itself still
     // explains the lag.
-    if (this.prefixMatchesDisk(actions, resolutionRecords, harvested, disk)) {
+    if (await this.prefixMatchesDisk(actions, resolutionRecords, harvested, disk)) {
       await regenerateForward();
       return;
     }
@@ -2547,7 +2604,7 @@ export class JournalingStore implements BurritoStore {
 
   private async commitQueued(message: string): Promise<void> {
     const repo = this.mustRepo();
-    const foldOut = this.foldNow();
+    const foldOut = await this.ensureFold(); // never checkpoint a snapshot (Codex round 2)
     this.assertCheckpointMetadataWritable(foldOut);
     const projections = await this.checkpointProjections(repo, foldOut);
     const ledgerPaths = await this.checkpointLedgerPaths();

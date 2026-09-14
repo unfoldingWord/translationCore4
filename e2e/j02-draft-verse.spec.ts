@@ -429,8 +429,9 @@ test.describe('J2 — a translator drafts a verse', () => {
       // Playwright's request event does not cover WebSockets; record them too (the dev
       // client's HMR socket is local; a remote one would be a dependency).
       page.on('websocket', (ws) => seen(ws.url(), 'ws:'));
-      // A worker's requests bypass the page listeners (Playwright detaches shared-worker
-      // targets), so any worker the client constructs is recorded and refused below.
+      // A SharedWorker's requests bypass the page listeners (Playwright detaches
+      // shared-worker targets), so every worker the client constructs is recorded and
+      // judged below — only a dedicated same-origin worker is admitted.
       await page.addInitScript(() => {
         const w = window as unknown as { __workers: string[]; Worker: typeof Worker; SharedWorker: typeof SharedWorker };
         w.__workers = [];
@@ -471,11 +472,15 @@ test.describe('J2 — a translator drafts a verse', () => {
         }, { timeout: 10_000 })
         .toBe(OFFLINE_DRAFT);
       await page.waitForTimeout(1000);
-      // No worker of any kind: a worker's requests bypass the page's request event, so
-      // the absence is asserted rather than assumed (constructed workers were recorded
-      // by the init script; service workers are read from their registry).
+      // No worker whose traffic could escape the page's request event: a SharedWorker or
+      // a cross-origin worker is refused outright (constructed workers were recorded by
+      // the init script; service workers are read from their registry). A DEDICATED
+      // worker loaded from the client's own origin is the one kind admitted — since #94
+      // the fold runs in one — because Playwright reports a dedicated worker's requests
+      // through the page, so the host assertion below covers what it talks to.
       const workers = await page.evaluate(() => (window as unknown as { __workers: string[] }).__workers);
-      expect(workers, 'workers constructed by the client').toEqual([]);
+      const escaping = workers.filter((w) => !w.startsWith('Worker http://localhost:5199/'));
+      expect(escaping, 'workers whose traffic the page cannot observe').toEqual([]);
       const serviceWorkers = await page.evaluate(() =>
         'serviceWorker' in navigator ? navigator.serviceWorker.getRegistrations().then((r) => r.length) : 0);
       expect(serviceWorkers, 'service workers registered').toBe(0);
