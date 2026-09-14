@@ -48,6 +48,11 @@ export { SUITE_VERSION }; // the AddBook badge imports it from here
 const AppCtx = createContext(null);
 const STORAGE_ID = 'uw-tc4';
 
+/** #94: release the fold worker of the store a ref holds, if any. */
+const disposeStore = (ref) => {
+  ref.current?.dispose?.();
+};
+
 /** J12 (#256): the upgrade slice at rest — the value it resets to when a
  * project opens or closes, so an offer never outlives the project it was
  * computed for (Codex review round 1). */
@@ -1414,6 +1419,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
     const summary = await store.open(repoPath, { onProgress });
     if (superseded()) return; // a newer open owns the refs
     dispatch({ type: 'set', patch: { opening: progress('prepare') } });
+    disposeStore(storeRef); // #94: the previous project's fold worker
     storeRef.current = store;
     structuralRef.current = new Set();
     schedulerRef.current = new SaveScheduler({
@@ -4502,6 +4508,7 @@ export function AppProvider({ children }) {
         suggestPendingRef.current = false;
         checkTargetsRef.current = new Map();
         noteTargetsRef.current = new Map();
+        disposeStore(storeRef); // #94: the fold worker goes with the project
         storeRef.current = null;
         // A2 (2026-08-27 adversarial review): understand + projectPins are
         // PROJECT state — leaving them set lets project B render (and journal
