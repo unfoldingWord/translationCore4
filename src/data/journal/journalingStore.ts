@@ -914,9 +914,15 @@ export class JournalingStore implements BurritoStore {
     // A mutation diffs against the CURRENT fold, never the snapshot synchronous
     // readers may see (Codex round 2): a worker refusal after an accepted
     // publish leaves the cache cold and lastFold behind — refold here (or fail
-    // again, loudly) before any diff is computed.
+    // again, loudly) before any diff is computed. A cold cache here means
+    // exactly that: the failed save's derived paths were never regenerated,
+    // so its ledger intent is still outstanding — converge it now, as the
+    // replayed branch below does, or a same-value retry that diffs to nothing
+    // would report success over stale files (Codex round 3).
     if (replayed.length === 0) {
+      const cold = this.foldCache === null;
       await this.ensureFold();
+      if (cold) await this.installAndConverge([]);
       return;
     }
     // 'republished' AND 'already-published' both prove the journal holds an

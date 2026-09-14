@@ -237,7 +237,15 @@ describe('#94 — a worker refusal after an accepted publish never lets a later 
     // A→B: the publish is accepted, then the worker refuses the fold.
     failNext = true;
     await expect(store.writeSettings({ schemaVersion: 1, textDirection: 'ltr', textFont: 'Charis SIL' })).rejects.toThrow(/simulated/);
-    expect(segments()).toBe(before + 1); // B is journaled
+    expect(segments()).toBe(before + 1); // B is journaled…
+    expect(settings().textFont).toBe('Noto Sans (default)'); // …but never materialized
+
+    // The same-value retry (Codex round 3): B is already journaled, so nothing
+    // new publishes — but the failed save's outstanding paths must converge, so
+    // the disk shows B before the retry reports success.
+    await store.writeSettings({ schemaVersion: 1, textDirection: 'ltr', textFont: 'Charis SIL' });
+    expect(segments()).toBe(before + 1);
+    expect(settings().textFont).toBe('Charis SIL');
 
     // B→A: must be a real change against the CURRENT fold (B), not a no-op against the stale snapshot (A).
     await store.writeSettings({ schemaVersion: 1, textDirection: 'ltr', textFont: 'Noto Sans (default)' });
