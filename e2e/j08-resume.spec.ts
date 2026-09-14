@@ -80,6 +80,8 @@ async function expectTranslateAt(page: Page, chapter: string, draftedText: strin
 }
 
 async function draftFirstStub(page: Page, text: string) {
+  // #238: Draft defaults to section mode; Start this verse only exists on Verse.
+  await page.getByRole('tab', { name: 'Verse', exact: true }).click();
   await page.getByRole('button', { name: 'Start this verse' }).first().click();
   const editor = page.getByRole('textbox', { name: /Verse/ });
   await editor.fill(text);
@@ -311,7 +313,8 @@ test.describe('J8 — the Increment 4 journey: open, resume, and share a project
         await expect(page.getByTestId('home-checkpoint-error')).toHaveCount(0);
       });
 
-      await test.step('reload the app and resume from Home into Translate at Titus 2', async () => {
+      await test.step('reload the app and resume from Home into Check at Titus 2', async () => {
+        // #268: the last act was a Check decision, so Resume reopens that tool.
         await page.reload();
         await expectAllProjectsListed(page);
         const card = page.getByTestId('resume-card');
@@ -319,8 +322,8 @@ test.describe('J8 — the Increment 4 journey: open, resume, and share a project
         await expect(card).toContainText(SEEDED_NAME);
         await expect(card).toContainText('Titus 2');
         await card.click();
-        await expect(page.getByText(drafted)).toBeVisible({ timeout: 30_000 });
-        await expectTranslateAt(page, '2', drafted);
+        await expect(page.getByRole('tab', { name: 'Check', exact: true })).toHaveAttribute('aria-selected', 'true');
+        await expect(page.getByTestId('check-session')).toBeVisible({ timeout: 30_000 });
       });
     },
   );

@@ -338,7 +338,7 @@ const initial = () => ({
   // 'training' | 'ready' | 'none' | 'few' | 'error'; `testament` names the model
   // the status is about (one model per original language, owner ruling 2026-09-12).
   alignSuggest: { status: 'off', testament: null, verses: 0, error: null },
-  lastEdit: null, // { repoPath, book, chapter, verse, snippet, at } — the Home Resume card; per-client settings, never the project
+  lastEdit: null, // { repoPath, book, chapter, verse, snippet, at, mode?, tool? } — the Home Resume card; per-client settings, never the project. mode: 'read'|'draft'|'check'; tool only when mode is 'check'.
   tick: 0,
 });
 
@@ -1389,6 +1389,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
     apiClient,
     makeStore,
     markUsed,
+    recordLastEdit,
   } = ctx;
   const saveRefs = saveRefsOf(ctx);
   const seq = ++openProjectSeqRef.current;
@@ -1441,7 +1442,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
     // splice degenerates to the whole value.
     noteTargetsRef.current = new Map();
     noteSchedulerRef.current = new SaveScheduler({
-      writeBook: makeNoteWriter({ noteTargetsRef, dispatch, apiClient }),
+      writeBook: makeNoteWriter({ noteTargetsRef, dispatch, apiClient, recordLastEdit }),
       splice: (_raw, _chapter, _verse, body) => body,
       // Round 31 hardening: the rest-claim gate lives IN the scheduler — a
       // retained failure reconciles the store's staged intents (a rejecting
@@ -2059,7 +2060,7 @@ export const noteKeyFor = (repoPath, book, chapter, verse) =>
  * scheduler retains the buffer and shows the error (FR-32) — the §8.5 journal
  * never receives a guessed reference. On success the persisted text is echoed
  * through the noteSaved reducer action (S1 atomic merge). */
-function makeNoteWriter({ noteTargetsRef, dispatch, apiClient }) {
+function makeNoteWriter({ noteTargetsRef, dispatch, apiClient, recordLastEdit = undefined }) {
   // The last text THIS writer journaled per key — what is durably at the
   // head. A refusal reports it back (round 24) so the scheduler's buffer
   // never records a refused snapshot as saved.
@@ -2106,6 +2107,16 @@ function makeNoteWriter({ noteTargetsRef, dispatch, apiClient }) {
       key: `${chapter}:${verse}`,
       text: text.trim(),
       ts: `local-${Date.now()}`,
+    });
+    // #268: an Understand comment is a Resume target (mode 'read').
+    recordLastEdit?.({
+      repoPath,
+      book,
+      chapter: ref.chapter,
+      verse: ref.verse,
+      snippet: text.trim().slice(0, 90),
+      mode: 'read',
+      at: Date.now(),
     });
   };
 }
@@ -2176,6 +2187,59 @@ function makeAlignWriter({ store }) {
     const { md5 } = await store.readAlignmentsWithMd5(book);
     await store.writeAlignments(book, JSON.parse(json), md5);
   };
+}
+
+/** #268: the previous Resume record's verse/snippet, reused only when that
+ * record names this project and book; otherwise nothing. */
+function priorEditFor(lastEdit, repoPath, book) {
+  if (!lastEdit || lastEdit.repoPath !== repoPath || lastEdit.book !== book) return {};
+  return { verse: lastEdit.verse, snippet: lastEdit.snippet };
+}
+
+/** Preflight entry is ready to open a Check tool (pin resolved). */
+function isCheckToolReady(pre) {
+  return Boolean(pre && pre.state === 'ready' && pre.resolution?.pin);
+}
+
+/** #268: openProject's pin load is detached — Resume into Check waits for it. */
+function waitForProjectPins(stateRef, ms = 20_000) {
+  const deadline = Date.now() + ms;
+  return new Promise((resolve) => {
+    const tick = () => {
+      if (stateRef.current.projectPinsLoaded || Date.now() >= deadline) {
+        resolve();
+        return;
+      }
+      setTimeout(tick, 100);
+    };
+    tick();
+  });
+}
+
+/** #268: after pins land, re-run preflight until the tool is ready (or timeout). */
+async function waitForToolPreflightReady(runPreflight, stateRef, tool, ms = 20_000) {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    await runPreflight();
+    if (stateRef.current.preflight?.[tool]?.state === 'ready') return true;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return stateRef.current.preflight?.[tool]?.state === 'ready';
+}
+
+/** #136/#268: land an assembled check session — place, dispatch, Resume record, loads. */
+function settleOpenedCheckSession({ a, dispatch, tool, book, session, partial, toolPos, recordCheckLastEdit }) {
+  // #136: open at the remembered in-memory position, else the first
+  // undecided item, else item 1 ("your place is saved in each tool").
+  if (!partial) {
+    session.activeIndex = checkStartIndex(session.items, toolPos?.[`${tool}:${book}`]);
+  }
+  dispatch({ type: 'set', patch: { checkTool: tool, checkSession: session } });
+  // #268: opening a Check tool is a Resume target (mode + tool).
+  recordCheckLastEdit(tool, session.items?.[session.activeIndex]);
+  if (partial) return;
+  a.loadActiveArticle(session);
+  a.loadCheckOrigSource(session);
 }
 
 /** The check scheduler's key: one live register per decision (§8.5). */
@@ -2390,6 +2454,23 @@ export function AppProvider({ children }) {
     pendingLastEdit = rec;
     clearTimeout(lastEditTimer);
     lastEditTimer = setTimeout(() => { void flushLastEdit(); }, 1000);
+  }
+  // #268: Check open / decision — same Resume record shape, mode 'check' + tool.
+  function recordCheckLastEdit(tool, item) {
+    const st = stateRef.current;
+    const repoPath = st.project?.repoPath || st.project?.id;
+    if (!repoPath || !st.book) return;
+    const prior = priorEditFor(st.lastEdit, repoPath, st.book);
+    recordLastEdit({
+      repoPath,
+      book: st.book,
+      chapter: st.chapter,
+      verse: item?.contextId?.reference?.verse ?? prior.verse ?? '1',
+      snippet: prior.snippet ?? '',
+      mode: 'check',
+      tool,
+      at: Date.now(),
+    });
   }
 
   async function refreshProjects() {
@@ -3514,7 +3595,7 @@ export function AppProvider({ children }) {
       openCheckTool: async (tool) => {
         const st = stateRef.current;
         const pre = st.preflight?.[tool];
-        if (!pre || pre.state !== 'ready' || !pre.resolution?.pin) return;
+        if (!isCheckToolReady(pre)) return;
         const book = st.book;
         // The seq is this session's identity, taken BEFORE any await: a stale
         // open's completion (or failure) must never replace a newer session,
@@ -3528,15 +3609,11 @@ export function AppProvider({ children }) {
             api, actions: a, store: storeRef.current, stateRef, st, tool, book, pre, seq,
           });
           if (seq !== checkSessionSeq) return; // a newer open or close won
-          // #136: open at the remembered in-memory position, else the first
-          // undecided item, else item 1 ("your place is saved in each tool").
-          if (!partial) {
-            session.activeIndex = checkStartIndex(session.items, stateRef.current.toolPos?.[`${tool}:${book}`]);
-          }
-          dispatch({ type: 'set', patch: { checkTool: tool, checkSession: session } });
-          if (partial) return;
-          a.loadActiveArticle(session);
-          a.loadCheckOrigSource(session);
+          settleOpenedCheckSession({
+            a, dispatch, tool, book, session, partial,
+            toolPos: stateRef.current.toolPos,
+            recordCheckLastEdit,
+          });
         } catch (e) {
           if (seq !== checkSessionSeq) return;
           dispatch({
@@ -3549,6 +3626,18 @@ export function AppProvider({ children }) {
       closeCheckTool: () => {
         checkSessionSeq++; // invalidate any in-flight open or completion
         dispatch({ type: 'set', patch: { checkTool: null, checkSession: null } });
+      },
+
+      /** #268: Resume into a Check tool — wait for pins, then preflight until
+       * ready, then open. openProject loads pins in the background. */
+      resumeCheckTool: async (tool) => {
+        const repoPath = stateRef.current.project?.repoPath || stateRef.current.project?.id;
+        const book = stateRef.current.book;
+        await waitForProjectPins(stateRef);
+        if (!(await waitForToolPreflightReady(a.runPreflight, stateRef, tool))) return;
+        const cur = stateRef.current.project?.repoPath || stateRef.current.project?.id;
+        if (cur !== repoPath || stateRef.current.book !== book) return;
+        await a.openCheckTool(tool);
       },
 
       /** #136 (D3d, ruled 2026-09-01): per-tool progress for the picker
@@ -3704,6 +3793,8 @@ export function AppProvider({ children }) {
         // the earlier item.
         dispatch({ type: 'checkDecisionSaved', seq: cs.seq, index: cs.activeIndex, item: next });
         sched.markDirty(key, 0, '0', JSON.stringify(next)); // whole-value key: chapter/verse are inert
+        // #268: a Check decision is a Resume target (mode + tool).
+        recordCheckLastEdit(cs.tool, next);
         // A decision is a completed act, like a verse blur: it flushes at
         // once (serialized behind any write in flight), not after the idle
         // window. Not awaited — the checker's next click never waits on it.
@@ -4159,6 +4250,7 @@ export function AppProvider({ children }) {
             apiClient: api,
             makeStore: () => new JournalingStore({ api }),
             markUsed,
+            recordLastEdit,
           },
           repoPath,
           bookCode,
@@ -4397,7 +4489,7 @@ export function AppProvider({ children }) {
         const st = stateRef.current;
         const repoPath = st.project?.repoPath || st.project?.id;
         if (repoPath && st.book) {
-          recordLastEdit({ repoPath, book: st.book, chapter, verse: verseKey, snippet: body === '___' ? '' : text.trim().slice(0, 90), at: Date.now() });
+          recordLastEdit({ repoPath, book: st.book, chapter, verse: verseKey, snippet: body === '___' ? '' : text.trim().slice(0, 90), mode: 'draft', at: Date.now() });
         }
       },
       blurVerse: () => {
