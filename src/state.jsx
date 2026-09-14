@@ -2189,6 +2189,13 @@ function makeAlignWriter({ store }) {
   };
 }
 
+/** #268: the previous Resume record's verse/snippet, reused only when that
+ * record names this project and book; otherwise nothing. */
+function priorEditFor(lastEdit, repoPath, book) {
+  if (!lastEdit || lastEdit.repoPath !== repoPath || lastEdit.book !== book) return {};
+  return { verse: lastEdit.verse, snippet: lastEdit.snippet };
+}
+
 /** Preflight entry is ready to open a Check tool (pin resolved). */
 function isCheckToolReady(pre) {
   return Boolean(pre && pre.state === 'ready' && pre.resolution?.pin);
@@ -2453,13 +2460,13 @@ export function AppProvider({ children }) {
     const st = stateRef.current;
     const repoPath = st.project?.repoPath || st.project?.id;
     if (!repoPath || !st.book) return;
-    const verse = item?.contextId?.reference?.verse ?? st.lastEdit?.verse ?? '1';
+    const prior = priorEditFor(st.lastEdit, repoPath, st.book);
     recordLastEdit({
       repoPath,
       book: st.book,
       chapter: st.chapter,
-      verse,
-      snippet: st.lastEdit?.snippet ?? '',
+      verse: item?.contextId?.reference?.verse ?? prior.verse ?? '1',
+      snippet: prior.snippet ?? '',
       mode: 'check',
       tool,
       at: Date.now(),
@@ -3624,10 +3631,13 @@ export function AppProvider({ children }) {
       /** #268: Resume into a Check tool — wait for pins, then preflight until
        * ready, then open. openProject loads pins in the background. */
       resumeCheckTool: async (tool) => {
+        const repoPath = stateRef.current.project?.repoPath || stateRef.current.project?.id;
+        const book = stateRef.current.book;
         await waitForProjectPins(stateRef);
-        if (await waitForToolPreflightReady(a.runPreflight, stateRef, tool)) {
-          await a.openCheckTool(tool);
-        }
+        if (!(await waitForToolPreflightReady(a.runPreflight, stateRef, tool))) return;
+        const cur = stateRef.current.project?.repoPath || stateRef.current.project?.id;
+        if (cur !== repoPath || stateRef.current.book !== book) return;
+        await a.openCheckTool(tool);
       },
 
       /** #136 (D3d, ruled 2026-09-01): per-tool progress for the picker
