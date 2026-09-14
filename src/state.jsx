@@ -23,7 +23,7 @@ import { GATEWAYS, gatewayKey, DCS_HOST, orgForRepoName } from './data/gateways'
 import { fetchAndInstallPin, latestReleaseTag, identifyExistingInstall, rezip, unwrapExport, verifySideload } from './data/resourceFetch';
 import { isNotFoundError } from './data/serverApi';
 import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, mergeOptionalPins, isPinLocal, unsatisfiedProjectPinFor, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk, flavorOfMetadata } from './data/installed';
-import { TOOL_SLOT, preflightToolBook, recordMatchesResolution, resolutionRecord, resolveToolBook, resolveSetSlot, samePath } from './data/resolve';
+import { TOOL_SLOT, coverageFor, preflightToolBook, recordMatchesResolution, resolutionRecord, resolveToolBook, resolveSetSlot, samePath } from './data/resolve';
 import {
   deriveForProject,
   isDecided,
@@ -332,6 +332,7 @@ const initial = () => ({
 
 /** Monotonic identity for check sessions (see patchCheckSession). */
 let checkSessionSeq = 0;
+let fixSeq = 0; // #9: identity of the open guided-fix screen (completions bind to it)
 
 /** #129 (PR #135 review round 1): align-session identity and the align
  * rail's read ordering. The §5.1 writes themselves ride the align
@@ -2785,14 +2786,18 @@ export function AppProvider({ children }) {
         const pre = st.preflight?.[tool];
         if (!pre) return;
         await a.refreshNet();
-        const { installed, resolutionError } = await a.resolutionContext();
+        const { installed, coverage, resolutionError } = await a.resolutionContext();
         // The pin to fix: what the preflight said it must fetch, else the pin it
         // resolved to, else — offline, with the pinned copy's coverage unknown
-        // (the preflight's `unfetched` branch names nothing) — the first slot
-        // pin of the ladder this machine lacks.
+        // (the preflight's `unfetched` branch names nothing) — the pin THAT
+        // branch would have named: the first slot pin of the ladder whose
+        // coverage is unknown and which this machine lacks (Codex round 1: a
+        // pin recorded as NOT covering the book must never be offered).
         const slot = TOOL_SLOT[tool];
         const pin = pre.needs ?? pre.resolution?.pin
-          ?? LADDER.map((rung) => st.projectPins?.languageSets?.[rung]?.[slot]).find((p) => p && !isPinLocal(installed, p))
+          ?? LADDER.map((rung) => st.projectPins?.languageSets?.[rung]?.[slot])
+            .filter((p) => p && coverageFor(coverage, p).source === 'none')
+            .find((p) => !isPinLocal(installed, p))
           ?? null;
         if (!pin) return;
         const rung = rungPinning(st.projectPins, slot, pin) ?? 'primary';
@@ -2802,15 +2807,19 @@ export function AppProvider({ children }) {
         const candidates = Object.values(installed).filter(
           (p) => samePath(p.repoPath, pin.repoPath) && !!p.sha && p.sha !== pin.sha,
         );
+        // `id` binds every later completion to THIS screen (Codex round 1): a
+        // fetch that finishes after the user closed it and opened another
+        // dialog must not close or patch that dialog.
         dispatch({
           type: 'set',
-          patch: { modal: 'fix', fix: { tool, pin, rung, candidates, busy: null, error: resolutionError ?? null, progress: null } },
+          patch: { modal: 'fix', fix: { id: ++fixSeq, tool, pin, rung, candidates, busy: null, error: resolutionError ?? null, progress: null } },
         });
       },
 
-      patchFix: (patch) => {
+      /** Patch the fix screen — only while it is still the screen `id` names. */
+      patchFix: (id, patch) => {
         const fix = stateRef.current.fix;
-        if (fix) dispatch({ type: 'set', patch: { fix: { ...fix, ...patch } } });
+        if (fix && fix.id === id) dispatch({ type: 'set', patch: { fix: { ...fix, ...patch } } });
       },
 
       /** Fetch the pinned identity itself (sb-zip + D23b sha gate), through the
@@ -2818,17 +2827,18 @@ export function AppProvider({ children }) {
       fixFetch: async () => {
         const fix = stateRef.current.fix;
         if (!fix || fix.busy) return;
+        const { id } = fix;
         if (!stateRef.current.netEnabled) {
-          a.patchFix({ error: t('fix.offline') });
+          a.patchFix(id, { error: t('fix.offline') });
           return;
         }
-        a.patchFix({ busy: 'fetch', error: null, progress: t('sources.progress', { repo: fix.pin.repoPath.split('/').pop() }) });
+        a.patchFix(id, { busy: 'fetch', error: null, progress: t('sources.progress', { repo: fix.pin.repoPath.split('/').pop() }) });
         try {
           const local = new Set(await api.listLocalRepos());
           await installPinnedRow(api, { repo: fix.pin.repoPath.split('/').pop() }, fix.pin, local, localRepoPathFromRepoPath(fix.pin.repoPath));
-          await a.finishFix();
+          await a.finishFix(id);
         } catch (error) {
-          a.patchFix({ busy: null, progress: null, error: t('fix.failed', { reason: String(error?.message || error) }) });
+          a.patchFix(id, { busy: null, progress: null, error: t('fix.failed', { reason: String(error?.message || error) }) });
         }
       },
 
@@ -2838,7 +2848,8 @@ export function AppProvider({ children }) {
       fixSideload: async (file) => {
         const fix = stateRef.current.fix;
         if (!fix || fix.busy || !file) return;
-        a.patchFix({ busy: 'sideload', error: null, progress: t('fix.sideload.reading', { name: file.name }) });
+        const { id } = fix;
+        a.patchFix(id, { busy: 'sideload', error: null, progress: t('fix.sideload.reading', { name: file.name }) });
         try {
           const unwrapped = unwrapExport(new Uint8Array(await file.arrayBuffer()));
           verifySideload(fix.pin, unwrapped);
@@ -2855,36 +2866,47 @@ export function AppProvider({ children }) {
             sha: fix.pin.sha,
             flavor,
           });
-          await a.finishFix();
+          await a.finishFix(id);
         } catch (error) {
-          a.patchFix({ busy: null, progress: null, error: t('fix.failed', { reason: String(error?.message || error) }) });
+          a.patchFix(id, { busy: null, progress: null, error: t('fix.failed', { reason: String(error?.message || error) }) });
         }
       },
 
       /** Re-pin: move the slot(s) pinning the missing identity onto an
        * installed version of the same repo — the #256 offer flow, so the
-       * D36 counts are shown and confirmed before the pins move. */
+       * D36 counts are shown and confirmed before the pins move. The fix
+       * screen stays open until the confirmation exists (Codex round 1): a
+       * planning failure is shown HERE, with the other two ways still at hand. */
       fixRepin: async (candidate) => {
         const store = storeRef.current;
         const fix = stateRef.current.fix;
         if (!store || !fix || fix.busy) return;
-        const current = await store.readResources();
+        const { id } = fix;
+        a.patchFix(id, { busy: 'repin', error: null });
+        const current = await store.readResources().catch(() => null);
         const offer = current ? repinOffer(current, fix.rung, fix.pin, candidate) : null;
         if (!offer?.upgrades.length) {
-          a.patchFix({ error: t('upgrade.stale') });
+          a.patchFix(id, { busy: null, error: t('upgrade.stale') });
           return;
         }
-        a.closeModal();
-        await a.applyOffer(offer);
+        const next = await a.applyOffer(offer);
+        if (!next) {
+          a.patchFix(id, { busy: null, error: stateRef.current.upgrade.error ?? t('upgrade.stale') });
+          return;
+        }
+        // The confirmation exists: it takes over from this screen (one dialogue
+        // at a time — two stacked layers fight over focus and scroll).
+        if (stateRef.current.modal === 'fix' && stateRef.current.fix?.id === id) a.closeModal();
       },
 
-      /** The resource is on this machine now: re-run the preflight so the tool
-       * card turns ready, and close the screen. */
-      finishFix: async () => {
+      /** The resource is on this machine now: refresh what the machine holds
+       * and the preflight so the tool card turns ready; close the screen only
+       * if it is still the one this operation started from. */
+      finishFix: async (id) => {
         dispatch({ type: 'set', patch: { installEpoch: stateRef.current.installEpoch + 1 } });
         await a.refreshCheckable();
         await a.runPreflight();
-        a.closeModal();
+        if (stateRef.current.modal === 'fix' && stateRef.current.fix?.id === id) a.closeModal();
       },
 
       /** Move the set's pins and reconcile the decisions — ONE journal action,
