@@ -177,6 +177,46 @@ const derived = (rig: ReturnType<typeof journalingRig>) => {
   };
 };
 
+/** A runner whose fold completes only when the test says so — the worker's
+ * wait, held open. */
+const gatedRunner = (): FoldRunner & { release: () => void; pending: () => number } => {
+  const inline = inlineFoldRunner();
+  let waiting: Array<() => void> = [];
+  return {
+    fold: (events) => new Promise((resolve, reject) => waiting.push(() => inline.fold(events).then(resolve, reject))),
+    dispose: () => {},
+    release: () => { const w = waiting; waiting = []; for (const go of w) go(); },
+    pending: () => waiting.length,
+  };
+};
+
+describe('#94 — a synchronous reader during a pending fold sees the last completed fold (Codex round 1)', () => {
+  it('readNotes and readVersification answer from the snapshot while a save waits on the worker, and see the new state after', async () => {
+    const runner = gatedRunner();
+    /** Run `work` with every fold released as it arrives (the worker answering normally). */
+    const pumped = async <T,>(work: Promise<T>): Promise<T> => {
+      const pump = setInterval(() => runner.release(), 1);
+      try { return await work; } finally { clearInterval(pump); }
+    };
+    const until = async (cond: () => boolean) => {
+      for (let i = 0; i < 200 && !cond(); i += 1) await new Promise((r) => setTimeout(r, 5));
+      expect(cond()).toBe(true);
+    };
+    const { store } = await pumped(project(runner));
+    await pumped(store.addNote('TIT', 1, 1, 'first'));
+    expect(store.readNotes('TIT').map((n) => n.text)).toEqual(['first']);
+
+    // A save clears the cache and waits on the worker…
+    const save = store.addNote('TIT', 1, 2, 'second');
+    await until(() => runner.pending() > 0);
+    // …and a synchronous reader meanwhile neither throws nor sees half a state.
+    expect(store.readNotes('TIT').map((n) => n.text)).toEqual(['first']);
+    expect((await store.readVersification())?.name).toBe('eng');
+    await pumped(save);
+    expect(store.readNotes('TIT').map((n) => n.text)).toEqual(['first', 'second']);
+  });
+});
+
 describe('#94 — save ordering per project is unchanged across the worker boundary', () => {
   it('overlapping saves through a jittery runner fold to the sequential result', async () => {
     const sequential = await project(inlineFoldRunner());

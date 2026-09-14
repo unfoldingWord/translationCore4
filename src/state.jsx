@@ -53,6 +53,13 @@ const disposeStore = (ref) => {
   ref.current?.dispose?.();
 };
 
+/** #94: release a store that never became (or no longer is) the project's — a
+ * superseded or failed open, a throwaway store — without touching the one the
+ * ref holds. */
+const disposeUnless = (store, ref) => {
+  if (store && ref.current !== store) store.dispose?.();
+};
+
 /** J12 (#256): the upgrade slice at rest — the value it resets to when a
  * project opens or closes, so an offer never outlives the project it was
  * computed for (Codex review round 1). */
@@ -1400,6 +1407,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
     dispatch({ type: 'set', patch: { opening: progress(p.stage, p.done, p.total) } });
   };
   dispatch({ type: 'set', patch: { opening: progress('journal') } });
+  let store = null;
   try {
     // R-E33-3: the versification frame cache is keyed by repoPath, which is
     // NOT unique across a delete-and-recreate inside one session. Clear it
@@ -1407,17 +1415,17 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
     // previous project's frame — that would key every check in the wrong
     // numbering, and the journal keeps those keys permanently.
     forgetProjectFrames();
-    const store = makeStore();
+    store = makeStore();
     // #183: the leave-checkpoint of this same project may still be regenerating
     // its shared files; open behind it, never against a half-written tree.
     await leaveCheckpoints.get(repoPath);
-    if (superseded()) return;
+    if (superseded()) return disposeUnless(store, storeRef);
     // open() runs the issue-#62 recovery pipeline: replay staged intents,
     // classify derived state against the journal, seed a journal-less
     // project universally, reconcile out-of-band USFM — or STOP with a
     // diagnosable report (surfaced through bookError below).
     const summary = await store.open(repoPath, { onProgress });
-    if (superseded()) return; // a newer open owns the refs
+    if (superseded()) return disposeUnless(store, storeRef); // a newer open owns the refs
     dispatch({ type: 'set', patch: { opening: progress('prepare') } });
     disposeStore(storeRef); // #94: the previous project's fold worker
     storeRef.current = store;
@@ -1508,6 +1516,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
     dispatch({ type: 'set', patch: { opening: null, commitError: null } });
     retryOwedCheckpoint({ store, storeRef, stateRef, dispatch }, repoPath);
   } catch (e) {
+    disposeUnless(store, storeRef); // #94: a failed open's store is never adopted
     if (superseded()) return; // a stale failure must not route the OPEN project Home
     // A failed open surfaces its diagnosable report and never a stuck bar (#95).
     dispatch({
@@ -3930,6 +3939,8 @@ export function AppProvider({ children }) {
           a.openAddBook({ id: repoPath, name: w.name.trim(), bookCodes: [] });
         } catch (e) {
           a.patchNp({ busy: false, error: e?.reason || e?.message || t('wizard.error') });
+        } finally {
+          store.dispose(); // #94: a throwaway store's fold worker
         }
       },
 
@@ -3973,8 +3984,8 @@ export function AppProvider({ children }) {
         );
         if (!codes.length) return a.patchAb({ error: t('addBook.pickOne') });
         a.patchAb({ busy: true, error: null });
+        const store = new JournalingStore({ api });
         try {
-          const store = new JournalingStore({ api });
           const summary = await store.open(f.repoPath);
           for (const code of codes) {
             if (summary.bookCodes.includes(code)) continue; // fresh server truth wins
@@ -3999,6 +4010,8 @@ export function AppProvider({ children }) {
           await a.openProject(f.repoPath, codes[0]);
         } catch (e) {
           a.patchAb({ busy: false, error: e?.reason || e?.message || t('wizard.error') });
+        } finally {
+          store.dispose(); // #94: a throwaway store's fold worker
         }
       },
 
@@ -4051,8 +4064,8 @@ export function AppProvider({ children }) {
         const f = stateRef.current.st;
         if (f.busy) return;
         a.patchSt({ busy: true, error: null });
+        const store = new JournalingStore({ api });
         try {
-          const store = new JournalingStore({ api });
           await store.open(f.repoPath);
           // #9: compare-and-swap like every other sidecar — the md5 of what
           // was read travels with the write, and a concurrent editor's
@@ -4070,6 +4083,8 @@ export function AppProvider({ children }) {
           a.closeModal();
         } catch (e) {
           a.patchSt({ busy: false, error: e?.reason || e?.message || t('wizard.error') });
+        } finally {
+          store.dispose(); // #94: a throwaway store's fold worker
         }
       },
 

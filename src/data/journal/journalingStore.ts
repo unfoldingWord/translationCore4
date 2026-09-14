@@ -342,6 +342,10 @@ export class JournalingStore implements BurritoStore {
   /** The accepted-event union this session observed (open + own publishes). */
   private events: JournalEvent[] = [];
   private foldCache: FoldOutput | null = null;
+  /** The last COMPLETED fold (#94): what a synchronous reader sees while a
+   * newer fold is still computing in the worker. Replaced, never cleared,
+   * until the next open. */
+  private lastFold: FoldOutput | null = null;
   /** Derive-time (tool, BOOK) resolution records (§5.2/D30) — checkpoint input. */
   private readonly resolutions = new Map<string, Record<string, unknown>>();
   /** Diagnostics of the last open(), for tests and the UI. */
@@ -386,15 +390,25 @@ export class JournalingStore implements BurritoStore {
    * that changes `this.events` awaits this before reading the fold again. */
   private async ensureFold(): Promise<FoldOutput> {
     const out = this.foldCache ?? (await this.runner.fold(this.events));
-    this.foldCache = out;
+    this.adoptFold(out);
     return out;
   }
 
-  /** The cached fold. Synchronous readers rely on the invariant above; a cold
-   * cache here is a programming error, stated — never a fold on this thread. */
+  private adoptFold(out: FoldOutput): void {
+    this.foldCache = out;
+    this.lastFold = out;
+  }
+
+  /** The fold for a reader: the current one, or — while a newer fold is in
+   * the worker (Codex round 1) — the last completed one, so a synchronous
+   * reader during a save sees the state just before it rather than throwing.
+   * Mutation paths never take that branch: each awaits ensureFold first. A
+   * store that never folded (no open) is a programming error, stated — never a
+   * fold on this thread. */
   private foldNow(): FoldOutput {
-    if (!this.foldCache) throw new Error('JournalingStore: the fold is not ready — a path changed the event set without ensureFold()');
-    return this.foldCache;
+    const out = this.foldCache ?? this.lastFold;
+    if (!out) throw new Error('JournalingStore: the fold is not ready — call open(repoPath) first');
+    return out;
   }
 
   private queue<T>(fn: () => Promise<T>): Promise<T> {
@@ -1010,6 +1024,7 @@ export class JournalingStore implements BurritoStore {
     this.journal = new JournalStore({ api: this.api, repoPath, kv: this.kv, now: this.now });
     this.events = [];
     this.foldCache = null;
+    this.lastFold = null; // a new project: no snapshot of the old one may leak (#94)
     this.resolutions.clear();
     // Actor repair + the outbox half of the HLC ratchet (issue #62 / #61). The
     // segment half is DEFERRED to the union read below, so an open scans the
@@ -1274,7 +1289,7 @@ export class JournalingStore implements BurritoStore {
     this.assertSeedCandidate(seedFold, normalizedSeed, unionEvents, disk);
     await this.publishSeedCandidate(journal, seedEvents, normalizedSeed, seedFold, seedSource, seedVrsName);
     this.events = normalizedSeed;
-    this.foldCache = seedFold; // the fold of exactly this set — no second fold
+    this.adoptFold(seedFold); // the fold of exactly this set — no second fold
     await this.finishSeedConvergence(disk, report);
   }
 
