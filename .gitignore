@@ -24,3 +24,6 @@ dev-env/upstream/
 # design audits — regenerable, and untracked files here retarget a review at
 # the working tree instead of the branch.
 /.playwright-mcp/
+
+# react-grab-annotate output (dev-only bug reports)
+.react-grab/
