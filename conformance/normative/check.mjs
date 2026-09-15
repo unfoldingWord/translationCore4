@@ -31,22 +31,31 @@ const SUITE_DIR = path.resolve(HERE, '..');
 const fail = [];
 
 // ---- 1. rule ids from the spec ---------------------------------------------
+// Two normative sections carry rule ids: §8 (the journal, D55) and §10 (the OBS project
+// kind, D74 — spec 1.14). Each section spans from its `## N.` heading to the next `## `.
 const specLines = fs.readFileSync(SPEC, 'utf8').split('\n');
-const s8start = specLines.findIndex((l) => /^## 8\./.test(l));
-let s8end = specLines.findIndex((l, i) => i > s8start && /^## 9\./.test(l));
-if (s8start < 0 || s8end < 0) { console.error('FATAL: cannot locate section 8 in ' + SPEC); process.exit(2); }
-
+const sectionSpan = (n) => {
+  const start = specLines.findIndex((l) => new RegExp(`^## ${n}\\.`).test(l));
+  const end = specLines.findIndex((l, i) => i > start && /^## /.test(l));
+  if (start < 0 || end < 0) { console.error(`FATAL: cannot locate section ${n} in ` + SPEC); process.exit(2); }
+  return [start, end];
+};
+const SECTIONS = [8, 10];
 const ruleLine = new Map();               // id -> first spec line
-const ID_RE = /\[R-(8(?:\.\d+)*\.\d+)\]/g;
-for (let i = s8start; i < s8end; i++) {
-  let m;
-  while ((m = ID_RE.exec(specLines[i])) !== null) {
-    const id = 'R-' + m[1];
-    if (ruleLine.has(id)) fail.push('DUPLICATE RULE ID: ' + id + ' defined at spec lines ' + ruleLine.get(id) + ' and ' + (i + 1));
-    else ruleLine.set(id, i + 1);
+const ID_RE = /\[R-((?:8|10)(?:\.\d+)*\.\d+)\]/g;
+for (const n of SECTIONS) {
+  const [start, end] = sectionSpan(n);
+  for (let i = start; i < end; i++) {
+    let m;
+    while ((m = ID_RE.exec(specLines[i])) !== null) {
+      const id = 'R-' + m[1];
+      if (!id.startsWith(`R-${n}.`)) { fail.push('MISPLACED RULE ID: ' + id + ' is authored inside section ' + n + ' (spec line ' + (i + 1) + ')'); continue; }
+      if (ruleLine.has(id)) fail.push('DUPLICATE RULE ID: ' + id + ' defined at spec lines ' + ruleLine.get(id) + ' and ' + (i + 1));
+      else ruleLine.set(id, i + 1);
+    }
   }
 }
-if (ruleLine.size === 0) fail.push('NO RULE IDS: section 8 defines no [R-…] ids — wrong spec revision?');
+if (ruleLine.size === 0) fail.push('NO RULE IDS: sections 8 and 10 define no [R-…] ids — wrong spec revision?');
 
 // ---- 2. live claims from the suite -----------------------------------------
 // Strip comments so a commented-out check loses its claim. String-aware so a
@@ -102,12 +111,12 @@ for (const file of suiteFiles) {
 
 // ---- 3. compare -------------------------------------------------------------
 for (const [id, where] of claims) {
-  if (!ruleLine.has(id)) fail.push('STALE CLAIM: ' + where[0].file + ' check "' + where[0].checkHead + '…" covers ' + id + ', which is not a rule in section 8 (reworded or removed?)');
+  if (!ruleLine.has(id)) fail.push('STALE CLAIM: ' + where[0].file + ' check "' + where[0].checkHead + '…" covers ' + id + ', which is not a rule in section 8 or 10 (reworded or removed?)');
 }
 const uncovered = [...ruleLine.keys()].filter((id) => !claims.has(id));
 for (const id of uncovered) fail.push('UNCOVERED RULE: ' + id + ' (spec line ' + ruleLine.get(id) + ') has no live check claiming it');
 
-console.log('rules in section 8 : ' + ruleLine.size);
+console.log('rules in sections 8 and 10 : ' + ruleLine.size);
 console.log('claimed by a check : ' + (ruleLine.size - uncovered.length));
 console.log('uncovered          : ' + uncovered.length);
 console.log('stale claims       : ' + [...claims.keys()].filter((id) => !ruleLine.has(id)).length);
@@ -118,4 +127,4 @@ if (fail.length) {
   console.log('\n' + fail.length + ' problem(s). The specification and the suite do NOT agree.');
   process.exit(1);
 }
-console.log('\nOK — every rule id in section 8 is claimed by a live check, and every claim resolves.');
+console.log('\nOK — every rule id in sections 8 and 10 is claimed by a live check, and every claim resolves.');

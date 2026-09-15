@@ -216,11 +216,18 @@ export const identityPartError = (v) => {
 // re-checks at its own boundary; this one does too, so the serializer can never emit a
 // string its own validator would reject.
 const IDENTITY_COMPONENTS = ['checkId', 'reference.bookId', 'reference.chapter', 'reference.verse', 'occurrence'];
+// §10 (D74): a STORY decision's reference is `{story, frame}`. Its identity key keeps the
+// five-part form with the literal `obs` in the book position — `checkId|obs|1|1|1` — so
+// decision keys, note targets and dispositions keep ONE grammar (R-10.5.1).
+export const STORY_BOOK_ID = 'obs';
+export const isStoryReference = (r) => isObj(r) && r.story !== undefined && r.bookId === undefined;
 export const identityKeyOf = (contextId) => {
   if (!isObj(contextId) || !isObj(contextId.reference))
     throw new Error('identityKeyOf: a §5.2 contextId with a reference object is required — refuse to serialize');
   const r = contextId.reference;
-  const parts = [contextId.checkId, r.bookId, r.chapter, r.verse, contextId.occurrence];
+  const parts = isStoryReference(r)
+    ? [contextId.checkId, STORY_BOOK_ID, r.story, r.frame, contextId.occurrence]
+    : [contextId.checkId, r.bookId, r.chapter, r.verse, contextId.occurrence];
   for (let i = 0; i < parts.length; i++) {
     const e = identityPartError(parts[i]);
     if (e) throw new Error(`identityKeyOf: ${IDENTITY_COMPONENTS[i]} ${e} — refuse to serialize an ambiguous §5.2 identity key`);
@@ -269,10 +276,13 @@ export const splitDecisionKey = (s) => {
 // names a check position, not a decision: two tools may hold a decision at the SAME
 // position, so a note targeting the bare key could not say which decision it annotates.
 // ONE decision-key grammar, everywhere a decision is named.
+// §10 (D74): a note MAY target a frame, `{story, frame}` — the third kind. Stories have
+// no structural actions, so a frame-targeted note is never re-keyed or dispositioned.
 export const noteTargetKind = (target) =>
   !isObj(target) ? null
   : isStr(target.decisionKey) ? 'decisionKey'
   : (target.book != null && target.chapter != null && target.verse != null) ? 'verse'
+  : (target.story != null && target.frame != null && target.book == null && target.chapter == null && target.verse == null) ? 'frame'
   : null;
 
 export const noteRekeyError = (target, to, newSlots = []) => {
@@ -336,7 +346,9 @@ export const dottedPathError = (v, { reservedRoots = null } = {}) => {
 };
 
 // §8.5: the pin slot grammar is the §5.3 document's own paths — anything else refuses.
-export const PIN_SLOT_RE = /^(languageSets\.(primary|fallback)\.(gatewayLanguage|translationNotes|translationWordsLinks|translationWords|translationAcademy|translationQuestions|simplifiedText)|resources\.(originalLanguage|lexicon)\.(nt|ot)|extraScripture\.[A-Za-z0-9_-]+)$/;
+// §10.6 (D74): a language set MAY additionally pin the three OBS members `obs`, `obs-tn`
+// and `obs-twl`; tw and tA are shared with Bible projects.
+export const PIN_SLOT_RE = /^(languageSets\.(primary|fallback)\.(gatewayLanguage|translationNotes|translationWordsLinks|translationWords|translationAcademy|translationQuestions|simplifiedText|obs|obs-tn|obs-twl)|resources\.(originalLanguage|lexicon)\.(nt|ot)|extraScripture\.[A-Za-z0-9_-]+)$/;
 export const pinSlotError = (v) =>
   isStr(v) && PIN_SLOT_RE.test(v) ? null : `"${v}" is not a §5.3 slot`;
 

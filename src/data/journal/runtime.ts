@@ -38,6 +38,8 @@ export interface LiveHead {
 export interface FoldOutput {
   /** book code -> { usfm (recomposed bytes), verses: {"C:V": content} } */
   books: Record<string, { usfm: string; verses: Record<string, string> }>;
+  /** §10 (D74): story -> { frames: {frame: text} (frame 0 = the title), ref } — the folded `v: 2` story registers */
+  stories: Record<string, { frames: Record<string, string>; ref: string | null }>;
   /** toolId -> projected §5.2 decision records (sorted by contextId) */
   decisions: Record<string, Array<Record<string, unknown> & { contextId: { reference: { bookId: string; chapter: unknown; verse: unknown } } }>>;
   /** book -> { "C:V": §5.1 record } */

@@ -10,7 +10,8 @@
 //     escapes — books, decision sidecars, everything. The fold's keys are never trusted.
 //   • EVERY dotted-path setter traverses with own-property checks into null-prototype
 //     containers, so a malformed path cannot reach a prototype even with validation off.
-import { ipathError, dottedPathError, MAX_JSON_DEPTH } from './grammar.mjs';
+import { ipathError, dottedPathError, isStoryReference, MAX_JSON_DEPTH } from './grammar.mjs';
+import { storyIpath, applyStoryState } from './story.mjs';
 
 // Lexical POSIX resolve, dependency-free (issue #62: the production runtime imports
 // this module into a browser bundle, so no Node builtin may load here). Matches
@@ -98,7 +99,8 @@ const deleteDeep = (doc, dotted) => {
 // (the fold's pins object preserves first-set insertion order).
 // §5.3 1.10 (D64): the two OPTIONAL slots project after translationAcademy —
 // the §5.3 document's own key order.
-const LS_SLOTS = ['gatewayLanguage', 'translationNotes', 'translationWordsLinks', 'translationWords', 'translationAcademy', 'translationQuestions', 'simplifiedText'];
+// §10.6 (D74): the three OPTIONAL OBS members project after them, in the §10 order.
+const LS_SLOTS = ['gatewayLanguage', 'translationNotes', 'translationWordsLinks', 'translationWords', 'translationAcademy', 'translationQuestions', 'simplifiedText', 'obs', 'obs-tn', 'obs-twl'];
 export const projectResources = (pins) => {
   const doc = { schemaVersion: 2 };
   const languageSets = {};
@@ -157,12 +159,14 @@ export const projectAlignments = (foldOut, book) => {
 // §5.2 decision sidecar mirrors, one per (tool, book). The file-level `resource`
 // resolution record is derive-time state (D30 — recomputed against the pins at
 // checkpoint), not journal state: the caller passes it as `resolutions[tool][BOOK]`.
+export const STORY_FILE = 'OBS';
 export const projectDecisions = (foldOut, resolutions = {}) => {
   const out = emptySet();
   for (const tool of Object.keys(foldOut.decisions)) {
     const byBook = {};
+    // §10.5 (D74): story decisions share one file per tool, `checking/<toolId>/OBS.json`
     for (const d of foldOut.decisions[tool])
-      (byBook[d.contextId.reference.bookId.toUpperCase()] ||= []).push(d);
+      (byBook[isStoryReference(d.contextId.reference) ? STORY_FILE : d.contextId.reference.bookId.toUpperCase()] ||= []).push(d);
     for (const book of Object.keys(byBook)) {
       const doc = { schemaVersion: 1, tool, book };
       const resource = resolutions?.[tool]?.[book];
@@ -201,7 +205,7 @@ export const isUnjournaledIngredient = (ipath) => ipath.startsWith('audio/');
 // a missing baseMetadata (or a missing per-(tool, book) resolution — see
 // projectDecisions) THROWS. An incomplete checkpoint is never returned (§8.7).
 // Unjournaled classes are structurally absent — checkpoints cannot touch them.
-export const derivedProjections = (foldOut, { baseMetadata = null, resolutions = {} } = {}) => {
+export const derivedProjections = (foldOut, { baseMetadata = null, resolutions = {}, baseStories = {} } = {}) => {
   if (!baseMetadata)
     throw new Error('derivedProjections requires baseMetadata — the checkpoint regenerates metadata.json (§8.7); refuse to return an incomplete checkpoint');
   // The versification frame is a MANDATORY input too, for any project that has a book.
@@ -217,6 +221,16 @@ export const derivedProjections = (foldOut, { baseMetadata = null, resolutions =
     // the book code is a FOLD key flowing into a filesystem path — resolved, never trusted
     emit(out, `${book}.usfm`, foldOut.books[book].usfm);
     if (foldOut.alignments[book]) emit(out, `checking/alignments/${book}.json`, projectAlignments(foldOut, book));
+  }
+  // §10.7 (D74): a story file is derived — the folded frames and reference line spliced
+  // onto the BASE story bytes (the committed file, or the template's seed form). The base
+  // is a MANDATORY input like baseMetadata: a folded story with no base is an incomplete
+  // checkpoint, refused (R-8.7.4), never a silently smaller derived set.
+  for (const story of Object.keys(foldOut.stories || {}).map(Number).sort((a, b) => a - b)) {
+    const base = baseStories[story]; // keyed by story number (an object key is a string either way)
+    if (typeof base !== 'string')
+      throw new Error(`derivedProjections requires the base story file for story ${story} (baseStories) — the checkpoint splices folded frames onto it (§10/§8.7); refuse to return an incomplete checkpoint`);
+    emit(out, storyIpath(story), applyStoryState(base, foldOut.stories[story]));
   }
   for (const [ipath, bytes] of Object.entries(projectDecisions(foldOut, resolutions))) emit(out, ipath, bytes);
   emit(out, 'checking/resources.json', projectResources(foldOut.pins));

@@ -42,6 +42,19 @@ groups:
 root) reads them against `../docs/evidence/manifest.json`, which `npm run prove` writes and
 which records the commit, date and Node version of the run.]
 
+## The OBS sample (`sample-burrito-obs/`, BURRITO-SPEC §10)
+
+`npm run generate` also rebuilds `sample-burrito-obs/` (`generate-obs.mjs`): the pankosmia
+`text_stories` template (vendored at `fixtures/text_stories/`, provenance in its README) in
+the §10 seed form — every title `# N.`, every frame the image line plus an empty paragraph,
+no reference line — with story 1 drafted through the §10 writers (`../journal/story.mjs`):
+the title, frames 1 and 2 and the reference line (`fixtures/obs-draft.mjs`). Its
+`checking/resources.json` pins the three OBS members (`obs`, `obs-tn`, `obs-twl`) beside the
+Bible suite, with real Door43 identities. `npm run validate` runs the `OBS` group against it
+(schema, layout, frame model, byte-strict write, `currentScope`, the version 2 fold); the
+journal semantics of §10 are JC-33 in `npm run validate:journal`. Each OBS check also fires
+on a deliberately broken copy.
+
 Two more scripts exist here but are rig-gated: `npm run validate:transport` and
 `npm run validate:roundtrip` need a running Pankosmia rig (set `RIG_REPOS` to its
 repos directory). Do not run them on a clean clone.

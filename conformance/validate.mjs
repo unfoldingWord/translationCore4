@@ -8,6 +8,12 @@ import path from 'path';
 import crypto from 'crypto';
 import { scopeError } from '../journal/grammar.mjs';
 import { writeActionSegment, validateSegment, validateActorDoc, segmentName, readSegments, actorDirFor } from '../journal/files.mjs';
+import { parseStory, seedStory, writeFrame, writeRef, applyStoryState, storyIpath, STORY_COUNT } from '../journal/story.mjs';
+import { fold } from '../journal/fold.mjs';
+import { validateEvent } from '../journal/schema.mjs';
+import { derivedProjections } from '../journal/checkpoint.mjs';
+import { seedFromSidecars } from '../journal/reconcile.mjs';
+import { DRAFT } from './fixtures/obs-draft.mjs';
 
 const require = createRequire(import.meta.url);
 const usfmjs = require('usfm-js');
@@ -33,10 +39,13 @@ const md5 = buf => crypto.createHash('md5').update(buf).digest('hex');
 //            On a server-rescanned copy the expected split is 1/2 (roles check fails) — the
 //            accepted condition, not a defect. The pristine sample scores 2/2.
 //   phase2 — journal-merge design checks (BURRITO-SPEC §8.7); run in an isolated temp git repo
+//   obs    — the OBS project kind (BURRITO-SPEC §10, D74) proved on sample-burrito-obs/; every
+//            check also fires on a deliberately broken copy (issue #147)
 let pass = 0, fail = 0;
-const groups = { stage1: [0, 0], stage2: [0, 0], phase2: [0, 0] };
+const groups = { stage1: [0, 0], stage2: [0, 0], phase2: [0, 0], obs: [0, 0] };
+const GROUP_TAG = { stage1: '', stage2: ' [Stage-2/non-durable-by-design (D28)]', phase2: ' [Phase-2 design]', obs: ' [OBS project kind (§10)]' };
 const check = (name, ok, detail = '', group = 'stage1') => {
-  const tag = group === 'stage1' ? '' : ` [${group === 'stage2' ? 'Stage-2/non-durable-by-design (D28)' : 'Phase-2 design'}]`;
+  const tag = GROUP_TAG[group];
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${tag}${detail ? ' — ' + detail : ''}`);
   ok ? pass++ : fail++;
   groups[group][ok ? 0 : 1]++;
@@ -45,7 +54,8 @@ const check = (name, ok, detail = '', group = 'stage1') => {
 const metadata = json(path.join(BURRITO, 'metadata.json'));
 
 // ---------- 1. Scripture Burrito schema validation (Pankosmia's bundled schema) ----------
-{
+// ONE compiled validator, shared by the Bible sample (here) and the OBS sample (group obs).
+const loadSbValidator = () => {
   const ajv = new Ajv({ strict: false, allErrors: true });
   addFormats(ajv);
   const schemaRoot = path.resolve('sb-schema');
@@ -62,12 +72,15 @@ const metadata = json(path.join(BURRITO, 'metadata.json'));
     schema.$id = BASE + path.relative(schemaRoot, f).split(path.sep).join('/');
     try { ajv.addSchema(schema); } catch (e) { /* duplicate $id — first wins */ }
   }
-  const validate = ajv.getSchema(BASE + 'source_metadata.schema.json');
-  if (!validate) { check('SB schema: root schema loaded', false, 'source_metadata.schema.json not resolvable'); }
+  return ajv.getSchema(BASE + 'source_metadata.schema.json') || null;
+};
+const sbValidate = loadSbValidator();
+{
+  if (!sbValidate) { check('SB schema: root schema loaded', false, 'source_metadata.schema.json not resolvable'); }
   else {
-    const ok = validate(metadata);
+    const ok = sbValidate(metadata);
     check('SB schema: metadata.json valid against Pankosmia bundled schema (incl. relationships + x- roles)', !!ok,
-      ok ? '' : JSON.stringify(validate.errors.slice(0, 3)));
+      ok ? '' : JSON.stringify(sbValidate.errors.slice(0, 3)));
   }
 }
 
@@ -711,9 +724,173 @@ let mergedVerseObjects = null;
   rmT();
 }
 
+// ---------- 8. The OBS project kind (BURRITO-SPEC §10, D74) — sample-burrito-obs/ ----------
+// Six checks, one per #147 acceptance item. Each check's `ok` is the POSITIVE on the sample
+// AND the NEGATIVE on a deliberately broken copy: a check that cannot fire proves nothing.
+{
+  const OBS = path.resolve('./sample-burrito-obs');
+  const TEMPLATE = path.resolve('./fixtures/text_stories');
+  const OING = (p) => path.join(OBS, 'ingredients', p);
+  const TING = (p) => path.join(TEMPLATE, 'ingredients', p);
+  const obsMeta = json(path.join(OBS, 'metadata.json'));
+  const tmplMeta = JSON.parse(read(path.join(TEMPLATE, 'metadata.json')).replace(/%%LANGUAGE%%/, '{"tag":"und"}').replace(/%%[A-Z_]+%%/g, 'x'));
+  const walkFiles = (dir, base = '') => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const rel = base ? `${base}/${e.name}` : e.name;
+    return e.isDirectory() ? walkFiles(path.join(dir, e.name), rel) : [rel];
+  });
+  const throws = (fn) => { try { fn(); return false; } catch { return true; } };
+  const clone = (v) => JSON.parse(JSON.stringify(v));
+
+  // O1 — schema validity: the SB flavor block is `gloss/textStories` and nothing else in it
+  {
+    const ok = !!sbValidate && !!sbValidate(obsMeta);
+    const broken = clone(obsMeta); broken.type.flavorType.flavor.name = 'textStorie';
+    const broken2 = clone(obsMeta); broken2.type.flavorType.flavor.usfmVersion = '3.0';
+    const fires = !!sbValidate && !sbValidate(broken) && !sbValidate(broken2);
+    check('OBS schema: metadata.json is valid against the bundled SB schema with flavor gloss/textStories; a misspelt flavor and an extra flavor field both fail (the core flavor object allows only name) [covers R-10.1.1]',
+      ok && fires && obsMeta.type.flavorType.name === 'gloss' && obsMeta.type.flavorType.flavor.name === 'textStories',
+      ok ? '' : JSON.stringify((sbValidate?.errors || []).slice(0, 2)), 'obs');
+  }
+
+  // O2 — layout equality with the template: the same ingredient set (plus the §5 sidecars),
+  // the non-story files byte-identical, every story in the seed form or drafted from it
+  {
+    const onDisk = walkFiles(OING('')).sort();
+    const tmpl = walkFiles(TING('')).sort();
+    const sidecars = onDisk.filter((p) => p.startsWith('checking/'));
+    const sameSet = JSON.stringify(onDisk.filter((p) => !p.startsWith('checking/'))) === JSON.stringify(tmpl);
+    const nonStory = tmpl.filter((p) => !/^content\/\d\d\.md$/.test(p));
+    const nonStoryIdentical = nonStory.every((p) => read(OING(p)) === read(TING(p)));
+    let seedOrDrafted = true, undrafted = 0;
+    for (let n = 1; n <= STORY_COUNT; n++) {
+      const seed = seedStory(read(TING(storyIpath(n))));
+      const bytes = read(OING(storyIpath(n)));
+      if (bytes === seed) { undrafted++; continue; }
+      // a drafted story is the seed plus §10 writes of exactly what it now carries
+      const p = parseStory(bytes);
+      const frames = {}; if (p.title) frames[0] = p.title;
+      p.frames.forEach((f, i) => { if (f.text) frames[i + 1] = f.text; });
+      if (applyStoryState(seed, { frames, ref: p.ref }) !== bytes) seedOrDrafted = false;
+    }
+    const pathRule = onDisk.filter((p) => /^content\/\d+\.md$/.test(p)).every((p) => /^content\/\d\d\.md$/.test(p));
+    // negatives: a copy missing 50.md is not the layout; a story whose image URL changed is
+    // neither the seed form nor a §10 draft of it
+    const dir = fs.mkdtempSync(path.join(fs.realpathSync(require('os').tmpdir()), 'obs-layout-'));
+    fs.cpSync(OING(''), dir, { recursive: true });
+    fs.rmSync(path.join(dir, 'content/50.md'));
+    const firesMissing = JSON.stringify(walkFiles(dir).filter((p) => !p.startsWith('checking/')).sort()) !== JSON.stringify(tmpl);
+    const seed02 = seedStory(read(TING(storyIpath(2))));
+    const mutated02 = seed02.replace('obs-en-02-01.jpg', 'obs-en-02-99.jpg');
+    const p2 = parseStory(mutated02);
+    const firesMutated = mutated02 !== seed02 && applyStoryState(seed02, { frames: {}, ref: p2.ref }) !== mutated02;
+    fs.rmSync(dir, { recursive: true, force: true });
+    check(`OBS layout: the ingredient set equals the pankosmia text_stories template (content/01..50.md, front/title, front/intro, back/intro, LICENSE.md) plus the §5 sidecars; front, back and LICENSE byte-identical; every story is the template's SEED FORM (title \`# N.\`, empty frames, no reference line) or a §10 draft of it; two-digit story paths; a missing 50.md and a changed image line both fire [covers R-10.2.1 R-10.2.2 R-10.2.4]`,
+      sameSet && nonStoryIdentical && seedOrDrafted && pathRule && undrafted === STORY_COUNT - 1 && firesMissing && firesMutated,
+      `${onDisk.length} ingredients (${sidecars.length} sidecars), ${undrafted} undrafted stories`, 'obs');
+  }
+
+  // O3 — the frame model: the image line splits frames; exactly one paragraph per frame;
+  // the reference line is the last `_…_` line; single newlines inside a paragraph survive
+  {
+    const s1 = parseStory(read(OING(storyIpath(1))));
+    const f1 = s1.frames[0].text, f2 = s1.frames[1].text;
+    const positive = s1.number === 1 && s1.title === DRAFT.title && s1.frames.length === 16 &&
+      f1 === DRAFT.frames[1] && f1.includes('\n') && !f1.includes('\n\n') && f2 === DRAFT.frames[2] &&
+      s1.frames.slice(2).every((f) => f.text === '') && s1.ref === DRAFT.ref &&
+      s1.frames.every((f, i) => f.image.endsWith(`obs-en-01-${String(i + 1).padStart(2, '0')}.jpg)`));
+    let allParse = true;
+    for (let n = 1; n <= STORY_COUNT; n++) { const p = parseStory(read(OING(storyIpath(n)))); if (p.number !== n || p.frames.length < 7) allParse = false; }
+    const img = '![OBS Image](https://cdn.door43.org/obs/jpg/360px/obs-en-01-01.jpg)';
+    const twoParagraphs = `# 1. T\n\n${img}\n\nuno\n\ndos\n`;
+    const textBeforeImage = `# 1. T\n\nuno\n\n${img}\n\n`;
+    const noTitle = `${img}\n\nuno\n`;
+    const fires = throws(() => parseStory(twoParagraphs)) && throws(() => parseStory(textBeforeImage)) && throws(() => parseStory(noTitle));
+    // a frame text with a blank line is refused by the writer, not normalized (§10: the app
+    // removes blank lines BEFORE it seals; the format refuses what is left)
+    const writerRefuses = throws(() => writeFrame(seedStory(read(TING(storyIpath(1)))), 1, 'uno\n\ndos'));
+    check('OBS frame model: story 1 parses to its title, 16 frames (the image line splits them) and the reference line; frames 1-2 carry the drafted paragraphs with a single newline kept inside frame 1; all 50 stories parse; two paragraphs in one frame, text before the first image line, and a missing title line all refuse; a writer refuses a blank line inside frame text [covers R-10.3.1 R-10.3.2 R-10.3.3]',
+      positive && allParse && fires && writerRefuses, `story 1: ${s1.frames.length} frames, ref "${s1.ref}"`, 'obs');
+  }
+
+  // O4 — the byte-strict frame write (the D8 analogue): a write changes ONLY its own region
+  {
+    const seed = seedStory(read(TING(storyIpath(1))));
+    // the region of frame F: the lines after its image line up to the next image line
+    const lines = seed.split('\n');
+    const imageIdx = lines.map((l, i) => (l.startsWith('![') ? i : -1)).filter((i) => i >= 0);
+    const regionOf = (f, arr = lines) => ({ start: imageIdx[f - 1] + 1, end: f < imageIdx.length ? arr.indexOf(lines[imageIdx[f]], imageIdx[f - 1] + 1) : arr.length });
+    const outsideIdentical = (before, after, f) => {
+      const b = before.split('\n'), a = after.split('\n');
+      const rb = regionOf(f, b), ra = regionOf(f, a);
+      return b.slice(0, rb.start).join('\n') === a.slice(0, ra.start).join('\n') && b.slice(rb.end).join('\n') === a.slice(ra.end).join('\n');
+    };
+    const w3 = writeFrame(seed, 3, 'tres');
+    const w3b = writeFrame(w3, 3, 'tres cambiado\nsegunda línea');
+    const w3c = writeFrame(w3b, 3, ''); // clearing restores the template's empty-frame form
+    const wLast = writeFrame(seed, 16, 'dieciséis');
+    const wRef = writeRef(wLast, 'ref');
+    const positive = outsideIdentical(seed, w3, 3) && outsideIdentical(w3, w3b, 3) && w3c === seed &&
+      parseStory(w3b).frames[2].text === 'tres cambiado\nsegunda línea' &&
+      outsideIdentical(seed, wLast, 16) && wRef.startsWith(wLast.trimEnd()) && parseStory(wRef).ref === 'ref' &&
+      writeRef(wRef, 'ref2').slice(0, -('_ref2_\n'.length)) === wRef.slice(0, -('_ref_\n'.length));
+    // negative: a copy where a DIFFERENT frame also changed is caught by the same predicate,
+    // and a frame beyond the story's frame count refuses
+    const tampered = w3.replace('obs-en-01-05.jpg', 'obs-en-01-05.jpeg');
+    const fires = !outsideIdentical(seed, tampered, 3) && throws(() => writeFrame(seed, 17, 'x')) && throws(() => writeFrame(seed, 0, 'a\nb'));
+    check('OBS byte-strict write: writing, rewriting and clearing frame 3 of a seed story changes only that frame\'s region (clearing restores the template form byte for byte); the last frame and the reference line follow the same rule; a copy tampered elsewhere fires; frame 17 of a 16-frame story and a multi-line title refuse [covers R-10.3.4 R-10.7.5]',
+      positive && fires, '', 'obs');
+  }
+
+  // O5 — currentScope equality with the template's table, verbatim
+  {
+    const same = JSON.stringify(obsMeta.type.flavorType.currentScope) === JSON.stringify(tmplMeta.type.flavorType.currentScope);
+    const broken = clone(obsMeta.type.flavorType.currentScope); delete broken.JAS;
+    const reordered = Object.fromEntries(Object.entries(clone(obsMeta.type.flavorType.currentScope)).reverse());
+    const fires = JSON.stringify(broken) !== JSON.stringify(tmplMeta.type.flavorType.currentScope) &&
+      JSON.stringify(reordered) !== JSON.stringify(tmplMeta.type.flavorType.currentScope);
+    const grammar = Object.values(obsMeta.type.flavorType.currentScope).every((v) => scopeError(v) === null);
+    check('OBS scope: type.flavorType.currentScope equals the template\'s table VERBATIM (same keys, same order, same ranges — 33 books the stories retell) and every value passes the §3 rule 4 grammar; a dropped key and a reordered table both fire [covers R-10.2.3]',
+      same && fires && grammar, `${Object.keys(obsMeta.type.flavorType.currentScope).length} books`, 'obs');
+  }
+
+  // O6 — the version 2 fold: the drafted story as four `v: 2` segments folds and projects,
+  // at checkpoint, to the sample file byte for byte; a `v: 1` set folds unchanged
+  {
+    const actor = 'obs-actor';
+    const ts = (i) => `2026-09-15T12:00:0${i}.000Z|0000|${actor}`;
+    const ev = (i, o) => ({ v: 2, actor, ts: ts(i), base: null, ...o });
+    const events = [
+      ev(0, { op: 'text.frame.set', story: 1, frame: 0, text: DRAFT.title }),
+      ev(1, { op: 'text.frame.set', story: 1, frame: 1, text: DRAFT.frames[1] }),
+      ev(2, { op: 'text.frame.set', story: 1, frame: 2, text: DRAFT.frames[2] }),
+      ev(3, { op: 'text.story.ref.set', story: 1, text: DRAFT.ref }),
+    ];
+    const out = fold(events);
+    const seed = seedStory(read(TING(storyIpath(1))));
+    const proj = derivedProjections(out, { baseMetadata: obsMeta, baseStories: { 1: seed } });
+    const positive = out.stories[1].frames[0] === DRAFT.title && out.stories[1].ref === DRAFT.ref && out.forks.length === 0 &&
+      proj[storyIpath(1)] === read(OING(storyIpath(1))) && Object.keys(out.books).length === 0;
+    // a v: 1 segment set (the Bible sample's seed) folds unchanged: books project, no story
+    const seedBible = seedFromSidecars({ actor: 'seed-actor', books: { TIT: read(ING('TIT.usfm')) }, vrs: { name: 'eng', bytes: read(ING('vrs.json')) } });
+    const v1 = fold(seedBible);
+    const v1ok = seedBible.every((e) => e.v === 1) && v1.books.TIT.usfm === read(ING('TIT.usfm')) && Object.keys(v1.stories).length === 0;
+    // negatives: a v: 1 envelope refuses the story ops and the story targets; a fold whose
+    // frame text differs does not project the sample's bytes; no base story refuses
+    const v1Refuses = validateEvent({ ...events[1], v: 1 }) !== null &&
+      validateEvent({ v: 1, actor, ts: ts(5), base: null, op: 'note.add', target: { story: 1, frame: 1 }, text: 'n' }) !== null &&
+      validateEvent({ v: 2, actor, ts: ts(5), base: null, op: 'note.add', target: { story: 1, frame: 1 }, text: 'n' }) === null;
+    const mutated = fold([...events.slice(0, 2), ev(2, { op: 'text.frame.set', story: 1, frame: 2, text: 'otro' }), events[3]]);
+    const differs = derivedProjections(mutated, { baseMetadata: obsMeta, baseStories: { 1: seed } })[storyIpath(1)] !== read(OING(storyIpath(1)));
+    const noBase = throws(() => derivedProjections(out, { baseMetadata: obsMeta }));
+    check('OBS v2 fold: the drafted story as four v: 2 segments (title = frame 0, frames 1-2, reference line) folds without forks and the checkpoint projection onto the seed story equals sample content/01.md BYTE FOR BYTE; a v: 1 seed set still folds to its USFM with no story; v: 1 refuses the story ops and story targets; a different frame text does not project the sample; a missing base story refuses the checkpoint [covers R-10.7.1 R-10.7.4]',
+      positive && v1ok && v1Refuses && differs && noBase, '', 'obs');
+  }
+}
+
 const g = groups;
 console.log(`\nStage-1 (path-authoritative — holds on today's pankosmia-web): ${g.stage1[0]} passed, ${g.stage1[1]} failed`);
 console.log(`Stage-2 (role/relationships durability — x-roles non-durable by design, D28; client re-asserts after remake): ${g.stage2[0]} passed, ${g.stage2[1]} failed`);
 console.log(`Phase-2 (journal-merge design checks, §8.7): ${g.phase2[0]} passed, ${g.phase2[1]} failed`);
+console.log(`OBS (the OBS project kind, §10 — sample-burrito-obs): ${g.obs[0]} passed, ${g.obs[1]} failed`);
 console.log(`${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

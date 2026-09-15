@@ -59,7 +59,7 @@ const parsers = {
     return { passed: n('passed'), failed: n('failed'), skipped: n('skipped'), summary: [files.trim(), tests.trim()].filter(Boolean) };
   },
   phase1: (out) => {
-    const s = pickStart(out, ['Stage-1', 'Stage-2', 'Phase-2']);
+    const s = pickStart(out, ['Stage-1', 'Stage-2', 'Phase-2', 'OBS']);
     const total = lines(out).reverse().find((l) => /^\d+ passed, \d+ failed$/.test(l.trim())) || '';
     const c = passFail(total) || { passed: null, failed: null };
     return { ...c, skipped: null, summary: [...s, total.trim()].filter(Boolean) };

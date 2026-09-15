@@ -14,3 +14,10 @@ names the exact revisions (UGNT `v0.34`, UHB `v2.1.30`).
 
 The Scripture Burrito schema bundle in `sb-schema/` is a verbatim copy from pankosmia
 `resource-core` (see `README.md`).
+
+The OBS sample project CONTENT in `sample-burrito-obs/` and the vendored template in
+`fixtures/text_stories/` are under CC BY-SA 4.0. The template is unfoldingWord® Open Bible
+Stories, © unfoldingWord (`ingredients/LICENSE.md`, copied from pankosmia `resource-core`;
+provenance in `fixtures/text_stories/README.md`). The drafted Spanish text of story 1
+(`fixtures/obs-draft.mjs`) is "Sample text CC BY-SA 4.0, Equipo Ejemplo", as the sample's
+`metadata.json` copyright block declares.
