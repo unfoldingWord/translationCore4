@@ -88,8 +88,34 @@ _Avoid_: book, chapter
 
 **Frame**:
 An atomic illustrated scene and its associated story text within an OBS story. It is
-the natural unit for OBS drafting and review.
+the natural unit for OBS drafting and review. In the story file the image line begins a
+frame and exactly one paragraph follows it.
 _Avoid_: verse, paragraph
+
+**Story title**:
+The first line of a story, `# N. Title`. Drafted like a frame; addressed as frame 0 of the
+story, as OBS Translation Notes addresses its title notes.
+_Avoid_: heading, chapter title
+
+**Reference line**:
+The last line of a story, `_A Bible story from: …_`, naming the passages the story retells.
+Drafted like a frame; never a check target.
+_Avoid_: footer, scripture reference (ambiguous with a verse reference)
+
+**Frame locator**:
+The key of a frame, `story:frame` without leading zeros (`1:1`); `1:0` is the story title.
+Used by the check records, the journal and the helps.
+_Avoid_: reference (for the key), `SS:FF`
+
+**Image pack**:
+The shared resource of frame images that a project's stories display when the project
+carries no image of its own. A project may override any image with its own ingredient.
+_Avoid_: picture pack, image bundle
+
+**Source phrase**:
+The words of an OBS help (`Quote`, `OrigWords`) in the language of the pinned
+gateway-language OBS. The translator matches it to target words by hand.
+_Avoid_: original words, target language words
 
 ## Review and delivery
 
@@ -126,10 +152,11 @@ A group of executable checks in the BURRITO-SPEC §8 journal conformance suite, 
 _Avoid_: `Jn` (reserved for user journeys), journey
 
 **OBS checking**:
-Human review of an OBS draft using OBS Translation Notes and Translation Words,
-with TQ excluded from the checking workflow. Structural correctness is enforced at
+Human review of an OBS draft, frame by frame, using OBS Translation Notes and OBS
+Translation Words with manual target selection, plus the Community Checking preview of the
+story. There is no alignment layer. TQ is excluded. Structural correctness is enforced at
 import and translation boundaries, not treated as a separate check tool.
-_Avoid_: OBS verse checking, TQ checking
+_Avoid_: OBS verse checking, TQ checking, OBS alignment
 
 **DCS send**:
 The workflow that sends a completed or in-progress OBS project to the Door43 Content

@@ -1418,3 +1418,71 @@ was placed, unchecked by any later edit) [VERIFIED — `unfoldingWord/wordAlignm
    stale); "bank empty" no longer means valid on its own.
 
 Lands before #1 in the #262 chain (#255 → #134 → #213 → #271 → #1).
+
+## D74 (2026-09-15, project-owner rulings) **Increment 7 is Open Bible Stories: four journeys, one epic, due 2026-09-25. OBS projects follow the pankosmia `text_stories` template byte for byte; the image line splits frames; one paragraph per frame.** [grill-with-docs session 2026-09-15; epic #64; issues #147, #286–#294; supersedes the D66 line "the pilot roadmap is scripture-only"]
+
+Context. Increment 6 closed on 2026-09-15, 17 days before its date. The owner moved
+Open Bible Stories into 4.0.0 as Increment 7 and renumbered publish and import to 8 and
+ship to 9. The session defined the increment on the board and settled the format questions
+of #147.
+
+1. **Four journeys close the increment.** J20 create an OBS project, J21 translate a story
+   frame by frame, J25 read a story with helps and record a user comment (new row), J22
+   check an OBS story. Slip order if the date bites: J22 first, then J25, named in the
+   epic. J23 export moves to Increment 8 with J7 on one PDF path. J24 stays Phase 2.
+2. **Dates.** Increment 7 due 2026-09-25; alpha.7 to the pilots Sep 26; feedback Sep 29 to
+   Oct 3. Increment 8 Oct 9 (rc.1), Increment 9 Oct 15, v4.0.0 Oct 16 unchanged. 4.0.0
+   includes OBS drafting, understanding and checking; OBS export and DCS send do not.
+3. **One specification, one harness.** BURRITO-SPEC §1 states two project kinds; a new §10
+   "OBS project kind" holds only the differences. Everything §10 does not name applies
+   unchanged (§3, §5.3, §5.4, §8.1–§8.3). Spec and harness change in one change set (§9,
+   #147). OBS is a different flavor of Burrito, and it is still a Burrito.
+4. **Layout.** The pankosmia `text_stories` template, byte for byte: `ingredients/content/01.md`
+   to `50.md`, `content/front/title.md`, `content/front/intro.md`, `content/back/intro.md`.
+   `currentScope` is the template's table copied verbatim (keyed by the Bible passages the
+   stories retell; the schema requires the book-code grammar). No `vrs.json`, no alignment
+   sidecar. A new project seeds every title as `# N.` with no text and every frame as the
+   image line plus an empty paragraph (the template's exact form); no reference line until
+   drafted. Front and back files are copied from the gateway source and are not drafted in
+   Increment 7. Scope is always all fifty stories.
+5. **Frame model.** A story file is one title line, then per frame one image line and exactly
+   one paragraph, then the reference line `_A Bible story from: …_`, separated by single
+   blank lines. **The image line splits frames.** Blank lines inside a frame are removed on
+   save; single newlines are kept. A frame write is byte-strict outside that frame (the D8
+   analogue). One paragraph per frame holds until users ask for more.
+6. **Locator.** `story:frame` without leading zeros (`1:1`), as OBS Translation Notes writes
+   it; frame `0` is the story title. The reference line is drafted but has no locator and is
+   never a check target.
+7. **Journal vocabulary version 2.** `text.frame.set {story, frame, text}`,
+   `text.story.ref.set {story, text}`; `check.decision.set` and `note.add` MAY carry a
+   `{story, frame}` target. No structural operations for stories. Version 1 readers are
+   untouched. The fold projects a story to its Markdown file as it projects a book to USFM.
+8. **Checks.** OBS Translation Notes and OBS Translation Words by frame, manual target
+   selection. The source phrase (`Quote`, `OrigWords`) is in the language of the pinned
+   gateway OBS; `Occurrence` is 1 in every OBS link row and is not counted [VERIFIED —
+   `unfoldingWord/en_obs-twl` master, 2,393 rows, 2026-09-15]. Missing gateway help set:
+   warned English fallback. Check comments, bookmarks, invalidation and the rail carry over
+   unchanged. No Align tool for stories. Community Checking shows the typeset story preview
+   with a pictures on/off toggle; the PDF file is J23, Increment 8.
+9. **Resources and pictures.** The §5.3 language set gains three OPTIONAL members: `obs`,
+   `obs-tn`, `obs-twl`; tW and tA are shared. Resource flavors follow pankosmia's labels
+   (`textStories`, `x-obsnotes`, `x-obsarticles`, `x-obsimages`). The English OBS text
+   members ship in the bundled English suite. The default picture pack `uW/obs_images_360`
+   (599 files, 49.1 MB [VERIFIED — Door43 API, 2026-09-15]) ships inside each installer as a
+   sha-pinned resource (D71 pattern); the size is accepted. Pictures resolve at render time,
+   first hit wins: a project ingredient with role `x-obsimages`, a pinned `x-obsimages`
+   burrito, the default pack. The Markdown image line keeps the source's cdn URL text and is
+   never rewritten. The smoke test gains an offline picture check.
+10. **Interface.** D29 and D63 unchanged: design-native on the design system, no pankosmia
+    visual components; pankosmia's OBS editor is read for its parsing rules only. Understand
+    and Translate use the section layout with the story as the section and the frame as the
+    unit; Check reuses the tool shell. The owner reviews a half-page description of the
+    translator's story journey before the editor's code.
+11. **Vocabulary** (`CONTEXT.md`): "story title", "reference line", "frame locator", "image
+    pack", "source phrase"; "OBS checking" amended. Avoid: "chapter" for story, "verse" or
+    "paragraph" for frame, "picture" as a term (it is the display of an image), "OBS book".
+12. **Left.** Audio recording for frames is #294 (Post-4.0 question). Nothing else was in
+    the milestone.
+
+ROADMAP rows 7 to 9, JOURNEYS J20–J25 and the #58 schedule carry the amendment. #147 holds
+the format answers until §10 lands.

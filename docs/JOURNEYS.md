@@ -31,12 +31,12 @@ Owner of increment numbers: the GitHub milestones, mirrored in `docs/ROADMAP.md`
 | J4 | translator | Check | Check a book with tN and tW | shipped alpha.2; revised end state (D72) shipped alpha.6 | `e2e/j04-check-book.spec.ts` |
 | J5 | translator | Check | Align a verse | shipped alpha.2; revised end state (D72) shipped alpha.6 | `e2e/j05-align-verse.spec.ts` |
 | J6 | translator | Translate | Edit a checked verse and see the checks flag | shipped alpha.2 | `e2e/j06-edit-invalidation.spec.ts` |
-| J7 | facilitator | Deliver | Export the book | increment 7 (#19 USFM, #20 PDF); RTL run #29 Post-4.0 | `e2e/j07-publish.spec.ts` (fixme) |
+| J7 | facilitator | Deliver | Export the book | increment 8 (#19 USFM, #20 PDF); RTL run #29 Post-4.0 | `e2e/j07-publish.spec.ts` (fixme) |
 | J8 | translator | Translate | Resume work across sessions and books | built (2026-09-05) | `e2e/j08-resume.spec.ts` |
-| J9a | facilitator | Exchange | Import a tC3 project | increment 7 | `e2e/j09-import.spec.ts` (fixme) |
-| J9b | facilitator | Exchange | Import an x-tcore project | increment 7 | `e2e/j09-import.spec.ts` (fixme) |
-| J9c | facilitator | Exchange | Import raw USFM | increment 7 (#195) | `e2e/j09-import.spec.ts` (to write) |
-| J9d | facilitator | Exchange | Import a Scripture Burrito | increment 7 (#196) | `e2e/j09-import.spec.ts` (to write) |
+| J9a | facilitator | Exchange | Import a tC3 project | increment 8 | `e2e/j09-import.spec.ts` (fixme) |
+| J9b | facilitator | Exchange | Import an x-tcore project | increment 8 | `e2e/j09-import.spec.ts` (fixme) |
+| J9c | facilitator | Exchange | Import raw USFM | increment 8 (#195) | `e2e/j09-import.spec.ts` (to write) |
+| J9d | facilitator | Exchange | Import a Scripture Burrito | increment 8 (#196) | `e2e/j09-import.spec.ts` (to write) |
 | J10 | — | — | retired: RTL is a fixture axis on J2, J4, J5, J7 | retired | both runs listed on each of those rows; `e2e/j10-rtl.spec.ts` stays until they exist |
 | J11 | facilitator | Exchange | Send the project to Door43 | Phase 2 | none |
 | J12 | facilitator | Start | Upgrade the pinned resources | shipped alpha.6 (#256, #257; D72) | `e2e/j12-upgrade-resources.spec.ts` |
@@ -47,11 +47,12 @@ Owner of increment numbers: the GitHub milestones, mirrored in `docs/ROADMAP.md`
 | J17 | translator | Exchange | Receive a project and continue offline | Phase 2 | none |
 | J18 | translator | Check | Resolve a verse fork | Phase 2 | none |
 | J19 | consultant | Check | Record findings on a translation | Phase 2 | none |
-| J20 | facilitator | Start | Create an OBS project | vision (D66) | none |
-| J21 | translator | Translate | Translate a story frame by frame | vision (D66) | none |
-| J22 | translator | Check | Check an OBS story | vision (D66) | none |
-| J23 | facilitator | Deliver | Export an OBS project as Markdown and PDF | vision (D66) | none |
-| J24 | facilitator | Exchange | Send an OBS project to DCS | vision (D66) | none |
+| J20 | facilitator | Start | Create an OBS project | increment 7 (#287; D74) | `e2e/j20-obs-create.spec.ts` (to write, #292) |
+| J21 | translator | Translate | Translate a story frame by frame | increment 7 (#289; D74) | `e2e/j21-obs-draft.spec.ts` (to write, #292) |
+| J22 | translator | Check | Check an OBS story | increment 7 (#291; D74; first to slip) | `e2e/j22-obs-check.spec.ts` (to write, #292) |
+| J23 | facilitator | Deliver | Export an OBS project as Markdown and PDF | increment 8 (with J7, one PDF path; D74) | `e2e/j07-publish.spec.ts` (OBS cases to add) |
+| J24 | facilitator | Exchange | Send an OBS project to DCS | Phase 2 | none |
+| J25 | translator | Understand | Read a story with helps and record a user comment | increment 7 (#290; D74) | `e2e/j25-obs-understand.spec.ts` (to write, #292) |
 
 ## Entries
 
@@ -151,7 +152,7 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   byte-identical except the D9 checkpoint commit. No publish record in the project.
 - MUST NOT: write anything else into the project.
 - Proof: `e2e/j07-publish.spec.ts`, LTR and RTL.
-- Owner: Increment 7: #19 for the aligned USFM, plain USFM, and Scripture Burrito exports; #20
+- Owner: Increment 8: #19 for the aligned USFM, plain USFM, and Scripture Burrito exports; #20
   for the dated PDF (moved from Post-4.0, owner ruling 2026-09-06). The RTL run (#29) stays
   Post-4.0. J7 is shipped only when all four outputs have proof.
 
@@ -172,7 +173,7 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   carry `seed.source`; imported text byte-identical to the source text.
 - MUST NOT (all four): create a project or write anything on disk from damaged or incomplete
   input.
-- Proof: `e2e/j09-import.spec.ts` (fixme; c and d need new cases). Owner: Increment 7 (#21, #14, #195, #196, #41).
+- Proof: `e2e/j09-import.spec.ts` (fixme; c and d need new cases). Owner: Increment 8 (#21, #14, #195, #196, #41).
 
 ### J11 Send to Door43 (Phase 2)
 
@@ -191,7 +192,7 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   failed or interrupted download changes nothing.
 - MUST NOT: upgrade silently (resource-handling stance 2026-07-12); move a pin before every
   resource of the release is installed and sha-verified; touch the original-language or
-  gateway-Bible pins (that upgrade is #258, Increment 7).
+  gateway-Bible pins (that upgrade is #258, Increment 8).
 - Proof: `e2e/j12-upgrade-resources.spec.ts`. Owner: shipped alpha.6 (#40: #256 built, #257
   proved).
 
@@ -223,10 +224,68 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 - J19 consultant records findings without drafting.
 - End states: defined when the §8 sync operations ratify (issue #22).
 
-### J20–J24 (vision, D66)
+### J20 Create an OBS project
 
-Create an OBS project · translate frame by frame · check a story · export Markdown and PDF ·
-send to DCS. End states follow the OBS content model (format question #147).
+- Actor: facilitator. Activity: Start.
+- Steps: choose Open Bible Stories · choose the language, the name and the gateway set.
+- End state (defined 2026-09-15, D74): a repository that is the pankosmia `text_stories`
+  template byte for byte except `metadata.json` and the fifty title lines, which read `# N.`
+  with no text; every frame is the image line plus an empty paragraph; no reference line;
+  `currentScope` equals the template's table; front and back files copied from the gateway
+  source. The harness validates it as an OBS project (BURRITO-SPEC §10).
+- MUST NOT: offer a story subset; copy source text into a frame; rewrite an image line.
+- Proof: `e2e/j20-obs-create.spec.ts` (#292). Owner: Increment 7 (#287).
+
+### J21 Translate a story frame by frame
+
+- Actor: translator. Activity: Translate.
+- Precondition: J20; the gateway OBS and the picture pack are installed (#288).
+- Steps: open a story · read the gateway frame and its picture · write the frame · write the
+  title and the reference line.
+- End state (defined 2026-09-15, D74): the story file differs from before only inside the
+  written paragraph, the `# N.` line, or the closing `_…_` line; one `text.frame.set` or
+  `text.story.ref.set` segment per save; one paragraph per frame, single newlines kept.
+- MUST NOT: touch another frame's bytes; write a second paragraph into a frame; save an
+  image line.
+- Proof: `e2e/j21-obs-draft.spec.ts` (#292). Owner: Increment 7 (#289).
+
+### J22 Check an OBS story
+
+- Actor: translator. Activity: Check (Community Checking preview lives here — D63).
+- Precondition: J21; `obs-tn` and `obs-twl` are installed for the gateway language.
+- Steps: open a frame's note or word link · see the source phrase in the gateway text · select
+  the target words · leave a check comment or a bookmark · preview the story.
+- End state (defined 2026-09-15, D74): §5.2 decision records under the `story:frame` key for
+  `translationNotes` and `translationWords`; a later frame edit flags them invalid and
+  retains them (D36); the story file is byte-identical.
+- MUST NOT: count `Occurrence`; offer an Align tool; write a PDF (that is J23).
+- Proof: `e2e/j22-obs-check.spec.ts` (#292). Owner: Increment 7 (#291); first to move to
+  Increment 8 if the date bites.
+
+### J23 Export an OBS project as Markdown and PDF
+
+- Actor: facilitator. Activity: Deliver.
+- End state: files written outside the project: the story Markdown, a dated PDF, a Scripture
+  Burrito; the project byte-identical except the D9 checkpoint commit.
+- Proof: `e2e/j07-publish.spec.ts`, OBS cases to add. Owner: Increment 8, with J7 on one PDF
+  path (D74). OBS layouts are #11.
+
+### J24 Send an OBS project to DCS
+
+- Actor: facilitator. Activity: Exchange. Phase 2, with J11.
+
+### J25 Read a story with helps and record a user comment
+
+- Actor: translator. Activity: Understand.
+- Precondition: J20; the OBS help set is installed.
+- Steps: open a story · read the frames with pictures, gateway text and draft · read the notes
+  and word links for a frame · write a user comment.
+- End state (defined 2026-09-15, D74): one `note.add` segment with a `{story, frame}`
+  target per comment; the story file is byte-identical; Resume returns to Understand on the
+  same story.
+- MUST NOT: change progress; write into the story file.
+- Proof: `e2e/j25-obs-understand.spec.ts` (#292). Owner: Increment 7 (#290); second to move
+  to Increment 8 if the date bites.
 
 ## Retired numbers
 
