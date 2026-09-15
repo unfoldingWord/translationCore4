@@ -1486,3 +1486,6 @@ of #147.
 
 ROADMAP rows 7 to 9, JOURNEYS J20–J25 and the #58 schedule carry the amendment. #147 holds
 the format answers until §10 lands.
+
+[reading note: where D59, D70 and D72 say "Increment 7" for #21, #55, #139, #209 or #258,
+read Increment 8 — those items moved with the renumbering; the entries stay as dated records.]
