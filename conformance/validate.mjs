@@ -809,14 +809,16 @@ let mergedVerseObjects = null;
     const noTitle = `${img}\n\nuno\n`;
     const storyZero = `# 0. T\n\n${img}\n\nuno\n`;
     const emptyRef = `# 1. T\n\n${img}\n\nuno\n\n__\n`;
+    const emptyRefAfterEmptyFrame = `# 1. T\n\n${img}\n\n__\n`; // `__` right after an empty frame is a blank reference, not frame text
+    const blankRef = `# 1. T\n\n${img}\n\nuno\n\n_ _\n`;
     const fires = throws(() => parseStory(twoParagraphs)) && throws(() => parseStory(textBeforeImage)) && throws(() => parseStory(noTitle)) &&
-      throws(() => parseStory(storyZero)) && throws(() => parseStory(emptyRef));
+      throws(() => parseStory(storyZero)) && throws(() => parseStory(emptyRef)) && throws(() => parseStory(emptyRefAfterEmptyFrame)) && throws(() => parseStory(blankRef));
     // a frame text with a blank line is refused by the writer, not normalized (§10: the app
     // removes blank lines BEFORE it seals; the format refuses what is left). The writer and
     // the parser share ONE blank-line predicate, so whatever the writer accepts parses back
     // to itself: a whitespace-only text and a NBSP line are blank for both.
     const seed1 = seedStory(read(TING(storyIpath(1))));
-    const writerRefuses = ['uno\n\ndos', ' ', 'a\n \nb', 'uno\n', '\nuno'].every((t) => throws(() => writeFrame(seed1, 1, t)));
+    const writerRefuses = ['uno\n\ndos', ' ', 'a\n \nb', 'uno\n', '\nuno', '__', '_ref_', 'a\n__'].every((t) => throws(() => writeFrame(seed1, 1, t)));
     const roundTrip = [DRAFT.frames[1], DRAFT.frames[2], 'x', 'a b\nc d'].every((t) => parseStory(writeFrame(seed1, 1, t)).frames[0].text === t);
     check('OBS frame model: story 1 parses to its title, 16 frames (the image line splits them) and the reference line; frames 1-2 carry the drafted paragraphs with a single newline kept inside frame 1; all 50 stories parse; two paragraphs in one frame, text before the first image line, a missing title line, a story number 0 and an empty `__` reference all refuse; the writer refuses a blank, whitespace-only or NBSP line and a leading/trailing newline, and every accepted text parses back to itself [covers R-10.3.1 R-10.3.2 R-10.3.3]',
       positive && allParse && fires && writerRefuses && roundTrip, `story 1: ${s1.frames.length} frames, ref "${s1.ref}"`, 'obs');

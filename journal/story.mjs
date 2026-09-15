@@ -14,7 +14,10 @@
 
 const TITLE_RE = /^# (\d+)\.( (.*))?$/;
 const IMAGE_RE = /^!\[[^\]]*\]\([^)]*\)$/;
-const REF_RE = /^_[^\n]+_$/;
+// `__` and `_ _` are in the reference-line FORM (so the writer refuses them as frame text
+// and the parser refuses them as a blank reference) — the form is matched here, the
+// non-blank-content rule is applied where the line is read (Codex round 2 of #147).
+const REF_RE = /^_[^\n]*_$/;
 
 export const STORY_COUNT = 50;
 const isStr = (v) => typeof v === 'string';
