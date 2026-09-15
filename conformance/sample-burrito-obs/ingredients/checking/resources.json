@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 2,
+  "languageSets": {
+    "primary": {
+      "gatewayLanguage": {
+        "languageId": "es-419",
+        "owner": "es-419_gl"
+      },
+      "translationNotes": {
+        "repoPath": "git.door43.org/es-419_gl/es-419_tn",
+        "version": "v66",
+        "sha": "22f3d0c61e2ab4701cb869547de9c3c43da07208",
+        "flavor": "parascriptural/x-bcvnotes"
+      },
+      "translationWordsLinks": {
+        "repoPath": "git.door43.org/es-419_gl/es-419_tw",
+        "version": "v37",
+        "sha": "7586f4ff1f0483ea40a4a68e5e1f33158e08c208",
+        "flavor": "parascriptural/x-bcvarticles"
+      },
+      "translationWords": {
+        "repoPath": "git.door43.org/es-419_gl/es-419_tw",
+        "version": "v37",
+        "sha": "7586f4ff1f0483ea40a4a68e5e1f33158e08c208",
+        "flavor": "parascriptural/x-bcvarticles"
+      },
+      "translationAcademy": {
+        "repoPath": "git.door43.org/es-419_gl/es-419_ta",
+        "version": "v4",
+        "sha": "26606b578c37cc2c0ee09bb7b9a291860ff59444",
+        "flavor": "peripheral/x-peripheralArticles"
+      },
+      "obs": {
+        "repoPath": "git.door43.org/es-419_gl/es-419_obs",
+        "version": "v2",
+        "sha": "4a239590d543df59f77d5ee624d475a7488b5fc3",
+        "flavor": "gloss/textStories"
+      },
+      "obs-tn": {
+        "repoPath": "git.door43.org/es-419_gl/es-419_obs-tn",
+        "version": "v2",
+        "sha": "eaa18de94dcb7df1406cc5b20deb87053c0478ca",
+        "flavor": "parascriptural/x-obsnotes"
+      },
+      "obs-twl": {
+        "repoPath": "git.door43.org/es-419_gl/es-419_obs-twl",
+        "version": "v2",
+        "sha": "eb5ecd974b19a123e1fe3ee9da21c89c2555d18d",
+        "flavor": "parascriptural/x-obsarticles"
+      }
+    },
+    "fallback": {
+      "gatewayLanguage": {
+        "languageId": "en",
+        "owner": "unfoldingWord"
+      },
+      "translationNotes": {
+        "repoPath": "git.door43.org/unfoldingWord/en_tn",
+        "version": "v86",
+        "sha": "c354b8ae66a23c485bf6f38fd35bd8f7ef81e4e5",
+        "flavor": "parascriptural/x-bcvnotes"
+      },
+      "translationWordsLinks": {
+        "repoPath": "git.door43.org/unfoldingWord/en_tw",
+        "version": "v87",
+        "sha": "eaeb7bfefcf84132d0cbcbed185f3ea2be3d86dd",
+        "flavor": "parascriptural/x-bcvarticles"
+      },
+      "translationWords": {
+        "repoPath": "git.door43.org/unfoldingWord/en_tw",
+        "version": "v87",
+        "sha": "eaeb7bfefcf84132d0cbcbed185f3ea2be3d86dd",
+        "flavor": "parascriptural/x-bcvarticles"
+      },
+      "translationAcademy": {
+        "repoPath": "git.door43.org/unfoldingWord/en_ta",
+        "version": "v86",
+        "sha": "c7caddfb474efd713f36b35a3ffc927866c7b180",
+        "flavor": "peripheral/x-peripheralArticles"
+      },
+      "obs": {
+        "repoPath": "git.door43.org/unfoldingWord/en_obs",
+        "version": "v9",
+        "sha": "d39a1dc7a7557ac54e4a8fecc3462147fe7eec3b",
+        "flavor": "gloss/textStories"
+      },
+      "obs-tn": {
+        "repoPath": "git.door43.org/unfoldingWord/en_obs-tn",
+        "version": "v13",
+        "sha": "e86138ea13f619f09f7a6dcaa60592716d407fe4",
+        "flavor": "parascriptural/x-obsnotes"
+      },
+      "obs-twl": {
+        "repoPath": "git.door43.org/unfoldingWord/en_obs-twl",
+        "version": "v3",
+        "sha": "44ebc9fafe8101665f985007d566f5036a2be85b",
+        "flavor": "parascriptural/x-obsarticles"
+      }
+    }
+  }
+}

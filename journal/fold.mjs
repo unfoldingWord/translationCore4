@@ -9,7 +9,7 @@
 import usfmjs from 'usfm-js';
 import { slotKeysOf, recompose } from './skeleton.mjs';
 import { validateEvent, PAYLOAD_FIELDS, GENERATION_OPS } from './schema.mjs';
-import { identityKeyOf, noteRekeyError, journaledTextError, MAX_JSON_DEPTH } from './grammar.mjs';
+import { identityKeyOf, noteRekeyError, journaledTextError, isStoryReference, MAX_JSON_DEPTH } from './grammar.mjs';
 import { md5Hex as md5 } from './md5.mjs';
 export { slotKeysOf }; // kept on this module for existing importers
 
@@ -118,6 +118,11 @@ const decKeyOf = (toolId, d) => `dec|${toolId}|${identityKeyOf(d.contextId)}`;
 const keyOf = (e) => {
   switch (e.op) {
     case 'text.verse.set':      return `text|${e.book}|${e.chapter}:${e.verse}`;
+    // §10 (D74): one register per frame (frame 0 = the title) and one per reference line.
+    // Stories have no structural chain — the frame set is fixed by the source — so these
+    // registers resolve like pins: LWW with fork detection, no ancestry, no generation.
+    case 'text.frame.set':      return `frame|${e.story}|${e.frame}`;
+    case 'text.story.ref.set':  return `ref|${e.story}`;
     case 'align.verse.set':     return `align|${e.book}|${e.chapter}:${e.verse}`;
     case 'check.decision.set':  return decKeyOf(e.toolId, e.decision);
     case 'resource.pin.set':    return `pin|${e.slot}`;
@@ -129,7 +134,8 @@ const keyOf = (e) => {
 
 const bookOfEvent = (e) => {
   if (e.book) return e.book;
-  if (e.op === 'check.decision.set') return e.decision.contextId.reference.bookId.toUpperCase();
+  // a §10 story decision belongs to no book: no chain, no generation, never absent
+  if (e.op === 'check.decision.set') return isStoryReference(e.decision.contextId.reference) ? null : e.decision.contextId.reference.bookId.toUpperCase();
   return null;
 };
 
@@ -936,6 +942,21 @@ export const fold = (eventsIn) => {
     if (!h.event.removed) settings[h.event.path] = h.event.value;
   }
 
+  // §10 (D74): stories project as folded frame texts (frame 0 = the title) plus the
+  // reference line — `stories[story] = {frames: {frame: text}, ref}`. The checkpoint
+  // splices them onto the base story file (story.mjs), so the fold never needs the
+  // image lines: the frame set is the source's, and only written frames appear here.
+  const stories = {};
+  const storyOf = (n) => (stories[n] ||= { frames: {}, ref: null });
+  for (const key of heads.keys()) {
+    if (!key.startsWith('frame|') && !key.startsWith('ref|')) continue;
+    const h = resolveKey(key, null, { skipAncestry: true });
+    if (!h) continue;
+    headsTs[key] = h.ts;
+    if (h.event.op === 'text.frame.set') storyOf(h.event.story).frames[h.event.frame] = h.event.text;
+    else storyOf(h.event.story).ref = h.event.text;
+  }
+
   // §8.5: a note belongs to a book either by its verse target or by the bookId embedded
   // in its decision key (toolId|checkId|bookId|chapter|verse|occurrence)
   const noteBookOf = (n) => {
@@ -1006,7 +1027,7 @@ export const fold = (eventsIn) => {
   prefixResolve(projectMeta, (p) => headsTs[`meta|${p}`], 'meta');
 
   return {
-    books, decisions, alignments, pins, projectMeta, projectMetaRemoved, settings, notes: notesOut,
+    books, stories, decisions, alignments, pins, projectMeta, projectMetaRemoved, settings, notes: notesOut,
     forks, invalid, retained, autoMerged, scope,
     vrs: vrs ? { name: vrs.name, bytes: vrs.bytes } : null, vrsRejected,
     pendingStructural, headsTs, supersedeRefused,

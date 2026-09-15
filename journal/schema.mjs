@@ -16,7 +16,9 @@ import {
   bookIdError, bookIdLowerError, toolIdError, verseSlotError, scopeError, dottedPathError,
   pinSlotError, pinEntryError, journaledTextError, jsonSafeNumberError, jsonRoundTripError,
   nfcError, nfcKeysError, toNfc, MAX_JSON_DEPTH, META_RESERVED_ROOTS, PIN_SLOT_RE,
+  isStoryReference, noteTargetKind, splitDecisionKey, STORY_BOOK_ID,
 } from './grammar.mjs';
+import { storyNumberError, frameNumberError, frameTextError, titleTextError, refTextError } from './story.mjs';
 
 // Re-exported for importers that already read the identity-key pair from the schema.
 export { identityKeyOf, identityKeyError, META_RESERVED_ROOTS, PIN_SLOT_RE };
@@ -79,10 +81,35 @@ const decisionRecordError = (d) => {
   if (oc) return `contextId.occurrence ${oc}`;
   const r = c.reference;
   if (!isObj(r)) return 'without a contextId.reference object';
+  // §10.5 (D74): a story decision's reference is `{story, frame}` — the §10 frame
+  // locator — and nothing of the verse form beside it
+  if (isStoryReference(r)) {
+    if (r.chapter !== undefined || r.verse !== undefined) return 'contextId.reference mixes the {story, frame} form with chapter/verse (§10)';
+    const s = storyNumberError(r.story); if (s) return `contextId.reference.story ${s}`;
+    const f = frameNumberError(r.frame); if (f) return `contextId.reference.frame ${f}`;
+    return null;
+  }
+  if (r.story !== undefined || r.frame !== undefined) return 'contextId.reference mixes the {bookId, chapter, verse} form with story/frame (§10)';
   const b = bookIdLowerError(r.bookId);
   if (b) return `contextId.reference.bookId ${b}`;
   const k = verseRefError(r.chapter, r.verse);
   if (k) return `contextId.reference.chapter/verse do not form a §8.4 register key — ${k}`;
+  return null;
+};
+// §10 (D74): the story target of a check.decision.set or a note.add. Stories carry no
+// book generations, so such an event MUST NOT carry `generation`, and it needs `v: 2`.
+export const storyTargetOf = (e) => {
+  if (!e) return null;
+  if (e.op === 'check.decision.set')
+    return isObj(e.decision) && isObj(e.decision.contextId) && isStoryReference(e.decision.contextId.reference) ? e.decision.contextId.reference : null;
+  if (e.op !== 'note.add') return null;
+  const kind = noteTargetKind(e.target);
+  if (kind === 'frame') return e.target;
+  // a `v: 2` note on a STORY decision names it by its decision key — `obs` in the book
+  // position. The interpretation is `v: 2` only: a `v: 1` decision key is the generic
+  // §5.2 grammar it always was (no `v: 1` decision can carry `obs`, but the key grammar
+  // never checked book codes, so a `v: 1` reader's acceptance is unchanged — R-10.7.1).
+  if (kind === 'decisionKey' && e.v === 2 && decisionKeyError(e.target.decisionKey) === null && splitDecisionKey(e.target.decisionKey).bookId === STORY_BOOK_ID) return e.target;
   return null;
 };
 // §8.3 seed provenance enum
@@ -247,12 +274,30 @@ const OPS = {
     const err = decisionRecordError(e.decision); // the SAME §5.2 validator replace post-states use
     return err ? `check.decision.set decision ${err} — must carry a complete §5.2 record` : null;
   },
+  // §10 (D74) — the two story operations, `v: 2` only (R-8.5.1)
+  'text.frame.set': (e) => {
+    const s = storyNumberError(e.story); if (s) return `text.frame.set story ${s}`;
+    const f = frameNumberError(e.frame); if (f) return `text.frame.set frame ${f}`;
+    // frame 0 is the title: one line; a frame is one paragraph (R-10.3.2)
+    const t = e.frame === 0 ? titleTextError(e.text) : frameTextError(e.text);
+    return t ? `text.frame.set text ${t}` : null;
+  },
+  'text.story.ref.set': (e) => {
+    const s = storyNumberError(e.story); if (s) return `text.story.ref.set story ${s}`;
+    const t = refTextError(e.text);
+    return t ? `text.story.ref.set text ${t}` : null;
+  },
   'note.add': (e) => {
     const tg = e.target;
-    if (!isObj(tg)) return 'note.add target must be a {book, chapter, verse} or {decisionKey} object';
-    const isVerse = tg.book != null && tg.chapter != null && tg.verse != null;
-    const isDec = isStr(tg.decisionKey);
-    if (isVerse === isDec) return 'note.add target must be exactly one of {book, chapter, verse} or {decisionKey}';
+    if (!isObj(tg)) return 'note.add target must be a {book, chapter, verse}, {story, frame} or {decisionKey} object';
+    const kind = noteTargetKind(tg);
+    if (kind === null) return 'note.add target must be exactly one of {book, chapter, verse}, {story, frame} or {decisionKey}';
+    if (kind === 'frame') {
+      const s = storyNumberError(tg.story); if (s) return `note.add target story ${s}`;
+      const f = frameNumberError(tg.frame); if (f) return `note.add target frame ${f}`;
+    }
+    const isVerse = kind === 'verse';
+    const isDec = kind === 'decisionKey';
     if (isVerse) {
       const b = bookIdError(tg.book); if (b) return `note.add target book ${b}`;
       const k = verseRefError(tg.chapter, tg.verse);
@@ -321,6 +366,8 @@ export const KNOWN_OPS = Object.freeze(Object.keys(OPS));
 // heads that differ in it are genuinely different records.
 export const PAYLOAD_FIELDS = {
   'text.verse.set': ['book', 'chapter', 'verse', 'text'],
+  'text.frame.set': ['story', 'frame', 'text'],
+  'text.story.ref.set': ['story', 'text'],
   'text.skeleton.set': ['book', 'skeleton'],
   'book.add': ['book', 'scope', 'skeleton', 'initialVerses'],
   'book.remove': ['book'],
@@ -339,9 +386,12 @@ export const PAYLOAD_FIELDS = {
 // and never seeds a frame.
 const VRS_SEED_SOURCES = new Set(['creation', 'sidecar-migration', 'tc3-import']);
 
-// §8.5: these ops MUST carry the causal `generation` stamp — unconditionally.
+// §8.5: these ops MUST carry the causal `generation` stamp — unconditionally for a BOOK
+// target; a §10 story target carries none (stories have no book generations).
 // Exported: journal/fold.mjs anchors by the stamp for exactly this set (R-8.5.6, D68).
 export const GENERATION_OPS = new Set(['align.verse.set', 'check.decision.set', 'note.add']);
+// §10 (D74): the two ops that exist only from envelope version 2 (R-8.5.1).
+export const V2_ONLY_OPS = new Set(['text.frame.set', 'text.story.ref.set']);
 
 // ---------- I-4 (§8.5): ONE write chokepoint, and ONE list of what it may not touch ----
 // Invariant I-4 said "writers MUST normalize" and no writer did. The rule now has an
@@ -355,6 +405,8 @@ export const GENERATION_OPS = new Set(['align.verse.set', 'check.decision.set', 
 // normalization there would change a file the format promises is byte-exact.
 const IDENTITY_PATHS = {
   'text.verse.set': ['book', 'chapter', 'verse'],
+  'text.frame.set': ['story', 'frame'],
+  'text.story.ref.set': ['story'],
   'text.skeleton.set': ['book'],
   'book.add': ['book'],
   'book.remove': ['book'],
@@ -372,9 +424,9 @@ const IDENTITY_PATHS = {
     'toolId', 'decision.contextId.checkId', 'decision.contextId.quote',
     'decision.contextId.quoteString', 'decision.contextId.groupId',
     'decision.contextId.reference.bookId', 'decision.contextId.reference.chapter',
-    'decision.contextId.reference.verse',
+    'decision.contextId.reference.verse', 'decision.contextId.reference.story', 'decision.contextId.reference.frame',
   ],
-  'note.add': ['target.book', 'target.chapter', 'target.verse', 'target.decisionKey'],
+  'note.add': ['target.book', 'target.chapter', 'target.verse', 'target.decisionKey', 'target.story', 'target.frame'],
   'resource.pin.set': ['slot'],
   'project.meta.set': ['path'],
   'settings.set': ['path'],
@@ -437,8 +489,13 @@ export const normalizeEvent = (e) => {
 // payload. Total over malformed input: a wrong-typed field is a clean rejection.
 export const validateEvent = (e) => {
   if (!isObj(e)) return 'event is not an object (event-shape)';
-  if (e.v !== 1) return `unknown envelope version v=${e.v}`;
+  if (e.v !== 1 && e.v !== 2) return `unknown envelope version v=${e.v}`;
   if (!OPS[e.op]) return `unrecognized op "${e.op}"`;
+  // §10/R-8.5.1: the story vocabulary is `v: 2`. A `v: 1` reader never meets it.
+  if (e.v === 1 && V2_ONLY_OPS.has(e.op)) return `${e.op} requires envelope version v: 2 (§10)`;
+  const storyTarget = storyTargetOf(e);
+  if (storyTarget && e.v === 1) return `${e.op} with a {story, frame} target requires envelope version v: 2 (§10)`;
+  if (storyTarget && e.generation !== undefined) return `${e.op} with a {story, frame} target must not carry a generation stamp — stories have no book generations (§10)`;
   // A sealed action is JSON TEXT. A value that does not survive JSON.stringify →
   // JSON.parse unchanged (NaN, Infinity, -0, an undefined array element) makes the
   // writer's own reader disagree with the writer — the round-8 asymmetry class.
@@ -470,7 +527,7 @@ export const validateEvent = (e) => {
       return 'event seed must be {source: creation|sidecar-migration|out-of-band-usfm|tc3-import, batch?}';
     if (e.seed.batch !== undefined && !isTs(e.seed.batch)) return 'seed.batch must be an §8.2 HLC ts';
   }
-  if (GENERATION_OPS.has(e.op) && e.generation === undefined)
+  if (GENERATION_OPS.has(e.op) && e.generation === undefined && !storyTarget)
     return `${e.op} without a generation stamp — §8.5 requires every writer (seeding included) to stamp the book's generation root`;
   if (e.generation !== undefined && !isTs(e.generation))
     return `generation "${e.generation}" must be the rooting book.add's §8.2 HLC ts`;
