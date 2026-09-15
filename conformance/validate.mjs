@@ -747,8 +747,11 @@ let mergedVerseObjects = null;
     const broken = clone(obsMeta); broken.type.flavorType.flavor.name = 'textStorie';
     const broken2 = clone(obsMeta); broken2.type.flavorType.flavor.usfmVersion = '3.0';
     const fires = !!sbValidate && !sbValidate(broken) && !sbValidate(broken2);
-    check('OBS schema: metadata.json is valid against the bundled SB schema with flavor gloss/textStories; a misspelt flavor and an extra flavor field both fail (the core flavor object allows only name) [covers R-10.1.1]',
-      ok && fires && obsMeta.type.flavorType.name === 'gloss' && obsMeta.type.flavorType.flavor.name === 'textStories',
+    // R-10.1.1 also fixes the story files' mimeType — asserted here, not left to the schema
+    const storyMime = (m) => Object.entries(m.ingredients).filter(([k]) => /^ingredients\/content\/\d\d\.md$/.test(k)).every(([, e]) => e.mimeType === 'text/markdown');
+    const brokenMime = clone(obsMeta); brokenMime.ingredients['ingredients/content/01.md'].mimeType = 'text/plain';
+    check('OBS schema: metadata.json is valid against the bundled SB schema with flavor gloss/textStories; every story ingredient is text/markdown; a misspelt flavor and an extra flavor field both fail (the core flavor object allows only name), and a text/plain story fires [covers R-10.1.1]',
+      ok && fires && obsMeta.type.flavorType.name === 'gloss' && obsMeta.type.flavorType.flavor.name === 'textStories' && storyMime(obsMeta) && !storyMime(brokenMime),
       ok ? '' : JSON.stringify((sbValidate?.errors || []).slice(0, 2)), 'obs');
   }
 
@@ -804,12 +807,19 @@ let mergedVerseObjects = null;
     const twoParagraphs = `# 1. T\n\n${img}\n\nuno\n\ndos\n`;
     const textBeforeImage = `# 1. T\n\nuno\n\n${img}\n\n`;
     const noTitle = `${img}\n\nuno\n`;
-    const fires = throws(() => parseStory(twoParagraphs)) && throws(() => parseStory(textBeforeImage)) && throws(() => parseStory(noTitle));
+    const storyZero = `# 0. T\n\n${img}\n\nuno\n`;
+    const emptyRef = `# 1. T\n\n${img}\n\nuno\n\n__\n`;
+    const fires = throws(() => parseStory(twoParagraphs)) && throws(() => parseStory(textBeforeImage)) && throws(() => parseStory(noTitle)) &&
+      throws(() => parseStory(storyZero)) && throws(() => parseStory(emptyRef));
     // a frame text with a blank line is refused by the writer, not normalized (§10: the app
-    // removes blank lines BEFORE it seals; the format refuses what is left)
-    const writerRefuses = throws(() => writeFrame(seedStory(read(TING(storyIpath(1)))), 1, 'uno\n\ndos'));
-    check('OBS frame model: story 1 parses to its title, 16 frames (the image line splits them) and the reference line; frames 1-2 carry the drafted paragraphs with a single newline kept inside frame 1; all 50 stories parse; two paragraphs in one frame, text before the first image line, and a missing title line all refuse; a writer refuses a blank line inside frame text [covers R-10.3.1 R-10.3.2 R-10.3.3]',
-      positive && allParse && fires && writerRefuses, `story 1: ${s1.frames.length} frames, ref "${s1.ref}"`, 'obs');
+    // removes blank lines BEFORE it seals; the format refuses what is left). The writer and
+    // the parser share ONE blank-line predicate, so whatever the writer accepts parses back
+    // to itself: a whitespace-only text and a NBSP line are blank for both.
+    const seed1 = seedStory(read(TING(storyIpath(1))));
+    const writerRefuses = ['uno\n\ndos', ' ', 'a\n \nb', 'uno\n', '\nuno'].every((t) => throws(() => writeFrame(seed1, 1, t)));
+    const roundTrip = [DRAFT.frames[1], DRAFT.frames[2], 'x', 'a b\nc d'].every((t) => parseStory(writeFrame(seed1, 1, t)).frames[0].text === t);
+    check('OBS frame model: story 1 parses to its title, 16 frames (the image line splits them) and the reference line; frames 1-2 carry the drafted paragraphs with a single newline kept inside frame 1; all 50 stories parse; two paragraphs in one frame, text before the first image line, a missing title line, a story number 0 and an empty `__` reference all refuse; the writer refuses a blank, whitespace-only or NBSP line and a leading/trailing newline, and every accepted text parses back to itself [covers R-10.3.1 R-10.3.2 R-10.3.3]',
+      positive && allParse && fires && writerRefuses && roundTrip, `story 1: ${s1.frames.length} frames, ref "${s1.ref}"`, 'obs');
   }
 
   // O4 — the byte-strict frame write (the D8 analogue): a write changes ONLY its own region
@@ -868,8 +878,11 @@ let mergedVerseObjects = null;
     const out = fold(events);
     const seed = seedStory(read(TING(storyIpath(1))));
     const proj = derivedProjections(out, { baseMetadata: obsMeta, baseStories: { 1: seed } });
+    // R-10.2.3 at checkpoint: the projected metadata.json keeps the template's scope table
+    // verbatim (the fold has no story scope; a Bible project's scope is reconstructed)
+    const scopeKept = JSON.stringify(JSON.parse(proj['metadata.json']).type.flavorType.currentScope) === JSON.stringify(tmplMeta.type.flavorType.currentScope);
     const positive = out.stories[1].frames[0] === DRAFT.title && out.stories[1].ref === DRAFT.ref && out.forks.length === 0 &&
-      proj[storyIpath(1)] === read(OING(storyIpath(1))) && Object.keys(out.books).length === 0;
+      proj[storyIpath(1)] === read(OING(storyIpath(1))) && Object.keys(out.books).length === 0 && scopeKept;
     // a v: 1 segment set (the Bible sample's seed) folds unchanged: books project, no story
     const seedBible = seedFromSidecars({ actor: 'seed-actor', books: { TIT: read(ING('TIT.usfm')) }, vrs: { name: 'eng', bytes: read(ING('vrs.json')) } });
     const v1 = fold(seedBible);
@@ -882,7 +895,7 @@ let mergedVerseObjects = null;
     const mutated = fold([...events.slice(0, 2), ev(2, { op: 'text.frame.set', story: 1, frame: 2, text: 'otro' }), events[3]]);
     const differs = derivedProjections(mutated, { baseMetadata: obsMeta, baseStories: { 1: seed } })[storyIpath(1)] !== read(OING(storyIpath(1)));
     const noBase = throws(() => derivedProjections(out, { baseMetadata: obsMeta }));
-    check('OBS v2 fold: the drafted story as four v: 2 segments (title = frame 0, frames 1-2, reference line) folds without forks and the checkpoint projection onto the seed story equals sample content/01.md BYTE FOR BYTE; a v: 1 seed set still folds to its USFM with no story; v: 1 refuses the story ops and story targets; a different frame text does not project the sample; a missing base story refuses the checkpoint [covers R-10.7.1 R-10.7.4]',
+    check('OBS v2 fold: the drafted story as four v: 2 segments (title = frame 0, frames 1-2, reference line) folds without forks and the checkpoint projection onto the seed story equals sample content/01.md BYTE FOR BYTE, with the projected metadata.json keeping the template\'s currentScope verbatim; a v: 1 seed set still folds to its USFM with no story; v: 1 refuses the story ops and story targets; a different frame text does not project the sample; a missing base story refuses the checkpoint [covers R-10.7.1 R-10.7.4 R-10.2.3]',
       positive && v1ok && v1Refuses && differs && noBase, '', 'obs');
   }
 }

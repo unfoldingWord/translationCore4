@@ -14,7 +14,7 @@
 
 const TITLE_RE = /^# (\d+)\.( (.*))?$/;
 const IMAGE_RE = /^!\[[^\]]*\]\([^)]*\)$/;
-const REF_RE = /^_[^\n]*_$/;
+const REF_RE = /^_[^\n]+_$/;
 
 export const STORY_COUNT = 50;
 const isStr = (v) => typeof v === 'string';
@@ -37,11 +37,14 @@ export const storyIpath = (story) => `content/${String(story).padStart(2, '0')}.
 // carriage return, and no line that would re-partition the file when read back — an
 // image line (it would start a frame) or a reference-line form (it would end the story).
 // The app removes blank lines before it seals (D74 §5); the schema refuses what is left.
+// ONE blank-line predicate, shared by the parser and the writer (Codex review of #147,
+// F2): a line is blank when it trims to nothing — so `" "` and a NBSP line are blank for
+// both, and what the writer accepts always parses back to itself.
+const isBlank = (line) => line.trim() === '';
 export const frameTextError = (v) => {
   if (!isStr(v)) return 'is not a string';
   if (v.includes('\r')) return 'contains a carriage return';
-  if (v.startsWith('\n') || v.endsWith('\n')) return 'starts or ends with a newline';
-  if (/\n[ \t]*\n/.test(v)) return 'contains a blank line — a frame is exactly ONE paragraph (§10)';
+  if (v !== '' && v.split('\n').some(isBlank)) return 'contains a blank line (or starts or ends with one) — a frame is exactly ONE paragraph of non-blank lines (§10)';
   for (const line of v.split('\n')) {
     if (IMAGE_RE.test(line)) return 'contains an image line — the image line splits frames (§10)';
     if (REF_RE.test(line)) return 'contains a line in the reference-line form `_…_` (§10)';
@@ -73,20 +76,25 @@ const splitStory = (bytes) => {
   const m = TITLE_RE.exec(lines[0] ?? '');
   if (!m) throw new Error(`story line 1 "${(lines[0] ?? '').slice(0, 40)}" is not the title form \`# N.\` or \`# N. Title\` (§10)`);
   const number = Number(m[1]);
+  const ne = storyNumberError(number);
+  if (ne) throw new Error(`story title line names story ${m[1]}, which ${ne} (§10)`);
   const title = m[3] ?? '';
-  // the reference line: the LAST non-blank line, when it has the `_…_` form and is not
-  // an image line (R-10.3.3)
+  // the reference line: the LAST non-blank line, when it has the `_…_` form with non-blank
+  // text between the underscores and is not an image line (R-10.3.3)
   let last = lines.length - 1;
-  while (last > 0 && lines[last].trim() === '') last--;
+  while (last > 0 && isBlank(lines[last])) last--;
   let refIdx = -1;
-  if (last > 0 && REF_RE.test(lines[last]) && !IMAGE_RE.test(lines[last])) refIdx = last;
+  if (last > 0 && REF_RE.test(lines[last]) && !IMAGE_RE.test(lines[last])) {
+    if (isBlank(lines[last].slice(1, -1))) throw new Error(`story ${number} reference line "${lines[last]}" has no text between the underscores (§10)`);
+    refIdx = last;
+  }
   const end = refIdx >= 0 ? refIdx : lines.length; // exclusive bound of the frame area
   const frames = [];
   let cur = null;
   for (let i = 1; i < end; i++) {
     const line = lines[i];
     if (IMAGE_RE.test(line)) { cur = { image: line, imageIdx: i, textLines: [], firstText: -1, lastText: -1 }; frames.push(cur); continue; }
-    if (line.trim() === '') continue;
+    if (isBlank(line)) continue;
     if (!cur) throw new Error(`story line ${i + 1} carries text before the first image line (§10: the title line is followed by frames)`);
     // exactly one paragraph: a text line after a blank line that already closed the
     // paragraph is a SECOND paragraph

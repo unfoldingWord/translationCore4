@@ -278,12 +278,18 @@ export const splitDecisionKey = (s) => {
 // ONE decision-key grammar, everywhere a decision is named.
 // §10 (D74): a note MAY target a frame, `{story, frame}` — the third kind. Stories have
 // no structural actions, so a frame-targeted note is never re-keyed or dispositioned.
-export const noteTargetKind = (target) =>
-  !isObj(target) ? null
-  : isStr(target.decisionKey) ? 'decisionKey'
-  : (target.book != null && target.chapter != null && target.verse != null) ? 'verse'
-  : (target.story != null && target.frame != null && target.book == null && target.chapter == null && target.verse == null) ? 'frame'
-  : null;
+// Exactly ONE kind: a target that is a complete verse AND a decision key, or a frame AND
+// either other form, names two things and is refused (§8.5 "exactly one of").
+export const noteTargetKind = (target) => {
+  if (!isObj(target)) return null;
+  const kinds = [];
+  if (isStr(target.decisionKey)) kinds.push('decisionKey');
+  if (target.book != null && target.chapter != null && target.verse != null) kinds.push('verse');
+  if (target.story != null && target.frame != null) kinds.push('frame');
+  if (kinds.length !== 1) return null;
+  if (kinds[0] === 'frame' && (target.book != null || target.chapter != null || target.verse != null || target.decisionKey !== undefined)) return null;
+  return kinds[0];
+};
 
 export const noteRekeyError = (target, to, newSlots = []) => {
   const kind = noteTargetKind(target);

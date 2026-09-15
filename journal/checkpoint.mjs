@@ -190,7 +190,11 @@ export const projectMetadata = (foldOut, baseMetadata) => {
   // the base document is copied into null-prototype containers, so the overlay below
   // has no prototype to reach even if a path grammar were bypassed upstream
   const doc = nullProto(JSON.parse(JSON.stringify(baseMetadata)));
-  setDeep(doc, 'type.flavorType.currentScope', nullProto(foldOut.scope));
+  // §10.2 (R-10.2.3): an OBS project's `currentScope` is the template's table, copied
+  // verbatim and never reconstructed — the fold has no story scope state. A Bible
+  // project's scope is reconstructed from folded book.add/book.remove state (R-8.7.2).
+  const isObs = baseMetadata?.type?.flavorType?.name === 'gloss' && baseMetadata?.type?.flavorType?.flavor?.name === 'textStories';
+  if (!isObs) setDeep(doc, 'type.flavorType.currentScope', nullProto(foldOut.scope));
   for (const [dotted, value] of Object.entries(foldOut.projectMeta)) setDeep(doc, dotted, nullProto(value));
   for (const dotted of foldOut.projectMetaRemoved || []) deleteDeep(doc, dotted);
   return serialize(doc);

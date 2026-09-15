@@ -89,6 +89,7 @@ const decisionRecordError = (d) => {
     const f = frameNumberError(r.frame); if (f) return `contextId.reference.frame ${f}`;
     return null;
   }
+  if (r.story !== undefined || r.frame !== undefined) return 'contextId.reference mixes the {bookId, chapter, verse} form with story/frame (§10)';
   const b = bookIdLowerError(r.bookId);
   if (b) return `contextId.reference.bookId ${b}`;
   const k = verseRefError(r.chapter, r.verse);
@@ -104,8 +105,11 @@ export const storyTargetOf = (e) => {
   if (e.op !== 'note.add') return null;
   const kind = noteTargetKind(e.target);
   if (kind === 'frame') return e.target;
-  // a note on a STORY decision names it by its decision key — `obs` in the book position
-  if (kind === 'decisionKey' && decisionKeyError(e.target.decisionKey) === null && splitDecisionKey(e.target.decisionKey).bookId === STORY_BOOK_ID) return e.target;
+  // a `v: 2` note on a STORY decision names it by its decision key — `obs` in the book
+  // position. The interpretation is `v: 2` only: a `v: 1` decision key is the generic
+  // §5.2 grammar it always was (no `v: 1` decision can carry `obs`, but the key grammar
+  // never checked book codes, so a `v: 1` reader's acceptance is unchanged — R-10.7.1).
+  if (kind === 'decisionKey' && e.v === 2 && decisionKeyError(e.target.decisionKey) === null && splitDecisionKey(e.target.decisionKey).bookId === STORY_BOOK_ID) return e.target;
   return null;
 };
 // §8.3 seed provenance enum

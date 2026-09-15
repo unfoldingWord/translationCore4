@@ -4512,11 +4512,21 @@ const sameRegister = (a, b) => {
     // resolution record for (translationNotes, OBS) is mandatory at checkpoint
     const genRefused = /generation/.test(validateEvent(dec(5, A, 'x', { generation: t(1, 0, A) })) || '');
     const v1Refused = /v: 2/.test(validateEvent({ ...dec(5, A, 'x'), v: 1 }) || '') && /v: 2/.test(validateEvent({ ...note(6, A, { story: 1, frame: 1 }), v: 1 }) || '');
-    const mixedRefused = /mixes/.test(validateEvent(ev({ op: 'check.decision.set', actor: A, ts: t(7, 0, A), toolId: 'translationNotes', decision: { contextId: { checkId: 'tn01', occurrence: 1, reference: { story: 1, frame: 1, chapter: 1 } } } })) || '');
+    const mixedRefused = /mixes/.test(validateEvent(ev({ op: 'check.decision.set', actor: A, ts: t(7, 0, A), toolId: 'translationNotes', decision: { contextId: { checkId: 'tn01', occurrence: 1, reference: { story: 1, frame: 1, chapter: 1 } } } })) || '') &&
+      // the COMPLETE mixture — a full verse reference with story/frame beside it, generation
+      // and all — is refused on the verse branch too (Codex review of #147, F4)
+      /mixes/.test(validateEvent(ev({ op: 'check.decision.set', actor: A, ts: t(7, 0, A), toolId: 'translationNotes', generation: t(1, 0, A), decision: { contextId: { checkId: 'tn01', occurrence: 1, reference: { story: 1, frame: 1, bookId: 'tit', chapter: 1, verse: 1 } } } })) || '');
+    // a note target names exactly ONE thing: a verse AND a decision key is refused (as on
+    // main), a frame AND a verse is refused (F5)
+    const twoTargets = validateEvent(note(9, A, { book: 'TIT', chapter: '1', verse: '1', decisionKey: 'translationNotes|tn01|tit|1|1|1' }, { generation: t(1, 0, A) })) !== null &&
+      validateEvent(note(9, A, { story: 1, frame: 1, book: 'TIT', chapter: '1', verse: '1' })) !== null;
+    // a v: 1 note whose decision key happens to carry `obs` in the book position is the
+    // generic §5.2 key it always was — generation required, accepted as before (F6, R-10.7.1)
+    const v1ObsKey = validateEvent({ v: 1, base: null, op: 'note.add', actor: A, ts: t(10, 0, A), target: { decisionKey: 'translationWords|t1g7|obs|1|1|1' }, text: 'n', generation: t(1, 0, A) }) === null;
     const badStory = validateEvent(note(8, A, { story: 51, frame: 1 })) !== null && validateEvent(note(8, A, { story: 1, frame: -1 })) !== null && validateEvent(note(8, A, { story: '1', frame: 1 })) !== null;
     const noResolution = /resolution record/.test(throws(() => derivedProjections(out, { baseMetadata })) || '');
-    check('JC-33b: story targets — a check.decision.set with reference {story, frame} and a note.add with target {story, frame} fold and project (the decision into checking/<toolId>/OBS.json with book "OBS", the note with its frame target intact); the identity key is the five-part form with the literal `obs` in the book position (`tn01|obs|1|1|1`) so decision keys keep ONE grammar; a generation stamp on a story target refuses, v: 1 refuses both, a reference that mixes {story, frame} with chapter refuses, story 51 / frame -1 / a string story refuse, and a missing (tool, OBS) resolution record refuses the checkpoint [covers R-10.5.1 R-10.7.3]',
-      okDecision && okNotes && genRefused && v1Refused && mixedRefused && badStory && noResolution);
+    check('JC-33b: story targets — a check.decision.set with reference {story, frame} and a note.add with target {story, frame} fold and project (the decision into checking/<toolId>/OBS.json with book "OBS", the note with its frame target intact); the identity key is the five-part form with the literal `obs` in the book position (`tn01|obs|1|1|1`) so decision keys keep ONE grammar; a generation stamp on a story target refuses, v: 1 refuses both, a reference that mixes {story, frame} with chapter/verse refuses on EITHER branch, a note naming two targets refuses, story 51 / frame -1 / a string story refuse, a v: 1 note on an `obs` decision key is accepted as before, and a missing (tool, OBS) resolution record refuses the checkpoint [covers R-10.5.1 R-10.7.3]',
+      okDecision && okNotes && genRefused && v1Refused && mixedRefused && twoTargets && v1ObsKey && badStory && noResolution);
   }
 
   // JC-33c — §10.6 pins: the three OPTIONAL OBS members are §5.3 slots with the §5.3 entry
@@ -4530,11 +4540,15 @@ const sameRegister = (a, b) => {
     for (const set of ['primary', 'fallback']) for (const slot of ['gatewayLanguage', 'translationNotes', 'translationWordsLinks', 'translationWords', 'translationAcademy']) {
       const { books, ...rest } = bible.languageSets[set][slot]; base.push(pin(i++, `languageSets.${set}.${slot}`, rest));
     }
+    // the fallback set also pins the two 1.10 optional slots, so the §10.6 ORDER claim
+    // ("after simplifiedText") has something to be after (Codex review of #147, F8)
+    for (const slot of ['translationQuestions', 'simplifiedText']) { const { books, ...rest } = bible.languageSets.fallback[slot]; base.push(pin(i++, `languageSets.fallback.${slot}`, rest)); }
     const out = fold([...base, pin(20, 'languageSets.fallback.obs'), pin(21, 'languageSets.fallback.obs-tn', { ...entry, repoPath: 'git.door43.org/unfoldingWord/en_obs-tn', sha: 'e86138ea13f619f09f7a6dcaa60592716d407fe4', version: 'v13', flavor: 'parascriptural/x-obsnotes' }),
       pin(22, 'languageSets.fallback.obs-twl', { ...entry, repoPath: 'git.door43.org/unfoldingWord/en_obs-twl', sha: '44ebc9fafe8101665f985007d566f5036a2be85b', version: 'v3', flavor: 'parascriptural/x-obsarticles' })]);
     const doc = JSON.parse(projectResources(out.pins));
     const keys = Object.keys(doc.languageSets.fallback);
-    const order = keys.indexOf('translationAcademy') < keys.indexOf('obs') && keys.indexOf('obs') < keys.indexOf('obs-tn') && keys.indexOf('obs-tn') < keys.indexOf('obs-twl');
+    const order = keys.includes('simplifiedText') && keys.indexOf('translationAcademy') < keys.indexOf('translationQuestions') && keys.indexOf('translationQuestions') < keys.indexOf('simplifiedText') &&
+      keys.indexOf('simplifiedText') < keys.indexOf('obs') && keys.indexOf('obs') < keys.indexOf('obs-tn') && keys.indexOf('obs-tn') < keys.indexOf('obs-twl');
     const okProjected = doc.languageSets.fallback.obs.sha === entry.sha && doc.languageSets.fallback['obs-twl'].flavor === 'parascriptural/x-obsarticles' && !('obs' in doc.languageSets.primary) && order;
     // the sample-burrito-obs pins file is exactly this shape, all slots §5.3-valid
     const sample = JSON.parse(fs.readFileSync(path.resolve('./sample-burrito-obs/ingredients/checking/resources.json'), 'utf8'));
@@ -4543,7 +4557,7 @@ const sameRegister = (a, b) => {
     // without the OBS members is still complete (the fold projects the four required slots)
     const badSlot = /not a §5.3 slot/.test(validateEvent(pin(30, 'languageSets.fallback.obs-tq')) || '');
     const noSha = /sha/.test(validateEvent(pin(31, 'languageSets.fallback.obs', { repoPath: 'x/y', version: 'v1', flavor: 'gloss/textStories' })) || '');
-    const stillComplete = Object.keys(JSON.parse(projectResources(fold(base).pins)).languageSets.fallback).length === 5;
+    const stillComplete = Object.keys(JSON.parse(projectResources(fold(base).pins)).languageSets.fallback).length === 7 && Object.keys(JSON.parse(projectResources(fold(base).pins)).languageSets.primary).length === 5;
     check('JC-33c: §10.6 pins — `obs`, `obs-tn` and `obs-twl` are OPTIONAL §5.3 language-set slots with the §5.3 entry grammar (sha required, version a label, flavor required); they project after simplifiedText in the §10.6 order and only where pinned; the sample OBS pins validate slot by slot; `obs-tq` is not a slot, an entry without sha refuses, and a set without the OBS members is still complete [covers R-10.6.1]',
       okProjected && sampleOk && badSlot && noSha && stillComplete, keys.join(','));
   }
@@ -4568,8 +4582,14 @@ const sameRegister = (a, b) => {
     const noBase = /base story/.test(throws(() => derivedProjections(out, { baseMetadata })) || '');
     const tooFar = /does not exist/.test(throws(() => derivedProjections(fold([ev({ op: 'text.frame.set', actor: A, ts: t(3, 0, A), story: 1, frame: 17, text: 'x' })]), { baseMetadata, baseStories: { 1: seed01 } })) || '');
     const noVrsNeeded = Object.keys(out.books).length === 0 && !('vrs.json' in proj) && 'metadata.json' in proj && 'checking/resources.json' in proj;
-    check('JC-33d: checkpoint story inputs — a story projects as the folded frames and reference line SPLICED onto the base story file (the committed file or the seed form), lands in the regeneration set as content/NN.md, and is enumerated for divergence (an out-of-band edit and a deletion are both detected); no base story refuses the checkpoint, frame 17 of a 16-frame story refuses, and an OBS project needs no versification frame [covers R-10.7.4 R-10.7.5 R-10.2.2]',
-      inSet && divergence && noBase && tooFar && noVrsNeeded);
+    // R-10.2.3 at checkpoint: the OBS metadata keeps its scope table; a Bible base with a
+    // folded book still gets the RECONSTRUCTED scope (R-8.7.2 unchanged)
+    const scopeKept = JSON.stringify(JSON.parse(proj['metadata.json']).type.flavorType.currentScope) === JSON.stringify(baseMetadata.type.flavorType.currentScope) && Object.keys(baseMetadata.type.flavorType.currentScope).length === 33;
+    const s = buildSeed();
+    const bibleProj = derivedProjections(fold(s.events), { baseMetadata: JSON.parse(fs.readFileSync(path.join(BURRITO, 'metadata.json'), 'utf8')), resolutions: { translationWords: { TIT: s.decisionFiles.translationWords.resource }, translationNotes: { TIT: s.decisionFiles.translationNotes.resource } } });
+    const bibleReconstructed = JSON.stringify(Object.keys(JSON.parse(bibleProj['metadata.json']).type.flavorType.currentScope).sort()) === JSON.stringify(['JON', 'TIT']);
+    check('JC-33d: checkpoint story inputs — a story projects as the folded frames and reference line SPLICED onto the base story file (the committed file or the seed form), lands in the regeneration set as content/NN.md, and is enumerated for divergence (an out-of-band edit and a deletion are both detected); the projected metadata.json keeps the template\'s currentScope verbatim while a Bible checkpoint still reconstructs its scope; no base story refuses the checkpoint, frame 17 of a 16-frame story refuses, and an OBS project needs no versification frame [covers R-10.7.4 R-10.7.5 R-10.2.2 R-10.2.3]',
+      inSet && divergence && scopeKept && bibleReconstructed && noBase && tooFar && noVrsNeeded);
   }
 
   // JC-33e — version policy: every v: 1 op still validates at v: 1 and folds unchanged; the
