@@ -38,16 +38,18 @@ skipped.
 behavioral proof. Do not run `npm audit fix --force`. If an audit fix is needed, trial it
 in a scratch copy and confirm these three versions are unchanged before you apply it.
 
-## If you change BURRITO-SPEC section 8, run the normative gate
+## If you change BURRITO-SPEC section 8 or section 10, run the normative gate
 
 ```bash
 node conformance/normative/check.mjs
 ```
 
-Every normative rule in section 8 carries an `[R-x.y.z]` id, and every id must be
-claimed inside a LIVE check's name in the journal suite — `[covers R-8.1.5]`. The
-gate fails on any uncovered rule, any claim that names a rule the spec no longer
-states, and any duplicate id. A commented-out check loses its claim.
+Every normative rule in section 8 (the journal) and section 10 (the OBS project kind)
+carries an `[R-x.y.z]` id, and every id must be claimed inside a LIVE check's name —
+`[covers R-8.1.5]`. Claims live in `conformance/validate-journal.mjs` and
+`conformance/validate.mjs`; the gate reads both. The gate fails on any uncovered
+rule, any claim that names a rule the spec no longer states, and any duplicate
+id. A commented-out check loses its claim.
 
 If you add or reword a rule, add or update its check in the same change set (§9).
 **Do not tag a check because its name sounds similar.** The check must fail when
@@ -86,17 +88,17 @@ where it provides chrome, we design our own.
 
 So "no `pankosmia-rcl` visual components" does NOT mean "we left the platform", and no
 `pankosmia-rcl` entry in `package.json` does not mean the decision changed. The dependency
-is not installed yet [VERIFIED — `package.json` read at commit 51ec9de, 9 dependencies,
-none from Pankosmia]: **when** the contexts and the
+is not installed yet [VERIFIED — `package.json` read at commit 000a2dc, 2026-09-16, 12
+dependencies, none from Pankosmia]: **when** the contexts and the
 notification stream get adopted, and by which path, is open question
 [#222](https://github.com/unfoldingWord/translationCore4/issues/222). Do not decide
 that in passing while you build something else.
 
 ## Skips are not failures
 
-37 tests skip on a clean clone. Each names its missing prerequisite (the Pankosmia rig,
-or a sibling `sample-burrito` checkout). Do not "fix" a skip by inventing the missing
-data, and do not report a skip as a defect.
+<!-- manifest: vitest skippedTests -->38 tests skip on a clean clone. Each names its
+missing prerequisite (the Pankosmia rig, or a sibling `sample-burrito` checkout). Do
+not "fix" a skip by inventing the missing data, and do not report a skip as a defect.
 
 ## Shell discipline
 
@@ -107,15 +109,22 @@ output through `head` or `tail` and then reason from the truncated result.
 <!-- graft:start -->
 ## Graft — repo context graph
 
-This repo is indexed in `graft/`: small linked markdown nodes that explain each
-system and carry exact file:line spans, kept in sync with the code through git.
+`graft/` holds small linked markdown nodes that explain each system and carry
+exact file:line spans. It is a LOCAL cache: gitignored and regenerable with
+`graft build`, so it is ABSENT in a fresh clone and in CI.
 
-For ANY task here — understanding how something works, finding where code lives,
-or scoping a change — get context from the graph before grepping or opening
-source files. Re-ask freely (it's cheap) and reuse literal identifiers you
-already have (symbol, error string, file name) as the query. New to this repo?
-Run `graft map` first — a token-budgeted orientation (dir clusters, hubs,
-hotspots), no LLM, no key.
+**Check first.** If `graft` is on PATH and `graft/` exists, prefer it — it is
+faster and cheaper than grepping. If either is missing, that is the normal state
+of a fresh clone, not a fault to report or work around: use ripgrep and read the
+files directly, and treat nothing in this section as a prerequisite. Never
+`npm install graft` to satisfy this section — the npm package of that name is
+unrelated software.
+
+When the graph is present: for understanding how something works, finding where
+code lives, or scoping a change, get context from it before grepping. Re-ask
+freely (it's cheap) and reuse literal identifiers you already have (symbol,
+error string, file name) as the query. New to this repo? Run `graft map` first —
+a token-budgeted orientation (dir clusters, hubs, hotspots), no LLM, no key.
 
 - Run `graft ask "<your question>" --source` → ranked nodes with the relevant
   code spans inlined (each hit's ≤8-line crux by default; `--full` for whole
@@ -138,9 +147,8 @@ hotspots), no LLM, no key.
   `graft ask "<task>" --in <scope>/` once you know where you're working.
 
 If a returned span is truncated ("+N more lines"), open the file at that exact
-range before finalizing. Only open source files when a node genuinely lacks a
-needed detail, and then at the exact file:line the node points to — never
-re-read whole files.
+range before finalizing. While the graph is present, prefer a node's file:line
+pointer over re-reading a whole file; when it is absent, read what you need.
 
 After big code changes, refresh the graph with `graft build` (deterministic,
 no API key, $0).
