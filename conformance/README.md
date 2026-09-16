@@ -17,7 +17,7 @@ npm run generate   # rebuilds JON stub (incl. the 2:9-10 verse-span fixture), al
 npm run validate   # the Phase-1 suite (BURRITO-SPEC §7); the three groups are below
 ```
 
-`npm run validate` runs <!-- manifest: conformance:validate passed -->41 checks in three
+`npm run validate` runs <!-- manifest: conformance:validate passed -->47 checks in four
 groups:
 
 - **Stage-1 (<!-- manifest: conformance:validate summary[Stage-1] -->36):** SB schema,
@@ -36,11 +36,29 @@ groups:
   journal merge — reproduces the metadata.json conflict, proves the §8.7
   resolve+regenerate rule, and checks that the fixture journals are the §8.1
   sealed-segment stream form (needs git).
+- **OBS (<!-- manifest: conformance:validate summary[OBS] -->6):** the OBS project kind
+  (BURRITO-SPEC §10, D74) on `sample-burrito-obs/` — schema validity with flavor
+  `gloss/textStories`, layout equality with the vendored `text_stories` template, the frame
+  model, the byte-strict frame write, `currentScope` equality, the version 2 fold projected
+  onto the seed story byte for byte. Each check also fires on a deliberately broken copy.
 
-[VERIFIED — the group descriptions are the check names in `validate.mjs` at 29a794e,
-2026-09-04. The counts are marked as manifest-derived: `npm run docs:gate` (repository
+[VERIFIED — the group descriptions are the check names in `validate.mjs` at 860af7d,
+2026-09-15. The counts are marked as manifest-derived: `npm run docs:gate` (repository
 root) reads them against `../docs/evidence/manifest.json`, which `npm run prove` writes and
 which records the commit, date and Node version of the run.]
+
+## The OBS sample (`sample-burrito-obs/`, BURRITO-SPEC §10)
+
+`npm run generate` also rebuilds `sample-burrito-obs/` (`generate-obs.mjs`): the pankosmia
+`text_stories` template (vendored at `fixtures/text_stories/`, provenance in its README) in
+the §10 seed form — every title `# N.`, every frame the image line plus an empty paragraph,
+no reference line — with story 1 drafted through the §10 writers (`../journal/story.mjs`):
+the title, frames 1 and 2 and the reference line (`fixtures/obs-draft.mjs`). Its
+`checking/resources.json` pins the three OBS members (`obs`, `obs-tn`, `obs-twl`) beside the
+Bible suite, with real Door43 identities. `npm run validate` runs the `OBS` group against it
+(schema, layout, frame model, byte-strict write, `currentScope`, the version 2 fold); the
+journal semantics of §10 are JC-33 in `npm run validate:journal`. Each OBS check also fires
+on a deliberately broken copy.
 
 Two more scripts exist here but are rig-gated: `npm run validate:transport` and
 `npm run validate:roundtrip` need a running Pankosmia rig (set `RIG_REPOS` to its

@@ -1125,6 +1125,11 @@ roadmap.
 entry is the complete and reviewable form — D-numbers are the one decision channel
 (authority contract, D43).]
 
+[completion note, 2026-09-15: the format now matches — BURRITO-SPEC 1.14 §1 states the two
+project kinds and §10 defines the OBS project kind; the harness proves it on
+`conformance/sample-burrito-obs/` (the `OBS` group of `npm run validate` and JC-33 of the
+journal suite), in one change set (issue #147). D66 is complete for the format.]
+
 ## D67 (2026-09-02, project-owner rulings) **Team sync is built as one imported reference engine over a repository port, after a legibility increment. Five sync rulings.** [epic #24; plans `docs/plans/TEAM-SYNC-PLAN.md` and `docs/plans/LEGIBILITY.md`]
 
 Context. An audit of the journal architecture ran on 2026-09-01 [VERIFIED — worktree at
@@ -1489,3 +1494,10 @@ the format answers until §10 lands.
 
 [reading note: where D59, D70 and D72 say "Increment 7" for #21, #55, #139, #209 or #258,
 read Increment 8 — those items moved with the renumbering; the entries stay as dated records.]
+
+[completion note, 2026-09-15: points 3 to 7 and 9 are in the normative text — BURRITO-SPEC
+1.14 §10 (rules R-10.1.1 to R-10.7.5) — and proven by the harness in the same change set
+(issue #147): the `OBS` group of `npm run validate` on `conformance/sample-burrito-obs/`,
+JC-33 of the journal suite, and the normative gate, which now covers §8 and §10. The
+reference story module is `journal/story.mjs`. Points 8, 10 and 11 are product work under
+#286 to #292.]

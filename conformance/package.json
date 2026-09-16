@@ -4,7 +4,7 @@
   "description": "Generates + validates the sample tC4 burrito with the real tC3 checking libraries and Pankosmia SB schema",
   "main": "index.js",
   "scripts": {
-    "generate": "node generate.mjs",
+    "generate": "node generate.mjs && node generate-obs.mjs",
     "validate": "node validate.mjs",
     "validate:journal": "node validate-journal.mjs",
     "validate:normative": "node normative/check.mjs",

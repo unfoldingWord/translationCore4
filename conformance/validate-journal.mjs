@@ -9,8 +9,9 @@ import { execSync } from 'child_process';
 import { makeClock, parseTs, compareTs } from '../journal/hlc.mjs';
 import { SLOT, decompose, recompose } from '../journal/skeleton.mjs';
 import { fold, verseTextMd5, slotKeysOf, headIdentity } from '../journal/fold.mjs';
-import { validateAction, KNOWN_OPS } from '../journal/schema.mjs';
-import { BOOK_CODES, identityKeyOf, identityKeyError, ipathError, pinEntryError, noteRekeyError, splitDecisionKey } from '../journal/grammar.mjs';
+import { validateAction, validateEvent, KNOWN_OPS } from '../journal/schema.mjs';
+import * as storyMod from '../journal/story.mjs';
+import { BOOK_CODES, identityKeyOf, identityKeyError, decisionKeyError, ipathError, pinSlotError, pinEntryError, noteRekeyError, splitDecisionKey } from '../journal/grammar.mjs';
 import { reconcileUsfm, seedFromSidecars } from '../journal/reconcile.mjs';
 import {
   sealAction, writeActionSegment, validateSegment, validateActorDoc, segmentName,
@@ -205,7 +206,8 @@ const buildSeed = () => {
   check('JC-13: duplicate identical events are a no-op [covers R-8.2.5]', deepEq(fold([...seedEvts, forkA, forkA, forkA]), fold([...seedEvts, forkA])));
   let dupThrew = false; try { fold([...seedEvts, forkA, { ...forkA, text: 'otro\n' }]); } catch { dupThrew = true; }
   check('JC-13: same ts + different content refuses (corrupt union) [covers R-8.2.5]', dupThrew);
-  let vThrew = ''; try { fold([mkEvent({ op: 'text.verse.set', actor: 'x-actor', ts: t(0, 0, 'x-actor'), v: 2 })]); } catch (e) { vThrew = e.message; }
+  // v: 2 is the §10 story vocabulary (spec 1.14); the unknown version is 3
+  let vThrew = ''; try { fold([mkEvent({ op: 'text.verse.set', actor: 'x-actor', ts: t(0, 0, 'x-actor'), v: 3 })]); } catch (e) { vThrew = e.message; }
   let opThrew = ''; try { fold([mkEvent({ op: 'text.verse.merge', actor: 'x-actor', ts: t(0, 0, 'x-actor') })]); } catch (e) { opThrew = e.message; }
   check('JC-14: unknown v / unknown op refuse with clear messages [covers R-8.3.9 R-8.4.5 R-8.5.1]', vThrew.includes('version') && opThrew.includes('unrecognized op'), `"${vThrew.slice(0, 40)}" / "${opThrew.slice(0, 40)}"`);
 }
@@ -217,8 +219,9 @@ const buildSeed = () => {
     'text.verse.set', 'text.skeleton.set', 'book.add', 'book.remove', 'text.structure.apply',
     'align.verse.set', 'check.decision.set', 'note.add', 'resource.pin.set',
     'project.vrs.set', 'project.meta.set', 'settings.set',
+    'text.frame.set', 'text.story.ref.set', // §10 (D74), `v: 2`
   ];
-  check('JC-14: the schema\'s known-op set EQUALS the §8.5 table — 12 ops, set-equal, and no op matches /section/i (no section op in the vocabulary, §8.4a) [covers R-8.4.5 R-8.5.1]',
+  check('JC-14: the schema\'s known-op set EQUALS the §8.5 table — 12 `v: 1` ops + the 2 `v: 2` story ops (§10), set-equal, and no op matches /section/i (no section op in the vocabulary, §8.4a) [covers R-8.4.5 R-8.5.1]',
     KNOWN_OPS.length === SPEC_OPS.length &&
     JSON.stringify([...KNOWN_OPS].sort()) === JSON.stringify([...SPEC_OPS].sort()) &&
     KNOWN_OPS.every((op) => !/section/i.test(op)),
@@ -4439,6 +4442,181 @@ const sameRegister = (a, b) => {
     [...literals].every((l) => VOCAB.includes(l)) &&
     nonLiteral.every((x) => x === 'd.action' || x === 'r.reason'),
     `literals={${[...literals].sort().join(',')}} · non-literal={${nonLiteral.join(' · ')}}`);
+}
+
+// ---------- JC-33: the OBS story kind — journal vocabulary version 2 (BURRITO-SPEC §10, D74) ----------
+// The file-level checks (schema, layout, frame model, byte-strict write, scope, the v2 fold
+// to bytes) are the `OBS` group of validate.mjs. This group proves the JOURNAL semantics of
+// §10: frame registers, story targets, the §5.2 story key, the §10.6 pin slots, and the
+// checkpoint's story inputs. Every check fires on its negative.
+{
+  const A = 'actor-a', B = 'actor-b';
+  const t = (s, c, a) => `2026-09-15T14:00:${String(s).padStart(2, '0')}.000Z|000${c}|${a}`;
+  const ev = (o) => ({ v: 2, base: null, ...o });
+  const throws = (fn) => { try { fn(); return null; } catch (e) { return e.message; } };
+  const TEMPLATE = path.resolve('./fixtures/text_stories/ingredients/content/01.md');
+  const seed01 = storyMod.seedStory(fs.readFileSync(TEMPLATE, 'utf8'));
+  const baseMetadata = JSON.parse(fs.readFileSync(path.resolve('./sample-burrito-obs/metadata.json'), 'utf8'));
+
+  // JC-33a — frame registers: LWW per frame with fork detection and no structural chain.
+  // Same-actor edits advance linearly; two actors' rootless first writes on ONE frame fork
+  // (surfaced, provisional winner) unless identical (auto-merged, accounted); a base that
+  // names the live head is a linear supersede; frame 0 is the title's own register.
+  {
+    const e1 = ev({ op: 'text.frame.set', actor: A, ts: t(1, 0, A), story: 1, frame: 1, text: 'uno' });
+    const e2 = ev({ op: 'text.frame.set', actor: A, ts: t(2, 0, A), story: 1, frame: 1, text: 'uno bis' }); // same actor, rootless: linear (R-8.3.3)
+    const e3 = ev({ op: 'text.frame.set', actor: B, ts: t(3, 0, B), story: 1, frame: 1, text: 'otro' });     // other actor, rootless: FORK
+    const e4 = ev({ op: 'text.frame.set', actor: B, ts: t(4, 0, B), story: 1, frame: 2, text: 'dos' });
+    const e5 = ev({ op: 'text.frame.set', actor: A, ts: t(5, 0, A), story: 1, frame: 0, text: 'Título' });
+    const linear = fold([e1, e2]);
+    const forked = fold([e1, e2, e3, e4, e5]);
+    const resolved = fold([e1, e2, e3, e4, e5, ev({ op: 'text.frame.set', actor: A, ts: t(6, 0, A), story: 1, frame: 1, text: 'final', base: t(2, 0, A), supersedes: [t(3, 0, B)] })]);
+    const twin = fold([e1, ev({ op: 'text.frame.set', actor: B, ts: t(7, 0, B), story: 1, frame: 1, text: 'uno' })]);
+    const okLinear = linear.stories[1].frames[1] === 'uno bis' && linear.forks.length === 0;
+    const okFork = forked.forks.length === 1 && forked.forks[0].key === 'frame|1|1' && forked.stories[1].frames[1] === 'otro' && forked.forks[0].provisional === t(3, 0, B) &&
+      forked.stories[1].frames[2] === 'dos' && forked.stories[1].frames[0] === 'Título' && forked.stories[1].ref === null;
+    const okResolved = resolved.forks.length === 0 && resolved.stories[1].frames[1] === 'final' && resolved.retained.some((r) => r.key === 'frame|1|1' && r.ts === t(3, 0, B) && r.reason === 'superseded');
+    const okTwin = twin.forks.length === 0 && twin.autoMerged.some((m) => m.key === 'frame|1|1') && twin.stories[1].frames[1] === 'uno';
+    // no generation, no chain: a frame write is never `rootless-base`, never `prior-generation`
+    const noQuarantine = !forked.retained.some((r) => r.key.startsWith('frame|'));
+    // negative: the SAME rootless two-actor scenario on a verse slot of a book is the
+    // `rootless-base` writer defect (R-8.5.15) — the frame register deliberately is not
+    const skeleton = `\\id TIT\n\\c 1\n\\v 1 ${SLOT}1:1${SLOT}`;
+    const bookAdd = { v: 1, base: null, op: 'book.add', actor: A, ts: t(8, 0, A), book: 'TIT', scope: [], skeleton, initialVerses: {} };
+    const verseRootless = fold([bookAdd,
+      { v: 1, base: null, op: 'text.verse.set', actor: A, ts: t(9, 0, A), book: 'TIT', chapter: '1', verse: '1', text: 'a\n' },
+      { v: 1, base: null, op: 'text.verse.set', actor: B, ts: t(10, 0, B), book: 'TIT', chapter: '1', verse: '1', text: 'b\n' }]);
+    const fires = verseRootless.retained.some((r) => r.reason === 'rootless-base');
+    check('JC-33a: frame registers — one LWW register per frame (frame 0 = the title) and per reference line, NO structural chain and NO generation: same-actor rootless edits advance linearly, two actors\' rootless first writes on one frame FORK (surfaced, provisional = highest ts), a supersedes resolves it (loser retained `superseded`), identical twins auto-merge and are accounted, and no frame head is ever quarantined; the same rootless two-writer scenario on a BOOK verse is the rootless-base defect, so the difference is deliberate [covers R-10.7.2 R-10.4.1]',
+      okLinear && okFork && okResolved && okTwin && noQuarantine && fires,
+      `fork ${JSON.stringify(forked.forks[0]?.heads)} → provisional ${forked.forks[0]?.provisional?.slice(0, 19)}`);
+  }
+
+  // JC-33b — story targets: a check.decision.set whose reference is {story, frame} and a
+  // note.add whose target is {story, frame} carry NO generation, need v: 2, key by the
+  // five-part identity with the literal `obs`, and project — the decision into
+  // checking/<toolId>/OBS.json, the note with its frame target intact.
+  {
+    const dec = (i, actor, text, extra = {}) => ev({ op: 'check.decision.set', actor, ts: t(i, 0, actor), toolId: 'translationNotes',
+      decision: { contextId: { checkId: 'tn01', occurrence: 1, reference: { story: 1, frame: 1 } }, selections: false, note: text }, ...extra });
+    const note = (i, actor, target, extra = {}) => ev({ op: 'note.add', actor, ts: t(i, 0, actor), target, text: 'comentario', ...extra });
+    const out = fold([dec(1, A, 'first'), dec(2, A, 'second'), note(3, A, { story: 1, frame: 1 }), note(4, A, { decisionKey: 'translationNotes|tn01|obs|1|1|1' })]);
+    const d = out.decisions.translationNotes;
+    const keyed = identityKeyOf(d[0].contextId) === 'tn01|obs|1|1|1' && identityKeyError('tn01|obs|1|1|1') === null && decisionKeyError('translationNotes|tn01|obs|1|1|1') === null;
+    const projected = derivedProjections(out, { baseMetadata, resolutions: { translationNotes: { OBS: { repoPath: 'git.door43.org/unfoldingWord/en_obs-tn', sha: 'e86138ea13f619f09f7a6dcaa60592716d407fe4', version: 'v13', languageSet: 'fallback' } } } });
+    const file = JSON.parse(projected['checking/translationNotes/OBS.json'] || 'null');
+    const okDecision = d.length === 1 && d[0].note === 'second' && keyed && file && file.book === 'OBS' && file.decisions.length === 1 && file.decisions[0].contextId.reference.story === 1;
+    const okNotes = out.notes.length === 2 && out.notes[0].target.story === 1 && out.notes[0].target.frame === 1 && out.notes[1].target.decisionKey === 'translationNotes|tn01|obs|1|1|1' && !out.retained.some((r) => r.key === 'note');
+    // negatives, at the ONE schema (seal, intake and fold share it): a generation stamp on a
+    // story target refuses; v: 1 refuses both story targets; a mixed reference refuses; a
+    // resolution record for (translationNotes, OBS) is mandatory at checkpoint
+    const genRefused = /generation/.test(validateEvent(dec(5, A, 'x', { generation: t(1, 0, A) })) || '');
+    const v1Refused = /v: 2/.test(validateEvent({ ...dec(5, A, 'x'), v: 1 }) || '') && /v: 2/.test(validateEvent({ ...note(6, A, { story: 1, frame: 1 }), v: 1 }) || '');
+    const mixedRefused = /mixes/.test(validateEvent(ev({ op: 'check.decision.set', actor: A, ts: t(7, 0, A), toolId: 'translationNotes', decision: { contextId: { checkId: 'tn01', occurrence: 1, reference: { story: 1, frame: 1, chapter: 1 } } } })) || '') &&
+      // the COMPLETE mixture — a full verse reference with story/frame beside it, generation
+      // and all — is refused on the verse branch too (Codex review of #147, F4)
+      /mixes/.test(validateEvent(ev({ op: 'check.decision.set', actor: A, ts: t(7, 0, A), toolId: 'translationNotes', generation: t(1, 0, A), decision: { contextId: { checkId: 'tn01', occurrence: 1, reference: { story: 1, frame: 1, bookId: 'tit', chapter: 1, verse: 1 } } } })) || '');
+    // a note target names exactly ONE thing: a verse AND a decision key is refused (as on
+    // main), a frame AND a verse is refused (F5)
+    const twoTargets = validateEvent(note(9, A, { book: 'TIT', chapter: '1', verse: '1', decisionKey: 'translationNotes|tn01|tit|1|1|1' }, { generation: t(1, 0, A) })) !== null &&
+      validateEvent(note(9, A, { story: 1, frame: 1, book: 'TIT', chapter: '1', verse: '1' })) !== null;
+    // a v: 1 note whose decision key happens to carry `obs` in the book position is the
+    // generic §5.2 key it always was — generation required, accepted as before (F6, R-10.7.1)
+    const v1ObsKey = validateEvent({ v: 1, base: null, op: 'note.add', actor: A, ts: t(10, 0, A), target: { decisionKey: 'translationWords|t1g7|obs|1|1|1' }, text: 'n', generation: t(1, 0, A) }) === null;
+    const badStory = validateEvent(note(8, A, { story: 51, frame: 1 })) !== null && validateEvent(note(8, A, { story: 1, frame: -1 })) !== null && validateEvent(note(8, A, { story: '1', frame: 1 })) !== null;
+    const noResolution = /resolution record/.test(throws(() => derivedProjections(out, { baseMetadata })) || '');
+    check('JC-33b: story targets — a check.decision.set with reference {story, frame} and a note.add with target {story, frame} fold and project (the decision into checking/<toolId>/OBS.json with book "OBS", the note with its frame target intact); the identity key is the five-part form with the literal `obs` in the book position (`tn01|obs|1|1|1`) so decision keys keep ONE grammar; a generation stamp on a story target refuses, v: 1 refuses both, a reference that mixes {story, frame} with chapter/verse refuses on EITHER branch, a note naming two targets refuses, story 51 / frame -1 / a string story refuse, a v: 1 note on an `obs` decision key is accepted as before, and a missing (tool, OBS) resolution record refuses the checkpoint [covers R-10.5.1 R-10.7.3]',
+      okDecision && okNotes && genRefused && v1Refused && mixedRefused && twoTargets && v1ObsKey && badStory && noResolution);
+  }
+
+  // JC-33c — §10.6 pins: the three OPTIONAL OBS members are §5.3 slots with the §5.3 entry
+  // grammar; they project after simplifiedText; an unknown OBS-looking slot refuses.
+  {
+    const entry = { repoPath: 'git.door43.org/unfoldingWord/en_obs', version: 'v9', sha: 'd39a1dc7a7557ac54e4a8fecc3462147fe7eec3b', flavor: 'gloss/textStories' };
+    const pin = (i, slot, e = entry) => ({ v: 1, base: null, op: 'resource.pin.set', actor: A, ts: t(i, 0, A), slot, entry: e });
+    const bible = JSON.parse(fs.readFileSync(ING('checking/resources.json'), 'utf8'));
+    const base = [];
+    let i = 1;
+    for (const set of ['primary', 'fallback']) for (const slot of ['gatewayLanguage', 'translationNotes', 'translationWordsLinks', 'translationWords', 'translationAcademy']) {
+      const { books, ...rest } = bible.languageSets[set][slot]; base.push(pin(i++, `languageSets.${set}.${slot}`, rest));
+    }
+    // the fallback set also pins the two 1.10 optional slots, so the §10.6 ORDER claim
+    // ("after simplifiedText") has something to be after (Codex review of #147, F8)
+    for (const slot of ['translationQuestions', 'simplifiedText']) { const { books, ...rest } = bible.languageSets.fallback[slot]; base.push(pin(i++, `languageSets.fallback.${slot}`, rest)); }
+    const out = fold([...base, pin(20, 'languageSets.fallback.obs'), pin(21, 'languageSets.fallback.obs-tn', { ...entry, repoPath: 'git.door43.org/unfoldingWord/en_obs-tn', sha: 'e86138ea13f619f09f7a6dcaa60592716d407fe4', version: 'v13', flavor: 'parascriptural/x-obsnotes' }),
+      pin(22, 'languageSets.fallback.obs-twl', { ...entry, repoPath: 'git.door43.org/unfoldingWord/en_obs-twl', sha: '44ebc9fafe8101665f985007d566f5036a2be85b', version: 'v3', flavor: 'parascriptural/x-obsarticles' })]);
+    const doc = JSON.parse(projectResources(out.pins));
+    const keys = Object.keys(doc.languageSets.fallback);
+    const order = keys.includes('simplifiedText') && keys.indexOf('translationAcademy') < keys.indexOf('translationQuestions') && keys.indexOf('translationQuestions') < keys.indexOf('simplifiedText') &&
+      keys.indexOf('simplifiedText') < keys.indexOf('obs') && keys.indexOf('obs') < keys.indexOf('obs-tn') && keys.indexOf('obs-tn') < keys.indexOf('obs-twl');
+    const okProjected = doc.languageSets.fallback.obs.sha === entry.sha && doc.languageSets.fallback['obs-twl'].flavor === 'parascriptural/x-obsarticles' && !('obs' in doc.languageSets.primary) && order;
+    // the sample-burrito-obs pins file is exactly this shape, all slots §5.3-valid
+    const sample = JSON.parse(fs.readFileSync(path.resolve('./sample-burrito-obs/ingredients/checking/resources.json'), 'utf8'));
+    const sampleOk = ['primary', 'fallback'].every((set) => ['obs', 'obs-tn', 'obs-twl'].every((s) => pinSlotError(`languageSets.${set}.${s}`) === null && pinEntryError(`languageSets.${set}.${s}`, sample.languageSets[set][s]) === null));
+    // negatives: an unknown OBS-looking slot refuses; an OBS entry without sha refuses; a set
+    // without the OBS members is still complete (the fold projects the four required slots)
+    const badSlot = /not a §5.3 slot/.test(validateEvent(pin(30, 'languageSets.fallback.obs-tq')) || '');
+    const noSha = /sha/.test(validateEvent(pin(31, 'languageSets.fallback.obs', { repoPath: 'x/y', version: 'v1', flavor: 'gloss/textStories' })) || '');
+    const stillComplete = Object.keys(JSON.parse(projectResources(fold(base).pins)).languageSets.fallback).length === 7 && Object.keys(JSON.parse(projectResources(fold(base).pins)).languageSets.primary).length === 5;
+    check('JC-33c: §10.6 pins — `obs`, `obs-tn` and `obs-twl` are OPTIONAL §5.3 language-set slots with the §5.3 entry grammar (sha required, version a label, flavor required); they project after simplifiedText in the §10.6 order and only where pinned; the sample OBS pins validate slot by slot; `obs-tq` is not a slot, an entry without sha refuses, and a set without the OBS members is still complete [covers R-10.6.1]',
+      okProjected && sampleOk && badSlot && noSha && stillComplete, keys.join(','));
+  }
+
+  // JC-33d — the checkpoint's story inputs: story files are DERIVED shared files spliced
+  // onto the base story (mandatory), enumerated for divergence like every other; a frame
+  // beyond the story's frame set refuses at checkpoint (no structural op can add one).
+  {
+    const out = fold([ev({ op: 'text.frame.set', actor: A, ts: t(1, 0, A), story: 1, frame: 2, text: 'dos' }), ev({ op: 'text.story.ref.set', actor: A, ts: t(2, 0, A), story: 1, text: 'Génesis 1-2' })]);
+    const proj = derivedProjections(out, { baseMetadata, baseStories: { 1: seed01 } });
+    const bytes = proj['content/01.md'];
+    const parsed = storyMod.parseStory(bytes);
+    const inSet = typeof bytes === 'string' && parsed.frames[1].text === 'dos' && parsed.ref === 'Génesis 1-2' && parsed.frames[0].text === '' && bytes.split('\n')[0] === '# 1.';
+    // divergence: an out-of-band edit of the story file, and its deletion, are both detected
+    const disk = { ...proj, 'content/01.md': bytes.replace('dos', 'DOS') };
+    const dv = classifyDivergence(disk, proj);
+    const deleted = { ...proj }; delete deleted['content/01.md'];
+    const dv2 = classifyDivergence(deleted, proj);
+    const divergence = dv.diverged.includes('content/01.md') && dv2.diverged.includes('content/01.md') && !dv.diverged.includes('metadata.json');
+    // negatives: no base story → refuse; a frame the base story does not have → refuse;
+    // a base whose frame set is the story's is the ONLY thing that decides the frame count
+    const noBase = /base story/.test(throws(() => derivedProjections(out, { baseMetadata })) || '');
+    const tooFar = /does not exist/.test(throws(() => derivedProjections(fold([ev({ op: 'text.frame.set', actor: A, ts: t(3, 0, A), story: 1, frame: 17, text: 'x' })]), { baseMetadata, baseStories: { 1: seed01 } })) || '');
+    const noVrsNeeded = Object.keys(out.books).length === 0 && !('vrs.json' in proj) && 'metadata.json' in proj && 'checking/resources.json' in proj;
+    // R-10.2.3 at checkpoint: the OBS metadata keeps its scope table; a Bible base with a
+    // folded book still gets the RECONSTRUCTED scope (R-8.7.2 unchanged)
+    const scopeKept = JSON.stringify(JSON.parse(proj['metadata.json']).type.flavorType.currentScope) === JSON.stringify(baseMetadata.type.flavorType.currentScope) && Object.keys(baseMetadata.type.flavorType.currentScope).length === 33;
+    const s = buildSeed();
+    const bibleProj = derivedProjections(fold(s.events), { baseMetadata: JSON.parse(fs.readFileSync(path.join(BURRITO, 'metadata.json'), 'utf8')), resolutions: { translationWords: { TIT: s.decisionFiles.translationWords.resource }, translationNotes: { TIT: s.decisionFiles.translationNotes.resource } } });
+    const bibleReconstructed = JSON.stringify(Object.keys(JSON.parse(bibleProj['metadata.json']).type.flavorType.currentScope).sort()) === JSON.stringify(['JON', 'TIT']);
+    check('JC-33d: checkpoint story inputs — a story projects as the folded frames and reference line SPLICED onto the base story file (the committed file or the seed form), lands in the regeneration set as content/NN.md, and is enumerated for divergence (an out-of-band edit and a deletion are both detected); the projected metadata.json keeps the template\'s currentScope verbatim while a Bible checkpoint still reconstructs its scope; no base story refuses the checkpoint, frame 17 of a 16-frame story refuses, and an OBS project needs no versification frame [covers R-10.7.4 R-10.7.5 R-10.2.2 R-10.2.3]',
+      inSet && divergence && scopeKept && bibleReconstructed && noBase && tooFar && noVrsNeeded);
+  }
+
+  // JC-33e — version policy: every v: 1 op still validates at v: 1 and folds unchanged; the
+  // two story ops and the story targets are v: 2 only; v: 3 is unknown.
+  {
+    const s = buildSeed();
+    const before = fold(s.events);
+    const v1Only = s.events.every((e) => e.v === 1) && before.books.TIT.usfm === s.books.TIT && Object.keys(before.stories).length === 0;
+    const v2Frame = ev({ op: 'text.frame.set', actor: A, ts: t(1, 0, A), story: 1, frame: 1, text: 'x' });
+    const v2Ref = ev({ op: 'text.story.ref.set', actor: A, ts: t(2, 0, A), story: 1, text: 'x' });
+    const v2ok = validateEvent(v2Frame) === null && validateEvent(v2Ref) === null;
+    const v1Refuses = /v: 2/.test(validateEvent({ ...v2Frame, v: 1 }) || '') && /v: 2/.test(validateEvent({ ...v2Ref, v: 1 }) || '');
+    const v3Refuses = /version/.test(validateEvent({ ...v2Frame, v: 3 }) || '');
+    // a v: 2 envelope on a v: 1 op is legal (v: 2 is a superset): a v: 2 verse edit based on
+    // a v: 1 verse head continues that head without a fork and projects
+    const skeleton = `\\id TIT\n\\c 1\n\\v 1 ${SLOT}1:1${SLOT}`;
+    const add = { v: 1, base: null, op: 'book.add', actor: A, ts: t(6, 0, A), book: 'TIT', scope: [], skeleton, initialVerses: {} };
+    const v1Edit = { v: 1, base: add.ts, op: 'text.verse.set', actor: A, ts: t(7, 0, A), book: 'TIT', chapter: '1', verse: '1', text: 'uno\n' };
+    const v2Edit = { ...v1Edit, v: 2, ts: t(8, 0, A), base: v1Edit.ts, text: 'uno bis\n' };
+    const mixed = fold([add, v1Edit, v2Edit]);
+    const superset = mixed.forks.length === 0 && mixed.books.TIT.verses['1:1'] === 'uno bis\n';
+    // the union of a v: 1 seed and the v: 2 story events folds: books AND stories, side by side
+    const union = fold([...s.events, v2Frame, v2Ref]);
+    const sideBySide = union.books.TIT.usfm === s.books.TIT && union.stories[1].frames[1] === 'x' && union.stories[1].ref === 'x';
+    check('JC-33e: version policy — a v: 1 segment set folds exactly as before (books project, no story); the two story ops validate at v: 2 and REFUSE at v: 1 naming v: 2; v: 3 is an unknown version; a v: 2 envelope on a v: 1 op is legal (v: 2 is a superset) and continues its head without a fork; a union of v: 1 book events and v: 2 story events folds books and stories side by side [covers R-10.7.1 R-8.5.1]',
+      v1Only && v2ok && v1Refuses && v3Refuses && superset && sideBySide);
+  }
 }
 
 console.log(`\nJournal suite: ${pass} passed, ${fail} failed (fast-check seed ${SEED})`);
