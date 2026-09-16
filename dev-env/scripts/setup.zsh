@@ -4,6 +4,7 @@
 # assembled Pankosmia desktop-app build (the directory that holds app_resources,
 # templates, webfonts, clients, setup).
 set -e
+source "${0:a:h}/lib.zsh"
 DEV=${0:a:h:h}
 SRC_LIB=${PANKOSMIA_ASSEMBLED_LIB:?set PANKOSMIA_ASSEMBLED_LIB to an assembled desktop-app lib directory}
 [ -d "$SRC_LIB" ] || { echo "No assembled lib at $SRC_LIB (set PANKOSMIA_ASSEMBLED_LIB)"; exit 1; }
@@ -13,16 +14,25 @@ for d in app_resources templates webfonts clients setup; do cp -R "$SRC_LIB/$d" 
 # The OBS template lacks the `localizedNames` the server requires (#287, PLATFORM-NOTES #36).
 node "$DEV/../scripts/fix-obs-template.mjs" "$DEV/app-resources/templates"
 # isolation: repo_dir lives INSIDE the rig working dir, never $HOME
-python3 - "$DEV" <<'PY'
-import json,sys,re,pathlib
-dev=pathlib.Path(sys.argv[1])
-us=dev/'app-resources/templates/user_settings.json'
-s=us.read_text().replace('%%HOMEDIR%%/pankosmia_repos','%%WORKINGDIR%%/repos')
-us.write_text(s)
-ls=dev/'app-resources/setup/local_setup.json'
-ls.write_text(json.dumps({"local_pankosmia_path":str(dev/'app-resources/clients')}))
-print("patched: repo_dir -> %%WORKINGDIR%%/repos ; local_pankosmia_path ->", dev/'app-resources/clients')
-PY
+# Node is on every supported host; Python is not on a default MSYS2 PATH.
+node -e '
+const fs = require("node:fs");
+const path = require("node:path");
+const [dev, clientsNative] = process.argv.slice(1);
+const res = path.join(dev, "app-resources");
+const us = path.join(res, "templates", "user_settings.json");
+const source = fs.readFileSync(us, "utf8");
+const defaultRepo = "%%HOMEDIR%%/pankosmia_repos";
+if (!source.includes(defaultRepo)) {
+  console.error(`user_settings template changed upstream: ${defaultRepo} not found; re-verify the isolation patch`);
+  process.exit(1);
+}
+fs.writeFileSync(us, source.replace(defaultRepo, "%%WORKINGDIR%%/repos"));
+fs.writeFileSync(path.join(res, "setup", "local_setup.json"), JSON.stringify({
+  local_pankosmia_path: clientsNative,
+}));
+console.log("patched: repo_dir -> %%WORKINGDIR%%/repos ; local_pankosmia_path ->", clientsNative);
+' "$(npath "$DEV")" "$(npath "$DEV/app-resources/clients")"
 # 0.17.0+ requires product/product.json (new since 0.16.x).
 # `homepage` is REQUIRED in practice since 0.18.0 ("No more main"): the server no longer
 # hardcodes /clients/main, it panics unless a client is registered at /clients/<homepage>,

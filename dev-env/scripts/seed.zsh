@@ -3,23 +3,25 @@
 # Performs the working-dir initialization itself (template substitution), so
 # every boot sees an identical, fully-specified state — no first-boot variance.
 set -e
+source "${0:a:h}/lib.zsh"
 DEV=${0:a:h:h}; ROOT=${0:a:h:h:h}
 WORK="$DEV/state/work"
 rm -rf "$DEV/state"; mkdir -p "$WORK/repos/_local_/_local_" "$WORK/temp" "$WORK/blobs"
-python3 - "$DEV" "$WORK" <<'PY'
-import sys, pathlib
-dev, work = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
-res = dev / 'app-resources'
-def sub(name):
-    s = (res / 'templates' / name).read_text()
-    return (s.replace('%%WORKINGDIR%%', str(work))
-             .replace('%%APPRESOURCESDIR%%', str(res) + '/')
-             .replace('%%PANKOSMIADIR%%', str(res / 'clients'))
-             .replace('%%HOMEDIR%%', str(work)))
-(work / 'user_settings.json').write_text(sub('user_settings.json'))
-(work / 'app_state.json').write_text(sub('app_state.json'))
-print('working dir initialized from templates (repo_dir isolated under', work / 'repos', ')')
-PY
+node -e '
+const fs = require("node:fs");
+const path = require("node:path");
+const [dev, work, resNative, clientsNative] = process.argv.slice(1);
+const res = path.join(dev, "app-resources");
+const appResources = resNative.endsWith("/") ? resNative : `${resNative}/`;
+const substitute = (name) => fs.readFileSync(path.join(res, "templates", name), "utf8")
+  .replaceAll("%%WORKINGDIR%%", work)
+  .replaceAll("%%APPRESOURCESDIR%%", appResources)
+  .replaceAll("%%PANKOSMIADIR%%", clientsNative)
+  .replaceAll("%%HOMEDIR%%", work);
+fs.writeFileSync(path.join(work, "user_settings.json"), substitute("user_settings.json"));
+fs.writeFileSync(path.join(work, "app_state.json"), substitute("app_state.json"));
+console.log("working dir initialized from templates (repo_dir isolated under", path.join(work, "repos"), ")");
+' "$(npath "$DEV")" "$(npath "$WORK")" "$(npath "$DEV/app-resources")" "$(npath "$DEV/app-resources/clients")"
 # seed the conforming sample project (regenerate if absent)
 if [ ! -d "$ROOT/conformance/sample-burrito" ]; then (cd "$ROOT/conformance" && npm run generate); fi
 cp -R "$ROOT/conformance/sample-burrito" "$WORK/repos/_local_/_local_/sample_burrito"
@@ -30,7 +32,7 @@ fi
 # each, built offline from the reference modules and converged by construction, so
 # a project open reads thousands of segments and the slow-open journey can watch
 # the progress indicator. Deterministic (same bytes every seed).
-node "$ROOT/scripts/seed-large-project.mjs" "$WORK/repos/_local_/_local_/sample_burrito_large" --edits 4000
+node "$(npath "$ROOT/scripts/seed-large-project.mjs")" "$(npath "$WORK/repos/_local_/_local_/sample_burrito_large")" --edits 4000
 # A SECOND gateway-language suite (es-419_gl) rides along, so the two-language-set
 # path (D17/D30 ladder, D23a gateway change, D36 carry-over) is exercisable on the
 # rig. es-419_tn v66 covers 3JN/JON/RUT/TIT — TIT and JON are the rig's books, so a

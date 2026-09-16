@@ -13,7 +13,7 @@ crates.io `=` pin when 0.18.5+ publishes (see `docs/RISKS.md` #1).
 ## Prerequisites
 
 - Rust (stable) with `cargo`.
-- Node 22, `python3`, `git`, `zip`, `unzip`.
+- Node 22, `git`, `zip`, `unzip`.
 - One of two sources for `app-resources/`:
   - none: `scripts/setup-from-pins.zsh` fetches the pinned upstream inputs (read-only
     clones) and registers only the tC4 client. This is what CI uses.
@@ -48,6 +48,117 @@ crates.io `=` pin when 0.18.5+ publishes (see `docs/RISKS.md` #1).
   fixed list whose cache entry exists (see the loop in `seed.zsh`). The rig-gated
   HttpStore suite reads `en_ult`, so a rig that runs `npm run prove` needs at least:
   `zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_ult v89 <sha from src/data/installedSuite.js>`.
+
+## Windows
+
+### Install MSYS2
+
+Install MSYS2 from the [official installer](https://www.msys2.org/docs/installer/).
+The default installation directory is `C:\msys64`. After installation, open
+**MSYS2 MSYS** from the Windows Start menu. This is the MSYS2 shell; Git Bash,
+PowerShell, WSL, and cmd do not provide `pacman`.
+
+Update the MSYS2 installation:
+
+```bash
+pacman -Syu
+```
+
+If MSYS2 asks you to close the window, close it, open **MSYS2 MSYS** again, and run
+the update command a second time. Then install the shell tools used by the rig:
+
+```bash
+pacman -S zsh zip unzip curl
+```
+
+`zsh` is a cross-platform shell. It runs in MSYS2 on Windows; it is not limited to
+Linux. The first time you start zsh, it may show the `zsh-newuser-install` menu. Type
+`0` and press Enter to create a blank `.zshrc` with the default settings.
+
+### Start MSYS2 with the Windows tools
+
+The rig needs Node 22, Git, and Rust stable with the MSVC toolchain. The required
+Rust target is `stable-x86_64-pc-windows-msvc`. Close the MSYS2 window and start the
+inherited-path shell from PowerShell:
+
+```powershell
+$env:MSYS2_PATH_TYPE = "inherit"
+& "C:\msys64\msys2_shell.cmd" -defterm -here -no-start -msys -use-full-path -shell zsh
+```
+
+The command uses PowerShell syntax. Inside MSYS2 Bash or zsh, the equivalent syntax
+is `export MSYS2_PATH_TYPE=inherit`. Do not type `export` at a `PS C:\...>` prompt.
+
+Verify the tools from the new MSYS2 zsh window:
+
+```bash
+uname -s             # must start with MSYS_NT
+zsh --version
+node --version       # Node 22.x
+npm --version
+cargo --version
+git --version
+rustup show active-toolchain  # stable-x86_64-pc-windows-msvc
+```
+
+If `pacman` is not found, the window is not MSYS2. If `npm` or `node` is not found,
+close the window and relaunch it with `-use-full-path`. From PowerShell,
+`where.exe node` and `where.exe npm` show where the Windows installations are.
+If the active Rust toolchain is not `stable-x86_64-pc-windows-msvc`, install the
+MSVC toolchain with `rustup toolchain install stable-x86_64-pc-windows-msvc` and
+select it before building.
+
+You may run `npm run dev` from Git Bash, PowerShell, or MSYS2 when Node and npm are
+available there. Run the rig scripts themselves from MSYS2 zsh.
+
+Run `git config core.autocrlf false` before cloning this repository. If you already
+cloned it with another setting, clone it again after this repository's line-ending rules
+are present.
+
+The full clean-clone sequence is:
+
+```bash
+git config --global core.autocrlf false
+git clone https://github.com/unfoldingWord/translationCore4.git
+cd translationCore4
+npm ci
+npm run build
+zsh dev-env/scripts/setup-from-pins.zsh
+zsh dev-env/scripts/seed.zsh
+zsh dev-env/scripts/run.zsh &
+/c/Windows/System32/curl.exe -s localhost:19998/api/version
+npm run dev
+zsh dev-env/scripts/stop.zsh
+```
+
+The version response must include `pkg_version` `0.18.5`. With the client running,
+open `http://localhost:5199/` and use `+ New Bible` to create a project.
+
+If `zsh` is not found, install MSYS2 and open its MSYS shell. Do not run these rig
+scripts from PowerShell or cmd.
+
+### Troubleshooting the local servers
+
+Start the rig before the client. In the MSYS2 zsh window, run:
+
+```bash
+zsh dev-env/scripts/run.zsh > /tmp/tc4-rig.log 2>&1 &
+/c/Windows/System32/curl.exe -s http://localhost:19998/api/version
+```
+
+The response must include `pkg_version` `0.18.5`. In another terminal, run
+`npm run dev` and open `http://localhost:5199/`. If the browser is blank, confirm that
+the Vite terminal is still running and that the rig responds on port 19998. `Ctrl+C`
+stops the foreground command, so use it only when you intend to stop that terminal.
+
+Stop the rig with:
+
+```bash
+zsh dev-env/scripts/stop.zsh
+netstat.exe -ano | findstr.exe ":19998"
+```
+
+The last command should print nothing.
 
 J12 (`e2e/j12-upgrade-resources.spec.ts`, issues #256/#257) needs a NEWER release of
 the English helps than the seeded v89. The rig does not sideload it: the spec serves it

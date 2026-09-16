@@ -14,6 +14,7 @@
 # Usage: npm run build && zsh dev-env/scripts/setup-from-pins.zsh
 # Then: zsh dev-env/scripts/seed.zsh && zsh dev-env/scripts/run.zsh
 set -e
+source "${0:a:h}/lib.zsh"
 DEV=${0:a:h:h}; ROOT=${0:a:h:h:h}
 IN="$DEV/upstream"   # disposable clones, gitignored
 
@@ -63,20 +64,28 @@ echo "== 3/4 register the uw-tc4 client, isolate the store, name the product"
 cp -R "$ROOT/dist" "$RES/clients/uw-tc4/build"
 cp "$ROOT/rig/pankosmia_metadata.json" "$ROOT/rig/package.json" "$ROOT/rig/storage_id.json" "$RES/clients/uw-tc4/"
 # Same isolation patch as setup.zsh: repo_dir lives INSIDE the rig working dir, never $HOME.
-python3 - "$DEV" <<'PY'
-import json, sys, pathlib
-dev = pathlib.Path(sys.argv[1])
-res = dev / 'app-resources'
-us = res / 'templates' / 'user_settings.json'
-s = us.read_text()
-default = '%%HOMEDIR%%/pankosmia_repos'
-if default not in s:
-    raise SystemExit(f"user_settings template changed upstream: {default!r} not found; re-verify the isolation patch")
-us.write_text(s.replace(default, '%%WORKINGDIR%%/repos'))
-(res / 'setup' / 'local_setup.json').write_text(json.dumps({"local_pankosmia_path": str(res / 'clients')}))
-(res / 'setup' / 'app_setup.json').write_text(json.dumps({"clients": [{"path": "%%PANKOSMIADIR%%/uw-tc4"}]}, indent=4) + '\n')
-print('patched: repo_dir -> %%WORKINGDIR%%/repos ; clients -> uw-tc4 only')
-PY
+# Node is on every supported host; Python is not on a default MSYS2 PATH.
+node -e '
+const fs = require("node:fs");
+const path = require("node:path");
+const [dev, clientsNative] = process.argv.slice(1);
+const res = path.join(dev, "app-resources");
+const us = path.join(res, "templates", "user_settings.json");
+const source = fs.readFileSync(us, "utf8");
+const defaultRepo = "%%HOMEDIR%%/pankosmia_repos";
+if (!source.includes(defaultRepo)) {
+  console.error(`user_settings template changed upstream: ${defaultRepo} not found; re-verify the isolation patch`);
+  process.exit(1);
+}
+fs.writeFileSync(us, source.replace(defaultRepo, "%%WORKINGDIR%%/repos"));
+fs.writeFileSync(path.join(res, "setup", "local_setup.json"), JSON.stringify({
+  local_pankosmia_path: clientsNative,
+}));
+fs.writeFileSync(path.join(res, "setup", "app_setup.json"), JSON.stringify({
+  clients: [{ path: "%%PANKOSMIADIR%%/uw-tc4" }],
+}, null, 4) + "\n");
+console.log("patched: repo_dir -> %%WORKINGDIR%%/repos ; clients -> uw-tc4 only");
+' "$(npath "$DEV")" "$(npath "$DEV/app-resources/clients")"
 # homepage=uw-tc4 is safe here: the client was registered above (PLATFORM-NOTES #25:
 # register FIRST, or the 0.18.x server panics at boot).
 print -r -- '{ "short_name": "tc4rig", "name": "tC4 dev rig", "version": "0.1.0", "datetime": "2026-07-18T00:00:00Z", "homepage": "uw-tc4" }' > "$RES/product/product.json"

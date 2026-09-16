@@ -1,8 +1,9 @@
 #!/bin/zsh
 # Run the rig server (foreground). PORT via $TC4_RIG_PORT (default 19998).
 set -e
+source "${0:a:h}/lib.zsh"
 DEV=${0:a:h:h}
-export APP_RESOURCES_DIR="$DEV/app-resources/"
+export APP_RESOURCES_DIR="$(npath "$DEV/app-resources/")"
 export ROCKET_PORT=${TC4_RIG_PORT:-19998}
 export ROCKET_ADDRESS=127.0.0.1
 # Upload limits come from $DEV/server/Rocket.toml (six limits at 128MiB), copied from
@@ -16,4 +17,4 @@ export ROCKET_ADDRESS=127.0.0.1
 [ -f "$DEV/server/Rocket.toml" ] || { print -u2 "FATAL: $DEV/server/Rocket.toml missing — uploads would silently cap at 1MiB"; exit 1 }
 [ -d "$DEV/state/work" ] || "$DEV/scripts/seed.zsh"
 cd "$DEV/server"
-exec "./target/release/tc4_dev_server" "$DEV/state/work/"
+exec "./target/release/tc4_dev_server$EXE" "$(npath "$DEV/state/work/")"
