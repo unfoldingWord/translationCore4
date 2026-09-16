@@ -9,6 +9,41 @@
 // paths listing walking the real tree, new-scripture-book regenerating
 // currentScope, remake-ingredients rebuilding the table from disk.
 import type { KvStore } from '../../src/data/journal/identity';
+import { withLocalizedNames } from '../../scripts/fix-obs-template.mjs';
+
+// Real node builtins via the runtime (the app's polyfill plugin aliases them).
+const nodeFs = process.getBuiltinModule('node:fs');
+const nodePath = process.getBuiltinModule('node:path');
+const OBS_TEMPLATE = nodePath.resolve(process.cwd(), 'conformance/fixtures/text_stories');
+
+/** Every ingredient of the vendored `text_stories` template, keyed by ipath. */
+const obsTemplateFiles = (): Record<string, string> => {
+  const out: Record<string, string> = {};
+  const walk = (dir: string, prefix: string): void => {
+    for (const entry of nodeFs.readdirSync(dir, { withFileTypes: true })) {
+      const ipath = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) walk(nodePath.join(dir, entry.name), ipath);
+      else out[ipath] = nodeFs.readFileSync(nodePath.join(dir, entry.name), 'utf8');
+    }
+  };
+  walk(nodePath.join(OBS_TEMPLATE, 'ingredients'), '');
+  return out;
+};
+
+/** The template's metadata stamped the way new_obs_resource.rs stamps it: string
+ * replacement of the placeholders. `fixed` models the tC4-served template
+ * (scripts/fix-obs-template.mjs); unfixed, it is resource-core's, which the
+ * server's own metadata struct cannot parse back (PLATFORM-NOTES #36). */
+const obsMeta = (form: { content_abbr: string; content_name: string; content_language_code: string }, fixed: boolean): Record<string, unknown> => {
+  let text = nodeFs.readFileSync(nodePath.join(OBS_TEMPLATE, 'metadata.json'), 'utf8');
+  if (fixed) text = withLocalizedNames(text);
+  text = text
+    .replaceAll('%%ABBR%%', form.content_abbr)
+    .replaceAll('%%CONTENT_NAME%%', form.content_name)
+    .replaceAll('%%CREATED_TIMESTAMP%%', '2026-09-16T12:00:00.000Z')
+    .replace('%%LANGUAGE%%', JSON.stringify({ tag: form.content_language_code, name: { en: form.content_language_code } }));
+  return JSON.parse(text) as Record<string, unknown>;
+};
 
 export interface RigProject {
   files: Map<string, string>; // ipath -> text
@@ -34,8 +69,17 @@ const baseMeta = (): Record<string, unknown> => ({
   format: 'scripture burrito',
   meta: { category: 'source', normalization: 'NFC' },
   type: { flavorType: { name: 'scripture', currentScope: {} as Record<string, string[]> } },
+  localizedNames: {}, // the platform's Bible template carries it (PLATFORM-NOTES #36)
   ingredients: {},
 });
+
+/** The server parses metadata.json back through its own struct on every
+ * registering write and rescan; a document without `localizedNames` fails
+ * [VERIFIED — pankosmia-web 0.18.5, rig, 2026-09-15]. */
+const unparseable = (project: RigProject): Response | null =>
+  'localizedNames' in project.meta
+    ? null
+    : new Response(JSON.stringify({ is_good: false, reason: 'Could not parse metadata: missing field `localizedNames` at line 593 column 3' }), { status: 500 });
 
 /** Rebuild currentScope + ingredients from the files on disk — what the
  * platform's rescan does (whole-book [] scope per book file). */
@@ -47,10 +91,12 @@ const rescan = (project: RigProject): void => {
     const book = /^([A-Z0-9]{3})\.usfm$/.exec(ipath)?.[1];
     if (book) scope[book] = [];
   }
-  // An OBS project's currentScope is the template's table, copied verbatim
-  // (R-10.2.3) — the platform's rescan does not rebuild it from story files.
-  if (flavorOf(project.meta) !== 'textStories')
-    (project.meta.type as { flavorType: { currentScope: unknown } }).flavorType.currentScope = scope;
+  // The platform rebuilds currentScope from the USFM files on every registering
+  // write and rescan — so an OBS project's table, which R-10.2.3 keeps verbatim,
+  // EMPTIES (PLATFORM-NOTES #37 [VERIFIED live 0.18.5, 2026-09-16]). The store
+  // therefore never registers or rescans an OBS project; this fake keeps the
+  // platform's behavior so a test can tell.
+  (project.meta.type as { flavorType: { currentScope: unknown } }).flavorType.currentScope = scope;
   project.meta.ingredients = ingredients;
 };
 
@@ -64,6 +110,11 @@ export const journalingRig = () => {
   const writes: Array<{ repo: string; ipath: string; payload: string }> = [];
   const log: Array<{ method: string; route: string }> = [];
   const failures: FailureRule[] = [];
+  /** Whether new-obs-resource stamps from the tC4-served (fixed) template. */
+  let obsTemplateFixed = true;
+  const serveUnfixedObsTemplate = (): void => {
+    obsTemplateFixed = false;
+  };
 
   const failOn = (match: FailureRule['match'], times = 1): void => {
     failures.push({ match, times });
@@ -75,7 +126,14 @@ export const journalingRig = () => {
     meta: Record<string, unknown> = baseMeta(),
   ): RigProject => {
     const project: RigProject = { files: new Map(Object.entries(files)), meta, commits: [], dirty: new Set() };
+    // Creation builds the ingredient table but keeps the stamped scope: the
+    // OBS route copies the template's 33-book table verbatim (its initial
+    // commit carries it [VERIFIED live 0.18.5, 2026-09-16]); only a later
+    // registering write or rescan rebuilds the scope from USFM files.
+    const stamped = (meta.type as { flavorType: { currentScope: unknown } }).flavorType.currentScope;
     rescan(project);
+    if (flavorOf(meta) === 'textStories')
+      (project.meta.type as { flavorType: { currentScope: unknown } }).flavorType.currentScope = stamped;
     repos.set(repoPath, project);
     return project;
   };
@@ -115,6 +173,10 @@ export const journalingRig = () => {
         return new Response(text, { status: 200 });
       }
       const body = JSON.parse(String(init?.body)) as { payload: string };
+      if (url.searchParams.has('update_ingredients')) {
+        const refused = unparseable(project);
+        if (refused) return refused;
+      }
       project.files.set(ipath, body.payload);
       project.dirty.add(ipath);
       writes.push({ repo, ipath, payload: body.payload });
@@ -157,7 +219,21 @@ export const journalingRig = () => {
       maybeFail({ method, route, repo });
       const project = repos.get(repo);
       if (!project) return notFound(`no such repo ${repo}`);
+      const refused = unparseable(project);
+      if (refused) return refused;
       rescan(project);
+      return ok();
+    }
+
+    if (parts[1] === 'git' && parts[2] === 'new-obs-resource') {
+      maybeFail({ method, route });
+      const body = JSON.parse(String(init?.body)) as { content_abbr: string; content_name: string; content_language_code: string };
+      const repoPath = `_local_/_local_/${body.content_abbr}`;
+      if (repos.has(repoPath)) return notFound(`Local content called '${body.content_abbr}' already exists`);
+      // The template's ingredients, byte for byte, with the source's titles —
+      // the seed form is the client's job (R-10.2.4).
+      const project = createRepo(repoPath, obsTemplateFiles(), obsMeta(body, obsTemplateFixed));
+      project.commits.push('Initial commit');
       return ok();
     }
 
@@ -264,7 +340,7 @@ export const journalingRig = () => {
     timestamp: 0,
   });
 
-  return { repos, writes, log, fetchFn, failOn, createRepo };
+  return { repos, writes, log, fetchFn, failOn, createRepo, serveUnfixedObsTemplate };
 };
 
 export type JournalingRig = ReturnType<typeof journalingRig>;

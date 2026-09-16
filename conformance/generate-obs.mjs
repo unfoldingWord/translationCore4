@@ -130,6 +130,10 @@ metadata.meta.generator = { softwareName: 'translationCore 4 (sample)', software
 metadata.identification.description = { en: 'Sample tC4 Open Bible Stories project (story 1 drafted: title, frames 1 and 2, reference line)' };
 metadata.copyright.shortStatements.push({ statement: 'Sample text CC BY-SA 4.0, Equipo Ejemplo' });
 metadata.ingredients = ingredients; // §3 rule 5 — `currentScope` stays the template's table VERBATIM (R-10.2.3)
+// The template has no `localizedNames`; the server's metadata struct requires it, and tC4
+// serves the template with the key added (scripts/fix-obs-template.mjs, #287). The sample
+// carries what a created project carries. The vendored fixture stays byte-for-byte.
+metadata.localizedNames = {};
 fs.writeFileSync(path.join(OBS, 'metadata.json'), JSON.stringify(metadata, null, 2) + '\n');
 fs.writeFileSync(path.join(OBS, '.gitignore'), '**/*.bak\n');
 console.log(`sample-burrito-obs: metadata.json written with ${Object.keys(ingredients).length} ingredients`);

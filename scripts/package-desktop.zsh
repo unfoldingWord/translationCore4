@@ -317,6 +317,8 @@ cp "$REPO/dev-env/server/Rocket.toml" "$PACK/Rocket.toml"
 # lib: runtime resources per the template's app_config.env asset map.
 cp -R "$BUILD/upstream/resource-core/runtime_resources" "$PACK/lib/app_resources"
 cp -R "$BUILD/upstream/resource-core/templates" "$PACK/lib/templates"
+# The OBS template lacks the `localizedNames` the server requires (#287, PLATFORM-NOTES #36).
+node "$REPO/scripts/fix-obs-template.mjs" "$PACK/lib/templates"
 
 # #70 store isolation: pin repo_dir to the tC4-owned store. The server
 # substitutes %%WORKINGDIR%% at first boot (customize_and_copy_template_file).
