@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
   "tool": "scripts/prove.mjs",
-  "commit": "20b87a6925453cf16e7241d9cf05e8701ae5c717",
+  "commit": "f6ad278c23835767b25ed91c3b0e22dc5fd5cd4f",
   "dirty": false,
-  "date": "2026-09-16T16:12:56.506Z",
-  "node": "v22.23.2",
+  "date": "2026-09-16T22:56:26.111Z",
+  "node": "v22.22.2",
   "platform": "linux-x64",
-  "ci": true,
+  "ci": false,
   "rig": {
     "api": "http://127.0.0.1:19998/api",
     "detected": false,
@@ -34,7 +34,7 @@
       "summary": [
         "✖ 1 problem (0 errors, 1 warning)"
       ],
-      "durationMs": 6241
+      "durationMs": 7032
     },
     {
       "id": "typecheck",
@@ -49,7 +49,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [],
-      "durationMs": 5398
+      "durationMs": 5608
     },
     {
       "id": "vitest",
@@ -60,14 +60,14 @@
       "skipped": null,
       "ok": true,
       "exitCode": 0,
-      "passed": 1094,
+      "passed": 1107,
       "failed": 0,
-      "skippedTests": 41,
+      "skippedTests": 43,
       "summary": [
-        "Test Files  76 passed | 7 skipped (83)",
-        "Tests  1094 passed | 41 skipped (1135)"
+        "Test Files  79 passed | 8 skipped (87)",
+        "Tests  1107 passed | 43 skipped (1150)"
       ],
-      "durationMs": 31804
+      "durationMs": 27762
     },
     {
       "id": "build",
@@ -82,9 +82,9 @@
       "failed": null,
       "skippedTests": null,
       "summary": [
-        "✓ built in 9.34s"
+        "✓ built in 11.01s"
       ],
-      "durationMs": 9770
+      "durationMs": 11489
     },
     {
       "id": "conformance:generate",
@@ -99,7 +99,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [],
-      "durationMs": 176
+      "durationMs": 212
     },
     {
       "id": "conformance:validate",
@@ -120,7 +120,7 @@
         "OBS (the OBS project kind, §10 — sample-burrito-obs): 6 passed, 0 failed",
         "47 passed, 0 failed"
       ],
-      "durationMs": 534
+      "durationMs": 629
     },
     {
       "id": "conformance:journal",
@@ -137,7 +137,7 @@
       "summary": [
         "Journal suite: 350 passed, 0 failed (fast-check seed 20260707)"
       ],
-      "durationMs": 2641
+      "durationMs": 5977
     },
     {
       "id": "conformance:normative",
@@ -157,7 +157,7 @@
         "uncovered          : 0",
         "stale claims       : 0"
       ],
-      "durationMs": 75
+      "durationMs": 93
     },
     {
       "id": "conformance:transport",
@@ -192,7 +192,7 @@
     {
       "id": "vitest:rig",
       "layer": "rig",
-      "command": ".$ npx vitest run test/httpStore.integration.test.ts test/journalStore.integration.test.ts test/serverApi.integration.test.ts test/storyStore.integration.test.ts",
+      "command": ".$ npx vitest run test/httpStore.integration.test.ts test/journalStore.integration.test.ts test/obsImages.integration.test.ts test/serverApi.integration.test.ts test/storyStore.integration.test.ts",
       "needsRig": true,
       "ran": false,
       "skipped": "no rig at http://127.0.0.1:19998/api (dev-env/scripts/run.zsh)",
