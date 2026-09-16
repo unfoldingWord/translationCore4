@@ -88,7 +88,7 @@ where it provides chrome, we design our own.
 
 So "no `pankosmia-rcl` visual components" does NOT mean "we left the platform", and no
 `pankosmia-rcl` entry in `package.json` does not mean the decision changed. The dependency
-is not installed yet [VERIFIED — `package.json` read at commit 000a2dc, 2026-09-16, 12
+is not installed yet [VERIFIED — `package.json` read at commit 3e2c39f, 2026-09-16, 12
 dependencies, none from Pankosmia]: **when** the contexts and the
 notification stream get adopted, and by which path, is open question
 [#222](https://github.com/unfoldingWord/translationCore4/issues/222). Do not decide
@@ -96,7 +96,7 @@ that in passing while you build something else.
 
 ## Skips are not failures
 
-<!-- manifest: vitest skippedTests -->38 tests skip on a clean clone. Each names its
+<!-- manifest: vitest skippedTests -->41 tests skip on a clean clone. Each names its
 missing prerequisite (the Pankosmia rig, or a sibling `sample-burrito` checkout). Do
 not "fix" a skip by inventing the missing data, and do not report a skip as a defect.
 
