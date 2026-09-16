@@ -117,7 +117,7 @@ WEBFONTS_CORE_REV="eb52ccdad6806b5729ea8b45b1c59c793ffa32c3"   # 2026-08-14
 PUPPETEER_CORE_VER="24.43.1"       # template package.json: ^24.43.1
 PUPPETEER_BROWSERS_VER="2.13.1"    # template package.json: ^2.13.1
 
-# Bundled English suite (#163, D70). Ten repos pinned from src/data/installedSuite.js,
+# Bundled English suite (#163, D70, #288). Fourteen repos pinned from src/data/installedSuite.js,
 # as `<owner>/<repo>:<tag>:<sha>`. en_tw serves both translationWords and
 # translationWordsLinks (D34). The two lexicons (#218, D71) are the `uW`-org
 # burritos: no tag exists, so the tag field is empty and the cache fetches the
@@ -134,6 +134,10 @@ BUNDLED_RESOURCES=(
   "unfoldingWord/en_tq:v89:97c0a13e3b84d46d0e643ba2e8e9f1c295547a58"
   "uW/en_ugl::d9d29e2d589258ce27f92b59f753a3af03ab7a72"
   "uW/en_uhl::72df5ac25acf9d51e826b20e3ad883a5a657ef4e"
+  "unfoldingWord/en_obs:v9:d39a1dc7a7557ac54e4a8fecc3462147fe7eec3b"
+  "unfoldingWord/en_obs-tn:v13:e86138ea13f619f09f7a6dcaa60592716d407fe4"
+  "unfoldingWord/en_obs-twl:v3:44ebc9fafe8101665f985007d566f5036a2be85b"
+  "uW/obs_images_360::7146d5b504f6b63b9e11f7dc0b18c594d0ae179d"
 )
 # Split one BUNDLED_RESOURCES entry into owner, repo, tag, sha, the cache-file
 # label (tag, or the first 12 sha characters) and the store segment.
@@ -143,6 +147,10 @@ bundled_fields() {
   tag="${rest%%:*}"; sha="${rest#*:}"
   label="${tag:-${sha[1,12]}}"
   seg="${(L)owner}--$repo"
+  # The untagged default OBS pack is identity-qualified. Bootstrap never
+  # replaces a same-repo install at another commit, and the renderer cannot
+  # mistake that install for this exact pin.
+  if [ "$repo" = "obs_images_360" ]; then seg="${seg}--${sha[1,12]}"; fi
 }
 
 APP_NAME="translationCore4"
@@ -210,7 +218,7 @@ if [ ! -e "$EL_UNPACKED" ]; then
   unzip -qq -o "$BUILD/$ELECTRONITE_ZIP" -d "$BUILD/electronite"
 fi
 
-echo "== fetching bundled English suite (10 repos, #163, #218)"
+echo "== fetching bundled English and OBS suite (14 repos, #163, #218, #288)"
 for entry in "${BUNDLED_RESOURCES[@]}"; do
   bundled_fields "$entry"
   zsh "$REPO/dev-env/scripts/cache-resource.zsh" "$owner/$repo" "$tag" "$sha"

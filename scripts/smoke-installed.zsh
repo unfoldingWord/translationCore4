@@ -6,10 +6,11 @@
 #   2. the server serves the tC4 client (303 from /, 200 from /clients/uw-tc4);
 #   3. the project store is the tC4-owned path, never $HOME/pankosmia_repos (#70);
 #   4. the bundled source text (en_ult) is readable offline (source, #163);
-#   5. a project is created through the app's own HTTP surface, with one book;
-#   6. one verse is written into that book and lands in the store on disk;
-#   7. the app is stopped and started again; the verse reads back;
-#   8. the smoke project is removed; the app is stopped.
+#   5. the bundled story 1/frame 1 image decodes locally while net is disabled;
+#   6. a project is created through the app's own HTTP surface, with one book;
+#   7. one verse is written into that book and lands in the store on disk;
+#   8. the app is stopped and started again; the verse and image read back;
+#   9. the smoke project is removed; the app is stopped.
 #
 # Each step prints one line, "ok <step>: <what was seen>" or "FAIL <step>: <what was
 # seen>", and the script exits non-zero at the first failure. The output is what the
@@ -209,6 +210,7 @@ run_steps() { node_run "$APPDIR/smoke-api.cjs" "http://127.0.0.1:$PORT" "$REPO" 
 
 # ---- source: bundled English suite (en_ult) is readable offline (#163) ----------
 run_steps source || { cleanup_app; exit 1; }
+run_steps obs-image || { cleanup_app; exit 1; }
 
 # ---- 4-5: create a project and write one verse, through the app's HTTP surface ----
 
@@ -226,6 +228,7 @@ start_app second
 [ "$SERVER_PIDS" != "$FIRST_SERVER" ] || fail "restart: the server pid did not change ($FIRST_SERVER); the app was not restarted"
 ok "restart: a new server process (pid $FIRST_SERVER before, $SERVER_PIDS after)"
 run_steps readback || { cleanup_app; exit 1; }
+run_steps obs-image || { cleanup_app; exit 1; }
 
 # ---- 7: clean up -----------------------------------------------------------------
 if [ "${TC4_SMOKE_KEEP:-0}" = "1" ]; then

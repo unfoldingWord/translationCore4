@@ -84,6 +84,8 @@ export interface BurritoMetadata {
   type: {
     flavorType: {
       name: string;
+      /** `{ name: 'textStories' }` on an OBS project (BURRITO-SPEC §10.1). */
+      flavor?: { name: string };
       currentScope: Record<string, string[]>;
       [key: string]: unknown;
     };

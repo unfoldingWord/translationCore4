@@ -540,12 +540,12 @@ const buildSeed = () => {
   const J = (d) => path.join(tmp, d, 'journal');
   for (const d of ['deviceA', 'deviceB', 'integrator']) fs.mkdirSync(J(d), { recursive: true });
   writeActionSegment(path.join(J('deviceA'), 'seed-actor'), events); // the seed action, one sealed segment
-  execSync(`cp -R "${path.join(J('deviceA'), 'seed-actor')}" "${path.join(J('deviceB'), 'seed-actor')}"`);
+  fs.cpSync(path.join(J('deviceA'), 'seed-actor'), path.join(J('deviceB'), 'seed-actor'), { recursive: true });
   writeActionSegment(path.join(J('deviceA'), 'device-aa'), [eA]);
   writeActionSegment(path.join(J('deviceB'), 'device-bb'), [eB]);
   // sneakernet: copy both actor dirs into integrator
   for (const [d, a] of [['deviceA', 'seed-actor'], ['deviceA', 'device-aa'], ['deviceB', 'device-bb']])
-    execSync(`cp -R "${path.join(J(d), a)}" "${path.join(J('integrator'), a)}"`);
+    fs.cpSync(path.join(J(d), a), path.join(J('integrator'), a), { recursive: true });
   const foldA = fold([...readUnion(J('deviceA')), ...readUnion(J('deviceB'))]);
   const foldI = fold(readUnion(J('integrator')));
   const foldM = fold([...events, eA, eB]);
@@ -872,7 +872,7 @@ try {
   const git = (args, cwd) => execSync(`git ${args}`, { cwd, stdio: 'pipe' }).toString();
   const init = (dir) => { fs.mkdirSync(dir, { recursive: true }); git('init -q -b main .', dir); git('config user.email t@t', dir); git('config user.name T', dir); };
   const commitAll = (dir, m) => { git('add -A', dir); git(`commit -qm ${m}`, dir); };
-  const cp = (src, dst) => execSync(`cp -R "${src}" "${dst}"`);
+  const cp = (src, dst) => fs.cpSync(src, dst, { recursive: true });
   const ts = (s, a) => `2026-05-01T00:00:${String(s).padStart(2, '0')}.000Z|0000|${a}`;
   const merges = (scratch, fromDir) => { // mirrors pull-repo editable → scratch
     git(`remote add editable "${fromDir}"`, scratch); git('fetch -q editable', scratch);
@@ -4455,7 +4455,7 @@ const sameRegister = (a, b) => {
   const ev = (o) => ({ v: 2, base: null, ...o });
   const throws = (fn) => { try { fn(); return null; } catch (e) { return e.message; } };
   const TEMPLATE = path.resolve('./fixtures/text_stories/ingredients/content/01.md');
-  const seed01 = storyMod.seedStory(fs.readFileSync(TEMPLATE, 'utf8'));
+  const seed01 = storyMod.seedStory(fs.readFileSync(TEMPLATE, 'utf8').replace(/\r\n/g, '\n'));
   const baseMetadata = JSON.parse(fs.readFileSync(path.resolve('./sample-burrito-obs/metadata.json'), 'utf8'));
 
   // JC-33a — frame registers: LWW per frame with fork detection and no structural chain.
@@ -4543,23 +4543,33 @@ const sameRegister = (a, b) => {
     // the fallback set also pins the two 1.10 optional slots, so the §10.6 ORDER claim
     // ("after simplifiedText") has something to be after (Codex review of #147, F8)
     for (const slot of ['translationQuestions', 'simplifiedText']) { const { books, ...rest } = bible.languageSets.fallback[slot]; base.push(pin(i++, `languageSets.fallback.${slot}`, rest)); }
-    const out = fold([...base, pin(20, 'languageSets.fallback.obs'), pin(21, 'languageSets.fallback.obs-tn', { ...entry, repoPath: 'git.door43.org/unfoldingWord/en_obs-tn', sha: 'e86138ea13f619f09f7a6dcaa60592716d407fe4', version: 'v13', flavor: 'parascriptural/x-obsnotes' }),
-      pin(22, 'languageSets.fallback.obs-twl', { ...entry, repoPath: 'git.door43.org/unfoldingWord/en_obs-twl', sha: '44ebc9fafe8101665f985007d566f5036a2be85b', version: 'v3', flavor: 'parascriptural/x-obsarticles' })]);
+    const imageEntry = { repoPath: 'git.door43.org/uW/obs_images_360', sha: '7146d5b504f6b63b9e11f7dc0b18c594d0ae179d', flavor: 'peripheral/x-obsimages' };
+    const out = fold([...base, pin(20, 'languageSets.fallback.obs'), pin(21, 'languageSets.fallback.obs-tn', { ...entry, repoPath: 'git.door43.org/unfoldingWord/en_obs-tn', sha: 'e86138ea13f619f09f7a6dcaa60592716d407fe4', version: 'v13', flavor: 'peripheral/x-obsnotes' }),
+      pin(22, 'languageSets.fallback.obs-twl', { ...entry, repoPath: 'git.door43.org/unfoldingWord/en_obs-twl', sha: '44ebc9fafe8101665f985007d566f5036a2be85b', version: 'v3', flavor: 'parascriptural/x-bcvarticles' }),
+      pin(23, 'languageSets.fallback.obs-images', imageEntry)]);
     const doc = JSON.parse(projectResources(out.pins));
     const keys = Object.keys(doc.languageSets.fallback);
     const order = keys.includes('simplifiedText') && keys.indexOf('translationAcademy') < keys.indexOf('translationQuestions') && keys.indexOf('translationQuestions') < keys.indexOf('simplifiedText') &&
-      keys.indexOf('simplifiedText') < keys.indexOf('obs') && keys.indexOf('obs') < keys.indexOf('obs-tn') && keys.indexOf('obs-tn') < keys.indexOf('obs-twl');
-    const okProjected = doc.languageSets.fallback.obs.sha === entry.sha && doc.languageSets.fallback['obs-twl'].flavor === 'parascriptural/x-obsarticles' && !('obs' in doc.languageSets.primary) && order;
+      keys.indexOf('simplifiedText') < keys.indexOf('obs') && keys.indexOf('obs') < keys.indexOf('obs-tn') && keys.indexOf('obs-tn') < keys.indexOf('obs-twl') && keys.indexOf('obs-twl') < keys.indexOf('obs-images');
+    const okProjected = doc.languageSets.fallback.obs.sha === entry.sha && doc.languageSets.fallback['obs-tn'].flavor === 'peripheral/x-obsnotes' && doc.languageSets.fallback['obs-twl'].flavor === 'parascriptural/x-bcvarticles' && doc.languageSets.fallback['obs-images'].sha === imageEntry.sha && !('obs' in doc.languageSets.primary) && order;
     // the sample-burrito-obs pins file is exactly this shape, all slots §5.3-valid
     const sample = JSON.parse(fs.readFileSync(path.resolve('./sample-burrito-obs/ingredients/checking/resources.json'), 'utf8'));
-    const sampleOk = ['primary', 'fallback'].every((set) => ['obs', 'obs-tn', 'obs-twl'].every((s) => pinSlotError(`languageSets.${set}.${s}`) === null && pinEntryError(`languageSets.${set}.${s}`, sample.languageSets[set][s]) === null));
+    const sampleOk = ['primary', 'fallback'].every((set) => ['obs', 'obs-tn', 'obs-twl'].every((s) => pinSlotError(`languageSets.${set}.${s}`) === null && pinEntryError(`languageSets.${set}.${s}`, sample.languageSets[set][s]) === null)) &&
+      pinSlotError('languageSets.fallback.obs-images') === null && pinEntryError('languageSets.fallback.obs-images', sample.languageSets.fallback['obs-images']) === null && !('obs-images' in sample.languageSets.primary);
+    const complete = (set, slots) => slots.every((slot) => !!set[slot]);
+    const bibleSlots = ['translationNotes', 'translationWordsLinks', 'translationWords', 'translationAcademy'];
+    const obsSlots = ['obs', 'obs-tn', 'obs-twl', 'translationWords', 'translationAcademy'];
+    const distinctCompleteness = complete(sample.languageSets.primary, obsSlots) &&
+      !complete(sample.languageSets.primary, bibleSlots) &&
+      !('translationNotes' in sample.languageSets.primary) && !('translationWordsLinks' in sample.languageSets.primary) &&
+      complete(sample.languageSets.fallback, obsSlots) && complete(sample.languageSets.fallback, bibleSlots);
     // negatives: an unknown OBS-looking slot refuses; an OBS entry without sha refuses; a set
     // without the OBS members is still complete (the fold projects the four required slots)
     const badSlot = /not a §5.3 slot/.test(validateEvent(pin(30, 'languageSets.fallback.obs-tq')) || '');
     const noSha = /sha/.test(validateEvent(pin(31, 'languageSets.fallback.obs', { repoPath: 'x/y', version: 'v1', flavor: 'gloss/textStories' })) || '');
     const stillComplete = Object.keys(JSON.parse(projectResources(fold(base).pins)).languageSets.fallback).length === 7 && Object.keys(JSON.parse(projectResources(fold(base).pins)).languageSets.primary).length === 5;
-    check('JC-33c: §10.6 pins — `obs`, `obs-tn` and `obs-twl` are OPTIONAL §5.3 language-set slots with the §5.3 entry grammar (sha required, version a label, flavor required); they project after simplifiedText in the §10.6 order and only where pinned; the sample OBS pins validate slot by slot; `obs-tq` is not a slot, an entry without sha refuses, and a set without the OBS members is still complete [covers R-10.6.1]',
-      okProjected && sampleOk && badSlot && noSha && stillComplete, keys.join(','));
+    check('JC-33c: §10.6 pins — complete Bible and OBS sets use their distinct required members; `obs`, `obs-tn`, `obs-twl`, and OPTIONAL `obs-images` use the §5.3 entry grammar and project in order; the sample has a fallback image override and no primary override; `obs-tq` and an entry without sha refuse [covers R-10.6.1 R-10.6.2]',
+      okProjected && sampleOk && distinctCompleteness && badSlot && noSha && stillComplete, keys.join(','));
   }
 
   // JC-33d — the checkpoint's story inputs: story files are DERIVED shared files spliced
@@ -4590,6 +4600,27 @@ const sameRegister = (a, b) => {
     const bibleReconstructed = JSON.stringify(Object.keys(JSON.parse(bibleProj['metadata.json']).type.flavorType.currentScope).sort()) === JSON.stringify(['JON', 'TIT']);
     check('JC-33d: checkpoint story inputs — a story projects as the folded frames and reference line SPLICED onto the base story file (the committed file or the seed form), lands in the regeneration set as content/NN.md, and is enumerated for divergence (an out-of-band edit and a deletion are both detected); the projected metadata.json keeps the template\'s currentScope verbatim while a Bible checkpoint still reconstructs its scope; no base story refuses the checkpoint, frame 17 of a 16-frame story refuses, and an OBS project needs no versification frame [covers R-10.7.4 R-10.7.5 R-10.2.2 R-10.2.3]',
       inSet && divergence && scopeKept && bibleReconstructed && noBase && tooFar && noVrsNeeded);
+  }
+
+  // JC-33f — the story projection is IDEMPOTENT: a base file that already carries the folded
+  // state projects to itself, so the app may refresh its base after every install (#286).
+  // Clearing the LAST frame and then adding the reference line is where the two writers
+  // once disagreed on the empty frame's spacing (one blank line from writeRef, three from
+  // writeFrame(F, '') before a reference — Codex round 1 of #286): the negative is the
+  // pre-fix bytes, which the check names.
+  {
+    const state = { frames: { 16: '' }, ref: 'Genesis 1-2' };
+    const once = storyMod.applyStoryState(seed01, state);
+    const twice = storyMod.applyStoryState(once, state);
+    const viaWriters = storyMod.writeRef(storyMod.writeFrame(seed01, 16, ''), 'Genesis 1-2');
+    const preFix = once.replace(/\n\n\n\n_Genesis 1-2_\n$/, '\n\n_Genesis 1-2_\n');
+    const withText = { frames: { 16: 'Último' }, ref: 'Genesis 1-2' };
+    const onceText = storyMod.applyStoryState(seed01, withText);
+    check('JC-33f: the story projection is idempotent — applying a folded state onto a file that already carries it is a no-op, for an EMPTY last frame followed by a reference line (the empty frame keeps the seed form\'s three blank lines before the reference, from writeRef and from writeFrame alike) and for a text-bearing last frame; the pre-fix one-blank-line form is not a fixed point',
+      once === twice && viaWriters === once && once.endsWith('.jpg)\n\n\n\n_Genesis 1-2_\n') &&
+        storyMod.applyStoryState(onceText, withText) === onceText &&
+        preFix !== once && storyMod.applyStoryState(preFix, state) === once,
+      JSON.stringify({ tail: once.slice(-24), preFixTail: preFix.slice(-22) }));
   }
 
   // JC-33e — version policy: every v: 1 op still validates at v: 1 and folds unchanged; the

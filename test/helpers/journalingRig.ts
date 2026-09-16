@@ -47,8 +47,16 @@ const rescan = (project: RigProject): void => {
     const book = /^([A-Z0-9]{3})\.usfm$/.exec(ipath)?.[1];
     if (book) scope[book] = [];
   }
-  (project.meta.type as { flavorType: { currentScope: unknown } }).flavorType.currentScope = scope;
+  // An OBS project's currentScope is the template's table, copied verbatim
+  // (R-10.2.3) — the platform's rescan does not rebuild it from story files.
+  if (flavorOf(project.meta) !== 'textStories')
+    (project.meta.type as { flavorType: { currentScope: unknown } }).flavorType.currentScope = scope;
   project.meta.ingredients = ingredients;
+};
+
+const flavorOf = (meta: Record<string, unknown>): string => {
+  const flavorType = (meta.type as { flavorType?: { flavor?: { name?: string } } } | undefined)?.flavorType;
+  return flavorType?.flavor?.name ?? 'textTranslation';
 };
 
 export const journalingRig = () => {
@@ -61,8 +69,12 @@ export const journalingRig = () => {
     failures.push({ match, times });
   };
 
-  const createRepo = (repoPath: string, files: Record<string, string> = {}): RigProject => {
-    const project: RigProject = { files: new Map(Object.entries(files)), meta: baseMeta(), commits: [], dirty: new Set() };
+  const createRepo = (
+    repoPath: string,
+    files: Record<string, string> = {},
+    meta: Record<string, unknown> = baseMeta(),
+  ): RigProject => {
+    const project: RigProject = { files: new Map(Object.entries(files)), meta, commits: [], dirty: new Set() };
     rescan(project);
     repos.set(repoPath, project);
     return project;
@@ -233,15 +245,22 @@ export const journalingRig = () => {
     description: '',
     abbreviation: repoPath.split('/')[2],
     generated_date: '2026-08-19T00:00:00.000Z',
-    flavor_type: 'scripture',
-    flavor: 'textTranslation',
+    // The summary's flavor fields are the metadata's; for an OBS project the
+    // platform fills book_codes with the scope table's KEYS (the Bible books
+    // the stories retell), not with stories [VERIFIED — pankosmia-web 0.18.5,
+    // rig, 2026-09-15].
+    flavor_type: (project.meta.type as { flavorType: { name: string } }).flavorType.name,
+    flavor: flavorOf(project.meta),
     language_code: 'es',
     language_name: 'Español',
     script_direction: 'ltr',
-    book_codes: [...project.files.keys()]
-      .map((p) => /^([A-Z0-9]{3})\.usfm$/.exec(p)?.[1])
-      .filter((c): c is string => !!c)
-      .sort(),
+    book_codes:
+      flavorOf(project.meta) === 'textStories'
+        ? Object.keys((project.meta.type as { flavorType: { currentScope: Record<string, unknown> } }).flavorType.currentScope).sort()
+        : [...project.files.keys()]
+            .map((p) => /^([A-Z0-9]{3})\.usfm$/.exec(p)?.[1])
+            .filter((c): c is string => !!c)
+            .sort(),
     timestamp: 0,
   });
 

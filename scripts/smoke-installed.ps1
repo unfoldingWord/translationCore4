@@ -111,6 +111,7 @@ try {
   if ([IO.Path]::GetFullPath($settings.repo_dir) -ine $store) { throw "Wrong project store: $($settings.repo_dir)" }
   Write-Host "ok store: $store"
   Run-Steps source
+  Run-Steps obs-image
   Run-Steps create
   $onDisk = Join-Path $store "$repo/ingredients/TIT.usfm"
   if (!(Get-Content -LiteralPath $onDisk | Where-Object { $_ -ceq "\v 1 $marker" })) { throw 'Written verse missing on disk' }
@@ -119,6 +120,7 @@ try {
   Start-App second
   if ($script:serverProcess.Id -eq $firstServer) { throw 'Server did not restart' }
   Run-Steps readback
+  Run-Steps obs-image
   if (!$KeepProject) { Run-Steps delete }
   Stop-App
   Write-Host "SMOKE OK: $AppDir under USERPROFILE=$SmokeHome; store $store"

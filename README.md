@@ -45,8 +45,8 @@ Do the steps that follow:
 2. Type this command: `npm ci`
 3. Type this command: `npm test`
 
-Expect this result on a clean clone: <!-- manifest: vitest passed -->**1056 tests passed**,
-<!-- manifest: vitest skippedTests -->**38 tests skipped**
+Expect this result on a clean clone: <!-- manifest: vitest passed -->**1089 tests passed**,
+<!-- manifest: vitest skippedTests -->**41 tests skipped**
 [VERIFIED — the two counts are read from `docs/evidence/manifest.json`, the record of the
 CI run on a clean clone; that file names the run's commit, date and Node version;
 `npm run docs:gate` fails when this sentence disagrees with it].
@@ -70,7 +70,7 @@ The `.npmrc` file sets `legacy-peer-deps=true`. This setting is necessary.
 
 ## Tests that this repository cannot run alone
 
-<!-- manifest: vitest skippedTests -->38 tests skip on a clean clone. They skip; they do not fail. Each skipped test names the
+<!-- manifest: vitest skippedTests -->41 tests skip on a clean clone. They skip; they do not fail. Each skipped test names the
 prerequisite that it needs.
 
 Two prerequisites are outside this repository:
