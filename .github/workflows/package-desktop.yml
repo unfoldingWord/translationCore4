@@ -31,6 +31,7 @@ on:
     paths:
       - scripts/package-desktop.zsh
       - scripts/smoke-installed.zsh
+      - scripts/smoke-api.cjs
       - scripts/*mac*
       - scripts/*windows*
       - scripts/desktop-bootstrap*

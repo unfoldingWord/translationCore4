@@ -15,8 +15,8 @@ import type { LanguageSet, ResourcePin, ResourcesFile, Rung } from './burritoSto
 import { releaseCommitSha } from './resourceFetch';
 import { samePath } from './resolve';
 
-/** The HELP slots of a language set, in display order. tW's two slots name
- * one repo (D34), so `reposOfSet` folds them. `simplifiedText` is the
+/** The updatable resource slots of a language set, in display order. tW's two
+ * slots name one repo (D34), so `reposOfSet` folds them. `simplifiedText` is the
  * language's simplified Bible — a gateway Bible, not a help resource — so it
  * is never offered here (D72 point 5: texts are #258, Increment 7). */
 export const SET_SLOTS = [
@@ -25,6 +25,10 @@ export const SET_SLOTS = [
   'translationWords',
   'translationAcademy',
   'translationQuestions',
+  'obs',
+  'obs-tn',
+  'obs-twl',
+  'obs-images',
 ] as const;
 export type SetSlotName = (typeof SET_SLOTS)[number];
 
@@ -73,6 +77,25 @@ export const latestRelease = async (
   const sha = await releaseCommitSha(repoPath, body.tag_name, fetchFn);
   if (!sha) throw new Error(`${repoPath}: DCS names no commit for release ${body.tag_name}`);
   return { tag: body.tag_name, sha, publishedAt: body.published_at ?? null };
+};
+
+/** Discover releases for one set. An image pack may be maintained as an
+ * untagged commit-only resource, so its missing release is a normal skip and
+ * cannot suppress offers for the tagged text resources. */
+export const latestReleasesForSet = async (
+  set: LanguageSet,
+  lookup: (repoPath: string) => Promise<ReleaseInfo> = latestRelease,
+): Promise<Record<string, ReleaseInfo>> => {
+  const latest: Record<string, ReleaseInfo> = {};
+  for (const repo of reposOfSet(set)) {
+    try {
+      latest[repo.repoPath] = await lookup(repo.repoPath);
+    } catch (error) {
+      if (repo.slots.every((slot) => slot === 'obs-images')) continue;
+      throw error;
+    }
+  }
+  return latest;
 };
 
 /** One repo of a set that has a newer release than the pin. `to` is the pin

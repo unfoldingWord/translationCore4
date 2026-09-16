@@ -105,7 +105,21 @@ export interface LanguageSet {
   /** OPTIONAL (§5.3 1.10, D64): the language's simplified, meaning-based
    * Bible — `en_ust` for English, `<lang>_gst` where a gateway publishes one. */
   simplifiedText?: ResourcePin;
+  /** OPTIONAL (§10.6, D75): the OBS source and two checking resources. An OBS
+   * set is complete when these three pins and the shared tW/tA pins exist. */
+  obs?: ResourcePin;
+  'obs-tn'?: ResourcePin;
+  'obs-twl'?: ResourcePin;
+  /** OPTIONAL (§10.6, D75): a language-set image-pack override. The bundled
+   * default pack is independent of this slot and needs no project pin. */
+  'obs-images'?: ResourcePin;
 }
+
+export const isCompleteBibleLanguageSet = (set: Partial<LanguageSet>): boolean =>
+  !!set.translationNotes && !!set.translationWordsLinks && !!set.translationWords && !!set.translationAcademy;
+
+export const isCompleteObsLanguageSet = (set: Partial<LanguageSet>): boolean =>
+  !!set.obs && !!set['obs-tn'] && !!set['obs-twl'] && !!set.translationWords && !!set.translationAcademy;
 
 /** `checking/resources.json` — BURRITO-SPEC §5.3 schemaVersion 2 (D17/D30).
  * Exactly two rungs: `primary` (the project's gateway language) and `fallback`

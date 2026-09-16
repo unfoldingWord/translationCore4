@@ -14,6 +14,17 @@ import { bookName } from '../../data/bookNames';
 import { t } from '../../i18n';
 import { Modal, Button, Callout } from '../../ds/index.js';
 
+function ImageChange({ change }) {
+  if (!change) return null;
+  const label = (pin) => pin?.repoPath.split('/').pop() ?? t('gateway.bundledImages');
+  return (
+    <p data-testid="gateway-image-change"
+      style={{ fontSize: 'var(--fs-ui-sm)', color: 'var(--text-secondary)', lineHeight: 'var(--lh-body)', margin: 0 }}>
+      {t('gateway.imageChange', { from: label(change.from), to: label(change.to) })}
+    </p>
+  );
+}
+
 export default function GatewayChange() {
   const { s, actions } = useApp();
   const preview = s.gatewayPreview;
@@ -47,6 +58,8 @@ export default function GatewayChange() {
             {detail}
           </p>
         )}
+
+        <ImageChange change={preview.imageChange} />
 
         {/* The exact outcome per book, not an estimate: the new resource's
           * check list has already been derived, so these numbers are what the

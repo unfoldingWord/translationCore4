@@ -480,7 +480,7 @@ Two smoke tests exist. They answer two different questions.
 |---|---|---|
 | Where | `scripts/package-desktop.zsh`, step 6/7, on the staged folder, before the zip is written | `smoke-installed.zsh`, shipped in the artifact folder; the source is `scripts/smoke-installed.zsh` |
 | Question | Can this artifact start on the build host? | Does the installed app work for a pilot? |
-| What it proves | The launcher self-spawns the server; `/` answers 303 to `/clients/uw-tc4` and the client 200; a second launch exits by itself (#4); `repo_dir` is the isolated store and holds only the seeded English suite (#70, #163) | The same start and client checks on the INSTALLED folder; the store path (#70); bundled source text is readable offline (`source`, #163); a project created through the app's own HTTP surface with one book; one verse written and found on disk in the store; the app stopped and started again; the verse read back; the smoke project removed |
+| What it proves | The launcher self-spawns the server; `/` answers 303 to `/clients/uw-tc4` and the client 200; a second launch exits by itself (#4); `repo_dir` is the isolated store and holds the seeded English and OBS suite (#70, #163, #288) | The same start and client checks on the INSTALLED folder; the store path (#70); bundled source text is readable offline (`source`, #163); with the platform net gate disabled, OBS story 1/frame 1 is read only from the local bundled image pack and decoded as a 640×360 JPEG; the same image check passes after restart; a project is created, one verse is persisted, and the smoke project is removed. The transcript records artifact version, commit, host platform and build date from `BUILD-MANIFEST.json`. |
 | Runs | In every build, in CI and by hand | On a fresh CI runner after every build (`smoke-macos-arm64`, `smoke-linux-x64` in `package-desktop.yml`), and by a person on a clean machine |
 | Fails the build | Yes | The CI job fails; the tag rule (epic #59) needs the run to pass on each platform before a pre-release tags |
 
@@ -504,7 +504,8 @@ The JSON steps run under the artifact's own Electron in Node mode
 
 Each step prints one line: `ok <step>: <what was seen>` or `FAIL <step>: <what was seen>`.
 The script exits non-zero at the first failure. A good run includes
-`SMOKE OK: <folder> under HOME=<home>, store <repo_dir>`. Paste the whole output into the
+`ok OBS image: story 1/frame 1 decoded 640x360 from local bundled resource with net disabled; no CDN request`
+and `SMOKE OK: <folder> under HOME=<home>, store <repo_dir>`. Paste the whole output into the
 pre-release notes.
 
 Options:
@@ -618,6 +619,10 @@ procedure's subject.
 | en_tw | v87, sha `eaeb7bfefcf84132d0cbcbed185f3ea2be3d86dd` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | en_ta | v86, sha `c7caddfb474efd713f36b35a3ffc927866c7b180` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | en_tq | v89, sha `97c0a13e3b84d46d0e643ba2e8e9f1c295547a58` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
+| en_obs | v9, sha `d39a1dc7a7557ac54e4a8fecc3462147fe7eec3b` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
+| en_obs-tn | v13, sha `e86138ea13f619f09f7a6dcaa60592716d407fe4` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
+| en_obs-twl | v3, sha `44ebc9fafe8101665f985007d566f5036a2be85b` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
+| uW/obs_images_360 (#288, D75) | no tag; sha `7146d5b504f6b63b9e11f7dc0b18c594d0ae179d`, fetched as the commit archive and seeded at the identity-qualified path `uw--obs_images_360--7146d5b504f6` | `src/data/installedSuite.js`, `src/data/obsImages.ts`, `scripts/package-desktop.zsh` |
 | uW/en_ugl (#218, D71) | no tag; sha `d9d29e2d589258ce27f92b59f753a3af03ab7a72`, fetched as the commit archive `archive/<sha>.zip` and verified against the zip's archive comment | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | uW/en_uhl (#218, D71) | no tag; sha `72df5ac25acf9d51e826b20e3ad883a5a657ef4e`, same fetch path | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 
@@ -627,7 +632,7 @@ The eight `unfoldingWord` repos are fetched as the DCS sb-zip export `/sb/<tag>.
 
 ## Bundled English suite (#163, #218)
 
-Per D70, #163 and #218, the desktop artifact bundles the installed English suite (ten pinned repos: `en_ult`, `en_ust`, `el-x-koine_ugnt`, `hbo_uhb`, `en_tn`, `en_tw`, `en_ta`, `en_tq` from `unfoldingWord`; `en_ugl`, `en_uhl` from `uW`). The unpacker stages each resource at `<APPDIR>/resources/<owner lowercased>--<repo>/` (`unfoldingword--en_ult`, `uw--en_ugl`), and the launcher copies missing resources into the project store at `$HOME/pankosmia/tc4-projects/_local_/_sideloaded_/` before starting the application.
+Per D70, D75, #163, #218 and #288, the desktop artifact bundles fourteen repos: the ten-resource English Bible suite, `en_obs`, `en_obs-tn`, `en_obs-twl`, and `uW/obs_images_360`. Translation Words and Translation Academy are shared by Bible and OBS sets. The unpacker stages normal resources at `<APPDIR>/resources/<owner lowercased>--<repo>/`. It stages the untagged default image pack at `uw--obs_images_360--7146d5b504f6`, so another installed revision of the same repository is neither replaced nor accepted as the pinned default. The launcher copies only missing directories into `$HOME/pankosmia/tc4-projects/_local_/_sideloaded_/` before the server starts. A second launch preserves every existing directory byte-for-byte.
 
 Artifact sizes before and after bundling the English suite:
 

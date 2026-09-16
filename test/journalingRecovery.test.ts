@@ -47,6 +47,33 @@ const PIN = (repo: string, version: string, flavor: string) => ({
   version,
   flavor,
 });
+
+describe('#288 optional OBS image pin persistence', () => {
+  it('set and removal survive projection, checkpoint and reopen', async () => {
+    const world = await setup();
+    const imagePin = {
+      repoPath: 'git.door43.org/uW/obs_images_360',
+      sha: '7146d5b504f6b63b9e11f7dc0b18c594d0ae179d',
+      flavor: 'peripheral/x-obsimages',
+    };
+    const withImage = JSON.parse(JSON.stringify(PINS)) as ResourcesFile;
+    withImage.languageSets.primary['obs-images'] = imagePin;
+    await world.store.writeResources(withImage);
+    await world.store.commit('set OBS image pin (tC4)');
+    let reopened = world.restart();
+    await reopened.open(REPO);
+    expect((await reopened.readResources())?.languageSets.primary['obs-images']).toEqual(imagePin);
+
+    const withoutImage = JSON.parse(JSON.stringify(withImage)) as ResourcesFile;
+    delete withoutImage.languageSets.primary['obs-images'];
+    await reopened.writeResources(withoutImage);
+    await reopened.commit('remove OBS image pin (tC4)');
+    reopened = world.restart();
+    await reopened.open(REPO);
+    expect((await reopened.readResources())?.languageSets.primary['obs-images']).toBeUndefined();
+    await expectVerified(world.api);
+  });
+});
 const RUNG = {
   gatewayLanguage: { languageId: 'en', owner: 'unfoldingWord' },
   translationNotes: PIN('en_tn', 'v86', 'parascriptural/x-bcvnotes'),
