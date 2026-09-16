@@ -2,7 +2,7 @@
 // docs-gate.mjs — the docs gate (legibility step L-2, issue #155, D67).
 //
 // Numbers typed into prose go stale. This gate reads every statement in docs/, README.md,
-// CONTRIBUTING.md and conformance/README.md that is MARKED as manifest-derived and fails when the value
+// CONTRIBUTING.md, AGENTS.md and conformance/README.md that is MARKED as manifest-derived and fails when the value
 // disagrees with docs/evidence/manifest.json (written by `npm run prove`). Unmarked prose
 // is not checked: the gate starts small and grows as documents adopt the marker.
 //
@@ -57,7 +57,7 @@ const FIELDS = new Set(['passed', 'failed', 'skippedTests']);
 /** @typedef {{ file: string, line: number, marker: string, kind: 'stale'|'no-evidence'|'grammar'|'journey', doc: string|null, manifest: string|null, detail: string }} Finding */
 
 /** The document set the gate scans, relative to the repository root (LEGIBILITY 3.2). */
-export const DOC_ROOTS = ['docs', 'README.md', 'CONTRIBUTING.md', 'conformance/README.md'];
+export const DOC_ROOTS = ['docs', 'README.md', 'CONTRIBUTING.md', 'AGENTS.md', 'conformance/README.md'];
 
 /**
  * Resolve one marker against the manifest.
