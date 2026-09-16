@@ -15,6 +15,47 @@ const COLLAPSE_ABOVE = 12;
 // Plain text action in a card header (Settings, Export): hairline hover, no fill.
 const HEADER_ACTION = { border: 0, background: 'transparent', cursor: 'pointer', padding: '8px 6px', fontFamily: 'var(--font-ui)', fontWeight: 'var(--fw-heavy)', fontSize: 'var(--fs-caption-lg)', letterSpacing: 'var(--track-12-5)', color: 'var(--text-heading)', borderRadius: 'var(--radius-sm)' };
 
+// An OBS project's card (J20, #287; D74): the kind marker, and one tile whose
+// percentage is frames with a non-empty paragraph over the fixed frame total.
+// No book tiles and no Add-a-book: the scope is always the fifty stories. The
+// tile opens nothing yet — the story screen is J21 (#289).
+function ObsProjectCard({ p }) {
+  const { s, actions } = useApp();
+  const prog = s.progressByProject[p.id] || {};
+  const cacheKey = s.progressByProject[p.id] ? `1:${Object.values(prog).includes(null)}` : 'none';
+  useEffect(() => {
+    actions.loadProgress(p);
+  }, [p.id, cacheKey]);
+  const dir = p.scriptDirection === 'rtl' ? 'rtl' : 'ltr';
+  const pct = prog.OBS;
+  const hasPct = typeof pct === 'number';
+  return (
+    <Card data-testid={`project-${p.id}`} padding="22px 24px">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
+        <span style={{ width: 44, height: 44, borderRadius: 'var(--radius-lg)', background: 'var(--uw-ocean)', color: 'var(--text-inverse)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'var(--fw-black)', fontSize: 'var(--fs-title)', letterSpacing: 'var(--track-17)', flex: 'none' }}>
+          {(p.name || '?').split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase()}
+        </span>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span dir={dir} style={{ fontSize: 'var(--fs-h3)', letterSpacing: 'var(--track-20)', fontWeight: 'var(--fw-black)', color: 'var(--text-heading)' }}>{p.name}</span>
+            <Badge size="sm" tone="accent" data-testid="obs-marker">{t('home.obsMarker')}</Badge>
+            <Badge size="sm" tone={dir === 'rtl' ? 'warn' : 'neutral'} style={dir === 'rtl' ? undefined : { color: 'var(--text-secondary)' }}>{dir.toUpperCase()}</Badge>
+          </div>
+          <span style={{ fontSize: 'var(--fs-ui-sm)', color: 'var(--text-tertiary)', fontWeight: 'var(--fw-medium)' }} data-testid="obs-progress">
+            {p.languageTag} · {t('home.obsStories')} · {hasPct ? t('home.drafted', { n: pct }) : '—'}
+          </span>
+        </div>
+        <button type="button" data-i="quiet" title={t('home.settings')} onClick={() => actions.openSettings(p)} style={HEADER_ACTION}>
+          {t('home.settings')}
+        </button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(148px,1fr))', gap: 8 }}>
+        <BookTile name={t('home.obsKind')} percent={hasPct ? pct : 0} meta={hasPct ? undefined : '—'} data-testid="obs-tile" />
+      </div>
+    </Card>
+  );
+}
+
 function ProjectCard({ p }) {
   const { s, actions } = useApp();
   const [expanded, setExpanded] = useState(false);
@@ -141,6 +182,7 @@ export default function Home() {
           <Button variant="ghost" onClick={actions.openSources} data-testid="open-sources">
             {t('nav.sources')} →
           </Button>
+          <Button variant="secondary" onClick={actions.openNewObs} data-testid="new-obs">+ {t('home.newObs')}</Button>
           <Button onClick={actions.openNewProject}>+ {t('home.newBible')}</Button>
         </div>
 
@@ -182,7 +224,7 @@ export default function Home() {
         )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-          {projects && projects.map((p) => <ProjectCard key={p.id} p={p} />)}
+          {projects && projects.map((p) => (p.flavor === 'textStories' ? <ObsProjectCard key={p.id} p={p} /> : <ProjectCard key={p.id} p={p} />))}
         </div>
       </div>
     </main>

@@ -172,6 +172,14 @@ export interface CreateProjectParams {
   versification: string;
 }
 
+/** Parameters of createObsProject (J20, #287): the platform's
+ * new-obs-resource payload. The scope is always all fifty stories (R-10.2.2). */
+export interface CreateObsProjectParams {
+  content_name: string;
+  content_abbr: string;
+  content_language_code: string;
+}
+
 /** One planned decision-file rewrite inside a coordinated gateway change. */
 export interface GatewayDecisionWrite {
   tool: string;
@@ -231,6 +239,14 @@ export interface BurritoStore {
 
   /** Scaffold + journal one new book as a self-contained §8.5 book.add. */
   addBook(params: AddBookParams): Promise<void>;
+
+  /** Create an OBS project (J20, #287; BURRITO-SPEC §10.2, D74): the platform
+   * copies its `text_stories` template and commits; the store then writes the
+   * fifty stories in the SEED FORM (every title `# N.`, R-10.2.4) and commits
+   * that base, so the repository differs from the template only in
+   * `metadata.json` and the fifty title lines. Does not bind the store — call
+   * open() on the result. */
+  createObsProject(params: CreateObsProjectParams): Promise<{ repoPath: string }>;
 
   readBook(book: string): Promise<{ usfm: string }>;
   /** The ONLY book-write path. Two producers feed it (D8/AD-1 as amended by
