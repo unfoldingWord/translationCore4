@@ -183,8 +183,10 @@ Rules the command follows:
 manifest-derived and compares it with `docs/evidence/manifest.json`. `npm run verify`
 ends with the gate; CI runs it after `prove`, against the manifest that run wrote.
 
-**The document set.** `docs/` (every `.md`, recursively), `README.md`, `CONTRIBUTING.md`
-and `conformance/README.md`. `docs/BURRITO-SPEC.md` is scanned but carries no marker yet:
+**The document set.** `docs/` (every `.md`, recursively), `README.md`, `CONTRIBUTING.md`,
+`AGENTS.md` and `conformance/README.md`. `AGENTS.md` joined the set after its skip count
+drifted to 37 while the manifest held 38: the document that instructs agents is the one
+whose numbers an agent is least able to check. `docs/BURRITO-SPEC.md` is scanned but carries no marker yet:
 its header counts get their markers in the next change set that changes the spec and the
 harness together (§9).
 
