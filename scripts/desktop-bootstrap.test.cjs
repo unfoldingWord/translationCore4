@@ -50,3 +50,16 @@ test('debug seed failure can be retried; sample has a git commit and production 
   assert.equal(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: seed, encoding: 'utf8' }), head);
   assert.equal(fs.existsSync(path.join(options.home, 'pankosmia/tc4-projects')), false);
 });
+
+test('the installer recipe carries the complete English OBS set and sha-only default image pack', async () => {
+  const { EN_HELPS, EN_OBS_IMAGES } = await import('../src/data/installedSuite.js');
+  // Negative control: a plausible but unpinned image entry is absent.
+  assert.equal(recipe.includes('uW/obs_images_360::0000000000000000000000000000000000000000'), false);
+  for (const slot of ['obs', 'obs-tn', 'obs-twl']) {
+    const pin = EN_HELPS[slot];
+    const ownerRepo = pin.repoPath.replace('git.door43.org/', '');
+    assert.equal(recipe.includes(`"${ownerRepo}:${pin.version}:${pin.sha}"`), true, slot);
+  }
+  const imageOwnerRepo = EN_OBS_IMAGES.repoPath.replace('git.door43.org/', '');
+  assert.equal(recipe.includes(`"${imageOwnerRepo}::${EN_OBS_IMAGES.sha}"`), true);
+});

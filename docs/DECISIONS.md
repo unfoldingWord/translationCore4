@@ -1501,3 +1501,16 @@ read Increment 8 — those items moved with the renumbering; the entries stay as
 JC-33 of the journal suite, and the normative gate, which now covers §8 and §10. The
 reference story module is `journal/story.mjs`. Points 8, 10 and 11 are product work under
 #286 to #292.]
+
+## D75 (2026-09-16, project-owner rulings) **OBS resource sets use OBS-specific completeness. Image-pack overrides are optional language-set pins; the installer default stays separate.** [issue #288 definition review]
+
+1. A complete OBS set contains `obs`, `obs-tn`, `obs-twl`, and the shared
+   `translationWords` and `translationAcademy` pins. It does not require the Bible-only
+   `translationNotes` and `translationWordsLinks` pins. Bible completeness does not change.
+2. A language set can carry an optional `obs-images` pin with flavor
+   `peripheral/x-obsimages`. The pin uses the same immutable repository and commit identity
+   as every other resource pin. Its absence does not make either kind of set incomplete.
+3. The bundled `uW/obs_images_360` pack is installer data with its own sha. A project does
+   not need an override pin to use it. At render time the app checks a project image
+   ingredient, primary and fallback override pins, and the bundled default in that order.
+   It leaves the Markdown image line unchanged.

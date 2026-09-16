@@ -37,7 +37,7 @@ import { bootstrapVerse, linkWord, unlinkWord, moveWord, mergeAlignments, splitA
 import { linksFor, rebindSuggestions, sessionInputFor, trainingVersesFor } from './data/align/suggest';
 import { consequencesOfGatewayChange, applyGatewayChange, uncoveredByChange } from './data/gatewayChange';
 import { carryOverDecisions } from './data/carryOver';
-import { applyUpgrade, latestRelease, offerForSet, offerIsStale, repinOffer, reposOfSet } from './data/upgrade';
+import { applyUpgrade, latestReleasesForSet, offerForSet, offerIsStale, repinOffer } from './data/upgrade';
 import { LADDER } from './data/burritoStore';
 import { TC_READY_TOPIC } from './data/serverApi';
 import { t } from './i18n';
@@ -2796,8 +2796,7 @@ export function AppProvider({ children }) {
           for (const rung of LADDER) {
             const set = pins.languageSets[rung];
             if (!set) continue;
-            const latest = {};
-            for (const repo of reposOfSet(set)) latest[repo.repoPath] = await latestRelease(repo.repoPath);
+            const latest = await latestReleasesForSet(set);
             offers[rung] = offerForSet(rung, set, latest);
           }
           // Bound to the project the check was made for (Codex round 1): a

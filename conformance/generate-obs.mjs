@@ -24,6 +24,16 @@ const md5 = (f) => crypto.createHash('md5').update(fs.readFileSync(f)).digest('h
 // ---------- 1. ingredients: the template in seed form ----------
 fs.rmSync(path.join(OBS, 'ingredients'), { recursive: true, force: true });
 fs.cpSync(path.join(TEMPLATE, 'ingredients'), path.join(OBS, 'ingredients'), { recursive: true });
+// The committed template is LF-only. Git can materialize it as CRLF on
+// Windows; normalize the copied text tree so generation stays byte-stable.
+const normalizeTreeLf = (dir) => {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) normalizeTreeLf(full);
+    else fs.writeFileSync(full, fs.readFileSync(full, 'utf8').replace(/\r\n/g, '\n'));
+  }
+};
+normalizeTreeLf(path.join(OBS, 'ingredients'));
 for (let n = 1; n <= STORY_COUNT; n++) {
   const f = ING(storyIpath(n));
   fs.writeFileSync(f, seedStory(fs.readFileSync(f, 'utf8')));
@@ -57,14 +67,20 @@ const OBS_PINS = {
     obs:       { repoPath: 'git.door43.org/unfoldingWord/en_obs',     version: 'v9',  sha: 'd39a1dc7a7557ac54e4a8fecc3462147fe7eec3b', flavor: 'gloss/textStories' },
     'obs-tn':  { repoPath: 'git.door43.org/unfoldingWord/en_obs-tn',  version: 'v13', sha: 'e86138ea13f619f09f7a6dcaa60592716d407fe4', flavor: 'parascriptural/x-obsnotes' },
     'obs-twl': { repoPath: 'git.door43.org/unfoldingWord/en_obs-twl', version: 'v3',  sha: '44ebc9fafe8101665f985007d566f5036a2be85b', flavor: 'parascriptural/x-obsarticles' },
+    'obs-images': { repoPath: 'git.door43.org/uW/obs_images_360', sha: '7146d5b504f6b63b9e11f7dc0b18c594d0ae179d', flavor: 'peripheral/x-obsimages' },
   },
 };
 const languageSets = {};
 for (const set of ['primary', 'fallback']) {
   languageSets[set] = {
     gatewayLanguage: bible.languageSets[set].gatewayLanguage,
-    translationNotes: pick(set, 'translationNotes'),
-    translationWordsLinks: pick(set, 'translationWordsLinks'),
+    // The primary fixture proves the OBS completeness rule: it deliberately
+    // omits the two Bible-only members. English fallback remains usable for
+    // both project kinds and therefore carries them.
+    ...(set === 'fallback' ? {
+      translationNotes: pick(set, 'translationNotes'),
+      translationWordsLinks: pick(set, 'translationWordsLinks'),
+    } : {}),
     translationWords: pick(set, 'translationWords'),
     translationAcademy: pick(set, 'translationAcademy'),
     ...OBS_PINS[set],

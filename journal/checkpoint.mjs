@@ -100,7 +100,7 @@ const deleteDeep = (doc, dotted) => {
 // §5.3 1.10 (D64): the two OPTIONAL slots project after translationAcademy —
 // the §5.3 document's own key order.
 // §10.6 (D74): the three OPTIONAL OBS members project after them, in the §10 order.
-const LS_SLOTS = ['gatewayLanguage', 'translationNotes', 'translationWordsLinks', 'translationWords', 'translationAcademy', 'translationQuestions', 'simplifiedText', 'obs', 'obs-tn', 'obs-twl'];
+const LS_SLOTS = ['gatewayLanguage', 'translationNotes', 'translationWordsLinks', 'translationWords', 'translationAcademy', 'translationQuestions', 'simplifiedText', 'obs', 'obs-tn', 'obs-twl', 'obs-images'];
 export const projectResources = (pins) => {
   const doc = { schemaVersion: 2 };
   const languageSets = {};

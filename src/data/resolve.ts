@@ -144,6 +144,21 @@ export type SetSlot =
   | 'translationQuestions'
   | 'simplifiedText';
 
+/** OBS collections are not divided into Bible books. Presence of a pin covers
+ * the whole collection, so resolution skips the book-coverage map. */
+export type ObsSetSlot = 'obs' | 'obs-tn' | 'obs-twl' | 'obs-images';
+
+export const resolveObsSetSlot = (
+  resources: ResourcesFile,
+  slot: ObsSetSlot,
+): { rung: Rung | null; pin: ResourcePin | null; usedFallback: boolean } => {
+  for (const rung of LADDER) {
+    const pin = resources.languageSets?.[rung]?.[slot];
+    if (pin) return { rung, pin, usedFallback: rung === 'fallback' };
+  }
+  return { rung: null, pin: null, usedFallback: false };
+};
+
 /** Resolve one (slot, book) over the same two-rung ladder the checking tools
  * use (§5.3). An ABSENT optional slot covers no book — the rung is skipped,
  * never an error (D64). Pure, like resolveToolBook. */
@@ -217,6 +232,24 @@ export interface Preflight {
   unavailablePrimary?: ResourcePin | null;
 }
 
+const availabilityState = (
+  pin: ResourcePin,
+  opts: { isLocal: (pin: ResourcePin) => boolean; online: boolean },
+): PreflightState => {
+  if (opts.isLocal(pin)) return 'ready';
+  return opts.online ? 'fetch' : 'unavailable';
+};
+
+const warnedUnavailablePrimary = (
+  resolution: Resolution,
+  primaryPin: ResourcePin | undefined,
+  opts: { coverage: Coverage; isLocal: (pin: ResourcePin) => boolean },
+): ResourcePin | null => {
+  if (!resolution.usedFallback || !primaryPin) return null;
+  if (coverageFor(opts.coverage, primaryPin).source !== 'none') return null;
+  return opts.isLocal(primaryPin) ? null : primaryPin;
+};
+
 /** Decide what opening this (tool, book) requires. `isLocal` answers "is this
  * exact pinned version present on this machine?" — the caller supplies it from
  * the platform's local repo list. */
@@ -231,11 +264,7 @@ export const preflightToolBook = (
 
   const resolution = resolveToolBook(resources, tool, book, opts.coverage);
   if (resolution.pin) {
-    const state: PreflightState = opts.isLocal(resolution.pin)
-      ? 'ready'
-      : opts.online
-        ? 'fetch'
-        : 'unavailable';
+    const state = availabilityState(resolution.pin, opts);
     // B20 (warned fallback), NARROWED by issue #16 / D41.
     //
     // Before per-pin coverage, a fallback resolution was always ambiguous:
@@ -254,12 +283,7 @@ export const preflightToolBook = (
     //       (a pin written before #16), not a steady state — `backfillCoverage`
     //       resolves it on first open whenever the resource is present.
     const primaryPin = resources.languageSets.primary?.[TOOL_SLOT[tool]];
-    const primaryKnows =
-      primaryPin && coverageFor(opts.coverage, primaryPin).source !== 'none';
-    const unavailablePrimary =
-      resolution.usedFallback && primaryPin && !primaryKnows && !opts.isLocal(primaryPin)
-        ? primaryPin
-        : null;
+    const unavailablePrimary = warnedUnavailablePrimary(resolution, primaryPin, opts);
     return {
       tool,
       book,

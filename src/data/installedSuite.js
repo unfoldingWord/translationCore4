@@ -20,6 +20,18 @@ export const EN_HELPS = {
   // extraScripture source-pane entry).
   translationQuestions: { repoPath: 'git.door43.org/unfoldingWord/en_tq', version: 'v89', sha: '97c0a13e3b84d46d0e643ba2e8e9f1c295547a58', flavor: 'parascriptural/x-bcvquestions' },
   simplifiedText: { repoPath: 'git.door43.org/unfoldingWord/en_ust', version: 'v89', sha: '37ec223166bbd73fb55abc7840be8310c0fee7f2', flavor: 'scripture/textTranslation' },
+  // §10.6 / D75 (#288): the complete bundled English OBS help set. tW and
+  // tA above are shared with Bible projects. The default image pack is stored
+  // separately below, so projects need no obs-images override pin.
+  obs: { repoPath: 'git.door43.org/unfoldingWord/en_obs', version: 'v9', sha: 'd39a1dc7a7557ac54e4a8fecc3462147fe7eec3b', flavor: 'gloss/textStories' },
+  'obs-tn': { repoPath: 'git.door43.org/unfoldingWord/en_obs-tn', version: 'v13', sha: 'e86138ea13f619f09f7a6dcaa60592716d407fe4', flavor: 'parascriptural/x-obsnotes' },
+  'obs-twl': { repoPath: 'git.door43.org/unfoldingWord/en_obs-twl', version: 'v3', sha: '44ebc9fafe8101665f985007d566f5036a2be85b', flavor: 'parascriptural/x-obsarticles' },
+};
+
+export const EN_OBS_IMAGES = {
+  repoPath: 'git.door43.org/uW/obs_images_360',
+  sha: '7146d5b504f6b63b9e11f7dc0b18c594d0ae179d',
+  flavor: 'peripheral/x-obsimages',
 };
 
 // Increment 2: pins are the normative BURRITO-SPEC §5.3 **schemaVersion 2**

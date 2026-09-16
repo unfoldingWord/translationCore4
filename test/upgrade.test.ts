@@ -1,9 +1,10 @@
 // J12 (#256) — the offer computation from a release listing, the per-set
 // separation, and the all-or-nothing install of a set's release.
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { applyUpgrade, latestRelease, offerForSet, offerIsStale, reposOfSet, upgradedSet } from '../src/data/upgrade';
+import { applyUpgrade, latestRelease, latestReleasesForSet, offerForSet, offerIsStale, reposOfSet, upgradedSet } from '../src/data/upgrade';
 import type { ReleaseInfo } from '../src/data/upgrade';
 import type { LanguageSet, ResourcePin, ResourcesFile } from '../src/data/burritoStore';
+import { EN_OBS_IMAGES } from '../src/data/installedSuite';
 
 const fetchAndInstallPin = vi.fn();
 vi.mock('../src/data/resourceFetch', async (importOriginal) => ({
@@ -46,6 +47,23 @@ describe('reposOfSet — one entry per repo, tW folded (D34), help slots only (D
     expect(offer.upgrades).toEqual([]);
     expect(offer.current).toEqual([]);
     expect(upgradedSet(withUst, offer).simplifiedText).toBe(withUst.simplifiedText);
+  });
+});
+
+describe('latestReleasesForSet — commit-only OBS image packs do not block text offers (#288)', () => {
+  it('skips a missing obs-images release and keeps the other release results', async () => {
+    const withImages = { ...EN, 'obs-images': EN_OBS_IMAGES };
+    const lookup = vi.fn(async (repoPath: string) => {
+      if (repoPath.endsWith('obs_images_360')) throw new Error('no published release');
+      return release('v90', 'e');
+    });
+    const latest = await latestReleasesForSet(withImages, lookup);
+    expect(Object.keys(latest)).not.toContain(withImages['obs-images'].repoPath);
+    expect(Object.keys(latest)).toContain(EN.translationNotes.repoPath);
+  });
+
+  it('still reports a missing release for a text resource', async () => {
+    await expect(latestReleasesForSet(EN, async () => { throw new Error('offline'); })).rejects.toThrow('offline');
   });
 });
 

@@ -763,10 +763,10 @@ let mergedVerseObjects = null;
     const sidecars = onDisk.filter((p) => p.startsWith('checking/'));
     const sameSet = JSON.stringify(onDisk.filter((p) => !p.startsWith('checking/'))) === JSON.stringify(tmpl);
     const nonStory = tmpl.filter((p) => !/^content\/\d\d\.md$/.test(p));
-    const nonStoryIdentical = nonStory.every((p) => read(OING(p)) === read(TING(p)));
+    const nonStoryIdentical = nonStory.every((p) => read(OING(p)) === read(TING(p)).replace(/\r\n/g, '\n'));
     let seedOrDrafted = true, undrafted = 0;
     for (let n = 1; n <= STORY_COUNT; n++) {
-      const seed = seedStory(read(TING(storyIpath(n))));
+      const seed = seedStory(read(TING(storyIpath(n))).replace(/\r\n/g, '\n'));
       const bytes = read(OING(storyIpath(n)));
       if (bytes === seed) { undrafted++; continue; }
       // a drafted story is the seed plus §10 writes of exactly what it now carries
@@ -782,7 +782,7 @@ let mergedVerseObjects = null;
     fs.cpSync(OING(''), dir, { recursive: true });
     fs.rmSync(path.join(dir, 'content/50.md'));
     const firesMissing = JSON.stringify(walkFiles(dir).filter((p) => !p.startsWith('checking/')).sort()) !== JSON.stringify(tmpl);
-    const seed02 = seedStory(read(TING(storyIpath(2))));
+    const seed02 = seedStory(read(TING(storyIpath(2))).replace(/\r\n/g, '\n'));
     const mutated02 = seed02.replace('obs-en-02-01.jpg', 'obs-en-02-99.jpg');
     const p2 = parseStory(mutated02);
     const firesMutated = mutated02 !== seed02 && applyStoryState(seed02, { frames: {}, ref: p2.ref }) !== mutated02;
@@ -817,7 +817,7 @@ let mergedVerseObjects = null;
     // removes blank lines BEFORE it seals; the format refuses what is left). The writer and
     // the parser share ONE blank-line predicate, so whatever the writer accepts parses back
     // to itself: a whitespace-only text and a NBSP line are blank for both.
-    const seed1 = seedStory(read(TING(storyIpath(1))));
+    const seed1 = seedStory(read(TING(storyIpath(1))).replace(/\r\n/g, '\n'));
     const writerRefuses = ['uno\n\ndos', ' ', 'a\n \nb', 'uno\n', '\nuno', '__', '_ref_', 'a\n__'].every((t) => throws(() => writeFrame(seed1, 1, t)));
     const roundTrip = [DRAFT.frames[1], DRAFT.frames[2], 'x', 'a b\nc d'].every((t) => parseStory(writeFrame(seed1, 1, t)).frames[0].text === t);
     check('OBS frame model: story 1 parses to its title, 16 frames (the image line splits them) and the reference line; frames 1-2 carry the drafted paragraphs with a single newline kept inside frame 1; all 50 stories parse; two paragraphs in one frame, text before the first image line, a missing title line, a story number 0 and an empty `__` reference all refuse; the writer refuses a blank, whitespace-only or NBSP line and a leading/trailing newline, and every accepted text parses back to itself [covers R-10.3.1 R-10.3.2 R-10.3.3]',
@@ -826,7 +826,7 @@ let mergedVerseObjects = null;
 
   // O4 — the byte-strict frame write (the D8 analogue): a write changes ONLY its own region
   {
-    const seed = seedStory(read(TING(storyIpath(1))));
+    const seed = seedStory(read(TING(storyIpath(1))).replace(/\r\n/g, '\n'));
     // the region of frame F: the lines after its image line up to the next image line
     const lines = seed.split('\n');
     const imageIdx = lines.map((l, i) => (l.startsWith('![') ? i : -1)).filter((i) => i >= 0);
@@ -878,7 +878,7 @@ let mergedVerseObjects = null;
       ev(3, { op: 'text.story.ref.set', story: 1, text: DRAFT.ref }),
     ];
     const out = fold(events);
-    const seed = seedStory(read(TING(storyIpath(1))));
+    const seed = seedStory(read(TING(storyIpath(1))).replace(/\r\n/g, '\n'));
     const proj = derivedProjections(out, { baseMetadata: obsMeta, baseStories: { 1: seed } });
     // R-10.2.3 at checkpoint: the projected metadata.json keeps the template's scope table
     // verbatim (the fold has no story scope; a Bible project's scope is reconstructed)

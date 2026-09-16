@@ -327,31 +327,56 @@ export const preferInstalledVersion = (installed: InstalledMap, pin: ResourcePin
   return next;
 };
 
-/** Merge newly INSTALLED optional pins (tq / simplifiedText, D64) into the
+/** Merge newly INSTALLED optional pins and complete OBS members into the
  * rungs whose gateway matches — an explicit download must become usable by
  * the OPEN project, not only by future ones (2026-08-27 adversarial round
  * 11). Existing pins are never replaced (re-pinning is the explicit,
  * warned gateway-change path); returns null when nothing would change. */
+type OptionalSetPinSlot = 'translationQuestions' | 'simplifiedText' | 'obs' | 'obs-tn' | 'obs-twl' | 'obs-images';
+type OptionalSetPins = Pick<LanguageSet, OptionalSetPinSlot>;
+
+const setMatchesGateway = (set: LanguageSet, gateway: { id: string; org: string }): boolean =>
+  set.gatewayLanguage?.languageId === gateway.id &&
+  (set.gatewayLanguage?.owner ?? '').toLowerCase() === gateway.org.toLowerCase();
+
+const attachIfAbsent = (
+  next: LanguageSet,
+  current: LanguageSet,
+  built: OptionalSetPins,
+  slot: OptionalSetPinSlot,
+): boolean => {
+  const pin = built[slot];
+  if (!pin || current[slot]) return false;
+  (next as unknown as Record<string, ResourcePin>)[slot] = pin;
+  return true;
+};
+
+const hasCompleteObsPins = (pins: OptionalSetPins): boolean =>
+  !!pins.obs && !!pins['obs-tn'] && !!pins['obs-twl'];
+
+const lacksObsPins = (set: LanguageSet): boolean =>
+  !set.obs && !set['obs-tn'] && !set['obs-twl'];
+
 const mergeOptionalPinsIntoSet = (
   set: LanguageSet,
   gateway: { id: string; org: string },
-  built: Pick<LanguageSet, 'translationQuestions' | 'simplifiedText'>,
+  built: OptionalSetPins,
 ): { set: LanguageSet; changed: boolean } => {
-  const matches =
-    set.gatewayLanguage?.languageId === gateway.id &&
-    (set.gatewayLanguage?.owner ?? '').toLowerCase() === gateway.org.toLowerCase();
-  if (!matches) return { set: { ...set }, changed: false };
+  if (!setMatchesGateway(set, gateway)) return { set: { ...set }, changed: false };
 
   const next = { ...set };
-  let changed = false;
-  if (built.translationQuestions && !set.translationQuestions) {
-    next.translationQuestions = built.translationQuestions;
+  let changed = attachIfAbsent(next, set, built, 'translationQuestions');
+  changed = attachIfAbsent(next, set, built, 'simplifiedText') || changed;
+  // The three OBS text members enter an existing set atomically. A partial
+  // download must not turn into a partial OBS set. The image override is
+  // independently optional.
+  if (hasCompleteObsPins(built) && lacksObsPins(set)) {
+    next.obs = built.obs;
+    next['obs-tn'] = built['obs-tn'];
+    next['obs-twl'] = built['obs-twl'];
     changed = true;
   }
-  if (built.simplifiedText && !set.simplifiedText) {
-    next.simplifiedText = built.simplifiedText;
-    changed = true;
-  }
+  changed = attachIfAbsent(next, set, built, 'obs-images') || changed;
   return { set: next, changed };
 };
 
@@ -374,8 +399,12 @@ export const mergeOptionalPins = <T extends { languageSets?: Record<string, Lang
   const built = {
     translationQuestions: byName(`${gateway.id}_tq`),
     simplifiedText: byName(`${gateway.id}_ust`) ?? byName(`${gateway.id}_gst`),
+    obs: byName(`${gateway.id}_obs`),
+    'obs-tn': byName(`${gateway.id}_obs-tn`),
+    'obs-twl': byName(`${gateway.id}_obs-twl`),
+    'obs-images': byName(`${gateway.id}_obs-images`) ?? byName(`${gateway.id}_obs_images`),
   };
-  if (!built.translationQuestions && !built.simplifiedText) return null;
+  if (!built.translationQuestions && !built.simplifiedText && !built.obs && !built['obs-images']) return null;
   let changed = false;
   const languageSets: Record<string, LanguageSet> = {};
   for (const [rung, set] of Object.entries(resources.languageSets ?? {})) {
@@ -393,7 +422,7 @@ export const pinsPreferringInstalled = <T extends { languageSets?: Record<string
 ): T => {
   if (!resources.languageSets) return resources;
   const slots = ['translationNotes', 'translationWordsLinks', 'translationWords', 'translationAcademy',
-    'translationQuestions', 'simplifiedText'];
+    'translationQuestions', 'simplifiedText', 'obs', 'obs-tn', 'obs-twl', 'obs-images'];
   const languageSets: Record<string, Record<string, unknown>> = {};
   for (const [rung, set] of Object.entries(resources.languageSets)) {
     const next: Record<string, unknown> = { ...set };
@@ -407,8 +436,8 @@ export const pinsPreferringInstalled = <T extends { languageSets?: Record<string
 };
 
 /** The §5.3 language set for one gateway org, built from what is installed.
- * Returns null when the org's tn / tw / tA are not all present — a set must be
- * coherent, so a partial suite is never written as a pin (§5.3).
+ * Bible and OBS sets apply their distinct completeness rules (D75). A partial
+ * suite is never written as a pin (§5.3).
  *
  * Every pin must carry its IDENTITY — a sha — and a flavor (D58): the §8.5
  * journal schema refuses a resource.pin.set entry without them. Both are in
@@ -417,15 +446,8 @@ export const pinsPreferringInstalled = <T extends { languageSets?: Record<string
 export const languageSetFromInstalled = (
   installed: InstalledMap,
   gateway: { id: string; org: string },
-): {
-  gatewayLanguage: { languageId: string; owner: string };
-  translationNotes: ResourcePin;
-  translationWordsLinks: ResourcePin;
-  translationWords: ResourcePin;
-  translationAcademy: ResourcePin;
-  translationQuestions?: ResourcePin;
-  simplifiedText?: ResourcePin;
-} | null => {
+  kind: 'bible' | 'obs' = 'bible',
+): LanguageSet | null => {
   const org = gateway.org.toLowerCase();
   const ofOrg = Object.values(installed)
     .filter((p) => p.repoPath.toLowerCase().includes(`/${org}/`))
@@ -443,20 +465,33 @@ export const languageSetFromInstalled = (
   const tn = byName(`${gateway.id}_tn`);
   const tw = byName(`${gateway.id}_tw`); // D34: one repo serves both tW slots
   const ta = byName(`${gateway.id}_ta`);
-  if (!tn || !tw || !ta) return null;
+  const obs = byName(`${gateway.id}_obs`);
+  const obsTn = byName(`${gateway.id}_obs-tn`);
+  const obsTwl = byName(`${gateway.id}_obs-twl`);
+  const required = kind === 'bible' ? [tn, tw, ta] : [obs, obsTn, obsTwl, tw, ta];
+  if (required.some((pin) => !pin)) return null;
   // §5.3 1.10 OPTIONAL slots (D64): included only when installed — a set
   // without them is still complete, so their absence never blocks the set.
   const tq = byName(`${gateway.id}_tq`);
   // English publishes `_ust`; other gateways publish `_gst` (evidence in
   // gateways.ts). Either name is the language's simplified text.
   const simplified = byName(`${gateway.id}_ust`) ?? byName(`${gateway.id}_gst`);
-  return {
+  const obsImages = byName(`${gateway.id}_obs-images`) ?? byName(`${gateway.id}_obs_images`);
+  const result = {
     gatewayLanguage: { languageId: gateway.id, owner: gateway.org },
-    translationNotes: tn,
-    translationWordsLinks: tw,
     translationWords: tw,
     translationAcademy: ta,
-    ...(tq ? { translationQuestions: tq } : {}),
-    ...(simplified ? { simplifiedText: simplified } : {}),
+  } as LanguageSet;
+  if (kind === 'bible') result.translationWordsLinks = tw!;
+  const addPin = (slot: OptionalSetPinSlot | 'translationNotes', pin?: ResourcePin) => {
+    if (pin) (result as unknown as Record<string, ResourcePin>)[slot] = pin;
   };
+  addPin('translationNotes', tn);
+  addPin('translationQuestions', tq);
+  addPin('simplifiedText', simplified);
+  addPin('obs', obs);
+  addPin('obs-tn', obsTn);
+  addPin('obs-twl', obsTwl);
+  addPin('obs-images', obsImages);
+  return result;
 };

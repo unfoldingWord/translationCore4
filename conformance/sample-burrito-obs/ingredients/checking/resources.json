@@ -6,18 +6,6 @@
         "languageId": "es-419",
         "owner": "es-419_gl"
       },
-      "translationNotes": {
-        "repoPath": "git.door43.org/es-419_gl/es-419_tn",
-        "version": "v66",
-        "sha": "22f3d0c61e2ab4701cb869547de9c3c43da07208",
-        "flavor": "parascriptural/x-bcvnotes"
-      },
-      "translationWordsLinks": {
-        "repoPath": "git.door43.org/es-419_gl/es-419_tw",
-        "version": "v37",
-        "sha": "7586f4ff1f0483ea40a4a68e5e1f33158e08c208",
-        "flavor": "parascriptural/x-bcvarticles"
-      },
       "translationWords": {
         "repoPath": "git.door43.org/es-419_gl/es-419_tw",
         "version": "v37",
@@ -95,6 +83,11 @@
         "version": "v3",
         "sha": "44ebc9fafe8101665f985007d566f5036a2be85b",
         "flavor": "parascriptural/x-obsarticles"
+      },
+      "obs-images": {
+        "repoPath": "git.door43.org/uW/obs_images_360",
+        "sha": "7146d5b504f6b63b9e11f7dc0b18c594d0ae179d",
+        "flavor": "peripheral/x-obsimages"
       }
     }
   }
