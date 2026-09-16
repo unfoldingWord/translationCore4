@@ -13,7 +13,7 @@ crates.io `=` pin when 0.18.5+ publishes (see `docs/RISKS.md` #1).
 ## Prerequisites
 
 - Rust (stable) with `cargo`.
-- Node 22, `python3`, `git`, `zip`, `unzip`.
+- Node 22, `git`, `zip`, `unzip`.
 - One of two sources for `app-resources/`:
   - none: `scripts/setup-from-pins.zsh` fetches the pinned upstream inputs (read-only
     clones) and registers only the tC4 client. This is what CI uses.
@@ -48,6 +48,44 @@ crates.io `=` pin when 0.18.5+ publishes (see `docs/RISKS.md` #1).
   fixed list whose cache entry exists (see the loop in `seed.zsh`). The rig-gated
   HttpStore suite reads `en_ult`, so a rig that runs `npm run prove` needs at least:
   `zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_ult v89 <sha from src/data/installedSuite.js>`.
+
+## Windows
+
+Use an MSYS2 shell. Install the required shell tools with:
+
+```bash
+pacman -S zsh zip unzip curl
+```
+
+Install Node 22, Rust stable with the MSVC toolchain, and git. Put all four on the
+Windows `PATH`. Set `MSYS2_PATH_TYPE=inherit`, or start the MSYS2 shell with
+`-use-full-path`, so the shell can run the Windows Node, cargo, and git commands.
+
+Run `git config core.autocrlf false` before cloning this repository. If you already
+cloned it with another setting, clone it again after this repository's line-ending rules
+are present.
+
+The full clean-clone sequence is:
+
+```bash
+git config --global core.autocrlf false
+git clone https://github.com/unfoldingWord/translationCore4.git
+cd translationCore4
+npm ci
+npm run build
+zsh dev-env/scripts/setup-from-pins.zsh
+zsh dev-env/scripts/seed.zsh
+zsh dev-env/scripts/run.zsh &
+/c/Windows/System32/curl.exe -s localhost:19998/api/version
+npm run dev
+zsh dev-env/scripts/stop.zsh
+```
+
+The version response must include `pkg_version` `0.18.5`. With the client running,
+open `http://localhost:5199/` and use `+ New Bible` to create a project.
+
+If `zsh` is not found, install MSYS2 and open its MSYS shell. Do not run these rig
+scripts from PowerShell or cmd.
 
 J12 (`e2e/j12-upgrade-resources.spec.ts`, issues #256/#257) needs a NEWER release of
 the English helps than the seeded v89. The rig does not sideload it: the spec serves it

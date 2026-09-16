@@ -44,6 +44,7 @@ Do the steps that follow:
 1. Clone this repository.
 2. Type this command: `npm ci`
 3. Type this command: `npm test`
+4. Start a Pankosmia server on port 19998 before using `npm run dev` to open or create a project. Read [`dev-env/README.md`](dev-env/README.md) for the local server steps.
 
 Expect this result on a clean clone: <!-- manifest: vitest passed -->**1089 tests passed**,
 <!-- manifest: vitest skippedTests -->**41 tests skipped**
@@ -120,11 +121,12 @@ supplies the sibling `sample-burrito` checkout.
 | What does `D28`, `OQ#17`, or `Ledger #2` mean? | `docs/LEGACY-IDS.md` — the reference-ID decoder |
 | Where does work live? | The GitHub issues, milestones and project board of this repository |
 
-## Run against a local server (optional)
+## Run against a local server
 
-The client runs against a Pankosmia server. `dev-env/` builds one, pinned to
-pankosmia-web 0.18.5 (`99fd9be`). Read `dev-env/README.md` for the steps. Without it,
-the rig-backed tests skip and the development server serves the client alone.
+The client needs a Pankosmia server on port 19998 to open or create a project.
+`dev-env/` builds one, pinned to pankosmia-web 0.18.5 (`99fd9be`). Read
+`dev-env/README.md` for the steps. Without the server, `npm run dev` shows the client,
+and every project action fails with HTTP 500.
 
 ## Contribute
 
