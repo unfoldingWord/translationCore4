@@ -67,7 +67,7 @@ function verse11(usfm) {
     const pin = manifest.bundled_resources.find((entry) => entry.repoPath === "git.door43.org/uW/obs_images_360");
     if (!pin || pin.version !== null || pin.sha !== "7146d5b504f6b63b9e11f7dc0b18c594d0ae179d")
       fail("OBS image manifest", JSON.stringify(pin));
-    ok("OBS image proof", manifest.artifact + ", commit " + manifest.inputs.uw-tc4_client.commit
+    ok("OBS image proof", manifest.artifact + ", commit " + manifest.inputs['uw-tc4_client'].commit
       + ", host " + process.platform + "-" + process.arch + ", built " + manifest.built_utc);
     const net = JSON.parse(await getText("/api/net/status"));
     if (net.is_enabled !== false) fail("OBS image net gate", "external access was enabled before the check: " + JSON.stringify(net));
