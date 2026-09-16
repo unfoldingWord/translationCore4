@@ -10,6 +10,8 @@ SRC_LIB=${PANKOSMIA_ASSEMBLED_LIB:?set PANKOSMIA_ASSEMBLED_LIB to an assembled d
 echo "== assembling app-resources from $SRC_LIB"
 rm -rf "$DEV/app-resources"; mkdir -p "$DEV/app-resources"
 for d in app_resources templates webfonts clients setup; do cp -R "$SRC_LIB/$d" "$DEV/app-resources/$d"; done
+# The OBS template lacks the `localizedNames` the server requires (#287, PLATFORM-NOTES #36).
+node "$DEV/../scripts/fix-obs-template.mjs" "$DEV/app-resources/templates"
 # isolation: repo_dir lives INSIDE the rig working dir, never $HOME
 python3 - "$DEV" <<'PY'
 import json,sys,re,pathlib

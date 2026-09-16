@@ -4,6 +4,7 @@ import Home from './views/Home.jsx';
 import Draft from './views/Draft.jsx';
 import Check from './views/Check.jsx';
 import NewBible from './views/modals/NewBible.jsx';
+import NewObs from './views/modals/NewObs.jsx';
 import AddBook from './views/modals/AddBook.jsx';
 import ProjectSettings from './views/modals/ProjectSettings.jsx';
 import SourceTexts from './views/modals/SourceTexts.jsx';
@@ -111,6 +112,7 @@ export default function App() {
       {s.view === 'check' && <Check />}
       {s.view === 'publish' && <CommunityChecking />}
       <NewBible />
+      <NewObs />
       <AddBook />
       <ProjectSettings />
       <SourceTexts />
