@@ -20,6 +20,7 @@ import type {
   ProjectSummary,
   ResourcesFile,
   SettingsFile,
+  Story,
 } from './burritoStore';
 import type { AlignedWord, Alignment, AlignmentFile, AlignmentVerseRecord } from './align/zaln';
 import { normalizeOccurrences, type WithOccurrences } from './align/occurrences';
@@ -33,6 +34,7 @@ import {
 } from './serverApi';
 import { sortCanonical } from './bookNames';
 import { samePath } from './resolve';
+import { parseStory, storyIpath, storyNumberOf } from './journal/runtime';
 import { UNRECORDED_SCHEME, type VrsRegister } from './versification';
 
 /** App-created projects live under this org; sideloaded resources live under
@@ -184,13 +186,22 @@ const SETTINGS_IPATH = 'checking/settings.json';
 /** §4.3. The platform writes this at creation and the client MUST NOT edit it. */
 const VRS_IPATH = 'vrs.json';
 
+/** The two project kinds the app lists (BURRITO-SPEC §1/§10, D74). The
+ * platform's summary `flavor` is the flavor NAME (`textTranslation`,
+ * `textStories`) [VERIFIED — pankosmia-web 0.18.5, rig, 2026-09-15]. */
+const PROJECT_FLAVORS: ReadonlySet<string> = new Set(['textTranslation', 'textStories']);
+
 const toProjectSummary = (repoPath: string, summary: RepoSummary): ProjectSummary => ({
   id: repoPath,
   name: summary.name,
   languageTag: summary.language_code,
   scriptDirection: summary.script_direction,
+  flavor: summary.flavor as ProjectSummary['flavor'],
   // The platform lists book_codes alphabetically — the app shows canon order.
-  bookCodes: sortCanonical(summary.book_codes),
+  // For an OBS project the platform fills book_codes with the scope table's
+  // Bible books (the passages the stories retell — R-10.2.3), which are not
+  // books of the project: an OBS project has stories, never books.
+  bookCodes: summary.flavor === 'textStories' ? [] : sortCanonical(summary.book_codes),
   // The platform's `timestamp` is the SCAN time — identical for every repo, so it
   // cannot order writes [VERIFIED live 2026-07-31]; `generated_date` is the
   // project's creation date. Home orders by most-recently-USED — the
@@ -330,12 +341,12 @@ export class HttpStore {
   // ---- projects ------------------------------------------------------------
 
   /** App projects only: summaries filtered to org _local_/_local_ (server-side)
-   * AND flavor textTranslation (client-side) — sideloaded resources and
-   * broken-metadata repos never list. */
+   * AND flavor textTranslation or textStories (client-side; #286, D74) —
+   * sideloaded resources and broken-metadata repos never list. */
   async listProjects(): Promise<ProjectSummary[]> {
     const summaries = await this.api.getSummaries(APP_ORG);
     return Object.entries(summaries)
-      .filter(([, summary]) => summary.flavor === 'textTranslation')
+      .filter(([, summary]) => PROJECT_FLAVORS.has(summary.flavor))
       .map(([repoPath, summary]) => toProjectSummary(repoPath, summary))
       .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0)); // newest first (owner, 2026-07-31)
   }
@@ -395,6 +406,25 @@ export class HttpStore {
         keepBak: true,
       });
     });
+  }
+
+  // ---- stories (OBS projects, §10 — issue #286) -----------------------------
+
+  /** The story numbers on disk, ascending: every `content/NN.md` the platform
+   * lists (R-10.2.2). */
+  async listStories(): Promise<number[]> {
+    const paths = await this.api.listPaths(this.repo());
+    return paths
+      .map(storyNumberOf)
+      .filter((n): n is number => n !== null)
+      .sort((a, b) => a - b);
+  }
+
+  /** The exact bytes of one story, their md5, and the parsed §10.3 form
+   * (the reference parser refuses a malformed file). */
+  async readStory(story: number): Promise<{ bytes: string; md5: string; story: Story }> {
+    const bytes = await this.api.readIngredient(this.repo(), storyIpath(story));
+    return { bytes, md5: md5Hex(bytes), story: parseStory(bytes) };
   }
 
   /** Read a pinned source text from a sideloaded resource burrito (e.g.

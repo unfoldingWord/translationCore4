@@ -13,6 +13,12 @@ export interface ProjectSummary {
   name: string;
   languageTag: string;
   scriptDirection: string;
+  /** The project kind (BURRITO-SPEC §1/§10, D74): a Bible project or an OBS
+   * project — the platform's `flavor` field of the summary. */
+  flavor: 'textTranslation' | 'textStories';
+  /** Empty for an OBS project: the platform reports the scope table's Bible
+   * book codes there, which are not books of the project [VERIFIED —
+   * pankosmia-web 0.18.5, rig, 2026-09-15]. */
   bookCodes: string[];
   /** Platform summary timestamp (last metadata write) — Home sorts newest first. */
   timestamp?: number;
@@ -190,6 +196,16 @@ export interface StructuralEditOptions {
   intent?: 'spans';
 }
 
+/** One parsed OBS story (BURRITO-SPEC §10.3): the title (frame 0), the frames
+ * in file order (`frames[0]` is frame 1), and the reference line's text or
+ * null. Produced by the reference parser (journal/story.mjs). */
+export interface Story {
+  number: number;
+  title: string;
+  frames: Array<{ image: string; text: string }>;
+  ref: string | null;
+}
+
 export interface BurritoStore {
   listProjects(): Promise<ProjectSummary[]>;
   open(repoPath: string): Promise<ProjectSummary>;
@@ -222,6 +238,27 @@ export interface BurritoStore {
    * `invalidate-retain`, and each new key gets an empty `invalid` §5.1 record
    * when an alignment was affected (D70). */
   applyStructuralEdit(book: string, usfm: string, opts?: StructuralEditOptions): Promise<void>;
+
+  // ---- the story path (OBS projects, BURRITO-SPEC §10 — issue #286) ---------
+  // The ingredient path rule is `content/NN.md` with a two-digit story number
+  // (R-10.2.2). Reads and writes go through the reference story module
+  // (journal/story.mjs): there is ONE parser and ONE set of writers.
+
+  /** The story numbers the project holds on disk, ascending. */
+  listStories(): Promise<number[]>;
+  /** One story: the exact bytes read, their md5, and the parsed §10.3 form. */
+  readStory(story: number): Promise<{ bytes: string; md5: string; story: Story }>;
+  /** Set one frame's paragraph (frame 0 is the title). The store removes
+   * blank lines and carriage returns before it seals (R-10.3.2, D74 §5);
+   * single newlines survive. A frame the story does not have is refused
+   * (R-10.7.5). The write is a `v: 2` text.frame.set; on disk it replaces
+   * that frame's region and nothing else (R-10.3.4). */
+  writeFrame(story: number, frame: number, text: string): Promise<void>;
+  /** Set the title text (the same register as frame 0), one trimmed line. */
+  writeTitle(story: number, text: string): Promise<void>;
+  /** Set the reference line's text without the underscores, one trimmed
+   * non-empty line (R-10.3.3); a `v: 2` text.story.ref.set. */
+  writeRef(story: number, text: string): Promise<void>;
 
   readAlignments(book: string): Promise<AlignmentFile | null>;
   /** MUST normalize occurrence/occurrences to integers at this boundary (I-2). */

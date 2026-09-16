@@ -26,6 +26,7 @@ import type {
   ProjectSummary,
   ResourcesFile,
   SettingsFile,
+  Story,
   StructuralEditOptions,
 } from '../burritoStore';
 import type { VrsRegister } from '../versification';
@@ -45,9 +46,12 @@ import { idbKvStore, type KvStore } from './identity';
 import { sealAction, type JournalEvent } from './seal';
 import { defaultFoldRunner, type FoldRunner } from './foldRunner';
 import {
+  applyStoryState,
   decompose,
   derivedProjections,
   EMPTY_CHECKPOINT_DOCUMENTS,
+  isObsBaseIngredient,
+  isObsMetadata,
   isUnjournaledIngredient,
   normalizeEvent,
   projectAlignments,
@@ -56,8 +60,13 @@ import {
   reconcileUsfm,
   seedFromSidecars,
   slotKeysOf,
+  storyIpath,
+  storyNumberOf,
   toNfc,
   verseTextMd5,
+  writeFrame as spliceFrame,
+  writeRef as spliceRef,
+  writeTitle as spliceTitle,
   type FoldOutput,
 } from './runtime';
 
@@ -77,6 +86,20 @@ const decisionsIpath = (tool: string, book: string): string =>
 const RESOURCES_IPATH = 'checking/resources.json';
 const SETTINGS_IPATH = 'checking/settings.json';
 const VRS_IPATH = 'vrs.json';
+
+/** R-10.3.2 / D74 §5: frame text seals as ONE paragraph — carriage returns
+ * dropped, blank lines (lines that trim to nothing) removed, single newlines
+ * kept, NFC (I-4). What is left is judged by the reference writer. */
+const oneParagraph = (text: string): string =>
+  (toNfc(text) as string)
+    .replace(/\r/g, '')
+    .split('\n')
+    .filter((line) => line.trim() !== '')
+    .join('\n');
+/** A title or reference line: one trimmed line, NFC. */
+const oneLine = (text: string): string => (toNfc(text) as string).trim();
+/** The empty folded story state: a story no event has touched projects to its base. */
+const NO_STORY_STATE: FoldOutput['stories'][string] = { frames: {}, ref: null };
 
 /** The checkpoint's own byte form (journal/checkpoint.mjs
  * `serialize`) — every regenerated sidecar uses EXACTLY this, so per-mutation
@@ -348,6 +371,12 @@ export class JournalingStore implements BurritoStore {
   private lastFold: FoldOutput | null = null;
   /** Derive-time (tool, BOOK) resolution records (§5.2/D30) — checkpoint input. */
   private readonly resolutions = new Map<string, Record<string, unknown>>();
+  /** §10.7 (D74): the BASE bytes of every story file, by story number — the
+   * disk file as the last open or the last verified install left it. A story
+   * projects as its folded state spliced onto this base; a story the fold
+   * never touched projects to the base itself. Checkpoint input like the
+   * base metadata (R-10.7.4). */
+  private readonly storyBase = new Map<number, string>();
   /** Diagnostics of the last open(), for tests and the UI. */
   lastOpenReport: OpenReport | null = null;
 
@@ -423,6 +452,14 @@ export class JournalingStore implements BurritoStore {
 
   readBook(book: string): Promise<{ usfm: string; md5: string }> {
     return this.raw.readBook(book);
+  }
+
+  listStories(): Promise<number[]> {
+    return this.raw.listStories();
+  }
+
+  readStory(story: number): Promise<{ bytes: string; md5: string; story: Story }> {
+    return this.raw.readStory(story);
   }
 
   readSourceBook(sourceRepoPath: string, bookCode: string): Promise<{ usfm: string }> {
@@ -509,6 +546,10 @@ export class JournalingStore implements BurritoStore {
         `derived write verification failed for ${ipath}: the readback does not match the ` +
           `projection bytes — the journal remains authoritative; reopening recovers forward`,
       );
+    // §10.7: a verified story install is the new base — the next projection
+    // splices onto what is on disk now (a no-op for already-applied frames).
+    const story = storyNumberOf(ipath);
+    if (story !== null) this.storyBase.set(story, bytes);
   }
 
   /** Remove one derived file whose projection disappeared (official review
@@ -550,6 +591,11 @@ export class JournalingStore implements BurritoStore {
     if (align) return foldOut.alignments[align] ? projectAlignments(foldOut, align) : null;
     const dec = /^checking\/(translationWords|translationNotes)\/([A-Z0-9]{3})\.json$/.exec(ipath);
     if (dec) return this.projectDecisionFile(foldOut, dec[1], dec[2]);
+    // §10.7 (D74): a story is the folded frames and reference line spliced
+    // onto its BASE bytes; with no base (the file is not on disk) nothing can
+    // be derived — a folded story without its file is divergence (compareDisk).
+    const story = storyNumberOf(ipath);
+    if (story !== null) return this.storyProjection(foldOut, story);
     // resources.json and settings.json are ALWAYS derivable: when nothing is
     // folded for them the projection is the §8.7 EMPTY document — a valid last
     // pin/setting REMOVAL must materialize it, not silently keep the stale
@@ -560,6 +606,11 @@ export class JournalingStore implements BurritoStore {
     if (ipath === SETTINGS_IPATH) return projectSettings(foldOut.settings);
     if (ipath === VRS_IPATH) return foldOut.vrs?.bytes ?? null;
     return null;
+  }
+
+  private storyProjection(foldOut: FoldOutput, story: number): string | null {
+    const base = this.storyBase.get(story);
+    return base === undefined ? null : applyStoryState(base, foldOut.stories[story] ?? NO_STORY_STATE);
   }
 
   /** One (tool, BOOK) §5.2 sidecar from the fold — byte-identical to the
@@ -596,6 +647,10 @@ export class JournalingStore implements BurritoStore {
       );
       for (const book of books) paths.push(decisionsIpath(tool, book));
     }
+    // §10.7: every story file is derived — an unfolded one to its own base
+    // bytes — so a deleted or edited story file is enumerated (R-10.7.4).
+    const stories = new Set([...this.storyBase.keys(), ...Object.keys(foldOut.stories ?? {}).map(Number)]);
+    for (const story of [...stories].sort((a, b) => a - b)) paths.push(storyIpath(story));
     // Always derivable (empty documents when nothing is folded — see
     // projectionBytes): a last-register removal must still regenerate them.
     paths.push(RESOURCES_IPATH);
@@ -826,6 +881,15 @@ export class JournalingStore implements BurritoStore {
       await this.installDerived(ipath, bytes);
       return;
     }
+    // §10.7 (R-10.7.4): a drafted story can only be regenerated onto its base
+    // file; with the file gone there is nothing to splice onto — a visible
+    // stop, never a silent no-op that leaves the drafted frames unmaterialized.
+    const story = storyNumberOf(ipath);
+    if (story !== null && foldOut.stories[story])
+      throw new Error(
+        `story ${story}: the journal holds drafted frames but ${ipath} is not on disk — ` +
+          `deleted out of band; restore the file, never silently repaired (R-10.7.4)`,
+      );
     if (!JournalingStore.isRemovableDerivedClass(ipath)) return;
     if ((await this.readIngredientOrNull(ipath)) === null) return;
     // The projection disappeared (structural retirement / book.remove):
@@ -1039,6 +1103,7 @@ export class JournalingStore implements BurritoStore {
     this.foldCache = null;
     this.lastFold = null; // a new project: no snapshot of the old one may leak (#94)
     this.resolutions.clear();
+    this.storyBase.clear();
     // Actor repair + the outbox half of the HLC ratchet (issue #62 / #61). The
     // segment half is DEFERRED to the union read below, so an open scans the
     // journal once, not twice (issue #95); the journal store refuses to mint a
@@ -1177,7 +1242,7 @@ export class JournalingStore implements BurritoStore {
     // recomputation must be deterministic — event order (and so each event's
     // ts) must not depend on the platform's directory-walk order.
     const paths = (await this.api.listPaths(repo))
-      .filter((p) => !p.startsWith('checking/journal/') && !isUnjournaledIngredient(p))
+      .filter((p) => !p.startsWith('checking/journal/') && !isUnjournaledIngredient(p) && !isObsBaseIngredient(p))
       .sort();
     const inventory: DiskInventory = {
       books: {},
@@ -1190,6 +1255,7 @@ export class JournalingStore implements BurritoStore {
       diskBytes: {},
       unknown: [],
     };
+    this.storyBase.clear(); // the inventory below is the new base of every story
 
     // A metadata-read FAILURE aborts (official review round 6, R4): scope is
     // journaled forever in book.add, and defaulting a failed read to {} gives
@@ -1238,6 +1304,9 @@ export class JournalingStore implements BurritoStore {
     if (ipath === SETTINGS_IPATH)
       return void (inventory.settings = this.parseInventoryJson<SettingsFile>(inventory, ipath, text) ?? null);
     if (ipath === VRS_IPATH) return void (inventory.vrsBytes = text);
+    // §10: a story file is the BASE its folded frames splice onto (storyBase)
+    const story = storyNumberOf(ipath);
+    if (story !== null) return void this.storyBase.set(story, text);
     inventory.unknown.push(ipath);
   }
 
@@ -1295,6 +1364,11 @@ export class JournalingStore implements BurritoStore {
       // leftover record from an interrupted seed of since-removed content is
       // provably safe to prune.
       if (seedRecord) await this.kv.delete(`${this.intentPrefix}${seedRecord.ts}`);
+      // §10: a new OBS project has no book, no vrs and no sidecar yet — nothing
+      // to seed, but the store still needs the (empty) fold of its empty union.
+      this.events = [];
+      this.foldCache = null;
+      await this.ensureFold();
       return;
     }
     const normalizedSeed = seedEvents.map(normalizeEvent);
@@ -1601,6 +1675,14 @@ export class JournalingStore implements BurritoStore {
     }
   }
 
+  /** Projection and disk disagree — or (§10.7) a folded story whose file is
+   * gone derives nothing (no base): a deletion out of band, surfaced, never
+   * silently repaired. */
+  private static isDivergedAt(ipath: string, projected: string | null, onDisk: string | undefined): boolean {
+    if (projected !== (onDisk ?? null)) return true;
+    return projected === null && onDisk === undefined && storyNumberOf(ipath) !== null;
+  }
+
   private compareDisk(foldOut: FoldOutput, disk: DiskInventory): DivergedPath[] {
     const diverged: DivergedPath[] = [];
     const expected = new Set(this.derivedPathsOf(foldOut));
@@ -1613,7 +1695,7 @@ export class JournalingStore implements BurritoStore {
       }
       const onDisk = disk.diskBytes[ipath];
       if (onDisk === undefined && projected !== null && EMPTY_CHECKPOINT_DOCUMENTS.has(projected)) continue;
-      if (projected !== (onDisk ?? null))
+      if (JournalingStore.isDivergedAt(ipath, projected, onDisk))
         diverged.push({
           ipath,
           diskMd5: onDisk === undefined ? null : md5Hex(onDisk),
@@ -2377,6 +2459,87 @@ export class JournalingStore implements BurritoStore {
    * notes (D63, #106). Grow-only by design (v1: no edit/delete op): each save
    * appends, and readers show the LATEST note per target. Notes project into
    * the fold only (no checkpoint file), so `affected` is empty. */
+  // ---- the story path (OBS projects, §10 — issue #286) ----------------------
+
+  async writeFrame(story: number, frame: number, text: string): Promise<void> {
+    if (frame === 0) return this.writeTitle(story, text);
+    const value = oneParagraph(text);
+    return this.storyMutation(
+      story,
+      (bytes) => spliceFrame(bytes, frame, value),
+      (foldOut, journal) => ({
+        v: 2,
+        op: 'text.frame.set',
+        actor: journal.actorId,
+        ts: journal.issueTs(),
+        base: foldOut.headsTs[`frame|${story}|${frame}`],
+        story,
+        frame,
+        text: value,
+      }),
+    );
+  }
+
+  async writeTitle(story: number, text: string): Promise<void> {
+    const value = oneLine(text);
+    return this.storyMutation(
+      story,
+      (bytes) => spliceTitle(bytes, value),
+      (foldOut, journal) => ({
+        v: 2,
+        op: 'text.frame.set',
+        actor: journal.actorId,
+        ts: journal.issueTs(),
+        base: foldOut.headsTs[`frame|${story}|0`],
+        story,
+        frame: 0,
+        text: value,
+      }),
+    );
+  }
+
+  async writeRef(story: number, text: string): Promise<void> {
+    const value = oneLine(text);
+    return this.storyMutation(
+      story,
+      (bytes) => spliceRef(bytes, value),
+      (foldOut, journal) => ({
+        v: 2,
+        op: 'text.story.ref.set',
+        actor: journal.actorId,
+        ts: journal.issueTs(),
+        base: foldOut.headsTs[`ref|${story}`],
+        story,
+        text: value,
+      }),
+    );
+  }
+
+  /** ONE story write (§10.7, D74). The reference writer judges the value and
+   * the frame against the CURRENT projection first, so a bad text or a frame
+   * the story does not have is refused before anything seals (R-10.7.5); a
+   * write that leaves the bytes unchanged publishes nothing (the same
+   * diff-to-nothing rule every register op has — an idempotent retry). The
+   * event is `v: 2` (R-10.7.1), rootless on a frame no event has touched, and
+   * `content/NN.md` regenerates from the fold like every derived file. */
+  private storyMutation(
+    story: number,
+    splice: (bytes: string) => string,
+    event: (foldOut: FoldOutput, journal: JournalStore) => JournalEvent,
+  ): Promise<void> {
+    return this.queue(async () => {
+      await this.replayOwnStagedBeforeDiff(); // round-5 rule 1: REPLAY-BEFORE-DIFF
+      const journal = this.mustJournal();
+      const foldOut = this.foldNow();
+      const ipath = storyIpath(story);
+      const current = this.projectionBytes(foldOut, ipath);
+      if (current === null)
+        throw new Error(`story ${story}: the project has no ${ipath} — the story set is fixed by the source (§10.2/R-10.7.5)`);
+      if (splice(current) === current) return;
+      await this.publishAndRegenerate([event(foldOut, journal)], [ipath]);
+    });
+  }
+
   async addNote(book: string, chapter: number | string, verse: number | string, text: string): Promise<void> {
     return this.queue(async () => {
       await this.replayOwnStagedBeforeDiff(); // round-5 rule 1: REPLAY-BEFORE-DIFF
@@ -2639,8 +2802,12 @@ export class JournalingStore implements BurritoStore {
       const [tool, book] = key.split('\n');
       (resolutions[tool] ??= {})[book] = resource;
     }
-    const projections = derivedProjections(foldOut, { baseMetadata, resolutions });
+    const baseStories: Record<number, string> = Object.fromEntries(this.storyBase);
+    const projections = derivedProjections(foldOut, { baseMetadata, resolutions, baseStories });
     delete projections['metadata.json'];
+    // §10.7: a story the fold never touched is derived by identity — its base
+    // bytes — so checkpointWrites' sweep sees every story file as derived.
+    for (const [story, base] of this.storyBase) projections[storyIpath(story)] ??= base;
     return projections;
   }
 
@@ -2662,7 +2829,7 @@ export class JournalingStore implements BurritoStore {
     const stale: string[] = [];
     const toWrite: Array<{ ipath: string; bytes: string }> = [];
     const diskPaths = (await this.api.listPaths(repo)).filter(
-      (path) => !path.startsWith('checking/journal/') && !isUnjournaledIngredient(path),
+      (path) => !path.startsWith('checking/journal/') && !isUnjournaledIngredient(path) && !isObsBaseIngredient(path),
     );
     for (const [ipath, bytes] of Object.entries(projections)) {
       const disk = await this.readIngredientOrNull(ipath);
@@ -2685,6 +2852,7 @@ export class JournalingStore implements BurritoStore {
 
   private async verifyCheckpointScope(repo: string, foldOut: FoldOutput): Promise<void> {
     const after = await this.api.getMetadataRaw(repo);
+    if (isObsMetadata(after)) return; // R-10.2.3: the scope is the template's, never the fold's
     const scopeAfter = (after?.type?.flavorType?.currentScope ?? {}) as Record<string, string[]>;
     if (canonical(scopeAfter) === canonical(foldOut.scope)) return;
     throw new Error(
