@@ -1868,7 +1868,7 @@ export class JournalingStore implements BurritoStore {
           : { ts: journal.issueTs(), kind: 'unconditional', affectedPaths: paths },
       );
     await this.installAndConverge(paths);
-    await this.api.remakeIngredients(this.mustRepo());
+    if (this.registerIngredients) await this.api.remakeIngredients(this.mustRepo()); // never on OBS (PLATFORM-NOTES #37)
     report.classification = 'reconciled';
     report.regeneratedPaths = paths;
   }
@@ -1974,6 +1974,10 @@ export class JournalingStore implements BurritoStore {
    * journal-first for the content itself. */
   async addBook(params: AddBookParams): Promise<void> {
     return this.queue(async () => {
+      // R-10.7.5: an OBS project has no book.add — and the scaffold's rescan
+      // would empty its scope table (PLATFORM-NOTES #37; Codex round 1 of #287).
+      if (!this.registerIngredients)
+        throw new Error(`addBook(${params.book_code}): an Open Bible Stories project has stories, not books (R-10.7.5)`);
       await this.replayOwnStagedBeforeDiff(); // round-5 rule 1: REPLAY-BEFORE-DIFF
       const journal = this.mustJournal();
       const book = params.book_code.toUpperCase();

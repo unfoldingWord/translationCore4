@@ -210,6 +210,18 @@ export const isNotFoundError = (error: unknown): boolean =>
 
 const FORBIDDEN_SEGMENT_CHARS = /[\s&?:#%\\*"'<>|]/;
 
+/** The creation routes splice `content_name` into their metadata template by
+ * string replacement, unescaped [VERIFIED — pankosmia-web 0.18.5 (99fd9be),
+ * `new_obs_resource.rs` `.replace("%%CONTENT_NAME%%", …)`, 2026-09-16]: a
+ * quote, a backslash or a control character yields a `metadata.json` that no
+ * parser accepts. Refuse client-side (Codex round 1 of #287). */
+const assertJsonSafeText = (text: string, where: string): void => {
+  // eslint-disable-next-line no-control-regex
+  if (/["\\\u0000-\u001f]/.test(text)) {
+    throw new ServerApiError(where, 0, `a project name cannot contain a quote, a backslash or a control character: ${JSON.stringify(text)}`);
+  }
+};
+
 const assertSafeSegment = (segment: string, where: string): void => {
   if (segment.length === 0 || segment.startsWith('.') || FORBIDDEN_SEGMENT_CHARS.test(segment)) {
     throw new ServerApiError(where, 0, `unsafe path segment ${JSON.stringify(segment)}`);
@@ -480,6 +492,7 @@ export class ServerApi {
    * does not know is stored as `x-<code>` by the server, never rejected. */
   async newObsResource(params: NewObsResourceParams): Promise<void> {
     assertSafeSegment(params.content_abbr, `content_abbr ${JSON.stringify(params.content_abbr)}`);
+    assertJsonSafeText(params.content_name, '/git/new-obs-resource');
     await this.post('/git/new-obs-resource', {
       content_name: params.content_name,
       content_abbr: params.content_abbr,

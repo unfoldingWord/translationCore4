@@ -104,6 +104,14 @@ describe('createObsProject (#287, J20)', () => {
     expect(describeVerifierReport(report), describeVerifierReport(report)).toContain('verified');
   });
 
+  it('refuses a project name the platform would splice into its JSON template unescaped, and leaves no repository', async () => {
+    const { rig, store } = setup();
+    await expect(store.createObsProject({ ...PARAMS, content_name: 'Historias "de" Prueba' })).rejects.toThrow(/quote/);
+    await expect(store.createObsProject({ ...PARAMS, content_name: 'Historias\\Prueba' })).rejects.toThrow(/backslash/);
+    expect(rig.repos.has(REPO)).toBe(false);
+    expect(rig.log.some((e) => e.route.includes('new-obs-resource'))).toBe(false);
+  });
+
   it('never registers or rescans an OBS project, so the platform cannot empty its scope table (R-10.2.3, PLATFORM-NOTES #37)', async () => {
     const { rig, api, store } = setup();
     const { repoPath } = await store.createObsProject(PARAMS);
@@ -111,6 +119,9 @@ describe('createObsProject (#287, J20)', () => {
     await store.writeResources(INSTALLED_SUITE as unknown as ResourcesFile, null);
     await store.writeFrame(2, 1, 'Un texto.');
     await store.commit('checkpoint');
+    // R-10.7.5: no book.add on stories — and the scaffold would rescan
+    await expect(store.addBook({ book_code: 'JON', book_title: 'Jonás', book_abbr: 'JON', add_cv: true })).rejects.toThrow(/stories, not books/);
+    expect(rig.repos.get(REPO)!.files.has('JON.usfm')).toBe(false);
     const scopeOf = () => Object.keys((rig.repos.get(REPO)!.meta.type as { flavorType: { currentScope: object } }).flavorType.currentScope);
     expect(scopeOf()).toHaveLength(33);
     expect(rig.log.some((e) => e.route.includes('remake-ingredients'))).toBe(false);
