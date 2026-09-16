@@ -1112,7 +1112,12 @@ export class JournalingStore implements BurritoStore {
       await this.api.newObsResource(params);
       for (const story of await this.raw.listStoriesOf(repoPath)) {
         const ipath = storyIpath(story);
-        const seeded = seedStory(await this.api.readIngredient(repoPath, ipath));
+        // The OBS template is a text resource, and a Windows-backed rig may
+        // expose its LF files as CRLF. The normative story parser accepts LF
+        // only, so normalize transport line endings before deriving the seed
+        // form; the project is then written back with canonical LF bytes.
+        const template = await this.api.readIngredient(repoPath, ipath);
+        const seeded = seedStory(template.replace(/\r\n?/g, '\n'));
         await this.api.writeIngredient(repoPath, ipath, seeded, { keepBak: false });
         if ((await this.api.readIngredient(repoPath, ipath)) !== seeded)
           throw new Error(`seed write verification failed for ${ipath}: the readback does not match the seed form`);

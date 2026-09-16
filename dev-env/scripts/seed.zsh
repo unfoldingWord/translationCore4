@@ -49,7 +49,8 @@ node "$(npath "$ROOT/scripts/seed-large-project.mjs")" "$(npath "$WORK/repos/_lo
 # §5.3 slot and the shipped English package pins it, so a rig without it cannot
 # exercise the Understand screen's Questions tab.
 for R in en_ult:v89 en_ust:v89 en_tn:v89 en_tw:v89 en_ta:v89 en_tq:v89 el-x-koine_ugnt:v0.34 \
-         es-419_tn:v66 es-419_tw:v37 es-419_ta:v4; do
+         es-419_tn:v66 es-419_tw:v37 es-419_ta:v4 \
+         en_obs:v9 en_obs-tn:v13 en_obs-twl:v3; do
   N="${R%%:*}"; V="${R##*:}"
   Z="$DEV/resources-cache/$N-$V-unwrapped.zip"
   if [ -f "$Z" ] && [ ! -d "$WORK/repos/_local_/_sideloaded_/$N" ]; then
@@ -58,4 +59,17 @@ for R in en_ult:v89 en_ust:v89 en_tn:v89 en_tw:v89 en_ta:v89 en_tq:v89 el-x-koin
     echo "sideloaded: $N ($V)"
   fi
 done
+# The default OBS picture pack is installer data rather than a language-set
+# pin. Keep its identity-qualified path in the rig, matching the desktop
+# bootstrap, so story images exercise the same exact-SHA resolution as a
+# packaged install (#288/D75). The cache is optional just like the rows above.
+OBS_IMAGES_SHA=7146d5b504f6b63b9e11f7dc0b18c594d0ae179d
+OBS_IMAGES_LABEL=${OBS_IMAGES_SHA[1,12]}
+OBS_IMAGES_Z="$DEV/resources-cache/obs_images_360-$OBS_IMAGES_LABEL-unwrapped.zip"
+OBS_IMAGES_DEST="$WORK/repos/_local_/_sideloaded_/uw--obs_images_360--$OBS_IMAGES_LABEL"
+if [ -f "$OBS_IMAGES_Z" ] && [ ! -d "$OBS_IMAGES_DEST" ]; then
+  mkdir -p "$OBS_IMAGES_DEST"
+  unzip -q "$OBS_IMAGES_Z" -d "$OBS_IMAGES_DEST"
+  echo "sideloaded: uW/obs_images_360 ($OBS_IMAGES_LABEL)"
+fi
 echo "seeded: $WORK"

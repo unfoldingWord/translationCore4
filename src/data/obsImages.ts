@@ -85,7 +85,12 @@ const oneCandidate = (
 const basename = (uri: string): string | null => {
   try {
     const url = new URL(uri, 'https://local.invalid/');
-    const path = url.pathname === '/' || url.pathname === '' ? url.hostname : url.pathname;
+    // Binary ingredient URLs carry the real filename in `ipath`, while the
+    // route pathname ends at the repository identity. Prefer that query path
+    // when present so project ingredients participate in the same basename
+    // precedence as local/file URLs.
+    const ingredientPath = url.searchParams.get('ipath');
+    const path = ingredientPath || (url.pathname === '/' || url.pathname === '' ? url.hostname : url.pathname);
     return decodeURIComponent(path.slice(path.lastIndexOf('/') + 1)) || null;
   } catch {
     return null;

@@ -91,6 +91,14 @@ describe('#288 — OBS resources', () => {
     expect(imageLine).toBe(fixture.split('\n').find((line) => line.startsWith('![')));
   });
 
+  it('matches project ingredients whose binary URL carries the filename in ipath', () => {
+    const uri = `https://rig.test/api/burrito/ingredient/bytes/_local_/_local_/project?ipath=360px/${encodeURIComponent(fileName)}`;
+    const result = resolveObsImage(imageLine, resources, {
+      [`ingredients/360px/${fileName}`]: { uri, role: 'x-obsimages' },
+    }, [], { pin: EN_OBS_IMAGES, images: {} });
+    expect(result).toMatchObject({ source: 'project', uri });
+  });
+
   it('falls through corrupt and ambiguous candidates and rejects a same-repo wrong SHA', () => {
     const wanted = { ...EN_OBS_IMAGES, sha: '1'.repeat(40) };
     const pinned = { ...resources, languageSets: {

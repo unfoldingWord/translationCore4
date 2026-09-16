@@ -1,0 +1,96 @@
+import React from 'react';
+import { useApp } from '../state.jsx';
+import { Button, Callout, Overline } from '../ds/index.js';
+import { t } from '../i18n';
+import StoryRail from './StoryRail.jsx';
+
+const fieldStyle = {
+  width: '100%',
+  boxSizing: 'border-box',
+  border: 'var(--stroke-hair) solid var(--border-input)',
+  borderRadius: 'var(--radius-sm)',
+  padding: '10px 12px',
+  color: 'var(--text-scripture)',
+  background: 'var(--surface-card)',
+  fontFamily: 'var(--font-scripture)',
+  fontSize: 'var(--fs-verse-lg)',
+  lineHeight: 'var(--lh-verse-lg)',
+};
+
+function EditableUnit({ unit, value, label, multiline = false, dir }) {
+  const { actions } = useApp();
+  const props = {
+    'aria-label': label,
+    dir,
+    value,
+    onChange: (event) => actions.stageStoryUnit(unit, event.target.value),
+    onBlur: () => { void actions.blurStoryUnit(unit); },
+    style: fieldStyle,
+  };
+  return multiline ? <textarea {...props} rows={4} /> : <input {...props} />;
+}
+
+function FrameEditor({ frame, sourceFrame, image, story, index, dir }) {
+  const unit = { kind: 'frame', story: story.number, frame: index + 1 };
+  return (
+    <article data-testid={`story-frame-${index + 1}`} style={{ borderTop: 'var(--stroke-hair) solid var(--border-hair)', padding: '24px 0 30px' }}>
+      <Overline tone="muted" style={{ marginBottom: 12 }}>{t('storyDraft.frameLabel', { n: index + 1 })}</Overline>
+      <div style={{ display: 'grid', gridTemplateColumns: image?.uri ? 'minmax(160px, 30%) 1fr' : '1fr', gap: 22, alignItems: 'start' }}>
+        {image?.uri && <img src={image.uri} alt={t('storyDraft.imageAlt', { n: index + 1 })} style={{ width: '100%', maxHeight: 210, objectFit: 'cover', borderRadius: 'var(--radius-md)', background: 'var(--surface-sunken)' }} />}
+        <div>
+          <div style={{ marginBottom: 12 }}>
+            <Overline tone="muted" style={{ marginBottom: 6 }}>{t('storyDraft.source')}</Overline>
+            <p dir={dir} style={{ margin: 0, whiteSpace: 'pre-wrap', color: 'var(--text-secondary)', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-lg)', lineHeight: 'var(--lh-verse-lg)' }}>
+              {sourceFrame?.text || t('storyDraft.sourceMissing')}
+            </p>
+          </div>
+          <Overline tone="accent" style={{ marginBottom: 6 }}>{t('storyDraft.translation')}</Overline>
+          <EditableUnit unit={unit} value={frame.text} label={t('storyDraft.frameLabel', { n: index + 1 })} multiline dir={dir} />
+        </div>
+      </div>
+    </article>
+  );
+}
+
+export default function StoryDraft() {
+  const { s, actions } = useApp();
+  const story = s.story;
+  const dir = s.project?.scriptDirection === 'rtl' ? 'rtl' : 'ltr';
+  if (s.storyLoading) return <main data-testid="story-draft-loading" style={{ flex: 1, padding: 40 }}>{t('storyDraft.loading')}</main>;
+  if (s.storyError) return <main data-testid="story-draft-error" style={{ flex: 1, padding: 40 }}><Callout tone="warn">{s.storyError}</Callout></main>;
+  if (!story) return <main data-testid="story-draft-empty" style={{ flex: 1, padding: 40 }}>{t('storyDraft.noStory')}</main>;
+  const sourceStory = s.sourceStory;
+  return (
+    <main data-testid="story-draft" style={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden', background: 'var(--surface-app)' }}>
+      {s.rail && <StoryRail numbers={s.storyNumbers} active={s.storyNumber} story={story} onSelect={actions.openStory} />}
+      <section style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '30px 40px 70px' }}>
+        <div style={{ maxWidth: 'var(--measure-reading)', margin: '0 auto' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+            <div>
+              <Overline tone="accent">{t('storyDraft.storyNumber', { n: story.number })}</Overline>
+              <EditableUnit unit={{ kind: 'title', story: story.number }} value={story.title} label={t('storyDraft.title')} dir={dir} />
+            </div>
+            <Button variant="ghost" onClick={actions.toggleRail} data-testid="toggle-story-rail">{s.rail ? t('storyDraft.hideStories') : t('storyDraft.showStories')}</Button>
+          </div>
+          {s.storySourceError && (
+            <Callout tone="warn" data-testid="story-source-error" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
+              <span style={{ flex: 1, overflowWrap: 'anywhere' }}>{s.storySourceError}</span>
+              {s.storySourceMissing && (
+                <Button size="sm" variant="secondary" onClick={actions.openSources} data-testid="story-source-install">
+                  {t('storyDraft.getSource')}
+                </Button>
+              )}
+            </Callout>
+          )}
+          <div style={{ marginBottom: 20 }}>
+            <Overline tone="muted" style={{ marginBottom: 6 }}>{t('storyDraft.reference')}</Overline>
+            <EditableUnit unit={{ kind: 'ref', story: story.number }} value={story.ref || ''} label={t('storyDraft.reference')} dir={dir} />
+          </div>
+          {story.frames.map((frame, index) => (
+            <FrameEditor key={index + 1} frame={frame} sourceFrame={sourceStory?.frames?.[index]} image={s.storyImages?.[String(index + 1)]} story={story} index={index} dir={dir} />
+          ))}
+        </div>
+      </section>
+    </main>
+  );
+}
