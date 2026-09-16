@@ -19,6 +19,7 @@
 import type {
   AddBookParams,
   BurritoStore,
+  CreateObsProjectParams,
   CreateProjectParams,
   Decision,
   DecisionFile,
@@ -59,6 +60,7 @@ import {
   projectSettings,
   reconcileUsfm,
   seedFromSidecars,
+  seedStory,
   slotKeysOf,
   storyIpath,
   storyNumberOf,
@@ -377,6 +379,14 @@ export class JournalingStore implements BurritoStore {
    * never touched projects to the base itself. Checkpoint input like the
    * base metadata (R-10.7.4). */
   private readonly storyBase = new Map<number, string>();
+  /** Whether derived writes register their ingredient (`update_ingredients`)
+   * and a checkpoint rescans (`remake-ingredients`). Both rebuild
+   * `currentScope` from the USFM files on disk, which empties an OBS
+   * project's table (PLATFORM-NOTES #37) — and R-10.2.3 keeps that table
+   * verbatim, with no metadata write route to restore it (D28). So an OBS
+   * project never registers or rescans; the ingredient table stays the
+   * platform's own from creation. Set from the base metadata at every open. */
+  private registerIngredients = true;
   /** Diagnostics of the last open(), for tests and the UI. */
   lastOpenReport: OpenReport | null = null;
 
@@ -537,7 +547,7 @@ export class JournalingStore implements BurritoStore {
    * section. Registration (update_ingredients) matches the pre-#62 writers. */
   private async installDerived(ipath: string, bytes: string): Promise<void> {
     await this.api.writeIngredient(this.mustRepo(), ipath, bytes, {
-      updateIngredients: true,
+      updateIngredients: this.registerIngredients,
       keepBak: true,
     });
     const readBack = await this.readIngredientOrNull(ipath);
@@ -1084,6 +1094,37 @@ export class JournalingStore implements BurritoStore {
     return { repoPath };
   }
 
+  /** J20 (#287): the platform's container step, then the seed form. The
+   * platform copies its `text_stories` template with the source's title text
+   * in every story; the seed form reduces each title to `# N.` (R-10.2.4) and
+   * the fifty rewrites are committed as the BASE the journal splices onto
+   * (R-10.7.4). Nothing is journaled: a new project IS the seed form, not fifty
+   * empty-title events. The writes are plain: a registering write would empty
+   * the template's `currentScope` (PLATFORM-NOTES #37), which R-10.2.3 keeps
+   * verbatim. A failure leaves no half-made project: the pre-check proved the
+   * path absent, so the delete removes only our own debris (PLATFORM-NOTES #28). */
+  async createObsProject(params: CreateObsProjectParams): Promise<{ repoPath: string }> {
+    const repoPath = `${APP_ORG}/${params.content_abbr}`;
+    const existing = await this.api.listLocalRepos();
+    if (existing.includes(repoPath))
+      throw new ServerApiError('/git/new-obs-resource', 0, `project ${repoPath} already exists`);
+    try {
+      await this.api.newObsResource(params);
+      for (const story of await this.raw.listStoriesOf(repoPath)) {
+        const ipath = storyIpath(story);
+        const seeded = seedStory(await this.api.readIngredient(repoPath, ipath));
+        await this.api.writeIngredient(repoPath, ipath, seeded, { keepBak: false });
+        if ((await this.api.readIngredient(repoPath, ipath)) !== seeded)
+          throw new Error(`seed write verification failed for ${ipath}: the readback does not match the seed form`);
+      }
+      await this.api.addAndCommit(repoPath, 'Seed the fifty stories (tC4)');
+    } catch (error) {
+      await this.api.deleteRepo(repoPath).catch(() => {});
+      throw error;
+    }
+    return { repoPath };
+  }
+
   /** Open a project. `hooks.onProgress` (issue #95) reports the journal read
    * segment by segment, then the state check; the app shows a determinate
    * indicator from it when an open is slow. */
@@ -1266,6 +1307,7 @@ export class JournalingStore implements BurritoStore {
     try {
       const meta = await this.api.getMetadataRaw(repo);
       scope = (meta?.type?.flavorType?.currentScope ?? {}) as Record<string, string[]>;
+      this.registerIngredients = !isObsMetadata(meta); // PLATFORM-NOTES #37
     } catch (error) {
       throw new Error(
         `refuse to inventory ${repo}: the project scope could not be read ` +
@@ -2804,7 +2846,7 @@ export class JournalingStore implements BurritoStore {
     } finally {
       await this.pruneConvergedIntents();
     }
-    await this.api.remakeIngredients(repo);
+    if (this.registerIngredients) await this.api.remakeIngredients(repo); // never on OBS (PLATFORM-NOTES #37)
     await this.verifyCheckpointScope(repo, foldOut);
     await this.api.addAndCommit(repo, message);
   }
@@ -2919,6 +2961,14 @@ export class ProjectReader {
 
   readBook(book: string): Promise<{ usfm: string; md5: string }> {
     return this.boundRaw().readBook(book);
+  }
+
+  listStories(): Promise<number[]> {
+    return this.boundRaw().listStories();
+  }
+
+  readStory(story: number): Promise<{ bytes: string; md5: string; story: Story }> {
+    return this.boundRaw().readStory(story);
   }
 
   readSettings(): Promise<SettingsFile | null> {

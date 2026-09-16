@@ -47,7 +47,7 @@ Owner of increment numbers: the GitHub milestones, mirrored in `docs/ROADMAP.md`
 | J17 | translator | Exchange | Receive a project and continue offline | Phase 2 | none |
 | J18 | translator | Check | Resolve a verse fork | Phase 2 | none |
 | J19 | consultant | Check | Record findings on a translation | Phase 2 | none |
-| J20 | facilitator | Start | Create an OBS project | increment 7 (#287; D74) | `e2e/j20-obs-create.spec.ts` (to write, #292) |
+| J20 | facilitator | Start | Create an OBS project | built (2026-09-16; #287, D74) | `e2e/j20-obs-create.spec.ts` |
 | J21 | translator | Translate | Translate a story frame by frame | increment 7 (#289; D74) | `e2e/j21-obs-draft.spec.ts` (to write, #292) |
 | J22 | translator | Check | Check an OBS story | increment 7 (#291; D74; first to slip) | `e2e/j22-obs-check.spec.ts` (to write, #292) |
 | J23 | facilitator | Deliver | Export an OBS project as Markdown and PDF | increment 8 (with J7, one PDF path; D74) | `e2e/j07-publish.spec.ts` (OBS cases to add) |
@@ -234,7 +234,7 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   `currentScope` equals the template's table; front and back files copied from the gateway
   source. The harness validates it as an OBS project (BURRITO-SPEC §10).
 - MUST NOT: offer a story subset; copy source text into a frame; rewrite an image line.
-- Proof: `e2e/j20-obs-create.spec.ts` (#292). Owner: Increment 7 (#287).
+- Proof: `e2e/j20-obs-create.spec.ts` (written with #287; #292 extends it). Owner: Increment 7 (#287).
 
 ### J21 Translate a story frame by frame
 

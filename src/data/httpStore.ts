@@ -413,7 +413,13 @@ export class HttpStore {
   /** The story numbers on disk, ascending: every `content/NN.md` the platform
    * lists (R-10.2.2). */
   async listStories(): Promise<number[]> {
-    const paths = await this.api.listPaths(this.repo());
+    return this.listStoriesOf(this.repo());
+  }
+
+  /** The same listing for a repository this store is not bound to (creation
+   * seeds the fifty stories before the project is opened). */
+  async listStoriesOf(repoPath: string): Promise<number[]> {
+    const paths = await this.api.listPaths(repoPath);
     return paths
       .map(storyNumberOf)
       .filter((n): n is number => n !== null)

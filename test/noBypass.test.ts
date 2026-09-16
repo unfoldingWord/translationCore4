@@ -42,6 +42,7 @@ const RAW_MUTATIONS = [
   '.remakeIngredients(',
   '.addAndCommit(',
   '.newTextTranslation(',
+  '.newObsResource(',
   '.newScriptureBook(',
   '.deleteRepo(',
 ];

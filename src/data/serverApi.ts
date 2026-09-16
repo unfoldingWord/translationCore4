@@ -108,6 +108,17 @@ export interface ServerVersionInfo {
   [key: string]: unknown;
 }
 
+/** POST /git/new-obs-resource (BURRITO-SPEC §10, D74): the platform copies its
+ * `text_stories` template, stamps `metadata.json` from the template by string
+ * replacement, and makes the initial commit [VERIFIED — pankosmia-web 0.18.5
+ * (99fd9be), `src/endpoints/git2/new_obs_resource.rs`, 2026-09-16]. */
+export interface NewObsResourceParams {
+  content_name: string;
+  /** Becomes the repo directory name under _local_/_local_/ — validated as a path segment. */
+  content_abbr: string;
+  content_language_code: string;
+}
+
 /** POST /git/new-text-translation payload (docs/ARCHITECTURE.md §3.1, D25). */
 export interface NewTextTranslationParams {
   content_name: string;
@@ -460,6 +471,19 @@ export class ServerApi {
       book_abbr: params.book_abbr ?? '',
       add_cv: params.add_cv ?? false,
       versification: params.versification,
+      branch_name: null,
+    });
+  }
+
+  /** POST /git/new-obs-resource — the template repo with the fifty stories
+   * and the initial commit (see NewObsResourceParams). A code the BCP47 lookup
+   * does not know is stored as `x-<code>` by the server, never rejected. */
+  async newObsResource(params: NewObsResourceParams): Promise<void> {
+    assertSafeSegment(params.content_abbr, `content_abbr ${JSON.stringify(params.content_abbr)}`);
+    await this.post('/git/new-obs-resource', {
+      content_name: params.content_name,
+      content_abbr: params.content_abbr,
+      content_language_code: params.content_language_code,
       branch_name: null,
     });
   }

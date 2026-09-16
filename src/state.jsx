@@ -586,6 +586,27 @@ async function readHelpArticle(apiClient, kind, set, category, slug) {
   return null;
 }
 
+/** An OBS project's draft percentage (D74): frames with a non-empty paragraph
+ * over the fixed frame total of the fifty stories, read through the story
+ * parser; the title (frame 0) is not a frame. Any drafted frame shows as at
+ * least 1% — one frame of the ~600 rounds to 0, and a first save must move the
+ * tile. null when a read failed: unknown, never a false 0% (D30). */
+async function obsDraftPercent(reader) {
+  let frames = 0;
+  let drafted = 0;
+  try {
+    for (const n of await reader.listStories()) {
+      const { story } = await reader.readStory(n);
+      frames += story.frames.length;
+      drafted += story.frames.filter((f) => f.text !== '').length;
+    }
+  } catch {
+    return null;
+  }
+  if (drafted === 0) return 0;
+  return Math.max(1, Math.round((drafted / frames) * 100));
+}
+
 async function storedGatewayDecisions(store, books) {
   const stored = [];
   const md5s = {};
@@ -4009,6 +4030,70 @@ export function AppProvider({ children }) {
       patchNp: (patch) =>
         dispatch({ type: 'set', patch: { np: { ...stateRef.current.np, ...patch } } }),
 
+      // ---- New Open Bible Stories (J20, #287; D74): language, name and the
+      //      gateway set — no books, no stories, no versification ----
+      openNewObs: () =>
+        dispatch({
+          type: 'set',
+          patch: {
+            modal: 'newObs',
+            np: { kind: 'obs', name: '', langName: '', code: '', dir: 'ltr', font: SCRIPT_FONTS[0], busy: false, error: null },
+          },
+        }),
+
+      createObs: async () => {
+        const w = stateRef.current.np;
+        if (w.busy) return; // reentrancy guard: one create at a time
+        const validation = validateNewBible(w);
+        if (validation.error) return a.patchNp({ error: validation.error });
+        const { abbr } = validation;
+        a.patchNp({ busy: true, error: null });
+        const store = new JournalingStore({ api });
+        const target = `_local_/_local_/${abbr}`;
+        let existing;
+        try {
+          existing = await api.listLocalRepos();
+        } catch {
+          return a.patchNp({ busy: false, error: t('wizard.error') });
+        }
+        if (existing.includes(target)) {
+          return a.patchNp({ busy: false, error: t('wizard.nameInUse', { abbr }) });
+        }
+        try {
+          const { repoPath } = await store.createObsProject({
+            content_name: w.name.trim(),
+            content_abbr: abbr,
+            content_language_code: w.code.trim(),
+          });
+          await store.open(repoPath);
+          // The same pins and settings a Bible project gets at creation: the
+          // bundled English suite (which carries the OBS members, #288 / D75)
+          // with coverage recorded at pin time, and the language settings the
+          // platform does not record (D28 addendum).
+          const freshPins = pinsPreferringInstalled(
+            INSTALLED_SUITE,
+            await readInstalled(api, STORAGE_ID),
+          );
+          const { coverage: pinCoverage } = await a.resolutionContext();
+          await store.writeResources(backfillCoverage(freshPins, pinCoverage).resources, null);
+          await store.writeSettings({
+            schemaVersion: 1,
+            checkingLanguage: 'en',
+            textDirection: w.dir,
+            textFont: w.font,
+            languageName: w.langName.trim() || null,
+          }, null);
+          await store.commit('Project created (tC4 Increment 7)');
+          await markUsed(repoPath); // creation counts as use (owner, 2026-07-31)
+          await refreshProjects();
+          a.closeModal(); // the story screen is J21 (#289): Home shows the new tile
+        } catch (e) {
+          a.patchNp({ busy: false, error: e?.reason || e?.message || t('wizard.error') });
+        } finally {
+          store.dispose(); // #94: a throwaway store's fold worker
+        }
+      },
+
       createBible: async () => {
         const w = stateRef.current.np;
         if (w.busy) return; // reentrancy guard: one create at a time
@@ -4240,6 +4325,22 @@ export function AppProvider({ children }) {
         // An invalidation during the read (an edit, a new book) must win over
         // these soon-stale percentages.
         const gen = progressGen.get(project.id) || 0;
+        // An OBS project (D74): one percentage over the fifty stories.
+        const loadObs = async () => {
+          const reader = new ProjectReader({ api });
+          try {
+            await reader.open(project.id);
+          } catch {
+            return;
+          }
+          const pct = await obsDraftPercent(reader);
+          if ((progressGen.get(project.id) || 0) !== gen) return;
+          dispatch({
+            type: 'set',
+            patch: { progressByProject: { ...stateRef.current.progressByProject, [project.id]: { OBS: pct } } },
+          });
+        };
+        if (project.flavor === 'textStories') return loadObs();
         // No upper bound on book count: a project with more than 12 books
         // shows only its in-progress books by default, and that filter needs
         // every book's progress.

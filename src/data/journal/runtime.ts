@@ -28,6 +28,7 @@ import { toNfc as toNfcRef } from '../../../journal/grammar.mjs';
 import {
   applyStoryState as applyStoryStateRef,
   parseStory as parseStoryRef,
+  seedStory as seedStoryRef,
   storyIpath as storyIpathRef,
   writeFrame as writeFrameRef,
   writeRef as writeRefRef,
@@ -107,6 +108,8 @@ export const parseStory = parseStoryRef as (bytes: string) => Story;
 export const writeFrame = writeFrameRef as (bytes: string, frame: number, text: string) => string;
 export const writeTitle = writeTitleRef as (bytes: string, text: string) => string;
 export const writeRef = writeRefRef as (bytes: string, text: string) => string;
+/** R-10.2.4: the seed form of a template story — the title reduced to `# N.`. */
+export const seedStory = seedStoryRef as (templateBytes: string) => string;
 export const applyStoryState = applyStoryStateRef as (
   baseBytes: string,
   state: FoldOutput['stories'][string],
