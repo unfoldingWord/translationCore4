@@ -17,7 +17,7 @@
 // Runs everywhere the issue requires: in CI against fixture projects
 // (test/journalVerify.test.ts and the store suites), and from the rig journey
 // teardown after every journey that mutates a project (e2e/helpers/rig.ts).
-import { ServerApi, ServerApiError } from '../serverApi';
+import { ServerApi, ServerApiError, type BurritoMetadata } from '../serverApi';
 import { md5Hex } from '../httpStore';
 import { actorSlugError, isTs } from '../../../journal/grammar.mjs';
 import { segmentName, segmentTs, validateSegment, type JournalEvent } from './seal';
@@ -25,7 +25,10 @@ import {
   classifyDivergence,
   fold,
   derivedProjections,
+  isObsBaseIngredient,
+  isObsMetadata,
   isUnjournaledIngredient,
+  storyNumberOf,
   EMPTY_CHECKPOINT_DOCUMENTS,
   type FoldOutput,
 } from './runtime';
@@ -61,6 +64,19 @@ export interface VerifierReport {
 
 const JOURNAL_PREFIX = 'checking/journal/';
 
+/** The (actor, ts) a journal path names — or the reason it names none.
+ * `null` is the actor identity record, which is not a stream. */
+const segmentPathOf = (path: string): { actor: string; ts: string } | { reason: string } | null => {
+  const parts = path.slice(JOURNAL_PREFIX.length).split('/');
+  if (parts.length === 2 && parts[1] === 'actor.json') return null; // identity record, not stream
+  if (parts.length !== 3 || parts[1] !== 'segments') return { reason: 'not-a-segment-path' };
+  const [actor, , name] = parts;
+  if (actorSlugError(actor)) return { reason: 'actor-slug' };
+  const ts = segmentTs(name);
+  if (!isTs(ts) || segmentName(ts) !== name) return { reason: 'misnamed' };
+  return { actor, ts };
+};
+
 /** Read + validate every journal segment over the ingredient surface with the
  * SAME conformance reader the store uses. Nothing invalid is dropped silently. */
 const readJournal = async (
@@ -72,22 +88,13 @@ const readJournal = async (
   const invalidSegments: Array<{ path: string; reason: string }> = [];
   for (const path of paths) {
     if (!path.startsWith(JOURNAL_PREFIX)) continue;
-    const parts = path.slice(JOURNAL_PREFIX.length).split('/');
-    if (parts.length === 2 && parts[1] === 'actor.json') continue; // identity record, not stream
-    if (parts.length !== 3 || parts[1] !== 'segments') {
-      invalidSegments.push({ path, reason: 'not-a-segment-path' });
+    const named = segmentPathOf(path);
+    if (named === null) continue;
+    if ('reason' in named) {
+      invalidSegments.push({ path, reason: named.reason });
       continue;
     }
-    const [actor, , name] = parts;
-    if (actorSlugError(actor)) {
-      invalidSegments.push({ path, reason: 'actor-slug' });
-      continue;
-    }
-    const ts = segmentTs(name);
-    if (!isTs(ts) || segmentName(ts) !== name) {
-      invalidSegments.push({ path, reason: 'misnamed' });
-      continue;
-    }
+    const { actor, ts } = named;
     let raw: string;
     try {
       raw = await api.readIngredient(repoPath, path);
@@ -117,6 +124,81 @@ const readJournal = async (
   return { events, invalidSegments };
 };
 
+/** The real project's derived bytes: everything except the journal, the
+ * tolerated unjournaled classes, and (§10, R-10.2.1) the OBS front and back
+ * matter and license — copied, never derived, outside the compare like audio/. */
+const readDerivedDisk = async (api: ServerApi, repoPath: string, paths: string[]): Promise<Record<string, string>> => {
+  const diskFiles: Record<string, string> = {};
+  for (const path of paths) {
+    if (path.startsWith(JOURNAL_PREFIX) || isObsBaseIngredient(path)) continue;
+    try {
+      diskFiles[path] = await api.readIngredient(repoPath, path);
+    } catch (error) {
+      if (error instanceof ServerApiError && error.isNotFound) continue;
+      throw error;
+    }
+  }
+  return diskFiles;
+};
+
+/** The §5.2 `resource` resolution records, harvested from the on-disk decision
+ * files (derive-time state the journal does not carry). */
+const resolutionsOf = (diskFiles: Record<string, string>): Record<string, Record<string, unknown>> => {
+  const resolutions: Record<string, Record<string, unknown>> = {};
+  for (const [ipath, text] of Object.entries(diskFiles)) {
+    const m = /^checking\/(translationWords|translationNotes)\/([A-Z0-9]{3})\.json$/.exec(ipath);
+    if (!m) continue;
+    try {
+      const resource = (JSON.parse(text) as { resource?: Record<string, unknown> }).resource;
+      if (resource) (resolutions[m[1]] ??= {})[m[2]] = resource;
+    } catch {
+      /* unparseable — the byte compare reports it */
+    }
+  }
+  return resolutions;
+};
+
+/** metadata.json is verified semantically (server-owned bytes, D28): the scope
+ * against the fold (R-8.7.2) — except for an OBS project, whose scope is the
+ * template's table, not fold state (R-10.2.3) — and no unmaterializable overlay. */
+const metadataProblemsOf = (baseMetadata: BurritoMetadata, foldOut: FoldOutput): string[] => {
+  const problems: string[] = [];
+  const scope = (baseMetadata?.type?.flavorType?.currentScope ?? {}) as Record<string, string[]>;
+  if (isObsMetadata(baseMetadata)) {
+    /* no scope check */
+  } else if (JSON.stringify(Object.keys(scope).sort()) !== JSON.stringify(Object.keys(foldOut.scope).sort()))
+    problems.push(
+      `currentScope books [${Object.keys(scope).sort().join(', ')}] != fold scope [${Object.keys(foldOut.scope).sort().join(', ')}] (R-8.7.2)`,
+    );
+  else
+    for (const [book, value] of Object.entries(foldOut.scope))
+      if (JSON.stringify(scope[book]) !== JSON.stringify(value))
+        problems.push(`currentScope["${book}"] ${JSON.stringify(scope[book])} != fold ${JSON.stringify(value)}`);
+  const overlayPaths = [...Object.keys(foldOut.projectMeta), ...foldOut.projectMetaRemoved];
+  if (overlayPaths.length)
+    problems.push(
+      `a project.meta.set overlay is folded (${overlayPaths.join(', ')}) but the platform ` +
+        `cannot materialize it over HTTP (D28) — unverifiable, treated as a failure`,
+    );
+  return problems;
+};
+
+/** §10.7: the disk story files are the BASE the folded frames splice onto. */
+const storyBasesOf = (diskFiles: Record<string, string>): Record<number, string> => {
+  const bases: Record<number, string> = {};
+  for (const [ipath, text] of Object.entries(diskFiles)) {
+    const story = storyNumberOf(ipath);
+    if (story !== null) bases[story] = text;
+  }
+  return bases;
+};
+
+/** §10.7: a story the fold never touched derives to its own bytes. */
+const addUnfoldedStories = (projections: Record<string, string>, diskFiles: Record<string, string>): void => {
+  for (const [ipath, text] of Object.entries(diskFiles))
+    if (storyNumberOf(ipath) !== null && !Object.hasOwn(projections, ipath)) projections[ipath] = text;
+};
+
 /**
  * Verify that `repoPath`'s derived files are exactly the fold of its journal.
  *
@@ -133,18 +215,8 @@ export const verifyProjectAgainstJournal = async (
   // 1. The journal, validated by the conformance reader.
   const { events, invalidSegments } = await readJournal(api, repoPath, paths);
 
-  // 2. The real project's derived bytes (everything except the journal and the
-  //    tolerated unjournaled classes).
-  const diskFiles: Record<string, string> = {};
-  for (const path of paths) {
-    if (path.startsWith(JOURNAL_PREFIX)) continue;
-    try {
-      diskFiles[path] = await api.readIngredient(repoPath, path);
-    } catch (error) {
-      if (error instanceof ServerApiError && error.isNotFound) continue;
-      throw error;
-    }
-  }
+  // 2. The real project's derived bytes.
+  const diskFiles = await readDerivedDisk(api, repoPath, paths);
 
   // 3. Fold + generate the exhaustive derived set into a disposable tree. A
   //    refusal here (a corrupt/incomplete journal) is REPORTED, never thrown:
@@ -167,42 +239,21 @@ export const verifyProjectAgainstJournal = async (
     return failed(`fold refused: ${String((error as Error).message ?? error)}`);
   }
   const baseMetadata = await api.getMetadataRaw(repoPath);
-  const resolutions: Record<string, Record<string, unknown>> = {};
-  for (const [ipath, text] of Object.entries(diskFiles)) {
-    const m = /^checking\/(translationWords|translationNotes)\/([A-Z0-9]{3})\.json$/.exec(ipath);
-    if (!m) continue;
-    try {
-      const resource = (JSON.parse(text) as { resource?: Record<string, unknown> }).resource;
-      if (resource) (resolutions[m[1]] ??= {})[m[2]] = resource;
-    } catch {
-      /* unparseable — the byte compare reports it */
-    }
-  }
   let projections: Record<string, string>;
   try {
-    projections = derivedProjections(foldOut, { baseMetadata, resolutions });
+    projections = derivedProjections(foldOut, {
+      baseMetadata,
+      resolutions: resolutionsOf(diskFiles),
+      baseStories: storyBasesOf(diskFiles),
+    });
   } catch (error) {
     return failed(`checkpoint materialization refused: ${String((error as Error).message ?? error)}`);
   }
+  addUnfoldedStories(projections, diskFiles);
 
   // 4. metadata.json is verified semantically (server-owned bytes, D28).
   delete projections['metadata.json'];
-  const metadataProblems: string[] = [];
-  const scope = (baseMetadata?.type?.flavorType?.currentScope ?? {}) as Record<string, string[]>;
-  if (JSON.stringify(Object.keys(scope).sort()) !== JSON.stringify(Object.keys(foldOut.scope).sort()))
-    metadataProblems.push(
-      `currentScope books [${Object.keys(scope).sort().join(', ')}] != fold scope [${Object.keys(foldOut.scope).sort().join(', ')}] (R-8.7.2)`,
-    );
-  else
-    for (const [book, value] of Object.entries(foldOut.scope))
-      if (JSON.stringify(scope[book]) !== JSON.stringify(value))
-        metadataProblems.push(`currentScope["${book}"] ${JSON.stringify(scope[book])} != fold ${JSON.stringify(value)}`);
-  const overlayPaths = [...Object.keys(foldOut.projectMeta), ...foldOut.projectMetaRemoved];
-  if (overlayPaths.length)
-    metadataProblems.push(
-      `a project.meta.set overlay is folded (${overlayPaths.join(', ')}) but the platform ` +
-        `cannot materialize it over HTTP (D28) — unverifiable, treated as a failure`,
-    );
+  const metadataProblems = metadataProblemsOf(baseMetadata, foldOut);
 
   // 5. Byte-compare, enumerating from the union of both sets (a deleted derived
   //    file is divergence too — R-8.7.5).

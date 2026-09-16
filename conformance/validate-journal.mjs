@@ -4592,6 +4592,27 @@ const sameRegister = (a, b) => {
       inSet && divergence && scopeKept && bibleReconstructed && noBase && tooFar && noVrsNeeded);
   }
 
+  // JC-33f — the story projection is IDEMPOTENT: a base file that already carries the folded
+  // state projects to itself, so the app may refresh its base after every install (#286).
+  // Clearing the LAST frame and then adding the reference line is where the two writers
+  // once disagreed on the empty frame's spacing (one blank line from writeRef, three from
+  // writeFrame(F, '') before a reference — Codex round 1 of #286): the negative is the
+  // pre-fix bytes, which the check names.
+  {
+    const state = { frames: { 16: '' }, ref: 'Genesis 1-2' };
+    const once = storyMod.applyStoryState(seed01, state);
+    const twice = storyMod.applyStoryState(once, state);
+    const viaWriters = storyMod.writeRef(storyMod.writeFrame(seed01, 16, ''), 'Genesis 1-2');
+    const preFix = once.replace(/\n\n\n\n_Genesis 1-2_\n$/, '\n\n_Genesis 1-2_\n');
+    const withText = { frames: { 16: 'Último' }, ref: 'Genesis 1-2' };
+    const onceText = storyMod.applyStoryState(seed01, withText);
+    check('JC-33f: the story projection is idempotent — applying a folded state onto a file that already carries it is a no-op, for an EMPTY last frame followed by a reference line (the empty frame keeps the seed form\'s three blank lines before the reference, from writeRef and from writeFrame alike) and for a text-bearing last frame; the pre-fix one-blank-line form is not a fixed point',
+      once === twice && viaWriters === once && once.endsWith('.jpg)\n\n\n\n_Genesis 1-2_\n') &&
+        storyMod.applyStoryState(onceText, withText) === onceText &&
+        preFix !== once && storyMod.applyStoryState(preFix, state) === once,
+      JSON.stringify({ tail: once.slice(-24), preFixTail: preFix.slice(-22) }));
+  }
+
   // JC-33e — version policy: every v: 1 op still validates at v: 1 and folds unchanged; the
   // two story ops and the story targets are v: 2 only; v: 3 is unknown.
   {

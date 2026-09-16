@@ -25,7 +25,16 @@ import { reconcileUsfm as reconcileUsfmRef, seedFromSidecars as seedFromSidecars
 import { makeClock as makeClockRef } from '../../../journal/hlc.mjs';
 import { normalizeEvent as normalizeEventRef } from '../../../journal/schema.mjs';
 import { toNfc as toNfcRef } from '../../../journal/grammar.mjs';
+import {
+  applyStoryState as applyStoryStateRef,
+  parseStory as parseStoryRef,
+  storyIpath as storyIpathRef,
+  writeFrame as writeFrameRef,
+  writeRef as writeRefRef,
+  writeTitle as writeTitleRef,
+} from '../../../journal/story.mjs';
 import type { JournalEvent } from './seal';
+import type { Story } from '../burritoStore';
 
 /** One live head as the fold reports it (liveHeads values). */
 export interface LiveHead {
@@ -82,8 +91,46 @@ export const SLOT = SLOT_REF as string;
  * Throws (refuses) on any missing mandatory input or path-escaping key. */
 export const derivedProjections = derivedProjectionsRef as (
   foldOut: FoldOutput,
-  opts: { baseMetadata: unknown; resolutions: Record<string, Record<string, unknown>> },
+  opts: {
+    baseMetadata: unknown;
+    resolutions: Record<string, Record<string, unknown>>;
+    /** §10.7 (D74): the BASE bytes of every folded story, keyed by story
+     * number — a mandatory input; a folded story with no base refuses. */
+    baseStories?: Record<number, string>;
+  },
 ) => Record<string, string>;
+
+// ---- the story module (BURRITO-SPEC §10, D74 — issue #286) ------------------
+// The ONE parser and the three writers. Each writer returns the new bytes and
+// throws on a refusal (bad text, a frame the story does not have).
+export const parseStory = parseStoryRef as (bytes: string) => Story;
+export const writeFrame = writeFrameRef as (bytes: string, frame: number, text: string) => string;
+export const writeTitle = writeTitleRef as (bytes: string, text: string) => string;
+export const writeRef = writeRefRef as (bytes: string, text: string) => string;
+export const applyStoryState = applyStoryStateRef as (
+  baseBytes: string,
+  state: FoldOutput['stories'][string],
+) => string;
+/** R-10.2.2: `content/NN.md`. */
+export const storyIpath = storyIpathRef as (story: number) => string;
+/** The inverse of storyIpath: the story number of a `content/NN.md` path, else null. */
+export const storyNumberOf = (ipath: string): number | null => {
+  const m = /^content\/(\d{2})\.md$/.exec(ipath);
+  return m ? Number(m[1]) : null;
+};
+/** R-10.1.1: is this metadata document an OBS project's (`gloss/textStories`)?
+ * Its `currentScope` is the template's table, copied verbatim (R-10.2.3) —
+ * the fold has no story scope state, so no scope check applies to it. */
+export const isObsMetadata = (meta: unknown): boolean => {
+  const flavorType = (meta as { type?: { flavorType?: { name?: string; flavor?: { name?: string } } } } | null)?.type?.flavorType;
+  return flavorType?.name === 'gloss' && flavorType?.flavor?.name === 'textStories';
+};
+/** The OBS ingredients the fold never derives and the app never writes
+ * (R-10.2.1: copied from the gateway source, byte-identical): the front and
+ * back matter and the license. Tolerated on disk like the §8.5 unjournaled
+ * classes — never divergence, never a checkpoint write. */
+export const isObsBaseIngredient = (ipath: string): boolean =>
+  ipath === 'LICENSE.md' || ipath.startsWith('content/front/') || ipath.startsWith('content/back/');
 
 /** §8.8 divergence classification over the union of projected + on-disk paths. */
 export const classifyDivergence = classifyDivergenceRef as (
