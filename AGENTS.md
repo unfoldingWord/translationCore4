@@ -96,7 +96,7 @@ that in passing while you build something else.
 
 ## Skips are not failures
 
-<!-- manifest: vitest skippedTests -->41 tests skip on a clean clone. Each names its
+<!-- manifest: vitest skippedTests -->43 tests skip on a clean clone. Each names its
 missing prerequisite (the Pankosmia rig, or a sibling `sample-burrito` checkout). Do
 not "fix" a skip by inventing the missing data, and do not report a skip as a defect.
 

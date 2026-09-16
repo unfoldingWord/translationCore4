@@ -82,6 +82,11 @@ export default function StoryDraft() {
               )}
             </Callout>
           )}
+          {s.storyImageNote && (
+            <Callout tone="info" data-testid="story-image-note" style={{ marginBottom: 18, overflowWrap: 'anywhere' }}>
+              {t('storyDraft.noPictures')} {s.storyImageNote}
+            </Callout>
+          )}
           <div style={{ marginBottom: 20 }}>
             <Overline tone="muted" style={{ marginBottom: 6 }}>{t('storyDraft.reference')}</Overline>
             <EditableUnit unit={{ kind: 'ref', story: story.number }} value={story.ref || ''} label={t('storyDraft.reference')} dir={dir} />

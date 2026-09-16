@@ -18,9 +18,10 @@ const state = {
   storyError: null,
   storySourceError: null as string | null,
   storySourceMissing: false,
+  storyImageNote: null as string | null,
   story: { number: 1, title: 'La creación', ref: 'Génesis 1', frames: [{ image: '![x](obs-01.jpg)', text: 'Al principio.' }] },
   sourceStory: { number: 1, title: 'Creation', ref: 'Genesis 1', frames: [{ image: '![x](obs-01.jpg)', text: 'In the beginning.' }] },
-  storyImages: { '1': { source: 'default', uri: 'local://obs-01.jpg' } },
+  storyImages: { '1': { source: 'default', uri: 'local://obs-01.jpg' } } as Record<string, { source: string; uri: string }>,
   project: { flavor: 'textStories', scriptDirection: 'ltr' },
 };
 
@@ -48,6 +49,17 @@ describe('OBS story draft surface', () => {
     expect(actions.stageStoryUnit).toHaveBeenCalledWith({ kind: 'frame', story: 1, frame: 1 }, 'Una nueva frase.');
     fireEvent.click(screen.getByTestId('story-2'));
     expect(actions.openStory).toHaveBeenCalledWith(2);
+  });
+
+  it('states once, not per frame, why a story has no pictures', () => {
+    state.storyImageNote = 'No picture matched this story\'s 1 image line: x lists 0 image files (paths)';
+    state.storyImages = {};
+    render(<StoryDraft />);
+    expect(screen.getByTestId('story-image-note').textContent).toContain('lists 0 image files');
+    expect(screen.queryByRole('img')).toBeNull();
+    expect(screen.getByTestId('story-frame-1').textContent).not.toContain('image');
+    state.storyImageNote = null;
+    state.storyImages = { '1': { source: 'default', uri: 'local://obs-01.jpg' } };
   });
 
   it('offers the Sources modal when the pinned gateway story is not installed', () => {

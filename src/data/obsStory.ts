@@ -6,6 +6,7 @@ import {
   DEFAULT_OBS_IMAGES,
   DEFAULT_OBS_IMAGES_LOCAL,
   obsImagePackFromMetadata,
+  obsImagePackFromPaths,
   resolveObsImage,
   type ObsImageAsset,
   type ObsImagePack,
@@ -24,21 +25,93 @@ export interface ObsStoryPresentation {
    * not a misleading download prompt. */
   sourceMissing: boolean;
   images: Record<string, ObsImageResolution>;
+  /** One report per picture pack consulted, bundled default last. */
+  imagePacks: ObsImagePackReport[];
+  /** Why no frame of this story has a picture, when the story has image lines
+   * and none resolved. Null whenever at least one frame resolved, or the story
+   * carries no image line at all. A missing picture is never a frame-level
+   * error (#289); this one line names the pack and what was read from it. */
+  imageNote: string | null;
+}
+
+export interface ObsImagePackReport {
+  pin: ResourcePin;
+  /** The local repository the pack was read from; null when the pin is not
+   * installed on this machine (pinned packs only — the default has a fixed path). */
+  localPath: string | null;
+  /** Where the filename map came from: the real file listing, the metadata
+   * ingredient table (listing unreadable), or nothing (both unreadable). */
+  via: 'paths' | 'metadata' | null;
+  /** Image files found in the pack. */
+  files: number;
+  error: string | null;
 }
 
 const safeMetadata = async (api: ServerApi, repoPath: string) => {
   try { return await api.getMetadataRaw(repoPath); } catch { return { ingredients: {} }; }
 };
 
-const imagePack = async (
+/** Read one pack's filename map. The REAL file listing is the oracle: it walks
+ * the tree on disk, so an archive whose committed `metadata.json` carries no
+ * ingredient table (a commit archive, not a DCS export; the default pack is
+ * fetched that way) still yields its pictures. The table is the fallback when
+ * the listing cannot be read. Never throws: a pack that cannot be read reports
+ * why and contributes no candidate, so a frame falls through to the next rung. */
+const readPack = async (
+  api: ServerApi,
+  pin: ResourcePin,
+  local: string,
+): Promise<{ pack: ObsImagePack; report: ObsImagePackReport }> => {
+  const uriFor = (ipath: string) => api.ingredientBytesUrl(local, ipath);
+  const count = (pack: ObsImagePack) => Object.keys(pack.images).length;
+  let listingError: string | null = null;
+  try {
+    const pack = obsImagePackFromPaths(pin, await api.listPaths(local), uriFor);
+    return { pack, report: { pin, localPath: local, via: 'paths', files: count(pack), error: null } };
+  } catch (error: unknown) {
+    listingError = String((error as Error)?.message || error);
+  }
+  try {
+    const pack = obsImagePackFromMetadata(pin, await api.getMetadataRaw(local), uriFor);
+    return { pack, report: { pin, localPath: local, via: 'metadata', files: count(pack), error: listingError } };
+  } catch (error: unknown) {
+    const metadataError = String((error as Error)?.message || error);
+    return {
+      pack: { pin, images: {} },
+      report: { pin, localPath: local, via: null, files: 0, error: `${listingError}; ${metadataError}` },
+    };
+  }
+};
+
+const pinnedPack = async (
   api: ServerApi,
   installed: InstalledMap,
   pin: ResourcePin,
-): Promise<ObsImagePack | null> => {
+): Promise<{ pack: ObsImagePack | null; report: ObsImagePackReport }> => {
   const local = installedPathFor(installed, pin);
-  if (!local) return null;
-  const metadata = await safeMetadata(api, local);
-  return obsImagePackFromMetadata(pin, metadata, (ipath) => api.ingredientBytesUrl(local, ipath));
+  if (!local) return { pack: null, report: { pin, localPath: null, via: null, files: 0, error: 'not installed' } };
+  return readPack(api, pin, local);
+};
+
+const shortPin = (pin: ResourcePin): string => `${pin.repoPath}@${pin.sha.slice(0, 12)}`;
+
+const describePack = (report: ObsImagePackReport): string => {
+  if (!report.localPath) return `${shortPin(report.pin)} is not installed`;
+  const where = `${shortPin(report.pin)} at ${report.localPath}`;
+  if (report.via === null) return `${where} could not be read (${report.error})`;
+  return `${where} lists ${report.files} image file${report.files === 1 ? '' : 's'} (${report.via})`;
+};
+
+/** The one-line reason for a story with image lines and no picture at all. */
+const noteFor = (
+  story: Story,
+  images: Record<string, ObsImageResolution>,
+  reports: ObsImagePackReport[],
+): string | null => {
+  const wanted = story.frames.filter((frame) => frame.image).length;
+  if (wanted === 0) return null;
+  if (Object.values(images).some((image) => image.uri)) return null;
+  return `No picture matched this story's ${wanted} image line${wanted === 1 ? '' : 's'}: ${reports.map(describePack).join('; ')}`;
 };
 
 const projectImageIngredients = async (
@@ -101,21 +174,19 @@ export const readObsStoryPresentation = async ({
     .map((rung) => resources?.languageSets?.[rung]?.['obs-images'])
     .filter((pin): pin is ResourcePin => !!pin);
   const packs: ObsImagePack[] = [];
+  const reports: ObsImagePackReport[] = [];
   const seen = new Set<string>();
   for (const pin of pins) {
     const key = `${pin.repoPath}|${pin.sha}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    const pack = await imagePack(api, installed, pin);
+    const { pack, report } = await pinnedPack(api, installed, pin);
+    reports.push(report);
     if (pack) packs.push(pack);
   }
   const defaultLocal = installedPathFor(installed, DEFAULT_OBS_IMAGES) ?? DEFAULT_OBS_IMAGES_LOCAL;
-  const defaultMetadata = await safeMetadata(api, defaultLocal);
-  const bundled = obsImagePackFromMetadata(
-    DEFAULT_OBS_IMAGES,
-    defaultMetadata,
-    (ipath) => api.ingredientBytesUrl(defaultLocal, ipath),
-  );
+  const { pack: bundled, report: bundledReport } = await readPack(api, DEFAULT_OBS_IMAGES, defaultLocal);
+  reports.push(bundledReport);
   const projectIngredients = await projectImageIngredients(api, projectRepo);
   const images: Record<string, ObsImageResolution> = {};
   for (let i = 0; i < target.story.frames.length; i += 1) {
@@ -127,5 +198,13 @@ export const readObsStoryPresentation = async ({
       bundled,
     );
   }
-  return { story: target.story, sourceStory, sourceError, sourceMissing, images };
+  return {
+    story: target.story,
+    sourceStory,
+    sourceError,
+    sourceMissing,
+    images,
+    imagePacks: reports,
+    imageNote: noteFor(target.story, images, reports),
+  };
 };

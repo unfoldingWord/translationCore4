@@ -27,22 +27,38 @@ export interface ObsImagePack {
   images: Record<string, ObsImageAsset | string | Array<ObsImageAsset | string>>;
 }
 
-/** Build the filename map from the pack's real Scripture Burrito ingredient
- * table. The table path, not array/file-system order, is the mapping oracle. */
-export const obsImagePackFromMetadata = (
+/** Build the filename map from a list of ingredient-relative file paths — the
+ * shape `GET /burrito/paths/<repo>` returns, which walks the REAL tree (files a
+ * sideloaded archive carries without an indexed ingredient entry still appear).
+ * Sorted, so the map never depends on listing order. */
+export const obsImagePackFromPaths = (
   pin: ResourcePin,
-  metadata: { ingredients?: Record<string, { mimeType?: string }> },
+  paths: readonly string[],
   uriFor: (ipath: string) => string,
 ): ObsImagePack => {
   const grouped: Record<string, ObsImageAsset[]> = {};
-  for (const path of Object.keys(metadata.ingredients ?? {}).sort()) {
-    if (!path.startsWith('ingredients/')) continue;
-    const ipath = path.slice('ingredients/'.length);
+  for (const ipath of [...paths].sort()) {
     const name = ipath.slice(ipath.lastIndexOf('/') + 1);
     if (!/\.(?:jpe?g|png|webp)$/i.test(name)) continue;
     (grouped[name] ??= []).push({ uri: uriFor(ipath), role: 'x-obsimages' });
   }
   return { pin, images: grouped };
+};
+
+/** Build the filename map from the pack's Scripture Burrito ingredient table.
+ * The table is only as complete as the last rescan that wrote it; a pack whose
+ * `metadata.json` lists no image files yields an empty map here, so callers
+ * prefer the real file listing (obsImagePackFromPaths) and use this as the
+ * fallback when that listing cannot be read. */
+export const obsImagePackFromMetadata = (
+  pin: ResourcePin,
+  metadata: { ingredients?: Record<string, { mimeType?: string }> },
+  uriFor: (ipath: string) => string,
+): ObsImagePack => {
+  const paths = Object.keys(metadata.ingredients ?? {})
+    .filter((path) => path.startsWith('ingredients/'))
+    .map((path) => path.slice('ingredients/'.length));
+  return obsImagePackFromPaths(pin, paths, uriFor);
 };
 
 export type ObsImageResolution =
