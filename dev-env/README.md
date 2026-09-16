@@ -77,8 +77,9 @@ Linux. The first time you start zsh, it may show the `zsh-newuser-install` menu.
 
 ### Start MSYS2 with the Windows tools
 
-The rig needs the Windows installations of Node, Rust, and Git. Close the MSYS2
-window and start the inherited-path shell from PowerShell:
+The rig needs Node 22, Git, and Rust stable with the MSVC toolchain. The required
+Rust target is `stable-x86_64-pc-windows-msvc`. Close the MSYS2 window and start the
+inherited-path shell from PowerShell:
 
 ```powershell
 $env:MSYS2_PATH_TYPE = "inherit"
@@ -97,11 +98,15 @@ node --version       # Node 22.x
 npm --version
 cargo --version
 git --version
+rustup show active-toolchain  # stable-x86_64-pc-windows-msvc
 ```
 
 If `pacman` is not found, the window is not MSYS2. If `npm` or `node` is not found,
 close the window and relaunch it with `-use-full-path`. From PowerShell,
 `where.exe node` and `where.exe npm` show where the Windows installations are.
+If the active Rust toolchain is not `stable-x86_64-pc-windows-msvc`, install the
+MSVC toolchain with `rustup toolchain install stable-x86_64-pc-windows-msvc` and
+select it before building.
 
 You may run `npm run dev` from Git Bash, PowerShell, or MSYS2 when Node and npm are
 available there. Run the rig scripts themselves from MSYS2 zsh.
