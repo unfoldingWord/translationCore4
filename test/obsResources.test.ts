@@ -2,10 +2,11 @@
 import { describe, expect, it } from 'vitest';
 import { isCompleteBibleLanguageSet, isCompleteObsLanguageSet } from '../src/data/burritoStore';
 import type { LanguageSet, ResourcesFile, ResourcePin } from '../src/data/burritoStore';
-import { languageSetFromInstalled } from '../src/data/installed';
+import { installedPathFor, languageSetFromInstalled } from '../src/data/installed';
 import { EN_HELPS, EN_OBS_IMAGES, INSTALLED_SUITE } from '../src/data/installedSuite';
-import { obsImageFileName, resolveObsImage } from '../src/data/obsImages';
-import { resolveObsSetSlot } from '../src/data/resolve';
+import { obsImageFileName, obsImagePackFromMetadata, resolveObsImage } from '../src/data/obsImages';
+import { preflightObsTool, resolveObsSetSlot } from '../src/data/resolve';
+import { obsFrameSetMismatch } from '../src/data/obsFrameSet';
 import { reposOfSet } from '../src/data/upgrade';
 
 const fs = process.getBuiltinModule('node:fs');
@@ -51,6 +52,25 @@ describe('#288 — OBS resources', () => {
     expect(r.usedFallback).toBe(true);
   });
 
+  it('preflights fallback separately from a missing exact primary pin, online and offline', () => {
+    const primary: Partial<LanguageSet> = { ...EN_HELPS, gatewayLanguage: { languageId: 'es-419', owner: 'es-419_gl' } };
+    delete primary['obs-tn'];
+    const fallbackResources = { ...resources, languageSets: { primary, fallback: EN_HELPS } } as ResourcesFile;
+    const fallback = preflightObsTool(fallbackResources, 'translationNotes', {
+      isLocal: (pin) => pin.sha === EN_HELPS['obs-tn']?.sha, online: false,
+    });
+    expect(fallback).toMatchObject({ state: 'ready', sourceLanguage: 'en', resolution: { rung: 'fallback' } });
+
+    const pinnedPrimary = { ...fallbackResources, languageSets: {
+      ...fallbackResources.languageSets,
+      primary: { ...primary, 'obs-tn': { ...EN_HELPS['obs-tn'], sha: 'a'.repeat(40) } },
+    } } as ResourcesFile;
+    expect(preflightObsTool(pinnedPrimary, 'translationNotes', { isLocal: () => false, online: false }))
+      .toMatchObject({ state: 'unavailable', sourceLanguage: 'es-419', needs: null });
+    expect(preflightObsTool(pinnedPrimary, 'translationNotes', { isLocal: () => false, online: true }))
+      .toMatchObject({ state: 'fetch', sourceLanguage: 'es-419', needs: { sha: 'a'.repeat(40) } });
+  });
+
   it('resolves images project → primary pin → fallback pin → bundled default and never changes the line', () => {
     expect(fileName).not.toBe('');
     const override = EN_OBS_IMAGES as ResourcePin;
@@ -71,10 +91,59 @@ describe('#288 — OBS resources', () => {
     expect(imageLine).toBe(fixture.split('\n').find((line) => line.startsWith('![')));
   });
 
+  it('falls through corrupt and ambiguous candidates and rejects a same-repo wrong SHA', () => {
+    const wanted = { ...EN_OBS_IMAGES, sha: '1'.repeat(40) };
+    const pinned = { ...resources, languageSets: {
+      ...resources.languageSets,
+      primary: { ...resources.languageSets.primary, 'obs-images': wanted },
+    } } as ResourcesFile;
+    const wrongSha = { pin: EN_OBS_IMAGES, images: { [fileName]: 'local://wrong-sha.jpg' } };
+    const ambiguous = { pin: wanted, images: { [fileName]: ['local://one.jpg', 'local://two.jpg'] } };
+    const corrupt = { pin: wanted, images: { [fileName]: { uri: 'local://bad.jpg', decodable: false } } };
+    const bundled = { pin: EN_OBS_IMAGES, images: { [fileName]: 'local://default.jpg' } };
+    expect(resolveObsImage(imageLine, pinned, {}, [wrongSha, ambiguous], bundled).source).toBe('default');
+    expect(resolveObsImage(imageLine, pinned, {}, [corrupt], bundled).source).toBe('default');
+    expect(resolveObsImage(imageLine, pinned, {
+      a: { uri: `local://a/${fileName}`, role: 'x-obsimages' },
+      b: { uri: `local://b/${fileName}`, role: 'x-obsimages' },
+    }, [], bundled).source).toBe('default');
+  });
+
+  it('maps the real source filename through metadata paths stably, independent of entry order', () => {
+    const ingredients = {
+      'ingredients/360px/obs-en-01-02.jpg': { mimeType: 'text/markdown' },
+      [`ingredients/360px/${fileName}`]: { mimeType: 'text/markdown' },
+    };
+    const a = obsImagePackFromMetadata(EN_OBS_IMAGES, { ingredients }, (ipath) => `local://${ipath}`);
+    const b = obsImagePackFromMetadata(EN_OBS_IMAGES, { ingredients: Object.fromEntries(Object.entries(ingredients).reverse()) }, (ipath) => `local://${ipath}`);
+    expect(a).toEqual(b);
+    expect(resolveObsImage(imageLine, resources, {}, [], a)).toMatchObject({
+      source: 'default', uri: `local://360px/${fileName}`,
+    });
+    expect(imageLine).toBe(fixture.split('\n').find((line) => line.startsWith('![')));
+  });
+
+  it('refuses structural frame-set changes but permits changed source text', () => {
+    const story = (number: number, frames: number, text = 'x') => ({
+      number, title: text, ref: null,
+      frames: Array.from({ length: frames }, (_, i) => ({ image: `![x](obs-${number}-${i}.jpg)`, text })),
+    });
+    expect(obsFrameSetMismatch([story(1, 2, 'old')], [story(1, 2, 'new')])).toBeNull();
+    expect(obsFrameSetMismatch([story(1, 2)], [story(1, 3)])).toMatch(/story 1 has 3 source frames/);
+    expect(obsFrameSetMismatch([story(1, 2)], [story(2, 2)])).toMatch(/does not match/);
+  });
+
   it('includes OBS text and image pins in atomic set upgrade discovery', () => {
     const repos = reposOfSet(EN_HELPS).map((repo) => repo.repoPath);
     expect(repos).toContain(EN_HELPS.obs?.repoPath);
     expect(repos).toContain(EN_HELPS['obs-tn']?.repoPath);
     expect(repos).toContain(EN_HELPS['obs-twl']?.repoPath);
+  });
+
+  it('reuses one exact install when primary and fallback pin the same image pack', () => {
+    const local = '_local_/_sideloaded_/uw--obs_images_360--7146d5b504f6';
+    const installed = { [local]: EN_OBS_IMAGES };
+    expect(installedPathFor(installed, EN_OBS_IMAGES)).toBe(local);
+    expect(installedPathFor(installed, { ...EN_OBS_IMAGES, sha: '0'.repeat(40) })).toBeNull();
   });
 });

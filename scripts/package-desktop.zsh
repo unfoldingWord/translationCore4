@@ -147,6 +147,10 @@ bundled_fields() {
   tag="${rest%%:*}"; sha="${rest#*:}"
   label="${tag:-${sha[1,12]}}"
   seg="${(L)owner}--$repo"
+  # The untagged default OBS pack is identity-qualified. Bootstrap never
+  # replaces a same-repo install at another commit, and the renderer cannot
+  # mistake that install for this exact pin.
+  if [ "$repo" = "obs_images_360" ]; then seg="${seg}--${sha[1,12]}"; fi
 }
 
 APP_NAME="translationCore4"

@@ -148,6 +148,13 @@ export type SetSlot =
  * the whole collection, so resolution skips the book-coverage map. */
 export type ObsSetSlot = 'obs' | 'obs-tn' | 'obs-twl' | 'obs-images';
 
+/** The existing Check tool ids keep their meaning for OBS, but read the OBS
+ * collection members instead of the Bible book members. */
+export const OBS_TOOL_SLOT: Record<Tool, Extract<ObsSetSlot, 'obs-tn' | 'obs-twl'>> = {
+  translationNotes: 'obs-tn',
+  translationWords: 'obs-twl',
+};
+
 export const resolveObsSetSlot = (
   resources: ResourcesFile,
   slot: ObsSetSlot,
@@ -238,6 +245,46 @@ const availabilityState = (
 ): PreflightState => {
   if (opts.isLocal(pin)) return 'ready';
   return opts.online ? 'fetch' : 'unavailable';
+};
+
+export interface ObsPreflight {
+  tool: Tool;
+  slot: 'obs-tn' | 'obs-twl';
+  state: Extract<PreflightState, 'ready' | 'fetch' | 'unavailable' | 'unpinned'>;
+  resolution: ReturnType<typeof resolveObsSetSlot> | null;
+  needs: ResourcePin | null;
+  /** Language of the source phrase and help rows the screen must display. */
+  sourceLanguage: string | null;
+}
+
+/** OBS preflight has no Bible coverage dimension. An existing primary pin is
+ * authoritative: when its exact SHA is absent, fetch or report it unavailable;
+ * do not silently substitute the fallback. An absent primary member may use
+ * the fallback set. */
+export const preflightObsTool = (
+  resources: ResourcesFile | null | undefined,
+  tool: Tool,
+  opts: { isLocal: (pin: ResourcePin) => boolean; online: boolean },
+): ObsPreflight => {
+  const slot = OBS_TOOL_SLOT[tool];
+  if (!resources?.languageSets) {
+    return { tool, slot, state: 'unpinned', resolution: null, needs: null, sourceLanguage: null };
+  }
+  const resolution = resolveObsSetSlot(resources, slot);
+  if (!resolution.pin || !resolution.rung) {
+    return { tool, slot, state: 'unpinned', resolution, needs: null, sourceLanguage: null };
+  }
+  const state: ObsPreflight['state'] = opts.isLocal(resolution.pin)
+    ? 'ready'
+    : opts.online ? 'fetch' : 'unavailable';
+  return {
+    tool,
+    slot,
+    state,
+    resolution,
+    needs: state === 'fetch' ? resolution.pin : null,
+    sourceLanguage: resources.languageSets[resolution.rung].gatewayLanguage.languageId,
+  };
 };
 
 const warnedUnavailablePrimary = (

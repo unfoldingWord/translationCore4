@@ -20,6 +20,7 @@ const CATALOG: Repo[] = [
   { name: 'en_t4t', flavor: 'textTranslation', topics: ['tc-ready'], book_codes: ['gen', 'jon'], description: 'Translation For Translators' },
   { name: 'en_obs', flavor: 'textStories', topics: ['tc-ready', 'obs'], book_codes: ['obs'], description: 'Open Bible Stories' },
   { name: 'en_obs-tn', flavor: 'x-notes', topics: ['tc-ready', 'obs'], book_codes: ['obs'], description: 'OBS notes' },
+  { name: 'en_obs-twl', flavor: 'x-obsarticles', topics: ['tc-ready', 'obs'], book_codes: ['obs'], description: 'OBS word links' },
   { name: 'ContentTechs', flavor: '', topics: [], book_codes: [], description: 'Not a resource' },
 ];
 
@@ -49,6 +50,15 @@ describe('packageRows — role assignment against the real catalog shape', () =>
   it('skips repos without the tc-ready topic and OBS resources', () => {
     expect(rows.some((r) => r.repo === 'ContentTechs')).toBe(false);
     expect(rows.some((r) => r.repo.startsWith('en_obs'))).toBe(false);
+  });
+
+  it('OBS mode offers story text, OBS helps and shared articles without Bible-only downloads', () => {
+    const rows = packageRows(CATALOG, 'OBS', {}, 'obs');
+    expect(rows.map((row) => row.repo).sort()).toEqual(
+      ['en_obs', 'en_obs-tn', 'en_obs-twl', 'en_ta', 'en_tw'].sort(),
+    );
+    expect(rows.find((row) => row.repo === 'en_obs')?.fixed).toBe(true);
+    expect(rows.some((row) => row.repo === 'en_tn' || row.repo === 'en_ult')).toBe(false);
   });
 });
 

@@ -280,3 +280,47 @@ describe('applying the change', () => {
     expect(direct).toContain('coverage,');
   });
 });
+
+describe('#288 OBS gateway changes', () => {
+  const obsSet = (base: LanguageSet, token: string): LanguageSet => ({
+    ...base,
+    obs: pin(`${base.gatewayLanguage.owner}/${base.gatewayLanguage.languageId}_obs`, token),
+    'obs-tn': pin(`${base.gatewayLanguage.owner}/${base.gatewayLanguage.languageId}_obs-tn`, token),
+    'obs-twl': pin(`${base.gatewayLanguage.owner}/${base.gatewayLanguage.languageId}_obs-twl`, token),
+  });
+  const oldPrimary = obsSet(ES, 'old');
+  const nextPrimary = obsSet(FR, 'next');
+  const fallback = obsSet(EN, 'fallback');
+
+  it('counts OBS decisions against the collection slot and keeps the fallback unchanged', () => {
+    const prior = oldPrimary['obs-tn']!;
+    const decisionFile = {
+      ...file(prior.repoPath, prior.version!, 3),
+      book: 'OBS',
+      resource: { repoPath: prior.repoPath, sha: prior.sha, version: prior.version },
+    } as DecisionFile;
+    const consequences = consequencesOfGatewayChange(
+      [{ tool: 'translationNotes', book: 'OBS', file: decisionFile }],
+      { primary: nextPrimary, fallback },
+      {},
+      'obs',
+    );
+    expect(consequences).toMatchObject({ decisionsAtRisk: 3, harmless: false });
+
+    const before = { schemaVersion: 2, languageSets: { primary: oldPrimary, fallback }, resources: {} } as ResourcesFile;
+    const after = applyGatewayChange(before, nextPrimary);
+    expect(after.languageSets.fallback).toBe(fallback);
+    expect(before.languageSets.primary).toBe(oldPrimary); // cancel = do not apply; preview cannot mutate it
+  });
+
+  it('treats an absent primary OBS member as fallback, but blocks when neither set has it', () => {
+    const affected = [{ tool: 'translationNotes', book: 'OBS' }] as const;
+    const primaryWithoutNotes = { ...nextPrimary, 'obs-tn': undefined } as unknown as LanguageSet;
+    const withFallback = { schemaVersion: 2, languageSets: { primary: primaryWithoutNotes, fallback }, resources: {} } as ResourcesFile;
+    expect(uncoveredByChange(affected, withFallback, {}, 'obs')).toEqual([]);
+    const fallbackWithoutNotes = { ...fallback, 'obs-tn': undefined } as unknown as LanguageSet;
+    expect(uncoveredByChange(affected, {
+      ...withFallback, languageSets: { primary: primaryWithoutNotes, fallback: fallbackWithoutNotes },
+    }, {}, 'obs')).toEqual([{ tool: 'translationNotes', book: 'OBS' }]);
+  });
+});

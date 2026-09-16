@@ -15,6 +15,8 @@ import { validateSegment, type JournalEvent } from '../src/data/journal/seal';
 import { fold, writeFrame as spliceFrame } from '../src/data/journal/runtime';
 import { verifyProjectAgainstJournal, describeVerifierReport } from '../src/data/journal/verify';
 import { journalingRig, memKv, tickingNow, type JournalingRig } from './helpers/journalingRig';
+import { INSTALLED_SUITE } from '../src/data/installedSuite';
+import type { ResourcesFile } from '../src/data/burritoStore';
 
 // vite-plugin-node-polyfills aliases node builtins even under the node
 // environment; the real ones come through process.getBuiltinModule.
@@ -79,6 +81,27 @@ const setup = async () => {
 };
 
 describe('the story path of the store (#286, §10)', () => {
+  it('#288 resource publication preserves every target story byte, including image and reference lines', async () => {
+    const { store, newStore } = await setup();
+    const before = await Promise.all((await store.listStories()).map((n) => store.readStory(n).then((got) => got.bytes)));
+    const resourcesMd5 = (await store.readResourcesWithMd5()).md5;
+    await store.applyGatewayChange({
+      resources: INSTALLED_SUITE as unknown as ResourcesFile,
+      resourcesMd5,
+      decisions: [],
+    });
+    const after = await Promise.all((await store.listStories()).map((n) => store.readStory(n).then((got) => got.bytes)));
+    expect(after).toEqual(before);
+    expect(after[0].split('\n').filter((line) => IMAGE_LINE.test(line)))
+      .toEqual(before[0].split('\n').filter((line) => IMAGE_LINE.test(line)));
+    expect(after[0].split('\n').find((line) => /^_.*_$/.test(line)))
+      .toBe(before[0].split('\n').find((line) => /^_.*_$/.test(line)));
+    const reopened = newStore();
+    await reopened.open(REPO);
+    expect((await reopened.readResources())?.languageSets.primary.obs?.sha)
+      .toBe(INSTALLED_SUITE.languageSets.primary.obs.sha);
+  });
+
   it('lists an OBS project beside a Bible project, with no book codes (Home)', async () => {
     const { rig, store } = await setup();
     await store.createProject({

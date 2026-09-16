@@ -10,6 +10,8 @@ const repo = path.resolve(__dirname, '..');
 const recipe = fs.readFileSync(path.join(__dirname, 'package-desktop.zsh'), 'utf8');
 // Source the identifier and project data from the actual packaged inputs.
 const resource = recipe.match(/"(unfoldingWord\/en_ult):/)[1].toLowerCase().replace('/', '--');
+const imagePin = recipe.match(/"uW\/obs_images_360::([0-9a-f]{40})"/)[1];
+const imageResource = `uw--obs_images_360--${imagePin.slice(0, 12)}`;
 const sample = path.join(repo, 'conformance/sample-burrito');
 function fixture(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-bootstrap-'));
@@ -18,6 +20,7 @@ function fixture(t) {
 }
 function stage(options) {
   fs.cpSync(sample, path.join(options.resourcesDir, 'resources', resource), { recursive: true });
+  fs.cpSync(sample, path.join(options.resourcesDir, 'resources', imageResource), { recursive: true });
 }
 
 test('missing bundle fails the negative control; production then seeds once and preserves user changes', (t) => {
@@ -32,6 +35,13 @@ test('missing bundle fails the negative control; production then seeds once and 
   const changed = fs.readFileSync(installed);
   bootstrap(options);
   assert.deepEqual(fs.readFileSync(installed), changed);
+  const imageInstalled = path.join(store, '_local_', '_sideloaded_', imageResource, 'metadata.json');
+  assert.equal(fs.existsSync(imageInstalled), true);
+  fs.appendFileSync(imageInstalled, '\n');
+  const imageChanged = fs.readFileSync(imageInstalled);
+  bootstrap(options);
+  assert.deepEqual(fs.readFileSync(imageInstalled), imageChanged);
+  assert.equal(fs.existsSync(path.join(store, '_local_', '_sideloaded_', 'uw--obs_images_360')), false);
   assert.deepEqual(fs.readdirSync(path.join(store, '_local_')), ['_sideloaded_']);
   assert.equal(fs.existsSync(path.join(options.home, 'pankosmia/tc4')), false);
 });

@@ -402,7 +402,12 @@ export const mergeOptionalPins = <T extends { languageSets?: Record<string, Lang
     obs: byName(`${gateway.id}_obs`),
     'obs-tn': byName(`${gateway.id}_obs-tn`),
     'obs-twl': byName(`${gateway.id}_obs-twl`),
-    'obs-images': byName(`${gateway.id}_obs-images`) ?? byName(`${gateway.id}_obs_images`),
+    // Image packs have no language-name convention. Select only a single
+    // catalogue/export-verified x-obsimages resource from the gateway owner;
+    // ambiguity leaves the optional slot absent.
+    'obs-images': ofOrg.filter((p) => p.flavor.endsWith('/x-obsimages')).length === 1
+      ? ofOrg.find((p) => p.flavor.endsWith('/x-obsimages'))
+      : undefined,
   };
   if (!built.translationQuestions && !built.simplifiedText && !built.obs && !built['obs-images']) return null;
   let changed = false;
@@ -476,7 +481,8 @@ export const languageSetFromInstalled = (
   // English publishes `_ust`; other gateways publish `_gst` (evidence in
   // gateways.ts). Either name is the language's simplified text.
   const simplified = byName(`${gateway.id}_ust`) ?? byName(`${gateway.id}_gst`);
-  const obsImages = byName(`${gateway.id}_obs-images`) ?? byName(`${gateway.id}_obs_images`);
+  const imagePacks = ofOrg.filter((p) => p.flavor.endsWith('/x-obsimages'));
+  const obsImages = imagePacks.length === 1 ? imagePacks[0] : undefined;
   const result = {
     gatewayLanguage: { languageId: gateway.id, owner: gateway.org },
     translationWords: tw,

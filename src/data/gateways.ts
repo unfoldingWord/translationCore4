@@ -100,7 +100,7 @@ export const orgForRepoName = (repoName: string): string | null => {
   // stale metadata owner records a pin no configured gateway org matches, and
   // languageSetFromInstalled hides a resource that is physically present
   // (2026-08-27 adversarial round 9).
-  const match = repoName.match(/^(.+)_(tn|tw|twl|ta|tq|gst|ust)$/);
+  const match = repoName.match(/^(.+)_(tn|tw|twl|ta|tq|gst|ust|obs|obs-tn|obs-twl)$/);
   if (!match) return null;
   const orgs = [...new Set(GATEWAYS.filter((g) => g.id === match[1]).map((g) => g.org))];
   return orgs.length === 1 ? orgs[0] : null;

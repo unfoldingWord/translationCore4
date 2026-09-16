@@ -327,6 +327,8 @@
   "gateway.keep": "Keep {lang}",
   "gateway.current": "what you have",
   "gateway.change": "Change to {lang}",
+  "gateway.imageChange": "Story images: {from} → {to}",
+  "gateway.bundledImages": "bundled default",
   "align.loading": "Opening the alignment…",
   "align.progressVerses": "{done} of {total} verses aligned",
   "align.notDraftedShort": "Not drafted yet",

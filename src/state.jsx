@@ -23,7 +23,7 @@ import { GATEWAYS, gatewayKey, DCS_HOST, orgForRepoName } from './data/gateways'
 import { fetchAndInstallPin, latestReleaseTag, identifyExistingInstall, rezip, unwrapExport, verifySideload } from './data/resourceFetch';
 import { isNotFoundError } from './data/serverApi';
 import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, mergeOptionalPins, isPinLocal, unsatisfiedProjectPinFor, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk, flavorOfMetadata } from './data/installed';
-import { TOOL_SLOT, coverageFor, preflightToolBook, recordMatchesResolution, resolutionRecord, resolveToolBook, resolveSetSlot, samePath } from './data/resolve';
+import { TOOL_SLOT, coverageFor, preflightObsTool, preflightToolBook, recordMatchesResolution, resolutionRecord, resolveToolBook, resolveSetSlot, samePath } from './data/resolve';
 import {
   deriveForProject,
   isDecided,
@@ -43,6 +43,8 @@ import { TC_READY_TOPIC } from './data/serverApi';
 import { t } from './i18n';
 import { checkpointMessage } from './data/checkpoint';
 import { INSTALLED_SUITE, SUITE_VERSION } from './data/installedSuite';
+import { obsFrameSetMismatch } from './data/obsFrameSet';
+import { parseStory, storyIpath } from './data/journal/runtime';
 export { SUITE_VERSION }; // the AddBook badge imports it from here
 
 const AppCtx = createContext(null);
@@ -98,9 +100,15 @@ const ROLE_BY_SUFFIX = {
 /** The role a catalog repo plays, or null when tC4 does not use it.
  * `<lang>_twl` is deliberately NOT offered: under D34 the tW pin is
  * `<lang>_tw`, whose export already carries the links. */
-const roleOf = (repo) => {
+const roleOf = (repo, kind = 'bible') => {
   const name = repo.name || '';
-  if (/_twl$/.test(name) || /_obs(-|$)/.test(name)) return null;
+  if (kind === 'obs') {
+    if (/_obs$/.test(name)) return { k: 'obs', name: 'Open Bible Stories', bookScoped: false, fixed: true };
+    if (/_obs-tn$/.test(name)) return { k: 'obs-notes', name: 'Translation Notes', bookScoped: false };
+    if (/_obs-twl$/.test(name)) return { k: 'obs-words', name: 'Translation Words + Links', bookScoped: false };
+    if (repo.flavor === 'x-obsimages') return { k: 'obs-images', name: 'OBS images', bookScoped: false };
+    if (/_tq$|_tn$|_twl$|_(?:ust|gst)$/.test(name) || repo.flavor === 'textTranslation') return null;
+  } else if (/_twl$/.test(name) || /_obs(?:-|$)/.test(name)) return null;
   for (const [suffix, role] of Object.entries(ROLE_BY_SUFFIX)) {
     if (name.endsWith(suffix)) return role;
   }
@@ -111,19 +119,19 @@ const roleOf = (repo) => {
  * catalog. A repo is offered only when it carries the `tc-ready` topic AND —
  * for book-scoped resources — its own `book_codes` cover the book. Coverage
  * comes from the platform, so the rows never over-promise. */
-export function packageRows(repos, book, exclude = {}) {
+export function packageRows(repos, book, exclude = {}, kind = 'bible') {
   const code = book.toUpperCase();
   const rows = [];
   for (const r of repos) {
     if (!Array.isArray(r.topics) || !r.topics.includes(TC_READY_TOPIC)) continue;
-    const role = roleOf(r);
+    const role = roleOf(r, kind);
     if (!role) continue;
     const codes = (r.book_codes || []).map((c) => c.toUpperCase());
     if (role.bookScoped && codes.length > 0 && !codes.includes(code)) continue;
     const k = `${role.k}:${r.name}`;
     rows.push({
       k,
-      name: t(role.name),
+      name: role.name.includes('.') ? t(role.name) : role.name,
       repo: r.name,
       desc: r.description || '',
       fixed: !!role.fixed,
@@ -594,6 +602,22 @@ async function storedGatewayDecisions(store, books) {
     }
   }
   return { stored, md5s };
+}
+
+async function assertObsSourceCompatible(apiClient, store, pin, installed) {
+  const local = installedPathFor(installed, pin);
+  if (!local) throw new Error(`OBS source ${pin.repoPath}@${pin.sha} is not installed`);
+  const projectNumbers = await store.listStories();
+  const sourceNumbers = (await apiClient.listPaths(local))
+    .map((ipath) => /^content\/(\d{2})\.md$/.exec(ipath)?.[1])
+    .filter(Boolean)
+    .map(Number)
+    .sort((a, b) => a - b);
+  const current = await Promise.all(projectNumbers.map((number) => store.readStory(number).then((got) => got.story)));
+  const incoming = await Promise.all(sourceNumbers.map(async (number) =>
+    parseStory(await apiClient.readIngredient(local, storyIpath(number)))));
+  const mismatch = obsFrameSetMismatch(current, incoming);
+  if (mismatch) throw new Error(`OBS source frame set is incompatible: ${mismatch}`);
 }
 
 async function gatewayChangePlan({ consequences, next, coverage, installed, stored, md5s, actions, blocked }) {
@@ -1508,8 +1532,13 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
     // resolveReadPath's installedCache is populated on a cold open.
     await actions.resolutionContext().catch(() => {});
     if (superseded()) return;
-    await actions.openBook(bookCode || summary.bookCodes[0]);
-    if (superseded()) return;
+    // OBS projects have story ingredients, not a Bible book. Their screen is
+    // supplied by #289; opening the project must still finish so its stored
+    // resource pins can load and survive reopen.
+    if (summary.flavor !== 'textStories') {
+      await actions.openBook(bookCode || summary.bookCodes[0]);
+      if (superseded()) return;
+    }
     // #183: the Home banner for a failed leave-checkpoint is cleared once a
     // project is open (a failed open keeps it beside the open error). When the
     // project opened is the one that owes that checkpoint, the checkpoint is
@@ -2609,7 +2638,8 @@ export function AppProvider({ children }) {
           dispatch({ type: 'set', patch: { checkableError: resolutionError } });
           return stateRef.current.checkable;
         }
-        const checkable = GATEWAYS.filter((g) => languageSetFromInstalled(installed, g))
+        const kind = stateRef.current.project?.flavor === 'textStories' ? 'obs' : 'bible';
+        const checkable = GATEWAYS.filter((g) => languageSetFromInstalled(installed, g, kind))
           .map(gatewayKey);
         dispatch({ type: 'set', patch: { checkable: [...new Set(checkable)], checkableError: null } });
         return checkable;
@@ -2656,7 +2686,8 @@ export function AppProvider({ children }) {
         dispatch({ type: 'patchSrc', patch: { loading: true, error: null, rows: [] } });
         try {
           const repos = await api.remoteRepos(DCS_HOST, g.org);
-          const rows = packageRows(repos, book, stateRef.current.src.exclude);
+          const kind = stateRef.current.project?.flavor === 'textStories' ? 'obs' : 'bible';
+          const rows = packageRows(repos, book, stateRef.current.src.exclude, kind);
           dispatch({ type: 'patchSrc', patch: { loading: false, rows } });
         } catch (e) {
           dispatch({
@@ -2700,14 +2731,20 @@ export function AppProvider({ children }) {
         // reported as "the suite is incomplete" for a complete suite — throw
         // the outage itself (askGatewayChange states it as gatewayError).
         if (resolutionError) throw new Error(resolutionError);
-        const proposedPrimary = languageSetFromInstalled(installed, gateway);
+        const kind = st.project.flavor === 'textStories' ? 'obs' : 'bible';
+        const proposedPrimary = languageSetFromInstalled(installed, gateway, kind);
         if (!proposedPrimary) throw new Error(t('sources.suiteIncomplete', { lang: gateway.name }));
         const { value: currentResources, md5: resourcesMd5 } = await store.readResourcesWithMd5();
         const current = currentResources ?? INSTALLED_SUITE;
+        if (kind === 'obs') await assertObsSourceCompatible(api, store, proposedPrimary.obs, installed);
         const next = backfillCoverage(applyGatewayChange(current, proposedPrimary), coverage).resources;
         const primary = next.languageSets.primary;
         const planned = await a.planResourcesChange({ next, installed, coverage });
-        return { gateway, primary, next, resourcesMd5, ...planned };
+        const imageChange = kind === 'obs' ? {
+          from: current.languageSets.primary['obs-images'] ?? null,
+          to: proposedPrimary['obs-images'] ?? null,
+        } : null;
+        return { gateway, primary, next, resourcesMd5, imageChange, ...planned };
       },
 
       /** The D36 carry-over plan for ANY change of the pin file — a gateway
@@ -2721,13 +2758,15 @@ export function AppProvider({ children }) {
         const primary = next.languageSets.primary;
         // Read every stored decision file this project has, so the count is
         // real rather than estimated.
-        const { stored, md5s } = await storedGatewayDecisions(store, st.project.bookCodes ?? []);
+        const decisionUnits = st.project?.flavor === 'textStories' ? ['OBS'] : (st.project?.bookCodes ?? []);
+        const { stored, md5s } = await storedGatewayDecisions(store, decisionUnits);
         // Affectedness is judged against the POST-CHANGE resolution (D30's
         // per-(tool, book) ladder), so the counting needs the coverage map.
         const consequences = consequencesOfGatewayChange(
           stored,
           { primary, fallback: next.languageSets.fallback ?? primary },
           coverage,
+          st.project?.flavor === 'textStories' ? 'obs' : 'bible',
         );
 
         // The resource is the primary key (tC3 precedent, 2026-08-04): the
@@ -2755,8 +2794,9 @@ export function AppProvider({ children }) {
         // scheme (unknown) — telling an offline user to install a suite
         // cannot unblock them. Coverage-blocked entries carry no reason.
         const frame = await a.projectFrame();
-        const initiallyBlocked = frame.state === 'ready'
-          ? uncoveredByChange(consequences.affected, next, coverage)
+        const obsProject = st.project?.flavor === 'textStories';
+        const initiallyBlocked = obsProject || frame.state === 'ready'
+          ? uncoveredByChange(consequences.affected, next, coverage, obsProject ? 'obs' : 'bible')
           : consequences.affected.map((entry) => ({
               tool: entry.tool,
               book: entry.book,
@@ -2852,6 +2892,11 @@ export function AppProvider({ children }) {
           if (!stillCurrent()) return null;
           const { next, planned } = await planUpgradeAfterInstall(a, offer, currentResources);
           if (!stillCurrent()) return null;
+          if (st.project?.flavor === 'textStories' && offer.upgrades.some((u) => u.slots.includes('obs'))) {
+            const after = await a.resolutionContext();
+            if (after.resolutionError) throw new Error(after.resolutionError);
+            await assertObsSourceCompatible(api, store, next.languageSets[rung].obs, after.installed);
+          }
           dispatch({
             type: 'patchUpgrade',
             patch: { installing: null, progress: null, preview: { rung, offer, next, resourcesMd5, store, repoPath, ...planned } },
@@ -3178,10 +3223,12 @@ export function AppProvider({ children }) {
         // Review of the D30 sweep: an identity-read outage must not report a
         // complete suite as incomplete (mirrors previewGatewayChange).
         if (resolutionError) throw new Error(resolutionError);
-        const primary = languageSetFromInstalled(installed, gateway);
+        const kind = stateRef.current.project?.flavor === 'textStories' ? 'obs' : 'bible';
+        const primary = languageSetFromInstalled(installed, gateway, kind);
         if (!primary) {
           throw new Error(t('sources.suiteIncomplete', { lang: gateway.name }));
         }
+        if (kind === 'obs') await assertObsSourceCompatible(api, store, primary.obs, installed);
         const next = await updateResources(
           store,
           (current) =>
@@ -3202,7 +3249,7 @@ export function AppProvider({ children }) {
        * tool. Pure read: it never fetches or changes anything. */
       runPreflight: async () => {
         const st = stateRef.current;
-        if (!st.book) return;
+        if (!st.book && st.project?.flavor !== 'textStories') return;
         const { installed, coverage, resolutionError } = await a.resolutionContext();
         if (resolutionError) {
           // Catch-to-absence sweep (D30): an identity-read outage must not
@@ -3214,11 +3261,15 @@ export function AppProvider({ children }) {
         const online = st.netEnabled;
         const out = {};
         for (const tool of Object.keys(TOOL_SLOT)) {
-          out[tool] = preflightToolBook(st.projectPins, tool, st.book, {
-            coverage,
-            isLocal: (pin) => isPinLocal(installed, pin),
-            online,
-          });
+          out[tool] = st.project?.flavor === 'textStories'
+            ? preflightObsTool(st.projectPins, tool, {
+                isLocal: (pin) => isPinLocal(installed, pin), online,
+              })
+            : preflightToolBook(st.projectPins, tool, st.book, {
+                coverage,
+                isLocal: (pin) => isPinLocal(installed, pin),
+                online,
+              });
         }
         dispatch({ type: 'set', patch: { preflight: out, preflightError: null } });
         return out;

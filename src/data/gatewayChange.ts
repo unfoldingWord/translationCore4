@@ -13,7 +13,7 @@
 // decline. They are NOT a banner discovered later when opening a book: that
 // moves the user from deciding to discovering and removes the choice.
 import type { DecisionFile, LanguageSet, ResourcesFile } from './burritoStore';
-import { pinKey, resolveToolBook } from './resolve';
+import { OBS_TOOL_SLOT, pinKey, resolveObsSetSlot, resolveToolBook } from './resolve';
 import type { Coverage, Tool } from './resolve';
 
 /** One book whose stored decisions were made against a resource the change
@@ -63,6 +63,7 @@ export const consequencesOfGatewayChange = (
   next: { primary: LanguageSet; fallback: LanguageSet },
   /** Book coverage per pinned repo — the same map the D30 ladder resolves with. */
   coverage: Coverage,
+  kind: 'bible' | 'obs' = 'bible',
 ): ChangeConsequences => {
   const nextResources = { schemaVersion: 2, languageSets: next } as unknown as ResourcesFile;
 
@@ -77,7 +78,9 @@ export const consequencesOfGatewayChange = (
       unaffectedBooks += 1; // no record: nothing states it would move
       continue;
     }
-    const after = resolveToolBook(nextResources, entry.tool, entry.book, coverage);
+    const after = kind === 'obs'
+      ? resolveObsSetSlot(nextResources, OBS_TOOL_SLOT[entry.tool])
+      : resolveToolBook(nextResources, entry.tool, entry.book, coverage);
     if (after.pin && pinKey(after.pin) === pinKey(checkedAgainst as never)) {
       unaffectedBooks += 1; // the book still resolves to what it was checked against
       continue;
@@ -113,9 +116,12 @@ export const uncoveredByChange = (
   affected: ReadonlyArray<Pick<AffectedBook, 'tool' | 'book'>>,
   nextResources: ResourcesFile,
   coverage: Coverage,
+  kind: 'bible' | 'obs' = 'bible',
 ): Array<{ tool: Tool; book: string }> =>
   affected
-    .filter((e) => !resolveToolBook(nextResources, e.tool as Tool, e.book, coverage).pin)
+    .filter((e) => !(kind === 'obs'
+      ? resolveObsSetSlot(nextResources, OBS_TOOL_SLOT[e.tool as Tool])
+      : resolveToolBook(nextResources, e.tool as Tool, e.book, coverage)).pin)
     .map((e) => ({ tool: e.tool as Tool, book: e.book }));
 
 /** Plain-language summary for the confirmation dialogue. Deliberately concrete
