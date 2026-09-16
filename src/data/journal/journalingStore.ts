@@ -1876,6 +1876,14 @@ export class JournalingStore implements BurritoStore {
       return;
     }
 
+    // §10.7: a story path the ledger does not explain is NEVER journal-ahead.
+    // An untouched story projects to its own disk bytes, so the prefix walk
+    // (b) would match any out-of-band edit trivially and regenerate over it
+    // (Codex round 1 of #286). Reconcile is undefined for stories: stop
+    // (R-10.7.5). Nothing is overwritten.
+    if (diverged.some((d) => !aheadExplained(d.ipath) && storyNumberOf(d.ipath) !== null))
+      throw new UnexplainedDivergenceError(this.mustRepo(), diverged);
+
     // (0) The ONLY divergence is a pending resolution overlay (review of
     // 2026-08-20 round 2, P2): disk matches the fold exactly under the
     // DISK-HARVESTED resolutions, so what remains is materializing the
@@ -2535,9 +2543,28 @@ export class JournalingStore implements BurritoStore {
       const current = this.projectionBytes(foldOut, ipath);
       if (current === null)
         throw new Error(`story ${story}: the project has no ${ipath} — the story set is fixed by the source (§10.2/R-10.7.5)`);
+      // R-10.7.5: an out-of-band edit is divergence and the app stops. The disk
+      // must carry exactly the current projection before a write splices onto
+      // it — unless a live ledger record still owes this path (journal-ahead
+      // lag a failed install left behind, converged by this write's own
+      // regeneration). Codex round 1 of #286: a write onto the base captured at
+      // open would erase another frame's external edit.
+      const disk = await this.readIngredientOrNull(ipath);
+      if (disk !== current && !(await this.isLedgerExplained(ipath)))
+        throw new Error(
+          `story ${story}: ${ipath} was ${disk === null ? 'deleted' : 'edited'} out of band since the last open — ` +
+            `divergence, never silently overwritten (R-10.7.5); reopen the project`,
+        );
       if (splice(current) === current) return;
       await this.publishAndRegenerate([event(foldOut, journal)], [ipath]);
     });
+  }
+
+  /** Does a live, gate-satisfied intent record still owe `ipath` (journal-ahead lag)? */
+  private async isLedgerExplained(ipath: string): Promise<boolean> {
+    const intents = await this.readIntents();
+    const journaledTs = new Set(this.events.map((e) => e.ts));
+    return this.explainedPaths(intents, journaledTs).has(ipath);
   }
 
   async addNote(book: string, chapter: number | string, verse: number | string, text: string): Promise<void> {

@@ -9,10 +9,10 @@
 // reopen, a journal-ahead recovery and an out-of-band deletion.
 import { describe, expect, it } from 'vitest';
 import { ServerApi } from '../src/data/serverApi';
-import { JournalingStore, forgetProjectQueues } from '../src/data/journal/journalingStore';
+import { JournalingStore, UnexplainedDivergenceError, forgetProjectQueues } from '../src/data/journal/journalingStore';
 import { forgetSharedClocks } from '../src/data/journal/journalStore';
 import { validateSegment, type JournalEvent } from '../src/data/journal/seal';
-import { fold } from '../src/data/journal/runtime';
+import { fold, writeFrame as spliceFrame } from '../src/data/journal/runtime';
 import { verifyProjectAgainstJournal, describeVerifierReport } from '../src/data/journal/verify';
 import { journalingRig, memKv, tickingNow, type JournalingRig } from './helpers/journalingRig';
 
@@ -221,10 +221,13 @@ describe('the story path of the store (#286, §10)', () => {
   });
 
   it('regenerates a story forward when the journal is ahead of the file (the book rule, for stories)', async () => {
-    const { store, api, newStore, project } = await setup();
-    await store.writeFrame(4, 1, 'Un texto.');
-    // the crash window: the action is published, the derived file lags
-    project.files.set('content/04.md', templateFiles()['content/04.md']);
+    const { store, api, newStore, project, rig } = await setup();
+    // the crash window: the action is published, the derived write fails, the
+    // ledger record stays — reopen owes the path and regenerates it forward
+    rig.failOn((ctx) => ctx.method === 'POST' && ctx.ipath === 'content/04.md');
+    await expect(store.writeFrame(4, 1, 'Un texto.')).rejects.toThrow(/injected failure/);
+    expect(await publishedEvents(rig)).toHaveLength(1); // published
+    expect(project.files.get('content/04.md')).toBe(templateFiles()['content/04.md']); // stale disk
     const store2 = newStore();
     await store2.open(REPO);
     expect(store2.lastOpenReport?.classification).toBe('regenerated-forward');
@@ -233,11 +236,43 @@ describe('the story path of the store (#286, §10)', () => {
     await expectVerified(api);
   });
 
+  it('stops before sealing when the story file was edited out of band since the open (R-10.7.5)', async () => {
+    const { store, rig, project } = await setup();
+    const external = spliceFrame(project.files.get('content/01.md')!, 2, 'Edición externa.');
+    project.files.set('content/01.md', external);
+    await expect(store.writeFrame(1, 1, 'Edición de la app.')).rejects.toThrow(/edited out of band/);
+    expect(await publishedEvents(rig)).toEqual([]);
+    expect(project.files.get('content/01.md')).toBe(external); // frame 2's external text survives
+    project.files.delete('content/01.md');
+    await expect(store.writeFrame(1, 1, 'Edición de la app.')).rejects.toThrow(/deleted out of band/);
+  });
+
+  it('stops on reopen when a drafted, checkpointed frame was edited out of band: never regenerated over (R-10.7.5)', async () => {
+    const { store, newStore, project } = await setup();
+    await store.writeFrame(1, 1, 'Texto del diario.');
+    await store.commit('checkpoint');
+    project.files.set('content/01.md', spliceFrame(project.files.get('content/01.md')!, 1, 'Edición externa.'));
+    await expect(newStore().open(REPO)).rejects.toThrow(UnexplainedDivergenceError);
+    expect(project.files.get('content/01.md')).toContain('Edición externa.'); // nothing overwritten
+  });
+
+  it('keeps the projection a fixed point: an emptied last frame, then the reference line, then another frame', async () => {
+    const { store, api, project } = await setup();
+    await store.writeFrame(1, 16, 'Último.');
+    await store.writeFrame(1, 16, '');
+    await store.writeRef(1, 'Génesis 1-2');
+    await expectVerified(api);
+    const tail = project.files.get('content/01.md')!.slice(-40);
+    await store.writeFrame(1, 1, 'Primero.');
+    expect(project.files.get('content/01.md')!.slice(-40)).toBe(tail); // frame 1's write left the end of the file alone
+    await expectVerified(api);
+  });
+
   it('stops on an out-of-band deletion of a drafted story: never silently repaired (R-10.7.4)', async () => {
     const { store, newStore, project } = await setup();
     await store.writeFrame(5, 1, 'Un texto.');
     project.files.delete('content/05.md');
-    await expect(newStore().open(REPO)).rejects.toThrow(/content\/05\.md is not on disk/);
+    await expect(newStore().open(REPO)).rejects.toThrow(UnexplainedDivergenceError);
   });
 
   it('keeps a Bible project on v: 1, and its v: 1 set folds with no story state', async () => {

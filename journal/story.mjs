@@ -163,10 +163,14 @@ export const writeRef = (bytes, text) => {
   const refLine = `_${text}_`;
   if (s.refIdx >= 0) { const lines = [...s.lines]; lines[s.refIdx] = refLine; return lines.join('\n'); }
   if (s.frames.length === 0) throw new Error(`story ${s.number} has no frame — a reference line follows the last frame (§10)`);
-  // no reference line yet: the region is the trailing blank lines after the last content
+  // no reference line yet: the region is the trailing blank lines after the last content.
+  // An EMPTY last frame keeps the seed form's between-lines spacing (EMPTY_FRAME_MID) in
+  // front of the new reference line — exactly what writeFrame(F, '') emits when a reference
+  // follows — so applying a folded state onto a file that already carries it is a no-op
+  // (the app's base refresh, #286; Codex round 1 of #286 found the two writers apart here).
   const lastFrame = s.frames[s.frames.length - 1];
-  const start = (lastFrame.lastText >= 0 ? lastFrame.lastText : lastFrame.imageIdx) + 1;
-  return [...s.lines.slice(0, start), '', refLine, ''].join('\n');
+  if (lastFrame.lastText < 0) return [...s.lines.slice(0, lastFrame.imageIdx + 1), ...EMPTY_FRAME_MID, refLine, ''].join('\n');
+  return [...s.lines.slice(0, lastFrame.lastText + 1), '', refLine, ''].join('\n');
 };
 
 // The seed form of a template story (R-10.2.4): the title reduced to `# N.` with no text,
