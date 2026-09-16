@@ -178,6 +178,8 @@
   "sources.ready": "✓ {book} · {lang} is ready",
   "sources.roleNotes": "Translation Notes",
   "sources.roleWords": "Translation Words + Links",
+  "sources.roleObsText": "Open Bible Stories",
+  "sources.roleObsImages": "OBS images",
   "sources.roleAcademy": "Translation Academy",
   "sources.roleQuestions": "Translation Questions",
   "sources.roleText": "Source text",

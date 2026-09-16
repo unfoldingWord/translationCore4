@@ -24,8 +24,8 @@ export const EN_HELPS = {
   // tA above are shared with Bible projects. The default image pack is stored
   // separately below, so projects need no obs-images override pin.
   obs: { repoPath: 'git.door43.org/unfoldingWord/en_obs', version: 'v9', sha: 'd39a1dc7a7557ac54e4a8fecc3462147fe7eec3b', flavor: 'gloss/textStories' },
-  'obs-tn': { repoPath: 'git.door43.org/unfoldingWord/en_obs-tn', version: 'v13', sha: 'e86138ea13f619f09f7a6dcaa60592716d407fe4', flavor: 'parascriptural/x-obsnotes' },
-  'obs-twl': { repoPath: 'git.door43.org/unfoldingWord/en_obs-twl', version: 'v3', sha: '44ebc9fafe8101665f985007d566f5036a2be85b', flavor: 'parascriptural/x-obsarticles' },
+  'obs-tn': { repoPath: 'git.door43.org/unfoldingWord/en_obs-tn', version: 'v13', sha: 'e86138ea13f619f09f7a6dcaa60592716d407fe4', flavor: 'peripheral/x-obsnotes' },
+  'obs-twl': { repoPath: 'git.door43.org/unfoldingWord/en_obs-twl', version: 'v3', sha: '44ebc9fafe8101665f985007d566f5036a2be85b', flavor: 'parascriptural/x-bcvarticles' },
 };
 
 export const EN_OBS_IMAGES = {

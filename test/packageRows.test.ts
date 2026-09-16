@@ -20,7 +20,7 @@ const CATALOG: Repo[] = [
   { name: 'en_t4t', flavor: 'textTranslation', topics: ['tc-ready'], book_codes: ['gen', 'jon'], description: 'Translation For Translators' },
   { name: 'en_obs', flavor: 'textStories', topics: ['tc-ready', 'obs'], book_codes: ['obs'], description: 'Open Bible Stories' },
   { name: 'en_obs-tn', flavor: 'x-notes', topics: ['tc-ready', 'obs'], book_codes: ['obs'], description: 'OBS notes' },
-  { name: 'en_obs-twl', flavor: 'x-obsarticles', topics: ['tc-ready', 'obs'], book_codes: ['obs'], description: 'OBS word links' },
+  { name: 'en_obs-twl', flavor: 'x-links', topics: ['tc-ready', 'obs'], book_codes: ['obs'], description: 'OBS word links' },
   { name: 'ContentTechs', flavor: '', topics: [], book_codes: [], description: 'Not a resource' },
 ];
 

@@ -54,19 +54,19 @@ for (let n = 1; n <= STORY_COUNT; n++) {
 // commit, read 2026-09-15]: the tag is the `version` label and the tag's commit is the
 // `sha` (D58). The four Bible-suite pins per set are copied from sample-burrito (same
 // provenance, docs/evidence/es419-suite-pins-2026-07-31.md). Flavors of the OBS members
-// follow D74 §9 (pankosmia's labels) [decided 2026-09-15 — D74].
+// follow D74 §9 (the labels recorded by the DCS sb-zip export) [corrected 2026-09-16 — #288].
 const bible = JSON.parse(fs.readFileSync(path.resolve('./sample-burrito/ingredients/checking/resources.json'), 'utf8'));
 const pick = (set, slot) => { const { books, ...rest } = bible.languageSets[set][slot]; return rest; };
 const OBS_PINS = {
   primary: {
     obs:       { repoPath: 'git.door43.org/es-419_gl/es-419_obs',     version: 'v2', sha: '4a239590d543df59f77d5ee624d475a7488b5fc3', flavor: 'gloss/textStories' },
-    'obs-tn':  { repoPath: 'git.door43.org/es-419_gl/es-419_obs-tn',  version: 'v2', sha: 'eaa18de94dcb7df1406cc5b20deb87053c0478ca', flavor: 'parascriptural/x-obsnotes' },
-    'obs-twl': { repoPath: 'git.door43.org/es-419_gl/es-419_obs-twl', version: 'v2', sha: 'eb5ecd974b19a123e1fe3ee9da21c89c2555d18d', flavor: 'parascriptural/x-obsarticles' },
+    'obs-tn':  { repoPath: 'git.door43.org/es-419_gl/es-419_obs-tn',  version: 'v2', sha: 'eaa18de94dcb7df1406cc5b20deb87053c0478ca', flavor: 'peripheral/x-obsnotes' },
+    'obs-twl': { repoPath: 'git.door43.org/es-419_gl/es-419_obs-twl', version: 'v2', sha: 'eb5ecd974b19a123e1fe3ee9da21c89c2555d18d', flavor: 'parascriptural/x-bcvarticles' },
   },
   fallback: {
     obs:       { repoPath: 'git.door43.org/unfoldingWord/en_obs',     version: 'v9',  sha: 'd39a1dc7a7557ac54e4a8fecc3462147fe7eec3b', flavor: 'gloss/textStories' },
-    'obs-tn':  { repoPath: 'git.door43.org/unfoldingWord/en_obs-tn',  version: 'v13', sha: 'e86138ea13f619f09f7a6dcaa60592716d407fe4', flavor: 'parascriptural/x-obsnotes' },
-    'obs-twl': { repoPath: 'git.door43.org/unfoldingWord/en_obs-twl', version: 'v3',  sha: '44ebc9fafe8101665f985007d566f5036a2be85b', flavor: 'parascriptural/x-obsarticles' },
+    'obs-tn':  { repoPath: 'git.door43.org/unfoldingWord/en_obs-tn',  version: 'v13', sha: 'e86138ea13f619f09f7a6dcaa60592716d407fe4', flavor: 'peripheral/x-obsnotes' },
+    'obs-twl': { repoPath: 'git.door43.org/unfoldingWord/en_obs-twl', version: 'v3',  sha: '44ebc9fafe8101665f985007d566f5036a2be85b', flavor: 'parascriptural/x-bcvarticles' },
     'obs-images': { repoPath: 'git.door43.org/uW/obs_images_360', sha: '7146d5b504f6b63b9e11f7dc0b18c594d0ae179d', flavor: 'peripheral/x-obsimages' },
   },
 };

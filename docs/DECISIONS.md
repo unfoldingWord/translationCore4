@@ -1478,6 +1478,10 @@ of #147.
    first hit wins: a project ingredient with role `x-obsimages`, a pinned `x-obsimages`
    burrito, the default pack. The Markdown image line keeps the source's cdn URL text and is
    never rewritten. The smoke test gains an offline picture check.
+   **Correction (2026-09-16):** DCS sb-zip export metadata at the pinned tags records the
+   OBS pin flavors as `gloss/textStories`, `peripheral/x-obsnotes`,
+   `parascriptural/x-bcvarticles`, and `peripheral/x-obsimages`; those export labels are
+   authoritative for installed and project pins [see `docs/PLATFORM-NOTES.md` §35].
 10. **Interface.** D29 and D63 unchanged: design-native on the design system, no pankosmia
     visual components; pankosmia's OBS editor is read for its parsing rules only. Understand
     and Translate use the section layout with the story as the section and the frame as the

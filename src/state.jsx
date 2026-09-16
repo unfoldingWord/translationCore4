@@ -103,10 +103,10 @@ const ROLE_BY_SUFFIX = {
 const roleOf = (repo, kind = 'bible') => {
   const name = repo.name || '';
   if (kind === 'obs') {
-    if (/_obs$/.test(name)) return { k: 'obs', name: 'Open Bible Stories', bookScoped: false, fixed: true };
-    if (/_obs-tn$/.test(name)) return { k: 'obs-notes', name: 'Translation Notes', bookScoped: false };
-    if (/_obs-twl$/.test(name)) return { k: 'obs-words', name: 'Translation Words + Links', bookScoped: false };
-    if (repo.flavor === 'x-obsimages') return { k: 'obs-images', name: 'OBS images', bookScoped: false };
+    if (/_obs$/.test(name)) return { k: 'obs', name: 'sources.roleObsText', bookScoped: false, fixed: true };
+    if (/_obs-tn$/.test(name)) return { k: 'obs-notes', name: 'sources.roleNotes', bookScoped: false };
+    if (/_obs-twl$/.test(name)) return { k: 'obs-words', name: 'sources.roleWords', bookScoped: false };
+    if (repo.flavor === 'x-obsimages') return { k: 'obs-images', name: 'sources.roleObsImages', bookScoped: false };
     if (/_tq$|_tn$|_twl$|_(?:ust|gst)$/.test(name) || repo.flavor === 'textTranslation') return null;
   } else if (/_twl$/.test(name) || /_obs(?:-|$)/.test(name)) return null;
   for (const [suffix, role] of Object.entries(ROLE_BY_SUFFIX)) {

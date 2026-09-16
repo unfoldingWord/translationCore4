@@ -4544,14 +4544,14 @@ const sameRegister = (a, b) => {
     // ("after simplifiedText") has something to be after (Codex review of #147, F8)
     for (const slot of ['translationQuestions', 'simplifiedText']) { const { books, ...rest } = bible.languageSets.fallback[slot]; base.push(pin(i++, `languageSets.fallback.${slot}`, rest)); }
     const imageEntry = { repoPath: 'git.door43.org/uW/obs_images_360', sha: '7146d5b504f6b63b9e11f7dc0b18c594d0ae179d', flavor: 'peripheral/x-obsimages' };
-    const out = fold([...base, pin(20, 'languageSets.fallback.obs'), pin(21, 'languageSets.fallback.obs-tn', { ...entry, repoPath: 'git.door43.org/unfoldingWord/en_obs-tn', sha: 'e86138ea13f619f09f7a6dcaa60592716d407fe4', version: 'v13', flavor: 'parascriptural/x-obsnotes' }),
-      pin(22, 'languageSets.fallback.obs-twl', { ...entry, repoPath: 'git.door43.org/unfoldingWord/en_obs-twl', sha: '44ebc9fafe8101665f985007d566f5036a2be85b', version: 'v3', flavor: 'parascriptural/x-obsarticles' }),
+    const out = fold([...base, pin(20, 'languageSets.fallback.obs'), pin(21, 'languageSets.fallback.obs-tn', { ...entry, repoPath: 'git.door43.org/unfoldingWord/en_obs-tn', sha: 'e86138ea13f619f09f7a6dcaa60592716d407fe4', version: 'v13', flavor: 'peripheral/x-obsnotes' }),
+      pin(22, 'languageSets.fallback.obs-twl', { ...entry, repoPath: 'git.door43.org/unfoldingWord/en_obs-twl', sha: '44ebc9fafe8101665f985007d566f5036a2be85b', version: 'v3', flavor: 'parascriptural/x-bcvarticles' }),
       pin(23, 'languageSets.fallback.obs-images', imageEntry)]);
     const doc = JSON.parse(projectResources(out.pins));
     const keys = Object.keys(doc.languageSets.fallback);
     const order = keys.includes('simplifiedText') && keys.indexOf('translationAcademy') < keys.indexOf('translationQuestions') && keys.indexOf('translationQuestions') < keys.indexOf('simplifiedText') &&
       keys.indexOf('simplifiedText') < keys.indexOf('obs') && keys.indexOf('obs') < keys.indexOf('obs-tn') && keys.indexOf('obs-tn') < keys.indexOf('obs-twl') && keys.indexOf('obs-twl') < keys.indexOf('obs-images');
-    const okProjected = doc.languageSets.fallback.obs.sha === entry.sha && doc.languageSets.fallback['obs-twl'].flavor === 'parascriptural/x-obsarticles' && doc.languageSets.fallback['obs-images'].sha === imageEntry.sha && !('obs' in doc.languageSets.primary) && order;
+    const okProjected = doc.languageSets.fallback.obs.sha === entry.sha && doc.languageSets.fallback['obs-tn'].flavor === 'peripheral/x-obsnotes' && doc.languageSets.fallback['obs-twl'].flavor === 'parascriptural/x-bcvarticles' && doc.languageSets.fallback['obs-images'].sha === imageEntry.sha && !('obs' in doc.languageSets.primary) && order;
     // the sample-burrito-obs pins file is exactly this shape, all slots §5.3-valid
     const sample = JSON.parse(fs.readFileSync(path.resolve('./sample-burrito-obs/ingredients/checking/resources.json'), 'utf8'));
     const sampleOk = ['primary', 'fallback'].every((set) => ['obs', 'obs-tn', 'obs-twl'].every((s) => pinSlotError(`languageSets.${set}.${s}`) === null && pinEntryError(`languageSets.${set}.${s}`, sample.languageSets[set][s]) === null)) &&
