@@ -48,6 +48,15 @@ crates.io `=` pin when 0.18.5+ publishes (see `docs/RISKS.md` #1).
   fixed list whose cache entry exists (see the loop in `seed.zsh`). The rig-gated
   HttpStore suite reads `en_ult`, so a rig that runs `npm run prove` needs at least:
   `zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_ult v89 <sha from src/data/installedSuite.js>`.
+  For the OBS Translate journey, cache the exact gateway set and the installer
+  picture pack as well; `seed.zsh` installs them at their identity-qualified
+  paths when those cache entries exist. Without the picture pack every story
+  frame renders text only and the story screen states which pack it looked for
+  (`test/obsImages.integration.test.ts` skips and names the same command):
+  `zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_obs v9 d39a1dc7a7557ac54e4a8fecc3462147fe7eec3b`,
+  `zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_obs-tn v13 e86138ea13f619f09f7a6dcaa60592716d407fe4`,
+  `zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_obs-twl v3 44ebc9fafe8101665f985007d566f5036a2be85b`, and
+  `zsh dev-env/scripts/cache-resource.zsh uW/obs_images_360 "" 7146d5b504f6b63b9e11f7dc0b18c594d0ae179d`.
 
 ## Windows
 

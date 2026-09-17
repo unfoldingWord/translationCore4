@@ -18,7 +18,7 @@ const HEADER_ACTION = { border: 0, background: 'transparent', cursor: 'pointer',
 // An OBS project's card (J20, #287; D74): the kind marker, and one tile whose
 // percentage is frames with a non-empty paragraph over the fixed frame total.
 // No book tiles and no Add-a-book: the scope is always the fifty stories. The
-// tile opens nothing yet — the story screen is J21 (#289).
+// tile opens the story editor for the project.
 function ObsProjectCard({ p }) {
   const { s, actions } = useApp();
   const prog = s.progressByProject[p.id] || {};
@@ -50,7 +50,7 @@ function ObsProjectCard({ p }) {
         </button>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(148px,1fr))', gap: 8 }}>
-        <BookTile name={t('home.obsKind')} percent={hasPct ? pct : 0} meta={hasPct ? undefined : '—'} data-testid="obs-tile" />
+        <BookTile name={t('home.obsKind')} percent={hasPct ? pct : 0} meta={hasPct ? undefined : '—'} data-testid="obs-tile" onClick={() => actions.openProject(p.id)} />
       </div>
     </Card>
   );

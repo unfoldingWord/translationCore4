@@ -2,6 +2,7 @@ import React from 'react';
 import { useApp } from './state.jsx';
 import Home from './views/Home.jsx';
 import Draft from './views/Draft.jsx';
+import StoryDraft from './views/StoryDraft.jsx';
 import Check from './views/Check.jsx';
 import NewBible from './views/modals/NewBible.jsx';
 import NewObs from './views/modals/NewObs.jsx';
@@ -17,9 +18,10 @@ import OpenProgress from './views/OpenProgress.jsx';
 import { AppHeader, Switcher, StatusDot, Button } from './ds/index.js';
 import { t } from './i18n';
 
-/** Which failure the indicator's Retry button retries: a note save, a
+/** Which failure the indicator's Retry button retries: a story/note save, a
  * checkpoint commit (#183), or the verse save. */
-function retryFor({ noteError, commitOnly, actions }) {
+function retryFor({ noteError, storyError, commitOnly, actions }) {
+  if (storyError) return { testId: 'retry-story-save', onClick: actions.retrySave };
   if (noteError) return { testId: 'retry-note-save', onClick: actions.retryNoteSave };
   if (commitOnly) return { testId: 'retry-checkpoint', onClick: actions.retryCheckpoint };
   return { testId: undefined, onClick: actions.retrySave };
@@ -39,12 +41,13 @@ function SaveIndicator() {
   // A failed comprehension write is a save failure like any other (B1): the
   // note scheduler's state folds in here globally — not only on the
   // Understand screen — with its own retry. #100: alignments and decisions
-  // fold in the same way. The effective state is the WORST of the four
+  // fold in the same way. The effective state is the WORST of the five
   // schedulers (D65): error > saving > dirty > saved, so 'Saved' never shows
   // while any machine holds work.
   const rank = { error: 3, saving: 2, dirty: 1, saved: 0 };
   const noteState = s.noteSaveState ?? 'saved';
-  const effective = [s.saveState, s.noteSaveState, s.alignSaveState, s.checkSaveState]
+  const storyState = s.storySaveState ?? 'saved';
+  const effective = [s.saveState, s.noteSaveState, s.alignSaveState, s.checkSaveState, storyState]
     .map((state) => state ?? 'saved')
     .reduce((worst, state) => ((rank[state] ?? 0) > (rank[worst] ?? 0) ? state : worst), 'saved');
   // #183: a failed checkpoint commit is an error like a failed save, with its
@@ -53,7 +56,7 @@ function SaveIndicator() {
   const commitOnly = effective !== 'error' && !!s.commitError;
   const m = commitOnly ? { status: 'invalid', label: t('app.commitError') } : (map[effective] || map.saved);
   const isError = effective === 'error' || commitOnly;
-  const retry = retryFor({ noteError: noteState === 'error', commitOnly, actions });
+  const retry = retryFor({ noteError: noteState === 'error', storyError: storyState === 'error', commitOnly, actions });
   return (
     <div data-testid="save-indicator" data-state={effective}
       style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', fontWeight: 'var(--fw-heavy)', display: 'flex', alignItems: 'center', gap: 6, color: isError ? 'var(--tc-invalid-on-dark)' : 'rgba(255,255,255,.66)' }}>
@@ -83,7 +86,7 @@ function TopBar() {
       switchTitle={t('app.switchProject')}
       onBrandClick={actions.backToProjects}
       onProjectClick={actions.backToProjects}
-      center={inProject ? (
+      center={inProject && p?.flavor !== 'textStories' ? (
         // D63: Publish is retired as a top-level tab — the publish flow lives
         // inside Check as the Community Checking tool (#108).
         <Switcher indicator="pill" value={s.view === 'publish' ? 'check' : s.view} onChange={(v) => actions.go(v)}
@@ -106,11 +109,7 @@ export default function App() {
   return (
     <div dir={appDir} style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', background: 'var(--surface-app)', color: 'var(--text-body)', fontFamily: 'var(--font-ui)', overflow: 'hidden' }}>
       <TopBar />
-      {s.view === 'home' && <Home />}
-      {s.view === 'read' && <Understand />}
-      {s.view === 'draft' && <Draft />}
-      {s.view === 'check' && <Check />}
-      {s.view === 'publish' && <CommunityChecking />}
+      <MainView state={s} />
       <NewBible />
       <NewObs />
       <AddBook />
@@ -122,4 +121,16 @@ export default function App() {
       <OpenProgress />
     </div>
   );
+}
+
+function MainView({ state }) {
+  if (state.view === 'home') return <Home />;
+  if (state.project?.flavor === 'textStories') return <StoryDraft />;
+  const views = {
+    read: <Understand />,
+    draft: <Draft />,
+    check: <Check />,
+    publish: <CommunityChecking />,
+  };
+  return views[state.view] || null;
 }

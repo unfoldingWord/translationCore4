@@ -367,6 +367,13 @@ export class ServerApi {
     );
   }
 
+  /** URL for a binary ingredient (used by the OBS image renderer). The server
+   * keeps the same identity-qualified local repository paths as the text
+   * reader; callers must pass the path resolved from the installed pin. */
+  ingredientBytesUrl(repoPath: string, ipath: string): string {
+    return `${this.base}/burrito/ingredient/bytes/${encodeRepoPath(repoPath)}?ipath=${encodeIpath(ipath)}`;
+  }
+
   /** GET /burrito/paths/<repoPath> — every FILE under the repo's ingredients/
    * directory as ingredient-relative paths (not the indexed ingredients table,
    * so files written without update_ingredients DO appear). Hidden files/dirs

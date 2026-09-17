@@ -11,6 +11,8 @@ import { ServerApi } from './data/serverApi';
 import { StaleWriteError } from './data/httpStore';
 import { JournalingStore, ProjectReader } from './data/journal/journalingStore';
 import { SaveScheduler } from './data/saveScheduler';
+import { StoryScheduler, normalizeStoryUnit } from './data/storyScheduler';
+import { readObsStoryPresentation } from './data/obsStory';
 import { gapMarkerOf, spliceSection, spliceVerse, spliceVerseGap, verseBody } from './data/usfm/splice';
 import { indexBook } from './data/usfm/indexer';
 import { RESOURCE_FRAME, forgetProjectFrames, resolveProjectFrame } from './data/projectFrame';
@@ -264,6 +266,16 @@ const initial = () => ({
   chapter: 1,
   bookRaw: null, // raw USFM string — the editing source of truth
   bookError: null,
+  // OBS story editing is a separate model: story numbers are not Bible books.
+  storyNumbers: [],
+  storyNumber: null,
+  story: null,
+  sourceStory: null,
+  storyImages: {},
+  storyImageNote: null,
+  storyLoading: false,
+  storyError: null,
+  storySource: null,
   sources: {}, // { ult: {raw, chapters}|'missing'|undefined, ust: … }
   sourceTab: 'ult',
   editing: null, // { key: "1:3", before: <body before this edit session> } | null
@@ -293,6 +305,8 @@ const initial = () => ({
   // switch exactly like a failed verse write (FR-32).
   alignSaveState: 'saved',
   checkSaveState: 'saved',
+  storySaveState: 'saved',
+  storySaveError: null,
   // #183: a checkpoint commit (D9: leaving the project, switching mode) that
   // failed. Shown in the save indicator's error state with a Retry; a commit
   // never blocks navigation.
@@ -340,6 +354,8 @@ const initial = () => ({
   pickerProgress: null, // #136 (D3d): { seq, [tool]: {done,total,dropped,nextItem}|{error}, align: {…,nextRef} } — derived on picker open, never stored
   toolPos: {}, // #136: in-memory only — "your place is saved in each tool", keyed `${tool}:${book}`; dies with the app (§4.2)
   progressByProject: {}, // repoPath -> { CODE: draftPct } (lazy Home cache)
+  // Last OBS story per project; user-machine state, never project data.
+  obsStoryByProject: {},
   draftUnits: {}, // repoPath -> 'section' | 'verse'
   alignSuggestions: {}, // #1: repoPath -> true when the suggestions switch is on (per client, never in the project)
   // #1: the suggestion engine's state for the open project — status 'off' |
@@ -361,6 +377,7 @@ let fixSeq = 0; // #9: identity of the open guided-fix screen (completions bind 
 let alignSessionSeq = 0;
 let alignIndexSeq = 0;
 let pickerProgressSeq = 0;
+let storyOpenSeq = 0;
 
 /** #136 (D3d): one picker-progress derivation run's identity. The seq is
  * stored ON state.pickerProgress, and the reducer merge refuses entries from
@@ -1227,10 +1244,10 @@ async function drainBothSchedulers({ schedulerRef, noteSchedulerRef }) {
 export const __drainBothSchedulersForTests = drainBothSchedulers;
 export const __drainSchedulersForTests = drainSchedulers;
 
-/** #100: the scheduler registry of an open context — the pre-#100 test
- * callers pass only the verse and note refs; production passes all four. */
+/** The scheduler registry of an open context — older test callers may pass
+ * only the verse and note refs; production passes all five schedulers. */
 const saveRefsOf = (ctx) =>
-  [ctx.schedulerRef, ctx.noteSchedulerRef, ctx.alignSchedulerRef, ctx.checkSchedulerRef].filter(Boolean);
+  [ctx.schedulerRef, ctx.noteSchedulerRef, ctx.alignSchedulerRef, ctx.checkSchedulerRef, ctx.storySchedulerRef].filter(Boolean);
 
 /** #100: aligning and checking ride the same discipline as verses and notes,
  * each on its own instance (a failing decision must not park alignment
@@ -1418,6 +1435,134 @@ async function gateProjectOpen({ saveRefs, dispatch, superseded }) {
   return !superseded();
 }
 
+function writeStoryUnit(store, unit, text) {
+  const writers = {
+    title: () => store.writeTitle(unit.story, text),
+    ref: () => store.writeRef(unit.story, text),
+    frame: () => store.writeFrame(unit.story, unit.frame, text),
+  };
+  return writers[unit.kind]();
+}
+
+/** The story scheduler of an open OBS project. A durable numbered-frame write
+ * changes the project's draft percentage (D74), so it drops Home's cached
+ * value; the title (frame 0) and the reference line do not count (#289). */
+function installStoryScheduler({ storySchedulerRef, store, dispatch, onFrameSaved }) {
+  if (!storySchedulerRef) return;
+  storySchedulerRef.current = new StoryScheduler({
+    write: async (unit, text) => {
+      await writeStoryUnit(store, unit, text);
+      if (unit.kind === 'frame') onFrameSaved?.();
+    },
+  });
+  const storySched = storySchedulerRef.current;
+  storySched.subscribe((storySaveState) => {
+    const failure = storySched.getFailure();
+    dispatch({
+      type: 'set',
+      patch: {
+        storySaveState,
+        storySaveError: storySaveState === 'error'
+          ? String(failure?.error?.message || failure?.error || storySaveState)
+          : null,
+      },
+    });
+  });
+}
+
+function activeStoryForReload({ originStore, originRepoPath, storeRef, stateRef }) {
+  const current = stateRef.current;
+  if (originStore !== storeRef.current) return null;
+  if (originRepoPath !== current.project?.repoPath) return null;
+  if (current.project?.flavor !== 'textStories') return null;
+  return current.storyNumber == null ? null : current.storyNumber;
+}
+
+async function reloadActiveStoryAfterDownload({ originStore, originRepoPath, storeRef, stateRef, actions }) {
+  const storyNumber = activeStoryForReload({ originStore, originRepoPath, storeRef, stateRef });
+  if (storyNumber == null) return;
+  await actions.openStory(storyNumber, stateRef.current.projectPins);
+}
+
+async function openProjectContent({ summary, store, repoPath, scriptDirection, textFont, bookCode, superseded, dispatch, actions, stateRef }) {
+  if (summary.flavor !== 'textStories') {
+    await actions.openBook(bookCode || summary.bookCodes[0]);
+    if (superseded()) return;
+    return;
+  }
+  const numbers = await store.listStories();
+  if (superseded()) return;
+  dispatch({ type: 'set', patch: { storyNumbers: numbers } });
+  const remembered = stateRef.current.obsStoryByProject?.[repoPath];
+  const first = numbers.includes(Number(remembered)) ? Number(remembered) : numbers[0];
+  if (first !== undefined) await actions.openStory?.(first, undefined, {
+    store,
+    project: { ...summary, scriptDirection, textFont, repoPath },
+    storyNumbers: numbers,
+  });
+}
+
+function obsStoryOpenContext({ storyNumber, context, stateRef, storeRef }) {
+  const state = stateRef.current;
+  const store = context.store ?? storeRef.current;
+  const project = context.project ?? state.project;
+  const repoPath = project?.repoPath;
+  const number = Number(storyNumber);
+  const storyNumbers = context.storyNumbers ?? state.storyNumbers;
+  if (!store || !repoPath || project?.flavor !== 'textStories' || !Number.isInteger(number)) return null;
+  if (storyNumbers.length && !storyNumbers.includes(number)) return null;
+  return { store, project, repoPath, number, storyNumbers };
+}
+
+function isCurrentObsStory({ seq, store, repoPath, storeRef, stateRef }) {
+  return seq === storyOpenSeq
+    && storeRef.current === store
+    && stateRef.current.project?.repoPath === repoPath;
+}
+
+function seedObsStory(scheduler, presentation, number) {
+  if (!scheduler) return;
+  scheduler.seed({ kind: 'title', story: number }, presentation.story.title);
+  presentation.story.frames.forEach((frame, index) => scheduler.seed({ kind: 'frame', story: number, frame: index + 1 }, frame.text));
+  scheduler.seed({ kind: 'ref', story: number }, presentation.story.ref || '');
+}
+
+async function loadObsStory({ api, resolveContext, store, repoPath, number, resources, scheduler, seq, storeRef, stateRef, dispatch, rememberObsStory }) {
+  try {
+    const { installed } = await resolveContext();
+    const presentation = await readObsStoryPresentation({ api, store, projectRepo: repoPath, storyNumber: number, resources, installed });
+    if (!isCurrentObsStory({ seq, store, repoPath, storeRef, stateRef })) return;
+    seedObsStory(scheduler, presentation, number);
+    dispatch({ type: 'set', patch: { storyNumber: number, story: presentation.story, sourceStory: presentation.sourceStory, storyImages: presentation.images, storyImageNote: presentation.imageNote, storySource: presentation.source, storyLoading: false, storyError: null } });
+    rememberObsStory(repoPath, number);
+  } catch (error) {
+    if (isCurrentObsStory({ seq, store, repoPath, storeRef, stateRef }))
+      dispatch({ type: 'set', patch: { storyLoading: false, storyError: String(error?.message || error) } });
+  }
+}
+
+async function openObsStory({ storyNumber, resourcesOverride, context, stateRef, storeRef, saveRefs, dispatch, api, resolveContext, scheduler, rememberObsStory }) {
+  const target = obsStoryOpenContext({ storyNumber, context, stateRef, storeRef });
+  if (!target) return;
+  if (!(await drainSchedulers(saveRefs))) return;
+  const seq = ++storyOpenSeq;
+  dispatch({ type: 'set', patch: { storyNumber: target.number, story: null, sourceStory: null, storyImages: {}, storyImageNote: null, storyLoading: true, storyError: null, storySource: null } });
+  await loadObsStory({
+    api,
+    resolveContext,
+    store: target.store,
+    repoPath: target.repoPath,
+    number: target.number,
+    resources: resourcesOverride ?? stateRef.current.projectPins,
+    scheduler,
+    seq,
+    storeRef,
+    stateRef,
+    dispatch,
+    rememberObsStory,
+  });
+}
+
 async function performProjectOpen(ctx, repoPath, bookCode) {
   const {
     openProjectSeqRef,
@@ -1426,6 +1571,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
     noteSchedulerRef,
     noteTargetsRef,
     alignSchedulerRef,
+    storySchedulerRef,
     storeRef,
     stateRef,
     understandSeqRef,
@@ -1435,9 +1581,13 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
     makeStore,
     markUsed,
     recordLastEdit,
+    invalidateProgress,
   } = ctx;
   const saveRefs = saveRefsOf(ctx);
   const seq = ++openProjectSeqRef.current;
+  // Invalidate any story read from the project that is being left, even
+  // before the replacement store has finished opening.
+  storyOpenSeq++;
   const superseded = () => seq !== openProjectSeqRef.current;
   if (!(await gateProjectOpen({ saveRefs, dispatch, superseded }))) return;
   // Issue #95: the open's progress record. Every stage transition and every
@@ -1515,6 +1665,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
             : null,
       });
     });
+    installStoryScheduler({ storySchedulerRef, store, dispatch, onFrameSaved: () => invalidateProgress?.(repoPath) });
     installAlignCheckSchedulers(ctx, store);
     apiClient.setCurrentProject(repoPath).catch(() => {});
     markUsed(repoPath); // fire-and-forget; ordering refreshes next Home visit
@@ -1537,6 +1688,16 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
         projectPinsError: null,
         sourcePanes: null,
         understand: null,
+        storyNumbers: [],
+        storyNumber: null,
+        story: null,
+        sourceStory: null,
+        storyImages: {},
+        storyImageNote: null,
+        storyLoading: false,
+        storyError: null,
+        storySource: null,
+        storySaveError: null,
         upgrade: UPGRADE_IDLE,
       },
     });
@@ -1556,10 +1717,19 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
     // OBS projects have story ingredients, not a Bible book. Their screen is
     // supplied by #289; opening the project must still finish so its stored
     // resource pins can load and survive reopen.
-    if (summary.flavor !== 'textStories') {
-      await actions.openBook(bookCode || summary.bookCodes[0]);
-      if (superseded()) return;
-    }
+    await openProjectContent({
+      summary,
+      store,
+      repoPath,
+      scriptDirection,
+      textFont,
+      bookCode,
+      superseded,
+      dispatch,
+      actions,
+      stateRef,
+    });
+    if (superseded()) return;
     // #183: the Home banner for a failed leave-checkpoint is cleared once a
     // project is open (a failed open keeps it beside the open error). When the
     // project opened is the one that owes that checkpoint, the checkpoint is
@@ -1580,6 +1750,9 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
 /** Test hook (round 25): out-of-order open completions are unit-tested — the
  * latest request exclusively owns the refs and the dispatched state. */
 export const __performProjectOpenForTests = performProjectOpen;
+/** Test hook (#289): the OBS routing, resume, story switch, save and progress
+ * paths are unit-tested against the fake rig. */
+export const __obsStoryForTests = { openProjectContent, obsStoryOpenContext, openObsStory, installStoryScheduler, writeStoryUnit, obsDraftPercent };
 
 /** Load the read-only helps for the open book (extracted round 33 for the
  * interleaving regressions): tN notes, tQ questions and tW links, each
@@ -1871,6 +2044,8 @@ function loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatc
       // document is handed over DIRECTLY: the dispatch above has not
       // rendered yet, so stateRef still holds the old pins.
       actions.reloadSourcePanes?.(pins);
+      if (stateRef.current.project?.flavor === 'textStories' && stateRef.current.storyNumber != null)
+        void actions.openStory?.(stateRef.current.storyNumber, pins);
       if (!pins) return;
       try {
         const { installed, coverage } = await actions.resolutionContext();
@@ -2385,7 +2560,8 @@ export function AppProvider({ children }) {
   const suggestPendingRef = useRef(false);
   const checkSchedulerRef = useRef(null);
   const checkTargetsRef = useRef(new Map());
-  const saveRefs = useRef([schedulerRef, noteSchedulerRef, alignSchedulerRef, checkSchedulerRef]).current;
+  const storySchedulerRef = useRef(null);
+  const saveRefs = useRef([schedulerRef, noteSchedulerRef, alignSchedulerRef, checkSchedulerRef, storySchedulerRef]).current;
   const openProjectSeqRef = useRef(0); // openProject sequence token (round 25): the latest open owns the refs
   const articleSeqRef = useRef(0); // help-article completion token (D3, adversarial round 4)
 
@@ -2470,6 +2646,19 @@ export function AppProvider({ children }) {
     return updateClientSettings((cs) => ({ ...cs, lastUsed: { ...(cs.lastUsed || {}), [repoPath]: Date.now() } }));
   }
 
+  // OBS has no Bible book/chapter identity. Keep the last story in the same
+  // per-client settings document as the Home ordering, keyed by project.
+  function rememberObsStory(repoPath, storyNumber) {
+    if (!repoPath || !Number.isInteger(Number(storyNumber))) return;
+    const story = Number(storyNumber);
+    const next = { ...(stateRef.current.obsStoryByProject || {}), [repoPath]: story };
+    dispatch({ type: 'set', patch: { obsStoryByProject: next } });
+    updateClientSettings((cs) => ({
+      ...cs,
+      obsStoryByProject: { ...(cs.obsStoryByProject || {}), [repoPath]: story },
+    }));
+  }
+
   // The Home Resume card's target: the same per-client settings record as
   // lastUsed (user-machine state, never the project). Debounced, because
   // editVerse fires per keystroke and the settings write is a server call.
@@ -2523,26 +2712,36 @@ export function AppProvider({ children }) {
     });
   }
 
+  async function readHomeSettings() {
+    const fallback = { lastUsed: {}, lastEdit: null, draftUnits: {}, alignSuggestions: {}, obsStoryByProject: {} };
+    try {
+      // A pending Resume record is written before the document is read, so
+      // a Home visit within the debounce never reads an older record.
+      await flushLastEdit();
+      const cs = await api.getClientSettings(STORAGE_ID);
+      return {
+        lastUsed: cs.lastUsed || {},
+        lastEdit: cs.lastEdit || null,
+        draftUnits: cs.draftUnits || {},
+        alignSuggestions: cs.alignSuggestions || {},
+        obsStoryByProject: cs.obsStoryByProject || {},
+      };
+    } catch {
+      /* fall back to creation-date order from listProjects */
+      return fallback;
+    }
+  }
+
+  function mergeObsStoryHistory(persisted) {
+    return { ...(stateRef.current.obsStoryByProject || {}), ...persisted };
+  }
+
   async function refreshProjects() {
     try {
       const reader = new ProjectReader({ api });
       const projects = await reader.listProjects();
-      let lastUsed = {};
-      let lastEdit = null;
-      let draftUnits = {};
-      let alignSuggestions = {};
-      try {
-        // A pending Resume record is written before the document is read, so
-        // a Home visit within the debounce never reads an older record.
-        await flushLastEdit();
-        const cs = await api.getClientSettings(STORAGE_ID);
-        lastUsed = cs.lastUsed || {};
-        lastEdit = cs.lastEdit || null;
-        draftUnits = cs.draftUnits || {};
-        alignSuggestions = cs.alignSuggestions || {};
-      } catch {
-        /* fall back to creation-date order from listProjects */
-      }
+      const { lastUsed, lastEdit: persistedLastEdit, draftUnits, alignSuggestions, obsStoryByProject } = await readHomeSettings();
+      let lastEdit = persistedLastEdit;
       // Never regress the in-session record to an older persisted one (a rig
       // without client settings keeps the session's record).
       const local = stateRef.current.lastEdit;
@@ -2560,7 +2759,7 @@ export function AppProvider({ children }) {
       // performProjectOpen is left alone (projects was already an array).
       dispatch({
         type: 'set',
-        patch: { projects, lastEdit: resumable ? lastEdit : null, draftUnits, alignSuggestions, ...(stateRef.current.projects === null ? { bookError: null } : {}) },
+        patch: { projects, lastEdit: resumable ? lastEdit : null, draftUnits, alignSuggestions, obsStoryByProject: mergeObsStoryHistory(obsStoryByProject), ...(stateRef.current.projects === null ? { bookError: null } : {}) },
       });
     } catch (e) {
       // Catch-to-absence sweep (D30): projects stays null (unknown), so the
@@ -2642,7 +2841,22 @@ export function AppProvider({ children }) {
 
       openSources: async () => {
         dispatch({ type: 'set', patch: { modal: 'sources' } });
+        // A missing OBS source is actionable from the story screen. Reuse the
+        // project's pinned gateway when it is known, so the Sources modal
+        // opens directly on the OBS package rows instead of making the user
+        // choose a language and a Bible book that OBS does not use.
+        const current = stateRef.current;
+        const primaryGateway = current.project?.flavor === 'textStories'
+          ? current.projectPins?.languageSets?.primary?.gatewayLanguage
+          : null;
+        const gateway = primaryGateway
+          ? GATEWAYS.find((candidate) => candidate.id === primaryGateway.languageId && samePath(candidate.org, primaryGateway.owner))
+          : null;
+        if (gateway) {
+          dispatch({ type: 'patchSrc', patch: { gateway, rows: [], loading: false, error: null, dl: null } });
+        }
         await Promise.all([a.refreshNet(), a.refreshCheckable()]);
+        if (gateway) await a.loadPackage(gateway, current.src.book);
       },
 
       /** Which gateway languages this machine can actually CHECK in — i.e. a
@@ -3537,6 +3751,7 @@ export function AppProvider({ children }) {
         clearTimeout(suggestRetrainRef.current);
         suggestTrainingRef.current = false;
         suggestPendingRef.current = false;
+        storyOpenSeq++;
         const a2 = stateRef.current.alignSession;
         dispatch({
           type: 'set',
@@ -3990,6 +4205,11 @@ export function AppProvider({ children }) {
             actions: a,
             dispatch,
           });
+          // A story screen can be the caller of Sources. Once the exact OBS
+          // pin is installed, reload the active story so its gateway frame
+          // and image pack become usable without making the translator leave
+          // and reopen the project.
+          await reloadActiveStoryAfterDownload({ originStore, originRepoPath, storeRef, stateRef, actions: a });
         }
       },
 
@@ -4392,6 +4612,7 @@ export function AppProvider({ children }) {
             noteTargetsRef,
             alignSchedulerRef,
             checkSchedulerRef,
+            storySchedulerRef,
             checkTargetsRef,
             storeRef,
             stateRef,
@@ -4402,10 +4623,59 @@ export function AppProvider({ children }) {
             makeStore: () => new JournalingStore({ api }),
             markUsed,
             recordLastEdit,
+            invalidateProgress,
           },
           repoPath,
           bookCode,
         ),
+
+      /** Open one OBS story from the catalog returned by the project store. */
+      openStory: async (storyNumber, resourcesOverride = undefined, context = {}) => {
+        return openObsStory({
+          storyNumber,
+          resourcesOverride,
+          context,
+          stateRef,
+          storeRef,
+          saveRefs,
+          dispatch,
+          api,
+          resolveContext: a.resolutionContext,
+          scheduler: storySchedulerRef.current,
+          rememberObsStory,
+        });
+      },
+
+      /** Stage an OBS title, frame, or reference in the durable story buffer. */
+      stageStoryUnit: (unit, text) => {
+        const st = stateRef.current;
+        const sched = storySchedulerRef.current;
+        if (!sched || st.project?.flavor !== 'textStories' || !st.story || st.story.number !== unit.story) return;
+        const value = String(text ?? '');
+        // R-10.3.3: no operation removes the reference line. An emptied
+        // reference shows on screen (the field is controlled) but stages no
+        // write; blurStoryUnit restores the kept text when focus leaves.
+        if (!(unit.kind === 'ref' && value === '')) sched.markDirty(unit, value);
+        const next = { ...st.story };
+        if (unit.kind === 'title') next.title = value;
+        else if (unit.kind === 'ref') next.ref = value || null;
+        else next.frames = next.frames.map((frame, index) => index + 1 === unit.frame ? { ...frame, text: value } : frame);
+        dispatch({ type: 'set', patch: { story: next } });
+      },
+
+      /** Normalize and flush one OBS field when focus leaves it. */
+      blurStoryUnit: async (unit) => {
+        const st = stateRef.current;
+        const story = st.story;
+        const sched = storySchedulerRef.current;
+        if (!sched || !story || story.number !== unit.story) return;
+        const current = unit.kind === 'title' ? story.title : unit.kind === 'ref' ? (story.ref || '') : (story.frames[unit.frame - 1]?.text || '');
+        const normalized = normalizeStoryUnit(unit, current);
+        if (unit.kind === 'ref' && normalized === '') {
+          dispatch({ type: 'set', patch: { story: { ...story, ref: sched.value(unit) || null } } });
+        } else if (normalized !== current) a.stageStoryUnit(unit, normalized);
+        await sched.flushOnBlur();
+      },
 
       openBook: async (code) => {
         // F2/D65/round 34: a book switch is a navigation like any other —
@@ -4742,7 +5012,7 @@ export function AppProvider({ children }) {
         // working — both schedulers included — or the next edit throws.
         // Round 23: the loop re-checks both after each pass, so a note staged
         // while the verse drain awaited can never be disposed unflushed.
-        // #100: all four schedulers (verse, note, align, check) drain in the
+      // #100/#289: all five schedulers (verse, note, align, check, story) drain in the
         // one loop, so a buffered §5.1 or §5.2 write can never execute after
         // this project's store is gone (#129 rounds 2–3 kept their guarantee
         // through the registry, not a second queue). From the drain to the
@@ -4778,7 +5048,7 @@ export function AppProvider({ children }) {
         alignSessionSeq++;
         dispatch({
           type: 'set',
-          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, saveState: 'saved', noteSaveState: 'saved', alignSaveState: 'saved', checkSaveState: 'saved', commitError: null, projectPins: null, projectPinsLoaded: false, projectPinsError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, alignSuggest: { status: 'off', verses: 0, error: null }, pickerProgress: null, toolPos: {}, upgrade: UPGRADE_IDLE },
+          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, storyNumbers: [], storyNumber: null, story: null, sourceStory: null, storyImages: {}, storyImageNote: null, storyLoading: false, storyError: null, storySource: null, saveState: 'saved', noteSaveState: 'saved', alignSaveState: 'saved', checkSaveState: 'saved', storySaveState: 'saved', storySaveError: null, commitError: null, projectPins: null, projectPinsLoaded: false, projectPinsError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, alignSuggest: { status: 'off', verses: 0, error: null }, pickerProgress: null, toolPos: {}, upgrade: UPGRADE_IDLE },
         });
         refreshProjects(); // re-order: the project just left goes to the top
         if (leaving && leavingStore) startLeaveCheckpoint({ store: leavingStore, repoPath: leaving.repoPath, stateRef, dispatch });

@@ -24,9 +24,9 @@
 #
 # ⛔ The job talks only to the rig it started. Never a pankosmia remote, token, or
 # upstream trigger. The clones in setup-from-pins.zsh are read-only, at pinned commits.
-# The one rig resource fetched from outside GitHub is the pinned en_ult v89 export from
-# git.door43.org, read through the app's own fetch path (dev-env/scripts/cache-resource.zsh)
-# and cached. (apt, npm and cargo dependencies download as in every other workflow.)
+# The rig resources fetched from outside GitHub are the pinned en_ult v89 export and the
+# pinned uW/obs_images_360 commit archive from git.door43.org, read through the app's own
+# fetch path (dev-env/scripts/cache-resource.zsh) and cached. (apt, npm and cargo dependencies download as in every other workflow.)
 name: rig
 permissions:
   contents: read
@@ -51,6 +51,10 @@ jobs:
       # (test/httpStore.integration.test.ts, test 6). Pin from src/data/installedSuite.js.
       EN_ULT_TAG: v89
       EN_ULT_SHA: 84c73ba00fc8a95a9033f9efb14bb905a2a52ee4
+      # The default OBS picture pack (#288, D75): a sha-only pin, fetched as the commit
+      # archive. seed.zsh installs it at its identity-qualified path so the story
+      # picture suite (test/obsImages.integration.test.ts) runs. Pin from src/data/obsImages.ts.
+      OBS_IMAGES_SHA: 7146d5b504f6b63b9e11f7dc0b18c594d0ae179d
     steps:
       - uses: actions/checkout@v7
 
@@ -94,15 +98,18 @@ jobs:
       # The key names the pin and the fetch path that produced the cached bytes: a change to
       # the app's fetch, unwrap or re-zip code, or to the cache script, misses the cache and
       # fetches again through the new code. seed.zsh unzips cached bytes without checking them.
-      - name: Cache the pinned en_ult export
-        id: en-ult
+      - name: Cache the pinned en_ult export and the OBS picture pack
+        id: resources
         uses: actions/cache@v6
         with:
           path: dev-env/resources-cache
-          key: rig-resources-en_ult-${{ env.EN_ULT_TAG }}-${{ env.EN_ULT_SHA }}-${{ hashFiles('dev-env/scripts/cache-resource.ts', 'dev-env/scripts/cache-resource.zsh', 'src/data/resourceFetch.ts') }}
+          key: rig-resources-en_ult-${{ env.EN_ULT_TAG }}-${{ env.EN_ULT_SHA }}-obs_images-${{ env.OBS_IMAGES_SHA }}-${{ hashFiles('dev-env/scripts/cache-resource.ts', 'dev-env/scripts/cache-resource.zsh', 'src/data/resourceFetch.ts') }}
       - name: Fetch the pinned en_ult export (cache miss only; SHA mismatch aborts)
-        if: steps.en-ult.outputs.cache-hit != 'true'
+        if: steps.resources.outputs.cache-hit != 'true'
         run: zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_ult "$EN_ULT_TAG" "$EN_ULT_SHA"
+      - name: Fetch the pinned OBS picture pack (cache miss only; SHA mismatch aborts)
+        if: steps.resources.outputs.cache-hit != 'true'
+        run: zsh dev-env/scripts/cache-resource.zsh uW/obs_images_360 "" "$OBS_IMAGES_SHA"
 
       - name: Seed the rig (pristine)
         run: zsh dev-env/scripts/seed.zsh

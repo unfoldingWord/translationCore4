@@ -91,6 +91,21 @@ describe('#288 — OBS resources', () => {
     expect(imageLine).toBe(fixture.split('\n').find((line) => line.startsWith('![')));
   });
 
+  it('matches project ingredients whose binary URL carries the filename in ipath', () => {
+    const uri = `https://rig.test/api/burrito/ingredient/bytes/_local_/_local_/project?ipath=360px/${encodeURIComponent(fileName)}`;
+    const result = resolveObsImage(imageLine, resources, {
+      [`ingredients/360px/${fileName}`]: { uri, role: 'x-obsimages' },
+    }, [], { pin: EN_OBS_IMAGES, images: {} });
+    expect(result).toMatchObject({ source: 'project', uri });
+    // URLSearchParams decodes ipath once; a second decode would throw on a
+    // literal percent sign and silently drop the picture.
+    const percent = 'obs-50%.jpg';
+    const percentUri = `https://rig.test/api/burrito/ingredient/bytes/_local_/_local_/project?ipath=360px/${encodeURIComponent(percent)}`;
+    expect(resolveObsImage(`![x](https://cdn.door43.org/obs/jpg/360px/${encodeURIComponent(percent)})`, resources, {
+      [`ingredients/360px/${percent}`]: { uri: percentUri, role: 'x-obsimages' },
+    }, [], { pin: EN_OBS_IMAGES, images: {} })).toMatchObject({ source: 'project', uri: percentUri, fileName: percent });
+  });
+
   it('falls through corrupt and ambiguous candidates and rejects a same-repo wrong SHA', () => {
     const wanted = { ...EN_OBS_IMAGES, sha: '1'.repeat(40) };
     const pinned = { ...resources, languageSets: {
