@@ -55,6 +55,13 @@ describe('sb-zip URL + local target (D23b pin path)', () => {
 });
 
 describe('unwrapExport — the DCS export is wrapped, the importer needs it flat', () => {
+  const flatWith = (name: string) =>
+    zipSync({
+      'metadata.json': strToU8(metaFor('abc')),
+      'ingredients/TIT.tsv': strToU8('x'),
+      [name]: strToU8('x'),
+    });
+
   it('strips the single top directory', () => {
     const { files } = unwrapExport(wrappedZip('abc'));
     expect(Object.keys(files).sort()).toEqual(['ingredients/TIT.tsv', 'metadata.json']);
@@ -86,6 +93,48 @@ describe('unwrapExport — the DCS export is wrapped, the importer needs it flat
     expect(() => unwrapExport(noMeta)).toThrow(/no root metadata.json/);
     const noIngredients = zipSync({ 'en_twl/metadata.json': strToU8(metaFor('a')) });
     expect(() => unwrapExport(noIngredients)).toThrow(/no ingredients/);
+  });
+
+  it('rejects an entry that escapes the archive root (#2)', () => {
+    const evil = wrappedZip('abc', { 'en_twl/../escape.txt': 'x' });
+    expect(() => unwrapExport(evil)).toThrow(/escapes its folder/);
+  });
+
+  it('rejects absolute, drive-prefixed and nested-traversal entries (#2)', () => {
+    expect(() => unwrapExport(flatWith('../escape.txt'))).toThrow(/escapes its folder/);
+    expect(() => unwrapExport(flatWith('/abs.txt'))).toThrow(/escapes its folder/);
+    expect(() => unwrapExport(flatWith('C:/evil.txt'))).toThrow(/escapes its folder/);
+    // Drive-RELATIVE, no separator: on Win32 `C:evil.txt` is not a filename but
+    // a path against drive C's current directory, and a join replaces
+    // everything after the prefix. The whole drive-prefix class is refused.
+    expect(() => unwrapExport(flatWith('C:evil.txt'))).toThrow(/escapes its folder/);
+    expect(() => unwrapExport(flatWith('c:evil.txt'))).toThrow(/escapes its folder/);
+    expect(() => unwrapExport(flatWith('a/../../b.txt'))).toThrow(/escapes its folder/);
+  });
+
+  it('keeps a colon that is not a drive prefix (#2: the guard refuses the class, not the character)', () => {
+    // A colon deeper in the path, and a multi-letter prefix, cannot name a
+    // drive — refusing them would drop legitimate files.
+    expect(Object.keys(unwrapExport(flatWith('ingredients/a:b.txt')).files)).toContain('ingredients/a:b.txt');
+    expect(Object.keys(unwrapExport(flatWith('ab:c.txt')).files)).toContain('ab:c.txt');
+  });
+
+  it('rejects Windows-host evasions and dot-padded siblings (#2, PR #309 review)', () => {
+    // Win32 strips trailing dots/spaces per component: `.. ` still climbs,
+    // and `...` is rejected with it by intent — no legitimate export
+    // carries an all-dots segment, so the guard fails closed on the family.
+    expect(() => unwrapExport(flatWith('.. /escape.txt'))).toThrow(/escapes its folder/);
+    expect(() => unwrapExport(flatWith('.../escape.txt'))).toThrow(/escapes its folder/);
+    // Directory entries are checked too, not just files.
+    const evilDir = zipSync({
+      'en_twl/metadata.json': strToU8(metaFor('abc')),
+      'en_twl/ingredients/TIT.tsv': strToU8('x'),
+      'en_twl/../evil/': new Uint8Array(0),
+    });
+    expect(() => unwrapExport(evilDir)).toThrow(/escapes its folder/);
+    // Near-misses that cannot climb stay accepted: no over-blocking.
+    expect(Object.keys(unwrapExport(flatWith('..foo/kept.txt')).files)).toContain('..foo/kept.txt');
+    expect(Object.keys(unwrapExport(flatWith('foo../kept.txt')).files)).toContain('foo../kept.txt');
   });
 });
 
@@ -181,6 +230,15 @@ describe('fetchAndInstallPin — the SHA gate (D23b: verify at every import)', (
       fetchFn: fetchReturning(wrappedZip('0'.repeat(40))),
     })).rejects.toThrow(/SHA mismatch/);
     expect(installed).toEqual([]); // nothing installed — the whole point
+  });
+
+  it('REFUSES a traversal archive before repacking or installing (#2, PR #309 review)', async () => {
+    const installed: string[] = [];
+    await expect(fetchAndInstallPin(PIN, {
+      api: apiWith(true, installed) as never,
+      fetchFn: fetchReturning(wrappedZip('deadbeef', { 'en_twl/../escape.txt': 'x' })),
+    })).rejects.toThrow(/escapes its folder/);
+    expect(installed).toEqual([]); // rejected before rezip, before the server
   });
 
   it('REFUSES when the pin carries a SHA but the export declares none', async () => {
