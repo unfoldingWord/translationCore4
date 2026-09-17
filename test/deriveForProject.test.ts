@@ -34,7 +34,7 @@ const schemes = Object.fromEntries(
 const TN_JON = read('test/fixtures/resources/en_tn@v86/JON.tsv');
 const TWL_TIT = read('test/fixtures/resources/en_twl@v86/TIT.tsv');
 
-const refsOf = (items: { contextId: { reference: { chapter: unknown; verse: unknown } } }[]) =>
+const refsOf = (items: { contextId: { reference: { chapter?: unknown; verse?: unknown } } }[]) =>
   items.map((i) => `${i.contextId.reference.chapter}:${i.contextId.reference.verse}`);
 
 describe('same-frame projects are untouched', () => {

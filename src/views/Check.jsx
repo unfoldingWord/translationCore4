@@ -13,13 +13,14 @@
 import React from 'react';
 import { useApp } from '../state.jsx';
 import { TOOL_SLOT } from '../data/resolve';
-import { isDecided } from '../data/derive';
+import { isDecided, locatorOf, referenceParts } from '../data/derive';
+import { STORY_FILE } from '../data/journal/runtime';
 import { bookName } from '../data/bookNames';
 import { renderArticleBlocks } from '../data/articles';
 import Align from './Align.jsx';
 import { isLanguageSwitch } from '../data/revalidate';
 import { targetWords, selectionsFromTokens, tokenIndicesFromSelections } from '../data/selections';
-import { tokenizeVerse, matchQuote } from '../data/sourceHighlight';
+import { tokenizeVerse, matchQuote, tokenizePlain, matchPlainQuote } from '../data/sourceHighlight';
 import { verseText } from './verseText.js';
 import { absenceMessageKey, isSourceAbsent } from '../data/sourceState';
 import { ExpandableNote, glTitleFor } from './HelpsPanel.jsx';
@@ -29,6 +30,15 @@ import { Button, Callout, Drawer, Overline, ProgressBar } from '../ds/index.js';
 
 const TOOLS = Object.keys(TOOL_SLOT);
 const mono = { fontFamily: 'var(--font-mono)' };
+
+/** #291 (§10.5): a story session sits under the `OBS` book position and is
+ * scoped to the open story; its unit label is the story, a book session's the
+ * book. The locator of a story item is `story:frame` (referenceParts). */
+const STORY_BOOK = STORY_FILE;
+const isStorySession = (book) => book === STORY_BOOK;
+const unitLabelFor = (book, storyNumber) =>
+  (isStorySession(book) ? t('storyDraft.storyNumber', { n: storyNumber }) : bookName(book));
+const refLabel = (reference) => t('check.ref', referenceParts(reference));
 
 /* #15 / §5.2: the dropped count MUST be surfaced wherever checks are shown —
  * silently shrinking the denominator is not permitted. ONE component for the
@@ -125,7 +135,7 @@ function nextLineFor(entry, kind, titleOf) {
   if (kind === 'align') return entry.nextRef ? t('align.nextVerse', { ref: entry.nextRef }) : '';
   const it = entry.nextItem;
   if (!it) return '';
-  return t('check.next', { quote: titleOf(it), c: it.contextId.reference.chapter, v: it.contextId.reference.verse });
+  return t('check.next', { quote: titleOf(it), ...referenceParts(it.contextId.reference) });
 }
 
 function CardProgress({ entry, kind = 'check', titleOf = quoteOf }) {
@@ -171,7 +181,7 @@ const clickableCard = (open) => ({
   },
 });
 
-function ToolCard({ tool, pre, book, progress, titleOf }) {
+function ToolCard({ tool, pre, label, progress, titleOf }) {
   const { actions } = useApp();
   const tone = TONE[pre.state] ?? TONE.unpinned;
   const ready = pre.state === 'ready';
@@ -190,7 +200,7 @@ function ToolCard({ tool, pre, book, progress, titleOf }) {
         )}
       </div>
       <p style={PICKER_DESC}>
-        {ready ? t(`check.desc.${tool}`) : t(`check.explain.${pre.state}`, { book: bookName(book) })}
+        {ready ? t(`check.desc.${tool}`) : t(`check.explain.${pre.state}`, { book: label })}
       </p>
       <ToolNeeds pre={pre} />
       {/* B20 warned fallback (D41): the resolver opened the installed fallback
@@ -438,12 +448,52 @@ function UltPane({ sources, sourcePanes, item, c, v, crossFrame }) {
   );
 }
 
+/** #291 (D74 §8): the compare card's GATEWAY row for a story item — the
+ * pinned gateway story's frame (the title for frame 0), plain text, with the
+ * help's source phrase highlighted by its words (matchPlainQuote). The
+ * translator then selects the target words by hand, as translationCore 3 did. */
+function StoryPane({ item, sourceStory }) {
+  const { v: frame } = referenceParts(item.contextId.reference);
+  const text = sourceStory ? (frame === 0 ? sourceStory.title : sourceStory.frames?.[frame - 1]?.text) : undefined;
+  const tokens = React.useMemo(() => (text ? tokenizePlain(text) : []), [text]);
+  const hits = React.useMemo(() => matchPlainQuote(tokens, item.contextId.quoteString ?? ''), [tokens, item]);
+  return (
+    <div data-testid="story-pane" style={{ ...paneLabelRow, background: 'var(--surface-app)' }}>
+      <Overline tone="muted">{t('check.gatewayStoryLabel')}</Overline>
+      {tokens.length ? (
+        <p data-testid="story-pane-text" dir="auto" style={{ textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse-md)', color: 'var(--text-scripture)', whiteSpace: 'pre-wrap', margin: '8px 0 0' }}>
+          {tokens.map((tok, i) =>
+            hits.has(i) ? (
+              <mark key={i} data-testid="story-hl" style={{ background: 'var(--tc-highlight-soft)', color: 'var(--text-heading)', borderRadius: 'var(--radius-xs)', padding: '0 .06em' }}>
+                {tok.text}
+              </mark>
+            ) : (
+              <React.Fragment key={i}>{tok.text}</React.Fragment>
+            ),
+          )}
+        </p>
+      ) : paneAbsent(t('storyDraft.sourceMissing'))}
+    </div>
+  );
+}
+
+/** The compare card's source rows: original + gateway verse for a book item,
+ * the gateway story frame for a story item (no original language — D74). */
+function SourcePanes({ cs, item, sources, sourcePanes, sourceStory, c, v }) {
+  if (isStorySession(cs.book)) return <StoryPane item={item} sourceStory={sourceStory} />;
+  return (
+    <>
+      <OrigPane orig={cs.orig} c={c} v={v} />
+      <UltPane sources={sources} sourcePanes={sourcePanes} item={item} c={c} v={v} crossFrame={cs.crossFrame} />
+    </>
+  );
+}
+
 /** The detail column (F1): ref + item counter header, serif phrase h1, the
  * "What to check" note box, the Academy link, the compare card, and the three
  * block triage buttons — the mockup's L1044–1196 region. */
-function CheckDetail({ cs, item, title, sources, sourcePanes, words, sel, toggleWord, markValid, markInvalid, markTodo, onBookmark, onComment, onOpenAcademy, onNav, targetDirection = 'ltr' }) {
-  const c = item.contextId.reference.chapter;
-  const v = item.contextId.reference.verse;
+function CheckDetail({ cs, item, title, sources, sourcePanes, sourceStory, words, sel, toggleWord, markValid, markInvalid, markTodo, onBookmark, onComment, onOpenAcademy, onNav, targetDirection = 'ltr' }) {
+  const { c, v } = referenceParts(item.contextId.reference);
   const quote = title;
   const idx = cs.activeIndex;
   const canPrev = idx > 0;
@@ -460,7 +510,7 @@ function CheckDetail({ cs, item, title, sources, sourcePanes, words, sel, toggle
     <div style={{ maxWidth: 760, margin: '0 auto', padding: '28px 32px 60px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
         <span style={{ fontSize: 'var(--fs-ui-sm)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)' }}>
-          {bookName(cs.book)} {t('check.ref', { c, v })}
+          {unitLabelFor(cs.book, c)} {t('check.ref', { c, v })}
         </span>
         <div style={{ flex: 1 }} />
         <span data-testid="check-item-counter" style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
@@ -496,13 +546,12 @@ function CheckDetail({ cs, item, title, sources, sourcePanes, words, sel, toggle
       {/* The compare card: original → gateway → your translation, one stacked
         * card (mockup L1152–1187). */}
       <div style={{ background: 'var(--surface-card)', border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-xl)', overflow: 'hidden', boxShadow: 'var(--shadow-card)' }}>
-        <OrigPane orig={cs.orig} c={c} v={v} />
-        <UltPane sources={sources} sourcePanes={sourcePanes} item={item} c={c} v={v} crossFrame={cs.crossFrame} />
+        <SourcePanes cs={cs} item={item} sources={sources} sourcePanes={sourcePanes} sourceStory={sourceStory} c={c} v={v} />
         <div style={{ padding: '16px 20px' }}>
           <Overline tone="accent">{t('check.yourTranslation')}</Overline>
           {words.length === 0 ? (
             <p data-testid="check-target" data-drafted="0" style={{ fontSize: 'var(--fs-ui-md)', color: 'var(--text-tertiary)', fontStyle: 'italic', margin: '8px 0 0' }}>
-              {t('check.notDrafted')}
+              {t(isStorySession(cs.book) ? 'check.notDraftedFrame' : 'check.notDrafted')}
             </p>
           ) : (
             <>
@@ -667,10 +716,13 @@ const refNum = (x) => {
   return Number.isFinite(n) ? n : -1;
 };
 
-export function railGroupsOf({ items, sortMode, book }) {
-  const rows = items.slice().sort((a, z) =>
-    refNum(a.it.contextId.reference.chapter) - refNum(z.it.contextId.reference.chapter)
-    || refNum(a.it.contextId.reference.verse) - refNum(z.it.contextId.reference.verse));
+export function railGroupsOf({ items, sortMode, book, label = bookName(book) }) {
+  const partsOf = (row) => referenceParts(row.it.contextId.reference);
+  const rows = items.slice().sort((a, z) => {
+    const pa = partsOf(a);
+    const pz = partsOf(z);
+    return refNum(pa.c) - refNum(pz.c) || refNum(pa.v) - refNum(pz.v);
+  });
   if (sortMode === 'byWord') {
     const terms = [...new Set(rows.map((r) => r.it.contextId.groupId))].sort((a, z) => a.localeCompare(z));
     return terms.map((term) => ({ label: term, rows: rows.filter((r) => r.it.contextId.groupId === term) }));
@@ -679,10 +731,10 @@ export function railGroupsOf({ items, sortMode, book }) {
     const cats = [...new Set(rows.map((r) => r.it.category))];
     return cats.map((cat) => ({ label: cat, rows: rows.filter((r) => r.it.category === cat) }));
   }
-  return [{ label: bookName(book), rows }];
+  return [{ label, rows }];
 }
 
-function CheckRail({ cs, filter, setFilter, sortMode, setSortMode, onSelect, titleOf }) {
+function CheckRail({ cs, label, filter, setFilter, sortMode, setSortMode, onSelect, titleOf }) {
   const { actions } = useApp();
   const decided = isDecided;
   const indexed = cs.items.map((it, i) => ({ it, i }));
@@ -691,7 +743,8 @@ function CheckRail({ cs, filter, setFilter, sortMode, setSortMode, onSelect, tit
   const counts = railCounts(cs.items);
   const filtered = indexed.filter(({ it }) => (RAIL_FILTERS[filter] ?? RAIL_FILTERS.all)(it));
   const sorts = SORTS[cs.tool];
-  const groups = railGroupsOf({ items: filtered, tool: cs.tool, sortMode, book: cs.book });
+  const story = isStorySession(cs.book);
+  const groups = railGroupsOf({ items: filtered, tool: cs.tool, sortMode, book: cs.book, label });
 
   return (
     <aside data-testid="check-rail" style={{ width: 'var(--rail-width-wide)', flex: 'none', background: 'var(--surface-card)', borderInlineEnd: 'var(--stroke-hair) solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -703,7 +756,7 @@ function CheckRail({ cs, filter, setFilter, sortMode, setSortMode, onSelect, tit
           {t(`check.tool.${cs.tool}`)}
         </h2>
         <p style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--text-tertiary)', margin: '0 0 10px', fontWeight: 'var(--fw-medium)' }}>
-          {bookName(cs.book)}
+          {label}
         </p>
         <ProgressBar tone="valid" value={cs.progress.total ? (cs.progress.decided / cs.progress.total) * 100 : 0} height={7} />
         <p data-testid="check-progress" style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--text-secondary)', margin: '8px 0 12px', fontWeight: 'var(--fw-medium)' }}>
@@ -721,7 +774,7 @@ function CheckRail({ cs, filter, setFilter, sortMode, setSortMode, onSelect, tit
             <Overline tone="muted">{t('check.sort')}</Overline>
             {sorts.modes.map((m) => (
               <button key={m} type="button" data-trim="cap" data-testid={`sort-${m}`} onClick={() => setSortMode(m)} style={railChip(sortMode === m)}>
-                {t(`check.sort.${m}`)}
+                {t(`check.sort.${story && m === 'byVerse' ? 'byFrame' : m}`)}
               </button>
             ))}
           </div>
@@ -744,8 +797,8 @@ function CheckRail({ cs, filter, setFilter, sortMode, setSortMode, onSelect, tit
                 const activeRow = i === cs.activeIndex;
                 return (
                   <button key={`${it.contextId.checkId}-${i}`} type="button" data-i="choice" data-tone="accent" data-selected={activeRow ? 'true' : undefined} onClick={() => onSelect(i)}
-                    title={`${it.contextId.reference.chapter}:${it.contextId.reference.verse} · ${it.contextId.groupId}`}
-                    data-ref={`${it.contextId.reference.chapter}:${it.contextId.reference.verse}`}
+                    title={`${locatorOf(it.contextId.reference)} · ${it.contextId.groupId}`}
+                    data-ref={locatorOf(it.contextId.reference)}
                     data-check-id={it.contextId.checkId}
                     data-decided={decided(it) ? '1' : '0'}
                     data-invalid={it.invalidated === true ? '1' : '0'}
@@ -771,7 +824,7 @@ function CheckRail({ cs, filter, setFilter, sortMode, setSortMode, onSelect, tit
                       <span data-testid="row-comment" aria-label={t('check.filter.commented')} style={{ fontSize: 'var(--fs-badge)', color: 'var(--text-tertiary)', flex: 'none' }}>{t('check.glyph.comment')}</span>
                     )}
                     <span style={{ fontSize: 'var(--fs-badge)', letterSpacing: 'var(--track-10)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
-                      {t('check.ref', { c: it.contextId.reference.chapter, v: it.contextId.reference.verse })}
+                      {refLabel(it.contextId.reference)}
                     </span>
                   </button>
                 );
@@ -921,9 +974,7 @@ function AlignWorkspace() {
 function sessionView(cs) {
   const activeIndex = cs?.activeIndex ?? 0;
   const activeItem = cs?.items?.[activeIndex];
-  const activeRef = activeItem
-    ? `${activeItem.contextId.reference.chapter}:${activeItem.contextId.reference.verse}`
-    : '';
+  const activeRef = activeItem ? locatorOf(activeItem.contextId.reference) : '';
   const targetText = (cs?.verses && cs.verses[activeRef]) || '';
   return { activeIndex, activeItem, targetText, tool: cs?.tool, book: cs?.book };
 }
@@ -1005,6 +1056,7 @@ function CheckSession() {
   if (cs.empty) return centered(<CheckEmpty cs={cs} actions={actions} />);
 
   const item = cs.items[cs.activeIndex];
+  const label = unitLabelFor(book, s.storyNumber);
 
   const toggleWord = (i) =>
     setSel((prev) => {
@@ -1035,12 +1087,12 @@ function CheckSession() {
    * count beside it, never a silently smaller total. */
   return (
     <div data-testid="check-session" style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-      <CheckRail cs={cs} filter={filter} setFilter={setFilter}
+      <CheckRail cs={cs} label={label} filter={filter} setFilter={setFilter}
         sortMode={sortMode} setSortMode={setSortMode} titleOf={titleOf}
         onSelect={(i) => actions.setCheckIndex(i)} />
       <main style={{ flex: 1, overflow: 'auto', minWidth: 0, background: 'var(--surface-app)' }}>
         {item && (
-          <CheckDetail cs={cs} item={item} title={titleOf(item)} sources={s.sources} sourcePanes={s.sourcePanes} words={words} sel={sel}
+          <CheckDetail cs={cs} item={item} title={titleOf(item)} sources={s.sources} sourcePanes={s.sourcePanes} sourceStory={s.sourceStory} words={words} sel={sel}
             targetDirection={s.project?.scriptDirection === 'rtl' ? 'rtl' : 'ltr'}
             toggleWord={toggleWord} markValid={markValid} markInvalid={markInvalid} markTodo={markTodo}
             onBookmark={toggleBookmark} onComment={setComment}
@@ -1055,9 +1107,59 @@ function CheckSession() {
   );
 }
 
+/** The picker's card grid: the two derived tools, Align (a book only — D74
+ * §8: no Align tool for stories, the entry is absent) and Community Checking. */
+function PickerGrid({ s, pre, story, unitLabel, pickerTitleOf }) {
+  const { actions } = useApp();
+  const readRef = story ? unitLabel : `${bookName(s.book)} ${s.chapter}`;
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(270px,1fr))', gap: 16 }}>
+      {TOOLS.map((tool) => (
+        <ToolCard key={tool} tool={tool} pre={pre[tool]} label={unitLabel}
+          progress={s.pickerProgress?.[tool]} titleOf={pickerTitleOf} />
+      ))}
+
+      {/* D74 §8: no Align tool for stories — the entry is absent, not disabled. */}
+      {!story && (
+        <div data-testid="align-card" data-i="card" data-tone="accent"
+          {...clickableCard(actions.startAligning)}
+          style={{ ...PICKER_CARD, cursor: 'pointer' }}>
+          <div style={PICKER_TITLE}>{t('nav.align')}</div>
+          <p style={PICKER_DESC}>{t('align.cardBody')}</p>
+          <CardProgress entry={s.pickerProgress?.align} kind="align" />
+          <span data-testid="open-align" style={{ ...CTA_STYLE, alignSelf: 'flex-start' }}>
+            {ctaFor(s.pickerProgress?.align)} {'→'}
+          </span>
+        </div>
+      )}
+
+      <div data-testid="community-checking-card" data-i="card" data-tone="accent"
+        {...clickableCard(() => actions.go('publish'))}
+        style={{ ...PICKER_CARD, cursor: 'pointer' }}>
+        <div style={PICKER_TITLE}>{t('cc.title')}</div>
+        <p style={PICKER_DESC}>{t('cc.cardDesc')}</p>
+        {/* The design's progress block: a whole-chapter pass has no count
+          * yet, so the bar stays empty and the next line names the read. */}
+        <div style={{ marginBottom: 16 }}>
+          <ProgressBar tone="valid" value={0} height={6} style={{ marginBottom: 9 }} />
+          <p style={{ ...cardCaption, fontWeight: 'var(--fw-bold)', color: 'var(--text-secondary)' }}>{t(story ? 'cc.wholeStory' : 'cc.wholeChapter')}</p>
+          <p style={{ ...cardCaption, color: 'var(--text-tertiary)' }}>{t('cc.nextRead', { ref: readRef })}</p>
+        </div>
+        <span data-testid="open-community-checking" style={{ ...CTA_STYLE, alignSelf: 'flex-start' }}>
+          {t('cc.open')}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export default function Check() {
   const { s, actions } = useApp();
   const pre = s.preflight;
+  // #291: an OBS project checks the open story (§10.5); its unit is the story.
+  const story = s.project?.flavor === 'textStories';
+  const unitLabel = story ? unitLabelFor(STORY_BOOK, s.storyNumber) : bookName(s.book);
+  const unitLoaded = story ? !!s.story : !!s.bookRaw;
 
   React.useEffect(() => {
     actions.runPreflight();
@@ -1068,11 +1170,12 @@ export default function Check() {
   // on, so counts reflect the decisions just made). Never stored (§4.2).
   // bookRaw is a dependency (review round 1): preflight can finish before
   // the book read, and a derivation against a null draft would both fail the
-  // Align entry and revalidate the tools against nothing.
+  // Align entry and revalidate the tools against nothing. A story session
+  // depends on the open story the same way.
   const atPicker = !s.checkTool && !s.aligning;
   React.useEffect(() => {
-    if (pre && atPicker && s.bookRaw) actions.loadPickerProgress();
-  }, [pre, atPicker, s.bookRaw]);
+    if (pre && atPicker && unitLoaded) actions.loadPickerProgress();
+  }, [pre, atPicker, unitLoaded, s.story]);
 
   // The picker's "Next: …" line shows the gateway title too [decided
   // 2026-08-31]; the frame verdict is the understand load's (sourceRefs).
@@ -1081,7 +1184,7 @@ export default function Check() {
     [s.sources, s.sourcePanes, s.understand],
   );
 
-  if (!s.book) return null;
+  if (story ? !s.story : !s.book) return null;
 
   // #129: Align opens inside the same rail+detail workspace as the derived
   // tools — no separate top-level Align screen.
@@ -1134,42 +1237,7 @@ export default function Check() {
           * unavailable (tool, book) never blocks other work) and, since D63 /
           * #108 retired the Publish tab, Community Checking, whose card is its
           * only entry. */}
-        {pre && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(270px,1fr))', gap: 16 }}>
-            {TOOLS.map((tool) => (
-              <ToolCard key={tool} tool={tool} pre={pre[tool]} book={s.book}
-                progress={s.pickerProgress?.[tool]} titleOf={pickerTitleOf} />
-            ))}
-
-            <div data-testid="align-card" data-i="card" data-tone="accent"
-              {...clickableCard(actions.startAligning)}
-              style={{ ...PICKER_CARD, cursor: 'pointer' }}>
-              <div style={PICKER_TITLE}>{t('nav.align')}</div>
-              <p style={PICKER_DESC}>{t('align.cardBody')}</p>
-              <CardProgress entry={s.pickerProgress?.align} kind="align" />
-              <span data-testid="open-align" style={{ ...CTA_STYLE, alignSelf: 'flex-start' }}>
-                {ctaFor(s.pickerProgress?.align)} {'→'}
-              </span>
-            </div>
-
-            <div data-testid="community-checking-card" data-i="card" data-tone="accent"
-              {...clickableCard(() => actions.go('publish'))}
-              style={{ ...PICKER_CARD, cursor: 'pointer' }}>
-              <div style={PICKER_TITLE}>{t('cc.title')}</div>
-              <p style={PICKER_DESC}>{t('cc.cardDesc')}</p>
-              {/* The design's progress block: a whole-chapter pass has no count
-                * yet, so the bar stays empty and the next line names the read. */}
-              <div style={{ marginBottom: 16 }}>
-                <ProgressBar tone="valid" value={0} height={6} style={{ marginBottom: 9 }} />
-                <p style={{ ...cardCaption, fontWeight: 'var(--fw-bold)', color: 'var(--text-secondary)' }}>{t('cc.wholeChapter')}</p>
-                <p style={{ ...cardCaption, color: 'var(--text-tertiary)' }}>{t('cc.nextRead', { ref: `${bookName(s.book)} ${s.chapter}` })}</p>
-              </div>
-              <span data-testid="open-community-checking" style={{ ...CTA_STYLE, alignSelf: 'flex-start' }}>
-                {t('cc.open')}
-              </span>
-            </div>
-          </div>
-        )}
+        {pre && <PickerGrid s={s} pre={pre} story={story} unitLabel={unitLabel} pickerTitleOf={pickerTitleOf} />}
 
         {pre && Object.values(pre).some((p) => p.state !== 'ready') && (
           <p style={{ fontSize: 'var(--fs-caption-lg)', color: 'var(--text-tertiary)', lineHeight: 'var(--lh-body)', margin: '20px 0 0' }}>

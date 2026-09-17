@@ -9,6 +9,7 @@ import type { SchemeDoc, SchemeName, UnplaceableReason } from './versification';
 import type { Tool } from './resolve';
 import { tokenize } from 'string-punctuation-tokenizer';
 import { usfmjs } from './vendor';
+import { isStoryReference, STORY_BOOK_ID } from './journal/runtime';
 
 // ---------- targetBible derivation (harness section 3; FR-13 precursor) ----------
 
@@ -40,12 +41,36 @@ export const deriveTargetBible = (bookUsfm: string): DerivedBook =>
 
 // ---------- check-item shapes (BURRITO-SPEC §5.2) ----------
 
+/** A Bible reference `{bookId, chapter, verse}` (§5.2) or, in an OBS project,
+ * a story reference `{story, frame}` (§10.5, R-10.5.1). The two forms never
+ * mix in one object; `referenceParts` reads either as a locator pair. */
 export interface CheckReference {
-  bookId: string;
-  chapter: number | string;
-  verse: number | string;
+  bookId?: string;
+  chapter?: number | string;
+  verse?: number | string;
+  story?: number;
+  frame?: number;
   [key: string]: unknown;
 }
+
+/** ONE definition of the story reference form and its book-position literal:
+ * the reference grammar (journal/grammar.mjs, through runtime.ts). */
+export { isStoryReference, STORY_BOOK_ID };
+
+/** The locator pair of either reference form: chapter and verse for a Bible
+ * item, story and frame for a story item (frame 0 is the title). Every
+ * display, sort, position memory and text lookup reads through this, so a
+ * story item never needs a fake chapter. */
+export const referenceParts = (r: CheckReference): { c: number | string; v: number | string } =>
+  isStoryReference(r)
+    ? { c: r.story as number, v: r.frame as number }
+    : { c: r.chapter as number | string, v: r.verse as number | string };
+
+/** The `c:v` locator string (`1:1`, `1:0` for a story title). */
+export const locatorOf = (r: CheckReference): string => {
+  const { c, v } = referenceParts(r);
+  return `${c}:${v}`;
+};
 
 export interface CheckContextId {
   checkId: string;
@@ -285,14 +310,16 @@ export interface ReattachResult {
   unplaced?: boolean;
 }
 
-const crossKey = (c: CheckContextId): string =>
-  [
-    c.reference.bookId,
-    String(c.reference.chapter),
-    String(c.reference.verse),
+const crossKey = (c: CheckContextId): string => {
+  const { c: chapter, v: verse } = referenceParts(c.reference);
+  return [
+    isStoryReference(c.reference) ? STORY_BOOK_ID : c.reference.bookId,
+    String(chapter),
+    String(verse),
     c.quoteString,
     c.occurrence,
   ].join('|');
+};
 
 /** Merge saved decisions into a freshly derived list, in two passes.
  *
@@ -430,14 +457,16 @@ export const reattachAcrossResource = (
 
 /** Stable identity key for the derive+merge re-attach. Chapter and verse join
  * as their exact string forms, so span verses key consistently. */
-export const mergeKey = (c: CheckContextId): string =>
-  [
+export const mergeKey = (c: CheckContextId): string => {
+  const { c: chapter, v: verse } = referenceParts(c.reference);
+  return [
     c.checkId,
-    String(c.reference.chapter),
-    String(c.reference.verse),
+    String(chapter),
+    String(verse),
     c.quoteString,
     c.occurrence,
   ].join('|');
+};
 
 /** Re-attach stored decisions to freshly derived items by stable key. A stored
  * decision replaces its derived twin; an unmatched item stays fresh (§4.2). */
@@ -478,9 +507,39 @@ export const refInScope = (
 /** §4.2 (D26): derivation filters check items to the project scope. The progress
  * denominator is the in-scope derived total, never the whole book. */
 export const filterToScope = (items: CheckItem[], ranges: string[]): CheckItem[] =>
-  items.filter((it) =>
-    refInScope(ranges, it.contextId.reference.chapter, it.contextId.reference.verse),
-  );
+  items.filter((it) => {
+    const { c, v } = referenceParts(it.contextId.reference);
+    return refInScope(ranges, c, v);
+  });
+
+// ---------- OBS: story-keyed items (BURRITO-SPEC §10.5, D74 — issue #291) ----------
+
+/** Derive the check items of an OBS project from the OBS Translation Notes or
+ * OBS Translation Words Links TSV. Both exports are ONE file, `OBS.tsv`, in the
+ * Bible column layouts, with `Reference` as `story:frame` and frame 0 the story
+ * title [VERIFIED — en_obs-tn v13 and en_obs-twl v3 sb-zip exports, 2026-09-17].
+ *
+ * Every note row is a check: the Bible rule that a row without a
+ * SupportReference is a plain note, not a check, would drop every title note
+ * (none of the 58 `N:0` rows of en_obs-tn v13 carries one). `Occurrence` is 1
+ * in every row and is not counted (R-10.5.1). The reference of a derived item
+ * is `{story, frame}` and nothing else (R-10.5.1: the two forms never mix).
+ * `story`, when given, keeps only that story's rows — a session is scoped to
+ * the open story as a Bible session is to the open book. A row whose locator
+ * is not two integers cannot address a frame (R-10.4.1) and is dropped; the
+ * unit tests assert the real exports drop nothing. */
+export const deriveObsItems = (tsv: string, tool: Tool, story?: number): CheckItem[] => {
+  const derived =
+    tool === 'translationNotes'
+      ? deriveTnItems(tsv, STORY_BOOK_ID, { keepPlain: true })
+      : deriveTwlItems(tsv, STORY_BOOK_ID);
+  return derived.flatMap((item) => {
+    const { chapter, verse } = item.contextId.reference;
+    if (typeof chapter !== 'number' || typeof verse !== 'number') return [];
+    if (story !== undefined && chapter !== story) return [];
+    return [{ ...item, contextId: { ...item.contextId, reference: { story: chapter, frame: verse } } }];
+  });
+};
 
 // ---------- the pipeline + progress (harness section 7) ----------
 
@@ -560,9 +619,9 @@ export const deriveForProject = async (params: {
     const outcome = await mapReference({
       from,
       to,
-      book: reference.bookId,
+      book: reference.bookId as string,
       chapter: reference.chapter as number,
-      verse: reference.verse,
+      verse: reference.verse as number | string,
       schemes,
     });
     if (!outcome.ok) {

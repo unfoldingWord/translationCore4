@@ -24,7 +24,8 @@ import {
 import { reconcileUsfm as reconcileUsfmRef, seedFromSidecars as seedFromSidecarsRef } from '../../../journal/reconcile.mjs';
 import { makeClock as makeClockRef } from '../../../journal/hlc.mjs';
 import { normalizeEvent as normalizeEventRef } from '../../../journal/schema.mjs';
-import { toNfc as toNfcRef } from '../../../journal/grammar.mjs';
+import { toNfc as toNfcRef, isStoryReference as isStoryReferenceRef, STORY_BOOK_ID as STORY_BOOK_ID_REF } from '../../../journal/grammar.mjs';
+import { STORY_FILE as STORY_FILE_REF } from '../../../journal/checkpoint.mjs';
 import {
   applyStoryState as applyStoryStateRef,
   parseStory as parseStoryRef,
@@ -50,8 +51,9 @@ export interface FoldOutput {
   books: Record<string, { usfm: string; verses: Record<string, string> }>;
   /** §10 (D74): story -> { frames: {frame: text} (frame 0 = the title), ref } — the folded `v: 2` story registers */
   stories: Record<string, { frames: Record<string, string>; ref: string | null }>;
-  /** toolId -> projected §5.2 decision records (sorted by contextId) */
-  decisions: Record<string, Array<Record<string, unknown> & { contextId: { reference: { bookId: string; chapter: unknown; verse: unknown } } }>>;
+  /** toolId -> projected §5.2 decision records (sorted by contextId); a story
+   * decision's reference is `{story, frame}` (§10.5) */
+  decisions: Record<string, Array<Record<string, unknown> & { contextId: { reference: { bookId?: string; chapter?: unknown; verse?: unknown; story?: number; frame?: number } } }>>;
   /** book -> { "C:V": §5.1 record } */
   alignments: Record<string, Record<string, Record<string, unknown>>>;
   /** §5.3 pin slot -> entry */
@@ -116,6 +118,12 @@ export const applyStoryState = applyStoryStateRef as (
 ) => string;
 /** R-10.2.2: `content/NN.md`. */
 export const storyIpath = storyIpathRef as (story: number) => string;
+/** R-10.5.1: is this §5.2 reference the story form `{story, frame}`? */
+export const isStoryReference = isStoryReferenceRef as (reference: unknown) => boolean;
+/** R-10.5.1: the literal in the book position of a story identity key (`obs`). */
+export const STORY_BOOK_ID = STORY_BOOK_ID_REF as string;
+/** §10.5: the book position of the story decision sidecar, `checking/<toolId>/OBS.json`. */
+export const STORY_FILE = STORY_FILE_REF as string;
 /** The inverse of storyIpath: the story number of a `content/NN.md` path, else null. */
 export const storyNumberOf = (ipath: string): number | null => {
   const m = /^content\/(\d{2})\.md$/.exec(ipath);

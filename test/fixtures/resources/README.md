@@ -18,6 +18,8 @@ fact that these are one-book slices of the full export.
 | `en_twl@v86/` | `git.door43.org/unfoldingWord/en_twl/sb/v86.zip` | `570e76d0024c847689e48a20e2ac1a1d2c6eb6e3` | fallback `translationWordsLinks` |
 | `es-419_tn@v66/` | `git.door43.org/Es-419_gl/es-419_tn/sb/v66.zip` | `22f3d0c61e2ab4701cb869547de9c3c43da07208` | primary `translationNotes` |
 | `en_ta@v86/` | `git.door43.org/unfoldingWord/en_ta/sb/v86.zip` | `c7caddfb474efd713f36b35a3ffc927866c7b180` | fallback `translationAcademy` |
+| `en_obs-tn@v13/` | `git.door43.org/unfoldingWord/en_obs-tn/sb/v13.zip` (fetched 2026-09-17 through `dev-env/scripts/cache-resource.zsh`) | `e86138ea13f619f09f7a6dcaa60592716d407fe4` | fallback `obs-tn` (§10.6) |
+| `en_obs-twl@v3/` | `git.door43.org/unfoldingWord/en_obs-twl/sb/v3.zip` (fetched 2026-09-17, same path) | `44ebc9fafe8101665f985007d566f5036a2be85b` | fallback `obs-twl` (§10.6) |
 
 Slice contents (paths flattened, `ingredients/` prefix dropped, `/` → `-`):
 
@@ -37,6 +39,13 @@ Ground truth (counted at vendor time; the test suite asserts these):
 - `es-419_tn@v66/TIT.tsv`: 216 data rows → **112 derivable items**; 89 of the
   157 en checkIds also exist in es (cross-language re-attach exercises both the
   checkId-match and the fallback-key paths on real data).
+- `en_obs-tn@v13/OBS.tsv`: the WHOLE export — one file covers the fifty
+  stories; `Reference` is `story:frame`, frame 0 the story title. 2325 data
+  rows; 58 are title notes (`N:0`) and none of those carries a SupportReference,
+  so for OBS every row is a check (**2325 items**; issue #291). `Occurrence` is
+  1 in every row.
+- `en_obs-twl@v3/OBS.tsv`: the whole export, **2381 items**; `Occurrence` is 1
+  in every row (D74 §8, R-10.5.1); no frame-0 rows; story 1 has 35.
 
 Adding a book: create the same files for the new book in each directory (same
 export, same tag) and extend the suite's per-book expectations — the layout is

@@ -160,3 +160,17 @@ describe('D17 resolution revalidation — a warned update, never silent', () => 
     ).toBeNull();
   });
 });
+
+describe('I-3 revalidation for a story item (#291, §10.4): the frame text index is keyed story:frame', () => {
+  const storyItem = item({
+    contextId: { ...item().contextId, reference: { story: 1, frame: 2 } } as never,
+  });
+
+  it('a selection still present in the frame is not stale; one the edit removed is flagged and retained', () => {
+    const kept = revalidateAgainstDraft([storyItem], { '1:2': 'Entonces Dios creó todo, y vio que era bueno.' });
+    expect(kept.invalidated).toBe(0);
+    const edited = revalidateAgainstDraft([storyItem], { '1:2': 'Entonces el Señor creó todo.' });
+    expect(edited.invalidated).toBe(1);
+    expect(edited.items[0]).toMatchObject({ invalidated: true, status: 'invalid', selections: storyItem.selections });
+  });
+});
