@@ -17,12 +17,21 @@ const fieldStyle = {
   lineHeight: 'var(--lh-verse-lg)',
 };
 
+const shortPin = (pin) => `${pin.repoPath}@${pin.sha.slice(0, 12)}`;
+
 /** One clause per picture pack consulted: where it was read and what it held. */
 function describePack(report) {
-  const pin = `${report.pin.repoPath}@${report.pin.sha.slice(0, 12)}`;
+  const pin = shortPin(report.pin);
   if (!report.localPath) return t('storyDraft.packNotInstalled', { pin });
   if (report.via === null) return t('storyDraft.packUnreadable', { pin, path: report.localPath, error: report.error });
-  return t('storyDraft.packFiles', { pin, path: report.localPath, n: report.files, via: report.via });
+  return t(report.files === 1 ? 'storyDraft.packFilesOne' : 'storyDraft.packFiles', { pin, path: report.localPath, n: report.files, via: report.via });
+}
+
+/** Why the gateway story is absent (obsStory.ts ObsSourceState). */
+function describeSource(source) {
+  if (source.kind === 'no-pin') return t('storyDraft.sourceNoPin');
+  if (source.kind === 'not-installed') return t('storyDraft.sourceNotInstalled', { pin: shortPin(source.pin) });
+  return t('storyDraft.sourceError', { message: source.message });
 }
 
 function EditableUnit({ unit, value, label, multiline = false, dir }) {
@@ -79,6 +88,30 @@ function FrameEditor({ frame, sourceFrame, image, story, index, dir }) {
   );
 }
 
+/** The two notices above the frames: why the gateway story is absent, and
+ * why no frame has a picture. */
+function StoryNotices({ source, imageNote, onInstall }) {
+  return (
+    <>
+      {source && (
+        <Callout tone="warn" data-testid="story-source-error" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
+          <span style={{ flex: 1, overflowWrap: 'anywhere' }}>{describeSource(source)}</span>
+          {source.kind === 'not-installed' && (
+            <Button size="sm" variant="secondary" onClick={onInstall} data-testid="story-source-install">
+              {t('storyDraft.getSource')}
+            </Button>
+          )}
+        </Callout>
+      )}
+      {imageNote && (
+        <Callout tone="info" data-testid="story-image-note" style={{ marginBottom: 18, overflowWrap: 'anywhere' }}>
+          {t(imageNote.wanted === 1 ? 'storyDraft.noPicturesOne' : 'storyDraft.noPictures', { n: imageNote.wanted })} {imageNote.packs.map(describePack).join('; ')}
+        </Callout>
+      )}
+    </>
+  );
+}
+
 export default function StoryDraft() {
   const { s, actions } = useApp();
   const story = s.story;
@@ -98,21 +131,7 @@ export default function StoryDraft() {
             <Button variant="ghost" onClick={actions.toggleRail} data-testid="toggle-story-rail">{s.rail ? t('storyDraft.hideStories') : t('storyDraft.showStories')}</Button>
           </div>
           <LineUnit testId="story-title" unit={{ kind: 'title', story: number }} label={t('storyDraft.title')} gateway={sourceStory ? sourceStory.title : null} value={story.title} dir={dir} />
-          {s.storySourceError && (
-            <Callout tone="warn" data-testid="story-source-error" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
-              <span style={{ flex: 1, overflowWrap: 'anywhere' }}>{s.storySourceError}</span>
-              {s.storySourceMissing && (
-                <Button size="sm" variant="secondary" onClick={actions.openSources} data-testid="story-source-install">
-                  {t('storyDraft.getSource')}
-                </Button>
-              )}
-            </Callout>
-          )}
-          {s.storyImageNote && (
-            <Callout tone="info" data-testid="story-image-note" style={{ marginBottom: 18, overflowWrap: 'anywhere' }}>
-              {t('storyDraft.noPictures', { n: s.storyImageNote.wanted })} {s.storyImageNote.packs.map(describePack).join('; ')}
-            </Callout>
-          )}
+          <StoryNotices source={s.storySource} imageNote={s.storyImageNote} onInstall={actions.openSources} />
           {story.frames.map((frame, index) => (
             <FrameEditor key={index + 1} frame={frame} sourceFrame={sourceStory?.frames?.[index]} image={s.storyImages?.[String(index + 1)]} story={story} index={index} dir={dir} />
           ))}

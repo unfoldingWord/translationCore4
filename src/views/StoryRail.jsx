@@ -27,7 +27,7 @@ export default function StoryRail({ numbers = [], active, story, onSelect }) {
                         title={t(drafted ? 'storyDraft.frameDrafted' : 'storyDraft.frameEmpty', { n: index + 1 })}
                         style={{ width: 22, height: 22, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--radius-xs)', fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-bold)',
                           ...(drafted
-                            ? { background: 'var(--accent)', color: '#fff' }
+                            ? { background: 'var(--surface-accent-soft)', color: 'var(--text-accent)' }
                             : { background: 'transparent', color: 'var(--text-tertiary)', boxShadow: 'inset 0 0 0 1px var(--border)' }) }}>
                         {index + 1}
                       </span>

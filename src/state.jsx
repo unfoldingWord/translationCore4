@@ -275,8 +275,7 @@ const initial = () => ({
   storyImageNote: null,
   storyLoading: false,
   storyError: null,
-  storySourceError: null,
-  storySourceMissing: false,
+  storySource: null,
   sources: {}, // { ult: {raw, chapters}|'missing'|undefined, ust: … }
   sourceTab: 'ult',
   editing: null, // { key: "1:3", before: <body before this edit session> } | null
@@ -1534,7 +1533,7 @@ async function loadObsStory({ api, resolveContext, store, repoPath, number, reso
     const presentation = await readObsStoryPresentation({ api, store, projectRepo: repoPath, storyNumber: number, resources, installed });
     if (!isCurrentObsStory({ seq, store, repoPath, storeRef, stateRef })) return;
     seedObsStory(scheduler, presentation, number);
-    dispatch({ type: 'set', patch: { storyNumber: number, story: presentation.story, sourceStory: presentation.sourceStory, storyImages: presentation.images, storyImageNote: presentation.imageNote, storySourceError: presentation.sourceError, storySourceMissing: presentation.sourceMissing, storyLoading: false, storyError: null } });
+    dispatch({ type: 'set', patch: { storyNumber: number, story: presentation.story, sourceStory: presentation.sourceStory, storyImages: presentation.images, storyImageNote: presentation.imageNote, storySource: presentation.source, storyLoading: false, storyError: null } });
     rememberObsStory(repoPath, number);
   } catch (error) {
     if (isCurrentObsStory({ seq, store, repoPath, storeRef, stateRef }))
@@ -1547,7 +1546,7 @@ async function openObsStory({ storyNumber, resourcesOverride, context, stateRef,
   if (!target) return;
   if (!(await drainSchedulers(saveRefs))) return;
   const seq = ++storyOpenSeq;
-  dispatch({ type: 'set', patch: { storyNumber: target.number, story: null, sourceStory: null, storyImages: {}, storyImageNote: null, storyLoading: true, storyError: null, storySourceError: null, storySourceMissing: false } });
+  dispatch({ type: 'set', patch: { storyNumber: target.number, story: null, sourceStory: null, storyImages: {}, storyImageNote: null, storyLoading: true, storyError: null, storySource: null } });
   await loadObsStory({
     api,
     resolveContext,
@@ -1697,8 +1696,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
         storyImageNote: null,
         storyLoading: false,
         storyError: null,
-        storySourceError: null,
-        storySourceMissing: false,
+        storySource: null,
         storySaveError: null,
         upgrade: UPGRADE_IDLE,
       },
@@ -5050,7 +5048,7 @@ export function AppProvider({ children }) {
         alignSessionSeq++;
         dispatch({
           type: 'set',
-          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, storyNumbers: [], storyNumber: null, story: null, sourceStory: null, storyImages: {}, storyImageNote: null, storyLoading: false, storyError: null, storySourceError: null, storySourceMissing: false, saveState: 'saved', noteSaveState: 'saved', alignSaveState: 'saved', checkSaveState: 'saved', storySaveState: 'saved', storySaveError: null, commitError: null, projectPins: null, projectPinsLoaded: false, projectPinsError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, alignSuggest: { status: 'off', verses: 0, error: null }, pickerProgress: null, toolPos: {}, upgrade: UPGRADE_IDLE },
+          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, storyNumbers: [], storyNumber: null, story: null, sourceStory: null, storyImages: {}, storyImageNote: null, storyLoading: false, storyError: null, storySource: null, saveState: 'saved', noteSaveState: 'saved', alignSaveState: 'saved', checkSaveState: 'saved', storySaveState: 'saved', storySaveError: null, commitError: null, projectPins: null, projectPinsLoaded: false, projectPinsError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, alignSuggest: { status: 'off', verses: 0, error: null }, pickerProgress: null, toolPos: {}, upgrade: UPGRADE_IDLE },
         });
         refreshProjects(); // re-order: the project just left goes to the top
         if (leaving && leavingStore) startLeaveCheckpoint({ store: leavingStore, repoPath: leaving.repoPath, stateRef, dispatch });

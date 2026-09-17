@@ -18,12 +18,11 @@ import { obsFrameSetMismatch } from './obsFrameSet';
 export interface ObsStoryPresentation {
   story: Story;
   sourceStory: Story | null;
-  sourceError: string | null;
-  /** True only when the pinned gateway story is absent from this machine.
-   * Other source failures (a missing ingredient, malformed bytes, or a
-   * transport error) must remain distinct: those need a retry/error message,
-   * not a misleading download prompt. */
-  sourceMissing: boolean;
+  /** Why the gateway story is absent, or null when it was read. The screen
+   * renders each kind through the catalog. `not-installed` is the only kind
+   * that earns a download prompt: a missing ingredient, malformed bytes, or a
+   * transport error needs an error message, not a misleading Get source. */
+  source: ObsSourceState | null;
   images: Record<string, ObsImageResolution>;
   /** One report per picture pack consulted, bundled default last. */
   imagePacks: ObsImagePackReport[];
@@ -39,6 +38,11 @@ export interface ObsImageNote {
   wanted: number;
   packs: ObsImagePackReport[];
 }
+
+export type ObsSourceState =
+  | { kind: 'no-pin' }
+  | { kind: 'not-installed'; pin: ResourcePin }
+  | { kind: 'error'; message: string };
 
 export interface ObsImagePackReport {
   pin: ResourcePin;
@@ -147,24 +151,23 @@ export const readObsStoryPresentation = async ({
 }): Promise<ObsStoryPresentation> => {
   const target = await store.readStory(storyNumber);
   let sourceStory: Story | null = null;
-  let sourceError: string | null = null;
-  let sourceMissing = false;
+  let source: ObsSourceState | null = null;
   const sourcePin = resources ? resolveObsSetSlot(resources, 'obs').pin : null;
   if (sourcePin) {
     const sourceRepo = sourceRepoFor(installed, sourcePin);
     if (sourceRepo) {
       try {
         sourceStory = parseStory(await api.readIngredient(sourceRepo, storyIpath(storyNumber)));
-        sourceError = obsFrameSetMismatch([target.story], [sourceStory]);
+        const mismatch = obsFrameSetMismatch([target.story], [sourceStory]);
+        if (mismatch) source = { kind: 'error', message: mismatch };
       } catch (error: unknown) {
-        sourceError = String((error as Error)?.message || error);
+        source = { kind: 'error', message: String((error as Error)?.message || error) };
       }
     } else {
-      sourceMissing = true;
-      sourceError = `OBS source ${sourcePin.repoPath}@${sourcePin.sha} is not installed`;
+      source = { kind: 'not-installed', pin: sourcePin };
     }
   } else {
-    sourceError = 'No pinned OBS gateway story is available';
+    source = { kind: 'no-pin' };
   }
 
   const pins = (['primary', 'fallback'] as const)
@@ -198,8 +201,7 @@ export const readObsStoryPresentation = async ({
   return {
     story: target.story,
     sourceStory,
-    sourceError,
-    sourceMissing,
+    source,
     images,
     imagePacks: reports,
     imageNote: noteFor(target.story, images, reports),

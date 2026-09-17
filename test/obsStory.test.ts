@@ -11,6 +11,7 @@ import { JournalingStore, forgetProjectQueues } from '../src/data/journal/journa
 import { forgetSharedClocks } from '../src/data/journal/journalStore';
 import { DEFAULT_OBS_IMAGES, DEFAULT_OBS_IMAGES_LOCAL, obsImageFileName } from '../src/data/obsImages';
 import { readObsStoryPresentation } from '../src/data/obsStory';
+import type { ResourcesFile } from '../src/data/burritoStore';
 import { journalingRig, memKv, tickingNow } from './helpers/journalingRig';
 
 const PARAMS = { content_name: 'Historias con fotos', content_abbr: 'fotos', content_language_code: 'es' };
@@ -33,6 +34,25 @@ const setup = async () => {
   const seedPack = () => rig.createRepo(DEFAULT_OBS_IMAGES_LOCAL, Object.fromEntries(fileNames.map((name) => [`360px/${name}`, 'jpeg-bytes'])));
   return { rig, api, store, repoPath, story, fileNames, read, seedPack };
 };
+
+describe('OBS story source state (#289)', () => {
+  it('reports no pin, a pinned source that is not installed, and a read error as structured states, never as sentences', async () => {
+    const { api, store, repoPath } = await setup();
+    const at = (resources: ResourcesFile | null, installed: Record<string, unknown>) =>
+      readObsStoryPresentation({ api, store, projectRepo: repoPath, storyNumber: 1, resources, installed: installed as never });
+    expect((await at(null, {})).source).toEqual({ kind: 'no-pin' });
+    const pin = { repoPath: 'git.door43.org/unfoldingWord/en_obs', sha: '0123456789abcdef0123456789abcdef01234567', version: 'v1', flavor: 'textStories' };
+    const pinned = { schemaVersion: 2, languageSets: { primary: { obs: pin }, fallback: {} }, resources: {} } as unknown as ResourcesFile;
+    const missing = await at(pinned, {});
+    expect(missing.source).toEqual({ kind: 'not-installed', pin });
+    expect(missing.sourceStory).toBeNull();
+    const local = '_local_/_sideloaded_/unfoldingword--en_obs--0123456789ab';
+    const unreadable = await at(pinned, { [local]: pin });
+    expect(unreadable.source?.kind).toBe('error');
+    expect(unreadable.sourceStory).toBeNull();
+    expect(unreadable.story.frames.length).toBeGreaterThan(0);
+  });
+});
 
 describe('OBS story pictures (#289)', () => {
   it('negative control: with no pack on the machine every frame is missing and the note names the pack path', async () => {

@@ -16,8 +16,7 @@ const state = {
   storyNumber: 1,
   storyLoading: false,
   storyError: null,
-  storySourceError: null as string | null,
-  storySourceMissing: false,
+  storySource: null as null | { kind: 'no-pin' } | { kind: 'not-installed'; pin: { repoPath: string; sha: string } } | { kind: 'error'; message: string },
   storyImageNote: null as null | { wanted: number; packs: Array<Record<string, unknown>> },
   story: { number: 1, title: 'La creación', ref: 'Génesis 1', frames: [{ image: '![x](obs-01.jpg)', text: 'Al principio.' }, { image: '![x](obs-02.jpg)', text: '' }] },
   sourceStory: { number: 1, title: 'Creation', ref: 'Genesis 1', frames: [{ image: '![x](obs-01.jpg)', text: 'In the beginning.' }, { image: '![x](obs-02.jpg)', text: 'Then God said.' }] } as { number: number; title: string; ref: string; frames: Array<{ image: string; text: string }> } | null,
@@ -56,7 +55,8 @@ describe('OBS story draft surface', () => {
     state.storyImages = {};
     render(<StoryDraft />);
     const note = screen.getByTestId('story-image-note').textContent;
-    expect(note).toContain('1 image lines');
+    expect(note).toContain('matched the image line of this story');
+    expect(note).not.toContain('1 image lines');
     expect(note).toContain('uw--obs_images_360--7146d5b504f6 lists 0 image files (paths)');
     expect(screen.queryByRole('img')).toBeNull();
     expect(screen.getByTestId('story-frame-1').textContent).not.toContain('image');
@@ -85,13 +85,15 @@ describe('OBS story draft surface', () => {
 
   it('states that gateway text is unavailable on every unit when there is no source story, and keeps the target text', () => {
     state.sourceStory = null;
-    state.storySourceError = 'OBS source is not installed';
+    state.storySource = { kind: 'no-pin' };
     render(<StoryDraft />);
+    expect(screen.getByTestId('story-source-error').textContent).toContain('No gateway story is pinned');
+    expect(screen.queryByTestId('story-source-install')).toBeNull();
     expect(screen.getAllByText('Gateway text is unavailable.')).toHaveLength(4);
     expect((screen.getByRole('textbox', { name: 'Frame 1' }) as HTMLTextAreaElement).value).toBe('Al principio.');
     expect((screen.getByRole('textbox', { name: 'Story title' }) as HTMLInputElement).value).toBe('La creación');
     state.sourceStory = { number: 1, title: 'Creation', ref: 'Genesis 1', frames: [{ image: '![x](obs-01.jpg)', text: 'In the beginning.' }, { image: '![x](obs-02.jpg)', text: 'Then God said.' }] };
-    state.storySourceError = null;
+    state.storySource = null;
   });
 
   it('marks a frame drafted exactly when its paragraph is non-empty', () => {
@@ -137,12 +139,16 @@ describe('OBS story draft surface', () => {
   });
 
   it('offers the Sources modal when the pinned gateway story is not installed', () => {
-    state.storySourceError = 'OBS source is not installed';
-    state.storySourceMissing = true;
+    state.storySource = { kind: 'not-installed', pin: { repoPath: 'git.door43.org/unfoldingWord/en_obs', sha: '0123456789abcdef0123456789abcdef01234567' } };
     render(<StoryDraft />);
+    expect(screen.getByTestId('story-source-error').textContent).toContain('en_obs@0123456789ab is not on this machine');
     fireEvent.click(screen.getByTestId('story-source-install'));
     expect(actions.openSources).toHaveBeenCalledTimes(1);
-    state.storySourceError = null;
-    state.storySourceMissing = false;
+    cleanup();
+    state.storySource = { kind: 'error', message: 'story 1 has 16 source frames; project has 15' };
+    render(<StoryDraft />);
+    expect(screen.getByTestId('story-source-error').textContent).toContain('could not be read: story 1 has 16 source frames');
+    expect(screen.queryByTestId('story-source-install')).toBeNull();
+    state.storySource = null;
   });
 });

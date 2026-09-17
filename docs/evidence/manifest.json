@@ -32,7 +32,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [
-        "✖ 1 problem (0 errors, 1 warning)"
+        "\u2716 1 problem (0 errors, 1 warning)"
       ],
       "durationMs": 6930
     },
@@ -60,12 +60,12 @@
       "skipped": null,
       "ok": true,
       "exitCode": 0,
-      "passed": 1122,
+      "passed": 1123,
       "failed": 0,
       "skippedTests": 43,
       "summary": [
         "Test Files  80 passed | 8 skipped (88)",
-        "Tests  1122 passed | 43 skipped (1165)"
+        "Tests  1123 passed | 43 skipped (1166)"
       ],
       "durationMs": 36649
     },
@@ -82,7 +82,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [
-        "✓ built in 10.08s"
+        "\u2713 built in 10.08s"
       ],
       "durationMs": 10580
     },
@@ -114,10 +114,10 @@
       "failed": 0,
       "skippedTests": null,
       "summary": [
-        "Stage-1 (path-authoritative — holds on today's pankosmia-web): 36 passed, 0 failed",
-        "Stage-2 (role/relationships durability — x-roles non-durable by design, D28; client re-asserts after remake): 2 passed, 0 failed",
-        "Phase-2 (journal-merge design checks, §8.7): 3 passed, 0 failed",
-        "OBS (the OBS project kind, §10 — sample-burrito-obs): 6 passed, 0 failed",
+        "Stage-1 (path-authoritative \u2014 holds on today's pankosmia-web): 36 passed, 0 failed",
+        "Stage-2 (role/relationships durability \u2014 x-roles non-durable by design, D28; client re-asserts after remake): 2 passed, 0 failed",
+        "Phase-2 (journal-merge design checks, \u00a78.7): 3 passed, 0 failed",
+        "OBS (the OBS project kind, \u00a710 \u2014 sample-burrito-obs): 6 passed, 0 failed",
         "47 passed, 0 failed"
       ],
       "durationMs": 651
