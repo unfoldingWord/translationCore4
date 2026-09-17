@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "tool": "scripts/prove.mjs",
-  "commit": "88bb2390fa959e225a2789a8cadf5c48948c9487",
+  "commit": "74509ecf8b2062be489ac1e81dbd38e486da9c90",
   "dirty": false,
-  "date": "2026-09-17T02:10:14.886Z",
+  "date": "2026-09-17T02:13:39.859Z",
   "node": "v22.23.2",
   "platform": "linux-x64",
   "ci": true,
@@ -32,9 +32,9 @@
       "failed": null,
       "skippedTests": null,
       "summary": [
-        "\u2716 1 problem (0 errors, 1 warning)"
+        "✖ 1 problem (0 errors, 1 warning)"
       ],
-      "durationMs": 6728
+      "durationMs": 6930
     },
     {
       "id": "typecheck",
@@ -49,7 +49,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [],
-      "durationMs": 5862
+      "durationMs": 6257
     },
     {
       "id": "vitest",
@@ -67,7 +67,7 @@
         "Test Files  80 passed | 8 skipped (88)",
         "Tests  1122 passed | 43 skipped (1165)"
       ],
-      "durationMs": 34776
+      "durationMs": 36649
     },
     {
       "id": "build",
@@ -82,9 +82,9 @@
       "failed": null,
       "skippedTests": null,
       "summary": [
-        "\u2713 built in 10.22s"
+        "✓ built in 10.08s"
       ],
-      "durationMs": 10747
+      "durationMs": 10580
     },
     {
       "id": "conformance:generate",
@@ -99,7 +99,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [],
-      "durationMs": 200
+      "durationMs": 222
     },
     {
       "id": "conformance:validate",
@@ -114,13 +114,13 @@
       "failed": 0,
       "skippedTests": null,
       "summary": [
-        "Stage-1 (path-authoritative \u2014 holds on today's pankosmia-web): 36 passed, 0 failed",
-        "Stage-2 (role/relationships durability \u2014 x-roles non-durable by design, D28; client re-asserts after remake): 2 passed, 0 failed",
-        "Phase-2 (journal-merge design checks, \u00a78.7): 3 passed, 0 failed",
-        "OBS (the OBS project kind, \u00a710 \u2014 sample-burrito-obs): 6 passed, 0 failed",
+        "Stage-1 (path-authoritative — holds on today's pankosmia-web): 36 passed, 0 failed",
+        "Stage-2 (role/relationships durability — x-roles non-durable by design, D28; client re-asserts after remake): 2 passed, 0 failed",
+        "Phase-2 (journal-merge design checks, §8.7): 3 passed, 0 failed",
+        "OBS (the OBS project kind, §10 — sample-burrito-obs): 6 passed, 0 failed",
         "47 passed, 0 failed"
       ],
-      "durationMs": 632
+      "durationMs": 651
     },
     {
       "id": "conformance:journal",
@@ -137,7 +137,7 @@
       "summary": [
         "Journal suite: 350 passed, 0 failed (fast-check seed 20260707)"
       ],
-      "durationMs": 3220
+      "durationMs": 3288
     },
     {
       "id": "conformance:normative",
@@ -157,7 +157,7 @@
         "uncovered          : 0",
         "stale claims       : 0"
       ],
-      "durationMs": 81
+      "durationMs": 79
     },
     {
       "id": "conformance:transport",
