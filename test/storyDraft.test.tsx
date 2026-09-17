@@ -19,8 +19,8 @@ const state = {
   storySourceError: null as string | null,
   storySourceMissing: false,
   storyImageNote: null as null | { wanted: number; packs: Array<Record<string, unknown>> },
-  story: { number: 1, title: 'La creación', ref: 'Génesis 1', frames: [{ image: '![x](obs-01.jpg)', text: 'Al principio.' }] },
-  sourceStory: { number: 1, title: 'Creation', ref: 'Genesis 1', frames: [{ image: '![x](obs-01.jpg)', text: 'In the beginning.' }] },
+  story: { number: 1, title: 'La creación', ref: 'Génesis 1', frames: [{ image: '![x](obs-01.jpg)', text: 'Al principio.' }, { image: '![x](obs-02.jpg)', text: '' }] },
+  sourceStory: { number: 1, title: 'Creation', ref: 'Genesis 1', frames: [{ image: '![x](obs-01.jpg)', text: 'In the beginning.' }, { image: '![x](obs-02.jpg)', text: 'Then God said.' }] } as { number: number; title: string; ref: string; frames: Array<{ image: string; text: string }> } | null,
   storyImages: { '1': { source: 'default', uri: 'local://obs-01.jpg' } } as Record<string, { source: string; uri: string }>,
   project: { flavor: 'textStories', scriptDirection: 'ltr' },
 };
@@ -62,6 +62,78 @@ describe('OBS story draft surface', () => {
     expect(screen.getByTestId('story-frame-1').textContent).not.toContain('image');
     state.storyImageNote = null;
     state.storyImages = { '1': { source: 'default', uri: 'local://obs-01.jpg' } };
+  });
+
+  it('renders the units in file order: the title, every numbered frame, then the reference line, each beside its gateway text', () => {
+    render(<StoryDraft />);
+    const main = screen.getByTestId('story-draft');
+    const order = [...main.querySelectorAll('[data-testid]')]
+      .map((el) => el.getAttribute('data-testid'))
+      .filter((id) => /^story-(title|frame-\d+|ref)$/.test(id ?? ''));
+    expect(order).toEqual(['story-title', 'story-frame-1', 'story-frame-2', 'story-ref']);
+    const title = screen.getByTestId('story-title');
+    expect(title.textContent).toContain('Creation');
+    expect((title.querySelector('input') as HTMLInputElement).value).toBe('La creación');
+    const ref = screen.getByTestId('story-ref');
+    expect(ref.textContent).toContain('Genesis 1');
+    expect((ref.querySelector('input') as HTMLInputElement).value).toBe('Génesis 1');
+    expect(screen.getByTestId('story-frame-2').textContent).toContain('Then God said.');
+    expect(title.querySelector('img')).toBeNull();
+    expect(ref.querySelector('img')).toBeNull();
+    expect(screen.getByTestId('story-frame-2').querySelector('img')).toBeNull();
+  });
+
+  it('states that gateway text is unavailable on every unit when there is no source story, and keeps the target text', () => {
+    state.sourceStory = null;
+    state.storySourceError = 'OBS source is not installed';
+    render(<StoryDraft />);
+    expect(screen.getAllByText('Gateway text is unavailable.')).toHaveLength(4);
+    expect((screen.getByRole('textbox', { name: 'Frame 1' }) as HTMLTextAreaElement).value).toBe('Al principio.');
+    expect((screen.getByRole('textbox', { name: 'Story title' }) as HTMLInputElement).value).toBe('La creación');
+    state.sourceStory = { number: 1, title: 'Creation', ref: 'Genesis 1', frames: [{ image: '![x](obs-01.jpg)', text: 'In the beginning.' }, { image: '![x](obs-02.jpg)', text: 'Then God said.' }] };
+    state.storySourceError = null;
+  });
+
+  it('marks a frame drafted exactly when its paragraph is non-empty', () => {
+    render(<StoryDraft />);
+    expect(screen.getByTestId('frame-marker-1').getAttribute('data-drafted')).toBe('true');
+    expect(screen.getByTestId('frame-marker-1').getAttribute('title')).toBe('Frame 1, drafted');
+    expect(screen.getByTestId('frame-marker-2').getAttribute('data-drafted')).toBe('false');
+    expect(screen.getByTestId('frame-marker-2').getAttribute('title')).toBe('Frame 2, not drafted');
+    cleanup();
+    state.story.frames[1].text = '   \n  ';
+    render(<StoryDraft />);
+    expect(screen.getByTestId('frame-marker-2').getAttribute('data-drafted')).toBe('false');
+    state.story.frames[1].text = '';
+  });
+
+  it('lists every story from the catalogue as a keyboard-operable button and names the current one', () => {
+    render(<StoryDraft />);
+    const rail = screen.getByTestId('story-rail');
+    const buttons = [...rail.querySelectorAll('button')];
+    expect(buttons.map((b) => b.textContent)).toEqual(['Story 1', 'Story 2']);
+    expect(buttons.every((b) => b.tabIndex >= 0)).toBe(true);
+    expect(screen.getByTestId('story-1').getAttribute('aria-current')).toBe('page');
+    expect(screen.getByTestId('story-2').getAttribute('aria-current')).toBeNull();
+    screen.getByTestId('story-2').focus();
+    expect(document.activeElement).toBe(screen.getByTestId('story-2'));
+  });
+
+  it('gives every target field and every gateway line the project script direction', () => {
+    state.project = { flavor: 'textStories', scriptDirection: 'rtl' };
+    render(<StoryDraft />);
+    for (const box of screen.getAllByRole('textbox')) expect(box.getAttribute('dir')).toBe('rtl');
+    expect(screen.getAllByRole('textbox')).toHaveLength(4);
+    for (const line of screen.getByTestId('story-draft').querySelectorAll('p')) expect(line.getAttribute('dir')).toBe('rtl');
+    state.project = { flavor: 'textStories', scriptDirection: 'ltr' };
+  });
+
+  it('passes an emptied reference to the state as an empty string, so the field can be cleared and retyped', () => {
+    render(<StoryDraft />);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Reference' }), { target: { value: '' } });
+    expect(actions.stageStoryUnit).toHaveBeenCalledWith({ kind: 'ref', story: 1 }, '');
+    fireEvent.blur(screen.getByRole('textbox', { name: 'Reference' }));
+    expect(actions.blurStoryUnit).toHaveBeenCalledWith({ kind: 'ref', story: 1 });
   });
 
   it('offers the Sources modal when the pinned gateway story is not installed', () => {

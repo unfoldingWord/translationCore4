@@ -120,6 +120,8 @@
   "storyDraft.stories": "Stories",
   "storyDraft.storyNumber": "Story {n}",
   "storyDraft.frameLabel": "Frame {n}",
+  "storyDraft.frameDrafted": "Frame {n}, drafted",
+  "storyDraft.frameEmpty": "Frame {n}, not drafted",
   "storyDraft.title": "Story title",
   "storyDraft.reference": "Reference",
   "storyDraft.source": "Gateway story",

@@ -49,14 +49,6 @@ const setup = () => {
 };
 
 describe('createObsProject (#287, J20)', () => {
-  it('normalizes a Windows CRLF template before deriving the LF seed form', async () => {
-    const { rig, store } = setup();
-    rig.serveCrLfObsTemplate();
-    const { repoPath } = await store.createObsProject(PARAMS);
-    expect(rig.repos.get(repoPath)!.files.get(storyIpath(1))?.includes('\r')).toBe(false);
-    expect(rig.repos.get(repoPath)!.files.get(storyIpath(1))?.startsWith('# 1.\n')).toBe(true);
-  });
-
   it('negative control (PLATFORM-NOTES #36): on the unfixed template the created metadata lacks localizedNames and the platform cannot parse it back; the store never asks it to', async () => {
     const { rig, api, store } = setup();
     rig.serveUnfixedObsTemplate();

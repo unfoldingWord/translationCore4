@@ -1445,9 +1445,17 @@ function writeStoryUnit(store, unit, text) {
   return writers[unit.kind]();
 }
 
-function installStoryScheduler({ storySchedulerRef, store, dispatch }) {
+/** The story scheduler of an open OBS project. A durable numbered-frame write
+ * changes the project's draft percentage (D74), so it drops Home's cached
+ * value; the title (frame 0) and the reference line do not count (#289). */
+function installStoryScheduler({ storySchedulerRef, store, dispatch, onFrameSaved }) {
   if (!storySchedulerRef) return;
-  storySchedulerRef.current = new StoryScheduler({ write: (unit, text) => writeStoryUnit(store, unit, text) });
+  storySchedulerRef.current = new StoryScheduler({
+    write: async (unit, text) => {
+      await writeStoryUnit(store, unit, text);
+      if (unit.kind === 'frame') onFrameSaved?.();
+    },
+  });
   const storySched = storySchedulerRef.current;
   storySched.subscribe((storySaveState) => {
     const failure = storySched.getFailure();
@@ -1574,6 +1582,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
     makeStore,
     markUsed,
     recordLastEdit,
+    invalidateProgress,
   } = ctx;
   const saveRefs = saveRefsOf(ctx);
   const seq = ++openProjectSeqRef.current;
@@ -1657,7 +1666,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
             : null,
       });
     });
-    installStoryScheduler({ storySchedulerRef, store, dispatch });
+    installStoryScheduler({ storySchedulerRef, store, dispatch, onFrameSaved: () => invalidateProgress?.(repoPath) });
     installAlignCheckSchedulers(ctx, store);
     apiClient.setCurrentProject(repoPath).catch(() => {});
     markUsed(repoPath); // fire-and-forget; ordering refreshes next Home visit
@@ -1743,6 +1752,9 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
 /** Test hook (round 25): out-of-order open completions are unit-tested — the
  * latest request exclusively owns the refs and the dispatched state. */
 export const __performProjectOpenForTests = performProjectOpen;
+/** Test hook (#289): the OBS routing, resume, story switch, save and progress
+ * paths are unit-tested against the fake rig. */
+export const __obsStoryForTests = { openProjectContent, obsStoryOpenContext, openObsStory, installStoryScheduler, writeStoryUnit, obsDraftPercent };
 
 /** Load the read-only helps for the open book (extracted round 33 for the
  * interleaving regressions): tN notes, tQ questions and tW links, each
@@ -4613,6 +4625,7 @@ export function AppProvider({ children }) {
             makeStore: () => new JournalingStore({ api }),
             markUsed,
             recordLastEdit,
+            invalidateProgress,
           },
           repoPath,
           bookCode,
@@ -4641,16 +4654,15 @@ export function AppProvider({ children }) {
         const sched = storySchedulerRef.current;
         if (!sched || st.project?.flavor !== 'textStories' || !st.story || st.story.number !== unit.story) return;
         const value = String(text ?? '');
-        // §10.7 has no delete-reference operation; retain the previous value
-        // instead of staging an inevitably rejected empty reference write.
-        if (unit.kind === 'ref' && value === '') return;
-        sched.markDirty(unit, value);
+        // R-10.3.3: no operation removes the reference line. An emptied
+        // reference shows on screen (the field is controlled) but stages no
+        // write; blurStoryUnit restores the kept text when focus leaves.
+        if (!(unit.kind === 'ref' && value === '')) sched.markDirty(unit, value);
         const next = { ...st.story };
         if (unit.kind === 'title') next.title = value;
         else if (unit.kind === 'ref') next.ref = value || null;
         else next.frames = next.frames.map((frame, index) => index + 1 === unit.frame ? { ...frame, text: value } : frame);
         dispatch({ type: 'set', patch: { story: next } });
-        rememberObsStory(st.project.repoPath, unit.story);
       },
 
       /** Normalize and flush one OBS field when focus leaves it. */
@@ -4661,7 +4673,9 @@ export function AppProvider({ children }) {
         if (!sched || !story || story.number !== unit.story) return;
         const current = unit.kind === 'title' ? story.title : unit.kind === 'ref' ? (story.ref || '') : (story.frames[unit.frame - 1]?.text || '');
         const normalized = normalizeStoryUnit(unit, current);
-        if (normalized !== current) a.stageStoryUnit(unit, normalized);
+        if (unit.kind === 'ref' && normalized === '') {
+          dispatch({ type: 'set', patch: { story: { ...story, ref: sched.value(unit) || null } } });
+        } else if (normalized !== current) a.stageStoryUnit(unit, normalized);
         await sched.flushOnBlur();
       },
 

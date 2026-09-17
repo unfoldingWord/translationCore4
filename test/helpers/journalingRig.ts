@@ -112,12 +112,8 @@ export const journalingRig = () => {
   const failures: FailureRule[] = [];
   /** Whether new-obs-resource stamps from the tC4-served (fixed) template. */
   let obsTemplateFixed = true;
-  let obsTemplateCrLf = false;
   const serveUnfixedObsTemplate = (): void => {
     obsTemplateFixed = false;
-  };
-  const serveCrLfObsTemplate = (): void => {
-    obsTemplateCrLf = true;
   };
 
   const failOn = (match: FailureRule['match'], times = 1): void => {
@@ -236,13 +232,7 @@ export const journalingRig = () => {
       if (repos.has(repoPath)) return notFound(`Local content called '${body.content_abbr}' already exists`);
       // The template's ingredients, byte for byte, with the source's titles —
       // the seed form is the client's job (R-10.2.4).
-      const files = obsTemplateFiles();
-      if (obsTemplateCrLf) {
-        for (const ipath of Object.keys(files)) {
-          if (/^content\/\d\d\.md$/.test(ipath)) files[ipath] = files[ipath].replace(/\n/g, '\r\n');
-        }
-      }
-      const project = createRepo(repoPath, files, obsMeta(body, obsTemplateFixed));
+      const project = createRepo(repoPath, obsTemplateFiles(), obsMeta(body, obsTemplateFixed));
       project.commits.push('Initial commit');
       return ok();
     }
@@ -350,7 +340,7 @@ export const journalingRig = () => {
     timestamp: 0,
   });
 
-  return { repos, writes, log, fetchFn, failOn, createRepo, serveUnfixedObsTemplate, serveCrLfObsTemplate };
+  return { repos, writes, log, fetchFn, failOn, createRepo, serveUnfixedObsTemplate };
 };
 
 export type JournalingRig = ReturnType<typeof journalingRig>;

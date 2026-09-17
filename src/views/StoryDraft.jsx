@@ -38,6 +38,27 @@ function EditableUnit({ unit, value, label, multiline = false, dir }) {
   return multiline ? <textarea {...props} rows={4} /> : <input {...props} />;
 }
 
+/** The gateway text of a unit, read-only, or the unavailable notice. */
+function GatewayText({ text, dir }) {
+  return (
+    <p dir={dir} style={{ margin: 0, whiteSpace: 'pre-wrap', color: 'var(--text-secondary)', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-lg)', lineHeight: 'var(--lh-verse-lg)' }}>
+      {text || t('storyDraft.sourceMissing')}
+    </p>
+  );
+}
+
+/** The title or the reference line: the gateway text above the target field.
+ * Neither has a frame locator, so neither shows a frame number or a picture. */
+function LineUnit({ testId, unit, label, gateway, value, dir }) {
+  return (
+    <div data-testid={testId} style={{ marginBottom: 20 }}>
+      <Overline tone="muted" style={{ marginBottom: 6 }}>{label}</Overline>
+      <div style={{ marginBottom: 8 }}><GatewayText text={gateway} dir={dir} /></div>
+      <EditableUnit unit={unit} value={value} label={label} dir={dir} />
+    </div>
+  );
+}
+
 function FrameEditor({ frame, sourceFrame, image, story, index, dir }) {
   const unit = { kind: 'frame', story: story.number, frame: index + 1 };
   return (
@@ -48,9 +69,7 @@ function FrameEditor({ frame, sourceFrame, image, story, index, dir }) {
         <div>
           <div style={{ marginBottom: 12 }}>
             <Overline tone="muted" style={{ marginBottom: 6 }}>{t('storyDraft.source')}</Overline>
-            <p dir={dir} style={{ margin: 0, whiteSpace: 'pre-wrap', color: 'var(--text-secondary)', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-lg)', lineHeight: 'var(--lh-verse-lg)' }}>
-              {sourceFrame?.text || t('storyDraft.sourceMissing')}
-            </p>
+            <GatewayText text={sourceFrame?.text} dir={dir} />
           </div>
           <Overline tone="accent" style={{ marginBottom: 6 }}>{t('storyDraft.translation')}</Overline>
           <EditableUnit unit={unit} value={frame.text} label={t('storyDraft.frameLabel', { n: index + 1 })} multiline dir={dir} />
@@ -68,18 +87,17 @@ export default function StoryDraft() {
   if (s.storyError) return <main data-testid="story-draft-error" style={{ flex: 1, padding: 40 }}><Callout tone="warn">{s.storyError}</Callout></main>;
   if (!story) return <main data-testid="story-draft-empty" style={{ flex: 1, padding: 40 }}>{t('storyDraft.noStory')}</main>;
   const sourceStory = s.sourceStory;
+  const number = story.number;
   return (
     <main data-testid="story-draft" style={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden', background: 'var(--surface-app)' }}>
       {s.rail && <StoryRail numbers={s.storyNumbers} active={s.storyNumber} story={story} onSelect={actions.openStory} />}
       <section style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '30px 40px 70px' }}>
         <div style={{ maxWidth: 'var(--measure-reading)', margin: '0 auto' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, marginBottom: 20 }}>
-            <div>
-              <Overline tone="accent">{t('storyDraft.storyNumber', { n: story.number })}</Overline>
-              <EditableUnit unit={{ kind: 'title', story: story.number }} value={story.title} label={t('storyDraft.title')} dir={dir} />
-            </div>
+            <Overline tone="accent">{t('storyDraft.storyNumber', { n: number })}</Overline>
             <Button variant="ghost" onClick={actions.toggleRail} data-testid="toggle-story-rail">{s.rail ? t('storyDraft.hideStories') : t('storyDraft.showStories')}</Button>
           </div>
+          <LineUnit testId="story-title" unit={{ kind: 'title', story: number }} label={t('storyDraft.title')} gateway={sourceStory ? sourceStory.title : null} value={story.title} dir={dir} />
           {s.storySourceError && (
             <Callout tone="warn" data-testid="story-source-error" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
               <span style={{ flex: 1, overflowWrap: 'anywhere' }}>{s.storySourceError}</span>
@@ -95,13 +113,10 @@ export default function StoryDraft() {
               {t('storyDraft.noPictures', { n: s.storyImageNote.wanted })} {s.storyImageNote.packs.map(describePack).join('; ')}
             </Callout>
           )}
-          <div style={{ marginBottom: 20 }}>
-            <Overline tone="muted" style={{ marginBottom: 6 }}>{t('storyDraft.reference')}</Overline>
-            <EditableUnit unit={{ kind: 'ref', story: story.number }} value={story.ref || ''} label={t('storyDraft.reference')} dir={dir} />
-          </div>
           {story.frames.map((frame, index) => (
             <FrameEditor key={index + 1} frame={frame} sourceFrame={sourceStory?.frames?.[index]} image={s.storyImages?.[String(index + 1)]} story={story} index={index} dir={dir} />
           ))}
+          <LineUnit testId="story-ref" unit={{ kind: 'ref', story: number }} label={t('storyDraft.reference')} gateway={sourceStory ? (sourceStory.ref || '') : null} value={story.ref || ''} dir={dir} />
         </div>
       </section>
     </main>
