@@ -87,7 +87,7 @@ describe('OBS story draft surface', () => {
     state.sourceStory = null;
     state.storySource = { kind: 'no-pin' };
     render(<StoryDraft />);
-    expect(screen.getByTestId('story-source-error').textContent).toContain('No gateway story is pinned');
+    expect(screen.getByTestId('story-source-notice').textContent).toContain('No gateway story is pinned');
     expect(screen.queryByTestId('story-source-install')).toBeNull();
     expect(screen.getAllByText('Gateway text is unavailable.')).toHaveLength(4);
     expect((screen.getByRole('textbox', { name: 'Frame 1' }) as HTMLTextAreaElement).value).toBe('Al principio.');
@@ -141,7 +141,7 @@ describe('OBS story draft surface', () => {
   it('offers the Sources modal when the pinned gateway story is not installed', () => {
     state.storySource = { kind: 'not-installed', pin: { repoPath: 'git.door43.org/unfoldingWord/en_obs', sha: '0123456789abcdef0123456789abcdef01234567' } };
     render(<StoryDraft />);
-    expect(screen.getByTestId('story-source-error').textContent).toContain('en_obs@0123456789ab is not on this machine');
+    expect(screen.getByTestId('story-source-notice').textContent).toContain('en_obs@0123456789ab is not on this machine');
     fireEvent.click(screen.getByTestId('story-source-install'));
     expect(actions.openSources).toHaveBeenCalledTimes(1);
     cleanup();
@@ -151,7 +151,7 @@ describe('OBS story draft surface', () => {
   it('states a frame-set mismatch as a mismatch without a Get source button, and keeps the gateway text', () => {
     state.storySource = { kind: 'mismatch', message: 'story 1 has 16 source frames; project has 15' };
     render(<StoryDraft />);
-    const notice = screen.getByTestId('story-source-error').textContent ?? '';
+    const notice = screen.getByTestId('story-source-notice').textContent ?? '';
     expect(notice).toContain('does not match this project: story 1 has 16 source frames');
     expect(notice).not.toContain('could not be read');
     expect(screen.queryByTestId('story-source-install')).toBeNull();
@@ -165,7 +165,7 @@ describe('OBS story draft surface', () => {
     state.sourceStory = null;
     state.storySource = { kind: 'error', message: 'could not read ingredient content: No such file or directory (os error 2)' };
     render(<StoryDraft />);
-    expect(screen.getByTestId('story-source-error').textContent).toContain('could not be read: could not read ingredient content');
+    expect(screen.getByTestId('story-source-notice').textContent).toContain('could not be read: could not read ingredient content');
     expect(screen.queryByTestId('story-source-install')).toBeNull();
     cleanup();
     state.sourceStory = { number: 1, title: 'Creation', ref: 'Genesis 1', frames: [{ image: '![x](obs-01.jpg)', text: 'In the beginning.' }, { image: '![x](obs-02.jpg)', text: 'Then God said.' }] };

@@ -56,24 +56,26 @@ describe('OBS story source state (#289)', () => {
   });
 });
 
-const IMAGE_LINE_RE = /^!\[[^\]]*\]\([^)]*\)$/;
 const REF_LINE_RE = /^_[^\n]*_$/;
 const isBlankLine = (line: string): boolean => line.trim() === '';
 
 /** Drop the last frame block (its image line plus its paragraph) from story
- * bytes the rig itself serves — never invented. The reference line, when
- * present, is kept so the result still parses. */
+ * bytes the rig itself serves — never invented. Image lines are detected with
+ * the product's own `obsImageFileName`, not a copy of the story grammar, so
+ * the helper cannot drift from what the app treats as a frame split
+ * (R-10.3.1). The reference line, when present, is kept so the result still
+ * parses. */
 const dropLastFrame = (bytes: string): string => {
   const lines = bytes.split('\n');
   const imageIdx: number[] = [];
   lines.forEach((line, idx) => {
-    if (IMAGE_LINE_RE.test(line)) imageIdx.push(idx);
+    if (obsImageFileName(line) !== null) imageIdx.push(idx);
   });
   expect(imageIdx.length).toBeGreaterThan(1);
   const lastImage = imageIdx[imageIdx.length - 1];
   let last = lines.length - 1;
   while (last > 0 && isBlankLine(lines[last])) last -= 1;
-  const refIdx = last > 0 && REF_LINE_RE.test(lines[last]) && !IMAGE_LINE_RE.test(lines[last]) ? last : -1;
+  const refIdx = last > 0 && REF_LINE_RE.test(lines[last]) && obsImageFileName(lines[last]) === null ? last : -1;
   const frameEnd = refIdx >= 0 ? refIdx : lines.length;
   return [...lines.slice(0, lastImage), ...lines.slice(frameEnd)].join('\n');
 };
@@ -103,6 +105,35 @@ describe('OBS story source mismatch (#313)', () => {
     expect(presentation.source).toEqual({ kind: 'mismatch', message: expected });
   });
 
+  it('a gateway story numbered differently gives a mismatch source and keeps the gateway text', async () => {
+    const { rig, api, store, repoPath } = await setup();
+    const raw = await api.readIngredient(repoPath, storyIpath(1));
+    const renumbered = raw.replace(/^# 1\./, '# 2.');
+    expect(renumbered).not.toBe(raw);
+    const pin = gatewayPin();
+    rig.createRepo(gatewayLocal, { [storyIpath(1)]: renumbered });
+    const presentation = await readObsStoryPresentation({
+      api, store, projectRepo: repoPath, storyNumber: 1,
+      resources: pinnedResources(pin), installed: { [gatewayLocal]: pin } as never,
+    });
+    expect(presentation.source).toEqual({
+      kind: 'mismatch',
+      message: 'source story 2 does not match project story 1',
+    });
+    expect(presentation.sourceStory?.number).toBe(2);
+  });
+
+  it('negative control: malformed gateway bytes still give an error source and no gateway text', async () => {
+    const { rig, api, store, repoPath } = await setup();
+    const pin = gatewayPin();
+    rig.createRepo(gatewayLocal, { [storyIpath(1)]: 'definitely not a story file' });
+    const presentation = await readObsStoryPresentation({
+      api, store, projectRepo: repoPath, storyNumber: 1,
+      resources: pinnedResources(pin), installed: { [gatewayLocal]: pin } as never,
+    });
+    expect(presentation.source?.kind).toBe('error');
+    expect(presentation.sourceStory).toBeNull();
+  });
   it('negative control: an unreadable gateway ingredient still gives an error source and no gateway text', async () => {
     const { rig, api, store, repoPath } = await setup();
     const pin = gatewayPin();

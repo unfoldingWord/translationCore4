@@ -97,7 +97,7 @@ function StoryNotices({ source, imageNote, onInstall }) {
   return (
     <>
       {source && (
-        <Callout tone="warn" data-testid="story-source-error" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
+        <Callout tone="warn" data-testid="story-source-notice" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
           <span style={{ flex: 1, overflowWrap: 'anywhere' }}>{describeSource(source)}</span>
           {source.kind === 'not-installed' && (
             <Button size="sm" variant="secondary" onClick={onInstall} data-testid="story-source-install">
