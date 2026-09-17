@@ -87,6 +87,24 @@ describe('unwrapExport — the DCS export is wrapped, the importer needs it flat
     const noIngredients = zipSync({ 'en_twl/metadata.json': strToU8(metaFor('a')) });
     expect(() => unwrapExport(noIngredients)).toThrow(/no ingredients/);
   });
+
+  it('rejects an entry that escapes the archive root (#2)', () => {
+    const evil = wrappedZip('abc', { 'en_twl/../escape.txt': 'x' });
+    expect(() => unwrapExport(evil)).toThrow(/escapes its folder/);
+  });
+
+  it('rejects absolute, drive-prefixed and nested-traversal entries (#2)', () => {
+    const flatWith = (name: string) =>
+      zipSync({
+        'metadata.json': strToU8(metaFor('abc')),
+        'ingredients/TIT.tsv': strToU8('x'),
+        [name]: strToU8('x'),
+      });
+    expect(() => unwrapExport(flatWith('../escape.txt'))).toThrow(/escapes its folder/);
+    expect(() => unwrapExport(flatWith('/abs.txt'))).toThrow(/escapes its folder/);
+    expect(() => unwrapExport(flatWith('C:/evil.txt'))).toThrow(/escapes its folder/);
+    expect(() => unwrapExport(flatWith('a/../../b.txt'))).toThrow(/escapes its folder/);
+  });
 });
 
 describe('rezip — the importer needs explicit directory entries', () => {

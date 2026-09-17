@@ -100,12 +100,38 @@ export interface UnwrappedBurrito {
   revision: string | null;
 }
 
+/** #2 (zip-slip) — a zip entry whose normalized path escapes the archive
+ * root must never reach the install. Zip names are literal `/`-separated
+ * strings (no URL decoding); `\` is also treated as a separator so a
+ * backslash spelling cannot dodge the check. Reject, never sanitize:
+ * stripping `..` could collapse two entries into one key. */
+const escapesArchiveRoot = (name: string): boolean => {
+  const normalized = name.replace(/\\/g, '/');
+  return (
+    normalized.startsWith('/') ||
+    /^[A-Za-z]:(\/|$)/.test(normalized) ||
+    normalized.split('/').some((segment) => segment === '..')
+  );
+};
+
+/** #2 (zip-slip) — throw with the offending entry named. */
+const assertInsideArchiveRoot = (name: string): void => {
+  if (escapesArchiveRoot(name)) {
+    throw new Error(
+      `the downloaded archive contains an entry that escapes its folder (${name}) — not installed`,
+    );
+  }
+};
+
 /** Strip the DCS export's single top-level directory and read the revision the
  * export records. Throws when the archive is not a burrito (no root
  * metadata.json / no ingredients), which is also what the platform would
  * reject — better to fail here with a clear message. */
 export const unwrapExport = (zipBytes: Uint8Array): UnwrappedBurrito => {
   const entries = unzipSync(zipBytes);
+  // Every stored name is checked, including directory entries: a directory
+  // outside the root writes nothing itself, but it is still not ours to keep.
+  for (const name of Object.keys(entries)) assertInsideArchiveRoot(name);
   const names = Object.keys(entries).filter((n) => !n.endsWith('/'));
   if (names.length === 0) throw new Error('the downloaded archive is empty');
 
@@ -117,6 +143,10 @@ export const unwrapExport = (zipBytes: Uint8Array): UnwrappedBurrito => {
   const files: Record<string, Uint8Array> = {};
   for (const name of names) {
     const rel = wrapped ? name.slice(prefix.length) : name;
+    // A stripped prefix cannot remove a `..`: when the raw name is clean the
+    // relative path is clean too. Re-check anyway — the relative path is what
+    // is re-zipped and sent to the server, so it is the shape that must hold.
+    assertInsideArchiveRoot(rel);
     // The export ships .git and .DS_Store; neither belongs in an install.
     if (rel === '' || rel.startsWith('.git/') || rel.endsWith('.DS_Store')) continue;
     files[rel] = entries[name];
