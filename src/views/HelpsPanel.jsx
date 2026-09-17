@@ -28,7 +28,7 @@ export const focusOf = (it) => ({
   occurrence: it.contextId.occurrence,
 });
 
-function ArticleView({ article, onClose, onRetry }) {
+export function ArticleView({ article, onClose, onRetry }) {
   if (!article) return null;
   return (
     <div style={{ borderTop: 'var(--stroke-hair) solid var(--border-hair)', padding: 16, overflow: 'auto', maxHeight: '45%', flex: 'none', background: '#fff' }}>
@@ -69,7 +69,7 @@ function ArticleView({ article, onClose, onRetry }) {
 }
 
 /** One helps slot's designed non-ready state — absence is stated, never blank. */
-function SlotState({ slot }) {
+export function SlotState({ slot }) {
   const { actions } = useApp();
   const state = slot?.state ?? 'none';
   if (state === 'error') {
