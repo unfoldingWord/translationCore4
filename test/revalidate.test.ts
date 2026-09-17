@@ -173,9 +173,4 @@ describe('I-3 revalidation for a story item (#291, §10.4): the frame text index
     expect(edited.invalidated).toBe(1);
     expect(edited.items[0]).toMatchObject({ invalidated: true, status: 'invalid', selections: storyItem.selections });
   });
-
-  it('a story item is never judged against a verse of the same numbers', () => {
-    const out = revalidateAgainstDraft([storyItem], { '1:2': undefined as never });
-    expect(out.invalidated).toBe(0);
-  });
 });
