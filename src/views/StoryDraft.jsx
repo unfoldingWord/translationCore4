@@ -17,6 +17,14 @@ const fieldStyle = {
   lineHeight: 'var(--lh-verse-lg)',
 };
 
+/** One clause per picture pack consulted: where it was read and what it held. */
+function describePack(report) {
+  const pin = `${report.pin.repoPath}@${report.pin.sha.slice(0, 12)}`;
+  if (!report.localPath) return t('storyDraft.packNotInstalled', { pin });
+  if (report.via === null) return t('storyDraft.packUnreadable', { pin, path: report.localPath, error: report.error });
+  return t('storyDraft.packFiles', { pin, path: report.localPath, n: report.files, via: report.via });
+}
+
 function EditableUnit({ unit, value, label, multiline = false, dir }) {
   const { actions } = useApp();
   const props = {
@@ -84,7 +92,7 @@ export default function StoryDraft() {
           )}
           {s.storyImageNote && (
             <Callout tone="info" data-testid="story-image-note" style={{ marginBottom: 18, overflowWrap: 'anywhere' }}>
-              {t('storyDraft.noPictures')} {s.storyImageNote}
+              {t('storyDraft.noPictures', { n: s.storyImageNote.wanted })} {s.storyImageNote.packs.map(describePack).join('; ')}
             </Callout>
           )}
           <div style={{ marginBottom: 20 }}>

@@ -18,7 +18,7 @@ const state = {
   storyError: null,
   storySourceError: null as string | null,
   storySourceMissing: false,
-  storyImageNote: null as string | null,
+  storyImageNote: null as null | { wanted: number; packs: Array<Record<string, unknown>> },
   story: { number: 1, title: 'La creación', ref: 'Génesis 1', frames: [{ image: '![x](obs-01.jpg)', text: 'Al principio.' }] },
   sourceStory: { number: 1, title: 'Creation', ref: 'Genesis 1', frames: [{ image: '![x](obs-01.jpg)', text: 'In the beginning.' }] },
   storyImages: { '1': { source: 'default', uri: 'local://obs-01.jpg' } } as Record<string, { source: string; uri: string }>,
@@ -52,10 +52,12 @@ describe('OBS story draft surface', () => {
   });
 
   it('states once, not per frame, why a story has no pictures', () => {
-    state.storyImageNote = 'No picture matched this story\'s 1 image line: x lists 0 image files (paths)';
+    state.storyImageNote = { wanted: 1, packs: [{ pin: { repoPath: 'git.door43.org/uW/obs_images_360', sha: '7146d5b504f6b63b9e11f7dc0b18c594d0ae179d' }, localPath: '_local_/_sideloaded_/uw--obs_images_360--7146d5b504f6', via: 'paths', files: 0, error: null }] };
     state.storyImages = {};
     render(<StoryDraft />);
-    expect(screen.getByTestId('story-image-note').textContent).toContain('lists 0 image files');
+    const note = screen.getByTestId('story-image-note').textContent;
+    expect(note).toContain('1 image lines');
+    expect(note).toContain('uw--obs_images_360--7146d5b504f6 lists 0 image files (paths)');
     expect(screen.queryByRole('img')).toBeNull();
     expect(screen.getByTestId('story-frame-1').textContent).not.toContain('image');
     state.storyImageNote = null;

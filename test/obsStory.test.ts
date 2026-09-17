@@ -41,8 +41,7 @@ describe('OBS story pictures (#289)', () => {
     expect(Object.values(presentation.images).map((image) => image.source)).toEqual(fileNames.map(() => 'missing'));
     expect(presentation.imagePacks).toHaveLength(1);
     expect(presentation.imagePacks[0]).toMatchObject({ pin: DEFAULT_OBS_IMAGES, localPath: DEFAULT_OBS_IMAGES_LOCAL, via: null, files: 0 });
-    expect(presentation.imageNote).toContain(DEFAULT_OBS_IMAGES_LOCAL);
-    expect(presentation.imageNote).toContain(`${fileNames.length} image lines`);
+    expect(presentation.imageNote).toEqual({ wanted: fileNames.length, packs: presentation.imagePacks });
   });
 
   it('resolves every frame from the real file listing even when the pack metadata lists no ingredients', async () => {
@@ -78,6 +77,6 @@ describe('OBS story pictures (#289)', () => {
     rig.createRepo(DEFAULT_OBS_IMAGES_LOCAL, {}, pack.meta);
     const presentation = await read();
     expect(presentation.imagePacks[0]).toMatchObject({ via: 'paths', files: 0 });
-    expect(presentation.imageNote).toMatch(/lists 0 image files \(paths\)/);
+    expect(presentation.imageNote?.packs[0]).toMatchObject({ localPath: DEFAULT_OBS_IMAGES_LOCAL, via: 'paths', files: 0 });
   });
 });

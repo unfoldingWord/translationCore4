@@ -28,10 +28,16 @@ export interface ObsStoryPresentation {
   /** One report per picture pack consulted, bundled default last. */
   imagePacks: ObsImagePackReport[];
   /** Why no frame of this story has a picture, when the story has image lines
-   * and none resolved. Null whenever at least one frame resolved, or the story
-   * carries no image line at all. A missing picture is never a frame-level
-   * error (#289); this one line names the pack and what was read from it. */
-  imageNote: string | null;
+   * and none resolved: how many image lines wanted a picture, and the packs
+   * consulted. Null whenever at least one frame resolved, or the story carries
+   * no image line at all. A missing picture is never a frame-level error
+   * (#289); the screen renders this once, through the i18n catalog. */
+  imageNote: ObsImageNote | null;
+}
+
+export interface ObsImageNote {
+  wanted: number;
+  packs: ObsImagePackReport[];
 }
 
 export interface ObsImagePackReport {
@@ -93,25 +99,16 @@ const pinnedPack = async (
   return readPack(api, pin, local);
 };
 
-const shortPin = (pin: ResourcePin): string => `${pin.repoPath}@${pin.sha.slice(0, 12)}`;
-
-const describePack = (report: ObsImagePackReport): string => {
-  if (!report.localPath) return `${shortPin(report.pin)} is not installed`;
-  const where = `${shortPin(report.pin)} at ${report.localPath}`;
-  if (report.via === null) return `${where} could not be read (${report.error})`;
-  return `${where} lists ${report.files} image file${report.files === 1 ? '' : 's'} (${report.via})`;
-};
-
-/** The one-line reason for a story with image lines and no picture at all. */
+/** The note for a story with image lines and no picture at all. */
 const noteFor = (
   story: Story,
   images: Record<string, ObsImageResolution>,
-  reports: ObsImagePackReport[],
-): string | null => {
+  packs: ObsImagePackReport[],
+): ObsImageNote | null => {
   const wanted = story.frames.filter((frame) => frame.image).length;
   if (wanted === 0) return null;
   if (Object.values(images).some((image) => image.uri)) return null;
-  return `No picture matched this story's ${wanted} image line${wanted === 1 ? '' : 's'}: ${reports.map(describePack).join('; ')}`;
+  return { wanted, packs };
 };
 
 const projectImageIngredients = async (
