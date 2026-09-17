@@ -532,6 +532,27 @@ describe('#62 universal seeding (§8.8)', () => {
     expect(segmentPaths(rig, repo)).toEqual([]); // all-or-nothing: nothing published
   });
 
+  it('REFUSES a seed of a BIBLE project that carries a stray story sidecar (#291 review note C: the OBS.json exemption is for OBS projects only)', async () => {
+    const world = await setup();
+    const { rig, restart } = world;
+    const repo = '_local_/_local_/historiaperdida';
+    rig.createRepo(repo, {
+      'vrs.json': FAKE_VRS,
+      'TIT.usfm': TIT_USFM,
+      'checking/translationNotes/OBS.json': JSON.stringify({
+        schemaVersion: 1,
+        tool: 'translationNotes',
+        book: 'OBS',
+        resource: RESOLUTION,
+        decisions: [decision('i6lj', { contextId: { ...decision('i6lj').contextId, reference: { story: 1, frame: 0 } } })],
+      }),
+    });
+    const store = restart();
+    await expect(store.open(repo)).rejects.toThrow(SeedMismatchError);
+    await expect(store.open(repo)).rejects.toThrow(/OBS\.json \(no story project\)/);
+    expect(segmentPaths(rig, repo)).toEqual([]); // all-or-nothing: nothing published
+  });
+
   it('REFUSES a seed when a DECISION sidecar carries an unknown top-level field (R-8.8.2)', async () => {
     // The checkpoint projection emits exactly {schemaVersion, tool, book,
     // resource, decisions}; convergence rewrites the file to that form. An

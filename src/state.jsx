@@ -9,6 +9,7 @@ import { ServerApi } from './data/serverApi';
 // BEFORE any derived file changes. The raw HttpStore is never constructed here
 // (test/noBypass.test.ts enforces it); read-only surfaces use ProjectReader.
 import { StaleWriteError } from './data/httpStore';
+import { STORY_FILE } from './data/journal/runtime';
 import { JournalingStore, ProjectReader } from './data/journal/journalingStore';
 import { SaveScheduler } from './data/saveScheduler';
 import { StoryScheduler, normalizeStoryUnit } from './data/storyScheduler';
@@ -25,13 +26,16 @@ import { GATEWAYS, gatewayKey, DCS_HOST, orgForRepoName } from './data/gateways'
 import { fetchAndInstallPin, latestReleaseTag, identifyExistingInstall, rezip, unwrapExport, verifySideload } from './data/resourceFetch';
 import { isNotFoundError } from './data/serverApi';
 import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, mergeOptionalPins, isPinLocal, unsatisfiedProjectPinFor, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk, flavorOfMetadata } from './data/installed';
-import { TOOL_SLOT, coverageFor, preflightObsTool, preflightToolBook, recordMatchesResolution, resolutionRecord, resolveToolBook, resolveSetSlot, samePath } from './data/resolve';
+import { OBS_TOOL_SLOT, TOOL_SLOT, coverageFor, preflightObsTool, preflightToolBook, recordMatchesResolution, resolutionRecord, resolveToolBook, resolveSetSlot, samePath } from './data/resolve';
 import {
   deriveForProject,
+  deriveObsItems,
   isDecided,
   mergeAndReattach,
   progressOf,
+  referenceParts,
   scopeRangesFor,
+  textKeyOf,
 } from './data/derive';
 import { readTwArticle, readTaArticle } from './data/articles';
 import { revalidateAgainstDraft, resolutionWarning } from './data/revalidate';
@@ -368,6 +372,11 @@ const initial = () => ({
 
 /** Monotonic identity for check sessions (see patchCheckSession). */
 let checkSessionSeq = 0;
+/** §10.5 (#291): the book position of an OBS project's check session and
+ * decision sidecar (`checking/<toolId>/OBS.json`); the session itself is
+ * scoped to the open story, as a Bible session is to the open book. */
+const STORY_BOOK = STORY_FILE;
+const isObsProject = (st) => st.project?.flavor === 'textStories';
 let fixSeq = 0; // #9: identity of the open guided-fix screen (completions bind to it)
 
 /** #129 (PR #135 review round 1): align-session identity and the align
@@ -414,8 +423,7 @@ function alignPickerEntry(items) {
 /** #136: one item's remembered position — content identity, not an index,
  * so a re-derived (or re-ordered) list still finds the same check. */
 const checkPosOf = (item) => ({
-  c: item.contextId.reference.chapter,
-  v: item.contextId.reference.verse,
+  ...referenceParts(item.contextId.reference),
   groupId: item.contextId.groupId,
   occurrence: item.contextId.occurrence ?? 1,
 });
@@ -886,10 +894,29 @@ function emptyCheckSession(tool, book, resolution, empty, dropped = null) {
   };
 }
 
+/** The current frame text (frame 0 the title) keyed by `textKeyOf` for I-3
+ * revalidation of a story session (§10.4, #291) — the same shape as
+ * verseTextIndex, read from the open story, under the story key grammar
+ * (#310) so a frame never reads as a verse. */
+function frameTextIndex(story) {
+  if (!story) return {};
+  const out = { [textKeyOf({ story: story.number, frame: 0 })]: story.title };
+  story.frames.forEach((frame, i) => { out[textKeyOf({ story: story.number, frame: i + 1 })] = frame.text; });
+  return out;
+}
+
 async function deriveCheckItems({ apiClient, actions, st, tool, book, pre }) {
   const tsv = await readTextIngredient(apiClient, resolveReadPath(pre.resolution.pin), `${book.toUpperCase()}.tsv`);
   if (tsv === null || tsv.startsWith('{"is_good":false'))
     return { session: emptyCheckSession(tool, book, pre.resolution, 'missing') };
+  if (isObsProject(st)) {
+    // §10.5 (#291): the OBS helps are ONE story-keyed file (`OBS.tsv`); a
+    // story project has no versification frame and no scope — the fifty
+    // stories are always in scope (R-10.2.2). The session is the open story.
+    const derived = deriveObsItems(tsv, tool, st.storyNumber ?? undefined);
+    if (derived.length === 0) return { session: emptyCheckSession(tool, book, pre.resolution, 'none') };
+    return { derived, dropped: null, frame: null };
+  }
   const frame = await actions.projectFrame();
   if (frame.state !== 'ready')
     return { session: emptyCheckSession(tool, book, pre.resolution, `versification-${frame.state}`), frame };
@@ -918,7 +945,8 @@ async function deriveCheckItems({ apiClient, actions, st, tool, book, pre }) {
 async function completedCheckSession({ store, st, tool, book, pre, derived, dropped }) {
   const savedFile = await store.readDecisions(tool, book);
   const saved = savedFile?.decisions ?? [];
-  const slot = TOOL_SLOT[tool];
+  const obs = isObsProject(st);
+  const slot = obs ? OBS_TOOL_SLOT[tool] : TOOL_SLOT[tool];
   const rungPins = ['primary', 'fallback']
     .map((rung) => st.projectPins?.languageSets?.[rung]?.[slot])
     .filter(Boolean)
@@ -929,7 +957,10 @@ async function completedCheckSession({ store, st, tool, book, pre, derived, drop
   const { items: merged, orphaned } = mergeAndReattach(derived, saved, {
     keepInvalidated: recordMatchesResolution(savedFile?.resource, pre.resolution),
   });
-  const verses = withSpanMembers(verseTextIndex(st.bookRaw));
+  // #291: a story session revalidates against the open story's frames — the
+  // J6 rule applied to frames (a decision's selections that the edited frame
+  // no longer carries are flagged, never discarded).
+  const verses = obs ? frameTextIndex(st.story) : withSpanMembers(verseTextIndex(st.bookRaw));
   const { items, invalidated } = revalidateAgainstDraft(merged, verses);
   return {
     loading: false,
@@ -1533,7 +1564,10 @@ async function loadObsStory({ api, resolveContext, store, repoPath, number, reso
     const presentation = await readObsStoryPresentation({ api, store, projectRepo: repoPath, storyNumber: number, resources, installed });
     if (!isCurrentObsStory({ seq, store, repoPath, storeRef, stateRef })) return;
     seedObsStory(scheduler, presentation, number);
-    dispatch({ type: 'set', patch: { storyNumber: number, story: presentation.story, sourceStory: presentation.sourceStory, storyImages: presentation.images, storyImageNote: presentation.imageNote, storySource: presentation.source, storyLoading: false, storyError: null } });
+    // #291: a check session is scoped to one story — a loaded story closes
+    // any open session and its picker counts (the book-switch rule).
+    checkSessionSeq++;
+    dispatch({ type: 'set', patch: { storyNumber: number, story: presentation.story, sourceStory: presentation.sourceStory, storyImages: presentation.images, storyImageNote: presentation.imageNote, storySource: presentation.source, storyLoading: false, storyError: null, checkTool: null, checkSession: null, pickerProgress: null } });
     rememberObsStory(repoPath, number);
   } catch (error) {
     if (isCurrentObsStory({ seq, store, repoPath, storeRef, stateRef }))
@@ -1750,6 +1784,8 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
 /** Test hook (round 25): out-of-order open completions are unit-tested — the
  * latest request exclusively owns the refs and the dispatched state. */
 export const __performProjectOpenForTests = performProjectOpen;
+/** Test hook (#291): the story check session, from the derivation to the revalidated session. */
+export const __obsCheckForTests = { deriveCheckItems, completedCheckSession, frameTextIndex };
 /** Test hook (#289): the OBS routing, resume, story switch, save and progress
  * paths are unit-tested against the fake rig. */
 export const __obsStoryForTests = { openProjectContent, obsStoryOpenContext, openObsStory, installStoryScheduler, writeStoryUnit, obsDraftPercent };
@@ -3882,7 +3918,8 @@ export function AppProvider({ children }) {
         const st = stateRef.current;
         const pre = st.preflight?.[tool];
         if (!isCheckToolReady(pre)) return;
-        const book = st.book;
+        // #291: a story session writes under the `OBS` book position (§10.5).
+        const book = isObsProject(st) ? STORY_BOOK : st.book;
         // The seq is this session's identity, taken BEFORE any await: a stale
         // open's completion (or failure) must never replace a newer session,
         // and closing the tool or the project invalidates in-flight opens.
@@ -3936,10 +3973,13 @@ export function AppProvider({ children }) {
       loadPickerProgress: async () => {
         const st = stateRef.current;
         const store = storeRef.current;
+        const obs = isObsProject(st);
         // bookRaw is required (review round 1): revalidation against a
-        // not-yet-loaded draft would misreport every decided count.
-        if (!st.book || !store || !st.preflight || !st.bookRaw) return;
-        const book = st.book;
+        // not-yet-loaded draft would misreport every decided count. A story
+        // session needs the open story for the same reason (#291).
+        if (!store || !st.preflight) return;
+        if (obs ? !st.story : (!st.book || !st.bookRaw)) return;
+        const book = obs ? STORY_BOOK : st.book;
         const seq = ++pickerProgressSeq;
         dispatch({ type: 'set', patch: { pickerProgress: { seq } } });
         const entry = (tool, value) => dispatch({ type: 'pickerToolEntry', seq, tool, entry: value });
@@ -3963,7 +4003,7 @@ export function AppProvider({ children }) {
           });
         const alignRun = (async () => {
           try {
-            if (!st.bookRaw) return;
+            if (!st.bookRaw || obs) return; // D74: no Align tool for stories
             const { value: file } = await store.readAlignmentsWithMd5(book);
             entry('align', alignPickerEntry(alignIndexItems(st.bookRaw, file)));
           } catch (e) {
@@ -4033,7 +4073,9 @@ export function AppProvider({ children }) {
       loadCheckOrigSource: async (session) => {
         const cs = session ?? stateRef.current.checkSession;
         const store = storeRef.current;
-        if (!cs?.items || !store) return;
+        // #291: a story has no original-language text (D74: no alignment
+        // layer); the compare card shows the gateway story frame instead.
+        if (!cs?.items || !store || cs.book === STORY_BOOK) return;
         const { book } = cs;
         const testament = isOldTestament(book) ? 'ot' : 'nt';
         if (cs.crossFrame) {

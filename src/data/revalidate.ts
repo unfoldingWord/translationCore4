@@ -15,13 +15,14 @@
 import { selectionsHelpers } from './vendor';
 import { recordMatchesResolution , samePath } from './resolve';
 import type { Resolution } from './resolve';
-import type { CheckItem } from './derive';
+import { textKeyOf, type CheckItem } from './derive';
 
-/** Verse text keyed "chapter:verse", as the drafting model already produces. */
+/** Draft text keyed by `textKeyOf`: "chapter:verse" as the drafting model
+ * already produces, or "story|story:frame" for an OBS project's frames (§10.4)
+ * — two grammars, so neither form can read the other's text (#310). */
 export type VerseTextIndex = { [ref: string]: string };
 
-const refOf = (item: CheckItem): string =>
-  `${item.contextId.reference.chapter}:${item.contextId.reference.verse}`;
+const refOf = (item: CheckItem): string => textKeyOf(item.contextId.reference);
 
 /** Does this decision still match the draft? `true` = the selections are no
  * longer findable in the verse, so the item needs re-review. A decision with

@@ -186,3 +186,66 @@ describe('#108 — Publish moves into Check as Community Checking', () => {
     expect(screen.getByText(/verse not yet drafted/)).toBeTruthy();
   });
 });
+
+// ---- #291 (D74 §8, §10): an OBS project gets Check and Community Checking.
+const STORY = {
+  number: 1,
+  title: 'La Creación',
+  frames: [
+    { image: '![OBS Image](https://cdn.door43.org/obs/jpg/360px/obs-en-01-01.jpg)', text: 'Así fue como Dios hizo todo.' },
+    { image: '![OBS Image](https://cdn.door43.org/obs/jpg/360px/obs-en-01-02.jpg)', text: '' },
+  ],
+  ref: 'Una historia bíblica de: Génesis 1-2',
+};
+const obsState = {
+  ...baseState,
+  project: { id: 'p2', name: 'Historias', languageTag: 'es', scriptDirection: 'ltr', flavor: 'textStories', bookCodes: [] },
+  book: null,
+  bookRaw: null,
+  storyNumber: 1,
+  story: STORY,
+  storyImages: { '1': { uri: 'local://obs-en-01-01.jpg' } },
+};
+
+describe('#291 — an OBS project checks the open story', () => {
+  beforeEach(() => {
+    cleanup();
+    go.mockClear();
+  });
+
+  it('the top navigation offers Translate and Check; Understand for stories is #290', () => {
+    state = obsState as never;
+    render(<App />);
+    expect(screen.getByRole('tab', { name: 'Translate' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Check' })).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: 'Understand' })).toBeNull();
+  });
+
+  it('the picker offers the two tools and Community Checking, and NO Align entry (D74: absent, not disabled)', () => {
+    state = obsState as never;
+    render(<App />);
+    expect(screen.getByTestId('preflight-translationWords')).toBeTruthy();
+    expect(screen.getByTestId('preflight-translationNotes')).toBeTruthy();
+    expect(screen.getByTestId('community-checking-card').textContent).toContain('Story 1');
+    expect(screen.queryByTestId('align-card')).toBeNull();
+    expect(screen.queryByTestId('open-align')).toBeNull();
+  });
+
+  it('Community Checking renders the story with its pictures, and the Pictures toggle removes them', () => {
+    state = { ...obsState, view: 'publish' } as never;
+    render(<App />);
+    const page = screen.getByTestId('cc-story');
+    expect(page.textContent).toContain('La Creación');
+    expect(page.textContent).toContain('Así fue como Dios hizo todo.');
+    expect(page.textContent).toContain('[ frame not yet drafted ]');
+    expect(screen.getByTestId('cc-reference').textContent).toContain('Génesis 1-2');
+    expect(screen.getByTestId('cc-picture-1').getAttribute('src')).toBe('local://obs-en-01-01.jpg');
+    expect(page.getAttribute('data-pictures')).toBe('1');
+    fireEvent.click(screen.getByLabelText('Pictures'));
+    expect(screen.queryByTestId('cc-picture-1')).toBeNull();
+    expect(screen.getByTestId('cc-story').getAttribute('data-pictures')).toBe('0');
+    // the Bible page-setup controls are not offered for a story
+    expect(screen.queryByText('Verse numbers')).toBeNull();
+    expect(screen.queryByText('Export USFM')).toBeNull();
+  });
+});
