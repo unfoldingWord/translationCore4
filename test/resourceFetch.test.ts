@@ -55,6 +55,13 @@ describe('sb-zip URL + local target (D23b pin path)', () => {
 });
 
 describe('unwrapExport — the DCS export is wrapped, the importer needs it flat', () => {
+  const flatWith = (name: string) =>
+    zipSync({
+      'metadata.json': strToU8(metaFor('abc')),
+      'ingredients/TIT.tsv': strToU8('x'),
+      [name]: strToU8('x'),
+    });
+
   it('strips the single top directory', () => {
     const { files } = unwrapExport(wrappedZip('abc'));
     expect(Object.keys(files).sort()).toEqual(['ingredients/TIT.tsv', 'metadata.json']);
@@ -94,16 +101,28 @@ describe('unwrapExport — the DCS export is wrapped, the importer needs it flat
   });
 
   it('rejects absolute, drive-prefixed and nested-traversal entries (#2)', () => {
-    const flatWith = (name: string) =>
-      zipSync({
-        'metadata.json': strToU8(metaFor('abc')),
-        'ingredients/TIT.tsv': strToU8('x'),
-        [name]: strToU8('x'),
-      });
     expect(() => unwrapExport(flatWith('../escape.txt'))).toThrow(/escapes its folder/);
     expect(() => unwrapExport(flatWith('/abs.txt'))).toThrow(/escapes its folder/);
     expect(() => unwrapExport(flatWith('C:/evil.txt'))).toThrow(/escapes its folder/);
     expect(() => unwrapExport(flatWith('a/../../b.txt'))).toThrow(/escapes its folder/);
+  });
+
+  it('rejects Windows-host evasions and dot-padded siblings (#2, PR #309 review)', () => {
+    // Win32 strips trailing dots/spaces per component: `.. ` still climbs,
+    // and `...` is rejected with it by intent — no legitimate export
+    // carries an all-dots segment, so the guard fails closed on the family.
+    expect(() => unwrapExport(flatWith('.. /escape.txt'))).toThrow(/escapes its folder/);
+    expect(() => unwrapExport(flatWith('.../escape.txt'))).toThrow(/escapes its folder/);
+    // Directory entries are checked too, not just files.
+    const evilDir = zipSync({
+      'en_twl/metadata.json': strToU8(metaFor('abc')),
+      'en_twl/ingredients/TIT.tsv': strToU8('x'),
+      'en_twl/../evil/': new Uint8Array(0),
+    });
+    expect(() => unwrapExport(evilDir)).toThrow(/escapes its folder/);
+    // Near-misses that cannot climb stay accepted: no over-blocking.
+    expect(Object.keys(unwrapExport(flatWith('..foo/kept.txt')).files)).toContain('..foo/kept.txt');
+    expect(Object.keys(unwrapExport(flatWith('foo../kept.txt')).files)).toContain('foo../kept.txt');
   });
 });
 
@@ -199,6 +218,15 @@ describe('fetchAndInstallPin — the SHA gate (D23b: verify at every import)', (
       fetchFn: fetchReturning(wrappedZip('0'.repeat(40))),
     })).rejects.toThrow(/SHA mismatch/);
     expect(installed).toEqual([]); // nothing installed — the whole point
+  });
+
+  it('REFUSES a traversal archive before repacking or installing (#2, PR #309 review)', async () => {
+    const installed: string[] = [];
+    await expect(fetchAndInstallPin(PIN, {
+      api: apiWith(true, installed) as never,
+      fetchFn: fetchReturning(wrappedZip('deadbeef', { 'en_twl/../escape.txt': 'x' })),
+    })).rejects.toThrow(/escapes its folder/);
+    expect(installed).toEqual([]); // rejected before rezip, before the server
   });
 
   it('REFUSES when the pin carries a SHA but the export declares none', async () => {

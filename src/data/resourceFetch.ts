@@ -110,7 +110,14 @@ const escapesArchiveRoot = (name: string): boolean => {
   return (
     normalized.startsWith('/') ||
     /^[A-Za-z]:(\/|$)/.test(normalized) ||
-    normalized.split('/').some((segment) => segment === '..')
+    normalized.split('/').some(
+      // `..` climbs on every host. Its dot/space-padded siblings (`.. `,
+      // `.. .`, `...`) climb — or smuggle the intent to climb — on hosts
+      // that strip trailing dots/spaces per component (Win32), and no
+      // legitimate export carries an all-dots segment, so the whole family
+      // is rejected: fail closed (PR #309 review F2).
+      (segment) => /^\.\.[. ]*$/.test(segment),
+    )
   );
 };
 
