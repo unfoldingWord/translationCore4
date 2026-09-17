@@ -69,8 +69,8 @@ describe('the story check session (#291, J22): from the derivation to the store 
     expect(cs.items.some((it) => it.contextId.reference.frame === 0 && it.contextId.checkId === 'i6lj')).toBe(true);
     expect(cs.progress).toEqual({ decided: 0, total: 91 });
     expect(cs.resource).toMatchObject({ repoPath: EN_HELPS['obs-tn'].repoPath, sha: EN_HELPS['obs-tn'].sha, languageSet: 'primary' });
-    expect(Object.keys(cs.verses)).toContain('1:0');
-    expect(Object.keys(cs.verses)).toContain('1:16');
+    expect(Object.keys(cs.verses)).toContain('story|1:0'); // the story key grammar (#310)
+    expect(Object.keys(cs.verses)).toContain('story|1:16');
     const two = await session(2);
     expect(two.items.every((it) => it.contextId.reference.story === 2)).toBe(true);
   });

@@ -13,7 +13,7 @@
 import React from 'react';
 import { useApp } from '../state.jsx';
 import { TOOL_SLOT } from '../data/resolve';
-import { isDecided, locatorOf, referenceParts } from '../data/derive';
+import { isDecided, locatorOf, referenceParts, textKeyOf } from '../data/derive';
 import { STORY_FILE } from '../data/journal/runtime';
 import { bookName } from '../data/bookNames';
 import { renderArticleBlocks } from '../data/articles';
@@ -974,8 +974,9 @@ function AlignWorkspace() {
 function sessionView(cs) {
   const activeIndex = cs?.activeIndex ?? 0;
   const activeItem = cs?.items?.[activeIndex];
-  const activeRef = activeItem ? locatorOf(activeItem.contextId.reference) : '';
-  const targetText = (cs?.verses && cs.verses[activeRef]) || '';
+  // The text index is keyed by textKeyOf (#310): a verse and a frame with the
+  // same two numbers never share a key; the display keeps the locator.
+  const targetText = (activeItem && cs?.verses && cs.verses[textKeyOf(activeItem.contextId.reference)]) || '';
   return { activeIndex, activeItem, targetText, tool: cs?.tool, book: cs?.book };
 }
 

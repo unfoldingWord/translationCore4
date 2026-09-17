@@ -9,7 +9,7 @@ import type { SchemeDoc, SchemeName, UnplaceableReason } from './versification';
 import type { Tool } from './resolve';
 import { tokenize } from 'string-punctuation-tokenizer';
 import { usfmjs } from './vendor';
-import { isStoryReference, STORY_BOOK_ID } from './journal/runtime';
+import { isStoryReference as isStoryReferenceRef, STORY_BOOK_ID } from './journal/runtime';
 
 // ---------- targetBible derivation (harness section 3; FR-13 precursor) ----------
 
@@ -41,40 +41,64 @@ export const deriveTargetBible = (bookUsfm: string): DerivedBook =>
 
 // ---------- check-item shapes (BURRITO-SPEC §5.2) ----------
 
-/** A Bible reference `{bookId, chapter, verse}` (§5.2) or, in an OBS project,
- * a story reference `{story, frame}` (§10.5, R-10.5.1). The two forms never
- * mix in one object; `referenceParts` reads either as a locator pair. */
-export interface CheckReference {
-  bookId?: string;
-  chapter?: number | string;
-  verse?: number | string;
-  story?: number;
-  frame?: number;
-  [key: string]: unknown;
+/** The Bible form of a check reference (§5.2). The story fields are declared
+ * `undefined`, so one object can never carry both forms (R-10.5.1). */
+export interface BibleReference {
+  bookId: string;
+  /** chapter and verse are number | string: 'front', comma lists and letter
+   * verses are legal resource forms (D60); a span verse is its exact string. */
+  chapter: number | string;
+  verse: number | string;
+  story?: undefined;
+  frame?: undefined;
 }
 
-/** ONE definition of the story reference form and its book-position literal:
- * the reference grammar (journal/grammar.mjs, through runtime.ts). */
-export { isStoryReference, STORY_BOOK_ID };
+/** The story form (§10.5): `story:frame`, frame 0 the title. */
+export interface StoryReference {
+  story: number;
+  frame: number;
+  bookId?: undefined;
+  chapter?: undefined;
+  verse?: undefined;
+}
+
+/** A check reference is exactly one of the two forms — the same rule as
+ * `DecisionContextId.reference` (burritoStore.ts). */
+export type CheckReference = BibleReference | StoryReference;
+
+/** The ONE story-form predicate is the reference grammar's
+ * (journal/grammar.mjs, through runtime.ts); this wrapper only narrows the
+ * TypeScript type. `STORY_BOOK_ID` is the grammar's book-position literal. */
+export const isStoryReference = (r: CheckReference): r is StoryReference => isStoryReferenceRef(r);
+export { STORY_BOOK_ID };
 
 /** The locator pair of either reference form: chapter and verse for a Bible
  * item, story and frame for a story item (frame 0 is the title). Every
- * display, sort, position memory and text lookup reads through this, so a
- * story item never needs a fake chapter. */
+ * display, sort and position memory reads through this, so a story item
+ * never needs a fake chapter. */
 export const referenceParts = (r: CheckReference): { c: number | string; v: number | string } =>
-  isStoryReference(r)
-    ? { c: r.story as number, v: r.frame as number }
-    : { c: r.chapter as number | string, v: r.verse as number | string };
+  isStoryReference(r) ? { c: r.story, v: r.frame } : { c: r.chapter, v: r.verse };
 
-/** The `c:v` locator string (`1:1`, `1:0` for a story title). */
+/** The `c:v` locator string the screen shows (`1:1`, `1:0` for a story
+ * title): the rail row `data-ref`, the row title, the detail header. */
 export const locatorOf = (r: CheckReference): string => {
   const { c, v } = referenceParts(r);
   return `${c}:${v}`;
 };
 
-export interface CheckContextId {
+/** The draft-text index key (revalidate.ts `VerseTextIndex`): `c:v` for a
+ * verse — the key `verseTextIndex` and the align model already use — and
+ * `story|s:f` for a frame, so a story item never reads the verse text of the
+ * same two numbers and a verse item never reads frame text (#310). The story
+ * index is built by `frameTextIndex` alone and never passes through
+ * `withSpanMembers` (which splits on `:` and expands only `n-m` verse spans).
+ * Display keeps `locatorOf`. */
+export const textKeyOf = (r: CheckReference): string =>
+  isStoryReference(r) ? `story|${r.story}:${r.frame}` : `${r.chapter}:${r.verse}`;
+
+export interface CheckContextId<R extends CheckReference = CheckReference> {
   checkId: string;
-  reference: CheckReference;
+  reference: R;
   tool: string;
   groupId: string;
   quote: unknown;
@@ -85,8 +109,8 @@ export interface CheckContextId {
 
 /** One check item. A freshly derived item carries `false` in every decision
  * field; a stored decision carries the real values (§5.2). */
-export interface CheckItem {
-  contextId: CheckContextId;
+export interface CheckItem<R extends CheckReference = CheckReference> {
+  contextId: CheckContextId<R>;
   selections: unknown[] | false;
   comments: unknown;
   reminders: unknown;
@@ -126,7 +150,7 @@ const tsvRows = (tsv: string, expectedHeader: string, resourceLabel: string): st
 /** Derive check items from a TWL TSV
  * (columns: Reference / ID / Tags / OrigWords / Occurrence / TWLink).
  * `category` is the TWLink article folder: kt | names | other. */
-export const deriveTwlItems = (twlTsv: string, bookId: string): CheckItem[] =>
+export const deriveTwlItems = (twlTsv: string, bookId: string): CheckItem<BibleReference>[] =>
   tsvRows(twlTsv, TWL_HEADER, 'TWL').map((cells) => {
     const [ref, id, , origWords, occurrence, link] = cells;
     const [chapter, verse] = ref.split(':').map(refPart);
@@ -238,7 +262,7 @@ export const tnQuoteWords = (quote: string): TnQuoteWord[] => {
  * note the resource carries — plain rows are a large share of real data
  * (en_tn v86 Titus: 49 of 206 rows; es-419_tn v66: 104 of 216 — 2026-08-27
  * Codex review). A plain row's `groupId` is '' (no tA module to link). */
-export const deriveTnItems = (tnTsv: string, bookId: string, opts: { keepPlain?: boolean } = {}): CheckItem[] =>
+export const deriveTnItems = (tnTsv: string, bookId: string, opts: { keepPlain?: boolean } = {}): CheckItem<BibleReference>[] =>
   tsvRows(tnTsv, TN_HEADER, 'tN')
     .filter((cells) => opts.keepPlain || (cells[3] ?? '') !== '')
     .map((cells) => {
@@ -272,7 +296,7 @@ export const deriveTnItems = (tnTsv: string, bookId: string, opts: { keepPlain?:
  * Understand screen (D63/D64): every row is an item; `question`/`response`
  * ride on the item root, and `occurrenceNote` mirrors the response so shared
  * renderers keep working. */
-export const deriveTqItems = (tqTsv: string, bookId: string): CheckItem[] =>
+export const deriveTqItems = (tqTsv: string, bookId: string): CheckItem<BibleReference>[] =>
   tsvRows(tqTsv, TQ_HEADER, 'tQ').map((cells) => {
     const [ref, id, , quote, occurrence, question, response] = cells;
     const [chapter, verse] = ref.split(':').map(refPart);
@@ -528,12 +552,12 @@ export const filterToScope = (items: CheckItem[], ranges: string[]): CheckItem[]
  * the open story as a Bible session is to the open book. A row whose locator
  * is not two integers cannot address a frame (R-10.4.1) and is dropped; the
  * unit tests assert the real exports drop nothing. */
-export const deriveObsItems = (tsv: string, tool: Tool, story?: number): CheckItem[] => {
+export const deriveObsItems = (tsv: string, tool: Tool, story?: number): CheckItem<StoryReference>[] => {
   const derived =
     tool === 'translationNotes'
       ? deriveTnItems(tsv, STORY_BOOK_ID, { keepPlain: true })
       : deriveTwlItems(tsv, STORY_BOOK_ID);
-  return derived.flatMap((item) => {
+  return derived.flatMap((item): CheckItem<StoryReference>[] => {
     const { chapter, verse } = item.contextId.reference;
     if (typeof chapter !== 'number' || typeof verse !== 'number') return [];
     if (story !== undefined && chapter !== story) return [];
@@ -619,9 +643,9 @@ export const deriveForProject = async (params: {
     const outcome = await mapReference({
       from,
       to,
-      book: reference.bookId as string,
+      book: reference.bookId,
       chapter: reference.chapter as number,
-      verse: reference.verse as number | string,
+      verse: reference.verse,
       schemes,
     });
     if (!outcome.ok) {
