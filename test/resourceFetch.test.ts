@@ -104,7 +104,19 @@ describe('unwrapExport — the DCS export is wrapped, the importer needs it flat
     expect(() => unwrapExport(flatWith('../escape.txt'))).toThrow(/escapes its folder/);
     expect(() => unwrapExport(flatWith('/abs.txt'))).toThrow(/escapes its folder/);
     expect(() => unwrapExport(flatWith('C:/evil.txt'))).toThrow(/escapes its folder/);
+    // Drive-RELATIVE, no separator: on Win32 `C:evil.txt` is not a filename but
+    // a path against drive C's current directory, and a join replaces
+    // everything after the prefix. The whole drive-prefix class is refused.
+    expect(() => unwrapExport(flatWith('C:evil.txt'))).toThrow(/escapes its folder/);
+    expect(() => unwrapExport(flatWith('c:evil.txt'))).toThrow(/escapes its folder/);
     expect(() => unwrapExport(flatWith('a/../../b.txt'))).toThrow(/escapes its folder/);
+  });
+
+  it('keeps a colon that is not a drive prefix (#2: the guard refuses the class, not the character)', () => {
+    // A colon deeper in the path, and a multi-letter prefix, cannot name a
+    // drive — refusing them would drop legitimate files.
+    expect(Object.keys(unwrapExport(flatWith('ingredients/a:b.txt')).files)).toContain('ingredients/a:b.txt');
+    expect(Object.keys(unwrapExport(flatWith('ab:c.txt')).files)).toContain('ab:c.txt');
   });
 
   it('rejects Windows-host evasions and dot-padded siblings (#2, PR #309 review)', () => {

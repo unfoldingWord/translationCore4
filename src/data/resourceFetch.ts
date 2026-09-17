@@ -109,7 +109,13 @@ const escapesArchiveRoot = (name: string): boolean => {
   const normalized = name.replace(/\\/g, '/');
   return (
     normalized.startsWith('/') ||
-    /^[A-Za-z]:(\/|$)/.test(normalized) ||
+    // Any drive prefix, with or without a separator after it. `C:/evil` is an
+    // absolute Win32 path; `C:evil` is a path against drive C's CURRENT
+    // directory, and a join against it replaces everything after the prefix —
+    // so requiring a separator here let the second spelling through
+    // (PR #309 owner review). A colon deeper in the path, or behind more than
+    // one letter, cannot name a drive and stays legal.
+    /^[A-Za-z]:/.test(normalized) ||
     normalized.split('/').some(
       // `..` climbs on every host. Its dot/space-padded siblings (`.. `,
       // `.. .`, `...`) climb — or smuggle the intent to climb — on hosts
