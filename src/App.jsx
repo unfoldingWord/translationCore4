@@ -86,12 +86,13 @@ function TopBar() {
       switchTitle={t('app.switchProject')}
       onBrandClick={actions.backToProjects}
       onProjectClick={actions.backToProjects}
-      center={inProject && p?.flavor !== 'textStories' ? (
+      center={inProject ? (
         // D63: Publish is retired as a top-level tab — the publish flow lives
-        // inside Check as the Community Checking tool (#108).
+        // inside Check as the Community Checking tool (#108). An OBS project
+        // (#291) has Translate and Check; Understand for stories is #290.
         <Switcher indicator="pill" value={s.view === 'publish' ? 'check' : s.view} onChange={(v) => actions.go(v)}
           options={[
-            { value: 'read', label: t('nav.understand') },
+            ...(p?.flavor === 'textStories' ? [] : [{ value: 'read', label: t('nav.understand') }]),
             { value: 'draft', label: t('nav.draft') },
             { value: 'check', label: t('nav.check') },
           ]} />
@@ -125,7 +126,13 @@ export default function App() {
 
 function MainView({ state }) {
   if (state.view === 'home') return <Home />;
-  if (state.project?.flavor === 'textStories') return <StoryDraft />;
+  if (state.project?.flavor === 'textStories') {
+    // #291: Check (and its Community Checking tool) for a story; every other
+    // view is the story editor until Understand lands (#290).
+    if (state.view === 'check') return <Check />;
+    if (state.view === 'publish') return <CommunityChecking />;
+    return <StoryDraft />;
+  }
   const views = {
     read: <Understand />,
     draft: <Draft />,

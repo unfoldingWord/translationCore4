@@ -138,3 +138,49 @@ describe('gatewayQuote (owner ruling 2026-08-31: cards title in the gateway lang
     expect(gl('1', '1', '')).toBeNull();
   });
 });
+
+// ---- #291 (D74 §8): the OBS gateway frame is plain text; the source phrase is
+// found by its words, first occurrence. Real inputs: story 1 of en_obs v9 (the
+// sb-zip export at the bundled pin, d39a1dc7 — the vendored template carries
+// only the seed form, so the frame text is quoted here verbatim) and the
+// en_obs-tn v13 quotes for 1:0 and 1:1 (test/fixtures/resources/en_obs-tn@v13).
+import { matchPlainQuote, tokenizePlain } from '../src/data/sourceHighlight';
+
+const OBS_1_TITLE = 'The Creation';
+const OBS_1_1 =
+  'This is how God made everything in the beginning. He created the universe and everything in it in six days. ' +
+  'After God created the earth it was dark and empty because he had not yet formed anything in it. But God’s Spirit was there over the water.';
+const OBS_1_2 = 'Then God said, “Let there be light!” And there was light. God saw that the light was good and called it “day.”';
+const plainHits = (text: string, quote: string): string => {
+  const tokens = tokenizePlain(text);
+  return [...matchPlainQuote(tokens, quote)].map((i) => tokens[i].text).join(' ');
+};
+
+describe('tokenizePlain / matchPlainQuote (OBS story frames, #291)', () => {
+  it('reads the same display text back, byte for byte', () => {
+    expect(tokensText(tokenizePlain(OBS_1_1))).toBe(OBS_1_1);
+    expect(tokensText(tokenizePlain(OBS_1_2))).toBe(OBS_1_2);
+  });
+
+  it('highlights a real en_obs-tn quote as a contiguous run in frame 1:1, punctuation-tolerant', () => {
+    expect(plainHits(OBS_1_1, 'the beginning')).toBe('the beginning');
+    expect(plainHits(OBS_1_1, 'he had not yet formed anything in it')).toBe('he had not yet formed anything in it');
+    // an apostrophe inside a word stays inside the token
+    expect(plainHits(OBS_1_1, 'God’s Spirit')).toBe('God’s Spirit');
+    // the first occurrence wins (`God` appears three times; Occurrence is not counted)
+    expect([...matchPlainQuote(tokenizePlain(OBS_1_1), 'God')]).toEqual([tokenizePlain(OBS_1_1).findIndex((t) => t.text === 'God')]);
+  });
+
+  it('highlights the title note quote on frame 0 (the story title)', () => {
+    expect(plainHits(OBS_1_TITLE, 'The Creation')).toBe('The Creation');
+  });
+
+  it('matches an &-separated quote span by span, in order', () => {
+    expect(plainHits(OBS_1_2, 'God said & there was light')).toBe('God said there was light');
+  });
+
+  it('highlights nothing when the quote does not match in full — never a partial highlight', () => {
+    expect(plainHits(OBS_1_1, 'the beginning of nothing')).toBe('');
+    expect(plainHits(OBS_1_1, '')).toBe('');
+  });
+});

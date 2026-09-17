@@ -65,6 +65,54 @@ export const tokenizeVerse = (vObj?: { verseObjects?: VerseObject[] }): SourceTo
 /** Plain display text of a token stream — byte-for-byte what the spans render. */
 export const tokensText = (tokens: SourceToken[]): string => tokens.map((t) => t.text).join('');
 
+// ---------- OBS (#291, D74 §8): the gateway story frame is plain Markdown text,
+// not aligned USFM, and a help's source phrase (`Quote`, `OrigWords`) is in the
+// gateway language itself. So the phrase is found in the frame text by its
+// words, first occurrence — `Occurrence` is 1 in every OBS row and is not
+// counted (R-10.5.1). Display only.
+
+/** Tokenize plain text into word and non-word display tokens. `orig` stays
+ * empty: nothing here is aligned, and `matchQuote` (which reads alignments)
+ * is never asked about these tokens. */
+export const tokenizePlain = (text: string): SourceToken[] => {
+  const out: SourceToken[] = [];
+  for (const m of text.matchAll(/[\p{L}\p{N}\p{M}'’-]+|[^\p{L}\p{N}\p{M}'’-]+/gu))
+    out.push({ text: m[0], word: /[\p{L}\p{N}]/u.test(m[0]), orig: [] });
+  return out;
+};
+
+/** The word spans of a quote string: `&` separates discontinuous spans (the
+ * TSV convention, derive.ts tnQuoteWords); `…` is an ellipsis, never a word. */
+const quoteSpans = (quote: string): string[][] =>
+  quote
+    .split(/\s*&\s*/)
+    .map((span) => span.split(/\s+/).filter((w) => w !== '' && w !== '…').map(normalizeWord).filter((w) => w !== ''))
+    .filter((span) => span.length > 0);
+
+/** Resolve a quote to the indices of the plain tokens that render it: every
+ * span matched as a contiguous run of word tokens, each span after the one
+ * before, first match wins. A quote that does not match in full highlights
+ * nothing — a partial highlight would point the translator at the wrong words. */
+export const matchPlainQuote = (tokens: SourceToken[], quote: string): Set<number> => {
+  const hits = new Set<number>();
+  const words: Array<{ i: number; w: string }> = [];
+  tokens.forEach((tok, i) => {
+    if (!tok.word) return;
+    const w = normalizeWord(tok.text);
+    if (w !== '') words.push({ i, w });
+  });
+  let from = 0;
+  for (const span of quoteSpans(quote)) {
+    let found = -1;
+    for (let k = from; k + span.length <= words.length && found < 0; k++)
+      if (span.every((w, j) => words[k + j].w === w)) found = k;
+    if (found < 0) return new Set();
+    for (let j = 0; j < span.length; j++) hits.add(words[found + j].i);
+    from = found + span.length;
+  }
+  return hits;
+};
+
 // A quote word from either helps shape: tN quotes are word arrays
 // (TnQuoteWord), TWL OrigWords is a plain string. "&" separates discontinuous
 // spans in both and is never a word (derive.ts tnQuoteWords).

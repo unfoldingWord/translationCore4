@@ -29,8 +29,11 @@ export interface DecisionContextId {
   occurrenceNote: string;
   /** verse is a number for single verses (tC3 convention) and the exact USFM span
    * string (e.g. "9-10") for verse spans; identity keys compare String(verse) —
-   * never Number() (BURRITO-SPEC §5.2). */
-  reference: { bookId: string; chapter: number; verse: number | string };
+   * never Number() (BURRITO-SPEC §5.2). A story decision (§10.5) carries
+   * `{story, frame}` instead, and the two forms never mix. */
+  reference:
+    | { bookId: string; chapter: number; verse: number | string; story?: undefined; frame?: undefined }
+    | { story: number; frame: number; bookId?: undefined; chapter?: undefined; verse?: undefined };
   tool: string;
   groupId: string;
   quote: string | Array<{ word: string; occurrence: number }>;

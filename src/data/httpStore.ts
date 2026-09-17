@@ -245,14 +245,15 @@ export const normalizeAlignmentFile = (data: AlignmentFile): AlignmentFile => ({
  * occurrence). Chapter and verse compare as String(...) BOTH sides — a span
  * verse is its exact span string ("9-10") and Number("9-10") is NaN; never
  * Number()-coerce (BURRITO-SPEC §5.2, harness check 24). */
-export const identityKey = (contextId: DecisionContextId): string =>
-  [
-    contextId.checkId,
-    contextId.reference.bookId.toLowerCase(),
-    String(contextId.reference.chapter),
-    String(contextId.reference.verse),
-    String(contextId.occurrence),
-  ].join('\u0000');
+export const identityKey = (contextId: DecisionContextId): string => {
+  const r = contextId.reference;
+  // §10.5 (R-10.5.1): a story decision keys with the literal `obs` in the book
+  // position, then story and frame — one grammar for both forms.
+  const place = r.story !== undefined
+    ? ['obs', String(r.story), String(r.frame)]
+    : [String(r.bookId).toLowerCase(), String(r.chapter), String(r.verse)];
+  return [contextId.checkId, ...place, String(contextId.occurrence)].join('\u0000');
+};
 
 /** INVARIANT I-2 (BURRITO-SPEC §5): every occurrence/occurrences field is an
  * integer on disk. Parser-shaped inputs arrive as strings ("1"); coerce them,

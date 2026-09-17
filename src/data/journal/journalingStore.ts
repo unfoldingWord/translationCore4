@@ -53,6 +53,9 @@ import {
   EMPTY_CHECKPOINT_DOCUMENTS,
   isObsBaseIngredient,
   isObsMetadata,
+  isStoryReference,
+  STORY_BOOK_ID,
+  STORY_FILE,
   isUnjournaledIngredient,
   normalizeEvent,
   projectAlignments,
@@ -125,12 +128,21 @@ const canonical = (value: unknown): string => {
 };
 
 /** The journal's §5.2 decision register key: dec|toolId|checkId|bookId|chapter|verse|occurrence
- * — the SAME string journal/fold.mjs keys on (identityKeyOf parts). */
+ * — the SAME string journal/fold.mjs keys on (identityKeyOf parts). A story
+ * decision (§10.5) keys `dec|toolId|checkId|obs|story|frame|occurrence`. */
 const decisionRegisterKey = (tool: string, decision: Decision): string => {
   const c = decision.contextId;
   const r = c.reference;
-  return ['dec', tool, c.checkId, r.bookId, String(r.chapter), String(r.verse), String(c.occurrence)].join('|');
+  const place = isStoryReference(r)
+    ? [STORY_BOOK_ID, String(r.story), String(r.frame)]
+    : [r.bookId, String(r.chapter), String(r.verse)];
+  return ['dec', tool, c.checkId, ...place, String(c.occurrence)].join('|');
 };
+
+/** The book position a projected decision files under: its book code, or
+ * `OBS` for a story decision (§10.5: `checking/<toolId>/OBS.json`). */
+const decisionBookOf = (d: { contextId: { reference: { bookId?: string } } }): string =>
+  isStoryReference(d.contextId.reference) ? STORY_FILE : String(d.contextId.reference.bookId).toUpperCase();
 
 /** Flatten a §5.3 resources document into pin-slot entries — the SAME walk the
  * reference seeder applies (journal/reconcile.mjs seedFromSidecars),
@@ -627,9 +639,7 @@ export class JournalingStore implements BurritoStore {
    * checkpoint's projectDecisions output for the same file. Requires the
    * resolution record (§5.2/D30: an incomplete file is never emitted). */
   private projectDecisionFile(foldOut: FoldOutput, tool: string, book: string): string | null {
-    const records = (foldOut.decisions[tool] ?? []).filter(
-      (d) => d.contextId.reference.bookId.toUpperCase() === book.toUpperCase(),
-    );
+    const records = (foldOut.decisions[tool] ?? []).filter((d) => decisionBookOf(d) === book.toUpperCase());
     if (records.length === 0) return null;
     const resource = this.resolutions.get(`${tool}\n${book.toUpperCase()}`);
     if (resource === undefined)
@@ -652,9 +662,7 @@ export class JournalingStore implements BurritoStore {
       if (foldOut.alignments[book]) paths.push(alignmentsIpath(book));
     }
     for (const tool of Object.keys(foldOut.decisions)) {
-      const books = new Set(
-        foldOut.decisions[tool].map((d) => d.contextId.reference.bookId.toUpperCase()),
-      );
+      const books = new Set(foldOut.decisions[tool].map(decisionBookOf));
       for (const book of books) paths.push(decisionsIpath(tool, book));
     }
     // §10.7: every story file is derived — an unfolded one to its own base
@@ -1435,7 +1443,8 @@ export class JournalingStore implements BurritoStore {
     const orphaned: string[] = [];
     for (const [tool, byBook] of Object.entries(disk.decisionFilesByBook))
       for (const book of Object.keys(byBook))
-        if (!disk.books[book]) orphaned.push(`${decisionsIpath(tool, book)} (no ${bookIpath(book)})`);
+        // §10.5: the story sidecar belongs to no book (R-10.7.3 — no generation root)
+        if (book !== STORY_FILE && !disk.books[book]) orphaned.push(`${decisionsIpath(tool, book)} (no ${bookIpath(book)})`);
     for (const book of Object.keys(disk.alignmentFiles))
       if (!disk.books[book]) orphaned.push(`${alignmentsIpath(book)} (no ${bookIpath(book)})`);
     if (orphaned.length)
@@ -1604,9 +1613,7 @@ export class JournalingStore implements BurritoStore {
       [...list].sort((a, b) => (canonical(a.contextId) < canonical(b.contextId) ? -1 : 1));
     for (const [tool, byBook] of Object.entries(disk.decisionFilesByBook)) {
       for (const [book, file] of Object.entries(byBook)) {
-        const projected = (folded.decisions[tool] ?? []).filter(
-          (d) => d.contextId.reference.bookId.toUpperCase() === book,
-        );
+        const projected = (folded.decisions[tool] ?? []).filter((d) => decisionBookOf(d) === book);
         const expectedDoc = {
           schemaVersion: 1,
           tool,
@@ -2100,7 +2107,7 @@ export class JournalingStore implements BurritoStore {
       const affected = [bookIpath(code)];
       if (foldOut.alignments[code]) affected.push(alignmentsIpath(code));
       for (const tool of Object.keys(foldOut.decisions))
-        if (foldOut.decisions[tool].some((d) => d.contextId.reference.bookId.toUpperCase() === code))
+        if (foldOut.decisions[tool].some((d) => decisionBookOf(d) === code))
           affected.push(decisionsIpath(tool, code));
       await this.publishAndRegenerate(events, affected);
     });
@@ -2247,9 +2254,7 @@ export class JournalingStore implements BurritoStore {
     const journal = this.mustJournal();
     const code = book.toUpperCase();
     const foldOut = this.foldNow();
-    const generation = foldOut.books[code] ? foldOut.headsTs[`book|${code}`] : undefined;
-    if (generation === undefined)
-      throw new Error(`upsertDecision(${tool}, ${code}): the journal projects no such book`);
+    const generation = this.decisionGeneration('upsertDecision', tool, code, foldOut);
     const resolutionKey = `${tool}\n${code}`;
     const effective = await this.effectiveDecisionResolution(tool, code, resolutionKey, resource);
     const event = this.decisionEvent(tool, code, decision, foldOut, journal, generation);
@@ -2290,14 +2295,43 @@ export class JournalingStore implements BurritoStore {
     return resource as unknown as Record<string, unknown>;
   }
 
+  /** The §8.5 generation stamp of a decision or note write on `code`: the
+   * book's root for a Bible book; NONE for the story position `OBS` (R-10.7.3
+   * — stories have no book generations, so the event carries no stamp and is
+   * `v: 2`, anchored by nothing, like a pin). ONE rule at ONE boundary: the
+   * four write sites (single upsert, whole-file diff, note) all read it. */
+  private decisionGeneration(op: string, tool: string, code: string, foldOut: FoldOutput): string | undefined {
+    if (code === STORY_FILE) return undefined;
+    const generation = foldOut.books[code] ? foldOut.headsTs[`book|${code}`] : undefined;
+    if (generation === undefined) throw new Error(`${op}(${tool}, ${code}): the journal projects no such book`);
+    return generation;
+  }
+
+  /** A story decision goes under `OBS` and a book decision under its book —
+   * the reference form and the book position must agree (R-10.5.1). */
+  private static assertDecisionPosition(op: string, tool: string, code: string, decision: Decision): void {
+    if (isStoryReference(decision.contextId.reference) === (code === STORY_FILE)) return;
+    throw new Error(
+      `${op}(${tool}, ${code}): the decision's reference is ${JSON.stringify(decision.contextId.reference)} — ` +
+        `a story decision is written under ${STORY_FILE} and a book decision under its book (§10.5)`,
+    );
+  }
+
+  /** The envelope of a check.decision.set: `v: 2` with no stamp for a story
+   * decision, `v: 1` with its generation for a book decision (R-10.7.3). */
+  private static decisionEnvelope(generation: string | undefined): { v: number; generation?: string } {
+    return generation === undefined ? { v: 2 } : { v: 1, generation };
+  }
+
   private decisionEvent(
     tool: string,
     code: string,
     decision: Decision,
     foldOut: FoldOutput,
     journal: JournalStore,
-    generation: string,
+    generation: string | undefined,
   ): JournalEvent | null {
+    JournalingStore.assertDecisionPosition('upsertDecision', tool, code, decision);
     const incoming = normalizeDecision(decision);
     const key = decisionRegisterKey(tool, incoming);
     const projected = (foldOut.decisions[tool] ?? []).find(
@@ -2315,12 +2349,11 @@ export class JournalingStore implements BurritoStore {
       );
     if (projected && canonical(projected) === canonical(incoming)) return null;
     return {
-      v: 1,
+      ...JournalingStore.decisionEnvelope(generation),
       op: 'check.decision.set',
       actor: journal.actorId,
       ts: journal.issueTs(),
       base: foldOut.headsTs[key] ?? null,
-      generation,
       toolId: tool,
       decision: incoming as unknown as Record<string, unknown>,
     };
@@ -2370,9 +2403,7 @@ export class JournalingStore implements BurritoStore {
     const journal = this.mustJournal();
     const code = book.toUpperCase();
     const foldOut = this.foldNow();
-    const generation = foldOut.books[code] ? foldOut.headsTs[`book|${code}`] : undefined;
-    if (generation === undefined)
-      throw new Error(`writeDecisions(${tool}, ${code}): the journal projects no such book`);
+    const generation = this.decisionGeneration('writeDecisions', tool, code, foldOut);
     if (!file.resource)
       throw new Error(
         `writeDecisions(${tool}, ${code}): the file carries no (tool, book) resolution record — ` +
@@ -2386,21 +2417,21 @@ export class JournalingStore implements BurritoStore {
       canonical(this.resolutions.get(`${tool}\n${code}`) ?? null) !== canonical(file.resource);
 
     const incoming = (file.decisions ?? []).map(normalizeDecision);
+    for (const record of incoming) JournalingStore.assertDecisionPosition('writeDecisions', tool, code, record);
     const incomingKeys = new Set(incoming.map((d) => decisionRegisterKey(tool, d)));
     const projectedForBook = (foldOut.decisions[tool] ?? []).filter(
-      (d) => d.contextId.reference.bookId.toUpperCase() === code,
+      (d) => decisionBookOf(d) === code,
     ) as unknown as Decision[];
     const projectedByKey = new Map(projectedForBook.map((d) => [decisionRegisterKey(tool, d), d]));
 
     const events: JournalEvent[] = [];
     const pushDecision = (key: string, decision: Decision): void => {
       events.push({
-        v: 1,
+        ...JournalingStore.decisionEnvelope(generation),
         op: 'check.decision.set',
         actor: journal.actorId,
         ts: journal.issueTs(),
         base: foldOut.headsTs[key] ?? null,
-        generation,
         toolId: tool,
         decision: decision as unknown as Record<string, unknown>,
       });
@@ -2629,33 +2660,24 @@ export class JournalingStore implements BurritoStore {
       // permanent grow-only events the reader hides.
       const targetChapter = String(chapter);
       const targetVerse = String(verse);
-      const notes = (foldOut as unknown as { notes?: Array<Record<string, unknown>> }).notes ?? [];
-      const latest = notes
-        .filter((n) => {
-          const tg = n.target as Record<string, unknown> | undefined;
-          return (
-            tg &&
-            typeof tg.book === 'string' &&
-            tg.book.toUpperCase() === code &&
-            tg.decisionKey === undefined &&
-            String(tg.chapter) === targetChapter &&
-            String(tg.verse) === targetVerse
-          );
-        })
+      const latest = this.notesOn(foldOut, code)
+        .filter((n) => n.chapter === targetChapter && n.verse === targetVerse)
         .pop();
-      if (latest && String(latest.text ?? '') === (toNfc(text) as string)) return;
-      const generation = foldOut.books[code] ? foldOut.headsTs[`book|${code}`] : undefined;
-      if (generation === undefined) {
-        throw new Error(`addNote(${code}): the journal projects no such book — a note needs its §8.5 generation root`);
-      }
+      if (latest && latest.text === (toNfc(text) as string)) return;
+      // §10.7 (R-10.7.3): under the story position `OBS` the target is the
+      // frame `{story, frame}` — `v: 2`, no generation stamp; a book note
+      // carries its book's generation root as before.
+      const generation = this.decisionGeneration('addNote', 'note', code, foldOut);
       const event: JournalEvent = {
-        v: 1,
+        ...JournalingStore.decisionEnvelope(generation),
         op: 'note.add',
         actor: journal.actorId,
         ts: journal.issueTs(),
-        target: { book: code, chapter: String(chapter), verse: String(verse) },
+        target:
+          code === STORY_FILE
+            ? { story: Number(chapter), frame: Number(verse) }
+            : { book: code, chapter: String(chapter), verse: String(verse) },
         text: toNfc(text) as string,
-        generation,
       };
       try {
         await this.publishAndRegenerate([event], []);
@@ -2693,17 +2715,28 @@ export class JournalingStore implements BurritoStore {
   /** Verse-targeted notes of one book from the fold, in journal order (so the
    * last entry per target is the latest — the one the Understand screen shows). */
   readNotes(book: string): Array<{ ts: string; chapter: string; verse: string; text: string }> {
-    const code = book.toUpperCase();
-    const notes = (this.foldNow() as unknown as { notes?: Array<Record<string, unknown>> }).notes ?? [];
-    return notes
-      .filter((n) => {
-        const tg = n.target as Record<string, unknown> | undefined;
-        return tg && typeof tg.book === 'string' && tg.book.toUpperCase() === code && tg.decisionKey === undefined;
-      })
-      .map((n) => {
-        const tg = n.target as { chapter: string; verse: string };
-        return { ts: String(n.ts), chapter: String(tg.chapter), verse: String(tg.verse), text: String(n.text ?? '') };
+    return this.notesOn(this.foldNow(), book.toUpperCase());
+  }
+
+  /** The verse-targeted notes of one book, or under `OBS` the frame-targeted
+   * notes of every story (§10.7: `chapter` is the story, `verse` the frame),
+   * in journal order — the last entry per target is the latest. */
+  private notesOn(foldOut: FoldOutput, code: string): Array<{ ts: string; chapter: string; verse: string; text: string }> {
+    const notes = (foldOut as unknown as { notes?: Array<Record<string, unknown>> }).notes ?? [];
+    const out: Array<{ ts: string; chapter: string; verse: string; text: string }> = [];
+    for (const n of notes) {
+      const tg = n.target as Record<string, unknown> | undefined;
+      if (!tg || tg.decisionKey !== undefined) continue;
+      const frame = tg.story !== undefined;
+      if (code === STORY_FILE ? !frame : !(typeof tg.book === 'string' && tg.book.toUpperCase() === code)) continue;
+      out.push({
+        ts: String(n.ts),
+        chapter: String(frame ? tg.story : tg.chapter),
+        verse: String(frame ? tg.frame : tg.verse),
+        text: String(n.text ?? ''),
       });
+    }
+    return out;
   }
 
   /** §8.5 project.meta.set: diff per dotted path against the folded overlay.
