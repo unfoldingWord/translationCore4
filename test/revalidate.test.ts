@@ -161,16 +161,35 @@ describe('D17 resolution revalidation — a warned update, never silent', () => 
   });
 });
 
-describe('I-3 revalidation for a story item (#291, §10.4): the frame text index is keyed story:frame', () => {
+describe('I-3 revalidation for a story item (#291, §10.4): the frame text index is keyed by the story grammar (story|s:f, #310)', () => {
   const storyItem = item({
     contextId: { ...item().contextId, reference: { story: 1, frame: 2 } } as never,
   });
 
   it('a selection still present in the frame is not stale; one the edit removed is flagged and retained', () => {
-    const kept = revalidateAgainstDraft([storyItem], { '1:2': 'Entonces Dios creó todo, y vio que era bueno.' });
+    const kept = revalidateAgainstDraft([storyItem], { 'story|1:2': 'Entonces Dios creó todo, y vio que era bueno.' });
     expect(kept.invalidated).toBe(0);
-    const edited = revalidateAgainstDraft([storyItem], { '1:2': 'Entonces el Señor creó todo.' });
+    const edited = revalidateAgainstDraft([storyItem], { 'story|1:2': 'Entonces el Señor creó todo.' });
     expect(edited.invalidated).toBe(1);
     expect(edited.items[0]).toMatchObject({ invalidated: true, status: 'invalid', selections: storyItem.selections });
+  });
+});
+
+describe('the two key grammars (#310): neither reference form can read the other form’s text', () => {
+  // the same two numbers in both forms; the selected word ("Dios") is absent from both texts,
+  // so a verdict — if one were reached — would be "stale"
+  const storyItem = item({ contextId: { ...item().contextId, reference: { story: 1, frame: 2 } } as never });
+  const verseItem = item({ contextId: { ...item().contextId, reference: { bookId: 'tit', chapter: 1, verse: 2 } } as never });
+  const verseIndex = { '1:2': 'Un versículo sin la palabra.' }; // what verseTextIndex builds
+  const frameIndex = { 'story|1:2': 'Un marco sin la palabra.' }; // what frameTextIndex builds
+
+  it('a story item gets no verdict from the verse 1:2 text; the same text under its own key is judged', () => {
+    expect(revalidateAgainstDraft([storyItem], verseIndex).invalidated).toBe(0);
+    expect(revalidateAgainstDraft([storyItem], { 'story|1:2': verseIndex['1:2'] }).invalidated).toBe(1);
+  });
+
+  it('a verse item gets no verdict from the frame 1:2 text; the same text under its own key is judged', () => {
+    expect(revalidateAgainstDraft([verseItem], frameIndex).invalidated).toBe(0);
+    expect(revalidateAgainstDraft([verseItem], { '1:2': frameIndex['story|1:2'] }).invalidated).toBe(1);
   });
 });

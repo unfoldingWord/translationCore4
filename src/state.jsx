@@ -35,6 +35,7 @@ import {
   progressOf,
   referenceParts,
   scopeRangesFor,
+  textKeyOf,
 } from './data/derive';
 import { readTwArticle, readTaArticle } from './data/articles';
 import { revalidateAgainstDraft, resolutionWarning } from './data/revalidate';
@@ -893,13 +894,14 @@ function emptyCheckSession(tool, book, resolution, empty, dropped = null) {
   };
 }
 
-/** "story:frame" -> the current frame text (frame 0 the title) for I-3
+/** The current frame text (frame 0 the title) keyed by `textKeyOf` for I-3
  * revalidation of a story session (§10.4, #291) — the same shape as
- * verseTextIndex, read from the open story. */
+ * verseTextIndex, read from the open story, under the story key grammar
+ * (#310) so a frame never reads as a verse. */
 function frameTextIndex(story) {
   if (!story) return {};
-  const out = { [`${story.number}:0`]: story.title };
-  story.frames.forEach((frame, i) => { out[`${story.number}:${i + 1}`] = frame.text; });
+  const out = { [textKeyOf({ story: story.number, frame: 0 })]: story.title };
+  story.frames.forEach((frame, i) => { out[textKeyOf({ story: story.number, frame: i + 1 })] = frame.text; });
   return out;
 }
 
@@ -1782,10 +1784,10 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
 /** Test hook (round 25): out-of-order open completions are unit-tested — the
  * latest request exclusively owns the refs and the dispatched state. */
 export const __performProjectOpenForTests = performProjectOpen;
-/** Test hook (#289): the OBS routing, resume, story switch, save and progress
- * paths are unit-tested against the fake rig. */
 /** Test hook (#291): the story check session, from the derivation to the revalidated session. */
 export const __obsCheckForTests = { deriveCheckItems, completedCheckSession, frameTextIndex };
+/** Test hook (#289): the OBS routing, resume, story switch, save and progress
+ * paths are unit-tested against the fake rig. */
 export const __obsStoryForTests = { openProjectContent, obsStoryOpenContext, openObsStory, installStoryScheduler, writeStoryUnit, obsDraftPercent };
 
 /** Load the read-only helps for the open book (extracted round 33 for the
