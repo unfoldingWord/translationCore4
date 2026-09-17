@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "tool": "scripts/prove.mjs",
-  "commit": "f47118911df040dca17e06b6ce3ade80ad85c691",
+  "commit": "46d801636d651803f73b81017569deedf924dcec",
   "dirty": false,
-  "date": "2026-09-17T18:54:35.779Z",
+  "date": "2026-09-17T18:54:29.524Z",
   "node": "v22.23.2",
   "platform": "linux-x64",
   "ci": true,
@@ -34,7 +34,7 @@
       "summary": [
         "✖ 1 problem (0 errors, 1 warning)"
       ],
-      "durationMs": 6606
+      "durationMs": 6538
     },
     {
       "id": "typecheck",
@@ -49,7 +49,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [],
-      "durationMs": 6151
+      "durationMs": 5428
     },
     {
       "id": "vitest",
@@ -67,7 +67,7 @@
         "Test Files  82 passed | 8 skipped (90)",
         "Tests  1149 passed | 43 skipped (1192)"
       ],
-      "durationMs": 36173
+      "durationMs": 33654
     },
     {
       "id": "build",
@@ -82,9 +82,9 @@
       "failed": null,
       "skippedTests": null,
       "summary": [
-        "✓ built in 9.83s"
+        "✓ built in 9.53s"
       ],
-      "durationMs": 10310
+      "durationMs": 10032
     },
     {
       "id": "conformance:generate",
@@ -99,7 +99,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [],
-      "durationMs": 193
+      "durationMs": 191
     },
     {
       "id": "conformance:validate",
@@ -120,7 +120,7 @@
         "OBS (the OBS project kind, §10 — sample-burrito-obs): 6 passed, 0 failed",
         "47 passed, 0 failed"
       ],
-      "durationMs": 623
+      "durationMs": 616
     },
     {
       "id": "conformance:journal",
@@ -137,7 +137,7 @@
       "summary": [
         "Journal suite: 350 passed, 0 failed (fast-check seed 20260707)"
       ],
-      "durationMs": 3096
+      "durationMs": 3044
     },
     {
       "id": "conformance:normative",
@@ -157,7 +157,7 @@
         "uncovered          : 0",
         "stale claims       : 0"
       ],
-      "durationMs": 77
+      "durationMs": 78
     },
     {
       "id": "conformance:transport",

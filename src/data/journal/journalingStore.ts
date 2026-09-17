@@ -399,6 +399,8 @@ export class JournalingStore implements BurritoStore {
    * project never registers or rescans; the ingredient table stays the
    * platform's own from creation. Set from the base metadata at every open. */
   private registerIngredients = true;
+  /** R-10.1.1: the open project is an OBS project (set by the disk inventory). */
+  private obsProject = false;
   /** Diagnostics of the last open(), for tests and the UI. */
   lastOpenReport: OpenReport | null = null;
 
@@ -1315,7 +1317,8 @@ export class JournalingStore implements BurritoStore {
     try {
       const meta = await this.api.getMetadataRaw(repo);
       scope = (meta?.type?.flavorType?.currentScope ?? {}) as Record<string, string[]>;
-      this.registerIngredients = !isObsMetadata(meta); // PLATFORM-NOTES #37
+      this.obsProject = isObsMetadata(meta);
+      this.registerIngredients = !this.obsProject; // PLATFORM-NOTES #37
     } catch (error) {
       throw new Error(
         `refuse to inventory ${repo}: the project scope could not be read ` +
@@ -1443,8 +1446,10 @@ export class JournalingStore implements BurritoStore {
     const orphaned: string[] = [];
     for (const [tool, byBook] of Object.entries(disk.decisionFilesByBook))
       for (const book of Object.keys(byBook))
-        // §10.5: the story sidecar belongs to no book (R-10.7.3 — no generation root)
-        if (book !== STORY_FILE && !disk.books[book]) orphaned.push(`${decisionsIpath(tool, book)} (no ${bookIpath(book)})`);
+        // §10.5: in an OBS project the story sidecar belongs to no book (R-10.7.3 —
+        // no generation root); in a Bible project a stray OBS.json is an orphan like any other
+        if (book === STORY_FILE ? !this.obsProject : !disk.books[book])
+          orphaned.push(`${decisionsIpath(tool, book)} (no ${book === STORY_FILE ? 'story project' : bookIpath(book)})`);
     for (const book of Object.keys(disk.alignmentFiles))
       if (!disk.books[book]) orphaned.push(`${alignmentsIpath(book)} (no ${bookIpath(book)})`);
     if (orphaned.length)

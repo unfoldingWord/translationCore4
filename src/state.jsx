@@ -9,6 +9,7 @@ import { ServerApi } from './data/serverApi';
 // BEFORE any derived file changes. The raw HttpStore is never constructed here
 // (test/noBypass.test.ts enforces it); read-only surfaces use ProjectReader.
 import { StaleWriteError } from './data/httpStore';
+import { STORY_FILE } from './data/journal/runtime';
 import { JournalingStore, ProjectReader } from './data/journal/journalingStore';
 import { SaveScheduler } from './data/saveScheduler';
 import { StoryScheduler, normalizeStoryUnit } from './data/storyScheduler';
@@ -373,7 +374,7 @@ let checkSessionSeq = 0;
 /** §10.5 (#291): the book position of an OBS project's check session and
  * decision sidecar (`checking/<toolId>/OBS.json`); the session itself is
  * scoped to the open story, as a Bible session is to the open book. */
-const STORY_BOOK = 'OBS';
+const STORY_BOOK = STORY_FILE;
 const isObsProject = (st) => st.project?.flavor === 'textStories';
 let fixSeq = 0; // #9: identity of the open guided-fix screen (completions bind to it)
 
@@ -1783,6 +1784,8 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
 export const __performProjectOpenForTests = performProjectOpen;
 /** Test hook (#289): the OBS routing, resume, story switch, save and progress
  * paths are unit-tested against the fake rig. */
+/** Test hook (#291): the story check session, from the derivation to the revalidated session. */
+export const __obsCheckForTests = { deriveCheckItems, completedCheckSession, frameTextIndex };
 export const __obsStoryForTests = { openProjectContent, obsStoryOpenContext, openObsStory, installStoryScheduler, writeStoryUnit, obsDraftPercent };
 
 /** Load the read-only helps for the open book (extracted round 33 for the

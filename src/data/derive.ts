@@ -9,6 +9,7 @@ import type { SchemeDoc, SchemeName, UnplaceableReason } from './versification';
 import type { Tool } from './resolve';
 import { tokenize } from 'string-punctuation-tokenizer';
 import { usfmjs } from './vendor';
+import { isStoryReference, STORY_BOOK_ID } from './journal/runtime';
 
 // ---------- targetBible derivation (harness section 3; FR-13 precursor) ----------
 
@@ -52,10 +53,9 @@ export interface CheckReference {
   [key: string]: unknown;
 }
 
-/** The literal in the book position of a story identity key (R-10.5.1). */
-export const STORY_BOOK_ID = 'obs';
-
-export const isStoryReference = (r: CheckReference): boolean => r.story !== undefined && r.bookId === undefined;
+/** ONE definition of the story reference form and its book-position literal:
+ * the reference grammar (journal/grammar.mjs, through runtime.ts). */
+export { isStoryReference, STORY_BOOK_ID };
 
 /** The locator pair of either reference form: chapter and verse for a Bible
  * item, story and frame for a story item (frame 0 is the title). Every

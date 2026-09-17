@@ -14,6 +14,7 @@ import React from 'react';
 import { useApp } from '../state.jsx';
 import { TOOL_SLOT } from '../data/resolve';
 import { isDecided, locatorOf, referenceParts } from '../data/derive';
+import { STORY_FILE } from '../data/journal/runtime';
 import { bookName } from '../data/bookNames';
 import { renderArticleBlocks } from '../data/articles';
 import Align from './Align.jsx';
@@ -33,7 +34,7 @@ const mono = { fontFamily: 'var(--font-mono)' };
 /** #291 (§10.5): a story session sits under the `OBS` book position and is
  * scoped to the open story; its unit label is the story, a book session's the
  * book. The locator of a story item is `story:frame` (referenceParts). */
-const STORY_BOOK = 'OBS';
+const STORY_BOOK = STORY_FILE;
 const isStorySession = (book) => book === STORY_BOOK;
 const unitLabelFor = (book, storyNumber) =>
   (isStorySession(book) ? t('storyDraft.storyNumber', { n: storyNumber }) : bookName(book));

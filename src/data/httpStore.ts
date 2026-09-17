@@ -34,7 +34,7 @@ import {
 } from './serverApi';
 import { sortCanonical } from './bookNames';
 import { samePath } from './resolve';
-import { parseStory, storyIpath, storyNumberOf } from './journal/runtime';
+import { isStoryReference, parseStory, storyIpath, storyNumberOf, STORY_BOOK_ID } from './journal/runtime';
 import { UNRECORDED_SCHEME, type VrsRegister } from './versification';
 
 /** App-created projects live under this org; sideloaded resources live under
@@ -249,8 +249,8 @@ export const identityKey = (contextId: DecisionContextId): string => {
   const r = contextId.reference;
   // §10.5 (R-10.5.1): a story decision keys with the literal `obs` in the book
   // position, then story and frame — one grammar for both forms.
-  const place = r.story !== undefined
-    ? ['obs', String(r.story), String(r.frame)]
+  const place = isStoryReference(r)
+    ? [STORY_BOOK_ID, String(r.story), String(r.frame)]
     : [String(r.bookId).toLowerCase(), String(r.chapter), String(r.verse)];
   return [contextId.checkId, ...place, String(contextId.occurrence)].join('\u0000');
 };
