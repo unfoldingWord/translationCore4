@@ -11,6 +11,8 @@ import { JournalingStore, forgetProjectQueues } from '../src/data/journal/journa
 import { forgetSharedClocks } from '../src/data/journal/journalStore';
 import { DEFAULT_OBS_IMAGES, DEFAULT_OBS_IMAGES_LOCAL, obsImageFileName } from '../src/data/obsImages';
 import { readObsStoryPresentation } from '../src/data/obsStory';
+import { obsFrameSetMismatch } from '../src/data/obsFrameSet';
+import { storyIpath } from '../src/data/journal/runtime';
 import type { ResourcesFile } from '../src/data/burritoStore';
 import { journalingRig, memKv, tickingNow } from './helpers/journalingRig';
 
@@ -51,6 +53,67 @@ describe('OBS story source state (#289)', () => {
     expect(unreadable.source?.kind).toBe('error');
     expect(unreadable.sourceStory).toBeNull();
     expect(unreadable.story.frames.length).toBeGreaterThan(0);
+  });
+});
+
+const IMAGE_LINE_RE = /^!\[[^\]]*\]\([^)]*\)$/;
+const REF_LINE_RE = /^_[^\n]*_$/;
+const isBlankLine = (line: string): boolean => line.trim() === '';
+
+/** Drop the last frame block (its image line plus its paragraph) from story
+ * bytes the rig itself serves — never invented. The reference line, when
+ * present, is kept so the result still parses. */
+const dropLastFrame = (bytes: string): string => {
+  const lines = bytes.split('\n');
+  const imageIdx: number[] = [];
+  lines.forEach((line, idx) => {
+    if (IMAGE_LINE_RE.test(line)) imageIdx.push(idx);
+  });
+  expect(imageIdx.length).toBeGreaterThan(1);
+  const lastImage = imageIdx[imageIdx.length - 1];
+  let last = lines.length - 1;
+  while (last > 0 && isBlankLine(lines[last])) last -= 1;
+  const refIdx = last > 0 && REF_LINE_RE.test(lines[last]) && !IMAGE_LINE_RE.test(lines[last]) ? last : -1;
+  const frameEnd = refIdx >= 0 ? refIdx : lines.length;
+  return [...lines.slice(0, lastImage), ...lines.slice(frameEnd)].join('\n');
+};
+
+describe('OBS story source mismatch (#313)', () => {
+  const gatewayPin = () => ({ repoPath: 'git.door43.org/unfoldingWord/en_obs', sha: '0123456789abcdef0123456789abcdef01234567', version: 'v1', flavor: 'textStories' });
+  const gatewayLocal = '_local_/_sideloaded_/unfoldingword--en_obs--0123456789ab';
+  const pinnedResources = (pin: Record<string, string>) =>
+    ({ schemaVersion: 2, languageSets: { primary: { obs: pin }, fallback: {} }, resources: {} } as unknown as ResourcesFile);
+
+  it('a gateway story with a different frame count gives a mismatch source and keeps the gateway text', async () => {
+    const { rig, api, store, repoPath, story } = await setup();
+    const raw = await api.readIngredient(repoPath, storyIpath(1));
+    const mismatched = dropLastFrame(raw);
+    expect(mismatched).not.toBe(raw);
+    const pin = gatewayPin();
+    rig.createRepo(gatewayLocal, { [storyIpath(1)]: mismatched });
+    const presentation = await readObsStoryPresentation({
+      api, store, projectRepo: repoPath, storyNumber: 1,
+      resources: pinnedResources(pin), installed: { [gatewayLocal]: pin } as never,
+    });
+    expect(presentation.source?.kind).toBe('mismatch');
+    expect(presentation.sourceStory).not.toBeNull();
+    expect(presentation.sourceStory!.frames).toHaveLength(story.frames.length - 1);
+    const expected = obsFrameSetMismatch([story], [presentation.sourceStory!]);
+    expect(expected).not.toBeNull();
+    expect(presentation.source).toEqual({ kind: 'mismatch', message: expected });
+  });
+
+  it('negative control: an unreadable gateway ingredient still gives an error source and no gateway text', async () => {
+    const { rig, api, store, repoPath } = await setup();
+    const pin = gatewayPin();
+    rig.createRepo(gatewayLocal, { [storyIpath(1)]: 'gateway bytes' });
+    rig.failOn((ctx) => ctx.repo === gatewayLocal && ctx.ipath === storyIpath(1), Infinity);
+    const presentation = await readObsStoryPresentation({
+      api, store, projectRepo: repoPath, storyNumber: 1,
+      resources: pinnedResources(pin), installed: { [gatewayLocal]: pin } as never,
+    });
+    expect(presentation.source?.kind).toBe('error');
+    expect(presentation.sourceStory).toBeNull();
   });
 });
 

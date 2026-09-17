@@ -27,10 +27,13 @@ function describePack(report) {
   return t(report.files === 1 ? 'storyDraft.packFilesOne' : 'storyDraft.packFiles', { pin, path: report.localPath, n: report.files, via: report.via });
 }
 
-/** Why the gateway story is absent (obsStory.ts ObsSourceState). */
+/** Why the gateway story is absent or unusable (obsStory.ts ObsSourceState).
+ * `mismatch` keeps the gateway text: the story was read, its frame set just
+ * does not match the project. Only `not-installed` earns a download prompt. */
 function describeSource(source) {
   if (source.kind === 'no-pin') return t('storyDraft.sourceNoPin');
   if (source.kind === 'not-installed') return t('storyDraft.sourceNotInstalled', { pin: shortPin(source.pin) });
+  if (source.kind === 'mismatch') return t('storyDraft.sourceMismatch', { message: source.message });
   return t('storyDraft.sourceError', { message: source.message });
 }
 

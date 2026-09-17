@@ -18,10 +18,12 @@ import { obsFrameSetMismatch } from './obsFrameSet';
 export interface ObsStoryPresentation {
   story: Story;
   sourceStory: Story | null;
-  /** Why the gateway story is absent, or null when it was read. The screen
-   * renders each kind through the catalog. `not-installed` is the only kind
-   * that earns a download prompt: a missing ingredient, malformed bytes, or a
-   * transport error needs an error message, not a misleading Get source. */
+  /** Why the gateway story is absent or unusable, or null when it was read
+   * and matches. The screen renders each kind through the catalog.
+   * `not-installed` is the only kind that earns a download prompt: a missing
+   * ingredient, malformed bytes, or a transport error needs an error message,
+   * not a misleading Get source. `mismatch` keeps `sourceStory` (the story was
+   * read) so each frame keeps its gateway text. */
   source: ObsSourceState | null;
   images: Record<string, ObsImageResolution>;
   /** One report per picture pack consulted, bundled default last. */
@@ -42,6 +44,7 @@ export interface ObsImageNote {
 export type ObsSourceState =
   | { kind: 'no-pin' }
   | { kind: 'not-installed'; pin: ResourcePin }
+  | { kind: 'mismatch'; message: string }
   | { kind: 'error'; message: string };
 
 export interface ObsImagePackReport {
@@ -159,7 +162,7 @@ export const readObsStoryPresentation = async ({
       try {
         sourceStory = parseStory(await api.readIngredient(sourceRepo, storyIpath(storyNumber)));
         const mismatch = obsFrameSetMismatch([target.story], [sourceStory]);
-        if (mismatch) source = { kind: 'error', message: mismatch };
+        if (mismatch) source = { kind: 'mismatch', message: mismatch };
       } catch (error: unknown) {
         source = { kind: 'error', message: String((error as Error)?.message || error) };
       }
