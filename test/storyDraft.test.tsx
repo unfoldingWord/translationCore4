@@ -90,6 +90,22 @@ describe('OBS story draft surface', () => {
     expect(screen.queryByTestId('story-unit-editor')).toBeNull();
   });
 
+  it('a drafted unit is reachable from the keyboard: Enter on its text opens the editor', () => {
+    render(<StoryDraft />);
+    const text = within(screen.getByTestId('story-frame-1')).getByTestId('story-unit-text');
+    expect(text.getAttribute('tabindex')).toBe('0');
+    expect(text.getAttribute('role')).toBe('button');
+    fireEvent.keyDown(text, { key: 'Enter' });
+    expect(screen.getByRole('textbox', { name: 'Frame 1' })).toBeTruthy();
+  });
+
+  it('a whitespace-only paragraph is undrafted for the cell as for the rail marker: the pill shows', () => {
+    state.story = { ...state.story, frames: [state.story.frames[0], { image: '![x](obs-02.jpg)', text: '   ' }] };
+    render(<StoryDraft />);
+    expect(within(screen.getByTestId('story-frame-2')).getByRole('button', { name: 'Draft frame 2' })).toBeTruthy();
+    expect(screen.getByTestId('frame-marker-2').getAttribute('data-drafted')).toBe('false');
+  });
+
   it('the header row carries the rail and helps icon toggles and the story title; the source chip and the project name sit where Bible Translate puts them', () => {
     render(<StoryDraft />);
     fireEvent.click(screen.getByTestId('toggle-story-rail'));
@@ -98,6 +114,7 @@ describe('OBS story draft surface', () => {
     expect(actions.toggleHelps).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Story 1');
     expect(screen.getByTestId('source-tab-obs').textContent).toBe('OBS');
+    expect(screen.queryByRole('button', { name: 'OBS' })).toBeNull(); // a mark, not a tab that does nothing
     expect(screen.getByTestId('source-name').textContent).toBe('Gateway story · v9 · pinned');
     expect(screen.getByText('Historias · es')).toBeTruthy();
   });

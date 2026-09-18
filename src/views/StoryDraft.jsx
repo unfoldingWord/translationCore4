@@ -15,13 +15,13 @@
 // blur flushes, exactly as before the parity pass.
 import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from '../state.jsx';
-import { Button, Callout, FilterChip, IconButton, Overline } from '../ds/index.js';
+import { Badge, Button, Callout, IconButton, Overline } from '../ds/index.js';
 import { t } from '../i18n';
 import { resolveObsSetSlot } from '../data/resolve';
 import { RailIcon, HelpsIcon } from './PanelIcons.jsx';
-import StoryRail from './StoryRail.jsx';
+import StoryRail, { isFrameDrafted } from './StoryRail.jsx';
 import { StoryHelps } from './StoryUnderstand.jsx';
-import { CELL, DraftPill, EditingCard, chipStyle, hair } from './draftChrome.jsx';
+import { CELL, DraftPill, EditingCard, hair } from './draftChrome.jsx';
 
 const STORY_BOOK = 'OBS';
 const READ = { fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-lg)', lineHeight: 'var(--lh-verse-lg)', margin: 0, whiteSpace: 'pre-wrap', textAlign: 'start' };
@@ -119,16 +119,21 @@ function SourceCell({ u, image, dir }) {
   );
 }
 
-/** The target cell: the drafted text (click to revise), the dashed pill for an
- * undrafted unit, or the editing card while this unit is open. */
+/** The target cell: the drafted text (click or Enter to revise), the dashed
+ * pill for an undrafted unit, or the editing card while this unit is open.
+ * Drafted is the rail marker's predicate (isFrameDrafted), so the cell and the
+ * marker never disagree. The drafted text is reachable from the keyboard too:
+ * before the parity pass every unit was a textbox in the tab order. */
 function TargetCell({ u, dir, editing, onEdit, onClose }) {
+  const onKey = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onEdit(); } };
   return (
     <div style={{ ...CELL, position: 'relative' }}>
       <div style={{ minHeight: 14, marginBottom: 6 }} />
       {editing ? (
         <UnitEditor u={u} dir={dir} onClose={onClose} />
-      ) : u.draft ? (
-        <p dir={dir} title={t('storyDraft.editUnit')} onClick={onEdit} data-testid="story-unit-text"
+      ) : isFrameDrafted(u.draft) ? (
+        <p dir={dir} title={t('storyDraft.editUnit')} onClick={onEdit} onKeyDown={onKey} role="button" tabIndex={0}
+          aria-label={`${t('storyDraft.editUnit')}: ${u.label}`} data-testid="story-unit-text"
           style={{ ...READ, color: 'var(--text-scripture)', cursor: 'text' }}>
           {u.draft}
         </p>
@@ -139,16 +144,15 @@ function TargetCell({ u, dir, editing, onEdit, onClose }) {
   );
 }
 
-/** The source column header: one chip for the gateway story where the Bible
- * source tabs sit, and the pinned version under it. */
+/** The source column header: the OBS mark where the Bible source tabs sit (the
+ * same Badge Home's project card carries — one gateway, so a label, not a tab
+ * that does nothing), and the pinned version under it. */
 function SourceHeader({ pins }) {
   const pin = pins ? resolveObsSetSlot(pins, 'obs').pin : null;
   return (
     <div style={{ position: 'sticky', top: 0, background: 'var(--surface-app)', zIndex: 2, padding: '13px 26px 8px', borderInlineEnd: hair }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
-        <FilterChip data-testid="source-tab-obs" selected style={chipStyle(true)}>
-          {t('storyDraft.sourceChip')}
-        </FilterChip>
+        <Badge size="sm" tone="accent" data-testid="source-tab-obs">{t('home.obsMarker')}</Badge>
       </div>
       <span data-testid="source-name" style={{ fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', color: 'var(--text-tertiary)', fontWeight: 'var(--fw-medium)' }}>
         {t('storyDraft.source')}
