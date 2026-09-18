@@ -31,7 +31,7 @@ test.describe('J21 — a translator translates a story frame by frame', () => {
         await page.goto('/');
         await page.getByTestId(`project-_local_/_local_/${repo}`).getByTestId('obs-tile').click();
         await expect(page.getByTestId('story-draft')).toBeVisible({ timeout: 60_000 });
-        await expect(page.getByTestId('story-source-error')).toHaveCount(0);
+        await expect(page.getByTestId('story-source-notice')).toHaveCount(0);
         await expect(page.getByTestId('story-image-note')).toHaveCount(0);
         const frame = page.getByTestId('story-frame-1');
         await expect(frame).toContainText('This is how God made everything in the beginning.');
