@@ -117,6 +117,17 @@ start_app() {  # $1 = label
   body=$(curl -s --max-time 5 "http://127.0.0.1:$PORT/api/version") || fail "$1 start: curl exit $? on GET /api/version"
   version=$(printf '%s' "$body" | sed -n 's/.*"pkg_version":"\([^"]*\)".*/\1/p')
   [ -n "$version" ] || fail "$1 start: /api/version carries no pkg_version: ${body:0:200}"
+  # VERSION GUARD (#326): the server must report this artifact's own
+  # lib/product/product.json version and datetime, not another tree's.
+  # The staged file carries spaces after its colons; allow whitespace.
+  local disk_version disk_datetime live_version live_datetime
+  disk_version=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$APPDIR/lib/product/product.json")
+  disk_datetime=$(sed -n 's/.*"datetime"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$APPDIR/lib/product/product.json")
+  live_version=$(printf '%s' "$body" | sed -n 's/.*"product_version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+  live_datetime=$(printf '%s' "$body" | sed -n 's/.*"product_date_time"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+  [ -n "$disk_version" ] && [ "$live_version" = "$disk_version" ] && [ "$live_datetime" = "$disk_datetime" ] \
+    || fail "$1 start: version mismatch: /api/version ${live_version:-?}/${live_datetime:-?} != lib/product/product.json ${disk_version:-?}/${disk_datetime:-?} (#326)"
+  ok "$1 start: version $live_version, datetime $live_datetime match lib/product/product.json"
   SERVER_PIDS=$(port_pids)
   [ -n "$SERVER_PIDS" ] || fail "$1 start: no process listens on port $PORT (lsof)"
   # The desktop app itself must be running, not only the server it spawned.
