@@ -554,3 +554,23 @@ describe('2026-08-28 adversarial round 32: a clear during an in-flight save can 
     expect(sched.bookText(key)).toBe('note C');
   });
 });
+
+describe('#290 — the note writer on a STORY target', () => {
+  it('writes the frame comment under the OBS position unmapped, echoes noteSaved under story:frame, and records a mode-read Resume target', async () => {
+    const written: unknown[][] = [];
+    const resumes: unknown[] = [];
+    const key = noteKeyFor(REPO, 'OBS', 1, 2);
+    const targets = new Map([[key, targetFor(async (...a) => void written.push(a), { book: 'OBS', chapter: 1, verse: 2 as never, projectFrame: true })]]);
+    const dispatched: Array<Record<string, unknown>> = [];
+    const writer = makeNoteWriter({
+      noteTargetsRef: { current: targets },
+      dispatch: (a: Record<string, unknown>) => dispatched.push(a),
+      apiClient: {},
+      recordLastEdit: ((rec: unknown) => { resumes.push(rec); }) as never,
+    });
+    await writer(key, '  Preguntar al equipo.  ');
+    expect(written).toEqual([['OBS', 1, 2, 'Preguntar al equipo.']]);
+    expect(dispatched).toEqual([expect.objectContaining({ type: 'noteSaved', repoPath: REPO, book: 'OBS', key: '1:2', text: 'Preguntar al equipo.' })]);
+    expect(resumes).toEqual([expect.objectContaining({ repoPath: REPO, book: 'OBS', chapter: 1, verse: 2, mode: 'read', snippet: 'Preguntar al equipo.' })]);
+  });
+});

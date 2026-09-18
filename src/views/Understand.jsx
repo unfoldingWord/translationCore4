@@ -74,7 +74,7 @@ function FrameUnavailableNote({ understand, unitCount }) {
  * the screen is read-only. The scheduler buffer is the draft store — it
  * survives unmounts and identity flips (the old module stash and its
  * park/restore effects are gone with the defect classes they bred). */
-function ComprehensionBox({ book, chapter, unit, mode }) {
+export function ComprehensionBox({ book, chapter, unit, mode }) {
   const { s, actions } = useApp();
   const dir = projectDir(s);
   // DISABLED until the persisted notes have actually been read (A3, 2026-08-27
@@ -164,7 +164,7 @@ function ComprehensionBox({ book, chapter, unit, mode }) {
           else actions.stageNote(target, next);
         }}
         onBlur={save}
-        placeholder={mode === 'verse' ? t('understand.commentsPlaceholderVerse') : t('understand.commentsPlaceholder')} />
+        placeholder={t(mode === 'frame' ? 'understand.commentsPlaceholderFrame' : mode === 'verse' ? 'understand.commentsPlaceholderVerse' : 'understand.commentsPlaceholder')} />
       {clearRefused && (
         <p data-testid="understand-clear-refused" style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--tc-warn-text)', margin: '6px 0 0' }}>
           {t('understand.cannotClear')}

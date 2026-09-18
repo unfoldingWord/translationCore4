@@ -377,6 +377,20 @@ let checkSessionSeq = 0;
  * scoped to the open story, as a Bible session is to the open book. */
 const STORY_BOOK = STORY_FILE;
 const isObsProject = (st) => st.project?.flavor === 'textStories';
+/** The book position the note and check writers key on: the open book, or
+ * `OBS` for a story project (#290: one note path for both kinds). */
+const unitBookOf = (st) => (isObsProject(st) ? STORY_BOOK : st.book);
+/** Does this project still hold what the Resume record points at? A Bible
+ * record names one of the project's book codes; a story project has no book
+ * codes at all, and its record names the `OBS` position (#290). The two forms
+ * never cross: a Bible record can never resume a story project, and a story
+ * record can never resume a Bible one. A record for a project that no longer
+ * exists must not offer a Resume into nothing, so the caller matches the
+ * repository path as well. */
+export const resumeRecordHolds = (lastEdit, project) =>
+  (project?.flavor === 'textStories'
+    ? lastEdit?.book === STORY_BOOK
+    : (project?.bookCodes || []).includes(lastEdit?.book));
 let fixSeq = 0; // #9: identity of the open guided-fix screen (completions bind to it)
 
 /** #129 (PR #135 review round 1): align-session identity and the align
@@ -533,7 +547,7 @@ function reducer(state, a) {
       // safe base (same hazard class as patchSrc/setSource above). A foreign
       // completion (project or book changed since the write was staged)
       // updates nothing.
-      if (state.book !== a.book || state.project?.repoPath !== a.repoPath) return state;
+      if (unitBookOf(state) !== a.book || state.project?.repoPath !== a.repoPath) return state;
       return {
         ...state,
         understand: {
@@ -1483,7 +1497,7 @@ function installStoryScheduler({ storySchedulerRef, store, dispatch, onFrameSave
   storySchedulerRef.current = new StoryScheduler({
     write: async (unit, text) => {
       await writeStoryUnit(store, unit, text);
-      if (unit.kind === 'frame') onFrameSaved?.();
+      if (unit.kind === 'frame') onFrameSaved?.(unit, text);
     },
   });
   const storySched = storySchedulerRef.current;
@@ -1699,7 +1713,16 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
             : null,
       });
     });
-    installStoryScheduler({ storySchedulerRef, store, dispatch, onFrameSaved: () => invalidateProgress?.(repoPath) });
+    installStoryScheduler({
+      storySchedulerRef,
+      store,
+      dispatch,
+      onFrameSaved: (unit, text) => {
+        invalidateProgress?.(repoPath);
+        // #290: a durable frame write is a Resume target (mode 'draft'), as a verse save is.
+        recordLastEdit?.({ repoPath, book: STORY_BOOK, chapter: unit.story, verse: unit.frame, snippet: text.trim().slice(0, 90), mode: 'draft', at: Date.now() });
+      },
+    });
     installAlignCheckSchedulers(ctx, store);
     apiClient.setCurrentProject(repoPath).catch(() => {});
     markUsed(repoPath); // fire-and-forget; ordering refreshes next Home visit
@@ -1795,6 +1818,48 @@ export const __obsStoryForTests = { openProjectContent, obsStoryOpenContext, ope
  * resolved over the §5.3 ladder (D64) and derived exactly like a check
  * session — disposable, never stored (§4.2). The translator's own
  * comprehension notes are read back from the journal. */
+/** #290 (J25): the story Understand load. The OBS notes and word links of the
+ * OPEN story come from the shared derivation (#291, deriveObsItems), the frame
+ * comments from the journal (note.add {story, frame}, read under the `OBS`
+ * position). No versification frame and no source panes: the passage is the
+ * story itself (s.story / s.sourceStory). Same sequence discipline as the
+ * book load: only the latest call may dispatch, on both paths. */
+async function performLoadStoryUnderstand(ctx) {
+  const { stateRef, storeRef, understandSeqRef, dispatch, actions, apiClient } = ctx;
+  const st = stateRef.current;
+  const story = st.storyNumber;
+  if (story == null || (!st.projectPins && !st.projectPinsLoaded)) {
+    understandSeqRef.current++;
+    if (stateRef.current.understand) dispatch({ type: 'set', patch: { understand: null } });
+    return;
+  }
+  const seq = ++understandSeqRef.current;
+  const store = storeRef.current;
+  const prev = st.understand;
+  const same = prev && prev.book === STORY_BOOK && prev.story === story;
+  dispatch({ type: 'set', patch: { understand: { ...(same ? prev : {}), loading: true, book: STORY_BOOK, story } } });
+  const comprehension = () => latestComprehension(store, STORY_BOOK, { state: 'ready' });
+  try {
+    const { installed, resolutionError } = await actions.resolutionContext();
+    const slot = async (tool) => {
+      if (resolutionError) return { state: 'error', error: t('understand.resolutionDown', { error: resolutionError }) };
+      const pre = preflightObsTool(st.projectPins, tool, { isLocal: (pin) => isPinLocal(installed, pin), online: st.netEnabled });
+      const pin = pre.resolution?.pin ?? null;
+      const rung = pre.resolution?.rung ?? null;
+      if (pre.state !== 'ready') return { state: pre.state === 'unpinned' ? 'none' : pre.state, pin, rung };
+      const tsv = await readTextIngredient(apiClient, resolveReadPath(pin), `${STORY_BOOK}.tsv`);
+      if (tsv === null || tsv.startsWith('{"is_good":false')) return { state: 'missing', pin, rung };
+      return { state: 'ready', items: deriveObsItems(tsv, tool, story), pin, rung, unavailablePrimary: null, dropped: null };
+    };
+    const [notes, words] = await Promise.all([settleHelp(slot('translationNotes')), settleHelp(slot('translationWords'))]);
+    if (seq !== understandSeqRef.current) return; // superseded
+    dispatch({ type: 'set', patch: { understand: { loading: false, book: STORY_BOOK, story, notes, words, comprehension: comprehension() } } });
+  } catch (e) {
+    if (seq !== understandSeqRef.current) return;
+    dispatch({ type: 'set', patch: { understand: { loading: false, book: STORY_BOOK, story, error: String(e?.message || e), comprehension: comprehension() } } });
+  }
+}
+
 async function performLoadUnderstand(ctx) {
   const { stateRef, storeRef, understandSeqRef, dispatch, actions, apiClient } = ctx;
   const st = stateRef.current;
@@ -1935,6 +2000,8 @@ function dispatchResolutionDown({ resolutionError, seq, understandSeqRef, dispat
 
 /** Test hook (round 33): the load/save interleavings are unit-tested. */
 export const __performLoadUnderstandForTests = performLoadUnderstand;
+/** Test hook (#290): the story Understand load is unit-tested on the fake rig. */
+export const __performLoadStoryUnderstandForTests = performLoadStoryUnderstand;
 
 function loadOrigPane({ store, origPin, code, seq, openSeqRef, stateRef, dispatch, testament }) {
   if (stateRef?.current?.sources?.orig) {
@@ -2734,13 +2801,17 @@ export function AppProvider({ children }) {
   function recordCheckLastEdit(tool, item) {
     const st = stateRef.current;
     const repoPath = st.project?.repoPath || st.project?.id;
-    if (!repoPath || !st.book) return;
-    const prior = priorEditFor(st.lastEdit, repoPath, st.book);
+    // #290: a story session records under `OBS` with the story as the
+    // chapter and the frame as the verse — the shape Home's Resume reads.
+    const book = unitBookOf(st);
+    if (!repoPath || !book) return;
+    const prior = priorEditFor(st.lastEdit, repoPath, book);
+    const ref = item?.contextId?.reference;
     recordLastEdit({
       repoPath,
-      book: st.book,
-      chapter: st.chapter,
-      verse: item?.contextId?.reference?.verse ?? prior.verse ?? '1',
+      book,
+      chapter: isObsProject(st) ? st.storyNumber : st.chapter,
+      verse: (ref ? referenceParts(ref).v : undefined) ?? prior.verse ?? '1',
       snippet: prior.snippet ?? '',
       mode: 'check',
       tool,
@@ -2788,8 +2859,8 @@ export function AppProvider({ children }) {
           Math.max(lastUsed[a.id] || 0, a.timestamp || 0),
       );
       // A record for a project that no longer exists (deleted, other rig)
-      // must not offer a Resume into nothing.
-      const resumable = lastEdit && projects.some((p) => p.id === lastEdit.repoPath && (p.bookCodes || []).includes(lastEdit.book));
+      // must not offer a Resume into nothing (resumeRecordHolds).
+      const resumable = lastEdit && projects.some((p) => p.id === lastEdit.repoPath && resumeRecordHolds(lastEdit, p));
       // Review of the D30 sweep: a successful listing clears the LISTING
       // failure's banner (projects was null) — an open-failure banner from
       // performProjectOpen is left alone (projects was already an array).
@@ -4769,7 +4840,7 @@ export function AppProvider({ children }) {
        * exactly like a check session — disposable, never stored (§4.2). The
        * translator's own comprehension notes are read back from the journal. */
       loadUnderstand: () =>
-        performLoadUnderstand({ stateRef, storeRef, understandSeqRef, dispatch, actions: a, apiClient: api }),
+        (isObsProject(stateRef.current) ? performLoadStoryUnderstand : performLoadUnderstand)({ stateRef, storeRef, understandSeqRef, dispatch, actions: a, apiClient: api }),
 
       /** The Understand screen's ONLY write (#106, owner ruling 2026-08-27),
        * now staged through the note SaveScheduler (D65). The box calls this
@@ -4784,7 +4855,7 @@ export function AppProvider({ children }) {
         const st = stateRef.current;
         const store = storeRef.current;
         const sched = noteSchedulerRef.current;
-        const book = st.book;
+        const book = unitBookOf(st); // a story comment keys under `OBS` (#290)
         const repoPath = st.project?.repoPath;
         if (!store || !sched || !book || !repoPath) return;
         const key = noteKeyFor(repoPath, book, chapter, verse);
@@ -4812,8 +4883,9 @@ export function AppProvider({ children }) {
         const st = stateRef.current;
         const repoPath = st?.project?.repoPath;
         const sched = noteSchedulerRef.current;
-        if (!repoPath || !st.book || !sched) return null;
-        const key = noteKeyFor(repoPath, st.book, chapter, verse);
+        const book = unitBookOf(st);
+        if (!repoPath || !book || !sched) return null;
+        const key = noteKeyFor(repoPath, book, chapter, verse);
         return sched.isDirty(key) ? sched.bookText(key) : null;
       },
 
@@ -4824,8 +4896,9 @@ export function AppProvider({ children }) {
       revertNote: ({ chapter, verse }) => {
         const st = stateRef.current;
         const repoPath = st?.project?.repoPath;
-        if (!repoPath || !st.book) return;
-        noteSchedulerRef.current?.revertToPersisted(noteKeyFor(repoPath, st.book, chapter, verse));
+        const book = unitBookOf(st);
+        if (!repoPath || !book) return;
+        noteSchedulerRef.current?.revertToPersisted(noteKeyFor(repoPath, book, chapter, verse));
       },
 
       /** Blur: flush the note buffer now (verse discipline — flushOnBlur). */

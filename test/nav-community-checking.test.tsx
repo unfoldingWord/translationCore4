@@ -213,12 +213,12 @@ describe('#291 — an OBS project checks the open story', () => {
     go.mockClear();
   });
 
-  it('the top navigation offers Translate and Check; Understand for stories is #290', () => {
+  it('the top navigation offers Understand, Translate and Check (#290, #291)', () => {
     state = obsState as never;
     render(<App />);
+    expect(screen.getByRole('tab', { name: 'Understand' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Translate' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Check' })).toBeTruthy();
-    expect(screen.queryByRole('tab', { name: 'Understand' })).toBeNull();
   });
 
   it('the picker offers the two tools and Community Checking, and NO Align entry (D74: absent, not disabled)', () => {

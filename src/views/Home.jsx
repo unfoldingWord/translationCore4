@@ -132,9 +132,14 @@ function ResumeCard({ edit, projects }) {
   const { actions } = useApp();
   const project = projects.find((p) => p.id === edit.repoPath);
   if (!project) return null;
+  // #290: a story project's record names the story as the chapter and the
+  // frame as the verse; Resume reopens that story, then the mode.
+  const story = project.flavor === 'textStories';
   const resume = async () => {
     await actions.openProject(edit.repoPath, edit.book);
-    if (edit.chapter && edit.chapter !== 1) await actions.setChapter(edit.chapter);
+    if (story) {
+      if (edit.chapter) await actions.openStory(Number(edit.chapter));
+    } else if (edit.chapter && edit.chapter !== 1) await actions.setChapter(edit.chapter);
     // #268: restore the mode (and Check tool) last used; absent mode → Translate.
     if (edit.mode === 'read') await actions.go('read');
     if (edit.mode === 'check') {
@@ -149,10 +154,12 @@ function ResumeCard({ edit, projects }) {
       style={{ display: 'flex', alignItems: 'center', gap: 20, padding: '22px 24px', background: 'var(--uw-ocean)', borderRadius: 'var(--radius-xl)', cursor: 'pointer', boxShadow: 'var(--shadow-hero)', marginBottom: 34 }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <p style={{ fontSize: 'var(--fs-h2)', letterSpacing: 'var(--track-22)', fontWeight: 'var(--fw-black)', color: 'var(--text-inverse)', margin: '0 0 2px' }}>
-          <span dir={dir}>{project.name}</span> · {bookName(edit.book)} {edit.chapter}
+          <span dir={dir}>{project.name}</span> · {story ? t('storyDraft.storyNumber', { n: edit.chapter }) : `${bookName(edit.book)} ${edit.chapter}`}
         </p>
         <p dir={edit.snippet ? dir : undefined} style={{ fontSize: 'var(--fs-ui-sm)', color: 'rgba(255,255,255,.72)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {edit.snippet ? t('home.lastEdited', { v: edit.verse, text: edit.snippet }) : t('home.lastEditedEmpty', { v: edit.verse })}
+          {edit.snippet
+            ? t(story ? 'home.lastEditedFrame' : 'home.lastEdited', { v: edit.verse, text: edit.snippet })
+            : t(story ? 'home.lastEditedFrameEmpty' : 'home.lastEditedEmpty', { v: edit.verse })}
         </p>
       </div>
       <span data-i="fill" data-tone="accent" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '11px 20px', background: 'var(--accent)', color: 'var(--text-inverse)', borderRadius: 'var(--radius-pill)', fontWeight: 'var(--fw-heavy)', fontSize: 'var(--fs-ui-md)', whiteSpace: 'nowrap' }}>

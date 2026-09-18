@@ -3,6 +3,7 @@ import { useApp } from './state.jsx';
 import Home from './views/Home.jsx';
 import Draft from './views/Draft.jsx';
 import StoryDraft from './views/StoryDraft.jsx';
+import StoryUnderstand from './views/StoryUnderstand.jsx';
 import Check from './views/Check.jsx';
 import NewBible from './views/modals/NewBible.jsx';
 import NewObs from './views/modals/NewObs.jsx';
@@ -89,10 +90,10 @@ function TopBar() {
       center={inProject ? (
         // D63: Publish is retired as a top-level tab — the publish flow lives
         // inside Check as the Community Checking tool (#108). An OBS project
-        // (#291) has Translate and Check; Understand for stories is #290.
+        // has the same three modes (#290, #291).
         <Switcher indicator="pill" value={s.view === 'publish' ? 'check' : s.view} onChange={(v) => actions.go(v)}
           options={[
-            ...(p?.flavor === 'textStories' ? [] : [{ value: 'read', label: t('nav.understand') }]),
+            { value: 'read', label: t('nav.understand') },
             { value: 'draft', label: t('nav.draft') },
             { value: 'check', label: t('nav.check') },
           ]} />
@@ -127,8 +128,9 @@ export default function App() {
 function MainView({ state }) {
   if (state.view === 'home') return <Home />;
   if (state.project?.flavor === 'textStories') {
-    // #291: Check (and its Community Checking tool) for a story; every other
-    // view is the story editor until Understand lands (#290).
+    // #290/#291: Understand and Check (with its Community Checking tool)
+    // for a story; every other view is the story editor.
+    if (state.view === 'read') return <StoryUnderstand />;
     if (state.view === 'check') return <Check />;
     if (state.view === 'publish') return <CommunityChecking />;
     return <StoryDraft />;
