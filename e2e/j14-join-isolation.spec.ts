@@ -14,7 +14,7 @@ import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { listLocalRepos, rigRepo } from './helpers/rig';
+import { listLocalRepos, rigRepo, resetPlaces } from './helpers/rig';
 import { verifyAllJournaledProjects } from './helpers/journal';
 
 /** Every byte of one project except .git (commit times differ run to run):
@@ -67,6 +67,12 @@ async function createProject(page: import('@playwright/test').Page, name: string
   expect(created, 'exactly one new repo for the created project').toHaveLength(1);
   return created[0];
 }
+
+// #329: a Home tile returns to where this client last worked; this journey opens
+// books from their tiles and states its own start (Translate, chapter 1).
+test.beforeEach(() => {
+  resetPlaces();
+});
 
 test.describe('J14 — joining is not merging: similar projects stay separate', () => {
   test(

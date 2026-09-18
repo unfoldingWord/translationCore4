@@ -28,6 +28,7 @@ import {
   readProjectPins,
   resetSeededChecking,
   sideloadedRepo,
+  resetPlaces,
 } from './helpers/rig';
 
 const CACHE = path.join(TC4_ROOT, 'dev-env', 'resources-cache');
@@ -87,6 +88,12 @@ const installDir = (repo: string) => sideloadedRepo(`unfoldingword--${repo}`);
 test.beforeEach(async () => {
   resetSeededChecking();
   test.skip(!NEEDED.every(([r, tag]) => fs.existsSync(zipPath(r, tag))), 'en_tn v88 / en_tw v89+v90 are not cached under dev-env/resources-cache — see dev-env/README.md, "J12"');
+});
+
+// #329: a Home tile returns to where this client last worked; this journey opens
+// books from their tiles and states its own start (Translate, chapter 1).
+test.beforeEach(() => {
+  resetPlaces();
 });
 
 test.describe('#9 — the guided fix screen for a pinned resource this computer lacks', () => {

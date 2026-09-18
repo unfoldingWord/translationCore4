@@ -199,7 +199,18 @@ export default function StoryDraft() {
   // The unit in focus (its helps show) and the unit whose card is open.
   const [focusKey, setFocusKey] = useState('f1');
   const [editingKey, setEditingKey] = useState(null);
-  useEffect(() => { setFocusKey('f1'); setEditingKey(null); }, [s.storyNumber]);
+  // The frame in focus is app state (#329): a story load sets it to 1 and a Home
+  // tile's restore sets the remembered frame; a click here reports it back.
+  useEffect(() => { setEditingKey(null); }, [s.storyNumber]);
+  useEffect(() => {
+    if (s.storyFrame == null) return;
+    setFocusKey(s.storyFrame === 0 ? 'title' : `f${s.storyFrame}`);
+  }, [s.storyNumber, s.storyFrame]);
+  const focusUnit = (key) => {
+    setFocusKey(key);
+    if (key === 'title') actions.setStoryFrame?.(0);
+    else if (key.startsWith('f')) actions.setStoryFrame?.(Number(key.slice(1)));
+  };
   // The helps of the open story, as Understand loads them (#290): reload when
   // the story, the pins or the network change.
   useEffect(() => {
@@ -219,7 +230,7 @@ export default function StoryDraft() {
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }} data-testid="story-draft">
       {s.rail && (
         <StoryRail numbers={s.storyNumbers} active={s.storyNumber} story={story} onSelect={actions.openStory}
-          currentFrame={focused.frame} onSelectFrame={(n) => { setFocusKey(`f${n}`); scrollUnitIntoView(`story-frame-${n}`); }} />
+          currentFrame={focused.frame} onSelectFrame={(n) => { focusUnit(`f${n}`); scrollUnitIntoView(`story-frame-${n}`); }} />
       )}
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 22px', borderBottom: hair, background: 'var(--surface-card)', flex: 'none' }}>
@@ -240,10 +251,10 @@ export default function StoryDraft() {
             {units.map((x) => (
               <div key={x.key} data-testid={x.testId} data-focused={x.key === focused.key ? 'true' : undefined}
                 style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: '1fr 1fr' }}
-                onClick={() => setFocusKey(x.key)}>
+                onClick={() => focusUnit(x.key)}>
                 <SourceCell u={x} image={x.frame ? s.storyImages?.[String(x.frame)] : null} dir={dir} />
                 <TargetCell u={x} dir={dir} editing={editingKey === x.key}
-                  onEdit={() => { setFocusKey(x.key); setEditingKey(x.key); }}
+                  onEdit={() => { focusUnit(x.key); setEditingKey(x.key); }}
                   onClose={() => setEditingKey((k) => (k === x.key ? null : k))} />
               </div>
             ))}

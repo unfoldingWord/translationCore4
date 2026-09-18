@@ -79,7 +79,7 @@ export function ObsProjectCard({ p }) {
           return (
             <BookTile key={story.number} data-testid={`story-tile-${story.number}`} dir={dir}
               name={story.title ? `${story.number} · ${story.title}` : t('storyDraft.storyNumber', { n: story.number })}
-              percent={known ? story.pct : 0} meta={meta} onClick={() => actions.openProject(p.id, String(story.number))} />
+              percent={known ? story.pct : 0} meta={meta} onClick={() => actions.openProjectAt(p.id, story.number)} />
           );
         })}
       </div>
@@ -144,7 +144,7 @@ function ProjectCard({ p }) {
           // claiming "no drafting has been done".
           return (
             <BookTile key={code} name={bookName(code)} percent={hasPct ? pct : 0}
-              meta={hasPct ? undefined : '—'} onClick={() => actions.openProject(p.id, code)} />
+              meta={hasPct ? undefined : '—'} onClick={() => actions.openProjectAt(p.id, code)} />
           );
         })}
         <button type="button" onClick={() => actions.openAddBook(p)} data-i="choice" data-tone="accent"

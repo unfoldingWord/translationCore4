@@ -12,7 +12,7 @@ import { test, expect, type Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { verifyAllJournaledProjects } from './helpers/journal';
-import { rigRepo, SEEDED_PROJECT } from './helpers/rig';
+import { rigRepo, SEEDED_PROJECT, resetPlaces } from './helpers/rig';
 
 const LARGE = 'sample_burrito_large';
 const FIXTURE_ACTOR = 'fixture-large';
@@ -61,6 +61,12 @@ function segmentFiles(): string[] {
   const dir = path.join(rigRepo(LARGE), 'ingredients', 'checking', 'journal', FIXTURE_ACTOR, 'segments');
   return fs.readdirSync(dir).filter((f) => f.endsWith('.action.json')).sort();
 }
+
+// #329: a Home tile returns to where this client last worked; this journey opens
+// books from their tiles and states its own start (Translate, chapter 1).
+test.beforeEach(() => {
+  resetPlaces();
+});
 
 test.describe('J15 — a translator opens a project', () => {
   test(

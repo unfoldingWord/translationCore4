@@ -18,6 +18,7 @@ const actions = {
   loadUnderstand: vi.fn(),
   loadHelpArticle: vi.fn(),
   closeHelpArticle: vi.fn(),
+  setStoryFrame: vi.fn(),
 };
 const SOURCE_STORY = { number: 1, title: 'Creation', ref: 'Genesis 1', frames: [{ image: '![x](obs-01.jpg)', text: 'In the beginning.' }, { image: '![x](obs-02.jpg)', text: 'Then God said.' }] };
 const state = {
@@ -36,6 +37,7 @@ const state = {
   progressByProject: {} as Record<string, unknown>,
   projectPins: { schemaVersion: 2, languageSets: { primary: { obs: { repoPath: 'git.door43.org/unfoldingWord/en_obs', version: 'v9', sha: 'd39a1dc7a7557ac54e4a8fecc3462147fe7eec3b', flavor: 'gloss/textStories' } }, fallback: {} } } as unknown,
   understand: null as null | Record<string, unknown>,
+  storyFrame: null as number | null,
 };
 
 vi.mock('../src/state.jsx', () => ({ useApp: () => ({ s: state, actions }) }));
@@ -199,6 +201,19 @@ describe('OBS story draft surface', () => {
     expect(document.activeElement).toBe(screen.getByTestId('story-2'));
     fireEvent.click(screen.getByTestId('story-2'));
     expect(actions.openStory).toHaveBeenCalledWith(2);
+  });
+
+  it('the frame in focus is reported to the app state, and a remembered frame restores the focus (#329)', () => {
+    render(<StoryDraft />);
+    fireEvent.click(screen.getByTestId('story-frame-2'));
+    expect(actions.setStoryFrame).toHaveBeenCalledWith(2);
+    fireEvent.click(screen.getByTestId('story-title'));
+    expect(actions.setStoryFrame).toHaveBeenCalledWith(0);
+    cleanup();
+    state.storyFrame = 2;
+    render(<StoryDraft />);
+    expect(screen.getByTestId('story-frame-2').getAttribute('data-focused')).toBe('true');
+    state.storyFrame = null;
   });
 
   it('the rail shows the frames of the open story as number buttons: the frame in view filled, a drafted frame tinted; a frame button focuses its unit', () => {

@@ -26,6 +26,7 @@ import {
   resetSeededChecking,
   listSideloaded,
   sideloadedIngredient,
+  resetPlaces,
 } from './helpers/rig';
 
 // The configured org, NOT the one the export records: es-419's sb-zip exports
@@ -83,6 +84,12 @@ function writeDecisionFile(repo: string, tool: string, book: string, file: unkno
 
 test.beforeEach(() => {
   resetSeededChecking();
+});
+
+// #329: a Home tile returns to where this client last worked; this journey opens
+// books from their tiles and states its own start (Translate, chapter 1).
+test.beforeEach(() => {
+  resetPlaces();
 });
 
 test.describe('J13 — the rig really holds two gateway-language suites', () => {
