@@ -138,6 +138,7 @@
   "storyDraft.sourceNoPin": "No gateway story is pinned for this project.",
   "storyDraft.sourceNotInstalled": "The pinned gateway story {pin} is not on this machine.",
   "storyDraft.sourceError": "The gateway story could not be read: {message}",
+  "storyDraft.sourceMismatch": "The gateway story does not match this project: {message}",
   "storyDraft.loading": "Loading story…",
   "storyDraft.noStory": "Select a story to begin.",
   "storyDraft.hideStories": "Hide stories",
