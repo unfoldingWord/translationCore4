@@ -18,7 +18,7 @@ test.describe('J25 — a translator reads a story with helps and records a user 
 
       await test.step('open the project, go to Understand: the title unit and the frames of story 1', async () => {
         await page.goto('/');
-        await page.getByTestId(`project-_local_/_local_/${repo}`).getByTestId('obs-tile').click();
+        await page.getByTestId(`project-_local_/_local_/${repo}`).getByTestId('story-tile-1').click();
         await expect(page.getByTestId('story-draft')).toBeVisible({ timeout: 60_000 });
         await page.getByRole('tab', { name: 'Understand', exact: true }).click();
         await expect(page.getByTestId('story-understand')).toBeVisible({ timeout: 30_000 });
@@ -54,7 +54,7 @@ test.describe('J25 — a translator reads a story with helps and records a user 
       await test.step('the story file is byte-identical; the comment is what the screen shows after a reopen', async () => {
         expect(storyBytes(repo, 1)).toBe(storyBefore);
         await page.reload();
-        await page.getByTestId(`project-_local_/_local_/${repo}`).getByTestId('obs-tile').click();
+        await page.getByTestId(`project-_local_/_local_/${repo}`).getByTestId('story-tile-1').click();
         await expect(page.getByTestId('story-draft')).toBeVisible({ timeout: 60_000 });
         await page.getByRole('tab', { name: 'Understand', exact: true }).click();
         await expect(page.getByTestId('story-understand')).toBeVisible({ timeout: 30_000 });

@@ -14,6 +14,7 @@ import { JournalingStore, ProjectReader } from './data/journal/journalingStore';
 import { SaveScheduler } from './data/saveScheduler';
 import { StoryScheduler, normalizeStoryUnit } from './data/storyScheduler';
 import { createObsPackCache, readObsStoryPresentation } from './data/obsStory';
+import { recordRecentStory } from './data/obsRecency';
 import { gapMarkerOf, spliceSection, spliceVerse, spliceVerseGap, verseBody } from './data/usfm/splice';
 import { indexBook } from './data/usfm/indexer';
 import { RESOURCE_FRAME, forgetProjectFrames, resolveProjectFrame } from './data/projectFrame';
@@ -26,7 +27,7 @@ import { GATEWAYS, gatewayKey, DCS_HOST, orgForRepoName } from './data/gateways'
 import { fetchAndInstallPin, latestReleaseTag, identifyExistingInstall, rezip, unwrapExport, verifySideload } from './data/resourceFetch';
 import { isNotFoundError } from './data/serverApi';
 import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, mergeOptionalPins, isPinLocal, unsatisfiedProjectPinFor, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk, flavorOfMetadata } from './data/installed';
-import { OBS_TOOL_SLOT, TOOL_SLOT, coverageFor, preflightObsTool, preflightToolBook, recordMatchesResolution, resolutionRecord, resolveToolBook, resolveSetSlot, samePath } from './data/resolve';
+import { OBS_TOOL_SLOT, TOOL_SLOT, coverageFor, preflightObsTool, preflightToolBook, recordMatchesResolution, resolutionRecord, resolveObsSetSlot, resolveToolBook, resolveSetSlot, samePath } from './data/resolve';
 import {
   deriveForProject,
   deriveObsItems,
@@ -360,6 +361,9 @@ const initial = () => ({
   progressByProject: {}, // repoPath -> { CODE: draftPct } (lazy Home cache)
   // Last OBS story per project; user-machine state, never project data.
   obsStoryByProject: {},
+  // The stories edited most recently per project on this machine (#328): the
+  // collapsed Home card's tiles, newest first. User-machine state, never the project.
+  obsRecentByProject: {},
   draftUnits: {}, // repoPath -> 'section' | 'verse'
   alignSuggestions: {}, // #1: repoPath -> true when the suggestions switch is on (per client, never in the project)
   // #1: the suggestion engine's state for the open project — status 'off' |
@@ -631,19 +635,45 @@ async function readHelpArticle(apiClient, kind, set, category, slug) {
  * least 1% — one frame of the ~600 rounds to 0, and a first save must move the
  * tile. null when a read failed: unknown, never a false 0% (D30). */
 async function obsDraftPercent(reader) {
+  return (await obsStoryProgress(reader)).OBS;
+}
+
+/** The percentage of one story's frames, on the same rule (#328). */
+const storyPercent = (drafted, frames) => (drafted === 0 || frames === 0 ? 0 : Math.max(1, Math.round((drafted / frames) * 100)));
+
+/** Per-story draft progress for Home's story tiles (#328), and the project's
+ * percentage over every frame (D74). A story whose read fails is `pct: null`
+ * (unknown, never a false 0%, D30) and leaves the project percentage null too.
+ * `sourceTitle(n)` supplies the gateway title for a story with no drafted
+ * title; absent, the tile shows the number alone. */
+async function obsStoryProgress(reader, sourceTitle = async (_n) => '') {
+  let numbers;
+  try {
+    numbers = await reader.listStories();
+  } catch {
+    return { OBS: null, stories: [] };
+  }
+  const stories = [];
   let frames = 0;
   let drafted = 0;
-  try {
-    for (const n of await reader.listStories()) {
+  let unknown = false;
+  for (const n of numbers) {
+    try {
       const { story } = await reader.readStory(n);
+      const done = story.frames.filter((f) => f.text !== '').length;
       frames += story.frames.length;
-      drafted += story.frames.filter((f) => f.text !== '').length;
+      drafted += done;
+      let title = story.title;
+      if (!title) {
+        try { title = (await sourceTitle(n)) || ''; } catch { title = ''; }
+      }
+      stories.push({ number: n, title, pct: storyPercent(done, story.frames.length), frames: story.frames.length, drafted: done });
+    } catch {
+      unknown = true;
+      stories.push({ number: n, title: '', pct: null, frames: 0, drafted: 0 });
     }
-  } catch {
-    return null;
   }
-  if (drafted === 0) return 0;
-  return Math.max(1, Math.round((drafted / frames) * 100));
+  return { OBS: unknown ? null : storyPercent(drafted, frames), stories };
 }
 
 async function storedGatewayDecisions(store, books) {
@@ -1492,11 +1522,12 @@ function writeStoryUnit(store, unit, text) {
 /** The story scheduler of an open OBS project. A durable numbered-frame write
  * changes the project's draft percentage (D74), so it drops Home's cached
  * value; the title (frame 0) and the reference line do not count (#289). */
-function installStoryScheduler({ storySchedulerRef, store, dispatch, onFrameSaved }) {
+function installStoryScheduler({ storySchedulerRef, store, dispatch, onFrameSaved, onStorySaved = undefined }) {
   if (!storySchedulerRef) return;
   storySchedulerRef.current = new StoryScheduler({
     write: async (unit, text) => {
       await writeStoryUnit(store, unit, text);
+      onStorySaved?.(unit, text);
       if (unit.kind === 'frame') onFrameSaved?.(unit, text);
     },
   });
@@ -1540,8 +1571,11 @@ async function openProjectContent({ summary, store, repoPath, scriptDirection, t
   const numbers = await store.listStories();
   if (superseded()) return;
   dispatch({ type: 'set', patch: { storyNumbers: numbers } });
+  // #328: a Home story tile names its story where a book tile names its book;
+  // else the story this client last had open here; else the first.
   const remembered = stateRef.current.obsStoryByProject?.[repoPath];
-  const first = numbers.includes(Number(remembered)) ? Number(remembered) : numbers[0];
+  const asked = Number(bookCode);
+  const first = numbers.includes(asked) ? asked : numbers.includes(Number(remembered)) ? Number(remembered) : numbers[0];
   // #312: the story opens ONCE, with the pins known. A story read before the
   // pins arrive states "no gateway story is pinned" for a moment and is then
   // read again; the screen must never state a source condition the pins have
@@ -1645,6 +1679,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
     markUsed,
     recordLastEdit,
     invalidateProgress,
+    rememberObsEdit,
   } = ctx;
   const saveRefs = saveRefsOf(ctx);
   const seq = ++openProjectSeqRef.current;
@@ -1737,6 +1772,9 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
         // #290: a durable frame write is a Resume target (mode 'draft'), as a verse save is.
         recordLastEdit?.({ repoPath, book: STORY_BOOK, chapter: unit.story, verse: unit.frame, snippet: text.trim().slice(0, 90), mode: 'draft', at: Date.now() });
       },
+      // #328: every durable story write (title, frame, reference) is an edit of
+      // that story for the Home card's recency.
+      onStorySaved: (unit) => rememberObsEdit?.(repoPath, unit.story, Date.now()),
     });
     installAlignCheckSchedulers(ctx, store);
     apiClient.setCurrentProject(repoPath).catch(() => {});
@@ -1827,7 +1865,7 @@ export const __performProjectOpenForTests = performProjectOpen;
 export const __obsCheckForTests = { deriveCheckItems, completedCheckSession, frameTextIndex };
 /** Test hook (#289): the OBS routing, resume, story switch, save and progress
  * paths are unit-tested against the fake rig. */
-export const __obsStoryForTests = { openProjectContent, obsStoryOpenContext, openObsStory, installStoryScheduler, writeStoryUnit, obsDraftPercent };
+export const __obsStoryForTests = { openProjectContent, obsStoryOpenContext, openObsStory, installStoryScheduler, writeStoryUnit, obsDraftPercent, obsStoryProgress };
 
 /** Load the read-only helps for the open book (extracted round 33 for the
  * interleaving regressions): tN notes, tQ questions and tW links, each
@@ -2798,6 +2836,20 @@ export function AppProvider({ children }) {
     }));
   }
 
+  // #328: the stories edited most recently in a project, newest first, in the
+  // same per-client settings document. One entry per story; three kept.
+  function rememberObsEdit(repoPath, storyNumber, at) {
+    if (!repoPath || !Number.isInteger(Number(storyNumber))) return;
+    const story = Number(storyNumber);
+    const current = stateRef.current.obsRecentByProject || {};
+    const next = { ...current, [repoPath]: recordRecentStory(current[repoPath], story, at) };
+    dispatch({ type: 'set', patch: { obsRecentByProject: next } });
+    updateClientSettings((cs) => ({
+      ...cs,
+      obsRecentByProject: { ...(cs.obsRecentByProject || {}), [repoPath]: recordRecentStory(cs.obsRecentByProject?.[repoPath], story, at) },
+    }));
+  }
+
   // The Home Resume card's target: the same per-client settings record as
   // lastUsed (user-machine state, never the project). Debounced, because
   // editVerse fires per keystroke and the settings write is a server call.
@@ -2856,7 +2908,7 @@ export function AppProvider({ children }) {
   }
 
   async function readHomeSettings() {
-    const fallback = { lastUsed: {}, lastEdit: null, draftUnits: {}, alignSuggestions: {}, obsStoryByProject: {} };
+    const fallback = { lastUsed: {}, lastEdit: null, draftUnits: {}, alignSuggestions: {}, obsStoryByProject: {}, obsRecentByProject: {} };
     try {
       // A pending Resume record is written before the document is read, so
       // a Home visit within the debounce never reads an older record.
@@ -2868,6 +2920,7 @@ export function AppProvider({ children }) {
         draftUnits: cs.draftUnits || {},
         alignSuggestions: cs.alignSuggestions || {},
         obsStoryByProject: cs.obsStoryByProject || {},
+        obsRecentByProject: cs.obsRecentByProject || {},
       };
     } catch {
       /* fall back to creation-date order from listProjects */
@@ -2883,7 +2936,7 @@ export function AppProvider({ children }) {
     try {
       const reader = new ProjectReader({ api });
       const projects = await reader.listProjects();
-      const { lastUsed, lastEdit: persistedLastEdit, draftUnits, alignSuggestions, obsStoryByProject } = await readHomeSettings();
+      const { lastUsed, lastEdit: persistedLastEdit, draftUnits, alignSuggestions, obsStoryByProject, obsRecentByProject } = await readHomeSettings();
       let lastEdit = persistedLastEdit;
       // Never regress the in-session record to an older persisted one (a rig
       // without client settings keeps the session's record).
@@ -2902,7 +2955,7 @@ export function AppProvider({ children }) {
       // performProjectOpen is left alone (projects was already an array).
       dispatch({
         type: 'set',
-        patch: { projects, lastEdit: resumable ? lastEdit : null, draftUnits, alignSuggestions, obsStoryByProject: mergeObsStoryHistory(obsStoryByProject), ...(stateRef.current.projects === null ? { bookError: null } : {}) },
+        patch: { projects, lastEdit: resumable ? lastEdit : null, draftUnits, alignSuggestions, obsStoryByProject: mergeObsStoryHistory(obsStoryByProject), obsRecentByProject: { ...(stateRef.current.obsRecentByProject || {}), ...obsRecentByProject }, ...(stateRef.current.projects === null ? { bookError: null } : {}) },
       });
     } catch (e) {
       // Catch-to-absence sweep (D30): projects stays null (unknown), so the
@@ -4702,11 +4755,22 @@ export function AppProvider({ children }) {
           } catch {
             return;
           }
-          const pct = await obsDraftPercent(reader);
+          // #328: an undrafted story's tile carries the gateway title, read
+          // from the pinned OBS source when it is on this machine.
+          let sourceTitle = async () => '';
+          try {
+            const [pins, { installed }] = await Promise.all([reader.readResources(), a.resolutionContext()]);
+            const pin = pins ? resolveObsSetSlot(pins, 'obs').pin : null;
+            const local = pin ? installedPathFor(installed, pin) : null;
+            if (local) sourceTitle = async (n) => parseStory(await api.readIngredient(local, storyIpath(n))).title;
+          } catch {
+            // No gateway on this machine: the tiles show the numbers alone.
+          }
+          const progress = await obsStoryProgress(reader, sourceTitle);
           if ((progressGen.get(project.id) || 0) !== gen) return;
           dispatch({
             type: 'set',
-            patch: { progressByProject: { ...stateRef.current.progressByProject, [project.id]: { OBS: pct } } },
+            patch: { progressByProject: { ...stateRef.current.progressByProject, [project.id]: progress } },
           });
         };
         if (project.flavor === 'textStories') return loadObs();
@@ -4773,6 +4837,7 @@ export function AppProvider({ children }) {
             markUsed,
             recordLastEdit,
             invalidateProgress,
+            rememberObsEdit,
           },
           repoPath,
           bookCode,
