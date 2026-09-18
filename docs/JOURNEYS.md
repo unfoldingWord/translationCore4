@@ -48,11 +48,11 @@ Owner of increment numbers: the GitHub milestones, mirrored in `docs/ROADMAP.md`
 | J18 | translator | Check | Resolve a verse fork | Phase 2 | none |
 | J19 | consultant | Check | Record findings on a translation | Phase 2 | none |
 | J20 | facilitator | Start | Create an OBS project | built (2026-09-16; #287, D74) | `e2e/j20-obs-create.spec.ts` |
-| J21 | translator | Translate | Translate a story frame by frame | increment 7 (#289; D74) | `e2e/j21-obs-draft.spec.ts` (to write, #292) |
-| J22 | translator | Check | Check an OBS story | increment 7 (#291; D74; first to slip) | `e2e/j22-obs-check.spec.ts` (to write, #292) |
+| J21 | translator | Translate | Translate a story frame by frame | built (2026-09-17; #289, #292, D74) | `e2e/j21-obs-draft.spec.ts` |
+| J22 | translator | Check | Check an OBS story | built (2026-09-17; #291, #292, D74) | `e2e/j22-obs-check.spec.ts` |
 | J23 | facilitator | Deliver | Export an OBS project as Markdown and PDF | increment 8 (with J7, one PDF path; D74) | `e2e/j07-publish.spec.ts` (OBS cases to add) |
 | J24 | facilitator | Exchange | Send an OBS project to DCS | Phase 2 | none |
-| J25 | translator | Understand | Read a story with helps and record a user comment | increment 7 (#290; D74) | `e2e/j25-obs-understand.spec.ts` (to write, #292) |
+| J25 | translator | Understand | Read a story with helps and record a user comment | built (2026-09-17; #290, #292, D74) | `e2e/j25-obs-understand.spec.ts` |
 
 ## Entries
 

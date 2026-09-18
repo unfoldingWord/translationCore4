@@ -14,13 +14,14 @@ const RIG_API = 'http://127.0.0.1:19998/api';
 /** Run the fold-compare verifier on every LOCAL project that carries a journal.
  * A project with derived files and NO journal is a pre-journal project the app
  * has not opened yet — it has nothing to verify (universal seeding journals it
- * on first open). Throws (fails the journey) on any broken invariant. */
+ * on first open). Both project kinds are verified: a Bible project through its
+ * USFM projections, an OBS project through its story files (§10.7). Throws (fails
+ * the journey) on any broken invariant. */
 export async function verifyAllJournaledProjects(): Promise<string[]> {
   const api = new ServerApi({ baseUrl: RIG_API });
   const summaries = await api.getSummaries('_local_/_local_');
   const verified: string[] = [];
   for (const repoPath of Object.keys(summaries)) {
-    if (summaries[repoPath].flavor !== 'textTranslation') continue;
     const paths = await api.listPaths(repoPath);
     if (!paths.some((p) => /^checking\/journal\/[a-z0-9-]+\/segments\//.test(p))) continue;
     const report = await verifyProjectAgainstJournal(api, repoPath);
