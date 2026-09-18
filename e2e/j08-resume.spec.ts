@@ -371,6 +371,13 @@ test.describe('#329 — a Home tile returns to the place last worked', () => {
       await page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByRole('button', { name: /Titus/ }).click();
       await expect(page.getByRole('tab', { name: 'Understand', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 60_000 });
       await expect(page.getByRole('heading', { name: 'Titus 2', exact: true })).toBeVisible();
+      // The restore itself is an observation and must not corrupt the record: a
+      // second open lands in the same place (Codex round 1 of #339).
+      await page.waitForTimeout(800);
+      await page.goto('/');
+      await page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByRole('button', { name: /Titus/ }).click();
+      await expect(page.getByRole('tab', { name: 'Understand', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 60_000 });
+      await expect(page.getByRole('heading', { name: 'Titus 2', exact: true })).toBeVisible();
       // Jonah was never opened this session: the plain open, Translate at chapter 1.
       await page.goto('/');
       await page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByRole('button', { name: /Jonah/ }).click();
@@ -400,6 +407,12 @@ test.describe('#329 — a Home tile returns to the place last worked', () => {
       await card.getByTestId('story-tile-3').click(); // no edits yet: the collapsed row is stories 1 to 3
       await expect(page.getByTestId('story-understand')).toBeVisible({ timeout: 60_000 });
       await expect(page.getByRole('heading', { name: 'Story 3', exact: true })).toBeVisible();
+      await expect(page.getByTestId('story-understand-unit-4')).toHaveAttribute('data-focused', 'true', { timeout: 30_000 });
+      // A second open lands in the same place: the restore did not overwrite the frame.
+      await page.waitForTimeout(800);
+      await page.goto('/');
+      await card.getByTestId('story-tile-3').click();
+      await expect(page.getByTestId('story-understand')).toBeVisible({ timeout: 60_000 });
       await expect(page.getByTestId('story-understand-unit-4')).toHaveAttribute('data-focused', 'true', { timeout: 30_000 });
     },
   );

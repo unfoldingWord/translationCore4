@@ -2743,6 +2743,12 @@ export function AppProvider({ children }) {
   // #312: the picture-pack listings of the open project. Keyed by the open
   // (a reopen lists again) and by installEpoch (an install lists again).
   const obsPackCacheRef = useRef({ key: null, packs: null });
+  // #329: the place records as this session last folded them, and the debounced
+  // write's timer. Refs, not state: two observations in one tick (a restore's
+  // chapter, then its mode) must fold onto each other, and stateRef lags a
+  // dispatch until the next render.
+  const placesRef = useRef(null);
+  const placeTimerRef = useRef(null);
   const obsPackCache = () => {
     const key = `${openProjectSeqRef.current}|${stateRef.current.installEpoch}`;
     if (obsPackCacheRef.current.key !== key) obsPackCacheRef.current = { key, packs: createObsPackCache() };
@@ -2887,7 +2893,6 @@ export function AppProvider({ children }) {
   // #329: one observation of where the user is, folded into the per-unit place
   // record: the caller names what it knows (a mode switch names the mode, a
   // chapter click the chapter, a frame click the frame); the rest is kept.
-  let placeTimer = null;
   function rememberPlace(next = {}) {
     const st = stateRef.current;
     const repoPath = st.project?.repoPath || st.project?.id;
@@ -2896,12 +2901,18 @@ export function AppProvider({ children }) {
     const key = placeKey(obs ? { story: next.story ?? st.storyNumber } : { book: next.book ?? st.book });
     const mode = next.mode ?? modeOf(st.view);
     if (!key || !mode) return;
-    const chapter = next.chapter ?? (obs ? st.storyNumber : st.chapter);
-    const tool = mode === 'check' ? (next.tool ?? st.checkTool ?? undefined) : undefined;
-    const places = recordPlace(st.placeByProject, repoPath, key, { mode, chapter, verse: next.verse, tool, at: Date.now() });
+    const base = placesRef.current ?? st.placeByProject ?? {};
+    const prior = base[repoPath]?.[key];
+    // What the caller does not name comes from the record, not from the state:
+    // the state lags a dispatch, and a restore names the chapter (or frame) in
+    // one call and the mode in the next.
+    const chapter = next.chapter ?? prior?.chapter ?? (obs ? st.storyNumber : st.chapter);
+    const tool = mode === 'check' ? (next.tool ?? prior?.tool ?? st.checkTool ?? undefined) : undefined;
+    const places = recordPlace(base, repoPath, key, { mode, chapter, verse: next.verse, tool, at: Date.now() });
+    placesRef.current = places;
     dispatch({ type: 'set', patch: { placeByProject: places } });
-    clearTimeout(placeTimer);
-    placeTimer = setTimeout(() => {
+    clearTimeout(placeTimerRef.current);
+    placeTimerRef.current = setTimeout(() => {
       void updateClientSettings((cs) => ({
         ...cs,
         placeByProject: { ...(cs.placeByProject || {}), [repoPath]: { ...((cs.placeByProject || {})[repoPath] || {}), ...places[repoPath] } },
@@ -2999,7 +3010,7 @@ export function AppProvider({ children }) {
       // performProjectOpen is left alone (projects was already an array).
       dispatch({
         type: 'set',
-        patch: { projects, lastEdit: resumable ? lastEdit : null, draftUnits, alignSuggestions, obsStoryByProject: mergeObsStoryHistory(obsStoryByProject), obsRecentByProject: { ...(stateRef.current.obsRecentByProject || {}), ...obsRecentByProject }, placeByProject: mergePlaces(stateRef.current.placeByProject, placeByProject), ...(stateRef.current.projects === null ? { bookError: null } : {}) },
+        patch: { projects, lastEdit: resumable ? lastEdit : null, draftUnits, alignSuggestions, obsStoryByProject: mergeObsStoryHistory(obsStoryByProject), obsRecentByProject: { ...(stateRef.current.obsRecentByProject || {}), ...obsRecentByProject }, placeByProject: (placesRef.current = mergePlaces(placesRef.current ?? stateRef.current.placeByProject, placeByProject)), ...(stateRef.current.projects === null ? { bookError: null } : {}) },
       });
     } catch (e) {
       // Catch-to-absence sweep (D30): projects stays null (unknown), so the
