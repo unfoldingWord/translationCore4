@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "tool": "scripts/prove.mjs",
-  "commit": "4e87cbce85dd3f8783c9a04eaebed2da1489a73f",
+  "commit": "f057eed81e30157ae2799f166eaaba7d7cae12fb",
   "dirty": false,
-  "date": "2026-09-18T12:52:49.636Z",
+  "date": "2026-09-18T20:15:06.453Z",
   "node": "v22.23.2",
   "platform": "linux-x64",
   "ci": true,
@@ -26,15 +26,15 @@
       "needsRig": false,
       "ran": true,
       "skipped": null,
-      "ok": true,
-      "exitCode": 0,
+      "ok": false,
+      "exitCode": 1,
       "passed": null,
       "failed": null,
       "skippedTests": null,
       "summary": [
-        "✖ 1 problem (0 errors, 1 warning)"
+        "✖ 2 problems (1 error, 1 warning)"
       ],
-      "durationMs": 7043
+      "durationMs": 6661
     },
     {
       "id": "typecheck",
@@ -49,7 +49,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [],
-      "durationMs": 6434
+      "durationMs": 6057
     },
     {
       "id": "vitest",
@@ -60,14 +60,14 @@
       "skipped": null,
       "ok": true,
       "exitCode": 0,
-      "passed": 1196,
+      "passed": 1207,
       "failed": 0,
       "skippedTests": 43,
       "summary": [
-        "Test Files  88 passed | 8 skipped (96)",
-        "Tests  1196 passed | 43 skipped (1239)"
+        "Test Files  90 passed | 8 skipped (98)",
+        "Tests  1207 passed | 43 skipped (1250)"
       ],
-      "durationMs": 40698
+      "durationMs": 40371
     },
     {
       "id": "build",
@@ -82,9 +82,9 @@
       "failed": null,
       "skippedTests": null,
       "summary": [
-        "✓ built in 10.27s"
+        "✓ built in 9.70s"
       ],
-      "durationMs": 10773
+      "durationMs": 10179
     },
     {
       "id": "conformance:generate",
@@ -99,7 +99,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [],
-      "durationMs": 200
+      "durationMs": 192
     },
     {
       "id": "conformance:validate",
@@ -120,7 +120,7 @@
         "OBS (the OBS project kind, §10 — sample-burrito-obs): 6 passed, 0 failed",
         "47 passed, 0 failed"
       ],
-      "durationMs": 646
+      "durationMs": 618
     },
     {
       "id": "conformance:journal",
@@ -137,7 +137,7 @@
       "summary": [
         "Journal suite: 350 passed, 0 failed (fast-check seed 20260707)"
       ],
-      "durationMs": 3257
+      "durationMs": 3126
     },
     {
       "id": "conformance:normative",
@@ -157,7 +157,7 @@
         "uncovered          : 0",
         "stale claims       : 0"
       ],
-      "durationMs": 82
+      "durationMs": 76
     },
     {
       "id": "conformance:transport",
@@ -220,5 +220,5 @@
       "durationMs": null
     }
   ],
-  "ok": true
+  "ok": false
 }
