@@ -1506,11 +1506,6 @@ JC-33 of the journal suite, and the normative gate, which now covers §8 and §1
 reference story module is `journal/story.mjs`. Points 8, 10 and 11 are product work under
 #286 to #292.]
 
-[amendment, 2026-09-18 — issue #332, owner ruling: OBS Understand shows source only,
-like the Bible Understand. Each frame shows the picture and the gateway story, then the
-user comment box; no draft line. This corrects the point-10 wording carried into the
-StoryUnderstand header and the J25 steps.]
-
 ## D75 (2026-09-16, project-owner rulings) **OBS resource sets use OBS-specific completeness. Image-pack overrides are optional language-set pins; the installer default stays separate.** [issue #288 definition review]
 
 1. A complete OBS set contains `obs`, `obs-tn`, `obs-twl`, and the shared
@@ -1520,6 +1515,10 @@ StoryUnderstand header and the J25 steps.]
    `peripheral/x-obsimages`. The pin uses the same immutable repository and commit identity
    as every other resource pin. Its absence does not make either kind of set incomplete.
 3. The bundled `uW/obs_images_360` pack is installer data with its own sha. A project does
-   not need an override pin to use it. At render time the app checks a project image
-   ingredient, primary and fallback override pins, and the bundled default in that order.
-   It leaves the Markdown image line unchanged.
+not need an override pin to use it. At render time the app checks a project image
+ingredient, primary and fallback override pins, and the bundled default in that order.
+It leaves the Markdown image line unchanged.
+
+## D76 (2026-09-18, project-owner ruling) **OBS Understand shows the source only, like
+the Bible Understand: picture, gateway story, comment box; no draft.** [issue #332;
+corrects the `StoryUnderstand.jsx` header wording and the J25 steps, which named the draft]
