@@ -705,6 +705,34 @@ ROOT=$("$CURL" -s -o /dev/null -w '%{http_code} %{redirect_url}' "http://127.0.0
 CLIENT=$("$CURL" -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$SMOKE_PORT/clients/uw-tc4")
 echo "root: $ROOT; /clients/uw-tc4: $CLIENT"
 
+# VERSION GUARD (#326): the booted server must report this artifact's own
+# lib/product/product.json version and datetime. /api/version reads that file
+# at runtime (pankosmia-web 0.18.5 lib.rs:45-61 — primary
+# lib/app_resources/product/product.json, else $APP_RESOURCES_DIR/product/
+# product.json); a mismatch means the probe answered from a different tree
+# (for example a leftover install already listening on the port).
+VERSION_BODY=$("$CURL" -s --max-time 5 "http://127.0.0.1:$SMOKE_PORT/api/version") || {
+  echo "VERSION GUARD FAILED: curl exit $? on GET /api/version" >&2; exit 1; }
+node -e '
+const fs = require("fs");
+const [productPath, body] = process.argv.slice(1);
+let live;
+try {
+  live = JSON.parse(body);
+} catch (e) {
+  console.error(`VERSION GUARD FAILED: /api/version is not JSON: ${body.slice(0, 200)}`);
+  process.exit(1);
+}
+const onDisk = JSON.parse(fs.readFileSync(productPath, "utf8"));
+for (const [disk, liveKey] of [["version", "product_version"], ["datetime", "product_date_time"]]) {
+  if (live[liveKey] !== onDisk[disk]) {
+    console.error(`VERSION GUARD FAILED: /api/version ${liveKey}=${JSON.stringify(live[liveKey])} != lib/product/product.json ${disk}=${JSON.stringify(onDisk[disk])}`);
+    process.exit(1);
+  }
+}
+console.log("version guard: /api/version matches lib/product/product.json (" + onDisk.version + ", " + onDisk.datetime + ")");
+' "$(npath "$PACK/lib/product/product.json")" "$VERSION_BODY" || exit 1
+
 # #4 GUARD (D39): a second launch must NOT become a second running copy.
 # With the first instance still up, launch the entry point AGAIN (same HOME —
 # the singleton lock keys on the app's userData under this HOME). The second
