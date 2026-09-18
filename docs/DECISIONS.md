@@ -1506,6 +1506,11 @@ JC-33 of the journal suite, and the normative gate, which now covers §8 and §1
 reference story module is `journal/story.mjs`. Points 8, 10 and 11 are product work under
 #286 to #292.]
 
+[amendment, 2026-09-18 — issue #332, owner ruling: OBS Understand shows source only,
+like the Bible Understand. Each frame shows the picture and the gateway story, then the
+user comment box; no draft line. This corrects the point-10 wording carried into the
+StoryUnderstand header and the J25 steps.]
+
 ## D75 (2026-09-16, project-owner rulings) **OBS resource sets use OBS-specific completeness. Image-pack overrides are optional language-set pins; the installer default stays separate.** [issue #288 definition review]
 
 1. A complete OBS set contains `obs`, `obs-tn`, `obs-twl`, and the shared

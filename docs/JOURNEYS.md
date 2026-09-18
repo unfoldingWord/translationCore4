@@ -277,7 +277,7 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 
 - Actor: translator. Activity: Understand.
 - Precondition: J20; the OBS help set is installed.
-- Steps: open a story · read the frames with pictures, gateway text and draft · read the notes
+- Steps: open a story · read the frames with pictures and gateway text · read the notes
   and word links for a frame · write a user comment.
 - End state (defined 2026-09-15, D74): one `note.add` segment with a `{story, frame}`
   target per comment; the story file is byte-identical; Resume returns to Understand on the
