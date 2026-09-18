@@ -1526,7 +1526,9 @@ function activeStoryForReload({ originStore, originRepoPath, storeRef, stateRef 
 async function reloadActiveStoryAfterDownload({ originStore, originRepoPath, storeRef, stateRef, actions }) {
   const storyNumber = activeStoryForReload({ originStore, originRepoPath, storeRef, stateRef });
   if (storyNumber == null) return;
-  await actions.openStory(storyNumber, stateRef.current.projectPins);
+  // #312: no override — the open derives the pins from the state, and states
+  // no source condition while they are unknown (a failed or pending read).
+  await actions.openStory(storyNumber);
 }
 
 async function openProjectContent({ summary, store, repoPath, scriptDirection, textFont, bookCode, superseded, dispatch, actions, stateRef, pinsReady = Promise.resolve({ pins: undefined, failed: false }) }) {
