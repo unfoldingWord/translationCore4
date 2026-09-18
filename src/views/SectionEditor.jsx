@@ -10,6 +10,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../state.jsx';
 import { t } from '../i18n';
 import { Button, Overline, Switcher, VerseMarker } from '../ds/index.js';
+import { EditingCard } from './draftChrome.jsx';
 import { canDrop, dropPin, expandKeys, indentLine, initialDraftText, parseDraft, sectionGroups, sectionKeys, sectionVerses, serializeDraft, spanEnd } from './sectionDraft.js';
 
 const SUP = { fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', marginInlineEnd: 3, verticalAlign: 'super' };
@@ -193,15 +194,22 @@ export function SectionEditor({ chapter, keys, verses, span, dir, editType }) {
   };
 
   return (
-    <div data-testid="section-editor" style={{ border: 'var(--stroke-selected) solid var(--accent)', borderRadius: 'var(--radius-md)', padding: '12px 14px', background: 'var(--surface-card)', boxShadow: '0 2px 8px rgba(49,173,227,.15)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
+    <EditingCard data-testid="section-editor"
+      header={<>
         <Overline tone="accent">{t('draft.drafting')} {span}</Overline>
         <Switcher indicator="pill" size="sm" tone="ocean" value={mode} onChange={switchMode} label={t('draft.drafting')}
           options={[{ value: 'type', label: t('draft.modeType') }, { value: 'place', label: t('draft.modePlace') }]} />
         {mode === 'type' && (
           <span style={{ fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', color: 'var(--text-tertiary)' }}>{t('draft.typeHint')}</span>
         )}
-      </div>
+      </>}
+      footer={<>
+        <Button size="sm" disabled={!canSave} onClick={save}>{t('draft.saveSection')}</Button>
+        <Button variant="ghost" onClick={actions.blurVerse}
+          style={{ color: 'var(--text-tertiary)', fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)' }}>
+          {t('draft.cancelVerse')}
+        </Button>
+      </>}>
       {mode === 'type' ? (
         <textarea
           ref={ref}
@@ -217,13 +225,6 @@ export function SectionEditor({ chapter, keys, verses, span, dir, editType }) {
       ) : (
         <PlaceView keys={pins} words={placed.words} markers={placed.markers} setMarkers={(markers) => setPlaced({ ...placed, markers })} dir={dir} editType={editType} />
       )}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
-        <Button size="sm" disabled={!canSave} onClick={save}>{t('draft.saveSection')}</Button>
-        <Button variant="ghost" onClick={actions.blurVerse}
-          style={{ color: 'var(--text-tertiary)', fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)' }}>
-          {t('draft.cancelVerse')}
-        </Button>
-      </div>
-    </div>
+    </EditingCard>
   );
 }

@@ -36,7 +36,7 @@ test.describe('J21 — a translator translates a story frame by frame', () => {
         const frame = page.getByTestId('story-frame-1');
         await expect(frame).toContainText('This is how God made everything in the beginning.');
         await expect(frame.getByRole('img')).toBeVisible();
-        await expect(frame.getByRole('textbox')).toHaveValue('');
+        await expect(frame.getByRole('button', { name: 'Draft frame 1' })).toBeVisible();
       });
 
       const saveOne = async (act: () => Promise<void>) => {
@@ -51,6 +51,7 @@ test.describe('J21 — a translator translates a story frame by frame', () => {
       await test.step('write frame 1: one text.frame.set segment; only the frame-1 paragraph bytes change', async () => {
         const before = storyBytes(repo, 1);
         const event = await saveOne(async () => {
+          await page.getByTestId('story-frame-1').getByRole('button', { name: 'Draft frame 1' }).click();
           const box = page.getByTestId('story-frame-1').getByRole('textbox');
           await box.fill(FRAME_1);
           await box.blur();
@@ -68,6 +69,7 @@ test.describe('J21 — a translator translates a story frame by frame', () => {
       await test.step('write the title: one text.frame.set segment for frame 0; only the first line changes', async () => {
         const before = storyBytes(repo, 1);
         const event = await saveOne(async () => {
+          await page.getByTestId('story-title').getByRole('button', { name: 'Draft the title' }).click();
           const box = page.getByTestId('story-title').getByRole('textbox');
           await box.fill(TITLE);
           await box.blur();
@@ -81,6 +83,7 @@ test.describe('J21 — a translator translates a story frame by frame', () => {
       await test.step('write the reference line: one text.story.ref.set segment; only the closing line changes', async () => {
         const before = storyBytes(repo, 1);
         const event = await saveOne(async () => {
+          await page.getByTestId('story-ref').getByRole('button', { name: 'Draft the reference' }).click();
           const box = page.getByTestId('story-ref').getByRole('textbox');
           await box.fill(REF);
           await box.blur();
@@ -95,9 +98,9 @@ test.describe('J21 — a translator translates a story frame by frame', () => {
         await page.reload();
         await page.getByTestId(`project-_local_/_local_/${repo}`).getByTestId('obs-tile').click();
         await expect(page.getByTestId('story-draft')).toBeVisible({ timeout: 60_000 });
-        await expect(page.getByTestId('story-frame-1').getByRole('textbox')).toHaveValue(FRAME_1);
-        await expect(page.getByTestId('story-title').getByRole('textbox')).toHaveValue(TITLE);
-        await expect(page.getByTestId('story-ref').getByRole('textbox')).toHaveValue(REF);
+        await expect(page.getByTestId('story-frame-1').getByTestId('story-unit-text')).toHaveText(FRAME_1);
+        await expect(page.getByTestId('story-title').getByTestId('story-unit-text')).toHaveText(TITLE);
+        await expect(page.getByTestId('story-ref').getByTestId('story-unit-text')).toHaveText(REF);
         const two = parseStory(storyBytes(repo, 2));
         expect(two.title).toBe('');
         expect(two.ref).toBeNull();
