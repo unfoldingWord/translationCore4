@@ -2,6 +2,10 @@ import React from 'react';
 import { Button, Overline } from '../ds/index.js';
 import { t } from '../i18n';
 
+/** A frame is drafted exactly when its paragraph is non-empty (#289) — the one
+ * predicate the rail marker and the target cell share (#307 review). */
+export const isFrameDrafted = (text) => String(text ?? '').trim() !== '';
+
 /** Story navigation for OBS. The list is always sourced from the project's
  * story catalogue; frame markers only describe the currently open story. A
  * marker is drafted exactly when the frame's paragraph is non-empty (#289). */
@@ -21,7 +25,7 @@ export default function StoryRail({ numbers = [], active, story, onSelect }) {
               {selected && story && (
                 <div data-testid="story-frame-markers" style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '2px 8px 8px' }}>
                   {story.frames.map((frame, index) => {
-                    const drafted = frame.text.trim() !== '';
+                    const drafted = isFrameDrafted(frame.text);
                     return (
                       <span key={index + 1} data-testid={`frame-marker-${index + 1}`} data-drafted={drafted ? 'true' : 'false'}
                         title={t(drafted ? 'storyDraft.frameDrafted' : 'storyDraft.frameEmpty', { n: index + 1 })}

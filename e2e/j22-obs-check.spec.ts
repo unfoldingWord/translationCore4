@@ -37,7 +37,7 @@ test.describe('J22 — a translator checks an OBS story', () => {
         await page.goto('/');
         await page.getByTestId(`project-_local_/_local_/${repo}`).getByTestId('obs-tile').click();
         await expect(page.getByTestId('story-draft')).toBeVisible({ timeout: 60_000 });
-        await expect(page.getByTestId('story-frame-1').getByRole('textbox')).toHaveValue(FRAME_1);
+        await expect(page.getByTestId('story-frame-1').getByTestId('story-unit-text')).toHaveText(FRAME_1);
       });
 
       for (const tool of TOOLS) {
@@ -70,6 +70,7 @@ test.describe('J22 — a translator checks an OBS story', () => {
       await test.step('edit frame 1 in Translate: the draft changes under the two decisions', async () => {
         await page.getByRole('tab', { name: 'Translate', exact: true }).click();
         const before = new Set(segmentFiles(repo));
+        await page.getByTestId('story-frame-1').getByTestId('story-unit-text').click();
         const box = page.getByTestId('story-frame-1').getByRole('textbox');
         await box.fill(FRAME_1_EDITED);
         await box.blur();

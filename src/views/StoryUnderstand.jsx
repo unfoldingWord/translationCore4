@@ -105,7 +105,7 @@ function StoryHelpsList({ u, slot, kind, frame, onArticle }) {
 
 /** The helps pane: Notes | Words for the selected frame, and the article a
  * card opened. */
-function StoryHelps({ u, unit, actions }) {
+export function StoryHelps({ u, unit, actions }) {
   const [tab, setTab] = React.useState('notes');
   const slot = tab === 'notes' ? u?.notes : u?.words;
   return (

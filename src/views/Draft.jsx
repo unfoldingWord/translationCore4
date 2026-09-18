@@ -19,10 +19,9 @@ import { verseText as sourceText } from './verseText.js';
 import { absenceMessageKey, isSourceAbsent } from '../data/sourceState';
 import { paragraphLevel, paragraphsOf, rangeSpan, sectionRanges, sectionStarts, sourceKeysFor } from './sections.js';
 import { SectionEditor } from './SectionEditor.jsx';
+import { CELL, DraftPill, EditingCard, chipStyle, hair } from './draftChrome.jsx';
 
-const hair = 'var(--stroke-hair) solid var(--border-hair)';
 const SUP = { fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', marginInlineEnd: 3, verticalAlign: 'super' };
-const CELL = { padding: '14px 26px 20px', borderTop: hair };
 
 // The design's editing card. Blur on the textarea still saves-and-closes
 // (journeys blur to save); the Save/Cancel buttons carry onMouseDown
@@ -36,10 +35,17 @@ function VerseEditor({ chapter, verse, dir, type }) {
     ref.current?.focus();
   }, []);
   return (
-    <div style={{ border: 'var(--stroke-selected) solid var(--accent)', borderRadius: 'var(--radius-md)', padding: '12px 14px', background: 'var(--surface-card)', boxShadow: '0 2px 8px rgba(49,173,227,.15)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-        <Overline tone="accent">{t('draft.drafting')} {verse.n}</Overline>
-      </div>
+    <EditingCard
+      header={<Overline tone="accent">{t('draft.drafting')} {verse.n}</Overline>}
+      footer={<>
+        <Button size="sm" onMouseDown={(e) => e.preventDefault()} onClick={actions.blurVerse}>
+          {t('draft.saveVerse')}
+        </Button>
+        <Button variant="ghost" onMouseDown={(e) => e.preventDefault()} onClick={() => actions.cancelVerse(chapter, verse.n)}
+          style={{ color: 'var(--text-tertiary)', fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)' }}>
+          {t('draft.cancelVerse')}
+        </Button>
+      </>}>
       <textarea
         ref={ref}
         aria-label={t('draft.verseLabel', { n: verse.n })}
@@ -64,16 +70,7 @@ function VerseEditor({ chapter, verse, dir, type }) {
           background: 'transparent',
         }}
       />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
-        <Button size="sm" onMouseDown={(e) => e.preventDefault()} onClick={actions.blurVerse}>
-          {t('draft.saveVerse')}
-        </Button>
-        <Button variant="ghost" onMouseDown={(e) => e.preventDefault()} onClick={() => actions.cancelVerse(chapter, verse.n)}
-          style={{ color: 'var(--text-tertiary)', fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)' }}>
-          {t('draft.cancelVerse')}
-        </Button>
-      </div>
-    </div>
+    </EditingCard>
   );
 }
 
@@ -170,10 +167,9 @@ function TargetVerse({ v, chapter, editing, actions, mode }) {
   if (mode === 'section') return null;
   // The accessible name stays "start this verse" (journeys J1/J14).
   return (
-    <button type="button" data-i="choice" data-tone="accent" aria-label={t('draft.startVerse')} onClick={() => actions.startVerse(chapter, v.n)}
-      style={{ border: 'var(--stroke-selected) dashed var(--border-strong)', background: 'transparent', borderRadius: 'var(--radius-sm)', padding: '2px 10px', marginInlineEnd: '.3em', cursor: 'pointer', fontFamily: 'var(--font-ui)', fontSize: 'var(--fs-caption-lg)', letterSpacing: 'var(--track-12-5)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', verticalAlign: 'middle' }}>
+    <DraftPill aria-label={t('draft.startVerse')} onClick={() => actions.startVerse(chapter, v.n)} style={{ marginInlineEnd: '.3em' }}>
       {t('draft.draftVerse', { n: v.n })}
-    </button>
+    </DraftPill>
   );
 }
 
@@ -215,17 +211,6 @@ function TargetCell({ s, verses, keys, byKey, span, dir, type, editType, actions
     </div>
   );
 }
-
-const chipStyle = (active) => ({
-  display: 'inline-block',
-  padding: '3px 9px',
-  fontSize: 'var(--fs-label)',
-  letterSpacing: 'var(--track-11)',
-  borderWidth: 1,
-  ...(active
-    ? { background: 'var(--accent)', color: 'var(--text-inverse)', borderColor: 'var(--accent)' }
-    : { background: 'var(--surface-card)', color: 'var(--text-heading)', borderColor: 'var(--border-input)' }),
-});
 
 function SourceTabs({ s, actions, origTestament }) {
   const isOrig = s.sourceTab === 'orig';
