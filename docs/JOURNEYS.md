@@ -47,12 +47,12 @@ Owner of increment numbers: the GitHub milestones, mirrored in `docs/ROADMAP.md`
 | J17 | translator | Exchange | Receive a project and continue offline | Phase 2 | none |
 | J18 | translator | Check | Resolve a verse fork | Phase 2 | none |
 | J19 | consultant | Check | Record findings on a translation | Phase 2 | none |
-| J20 | facilitator | Start | Create an OBS project | built (2026-09-16; #287, D74) | `e2e/j20-obs-create.spec.ts` |
-| J21 | translator | Translate | Translate a story frame by frame | built (2026-09-17; #289, #292, D74) | `e2e/j21-obs-draft.spec.ts` |
-| J22 | translator | Check | Check an OBS story | built (2026-09-17; #291, #292, D74) | `e2e/j22-obs-check.spec.ts` |
+| J20 | facilitator | Start | Create an OBS project | shipped alpha.7 (#287; D74) | `e2e/j20-obs-create.spec.ts` |
+| J21 | translator | Translate | Translate a story frame by frame | shipped alpha.7 (#289, #292; D74) | `e2e/j21-obs-draft.spec.ts` |
+| J22 | translator | Check | Check an OBS story | shipped alpha.7 (#291, #292; D74) | `e2e/j22-obs-check.spec.ts` |
 | J23 | facilitator | Deliver | Export an OBS project as Markdown and PDF | increment 8 (with J7, one PDF path; D74) | `e2e/j07-publish.spec.ts` (OBS cases to add) |
 | J24 | facilitator | Exchange | Send an OBS project to DCS | Phase 2 | none |
-| J25 | translator | Understand | Read a story with helps and record a user comment | built (2026-09-17; #290, #292, D74) | `e2e/j25-obs-understand.spec.ts` |
+| J25 | translator | Understand | Read a story with helps and record a user comment | shipped alpha.7 (#290, #292; D74) | `e2e/j25-obs-understand.spec.ts` |
 
 ## Entries
 
@@ -234,7 +234,7 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   `currentScope` equals the template's table; front and back files copied from the gateway
   source. The harness validates it as an OBS project (BURRITO-SPEC §10).
 - MUST NOT: offer a story subset; copy source text into a frame; rewrite an image line.
-- Proof: `e2e/j20-obs-create.spec.ts` (written with #287; #292 extends it). Owner: Increment 7 (#287).
+- Proof: `e2e/j20-obs-create.spec.ts` (written with #287). Owner: shipped alpha.7 (#287).
 
 ### J21 Translate a story frame by frame
 
@@ -247,7 +247,7 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   `text.story.ref.set` segment per save; one paragraph per frame, single newlines kept.
 - MUST NOT: touch another frame's bytes; write a second paragraph into a frame; save an
   image line.
-- Proof: `e2e/j21-obs-draft.spec.ts` (#292). Owner: Increment 7 (#289).
+- Proof: `e2e/j21-obs-draft.spec.ts` (#292). Owner: shipped alpha.7 (#289).
 
 ### J22 Check an OBS story
 
@@ -259,8 +259,7 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   `translationNotes` and `translationWords`; a later frame edit flags them invalid and
   retains them (D36); the story file is byte-identical.
 - MUST NOT: count `Occurrence`; offer an Align tool; write a PDF (that is J23).
-- Proof: `e2e/j22-obs-check.spec.ts` (#292). Owner: Increment 7 (#291); first to move to
-  Increment 8 if the date bites.
+- Proof: `e2e/j22-obs-check.spec.ts` (#292). Owner: shipped alpha.7 (#291).
 
 ### J23 Export an OBS project as Markdown and PDF
 
@@ -284,8 +283,7 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   target per comment; the story file is byte-identical; Resume returns to Understand on the
   same story.
 - MUST NOT: change progress; write into the story file.
-- Proof: `e2e/j25-obs-understand.spec.ts` (#292). Owner: Increment 7 (#290); second to move
-  to Increment 8 if the date bites.
+- Proof: `e2e/j25-obs-understand.spec.ts` (#292). Owner: shipped alpha.7 (#290).
 
 ## Retired numbers
 
