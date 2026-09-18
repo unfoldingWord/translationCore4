@@ -9,7 +9,7 @@ import React from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, within } from '@testing-library/react';
 
-const READ_SIDE = new Set(['loadUnderstand', 'toggleRail', 'openStory', 'go', 'loadHelpArticle', 'closeHelpArticle', 'stagedNote']);
+const READ_SIDE = new Set(['loadUnderstand', 'toggleRail', 'openStory', 'go', 'loadHelpArticle', 'closeHelpArticle', 'stagedNote', 'setStoryFrame' /* #329: the frame in focus is view state, not a write */]);
 const calls: Array<{ name: string; args: unknown[] }> = [];
 const noteCurrent = new Map<string, string>();
 const notePersisted = new Map<string, string>();

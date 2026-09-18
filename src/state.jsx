@@ -15,6 +15,7 @@ import { SaveScheduler } from './data/saveScheduler';
 import { StoryScheduler, normalizeStoryUnit } from './data/storyScheduler';
 import { createObsPackCache, readObsStoryPresentation } from './data/obsStory';
 import { recordRecentStory } from './data/obsRecency';
+import { modeOf, placeKey, recordPlace } from './data/place';
 import { gapMarkerOf, spliceSection, spliceVerse, spliceVerseGap, verseBody } from './data/usfm/splice';
 import { indexBook } from './data/usfm/indexer';
 import { RESOURCE_FRAME, forgetProjectFrames, resolveProjectFrame } from './data/projectFrame';
@@ -364,6 +365,11 @@ const initial = () => ({
   // The stories edited most recently per project on this machine (#328): the
   // collapsed Home card's tiles, newest first. User-machine state, never the project.
   obsRecentByProject: {},
+  // Where the user last worked per book and per story (#329): mode, chapter or
+  // story, verse or frame, Check tool. A Home tile returns there. Per client.
+  placeByProject: {},
+  // The frame in focus on the story screens (0 the title); the tile restore sets it.
+  storyFrame: null,
   draftUnits: {}, // repoPath -> 'section' | 'verse'
   alignSuggestions: {}, // #1: repoPath -> true when the suggestions switch is on (per client, never in the project)
   // #1: the suggestion engine's state for the open project — status 'off' |
@@ -1617,7 +1623,7 @@ function seedObsStory(scheduler, presentation, number) {
   scheduler.seed({ kind: 'ref', story: number }, presentation.story.ref || '');
 }
 
-async function loadObsStory({ api, resolveContext, store, repoPath, number, resources, pinsKnown, packCache, scheduler, seq, storeRef, stateRef, dispatch, rememberObsStory }) {
+async function loadObsStory({ api, resolveContext, store, repoPath, number, resources, pinsKnown, packCache, scheduler, seq, storeRef, stateRef, dispatch, rememberObsStory, rememberPlaceForStory = undefined }) {
   try {
     const { installed } = await resolveContext();
     const presentation = await readObsStoryPresentation({ api, store, projectRepo: repoPath, storyNumber: number, resources, installed, packCache, pinsKnown });
@@ -1626,15 +1632,16 @@ async function loadObsStory({ api, resolveContext, store, repoPath, number, reso
     // #291: a check session is scoped to one story — a loaded story closes
     // any open session and its picker counts (the book-switch rule).
     checkSessionSeq++;
-    dispatch({ type: 'set', patch: { storyNumber: number, story: presentation.story, sourceStory: presentation.sourceStory, storyImages: presentation.images, storyImageNote: presentation.imageNote, storySource: presentation.source, storyLoading: false, storyError: null, checkTool: null, checkSession: null, pickerProgress: null } });
+    dispatch({ type: 'set', patch: { storyNumber: number, story: presentation.story, sourceStory: presentation.sourceStory, storyImages: presentation.images, storyImageNote: presentation.imageNote, storySource: presentation.source, storyLoading: false, storyError: null, checkTool: null, checkSession: null, pickerProgress: null, storyFrame: 1 } });
     rememberObsStory(repoPath, number);
+    rememberPlaceForStory?.(number);
   } catch (error) {
     if (isCurrentObsStory({ seq, store, repoPath, storeRef, stateRef }))
       dispatch({ type: 'set', patch: { storyLoading: false, storyError: String(error?.message || error) } });
   }
 }
 
-async function openObsStory({ storyNumber, resourcesOverride, context, stateRef, storeRef, saveRefs, dispatch, api, resolveContext, scheduler, rememberObsStory, packCache = undefined }) {
+async function openObsStory({ storyNumber, resourcesOverride, context, stateRef, storeRef, saveRefs, dispatch, api, resolveContext, scheduler, rememberObsStory, packCache = undefined, rememberPlaceForStory = undefined }) {
   const target = obsStoryOpenContext({ storyNumber, context, stateRef, storeRef });
   if (!target) return;
   if (!(await drainSchedulers(saveRefs))) return;
@@ -1657,6 +1664,7 @@ async function openObsStory({ storyNumber, resourcesOverride, context, stateRef,
     stateRef,
     dispatch,
     rememberObsStory,
+    rememberPlaceForStory,
   });
 }
 
@@ -2735,6 +2743,12 @@ export function AppProvider({ children }) {
   // #312: the picture-pack listings of the open project. Keyed by the open
   // (a reopen lists again) and by installEpoch (an install lists again).
   const obsPackCacheRef = useRef({ key: null, packs: null });
+  // #329: the place records as this session last folded them, and the debounced
+  // write's timer. Refs, not state: two observations in one tick (a restore's
+  // chapter, then its mode) must fold onto each other, and stateRef lags a
+  // dispatch until the next render.
+  const placesRef = useRef(null);
+  const placeTimerRef = useRef(null);
   const obsPackCache = () => {
     const key = `${openProjectSeqRef.current}|${stateRef.current.installEpoch}`;
     if (obsPackCacheRef.current.key !== key) obsPackCacheRef.current = { key, packs: createObsPackCache() };
@@ -2876,7 +2890,40 @@ export function AppProvider({ children }) {
     delete progressByProject[repoPath];
     dispatch({ type: 'set', patch: { progressByProject } });
   }
+  // #329: one observation of where the user is, folded into the per-unit place
+  // record: the caller names what it knows (a mode switch names the mode, a
+  // chapter click the chapter, a frame click the frame); the rest is kept.
+  function rememberPlace(next = {}) {
+    const st = stateRef.current;
+    const repoPath = st.project?.repoPath || st.project?.id;
+    if (!repoPath) return;
+    const obs = next.story !== undefined ? next.story !== null : isObsProject(st);
+    const key = placeKey(obs ? { story: next.story ?? st.storyNumber } : { book: next.book ?? st.book });
+    const mode = next.mode ?? modeOf(st.view);
+    if (!key || !mode) return;
+    const base = placesRef.current ?? st.placeByProject ?? {};
+    const prior = base[repoPath]?.[key];
+    // What the caller does not name comes from the record, not from the state:
+    // the state lags a dispatch, and a restore names the chapter (or frame) in
+    // one call and the mode in the next.
+    const chapter = next.chapter ?? prior?.chapter ?? (obs ? st.storyNumber : st.chapter);
+    const tool = mode === 'check' ? (next.tool ?? prior?.tool ?? st.checkTool ?? undefined) : undefined;
+    const places = recordPlace(base, repoPath, key, { mode, chapter, verse: next.verse, tool, at: Date.now() });
+    placesRef.current = places;
+    dispatch({ type: 'set', patch: { placeByProject: places } });
+    clearTimeout(placeTimerRef.current);
+    placeTimerRef.current = setTimeout(() => {
+      void updateClientSettings((cs) => ({
+        ...cs,
+        placeByProject: { ...(cs.placeByProject || {}), [repoPath]: { ...((cs.placeByProject || {})[repoPath] || {}), ...places[repoPath] } },
+      }));
+    }, 500);
+  }
   function recordLastEdit(rec) {
+    // #329: an edit is the sharpest observation of the place: mode, chapter, verse (or story, frame).
+    rememberPlace(rec.book === STORY_BOOK
+      ? { story: Number(rec.chapter), mode: rec.mode, chapter: rec.chapter, verse: rec.verse, tool: rec.tool }
+      : { book: rec.book, mode: rec.mode, chapter: rec.chapter, verse: rec.verse, tool: rec.tool });
     // The edit changes this project's draft percentages, so its cached Home
     // progress is stale; Home re-reads it on the next visit.
     invalidateProgress(rec.repoPath);
@@ -2908,7 +2955,7 @@ export function AppProvider({ children }) {
   }
 
   async function readHomeSettings() {
-    const fallback = { lastUsed: {}, lastEdit: null, draftUnits: {}, alignSuggestions: {}, obsStoryByProject: {}, obsRecentByProject: {} };
+    const fallback = { lastUsed: {}, lastEdit: null, draftUnits: {}, alignSuggestions: {}, obsStoryByProject: {}, obsRecentByProject: {}, placeByProject: {} };
     try {
       // A pending Resume record is written before the document is read, so
       // a Home visit within the debounce never reads an older record.
@@ -2921,11 +2968,19 @@ export function AppProvider({ children }) {
         alignSuggestions: cs.alignSuggestions || {},
         obsStoryByProject: cs.obsStoryByProject || {},
         obsRecentByProject: cs.obsRecentByProject || {},
+        placeByProject: cs.placeByProject || {},
       };
     } catch {
       /* fall back to creation-date order from listProjects */
       return fallback;
     }
+  }
+
+  /** The persisted places under this session's (a record made here is newer). */
+  function mergePlaces(local, persisted) {
+    const out = { ...(persisted || {}) };
+    for (const [repoPath, units] of Object.entries(local || {})) out[repoPath] = { ...(out[repoPath] || {}), ...units };
+    return out;
   }
 
   function mergeObsStoryHistory(persisted) {
@@ -2936,7 +2991,7 @@ export function AppProvider({ children }) {
     try {
       const reader = new ProjectReader({ api });
       const projects = await reader.listProjects();
-      const { lastUsed, lastEdit: persistedLastEdit, draftUnits, alignSuggestions, obsStoryByProject, obsRecentByProject } = await readHomeSettings();
+      const { lastUsed, lastEdit: persistedLastEdit, draftUnits, alignSuggestions, obsStoryByProject, obsRecentByProject, placeByProject } = await readHomeSettings();
       let lastEdit = persistedLastEdit;
       // Never regress the in-session record to an older persisted one (a rig
       // without client settings keeps the session's record).
@@ -2955,7 +3010,7 @@ export function AppProvider({ children }) {
       // performProjectOpen is left alone (projects was already an array).
       dispatch({
         type: 'set',
-        patch: { projects, lastEdit: resumable ? lastEdit : null, draftUnits, alignSuggestions, obsStoryByProject: mergeObsStoryHistory(obsStoryByProject), obsRecentByProject: { ...(stateRef.current.obsRecentByProject || {}), ...obsRecentByProject }, ...(stateRef.current.projects === null ? { bookError: null } : {}) },
+        patch: { projects, lastEdit: resumable ? lastEdit : null, draftUnits, alignSuggestions, obsStoryByProject: mergeObsStoryHistory(obsStoryByProject), obsRecentByProject: { ...(stateRef.current.obsRecentByProject || {}), ...obsRecentByProject }, placeByProject: (placesRef.current = mergePlaces(placesRef.current ?? stateRef.current.placeByProject, placeByProject)), ...(stateRef.current.projects === null ? { bookError: null } : {}) },
       });
     } catch (e) {
       // Catch-to-absence sweep (D30): projects stays null (unknown), so the
@@ -2978,6 +3033,7 @@ export function AppProvider({ children }) {
         const st = stateRef.current;
         const from = st.view;
         dispatch({ type: 'set', patch: { view } });
+        if (view !== 'home') rememberPlace({ mode: modeOf(view) });
         // #183 (D9): a mode switch is a checkpoint. Started, not awaited: a
         // failure lands in commitError, never in the way.
         if (st.project && storeRef.current && from !== view && from !== 'home') {
@@ -4087,6 +4143,7 @@ export function AppProvider({ children }) {
         await releaseParkedDecision(checkSchedulerRef.current, tool, book); // #100
         if (seq !== checkSessionSeq) return; // a newer open or close won during the release
         dispatch({ type: 'set', patch: { checkTool: tool, checkSession: { loading: true, seq } } });
+        rememberPlace({ mode: 'check', tool });
         try {
           const { session, partial } = await assembleCheckSession({
             api, actions: a, store: storeRef.current, stateRef, st, tool, book, pre, seq,
@@ -4815,6 +4872,38 @@ export function AppProvider({ children }) {
         });
       },
 
+      /** #329: the frame in focus on the story screens; the place record follows it. */
+      setStoryFrame: (frame) => {
+        const n = Number(frame);
+        if (!Number.isInteger(n) || n < 0) return;
+        if (stateRef.current.storyFrame === n) return;
+        dispatch({ type: 'set', patch: { storyFrame: n } });
+        rememberPlace({ verse: n });
+      },
+
+      /** #329: open a book or a story from its Home tile and return to where the
+       * user last worked in it: the mode, the chapter or story, the verse or
+       * frame, the Check tool. Never opened before: the plain open. */
+      openProjectAt: async (repoPath, unit) => {
+        const before = stateRef.current;
+        const project = (before.projects || []).find((p) => p.id === repoPath);
+        const story = project?.flavor === 'textStories';
+        const key = placeKey(story ? { story: Number(unit) } : { book: unit });
+        const place = key ? before.placeByProject?.[repoPath]?.[key] : undefined;
+        await a.openProject(repoPath, unit == null ? undefined : String(unit));
+        if (!place || stateRef.current.project?.repoPath !== repoPath) return;
+        if (story) {
+          if (place.verse != null) a.setStoryFrame(Number(place.verse));
+        } else if (place.chapter && Number(place.chapter) !== 1) {
+          await a.setChapter(place.chapter);
+        }
+        if (place.mode === 'read') await a.go('read');
+        if (place.mode === 'check') {
+          await a.go('check');
+          if (place.tool) await a.resumeCheckTool(place.tool);
+        }
+      },
+
       openProject: (repoPath, bookCode) =>
         performProjectOpen(
           {
@@ -4858,6 +4947,7 @@ export function AppProvider({ children }) {
           scheduler: storySchedulerRef.current,
           rememberObsStory,
           packCache: obsPackCache(),
+          rememberPlaceForStory: (number) => rememberPlace({ story: number, chapter: number, verse: 1 }),
         });
       },
 
@@ -5088,6 +5178,7 @@ export function AppProvider({ children }) {
         // F3: a helps focus names a verse in THIS chapter — carrying it across
         // would highlight an unrelated verse that shares the number.
         dispatch({ type: 'set', patch: { chapter, editing: null, helpsHover: null, helpsActive: null } });
+        rememberPlace({ chapter, verse: null });
       },
       setSourceTab: async (sourceTab) => {
         // N2/D65: a tab switch re-chunks the passage — flush the note buffer

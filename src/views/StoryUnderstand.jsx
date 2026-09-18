@@ -125,8 +125,11 @@ export default function StoryUnderstand() {
   const { s, actions } = useApp();
   const story = s.story;
   const dir = s.project?.scriptDirection === 'rtl' ? 'rtl' : 'ltr';
-  const [activeFrame, setActiveFrame] = React.useState(0);
-  React.useEffect(() => { setActiveFrame(0); }, [s.storyNumber]);
+  // The frame in focus is app state (#329): a story load sets it, a Home tile's
+  // restore sets the remembered frame, a click here reports it back. Absent, the title.
+  const [activeFrame, setActiveFrame] = React.useState(s.storyFrame ?? 0);
+  React.useEffect(() => { setActiveFrame(s.storyFrame ?? 0); }, [s.storyNumber, s.storyFrame]);
+  const focusFrame = (n) => { setActiveFrame(n); actions.setStoryFrame?.(n); };
   // The helps of the open story: reload when the story, the pins or the
   // network change (the book screen's useLoadHelps, on the story's inputs).
   React.useEffect(() => {
@@ -148,7 +151,7 @@ export default function StoryUnderstand() {
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }} data-testid="story-understand">
       {s.rail && (
         <StoryRail numbers={s.storyNumbers} active={s.storyNumber} story={story} onSelect={actions.openStory}
-          currentFrame={unit.frame} onSelectFrame={(n) => { setActiveFrame(n); document.querySelector(`[data-testid="story-understand-unit-${n}"]`)?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }); }} />
+          currentFrame={unit.frame} onSelectFrame={(n) => { focusFrame(n); document.querySelector(`[data-testid="story-understand-unit-${n}"]`)?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }); }} />
       )}
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '10px 26px', borderBottom: 'var(--stroke-hair) solid var(--border-hair)', background: 'var(--surface-card)', flex: 'none', minWidth: 0, overflow: 'hidden' }}>
@@ -165,7 +168,7 @@ export default function StoryUnderstand() {
             )}
             {units.map((x) => (
               <StoryUnit key={x.frame} unit={x} story={story} image={x.frame ? s.storyImages?.[String(x.frame)] : null} dir={dir}
-                focused={x.frame === unit.frame} onFocus={() => setActiveFrame(x.frame)} hasNote={hasNote(x.frame)} />
+                focused={x.frame === unit.frame} onFocus={() => focusFrame(x.frame)} hasNote={hasNote(x.frame)} />
             ))}
           </div>
         </div>

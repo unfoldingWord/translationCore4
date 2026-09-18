@@ -5,7 +5,7 @@ import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 
-const actions = { loadProgress: vi.fn(), openProject: vi.fn(), openSettings: vi.fn() };
+const actions = { loadProgress: vi.fn(), openProjectAt: vi.fn(), openSettings: vi.fn() };
 const stories = Array.from({ length: 50 }, (_, i) => ({ number: i + 1, title: i === 0 ? 'La creación' : i === 11 ? 'El éxodo' : '', pct: i === 0 ? 40 : i === 11 ? 5 : i === 6 ? 100 : 0, frames: 10, drafted: 0 }));
 const PROJECT = { id: '_local_/_local_/historias', name: 'Historias', languageTag: 'es', flavor: 'textStories', scriptDirection: 'ltr' };
 const state = {
@@ -70,10 +70,10 @@ describe('#328 — the OBS project card', () => {
     expect(collapsedStories(stories, undefined).map((s: { number: number }) => s.number)).toEqual([1, 2, 3]);
   });
 
-  it('a tile opens its story in the project, the way a book tile opens a book', () => {
+  it('a tile opens its story where the user last worked in it (#329), the way a book tile opens a book', () => {
     render(<ObsProjectCard p={PROJECT} />);
     fireEvent.click(screen.getByTestId('story-tile-12'));
-    expect(actions.openProject).toHaveBeenCalledWith(PROJECT.id, '12');
+    expect(actions.openProjectAt).toHaveBeenCalledWith(PROJECT.id, 12);
   });
 
   it('collapsedStories ignores a recent entry whose story is not in the list, and keeps recency order', () => {

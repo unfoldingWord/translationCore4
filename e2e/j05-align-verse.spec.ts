@@ -14,6 +14,7 @@ import {
   pinForSideloaded,
   writeProjectPins,
   resetSeededChecking,
+  resetPlaces,
 } from './helpers/rig';
 
 const PINS = () => ({
@@ -58,6 +59,12 @@ async function openAlign(page: import('@playwright/test').Page) {
 
 test.beforeEach(() => {
   resetSeededChecking();
+});
+
+// #329: a Home tile returns to where this client last worked; this journey opens
+// books from their tiles and states its own start (Translate, chapter 1).
+test.beforeEach(() => {
+  resetPlaces();
 });
 
 test.describe('J5 — a translator aligns a verse', () => {

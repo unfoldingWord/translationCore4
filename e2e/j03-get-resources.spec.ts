@@ -17,6 +17,7 @@ import {
   resetSeededChecking,
   sideloadedRepo,
   listSideloaded,
+  resetPlaces,
 } from './helpers/rig';
 
 const PINS = () => ({
@@ -37,6 +38,12 @@ async function openTool(page: import('@playwright/test').Page, tool: string) {
 
 test.beforeEach(() => {
   resetSeededChecking();
+});
+
+// #329: a Home tile returns to where this client last worked; this journey opens
+// books from their tiles and states its own start (Translate, chapter 1).
+test.beforeEach(() => {
+  resetPlaces();
 });
 
 test.describe('J3 — a facilitator fetches the project’s resources', () => {

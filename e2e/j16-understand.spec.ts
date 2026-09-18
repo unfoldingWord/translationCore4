@@ -15,6 +15,7 @@ import {
   resetSeededChecking,
   rigRepo,
   writeProjectPins,
+  resetPlaces,
 } from './helpers/rig';
 
 const PINS = () => ({
@@ -41,6 +42,12 @@ function readSegmentEvents(file: string): Array<{ op: string; chapter?: string; 
   const container = JSON.parse(fs.readFileSync(file, 'utf8')) as { body: string };
   return (JSON.parse(container.body) as { events: Array<{ op: string; chapter?: string; verse?: string; text?: string }> }).events;
 }
+
+// #329: a Home tile returns to where this client last worked; this journey opens
+// books from their tiles and states its own start (Translate, chapter 1).
+test.beforeEach(() => {
+  resetPlaces();
+});
 
 test.describe('J16 — read a passage with helps and record a user comment', () => {
   test(
