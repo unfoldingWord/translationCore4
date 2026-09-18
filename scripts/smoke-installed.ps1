@@ -104,6 +104,12 @@ try {
   $client = Invoke-WebRequest "http://127.0.0.1:$script:port/clients/uw-tc4" -UseBasicParsing
   if ($client.StatusCode -ne 200) { throw 'Client did not return 200' }
   Write-Host 'ok client: root 303, tC4 client 200'
+  # VERSION GUARD (#326): the server must report this install's own
+  # lib/product/product.json version and datetime, not another tree's.
+  $product = Get-Content -Raw -LiteralPath "$AppDir\lib\product\product.json" | ConvertFrom-Json
+  $live = Invoke-RestMethod "http://127.0.0.1:$script:port/api/version" -TimeoutSec 10
+  if ($live.product_version -cne $product.version -or $live.product_date_time -cne $product.datetime) { throw "Version mismatch: /api/version $($live.product_version)/$($live.product_date_time) != lib/product/product.json $($product.version)/$($product.datetime) (#326)" }
+  Write-Host "ok version: /api/version matches lib/product/product.json ($($product.version), $($product.datetime))"
   $settings = Get-Content -Raw -LiteralPath "$SmokeHome\pankosmia\tc4\user_settings.json" | ConvertFrom-Json
   $manifest = Get-Content -Raw -LiteralPath "$AppDir\BUILD-MANIFEST.json" | ConvertFrom-Json
   $leaf = if ($manifest.variant -eq 'debug') { 'tc4-projects-debug' } else { 'tc4-projects' }
