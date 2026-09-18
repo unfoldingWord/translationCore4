@@ -150,7 +150,10 @@ export default function StoryUnderstand() {
 
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }} data-testid="story-understand">
-      {s.rail && <StoryRail numbers={s.storyNumbers} active={s.storyNumber} story={story} onSelect={actions.openStory} />}
+      {s.rail && (
+        <StoryRail numbers={s.storyNumbers} active={s.storyNumber} story={story} onSelect={actions.openStory}
+          currentFrame={unit.frame} onSelectFrame={(n) => { setActiveFrame(n); document.querySelector(`[data-testid="story-understand-unit-${n}"]`)?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }); }} />
+      )}
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '10px 26px', borderBottom: 'var(--stroke-hair) solid var(--border-hair)', background: 'var(--surface-card)', flex: 'none', minWidth: 0, overflow: 'hidden' }}>
           <IconButton title={t('draft.toggleRail')} onClick={actions.toggleRail}><RailIcon /></IconButton>

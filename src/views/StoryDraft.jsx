@@ -24,6 +24,12 @@ import { StoryHelps } from './StoryUnderstand.jsx';
 import { CELL, DraftPill, EditingCard, hair } from './draftChrome.jsx';
 
 const STORY_BOOK = 'OBS';
+
+/** A rail frame button brings its unit into view, as a chapter button brings its chapter. */
+const scrollUnitIntoView = (testId) => {
+  if (typeof document === 'undefined') return;
+  document.querySelector(`[data-testid="${testId}"]`)?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+};
 const READ = { fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-lg)', lineHeight: 'var(--lh-verse-lg)', margin: 0, whiteSpace: 'pre-wrap', textAlign: 'start' };
 
 const shortPin = (pin) => `${pin.repoPath}@${pin.sha.slice(0, 12)}`;
@@ -211,7 +217,10 @@ export default function StoryDraft() {
 
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }} data-testid="story-draft">
-      {s.rail && <StoryRail numbers={s.storyNumbers} active={s.storyNumber} story={story} onSelect={actions.openStory} />}
+      {s.rail && (
+        <StoryRail numbers={s.storyNumbers} active={s.storyNumber} story={story} onSelect={actions.openStory}
+          currentFrame={focused.frame} onSelectFrame={(n) => { setFocusKey(`f${n}`); scrollUnitIntoView(`story-frame-${n}`); }} />
+      )}
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 22px', borderBottom: hair, background: 'var(--surface-card)', flex: 'none' }}>
           <IconButton title={t('storyDraft.toggleRail')} data-testid="toggle-story-rail" onClick={actions.toggleRail}><RailIcon /></IconButton>

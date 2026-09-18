@@ -32,7 +32,8 @@ const state = {
   story: { number: 1, title: 'La creación', ref: 'Génesis 1', frames: [{ image: '![x](obs-01.jpg)', text: 'Al principio.' }, { image: '![x](obs-02.jpg)', text: '' }] },
   sourceStory: SOURCE_STORY as typeof SOURCE_STORY | null,
   storyImages: { '1': { source: 'default', uri: 'local://obs-01.jpg' } } as Record<string, { source: string; uri: string }>,
-  project: { flavor: 'textStories', scriptDirection: 'ltr', name: 'Historias', languageTag: 'es' },
+  project: { flavor: 'textStories', scriptDirection: 'ltr', name: 'Historias', languageTag: 'es' } as Record<string, unknown>,
+  progressByProject: {} as Record<string, unknown>,
   projectPins: { schemaVersion: 2, languageSets: { primary: { obs: { repoPath: 'git.door43.org/unfoldingWord/en_obs', version: 'v9', sha: 'd39a1dc7a7557ac54e4a8fecc3462147fe7eec3b', flavor: 'gloss/textStories' } }, fallback: {} } } as unknown,
   understand: null as null | Record<string, unknown>,
 };
@@ -188,7 +189,9 @@ describe('OBS story draft surface', () => {
   it('lists every story from the catalogue as a keyboard-operable button and names the current one', () => {
     render(<StoryDraft />);
     const rail = screen.getByTestId('story-rail');
-    expect(within(rail).getByTestId('story-1').textContent).toBe('Story 1');
+    expect(rail.textContent).toContain('Stories · 2');
+    // #330: the book rail's rows — the open story with its title and its percent; a story without a title by number.
+    expect(within(rail).getByTestId('story-1').textContent).toBe('1 · La creación');
     expect(within(rail).getByTestId('story-2').textContent).toBe('Story 2');
     expect(screen.getByTestId('story-1').getAttribute('aria-current')).toBe('page');
     expect(screen.getByTestId('story-2').getAttribute('aria-current')).toBeNull();
@@ -196,6 +199,31 @@ describe('OBS story draft surface', () => {
     expect(document.activeElement).toBe(screen.getByTestId('story-2'));
     fireEvent.click(screen.getByTestId('story-2'));
     expect(actions.openStory).toHaveBeenCalledWith(2);
+  });
+
+  it('the rail shows the frames of the open story as number buttons: the frame in view filled, a drafted frame tinted; a frame button focuses its unit', () => {
+    render(<StoryDraft />);
+    const one = screen.getByTestId('frame-marker-1');
+    const two = screen.getByTestId('frame-marker-2');
+    expect(one.tagName).toBe('BUTTON');
+    expect(one.getAttribute('data-i')).toBeNull(); // frame 1 is in view: filled
+    expect(two.getAttribute('data-i')).toBe('choice');
+    expect(one.getAttribute('data-drafted')).toBe('true');
+    expect(two.getAttribute('data-drafted')).toBe('false');
+    fireEvent.click(two);
+    expect(screen.getByTestId('story-frame-2').getAttribute('data-focused')).toBe('true');
+    expect(screen.getByTestId('frame-marker-2').getAttribute('data-i')).toBeNull();
+    expect(screen.getByTestId('frame-marker-1').getAttribute('data-i')).toBe('choice');
+  });
+
+  it('a row shows the percent and title the Home cache holds for a story that is not open', () => {
+    (state as Record<string, unknown>).progressByProject = { hist: { OBS: 5, stories: [{ number: 1, title: 'x', pct: 40 }, { number: 2, title: 'El pecado', pct: 0 }] } };
+    (state.project as Record<string, unknown>).id = 'hist';
+    render(<StoryDraft />);
+    expect(screen.getByTestId('story-2').textContent).toBe('2 · El pecado0%');
+    expect(screen.getByTestId('story-1').textContent).toBe('1 · La creación40%'); // the open story's own title, the cache's percent
+    (state as Record<string, unknown>).progressByProject = {};
+    delete (state.project as Record<string, unknown>).id;
   });
 
   it('gives every gateway line, every drafted line and the open field the project script direction', () => {
