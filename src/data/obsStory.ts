@@ -171,6 +171,7 @@ export const readObsStoryPresentation = async ({
   resources,
   installed,
   packCache,
+  pinsKnown = true,
 }: {
   api: ServerApi;
   store: BurritoStore;
@@ -180,6 +181,10 @@ export const readObsStoryPresentation = async ({
   installed: InstalledMap;
   /** The open project's pack cache (#312); absent, every pack is listed anew. */
   packCache?: ObsPackCache;
+  /** False while the project's pins are unknown (the pins read failed, #312):
+   * no source condition is stated then, because none has been decided. A null
+   * `resources` with the pins KNOWN is the real "no pin recorded". */
+  pinsKnown?: boolean;
 }): Promise<ObsStoryPresentation> => {
   const target = await store.readStory(storyNumber);
   let sourceStory: Story | null = null;
@@ -198,7 +203,7 @@ export const readObsStoryPresentation = async ({
     } else {
       source = { kind: 'not-installed', pin: sourcePin };
     }
-  } else {
+  } else if (pinsKnown) {
     source = { kind: 'no-pin' };
   }
 

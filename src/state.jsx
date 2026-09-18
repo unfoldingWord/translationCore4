@@ -1529,7 +1529,7 @@ async function reloadActiveStoryAfterDownload({ originStore, originRepoPath, sto
   await actions.openStory(storyNumber, stateRef.current.projectPins);
 }
 
-async function openProjectContent({ summary, store, repoPath, scriptDirection, textFont, bookCode, superseded, dispatch, actions, stateRef, pinsReady = Promise.resolve(undefined) }) {
+async function openProjectContent({ summary, store, repoPath, scriptDirection, textFont, bookCode, superseded, dispatch, actions, stateRef, pinsReady = Promise.resolve({ pins: undefined, failed: false }) }) {
   if (summary.flavor !== 'textStories') {
     await actions.openBook(bookCode || summary.bookCodes[0]);
     if (superseded()) return;
@@ -1543,13 +1543,16 @@ async function openProjectContent({ summary, store, repoPath, scriptDirection, t
   // #312: the story opens ONCE, with the pins known. A story read before the
   // pins arrive states "no gateway story is pinned" for a moment and is then
   // read again; the screen must never state a source condition the pins have
-  // not decided. `pinsReady` is loadProjectPins' read (null on error).
-  const pins = await pinsReady;
+  // not decided. `pinsReady` is loadProjectPins' read; when it FAILED the
+  // pins are unknown, and the story opens with its source unstated until the
+  // read is retried (loadProjectPins reopens the story on arrival).
+  const { pins, failed } = await pinsReady;
   if (superseded()) return;
-  if (first !== undefined) await actions.openStory?.(first, pins, {
+  if (first !== undefined) await actions.openStory?.(first, failed ? undefined : pins, {
     store,
     project: { ...summary, scriptDirection, textFont, repoPath },
     storyNumbers: numbers,
+    pinsKnown: !failed,
   });
 }
 
@@ -1578,10 +1581,10 @@ function seedObsStory(scheduler, presentation, number) {
   scheduler.seed({ kind: 'ref', story: number }, presentation.story.ref || '');
 }
 
-async function loadObsStory({ api, resolveContext, store, repoPath, number, resources, packCache, scheduler, seq, storeRef, stateRef, dispatch, rememberObsStory }) {
+async function loadObsStory({ api, resolveContext, store, repoPath, number, resources, pinsKnown, packCache, scheduler, seq, storeRef, stateRef, dispatch, rememberObsStory }) {
   try {
     const { installed } = await resolveContext();
-    const presentation = await readObsStoryPresentation({ api, store, projectRepo: repoPath, storyNumber: number, resources, installed, packCache });
+    const presentation = await readObsStoryPresentation({ api, store, projectRepo: repoPath, storyNumber: number, resources, installed, packCache, pinsKnown });
     if (!isCurrentObsStory({ seq, store, repoPath, storeRef, stateRef })) return;
     seedObsStory(scheduler, presentation, number);
     // #291: a check session is scoped to one story — a loaded story closes
@@ -1608,6 +1611,9 @@ async function openObsStory({ storyNumber, resourcesOverride, context, stateRef,
     repoPath: target.repoPath,
     number: target.number,
     resources: resourcesOverride ?? stateRef.current.projectPins,
+    // #312: pins handed over directly are known; otherwise the state says
+    // whether the read has landed (a failed read leaves projectPinsLoaded false).
+    pinsKnown: context.pinsKnown ?? (resourcesOverride !== undefined || stateRef.current.projectPinsLoaded === true),
     packCache,
     scheduler,
     seq,
@@ -2143,8 +2149,9 @@ async function seedInitialUsfm({ store, stateRef, code, projName }) {
   }
 }
 
-/** Returns the pins read itself, resolved to the document (null when absent
- * or when the read failed), so a story open can wait for it (#312). The
+/** Returns the outcome of the pins read, `{ pins, failed }` (never rejects), so
+ * a story open can wait for it (#312): `pins` is the document or null when
+ * absent; `failed` marks a rejected read, whose pins are unknown. The
  * dispatches below run before that promise settles for the caller. */
 function loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatch }) {
   const stillCurrent = () =>
@@ -2171,7 +2178,13 @@ function loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatc
         const next = await updateResources(store, (current) =>
           backfillCoverage(adoptInstalledResources(current, installed), coverage).resources,
         4, stillCurrent);
-        if (next && stillCurrent()) dispatch({ type: 'set', patch: { projectPins: next } });
+        if (next && stillCurrent()) {
+          dispatch({ type: 'set', patch: { projectPins: next } });
+          // #312: the adopted document can add the OBS members (D75) the
+          // story was read without — the open story follows the pins.
+          if (stateRef.current.project?.flavor === 'textStories' && stateRef.current.storyNumber != null)
+            void actions.openStory?.(stateRef.current.storyNumber, next);
+        }
       } catch {
         // Coverage stays underived; the resolver falls back to warning.
       }
@@ -2187,7 +2200,7 @@ function loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatc
           patch: { projectPins: null, projectPinsLoaded: false, projectPinsError: String(error?.message || error) },
         });
     });
-  return read.catch(() => null);
+  return read.then((pins) => ({ pins, failed: false }), () => ({ pins: null, failed: true }));
 }
 
 /** Catch-to-absence sweep (D30): one article read, failure STATED — never a

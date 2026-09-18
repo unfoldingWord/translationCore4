@@ -13,7 +13,7 @@ import { forgetSharedClocks } from '../src/data/journal/journalStore';
 import { validateSegment, type JournalEvent } from '../src/data/journal/seal';
 import { StoryScheduler } from '../src/data/storyScheduler';
 import { journalingRig, memKv, tickingNow, type JournalingRig } from './helpers/journalingRig';
-import { __obsStoryForTests as obs } from '../src/state.jsx';
+import { __obsStoryForTests as obs, __loadProjectPinsForTests as loadPins } from '../src/state.jsx';
 import { EN_HELPS, INSTALLED_SUITE } from '../src/data/installedSuite';
 import { localRepoPathFromRepoPath } from '../src/data/installed';
 
@@ -347,7 +347,7 @@ describe('#312 — a project open reads its story once, with the pins known', ()
     };
     await obs.openProjectContent({
       summary: ctx.summary, store: ctx.store, repoPath: REPO, scriptDirection: 'ltr', textFont: null, bookCode: undefined,
-      superseded: () => false, dispatch, actions, stateRef: ctx.stateRef, pinsReady: ctx.store.readResources() as never,
+      superseded: () => false, dispatch, actions, stateRef: ctx.stateRef, pinsReady: ctx.store.readResources().then((pins) => ({ pins, failed: false })) as never,
     });
     return { ctx, sources };
   };
@@ -369,5 +369,73 @@ describe('#312 — a project open reads its story once, with the pins known', ()
     expect(ctx.state.storyNumber).toBe(1);
     expect(sources[sources.length - 1]).toEqual({ kind: 'not-installed', pin: GATEWAY_PIN });
     expect(sources.some((source) => (source as { kind?: string } | null)?.kind === 'no-pin')).toBe(false);
+  });
+});
+
+describe('#312 — the pins the story is read with are the pins the project has', () => {
+  const GATEWAY_LOCAL = localRepoPathFromRepoPath(EN_HELPS.obs.repoPath);
+
+  it('a FAILED pins read opens the story with its source unstated: no no-pin, no not-installed, until the read is retried', async () => {
+    const ctx = await setup();
+    ctx.rig.createRepo(GATEWAY_LOCAL, { 'content/01.md': await ctx.api.readIngredient(REPO, 'content/01.md') });
+    const sources: unknown[] = [];
+    const dispatch = (action: { type: string; patch?: Record<string, unknown> }) => {
+      if (action.type === 'set' && action.patch && 'storySource' in action.patch) sources.push(action.patch.storySource);
+      ctx.dispatch(action as never);
+    };
+    const actions = {
+      openBook: vi.fn(async () => {}),
+      openStory: (storyNumber: number, resources?: unknown, context: Record<string, unknown> = {}) =>
+        obs.openObsStory({
+          storyNumber, resourcesOverride: resources, context, stateRef: ctx.stateRef, storeRef: ctx.storeRef, saveRefs: [], dispatch, api: ctx.api,
+          resolveContext: async () => ({ installed: { [GATEWAY_LOCAL]: EN_HELPS.obs } }), scheduler: null, rememberObsStory: () => {},
+        }),
+    };
+    // what loadProjectPins hands over when store.readResources rejects
+    await obs.openProjectContent({
+      summary: ctx.summary, store: ctx.store, repoPath: REPO, scriptDirection: 'ltr', textFont: null, bookCode: undefined,
+      superseded: () => false, dispatch, actions, stateRef: ctx.stateRef, pinsReady: Promise.resolve({ pins: null, failed: true }) as never,
+    });
+    expect(ctx.state.storyNumber).toBe(1);
+    expect(ctx.state.story?.number).toBe(1);
+    expect(sources.length).toBeGreaterThan(0);
+    expect(sources.every((source) => source === null)).toBe(true);
+    // control: the same open with the pins KNOWN and absent states no-pin
+    const known: unknown[] = [];
+    await obs.openObsStory({
+      storyNumber: 1, resourcesOverride: null, context: {}, stateRef: ctx.stateRef, storeRef: ctx.storeRef, saveRefs: [],
+      dispatch: (action: { type: string; patch?: Record<string, unknown> }) => { if (action.patch && 'storySource' in action.patch) known.push(action.patch.storySource); ctx.dispatch(action as never); },
+      api: ctx.api, resolveContext: async () => ({ installed: {} }), scheduler: null, rememberObsStory: () => {},
+    });
+    expect(known[known.length - 1]).toEqual({ kind: 'no-pin' });
+  });
+
+  it('pins adopted from the machine after the open reload the story with them (the OBS members enter the set, D75)', async () => {
+    const gateway = { languageId: 'en', owner: 'unfoldingWord' };
+    const bible = { translationNotes: EN_HELPS.translationNotes, translationWordsLinks: EN_HELPS.translationWordsLinks, translationWords: EN_HELPS.translationWords, translationAcademy: EN_HELPS.translationAcademy };
+    // a project from before #288: its document has the Bible suite and no obs member
+    const pins = { schemaVersion: 2, languageSets: { primary: { gatewayLanguage: gateway, ...bible }, fallback: { gatewayLanguage: gateway, ...bible } } };
+    const installed = Object.fromEntries((['obs', 'obs-tn', 'obs-twl'] as const).map((slot) => [localRepoPathFromRepoPath(EN_HELPS[slot].repoPath), EN_HELPS[slot]]));
+    const writes: unknown[] = [];
+    const store = {
+      readResources: async () => pins,
+      readResourcesWithMd5: async () => ({ value: pins, md5: 'm1' }),
+      writeResources: async (next: unknown) => { writes.push(next); },
+    };
+    const storeRef = { current: store };
+    const stateRef = { current: { project: { repoPath: REPO, flavor: 'textStories' }, storyNumber: 1, projectPins: null, projectPinsLoaded: false } };
+    const opened: Array<[number, unknown]> = [];
+    const actions = {
+      reloadSourcePanes: () => {},
+      resolutionContext: async () => ({ installed, coverage: {} }),
+      openStory: async (storyNumber: number, resources: unknown) => { opened.push([storyNumber, resources]); },
+    };
+    const outcome = await loadPins({ store, repoPath: REPO, storeRef, stateRef, actions, dispatch: () => {} });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(outcome).toEqual({ pins, failed: false });
+    expect(writes).toHaveLength(1);
+    const last = opened[opened.length - 1];
+    expect(last[0]).toBe(1);
+    expect((last[1] as typeof pins).languageSets.primary).toMatchObject({ obs: EN_HELPS.obs, 'obs-tn': EN_HELPS['obs-tn'], 'obs-twl': EN_HELPS['obs-twl'] });
   });
 });
