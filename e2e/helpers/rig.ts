@@ -319,6 +319,21 @@ export function readDecisionFile(repo: string, tool: string, book: string): {
  * decision sidecars — so each test states its own starting conditions instead
  * of inheriting whatever ran before it.
  */
+/**
+ * Forget where this client last worked in every book and story (#329). A Home tile
+ * returns to that place (mode, chapter or story, verse or frame), so a journey that
+ * opens a book from its tile and expects Translate at chapter 1 states this
+ * precondition first, as it states its checking precondition (resetSeededChecking).
+ * The record lives in the rig's per-client settings document, never in a project.
+ */
+export function resetPlaces(): void {
+  if (!fs.existsSync(RIG_CLIENT_SETTINGS)) return;
+  const doc = JSON.parse(fs.readFileSync(RIG_CLIENT_SETTINGS, 'utf8')) as Record<string, unknown>;
+  if (!('placeByProject' in doc)) return;
+  delete doc.placeByProject;
+  fs.writeFileSync(RIG_CLIENT_SETTINGS, JSON.stringify(doc));
+}
+
 export function resetSeededChecking(): void {
   const source = path.join(TC4_ROOT, 'sample-burrito', 'ingredients');
   const target = path.join(rigRepo(SEEDED_PROJECT), 'ingredients');

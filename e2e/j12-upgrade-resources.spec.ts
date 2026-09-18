@@ -29,6 +29,7 @@ import {
   readDecisionFile,
   resetSeededChecking,
   sideloadedIngredient,
+  resetPlaces,
 } from './helpers/rig';
 
 const CACHE = path.join(TC4_ROOT, 'dev-env', 'resources-cache');
@@ -231,6 +232,12 @@ test.beforeEach(async () => {
   await forceOffline();
   test.skip(!NEWER.every((r) => fs.existsSync(cachedZipPath(r))),
     `the v90 exports are not cached under dev-env/resources-cache — see dev-env/README.md, "J12"`);
+});
+
+// #329: a Home tile returns to where this client last worked; this journey opens
+// books from their tiles and states its own start (Translate, chapter 1).
+test.beforeEach(() => {
+  resetPlaces();
 });
 
 test.describe('J12 — a facilitator upgrades the pinned resources', () => {

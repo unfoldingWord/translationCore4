@@ -18,6 +18,7 @@ import {
   byteStrictViolation,
   verseTextSpan,
   sideloadedIngredient,
+  resetPlaces,
 } from './helpers/rig';
 
 const BOOK_IPATH = 'ingredients/TIT.usfm';
@@ -64,6 +65,12 @@ const verseLine = (usfm: string, verse: number): { start: number; end: number } 
   const span = verseTextSpan(usfm, CHAPTER, verse);
   return { start: span.start - `\\v ${verse} `.length, end: span.end };
 };
+
+// #329: a Home tile returns to where this client last worked; this journey opens
+// books from their tiles and states its own start (Translate, chapter 1).
+test.beforeEach(() => {
+  resetPlaces();
+});
 
 test.describe('J2 — a translator drafts a verse', () => {
   test(

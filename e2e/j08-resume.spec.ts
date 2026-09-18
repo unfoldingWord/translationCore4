@@ -24,6 +24,7 @@ import {
   writeProjectPins,
   readDecisionFile,
   resetSeededChecking,
+  resetPlaces,
 } from './helpers/rig';
 
 // The seeded large fixture (issue #95): Titus with 4000 journaled edits, so its
@@ -45,8 +46,16 @@ const READY: Record<string, RegExp> = {
 async function openTitusAt(page: Page, chapter: string, project = SEEDED_PROJECT) {
   await page.goto('/');
   await page.getByTestId(`project-_local_/_local_/${project}`).getByRole('button', { name: /Titus/ }).click();
-  await expect(page.getByText(READY[project]).first()).toBeVisible({ timeout: 120_000 });
+  // #329: the tile returns to the place last worked in Titus (mode and chapter), so an
+  // earlier test in the run decides where this open lands. These journeys state their
+  // own starting point: Translate, at the chapter asked for. The heading is rendered
+  // only once the book is loaded (Draft and Understand show a loading state before it).
+  await expect(page.getByRole('heading', { name: /^Titus \d+$/ })).toBeVisible({ timeout: 120_000 });
+  const translate = page.getByRole('tab', { name: 'Translate', exact: true });
+  if ((await translate.getAttribute('aria-selected')) !== 'true') await translate.click();
   await page.getByRole('button', { name: chapter, exact: true }).click();
+  await expect(page.getByRole('heading', { name: `Titus ${chapter}`, exact: true })).toBeVisible();
+  if (chapter === '1') await expect(page.getByText(READY[project]).first()).toBeVisible({ timeout: 120_000 });
 }
 
 /** The Resume record is written to the rig a second after the edit (debounced).
@@ -88,6 +97,12 @@ async function draftFirstStub(page: Page, text: string) {
   await editor.blur();
   await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
 }
+
+// #329: a Home tile returns to where this client last worked; this journey opens
+// books from their tiles and states its own start (Translate, chapter 1).
+test.beforeEach(() => {
+  resetPlaces();
+});
 
 test.describe('J8 — a translator resumes where they left off', () => {
   test(
@@ -339,4 +354,53 @@ test.describe('J8 — the Increment 4 journey: open, resume, and share a project
 // project must be a verified byte-for-byte materialization of its journal.
 test.afterAll(async () => {
   await verifyAllJournaledProjects();
+});
+
+// #329 — a Home tile returns to where the user last worked in that book or story.
+test.describe('#329 — a Home tile returns to the place last worked', () => {
+  test(
+    'a book tile: Understand on Titus 2 is where the Titus tile reopens; a never-opened book opens at chapter 1 in Translate',
+    { tag: ['@inc7', '@J8'] },
+    async ({ page }) => {
+      test.setTimeout(120_000);
+      await openTitusAt(page, '2');
+      await page.getByRole('tab', { name: 'Understand', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'Titus 2', exact: true })).toBeVisible();
+      await page.waitForTimeout(800); // the place record's debounced write
+      await page.goto('/');
+      await page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByRole('button', { name: /Titus/ }).click();
+      await expect(page.getByRole('tab', { name: 'Understand', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 60_000 });
+      await expect(page.getByRole('heading', { name: 'Titus 2', exact: true })).toBeVisible();
+      // Jonah was never opened this session: the plain open, Translate at chapter 1.
+      await page.goto('/');
+      await page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByRole('button', { name: /Jonah/ }).click();
+      await expect(page.getByRole('tab', { name: 'Translate', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 60_000 });
+      await expect(page.getByRole('heading', { name: 'Jonah 1', exact: true })).toBeVisible();
+    },
+  );
+
+  test(
+    'a story tile: Understand on story 3, frame 4 is where the story-3 tile reopens',
+    { tag: ['@inc7', '@J8', '@j25'] },
+    async ({ page }) => {
+      test.setTimeout(120_000);
+      const { createObsProject } = await import('./helpers/story');
+      const repo = await createObsProject('j8tile', 'Equipo Rig — J8 tile');
+      await page.goto('/');
+      const card = page.getByTestId(`project-_local_/_local_/${repo}`);
+      await card.getByTestId(`toggle-stories-_local_/_local_/${repo}`).click();
+      await card.getByTestId('story-tile-3').click();
+      await expect(page.getByTestId('story-draft')).toBeVisible({ timeout: 60_000 });
+      await page.getByRole('tab', { name: 'Understand', exact: true }).click();
+      await expect(page.getByTestId('story-understand')).toBeVisible({ timeout: 30_000 });
+      await page.getByTestId('story-understand-unit-4').click();
+      await expect(page.getByTestId('story-understand-unit-4')).toHaveAttribute('data-focused', 'true');
+      await page.waitForTimeout(800); // the place record's debounced write
+      await page.goto('/');
+      await card.getByTestId('story-tile-3').click(); // no edits yet: the collapsed row is stories 1 to 3
+      await expect(page.getByTestId('story-understand')).toBeVisible({ timeout: 60_000 });
+      await expect(page.getByRole('heading', { name: 'Story 3', exact: true })).toBeVisible();
+      await expect(page.getByTestId('story-understand-unit-4')).toHaveAttribute('data-focused', 'true', { timeout: 30_000 });
+    },
+  );
 });

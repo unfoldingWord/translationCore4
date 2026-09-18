@@ -14,6 +14,7 @@ import {
   writeProjectPins,
   readDecisionFile,
   resetSeededChecking,
+  resetPlaces,
 } from './helpers/rig';
 
 const PINS = () => ({
@@ -35,6 +36,12 @@ async function openTool(page: import('@playwright/test').Page, tool: string) {
 test.beforeEach(() => {
   // Each spec states its own starting conditions (see resetSeededChecking).
   resetSeededChecking();
+});
+
+// #329: a Home tile returns to where this client last worked; this journey opens
+// books from their tiles and states its own start (Translate, chapter 1).
+test.beforeEach(() => {
+  resetPlaces();
 });
 
 test.describe('J6 — editing a checked verse flags its checks for re-review', () => {
