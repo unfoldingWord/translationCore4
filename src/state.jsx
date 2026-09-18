@@ -380,6 +380,17 @@ const isObsProject = (st) => st.project?.flavor === 'textStories';
 /** The book position the note and check writers key on: the open book, or
  * `OBS` for a story project (#290: one note path for both kinds). */
 const unitBookOf = (st) => (isObsProject(st) ? STORY_BOOK : st.book);
+/** Does this project still hold what the Resume record points at? A Bible
+ * record names one of the project's book codes; a story project has no book
+ * codes at all, and its record names the `OBS` position (#290). The two forms
+ * never cross: a Bible record can never resume a story project, and a story
+ * record can never resume a Bible one. A record for a project that no longer
+ * exists must not offer a Resume into nothing, so the caller matches the
+ * repository path as well. */
+export const resumeRecordHolds = (lastEdit, project) =>
+  (project?.flavor === 'textStories'
+    ? lastEdit?.book === STORY_BOOK
+    : (project?.bookCodes || []).includes(lastEdit?.book));
 let fixSeq = 0; // #9: identity of the open guided-fix screen (completions bind to it)
 
 /** #129 (PR #135 review round 1): align-session identity and the align
@@ -2848,11 +2859,8 @@ export function AppProvider({ children }) {
           Math.max(lastUsed[a.id] || 0, a.timestamp || 0),
       );
       // A record for a project that no longer exists (deleted, other rig)
-      // must not offer a Resume into nothing.
-      // #290: a story project's record names the `OBS` position, not a book
-      // code — resumable when the project is a story project.
-      const holds = (p) => (p.flavor === 'textStories' ? lastEdit.book === STORY_BOOK : (p.bookCodes || []).includes(lastEdit.book));
-      const resumable = lastEdit && projects.some((p) => p.id === lastEdit.repoPath && holds(p));
+      // must not offer a Resume into nothing (resumeRecordHolds).
+      const resumable = lastEdit && projects.some((p) => p.id === lastEdit.repoPath && resumeRecordHolds(lastEdit, p));
       // Review of the D30 sweep: a successful listing clears the LISTING
       // failure's banner (projects was null) — an open-failure banner from
       // performProjectOpen is left alone (projects was already an array).
