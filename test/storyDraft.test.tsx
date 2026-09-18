@@ -95,6 +95,7 @@ describe('OBS story draft surface', () => {
     const text = within(screen.getByTestId('story-frame-1')).getByTestId('story-unit-text');
     expect(text.getAttribute('tabindex')).toBe('0');
     expect(text.getAttribute('role')).toBe('button');
+    expect(screen.getByRole('button', { name: 'Al principio.' })).toBe(text); // the draft itself is the accessible name
     fireEvent.keyDown(text, { key: 'Enter' });
     expect(screen.getByRole('textbox', { name: 'Frame 1' })).toBeTruthy();
   });

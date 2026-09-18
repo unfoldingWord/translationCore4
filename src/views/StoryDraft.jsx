@@ -133,7 +133,7 @@ function TargetCell({ u, dir, editing, onEdit, onClose }) {
         <UnitEditor u={u} dir={dir} onClose={onClose} />
       ) : isFrameDrafted(u.draft) ? (
         <p dir={dir} title={t('storyDraft.editUnit')} onClick={onEdit} onKeyDown={onKey} role="button" tabIndex={0}
-          aria-label={`${t('storyDraft.editUnit')}: ${u.label}`} data-testid="story-unit-text"
+          data-testid="story-unit-text"
           style={{ ...READ, color: 'var(--text-scripture)', cursor: 'text' }}>
           {u.draft}
         </p>
