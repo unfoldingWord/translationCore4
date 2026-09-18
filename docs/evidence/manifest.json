@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "tool": "scripts/prove.mjs",
-  "commit": "f057eed81e30157ae2799f166eaaba7d7cae12fb",
+  "commit": "3c9421aa0234e30c0d4c8b6641b9571885717754",
   "dirty": false,
-  "date": "2026-09-18T20:15:06.453Z",
+  "date": "2026-09-18T21:42:06.624Z",
   "node": "v22.23.2",
   "platform": "linux-x64",
   "ci": true,
@@ -26,15 +26,15 @@
       "needsRig": false,
       "ran": true,
       "skipped": null,
-      "ok": false,
-      "exitCode": 1,
+      "ok": true,
+      "exitCode": 0,
       "passed": null,
       "failed": null,
       "skippedTests": null,
       "summary": [
-        "✖ 2 problems (1 error, 1 warning)"
+        "✖ 1 problem (0 errors, 1 warning)"
       ],
-      "durationMs": 6661
+      "durationMs": 7076
     },
     {
       "id": "typecheck",
@@ -49,7 +49,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [],
-      "durationMs": 6057
+      "durationMs": 6495
     },
     {
       "id": "vitest",
@@ -60,14 +60,14 @@
       "skipped": null,
       "ok": true,
       "exitCode": 0,
-      "passed": 1207,
+      "passed": 1209,
       "failed": 0,
       "skippedTests": 43,
       "summary": [
         "Test Files  90 passed | 8 skipped (98)",
-        "Tests  1207 passed | 43 skipped (1250)"
+        "Tests  1209 passed | 43 skipped (1252)"
       ],
-      "durationMs": 40371
+      "durationMs": 38435
     },
     {
       "id": "build",
@@ -82,9 +82,9 @@
       "failed": null,
       "skippedTests": null,
       "summary": [
-        "✓ built in 9.70s"
+        "✓ built in 9.37s"
       ],
-      "durationMs": 10179
+      "durationMs": 9867
     },
     {
       "id": "conformance:generate",
@@ -120,7 +120,7 @@
         "OBS (the OBS project kind, §10 — sample-burrito-obs): 6 passed, 0 failed",
         "47 passed, 0 failed"
       ],
-      "durationMs": 618
+      "durationMs": 606
     },
     {
       "id": "conformance:journal",
@@ -137,7 +137,7 @@
       "summary": [
         "Journal suite: 350 passed, 0 failed (fast-check seed 20260707)"
       ],
-      "durationMs": 3126
+      "durationMs": 3029
     },
     {
       "id": "conformance:normative",
@@ -157,7 +157,7 @@
         "uncovered          : 0",
         "stale claims       : 0"
       ],
-      "durationMs": 76
+      "durationMs": 81
     },
     {
       "id": "conformance:transport",
@@ -220,5 +220,5 @@
       "durationMs": null
     }
   ],
-  "ok": false
+  "ok": true
 }
