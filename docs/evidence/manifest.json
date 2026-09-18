@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "tool": "scripts/prove.mjs",
-  "commit": "6d962ff5f15553b8889cceae22831e223fe24e25",
+  "commit": "4e94bd82f57c780380c0b50cea7b6e0a6ec34575",
   "dirty": false,
-  "date": "2026-09-18T00:37:26.379Z",
+  "date": "2026-09-18T00:50:59.648Z",
   "node": "v22.23.2",
   "platform": "linux-x64",
   "ci": true,
@@ -34,7 +34,7 @@
       "summary": [
         "✖ 1 problem (0 errors, 1 warning)"
       ],
-      "durationMs": 6661
+      "durationMs": 6984
     },
     {
       "id": "typecheck",
@@ -49,7 +49,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [],
-      "durationMs": 6251
+      "durationMs": 6098
     },
     {
       "id": "vitest",
@@ -60,14 +60,14 @@
       "skipped": null,
       "ok": true,
       "exitCode": 0,
-      "passed": 1174,
+      "passed": 1185,
       "failed": 0,
       "skippedTests": 43,
       "summary": [
-        "Test Files  85 passed | 8 skipped (93)",
-        "Tests  1174 passed | 43 skipped (1217)"
+        "Test Files  88 passed | 8 skipped (96)",
+        "Tests  1185 passed | 43 skipped (1228)"
       ],
-      "durationMs": 37550
+      "durationMs": 39055
     },
     {
       "id": "build",
@@ -82,9 +82,9 @@
       "failed": null,
       "skippedTests": null,
       "summary": [
-        "✓ built in 9.81s"
+        "✓ built in 9.70s"
       ],
-      "durationMs": 10284
+      "durationMs": 10188
     },
     {
       "id": "conformance:generate",
@@ -99,7 +99,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [],
-      "durationMs": 194
+      "durationMs": 191
     },
     {
       "id": "conformance:validate",
@@ -120,7 +120,7 @@
         "OBS (the OBS project kind, §10 — sample-burrito-obs): 6 passed, 0 failed",
         "47 passed, 0 failed"
       ],
-      "durationMs": 627
+      "durationMs": 608
     },
     {
       "id": "conformance:journal",
@@ -137,7 +137,7 @@
       "summary": [
         "Journal suite: 350 passed, 0 failed (fast-check seed 20260707)"
       ],
-      "durationMs": 3027
+      "durationMs": 3378
     },
     {
       "id": "conformance:normative",
@@ -157,7 +157,7 @@
         "uncovered          : 0",
         "stale claims       : 0"
       ],
-      "durationMs": 77
+      "durationMs": 75
     },
     {
       "id": "conformance:transport",
