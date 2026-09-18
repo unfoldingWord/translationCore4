@@ -22,7 +22,7 @@ describe('#328 — recent stories', () => {
   });
 
   it('the list is ordered by time even when an older timestamp arrives late, and a bad story number changes nothing', () => {
-    let list = recordRecentStory([{ story: 5, at: 500 }], 4, 400);
+    const list = recordRecentStory([{ story: 5, at: 500 }], 4, 400);
     expect(list.map((e) => e.story)).toEqual([5, 4]);
     expect(recordRecentStory(list, 0, 900)).toEqual(list);
     expect(recordRecentStory(list, 2.5, 900)).toEqual(list);
