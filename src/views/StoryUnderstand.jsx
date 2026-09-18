@@ -1,6 +1,7 @@
-// Understand for an Open Bible Stories project (#290, J25 — D74 §8, §10):
-// the open story's frames in order with picture, gateway text and the current
-// draft, a user comment per frame, and the helps pane scoped to the selected
+// Understand for an Open Bible Stories project (#290, J25 — D74 §8, §10;
+// amended #332: source only, like the Bible Understand):
+// the open story's frames in order with picture and gateway text,
+// a user comment per frame, and the helps pane scoped to the selected
 // frame — OBS Translation Notes by `story:frame` (the title notes on frame 0)
 // and OBS Translation Words Links resolved to the shared Translation Words
 // articles. The ONLY write is the comment box (the journal's note.add with a
@@ -21,12 +22,11 @@ const UNIT_REST = { background: 'transparent', border: 'var(--stroke) solid tran
 
 /** The story's units: frame 0 is the title, then every frame. */
 const storyUnits = (story, sourceStory) => [
-  { frame: 0, label: t('storyDraft.title'), gateway: sourceStory?.title ?? null, draft: story.title, image: null },
+  { frame: 0, label: t('storyDraft.title'), gateway: sourceStory?.title ?? null, image: null },
   ...story.frames.map((frame, i) => ({
     frame: i + 1,
     label: t('storyDraft.frameLabel', { n: i + 1 }),
     gateway: sourceStory?.frames?.[i]?.text ?? null,
-    draft: frame.text,
     image: frame.image,
   })),
 ];
@@ -49,12 +49,8 @@ function StoryUnit({ unit, story, image, dir, focused, onFocus, hasNote }) {
         {image?.uri && <img src={image.uri} alt={t('storyDraft.imageAlt', { n: unit.frame })} style={{ width: '100%', maxHeight: 210, objectFit: 'cover', borderRadius: 'var(--radius-md)', background: 'var(--surface-sunken)' }} />}
         <div>
           <Overline tone="muted" style={{ marginBottom: 6 }}>{t('storyDraft.source')}</Overline>
-          <p dir={dir} data-testid="story-understand-gateway" style={{ ...READ_TEXT, color: 'var(--text-secondary)', marginBottom: 12 }}>
+          <p dir={dir} data-testid="story-understand-gateway" style={{ ...READ_TEXT, color: 'var(--text-secondary)', marginBottom: 0 }}>
             {unit.gateway || t('storyDraft.sourceMissing')}
-          </p>
-          <Overline tone="accent" style={{ marginBottom: 6 }}>{t('storyDraft.translation')}</Overline>
-          <p dir={dir} data-testid="story-understand-draft" data-drafted={unit.draft ? '1' : '0'} style={{ ...READ_TEXT, color: unit.draft ? 'var(--text-scripture)' : 'var(--text-tertiary)', fontStyle: unit.draft ? 'normal' : 'italic' }}>
-            {unit.draft || t('cc.notYetDraftedFrame')}
           </p>
         </div>
       </div>

@@ -9,7 +9,7 @@ const COMMENT = 'Dios crea todo en seis días: preguntar cómo decir «universo�
 
 test.describe('J25 — a translator reads a story with helps and records a user comment', () => {
   test(
-    'Understand shows the frames with picture, gateway text and draft, the notes and word links of the selected frame; a comment saves as one note.add segment targeting {story, frame} and the story file keeps its bytes',
+    'Understand shows the frames with picture and gateway text, the notes and word links of the selected frame; a comment saves as one note.add segment targeting {story, frame} and the story file keeps its bytes',
     { tag: ['@inc7', '@J25', '@j25'] },
     async ({ page }) => {
       test.setTimeout(120_000);
@@ -25,7 +25,7 @@ test.describe('J25 — a translator reads a story with helps and records a user 
         await expect(page.getByTestId('story-understand-unit-0')).toBeVisible();
         const unit = page.getByTestId('story-understand-unit-1');
         await expect(unit.getByTestId('story-understand-gateway')).toContainText('This is how God made everything in the beginning.');
-        await expect(unit.getByTestId('story-understand-draft')).toHaveAttribute('data-drafted', '0');
+        await expect(unit.getByTestId('story-understand-draft')).toHaveCount(0);
         await expect(unit.getByRole('img')).toBeVisible();
       });
 

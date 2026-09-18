@@ -1515,6 +1515,10 @@ reference story module is `journal/story.mjs`. Points 8, 10 and 11 are product w
    `peripheral/x-obsimages`. The pin uses the same immutable repository and commit identity
    as every other resource pin. Its absence does not make either kind of set incomplete.
 3. The bundled `uW/obs_images_360` pack is installer data with its own sha. A project does
-   not need an override pin to use it. At render time the app checks a project image
-   ingredient, primary and fallback override pins, and the bundled default in that order.
-   It leaves the Markdown image line unchanged.
+not need an override pin to use it. At render time the app checks a project image
+ingredient, primary and fallback override pins, and the bundled default in that order.
+It leaves the Markdown image line unchanged.
+
+## D76 (2026-09-18, project-owner ruling) **OBS Understand shows the source only, like
+the Bible Understand: picture, gateway story, comment box; no draft.** [issue #332;
+corrects the `StoryUnderstand.jsx` header wording and the J25 steps, which named the draft]

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-// #290 (J25): the story Understand screen. The open story's frames render in
-// order with picture, gateway text and draft; the helps pane is scoped to the
-// selected frame (the title notes on frame 0); the comment box is the ONLY
+// #290 (J25; amended #332: source only, like the Bible Understand): the story
+// Understand screen. The open story's frames render in order with picture and
+// gateway text; the helps pane is scoped to the selected frame (the title notes on frame 0); the comment box is the ONLY
 // write and stages under the {story, frame} target (projectFrame: the exact
 // durable identity, never mapped). Inputs are the shapes the state produces:
 // the story parser's story, the shared derivation's story-keyed items.
@@ -82,18 +82,18 @@ beforeEach(() => { cleanup(); calls.length = 0; noteCurrent.clear(); notePersist
 const writes = () => calls.filter((c) => !READ_SIDE.has(c.name));
 
 describe('#290 — the story Understand screen', () => {
-  it('renders the title and every frame in order with picture, gateway text and draft', () => {
+  it('renders the title and every frame in order with picture and gateway text, and no draft line', () => {
     render(<StoryUnderstand />);
     expect(screen.getByTestId('story-understand')).toBeTruthy();
     const title = screen.getByTestId('story-understand-unit-0');
     expect(within(title).getByTestId('story-understand-gateway').textContent).toBe('The Creation');
-    expect(within(title).getByTestId('story-understand-draft').textContent).toBe('La Creación');
+    expect(within(title).queryByTestId('story-understand-draft')).toBeNull();
     const one = screen.getByTestId('story-understand-unit-1');
     expect(within(one).getByRole('img').getAttribute('src')).toBe('local://obs-en-01-01.jpg');
     expect(within(one).getByTestId('story-understand-gateway').textContent).toContain('in the beginning');
-    expect(within(one).getByTestId('story-understand-draft').getAttribute('data-drafted')).toBe('1');
+    expect(within(one).queryByTestId('story-understand-draft')).toBeNull();
     const two = screen.getByTestId('story-understand-unit-2');
-    expect(within(two).getByTestId('story-understand-draft').getAttribute('data-drafted')).toBe('0');
+    expect(within(two).queryByTestId('story-understand-draft')).toBeNull();
     expect(within(two).queryByRole('img')).toBeNull(); // no picture resolved for frame 2
     expect(within(two).getByRole('textbox').getAttribute('value') ?? (within(two).getByRole('textbox') as HTMLTextAreaElement).value).toBe('Nota guardada');
     expect(calls.map((c) => c.name)).toContain('loadUnderstand');
