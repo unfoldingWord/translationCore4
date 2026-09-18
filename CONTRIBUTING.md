@@ -50,29 +50,6 @@ names the run's commit, date and Node version; `npm run docs:gate` fails when th
 sentence disagrees with it].
 A skipped test names the prerequisite that it needs. A skip is not a failure.
 
-### If your change moves the test count
-
-Adding or removing a test changes the clean-clone count, and `npm run docs:gate` then fails
-because the two marked sentences above disagree with the manifest. Close it like this, in
-this order:
-
-1. Push your branch with the code change.
-2. Open the **push-event** CI run of that commit — the run whose event is `push`, not the
-   `pull_request` run. Download its `prove-manifest` artifact.
-3. Copy that file to `docs/evidence/manifest.json`, edit the two marked counts to match it
-   (`README.md` and `CONTRIBUTING.md`), and commit all three together.
-
-Take the manifest from the push-event run only. A `pull_request` run checks out a temporary
-merge commit that GitHub builds for the run, so its manifest records a commit that exists in
-no branch and that nobody can check out later.
-
-**A red docs gate on your own machine is not evidence.** `npm run verify` writes a new
-`docs/evidence/manifest.json` from your run, and your run is not a clean clone: a local rig
-makes the rig-gated tests execute instead of skip, so your counts differ from the recorded
-ones and the gate reports a disagreement that does not exist on CI. Read the gate on CI
-before you call it pre-existing. To see whether a failure is yours, compare your branch's CI
-result with the CI result of `main` at the commit you branched from.
-
 ## Hard rules
 
 1. **Do not write to upstream.** Do not open pull requests, issues or comments on any
