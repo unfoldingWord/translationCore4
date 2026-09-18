@@ -10,7 +10,7 @@ import { ServerApi } from '../src/data/serverApi';
 import { JournalingStore, forgetProjectQueues } from '../src/data/journal/journalingStore';
 import { forgetSharedClocks } from '../src/data/journal/journalStore';
 import { DEFAULT_OBS_IMAGES, DEFAULT_OBS_IMAGES_LOCAL, obsImageFileName } from '../src/data/obsImages';
-import { readObsStoryPresentation } from '../src/data/obsStory';
+import { createObsPackCache, readObsStoryPresentation } from '../src/data/obsStory';
 import { obsFrameSetMismatch } from '../src/data/obsFrameSet';
 import { storyIpath } from '../src/data/journal/runtime';
 import type { ResourcesFile } from '../src/data/burritoStore';
@@ -192,5 +192,49 @@ describe('OBS story pictures (#289)', () => {
     const presentation = await read();
     expect(presentation.imagePacks[0]).toMatchObject({ via: 'paths', files: 0 });
     expect(presentation.imageNote?.packs[0]).toMatchObject({ localPath: DEFAULT_OBS_IMAGES_LOCAL, via: 'paths', files: 0 });
+  });
+});
+
+describe('OBS picture packs are listed once per open project (#312)', () => {
+  const listings = (log: Array<{ route: string }>) =>
+    log.filter((entry) => entry.route === `/api/burrito/paths/${DEFAULT_OBS_IMAGES_LOCAL}`).length;
+
+  it('two story reads on one project make one /burrito/paths request for the pack', async () => {
+    const { rig, api, store, repoPath, seedPack } = await setup();
+    seedPack();
+    const cache = createObsPackCache();
+    const read = (storyNumber: number) =>
+      readObsStoryPresentation({ api, store, projectRepo: repoPath, storyNumber, resources: null, installed: {}, packCache: cache });
+    const before = listings(rig.log);
+    const one = await read(1);
+    const two = await read(2);
+    expect(listings(rig.log) - before).toBe(1);
+    expect(one.imagePacks[0]).toMatchObject({ via: 'paths' });
+    expect(two.imagePacks[0]).toMatchObject({ via: 'paths' });
+    expect(two.imagePacks[0].files).toBe(one.imagePacks[0].files); // the same listing served both reads
+    // control: without a cache the second read lists again
+    await readObsStoryPresentation({ api, store, projectRepo: repoPath, storyNumber: 2, resources: null, installed: {} });
+    expect(listings(rig.log) - before).toBe(2);
+  });
+
+  it('a pack installed between two story reads is listed again, and its new files resolve', async () => {
+    const { rig, api, store, repoPath, fileNames } = await setup();
+    // First read: the machine has no pack; the (cached) listing finds nothing.
+    let cache = createObsPackCache();
+    const read = () =>
+      readObsStoryPresentation({ api, store, projectRepo: repoPath, storyNumber: 1, resources: null, installed: {}, packCache: cache });
+    const missing = await read();
+    expect(missing.images['1'].source).toBe('missing');
+    // The pack is installed. The same cache still answers from the old listing…
+    rig.createRepo(DEFAULT_OBS_IMAGES_LOCAL, Object.fromEntries(fileNames.map((name) => [`360px/${name}`, 'jpeg-bytes'])));
+    const stale = await read();
+    expect(stale.images['1'].source).toBe('missing');
+    // …so the install drops the cache (state.jsx keys it by installEpoch), and the next read lists again.
+    const before = listings(rig.log);
+    cache = createObsPackCache();
+    const fresh = await read();
+    expect(listings(rig.log) - before).toBe(1);
+    expect(fresh.images['1'].source).toBe('default');
+    expect(fresh.imagePacks[0]).toMatchObject({ via: 'paths', files: fileNames.length });
   });
 });
