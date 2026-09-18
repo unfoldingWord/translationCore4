@@ -60,6 +60,15 @@ export interface ObsImagePackReport {
   error: string | null;
 }
 
+/** The filename maps of the picture packs read for one open project (#312). A
+ * pack's listing walks its whole tree on the server and is the same for every
+ * story of the project, so it is read once per pack identity and local path
+ * for the life of the open, and dropped when the project closes or a resource
+ * is installed (an install changes what a pack holds). The caller owns the
+ * cache's life; this module only fills it. */
+export type ObsPackCache = Map<string, Promise<{ pack: ObsImagePack; report: ObsImagePackReport }>>;
+export const createObsPackCache = (): ObsPackCache => new Map();
+
 const safeMetadata = async (api: ServerApi, repoPath: string) => {
   try { return await api.getMetadataRaw(repoPath); } catch { return { ingredients: {} }; }
 };
@@ -70,7 +79,23 @@ const safeMetadata = async (api: ServerApi, repoPath: string) => {
  * fetched that way) still yields its pictures. The table is the fallback when
  * the listing cannot be read. Never throws: a pack that cannot be read reports
  * why and contributes no candidate, so a frame falls through to the next rung. */
-const readPack = async (
+const readPack = (
+  api: ServerApi,
+  pin: ResourcePin,
+  local: string,
+  cache?: ObsPackCache,
+): Promise<{ pack: ObsImagePack; report: ObsImagePackReport }> => {
+  if (!cache) return readPackUncached(api, pin, local);
+  const key = `${pin.repoPath}|${pin.sha}|${local}`;
+  let pending = cache.get(key);
+  if (!pending) {
+    pending = readPackUncached(api, pin, local);
+    cache.set(key, pending);
+  }
+  return pending;
+};
+
+const readPackUncached = async (
   api: ServerApi,
   pin: ResourcePin,
   local: string,
@@ -100,10 +125,11 @@ const pinnedPack = async (
   api: ServerApi,
   installed: InstalledMap,
   pin: ResourcePin,
+  cache?: ObsPackCache,
 ): Promise<{ pack: ObsImagePack | null; report: ObsImagePackReport }> => {
   const local = installedPathFor(installed, pin);
   if (!local) return { pack: null, report: { pin, localPath: null, via: null, files: 0, error: 'not installed' } };
-  return readPack(api, pin, local);
+  return readPack(api, pin, local, cache);
 };
 
 /** The note for a story with image lines and no picture at all. */
@@ -144,6 +170,7 @@ export const readObsStoryPresentation = async ({
   storyNumber,
   resources,
   installed,
+  packCache,
 }: {
   api: ServerApi;
   store: BurritoStore;
@@ -151,6 +178,8 @@ export const readObsStoryPresentation = async ({
   storyNumber: number;
   resources: ResourcesFile | null;
   installed: InstalledMap;
+  /** The open project's pack cache (#312); absent, every pack is listed anew. */
+  packCache?: ObsPackCache;
 }): Promise<ObsStoryPresentation> => {
   const target = await store.readStory(storyNumber);
   let sourceStory: Story | null = null;
@@ -183,12 +212,12 @@ export const readObsStoryPresentation = async ({
     const key = `${pin.repoPath}|${pin.sha}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    const { pack, report } = await pinnedPack(api, installed, pin);
+    const { pack, report } = await pinnedPack(api, installed, pin, packCache);
     reports.push(report);
     if (pack) packs.push(pack);
   }
   const defaultLocal = installedPathFor(installed, DEFAULT_OBS_IMAGES) ?? DEFAULT_OBS_IMAGES_LOCAL;
-  const { pack: bundled, report: bundledReport } = await readPack(api, DEFAULT_OBS_IMAGES, defaultLocal);
+  const { pack: bundled, report: bundledReport } = await readPack(api, DEFAULT_OBS_IMAGES, defaultLocal, packCache);
   reports.push(bundledReport);
   const projectIngredients = await projectImageIngredients(api, projectRepo);
   const images: Record<string, ObsImageResolution> = {};

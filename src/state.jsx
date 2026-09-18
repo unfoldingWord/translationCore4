@@ -13,7 +13,7 @@ import { STORY_FILE } from './data/journal/runtime';
 import { JournalingStore, ProjectReader } from './data/journal/journalingStore';
 import { SaveScheduler } from './data/saveScheduler';
 import { StoryScheduler, normalizeStoryUnit } from './data/storyScheduler';
-import { readObsStoryPresentation } from './data/obsStory';
+import { createObsPackCache, readObsStoryPresentation } from './data/obsStory';
 import { gapMarkerOf, spliceSection, spliceVerse, spliceVerseGap, verseBody } from './data/usfm/splice';
 import { indexBook } from './data/usfm/indexer';
 import { RESOURCE_FRAME, forgetProjectFrames, resolveProjectFrame } from './data/projectFrame';
@@ -1529,7 +1529,7 @@ async function reloadActiveStoryAfterDownload({ originStore, originRepoPath, sto
   await actions.openStory(storyNumber, stateRef.current.projectPins);
 }
 
-async function openProjectContent({ summary, store, repoPath, scriptDirection, textFont, bookCode, superseded, dispatch, actions, stateRef }) {
+async function openProjectContent({ summary, store, repoPath, scriptDirection, textFont, bookCode, superseded, dispatch, actions, stateRef, pinsReady = Promise.resolve(undefined) }) {
   if (summary.flavor !== 'textStories') {
     await actions.openBook(bookCode || summary.bookCodes[0]);
     if (superseded()) return;
@@ -1540,7 +1540,13 @@ async function openProjectContent({ summary, store, repoPath, scriptDirection, t
   dispatch({ type: 'set', patch: { storyNumbers: numbers } });
   const remembered = stateRef.current.obsStoryByProject?.[repoPath];
   const first = numbers.includes(Number(remembered)) ? Number(remembered) : numbers[0];
-  if (first !== undefined) await actions.openStory?.(first, undefined, {
+  // #312: the story opens ONCE, with the pins known. A story read before the
+  // pins arrive states "no gateway story is pinned" for a moment and is then
+  // read again; the screen must never state a source condition the pins have
+  // not decided. `pinsReady` is loadProjectPins' read (null on error).
+  const pins = await pinsReady;
+  if (superseded()) return;
+  if (first !== undefined) await actions.openStory?.(first, pins, {
     store,
     project: { ...summary, scriptDirection, textFont, repoPath },
     storyNumbers: numbers,
@@ -1572,10 +1578,10 @@ function seedObsStory(scheduler, presentation, number) {
   scheduler.seed({ kind: 'ref', story: number }, presentation.story.ref || '');
 }
 
-async function loadObsStory({ api, resolveContext, store, repoPath, number, resources, scheduler, seq, storeRef, stateRef, dispatch, rememberObsStory }) {
+async function loadObsStory({ api, resolveContext, store, repoPath, number, resources, packCache, scheduler, seq, storeRef, stateRef, dispatch, rememberObsStory }) {
   try {
     const { installed } = await resolveContext();
-    const presentation = await readObsStoryPresentation({ api, store, projectRepo: repoPath, storyNumber: number, resources, installed });
+    const presentation = await readObsStoryPresentation({ api, store, projectRepo: repoPath, storyNumber: number, resources, installed, packCache });
     if (!isCurrentObsStory({ seq, store, repoPath, storeRef, stateRef })) return;
     seedObsStory(scheduler, presentation, number);
     // #291: a check session is scoped to one story — a loaded story closes
@@ -1589,7 +1595,7 @@ async function loadObsStory({ api, resolveContext, store, repoPath, number, reso
   }
 }
 
-async function openObsStory({ storyNumber, resourcesOverride, context, stateRef, storeRef, saveRefs, dispatch, api, resolveContext, scheduler, rememberObsStory }) {
+async function openObsStory({ storyNumber, resourcesOverride, context, stateRef, storeRef, saveRefs, dispatch, api, resolveContext, scheduler, rememberObsStory, packCache = undefined }) {
   const target = obsStoryOpenContext({ storyNumber, context, stateRef, storeRef });
   if (!target) return;
   if (!(await drainSchedulers(saveRefs))) return;
@@ -1602,6 +1608,7 @@ async function openObsStory({ storyNumber, resourcesOverride, context, stateRef,
     repoPath: target.repoPath,
     number: target.number,
     resources: resourcesOverride ?? stateRef.current.projectPins,
+    packCache,
     scheduler,
     seq,
     storeRef,
@@ -1766,7 +1773,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
     // that lacks it and whose resource IS on this machine. Best-effort; a
     // failure never blocks opening. N1 (round 14): the detached chain binds
     // every dispatch to the originating store instance and repo path.
-    loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatch });
+    const pinsReady = loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatch });
     // B12 — warm the install resolver BEFORE any book/source read, so
     // resolveReadPath's installedCache is populated on a cold open.
     await actions.resolutionContext().catch(() => {});
@@ -1785,6 +1792,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
       dispatch,
       actions,
       stateRef,
+      pinsReady,
     });
     if (superseded()) return;
     // #183: the Home banner for a failed leave-checkpoint is cleared once a
@@ -2135,10 +2143,14 @@ async function seedInitialUsfm({ store, stateRef, code, projName }) {
   }
 }
 
+/** Returns the pins read itself, resolved to the document (null when absent
+ * or when the read failed), so a story open can wait for it (#312). The
+ * dispatches below run before that promise settles for the caller. */
 function loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatch }) {
   const stillCurrent = () =>
     storeRef.current === store && stateRef.current.project?.repoPath === repoPath;
-  store.readResources()
+  const read = store.readResources();
+  read
     .then(async (pins) => {
       if (!stillCurrent()) return;
       dispatch({ type: 'set', patch: { projectPins: pins, projectPinsLoaded: true, projectPinsError: null } });
@@ -2175,6 +2187,7 @@ function loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatc
           patch: { projectPins: null, projectPinsLoaded: false, projectPinsError: String(error?.message || error) },
         });
     });
+  return read.catch(() => null);
 }
 
 /** Catch-to-absence sweep (D30): one article read, failure STATED — never a
@@ -2666,6 +2679,14 @@ export function AppProvider({ children }) {
   const storySchedulerRef = useRef(null);
   const saveRefs = useRef([schedulerRef, noteSchedulerRef, alignSchedulerRef, checkSchedulerRef, storySchedulerRef]).current;
   const openProjectSeqRef = useRef(0); // openProject sequence token (round 25): the latest open owns the refs
+  // #312: the picture-pack listings of the open project. Keyed by the open
+  // (a reopen lists again) and by installEpoch (an install lists again).
+  const obsPackCacheRef = useRef({ key: null, packs: null });
+  const obsPackCache = () => {
+    const key = `${openProjectSeqRef.current}|${stateRef.current.installEpoch}`;
+    if (obsPackCacheRef.current.key !== key) obsPackCacheRef.current = { key, packs: createObsPackCache() };
+    return obsPackCacheRef.current.packs;
+  };
   const articleSeqRef = useRef(0); // help-article completion token (D3, adversarial round 4)
 
   // ---- derived display model -------------------------------------------------
@@ -4756,6 +4777,7 @@ export function AppProvider({ children }) {
           resolveContext: a.resolutionContext,
           scheduler: storySchedulerRef.current,
           rememberObsStory,
+          packCache: obsPackCache(),
         });
       },
 

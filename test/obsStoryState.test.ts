@@ -14,6 +14,8 @@ import { validateSegment, type JournalEvent } from '../src/data/journal/seal';
 import { StoryScheduler } from '../src/data/storyScheduler';
 import { journalingRig, memKv, tickingNow, type JournalingRig } from './helpers/journalingRig';
 import { __obsStoryForTests as obs } from '../src/state.jsx';
+import { EN_HELPS, INSTALLED_SUITE } from '../src/data/installedSuite';
+import { localRepoPathFromRepoPath } from '../src/data/installed';
 
 const fs = process.getBuiltinModule('node:fs');
 const path = process.getBuiltinModule('node:path');
@@ -313,5 +315,59 @@ describe('#289 — the draft percentage', () => {
     expect(String(ctx.state.storySaveError)).toMatch(/frame 999/);
     expect(onFrameSaved).not.toHaveBeenCalled();
     expect(await publishedEvents(ctx.rig)).toEqual([]);
+  });
+});
+
+describe('#312 — a project open reads its story once, with the pins known', () => {
+  // The pins a new OBS project gets at creation (the bundled suite, #288); the
+  // gateway is its `obs` member, installed at the path the app would stage it.
+  const GATEWAY_PIN = EN_HELPS.obs;
+  const GATEWAY_LOCAL = localRepoPathFromRepoPath(GATEWAY_PIN.repoPath);
+  const PINS = INSTALLED_SUITE;
+
+  /** Open the project the way performProjectOpen does: the pins read is handed to
+   * openProjectContent, whose story open is the real openObsStory. Every
+   * `storySource` value dispatched through the open is recorded. */
+  const openWithPins = async (installed: Record<string, unknown>, before: (ctx: Awaited<ReturnType<typeof setup>>) => Promise<void> = async () => {}) => {
+    const ctx = await setup();
+    await ctx.store.writeResources(PINS as never, null);
+    await before(ctx);
+    const sources: unknown[] = [];
+    const dispatch = (action: { type: string; patch?: Record<string, unknown> }) => {
+      if (action.type === 'set' && action.patch && 'storySource' in action.patch) sources.push(action.patch.storySource);
+      ctx.dispatch(action as never);
+    };
+    const actions = {
+      openBook: vi.fn(async () => {}),
+      openStory: (storyNumber: number, resources?: unknown, context: Record<string, unknown> = {}) =>
+        obs.openObsStory({
+          storyNumber, resourcesOverride: resources, context, stateRef: ctx.stateRef, storeRef: ctx.storeRef, saveRefs: [], dispatch, api: ctx.api,
+          resolveContext: async () => ({ installed }), scheduler: null, rememberObsStory: () => {},
+        }),
+    };
+    await obs.openProjectContent({
+      summary: ctx.summary, store: ctx.store, repoPath: REPO, scriptDirection: 'ltr', textFont: null, bookCode: undefined,
+      superseded: () => false, dispatch, actions, stateRef: ctx.stateRef, pinsReady: ctx.store.readResources() as never,
+    });
+    return { ctx, sources };
+  };
+
+  it('a project whose pinned gateway story is installed never dispatches a no-pin source, at any moment of the open', async () => {
+    const { ctx, sources } = await openWithPins({ [GATEWAY_LOCAL]: GATEWAY_PIN }, async (c) => {
+      // the gateway story is the project's own story 1 bytes: installed, and no frame mismatch
+      c.rig.createRepo(GATEWAY_LOCAL, { 'content/01.md': await c.api.readIngredient(REPO, 'content/01.md') });
+    });
+    expect(ctx.state.storyNumber).toBe(1);
+    expect(sources.length).toBeGreaterThan(0);
+    expect(sources.some((source) => (source as { kind?: string } | null)?.kind === 'no-pin')).toBe(false);
+    expect(sources[sources.length - 1]).toBeNull(); // read and matching
+    expect((ctx.state as { sourceStory?: { number: number } | null }).sourceStory?.number).toBe(1);
+  });
+
+  it('a project whose pinned gateway story is absent ends with a not-installed source', async () => {
+    const { ctx, sources } = await openWithPins({});
+    expect(ctx.state.storyNumber).toBe(1);
+    expect(sources[sources.length - 1]).toEqual({ kind: 'not-installed', pin: GATEWAY_PIN });
+    expect(sources.some((source) => (source as { kind?: string } | null)?.kind === 'no-pin')).toBe(false);
   });
 });
