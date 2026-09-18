@@ -15,20 +15,40 @@ const COLLAPSE_ABOVE = 12;
 // Plain text action in a card header (Settings, Export): hairline hover, no fill.
 const HEADER_ACTION = { border: 0, background: 'transparent', cursor: 'pointer', padding: '8px 6px', fontFamily: 'var(--font-ui)', fontWeight: 'var(--fw-heavy)', fontSize: 'var(--fs-caption-lg)', letterSpacing: 'var(--track-12-5)', color: 'var(--text-heading)', borderRadius: 'var(--radius-sm)' };
 
-// An OBS project's card (J20, #287; D74): the kind marker, and one tile whose
-// percentage is frames with a non-empty paragraph over the fixed frame total.
-// No book tiles and no Add-a-book: the scope is always the fifty stories. The
-// tile opens the story editor for the project.
-function ObsProjectCard({ p }) {
+// An OBS project's card (J20, #287; D74; #328): the kind marker, and one tile
+// per story, the way a Bible card has one per book. The card opens collapsed
+// to the stories this client edited most recently (newest first; the first
+// three when nothing is edited yet) and expands to all fifty in numeric order.
+// No Add-a-book: the scope is always the fifty stories (R-10.2.2). A tile
+// opens its story in the project.
+export const RECENT_TILES = 3;
+
+/** The story tiles the collapsed card shows: the recently edited stories,
+ * newest first, or the first RECENT_TILES stories when nothing is edited. */
+export const collapsedStories = (stories, recent) => {
+  const byNumber = new Map(stories.map((story) => [story.number, story]));
+  const edited = (recent || []).map((entry) => byNumber.get(entry.story)).filter(Boolean);
+  return edited.length ? edited.slice(0, RECENT_TILES) : stories.slice(0, RECENT_TILES);
+};
+
+const editedOn = (at) => new Date(at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+
+export function ObsProjectCard({ p }) {
   const { s, actions } = useApp();
+  const [expanded, setExpanded] = useState(false);
   const prog = s.progressByProject[p.id] || {};
-  const cacheKey = s.progressByProject[p.id] ? `1:${Object.values(prog).includes(null)}` : 'none';
+  const cacheKey = s.progressByProject[p.id] ? `1:${prog.OBS === null}` : 'none';
   useEffect(() => {
     actions.loadProgress(p);
   }, [p.id, cacheKey]);
   const dir = p.scriptDirection === 'rtl' ? 'rtl' : 'ltr';
   const pct = prog.OBS;
   const hasPct = typeof pct === 'number';
+  const stories = prog.stories || [];
+  const recent = s.obsRecentByProject?.[p.id] || [];
+  const editedAt = new Map(recent.map((entry) => [entry.story, entry.at]));
+  const inProgress = stories.filter((story) => typeof story.pct === 'number' && story.pct > 0).length;
+  const shown = expanded ? stories : collapsedStories(stories, recent);
   return (
     <Card data-testid={`project-${p.id}`} padding="22px 24px">
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
@@ -42,16 +62,33 @@ function ObsProjectCard({ p }) {
             <Badge size="sm" tone={dir === 'rtl' ? 'warn' : 'neutral'} style={dir === 'rtl' ? undefined : { color: 'var(--text-secondary)' }}>{dir.toUpperCase()}</Badge>
           </div>
           <span style={{ fontSize: 'var(--fs-ui-sm)', color: 'var(--text-tertiary)', fontWeight: 'var(--fw-medium)' }} data-testid="obs-progress">
-            {p.languageTag} · {t('home.obsStories')} · {hasPct ? t('home.drafted', { n: pct }) : '—'}
+            {p.languageTag} · {t('home.obsStories')} · {t('home.inProgress', { n: inProgress })} · {hasPct ? t('home.drafted', { n: pct }) : '—'}
           </span>
         </div>
         <button type="button" data-i="quiet" title={t('home.settings')} onClick={() => actions.openSettings(p)} style={HEADER_ACTION}>
           {t('home.settings')}
         </button>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(148px,1fr))', gap: 8 }}>
-        <BookTile name={t('home.obsKind')} percent={hasPct ? pct : 0} meta={hasPct ? undefined : '—'} data-testid="obs-tile" onClick={() => actions.openProject(p.id)} />
+      {/* Wider than a book tile: a story tile carries a number, a title, a percent and a date. */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(236px,1fr))', gap: 8 }} data-testid="story-tiles">
+        {shown.map((story) => {
+          const known = typeof story.pct === 'number';
+          const at = editedAt.get(story.number);
+          // D30: an unknown percent is an em-dash, never a false 0%.
+          const meta = !known ? '—' : at ? `${story.pct}% · ${editedOn(at)}` : undefined;
+          return (
+            <BookTile key={story.number} data-testid={`story-tile-${story.number}`} dir={dir}
+              name={story.title ? `${story.number} · ${story.title}` : t('storyDraft.storyNumber', { n: story.number })}
+              percent={known ? story.pct : 0} meta={meta} onClick={() => actions.openProject(p.id, String(story.number))} />
+          );
+        })}
       </div>
+      {stories.length > RECENT_TILES && (
+        <Button variant="ghost" onClick={() => setExpanded((v) => !v)} data-testid={`toggle-stories-${p.id}`}
+          style={{ marginTop: 12 }}>
+          {expanded ? t('home.showRecentStories') : t('home.showAllStories', { n: stories.length })} →
+        </Button>
+      )}
     </Card>
   );
 }

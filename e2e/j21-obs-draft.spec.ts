@@ -29,7 +29,7 @@ test.describe('J21 — a translator translates a story frame by frame', () => {
 
       await test.step('open the project: story 1, the gateway text and the picture of frame 1, the field empty', async () => {
         await page.goto('/');
-        await page.getByTestId(`project-_local_/_local_/${repo}`).getByTestId('obs-tile').click();
+        await page.getByTestId(`project-_local_/_local_/${repo}`).getByTestId('story-tile-1').click();
         await expect(page.getByTestId('story-draft')).toBeVisible({ timeout: 60_000 });
         await expect(page.getByTestId('story-source-notice')).toHaveCount(0);
         await expect(page.getByTestId('story-image-note')).toHaveCount(0);
@@ -96,7 +96,7 @@ test.describe('J21 — a translator translates a story frame by frame', () => {
 
       await test.step('reopen: the three writes are what the story shows, and the other stories are untouched', async () => {
         await page.reload();
-        await page.getByTestId(`project-_local_/_local_/${repo}`).getByTestId('obs-tile').click();
+        await page.getByTestId(`project-_local_/_local_/${repo}`).getByTestId('story-tile-1').click();
         await expect(page.getByTestId('story-draft')).toBeVisible({ timeout: 60_000 });
         await expect(page.getByTestId('story-frame-1').getByTestId('story-unit-text')).toHaveText(FRAME_1);
         await expect(page.getByTestId('story-title').getByTestId('story-unit-text')).toHaveText(TITLE);

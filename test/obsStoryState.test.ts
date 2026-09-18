@@ -439,3 +439,49 @@ describe('#312 — the pins the story is read with are the pins the project has'
     expect((last[1] as typeof pins).languageSets.primary).toMatchObject({ obs: EN_HELPS.obs, 'obs-tn': EN_HELPS['obs-tn'], 'obs-twl': EN_HELPS['obs-twl'] });
   });
 });
+
+describe('#328 — per-story progress for the Home tiles', () => {
+  it('reads fifty percents: three drafted stories carry their own percent and title, the rest 0 with the gateway title; the project percent is the frame total', async () => {
+    const ctx = await setup();
+    const numbers = await ctx.store.listStories();
+    expect(numbers).toHaveLength(50);
+    // The fixture is the raw template with its own titles; the seed form blanks
+    // them (J20), so story 2 and story 12 are blanked here to test the fallback.
+    await ctx.store.writeTitle(1, 'La creación');
+    await ctx.store.writeTitle(2, '');
+    await ctx.store.writeTitle(12, '');
+    await ctx.store.writeFrame(1, 1, 'Al principio.');
+    await ctx.store.writeFrame(12, 1, 'Moisés.');
+    await ctx.store.writeFrame(12, 2, 'El faraón.');
+    const seven = (await ctx.store.readStory(7)).story;
+    for (let f = 1; f <= seven.frames.length; f += 1) await ctx.store.writeFrame(7, f, `Marco ${f}`);
+    const progress = await obs.obsStoryProgress(ctx.store, async (n: number) => `Gateway ${n}`);
+    expect(progress.stories).toHaveLength(50);
+    expect(progress.stories.map((s: { number: number }) => s.number)).toEqual(numbers);
+    const one = progress.stories.find((s: { number: number }) => s.number === 1)!;
+    const twelve = progress.stories.find((s: { number: number }) => s.number === 12)!;
+    const sevenP = progress.stories.find((s: { number: number }) => s.number === 7)!;
+    const two = progress.stories.find((s: { number: number }) => s.number === 2)!;
+    expect(one.title).toBe('La creación'); // the drafted title wins
+    expect(one.pct).toBe(Math.max(1, Math.round((1 / one.frames) * 100)));
+    expect(twelve).toMatchObject({ title: 'Gateway 12', drafted: 2, pct: Math.max(1, Math.round((2 / twelve.frames) * 100)) });
+    expect(sevenP.pct).toBe(100);
+    expect(two).toMatchObject({ title: 'Gateway 2', pct: 0, drafted: 0 });
+    const frames = progress.stories.reduce((n: number, s: { frames: number }) => n + s.frames, 0);
+    const drafted = 1 + 2 + seven.frames.length;
+    expect(progress.OBS).toBe(Math.max(1, Math.round((drafted / frames) * 100)));
+    expect(progress.OBS).toBe(await obs.obsDraftPercent(ctx.store));
+  });
+
+  it('a story whose read fails is unknown (null), and so is the project percent; a failing gateway title read leaves the title empty', async () => {
+    const ctx = await setup();
+    await ctx.store.writeTitle(3, '');
+    ctx.rig.failOn((c) => c.repo === REPO && c.ipath === 'content/02.md', Infinity);
+    const progress = await obs.obsStoryProgress(ctx.store, async () => { throw new Error('no gateway'); });
+    const two = progress.stories.find((s: { number: number }) => s.number === 2)!;
+    expect(two).toMatchObject({ pct: null, title: '' });
+    expect(progress.stories.find((s: { number: number }) => s.number === 3)!).toMatchObject({ pct: 0, title: '' });
+    expect(progress.stories.find((s: { number: number }) => s.number === 1)!).toMatchObject({ pct: 0, title: 'The Creation' });
+    expect(progress.OBS).toBeNull();
+  });
+});
