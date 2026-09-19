@@ -41,19 +41,22 @@ function StoryUnit({ unit, story, image, dir, focused, onFocus, hasNote }) {
         <Overline>{unit.label}</Overline><div style={{ flex: 1 }} />
         {hasNote ? <StatusDot status="valid" size={7} /> : null}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: image?.uri ? 'minmax(160px, 30%) 1fr' : '1fr', gap: 22, alignItems: 'start', marginTop: 10 }}>
-        {image?.uri && <img src={image.uri} alt={t('storyDraft.imageAlt', { n: unit.frame })} style={{ width: '100%', maxHeight: 210, objectFit: 'cover', borderRadius: 'var(--radius-md)', background: 'var(--surface-sunken)' }} />}
-        <div>
-          <Overline tone="muted" style={{ marginBottom: 6 }}>{t('storyDraft.source')}</Overline>
-          <p dir={dir} data-testid="story-understand-gateway" style={{ ...READ_TEXT, color: 'var(--text-secondary)', marginBottom: 0 }}>
-            {unit.gateway || t('storyDraft.sourceMissing')}
-          </p>
-        </div>
+      {/* #327: the picture floats at the start of the gateway text (the text's own
+        * direction decides the side), the text runs beside it and then under it. */}
+      <div dir={dir} style={{ marginTop: 10 }}>
+        <Overline tone="muted" style={{ marginBottom: 6 }}>{t('storyDraft.source')}</Overline>
+        {image?.uri && <img src={image.uri} alt={t('storyDraft.imageAlt', { n: unit.frame })} style={{ float: 'inline-start', width: '30%', minWidth: 160, maxHeight: 210, objectFit: 'cover', marginInlineEnd: 22, marginBottom: 10, borderRadius: 'var(--radius-md)', background: 'var(--surface-sunken)' }} />}
+        <p dir={dir} data-testid="story-understand-gateway" style={{ ...READ_TEXT, color: 'var(--text-secondary)', marginBottom: 0 }}>
+          {unit.gateway || t('storyDraft.sourceMissing')}
+        </p>
       </div>
       {/* The comment box keys its note under {story, frame}: `unit.project`
-        * is the exact durable identity, written unmapped (projectFrame). */}
-      <ComprehensionBox book={STORY_BOOK} chapter={story.number} mode="frame"
-        unit={{ key: `f${unit.frame}`, project: { chapter: story.number, verse: unit.frame }, verses: [] }} />
+        * is the exact durable identity, written unmapped (projectFrame). It clears
+        * the floated picture, so it always sits below both picture and text (#327). */}
+      <div data-testid="story-understand-comment" style={{ clear: 'both' }}>
+        <ComprehensionBox book={STORY_BOOK} chapter={story.number} mode="frame"
+          unit={{ key: `f${unit.frame}`, project: { chapter: story.number, verse: unit.frame }, verses: [] }} />
+      </div>
     </div>
   );
 }
