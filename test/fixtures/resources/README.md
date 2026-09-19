@@ -20,6 +20,7 @@ fact that these are one-book slices of the full export.
 | `en_ta@v86/` | `git.door43.org/unfoldingWord/en_ta/sb/v86.zip` | `c7caddfb474efd713f36b35a3ffc927866c7b180` | fallback `translationAcademy` |
 | `en_obs-tn@v13/` | `git.door43.org/unfoldingWord/en_obs-tn/sb/v13.zip` (fetched 2026-09-17 through `dev-env/scripts/cache-resource.zsh`) | `e86138ea13f619f09f7a6dcaa60592716d407fe4` | fallback `obs-tn` (§10.6) |
 | `en_obs-twl@v3/` | `git.door43.org/unfoldingWord/en_obs-twl/sb/v3.zip` (fetched 2026-09-17, same path) | `44ebc9fafe8101665f985007d566f5036a2be85b` | fallback `obs-twl` (§10.6) |
+| `en_obs-tq@v10/` | `git.door43.org/unfoldingWord/en_obs-tq/sb/v10.zip` (fetched 2026-09-18, same path; the whole `OBS.tsv`, 672 rows) | `01b92fe8793d62cff3a2221f5174c768cbad3dc1` | fallback `obs-tq` (§10.6, R-10.6.3) |
 
 Slice contents (paths flattened, `ingredients/` prefix dropped, `/` → `-`):
 

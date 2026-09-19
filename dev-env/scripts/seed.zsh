@@ -50,7 +50,7 @@ node "$(npath "$ROOT/scripts/seed-large-project.mjs")" "$(npath "$WORK/repos/_lo
 # exercise the Understand screen's Questions tab.
 for R in en_ult:v89 en_ust:v89 en_tn:v89 en_tw:v89 en_ta:v89 en_tq:v89 el-x-koine_ugnt:v0.34 \
          es-419_tn:v66 es-419_tw:v37 es-419_ta:v4 \
-         en_obs:v9 en_obs-tn:v13 en_obs-twl:v3; do
+         en_obs:v9 en_obs-tn:v13 en_obs-twl:v3 en_obs-tq:v10; do
   N="${R%%:*}"; V="${R##*:}"
   Z="$DEV/resources-cache/$N-$V-unwrapped.zip"
   if [ -f "$Z" ] && [ ! -d "$WORK/repos/_local_/_sideloaded_/$N" ]; then

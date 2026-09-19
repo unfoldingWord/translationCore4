@@ -17,7 +17,7 @@ npm run generate   # rebuilds JON stub (incl. the 2:9-10 verse-span fixture), al
 npm run validate   # the Phase-1 suite (BURRITO-SPEC §7); the three groups are below
 ```
 
-`npm run validate` runs <!-- manifest: conformance:validate passed -->47 checks in four
+`npm run validate` runs <!-- manifest: conformance:validate passed -->48 checks in four
 groups:
 
 - **Stage-1 (<!-- manifest: conformance:validate summary[Stage-1] -->36):** SB schema,
@@ -36,7 +36,7 @@ groups:
   journal merge — reproduces the metadata.json conflict, proves the §8.7
   resolve+regenerate rule, and checks that the fixture journals are the §8.1
   sealed-segment stream form (needs git).
-- **OBS (<!-- manifest: conformance:validate summary[OBS] -->6):** the OBS project kind
+- **OBS (<!-- manifest: conformance:validate summary[OBS] -->7):** the OBS project kind
   (BURRITO-SPEC §10, D74) on `sample-burrito-obs/` — schema validity with flavor
   `gloss/textStories`, layout equality with the vendored `text_stories` template, the frame
   model, the byte-strict frame write, `currentScope` equality, the version 2 fold projected

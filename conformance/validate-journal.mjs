@@ -4529,8 +4529,9 @@ const sameRegister = (a, b) => {
       okDecision && okNotes && genRefused && v1Refused && mixedRefused && twoTargets && v1ObsKey && badStory && noResolution);
   }
 
-  // JC-33c — §10.6 pins: the three OPTIONAL OBS members are §5.3 slots with the §5.3 entry
-  // grammar; they project after simplifiedText; an unknown OBS-looking slot refuses.
+  // JC-33c — §10.6 pins: the OPTIONAL OBS members (three text members, `obs-tq` since the
+  // D75 amendment #331, the image override) are §5.3 slots with the §5.3 entry grammar; they
+  // project after simplifiedText in the §10.6 order; an unknown OBS-looking slot refuses.
   {
     const entry = { repoPath: 'git.door43.org/unfoldingWord/en_obs', version: 'v9', sha: 'd39a1dc7a7557ac54e4a8fecc3462147fe7eec3b', flavor: 'gloss/textStories' };
     const pin = (i, slot, e = entry) => ({ v: 1, base: null, op: 'resource.pin.set', actor: A, ts: t(i, 0, A), slot, entry: e });
@@ -4546,16 +4547,18 @@ const sameRegister = (a, b) => {
     const imageEntry = { repoPath: 'git.door43.org/uW/obs_images_360', sha: '7146d5b504f6b63b9e11f7dc0b18c594d0ae179d', flavor: 'peripheral/x-obsimages' };
     const out = fold([...base, pin(20, 'languageSets.fallback.obs'), pin(21, 'languageSets.fallback.obs-tn', { ...entry, repoPath: 'git.door43.org/unfoldingWord/en_obs-tn', sha: 'e86138ea13f619f09f7a6dcaa60592716d407fe4', version: 'v13', flavor: 'peripheral/x-obsnotes' }),
       pin(22, 'languageSets.fallback.obs-twl', { ...entry, repoPath: 'git.door43.org/unfoldingWord/en_obs-twl', sha: '44ebc9fafe8101665f985007d566f5036a2be85b', version: 'v3', flavor: 'parascriptural/x-bcvarticles' }),
-      pin(23, 'languageSets.fallback.obs-images', imageEntry)]);
+      pin(23, 'languageSets.fallback.obs-images', imageEntry),
+      pin(24, 'languageSets.fallback.obs-tq', { ...entry, repoPath: 'git.door43.org/unfoldingWord/en_obs-tq', sha: '01b92fe8793d62cff3a2221f5174c768cbad3dc1', version: 'v10', flavor: 'peripheral/x-obsquestions' })]);
     const doc = JSON.parse(projectResources(out.pins));
     const keys = Object.keys(doc.languageSets.fallback);
     const order = keys.includes('simplifiedText') && keys.indexOf('translationAcademy') < keys.indexOf('translationQuestions') && keys.indexOf('translationQuestions') < keys.indexOf('simplifiedText') &&
-      keys.indexOf('simplifiedText') < keys.indexOf('obs') && keys.indexOf('obs') < keys.indexOf('obs-tn') && keys.indexOf('obs-tn') < keys.indexOf('obs-twl') && keys.indexOf('obs-twl') < keys.indexOf('obs-images');
+      keys.indexOf('simplifiedText') < keys.indexOf('obs') && keys.indexOf('obs') < keys.indexOf('obs-tn') && keys.indexOf('obs-tn') < keys.indexOf('obs-twl') && keys.indexOf('obs-twl') < keys.indexOf('obs-tq') && keys.indexOf('obs-tq') < keys.indexOf('obs-images');
     const okProjected = doc.languageSets.fallback.obs.sha === entry.sha && doc.languageSets.fallback['obs-tn'].flavor === 'peripheral/x-obsnotes' && doc.languageSets.fallback['obs-twl'].flavor === 'parascriptural/x-bcvarticles' && doc.languageSets.fallback['obs-images'].sha === imageEntry.sha && !('obs' in doc.languageSets.primary) && order;
     // the sample-burrito-obs pins file is exactly this shape, all slots §5.3-valid
     const sample = JSON.parse(fs.readFileSync(path.resolve('./sample-burrito-obs/ingredients/checking/resources.json'), 'utf8'));
     const sampleOk = ['primary', 'fallback'].every((set) => ['obs', 'obs-tn', 'obs-twl'].every((s) => pinSlotError(`languageSets.${set}.${s}`) === null && pinEntryError(`languageSets.${set}.${s}`, sample.languageSets[set][s]) === null)) &&
-      pinSlotError('languageSets.fallback.obs-images') === null && pinEntryError('languageSets.fallback.obs-images', sample.languageSets.fallback['obs-images']) === null && !('obs-images' in sample.languageSets.primary);
+      pinSlotError('languageSets.fallback.obs-images') === null && pinEntryError('languageSets.fallback.obs-images', sample.languageSets.fallback['obs-images']) === null && !('obs-images' in sample.languageSets.primary) &&
+      pinSlotError('languageSets.fallback.obs-tq') === null && pinEntryError('languageSets.fallback.obs-tq', sample.languageSets.fallback['obs-tq']) === null && sample.languageSets.fallback['obs-tq'].flavor === 'peripheral/x-obsquestions' && !('obs-tq' in sample.languageSets.primary);
     const complete = (set, slots) => slots.every((slot) => !!set[slot]);
     const bibleSlots = ['translationNotes', 'translationWordsLinks', 'translationWords', 'translationAcademy'];
     const obsSlots = ['obs', 'obs-tn', 'obs-twl', 'translationWords', 'translationAcademy'];
@@ -4565,10 +4568,10 @@ const sameRegister = (a, b) => {
       complete(sample.languageSets.fallback, obsSlots) && complete(sample.languageSets.fallback, bibleSlots);
     // negatives: an unknown OBS-looking slot refuses; an OBS entry without sha refuses; a set
     // without the OBS members is still complete (the fold projects the four required slots)
-    const badSlot = /not a §5.3 slot/.test(validateEvent(pin(30, 'languageSets.fallback.obs-tq')) || '');
+    const badSlot = /not a §5.3 slot/.test(validateEvent(pin(30, 'languageSets.fallback.obs-tqx')) || '');
     const noSha = /sha/.test(validateEvent(pin(31, 'languageSets.fallback.obs', { repoPath: 'x/y', version: 'v1', flavor: 'gloss/textStories' })) || '');
     const stillComplete = Object.keys(JSON.parse(projectResources(fold(base).pins)).languageSets.fallback).length === 7 && Object.keys(JSON.parse(projectResources(fold(base).pins)).languageSets.primary).length === 5;
-    check('JC-33c: §10.6 pins — complete Bible and OBS sets use their distinct required members; `obs`, `obs-tn`, `obs-twl`, and OPTIONAL `obs-images` use the §5.3 entry grammar and project in order; the sample has a fallback image override and no primary override; `obs-tq` and an entry without sha refuse [covers R-10.6.1 R-10.6.2]',
+    check('JC-33c: §10.6 pins — complete Bible and OBS sets use their distinct required members; `obs`, `obs-tn`, `obs-twl`, and OPTIONAL `obs-tq` and `obs-images` use the §5.3 entry grammar and project in order (obs-twl, obs-tq, obs-images); the sample has a fallback image override, a fallback obs-tq and neither in primary; a misspelt slot and an entry without sha refuse [covers R-10.6.1 R-10.6.2 R-10.6.3]',
       okProjected && sampleOk && distinctCompleteness && badSlot && noSha && stillComplete, keys.join(','));
   }
 

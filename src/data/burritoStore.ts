@@ -113,6 +113,8 @@ export interface LanguageSet {
   obs?: ResourcePin;
   'obs-tn'?: ResourcePin;
   'obs-twl'?: ResourcePin;
+  /** The OBS questions (#331, D75 amendment): OPTIONAL, read like translationQuestions. */
+  'obs-tq'?: ResourcePin;
   /** OPTIONAL (§10.6, D75): a language-set image-pack override. The bundled
    * default pack is independent of this slot and needs no project pin. */
   'obs-images'?: ResourcePin;

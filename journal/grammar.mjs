@@ -352,9 +352,9 @@ export const dottedPathError = (v, { reservedRoots = null } = {}) => {
 };
 
 // §8.5: the pin slot grammar is the §5.3 document's own paths — anything else refuses.
-// §10.6 (D74): a language set MAY additionally pin the three OBS members `obs`, `obs-tn`
-// and `obs-twl`; tw and tA are shared with Bible projects.
-export const PIN_SLOT_RE = /^(languageSets\.(primary|fallback)\.(gatewayLanguage|translationNotes|translationWordsLinks|translationWords|translationAcademy|translationQuestions|simplifiedText|obs|obs-tn|obs-twl|obs-images)|resources\.(originalLanguage|lexicon)\.(nt|ot)|extraScripture\.[A-Za-z0-9_-]+)$/;
+// §10.6 (D74, D75 amendment #331): a language set MAY additionally pin the OBS members
+// `obs`, `obs-tn`, `obs-twl`, `obs-tq` and the `obs-images` override; tw and tA are shared.
+export const PIN_SLOT_RE = /^(languageSets\.(primary|fallback)\.(gatewayLanguage|translationNotes|translationWordsLinks|translationWords|translationAcademy|translationQuestions|simplifiedText|obs|obs-tn|obs-twl|obs-tq|obs-images)|resources\.(originalLanguage|lexicon)\.(nt|ot)|extraScripture\.[A-Za-z0-9_-]+)$/;
 export const pinSlotError = (v) =>
   isStr(v) && PIN_SLOT_RE.test(v) ? null : `"${v}" is not a §5.3 slot`;
 

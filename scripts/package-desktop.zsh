@@ -137,6 +137,7 @@ BUNDLED_RESOURCES=(
   "unfoldingWord/en_obs:v9:d39a1dc7a7557ac54e4a8fecc3462147fe7eec3b"
   "unfoldingWord/en_obs-tn:v13:e86138ea13f619f09f7a6dcaa60592716d407fe4"
   "unfoldingWord/en_obs-twl:v3:44ebc9fafe8101665f985007d566f5036a2be85b"
+  "unfoldingWord/en_obs-tq:v10:01b92fe8793d62cff3a2221f5174c768cbad3dc1"
   "uW/obs_images_360::7146d5b504f6b63b9e11f7dc0b18c594d0ae179d"
 )
 # Split one BUNDLED_RESOURCES entry into owner, repo, tag, sha, the cache-file

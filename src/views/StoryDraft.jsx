@@ -20,10 +20,8 @@ import { t } from '../i18n';
 import { resolveObsSetSlot } from '../data/resolve';
 import { RailIcon, HelpsIcon } from './PanelIcons.jsx';
 import StoryRail, { isFrameDrafted } from './StoryRail.jsx';
-import { StoryHelps } from './StoryUnderstand.jsx';
+import { HelpsPanel } from './HelpsPanel.jsx';
 import { CELL, DraftPill, EditingCard, hair } from './draftChrome.jsx';
-
-const STORY_BOOK = 'OBS';
 
 /** A rail frame button brings its unit into view, as a chapter button brings its chapter. */
 const scrollUnitIntoView = (testId) => {
@@ -223,8 +221,6 @@ export default function StoryDraft() {
 
   const units = storyUnits(story, s.sourceStory);
   const focused = units.find((u) => u.key === focusKey) ?? units[1] ?? units[0];
-  const u = s.understand?.book === STORY_BOOK && s.understand.story === story.number ? s.understand : null;
-  const helpsUnit = focused.frame === null ? null : { frame: focused.frame, label: focused.label };
 
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }} data-testid="story-draft">
@@ -261,7 +257,7 @@ export default function StoryDraft() {
           </div>
         </div>
       </main>
-      {s.helps && <StoryHelps u={u} unit={helpsUnit} actions={actions} />}
+      {s.helps && <HelpsPanel chapter={story.number} comments story focusFrame={focused.frame} />}
     </div>
   );
 }

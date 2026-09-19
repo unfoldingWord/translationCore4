@@ -11,8 +11,8 @@ import { useApp } from '../state.jsx';
 import { t } from '../i18n';
 import StoryRail from './StoryRail.jsx';
 import { ComprehensionBox } from './Understand.jsx';
-import { ArticleView, ExpandableNote, SlotState } from './HelpsPanel.jsx';
-import { Button, Callout, IconButton, Overline, StatusDot, Switcher } from '../ds/index.js';
+import { HelpsPanel } from './HelpsPanel.jsx';
+import { Callout, IconButton, Overline, StatusDot } from '../ds/index.js';
 import { RailIcon } from './PanelIcons.jsx';
 
 const STORY_BOOK = 'OBS';
@@ -30,10 +30,6 @@ const storyUnits = (story, sourceStory) => [
     image: frame.image,
   })),
 ];
-
-/** The helps of one frame from a slot: the items whose frame is this one. */
-const itemsForFrame = (slot, frame) =>
-  (slot?.state === 'ready' ? slot.items.filter((it) => it.contextId.reference.frame === frame) : []);
 
 function StoryUnit({ unit, story, image, dir, focused, onFocus, hasNote }) {
   return (
@@ -59,65 +55,6 @@ function StoryUnit({ unit, story, image, dir, focused, onFocus, hasNote }) {
       <ComprehensionBox book={STORY_BOOK} chapter={story.number} mode="frame"
         unit={{ key: `f${unit.frame}`, project: { chapter: story.number, verse: unit.frame }, verses: [] }} />
     </div>
-  );
-}
-
-/** One note or word-link card of the selected frame. */
-function StoryHelpCard({ kind, item, rung, onArticle }) {
-  const c = item.contextId;
-  const slug = c.groupId;
-  return (
-    <div data-testid={`story-help-${kind}`} style={{ border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '10px 12px', marginBottom: 8, background: 'var(--surface-card)' }}>
-      <p style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-ui-md)', fontWeight: 'var(--fw-bold)', color: 'var(--text-heading)', margin: '0 0 4px' }}>“{c.quoteString}”</p>
-      {kind === 'note' && c.occurrenceNote && (
-        <div style={{ fontSize: 'var(--fs-ui-sm)', color: 'var(--text-body)', lineHeight: 'var(--lh-body)' }}>
-          <ExpandableNote text={c.occurrenceNote} />
-        </div>
-      )}
-      {slug && (
-        <Button variant="ghost" size="sm" style={{ padding: 0, marginTop: 4 }}
-          onClick={(e) => { e.stopPropagation(); onArticle({ kind: kind === 'note' ? 'ta' : 'tw', category: item.category, slug, rung }); }}>
-          {t(kind === 'note' ? 'understand.academyLink' : 'understand.wordLink')}
-        </Button>
-      )}
-    </div>
-  );
-}
-
-/** The list the helps pane shows for one slot: loading, the slot's stated
- * non-ready state, nothing for this frame, or the cards. */
-function StoryHelpsList({ u, slot, kind, frame, onArticle }) {
-  if (u?.loading) return <p data-testid="helps-loading" style={{ fontSize: 'var(--fs-ui-sm)', color: 'var(--text-tertiary)', margin: 0 }}>{t('understand.loading')}</p>;
-  if (!slot) return null;
-  if (slot.state !== 'ready') return <SlotState slot={slot} />;
-  const items = itemsForFrame(slot, frame);
-  if (items.length === 0) {
-    return <p style={{ fontSize: 'var(--fs-caption-lg)', color: 'var(--text-tertiary)', fontStyle: 'italic', margin: 0 }}>{t('understand.noneInFocus')}</p>;
-  }
-  return items.map((item, i) => (
-    <StoryHelpCard key={`${item.contextId.checkId}-${i}`} kind={kind} item={item} rung={slot.rung} onArticle={onArticle} />
-  ));
-}
-
-/** The helps pane: Notes | Words for the selected frame, and the article a
- * card opened. */
-export function StoryHelps({ u, unit, actions }) {
-  const [tab, setTab] = React.useState('notes');
-  const slot = tab === 'notes' ? u?.notes : u?.words;
-  return (
-    <aside data-testid="story-helps" style={{ width: 'var(--rail-width-wide)', flex: 'none', background: 'var(--surface-card)', borderInlineStart: 'var(--stroke-hair) solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      <div style={{ padding: '14px 16px 10px', borderBottom: 'var(--stroke-hair) solid var(--border-hair)' }}>
-        <Overline tone="muted" style={{ marginBottom: 8 }}>{unit ? t('understand.frameHelps', { unit: unit.label }) : t('understand.selectFrame')}</Overline>
-        <Switcher indicator="pill" size="sm" tone="ocean" value={tab} onChange={setTab}
-          options={[{ value: 'notes', label: t('helps.notes') }, { value: 'words', label: t('helps.words') }]} />
-      </div>
-      <div style={{ flex: 1, overflow: 'auto', padding: 14, minHeight: 0 }}>
-        {u?.error && <Callout tone="warn" role="alert" data-testid="understand-error" style={{ overflowWrap: 'anywhere', marginBottom: 10 }}>{u.error}</Callout>}
-        <StoryHelpsList u={u} slot={slot} kind={tab === 'notes' ? 'note' : 'word'} frame={unit?.frame} onArticle={actions.loadHelpArticle} />
-      </div>
-      <ArticleView article={u?.article} onClose={actions.closeHelpArticle}
-        onRetry={() => u?.article?.request && actions.loadHelpArticle(u.article.request)} />
-    </aside>
   );
 }
 
@@ -173,7 +110,8 @@ export default function StoryUnderstand() {
           </div>
         </div>
       </main>
-      <StoryHelps u={u} unit={unit} actions={actions} />
+      {/* #331: the Bible helps panel, in story mode; comments are written in the main column here, so no Comments tab */}
+      <HelpsPanel chapter={story.number} story focusFrame={unit.frame} />
     </div>
   );
 }
