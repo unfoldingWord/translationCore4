@@ -314,10 +314,10 @@
     },
     "ingredients/checking/resources.json": {
       "checksum": {
-        "md5": "edadbec8b1a874438b90b239588ff870"
+        "md5": "e7dc8001093805c0c4ec6345a7c32d3f"
       },
       "mimeType": "application/json",
-      "size": 3153,
+      "size": 3373,
       "role": "x-resource-links"
     },
     "ingredients/checking/settings.json": {

@@ -19,6 +19,9 @@ const actions = {
   loadHelpArticle: vi.fn(),
   closeHelpArticle: vi.fn(),
   setStoryFrame: vi.fn(),
+  setHelpsTab: vi.fn((tab: string) => { state.helpsTab = tab; }),
+  hoverHelp: vi.fn(),
+  focusHelp: vi.fn(),
 };
 const SOURCE_STORY = { number: 1, title: 'Creation', ref: 'Genesis 1', frames: [{ image: '![x](obs-01.jpg)', text: 'In the beginning.' }, { image: '![x](obs-02.jpg)', text: 'Then God said.' }] };
 const state = {
@@ -38,6 +41,10 @@ const state = {
   projectPins: { schemaVersion: 2, languageSets: { primary: { obs: { repoPath: 'git.door43.org/unfoldingWord/en_obs', version: 'v9', sha: 'd39a1dc7a7557ac54e4a8fecc3462147fe7eec3b', flavor: 'gloss/textStories' } }, fallback: {} } } as unknown,
   understand: null as null | Record<string, unknown>,
   storyFrame: null as number | null,
+  helpsTab: 'notes',
+  helpsActive: null,
+  sources: {},
+  sourceTab: 'ult',
 };
 
 vi.mock('../src/state.jsx', () => ({ useApp: () => ({ s: state, actions }) }));
@@ -123,19 +130,36 @@ describe('OBS story draft surface', () => {
     expect(screen.getByText('Historias · es')).toBeTruthy();
   });
 
-  it('the helps pane is on the right, scoped to the unit in focus, and hidden with the helps toggle', () => {
-    state.understand = { book: 'OBS', story: 1, notes: { state: 'ready', items: [] }, words: { state: 'ready', items: [] } };
-    render(<StoryDraft />);
-    expect(screen.getByTestId('story-helps').textContent).toContain('Frame 1');
+  it('the helps pane is the Bible panel with Notes | Words | Questions | Comments; the frame in focus is marked; hidden with the helps toggle (#331)', () => {
+    const item = (frame: number, id: string, quote: string) => ({ contextId: { checkId: id, occurrenceNote: 'n', reference: { story: 1, frame }, tool: 'translationNotes', groupId: '', quote, quoteString: quote, occurrence: 1 }, category: 'other' });
+    state.understand = {
+      book: 'OBS', story: 1, loading: false,
+      notes: { state: 'ready', rung: 'primary', items: [item(1, 'a1', 'beginning'), item(2, 'b2', 'light')] },
+      words: { state: 'ready', rung: 'primary', items: [] },
+      questions: { state: 'ready', rung: 'primary', items: [] },
+      comprehension: { '1:2': { text: 'Comentario en el marco dos', ts: 't1' } },
+    };
+    state.helpsTab = 'notes';
+    const { rerender } = render(<StoryDraft />);
+    const panel = () => screen.getByTestId('helps-panel');
+    expect(within(panel()).getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Notes', 'Words', 'Questions', 'Comments']);
+    const cards = () => Array.from(panel().querySelectorAll('[data-frame]'));
+    expect(cards().map((c) => c.getAttribute('data-focused'))).toEqual(['true', null]); // frame 1 in focus first
     fireEvent.click(screen.getByTestId('story-frame-2'));
     expect(screen.getByTestId('story-frame-2').getAttribute('data-focused')).toBe('true');
-    expect(screen.getByTestId('story-helps').textContent).toContain('Frame 2');
+    expect(cards().map((c) => c.getAttribute('data-focused'))).toEqual([null, 'true']);
+    fireEvent.click(within(panel()).getByRole('tab', { name: 'Comments' }));
+    rerender(<StoryDraft />);
+    const comment = screen.getByTestId('helps-comment');
+    expect(comment.textContent).toContain('Frame 2');
+    expect(comment.textContent).toContain('Comentario en el marco dos');
     expect(actions.loadUnderstand).toHaveBeenCalled();
     cleanup();
     state.helps = false;
     render(<StoryDraft />);
-    expect(screen.queryByTestId('story-helps')).toBeNull();
+    expect(screen.queryByTestId('helps-panel')).toBeNull();
     state.understand = null;
+    state.helpsTab = 'notes';
   });
 
   it('states once, not per frame, why a story has no pictures', () => {

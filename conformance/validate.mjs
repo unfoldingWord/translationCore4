@@ -6,7 +6,7 @@ import { createRequire } from 'module';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import { scopeError } from '../journal/grammar.mjs';
+import { pinSlotError, scopeError } from '../journal/grammar.mjs';
 import { writeActionSegment, validateSegment, validateActorDoc, segmentName, readSegments, actorDirFor } from '../journal/files.mjs';
 import { parseStory, seedStory, writeFrame, writeRef, applyStoryState, storyIpath, STORY_COUNT } from '../journal/story.mjs';
 import { fold } from '../journal/fold.mjs';
@@ -863,6 +863,24 @@ let mergedVerseObjects = null;
     const grammar = Object.values(obsMeta.type.flavorType.currentScope).every((v) => scopeError(v) === null);
     check('OBS scope: type.flavorType.currentScope equals the template\'s table VERBATIM (same keys, same order, same ranges — 33 books the stories retell) and every value passes the §3 rule 4 grammar; a dropped key and a reordered table both fire [covers R-10.2.3]',
       same && fires && grammar, `${Object.keys(obsMeta.type.flavorType.currentScope).length} books`, 'obs');
+  }
+
+  // O7 — the OPTIONAL OBS questions member (R-10.6.3, D75 amendment, #331): the sample's
+  // English fallback set pins `obs-tq` with the export's flavor; the primary set omits it
+  // and is still a complete OBS set; the §8.5 slot grammar accepts the slot and refuses a
+  // misspelling; the member sits after `obs-twl` and before `obs-images` in the file.
+  {
+    const obsRes = json(OING('checking/resources.json'));
+    const fb = obsRes.languageSets.fallback;
+    const pr = obsRes.languageSets.primary;
+    const tq = fb['obs-tq'];
+    const pinned = !!tq && tq.repoPath === 'git.door43.org/unfoldingWord/en_obs-tq' && /^[0-9a-f]{40}$/.test(tq.sha) && tq.flavor === 'peripheral/x-obsquestions';
+    const optional = !('obs-tq' in pr) && !!pr.obs && !!pr['obs-tn'] && !!pr['obs-twl'] && !!pr.translationWords && !!pr.translationAcademy;
+    const grammar = pinSlotError('languageSets.fallback.obs-tq') === null && pinSlotError('languageSets.primary.obs-tq') === null && pinSlotError('languageSets.fallback.obs-tqx') !== null;
+    const keys = Object.keys(fb);
+    const ordered = keys.indexOf('obs-twl') < keys.indexOf('obs-tq') && keys.indexOf('obs-tq') < keys.indexOf('obs-images');
+    check('OBS questions member: the fallback set pins obs-tq (flavor peripheral/x-obsquestions, 40-hex sha); the primary set omits it and stays a complete OBS set; the slot grammar accepts obs-tq and refuses a misspelling; the member follows obs-twl and precedes obs-images [covers R-10.6.3]',
+      pinned && optional && grammar && ordered, `fallback obs-tq ${tq?.version ?? '?'} @ ${(tq?.sha ?? '').slice(0, 12)}`, 'obs');
   }
 
   // O6 — the version 2 fold: the drafted story as four `v: 2` segments folds and projects,

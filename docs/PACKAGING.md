@@ -623,6 +623,7 @@ procedure's subject.
 | en_obs | v9, sha `d39a1dc7a7557ac54e4a8fecc3462147fe7eec3b` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | en_obs-tn | v13, sha `e86138ea13f619f09f7a6dcaa60592716d407fe4` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | en_obs-twl | v3, sha `44ebc9fafe8101665f985007d566f5036a2be85b` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
+| en_obs-tq | v10, sha `01b92fe8793d62cff3a2221f5174c768cbad3dc1` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | uW/obs_images_360 (#288, D75) | no tag; sha `7146d5b504f6b63b9e11f7dc0b18c594d0ae179d`, fetched as the commit archive and seeded at the identity-qualified path `uw--obs_images_360--7146d5b504f6` | `src/data/installedSuite.js`, `src/data/obsImages.ts`, `scripts/package-desktop.zsh` |
 | uW/en_ugl (#218, D71) | no tag; sha `d9d29e2d589258ce27f92b59f753a3af03ab7a72`, fetched as the commit archive `archive/<sha>.zip` and verified against the zip's archive comment | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | uW/en_uhl (#218, D71) | no tag; sha `72df5ac25acf9d51e826b20e3ad883a5a657ef4e`, same fetch path | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
@@ -633,7 +634,7 @@ The eight `unfoldingWord` repos are fetched as the DCS sb-zip export `/sb/<tag>.
 
 ## Bundled English suite (#163, #218)
 
-Per D70, D75, #163, #218 and #288, the desktop artifact bundles fourteen repos: the ten-resource English Bible suite, `en_obs`, `en_obs-tn`, `en_obs-twl`, and `uW/obs_images_360`. Translation Words and Translation Academy are shared by Bible and OBS sets. The unpacker stages normal resources at `<APPDIR>/resources/<owner lowercased>--<repo>/`. It stages the untagged default image pack at `uw--obs_images_360--7146d5b504f6`, so another installed revision of the same repository is neither replaced nor accepted as the pinned default. The launcher copies only missing directories into `$HOME/pankosmia/tc4-projects/_local_/_sideloaded_/` before the server starts. A second launch preserves every existing directory byte-for-byte.
+Per D70, D75 (and its #331 amendment), #163, #218 and #288, the desktop artifact bundles fifteen repos: the ten-resource English Bible suite, `en_obs`, `en_obs-tn`, `en_obs-twl`, `en_obs-tq`, and `uW/obs_images_360`. Translation Words and Translation Academy are shared by Bible and OBS sets. The unpacker stages normal resources at `<APPDIR>/resources/<owner lowercased>--<repo>/`. It stages the untagged default image pack at `uw--obs_images_360--7146d5b504f6`, so another installed revision of the same repository is neither replaced nor accepted as the pinned default. The launcher copies only missing directories into `$HOME/pankosmia/tc4-projects/_local_/_sideloaded_/` before the server starts. A second launch preserves every existing directory byte-for-byte.
 
 Artifact sizes before and after bundling the English suite:
 

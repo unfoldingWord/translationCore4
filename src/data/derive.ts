@@ -552,11 +552,13 @@ export const filterToScope = (items: CheckItem[], ranges: string[]): CheckItem[]
  * the open story as a Bible session is to the open book. A row whose locator
  * is not two integers cannot address a frame (R-10.4.1) and is dropped; the
  * unit tests assert the real exports drop nothing. */
-export const deriveObsItems = (tsv: string, tool: Tool, story?: number): CheckItem<StoryReference>[] => {
+export const deriveObsItems = (tsv: string, tool: Tool | 'translationQuestions', story?: number): CheckItem<StoryReference>[] => {
   const derived =
     tool === 'translationNotes'
       ? deriveTnItems(tsv, STORY_BOOK_ID, { keepPlain: true })
-      : deriveTwlItems(tsv, STORY_BOOK_ID);
+      : tool === 'translationQuestions'
+        ? deriveTqItems(tsv, STORY_BOOK_ID) // #331: the OBS questions TSV carries the tQ columns
+        : deriveTwlItems(tsv, STORY_BOOK_ID);
   return derived.flatMap((item): CheckItem<StoryReference>[] => {
     const { chapter, verse } = item.contextId.reference;
     if (typeof chapter !== 'number' || typeof verse !== 'number') return [];

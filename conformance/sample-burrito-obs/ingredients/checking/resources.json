@@ -84,6 +84,12 @@
         "sha": "44ebc9fafe8101665f985007d566f5036a2be85b",
         "flavor": "parascriptural/x-bcvarticles"
       },
+      "obs-tq": {
+        "repoPath": "git.door43.org/unfoldingWord/en_obs-tq",
+        "version": "v10",
+        "sha": "01b92fe8793d62cff3a2221f5174c768cbad3dc1",
+        "flavor": "peripheral/x-obsquestions"
+      },
       "obs-images": {
         "repoPath": "git.door43.org/uW/obs_images_360",
         "sha": "7146d5b504f6b63b9e11f7dc0b18c594d0ae179d",
