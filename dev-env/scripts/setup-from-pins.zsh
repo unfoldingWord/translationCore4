@@ -39,8 +39,14 @@ done
 echo "== 1/4 fetch the pinned inputs (read-only)"
 mkdir -p "$IN"
 fetch_pinned() {  # $1 repo url, $2 dir, $3 rev
-  if [ ! -d "$2/.git" ]; then git clone --quiet "$1" "$2"; else git -C "$2" fetch --quiet origin; fi
-  git -C "$2" checkout --quiet "$3"
+  # Upstream clones must materialize LF even on Windows hosts whose global
+  # core.autocrlf is true; otherwise text templates (e.g. the text_stories
+  # story files) reach the server as CRLF and story validation refuses them
+  # (#306). The clones are disposable and read-only, so refresh hard.
+  if [ ! -d "$2/.git" ]; then git -c core.autocrlf=false clone --quiet "$1" "$2"; else git -C "$2" fetch --quiet origin; fi
+  git -C "$2" config core.autocrlf false
+  git -C "$2" rm --cached -qr . || true
+  git -C "$2" reset --hard -q "$3"
 }
 fetch_pinned "$TEMPLATE_REPO"      "$IN/desktop-app-template" "$TEMPLATE_REV"
 fetch_pinned "$RESOURCE_CORE_REPO" "$IN/resource-core"        "$RESOURCE_CORE_REV"

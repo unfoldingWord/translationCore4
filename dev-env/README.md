@@ -122,7 +122,12 @@ available there. Run the rig scripts themselves from MSYS2 zsh.
 
 Run `git config core.autocrlf false` before cloning this repository. If you already
 cloned it with another setting, clone it again after this repository's line-ending rules
-are present.
+are present. The setup scripts (`setup-from-pins.zsh`, and the same recipe in
+`scripts/package-desktop.zsh`) enforce LF inside the upstream clones they make
+(`resource-core`, `desktop-app-template`, `webfonts-core`), so those templates stay
+LF even when the machine's global git setting converts line endings — a CRLF story
+template makes creating stories fail (#306). If a rig was assembled before that fix,
+remove `dev-env/upstream/` and `dev-env/app-resources/` and run the setup script again.
 
 The full clean-clone sequence is:
 
