@@ -8,8 +8,8 @@
 // server's own parse: `update_ingredients` writes and `remake-ingredients`
 // answer "Could not parse metadata: missing field `localizedNames`". The
 // Bible template carries `"localizedNames": {}`; this adds the same key to
-// the OBS template wherever tC4 serves it (the rig's app resources and the
-// packaged installer). Idempotent. The vendored conformance fixture is left
+// the OBS template wherever tC4 serves it (both rig routes and the packaged
+// installer). Idempotent. The vendored conformance fixture is left
 // byte-for-byte (its README); `generate-obs.mjs` adds the key to the sample.
 //
 // Usage: node scripts/fix-obs-template.mjs <templates dir>
@@ -28,7 +28,18 @@ export const withLocalizedNames = (text) => {
   return `${text.slice(0, at)}${indent}"localizedNames": {},\n${text.slice(at)}`;
 };
 
-if (process.argv[1] && path.resolve(process.argv[1]) === new URL(import.meta.url).pathname) {
+// Run-as-CLI guard: `fileURLToPath` (not a URL-pathname comparison, which never
+// matches on Windows and mangles spaces as %20). Resolved through the runtime
+// instead of a static `node:url` import: the Vite polyfill aliases `node:url`
+// to a browser proxy that crashes, and this module is imported by the test rig
+// (`test/helpers/journalingRig.ts`) — same escape hatch as CONTRIBUTING's
+// "Write a test that reads files".
+const isCli =
+  !!process.argv[1] &&
+  path.resolve(process.argv[1]) ===
+    process.getBuiltinModule('node:url').fileURLToPath(import.meta.url);
+
+if (isCli) {
   const dir = process.argv[2];
   if (!dir) {
     console.error('usage: node scripts/fix-obs-template.mjs <templates dir>');

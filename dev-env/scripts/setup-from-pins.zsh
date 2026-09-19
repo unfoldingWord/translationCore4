@@ -63,6 +63,8 @@ rm -rf "$RES"
 mkdir -p "$RES/setup" "$RES/product" "$RES/clients/uw-tc4" "$RES/webfonts" "$RES/app_resources"
 cp -R "$IN/resource-core/runtime_resources/." "$RES/app_resources/"
 cp -R "$IN/resource-core/templates" "$RES/templates"
+# The OBS template lacks the `localizedNames` the server requires (#287, PLATFORM-NOTES #36).
+node "$ROOT/scripts/fix-obs-template.mjs" "$RES/templates"
 cp -R "$IN/webfonts-core/." "$RES/webfonts/"
 rm -rf "$RES/webfonts/.git"
 # app_resources/product: resource-core does not ship it; the template does. Without
