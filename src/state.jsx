@@ -1913,9 +1913,10 @@ async function performLoadStoryUnderstand(ctx) {
       if (tsv === null || tsv.startsWith('{"is_good":false')) return { state: 'missing', pin, rung };
       return { state: 'ready', items: deriveObsItems(tsv, tool, story), pin, rung, unavailablePrimary: null, dropped: null };
     };
-    const [notes, words] = await Promise.all([settleHelp(slot('translationNotes')), settleHelp(slot('translationWords'))]);
+    // #331: the OBS questions are the third read-only help, from the `obs-tq` member (R-10.6.3).
+    const [notes, words, questions] = await Promise.all([settleHelp(slot('translationNotes')), settleHelp(slot('translationWords')), settleHelp(slot('translationQuestions'))]);
     if (seq !== understandSeqRef.current) return; // superseded
-    dispatch({ type: 'set', patch: { understand: { loading: false, book: STORY_BOOK, story, notes, words, comprehension: comprehension() } } });
+    dispatch({ type: 'set', patch: { understand: { loading: false, book: STORY_BOOK, story, notes, words, questions, comprehension: comprehension() } } });
   } catch (e) {
     if (seq !== understandSeqRef.current) return;
     dispatch({ type: 'set', patch: { understand: { loading: false, book: STORY_BOOK, story, error: String(e?.message || e), comprehension: comprehension() } } });

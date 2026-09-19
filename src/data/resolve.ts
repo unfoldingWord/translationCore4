@@ -146,13 +146,21 @@ export type SetSlot =
 
 /** OBS collections are not divided into Bible books. Presence of a pin covers
  * the whole collection, so resolution skips the book-coverage map. */
-export type ObsSetSlot = 'obs' | 'obs-tn' | 'obs-twl' | 'obs-images';
+export type ObsSetSlot = 'obs' | 'obs-tn' | 'obs-twl' | 'obs-tq' | 'obs-images';
 
 /** The existing Check tool ids keep their meaning for OBS, but read the OBS
  * collection members instead of the Bible book members. */
 export const OBS_TOOL_SLOT: Record<Tool, Extract<ObsSetSlot, 'obs-tn' | 'obs-twl'>> = {
   translationNotes: 'obs-tn',
   translationWords: 'obs-twl',
+};
+
+/** The read-only helps a story screen shows (#331): the Check tools' members plus the
+ * OBS questions, read the way Bible Understand reads `translationQuestions` (D64). */
+export type ObsHelp = Tool | 'translationQuestions';
+export const OBS_HELP_SLOT: Record<ObsHelp, Extract<ObsSetSlot, 'obs-tn' | 'obs-twl' | 'obs-tq'>> = {
+  ...OBS_TOOL_SLOT,
+  translationQuestions: 'obs-tq',
 };
 
 export const resolveObsSetSlot = (
@@ -248,8 +256,8 @@ const availabilityState = (
 };
 
 export interface ObsPreflight {
-  tool: Tool;
-  slot: 'obs-tn' | 'obs-twl';
+  tool: ObsHelp;
+  slot: 'obs-tn' | 'obs-twl' | 'obs-tq';
   state: Extract<PreflightState, 'ready' | 'fetch' | 'unavailable' | 'unpinned'>;
   resolution: ReturnType<typeof resolveObsSetSlot> | null;
   needs: ResourcePin | null;
@@ -263,10 +271,10 @@ export interface ObsPreflight {
  * the fallback set. */
 export const preflightObsTool = (
   resources: ResourcesFile | null | undefined,
-  tool: Tool,
+  tool: ObsHelp,
   opts: { isLocal: (pin: ResourcePin) => boolean; online: boolean },
 ): ObsPreflight => {
-  const slot = OBS_TOOL_SLOT[tool];
+  const slot = OBS_HELP_SLOT[tool];
   if (!resources?.languageSets) {
     return { tool, slot, state: 'unpinned', resolution: null, needs: null, sourceLanguage: null };
   }

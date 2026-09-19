@@ -29,14 +29,19 @@ test.describe('J25 — a translator reads a story with helps and records a user 
         await expect(unit.getByRole('img')).toBeVisible();
       });
 
-      await test.step('select frame 1: its notes and its word links', async () => {
+      await test.step('select frame 1: the helps panel marks its notes, word links and questions (#331)', async () => {
         await page.getByTestId('story-understand-unit-1').click();
         await expect(page.getByTestId('story-understand-unit-1')).toHaveAttribute('data-focused', 'true');
-        const helps = page.getByTestId('story-helps');
+        const helps = page.getByTestId('helps-panel');
         await expect(helps.getByTestId('helps-loading')).toHaveCount(0, { timeout: 60_000 });
-        await expect(helps.getByTestId('story-help-note').first()).toBeVisible();
+        await expect(helps.getByRole('tab')).toHaveText(['Notes', 'Words', 'Questions']);
+        await expect(helps.locator('[data-frame="1"][data-focused="true"]').first()).toBeVisible();
         await helps.getByRole('tab', { name: 'Words', exact: true }).click();
-        await expect(helps.getByTestId('story-help-word').first()).toBeVisible();
+        await expect(helps.locator('[data-frame="1"][data-focused="true"]').first()).toBeVisible();
+        await helps.getByRole('tab', { name: 'Questions', exact: true }).click();
+        await expect(helps.getByTestId('understand-question').first()).toContainText('Where did everything in the universe come from?');
+        await expect(helps.locator('[data-testid="understand-question"][data-focused="true"]').first()).toBeVisible();
+        await helps.getByRole('tab', { name: 'Notes', exact: true }).click();
       });
 
       await test.step('write a comment on frame 1: one note.add segment, target {story: 1, frame: 1}', async () => {
@@ -55,10 +60,24 @@ test.describe('J25 — a translator reads a story with helps and records a user 
         expect(storyBytes(repo, 1)).toBe(storyBefore);
         await page.reload();
         await page.getByTestId(`project-_local_/_local_/${repo}`).getByTestId('story-tile-1').click();
-        await expect(page.getByTestId('story-draft')).toBeVisible({ timeout: 60_000 });
-        await page.getByRole('tab', { name: 'Understand', exact: true }).click();
+        // #329: the tile returns to where the user last worked, which may already be Understand.
+        const understand = page.getByRole('tab', { name: 'Understand', exact: true });
+        await expect(understand).toBeVisible({ timeout: 60_000 });
+        if ((await understand.getAttribute('aria-selected')) !== 'true') await understand.click();
         await expect(page.getByTestId('story-understand')).toBeVisible({ timeout: 30_000 });
         await expect(page.getByTestId('story-understand-unit-1').getByRole('textbox')).toHaveValue(COMMENT, { timeout: 30_000 });
+        expect(storyBytes(repo, 1)).toBe(storyBefore);
+      });
+
+      await test.step('Translate lists the comment under the Comments tab, labelled by its frame (#331)', async () => {
+        await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+        await expect(page.getByTestId('story-draft')).toBeVisible({ timeout: 30_000 });
+        const helps = page.getByTestId('helps-panel');
+        await expect(helps.getByRole('tab')).toHaveText(['Notes', 'Words', 'Questions', 'Comments']);
+        await helps.getByRole('tab', { name: 'Comments', exact: true }).click();
+        const comment = helps.getByTestId('helps-comment').first();
+        await expect(comment).toContainText('Frame 1');
+        await expect(comment).toContainText(COMMENT);
         expect(storyBytes(repo, 1)).toBe(storyBefore);
       });
     },

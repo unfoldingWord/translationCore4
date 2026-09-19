@@ -1519,6 +1519,15 @@ not need an override pin to use it. At render time the app checks a project imag
 ingredient, primary and fallback override pins, and the bundled default in that order.
 It leaves the Markdown image line unchanged.
 
+**Amendment (2026-09-18, project-owner ruling, issue #331):** a language set can carry a
+fourth OPTIONAL OBS member, `obs-tq`, the OBS translation questions (flavor
+`peripheral/x-obsquestions`, one `OBS.tsv` in the tQ column layout keyed `story:frame`).
+It is a member of the OBS package and works the way `translationQuestions` works for a
+Bible set (D64): read for the helps panel, absent means no questions, no effect on either
+completeness rule. The bundled English suite pins `unfoldingWord/en_obs-tq` v10. The OBS
+helps panel is the Bible helps panel (Notes, Words, Questions, and Comments on Translate);
+the simplified-text tab does not apply to stories. BURRITO-SPEC 1.16 R-10.6.3.
+
 ## D76 (2026-09-18, project-owner ruling) **OBS Understand shows the source only, like
 the Bible Understand: picture, gateway story, comment box; no draft.** [issue #332;
 corrects the `StoryUnderstand.jsx` header wording and the J25 steps, which named the draft]

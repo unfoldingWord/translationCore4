@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "tool": "scripts/prove.mjs",
-  "commit": "1b16445e50ab8115722a73bbb49016d616df4fe7",
+  "commit": "95de08321c31f506b2a64152e1828921b8cd7e61",
   "dirty": false,
-  "date": "2026-09-18T22:52:22.260Z",
+  "date": "2026-09-19T00:01:54.154Z",
   "node": "v22.23.2",
   "platform": "linux-x64",
   "ci": true,
@@ -34,7 +34,7 @@
       "summary": [
         "✖ 1 problem (0 errors, 1 warning)"
       ],
-      "durationMs": 5699
+      "durationMs": 5203
     },
     {
       "id": "typecheck",
@@ -49,7 +49,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [],
-      "durationMs": 4509
+      "durationMs": 4585
     },
     {
       "id": "vitest",
@@ -60,14 +60,14 @@
       "skipped": null,
       "ok": true,
       "exitCode": 0,
-      "passed": 1215,
+      "passed": 1217,
       "failed": 0,
       "skippedTests": 43,
       "summary": [
         "Test Files  91 passed | 8 skipped (99)",
-        "Tests  1215 passed | 43 skipped (1258)"
+        "Tests  1217 passed | 43 skipped (1260)"
       ],
-      "durationMs": 30743
+      "durationMs": 30170
     },
     {
       "id": "build",
@@ -82,9 +82,9 @@
       "failed": null,
       "skippedTests": null,
       "summary": [
-        "✓ built in 7.79s"
+        "✓ built in 7.57s"
       ],
-      "durationMs": 8175
+      "durationMs": 7971
     },
     {
       "id": "conformance:generate",
@@ -99,7 +99,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [],
-      "durationMs": 147
+      "durationMs": 146
     },
     {
       "id": "conformance:validate",
@@ -110,17 +110,17 @@
       "skipped": null,
       "ok": true,
       "exitCode": 0,
-      "passed": 47,
+      "passed": 48,
       "failed": 0,
       "skippedTests": null,
       "summary": [
         "Stage-1 (path-authoritative — holds on today's pankosmia-web): 36 passed, 0 failed",
         "Stage-2 (role/relationships durability — x-roles non-durable by design, D28; client re-asserts after remake): 2 passed, 0 failed",
         "Phase-2 (journal-merge design checks, §8.7): 3 passed, 0 failed",
-        "OBS (the OBS project kind, §10 — sample-burrito-obs): 6 passed, 0 failed",
-        "47 passed, 0 failed"
+        "OBS (the OBS project kind, §10 — sample-burrito-obs): 7 passed, 0 failed",
+        "48 passed, 0 failed"
       ],
-      "durationMs": 489
+      "durationMs": 478
     },
     {
       "id": "conformance:journal",
@@ -137,7 +137,7 @@
       "summary": [
         "Journal suite: 350 passed, 0 failed (fast-check seed 20260707)"
       ],
-      "durationMs": 2444
+      "durationMs": 2439
     },
     {
       "id": "conformance:normative",
@@ -148,16 +148,16 @@
       "skipped": null,
       "ok": true,
       "exitCode": 0,
-      "passed": 90,
+      "passed": 91,
       "failed": 0,
       "skippedTests": null,
       "summary": [
-        "rules in sections 8 and 10 : 90",
-        "claimed by a check : 90",
+        "rules in sections 8 and 10 : 91",
+        "claimed by a check : 91",
         "uncovered          : 0",
         "stale claims       : 0"
       ],
-      "durationMs": 64
+      "durationMs": 63
     },
     {
       "id": "conformance:transport",

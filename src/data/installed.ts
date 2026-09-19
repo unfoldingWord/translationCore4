@@ -332,7 +332,7 @@ export const preferInstalledVersion = (installed: InstalledMap, pin: ResourcePin
  * the OPEN project, not only by future ones (2026-08-27 adversarial round
  * 11). Existing pins are never replaced (re-pinning is the explicit,
  * warned gateway-change path); returns null when nothing would change. */
-type OptionalSetPinSlot = 'translationQuestions' | 'simplifiedText' | 'obs' | 'obs-tn' | 'obs-twl' | 'obs-images';
+type OptionalSetPinSlot = 'translationQuestions' | 'simplifiedText' | 'obs' | 'obs-tn' | 'obs-twl' | 'obs-tq' | 'obs-images';
 type OptionalSetPins = Pick<LanguageSet, OptionalSetPinSlot>;
 
 const setMatchesGateway = (set: LanguageSet, gateway: { id: string; org: string }): boolean =>
@@ -376,6 +376,7 @@ const mergeOptionalPinsIntoSet = (
     next['obs-twl'] = built['obs-twl'];
     changed = true;
   }
+  changed = attachIfAbsent(next, set, built, 'obs-tq') || changed;
   changed = attachIfAbsent(next, set, built, 'obs-images') || changed;
   return { set: next, changed };
 };
@@ -402,6 +403,7 @@ export const mergeOptionalPins = <T extends { languageSets?: Record<string, Lang
     obs: byName(`${gateway.id}_obs`),
     'obs-tn': byName(`${gateway.id}_obs-tn`),
     'obs-twl': byName(`${gateway.id}_obs-twl`),
+    'obs-tq': byName(`${gateway.id}_obs-tq`),
     // Image packs have no language-name convention. Select only a single
     // catalogue/export-verified x-obsimages resource from the gateway owner;
     // ambiguity leaves the optional slot absent.
@@ -409,7 +411,7 @@ export const mergeOptionalPins = <T extends { languageSets?: Record<string, Lang
       ? ofOrg.find((p) => p.flavor.endsWith('/x-obsimages'))
       : undefined,
   };
-  if (!built.translationQuestions && !built.simplifiedText && !built.obs && !built['obs-images']) return null;
+  if (!built.translationQuestions && !built.simplifiedText && !built.obs && !built['obs-tq'] && !built['obs-images']) return null;
   let changed = false;
   const languageSets: Record<string, LanguageSet> = {};
   for (const [rung, set] of Object.entries(resources.languageSets ?? {})) {
@@ -427,7 +429,7 @@ export const pinsPreferringInstalled = <T extends { languageSets?: Record<string
 ): T => {
   if (!resources.languageSets) return resources;
   const slots = ['translationNotes', 'translationWordsLinks', 'translationWords', 'translationAcademy',
-    'translationQuestions', 'simplifiedText', 'obs', 'obs-tn', 'obs-twl', 'obs-images'];
+    'translationQuestions', 'simplifiedText', 'obs', 'obs-tn', 'obs-twl', 'obs-tq', 'obs-images'];
   const languageSets: Record<string, Record<string, unknown>> = {};
   for (const [rung, set] of Object.entries(resources.languageSets)) {
     const next: Record<string, unknown> = { ...set };
@@ -473,6 +475,7 @@ export const languageSetFromInstalled = (
   const obs = byName(`${gateway.id}_obs`);
   const obsTn = byName(`${gateway.id}_obs-tn`);
   const obsTwl = byName(`${gateway.id}_obs-twl`);
+  const obsTq = byName(`${gateway.id}_obs-tq`);
   const required = kind === 'bible' ? [tn, tw, ta] : [obs, obsTn, obsTwl, tw, ta];
   if (required.some((pin) => !pin)) return null;
   // §5.3 1.10 OPTIONAL slots (D64): included only when installed — a set
@@ -498,6 +501,7 @@ export const languageSetFromInstalled = (
   addPin('obs', obs);
   addPin('obs-tn', obsTn);
   addPin('obs-twl', obsTwl);
+  addPin('obs-tq', obsTq);
   addPin('obs-images', obsImages);
   return result;
 };

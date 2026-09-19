@@ -18,10 +18,11 @@ const path = process.getBuiltinModule('node:path');
 const FIX = path.resolve(process.cwd(), 'test/fixtures/resources');
 const OBS_TN = fs.readFileSync(path.join(FIX, 'en_obs-tn@v13/OBS.tsv'), 'utf8');
 const OBS_TWL = fs.readFileSync(path.join(FIX, 'en_obs-twl@v3/OBS.tsv'), 'utf8');
+const OBS_TQ = fs.readFileSync(path.join(FIX, 'en_obs-tq@v10/OBS.tsv'), 'utf8');
 const PARAMS = { content_name: 'Historias', content_abbr: 'historias', content_language_code: 'es' };
 
 type Slot = { state: string; items?: Array<{ contextId: { checkId: string; reference: { story: number; frame: number } } }> };
-type Understand = { loading: boolean; book: string; story: number; notes: Slot; words: Slot; comprehension: Record<string, { text: string }> | null; error?: string };
+type Understand = { loading: boolean; book: string; story: number; notes: Slot; words: Slot; questions: Slot; comprehension: Record<string, { text: string }> | null; error?: string };
 
 const setup = async () => {
   forgetSharedClocks();
@@ -36,7 +37,9 @@ const setup = async () => {
   const twlLocal = localRepoPathFromRepoPath(EN_HELPS['obs-twl'].repoPath);
   rig.createRepo(tnLocal, { 'OBS.tsv': OBS_TN });
   rig.createRepo(twlLocal, { 'OBS.tsv': OBS_TWL });
-  const installed = { [tnLocal]: EN_HELPS['obs-tn'], [twlLocal]: EN_HELPS['obs-twl'] };
+  const tqLocal = localRepoPathFromRepoPath(EN_HELPS['obs-tq'].repoPath);
+  rig.createRepo(tqLocal, { 'OBS.tsv': OBS_TQ });
+  const installed = { [tnLocal]: EN_HELPS['obs-tn'], [twlLocal]: EN_HELPS['obs-twl'], [tqLocal]: EN_HELPS['obs-tq'] };
   const load = async (storyNumber: number, understand: unknown = null): Promise<Understand> => {
     const dispatched: Array<{ type: string; patch?: { understand?: Understand } }> = [];
     await loadStory({
@@ -67,6 +70,11 @@ describe('the story Understand load (#290)', () => {
     expect(notes.find((it) => it.contextId.checkId === 'i6lj')?.contextId.reference).toEqual({ story: 1, frame: 0 });
     expect(notes.find((it) => it.contextId.checkId === 'lm48')?.contextId.reference).toEqual({ story: 1, frame: 1 });
     expect(u.words.items!.find((it) => it.contextId.checkId === 'aoaa')?.contextId.reference).toEqual({ story: 1, frame: 1 });
+    // #331: the questions of the open story, from the obs-tq member, like tQ
+    expect(u.questions.state).toBe('ready');
+    expect(u.questions.items).toHaveLength(22);
+    expect(u.questions.items!.every((it: { contextId: { reference: { story?: number } } }) => it.contextId.reference.story === 1)).toBe(true);
+    expect((u.questions.items![0] as { question?: string }).question).toBe('Where did everything in the universe come from?');
     expect(u.comprehension).toEqual({});
     const two = await load(2);
     expect(two.notes.items!.every((it) => it.contextId.reference.story === 2)).toBe(true);

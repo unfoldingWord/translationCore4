@@ -9,7 +9,7 @@ import React from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, within } from '@testing-library/react';
 
-const READ_SIDE = new Set(['loadUnderstand', 'toggleRail', 'openStory', 'go', 'loadHelpArticle', 'closeHelpArticle', 'stagedNote', 'setStoryFrame' /* #329: the frame in focus is view state, not a write */]);
+const READ_SIDE = new Set(['loadUnderstand', 'toggleRail', 'openStory', 'go', 'loadHelpArticle', 'closeHelpArticle', 'stagedNote', 'setStoryFrame' /* #329: the frame in focus is view state, not a write */, 'setHelpsTab', 'hoverHelp', 'focusHelp' /* #331: the shared helps panel's view actions */]);
 const calls: Array<{ name: string; args: unknown[] }> = [];
 const noteCurrent = new Map<string, string>();
 const notePersisted = new Map<string, string>();
@@ -23,6 +23,7 @@ const actionsProxy = new Proxy({}, {
       noteCurrent.set(keyOf(target), text);
     }
     if (name === 'stagedNote') return noteCurrent.get(keyOf(args[0] as never)) ?? null;
+    if (name === 'setHelpsTab') state.helpsTab = args[0];
     return undefined;
   },
 });
@@ -45,6 +46,10 @@ const SOURCE = { number: 1, title: 'The Creation', frames: [{ image: '', text: '
 
 const state: Record<string, unknown> = {
   view: 'read',
+  helpsTab: 'notes',
+  helpsActive: null,
+  sources: {},
+  sourceTab: 'ult',
   project: { id: 'p2', repoPath: '_local_/_local_/historias', name: 'Historias', languageTag: 'es', scriptDirection: 'ltr', flavor: 'textStories', bookCodes: [] },
   book: null,
   rail: false,
@@ -65,6 +70,7 @@ const state: Record<string, unknown> = {
       storyItem(2, 'zzmo', 'Let there be light!', 'This is direct quotation.', 'translationNotes', 'figs-quotations'),
     ] },
     words: { state: 'ready', rung: 'primary', items: [storyItem(1, 'aoaa', 'God', '', 'translationWords', 'god')] },
+    questions: { state: 'ready', rung: 'primary', items: [{ ...storyItem(1, 'es4e', '', 'God created everything.', 'translationQuestions'), question: 'Where did everything in the universe come from?', response: 'God created everything.' }] },
     comprehension: { '1:2': { text: 'Nota guardada', ts: 't1' } },
   },
 };
@@ -99,22 +105,32 @@ describe('#290 — the story Understand screen', () => {
     expect(calls.map((c) => c.name)).toContain('loadUnderstand');
   });
 
-  it('the helps pane follows the selected frame: the title notes on frame 0, then frame 1 with its word link', () => {
-    render(<StoryUnderstand />);
-    const helps = () => within(screen.getByTestId('story-helps'));
-    // the title unit is selected first: its note, and nothing of frame 1
-    expect(helps().getAllByTestId('story-help-note').map((n) => n.textContent)).toEqual([expect.stringContaining('The Creation')]);
+  it('the helps panel is the Bible panel in story mode (#331): the whole story listed, the frame in focus marked, Notes | Words | Questions and no simplified or comments tab', () => {
+    state.helpsTab = 'notes';
+    const { rerender } = render(<StoryUnderstand />);
+    const helps = () => within(screen.getByTestId('helps-panel'));
+    expect(helps().getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Notes', 'Words', 'Questions']);
+    // every note of the story is listed in frame order; the title unit (frame 0) is in focus first
+    const cards = () => Array.from(screen.getByTestId('helps-panel').querySelectorAll('[data-frame]'));
+    expect(cards().map((c) => c.getAttribute('data-frame'))).toEqual(['0', '1', '2']);
+    expect(cards().map((c) => c.getAttribute('data-focused'))).toEqual(['true', null, null]);
     fireEvent.click(screen.getByTestId('story-understand-unit-1'));
-    expect(helps().getAllByTestId('story-help-note').map((n) => n.textContent)).toEqual([expect.stringContaining('the beginning')]);
+    expect(cards().map((c) => c.getAttribute('data-focused'))).toEqual([null, 'true', null]);
     fireEvent.click(helps().getByRole('tab', { name: 'Words' }));
-    expect(helps().getAllByTestId('story-help-word')).toHaveLength(1);
-    expect(helps().getByTestId('story-help-word').textContent).toContain('God');
+    rerender(<StoryUnderstand />);
+    expect(cards()).toHaveLength(1);
+    expect(cards()[0].textContent).toContain('God');
+    expect(cards()[0].getAttribute('data-focused')).toBe('true');
     fireEvent.click(helps().getByRole('button', { name: 'Read the article →' }));
     expect(calls.find((c) => c.name === 'loadHelpArticle')?.args[0]).toMatchObject({ kind: 'tw', slug: 'god', rung: 'primary' });
-    fireEvent.click(screen.getByTestId('story-understand-unit-2'));
-    fireEvent.click(helps().getByRole('tab', { name: 'Notes' }));
-    expect(helps().getByTestId('story-help-note').textContent).toContain('Let there be light');
+    fireEvent.click(helps().getByRole('tab', { name: 'Questions' }));
+    rerender(<StoryUnderstand />);
+    const q = screen.getByTestId('understand-question');
+    expect(q.textContent).toContain('Where did everything in the universe come from?');
+    expect(q.textContent).toContain('God created everything.');
+    expect(q.getAttribute('data-focused')).toBe('true');
     expect(writes()).toEqual([]);
+    state.helpsTab = 'notes';
   });
 
   it('typing a comment on a frame stages it under the {story, frame} target, unmapped; no other control writes', () => {
