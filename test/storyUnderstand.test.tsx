@@ -105,6 +105,25 @@ describe('#290 — the story Understand screen', () => {
     expect(calls.map((c) => c.name)).toContain('loadUnderstand');
   });
 
+  it('#327 — the picture floats at the start of the gateway text and the comment box clears it; a frame without a picture has no float', () => {
+    render(<StoryUnderstand />);
+    const one = screen.getByTestId('story-understand-unit-1');
+    const img = within(one).getByRole('img') as HTMLImageElement;
+    expect(img.style.float).toBe('inline-start');
+    expect(img.style.width).toBe('30%');
+    expect(img.style.minWidth).toBe('160px');
+    expect(img.style.maxHeight).toBe('210px');
+    // The picture and the text share one flow: the img precedes the text in the same parent.
+    const gateway = within(one).getByTestId('story-understand-gateway');
+    expect(img.parentElement).toBe(gateway.parentElement);
+    expect(img.compareDocumentPosition(gateway) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(one).getByTestId('story-understand-comment').style.clear).toBe('both');
+    const two = screen.getByTestId('story-understand-unit-2');
+    expect(within(two).queryByRole('img')).toBeNull();
+    expect(within(two).getByTestId('story-understand-comment').style.clear).toBe('both');
+    expect(within(two).getByRole('textbox')).toBeTruthy();
+  });
+
   it('the helps panel is the Bible panel in story mode (#331): the whole story listed, the frame in focus marked, Notes | Words | Questions and no simplified or comments tab', () => {
     state.helpsTab = 'notes';
     const { rerender } = render(<StoryUnderstand />);
