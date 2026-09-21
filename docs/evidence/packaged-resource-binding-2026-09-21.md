@@ -66,17 +66,34 @@ The "committed bytes" leg is transitive: after each checkpoint the smoke asserts
 server's `git/status` route reports no pending change, and separately that HTTP bytes equal
 disk bytes. The installed smoke has no `git` on PATH, so it does not read `HEAD` directly.
 
+## Retest on the affected machine: PASS
+
+**Machine:** DESKTOP-SMQLQM3, Windows 11 10.0.26200, account `tc-win-test`. **Date:**
+2026-09-21. **Run by:** the project owner. **Build:** the zip of run 35643034107, commit
+`552b73553045ed55cbb397a2d1d2774ab51327d2`, `built_utc` `2026-09-21T19:13:06Z`, unzipped to
+`C:\Users\tc-win-test\tc4-a8\app`. The poisoned process `APP_RESOURCES_DIR`
+(`C:\Users\tc-win-test\tc4-a6\app\translationCore4\lib\`) stayed set for the whole run.
+Transcript: [issue #347, comment of 2026-09-21](https://github.com/unfoldingWord/translationCore4/issues/347#issuecomment-5766881234).
+
+| Step | Measured |
+|---|---|
+| Old selected template, alpha.6 tree `01.md` | 1225 bytes, 68 CR, 68 LF: the same bytes as the 2026-09-19 failing project. The mechanism is confirmed: the old template was copied, nothing converted it. |
+| New build's template `01.md` | 1157 bytes, 0 CR, 68 LF |
+| Negative control: 2026-09-19 unpack, fresh profile | `/api/version` 4.0.0-alpha.6, 2026-09-14T14:57:56Z; saved `app_resources_dir` = the alpha.6 path; new story 1225 bytes, 68 CR on disk and over HTTP |
+| Run A: new build, fresh profile | `/api/version` 4.0.0-alpha.7, 2026-09-21T19:13:06Z; `app_resources_dir` = `C:\Users\tc-win-test\tc4-a8\app\lib\`; new story 1157 bytes, 0 CR on disk and over HTTP |
+| Run B: new build, contaminated profile `home-obs-probe347` | `app_resources_dir` before launch = the alpha.6 path, after launch = `C:\Users\tc-win-test\tc4-a8\app\lib\`; version and story bytes as in Run A |
+
+The harness needed two local PowerShell corrections before it ran (a path join after a
+trailing `\`, and the `$home` variable renamed to avoid the automatic `$Home`). The product
+under test was not changed.
+
 ## What this record does not prove
 
-- **The affected machine.** DESKTOP-SMQLQM3 (Windows 11 10.0.26200, account `tc-win-test`),
-  where the owner observed the defect on 2026-09-19, has not run this build. Issue #347's
-  first criterion, the byte comparison of the old selected template against the failing
-  project there, is still open. The procedure is in the next section.
-- **A profile written by a real older release.** The CI contaminated profile is the smoke's
-  own profile with `app_resources_dir` rewritten. A profile that alpha.6 wrote on a user's
-  machine has the same shape, but that has not been exercised.
+- **A profile written by a real older release under a user's own account.** Run B used the
+  profile that alpha.7 wrote on 2026-09-19 under the poisoned variable, which has the same
+  shape as one alpha.6 would write. An installer-upgraded user profile has not been exercised.
 
-## Retest procedure for DESKTOP-SMQLQM3
+## Retest procedure for DESKTOP-SMQLQM3 (as run)
 
 Run in the same PowerShell session that still carries the poisoned process variable. Do not
 clear it: the point is that the fix wins over it.
