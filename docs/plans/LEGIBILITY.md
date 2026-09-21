@@ -254,6 +254,14 @@ rig job records them; a marker over them today would fail as `no-evidence`. L-2 
 the counts the manifest on `main` holds: `vitest` passed and skipped, `conformance:validate`
 total and the three group lines, `conformance:journal`, `conformance:normative`.
 
+**Amendment (2026-09-21, #349, D77).** The `vitest passed` markers in `README.md` and
+`CONTRIBUTING.md` are removed. That count moves with every added test, so each move cost
+one "Marked counts from the CI manifest" commit: 47 of the 325 commits on `main` between
+2026-09-05 and 2026-09-20. The rule above already says to mark only values that do not
+move; the passed count fails it between commits. The skip count and the conformance counts
+stay marked. The committed manifest is refreshed once per milestone in the pre-release
+issue, not per pull request.
+
 ## 4. Acceptance: the orientation test
 
 `docs/SYSTEM.md` is the surface under test. A fresh agent session, given only

@@ -43,24 +43,34 @@ npm run prove
 ```
 
 `npm run verify` runs lint, typecheck, the tests, the build and the docs gate. On a clean
-clone, expect <!-- manifest: vitest passed -->1218 tests passed and
-<!-- manifest: vitest skippedTests -->43 tests skipped [VERIFIED — the two counts are read
-from `docs/evidence/manifest.json`, the record of the CI run on a clean clone; that file
+clone, expect every test to pass or skip, and
+<!-- manifest: vitest skippedTests -->43 tests to skip [VERIFIED — the skip count is read
+from `docs/evidence/manifest.json`, the record of a CI run on a clean clone; that file
 names the run's commit, date and Node version; `npm run docs:gate` fails when this
 sentence disagrees with it].
 A skipped test names the prerequisite that it needs. A skip is not a failure.
 
-### If your change moves the test count
+The number of tests that passed is not written in any document (D77). It moves with every
+added test, and each move cost one manifest commit: 47 of the 325 commits on `main`
+between 2026-09-05 and 2026-09-20. Read it from the `prove-manifest` artifact of the
+commit's CI run.
 
-Adding or removing a test changes the clean-clone count, and `npm run docs:gate` then fails
-because the two marked sentences above disagree with the manifest. Close it like this, in
-this order:
+### If your change moves a marked count
+
+The marked counts are the vitest skip count and the conformance counts. They move when
+you add a rig-gated or sample-gated test, or when the specification and the harness change
+together (BURRITO-SPEC §9). Then `npm run docs:gate` fails because a marked sentence
+disagrees with the manifest. Close it like this, in this order:
 
 1. Push your branch with the code change.
 2. Open the **push-event** CI run of that commit — the run whose event is `push`, not the
    `pull_request` run. Download its `prove-manifest` artifact.
-3. Copy that file to `docs/evidence/manifest.json`, edit the two marked counts to match it
-   (`README.md` and `CONTRIBUTING.md`), and commit all three together.
+3. Copy that file to `docs/evidence/manifest.json`, edit the marked counts to match it,
+   and commit all of them together.
+
+The committed `docs/evidence/manifest.json` is otherwise refreshed once per milestone, in
+the pre-release issue's checklist (the pattern of #260 and #293), so the record keeps a
+recent commit, date and Node version without a commit per pull request.
 
 Take the manifest from the push-event run only. A `pull_request` run checks out a temporary
 merge commit that GitHub builds for the run, so its manifest records a commit that exists in
