@@ -204,10 +204,8 @@ describe('docs gate: controls', () => {
     // L-2 marks the counts in README, CONTRIBUTING, PLATFORM-NOTES and conformance/README:
     // the gate must see them, or it is checking nothing.
     expect(r.checked.length).toBeGreaterThanOrEqual(8);
-    // D77 (#349): the vitest passed count is no longer marked; the skip count is.
-    expect(r.checked.some((c) => c.file === 'README.md' && c.marker === 'vitest skippedTests')).toBe(
-      true,
-    );
+    // D77 (#349) and D78 (#351): no vitest count is marked; only the conformance counts are.
+    expect(r.checked.some((c) => c.marker.startsWith('vitest'))).toBe(false);
     expect(
       r.checked.some(
         (c) =>
@@ -224,8 +222,8 @@ describe('docs gate: controls', () => {
 
   it('negative control (real surface, CLI): one altered manifest count fails the gate and names the file, line and path', () => {
     const altered = structuredClone(realManifest);
-    const vitest = altered.suites.find((s: { id: string }) => s.id === 'vitest');
-    vitest.skippedTests = vitest.skippedTests + 1;
+    const validate = altered.suites.find((s: { id: string }) => s.id === 'conformance:validate');
+    validate.passed = validate.passed + 1;
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'docs-gate-'));
     const manifestPath = path.join(dir, 'manifest.json');
     fs.writeFileSync(manifestPath, JSON.stringify(altered));
@@ -239,7 +237,7 @@ describe('docs gate: controls', () => {
       expect(stale.length).toBeGreaterThanOrEqual(1);
       expect(
         stale.every((l: string) =>
-          /(README|CONTRIBUTING|AGENTS)\.md:\d+ {2}vitest skippedTests: document says \d+, manifest says \d+/.test(
+          /(docs\/PLATFORM-NOTES|conformance\/README)\.md:\d+ {2}conformance:validate passed: document says \d+, manifest says \d+/.test(
             l,
           ),
         ),
@@ -417,15 +415,25 @@ describe('docs gate: journeys', () => {
     expect(r.checked.length).toBeGreaterThanOrEqual(24);
   });
 
-  // D77 (#349): the passed count moves with every added test, so no document marks it.
-  // This test is also the change's negative control: it adds one test, and CI must pass
-  // without a change to docs/evidence/manifest.json.
-  describe('D77: no document marks the vitest passed count', () => {
-    it('README.md, CONTRIBUTING.md and AGENTS.md carry no `vitest passed` marker', () => {
+  // D77 (#349) and D78 (#351): the passed count moves with every added test and the skip
+  // count with every gated test, so no document marks either.
+  describe('D77 and D78: no document marks a vitest count', () => {
+    it('README.md, CONTRIBUTING.md and AGENTS.md carry no `vitest` marker', () => {
       for (const f of ['README.md', 'CONTRIBUTING.md', 'AGENTS.md']) {
         const text = fs.readFileSync(path.join(ROOT, f), 'utf8');
-        expect(text, f).not.toMatch(/<!--\s*manifest:\s*vitest\s+passed\s*-->/);
+        expect(text, f).not.toMatch(/<!--\s*manifest:\s*vitest\b/);
       }
+    });
+
+    // D78's negative control: a moved skip count is no longer a finding. The mirror of the
+    // CLI negative control above, which still fails on a moved conformance count.
+    it('a moved vitest skip count in the manifest produces no finding', () => {
+      const altered = structuredClone(realManifest);
+      const vitest = altered.suites.find((s: { id: string }) => s.id === 'vitest');
+      vitest.skippedTests = vitest.skippedTests + 1;
+      vitest.passed = vitest.passed + 1;
+      const r = checkFiles(realDocs(), altered);
+      expect(r.findings).toEqual([]);
     });
   });
 });

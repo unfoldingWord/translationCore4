@@ -46,13 +46,10 @@ Do the steps that follow:
 3. Type this command: `npm test`
 4. Start a Pankosmia server on port 19998 before using `npm run dev` to open or create a project. Read [`dev-env/README.md`](dev-env/README.md) for the local server steps.
 
-Expect this result on a clean clone: every test passes or skips, and
-<!-- manifest: vitest skippedTests -->**44 tests skip**
-[VERIFIED — the skip count is read from `docs/evidence/manifest.json`, the record of a
-CI run on a clean clone; that file names the run's commit, date and Node version;
-`npm run docs:gate` fails when this sentence disagrees with it]. The number of tests that
-passed at a commit is in that commit's CI run, in the `prove-manifest` artifact. This
-document does not repeat it: the count moves with every added test (decision D77).
+Expect this result on a clean clone: every test passes or skips. A skipped test names the
+prerequisite that it needs. The counts of tests that passed and skipped at a commit are in
+that commit's CI run, in the `prove-manifest` artifact. This document does not repeat
+them: both counts move with added tests (decisions D77 and D78).
 
 The `.npmrc` file sets `legacy-peer-deps=true`. This setting is necessary.
 `word-aligner@1.0.3` declares a `usfm-js ^2` peer dependency, but the proven pairing is
@@ -73,7 +70,7 @@ The `.npmrc` file sets `legacy-peer-deps=true`. This setting is necessary.
 
 ## Tests that this repository cannot run alone
 
-<!-- manifest: vitest skippedTests -->44 tests skip on a clean clone. They skip; they do not fail. Each skipped test names the
+Some tests skip on a clean clone. They skip; they do not fail. Each skipped test names the
 prerequisite that it needs.
 
 Two prerequisites are outside this repository:

@@ -1547,3 +1547,30 @@ gated test or a spec-and-harness change (BURRITO-SPEC §9). (3) The committed
 `docs/evidence/manifest.json` is refreshed once per milestone in the pre-release issue's
 checklist, and when a marked count moves, not per pull request. The gate, the marker
 grammar and `scripts/prove.mjs` do not change.
+
+## D78 (2026-09-21, project-owner ruling) **The vitest skip count is not written in any document either. The docs gate marks only the conformance counts.** [issue #351; amends D77 and the L-2 record in `docs/plans/LEGIBILITY.md` 3.2]
+
+Context. D77 kept the `vitest skippedTests` markers on the record that the skip count
+"stayed at 43 through all 47" manifest bumps. That record covers 2026-09-16 to 2026-09-20
+only. Over the marker's life the count moved four times in 17 days [VERIFIED — `git log -G skippedTests
+-- README.md` on `main` at 021ed1a, 2026-09-21]:
+
+| Date | Skip count | Commit |
+|---|---|---|
+| 2026-09-12 | 38 | f86d097 |
+| 2026-09-15 | 41 | 14305b4 |
+| 2026-09-16 | 43 | 4d9317a |
+| 2026-09-21 | 44 | fb09e2e (#346, the same day as D77) |
+
+Every rig-gated or file-gated test moves it. Each move costs one red CI run, one manifest
+download and one commit to four files. The marker's one benefit, a tripwire for a test that
+starts to skip for a bad reason, cannot tell that case from an added skip: both read as
+`STALE`. The rig job asserts separately that every `needsRig` suite ran and passed.
+
+Ruling. (1) The three `vitest skippedTests` markers are removed (`README.md` twice,
+`CONTRIBUTING.md`, `AGENTS.md`); the sentences stay qualitative: tests skip on a clean
+clone, never fail, and each names its missing prerequisite. (2) The conformance counts stay
+marked; they move only with a spec-and-harness change (BURRITO-SPEC §9). (3) D77 rule 3
+stands: the committed `docs/evidence/manifest.json` is refreshed once per milestone and
+when a conformance count moves. The gate, the marker grammar and `scripts/prove.mjs` do
+not change.
