@@ -14,10 +14,17 @@
 //
 // Usage: node scripts/fix-obs-template.mjs <templates dir>
 //   (the directory that holds content_templates/text_stories/metadata.json)
-import fs from 'node:fs';
-import path from 'node:path';
+const fs = process.getBuiltinModule('node:fs');
+const path = process.getBuiltinModule('node:path');
 
 const MARKER = '"localizedNames"';
+const STORY_COUNT = 50;
+const fileURLToPath = process.getBuiltinModule('node:url').fileURLToPath;
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const DEFAULT_REFERENCE_INGREDIENTS = path.resolve(
+  SCRIPT_DIR,
+  '../conformance/fixtures/text_stories/ingredients',
+);
 
 /** The template text with `"localizedNames": {}` before `"ingredients"`, or unchanged. */
 export const withLocalizedNames = (text) => {
@@ -26,6 +33,58 @@ export const withLocalizedNames = (text) => {
   if (at < 0) throw new Error('OBS template metadata has no "ingredients" key');
   const indent = /^[ \t]*/.exec(text.slice(at))[0];
   return `${text.slice(0, at)}${indent}"localizedNames": {},\n${text.slice(at)}`;
+};
+
+/**
+ * Validate the prepared story files against the pinned, byte-for-byte fixture.
+ * The validator never rewrites story content; assembly must fail if any input
+ * was converted, truncated, added, or removed.
+ */
+export const validateObsTemplate = (
+  templatesDir,
+  referenceIngredients = DEFAULT_REFERENCE_INGREDIENTS,
+) => {
+  const metadataFile = path.join(templatesDir, 'content_templates', 'text_stories', 'metadata.json');
+  if (!fs.existsSync(metadataFile)) throw new Error(`OBS metadata is missing: ${metadataFile}`);
+  const metadata = fs.readFileSync(metadataFile, 'utf8');
+  if (!metadata.includes(MARKER)) throw new Error(`OBS metadata is missing ${MARKER}: ${metadataFile}`);
+  const target = path.join(templatesDir, 'content_templates', 'text_stories', 'ingredients', 'content');
+  const reference = path.join(referenceIngredients, 'content');
+  const expectedNames = Array.from({ length: STORY_COUNT }, (_, index) => `${String(index + 1).padStart(2, '0')}.md`);
+  if (!fs.existsSync(target)) throw new Error(`OBS story directory is missing: ${target}`);
+  if (!fs.existsSync(reference)) throw new Error(`OBS reference story directory is missing: ${reference}`);
+
+  const expectedContentEntries = [...expectedNames, 'back', 'front'].sort();
+  const actualNames = fs.readdirSync(target).sort();
+  if (actualNames.length !== expectedContentEntries.length || actualNames.some((name, index) => name !== expectedContentEntries[index])) {
+    throw new Error(`OBS content set mismatch at ${target}: expected ${expectedContentEntries.join(', ')}, found ${actualNames.join(', ')}`);
+  }
+
+  for (const name of expectedNames) {
+    const targetFile = path.join(target, name);
+    const referenceFile = path.join(reference, name);
+    if (!fs.existsSync(referenceFile)) throw new Error(`OBS reference story is missing: ${referenceFile}`);
+    const actual = fs.readFileSync(targetFile);
+    const expected = fs.readFileSync(referenceFile);
+    if (actual.includes(0x0d)) throw new Error(`OBS story contains carriage return: ${targetFile}`);
+    if (!actual.equals(expected)) throw new Error(`OBS story bytes differ from the pinned fixture: ${targetFile}`);
+  }
+  for (const name of ['front/title.md', 'front/intro.md', 'back/intro.md']) {
+    const targetFile = path.join(target, name);
+    const referenceFile = path.join(reference, name);
+    const actual = fs.readFileSync(targetFile);
+    const expected = fs.readFileSync(referenceFile);
+    if (actual.includes(0x0d)) throw new Error(`OBS content contains carriage return: ${targetFile}`);
+    if (!actual.equals(expected)) throw new Error(`OBS content bytes differ from the pinned fixture: ${targetFile}`);
+  }
+  for (const [directory, expectedFiles] of [['front', ['intro.md', 'title.md']], ['back', ['intro.md']]]) {
+    const targetDir = path.join(target, directory);
+    const actualFiles = fs.readdirSync(targetDir).sort();
+    if (actualFiles.length !== expectedFiles.length || actualFiles.some((name, index) => name !== expectedFiles[index])) {
+      throw new Error(`OBS ${directory} content set mismatch at ${targetDir}`);
+    }
+  }
+  return { target, storyCount: STORY_COUNT };
 };
 
 // Run-as-CLI guard: `fileURLToPath` (not a URL-pathname comparison, which never
@@ -49,5 +108,7 @@ if (isCli) {
   const before = fs.readFileSync(file, 'utf8');
   const after = withLocalizedNames(before);
   if (after !== before) fs.writeFileSync(file, after);
+  const result = validateObsTemplate(dir);
   console.log(`${file}: ${after !== before ? 'localizedNames added' : 'already carries localizedNames'}`);
+  console.log(`${result.target}: ${result.storyCount} story files validated byte-for-byte`);
 }

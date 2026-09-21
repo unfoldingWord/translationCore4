@@ -11,7 +11,7 @@ $AppDir = (Resolve-Path -LiteralPath $AppDir).Path
 $exe = Join-Path $AppDir 'electronite\electron.exe'
 $serverExe = Join-Path $AppDir 'bin\server.exe'
 $main = Join-Path $AppDir 'electron'
-foreach ($file in @($exe, $serverExe, "$AppDir\smoke-api.cjs", "$AppDir\BUILD-MANIFEST.json")) {
+foreach ($file in @($exe, $serverExe, "$AppDir\smoke-api.cjs", "$AppDir\smoke-journal.cjs", "$AppDir\BUILD-MANIFEST.json")) {
   if (!(Test-Path -LiteralPath $file -PathType Leaf)) { throw "Missing installed file: $file" }
 }
 $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
@@ -22,7 +22,7 @@ $script:appProcess = $null
 $script:serverProcess = $null
 $script:port = $null
 $oldEnv = @{}
-$names = @('USERPROFILE','HOME','APPDATA','LOCALAPPDATA','TEMP','TMP','ELECTRON_ENABLE_LOGGING','ELECTRON_LOG_FILE','ELECTRON_RUN_AS_NODE')
+$names = @('USERPROFILE','HOME','APPDATA','LOCALAPPDATA','TEMP','TMP','APP_RESOURCES_DIR','ELECTRON_ENABLE_LOGGING','ELECTRON_LOG_FILE','ELECTRON_RUN_AS_NODE')
 foreach ($name in $names) { $oldEnv[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
 function Find-Port {
   foreach ($p in 19119..19139) {
@@ -68,11 +68,23 @@ function Run-Steps([string]$mode) {
   try {
     $out = Join-Path $LogDir "api-$mode-$stamp.log"
     $err = Join-Path $LogDir "api-$mode-$stamp.err"
-    $argsList = @("`"$AppDir\smoke-api.cjs`"", "http://127.0.0.1:$script:port", $repo, $abbr, "`"$marker`"", $mode)
+    $argsList = @("`"$AppDir\smoke-api.cjs`"", "http://127.0.0.1:$script:port", $repo, $abbr, "`"$marker`"", $mode, "`"$store`"")
     $p = Start-Process -FilePath $exe -ArgumentList $argsList -PassThru -Wait -RedirectStandardOutput $out -RedirectStandardError $err
     Get-Content -LiteralPath $out | Write-Host
     Get-Content -LiteralPath $err | Write-Host
     if ($p.ExitCode -ne 0) { throw "API smoke $mode failed: $($p.ExitCode)" }
+  } finally { Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue }
+}
+function Run-RealClientSmoke {
+  $env:ELECTRON_RUN_AS_NODE = '1'
+  try {
+    $out = Join-Path $LogDir "journal-$stamp.log"
+    $err = Join-Path $LogDir "journal-$stamp.err"
+    $argsList = @("`"$AppDir\smoke-journal.cjs`"", "http://127.0.0.1:$script:port/api", $abbr, "`"$marker`"", "`"$store`"")
+    $p = Start-Process -FilePath $exe -ArgumentList $argsList -PassThru -Wait -RedirectStandardOutput $out -RedirectStandardError $err
+    Get-Content -LiteralPath $out | Write-Host
+    Get-Content -LiteralPath $err | Write-Host
+    if ($p.ExitCode -ne 0) { throw "real-client OBS smoke failed: $($p.ExitCode)" }
   } finally { Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue }
 }
 try {
@@ -88,6 +100,19 @@ try {
   $env:LOCALAPPDATA = Join-Path $SmokeHome 'AppData\Local'
   $env:TEMP = $env:TMP = Join-Path $SmokeHome 'tmp'
   New-Item -ItemType Directory -Force -Path $env:APPDATA, $env:LOCALAPPDATA, $env:TEMP | Out-Null
+  $poisonRoot = Join-Path $LogDir 'tc4-poison resources'
+  Remove-Item -LiteralPath $poisonRoot -Recurse -Force -ErrorAction SilentlyContinue
+  New-Item -ItemType Directory -Force -Path $poisonRoot | Out-Null
+  Copy-Item -LiteralPath (Join-Path $AppDir 'lib') -Destination (Join-Path $poisonRoot 'lib') -Recurse
+  $poisonProductFile = Join-Path $poisonRoot 'lib\product\product.json'
+  $poisonProduct = Get-Content -Raw -LiteralPath $poisonProductFile | ConvertFrom-Json
+  $poisonProduct.version = '4.0.0-poison-old'
+  $poisonProduct.datetime = '2000-01-01T00:00:00Z'
+  [IO.File]::WriteAllText($poisonProductFile, (($poisonProduct | ConvertTo-Json -Depth 20) + "`n"), [Text.UTF8Encoding]::new($false))
+  $poisonStoryFile = Join-Path $poisonRoot 'lib\templates\content_templates\text_stories\ingredients\content\01.md'
+  $poisonStory = [IO.File]::ReadAllText($poisonStoryFile) -replace "`r?`n", "`r`n"
+  [IO.File]::WriteAllText($poisonStoryFile, $poisonStory, [Text.UTF8Encoding]::new($false))
+  $env:APP_RESOURCES_DIR = Join-Path $poisonRoot 'lib'
   $env:ELECTRON_ENABLE_LOGGING = 'file'
   Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
   Start-App first
@@ -118,15 +143,30 @@ try {
   Write-Host "ok store: $store"
   Run-Steps source
   Run-Steps obs-image
+  Run-Steps obs-template-probe
+  Run-Steps obs-create
+  Run-RealClientSmoke
   Run-Steps create
   $onDisk = Join-Path $store "$repo/ingredients/TIT.usfm"
   if (!(Get-Content -LiteralPath $onDisk | Where-Object { $_ -ceq "\v 1 $marker" })) { throw 'Written verse missing on disk' }
   $firstServer = $script:serverProcess.Id
   Stop-App
+  $settingsFile = Join-Path $SmokeHome 'pankosmia\tc4\user_settings.json'
+  $settings = Get-Content -Raw -LiteralPath $settingsFile | ConvertFrom-Json
+  $settings.app_resources_dir = (Join-Path $poisonRoot 'lib') + '\'
+  [IO.File]::WriteAllText($settingsFile, (($settings | ConvertTo-Json -Depth 20) + "`n"), [Text.UTF8Encoding]::new($false))
   Start-App second
   if ($script:serverProcess.Id -eq $firstServer) { throw 'Server did not restart' }
+  $repaired = Get-Content -Raw -LiteralPath $settingsFile | ConvertFrom-Json
+  $expectedResources = [IO.Path]::GetFullPath((Join-Path $AppDir 'lib')) + '\'
+  if ($repaired.app_resources_dir -ine $expectedResources) { throw "Packaged resource binding did not repair user_settings.json: $($repaired.app_resources_dir)" }
+  Write-Host "ok resources: poisoned parent and saved profile rebound to $expectedResources"
+  Run-Steps version
+  Run-Steps obs-template-probe
+  Run-RealClientSmoke
   Run-Steps readback
   Run-Steps obs-image
+  Run-Steps obs-readback
   if (!$KeepProject) { Run-Steps delete }
   Stop-App
   Write-Host "SMOKE OK: $AppDir under USERPROFILE=$SmokeHome; store $store"

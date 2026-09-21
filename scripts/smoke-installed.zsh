@@ -7,10 +7,11 @@
 #   3. the project store is the tC4-owned path, never $HOME/pankosmia_repos (#70);
 #   4. the bundled source text (en_ult) is readable offline (source, #163);
 #   5. the bundled story 1/frame 1 image decodes locally while net is disabled;
-#   6. a project is created through the app's own HTTP surface, with one book;
-#   7. one verse is written into that book and lands in the store on disk;
-#   8. the app is stopped and started again; the verse and image read back;
-#   9. the smoke project is removed; the app is stopped.
+#   6. an OBS project creates all fifty LF stories from the current package;
+#   7. a project is created through the app's own HTTP surface, with one book;
+#   8. one verse is written into that book and lands in the store on disk;
+#   9. the app is stopped and started again; the verse, OBS checkpoint and image read back;
+#  10. the smoke projects are removed; the app is stopped.
 #
 # Each step prints one line, "ok <step>: <what was seen>" or "FAIL <step>: <what was
 # seen>", and the script exits non-zero at the first failure. The output is what the
@@ -30,7 +31,8 @@
 #                          tc4-smoke-second.log); default: $TMPDIR or /tmp. CI uploads it.
 #
 # The build-time smoke test in scripts/package-desktop.zsh stays: it checks the
-# staged folder inside the build. This script is the post-install half.
+# staged folder inside the build. This script is the post-install half and keeps
+# a deliberately stale APP_RESOURCES_DIR in the parent environment.
 set -u
 
 APPDIR=${1:-${0:a:h}}
@@ -83,10 +85,29 @@ for bin in "$LAUNCHER" "$ELECTRON"; do
   [ -f "$bin" ] || { echo "FAIL artifact: $bin is missing"; exit 1; }
   [ -x "$bin" ] || { echo "FAIL artifact: $bin exists but is not executable ($(ls -l "$bin" | cut -d' ' -f1)); the unpacker dropped the permission bits. Unpack the downloaded zip once with unzip."; exit 1; }
 done
+for helper in "$APPDIR/smoke-api.cjs" "$APPDIR/smoke-journal.cjs"; do
+  [ -f "$helper" ] || { echo "FAIL artifact: $helper is missing"; exit 1; }
+done
 ok "artifact: $APPDIR ($(basename "$LAUNCHER") and $(basename "$ELECTRON") are executable)"
 
 # Node mode of the shipped Electron: the JSON steps below run through it.
 node_run() { ELECTRON_RUN_AS_NODE=1 "$ELECTRON" "$@"; }
+
+POISON_ROOT="$LOGDIR/tc4-poison resources"
+rm -rf "$POISON_ROOT"
+mkdir -p "$POISON_ROOT"
+cp -R "$APPDIR/lib" "$POISON_ROOT/lib"
+node_run - "${POISON_ROOT}/lib/product/product.json" "${POISON_ROOT}/lib/templates/content_templates/text_stories/ingredients/content/01.md" <<'NODE'
+const fs = require('fs');
+const [productFile, storyFile] = process.argv.slice(2);
+const product = JSON.parse(fs.readFileSync(productFile, 'utf8'));
+product.version = '4.0.0-poison-old';
+product.datetime = '2000-01-01T00:00:00Z';
+fs.writeFileSync(productFile, JSON.stringify(product) + '\n');
+const story = fs.readFileSync(storyFile, 'utf8').replace(/\r?\n/g, '\r\n');
+fs.writeFileSync(storyFile, story);
+NODE
+export APP_RESOURCES_DIR="$POISON_ROOT/lib/"
 
 # ---- start / stop ----------------------------------------------------------------
 find_port() {  # sets PORT to the port of a tc4 server, or leaves it empty
@@ -217,11 +238,15 @@ ok "store: repo_dir $STORE (the ${VARIANT:-production} build's tC4-owned store; 
 # The same endpoints the client uses (src/data/serverApi.ts): POST
 # /git/new-text-translation, GET /git/list-local-repos, GET and POST
 # /burrito/ingredient/raw/<repo>?ipath=TIT.usfm. Each line is one step.
-run_steps() { node_run "$APPDIR/smoke-api.cjs" "http://127.0.0.1:$PORT" "$REPO" "$ABBR" "$MARKER" "$1"; }
+run_steps() { node_run "$APPDIR/smoke-api.cjs" "http://127.0.0.1:$PORT" "$REPO" "$ABBR" "$MARKER" "$1" "$STORE"; }
+run_real_client() { node_run "$APPDIR/smoke-journal.cjs" "http://127.0.0.1:$PORT/api" "$ABBR" "$MARKER" "$STORE"; }
 
 # ---- source: bundled English suite (en_ult) is readable offline (#163) ----------
 run_steps source || { cleanup_app; exit 1; }
 run_steps obs-image || { cleanup_app; exit 1; }
+run_steps obs-template-probe || { cleanup_app; exit 1; }
+run_steps obs-create || { cleanup_app; exit 1; }
+run_real_client || { cleanup_app; exit 1; }
 
 # ---- 4-5: create a project and write one verse, through the app's HTTP surface ----
 
@@ -235,11 +260,27 @@ DISK_V11=$(sed -n 's/^\\v 1 \(.*\)$/\1/p' "$ON_DISK" | head -1)
 # ---- 6: restart and read back ----------------------------------------------------
 FIRST_SERVER="$SERVER_PIDS"
 stop_app first
+node_run - "$SMOKE_HOME/pankosmia/tc4/user_settings.json" "$POISON_ROOT/lib" <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const [settingsFile, poisonLib] = process.argv.slice(2);
+const settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+settings.app_resources_dir = path.resolve(poisonLib) + path.sep;
+fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2) + '\n');
+NODE
 start_app second
 [ "$SERVER_PIDS" != "$FIRST_SERVER" ] || fail "restart: the server pid did not change ($FIRST_SERVER); the app was not restarted"
 ok "restart: a new server process (pid $FIRST_SERVER before, $SERVER_PIDS after)"
+EXPECTED_RESOURCES="$APPDIR/lib/"
+REPAIRED_RESOURCES=$(node_run -e 'const fs=require("fs"); const p=process.argv[1]; process.stdout.write(JSON.parse(fs.readFileSync(p,"utf8")).app_resources_dir)' "$SMOKE_HOME/pankosmia/tc4/user_settings.json")
+[ "$REPAIRED_RESOURCES" = "$EXPECTED_RESOURCES" ] || fail "resources: saved selector '$REPAIRED_RESOURCES' is not '$EXPECTED_RESOURCES'"
+ok "resources: poisoned parent and saved profile rebound to $EXPECTED_RESOURCES"
+run_steps version || { cleanup_app; exit 1; }
+run_steps obs-template-probe || { cleanup_app; exit 1; }
+run_real_client || { cleanup_app; exit 1; }
 run_steps readback || { cleanup_app; exit 1; }
 run_steps obs-image || { cleanup_app; exit 1; }
+run_steps obs-readback || { cleanup_app; exit 1; }
 
 # ---- 7: clean up -----------------------------------------------------------------
 if [ "${TC4_SMOKE_KEEP:-0}" = "1" ]; then
