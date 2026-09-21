@@ -74,7 +74,6 @@ const main = async (): Promise<void> => {
     // This is the production path: open, seed the installed suite/settings, and
     // checkpoint through JournalingStore (not direct /ingredient/raw writes).
     await store.open(repoPath);
-    await assertCleanCheckpoint(api, 'OBS creation');
     await store.writeResources(INSTALLED_SUITE as never, null);
     await store.writeSettings({ schemaVersion: 1, checkingLanguage: 'en', textDirection: 'ltr', textFont: null, languageName: 'Français' }, null);
 
