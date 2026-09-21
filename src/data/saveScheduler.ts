@@ -80,6 +80,10 @@ export class SaveScheduler {
   private chain: Promise<void> = Promise.resolve();
   private writing = 0;
   private failure: SaveFailure | null = null;
+  /** The one retry in flight (#356): every retry() call while it runs joins
+   * it, so rapid Retry clicks (or a drain racing a click) can never overlap
+   * reconcile or write work. */
+  private retrying: Promise<void> | null = null;
   private readonly listeners = new Set<(state: SaveState) => void>();
   private lastNotified: SaveState | null = null;
 
@@ -215,13 +219,27 @@ export class SaveScheduler {
    * without reconciling would claim rest over an unresolved outbox. A
    * rejecting reconcile keeps the failure standing and refuses. Then clears
    * the failure and flushes the retained dirty buffer (which still holds
-   * the failed edits, plus any made since). */
-  async retry(): Promise<void> {
+   * the failed edits, plus any made since).
+   *
+   * Single-flight (#356): a retry already in flight is returned as-is, so
+   * repeated Retry clicks start no second reconcile or write; the state
+   * reads 'saving' until it settles, and the indicator withdraws Retry. */
+  retry(): Promise<void> {
+    if (this.retrying) return this.retrying;
+    const run = this.runRetry().finally(() => {
+      this.retrying = null;
+      this.notify();
+    });
+    this.retrying = run;
+    this.notify();
+    return run;
+  }
+
+  private async runRetry(): Promise<void> {
     if (this.failure && this.reconcile) {
       try {
         await this.reconcile();
       } catch {
-        this.notify();
         return;
       }
     }
@@ -230,7 +248,7 @@ export class SaveScheduler {
   }
 
   getState(): SaveState {
-    if (this.writing > 0) return 'saving';
+    if (this.writing > 0 || this.retrying) return 'saving';
     if (this.failure) return 'error';
     if (this.dirtyBooks().length > 0) return 'dirty';
     return 'saved';

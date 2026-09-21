@@ -6,6 +6,7 @@
 // store is a fake with the platform's compare-and-swap (#17).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SaveScheduler } from '../src/data/saveScheduler';
+import { StaleWriteError } from '../src/data/httpStore';
 import { __alignSaveForTests, __drainSchedulersForTests, alignFileJson } from '../src/state.jsx';
 
 const { makeAlignWriter, spliceAlignRecord, alignFileFor } = __alignSaveForTests;
@@ -228,5 +229,79 @@ describe('#100 (Codex round 1) — a clean buffer follows the disk; a working bu
     await settle();
     expect(sched.getState()).toBe('error');
     expect((await alignFileFor(store, sched, BOOK)).file.chapters['1']['1']).toEqual(record(1));
+  });
+});
+
+describe('#356 — Retry after an alignment save conflict is single-flight and ends stable', () => {
+  const stale = () => new StaleWriteError('checking/alignments/TIT.json', 'md5-read', 'md5-disk');
+  /** The production writer, with the store refusing the write as a conflict. */
+  const conflictingWriter = (store: ReturnType<typeof makeStore>) => {
+    const writer = makeAlignWriter({ store });
+    return (book: string, json: string) => {
+      store.failNextWrite(stale());
+      return writer(book, json);
+    };
+  };
+
+  it('ten rapid Retry clicks and a racing drain run ONE reconcile and ONE write; the state reads saving meanwhile', async () => {
+    const store = makeStore();
+    let reconciles = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const sched = new SaveScheduler({
+      writeBook: makeAlignWriter({ store }),
+      splice: spliceAlignRecord,
+      reconcile: async () => {
+        reconciles += 1;
+        await gate;
+      },
+    });
+    sched.seedIfAbsent(BOOK, alignFileJson(null, BOOK));
+    store.failNextWrite(stale());
+    sched.markDirty(BOOK, '1', '1', JSON.stringify(record(1)));
+    await settle();
+    expect(sched.getState()).toBe('error');
+    expect(sched.getFailure()?.error).toBeInstanceOf(StaleWriteError);
+
+    const clicks = Array.from({ length: 10 }, () => sched.retry());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(reconciles).toBe(1);
+    expect(store.writes).toHaveLength(0);
+    // The indicator sees 'saving' (Retry withdrawn) until the one retry settles.
+    expect(sched.getState()).toBe('saving');
+    // A navigation drain racing the clicks joins the same retry.
+    const drained = __drainSchedulersForTests([{ current: sched }]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(reconciles).toBe(1);
+
+    release();
+    await Promise.all(clicks);
+    expect(await drained).toBe(true);
+    expect(reconciles).toBe(1);
+    expect(store.writes).toHaveLength(1);
+    expect(store.file!.chapters['1']['1']).toEqual(record(1));
+    expect(sched.getState()).toBe('saved');
+  });
+
+  it('a conflict that persists leaves every repeated Retry in a stable error: buffer kept, two transitions per attempt, no write', async () => {
+    const store = makeStore();
+    const sched = new SaveScheduler({ writeBook: conflictingWriter(store), splice: spliceAlignRecord, reconcile: async () => {} });
+    sched.seedIfAbsent(BOOK, alignFileJson(null, BOOK));
+    sched.markDirty(BOOK, '1', '1', JSON.stringify(record(1)));
+    await settle();
+    expect(sched.getState()).toBe('error');
+    const transitions: string[] = [];
+    sched.subscribe((state) => transitions.push(state));
+    for (let n = 0; n < 5; n++) {
+      await Promise.all([sched.retry(), sched.retry(), sched.retry()]);
+      expect(sched.getState()).toBe('error');
+      expect(sched.getFailure()?.error).toBeInstanceOf(StaleWriteError);
+    }
+    // Every attempt is one bounded 'saving' → 'error' cycle — no redraw loop.
+    expect(transitions).toEqual(['error', ...Array(5).fill(['saving', 'error']).flat()]);
+    expect(store.writes).toHaveLength(0);
+    expect(JSON.parse(sched.bookText(BOOK)!).chapters['1']['1']).toEqual(record(1));
+    // The retained failure still refuses the drain (FR-32) — and drains once, not per click.
+    expect(await __drainSchedulersForTests([{ current: sched }])).toBe(false);
   });
 });
