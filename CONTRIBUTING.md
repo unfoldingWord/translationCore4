@@ -44,7 +44,7 @@ npm run prove
 
 `npm run verify` runs lint, typecheck, the tests, the build and the docs gate. On a clean
 clone, expect every test to pass or skip, and
-<!-- manifest: vitest skippedTests -->43 tests to skip [VERIFIED — the skip count is read
+<!-- manifest: vitest skippedTests -->44 tests to skip [VERIFIED — the skip count is read
 from `docs/evidence/manifest.json`, the record of a CI run on a clean clone; that file
 names the run's commit, date and Node version; `npm run docs:gate` fails when this
 sentence disagrees with it].
