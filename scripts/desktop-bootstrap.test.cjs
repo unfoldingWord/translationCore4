@@ -268,6 +268,8 @@ test('the packaged entry point is valid, ordered, and preserves its launch contr
   assert.match(recipe, /run_api_smoke obs-create/);
   assert.match(recipe, /run_api_smoke obs-template-probe/);
   assert.match(recipe, /run_real_client_smoke/);
+  assert.match(recipe, /ELECTRON_RUN_AS_NODE=1 "\$ELECTRON_NODE" "\$\(cygpath -m "\$SMOKE_API"\)"/);
+  assert.match(recipe, /ELECTRON_RUN_AS_NODE=1 "\$ELECTRON_NODE" "\$\(cygpath -m "\$SMOKE_JOURNAL"\)"/);
   assert.match(recipe, /build-smoke-journal\.cjs/);
   assert.match(recipe, /run_api_smoke obs-readback/);
 });

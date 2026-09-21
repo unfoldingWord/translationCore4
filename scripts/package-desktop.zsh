@@ -725,7 +725,7 @@ run_api_smoke() {
   local mode=$1
   if [ "$OS" = windows ]; then
     win_env
-    env "${WIN_ENV[@]}" ELECTRON_RUN_AS_NODE=1 "$ELECTRON_NODE" "$SMOKE_API" \
+    env "${WIN_ENV[@]}" ELECTRON_RUN_AS_NODE=1 "$ELECTRON_NODE" "$(cygpath -m "$SMOKE_API")" \
       "http://127.0.0.1:$SMOKE_PORT" "$SMOKE_REPO" "$SMOKE_ABBR" "$SMOKE_MARKER" "$mode" "$(cygpath -m "$SMOKE_HOME/$STORE_LEAF")"
   else
     APP_RESOURCES_DIR="$POISON_ROOT/lib/" ELECTRON_RUN_AS_NODE=1 "$ELECTRON_NODE" "$SMOKE_API" \
@@ -735,7 +735,7 @@ run_api_smoke() {
 run_real_client_smoke() {
   if [ "$OS" = windows ]; then
     win_env
-    env "${WIN_ENV[@]}" ELECTRON_RUN_AS_NODE=1 "$ELECTRON_NODE" "$SMOKE_JOURNAL" \
+    env "${WIN_ENV[@]}" ELECTRON_RUN_AS_NODE=1 "$ELECTRON_NODE" "$(cygpath -m "$SMOKE_JOURNAL")" \
       "http://127.0.0.1:$SMOKE_PORT/api" "$SMOKE_ABBR" "$SMOKE_MARKER" "$(cygpath -m "$SMOKE_HOME/$STORE_LEAF")"
   else
     APP_RESOURCES_DIR="$POISON_ROOT/lib/" ELECTRON_RUN_AS_NODE=1 "$ELECTRON_NODE" "$SMOKE_JOURNAL" \

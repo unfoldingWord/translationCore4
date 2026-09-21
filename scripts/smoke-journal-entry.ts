@@ -38,13 +38,20 @@ const failIfDifferent = (number: number, expected: Buffer, actual: Buffer, surfa
   if (!actual.equals(expected)) throw new Error(`${surface} ${storyPath(number)} differs from the expected bytes`);
 };
 const outsideFirstFrameViolation = (before: string, after: string): string | null => {
-  const lines = before.split('\n');
-  const nextImage = lines.findIndex((line, index) => index > 0 && /^!\[[^\]]*\]\([^)]*\)$/.test(line));
-  if (nextImage < 0) return 'seed has no second frame';
-  const prefix = `${lines.slice(0, 2).join('\n')}\n`;
-  const suffix = lines.slice(nextImage).join('\n');
-  if (!after.startsWith(prefix)) return 'bytes before frame 1 changed';
-  if (!after.endsWith(suffix)) return 'bytes after frame 1 changed';
+  const imageLine = /^!\[[^\]]*\]\([^)]*\)$/;
+  const beforeLines = before.split('\n');
+  const afterLines = after.split('\n');
+  const beforeImages = beforeLines.flatMap((line, index) => imageLine.test(line) ? [index] : []);
+  const afterImages = afterLines.flatMap((line, index) => imageLine.test(line) ? [index] : []);
+  if (beforeImages.length < 2) return 'seed has no second frame';
+  if (afterImages.length !== beforeImages.length) return 'frame image boundaries changed';
+  // Frame 1 is the region after image 1 and before image 2. Compare the exact
+  // line sequences on both sides so the assertion covers every unrelated byte,
+  // including the title, image lines, trailing blanks, and later frames.
+  if (beforeLines.slice(0, beforeImages[0] + 1).join('\n') !== afterLines.slice(0, afterImages[0] + 1).join('\n'))
+    return 'bytes before frame 1 changed';
+  if (beforeLines.slice(beforeImages[1]).join('\n') !== afterLines.slice(afterImages[1]).join('\n'))
+    return 'bytes after frame 1 changed';
   return null;
 };
 
