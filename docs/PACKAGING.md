@@ -130,6 +130,28 @@ and that enforcement is a packaging/shell responsibility. Facts, measured
   the local server port, or the dev rig, is outside it; the server binds
   127.0.0.1 and the port is not user-visible in normal use.
 
+## Packaged resource binding (#348)
+
+Packaged startup has one resource selector. The tC4-owned `tc4-main.js` runs
+under the singleton lock and, while `START_SERVER` is enabled, binds the
+spawned server's `APP_RESOURCES_DIR` to the current package's absolute `lib/`
+directory before it loads `electronStartup.js`. A parent shell may contain a
+relative path or an absolute path from an older installation; neither is
+accepted for the packaged server.
+
+The same prelude derives the tC4 profile from the packaged product's
+`product.json` short name and the platform home convention. If an existing
+`user_settings.json` has a stale `app_resources_dir`, the prelude replaces only
+that property through an atomic temporary-file publish. It preserves the
+project store, project bytes, unknown settings and every other preference. A
+malformed settings file fails explicitly and remains untouched. A fresh profile
+is left for the platform to initialize with the already-correct environment.
+
+The development rig and explicit external-server mode (`START_SERVER=false`)
+retain their caller-provided resource selector and profile. Linux keeps its
+shell-based first-run seeding; resource binding is shared by all three packaged
+OS entry points.
+
 The recipe follows the Pankosmia
 [desktop-app-template](https://github.com/pankosmia/desktop-app-template)
 (MIT). The template is a read-only reference. Do not open issues or pull
@@ -232,7 +254,7 @@ translationCore4.app/
     debug-seeds/                        debug only
     Rocket.toml
     README.txt, LICENSE, licenses/, THIRD-PARTY-NOTICES.md
-    BUILD-MANIFEST.json, smoke-installed.zsh
+    BUILD-MANIFEST.json, smoke-installed.zsh, smoke-api.cjs, smoke-journal.cjs
 ```
 
 The pinned startup retains `Contents/Resources` as its server working directory;
@@ -350,7 +372,7 @@ the debug variant). That folder holds:
 | `bin\server.exe` | the pinned pankosmia-web server; the template's startup script spawns `bin\server.exe` on Windows |
 | `lib\`, `resources\` | clients, app resources, templates, webfonts; the bundled English suite (#163) |
 | `Rocket.toml`, `LICENSE`, `licenses\`, `THIRD-PARTY-NOTICES.md`, `BUILD-MANIFEST.json` | the same as macOS and Linux |
-| `smoke-installed.ps1`, `smoke-api.cjs` | post-install proof using PowerShell and the bundled runtime |
+| `smoke-installed.ps1`, `smoke-api.cjs`, `smoke-journal.cjs` | post-install proof using PowerShell and the bundled runtime; the latter is the bundled production `JournalingStore` lifecycle |
 | `icon.ico`, `README.txt` | tC4 icon and unsigned pilot instructions |
 
 ### Install and launch
@@ -480,7 +502,7 @@ Two smoke tests exist. They answer two different questions.
 |---|---|---|
 | Where | `scripts/package-desktop.zsh`, step 6/7, on the staged folder, before the zip is written | `smoke-installed.zsh`, shipped in the artifact folder; the source is `scripts/smoke-installed.zsh` |
 | Question | Can this artifact start on the build host? | Does the installed app work for a pilot? |
-| What it proves | The launcher self-spawns the server; `/` answers 303 to `/clients/uw-tc4` and the client 200; `/api/version` reports the staged `lib/product/product.json` version and datetime (#326); a second launch exits by itself (#4); `repo_dir` is the isolated store and holds the seeded English and OBS suite (#70, #163, #288) | The same start and client checks on the INSTALLED folder; `/api/version` reports the installed `lib/product/product.json` version and datetime (#326); the store path (#70); bundled source text is readable offline (`source`, #163); with the platform net gate disabled, OBS story 1/frame 1 is read only from the local bundled image pack and decoded as a 640×360 JPEG; the same image check passes after restart; a project is created, one verse is persisted, and the smoke project is removed. The transcript records artifact version, commit, host platform and build date from `BUILD-MANIFEST.json`. |
+| What it proves | The launcher self-spawns the server while the parent carries a deliberately stale `APP_RESOURCES_DIR`; `/` answers 303 to `/clients/uw-tc4` and the client 200; `/api/version` reports the staged `lib/product/product.json` version and datetime (#326); a second launch exits by itself (#4); a pre-seed OBS probe compares all 50 platform-created bytes before any client write (so a stale tree cannot be masked); the HTTP smoke then creates all fifty LF seed stories and compares HTTP, disk, and Git HEAD bytes, edits/checkpoints one story, and retains it after a real restart; the bundled real-client harness runs `JournalingStore`, lists the OBS project on Home, edits/checkpoints/reopens it, and runs the journal fold verifier; `repo_dir` is the isolated store and holds the seeded English and OBS suite (#70, #163, #288) | The same start and client checks on the INSTALLED folder; the parent and an existing saved profile deliberately point at a stale resource tree, then both selectors are rebound to the installed `lib/`; `/api/version` reports the installed `lib/product/product.json` version and datetime (#326); the store path (#70); bundled source text is readable offline (`source`, #163); with the platform net gate disabled, OBS story 1/frame 1 is read only from the local bundled image pack and decoded as a 640×360 JPEG; a fresh-project pre-seed probe and the bundled real-client `JournalingStore` lifecycle both pass after the contaminated-profile restart; an OBS project is created and its fifty stories are checked byte-for-byte across HTTP, disk, and Git; a Bible project is created, one verse is persisted, and both smoke projects are removed. The transcript records artifact version, commit, host platform and build date from `BUILD-MANIFEST.json`. |
 | Runs | In every build, in CI and by hand | On a fresh CI runner after every build (`smoke-macos-arm64`, `smoke-linux-x64` in `package-desktop.yml`), and by a person on a clean machine |
 | Fails the build | Yes | The CI job fails; the tag rule (epic #59) needs the run to pass on each platform before a pre-release tags |
 
@@ -498,7 +520,7 @@ For a Linux or older flat artifact, from the unpacked folder:
 zsh smoke-installed.zsh
 ```
 
-The script needs `zsh`, `curl`, `lsof` and the folder. No `npm`, no checkout, no rig.
+The script needs `zsh`, `curl`, `lsof`, `git` and the folder. No `npm`, no checkout, no rig.
 The JSON steps run under the artifact's own Electron in Node mode
 (`ELECTRON_RUN_AS_NODE=1`), so the machine needs no `node`, `python` or `jq`.
 
@@ -520,10 +542,14 @@ Options:
 - A first argument names the folder when the script does not sit in it:
   `zsh scripts/smoke-installed.zsh /path/to/translationCore4`.
 
-The smoke project is `smoke_<epoch>`, language `fr`, one book (Titus, `eng`
-versification). The verse write goes through `POST /burrito/ingredient/raw/<repo>?ipath=TIT.usfm`,
-the endpoint the client uses; it writes the raw ingredient and no journal segment, so the
-project is a pre-journal project until the app opens it (universal seeding journals it then).
+The raw HTTP smoke project is `smoke_<epoch>`, language `fr`, one book (Titus, `eng`
+versification). Its OBS probe intentionally reads the platform-created template before
+the raw seed write and compares HTTP/disk/Git bytes. The adjacent `smoke-journal.cjs`
+helper is bundled at build time from the production `JournalingStore`; it creates a
+separate OBS project, writes resources/settings/frame text through the real journal
+boundary, verifies the Home listing, checkpoints and reopens it, and runs the fold
+verifier. Keeping the probes separate makes a stale platform template a hard failure
+instead of something a fixture rewrite could hide.
 
 Records of runs live in `docs/evidence/` (one per close, machine, OS version, artifact id,
 commit, date): see "Evidence" below.

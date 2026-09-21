@@ -10,7 +10,8 @@
 #
 # The smoke test launches the STAGED ARTIFACT THROUGH ITS OWN ENTRY POINT
 # (the start-tc4 launcher -> Electronite -> electronStartup.js), with a fresh HOME
-# and no app-specific environment overrides. The app must self-spawn its
+# and a deliberately poisoned APP_RESOURCES_DIR. The app must bind itself to
+# the current package before it self-spawns its
 # bundled server and serve the tC4 client (303 from /, 200 from
 # /clients/uw-tc4) before the zip is written.
 #
@@ -293,13 +294,22 @@ if (!app.requestSingleInstanceLock()) {
       win.focus();
     }
   });
-  if (process.platform === 'darwin' || process.platform === 'win32') {
-    try {
-      require('./tc4-bootstrap.cjs').bootstrap({
+  try {
+      const bootstrap = require('./tc4-bootstrap.cjs');
+      if (bootstrap.shouldBindPackagedResources(process.env.START_SERVER)) {
+      const options = {
         ...require('./tc4-bootstrap.json'),
         resourcesDir: require('path').join(__dirname, '..'),
         home: require('os').homedir(),
-      });
+      };
+      // Bind the process and any existing profile before upstream startup
+      // captures APP_RESOURCES_DIR. Linux keeps shell seeding; macOS and
+      // Windows also perform their existing first-run copies here.
+      bootstrap.bindPackagedResources(options);
+      if (process.platform === 'darwin' || process.platform === 'win32') {
+        bootstrap.bootstrap(options);
+      }
+      }
     } catch (error) {
       require('electron').dialog.showErrorBox('translationCore4 could not start',
         'The bundled resources could not be prepared. Please quit and try again.\n' + error.message);
@@ -464,7 +474,12 @@ elif [ "$OS" = windows ]; then
   cp "$REPO/branding/icon.ico" "$APPDIR/icon.ico"
   cp "$REPO/branding/icon-1024.png" "$APPDIR/electron/favicon.png"
   node "$REPO/scripts/brand-windows.mjs" "$(npath "$APPDIR/electronite/electron.exe")" "$(npath "$APPDIR/icon.ico")" "$VERSION"
-elif [ "$VARIANT" = "debug" ]; then
+else
+  # Linux keeps shell first-run seeding, but the Electron main wrapper still
+  # needs the same resource-binding helper and configuration.
+  cp "$REPO/scripts/desktop-bootstrap.cjs" "$APPDIR/electron/tc4-bootstrap.cjs"
+  printf '{"storeLeaf":"%s","variant":"%s"}\n' "$STORE_LEAF" "$VARIANT" > "$APPDIR/electron/tc4-bootstrap.json"
+  if [ "$VARIANT" = "debug" ]; then
   cat > "$APPDIR/$LAUNCHER" <<LAUNCH
 $LAUNCH_SHEBANG
 # Unsigned DEBUG artifact. Seeds the debug-only project store on first run
@@ -514,6 +529,7 @@ if [ -d "./resources" ]; then
 fi
 $LAUNCH_EXEC
 LAUNCH
+fi
 fi
 if [ "$OS" != macos ]; then chmod +x "$APPDIR/$LAUNCHER"; fi
 
@@ -597,6 +613,7 @@ echo "-- BUILD-MANIFEST.json --"
 cat "$APPDIR/BUILD-MANIFEST.json"
 
 cp "$REPO/scripts/smoke-api.cjs" "$APPDIR/smoke-api.cjs"
+node "$REPO/scripts/build-smoke-journal.cjs" "$APPDIR/smoke-journal.cjs"
 if [ "$OS" = macos ]; then
   zsh "$REPO/scripts/package-macos.zsh" "$APPDIR" "$APP_NAME" "$VERSION" "$VARIANT" "$STORE_LEAF"
   LAUNCHER="$APP_NAME.app/Contents/MacOS/Electron"
@@ -609,12 +626,26 @@ fi
 
 echo "== 6/7 smoke test: launch the artifact through its own entry point"
 # Fresh HOME so the app's self-created working dir (~/pankosmia/tc4) is
-# isolated. No app-specific environment overrides: the entry point must
-# self-spawn the server (electronStartup.js picks the first free port from
-# 19119) and land on the tC4 client.
+# isolated. A copied, deliberately stale resource tree poisons the parent
+# environment; packaged startup must override it before electronStartup.js
+# self-spawns the server (which picks the first free port from 19119).
 SMOKE_HOME="$BUILD/smoke-home"
 rm -rf "$SMOKE_HOME"
 mkdir -p "$SMOKE_HOME"
+POISON_ROOT="$BUILD/poison resources"
+rm -rf "$POISON_ROOT"
+mkdir -p "$POISON_ROOT"
+cp -R "$PACK/lib" "$POISON_ROOT/lib"
+node - "$(npath "$POISON_ROOT/lib/product/product.json")" "$(npath "$POISON_ROOT/lib/templates/content_templates/text_stories/ingredients/content/01.md")" <<'NODE'
+const fs = require('fs');
+const [productFile, storyFile] = process.argv.slice(2);
+const product = JSON.parse(fs.readFileSync(productFile, 'utf8'));
+product.version = '4.0.0-poison-old';
+product.datetime = '2000-01-01T00:00:00Z';
+fs.writeFileSync(productFile, JSON.stringify(product) + '\n');
+const story = fs.readFileSync(storyFile, 'utf8').replace(/\r?\n/g, '\r\n');
+fs.writeFileSync(storyFile, story);
+NODE
 # Windows (#181): the server resolves its home through the `home` crate, which
 # reads USERPROFILE first (pankosmia-web utils/paths.rs), so the fresh profile
 # is passed as USERPROFILE in Windows form. The launcher is a batch file: cmd
@@ -630,11 +661,11 @@ mkdir -p "$SMOKE_HOME"
 # form) to every native child, so the launch gets a Windows-form temp dir.
 win_env() {  # fills WIN_ENV, one VAR=value per element (a path may hold spaces; Codex round 3)
   mkdir -p "$SMOKE_HOME/tmp" "$SMOKE_HOME/AppData/Local" "$SMOKE_HOME/AppData/Roaming"
-  local whome wtmp; whome="$(cygpath -w "$SMOKE_HOME")"; wtmp="$(cygpath -w "$SMOKE_HOME/tmp")"
+  local whome wtmp wpoison; whome="$(cygpath -w "$SMOKE_HOME")"; wtmp="$(cygpath -w "$SMOKE_HOME/tmp")"; wpoison="$(cygpath -w "$POISON_ROOT/lib")"
   WIN_ENV=(
     "USERPROFILE=$whome" "HOME=$SMOKE_HOME"
     "APPDATA=$whome\\AppData\\Roaming" "LOCALAPPDATA=$whome\\AppData\\Local"
-    "TEMP=$wtmp" "TMP=$wtmp"
+    "TEMP=$wtmp" "TMP=$wtmp" "APP_RESOURCES_DIR=$wpoison"
     "MSYS2_ARG_CONV_EXCL=*" "ELECTRON_ENABLE_STACK_DUMPING=1"
   )
 }
@@ -646,7 +677,7 @@ launch_entry_point() {  # $1 = log file; sets LAUNCH_PID
     env "${WIN_ENV[@]}" ELECTRON_ENABLE_LOGGING=file ELECTRON_LOG_FILE="$(cygpath -w "${1%.log}-electron.log")" \
       cmd /c "$(cygpath -w "$APPDIR/$LAUNCHER")" > "$1" 2>&1 &
   else
-    HOME="$SMOKE_HOME" "$APPDIR/$LAUNCHER" > "$1" 2>&1 &
+    APP_RESOURCES_DIR="$POISON_ROOT/lib/" HOME="$SMOKE_HOME" "$APPDIR/$LAUNCHER" > "$1" 2>&1 &
   fi
   LAUNCH_PID=$!
 }
@@ -714,6 +745,41 @@ done
   tail -20 "$BUILD/smoke-entrypoint.log" >&2; smoke_diagnostics >&2; exit 1; }
 echo "self-spawned server found on port $SMOKE_PORT"
 
+if [ "$OS" = macos ]; then
+  ELECTRON_NODE="$APPDIR/$APP_NAME.app/Contents/MacOS/Electron"
+  SMOKE_API="$APPDIR/$APP_NAME.app/Contents/Resources/smoke-api.cjs"
+  SMOKE_JOURNAL="$APPDIR/$APP_NAME.app/Contents/Resources/smoke-journal.cjs"
+else
+  ELECTRON_NODE="$APPDIR/electronite/electron${EXE}"
+  SMOKE_API="$APPDIR/smoke-api.cjs"
+  SMOKE_JOURNAL="$APPDIR/smoke-journal.cjs"
+fi
+SMOKE_STAMP=$(date +%s)
+SMOKE_REPO="_local_/_local_/pkg_smoke_$SMOKE_STAMP"
+SMOKE_ABBR="pkg_smoke_$SMOKE_STAMP"
+SMOKE_MARKER="tC4 packaged OBS smoke $SMOKE_STAMP"
+run_api_smoke() {
+  local mode=$1
+  if [ "$OS" = windows ]; then
+    win_env
+    env "${WIN_ENV[@]}" ELECTRON_RUN_AS_NODE=1 "$ELECTRON_NODE" "$SMOKE_API" \
+      "http://127.0.0.1:$SMOKE_PORT" "$SMOKE_REPO" "$SMOKE_ABBR" "$SMOKE_MARKER" "$mode" "$(cygpath -m "$SMOKE_HOME/$STORE_LEAF")"
+  else
+    APP_RESOURCES_DIR="$POISON_ROOT/lib/" ELECTRON_RUN_AS_NODE=1 "$ELECTRON_NODE" "$SMOKE_API" \
+      "http://127.0.0.1:$SMOKE_PORT" "$SMOKE_REPO" "$SMOKE_ABBR" "$SMOKE_MARKER" "$mode" "$SMOKE_HOME/$STORE_LEAF"
+  fi
+}
+run_real_client_smoke() {
+  if [ "$OS" = windows ]; then
+    win_env
+    env "${WIN_ENV[@]}" ELECTRON_RUN_AS_NODE=1 "$ELECTRON_NODE" "$SMOKE_JOURNAL" \
+      "http://127.0.0.1:$SMOKE_PORT/api" "$SMOKE_ABBR" "$SMOKE_MARKER" "$(cygpath -m "$SMOKE_HOME/$STORE_LEAF")"
+  else
+    APP_RESOURCES_DIR="$POISON_ROOT/lib/" ELECTRON_RUN_AS_NODE=1 "$ELECTRON_NODE" "$SMOKE_JOURNAL" \
+      "http://127.0.0.1:$SMOKE_PORT/api" "$SMOKE_ABBR" "$SMOKE_MARKER" "$SMOKE_HOME/$STORE_LEAF"
+  fi
+}
+
 ROOT=$("$CURL" -s -o /dev/null -w '%{http_code} %{redirect_url}' "http://127.0.0.1:$SMOKE_PORT/")
 CLIENT=$("$CURL" -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$SMOKE_PORT/clients/uw-tc4")
 echo "root: $ROOT; /clients/uw-tc4: $CLIENT"
@@ -745,6 +811,20 @@ for (const [disk, liveKey] of [["version", "product_version"], ["datetime", "pro
 }
 console.log("version guard: /api/version matches lib/product/product.json (" + onDisk.version + ", " + onDisk.datetime + ")");
 ' "$(npath "$PACK/lib/product/product.json")" "$VERSION_BODY" || exit 1
+
+# OBS regression (#347/#348): first read the platform-created bytes BEFORE any
+# client seed write. This probe is deliberately separate from the lifecycle
+# below so a stale template cannot be masked by copying the package over it.
+run_api_smoke obs-template-probe || {
+  echo "OBS template probe failed" >&2; smoke_diagnostics >&2; exit 1;
+}
+# The lifecycle then exercises seed, edit, checkpoint, and byte equality.
+run_api_smoke obs-create || {
+  echo "OBS packaged smoke failed" >&2; smoke_diagnostics >&2; exit 1;
+}
+run_real_client_smoke || {
+  echo "OBS real-client packaged smoke failed" >&2; smoke_diagnostics >&2; exit 1;
+}
 
 # #4 GUARD (D39): a second launch must NOT become a second running copy.
 # With the first instance still up, launch the entry point AGAIN (same HOME —
@@ -780,6 +860,40 @@ done
   exit 1
 }
 echo "#4 guard: second launch exited by itself; one server only (port $SMOKE_PORT)"
+cleanup_smoke
+trap cleanup_smoke EXIT
+
+# Restart the same package and profile, then prove the OBS checkpoint survives
+# a real server reopen. This is separate from the concurrent second-instance
+# guard above: the first server is stopped before this launch.
+node - "$(npath "$SMOKE_HOME/pankosmia/tc4/user_settings.json")" "$(npath "$POISON_ROOT/lib")" <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const [settingsFile, poisonLib] = process.argv.slice(2);
+const settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+settings.app_resources_dir = path.resolve(poisonLib) + path.sep;
+fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2) + '\n');
+NODE
+launch_entry_point "$BUILD/smoke-reopen.log"
+SMOKE_PID=$LAUNCH_PID
+SMOKE_PORT=""
+for i in {1..40}; do
+  for p in $(scan_ports); do
+    if "$CURL" -s --max-time 1 "http://127.0.0.1:$p/api/version" | grep -q '"product_short_name":"tc4"'; then
+      SMOKE_PORT=$p; break
+    fi
+  done
+  [ -n "$SMOKE_PORT" ] && break
+  sleep 1
+done
+[ -n "$SMOKE_PORT" ] || { echo "SMOKE TEST FAILED: server did not reopen" >&2; smoke_diagnostics >&2; exit 1; }
+run_api_smoke version || { echo "Version guard failed after contaminated restart" >&2; smoke_diagnostics >&2; exit 1; }
+# A fresh project after the contaminated profile repair is the regression guard:
+# an environment-only fix must not pass by merely reopening the old project.
+run_api_smoke obs-template-probe || { echo "OBS fresh-project probe after repair failed" >&2; smoke_diagnostics >&2; exit 1; }
+run_real_client_smoke || { echo "OBS real-client smoke after repair failed" >&2; smoke_diagnostics >&2; exit 1; }
+run_api_smoke obs-readback || { echo "OBS reopen smoke failed" >&2; smoke_diagnostics >&2; exit 1; }
+run_api_smoke delete || { echo "Packaged smoke cleanup failed" >&2; smoke_diagnostics >&2; exit 1; }
 cleanup_smoke
 trap - EXIT
 [[ "$ROOT" == 303* && "$ROOT" == *"/clients/uw-tc4" && "$CLIENT" == "200" ]] || {

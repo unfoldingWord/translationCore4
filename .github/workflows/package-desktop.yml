@@ -32,6 +32,8 @@ on:
       - scripts/package-desktop.zsh
       - scripts/smoke-installed.zsh
       - scripts/smoke-api.cjs
+      - scripts/build-smoke-journal.cjs
+      - scripts/smoke-journal-entry.ts
       - scripts/*mac*
       - scripts/*windows*
       - scripts/desktop-bootstrap*
