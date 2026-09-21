@@ -4,10 +4,12 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
+const vm = require('node:vm');
 const { appResourcesDir, bindPackagedResources, bootstrap, profileDirectory, shouldBindPackagedResources } = require('./desktop-bootstrap.cjs');
 
 const repo = path.resolve(__dirname, '..');
 const recipe = fs.readFileSync(path.join(__dirname, 'package-desktop.zsh'), 'utf8');
+const desktopMain = fs.readFileSync(path.join(__dirname, 'desktop-main.cjs'), 'utf8');
 const smokeApi = fs.readFileSync(path.join(__dirname, 'smoke-api.cjs'), 'utf8');
 const pinsSetup = fs.readFileSync(path.join(repo, 'dev-env', 'scripts', 'setup-from-pins.zsh'), 'utf8');
 const assembledSetup = fs.readFileSync(path.join(repo, 'dev-env', 'scripts', 'setup.zsh'), 'utf8');
@@ -29,6 +31,63 @@ function stageProduct(options, shortName = 'tc4') {
   const product = path.join(options.resourcesDir, 'lib', 'product');
   fs.mkdirSync(product, { recursive: true });
   fs.writeFileSync(path.join(product, 'product.json'), JSON.stringify({ short_name: shortName }) + '\n');
+}
+function runDesktopMain({ platform = 'linux', lock = true, startServer, bindError = false } = {}) {
+  const events = [];
+  const handlers = {};
+  const window = {
+    isMinimized: () => true,
+    restore: () => events.push('restore'),
+    focus: () => events.push('focus'),
+  };
+  const app = {
+    setAppUserModelId: () => events.push('setAppUserModelId'),
+    requestSingleInstanceLock: () => {
+      events.push('lock');
+      return lock;
+    },
+    quit: () => events.push('quit'),
+    on: (event, handler) => {
+      events.push('on:' + event);
+      handlers[event] = handler;
+    },
+    exit: (code) => events.push('exit:' + code),
+  };
+  const electron = {
+    app,
+    BrowserWindow: { getAllWindows: () => [window] },
+    dialog: { showErrorBox: () => events.push('errorBox') },
+  };
+  const bootstrapModule = {
+    shouldBindPackagedResources: (value) => {
+      events.push('shouldBind:' + (value ?? 'undefined'));
+      return value !== 'false';
+    },
+    bindPackagedResources: () => {
+      events.push('bind');
+      if (bindError) throw new Error('bind failed');
+    },
+    bootstrap: () => events.push('bootstrap'),
+  };
+  const fakeRequire = (request) => {
+    if (request === 'electron') return electron;
+    if (request === './tc4-bootstrap.cjs') return bootstrapModule;
+    if (request === './tc4-bootstrap.json') return { storeLeaf: 'pankosmia/tc4-projects', variant: 'production' };
+    if (request === './electronStartup.js') {
+      events.push('upstream');
+      return {};
+    }
+    if (request === 'path') return require('node:path');
+    if (request === 'os') return { homedir: () => 'C:\\pilot home' };
+    return require(request);
+  };
+  const context = {
+    __dirname: 'C:\\bundle\\electron',
+    process: { env: startServer === undefined ? {} : { START_SERVER: startServer }, platform },
+    require: fakeRequire,
+  };
+  vm.runInNewContext(desktopMain, context, { filename: 'desktop-main.cjs' });
+  return { events, handlers };
 }
 
 test('missing bundle fails the negative control; production then seeds once and preserves user changes', (t) => {
@@ -181,11 +240,30 @@ test('malformed packaged profile settings fail explicitly and remain untouched',
   assert.equal(fs.existsSync(`${settingsFile}.tc4-writing-${process.pid}`), false);
 });
 
-test('the generated packaged entry point binds before upstream startup and preserves external-server mode', () => {
-  assert.match(recipe, /shouldBindPackagedResources\(process\.env\.START_SERVER\)/);
-  assert.match(recipe, /bootstrap\.bindPackagedResources\(options\)/);
-  assert.match(recipe, /require\('\.\/electronStartup\.js'\)/);
-  assert.match(recipe, /if \(process\.platform === 'darwin' \|\| process\.platform === 'win32'\)/);
+test('the packaged entry point is valid, ordered, and preserves its launch contracts', () => {
+  // Negative control first: a brace drift in the source must be rejected before
+  // the positive wrapper is accepted.
+  assert.throws(() => new vm.Script(desktopMain + '\n}'), SyntaxError);
+  assert.doesNotThrow(() => new vm.Script(desktopMain));
+
+  const linux = runDesktopMain();
+  assert.deepEqual(linux.events, ['lock', 'on:second-instance', 'shouldBind:undefined', 'bind', 'upstream']);
+  const mac = runDesktopMain({ platform: 'darwin' });
+  assert.deepEqual(mac.events, ['lock', 'on:second-instance', 'shouldBind:undefined', 'bind', 'bootstrap', 'upstream']);
+  const windows = runDesktopMain({ platform: 'win32' });
+  assert.deepEqual(windows.events, ['setAppUserModelId', 'lock', 'on:second-instance', 'shouldBind:undefined', 'bind', 'bootstrap', 'upstream']);
+  const external = runDesktopMain({ startServer: 'false' });
+  assert.deepEqual(external.events, ['lock', 'on:second-instance', 'shouldBind:false', 'upstream']);
+  const second = runDesktopMain({ lock: false });
+  assert.deepEqual(second.events, ['lock', 'quit']);
+  const failed = runDesktopMain({ bindError: true });
+  assert.deepEqual(failed.events, ['lock', 'on:second-instance', 'shouldBind:undefined', 'bind', 'errorBox', 'exit:1']);
+
+  linux.handlers['second-instance']();
+  assert.deepEqual(linux.events.slice(-2), ['restore', 'focus']);
+  assert.match(desktopMain, /shouldBindPackagedResources\(process\.env\.START_SERVER\)/);
+  assert.match(recipe, /desktop-main\.cjs/);
+  assert.match(recipe, /node --check/);
   assert.match(recipe, /APP_RESOURCES_DIR=\"\$POISON_ROOT\/lib\//);
   assert.match(recipe, /run_api_smoke obs-create/);
   assert.match(recipe, /run_api_smoke obs-template-probe/);

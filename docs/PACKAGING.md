@@ -19,7 +19,10 @@ or `dev-env/server/`), and uploads each package or zip as a workflow artifact. A
 request that changes only the app does not build the artifacts; the `ci` and
 `rig` workflows prove it, and the merge to `main` packages it [decided
 2026-09-08 — owner, after PR #226]. `workflow_dispatch` builds any branch on
-demand.
+demand. A lightweight `package-preflight` job syntax-checks the tracked Electron
+entry point and runs the desktop contract tests before the three artifact jobs
+start, so a shared packaging defect fails once without consuming the platform
+build matrix.
 
 The upload is a single layer. The workflow uses `actions/upload-artifact@v7`
 with `archive: false`, which uploads each pkg or zip as one file. The action then
@@ -115,12 +118,13 @@ and that enforcement is a packaging/shell responsibility. Facts, measured
   `.app` bundles at the Finder level. The old artifact launched through
   `start-tc4.command`, which Finder ran as many times as it was clicked.
   The new Mac bundle retains the explicit guard, including direct executable launches.
-- **Mechanism:** the build writes a tC4-owned `electron/tc4-main.js` that
-  acquires Electron's singleton lock BEFORE the template startup loads. A
-  refused second launch exits with no window and no server; the first
-  window is restored and focused. `electron/package.json` `main` is patched
-  to the wrapper, and the patch refuses to run if the template's entry
-  point changed shape (the #70 patch discipline).
+- **Mechanism:** the tracked `scripts/desktop-main.cjs` is syntax-checked and
+  copied unchanged to the artifact as `electron/tc4-main.js`. It acquires
+  Electron's singleton lock BEFORE the template startup loads. A refused second
+  launch exits with no window and no server; the first window is restored and
+  focused. `electron/package.json` `main` is patched to the wrapper, and the
+  patch refuses to run if the template's entry point changed shape (the #70
+  patch discipline).
 - **Guard, not convention:** the smoke test launches the entry point a
   SECOND time while the first instance runs, and FAILS the build unless the
   second process exits by itself, no second tc4 server appears on any scan
@@ -159,12 +163,14 @@ requests there.
 
 Steps, in order:
 
-1. Build the tC4 client (`npm run build` → `dist/`).
-2. Build the pinned server (`dev-env/server`, pankosmia-web 0.18.5, rev
+1. Syntax-check the tracked Electron entry point and run the desktop contract
+   tests (`package-preflight` in CI).
+2. Build the tC4 client (`npm run build` → `dist/`).
+3. Build the pinned server (`dev-env/server`, pankosmia-web 0.18.5, rev
    `99fd9be` — D27).
-3. Clone read-only inputs: the desktop template (pinned rev), `resource-core`,
+4. Clone read-only inputs: the desktop template (pinned rev), `resource-core`,
    and `webfonts-core`.
-4. Assemble the app directory. The layout comes from the template:
+5. Assemble the app directory. The layout comes from the template:
    - `electron/` — the template's Electron startup files, with
      `puppeteer-core` and `@puppeteer/browsers` installed (the startup script
      imports them).
@@ -174,17 +180,17 @@ Steps, in order:
      three `rig/` registration files), `setup/`, and `product/product.json`
      with `"homepage": "uw-tc4"` (PLATFORM-NOTES #25).
    - `Rocket.toml` — upload limits (PLATFORM-NOTES #26a).
-5. Stage the artifact: Electronite + app dir + license files +
+6. Stage the artifact: Electronite + app dir + license files +
    `THIRD-PARTY-NOTICES.md` + `BUILD-MANIFEST.json` (every input with its
    exact version, commit, and checksum — also echoed in the build log).
-6. Smoke test **through the shipped entry point**: run the shipped launcher
+7. Smoke test **through the shipped entry point**: run the shipped launcher
    (`translationCore4.app/Contents/MacOS/Electron` on macOS, `start-tc4.sh` on Linux)
    with a fresh `HOME` and no app-specific environment overrides. The app
    must self-spawn its bundled server (first free port from 19119) and serve
    `303` from `/` to `/clients/uw-tc4`, then `200` from the client page. The
    working directory must appear under the fresh `$HOME/pankosmia/tc4`, and
    the #70 store guard must pass (see "Project-store isolation").
-7. Re-verify the Mac signature after execution, build the production installer, and zip
+8. Re-verify the Mac signature after execution, build the production installer, and zip
    the portable artifact. `--zip` skips the Mac installer; `--debug` builds the debug zip.
 
 ## The wrapper is Electronite [VERIFIED — desktop-app-template 4cb7576, 2026-08-14]

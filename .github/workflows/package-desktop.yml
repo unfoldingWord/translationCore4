@@ -34,6 +34,7 @@ on:
       - scripts/smoke-api.cjs
       - scripts/build-smoke-journal.cjs
       - scripts/smoke-journal-entry.ts
+      - scripts/desktop-main.cjs
       - scripts/*mac*
       - scripts/*windows*
       - scripts/desktop-bootstrap*
@@ -48,7 +49,24 @@ permissions:
   contents: read
 
 jobs:
+  package-preflight:
+    name: package-preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Validate the tracked Electron entry point
+        run: |
+          node --check scripts/desktop-main.cjs
+          node --test scripts/desktop-bootstrap.test.cjs
+
   macos-arm64:
+    needs: package-preflight
     strategy:
       fail-fast: false
       matrix:
@@ -112,6 +130,7 @@ jobs:
           retention-days: ${{ github.event_name == 'pull_request' && 3 || 30 }}
 
   linux-x64:
+    needs: package-preflight
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -191,6 +210,7 @@ jobs:
   # rustls). The smoke test opens a real window on the runner's desktop session.
   # #242 adds the production installer and a separate installed-app proof below.
   windows-x64:
+    needs: package-preflight
     runs-on: windows-2025
     timeout-minutes: 90
     steps:

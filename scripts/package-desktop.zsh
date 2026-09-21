@@ -65,6 +65,10 @@ npath() {        # a path for the Windows node.exe: MSYS2 /d/a/x -> D:/a/x (#181
   if [ "$OS" = windows ]; then cygpath -m "$1"; else printf '%s' "$1"; fi
 }
 VERSION=$(node -p "require('$(npath "$REPO/package.json")').version")
+# Validate the tracked Electron entry point before spending time compiling the
+# server or downloading the desktop inputs. The staged copy is checked again
+# after the Windows-only test mutation below.
+node --check "$(npath "$REPO/scripts/desktop-main.cjs")"
 # The smoke test's HTTP probe. On Windows, Windows' own curl.exe: the MSYS2 curl
 # timed out (not refused) on every closed loopback port in CI run 34174403634.
 CURL=curl
@@ -276,54 +280,13 @@ TEMPLATE_MAIN=$(node -p "require('$(npath "$PACK/electron/package.json")').main"
   echo "FATAL: template electron main is '$TEMPLATE_MAIN' (expected electronStartup.js) — re-verify the #4 single-instance wrapper before building" >&2
   exit 1
 }
-cat > "$PACK/electron/tc4-main.js" <<'MAIN_EOF'
-// tC4 single-instance guard (#4, D39). This file is tC4's own, not the
-// template's. It MUST run before electronStartup.js: the template's free-port
-// scan would otherwise let a second launch start a second server over the
-// same project store — the exact overlap D39 rules out. tC3 enforced the
-// same rule at the Electron layer.
-const { app, BrowserWindow } = require('electron');
-if (process.platform === 'win32') app.setAppUserModelId('org.unfoldingword.translationcore4');
-if (!app.requestSingleInstanceLock()) {
-  app.quit(); // second copy: no window, no server, exit
-} else {
-  app.on('second-instance', () => {
-    const [win] = BrowserWindow.getAllWindows();
-    if (win) {
-      if (win.isMinimized()) win.restore();
-      win.focus();
-    }
-  });
-  try {
-      const bootstrap = require('./tc4-bootstrap.cjs');
-      if (bootstrap.shouldBindPackagedResources(process.env.START_SERVER)) {
-      const options = {
-        ...require('./tc4-bootstrap.json'),
-        resourcesDir: require('path').join(__dirname, '..'),
-        home: require('os').homedir(),
-      };
-      // Bind the process and any existing profile before upstream startup
-      // captures APP_RESOURCES_DIR. Linux keeps shell seeding; macOS and
-      // Windows also perform their existing first-run copies here.
-      bootstrap.bindPackagedResources(options);
-      if (process.platform === 'darwin' || process.platform === 'win32') {
-        bootstrap.bootstrap(options);
-      }
-      }
-    } catch (error) {
-      require('electron').dialog.showErrorBox('translationCore4 could not start',
-        'The bundled resources could not be prepared. Please quit and try again.\n' + error.message);
-      app.exit(1);
-    }
-  }
-  require('./electronStartup.js');
-}
-MAIN_EOF
+cp "$REPO/scripts/desktop-main.cjs" "$PACK/electron/tc4-main.js"
 if [ -n "$TC4_TEST_NO_SINGLE_INSTANCE" ]; then
   # Keep bootstrap intact: this control must fail at the second-instance guard.
   echo "TEST-ONLY: skipping singleton lock; the smoke guard MUST fail"
   sed_inplace 's/!app.requestSingleInstanceLock()/false/' "$PACK/electron/tc4-main.js"
 fi
+node --check "$(npath "$PACK/electron/tc4-main.js")"
 node -e "
 const fs = require('fs');
 const p = '$(npath "$PACK/electron/package.json")';
