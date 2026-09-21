@@ -1,8 +1,11 @@
-const [base, repo, abbr, marker, mode] = process.argv.slice(2);
+const [base, repo, abbr, marker, mode, storeDir] = process.argv.slice(2);
 const fs = require("node:fs");
 const path = require("node:path");
 const enc = (r) => r.split("/").map(encodeURIComponent).join("/");
 const url = (route) => base + route;
+const obsRepo = `${repo}obs`;
+const obsAbbr = `${abbr}obs`;
+const localStore = storeDir || process.env.TC4_SMOKE_STORE;
 const fail = (step, seen) => { console.log("FAIL " + step + ": " + seen); process.exit(1); };
 const ok = (step, seen) => console.log("ok " + step + ": " + seen);
 // A POST answer must be the success shape the client enforces (src/data/serverApi.ts
@@ -53,6 +56,133 @@ function verse11(usfm) {
   const eol = usfm.indexOf("\n", at);
   return usfm.slice(at + 5, eol < 0 ? usfm.length : eol);
 }
+function storyPath(number) {
+  return `content/${String(number).padStart(2, '0')}.md`;
+}
+function storyRoute(project, number) {
+  return "/api/burrito/ingredient/raw/" + enc(project) + "?ipath=" + encodeURIComponent(storyPath(number));
+}
+function localRepoDir(project) {
+  if (!localStore) return null;
+  return path.join(localStore, ...project.split("/"));
+}
+function obsTemplate(number) {
+  return fs.readFileSync(path.join(__dirname, "lib", "templates", "content_templates", "text_stories", "ingredients", storyPath(number)), "utf8");
+}
+function seedStory(template, number) {
+  const lines = template.split("\n");
+  lines[0] = `# ${number}.`;
+  return lines.join("\n");
+}
+function editFirstFrame(seed, text) {
+  const lines = seed.split("\n");
+  const imageLine = /^!\[[^\]]*\]\([^)]*\)$/;
+  const images = lines.flatMap((line, index) => imageLine.test(line) ? [index] : []);
+  if (images.length < 2) throw new Error("OBS story has no second frame");
+  // Frame 1 is the region after image 1 and before image 2. Preserve the
+  // title, image 1, image 2, and every later byte exactly as JournalingStore
+  // does; only the frame paragraph is replaced.
+  return [...lines.slice(0, images[0] + 1), "", text, "", ...lines.slice(images[1])].join("\n");
+}
+function firstFrameOutsideViolation(before, after) {
+  const imageLine = /^!\[[^\]]*\]\([^)]*\)$/;
+  const beforeLines = before.split("\n");
+  const afterLines = after.split("\n");
+  const beforeImages = beforeLines.flatMap((line, index) => imageLine.test(line) ? [index] : []);
+  const afterImages = afterLines.flatMap((line, index) => imageLine.test(line) ? [index] : []);
+  if (beforeImages.length < 2) return "seed has no second frame";
+  if (afterImages.length !== beforeImages.length) return "frame image boundaries changed";
+  if (beforeLines.slice(0, beforeImages[0] + 1).join("\n") !== afterLines.slice(0, afterImages[0] + 1).join("\n"))
+    return "bytes before frame 1 changed";
+  if (beforeLines.slice(beforeImages[1]).join("\n") !== afterLines.slice(afterImages[1]).join("\n"))
+    return "bytes after frame 1 changed";
+  return null;
+}
+async function verifyObsStories(project, editedStory = null) {
+  for (let number = 1; number <= 50; number += 1) {
+    const expected = editedStory && number === 1 ? editedStory : seedStory(obsTemplate(number), number);
+    const actual = Buffer.from(await getBytes(storyRoute(project, number)));
+    const expectedBytes = Buffer.from(expected, "utf8");
+    if (actual.includes(0x0d)) fail("OBS stories", `${storyPath(number)} contains CR bytes`);
+    if (!actual.equals(expectedBytes)) fail("OBS stories", `${storyPath(number)} differs from the current package seed`);
+    const repoDir = localRepoDir(project);
+    if (repoDir) {
+      const diskFile = path.join(repoDir, "ingredients", storyPath(number));
+      if (!fs.existsSync(diskFile)) fail("OBS disk stories", `${diskFile} is missing`);
+      const disk = fs.readFileSync(diskFile);
+      if (!disk.equals(expectedBytes)) fail("OBS disk stories", `${storyPath(number)} differs on disk from HTTP/package bytes`);
+    }
+  }
+  ok("OBS stories", `${project} has 50 byte-exact LF stories`);
+}
+async function verifyObsCheckpoint(project) {
+  if (!localStore) {
+    ok("OBS checkpoint", "skipped (no local project store was supplied)");
+    return;
+  }
+  // The installed smoke deliberately removes development tools from PATH. Do
+  // not shell out to Git here: the platform's checkpoint endpoint is the
+  // authoritative commit operation, and an empty status proves that the
+  // exact HTTP/disk bytes checked by verifyObsStories have no pending changes.
+  let status;
+  try {
+    status = JSON.parse(await getText("/api/git/status/" + enc(project)));
+  } catch (error) {
+    fail("OBS checkpoint", `${project} status could not be read after commit (${error.message})`);
+  }
+  if (!Array.isArray(status)) fail("OBS checkpoint", `${project} status was not an array`);
+  if (status.length) fail("OBS checkpoint", `${project} still has pending changes: ${JSON.stringify(status)}`);
+  ok("OBS checkpoint", `${project} commit is clean; HTTP and disk bytes agree for all 50 stories`);
+}
+async function seedObsStories(project) {
+  for (let number = 1; number <= 50; number += 1) {
+    // Read the platform-created bytes first, exactly as JournalingStore does.
+    // Never overwrite a stale template with the package fixture before checking
+    // it; a CR or ordinary-byte drift must fail this lifecycle.
+    const source = Buffer.from(await getBytes(storyRoute(project, number)));
+    if (source.includes(0x0d)) fail("OBS seed", `${storyPath(number)} contains CR bytes in the platform template`);
+    const seeded = seedStory(source.toString("utf8"), number);
+    const route = storyRoute(project, number) + "&no_bak";
+    await post(route, { payload: seeded }).catch((e) => fail("OBS seed", e.message));
+  }
+  await verifyObsStories(project);
+  ok("OBS seed", `${project} received all 50 title-normalized LF stories`);
+}
+async function probeObsTemplate() {
+  const probeAbbr = `${abbr}probeobs`;
+  const probeProject = `_local_/_local_/${probeAbbr}`;
+  // Negative control first: a known story path from the package, addressed to
+  // the absent project, must be rejected. If this succeeds, the probe is not
+  // testing the server surface (and no made-up story identifier is used).
+  try {
+    await getBytes(storyRoute(probeProject, 1));
+    fail("OBS template negative control", "an absent project unexpectedly returned story bytes");
+  } catch (error) {
+    ok("OBS template negative control", `absent project rejected for ${storyPath(1)} (${error.message.split(" ").slice(0, 2).join(" ")})`);
+  }
+  const before = JSON.parse(await getText("/api/git/list-local-repos"));
+  if (before.includes(probeProject)) fail("OBS template probe", `${probeProject} already exists`);
+  await post("/api/git/new-obs-resource", {
+    content_name: "tC4 OBS template probe", content_abbr: probeAbbr,
+    content_language_code: "fr", branch_name: null,
+  }).catch((e) => fail("OBS template probe create", e.message));
+  try {
+    const after = JSON.parse(await getText("/api/git/list-local-repos"));
+    if (!after.includes(probeProject)) fail("OBS template probe", `${probeProject} missing from /git/list-local-repos`);
+    const metadata = JSON.parse(await getText("/api/burrito/metadata/raw/" + enc(probeProject)));
+    if (!Object.prototype.hasOwnProperty.call(metadata, "localizedNames"))
+      fail("OBS template probe", "the selected OBS metadata has no localizedNames field");
+    for (let number = 1; number <= 50; number += 1) {
+      const actual = Buffer.from(await getBytes(storyRoute(probeProject, number)));
+      const expected = Buffer.from(obsTemplate(number), "utf8");
+      if (actual.includes(0x0d)) fail("OBS template probe", `${storyPath(number)} contains CR bytes before the client writes`);
+      if (!actual.equals(expected)) fail("OBS template probe", `${storyPath(number)} served by the platform differs from the packaged fixture before any seed write`);
+    }
+    ok("OBS template probe", `${probeProject} served all 50 pre-seed bytes from the selected package resources`);
+  } finally {
+    await post("/api/git/delete/" + enc(probeProject), {}).catch(() => {});
+  }
+}
 (async () => {
   const ipath = "TIT.usfm"; // ingredient-relative, as /burrito/paths lists them
   const rawRoute = "/api/burrito/ingredient/raw/" + enc(repo) + "?ipath=" + encodeURIComponent(ipath);
@@ -78,6 +208,12 @@ function verse11(usfm) {
     if (size.width !== 640 || size.height !== 360)
       fail("OBS image decode", size.width + "x" + size.height + ", expected 640x360");
     ok("OBS image", "story 1/frame 1 decoded 640x360 from local bundled resource with net disabled; no CDN request");
+  } else if (mode === "version") {
+    const product = JSON.parse(fs.readFileSync(path.join(__dirname, "lib", "product", "product.json"), "utf8"));
+    const live = JSON.parse(await getText("/api/version"));
+    if (live.product_version !== product.version || live.product_date_time !== product.datetime)
+      fail("version", `/api/version ${live.product_version}/${live.product_date_time} != package ${product.version}/${product.datetime}`);
+    ok("version", `/api/version matches this package (${product.version}, ${product.datetime})`);
   } else if (mode === "create") {
     const before = JSON.parse(await getText("/api/git/list-local-repos"));
     if (before.includes(repo)) fail("create", repo + " already exists");
@@ -104,10 +240,48 @@ function verse11(usfm) {
     const v = verse11(await getText(rawRoute).catch((e) => fail("read back", e.message)));
     if (v !== marker) fail("read back", "TIT 1:1 is " + JSON.stringify(v) + " after the restart, expected " + JSON.stringify(marker));
     ok("read back", "TIT 1:1 still \"" + marker + "\" after the restart");
-  } else if (mode === "delete") {
-    await post("/api/git/delete/" + enc(repo), {}).catch((e) => fail("delete", e.message));
+  } else if (mode === "obs-create") {
+    const before = JSON.parse(await getText("/api/git/list-local-repos"));
+    if (before.includes(obsRepo)) fail("OBS create", obsRepo + " already exists");
+    await post("/api/git/new-obs-resource", {
+      content_name: "tC4 OBS smoke test", content_abbr: obsAbbr,
+      content_language_code: "fr", branch_name: null,
+    }).catch((e) => fail("OBS create", e.message));
     const after = JSON.parse(await getText("/api/git/list-local-repos"));
-    if (after.includes(repo)) fail("delete", repo + " still listed");
-    ok("delete", repo + " removed");
+    if (!after.includes(obsRepo)) fail("OBS create", obsRepo + " missing from /git/list-local-repos");
+    ok("OBS create", obsRepo + " listed by /git/list-local-repos");
+    await seedObsStories(obsRepo);
+    await post("/api/git/add-and-commit/" + enc(obsRepo), { commit_message: "Seed the fifty stories (tC4)" })
+      .catch((e) => fail("OBS seed checkpoint", e.message));
+    await verifyObsStories(obsRepo);
+    await verifyObsCheckpoint(obsRepo);
+    const edited = editFirstFrame(seedStory(obsTemplate(1), 1), marker);
+    const outside = firstFrameOutsideViolation(seedStory(obsTemplate(1), 1), edited);
+    if (outside) fail("OBS edit", outside);
+    await post("/api/burrito/ingredient/raw/" + enc(obsRepo) + "?ipath=" + encodeURIComponent(storyPath(1)), { payload: edited })
+      .catch((e) => fail("OBS edit", e.message));
+    await post("/api/git/add-and-commit/" + enc(obsRepo), { commit_message: "OBS smoke checkpoint" })
+      .catch((e) => fail("OBS checkpoint", e.message));
+    const storyBack = Buffer.from(await getBytes(storyRoute(obsRepo, 1)));
+    if (!storyBack.equals(Buffer.from(edited, "utf8"))) fail("OBS checkpoint", "story 1 did not read back after checkpoint");
+    await verifyObsStories(obsRepo, edited);
+    await verifyObsCheckpoint(obsRepo);
+    ok("OBS edit/checkpoint", "story 1 changed and the other 49 stories remained byte-exact");
+  } else if (mode === "obs-template-probe") {
+    await probeObsTemplate();
+  } else if (mode === "obs-readback") {
+    const edited = editFirstFrame(seedStory(obsTemplate(1), 1), marker);
+    await verifyObsStories(obsRepo, edited);
+    ok("OBS reopen", obsRepo + " retained the edited story after server restart");
+  } else if (mode === "delete") {
+    const projects = JSON.parse(await getText("/api/git/list-local-repos"));
+    // The current smoke sequence creates an OBS repo, not a text repo. Clean
+    // up whichever fixtures actually exist so cleanup is idempotent and does
+    // not turn an already-clean profile into a false failure.
+    if (projects.includes(repo)) await post("/api/git/delete/" + enc(repo), {}).catch((e) => fail("delete", e.message));
+    if (projects.includes(obsRepo)) await post("/api/git/delete/" + enc(obsRepo), {}).catch((e) => fail("OBS delete", e.message));
+    const after = JSON.parse(await getText("/api/git/list-local-repos"));
+    if (after.includes(repo) || after.includes(obsRepo)) fail("delete", `${repo} or ${obsRepo} still listed`);
+    ok("delete", `${repo} and ${obsRepo} removed`);
   }
 })().catch((e) => fail(mode, e.message));
