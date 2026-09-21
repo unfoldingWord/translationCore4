@@ -76,18 +76,26 @@ function seedStory(template, number) {
 }
 function editFirstFrame(seed, text) {
   const lines = seed.split("\n");
-  const nextImage = lines.findIndex((line, index) => index > 0 && /^!\[[^\]]*\]\([^)]*\)$/.test(line));
-  if (nextImage < 0) throw new Error("OBS story has no second frame");
-  return [...lines.slice(0, 2), "", text, "", ...lines.slice(nextImage)].join("\n");
+  const imageLine = /^!\[[^\]]*\]\([^)]*\)$/;
+  const images = lines.flatMap((line, index) => imageLine.test(line) ? [index] : []);
+  if (images.length < 2) throw new Error("OBS story has no second frame");
+  // Frame 1 is the region after image 1 and before image 2. Preserve the
+  // title, image 1, image 2, and every later byte exactly as JournalingStore
+  // does; only the frame paragraph is replaced.
+  return [...lines.slice(0, images[0] + 1), "", text, "", ...lines.slice(images[1])].join("\n");
 }
 function firstFrameOutsideViolation(before, after) {
-  const lines = before.split("\n");
-  const nextImage = lines.findIndex((line, index) => index > 0 && /^!\[[^\]]*\]\([^)]*\)$/.test(line));
-  if (nextImage < 0) return "seed has no second frame";
-  const prefix = lines.slice(0, 2).join("\n") + "\n";
-  const suffix = lines.slice(nextImage).join("\n");
-  if (!after.startsWith(prefix)) return "bytes before frame 1 changed";
-  if (!after.endsWith(suffix)) return "bytes after frame 1 changed";
+  const imageLine = /^!\[[^\]]*\]\([^)]*\)$/;
+  const beforeLines = before.split("\n");
+  const afterLines = after.split("\n");
+  const beforeImages = beforeLines.flatMap((line, index) => imageLine.test(line) ? [index] : []);
+  const afterImages = afterLines.flatMap((line, index) => imageLine.test(line) ? [index] : []);
+  if (beforeImages.length < 2) return "seed has no second frame";
+  if (afterImages.length !== beforeImages.length) return "frame image boundaries changed";
+  if (beforeLines.slice(0, beforeImages[0] + 1).join("\n") !== afterLines.slice(0, afterImages[0] + 1).join("\n"))
+    return "bytes before frame 1 changed";
+  if (beforeLines.slice(beforeImages[1]).join("\n") !== afterLines.slice(afterImages[1]).join("\n"))
+    return "bytes after frame 1 changed";
   return null;
 }
 async function verifyObsStories(project, editedStory = null) {
@@ -270,8 +278,11 @@ async function probeObsTemplate() {
     await verifyObsStories(obsRepo, edited);
     ok("OBS reopen", obsRepo + " retained the edited story after server restart");
   } else if (mode === "delete") {
-    await post("/api/git/delete/" + enc(repo), {}).catch((e) => fail("delete", e.message));
     const projects = JSON.parse(await getText("/api/git/list-local-repos"));
+    // The current smoke sequence creates an OBS repo, not a text repo. Clean
+    // up whichever fixtures actually exist so cleanup is idempotent and does
+    // not turn an already-clean profile into a false failure.
+    if (projects.includes(repo)) await post("/api/git/delete/" + enc(repo), {}).catch((e) => fail("delete", e.message));
     if (projects.includes(obsRepo)) await post("/api/git/delete/" + enc(obsRepo), {}).catch((e) => fail("OBS delete", e.message));
     const after = JSON.parse(await getText("/api/git/list-local-repos"));
     if (after.includes(repo) || after.includes(obsRepo)) fail("delete", `${repo} or ${obsRepo} still listed`);

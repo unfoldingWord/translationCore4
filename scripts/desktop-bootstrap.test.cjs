@@ -309,6 +309,8 @@ test('OBS smoke reads the platform template before writing and checks all byte s
   assert.match(smokeApi, /const source = Buffer\.from\(await getBytes\(storyRoute\(project, number\)\)\)/);
   assert.match(smokeApi, /source\.includes\(0x0d\)/);
   assert.match(smokeApi, /OBS template probe/);
+  assert.match(smokeApi, /lines\.slice\(0, images\[0\] \+ 1\)/);
+  assert.match(smokeApi, /if \(projects\.includes\(repo\)\)/);
   assert.match(smokeApi, /git.*show/);
   assert.match(smokeApi, /HTTP\/package bytes/);
 });
