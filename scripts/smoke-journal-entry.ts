@@ -4,7 +4,6 @@
 // smoke-api probe: #347 must fail before a client can mask a stale template.
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
 import { ServerApi } from '../src/data/serverApi';
 import { JournalingStore } from '../src/data/journal/journalingStore';
 import { verifyProjectAgainstJournal, describeVerifierReport } from '../src/data/journal/verify';
@@ -33,9 +32,15 @@ const repoPath = `_local_/_local_/${repoAbbr}`;
 const storyPath = (number: number) => `content/${String(number).padStart(2, '0')}.md`;
 const repoDir = path.join(storeDir, ...repoPath.split('/'));
 const storyFile = (number: number) => path.join(repoDir, 'ingredients', storyPath(number));
-const committed = (number: number): Buffer => execFileSync('git', ['-C', repoDir, 'show', `HEAD:ingredients/${storyPath(number)}`]);
 const failIfDifferent = (number: number, expected: Buffer, actual: Buffer, surface: string): void => {
   if (!actual.equals(expected)) throw new Error(`${surface} ${storyPath(number)} differs from the expected bytes`);
+};
+const assertCleanCheckpoint = async (api: ServerApi, surface: string): Promise<void> => {
+  // The installed smoke intentionally removes development tools from PATH. The
+  // server's status route is the portable proof that the preceding checkpoint
+  // left no pending changes; never shell out to a local Git executable here.
+  const status = await api.gitStatus(repoPath);
+  if (status.length) throw new Error(`${surface} left pending changes: ${JSON.stringify(status)}`);
 };
 const outsideFirstFrameViolation = (before: string, after: string): string | null => {
   const imageLine = /^!\[[^\]]*\]\([^)]*\)$/;
@@ -66,9 +71,10 @@ const main = async (): Promise<void> => {
     created = true;
     if (createdProject.repoPath !== repoPath) throw new Error(`client created ${createdProject.repoPath}, expected ${repoPath}`);
 
-  // This is the production path: open, seed the installed suite/settings, and
-  // checkpoint through JournalingStore (not direct /ingredient/raw writes).
+    // This is the production path: open, seed the installed suite/settings, and
+    // checkpoint through JournalingStore (not direct /ingredient/raw writes).
     await store.open(repoPath);
+    await assertCleanCheckpoint(api, 'OBS creation');
     await store.writeResources(INSTALLED_SUITE as never, null);
     await store.writeSettings({ schemaVersion: 1, checkingLanguage: 'en', textDirection: 'ltr', textFont: null, languageName: 'Français' }, null);
 
@@ -78,7 +84,6 @@ const main = async (): Promise<void> => {
       const actual = Buffer.from((await store.readStory(number)).bytes, 'utf8');
       failIfDifferent(number, expected, actual, 'HTTP/client');
       failIfDifferent(number, expected, fs.readFileSync(storyFile(number)), 'disk');
-      failIfDifferent(number, expected, committed(number), 'Git HEAD');
     }
     const homeProjects = await store.listProjects();
     if (!homeProjects.some((project) => project.id === repoPath && project.flavor === 'textStories'))
@@ -87,18 +92,17 @@ const main = async (): Promise<void> => {
     const beforeEdit = (await store.readStory(1)).bytes;
     await store.writeFrame(1, 1, marker);
     await store.commit('Packaged real-client smoke checkpoint');
+    await assertCleanCheckpoint(api, 'OBS client checkpoint');
     const edited = Buffer.from((await store.readStory(1)).bytes, 'utf8');
     if (!edited.toString('utf8').includes(marker)) throw new Error('JournalingStore frame edit did not read back');
     const outside = outsideFirstFrameViolation(beforeEdit, edited.toString('utf8'));
     if (outside) throw new Error(`JournalingStore frame edit changed unrelated bytes: ${outside}`);
     failIfDifferent(1, edited, fs.readFileSync(storyFile(1)), 'disk after edit');
-    failIfDifferent(1, edited, committed(1), 'Git HEAD after edit');
     for (let number = 2; number <= 50; number += 1) {
       const template = fs.readFileSync(path.join(__dirname, 'lib', 'templates', 'content_templates', 'text_stories', 'ingredients', storyPath(number)));
       const expected = Buffer.from(seedStory(template.toString('utf8')), 'utf8');
       failIfDifferent(number, expected, Buffer.from((await store.readStory(number)).bytes, 'utf8'), 'HTTP/client after edit');
       failIfDifferent(number, expected, fs.readFileSync(storyFile(number)), 'disk after edit');
-      failIfDifferent(number, expected, committed(number), 'Git HEAD after edit');
     }
     const report = await verifyProjectAgainstJournal(api, repoPath);
     if (!report.ok) throw new Error(describeVerifierReport(report));

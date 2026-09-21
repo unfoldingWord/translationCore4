@@ -11,6 +11,7 @@ const repo = path.resolve(__dirname, '..');
 const recipe = fs.readFileSync(path.join(__dirname, 'package-desktop.zsh'), 'utf8');
 const desktopMain = fs.readFileSync(path.join(__dirname, 'desktop-main.cjs'), 'utf8');
 const smokeApi = fs.readFileSync(path.join(__dirname, 'smoke-api.cjs'), 'utf8');
+const smokeJournal = fs.readFileSync(path.join(__dirname, 'smoke-journal-entry.ts'), 'utf8');
 const pinsSetup = fs.readFileSync(path.join(repo, 'dev-env', 'scripts', 'setup-from-pins.zsh'), 'utf8');
 const assembledSetup = fs.readFileSync(path.join(repo, 'dev-env', 'scripts', 'setup.zsh'), 'utf8');
 // Source the identifier and project data from the actual packaged inputs.
@@ -313,6 +314,9 @@ test('OBS smoke reads the platform template before writing and checks all byte s
   assert.match(smokeApi, /OBS template probe/);
   assert.match(smokeApi, /lines\.slice\(0, images\[0\] \+ 1\)/);
   assert.match(smokeApi, /if \(projects\.includes\(repo\)\)/);
-  assert.match(smokeApi, /git.*show/);
+  assert.match(smokeApi, /\/api\/git\/status\//);
+  assert.doesNotMatch(smokeApi, /execFileSync\(["']git["']/);
   assert.match(smokeApi, /HTTP\/package bytes/);
+  assert.match(smokeJournal, /gitStatus\(repoPath\)/);
+  assert.doesNotMatch(smokeJournal, /execFileSync\(["']git["']/);
 });

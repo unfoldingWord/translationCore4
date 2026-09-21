@@ -115,28 +115,24 @@ async function verifyObsStories(project, editedStory = null) {
   }
   ok("OBS stories", `${project} has 50 byte-exact LF stories`);
 }
-function committedStory(project, number) {
-  const repoDir = localRepoDir(project);
-  if (!repoDir) return null;
-  const { execFileSync } = require("node:child_process");
-  try {
-    return execFileSync("git", ["-C", repoDir, "show", `HEAD:ingredients/${storyPath(number)}`]);
-  } catch (error) {
-    fail("OBS committed stories", `${storyPath(number)} is not present in Git HEAD (${error.message})`);
-  }
-}
-async function verifyCommittedObsStories(project, editedStory = null) {
+async function verifyObsCheckpoint(project) {
   if (!localStore) {
-    ok("OBS committed stories", "skipped (no local project store was supplied)");
+    ok("OBS checkpoint", "skipped (no local project store was supplied)");
     return;
   }
-  for (let number = 1; number <= 50; number += 1) {
-    const expected = editedStory && number === 1 ? editedStory : seedStory(obsTemplate(number), number);
-    const committed = committedStory(project, number);
-    if (!Buffer.from(committed).equals(Buffer.from(expected, "utf8")))
-      fail("OBS committed stories", `${storyPath(number)} differs in Git HEAD from HTTP/disk bytes`);
+  // The installed smoke deliberately removes development tools from PATH. Do
+  // not shell out to Git here: the platform's checkpoint endpoint is the
+  // authoritative commit operation, and an empty status proves that the
+  // exact HTTP/disk bytes checked by verifyObsStories have no pending changes.
+  let status;
+  try {
+    status = JSON.parse(await getText("/api/git/status/" + enc(project)));
+  } catch (error) {
+    fail("OBS checkpoint", `${project} status could not be read after commit (${error.message})`);
   }
-  ok("OBS committed stories", `${project} Git HEAD agrees with HTTP and disk for all 50 stories`);
+  if (!Array.isArray(status)) fail("OBS checkpoint", `${project} status was not an array`);
+  if (status.length) fail("OBS checkpoint", `${project} still has pending changes: ${JSON.stringify(status)}`);
+  ok("OBS checkpoint", `${project} commit is clean; HTTP and disk bytes agree for all 50 stories`);
 }
 async function seedObsStories(project) {
   for (let number = 1; number <= 50; number += 1) {
@@ -258,7 +254,7 @@ async function probeObsTemplate() {
     await post("/api/git/add-and-commit/" + enc(obsRepo), { commit_message: "Seed the fifty stories (tC4)" })
       .catch((e) => fail("OBS seed checkpoint", e.message));
     await verifyObsStories(obsRepo);
-    await verifyCommittedObsStories(obsRepo);
+    await verifyObsCheckpoint(obsRepo);
     const edited = editFirstFrame(seedStory(obsTemplate(1), 1), marker);
     const outside = firstFrameOutsideViolation(seedStory(obsTemplate(1), 1), edited);
     if (outside) fail("OBS edit", outside);
@@ -269,7 +265,7 @@ async function probeObsTemplate() {
     const storyBack = Buffer.from(await getBytes(storyRoute(obsRepo, 1)));
     if (!storyBack.equals(Buffer.from(edited, "utf8"))) fail("OBS checkpoint", "story 1 did not read back after checkpoint");
     await verifyObsStories(obsRepo, edited);
-    await verifyCommittedObsStories(obsRepo, edited);
+    await verifyObsCheckpoint(obsRepo);
     ok("OBS edit/checkpoint", "story 1 changed and the other 49 stories remained byte-exact");
   } else if (mode === "obs-template-probe") {
     await probeObsTemplate();
