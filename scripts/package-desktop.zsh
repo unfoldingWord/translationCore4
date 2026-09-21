@@ -895,8 +895,10 @@ if [ "$VARIANT" = "debug" ]; then
     echo "#70 GUARD FAILED: debug store missing the seeded sample burrito" >&2; exit 1; }
   echo "debug store seeded at $RESOLVED_REPO_DIR (separate from production store)"
 else
-  if [ -e "$RESOLVED_REPO_DIR/_local_/_local_" ]; then
-    echo "#70 GUARD FAILED: production store contains _local_/_local_ entry" >&2
+  # The server keeps the empty organization namespace after its last project
+  # is deleted. Reject residual project data, but accept that harmless marker.
+  if [ -d "$RESOLVED_REPO_DIR/_local_/_local_" ] && [ -n "$(ls -A "$RESOLVED_REPO_DIR/_local_/_local_" 2>/dev/null)" ]; then
+    echo "#70 GUARD FAILED: production store contains residual _local_/_local_ project data" >&2
     ls -R "$RESOLVED_REPO_DIR" >&2; exit 1
   fi
   top_entries=($(ls -A "$RESOLVED_REPO_DIR" 2>/dev/null))
