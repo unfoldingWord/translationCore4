@@ -1531,3 +1531,19 @@ the simplified-text tab does not apply to stories. BURRITO-SPEC 1.16 R-10.6.3.
 ## D76 (2026-09-18, project-owner ruling) **OBS Understand shows the source only, like
 the Bible Understand: picture, gateway story, comment box; no draft.** [issue #332;
 corrects the `StoryUnderstand.jsx` header wording and the J25 steps, which named the draft]
+
+## D77 (2026-09-21, project-owner ruling) **The vitest passed count is not written in any document. The docs gate marks only counts that are stable between commits: the vitest skip count and the conformance counts.** [issue #349; amends the L-2 record in `docs/plans/LEGIBILITY.md` 3.2, decided in #155]
+
+Context. L-2 marked the `vitest passed` count in `README.md` and `CONTRIBUTING.md`. That
+count moves with every added test, and each move needs a manifest refresh commit: 47 of
+the 325 commits on `main` between 2026-09-05 and 2026-09-20 were "Marked counts from the
+CI manifest" [VERIFIED — `git log --since=2026-09-05 -- docs/evidence/manifest.json`
+at f97f3f4, 2026-09-20]. The skip count stayed at 43 through all 47.
+
+Ruling. (1) The two `vitest passed` markers are removed; the sentences say that every test
+passes or skips and point to the `prove-manifest` artifact of the commit's CI run for the
+count. (2) The skip count and the conformance counts stay marked; they move only with a
+gated test or a spec-and-harness change (BURRITO-SPEC §9). (3) The committed
+`docs/evidence/manifest.json` is refreshed once per milestone in the pre-release issue's
+checklist, and when a marked count moves, not per pull request. The gate, the marker
+grammar and `scripts/prove.mjs` do not change.
