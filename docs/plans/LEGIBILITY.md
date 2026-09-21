@@ -262,6 +262,12 @@ move; the passed count fails it between commits. The skip count and the conforma
 stay marked. The committed manifest is refreshed once per milestone in the pre-release
 issue, not per pull request.
 
+**Amendment (2026-09-21, #351, D78).** The `vitest skippedTests` markers in `README.md`,
+`CONTRIBUTING.md` and `AGENTS.md` are removed too. The skip count moved four times between
+2026-09-12 and 2026-09-21 (38, 41, 43, 44), once on the day D77 called it stable. Every
+rig-gated or file-gated test moves it, so it fails the same rule. Only the conformance
+counts stay marked.
+
 ## 4. Acceptance: the orientation test
 
 `docs/SYSTEM.md` is the surface under test. A fresh agent session, given only

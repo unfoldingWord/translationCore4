@@ -43,24 +43,19 @@ npm run prove
 ```
 
 `npm run verify` runs lint, typecheck, the tests, the build and the docs gate. On a clean
-clone, expect every test to pass or skip, and
-<!-- manifest: vitest skippedTests -->44 tests to skip [VERIFIED — the skip count is read
-from `docs/evidence/manifest.json`, the record of a CI run on a clean clone; that file
-names the run's commit, date and Node version; `npm run docs:gate` fails when this
-sentence disagrees with it].
+clone, expect every test to pass or skip.
 A skipped test names the prerequisite that it needs. A skip is not a failure.
 
-The number of tests that passed is not written in any document (D77). It moves with every
-added test, and each move cost one manifest commit: 47 of the 325 commits on `main`
-between 2026-09-05 and 2026-09-20. Read it from the `prove-manifest` artifact of the
-commit's CI run.
+No document writes the number of tests that passed (D77) or skipped (D78). Both counts
+move with added tests: the passed count moved in 47 of the 325 commits on `main` between
+2026-09-05 and 2026-09-20, and the skip count moved four times between 2026-09-12 and
+2026-09-21. Read both from the `prove-manifest` artifact of the commit's CI run.
 
 ### If your change moves a marked count
 
-The marked counts are the vitest skip count and the conformance counts. They move when
-you add a rig-gated or sample-gated test, or when the specification and the harness change
-together (BURRITO-SPEC §9). Then `npm run docs:gate` fails because a marked sentence
-disagrees with the manifest. Close it like this, in this order:
+The marked counts are the conformance counts. They move when the specification and the
+harness change together (BURRITO-SPEC §9). Then `npm run docs:gate` fails because a
+marked sentence disagrees with the manifest. Close it like this, in this order:
 
 1. Push your branch with the code change.
 2. Open the **push-event** CI run of that commit — the run whose event is `push`, not the
