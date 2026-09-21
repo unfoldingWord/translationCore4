@@ -906,9 +906,9 @@ else
     echo "#70 GUARD FAILED: production store top-level holds entries other than _local_: ${top_entries[*]}" >&2
     ls -R "$RESOLVED_REPO_DIR" >&2; exit 1
   fi
-  local_entries=($(ls -A "$RESOLVED_REPO_DIR/_local_" 2>/dev/null))
-  if [ "${#local_entries[@]}" -ne 1 ] || [ "${local_entries[1]}" != "_sideloaded_" ]; then
-    echo "#70 GUARD FAILED: production store _local_ holds entries other than _sideloaded_: ${local_entries[*]}" >&2
+  local_entries=($(ls -A "$RESOLVED_REPO_DIR/_local_" 2>/dev/null | sort))
+  if [ "${local_entries[*]}" != "_sideloaded_" ] && [ "${local_entries[*]}" != "_local_ _sideloaded_" ]; then
+    echo "#70 GUARD FAILED: production store _local_ holds unexpected entries: ${local_entries[*]}" >&2
     ls -R "$RESOLVED_REPO_DIR" >&2; exit 1
   fi
   sideloaded_entries=($(ls -A "$RESOLVED_REPO_DIR/_local_/_sideloaded_" 2>/dev/null | sort))
