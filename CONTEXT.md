@@ -171,6 +171,11 @@ Burrito zip, story Markdown. The project is byte-identical after an export excep
 checkpoint commit.
 _Avoid_: publish (for a file), save as, download (as the user's verb)
 
+**Export kernel**:
+The layer every export runs through (`src/data/export/kernel.ts`): the D9 checkpoint when the
+project is dirty, the producer, the browser download and the export Report.
+_Avoid_: export service, exporter
+
 **Export producer**:
 A pure function from project data to one file, registered in the export kernel's table
 (`src/data/export/producers.ts`). It makes no checkpoint, no download and no Report.

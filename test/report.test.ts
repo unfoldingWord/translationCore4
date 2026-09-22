@@ -113,10 +113,11 @@ describe('#156 the refusal-code table is closed and bound', () => {
   });
 
   it('every live code has the recovery sentence the Home banner looks up; the reserved codes wait for their issues', () => {
-    // Live = every code in the table except the kernels still to come (#375, #361, #41, #362, #203).
-    const reserved = /^(export|import|share)\./;
+    // Live = every code in the table except the kernels still to come (#361, #41, #362, #203) and
+    // the export code no producer throws yet (export.unsupported-kind).
+    const reserved = /^(import\.|share\.|export\.unsupported-kind$)/;
     const live = Object.keys(REFUSAL_CODES).filter((code) => !reserved.test(code));
-    expect(live.length).toBe(22);
+    expect(live.length).toBe(24);
     for (const code of live) expect(t(`refusal.${code}`, undefined, ''), code).not.toBe('');
   });
 
