@@ -11,6 +11,8 @@ const path = process.getBuiltinModule('node:path');
 const crypto = process.getBuiltinModule('node:crypto');
 const { execFileSync } = process.getBuiltinModule('node:child_process');
 
+const sha256 = (bytes: Uint8Array): string => crypto.createHash('sha256').update(bytes).digest('hex');
+
 const git = (repoPath: string, ...args: string[]): string =>
   execFileSync('git', ['-C', repoPath, ...args], { encoding: 'utf8' }).trim();
 
@@ -23,7 +25,7 @@ function snapshot(repoPath: string): Map<string, string> {
       const rel = path.relative(repoPath, full).split(path.sep).join('/');
       if (rel === '.git') continue;
       if (entry.isDirectory()) walk(full);
-      else out.set(rel, crypto.createHash('sha256').update(fs.readFileSync(full)).digest('hex'));
+      else out.set(rel, sha256(fs.readFileSync(full)));
     }
   };
   walk(repoPath);
@@ -32,22 +34,27 @@ function snapshot(repoPath: string): Map<string, string> {
 
 /** Run `fn` and assert the repository at `repoPath` is byte-identical after
  * it, except one checkpoint commit: at most one new commit, a "Checkpoint, …
- * (tC4)" child of the old HEAD, and only the paths that commit carries may
- * differ. Returns the number of commits `fn` added (0 or 1). */
+ * (tC4)" child of the old HEAD. A path that commit carries must hold the
+ * bytes the commit recorded; every other path must hold its bytes from before
+ * `fn`. Returns the number of commits `fn` added (0 or 1). */
 export async function assertProjectUnchanged(repoPath: string, fn: () => Promise<unknown>): Promise<number> {
   const head = git(repoPath, 'rev-parse', 'HEAD');
-  const before = snapshot(repoPath);
+  const expected = snapshot(repoPath);
   await fn();
   const added = git(repoPath, 'rev-list', `${head}..HEAD`).split('\n').filter(Boolean);
   assert.ok(added.length <= 1, `expected at most one checkpoint commit, found ${added.length}`);
-  const allowed = new Set<string>();
   if (added.length === 1) {
     assert.equal(git(repoPath, 'rev-parse', 'HEAD^'), head, 'the checkpoint commit is not a child of the old HEAD');
     assert.match(git(repoPath, 'log', '-1', '--format=%s'), /^Checkpoint, .+ \(tC4\)$/, 'the new commit is not a checkpoint');
-    for (const p of git(repoPath, 'diff-tree', '--no-commit-id', '--name-only', '-r', head, 'HEAD').split('\n')) if (p) allowed.add(p);
+    for (const p of git(repoPath, 'diff-tree', '--no-commit-id', '--name-only', '-r', head, 'HEAD').split('\n')) {
+      if (!p) continue;
+      const inCommit = git(repoPath, 'ls-tree', '--name-only', 'HEAD', '--', p) !== '';
+      if (inCommit) expected.set(p, sha256(execFileSync('git', ['-C', repoPath, 'show', `HEAD:${p}`])));
+      else expected.delete(p);
+    }
   }
   const after = snapshot(repoPath);
-  const changed = [...new Set([...before.keys(), ...after.keys()])].filter((p) => before.get(p) !== after.get(p) && !allowed.has(p));
-  assert.deepEqual(changed, [], `the export changed files outside a checkpoint commit: ${changed.join(', ')}`);
+  const changed = [...new Set([...expected.keys(), ...after.keys()])].filter((p) => expected.get(p) !== after.get(p));
+  assert.deepEqual(changed, [], `the export changed files beyond a checkpoint commit: ${changed.join(', ')}`);
   return added.length;
 }

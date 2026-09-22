@@ -142,10 +142,18 @@ describe('#375 assertProjectUnchanged', () => {
 
   it('fails on a changed file outside a checkpoint, a non-checkpoint commit, and two commits', async () => {
     const dir = repo();
-    await expect(assertProjectUnchanged(dir, async () => fs.writeFileSync(path.join(dir, 'TIT.usfm'), 'changed'))).rejects.toThrow(/outside a checkpoint commit: TIT.usfm/);
+    await expect(assertProjectUnchanged(dir, async () => fs.writeFileSync(path.join(dir, 'TIT.usfm'), 'changed'))).rejects.toThrow(/beyond a checkpoint commit: TIT.usfm/);
     await expect(assertProjectUnchanged(dir, async () => fs.writeFileSync(path.join(dir, 'stray.txt'), 'x'))).rejects.toThrow(/stray.txt/);
     fs.rmSync(path.join(dir, 'stray.txt'));
     await expect(assertProjectUnchanged(dir, async () => commit(dir, 'something else'))).rejects.toThrow(/not a checkpoint/);
+    // A path the checkpoint carries must keep the bytes the checkpoint committed (Codex round 1).
+    execFileSync('git', ['-C', dir, 'reset', '-q', '--hard', 'HEAD^']);
+    fs.writeFileSync(path.join(dir, 'metadata.json'), '{"pending":true}');
+    await expect(assertProjectUnchanged(dir, async () => {
+      commit(dir, 'Checkpoint, before export: metadata (tC4)');
+      fs.writeFileSync(path.join(dir, 'metadata.json'), '{"overwritten":true}');
+    })).rejects.toThrow(/beyond a checkpoint commit: metadata.json/);
+    execFileSync('git', ['-C', dir, 'checkout', '-q', '--', 'metadata.json']);
     await expect(assertProjectUnchanged(dir, async () => {
       commit(dir, 'Checkpoint, a (tC4)');
       execFileSync('git', ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'Checkpoint, b (tC4)']);
