@@ -31,14 +31,14 @@ Owner of increment numbers: the GitHub milestones, mirrored in `docs/ROADMAP.md`
 | J4 | translator | Check | Check a book with tN and tW | shipped alpha.2; revised end state (D72) shipped alpha.6 | `e2e/j04-check-book.spec.ts` |
 | J5 | translator | Check | Align a verse | shipped alpha.2; revised end state (D72) shipped alpha.6 | `e2e/j05-align-verse.spec.ts` |
 | J6 | translator | Translate | Edit a checked verse and see the checks flag | shipped alpha.2 | `e2e/j06-edit-invalidation.spec.ts` |
-| J7 | facilitator | Deliver | Export the book | increment 8 (#19 USFM, #20 PDF); RTL run #29 Post-4.0 | `e2e/j07-publish.spec.ts` (fixme) |
+| J7 | facilitator | Deliver | Export the book | increment 8 (D79): kernel #375; #19 USFM, #359 Scripture Burrito zip, #20 PDF; RTL run #29 Post-4.0 | `e2e/j07-publish.spec.ts` (`@inc8 @J7`; fixme until #375) |
 | J8 | translator | Translate | Resume work across sessions and books | built (2026-09-05) | `e2e/j08-resume.spec.ts` |
-| J9a | facilitator | Exchange | Import a tC3 project | increment 8 | `e2e/j09-import.spec.ts` (fixme) |
-| J9b | facilitator | Exchange | Import an x-tcore project | increment 8 | `e2e/j09-import.spec.ts` (fixme) |
-| J9c | facilitator | Exchange | Import raw USFM | increment 8 (#195) | `e2e/j09-import.spec.ts` (to write) |
-| J9d | facilitator | Exchange | Import a Scripture Burrito | increment 8 (#196) | `e2e/j09-import.spec.ts` (to write) |
+| J9a | facilitator | Exchange | Import a tC3 project as a new project | increment 8 (D79): shell #361, parser #21 | `e2e/j09-import.spec.ts` (`@inc8 @J9`; fixme until #361) |
+| J9b | facilitator | Exchange | Import an x-tcore project | retired: closed without data (D79 point 8; #14) | none |
+| J9c | facilitator | Exchange | Import raw USFM as a new project | increment 8 (D79): shell #361, parser #195 | `e2e/j09-import.spec.ts` (`@inc8 @J9`; to write) |
+| J9d | facilitator | Exchange | Import a Scripture Burrito as a new project | increment 8 (D79): shell #361, parser #196 | `e2e/j09-import.spec.ts` (`@inc8 @J9`; to write) |
 | J10 | — | — | retired: RTL is a fixture axis on J2, J4, J5, J7 | retired | both runs listed on each of those rows; `e2e/j10-rtl.spec.ts` stays until they exist |
-| J11 | facilitator | Exchange | Send the project to Door43 | Phase 2 | none |
+| J11 | facilitator | Exchange | Share the project to Door43 (first share pushes `main`) | increment 8.5 (D79): #362, #203, #120, #185 | `e2e/j11-share.spec.ts` (`@inc85 @J11`; to write) |
 | J12 | facilitator | Start | Upgrade the pinned resources | shipped alpha.6 (#256, #257; D72) | `e2e/j12-upgrade-resources.spec.ts` |
 | J13 | facilitator | Start | Change the gateway-language resource set | shipped alpha.2 | `e2e/j13-gateway-change.spec.ts` |
 | J14 | — | — | retired: isolation is a MUST NOT row on J1 and J2 | retired | `e2e/j14-join-isolation.spec.ts` stays |
@@ -50,8 +50,8 @@ Owner of increment numbers: the GitHub milestones, mirrored in `docs/ROADMAP.md`
 | J20 | facilitator | Start | Create an OBS project | shipped alpha.7 (#287; D74) | `e2e/j20-obs-create.spec.ts` |
 | J21 | translator | Translate | Translate a story frame by frame | shipped alpha.7 (#289, #292; D74) | `e2e/j21-obs-draft.spec.ts` |
 | J22 | translator | Check | Check an OBS story | shipped alpha.7 (#291, #292; D74) | `e2e/j22-obs-check.spec.ts` |
-| J23 | facilitator | Deliver | Export an OBS project as Markdown and PDF | increment 8 (with J7, one PDF path; D74) | `e2e/j07-publish.spec.ts` (OBS cases to add) |
-| J24 | facilitator | Exchange | Send an OBS project to DCS | Phase 2 | none |
+| J23 | facilitator | Deliver | Export an OBS project as Markdown and PDF | increment 8 (with J7, one PDF path; D74, D79): #360, #359, layouts #11 | `e2e/j07-publish.spec.ts` (`@inc8 @J23`; OBS block to add) |
+| J24 | facilitator | Exchange | Share an OBS project to Door43 | increment 8.5, rides J11 (D79 point 12) | `e2e/j11-share.spec.ts` (the OBS case, `@J24`) |
 | J25 | translator | Understand | Read a story with helps and record a user comment | shipped alpha.7 (#290, #292; D74) | `e2e/j25-obs-understand.spec.ts` |
 
 ## Entries
@@ -151,10 +151,12 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   date if the format allows; plain USFM without alignment; a Scripture Burrito. The project is
   byte-identical except the D9 checkpoint commit. No publish record in the project.
 - MUST NOT: write anything else into the project.
-- Proof: `e2e/j07-publish.spec.ts`, LTR and RTL.
-- Owner: Increment 8: #19 for the aligned USFM, plain USFM, and Scripture Burrito exports; #20
-  for the dated PDF (moved from Post-4.0, owner ruling 2026-09-06). The RTL run (#29) stays
-  Post-4.0. J7 is shipped only when all four outputs have proof.
+- Proof: `e2e/j07-publish.spec.ts`, tags `@inc8 @J7`; the LTR run is the gate.
+- Owner: Increment 8 (D79). The export kernel #375 (one contract, one transactional wrapper,
+  one download path, one menu) carries every producer: #19 aligned and plain USFM, #359 the
+  Scripture Burrito zip (with the `relationships` mirror in the exported `metadata.json`), #20
+  the dated PDF by the print-styled route. The RTL run (#29) stays Post-4.0. J7 is shipped only
+  when all four outputs have proof.
 
 ### J8 Resume work
 
@@ -168,18 +170,40 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 ### J9a–J9d Import
 
 - Actor: facilitator. Activity: Exchange.
-- Sources: a) tC3 project · b) x-tcore copy · c) raw USFM · d) Scripture Burrito.
-- End state (all four): one new project repository, valid Scripture Burrito; imported segments
-  carry `seed.source`; imported text byte-identical to the source text.
-- MUST NOT (all four): create a project or write anything on disk from damaged or incomplete
-  input.
-- Proof: `e2e/j09-import.spec.ts` (fixme; c and d need new cases). Owner: Increment 8 (#21, #14, #195, #196, #41).
+- Sources: a) tC3 project · b) x-tcore copy (closed without data, D79 point 8) · c) raw USFM ·
+  d) Scripture Burrito.
+- End state (a, c, d): one **new** project repository, valid Scripture Burrito at its first
+  commit; imported segments carry `seed.source`; imported text byte-identical to the source
+  text. Import never writes into an existing project in 4.0.0 (D79 point 7; the into-existing
+  flow with a conflict review is #365, 4.1.0).
+- MUST NOT (all): create a project or write anything on disk from damaged or incomplete input;
+  leave a partial repository after a failed write (the shell deletes it).
+- Proof: `e2e/j09-import.spec.ts`, tags `@inc8 @J9`: one shell block (#361), one block per
+  parser (#195, #196, #21), one damaged block (#41) driven by `conformance/fixtures/import/MANIFEST.json`.
+  Owner: Increment 8 (D79).
 
-### J11 Send to Door43 (Phase 2)
+### J11 Share the project to Door43
 
-- Actor: facilitator. Activity: Exchange.
-- Steps include the D7 identity exposure notice before the first push.
-- End state: [Phase 2, to define when §8 sync ops ratify].
+- Actor: facilitator. Activity: Exchange (lives in Check, Community Checking, beside Export).
+- Steps: press Share · on the first share of the session, sign in to Door43 with username and
+  password; on the first share of the installation, also give a name and an email and read the
+  D7 exposure notice · name the repository (default: the project's folder name) · the app
+  creates the repository under the user's account, adds it as `origin`, pushes the working
+  `main` branch · the app shows the repository URL.
+- End state: the repository exists on the Door43 server the app was launched against, with
+  `main` equal to the local `main`; the project is byte-identical except the D9 checkpoint
+  commit; `origin` is set in the repository's git config; nothing about remotes is stored in
+  the installation; the token exists in renderer memory only. A later share pushes `main`
+  again with no dialog when the session has a token.
+- Refusals (each a `Report` code, nothing pushed): the name exists on the account; the push is
+  not a fast-forward, because another device pushed (the message says team sync is coming and
+  local work is safe); the app is offline; sign-in failed; the create was rejected.
+- MUST NOT: create a publication branch or an outbox; integrate or receive; force-push; write
+  the token to disk, a URL or a log; write anything into the project.
+- Proof: `e2e/j11-share.spec.ts`, tags `@inc85 @J11`. The live leg against `qa.door43.org`
+  runs when the QA credentials are present and reports a labelled skip otherwise (#185).
+- Owner: Increment 8.5 (D79 point 12): #362 the share operation, #203 sign-in and identity,
+  #120 the Door43 authority, #185 the journey. Receive and team sync stay Phase 2 (D67; epic #24).
 
 ### J12 Upgrade the pinned resources
 
@@ -266,12 +290,14 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 - Actor: facilitator. Activity: Deliver.
 - End state: files written outside the project: the story Markdown, a dated PDF, a Scripture
   Burrito; the project byte-identical except the D9 checkpoint commit.
-- Proof: `e2e/j07-publish.spec.ts`, OBS cases to add. Owner: Increment 8, with J7 on one PDF
-  path (D74). OBS layouts are #11.
+- Proof: `e2e/j07-publish.spec.ts`, OBS block, tags `@inc8 @J23`. Owner: Increment 8, with J7
+  on one PDF path (D74, D79): #360 story Markdown and the flow-layout PDF, #359 the zip, #11 the
+  wrapped layout.
 
-### J24 Send an OBS project to DCS
+### J24 Share an OBS project to Door43
 
-- Actor: facilitator. Activity: Exchange. Phase 2, with J11.
+- Actor: facilitator. Activity: Exchange. Rides J11 unchanged (D79 point 12): the same Share
+  action, the same end state and refusals, an OBS project. Proof: the J11 spec with an OBS project.
 
 ### J25 Read a story with helps and record a user comment
 

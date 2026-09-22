@@ -239,7 +239,7 @@ LEGIBILITY closes ─▶ X2 sync reference module ─▶ S1 ratify §8.7 (rules 
                                                     ├─▶ S2 send adapter ─▶ S3 transports
                                                     ├─▶ S4 integrate adapter ─▶ S5 receive adapter
                                                     └─▶ S6 fork view (reads Report)
-X4 CLI + Inspector    X5 ops log for sync    X7 golden corpus    S7 performance    S8 journey    S9 docs
+X4 CLI + Inspector    X5 ops log for sync    X7 golden corpus    X8 share-born main    S7 performance    S8 journey    S9 docs
 ```
 
 Items before S1 (X2, X4, X5) assert invariants by name and refusals by code name; S1
@@ -297,6 +297,30 @@ one check folds every frozen corpus. The release procedure (`docs/PACKAGING.md`,
 gains the step. Acceptance: the first corpus is frozen and committed in the X7 change
 set, its check is green, and a one-byte change to a frozen segment fails with
 `segment.invalid`.
+
+### X8 — A team whose main was born from a first share [PROPOSED — D79, 2026-09-22]
+
+Increment 8.5 ships a first share that pushes an actor's working `main` to Door43 as a
+transport action (D79 point 12), before any sync feature exists. That `main` holds one actor's
+full working history: ingredients plus that actor's journal segments. Team sync later treats
+the Door43 `main` as team main (D67(4b)). This scenario proves the two behave the same, and S1
+must pass it before any sync feature ships.
+
+Actors A and B; the sample project. A drafts TIT 1:1 and 1:2, checkpoints, shares (pushes
+`main`; no publication branch). Sync arrives. A `send()`s: the publication branch `<A>` is
+pushed beside `main`. B clones `main`, edits TIT 1:3, sends. B integrates A's publication into
+`main`. Expected: `outcome: done`; intake accepts nothing new from A's publication, because
+every segment is already in `main` byte for byte (JC-13 dedup by `ts`; JC-20 refuses nothing);
+`main`'s fold equals `fold(A's working ∪ B's publication)`; TIT 1:1 and 1:2 hold A's text; no
+key forks. Negative control: a planted foreign segment in A's publication is refused with
+`segment.foreign-actor`, `main` HEAD unchanged. Second case, the two-device refusal of
+Increment 8.5 itself (`docs/RISKS.md` row 6): C clones the share-born `main` before sync,
+drafts, and C's share is refused `share.non-fast-forward`; A's next share also refuses; nothing
+is lost on either device.
+
+Acceptance: both cases pass over the memory port and the git port; the first also over HTTP on
+the rig. If the equivalence fails, S4 gains a step that rebuilds `main` from the share history
+as if it were a publication, and `docs/RISKS.md` row 5 records the result.
 
 ### S1 — Ratify §8.7 as rules and scenarios
 
