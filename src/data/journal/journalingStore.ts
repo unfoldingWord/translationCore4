@@ -1174,6 +1174,24 @@ export class JournalingStore implements BurritoStore {
     options: OpenOptions,
     hooks: OpenHooks = {},
   ): Promise<ProjectSummary> {
+    // The open's Report covers the WHOLE operation (Codex round 1 of #156): a
+    // failure before recovery — the platform open, the installation store —
+    // leaves a failed Report too, never a stale one from the previous open.
+    const startedAt = this.isoNow();
+    try {
+      return await this.openUnreported(repoPath, options, hooks, startedAt);
+    } catch (error) {
+      this.lastReport = failedReport('open', startedAt, this.isoNow(), error);
+      throw error;
+    }
+  }
+
+  private async openUnreported(
+    repoPath: string,
+    options: OpenOptions,
+    hooks: OpenHooks,
+    startedAt: string,
+  ): Promise<ProjectSummary> {
     const summary = await this.raw.open(repoPath); // binds raw + setCurrentProject
     this.boundRepoPath = repoPath;
     this.journal = new JournalStore({ api: this.api, repoPath, kv: this.kv, now: this.now });
@@ -1188,14 +1206,8 @@ export class JournalingStore implements BurritoStore {
     // ts until that read completes (R-8.2.4).
     await this.journal.open({ ratchet: 'deferred' });
     return inProjectQueue(repoPath, async () => {
-      const startedAt = this.isoNow();
-      try {
-        const facts = await this.recoverAndConverge(options, hooks);
-        this.lastReport = okReport('open', startedAt, this.isoNow(), facts);
-      } catch (error) {
-        this.lastReport = failedReport('open', startedAt, this.isoNow(), error);
-        throw error;
-      }
+      const facts = await this.recoverAndConverge(options, hooks);
+      this.lastReport = okReport('open', startedAt, this.isoNow(), facts);
       return summary;
     });
   }

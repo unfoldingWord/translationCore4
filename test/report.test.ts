@@ -158,6 +158,22 @@ describe('#156 the store emits the Report', () => {
     expect(report.rule).toBe('R-8.7.5');
   });
 
+  it('an open that fails before recovery (no such project) leaves a failed open Report without a code, not a stale one', async () => {
+    const { store, restart } = await setup();
+    await store.commit('checkpoint (tC4)');
+    expect(store.lastReport?.op).toBe('checkpoint'); // the previous operation's ok Report
+    let thrown: unknown = null;
+    await store.open('_local_/_local_/no-such-project').catch((e) => (thrown = e));
+    expect(thrown).not.toBeNull();
+    const report = lastReportOf(store, 'open');
+    expect(report.ok).toBe(false);
+    expect(report.code).toBeUndefined();
+    expect(report.facts.message).toBe(String((thrown as Error).message));
+    const fresh = restart();
+    await fresh.open('_local_/_local_/no-such-project').catch(() => undefined);
+    expect(lastReportOf(fresh, 'open').ok).toBe(false); // null before, failed after
+  });
+
   it('expectRefusal fails when the operation succeeds or carries another code', async () => {
     await expect(expectRefusal(Promise.resolve('fine'), 'seed.mismatch')).rejects.toThrow(/the operation succeeded/);
     await expect(expectRefusal(Promise.reject(new Refusal('share.offline', 'x')), 'seed.mismatch')).rejects.toThrow(/expected the refusal seed.mismatch/);
