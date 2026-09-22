@@ -73,9 +73,10 @@ replaces this section when the run is reported.
 
 ## Clean-clone counts
 
-`docs/evidence/manifest.json` on `main` (push-event CI run of `b835c41`): vitest 1220
-passed / 44 skipped; format conformance 48/48; journal suite 350/350; normative rules
-91/91. CI on the release commit: run 35671067435 (`ci`), success. The four OBS journeys
+`docs/evidence/manifest.json` on `main` (push-event CI run of `b835c41`): vitest all
+passed, none failed (the passed and skipped counts are not written in a document, D77 and
+D78; read them from the `prove-manifest` artifact of `ci` run 35671067435 on the release
+commit, success); format conformance 48/48; journal suite 350/350; normative rules 91/91. The four OBS journeys
 J20, J21, J22 and J25 ran green on a local rig (PRs #320, #322, #323, #345); they do not
 run in CI.
 
