@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 // #108 (epic #104, D63): Publish is retired as a top-level tab. It must not be
 // reachable from the top navigation, and it must be reachable from Check's
-// Community Checking card, which opens the typeset preview with both exports
-// disabled until J7.
+// Community Checking card, which opens the typeset preview with the export
+// menu (#375), which states when the exports arrive while it has no producer.
 import React from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
@@ -184,14 +184,12 @@ describe('#108 — Publish moves into Check as Community Checking', () => {
     expect(screen.getByTestId('save-indicator').getAttribute('data-state')).toBe('error');
   });
 
-  it('the publish view is the typeset preview with both exports disabled', () => {
+  it('the publish view is the typeset preview with the export menu, which has no producer yet', () => {
     state = { ...baseState, view: 'publish' };
     render(<App />);
     expect(screen.getByTestId('community-checking')).toBeTruthy();
-    const pdf = screen.getByRole('button', { name: 'Export PDF' }) as HTMLButtonElement;
-    const usfm = screen.getByRole('button', { name: 'Export USFM' }) as HTMLButtonElement;
-    expect(pdf.disabled).toBe(true);
-    expect(usfm.disabled).toBe(true);
+    expect(screen.getByTestId('export-menu-empty').textContent).toBe('Exports arrive later in this increment (J7).');
+    expect(screen.queryByRole('button', { name: /^Export / })).toBeNull();
     // The preview renders the project's own text, not fixture copy.
     expect(screen.getByText(/Pablo, siervo de Dios y apóstol/)).toBeTruthy();
     // An undrafted verse is stated, never silently skipped in the preview.

@@ -13,6 +13,7 @@ import { bookName } from '../data/bookNames';
 import { DEFAULT_PAGE_SETUP } from '../data/export/pageSetup';
 import { t } from '../i18n';
 import { Button, FilterChip, Toggle, Overline, Callout } from '../ds/index.js';
+import ExportMenu from './ExportMenu.jsx';
 
 const PAGE = { maxWidth: 680, margin: '0 auto', background: '#fff', boxShadow: 'var(--shadow-page)', borderRadius: 4, padding: '64px 72px' };
 const EYEBROW = { textAlign: 'center', fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-heavy)', letterSpacing: 'var(--tracking-eyebrow)', textTransform: 'uppercase', color: 'var(--text-tertiary)', margin: '0 0 4px' };
@@ -21,7 +22,6 @@ const RULE = { height: 1, background: 'var(--border)', margin: '0 auto 30px', wi
 const ASIDE = { width: 'var(--rail-width-wide)', flex: 'none', background: 'var(--surface-card)', borderInlineStart: 'var(--stroke-hair) solid var(--border)', padding: 22, display: 'flex', flexDirection: 'column', gap: 16, overflow: 'auto' };
 const SETUP_BOX = { border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 16, background: 'var(--surface-app)' };
 const SETUP_LIST = { display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12, fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)' };
-const NOTE = { fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--text-tertiary)', margin: 0, lineHeight: 'var(--lh-body)' };
 const PREVIEW_LINE_HEIGHT = Object.freeze({
   single: 'var(--lh-community-checking-single)',
   double: 'var(--lh-community-checking-double)',
@@ -98,9 +98,7 @@ function StoryCommunityChecking() {
       <aside style={ASIDE}>
         <Button variant="ghost" onClick={() => actions.go('check')} style={{ alignSelf: 'flex-start' }}>{t('cc.back')}</Button>
         <h2 style={{ fontSize: 'var(--fs-title-sm)', letterSpacing: 'var(--track-16)', margin: 0 }}>{t('cc.title')}</h2>
-        {/* J23 (Increment 8) delivers the Markdown and PDF exports; the button states the truth. */}
-        <Button shape="block" size="lg" disabled title={t('cc.exportsLaterObs')}>{t('cc.exportPdf')}</Button>
-        <p style={NOTE}>{t('cc.exportsLaterObs')}</p>
+        <ExportMenu />
         <div style={SETUP_BOX}>
           <Overline style={{ letterSpacing: '.12em' }}>{t('cc.pageSetup')}</Overline>
           <div style={SETUP_LIST}>
@@ -157,10 +155,7 @@ export default function CommunityChecking() {
       <aside style={ASIDE}>
         <Button variant="ghost" onClick={() => actions.go('check')} style={{ alignSelf: 'flex-start' }}>{t('cc.back')}</Button>
         <h2 style={{ fontSize: 'var(--fs-title-sm)', letterSpacing: 'var(--track-16)', margin: 0 }}>{t('cc.title')}</h2>
-        {/* J7 delivers the real exports; until then the buttons state the truth. */}
-        <Button shape="block" size="lg" disabled title={t('cc.exportsLater')}>{t('cc.exportPdf')}</Button>
-        <Button shape="block" size="lg" variant="outline" disabled title={t('cc.exportsLater')}>{t('cc.exportUsfm')}</Button>
-        <p style={NOTE}>{t('cc.exportsLater')}</p>
+        <ExportMenu />
         <div style={SETUP_BOX}>
           <Overline style={{ letterSpacing: '.12em' }}>{t('cc.pageSetup')}</Overline>
           <div style={SETUP_LIST}>
