@@ -50,6 +50,7 @@ import { LADDER } from './data/burritoStore';
 import { TC_READY_TOPIC } from './data/serverApi';
 import { t } from './i18n';
 import { checkpointMessage } from './data/checkpoint';
+import { runExport } from './data/export/kernel';
 import { INSTALLED_SUITE, SUITE_VERSION } from './data/installedSuite';
 import { obsFrameSetMismatch } from './data/obsFrameSet';
 import { parseStory, storyIpath } from './data/journal/runtime';
@@ -3087,6 +3088,18 @@ export function AppProvider({ children }) {
         } catch (e) {
           dispatch({ type: 'set', patch: { commitError: failureText(e) } });
         }
+      },
+
+      /** Run one export (#375): every pending save is on disk first, so the
+       * kernel's checkpoint and the producer read the text on screen. Returns
+       * the export Report, or null when a save failed (the save indicator shows
+       * it, and nothing is exported). */
+      exportFile: async (producer) => {
+        if (!(await drainSchedulers(saveRefs))) return null;
+        const st = stateRef.current;
+        const store = storeRef.current;
+        if (!st.project || !store) return null;
+        return runExport(producer, { store, project: st.project, book: st.book ?? undefined });
       },
 
       closeModal: () => dispatch({ type: 'set', patch: { modal: null, np: null, ab: null, st: null, fix: null } }),
