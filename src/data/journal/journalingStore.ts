@@ -2968,16 +2968,24 @@ export class JournalingStore implements BurritoStore {
     // Status and commit inside ONE queued step: a second checkpoint queued
     // behind this one reads the tree this one leaves, never the tree it saw.
     return this.queue(async () => {
-      const changes = await this.api.gitStatus(this.mustRepo());
+      // The checkpoint's Report covers the status read too (final Codex review
+      // of #156): a failed read leaves a failed Report, never the previous one.
+      const startedAt = this.isoNow();
+      let changes: Array<{ path: string; change_type: string }>;
+      try {
+        changes = await this.api.gitStatus(this.mustRepo());
+      } catch (error) {
+        this.lastReport = failedReport('checkpoint', startedAt, this.isoNow(), error);
+        throw error;
+      }
       const message = messageFor(changes);
-      if (message === null) return null;
-      await this.commitQueued(message);
+      if (message === null) return null; // nothing to checkpoint: no operation ran
+      await this.commitQueued(message, startedAt);
       return message;
     });
   }
 
-  private async commitQueued(message: string): Promise<void> {
-    const startedAt = this.isoNow();
+  private async commitQueued(message: string, startedAt = this.isoNow()): Promise<void> {
     try {
       const facts = await this.checkpoint(message);
       this.lastReport = okReport('checkpoint', startedAt, this.isoNow(), facts);

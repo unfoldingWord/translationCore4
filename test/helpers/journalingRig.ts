@@ -263,6 +263,7 @@ export const journalingRig = () => {
 
     if (parts[1] === 'git' && parts[2] === 'status') {
       const repo = repoAt(3);
+      maybeFail({ method, route, repo });
       const project = repos.get(repo);
       if (!project) return notFound(`no such repo ${repo}`);
       return ok([...project.dirty].sort().map((ipath) => ({ path: `ingredients/${ipath}`, change_type: 'modified' })));

@@ -189,6 +189,20 @@ describe('#156 the store emits the Report', () => {
     expect(lastReportOf(fresh, 'open').ok).toBe(false); // null before, failed after
   });
 
+  it('a checkpoint whose status read fails leaves a failed checkpoint Report, not the previous ok one', async () => {
+    const { rig, store } = await setup();
+    await store.writeBook('TIT', TIT_USFM.replace('___', 'Nueva vida.'));
+    expect(await store.commitPending(() => 'checkpoint (tC4)')).toBe('checkpoint (tC4)');
+    expect(lastReportOf(store, 'checkpoint').ok).toBe(true);
+    rig.failOn((ctx) => ctx.route.includes('/git/status/'));
+    let thrown: unknown = null;
+    await store.commitPending(() => 'again (tC4)').catch((e) => (thrown = e));
+    expect(thrown).not.toBeNull();
+    const report = lastReportOf(store, 'checkpoint');
+    expect(report.ok).toBe(false);
+    expect(report.facts.error).toBe(String((thrown as Error).message));
+  });
+
   it('an open records its seed and reconcile phases as Reports, ok or failed', async () => {
     const { rig, store, restart } = await setup();
     const created = lastReportOf(store, 'open');
