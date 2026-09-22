@@ -2791,6 +2791,12 @@ export function AppProvider({ children }) {
   // unsaved work, and attempt a best-effort flush when the page hides.
   useEffect(() => {
     const beforeUnload = (e) => {
+      // #356: under the desktop shell the close decision belongs to the
+      // Electron main process (setCanClose below drives its "Unsaved
+      // changes" dialog). A beforeunload cancel there shows no prompt: it
+      // silently refuses the close, and a standing save failure made the
+      // window unclosable. Only a browser gets the cancel.
+      if (window.electronAPI?.setCanClose) return;
       // Comprehension notes, alignments and decisions are project work too
       // (A4, #100): every scheduler must be at rest before the window may
       // close silently.
@@ -2811,6 +2817,18 @@ export function AppProvider({ children }) {
       window.removeEventListener('pagehide', onHide);
     };
   }, []);
+
+  // #356: the desktop shell's close path. The Pankosmia Electron template
+  // asks "Unsaved changes — close anyway?" only while the client has told it
+  // the work is not saved (preload `electronAPI.setCanClose`). Mirror the
+  // five schedulers' rest into it on every transition, so a retained failure
+  // (FR-32) still lets the window close through that dialog, never through
+  // Task Manager. Absent bridge (a browser): nothing to do.
+  useEffect(() => {
+    const allSaved = [s.saveState, s.noteSaveState, s.alignSaveState, s.checkSaveState, s.storySaveState]
+      .every((state) => (state ?? 'saved') === 'saved');
+    window.electronAPI?.setCanClose?.(allSaved);
+  }, [s.saveState, s.noteSaveState, s.alignSaveState, s.checkSaveState, s.storySaveState]);
 
   // Most-recently-USED ordering (owner, 2026-07-31; creation counts as use).
   // "Use" is user-machine state, so it lives in the platform's per-client
