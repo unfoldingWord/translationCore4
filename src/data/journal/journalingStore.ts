@@ -1229,7 +1229,8 @@ export class JournalingStore implements BurritoStore {
   private async phase<F extends Record<string, unknown>>(op: 'seed' | 'reconcile', run: () => Promise<F>): Promise<Report<F>> {
     const startedAt = this.isoNow();
     try {
-      const report = okReport(op, startedAt, this.isoNow(), await run());
+      const facts = await run(); // before the end timestamp: arguments evaluate left to right
+      const report = okReport(op, startedAt, this.isoNow(), facts);
       this.openPhases.push(report);
       return report;
     } catch (error) {
