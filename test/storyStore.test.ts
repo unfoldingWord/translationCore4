@@ -17,6 +17,7 @@ import { verifyProjectAgainstJournal, describeVerifierReport } from '../src/data
 import { journalingRig, memKv, tickingNow, type JournalingRig } from './helpers/journalingRig';
 import { INSTALLED_SUITE } from '../src/data/installedSuite';
 import type { ResourcesFile } from '../src/data/burritoStore';
+import { openFacts } from './helpers/report';
 
 // vite-plugin-node-polyfills aliases node builtins even under the node
 // environment; the real ones come through process.getBuiltinModule.
@@ -139,8 +140,8 @@ describe('the story path of the store (#286, §10)', () => {
 
   it('opens the template project as converged: no unknown path, nothing regenerated', async () => {
     const { store, api } = await setup();
-    expect(store.lastOpenReport?.classification).toBe('converged');
-    expect(store.lastOpenReport?.regeneratedPaths).toEqual([]);
+    expect(openFacts(store).classification).toBe('converged');
+    expect(openFacts(store).regeneratedPaths).toEqual([]);
     await expectVerified(api);
   });
 
@@ -237,7 +238,7 @@ describe('the story path of the store (#286, §10)', () => {
     await expectVerified(api);
     const store2 = newStore();
     await store2.open(REPO);
-    expect(store2.lastOpenReport?.classification).toBe('converged');
+    expect(openFacts(store2).classification).toBe('converged');
     const { story } = await store2.readStory(1);
     expect(story.frames[0].text).toBe('Así hizo Dios todo al principio.');
     expect(story.ref).toBe('Génesis 1-2');
@@ -253,8 +254,8 @@ describe('the story path of the store (#286, §10)', () => {
     expect(project.files.get('content/04.md')).toBe(templateFiles()['content/04.md']); // stale disk
     const store2 = newStore();
     await store2.open(REPO);
-    expect(store2.lastOpenReport?.classification).toBe('regenerated-forward');
-    expect(store2.lastOpenReport?.regeneratedPaths).toEqual(['content/04.md']);
+    expect(openFacts(store2).classification).toBe('regenerated-forward');
+    expect(openFacts(store2).regeneratedPaths).toEqual(['content/04.md']);
     expect((await store2.readStory(4)).story.frames[0].text).toBe('Un texto.');
     await expectVerified(api);
   });

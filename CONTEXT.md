@@ -196,8 +196,17 @@ A pure function from a file's bytes to an import bundle: `usfm`, `burrito`, `tc3
 nothing and shows nothing.
 _Avoid_: importer (for the parser alone), converter
 
+**Report**:
+The one record every store operation leaves about its outcome: `{op, ok, code?, rule?, facts,
+startedAt, endedAt}`, defined and validated in `journal/report.mjs`. An open, a checkpoint, a
+seed and a reconcile each return one; the export, import and share kernels return one. The
+store keeps the last one as `lastReport`.
+_Avoid_: result, status, OpenReport (retired by #156), log entry (the ops record of #374 is a
+Report written to the installation store)
+
 **Refusal code**:
 The stable name a refused operation returns in its `Report` (for example `share.non-fast-forward`,
-`import.damaged.truncated`), bound to a rule id or marked as an app rule. Tests assert codes,
-never message strings.
+`import.damaged.truncated`), bound to a rule id or marked as an app rule. The table
+`REFUSAL_CODES` in `journal/report.mjs` is closed: a thrown `Refusal` carries one code from it.
+Tests assert codes, never message strings.
 _Avoid_: error code, error message (as the thing a test checks)

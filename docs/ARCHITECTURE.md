@@ -142,6 +142,24 @@ Performance is OPEN-QUESTIONS #9. Measure before you optimize. If a cache is nec
 | translationAcademy (`en_ta`) | `<category>/<article>/01.md` + `translate/toc.yaml` (groupId↔title renames — keep the existing rename/reverse-rename logic) |
 | Lexicon (`en_ugl`/`en_uhl`) | `content/<entry>.json` batch-read |
 
+### 3.5 Report and refusal codes (issue #156, legibility L-3)
+
+Every store operation reports its outcome in one closed shape, and every refusal it throws
+carries one code from one closed table. Both live in `journal/report.mjs`; the TypeScript shapes
+are in `src/data/journal/runtime.ts`. The export (§7), import (§8) and share kernels return the
+same `Report`.
+
+| Item | Contract | Test |
+|---|---|---|
+| `Report` | `{op, ok, code?, rule?, facts, startedAt, endedAt}`. `op` is one of `open`, `checkpoint`, `seed`, `reconcile`, `export`, `import`, `share`. `facts` is the operation's own record (an open: the recovery classification and the fold's forks; a checkpoint: the paths written). `reportError` names the first problem of a malformed shape; `okReport` and `failedReport` emit only validated Reports. | `test/report.test.ts` |
+| `REFUSAL_CODES` | code → the BURRITO-SPEC rule id it enforces, or `null` for an app rule with no R-id. Closed: `new Refusal(code, message, facts)` with a code outside the table throws. A code's user-facing recovery text is the catalog key `refusal.<code>` (`src/i18n/en.json`). | `test/report.test.ts`; the normative gate `conformance/normative/check.mjs` fails when a rule-bound code names a rule that is not live in §8 or §10, and lists the app-rule codes by name |
+| `JournalingStore.lastReport` | The Report of the last open or checkpoint: ok with its facts, or failed with the code the thrown refusal carried. Replaces `OpenReport`. | `test/report.test.ts`; the recovery suites read it through `openFacts` |
+| `expectRefusal(promise, code)` | The one way a test asserts a refusal: the rejection carries exactly `code` and the table's rule. | `test/helpers/report.ts` |
+
+The Home banner (`src/state.jsx` `failureText`) shows a failed open's or checkpoint's thrown
+diagnosis and then the recovery sentence looked up by its code. The ops record per operation,
+crash recovery from it and the dev Inspector are #374.
+
 ## 4. Checking surface (tC3 contract reference — UI plan superseded by A-5)
 
 **A-5 (2026-07-06) supersedes this section as a UI plan:** the check and alignment surfaces are design-native. Neither `tc-checking-tool-rcl`'s `Checker` nor the `@gabrielaillet/word-aligner-rcl` fork's UI is embedded (their runtime role: OPEN-QUESTIONS #14/#7). The contract below is verified against the published `tc-checking-tool-rcl@0.9.128` source — the same components the upstream checks client proved viable on-platform [VERIFIED]. We keep the contract as the normative reference for what our views must read, write, and honor:

@@ -16,6 +16,7 @@ import { verifyProjectAgainstJournal, describeVerifierReport } from '../src/data
 import { journalingRig, memKv, tickingNow } from './helpers/journalingRig';
 import { INSTALLED_SUITE } from '../src/data/installedSuite';
 import type { ResourcesFile } from '../src/data/burritoStore';
+import { openFacts } from './helpers/report';
 
 const fs = process.getBuiltinModule('node:fs');
 const path = process.getBuiltinModule('node:path');
@@ -88,7 +89,7 @@ describe('createObsProject (#287, J20)', () => {
     const { rig, api, store } = setup();
     const { repoPath } = await store.createObsProject(PARAMS);
     await store.open(repoPath);
-    expect(store.lastOpenReport?.classification).toBe('converged');
+    expect(openFacts(store).classification).toBe('converged');
     expect((await store.listProjects()).find((p) => p.id === REPO)).toMatchObject({ flavor: 'textStories', bookCodes: [] });
     await store.writeFrame(1, 1, 'Así hizo Dios todo al principio.');
     const reader = new ProjectReader({ api });

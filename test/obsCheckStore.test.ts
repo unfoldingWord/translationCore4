@@ -13,6 +13,7 @@ import { verifyProjectAgainstJournal, describeVerifierReport } from '../src/data
 import { EN_HELPS } from '../src/data/installedSuite';
 import type { Decision } from '../src/data/burritoStore';
 import { journalingRig, memKv, tickingNow, type JournalingRig } from './helpers/journalingRig';
+import { openFacts } from './helpers/report';
 
 const PARAMS = { content_name: 'Historias', content_abbr: 'historias', content_language_code: 'es' };
 const TN_RESOLUTION = { repoPath: EN_HELPS['obs-tn'].repoPath, version: EN_HELPS['obs-tn'].version, sha: EN_HELPS['obs-tn'].sha, languageSet: 'primary' as const };
@@ -163,8 +164,8 @@ describe('the story write path of the store (#291, §10.5 / R-10.7.3)', () => {
     await store.commit('checkpoint');
     const reopened = newStore();
     await reopened.open(repoPath);
-    expect(reopened.lastOpenReport?.classification).toBe('converged');
-    expect(reopened.lastOpenReport?.regeneratedPaths).toEqual([]);
+    expect(openFacts(reopened).classification).toBe('converged');
+    expect(openFacts(reopened).regeneratedPaths).toEqual([]);
     expect(sidecar('translationNotes').decisions).toHaveLength(1);
     expect(reopened.readNotes('OBS')).toHaveLength(1);
     expect(storyBytes()).toBe(before);

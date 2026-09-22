@@ -20,6 +20,7 @@ import { validateSegment, type JournalEvent } from '../src/data/journal/seal';
 import { describeVerifierReport, verifyProjectAgainstJournal } from '../src/data/journal/verify';
 import type { Decision, ResourcesFile } from '../src/data/burritoStore';
 import { FAKE_VRS, journalingRig, memKv, tickingNow, type JournalingRig } from './helpers/journalingRig';
+import { openFacts } from './helpers/report';
 
 const REPO = '_local_/_local_/prueba';
 
@@ -193,7 +194,7 @@ describe('#62 crash atomicity: before publication', () => {
 
     const store2 = restart();
     await store2.open(REPO);
-    expect(store2.lastOpenReport?.replayed.map((r) => r.outcome)).toEqual(['republished']);
+    expect(openFacts(store2).replayed.map((r) => r.outcome)).toEqual(['republished']);
     // The EXACT staged bytes were republished — same action, same timestamps.
     const published = segmentPaths(rig).filter((p) => !segsBefore.includes(p));
     expect(published).toHaveLength(1);
@@ -220,7 +221,7 @@ describe('#62 crash atomicity: after publication, before regeneration', () => {
 
     const store2 = restart();
     await store2.open(REPO);
-    expect(store2.lastOpenReport?.classification).toBe('regenerated-forward');
+    expect(openFacts(store2).classification).toBe('regenerated-forward');
     expect(segmentPaths(rig)).toHaveLength(segsBefore + 1); // NOT duplicated
     expect(rig.repos.get(REPO)?.files.get('TIT.usfm')).toContain('Nueva vida.');
     await expectVerified(api);
@@ -237,7 +238,7 @@ describe('#62 crash atomicity: after publication, before regeneration', () => {
 
     const store2 = restart();
     await store2.open(REPO);
-    expect(store2.lastOpenReport?.classification).toBe('regenerated-forward');
+    expect(openFacts(store2).classification).toBe('regenerated-forward');
     expect(rig.repos.get(REPO)?.files.get('TIT.usfm')).toContain('Nueva vida.');
     await expectVerified(api);
   });
@@ -251,7 +252,7 @@ describe('#62 crash atomicity: after publication, before regeneration', () => {
     const bytesAfterFirst = rig.repos.get(REPO)?.files.get('TIT.usfm');
     const store3 = restart();
     await store3.open(REPO);
-    expect(store3.lastOpenReport?.classification).toBe('converged');
+    expect(openFacts(store3).classification).toBe('converged');
     expect(rig.repos.get(REPO)?.files.get('TIT.usfm')).toBe(bytesAfterFirst);
     await expectVerified(api);
   });
@@ -269,7 +270,7 @@ describe('#62 crash atomicity: during the final server commit', () => {
 
     const store2 = restart();
     await store2.open(REPO);
-    expect(store2.lastOpenReport?.classification).toBe('converged');
+    expect(openFacts(store2).classification).toBe('converged');
     await store2.commit('checkpoint (tC4)');
     expect(rig.repos.get(REPO)?.commits).toContain('checkpoint (tC4)');
     await expectVerified(api);
@@ -371,7 +372,7 @@ describe('#62 the coordinated gateway change', () => {
 
     const store2 = restart();
     await store2.open(REPO);
-    expect(store2.lastOpenReport?.classification).toBe('regenerated-forward');
+    expect(openFacts(store2).classification).toBe('regenerated-forward');
     expect(rig.repos.get(REPO)?.files.get('checking/resources.json')).toContain('es-419_tw');
     expect(segmentPaths(rig)).toHaveLength(before + 1); // still not duplicated
     await expectVerified(api);
@@ -407,7 +408,7 @@ describe('#62 universal seeding (§8.8)', () => {
     const writesBefore = rig.writes.length;
     const store = restart();
     await store.open(repo);
-    expect(store.lastOpenReport?.seeded).toBe(true);
+    expect(openFacts(store).seeded).toBe(true);
     const events = await allEvents(rig, repo);
     expect(events.every((e) => e.seed && (e.seed as { source: string }).source === 'sidecar-migration')).toBe(true);
     expect(events.map((e) => e.op).sort()).toEqual([
@@ -435,8 +436,8 @@ describe('#62 universal seeding (§8.8)', () => {
     // Reopening is quiet: already journaled, already converged.
     const store2 = restart();
     await store2.open(repo);
-    expect(store2.lastOpenReport?.seeded).toBe(false);
-    expect(store2.lastOpenReport?.classification).toBe('converged');
+    expect(openFacts(store2).seeded).toBe(false);
+    expect(openFacts(store2).classification).toBe('converged');
   });
 
   it('seeds a decision file whose records are NOT in canonical order — order is byte form, not content (R-8.8.2)', async () => {
@@ -467,7 +468,7 @@ describe('#62 universal seeding (§8.8)', () => {
     });
     const store = restart();
     await store.open(repo);
-    expect(store.lastOpenReport?.seeded).toBe(true);
+    expect(openFacts(store).seeded).toBe(true);
     // Both records survived into the fold — nothing was collapsed or dropped.
     const events = await allEvents(rig, repo);
     const seededIds = events
@@ -506,8 +507,8 @@ describe('#62 universal seeding (§8.8)', () => {
     const reopened = new JournalingStore({ api, kv: memKv(), now: () => clock.advance(19) });
     await reopened.open(repoA);
     // Identical payloads CONVERGE — auto-merged, zero forks, nothing retained.
-    expect(reopened.lastOpenReport?.forks).toEqual([]);
-    expect(reopened.lastOpenReport?.retained).toEqual([]);
+    expect(openFacts(reopened).forks).toEqual([]);
+    expect(openFacts(reopened).retained).toEqual([]);
     await expectVerified(api, repoA);
   });
 
@@ -605,7 +606,7 @@ describe('#62 universal seeding (§8.8)', () => {
     });
     const store = restart();
     await store.open(repo);
-    expect(store.lastOpenReport?.seeded).toBe(true);
+    expect(openFacts(store).seeded).toBe(true);
     await expectVerified(api, repo);
   });
 
@@ -712,8 +713,8 @@ describe('#62 out-of-band derived state at open', () => {
     rig.repos.get(REPO)?.files.set('TIT.usfm', edited); // another tool edited the committed file
     const store2 = restart();
     await store2.open(REPO);
-    expect(store2.lastOpenReport?.classification).toBe('reconciled');
-    expect(store2.lastOpenReport?.reconciledBooks).toEqual(['TIT']);
+    expect(openFacts(store2).classification).toBe('reconciled');
+    expect(openFacts(store2).reconciledBooks).toEqual(['TIT']);
     const events = await allEvents(rig);
     const reconcile = events.filter((e) => (e.seed as { source?: string } | undefined)?.source === 'out-of-band-usfm');
     expect(reconcile).toHaveLength(1);
@@ -732,7 +733,7 @@ describe('#62 out-of-band derived state at open', () => {
     rig.repos.get(REPO)?.files.set('JON.usfm', TIT_USFM.replaceAll('TIT', 'JON').replaceAll('Tito', 'Jonás'));
     const store2 = restart();
     await store2.open(REPO);
-    expect(store2.lastOpenReport?.classification).toBe('reconciled');
+    expect(openFacts(store2).classification).toBe('reconciled');
     const events = await allEvents(rig);
     expect(events.some((e) => e.op === 'book.add' && e.book === 'JON')).toBe(true);
     await expectVerified(api);
@@ -818,7 +819,7 @@ describe('#62 review P1: the decision resolution survives a crash between public
     await crashOnFirstDecisionWrite(world);
     const store2 = world.restart();
     await store2.open(REPO);
-    expect(store2.lastOpenReport?.classification).toBe('regenerated-forward');
+    expect(openFacts(store2).classification).toBe('regenerated-forward');
     const file = JSON.parse(world.rig.repos.get(REPO)?.files.get('checking/translationWords/TIT.json') ?? '');
     expect(file.resource).toEqual(NEW_RESOURCE); // the fix: never the harvested old resource
     expect(file.decisions.some((d: Decision) => d.contextId.checkId === 'nuevo1')).toBe(true);
@@ -838,7 +839,7 @@ describe('#62 review P1: the decision resolution survives a crash between public
     // case now proves the single record alone drives the recovery.
     const store2 = world.restart();
     await store2.open(REPO);
-    expect(store2.lastOpenReport?.classification).toBe('regenerated-forward');
+    expect(openFacts(store2).classification).toBe('regenerated-forward');
     const file = JSON.parse(world.rig.repos.get(REPO)?.files.get('checking/translationWords/TIT.json') ?? '');
     expect(file.resource).toEqual(NEW_RESOURCE);
     await expectVerified(world.api);
@@ -904,8 +905,8 @@ describe('#62 review P1: an interrupted universal seed RESUMES instead of refusi
 
     const store2 = restart();
     await store2.open(repo); // pre-fix: UnexplainedDivergenceError
-    expect(store2.lastOpenReport?.seeded).toBe(true);
-    expect(store2.lastOpenReport?.classification).toBe('seeded');
+    expect(openFacts(store2).seeded).toBe(true);
+    expect(openFacts(store2).classification).toBe('seeded');
     expect(segmentPaths(rig, repo).length).toBeGreaterThan(0);
     // Legacy sidecars converged to the canonical byte form:
     expect(rig.repos.get(repo)?.files.get('checking/settings.json')?.endsWith('\n')).toBe(true);
@@ -914,7 +915,7 @@ describe('#62 review P1: an interrupted universal seed RESUMES instead of refusi
     expect((await world.kv.keys('intent:')).length).toBe(0);
     const store3 = restart();
     await store3.open(repo);
-    expect(store3.lastOpenReport?.classification).toBe('converged');
+    expect(openFacts(store3).classification).toBe('converged');
   });
 
   it('crash during post-publication convergence: reopen finishes the canonicalization', async () => {
@@ -934,7 +935,7 @@ describe('#62 review P1: an interrupted universal seed RESUMES instead of refusi
 
     const store2 = restart();
     await store2.open(repo);
-    expect(store2.lastOpenReport?.seeded).toBe(true);
+    expect(openFacts(store2).seeded).toBe(true);
     await expectVerified(api, repo);
     expect((await world.kv.keys('intent:')).length).toBe(0);
   });
@@ -964,7 +965,7 @@ describe('#62 review P2: a valid last-register removal materializes the EMPTY do
     // Reopening classifies as converged — the empty documents are the projection.
     const store2 = world.restart();
     await store2.open(REPO);
-    expect(store2.lastOpenReport?.classification).toBe('converged');
+    expect(openFacts(store2).classification).toBe('converged');
   });
 });
 
@@ -997,7 +998,7 @@ describe('#62 review round 2, P1: an earlier unfinished regeneration survives la
 
     const store2 = restart();
     await store2.open(REPO); // pre-fix: UnexplainedDivergenceError (marker was erased)
-    expect(store2.lastOpenReport?.classification).toBe('regenerated-forward');
+    expect(openFacts(store2).classification).toBe('regenerated-forward');
     expect(rig.repos.get(REPO)?.files.get('checking/settings.json')).toContain('rtl');
     await expectVerified(api);
   });
@@ -1069,7 +1070,7 @@ describe('#62 review round 2, P2: a resolution-only whole-file decision write re
       void loseMarker;
       const store2 = restart();
       await store2.open(REPO);
-      expect(store2.lastOpenReport?.classification).toBe('regenerated-forward');
+      expect(openFacts(store2).classification).toBe('regenerated-forward');
       const disk = rig.repos.get(REPO)?.files.get('checking/translationWords/TIT.json') ?? '';
       expect(JSON.parse(disk).resource).toEqual(NEW_RESOURCE);
       expect((await kv.keys('intent:')).length).toBe(0);
@@ -1142,7 +1143,7 @@ describe('#62 review round 3, P1: pending resolutions accumulate per key, like t
       void loseMarker;
       const store2 = restart();
       await store2.open(REPO);
-      expect(store2.lastOpenReport?.classification).toBe('regenerated-forward');
+      expect(openFacts(store2).classification).toBe('regenerated-forward');
       const twDisk = JSON.parse(rig.repos.get(REPO)?.files.get('checking/translationWords/TIT.json') ?? '');
       expect(twDisk.resource).toEqual(TW_NEW); // pre-fix: the old disk-harvested resource
       expect(twDisk.decisions.some((d: Decision) => d.contextId.checkId === 'nuevo1')).toBe(true);
@@ -1205,7 +1206,7 @@ describe('#62 review round 4: a rejected newer same-key intent does not destroy 
 
     const store2 = restart();
     await store2.open(REPO);
-    expect(store2.lastOpenReport?.classification).toBe('regenerated-forward');
+    expect(openFacts(store2).classification).toBe('regenerated-forward');
     const twDisk = JSON.parse(rig.repos.get(REPO)?.files.get('checking/translationWords/TIT.json') ?? '');
     // Pre-fix: write 2's staging OVERWROTE write 1's entry before the seal
     // rejected it; recovery dropped the T2-gated record as stale and
@@ -1238,7 +1239,7 @@ describe('#62 review round 4: a rejected newer same-key intent does not destroy 
 
     const store2 = restart();
     await store2.open(REPO);
-    expect(store2.lastOpenReport?.replayed.map((r) => r.outcome)).toEqual(['republished']);
+    expect(openFacts(store2).replayed.map((r) => r.outcome)).toEqual(['republished']);
     const twDisk = JSON.parse(rig.repos.get(REPO)?.files.get('checking/translationWords/TIT.json') ?? '');
     expect(twDisk.resource).toEqual(TW_NEWER); // the replayed newer action carries its own resource
     expect(twDisk.decisions.some((d: Decision) => d.contextId.checkId === 'nuevo1')).toBe(true);

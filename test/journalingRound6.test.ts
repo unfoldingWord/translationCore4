@@ -22,6 +22,7 @@ import {
   tickingNow,
   type JournalingRig,
 } from './helpers/journalingRig';
+import { openFacts } from './helpers/report';
 
 const REPO = '_local_/_local_/prueba';
 
@@ -180,7 +181,7 @@ describe('round 6 B1: a retry after a lost publish response is idempotent', () =
     expect(report.ok, describeVerifierReport(report)).toBe(true);
     const store2 = restart();
     await store2.open(REPO);
-    expect(store2.lastOpenReport?.classification).toBe('converged');
+    expect(openFacts(store2).classification).toBe('converged');
   });
 });
 
@@ -225,7 +226,7 @@ describe('official review R1: a derived sidecar is DELETED when its projection d
     expect(report.ok, describeVerifierReport(report)).toBe(true);
     const store2 = restart();
     await store2.open(REPO);
-    expect(store2.lastOpenReport?.classification).toBe('converged');
+    expect(openFacts(store2).classification).toBe('converged');
   });
 
   it('reconciling an out-of-band TOPOLOGY edit re-converges sidecars that were clean before it', async () => {
@@ -242,13 +243,13 @@ describe('official review R1: a derived sidecar is DELETED when its projection d
 
     const store2 = restart();
     await store2.open(REPO);
-    expect(store2.lastOpenReport?.classification).toBe('reconciled');
+    expect(openFacts(store2).classification).toBe('reconciled');
     // The sidecars the structural event invalidated must have been swept too.
     const report = await verifyProjectAgainstJournal(api, REPO);
     expect(report.ok, describeVerifierReport(report)).toBe(true);
     const store3 = restart();
     await store3.open(REPO);
-    expect(store3.lastOpenReport?.classification).toBe('converged');
+    expect(openFacts(store3).classification).toBe('converged');
   });
 });
 
@@ -426,7 +427,7 @@ describe('2026-08-28 adversarial round 26: a note retry after a lost publish res
     expect(report.ok, describeVerifierReport(report)).toBe(true);
     const store2 = restart();
     await store2.open(REPO);
-    expect(store2.lastOpenReport?.classification).toBe('converged');
+    expect(openFacts(store2).classification).toBe('converged');
   });
 });
 
@@ -462,7 +463,7 @@ describe('2026-08-28 adversarial round 27: an ABANDONED failed note never resurr
     expect(report.ok, describeVerifierReport(report)).toBe(true);
     const store2 = restart();
     await store2.open(REPO);
-    expect(store2.lastOpenReport?.classification).toBe('converged');
+    expect(openFacts(store2).classification).toBe('converged');
     expect(store2.readNotes('TIT')).toHaveLength(0);
   });
 

@@ -35,6 +35,14 @@ import {
   writeRef as writeRefRef,
   writeTitle as writeTitleRef,
 } from '../../../journal/story.mjs';
+import {
+  REFUSAL_CODES as REFUSAL_CODES_REF,
+  Refusal as RefusalRef,
+  failedReport as failedReportRef,
+  okReport as okReportRef,
+  refusalCodeOf as refusalCodeOfRef,
+  reportError as reportErrorRef,
+} from '../../../journal/report.mjs';
 import type { JournalEvent } from './seal';
 import type { Story } from '../burritoStore';
 
@@ -210,3 +218,52 @@ export const toNfc = toNfcRef as <T>(value: T) => T;
  * what the sealed bytes will actually carry. The seed verifier folds the
  * normalized form so what it proves is what a reader will fold. */
 export const normalizeEvent = normalizeEventRef as (event: JournalEvent) => JournalEvent;
+
+// ---- the report module (issue #156, legibility L-3) ---------------------------
+// One Report shape and one closed refusal-code table; the TypeScript shapes over
+// journal/report.mjs. Every store operation emits a Report; every refusal it
+// throws is a Refusal carrying one code from REFUSAL_CODES.
+export const REFUSAL_CODES = REFUSAL_CODES_REF as Readonly<Record<RefusalCode, string | null>>;
+export type RefusalCode = keyof typeof REFUSAL_CODES_REF;
+export type ReportOp = 'open' | 'checkpoint' | 'seed' | 'reconcile' | 'export' | 'import' | 'share';
+
+export interface Report<F extends Record<string, unknown> = Record<string, unknown>> {
+  op: ReportOp;
+  ok: boolean;
+  /** The refusal code of a failed operation; absent when it succeeded or failed without a refusal. */
+  code?: RefusalCode;
+  /** The rule the code is bound to; absent for an app rule (no R-id). */
+  rule?: string;
+  facts: F;
+  /** ISO-8601 UTC. */
+  startedAt: string;
+  endedAt: string;
+}
+
+/** A thrown refusal: `code` is from the table, `rule` its binding (null for an app rule). */
+export interface RefusalError extends Error {
+  readonly code: RefusalCode;
+  readonly rule: string | null;
+  readonly facts: Record<string, unknown>;
+}
+export const Refusal = RefusalRef as unknown as {
+  new (code: RefusalCode, message: string, facts?: Record<string, unknown>): RefusalError;
+  prototype: RefusalError;
+};
+
+/** null for a well-formed Report, else the first problem as text. */
+export const reportError = reportErrorRef as (report: unknown) => string | null;
+export const okReport = okReportRef as <F extends Record<string, unknown>>(
+  op: ReportOp,
+  startedAt: string,
+  endedAt: string,
+  facts: F,
+) => Report<F>;
+export const failedReport = failedReportRef as (
+  op: ReportOp,
+  startedAt: string,
+  endedAt: string,
+  error: unknown,
+  facts?: Record<string, unknown>,
+) => Report;
+export const refusalCodeOf = refusalCodeOfRef as (error: unknown) => RefusalCode | null;

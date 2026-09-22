@@ -114,7 +114,9 @@ describe('i18n catalog completeness (issue #12)', () => {
           key
             .split(/\$\{[^}]*\}/)
             .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-            .join('[\\w-]+') +
+            // A placeholder may carry a dotted value: the refusal codes of
+            // journal/report.mjs (`refusal.${code}`, issue #156).
+            .join('[\\w.-]+') +
           '$',
       );
       return !catalogKeys.some((k) => re.test(k));

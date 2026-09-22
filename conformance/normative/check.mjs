@@ -7,6 +7,9 @@
 //      call in executable (non-comment) suite code.
 //   2. Every claim names a rule that exists in §8 today.
 //   3. No rule id is defined twice in the spec.
+//   4. Every refusal code in journal/report.mjs that names a rule id names a LIVE
+//      rule (issue #156); the app-rule codes (no R-id) are listed by name and
+//      never fail the gate.
 //
 // There is no registry file and no extractor: the spec's authored ids ARE the
 // registry, and rewording a rule is visible in the spec diff itself. There is
@@ -22,6 +25,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { REFUSAL_CODES } from '../../journal/report.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '../..');
@@ -116,10 +120,21 @@ for (const [id, where] of claims) {
 const uncovered = [...ruleLine.keys()].filter((id) => !claims.has(id));
 for (const id of uncovered) fail.push('UNCOVERED RULE: ' + id + ' (spec line ' + ruleLine.get(id) + ') has no live check claiming it');
 
+// ---- 4. refusal codes (issue #156) ------------------------------------------
+// A code bound to a rule id must name a rule that is live in the spec today; a
+// code bound to null is an app rule with no R-id — listed, never a failure.
+const ruleBound = Object.entries(REFUSAL_CODES).filter(([, rule]) => rule !== null);
+const appRule = Object.keys(REFUSAL_CODES).filter((code) => REFUSAL_CODES[code] === null);
+for (const [code, rule] of ruleBound) {
+  if (!ruleLine.has(rule)) fail.push('REFUSAL CODE WITHOUT A LIVE RULE: ' + code + ' is bound to ' + rule + ', which is not a rule in section 8 or 10');
+}
+
 console.log('rules in sections 8 and 10 : ' + ruleLine.size);
 console.log('claimed by a check : ' + (ruleLine.size - uncovered.length));
 console.log('uncovered          : ' + uncovered.length);
 console.log('stale claims       : ' + [...claims.keys()].filter((id) => !ruleLine.has(id)).length);
+console.log('refusal codes      : ' + Object.keys(REFUSAL_CODES).length + ' (' + ruleBound.length + ' bound to a rule, ' + appRule.length + ' app rules)');
+console.log('app-rule codes     : ' + appRule.join(', '));
 
 if (fail.length) {
   console.log('');
@@ -127,4 +142,4 @@ if (fail.length) {
   console.log('\n' + fail.length + ' problem(s). The specification and the suite do NOT agree.');
   process.exit(1);
 }
-console.log('\nOK — every rule id in sections 8 and 10 is claimed by a live check, and every claim resolves.');
+console.log('\nOK — every rule id in sections 8 and 10 is claimed by a live check, every claim resolves, and every rule-bound refusal code names a live rule.');

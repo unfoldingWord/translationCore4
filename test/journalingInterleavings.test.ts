@@ -26,6 +26,7 @@ import { verifyProjectAgainstJournal, describeVerifierReport } from '../src/data
 import type { Decision, DecisionFile, ResourcesFile } from '../src/data/burritoStore';
 import { journalingRig, memKv, tickingNow, type JournalingRig } from './helpers/journalingRig';
 import type { KvStore } from '../src/data/journal/identity';
+import { openFacts } from './helpers/report';
 
 const REPO = '_local_/_local_/prueba';
 
@@ -533,8 +534,8 @@ const runOracle = async (
   const kvBefore = new Map(w.rawKv.map);
   const again = w.newStore();
   await again.open(REPO);
-  if (again.lastOpenReport?.classification !== 'converged')
-    v.push({ code: 'V-IDEM', detail: `second open classified ${again.lastOpenReport?.classification}` });
+  if (openFacts(again).classification !== 'converged')
+    v.push({ code: 'V-IDEM', detail: `second open classified ${openFacts(again).classification}` });
   if (w.rig.writes.length !== writesBefore)
     v.push({ code: 'V-IDEM', detail: `second open performed ${w.rig.writes.length - writesBefore} writes` });
   for (const [p, b] of filesBefore)
