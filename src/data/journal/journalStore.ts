@@ -13,6 +13,7 @@ import { makeClock } from '../../../journal/hlc.mjs';
 import { actorSlugError, ipathError, isTs } from '../../../journal/grammar.mjs';
 import { ServerApi, ServerApiError } from '../serverApi';
 import { withPathLock } from '../httpStore';
+import { Refusal } from './runtime';
 import { actorIdFor, type KvStore } from './identity';
 import {
   sealAction,
@@ -252,7 +253,8 @@ export class JournalStore {
         // simply unusable bytes (torn write, wrong shape, malformed createdAt)
         // is repaired by re-provisioning the deterministic document.
         if (verdict.reason.startsWith('actor-mismatch:'))
-          throw new Error(
+          throw new Refusal(
+            'actor.record-mismatch',
             `refuse to open journal: existing ${this.actorIpath} is a valid-shaped record ` +
               `for a different actor (${verdict.reason}) — never overwritten (R-8.1.13, #62)`,
           );
@@ -288,7 +290,8 @@ export class JournalStore {
   private mustBeRatcheted(what: string): ReturnType<typeof makeClock> {
     if (this.clock === null) throw new Error('JournalStore: not open — call open() first');
     if (this.ratchetPending)
-      throw new Error(
+      throw new Refusal(
+        'journal.clock-not-ratcheted',
         `JournalStore: refuse to ${what} — open({ ratchet: 'deferred' }) needs readUnion() first, ` +
           'so the clock is ratcheted past every visible ts (R-8.2.4, issue #95)',
       );
@@ -491,13 +494,15 @@ export class JournalStore {
     const sealed = await sealAction(events);
     const foreign = events.find((event) => event.actor !== actorId);
     if (foreign)
-      throw new Error(
+      throw new Refusal(
+        'segment.foreign-actor',
         `refuse to stage: event actor "${foreign.actor}" is not this store's actor "${actorId}" (R-8.1.12)`,
       );
     const stageKey = `${this.outboxPrefix}${events[0].ts}`;
     const staged = await this.kv.setIfAbsent(stageKey, sealed);
     if (staged !== sealed)
-      throw new Error(
+      throw new Refusal(
+        'outbox.different-action',
         `refuse to stage: the outbox already holds a DIFFERENT action at ts ${events[0].ts} — ` +
           'publish it or replay it first (R-8.1.8, D50 staging)',
       );
@@ -520,13 +525,14 @@ export class JournalStore {
     // store's derived actor — refuse before any write.
     const foreign = events.find((event) => event.actor !== actorId);
     if (foreign)
-      throw new Error(
+      throw new Refusal(
+        'segment.foreign-actor',
         `refuse to publish: event actor "${foreign.actor}" is not this store's actor "${actorId}" (R-8.1.12)`,
       );
     const name = segmentName(events[0].ts);
     const ipath = `${this.segmentsDir}/${name}`;
     const pathErr = ipathError(ipath);
-    if (pathErr) throw new Error(`segment ipath ${pathErr} — refuse to write (§2/§8.1)`);
+    if (pathErr) throw new Refusal('segment.bad-path', `segment ipath ${pathErr} — refuse to write (§2/§8.1)`);
 
     // STAGE the exact sealed bytes BEFORE the HTTP write (durable intent,
     // R-8.1.8): a crash between here and the accept replays the same bytes via
@@ -541,7 +547,8 @@ export class JournalStore {
     const stageKey = `${this.outboxPrefix}${events[0].ts}`;
     const staged = await this.kv.setIfAbsent(stageKey, sealed);
     if (staged !== sealed)
-      throw new Error(
+      throw new Refusal(
+        'outbox.different-action',
         `refuse to stage: the outbox already holds a DIFFERENT action at ts ${events[0].ts} — ` +
           'publish it or replay it first (R-8.1.8, D50 staging)',
       );
@@ -553,10 +560,12 @@ export class JournalStore {
         if (existing !== null) {
           if (existing === sealed) return { ipath, idempotent: true }; // R-8.1.5 idempotent accept
           if ((await validateSegment(existing)).ok)
-            throw new Error(
+            throw new Refusal(
+              'segment.differs-from-accepted',
               `segment ${name} already accepted with different bytes — refuse to overwrite (R-8.1.5)`,
             );
-          throw new Error(
+          throw new Refusal(
+            'segment.invalid',
             `segment ${name} exists but is invalid — recover via replayStaged() with the staged intent (R-8.1.8)`,
           );
         }

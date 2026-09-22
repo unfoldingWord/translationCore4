@@ -9,7 +9,7 @@ import { ServerApi } from './data/serverApi';
 // BEFORE any derived file changes. The raw HttpStore is never constructed here
 // (test/noBypass.test.ts enforces it); read-only surfaces use ProjectReader.
 import { StaleWriteError } from './data/httpStore';
-import { STORY_FILE } from './data/journal/runtime';
+import { STORY_FILE, refusalCodeOf } from './data/journal/runtime';
 import { JournalingStore, ProjectReader } from './data/journal/journalingStore';
 import { SaveScheduler } from './data/saveScheduler';
 import { StoryScheduler, normalizeStoryUnit } from './data/storyScheduler';
@@ -1381,6 +1381,21 @@ async function releaseParkedDecision(checkSched, tool, book) {
   await checkSched.retry();
 }
 
+/** The banner text of a failed store operation (#156): the thrown diagnosis
+ * (paths, hashes, mismatches — the #62 diagnosable stop), then the recovery
+ * sentence the catalog holds for the refusal code, `refusal.<code>`. Every live
+ * code has one (test/report.test.ts); a code without one — a reserved export,
+ * import or share code before its issue adds the sentence — shows the diagnosis
+ * alone and never renders its key. */
+const failureText = (e) => {
+  const detail = e?.reason || e?.message || String(e);
+  const code = refusalCodeOf(e);
+  if (code === null) return detail;
+  const recoveryKey = 'refusal.' + code;
+  const recovery = t(recoveryKey, undefined, '');
+  return recovery ? `${detail} ${recovery}` : detail;
+};
+
 /** The store's D59 refusal (journalingStore.upsertDecision) ends its message
  * with the decision reference; nothing else the writer throws does. */
 const isDecisionRefusal = (error) => /\(D36\/D59\)/.test(String(error?.message ?? error));
@@ -1459,7 +1474,7 @@ async function checkpointCommit(store, reason) {
 function startCheckpoint({ store, storeRef, dispatch }, reason) {
   checkpointCommit(store, reason)
     .then(() => { if (storeRef.current === store) dispatch({ type: 'set', patch: { commitError: null } }); })
-    .catch((e) => { if (storeRef.current === store) dispatch({ type: 'set', patch: { commitError: e?.reason || e?.message || String(e) } }); });
+    .catch((e) => { if (storeRef.current === store) dispatch({ type: 'set', patch: { commitError: failureText(e) } }); });
 }
 
 /** The project just opened owes the checkpoint that failed when it was left
@@ -1486,7 +1501,7 @@ function startLeaveCheckpoint({ store, repoPath, stateRef, dispatch }) {
     .catch((e) => {
       const st = stateRef.current;
       const visible = st.view === 'home' || st.project?.repoPath === repoPath;
-      const message = `${t('app.commitError')}: ${e?.reason || e?.message || String(e)}`;
+      const message = `${t('app.commitError')}: ${failureText(e)}`;
       dispatch({ type: 'set', patch: { commitErrorRepo: repoPath, ...(visible ? { commitError: message } : {}) } });
     })
     .finally(() => { if (leaveCheckpoints.get(repoPath) === run) leaveCheckpoints.delete(repoPath); });
@@ -1861,7 +1876,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
     // A failed open surfaces its diagnosable report and never a stuck bar (#95).
     dispatch({
       type: 'set',
-      patch: { bookError: e?.reason || e?.message || String(e), view: 'home', opening: null },
+      patch: { bookError: failureText(e), view: 'home', opening: null },
     });
   }
 }
@@ -3070,7 +3085,7 @@ export function AppProvider({ children }) {
           await checkpointCommit(store, 'retry');
           dispatch({ type: 'set', patch: { commitError: null } });
         } catch (e) {
-          dispatch({ type: 'set', patch: { commitError: e?.reason || e?.message || String(e) } });
+          dispatch({ type: 'set', patch: { commitError: failureText(e) } });
         }
       },
 

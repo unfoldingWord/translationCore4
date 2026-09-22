@@ -9,7 +9,7 @@
 // reopen, a journal-ahead recovery and an out-of-band deletion.
 import { describe, expect, it } from 'vitest';
 import { ServerApi } from '../src/data/serverApi';
-import { JournalingStore, UnexplainedDivergenceError, forgetProjectQueues } from '../src/data/journal/journalingStore';
+import { JournalingStore, forgetProjectQueues } from '../src/data/journal/journalingStore';
 import { forgetSharedClocks } from '../src/data/journal/journalStore';
 import { validateSegment, type JournalEvent } from '../src/data/journal/seal';
 import { fold, writeFrame as spliceFrame } from '../src/data/journal/runtime';
@@ -17,6 +17,7 @@ import { verifyProjectAgainstJournal, describeVerifierReport } from '../src/data
 import { journalingRig, memKv, tickingNow, type JournalingRig } from './helpers/journalingRig';
 import { INSTALLED_SUITE } from '../src/data/installedSuite';
 import type { ResourcesFile } from '../src/data/burritoStore';
+import { expectRefusal, openFacts } from './helpers/report';
 
 // vite-plugin-node-polyfills aliases node builtins even under the node
 // environment; the real ones come through process.getBuiltinModule.
@@ -139,8 +140,8 @@ describe('the story path of the store (#286, §10)', () => {
 
   it('opens the template project as converged: no unknown path, nothing regenerated', async () => {
     const { store, api } = await setup();
-    expect(store.lastOpenReport?.classification).toBe('converged');
-    expect(store.lastOpenReport?.regeneratedPaths).toEqual([]);
+    expect(openFacts(store).classification).toBe('converged');
+    expect(openFacts(store).regeneratedPaths).toEqual([]);
     await expectVerified(api);
   });
 
@@ -237,7 +238,7 @@ describe('the story path of the store (#286, §10)', () => {
     await expectVerified(api);
     const store2 = newStore();
     await store2.open(REPO);
-    expect(store2.lastOpenReport?.classification).toBe('converged');
+    expect(openFacts(store2).classification).toBe('converged');
     const { story } = await store2.readStory(1);
     expect(story.frames[0].text).toBe('Así hizo Dios todo al principio.');
     expect(story.ref).toBe('Génesis 1-2');
@@ -253,8 +254,8 @@ describe('the story path of the store (#286, §10)', () => {
     expect(project.files.get('content/04.md')).toBe(templateFiles()['content/04.md']); // stale disk
     const store2 = newStore();
     await store2.open(REPO);
-    expect(store2.lastOpenReport?.classification).toBe('regenerated-forward');
-    expect(store2.lastOpenReport?.regeneratedPaths).toEqual(['content/04.md']);
+    expect(openFacts(store2).classification).toBe('regenerated-forward');
+    expect(openFacts(store2).regeneratedPaths).toEqual(['content/04.md']);
     expect((await store2.readStory(4)).story.frames[0].text).toBe('Un texto.');
     await expectVerified(api);
   });
@@ -275,7 +276,7 @@ describe('the story path of the store (#286, §10)', () => {
     await store.writeFrame(1, 1, 'Texto del diario.');
     await store.commit('checkpoint');
     project.files.set('content/01.md', spliceFrame(project.files.get('content/01.md')!, 1, 'Edición externa.'));
-    await expect(newStore().open(REPO)).rejects.toThrow(UnexplainedDivergenceError);
+    await expectRefusal(newStore().open(REPO), 'open.story-divergence'); // R-10.7.5, not a book rule
     expect(project.files.get('content/01.md')).toContain('Edición externa.'); // nothing overwritten
   });
 
@@ -295,7 +296,7 @@ describe('the story path of the store (#286, §10)', () => {
     const { store, newStore, project } = await setup();
     await store.writeFrame(5, 1, 'Un texto.');
     project.files.delete('content/05.md');
-    await expect(newStore().open(REPO)).rejects.toThrow(UnexplainedDivergenceError);
+    await expectRefusal(newStore().open(REPO), 'open.story-divergence');
   });
 
   it('keeps a Bible project on v: 1, and its v: 1 set folds with no story state', async () => {

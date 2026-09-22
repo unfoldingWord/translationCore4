@@ -26,6 +26,7 @@ import {
   FAKE_VRS,
   type JournalingRig,
 } from './helpers/journalingRig';
+import { openFacts } from './helpers/report';
 
 const REPO = '_local_/_local_/prueba';
 
@@ -180,7 +181,7 @@ describe('round 5 M1: failed publish + later success + restart must not brick op
     // The health is stable: a further open converges quietly.
     const store3 = restart();
     await store3.open(REPO);
-    expect(store3.lastOpenReport?.classification).toBe('converged');
+    expect(openFacts(store3).classification).toBe('converged');
   });
 });
 
@@ -411,7 +412,7 @@ describe('round 5 held guard: marker + outbox states compose in the classifier',
     expect(rig.repos.get(REPO)?.files.get('TIT.usfm')).toContain('Nueva vida.');
     const store3 = restart();
     await store3.open(REPO);
-    expect(store3.lastOpenReport?.classification).toBe('converged');
+    expect(openFacts(store3).classification).toBe('converged');
   });
 });
 
@@ -455,7 +456,7 @@ describe('round 5 held guard: causal order under replay of an older same-key act
 
     const store2 = restart();
     await store2.open(REPO);
-    expect(store2.lastOpenReport?.classification).toBe('converged');
+    expect(openFacts(store2).classification).toBe('converged');
   });
 });
 
@@ -589,10 +590,10 @@ describe('round 5 held guard: kill sweep over the universal seed of a legacy pro
         });
         await store3.open(repo);
         if (
-          store3.lastOpenReport?.classification !== 'converged' &&
-          store3.lastOpenReport?.classification !== 'seeded'
+          openFacts(store3).classification !== 'converged' &&
+          openFacts(store3).classification !== 'seeded'
         )
-          outcomes.push(`k=${k} third open ${store3.lastOpenReport?.classification}`);
+          outcomes.push(`k=${k} third open ${openFacts(store3).classification}`);
       }
       expect(outcomes, outcomes.slice(0, 6).join('\n')).toEqual([]);
     },

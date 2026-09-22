@@ -14,6 +14,7 @@ import {
   type JournalEvent,
 } from '../src/data/journal/seal';
 import { SLOT } from '../journal/grammar.mjs';
+import { expectRefusal } from './helpers/report';
 
 // journal/files.mjs is Node-bound (fs, node:crypto). The app's
 // vite-plugin-node-polyfills aliases node builtins to browser mocks even under
@@ -350,7 +351,20 @@ describe('#61 checkbox 2: actor provisioning and the HLC ratchet (R-8.2.4)', () 
       repoPath: REPO,
       kv,
     });
-    await expect(again.open()).rejects.toThrow(/R-8\.1\.13/);
+    await expectRefusal(again.open(), 'actor.record-mismatch');
+  });
+
+  it('#156: the journal store refusals carry codes (R-8.1.5, R-8.1.12, R-8.2.4)', async () => {
+    const { store } = await openStore();
+    const ts = store.issueTs();
+    await store.publish([verseEvent(store.actorId, ts, 'primero\n')]);
+    await expectRefusal(store.publish([verseEvent(store.actorId, ts, 'otro\n')]), 'segment.differs-from-accepted');
+    const foreignTs = (): string => store.issueTs().replace(store.actorId, 'someone-else');
+    await expectRefusal(store.publish([verseEvent('someone-else', foreignTs(), 'x\n')]), 'segment.foreign-actor');
+    await expectRefusal(store.stage([verseEvent('someone-else', foreignTs(), 'x\n')]), 'segment.foreign-actor');
+    const { store: deferred } = await openStore();
+    await deferred.open({ ratchet: 'deferred' });
+    expect(() => deferred.issueTs()).toThrow(expect.objectContaining({ code: 'journal.clock-not-ratcheted' }));
   });
 
   it("after a 'restart' (new store, same backend) with a REWOUND wall clock, the next issued ts still sorts after everything published", async () => {

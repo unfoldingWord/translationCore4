@@ -22,6 +22,7 @@ import { JournalingStore, forgetProjectQueues } from '../src/data/journal/journa
 import { forgetSharedClocks } from '../src/data/journal/journalStore';
 import { verifyProjectAgainstJournal, describeVerifierReport } from '../src/data/journal/verify';
 import { memKv } from './helpers/journalingRig';
+import { openFacts } from './helpers/report';
 
 const BASE = 'http://127.0.0.1:19998/api';
 const SLOW = 30_000;
@@ -79,7 +80,7 @@ describe.skipIf(!rigUp)('the story path on the live rig (#286, §10)', () => {
   it('lists the OBS project with flavor textStories and no book codes', async () => {
     const summary = (await store.listProjects()).find((p) => p.id === REPO);
     expect(summary).toMatchObject({ flavor: 'textStories', bookCodes: [] });
-    expect(store.lastOpenReport?.classification).toBe('converged');
+    expect(openFacts(store).classification).toBe('converged');
   }, SLOW);
 
   it('lists fifty stories and parses story 1 as the platform wrote it', async () => {
@@ -110,7 +111,7 @@ describe.skipIf(!rigUp)('the story path on the live rig (#286, §10)', () => {
     expect(await api.gitStatus(REPO)).toEqual([]);
     const store2 = newStore();
     await store2.open(REPO);
-    expect(store2.lastOpenReport?.classification).toBe('converged');
+    expect(openFacts(store2).classification).toBe('converged');
     expect((await store2.readStory(1)).story.frames[1].text).toBe('Entonces Dios dijo:\n"Que haya luz".');
   }, SLOW);
 });
