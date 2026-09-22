@@ -13,13 +13,16 @@ import { forgetSharedClocks } from '../src/data/journal/journalStore';
 import {
   REFUSAL_CODES,
   Refusal,
+  derivedProjections,
   failedReport,
+  fold,
   okReport,
   refusalCodeOf,
   reportError,
+  type FoldOutput,
   type RefusalCode,
+  type Report,
 } from '../src/data/journal/runtime';
-import { t } from '../src/i18n/index.js';
 import { FAKE_VRS, journalingRig, memKv, tickingNow } from './helpers/journalingRig';
 import { expectRefusal, lastReportOf, openFacts } from './helpers/report';
 
@@ -75,9 +78,20 @@ describe('#156 the Report schema is closed', () => {
   it('the constructors emit only validated Reports', () => {
     expect(() => okReport('open', T0, T1, [] as never)).toThrow(/malformed Report: facts is not an object/);
     const refused = failedReport('open', T0, T1, new Refusal('seed.mismatch', 'refuse to seed', { mismatches: ['x'] }));
-    expect(refused).toEqual({ op: 'open', ok: false, code: 'seed.mismatch', rule: 'R-8.8.2', facts: { message: 'refuse to seed' }, startedAt: T0, endedAt: T1 });
+    expect(refused).toEqual({
+      op: 'open', ok: false, code: 'seed.mismatch', rule: 'R-8.8.2',
+      facts: { error: 'refuse to seed', refusal: { mismatches: ['x'] } }, startedAt: T0, endedAt: T1,
+    });
     const failed = failedReport('checkpoint', T0, T1, new Error('ECONNRESET'), { message: 'checkpoint (tC4)' });
-    expect(failed).toEqual({ op: 'checkpoint', ok: false, facts: { message: 'ECONNRESET' }, startedAt: T0, endedAt: T1 });
+    expect(failed).toEqual({ op: 'checkpoint', ok: false, facts: { message: 'checkpoint (tC4)', error: 'ECONNRESET' }, startedAt: T0, endedAt: T1 });
+  });
+
+  it('a failed Report keeps the refusal facts as fields and never lets them overwrite the operation facts', () => {
+    const refusal = new Refusal('checkpoint.divergence', 'checkpoint refused', { stale: ['TIT.usfm (edited out of band)'] });
+    const report = failedReport('checkpoint', T0, T1, refusal, { message: 'leave checkpoint (tC4)' });
+    expect(report.facts).toEqual({ message: 'leave checkpoint (tC4)', error: 'checkpoint refused', refusal: { stale: ['TIT.usfm (edited out of band)'] } });
+    expect(() => failedReport('open', T0, T1, refusal, { error: 'mine' })).toThrow(/reserved/);
+    expect(() => failedReport('open', T0, T1, refusal, { refusal: {} })).toThrow(/reserved/);
   });
 });
 
@@ -94,19 +108,18 @@ describe('#156 the refusal-code table is closed and bound', () => {
       expect(code, code).toMatch(/^[a-z]+(\.[a-z-]+)+$/);
       if (rule !== null) expect(rule, code).toMatch(/^R-(8|10)(\.\d+)+$/);
     }
-    expect(Object.keys(REFUSAL_CODES).length).toBe(28);
+    expect(Object.keys(REFUSAL_CODES).length).toBe(38);
   });
 
-  it('every code a live operation throws has the recovery text the Home banner looks up', () => {
-    const live: RefusalCode[] = [
-      'segment.invalid', 'segment.misnamed', 'segment.foreign-actor', 'ledger.unreadable', 'open.scope-unreadable',
-      'open.unexplained-divergence', 'seed.mismatch', 'seed.publish-failed', 'checkpoint.divergence',
-      'checkpoint.scope-mismatch', 'checkpoint.incomplete-inputs', 'checkpoint.metadata-unwritable',
-    ];
-    for (const code of live) {
-      expect(code in REFUSAL_CODES, code).toBe(true);
-      expect(t(`refusal.${code}`, undefined, ''), code).not.toBe('');
-    }
+  it('the reference checkpoint projection throws coded refusals, one code per rule (R-8.7.4, R-8.7.6)', () => {
+    const empty = fold([]);
+    expect(() => derivedProjections(empty, { baseMetadata: null, resolutions: {} })).toThrow(
+      expect.objectContaining({ code: 'checkpoint.incomplete-inputs', rule: 'R-8.7.4' }),
+    );
+    const escaping = { ...empty, pins: {}, books: { '../EVIL': { usfm: '', verses: {} } }, vrs: { name: 'eng', bytes: '{}' } } as unknown as FoldOutput;
+    expect(() => derivedProjections(escaping, { baseMetadata: {}, resolutions: {} })).toThrow(
+      expect.objectContaining({ code: 'checkpoint.unsafe-path', rule: 'R-8.7.6' }),
+    );
   });
 });
 
@@ -141,6 +154,8 @@ describe('#156 the store emits the Report', () => {
     expect(refusal.facts.stale).toEqual(['checking/settings.json (edited out of band)']);
     const report = lastReportOf(store, 'checkpoint');
     expect(report.ok).toBe(false);
+    expect(report.facts.message).toBe('checkpoint (tC4)'); // the operation's own fact survives
+    expect((report.facts.refusal as { stale: string[] }).stale).toEqual(['checking/settings.json (edited out of band)']);
     expect(report.code).toBe('checkpoint.divergence');
     expect(report.rule).toBe('R-8.7.5');
   });
@@ -168,10 +183,35 @@ describe('#156 the store emits the Report', () => {
     const report = lastReportOf(store, 'open');
     expect(report.ok).toBe(false);
     expect(report.code).toBeUndefined();
-    expect(report.facts.message).toBe(String((thrown as Error).message));
+    expect(report.facts.error).toBe(String((thrown as Error).message));
     const fresh = restart();
     await fresh.open('_local_/_local_/no-such-project').catch(() => undefined);
     expect(lastReportOf(fresh, 'open').ok).toBe(false); // null before, failed after
+  });
+
+  it('an open records its seed and reconcile phases as Reports, ok or failed', async () => {
+    const { rig, store, restart } = await setup();
+    const created = lastReportOf(store, 'open');
+    expect((created.facts.phases as Report[]).map((r) => [r.op, r.ok])).toEqual([['seed', true]]);
+
+    await store.writeBook('TIT', TIT_USFM.replace('___', 'Nueva vida.'));
+    const edited = rig.repos.get(REPO)!.files.get('TIT.usfm')!.replace('Pablo, siervo de Dios.', 'Pablo, apóstol.');
+    rig.repos.get(REPO)!.files.set('TIT.usfm', edited); // another tool
+    const reopened = restart();
+    await reopened.open(REPO);
+    const phases = lastReportOf(reopened, 'open').facts.phases as Report[];
+    expect(phases.map((r) => [r.op, r.ok])).toEqual([['reconcile', true]]);
+    expect(reportError(phases[0])).toBeNull();
+    expect(phases[0].facts.reconciledBooks).toEqual(['TIT']);
+
+    const repo = '_local_/_local_/nonfc';
+    rig.createRepo(repo, { 'vrs.json': FAKE_VRS, 'TIT.usfm': TIT_USFM.replace('Pablo', 'Pablo cafe\u0301') }); // NFD
+    const refused = restart();
+    await expectRefusal(refused.open(repo), 'seed.mismatch');
+    const failed = lastReportOf(refused, 'open');
+    expect(failed.code).toBe('seed.mismatch');
+    const [seed] = failed.facts.phases as Report[];
+    expect([seed.op, seed.ok, seed.code, seed.rule]).toEqual(['seed', false, 'seed.mismatch', 'R-8.8.2']);
   });
 
   it('expectRefusal fails when the operation succeeds or carries another code', async () => {

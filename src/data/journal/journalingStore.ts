@@ -252,9 +252,10 @@ export class UnexplainedDivergenceError extends Refusal {
   constructor(
     repoPath: string,
     paths: Array<{ ipath: string; diskMd5: string | null; projectedMd5: string | null }>,
+    code: 'open.unexplained-divergence' | 'open.story-divergence' = 'open.unexplained-divergence',
   ) {
     super(
-      'open.unexplained-divergence',
+      code,
       `refuse to open ${repoPath}: derived state diverges from the journal projection in a way ` +
         `no journal prefix or §8.8 reconciliation explains — nothing was overwritten. Paths: ` +
         paths
@@ -430,6 +431,8 @@ export class JournalingStore implements BurritoStore {
   /** The Report of the last operation this store ran (open or checkpoint, issue
    * #156) — ok with its facts, or failed with the refusal code it threw. */
   lastReport: Report | null = null;
+  /** The phase Reports (seed, reconcile) of the open in progress; its Report carries them. */
+  private openPhases: Report[] = [];
 
   constructor(init: JournalingStoreInit = {}) {
     this.api = init.api ?? new ServerApi({ baseUrl: init.baseUrl, fetchFn: init.fetchFn });
@@ -933,9 +936,11 @@ export class JournalingStore implements BurritoStore {
     // stop, never a silent no-op that leaves the drafted frames unmaterialized.
     const story = storyNumberOf(ipath);
     if (story !== null && foldOut.stories[story])
-      throw new Error(
+      throw new Refusal(
+        'story.base-missing',
         `story ${story}: the journal holds drafted frames but ${ipath} is not on disk — ` +
           `deleted out of band; restore the file, never silently repaired (R-10.7.4)`,
+        { story, ipath },
       );
     if (!JournalingStore.isRemovableDerivedClass(ipath)) return;
     if ((await this.readIngredientOrNull(ipath)) === null) return;
@@ -1178,10 +1183,12 @@ export class JournalingStore implements BurritoStore {
     // failure before recovery — the platform open, the installation store —
     // leaves a failed Report too, never a stale one from the previous open.
     const startedAt = this.isoNow();
+    const phases: Report[] = [];
+    this.openPhases = phases;
     try {
-      return await this.openUnreported(repoPath, options, hooks, startedAt);
+      return await this.openUnreported(repoPath, options, hooks, startedAt, phases);
     } catch (error) {
-      this.lastReport = failedReport('open', startedAt, this.isoNow(), error);
+      this.lastReport = failedReport('open', startedAt, this.isoNow(), error, { phases });
       throw error;
     }
   }
@@ -1191,6 +1198,7 @@ export class JournalingStore implements BurritoStore {
     options: OpenOptions,
     hooks: OpenHooks,
     startedAt: string,
+    phases: Report[],
   ): Promise<ProjectSummary> {
     const summary = await this.raw.open(repoPath); // binds raw + setCurrentProject
     this.boundRepoPath = repoPath;
@@ -1207,13 +1215,27 @@ export class JournalingStore implements BurritoStore {
     await this.journal.open({ ratchet: 'deferred' });
     return inProjectQueue(repoPath, async () => {
       const facts = await this.recoverAndConverge(options, hooks);
-      this.lastReport = okReport('open', startedAt, this.isoNow(), facts);
+      this.lastReport = okReport('open', startedAt, this.isoNow(), { ...facts, phases });
       return summary;
     });
   }
 
   private isoNow(): string {
     return new Date(this.now()).toISOString();
+  }
+
+  /** Run one phase of an open (seed, reconcile) and record its Report — ok with
+   * its facts, or failed with the code it threw — in the open's `phases`. */
+  private async phase<F extends Record<string, unknown>>(op: 'seed' | 'reconcile', run: () => Promise<F>): Promise<Report<F>> {
+    const startedAt = this.isoNow();
+    try {
+      const report = okReport(op, startedAt, this.isoNow(), await run());
+      this.openPhases.push(report);
+      return report;
+    } catch (error) {
+      this.openPhases.push(failedReport(op, startedAt, this.isoNow(), error));
+      throw error;
+    }
   }
 
   /** The four-way recovery classifier (issue #62): replay the outbox, read
@@ -1229,9 +1251,8 @@ export class JournalingStore implements BurritoStore {
     const replayed = await journal.replayStaged();
     const stagedInvalid = replayed.filter((r) => r.outcome === 'staged-invalid');
     if (stagedInvalid.length)
-      // The first problem names the code; every problem is in the facts.
       throw new Refusal(
-        segmentProblemCode(stagedInvalid[0].reason ?? ''),
+        'outbox.invalid',
         `refuse to open ${this.mustRepo()}: the outbox holds staged intents whose bytes are ` +
           `invalid (${stagedInvalid.map((r) => `${r.ts}: ${r.reason ?? ''}`).join('; ')}) — ` +
           `surfaced, never silently dropped (R-8.1.7/R-8.1.8)`,
@@ -1247,6 +1268,7 @@ export class JournalingStore implements BurritoStore {
     reportProgress?.({ stage: 'state', done: 0, total: 0 });
     if (union.invalid.length || union.misnamed.length)
       throw new Refusal(
+        // The first problem names the code; every problem is in the facts.
         union.invalid.length ? segmentProblemCode(union.invalid[0].reason) : 'segment.misnamed',
         `refuse to open ${this.mustRepo()}: the journal holds unusable files — ` +
           [
@@ -1457,18 +1479,24 @@ export class JournalingStore implements BurritoStore {
    * (review of 2026-08-20, P1): finishing the sidecar canonicalization when
    * the published union already covers the disk, or re-staging the
    * DETERMINISTIC seed idempotently when it does not. */
-  private async seedProject(
+  private seedProject(
     options: OpenOptions,
     unionEvents: JournalEvent[],
     seedRecord?: IntentRecord,
   ): Promise<Report<SeedFacts>> {
-    const startedAt = this.isoNow();
+    return this.phase('seed', () => this.seedProjectFacts(options, unionEvents, seedRecord));
+  }
+
+  private async seedProjectFacts(
+    options: OpenOptions,
+    unionEvents: JournalEvent[],
+    seedRecord?: IntentRecord,
+  ): Promise<SeedFacts> {
     const facts: SeedFacts = { seeded: false, regeneratedPaths: [] };
     const journal = this.mustJournal();
     const disk = await this.inventoryDisk();
     this.assertSeedInventory(disk);
-    if (await this.resumeSeedIfComplete(unionEvents, disk, facts))
-      return okReport('seed', startedAt, this.isoNow(), facts);
+    if (await this.resumeSeedIfComplete(unionEvents, disk, facts)) return facts;
 
     const { seedSource, seedVrsName, seedEvents } = this.seedCandidate(
       journal,
@@ -1486,7 +1514,7 @@ export class JournalingStore implements BurritoStore {
       this.events = [];
       this.foldCache = null;
       await this.ensureFold();
-      return okReport('seed', startedAt, this.isoNow(), facts);
+      return facts;
     }
     const normalizedSeed = seedEvents.map(normalizeEvent);
     const seedFold = await this.runner.fold(normalizedSeed);
@@ -1495,7 +1523,7 @@ export class JournalingStore implements BurritoStore {
     this.events = normalizedSeed;
     this.adoptFold(seedFold); // the fold of exactly this set — no second fold
     await this.finishSeedConvergence(disk, facts);
-    return okReport('seed', startedAt, this.isoNow(), facts);
+    return facts;
   }
 
   private assertSeedInventory(disk: DiskInventory): void {
@@ -1918,11 +1946,11 @@ export class JournalingStore implements BurritoStore {
     return paths;
   }
 
-  private async reconcileDivergence(
-    remainder: DivergedPath[],
-    disk: DiskInventory,
-  ): Promise<Report<ReconcileFacts>> {
-    const startedAt = this.isoNow();
+  private reconcileDivergence(remainder: DivergedPath[], disk: DiskInventory): Promise<Report<ReconcileFacts>> {
+    return this.phase('reconcile', () => this.reconcileDivergenceFacts(remainder, disk));
+  }
+
+  private async reconcileDivergenceFacts(remainder: DivergedPath[], disk: DiskInventory): Promise<ReconcileFacts> {
     const facts: ReconcileFacts = { reconciledBooks: [], regeneratedPaths: [] };
     const journal = this.mustJournal();
     const clock = { issue: (): string => journal.issueTs() };
@@ -1950,7 +1978,7 @@ export class JournalingStore implements BurritoStore {
     await this.installAndConverge(paths);
     if (this.registerIngredients) await this.api.remakeIngredients(this.mustRepo()); // never on OBS (PLATFORM-NOTES #37)
     facts.regeneratedPaths = paths;
-    return okReport('reconcile', startedAt, this.isoNow(), facts);
+    return facts;
   }
 
   /** Classify derived disk state against the journal projection and recover. */
@@ -2004,7 +2032,7 @@ export class JournalingStore implements BurritoStore {
     // (Codex round 1 of #286). Reconcile is undefined for stories: stop
     // (R-10.7.5). Nothing is overwritten.
     if (diverged.some((d) => !aheadExplained(d.ipath) && storyNumberOf(d.ipath) !== null))
-      throw new UnexplainedDivergenceError(this.mustRepo(), diverged);
+      throw new UnexplainedDivergenceError(this.mustRepo(), diverged, 'open.story-divergence');
 
     // (0) The ONLY divergence is a pending resolution overlay (review of
     // 2026-08-20 round 2, P2): disk matches the fold exactly under the
@@ -2999,13 +3027,8 @@ export class JournalingStore implements BurritoStore {
       (resolutions[tool] ??= {})[book] = resource;
     }
     const baseStories: Record<number, string> = Object.fromEntries(this.storyBase);
-    let projections: Record<string, string>;
-    try {
-      projections = derivedProjections(foldOut, { baseMetadata, resolutions, baseStories });
-    } catch (error) {
-      // R-8.7.4: the reference projection refuses an incomplete derived set.
-      throw new Refusal('checkpoint.incomplete-inputs', String((error as Error).message ?? error), { repoPath: repo });
-    }
+    // The reference projection throws its own coded refusals (R-8.7.4 inputs, R-8.7.6 keys).
+    const projections = derivedProjections(foldOut, { baseMetadata, resolutions, baseStories });
     delete projections['metadata.json'];
     // §10.7: a story the fold never touched is derived by identity — its base
     // bytes — so checkpointWrites' sweep sees every story file as derived.

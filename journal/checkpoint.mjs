@@ -12,6 +12,7 @@
 //     containers, so a malformed path cannot reach a prototype even with validation off.
 import { ipathError, dottedPathError, isStoryReference, MAX_JSON_DEPTH } from './grammar.mjs';
 import { storyIpath, applyStoryState } from './story.mjs';
+import { Refusal } from './report.mjs';
 
 // Lexical POSIX resolve, dependency-free (issue #62: the production runtime imports
 // this module into a browser bundle, so no Node builtin may load here). Matches
@@ -36,10 +37,10 @@ const serialize = (doc) => JSON.stringify(doc, null, 2) + '\n';
 const PROJECTION_ROOT = '/ingredients';
 export const projectionKey = (ipath) => {
   const err = ipathError(ipath);
-  if (err) throw new Error(`projection key ${err} — refuse to project (§2/§8.7)`);
+  if (err) throw new Refusal('checkpoint.unsafe-path', `projection key ${err} — refuse to project (§2/§8.7)`);
   const resolved = posixResolve(PROJECTION_ROOT, ipath);
   if (!resolved.startsWith(`${PROJECTION_ROOT}/`) || resolved.slice(PROJECTION_ROOT.length + 1) !== ipath)
-    throw new Error(`projection key "${ipath}" does not resolve strictly inside the checkpoint destination root — refuse to project (§8.7)`);
+    throw new Refusal('checkpoint.unsafe-path', `projection key "${ipath}" does not resolve strictly inside the checkpoint destination root — refuse to project (§8.7)`);
   return ipath;
 };
 // Assign under a guarded key. Every write into a projection set goes through this.
@@ -57,7 +58,7 @@ const emit = (out, ipath, bytes) => { out[projectionKey(ipath)] = bytes; };
 // never be crashed by a document that reached it with validation off.
 const nullProto = (v, depth = 0) => {
   if (depth > MAX_JSON_DEPTH)
-    throw new Error(`projected value nests deeper than the §8.1 limit of ${MAX_JSON_DEPTH} levels — refuse to project`);
+    throw new Refusal('checkpoint.too-deep', `projected value nests deeper than the §8.1 limit of ${MAX_JSON_DEPTH} levels — refuse to project`);
   if (Array.isArray(v)) return v.map((x) => nullProto(x, depth + 1));
   if (v == null || typeof v !== 'object') return v;
   const out = Object.create(null);
@@ -72,7 +73,7 @@ const owns = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 // creates or descends is own-property checked.
 const pathParts = (dotted) => {
   const err = dottedPathError(dotted);
-  if (err) throw new Error(`projected path ${err} — refuse to project (§8.5/§8.7)`);
+  if (err) throw new Refusal('checkpoint.unsafe-path', `projected path ${err} — refuse to project (§8.5/§8.7)`);
   return dotted.split('.');
 };
 const setDeep = (doc, dotted, value) => {
@@ -118,7 +119,7 @@ export const projectResources = (pins) => {
   // refuse rather than emit an incomplete derived set — so it refuses here.
   const setNames = Object.keys(languageSets);
   if (setNames.length === 1)
-    throw new Error(`checking/resources.json would carry only the "${setNames[0]}" language set — §5.3 (D17) requires exactly primary AND fallback; refuse to project an incomplete checkpoint (§8.7)`);
+    throw new Refusal('checkpoint.incomplete-inputs', `checking/resources.json would carry only the "${setNames[0]}" language set — §5.3 (D17) requires exactly primary AND fallback; refuse to project an incomplete checkpoint (§8.7)`);
   if (setNames.length) doc.languageSets = languageSets;
   const resources = {};
   for (const group of ['originalLanguage', 'lexicon']) {
@@ -173,7 +174,7 @@ export const projectDecisions = (foldOut, resolutions = {}) => {
       // §5.2/D30: the resolution record is REQUIRED derive-time state — a decision file
       // without `resource` is an incomplete checkpoint, never emitted silently.
       if (resource === undefined)
-        throw new Error(`missing resolution record for (${tool}, ${book}) — §5.2 requires \`resource\` (D30); refuse to emit an incomplete checkpoint`);
+        throw new Refusal('checkpoint.incomplete-inputs', `missing resolution record for (${tool}, ${book}) — §5.2 requires \`resource\` (D30); refuse to emit an incomplete checkpoint`);
       doc.resource = resource;
       doc.decisions = byBook[book];
       // the (tool, book) pair comes from folded records — resolve it, never trust it
@@ -211,7 +212,7 @@ export const isUnjournaledIngredient = (ipath) => ipath.startsWith('audio/');
 // Unjournaled classes are structurally absent — checkpoints cannot touch them.
 export const derivedProjections = (foldOut, { baseMetadata = null, resolutions = {}, baseStories = {} } = {}) => {
   if (!baseMetadata)
-    throw new Error('derivedProjections requires baseMetadata — the checkpoint regenerates metadata.json (§8.7); refuse to return an incomplete checkpoint');
+    throw new Refusal('checkpoint.incomplete-inputs', 'derivedProjections requires baseMetadata — the checkpoint regenerates metadata.json (§8.7); refuse to return an incomplete checkpoint');
   // The versification frame is a MANDATORY input too, for any project that has a book.
   // §4.3: the platform writes `vrs.json` at creation and `maxVerses` MUST cover every book
   // in `currentScope`; §8.8 seeding covers versification. It was the one member of the
@@ -219,7 +220,7 @@ export const derivedProjections = (foldOut, { baseMetadata = null, resolutions =
   // `project.vrs.set` shipped a silently smaller checkpoint, and divergence detection
   // (which enumerates from this set) never mentioned the missing file.
   if (!foldOut.vrs && Object.keys(foldOut.books).length)
-    throw new Error('derivedProjections requires a folded project.vrs.set frame once the project has a book — the checkpoint projects ingredients/vrs.json (§4.3/§8.7); refuse to return an incomplete checkpoint');
+    throw new Refusal('checkpoint.incomplete-inputs', 'derivedProjections requires a folded project.vrs.set frame once the project has a book — the checkpoint projects ingredients/vrs.json (§4.3/§8.7); refuse to return an incomplete checkpoint');
   const out = emptySet();
   for (const book of Object.keys(foldOut.books)) {
     // the book code is a FOLD key flowing into a filesystem path — resolved, never trusted
@@ -233,7 +234,7 @@ export const derivedProjections = (foldOut, { baseMetadata = null, resolutions =
   for (const story of Object.keys(foldOut.stories || {}).map(Number).sort((a, b) => a - b)) {
     const base = baseStories[story]; // keyed by story number (an object key is a string either way)
     if (typeof base !== 'string')
-      throw new Error(`derivedProjections requires the base story file for story ${story} (baseStories) — the checkpoint splices folded frames onto it (§10/§8.7); refuse to return an incomplete checkpoint`);
+      throw new Refusal('checkpoint.incomplete-inputs', `derivedProjections requires the base story file for story ${story} (baseStories) — the checkpoint splices folded frames onto it (§10/§8.7); refuse to return an incomplete checkpoint`);
     emit(out, storyIpath(story), applyStoryState(base, foldOut.stories[story]));
   }
   for (const [ipath, bytes] of Object.entries(projectDecisions(foldOut, resolutions))) emit(out, ipath, bytes);

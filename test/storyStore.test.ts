@@ -9,7 +9,7 @@
 // reopen, a journal-ahead recovery and an out-of-band deletion.
 import { describe, expect, it } from 'vitest';
 import { ServerApi } from '../src/data/serverApi';
-import { JournalingStore, UnexplainedDivergenceError, forgetProjectQueues } from '../src/data/journal/journalingStore';
+import { JournalingStore, forgetProjectQueues } from '../src/data/journal/journalingStore';
 import { forgetSharedClocks } from '../src/data/journal/journalStore';
 import { validateSegment, type JournalEvent } from '../src/data/journal/seal';
 import { fold, writeFrame as spliceFrame } from '../src/data/journal/runtime';
@@ -17,7 +17,7 @@ import { verifyProjectAgainstJournal, describeVerifierReport } from '../src/data
 import { journalingRig, memKv, tickingNow, type JournalingRig } from './helpers/journalingRig';
 import { INSTALLED_SUITE } from '../src/data/installedSuite';
 import type { ResourcesFile } from '../src/data/burritoStore';
-import { openFacts } from './helpers/report';
+import { expectRefusal, openFacts } from './helpers/report';
 
 // vite-plugin-node-polyfills aliases node builtins even under the node
 // environment; the real ones come through process.getBuiltinModule.
@@ -276,7 +276,7 @@ describe('the story path of the store (#286, §10)', () => {
     await store.writeFrame(1, 1, 'Texto del diario.');
     await store.commit('checkpoint');
     project.files.set('content/01.md', spliceFrame(project.files.get('content/01.md')!, 1, 'Edición externa.'));
-    await expect(newStore().open(REPO)).rejects.toThrow(UnexplainedDivergenceError);
+    await expectRefusal(newStore().open(REPO), 'open.story-divergence'); // R-10.7.5, not a book rule
     expect(project.files.get('content/01.md')).toContain('Edición externa.'); // nothing overwritten
   });
 
@@ -296,7 +296,7 @@ describe('the story path of the store (#286, §10)', () => {
     const { store, newStore, project } = await setup();
     await store.writeFrame(5, 1, 'Un texto.');
     project.files.delete('content/05.md');
-    await expect(newStore().open(REPO)).rejects.toThrow(UnexplainedDivergenceError);
+    await expectRefusal(newStore().open(REPO), 'open.story-divergence');
   });
 
   it('keeps a Bible project on v: 1, and its v: 1 set folds with no story state', async () => {

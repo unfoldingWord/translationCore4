@@ -151,14 +151,15 @@ same `Report`.
 
 | Item | Contract | Test |
 |---|---|---|
-| `Report` | `{op, ok, code?, rule?, facts, startedAt, endedAt}`. `op` is one of `open`, `checkpoint`, `seed`, `reconcile`, `export`, `import`, `share`. `facts` is the operation's own record (an open: the recovery classification and the fold's forks; a checkpoint: the paths written). `reportError` names the first problem of a malformed shape; `okReport` and `failedReport` emit only validated Reports. | `test/report.test.ts` |
-| `REFUSAL_CODES` | code → the BURRITO-SPEC rule id it enforces, or `null` for an app rule with no R-id. Closed: `new Refusal(code, message, facts)` with a code outside the table throws. A code's user-facing recovery text is the catalog key `refusal.<code>` (`src/i18n/en.json`). | `test/report.test.ts`; the normative gate `conformance/normative/check.mjs` fails when a rule-bound code names a rule that is not live in §8 or §10, and lists the app-rule codes by name |
+| `Report` | `{op, ok, code?, rule?, facts, startedAt, endedAt}`. `op` is one of `open`, `checkpoint`, `seed`, `reconcile`, `export`, `import`, `share`. `facts` is the operation's own record (an open: the recovery classification, the fold's forks and `phases`, the seed and reconcile Reports it ran; a checkpoint: the commit message and the paths written). A failed Report adds `facts.error` (the thrown message) and, for a refusal, `facts.refusal` (the refusal's own facts: paths, hashes, mismatches); both keys are reserved. `reportError` names the first problem of a malformed shape; `okReport` and `failedReport` emit only validated Reports. | `test/report.test.ts` |
+| `REFUSAL_CODES` | code → the BURRITO-SPEC rule id it enforces, or `null` for an app rule with no R-id. Closed: `new Refusal(code, message, facts)` with a code outside the table throws. Thrown by `JournalingStore`, `JournalStore` and `journal/checkpoint.mjs`. | `test/report.test.ts`; the normative gate `conformance/normative/check.mjs` fails when a rule-bound code names a rule that is not live in §8 or §10, and lists the app-rule codes by name |
 | `JournalingStore.lastReport` | The Report of the last open or checkpoint: ok with its facts, or failed with the code the thrown refusal carried. Replaces `OpenReport`. | `test/report.test.ts`; the recovery suites read it through `openFacts` |
 | `expectRefusal(promise, code)` | The one way a test asserts a refusal: the rejection carries exactly `code` and the table's rule. | `test/helpers/report.ts` |
 
 The Home banner (`src/state.jsx` `failureText`) shows a failed open's or checkpoint's thrown
-diagnosis and then the recovery sentence looked up by its code. The ops record per operation,
-crash recovery from it and the dev Inspector are #374.
+diagnosis. It appends the recovery sentence of the catalog key `refusal.<code>` when the catalog
+holds one; the catalog holds none yet, because the recovery sentences need the owner's copy. The
+ops record per operation, crash recovery from it and the dev Inspector are #374.
 
 ## 4. Checking surface (tC3 contract reference — UI plan superseded by A-5)
 

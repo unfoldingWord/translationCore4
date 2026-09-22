@@ -15,19 +15,30 @@
 // is bound to exactly one rule. The table is CLOSED: `new Refusal(code)` with a
 // code outside it throws, and `reportError` rejects a Report that carries one.
 export const REFUSAL_CODES = Object.freeze({
-  // The open path (live today, thrown by JournalingStore.open).
+  // The journal (live today, thrown by JournalStore and by JournalingStore.open).
   'segment.invalid': 'R-8.1.6', // a segment fails the parse-and-checksum chain
   'segment.misnamed': 'R-8.1.2', // a segment file is not named by its first ts
   'segment.foreign-actor': 'R-8.1.12', // a segment carries another actor's events
+  'segment.differs-from-accepted': 'R-8.1.5', // a different action at an accepted segment path
+  'segment.bad-path': null, // a segment path fails the §2 path grammar
+  'outbox.invalid': 'R-8.1.7', // a staged intent's bytes are invalid; surfaced, never dropped
+  'outbox.different-action': null, // the outbox already holds a different action at this ts (D50 staging)
+  'actor.record-mismatch': 'R-8.1.13', // actor.json names a different actor than its directory
+  'journal.clock-not-ratcheted': 'R-8.2.4', // a ts was requested before the union read ratcheted the clock
   'ledger.unreadable': null, // an intent-ledger record in the installation store does not parse
+  // The open path (live today, thrown by JournalingStore.open).
   'open.scope-unreadable': null, // the project scope cannot be read; a defaulted scope would journal a widened scope
   'open.unexplained-divergence': 'R-8.7.5', // derived state no journal prefix or §8.8 reconcile explains
+  'open.story-divergence': 'R-10.7.5', // an out-of-band story edit; reconcile is not defined for stories
   'seed.mismatch': 'R-8.8.2', // the candidate seed does not reproduce the pre-seed state
   'seed.publish-failed': 'R-8.8.2', // the seed's segments did not all publish
-  // The checkpoint path (live today, thrown by JournalingStore.commit).
+  'story.base-missing': 'R-10.7.4', // drafted frames, but the story file is gone from disk
+  // The checkpoint projection (live today, thrown by journal/checkpoint.mjs and JournalingStore.commit).
   'checkpoint.divergence': 'R-8.7.5', // a derived file was edited or deleted out of band
   'checkpoint.scope-mismatch': 'R-8.7.2', // the rescanned currentScope is not the fold's scope
   'checkpoint.incomplete-inputs': 'R-8.7.4', // a mandatory checkpoint input is missing
+  'checkpoint.unsafe-path': 'R-8.7.6', // a projected key does not resolve strictly inside the destination root
+  'checkpoint.too-deep': null, // a projected value nests deeper than MAX_JSON_DEPTH
   'checkpoint.metadata-unwritable': null, // a project.meta.set overlay with no metadata write route (D28)
   // Reserved for the export kernel (#375).
   'export.read-failed': null,
@@ -95,13 +106,17 @@ export const assertReport = (report) => {
 export const okReport = (op, startedAt, endedAt, facts) => assertReport({ op, ok: true, facts, startedAt, endedAt });
 
 /** The Report of an operation that threw `error`: a Refusal contributes its code
- * (and rule, when bound); any other error is a failure without a code. The thrown
- * message is kept under `facts.message` so the record stays diagnosable. */
+ * (and rule, when bound) and its facts under `facts.refusal` (the paths, hashes
+ * and mismatches a reader needs, as fields); any other error is a failure without
+ * a code. The thrown message is kept under `facts.error`. Both keys are reserved:
+ * the operation's own facts never carry them, so neither overwrites the other. */
 export const failedReport = (op, startedAt, endedAt, error, facts = {}) => {
-  const report = { op, ok: false, facts: { ...facts, message: String(error?.message ?? error) }, startedAt, endedAt };
+  if ('error' in facts || 'refusal' in facts) throw new Error('malformed Report: facts.error and facts.refusal are reserved for failedReport');
+  const report = { op, ok: false, facts: { ...facts, error: String(error?.message ?? error) }, startedAt, endedAt };
   if (isRefusalCode(error?.code)) {
     report.code = error.code;
     if (REFUSAL_CODES[error.code] !== null) report.rule = REFUSAL_CODES[error.code];
+    report.facts.refusal = isObj(error.facts) ? error.facts : {};
   }
   return assertReport(report);
 };

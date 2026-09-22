@@ -1383,12 +1383,17 @@ async function releaseParkedDecision(checkSched, tool, book) {
 
 /** The banner text of a failed store operation (#156): the thrown diagnosis
  * (paths, hashes, mismatches — the #62 diagnosable stop), then the recovery
- * sentence looked up by the refusal code the operation's Report carries. An
- * error without a code (a network failure, a bug) shows its message alone. */
+ * sentence the catalog holds for the refusal code, `refusal.<code>`, when it
+ * holds one. The catalog holds none yet: the recovery sentences wait for the
+ * owner's copy, so today every banner shows the diagnosis alone. A code without
+ * an entry never renders its key. */
 const failureText = (e) => {
   const detail = e?.reason || e?.message || String(e);
   const code = refusalCodeOf(e);
-  return code === null ? detail : `${detail} ${t(`refusal.${code}`)}`;
+  if (code === null) return detail;
+  const recoveryKey = 'refusal.' + code;
+  const recovery = t(recoveryKey, undefined, '');
+  return recovery ? `${detail} ${recovery}` : detail;
 };
 
 /** The store's D59 refusal (journalingStore.upsertDecision) ends its message
