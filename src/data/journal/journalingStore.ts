@@ -1217,6 +1217,7 @@ export class JournalingStore implements BurritoStore {
     const replayed = await journal.replayStaged();
     const stagedInvalid = replayed.filter((r) => r.outcome === 'staged-invalid');
     if (stagedInvalid.length)
+      // The first problem names the code; every problem is in the facts.
       throw new Refusal(
         segmentProblemCode(stagedInvalid[0].reason ?? ''),
         `refuse to open ${this.mustRepo()}: the outbox holds staged intents whose bytes are ` +

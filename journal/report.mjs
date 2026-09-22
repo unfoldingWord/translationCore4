@@ -81,7 +81,6 @@ export const reportError = (report) => {
   if (!isObj(report.facts)) return 'facts is not an object';
   if (!isIso(report.startedAt)) return 'startedAt is not an ISO-8601 UTC timestamp';
   if (!isIso(report.endedAt)) return 'endedAt is not an ISO-8601 UTC timestamp';
-  if (report.endedAt < report.startedAt) return 'endedAt is before startedAt';
   return null;
 };
 

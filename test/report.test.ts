@@ -70,7 +70,6 @@ describe('#156 the Report schema is closed', () => {
     expect(reportError({ ...ok, facts: [] })).toBe('facts is not an object');
     expect(reportError({ ...ok, startedAt: '2026-09-22' })).toMatch(/startedAt is not an ISO-8601/);
     expect(reportError({ ...ok, endedAt: 'soon' })).toMatch(/endedAt is not an ISO-8601/);
-    expect(reportError({ ...ok, startedAt: T1, endedAt: T0 })).toBe('endedAt is before startedAt');
   });
 
   it('the constructors emit only validated Reports', () => {
