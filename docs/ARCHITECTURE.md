@@ -157,9 +157,10 @@ same `Report`.
 | `expectRefusal(promise, code)` | The one way a test asserts a refusal: the rejection carries exactly `code` and the table's rule. | `test/helpers/report.ts` |
 
 The Home banner (`src/state.jsx` `failureText`) shows a failed open's or checkpoint's thrown
-diagnosis. It appends the recovery sentence of the catalog key `refusal.<code>` when the catalog
-holds one; the catalog holds none yet, because the recovery sentences need the owner's copy. The
-ops record per operation, crash recovery from it and the dev Inspector are #374.
+diagnosis. It appends the recovery sentence of the catalog key `refusal.<code>` (`src/i18n/en.json`).
+Every live code has one, approved by the owner on 2026-09-22; a test fails when a live code has
+none. A reserved code shows the diagnosis alone until its issue adds the sentence. The ops record
+per operation, crash recovery from it and the dev Inspector are #374.
 
 ## 4. Checking surface (tC3 contract reference — UI plan superseded by A-5)
 

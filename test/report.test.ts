@@ -25,6 +25,7 @@ import {
 } from '../src/data/journal/runtime';
 import { FAKE_VRS, journalingRig, memKv, tickingNow } from './helpers/journalingRig';
 import { expectRefusal, lastReportOf, openFacts } from './helpers/report';
+import { t } from '../src/i18n/index.js';
 
 const REPO = '_local_/_local_/prueba';
 const TIT_USFM = ['\\id TIT prueba', '\\h Tito', '\\mt Tito', '\\c 1', '\\p', '\\v 1 Pablo, siervo de Dios.', '\\v 2 ___', ''].join('\n');
@@ -109,6 +110,14 @@ describe('#156 the refusal-code table is closed and bound', () => {
       if (rule !== null) expect(rule, code).toMatch(/^R-(8|10)(\.\d+)+$/);
     }
     expect(Object.keys(REFUSAL_CODES).length).toBe(38);
+  });
+
+  it('every live code has the recovery sentence the Home banner looks up; the reserved codes wait for their issues', () => {
+    // Live = every code in the table except the kernels still to come (#375, #361, #41, #362, #203).
+    const reserved = /^(export|import|share)\./;
+    const live = Object.keys(REFUSAL_CODES).filter((code) => !reserved.test(code));
+    expect(live.length).toBe(22);
+    for (const code of live) expect(t(`refusal.${code}`, undefined, ''), code).not.toBe('');
   });
 
   it('the reference checkpoint projection throws coded refusals, one code per rule (R-8.7.4, R-8.7.6)', () => {

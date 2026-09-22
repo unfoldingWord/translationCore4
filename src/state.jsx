@@ -1383,10 +1383,10 @@ async function releaseParkedDecision(checkSched, tool, book) {
 
 /** The banner text of a failed store operation (#156): the thrown diagnosis
  * (paths, hashes, mismatches — the #62 diagnosable stop), then the recovery
- * sentence the catalog holds for the refusal code, `refusal.<code>`, when it
- * holds one. The catalog holds none yet: the recovery sentences wait for the
- * owner's copy, so today every banner shows the diagnosis alone. A code without
- * an entry never renders its key. */
+ * sentence the catalog holds for the refusal code, `refusal.<code>`. Every live
+ * code has one (test/report.test.ts); a code without one — a reserved export,
+ * import or share code before its issue adds the sentence — shows the diagnosis
+ * alone and never renders its key. */
 const failureText = (e) => {
   const detail = e?.reason || e?.message || String(e);
   const code = refusalCodeOf(e);
