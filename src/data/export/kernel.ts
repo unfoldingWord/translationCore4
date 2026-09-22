@@ -10,9 +10,7 @@
 import type { BurritoStore, ProjectSummary } from '../burritoStore';
 import { checkpointMessage } from '../checkpoint';
 import { Refusal, failedReport, okReport, type Report } from '../journal/runtime';
-
-/** The page-setup choices of the Community Checking preview, for the PDF producer (#20). */
-export type PageSetup = Record<string, unknown>;
+import type { PageSetup } from './pageSetup';
 
 export type ExportProducer = {
   id: 'usfm-aligned' | 'usfm-plain' | 'burrito-zip' | 'pdf' | 'obs-markdown';

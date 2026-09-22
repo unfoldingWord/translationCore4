@@ -6,8 +6,24 @@
 import React from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { indexBook } from '../src/data/usfm/indexer';
 
 const go = vi.fn();
+const unexpectedAction = vi.fn();
+const fs = process.getBuiltinModule('node:fs');
+const path = process.getBuiltinModule('node:path');
+const sampleBook = fs.readFileSync(path.resolve(process.cwd(), 'test/fixtures/sample-burrito/TIT.usfm'), 'utf8');
+const sampleEntries = indexBook(sampleBook);
+const sampleByChapter = Object.fromEntries(
+  [...new Set(sampleEntries.map((entry) => entry.chapter))].map((chapter) => [
+    chapter,
+    sampleEntries.filter((entry) => entry.chapter === chapter).map((entry) => {
+      const body = sampleBook.slice(entry.start, entry.end).trim();
+      return { n: entry.verseKey, drafted: body !== '' && body !== '___', text: body === '___' ? '' : body };
+    }),
+  ]),
+);
+const sampleChapterNums = Object.keys(sampleByChapter).map(Number).sort((a, b) => a - b);
 
 const baseState = {
   view: 'check',
@@ -39,14 +55,9 @@ const baseState = {
 
 const bookModel = {
   code: 'TIT',
-  chapterNums: [1],
+  chapterNums: sampleChapterNums,
   draftPct: 50,
-  byChapter: {
-    '1': [
-      { n: 1, drafted: true, text: 'Pablo, siervo de Dios.' },
-      { n: 2, drafted: false, text: '' },
-    ],
-  },
+  byChapter: sampleByChapter,
 };
 
 let state = { ...baseState };
@@ -56,7 +67,7 @@ vi.mock('../src/state.jsx', () => ({
     s: state,
     book: bookModel,
     sourceModel: null,
-    actions: new Proxy({}, { get: (_, name) => (name === 'go' ? go : () => {}) }),
+    actions: new Proxy({}, { get: (_, name) => (name === 'go' ? go : (...args: unknown[]) => unexpectedAction(name, args)) }),
   }),
   AppProvider: ({ children }: { children: unknown }) => children,
   SCRIPT_FONTS: ['Noto Sans (default)'],
@@ -69,6 +80,7 @@ describe('#108 — Publish moves into Check as Community Checking', () => {
   beforeEach(() => {
     cleanup();
     go.mockClear();
+    unexpectedAction.mockClear();
     state = { ...baseState };
   });
 
@@ -179,9 +191,36 @@ describe('#108 — Publish moves into Check as Community Checking', () => {
     expect(screen.getByTestId('export-menu-empty').textContent).toBe('Exports arrive later in this increment (J7).');
     expect(screen.queryByRole('button', { name: /^Export / })).toBeNull();
     // The preview renders the project's own text, not fixture copy.
-    expect(screen.getByText(/Pablo, siervo de Dios\./)).toBeTruthy();
+    expect(screen.getByText(/Pablo, siervo de Dios y apóstol/)).toBeTruthy();
     // An undrafted verse is stated, never silently skipped in the preview.
-    expect(screen.getByText(/verse not yet drafted/)).toBeTruthy();
+    expect(screen.getAllByText(/verse not yet drafted/).length).toBeGreaterThan(0);
+  });
+
+  it('the Bible page setup switches every preview chapter between Single and Double spacing', () => {
+    state = { ...baseState, view: 'publish' };
+    const before = JSON.stringify(state);
+    render(<App />);
+
+    const single = screen.getByRole('button', { name: 'Single' });
+    const double = screen.getByRole('button', { name: 'Double' });
+    const chapters = screen.getAllByTestId('cc-chapter');
+    expect(chapters.length).toBeGreaterThan(1);
+    expect(single.getAttribute('aria-pressed')).toBe('true');
+    expect(double.getAttribute('aria-pressed')).toBe('false');
+    expect(chapters.every((chapter) => (chapter as HTMLElement).style.lineHeight === 'var(--lh-community-checking-single)')).toBe(true);
+
+    fireEvent.click(double);
+    expect(single.getAttribute('aria-pressed')).toBe('false');
+    expect(double.getAttribute('aria-pressed')).toBe('true');
+    expect(chapters.every((chapter) => (chapter as HTMLElement).style.lineHeight === 'var(--lh-community-checking-double)')).toBe(true);
+
+    fireEvent.click(single);
+    expect(single.getAttribute('aria-pressed')).toBe('true');
+    expect(double.getAttribute('aria-pressed')).toBe('false');
+    expect(chapters.every((chapter) => (chapter as HTMLElement).style.lineHeight === 'var(--lh-community-checking-single)')).toBe(true);
+    expect(unexpectedAction).not.toHaveBeenCalled();
+    expect(go).not.toHaveBeenCalled();
+    expect(JSON.stringify(state)).toBe(before);
   });
 });
 
@@ -243,6 +282,9 @@ describe('#291 — an OBS project checks the open story', () => {
     expect(screen.queryByTestId('cc-picture-1')).toBeNull();
     expect(screen.getByTestId('cc-story').getAttribute('data-pictures')).toBe('0');
     // the Bible page-setup controls are not offered for a story
+    expect(screen.queryByText('Spacing')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Single' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Double' })).toBeNull();
     expect(screen.queryByText('Verse numbers')).toBeNull();
     expect(screen.queryByText('Export USFM')).toBeNull();
   });

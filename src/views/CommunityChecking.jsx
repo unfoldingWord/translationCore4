@@ -10,6 +10,7 @@
 import React from 'react';
 import { useApp } from '../state.jsx';
 import { bookName } from '../data/bookNames';
+import { DEFAULT_PAGE_SETUP } from '../data/export/pageSetup';
 import { t } from '../i18n';
 import { Button, FilterChip, Toggle, Overline, Callout } from '../ds/index.js';
 import ExportMenu from './ExportMenu.jsx';
@@ -21,6 +22,28 @@ const RULE = { height: 1, background: 'var(--border)', margin: '0 auto 30px', wi
 const ASIDE = { width: 'var(--rail-width-wide)', flex: 'none', background: 'var(--surface-card)', borderInlineStart: 'var(--stroke-hair) solid var(--border)', padding: 22, display: 'flex', flexDirection: 'column', gap: 16, overflow: 'auto' };
 const SETUP_BOX = { border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 16, background: 'var(--surface-app)' };
 const SETUP_LIST = { display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12, fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)' };
+const PREVIEW_LINE_HEIGHT = Object.freeze({
+  single: 'var(--lh-community-checking-single)',
+  double: 'var(--lh-community-checking-double)',
+});
+
+function PageSetupChoiceRow({ label, labelId, options, value, onChange }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+      <span id={labelId}>{label}</span>
+      <span role="group" aria-labelledby={labelId} style={{ display: 'flex', gap: 4 }}>
+        {options.map((option) => (
+          <FilterChip key={option.value} type="button" selected={value === option.value}
+            aria-pressed={value === option.value} onClick={() => onChange(option.value)}
+            style={{ display: 'inline-block', padding: '5px 11px', fontSize: 'var(--fs-meta)', letterSpacing: 'var(--track-11-5)', borderWidth: 1,
+              ...(value === option.value
+                ? { background: 'var(--accent)', color: 'var(--text-inverse)', borderColor: 'var(--accent)' }
+                : { background: 'var(--surface-card)', color: 'var(--text-secondary)', borderColor: 'var(--border-input)' }) }}>{option.label}</FilterChip>
+        ))}
+      </span>
+    </div>
+  );
+}
 
 /** The story pages: the title, then each frame's picture and text, then the
  * reference line. An undrafted frame is stated, never skipped silently. */
@@ -92,9 +115,9 @@ function StoryCommunityChecking() {
 
 export default function CommunityChecking() {
   const { s, book, actions } = useApp();
-  const [cols, setCols] = React.useState('1');
-  const [verseNums, setVerseNums] = React.useState(true);
-  const [dropCap, setDropCap] = React.useState(true);
+  const [pageSetup, setPageSetup] = React.useState(() => ({ ...DEFAULT_PAGE_SETUP }));
+
+  const updatePageSetup = (patch) => setPageSetup((current) => ({ ...current, ...patch }));
 
   if (s.project?.flavor === 'textStories') return <StoryCommunityChecking />;
 
@@ -120,10 +143,10 @@ export default function CommunityChecking() {
           <h1 style={H1}>{bookName(book.code)}</h1>
           <div style={RULE} />
           {chapters.map(({ c, verses }) => (
-            <div key={c} dir={dir} style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-md)', lineHeight: 'var(--lh-verse-md)', color: 'var(--text-scripture)', textAlign: 'justify', columnCount: Number(cols), columnGap: 28, marginBottom: 26 }}>
-              {dropCap ? <span style={{ float: 'inline-start', fontSize: 'var(--fs-dropcap)', lineHeight: 0.8, fontWeight: 'var(--fw-bold)', color: 'var(--text-accent)', marginInlineEnd: 10, marginTop: 6 }}>{c}</span> : null}
+            <div key={c} data-testid="cc-chapter" dir={dir} style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-md)', lineHeight: PREVIEW_LINE_HEIGHT[pageSetup.spacing], color: 'var(--text-scripture)', textAlign: 'justify', columnCount: pageSetup.columns, columnGap: 28, marginBottom: 26 }}>
+              {pageSetup.dropCapChapters ? <span style={{ float: 'inline-start', fontSize: 'var(--fs-dropcap)', lineHeight: 0.8, fontWeight: 'var(--fw-bold)', color: 'var(--text-accent)', marginInlineEnd: 10, marginTop: 6 }}>{c}</span> : null}
               {verses.map((v) => v.drafted && v.text
-                ? <span key={v.n}>{verseNums ? <sup style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', marginInlineEnd: 2, verticalAlign: 'super' }}>{v.n}</sup> : null}{v.text} </span>
+                ? <span key={v.n}>{pageSetup.verseNumbers ? <sup style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', marginInlineEnd: 2, verticalAlign: 'super' }}>{v.n}</sup> : null}{v.text} </span>
                 : <span key={v.n} style={{ color: 'var(--text-tertiary)' }}><sup style={{ fontSize: 11, fontWeight: 700, verticalAlign: 'super' }}>{v.n}</sup>{t('cc.notYetDrafted')} </span>)}
             </div>
           ))}
@@ -136,21 +159,14 @@ export default function CommunityChecking() {
         <div style={SETUP_BOX}>
           <Overline style={{ letterSpacing: '.12em' }}>{t('cc.pageSetup')}</Overline>
           <div style={SETUP_LIST}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-              <span>{t('cc.columns')}</span>
-              <span style={{ display: 'flex', gap: 4 }}>
-                {['1', '2'].map((c) => (
-                  // The design's page-setup pills: Inspire fill when active.
-                  <FilterChip key={c} selected={cols === c} onClick={() => setCols(c)}
-                    style={{ display: 'inline-block', padding: '5px 11px', fontSize: 'var(--fs-meta)', letterSpacing: 'var(--track-11-5)', borderWidth: 1,
-                      ...(cols === c
-                        ? { background: 'var(--accent)', color: 'var(--text-inverse)', borderColor: 'var(--accent)' }
-                        : { background: 'var(--surface-card)', color: 'var(--text-secondary)', borderColor: 'var(--border-input)' }) }}>{c}</FilterChip>
-                ))}
-              </span>
-            </div>
-            <Toggle label={t('cc.dropCap')} checked={dropCap} onChange={() => setDropCap(!dropCap)} />
-            <Toggle label={t('cc.verseNumbers')} checked={verseNums} onChange={() => setVerseNums(!verseNums)} />
+            <PageSetupChoiceRow label={t('cc.columns')} labelId="cc-columns-label"
+              options={[{ value: 1, label: '1' }, { value: 2, label: '2' }]}
+              value={pageSetup.columns} onChange={(columns) => updatePageSetup({ columns })} />
+            <PageSetupChoiceRow label={t('cc.spacing')} labelId="cc-spacing-label"
+              options={[{ value: 'single', label: t('cc.spacingSingle') }, { value: 'double', label: t('cc.spacingDouble') }]}
+              value={pageSetup.spacing} onChange={(spacing) => updatePageSetup({ spacing })} />
+            <Toggle label={t('cc.dropCap')} checked={pageSetup.dropCapChapters} onChange={() => updatePageSetup({ dropCapChapters: !pageSetup.dropCapChapters })} />
+            <Toggle label={t('cc.verseNumbers')} checked={pageSetup.verseNumbers} onChange={() => updatePageSetup({ verseNumbers: !pageSetup.verseNumbers })} />
             <Toggle label={t('cc.footnotes')} disabled />
           </div>
         </div>
