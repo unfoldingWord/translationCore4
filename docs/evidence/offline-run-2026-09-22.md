@@ -65,11 +65,45 @@ stays open (Increment 9).
 
 ## Offline run (#43)
 
-PENDING. The run is done by a person on an offline machine (`docs/PACKAGING.md`, "The
-offline run"), on one of the artifacts above, with step 9b (an Open Bible Stories project:
-the gateway frame text and the picture of frame 1 from the bundled `en_obs` and picture
-pack, one drafted frame, Understand on frame 1, one check decision). The result table
-replaces this section when the run is reported.
+**Method:** the procedure in `docs/PACKAGING.md`, "The offline run", including step 9b.
+Debian GNU/Linux 13 (trixie) x86_64 (Grok Bot box). Linux artifact above, unpacked under
+`/workspace/tc4-a7-358/app/translationCore4`. Network off by `unshare -rn` with
+`ip link set lo up` around `./start-tc4.sh` (loopback only). Isolation check: from outside
+the namespace, `curl http://127.0.0.1:19119/` answered nothing (`000`); inside the
+namespace, `curl https://example.com` failed to resolve. Fresh
+`HOME=/workspace/tc4-a7-358/home-offline`. Served client `index-sM7ONWt_.js`, sha256
+`1b0d245e924da712ace121907df1612f7135831180604b998f0a3d6ec357311c`, matching disk;
+`/api/version` `4.0.0-alpha.7` / `2026-09-22T00:15:49Z` matching `lib/product/product.json`.
+Run and reported by Tessa (end-user QA), 2026-09-21 America/Los_Angeles (2026-09-22 UTC).
+Screenshots under the QA box at `/workspace/tc4-a7-358/qa/screenshots/`.
+
+**Result:** PASS under the tag rule. Every step reached its expected result or named its
+open issue.
+
+| Step | Result |
+|---|---|
+| 1 Start the app | PASS, Home (“Your Bibles”), Electron, no error banner |
+| 2 New Bible, blank Titus, `Create Bible →` | PASS, “Offline Alpha7 Bible” (`es`); Titus opens in Translate |
+| 3 Understand | PASS, English helps show for chapter 1 |
+| 4 Translate | PASS, source pane shows ULT/UST text |
+| 5 Draft verse 1, `Saved` | PASS (`Offline alpha7 verse one.`) |
+| 6 Check, Translation Notes, one item `Mark valid` | PASS, `1 of 157 resolved`; no Unavailable offline |
+| 7 Align, one word into a card | PASS, word `Offline` into the Paul (Παῦλος) card; Greek present |
+| 8 Leave and reopen; draft, decision, alignment persist | PASS, all three still there after Switch project and reopen |
+| 9 Export | SKIP, #19 not built |
+| 9b New OBS → draft frame 1 → Understand → Check | PASS, “Offline Alpha7 OBS” (`es`); story 1 gateway text and frame-1 picture from bundled `en_obs` + picture pack with network off; frame drafted (`Offline alpha7 OBS frame one.`); Understand notes and word links; TN `1 of 91 resolved` |
+| 10 Quit, network on | PASS, clean window close (Electron gone); isolation was process-level so host network was never disabled |
+
+No screen named a missing resource on the source panes, the Translation Notes card, Align,
+or the OBS gateway/picture path. OBS Understand briefly showed story-title helps until
+frame 1 content was selected; then frame notes and word links appeared (same observation
+as earlier alpha.7 Linux OBS QA; not treated as FAIL).
+
+**Limits:** one platform ran offline (Linux). macOS and Windows were not run offline. Local
+`smoke-installed.zsh` under a fresh HOME was started before the offline session; CI
+`smoke-linux-x64` on this artifact already ends in `SMOKE OK`. Host `ping 1.1.1.1` was not
+available (`ping: not found`); namespace isolation was checked via failed outbound curl and
+host inability to reach the namespaced server port.
 
 ## Clean-clone counts
 
@@ -81,4 +115,4 @@ J20, J21, J22 and J25 ran green on a local rig (PRs #320, #322, #323, #345); the
 run in CI.
 
 [VERIFIED — run 35671067386 on `main` 95238c3; artifact listing, downloads and smoke logs
-read 2026-09-22; offline run PENDING]
+read 2026-09-22; offline run (steps 1–10 + 9b) reported by Tessa, 2026-09-21 PT]
