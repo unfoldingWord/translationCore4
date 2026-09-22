@@ -88,6 +88,8 @@ The branch switch refuses a dirty working tree (`set_branch.rs`). Always commit 
 
 ### 3.2 BurritoStore interface [PROPOSED, shapes normative per BURRITO-SPEC]
 
+> Every store operation returns the one `Report` shape (`journal/report.mjs`) once https://github.com/unfoldingWord/translationCore4/issues/156 lands; this interface gains that return type in the same pull request [D79; marked line].
+
 ```ts
 interface BurritoStore {
   listProjects(): Promise<ProjectSummary[]>;              // summaries, flavor==textTranslation
@@ -167,16 +169,48 @@ Definitive integration test (per A-5): a full checking session in the design-nat
 
 List `textTranslation` projects from `metadata/summaries`. Create a project via `/git/new-text-translation`. Creation passes a `versification` (tC4 default `eng`, user-changeable); the platform writes `ingredients/vrs.json` into the project [decided 2026-07-30 — D25]. Add books: write stub USFM + `update_ingredients`. Apply scope updates via remake. Scope entries may be `[]` (whole book — the default) or SB range arrays, for example `{"TIT": ["1:1-2:5"]}` [decided 2026-07-30 — D26]. Every remake wipes the `x-` roles by design: the store re-writes tC4's roles immediately after each remake or `update_ingredients` regeneration — client-side, with no upstream dependency [decided 2026-07-30 — D28]. Set the current project via app-state before you enter the workspaces. This matches the shell convention [VERIFIED].
 
-## 7. Publishing
+## 7. Export and share (module map) [decided 2026-09-22 — D79]
 
-- **USFM (aligned) export:** for each book, merge the alignment sidecar into the verse text (`wordaligner.merge` → verseObjects → `toUSFM`) — proven in harness check 22. Then download the result or write it as an export artifact (NOT over the canonical `<BOOK>.usfm`; I-1).
-- **PDF:** two options. Option one: Electronite `printToPDF` of a print-styled route (the same Chromium renders the editor and the PDF — correct complex-script/RTL shaping). Option two: the platform's pdf_publisher client, if we keep it in the bundle. Decide in E3.3 [PROPOSED]. **Leading candidate: the print-styled route** — validated live in tc4-POC-2 (2026-07-16): full-book print DOM incl. persisted draft text, `@media print`, 1↔2 column toggle, spacing/dropcap/verse-number/RTL classes (`docs/evidence/tc4-poc2-learnings-2026-07-16.md`).
+Files leave the app as browser downloads; Electron routes a download to the operating-system
+save dialog. The renderer has no file-system bridge [VERIFIED — `scripts/desktop-main.cjs`,
+main fb14ba5, 2026-09-22]. Every export is a pure producer registered in one table; the kernel
+owns the checkpoint, the download, the `Report` and the menu. Each pull request that touches a
+row updates the row.
 
-## 8. Migration & compatibility
+| Module | Contract | Owner issue | Platform route | Test helper | e2e helper / block |
+|---|---|---|---|---|---|
+| `src/data/export/kernel.ts`, `producers.ts`, `src/views/ExportMenu.jsx` | `ExportProducer`, `ExportInput`, `ExportFile`; `runExport` → `Report` | https://github.com/unfoldingWord/translationCore4/issues/375 | none (D9 checkpoint via `add-and-commit`) | `test/helpers/export.ts` `assertProjectUnchanged` | `e2e/helpers/export.ts` `captureDownload`; `j07` kernel block |
+| `src/data/export/usfm.ts` | producers `usfm-aligned`, `usfm-plain`; the whole-book weave shared with `conformance/validate.mjs` | https://github.com/unfoldingWord/translationCore4/issues/19 | none | `test/export/usfm.test.ts` | `j07` USFM block |
+| `src/data/export/burritoZip.ts`, `relationships.ts` | producer `burrito-zip`; `relationshipsFromPins` | https://github.com/unfoldingWord/translationCore4/issues/359 | `GET /api/burrito/zipped/<path>` (strip `.git`, `.bak`, `.DS_Store`) | `test/export/burritoZip.test.ts`, `relationships.test.ts` | `j07` Scripture Burrito block |
+| `src/data/export/pdf.ts`, `src/views/print/PrintBook.jsx`, `src/ds/tokens/print.css` | producer `pdf`; print-styled route (row A-6) | https://github.com/unfoldingWord/translationCore4/issues/20 | none | `test/export/pdf.test.ts` | `j07` PDF block |
+| `src/data/export/obsMarkdown.ts`, `src/views/print/PrintStories.jsx` | producer `obs-markdown`; OBS print DOM for `pdf` | https://github.com/unfoldingWord/translationCore4/issues/360, layouts https://github.com/unfoldingWord/translationCore4/issues/11 | none | `test/export/obsMarkdown.test.ts` | `j07` OBS block |
+| `src/data/share/door43Api.ts`, `shareOperation.ts`, `session.ts`, `src/views/modals/ShareSignIn.jsx` | share → `Report`; token in memory only | https://github.com/unfoldingWord/translationCore4/issues/362, https://github.com/unfoldingWord/translationCore4/issues/203 | Door43 API `POST /api/v1/user/repos`, tokens; `POST /git/remote/add`, `POST /git/push` (body credentials), `GET /git/remotes/<path>` | `test/share/*` with a fake Door43 API | `e2e/j11-share.spec.ts` |
+| `src/data/dcsAuthority.ts` | one resolved Door43 server; isolated stores | https://github.com/unfoldingWord/translationCore4/issues/120 | every Door43 route | `test/dcsAuthority.test.ts` | the J11 live leg |
 
-- **x-tcore migrator (E2.6):** for each `book_projects/<name>` in an x-tcore repo, do these conversions. Convert `alignmentData/<book>/<ch>.json` → §5.1 file (normalize occurrences). Convert `index/<tool>/<book>/<groupId>.json` items with any user data → §5.2 decisions (synthesize `modifiedTimestamp` from file dates if absent). Convert `version_manager.json` → `resources.json`. Convert `checker_setting.json` → `settings.json`. Verify the origin drafting repo's `<BOOK>.usfm` md5 against the copied one, and show diffs for user choice. Then stop the creation of x-tcore repos. **Retirement sequence:** the `x-tcore` copied-project mechanism has exactly one consumer — the current checking client [VERIFIED single-consumer]. In Phase 1 the app creates no new x-tcore projects, and Phase 1 ships this one-time migrator (copied projects → sidecars in the repo of origin).
-- **tC3 zip importer (E3.4):** the same transformations, from a tC3 project zip. Convert the text from chapter JSONs → USFM via the existing conversion helpers.
-- **Phase 2 seed:** every sidecar record becomes one `seed`-tagged journal event (BURRITO-SPEC §8.8). `modifiedTimestamp` and `targetVerseMd5` were designed in for this. Journal-suite JC-15 proves it (seeded fold reproduces sidecar state exactly).
+Reference, not adopted: the Pankosmia PDF publisher renders paged.js HTML in headless Firefox
+through puppeteer, downloading Firefox at run time; its print-spec tables and OBS page styles
+are reused as data after a licence check (D79 point 3).
+
+## 8. Import (module map) [decided 2026-09-22 — D79]
+
+Import creates a **new** project only. Parsers are pure functions from bytes to one
+`ImportBundle`; the shell owns every side effect and the all-or-nothing rollback. The fixture
+manifest `conformance/fixtures/import/MANIFEST.json` states every expected outcome.
+
+| Module | Contract | Owner issue | Platform route | Test helper | e2e helper / block |
+|---|---|---|---|---|---|
+| `src/data/import/types.ts`, `shell.ts`, `src/views/modals/Import.jsx` | `ImportBundle`, `ImportParser`; `runImport` → `Report` | https://github.com/unfoldingWord/translationCore4/issues/361 | create (`/git/new-text-translation`, `/git/new-obs-resource`) → `POST /api/temp/bytes` → `POST /api/burrito/remake_burrito_from_zip/<uuid>/<path>` → `add-and-commit`; rollback `POST /git/delete` | `test/helpers/import.ts` `assertNoRepoCreated`, `runManifest` | `e2e/helpers/import.ts` `importFixture`; `j09` shell block |
+| `src/data/import/usfm.ts` | parser `usfm` (one or many files → books) | https://github.com/unfoldingWord/translationCore4/issues/195 | none | `test/import/usfm.test.ts`; `fixtures/import/usfm/` | `j09` USFM block |
+| `src/data/import/burrito.ts` | parser `burrito` (validated with the conformance harness) | https://github.com/unfoldingWord/translationCore4/issues/196 | none | `test/import/burrito.test.ts`; `fixtures/import/burrito/` | `j09` Scripture Burrito block |
+| `src/data/import/tc3.ts` | parser `tc3` (manifest, chapter JSON, `alignmentData`, check index) | https://github.com/unfoldingWord/translationCore4/issues/21 | none | `test/import/tc3.test.ts`; `fixtures/import/tc3/` | `j09` tC3 block |
+| `conformance/fixtures/import/damaged/` | manifest entries with refusal codes | https://github.com/unfoldingWord/translationCore4/issues/41 | none | the manifest runner | `j09` damaged block |
+
+Seeds: every imported record becomes one `seed`-tagged journal event (BURRITO-SPEC §8.8;
+`journal/reconcile.mjs` `seedFromSidecars`); `seed.source` is `tc3-import` for tC3 and the
+specification's value for the other kinds. **x-tcore migration is closed without data**
+(D79 point 8; #14): the prototype was internal and no populated x-tcore project exists. The
+sideload route `POST /burrito/zipped/_local_/_sideloaded_/…` does no git init and is used for
+resources only [VERIFIED — pankosmia-web 0.18.5 (99fd9be), `post_zipped_repo.rs`, 2026-09-22].
 
 ## 9. Phase 2 components (build after Phase 1 exit criteria)
 
@@ -207,7 +241,7 @@ The named-branch operation uses **existing endpoints** via single-branch publica
 | A-3 | Alignments in sidecar, zaln only on export (I-1) | AGREED (forced by verified editor data-loss) |
 | A-4 | Full tC3 check-item payload persisted; check lists derived, never stored | AGREED (verified derivable) |
 | A-5 | REVISED 2026-07-06 (the project owner, via imported UI design): Check surface is design-native (design/tC4-2/translationCore.dc.html) with triage + tC3 selections (D2); tc-checking-tool-rcl *components* are not embedded. word-aligner/usfm-js logic and BURRITO-SPEC payloads unchanged — OPEN-QUESTIONS #6/#7 close via the uw-tc4 prototype instead of an RCL mount | AGREED |
-| A-6 | Drop content/workspace/t_core/pdf?/checks clients from our bundle; keep dashboard+settings+version_manager | PROPOSED (pdf & remote-repos: decide in E1.1/E3.3) |
+| A-6 | PDF by the print-styled route (the same Chromium renders the editor and the PDF); the Pankosmia pdf_publisher is not bundled; content/workspace/t_core/checks clients dropped from the bundle | DECIDED 2026-09-22 (D79 point 3) |
 | A-7 | Identity key = checkId+book+ch+v+occurrence, quoteString verification | PROPOSED (normative in BURRITO-SPEC §5.2) |
 | A-8 | Stage rules S-1/S-2 — path-authoritative, permanently (the until-PR-1 clause is removed [decided 2026-07-30 — D28]); tC4 re-asserts its roles after every remake | AGREED with constraint evidence |
 

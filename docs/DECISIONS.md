@@ -1154,7 +1154,8 @@ three adapters: memory, git on the filesystem, and the pankosmia-web HTTP API. J
 and the transport suite become one scenario set that runs over all adapters. This is
 the fold's pattern applied to layer 5; see `docs/plans/TEAM-SYNC-PLAN.md` §1.1.
 
-**(2) Order.** No sync feature starts until the legibility increment
+**(2) Order.** [addendum 2026-09-22 — D79 point 12: the first share of Increment 8.5 is a
+transport action, not a sync feature, under four conditions] No sync feature starts until the legibility increment
 (`docs/plans/LEGIBILITY.md`) closes: one `prove` command with an evidence manifest, a
 docs gate over manifest-derived statements, one `Report` shape with a refusal-code
 vocabulary, scenario files with one runner, the repository port with its adapters, and
@@ -1438,6 +1439,8 @@ of #147.
 2. **Dates.** Increment 7 due 2026-09-25; alpha.7 to the pilots Sep 26; feedback Sep 29 to
    Oct 3. Increment 8 Oct 9 (rc.1), Increment 9 Oct 15, v4.0.0 Oct 16 unchanged. 4.0.0
    includes OBS drafting, understanding and checking; OBS export and DCS send do not.
+   [corrected 2026-09-22 — D79 point 2: OBS export ships in Increment 8; the first share ships
+   in Increment 8.5; team sync stays Phase 2]
 3. **One specification, one harness.** BURRITO-SPEC §1 states two project kinds; a new §10
    "OBS project kind" holds only the differences. Everything §10 does not name applies
    unchanged (§3, §5.3, §5.4, §8.1–§8.3). Spec and harness change in one change set (§9,
@@ -1574,3 +1577,114 @@ marked; they move only with a spec-and-harness change (BURRITO-SPEC §9). (3) D7
 stands: the committed `docs/evidence/manifest.json` is refreshed once per milestone and
 when a conformance count moves. The gate, the marker grammar and `scripts/prove.mjs` do
 not change.
+
+## D79 (2026-09-22, project-owner rulings) **Increment 8 is publish and import; Increment 8.5 is the first share, built beside it; one rc.1 tag on 2026-10-09. First share pushes the working `main` branch as a transport action, not a sync feature.** [grill session 2026-09-22; epics #373 and #372; issues #359–#375; corrects D74 point 2; adds an addendum to D67(2)]
+
+Context. Increment 7 closed on 2026-09-22 with `v4.0.0-alpha.7`, ahead of its date. The
+session defined Increment 8 (milestone 5, 21 open issues, no epic) and, at the owner's
+direction, moved the first share into 4.0.0 as a parallel Increment 8.5. Facts read for the
+rulings: no file-save path exists in the app (no Electron preload, no dialog bridge; the
+renderer reaches disk only through the platform HTTP server) [VERIFIED — `scripts/desktop-main.cjs`,
+main fb14ba5, 2026-09-22]; the platform has `POST /git/push` with body credentials, `POST
+/git/remote/add`, `GET /api/burrito/zipped`, `POST /api/temp/bytes` and
+`POST /api/burrito/remake_burrito_from_zip`, and no endpoint that creates a repository on
+Door43 [VERIFIED — pankosmia-web 0.18.5 (99fd9be), source read 2026-09-22; upstream is at
+0.18.10 (84c322a)]; Door43 Preview and the Pankosmia PDF publisher each have one fixed OBS
+layout [VERIFIED — GitHub API, 2026-09-22]; tC3 signs in with username and password, mints a
+token named `translation-core` through the DCS API, and keeps it AES-encrypted in
+`localStorage` [VERIFIED — `unfoldingWord/translationCore`, `GogsApiHelpers.js`, 2026-09-22].
+
+1. **Shape and dates.** Increment 8 (epic #373; sub-epics #368 Deliver, #369 Import, #370
+   Format) and Increment 8.5 (milestone 10, epic #372) are both due 2026-10-09 and tag
+   `v4.0.0-rc.1` together (#371). If 8.5 is not green on that date it moves whole to the new
+   4.1.0 milestone and rc.1 tags without it. Increment 9 (Oct 15) and v4.0.0 (Oct 16) are
+   unchanged. The 4.1.0 milestone holds BT Servant (unfoldingWord's headless chatbot on
+   unfoldingWord resources, online only) and the items that left Increment 8.
+2. **Journeys.** Increment 8 closes on J7 (export the book: a dated PDF, aligned USFM, plain
+   USFM, a Scripture Burrito zip), J9a, J9c and J9d (import a tC3 zip, raw USFM, a Scripture
+   Burrito, each as a new project), and J23 (export an OBS project: story Markdown, a dated
+   PDF, the same zip). Increment 8.5 closes on J11 (send to Door43), defined in
+   `docs/JOURNEYS.md` by this change set. **Correction of D74 point 2:** the sentence "OBS
+   export and DCS send do not" ship in 4.0.0 is replaced by: OBS export ships in Increment 8,
+   the first share ships in Increment 8.5, team sync (receive, integrate) stays Phase 2.
+3. **The PDF route.** The print-styled route: the same Chromium renders the editor and the PDF.
+   Closes `docs/ARCHITECTURE.md` row A-6. The Pankosmia PDF publisher's pipeline (paged.js
+   rendered by headless Firefox through puppeteer, Firefox downloaded at run time) is not
+   adopted: a run-time browser download is incompatible with the offline pilot. Its print-spec
+   tables and OBS page styles are reused as data after a licence check (#20, #360).
+4. **Where an export lands.** A browser download, which Electron routes to the operating-system
+   save dialog. No file-system bridge is added unless #20's first task proves the PDF needs
+   one, and then only after the owner's word on the pull request.
+5. **Export outputs.** The four J7 outputs only. CSV export leaves to Post-4.0 (#367). The
+   design's "include word alignment / checking data" toggles are not built: aligned versus
+   plain is the menu choice, and the Burrito zip always carries the whole working tree. The
+   zip is the server's own export (`GET /api/burrito/zipped`) with `.git`, `.bak` and
+   `.DS_Store` removed client-side (#359).
+6. **The `relationships` mirror.** Stage rule S-1 stands: `checking/resources.json` is the
+   authoritative pin record because it carries the commit sha (D58) and the role of every pin.
+   The Scripture Burrito export writes `idAuthorities.dcs` and a `relationships` array derived
+   from the pins into the exported `metadata.json`, in the sample burrito's shape (#359). The
+   stored project is not changed: no HTTP route writes `metadata.json`. The stored-project
+   mirror waits for a platform write route or Pankosmia roadmap #160.
+7. **Import creates a new project only.** The design's import into an existing project, with a
+   conflict review against the current draft, is a merge and moves to 4.1.0 (#365). The
+   import shell (#361) writes through the platform's own primitive: create the project, upload
+   the zip to `POST /api/temp/bytes`, `POST /api/burrito/remake_burrito_from_zip`, commit; a
+   failure after the repository exists deletes it. The sideload route (`POST /burrito/zipped`
+   into `_local_/_sideloaded_/`) does no git init and is not used for projects. Damaged input
+   is refused on the review page and writes nothing (#41).
+8. **x-tcore migration is closed** (#14): no populated x-tcore project exists; the prototype was
+   internal and created no user data. `docs/ARCHITECTURE.md` section 8 records the close.
+9. **Renumbering is split.** #209 keeps the rules: the re-key design as a comment on the issue,
+   the owner's approval there, then one change set of BURRITO-SPEC §5.1, §5.2 and §8.5, the
+   harness and the sample project with old-data fixtures. The editor action is #364 in 4.1.0.
+   The rules land before 4.0.0 under D47(a). #258 (original-language upgrade) stays in
+   Increment 8 after #209's design comment.
+10. **#219 answered: yes.** A record keyed to a single verse counts as "on" any span slot that
+    contains that verse, for the affected set of a structural action. The disposition stays
+    the conservative one (mark invalid, keep). The rule lands through #209 and closes #219.
+11. **OBS PDF layouts.** Two: the flow layout (title page, then each frame as its picture above
+    its text, frames filling the page as they fit; #360) and the wrapped layout (a quarter-page
+    picture at the start corner of the frame, upper-left for a left-to-right language and
+    upper-right for right-to-left, text wrapped around it; #11). Side-by-side layouts are out.
+12. **First share is a transport action.** The app creates a repository under the signed-in
+    user's Door43 account through the Door43 API and pushes the project's working `main` with
+    `POST /git/push`. Later shares push `main` again. Share creates no publication branch and
+    no outbox, and never integrates or receives. Refusals, each a `Report` code: the name exists
+    on the account; the push is not a fast-forward (another device pushed; the message says
+    team sync is coming and local work is safe); the app is offline; sign-in failed; the create
+    was rejected. Never a force push. The repository's own `origin` remote is the record of
+    having shared; the installation store holds nothing about remotes. OBS projects share the
+    same way (J24 rides J11).
+    **Addendum to D67(2).** D67(2) says no sync feature starts before the legibility increment
+    closes. The first share is not a sync feature under four conditions: (a) it returns the
+    one `Report` shape (#156 lands first); (b) every Door43 call goes through one adapter
+    module, the HTTP slice of the repository port (#158); (c) it creates no publication
+    branch, no outbox and no integrate path; (d) the proof obligation and the two-device
+    refusal are recorded (`docs/RISKS.md` rows 5 and 6; `docs/plans/TEAM-SYNC-PLAN.md` X8).
+    Why pushing `main` is safe for the later sync model, on the record's evidence: a working
+    repository and an integrate-born team main have the same content shape, because every
+    4.0.0 project's state is the fold of its own journal (D47(c)) and the fold is deterministic
+    (JC-3); a later `send()` pushes the same sealed segments byte for byte, and intake refuses
+    only foreign, misnamed, differing or invalid segments (JC-20) while duplicates dedup by
+    `ts` (JC-13); and D67(4b) already places team main on the Door43 `main` branch. The
+    combined scenario has never been run; X8 runs it before any sync feature ships.
+13. **Credentials.** tC3's flow, without its persistence: username and password once per
+    session, the app lists the user's Door43 tokens and uses or creates one named
+    `translationCore`, the token stays in renderer memory for the session only. Nothing secret
+    touches disk in 4.0.0; the password is used for that one call and discarded; the token is
+    never placed in a URL or a log. Keeping the token between sessions in the operating-system
+    keychain is #366 (4.1.0). Name and email for git (D7) are stored per installation and asked
+    once; the D7 exposure notice appears in that dialog.
+14. **Left the increment.** To 8.5: #120, #203, #185. To 4.1.0: #55, #139, #364, #365, #366.
+    To Post-4.0: #367. Closed: #14. Every issue in both milestones carries acceptance criteria,
+    a Verify command and an `Owns:` file list; dependencies are GitHub blocked-by edges.
+
+Platform findings routed to upstream through the owner, when he chooses: an https push with a
+missing username or token panics inside the credential callback instead of answering 400;
+`remote/add` keeps a token embedded in the URL. Recorded in `docs/PLATFORM-NOTES.md` #40.
+
+`docs/JOURNEYS.md` (J7, J9, J11, J23, J24), `docs/ROADMAP.md` rows 8, 8.5 and 4.1.0,
+`docs/RISKS.md` rows 5–9, `docs/ARCHITECTURE.md` sections 7 and 8 and row A-6,
+`docs/plans/TEAM-SYNC-PLAN.md` X8, `docs/PLATFORM-NOTES.md` #40–#42 and `CONTEXT.md` carry
+this decision.

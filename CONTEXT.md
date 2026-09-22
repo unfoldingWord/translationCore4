@@ -162,3 +162,42 @@ _Avoid_: OBS verse checking, TQ checking, OBS alignment
 The workflow that sends a completed or in-progress OBS project to the Door43 Content
 Service, including the DCS-compatible project data required for that transfer.
 _Avoid_: export-only, PDF publish
+
+## Exchange and export (D79, 2026-09-22)
+
+**Export**:
+A file that leaves the app through the browser download path: a PDF, a USFM file, a Scripture
+Burrito zip, story Markdown. The project is byte-identical after an export except the D9
+checkpoint commit.
+_Avoid_: publish (for a file), save as, download (as the user's verb)
+
+**Export producer**:
+A pure function from project data to one file, registered in the export kernel's table
+(`src/data/export/producers.ts`). It makes no checkpoint, no download and no Report.
+_Avoid_: exporter, writer
+
+**Share**:
+The push of a project's working `main` branch to a repository under the user's Door43
+account, created by the app on the first share. Send only; receiving and team sync are Phase 2.
+_Avoid_: sync, send, upload, publish (for Door43)
+
+**Share-born main**:
+A Door43 `main` branch created by a first share, holding one actor's working history, as
+opposed to a team main built by integrate. The sync plan's X8 scenario proves the two behave
+the same.
+
+**Import bundle**:
+The one in-memory shape every import parser produces (`ImportBundle`): project facts, books or
+stories, alignments, decisions, pins, findings. The import shell turns it into a new project.
+_Avoid_: import result, payload
+
+**Import parser**:
+A pure function from a file's bytes to an import bundle: `usfm`, `burrito`, `tc3`. It creates
+nothing and shows nothing.
+_Avoid_: importer (for the parser alone), converter
+
+**Refusal code**:
+The stable name a refused operation returns in its `Report` (for example `share.non-fast-forward`,
+`import.damaged.truncated`), bound to a rule id or marked as an app rule. Tests assert codes,
+never message strings.
+_Avoid_: error code, error message (as the thing a test checks)
