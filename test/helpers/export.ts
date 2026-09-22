@@ -46,7 +46,8 @@ export async function assertProjectUnchanged(repoPath: string, fn: () => Promise
   if (added.length === 1) {
     assert.equal(git(repoPath, 'rev-parse', 'HEAD^'), head, 'the checkpoint commit is not a child of the old HEAD');
     assert.match(git(repoPath, 'log', '-1', '--format=%s'), /^Checkpoint, .+ \(tC4\)$/, 'the new commit is not a checkpoint');
-    for (const p of git(repoPath, 'diff-tree', '--no-commit-id', '--name-only', '-r', head, 'HEAD').split('\n')) {
+    // -z: raw paths; the default output quotes a non-ASCII name (core.quotePath).
+    for (const p of git(repoPath, 'diff-tree', '-z', '--no-commit-id', '--name-only', '-r', head, 'HEAD').split('\0')) {
       if (!p) continue;
       const inCommit = git(repoPath, 'ls-tree', '--name-only', 'HEAD', '--', p) !== '';
       if (inCommit) expected.set(p, sha256(execFileSync('git', ['-C', repoPath, 'show', `HEAD:${p}`])));

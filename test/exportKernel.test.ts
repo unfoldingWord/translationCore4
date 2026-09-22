@@ -146,14 +146,24 @@ describe('#375 assertProjectUnchanged', () => {
     await expect(assertProjectUnchanged(dir, async () => fs.writeFileSync(path.join(dir, 'stray.txt'), 'x'))).rejects.toThrow(/stray.txt/);
     fs.rmSync(path.join(dir, 'stray.txt'));
     await expect(assertProjectUnchanged(dir, async () => commit(dir, 'something else'))).rejects.toThrow(/not a checkpoint/);
-    // A path the checkpoint carries must keep the bytes the checkpoint committed (Codex round 1).
+    // A path the checkpoint carries must keep the bytes the checkpoint committed (Codex round 1),
+    // also under a non-ASCII name, which git quotes by default (Codex round 2).
     execFileSync('git', ['-C', dir, 'reset', '-q', '--hard', 'HEAD^']);
-    fs.writeFileSync(path.join(dir, 'metadata.json'), '{"pending":true}');
+    const accented = path.join(dir, 'Tító.usfm');
+    fs.writeFileSync(accented, 'baseline');
+    execFileSync('git', ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', 'add', 'Tító.usfm']);
+    commit(dir, 'baseline 2');
+    fs.writeFileSync(accented, 'pending');
     await expect(assertProjectUnchanged(dir, async () => {
-      commit(dir, 'Checkpoint, before export: metadata (tC4)');
-      fs.writeFileSync(path.join(dir, 'metadata.json'), '{"overwritten":true}');
-    })).rejects.toThrow(/beyond a checkpoint commit: metadata.json/);
-    execFileSync('git', ['-C', dir, 'checkout', '-q', '--', 'metadata.json']);
+      commit(dir, 'Checkpoint, before export: text (tC4)');
+      fs.writeFileSync(accented, 'overwritten');
+    })).rejects.toThrow(/beyond a checkpoint commit: Tító.usfm/);
+    fs.writeFileSync(accented, 'pending');
+    await expect(assertProjectUnchanged(dir, async () => {
+      fs.writeFileSync(accented, 'checkpointed');
+      commit(dir, 'Checkpoint, before export: text (tC4)');
+      fs.writeFileSync(accented, 'pending');
+    })).rejects.toThrow(/beyond a checkpoint commit: Tító.usfm/);
     await expect(assertProjectUnchanged(dir, async () => {
       commit(dir, 'Checkpoint, a (tC4)');
       execFileSync('git', ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'Checkpoint, b (tC4)']);
