@@ -196,15 +196,16 @@ save dialog. The renderer has no file-system bridge [VERIFIED — `scripts/deskt
 main fb14ba5, 2026-09-22]. The main process handles `will-download` in tC4's own entry file and
 reports each download's result (completed, cancelled, interrupted) to the page, so the menu says
 "Saved" only after a completed download (D80 point 1; #382). The packaged app also loads the
-template's `preload.js` unchanged; tC4 does not use what it exposes (PLATFORM-NOTES #45). Every export is a pure producer registered in one table; the kernel
+template's `preload.js` unchanged. tC4 uses one member of it, `electronAPI.setCanClose`, for the
+unsaved-work close guard (PLATFORM-NOTES #45). Every export is a pure producer registered in one table; the kernel
 owns the checkpoint, the download, the `Report` and the menu. Each pull request that touches a
 row updates the row.
 
 | Module | Contract | Owner issue | Platform route | Test helper | e2e helper / block |
 |---|---|---|---|---|---|
 | `src/data/export/kernel.ts`, `producers.ts`, `src/views/ExportMenu.jsx` | `ExportProducer`, `ExportInput`, `ExportFile`; `runExport` → `Report` (`op: 'export'`, facts `{producer, filename, bytes}`): the D9 checkpoint through `commitPending` when the project is dirty, then `produce`, then `deliverFile` (the only Blob URL). A failure delivers nothing: `export.checkpoint-failed` or `export.read-failed`. `exportFilename` gives `<subject>-<YYYY-MM-DD>.<ext>`. `PRODUCERS` is the one table. `ExportMenu` is the design system's `Menu` over the table, filtered by `appliesTo`; while no producer applies, it states when the exports arrive. The `exportFile` action in `src/state.jsx` drains the save schedulers first. | https://github.com/unfoldingWord/translationCore4/issues/375 | none (D9 checkpoint via `add-and-commit`) | `test/exportKernel.test.ts`; `test/helpers/export.ts` `assertProjectUnchanged` | `e2e/helpers/export.ts` `captureDownload`; `j07` kernel case (dev-only fake producer, flag `tc4.e2e.fakeExport`) |
-| `src/data/export/pageSetup.ts` | `PageSetup`: semantic choices only (columns, spacing, drop-cap chapters, verse numbers, paper, pictures, OBS layout), held in memory, never stored (D80 point 5); `CommunityChecking` passes it through `ExportMenu` and `exportFile` to `ExportInput.pageSetup` | https://github.com/unfoldingWord/translationCore4/issues/142, https://github.com/unfoldingWord/translationCore4/issues/381 | none | `test/pageSetup.test.ts` | the J7 PDF block reads it through the producer |
-| `scripts/desktop-main.cjs` (`will-download`) | the result of each download to the page; the `Toast` in `ExportMenu` | https://github.com/unfoldingWord/translationCore4/issues/382 | none | `scripts/desktop-bootstrap.test.cjs`, `test/exportMenu.test.tsx` | a manual packaged run in the pull request |
+| `src/data/export/pageSetup.ts` | `PageSetup`: semantic choices only (columns, spacing, drop-cap chapters, verse numbers), held in memory, never stored (D80 point 5). Planned in #381: the fields `paper`, `pictures` and `obsLayout`, and the path from `CommunityChecking` through `ExportMenu` and `exportFile` to `ExportInput.pageSetup` | https://github.com/unfoldingWord/translationCore4/issues/142, https://github.com/unfoldingWord/translationCore4/issues/381 | none | `test/pageSetup.test.ts` | the J7 PDF block reads it through the producer |
+| `scripts/desktop-main.cjs` (`will-download`) | planned in #382: the result of each download to the page; the `Toast` in `ExportMenu` | https://github.com/unfoldingWord/translationCore4/issues/382 | none | `scripts/desktop-bootstrap.test.cjs`, `test/exportMenu.test.tsx` | a manual packaged run in the pull request |
 | `src/data/export/usfm.ts` | producers `usfm-aligned`, `usfm-plain`; the whole-book weave shared with `conformance/validate.mjs` | https://github.com/unfoldingWord/translationCore4/issues/19 | none | `test/export/usfm.test.ts` | `j07` USFM block |
 | `src/data/export/burritoZip.ts`, `relationships.ts` | producer `burrito-zip`; `relationshipsFromPins` | https://github.com/unfoldingWord/translationCore4/issues/359 | `GET /api/burrito/zipped/<path>` (strip `.git`, `.bak`, `.DS_Store`) | `test/export/burritoZip.test.ts`, `relationships.test.ts` | `j07` Scripture Burrito block |
 | `src/data/export/pdf.ts`, `src/views/print/PrintBook.jsx`, `src/ds/tokens/print.css` | producer `pdf`; print-styled route (row A-6) | https://github.com/unfoldingWord/translationCore4/issues/20 | none | `test/export/pdf.test.ts` | `j07` PDF block |
@@ -214,9 +215,9 @@ row updates the row.
 
 Reference, not adopted: the Pankosmia PDF publisher renders paged.js HTML in headless Firefox
 through puppeteer, downloading Firefox at run time; its print-spec tables and OBS page styles
-were to be reused as data after a licence check (D79 point 3). The check found no licence, so no
-file is copied: tC4 takes the standard paper sizes and writes its own print CSS (D80 point 5;
-PLATFORM-NOTES #42).
+are data that D79 point 3 planned to reuse after a licence check. The check found no licence,
+so tC4 copies no file: it takes the standard paper sizes and writes its own print CSS
+(PLATFORM-NOTES #42).
 
 ## 8. Import (module map) [decided 2026-09-22 — D79]
 
@@ -226,7 +227,7 @@ manifest `conformance/fixtures/import/MANIFEST.json` states every expected outco
 
 | Module | Contract | Owner issue | Platform route | Test helper | e2e helper / block |
 |---|---|---|---|---|---|
-| `src/data/import/types.ts`, `shell.ts`, `src/views/modals/Import.jsx` | `ImportBundle`, `ImportParser`; `runImport` → `Report` | https://github.com/unfoldingWord/translationCore4/issues/361 | create (`/git/new-text-translation`, `/git/new-obs-resource`, with the primary language subtag of the bundle's tag — D80 point 4, PLATFORM-NOTES #43) → `POST /api/temp/bytes` (a wrapped zip) → `POST /api/burrito/remake_burrito_from_zip/<uuid>/<path>` → `add-and-commit`; rollback `POST /git/delete` | `test/helpers/import.ts` `assertNoRepoCreated`, `runManifest` | `e2e/helpers/import.ts` `importFixture`; `j09` shell block |
+| `src/data/import/types.ts`, `shell.ts`, `src/views/modals/Import.jsx` | `ImportBundle`, `ImportParser`; `runImport` → `Report` | https://github.com/unfoldingWord/translationCore4/issues/361 | create (`/git/new-text-translation`, `/git/new-obs-resource`, with the primary language subtag of the bundle's tag: `new-text-translation` refuses `es-419` — D80 point 4, PLATFORM-NOTES #43) → `POST /api/temp/bytes` (a wrapped zip) → `POST /api/burrito/remake_burrito_from_zip/<uuid>/<path>` → `add-and-commit`; rollback `POST /git/delete` | `test/helpers/import.ts` `assertNoRepoCreated`, `runManifest` | `e2e/helpers/import.ts` `importFixture`; `j09` shell block |
 | `src/data/import/usfm.ts` | parser `usfm` (one or many files → books) | https://github.com/unfoldingWord/translationCore4/issues/195 | none | `test/import/usfm.test.ts`; `fixtures/import/usfm/` | `j09` USFM block |
 | `src/data/import/burrito.ts` | parser `burrito`, validated by tC4's check module that the harness shares (not the platform audit — D80 point 6, PLATFORM-NOTES #44); a tC4 burrito is uploaded as it is, with its journal and sidecars (D80 point 2) | https://github.com/unfoldingWord/translationCore4/issues/196 | none | `test/import/burrito.test.ts`; `fixtures/import/burrito/` | `j09` Scripture Burrito block |
 | `src/data/import/tc3.ts` | parser `tc3` (manifest, chapter JSON, `alignmentData`, check index); the current state only, no history conversion (D80 point 3) | https://github.com/unfoldingWord/translationCore4/issues/21 | none | `test/import/tc3.test.ts`; `fixtures/import/tc3/` | `j09` tC3 block |
@@ -234,8 +235,7 @@ manifest `conformance/fixtures/import/MANIFEST.json` states every expected outco
 
 Seeds: every imported record becomes one `seed`-tagged journal event (BURRITO-SPEC §8.8;
 `journal/reconcile.mjs` `seedFromSidecars`); `seed.source` is `tc3-import` for tC3 and the
-specification's value for the other kinds. A Scripture Burrito that carries a tC4 journal adds
-no seed event for a record that its journal already holds (D80 point 2). **x-tcore migration is closed without data**
+specification's value for the other kinds. **x-tcore migration is closed without data**
 (D79 point 8; #14): the prototype was internal and no populated x-tcore project exists. The
 sideload route `POST /burrito/zipped/_local_/_sideloaded_/…` does no git init and is used for
 resources only [VERIFIED — pankosmia-web 0.18.5 (99fd9be), `post_zipped_repo.rs`, 2026-09-22].

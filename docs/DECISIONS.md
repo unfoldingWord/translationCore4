@@ -1689,74 +1689,73 @@ missing username or token panics inside the credential callback instead of answe
 `docs/plans/TEAM-SYNC-PLAN.md` X8, `docs/PLATFORM-NOTES.md` #40–#42 and `CONTEXT.md` carry
 this decision.
 
-## D80 (2026-09-22, project-owner rulings) **The Increment 8 definition pass against the platform: an export says "Saved" only after a completed download; a Scripture Burrito import keeps its journal; a tC3 import keeps the current state only; an import of a region-tagged project creates it with the primary language subtag; page setup stays in memory.** [owner session 2026-09-22, after the Increment 8 audit; issues #381, #382, #383, #20, #21, #196, #361; amends D79 point 4; corrects one fact in the D79 context]
+## D80 (2026-09-22, project-owner rulings) **The Increment 8 definition pass against the platform: an export says "Saved" only after a completed download; a Scripture Burrito import keeps its journal; a tC3 import keeps the current state only; an import creates the project with the primary language subtag; page setup stays in memory; import validation is tC4's own.** [owner session 2026-09-22, after the Increment 8 audit; issues #381, #382, #20, #21, #196, #361; amends D79 point 4; corrects one fact in the D79 context]
 
 Context. The audit of the open Increment 8 issues read the platform before the issues were
-changed. Facts read for the rulings:
+changed. These facts were read for the rulings:
 
-- The platform's project-create routes accept a language code only when it starts with `x-`
-  or is an exact key of `bcp47-language_codes.json`. That table has 7,650 keys and none with a
-  region subtag, so `es-419` is refused and `es` is accepted [VERIFIED — pankosmia-web 0.18.10
-  (84c322a, 2026-09-18) `new_text_translation.rs:180-224`; resource-core `main` (b1d1ff4,
-  2026-08-18) `runtime_resources/lookups/bcp47-language_codes.json`; live rig 0.18.5 (99fd9be),
-  2026-09-22: `es` → HTTP 200, `es-419` → HTTP 400]. The Scripture Burrito metadata schema of
-  the same resource-core accepts `es-419` (`language.schema.json` → `common.schema.json`
-  `languageTag`). The create routes do not read that schema.
+- Two project-create routes refuse a language code that is not in their lookup table:
+  `new-text-translation` and `new-audio-translation`. A code passes when it starts with `x-`
+  or is an exact key of `bcp47-language_codes.json` [VERIFIED — pankosmia-web 0.18.10
+  (84c322a, 2026-09-18) `new_text_translation.rs:180-224`, `new_audio_translation.rs:210`].
+- That table has 7,650 keys, and no key has a region subtag [VERIFIED — resource-core `main`
+  (b1d1ff4, 2026-08-18) `runtime_resources/lookups/bcp47-language_codes.json`]. On the rig,
+  `es` → HTTP 200 and `es-419` → HTTP 400 [VERIFIED — live rig 0.18.5 (99fd9be), 2026-09-22].
+- Four other create routes do not refuse an unknown code. They store it as `x-<code>`:
+  `new-obs-resource`, `new-bcv-resource`, `new-print-spec-resource` and
+  `new-translation-plan-resource` [VERIFIED — pankosmia-web 0.18.10 (84c322a)
+  `new_obs_resource.rs:198`, `new_bcv_resource.rs:246`, `new_print_spec_resource.rs:245`,
+  `new_translation_plan_resource.rs:304`].
+- The Scripture Burrito metadata schema of the same resource-core accepts `es-419`
+  (`language.schema.json` → `common.schema.json` `languageTag`). The create routes do not
+  read that schema.
 - `remake_burrito_from_zip` does not parse `metadata.json`, copies every directory of the zip,
   and does not commit [VERIFIED — pankosmia-web 0.18.5 (99fd9be) and 0.18.10 (84c322a)
-  `remake_burrito_from_zip.rs:18-215`, no change between the two]. A live run created a
-  project with `es`, remade it from the wrapped `conformance/sample-burrito/` (tag `es-419`)
-  and committed: the stored `metadata.json` is byte-identical to the sample, and `git status`
-  is clean [VERIFIED — live rig 0.18.5 (99fd9be), 2026-09-22; the probe repository was deleted].
-- No Pankosmia desktop shell reports the result of a download to the page, and the Pankosmia
+  `remake_burrito_from_zip.rs:18-215`, the same in both]. A live run created a project with
+  `es`, remade it from the wrapped `conformance/sample-burrito/` (tag `es-419`), and
+  committed. The stored `metadata.json` was byte-identical to the sample, and `git status`
+  was clean [VERIFIED — live rig 0.18.5 (99fd9be), 2026-09-22; the probe repository was
+  deleted].
+- No Pankosmia desktop shell reports the result of a download to the page. The Pankosmia
   clients show "saved" right after they start the download [VERIFIED — desktop-app-pithekos
   77a65f1, desktop-app-tc4 cac2b32, desktop-app-template 37bb879, core-client-content e504268,
   core-contenthandler_text_translation 00079b9, GitHub API, 2026-09-22].
-- **Correction of the D79 context.** D79 says the app has "no Electron preload, no dialog
-  bridge", from `scripts/desktop-main.cjs`. That is true of tC4's own entry file. The packaged
-  app loads the template's `preload.js` unchanged, with `contextIsolation: true`; it exposes
-  `window.electronAPI` (Firefox and FFmpeg download events) and `window.api` (the Firefox PDF
-  route that D79 point 3 does not adopt) [VERIFIED — `dist-desktop/pack/electron/`, built
-  2026-09-05 from desktop-app-template 4cb7576]. It exposes nothing about ordinary downloads,
-  so the D79 point 4 conclusion (no save-result signal) stands.
-- A tC3 "Export project" zip copies the project folder without `.git` and `.DS_Store`,
-  renames `.apps` to `apps`, and adds `wordAlignments/<project>.usfm` and
+- **Correction of the D79 context.** D79 says that the app has "no Electron preload, no
+  dialog bridge", from `scripts/desktop-main.cjs`. That is true of tC4's own entry file. The
+  packaged app loads the template's `preload.js` unchanged, with `contextIsolation: true`
+  [VERIFIED — `dist-desktop/pack/electron/`, built 2026-09-05 from desktop-app-template
+  4cb7576]. It exposes `window.electronAPI` and `window.api`. tC4 uses one member,
+  `electronAPI.setCanClose`, for the unsaved-work close guard (`src/state.jsx`). The other
+  members are Firefox and FFmpeg download events and the Firefox PDF route, which D79 point 3
+  does not adopt. Nothing reports the result of an ordinary download, so the D79 point 4
+  conclusion stands.
+- A tC3 "Export project" zip holds the project folder without `.git` and `.DS_Store`. It
+  renames `.apps` to `apps`, and it adds `wordAlignments/<project>.usfm` and
   `manifest.externalResources`. So it carries the tC3 check history under
   `apps/translationCore/checkData/` [VERIFIED — `unfoldingWord/translationCore` `develop`
   5729aa7 (2026-07-16) and release v3.7.0-lite, `MyProjectsActions.js` `executeExport`].
 - The Pankosmia PDF publisher repository has no licence [VERIFIED — GitHub API, 2026-09-22:
-  no licence file on `dev` 16897df or `main`, the licence endpoint answers 404].
+  no licence file on `dev` 16897df or on `main`, and the licence endpoint answers 404]. So
+  tC4 copies no file from it.
 
-1. **Export confirmation.** The Electron main process handles `will-download` and reports
-   each download's result to the page: completed, cancelled or interrupted. The toast "Saved
-   <filename>" shows only after a completed download; a cancelled download shows no success
-   message (#382). This approves one bridge, for downloads only, and amends D79 point 4. The
-   handler lives in tC4's own entry file. A bridge for PDF bytes still needs #20's task 1
-   and the owner's word on that pull request.
+1. **Export confirmation.** The Electron main process handles `will-download`. It reports
+   the result of each download to the page: completed, cancelled or interrupted. The toast
+   "Saved <filename>" shows only after a completed download (#382). This approves one bridge,
+   for downloads only, and amends D79 point 4. A bridge for PDF bytes still needs #20's
+   task 1 and the owner's word on that pull request.
 2. **A Scripture Burrito import keeps its journal.** The import shell uploads the archive as
-   it is (wrapped when it arrives flat), so `journal/` and `checking/` arrive as exported. The
-   shell adds no seed event for a record that the carried journal already holds. A burrito
-   without a tC4 journal imports its text and is seeded (BURRITO-SPEC §8.8) (#196, #361).
-3. **A tC3 import keeps the current state only.** The parser does not convert the
-   `apps/translationCore/checkData/` history into journal events; its seed events carry
-   `seed.source: tc3-import`. The translator's tC3 export zip stays the record of that
+   it is, so `journal/` and `checking/` arrive as exported (#196, #361).
+3. **A tC3 import keeps the current state only.** The parser does not convert the tC3 check
+   history into journal events. The translator's tC3 export zip stays the record of that
    history. This supersedes the [PROPOSED] comment of 2026-08-13 on #21.
-4. **A region-tagged import creates the project with the primary language subtag.** The
-   shell sends the primary subtag of the bundle's tag to the create route (`es-419` → `es`);
-   remake then writes the bundle's own `metadata.json`, with the full tag. When the create
-   route refuses the primary subtag too, the import is refused with the route's reason, and
-   the shell deletes the repository that the refused create left (PLATFORM-NOTES #28). The
-   owner routes the create-route question upstream. When the create routes accept full tags,
-   the shell sends the tag unchanged (#361).
+4. **An import creates the project with the primary language subtag.** The shell sends the
+   primary subtag of the bundle's tag to the create route (`es-419` → `es`). Remake then
+   writes the bundle's own `metadata.json`, with the full tag (#361). The owner routes the
+   create-route question upstream.
 5. **Page setup stays in memory for 4.0.0.** No project file, journal entry or client-settings
-   record stores it. The publisher's per-project `specs.json` is not adopted: a new ingredient
-   before the format locks is a format change (D47). The paper sizes are A4 (595 × 842 pt) and
-   US Letter (612 × 792 pt). No publisher file is copied, because the publisher has no licence;
-   the print CSS is written for tC4 (#381, #20).
-6. **Import validation is tC4's own.** One pure check module serves the Scripture Burrito
-   parser and the conformance harness. The platform's `/burrito/audit` is not used: it
-   reports `journal/` and `checking/` as unexpected content, and on the rig it answered
-   HTTP 500 for every project read (PLATFORM-NOTES #44) (#196).
+   record stores it. The publisher's per-project `specs.json` is not adopted (#381, #20).
+6. **Import validation is tC4's own.** The platform's `/burrito/audit` is not used (#196).
 
-The owner accepted point 5, the default, with the approval of the change set. `docs/ARCHITECTURE.md`
-sections 7 and 8 and `docs/PLATFORM-NOTES.md` #41–#45 carry this decision.
+The owner accepted point 5, the default, with the approval of the change set.
+`docs/ARCHITECTURE.md` sections 7 and 8 and `docs/PLATFORM-NOTES.md` #41–#45 carry this
+decision.
