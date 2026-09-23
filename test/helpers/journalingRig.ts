@@ -290,7 +290,8 @@ export const journalingRig = () => {
         book_code?: string;
       };
       const repoPath = `_local_/_local_/${body.content_abbr}`;
-      if (repos.has(repoPath)) return notFound(`repo ${repoPath} exists`);
+      // Checked BEFORE the git init [VERIFIED — pankosmia-web 0.18.5, new_text_translation.rs]
+      if (repos.has(repoPath)) return notFound(`Local content called '${body.content_abbr}' already exists`);
       const project = createRepo(repoPath, { 'vrs.json': FAKE_VRS }, baseMeta(body.content_language_code));
       // The table holds bare codes only; `qaa`–`qtz` is reserved for local use
       // and is in no table. The repository is already git-initialised. Opt-in:

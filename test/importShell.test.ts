@@ -111,6 +111,20 @@ describe('#361 runImport', () => {
     expect(rig.repos.get('_local_/_local_/fake_import')!.commits).toEqual(commits);
   });
 
+  it('a same-name create that races past the listing deletes nothing: the other project keeps its commits', async () => {
+    const { rig, deps } = setup();
+    expect((await runImport(FAKE_PARSER, TWO_FILES, {}, deps)).ok).toBe(true);
+    const commits = [...rig.repos.get('_local_/_local_/fake_import')!.commits];
+    // The listing is stale: another creator made the folder after it was read.
+    const fetchFn = rig.fetchFn;
+    const api = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) =>
+      String(input).endsWith('/git/list-local-repos') ? new Response('[]', { status: 200 }) : fetchFn(input, init)) as typeof fetch });
+    const report = await runImport(FAKE_PARSER, TWO_FILES, {}, { ...deps, api });
+    expect(report).toMatchObject({ ok: false, code: 'import.name-exists' });
+    expect(rig.repos.get('_local_/_local_/fake_import')?.commits).toEqual(commits);
+    expect(rig.log.some((r) => r.route.startsWith('/api/git/delete/'))).toBe(false);
+  });
+
   it('a bundle with archive is uploaded as it is: every file of the archive is byte-identical in the new project', async () => {
     const { rig, deps } = setup();
     const zip = fixtureFile('../../sample-burrito');

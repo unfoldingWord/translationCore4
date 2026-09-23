@@ -106,18 +106,27 @@ export async function runImport(
     // path this listing proved absent.
     if ((await api.listLocalRepos()).includes(repoPath))
       throw new Refusal('import.name-exists', `a project folder named "${abbr}" already exists`, { repoPath });
-    created = true;
     const code = primarySubtag(language);
-    if (bundle.kind === 'obs') await api.newObsResource({ content_name: name, content_abbr: abbr, content_language_code: code });
-    else
-      await api.newTextTranslation({
-        content_name: name,
-        content_abbr: abbr,
-        content_language_code: code,
-        content_language_name: code.startsWith('x-') ? name : null,
-        add_book: false,
-        versification: 'eng',
-      });
+    try {
+      if (bundle.kind === 'obs') await api.newObsResource({ content_name: name, content_abbr: abbr, content_language_code: code });
+      else
+        await api.newTextTranslation({
+          content_name: name,
+          content_abbr: abbr,
+          content_language_code: code,
+          content_language_name: code.startsWith('x-') ? name : null,
+          add_book: false,
+          versification: 'eng',
+        });
+    } catch (error) {
+      // The routes refuse an existing folder BEFORE their git init: another
+      // creator made it after the listing, so it is not ours to delete.
+      if (/already exists/.test((error as { reason?: string }).reason ?? ''))
+        throw new Refusal('import.name-exists', `a project folder named "${abbr}" already exists`, { repoPath });
+      created = true; // any other refusal may leave git-init debris (PLATFORM-NOTES #28)
+      throw error;
+    }
+    created = true;
     const zip = bundle.archive ? archiveZip(bundle.archive, abbr) : await bundleZip(api, repoPath, bundle, language, abbr);
     await api.remakeBurritoFromZip(await api.uploadTempBytes(zip), repoPath);
     // Register the new books and their scope. Never for an archive (its
