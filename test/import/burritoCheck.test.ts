@@ -63,6 +63,8 @@ describe('#196 burritoCheck', () => {
     const out = failed(withMeta(sample(), (m) => delete m.meta));
     expect(out).toMatchObject([{ check: 'schema' }]);
     expect(out[0].text).toContain(CHECKS.schema);
+    // a schema failure stops the checks: a null ingredient entry is a finding, not a throw
+    expect(failed(withMeta(sample(), (m) => ((m.ingredients as Record<string, unknown>)['ingredients/JON.usfm'] = null)))).toMatchObject([{ check: 'schema' }]);
   });
 
   it(`fails: ${CHECKS.ingredientPresent}`, () => {

@@ -102,7 +102,10 @@ export function checkBurrito(files, validate) {
   } catch (error) {
     return { meta: null, failures: [fail('metadataParses', String(/** @type {Error} */ (error).message))] };
   }
-  const failures = [checkSchema(meta, validate), ...checkIngredients(meta, files), flavorKind(meta) ? null : fail('flavor', JSON.stringify(meta?.type?.flavorType ?? null))];
+  // The later checks read the shape the schema proves, so a schema failure stops here.
+  const schema = checkSchema(meta, validate);
+  if (schema) return { meta, failures: [schema] };
+  const failures = [...checkIngredients(meta, files), flavorKind(meta) ? null : fail('flavor', JSON.stringify(meta.type.flavorType))];
   return { meta, failures: failures.filter((f) => f !== null) };
 }
 

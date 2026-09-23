@@ -42,15 +42,19 @@ const alignmentRecords = (file: { chapters?: Record<string, Record<string, Align
 /** The burrito's files as the shell will store them (`unwrapExport`), checked;
  * or the damaged bundle that refuses the zip. */
 function unpack(file: ImportFile): { root: Files; meta: ReturnType<typeof checkBurrito>['meta'] } | { refused: ImportBundle } {
-  let names: string[];
+  let entries: Files;
   try {
-    names = Object.keys(unzipSync(file.bytes));
+    entries = unzipSync(file.bytes);
   } catch {
     return { refused: damagedBundle([damaged(`${file.name} is not a complete zip file.`, 'import.damaged.truncated')]) };
   }
   const refuse = (failures: CheckFailure[]) => ({ refused: damagedBundle(failures.map((f) => damaged(`${file.name}: ${f.text}`, f.code))) });
-  // unwrapExport refuses a zip with no metadata.json too, but without the check's code.
-  if (!names.some((n) => /^([^/]+\/)?metadata\.json$/.test(n))) return refuse(checkBurrito({}, sbValidator()).failures);
+  // unwrapExport refuses a zip with no metadata.json, or one that does not parse,
+  // but without the check's name and code: those two checks run first.
+  const metaName = Object.keys(entries).find((n) => /^([^/]+\/)?metadata\.json$/.test(n));
+  if (!metaName) return refuse(checkBurrito({}, sbValidator()).failures);
+  const parses = checkBurrito({ 'metadata.json': entries[metaName] }, sbValidator()).failures.filter((f) => f.check === 'metadataParses');
+  if (parses.length) return refuse(parses);
   let root: Files;
   try {
     root = unwrapExport(file.bytes).files;
