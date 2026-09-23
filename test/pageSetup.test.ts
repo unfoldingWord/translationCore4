@@ -17,3 +17,12 @@ describe('#142 — Community Checking spacing token contract', () => {
     expect(Number(base?.[1]) * 2).toBe(64);
   });
 });
+
+describe('#381 — the page-setup contract carries paper, pictures and the OBS layout', () => {
+  it('defaults to A4, pictures on and pictures above the text, frozen, with semantic values only', () => {
+    expect(DEFAULT_PAGE_SETUP).toEqual({ columns: 1, dropCapChapters: true, verseNumbers: true, spacing: 'single', paper: 'a4', pictures: true, obsLayout: 'above' });
+    expect(Object.isFrozen(DEFAULT_PAGE_SETUP)).toBe(true);
+    // A semantic choice, never a CSS value (no unit, no var(), no calc()).
+    for (const value of Object.values(DEFAULT_PAGE_SETUP)) expect(String(value)).not.toMatch(/\d(px|pt|mm|in|em|rem)|var\(|calc\(/);
+  });
+});

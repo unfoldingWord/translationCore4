@@ -4,14 +4,21 @@
 // Community Checking card, which opens the typeset preview with the export
 // menu (#375), which states when the exports arrive while it has no producer.
 import React from 'react';
-import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { indexBook } from '../src/data/usfm/indexer';
+import { DEFAULT_PAGE_SETUP } from '../src/data/export/pageSetup';
+import type { ExportProducer } from '../src/data/export/kernel';
+import { assertProjectUnchanged } from './helpers/export';
 
 const go = vi.fn();
 const unexpectedAction = vi.fn();
+// Set by the #381 cases: the export action they route to the real kernel.
+let exportFile: ((...args: never[]) => unknown) | null = null;
 const fs = process.getBuiltinModule('node:fs');
+const os = process.getBuiltinModule('node:os');
 const path = process.getBuiltinModule('node:path');
+const { execFileSync } = process.getBuiltinModule('node:child_process');
 const sampleBook = fs.readFileSync(path.resolve(process.cwd(), 'test/fixtures/sample-burrito/TIT.usfm'), 'utf8');
 const sampleEntries = indexBook(sampleBook);
 const sampleByChapter = Object.fromEntries(
@@ -67,7 +74,9 @@ vi.mock('../src/state.jsx', () => ({
     s: state,
     book: bookModel,
     sourceModel: null,
-    actions: new Proxy({}, { get: (_, name) => (name === 'go' ? go : (...args: unknown[]) => unexpectedAction(name, args)) }),
+    actions: new Proxy({}, {
+      get: (_, name) => (name === 'go' ? go : name === 'exportFile' && exportFile ? exportFile : (...args: unknown[]) => unexpectedAction(name, args)),
+    }),
   }),
   AppProvider: ({ children }: { children: unknown }) => children,
   SCRIPT_FONTS: ['Noto Sans (default)'],
@@ -287,5 +296,127 @@ describe('#291 — an OBS project checks the open story', () => {
     expect(screen.queryByRole('button', { name: 'Double' })).toBeNull();
     expect(screen.queryByText('Verse numbers')).toBeNull();
     expect(screen.queryByText('Export USFM')).toBeNull();
+  });
+});
+
+// ---- #381 (D80 point 5): the page setup reaches every export. The dev-only
+// fake producer (src/data/export/producers.ts) enters the table only when its
+// flag is set as the module loads, so these cases load a fresh module graph
+// with the flag on. The export action routes to the real kernel over a store
+// that reads the book from a git repository on disk, so assertProjectUnchanged
+// has a real project to guard.
+describe('#381 — the page setup reaches every export', () => {
+  let dir: string;
+  let AppWithFake: typeof App;
+  let fakeProducer: ExportProducer;
+  const spies: Array<{ mockRestore: () => void }> = [];
+
+  beforeEach(async () => {
+    cleanup();
+    go.mockClear();
+    unexpectedAction.mockClear();
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-page-setup-'));
+    const git = (...args: string[]) => execFileSync('git', ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args]);
+    git('init', '-q');
+    fs.writeFileSync(path.join(dir, 'TIT.usfm'), sampleBook);
+    git('add', '.');
+    git('commit', '-qm', 'baseline');
+
+    localStorage.setItem('tc4.e2e.fakeExport', '1');
+    vi.resetModules();
+    ({ default: AppWithFake } = await import('../src/App.jsx'));
+    [fakeProducer] = (await import('../src/data/export/producers')).PRODUCERS;
+    const { runExport } = await import('../src/data/export/kernel');
+    const store = {
+      commitPending: async () => {},
+      readBook: async (code: string) => ({ usfm: fs.readFileSync(path.join(dir, `${code}.usfm`), 'utf8') }),
+    };
+    // The same input the exportFile action in src/state.jsx builds.
+    exportFile = vi.fn((producer: ExportProducer, pageSetup: unknown) =>
+      runExport(producer, { store: store as never, project: state.project as never, book: state.book ?? undefined, pageSetup: pageSetup as never }));
+    // jsdom has no Blob URLs and does not navigate on an anchor click.
+    URL.createObjectURL = vi.fn(() => 'blob:fake');
+    URL.revokeObjectURL = vi.fn();
+    spies.push(vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {}));
+  });
+  afterEach(() => {
+    localStorage.removeItem('tc4.e2e.fakeExport');
+    exportFile = null;
+    spies.splice(0).forEach((spy) => spy.mockRestore());
+  });
+
+  const bibleState = () => ({ ...baseState, view: 'publish', project: { ...baseState.project, flavor: 'textTranslation' } });
+  const runFakeExport = async (produce: { mock: { calls: unknown[][] } }) => {
+    fireEvent.click(screen.getByTestId('export-menu-trigger'));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Fake export (e2e)' }));
+    await waitFor(() => expect(produce.mock.calls).toHaveLength(1));
+    return (produce.mock.calls[0][0] as { pageSetup: unknown }).pageSetup;
+  };
+
+  it('the Bible card has a Paper size row after Spacing, and Double spacing and Letter reach the fake producer exactly', async () => {
+    state = bibleState() as never;
+    const produce = vi.spyOn(fakeProducer, 'produce');
+    spies.push(produce);
+    render(<AppWithFake />);
+
+    const spacing = screen.getByRole('group', { name: 'Spacing' });
+    const paper = screen.getByRole('group', { name: 'Paper size' });
+    expect(spacing.compareDocumentPosition(paper) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const a4 = screen.getByRole('button', { name: 'A4' });
+    const letter = screen.getByRole('button', { name: 'Letter' });
+    expect(paper.contains(a4) && paper.contains(letter)).toBe(true);
+    expect(a4.getAttribute('aria-pressed')).toBe('true');
+    expect(letter.getAttribute('aria-pressed')).toBe('false');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Double' }));
+    fireEvent.click(letter);
+    expect(a4.getAttribute('aria-pressed')).toBe('false');
+    expect(letter.getAttribute('aria-pressed')).toBe('true');
+
+    const received = await runFakeExport(produce);
+    expect(received).toEqual({ ...DEFAULT_PAGE_SETUP, spacing: 'double', paper: 'letter' });
+    expect(exportFile).toHaveBeenCalledWith(fakeProducer, received);
+    const report = await (exportFile as unknown as { mock: { results: Array<{ value: Promise<{ ok: boolean }> }> } }).mock.results[0].value;
+    expect(report.ok).toBe(true);
+    expect(unexpectedAction).not.toHaveBeenCalled();
+  });
+
+  it('pictures: false reaches the producer for an OBS project', async () => {
+    state = { ...obsState, view: 'publish' } as never;
+    // The fake applies to a Bible book and reads one; here it stands in for an OBS producer.
+    spies.push(vi.spyOn(fakeProducer, 'appliesTo').mockReturnValue(true));
+    const produce = vi.spyOn(fakeProducer, 'produce').mockResolvedValue({ bytes: new Uint8Array([1]), filename: 'story.txt', mime: 'text/plain' });
+    spies.push(produce);
+    render(<AppWithFake />);
+
+    fireEvent.click(screen.getByLabelText('Pictures'));
+    expect(screen.getByTestId('cc-story').getAttribute('data-pictures')).toBe('0');
+    expect(await runFakeExport(produce)).toEqual({ ...DEFAULT_PAGE_SETUP, pictures: false });
+  });
+
+  it('assertProjectUnchanged holds around a change of every page-setup choice, then an export', async () => {
+    state = bibleState() as never;
+    const produce = vi.spyOn(fakeProducer, 'produce');
+    spies.push(produce);
+    render(<AppWithFake />);
+    const before = JSON.stringify(state);
+    expect(await assertProjectUnchanged(dir, async () => {
+      fireEvent.click(screen.getByRole('button', { name: '2' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Double' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Letter' }));
+      fireEvent.click(screen.getByLabelText('Drop-cap chapters'));
+      fireEvent.click(screen.getByLabelText('Verse numbers'));
+      expect(await runFakeExport(produce)).toEqual({ ...DEFAULT_PAGE_SETUP, columns: 2, spacing: 'double', paper: 'letter', dropCapChapters: false, verseNumbers: false });
+    })).toBe(0);
+    expect(JSON.stringify(state)).toBe(before);
+    cleanup();
+
+    state = { ...obsState, view: 'publish' } as never;
+    spies.push(vi.spyOn(fakeProducer, 'appliesTo').mockReturnValue(true));
+    render(<AppWithFake />);
+    expect(await assertProjectUnchanged(dir, async () => {
+      fireEvent.click(screen.getByLabelText('Pictures'));
+    })).toBe(0);
+    expect(unexpectedAction).not.toHaveBeenCalled();
   });
 });
