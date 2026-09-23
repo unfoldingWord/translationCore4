@@ -1,3 +1,9 @@
 [
-  { "file": "../../sample-burrito", "parser": "fake", "expect": "accept", "language": "es-419", "books": ["JON", "TIT"], "counts": { "chapters": { "JON": 4, "TIT": 3 } } }
+  { "file": "../../sample-burrito", "parser": "fake", "expect": "accept", "language": "es-419", "books": ["JON", "TIT"], "counts": { "chapters": { "JON": 4, "TIT": 3 } } },
+  { "file": "../../sample-burrito", "parser": "burrito", "name": "Muestra SB", "expect": "accept", "language": "es-419", "books": ["JON", "TIT"], "counts": { "chapters": { "JON": 4, "TIT": 3 } } },
+  { "file": "../../sample-burrito-obs", "parser": "burrito", "name": "Muestra OBS", "expect": "accept", "language": "es-419" },
+  { "file": "burrito/tc4-export.zip", "parser": "burrito", "name": "Exportación tC4", "expect": "accept", "language": "es-419", "books": ["JON", "TIT"], "counts": { "chapters": { "JON": 4, "TIT": 3 } } },
+  { "file": "burrito/foreign", "wrap": "es-419_foreign", "parser": "burrito", "expect": "accept", "language": "es-419", "books": ["JON"], "counts": { "chapters": { "JON": 4 } } },
+  { "file": "damaged/burrito-no-metadata", "parser": "burrito", "expect": "refuse", "code": "import.damaged.no-metadata" },
+  { "file": "damaged/burrito-checksum-mismatch", "parser": "burrito", "expect": "refuse", "code": "import.damaged.checksum-mismatch" }
 ]

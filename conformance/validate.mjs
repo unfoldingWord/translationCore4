@@ -15,6 +15,7 @@ import { derivedProjections } from '../journal/checkpoint.mjs';
 import { seedFromSidecars } from '../journal/reconcile.mjs';
 import { DRAFT } from './fixtures/obs-draft.mjs';
 import { relationshipsFromPins } from '../journal/relationships.mjs';
+import { checkIngredients, compileSbValidator } from '../src/data/import/burritoCheck.mjs';
 
 const require = createRequire(import.meta.url);
 const usfmjs = require('usfm-js');
@@ -56,24 +57,13 @@ const metadata = json(path.join(BURRITO, 'metadata.json'));
 
 // ---------- 1. Scripture Burrito schema validation (Pankosmia's bundled schema) ----------
 // ONE compiled validator, shared by the Bible sample (here) and the OBS sample (group obs).
+// The loader is the import check module's (issue #196): the app's burrito import and this
+// harness compile the bundle the same way.
 const loadSbValidator = () => {
-  const ajv = new Ajv({ strict: false, allErrors: true });
-  addFormats(ajv);
   const schemaRoot = path.resolve('sb-schema');
   const walkSchemas = dir => fs.readdirSync(dir, { withFileTypes: true }).flatMap(e =>
     e.isDirectory() ? walkSchemas(path.join(dir, e.name)) : e.name.endsWith('.json') ? [path.join(dir, e.name)] : []);
-  const BASE = 'https://sb.local/';
-  for (const f of walkSchemas(schemaRoot)) {
-    let schema;
-    // one bundle file has a trailing comma (lenient-parser artifact) — strip before strict parse
-    try { schema = JSON.parse(read(f).replace(/,(\s*[}\]])/g, '$1')); }
-    catch (e) { console.log(`  note: skipping unparseable schema ${path.relative(schemaRoot, f)} (${e.message.slice(0, 60)})`); continue; }
-    // Re-key $id under a proper base URI so bare, subdir, and ../ cross-file $refs all resolve
-    // (the bundle ships the root with $id "." and relies on a lenient resolver).
-    schema.$id = BASE + path.relative(schemaRoot, f).split(path.sep).join('/');
-    try { ajv.addSchema(schema); } catch (e) { /* duplicate $id — first wins */ }
-  }
-  return ajv.getSchema(BASE + 'source_metadata.schema.json') || null;
+  return compileSbValidator(Ajv, addFormats, walkSchemas(schemaRoot).map(f => [path.relative(schemaRoot, f).split(path.sep).join('/'), read(f)]));
 };
 const sbValidate = loadSbValidator();
 {
@@ -95,12 +85,11 @@ const sbValidate = loadSbValidator();
   const listed = Object.keys(metadata.ingredients).sort();
   check('ingredients: metadata lists exactly the on-disk files', JSON.stringify(onDisk) === JSON.stringify(listed),
     `${listed.length} ingredients`);
-  let allMatch = true;
-  for (const [rel, entry] of Object.entries(metadata.ingredients)) {
-    const buf = fs.readFileSync(path.join(BURRITO, rel));
-    if (entry.checksum.md5 !== md5(buf) || entry.size !== buf.length) { allMatch = false; break; }
-  }
-  check('ingredients: every md5 + size correct', allMatch);
+  // The import check module's ingredient check (issue #196): the one the app runs on an import.
+  const listedFiles = Object.fromEntries(Object.keys(metadata.ingredients)
+    .filter(rel => fs.existsSync(path.join(BURRITO, rel))).map(rel => [rel, fs.readFileSync(path.join(BURRITO, rel))]));
+  const ingredientFailures = checkIngredients(metadata, listedFiles);
+  check('ingredients: every md5 + size correct', ingredientFailures.length === 0, ingredientFailures.map(f => f.text).join('; '));
   const roles = Object.values(metadata.ingredients).map(e => e.role).filter(Boolean);
   // §4.3 (amended 2026-08-24, issue #15): the five roles are tC4's OWN sidecars.
   // `vrs.json` is PLATFORM-written and carries no role — the creation endpoints

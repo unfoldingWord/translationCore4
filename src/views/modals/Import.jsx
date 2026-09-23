@@ -78,6 +78,14 @@ function FilesStep({ im, actions }) {
   );
 }
 
+/** The Details row: the fixed text, then a details finding's (a foreign burrito: text only). */
+const detailsCheck = (details) => ({
+  label: t('importer.review.details'),
+  status: details?.warn ? 'warn' : 'valid',
+  text: [t('importer.review.detailsText'), details?.text].filter(Boolean).join(' '),
+});
+const carriedTitle = (kind) => t(kind === 'burrito' ? 'importer.review.carriedTc4' : 'importer.review.carried');
+
 function ReviewStep({ im, actions }) {
   const { bundle } = im;
   const damaged = bundle.findings.find((f) => f.kind === 'damaged');
@@ -87,7 +95,7 @@ function ReviewStep({ im, actions }) {
   const langError = !damaged && !LANGUAGE_CODE.test(im.lang) ? t('importer.review.langError') : undefined;
   const checks = [
     { label: t('importer.review.license'), status: license?.warn ? 'warn' : 'valid', text: license?.text ?? t('importer.review.licenseFound') },
-    { label: t('importer.review.details'), status: 'valid', text: t('importer.review.detailsText') },
+    detailsCheck(bundle.findings.find((f) => f.kind === 'details')),
     { label: t('importer.review.missing'), status: missing ? 'warn' : 'valid', text: missing?.text ?? t('importer.review.noneMissing') },
   ];
   return (
@@ -122,7 +130,7 @@ function ReviewStep({ im, actions }) {
           ]} />
           {(bundle.alignments || bundle.decisions) && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }} data-testid="import-carried">
-              <Overline as="span">{t('importer.review.carried')}</Overline>
+              <Overline as="span">{carriedTitle(im.kind)}</Overline>
               <KeyValueGrid columns={2} items={[
                 { k: t('importer.review.alignments'), v: t('importer.review.alignedVerses', { n: Object.values(bundle.alignments ?? {}).reduce((sum, list) => sum + list.length, 0) }) },
                 { k: t('importer.review.decisions'), v: String(bundle.decisions?.length ?? 0) },

@@ -10,9 +10,11 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { unzipSync } from 'fflate';
+import { captureDownload } from './helpers/export';
 import { importFixture } from './helpers/import';
 import { assertNoRepoCreated, MANIFEST_DIR, readManifest, seedEventsOf } from '../test/helpers/import';
-import { lastCommitMessage, rigRepo } from './helpers/rig';
+import { SEEDED_PROJECT, lastCommitMessage, rigRepo } from './helpers/rig';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CONFORMANCE = path.resolve(HERE, '..', 'conformance');
@@ -123,6 +125,58 @@ test.describe('J9 — a facilitator imports existing work', () => {
       await assertNoRepoCreated(async () => {
         await importFixture(page, path.join(SAMPLE, 'ingredients', 'TIT.usfm'), { edits: { name: fresh('Rechazo'), language: 'qaa' } });
         await expect(page.getByTestId('import-failed')).toHaveAttribute('data-code', 'import.write-failed');
+      });
+    });
+  });
+
+  // The Scripture Burrito parser (#196, J9d): a tC4 export (#359) comes back as
+  // a new project through platform routes only, stored as it is (D80 point 2).
+  test.describe('Scripture Burrito', () => {
+    test('Scripture Burrito: export then import — text, checking/ and the journal byte-identical; the copy opens with no finding and no new seed event', { tag: ['@inc8', '@J9'] }, async ({ page }) => {
+      const source = rigRepo(SEEDED_PROJECT);
+      let exported: Record<string, Uint8Array> = {};
+      let download: { bytes: Buffer; filename: string } = { bytes: Buffer.alloc(0), filename: '' };
+      await test.step('export the seeded project as a Scripture Burrito zip (its first open seeds the journal)', async () => {
+        await page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByRole('button', { name: /Titus/ }).click();
+        await page.getByRole('tab', { name: 'Check', exact: true }).click();
+        await page.getByTestId('open-community-checking').click();
+        await expect.poll(() => git(source, 'status', '--porcelain'), { timeout: 20_000 }).toBe('');
+        await page.getByTestId('export-menu-trigger').click();
+        download = await captureDownload(page, page.getByRole('menuitem', { name: 'Scripture Burrito (.zip)' }));
+        exported = Object.fromEntries(Object.entries(unzipSync(new Uint8Array(download.bytes))).filter(([rel]) => !rel.endsWith('/')));
+        expect(Object.keys(exported).some((rel) => rel.startsWith('ingredients/checking/journal/'))).toBe(true);
+      });
+      const name = fresh('Exportación');
+      const repo = rigRepo(abbrOf(name));
+      await test.step('import the zip as a Scripture Burrito: the review page carries the tC4 records', async () => {
+        await page.goto('/');
+        await importFixture(page, { name: download.filename, mimeType: 'application/zip', buffer: download.bytes }, { kind: 'burrito', edits: { name }, confirm: false });
+        await expect(page.getByTestId('import-carried')).toBeVisible();
+        await expect(page.getByTestId('import-damaged')).toHaveCount(0);
+        await page.getByTestId('import-run').click();
+        await expect(page.getByTestId('import-toast')).toBeVisible({ timeout: 60_000 });
+      });
+      const seedsBefore = seedEventsOf([...tree(path.join(repo, 'ingredients'))].map(([rel, bytes]) => [rel, bytes.toString('utf8')] as [string, string])).length;
+      expect(seedsBefore).toBeGreaterThan(0); // the export's own seed, so an equal count after the open is not vacuous
+      await test.step('on disk: every exported file byte-identical — the books, checking/ and the journal (remake strips .gitignore)', async () => {
+        const stored = tree(repo);
+        for (const [rel, bytes] of Object.entries(exported)) {
+          if (rel === '.gitignore') continue;
+          expect(stored.get(rel)?.equals(Buffer.from(bytes)), rel).toBe(true);
+        }
+        for (const book of ['TIT', 'JON']) expect(stored.get(`ingredients/${book}.usfm`)!.equals(fs.readFileSync(path.join(source, 'ingredients', `${book}.usfm`)))).toBe(true);
+        expect(git(repo, 'status', '--porcelain')).toBe('');
+      });
+      await test.step('the copy opens with no open-time finding and no new seed event; checking/ and the journal are unchanged', async () => {
+        await page.goto('/');
+        await page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`).getByRole('button', { name: /Titus/ }).click();
+        await expect(page.getByRole('tab', { name: 'Check', exact: true })).toBeVisible(); // shown after store.open resolves
+        await expect(page.getByTestId('home-open-error')).toHaveCount(0);
+        const stored = tree(repo);
+        const journal = Object.entries(exported).filter(([rel]) => rel.startsWith('ingredients/checking/journal/'));
+        for (const [rel, bytes] of journal) expect(stored.get(rel)?.equals(Buffer.from(bytes)), rel).toBe(true);
+        const after = [...stored].filter(([rel]) => rel.startsWith('ingredients/')).map(([rel, bytes]) => [rel.slice('ingredients/'.length), bytes.toString('utf8')] as [string, string]);
+        expect(seedEventsOf(after).length).toBe(seedsBefore);
       });
     });
   });

@@ -3,6 +3,7 @@
 // enables the kind of file whose parser is in the table. The parsers arrive
 // with their issues: USFM #195, Scripture Burrito #196, tC3 #21.
 import { unzipSync } from 'fflate';
+import { BURRITO_PARSER } from './burrito';
 import type { ImportBundle, ImportFile, ImportParser } from './types';
 
 const decoder = new TextDecoder();
@@ -59,4 +60,4 @@ const e2eFakeEnabled = (): boolean => {
 
 /** Dev server only, and only when the spec sets the flag: `import.meta.env.DEV`
  * is statically false in a build, so the fake never ships. */
-export const PARSERS: readonly ImportParser[] = [...(import.meta.env.DEV && e2eFakeEnabled() ? [FAKE_PARSER] : [])];
+export const PARSERS: readonly ImportParser[] = [BURRITO_PARSER, ...(import.meta.env.DEV && e2eFakeEnabled() ? [FAKE_PARSER] : [])];

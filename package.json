@@ -21,6 +21,8 @@
     "dev:annotate": "node scripts/annotate-i18n.mjs && concurrently -k -n vite,annotate -c cyan,magenta \"vite --mode annotate\" \"react-grab-annotate --dir \\\"$HOME\\\" --base-dir .tc4-annotations\""
   },
   "dependencies": {
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
     "bible-reference-range": "1.1.1",
     "fflate": "0.8.2",
     "proskomma-core": "0.11.3",
