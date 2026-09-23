@@ -9,7 +9,7 @@
 //
 // The algorithm below is the same self-contained implementation the product's
 // httpStore.ts has carried since Increment 1 (md5Hex), restated once for the
-// reference so conformance/ keeps zero runtime dependencies on src/.
+// reference so journal/ keeps zero runtime dependencies on src/.
 
 const SHIFTS = [
   7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9,

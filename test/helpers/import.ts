@@ -18,6 +18,8 @@ export const MANIFEST_DIR = path.resolve(process.cwd(), 'conformance/fixtures/im
 
 export type ManifestEntry = {
   file: string | string[]; // relative to MANIFEST_DIR; a directory is zipped as it is (flat)
+  wrap?: string; // zip the directory under this one top-level folder, as a DCS sb-zip is
+  name?: string; // the review page's name edit: entries made from one burrito need their own project names
   parser: string;
   expect: 'accept' | 'refuse';
   code?: string;
@@ -28,14 +30,14 @@ export type ManifestEntry = {
 
 export const readManifest = (): ManifestEntry[] => JSON.parse(fs.readFileSync(path.join(MANIFEST_DIR, 'MANIFEST.json'), 'utf8')) as ManifestEntry[];
 
-/** Every file under `dir` as zip entries keyed by relative path (no wrapper folder). */
-export function zipDirectory(dir: string): Uint8Array {
+/** Every file under `dir` as zip entries keyed by relative path, under the folder `wrap` when given. */
+export function zipDirectory(dir: string, wrap?: string): Uint8Array {
   const entries: Record<string, Uint8Array> = {};
   const walk = (at: string): void => {
     for (const entry of fs.readdirSync(at, { withFileTypes: true })) {
       const full = path.join(at, entry.name);
       if (entry.isDirectory()) walk(full);
-      else entries[path.relative(dir, full).split(path.sep).join('/')] = new Uint8Array(fs.readFileSync(full));
+      else entries[(wrap ? `${wrap}/` : '') + path.relative(dir, full).split(path.sep).join('/')] = new Uint8Array(fs.readFileSync(full));
     }
   };
   walk(dir);
@@ -43,9 +45,9 @@ export function zipDirectory(dir: string): Uint8Array {
 }
 
 /** A manifest file as the import screen receives it: a directory becomes one zip. */
-export function fixtureFile(rel: string): ImportFile {
+export function fixtureFile(rel: string, wrap?: string): ImportFile {
   const full = path.resolve(MANIFEST_DIR, rel);
-  if (fs.statSync(full).isDirectory()) return { name: `${path.basename(full)}.zip`, bytes: zipDirectory(full) };
+  if (fs.statSync(full).isDirectory()) return { name: `${path.basename(full)}.zip`, bytes: zipDirectory(full, wrap) };
   return { name: path.basename(full), bytes: new Uint8Array(fs.readFileSync(full)) };
 }
 
@@ -87,16 +89,17 @@ export async function runManifest(
   for (const entry of entries) {
     const parser = parsers[entry.parser];
     assert.ok(parser, `manifest entry ${JSON.stringify(entry.file)}: no parser "${entry.parser}"`);
-    const files = (Array.isArray(entry.file) ? entry.file : [entry.file]).map(fixtureFile);
+    const files = (Array.isArray(entry.file) ? entry.file : [entry.file]).map((rel) => fixtureFile(rel, entry.wrap));
+    const edits = { name: entry.name };
     const label = `manifest entry ${JSON.stringify(entry.file)}`;
     if (entry.expect === 'refuse') {
-      const report = await assertNoRepoCreated(() => runImport(parser, files, {}, deps), deps.api);
+      const report = await assertNoRepoCreated(() => runImport(parser, files, edits, deps), deps.api);
       assert.equal(report.ok, false, `${label}: expected a refusal`);
       assert.equal(report.code, entry.code, `${label}: refusal code`);
       reports.push(report);
       continue;
     }
-    const report = await runImport(parser, files, {}, deps);
+    const report = await runImport(parser, files, edits, deps);
     assert.equal(report.ok, true, `${label}: expected an import, got ${JSON.stringify(report.facts)}`);
     const repoPath = report.facts.repoPath as string;
     if (entry.books) assert.deepEqual([...(report.facts.books as string[])].sort(), [...entry.books].sort(), `${label}: books`);

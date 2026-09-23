@@ -222,6 +222,20 @@ journal of a bundle built from parts, commits, and deletes the project when a st
 returns the import Report.
 _Avoid_: import service, importer
 
+**Burrito check**:
+The checks that tell if a Scripture Burrito is valid for an import
+(`src/data/import/burritoCheck.mjs`): `metadata.json` is present, parses and matches the bundled
+schema; each listed ingredient is present with its md5 and size; the flavor is `textTranslation`
+or `gloss/textStories`. The burrito parser and the conformance harness use the same module. A
+failed check is a damaged finding that names the check.
+_Avoid_: platform audit (a different check, not used for an import — D80 point 6)
+
+**tC4 burrito**, **foreign burrito**:
+A tC4 burrito is a Scripture Burrito that has `ingredients/checking/` (the sidecars and the
+journal of BURRITO-SPEC §5). An import keeps its alignments, decisions and journal. A foreign
+burrito has no `ingredients/checking/`. An import keeps only its text, and the review page says
+so.
+
 **Report**:
 The one record every store operation leaves about its outcome: `{op, ok, code?, rule?, facts,
 startedAt, endedAt}`, defined and validated in `journal/report.mjs`. An open, a checkpoint, a
