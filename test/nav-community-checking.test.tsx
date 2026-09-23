@@ -193,11 +193,12 @@ describe('#108 — Publish moves into Check as Community Checking', () => {
     expect(screen.getByTestId('save-indicator').getAttribute('data-state')).toBe('error');
   });
 
-  it('the publish view is the typeset preview with the export menu, which has no producer yet', () => {
+  it('the publish view is the typeset preview with the export menu, which offers the Scripture Burrito zip', () => {
     state = { ...baseState, view: 'publish' };
     render(<App />);
     expect(screen.getByTestId('community-checking')).toBeTruthy();
-    expect(screen.getByTestId('export-menu-empty').textContent).toBe('Exports arrive later in this increment (J7).');
+    fireEvent.click(screen.getByTestId('export-menu-trigger'));
+    expect(screen.getByRole('menuitem', { name: 'Scripture Burrito (.zip)' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /^Export / })).toBeNull();
     // The preview renders the project's own text, not fixture copy.
     expect(screen.getByText(/Pablo, siervo de Dios y apóstol/)).toBeTruthy();
@@ -325,7 +326,7 @@ describe('#381 — the page setup reaches every export', () => {
     localStorage.setItem('tc4.e2e.fakeExport', '1');
     vi.resetModules();
     ({ default: AppWithFake } = await import('../src/App.jsx'));
-    [fakeProducer] = (await import('../src/data/export/producers')).PRODUCERS;
+    fakeProducer = (await import('../src/data/export/producers')).PRODUCERS.find((p) => (p.id as string) === 'e2e-fake')!;
     const { runExport } = await import('../src/data/export/kernel');
     const store = {
       commitPending: async () => {},

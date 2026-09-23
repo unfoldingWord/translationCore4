@@ -553,6 +553,7 @@
   "cc.wholeChapter": "Whole chapter",
   "cc.nextRead": "Next · read {ref} aloud",
   "cc.export": "Export",
+  "cc.exportBurritoZip": "Scripture Burrito (.zip)",
   "cc.exportPdf": "Export PDF",
   "cc.exportUsfm": "Export USFM",
   "cc.exportsLater": "Exports arrive later in this increment (J7).",

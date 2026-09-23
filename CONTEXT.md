@@ -181,6 +181,13 @@ A pure function from project data to one file, registered in the export kernel's
 (`src/data/export/producers.ts`). It makes no checkpoint, no download and no Report.
 _Avoid_: exporter, writer
 
+**Relationships mirror**:
+The `relationships` array of an exported `metadata.json`: the pins of
+`checking/resources.json` as Scripture Burrito relationships, one row for each repository,
+derived by `relationshipsFromPins` (`journal/relationships.mjs`, BURRITO-SPEC §3 rule 6).
+`resources.json` stays the authority; nobody edits the mirror by hand (issue #359).
+_Avoid_: pin list, resource links
+
 **Page setup**:
 The presentation choices of the Community Checking preview (`PageSetup`): columns, spacing,
 drop-cap chapters, verse numbers, paper size, pictures and the OBS layout. The preview and every

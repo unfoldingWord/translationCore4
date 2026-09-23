@@ -7,6 +7,7 @@ import { createRequire } from 'module';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { relationshipsFromPins } from '../journal/relationships.mjs';
 
 const require = createRequire(import.meta.url);
 const usfmjs = require('usfm-js');
@@ -202,25 +203,12 @@ const metadata = {
   localizedNames: {},
   ingredients,
   copyright: { shortStatements: [{ statement: 'CC BY-SA 4.0, Equipo Ejemplo' }] },
-  // Mirror of checking/resources.json (§5.3 schemaVersion 2, D17 two-set shape):
+  // Mirror of checking/resources.json (§5.3 schemaVersion 2, D17 two-set shape), derived by
+  // the one shared function the Scripture Burrito export also calls (issue #359):
   // originals + extraScripture + both language sets (primary es-419, fallback en) + lexicons.
   // DISTINCT repos only: under D34 the twl and tw slots name the SAME <lang>_tw repo (its
   // sb-zip export carries links + articles), so each language contributes ONE tW row.
-  relationships: [
-    { relationType: 'source', flavor: 'textTranslation', id: 'dcs::unfoldingWord/el-x-koine_ugnt', revision: 'v0.34' },
-    { relationType: 'source', flavor: 'textTranslation', id: 'dcs::unfoldingWord/hbo_uhb', revision: 'v2.1.30' },
-    { relationType: 'source', flavor: 'textTranslation', id: 'dcs::unfoldingWord/en_ult', revision: 'v89' },
-    { relationType: 'source', flavor: 'textTranslation', id: 'dcs::unfoldingWord/en_ust', revision: 'v89' },
-    { relationType: 'parascriptural', flavor: 'x-bcvnotes', id: 'dcs::es-419_gl/es-419_tn', revision: 'v66' },
-    { relationType: 'parascriptural', flavor: 'x-bcvarticles', id: 'dcs::es-419_gl/es-419_tw', revision: 'v37' },
-    { relationType: 'peripheral', flavor: 'x-peripheralArticles', id: 'dcs::es-419_gl/es-419_ta', revision: 'v4' },
-    { relationType: 'parascriptural', flavor: 'x-bcvnotes', id: 'dcs::unfoldingWord/en_tn', revision: 'v86' },
-    { relationType: 'parascriptural', flavor: 'x-bcvarticles', id: 'dcs::unfoldingWord/en_tw', revision: 'v87' },
-    { relationType: 'peripheral', flavor: 'x-peripheralArticles', id: 'dcs::unfoldingWord/en_ta', revision: 'v86' },
-    { relationType: 'parascriptural', flavor: 'x-bcvquestions', id: 'dcs::unfoldingWord/en_tq', revision: 'v89' },
-    { relationType: 'peripheral', flavor: 'x-lexicon', id: 'dcs::unfoldingWord/en_ugl', revision: 'v2' },
-    { relationType: 'peripheral', flavor: 'x-lexicon', id: 'dcs::unfoldingWord/en_uhl', revision: 'v1' }
-  ]
+  relationships: relationshipsFromPins(JSON.parse(fs.readFileSync(ING('checking/resources.json'), 'utf8')))
 };
 fs.writeFileSync(path.join(BURRITO, 'metadata.json'), JSON.stringify(metadata, null, 2) + '\n');
 fs.writeFileSync(path.join(BURRITO, '.gitignore'), '**/*.bak\n');

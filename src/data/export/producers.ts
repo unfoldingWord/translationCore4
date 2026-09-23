@@ -3,6 +3,7 @@
 // renders this table filtered by `appliesTo`. The producers arrive with their
 // issues: USFM #19, Scripture Burrito zip #359, PDF #20, OBS Markdown #360.
 import { exportFilename, type ExportProducer } from './kernel';
+import { BURRITO_ZIP } from './burritoZip';
 
 /** The e2e kernel case (e2e/j07-publish.spec.ts) proves the menu and the
  * wrapper with this fake: the open book's USFM as a text file. Dev server only,
@@ -28,4 +29,4 @@ const e2eFakeEnabled = (): boolean => {
   }
 };
 
-export const PRODUCERS: readonly ExportProducer[] = [...(import.meta.env.DEV && e2eFakeEnabled() ? [E2E_FAKE] : [])];
+export const PRODUCERS: readonly ExportProducer[] = [BURRITO_ZIP, ...(import.meta.env.DEV && e2eFakeEnabled() ? [E2E_FAKE] : [])];
