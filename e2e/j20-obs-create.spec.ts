@@ -7,11 +7,10 @@
 // tile at 0%, and one frame drafted through the store moves it. The Bible card and the New Bible
 // entry are unchanged beside it (J1's proof is the regression).
 import { test, expect } from '@playwright/test';
-import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import path from 'node:path';
-import { listLocalRepos, rigRepo, commitCount, SEEDED_PROJECT } from './helpers/rig';
+import { listLocalRepos, rigGit, rigRepo, commitCount, SEEDED_PROJECT } from './helpers/rig';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import { seedStory, parseStory } from '../journal/story.mjs';
 
@@ -143,7 +142,7 @@ test.describe('J20 — a facilitator creates an Open Bible Stories project', () 
 
       await test.step('creation committed: the platform initial, the seed form, the creation checkpoint (D9)', async () => {
         expect(commitCount(repo)).toBeGreaterThanOrEqual(3);
-        const log = execFileSync('git', ['-C', rigRepo(repo), 'log', '--format=%s'], { encoding: 'utf8' });
+        const log = rigGit(rigRepo(repo), 'log', '--format=%s');
         expect(log).toContain('Seed the fifty stories (tC4)');
       });
 
@@ -173,7 +172,7 @@ test.describe('J20 — a facilitator creates an Open Bible Stories project', () 
             .replace(/%%LANGUAGE%%/, '{"tag":"und"}').replace(/%%[A-Z_]+%%/g, 'x'),
         );
         expect(meta.type.flavorType.currentScope).toEqual(tmpl.type.flavorType.currentScope);
-        const committed = execFileSync('git', ['-C', rigRepo(repo), 'show', 'HEAD:metadata.json'], { encoding: 'utf8' });
+        const committed = rigGit(rigRepo(repo), 'show', 'HEAD:metadata.json');
         expect(JSON.parse(committed).type.flavorType.currentScope).toEqual(tmpl.type.flavorType.currentScope);
       });
     },

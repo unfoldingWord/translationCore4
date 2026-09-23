@@ -2,13 +2,16 @@
   "name": "uw-tc4",
   "version": "4.0.0-alpha.7",
   "private": true,
+  "engines": {
+    "node": "22.x"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "test": "vitest run",
-    "journeys": "playwright test",
-    "test:e2e": "playwright test",
+    "journeys": "node scripts/run-journeys.cjs",
+    "test:e2e": "node scripts/run-journeys.cjs",
     "lint": "eslint .",
     "lint:staged": "lint-staged",
     "typecheck": "tsc --noEmit",

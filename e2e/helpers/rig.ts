@@ -7,7 +7,9 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-export const TC4_ROOT = path.resolve(HERE, '..', '..', '..');
+// helpers/rig.ts lives at <repo>/e2e/helpers, so two parents reach the
+// repository root. Keep this aligned with global setup and the Playwright rig.
+export const TC4_ROOT = path.resolve(HERE, '..', '..');
 
 // Local projects live at repos/_local_/_local_/<name> (PLATFORM-NOTES #18; seed.zsh).
 export const RIG_LOCAL_REPOS = path.join(
@@ -53,6 +55,27 @@ export function rigRepo(name: string): string {
   return path.join(RIG_LOCAL_REPOS, name);
 }
 
+/**
+ * Run Git against a repository produced by the rig.
+ *
+ * The rig may be seeded by a different Windows account (for example, a shared
+ * fixture cache or a CI service account). Git then applies its dubious-ownership
+ * check even though this test is only reading the repository. Keep the
+ * exception scoped to this exact repository and this exact invocation; never
+ * weaken the user's global Git configuration.
+ */
+export function rigGit(repo: string, ...args: string[]): string {
+  const absoluteRepo = path.resolve(repo);
+  // Git config values use slash-separated paths on Windows; backslashes are
+  // treated as escape characters in the inline -c value.
+  const gitSafeDirectory = absoluteRepo.replaceAll('\\', '/');
+  return execFileSync(
+    'git',
+    ['-c', `safe.directory=${gitSafeDirectory}`, '-C', absoluteRepo, ...args],
+    { encoding: 'utf8' },
+  );
+}
+
 export function listLocalRepos(): string[] {
   if (!fs.existsSync(RIG_LOCAL_REPOS)) return [];
   return fs
@@ -71,7 +94,7 @@ export function ingredientExists(repo: string, ipath: string): boolean {
 }
 
 export function lastCommitMessage(repo: string): string {
-  return execFileSync('git', ['-C', rigRepo(repo), 'log', '-1', '--format=%s'], { encoding: 'utf8' }).trim();
+  return rigGit(rigRepo(repo), 'log', '-1', '--format=%s').trim();
 }
 
 /** One ingredient as the LAST COMMIT holds it (git show HEAD:...), or null when the
@@ -79,16 +102,14 @@ export function lastCommitMessage(repo: string): string {
  * proves a save, not a commit (Codex review of #185). */
 export function committedIngredient(repo: string, ipath: string): string | null {
   try {
-    return execFileSync('git', ['-C', rigRepo(repo), 'show', `HEAD:ingredients/${ipath}`], { encoding: 'utf8' });
+    return rigGit(rigRepo(repo), 'show', `HEAD:ingredients/${ipath}`);
   } catch {
     return null;
   }
 }
 
 export function commitCount(repo: string): number {
-  const out = execFileSync('git', ['-C', rigRepo(repo), 'rev-list', '--count', 'HEAD'], {
-    encoding: 'utf8',
-  });
+  const out = rigGit(rigRepo(repo), 'rev-list', '--count', 'HEAD');
   return Number(out.trim());
 }
 
@@ -354,6 +375,6 @@ export function resetSeededChecking(): void {
  */
 export function resetLargeFixture(): void {
   const repo = rigRepo('sample_burrito_large');
-  execFileSync('git', ['-C', repo, 'checkout', '-q', '--', '.']);
-  execFileSync('git', ['-C', repo, 'clean', '-qfd']);
+  rigGit(repo, 'checkout', '-q', '--', '.');
+  rigGit(repo, 'clean', '-qfd');
 }

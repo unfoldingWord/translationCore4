@@ -7,7 +7,7 @@
 // byte-identical except at most one D9 checkpoint commit. The producer cases
 // (USFM #19, Scripture Burrito zip #359, PDF #20, OBS #360) add their own blocks.
 import { test, expect, type Page } from '@playwright/test';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -16,7 +16,7 @@ import { unzipSync } from 'fflate';
 import { captureDownload } from './helpers/export';
 import { createObsProject } from './helpers/story';
 import { assertProjectUnchanged } from '../test/helpers/export';
-import { SEEDED_PROJECT, readIngredient, resetPlaces, resetSeededChecking, rigRepo } from './helpers/rig';
+import { SEEDED_PROJECT, readIngredient, resetPlaces, resetSeededChecking, rigGit, rigRepo } from './helpers/rig';
 import { DRAFT } from '../conformance/fixtures/obs-draft.mjs';
 
 const CONFORMANCE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'conformance');
@@ -49,7 +49,7 @@ const validate = (env: Record<string, string>): string[] =>
 
 /** Open the export menu, download the Scripture Burrito zip, and prove the repository did not change. */
 const exportBurrito = async (page: Page, repo: string): Promise<{ bytes: Buffer; filename: string }> => {
-  await expect.poll(() => execFileSync('git', ['-C', repo, 'status', '--porcelain'], { encoding: 'utf8' }), { timeout: 20_000 }).toBe('');
+  await expect.poll(() => rigGit(repo, 'status', '--porcelain'), { timeout: 20_000 }).toBe('');
   const metadataBefore = fs.readFileSync(path.join(repo, 'metadata.json'));
   let download: { bytes: Buffer; filename: string } = { bytes: Buffer.alloc(0), filename: '' };
   const commits = await assertProjectUnchanged(repo, async () => {
@@ -70,7 +70,6 @@ const expectRepositoryBytes = (dir: string, repo: string): void => {
   const differ = zipped.filter((p) => !fs.readFileSync(path.join(dir, p)).equals(fs.readFileSync(path.join(repo, p))));
   expect(differ.filter((p) => p !== 'metadata.json')).toEqual([]);
 };
-
 test.beforeEach(() => {
   resetSeededChecking();
   resetPlaces();
@@ -93,7 +92,7 @@ test.describe('J7 — a facilitator publishes the book', () => {
       });
 
       await test.step('the mode-switch checkpoint (D9) has settled: the working tree is clean', async () => {
-        await expect.poll(() => execFileSync('git', ['-C', repo, 'status', '--porcelain'], { encoding: 'utf8' }), { timeout: 20_000 }).toBe('');
+        await expect.poll(() => rigGit(repo, 'status', '--porcelain'), { timeout: 20_000 }).toBe('');
       });
 
       await test.step('the fake export downloads the book as it is on disk; the project does not change', async () => {

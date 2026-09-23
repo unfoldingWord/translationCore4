@@ -14,12 +14,11 @@ import { unzipSync } from 'fflate';
 import { captureDownload } from './helpers/export';
 import { importFixture } from './helpers/import';
 import { assertNoRepoCreated, MANIFEST_DIR, readManifest, seedEventsOf } from '../test/helpers/import';
-import { SEEDED_PROJECT, lastCommitMessage, rigRepo } from './helpers/rig';
+import { SEEDED_PROJECT, lastCommitMessage, rigGit, rigRepo } from './helpers/rig';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CONFORMANCE = path.resolve(HERE, '..', 'conformance');
 const SAMPLE = path.join(CONFORMANCE, 'sample-burrito');
-const git = (repo: string, ...args: string[]) => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8' });
 
 /** Every file under `dir` (outside `.git`) as relative path -> bytes. */
 const tree = (dir: string): Map<string, Buffer> => {
@@ -76,7 +75,7 @@ test.describe('J9 — a facilitator imports existing work', () => {
         expect(seeded.filter((e) => e.op === 'book.add').length).toBe(2);
         expect(new Set(seeded.map((e) => e.seed.source))).toEqual(new Set(['sidecar-migration']));
         expect(lastCommitMessage(abbrOf(name))).toBe(`Import ${name} (tC4)`);
-        expect(git(repo, 'status', '--porcelain')).toBe('');
+        expect(rigGit(repo, 'status', '--porcelain')).toBe('');
       });
     });
 
@@ -96,7 +95,7 @@ test.describe('J9 — a facilitator imports existing work', () => {
           expect(JSON.parse(stored.get('metadata.json')!.toString('utf8')).languages[0].tag).toBe(entry.language);
           for (const [book, chapters] of Object.entries(entry.counts?.chapters ?? {}))
             expect(stored.get(`ingredients/${book}.usfm`)!.toString('utf8').match(/^\\c \d+/gm)?.length).toBe(chapters);
-          expect(git(repo, 'status', '--porcelain')).toBe('');
+          expect(rigGit(repo, 'status', '--porcelain')).toBe('');
         });
         await test.step('the conformance harness passes on the stored project', async () => {
           const out = execFileSync('node', ['validate.mjs'], { cwd: CONFORMANCE, env: { ...process.env, BURRITO: repo }, encoding: 'utf8' });
@@ -140,7 +139,7 @@ test.describe('J9 — a facilitator imports existing work', () => {
         await page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByRole('button', { name: /Titus/ }).click();
         await page.getByRole('tab', { name: 'Check', exact: true }).click();
         await page.getByTestId('open-community-checking').click();
-        await expect.poll(() => git(source, 'status', '--porcelain'), { timeout: 20_000 }).toBe('');
+        await expect.poll(() => rigGit(source, 'status', '--porcelain'), { timeout: 20_000 }).toBe('');
         await page.getByTestId('export-menu-trigger').click();
         download = await captureDownload(page, page.getByRole('menuitem', { name: 'Scripture Burrito (.zip)' }));
         exported = Object.fromEntries(Object.entries(unzipSync(new Uint8Array(download.bytes))).filter(([rel]) => !rel.endsWith('/')));
@@ -165,7 +164,7 @@ test.describe('J9 — a facilitator imports existing work', () => {
           expect(stored.get(rel)?.equals(Buffer.from(bytes)), rel).toBe(true);
         }
         for (const book of ['TIT', 'JON']) expect(stored.get(`ingredients/${book}.usfm`)!.equals(fs.readFileSync(path.join(source, 'ingredients', `${book}.usfm`)))).toBe(true);
-        expect(git(repo, 'status', '--porcelain')).toBe('');
+        expect(rigGit(repo, 'status', '--porcelain')).toBe('');
       });
       await test.step('the copy opens with no open-time finding and no new seed event; checking/ and the journal are unchanged', async () => {
         await page.goto('/');
