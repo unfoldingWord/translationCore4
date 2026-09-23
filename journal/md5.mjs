@@ -19,8 +19,10 @@ const SHIFTS = [
 const K = new Uint32Array(64).map((_, i) => Math.floor(Math.abs(Math.sin(i + 1)) * 2 ** 32));
 
 /** md5 of the UTF-8 bytes of `text`, as lowercase hex. */
-export const md5Hex = (text) => {
-  const data = new TextEncoder().encode(text);
+export const md5Hex = (text) => md5Bytes(new TextEncoder().encode(text));
+
+/** md5 of `data` (a Uint8Array), as lowercase hex. */
+export const md5Bytes = (data) => {
   const bitLength = data.length * 8;
   const padded = new Uint8Array((((data.length + 8) >> 6) + 1) << 6);
   padded.set(data);

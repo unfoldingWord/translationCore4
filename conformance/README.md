@@ -42,6 +42,11 @@ groups:
   model, the byte-strict frame write, `currentScope` equality, the version 2 fold projected
   onto the seed story byte for byte. Each check also fires on a deliberately broken copy.
 
+Two variables point the suite at another burrito: `BURRITO=<dir>` replaces
+`sample-burrito/` for the Bible groups, and `OBS_BURRITO=<dir>` replaces
+`sample-burrito-obs/` for the OBS group. The Scripture Burrito export journey
+(`e2e/j07-publish.spec.ts`, issue #359) uses both on the unzipped export.
+
 [VERIFIED — the group descriptions are the check names in `validate.mjs` at 860af7d,
 2026-09-15. The counts are marked as manifest-derived: `npm run docs:gate` (repository
 root) reads them against `../docs/evidence/manifest.json`, which `npm run prove` writes and

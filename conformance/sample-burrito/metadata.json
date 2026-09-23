@@ -230,13 +230,12 @@
       "relationType": "peripheral",
       "flavor": "x-lexicon",
       "id": "dcs::unfoldingWord/en_ugl",
-      "revision": "v2"
+      "revision": "v0.5"
     },
     {
       "relationType": "peripheral",
       "flavor": "x-lexicon",
-      "id": "dcs::unfoldingWord/en_uhl",
-      "revision": "v1"
+      "id": "dcs::unfoldingWord/en_uhl"
     }
   ]
 }

@@ -443,6 +443,11 @@ export class HttpStore {
     return { usfm };
   }
 
+  /** The open project's whole repository as the server zips it (`.git/` included). */
+  async readZipped(): Promise<Uint8Array> {
+    return this.api.getZippedRepo(this.repo());
+  }
+
   // ---- sidecars (BURRITO-SPEC §2 layout under checking/) ---------------------
 
   private async readJsonSidecar<T>(ipath: string): Promise<T | null> {

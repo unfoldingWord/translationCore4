@@ -380,4 +380,9 @@ export interface BurritoStore {
    * run as ONE queued operation, so two checkpoints that overlap cannot both see
    * the same pending changes. Returns the message committed, or null. */
   commitPending(messageFor: (changes: Array<{ path: string; change_type: string }>) => string | null): Promise<string | null>;
+
+  /** The open project's repository as the server zips it (issue #359):
+   * `GET /burrito/zipped`, the working tree with `.git/` and every other file
+   * inside. The Scripture Burrito export filters it. */
+  readZipped(): Promise<Uint8Array>;
 }

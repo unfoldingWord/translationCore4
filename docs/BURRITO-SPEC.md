@@ -62,10 +62,12 @@ Base `metadata.json` on Pankosmia's own textTranslation template (`resource-core
   {"relationType": "parascriptural", "flavor": "x-bcvarticles",        "id": "dcs::unfoldingWord/en_tw",    "revision": "v87"},
   {"relationType": "parascriptural", "flavor": "x-bcvnotes",           "id": "dcs::unfoldingWord/en_tn",    "revision": "v86"},
   {"relationType": "peripheral",     "flavor": "x-peripheralArticles", "id": "dcs::unfoldingWord/en_ta",    "revision": "v86"},
-  {"relationType": "peripheral",     "flavor": "x-lexicon",            "id": "dcs::unfoldingWord/en_ugl",   "revision": "v2"},
-  {"relationType": "peripheral",     "flavor": "x-lexicon",            "id": "dcs::unfoldingWord/en_uhl",   "revision": "v1"}
+  {"relationType": "peripheral",     "flavor": "x-lexicon",            "id": "dcs::unfoldingWord/en_ugl",   "revision": "v0.5"},
+  {"relationType": "peripheral",     "flavor": "x-lexicon",            "id": "dcs::unfoldingWord/en_uhl"}
 ]
 ```
+
+The mirror is derived from `checking/resources.json` (§5.3, stage rule S-1) by one function, `relationshipsFromPins` (`journal/relationships.mjs`). The Scripture Burrito export and the harness generator both call it [decided 2026-09-22 — issue #359]. It writes one row for each distinct repository, and the first pin that names a repository gives its row. The order is: original languages, extra scripture, the primary set, the fallback set, then the other `resources` groups (the lexicons). `revision` is the pin's `version` label. A sha-only pin has no `revision`. The flavor type `scripture` gives `relationType: "source"`. The types `parascriptural` and `peripheral` stay the same. A pin of any other type (the OBS source text, `gloss/textStories`) has no row, because the schema accepts `source` only with `textTranslation` or `audioTranslation`.
 
 Schema constraints (verified): `id` matches `^[0-9a-zA-Z][0-9a-zA-Z\-]{1,31}::\S+$`, with the prefix declared in `idAuthorities`. The schema's `oneOf` has two effects: original-language repos MUST use `relationType: "source"` + flavor `textTranslation`, and custom `x-` flavors MUST NOT use `relationType: "target"` (that combination matches two branches and fails validation).
 

@@ -512,6 +512,10 @@ export class JournalingStore implements BurritoStore {
     return this.raw.readBook(book);
   }
 
+  readZipped(): Promise<Uint8Array> {
+    return this.raw.readZipped();
+  }
+
   listStories(): Promise<number[]> {
     return this.raw.listStories();
   }

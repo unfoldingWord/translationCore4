@@ -353,6 +353,17 @@ export class ServerApi {
     return this.requestJson(`/burrito/metadata/summary/${encodeRepoPath(repoPath)}`);
   }
 
+  /** GET /burrito/zipped/<repoPath> — the whole repository directory as one
+   * unwrapped zip, with no filter: `.git/`, `*.bak` and `.DS_Store` are inside
+   * [VERIFIED — pankosmia-web 0.18.5 (99fd9be): `burrito2/get_zipped_repo.rs`,
+   * `utils/zip.rs`, source read and rig GET 2026-09-23]. */
+  async getZippedRepo(repoPath: string): Promise<Uint8Array> {
+    const route = `/burrito/zipped/${encodeRepoPath(repoPath)}`;
+    const response = await this.fetchFn(`${this.base}${route}`);
+    if (!response.ok) throw new ServerApiError(route, response.status, reasonFromBody(await response.text()));
+    return new Uint8Array(await response.arrayBuffer());
+  }
+
   /** GET /burrito/metadata/raw/<repoPath> — the full metadata.json. */
   async getMetadataRaw(repoPath: string): Promise<BurritoMetadata> {
     return this.requestJson(`/burrito/metadata/raw/${encodeRepoPath(repoPath)}`);

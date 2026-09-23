@@ -14,6 +14,7 @@ import { validateEvent } from '../journal/schema.mjs';
 import { derivedProjections } from '../journal/checkpoint.mjs';
 import { seedFromSidecars } from '../journal/reconcile.mjs';
 import { DRAFT } from './fixtures/obs-draft.mjs';
+import { relationshipsFromPins } from '../journal/relationships.mjs';
 
 const require = createRequire(import.meta.url);
 const usfmjs = require('usfm-js');
@@ -529,9 +530,15 @@ let mergedVerseObjects = null;
     ls.fallback.translationQuestions.flavor === 'parascriptural/x-bcvquestions' &&
     ls.fallback.simplifiedText.flavor === 'scripture/textTranslation',
     `fallback carries both (tq ${ls?.fallback?.translationQuestions?.version}, simplified ${ls?.fallback?.simplifiedText?.version}); primary omits both and stays complete`);
+  // The mirror is DERIVED (§3 rule 6, issue #359): it must equal relationshipsFromPins of this
+  // burrito's own resources.json, so an exported project whose pins grew (D64 adoption) still
+  // checks, and a stale mirror (one row short) fires.
   const rels = metadata.relationships;
+  const derivedRels = JSON.stringify(relationshipsFromPins(resFile));
   check('resources: same pins expressed as SB relationships, schema-valid per test 1',
-    Array.isArray(rels) && rels.length === 13 && rels.every(r => r.relationType && r.flavor && r.id.includes('::')), '', 'stage2');
+    Array.isArray(rels) && rels.length > 0 && rels.every(r => r.relationType && r.flavor && r.id.includes('::')) &&
+    JSON.stringify(rels) === derivedRels && JSON.stringify(rels.slice(1)) !== derivedRels,
+    Array.isArray(rels) ? `${rels.length} relationships` : 'missing', 'stage2');
 }
 
 // ---------- 9. Whole-book aligned USFM export (tC3 interchange from burrito alone) ----------
@@ -728,7 +735,7 @@ let mergedVerseObjects = null;
 // Six checks, one per #147 acceptance item. Each check's `ok` is the POSITIVE on the sample
 // AND the NEGATIVE on a deliberately broken copy: a check that cannot fire proves nothing.
 {
-  const OBS = path.resolve('./sample-burrito-obs');
+  const OBS = path.resolve(process.env.OBS_BURRITO || './sample-burrito-obs');
   const TEMPLATE = path.resolve('./fixtures/text_stories');
   const OING = (p) => path.join(OBS, 'ingredients', p);
   const TING = (p) => path.join(TEMPLATE, 'ingredients', p);
