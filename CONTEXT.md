@@ -193,13 +193,21 @@ the same.
 
 **Import bundle**:
 The one in-memory shape every import parser produces (`ImportBundle`): project facts, books or
-stories, alignments, decisions, pins, findings. The import shell turns it into a new project.
+stories, alignments, decisions, pins, findings, or a Scripture Burrito archive to store as it is.
+The import shell turns it into a new project.
 _Avoid_: import result, payload
 
 **Import parser**:
 A pure function from a file's bytes to an import bundle: `usfm`, `burrito`, `tc3`. It creates
 nothing and shows nothing.
 _Avoid_: importer (for the parser alone), converter
+
+**Import shell**:
+The layer every import runs through (`src/data/import/shell.ts`): it creates the new project
+with the primary language subtag, uploads one wrapped zip to the platform's remake, seeds the
+journal of a bundle built from parts, commits, and deletes the project when a step fails. It
+returns the import Report.
+_Avoid_: import service, importer
 
 **Report**:
 The one record every store operation leaves about its outcome: `{op, ok, code?, rule?, facts,

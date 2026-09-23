@@ -7,9 +7,13 @@
 // The platform behaviors emulated here are the [VERIFIED] ones the product
 // code depends on (BURRITO-SPEC §6, PLATFORM-NOTES): whole-file writes, the
 // paths listing walking the real tree, new-scripture-book regenerating
-// currentScope, remake-ingredients rebuilding the table from disk.
+// currentScope, remake-ingredients rebuilding the table from disk, the temp
+// upload and remake-from-zip of the import shell (#361), and (opt-in) the Bible
+// create route's refusal of a code outside its bare-code table (PLATFORM-NOTES
+// #43), which leaves the git-init debris of PLATFORM-NOTES #28.
 import type { KvStore } from '../../src/data/journal/identity';
 import { withLocalizedNames } from '../../scripts/fix-obs-template.mjs';
+import { unzipSync } from 'fflate';
 
 // Real node builtins via the runtime (the app's polyfill plugin aliases them).
 const nodeFs = process.getBuiltinModule('node:fs');
@@ -65,8 +69,9 @@ const SERVER_SKELETON = (code: string): string =>
 
 export const FAKE_VRS = JSON.stringify({ maxVerses: { TIT: ['16', '15', '15'] }, mappedVerses: {} });
 
-const baseMeta = (): Record<string, unknown> => ({
+const baseMeta = (tag = 'es'): Record<string, unknown> => ({
   format: 'scripture burrito',
+  languages: [{ tag, name: { en: tag } }],
   meta: { category: 'source', normalization: 'NFC' },
   type: { flavorType: { name: 'scripture', currentScope: {} as Record<string, string[]> } },
   localizedNames: {}, // the platform's Bible template carries it (PLATFORM-NOTES #36)
@@ -110,10 +115,17 @@ export const journalingRig = () => {
   const writes: Array<{ repo: string; ipath: string; payload: string }> = [];
   const log: Array<{ method: string; route: string }> = [];
   const failures: FailureRule[] = [];
+  const temps = new Map<string, Uint8Array>(); // POST /temp/bytes uploads, by uuid
   /** Whether new-obs-resource stamps from the tC4-served (fixed) template. */
   let obsTemplateFixed = true;
   const serveUnfixedObsTemplate = (): void => {
     obsTemplateFixed = false;
+  };
+
+  /** Whether new-text-translation refuses a code outside its bare-code table (PLATFORM-NOTES #43). */
+  let languageTable = false;
+  const refuseUnknownLanguages = (): void => {
+    languageTable = true;
   };
 
   const failOn = (match: FailureRule['match'], times = 1): void => {
@@ -273,12 +285,20 @@ export const journalingRig = () => {
       maybeFail({ method, route });
       const body = JSON.parse(String(init?.body)) as {
         content_abbr: string;
+        content_language_code: string;
         add_book: boolean;
         book_code?: string;
       };
       const repoPath = `_local_/_local_/${body.content_abbr}`;
-      if (repos.has(repoPath)) return notFound(`repo ${repoPath} exists`);
-      const project = createRepo(repoPath, { 'vrs.json': FAKE_VRS });
+      // Checked BEFORE the git init [VERIFIED — pankosmia-web 0.18.5, new_text_translation.rs]
+      if (repos.has(repoPath)) return notFound(`Local content called '${body.content_abbr}' already exists`);
+      const project = createRepo(repoPath, { 'vrs.json': FAKE_VRS }, baseMeta(body.content_language_code));
+      // The table holds bare codes only; `qaa`–`qtz` is reserved for local use
+      // and is in no table. The repository is already git-initialised. Opt-in:
+      // the older suites create with tags the real table refuses.
+      const code = body.content_language_code;
+      if (languageTable && !code.startsWith('x-') && (code.includes('-') || /^q[a-t][a-z]$/.test(code)))
+        return ok({ is_good: false, reason: `Unknown language code '${code}'` });
       if (body.add_book && body.book_code)
         project.files.set(`${body.book_code.toUpperCase()}.usfm`, SERVER_SKELETON(body.book_code.toUpperCase()));
       rescan(project);
@@ -295,6 +315,35 @@ export const journalingRig = () => {
       const code = body.book_code.toUpperCase();
       project.files.set(`${code}.usfm`, SERVER_SKELETON(code));
       rescan(project); // [VERIFIED live]: the endpoint regenerates the metadata
+      return ok();
+    }
+
+    if (parts[1] === 'temp' && parts[2] === 'bytes') {
+      maybeFail({ method, route });
+      const file = (init?.body as FormData).get('file') as Blob;
+      const uuid = `00000000-0000-4000-8000-${String(temps.size + 1).padStart(12, '0')}`;
+      temps.set(uuid, new Uint8Array(await file.arrayBuffer()));
+      return ok({ uuid });
+    }
+
+    if (parts[1] === 'burrito' && parts[2] === 'remake_burrito_from_zip') {
+      const uuid = parts[3];
+      const repo = repoAt(4);
+      maybeFail({ method, route, repo });
+      const project = repos.get(repo);
+      if (!project) return notFound('Repo does not already exist');
+      const zip = temps.get(uuid);
+      if (!zip) return notFound(`Temp zip with UUID ${uuid} not found`);
+      const entries = Object.entries(unzipSync(zip)).filter(([name]) => !name.endsWith('/'));
+      // The handler strips one path level; a file at the zip root reaches a panic.
+      if (entries.some(([name]) => !name.includes('/'))) return new Response('panic', { status: 500 });
+      const unpacked = new Map(entries.map(([name, bytes]) => [name.slice(name.indexOf('/') + 1), new TextDecoder().decode(bytes)]));
+      if (!unpacked.has('metadata.json') || ![...unpacked.keys()].some((k) => k.startsWith('ingredients/')))
+        return notFound('Zip is not a burrito');
+      project.files.clear();
+      for (const [rel, text] of unpacked) if (rel.startsWith('ingredients/')) project.files.set(rel.slice('ingredients/'.length), text);
+      project.meta = JSON.parse(unpacked.get('metadata.json')!) as Record<string, unknown>;
+      project.dirty = new Set(project.files.keys());
       return ok();
     }
 
@@ -341,7 +390,7 @@ export const journalingRig = () => {
     timestamp: 0,
   });
 
-  return { repos, writes, log, fetchFn, failOn, createRepo, serveUnfixedObsTemplate };
+  return { repos, writes, log, fetchFn, failOn, createRepo, serveUnfixedObsTemplate, refuseUnknownLanguages };
 };
 
 export type JournalingRig = ReturnType<typeof journalingRig>;

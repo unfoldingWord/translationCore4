@@ -2,12 +2,13 @@
 // (epic #104 / #109; layout per templates/translationcore-app Home). Project
 // cards carry per-book tiles with a lazy draft-progress bar
 // (actions.loadProgress) and open the creation / add-book / settings dialogs
-// over this screen. Export is the publish increment and is omitted.
+// over this screen, and the import screen (#361). Export is the publish
+// increment and is omitted.
 import React, { useEffect, useState } from 'react';
 import { useApp } from '../state.jsx';
 import { t } from '../i18n';
 import { bookName } from '../data/bookNames';
-import { Card, BookTile, Button, Overline, Badge, Callout } from '../ds/index.js';
+import { Card, BookTile, Button, Overline, Badge, Callout, Toast } from '../ds/index.js';
 
 // Above this many books a card shows only its in-progress books until expanded.
 const COLLAPSE_ABOVE = 12;
@@ -125,6 +126,7 @@ function ProjectCard({ p }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span dir={dir} style={{ fontSize: 'var(--fs-h3)', letterSpacing: 'var(--track-20)', fontWeight: 'var(--fw-black)', color: 'var(--text-heading)' }}>{p.name}</span>
             <Badge size="sm" tone={dir === 'rtl' ? 'warn' : 'neutral'} style={dir === 'rtl' ? undefined : { color: 'var(--text-secondary)' }}>{dir.toUpperCase()}</Badge>
+            {s.importedRepo === p.id && <Badge size="sm" tone="accentSoft" data-testid="imported-badge">{t('importer.badge')}</Badge>}
           </div>
           <span style={{ fontSize: 'var(--fs-ui-sm)', color: 'var(--text-tertiary)', fontWeight: 'var(--fw-medium)' }}>
             {p.languageTag} · {p.bookCodes.length} {p.bookCodes.length === 1 ? t('home.book') : t('home.books')} · {t('home.inProgress', { n: inProgress.length })}
@@ -226,6 +228,7 @@ export default function Home() {
           <Button variant="ghost" onClick={actions.openSources} data-testid="open-sources">
             {t('nav.sources')} →
           </Button>
+          <Button variant="outline" onClick={actions.openImport} data-testid="open-import">{t('importer.home')}</Button>
           <Button variant="secondary" onClick={actions.openNewObs} data-testid="new-obs">+ {t('home.newObs')}</Button>
           <Button onClick={actions.openNewProject}>+ {t('home.newBible')}</Button>
         </div>
@@ -271,6 +274,11 @@ export default function Home() {
           {projects && projects.map((p) => (p.flavor === 'textStories' ? <ObsProjectCard key={p.id} p={p} /> : <ProjectCard key={p.id} p={p} />))}
         </div>
       </div>
+      {s.importToast && (
+        <div style={{ position: 'fixed', insetBlockEnd: 24, insetInlineStart: '50%', transform: 'translateX(-50%)', zIndex: 90, width: 'max-content', maxWidth: 'calc(100% - 48px)' }}>
+          <Toast tone="success" data-testid="import-toast" message={t('importer.done', s.importToast)} onDismiss={actions.dismissImportToast} />
+        </div>
+      )}
     </main>
   );
 }

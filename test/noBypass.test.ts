@@ -15,6 +15,10 @@
 //   are machine-local resources, never project mutations.
 // - api.setClientSettings / enableNet / disableNet / setCurrentProject:
 //   user-machine and shell state, not project data.
+// - src/data/import/shell.ts (#361, D79 point 7): the import shell makes a NEW
+//   repository through the platform's own primitive (create, remake, commit)
+//   before any journal exists, and deletes it when a step fails. The seed of
+//   its records goes through the boundary (JournalingStore.openImported).
 import { describe, expect, it } from 'vitest';
 
 // The app's vite-plugin-node-polyfills aliases node builtins to browser mocks
@@ -52,6 +56,7 @@ const RAW_MUTATION_WHITELIST = new Set([
   'src/data/httpStore.ts', // the raw store the boundary drives
   'src/data/journal/journalingStore.ts', // the boundary itself
   'src/data/journal/journalStore.ts', // the segment writer (#61)
+  'src/data/import/shell.ts', // a new repository before its journal exists (#361)
 ]);
 
 /** Constructing the raw HttpStore hands out its whole mutation surface. */

@@ -8,6 +8,7 @@ import Check from './views/Check.jsx';
 import NewBible from './views/modals/NewBible.jsx';
 import NewObs from './views/modals/NewObs.jsx';
 import AddBook from './views/modals/AddBook.jsx';
+import Import from './views/modals/Import.jsx';
 import ProjectSettings from './views/modals/ProjectSettings.jsx';
 import SourceTexts from './views/modals/SourceTexts.jsx';
 import GatewayChange from './views/modals/GatewayChange.jsx';
@@ -115,6 +116,7 @@ export default function App() {
       <NewBible />
       <NewObs />
       <AddBook />
+      <Import />
       <ProjectSettings />
       <SourceTexts />
       <GatewayChange />

@@ -1,9 +1,8 @@
 // Add-a-book modal — owner-approved design rebuilt on the design system (epic
 // #104 / #109) bound to the state layer's `ab` form (openAddBook/patchAb/
-// addBooks). Increment 1 ships the blank-book path; USFM and tC3 import rows
-// are shown but disabled (honest state — they arrive with the import
-// increment). The several-at-once grid is the owner's optional multi-pick
-// addition.
+// addBooks): the blank-book path. Import makes a new project from files, from
+// Home (#361); import into an existing project is #365. The several-at-once
+// grid is the owner's optional multi-pick addition.
 import React from 'react';
 import { useApp, SUITE_VERSION } from '../../state.jsx';
 import { BOOK_NAMES, BOOK_CHAPTERS, bookName } from '../../data/bookNames';
@@ -69,10 +68,6 @@ export default function AddBook() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingBottom: 18 }}>
           <OptionCard icon="+" title={t('addBook.blankTitle')} description={t('addBook.blankDesc')}
             trailing="→" onClick={() => actions.patchAb({ step: 'pick' })} />
-          <OptionCard icon={t('addBook.iconUsfm')} title={t('addBook.usfmTitle')} description={t('addBook.laterDesc')}
-            trailing="→" disabled style={{ opacity: 0.5, cursor: 'default' }} />
-          <OptionCard icon={t('addBook.iconTc3')} title={t('addBook.tc3Title')} description={t('addBook.laterDesc')}
-            trailing="→" disabled style={{ opacity: 0.5, cursor: 'default' }} />
         </div>
       )}
 

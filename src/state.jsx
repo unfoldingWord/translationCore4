@@ -51,6 +51,8 @@ import { TC_READY_TOPIC } from './data/serverApi';
 import { t } from './i18n';
 import { checkpointMessage } from './data/checkpoint';
 import { runExport } from './data/export/kernel';
+import { runImport } from './data/import/shell';
+import { PARSERS } from './data/import/parsers';
 import { INSTALLED_SUITE, SUITE_VERSION } from './data/installedSuite';
 import { obsFrameSetMismatch } from './data/obsFrameSet';
 import { parseStory, storyIpath } from './data/journal/runtime';
@@ -324,10 +326,13 @@ const initial = () => ({
   commitErrorRepo: null,
   // Modals (the owner's design: creation, add-book, and settings are dialogs
   // over Home, not separate pages)
-  modal: null, // null | 'newProject' | 'addBook' | 'settings' | 'sources' | 'fix'
+  modal: null, // null | 'newProject' | 'addBook' | 'settings' | 'sources' | 'fix' | 'import'
   np: null, // New Bible form
   ab: null, // Add-a-book form
   st: null, // Project-settings form
+  im: null, // Import form (#361): { step, kind, files, bundle, name, lang, busy, error, report }
+  importToast: null, // { name, books } of the project an import just made
+  importedRepo: null, // its repoPath: the Home card carries the "Imported" badge
   // #9: the guided fix screen for a pinned resource this machine lacks —
   // { tool, pin, candidates: ResourcePin[], busy: 'fetch'|'sideload'|null, error, progress }
   fix: null,
@@ -3102,7 +3107,7 @@ export function AppProvider({ children }) {
         return runExport(producer, { store, project: st.project, book: st.book ?? undefined });
       },
 
-      closeModal: () => dispatch({ type: 'set', patch: { modal: null, np: null, ab: null, st: null, fix: null } }),
+      closeModal: () => dispatch({ type: 'set', patch: { modal: null, np: null, ab: null, st: null, fix: null, im: null } }),
 
       setDraftUnit: (unit) => {
         const st = stateRef.current;
@@ -4566,6 +4571,50 @@ export function AppProvider({ children }) {
             np: { kind: 'obs', name: '', langName: '', code: '', dir: 'ltr', font: SCRIPT_FONTS[0], busy: false, error: null },
           },
         }),
+
+      // ---- Import (#361; owner design "tC4 Import Dialog"): kind → files →
+      //      review → one NEW project through the import shell. A damaged
+      //      bundle is refused on the review page; runImport is never called. ----
+      openImport: () =>
+        dispatch({ type: 'set', patch: { modal: 'import', im: { step: 'kind', kind: null, files: [], bundle: null, name: '', lang: '', busy: false, error: null, report: null } } }),
+      patchIm: (patch) =>
+        dispatch({ type: 'set', patch: { im: { ...stateRef.current.im, ...patch } } }),
+      importPickKind: (kind) => a.patchIm({ step: 'files', kind, files: [], bundle: null, error: null }),
+      importAddFiles: async (list) => {
+        const files = await Promise.all(list.map(async (f) => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) })));
+        a.patchIm({ files: [...stateRef.current.im.files, ...files], error: null });
+      },
+      importRemoveFile: (index) => a.patchIm({ files: stateRef.current.im.files.filter((_, i) => i !== index) }),
+      importReview: async () => {
+        const im = stateRef.current.im;
+        const parser = PARSERS.find((p) => p.id === im.kind);
+        if (!parser || im.busy) return;
+        if (!parser.accepts(im.files)) return a.patchIm({ error: t('importer.files.notAccepted') });
+        a.patchIm({ busy: true, error: null });
+        try {
+          const bundle = await parser.parse(im.files);
+          a.patchIm({ busy: false, step: 'review', bundle, name: bundle.facts.name, lang: bundle.facts.language });
+        } catch (e) {
+          a.patchIm({ busy: false, error: String(e?.message || e) });
+        }
+      },
+      importRun: async () => {
+        const im = stateRef.current.im;
+        const parser = PARSERS.find((p) => p.id === im.kind);
+        if (!parser || im.busy || im.bundle?.findings.some((f) => f.kind === 'damaged')) return;
+        a.patchIm({ busy: true, step: 'working', error: null, report: null });
+        const report = await runImport(parser, im.files, { name: im.name.trim(), language: im.lang }, { api });
+        if (!report.ok) return a.patchIm({ busy: false, step: 'failed', report });
+        const repoPath = report.facts.repoPath;
+        try {
+          await markUsed(repoPath); // an import counts as use, like a creation
+          await refreshProjects();
+        } finally {
+          a.closeModal(); // the project exists: never leave the screen on "Creating"
+        }
+        dispatch({ type: 'set', patch: { importedRepo: repoPath, importToast: { name: im.name.trim(), books: (report.facts.books || []).map((c) => bookName(c)).join(' · ') } } });
+      },
+      dismissImportToast: () => dispatch({ type: 'set', patch: { importToast: null } }),
 
       createObs: async () => {
         const w = stateRef.current.np;

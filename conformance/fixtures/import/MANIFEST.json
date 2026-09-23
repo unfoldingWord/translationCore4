@@ -1,0 +1,3 @@
+[
+  { "file": "../../sample-burrito", "parser": "fake", "expect": "accept", "language": "es-419", "books": ["JON", "TIT"], "counts": { "chapters": { "JON": 4, "TIT": 3 } } }
+]
