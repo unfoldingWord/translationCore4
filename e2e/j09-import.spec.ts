@@ -11,6 +11,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { unzipSync } from 'fflate';
+import Ajv from 'ajv';
+import addFormats from 'ajv-formats';
+import { checkBurrito, compileSbValidator } from '../src/data/import/burritoCheck.mjs';
 import { captureDownload } from './helpers/export';
 import { importFixture } from './helpers/import';
 import { assertNoRepoCreated, MANIFEST_DIR, readManifest, seedEventsOf } from '../test/helpers/import';
@@ -125,6 +128,63 @@ test.describe('J9 — a facilitator imports existing work', () => {
       await assertNoRepoCreated(async () => {
         await importFixture(page, path.join(SAMPLE, 'ingredients', 'TIT.usfm'), { edits: { name: fresh('Rechazo'), language: 'qaa' } });
         await expect(page.getByTestId('import-failed')).toHaveAttribute('data-code', 'import.write-failed');
+      });
+    });
+  });
+
+  // The USFM parser (#195, J9c): raw USFM files, no project around them, become
+  // a new project whose books are the files byte for byte.
+  test.describe('USFM', () => {
+    test('USFM: one file is one new project — the book byte-identical, the harness format checks pass, it opens in Translate', { tag: ['@inc8', '@J9'] }, async ({ page }) => {
+      const name = fresh('Tito USFM');
+      const source = path.join(MANIFEST_DIR, 'usfm', '57-TIT.usfm');
+      const repo = rigRepo(abbrOf(name));
+      await test.step('the review page finds Titus, and the license check says CC BY-SA 4.0 will be applied', async () => {
+        await importFixture(page, source, { kind: 'usfm', edits: { name, language: 'es-419' }, confirm: false });
+        await expect(page.getByTestId('import-book-TIT')).toBeVisible();
+        await expect(page.getByTestId('import-damaged')).toHaveCount(0);
+        await expect(page.getByText('No license was found. CC BY-SA 4.0 will be applied.')).toBeVisible();
+        await page.getByTestId('import-run').click();
+        await expect(page.getByTestId('import-toast')).toBeVisible({ timeout: 60_000 });
+      });
+      await test.step('on disk: the book byte-identical, es-419 kept, the seed journaled with seed.source, one clean commit', async () => {
+        expect(fs.readFileSync(path.join(repo, 'ingredients', 'TIT.usfm')).equals(fs.readFileSync(source))).toBe(true);
+        expect(JSON.parse(fs.readFileSync(path.join(repo, 'metadata.json'), 'utf8')).languages[0].tag).toBe('es-419');
+        const ingredients = [...tree(path.join(repo, 'ingredients'))].map(([rel, bytes]) => [rel, bytes.toString('utf8')] as [string, string]);
+        const seeded = seedEventsOf(ingredients);
+        expect(seeded.filter((e) => e.op === 'book.add').length).toBe(1);
+        expect(new Set(seeded.map((e) => e.seed.source))).toEqual(new Set(['sidecar-migration']));
+        expect(lastCommitMessage(abbrOf(name))).toBe(`Import ${name} (tC4)`);
+        expect(git(repo, 'status', '--porcelain')).toBe('');
+      });
+      await test.step("the harness's project-format checks pass on the stored project: schema, md5 and size, the exact listing", async () => {
+        // validate.mjs as a whole proves the sample (its Titus verse counts, its
+        // alignment sidecars); its Stage-1 format checks are burritoCheck.mjs.
+        const schemaRoot = path.join(CONFORMANCE, 'sb-schema');
+        const schemas = [...tree(schemaRoot)].filter(([rel]) => rel.endsWith('.json')).map(([rel, bytes]) => [rel, bytes.toString('utf8')] as [string, string]);
+        const stored = Object.fromEntries([...tree(repo)].map(([rel, bytes]) => [rel, new Uint8Array(bytes)]));
+        expect(checkBurrito(stored, compileSbValidator(Ajv, addFormats, schemas)!).failures).toEqual([]);
+        const meta = JSON.parse(fs.readFileSync(path.join(repo, 'metadata.json'), 'utf8'));
+        const onDisk = [...tree(path.join(repo, 'ingredients')).keys()].filter((rel) => !rel.endsWith('.bak')).map((rel) => `ingredients/${rel}`).sort();
+        expect(Object.keys(meta.ingredients).sort()).toEqual(onDisk);
+      });
+      await test.step('the new project opens in Translate at Titus with the imported text', async () => {
+        await page.goto('/');
+        await page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`).getByRole('button', { name: /Titus/ }).click();
+        await expect(page.getByRole('heading', { name: /^Titus \d+$/ })).toBeVisible({ timeout: 120_000 });
+        const translate = page.getByRole('tab', { name: 'Translate', exact: true });
+        if ((await translate.getAttribute('aria-selected')) !== 'true') await translate.click();
+        await expect(translate).toHaveAttribute('aria-selected', 'true');
+        await expect(page.getByText(/Pablo, siervo de Dios y apóstol de Jesucristo/).first()).toBeVisible({ timeout: 60_000 });
+        await expect(page.getByTestId('home-open-error')).toHaveCount(0);
+      });
+    });
+
+    test('USFM refuse: a file with no \\id line is import.damaged.usfm-parse on the review page, and nothing is written', { tag: ['@inc8', '@J9'] }, async ({ page }) => {
+      await assertNoRepoCreated(async () => {
+        await importFixture(page, path.join(MANIFEST_DIR, 'usfm', 'no-id.sfm'), { kind: 'usfm', confirm: false });
+        await expect(page.getByTestId('import-damaged')).toHaveAttribute('data-code', 'import.damaged.usfm-parse');
+        await expect(page.getByTestId('import-run')).toBeDisabled();
       });
     });
   });
