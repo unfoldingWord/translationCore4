@@ -113,11 +113,12 @@ describe('#156 the refusal-code table is closed and bound', () => {
   });
 
   it('every live code has the recovery sentence the Home banner looks up; the reserved codes wait for their issues', () => {
-    // Live = every code in the table except the kernels still to come (#361, #41, #362, #203) and
-    // the export code no producer throws yet (export.unsupported-kind).
-    const reserved = /^(import\.|share\.|export\.unsupported-kind$)/;
+    // Live = every code in the table except the kernels still to come (#41, #362, #203) and
+    // the export code no producer throws yet (export.unsupported-kind). The import shell
+    // (#361) throws import.name-exists and import.write-failed.
+    const reserved = /^(import\.damaged\.|share\.|export\.unsupported-kind$)/;
     const live = Object.keys(REFUSAL_CODES).filter((code) => !reserved.test(code));
-    expect(live.length).toBe(24);
+    expect(live.length).toBe(26);
     for (const code of live) expect(t(`refusal.${code}`, undefined, ''), code).not.toBe('');
   });
 

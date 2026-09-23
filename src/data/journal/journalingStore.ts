@@ -336,7 +336,7 @@ export interface IntentRecord {
    * depend on (derive-time state the journal does not carry, D30). */
   resolutions?: Record<string, Record<string, unknown>>;
   /** Deterministic resume parameters (kind 'seed' only). */
-  seed?: { source: 'creation' | 'sidecar-migration'; vrsName?: string };
+  seed?: { source: SeedSource; vrsName?: string };
 }
 
 export interface JournalingStoreInit {
@@ -352,9 +352,13 @@ export interface JournalingStoreInit {
   foldRunner?: FoldRunner;
 }
 
+/** The §8.3 seed sources a JournalingStore seed may carry (R-8.5.19: the three
+ * that may seed a versification frame). */
+type SeedSource = 'creation' | 'sidecar-migration' | 'tc3-import';
+
 interface OpenOptions {
   /** The §8.3 seed source when this open performs universal seeding. */
-  seedSource?: 'creation' | 'sidecar-migration';
+  seedSource?: SeedSource;
   /** The versification scheme name for a creation seed's project.vrs.set. */
   vrsName?: string;
 }
@@ -1167,6 +1171,13 @@ export class JournalingStore implements BurritoStore {
     return { repoPath };
   }
 
+  /** Open a project an import just remade (#361): the universal seed of its
+   * journal-less records carries `seedSource`. A carried journal is folded as it
+   * is; only the state it does not hold is seeded. */
+  async openImported(repoPath: string, seedSource: SeedSource): Promise<ProjectSummary> {
+    return this.openInternal(repoPath, { seedSource });
+  }
+
   /** Open a project. `hooks.onProgress` (issue #95) reports the journal read
    * segment by segment, then the state check; the app shows a determinate
    * indicator from it when an open is slow. */
@@ -1573,7 +1584,7 @@ export class JournalingStore implements BurritoStore {
     seedRecord: IntentRecord | undefined,
     disk: DiskInventory,
   ): {
-    seedSource: 'creation' | 'sidecar-migration';
+    seedSource: SeedSource;
     seedVrsName: string | undefined;
     seedEvents: JournalEvent[];
   } {
@@ -1622,7 +1633,7 @@ export class JournalingStore implements BurritoStore {
     seedEvents: JournalEvent[],
     normalizedSeed: JournalEvent[],
     seedFold: FoldOutput,
-    seedSource: 'creation' | 'sidecar-migration',
+    seedSource: SeedSource,
     seedVrsName: string | undefined,
   ): Promise<void> {
     const seedMeta: IntentRecord['seed'] = { source: seedSource };

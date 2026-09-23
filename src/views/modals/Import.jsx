@@ -1,0 +1,232 @@
+// The import screen (issue #361; owner design "tC4 Import Dialog", 2026-09-22):
+// choose the kind of file → drop or choose files → review what was found →
+// import as a new Bible. Bound to the state layer's `im` form (openImport /
+// importPickKind / importAddFiles / importReview / importRun). A kind whose
+// parser is not in the table (src/data/import/parsers.ts) is shown but
+// disabled; the parsers arrive with #21, #195 and #196.
+import React from 'react';
+import { useApp } from '../../state.jsx';
+import { bookName } from '../../data/bookNames';
+import { PARSERS } from '../../data/import/parsers';
+import { t } from '../../i18n';
+import { Modal, Button, OptionCard, Overline, DropZone, Surface, Text, IconButton, KeyValueGrid, StatusDot, Field, Input, Spinner, Callout } from '../../ds/index.js';
+
+/** The three kinds of the design, then the dev-only fake when the table holds it. */
+export const importKinds = () => [
+  ...['tc3', 'usfm', 'burrito'].map((id) => ({ id, parser: PARSERS.find((p) => p.id === id) ?? null })),
+  ...PARSERS.filter((p) => !['tc3', 'usfm', 'burrito'].includes(p.id)).map((p) => ({ id: p.id, parser: p })),
+];
+
+const kindText = (id, key) => (['tc3', 'usfm', 'burrito'].includes(id) ? t(`importer.kind.${id}.${key}`) : t(`importer.kind.fake.${key}`));
+
+/** A language code of the design's form: `kau`, `es-419`. */
+export const LANGUAGE_CODE = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
+
+const size = (bytes) => (bytes >= 1e6 ? `${(bytes / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1e3))} KB`);
+
+/** "3 chapters · 46 verses · 46 drafted": a verse is drafted when it carries text other than the `___` stub. */
+const chapterLine = (usfm) => {
+  const chapters = (usfm.match(/^\\c \d+/gm) || []).length;
+  // each verse's body up to the next verse or chapter, without markers or word attributes
+  const verses = usfm.split(/\\v \d+\S*/).slice(1).map((body) => body.split(/\\c \d+/)[0].replace(/\|[^\\]*/g, '').replace(/\\[^\s\\]*/g, '').trim());
+  const drafted = verses.filter((text) => text && text !== '___').length;
+  return t(chapters === 1 ? 'importer.review.bookLineOne' : 'importer.review.bookLine', { chapters, verses: verses.length, drafted });
+};
+
+function KindStep({ actions }) {
+  return (
+    <div data-testid="import-kind" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {importKinds().map(({ id, parser }) => (
+        <OptionCard key={id} data-testid={`import-kind-${id}`} icon={kindText(id, 'icon')} title={kindText(id, 'title')}
+          description={parser ? kindText(id, 'desc') : t('importer.kind.later')} trailing="→"
+          disabled={!parser} style={parser ? undefined : { opacity: 0.5, cursor: 'default' }}
+          onClick={parser ? () => actions.importPickKind(id) : undefined} />
+      ))}
+      <Text role="caption" tone="muted" style={{ paddingTop: 6 }}>{t('importer.kind.note')}</Text>
+    </div>
+  );
+}
+
+function FilesStep({ im, actions }) {
+  const inputRef = React.useRef(null);
+  const add = (list) => { if (list?.length) actions.importAddFiles([...list]); };
+  return (
+    <div data-testid="import-files" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <input ref={inputRef} type="file" multiple data-testid="import-file-input" hidden
+        onChange={(e) => { add(e.target.files); e.target.value = ''; }} />
+      <DropZone title={kindText(im.kind, 'drop')} hint={kindText(im.kind, 'hint')} data-testid="import-drop"
+        onClick={() => inputRef.current?.click()}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => { e.preventDefault(); add(e.dataTransfer?.files); }} />
+      {im.files.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <Overline as="span">{im.files.length === 1 ? t('importer.files.one') : t('importer.files.many', { n: im.files.length })}</Overline>
+          {im.files.map((f, i) => (
+            <Surface key={`${f.name}-${i}`} fill="card" border="line" radius="md" pad="10px 10px 10px 14px" data-testid="import-file">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 10 }}>
+                  <Text role="strong" truncate>{f.name}</Text>
+                  <Text role="meta" tone="muted">{size(f.bytes.length)}</Text>
+                </div>
+                <IconButton variant="plain" title={t('importer.files.remove')} onClick={() => actions.importRemoveFile(i)}>✕</IconButton>
+              </div>
+            </Surface>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReviewStep({ im, actions }) {
+  const { bundle } = im;
+  const damaged = bundle.findings.find((f) => f.kind === 'damaged');
+  const license = bundle.findings.find((f) => f.kind === 'license');
+  const missing = bundle.findings.find((f) => f.kind === 'missing-verses');
+  const primary = im.lang.startsWith('x-') ? im.lang : im.lang.split('-')[0];
+  const langError = !damaged && !LANGUAGE_CODE.test(im.lang) ? t('importer.review.langError') : undefined;
+  const checks = [
+    { label: t('importer.review.license'), status: license?.warn ? 'warn' : 'valid', text: license?.text ?? t('importer.review.licenseFound') },
+    { label: t('importer.review.details'), status: 'valid', text: t('importer.review.detailsText') },
+    { label: t('importer.review.missing'), status: missing ? 'warn' : 'valid', text: missing?.text ?? t('importer.review.noneMissing') },
+  ];
+  return (
+    <div data-testid="import-review" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {damaged && (
+        <Surface tone="invalid" fill="soft" border="tone" radius="lg" pad="md" role="alert" data-testid="import-damaged" data-code={damaged.code ?? ''}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <Text role="strong" tone="tone">{t('importer.review.damagedTitle')}</Text>
+            <Text role="ui">{damaged.text}</Text>
+            <Text role="meta" tone="muted">{t('importer.review.damagedCode', { code: damaged.code ?? 'import.damaged' })}</Text>
+          </div>
+        </Surface>
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 24, alignItems: 'start' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <Overline as="span">{t('importer.review.found')}</Overline>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {bundle.books.map((b) => (
+              <Surface key={b.code} fill="muted" radius="md" pad="10px 14px" data-testid={`import-book-${b.code}`}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <Text role="strong">{bookName(b.code)}</Text>
+                  <Text role="caption" tone="muted">{chapterLine(b.usfm)}</Text>
+                </div>
+              </Surface>
+            ))}
+          </div>
+          <KeyValueGrid columns={2} items={[
+            { k: t('importer.review.books'), v: String(bundle.books.length) },
+            { k: t('importer.review.format'), v: kindText(im.kind, 'title') },
+            { k: t('importer.review.files'), v: String(im.files.length) },
+            { k: t('importer.review.creates'), v: t('importer.review.newBible') },
+          ]} />
+          {(bundle.alignments || bundle.decisions) && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }} data-testid="import-carried">
+              <Overline as="span">{t('importer.review.carried')}</Overline>
+              <KeyValueGrid columns={2} items={[
+                { k: t('importer.review.alignments'), v: t('importer.review.alignedVerses', { n: Object.values(bundle.alignments ?? {}).reduce((sum, list) => sum + list.length, 0) }) },
+                { k: t('importer.review.decisions'), v: String(bundle.decisions?.length ?? 0) },
+              ]} />
+            </div>
+          )}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <Overline as="span">{t('importer.review.checks')}</Overline>
+          {checks.map((c) => (
+            <div key={c.label} style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
+              <StatusDot status={c.status} size={8} />
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <Text role="strong">{c.label}</Text>
+                <Text role="caption">{c.text}</Text>
+              </div>
+            </div>
+          ))}
+          <Surface fill="paper" border="line" radius="lg" pad="md">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <Text role="caption" tone="muted">{t('importer.review.readFromFile')}</Text>
+              <Field label={t('importer.review.name')}>
+                <Input value={im.name} data-testid="import-name" disabled={!!damaged} onChange={(e) => actions.patchIm({ name: e.target.value })} />
+              </Field>
+              <Field label={t('importer.review.lang')} error={langError}
+                hint={primary && primary !== im.lang ? t('importer.review.langStored', { primary, tag: im.lang }) : t('importer.review.langHint')}>
+                <Input value={im.lang} data-testid="import-lang" disabled={!!damaged} onChange={(e) => actions.patchIm({ lang: e.target.value.trim() })} />
+              </Field>
+            </div>
+          </Surface>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FailedStep({ im }) {
+  const code = im.report?.code;
+  return (
+    <Surface tone="invalid" fill="soft" border="tone" radius="lg" pad="md" role="alert" data-testid="import-failed" data-code={im.report?.code ?? ''}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <Text role="strong" tone="tone">{t('importer.failed.title')}</Text>
+        <Text role="ui">{code ? t('refusal.' + code, undefined, t('importer.failed.body')) : t('importer.failed.body')}</Text>
+        <Text role="meta" tone="muted" style={{ overflowWrap: 'anywhere' }}>{im.report?.code ?? ''} {im.report?.facts?.error ?? ''}</Text>
+      </div>
+    </Surface>
+  );
+}
+
+const STEP_TITLES = {
+  kind: ['importer.step.kind', 'importer.title', 'importer.subtitle.kind'],
+  files: ['importer.step.files', null, 'importer.subtitle.files'],
+  review: ['importer.step.review', 'importer.review.title', 'importer.subtitle.review'],
+  working: ['importer.step.working', 'importer.working.title', 'importer.subtitle.working'],
+  failed: ['importer.step.working', 'importer.failed.heading', 'importer.subtitle.failed'],
+};
+
+export default function Import() {
+  const { s, actions } = useApp();
+  const im = s.im;
+  if (s.modal !== 'import' || !im) return null;
+  const [stepKey, titleKey, subtitleKey] = STEP_TITLES[im.step];
+  const damaged = im.bundle?.findings.some((f) => f.kind === 'damaged');
+  const cantImport = damaged || !LANGUAGE_CODE.test(im.lang) || !im.name.trim();
+  const title = (
+    <>
+      <Overline as="span" style={{ display: 'block', marginBottom: 8 }}>{t(stepKey)}</Overline>
+      {titleKey ? t(titleKey) : kindText(im.kind, 'title')}
+    </>
+  );
+  const subtitle = im.step === 'review' && damaged ? t('importer.subtitle.damaged') : t(subtitleKey);
+  const back = (label, to) => <Button variant="ghost" onClick={() => actions.patchIm({ step: to, error: null })}>{label}</Button>;
+  const footer = {
+    files: <>
+      {back(t('importer.files.back'), 'kind')}
+      <div style={{ flex: 1 }} />
+      <Button variant="secondary" onClick={actions.closeModal}>{t('newBible.cancel')}</Button>
+      <Button data-testid="import-to-review" disabled={!im.files.length || im.busy} onClick={actions.importReview}>{t('importer.files.review')}</Button>
+    </>,
+    review: <>
+      {back(t('importer.review.back'), 'files')}
+      <div style={{ flex: 1 }} />
+      <Button variant="secondary" onClick={actions.closeModal}>{t('newBible.cancel')}</Button>
+      <Button data-testid="import-run" disabled={cantImport} onClick={actions.importRun}>{t('importer.review.run')}</Button>
+    </>,
+    failed: <>
+      <Button variant="secondary" onClick={actions.closeModal}>{t('common.close')}</Button>
+      <Button data-testid="import-retry" onClick={actions.importRun}>{t('importer.failed.retry')}</Button>
+    </>,
+  }[im.step] ?? null;
+
+  return (
+    <Modal width={im.step === 'review' ? 760 : 560} data-testid="import-modal" title={title} subtitle={subtitle}
+      closeLabel={t('common.close')} onClose={im.step === 'working' ? undefined : actions.closeModal} footer={footer}>
+      {im.step === 'kind' && <KindStep actions={actions} />}
+      {im.step === 'files' && <FilesStep im={im} actions={actions} />}
+      {im.step === 'review' && <ReviewStep im={im} actions={actions} />}
+      {im.step === 'working' && (
+        <div style={{ padding: '26px 0 30px', display: 'flex', justifyContent: 'center' }} data-testid="import-working">
+          <Spinner label={im.name ? t('importer.working.named', { name: im.name }) : t('importer.working.label')} />
+        </div>
+      )}
+      {im.step === 'failed' && <FailedStep im={im} />}
+      {im.error && <Callout tone="warn" role="alert" data-testid="import-error" style={{ overflowWrap: 'anywhere' }}>{im.error}</Callout>}
+    </Modal>
+  );
+}

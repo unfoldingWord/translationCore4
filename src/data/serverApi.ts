@@ -614,6 +614,40 @@ export class ServerApi {
     }
   }
 
+  /** POST /temp/bytes (multipart field `file`) — store one upload in the
+   * platform's temp directory and return its uuid [VERIFIED — pankosmia-web
+   * 0.18.5 (99fd9be), `endpoints/temp_file/write_temp_file.rs`, 2026-09-22]. */
+  async uploadTempBytes(bytes: Uint8Array): Promise<string> {
+    const form = new FormData();
+    const copy = new Uint8Array(bytes.length);
+    copy.set(bytes);
+    form.append('file', new Blob([copy], { type: 'application/zip' }), 'import.zip');
+    const text = await this.requestText('/temp/bytes', { method: 'POST', body: form });
+    let uuid: unknown;
+    try {
+      uuid = (JSON.parse(text) as { uuid?: unknown }).uuid;
+    } catch {
+      // not JSON — refused below
+    }
+    if (typeof uuid !== 'string' || !/^[0-9a-f-]{36}$/.test(uuid)) {
+      throw new ServerApiError('/temp/bytes', 200, `unexpected temp upload response: ${text.slice(0, 200)}`);
+    }
+    return uuid;
+  }
+
+  /** POST /burrito/remake_burrito_from_zip/<uuid>/<repoPath> — replace the
+   * contents of an EXISTING repository with an uploaded zip, keeping its
+   * `.git` (PLATFORM-NOTES #41). The zip MUST be wrapped (one top-level
+   * folder): the handler strips one path level, and a flat zip reaches a
+   * panic. It checks only that `metadata.json` and `ingredients/` exist, strips
+   * `.git`, `.gitignore` and `.gitattributes`, and does NOT commit
+   * [VERIFIED — pankosmia-web 0.18.5 (99fd9be), `remake_burrito_from_zip.rs`,
+   * 2026-09-22]. */
+  async remakeBurritoFromZip(uuid: string, repoPath: string): Promise<void> {
+    assertSafeSegment(uuid, `temp uuid ${JSON.stringify(uuid)}`);
+    await this.post(`/burrito/remake_burrito_from_zip/${encodeURIComponent(uuid)}/${encodeRepoPath(repoPath)}`);
+  }
+
   /** GET /gitea/remote-repos/<server>/<org> — the platform's catalog for ONE
    * organization. There is no catalog-wide search route on 0.18.5, so callers
    * supply the org (see `data/gateways.ts` for why that list is config).
