@@ -40,6 +40,10 @@ describe('rig working-directory repair', () => {
 
     fs.writeFileSync(seedScript, '#!/bin/zsh\nprint -r -- seeded >> "$RIG_MARKER"\n');
     fs.writeFileSync(failingSeedScript, '#!/bin/zsh\nexit 23\n');
+    if (process.platform !== 'win32') {
+      fs.chmodSync(seedScript, 0o755);
+      fs.chmodSync(failingSeedScript, 0o755);
+    }
     try {
       const missing = ensureState(stateDirectory, seedScript, marker);
       expect(missing.status).toBe(0);
