@@ -2,7 +2,7 @@
 // Menu, one item for each producer in the table (src/data/export/producers.ts)
 // that applies to the open project. A producer registers in the table and
 // never edits a view. With no producer yet, the menu states when the exports
-// arrive.
+// arrive. `pageSetup` is the preview's page setup, passed to every export (#381).
 import React from 'react';
 import { useApp } from '../state.jsx';
 import { t } from '../i18n';
@@ -15,7 +15,7 @@ const failureText = (report) => {
   return recovery ? `${report.facts.error} ${recovery}` : String(report.facts.error);
 };
 
-export default function ExportMenu() {
+export default function ExportMenu({ pageSetup }) {
   const { s, actions } = useApp();
   const [running, setRunning] = React.useState(false);
   const [failure, setFailure] = React.useState(null);
@@ -30,7 +30,7 @@ export default function ExportMenu() {
     setRunning(true);
     setFailure(null);
     try {
-      const report = await actions.exportFile(producer);
+      const report = await actions.exportFile(producer, pageSetup);
       if (report && !report.ok) setFailure(failureText(report));
     } finally {
       setRunning(false);

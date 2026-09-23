@@ -12,6 +12,7 @@ import { forgetSharedClocks } from '../src/data/journal/journalStore';
 import type { ProjectSummary } from '../src/data/burritoStore';
 import { journalingRig, memKv, tickingNow } from './helpers/journalingRig';
 import { assertProjectUnchanged } from './helpers/export';
+import { DEFAULT_PAGE_SETUP } from '../src/data/export/pageSetup';
 
 const fs = process.getBuiltinModule('node:fs');
 const os = process.getBuiltinModule('node:os');
@@ -99,6 +100,17 @@ describe('#375 runExport', () => {
     expect(report).toMatchObject({ op: 'export', ok: false, code: 'export.checkpoint-failed' });
     expect(produce).not.toHaveBeenCalled();
     expect(downloads).toEqual([]);
+  });
+});
+
+describe('#381 runExport and the page setup', () => {
+  it('hands ExportInput.pageSetup to the producer as given', async () => {
+    const { store } = await seeded();
+    const pageSetup = { ...DEFAULT_PAGE_SETUP, spacing: 'double', paper: 'letter', pictures: false } as const;
+    const produce = vi.fn(async () => ({ bytes: new Uint8Array([1]), filename: 'a.txt', mime: 'text/plain' }));
+    const report = await runExport(fake(produce), { store, project: PROJECT, book: 'TIT', pageSetup });
+    expect(report.ok).toBe(true);
+    expect(produce).toHaveBeenCalledWith(expect.objectContaining({ pageSetup }));
   });
 });
 

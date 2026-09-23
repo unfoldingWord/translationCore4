@@ -77,9 +77,9 @@ function StoryPages({ story, images, pictures, dir }) {
 }
 
 /** The OBS preview: the open story, one page-setup toggle (pictures). */
-function StoryCommunityChecking() {
+function StoryCommunityChecking({ pageSetup, updatePageSetup }) {
   const { s, actions } = useApp();
-  const [pictures, setPictures] = React.useState(true);
+  const { pictures } = pageSetup;
   const story = s.story;
   const dir = s.project?.scriptDirection === 'rtl' ? 'rtl' : 'ltr';
   if (!story) {
@@ -98,11 +98,11 @@ function StoryCommunityChecking() {
       <aside style={ASIDE}>
         <Button variant="ghost" onClick={() => actions.go('check')} style={{ alignSelf: 'flex-start' }}>{t('cc.back')}</Button>
         <h2 style={{ fontSize: 'var(--fs-title-sm)', letterSpacing: 'var(--track-16)', margin: 0 }}>{t('cc.title')}</h2>
-        <ExportMenu />
+        <ExportMenu pageSetup={pageSetup} />
         <div style={SETUP_BOX}>
           <Overline style={{ letterSpacing: '.12em' }}>{t('cc.pageSetup')}</Overline>
           <div style={SETUP_LIST}>
-            <Toggle data-testid="cc-pictures" label={t('cc.pictures')} checked={pictures} onChange={() => setPictures(!pictures)} />
+            <Toggle data-testid="cc-pictures" label={t('cc.pictures')} checked={pictures} onChange={() => updatePageSetup({ pictures: !pictures })} />
           </div>
         </div>
         {undrafted && (
@@ -119,7 +119,7 @@ export default function CommunityChecking() {
 
   const updatePageSetup = (patch) => setPageSetup((current) => ({ ...current, ...patch }));
 
-  if (s.project?.flavor === 'textStories') return <StoryCommunityChecking />;
+  if (s.project?.flavor === 'textStories') return <StoryCommunityChecking pageSetup={pageSetup} updatePageSetup={updatePageSetup} />;
 
   // The card promises the BOOK as a whole (mockup: "Read the book as a
   // whole"), so the preview typesets every chapter, not the open one
@@ -155,7 +155,7 @@ export default function CommunityChecking() {
       <aside style={ASIDE}>
         <Button variant="ghost" onClick={() => actions.go('check')} style={{ alignSelf: 'flex-start' }}>{t('cc.back')}</Button>
         <h2 style={{ fontSize: 'var(--fs-title-sm)', letterSpacing: 'var(--track-16)', margin: 0 }}>{t('cc.title')}</h2>
-        <ExportMenu />
+        <ExportMenu pageSetup={pageSetup} />
         <div style={SETUP_BOX}>
           <Overline style={{ letterSpacing: '.12em' }}>{t('cc.pageSetup')}</Overline>
           <div style={SETUP_LIST}>
@@ -165,6 +165,9 @@ export default function CommunityChecking() {
             <PageSetupChoiceRow label={t('cc.spacing')} labelId="cc-spacing-label"
               options={[{ value: 'single', label: t('cc.spacingSingle') }, { value: 'double', label: t('cc.spacingDouble') }]}
               value={pageSetup.spacing} onChange={(spacing) => updatePageSetup({ spacing })} />
+            <PageSetupChoiceRow label={t('cc.paper')} labelId="cc-paper-label"
+              options={[{ value: 'a4', label: t('cc.paperA4') }, { value: 'letter', label: t('cc.paperLetter') }]}
+              value={pageSetup.paper} onChange={(paper) => updatePageSetup({ paper })} />
             <Toggle label={t('cc.dropCap')} checked={pageSetup.dropCapChapters} onChange={() => updatePageSetup({ dropCapChapters: !pageSetup.dropCapChapters })} />
             <Toggle label={t('cc.verseNumbers')} checked={pageSetup.verseNumbers} onChange={() => updatePageSetup({ verseNumbers: !pageSetup.verseNumbers })} />
             <Toggle label={t('cc.footnotes')} disabled />

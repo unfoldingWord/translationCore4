@@ -181,6 +181,12 @@ A pure function from project data to one file, registered in the export kernel's
 (`src/data/export/producers.ts`). It makes no checkpoint, no download and no Report.
 _Avoid_: exporter, writer
 
+**Page setup**:
+The presentation choices of the Community Checking preview (`PageSetup`): columns, spacing,
+drop-cap chapters, verse numbers, paper size, pictures and the OBS layout. The preview and every
+export producer read the same page setup. It is held in memory and never stored (D80 point 5).
+_Avoid_: print settings, layout spec
+
 **Share**:
 The push of a project's working `main` branch to a repository under the user's Door43
 account, created by the app on the first share. Send only; receiving and team sync are Phase 2.

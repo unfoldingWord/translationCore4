@@ -3098,13 +3098,14 @@ export function AppProvider({ children }) {
       /** Run one export (#375): every pending save is on disk first, so the
        * kernel's checkpoint and the producer read the text on screen. Returns
        * the export Report, or null when a save failed (the save indicator shows
-       * it, and nothing is exported). */
-      exportFile: async (producer) => {
+       * it, and nothing is exported). `pageSetup` is the preview's page setup
+       * (#381); a producer reads it from its input, never from the page. */
+      exportFile: async (producer, pageSetup) => {
         if (!(await drainSchedulers(saveRefs))) return null;
         const st = stateRef.current;
         const store = storeRef.current;
         if (!st.project || !store) return null;
-        return runExport(producer, { store, project: st.project, book: st.book ?? undefined });
+        return runExport(producer, { store, project: st.project, book: st.book ?? undefined, pageSetup });
       },
 
       closeModal: () => dispatch({ type: 'set', patch: { modal: null, np: null, ab: null, st: null, fix: null, im: null } }),
