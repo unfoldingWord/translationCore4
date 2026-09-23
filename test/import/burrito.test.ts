@@ -98,6 +98,9 @@ describe('#196 the burrito parser', () => {
     expect(mismatch.findings).toMatchObject([{ kind: 'damaged', code: 'import.damaged.checksum-mismatch', text: expect.stringContaining('ingredients/JON.usfm') }]);
     const unparseable = await parse(zipFile('unparseable.zip', { ...unzipSync(sampleZip), 'metadata.json': new TextEncoder().encode('{"format": ') }));
     expect(unparseable.findings).toMatchObject([{ kind: 'damaged', code: 'import.damaged.no-metadata', text: expect.stringContaining(CHECKS.metadataParses) }]);
+    // the parse check reads the metadata.json unwrapExport keeps, never one under .git/
+    const gitMeta = await parse(zipFile('git.zip', { '.git/metadata.json': new TextEncoder().encode('{'), ...unzipSync(sampleZip) }));
+    expect(gitMeta.findings).toEqual([]);
     const cut = await parse({ name: 'cut.zip', bytes: sampleZip.slice(0, sampleZip.length / 2) });
     expect(cut.findings).toMatchObject([{ kind: 'damaged', code: 'import.damaged.truncated' }]);
     const files = unzipSync(sampleZip);
