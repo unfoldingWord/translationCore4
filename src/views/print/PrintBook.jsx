@@ -18,18 +18,20 @@ export default function PrintBook({ title, items, pageSetup, dir }) {
   return (
     <main className="print-book">
       <h1 className="print-title" dir={dir}>{title}</h1>
-      {items.map((item) => item.gap
-        ? <p key={`gap-${item.gap[0]}`} className="print-chapter-gap" dir={dir}>{chapterGapText(item.gap)}</p>
-        : (
-          <section key={item.c} className="print-chapter" dir={dir}>
-            {pageSetup.dropCapChapters
-              ? <span className="print-dropcap">{item.c}</span>
-              : <h2 className="print-chapter-heading">{t('cc.chapterHeading', { n: item.c })}</h2>}
-            {item.verses.map((v) => v.drafted && v.text
-              ? <span key={v.n}>{pageSetup.verseNumbers ? <sup className="print-verse-number">{v.n}</sup> : null}{v.text} </span>
-              : <span key={v.n} className="print-undrafted"><sup className="print-verse-number">{v.n}</sup>{t('cc.notYetDrafted')} </span>)}
-          </section>
-        ))}
+      <div className="print-flow" dir={dir}>
+        {items.map((item) => item.gap
+          ? <p key={`gap-${item.gap[0]}`} className="print-chapter-gap" dir={dir}>{chapterGapText(item.gap)}</p>
+          : (
+            <section key={item.c} className="print-chapter" dir={dir}>
+              {pageSetup.dropCapChapters
+                ? <span className="print-dropcap">{item.c}</span>
+                : <h2 className="print-chapter-heading">{t('cc.chapterHeading', { n: item.c })}</h2>}
+              {item.verses.map((v) => v.drafted && v.text
+                ? <span key={v.n}>{pageSetup.verseNumbers ? <sup className="print-verse-number">{v.n}</sup> : null}{v.text} </span>
+                : <span key={v.n} className="print-undrafted"><sup className="print-verse-number">{v.n}</sup>{t('cc.notYetDrafted')} </span>)}
+            </section>
+          ))}
+      </div>
     </main>
   );
 }

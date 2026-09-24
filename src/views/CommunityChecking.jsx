@@ -148,18 +148,22 @@ export default function CommunityChecking() {
           <h1 style={H1}>{bookName(book.code)}</h1>
           <div style={RULE} />
           {items.length === 0 && <p data-testid="cc-nothing-drafted" style={{ textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 'var(--fs-ui)' }}>{t('cc.nothingDrafted')}</p>}
-          {items.map(({ c, verses, gap }) => gap ? (
-            <p key={`gap-${gap[0]}`} data-testid="cc-chapter-gap" dir={dir} style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-md)', lineHeight: 'var(--lh-verse-md)', color: 'var(--text-tertiary)', margin: '0 0 26px' }}>{chapterGapText(gap)}</p>
-          ) : (
-            <div key={c} data-testid="cc-chapter" dir={dir} style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-md)', lineHeight: PREVIEW_LINE_HEIGHT[pageSetup.spacing], color: 'var(--text-scripture)', textAlign: 'justify', columnCount: pageSetup.columns, columnGap: 28, marginBottom: 26 }}>
-              {pageSetup.dropCapChapters
-                ? <span style={{ float: 'inline-start', fontSize: 'var(--fs-dropcap)', lineHeight: 0.8, fontWeight: 'var(--fw-bold)', color: 'var(--text-accent)', marginInlineEnd: 10, marginTop: 6 }}>{c}</span>
-                : <h2 data-testid="cc-chapter-heading" style={{ columnSpan: 'all', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-md)', lineHeight: 1.3, fontWeight: 'var(--fw-bold)', color: 'var(--text-accent)', margin: '0 0 6px' }}>{t('cc.chapterHeading', { n: c })}</h2>}
-              {verses.map((v) => v.drafted && v.text
-                ? <span key={v.n}>{pageSetup.verseNumbers ? <sup style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', marginInlineEnd: 2, verticalAlign: 'super' }}>{v.n}</sup> : null}{v.text} </span>
-                : <span key={v.n} style={{ color: 'var(--text-tertiary)' }}><sup style={{ fontSize: 11, fontWeight: 700, verticalAlign: 'super' }}>{v.n}</sup>{t('cc.notYetDrafted')} </span>)}
-            </div>
-          ))}
+          {/* One flow through the columns, as in the PDF: a chapter continues into the
+              next column, and the next chapter follows it (#20). */}
+          <div data-testid="cc-flow" dir={dir} style={{ columnCount: pageSetup.columns, columnGap: 28 }}>
+            {items.map(({ c, verses, gap }) => gap ? (
+              <p key={`gap-${gap[0]}`} data-testid="cc-chapter-gap" dir={dir} style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-md)', lineHeight: 'var(--lh-verse-md)', color: 'var(--text-tertiary)', margin: '0 0 26px', breakInside: 'avoid' }}>{chapterGapText(gap)}</p>
+            ) : (
+              <div key={c} data-testid="cc-chapter" dir={dir} style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-md)', lineHeight: PREVIEW_LINE_HEIGHT[pageSetup.spacing], color: 'var(--text-scripture)', textAlign: 'justify', marginBottom: 26 }}>
+                {pageSetup.dropCapChapters
+                  ? <span style={{ float: 'inline-start', fontSize: 'var(--fs-dropcap)', lineHeight: 0.8, fontWeight: 'var(--fw-bold)', color: 'var(--text-accent)', marginInlineEnd: 10, marginTop: 6 }}>{c}</span>
+                  : <h2 data-testid="cc-chapter-heading" style={{ breakAfter: 'avoid', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-md)', lineHeight: 1.3, fontWeight: 'var(--fw-bold)', color: 'var(--text-accent)', margin: '0 0 6px' }}>{t('cc.chapterHeading', { n: c })}</h2>}
+                {verses.map((v) => v.drafted && v.text
+                  ? <span key={v.n}>{pageSetup.verseNumbers ? <sup style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', marginInlineEnd: 2, verticalAlign: 'super' }}>{v.n}</sup> : null}{v.text} </span>
+                  : <span key={v.n} style={{ color: 'var(--text-tertiary)' }}><sup style={{ fontSize: 11, fontWeight: 700, verticalAlign: 'super' }}>{v.n}</sup>{t('cc.notYetDrafted')} </span>)}
+              </div>
+            ))}
+          </div>
         </div>
       </main>
       <aside style={ASIDE}>

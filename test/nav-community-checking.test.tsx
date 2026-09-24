@@ -5,7 +5,7 @@
 // menu (#375), which states when the exports arrive while it has no producer.
 import React from 'react';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor, within } from '@testing-library/react';
 import { indexBook } from '../src/data/usfm/indexer';
 import { DEFAULT_PAGE_SETUP } from '../src/data/export/pageSetup';
 import type { ExportProducer } from '../src/data/export/kernel';
@@ -240,6 +240,17 @@ describe('#108 — Publish moves into Check as Community Checking', () => {
     } finally {
       bookModel.byChapter = saved;
     }
+  });
+
+  it('two columns hold the whole preview as one flow, not each chapter split in two (#20)', () => {
+    state = { ...baseState, view: 'publish' };
+    render(<App />);
+    const flow = screen.getByTestId('cc-flow');
+    expect(flow.style.columnCount).toBe('1');
+    fireEvent.click(within(screen.getByRole('group', { name: 'Columns' })).getByRole('button', { name: '2' }));
+    expect(flow.style.columnCount).toBe('2');
+    const chapters = screen.getAllByTestId('cc-chapter');
+    expect(chapters.every((chapter) => flow.contains(chapter) && (chapter as HTMLElement).style.columnCount === '')).toBe(true);
   });
 
   it('the Bible page setup switches every preview chapter between Single and Double spacing', () => {

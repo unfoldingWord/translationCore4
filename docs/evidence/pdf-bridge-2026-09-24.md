@@ -14,6 +14,11 @@ right-to-left visual check. Branch `issue-20-pdf-export`, base `main` 04dc048.
 > `printedItems`. Undrafted chapters at the start or end of the book are still left out, so
 > the seeded Titus (chapter 1 drafted in part) and the fully drafted Titus of section 5 print
 > the same documents as before.
+>
+> **Third note (same date).** The owner then ruled that two columns are one flow per page,
+> not two columns inside each chapter, and that each page carries its number at the bottom
+> centre. The page margin at the bottom grew from 18 mm to 20 mm for the number. The page
+> counts above were measured before this change.
 
 ## 1. Task 1: which route makes the PDF bytes
 

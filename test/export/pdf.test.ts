@@ -102,6 +102,17 @@ describe('the print document', () => {
     expect(off.match(/class="print-verse-number"/g)).toHaveLength(1); // the undrafted verse keeps its number
   });
 
+  it('sets the whole book as one flow through the columns, and numbers each page at the bottom centre', () => {
+    const html = printDocument(USFM, 'TIT', setup({ columns: 2 }), 'ltr');
+    // One column container holds every chapter; no chapter has columns of its own.
+    expect(html.match(/<div class="print-flow"/g)).toHaveLength(1);
+    expect(html.indexOf('<div class="print-flow"')).toBeLessThan(html.indexOf('<section class="print-chapter"'));
+    const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
+    expect(css).toMatch(/\.print-flow \{\s*column-count: var\(--print-columns\);/);
+    expect(css).not.toMatch(/\.print-chapter \{[^}]*column-count/);
+    expect(css).toMatch(/@bottom-center \{\s*content: counter\(page\);/);
+  });
+
   it('with drop caps off, opens each chapter with a "Chapter N" heading', () => {
     const off = printDocument(USFM, 'TIT', setup({ dropCapChapters: false }), 'ltr');
     expect(off.match(/<h2 class="print-chapter-heading">Chapter (\d+)<\/h2>/g)).toEqual([
