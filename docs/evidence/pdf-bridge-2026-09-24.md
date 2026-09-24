@@ -3,6 +3,11 @@
 Issue: [#20](https://github.com/unfoldingWord/translationCore4/issues/20), task 1 and the
 right-to-left visual check. Branch `issue-20-pdf-export`, base `main` 04dc048.
 
+> **Note (same date, later measurement).** After sections 2 and 4 were measured, the owner
+> ruled that the PDF and the preview leave out a chapter with no drafted verse. Section 5
+> holds the measurements under that rule. The Titus counts in sections 2 and 4 are of the
+> earlier document, which printed all three chapters. They stay here unchanged.
+
 ## 1. Task 1: which route makes the PDF bytes
 
 Date: 2026-09-24. Runtime: Electronite v37.1.0-graphite (Electron 37.1.0, Chrome
@@ -86,6 +91,33 @@ The end-to-end right-to-left journey is #29, not this record.
 installs a test double of the bridge that prints with Playwright's `page.pdf()`. It got the
 same counts as the packaged app: Titus A4 Single 1 page, Double 2 pages, Letter MediaBox
 `0 0 612 792`.
+
+## 5. Under the drafted-chapters rule (same date, later)
+
+Rule (owner, 2026-09-24): the PDF and the preview show each chapter with at least one drafted
+verse. A chapter with no drafted verse is left out. Inside a shown chapter, an undrafted verse
+states `[ verse not yet drafted ]`. A book with no drafted verse refuses the export with
+`export.nothing-drafted`. Code: `printedChapters` in `src/data/bookModel.js`.
+
+Packaged app: the same method as section 2, with a new client build and new print documents.
+"Drafted Titus" is the sample `TIT.usfm` with every undrafted verse given the text of 1:1.
+
+| Document | Returned type | Bytes | Pages | MediaBox (pt) | Time |
+|---|---|---|---|---|---|
+| Seeded Titus, A4, 1 column, Single | Uint8Array | 39010 | 1 | 0 0 594.95996 841.91998 | 309 ms |
+| Drafted Titus, A4, 1 column, Single | Uint8Array | 34392 | 2 | 0 0 594.95996 841.91998 | 241 ms |
+| Drafted Titus, A4, 1 column, Double | Uint8Array | 36552 | 4 | 0 0 594.95996 841.91998 | 225 ms |
+| Drafted Titus, Letter, 2 columns, Single | Uint8Array | 33875 | 3 | 0 0 612 792 | 217 ms |
+| Right-to-left sample, A4, 2 columns | Uint8Array | 49681 | 2 | 0 0 594.95996 841.91998 | 242 ms |
+
+No `tc4-pdf-*` directory stayed after the prints. The seeded Titus page is
+[`pdf-seeded-titus-2026-09-24.png`](pdf-seeded-titus-2026-09-24.png): chapter 1 only, verses
+1–5 drafted, verses 6–16 stated as not yet drafted; chapters 2 and 3 are not printed.
+
+Journey: `npx playwright test e2e/j07-publish.spec.ts` passed 5 of 5, twice. The PDF blocks
+found that the seeded Titus document holds 1 chapter and gives 1 page. The journey-made drafted
+Titus holds 3 chapters and gives 2 pages at Single, more at Double, and MediaBox `0 0 612 792`
+at Letter.
 
 ## Limits
 

@@ -9,7 +9,8 @@
 // dialog opens. A browser has no bridge, so there the menu has no PDF item.
 import { t } from '../../i18n';
 import { bookName } from '../bookNames';
-import { bookModel } from '../bookModel';
+import { bookModel, printedChapters } from '../bookModel';
+import { Refusal } from '../journal/runtime';
 import { printBookHtml } from '../../views/print/PrintBook.jsx';
 import PRINT_CSS from '../../ds/tokens/print.css?raw';
 import { exportFilename, type ExportProducer } from './kernel';
@@ -33,11 +34,14 @@ const LEADING = 1.64;
 const escapeHtml = (text: string): string =>
   text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
 
-/** The complete print document of one book: every chapter, the page setup applied. */
+/** The complete print document of one book: every chapter with a drafted verse
+ * (`printedChapters`, the preview's rule), the page setup applied. A book with
+ * no drafted verse has nothing to print: `export.nothing-drafted`. */
 export function printDocument(bookRaw: string, code: string, pageSetup: PageSetup, dir: 'ltr' | 'rtl'): string {
   const { byChapter, chapterNums } = bookModel(bookRaw);
-  const chapters = chapterNums.map((c: number) => ({ c, verses: byChapter[String(c)] || [] }));
+  const chapters = printedChapters(byChapter, chapterNums);
   const title = bookName(code);
+  if (chapters.length === 0) throw new Refusal('export.nothing-drafted', `${title} has no drafted verse yet, so the PDF has nothing to print.`, { book: code });
   const setup = `@page { size: ${PAGE_SIZE[pageSetup.paper]}; }
 :root { --print-columns: ${pageSetup.columns}; --print-leading: ${LEADING * PAGE_SPACING_FACTOR[pageSetup.spacing]}; }`;
   return `<!doctype html>

@@ -11,6 +11,7 @@ import React from 'react';
 import { useApp } from '../state.jsx';
 import { bookName } from '../data/bookNames';
 import { DEFAULT_PAGE_SETUP } from '../data/export/pageSetup';
+import { printedChapters } from '../data/bookModel';
 import { t } from '../i18n';
 import { Button, FilterChip, Toggle, Overline, Callout } from '../ds/index.js';
 import ExportMenu from './ExportMenu.jsx';
@@ -131,9 +132,11 @@ export default function CommunityChecking() {
       </div>
     );
   }
-  const chapters = book.chapterNums.map((c) => ({ c, verses: book.byChapter[String(c)] || [] }));
+  // The PDF's rule (src/data/bookModel.js printedChapters, #20): a chapter with
+  // no drafted verse is left out; the callout still counts every verse.
+  const chapters = printedChapters(book.byChapter, book.chapterNums);
   const dir = s.project?.scriptDirection === 'rtl' ? 'rtl' : 'ltr';
-  const undrafted = chapters.some(({ verses }) => verses.some((v) => !v.drafted));
+  const undrafted = book.chapterNums.some((c) => (book.byChapter[String(c)] || []).some((v) => !v.drafted));
 
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }} data-testid="community-checking">
@@ -142,6 +145,7 @@ export default function CommunityChecking() {
           <p style={EYEBROW}>{t('cc.eyebrow')}</p>
           <h1 style={H1}>{bookName(book.code)}</h1>
           <div style={RULE} />
+          {chapters.length === 0 && <p data-testid="cc-nothing-drafted" style={{ textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 'var(--fs-ui)' }}>{t('cc.nothingDrafted')}</p>}
           {chapters.map(({ c, verses }) => (
             <div key={c} data-testid="cc-chapter" dir={dir} style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-md)', lineHeight: PREVIEW_LINE_HEIGHT[pageSetup.spacing], color: 'var(--text-scripture)', textAlign: 'justify', columnCount: pageSetup.columns, columnGap: 28, marginBottom: 26 }}>
               {pageSetup.dropCapChapters ? <span style={{ float: 'inline-start', fontSize: 'var(--fs-dropcap)', lineHeight: 0.8, fontWeight: 'var(--fw-bold)', color: 'var(--text-accent)', marginInlineEnd: 10, marginTop: 6 }}>{c}</span> : null}

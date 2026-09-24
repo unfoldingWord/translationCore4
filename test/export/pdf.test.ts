@@ -15,6 +15,10 @@ const USFM = `\\id TIT
 \\c 2
 \\p
 \\v 1 Speak <sound> doctrine.
+\\c 3
+\\p
+\\v 1 ___
+\\v 2 ___
 `;
 const bible = { name: 'demo', flavor: 'textTranslation', scriptDirection: 'ltr' } as ProjectSummary;
 const store = { readBook: vi.fn(async () => ({ usfm: USFM })) } as unknown as BurritoStore;
@@ -56,12 +60,19 @@ describe('the PDF producer', () => {
     await expect(PDF.produce({ store, project: bible })).rejects.toThrow(/no book/);
     expect(printPdf).not.toHaveBeenCalled();
   });
+
+  it('refuses a book with no drafted verse with export.nothing-drafted, and prints nothing', async () => {
+    const printPdf = installBridge();
+    const empty = { readBook: async () => ({ usfm: '\\id TIT\n\\c 1\n\\p\n\\v 1 ___\n\\v 2 ___\n' }) } as unknown as BurritoStore;
+    await expect(PDF.produce({ store: empty, project: bible, book: 'TIT' })).rejects.toMatchObject({ code: 'export.nothing-drafted' });
+    expect(printPdf).not.toHaveBeenCalled();
+  });
 });
 
 describe('the print document', () => {
-  it('holds every chapter, and states an undrafted verse as the preview does', () => {
+  it('holds every chapter with a drafted verse, and states an undrafted verse inside it as the preview does', () => {
     const html = printDocument(USFM, 'TIT', setup(), 'ltr');
-    expect(html.match(/<section class="print-chapter"/g)).toHaveLength(2);
+    expect(html.match(/<section class="print-chapter"/g)).toHaveLength(2); // chapter 3 has no drafted verse
     expect(html).toContain('Paul, a servant of God.');
     expect(html).toContain('<span class="print-undrafted"><sup class="print-verse-number">2</sup>[ verse not yet drafted ] </span>');
     expect(html).toContain('Speak &lt;sound&gt; doctrine.'); // text, never markup

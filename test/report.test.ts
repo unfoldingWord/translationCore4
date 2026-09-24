@@ -109,7 +109,7 @@ describe('#156 the refusal-code table is closed and bound', () => {
       expect(code, code).toMatch(/^[a-z]+(\.[a-z-]+)+$/);
       if (rule !== null) expect(rule, code).toMatch(/^R-(8|10)(\.\d+)+$/);
     }
-    expect(Object.keys(REFUSAL_CODES).length).toBe(38);
+    expect(Object.keys(REFUSAL_CODES).length).toBe(39);
   });
 
   it('every live code has the recovery sentence the Home banner looks up; the reserved codes wait for their issues', () => {
@@ -118,7 +118,7 @@ describe('#156 the refusal-code table is closed and bound', () => {
     // (#361) throws import.name-exists and import.write-failed.
     const reserved = /^(import\.damaged\.|share\.|export\.unsupported-kind$)/;
     const live = Object.keys(REFUSAL_CODES).filter((code) => !reserved.test(code));
-    expect(live.length).toBe(26);
+    expect(live.length).toBe(27);
     for (const code of live) expect(t(`refusal.${code}`, undefined, ''), code).not.toBe('');
   });
 

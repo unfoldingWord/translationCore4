@@ -206,6 +206,25 @@ describe('#108 — Publish moves into Check as Community Checking', () => {
     expect(screen.getAllByText(/verse not yet drafted/).length).toBeGreaterThan(0);
   });
 
+  it('the preview leaves out a chapter with no drafted verse, and says so when the book has none (#20)', () => {
+    state = { ...baseState, view: 'publish' };
+    render(<App />);
+    expect(sampleChapterNums.length).toBeGreaterThan(1); // the sample has undrafted chapters to leave out
+    expect(screen.getAllByTestId('cc-chapter')).toHaveLength(1);
+    expect(screen.queryByTestId('cc-nothing-drafted')).toBeNull();
+    cleanup();
+
+    const saved = bookModel.byChapter;
+    bookModel.byChapter = Object.fromEntries(Object.entries(saved).map(([c, verses]) => [c, verses.map((v) => ({ ...v, drafted: false, text: '' }))]));
+    try {
+      render(<App />);
+      expect(screen.queryAllByTestId('cc-chapter')).toHaveLength(0);
+      expect(screen.getByTestId('cc-nothing-drafted').textContent).toBe('Nothing is drafted in this book yet.');
+    } finally {
+      bookModel.byChapter = saved;
+    }
+  });
+
   it('the Bible page setup switches every preview chapter between Single and Double spacing', () => {
     state = { ...baseState, view: 'publish' };
     const before = JSON.stringify(state);
@@ -214,7 +233,7 @@ describe('#108 — Publish moves into Check as Community Checking', () => {
     const single = screen.getByRole('button', { name: 'Single' });
     const double = screen.getByRole('button', { name: 'Double' });
     const chapters = screen.getAllByTestId('cc-chapter');
-    expect(chapters.length).toBeGreaterThan(1);
+    expect(chapters.length).toBe(1); // only chapter 1 of the sample has a drafted verse (#20)
     expect(single.getAttribute('aria-pressed')).toBe('true');
     expect(double.getAttribute('aria-pressed')).toBe('false');
     expect(chapters.every((chapter) => (chapter as HTMLElement).style.lineHeight === 'var(--lh-community-checking-single)')).toBe(true);

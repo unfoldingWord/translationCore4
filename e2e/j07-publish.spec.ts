@@ -14,7 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { unzipSync } from 'fflate';
 import { captureDownload } from './helpers/export';
-import { createObsProject } from './helpers/story';
+import { RIG_API, createObsProject } from './helpers/story';
 import { assertProjectUnchanged } from '../test/helpers/export';
 import { SEEDED_PROJECT, readIngredient, resetPlaces, resetSeededChecking, rigRepo } from './helpers/rig';
 import { DRAFT } from '../conformance/fixtures/obs-draft.mjs';
@@ -178,14 +178,17 @@ test.describe('J7/J23 — Scripture Burrito', () => {
   );
 });
 
-// The PDF (#20): the whole book, printed by the desktop bridge (scripts/
-// desktop-main.cjs `export:pdf`). A browser has no bridge, so the journey
-// installs a test double with the same contract — a print document in, PDF
-// bytes out — printed by this Chromium's own `page.pdf()`, the print path
-// Electron's `printToPDF` uses. The packaged-app check of the real bridge is
+// The PDF (#20): every chapter with a drafted verse, printed by the desktop
+// bridge (scripts/desktop-main.cjs `export:pdf`). A browser has no bridge, so
+// the journey installs a test double with the same contract — a print
+// document in, PDF bytes out — printed by this Chromium's own `page.pdf()`,
+// the print path Electron's `printToPDF` uses. The double keeps each document
+// it prints. The packaged-app check of the real bridge is
 // docs/evidence/pdf-bridge-2026-09-24.md.
-const installPdfBridge = async (page: Page): Promise<void> => {
+const installPdfBridge = async (page: Page): Promise<string[]> => {
+  const documents: string[] = [];
   await page.exposeFunction('__tc4PrintPdf', async (html: string) => {
+    documents.push(html);
     const printer = await page.context().newPage();
     try {
       await printer.setContent(html);
@@ -198,6 +201,7 @@ const installPdfBridge = async (page: Page): Promise<void> => {
     const w = window as unknown as { __tc4PrintPdf: (html: string) => Promise<string>; tc4Desktop: unknown };
     w.tc4Desktop = { printPdf: async (html: string) => Uint8Array.from(atob(await w.__tc4PrintPdf(html)), (c) => c.charCodeAt(0)) };
   });
+  return documents;
 };
 
 /** The page count and the first page's MediaBox of a Chromium PDF. */
@@ -206,44 +210,98 @@ const pdfShape = (bytes: Buffer): { pages: number; mediaBox: string } => {
   return { pages: (text.match(/\/Type\s*\/Page[^s]/g) || []).length, mediaBox: text.match(/\/MediaBox\s*\[([^\]]+)\]/)?.[1].trim() ?? '' };
 };
 
+/** The chapters a print document holds. */
+const printedChapterCount = (html: string): number => (html.match(/<section class="print-chapter"/g) || []).length;
+
+/** A Bible project with every verse of Titus drafted, made through the store
+ * the app runs (as createObsProject does for OBS): the seeded Titus has five
+ * drafted verses, too few for Double spacing to add a page. */
+const createDraftedTitus = async (): Promise<string> => {
+  const { JournalingStore } = await import('../src/data/journal/journalingStore');
+  const { ServerApi } = await import('../src/data/serverApi');
+  const { memKv } = await import('../test/helpers/journalingRig');
+  const { INSTALLED_SUITE } = await import('../src/data/installedSuite');
+  const verse1 = 'Pablo, siervo de Dios y apóstol de Jesucristo, según la fe de los escogidos de Dios.';
+  const usfm = fs
+    .readFileSync(path.join(CONFORMANCE, 'sample-burrito/ingredients/TIT.usfm'), 'utf8')
+    .replace(/^\\v (\d+) *(___)?$/gm, `\\v $1 ${verse1}`);
+  const store = new JournalingStore({ api: new ServerApi({ baseUrl: RIG_API }), kv: memKv() });
+  const repo = `j07pdf_${Date.now()}`;
+  const { repoPath } = await store.createProject({
+    content_name: 'Equipo Rig — J7 PDF', content_abbr: repo, content_language_code: 'es', content_language_name: null,
+    add_book: false, versification: 'eng',
+  });
+  await store.open(repoPath);
+  await store.writeResources(INSTALLED_SUITE, null);
+  await store.writeSettings({ schemaVersion: 1, checkingLanguage: 'en', textDirection: 'ltr', textFont: null, languageName: 'Español' }, null);
+  await store.addBook({ book_code: 'TIT', book_title: 'Tito', book_abbr: 'TIT', add_cv: true, initialUsfm: usfm });
+  await store.commit('Project created (journey precondition)');
+  store.dispose();
+  return repo;
+};
+
+/** Open `name`'s Titus in Community Checking and wait for a clean working tree. */
+const openTitusCommunityChecking = async (page: Page, name: string): Promise<void> => {
+  await page.goto('/');
+  await page.getByTestId(`project-_local_/_local_/${name}`).getByRole('button', { name: /Titus/ }).click();
+  await page.getByRole('tab', { name: 'Check', exact: true }).click();
+  await page.getByTestId('open-community-checking').click();
+  await expect.poll(() => execFileSync('git', ['-C', rigRepo(name), 'status', '--porcelain'], { encoding: 'utf8' }), { timeout: 20_000 }).toBe('');
+};
+
+/** Export the PDF of the open book and prove the project did not change. */
+const exportPdf = async (page: Page, name: string): Promise<{ bytes: Buffer; filename: string }> => {
+  let download: { bytes: Buffer; filename: string } = { bytes: Buffer.alloc(0), filename: '' };
+  const commits = await assertProjectUnchanged(rigRepo(name), async () => {
+    await page.getByTestId('export-menu-trigger').click();
+    download = await captureDownload(page, page.getByRole('menuitem', { name: 'Export PDF' }));
+  });
+  expect(commits).toBe(0); // a clean project makes no checkpoint
+  await expect(page.getByTestId('export-failure')).toHaveCount(0);
+  return download;
+};
+
 test.describe('J7 — PDF', () => {
   test(
-    'PDF: the export menu prints the whole book with its page setup, and the project is unchanged',
+    'PDF: the seeded Titus prints only its drafted chapter, and the project is unchanged',
     { tag: ['@inc8', '@J7'] },
     async ({ page }) => {
-      const repo = rigRepo(SEEDED_PROJECT);
-      await installPdfBridge(page);
-      await page.goto('/');
-      await page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByRole('button', { name: /Titus/ }).click();
-      await page.getByRole('tab', { name: 'Check', exact: true }).click();
-      await page.getByTestId('open-community-checking').click();
-      await expect.poll(() => execFileSync('git', ['-C', repo, 'status', '--porcelain'], { encoding: 'utf8' }), { timeout: 20_000 }).toBe('');
+      const documents = await installPdfBridge(page);
+      await openTitusCommunityChecking(page, SEEDED_PROJECT);
+      await expect(page.getByTestId('cc-chapter')).toHaveCount(1); // the preview follows the same rule
 
-      const exportPdf = async (): Promise<{ bytes: Buffer; filename: string }> => {
-        let download: { bytes: Buffer; filename: string } = { bytes: Buffer.alloc(0), filename: '' };
-        const commits = await assertProjectUnchanged(repo, async () => {
-          await page.getByTestId('export-menu-trigger').click();
-          download = await captureDownload(page, page.getByRole('menuitem', { name: 'Export PDF' }));
-        });
-        expect(commits).toBe(0); // a clean project makes no checkpoint
-        await expect(page.getByTestId('export-failure')).toHaveCount(0);
-        return download;
-      };
+      const pdf = await exportPdf(page, SEEDED_PROJECT);
+      expect(pdf.filename).toMatch(/^TIT-\d{4}-\d{2}-\d{2}\.pdf$/);
+      expect(pdf.bytes.subarray(0, 5).toString()).toBe('%PDF-');
+      // Chapter 1 has verses 1–5 drafted; chapters 2 and 3 have none and are left out.
+      expect(printedChapterCount(documents[0])).toBe(1);
+      expect(documents[0]).toContain('[ verse not yet drafted ]'); // 1:6–16, inside the printed chapter
+      expect(pdfShape(pdf.bytes)).toEqual({ pages: 1, mediaBox: '0 0 594.95996 841.91998' });
+    },
+  );
 
-      const single = await exportPdf();
-      expect(single.filename).toMatch(/^TIT-\d{4}-\d{2}-\d{2}\.pdf$/);
-      expect(single.bytes.subarray(0, 5).toString()).toBe('%PDF-');
-      const a4 = pdfShape(single.bytes);
-      // Titus, 3 chapters, A4, one column, Single spacing, in the fonts installed on this
+  test(
+    'PDF: a drafted book prints every chapter with its page setup — Double spacing adds pages, Letter sets the paper',
+    { tag: ['@inc8', '@J7'] },
+    async ({ page }) => {
+      test.setTimeout(60_000); // the project is made here, and its first open folds a new journal
+      const name = await createDraftedTitus();
+      const documents = await installPdfBridge(page);
+      await openTitusCommunityChecking(page, name);
+
+      const single = pdfShape((await exportPdf(page, name)).bytes);
+      expect(printedChapterCount(documents[0])).toBe(3);
+      expect(documents[0]).not.toContain('[ verse not yet drafted ]');
+      // Titus, 46 verses, A4, one column, Single spacing, in the fonts installed on this
       // machine (the print document loads no web font).
-      expect(a4).toEqual({ pages: 1, mediaBox: '0 0 594.95996 841.91998' });
+      expect(single).toEqual({ pages: 2, mediaBox: '0 0 594.95996 841.91998' });
 
       await page.getByRole('group', { name: 'Spacing' }).getByRole('button', { name: 'Double' }).click();
-      const double = pdfShape((await exportPdf()).bytes);
-      expect(double.pages).toBeGreaterThan(a4.pages); // Double spacing changes the page count
+      const double = pdfShape((await exportPdf(page, name)).bytes);
+      expect(double.pages).toBeGreaterThan(single.pages); // Double spacing changes the page count
 
       await page.getByRole('group', { name: 'Paper size' }).getByRole('button', { name: 'Letter' }).click();
-      expect(pdfShape((await exportPdf()).bytes).mediaBox).toBe('0 0 612 792');
+      expect(pdfShape((await exportPdf(page, name)).bytes).mediaBox).toBe('0 0 612 792');
     },
   );
 });

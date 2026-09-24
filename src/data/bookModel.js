@@ -42,6 +42,15 @@ export function buildChapterVerses(bookRaw, chapters, entries) {
   return byChapter;
 }
 
+/** The chapters the Community Checking preview and the PDF show: each chapter
+ * with at least one drafted verse, as `[{ c, verses }]` in chapter order. A
+ * chapter with no drafted verse is left out; an undrafted verse inside a shown
+ * chapter stays, stated as not yet drafted (owner ruling on #20, 2026-09-24). */
+export const printedChapters = (byChapter, chapterNums) =>
+  chapterNums
+    .map((c) => ({ c, verses: byChapter[String(c)] || [] }))
+    .filter(({ verses }) => verses.some((v) => v.drafted && v.text));
+
 /** The raw USFM of a book → its verse index, its verses by chapter, and the
  * chapter numbers in order. */
 export function bookModel(bookRaw) {

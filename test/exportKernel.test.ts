@@ -5,7 +5,7 @@
 // the fake rig, so the checkpoint is the production one.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { deliverFile, exportFilename, runExport, type ExportProducer } from '../src/data/export/kernel';
-import { reportError } from '../src/data/journal/runtime';
+import { Refusal, reportError } from '../src/data/journal/runtime';
 import { ServerApi } from '../src/data/serverApi';
 import { JournalingStore, forgetProjectQueues } from '../src/data/journal/journalingStore';
 import { forgetSharedClocks } from '../src/data/journal/journalStore';
@@ -88,6 +88,14 @@ describe('#375 runExport', () => {
     expect(report).toMatchObject({ op: 'export', ok: false, code: 'export.read-failed', facts: { producer: 'usfm-plain', error: 'no such book' } });
     expect(downloads).toEqual([]);
     expect(URL.createObjectURL).not.toHaveBeenCalled();
+  });
+
+  it("a producer's own refusal keeps its code and delivers nothing", async () => {
+    const { store } = await seeded();
+    const report = await runExport(fake(async () => { throw new Refusal('export.nothing-drafted', 'Titus has no drafted verse yet.'); }), { store, project: PROJECT });
+    expect(reportError(report)).toBeNull();
+    expect(report).toMatchObject({ op: 'export', ok: false, code: 'export.nothing-drafted', facts: { producer: 'usfm-plain', error: 'Titus has no drafted verse yet.' } });
+    expect(downloads).toEqual([]);
   });
 
   it('a failed checkpoint delivers nothing, never calls the producer, and returns export.checkpoint-failed', async () => {
