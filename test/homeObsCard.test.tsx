@@ -32,7 +32,10 @@ describe('#328 — the OBS project card', () => {
     const twelve = screen.getByTestId('story-tile-12');
     expect(twelve.textContent).toContain('12 · El éxodo');
     expect(twelve.textContent).toContain('5%');
-    expect(twelve.textContent).toMatch(/Sep/); // the edit date, from `at`
+    // The edit date, from `at`, in the machine's locale as the card writes it
+    // (`17 Sep` in English, `17 sept.` in Spanish — #404).
+    const edited = new Date(Date.UTC(2026, 8, 17, 12)).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+    expect(twelve.textContent).toContain(edited);
     expect(screen.getByTestId('story-tile-7').textContent).toContain('Story 7'); // no title: the number alone
     expect(screen.queryByRole('button', { name: 'Add a book' })).toBeNull();
   });

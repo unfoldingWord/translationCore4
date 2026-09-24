@@ -6,7 +6,9 @@ import { indexBook } from '../src/data/usfm/indexer';
 
 const fs = process.getBuiltinModule('node:fs');
 const path = process.getBuiltinModule('node:path');
-const HERE = path.dirname(new URL(import.meta.url).pathname);
+// The test/ folder, from the repository root (the Vitest cwd). A URL pathname
+// is not a file path: on Windows it gives /C:/... (#404).
+const HERE = path.resolve(process.cwd(), 'test');
 const ULT_TIT = fs.readFileSync(path.join(HERE, 'fixtures', 'en_ult', 'TIT.usfm'), 'utf8');
 const UST_TIT = fs.readFileSync(path.join(HERE, 'fixtures', 'en_ust', 'TIT.usfm'), 'utf8');
 

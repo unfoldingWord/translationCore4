@@ -753,7 +753,7 @@ describe('#106 — note bodies are markdown, and are rendered as such', () => {
   // a 400-character cut that lands inside a `[1 Timothy 3](…)` link.
   const fsMod = process.getBuiltinModule('node:fs');
   const pathMod = process.getBuiltinModule('node:path');
-  const HERE = pathMod.dirname(new URL(import.meta.url).pathname);
+  const HERE = pathMod.resolve(process.cwd(), 'test'); // not a URL pathname: /C:/... on Windows (#404)
   const TSV = fsMod.readFileSync(
     pathMod.join(HERE, 'fixtures', 'resources', 'en_tn@v86', 'TIT.tsv'),
     'utf8',

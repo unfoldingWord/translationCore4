@@ -73,7 +73,8 @@ const walk = (p: string): string[] => {
 };
 const realDocs = () =>
   DOC_ROOTS.flatMap(walk).map((p: string) => ({
-    file: p,
+    // `/` on every OS, as scripts/docs-gate.mjs names them (#404).
+    file: p.replaceAll('\\', '/'),
     text: fs.readFileSync(path.join(ROOT, p), 'utf8'),
   }));
 
