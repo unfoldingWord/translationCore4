@@ -213,4 +213,57 @@ describe('Pankosmia rig launcher boundary', () => {
       fs.rmSync(temporaryRoot, { recursive: true, force: true });
     }
   });
+  // Playwright stops a web server by killing its process group. A rig without a
+  // lease must die with that group; a wrapper-owned rig (lease set) must survive
+  // it, because the wrapper stops that rig through the lease.
+  it.skipIf(!zshAvailable || process.platform === 'win32')(
+    'keeps a lease-less rig in the launcher group so a group kill stops it',
+    async () => {
+      const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-rig-group-'));
+      const script = path.join(temporaryRoot, 'hold.zsh');
+      fs.writeFileSync(script, '#!/bin/zsh\nprint -r -- $$ > "$RIG_PID_FILE"\nsleep 30\n');
+      const alive = (pid: number) => {
+        try { process.kill(pid, 0); return true; } catch { return false; }
+      };
+      const waitFor = async (check: () => boolean, ms = 5_000) => {
+        const deadline = Date.now() + ms;
+        while (Date.now() < deadline) {
+          if (check()) return true;
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        return check();
+      };
+      const launchAndKillGroup = async (name: string, leasePath?: string) => {
+        const pidFile = path.join(temporaryRoot, `${name}.pid`);
+        const env: NodeJS.ProcessEnv = { ...process.env, TC4_ZSH: RIG_ZSH, RIG_PID_FILE: pidFile };
+        delete env.TC4_RIG_LEASE;
+        if (leasePath) env.TC4_RIG_LEASE = leasePath;
+        const child = childProcess.spawn(process.execPath, [LAUNCHER, script], { env, detached: true, stdio: 'ignore' });
+        const started = await waitFor(() => fs.existsSync(pidFile) && fs.readFileSync(pidFile, 'utf8').trim() !== '');
+        process.kill(-child.pid!, 'SIGKILL');
+        expect(started).toBe(true);
+        return Number(fs.readFileSync(pidFile, 'utf8').trim());
+      };
+
+      const survivors: number[] = [];
+      try {
+        const leaseless = await launchAndKillGroup('leaseless');
+        survivors.push(leaseless);
+        expect(await waitFor(() => !alive(leaseless))).toBe(true);
+
+        // Control: with a lease, the rig has its own group and survives.
+        const leased = await launchAndKillGroup('leased', path.join(temporaryRoot, 'lease.json'));
+        survivors.push(leased);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        expect(alive(leased)).toBe(true);
+      } finally {
+        for (const pid of survivors) {
+          try { process.kill(-pid, 'SIGKILL'); } catch { /* not a group leader or gone */ }
+          try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ }
+        }
+        fs.rmSync(temporaryRoot, { recursive: true, force: true });
+      }
+    },
+    15_000,
+  );
 });

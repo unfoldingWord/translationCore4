@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { rigLauncherCommand, rigScriptArgs, rigScriptPath, rigServerOptions, rigShellEnv } from '../e2e/rig-shell';
 import { RIG_PORT } from '../e2e/rig-health';
 
@@ -60,7 +60,20 @@ describe('MSYS2 rig script paths', () => {
     expect(options.reuseExistingServer).toBe(false);
   });
 
-  it('only reuses a rig when the wrapper identified it as external', () => {
+  it('reuses a rig when the wrapper identified it as external', () => {
     expect(rigServerOptions('rig-launcher', true).reuseExistingServer).toBe(true);
+  });
+
+  it('refuses reuse when the wrapper owns the rig, and reuses a rig on a direct Playwright run', () => {
+    try {
+      vi.stubEnv('TC4_RIG_EXTERNAL', '0');
+      expect(rigServerOptions('rig-launcher').reuseExistingServer).toBe(false);
+      vi.stubEnv('TC4_RIG_EXTERNAL', '1');
+      expect(rigServerOptions('rig-launcher').reuseExistingServer).toBe(true);
+      vi.stubEnv('TC4_RIG_EXTERNAL', undefined);
+      expect(rigServerOptions('rig-launcher').reuseExistingServer).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

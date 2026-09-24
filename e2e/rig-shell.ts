@@ -37,13 +37,18 @@ export const rigScriptArgs = (scriptPath: string, platform: NodeJS.Platform = pr
 export const rigLauncherCommand = (scriptPath: string, launcherPath: string): string =>
   `"${process.execPath}" "${launcherPath}" "${rigScriptPath(scriptPath)}"`;
 
-/** Keep the poisoned server reachable so global setup can classify its response. */
+/**
+ * Keep the poisoned server reachable so global setup can classify its response.
+ *
+ * The journey wrapper sets TC4_RIG_EXTERNAL to '0' when it owns the rig. A direct
+ * `npx playwright test` leaves it unset and reuses a running rig, as before.
+ */
 export const rigServerOptions = (
   command: string,
-  external = process.env.TC4_RIG_EXTERNAL === '1',
+  reuse = process.env.TC4_RIG_EXTERNAL !== '0',
 ) => ({
   command,
   port: RIG_PORT,
-  reuseExistingServer: external,
+  reuseExistingServer: reuse,
   timeout: 60_000,
 });

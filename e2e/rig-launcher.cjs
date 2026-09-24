@@ -151,7 +151,10 @@ function runRig(scriptPath) {
     env: spec.env,
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
-    detached: process.platform !== 'win32',
+    // Only a wrapper-owned rig gets its own process group: the wrapper stops it
+    // through the lease. Without a lease, the rig stays in Playwright's group and
+    // stops when Playwright stops the web server.
+    detached: process.platform !== 'win32' && Boolean(leasePath),
   });
 
   writeLease(leasePath, {

@@ -154,7 +154,7 @@ test.describe('J9 — a facilitator imports existing work', () => {
         expect(seeded.filter((e) => e.op === 'book.add').length).toBe(1);
         expect(new Set(seeded.map((e) => e.seed.source))).toEqual(new Set(['sidecar-migration']));
         expect(lastCommitMessage(abbrOf(name))).toBe(`Import ${name} (tC4)`);
-        expect(git(repo, 'status', '--porcelain')).toBe('');
+        expect(rigGit(repo, 'status', '--porcelain')).toBe('');
       });
       await test.step("the harness's project-format checks pass on the stored project: schema, md5 and size, the exact listing", async () => {
         // validate.mjs as a whole proves the sample (its Titus verse counts, its

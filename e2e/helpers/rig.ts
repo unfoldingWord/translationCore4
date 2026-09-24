@@ -356,7 +356,7 @@ export function resetPlaces(): void {
 }
 
 export function resetSeededChecking(): void {
-  const source = path.join(TC4_ROOT, 'sample-burrito', 'ingredients');
+  const source = path.join(TC4_ROOT, 'conformance', 'sample-burrito', 'ingredients');
   const target = path.join(rigRepo(SEEDED_PROJECT), 'ingredients');
   for (const rel of ['TIT.usfm', 'JON.usfm']) {
     fs.copyFileSync(path.join(source, rel), path.join(target, rel));
