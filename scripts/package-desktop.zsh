@@ -288,6 +288,14 @@ if [ -n "$TC4_TEST_NO_SINGLE_INSTANCE" ]; then
   sed_inplace 's/!app.requestSingleInstanceLock()/false/' "$PACK/electron/tc4-main.js"
 fi
 node --check "$(npath "$PACK/electron/tc4-main.js")"
+# tC4's preload (#20) replaces the template's: it keeps setCanClose and adds
+# the PDF bridge. Refuse if the template's window no longer loads preload.js.
+grep -q "preload: path.join(__dirname, 'preload.js')" "$PACK/electron/electronStartup.js" || {
+  echo "FATAL: the template window no longer loads electron/preload.js — re-verify the #20 preload before building" >&2
+  exit 1
+}
+cp "$REPO/scripts/preload.cjs" "$PACK/electron/preload.js"
+node --check "$(npath "$PACK/electron/preload.js")"
 node -e "
 const fs = require('fs');
 const p = '$(npath "$PACK/electron/package.json")';

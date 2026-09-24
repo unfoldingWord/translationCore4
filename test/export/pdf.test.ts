@@ -1,0 +1,92 @@
+// The PDF producer (issue #20): one print document of the whole book, the page
+// setup applied as CSS, handed to the desktop bridge; the bridge's bytes are
+// the file. A browser has no bridge, so the menu has no PDF item there.
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { PDF, printDocument } from '../../src/data/export/pdf';
+import { exportFilename } from '../../src/data/export/kernel';
+import { DEFAULT_PAGE_SETUP, type PageSetup } from '../../src/data/export/pageSetup';
+import type { BurritoStore, ProjectSummary } from '../../src/data/burritoStore';
+
+const USFM = `\\id TIT
+\\c 1
+\\p
+\\v 1 Paul, a servant of God.
+\\v 2 ___
+\\c 2
+\\p
+\\v 1 Speak <sound> doctrine.
+`;
+const bible = { name: 'demo', flavor: 'textTranslation', scriptDirection: 'ltr' } as ProjectSummary;
+const store = { readBook: vi.fn(async () => ({ usfm: USFM })) } as unknown as BurritoStore;
+const setup = (patch: Partial<PageSetup> = {}): PageSetup => ({ ...DEFAULT_PAGE_SETUP, ...patch });
+const g = globalThis as { window?: unknown };
+
+/** Install a desktop bridge that records the document and answers with `bytes`. */
+const installBridge = (bytes = new Uint8Array([37, 80, 68, 70])) => {
+  const printPdf = vi.fn<(html: string) => Promise<Uint8Array>>(async () => bytes);
+  g.window = { tc4Desktop: { printPdf } };
+  return printPdf;
+};
+
+afterEach(() => {
+  delete g.window;
+});
+
+describe('the PDF producer', () => {
+  it('shows only for a Bible project, and only when the desktop bridge exists', () => {
+    expect(PDF.appliesTo(bible)).toBe(false); // a browser: no bridge, no menu item
+    installBridge();
+    expect(PDF.appliesTo(bible)).toBe(true);
+    expect(PDF.appliesTo({ ...bible, flavor: 'textStories' })).toBe(false);
+  });
+
+  it('returns the bridge bytes as <BOOK>-<YYYY-MM-DD>.pdf, from one document of the open book', async () => {
+    const bytes = new Uint8Array([1, 2, 3]);
+    const printPdf = installBridge(bytes);
+    const file = await PDF.produce({ store, project: bible, book: 'TIT', pageSetup: setup() });
+    expect(store.readBook).toHaveBeenCalledWith('TIT');
+    expect(printPdf).toHaveBeenCalledTimes(1);
+    expect(printPdf.mock.calls[0][0]).toBe(printDocument(USFM, 'TIT', setup(), 'ltr'));
+    expect(file).toEqual({ bytes, filename: exportFilename('TIT', 'pdf'), mime: 'application/pdf' });
+  });
+
+  it('refuses with no bridge or no open book, and prints nothing', async () => {
+    await expect(PDF.produce({ store, project: bible, book: 'TIT' })).rejects.toThrow(/desktop app/);
+    const printPdf = installBridge();
+    await expect(PDF.produce({ store, project: bible })).rejects.toThrow(/no book/);
+    expect(printPdf).not.toHaveBeenCalled();
+  });
+});
+
+describe('the print document', () => {
+  it('holds every chapter, and states an undrafted verse as the preview does', () => {
+    const html = printDocument(USFM, 'TIT', setup(), 'ltr');
+    expect(html.match(/<section class="print-chapter"/g)).toHaveLength(2);
+    expect(html).toContain('Paul, a servant of God.');
+    expect(html).toContain('<span class="print-undrafted"><sup class="print-verse-number">2</sup>[ verse not yet drafted ] </span>');
+    expect(html).toContain('Speak &lt;sound&gt; doctrine.'); // text, never markup
+  });
+
+  it('carries the paper, columns and spacing as CSS, in front of the whole print stylesheet', () => {
+    const a4 = printDocument(USFM, 'TIT', setup(), 'ltr');
+    const css = process.getBuiltinModule('node:fs').readFileSync(new URL('../../src/ds/tokens/print.css', import.meta.url), 'utf8');
+    expect(a4).toContain(css);
+    expect(a4).toContain('line-height: var(--print-leading)'); // the variables below reach the CSS
+    expect(a4).toContain('@page { size: A4; }');
+    expect(a4).toContain('--print-columns: 1; --print-leading: 1.64;');
+    const letter = printDocument(USFM, 'TIT', setup({ paper: 'letter', columns: 2, spacing: 'double' }), 'ltr');
+    expect(letter).toContain('@page { size: letter; }');
+    expect(letter).toContain('--print-columns: 2; --print-leading: 3.28;');
+  });
+
+  it('adds drop caps and verse numbers only when the page setup asks, and sets the direction', () => {
+    const on = printDocument(USFM, 'TIT', setup(), 'rtl');
+    expect(on.match(/class="print-dropcap"/g)).toHaveLength(2);
+    expect(on.match(/class="print-verse-number"/g)).toHaveLength(3);
+    expect(on).toContain('<html dir="rtl">');
+    expect(on).toContain('<section class="print-chapter" dir="rtl">');
+    const off = printDocument(USFM, 'TIT', setup({ dropCapChapters: false, verseNumbers: false }), 'ltr');
+    expect(off).not.toContain('class="print-dropcap"');
+    expect(off.match(/class="print-verse-number"/g)).toHaveLength(1); // the undrafted verse keeps its number
+  });
+});
