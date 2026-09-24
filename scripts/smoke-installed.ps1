@@ -165,6 +165,7 @@ try {
   Run-Steps obs-template-probe
   Run-RealClientSmoke
   Run-Steps readback
+  Run-Steps export
   Run-Steps obs-image
   Run-Steps obs-readback
   if (!$KeepProject) { Run-Steps delete }

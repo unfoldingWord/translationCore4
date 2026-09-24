@@ -11,7 +11,8 @@
 #   7. a project is created through the app's own HTTP surface, with one book;
 #   8. one verse is written into that book and lands in the store on disk;
 #   9. the app is stopped and started again; the verse, OBS checkpoint and image read back;
-#  10. the smoke projects are removed; the app is stopped.
+#  10. the Bible project's Scripture Burrito ZIP is checked after restart;
+#  11. the smoke projects are removed; the app is stopped.
 #
 # Each step prints one line, "ok <step>: <what was seen>" or "FAIL <step>: <what was
 # seen>", and the script exits non-zero at the first failure. The output is what the
@@ -279,6 +280,7 @@ run_steps version || { cleanup_app; exit 1; }
 run_steps obs-template-probe || { cleanup_app; exit 1; }
 run_real_client || { cleanup_app; exit 1; }
 run_steps readback || { cleanup_app; exit 1; }
+run_steps export || { cleanup_app; exit 1; }
 run_steps obs-image || { cleanup_app; exit 1; }
 run_steps obs-readback || { cleanup_app; exit 1; }
 

@@ -575,7 +575,7 @@ MANIFEST
 echo "-- BUILD-MANIFEST.json --"
 cat "$APPDIR/BUILD-MANIFEST.json"
 
-cp "$REPO/scripts/smoke-api.cjs" "$APPDIR/smoke-api.cjs"
+node "$REPO/scripts/build-smoke-api.cjs" "$APPDIR/smoke-api.cjs"
 node "$REPO/scripts/build-smoke-journal.cjs" "$APPDIR/smoke-journal.cjs"
 if [ "$OS" = macos ]; then
   zsh "$REPO/scripts/package-macos.zsh" "$APPDIR" "$APP_NAME" "$VERSION" "$VARIANT" "$STORE_LEAF"

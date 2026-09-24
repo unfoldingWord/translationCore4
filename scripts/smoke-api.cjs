@@ -1,6 +1,7 @@
 const [base, repo, abbr, marker, mode, storeDir] = process.argv.slice(2);
 const fs = require("node:fs");
 const path = require("node:path");
+const { verifyBurritoZip } = require("./smoke-export.cjs");
 const enc = (r) => r.split("/").map(encodeURIComponent).join("/");
 const url = (route) => base + route;
 const obsRepo = `${repo}obs`;
@@ -240,6 +241,17 @@ async function probeObsTemplate() {
     const v = verse11(await getText(rawRoute).catch((e) => fail("read back", e.message)));
     if (v !== marker) fail("read back", "TIT 1:1 is " + JSON.stringify(v) + " after the restart, expected " + JSON.stringify(marker));
     ok("read back", "TIT 1:1 still \"" + marker + "\" after the restart");
+  } else if (mode === "export") {
+    const zipBytes = await getBytes("/api/burrito/zipped/" + enc(repo))
+      .catch((e) => fail("export", e.message));
+    const metadataBytes = await getBytes("/api/burrito/metadata/raw/" + enc(repo))
+      .catch((e) => fail("export", e.message));
+    try {
+      const result = verifyBurritoZip(zipBytes, metadataBytes);
+      ok("export", `${repo}: ${result.ingredientFiles} ingredient files; metadata matches raw route (${result.metadataBytes} bytes)`);
+    } catch (error) {
+      fail("export", error.message);
+    }
   } else if (mode === "obs-create") {
     const before = JSON.parse(await getText("/api/git/list-local-repos"));
     if (before.includes(obsRepo)) fail("OBS create", obsRepo + " already exists");
