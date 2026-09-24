@@ -20,6 +20,7 @@ export type ManifestEntry = {
   file: string | string[]; // relative to MANIFEST_DIR; a directory is zipped as it is (flat)
   wrap?: string; // zip the directory under this one top-level folder, as a DCS sb-zip is
   name?: string; // the review page's name edit: entries made from one burrito need their own project names
+  lang?: string; // the review page's language edit: a USFM file carries no language
   parser: string;
   expect: 'accept' | 'refuse';
   code?: string;
@@ -90,7 +91,7 @@ export async function runManifest(
     const parser = parsers[entry.parser];
     assert.ok(parser, `manifest entry ${JSON.stringify(entry.file)}: no parser "${entry.parser}"`);
     const files = (Array.isArray(entry.file) ? entry.file : [entry.file]).map((rel) => fixtureFile(rel, entry.wrap));
-    const edits = { name: entry.name };
+    const edits = { name: entry.name, language: entry.lang };
     const label = `manifest entry ${JSON.stringify(entry.file)}`;
     if (entry.expect === 'refuse') {
       const report = await assertNoRepoCreated(() => runImport(parser, files, edits, deps), deps.api);
