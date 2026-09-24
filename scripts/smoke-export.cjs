@@ -15,10 +15,16 @@ function verifyBurritoZip(zipBytes, rawMetadataBytes) {
   const metadata = files['metadata.json'];
   if (!metadata) throw new Error('ZIP has no root metadata.json');
 
-  const ingredientFiles = Object.keys(files).filter((name) =>
-    name.startsWith('ingredients/') && !name.endsWith('/'),
-  );
-  if (ingredientFiles.length === 0) throw new Error('ZIP has no files under root ingredients/');
+  const ingredientFiles = Object.keys(files).filter((name) => {
+    // The Windows server can serialize native path separators into its ZIP
+    // entries. Treat either separator as a ZIP path boundary when checking
+    // the root; do not extract or rewrite the archive.
+    const zipPath = name.replace(/\\/g, '/');
+    return zipPath.startsWith('ingredients/') && !zipPath.endsWith('/');
+  });
+  if (ingredientFiles.length === 0) {
+    throw new Error(`ZIP has no files under root ingredients/ (entries: ${Object.keys(files).slice(0, 8).join(', ') || 'none'})`);
+  }
 
   if (!(rawMetadataBytes instanceof Uint8Array)
     || !Buffer.from(metadata).equals(Buffer.from(rawMetadataBytes))) {

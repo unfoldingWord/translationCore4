@@ -20,6 +20,17 @@ test('installed export accepts the sample Burrito ZIP and exact metadata bytes',
   });
 });
 
+test('installed export recognizes Windows path separators in ZIP entries', () => {
+  const windowsZip = zipSync({
+    'metadata.json': new Uint8Array(metadata),
+    'ingredients\\TIT.usfm': new Uint8Array(ingredient),
+  });
+  assert.deepEqual(verifyBurritoZip(windowsZip, metadata), {
+    ingredientFiles: 1,
+    metadataBytes: metadata.length,
+  });
+});
+
 test('installed export rejects an invalid ZIP negative control', () => {
   assert.throws(
     () => verifyBurritoZip(Buffer.from('not a ZIP'), metadata),
