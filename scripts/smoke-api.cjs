@@ -27,8 +27,11 @@ async function getText(route) {
   if (!r.ok) throw new Error(route + " -> " + r.status + " " + t.slice(0, 200));
   return t;
 }
-async function getBytes(route) {
+async function getBytes(route, expectedStatus) {
   const r = await fetch(url(route));
+  if (expectedStatus !== undefined && r.status !== expectedStatus) {
+    throw new Error(route + " -> expected HTTP " + expectedStatus + ", got " + r.status + " " + (await r.text()).slice(0, 200));
+  }
   if (!r.ok) throw new Error(route + " -> " + r.status + " " + (await r.text()).slice(0, 200));
   return new Uint8Array(await r.arrayBuffer());
 }
@@ -242,7 +245,7 @@ async function probeObsTemplate() {
     if (v !== marker) fail("read back", "TIT 1:1 is " + JSON.stringify(v) + " after the restart, expected " + JSON.stringify(marker));
     ok("read back", "TIT 1:1 still \"" + marker + "\" after the restart");
   } else if (mode === "export") {
-    const zipBytes = await getBytes("/api/burrito/zipped/" + enc(repo))
+    const zipBytes = await getBytes("/api/burrito/zipped/" + enc(repo), 200)
       .catch((e) => fail("export", e.message));
     const metadataBytes = await getBytes("/api/burrito/metadata/raw/" + enc(repo))
       .catch((e) => fail("export", e.message));

@@ -537,9 +537,11 @@ and `SMOKE OK: <folder> under HOME=<home>, store <repo_dir>`. Paste the whole ou
 pre-release notes.
 
 The `ok export:` step checks the installed server's ZIP route and compares its root
-`metadata.json` with the raw metadata route. It does not exercise the app's final download,
-which is checked during the manual offline run; that run also checks PDF export as required
-by release issue #371.
+`metadata.json` byte-for-byte with the raw metadata route. It does not test downloading an
+export through the app or exporting a PDF. Those app-level checks belong in [The offline
+run](#the-offline-run-43), step 9, for [release issue #371](https://github.com/unfoldingWord/translationCore4/issues/371).
+Step 9 is currently skipped because app export is not implemented. Do not report the
+download or PDF checks as passed until that step is updated and run.
 
 Options:
 
