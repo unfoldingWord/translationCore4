@@ -94,6 +94,45 @@ notification stream get adopted, and by which path, is open question
 [#222](https://github.com/unfoldingWord/translationCore4/issues/222). Do not decide
 that in passing while you build something else.
 
+## Before you hand off a pull request
+
+Added 2026-09-23. Each rule below comes from a pull request that a maintainer had to fix
+after the agent reported it ready: [#354](https://github.com/unfoldingWord/translationCore4/pull/354)
+and [#391](https://github.com/unfoldingWord/translationCore4/pull/391).
+
+1. **Prove the last commit.** After each merge or rebase from `main`, run
+   `npm run typecheck` and the tests again. A merge can bring in new code that uses a
+   name that your branch changed. In #391, the merge added a call to a helper that the
+   branch removed, and typecheck failed on CI.
+2. **Read CI on the last commit before you say "ready".** A red check is your work to
+   fix. Do not write "CI is the merge gate" and stop. If `npm run verify` fails on your
+   machine, compare with `main` at your base commit (`CONTRIBUTING.md`, "Prove the
+   claims to yourself").
+3. **Test every user of a shared value.** Before you change a shared path, helper, or
+   default, find each user with `rg`. Run the tests of each user. In #391, a change to
+   `TC4_ROOT` in `e2e/helpers/rig.ts` affected the 17 journey files that import it.
+   Only J1 ran. 10 of those files call a helper that read a path that did not exist.
+4. **CI does not run the Playwright journeys.** The `rig` job runs the rig-backed Vitest
+   and conformance suites only (`.github/workflows/rig.yml`, #185). If your change
+   touches `e2e/`, `dev-env/` or `playwright.config.ts`, run each affected journey and
+   paste the output. If you cannot run a journey, name it in the pull request body as
+   "not run".
+5. **Use only paths inside this repository.** A maintainer's checkout sits inside a
+   planning workspace that holds copies such as `../sample-burrito` and `../dev-env`. A
+   path above the repository root works on that one machine only. Use
+   `conformance/sample-burrito` and this repository's `dev-env/`. The S-0 smoke tests
+   are the one recorded exception (`CONTRIBUTING.md`, "Tests that need more than this
+   repository").
+6. **Run what you build.** If you generate or copy a file that runs later, run it or
+   parse it (`node --check`) in a test. In #354, a generated entry point had a syntax
+   error. Declare each package that a script imports in `package.json`. In #354,
+   `esbuild` was not declared.
+7. **Build what the issue asks.** If you think the issue needs more, ask in the issue
+   before you build it. In #391, the issue asked for a health probe. The pull request
+   also added a process-lease system, and one of the four defects came from it. Do not
+   edit the scope or the acceptance criteria of an issue to match your work. In #324,
+   seven such edits replaced the owner's criteria, and the change grew from one file to 21.
+
 ## Skips are not failures
 
 Some tests skip on a clean clone. Each names its
