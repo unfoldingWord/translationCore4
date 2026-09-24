@@ -62,7 +62,8 @@ describe('B1 — seeding reads mid-line \\v markers (marker stream, not line wal
   // A whole-corpus leg: ~2s alone, but the default 5s times out under the
   // full suite's parallel load (observed 5.9s/7.6s, 2026-08-22).
   it('full en_ult corpus leg: seeded verse sets match the oracle for every book (skips without the cache)', { timeout: 30_000 }, () => {
-    const cache = path.resolve(HERE, '..', '..', 'dev-env', 'resources-cache', 'en_ult-v89-unwrapped.zip');
+    // This repository's cache, from the repository root (the Vitest cwd) — never above it (#406).
+    const cache = path.resolve(process.cwd(), 'dev-env', 'resources-cache', 'en_ult-v89-unwrapped.zip');
     if (!fs.existsSync(cache)) {
       console.warn('corpus leg skipped: resources cache absent');
       return;
