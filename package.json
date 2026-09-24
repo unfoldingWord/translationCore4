@@ -17,7 +17,7 @@
     "prove": "node scripts/prove.mjs",
     "docs:gate": "node scripts/docs-gate.mjs",
     "prepare": "husky",
-    "test:desktop": "node --test scripts/desktop-bootstrap.test.cjs",
+    "test:desktop": "node --test scripts/desktop-bootstrap.test.cjs scripts/smoke-export.test.cjs scripts/smoke-api.test.cjs",
     "dev:annotate": "node scripts/annotate-i18n.mjs && concurrently -k -n vite,annotate -c cyan,magenta \"vite --mode annotate\" \"react-grab-annotate --dir \\\"$HOME\\\" --base-dir .tc4-annotations\""
   },
   "dependencies": {
@@ -47,6 +47,7 @@
     "@testing-library/react": "16.3.2",
     "@types/node": "24.10.9",
     "@vitejs/plugin-react": "4.7.0",
+    "@zip.js/zip.js": "2.18.2",
     "concurrently": "10.0.5",
     "esbuild": "0.25.12",
     "eslint": "9.39.4",
