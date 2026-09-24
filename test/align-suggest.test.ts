@@ -7,7 +7,7 @@
 // alignments and proposes links for the words still in the bank. Nothing in
 // either touches a record: a suggestion is a proposal until linkWord makes it
 // a manual link through the same save path.
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bootstrapVerse, linkWord, stampTargetVerse } from '../src/data/align/edit';
 import { linksFor, rebindSuggestions, sessionInputFor, trainingVersesFor, targetSeeds } from '../src/data/align/suggest';
 import { boundCorpus, predictLinks, trainModel } from '../src/data/align/suggestEngine';
@@ -129,6 +129,34 @@ describe('#1 bridge — the engine sees positions, the editor sees words', () =>
 });
 
 describe('#1 engine — trains on confirmed alignments, proposes for the bank, never for an untrained model', () => {
+  // The booster is stochastic by design: JLBoost grows each tree on a
+  // Math.random feature and split, and training keeps a Math.random sample of
+  // the incorrect predictions. Unseeded, about 1 run in 400 proposes Dios
+  // inside a phrase that holds the placed Padre, and linksFor drops it (#337).
+  // A fixed seed makes every engine case one reproducible run.
+  const seedRandom = (seed: number) => {
+    let a = seed; // mulberry32, the generator uw-wordmapbooster's JLBoost.js ships (unused there)
+    vi.spyOn(Math, 'random').mockImplementation(() => {
+      let t = (a += 0x6d2b79f5);
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    });
+  };
+  beforeEach(() => seedRandom(0));
+  afterEach(() => vi.restoreAllMocks());
+
+  it('Math.random is the only thing that varies: the same seed trains the same proposals', async () => {
+    const f = file({ '1': aligned11(), '4': aligned14() });
+    const verses = trainingVersesFor('TIT', f, { '1:1': V11.text, '1:4': V14.text });
+    const r = bootstrapVerse('de Dios Padre', [V14.orig[1], V14.orig[2]], SOURCE);
+    const once = async () => {
+      seedRandom(1);
+      return predictLinks(await trainModel('nt', verses), sessionInputFor(r, 'de Dios Padre'));
+    };
+    expect(await once()).toEqual(await once());
+  });
+
   it('a project with no aligned verses trains nothing and suggests nothing', async () => {
     const trained = await trainModel('nt', []);
     expect(trained.verses).toBe(0);
