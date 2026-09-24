@@ -7,7 +7,10 @@ const url = (route) => base + route;
 const obsRepo = `${repo}obs`;
 const obsAbbr = `${abbr}obs`;
 const localStore = storeDir || process.env.TC4_SMOKE_STORE;
-const fail = (step, seen) => { console.log("FAIL " + step + ": " + seen); process.exit(1); };
+const fail = (step, seen) => {
+  console.log("FAIL " + step + ": " + String(seen).replace(/[\r\n\u0085\u2028\u2029]+/g, " "));
+  process.exit(1);
+};
 const ok = (step, seen) => console.log("ok " + step + ": " + seen);
 // A POST answer must be the success shape the client enforces (src/data/serverApi.ts
 // post(): HTTP ok AND a JSON body with is_good true); anything else is a failure there

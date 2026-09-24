@@ -18,13 +18,13 @@ const proveSource = fs.readFileSync(path.join(__dirname, 'prove.mjs'), 'utf8');
 const sampleRepo = proveSource.match(/const SAMPLE = '([^']+)';/)?.[1];
 assert.ok(sampleRepo, 'scripts/prove.mjs must declare its seeded sample project');
 
-async function runExportSmoke(zipStatus, smokeApi = path.join(__dirname, 'smoke-api.cjs'), cwd = process.cwd()) {
+async function runExportSmoke(zipStatus, smokeApi = path.join(__dirname, 'smoke-api.cjs'), cwd = process.cwd(), zipBytes = zip) {
   const zipRoute = `/api/burrito/zipped/${sampleRepo}`;
   const metadataRoute = `/api/burrito/metadata/raw/${sampleRepo}`;
   const server = http.createServer((request, response) => {
     if (request.url === zipRoute) {
       response.writeHead(zipStatus, { 'content-type': 'application/zip' });
-      response.end(zip);
+      response.end(zipBytes);
     } else if (request.url === metadataRoute) {
       response.writeHead(200, { 'content-type': 'application/json' });
       response.end(metadata);
@@ -82,6 +82,18 @@ test('export smoke rejects HTTP 206 even when the ZIP is valid', async () => {
   assert.match(result.stdout, /expected HTTP 200, got 206/);
   assert.match(result.stdout, /^FAIL export:/m);
   assert.equal(exportLines(result.stdout).length, 1);
+});
+
+test('export smoke prints one physical failure line for a ZIP entry containing a newline', async () => {
+  const invalidName = `\u00e9\n${path.basename(path.join(sample, 'ingredients', 'TIT.usfm'))}`;
+  const noIngredientZip = zipSync({
+    'metadata.json': new Uint8Array(metadata),
+    [invalidName]: new Uint8Array(ingredient),
+  });
+  const result = await runExportSmoke(200, path.join(__dirname, 'smoke-api.cjs'), process.cwd(), noIngredientZip);
+  assert.notEqual(result.code, 0);
+  assert.match(result.stdout, /^FAIL export:/);
+  assert.equal(result.stdout.trimEnd().split(/\r?\n/).length, 1);
 });
 
 test('bundled export smoke runs without checkout dependencies', async () => {

@@ -124,6 +124,18 @@ test('installed export checks CRCs for metadata and unused ingredients', async (
   }
 });
 
+test('installed export checks CRCs for directory entries too', async () => {
+  const withDirectory = zipSync(zipEntries({ 'ingredients/': new Uint8Array(0) }));
+  assert.deepEqual(await verifyBurritoZip(withDirectory, metadata), {
+    ingredientFiles: 1,
+    metadataBytes: metadata.length,
+  });
+  await assert.rejects(
+    verifyBurritoZip(corruptEntryCrc(withDirectory, 'ingredients/'), metadata),
+    /malformed, truncated, or corrupt/,
+  );
+});
+
 test('installed export rejects duplicate entry names', async () => {
   const withAlternateMetadata = zipSync(zipEntries({ 'manifest.json': new Uint8Array(metadata) }));
   await assert.rejects(

@@ -78,7 +78,6 @@ async function verifyBurritoZip(zipBytes, rawMetadataBytes) {
     try {
       for (let index = 0; index < entries.length; index += 1) {
         const entry = entries[index];
-        if (entry.directory) continue;
 
         const options = {
           checkCrc32: true,
@@ -88,8 +87,8 @@ async function verifyBurritoZip(zipBytes, rawMetadataBytes) {
         if (index === metadataIndex) {
           metadata = await entry.getData(new Uint8ArrayWriter(), options);
         } else {
-          // Stream other entries through a sink. This checks their CRC without
-          // retaining every uncompressed ingredient in memory at once.
+          // Check every entry's CRC, including directories, without retaining
+          // uncompressed ingredients in memory at once.
           await entry.getData(new WritableStream({ write() {} }), options);
         }
       }
