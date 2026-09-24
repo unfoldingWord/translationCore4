@@ -183,8 +183,8 @@ _Avoid_: exporter, writer
 
 **Print document**:
 The one HTML document that the PDF export prints: the print DOM of the book
-(`src/views/print/PrintBook.jsx`) for each chapter with a drafted verse, the page setup as CSS
-and the print stylesheet (`src/ds/tokens/print.css`). It stands alone: it reads no screen token and loads no web font
+(`src/views/print/PrintBook.jsx`) for each chapter with a drafted verse, with one line for each
+run of undrafted chapters between them, the page setup as CSS and the print stylesheet (`src/ds/tokens/print.css`). It stands alone: it reads no screen token and loads no web font
 (issue #20).
 _Avoid_: print view, print page
 

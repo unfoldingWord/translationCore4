@@ -11,7 +11,8 @@ import React from 'react';
 import { useApp } from '../state.jsx';
 import { bookName } from '../data/bookNames';
 import { DEFAULT_PAGE_SETUP } from '../data/export/pageSetup';
-import { printedChapters } from '../data/bookModel';
+import { printedItems } from '../data/bookModel';
+import { chapterGapText } from './print/PrintBook.jsx';
 import { t } from '../i18n';
 import { Button, FilterChip, Toggle, Overline, Callout } from '../ds/index.js';
 import ExportMenu from './ExportMenu.jsx';
@@ -132,9 +133,10 @@ export default function CommunityChecking() {
       </div>
     );
   }
-  // The PDF's rule (src/data/bookModel.js printedChapters, #20): a chapter with
-  // no drafted verse is left out; the callout still counts every verse.
-  const chapters = printedChapters(book.byChapter, book.chapterNums);
+  // The PDF's rule (src/data/bookModel.js printedItems, #20): each chapter with
+  // a drafted verse, one line for each run of undrafted chapters between them;
+  // the callout still counts every verse.
+  const items = printedItems(book.byChapter, book.chapterNums);
   const dir = s.project?.scriptDirection === 'rtl' ? 'rtl' : 'ltr';
   const undrafted = book.chapterNums.some((c) => (book.byChapter[String(c)] || []).some((v) => !v.drafted));
 
@@ -145,10 +147,14 @@ export default function CommunityChecking() {
           <p style={EYEBROW}>{t('cc.eyebrow')}</p>
           <h1 style={H1}>{bookName(book.code)}</h1>
           <div style={RULE} />
-          {chapters.length === 0 && <p data-testid="cc-nothing-drafted" style={{ textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 'var(--fs-ui)' }}>{t('cc.nothingDrafted')}</p>}
-          {chapters.map(({ c, verses }) => (
+          {items.length === 0 && <p data-testid="cc-nothing-drafted" style={{ textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 'var(--fs-ui)' }}>{t('cc.nothingDrafted')}</p>}
+          {items.map(({ c, verses, gap }) => gap ? (
+            <p key={`gap-${gap[0]}`} data-testid="cc-chapter-gap" dir={dir} style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-md)', lineHeight: 'var(--lh-verse-md)', color: 'var(--text-tertiary)', margin: '0 0 26px' }}>{chapterGapText(gap)}</p>
+          ) : (
             <div key={c} data-testid="cc-chapter" dir={dir} style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-md)', lineHeight: PREVIEW_LINE_HEIGHT[pageSetup.spacing], color: 'var(--text-scripture)', textAlign: 'justify', columnCount: pageSetup.columns, columnGap: 28, marginBottom: 26 }}>
-              {pageSetup.dropCapChapters ? <span style={{ float: 'inline-start', fontSize: 'var(--fs-dropcap)', lineHeight: 0.8, fontWeight: 'var(--fw-bold)', color: 'var(--text-accent)', marginInlineEnd: 10, marginTop: 6 }}>{c}</span> : null}
+              {pageSetup.dropCapChapters
+                ? <span style={{ float: 'inline-start', fontSize: 'var(--fs-dropcap)', lineHeight: 0.8, fontWeight: 'var(--fw-bold)', color: 'var(--text-accent)', marginInlineEnd: 10, marginTop: 6 }}>{c}</span>
+                : <h2 data-testid="cc-chapter-heading" style={{ columnSpan: 'all', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-md)', lineHeight: 1.3, fontWeight: 'var(--fw-bold)', color: 'var(--text-accent)', margin: '0 0 6px' }}>{t('cc.chapterHeading', { n: c })}</h2>}
               {verses.map((v) => v.drafted && v.text
                 ? <span key={v.n}>{pageSetup.verseNumbers ? <sup style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', marginInlineEnd: 2, verticalAlign: 'super' }}>{v.n}</sup> : null}{v.text} </span>
                 : <span key={v.n} style={{ color: 'var(--text-tertiary)' }}><sup style={{ fontSize: 11, fontWeight: 700, verticalAlign: 'super' }}>{v.n}</sup>{t('cc.notYetDrafted')} </span>)}

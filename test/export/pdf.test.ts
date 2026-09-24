@@ -93,11 +93,35 @@ describe('the print document', () => {
   it('adds drop caps and verse numbers only when the page setup asks, and sets the direction', () => {
     const on = printDocument(USFM, 'TIT', setup(), 'rtl');
     expect(on.match(/class="print-dropcap"/g)).toHaveLength(2);
+    expect(on).not.toContain('class="print-chapter-heading"');
     expect(on.match(/class="print-verse-number"/g)).toHaveLength(3);
     expect(on).toContain('<html dir="rtl">');
     expect(on).toContain('<section class="print-chapter" dir="rtl">');
     const off = printDocument(USFM, 'TIT', setup({ dropCapChapters: false, verseNumbers: false }), 'ltr');
     expect(off).not.toContain('class="print-dropcap"');
     expect(off.match(/class="print-verse-number"/g)).toHaveLength(1); // the undrafted verse keeps its number
+  });
+
+  it('with drop caps off, opens each chapter with a "Chapter N" heading', () => {
+    const off = printDocument(USFM, 'TIT', setup({ dropCapChapters: false }), 'ltr');
+    expect(off.match(/<h2 class="print-chapter-heading">Chapter (\d+)<\/h2>/g)).toEqual([
+      '<h2 class="print-chapter-heading">Chapter 1</h2>',
+      '<h2 class="print-chapter-heading">Chapter 2</h2>',
+    ]);
+  });
+
+  it('states undrafted chapters between two drafted ones as one line, and leaves out those at the ends', () => {
+    // Chapters 1 and 9 are undrafted at the ends; 3 alone and 5–7 are undrafted runs between drafted chapters.
+    const drafted = new Set([2, 4, 8]);
+    const book = ['\\id TIT', ...Array.from({ length: 9 }, (_, i) => `\\c ${i + 1}\n\\p\n\\v 1 ${drafted.has(i + 1) ? `Verse of chapter ${i + 1}.` : '___'}`)].join('\n') + '\n';
+    const html = printDocument(book, 'TIT', setup({ dropCapChapters: false }), 'ltr');
+    const order = [...html.matchAll(/<h2 class="print-chapter-heading">(Chapter \d+)<\/h2>|<p class="print-chapter-gap" dir="ltr">([^<]+)<\/p>/g)].map((m) => m[1] ?? m[2]);
+    expect(order).toEqual([
+      'Chapter 2',
+      '[ chapter 3 not yet drafted ]',
+      'Chapter 4',
+      '[ chapters 5–7 not yet drafted ]',
+      'Chapter 8',
+    ]);
   });
 });

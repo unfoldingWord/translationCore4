@@ -46,3 +46,18 @@ body {
   vertical-align: super;
 }
 .print-undrafted { color: #626F78; }
+/* With drop caps off, each chapter opens with its number as a heading, across
+   every column. A run of undrafted chapters between two drafted ones is one line. */
+.print-chapter-heading {
+  column-span: all;
+  font-size: 19.5px;
+  font-weight: 700;
+  color: #156d91;
+  line-height: 1.3;
+  margin: 0 0 6px;
+}
+.print-chapter-gap {
+  color: #626F78;
+  line-height: 1.64;
+  margin: 0 0 26px;
+}

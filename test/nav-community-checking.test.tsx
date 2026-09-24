@@ -225,6 +225,23 @@ describe('#108 — Publish moves into Check as Community Checking', () => {
     }
   });
 
+  it('the preview states an undrafted chapter between two drafted ones, and heads each chapter when drop caps are off (#20)', () => {
+    state = { ...baseState, view: 'publish' };
+    const saved = bookModel.byChapter;
+    // The sample drafts chapter 1 only; draft chapter 3 too, so chapter 2 lies between.
+    bookModel.byChapter = { ...saved, 3: saved[3].map((v) => ({ ...v, drafted: true, text: 'Texto del capítulo tres.' })) };
+    try {
+      render(<App />);
+      expect(screen.getAllByTestId('cc-chapter')).toHaveLength(2);
+      expect(screen.getByTestId('cc-chapter-gap').textContent).toBe('[ chapter 2 not yet drafted ]');
+      expect(screen.queryAllByTestId('cc-chapter-heading')).toHaveLength(0); // drop caps are on by default
+      fireEvent.click(screen.getByRole('switch', { name: 'Drop-cap chapters' }));
+      expect(screen.getAllByTestId('cc-chapter-heading').map((h) => h.textContent)).toEqual(['Chapter 1', 'Chapter 3']);
+    } finally {
+      bookModel.byChapter = saved;
+    }
+  });
+
   it('the Bible page setup switches every preview chapter between Single and Double spacing', () => {
     state = { ...baseState, view: 'publish' };
     const before = JSON.stringify(state);

@@ -7,6 +7,13 @@ right-to-left visual check. Branch `issue-20-pdf-export`, base `main` 04dc048.
 > ruled that the PDF and the preview leave out a chapter with no drafted verse. Section 5
 > holds the measurements under that rule. The Titus counts in sections 2 and 4 are of the
 > earlier document, which printed all three chapters. They stay here unchanged.
+>
+> **Second note (same date).** The owner then ruled that a run of undrafted chapters between
+> two drafted chapters prints as one line (`[ chapters 5–7 not yet drafted ]`), and that with
+> drop caps off each chapter opens with a `Chapter N` heading. The function is now
+> `printedItems`. Undrafted chapters at the start or end of the book are still left out, so
+> the seeded Titus (chapter 1 drafted in part) and the fully drafted Titus of section 5 print
+> the same documents as before.
 
 ## 1. Task 1: which route makes the PDF bytes
 

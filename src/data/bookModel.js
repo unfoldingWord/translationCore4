@@ -42,14 +42,26 @@ export function buildChapterVerses(bookRaw, chapters, entries) {
   return byChapter;
 }
 
-/** The chapters the Community Checking preview and the PDF show: each chapter
- * with at least one drafted verse, as `[{ c, verses }]` in chapter order. A
- * chapter with no drafted verse is left out; an undrafted verse inside a shown
- * chapter stays, stated as not yet drafted (owner ruling on #20, 2026-09-24). */
-export const printedChapters = (byChapter, chapterNums) =>
-  chapterNums
-    .map((c) => ({ c, verses: byChapter[String(c)] || [] }))
-    .filter(({ verses }) => verses.some((v) => v.drafted && v.text));
+/** What the Community Checking preview and the PDF show, in chapter order
+ * (owner rulings on #20, 2026-09-24): `{ c, verses }` for each chapter with at
+ * least one drafted verse, and one `{ gap: [from, to] }` for each run of
+ * chapters with no drafted verse between two such chapters. Undrafted chapters
+ * before the first drafted chapter or after the last are left out. An
+ * undrafted verse inside a shown chapter stays, stated as not yet drafted.
+ * Empty when no verse of the book is drafted. */
+export function printedItems(byChapter, chapterNums) {
+  const chapters = chapterNums.map((c) => ({ c, verses: byChapter[String(c)] || [] }));
+  const drafted = chapters.map(({ verses }) => verses.some((v) => v.drafted && v.text));
+  const first = drafted.indexOf(true);
+  const last = drafted.lastIndexOf(true);
+  const items = [];
+  for (let i = first; first !== -1 && i <= last; i++) {
+    if (drafted[i]) items.push(chapters[i]);
+    else if (drafted[i - 1]) items.push({ gap: [chapters[i].c, chapters[i].c] });
+    else items[items.length - 1].gap[1] = chapters[i].c;
+  }
+  return items;
+}
 
 /** The raw USFM of a book → its verse index, its verses by chapter, and the
  * chapter numbers in order. */

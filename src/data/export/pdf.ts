@@ -9,7 +9,7 @@
 // dialog opens. A browser has no bridge, so there the menu has no PDF item.
 import { t } from '../../i18n';
 import { bookName } from '../bookNames';
-import { bookModel, printedChapters } from '../bookModel';
+import { bookModel, printedItems } from '../bookModel';
 import { Refusal } from '../journal/runtime';
 import { printBookHtml } from '../../views/print/PrintBook.jsx';
 import PRINT_CSS from '../../ds/tokens/print.css?raw';
@@ -34,21 +34,22 @@ const LEADING = 1.64;
 const escapeHtml = (text: string): string =>
   text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
 
-/** The complete print document of one book: every chapter with a drafted verse
- * (`printedChapters`, the preview's rule), the page setup applied. A book with
- * no drafted verse has nothing to print: `export.nothing-drafted`. */
+/** The complete print document of one book: `printedItems`, the preview's rule
+ * (each chapter with a drafted verse, one line for each run of undrafted
+ * chapters between them), the page setup applied. A book with no drafted verse
+ * has nothing to print: `export.nothing-drafted`. */
 export function printDocument(bookRaw: string, code: string, pageSetup: PageSetup, dir: 'ltr' | 'rtl'): string {
   const { byChapter, chapterNums } = bookModel(bookRaw);
-  const chapters = printedChapters(byChapter, chapterNums);
+  const items = printedItems(byChapter, chapterNums);
   const title = bookName(code);
-  if (chapters.length === 0) throw new Refusal('export.nothing-drafted', `${title} has no drafted verse yet, so the PDF has nothing to print.`, { book: code });
+  if (items.length === 0) throw new Refusal('export.nothing-drafted', `${title} has no drafted verse yet, so the PDF has nothing to print.`, { book: code });
   const setup = `@page { size: ${PAGE_SIZE[pageSetup.paper]}; }
 :root { --print-columns: ${pageSetup.columns}; --print-leading: ${LEADING * PAGE_SPACING_FACTOR[pageSetup.spacing]}; }`;
   return `<!doctype html>
 <html dir="${dir}"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>
 <style>${setup}
 ${PRINT_CSS}</style></head>
-<body>${printBookHtml({ title, chapters, pageSetup, dir })}</body></html>`;
+<body>${printBookHtml({ title, items, pageSetup, dir })}</body></html>`;
 }
 
 export const PDF: ExportProducer = {
