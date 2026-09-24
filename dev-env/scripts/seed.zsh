@@ -72,4 +72,7 @@ if [ -f "$OBS_IMAGES_Z" ] && [ ! -d "$OBS_IMAGES_DEST" ]; then
   unzip -q "$OBS_IMAGES_Z" -d "$OBS_IMAGES_DEST"
   echo "sideloaded: uW/obs_images_360 ($OBS_IMAGES_LABEL)"
 fi
+# D57: the install records of the sideloaded tags — a sideloaded resource's metadata
+# holds only its commit sha, and the release tag exists only in this record (#396).
+node "$(npath "$DEV/scripts/write-install-records.mjs")" "$(npath "$WORK")"
 echo "seeded: $WORK"
