@@ -27,5 +27,8 @@ export default defineConfig(({ command }) => ({
     // a per-file `@vitest-environment jsdom` pragma (TEST-PLAN §2.3 S-0a).
     environment: 'node',
     include: ['test/**/*.test.{js,jsx,ts,tsx}'],
+    // Vitest empties CSS imports by default, `?raw` too. The PDF export's print
+    // document carries this stylesheet as text (#20), so tests read the real file.
+    css: { include: [/print\.css/] },
   },
 }));

@@ -35,9 +35,10 @@ function stageProduct(options, shortName = 'tc4') {
   fs.mkdirSync(product, { recursive: true });
   fs.writeFileSync(path.join(product, 'product.json'), JSON.stringify({ short_name: shortName }) + '\n');
 }
-function runDesktopMain({ platform = 'linux', lock = true, startServer, bindError = false } = {}) {
+function runDesktopMain({ platform = 'linux', lock = true, startServer, bindError = false, printError = false } = {}) {
   const events = [];
   const handlers = {};
+  const windows = [];
   const window = {
     isMinimized: () => true,
     restore: () => events.push('restore'),
@@ -56,9 +57,41 @@ function runDesktopMain({ platform = 'linux', lock = true, startServer, bindErro
     },
     exit: (code) => events.push('exit:' + code),
   };
+  // The hidden print window of the PDF bridge (#20): it records what it was
+  // given, and fails the print when the case asks it to.
+  class BrowserWindow {
+    static getAllWindows() {
+      return [window];
+    }
+    constructor(options) {
+      this.options = options;
+      this.destroyed = false;
+      this.webContents = {
+        printToPDF: async (printOptions) => {
+          this.printOptions = printOptions;
+          if (printError) throw new Error('print failed');
+          return Buffer.from('%PDF-1.4');
+        },
+      };
+      windows.push(this);
+    }
+    async loadFile(file) {
+      this.file = file;
+      this.html = fs.readFileSync(file, 'utf8');
+    }
+    destroy() {
+      this.destroyed = true;
+    }
+  }
   const electron = {
     app,
-    BrowserWindow: { getAllWindows: () => [window] },
+    BrowserWindow,
+    ipcMain: {
+      handle: (channel, handler) => {
+        events.push('handle:' + channel);
+        handlers[channel] = handler;
+      },
+    },
     dialog: { showErrorBox: () => events.push('errorBox') },
   };
   const bootstrapModule = {
@@ -81,7 +114,7 @@ function runDesktopMain({ platform = 'linux', lock = true, startServer, bindErro
       return {};
     }
     if (request === 'path') return require('node:path');
-    if (request === 'os') return { homedir: () => 'C:\\pilot home' };
+    if (request === 'os') return { homedir: () => 'C:\\pilot home', tmpdir: () => os.tmpdir() };
     return require(request);
   };
   const context = {
@@ -90,7 +123,7 @@ function runDesktopMain({ platform = 'linux', lock = true, startServer, bindErro
     require: fakeRequire,
   };
   vm.runInNewContext(desktopMain, context, { filename: 'desktop-main.cjs' });
-  return { events, handlers };
+  return { events, handlers, windows };
 }
 
 test('missing bundle fails the negative control; production then seeds once and preserves user changes', (t) => {
@@ -250,17 +283,17 @@ test('the packaged entry point is valid, ordered, and preserves its launch contr
   assert.doesNotThrow(() => new vm.Script(desktopMain));
 
   const linux = runDesktopMain();
-  assert.deepEqual(linux.events, ['lock', 'on:second-instance', 'shouldBind:undefined', 'bind', 'upstream']);
+  assert.deepEqual(linux.events, ['lock', 'handle:export:pdf', 'on:second-instance', 'shouldBind:undefined', 'bind', 'upstream']);
   const mac = runDesktopMain({ platform: 'darwin' });
-  assert.deepEqual(mac.events, ['lock', 'on:second-instance', 'shouldBind:undefined', 'bind', 'bootstrap', 'upstream']);
+  assert.deepEqual(mac.events, ['lock', 'handle:export:pdf', 'on:second-instance', 'shouldBind:undefined', 'bind', 'bootstrap', 'upstream']);
   const windows = runDesktopMain({ platform: 'win32' });
-  assert.deepEqual(windows.events, ['setAppUserModelId', 'lock', 'on:second-instance', 'shouldBind:undefined', 'bind', 'bootstrap', 'upstream']);
+  assert.deepEqual(windows.events, ['setAppUserModelId', 'lock', 'handle:export:pdf', 'on:second-instance', 'shouldBind:undefined', 'bind', 'bootstrap', 'upstream']);
   const external = runDesktopMain({ startServer: 'false' });
-  assert.deepEqual(external.events, ['lock', 'on:second-instance', 'shouldBind:false', 'upstream']);
+  assert.deepEqual(external.events, ['lock', 'handle:export:pdf', 'on:second-instance', 'shouldBind:false', 'upstream']);
   const second = runDesktopMain({ lock: false });
   assert.deepEqual(second.events, ['lock', 'quit']);
   const failed = runDesktopMain({ bindError: true });
-  assert.deepEqual(failed.events, ['lock', 'on:second-instance', 'shouldBind:undefined', 'bind', 'errorBox', 'exit:1']);
+  assert.deepEqual(failed.events, ['lock', 'handle:export:pdf', 'on:second-instance', 'shouldBind:undefined', 'bind', 'errorBox', 'exit:1']);
 
   linux.handlers['second-instance']();
   assert.deepEqual(linux.events.slice(-2), ['restore', 'focus']);
@@ -277,6 +310,31 @@ test('the packaged entry point is valid, ordered, and preserves its launch contr
   assert.match(recipe, /ELECTRON_RUN_AS_NODE=1 "\$ELECTRON_NODE" "\$\(cygpath -m "\$SMOKE_JOURNAL"\)"/);
   assert.match(recipe, /build-smoke-journal\.cjs/);
   assert.match(recipe, /run_api_smoke obs-readback/);
+});
+
+test('the PDF bridge prints the document in a hidden window and always removes the window and the temporary file', async () => {
+  const html = '<!doctype html><html><body>Titus</body></html>';
+  const ok = runDesktopMain();
+  const bytes = await ok.handlers['export:pdf']({}, html);
+  assert.equal(bytes.toString(), '%PDF-1.4');
+  const [win] = ok.windows;
+  assert.deepEqual(JSON.parse(JSON.stringify(win.options)), { show: false, webPreferences: { javascript: false, sandbox: true } });
+  assert.equal(win.html, html); // loaded from a file, not a data: URL
+  assert.deepEqual(JSON.parse(JSON.stringify(win.printOptions)), { preferCSSPageSize: true }); // the document's @page sets the paper
+  assert.equal(win.destroyed, true);
+  assert.equal(fs.existsSync(win.file), false);
+
+  const failed = runDesktopMain({ printError: true });
+  await assert.rejects(failed.handlers['export:pdf']({}, html), /print failed/);
+  assert.equal(failed.windows[0].destroyed, true);
+  assert.equal(fs.existsSync(path.dirname(failed.windows[0].file)), false);
+
+  // The recipe installs tC4's preload over the template's, and the preload
+  // exposes the close guard unchanged beside the bridge.
+  const preload = fs.readFileSync(path.join(__dirname, 'preload.cjs'), 'utf8');
+  assert.match(recipe, /cp "\$REPO\/scripts\/preload\.cjs" "\$PACK\/electron\/preload\.js"/);
+  assert.match(preload, /setCanClose: \(canClose\) => ipcRenderer\.send\('setCanClose', canClose\)/);
+  assert.match(preload, /printPdf: \(html\) => ipcRenderer\.invoke\('export:pdf', html\)/);
 });
 
 test('external-server mode is the one explicit selector/profile escape hatch', () => {

@@ -5,7 +5,7 @@
 // menu (#375), which states when the exports arrive while it has no producer.
 import React from 'react';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor, within } from '@testing-library/react';
 import { indexBook } from '../src/data/usfm/indexer';
 import { DEFAULT_PAGE_SETUP } from '../src/data/export/pageSetup';
 import type { ExportProducer } from '../src/data/export/kernel';
@@ -206,28 +206,84 @@ describe('#108 — Publish moves into Check as Community Checking', () => {
     expect(screen.getAllByText(/verse not yet drafted/).length).toBeGreaterThan(0);
   });
 
-  it('the Bible page setup switches every preview chapter between Single and Double spacing', () => {
+  it('the preview leaves out a chapter with no drafted verse, and says so when the book has none (#20)', () => {
+    state = { ...baseState, view: 'publish' };
+    render(<App />);
+    expect(sampleChapterNums.length).toBeGreaterThan(1); // the sample has undrafted chapters to leave out
+    expect(screen.getAllByTestId('cc-chapter')).toHaveLength(1);
+    expect(screen.queryByTestId('cc-nothing-drafted')).toBeNull();
+    cleanup();
+
+    const saved = bookModel.byChapter;
+    bookModel.byChapter = Object.fromEntries(Object.entries(saved).map(([c, verses]) => [c, verses.map((v) => ({ ...v, drafted: false, text: '' }))]));
+    try {
+      render(<App />);
+      expect(screen.queryAllByTestId('cc-chapter')).toHaveLength(0);
+      expect(screen.getByTestId('cc-nothing-drafted').textContent).toBe('Nothing is drafted in this book yet.');
+    } finally {
+      bookModel.byChapter = saved;
+    }
+  });
+
+  it('the preview states an undrafted chapter between two drafted ones, and heads each chapter when drop caps are off (#20)', () => {
+    state = { ...baseState, view: 'publish' };
+    const saved = bookModel.byChapter;
+    // The sample drafts chapter 1 only; draft chapter 3 too, so chapter 2 lies between.
+    bookModel.byChapter = { ...saved, 3: saved[3].map((v) => ({ ...v, drafted: true, text: 'Texto del capítulo tres.' })) };
+    try {
+      render(<App />);
+      expect(screen.getAllByTestId('cc-chapter')).toHaveLength(2);
+      expect(screen.getByTestId('cc-chapter-gap').textContent).toBe('[ chapter 2 not yet drafted ]');
+      expect(screen.queryAllByTestId('cc-chapter-heading')).toHaveLength(0); // drop caps are on by default
+      fireEvent.click(screen.getByRole('switch', { name: 'Drop-cap chapters' }));
+      expect(screen.getAllByTestId('cc-chapter-heading').map((h) => h.textContent)).toEqual(['Chapter 1', 'Chapter 3']);
+    } finally {
+      bookModel.byChapter = saved;
+    }
+  });
+
+  it('the preview is page sheets, and two columns are one flow on each sheet, not each chapter split in two (#20)', () => {
+    state = { ...baseState, view: 'publish' };
+    const saved = bookModel.byChapter;
+    bookModel.byChapter = { ...saved, 3: saved[3].map((v) => ({ ...v, drafted: true, text: 'Texto del capítulo tres.' })) };
+    try {
+      render(<App />);
+      // jsdom has no layout, so every verse fits the first sheet; the page breaks are proven in test/printPages.test.ts.
+      const [page] = screen.getAllByTestId('cc-page');
+      expect(page.style.getPropertyValue('--print-columns')).toBe('1');
+      fireEvent.click(within(screen.getByRole('group', { name: 'Columns' })).getByRole('button', { name: '2' }));
+      expect(screen.getAllByTestId('cc-page')[0].style.getPropertyValue('--print-columns')).toBe('2');
+      const flow = screen.getAllByTestId('cc-flow')[0];
+      // Chapter 1, the gap line, chapter 3: siblings in the one flow, none with columns of its own.
+      expect([...flow.children].map((el) => el.getAttribute('data-testid'))).toEqual(['cc-chapter', 'cc-chapter-gap', 'cc-chapter']);
+      expect([...flow.children].every((el) => (el as HTMLElement).style.columnCount === '')).toBe(true);
+    } finally {
+      bookModel.byChapter = saved;
+    }
+  });
+
+  it('the Bible page setup switches the preview sheets between Single and Double spacing', () => {
     state = { ...baseState, view: 'publish' };
     const before = JSON.stringify(state);
     render(<App />);
 
     const single = screen.getByRole('button', { name: 'Single' });
     const double = screen.getByRole('button', { name: 'Double' });
-    const chapters = screen.getAllByTestId('cc-chapter');
-    expect(chapters.length).toBeGreaterThan(1);
+    const leading = () => screen.getAllByTestId('cc-page').map((page) => page.style.getPropertyValue('--print-leading'));
+    expect(screen.getAllByTestId('cc-chapter')).toHaveLength(1); // only chapter 1 of the sample has a drafted verse (#20)
     expect(single.getAttribute('aria-pressed')).toBe('true');
     expect(double.getAttribute('aria-pressed')).toBe('false');
-    expect(chapters.every((chapter) => (chapter as HTMLElement).style.lineHeight === 'var(--lh-community-checking-single)')).toBe(true);
+    expect(leading().every((value) => value === '1.4')).toBe(true);
 
     fireEvent.click(double);
     expect(single.getAttribute('aria-pressed')).toBe('false');
     expect(double.getAttribute('aria-pressed')).toBe('true');
-    expect(chapters.every((chapter) => (chapter as HTMLElement).style.lineHeight === 'var(--lh-community-checking-double)')).toBe(true);
+    expect(leading().every((value) => value === '2.8')).toBe(true);
 
     fireEvent.click(single);
     expect(single.getAttribute('aria-pressed')).toBe('true');
     expect(double.getAttribute('aria-pressed')).toBe('false');
-    expect(chapters.every((chapter) => (chapter as HTMLElement).style.lineHeight === 'var(--lh-community-checking-single)')).toBe(true);
+    expect(leading().every((value) => value === '1.4')).toBe(true);
     expect(unexpectedAction).not.toHaveBeenCalled();
     expect(go).not.toHaveBeenCalled();
     expect(JSON.stringify(state)).toBe(before);

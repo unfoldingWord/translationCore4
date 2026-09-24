@@ -47,7 +47,8 @@ export function deliverFile(file: ExportFile): void {
 
 /** Checkpoint when the project is dirty (D9), produce, deliver. A failure
  * delivers nothing and returns a failed Report: `export.checkpoint-failed` when
- * the checkpoint failed, else `export.read-failed`. */
+ * the checkpoint failed; the producer's own refusal when it threw one (the PDF's
+ * `export.nothing-drafted`); else `export.read-failed`. */
 export async function runExport(producer: ExportProducer, input: ExportInput): Promise<Report> {
   const startedAt = new Date().toISOString();
   const fail = (code: 'export.checkpoint-failed' | 'export.read-failed', error: unknown): Report =>
@@ -66,6 +67,7 @@ export async function runExport(producer: ExportProducer, input: ExportInput): P
     file = await producer.produce(input);
     deliverFile(file);
   } catch (error) {
+    if (error instanceof Refusal) return failedReport('export', startedAt, new Date().toISOString(), error, { producer: producer.id });
     return fail('export.read-failed', error);
   }
   const facts: ExportFacts = { producer: producer.id, filename: file.filename, bytes: file.bytes.byteLength };
