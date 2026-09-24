@@ -7,6 +7,7 @@ import { unzipSync } from 'fflate';
 import { primarySubtag, runImport } from '../src/data/import/shell';
 import { FAKE_PARSER } from '../src/data/import/parsers';
 import { BURRITO_PARSER } from '../src/data/import/burrito';
+import { USFM_PARSER } from '../src/data/import/usfm';
 import type { ImportFile } from '../src/data/import/types';
 import { reportError } from '../src/data/journal/runtime';
 import { ServerApi } from '../src/data/serverApi';
@@ -148,7 +149,7 @@ describe('#361 runImport', () => {
       const project = rig.repos.get(repoPath)!;
       return rel === 'metadata.json' ? JSON.stringify(project.meta) : project.files.get(rel.slice('ingredients/'.length))!;
     };
-    const reports = await runManifest(readManifest(), { fake: FAKE_PARSER, burrito: BURRITO_PARSER }, deps, read);
+    const reports = await runManifest(readManifest(), { fake: FAKE_PARSER, burrito: BURRITO_PARSER, usfm: USFM_PARSER }, deps, read);
     expect(reports.map((r) => r.ok)).toEqual(readManifest().map((e) => e.expect === 'accept'));
     // the runner's refuse branch, with an inline entry (#41 adds the damaged fixtures)
     const refused = await runManifest([{ file: '../../sample-burrito', parser: 'fake', expect: 'refuse', code: 'import.name-exists' }], { fake: FAKE_PARSER }, deps, read);
