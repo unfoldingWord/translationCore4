@@ -84,10 +84,10 @@ describe('the print document', () => {
     expect(a4).toContain(css);
     expect(a4).toContain('line-height: var(--print-leading)'); // the variables below reach the CSS
     expect(a4).toContain('@page { size: A4; }');
-    expect(a4).toContain('--print-columns: 1; --print-leading: 1.64;');
+    expect(a4).toContain('--print-columns: 1; --print-leading: 1.4;');
     const letter = printDocument(USFM, 'TIT', setup({ paper: 'letter', columns: 2, spacing: 'double' }), 'ltr');
     expect(letter).toContain('@page { size: letter; }');
-    expect(letter).toContain('--print-columns: 2; --print-leading: 3.28;');
+    expect(letter).toContain('--print-columns: 2; --print-leading: 2.8;');
   });
 
   it('adds drop caps and verse numbers only when the page setup asks, and sets the direction', () => {

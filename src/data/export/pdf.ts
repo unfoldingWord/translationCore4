@@ -28,8 +28,9 @@ const bridge = (): PdfBridge | undefined => globalThis.window?.tc4Desktop;
 
 /** CSS `@page` sizes: A4 is 595 × 842 pt, US Letter 612 × 792 pt. */
 const PAGE_SIZE: Readonly<Record<PaperSize, string>> = { a4: 'A4', letter: 'letter' };
-/** The print leading at Single spacing; Double is PAGE_SPACING_FACTOR times it. */
-const LEADING = 1.64;
+/** The print leading at Single spacing, the preview's `--lh-community-checking-single`;
+ * Double is PAGE_SPACING_FACTOR times it. */
+const LEADING = 1.4;
 
 const escapeHtml = (text: string): string =>
   text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);

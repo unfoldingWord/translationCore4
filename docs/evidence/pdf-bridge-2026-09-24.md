@@ -19,6 +19,12 @@ right-to-left visual check. Branch `issue-20-pdf-export`, base `main` 04dc048.
 > not two columns inside each chapter, and that each page carries its number at the bottom
 > centre. The page margin at the bottom grew from 18 mm to 20 mm for the number. The page
 > counts above were measured before this change.
+>
+> **Fourth note (same date).** The owner chose a Single leading of 1.4 (was 1.64), from a
+> side-by-side print of 1.64, 1.5, 1.4 and 1.3 through the packaged bridge. Double stays twice
+> Single. The preview's `--lh-community-checking-single` is now `calc(var(--fs-verse-md) * 1.4)`.
+> After the change, `e2e/j07-publish.spec.ts` passed 5 of 5 in 3 of 3 runs; the drafted Titus
+> still gives 2 pages at Single.
 
 ## 1. Task 1: which route makes the PDF bytes
 

@@ -1,12 +1,12 @@
 /* The print stylesheet of the PDF export (#20, src/data/export/pdf.ts).
    The PDF is a document of its own, printed in a hidden window, so this file
    reads no screen token. Its values are the Community Checking preview's
-   (--fs-verse-md 19.5px, --lh-verse-md 32px, --fs-dropcap 64px,
-   --fs-display 38px), so the PDF sets the book as the preview does.
+   (--fs-verse-md 19.5px, --lh-community-checking-single 1.4 × 19.5px,
+   --fs-dropcap 64px, --fs-display 38px), so the PDF sets the book as the preview does.
    src/data/export/pdf.ts sets the page-setup variables and the @page size in
    front of it:
      --print-columns   1 or 2
-     --print-leading   the line height, 1.64 × the spacing factor (Single 1, Double 2)
+     --print-leading   the line height, 1.4 × the spacing factor (Single 1, Double 2)
    The family is --font-scripture's stack; the print document loads no web
    font, so a face prints only when it is installed. */
 /* Each page carries its number at the bottom centre (a CSS page-margin box). */
@@ -73,6 +73,6 @@ body {
 .print-chapter-gap {
   break-inside: avoid;
   color: #626F78;
-  line-height: 1.64;
+  line-height: 1.4;
   margin: 0 0 26px;
 }

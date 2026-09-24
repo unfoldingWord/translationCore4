@@ -152,7 +152,7 @@ export default function CommunityChecking() {
               next column, and the next chapter follows it (#20). */}
           <div data-testid="cc-flow" dir={dir} style={{ columnCount: pageSetup.columns, columnGap: 28 }}>
             {items.map(({ c, verses, gap }) => gap ? (
-              <p key={`gap-${gap[0]}`} data-testid="cc-chapter-gap" dir={dir} style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-md)', lineHeight: 'var(--lh-verse-md)', color: 'var(--text-tertiary)', margin: '0 0 26px', breakInside: 'avoid' }}>{chapterGapText(gap)}</p>
+              <p key={`gap-${gap[0]}`} data-testid="cc-chapter-gap" dir={dir} style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-md)', lineHeight: 'var(--lh-community-checking-single)', color: 'var(--text-tertiary)', margin: '0 0 26px', breakInside: 'avoid' }}>{chapterGapText(gap)}</p>
             ) : (
               <div key={c} data-testid="cc-chapter" dir={dir} style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-md)', lineHeight: PREVIEW_LINE_HEIGHT[pageSetup.spacing], color: 'var(--text-scripture)', textAlign: 'justify', marginBottom: 26 }}>
                 {pageSetup.dropCapChapters

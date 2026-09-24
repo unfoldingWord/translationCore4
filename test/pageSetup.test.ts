@@ -6,15 +6,14 @@ const path = process.getBuiltinModule('node:path');
 const typography = fs.readFileSync(path.resolve(process.cwd(), 'src/ds/tokens/typography.css'), 'utf8');
 
 describe('#142 — Community Checking spacing token contract', () => {
-  it('keeps Single tied to the preview token and Double exactly twice Single', () => {
+  it('keeps Single at 1.4 × the verse size (#20) and Double exactly twice Single', () => {
     expect(Object.isFrozen(DEFAULT_PAGE_SETUP)).toBe(true);
     expect(PAGE_SPACING_FACTOR.single).toBe(1);
     expect(PAGE_SPACING_FACTOR.double).toBe(2);
-    const base = typography.match(/--lh-verse-md:\s*(\d+)px/);
-    expect(base?.[1]).toBe('32');
-    expect(typography).toContain('--lh-community-checking-single: var(--lh-verse-md);');
-    expect(typography).toContain('--lh-community-checking-double: calc(var(--lh-verse-md) + var(--lh-verse-md));');
-    expect(Number(base?.[1]) * 2).toBe(64);
+    expect(typography).toContain('--lh-community-checking-single: calc(var(--fs-verse-md) * 1.4);');
+    expect(typography).toContain('--lh-community-checking-double: calc(var(--lh-community-checking-single) * 2);');
+    // The PDF uses the same Single leading (src/data/export/pdf.ts LEADING).
+    expect(fs.readFileSync(path.resolve(process.cwd(), 'src/data/export/pdf.ts'), 'utf8')).toContain('const LEADING = 1.4;');
   });
 });
 
