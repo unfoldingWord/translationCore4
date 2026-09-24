@@ -1,19 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_PAGE_SETUP, PAGE_SPACING_FACTOR } from '../src/data/export/pageSetup';
+import { PRINT_LEADING, printVariables } from '../src/views/print/PrintBook.jsx';
 
 const fs = process.getBuiltinModule('node:fs');
 const path = process.getBuiltinModule('node:path');
 const typography = fs.readFileSync(path.resolve(process.cwd(), 'src/ds/tokens/typography.css'), 'utf8');
 
 describe('#142 — Community Checking spacing token contract', () => {
-  it('keeps Single at 1.4 × the verse size (#20) and Double exactly twice Single', () => {
+  it('keeps Single at 1.4 × the verse size (#20) and Double exactly twice Single, for the preview and the PDF alike', () => {
     expect(Object.isFrozen(DEFAULT_PAGE_SETUP)).toBe(true);
     expect(PAGE_SPACING_FACTOR.single).toBe(1);
     expect(PAGE_SPACING_FACTOR.double).toBe(2);
-    expect(typography).toContain('--lh-community-checking-single: calc(var(--fs-verse-md) * 1.4);');
-    expect(typography).toContain('--lh-community-checking-double: calc(var(--lh-community-checking-single) * 2);');
-    // The PDF uses the same Single leading (src/data/export/pdf.ts LEADING).
-    expect(fs.readFileSync(path.resolve(process.cwd(), 'src/data/export/pdf.ts'), 'utf8')).toContain('const LEADING = 1.4;');
+    expect(PRINT_LEADING).toBe(1.4);
+    // One source: the preview sheets and the print document both read printVariables.
+    expect(printVariables({ ...DEFAULT_PAGE_SETUP, spacing: 'single' })['--print-leading']).toBe(1.4);
+    expect(printVariables({ ...DEFAULT_PAGE_SETUP, spacing: 'double' })['--print-leading']).toBe(2.8);
+    expect(typography).not.toContain('--lh-community-checking');
   });
 });
 

@@ -73,13 +73,6 @@
   --lh-verse-lg: 36px; /* @kind font */  /* 22px   · 1.64 — reading + drafting columns */
   --lh-nastaliq: 64px; /* @kind font */  /* 26px   · 2.46 — Nastaliq ascender clearance */
 
-  /* Community Checking spacing follows the Bible preview's base leading. Keep
-     the semantic choice in pageSetup.ts; these are its screen resolutions. */
-  /* Community Checking and its PDF (#20, owner 2026-09-24): Single is 1.4 × the verse size,
-     tighter than the reading columns' 1.64; Double is twice Single. */
-  --lh-community-checking-single: calc(var(--fs-verse-md) * 1.4);
-  --lh-community-checking-double: calc(var(--lh-community-checking-single) * 2);
-
   /* ---- Optical tracking ----
      Two different things, deliberately named apart.
 

@@ -12,7 +12,7 @@ import { useApp } from '../state.jsx';
 import { bookName } from '../data/bookNames';
 import { DEFAULT_PAGE_SETUP } from '../data/export/pageSetup';
 import { printedItems } from '../data/bookModel';
-import { chapterGapText } from './print/PrintBook.jsx';
+import PrintPages from './print/PrintPages.jsx';
 import { t } from '../i18n';
 import { Button, FilterChip, Toggle, Overline, Callout } from '../ds/index.js';
 import ExportMenu from './ExportMenu.jsx';
@@ -24,10 +24,6 @@ const RULE = { height: 1, background: 'var(--border)', margin: '0 auto 30px', wi
 const ASIDE = { width: 'var(--rail-width-wide)', flex: 'none', background: 'var(--surface-card)', borderInlineStart: 'var(--stroke-hair) solid var(--border)', padding: 22, display: 'flex', flexDirection: 'column', gap: 16, overflow: 'auto' };
 const SETUP_BOX = { border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 16, background: 'var(--surface-app)' };
 const SETUP_LIST = { display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12, fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)' };
-const PREVIEW_LINE_HEIGHT = Object.freeze({
-  single: 'var(--lh-community-checking-single)',
-  double: 'var(--lh-community-checking-double)',
-});
 
 function PageSetupChoiceRow({ label, labelId, options, value, onChange }) {
   return (
@@ -133,9 +129,9 @@ export default function CommunityChecking() {
       </div>
     );
   }
-  // The PDF's rule (src/data/bookModel.js printedItems, #20): each chapter with
-  // a drafted verse, one line for each run of undrafted chapters between them;
-  // the callout still counts every verse.
+  // The PDF's rule and the PDF's pages (#20): printedItems (each chapter with a
+  // drafted verse, one line for each run of undrafted chapters between them) set
+  // on sheets by PrintPages; the callout still counts every verse.
   const items = printedItems(book.byChapter, book.chapterNums);
   const dir = s.project?.scriptDirection === 'rtl' ? 'rtl' : 'ltr';
   const undrafted = book.chapterNums.some((c) => (book.byChapter[String(c)] || []).some((v) => !v.drafted));
@@ -143,28 +139,8 @@ export default function CommunityChecking() {
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }} data-testid="community-checking">
       <main style={{ flex: 1, overflow: 'auto', minWidth: 0, background: 'var(--surface-muted)', padding: '34px 24px 60px' }}>
-        <div style={PAGE}>
-          <p style={EYEBROW}>{t('cc.eyebrow')}</p>
-          <h1 style={H1}>{bookName(book.code)}</h1>
-          <div style={RULE} />
-          {items.length === 0 && <p data-testid="cc-nothing-drafted" style={{ textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 'var(--fs-ui)' }}>{t('cc.nothingDrafted')}</p>}
-          {/* One flow through the columns, as in the PDF: a chapter continues into the
-              next column, and the next chapter follows it (#20). */}
-          <div data-testid="cc-flow" dir={dir} style={{ columnCount: pageSetup.columns, columnGap: 28 }}>
-            {items.map(({ c, verses, gap }) => gap ? (
-              <p key={`gap-${gap[0]}`} data-testid="cc-chapter-gap" dir={dir} style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-md)', lineHeight: 'var(--lh-community-checking-single)', color: 'var(--text-tertiary)', margin: '0 0 26px', breakInside: 'avoid' }}>{chapterGapText(gap)}</p>
-            ) : (
-              <div key={c} data-testid="cc-chapter" dir={dir} style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-md)', lineHeight: PREVIEW_LINE_HEIGHT[pageSetup.spacing], color: 'var(--text-scripture)', textAlign: 'justify', marginBottom: 26 }}>
-                {pageSetup.dropCapChapters
-                  ? <span style={{ float: 'inline-start', fontSize: 'var(--fs-dropcap)', lineHeight: 0.8, fontWeight: 'var(--fw-bold)', color: 'var(--text-accent)', marginInlineEnd: 10, marginTop: 6 }}>{c}</span>
-                  : <h2 data-testid="cc-chapter-heading" style={{ breakAfter: 'avoid', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-md)', lineHeight: 1.3, fontWeight: 'var(--fw-bold)', color: 'var(--text-accent)', margin: '0 0 6px' }}>{t('cc.chapterHeading', { n: c })}</h2>}
-                {verses.map((v) => v.drafted && v.text
-                  ? <span key={v.n}>{pageSetup.verseNumbers ? <sup style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', marginInlineEnd: 2, verticalAlign: 'super' }}>{v.n}</sup> : null}{v.text} </span>
-                  : <span key={v.n} style={{ color: 'var(--text-tertiary)' }}><sup style={{ fontSize: 11, fontWeight: 700, verticalAlign: 'super' }}>{v.n}</sup>{t('cc.notYetDrafted')} </span>)}
-              </div>
-            ))}
-          </div>
-        </div>
+        <PrintPages title={bookName(book.code)} items={items} pageSetup={pageSetup} dir={dir}
+          empty={<p data-testid="cc-nothing-drafted" style={{ textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 'var(--fs-ui)' }}>{t('cc.nothingDrafted')}</p>} />
       </main>
       <aside style={ASIDE}>
         <Button variant="ghost" onClick={() => actions.go('check')} style={{ alignSelf: 'flex-start' }}>{t('cc.back')}</Button>

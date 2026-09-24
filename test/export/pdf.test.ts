@@ -83,10 +83,10 @@ describe('the print document', () => {
     const css = process.getBuiltinModule('node:fs').readFileSync(new URL('../../src/ds/tokens/print.css', import.meta.url), 'utf8');
     expect(a4).toContain(css);
     expect(a4).toContain('line-height: var(--print-leading)'); // the variables below reach the CSS
-    expect(a4).toContain('@page { size: A4; }');
+    expect(a4).toContain('@page { size: A4; margin: 18mm 16mm 20mm;');
     expect(a4).toContain('--print-columns: 1; --print-leading: 1.4;');
     const letter = printDocument(USFM, 'TIT', setup({ paper: 'letter', columns: 2, spacing: 'double' }), 'ltr');
-    expect(letter).toContain('@page { size: letter; }');
+    expect(letter).toContain('@page { size: letter; margin: 18mm 16mm 20mm;');
     expect(letter).toContain('--print-columns: 2; --print-leading: 2.8;');
   });
 

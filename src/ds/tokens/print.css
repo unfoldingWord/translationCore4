@@ -1,35 +1,34 @@
-/* The print stylesheet of the PDF export (#20, src/data/export/pdf.ts).
-   The PDF is a document of its own, printed in a hidden window, so this file
-   reads no screen token. Its values are the Community Checking preview's
-   (--fs-verse-md 19.5px, --lh-community-checking-single 1.4 × 19.5px,
-   --fs-dropcap 64px, --fs-display 38px), so the PDF sets the book as the preview does.
-   src/data/export/pdf.ts sets the page-setup variables and the @page size in
-   front of it:
+/* The print book stylesheet (#20): the PDF (src/data/export/pdf.ts) and the
+   Community Checking preview sheets (src/views/print/PrintPages.jsx) set the
+   book with it, so both break lines the same way. Every rule is scoped to a
+   print-* class, so the app can load it. The page itself (the @page size and
+   margins, the page number) belongs to each surface: pdf.ts writes it into the
+   print document, PrintPages draws the sheets. The page-setup variables come
+   from printVariables (src/views/print/PrintBook.jsx):
      --print-columns   1 or 2
      --print-leading   the line height, 1.4 × the spacing factor (Single 1, Double 2)
    The family is --font-scripture's stack; the print document loads no web
    font, so a face prints only when it is installed. */
-/* Each page carries its number at the bottom centre (a CSS page-margin box). */
-@page {
-  margin: 18mm 16mm 20mm;
-  @bottom-center {
-    content: counter(page);
-    font-family: "Charis SIL", "PT Serif", Georgia, "Times New Roman", serif;
-    font-size: 11px;
-    color: #626F78;
-  }
-}
-html { background: #fff; }
-body {
-  margin: 0;
+.print-book {
   font-family: "Charis SIL", "PT Serif", Georgia, "Times New Roman", serif;
   font-size: 19.5px;
   color: #231F20;
+}
+/* The app's element rules (ds/tokens/base.css: h1, h2, p) reach the preview but
+   not the print document; the print elements reset them, so both surfaces set
+   the same lines. */
+.print-title,
+.print-chapter-heading {
+  font-family: inherit;
+  letter-spacing: normal;
+  text-box: normal;
 }
 .print-title {
   text-align: center;
   font-size: 38px;
   font-weight: 700;
+  color: inherit;
+  line-height: 1.2;
   margin: 0 0 30px;
 }
 /* The book body is one flow through the columns: a chapter continues from the
@@ -72,6 +71,7 @@ body {
 }
 .print-chapter-gap {
   break-inside: avoid;
+  text-wrap: wrap;
   color: #626F78;
   line-height: 1.4;
   margin: 0 0 26px;

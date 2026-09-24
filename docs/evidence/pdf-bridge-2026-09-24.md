@@ -25,6 +25,14 @@ right-to-left visual check. Branch `issue-20-pdf-export`, base `main` 04dc048.
 > Single. The preview's `--lh-community-checking-single` is now `calc(var(--fs-verse-md) * 1.4)`.
 > After the change, `e2e/j07-publish.spec.ts` passed 5 of 5 in 3 of 3 runs; the drafted Titus
 > still gives 2 pages at Single.
+>
+> **Fifth note (same date).** A review found that the one-flow preview split the whole book
+> into two tall columns. The owner chose to paginate the preview: it now renders the PDF's
+> DOM and `print.css` on page sheets. `e2e/j07-publish.spec.ts` checks that the preview shows
+> as many sheets as the PDF has pages: drafted Titus at Single 2 = 2, at Double 4 = 4, and at
+> Double in 2 columns 4 = 4 (macOS, fonts on this machine). A Psalms-sized test book (150
+> chapters, 2411 verses) paginates in 649 ms into 100 sheets in 1 column, and in 695 ms into
+> 107 sheets in 2 columns (Playwright Chromium, dev client).
 
 ## 1. Task 1: which route makes the PDF bytes
 

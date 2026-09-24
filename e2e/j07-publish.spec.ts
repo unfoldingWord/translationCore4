@@ -281,7 +281,7 @@ test.describe('J7 — PDF', () => {
   );
 
   test(
-    'PDF: a drafted book prints every chapter with its page setup — Double spacing adds pages, Letter sets the paper',
+    'PDF: a drafted book prints every chapter with its page setup — Double spacing adds pages, Letter sets the paper, the preview shows the same pages',
     { tag: ['@inc8', '@J7'] },
     async ({ page }) => {
       test.setTimeout(60_000); // the project is made here, and its first open folds a new journal
@@ -289,16 +289,27 @@ test.describe('J7 — PDF', () => {
       const documents = await installPdfBridge(page);
       await openTitusCommunityChecking(page, name);
 
+      /** The preview shows as many page sheets as the PDF has pages (the same DOM and stylesheet). */
+      const expectPreviewSheets = async (pages: number): Promise<void> => {
+        await page.evaluate(() => document.fonts.ready);
+        await expect.poll(() => page.getByTestId('cc-page').count()).toBe(pages);
+      };
+
       const single = pdfShape((await exportPdf(page, name)).bytes);
       expect(printedChapterCount(documents[0])).toBe(3);
       expect(documents[0]).not.toContain('[ verse not yet drafted ]');
       // Titus, 46 verses, A4, one column, Single spacing, in the fonts installed on this
       // machine (the print document loads no web font).
       expect(single).toEqual({ pages: 2, mediaBox: '0 0 594.95996 841.91998' });
+      await expectPreviewSheets(single.pages);
 
       await page.getByRole('group', { name: 'Spacing' }).getByRole('button', { name: 'Double' }).click();
       const double = pdfShape((await exportPdf(page, name)).bytes);
       expect(double.pages).toBeGreaterThan(single.pages); // Double spacing changes the page count
+      await expectPreviewSheets(double.pages);
+
+      await page.getByRole('group', { name: 'Columns' }).getByRole('button', { name: '2' }).click();
+      await expectPreviewSheets(pdfShape((await exportPdf(page, name)).bytes).pages);
 
       await page.getByRole('group', { name: 'Paper size' }).getByRole('button', { name: 'Letter' }).click();
       expect(pdfShape((await exportPdf(page, name)).bytes).mediaBox).toBe('0 0 612 792');

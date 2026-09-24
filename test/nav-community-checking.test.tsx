@@ -242,39 +242,48 @@ describe('#108 — Publish moves into Check as Community Checking', () => {
     }
   });
 
-  it('two columns hold the whole preview as one flow, not each chapter split in two (#20)', () => {
+  it('the preview is page sheets, and two columns are one flow on each sheet, not each chapter split in two (#20)', () => {
     state = { ...baseState, view: 'publish' };
-    render(<App />);
-    const flow = screen.getByTestId('cc-flow');
-    expect(flow.style.columnCount).toBe('1');
-    fireEvent.click(within(screen.getByRole('group', { name: 'Columns' })).getByRole('button', { name: '2' }));
-    expect(flow.style.columnCount).toBe('2');
-    const chapters = screen.getAllByTestId('cc-chapter');
-    expect(chapters.every((chapter) => flow.contains(chapter) && (chapter as HTMLElement).style.columnCount === '')).toBe(true);
+    const saved = bookModel.byChapter;
+    bookModel.byChapter = { ...saved, 3: saved[3].map((v) => ({ ...v, drafted: true, text: 'Texto del capítulo tres.' })) };
+    try {
+      render(<App />);
+      // jsdom has no layout, so every verse fits the first sheet; the page breaks are proven in test/printPages.test.ts.
+      const [page] = screen.getAllByTestId('cc-page');
+      expect(page.style.getPropertyValue('--print-columns')).toBe('1');
+      fireEvent.click(within(screen.getByRole('group', { name: 'Columns' })).getByRole('button', { name: '2' }));
+      expect(screen.getAllByTestId('cc-page')[0].style.getPropertyValue('--print-columns')).toBe('2');
+      const flow = screen.getAllByTestId('cc-flow')[0];
+      // Chapter 1, the gap line, chapter 3: siblings in the one flow, none with columns of its own.
+      expect([...flow.children].map((el) => el.getAttribute('data-testid'))).toEqual(['cc-chapter', 'cc-chapter-gap', 'cc-chapter']);
+      expect([...flow.children].every((el) => (el as HTMLElement).style.columnCount === '')).toBe(true);
+    } finally {
+      bookModel.byChapter = saved;
+    }
   });
 
-  it('the Bible page setup switches every preview chapter between Single and Double spacing', () => {
+  it('the Bible page setup switches the preview sheets between Single and Double spacing', () => {
     state = { ...baseState, view: 'publish' };
     const before = JSON.stringify(state);
     render(<App />);
 
     const single = screen.getByRole('button', { name: 'Single' });
     const double = screen.getByRole('button', { name: 'Double' });
-    const chapters = screen.getAllByTestId('cc-chapter');
-    expect(chapters.length).toBe(1); // only chapter 1 of the sample has a drafted verse (#20)
+    const leading = () => screen.getAllByTestId('cc-page').map((page) => page.style.getPropertyValue('--print-leading'));
+    expect(screen.getAllByTestId('cc-chapter')).toHaveLength(1); // only chapter 1 of the sample has a drafted verse (#20)
     expect(single.getAttribute('aria-pressed')).toBe('true');
     expect(double.getAttribute('aria-pressed')).toBe('false');
-    expect(chapters.every((chapter) => (chapter as HTMLElement).style.lineHeight === 'var(--lh-community-checking-single)')).toBe(true);
+    expect(leading().every((value) => value === '1.4')).toBe(true);
 
     fireEvent.click(double);
     expect(single.getAttribute('aria-pressed')).toBe('false');
     expect(double.getAttribute('aria-pressed')).toBe('true');
-    expect(chapters.every((chapter) => (chapter as HTMLElement).style.lineHeight === 'var(--lh-community-checking-double)')).toBe(true);
+    expect(leading().every((value) => value === '2.8')).toBe(true);
 
     fireEvent.click(single);
     expect(single.getAttribute('aria-pressed')).toBe('true');
     expect(double.getAttribute('aria-pressed')).toBe('false');
-    expect(chapters.every((chapter) => (chapter as HTMLElement).style.lineHeight === 'var(--lh-community-checking-single)')).toBe(true);
+    expect(leading().every((value) => value === '1.4')).toBe(true);
     expect(unexpectedAction).not.toHaveBeenCalled();
     expect(go).not.toHaveBeenCalled();
     expect(JSON.stringify(state)).toBe(before);
