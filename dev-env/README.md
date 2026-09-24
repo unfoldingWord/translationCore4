@@ -203,6 +203,73 @@ curl -s localhost:19998/api/version
 
 Expect `pkg_version 0.18.5`.
 
+## Journeys from a clean clone
+
+The Playwright journeys (`npm run journeys`) use this repository only: its `dev-env/`
+rig, its `conformance/sample-burrito` project, and the cache in
+`dev-env/resources-cache/`. Do the steps below in order. On Windows, do them in the
+MSYS2 zsh window of the [Windows](#windows) section.
+
+1. Install the packages, build the client, and get the Playwright browser:
+
+   ```bash
+   npm ci
+   npm run build
+   npx playwright install chromium
+   ```
+
+2. Assemble the rig. This builds the server; the first build takes several minutes:
+
+   ```bash
+   zsh dev-env/scripts/setup-from-pins.zsh
+   ```
+
+3. Cache the 19 resources that the journeys need. Each command downloads one pinned
+   release from Door43 through the app's own fetch path, and fails if the commit is not
+   the one given. `seed.zsh` sideloads the first 15 and writes their install records
+   (decision D57). The last four are newer and older releases that J12 and the guided
+   fix serve as a mocked Door43:
+
+   ```bash
+   # The English suite, the Greek New Testament, and the Spanish helps (seeded)
+   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_ult v89 84c73ba00fc8a95a9033f9efb14bb905a2a52ee4
+   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_ust v89 37ec223166bbd73fb55abc7840be8310c0fee7f2
+   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tn v89 ae6bcf6c9e28765df84a0eb34bf20028f7d73803
+   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tw v89 002f704aa693a0131dd6ea4efb83df7419148bfc
+   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_ta v89 d40dd84430ad7c8a24cf3c1c744916f60b035cd6
+   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tq v89 97c0a13e3b84d46d0e643ba2e8e9f1c295547a58
+   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/el-x-koine_ugnt v0.34 fc95b2b8aad08bb65ab54628ab685413a1139e97
+   zsh dev-env/scripts/cache-resource.zsh Es-419_gl/es-419_tn v66 22f3d0c61e2ab4701cb869547de9c3c43da07208
+   zsh dev-env/scripts/cache-resource.zsh Es-419_gl/es-419_tw v37 7586f4ff1f0483ea40a4a68e5e1f33158e08c208
+   zsh dev-env/scripts/cache-resource.zsh Es-419_gl/es-419_ta v4 26606b578c37cc2c0ee09bb7b9a291860ff59444
+   # The Open Bible Stories resources and the picture pack (seeded, no install record)
+   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_obs v9 d39a1dc7a7557ac54e4a8fecc3462147fe7eec3b
+   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_obs-tn v13 e86138ea13f619f09f7a6dcaa60592716d407fe4
+   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_obs-twl v3 44ebc9fafe8101665f985007d566f5036a2be85b
+   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_obs-tq v10 01b92fe8793d62cff3a2221f5174c768cbad3dc1
+   zsh dev-env/scripts/cache-resource.zsh uW/obs_images_360 "" 7146d5b504f6b63b9e11f7dc0b18c594d0ae179d
+   # The releases that J12 and the guided fix serve (not seeded)
+   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tn v90 e137f93c4de4d64281e36c84d57a68e405cb20ab
+   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tw v90 014524aebf4f997c123777e952856d24e3b246d2
+   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_ta v90 be50fc8626b561c2fd36cfb98aee834b14a16a1c
+   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tn v88 c3be6e4f2d279327249ef5b14bf5d5c8b7549e35
+   ```
+
+   The cache is gitignored. Do this step once; the entries stay when the rig reseeds.
+
+4. Run the journeys:
+
+   ```bash
+   npm run journeys
+   ```
+
+   Global setup reseeds the rig with `seed.zsh`, and Playwright starts the rig with
+   `run.zsh` and the client with `npm run dev`, when they are not already running. It
+   starts each script through zsh. On Windows it uses `C:\msys64\usr\bin\zsh.exe`; set
+   `TC4_ZSH` if MSYS2 is in another directory.
+
+   To run one journey, give its tag, for example `npm run journeys -- --grep "@J1( |$)"`.
+
 ## What is not in this directory
 
 `app-resources/`, `resources-cache/`, `state/`, `upstream/`, and `server/target/` are
