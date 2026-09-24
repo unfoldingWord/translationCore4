@@ -13,6 +13,7 @@ import { PAGE_MARGIN_MM, PAPER_MM, PrintParts, printVariables } from './PrintBoo
 
 const px = (mm) => (mm * 96) / 25.4;
 const PAGE_NUMBER = { position: 'absolute', left: 0, right: 0, bottom: px(PAGE_MARGIN_MM.bottom) / 2 - 7, textAlign: 'center', fontFamily: '"Charis SIL", "PT Serif", Georgia, "Times New Roman", serif', fontSize: 11, color: '#626F78' };
+// A sheet fills column by column; the last balances its columns, as the PDF's last page does.
 const FLOW = { flex: 1, minHeight: 0, columnFill: 'auto', overflow: 'hidden' };
 
 /** The units a page takes, in reading order: a gap line, or one verse of a chapter
@@ -32,12 +33,18 @@ export function partsOf(atoms) {
   return parts;
 }
 
-const wordsOf = (atom) => (atom.v.rest ?? atom.v.text).split(' ');
+/** A verse's text as word segments that join back to it exactly. Word boundaries
+ * come from Intl.Segmenter, so a script written without spaces (Thai, Khmer,
+ * Chinese …) still splits between words. */
+const WORDS = new Intl.Segmenter(undefined, { granularity: 'word' });
+export const wordsOf = (text) => Array.from(WORDS.segment(text), (s) => s.segment);
 /** The first words of a verse atom; it keeps its number unless it is already a continuation. */
 const pieceOf = (atom, words) =>
-  ({ ...atom, v: atom.v.rest === undefined ? { ...atom.v, text: words.join(' ') } : { ...atom.v, rest: words.join(' ') } });
+  ({ ...atom, v: atom.v.rest === undefined ? { ...atom.v, text: words.join('') } : { ...atom.v, rest: words.join('') } });
 /** The rest of a verse after a page break: no head, no number. */
-const restOf = (atom, words) => ({ c: atom.c, head: false, v: { ...atom.v, rest: words.join(' ') } });
+const restOf = (atom, words) => ({ c: atom.c, head: false, v: { ...atom.v, rest: words.join('') } });
+/** Whether an atom carries on the chapter before it onto a new page (no head, no gap). */
+const carriesOn = (atom) => Boolean(atom && !atom.gap && !atom.head);
 
 /** The largest n in [0, max] with `ok(n)` true, for an `ok` true up to some n and false after. */
 function largest(max, ok) {
@@ -56,19 +63,23 @@ function largest(max, ok) {
   return lo;
 }
 
-/** Fill pages in order. `fits(page, atoms)` says whether those atoms fit on that page. */
+/** Fill pages in order. `fits(page, atoms, continues)` says whether those atoms fit
+ * on that page; `continues` is true when the page's last chapter goes on to the
+ * next page, so its part has no bottom margin (the PDF has one only at a chapter's end). */
 export function paginate(atoms, fits) {
   const pages = [];
   let queue = atoms;
   while (queue.length > 0) {
     const p = pages.length;
-    const n = largest(queue.length, (k) => fits(p, queue.slice(0, k)));
+    const n = largest(queue.length, (k) => fits(p, queue.slice(0, k), carriesOn(queue[k])));
     let page = queue.slice(0, n);
     let rest = queue.slice(n);
     const next = rest[0];
     if (next && !next.gap && next.v.drafted && next.v.text) {
-      const words = wordsOf(next);
-      const k = largest(words.length - 1, (m) => fits(p, [...page, pieceOf(next, words.slice(0, m))]));
+      const words = wordsOf(next.v.rest ?? next.v.text);
+      let k = largest(words.length - 1, (m) => fits(p, [...page, pieceOf(next, words.slice(0, m))], true));
+      // An empty page takes at least one word, so a verse longer than a page is split, never cut.
+      if (k === 0 && page.length === 0 && words.length > 1) k = 1;
       if (k > 0) {
         page = [...page, pieceOf(next, words.slice(0, k))];
         rest = [restOf(next, words.slice(k)), ...rest.slice(1)];
@@ -86,7 +97,7 @@ export function paginate(atoms, fits) {
 }
 
 /** One sheet: the title on the first, the flow, the page number. */
-function Sheet({ pageSetup, dir, title, number, children, sheetRef, hidden = false }) {
+function Sheet({ pageSetup, dir, title, number, children, sheetRef, hidden = false, last = false }) {
   const [w, h] = PAPER_MM[pageSetup.paper];
   const { top, side, bottom } = PAGE_MARGIN_MM;
   const style = {
@@ -106,7 +117,7 @@ function Sheet({ pageSetup, dir, title, number, children, sheetRef, hidden = fal
   return (
     <div ref={sheetRef} className="print-book" style={style} aria-hidden={hidden || undefined} data-testid={hidden ? undefined : 'cc-page'}>
       {title !== null && <h1 className="print-title" dir={dir}>{title}</h1>}
-      <div className="print-flow" dir={dir} style={FLOW} data-testid={hidden ? undefined : 'cc-flow'}>{children}</div>
+      <div className="print-flow" dir={dir} style={last ? { ...FLOW, columnFill: 'balance' } : FLOW} data-testid={hidden ? undefined : 'cc-flow'}>{children}</div>
       {!hidden && <div style={PAGE_NUMBER}>{number}</div>}
     </div>
   );
@@ -132,9 +143,9 @@ export default function PrintPages({ title, items, pageSetup, dir, empty }) {
     const sheet = measureRef.current;
     const heading = sheet.querySelector('.print-title');
     const flow = sheet.querySelector('.print-flow');
-    const fits = (page, list) => {
+    const fits = (page, list, continues) => {
       heading.style.display = page === 0 ? '' : 'none';
-      flow.innerHTML = renderToStaticMarkup(<PrintParts parts={partsOf(list)} pageSetup={pageSetup} dir={dir} />);
+      flow.innerHTML = renderToStaticMarkup(<PrintParts parts={partsOf(list)} pageSetup={pageSetup} dir={dir} continues={continues} />);
       return flow.scrollWidth <= flow.clientWidth + 1 && flow.scrollHeight <= flow.clientHeight + 1;
     };
     setPages(paginate(atoms, fits));
@@ -148,8 +159,8 @@ export default function PrintPages({ title, items, pageSetup, dir, empty }) {
         <Sheet pageSetup={pageSetup} dir={dir} title={title} number={1}>{empty}</Sheet>
       ) : (
         (pages ?? []).map((page, i) => (
-          <Sheet key={i} pageSetup={pageSetup} dir={dir} title={i === 0 ? title : null} number={i + 1}>
-            <PrintParts parts={partsOf(page)} pageSetup={pageSetup} dir={dir} testIds />
+          <Sheet key={i} pageSetup={pageSetup} dir={dir} title={i === 0 ? title : null} number={i + 1} last={i === pages.length - 1}>
+            <PrintParts parts={partsOf(page)} pageSetup={pageSetup} dir={dir} continues={carriesOn(pages[i + 1]?.[0])} testIds />
           </Sheet>
         ))
       )}

@@ -37,15 +37,16 @@ export const partsOfItems = (items) =>
 /**
  * The flow content: a gap line `{ gap }` or a chapter part `{ c, head, verses }`.
  * `head` is false for the rest of a chapter that a page break split; a verse
- * with `rest` is the text after a page break and shows no number. `testIds`
+ * with `rest` is the text after a page break and shows no number. `continues`
+ * marks the last part as going on to the next page (no bottom margin). `testIds`
  * adds the preview's test handles, never the PDF's.
  */
-export function PrintParts({ parts, pageSetup, dir, testIds = false }) {
+export function PrintParts({ parts, pageSetup, dir, continues = false, testIds = false }) {
   const id = (name) => (testIds ? { 'data-testid': name } : {});
-  return parts.map((part) => part.gap
+  return parts.map((part, i) => part.gap
     ? <p key={`gap-${part.gap[0]}`} className="print-chapter-gap" dir={dir} {...id('cc-chapter-gap')}>{chapterGapText(part.gap)}</p>
     : (
-      <section key={`${part.c}-${part.head ? 'h' : part.verses[0]?.n}`} className="print-chapter" dir={dir} {...id('cc-chapter')}>
+      <section key={`${part.c}-${part.head ? 'h' : part.verses[0]?.n}`} className={continues && i === parts.length - 1 ? 'print-chapter print-chapter-continues' : 'print-chapter'} dir={dir} {...id('cc-chapter')}>
         {part.head && (pageSetup.dropCapChapters
           ? <span className="print-dropcap">{part.c}</span>
           : <h2 className="print-chapter-heading" {...id('cc-chapter-heading')}>{t('cc.chapterHeading', { n: part.c })}</h2>)}

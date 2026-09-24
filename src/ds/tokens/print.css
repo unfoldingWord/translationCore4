@@ -42,6 +42,9 @@
   text-align: justify;
   margin: 0 0 26px;
 }
+/* A preview sheet's last chapter that goes on to the next sheet: the PDF keeps a
+   chapter as one box, so its margin comes only at the chapter's end. */
+.print-chapter-continues { margin-bottom: 0; }
 .print-dropcap {
   float: inline-start;
   font-size: 64px;
