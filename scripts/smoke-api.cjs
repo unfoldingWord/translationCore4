@@ -250,7 +250,7 @@ async function probeObsTemplate() {
     const metadataBytes = await getBytes("/api/burrito/metadata/raw/" + enc(repo))
       .catch((e) => fail("export", e.message));
     try {
-      const result = verifyBurritoZip(zipBytes, metadataBytes);
+      const result = await verifyBurritoZip(zipBytes, metadataBytes);
       ok("export", `${repo}: ${result.ingredientFiles} ingredient files; metadata matches raw route (${result.metadataBytes} bytes)`);
     } catch (error) {
       fail("export", error.message);

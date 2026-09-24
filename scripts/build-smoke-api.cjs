@@ -1,5 +1,5 @@
 // Bundle the installed API smoke helper and its ZIP reader. The installed
-// machine has no checkout or npm dependencies, so fflate must ship in the file.
+// machine has no checkout or npm dependencies, so zip.js must ship in the file.
 const fs = require('node:fs');
 const path = require('node:path');
 const esbuild = require('esbuild');

@@ -121,6 +121,7 @@ WEBFONTS_CORE_REPO="https://github.com/pankosmia/webfonts-core.git"
 WEBFONTS_CORE_REV="eb52ccdad6806b5729ea8b45b1c59c793ffa32c3"   # 2026-08-14
 PUPPETEER_CORE_VER="24.43.1"       # template package.json: ^24.43.1
 PUPPETEER_BROWSERS_VER="2.13.1"    # template package.json: ^2.13.1
+ZIP_JS_VER="2.18.2"                # root package.json and package-lock.json
 
 # Bundled English suite (#163, D70, #288). Fourteen repos pinned from src/data/installedSuite.js,
 # as `<owner>/<repo>:<tag>:<sha>`. en_tw serves both translationWords and
@@ -509,6 +510,7 @@ cp "$BUILD/electronite/LICENSE" "$APPDIR/licenses/LICENSE.electronite"
 cp "$BUILD/electronite/LICENSES.chromium.html" "$APPDIR/licenses/LICENSES.chromium.html"
 cp "$BUILD/upstream/resource-core/LICENSE" "$APPDIR/licenses/LICENSE.resource-core"
 cp "$BUILD/upstream/webfonts-core/LICENSE" "$APPDIR/licenses/LICENSE.webfonts-core"
+cp "$REPO/node_modules/@zip.js/zip.js/LICENSE" "$APPDIR/licenses/LICENSE.zip.js"
 cat > "$APPDIR/THIRD-PARTY-NOTICES.md" <<NOTICES
 # Third-party notices
 
@@ -524,6 +526,7 @@ This build bundles the components below. Full texts are in licenses/.
 | webfonts-core (lib/webfonts; fonts carry their own licenses, mostly SIL OFL) | $WEBFONTS_CORE_REV | MIT (repo); per-font licenses inside | github.com/pankosmia/webfonts-core |
 | puppeteer-core (electron/node_modules) | $PUPPETEER_CORE_VER | Apache-2.0 | github.com/puppeteer/puppeteer |
 | @puppeteer/browsers (electron/node_modules) | $PUPPETEER_BROWSERS_VER | Apache-2.0 | github.com/puppeteer/puppeteer |
+| @zip.js/zip.js (bundled export smoke) | $ZIP_JS_VER | BSD-3-Clause | github.com/gildas-lormeau/zip.js |
 NOTICES
 for entry in "${BUNDLED_RESOURCES[@]}"; do
   bundled_fields "$entry"
@@ -568,7 +571,8 @@ $BUNDLED_MANIFEST_ENTRIES
     "resource_core": { "rev": "$RESOURCE_CORE_REV" },
     "webfonts_core": { "rev": "$WEBFONTS_CORE_REV" },
     "puppeteer_core": { "version": "$PUPPETEER_CORE_VER" },
-    "puppeteer_browsers": { "version": "$PUPPETEER_BROWSERS_VER" }
+    "puppeteer_browsers": { "version": "$PUPPETEER_BROWSERS_VER" },
+    "zip_js": { "version": "$ZIP_JS_VER" }
   }
 }
 MANIFEST
@@ -962,4 +966,4 @@ fi
 echo "artifact: $ZIP"
 echo "inputs: electronite $ELECTRONITE_TAG ($ELECTRONITE_SHA256); template $TEMPLATE_REV;"
 echo "        resource-core $RESOURCE_CORE_REV; webfonts-core $WEBFONTS_CORE_REV;"
-echo "        puppeteer-core $PUPPETEER_CORE_VER; @puppeteer/browsers $PUPPETEER_BROWSERS_VER"
+echo "        puppeteer-core $PUPPETEER_CORE_VER; @puppeteer/browsers $PUPPETEER_BROWSERS_VER; @zip.js/zip.js $ZIP_JS_VER"

@@ -1,8 +1,9 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { spawn } = require('node:child_process');
+const { execFileSync, spawn } = require('node:child_process');
 const fs = require('node:fs');
 const http = require('node:http');
+const os = require('node:os');
 const path = require('node:path');
 const { zipSync } = require('fflate');
 
@@ -17,7 +18,7 @@ const proveSource = fs.readFileSync(path.join(__dirname, 'prove.mjs'), 'utf8');
 const sampleRepo = proveSource.match(/const SAMPLE = '([^']+)';/)?.[1];
 assert.ok(sampleRepo, 'scripts/prove.mjs must declare its seeded sample project');
 
-async function runExportSmoke(zipStatus) {
+async function runExportSmoke(zipStatus, smokeApi = path.join(__dirname, 'smoke-api.cjs'), cwd = process.cwd()) {
   const zipRoute = `/api/burrito/zipped/${sampleRepo}`;
   const metadataRoute = `/api/burrito/metadata/raw/${sampleRepo}`;
   const server = http.createServer((request, response) => {
@@ -41,14 +42,14 @@ async function runExportSmoke(zipStatus) {
   try {
     const result = await new Promise((resolve, reject) => {
       const child = spawn(process.execPath, [
-        path.join(__dirname, 'smoke-api.cjs'),
+        smokeApi,
         `http://127.0.0.1:${address.port}`,
         sampleRepo,
         'sample_burrito',
         'unused-marker',
         'export',
         path.join(__dirname, '..', 'tmp-smoke-api-test'),
-      ]);
+      ], { cwd });
       let stdout = '';
       let stderr = '';
       child.stdout.setEncoding('utf8').on('data', (chunk) => { stdout += chunk; });
@@ -81,4 +82,27 @@ test('export smoke rejects HTTP 206 even when the ZIP is valid', async () => {
   assert.match(result.stdout, /expected HTTP 200, got 206/);
   assert.match(result.stdout, /^FAIL export:/m);
   assert.equal(exportLines(result.stdout).length, 1);
+});
+
+test('bundled export smoke runs without checkout dependencies', async () => {
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-smoke-api-'));
+  const bundledSmoke = path.join(temporaryDirectory, 'smoke-api.cjs');
+  const builtSmoke = path.join(__dirname, `.smoke-api-validation-${process.pid}.cjs`);
+  assert.equal(fs.existsSync(builtSmoke), false, 'temporary bundled smoke path is unused');
+  try {
+    execFileSync(process.execPath, [
+      path.join(__dirname, 'build-smoke-api.cjs'),
+      builtSmoke,
+    ], { cwd: path.resolve(__dirname, '..') });
+    fs.copyFileSync(builtSmoke, bundledSmoke);
+
+    const result = await runExportSmoke(200, bundledSmoke, temporaryDirectory);
+    assert.equal(result.code, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /^ok export:/m);
+    assert.equal(exportLines(result.stdout).length, 1);
+  } finally {
+    if (fs.existsSync(builtSmoke)) fs.unlinkSync(builtSmoke);
+    if (fs.existsSync(bundledSmoke)) fs.unlinkSync(bundledSmoke);
+    fs.rmdirSync(temporaryDirectory);
+  }
 });

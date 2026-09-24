@@ -325,6 +325,9 @@ test('OBS smoke reads the platform template before writing and checks all byte s
 
 test('installed smoke bundles and runs the Burrito ZIP check after restart on both shells', () => {
   assert.match(recipe, /build-smoke-api\.cjs/);
+  assert.match(recipe, /LICENSE\.zip\.js/);
+  assert.match(recipe, /@zip\.js\/zip\.js \(bundled export smoke\)/);
+  assert.match(recipe, /"zip_js": \{ "version": "\$ZIP_JS_VER" \}/);
   for (const [source, readback, exportStep, cleanup] of [
     [smokeZsh, 'run_steps readback', 'run_steps export', 'run_steps delete'],
     [smokePowerShell, 'Run-Steps readback', 'Run-Steps export', 'Run-Steps delete'],
