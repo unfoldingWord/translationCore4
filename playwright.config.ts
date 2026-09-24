@@ -5,6 +5,7 @@
 import { defineConfig } from '@playwright/test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { rigCommand, rigShellEnv } from './e2e/rig-shell';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TC4_ROOT = HERE;
@@ -25,7 +26,9 @@ export default defineConfig({
     {
       // Rig server (pankosmia_web 0.18.5 git-rev pin — D27 update; isolated state under dev-env/state/).
       // reuseExistingServer: the rig is normally already running during development.
-      command: path.join(TC4_ROOT, 'dev-env', 'scripts', 'run.zsh'),
+      // Through zsh, with MSYS2 paths on Windows (#396).
+      command: rigCommand(path.join(TC4_ROOT, 'dev-env', 'scripts', 'run.zsh')),
+      env: rigShellEnv() as Record<string, string>,
       url: 'http://127.0.0.1:19998/api/version',
       reuseExistingServer: true,
       timeout: 60_000,

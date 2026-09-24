@@ -7,9 +7,12 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { assertRigHealthy } from './rig-health';
 import { TC4_ROOT } from './helpers/root';
+import { RIG_ZSH, rigScriptArgs, rigShellEnv } from './rig-shell';
 
 export default async function globalSetup() {
-  execFileSync(path.join(TC4_ROOT, 'dev-env', 'scripts', 'seed.zsh'), {
+  // Through zsh, not as a program: Windows cannot run a .zsh file (#396).
+  execFileSync(RIG_ZSH, rigScriptArgs(path.join(TC4_ROOT, 'dev-env', 'scripts', 'seed.zsh')), {
+    env: rigShellEnv(),
     stdio: 'inherit',
   });
   await assertRigHealthy();
