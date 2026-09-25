@@ -17,17 +17,18 @@ npm run generate   # rebuilds JON stub (incl. the 2:9-10 verse-span fixture), al
 npm run validate   # the Phase-1 suite (BURRITO-SPEC §7); the three groups are below
 ```
 
-`npm run validate` runs <!-- manifest: conformance:validate passed -->48 checks in four
+`npm run validate` runs <!-- manifest: conformance:validate passed -->50 checks in four
 groups:
 
-- **Stage-1 (<!-- manifest: conformance:validate summary[Stage-1] -->36):** SB schema,
+- **Stage-1 (<!-- manifest: conformance:validate summary[Stage-1] -->38):** SB schema,
   ingredient integrity, versification (vrs.json presence/shape/scope coverage), scope
   grammar ([] + range arrays, negative controls), targetBible shape, alignment round-trip +
   staleness guard, selections validity + invalidation, decision-shape lint incl. triage
   status, derive+merge progress reconstruction incl. scope-filtered derive, cross-language
   re-attach (groupId tiebreak, ambiguity → review), multi-book scope, two-language-set
   resource pins (D17/D30), (tool, book) resolution records + two-rung coverage ladder,
-  extraScripture source pins, zaln export, verse-span key semantics.
+  extraScripture source pins, zaln export, verse-span key semantics, the renumber outcome
+  for §5.1 and §5.2 records.
 - **Stage-2 (<!-- manifest: conformance:validate summary[Stage-2] -->2):** role-tagged
   ingredients + SB relationships — held by the sample; a server rescan drops them because
   the scan rebuilds the table from disk. Non-durable BY DESIGN (D28) — tC4 re-asserts its

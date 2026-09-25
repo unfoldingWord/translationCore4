@@ -2,7 +2,7 @@
 import { decompose } from './skeleton.mjs';
 import { slotKeysOf } from './fold.mjs';
 import { makeClock } from './hlc.mjs';
-import { splitDecisionKey } from './grammar.mjs';
+import { splitDecisionKey, recordOnSlot } from './grammar.mjs';
 
 // Out-of-band edit: committed file differs from the fold projection.
 // Slot set unchanged → linear-supersede text.*.set seed events.
@@ -81,19 +81,24 @@ export const reconcileUsfm = (book, committedUsfm, foldOut, clock, actor, opts =
       if (newSlots.includes(k)) continue; // removed slot — conservative handling only
       for (const h of liveOn(`text|${book}|${k}`))
         if (!claimed.has(`${k}|${h.ts}`)) dispositions.push({ surface: 'text', key: k, ts: h.ts, action: 'orphan-review' });
-      for (const h of liveOn(`align|${book}|${k}`))
-        dispositions.push({ surface: 'alignment', key: k, ts: h.ts, action: alignmentAction });
+      // "on" a removed slot is the fold's own R-8.5.24 membership predicate
+      const alignPrefix = `align|${book}|`;
+      for (const ak of Object.keys(foldOut.liveHeads || {})) {
+        if (!ak.startsWith(alignPrefix) || !recordOnSlot(ak.slice(alignPrefix.length), k)) continue;
+        for (const h of liveOn(ak))
+          dispositions.push({ surface: 'alignment', key: ak.slice(alignPrefix.length), ts: h.ts, action: alignmentAction });
+      }
       for (const dk of Object.keys(foldOut.liveHeads || {})) {
         if (!dk.startsWith('dec|')) continue;
         // decompose with the ONE §5.2 key splitter (grammar.mjs) — never by index
         const { bookId, chapter, verse } = splitDecisionKey(dk.slice(4));
-        if (bookId !== book.toLowerCase() || `${chapter}:${verse}` !== k) continue;
+        if (bookId !== book.toLowerCase() || !recordOnSlot(`${chapter}:${verse}`, k)) continue;
         for (const h of liveOn(dk))
           dispositions.push({ surface: 'decision', key: dk.slice(4), ts: h.ts, action: 'invalidate-retain' });
       }
       for (const n of foldOut.liveNotes || []) {
         const tg = n.target;
-        if (tg && tg.book === book && `${tg.chapter}:${tg.verse}` === k)
+        if (tg && tg.book === book && recordOnSlot(`${tg.chapter}:${tg.verse}`, k))
           dispositions.push({ surface: 'note', ts: n.ts, action: 'orphan-review' });
       }
     }

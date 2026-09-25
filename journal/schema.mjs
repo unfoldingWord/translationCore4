@@ -116,7 +116,7 @@ export const storyTargetOf = (e) => {
 const SEED_SOURCES = new Set(['creation', 'sidecar-migration', 'out-of-band-usfm', 'tc3-import']);
 
 // §8.5 disposition schema: surface and action are closed enums; re-key requires a
-// destination among the mapping's targets (or a §5.2 identity key, for notes);
+// destination among the mapping's targets, and a decision never re-keys (R-8.5.22);
 // replace requires the complete post-state.
 // Round 9: `text` is a disposition surface. Verse TEXT on a slot a structural action
 // REMOVES was the one dependent record class with no disposition and no orphan backstop:
@@ -147,13 +147,12 @@ const dispositionError = (d, newSlots) => {
     if (err) return `disposition (decision) key "${d.key}" ${err} — must be toolId|checkId|bookId|chapter|verse|occurrence`;
   }
   if (d.action === 're-key') {
+    // R-8.5.22: a decision's reference names its resource row in the project frame, and a
+    // renumber does not move the frame — so the decision keeps its key (invalidate-retain)
+    if (d.surface === 'decision') return 're-key is not a decision disposition — a decision keeps its key; use invalidate-retain (§8.5 R-8.5.22)';
     if (!isStr(d.to)) return 're-key disposition without a destination (to)';
-    if (d.surface !== 'note' && !newSlots.includes(d.to))
+    if (!newSlots.includes(d.to))
       return `re-key disposition destination "${d.to}" is not a target slot of the mapping`;
-    if (d.surface === 'note' && !newSlots.includes(d.to)) {
-      const err = decisionKeyError(d.to); // the same decision-key grammar the registers carry
-      if (err) return `note re-key destination "${d.to}" is neither a target slot nor a decision key (${err})`;
-    }
   }
   if (d.action === 'replace') {
     // §8.5: the post-state is a VALIDATED, complete record whose identity is

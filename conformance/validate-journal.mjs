@@ -11,8 +11,9 @@ import { SLOT, decompose, recompose } from '../journal/skeleton.mjs';
 import { fold, verseTextMd5, slotKeysOf, headIdentity } from '../journal/fold.mjs';
 import { validateAction, validateEvent, KNOWN_OPS } from '../journal/schema.mjs';
 import * as storyMod from '../journal/story.mjs';
-import { BOOK_CODES, identityKeyOf, identityKeyError, decisionKeyError, ipathError, pinSlotError, pinEntryError, noteRekeyError, splitDecisionKey } from '../journal/grammar.mjs';
+import { BOOK_CODES, identityKeyOf, identityKeyError, decisionKeyError, ipathError, pinSlotError, pinEntryError, splitDecisionKey } from '../journal/grammar.mjs';
 import { reconcileUsfm, seedFromSidecars } from '../journal/reconcile.mjs';
+import { shiftChapter } from './fixtures/renumber.mjs';
 import {
   sealAction, writeActionSegment, validateSegment, validateActorDoc, segmentName,
   readSegments, readUnion, actorDirFor, SEGMENT_LIMIT,
@@ -739,20 +740,20 @@ try {
     },
     dispositions: [
       { surface: 'alignment', key: '1:2', ts: out.headsTs['align|TIT|1:2'], action: 're-key', to: '1:9' },
-      { surface: 'decision', key: 'translationWords|w2k9|tit|1|2|1', ts: out.headsTs['dec|translationWords|w2k9|tit|1|2|1'], action: 're-key', to: '1:9' },
+      { surface: 'decision', key: 'translationWords|w2k9|tit|1|2|1', ts: out.headsTs['dec|translationWords|w2k9|tit|1|2|1'], action: 'invalidate-retain' },
     ] });
   const afterStruct = fold([...seedEvents, structEv]);
-  check('JC-15 (full state): invalidated records pass through a structural action with retention intact — re-keyed, flags preserved, nothing dropped',
+  check('JC-15 (full state): invalidated records pass through a structural action with retention intact — the alignment re-keyed, the decision kept on its key (R-8.5.22), flags preserved, nothing dropped',
     afterStruct.pendingStructural.length === 0 &&
     afterStruct.alignments.TIT?.['1:9']?.invalid === true && !afterStruct.alignments.TIT?.['1:2'] &&
-    afterStruct.decisions.translationWords.some((d) => d.invalidated === true && String(d.contextId.reference.verse) === '9'),
+    afterStruct.decisions.translationWords.some((d) => d.invalidated === true && String(d.contextId.reference.verse) === '2'),
     JSON.stringify({ pending: afterStruct.pendingStructural, align: Object.keys(afterStruct.alignments.TIT || {}) }));
 } catch (e) {
   check('JC-15 (full state): fold(seed) reproduces EVERY derived file of the partial-scope fixture byte-for-byte (scope, pins, settings, metadata, full §5.1 alignment fields — INVALIDATED records included) [covers R-8.8.2]', false, e.message);
   check('JC-15 (full state): the seeded scope is the fixture\'s actual partial scope, not a hardcoded whole-book default', false, e.message);
   check('JC-15 (full state): the seeded alignment record carries all §5.1 fields (sourceVersion, invalid) through the fold', false, e.message);
   check('JC-15 (full state): the invalidated records seed and fold correctly — the stale alignment is reported by I-3, the invalidated decision is retained', false, e.message);
-  check('JC-15 (full state): invalidated records pass through a structural action with retention intact — re-keyed, flags preserved, nothing dropped', false, e.message);
+  check('JC-15 (full state): invalidated records pass through a structural action with retention intact — the alignment re-keyed, the decision kept on its key (R-8.5.22), flags preserved, nothing dropped', false, e.message);
 }
 
 // ---------- JC-16: drafting by section vs checking by verse (\ts\* = presentation only; target text never carries it — §4.1/§8.4a). Fixtures model IMPORTED files + section-save batching. ----------
@@ -1289,9 +1290,10 @@ try {
   });
   const renumSame = fold([add2, align2, renumber('dos\n')]);
   const renumWord = fold([add2, align2, renumber('dos CAMBIADO\n')]);
-  check('JC-21: renumber (2 → 3) re-keys the alignment; unchanged words stay valid (I-3 on the moved verse)',
-    !!renumSame.alignments.TIT?.['1:3'] && !renumSame.alignments.TIT?.['1:2'] && renumSame.invalid.length === 0,
-    JSON.stringify(renumSame.invalid));
+  check('JC-21: renumber (2 → 3) re-keys the alignment — its words and hash stay, and it projects invalid: true because a different source verse now stands behind the key [covers R-8.5.21]',
+    renumSame.alignments.TIT?.['1:3']?.invalid === true && renumSame.alignments.TIT['1:3'].targetVerseMd5 === md5('dos') &&
+    !renumSame.alignments.TIT?.['1:2'] && renumSame.pendingStructural.length === 0,
+    JSON.stringify(renumSame.alignments.TIT?.['1:3']));
   check('JC-21: renumber with changed words invalidates honestly (I-3 still binds after the move)',
     !!renumWord.alignments.TIT?.['1:3'] && renumWord.invalid.some((i) => i.verse === '1:3'));
 
@@ -1432,37 +1434,36 @@ try {
     rekeyedInv.pendingStructural.length === 0 && rekeyedInv.alignments.TIT?.['1:3']?.invalid === true && !rekeyedInv.alignments.TIT?.['1:2'],
     JSON.stringify(rekeyedInv.alignments.TIT?.['1:3']));
 
-  // finding 2: a decisionKey-targeted note on a re-keyed decision is part of the
-  // affected set — without a disposition the event is refused; with a re-key
-  // disposition the note projects under the NEW identity
+  // R-8.5.22: a decision never re-keys. Its reference names its resource row in the
+  // project frame, and a renumber does not move the frame — the schema refuses the form,
+  // and a re-key disposition naming its decisionKey-targeted note is outside the affected set
   const dec2 = E('check.decision.set', 'checker-c', t(1, 2, 'checker-c'), null, { toolId: 'translationWords', generation: add2.ts,
     decision: { contextId: { checkId: 'c8', reference: { bookId: 'tit', chapter: '1', verse: '2' }, occurrence: 1 }, selections: false, invalidated: false, status: 'todo' } });
   const oldDecKey = 'translationWords|c8|tit|1|2|1';
   const noteOnDec = E('note.add', 'checker-c', t(1, 3, 'checker-c'), null, { generation: add2.ts, target: { decisionKey: oldDecKey }, text: 'nota sobre decisión' });
-  const structDecOnly = (extraDispositions) => E('text.structure.apply', 'drafter-a', t(2, 0, 'drafter-a'), add2.ts, {
+  const structDecOnly = (dispositions) => E('text.structure.apply', 'drafter-a', t(2, 0, 'drafter-a'), add2.ts, {
     book: 'TIT', skeleton: skel2r,
     transitions: {
       '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: add2.ts }] },
       '1:3': { text: 'dos\n', sources: [{ key: '1:2', ts: add2.ts }] },
     },
-    dispositions: [
-      { surface: 'decision', key: `translationWords|c8|tit|1|2|1`, ts: dec2.ts, action: 're-key', to: '1:3' },
-      ...extraDispositions,
-    ],
+    dispositions,
   });
-  const noteOmitted = fold([add2, dec2, noteOnDec, structDecOnly([])]);
-  check('JC-21c: re-keying a decision that has a decisionKey-targeted note WITHOUT a note disposition refuses the event (the note is an affected record)',
-    noteOmitted.pendingStructural.length === 1 && noteOmitted.pendingStructural[0].status === 'incomplete',
-    JSON.stringify(noteOmitted.pendingStructural));
-  const newDecKey = 'translationWords|c8|tit|1|3|1';
-  const noteRekeyed = fold([add2, dec2, noteOnDec, structDecOnly([
-    { surface: 'note', ts: noteOnDec.ts, action: 're-key', to: newDecKey },
-  ])]);
-  check('JC-21c: with a re-key disposition the decisionKey-targeted note projects under the NEW decision identity, never the retired one [covers R-8.5.12]',
-    noteRekeyed.pendingStructural.length === 0 &&
-    noteRekeyed.notes.some((n) => n.target.decisionKey === newDecKey) &&
-    !noteRekeyed.notes.some((n) => n.target.decisionKey === oldDecKey),
-    JSON.stringify(noteRekeyed.notes.map((n) => n.target)));
+  const rekeyDec = { surface: 'decision', key: oldDecKey, ts: dec2.ts, action: 're-key', to: '1:3' };
+  let decRekeyErr = ''; try { fold([add2, dec2, structDecOnly([rekeyDec])]); } catch (err) { decRekeyErr = err.message; }
+  check('JC-21c: a decision re-key disposition refuses the whole event — a decision keeps its key; the schema refuses it at seal and at fold [covers R-8.5.22]',
+    decRekeyErr.includes('R-8.5.22') && validateEvent(structDecOnly([rekeyDec])) !== null &&
+    validateEvent(structDecOnly([{ surface: 'decision', key: oldDecKey, ts: dec2.ts, action: 'invalidate-retain' }])) === null,
+    decRekeyErr.slice(0, 120));
+  let noteRekeyErr = '';
+  try {
+    fold([add2, dec2, noteOnDec, structDecOnly([
+      { surface: 'decision', key: oldDecKey, ts: dec2.ts, action: 'invalidate-retain' },
+      { surface: 'note', ts: noteOnDec.ts, action: 're-key', to: '1:3' },
+    ])]);
+  } catch (err) { noteRekeyErr = err.message; }
+  check('JC-21c: a decisionKey-targeted note never re-keys — it stays with its decision, so a re-key disposition naming it is outside the affected set and refuses the event [covers R-8.5.12]',
+    noteRekeyErr.includes('outside the affected set'), noteRekeyErr.slice(0, 120));
   // ...but an invalidate-retain decision KEEPS its identity — its decisionKey-targeted
   // note stays valid and needs no disposition (reconcile compatibility)
   const structDecRetain = E('text.structure.apply', 'drafter-a', t(2, 0, 'drafter-a'), add2.ts, {
@@ -3177,24 +3178,25 @@ try {
       }));
   }
 
-  // --- FINDING 12 (DEFERRED HALF, asserted here): the note re-key destination grammar is
-  //     bound to the note's target KIND, and the ONE predicate that binds them lives in
-  //     grammar.mjs so the schema and the fold apply the same rule. The fold call-site
-  //     (rewriteNote) is the semantics half and is tracked separately. ---
+  // --- FINDING 12: a note re-key destination is a verse SLOT, one grammar for every
+  //     surface (R-8.5.12). A decision never re-keys (R-8.5.22), so no destination is a
+  //     decision key; the schema refuses every other form at seal and at fold. ---
   {
-    const verseTarget = { book: 'TIT', chapter: '1', verse: '2' };
-    const decTarget = { decisionKey: 'translationWords|x1|tit|1|2|1' };
+    const add = mkEvent({ op: 'book.add', actor: 'actor-a', ts: '2026-08-20T00:00:00.000Z|0000|actor-a', base: null, book: 'TIT', scope: [],
+      skeleton: `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}\\v 2 ${SLOT}1:2${SLOT}`, initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n' } });
+    const withNoteRekey = (to) => mkEvent({ op: 'text.structure.apply', actor: 'actor-a', ts: '2026-08-20T00:00:05.000Z|0000|actor-a', base: add.ts, book: 'TIT',
+      skeleton: `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}`,
+      transitions: { '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: add.ts }, { key: '1:2', ts: add.ts }] } },
+      dispositions: [{ surface: 'note', ts: '2026-08-20T00:00:01.000Z|0000|actor-a', action: 're-key', to }] });
     const rows = [
-      ['a VERSE-targeted note re-keyed to a decision key', verseTarget, 'translationWords|x1|tit|1|2|1', ['1:1']],
-      ['a decisionKey-targeted note re-keyed to a BARE five-part §5.2 identity key (which tool?)', decTarget, 'x1|tit|1|2|1', []],
-      ['a decisionKey-targeted note re-keyed to a verse slot', decTarget, '1:1', ['1:1']],
-      ['a verse-targeted note re-keyed to a slot outside the mapping', verseTarget, '9:9', ['1:1']],
+      ['a note re-keyed to a toolId-prefixed decision key', 'translationWords|x1|tit|1|2|1'],
+      ['a note re-keyed to a BARE five-part §5.2 identity key', 'x1|tit|1|2|1'],
+      ['a note re-keyed to a slot outside the mapping', '9:9'],
     ];
-    const missed = rows.filter(([, target, to, slots]) => noteRekeyError(target, to, slots) === null);
-    check('JC-31 finding 12: ONE predicate binds a note re-key destination to the note\'s target KIND — a verse target re-keys to a verse slot, a decisionKey target to a §5.2 identity key. Pre-fix a verse-targeted note re-keyed to an identity key produced `{book, chapter: "x1|tit|1|2|1", verse: ""}` — a target the schema itself rejects [covers R-8.5.12]',
-      missed.length === 0, missed.length ? `missed: ${missed.map(([l]) => l).join(', ')}` : `${rows.length} firing cases`);
-    check('JC-31 finding 12: the two legitimate re-keys still pass the predicate',
-      noteRekeyError(verseTarget, '1:1', ['1:1']) === null && noteRekeyError(decTarget, 'translationWords|x1|tit|1|1|1', []) === null);
+    const missed = rows.filter(([, to]) => validateEvent(withNoteRekey(to)) === null);
+    check('JC-31 finding 12: a note re-key destination is a slot of the new skeleton — a decision key, a bare identity key, or an unmapped slot is refused by the schema, at seal and at fold [covers R-8.5.12]',
+      missed.length === 0 && validateEvent(withNoteRekey('1:1')) === null,
+      missed.length ? `missed: ${missed.map(([l]) => l).join(', ')}` : `${rows.length} firing cases`);
   }
 
   // --- FINDING 13: own-property hygiene at the checkpoint. §8.7 calls the regeneration
@@ -3677,7 +3679,6 @@ const sameRegister = (a, b) => {
     const dkey = 'translationWords|c1|tit|1|2|1';
     const rows = [
       ['decision invalidate-retain', [{ surface: 'decision', key: dkey, ts: quarantinedDec.ts, action: 'invalidate-retain' }], (o) => Object.keys(o.decisions).length === 0],
-      ['decision re-key', [{ surface: 'decision', key: dkey, ts: quarantinedDec.ts, action: 're-key', to: '1:1' }], (o) => Object.keys(o.decisions).length === 0],
       ['decision replace', [{ surface: 'decision', key: dkey, ts: quarantinedDec.ts, action: 'replace',
         post: { contextId: { checkId: 'c1', occurrence: 1, reference: { bookId: 'tit', chapter: 1, verse: 2 } }, selections: true } }], (o) => Object.keys(o.decisions).length === 0],
       ['alignment re-key', [{ surface: 'alignment', key: '1:2', ts: quarantinedAl.ts, action: 're-key', to: '1:1' }], (o) => Object.keys(o.alignments).length === 0],
@@ -3720,26 +3721,20 @@ const sameRegister = (a, b) => {
   {
     const S2pad = skelOf('TIT', '1:1', '1:02');
     const add = E('book.add', 'actor-a', t(0), null, { book: 'TIT', scope: [], skeleton: S2, initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n' } });
-    const dec = decOf(t(1), 2, add.ts);
+    const al = E('align.verse.set', 'actor-a', t(1), null, { book: 'TIT', chapter: '1', verse: '2', generation: add.ts,
+      alignments: [], wordBank: [], targetVerseMd5: verseTextMd5('dos\n') });
+    const note = E('note.add', 'actor-a', t(2), null, { generation: add.ts, target: { book: 'TIT', chapter: '1', verse: '2' }, text: 'nota' });
     const renumber = E('text.structure.apply', 'actor-a', t(5), add.ts, { book: 'TIT', skeleton: S2pad,
       transitions: { '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: add.ts }] }, '1:02': { text: 'dos\n', sources: [{ key: '1:2', ts: add.ts }] } },
-      dispositions: [{ surface: 'decision', key: 'translationWords|c1|tit|1|2|1', ts: dec.ts, action: 're-key', to: '1:02' }] });
-    const out = fold([add, dec, renumber]);
-    const rec = out.decisions.translationWords?.[0];
-    check('JC-32c (D-F9): a re-key destination is a §8.4 SLOT KEY, and the number form is taken only when it ROUND-TRIPS exactly. Pre-fix `Number("02")` put the record on verse 2 — the disposition was accepted, the old head consumed, and the record pushed back naming a slot that DOES NOT EXIST: permanently unreachable by any future structural action [covers R-8.5.5]',
-      !!rec && rec.contextId.reference.verse === '02' &&
-      `${rec.contextId.reference.chapter}:${rec.contextId.reference.verse}` === '1:02',
-      JSON.stringify(rec && rec.contextId.reference));
-    check('JC-32c (D-F9): the ordinary case is unchanged — a canonical decimal slot still re-keys to the §5.2 JSON number form (the typing asymmetry with alignment re-key is now a stated rule, not an accident)',
-      (() => {
-        const S1b = skelOf('TIT', '1:3');
-        const ren = E('text.structure.apply', 'actor-a', t(6), add.ts, { book: 'TIT', skeleton: S1b,
-          transitions: { '1:3': { text: 'dos\n', sources: [{ key: '1:1', ts: add.ts }, { key: '1:2', ts: add.ts }] } },
-          dispositions: [{ surface: 'decision', key: 'translationWords|c1|tit|1|2|1', ts: dec.ts, action: 're-key', to: '1:3' }] });
-        const o = fold([add, dec, ren]);
-        const r = o.decisions.translationWords?.[0]?.contextId.reference;
-        return r && r.verse === 3 && r.chapter === 1;
-      })());
+      dispositions: [
+        { surface: 'alignment', key: '1:2', ts: al.ts, action: 're-key', to: '1:02' },
+        { surface: 'note', ts: note.ts, action: 're-key', to: '1:02' },
+      ] });
+    const out = fold([add, al, note, renumber]);
+    const n = out.notes.find((x) => x.ts === note.ts);
+    check('JC-32c (D-F9): a re-key destination is a §8.4 SLOT KEY, never a number — an alignment re-keyed to slot `1:02` lands on register `1:02` and a verse-targeted note names verse "02", so each record keeps naming the slot that exists (a `Number("02")` form would name verse 2, a slot that does not exist) [covers R-8.5.5]',
+      !!out.alignments.TIT?.['1:02'] && !out.alignments.TIT?.['1:2'] && !!n && n.target.chapter === '1' && n.target.verse === '02',
+      JSON.stringify({ align: Object.keys(out.alignments.TIT || {}), note: n && n.target }));
   }
 
   // --- E-R3: ONE stale-own-head rule for both skeleton-chain ops ---
@@ -3759,7 +3754,7 @@ const sameRegister = (a, b) => {
     check('JC-32c (E-R3): a DIFFERENT actor on the same base still forks — the rule is same-actor only, and structural forks are the review item (#65)',
       (() => {
         const byB = E('text.structure.apply', 'actor-b', t(6, 'actor-b'), add.ts, { book: 'TIT', skeleton: S2,
-          transitions: { '1:1': { text: 'B1\n', sources: [] }, '1:2': { text: 'B2\n', sources: [] } }, dispositions: [] });
+          transitions: { '1:1': { text: 'B1\n', sources: [{ key: '1:1', ts: add.ts }] }, '1:2': { text: 'B2\n', sources: [{ key: '1:2', ts: add.ts }] } }, dispositions: [] });
         const o = fold([add, merged, byB]);
         return o.forks.some((f) => f.key === 'skel|TIT');
       })());
@@ -3776,18 +3771,6 @@ const sameRegister = (a, b) => {
     check('JC-32c (D-F8): a note dispositioned `orphan-review` is RETAINED and NOT projected — pre-fix it was BOTH at once, so one record held two observable states and the projected copy pointed at a slot that no longer exists [covers R-8.6.6]',
       !out.notes.some((n) => n.ts === note.ts) && out.retained.some((r) => r.key === 'note' && r.ts === note.ts && r.reason === 'orphan-review'),
       `projected=${out.notes.length} retained=${JSON.stringify(out.retained.filter((r) => r.key === 'note'))}`);
-    check('JC-32c (deferred half of round-8 finding 12): the note re-key destination grammar is applied AT THE FOLD, by the ONE shared predicate — only the fold knows both the note and the destination [covers R-8.5.12]',
-      (() => {
-        const dec = decOf(t(2), 2, add.ts);
-        const bad = E('text.structure.apply', 'actor-a', t(5), add.ts, { book: 'TIT', skeleton: S1,
-          transitions: { '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: add.ts }, { key: '1:2', ts: add.ts }] } },
-          dispositions: [
-            { surface: 'decision', key: 'translationWords|c1|tit|1|2|1', ts: dec.ts, action: 're-key', to: '1:1' },
-            { surface: 'note', ts: note.ts, action: 're-key', to: 'translationWords|c1|tit|1|1|1' }, // a VERSE-targeted note → a decision key
-          ] });
-        let err = ''; try { fold([add, note, dec, bad]); } catch (e) { err = e.message; }
-        return err.includes('re-key destination') && err.includes('VERSE-targeted');
-      })());
   }
 
   // --- E-R10: fork identity is the op's §8.5 PAYLOAD, not "everything but the envelope" ---
@@ -4651,6 +4634,159 @@ const sameRegister = (a, b) => {
     check('JC-33e: version policy — a v: 1 segment set folds exactly as before (books project, no story); the two story ops validate at v: 2 and REFUSE at v: 1 naming v: 2; v: 3 is an unknown version; a v: 2 envelope on a v: 1 op is legal (v: 2 is a superset) and continues its head without a fork; a union of v: 1 book events and v: 2 story events folds books and stories side by side [covers R-10.7.1 R-8.5.1]',
       v1Only && v2ok && v1Refuses && v3Refuses && superset && sideBySide);
   }
+}
+
+// ---------- JC-34: renumbered verses — the re-key rules (BURRITO-SPEC R-8.5.20–R-8.5.24, issue #209) ----------
+{
+  const A = 'drafter-a';
+  const t = (s) => `2026-09-25T10:00:${String(s).padStart(2, '0')}.000Z|0000|${A}`;
+  const E = (op, ts, base, extra) => mkEvent({ op, actor: A, ts, base, ...extra });
+  const skelOf = (...keys) => `\\id TIT\n\\c 1\n\\p\n` + keys.map((k) => `\\v ${k.split(':')[1]} ${SLOT}${k}${SLOT}`).join('');
+  const add = E('book.add', t(0), null, { book: 'TIT', scope: [], skeleton: skelOf('1:1', '1:2', '1:3'),
+    initialVerses: { '1:1': 'uno\n', '1:2': 'dos\n', '1:3': 'tres\n' } });
+  const alignOn = (s, verse, text) => E('align.verse.set', t(s), null, { book: 'TIT', chapter: '1', verse, generation: add.ts,
+    alignments: [], wordBank: [{ word: text, occurrence: 1, occurrences: 1 }], targetVerseMd5: verseTextMd5(`${text}\n`) });
+  // renumber 2 → 3 and 3 → 4: one action, both moves
+  const renumber = (dispositions = [], src3 = add.ts) => E('text.structure.apply', t(10), add.ts, { book: 'TIT', skeleton: skelOf('1:1', '1:3', '1:4'),
+    transitions: {
+      '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: add.ts }] },
+      '1:3': { text: 'dos\n', sources: [{ key: '1:2', ts: add.ts }] },
+      '1:4': { text: 'tres\n', sources: [{ key: '1:3', ts: src3 }] },
+    },
+    dispositions });
+
+  // R-8.5.20
+  const moved = fold([add, renumber()]);
+  const edit3 = E('text.verse.set', t(5), add.ts, { book: 'TIT', chapter: '1', verse: '3', text: 'tres editado\n' });
+  const staleOne = fold([add, edit3, renumber()]);
+  check('JC-34a: a renumber is ONE structural action — each moved slot names its old live head as source and states its text unchanged; the moved text projects byte-identical at the new key and nothing at the old key; with ONE source stale, NO move applies and the pre-action state projects [covers R-8.5.20]',
+    moved.pendingStructural.length === 0 && moved.books.TIT.verses['1:3'] === 'dos\n' && moved.books.TIT.verses['1:4'] === 'tres\n' &&
+    !('1:2' in moved.books.TIT.verses) &&
+    staleOne.pendingStructural.length === 1 && staleOne.pendingStructural[0].status === 'conflicted' &&
+    staleOne.books.TIT.verses['1:2'] === 'dos\n' && staleOne.books.TIT.verses['1:3'] === 'tres editado\n' && !('1:4' in staleOne.books.TIT.verses),
+    JSON.stringify({ moved: moved.books.TIT.verses, pending: staleOne.pendingStructural }));
+
+  // R-8.5.23 (a) text: 2 → 3 while the old verse 3 stays where it is
+  const onTop = E('text.structure.apply', t(10), add.ts, { book: 'TIT', skeleton: skelOf('1:1', '1:3'),
+    transitions: {
+      '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: add.ts }] },
+      '1:3': { text: 'dos\n', sources: [{ key: '1:2', ts: add.ts }] },
+    },
+    dispositions: [] });
+  const textCollision = fold([add, onTop]);
+  check('JC-34b: a renumber onto a verse whose own text is not moved away is a COLLISION — refused before the action, reported conflicted, the pre-action state projects; the same move with verse 3 moved on to 4 applies (JC-34a) [covers R-8.5.23]',
+    textCollision.pendingStructural.length === 1 && textCollision.pendingStructural[0].status === 'conflicted' &&
+    textCollision.pendingStructural[0].detail.includes('collision:text|1:3') &&
+    textCollision.books.TIT.verses['1:2'] === 'dos\n' && textCollision.books.TIT.verses['1:3'] === 'tres\n' &&
+    moved.pendingStructural.length === 0,
+    JSON.stringify(textCollision.pendingStructural));
+
+  // R-8.5.23 (b) alignment: onto an occupied key, or two onto one key
+  const a1 = alignOn(1, '1', 'uno'), a2 = alignOn(2, '2', 'dos'), a3 = alignOn(3, '3', 'tres');
+  const occupied = fold([add, a1, a2, a3, renumber([
+    { surface: 'alignment', key: '1:2', ts: a2.ts, action: 're-key', to: '1:1' },
+    { surface: 'alignment', key: '1:3', ts: a3.ts, action: 're-key', to: '1:4' },
+  ])]);
+  const twoOnOne = fold([add, a2, a3, renumber([
+    { surface: 'alignment', key: '1:2', ts: a2.ts, action: 're-key', to: '1:4' },
+    { surface: 'alignment', key: '1:3', ts: a3.ts, action: 're-key', to: '1:4' },
+  ])]);
+  // a `replace` keeps its record on its key, so it does not make room for a re-key
+  const onReplaced = fold([add, a2, a3, renumber([
+    { surface: 'alignment', key: '1:2', ts: a2.ts, action: 're-key', to: '1:3' },
+    { surface: 'alignment', key: '1:3', ts: a3.ts, action: 'replace',
+      post: { chapter: '1', verse: '3', alignments: [], wordBank: [], targetVerseMd5: verseTextMd5('dos\n') } },
+  ])]);
+  const clean = fold([add, a1, a2, a3, renumber([
+    { surface: 'alignment', key: '1:2', ts: a2.ts, action: 're-key', to: '1:3' },
+    { surface: 'alignment', key: '1:3', ts: a3.ts, action: 're-key', to: '1:4' },
+  ])]);
+  check('JC-34c: an alignment re-key onto a key that holds a live alignment this action does not move away, or two re-keys onto one key, is a COLLISION (a `replace` keeps its record on its key, so it makes no room) — refused conflicted, nothing moves; a chain whose occupant moves on (2 → 3 while 3 → 4) applies, and each re-keyed record projects invalid: true [covers R-8.5.23 R-8.5.21]',
+    occupied.pendingStructural[0]?.detail.includes('collision:alignment|1:1') && !!occupied.alignments.TIT['1:2'] &&
+    twoOnOne.pendingStructural[0]?.detail.includes('collision:alignment|1:4') && !!twoOnOne.alignments.TIT['1:2'] &&
+    onReplaced.pendingStructural[0]?.detail.includes('collision:alignment|1:3') && !!onReplaced.alignments.TIT['1:2'] &&
+    clean.pendingStructural.length === 0 && clean.alignments.TIT['1:3'].wordBank[0].word === 'dos' && clean.alignments.TIT['1:3'].invalid === true &&
+    clean.alignments.TIT['1:4'].invalid === true && !clean.alignments.TIT['1:1'].invalid,
+    JSON.stringify({ occupied: occupied.pendingStructural, twoOnOne: twoOnOne.pendingStructural, onReplaced: onReplaced.pendingStructural }));
+
+  // R-8.5.24 span membership: a decision keyed to verse 2, made on the span 2-3, and a span break
+  const addSpan = E('book.add', t(0), null, { book: 'TIT', scope: [], skeleton: skelOf('1:1', '1:2-3', '1:4'),
+    initialVerses: { '1:1': 'uno\n', '1:2-3': 'dos y tres\n', '1:4': 'cuatro\n' } });
+  const decOn = (s, verse, checkId) => E('check.decision.set', t(s), null, { toolId: 'translationNotes', generation: addSpan.ts,
+    decision: { contextId: { checkId, reference: { bookId: 'tit', chapter: 1, verse }, occurrence: 1 }, selections: false, nothingToSelect: true, invalidated: false, status: 'valid' } });
+  const dec2 = decOn(1, 2, 'm2'), dec4 = decOn(2, 4, 'm4');
+  const brk = (dispositions) => E('text.structure.apply', t(10), addSpan.ts, { book: 'TIT', skeleton: skelOf('1:1', '1:2', '1:3', '1:4'),
+    transitions: {
+      '1:1': { text: 'uno\n', sources: [{ key: '1:1', ts: addSpan.ts }] },
+      '1:2': { text: 'dos\n', sources: [{ key: '1:2-3', ts: addSpan.ts }] },
+      '1:3': { text: 'tres\n', sources: [] },
+      '1:4': { text: 'cuatro\n', sources: [{ key: '1:4', ts: addSpan.ts }] },
+    },
+    dispositions });
+  const dk2 = 'translationNotes|m2|tit|1|2|1', dk4 = 'translationNotes|m4|tit|1|4|1';
+  const foldOrNull = (evs) => { try { return fold(evs); } catch { return null; } };
+  const omitted = fold([addSpan, dec2, dec4, brk([])]);
+  const kept = foldOrNull([addSpan, dec2, dec4, brk([{ surface: 'decision', key: dk2, ts: dec2.ts, action: 'invalidate-retain' }])]);
+  let outside = ''; try { fold([addSpan, dec2, dec4, brk([
+    { surface: 'decision', key: dk2, ts: dec2.ts, action: 'invalidate-retain' },
+    { surface: 'decision', key: dk4, ts: dec4.ts, action: 'invalidate-retain' },
+  ])]); } catch (err) { outside = err.message; }
+  const keptDec = (o, id) => o.decisions.translationNotes.find((d) => d.contextId.checkId === id);
+  check('JC-34d: a record keyed to ONE verse is ON every span slot that contains it — breaking the span 2-3 makes the decision keyed to verse 2 affected: without a disposition the event is incomplete; with invalidate-retain it applies and the decision is invalidated on its own key; the decision on verse 4 is outside the span, so a disposition naming it refuses [covers R-8.5.24]',
+    omitted.pendingStructural[0]?.status === 'incomplete' && omitted.pendingStructural[0].detail.some((x) => x.includes(dk2)) &&
+    !!kept && kept.pendingStructural.length === 0 && keptDec(kept, 'm2').invalidated === true && keptDec(kept, 'm2').contextId.reference.verse === 2 &&
+    keptDec(kept, 'm4').invalidated === false && outside.includes('outside the affected set'),
+    JSON.stringify({ omitted: omitted.pendingStructural, outside: outside.slice(0, 80) }));
+  // ...and the reconcile builder reads the SAME predicate, so the event it emits applies
+  const base = fold([addSpan, dec2, dec4]);
+  const clock = makeClock('reconciler', () => Date.parse('2026-09-25T11:00:00.000Z'));
+  const recEvents = reconcileUsfm('TIT', '\\id TIT\n\\c 1\n\\p\n\\v 1 uno\n\\v 2 dos\n\\v 3 tres\n\\v 4 cuatro\n', base, clock, 'reconciler', { sources: { '1:2': ['1:2-3'] } });
+  const recStruct = recEvents.find((e) => e.op === 'text.structure.apply');
+  const recAfter = foldOrNull([addSpan, dec2, dec4, ...recEvents]);
+  check('JC-34d: reconcile of an out-of-band span break emits invalidate-retain for the decision keyed to a member verse — ONE membership predicate with the fold — and the fold accepts the event [covers R-8.5.24 R-8.8.1]',
+    !!recStruct && recStruct.dispositions.some((d) => d.key === dk2 && d.action === 'invalidate-retain') &&
+    !recStruct.dispositions.some((d) => d.key === dk4) && !!recAfter && recAfter.pendingStructural.length === 0 &&
+    keptDec(recAfter, 'm2').invalidated === true,
+    JSON.stringify({ disp: recStruct?.dispositions, pending: recAfter?.pendingStructural }));
+
+  // old data: the Phase-1 sample, seeded, then one renumber over records of every kind
+  const s = buildSeed();
+  const seeded = fold(s.events);
+  const decKey = 'translationWords|a9p2|tit|1|1|1';
+  const verseNote = mkEvent({ op: 'note.add', actor: 'checker-c', ts: '2026-09-25T09:00:00.000Z|0000|checker-c', base: null,
+    generation: seeded.headsTs['book|TIT'], target: { book: 'TIT', chapter: '1', verse: '1' }, text: 'nota del verso' });
+  const decNote = mkEvent({ op: 'note.add', actor: 'checker-c', ts: '2026-09-25T09:00:01.000Z|0000|checker-c', base: null,
+    generation: seeded.headsTs['book|TIT'], target: { decisionKey: decKey }, text: 'nota de la decisión' });
+  const beforeRenumber = fold([...s.events, verseNote, decNote]);
+  const shift = shiftChapter(beforeRenumber, 'TIT', 1, { actor: 'renumber-a', ts: '2026-09-25T09:30:00.000Z|0000|renumber-a' });
+  const after = fold([...s.events, verseNote, decNote, shift]);
+  const v = (o, k) => o.books.TIT.verses[k];
+  const allDecisions = (o) => [...o.decisions.translationWords, ...o.decisions.translationNotes];
+  const everyKind =
+    after.pendingStructural.length === 0 &&
+    v(after, '1:2') === v(seeded, '1:1') && v(after, '1:17') === v(seeded, '1:16') && !('1:1' in after.books.TIT.verses) &&
+    v(after, '2:1') === v(seeded, '2:1') && after.books.JON.usfm === s.books.JON &&
+    after.alignments.TIT['1:2']?.invalid === true && !after.alignments.TIT['1:1'] &&
+    allDecisions(after).length === allDecisions(seeded).length &&
+    allDecisions(after).filter((d) => String(d.contextId.reference.chapter) === '1').every((d) => d.invalidated === true && d.status === 'invalid') &&
+    after.decisions.translationWords.some((d) => d.contextId.checkId === 'a9p2' && String(d.contextId.reference.verse) === '1') &&
+    after.notes.some((n) => n.ts === verseNote.ts && n.target.verse === '2') &&
+    after.notes.some((n) => n.ts === decNote.ts && n.target.decisionKey === decKey);
+  check('JC-34e (old data): the Phase-1 sample seeded as written, then ONE renumber of Titus 1 over records of every kind — text moves up one verse, the alignment follows its text with invalid: true, every decision stays on its key invalidated, the verse note re-keys, the decision note stays with its decision; Titus 2 and Jonah are untouched [covers R-8.5.21 R-8.5.22 R-8.5.12]',
+    everyKind, JSON.stringify({ pending: after.pendingStructural, align: Object.keys(after.alignments.TIT || {}) }));
+  // the fold of that journal equals its checkpoint mirror: seed the regenerated sidecars again
+  const baseMetadata = JSON.parse(fs.readFileSync(path.join(BURRITO, 'metadata.json'), 'utf8'));
+  const resolutions = { translationWords: { TIT: s.decisionFiles.translationWords.resource }, translationNotes: { TIT: s.decisionFiles.translationNotes.resource } };
+  const mirror = derivedProjections(after, { baseMetadata, resolutions });
+  const reseeded = fold(seedFromSidecars({ actor: 'seed-actor', vrs: s.vrs,
+    books: { TIT: mirror['TIT.usfm'], JON: mirror['JON.usfm'] },
+    decisionFiles: { translationWords: JSON.parse(mirror['checking/translationWords/TIT.json']), translationNotes: JSON.parse(mirror['checking/translationNotes/TIT.json']) },
+    alignmentFiles: { TIT: JSON.parse(mirror['checking/alignments/TIT.json']) } }));
+  const again = derivedProjections(reseeded, { baseMetadata, resolutions });
+  const mirrored = ['TIT.usfm', 'JON.usfm', 'checking/alignments/TIT.json', 'checking/translationWords/TIT.json', 'checking/translationNotes/TIT.json']
+    .filter((f) => again[f] !== mirror[f]);
+  check('JC-34e (old data): the fold of the renumber journal equals its checkpoint mirror — the regenerated USFM and §5.1/§5.2 sidecars, seeded again, fold to the same files byte for byte',
+    mirrored.length === 0, mirrored.length ? `differ: ${mirrored.join(', ')}` : '5 files');
 }
 
 console.log(`\nJournal suite: ${pass} passed, ${fail} failed (fast-check seed ${SEED})`);
