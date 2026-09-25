@@ -159,7 +159,8 @@ const run = async () => {
   // A1: full checkpoint in the working projection; journal-only delta in the publication repo
   writeJournalFs(workA, 'actor-a', [a1]); await project(workA); await commitRepo(workA, 'A1 full working checkpoint');
   writeJournalFs(pubA, 'actor-a', [a1]); await commitRepo(pubA, 'publish A1');
-  const pubA1Paths = git('diff --name-only HEAD^ HEAD', pubA).split('\n').filter(Boolean);
+  // HEAD~1, never HEAD^: cmd.exe (execSync on Windows) eats `^` as its escape character (#411).
+  const pubA1Paths = git('diff --name-only HEAD~1 HEAD', pubA).split('\n').filter(Boolean);
 
   let scratchSeq = 0;
   const integrate = async (pub, label) => {
