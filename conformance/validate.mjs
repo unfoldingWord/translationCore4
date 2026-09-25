@@ -14,6 +14,7 @@ import { validateEvent } from '../journal/schema.mjs';
 import { derivedProjections } from '../journal/checkpoint.mjs';
 import { seedFromSidecars } from '../journal/reconcile.mjs';
 import { DRAFT } from './fixtures/obs-draft.mjs';
+import { shiftChapter } from './fixtures/renumber.mjs';
 import { relationshipsFromPins } from '../journal/relationships.mjs';
 import { checkIngredients, compileSbValidator } from '../src/data/import/burritoCheck.mjs';
 
@@ -567,6 +568,49 @@ let mergedVerseObjects = null;
   check('decisions: additive triage `status` within {valid,invalid,todo}; fixture carries one',
     withStatus.length >= 1 && withStatus.every(d => ['valid', 'invalid', 'todo'].includes(d.status)),
     `${withStatus.length}/${all.length} decisions carry status`);
+}
+
+// ---------- 11b. Renumbered verses (BURRITO-SPEC §5.1 + §5.2, R-8.5.21/R-8.5.22, issue #209) ----------
+// The sample's sidecars seed a journal; one renumber moves every verse of Titus 1 up one
+// number; the checkpoint regenerates the sidecars. A different source verse now stands
+// behind each moved key (the frame does not move), so the alignment follows its text and
+// asks for re-review, and each decision stays on its own key, invalidated.
+{
+  const tw = json(ING('checking/translationWords/TIT.json'));
+  const tn = json(ING('checking/translationNotes/TIT.json'));
+  const al = json(ING('checking/alignments/TIT.json'));
+  const seed = seedFromSidecars({ actor: 'seed-actor', books: { TIT: read(ING('TIT.usfm')) },
+    decisionFiles: { translationWords: tw, translationNotes: tn }, alignmentFiles: { TIT: al },
+    vrs: { name: 'eng', bytes: read(ING('vrs.json')) } });
+  const refuses = (fn) => { try { fn(); return false; } catch { return true; } };
+  const renumber = shiftChapter(fold(seed), 'TIT', 1, { actor: 'renumber-a', ts: '2026-09-25T00:00:00.000Z|0000|renumber-a' });
+  const after = fold([...seed, renumber]);
+  const proj = derivedProjections(after, { baseMetadata: metadata,
+    resolutions: { translationWords: { TIT: tw.resource }, translationNotes: { TIT: tn.resource } } });
+  const alignedRenumbered = (file) => {
+    const was = al.chapters['1']['1'];
+    const now = file.chapters?.['1']?.['2'];
+    return !!now && !file.chapters['1']['1'] && now.invalid === true && now.targetVerseMd5 === was.targetVerseMd5 &&
+      JSON.stringify(now.alignments) === JSON.stringify(was.alignments) && JSON.stringify(now.wordBank) === JSON.stringify(was.wordBank);
+  };
+  const alFile = JSON.parse(proj['checking/alignments/TIT.json']);
+  const flagDropped = JSON.parse(proj['checking/alignments/TIT.json']);
+  delete flagDropped.chapters['1']['2'].invalid;
+  check('alignment: a renumber re-keys the record to its text\'s new verse — alignments, wordBank and targetVerseMd5 kept, invalid: true; negative controls: the unrenumbered sample and a projection without the flag both fail',
+    after.pendingStructural.length === 0 && alignedRenumbered(alFile) && !alignedRenumbered(al) && !alignedRenumbered(flagDropped),
+    `1:2 invalid=${alFile.chapters['1']['2']?.invalid}`);
+  const decisionsKept = (files) => [[tw, files.translationWords], [tn, files.translationNotes]].every(([was, now]) =>
+    now.decisions.length === was.decisions.length &&
+    was.decisions.every((d) => now.decisions.some((n) => n.contextId.checkId === d.contextId.checkId &&
+      JSON.stringify(n.contextId.reference) === JSON.stringify(d.contextId.reference) &&
+      n.invalidated === true && n.status === 'invalid')));
+  const projected = { translationWords: JSON.parse(proj['checking/translationWords/TIT.json']),
+    translationNotes: JSON.parse(proj['checking/translationNotes/TIT.json']) };
+  const rekeyDecision = { ...renumber, dispositions: renumber.dispositions.map((d) =>
+    d.surface === 'decision' && d.key.startsWith('translationWords|a9p2') ? { ...d, action: 're-key', to: '1:2' } : d) };
+  check('decisions: a renumber never moves a decision — each keeps its reference (its resource row in the project frame) and is invalidated and retained; negative controls: the unrenumbered sample fails, and a decision re-key refuses the fold',
+    decisionsKept(projected) && !decisionsKept({ translationWords: tw, translationNotes: tn }) && refuses(() => fold([...seed, rekeyDecision])),
+    `${projected.translationWords.decisions.length + projected.translationNotes.decisions.length} decisions`);
 }
 
 // ---------- 12. Phase 2 two-actor journal merge (BURRITO-SPEC §8.7 derived-file rule) ----------

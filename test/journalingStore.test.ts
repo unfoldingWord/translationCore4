@@ -711,11 +711,20 @@ describe('#63 mapping: applyStructuralEdit with intent spans', () => {
     };
     expect(structural.transitions['1:1'].sources).toEqual([{ key: '1:1-2', ts: spanHead }]);
     expect(structural.transitions['1:2']).toEqual({ text: '___\n', sources: [] });
-    // The span's own invalid record is the affected alignment this time.
-    expect(structural.dispositions).toEqual([expect.objectContaining({ surface: 'alignment', key: '1:1-2', action: 'invalidate-retain' })]);
+    // The span's own invalid record is affected, and so is every record keyed to a
+    // member verse (1:1) — BURRITO-SPEC R-8.5.24 (#219): all conservative, none re-keyed.
+    expect(structural.dispositions.every((d) => d.action === 'invalidate-retain')).toBe(true);
+    expect(structural.dispositions).toContainEqual(expect.objectContaining({ surface: 'alignment', key: '1:1-2' }));
+    expect(structural.dispositions).toContainEqual(expect.objectContaining({ surface: 'alignment', key: '1:1' }));
+    expect(structural.dispositions).toContainEqual(
+      expect.objectContaining({ surface: 'decision', key: 'translationWords|t1g7|tit|1|1|1' }),
+    );
     const alignFile = JSON.parse(rig.repos.get(REPO)?.files.get('checking/alignments/TIT.json') ?? '');
     expect(Object.keys(alignFile.chapters['1']).sort()).toEqual(['1', '2']);
     expect(alignFile.chapters['1']['1'].invalid).toBe(true);
+    const decFile = JSON.parse(rig.repos.get(REPO)?.files.get('checking/translationWords/TIT.json') ?? '') as DecisionFile;
+    expect(decFile.decisions).toHaveLength(1);
+    expect(decFile.decisions[0]).toMatchObject({ invalidated: true, status: 'invalid' });
     expect(rig.repos.get(REPO)?.files.get('TIT.usfm')).toBe(TIT_USFM);
     const report = await verifyProjectAgainstJournal(api, REPO);
     expect(report.ok, describeVerifierReport(report)).toBe(true);

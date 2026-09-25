@@ -9,7 +9,7 @@
 import usfmjs from 'usfm-js';
 import { slotKeysOf, recompose } from './skeleton.mjs';
 import { validateEvent, PAYLOAD_FIELDS, GENERATION_OPS } from './schema.mjs';
-import { identityKeyOf, noteRekeyError, journaledTextError, isStoryReference, MAX_JSON_DEPTH } from './grammar.mjs';
+import { identityKeyOf, recordOnSlot, journaledTextError, isStoryReference, MAX_JSON_DEPTH } from './grammar.mjs';
 import { md5Hex as md5 } from './md5.mjs';
 export { slotKeysOf }; // kept on this module for existing importers
 
@@ -539,9 +539,9 @@ export const fold = (eventsIn) => {
       if (missing.length) { pendingStructural.push({ ts: e.ts, book, status: 'incomplete', detail: missing }); continue; }
       if (stale.length)   { pendingStructural.push({ ts: e.ts, book, status: 'conflicted', detail: stale });  continue; }
       // §8.5: dispositions must be COMPLETE and CONSTRAINED — the fold computes the
-      // affected-record set (every live alignment, decision, and verse-targeted note on
-      // a MAPPED source key, re-keyed or removed, plus decisionKey-notes of re-keyed
-      // decisions); every affected record needs exactly one disposition (else
+      // affected-record set (every live alignment, decision, and verse-targeted note ON a
+      // MAPPED source key, re-keyed or removed — "on" is the R-8.5.24 span membership
+      // predicate); every affected record needs exactly one disposition (else
       // incomplete), and every disposition MUST reference an affected record — a
       // disposition outside the set could consume any unrelated live record, so it
       // refuses the whole event (all-or-nothing).
@@ -564,49 +564,56 @@ export const fold = (eventsIn) => {
         // then resurfaced as a zombie fork when the slot returned.
         for (const h of heads.get(`text|${book}|${k}`) || [])
           if (!claimedSrc.has(`${k}|${h.ts}`)) affected.add(`text|${k}|${h.ts}`);
-        for (const h of heads.get(`align|${book}|${k}`) || []) affected.add(`alignment|${k}|${h.ts}`);
+        const alignPrefix = `align|${book}|`;
+        for (const [akey, live] of heads) {
+          if (!akey.startsWith(alignPrefix) || !recordOnSlot(akey.slice(alignPrefix.length), k)) continue;
+          for (const h of live) affected.add(`alignment|${akey.slice(alignPrefix.length)}|${h.ts}`);
+        }
+        // A decision never re-keys (R-8.5.22), so a decisionKey-targeted note is never
+        // affected: it stays with its decision, whose key does not change.
         for (const [dkey, live] of heads) {
           if (!dkey.startsWith('dec|')) continue;
           for (const h of live) {
             if (h.book !== book) continue;
-            const c = h.event.decision.contextId;
-            const r = c.reference;
-            if (`${r.chapter}:${r.verse}` !== k) continue;
-            affected.add(`decision|${dkey.slice(4)}|${h.ts}`);
-            // a decisionKey-targeted note on a RE-KEYED decision is an affected record
-            // too: its identity retires with the re-key, so it needs a disposition.
-            // (invalidate-retain/replace keep the decision's key — such notes stay valid.)
-            const decDisp = dispositions.find((d) => dispId(d) === `decision|${dkey.slice(4)}|${h.ts}`);
-            if (decDisp && decDisp.action === 're-key') {
-              for (const n of notes)
-                if (n.target && n.target.decisionKey === dkey.slice(4)) affected.add(`note||${n.ts}`);
-            }
+            const r = h.event.decision.contextId.reference;
+            if (recordOnSlot(`${r.chapter}:${r.verse}`, k)) affected.add(`decision|${dkey.slice(4)}|${h.ts}`);
           }
         }
         for (const n of notes) {
           const tg = n.target;
-          if (tg && tg.book === book && `${tg.chapter}:${tg.verse}` === k) affected.add(`note||${n.ts}`);
+          if (tg && tg.book === book && recordOnSlot(`${tg.chapter}:${tg.verse}`, k)) affected.add(`note||${n.ts}`);
         }
       }
       for (const d of dispositions)
         if (!affected.has(dispId(d)))
           throw new Error(`text.structure.apply disposition ${dispId(d)} references a record outside the affected set (ts ${e.ts}) — refuse to fold (§8.5: dispositions cannot consume unrelated records)`);
-      // The note re-key destination is bound to the note's target KIND, and only the fold
-      // knows BOTH the note and the destination — so the ONE shared predicate is applied
-      // here, at the call site (the deferred half of round 8's finding 12). Pre-fix a
-      // decisionKey-targeted note could be re-keyed to a verse slot string, producing
-      // `{decisionKey: "1:1"}` — a target the schema itself rejects.
-      for (const d of dispositions) {
-        if (d.surface !== 'note' || d.action !== 're-key') continue;
-        const n = notes.find((x) => x.ts === d.ts);
-        const err = n && noteRekeyError(n.target, d.to, newSlots);
-        if (err)
-          throw new Error(`text.structure.apply note disposition ${err} (ts ${e.ts}) — refuse to fold (§8.5)`);
-      }
       const undispositioned = [...affected].filter((id) => !dispSet.has(id));
       if (undispositioned.length) {
         pendingStructural.push({ ts: e.ts, book, status: 'incomplete', detail: undispositioned.map((u) => `undispositioned:${u}`) });
         continue;
+      }
+      // R-8.5.23 collisions refuse before the action. (a) Text: a destination that is a
+      // slot of the base skeleton, whose content no transition moves elsewhere and whose
+      // own transition does not name it as a source, still holds a live head — the new
+      // text would land on top of it. (b) Alignment: a re-key onto a key that holds a live
+      // alignment this action does not itself move away, or two re-keys onto one key.
+      {
+        const baseSlots = baseEvent && typeof baseEvent.skeleton === 'string' ? slotKeysOf(baseEvent.skeleton) : [];
+        const collisions = [];
+        for (const dest of tKeys) {
+          if (!baseSlots.includes(dest) || mapped.has(dest)) continue;
+          if ((transitions[dest].sources || []).some((src) => src.key === dest)) continue;
+          if ((heads.get(`text|${book}|${dest}`) || []).length) collisions.push(`collision:text|${dest}`);
+        }
+        const movedAway = new Set(dispositions.filter((d) => d.surface === 'alignment').map((d) => `${d.key}|${aliasTs(d.ts)}`));
+        const landed = new Set();
+        for (const d of dispositions) {
+          if (d.surface !== 'alignment' || d.action !== 're-key') continue;
+          const occupied = (heads.get(`align|${book}|${d.to}`) || []).some((h) => !movedAway.has(`${d.to}|${h.ts}`));
+          if (occupied || landed.has(d.to)) collisions.push(`collision:alignment|${d.to}`);
+          landed.add(d.to);
+        }
+        if (collisions.length) { pendingStructural.push({ ts: e.ts, book, status: 'conflicted', detail: collisions }); continue; }
       }
       // apply — the skeleton head joins normally (a stale base = a structural FORK head);
       // post-images always PUSH (branch-local: pre-images stay live for the other branch and
@@ -633,9 +640,11 @@ export const fold = (eventsIn) => {
           const old = (heads.get(key) || []).find((h) => h.ts === dts);
           consume(key, dts, e.ts);
           if (d.action === 're-key') {
+            // R-8.5.21: the words stay, and the record asks for re-review — a different
+            // source verse now stands behind the new key (the frame does not move, R-8.5.19)
             const { chapter, verse } = vkeyParts(d.to);
             pushHead(`align|${book}|${d.to}`, { ts: e.ts, actor: e.actor, sanc: e.ts, book,
-              event: { ...old.event, op: 'align.verse.set', book, chapter, verse } });
+              event: { ...old.event, op: 'align.verse.set', book, chapter, verse, invalid: true } });
           } else if (d.action === 'replace') {
             // the post-image carries the ORIGINAL record's `generation` (§8.5). Rebuilding
             // it without the stamp LAUNDERED the generation quarantine: a prior-generation
@@ -652,19 +661,8 @@ export const fold = (eventsIn) => {
           consume(key, dts, e.ts);
           const toolId = old.event.toolId;
           const generation = old.event.generation; // never laundered — see above
-          if (d.action === 're-key') {
-            const { chapter, verse } = vkeyParts(d.to);
-            // A slot key is a STRING. `Number("02")` is 2, so re-keying to slot `1:02`
-            // put the record on verse 2 — a slot that does not exist — permanently
-            // unreachable by any future structural action. The number form is taken only
-            // when it round-trips exactly (§5.2 keeps a single verse as a JSON number).
-            const numeric = (s) => (String(Number(s)) === s ? Number(s) : s);
-            const dec = JSON.parse(JSON.stringify(old.event.decision));
-            dec.contextId.reference.chapter = numeric(chapter);
-            dec.contextId.reference.verse = numeric(verse);
-            pushHead(decKeyOf(toolId, dec), { ts: e.ts, actor: e.actor, sanc: e.ts, book,
-              event: { op: 'check.decision.set', toolId, generation, decision: dec } });
-          } else if (d.action === 'replace') {
+          // no `re-key` here: the schema refuses a decision re-key (R-8.5.22)
+          if (d.action === 'replace') {
             pushHead(key, { ts: e.ts, actor: e.actor, sanc: e.ts, book,
               event: { op: 'check.decision.set', toolId, generation, decision: d.post } });
           } else {
@@ -994,9 +992,7 @@ export const fold = (eventsIn) => {
   function rewriteNote(n) {
     const rk = noteRekey.get(n.ts);
     if (rk && allChains.has(rk.structTs)) {
-      // a decisionKey-targeted note re-keys to the NEW decision key;
-      // a verse-targeted note re-keys to the new verse key
-      if (n.target && n.target.decisionKey !== undefined) return { ...n, target: { decisionKey: rk.to } };
+      // only a verse-targeted note re-keys (R-8.5.22) — to the new verse key
       const { chapter, verse } = { chapter: rk.to.split(':')[0], verse: rk.to.split(':').slice(1).join(':') };
       return { ...n, target: { ...n.target, chapter, verse } };
     }

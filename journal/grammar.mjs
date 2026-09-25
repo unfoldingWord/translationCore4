@@ -264,12 +264,10 @@ export const splitDecisionKey = (s) => {
   return { toolId: s.slice(0, i), identityKey: s.slice(i + 1), ...identityKeyParts(s.slice(i + 1)) };
 };
 
-// ---------- §8.5 note targets and the re-key destination bound to their KIND ----------
-// A note target is exactly one of a verse or a DECISION KEY, and the two destination
-// grammars are disjoint. A re-key that ignores the KIND rewrote a VERSE-targeted note to
-// an identity-key string — producing `{book, chapter: "x1|tit|1|2|1", verse: ""}`, a
-// target the schema itself rejects. ONE predicate, so the schema and the fold apply the
-// same rule at their own boundaries.
+// ---------- §8.5 note targets ----------
+// A note target is exactly one of a verse or a DECISION KEY. Only a verse-targeted note
+// re-keys, and only to a slot of the new skeleton (R-8.5.12): a decision never re-keys
+// (R-8.5.22), so its decisionKey-targeted notes stay with it.
 //
 // Round 9: the decision-key form is the TOOLID-PREFIXED one — the same string the fold's
 // `dec|` registers carry and disposition keys name. A bare five-part §5.2 identity key
@@ -291,15 +289,17 @@ export const noteTargetKind = (target) => {
   return kinds[0];
 };
 
-export const noteRekeyError = (target, to, newSlots = []) => {
-  const kind = noteTargetKind(target);
-  if (kind === null) return 'names a note whose target is neither a verse nor a decision key';
-  if (!isStr(to)) return 're-key destination is not a string';
-  if (kind === 'verse')
-    return newSlots.includes(to) ? null
-      : `re-key destination "${to}" is not a target slot of the mapping — a VERSE-targeted note re-keys to a verse slot, never to a decision key (§8.5)`;
-  const e = decisionKeyError(to);
-  return e ? `re-key destination "${to}" ${e} — a decisionKey-targeted note re-keys to a toolId-prefixed decision key` : null;
+// ---------- §8.5 span membership (R-8.5.24) ----------
+// A record keyed to one verse `c:v` is ON a slot when the slot is that key, or a span
+// `c:a-b` of the same chapter with a <= v <= b. ONE predicate, read by the fold's affected
+// set and by the reconcile builder, so the event reconcile emits is one the fold accepts.
+export const recordOnSlot = (recordKey, slot) => {
+  if (recordKey === slot) return true;
+  const r = /^(\d+):(\d+)$/.exec(recordKey);
+  const s = /^(\d+):(\d+)-(\d+)$/.exec(slot);
+  if (!r || !s || Number(r[1]) !== Number(s[1])) return false;
+  const v = Number(r[2]);
+  return Number(s[2]) <= v && v <= Number(s[3]);
 };
 
 // ---------- §8.4 verse slot keys ----------
