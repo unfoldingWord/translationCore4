@@ -73,11 +73,6 @@
   --lh-verse-lg: 36px; /* @kind font */  /* 22px   · 1.64 — reading + drafting columns */
   --lh-nastaliq: 64px; /* @kind font */  /* 26px   · 2.46 — Nastaliq ascender clearance */
 
-  /* Community Checking spacing follows the Bible preview's base leading. Keep
-     the semantic choice in pageSetup.ts; these are its screen resolutions. */
-  --lh-community-checking-single: var(--lh-verse-md);
-  --lh-community-checking-double: calc(var(--lh-verse-md) + var(--lh-verse-md));
-
   /* ---- Optical tracking ----
      Two different things, deliberately named apart.
 

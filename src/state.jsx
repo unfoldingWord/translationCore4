@@ -16,8 +16,9 @@ import { StoryScheduler, normalizeStoryUnit } from './data/storyScheduler';
 import { createObsPackCache, readObsStoryPresentation } from './data/obsStory';
 import { recordRecentStory } from './data/obsRecency';
 import { modeOf, placeKey, recordPlace } from './data/place';
-import { gapMarkerOf, spliceSection, spliceVerse, spliceVerseGap, verseBody } from './data/usfm/splice';
+import { spliceSection, spliceVerse, spliceVerseGap, verseBody } from './data/usfm/splice';
 import { indexBook } from './data/usfm/indexer';
+import { bookModel, parseChapters, verseText } from './data/bookModel';
 import { RESOURCE_FRAME, forgetProjectFrames, resolveProjectFrame } from './data/projectFrame';
 import { backfillCoverage } from './data/coverageBackfill';
 import { mapReference } from './data/mapReference';
@@ -598,18 +599,6 @@ export const __reducerForTests = reducer;
  * a project pin the catalog's latest release cannot satisfy must fetch its
  * OWN identity, never `latestReleaseTag`. */
 export const __installPackageRowForTests = (...args) => installPackageRow(...args);
-
-const parseChapters = (raw) => {
-  // Display parse (whole-book: chapters + headers — PLATFORM-NOTES #4).
-  const json = usfm.toJSON(raw);
-  return json.chapters || {};
-};
-
-const verseText = (vObj) =>
-  (vObj?.verseObjects || [])
-    .map((vo) => vo.text || vo.children?.map((c) => c.text || '').join('') || '')
-    .join('')
-    .trim();
 
 async function readTextIngredient(apiClient, repoPath, ipath) {
   // Round 31: only a true NOT-FOUND means "the resource has nothing here".
@@ -2693,30 +2682,6 @@ export const __buildAlignmentSessionForTests = buildAlignmentSession;
  * staged, untouched verses byte-identical. */
 export const __reflowAlignedVersesForTests = reflowAlignedVerses;
 
-function buildChapterVerses(bookRaw, chapters, entries) {
-  const byChapter = {};
-  const PARA_IN_GAP = /\\(?:p|m|pi\d?|pm|pmo|nb|b|q\d?|li\d?|lh|lf|lim\d?)\b/;
-  let prev = null;
-  for (const e of entries) {
-    const body = bookRaw.slice(e.start, e.end).trim();
-    const drafted = body !== '' && body !== '___';
-    const sameCh = prev && prev.chapter === e.chapter;
-    const gap = sameCh ? bookRaw.slice(prev.end, e.start) : '';
-    const para = !sameCh || PARA_IN_GAP.test(gap);
-    const format = sameCh ? gapMarkerOf(gap) : null;
-    (byChapter[e.chapter] ||= []).push({
-      n: e.verseKey,
-      drafted,
-      para,
-      format,
-      text: drafted ? verseText(chapters[e.chapter]?.[e.verseKey]) : '',
-      body: drafted ? body : '',
-    });
-    prev = e;
-  }
-  return byChapter;
-}
-
 function calcDraftPct(entries, bookRaw) {
   if (!entries.length) return 0;
   const draftedCount = entries.filter((e) => {
@@ -2781,12 +2746,7 @@ export function AppProvider({ children }) {
   // ---- derived display model -------------------------------------------------
   const model = useMemo(() => {
     if (!s.project || !s.book || s.bookRaw == null) return { book: null, progress: {} };
-    const chapters = parseChapters(s.bookRaw);
-    const entries = indexBook(s.bookRaw);
-    const byChapter = buildChapterVerses(s.bookRaw, chapters, entries);
-    const chapterNums = Object.keys(byChapter)
-      .map(Number)
-      .sort((a, b) => a - b);
+    const { entries, byChapter, chapterNums } = bookModel(s.bookRaw);
     const draftPct = calcDraftPct(entries, s.bookRaw);
     return { book: { code: s.book, byChapter, chapterNums, draftPct }, progress: {} };
   }, [s.project, s.book, s.bookRaw, s.tick]);
