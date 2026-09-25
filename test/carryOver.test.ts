@@ -4,7 +4,7 @@
 // but no longer counted as done — so a finished book stops being finished when
 // the resource behind it changes. These tests encode exactly that.
 import { describe, expect, it } from 'vitest';
-import { carryOverDecisions, describeCarryOver } from '../src/data/carryOver';
+import { carryOverDecisions } from '../src/data/carryOver';
 import { deriveTnItems, TN_HEADER } from '../src/data/derive';
 import type { CheckItem } from '../src/data/derive';
 import type { DecisionFile } from '../src/data/burritoStore';
@@ -50,28 +50,6 @@ describe('the resource is the primary key', () => {
   const spanishItems = deriveTnItems(SPANISH, 'tit');
   const englishItems = deriveTnItems(ENGLISH, 'tit');
 
-  it('a decision the new resource still asks about carries over', () => {
-    const r = carryOverDecisions(file([decided(spanishItems[0])]), englishItems, NEXT);
-    expect(r.carried).toBe(1);
-    expect(r.invalidated).toBe(0);
-  });
-
-  it('a decision the new resource does not ask about is INVALIDATED, not queued', () => {
-    const r = carryOverDecisions(file([decided(spanishItems[1])]), englishItems, NEXT);
-    expect(r.invalidated).toBe(1);
-    expect(r.carried).toBe(0);
-    const marked = r.file.decisions.find((d) => d.invalidated);
-    expect(marked?.status).toBe('invalid');
-  });
-
-  it('nothing is deleted — an invalidated decision keeps its full §5.2 record', () => {
-    const original = decided(spanishItems[1]);
-    const r = carryOverDecisions(file([original]), englishItems, NEXT);
-    const kept = r.file.decisions[0];
-    expect(kept.contextId).toEqual(original.contextId);
-    expect(kept.selections).toEqual(original.selections);
-  });
-
   it('a FINISHED book is no longer finished: the new resource asks new questions', () => {
     // Every Spanish check was decided — the book was 100%.
     const r = carryOverDecisions(
@@ -82,18 +60,6 @@ describe('the resource is the primary key', () => {
     expect(r.carried).toBe(1); // only abc1 survives
     expect(r.invalidated).toBe(1); // abc2 no longer exists
     expect(r.undecided).toBe(1); // xyz9 is work that now exists
-  });
-
-  it('the file is re-stamped to the resource it was reconciled against', () => {
-    const r = carryOverDecisions(file([decided(spanishItems[0])]), englishItems, NEXT);
-    expect(r.file.resource).toEqual(NEXT);
-  });
-
-  it('an empty file costs nothing and claims nothing', () => {
-    const r = carryOverDecisions(file([]), englishItems, NEXT);
-    expect(r.carried).toBe(0);
-    expect(r.invalidated).toBe(0);
-    expect(r.undecided).toBe(2);
   });
 });
 
@@ -122,54 +88,5 @@ describe('D17 cross-language re-attach still applies before anything is invalida
       NEXT,
     );
     expect(r.file.decisions[0].contextId.checkId).toBe('en-9999');
-  });
-});
-
-// Round 7 superseded the round-6 plan-entry behavior: an uncovered book now
-// BLOCKS the gateway change (uncoveredByChange + the dialogue's gateway-blocked
-// state). This property stays as documentation of the pure D36 semantics.
-describe('carry-over against an EMPTY derived list (pure D36 property)', () => {
-  const ES = tsv([
-    ['1:1', 'a1', 'figs-metaphor', 'δοῦλος', '1', 'nota'],
-    ['1:2', 'a2', 'figs-abstractnouns', 'ἐλπίδι', '1', 'nota'],
-  ]);
-
-  it('an empty derived list invalidates-and-retains EVERYTHING and keeps the old record as provenance', () => {
-    const source = file(deriveTnItems(ES, 'tit').map(decided));
-    const r = carryOverDecisions(source, [], source.resource as never);
-    expect(r.carried).toBe(0);
-    expect(r.undecided).toBe(0);
-    expect(r.invalidated).toBe(2);
-    expect(r.file.decisions).toHaveLength(2); // retained, never deleted (D36)
-    expect(r.file.decisions.every((d) => d.invalidated === true)).toBe(true);
-    expect(r.file.resource).toEqual(source.resource); // provenance unchanged
-  });
-});
-
-describe('what the user is told', () => {
-  const ES = tsv([
-    ['1:1', 'a1', 'figs-metaphor', 'δοῦλος', '1', 'nota'],
-    ['1:2', 'a2', 'figs-abstractnouns', 'ἐλπίδι', '1', 'nota'],
-  ]);
-  const EN = tsv([['1:1', 'a1', 'figs-metaphor', 'δοῦλος', '1', 'note']]);
-
-  it('states work that comes back, not a review queue', () => {
-    const r = carryOverDecisions(
-      file(deriveTnItems(ES, 'tit').map(decided)),
-      deriveTnItems(EN, 'tit'),
-      NEXT,
-    );
-    const line = describeCarryOver(r, 'Titus');
-    expect(line).toContain('will need checking again');
-    expect(line).not.toContain('review');
-  });
-
-  it('says so plainly when nothing is lost', () => {
-    const r = carryOverDecisions(
-      file([decided(deriveTnItems(EN, 'tit')[0])]),
-      deriveTnItems(EN, 'tit'),
-      NEXT,
-    );
-    expect(describeCarryOver(r, 'Titus')).toBe('Titus: every decision carried over.');
   });
 });

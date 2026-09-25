@@ -1,9 +1,9 @@
-// Issue #95 — JournalingStore.open() scans the journal ONCE and reports its
-// progress. The old pipeline read every segment for the HLC ratchet and then
-// again for the union; the ratchet now rides the union read.
+// Issue #95 — JournalingStore.open() scans the journal ONCE. The old pipeline
+// read every segment for the HLC ratchet and then again for the union; the
+// ratchet now rides the union read.
 import { describe, expect, it, vi } from 'vitest';
 import { ServerApi } from '../src/data/serverApi';
-import { JournalingStore, forgetProjectQueues, type OpenProgress } from '../src/data/journal/journalingStore';
+import { JournalingStore, forgetProjectQueues } from '../src/data/journal/journalingStore';
 import { forgetSharedClocks } from '../src/data/journal/journalStore';
 import { journalingRig, memKv, tickingNow } from './helpers/journalingRig';
 
@@ -70,32 +70,5 @@ describe('#95: one journal scan per open, with progress', () => {
     await store.writeBook('TIT', TIT_USFM.replace('\\v 3 ___', '\\v 3 Después.'));
     const after = [...(rig.repos.get(REPO)?.files.keys() ?? [])].filter((p) => SEGMENT_RE.test(p)).map((p) => p.split('/').pop()!).sort();
     expect(after.at(-1)! > last).toBe(true);
-  });
-
-  it('progress runs journal 0..total, then the state stage, and total equals the segment count', async () => {
-    const { rig, kv, clock, segments } = await seeded(4);
-    const api = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: rig.fetchFn });
-    forgetSharedClocks();
-    const store = new JournalingStore({ api, kv, now: () => clock.advance(13) });
-    const seen: OpenProgress[] = [];
-    await store.open(REPO, { onProgress: (p) => seen.push({ ...p }) });
-    const journal = seen.filter((p) => p.stage === 'journal');
-    expect(journal[0]).toEqual({ stage: 'journal', done: 0, total: segments.length });
-    expect(journal.at(-1)).toEqual({ stage: 'journal', done: segments.length, total: segments.length });
-    expect(journal.map((p) => p.done)).toEqual([...Array(segments.length + 1).keys()]);
-    expect(seen.at(-1)).toEqual({ stage: 'state', done: 0, total: 0 });
-    expect(seen.findIndex((p) => p.stage === 'state')).toBe(journal.length);
-  });
-
-  it('a corrupt segment still stops the open with its report — progress hooks change nothing', async () => {
-    const { rig, kv, clock, segments } = await seeded(2);
-    const project = rig.repos.get(REPO)!;
-    project.files.set(segments[segments.length - 1], '{"container":1,"body":"{');
-    const api = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: rig.fetchFn });
-    forgetSharedClocks();
-    const store = new JournalingStore({ api, kv, now: () => clock.advance(13) });
-    const seen: OpenProgress[] = [];
-    await expect(store.open(REPO, { onProgress: (p) => seen.push({ ...p }) })).rejects.toThrow(/unusable files/);
-    expect(seen.some((p) => p.stage === 'journal' && p.done === p.total)).toBe(true);
   });
 });

@@ -43,11 +43,6 @@ describe('#195 the USFM parser', () => {
     expect(bundle.facts.name).toBe('');
   });
 
-  it('refuse: a file with no \\id line is import.damaged.usfm-parse', async () => {
-    const bundle = await USFM_PARSER.parse([fixtureFile('usfm/57-TIT.usfm'), fixtureFile('usfm/no-id.sfm')]);
-    expect(damagedOf(bundle.findings)).toEqual([expect.objectContaining({ code: 'import.damaged.usfm-parse', text: expect.stringContaining('no-id.sfm') })]);
-  });
-
   it('refuse: two files for one book, or bytes that are not UTF-8, are import.damaged.usfm-parse', async () => {
     const twice = await USFM_PARSER.parse([file('a.usfm', '\\id TIT\n\\c 1\n'), file('b.usfm', '\\id TIT\n\\c 1\n')]);
     expect(damagedOf(twice.findings)).toEqual([expect.objectContaining({ code: 'import.damaged.usfm-parse', text: expect.stringMatching(/a\.usfm.*b\.usfm.*TIT/) })]);

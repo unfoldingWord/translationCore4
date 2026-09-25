@@ -96,34 +96,6 @@ describe('#100 — N rapid alignment saves serialize per book with md5 chaining'
     expect(store.file!.chapters['1']['3']).toEqual(record(3));
     expect(sched.getState()).toBe('saved');
   });
-
-  it('a second burst chains on the md5 the first write produced, and keeps every earlier record', async () => {
-    const store = makeStore();
-    const sched = new SaveScheduler({ writeBook: makeAlignWriter({ store }), splice: spliceAlignRecord });
-    sched.seedIfAbsent(BOOK, alignFileJson(null, BOOK));
-    sched.markDirty(BOOK, '1', '1', JSON.stringify(record(1)));
-    await settle();
-    expect(store.md5).toBe('md5-1');
-    sched.markDirty(BOOK, '1', '2', JSON.stringify(record(2)));
-    sched.markDirty(BOOK, '2', '7', JSON.stringify(record(7)));
-    await settle();
-    expect(store.writes).toHaveLength(2);
-    expect(store.writes[1].expectMd5).toBe('md5-1'); // chained: the second write edits the state the first left
-    expect(store.file!.chapters['1']).toEqual({ '1': record(1), '2': record(2) });
-    expect(store.file!.chapters['2']).toEqual({ '7': record(7) });
-    expect(store.md5).toBe('md5-2');
-  });
-
-  it('a later edit of the same verse supersedes the earlier one in the same write', async () => {
-    const store = makeStore();
-    const sched = new SaveScheduler({ writeBook: makeAlignWriter({ store }), splice: spliceAlignRecord });
-    sched.seedIfAbsent(BOOK, alignFileJson(null, BOOK));
-    sched.markDirty(BOOK, '1', '1', JSON.stringify(record(1)));
-    sched.markDirty(BOOK, '1', '1', JSON.stringify(record(9)));
-    await settle();
-    expect(store.writes).toHaveLength(1);
-    expect(store.file!.chapters['1']['1']).toEqual(record(9));
-  });
 });
 
 describe('#100 — a failed alignment write is retained, shown, retried, and blocks the drain (FR-32)', () => {

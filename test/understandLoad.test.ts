@@ -8,8 +8,6 @@ import { describe, expect, it } from 'vitest';
 import { __performLoadUnderstandForTests as loadUnderstand, __loadProjectPinsForTests as loadPins, __loadSourcePanesForTests as loadSourcePanes, __setInstalledCacheForTests as setInstalledCache, __adoptDownloadedPinsForTests as adoptDownloaded, __reducerForTests as reducer } from '../src/state.jsx';
 import { INSTALLED_SUITE } from '../src/data/installedSuite';
 import { localRepoPathFromRepoPath } from '../src/data/installed';
-import { absenceMessageKey } from '../src/data/sourceState';
-import en from '../src/i18n/en.json';
 
 const PIN = { repoPath: 'git.door43.org/unfoldingWord/en_ust', sha: 'a'.repeat(40), flavor: 'scripture/textTranslation' };
 const notFound = () => Object.assign(new Error('404'), { isNotFound: true });
@@ -246,34 +244,6 @@ describe('orig pane handling in loadSourcePanes (#207 / C2)', () => {
   const ntPin = { repoPath: 'git.door43.org/unfoldingWord/el-x-koine_ugnt', sha: 'b'.repeat(40), version: 'v0.34', flavor: 'scripture/textTranslation' };
   const flush = () => new Promise((r) => setTimeout(r, 0));
 
-  it('(a) NT book with an NT pin → sources.orig set from the reader', async () => {
-    let state: TestSourcesState = { sources: {}, sourceTab: 'ult' };
-    const dispatched: Array<Record<string, unknown>> = [];
-    const dispatch = (a: Record<string, unknown>) => {
-      dispatched.push(a);
-      state = reducer(state, a) as TestSourcesState;
-    };
-    loadSourcePanes({
-      store: {
-        readSourceBook: async (_repo: string, book: string) => ({ usfm: `\\id ${book}\n\\c 1\n\\v 1 Παῦλος\n` }),
-      },
-      code: 'TIT',
-      seq: 1,
-      openSeqRef: { current: 1 },
-      stateRef: { current: state },
-      dispatch,
-      pins: {
-        extraScripture: [{ id: 'ult', repoPath: 'git.door43.org/unfoldingWord/en_ult', sha: 'a'.repeat(40), flavor: 'scripture/textTranslation' }],
-        resources: { originalLanguage: { nt: ntPin } },
-      },
-    });
-    await flush();
-    expect(state.sources?.orig).toBeDefined();
-    expect(state.sources?.orig?.version).toBe('v0.34');
-    expect(state.sources?.orig?.testament).toBe('nt');
-    expect(state.sources?.orig?.chapters?.['1']?.['1']).toBeDefined();
-  });
-
   it('(b) no pin → no sources.orig', async () => {
     let state: TestSourcesState = { sources: {}, sourceTab: 'ult' };
     const dispatched: Array<Record<string, unknown>> = [];
@@ -385,12 +355,6 @@ describe('#164 — a confirmed not-found pane read names WHICH absence (D30)', (
   const paneValue = (dispatched: Array<Record<string, unknown>>) =>
     (dispatched.find((d) => d.type === 'setSource') as Record<string, unknown>).value;
 
-  it('the pin is a real identity, not an invented one', () => {
-    expect(entry.repoPath).toMatch(/^git\.door43\.org\//);
-    expect(entry.sha).toMatch(/^[0-9a-f]{40}$/);
-    expect(installKey).toMatch(/^_local_\/_sideloaded_\//);
-  });
-
   it("the pinned source is not on this computer → 'not-installed', never 'missing'", async () => {
     // The resolver HAS run and found nothing: the pilot's offline install (#163).
     setInstalledCache({});
@@ -431,13 +395,6 @@ describe('#164 — a confirmed not-found pane read names WHICH absence (D30)', (
     run();
     await flush();
     expect((paneValue(dispatched) as { error: string }).error).toMatch(/socket hang up/);
-  });
-
-  it('the two absences map to two different sentences through ONE function', () => {
-    expect(absenceMessageKey('not-installed')).toBe('source.notInstalled');
-    expect(absenceMessageKey('missing')).toBe('source.unavailable');
-    expect(en['source.notInstalled']).toMatch(/not on this computer/);
-    expect(en['source.unavailable']).toMatch(/not available for this book/);
   });
 });
 

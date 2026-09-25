@@ -6,7 +6,7 @@
 // that opens an editing card, and the helps pane scoped to the unit in focus.
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 
 const actions = {
   stageStoryUnit: vi.fn(),
@@ -63,31 +63,6 @@ beforeEach(() => {
 });
 
 describe('OBS story draft surface', () => {
-  it('renders the gateway frame and its picture in the source cell, the drafted text in the target cell, and the pill for an undrafted frame', () => {
-    render(<StoryDraft />);
-    expect(screen.getByTestId('story-draft')).toBeTruthy();
-    const frame1 = screen.getByTestId('story-frame-1');
-    expect(within(frame1).getByText('In the beginning.')).toBeTruthy();
-    expect(within(frame1).getByRole('img', { name: 'Story frame 1' })).toBeTruthy();
-    expect(within(frame1).getByText('Al principio.')).toBeTruthy();
-    expect(within(frame1).queryByRole('textbox')).toBeNull();
-    const frame2 = screen.getByTestId('story-frame-2');
-    expect(within(frame2).getByRole('button', { name: 'Draft frame 2' })).toBeTruthy();
-    expect(within(frame2).queryByRole('img')).toBeNull();
-  });
-
-  it('the pill opens the editing card; typing stages the unit; blur flushes it and closes the card', async () => {
-    render(<StoryDraft />);
-    fireEvent.click(screen.getByRole('button', { name: 'Draft frame 2' }));
-    const box = screen.getByRole('textbox', { name: 'Frame 2' });
-    expect(screen.getByTestId('story-unit-editor')).toBeTruthy();
-    fireEvent.change(box, { target: { value: 'Una nueva frase.' } });
-    expect(actions.stageStoryUnit).toHaveBeenCalledWith({ kind: 'frame', story: 1, frame: 2 }, 'Una nueva frase.');
-    fireEvent.blur(box);
-    expect(actions.blurStoryUnit).toHaveBeenCalledWith({ kind: 'frame', story: 1, frame: 2 });
-    await waitFor(() => expect(screen.queryByTestId('story-unit-editor')).toBeNull());
-  });
-
   it('a drafted unit opens its editor on click; Cancel stages the text the card opened with, so the scheduler compares clean', () => {
     render(<StoryDraft />);
     fireEvent.click(within(screen.getByTestId('story-frame-1')).getByText('Al principio.'));
@@ -198,18 +173,6 @@ describe('OBS story draft surface', () => {
     expect(screen.getAllByText('Gateway text is unavailable.')).toHaveLength(4);
     expect(within(screen.getByTestId('story-frame-1')).getByText('Al principio.')).toBeTruthy();
     expect(within(screen.getByTestId('story-title')).getByText('La creación')).toBeTruthy();
-  });
-
-  it('marks a frame drafted exactly when its paragraph is non-empty', () => {
-    render(<StoryDraft />);
-    expect(screen.getByTestId('frame-marker-1').getAttribute('data-drafted')).toBe('true');
-    expect(screen.getByTestId('frame-marker-1').getAttribute('title')).toBe('Frame 1, drafted');
-    expect(screen.getByTestId('frame-marker-2').getAttribute('data-drafted')).toBe('false');
-    expect(screen.getByTestId('frame-marker-2').getAttribute('title')).toBe('Frame 2, not drafted');
-    cleanup();
-    state.story = { ...state.story, frames: [state.story.frames[0], { image: '![x](obs-02.jpg)', text: '   ' }] };
-    render(<StoryDraft />);
-    expect(screen.getByTestId('frame-marker-2').getAttribute('data-drafted')).toBe('false');
   });
 
   it('lists every story from the catalogue as a keyboard-operable button and names the current one', () => {

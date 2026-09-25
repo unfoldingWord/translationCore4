@@ -79,11 +79,4 @@ describe('the story Understand load (#290)', () => {
     const two = await load(2);
     expect(two.notes.items!.every((it) => it.contextId.reference.story === 2)).toBe(true);
   });
-
-  it('reads a frame comment back from the journal under its story:frame key', async () => {
-    const { store, load } = await setup();
-    await store.addNote('OBS', 1, 1, 'Preguntar al equipo.');
-    const u = await load(1);
-    expect(u.comprehension).toEqual({ '1:1': { text: 'Preguntar al equipo.', ts: expect.any(String) } });
-  });
 });

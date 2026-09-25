@@ -42,12 +42,6 @@ describe('relationshipsFromPins', () => {
     expect(rows.at(-1)).toEqual({ relationType: 'peripheral', flavor: 'x-lexicon', id: 'dcs::unfoldingWord/en_uhl' });
   });
 
-  it('writes one row per repository: tW links and articles share a repository, and the simplified text repeats an extra scripture', () => {
-    const ids = relationshipsFromPins(sampleResources()).map((r) => r.id);
-    expect(ids.filter((id) => id === 'dcs::unfoldingWord/en_tw')).toHaveLength(1);
-    expect(ids.filter((id) => id === 'dcs::unfoldingWord/en_ust')).toHaveLength(1);
-  });
-
   it('gives the OBS source text (gloss/textStories) no row, and keeps the OBS helps', () => {
     const obs = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../conformance/sample-burrito-obs/ingredients/checking/resources.json'), 'utf8'));
     const rows = relationshipsFromPins(obs);

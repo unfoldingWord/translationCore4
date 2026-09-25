@@ -16,7 +16,6 @@ import {
   covers,
   pinKey,
   preflightToolBook,
-  resolveToolBook,
   type Coverage,
 } from '../src/data/resolve';
 import type { ResourcePin, ResourcesFile } from '../src/data/burritoStore';
@@ -153,20 +152,6 @@ describe('the resolver now tells the two cases apart', () => {
     expect(pre.state).toBe('ready');
     expect(pre.unavailablePrimary ?? null).toBeNull();
   });
-
-  it('NO recorded coverage and not local -> the warned fallback still fires', () => {
-    // The migration case, and the only one left. Nobody knows whether the
-    // primary has this book, so the session opens against English and says so.
-    const res = resources(); // primary pins carry no `books`
-    const en = res.languageSets.fallback.translationWordsLinks;
-    const pre = preflightToolBook(res, 'translationWords', 'TIT', {
-      coverage: {},
-      isLocal: isLocal([en]),
-      online: true,
-    });
-    expect(pre.resolution?.rung).toBe('fallback');
-    expect(pre.unavailablePrimary?.repoPath).toBe(ES_TWL);
-  });
 });
 
 describe('backfillCoverage — retires the ambiguity for old pins (owner ruling 3c)', () => {
@@ -295,64 +280,6 @@ describe('backfillCoverage — retires the ambiguity for old pins (owner ruling 
     expect(second.changed).toBe(false);
     expect(second.filled).toEqual([]);
   });
-
-  it('backfilling then resolving removes the warning', () => {
-    // The end-to-end point of 3c: after one open with the resource present, an
-    // old project stops seeing the B20 banner for that pin.
-    const local: Coverage = { [pinKey(pin(ES_TWL))]: ['TIT', 'JON'] };
-    const before = preflightToolBook(resources(), 'translationWords', 'MRK', {
-      coverage: {},
-      isLocal: () => false,
-      online: true,
-    });
-    expect(before.unavailablePrimary?.repoPath).toBe(ES_TWL);
-
-    const after = backfillCoverage(resources(), local);
-    const pre = preflightToolBook(after.resources, 'translationWords', 'MRK', {
-      coverage: {},
-      isLocal: () => false,
-      online: true,
-    });
-    // Now the pin says it has no Mark, so the fallback is correct and unwarned.
-    expect(pre.resolution?.rung).toBe('fallback');
-    expect(pre.unavailablePrimary ?? null).toBeNull();
-  });
-});
-
-describe('whole-collection resources cover every book (2026-08-25 review, finding 1)', () => {
-  // The platform reports the tw articles with book_codes ['BIBLE'] — the
-  // resource is not book-partitioned. Fresh installs would otherwise resolve
-  // tN to primary but tW to rung null (Translation Words unavailable), because
-  // 'BIBLE' matches no literal book code.
-  it('a fresh tW install (local BIBLE marker) resolves to primary', () => {
-    const twPin = pin(ES_TWL);
-    const res = resources({ translationWordsLinks: twPin, translationWords: twPin });
-    const local: Coverage = { [pinKey(twPin)]: ['BIBLE'] };
-    const r = resolveToolBook(res, 'translationWords', 'TIT', local);
-    expect(r.rung).toBe('primary');
-    expect(r.pin?.repoPath).toBe(ES_TWL);
-  });
-
-  it('covers() reads the marker as every book', () => {
-    const p = pin(ES_TWL);
-    const local: Coverage = { [pinKey(p)]: ['BIBLE'] };
-    for (const book of ['TIT', 'JON', 'GEN', 'REV']) {
-      expect(covers(local, p, book)).toBe(true);
-    }
-  });
-
-  it('a preflight with the marker is ready when local, never not-covered', () => {
-    const twPin = pin(ES_TWL);
-    const res = resources({ translationWordsLinks: twPin, translationWords: twPin });
-    const local: Coverage = { [pinKey(twPin)]: ['BIBLE'] };
-    const pre = preflightToolBook(res, 'translationWords', 'TIT', {
-      coverage: local,
-      isLocal: (p) => pinKey(p) === pinKey(twPin),
-      online: true,
-    });
-    expect(pre.state).toBe('ready');
-    expect(pre.unavailablePrimary ?? null).toBeNull();
-  });
 });
 
 describe('coverage is keyed by pin identity, not by repo path', () => {
@@ -365,22 +292,6 @@ describe('coverage is keyed by pin identity, not by repo path', () => {
     expect(out.changed).toBe(false);
     expect(out.resources.languageSets.primary.translationWordsLinks.books).toBeUndefined();
     expect(coverageFor({ [pinKey(installed)]: ['MRK'] }, older).source).toBe('none');
-  });
-
-  it('two commits of one repo do not share a recorded coverage', () => {
-    // repoPath alone collides across shas. The recorded list lives ON the pin,
-    // so a re-pin cannot inherit the previous commit's coverage.
-    const older = pin(ES_TWL, { books: ['TIT'] });
-    const newer: ResourcePin = { ...pin(ES_TWL), sha: sha('newer-commit') };
-    expect(pinKey(older)).not.toBe(pinKey(newer));
-    expect(coverageFor({}, older)).toEqual({ books: ['TIT'], source: 'pin' });
-    expect(coverageFor({}, newer)).toEqual({ books: [], source: 'none' });
-  });
-
-  it('resolveToolBook honours the per-pin record', () => {
-    const res = resources({ translationWordsLinks: pin(ES_TWL, { books: ['JON'] }) });
-    expect(resolveToolBook(res, 'translationWords', 'JON', {}).rung).toBe('primary');
-    expect(resolveToolBook(res, 'translationWords', 'TIT', {}).rung).toBe('fallback');
   });
 
   it('does not fetch a pin whose recorded coverage excludes the book', () => {

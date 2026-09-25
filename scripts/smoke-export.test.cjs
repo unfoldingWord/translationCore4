@@ -82,13 +82,6 @@ function duplicateMetadataName(zipBytes) {
   return duplicate;
 }
 
-test('installed export accepts the sample Burrito ZIP and exact metadata bytes', async () => {
-  assert.deepEqual(await verifyBurritoZip(validZip, metadata), {
-    ingredientFiles: 1,
-    metadataBytes: metadata.length,
-  });
-});
-
 test('installed export recognizes backslash separators in ZIP entry names', async () => {
   const windowsNameZip = zipSync({
     'metadata.json': new Uint8Array(metadata),

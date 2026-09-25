@@ -10,6 +10,18 @@ for agents — they exist because an agent broke each one at least once in this 
 and a mismatch between the two blocks merge until both agree. When your reasoning and a
 test result disagree, the test result wins.
 
+## How to test
+
+Added 2026-09-25 by the owner.
+
+1. **Do not write a unit test after you write the code.**
+2. **Use E2E tests as the only test method when you can.** The E2E tests are the
+   Playwright journeys in `e2e/`. Use them to verify that complex features work. At the
+   end of each E2E test, produce an artifact that a person can verify and that each run
+   produces again in the same way.
+3. **If you must test a part of the system in isolation, write down all the ways that it
+   can fail first.** Then write the code.
+
 ## Do not invent test inputs
 
 Source every test input from the system under test — its catalogue, its configuration, or

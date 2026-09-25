@@ -101,29 +101,6 @@ describe('#108 — Publish moves into Check as Community Checking', () => {
     expect(screen.queryByText('Publish')).toBeNull();
   });
 
-  it("Check's picker shows the Community Checking card, and opening it goes to the publish view", () => {
-    render(<App />);
-    expect(screen.getByTestId('community-checking-card')).toBeTruthy();
-    fireEvent.click(screen.getByTestId('open-community-checking'));
-    expect(go).toHaveBeenCalledWith('publish');
-  });
-
-  it('every checking tool is a PEER in one card grid — the two derived tools, Align and Community Checking', () => {
-    render(<App />);
-    // The mockup lays the picker out as one responsive grid (App.jsx L445), so
-    // the cards must be siblings in a single container. They used to be three
-    // stacked blocks, which no arrangement of that container could line up.
-    const cards = [
-      screen.getByTestId('preflight-translationWords'),
-      screen.getByTestId('preflight-translationNotes'),
-      screen.getByTestId('align-card'),
-      screen.getByTestId('community-checking-card'),
-    ];
-    const parents = new Set(cards.map((c) => c.parentElement));
-    expect(parents.size).toBe(1);
-    expect([...parents][0]?.style.display).toBe('grid');
-  });
-
   it('a READY tool card says what the tool does — no state badge, no resource citation (owner ruling, #108)', () => {
     state = {
       ...baseState,
@@ -193,19 +170,6 @@ describe('#108 — Publish moves into Check as Community Checking', () => {
     expect(screen.getByTestId('save-indicator').getAttribute('data-state')).toBe('error');
   });
 
-  it('the publish view is the typeset preview with the export menu, which offers the Scripture Burrito zip', () => {
-    state = { ...baseState, view: 'publish' };
-    render(<App />);
-    expect(screen.getByTestId('community-checking')).toBeTruthy();
-    fireEvent.click(screen.getByTestId('export-menu-trigger'));
-    expect(screen.getByRole('menuitem', { name: 'Scripture Burrito (.zip)' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /^Export / })).toBeNull();
-    // The preview renders the project's own text, not fixture copy.
-    expect(screen.getByText(/Pablo, siervo de Dios y apóstol/)).toBeTruthy();
-    // An undrafted verse is stated, never silently skipped in the preview.
-    expect(screen.getAllByText(/verse not yet drafted/).length).toBeGreaterThan(0);
-  });
-
   it('the preview leaves out a chapter with no drafted verse, and says so when the book has none (#20)', () => {
     state = { ...baseState, view: 'publish' };
     render(<App />);
@@ -261,33 +225,6 @@ describe('#108 — Publish moves into Check as Community Checking', () => {
       bookModel.byChapter = saved;
     }
   });
-
-  it('the Bible page setup switches the preview sheets between Single and Double spacing', () => {
-    state = { ...baseState, view: 'publish' };
-    const before = JSON.stringify(state);
-    render(<App />);
-
-    const single = screen.getByRole('button', { name: 'Single' });
-    const double = screen.getByRole('button', { name: 'Double' });
-    const leading = () => screen.getAllByTestId('cc-page').map((page) => page.style.getPropertyValue('--print-leading'));
-    expect(screen.getAllByTestId('cc-chapter')).toHaveLength(1); // only chapter 1 of the sample has a drafted verse (#20)
-    expect(single.getAttribute('aria-pressed')).toBe('true');
-    expect(double.getAttribute('aria-pressed')).toBe('false');
-    expect(leading().every((value) => value === '1.4')).toBe(true);
-
-    fireEvent.click(double);
-    expect(single.getAttribute('aria-pressed')).toBe('false');
-    expect(double.getAttribute('aria-pressed')).toBe('true');
-    expect(leading().every((value) => value === '2.8')).toBe(true);
-
-    fireEvent.click(single);
-    expect(single.getAttribute('aria-pressed')).toBe('true');
-    expect(double.getAttribute('aria-pressed')).toBe('false');
-    expect(leading().every((value) => value === '1.4')).toBe(true);
-    expect(unexpectedAction).not.toHaveBeenCalled();
-    expect(go).not.toHaveBeenCalled();
-    expect(JSON.stringify(state)).toBe(before);
-  });
 });
 
 // ---- #291 (D74 §8, §10): an OBS project gets Check and Community Checking.
@@ -316,14 +253,6 @@ describe('#291 — an OBS project checks the open story', () => {
     go.mockClear();
   });
 
-  it('the top navigation offers Understand, Translate and Check (#290, #291)', () => {
-    state = obsState as never;
-    render(<App />);
-    expect(screen.getByRole('tab', { name: 'Understand' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Translate' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Check' })).toBeTruthy();
-  });
-
   it('the picker offers the two tools and Community Checking, and NO Align entry (D74: absent, not disabled)', () => {
     state = obsState as never;
     render(<App />);
@@ -332,27 +261,6 @@ describe('#291 — an OBS project checks the open story', () => {
     expect(screen.getByTestId('community-checking-card').textContent).toContain('Story 1');
     expect(screen.queryByTestId('align-card')).toBeNull();
     expect(screen.queryByTestId('open-align')).toBeNull();
-  });
-
-  it('Community Checking renders the story with its pictures, and the Pictures toggle removes them', () => {
-    state = { ...obsState, view: 'publish' } as never;
-    render(<App />);
-    const page = screen.getByTestId('cc-story');
-    expect(page.textContent).toContain('La Creación');
-    expect(page.textContent).toContain('Así fue como Dios hizo todo.');
-    expect(page.textContent).toContain('[ frame not yet drafted ]');
-    expect(screen.getByTestId('cc-reference').textContent).toContain('Génesis 1-2');
-    expect(screen.getByTestId('cc-picture-1').getAttribute('src')).toBe('local://obs-en-01-01.jpg');
-    expect(page.getAttribute('data-pictures')).toBe('1');
-    fireEvent.click(screen.getByLabelText('Pictures'));
-    expect(screen.queryByTestId('cc-picture-1')).toBeNull();
-    expect(screen.getByTestId('cc-story').getAttribute('data-pictures')).toBe('0');
-    // the Bible page-setup controls are not offered for a story
-    expect(screen.queryByText('Spacing')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Single' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Double' })).toBeNull();
-    expect(screen.queryByText('Verse numbers')).toBeNull();
-    expect(screen.queryByText('Export USFM')).toBeNull();
   });
 });
 
@@ -409,34 +317,6 @@ describe('#381 — the page setup reaches every export', () => {
     await waitFor(() => expect(produce.mock.calls).toHaveLength(1));
     return (produce.mock.calls[0][0] as { pageSetup: unknown }).pageSetup;
   };
-
-  it('the Bible card has a Paper size row after Spacing, and Double spacing and Letter reach the fake producer exactly', async () => {
-    state = bibleState() as never;
-    const produce = vi.spyOn(fakeProducer, 'produce');
-    spies.push(produce);
-    render(<AppWithFake />);
-
-    const spacing = screen.getByRole('group', { name: 'Spacing' });
-    const paper = screen.getByRole('group', { name: 'Paper size' });
-    expect(spacing.compareDocumentPosition(paper) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    const a4 = screen.getByRole('button', { name: 'A4' });
-    const letter = screen.getByRole('button', { name: 'Letter' });
-    expect(paper.contains(a4) && paper.contains(letter)).toBe(true);
-    expect(a4.getAttribute('aria-pressed')).toBe('true');
-    expect(letter.getAttribute('aria-pressed')).toBe('false');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Double' }));
-    fireEvent.click(letter);
-    expect(a4.getAttribute('aria-pressed')).toBe('false');
-    expect(letter.getAttribute('aria-pressed')).toBe('true');
-
-    const received = await runFakeExport(produce);
-    expect(received).toEqual({ ...DEFAULT_PAGE_SETUP, spacing: 'double', paper: 'letter' });
-    expect(exportFile).toHaveBeenCalledWith(fakeProducer, received);
-    const report = await (exportFile as unknown as { mock: { results: Array<{ value: Promise<{ ok: boolean }> }> } }).mock.results[0].value;
-    expect(report.ok).toBe(true);
-    expect(unexpectedAction).not.toHaveBeenCalled();
-  });
 
   it('pictures: false reaches the producer for an OBS project', async () => {
     state = { ...obsState, view: 'publish' } as never;

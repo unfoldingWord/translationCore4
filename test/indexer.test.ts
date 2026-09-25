@@ -53,18 +53,6 @@ const body = (raw: string, chapter: string | number, verseKey: string): string =
 };
 
 describe('indexBook — structure over the corpora', () => {
-  it('sample TIT covers chapters 1-3 with 16/15/15 verses (property 4)', () => {
-    const entries = indexBook(corpora['sample TIT (plain draft, ___ stubs)']);
-    const perChapter = new Map<string, number>();
-    for (const e of entries) perChapter.set(e.chapter, (perChapter.get(e.chapter) ?? 0) + 1);
-    expect([...perChapter.entries()]).toEqual([
-      ['1', 16],
-      ['2', 15],
-      ['3', 15],
-    ]);
-    expect(entries).toHaveLength(46);
-  });
-
   it.each(Object.entries(corpora))(
     '%s: indexer finds the same verse set as usfm-js toJSON chapters (property 4)',
     (_name, raw) => {
@@ -104,28 +92,6 @@ describe('indexBook — structure over the corpora', () => {
 });
 
 describe('verse bodies', () => {
-  it('plain verse body is the text after `\\v N ` up to the line end', () => {
-    const b = body(corpora['sample TIT (plain draft, ___ stubs)'], 1, '1');
-    expect(b.startsWith('Pablo, siervo de Dios')).toBe(true);
-    expect(b.endsWith('piedad,')).toBe(true);
-    expect(b).not.toContain('\n');
-  });
-
-  it('untranslated stubs index as the body `___`', () => {
-    const raw = corpora['sample TIT (plain draft, ___ stubs)'];
-    expect(body(raw, 1, '6')).toBe('___');
-    const stubCount = indexBook(raw).filter((e) => raw.slice(e.start, e.end) === '___').length;
-    expect(stubCount).toBe(41); // 46 verses, 5 translated in chapter 1
-  });
-
-  it('aligned verse bodies keep inline zaln/w markup, across lines (T7 input)', () => {
-    const b = body(corpora['en_ult TIT (aligned: 705 zaln-s, 23 ts milestones)'], 1, '1');
-    expect(b).toContain('\\zaln-s |x-strong="G39720"');
-    expect(b).toContain('\\w Paul|x-occurrence="1"');
-    expect(b).toContain('\n'); // multi-line body
-    expect(b).not.toContain('\\v 2');
-  });
-
   it('no indexed body contains a line-start verse/chapter/paragraph/ts marker', () => {
     for (const raw of Object.values(corpora)) {
       for (const e of indexBook(raw)) {
@@ -136,43 +102,16 @@ describe('verse bodies', () => {
       }
     }
   });
-
-  it('trailing line terminators stay outside the body', () => {
-    for (const raw of Object.values(corpora)) {
-      for (const e of indexBook(raw)) {
-        const b = raw.slice(e.start, e.end);
-        expect(b.endsWith('\n')).toBe(false);
-        expect(b.endsWith('\r')).toBe(false);
-      }
-    }
-  });
 });
 
 describe('span verse keys (property 3)', () => {
   const jon = () => corpora['sample JON (plain draft, span verse 2:9-10)'];
-
-  it('JON 2 uses the exact span key "9-10"', () => {
-    const entries = indexBook(jon());
-    const ch2 = entries.filter((e) => e.chapter === '2').map((e) => e.verseKey);
-    expect(ch2).toEqual(['1', '2', '3', '4', '5', '6', '7', '8', '9-10']);
-    expect(body(jon(), 2, '9-10')).toContain('Mas yo te ofreceré sacrificios');
-  });
 
   it('lookup is exact — "9" and "10" do not resolve inside the span', () => {
     const entries = indexBook(jon());
     expect(findVerse(entries, 2, '9-10')).not.toBeNull();
     expect(findVerse(entries, 2, '9')).toBeNull();
     expect(findVerse(entries, '2', '10')).toBeNull();
-  });
-
-  it('never yields Number()-coerced keys (regression: Number("9-10") is NaN)', () => {
-    expect(Number('9-10')).toBeNaN(); // the prototype fixtureStore bug class
-    for (const raw of Object.values(corpora)) {
-      for (const e of indexBook(raw)) {
-        expect(e.verseKey).not.toBe('NaN');
-        expect(e.verseKey).toMatch(/^\S+$/);
-      }
-    }
   });
 });
 

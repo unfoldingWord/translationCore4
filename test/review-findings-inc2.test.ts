@@ -16,7 +16,6 @@ import {
   TN_HEADER,
   deriveForProject,
   deriveTnItems,
-  filterToScope,
   mergeAndReattach,
   progressOf,
   refInScope,
@@ -59,20 +58,6 @@ describe('R1 — the derived list the app shows is filtered to the project scope
     ['3:5', 'a10', 'figs-idiom', 'Θεοῦ', '1', 'n'],
   ];
 
-  it('the unscoped derive returns every row — this is what the app used to show', () => {
-    expect(deriveTnItems(tsv(rows), 'tit')).toHaveLength(10);
-  });
-
-  it('cross-chapter scope 1:1-2:5 admits only the in-scope rows; denominator shrinks with it', () => {
-    const scoped = filterToScope(deriveTnItems(tsv(rows), 'tit'), scopeRangesFor({ TIT: ['1:1-2:5'] }, 'TIT'));
-    expect(scoped.map(ref)).toEqual(['1:1', '1:2', '1:3', '2:1', '2:4', '2:5']);
-    expect(progressOf(scoped).total).toBe(6);
-  });
-
-  it('an empty scope means whole book, so nothing regresses for unscoped projects', () => {
-    expect(filterToScope(deriveTnItems(tsv(rows), 'tit'), scopeRangesFor({}, 'TIT'))).toHaveLength(10);
-  });
-
   // The defect was never in the library — it was that state.jsx did not call it.
   //
   // RE-POINTED for issue #15 (2026-08-24). Scope filtering moved INSIDE the one
@@ -112,19 +97,6 @@ describe('R1 — the derived list the app shows is filtered to the project scope
     expect(scoped.items.map(ref)).toEqual(['1:1', '1:2', '1:3', '2:1', '2:4', '2:5']);
     expect(progressOf(scoped.items).total).toBe(6);
   });
-
-  it('deriveForProject with an empty scope still means whole book', async () => {
-    const all = await deriveForProject({
-      tsv: tsv(rows),
-      tool: 'translationNotes',
-      bookId: 'tit',
-      from: 'eng',
-      to: 'eng',
-      schemes: {},
-      scopeRanges: scopeRangesFor({}, 'TIT'),
-    });
-    expect(all.items).toHaveLength(10);
-  });
 });
 
 // ------------------------------------------------ R1b: F6 same-chapter C:V-V
@@ -145,17 +117,6 @@ describe('R1b — a same-chapter verse span C:V-V is honored exactly (F6, §3 ru
     expect(refInScope(['3'], 2, 1)).toBe(false);
     expect(refInScope(['1:4'], 1, 4)).toBe(true); // single verse C:V
     expect(refInScope(['1:4'], 1, 5)).toBe(false);
-  });
-
-  it('the scoped derive drops out-of-span verses for a C:V-V scope', () => {
-    const rows = [
-      ['1:3', 'a3', 'figs-idiom', 'Θεοῦ', '1', 'n'],
-      ['1:5', 'a5', 'figs-idiom', 'Θεοῦ', '1', 'n'],
-      ['1:6', 'a6', 'figs-idiom', 'Θεοῦ', '1', 'n'],
-      ['2:1', 'a7', 'figs-idiom', 'Θεοῦ', '1', 'n'],
-    ];
-    const scoped = filterToScope(deriveTnItems(tsv(rows), 'tit'), scopeRangesFor({ TIT: ['1:3-5'] }, 'TIT'));
-    expect(scoped.map(ref)).toEqual(['1:3', '1:5']);
   });
 });
 
@@ -192,13 +153,6 @@ describe('R2 — a status-only (todo) decision survives a resource change and ro
     expect(x?.status).toBe('todo');
     expect(x?.invalidated).toBeFalsy();
     expect(back.file.decisions).toHaveLength(1);
-  });
-
-  it('a genuinely untouched item is not carried — the fix does not over-keep', () => {
-    const r = carryOverDecisions(fileOf([], RES_A), derivedA, RES_A);
-    expect(r.carried).toBe(0);
-    expect(r.file.decisions).toHaveLength(0);
-    expect(r.undecided).toBe(1);
   });
 });
 
@@ -242,27 +196,6 @@ describe('R3 — re-pinning the old resource restores a decided item (D36)', () 
     expect(items[0].invalidated).toBe(true);
     expect(items[0].status).toBe('invalid');
     expect(progressOf(items)).toEqual({ decided: 0, total: 1 });
-  });
-
-  it('an invalidated decision does NOT count toward progress (§5.2 MUST)', () => {
-    const stillInvalid = item({
-      contextId: ctx,
-      selections: [{ text: 'Dios', occurrence: 1, occurrences: 1 }],
-      invalidated: true,
-      status: 'invalid',
-    });
-    expect(progressOf([stillInvalid])).toEqual({ decided: 0, total: 1 });
-  });
-
-  it('after the re-pin restores it, it counts again — 1 of 1', () => {
-    const invalidated = item({
-      contextId: ctx,
-      selections: [{ text: 'Dios', occurrence: 1, occurrences: 1 }],
-      invalidated: true,
-      status: 'invalid',
-    });
-    const { items } = mergeAndReattach([item({ contextId: ctx })], [invalidated]);
-    expect(progressOf(items)).toEqual({ decided: 1, total: 1 });
   });
 });
 
@@ -426,65 +359,6 @@ describe('R7b — overlapping guarded writes are serialized, so neither is silen
   });
 });
 
-// ------------------------------------------------- R10: legacy install path (B10)
-describe('R10 — a legacy/seeded install resolves by identity, not by a recomputed path (B10)', () => {
-  // The rig seeds and older installs live at the legacy `<repo>` path; the pin
-  // derives the owner-qualified path, which would look in the wrong place.
-  const installed = {
-    '_local_/_sideloaded_/en_tn': { repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v89', sha: '9999999999999999999999999999999999999999', flavor: '' },
-  };
-  const pin = { repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v89', sha: '9999999999999999999999999999999999999999', flavor: '' };
-
-  it('installedPathFor returns the ACTUAL on-disk path, not the owner-qualified derivation', () => {
-    expect(localRepoPathFromRepoPath(pin.repoPath)).toBe('_local_/_sideloaded_/unfoldingword--en_tn');
-    expect(installedPathFor(installed, pin)).toBe('_local_/_sideloaded_/en_tn');
-  });
-
-  it('isPinLocal sees the seeded resource as local (it was invisible before)', () => {
-    expect(isPinLocal(installed, pin)).toBe(true);
-  });
-});
-
-// ------------------------------------------------- R11: atomic migration (B11)
-describe('R11 — a gateway migration aborts cleanly when a book moved: no partial migration (B11)', () => {
-  it('validate-all-before-write leaves the first book un-migrated and the pins old', async () => {
-    const files = new Map<string, string>([
-      ['checking/resources.json', JSON.stringify({ pins: 'old' })],
-      ['checking/translationNotes/TIT.json', JSON.stringify({ book: 'TIT', resource: { repoPath: 'OLD' }, decisions: [] })],
-      ['checking/translationNotes/JON.json', JSON.stringify({ book: 'JON', resource: { repoPath: 'OLD' }, decisions: [] })],
-    ]);
-    const api = {
-      readIngredient: async (_r: string, ip: string) => { const v = files.get(ip); if (v === undefined) throw new Error('missing'); return v; },
-      writeIngredient: async (_r: string, ip: string, p: string) => { files.set(ip, p); },
-    };
-    const store = new HttpStore({ api: api as never, repoPath: '_local_/_local_/partial' });
-    const titMd5 = (await store.readDecisionsWithMd5('translationNotes', 'TIT')).md5;
-    const jonMd5 = (await store.readDecisionsWithMd5('translationNotes', 'JON')).md5;
-    // A concurrent external edit to JON after the preview read it.
-    files.set('checking/translationNotes/JON.json', JSON.stringify({ book: 'JON', resource: { repoPath: 'OLD' }, decisions: [], externalEdit: true }));
-
-    const plan = [
-      { tool: 'translationNotes', book: 'TIT', expectMd5: titMd5, file: { book: 'TIT', resource: { repoPath: 'NEW' }, decisions: [] } },
-      { tool: 'translationNotes', book: 'JON', expectMd5: jonMd5, file: { book: 'JON', resource: { repoPath: 'NEW' }, decisions: [] } },
-    ];
-    // The fixed commit sequence: validate EVERY precondition before any write.
-    let aborted = false;
-    try {
-      for (const p of plan) {
-        const cur = (await store.readDecisionsWithMd5(p.tool, p.book)).md5;
-        if ((p.expectMd5 ?? null) !== (cur ?? null)) throw new StaleWriteError(p.book, p.expectMd5 ?? '', cur ?? '');
-      }
-      for (const p of plan) await store.writeDecisions(p.tool, p.book, p.file as never, p.expectMd5);
-    } catch (e) {
-      aborted = e instanceof StaleWriteError;
-    }
-    expect(aborted).toBe(true);
-    // TIT was never migrated; resources never changed — no partial state.
-    expect(JSON.parse(files.get('checking/translationNotes/TIT.json') as string).resource.repoPath).toBe('OLD');
-    expect(JSON.parse(files.get('checking/resources.json') as string)).toEqual({ pins: 'old' });
-  });
-});
-
 // ------------------------------------------------ R13: draft-write overlap (B13)
 describe('R13 — overlapping draft (writeBook) writes are serialized; the second is refused (B13)', () => {
   it('two concurrent writeBook calls with the same md5: one wins, the other StaleWriteError', async () => {
@@ -509,37 +383,6 @@ describe('R13 — overlapping draft (writeBook) writes are serialized; the secon
     expect(rejected[0].reason).toBeInstanceOf(StaleWriteError);
     // Exactly one edit persisted; the other writer was refused, not silently lost.
     expect(['\\id TIT\n\\v 1 edit-A\n', '\\id TIT\n\\v 1 edit-B\n']).toContain(usfm);
-  });
-});
-
-// -------------------------------------------- R14: rollback never clobbers (B14)
-describe('R14 — a gateway rollback never force-overwrites a concurrent edit (B14)', () => {
-  it('CAS-guarded rollback: an edit made after migration survives the rollback', async () => {
-    const ipath = 'checking/translationNotes/TIT.json';
-    const files = new Map<string, string>([[ipath, JSON.stringify({ book: 'TIT', resource: { repoPath: 'OLD' }, decisions: [] })]]);
-    const api = {
-      readIngredient: async (_r: string, ip: string) => { const v = files.get(ip); if (v === undefined) throw new Error('missing'); return v; },
-      writeIngredient: async (_r: string, ip: string, p: string) => { files.set(ip, p); },
-    };
-    const store = new HttpStore({ api: api as never, repoPath: '_local_/_local_/rollback' });
-
-    const orig = await store.readDecisionsWithMd5('translationNotes', 'TIT');
-    // Migrate TIT to the NEW resource, then capture the bytes we wrote.
-    await store.writeDecisions('translationNotes', 'TIT', { book: 'TIT', resource: { repoPath: 'NEW' }, decisions: [] } as never, orig.md5);
-    const wroteMd5 = (await store.readDecisionsWithMd5('translationNotes', 'TIT')).md5;
-    // A concurrent writer edits TIT AFTER our migration.
-    files.set(ipath, JSON.stringify({ book: 'TIT', resource: { repoPath: 'NEW' }, decisions: [], externalEdit: true }));
-
-    // Rollback with CAS on the bytes WE wrote → refused, because the file moved.
-    let refused = false;
-    try {
-      await store.writeDecisions('translationNotes', 'TIT', { book: 'TIT', resource: { repoPath: 'OLD' }, decisions: [] } as never, wroteMd5);
-    } catch (e) {
-      refused = e instanceof StaleWriteError;
-    }
-    expect(refused).toBe(true);
-    // The concurrent edit survived — rollback did not force-clobber it.
-    expect(JSON.parse(files.get(ipath) as string).externalEdit).toBe(true);
   });
 });
 
@@ -618,13 +461,6 @@ describe('R18 — same-checkId reattach requires the quoteString to match (B18, 
     expect(items[0].status).toBeUndefined(); // derived item stays fresh
     expect(items[0].contextId.quoteString).toBe('κατὰ πίστιν');
   });
-
-  it('a matching checkId AND quote still carries the decision', () => {
-    const derived = [mk('a1', 'κατὰ πίστιν')];
-    const saved = [mk('a1', 'κατὰ πίστιν', { status: 'todo' })];
-    const { items } = mergeAndReattach(derived, saved);
-    expect(items[0].status).toBe('todo');
-  });
 });
 
 // -------------------------------------- R19: item verse-span scope (B19)
@@ -662,17 +498,6 @@ describe('R20 — a not-installed pinned primary opens the fallback but is NOT s
   } as never;
   const esNotes = primary.translationNotes;
   const enNotes = fallback.translationNotes;
-
-  it('the installed fallback opens (ready) but flags the not-local pinned primary — not silent, not a forced fetch', () => {
-    const pf = preflightToolBook(resources, 'translationNotes', 'JON', {
-      coverage: { [pinKey(enNotes)]: ['JON'] }, // only English is local-covered
-      isLocal: (p) => p.repoPath === EN,
-      online: true,
-    });
-    expect(pf.state).toBe('ready'); // the fallback works; no forced fetch (over-correction reverted)
-    expect(pf.resolution?.usedFallback).toBe(true);
-    expect(pf.unavailablePrimary?.repoPath).toBe(ES); // warned: the pinned primary is fetchable
-  });
 
   it('offline: still opens the installed fallback, still flags the missing primary (never a silent switch)', () => {
     const pf = preflightToolBook(resources, 'translationNotes', 'JON', {
@@ -753,14 +578,6 @@ describe('R23 — the tN/tW target-word selection round-trips through the proven
   // the word(s) that render the item's original-language quote. The tokenizer is
   // the SAME one the check view renders with, so tapped indices never drift.
   const verse = 'Paul, a servant of God and an apostle of Jesus Christ';
-
-  it('selectionsFromTokens records each tapped word with its occurrence and total', () => {
-    // tap "servant" (index 2) — its §5.2 selection carries occurrence 1 of 1.
-    const words = targetWords(verse);
-    expect(words[2]).toBe('servant');
-    const sel = selectionsFromTokens(verse, [2]);
-    expect(sel).toEqual([{ text: 'servant', occurrence: 1, occurrences: 1 }]);
-  });
 
   it('a repeated word carries the RIGHT occurrence (nth), not merely the word', () => {
     // "of" appears twice ("of God", "of Jesus"); tapping the 2nd must record

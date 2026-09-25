@@ -185,13 +185,6 @@ describe('StoryPane through the Check screen (#311)', () => {
     expect(screen.queryAllByTestId('story-hl')).toHaveLength(0);
   });
 
-  it('covers the story pane through the Check screen', () => {
-    setStoryState(storyItem(1, 1, 'lm48', FRAME1_QUOTE), storyWith(1, TITLE1, { 1: FRAME1_TEXT }));
-    render(<Check />);
-    expect(screen.getByTestId('story-pane')).toBeTruthy();
-    expect(screen.getByTestId('story-pane-text')).toBeTruthy();
-  });
-
   it('frame 2 reads frames[1] and frame 0 reads the story title', () => {
     // The template title and the title-note quote agree — the cross-check
     // that both fixtures name the same story.

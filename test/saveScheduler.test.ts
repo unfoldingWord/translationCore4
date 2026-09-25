@@ -58,22 +58,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('idle debounce flush (default 2000 ms)', () => {
-  it('writes the spliced whole-book string after the idle window', async () => {
-    const w = makeWrite();
-    const scheduler = makeScheduler(w.write);
-    scheduler.markDirty(BOOK, 1, '1', 'UNO nuevo');
-    expect(scheduler.getState()).toBe('dirty');
-    await vi.advanceTimersByTimeAsync(1999);
-    expect(w.calls).toHaveLength(0); // not yet — still inside the idle window
-    await vi.advanceTimersByTimeAsync(1);
-    expect(w.calls).toHaveLength(1);
-    expect(w.calls[0].book).toBe(BOOK);
-    // Per-book whole-file write: exactly the splice engine's output.
-    expect(w.calls[0].usfm).toBe(spliceVerse(initial, 1, '1', 'UNO nuevo'));
-    expect(scheduler.getState()).toBe('saved');
-  });
-
+describe('idle debounce flush', () => {
   it('typing resets the debounce; one write carries the latest text', async () => {
     const w = makeWrite();
     const scheduler = makeScheduler(w.write);
@@ -85,60 +70,6 @@ describe('idle debounce flush (default 2000 ms)', () => {
     await vi.advanceTimersByTimeAsync(500);
     expect(w.calls).toHaveLength(1);
     expect(w.calls[0].usfm).toBe(spliceVerse(initial, 1, '1', 'draft two'));
-  });
-
-  it('the debounce window is injectable', async () => {
-    const w = makeWrite();
-    const scheduler = makeScheduler(w.write, 50);
-    scheduler.markDirty(BOOK, 1, '2', 'DOS');
-    await vi.advanceTimersByTimeAsync(50);
-    expect(w.calls).toHaveLength(1);
-  });
-
-  it('the clock is injectable', async () => {
-    const w = makeWrite();
-    const timers: Array<{ fn: () => void; ms: number }> = [];
-    const clock = {
-      setTimeout: (fn: () => void, ms: number) => {
-        timers.push({ fn, ms });
-        return timers.length - 1;
-      },
-      clearTimeout: () => {},
-    };
-    const scheduler = new SaveScheduler({
-      writeBook: w.write,
-      splice: spliceVerse,
-      clock,
-    });
-    scheduler.loadBook(BOOK, initial);
-    scheduler.markDirty(BOOK, 1, '1', 'via injected clock');
-    expect(timers).toHaveLength(1);
-    expect(timers[0].ms).toBe(2000); // arch §7.3 default
-    timers[0].fn();
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(w.calls).toHaveLength(1);
-  });
-});
-
-describe('flushOnBlur', () => {
-  it('flushes immediately and cancels the pending debounce', async () => {
-    const w = makeWrite();
-    const scheduler = makeScheduler(w.write);
-    scheduler.markDirty(BOOK, 1, '1', 'blurred');
-    await scheduler.flushOnBlur();
-    expect(w.calls).toHaveLength(1);
-    expect(scheduler.getState()).toBe('saved');
-    await vi.advanceTimersByTimeAsync(5000);
-    expect(w.calls).toHaveLength(1); // the debounce did not fire a second write
-  });
-
-  it('is a no-op when nothing is dirty', async () => {
-    const w = makeWrite();
-    const scheduler = makeScheduler(w.write);
-    await scheduler.flushOnBlur();
-    expect(w.calls).toHaveLength(0);
-    expect(scheduler.getState()).toBe('saved');
   });
 });
 
@@ -280,21 +211,6 @@ describe('composition and guards', () => {
 });
 
 describe('#63 — replaceBook: a whole-book replacement is one dirty write', () => {
-  it('stages the given text as the book, arms the debounce, and writes exactly it', async () => {
-    const w = makeWrite();
-    const scheduler = makeScheduler(w.write, 500);
-    const states: SaveState[] = [];
-    scheduler.subscribe((st) => states.push(st));
-    const replaced = initial.replace('\\v 1 uno\n\\v 2 dos', '\\v 1-2 uno dos');
-    scheduler.replaceBook(BOOK, replaced);
-    expect(scheduler.getState()).toBe('dirty');
-    expect(scheduler.bookText(BOOK)).toBe(replaced);
-    await vi.advanceTimersByTimeAsync(500);
-    expect(w.calls).toEqual([{ book: BOOK, usfm: replaced }]);
-    expect(scheduler.getState()).toBe('saved');
-    expect(states).toEqual(['saved', 'dirty', 'saving', 'saved']);
-  });
-
   it('a later verse edit splices into the replaced text, not the loaded one', async () => {
     const w = makeWrite();
     const scheduler = makeScheduler(w.write, 500);

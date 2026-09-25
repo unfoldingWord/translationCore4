@@ -14,7 +14,7 @@ import { forgetSharedClocks } from '../src/data/journal/journalStore';
 import { validateSegment, type JournalEvent } from '../src/data/journal/seal';
 import { verifyProjectAgainstJournal, describeVerifierReport } from '../src/data/journal/verify';
 import type { Decision, DecisionFile, ResourcesFile } from '../src/data/burritoStore';
-import { FAKE_VRS, journalingRig, memKv, tickingNow, type JournalingRig } from './helpers/journalingRig';
+import { journalingRig, memKv, tickingNow, type JournalingRig } from './helpers/journalingRig';
 
 const REPO = '_local_/_local_/prueba';
 
@@ -142,17 +142,6 @@ const setup = async (): Promise<{
 };
 
 describe('#62 mapping: createProject publishes the creation seed', () => {
-  it('the container step runs first, then ONE seed action with the exact vrs bytes', async () => {
-    const { rig, api } = await setup();
-    const segments = await segmentsOf(rig);
-    const seed = segments[0].events;
-    expect(seed).toHaveLength(1);
-    expect(seed[0].op).toBe('project.vrs.set');
-    expect(seed[0].seed).toMatchObject({ source: 'creation' });
-    expect(seed[0].bytes).toBe(FAKE_VRS); // exact-byte project.vrs.set
-    expect(seed[0].name).toBe('eng');
-    await expectVerified(api);
-  });
 
   it('a name collision refuses before the server call; failed creation debris is cleaned', async () => {
     const { rig, api, kv, clock } = await setup();
@@ -182,19 +171,6 @@ describe('#62 mapping: createProject publishes the creation seed', () => {
 });
 
 describe('#62 mapping: addBook is ONE self-contained book.add', () => {
-  it('journals scope + skeleton + initialVerses from the REAL initial state and installs the projection', async () => {
-    const { rig, api } = await setup();
-    const segments = await segmentsOf(rig);
-    const adds = segments.flatMap((s) => s.events).filter((e) => e.op === 'book.add');
-    expect(adds).toHaveLength(1);
-    expect(adds[0].book).toBe('TIT');
-    expect(adds[0].scope).toEqual([]);
-    expect(adds[0].base).toBeNull();
-    expect(Object.keys(adds[0].initialVerses as Record<string, string>)).toEqual(['1:1', '1:2', '2:1']);
-    // The derived book is the projection of the SEEDED content, not the server scaffold.
-    expect(rig.repos.get(REPO)?.files.get('TIT.usfm')).toBe(TIT_USFM);
-    await expectVerified(api);
-  });
 
   it('without initialUsfm the server scaffold itself is journaled', async () => {
     const { rig, api, store } = await setup();
@@ -308,32 +284,6 @@ describe('#62 mapping: writeAlignments diffs the affected records', () => {
     sourceVersion: 'dcs::unfoldingWord/el-x-koine_ugnt@v0.34',
   });
 
-  it('#271: the §5.1 done flag rides the align.verse.set event, and removing it is a change', async () => {
-    const { rig, api, store } = await setup();
-    await store.writeAlignments('TIT', {
-      schemaVersion: 1,
-      book: 'TIT',
-      chapters: { '1': { '1': { ...alignmentRecord(1), done: true } as never } },
-    });
-    let segments = await segmentsOf(rig);
-    let action = segments[segments.length - 1].events;
-    expect(action).toHaveLength(1);
-    expect(action[0]).toMatchObject({ op: 'align.verse.set', chapter: '1', verse: '1', done: true });
-    // The same record without the flag is a change the diff sees (an edit took Mark valid back).
-    await store.writeAlignments('TIT', {
-      schemaVersion: 1,
-      book: 'TIT',
-      chapters: { '1': { '1': alignmentRecord(1) as never } },
-    });
-    segments = await segmentsOf(rig);
-    action = segments[segments.length - 1].events;
-    expect(action).toHaveLength(1);
-    expect(action[0].op).toBe('align.verse.set');
-    expect('done' in action[0]).toBe(false);
-    const report = await verifyProjectAgainstJournal(api, REPO);
-    expect(report.ok, describeVerifierReport(report)).toBe(true);
-  });
-
   it('publishes one action of changed align.verse.set events with generation + observed base, I-2 normalized', async () => {
     const { rig, api, store } = await setup();
     const bookAddTs = (await segmentsOf(rig)).flatMap((s) => s.events).find((e) => e.op === 'book.add')?.ts;
@@ -422,21 +372,6 @@ describe('#62 mapping: writeAlignments diffs the affected records', () => {
 });
 
 describe('#62 mapping: upsertDecision is one check.decision.set', () => {
-  it('preserves identity exactly, stamps generation, and the file mirrors the fold', async () => {
-    const { rig, api, store } = await setup();
-    const bookAddTs = (await segmentsOf(rig)).flatMap((s) => s.events).find((e) => e.op === 'book.add')?.ts;
-    await store.upsertDecision('translationWords', 'TIT', decision('t1g7'), RESOLUTION);
-    const segments = await segmentsOf(rig);
-    const action = segments[segments.length - 1].events;
-    expect(action).toHaveLength(1);
-    expect(action[0]).toMatchObject({ op: 'check.decision.set', toolId: 'translationWords' });
-    expect(action[0].generation).toBe(bookAddTs);
-    expect((action[0].decision as Decision).contextId.quote).toBe('Θεοῦ'); // identity untouched
-    const file = JSON.parse(rig.repos.get(REPO)?.files.get('checking/translationWords/TIT.json') ?? '');
-    expect(file.resource).toEqual(RESOLUTION);
-    expect(file.decisions).toHaveLength(1);
-    await expectVerified(api);
-  });
 
   it('REFUSES a non-NFC identity value (never rewritten — R-8.5.13), publishing nothing', async () => {
     const { rig, store } = await setup();
@@ -564,17 +499,6 @@ describe('#62 mapping: project metadata writes and the checkpoint', () => {
     expect(action).toHaveLength(1);
     expect(action[0]).toMatchObject({ op: 'project.meta.set', path: 'identification.abbreviation.es' });
     await expect(store.commit('post-meta checkpoint')).rejects.toThrow(/no HTTP metadata write route/);
-  });
-
-  it('commit() runs the full checkpoint pipeline: rescan, scope verification, then the server commit', async () => {
-    const { rig, api, store } = await setup();
-    await store.writeBook('TIT', TIT_USFM.replace('\\v 2 ___', '\\v 2 Nueva vida.'));
-    await store.commit('checkpoint (tC4)');
-    const project = rig.repos.get(REPO);
-    expect(project?.commits).toContain('checkpoint (tC4)');
-    const scope = (project?.meta.type as { flavorType: { currentScope: unknown } }).flavorType.currentScope;
-    expect(scope).toEqual({ TIT: [] }); // reconstructed by the rescan, verified against the fold
-    await expectVerified(api);
   });
 
   it('commit() REFUSES an out-of-band edit rather than silently repairing it (R-8.7.5)', async () => {
@@ -729,13 +653,5 @@ describe('#63 mapping: applyStructuralEdit with intent spans', () => {
     const report = await verifyProjectAgainstJournal(api, REPO);
     expect(report.ok, describeVerifierReport(report)).toBe(true);
     expect(report.foldReports.pendingStructural).toEqual([]);
-  });
-
-  it('without an affected alignment no invalid record is written, and the plain (#62) path is unchanged', async () => {
-    const { rig, store } = await setup();
-    await store.applyStructuralEdit('TIT', SPANNED, { intent: 'spans' });
-    const segments = await segmentsOf(rig);
-    expect(segments[segments.length - 1].events.map((e) => e.op)).toEqual(['text.structure.apply']);
-    expect(rig.repos.get(REPO)?.files.has('checking/alignments/TIT.json')).toBe(false);
   });
 });

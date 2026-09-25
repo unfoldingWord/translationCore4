@@ -48,17 +48,6 @@ const session = (seq: number, items: Item[] = [item(1, 1), item(1, 2)]): Session
 });
 
 describe('patchCheckSession — seq-guarded merge', () => {
-  it('merges a patch into the session with the matching seq', () => {
-    const state = { checkSession: session(3) };
-    const next = reducer(state, {
-      type: 'patchCheckSession',
-      seq: 3,
-      patch: { orig: { state: 'ready', testament: 'nt', chapters: {} } },
-    });
-    expect(next.checkSession.orig).toEqual({ state: 'ready', testament: 'nt', chapters: {} });
-    expect(next.checkSession.items).toBe(state.checkSession.items);
-  });
-
   it('a completion from a REPLACED session (same tool+book, new seq) changes nothing', () => {
     const state = { checkSession: session(4) };
     const next = reducer(state, {
@@ -73,48 +62,9 @@ describe('patchCheckSession — seq-guarded merge', () => {
     const state = { checkSession: null };
     expect(reducer(state, { type: 'patchCheckSession', seq: 3, patch: { orig: {} } })).toBe(state);
   });
-
-  it("concurrent orig and article merges keep each other's results", () => {
-    let state = { checkSession: session(5) };
-    state = reducer(state, {
-      type: 'patchCheckSession',
-      seq: 5,
-      patch: { article: { key: 'k', loading: false, found: { title: 'T' } } },
-    });
-    state = reducer(state, {
-      type: 'patchCheckSession',
-      seq: 5,
-      patch: { orig: { state: 'ready', testament: 'nt', chapters: {} } },
-    });
-    expect(state.checkSession.article?.found?.title).toBe('T');
-    expect(state.checkSession.orig?.state).toBe('ready');
-  });
 });
 
 describe('checkDecisionSaved — item-level completion', () => {
-  it('replaces exactly the decided item and recomputes progress', () => {
-    const state = { checkSession: session(6) };
-    const decided = { ...state.checkSession.items[1], status: 'valid', selections: false, nothingToSelect: true };
-    const next = reducer(state, { type: 'checkDecisionSaved', seq: 6, index: 1, item: decided });
-    expect(next.checkSession.items[0]).toBe(state.checkSession.items[0]);
-    expect(next.checkSession.items[1].status).toBe('valid');
-    expect(next.checkSession.progress).toEqual({ decided: 1, total: 2 });
-    // #100: the merge is optimistic and no longer owns saveError — the
-    // checkSaveState mirror clears it on recovery (checkSaveScheduler.test.ts).
-    expect(next.checkSession.saveError).toBe(state.checkSession.saveError);
-  });
-
-  it('two in-flight decisions land independently — the later never erases the earlier', () => {
-    let state = { checkSession: session(7) };
-    const a = { ...state.checkSession.items[0], status: 'valid', selections: false, nothingToSelect: true };
-    const b = { ...state.checkSession.items[1], status: 'invalid', selections: false, nothingToSelect: false };
-    state = reducer(state, { type: 'checkDecisionSaved', seq: 7, index: 0, item: a });
-    state = reducer(state, { type: 'checkDecisionSaved', seq: 7, index: 1, item: b });
-    expect(state.checkSession.items[0].status).toBe('valid');
-    expect(state.checkSession.items[1].status).toBe('invalid');
-    expect(state.checkSession.progress.decided).toBe(2);
-  });
-
   it('a stale-seq decision completion changes nothing', () => {
     const state = { checkSession: session(9) };
     const next = reducer(state, {

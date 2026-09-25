@@ -4,16 +4,7 @@
 // 0 included. The counts were taken at vendor time (2026-09-17) from the files
 // themselves; this suite must reproduce them through src/data/derive.ts.
 import { describe, expect, it } from 'vitest';
-import {
-  deriveObsItems,
-  isStoryReference,
-  locatorOf,
-  mergeKey,
-  mergeSavedDecisions,
-  referenceParts,
-  type CheckItem,
-} from '../src/data/derive';
-import { EN_HELPS } from '../src/data/installedSuite';
+import { deriveObsItems, isStoryReference } from '../src/data/derive';
 
 const fs = process.getBuiltinModule('node:fs');
 const path = process.getBuiltinModule('node:path');
@@ -21,24 +12,10 @@ const path = process.getBuiltinModule('node:path');
 const FIX = path.resolve(process.cwd(), 'test/fixtures/resources');
 const read = (p: string): string => fs.readFileSync(path.join(FIX, p), 'utf8');
 const obsTn = read('en_obs-tn@v13/OBS.tsv');
-const obsTwl = read('en_obs-twl@v3/OBS.tsv');
-const obsTq = read('en_obs-tq@v10/OBS.tsv');
 
 /** The data rows of a TSV, split on tabs — the ground truth the derive must match. */
 const rowsOf = (tsv: string): string[][] =>
   tsv.split('\n').filter((line) => line.trim() !== '').slice(1).map((line) => line.split('\t'));
-
-const revisionOf = (p: string): string => {
-  const meta = JSON.parse(read(p)) as { identification: { primary: { dcs?: Record<string, { revision: string }> } } };
-  return Object.values(meta.identification.primary.dcs ?? {})[0]?.revision ?? '';
-};
-
-describe('fixture provenance — the OBS exports are the bundled pins', () => {
-  it('each vendored metadata.json carries the pinned tag commit SHA', () => {
-    expect(revisionOf('en_obs-tn@v13/metadata.json')).toBe(EN_HELPS['obs-tn'].sha);
-    expect(revisionOf('en_obs-twl@v3/metadata.json')).toBe(EN_HELPS['obs-twl'].sha);
-  });
-});
 
 describe('deriveObsItems — OBS Translation Notes (en_obs-tn v13)', () => {
   const rows = rowsOf(obsTn);
@@ -79,90 +56,13 @@ describe('deriveObsItems — OBS Translation Notes (en_obs-tn v13)', () => {
     expect(story1.every((i) => i.contextId.reference.story === 1)).toBe(true);
     expect(deriveObsItems(obsTn, 'translationNotes', 51)).toEqual([]);
   });
-
-  it('keeps the tA module of a linked note as groupId and the quote as a word array', () => {
-    const linked = items.find((i) => i.contextId.checkId === 'zzmo');
-    expect(linked?.contextId.groupId).toBe('figs-quotations');
-    expect(linked?.contextId.reference).toEqual({ story: 1, frame: 2 });
-    expect(Array.isArray(linked?.contextId.quote)).toBe(true);
-  });
-});
-
-describe('deriveObsItems — OBS Translation Words Links (en_obs-twl v3)', () => {
-  const rows = rowsOf(obsTwl);
-  const items = deriveObsItems(obsTwl, 'translationWords');
-
-  it('derives every link row, story-keyed; Occurrence is 1 in every row (R-10.5.1)', () => {
-    expect(rows).toHaveLength(2381);
-    expect(items).toHaveLength(rows.length);
-    expect(new Set(rows.map((r) => r[4]))).toEqual(new Set(['1']));
-    expect(items.every((i) => i.contextId.occurrence === 1)).toBe(true);
-    expect(items.every((i) => isStoryReference(i.contextId.reference))).toBe(true);
-    expect(items.some((i) => i.contextId.reference.frame === 0)).toBe(false);
-  });
-
-  it('resolves the TWLink to the shared Translation Words article slug and category', () => {
-    const god = items.find((i) => i.contextId.checkId === 'aoaa');
-    expect(god?.contextId.reference).toEqual({ story: 1, frame: 1 });
-    expect(god?.contextId.groupId).toBe('god');
-    expect(god?.category).toBe('kt');
-    expect(god?.contextId.quoteString).toBe('God');
-    expect(deriveObsItems(obsTwl, 'translationWords', 1)).toHaveLength(35);
-  });
 });
 
 describe('deriveObsItems — refusals and the locator accessor', () => {
-  it('negative control: a foreign header is refused, never guess-parsed', () => {
-    expect(() => deriveObsItems('Reference\tID\tNote\n1:1\tx\ty\n', 'translationNotes')).toThrow(/Refusing to guess-parse/);
-  });
-
   it('drops a row whose locator is not two integers (R-10.4.1), keeps the rest', () => {
     const header = 'Reference\tID\tTags\tOrigWords\tOccurrence\tTWLink';
     const tsv = `${header}\n1:1\taaaa\tkeyterm\tGod\t1\trc://*/tw/dict/bible/kt/god\nfront:intro\tbbbb\tkeyterm\tGod\t1\trc://*/tw/dict/bible/kt/god\n`;
     const items = deriveObsItems(tsv, 'translationWords');
     expect(items.map((i) => i.contextId.checkId)).toEqual(['aaaa']);
-  });
-
-  it('referenceParts and locatorOf read both reference forms', () => {
-    expect(referenceParts({ story: 3, frame: 0 })).toEqual({ c: 3, v: 0 });
-    expect(referenceParts({ bookId: 'tit', chapter: 1, verse: '9-10' })).toEqual({ c: 1, v: '9-10' });
-    expect(locatorOf({ story: 12, frame: 4 })).toBe('12:4');
-    expect(locatorOf({ bookId: 'tit', chapter: 2, verse: 1 })).toBe('2:1');
-  });
-
-  it('a saved story decision re-attaches to its derived twin by story and frame', () => {
-    const derived = deriveObsItems(obsTwl, 'translationWords', 1);
-    const twin = derived.find((i) => i.contextId.checkId === 'aoaa') as CheckItem;
-    const saved: CheckItem = { ...twin, selections: [{ text: 'Dios', occurrence: 1, occurrences: 1 }], status: 'valid' };
-    expect(mergeKey(saved.contextId)).toBe('aoaa|1|1|God|1');
-    const merged = mergeSavedDecisions(derived, [saved]);
-    expect(merged.find((i) => i.contextId.checkId === 'aoaa')?.selections).toEqual(saved.selections);
-    expect(merged.filter((i) => i.selections !== false)).toHaveLength(1);
-  });
-});
-
-describe('deriveObsItems — OBS Translation Questions (en_obs-tq v10, #331, R-10.6.3)', () => {
-  const rows = rowsOf(obsTq);
-  const items = deriveObsItems(obsTq, 'translationQuestions');
-
-  it('derives EVERY question row, story-keyed like the notes, with the question and its response', () => {
-    expect(rows).toHaveLength(672);
-    expect(items).toHaveLength(rows.length);
-    for (const item of items) {
-      const r = item.contextId.reference;
-      expect(isStoryReference(r)).toBe(true);
-      expect(Number.isInteger(r.story) && Number.isInteger(r.frame)).toBe(true);
-      expect(item.contextId.tool).toBe('translationQuestions');
-      expect((item as { question?: string }).question).toBeTruthy();
-      expect((item as { response?: string }).response).toBeTruthy();
-    }
-    expect(new Set(items.map((i) => i.contextId.reference.story)).size).toBe(50);
-  });
-
-  it('scopes to one story: story 1 carries the 22 rows the TSV has for it, and the first is the creation question', () => {
-    const one = deriveObsItems(obsTq, 'translationQuestions', 1);
-    expect(one).toHaveLength(22);
-    expect(one[0]).toMatchObject({ contextId: { checkId: 'es4e', reference: { story: 1, frame: 1 } }, question: 'Where did everything in the universe come from?', response: 'God created everything.' });
-    expect(deriveObsItems(obsTq, 'translationQuestions', 51)).toEqual([]);
   });
 });

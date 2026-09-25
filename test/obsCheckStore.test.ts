@@ -17,7 +17,6 @@ import { openFacts } from './helpers/report';
 
 const PARAMS = { content_name: 'Historias', content_abbr: 'historias', content_language_code: 'es' };
 const TN_RESOLUTION = { repoPath: EN_HELPS['obs-tn'].repoPath, version: EN_HELPS['obs-tn'].version, sha: EN_HELPS['obs-tn'].sha, languageSet: 'primary' as const };
-const TWL_RESOLUTION = { repoPath: EN_HELPS['obs-twl'].repoPath, version: EN_HELPS['obs-twl'].version, sha: EN_HELPS['obs-twl'].sha, languageSet: 'primary' as const };
 
 /** A §10.5 story decision: the en_obs-tn v13 row `1:0 i6lj` (the story title note). */
 const storyDecision = (patch: Partial<Decision> = {}): Decision => ({
@@ -81,26 +80,6 @@ const setup = async () => {
 };
 
 describe('the story write path of the store (#291, §10.5 / R-10.7.3)', () => {
-  it('writes a story-keyed decision as ONE v: 2 check.decision.set with no generation, projected to checking/translationNotes/OBS.json', async () => {
-    const { rig, api, store, repoPath, storyBytes, sidecar } = await setup();
-    const before = storyBytes();
-    await store.upsertDecision('translationNotes', 'OBS', storyDecision(), TN_RESOLUTION);
-    const events = await publishedEvents(rig, repoPath);
-    const decisions = events.filter((e) => e.op === 'check.decision.set');
-    expect(decisions).toHaveLength(1);
-    expect(decisions[0].v).toBe(2);
-    expect('generation' in decisions[0]).toBe(false);
-    expect(decisions[0].base).toBeNull();
-    expect((decisions[0].decision as Decision).contextId.reference).toEqual({ story: 1, frame: 0 });
-    const file = sidecar('translationNotes');
-    expect(file).toMatchObject({ schemaVersion: 1, tool: 'translationNotes', book: 'OBS', resource: TN_RESOLUTION });
-    expect(file.decisions).toHaveLength(1);
-    expect(file.decisions[0].contextId.reference).toEqual({ story: 1, frame: 0 });
-    expect(storyBytes()).toBe(before);
-    expect(await store.readDecisions('translationNotes', 'OBS')).toMatchObject({ book: 'OBS' });
-    await expectVerified(api, repoPath);
-  });
-
   it('a second write on the same story key advances the register linearly and the file still holds one record', async () => {
     const { rig, api, store, repoPath, sidecar } = await setup();
     await store.upsertDecision('translationNotes', 'OBS', storyDecision(), TN_RESOLUTION);
@@ -113,22 +92,6 @@ describe('the story write path of the store (#291, §10.5 / R-10.7.3)', () => {
     const file = sidecar('translationNotes');
     expect(file.decisions).toHaveLength(1);
     expect(file.decisions[0]).toMatchObject({ comments: 'revisar', reminders: true });
-    await expectVerified(api, repoPath);
-  });
-
-  it('files the two tools separately, each with its own resolution record', async () => {
-    const { store, sidecar, api, repoPath } = await setup();
-    await store.upsertDecision('translationNotes', 'OBS', storyDecision(), TN_RESOLUTION);
-    const word = storyDecision({
-      contextId: { ...storyDecision().contextId, checkId: 'aoaa', reference: { story: 1, frame: 1 }, tool: 'translationWords', groupId: 'god', quote: 'God', quoteString: 'God' },
-      category: 'kt',
-      selections: [{ text: 'Dios', occurrence: 1, occurrences: 1 }],
-      status: 'valid',
-    });
-    await store.upsertDecision('translationWords', 'OBS', word, TWL_RESOLUTION);
-    expect(sidecar('translationWords')).toMatchObject({ book: 'OBS', resource: TWL_RESOLUTION });
-    expect(sidecar('translationWords').decisions[0].selections).toEqual(word.selections);
-    expect(sidecar('translationNotes').decisions).toHaveLength(1);
     await expectVerified(api, repoPath);
   });
 

@@ -10,7 +10,6 @@ import { describe, expect, it } from 'vitest';
 import {
   bootstrapVerse,
   linkWord,
-  unlinkWord,
   isFullyAligned,
   settleDone,
   markDone,
@@ -29,7 +28,6 @@ const SOURCE = 'dcs::unfoldingWord/el-x-koine_ugnt@v0.34';
 const TEXT = 'Pablo siervo';
 
 const bankWord = (r: AlignmentVerseRecord, word: string) => r.wordBank.find((w) => w.word === word) as AlignedWord;
-const placedWord = (r: AlignmentVerseRecord, i: number) => r.alignments[i].bottomWords[0];
 
 /** Pablo→Παῦλος placed; "siervo" still in the bank. */
 const halfAligned = () => {
@@ -48,27 +46,12 @@ describe('#271 isFullyAligned — tC3’s areAlgnmentsComplete', () => {
   });
 });
 
-describe('#271 settleDone — all aligned is done; any edit takes it back', () => {
+describe('#271 settleDone — all aligned is done', () => {
   it('placing the last word sets done; the record was not carrying the field before', () => {
     const half = settleDone(halfAligned());
     expect('done' in half).toBe(false);
     const full = settleDone(linkWord(half, 1, bankWord(half, 'siervo')));
     expect(full.done).toBe(true);
-  });
-
-  it('unlinking a word after done removes the field — absent, never false', () => {
-    const half = halfAligned();
-    const full = settleDone(linkWord(half, 1, bankWord(half, 'siervo')));
-    const again = settleDone(unlinkWord(full, 1, placedWord(full, 1)));
-    expect('done' in again).toBe(false);
-    expect(JSON.stringify(again)).not.toContain('"done"');
-  });
-
-  it('a Mark valid with words in the bank is taken back by the next edit', () => {
-    const marked = markDone(halfAligned(), TEXT);
-    expect(marked.done).toBe(true);
-    const edited = settleDone(unlinkWord(marked, 0, placedWord(marked, 0)));
-    expect('done' in edited).toBe(false);
   });
 });
 

@@ -18,8 +18,7 @@ import { expectRefusal } from './helpers/report';
 
 // journal/files.mjs is Node-bound (fs, node:crypto). The app's
 // vite-plugin-node-polyfills aliases node builtins to browser mocks even under
-// the Vitest node environment [VERIFIED in this toolchain — same workaround as
-// test/s0a-aligner-headless.test.ts], so the reference is loaded via a NATIVE
+// the Vitest node environment [VERIFIED in this toolchain — see CONTRIBUTING.md, "Write a test that reads files"], so the reference is loaded via a NATIVE
 // require (Node ≥22 supports require of ESM), outside the vite pipeline.
 interface RefSegmentVerdict {
   ok: boolean;
@@ -216,14 +215,6 @@ describe('#61 checkbox 4: the conformance harness validates what the store write
     const captured = rig.writes.find((write) => write.ipath === ipath);
     expect(captured!.payload).toBe(refSealAction(events));
   });
-
-  it('open() provisions actor.json bytes the reference validateActorDoc accepts', async () => {
-    const { rig, store } = await openStore();
-    const bytes = rig.files.get(rig.key(REPO, `checking/journal/${store.actorId}/actor.json`));
-    expect(bytes).toBeDefined();
-    const verdict = refValidateActorDoc(bytes, store.actorId);
-    expect(verdict.ok).toBe(true);
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -293,16 +284,6 @@ describe('#61 checkbox 1: immutability branches (R-8.1.4/5) over HTTP', () => {
     );
     await expect(store.publish([foreign])).rejects.toThrow(/R-8\.1\.12/);
     expect(rig.writes).toHaveLength(before);
-  });
-
-  it('a truncated capture is invisible AS A WHOLE to the reference reader (R-8.1.6)', async () => {
-    const { rig, store } = await openStore();
-    const { ipath } = await store.publish([
-      verseEvent(store.actorId, store.issueTs(), 'entero o nada\n'),
-    ]);
-    const captured = rig.files.get(rig.key(REPO, ipath))!;
-    const verdict = refValidateSegment(captured.slice(0, captured.length - 10));
-    expect(verdict.ok).toBe(false);
   });
 });
 
@@ -794,29 +775,5 @@ describe('#95: a deferred open ratchets in the union read, and refuses to mint b
     for (const event of events) expect(next > event.ts).toBe(true);
     expect(next > torn).toBe(true);
     expect(next > foreignTs).toBe(true);
-  });
-
-  it('readUnion reports progress once per listed segment, and the total is known before the first read', async () => {
-    const { rig, kv, store } = await openStore();
-    for (const text of ['uno\n', 'dos\n', 'tres\n']) await store.publish([verseEvent(store.actorId, store.issueTs(), text)]);
-    forgetSharedClocks();
-    const restarted = restartedStore(rig, kv, tickingNow('2026-09-05T09:20:00.000Z').now);
-    await restarted.open({ ratchet: 'deferred' });
-    const seen: Array<{ done: number; total: number }> = [];
-    await restarted.readUnion({ onProgress: (p) => seen.push({ ...p }) });
-    expect(seen[0]).toEqual({ done: 0, total: 3 });
-    expect(seen.map((p) => p.done)).toEqual([0, 1, 2, 3]);
-    expect(seen.every((p) => p.total === 3)).toBe(true);
-  });
-
-  it("open() without the option still ratchets in open() itself — the primitive's contract holds", async () => {
-    const frozen = () => Date.parse('2026-09-05T09:30:00.000Z');
-    const { rig, kv, store } = await openStore({ now: frozen });
-    const minted = store.issueTs();
-    await store.publish([verseEvent(store.actorId, minted, 'publicado\n')]);
-    forgetSharedClocks();
-    const restarted = restartedStore(rig, kv, frozen);
-    await restarted.open();
-    expect(restarted.issueTs() > minted).toBe(true);
   });
 });

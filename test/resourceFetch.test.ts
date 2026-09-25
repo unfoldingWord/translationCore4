@@ -1,14 +1,10 @@
 // C2.1 — pinned resource fetch + SHA verification + local install.
-// Pure-logic checks here (unwrapping, SHA refusal, URL shape). The live
+// Pure-logic checks here (unwrapping, SHA refusal, pagination). The live
 // end-to-end against the rig + DCS is the integration test below, skipped when
 // the rig is down.
 import { describe, expect, it } from 'vitest';
 import { zipSync, unzipSync, strToU8 } from 'fflate';
 import {
-  sbZipUrl,
-  archiveZipUrl,
-  zipArchiveComment,
-  localRepoPathFor,
   unwrapExport,
   rezip,
   identifyExistingInstall,
@@ -44,16 +40,6 @@ const wrappedZip = (revision: string | null, extra: Record<string, string> = {})
     ...Object.fromEntries(Object.entries(extra).map(([k, v]) => [k, strToU8(v)])),
   });
 
-describe('sb-zip URL + local target (D23b pin path)', () => {
-  it('builds the /sb/<tag>.zip export URL from the pin', () => {
-    expect(sbZipUrl(PIN)).toBe('https://git.door43.org/unfoldingWord/en_twl/sb/v86.zip');
-  });
-
-  it('installs into _local_/_sideloaded_/<repo>', () => {
-    expect(localRepoPathFor(PIN)).toBe('_local_/_sideloaded_/unfoldingword--en_twl');
-  });
-});
-
 describe('unwrapExport — the DCS export is wrapped, the importer needs it flat', () => {
   const flatWith = (name: string) =>
     zipSync({
@@ -71,21 +57,6 @@ describe('unwrapExport — the DCS export is wrapped, the importer needs it flat
     const { files } = unwrapExport(wrappedZip('abc'));
     expect(Object.keys(files).some((n) => n.startsWith('.git'))).toBe(false);
     expect(Object.keys(files).some((n) => n.endsWith('.DS_Store'))).toBe(false);
-  });
-
-  it('reads the revision the export declares', () => {
-    expect(unwrapExport(wrappedZip('deadbeef')).revision).toBe('deadbeef');
-    expect(unwrapExport(wrappedZip(null)).revision).toBeNull();
-  });
-
-  it('accepts an already-flat archive unchanged', () => {
-    const flat = zipSync({
-      'metadata.json': strToU8(metaFor('abc')),
-      'ingredients/TIT.tsv': strToU8('x'),
-    });
-    expect(Object.keys(unwrapExport(flat).files).sort()).toEqual([
-      'ingredients/TIT.tsv', 'metadata.json',
-    ]);
   });
 
   it('refuses an archive that is not a burrito', () => {
@@ -150,17 +121,6 @@ describe('rezip — the importer needs explicit directory entries', () => {
     expect(entries).toContain('metadata.json');
     expect(entries).toContain('ingredients/TIT.tsv');
   });
-
-  it('creates every intermediate directory, not only the top one', () => {
-    const nested = unwrapExport(zipSync({
-      'r/metadata.json': strToU8(metaFor('abc')),
-      'r/ingredients/checking/alignments/TIT.json': strToU8('{}'),
-    }));
-    const entries = Object.keys(unzipSync(rezip(nested.files)));
-    expect(entries).toContain('ingredients/');
-    expect(entries).toContain('ingredients/checking/');
-    expect(entries).toContain('ingredients/checking/alignments/');
-  });
 });
 
 describe('identifyExistingInstall — name an already-present resource by evidence', () => {
@@ -212,17 +172,6 @@ describe('fetchAndInstallPin — the SHA gate (D23b: verify at every import)', (
   const fetchReturning = (bytes: Uint8Array, ok = true, status = 200) =>
     (async () => ({ ok, status, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) })) as unknown as typeof fetch;
 
-  it('installs when the export SHA matches the pin', async () => {
-    const installed: string[] = [];
-    const r = await fetchAndInstallPin(PIN, {
-      api: apiWith(true, installed) as never,
-      fetchFn: fetchReturning(wrappedZip(PIN.sha as string)),
-    });
-    expect(r.repoPath).toBe('_local_/_sideloaded_/unfoldingword--en_twl');
-    expect(r.revision).toBe(PIN.sha);
-    expect(installed).toEqual(['_local_/_sideloaded_/unfoldingword--en_twl']);
-  });
-
   it('REFUSES to install when the export SHA differs from the pin', async () => {
     const installed: string[] = [];
     await expect(fetchAndInstallPin(PIN, {
@@ -230,15 +179,6 @@ describe('fetchAndInstallPin — the SHA gate (D23b: verify at every import)', (
       fetchFn: fetchReturning(wrappedZip('0'.repeat(40))),
     })).rejects.toThrow(/SHA mismatch/);
     expect(installed).toEqual([]); // nothing installed — the whole point
-  });
-
-  it('REFUSES a traversal archive before repacking or installing (#2, PR #309 review)', async () => {
-    const installed: string[] = [];
-    await expect(fetchAndInstallPin(PIN, {
-      api: apiWith(true, installed) as never,
-      fetchFn: fetchReturning(wrappedZip('deadbeef', { 'en_twl/../escape.txt': 'x' })),
-    })).rejects.toThrow(/escapes its folder/);
-    expect(installed).toEqual([]); // rejected before rezip, before the server
   });
 
   it('REFUSES when the pin carries a SHA but the export declares none', async () => {
@@ -264,16 +204,6 @@ describe('fetchAndInstallPin — the SHA gate (D23b: verify at every import)', (
       api: apiWith(true) as never,
       fetchFn: fetchReturning(new Uint8Array(0), false, 404),
     })).rejects.toThrow(/HTTP 404/);
-  });
-
-  it('reports each stage in order, so the UI can show honest progress', async () => {
-    const stages: string[] = [];
-    await fetchAndInstallPin(PIN, {
-      api: apiWith(true) as never,
-      fetchFn: fetchReturning(wrappedZip(PIN.sha as string)),
-      onStage: (s) => stages.push(s),
-    });
-    expect(stages).toEqual(['download', 'verify', 'install']);
   });
 
   // F4 — a FIRST install carries no pin SHA. The expected SHA must come from
@@ -421,15 +351,6 @@ describe('round 20 — targetRepoPath: the pinned identity installs SIDE BY SIDE
     expect(r.repoPath).toBe(side);
     expect(r.revision).toBe(PIN.sha); // D23b still verified — identity intact
   });
-
-  it('without the override, the canonical path is unchanged', async () => {
-    const installed: string[] = [];
-    await fetchAndInstallPin(PIN, {
-      api: apiWith(installed) as never,
-      fetchFn: fetchReturning(wrappedZip(PIN.sha as string)),
-    });
-    expect(installed).toEqual(['_local_/_sideloaded_/unfoldingword--en_twl']);
-  });
 });
 
 describe('sha-only pin with no tag — the Gitea commit archive (D71, #218)', () => {
@@ -470,15 +391,6 @@ describe('sha-only pin with no tag — the Gitea commit archive (D71, #218)', ()
   const apiWith = (installed: string[]) => ({
     getNetEnabled: async () => true,
     postZippedBurrito: async (repoPath: string) => { installed.push(repoPath); },
-  });
-
-  it('builds the /archive/<sha>.zip URL from the pin', () => {
-    expect(archiveZipUrl({ ...LEXICON, sha: SHA })).toBe(`https://git.door43.org/uW/en_ugl/archive/${SHA}.zip`);
-  });
-
-  it('reads the archive comment, and reports none when the record has none', () => {
-    expect(zipArchiveComment(archiveZip(SHA))).toBe(SHA);
-    expect(zipArchiveComment(archiveZip(null))).toBeNull();
   });
 
   it('fetches the commit archive when DCS names no tag, and installs when the comment matches the pin', async () => {

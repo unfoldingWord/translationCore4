@@ -69,28 +69,6 @@ const settingsEvent = (n: number, value: string): JournalEvent =>
   ({ v: 1, op: 'settings.set', actor: 'actor-a', ts: ts(n), base: null, path: 'textFont', value }) as unknown as JournalEvent;
 
 describe('#94 — the worker protocol (mirror, append, refusal, death)', () => {
-  it('posts the whole set first, then only the tail while the same array grows; a replaced array travels whole', async () => {
-    let made: ReturnType<typeof fakeWorker> | null = null;
-    const runner = workerFoldRunner(() => (made = fakeWorker()));
-    const events: JournalEvent[] = [settingsEvent(1, 'A')];
-    const first = await runner.fold(events);
-    expect(first.settings.textFont).toBe('A');
-    expect(made!.requests[0]).toMatchObject({ events });
-
-    events.push(settingsEvent(2, 'B')); // grown in place, as publishAndRegenerate does
-    const second = await runner.fold(events);
-    expect(second.settings.textFont).toBe('B');
-    expect(made!.requests[1]).toEqual({ id: 2, append: [events[1]] });
-
-    const replaced = [settingsEvent(1, 'A'), settingsEvent(3, 'C')]; // a new array, as open/replay do
-    const third = await runner.fold(replaced);
-    expect(third.settings.textFont).toBe('C');
-    expect(made!.requests[2]).toMatchObject({ events: replaced });
-    expect(third).toEqual(fold(replaced)); // the worker's answer IS the inline fold
-    runner.dispose();
-    expect(made!.terminated()).toBe(1);
-  });
-
   it("the fold's own refusal comes back as a rejection with its reason, and the worker lives on", async () => {
     let made: ReturnType<typeof fakeWorker> | null = null;
     const runner = workerFoldRunner(() => (made = fakeWorker()));

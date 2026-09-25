@@ -176,15 +176,14 @@ not have it, name the label in the issue or pull request body, for example
 
 ## Tests that need more than this repository
 
-Two prerequisites are outside this repository:
+One prerequisite is outside this repository:
 
 - **The Pankosmia development rig** on port 19998 — the integration tests and the
   Playwright journey tests need it. To set up the rig and the resource cache for the
   journeys from a clean clone, follow "Journeys from a clean clone" in
   [`dev-env/README.md`](dev-env/README.md#journeys-from-a-clean-clone).
-- **A sibling `sample-burrito` checkout** — the three S-0 smoke tests need it.
 
-Without them, the affected tests skip and name what they need. Work that touches the
+Without it, the affected tests skip and name what they need. Work that touches the
 platform boundary gets the `needs-rig` label. Ask for it in the body if you cannot apply
 it. The `rig` job in CI runs the rig-backed suites on every pull request
 [VERIFIED — `.github/workflows/rig.yml`, PR #168, 2026-09-04]; a maintainer may also run

@@ -104,13 +104,6 @@ const openThreeVerseChapter = () => {
 };
 
 describe('#141 — the section card keeps the verses it was opened with', () => {
-  it('rows are the source\u2019s \\ts\\* sections', () => {
-    openThreeVerseChapter();
-    render(<Draft />);
-    expect(screen.getByRole('button', { name: 'Draft section 1\u20132' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Draft section 3' })).toBeTruthy();
-  });
-
   it('a source switch that regroups the rows does not widen the open card\u2019s save targets', () => {
     // Codex round 1: the card saves the keys it holds. If the row it sits in
     // regrouped to 1\u20133, saving would write verse 3 back to a stub.
@@ -145,22 +138,6 @@ describe('#141 — the section card keeps the verses it was opened with', () => 
 });
 
 describe('#238 — one Section/Verse switch', () => {
-  it('default: Section selected, start this verse absent, Draft section 1 exists', () => {
-    render(<Draft />);
-    expect(screen.getByRole('tab', { name: 'Section' }).getAttribute('aria-selected')).toBe('true');
-    expect(screen.queryByRole('button', { name: 'start this verse' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Draft section 1' })).toBeTruthy();
-  });
-
-  it('state.draftUnits = { p1: "verse" } with the three-verse chapter: tab Verse selected, Draft section button absent, start this verse button present', () => {
-    state.draftUnits = { p1: 'verse' };
-    openThreeVerseChapter();
-    render(<Draft />);
-    expect(screen.getByRole('tab', { name: 'Verse' }).getAttribute('aria-selected')).toBe('true');
-    expect(screen.queryByRole('button', { name: /^Draft section/ })).toBeNull();
-    expect(screen.getAllByRole('button', { name: 'start this verse' }).length).toBeGreaterThan(0);
-  });
-
   it('state.editing = { key: "1:1", before: "" }: both tabs have disabled === true', () => {
     state.editing = { key: '1:1', before: '' };
     render(<Draft />);

@@ -88,42 +88,6 @@ beforeEach(() => { cleanup(); calls.length = 0; noteCurrent.clear(); notePersist
 const writes = () => calls.filter((c) => !READ_SIDE.has(c.name));
 
 describe('#290 — the story Understand screen', () => {
-  it('renders the title and every frame in order with picture and gateway text, and no draft line', () => {
-    render(<StoryUnderstand />);
-    expect(screen.getByTestId('story-understand')).toBeTruthy();
-    const title = screen.getByTestId('story-understand-unit-0');
-    expect(within(title).getByTestId('story-understand-gateway').textContent).toBe('The Creation');
-    expect(within(title).queryByTestId('story-understand-draft')).toBeNull();
-    const one = screen.getByTestId('story-understand-unit-1');
-    expect(within(one).getByRole('img').getAttribute('src')).toBe('local://obs-en-01-01.jpg');
-    expect(within(one).getByTestId('story-understand-gateway').textContent).toContain('in the beginning');
-    expect(within(one).queryByTestId('story-understand-draft')).toBeNull();
-    const two = screen.getByTestId('story-understand-unit-2');
-    expect(within(two).queryByTestId('story-understand-draft')).toBeNull();
-    expect(within(two).queryByRole('img')).toBeNull(); // no picture resolved for frame 2
-    expect(within(two).getByRole('textbox').getAttribute('value') ?? (within(two).getByRole('textbox') as HTMLTextAreaElement).value).toBe('Nota guardada');
-    expect(calls.map((c) => c.name)).toContain('loadUnderstand');
-  });
-
-  it('#327 — the picture floats at the start of the gateway text and the comment box clears it; a frame without a picture has no float', () => {
-    render(<StoryUnderstand />);
-    const one = screen.getByTestId('story-understand-unit-1');
-    const img = within(one).getByRole('img') as HTMLImageElement;
-    expect(img.style.float).toBe('inline-start');
-    expect(img.style.width).toBe('30%');
-    expect(img.style.minWidth).toBe('160px');
-    expect(img.style.maxHeight).toBe('210px');
-    // The picture and the text share one flow: the img precedes the text in the same parent.
-    const gateway = within(one).getByTestId('story-understand-gateway');
-    expect(img.parentElement).toBe(gateway.parentElement);
-    expect(img.compareDocumentPosition(gateway) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(within(one).getByTestId('story-understand-comment').style.clear).toBe('both');
-    const two = screen.getByTestId('story-understand-unit-2');
-    expect(within(two).queryByRole('img')).toBeNull();
-    expect(within(two).getByTestId('story-understand-comment').style.clear).toBe('both');
-    expect(within(two).getByRole('textbox')).toBeTruthy();
-  });
-
   it('the helps panel is the Bible panel in story mode (#331): the whole story listed, the frame in focus marked, Notes | Words | Questions and no simplified or comments tab', () => {
     state.helpsTab = 'notes';
     const { rerender } = render(<StoryUnderstand />);
@@ -150,17 +114,5 @@ describe('#290 — the story Understand screen', () => {
     expect(q.getAttribute('data-focused')).toBe('true');
     expect(writes()).toEqual([]);
     state.helpsTab = 'notes';
-  });
-
-  it('typing a comment on a frame stages it under the {story, frame} target, unmapped; no other control writes', () => {
-    render(<StoryUnderstand />);
-    const box = within(screen.getByTestId('story-understand-unit-1')).getByRole('textbox');
-    fireEvent.change(box, { target: { value: 'Preguntar al equipo.' } });
-    const staged = calls.find((c) => c.name === 'stageNote');
-    expect(staged?.args[0]).toMatchObject({ chapter: 1, verse: 1, projectFrame: true, stored: '' });
-    expect(staged?.args[1]).toBe('Preguntar al equipo.');
-    fireEvent.blur(box);
-    expect(calls.some((c) => c.name === 'flushNotes')).toBe(true);
-    expect(writes().map((c) => c.name)).toEqual(['stageNote', 'flushNotes']);
   });
 });

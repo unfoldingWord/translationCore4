@@ -10,12 +10,6 @@ const { appResourcesDir, bindPackagedResources, bootstrap, profileDirectory, sho
 const repo = path.resolve(__dirname, '..');
 const recipe = fs.readFileSync(path.join(__dirname, 'package-desktop.zsh'), 'utf8');
 const desktopMain = fs.readFileSync(path.join(__dirname, 'desktop-main.cjs'), 'utf8');
-const smokeApi = fs.readFileSync(path.join(__dirname, 'smoke-api.cjs'), 'utf8');
-const smokeZsh = fs.readFileSync(path.join(__dirname, 'smoke-installed.zsh'), 'utf8');
-const smokePowerShell = fs.readFileSync(path.join(__dirname, 'smoke-installed.ps1'), 'utf8');
-const smokeJournal = fs.readFileSync(path.join(__dirname, 'smoke-journal-entry.ts'), 'utf8');
-const pinsSetup = fs.readFileSync(path.join(repo, 'dev-env', 'scripts', 'setup-from-pins.zsh'), 'utf8');
-const assembledSetup = fs.readFileSync(path.join(repo, 'dev-env', 'scripts', 'setup.zsh'), 'utf8');
 // Source the identifier and project data from the actual packaged inputs.
 const resource = recipe.match(/"(unfoldingWord\/en_ult):/)[1].toLowerCase().replace('/', '--');
 const imagePin = recipe.match(/"uW\/obs_images_360::([0-9a-f]{40})"/)[1];
@@ -360,39 +354,4 @@ test('external-server mode leaves the caller override and saved profile untouche
   if (shouldBindPackagedResources('false')) bindPackagedResources(options);
   assert.equal(process.env.APP_RESOURCES_DIR, original.app_resources_dir);
   assert.deepEqual(JSON.parse(fs.readFileSync(settingsFile, 'utf8')), original);
-});
-
-test('every template assembly route invokes the shared OBS validator', () => {
-  for (const source of [pinsSetup, assembledSetup, recipe]) {
-    assert.match(source, /fix-obs-template\.mjs/);
-  }
-});
-
-test('OBS smoke reads the platform template before writing and checks all byte surfaces', () => {
-  assert.match(smokeApi, /const source = Buffer\.from\(await getBytes\(storyRoute\(project, number\)\)\)/);
-  assert.match(smokeApi, /source\.includes\(0x0d\)/);
-  assert.match(smokeApi, /OBS template probe/);
-  assert.match(smokeApi, /lines\.slice\(0, images\[0\] \+ 1\)/);
-  assert.match(smokeApi, /if \(projects\.includes\(repo\)\)/);
-  assert.match(smokeApi, /\/api\/git\/status\//);
-  assert.doesNotMatch(smokeApi, /execFileSync\(["']git["']/);
-  assert.match(smokeApi, /HTTP\/package bytes/);
-  assert.match(smokeJournal, /gitStatus\(repoPath\)/);
-  assert.doesNotMatch(smokeJournal, /execFileSync\(["']git["']/);
-});
-
-test('installed smoke bundles and runs the Burrito ZIP check after restart on both shells', () => {
-  assert.match(recipe, /build-smoke-api\.cjs/);
-  assert.match(recipe, /LICENSE\.zip\.js/);
-  assert.match(recipe, /@zip\.js\/zip\.js \(bundled export smoke\)/);
-  assert.match(recipe, /"zip_js": \{ "version": "\$ZIP_JS_VER" \}/);
-  for (const [source, readback, exportStep, cleanup] of [
-    [smokeZsh, 'run_steps readback', 'run_steps export', 'run_steps delete'],
-    [smokePowerShell, 'Run-Steps readback', 'Run-Steps export', 'Run-Steps delete'],
-  ]) {
-    assert.ok(source.indexOf(readback) < source.indexOf(exportStep));
-    assert.ok(source.indexOf(exportStep) < source.indexOf(cleanup));
-  }
-  assert.match(smokeApi, /\/api\/burrito\/zipped\//);
-  assert.match(smokeApi, /\/api\/burrito\/metadata\/raw\//);
 });

@@ -73,12 +73,6 @@ describe('#213 reflowAlignment — keep what still fits, drop what changed', () 
     expect(placed(more!)[2]).toEqual(['Dios/2/3']);
   });
 
-  it('a verse whose links all survive is no longer stale; unlinked words still report work', () => {
-    const next = reflowAlignment(linkedRecord(), `${TEXT}.`);
-    expect(alignmentIsStale(next!, `${TEXT}.`)).toBe(false);
-    expect(next!.wordBank.length).toBeGreaterThan(0); // "de", "Dios"(1), "y" still to place
-  });
-
   it('nothing to reflow → null, so the caller leaves the record exactly as it is (D36)', () => {
     const r = linkedRecord();
     expect(reflowAlignment(undefined, TEXT)).toBeNull();

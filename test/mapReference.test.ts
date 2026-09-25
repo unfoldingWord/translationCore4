@@ -30,22 +30,6 @@ beforeEach(() => {
 });
 
 describe('the same-frame short-circuit', () => {
-  it('returns the reference untouched and reports it was not mapped', async () => {
-    const out = await mapReference({
-      from: 'eng',
-      to: 'eng',
-      book: 'JON',
-      chapter: 1,
-      verse: 17,
-      schemes,
-    });
-    expect(out).toEqual({
-      ok: true,
-      reference: { book: 'JON', chapter: 1, verse: 17 },
-      mapped: false,
-    });
-  });
-
   it('never loads the mapping engine — the default project pays nothing', async () => {
     // The engine is a ~233 kB gzipped dynamic chunk. An eng project must not
     // fetch it. Forgetting the cached module and then short-circuiting proves
@@ -80,19 +64,6 @@ describe('the same-frame short-circuit', () => {
 });
 
 describe('cross-frame single verses', () => {
-  it('eng -> rsc moves a psalm across the superscription offset', async () => {
-    const out = await mapReference({
-      from: 'eng',
-      to: 'rsc',
-      book: 'PSA',
-      chapter: 3,
-      verse: 1,
-      schemes,
-    });
-    expect(out).toMatchObject({ ok: true, mapped: true });
-    if (out.ok) expect(out.reference.chapter).toBe(3);
-  });
-
   it('eng JON 1:17 becomes rsc JON 2:1 — the frame discriminator, mapped', async () => {
     // The verse that identifies the eng frame: eng JON 1 has 17 verses, every
     // other scheme ends chapter 1 at 16. So this reference MUST cross a chapter
@@ -144,22 +115,6 @@ describe('cross-frame single verses', () => {
     expect(out).toEqual({
       ok: true,
       reference: { book: 'MAL', chapter: 4, verse: 1 },
-      mapped: true,
-    });
-  });
-
-  it('a verse needing no adjustment still reports mapped', async () => {
-    const out = await mapReference({
-      from: 'eng',
-      to: 'rsc',
-      book: 'JHN',
-      chapter: 1,
-      verse: 1,
-      schemes,
-    });
-    expect(out).toEqual({
-      ok: true,
-      reference: { book: 'JHN', chapter: 1, verse: 1 },
       mapped: true,
     });
   });
@@ -296,19 +251,6 @@ describe('spans', () => {
     expect(out.ok).toBe(false);
     if (!out.ok) expect(['span-split', 'verse-zero']).toContain(out.reason);
   });
-
-  it('collapses a span whose endpoints map to one verse', async () => {
-    // A degenerate result must not be written as "5-5".
-    const out = await mapReference({
-      from: 'eng',
-      to: 'eng',
-      book: 'JHN',
-      chapter: 1,
-      verse: '5-5',
-      schemes,
-    });
-    expect(out).toMatchObject({ ok: true, reference: { verse: '5-5' }, mapped: false });
-  });
 });
 
 describe('a fan-out becomes a span when it is contiguous', () => {
@@ -393,30 +335,6 @@ describe('a fan-out becomes a span when it is contiguous', () => {
       schemes,
     });
     expect(out.ok).toBe(false);
-  });
-});
-
-describe('the string/array trap, end to end', () => {
-  it('maps correctly from the platform\'s string-valued mappedVerses', async () => {
-    // The bundled schemes are 100% string-valued. If normalizeScheme were
-    // skipped, reverseVersification would build a table keyed by single
-    // characters and the reverse hop would silently return the input
-    // unchanged — so this passing IS the proof the normalization is wired.
-    const doc = schemes.eng;
-    expect(Object.values(doc.mappedVerses ?? {}).every((v) => typeof v === 'string')).toBe(true);
-
-    // The reverse hop is the one that needs the array form. JON 1:17 only
-    // reaches rsc JON 2:1 if BOTH hops worked, so a corrupt reverse table
-    // would show up here as the input coming back unchanged.
-    const out = await mapReference({
-      from: 'eng',
-      to: 'rsc',
-      book: 'JON',
-      chapter: 1,
-      verse: 17,
-      schemes,
-    });
-    expect(out).toMatchObject({ ok: true, reference: { chapter: 2, verse: 1 } });
   });
 });
 

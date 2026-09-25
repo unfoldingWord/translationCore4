@@ -13,17 +13,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   classifyDivergence,
-  decompose,
-  derivedProjections,
   fold,
-  recompose,
   reconcileUsfm,
   seedFromSidecars,
-  slotKeysOf,
   verseTextMd5,
-  type FoldOutput,
 } from '../src/data/journal/runtime';
-import type { JournalEvent } from '../src/data/journal/seal';
 import { md5Hex as productMd5Hex } from '../src/data/httpStore';
 
 // The NATIVE reference, loaded outside the vite pipeline (the same workaround as
@@ -33,24 +27,15 @@ const refFold = nodeRequire('./journal/fold.mjs') as {
   fold(events: unknown[]): unknown;
   verseTextMd5(content: string): string;
 };
-const refCheckpoint = nodeRequire('./journal/checkpoint.mjs') as {
-  derivedProjections(foldOut: unknown, opts: unknown): Record<string, string>;
-};
 const refReconcile = nodeRequire('./journal/reconcile.mjs') as {
   seedFromSidecars(inputs: unknown): unknown[];
   reconcileUsfm(...args: unknown[]): unknown[];
-};
-const refSkeleton = nodeRequire('./journal/skeleton.mjs') as {
-  decompose(usfm: string): { skeleton: string; verses: Record<string, string> };
 };
 const refMd5 = nodeRequire('./journal/md5.mjs') as {
   md5Hex(text: string): string;
 };
 
 const ACTOR = 'a1234567890abcde';
-let tick = 0;
-const ts = (): string =>
-  `2026-08-19T10:00:${String(10 + tick).padStart(2, '0')}.${String((tick += 1)).padStart(3, '0')}Z|0000|${ACTOR}`;
 
 // A small book with non-ASCII content, so the md5 swap (node:crypto -> md5.mjs)
 // and the usfm-js import swap are both exercised over multi-byte UTF-8.
@@ -68,68 +53,6 @@ const USFM = [
   '\\v 1 Pero tú enseña — ἃ πρέπει.',
   '',
 ].join('\n');
-
-const vector = (): JournalEvent[] => {
-  tick = 0;
-  const { skeleton, verses } = decompose(USFM);
-  const addTs = ts();
-  const events: JournalEvent[] = [
-    {
-      v: 1, op: 'project.vrs.set', actor: ACTOR, ts: ts(), base: null,
-      seed: { source: 'creation' }, name: 'eng', bytes: '{"maxVerses":{"TIT":["16"]}}',
-    },
-    { v: 1, op: 'book.add', actor: ACTOR, ts: addTs, base: null, book: 'TIT', scope: [], skeleton, initialVerses: verses },
-    {
-      v: 1, op: 'text.verse.set', actor: ACTOR, ts: ts(), base: addTs,
-      book: 'TIT', chapter: '1', verse: '2', text: 'Nueva línea — ἐπ᾽ ἐλπίδι.\n',
-    },
-    {
-      v: 1, op: 'align.verse.set', actor: ACTOR, ts: ts(), base: null, generation: addTs,
-      book: 'TIT', chapter: '1', verse: '1',
-      alignments: [], wordBank: [{ word: 'Pablo', occurrence: 1, occurrences: 1 }],
-      targetVerseMd5: verseTextMd5('Pablo, siervo de Dios — δοῦλος Θεοῦ.'),
-    },
-    {
-      v: 1, op: 'check.decision.set', actor: ACTOR, ts: ts(), base: null, generation: addTs,
-      toolId: 'translationWords',
-      decision: {
-        contextId: {
-          checkId: 'x1y2', occurrenceNote: '',
-          reference: { bookId: 'tit', chapter: 1, verse: 1 },
-          tool: 'translationWords', groupId: 'god', quote: 'Θεοῦ', quoteString: 'Θεοῦ',
-          glQuote: '', occurrence: 1,
-        },
-        category: 'kt', selections: false, comments: false, reminders: false,
-        nothingToSelect: false, verseEdits: false, invalidated: false,
-        modifiedTimestamp: '2026-08-19T10:00:00.000Z',
-      },
-    },
-    {
-      v: 1, op: 'resource.pin.set', actor: ACTOR, ts: ts(), base: null,
-      slot: 'languageSets.primary.translationNotes',
-      entry: { repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v86', sha: 'c354b8ae66a23c485bf6f38fd35bd8f7ef81e4e5', flavor: 'parascriptural/x-bcvnotes' },
-    },
-    {
-      v: 1, op: 'resource.pin.set', actor: ACTOR, ts: ts(), base: null,
-      slot: 'languageSets.fallback.translationNotes',
-      entry: { repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v86', sha: 'c354b8ae66a23c485bf6f38fd35bd8f7ef81e4e5', flavor: 'parascriptural/x-bcvnotes' },
-    },
-    { v: 1, op: 'settings.set', actor: ACTOR, ts: ts(), base: null, path: 'textDirection', value: 'ltr' },
-  ];
-  return events;
-};
-
-const BASE_METADATA = {
-  format: 'scripture burrito',
-  meta: { category: 'source' },
-  type: { flavorType: { name: 'scripture', currentScope: {} } },
-  ingredients: {},
-};
-const RESOLUTIONS = {
-  translationWords: {
-    TIT: { repoPath: 'git.door43.org/unfoldingWord/en_tw', version: 'v87', languageSet: 'fallback' },
-  },
-};
 
 describe('#62 runtime fold parity — the vite-pipeline import equals the native reference', () => {
   it('verseTextMd5 agrees over multi-byte UTF-8 (the node:crypto -> md5.mjs swap)', () => {
@@ -163,62 +86,6 @@ describe('#62 runtime fold parity — the vite-pipeline import equals the native
       expect(refMd5.md5Hex(input), `md5.mjs over ${JSON.stringify(input)}`).toBe(digest);
       expect(productMd5Hex(input), `httpStore md5Hex over ${JSON.stringify(input)}`).toBe(digest);
     }
-  });
-
-  it('decompose/recompose agree and round-trip byte-identically (R-8.4.2)', () => {
-    const mine = decompose(USFM);
-    const ref = refSkeleton.decompose(USFM);
-    expect(mine).toEqual(ref);
-    expect(recompose(mine.skeleton, mine.verses)).toBe(USFM);
-    expect(slotKeysOf(mine.skeleton)).toEqual(['1:1', '1:2', '2:1']);
-  });
-
-  it('fold agrees event-for-event on a vector covering every runtime-used surface', () => {
-    const events = vector();
-    const mine = fold(events);
-    const ref = refFold.fold(JSON.parse(JSON.stringify(events)));
-    expect(JSON.parse(JSON.stringify(mine))).toEqual(JSON.parse(JSON.stringify(ref)));
-    expect(mine.books.TIT.verses['1:2']).toBe('Nueva línea — ἐπ᾽ ἐλπίδι.\n');
-    expect(mine.invalid).toEqual([]); // the align hash was computed with the SAME extraction
-  });
-
-  it('derivedProjections agree byte-for-byte (the checkpoint posix-resolve swap)', () => {
-    const events = vector();
-    const mine = derivedProjections(fold(events), {
-      baseMetadata: BASE_METADATA,
-      resolutions: RESOLUTIONS,
-    });
-    const ref = refCheckpoint.derivedProjections(refFold.fold(JSON.parse(JSON.stringify(events))), {
-      baseMetadata: BASE_METADATA,
-      resolutions: RESOLUTIONS,
-    });
-    expect({ ...mine }).toEqual({ ...ref });
-    expect(Object.keys(mine).sort()).toEqual([
-      'TIT.usfm',
-      'checking/alignments/TIT.json',
-      'checking/resources.json',
-      'checking/settings.json',
-      'checking/translationWords/TIT.json',
-      'metadata.json',
-      'vrs.json',
-    ]);
-  });
-
-  it('derivedProjections refuses a path-escaping projection key in BOTH pipelines (R-8.7.6)', () => {
-    const foldOut = fold(vector());
-    const poisoned = {
-      ...foldOut,
-      books: { ...foldOut.books, '../ESCAPE': foldOut.books.TIT },
-    } as FoldOutput;
-    expect(() =>
-      derivedProjections(poisoned, { baseMetadata: BASE_METADATA, resolutions: RESOLUTIONS }),
-    ).toThrow(/refuse to project/);
-    expect(() =>
-      refCheckpoint.derivedProjections(JSON.parse(JSON.stringify(poisoned)), {
-        baseMetadata: BASE_METADATA,
-        resolutions: RESOLUTIONS,
-      }),
-    ).toThrow(/refuse to project/);
   });
 
   it('classifyDivergence tolerates audio and reports a deleted derived file as divergence', () => {

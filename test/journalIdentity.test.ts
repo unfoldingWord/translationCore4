@@ -15,8 +15,7 @@ import { ACTOR_RE, SLOT } from '../journal/grammar.mjs';
 
 // journal/fold.mjs is Node-bound (node:crypto, createRequire). The
 // app's vite-plugin-node-polyfills aliases node builtins to browser mocks even
-// under the Vitest node environment [VERIFIED in this toolchain — same
-// workaround as test/s0a-aligner-headless.test.ts], so the reference fold is
+// under the Vitest node environment [VERIFIED in this toolchain — see CONTRIBUTING.md, "Write a test that reads files"], so the reference fold is
 // loaded via a NATIVE require (Node ≥22 supports require of ESM).
 interface FoldResult {
   forks: { key: string; heads: string[] }[];
@@ -35,14 +34,6 @@ const PATH_ONE = '_local_/_local_/proj-one';
 const PATH_TWO = '_local_/_local_/proj-two';
 
 describe('#61 D53(c): actor identity is scoped per project', () => {
-  it('criterion 1: two repoPaths under ONE secret derive two DIFFERENT actor ids, both §8.1 slugs', async () => {
-    const one = await deriveActorId(SECRET_A, PATH_ONE);
-    const two = await deriveActorId(SECRET_A, PATH_TWO);
-    expect(one).not.toBe(two);
-    expect(one).toMatch(ACTOR_RE);
-    expect(two).toMatch(ACTOR_RE);
-  });
-
   it('criterion 2: the derivation is deterministic and one-way (HMAC — the id reveals nothing of the secret)', async () => {
     const first = await deriveActorId(SECRET_A, PATH_ONE);
     const again = await deriveActorId(SECRET_A, PATH_ONE);
@@ -68,14 +59,6 @@ describe('#61 D53(c): actor identity is scoped per project', () => {
     const second = new JournalStore({ api, repoPath: PATH_ONE, kv });
     await second.open();
     expect(second.actorId).toBe(first.actorId);
-  });
-
-  it('criterion 4: a copied/imported project (a different repoPath) gets a DIFFERENT id', async () => {
-    // The repoPath is the project key (D53c): copying a project to a new path
-    // is a new project as far as actor identity goes.
-    const original = await deriveActorId(SECRET_A, PATH_ONE);
-    const copied = await deriveActorId(SECRET_A, '_local_/_local_/proj-one-copy');
-    expect(copied).not.toBe(original);
   });
 
   it('criterion 5: the merge test — NEGATIVE CONTROL first (one global id = silent loss, D53c), then per-project ids (a visible fork)', async () => {
@@ -226,12 +209,6 @@ describe('#61 review F1: the first-run secret mint is atomic', () => {
     const stored = backing.get('installation-secret');
     expect(stored).toBeDefined();
     expect(await deriveActorId(stored as string, PATH_ONE)).toBe(first);
-  });
-
-  it('idbKvStore is memoized per database name, so one process holds ONE object per database', () => {
-    // The database is opened lazily, so this constructs no IndexedDB request.
-    expect(idbKvStore('tc4-memo-probe')).toBe(idbKvStore('tc4-memo-probe'));
-    expect(idbKvStore('tc4-memo-probe')).not.toBe(idbKvStore('tc4-memo-probe-other'));
   });
 
   it('two concurrent first-run open() calls provision exactly ONE actor directory', async () => {

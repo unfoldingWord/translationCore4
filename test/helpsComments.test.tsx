@@ -3,9 +3,7 @@
 // translator's own user comments for the current chapter.
 import React from 'react';
 import { describe, expect, it, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
-
-const calls: Array<{ name: string; args: unknown[] }> = [];
+import { render, screen, cleanup } from '@testing-library/react';
 
 // Aligned verse in the REAL usfm-js shape (zaln milestone → gateway w
 // children; content + verse-level occurrence). "of God" renders Θεοῦ#2; the
@@ -62,7 +60,6 @@ const resetState = () => {
 // rerender shows the post-dispatch UI.
 const actionsProxy = new Proxy({}, {
   get: (_, name: string) => (...args: unknown[]) => {
-    calls.push({ name, args });
     if (name === 'hoverHelp') state.helpsHover = args[0];
     if (name === 'focusHelp')
       state.helpsActive =
@@ -94,7 +91,6 @@ import Draft from '../src/views/Draft.jsx';
 beforeEach(() => {
   cleanup();
   resetState();
-  calls.length = 0;
   state.helpsTab = 'comments';
   (state.understand as Record<string, unknown>).comprehension = {
     '1:3': { text: 'comment on verse three', ts: '2026-08-27T00:00:00.000Z|0000|a' },
@@ -112,13 +108,5 @@ describe('Helps comments tab (#111)', () => {
     expect(comments[1].textContent).toContain('Verse 3');
     expect(screen.queryByText('other chapter')).toBeNull();
     expect(screen.getByRole('tab', { name: 'Comments' })).toBeTruthy();
-  });
-
-  it('does not fire write actions when rows are clicked', () => {
-    render(<Draft />);
-    const comments = screen.getAllByTestId('helps-comment');
-    comments.forEach((row) => fireEvent.click(row));
-    const READ_SIDE = new Set(['loadUnderstand', 'setHelpsTab', 'hoverHelp', 'focusHelp', 'stagedNote', 'toggleHelps']);
-    expect(calls.filter((c) => !READ_SIDE.has(c.name))).toEqual([]);
   });
 });

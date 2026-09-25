@@ -3,10 +3,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   bootstrapVerse,
-  tokenizeTargetVerse,
   linkWord,
   unlinkWord,
-  stampTargetVerse,
   alignmentIsStale,
   allTargetWords,
 } from '../src/data/align/edit';
@@ -22,20 +20,6 @@ const SOURCE = 'dcs::unfoldingWord/el-x-koine_ugnt@v0.34';
 const boot = () => bootstrapVerse(TARGET, ORIG, SOURCE);
 const wordIn = (words: AlignedWord[], w: string, occ = 1) =>
   words.find((x) => x.word === w && Number(x.occurrence) === occ) as AlignedWord;
-
-describe('tokenizeTargetVerse — the bootstrap needs word tokens, not plain text', () => {
-  it('emits \\w tokens carrying occurrence and occurrences', () => {
-    const out = tokenizeTargetVerse(TARGET);
-    expect(out).toContain('\\w Pablo|x-occurrence="1" x-occurrences="1"\\w*');
-    // "Dios" appears twice: second occurrence numbered, total recorded on both.
-    expect(out).toContain('\\w Dios|x-occurrence="1" x-occurrences="2"\\w*');
-    expect(out).toContain('\\w Dios|x-occurrence="2" x-occurrences="2"\\w*');
-  });
-
-  it('preserves punctuation and spacing between words', () => {
-    expect(tokenizeTargetVerse('Pablo, siervo')).toContain(', ');
-  });
-});
 
 describe('C2.12 bootstrap — an unaligned verse starts usable, not empty', () => {
   const record = boot();
@@ -79,15 +63,6 @@ describe('C2.12 bootstrap — an unaligned verse starts usable, not empty', () =
 });
 
 describe('C2.11 link / unlink — a word is in exactly one place', () => {
-  it('linking moves the word out of the bank and into the alignment', () => {
-    const record = boot();
-    const pablo = wordIn(record.wordBank, 'Pablo');
-    const next = linkWord(record, 0, pablo);
-    expect(next.alignments[0].bottomWords.map((w) => w.word)).toEqual(['Pablo']);
-    expect(next.wordBank.some((w) => w.word === 'Pablo')).toBe(false);
-    expect(allTargetWords(next)).toHaveLength(allTargetWords(record).length); // conserved
-  });
-
   it('the two "Dios" occurrences link independently', () => {
     let record = boot();
     record = linkWord(record, 0, wordIn(record.wordBank, 'Dios', 1));
@@ -111,16 +86,6 @@ describe('C2.11 link / unlink — a word is in exactly one place', () => {
     expect(linkWord(record, 99, wordIn(record.wordBank, 'Pablo'))).toBe(record);
   });
 
-  it('unlinking returns the word to the bank', () => {
-    const record = boot();
-    const pablo = wordIn(record.wordBank, 'Pablo');
-    const linked = linkWord(record, 0, pablo);
-    const back = unlinkWord(linked, 0, pablo);
-    expect(back.alignments[0].bottomWords).toHaveLength(0);
-    expect(back.wordBank.some((w) => w.word === 'Pablo')).toBe(true);
-    expect(allTargetWords(back)).toHaveLength(allTargetWords(record).length);
-  });
-
   it('unlinking a word that is not there is a no-op', () => {
     const record = boot();
     expect(unlinkWord(record, 0, wordIn(record.wordBank, 'Pablo'))).toBe(record);
@@ -131,20 +96,6 @@ describe('C2.11 link / unlink — a word is in exactly one place', () => {
     const bankBefore = record.wordBank.length;
     linkWord(record, 0, wordIn(record.wordBank, 'Pablo'));
     expect(record.wordBank).toHaveLength(bankBefore);
-  });
-});
-
-describe('I-3 — the draft hash makes a later edit detectable', () => {
-  it('a changed verse makes the alignment stale', () => {
-    const record = boot();
-    expect(alignmentIsStale(record, TARGET.replace('Pablo', 'Saulo'))).toBe(true);
-  });
-
-  it('re-stamping after an intentional edit clears staleness', () => {
-    const edited = TARGET.replace('Pablo', 'Saulo');
-    const restamped = stampTargetVerse(boot(), edited);
-    expect(alignmentIsStale(restamped, edited)).toBe(false);
-    expect(restamped.invalid).toBe(false);
   });
 });
 

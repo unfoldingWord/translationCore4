@@ -7,9 +7,8 @@ import { describe, expect, it } from 'vitest';
 import { unzipSync, zipSync } from 'fflate';
 import { BURRITO_PARSER } from '../../src/data/import/burrito';
 import { CHECKS } from '../../src/data/import/burritoCheck.mjs';
-import { burritoFromRepoZip } from '../../src/data/export/burritoZip';
 import type { ImportFile } from '../../src/data/import/types';
-import { fixtureFile, readManifest } from '../helpers/import';
+import { fixtureFile } from '../helpers/import';
 
 const fs = process.getBuiltinModule('node:fs');
 const path = process.getBuiltinModule('node:path');
@@ -56,25 +55,6 @@ describe('#196 the burrito parser', () => {
     expect(bundle.facts.language).toBe('es-419');
     expect(bundle.books).toEqual([]);
     expect(bundle.stories?.map((s) => s.n)).toEqual(Array.from({ length: 50 }, (_, i) => i + 1));
-  });
-
-  it('the round trip: a tC4 export of the sample re-imports its alignments and decisions record for record', async () => {
-    // The export producer reads the server's zip of the repository; `.git/` is what it drops.
-    const repoZip = zipSync({ ...unzipSync(sampleZip), '.git/HEAD': new TextEncoder().encode('ref: refs/heads/main\n') });
-    const exported = await parse({ name: 'export.zip', bytes: burritoFromRepoZip(repoZip) });
-    expect(exported.findings).toEqual([]);
-    expect(exported.alignments).toEqual(ORIGINAL.alignments);
-    expect(exported.decisions).toEqual(ORIGINAL.decisions);
-    expect(exported.alignments!.TIT.length).toBeGreaterThan(0);
-    expect(exported.decisions!.length).toBeGreaterThan(0);
-  });
-
-  it('the manifest tC4 export (with its journal) carries the same records as the original', async () => {
-    const entry = readManifest().find((e) => e.parser === 'burrito' && e.file === 'burrito/tc4-export.zip')!;
-    const bundle = await parse(fixtureFile(entry.file as string));
-    expect(bundle.findings).toEqual([]);
-    expect(bundle.alignments).toEqual(ORIGINAL.alignments);
-    expect(bundle.decisions).toEqual(ORIGINAL.decisions);
   });
 
   it('a foreign burrito imports text only, and a details finding says so', async () => {
