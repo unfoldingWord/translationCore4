@@ -7,6 +7,7 @@ import { seedBookFromSource, seedMatchesSource } from '../src/data/seed';
 import { spliceVerse, verseBody } from '../src/data/usfm/splice';
 import { indexBook } from '../src/data/usfm/indexer';
 import { SaveScheduler } from '../src/data/saveScheduler';
+import { INSTALLED_SUITE } from '../src/data/installedSuite';
 
 const fs = process.getBuiltinModule('node:fs');
 const path = process.getBuiltinModule('node:path');
@@ -62,10 +63,25 @@ describe('B1 — seeding reads mid-line \\v markers (marker stream, not line wal
   // A whole-corpus leg: ~2s alone, but the default 5s times out under the
   // full suite's parallel load (observed 5.9s/7.6s, 2026-08-22).
   it('full en_ult corpus leg: seeded verse sets match the oracle for every book (skips without the cache)', { timeout: 30_000 }, () => {
-    // This repository's cache, from the repository root (the Vitest cwd) — never above it (#406).
-    const cache = path.resolve(process.cwd(), 'dev-env', 'resources-cache', 'en_ult-v89-unwrapped.zip');
-    if (!fs.existsSync(cache)) {
+    // This repository's cache, from the repository root (the Vitest cwd) — never above it.
+    // The zip is found by the app's pinned sha through the cache provenance, not by a
+    // version in its file name: a new pin must not turn this leg into a silent skip (#406).
+    const pin = INSTALLED_SUITE.extraScripture.find((s) => s.id === 'ult');
+    if (!pin) throw new Error('INSTALLED_SUITE has no ult pin');
+    // The provenance key, as dev-env/scripts/cache-resource.ts writes it.
+    const repo = pin.repoPath.split('/').pop() as string;
+    const cacheDir = path.resolve(process.cwd(), 'dev-env', 'resources-cache');
+    const provenanceFile = path.join(cacheDir, 'helps-provenance.json');
+    const entry = fs.existsSync(provenanceFile)
+      ? JSON.parse(fs.readFileSync(provenanceFile, 'utf8'))[repo]
+      : undefined;
+    const cache = entry && path.join(cacheDir, entry.zip);
+    if (!cache || !fs.existsSync(cache)) {
       console.warn('corpus leg skipped: resources cache absent');
+      return;
+    }
+    if (entry.revision !== pin.sha) {
+      console.warn(`corpus leg skipped: the cache holds ${repo} ${entry.revision}, the pin is ${pin.sha}`);
       return;
     }
     // node has no zip reader built in; sample the hard books via unzip -p
