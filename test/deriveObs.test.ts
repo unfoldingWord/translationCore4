@@ -12,6 +12,7 @@ const path = process.getBuiltinModule('node:path');
 const FIX = path.resolve(process.cwd(), 'test/fixtures/resources');
 const read = (p: string): string => fs.readFileSync(path.join(FIX, p), 'utf8');
 const obsTn = read('en_obs-tn@v13/OBS.tsv');
+const obsTq = read('en_obs-tq@v10/OBS.tsv');
 
 /** The data rows of a TSV, split on tabs — the ground truth the derive must match. */
 const rowsOf = (tsv: string): string[][] =>
@@ -64,5 +65,31 @@ describe('deriveObsItems — refusals and the locator accessor', () => {
     const tsv = `${header}\n1:1\taaaa\tkeyterm\tGod\t1\trc://*/tw/dict/bible/kt/god\nfront:intro\tbbbb\tkeyterm\tGod\t1\trc://*/tw/dict/bible/kt/god\n`;
     const items = deriveObsItems(tsv, 'translationWords');
     expect(items.map((i) => i.contextId.checkId)).toEqual(['aaaa']);
+  });
+});
+
+describe('deriveObsItems — OBS Translation Questions (en_obs-tq v10, #331, R-10.6.3)', () => {
+  const rows = rowsOf(obsTq);
+  const items = deriveObsItems(obsTq, 'translationQuestions');
+
+  it('derives EVERY question row, story-keyed like the notes, with the question and its response', () => {
+    expect(rows).toHaveLength(672);
+    expect(items).toHaveLength(rows.length);
+    for (const item of items) {
+      const r = item.contextId.reference;
+      expect(isStoryReference(r)).toBe(true);
+      expect(Number.isInteger(r.story) && Number.isInteger(r.frame)).toBe(true);
+      expect(item.contextId.tool).toBe('translationQuestions');
+      expect((item as { question?: string }).question).toBeTruthy();
+      expect((item as { response?: string }).response).toBeTruthy();
+    }
+    expect(new Set(items.map((i) => i.contextId.reference.story)).size).toBe(50);
+  });
+
+  it('scopes to one story: story 1 carries the 22 rows the TSV has for it, and the first is the creation question', () => {
+    const one = deriveObsItems(obsTq, 'translationQuestions', 1);
+    expect(one).toHaveLength(22);
+    expect(one[0]).toMatchObject({ contextId: { checkId: 'es4e', reference: { story: 1, frame: 1 } }, question: 'Where did everything in the universe come from?', response: 'God created everything.' });
+    expect(deriveObsItems(obsTq, 'translationQuestions', 51)).toEqual([]);
   });
 });

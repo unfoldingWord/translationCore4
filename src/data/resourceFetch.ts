@@ -314,13 +314,10 @@ export const tagForCommitSha = async (
   return (await findDcsTag(repoPath, (t) => t.commit?.sha === sha, fetchFn))?.name ?? null;
 };
 
-export type FetchStage = 'download' | 'verify' | 'install';
-
 export interface FetchOptions {
   api: ServerApi;
   /** Injected for tests; defaults to the global fetch. */
   fetchFn?: typeof fetch;
-  onStage?: (stage: FetchStage) => void;
   /** Install into this local repo path instead of the pin's canonical one.
    * Used when the canonical path is OCCUPIED by a different sha of the same
    * repo (round 20): the importer refuses an existing target, and deleting
@@ -405,13 +402,10 @@ export const fetchAndInstallPin = async (
     throw new Error('the app is offline — go online to download resources');
   }
 
-  opts.onStage?.('download');
   const downloaded = await downloadPin(pin, doFetch);
 
-  opts.onStage?.('verify');
   await verifyExportRevision(pin, downloaded.version, downloaded.revision, doFetch);
 
-  opts.onStage?.('install');
   const repoPath = opts.targetRepoPath ?? localRepoPathFor(pin);
   await opts.api.postZippedBurrito(repoPath, rezip(downloaded.files));
   return { repoPath, revision: downloaded.revision, bytes: downloaded.bytes };

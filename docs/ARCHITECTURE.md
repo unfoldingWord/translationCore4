@@ -263,7 +263,7 @@ The named-branch operation uses **existing endpoints** via single-branch publica
 
 - **i18n:** platform template mechanism + client locale files. (The `translate`-fn bridge to the RCL key set is moot post-A-5 — UI strings are our own; the RCL key set matters only if its helpers run headless, OPEN-QUESTIONS #14.)
 - **Offline:** every DCS operation is gated on the net context. All reads and writes go to the local server.
-- **Testing:** (a) unit tests on `data/` against `sample-burrito` fixtures — port the 27 harness checks; (b) D-1 round-trip property tests; (c) Playwright journey tests of the design-native Check view against `sample-burrito` (OPEN-QUESTIONS #6, A-5); (d) migrator golden tests from a real tC3 project zip; (e) Phase 2 fold property tests.
+- **Testing:** the Playwright journeys in `e2e/` are the primary test method (OPEN-QUESTIONS #6, A-5). A journey verifies a complete feature, and each new journey produces an artifact that can be verified and that each run produces again in the same way. Test a part in isolation only when you must, and write down all the ways that it can fail before you write its code. Do not write a unit test after the code (`AGENTS.md`, "How to test"). The conformance harness in `conformance/` stays the executable proof of BURRITO-SPEC (§9).
 - **Telemetry:** none.
 
 ## 11. Decision log (ADR-lite)

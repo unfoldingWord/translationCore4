@@ -62,7 +62,24 @@ describe('patchCheckSession — seq-guarded merge', () => {
     const state = { checkSession: null };
     expect(reducer(state, { type: 'patchCheckSession', seq: 3, patch: { orig: {} } })).toBe(state);
   });
+
+  it("concurrent orig and article merges keep each other's results", () => {
+    let state = { checkSession: session(5) };
+    state = reducer(state, {
+      type: 'patchCheckSession',
+      seq: 5,
+      patch: { article: { key: 'k', loading: false, found: { title: 'T' } } },
+    });
+    state = reducer(state, {
+      type: 'patchCheckSession',
+      seq: 5,
+      patch: { orig: { state: 'ready', testament: 'nt', chapters: {} } },
+    });
+    expect(state.checkSession.article?.found?.title).toBe('T');
+    expect(state.checkSession.orig?.state).toBe('ready');
+  });
 });
+
 
 describe('checkDecisionSaved — item-level completion', () => {
   it('replaces exactly the decided item and recomputes progress', () => {

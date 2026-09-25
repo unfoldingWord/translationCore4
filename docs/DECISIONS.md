@@ -1759,3 +1759,25 @@ changed. These facts were read for the rulings:
 The owner accepted point 5, the default, with the approval of the change set.
 `docs/ARCHITECTURE.md` sections 7 and 8 and `docs/PLATFORM-NOTES.md` #41–#45 carry this
 decision.
+
+## D81 (2026-09-25, project-owner rulings) **The Playwright journeys are the primary test method. A unit test is kept only when it catches a real defect that the journeys miss.** [owner session 2026-09-25; pull requests #414 and #415]
+
+Context. The unit suite had many cases that could not fail on a defect in shipped code, or
+that repeated a journey assertion. #414 removed them: before, 115 Vitest files and 1340
+passed; after, 109 files and 1034 passed. It kept the cases on error and refusal paths,
+crash recovery, concurrent writes, versification and non-English projects. No journey
+reaches those paths. It also kept each negative control that proves a kept checker can fail.
+
+1. **Do not write a unit test after you write the code.**
+2. **Use the E2E tests as the only test method when you can.** The E2E tests are the
+   Playwright journeys in `e2e/`. Use them to verify that complex features work. At the end
+   of each E2E test, produce an artifact that can be verified and that each run produces
+   again in the same way.
+3. **If you must test a part of the system in isolation, write down all the ways that it can
+   fail first.** Then write the code.
+4. **Delete a unit test that catches no real defect that the journeys miss.**
+
+CI does not run the journeys (`AGENTS.md`, "Before you hand off a pull request", rule 4). A
+defect that only a journey catches is found only when someone runs the journeys on the rig.
+`AGENTS.md` "How to test", `docs/ARCHITECTURE.md` section 10 and
+`.github/ISSUE_TEMPLATE/task.yml` carry this decision.

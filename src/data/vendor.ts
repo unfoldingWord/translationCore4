@@ -3,7 +3,7 @@
 // `require('word-aligner').default` — the same normalization, done once here).
 import usfmjsModule from 'usfm-js';
 import wordAlignerModule from 'word-aligner';
-import { AlignmentHelpers, UsfmFileConversionHelpers, selectionsHelpers } from 'word-aligner-lib';
+import { AlignmentHelpers, selectionsHelpers } from 'word-aligner-lib';
 
 type WordAligner = (typeof wordAlignerModule)['default'];
 
@@ -12,4 +12,4 @@ const wa = wordAlignerModule as unknown as WordAligner & { default?: WordAligner
 export const wordaligner: WordAligner = wa.default ?? wa;
 
 export const usfmjs = usfmjsModule;
-export { AlignmentHelpers, UsfmFileConversionHelpers, selectionsHelpers };
+export { AlignmentHelpers, selectionsHelpers };

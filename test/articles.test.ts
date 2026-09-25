@@ -24,6 +24,13 @@ describe('tA modules — the tN groupId is a module slug (PLATFORM-NOTES #12)', 
     [`${TA}::checking/acceptable/title.md`]: 'Acceptable Style',
   });
 
+  it('reads the module body and its authoritative title.md', async () => {
+    const a = await readTaArticle(api as never, TA, 'figs-metaphor');
+    expect(a?.title).toBe('Metaphor'); // trimmed, from title.md not the toc
+    expect(a?.body).toContain('A metaphor is');
+    expect(a?.ipath).toBe('translate/figs-metaphor/01.md');
+  });
+
   it('probes the other sections — a module is not always under translate/', async () => {
     const a = await readTaArticle(api as never, TA, 'acceptable');
     expect(a?.ipath).toBe('checking/acceptable/01.md');

@@ -3,7 +3,8 @@
 // docs/guided-build/phases/PHASE-1-SUMMARY.md before touching the guard.
 import { describe, it, expect } from 'vitest';
 import usfm from 'usfm-js';
-import { seedBookFromSource, seedMatchesSource } from '../src/data/seed';
+import { seedBookFromSource } from '../src/data/seed';
+import { seedMatchesSource } from './helpers/seed';
 import { spliceVerse, verseBody } from '../src/data/usfm/splice';
 import { indexBook } from '../src/data/usfm/indexer';
 import { SaveScheduler } from '../src/data/saveScheduler';
