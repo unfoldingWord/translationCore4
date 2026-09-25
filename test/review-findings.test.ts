@@ -65,7 +65,7 @@ describe('B1 — seeding reads mid-line \\v markers (marker stream, not line wal
   it('full en_ult corpus leg: seeded verse sets match the oracle for every book (skips without the cache)', { timeout: 30_000 }, () => {
     // This repository's cache, from the repository root (the Vitest cwd) — never above it.
     // The zip is found by the app's pinned sha through the cache provenance, not by a
-    // version in its file name: a new pin must not turn this leg into a silent skip (#406).
+    // version in its file name: after a new pin, the skip names both shas (#406).
     const pin = INSTALLED_SUITE.extraScripture.find((s) => s.id === 'ult');
     if (!pin) throw new Error('INSTALLED_SUITE has no ult pin');
     // The provenance key, as dev-env/scripts/cache-resource.ts writes it.
@@ -75,13 +75,13 @@ describe('B1 — seeding reads mid-line \\v markers (marker stream, not line wal
     const entry = fs.existsSync(provenanceFile)
       ? JSON.parse(fs.readFileSync(provenanceFile, 'utf8'))[repo]
       : undefined;
+    if (entry && entry.revision !== pin.sha) {
+      console.warn(`corpus leg skipped: the cache holds ${repo} ${entry.revision}, the pin is ${pin.sha}`);
+      return;
+    }
     const cache = entry && path.join(cacheDir, entry.zip);
     if (!cache || !fs.existsSync(cache)) {
       console.warn('corpus leg skipped: resources cache absent');
-      return;
-    }
-    if (entry.revision !== pin.sha) {
-      console.warn(`corpus leg skipped: the cache holds ${repo} ${entry.revision}, the pin is ${pin.sha}`);
       return;
     }
     // node has no zip reader built in; sample the hard books via unzip -p
