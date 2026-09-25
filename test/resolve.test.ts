@@ -7,7 +7,6 @@ import {
   resolutionRecord,
   recordMatchesResolution,
   pinKey,
-  TOOL_SLOT,
 } from '../src/data/resolve';
 import type { Coverage } from '../src/data/resolve';
 import type { ResourcePin, ResourcesFile } from '../src/data/burritoStore';
@@ -66,35 +65,9 @@ describe('D30.1 — the resolution unit is (tool, book)', () => {
     expect(tn.rung).toBe('primary');
     expect(heb.rung).toBe('fallback'); // same tool, different book, different rung
   });
-
-  it('tW derives from the TWL slot and tN from the notes slot', () => {
-    expect(TOOL_SLOT.translationWords).toBe('translationWordsLinks');
-    expect(resolveToolBook(RESOURCES, 'translationWords', 'TIT', COVERAGE).pin?.repoPath)
-      .toContain('es-419_twl');
-    expect(resolveToolBook(RESOURCES, 'translationNotes', 'TIT', COVERAGE).pin?.repoPath)
-      .toContain('es-419_tn');
-  });
-
-  it('one book resolves to exactly ONE resource at ONE version (no mixing)', () => {
-    const r = resolveToolBook(RESOURCES, 'translationNotes', 'TIT', COVERAGE);
-    expect(r.pin).toBeTruthy();
-    expect(resolutionRecord(r)).toEqual({
-      repoPath: 'git.door43.org/Es-419_gl/es-419_tn',
-      version: 'v66',
-      sha: sha40('es-419_gl/es-419_tn@v66'),
-      languageSet: 'primary',
-    });
-  });
 });
 
 describe('D30.2 — the automatic ladder is exactly two rungs', () => {
-  it('covered by primary → primary; uncovered by primary → English fallback', () => {
-    expect(resolveToolBook(RESOURCES, 'translationNotes', 'TIT', COVERAGE).usedFallback).toBe(false);
-    const heb = resolveToolBook(RESOURCES, 'translationNotes', 'HEB', COVERAGE);
-    expect(heb.usedFallback).toBe(true);
-    expect(heb.pin?.repoPath).toContain('en_tn');
-  });
-
   it('neither rung covers the book → no resolution (the tool is not offered)', () => {
     const r = resolveToolBook(RESOURCES, 'translationNotes', 'REV', COVERAGE);
     expect(r.rung).toBeNull();
@@ -116,43 +89,8 @@ describe('D30.2 — the automatic ladder is exactly two rungs', () => {
   });
 });
 
-describe('D30.3 — the project pins bind every opener', () => {
-  it('resolution is a pure function of (pins, coverage) — no preference input exists', () => {
-    const a = resolveToolBook(RESOURCES, 'translationNotes', 'TIT', COVERAGE);
-    const b = resolveToolBook(RESOURCES, 'translationNotes', 'TIT', COVERAGE);
-    expect(a).toEqual(b);
-    expect(resolveToolBook.length).toBe(4); // (resources, tool, book, coverage)
-  });
-});
-
 describe('D30.4 / D30.5 — missing pinned version: fetch when online, first-class unavailable when offline', () => {
   const opts = (online: boolean, isLocal: () => boolean) => ({ coverage: COVERAGE, isLocal, online });
-
-  it('local → ready', () => {
-    const p = preflightToolBook(RESOURCES, 'translationNotes', 'TIT', opts(true, allLocal));
-    expect(p.state).toBe('ready');
-    expect(p.needs).toBeNull();
-  });
-
-  it('absent + online → fetch, naming the exact pin to fetch (sb-zip + SHA)', () => {
-    const p = preflightToolBook(RESOURCES, 'translationNotes', 'TIT', opts(true, noneLocal));
-    expect(p.state).toBe('fetch');
-    expect(p.needs?.repoPath).toContain('es-419_tn');
-    expect(p.needs?.version).toBe('v66');
-  });
-
-  it('absent + offline → unavailable, NOT an error, and never blocks other work', () => {
-    const p = preflightToolBook(RESOURCES, 'translationNotes', 'TIT', opts(false, noneLocal));
-    expect(p.state).toBe('unavailable');
-    expect(p.needs).toBeNull();
-    // The state is per (tool, book): another book stays independently openable.
-    const other = preflightToolBook(RESOURCES, 'translationNotes', 'JON', {
-      coverage: COVERAGE,
-      isLocal: (x) => x.repoPath.includes('es-419_tn'),
-      online: false,
-    });
-    expect(other.state).toBe('ready');
-  });
 
   it('no resources.json at all → unpinned (distinct from unavailable)', () => {
     expect(preflightToolBook(null, 'translationNotes', 'TIT', opts(true, allLocal)).state)

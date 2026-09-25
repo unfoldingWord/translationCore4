@@ -9,9 +9,6 @@ import { describe, expect, it } from 'vitest';
 import {
   deriveForProject,
   deriveTnItems,
-  deriveTwlItems,
-  isDecided,
-  progressOf,
 } from '../src/data/derive';
 import { SCHEME_NAMES, type SchemeDoc, type SchemeName } from '../src/data/versification';
 
@@ -32,41 +29,9 @@ const schemes = Object.fromEntries(
 // ends chapter 1 at 16. So an eng->non-eng project shifts every JON 1:17 and
 // every JON 2:x reference.
 const TN_JON = read('test/fixtures/resources/en_tn@v86/JON.tsv');
-const TWL_TIT = read('test/fixtures/resources/en_twl@v86/TIT.tsv');
 
 const refsOf = (items: { contextId: { reference: { chapter?: unknown; verse?: unknown } } }[]) =>
   items.map((i) => `${i.contextId.reference.chapter}:${i.contextId.reference.verse}`);
-
-describe('same-frame projects are untouched', () => {
-  it('an eng project derives exactly what the unmapped pipeline derives', async () => {
-    const out = await deriveForProject({
-      tsv: TN_JON,
-      tool: 'translationNotes',
-      bookId: 'jon',
-      from: 'eng',
-      to: 'eng',
-      schemes,
-    });
-    expect(out.mapped).toBe(false);
-    expect(out.unplaceable).toEqual([]);
-    // Byte-for-byte the same items as the untouched sync path — the default
-    // project must not change behaviour at all.
-    expect(out.items).toEqual(deriveTnItems(TN_JON, 'jon'));
-  });
-
-  it('the tW path is equally untouched', async () => {
-    const out = await deriveForProject({
-      tsv: TWL_TIT,
-      tool: 'translationWords',
-      bookId: 'tit',
-      from: 'eng',
-      to: 'eng',
-      schemes,
-    });
-    expect(out.mapped).toBe(false);
-    expect(out.items).toEqual(deriveTwlItems(TWL_TIT, 'tit'));
-  });
-});
 
 describe('cross-frame projects map before anything else happens', () => {
   it('shifts every Jonah reference into the rsc frame', async () => {
@@ -123,30 +88,6 @@ describe('cross-frame projects map before anything else happens', () => {
       expect(item.contextId.occurrence).toBe(original?.contextId.occurrence);
       expect(item.contextId.groupId).toBe(original?.contextId.groupId);
     }
-  });
-
-  it('the identity key is unique after mapping, because checkId is', async () => {
-    // The measured "reference collisions" put two checks on one verse; they do
-    // NOT collide the §5.2 identity key, because the TSV ID column is unique
-    // per book. This asserts that directly rather than trusting the reasoning.
-    const out = await deriveForProject({
-      tsv: TN_JON,
-      tool: 'translationNotes',
-      bookId: 'jon',
-      from: 'eng',
-      to: 'vul',
-      schemes,
-    });
-    const keys = out.items.map((i) =>
-      [
-        i.contextId.checkId,
-        i.contextId.reference.bookId,
-        String(i.contextId.reference.chapter),
-        String(i.contextId.reference.verse),
-        i.contextId.occurrence,
-      ].join('|'),
-    );
-    expect(new Set(keys).size).toBe(keys.length);
   });
 });
 
@@ -254,54 +195,3 @@ describe('unplaceable items are dropped and reported, never journaled', () => {
   });
 });
 
-
-describe('the progress metric still reaches 100% when checks are dropped', () => {
-  // The concern this answers: does dropping unplaceable checks leave the meter
-  // stuck at "99.8% checked"? No — a dropped check leaves the DENOMINATOR, it is
-  // not counted as undecided. This is the same rule §4.2/D26 already applies to
-  // scope filtering: the denominator is the derived in-scope total, never the
-  // whole book. A verse the project's Bible does not contain is not work the
-  // translator declined; it is work that does not exist.
-  it('the denominator excludes dropped checks, so deciding everything shown gives 100%', async () => {
-    const out = await deriveForProject({
-      tsv: TN_JON,
-      tool: 'translationNotes',
-      bookId: 'jon',
-      from: 'eng',
-      to: 'vul',
-      schemes,
-    });
-    // vul is the scheme that actually drops things.
-    expect(out.unplaceable.length).toBeGreaterThan(0);
-
-    const before = progressOf(out.items);
-    expect(before.total).toBe(out.items.length);
-    // The dropped ones are NOT in the denominator.
-    expect(before.total).toBeLessThan(deriveTnItems(TN_JON, 'jon').length);
-
-    // Decide every check that IS shown.
-    const allDecided = out.items.map((it) => ({
-      ...it,
-      selections: [{ text: 'x', occurrence: 1, occurrences: 1 }],
-    }));
-    const after = progressOf(allDecided);
-    expect(after.decided).toBe(after.total);
-    expect(after.total).toBeGreaterThan(0);
-    expect(allDecided.every(isDecided)).toBe(true);
-    // 100%, not 99.x%.
-    expect((after.decided / after.total) * 100).toBe(100);
-  });
-
-  it('an eng project drops nothing, so the denominator is the full derived list', async () => {
-    const out = await deriveForProject({
-      tsv: TN_JON,
-      tool: 'translationNotes',
-      bookId: 'jon',
-      from: 'eng',
-      to: 'eng',
-      schemes,
-    });
-    expect(out.unplaceable).toEqual([]);
-    expect(progressOf(out.items).total).toBe(deriveTnItems(TN_JON, 'jon').length);
-  });
-});

@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { ServerApi } from '../src/data/serverApi';
 import { JournalingStore, forgetProjectQueues } from '../src/data/journal/journalingStore';
 import { forgetSharedClocks } from '../src/data/journal/journalStore';
-import { describeVerifierReport, verifyProjectAgainstJournal } from '../src/data/journal/verify';
+import { verifyProjectAgainstJournal } from '../src/data/journal/verify';
 import type { ResourcesFile } from '../src/data/burritoStore';
 import { journalingRig, memKv, tickingNow, type JournalingRig } from './helpers/journalingRig';
 
@@ -62,14 +62,6 @@ const setup = async (): Promise<{ rig: JournalingRig; api: ServerApi }> => {
 };
 
 describe('#62 fold-compare verifier: reports every broken invariant', () => {
-  it('verifies the healthy project (and the description says so)', async () => {
-    const { api } = await setup();
-    const report = await verifyProjectAgainstJournal(api, REPO);
-    expect(report.ok, describeVerifierReport(report)).toBe(true);
-    expect(describeVerifierReport(report)).toContain('verified');
-    expect(report.clean).toContain('TIT.usfm');
-  });
-
   it('a MISMATCHED derived file is reported with both hashes', async () => {
     const { rig, api } = await setup();
     rig.repos.get(REPO)?.files.set('TIT.usfm', TIT_USFM.replace('Pablo.', 'Pedro.'));

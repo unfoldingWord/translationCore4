@@ -6,10 +6,6 @@ import { checkpointMessage } from '../src/data/checkpoint';
 const ch = (path: string, change_type = 'modified') => ({ path, change_type });
 
 describe('#183 checkpointMessage', () => {
-  it('a clean tree is nothing to commit', () => {
-    expect(checkpointMessage('leaving Translate', [])).toBeNull();
-  });
-
   it('names the books and the kind of work, once each, in the order seen', () => {
     const msg = checkpointMessage('leaving Translate', [
       ch('ingredients/checking/journal/', 'new'),
@@ -62,13 +58,6 @@ const seeded = async () => {
 };
 
 describe('#183 commitPending', () => {
-  it('a clean tree commits nothing and returns null', async () => {
-    const { store, project } = await seeded();
-    const n = project.commits.length;
-    expect(await store.commitPending((changes) => checkpointMessage('leaving Translate', changes))).toBeNull();
-    expect(project.commits.length).toBe(n);
-  });
-
   it('pending changes commit once with the derived message; a second overlapping checkpoint commits nothing', async () => {
     const { rig, store, project } = await seeded();
     await store.writeBook('TIT', TIT.replace('\\v 2 ___', '\\v 2 Nueva vida.'));

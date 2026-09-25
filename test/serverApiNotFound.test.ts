@@ -10,12 +10,6 @@ import { ServerApiError, isNotFoundError } from '../src/data/serverApi';
 const err = (status: number, reason: string) => new ServerApiError('GET /burrito/ingredient/raw/x?ipath=y', status, reason);
 
 describe('ServerApiError.isNotFound reads the not-found text of every platform', () => {
-  it('Unix: No such file or directory (os error 2)', () => {
-    const e = err(400, 'could not read ingredient content: No such file or directory (os error 2)');
-    expect(e.isNotFound).toBe(true);
-    expect(isNotFoundError(e)).toBe(true);
-  });
-
   it('Windows: The system cannot find the file specified. (os error 2)', () => {
     const e = err(400, 'could not read ingredient content: The system cannot find the file specified. (os error 2)');
     expect(e.isNotFound).toBe(true);

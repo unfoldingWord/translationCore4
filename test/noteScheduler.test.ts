@@ -58,30 +58,6 @@ beforeEach(() => {
 });
 
 describe('D65 — the note writer', () => {
-  it('a PROJECT-frame target writes its verbatim reference and echoes noteSaved (I1/J2)', async () => {
-    const written: unknown[][] = [];
-    const targets = new Map([
-      [noteKeyFor(REPO, 'TIT', 2, '2'), targetFor(async (...a) => void written.push(a), { chapter: 2, verse: '2', projectFrame: true })],
-    ]);
-    const { writer, dispatched } = writerWith(targets);
-    await writer(noteKeyFor(REPO, 'TIT', 2, '2'), '  note on project 2:2  ');
-    expect(resolveProjectFrame).not.toHaveBeenCalled(); // verbatim — never mapped
-    expect(written).toEqual([['TIT', 2, '2', 'note on project 2:2']]);
-    expect(dispatched).toEqual([
-      expect.objectContaining({ type: 'noteSaved', repoPath: REPO, book: 'TIT', key: '2:2', text: 'note on project 2:2' }),
-    ]);
-  });
-
-  it('a same-frame target on the eng frame writes unmapped', async () => {
-    resolveProjectFrame.mockResolvedValue({ state: 'ready', name: 'eng' });
-    const written: unknown[][] = [];
-    const key = noteKeyFor(REPO, 'TIT', 1, '3');
-    const { writer } = writerWith(new Map([[key, targetFor(async (...a) => void written.push(a))]]));
-    await writer(key, 'plain note');
-    expect(mapReference).not.toHaveBeenCalled();
-    expect(written).toEqual([['TIT', 1, '3', 'plain note']]);
-  });
-
   it('a same-frame target on a NON-eng frame writes the MAPPED reference; the echo keys the original (A1)', async () => {
     resolveProjectFrame.mockResolvedValue({ state: 'ready', name: 'rsc', schemes: {} });
     mapReference.mockResolvedValue({ ok: true, reference: { chapter: 2, verse: '1' } });

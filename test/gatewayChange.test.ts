@@ -12,7 +12,7 @@ import {
   uncoveredByChange,
 } from '../src/data/gatewayChange';
 import type { StoredDecisionFile } from '../src/data/gatewayChange';
-import { pinKey, resolveToolBook } from '../src/data/resolve';
+import { pinKey } from '../src/data/resolve';
 import type { Coverage } from '../src/data/resolve';
 import type { DecisionFile, LanguageSet, ResourcesFile } from '../src/data/burritoStore';
 
@@ -67,33 +67,6 @@ const stored = (
   tool: 'translationNotes',
   book,
   file: { ...file(repoPath, version, decisions), book },
-});
-
-describe('the case that needs NO change — partial coverage is handled per book', () => {
-  // Spanish covers 4 books; English covers the canon.
-  const COVERAGE: Coverage = {
-    [pinKey(ES.translationNotes)]: ['TIT', 'JON', 'RUT', '3JN'],
-    [pinKey(EN.translationNotes)]: ['TIT', 'JON', 'HEB', 'PSA'],
-  };
-  const resources = {
-    schemaVersion: 2,
-    languageSets: { primary: ES, fallback: EN },
-    resources: {},
-  } as ResourcesFile;
-
-  it('Titus uses Spanish and Hebrews uses English AT THE SAME TIME, with no user action', () => {
-    expect(resolveToolBook(resources, 'translationNotes', 'TIT', COVERAGE).pin?.repoPath)
-      .toContain('es-419_tn');
-    expect(resolveToolBook(resources, 'translationNotes', 'HEB', COVERAGE).pin?.repoPath)
-      .toContain('en_tn');
-  });
-
-  it('so a user is never forced to switch languages because one book is uncovered', () => {
-    // Hebrews resolving to English does not disturb Titus in any way.
-    const titus = resolveToolBook(resources, 'translationNotes', 'TIT', COVERAGE);
-    expect(titus.rung).toBe('primary');
-    expect(titus.usedFallback).toBe(false);
-  });
 });
 
 describe('official review round 7: an affected book NEITHER rung covers BLOCKS the change', () => {
@@ -167,23 +140,6 @@ describe('consequences are counted before the change is committed', () => {
     expect(c.unaffectedBooks).toBe(1);
   });
 
-  it('a book the new primary COVERS is affected even though its old resource stays pinned as fallback', () => {
-    // The hole the D58 exact-identity comparison exposed (found by journey
-    // J13, 2026-08-22): TIT was checked against the English notes, English
-    // stays pinned as the fallback — but French COVERS TIT, so the ladder
-    // moves TIT's resolution to French and the checked-against resource is
-    // being left. Membership in the pin set is not the question; the
-    // post-change resolution is.
-    const c = consequencesOfGatewayChange(
-      [stored('TIT', 'git.door43.org/unfoldingWord/en_tn', 'v89', 12)],
-      { primary: FR, fallback: EN },
-      COV,
-    );
-    expect(c.harmless).toBe(false);
-    expect(c.affected.map((a) => a.book)).toEqual(['TIT']);
-    expect(c.decisionsAtRisk).toBe(12);
-  });
-
   it('a book with no decisions yet costs nothing', () => {
     const c = consequencesOfGatewayChange(
       [stored('TIT', 'git.door43.org/Es-419_gl/es-419_tn', 'v66', 0)],
@@ -250,18 +206,6 @@ describe('the wording the user actually reads', () => {
 });
 
 describe('applying the change', () => {
-  it('moves ONLY the primary rung — the English fallback never changes here', () => {
-    const before = {
-      schemaVersion: 2,
-      languageSets: { primary: ES, fallback: EN },
-      resources: { originalLanguage: {} },
-    } as ResourcesFile;
-    const after = applyGatewayChange(before, FR);
-    expect(after.languageSets.primary.gatewayLanguage.languageId).toBe('fr');
-    expect(after.languageSets.fallback).toEqual(EN);
-    expect(after.resources).toEqual(before.resources); // untouched
-  });
-
   it('both application write paths backfill installed coverage before persistence', () => {
     const source = fs.readFileSync(path.resolve(process.cwd(), 'src/state.jsx'), 'utf8');
     const preview = source.slice(

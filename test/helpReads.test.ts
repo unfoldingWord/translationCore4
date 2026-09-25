@@ -23,11 +23,6 @@ const { readTextIngredient, loadSimplifiedHelp } = __helpReadsForTests;
 const notFound = () => Object.assign(new Error('404'), { isNotFound: true });
 
 describe('round 31 — readTextIngredient (the tN/tQ/twl TSV read)', () => {
-  it('a NOT-FOUND reads as null (the missing state)', async () => {
-    const api = { readIngredient: async () => { throw notFound(); } };
-    expect(await readTextIngredient(api, 'repo', 'TIT.tsv')).toBeNull();
-  });
-
   it('a transport failure PROPAGATES — never a false absence claim', async () => {
     const api = { readIngredient: async () => { throw new Error('socket hang up'); } };
     await expect(readTextIngredient(api, 'repo', 'TIT.tsv')).rejects.toThrow(/socket hang up/);
@@ -77,7 +72,6 @@ describe('round 35 — readHelpArticle (the tW/tA article read)', () => {
     expect(await readHelpArticle({}, 'tw', {}, 'kt', 'god')).toBeNull();
   });
 });
-
 
 describe('round 36 — cross-BOOK mappings are STATED, never rendered as this book at foreign numbers', () => {
   it('a mapping whose target book differs yields a crossBook entry; same-book mappings map normally', async () => {

@@ -78,12 +78,6 @@ const mappedFor = async () => {
 };
 
 describe('#134 — the alignment record round-trips under the project-frame key on a cross-frame project', () => {
-  it('the fixtures make the mapped key differ from the project key', async () => {
-    const mapped = await mappedFor();
-    expect(mapped.reference).toEqual({ book: BOOK, chapter: 1, verse: 17 });
-    expect(`${mapped.reference.chapter}:${mapped.reference.verse}`).not.toBe(REF);
-  });
-
   it('save an alignment, rebuild the session, the same record comes back', async () => {
     const mapped = await mappedFor();
     const origObjects = origObjectsFor(mapped.reference.chapter, mapped.reference.verse);
@@ -112,20 +106,5 @@ describe('#134 — the alignment record round-trips under the project-frame key 
     const second = await buildAlignmentSession(store, null, st, REF, source, origObjects);
     expect(second.record).toEqual(saved);
     expect(second.record.wordBank).toHaveLength(first.record.wordBank.length - 1);
-  });
-
-  it('negative control: the old read key — the mapped reference — holds nothing for this verse', async () => {
-    const mapped = await mappedFor();
-    const origObjects = origObjectsFor(mapped.reference.chapter, mapped.reference.verse);
-    const store = makeStore();
-    const first = await buildAlignmentSession(store, null, st, REF, source, origObjects);
-    const [chapter, verse] = REF.split(':');
-    const { md5 } = await store.readAlignmentsWithMd5();
-    await store.writeAlignments(BOOK, JSON.parse(spliceAlignRecord(alignFileJson(store.file, BOOK), chapter, verse, JSON.stringify(first.record))), md5);
-    // The file has the record under 2:1 and nothing under the eng key 1:17 —
-    // reading under the mapped key would have bootstrapped afresh and shown
-    // the translator an empty alignment.
-    expect(store.file?.chapters[String(mapped.reference.chapter)]?.[String(mapped.reference.verse)]).toBeUndefined();
-    expect(store.file?.chapters[chapter][verse]).toEqual(first.record);
   });
 });

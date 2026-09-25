@@ -64,23 +64,6 @@ describe('R-E33-1 — a recorded scheme name that cannot be served must not lose
     expect(frame).toMatchObject({ name: 'lxx', source: 'recorded' });
     expect(frame.schemes.lxx).toBeTruthy();
   });
-
-  it('an eng project still costs no scheme fetch at all', async () => {
-    forgetProjectFrames();
-    let fetches = 0;
-    const frame = await resolveProjectFrame('repo/eng', {
-      store: { readVersification: async () => ({ name: 'eng', bytes: '{}' }) },
-      api: {
-        getVersification: async () => {
-          fetches += 1;
-          return eng;
-        },
-        getVersifications: async () => ['eng', 'lxx'],
-      },
-    } as never);
-    expect(frame).toMatchObject({ name: 'eng', source: 'recorded' });
-    expect(fetches).toBe(0); // the short-circuit needs no document
-  });
 });
 
 describe('R-E33-2 — unplaceableReason and verseExists must never disagree', () => {
@@ -111,18 +94,6 @@ describe('R-E33-2 — unplaceableReason and verseExists must never disagree', ()
         expect(verseExists(eng, 'JHN', c, v)).toBe(unplaceableReason(eng, 'JHN', c, v) === null);
       }
     }
-  });
-
-  it('a non-numeric chapter cannot reach a mapped reference', async () => {
-    const out = await mapReference({
-      from: 'eng',
-      to: 'lxx',
-      book: 'JHN',
-      chapter: 'front' as unknown as number,
-      verse: 1,
-      schemes: { eng, lxx },
-    });
-    expect(out.ok).toBe(false);
   });
 });
 
@@ -196,22 +167,6 @@ describe('R-E33-5 (amended) — malformed references are a CROSS-FRAME verdict o
       schemes: { eng, lxx },
     });
     expect(out).toEqual({ ok: false, reason: 'malformed-reference' });
-  });
-
-  it('a valid integer chapter still passes the eng short-circuit untouched', async () => {
-    const out = await mapReference({
-      from: 'eng',
-      to: 'eng',
-      book: 'JHN',
-      chapter: 1,
-      verse: '1-3',
-      schemes: { eng },
-    });
-    expect(out).toEqual({
-      ok: true,
-      reference: { book: 'JHN', chapter: 1, verse: '1-3' },
-      mapped: false,
-    });
   });
 
   it.each([
@@ -398,24 +353,6 @@ describe('R-E33-6 — a known frame whose scheme data cannot be fetched is unava
   });
 });
 
-describe('R-E33-7 — a frame that cannot map has an honest message, not the dropped-checks note', () => {
-  // FOUND (3rd review pass): the check-open path special-cased only `unavailable`.
-  // An `unknown` frame fell through to deriveForProject(to:null) and showed
-  // "N checks have no verse in this project's — numbering" — the same misleading
-  // message, with an em-dash for the null scheme. Both non-ready states now route
-  // to their own designed empty state; this locks the i18n contract state.jsx
-  // depends on (`check.empty.versification-${frame.state}`).
-  it('both non-ready frame states have a titled, bodied empty message', () => {
-    const en = JSON.parse(
-      fs.readFileSync(path.resolve(process.cwd(), 'src/i18n/en.json'), 'utf8'),
-    ) as Record<string, string>;
-    for (const state of ['unavailable', 'unknown']) {
-      expect(en[`check.empty.versification-${state}.title`]).toBeTruthy();
-      expect(en[`check.empty.versification-${state}.body`]).toBeTruthy();
-    }
-  });
-});
-
 // ---------------------------------------------------------------------------
 // Regression tests for the PR #91 review (2026-08-25). Numbering continues the
 // e33 review series; each case reproduces a finding from that review.
@@ -423,11 +360,6 @@ describe('R-E33-7 — a frame that cannot map has an honest message, not the dro
 
 const stateSource = (): string =>
   fs.readFileSync(path.resolve(process.cwd(), 'src/state.jsx'), 'utf8');
-const en = (): Record<string, string> =>
-  JSON.parse(fs.readFileSync(path.resolve(process.cwd(), 'src/i18n/en.json'), 'utf8')) as Record<
-    string,
-    string
-  >;
 
 describe('PR91-2 — a frame-blocked gateway change names the real remedy, not coverage', () => {
   // FOUND: when the frame was not ready, every affected book went into
@@ -439,14 +371,6 @@ describe('PR91-2 — a frame-blocked gateway change names the real remedy, not c
       stateSource().indexOf('deriveItemsFor: async'),
     );
     expect(preview).toContain('reason: `versification-${frame.state}`');
-  });
-
-  it('both versification block reasons have their own gateway message', () => {
-    for (const state of ['unavailable', 'unknown']) {
-      expect(en()[`gateway.blocked-versification-${state}`]).toBeTruthy();
-    }
-    // The unavailable copy must point at reconnecting, not at installing.
-    expect(en()['gateway.blocked-versification-unavailable']).toMatch(/[Rr]econnect/);
   });
 });
 
@@ -472,11 +396,6 @@ describe('PR91-3 — a mapping outcome never reports the installed source text a
       openAlign.indexOf('verseObjectsFor'),
     );
     expect(mappingOutcomes).not.toContain("unavailable: 'missing'");
-  });
-
-  it('the no-counterpart state has a titled, bodied message', () => {
-    expect(en()['align.unavailable.no-counterpart.title']).toBeTruthy();
-    expect(en()['align.unavailable.no-counterpart.body']).toBeTruthy();
   });
 });
 

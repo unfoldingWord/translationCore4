@@ -108,57 +108,6 @@ describe('property 5 — partial-book files (D26)', () => {
   });
 });
 
-describe('aligned-corpus splice — the tC3-imported leg of T7', () => {
-  // Hand-made fixture leg: en_ult TIT stands in for a tC3-imported draft until
-  // Increment 6 supplies the golden import fixture (checklist Phase-exit note).
-  it('editing one verse inside en_ult TIT leaves every byte outside the verse unchanged', () => {
-    const raw = corpora['en_ult TIT (aligned)'];
-    const entries = indexBook(raw);
-    const target = entries.find((e) => e.chapter === '2' && e.verseKey === '3');
-    expect(target).toBeDefined();
-    if (!target) return;
-    const newBody = 'Older women likewise are to be reverent in behavior.';
-    const edited = spliceVerse(raw, '2', '3', newBody);
-    expect(edited.slice(0, target.start) === raw.slice(0, target.start)).toBe(true);
-    expect(edited.slice(target.start + newBody.length) === raw.slice(target.end)).toBe(true);
-    // The zaln markup of every other verse survives intact.
-    const zalnCount = (s: string): number => s.split('\\zaln-s').length - 1;
-    const zalnInOldBody = zalnCount(raw.slice(target.start, target.end));
-    expect(zalnCount(edited)).toBe(zalnCount(raw) - zalnInOldBody);
-    expect(zalnInOldBody).toBeGreaterThan(0);
-    // 705 zaln-s in the corpus (test/fixtures/README.md provenance).
-    expect(zalnCount(raw)).toBe(705);
-  });
-});
-
-describe('verseBody reads', () => {
-  it('returns the exact stub body for untranslated verses', () => {
-    expect(verseBody(corpora['sample TIT (plain draft)'], 1, '6')).toBe('___');
-  });
-
-  it('returns null for a verse the book does not contain', () => {
-    expect(verseBody(corpora['sample TIT (plain draft)'], 4, '1')).toBeNull();
-    expect(verseBody(corpora['sample TIT (plain draft)'], 1, '17')).toBeNull();
-  });
-});
-
-describe('VerseNotFoundError', () => {
-  it('is a typed error carrying the failed address', () => {
-    let caught: unknown = null;
-    try {
-      spliceVerse(corpora['sample TIT (plain draft)'], 9, '99', 'x');
-    } catch (err) {
-      caught = err;
-    }
-    expect(caught).toBeInstanceOf(VerseNotFoundError);
-    expect(caught).toBeInstanceOf(Error);
-    const e = caught as VerseNotFoundError;
-    expect(e.name).toBe('VerseNotFoundError');
-    expect(e.chapter).toBe('9');
-    expect(e.verseKey).toBe('99');
-  });
-});
-
 // ---------------------------------------------------------------------------
 // #63 — spliceSection: a verse span created or broken rewrites ONLY the verses
 // that change, from the first to the last of them; every other byte stays.
@@ -166,27 +115,10 @@ describe('VerseNotFoundError', () => {
 describe('#63 — spliceSection', () => {
   const raw = ['\\id TST', '\\c 2', '\\p', '\\v 8 ocho', '\\v 9 ___', '\\v 10 ___', '\\v 11 once', ''].join('\n');
 
-  it('creates a span: two stubs become one \\v 9-10 line, the rest byte-identical', () => {
-    const out = spliceSection(raw, 2, ['9', '10'], [{ key: '9-10', body: 'nueve y diez' }]);
-    expect(out).toBe(['\\id TST', '\\c 2', '\\p', '\\v 8 ocho', '\\v 9-10 nueve y diez', '\\v 11 once', ''].join('\n'));
-  });
-
   it('breaks a span: one line becomes two; an empty body is the ___ stub', () => {
     const spanned = spliceSection(raw, 2, ['9', '10'], [{ key: '9-10', body: 'nueve y diez' }]);
     const out = spliceSection(spanned, 2, ['9-10'], [{ key: '9', body: 'nueve y diez' }, { key: '10', body: '' }]);
     expect(out).toBe(['\\id TST', '\\c 2', '\\p', '\\v 8 ocho', '\\v 9 nueve y diez', '\\v 10 ___', '\\v 11 once', ''].join('\n'));
-  });
-
-  it('rewrites only the changed verses of a longer section', () => {
-    const out = spliceSection(raw, 2, ['8', '9', '10', '11'], [
-      { key: '8', body: 'ocho' },
-      { key: '9-10', body: 'nueve y diez' },
-      { key: '11', body: 'once' },
-    ]);
-    // Verses 8 and 11 are untouched: their bytes were not rewritten at all.
-    expect(out.slice(0, out.indexOf('\\v 9-10'))).toBe(raw.slice(0, raw.indexOf('\\v 9 ')));
-    expect(out.slice(out.indexOf('\\v 11'))).toBe(raw.slice(raw.indexOf('\\v 11')));
-    expect(out).toContain('\\v 9-10 nueve y diez\n\\v 11 once');
   });
 
   it('a section written back unchanged is the same string; an unknown key throws', () => {

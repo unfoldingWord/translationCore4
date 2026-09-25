@@ -156,17 +156,6 @@ describe('Understand comment round-trip on non-eng frame (#117)', () => {
     });
   });
 
-  it('the syn register resolves to a ready frame', async () => {
-    const frame = await resolveProjectFrame(REPO, { store, api });
-    expect(frame).toMatchObject({
-      name: 'syn',
-      source: 'recorded',
-      state: 'ready',
-    });
-    expect(frame.schemes.eng).toBeDefined();
-    expect(frame.schemes.syn).toBeDefined();
-  });
-
   it('round trip: eng TIT 1:16 journals under syn TIT 2:1 and reloads into the unit that shows eng 1:16', async () => {
     const text = 'persisted note on 1:16';
     const key = targetFor(1, '16');

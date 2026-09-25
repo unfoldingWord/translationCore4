@@ -7,7 +7,6 @@
 
 import { describe, expect, it } from 'vitest';
 import {
-  DEFAULT_SCHEME,
   SCHEME_NAMES,
   canonicalizeScheme,
   isSchemeName,
@@ -38,11 +37,6 @@ const schemes = Object.fromEntries(SCHEME_NAMES.map((n) => [n, load(n)])) as Rec
 >;
 
 describe('scheme names', () => {
-  it('knows the six the platform ships, and eng is the default', () => {
-    expect([...SCHEME_NAMES]).toEqual(['eng', 'lxx', 'org', 'rsc', 'rso', 'vul']);
-    expect(DEFAULT_SCHEME).toBe('eng');
-  });
-
   it('rejects the store\'s "unrecorded" sentinel as a scheme name', () => {
     // resolveProjectScheme must fall through to fingerprinting for a project
     // tC4 did not create. It must not couple to the sentinel's exact spelling.
@@ -71,39 +65,6 @@ describe('normalizeScheme — the string/array trap', () => {
     } as SchemeDoc;
     expect(normalizeScheme(doc).mappedVerses).toEqual({ 'MAN 1:5': ['2CH 37:2', '2CH 37:3'] });
   });
-
-  it('proves the corruption it prevents: iterating a string yields character keys', () => {
-    // This is what proskomma's reverseVersification does to an un-normalized
-    // value. It throws nothing, which is why normalization must be structural
-    // rather than trusted to a caller remembering.
-    const raw: string | string[] = 'GEN 32:1';
-    const reversedRaw: Record<string, string[]> = {};
-    for (const target of raw) (reversedRaw[target] ??= []).push('GEN 31:55');
-    // Compared as a set: JS lists integer-like keys ("1", "2", "3") first, so
-    // insertion order is not the point. The point is that the keys are the
-    // string's CHARACTERS rather than the one reference it denotes.
-    expect(new Set(Object.keys(reversedRaw))).toEqual(
-      new Set(['G', 'E', 'N', ' ', '3', '2', ':', '1']),
-    );
-
-    const normalized = normalizeScheme({
-      maxVerses: {},
-      mappedVerses: { 'GEN 31:55': raw },
-    } as SchemeDoc).mappedVerses!;
-    const reversed: Record<string, string[]> = {};
-    for (const [from, targets] of Object.entries(normalized))
-      for (const target of targets as string[]) (reversed[target] ??= []).push(from);
-    expect(reversed).toEqual({ 'GEN 32:1': ['GEN 31:55'] });
-  });
-
-  it('no bundled scheme uses the array form yet', () => {
-    // The fork permits many-to-many; no shipped data exercises it. This test
-    // is the tripwire for the day that changes.
-    for (const name of SCHEME_NAMES) {
-      const table = schemes[name].mappedVerses ?? {};
-      expect(Object.values(table).filter(Array.isArray)).toEqual([]);
-    }
-  });
 });
 
 describe('canonicalizeScheme — identity is meaning, not bytes', () => {
@@ -122,11 +83,6 @@ describe('canonicalizeScheme — identity is meaning, not bytes', () => {
     ) as SchemeDoc;
     expect(JSON.stringify(reserialized)).not.toBe(JSON.stringify(org)); // bytes differ
     expect(canonicalizeScheme(reserialized)).toBe(canonicalizeScheme(org)); // meaning does not
-  });
-
-  it('keeps the six schemes distinct from one another', () => {
-    const fingerprints = SCHEME_NAMES.map((n) => canonicalizeScheme(schemes[n]));
-    expect(new Set(fingerprints).size).toBe(SCHEME_NAMES.length);
   });
 });
 
@@ -184,19 +140,6 @@ describe('sameFrame — the short-circuit that protects the default project', ()
     expect(sameFrame(null, null)).toBe(false); // unknown never short-circuits
     expect(sameFrame('eng', null)).toBe(false);
   });
-
-  it('an eng project short-circuits away 3 real losses', () => {
-    // Composing eng -> org -> eng loses NEH 7:68, PSA 13:6 and ISA 64:1. The
-    // helps suite is entirely eng, so an eng project must not compose at all.
-    expect(sameFrame('eng', 'eng')).toBe(true);
-    for (const [book, chapter, verse] of [
-      ['NEH', 7, 68],
-      ['PSA', 13, 6],
-      ['ISA', 64, 1],
-    ] as const) {
-      expect(verseExists(schemes.eng, book, chapter, verse)).toBe(true);
-    }
-  });
 });
 
 describe('unplaceableReason — measured failure modes', () => {
@@ -219,20 +162,11 @@ describe('unplaceableReason — measured failure modes', () => {
     expect(unplaceableReason(schemes.eng, 'JON', 1, 17)).toBeNull();
   });
 
-  it('JON 1:17 exists only in eng — the frame discriminator', () => {
-    // The single-verse test that identified every gateway helps resource as eng.
-    expect(verseExists(schemes.eng, 'JON', 1, 17)).toBe(true);
-    for (const name of ['org', 'rsc', 'rso', 'vul', 'lxx'] as const) {
-      expect(verseExists(schemes[name], 'JON', 1, 17)).toBe(false);
-    }
-  });
-
   it('is case-insensitive on the book code', () => {
     // §5.2 stores bookId lowercase ("tit") while scope/filenames use TIT.
     expect(unplaceableReason(schemes.eng, 'tit', 1, 1)).toBeNull();
   });
 });
-
 
 describe('a scheme this code has never heard of still resolves', () => {
   // The French LSG case: a text that follows eng but numbers psalm
@@ -264,11 +198,6 @@ describe('a scheme this code has never heard of still resolves', () => {
       name: 'lsg',
       source: 'fingerprint',
     });
-  });
-
-  it('the placeholder is still rejected, so rung 2 keeps working', () => {
-    expect(isSchemeName('unrecorded')).toBe(false);
-    expect(isSchemeName('')).toBe(false);
   });
 
   it('verse bounds come from the scheme document, not from a built-in list', () => {

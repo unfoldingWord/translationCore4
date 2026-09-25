@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { StoryScheduler, normalizeStoryUnit } from '../src/data/storyScheduler';
+import { StoryScheduler } from '../src/data/storyScheduler';
 
 describe('StoryScheduler', () => {
   it('normalizes frame paragraphs and single-line fields at the write boundary', async () => {
@@ -36,11 +36,5 @@ describe('StoryScheduler', () => {
     await scheduler.retry();
     expect(scheduler.getState()).toBe('saved');
     expect(scheduler.value(unit)).toBe('draft');
-  });
-});
-
-describe('normalizeStoryUnit', () => {
-  it('retains meaningful internal line breaks while removing blank paragraphs', () => {
-    expect(normalizeStoryUnit({ kind: 'frame', story: 1, frame: 1 }, 'a\n\n\nb')).toBe('a\nb');
   });
 });

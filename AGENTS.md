@@ -10,6 +10,18 @@ for agents — they exist because an agent broke each one at least once in this 
 and a mismatch between the two blocks merge until both agree. When your reasoning and a
 test result disagree, the test result wins.
 
+## How to test
+
+Added 2026-09-25 by the owner.
+
+1. **Do not write a unit test after you write the code.**
+2. **Use E2E tests as the only test method when you can.** The E2E tests are the
+   Playwright journeys in `e2e/`. Use them to verify that complex features work. At the
+   end of each E2E test, produce an artifact that a person can verify and that each run
+   produces again in the same way.
+3. **If you must test a part of the system in isolation, write down all the ways that it
+   can fail first.** Then write the code.
+
 ## Do not invent test inputs
 
 Source every test input from the system under test — its catalogue, its configuration, or
@@ -120,9 +132,7 @@ and [#391](https://github.com/unfoldingWord/translationCore4/pull/391).
 5. **Use only paths inside this repository.** A maintainer's checkout sits inside a
    planning workspace that holds copies such as `../sample-burrito` and `../dev-env`. A
    path above the repository root works on that one machine only. Use
-   `conformance/sample-burrito` and this repository's `dev-env/`. The S-0 smoke tests
-   are the one recorded exception (`CONTRIBUTING.md`, "Tests that need more than this
-   repository").
+   `conformance/sample-burrito` and this repository's `dev-env/`.
 6. **Run what you build.** If you generate or copy a file that runs later, run it or
    parse it (`node --check`) in a test. In #354, a generated entry point had a syntax
    error. Declare each package that a script imports in `package.json`. In #354,
@@ -136,7 +146,7 @@ and [#391](https://github.com/unfoldingWord/translationCore4/pull/391).
 ## Skips are not failures
 
 Some tests skip on a clean clone. Each names its
-missing prerequisite (the Pankosmia rig, or a sibling `sample-burrito` checkout). Do
+missing prerequisite (the Pankosmia rig). Do
 not "fix" a skip by inventing the missing data, and do not report a skip as a defect.
 
 ## Shell discipline

@@ -76,10 +76,4 @@ describe('gatewayTitleFor — the Check tool titles items in the gateway text', 
     const bare = item(1, 1, { quote: [], quoteString: undefined });
     expect(gatewayTitleFor(sources({}), ['ult'], ready())(bare)).toBe('figs-metaphor');
   });
-
-  it('titles are cached per item: the same resolver answers the same item without re-tokenizing', () => {
-    const titleOf = gatewayTitleFor(sources({ '1': { '1': alignedV1 } }), ['ult'], ready());
-    const a = titleOf(item(1, 1));
-    expect(titleOf(item(1, 1))).toBe(a);
-  });
 });

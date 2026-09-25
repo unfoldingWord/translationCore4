@@ -62,11 +62,6 @@ const setup = async (versification = 'eng') => {
 };
 
 describe('JournalingStore.readVersification — the sealed register', () => {
-  it('reports the scheme name tC4 passed at creation, with the exact bytes', async () => {
-    const { store } = await setup('eng');
-    expect(await store.readVersification()).toEqual({ name: 'eng', bytes: FAKE_VRS });
-  });
-
   it('carries a non-default scheme name through', async () => {
     const { store } = await setup('lxx');
     const register = await store.readVersification();

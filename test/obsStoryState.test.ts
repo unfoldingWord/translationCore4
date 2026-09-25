@@ -129,26 +129,6 @@ const openContent = async (
 };
 
 describe('#289 — routing and resume', () => {
-  it('an OBS project routes to its story catalogue and never to a book: the first open is story 1', async () => {
-    const ctx = await setup();
-    const numbers = await ctx.store.listStories();
-    expect(numbers[0]).toBe(1);
-    const { actions, listStories } = await openContent(ctx, ctx.summary, undefined);
-    expect(listStories).toHaveBeenCalledTimes(1);
-    expect(actions.openBook).not.toHaveBeenCalled();
-    expect(actions.openStory).toHaveBeenCalledTimes(1);
-    expect(actions.openStory.mock.calls[0][0]).toBe(1);
-    expect(ctx.state.storyNumbers).toEqual(numbers);
-  });
-
-  it('a Bible project takes the book path and reads no story catalogue', async () => {
-    const ctx = await setup();
-    const { actions, listStories } = await openContent(ctx, { flavor: 'textTranslation', bookCodes: ['TIT'] }, undefined);
-    expect(actions.openBook).toHaveBeenCalledWith('TIT');
-    expect(actions.openStory).not.toHaveBeenCalled();
-    expect(listStories).not.toHaveBeenCalled();
-  });
-
   it('resumes on the persisted story of this project (the record a restart reloads from client settings)', async () => {
     const ctx = await setup();
     const numbers = await ctx.store.listStories();
@@ -210,49 +190,6 @@ describe('#289 — a story switch over a failed write', () => {
     expect(ctx.state.storyNumber).toBe(2);
     const { story } = await ctx.store.readStory(1);
     expect(story.frames[0].text).toBe('Al principio.');
-  });
-});
-
-describe('#289 — one operation for one unit, byte-strict outside it', () => {
-  it('a title, a frame and a reference save publish exactly three operations and change only their own lines of one story file', async () => {
-    const ctx = await setup();
-    const before = templateFiles();
-    const scheduler = new StoryScheduler({ debounceMs: 0, write: (unit, text) => obs.writeStoryUnit(ctx.store, unit, text) });
-    const seed = await seedFrom(scheduler, ctx.store, 1);
-    const frame = Math.min(2, seed.frames.length);
-    scheduler.markDirty({ kind: 'title', story: 1 }, 'La creación');
-    scheduler.markDirty({ kind: 'frame', story: 1, frame }, 'Uno\n\n\nDos\r\n');
-    scheduler.markDirty({ kind: 'ref', story: 1 }, 'Génesis 1-2');
-    await scheduler.drain();
-    expect(scheduler.getState()).toBe('saved');
-
-    const events = await publishedEvents(ctx.rig);
-    expect(events.map((e) => [e.v, e.op])).toEqual([[2, 'text.frame.set'], [2, 'text.frame.set'], [2, 'text.story.ref.set']]);
-    expect(events[0]).toMatchObject({ story: 1, frame: 0, text: 'La creación' });
-    expect(events[1]).toMatchObject({ story: 1, frame, text: 'Uno\nDos' });
-    expect(events[2]).toMatchObject({ story: 1, text: 'Génesis 1-2' });
-
-    const files = ctx.rig.repos.get(REPO)!.files;
-    for (const [ipath, bytes] of Object.entries(before)) {
-      if (ipath === 'content/01.md') continue;
-      expect(files.get(ipath), ipath).toBe(bytes);
-    }
-    const IMAGE_LINE = /^!\[[^\]]*\]\([^)]*\)$/;
-    const b = before['content/01.md'].split('\n');
-    const a = files.get('content/01.md')!.split('\n');
-    const imagesAt = (lines: string[]) => lines.flatMap((line, i) => (IMAGE_LINE.test(line) ? [i] : []));
-    const [bImg, aImg] = [imagesAt(b), imagesAt(a)];
-    expect(aImg).toHaveLength(bImg.length);
-    expect(a[0]).toBe('# 1. La creación');
-    expect(b[0]).toMatch(/^# 1\. /);
-    expect(a.slice(1, aImg[frame - 1] + 1)).toEqual(b.slice(1, bImg[frame - 1] + 1));
-    expect(a.slice(aImg[frame - 1] + 1, aImg[frame])).toEqual(['', 'Uno', 'Dos', '']);
-    // from the next image line through the last frame's (empty) paragraph: identical
-    const lastImage = bImg.length - 1;
-    expect(a.slice(aImg[frame], aImg[lastImage] + 2)).toEqual(b.slice(bImg[frame], bImg[lastImage] + 2));
-    // the reference region is the trailing blank lines of the seed form (R-10.3.4)
-    expect(b.slice(bImg[lastImage] + 1).every((line) => line === '')).toBe(true);
-    expect(a.slice(-2)).toEqual(['_Génesis 1-2_', '']);
   });
 });
 

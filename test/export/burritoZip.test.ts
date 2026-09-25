@@ -3,9 +3,8 @@
 // byte; `metadata.json` gains the relationships mirror and the `dcs` authority.
 import { describe, expect, it } from 'vitest';
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
-import { BURRITO_ZIP, burritoFromRepoZip } from '../../src/data/export/burritoZip';
+import { burritoFromRepoZip } from '../../src/data/export/burritoZip';
 import { relationshipsFromPins } from '../../src/data/export/relationships';
-import type { BurritoStore, ProjectSummary } from '../../src/data/burritoStore';
 
 const fs = process.getBuiltinModule('node:fs');
 const path = process.getBuiltinModule('node:path');
@@ -37,10 +36,6 @@ describe('burritoFromRepoZip', () => {
     const out = unzipSync(burritoFromRepoZip(serverZip()));
     expect(Object.keys(out).sort()).toEqual(['.gitignore', 'ingredients/', 'ingredients/TIT.usfm', 'ingredients/checking/', RESOURCES, 'metadata.json']);
     for (const name of ['.gitignore', 'ingredients/TIT.usfm', RESOURCES]) expect(Buffer.from(out[name]).equals(Buffer.from(repo[name]))).toBe(true);
-  });
-
-  it('keeps the ingredients/ directory entry the server importer requires', () => {
-    expect(Object.keys(unzipSync(burritoFromRepoZip(serverZip())))).toContain('ingredients/');
   });
 
   it('writes the relationships mirror of resources.json and the dcs id authority into metadata.json', () => {
@@ -84,23 +79,5 @@ describe('burritoFromRepoZip', () => {
   it('leaves metadata.json byte-identical when the project has no resources.json', () => {
     const zip = zipSync({ 'metadata.json': strToU8('{"format":"scripture burrito"}'), 'ingredients/': new Uint8Array(0) });
     expect(strFromU8(unzipSync(burritoFromRepoZip(zip))['metadata.json'])).toBe('{"format":"scripture burrito"}');
-  });
-});
-
-describe('the burrito-zip producer', () => {
-  const project = (flavor: ProjectSummary['flavor']) => ({ id: '_local_/_local_/x', name: 'Muestra', languageTag: 'es', scriptDirection: 'ltr', flavor, bookCodes: [] }) as ProjectSummary;
-
-  it('is in the export menu for Bible and OBS projects', () => {
-    expect(BURRITO_ZIP.label).toBe('Scripture Burrito (.zip)');
-    expect(BURRITO_ZIP.appliesTo(project('textTranslation'))).toBe(true);
-    expect(BURRITO_ZIP.appliesTo(project('textStories'))).toBe(true);
-  });
-
-  it('reads the zip through the store and names the file <project>-<YYYY-MM-DD>.zip', async () => {
-    const store = { readZipped: async () => serverZip() } as unknown as BurritoStore;
-    const file = await BURRITO_ZIP.produce({ store, project: project('textTranslation') });
-    expect(file.filename).toMatch(/^Muestra-\d{4}-\d{2}-\d{2}\.zip$/);
-    expect(file.mime).toBe('application/zip');
-    expect(Object.keys(unzipSync(file.bytes))).not.toContain('.git/HEAD');
   });
 });

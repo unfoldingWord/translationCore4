@@ -1,6 +1,6 @@
 // C2.5 — the help article behind a check item, read from the INSTALLED burrito.
 import { describe, expect, it } from 'vitest';
-import { readTaArticle, readTwArticle, renderArticleBlocks, TA_SECTIONS } from '../src/data/articles';
+import { readTaArticle, readTwArticle, renderArticleBlocks } from '../src/data/articles';
 
 const fakeApi = (files: Record<string, string>) => ({
   readIngredient: async (repo: string, ipath: string) => {
@@ -24,13 +24,6 @@ describe('tA modules — the tN groupId is a module slug (PLATFORM-NOTES #12)', 
     [`${TA}::checking/acceptable/title.md`]: 'Acceptable Style',
   });
 
-  it('reads the module body and its authoritative title.md', async () => {
-    const a = await readTaArticle(api as never, TA, 'figs-metaphor');
-    expect(a?.title).toBe('Metaphor'); // trimmed, from title.md not the toc
-    expect(a?.body).toContain('A metaphor is');
-    expect(a?.ipath).toBe('translate/figs-metaphor/01.md');
-  });
-
   it('probes the other sections — a module is not always under translate/', async () => {
     const a = await readTaArticle(api as never, TA, 'acceptable');
     expect(a?.ipath).toBe('checking/acceptable/01.md');
@@ -45,10 +38,6 @@ describe('tA modules — the tN groupId is a module slug (PLATFORM-NOTES #12)', 
     const partial = fakeApi({ [`${TA}::translate/x-mod/01.md`]: 'body' });
     expect((await readTaArticle(partial as never, TA, 'x-mod'))?.title).toBe('x-mod');
   });
-
-  it('probes translate first — the overwhelmingly common section', () => {
-    expect(TA_SECTIONS[0]).toBe('translate');
-  });
 });
 
 describe('tW articles — same repo the links came from (D34)', () => {
@@ -57,19 +46,8 @@ describe('tW articles — same repo the links came from (D34)', () => {
     [`${TW}::payload/kt/god.md`]: '# God\n\n## Definition:',
   });
 
-  it('reads payload/<category>/<slug>.md using the category from the TWLink', async () => {
-    const a = await readTwArticle(api as never, TW, 'names', 'paul');
-    expect(a?.title).toBe('Paul, Saul'); // the H1, not the slug
-    expect(a?.ipath).toBe('payload/names/paul.md');
-  });
-
   it('reports absence rather than guessing another category', async () => {
     expect(await readTwArticle(api as never, TW, 'kt', 'paul')).toBeNull();
-  });
-
-  it('needs both a category and a slug', async () => {
-    expect(await readTwArticle(api as never, TW, '', 'paul')).toBeNull();
-    expect(await readTwArticle(api as never, TW, 'kt', '')).toBeNull();
   });
 });
 

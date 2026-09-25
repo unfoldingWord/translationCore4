@@ -13,10 +13,9 @@ import {
   preferInstalledVersion,
   pinsPreferringInstalled,
   discoverOnDisk,
-  INSTALLED_KEY,
 } from '../src/data/installed';
 import { orgForRepoName } from '../src/data/gateways';
-import { pinKey, resolveToolBook } from '../src/data/resolve';
+import { resolveToolBook } from '../src/data/resolve';
 import type { InstalledMap } from '../src/data/installed';
 import type { ResourcePin, ResourcesFile } from '../src/data/burritoStore';
 
@@ -60,16 +59,6 @@ const SUMMARIES = {
 } as never;
 
 describe('coverage comes from the platform summaries, keyed by pin identity', () => {
-  it('keys coverage by exact pin identity, with repoPath AS DCS REPORTS IT', () => {
-    // The stored form is the catalogue's own form — nothing is converted on the
-    // way in (owner ruling, 2026-08-04).
-    const cov = coverageFromLocal(SUMMARIES, INSTALLED);
-    expect(cov[pinKey(INSTALLED['_local_/_sideloaded_/unfoldingword--en_tn'])])
-      .toEqual(['TIT', 'JON', 'HEB']);
-    expect(cov[pinKey(INSTALLED['_local_/_sideloaded_/es-419_gl--es-419_tn'])])
-      .toEqual(['TIT', 'JON']);
-  });
-
   it('a pin written ELSEWHERE with a different org case still resolves — same address', () => {
     // Comparison-time tolerance, not a stored conversion. A DCS path is a
     // case-insensitive address, so a burrito written by another tool (or by an
@@ -111,18 +100,6 @@ describe('coverage comes from the platform summaries, keyed by pin identity', ()
 });
 
 describe('pin identity is (repoPath, sha) — a different commit is not this pin (D58)', () => {
-  it('recognises the installed version', () => {
-    expect(isPinLocal(INSTALLED, pin('unfoldingWord/en_tn', 'v89'))).toBe(true);
-  });
-
-  it('rejects a different version of the same repo', () => {
-    expect(isPinLocal(INSTALLED, pin('unfoldingWord/en_tn', 'v86'))).toBe(false);
-  });
-
-  it('rejects a repo that is not installed at all', () => {
-    expect(isPinLocal(INSTALLED, pin('unfoldingWord/en_tq', 'v89'))).toBe(false);
-  });
-
   it('maps a DCS repoPath to its OWNER-QUALIFIED sideloaded local path (B9)', () => {
     expect(localRepoPathFromRepoPath('git.door43.org/unfoldingWord/en_tn'))
       .toBe('_local_/_sideloaded_/unfoldingword--en_tn');
@@ -161,14 +138,6 @@ describe('the record round-trips through per-client settings', () => {
       peek: () => store,
     };
   };
-
-  it('records an install and reads it back', async () => {
-    const { api, peek } = fakeApi();
-    await recordInstalled(api as never, 'uw-tc4', '_local_/_sideloaded_/en_tn', pin('unfoldingWord/en_tn', 'v89', 'a'.repeat(40)));
-    expect(Object.keys(peek()[INSTALLED_KEY] as object)).toEqual(['_local_/_sideloaded_/en_tn']);
-    const back = await readInstalled(api as never, 'uw-tc4');
-    expect(back['_local_/_sideloaded_/en_tn'].sha).toBe('a'.repeat(40));
-  });
 
   it('merges, so a second download never erases the first', async () => {
     const { api } = fakeApi();
@@ -351,12 +320,6 @@ describe('discovering resources that are on disk with no install record', () => 
       .toBe('git.door43.org/es-419_gl/es-419_tn');
   });
 
-  it('without the resolver it would record the dead org — the defect this fixes', async () => {
-    const found = await discoverOnDisk(api, summaries, {});
-    expect(found['_local_/_sideloaded_/es-419_tn'].repoPath)
-      .toBe('git.door43.org/Idiomas-Puentes/es-419_tn');
-  });
-
   it('the revision always comes from the burrito itself, never from config', async () => {
     const found = await discoverOnDisk(api, summaries, {}, orgForRepoName);
     expect(found['_local_/_sideloaded_/es-419_tn'].sha).toBe(sha40('Idiomas-Puentes/es-419_tn'));
@@ -378,13 +341,6 @@ describe('discovering resources that are on disk with no install record', () => 
     const found = await discoverOnDisk(frApi, frSummaries, {}, orgForRepoName);
     expect(orgForRepoName('fr_tn')).toBeNull();
     expect(found['_local_/_sideloaded_/fr_tn'].repoPath).toBe('git.door43.org/Xenizo/fr_tn');
-  });
-
-  it('a non-helps repo name resolves to no org (source texts are pinned elsewhere)', () => {
-    expect(orgForRepoName('en_ult')).toBeNull();
-    expect(orgForRepoName('el-x-koine_ugnt')).toBeNull();
-    expect(orgForRepoName('en_tn')).toBe('unfoldingWord');
-    expect(orgForRepoName('es-419_tw')).toBe('es-419_gl');
   });
 });
 

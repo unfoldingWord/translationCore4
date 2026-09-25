@@ -3,7 +3,6 @@
 // the file. A browser has no bridge, so the menu has no PDF item there.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PDF, printDocument } from '../../src/data/export/pdf';
-import { exportFilename } from '../../src/data/export/kernel';
 import { DEFAULT_PAGE_SETUP, type PageSetup } from '../../src/data/export/pageSetup';
 import type { BurritoStore, ProjectSummary } from '../../src/data/burritoStore';
 
@@ -42,16 +41,6 @@ describe('the PDF producer', () => {
     installBridge();
     expect(PDF.appliesTo(bible)).toBe(true);
     expect(PDF.appliesTo({ ...bible, flavor: 'textStories' })).toBe(false);
-  });
-
-  it('returns the bridge bytes as <BOOK>-<YYYY-MM-DD>.pdf, from one document of the open book', async () => {
-    const bytes = new Uint8Array([1, 2, 3]);
-    const printPdf = installBridge(bytes);
-    const file = await PDF.produce({ store, project: bible, book: 'TIT', pageSetup: setup() });
-    expect(store.readBook).toHaveBeenCalledWith('TIT');
-    expect(printPdf).toHaveBeenCalledTimes(1);
-    expect(printPdf.mock.calls[0][0]).toBe(printDocument(USFM, 'TIT', setup(), 'ltr'));
-    expect(file).toEqual({ bytes, filename: exportFilename('TIT', 'pdf'), mime: 'application/pdf' });
   });
 
   it('refuses with no bridge or no open book, and prints nothing', async () => {

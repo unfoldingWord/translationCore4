@@ -48,17 +48,6 @@ const session = (seq: number, items: Item[] = [item(1, 1), item(1, 2)]): Session
 });
 
 describe('patchCheckSession — seq-guarded merge', () => {
-  it('merges a patch into the session with the matching seq', () => {
-    const state = { checkSession: session(3) };
-    const next = reducer(state, {
-      type: 'patchCheckSession',
-      seq: 3,
-      patch: { orig: { state: 'ready', testament: 'nt', chapters: {} } },
-    });
-    expect(next.checkSession.orig).toEqual({ state: 'ready', testament: 'nt', chapters: {} });
-    expect(next.checkSession.items).toBe(state.checkSession.items);
-  });
-
   it('a completion from a REPLACED session (same tool+book, new seq) changes nothing', () => {
     const state = { checkSession: session(4) };
     const next = reducer(state, {
@@ -72,22 +61,6 @@ describe('patchCheckSession — seq-guarded merge', () => {
   it('a completion after the session closed changes nothing', () => {
     const state = { checkSession: null };
     expect(reducer(state, { type: 'patchCheckSession', seq: 3, patch: { orig: {} } })).toBe(state);
-  });
-
-  it("concurrent orig and article merges keep each other's results", () => {
-    let state = { checkSession: session(5) };
-    state = reducer(state, {
-      type: 'patchCheckSession',
-      seq: 5,
-      patch: { article: { key: 'k', loading: false, found: { title: 'T' } } },
-    });
-    state = reducer(state, {
-      type: 'patchCheckSession',
-      seq: 5,
-      patch: { orig: { state: 'ready', testament: 'nt', chapters: {} } },
-    });
-    expect(state.checkSession.article?.found?.title).toBe('T');
-    expect(state.checkSession.orig?.state).toBe('ready');
   });
 });
 

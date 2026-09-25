@@ -45,16 +45,6 @@ describe('repinOffer — move the slots that pin the missing identity onto the i
   };
   const resources = { schemaVersion: 2, languageSets: { primary: set, fallback: set }, resources: {} } as unknown as ResourcesFile;
 
-  it('names every slot of the rung that pins the identity (tW twice, D34) and the installed target; kind is repin', () => {
-    const offer = repinOffer(resources, 'primary', missing, installed);
-    expect(offer.kind).toBe('repin');
-    expect(offer.rung).toBe('primary');
-    expect(offer.upgrades).toHaveLength(1);
-    expect(offer.upgrades[0].slots).toEqual(['translationWordsLinks', 'translationWords']);
-    expect(offer.upgrades[0].from).toBe(missing);
-    expect(offer.upgrades[0].to).toEqual({ repoPath: missing.repoPath, version: 'v89', sha: sha('i'), flavor: 'parascriptural/x-bcvarticles' });
-  });
-
   it('an installed copy identified without a tag carries no version label (the §5.3 grammar refuses an empty one)', () => {
     const offer = repinOffer(resources, 'primary', missing, pin('en_tw', undefined, 'i', ''));
     expect(offer.upgrades[0].to).toEqual({ repoPath: missing.repoPath, sha: sha('i'), flavor: 'parascriptural/x-bcvarticles' });

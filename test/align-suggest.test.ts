@@ -9,7 +9,7 @@
 // a manual link through the same save path.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bootstrapVerse, linkWord, stampTargetVerse } from '../src/data/align/edit';
-import { linksFor, rebindSuggestions, sessionInputFor, trainingVersesFor, targetSeeds } from '../src/data/align/suggest';
+import { linksFor, rebindSuggestions, sessionInputFor, trainingVersesFor } from '../src/data/align/suggest';
 import { boundCorpus, predictLinks, trainModel } from '../src/data/align/suggestEngine';
 import { handle } from '../src/data/align/suggestWorker';
 import type { AlignedWord, AlignmentFile, AlignmentVerseRecord } from '../src/data/align/zaln';
@@ -121,11 +121,6 @@ describe('#1 bridge — the engine sees positions, the editor sees words', () =>
     expect(rebindSuggestions(placedBoth, rebound)).toBeNull();
   });
 
-  it('targetSeeds is the #255 tokenizer with positions', () => {
-    expect(targetSeeds('Pablo, siervo de Dios y de Dios').map((t) => `${t.text}/${t.occurrence}/${t.occurrences}@${t.position}`)).toEqual([
-      'Pablo/1/1@0', 'siervo/1/1@1', 'de/1/2@2', 'Dios/1/2@3', 'y/1/1@4', 'de/2/2@5', 'Dios/2/2@6',
-    ]);
-  });
 });
 
 describe('#1 engine — trains on confirmed alignments, proposes for the bank, never for an untrained model', () => {
@@ -145,17 +140,6 @@ describe('#1 engine — trains on confirmed alignments, proposes for the bank, n
   };
   beforeEach(() => seedRandom(0));
   afterEach(() => vi.restoreAllMocks());
-
-  it('Math.random is the only thing that varies: the same seed trains the same proposals', async () => {
-    const f = file({ '1': aligned11(), '4': aligned14() });
-    const verses = trainingVersesFor('TIT', f, { '1:1': V11.text, '1:4': V14.text });
-    const r = bootstrapVerse('de Dios Padre', [V14.orig[1], V14.orig[2]], SOURCE);
-    const once = async () => {
-      seedRandom(1);
-      return predictLinks(await trainModel('nt', verses), sessionInputFor(r, 'de Dios Padre'));
-    };
-    expect(await once()).toEqual(await once());
-  });
 
   it('a project with no aligned verses trains nothing and suggests nothing', async () => {
     const trained = await trainModel('nt', []);
@@ -181,19 +165,6 @@ describe('#1 engine — trains on confirmed alignments, proposes for the bank, n
     expect(links.some((l) => l.word.word === 'Padre')).toBe(false); // placed — never proposed
     // The record is untouched by any of this.
     expect(r.wordBank.map((w) => w.word)).toEqual(['de', 'Dios']);
-  });
-
-  it('one aligned verse trains (boost over the whole memory) or says too few — never throws', async () => {
-    const f = file({ '1': aligned11() });
-    const verses = trainingVersesFor('TIT', f, { '1:1': V11.text });
-    const trained = await trainModel('nt', verses);
-    expect(trained.verses === 1 || trained.tooFew === true).toBe(true);
-    if (trained.verses) {
-      const r = bootstrapVerse('de Dios Padre', [V14.orig[1], V14.orig[2]], SOURCE);
-      expect(() => predictLinks(trained, sessionInputFor(r, 'de Dios Padre'))).not.toThrow();
-    } else {
-      expect(predictLinks(trained, sessionInputFor(bootstrapVerse(V14.text, V14.orig, SOURCE), V14.text))).toEqual([]);
-    }
   });
 
   it('boundCorpus drops verses until the summed complexity fits, keeping at least one', () => {

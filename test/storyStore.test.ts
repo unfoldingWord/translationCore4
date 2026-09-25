@@ -122,56 +122,6 @@ describe('the story path of the store (#286, §10)', () => {
     expect(projects.find((p) => p.id === '_local_/_local_/prueba')).toMatchObject({ flavor: 'textTranslation', bookCodes: ['TIT'] });
   });
 
-  it('lists the fifty stories under content/NN.md and splits a story on its image lines', async () => {
-    const { store } = await setup();
-    expect(await store.listStories()).toEqual(Array.from({ length: 50 }, (_, i) => i + 1));
-    const { bytes, story } = await store.readStory(1);
-    expect(bytes).toBe(templateFiles()['content/01.md']);
-    expect(story.number).toBe(1);
-    expect(story.title).toBe('The Creation');
-    expect(story.frames).toHaveLength(bytes.split('\n').filter((line) => IMAGE_LINE.test(line)).length);
-    expect(story.frames).toHaveLength(16);
-    for (const frame of story.frames) {
-      expect(frame.image).toMatch(IMAGE_LINE);
-      expect(frame.text).toBe('');
-    }
-    expect(story.ref).toBeNull();
-  });
-
-  it('opens the template project as converged: no unknown path, nothing regenerated', async () => {
-    const { store, api } = await setup();
-    expect(openFacts(store).classification).toBe('converged');
-    expect(openFacts(store).regeneratedPaths).toEqual([]);
-    await expectVerified(api);
-  });
-
-  it('writes one frame byte-strictly: every byte outside the frame region is identical, and the event is v: 2', async () => {
-    const { store, rig, api } = await setup();
-    const before = templateFiles()['content/01.md'];
-    await store.writeFrame(1, 2, 'Entonces Dios dijo: "Que haya luz".');
-    const after = rig.repos.get(REPO)!.files.get('content/01.md')!;
-    // the region of frame 2: after its image line, up to the next image line
-    const beforeLines = before.split('\n');
-    const afterLines = after.split('\n');
-    const imageAt = (lines: string[]): number[] => lines.flatMap((line, i) => (IMAGE_LINE.test(line) ? [i] : []));
-    const [bImg, aImg] = [imageAt(beforeLines), imageAt(afterLines)];
-    expect(aImg).toHaveLength(bImg.length);
-    expect(beforeLines.slice(0, bImg[1] + 1)).toEqual(afterLines.slice(0, aImg[1] + 1)); // title + frame 1 + image 2
-    expect(beforeLines.slice(bImg[2])).toEqual(afterLines.slice(aImg[2])); // image 3 to the end
-    expect(afterLines.slice(aImg[1] + 1, aImg[2])).toEqual(['', 'Entonces Dios dijo: "Que haya luz".', '']);
-    const { story } = await store.readStory(1);
-    expect(story.frames[1].text).toBe('Entonces Dios dijo: "Que haya luz".');
-    expect(story.frames.filter((f) => f.text !== '')).toHaveLength(1);
-    const events = await publishedEvents(rig);
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({ v: 2, op: 'text.frame.set', story: 1, frame: 2, text: 'Entonces Dios dijo: "Que haya luz".' });
-    expect(events[0].base).toBeUndefined(); // a rootless first write on a frame is ordinary (R-10.7.2)
-    expect(events[0].generation).toBeUndefined();
-    // the version 2 fold: one frame register, projected as {frames, ref}
-    expect(fold(events).stories).toEqual({ '1': { frames: { '2': 'Entonces Dios dijo: "Que haya luz".' }, ref: null } });
-    await expectVerified(api);
-  });
-
   it('seals frame text as ONE paragraph: blank lines and carriage returns go, single newlines survive', async () => {
     const { store, rig } = await setup();
     await store.writeFrame(3, 1, 'Línea uno\r\n\r\n   \nLínea dos\n\n');

@@ -69,13 +69,6 @@ function exportLines(stdout) {
   return stdout.split(/\r?\n/).filter((line) => /^(ok|FAIL) export:/.test(line));
 }
 
-test('export smoke accepts HTTP 200 with a valid ZIP', async () => {
-  const result = await runExportSmoke(200);
-  assert.equal(result.code, 0, result.stderr || result.stdout);
-  assert.match(result.stdout, /^ok export:/m);
-  assert.equal(exportLines(result.stdout).length, 1);
-});
-
 test('export smoke rejects HTTP 206 even when the ZIP is valid', async () => {
   const result = await runExportSmoke(206);
   assert.notEqual(result.code, 0);

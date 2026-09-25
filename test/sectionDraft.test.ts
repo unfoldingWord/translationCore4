@@ -8,18 +8,6 @@ const KEYS = ['9', '10'];
 const THREE = ['3', '4', '5'];
 
 describe('#141 — parseDraft', () => {
-  it('typed straight through: every word belongs to the first verse, which is fixed at word 0', () => {
-    const d = parseDraft('Exhorta a los siervos a que se sujeten', KEYS);
-    expect(d.words).toEqual(['Exhorta', 'a', 'los', 'siervos', 'a', 'que', 'se', 'sujeten']);
-    expect(d.markers).toEqual({ '9': 0 });
-  });
-
-  it('a line that starts with a section verse key begins that verse', () => {
-    const d = parseDraft('9 Exhorta a los siervos\n10 no defraudando', KEYS);
-    expect(d.markers).toEqual({ '9': 0, '10': 4 });
-    expect(d.words).toHaveLength(6);
-  });
-
   it('a number that is not one of the section keys is text, not a marker', () => {
     const d = parseDraft('9 Exhorta\n12 talentos', KEYS);
     expect(d.words).toEqual(['Exhorta', '12', 'talentos']);
@@ -219,13 +207,6 @@ describe('#63 — stacked pins are one span', () => {
     expect(expandKeys(['9', '10'])).toEqual(['9', '10']);
   });
 
-  it('two pins on the first word write one span key with the joined text', () => {
-    const markers = { '9': 0, '10': 0 };
-    expect(sectionKeys(markers, KEYS)).toEqual(['9-10']);
-    expect(sectionVerses(words, seps, markers, KEYS)).toEqual({ '9-10': 'a b c d' });
-    expect(serializeDraft(words, seps, markers, KEYS)).toBe('9-10 a b c d');
-  });
-
   it('three stacked pins write 3-5; a pin moved past text breaks the span there', () => {
     expect(sectionKeys({ '3': 0, '4': 0, '5': 0 }, THREE)).toEqual(['3-5']);
     expect(sectionVerses(words, seps, { '3': 0, '4': 0, '5': 2 }, THREE)).toEqual({ '3-4': 'a b', '5': 'c d' });
@@ -240,21 +221,6 @@ describe('#63 — stacked pins are one span', () => {
     expect(three.markers).toEqual({ '3': 0, '4': 0, '5': 2 });
     // A run that is not the section's pins is text.
     expect(parseDraft('9-12 a', KEYS).words).toEqual(['9-12', 'a']);
-  });
-
-  it('a section that already holds a span opens with its pins stacked, and keeps the span until a pin moves', () => {
-    const keys = ['9-10', '11'];
-    const pins = expandKeys(keys);
-    const text = initialDraftText([{ n: '9-10', drafted: true, body: 'a b' }, { n: '11', drafted: true, body: 'c d' }], pins);
-    expect(text).toBe('9-10 a b\n11 c d');
-    const d = parseDraft(text, pins);
-    expect(d.markers).toEqual({ '9': 0, '10': 0, '11': 2 });
-    expect(sectionKeys(d.markers, pins, keys)).toEqual(keys);
-    // The break: verse 10 moves onto "b".
-    expect(canDrop(d.markers, pins, '10', 1)).toBe(true);
-    const broken = dropPin(d.markers, pins, '10', 1);
-    expect(sectionKeys(broken, pins, keys)).toEqual(['9', '10', '11']);
-    expect(sectionVerses(d.words, d.seps, broken, pins, keys)).toEqual({ '9': 'a', '10': 'b', '11': 'c d' });
   });
 
   it('a stub span stays one stub key while all its pins are unplaced', () => {

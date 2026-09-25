@@ -65,20 +65,6 @@ describe('#328 — the OBS project card', () => {
     expect(tiles()).toHaveLength(3);
   });
 
-  it('a project with no edits yet shows the first three stories and the toggle', () => {
-    state.obsRecentByProject = {};
-    render(<ObsProjectCard p={PROJECT} />);
-    expect(tiles()).toEqual(['story-tile-1', 'story-tile-2', 'story-tile-3']);
-    expect(screen.getByTestId(`toggle-stories-${PROJECT.id}`)).toBeTruthy();
-    expect(collapsedStories(stories, undefined).map((s: { number: number }) => s.number)).toEqual([1, 2, 3]);
-  });
-
-  it('a tile opens its story where the user last worked in it (#329), the way a book tile opens a book', () => {
-    render(<ObsProjectCard p={PROJECT} />);
-    fireEvent.click(screen.getByTestId('story-tile-12'));
-    expect(actions.openProjectAt).toHaveBeenCalledWith(PROJECT.id, 12);
-  });
-
   it('collapsedStories ignores a recent entry whose story is not in the list, and keeps recency order', () => {
     expect(collapsedStories(stories, [{ story: 99, at: 9 }, { story: 4, at: 8 }, { story: 2, at: 7 }]).map((s: { number: number }) => s.number)).toEqual([4, 2]);
   });

@@ -73,21 +73,15 @@ The `.npmrc` file sets `legacy-peer-deps=true`. This setting is necessary.
 Some tests skip on a clean clone. They skip; they do not fail. Each skipped test names the
 prerequisite that it needs.
 
-Two prerequisites are outside this repository:
+One prerequisite is outside this repository:
 
 - **The Pankosmia development rig** on port 19998. The integration tests and the
   Playwright journey tests (`npm run test:e2e`) need this server.
-- **A sibling `sample-burrito` checkout.** The three S-0 smoke tests need it. The
-  conformance harness and its sample project now live in `conformance/` in this
-  repository (issue #47). The S-0 test code still reads the sibling path
-  (`../sample-burrito`), so the sibling-checkout instruction still applies to the S-0
-  tests until a code PR updates that path.
 
 CI has two jobs. `verify` runs `npm run prove` on a clean clone, where the rig-backed
-tests and the S-0 tests skip. `rig` builds and seeds the Pankosmia development rig on
+tests skip. `rig` builds and seeds the Pankosmia development rig on
 the runner and runs the rig-backed suites, on every pull request and on `main`
-[VERIFIED — `.github/workflows/ci.yml` and `rig.yml`, PR #168, 2026-09-04]. No job
-supplies the sibling `sample-burrito` checkout.
+[VERIFIED — `.github/workflows/ci.yml` and `rig.yml`, PR #168, 2026-09-04].
 
 ## Repository layout
 

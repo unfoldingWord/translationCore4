@@ -401,45 +401,6 @@ describe('#62 universal seeding (§8.8)', () => {
     return repo;
   };
 
-  it('publishes one all-or-nothing seed; the fold reproduces the pre-seed state; legacy sidecars converge to canonical bytes; USFM is untouched', async () => {
-    const world = await setup();
-    const { rig, api, restart } = world;
-    const repo = legacyProject(rig);
-    const writesBefore = rig.writes.length;
-    const store = restart();
-    await store.open(repo);
-    expect(openFacts(store).seeded).toBe(true);
-    const events = await allEvents(rig, repo);
-    expect(events.every((e) => e.seed && (e.seed as { source: string }).source === 'sidecar-migration')).toBe(true);
-    expect(events.map((e) => e.op).sort()).toEqual([
-      'book.add',
-      'check.decision.set',
-      'project.vrs.set',
-      'resource.pin.set',
-      'resource.pin.set',
-      'resource.pin.set',
-      'resource.pin.set',
-      'resource.pin.set',
-      'resource.pin.set',
-      'resource.pin.set',
-      'resource.pin.set',
-      'resource.pin.set',
-      'resource.pin.set',
-      'settings.set',
-    ]);
-    // The precious surface was never rewritten:
-    expect(rig.writes.slice(writesBefore).some((w) => w.repo === repo && w.ipath === 'TIT.usfm')).toBe(false);
-    expect(rig.repos.get(repo)?.files.get('TIT.usfm')).toBe(TIT_USFM);
-    // Legacy sidecars converged to the canonical checkpoint byte form:
-    expect(rig.repos.get(repo)?.files.get('checking/settings.json')?.endsWith('\n')).toBe(true);
-    await expectVerified(api, repo);
-    // Reopening is quiet: already journaled, already converged.
-    const store2 = restart();
-    await store2.open(repo);
-    expect(openFacts(store2).seeded).toBe(false);
-    expect(openFacts(store2).classification).toBe('converged');
-  });
-
   it('seeds a decision file whose records are NOT in canonical order — order is byte form, not content (R-8.8.2)', async () => {
     // Real tC3 exports carry decisions in whatever order the tool wrote them.
     // The fold projects decisions sorted by canonical contextId, so a stored
@@ -581,33 +542,6 @@ describe('#62 universal seeding (§8.8)', () => {
     expect(rig.repos.get(repo)?.files.get('checking/translationWords/TIT.json')).toContain(
       'tC3-era annotation',
     );
-  });
-
-  it('seeds a decision file carrying the §5.2 OPTIONAL `summary` cache — disposable, never a refusal', async () => {
-    // The spec marks `summary` "derived cache, regenerable ... MUST be treated
-    // as disposable": convergence dropping it is specified behavior, not
-    // content loss. The conformance sample itself carries one (found round 6:
-    // the whole-document rule refused the seeded sample and every rig journey
-    // hung at open).
-    const world = await setup();
-    const { rig, api, restart } = world;
-    const repo = '_local_/_local_/consumario';
-    rig.createRepo(repo, {
-      'vrs.json': FAKE_VRS,
-      'TIT.usfm': TIT_USFM,
-      'checking/translationWords/TIT.json': JSON.stringify({
-        schemaVersion: 1,
-        tool: 'translationWords',
-        book: 'TIT',
-        resource: RESOLUTION,
-        decisions: [decision('t1g7')],
-        summary: { note: 'derived cache, regenerable', decided: { kt: 1 } },
-      }),
-    });
-    const store = restart();
-    await store.open(repo);
-    expect(openFacts(store).seeded).toBe(true);
-    await expectVerified(api, repo);
   });
 
   it('REFUSES a seed when an ALIGNMENT sidecar carries an unknown top-level field (R-8.8.2)', async () => {

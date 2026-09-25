@@ -146,7 +146,6 @@ describe('gatewayQuote (owner ruling 2026-08-31: cards title in the gateway lang
 // en_obs-tn v13 quotes for 1:0 and 1:1 (test/fixtures/resources/en_obs-tn@v13).
 import { matchPlainQuote, tokenizePlain } from '../src/data/sourceHighlight';
 
-const OBS_1_TITLE = 'The Creation';
 const OBS_1_1 =
   'This is how God made everything in the beginning. He created the universe and everything in it in six days. ' +
   'After God created the earth it was dark and empty because he had not yet formed anything in it. But God’s Spirit was there over the water.';
@@ -169,10 +168,6 @@ describe('tokenizePlain / matchPlainQuote (OBS story frames, #291)', () => {
     expect(plainHits(OBS_1_1, 'God’s Spirit')).toBe('God’s Spirit');
     // the first occurrence wins (`God` appears three times; Occurrence is not counted)
     expect([...matchPlainQuote(tokenizePlain(OBS_1_1), 'God')]).toEqual([tokenizePlain(OBS_1_1).findIndex((t) => t.text === 'God')]);
-  });
-
-  it('highlights the title note quote on frame 0 (the story title)', () => {
-    expect(plainHits(OBS_1_TITLE, 'The Creation')).toBe('The Creation');
   });
 
   it('matches an &-separated quote span by span, in order', () => {

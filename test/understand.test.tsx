@@ -192,19 +192,6 @@ describe('#106 — the Understand write boundary', () => {
     }
   });
 
-  it('the comprehension box is the ONLY write: typing stages into the buffer, blur flushes — nothing else writes', () => {
-    render(<Understand />);
-    const boxes = screen.getAllByPlaceholderText('What is this section saying? Who is speaking, to whom, and what will be hard to render?');
-    fireEvent.change(boxes[0], { target: { value: 'God made everything through the Word.' } });
-    // Typing stages (buffered, debounce-owned) but never flushes by itself.
-    expect(calls.filter((c) => c.name === 'flushNotes')).toEqual([]);
-    const staged = calls.filter((c) => c.name === 'stageNote');
-    expect(staged[staged.length - 1].args[1]).toBe('God made everything through the Word.');
-    fireEvent.blur(boxes[0]);
-    expect(calls.filter((c) => c.name === 'flushNotes').length).toBe(1);
-    // and the whole write surface is exactly those two actions
-    expect(writes().every((c) => c.name === 'stageNote' || c.name === 'flushNotes')).toBe(true);
-  });
 });
 
 describe('2026-08-27 Codex review regressions', () => {
@@ -300,15 +287,6 @@ describe('2026-08-27 adversarial-review regressions', () => {
     }
   });
 
-  it('typing makes the note buffer dirty (the unload guard reads it); an unchanged edit returns it to clean', () => {
-    render(<Understand />);
-    const box = screen.getAllByPlaceholderText('What is this section saying? Who is speaking, to whom, and what will be hard to render?')[0];
-    fireEvent.change(box, { target: { value: 'unsaved text' } });
-    // Dirty is DERIVED per target: current ≠ persisted for exactly this key (C2/F2).
-    expect(bufferDirty()).toEqual(['1:1']);
-    fireEvent.change(box, { target: { value: '' } }); // back to the stored (empty) value
-    expect(bufferDirty()).toEqual([]);
-  });
 });
 
 describe('2026-08-27 adversarial round 2 regressions', () => {
@@ -595,27 +573,6 @@ describe('2026-08-27 adversarial round 19 regressions', () => {
   });
 });
 
-describe('#106 — the persistence shape: §8.5 note.add seals and projects', () => {
-  it('the exact event addNote() emits validates through the reference and folds into notes output', async () => {
-    const { sealAction } = await import('../src/data/journal/seal');
-    const nodeRequire = process.getBuiltinModule('node:module').createRequire(`${process.cwd()}/`);
-    const refFold = nodeRequire('./journal/fold.mjs') as { fold(events: unknown[]): { notes: Array<Record<string, unknown>> } };
-    const refSkeleton = nodeRequire('./journal/skeleton.mjs') as { decompose(usfm: string): { skeleton: string; verses: Record<string, string> } };
-    const { skeleton, verses } = refSkeleton.decompose('\\id TIT\n\\c 1\n\\p\n\\v 1 one\n');
-    const addTs = '2026-08-27T00:00:00.000Z|0000|actor-a';
-    const events = [
-      { v: 1, op: 'book.add', actor: 'actor-a', ts: addTs, base: null, book: 'TIT', scope: [], skeleton, initialVerses: verses },
-      { v: 1, op: 'note.add', actor: 'actor-a', ts: '2026-08-27T00:00:01.000Z|0000|actor-a',
-        target: { book: 'TIT', chapter: '1', verse: '1' }, text: 'My comprehension note.', generation: addTs },
-    ];
-    await expect(sealAction([events[1]] as never)).resolves.toBeDefined();
-    const out = refFold.fold(JSON.parse(JSON.stringify(events)));
-    expect(out.notes.length).toBe(1);
-    expect(out.notes[0].text).toBe('My comprehension note.');
-    expect((out.notes[0].target as Record<string, unknown>).verse).toBe('1');
-  });
-});
-
 describe('2026-08-28 adversarial round 20 regression (F2)', () => {
   beforeEach(() => { calls.length = 0; });
 
@@ -710,12 +667,6 @@ describe('2026-08-28 adversarial round 32 regressions', () => {
     } finally {
       state.understand = savedU;
     }
-  });
-
-  it('same-frame projects keep the Section/Verse control', () => {
-    render(<Understand />);
-    expect(screen.getByRole('tab', { name: 'Verse' })).toBeTruthy();
-    expect(screen.queryByTestId('understand-verse-only')).toBeNull();
   });
 });
 

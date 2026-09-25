@@ -23,8 +23,8 @@ export default defineConfig(({ command }) => ({
     },
   },
   test: {
-    // Tests default to node; the word-aligner mount test opts into jsdom via
-    // a per-file `@vitest-environment jsdom` pragma (TEST-PLAN §2.3 S-0a).
+    // Tests default to node; a test that needs the DOM opts into jsdom via
+    // a per-file `@vitest-environment jsdom` pragma.
     environment: 'node',
     include: ['test/**/*.test.{js,jsx,ts,tsx}'],
     // Vitest empties CSS imports by default, `?raw` too. The PDF export's print

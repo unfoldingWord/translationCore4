@@ -15,8 +15,8 @@ import type { JournalEvent } from '../src/data/journal/seal';
 
 // journal/files.mjs is Node-bound (fs, node:crypto); loaded via a
 // NATIVE require outside the vite pipeline (vite-plugin-node-polyfills aliases
-// node builtins to browser mocks even under the Vitest node environment — same
-// workaround as test/s0a-aligner-headless.test.ts).
+// node builtins to browser mocks even under the Vitest node environment — see
+// CONTRIBUTING.md, "Write a test that reads files").
 const nodeRequire = process.getBuiltinModule('node:module').createRequire(`${process.cwd()}/`);
 const refFiles = nodeRequire('./journal/files.mjs') as {
   validateActorDoc(raw: unknown, actorId: string): { ok: boolean; reason?: string };

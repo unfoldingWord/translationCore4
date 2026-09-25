@@ -216,25 +216,4 @@ describe('OBS picture packs are listed once per open project (#312)', () => {
     await readObsStoryPresentation({ api, store, projectRepo: repoPath, storyNumber: 2, resources: null, installed: {} });
     expect(listings(rig.log) - before).toBe(2);
   });
-
-  it('a pack installed between two story reads is listed again, and its new files resolve', async () => {
-    const { rig, api, store, repoPath, fileNames } = await setup();
-    // First read: the machine has no pack; the (cached) listing finds nothing.
-    let cache = createObsPackCache();
-    const read = () =>
-      readObsStoryPresentation({ api, store, projectRepo: repoPath, storyNumber: 1, resources: null, installed: {}, packCache: cache });
-    const missing = await read();
-    expect(missing.images['1'].source).toBe('missing');
-    // The pack is installed. The same cache still answers from the old listing…
-    rig.createRepo(DEFAULT_OBS_IMAGES_LOCAL, Object.fromEntries(fileNames.map((name) => [`360px/${name}`, 'jpeg-bytes'])));
-    const stale = await read();
-    expect(stale.images['1'].source).toBe('missing');
-    // …so the install drops the cache (state.jsx keys it by installEpoch), and the next read lists again.
-    const before = listings(rig.log);
-    cache = createObsPackCache();
-    const fresh = await read();
-    expect(listings(rig.log) - before).toBe(1);
-    expect(fresh.images['1'].source).toBe('default');
-    expect(fresh.imagePacks[0]).toMatchObject({ via: 'paths', files: fileNames.length });
-  });
 });

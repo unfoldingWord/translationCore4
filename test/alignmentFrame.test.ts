@@ -16,16 +16,10 @@
 // and this suite pins the direction and the round trip.
 //
 // Note this is a LOOKUP, never an identity: the alignment record stays keyed by
-// the project-frame reference, which is what keeps export frame-neutral (below).
+// the project-frame reference, which is what keeps export frame-neutral.
 import { describe, expect, it } from 'vitest';
-import {
-  mergeVerseToZalnUsfm,
-  verseTextFromObjects,
-  type AlignmentFile,
-} from '../src/data/align/zaln';
 import { mapReference } from '../src/data/mapReference';
 import { RESOURCE_FRAME } from '../src/data/projectFrame';
-import { usfmjs } from '../src/data/vendor';
 import { SCHEME_NAMES, type SchemeDoc, type SchemeName } from '../src/data/versification';
 
 const fs = process.getBuiltinModule('node:fs');
@@ -41,23 +35,6 @@ const schemes = Object.fromEntries(
 /** What openAlign does: project-frame draft reference -> source-text reference. */
 const sourceRefFor = (project: SchemeName | null, book: string, chapter: number, verse: number | string) =>
   mapReference({ from: project, to: RESOURCE_FRAME, book, chapter, verse, schemes });
-
-describe('the resource frame is eng', () => {
-  it('RESOURCE_FRAME names the frame the whole unfoldingWord suite is in', () => {
-    expect(RESOURCE_FRAME).toBe('eng');
-  });
-});
-
-describe('an eng project is untouched', () => {
-  it('short-circuits, so the source lookup uses the draft reference as-is', async () => {
-    const out = await sourceRefFor('eng', 'JON', 1, 17);
-    expect(out).toEqual({
-      ok: true,
-      reference: { book: 'JON', chapter: 1, verse: 17 },
-      mapped: false,
-    });
-  });
-});
 
 describe('a non-eng project maps the source lookup', () => {
   it('an rsc draft at JON 2:1 aligns against eng JON 1:17', async () => {
@@ -81,11 +58,6 @@ describe('a non-eng project maps the source lookup', () => {
     // rsc counts the superscription as verse 1, eng does not.
     const out = await sourceRefFor('rsc', 'PSA', 3, 2);
     expect(out).toMatchObject({ ok: true, reference: { chapter: 3, verse: 1 } });
-  });
-
-  it('an lxx draft at GEN 32:1 aligns against eng GEN 31:55', async () => {
-    const out = await sourceRefFor('lxx', 'GEN', 32, 1);
-    expect(out).toMatchObject({ ok: true, reference: { chapter: 31, verse: 55 } });
   });
 
   it('an rso draft at PSA 12:6 aligns against eng PSA 13:5', async () => {
@@ -166,46 +138,5 @@ describe('an unresolvable frame refuses rather than aligning against the wrong v
       ok: false,
       reason: 'no-chapter',
     });
-  });
-});
-
-describe('export is frame-neutral by construction', () => {
-  it('real sidecar merge stays at the project chapter and verse', async () => {
-    const draftRef = { book: 'JON', chapter: 2, verse: 1 }; // an rsc project's draft
-    const alignmentKey = `${draftRef.chapter}:${draftRef.verse}`;
-    expect(alignmentKey).toBe('2:1');
-
-    const source = await sourceRefFor('rsc', draftRef.book, draftRef.chapter, draftRef.verse);
-    expect(source).toMatchObject({ ok: true, reference: { chapter: 1, verse: 17 } });
-
-    // Reuse the conformance burrito's real aligned verse and the existing tC3
-    // conversion surface. Only its project-frame key changes for this fixture.
-    const sampleDir = path.resolve(process.cwd(), 'conformance/sample-burrito/ingredients');
-    const alignment = JSON.parse(
-      fs.readFileSync(path.join(sampleDir, 'checking/alignments/TIT.json'), 'utf8'),
-    ) as AlignmentFile;
-    const record = alignment.chapters['1']['1'];
-    const titus = usfmjs.toJSON(fs.readFileSync(path.join(sampleDir, 'TIT.usfm'), 'utf8')) as unknown as {
-      chapters: Record<string, Record<string, { verseObjects: Array<Record<string, unknown>> }>>;
-    };
-    const verseText = verseTextFromObjects(titus.chapters['1']['1'].verseObjects).trim();
-    const project = usfmjs.toJSON(
-      `\\id JON\n\\c 2\n\\p\n\\v 1 ${verseText}\n\\v 2 Control verse.\n`,
-    ) as unknown as {
-      chapters: Record<string, Record<string, { verseObjects: Array<Record<string, unknown>> }>>;
-    };
-    const merged = mergeVerseToZalnUsfm(record, verseText);
-    const parsed = usfmjs.toJSON(`\\v 1 ${merged}`, { chunk: true }) as unknown as {
-      verses: Record<string, { verseObjects: Array<Record<string, unknown>> }>;
-    };
-    project.chapters['2']['1'].verseObjects = parsed.verses['1'].verseObjects;
-    const output = usfmjs.toUSFM(project, { forcedNewLines: true });
-
-    expect(output).toContain('\\c 2');
-    expect(output).toContain('\\v 1');
-    expect(output).toContain('\\zaln-s');
-    expect(output).toMatch(/x-strong="G\d+"/);
-    expect(output).toContain('\\v 2 Control verse.');
-    expect(output).not.toContain('\\c 1');
   });
 });

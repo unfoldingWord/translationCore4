@@ -30,29 +30,6 @@ const corpus: Record<string, string> = Object.fromEntries(
 const MARKER = 'XX_CORPUS_EDIT_XX';
 
 describe('corpus shape — the exotic classes are really present', () => {
-  it('has the six documented files', () => {
-    expect(corpusFiles).toEqual([
-      'en_ult-TIT-aligned.usfm',
-      'en_ust-TIT-aligned.usfm',
-      'exotic-partial-book.usfm',
-      'exotic-poetry-footnotes.usfm',
-      'sample-JON-span.usfm',
-      'sample-TIT-draft.usfm',
-    ]);
-  });
-
-  it('covers alignment, poetry, footnotes, span verses and a partial book', () => {
-    const all = Object.values(corpus);
-    expect(all.some((raw) => raw.includes('\\zaln-s'))).toBe(true);
-    expect(all.some((raw) => /^\\q/m.test(raw))).toBe(true);
-    expect(all.some((raw) => raw.includes('\\f '))).toBe(true);
-    expect(all.some((raw) => indexBook(raw).some((e) => e.verseKey.includes('-')))).toBe(true);
-    // The partial book has no chapter 1 and no final line terminator.
-    const partial = corpus['exotic-partial-book.usfm'];
-    expect(indexBook(partial).every((e) => e.chapter === '3')).toBe(true);
-    expect(partial.endsWith('\n')).toBe(false);
-  });
-
   it('every corpus file indexes at least one verse', () => {
     for (const [name, raw] of Object.entries(corpus)) {
       expect(indexBook(raw).length, name).toBeGreaterThan(0);

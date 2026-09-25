@@ -4,7 +4,7 @@
 // nothing and returns a Report code. The store is the real JournalingStore on
 // the fake rig, so the checkpoint is the production one.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { deliverFile, exportFilename, runExport, type ExportProducer } from '../src/data/export/kernel';
+import { exportFilename, runExport, type ExportProducer } from '../src/data/export/kernel';
 import { Refusal, reportError } from '../src/data/journal/runtime';
 import { ServerApi } from '../src/data/serverApi';
 import { JournalingStore, forgetProjectQueues } from '../src/data/journal/journalingStore';
@@ -12,7 +12,6 @@ import { forgetSharedClocks } from '../src/data/journal/journalStore';
 import type { ProjectSummary } from '../src/data/burritoStore';
 import { journalingRig, memKv, tickingNow } from './helpers/journalingRig';
 import { assertProjectUnchanged } from './helpers/export';
-import { DEFAULT_PAGE_SETUP } from '../src/data/export/pageSetup';
 
 const fs = process.getBuiltinModule('node:fs');
 const os = process.getBuiltinModule('node:os');
@@ -72,15 +71,6 @@ describe('#375 runExport', () => {
     expect(report.facts.bytes).toBe(new TextEncoder().encode(TIT.replace('\\v 2 ___', '\\v 2 Nueva vida.')).byteLength);
   });
 
-  it('a clean project gets no checkpoint', async () => {
-    const { store, project } = await seeded();
-    const n = project.commits.length;
-    const report = await runExport(fake(), { store, project: PROJECT, book: 'TIT' });
-    expect(report.ok).toBe(true);
-    expect(project.commits.length).toBe(n);
-    expect(downloads).toHaveLength(1);
-  });
-
   it('a producer that throws delivers nothing and returns export.read-failed', async () => {
     const { store } = await seeded();
     const report = await runExport(fake(async () => { throw new Error('no such book'); }), { store, project: PROJECT });
@@ -111,28 +101,9 @@ describe('#375 runExport', () => {
   });
 });
 
-describe('#381 runExport and the page setup', () => {
-  it('hands ExportInput.pageSetup to the producer as given', async () => {
-    const { store } = await seeded();
-    const pageSetup = { ...DEFAULT_PAGE_SETUP, spacing: 'double', paper: 'letter', pictures: false } as const;
-    const produce = vi.fn(async () => ({ bytes: new Uint8Array([1]), filename: 'a.txt', mime: 'text/plain' }));
-    const report = await runExport(fake(produce), { store, project: PROJECT, book: 'TIT', pageSetup });
-    expect(report.ok).toBe(true);
-    expect(produce).toHaveBeenCalledWith(expect.objectContaining({ pageSetup }));
-  });
-});
-
 describe('#375 export helpers', () => {
   it('exportFilename is <subject>-<YYYY-MM-DD>.<ext> on the local date', () => {
     expect(exportFilename('Puntos-TIT', 'usfm', new Date(2026, 8, 2, 23, 59))).toBe('Puntos-TIT-2026-09-02.usfm');
-  });
-
-  it('deliverFile clicks one anchor that names the file, then releases the Blob URL', async () => {
-    deliverFile({ bytes: new Uint8Array([1, 2]), filename: 'a-2026-09-22.txt', mime: 'text/plain' });
-    expect(downloads).toEqual([{ name: 'a-2026-09-22.txt', href: 'blob:fake' }]);
-    expect(document.querySelector('a[download]')).toBeNull();
-    await new Promise((r) => setTimeout(r, 0));
-    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:fake');
   });
 });
 

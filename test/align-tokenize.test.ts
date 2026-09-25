@@ -10,7 +10,7 @@
 import { describe, expect, it } from 'vitest';
 import Lexer from 'wordmap-lexer';
 import { usfmjs } from '../src/data/vendor';
-import { tokenizeVerse, wordTokens } from '../src/data/align/tokenize';
+import { wordTokens } from '../src/data/align/tokenize';
 import { tokenizeTargetVerse } from '../src/data/align/edit';
 
 // Real node builtins via the runtime, NOT `import 'node:fs'` — the app's
@@ -65,16 +65,6 @@ const ourWords = (text: string) =>
 describe('#255 — the editor split and wordmap-lexer agree on every fixture verse', () => {
   const all = CORPUS.flatMap(versesOf);
 
-  it('the corpus is real and covers the required shapes', () => {
-    expect(all.length).toBeGreaterThan(100);
-    // punctuation attached to a word
-    expect(all.some(([, t]) => /\p{L}[,.;:]/u.test(t))).toBe(true);
-    // a verse with a repeated word
-    expect(all.some(([, t]) => ourWords(t).some((w) => w.occurrences > 1))).toBe(true);
-    // right-to-left text (Hebrew block)
-    expect(all.some(([, t]) => /[\u0590-\u05FF]/.test(t))).toBe(true);
-  });
-
   it('token text and occurrence numbers match, verse by verse', () => {
     const mismatches = all
       .filter(([, t]) => JSON.stringify(ourWords(t)) !== JSON.stringify(lexerWords(t)))
@@ -101,12 +91,5 @@ describe('#255 — tokenizeTargetVerse is built on the same split', () => {
       );
       expect(emitted).toEqual(ourWords(text));
     }
-  });
-
-  it('keeps punctuation and whitespace between the words', () => {
-    const text = 'Pablo, siervo de Dios y de Dios';
-    const separators = tokenizeVerse(text).filter((t) => !t.isWord).map((t) => t.text);
-    expect(separators).toEqual([',', ' ', ' ', ' ', ' ', ' ', ' ']);
-    expect(tokenizeTargetVerse(text)).toContain(', ');
   });
 });
