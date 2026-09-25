@@ -8,6 +8,7 @@ import { spliceVerse, verseBody } from '../src/data/usfm/splice';
 import { indexBook } from '../src/data/usfm/indexer';
 import { SaveScheduler } from '../src/data/saveScheduler';
 import { INSTALLED_SUITE } from '../src/data/installedSuite';
+import { unwrapExport } from '../src/data/resourceFetch';
 
 const fs = process.getBuiltinModule('node:fs');
 const path = process.getBuiltinModule('node:path');
@@ -64,8 +65,9 @@ describe('B1 — seeding reads mid-line \\v markers (marker stream, not line wal
   // full suite's parallel load (observed 5.9s/7.6s, 2026-08-22).
   it('full en_ult corpus leg: seeded verse sets match the oracle for every book (skips without the cache)', { timeout: 30_000 }, () => {
     // This repository's cache, from the repository root (the Vitest cwd) — never above it.
-    // The zip is found by the app's pinned sha through the cache provenance, not by a
-    // version in its file name: after a new pin, the skip names both shas (#406).
+    // The cache provenance names the zip; the zip's own declared revision, read the way
+    // the app reads it, must be the app's pin. No version is in the test, so after a new
+    // pin the skip names both shas (#406).
     const pin = INSTALLED_SUITE.extraScripture.find((s) => s.id === 'ult');
     if (!pin) throw new Error('INSTALLED_SUITE has no ult pin');
     // The provenance key, as dev-env/scripts/cache-resource.ts writes it.
@@ -75,21 +77,20 @@ describe('B1 — seeding reads mid-line \\v markers (marker stream, not line wal
     const entry = fs.existsSync(provenanceFile)
       ? JSON.parse(fs.readFileSync(provenanceFile, 'utf8'))[repo]
       : undefined;
-    if (entry && entry.revision !== pin.sha) {
-      console.warn(`corpus leg skipped: the cache holds ${repo} ${entry.revision}, the pin is ${pin.sha}`);
-      return;
-    }
     const cache = entry && path.join(cacheDir, entry.zip);
     if (!cache || !fs.existsSync(cache)) {
       console.warn('corpus leg skipped: resources cache absent');
       return;
     }
-    // node has no zip reader built in; sample the hard books via unzip -p
-    const { execFileSync } = process.getBuiltinModule('node:child_process');
+    const { files, revision } = unwrapExport(fs.readFileSync(cache));
+    if (revision !== pin.sha) {
+      console.warn(`corpus leg skipped: the cache holds ${repo} ${revision}, the pin is ${pin.sha}`);
+      return;
+    }
     for (const code of ['PSA', 'PRO', 'JOB', 'LAM', 'SNG', 'GEN', 'LUK', 'MAT', 'ACT']) {
-      const src = execFileSync('unzip', ['-p', cache, `ingredients/${code}.usfm`], {
-        maxBuffer: 32 * 1024 * 1024,
-      }).toString('utf8');
+      const bytes = files[`ingredients/${code}.usfm`];
+      expect(bytes, `${code} in the cache`).toBeInstanceOf(Uint8Array);
+      const src = new TextDecoder().decode(bytes);
       const seededBook = seedBookFromSource(src, { bookCode: code, bookName: code, projectName: 'x' });
       expect(seedMatchesSource(seededBook, src), `${code} verse set`).toBe(true);
     }
