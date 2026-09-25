@@ -982,12 +982,14 @@ try {
   publish(workingA, 'actor-a', [a1]); project(workingA); commitAll(workingA, 'A1 full working checkpoint');
   publish(pubA, 'actor-a', [a1]); commitAll(pubA, 'publish A1');
   const pubA1 = git('rev-parse HEAD', pubA).trim();
-  const a1Paths = git('diff --name-only HEAD^ HEAD', pubA).trim().split('\n').filter(Boolean);
+  // HEAD~1, never HEAD^: execSync runs through cmd.exe on Windows, which eats `^` as its
+  // escape character, so `HEAD^ HEAD` reached git as `HEAD HEAD` and diffed nothing (#411).
+  const a1Paths = git('diff --name-only HEAD~1 HEAD', pubA).trim().split('\n').filter(Boolean);
   const iA1 = integrate(main, pubA, 'actor-a', 'a1');
 
   // B submits while A remains offline from main.
   publish(pubB, 'actor-b', [b1]); commitAll(pubB, 'publish B1');
-  const b1Paths = git('diff --name-only HEAD^ HEAD', pubB).trim().split('\n').filter(Boolean);
+  const b1Paths = git('diff --name-only HEAD~1 HEAD', pubB).trim().split('\n').filter(Boolean);
   const iB1 = integrate(main, pubB, 'actor-b', 'b1');
 
   // A continues from A1 without receiving B1. Its working projection diverges, but publication does not.
@@ -1043,9 +1045,13 @@ try {
 {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-j20-'));
   const git = (args, cwd) => execSync(`git ${args}`, { cwd, stdio: 'pipe' }).toString();
+  // core.symlinks=true: Git for Windows defaults it to false, and a merge then checks a
+  // committed link out as a plain file, so the symlink case below never saw a link (#411).
+  // Every repo in this block is a copy of `base`, so they all inherit the setting.
   const init = (dir) => {
     fs.mkdirSync(dir, { recursive: true }); git('init -q -b main .', dir);
     git('config user.email t@t', dir); git('config user.name T', dir);
+    git('config core.symlinks true', dir);
   };
   const commitAll = (dir, message) => { git('add -A', dir); git(`commit -qm "${message}"`, dir); };
   const cp = (src, dst) => fs.cpSync(src, dst, { recursive: true });
@@ -1195,15 +1201,36 @@ try {
   // to take the intake validator down instead of producing a violation.
   const badLink = path.join(tmp, 'bad-link'); cp(base, badLink); git('checkout -qb actor-a', badLink);
   fs.mkdirSync(path.join(badLink, 'ingredients/checking/journal/actor-a/segments'), { recursive: true });
-  fs.symlinkSync('/nonexistent/target', path.join(badLink, 'ingredients/checking/journal/actor-a/segments/2026-06-02T00_00_05.000Z,0000,actor-a.action.json'));
-  fs.symlinkSync('/etc', path.join(badLink, 'ingredients/checking/journal/actor-a/adir'));
-  commitAll(badLink, 'symlinked contribution');
-  const linkScratch = mergeToScratch(base, badLink, 'actor-a', 'link');
-  let linkErrors = [], linkThrew = '';
-  try { linkErrors = validateIntake(base, linkScratch, 'actor-a'); } catch (e) { linkThrew = `${e.code || e.constructor.name}: ${e.message}`; }
-  check('JC-20: a symlinked contribution is CLASSIFIED as a violation, never a crash — the §8.7 intake validator returns a verdict on untrusted input (pre-fix: ENOENT on a dangling link, EISDIR on a link to a directory)',
-    linkThrew === '' && linkErrors.filter((e) => e.startsWith('not-a-regular-file:')).length === 2,
-    linkThrew || JSON.stringify(linkErrors));
+  const linkRels = [
+    ['/nonexistent/target', 'ingredients/checking/journal/actor-a/segments/2026-06-02T00_00_05.000Z,0000,actor-a.action.json'],
+    ['/etc', 'ingredients/checking/journal/actor-a/adir'],
+  ];
+  // Windows only: without the symlink privilege (Developer Mode or an elevated shell)
+  // fs.symlinkSync throws EPERM, and git cannot check a link out as a link. The case then
+  // cannot be built, so it reports a named skip. Anywhere else a missing link is a FAILURE,
+  // so a broken setup on CI can never hide behind a skip (#411).
+  let linkUnsupported = '';
+  try {
+    for (const [target, rel] of linkRels) fs.symlinkSync(target, path.join(badLink, rel));
+  } catch (e) { linkUnsupported = `fs.symlinkSync: ${e.code || e.message}`; }
+  let linkScratch = '';
+  if (!linkUnsupported) {
+    commitAll(badLink, 'symlinked contribution');
+    linkScratch = mergeToScratch(base, badLink, 'actor-a', 'link');
+    const plain = linkRels.map(([, rel]) => rel).filter((rel) => !fs.lstatSync(path.join(linkScratch, rel)).isSymbolicLink());
+    if (plain.length) linkUnsupported = `git checked out ${plain.length} link(s) as plain files`;
+  }
+  if (linkUnsupported && process.platform === 'win32') {
+    check(`JC-20: SKIP — a symlinked contribution cannot be built on this Windows machine (${linkUnsupported}); enable Developer Mode to run it`, true, 'prerequisite absent');
+  } else {
+    let linkErrors = [], linkThrew = linkUnsupported;
+    if (!linkThrew) {
+      try { linkErrors = validateIntake(base, linkScratch, 'actor-a'); } catch (e) { linkThrew = `${e.code || e.constructor.name}: ${e.message}`; }
+    }
+    check('JC-20: a symlinked contribution is CLASSIFIED as a violation, never a crash — the §8.7 intake validator returns a verdict on untrusted input (pre-fix: ENOENT on a dangling link, EISDIR on a link to a directory)',
+      linkThrew === '' && linkErrors.filter((e) => e.startsWith('not-a-regular-file:')).length === 2,
+      linkThrew || JSON.stringify(linkErrors));
+  }
 
   // the allowed shapes still pass: a valid new segment + a well-formed actor.json
   const goodNew = path.join(tmp, 'good-new'); cp(base, goodNew); git('checkout -qb actor-a', goodNew);
