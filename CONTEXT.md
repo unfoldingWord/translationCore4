@@ -208,6 +208,12 @@ drop-cap chapters, verse numbers, paper size, pictures and the OBS layout. The p
 export producer read the same page setup. It is held in memory and never stored (D80 point 5).
 _Avoid_: print settings, layout spec
 
+**QA server**:
+`https://qa.door43.org`, the Door43 server that a development build uses for account and write
+calls (`DCS_SERVER`, #120). It is reset weekly and holds no durable data. A packaged build uses
+production, `https://git.door43.org`. Reads always use production.
+_Avoid_: staging, test server, QA mode
+
 **Share**:
 The push of a project's working `main` branch to a repository under the user's Door43
 account, created by the app on the first share. Send only; receiving and team sync are Phase 2.

@@ -134,6 +134,27 @@ and that enforcement is a packaging/shell responsibility. Facts, measured
   the local server port, or the dev rig, is outside it; the server binds
   127.0.0.1 and the port is not user-visible in normal use.
 
+## The Door43 server for account and write calls (#120)
+
+Owner ruling, 2026-09-25. The build chooses the Door43 server for account and
+write calls. The user cannot change it.
+
+- **Rule:** a development build (the Vite dev server, `import.meta.env.DEV`)
+  uses `https://qa.door43.org`. A packaged build uses `https://git.door43.org`.
+  There is no launch argument and no user setting. `src/data/dcsServer.ts`
+  holds the rule.
+- **Scope:** only calls that act on the user's Door43 account or write to
+  Door43 use it: sign-in (#203), repository creation and push (#362). Reads
+  stay on production: the resource pins, the catalogue, the downloads, the
+  picture packs and the discovery.
+- **Indicator:** a development build shows "QA server: qa.door43.org" beside
+  the save indicator. A packaged build shows nothing.
+- **QA account:** the live share journey (#185) needs an account on
+  `qa.door43.org`. The owner supplies it through a private channel. Until it
+  exists, the live leg is a labelled skip.
+- **Weekly reset:** `qa.door43.org` is reset weekly. It holds no durable data.
+  Do not keep test data there from one week to the next.
+
 ## Packaged resource binding (#348)
 
 Packaged startup has one resource selector. The tC4-owned `tc4-main.js` runs
