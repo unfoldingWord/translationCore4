@@ -36,8 +36,8 @@ body:
       label: Verify
       description: The exact command and the expected output. "Done" means this command passes with pasted evidence.
       placeholder: |
-        Command: npm run verify
-        Expected: lint, typecheck, tests and build pass; the named regression test runs green.
+        Command: npm run verify, then npm run journeys -- e2e/j03-get-resources.spec.ts
+        Expected: lint, typecheck, tests and build pass; the named journey passes and writes its artifact.
       render: text
     validations:
       required: true
@@ -48,7 +48,7 @@ body:
       description: Where the change probably lands. Best guess is fine.
       placeholder: |
         src/data/resourceFetch.ts
-        test/resourceFetch.test.ts
+        e2e/j03-get-resources.spec.ts
     validations:
       required: false
   - type: textarea
