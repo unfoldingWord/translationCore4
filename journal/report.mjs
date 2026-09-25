@@ -44,6 +44,7 @@ export const REFUSAL_CODES = Object.freeze({
   'export.read-failed': null,
   'export.checkpoint-failed': null,
   'export.unsupported-kind': null,
+  'export.nothing-drafted': null, // the book has no drafted verse, so the PDF has nothing to print (#20)
   // Reserved for the import shell (#361, #41).
   'import.damaged.truncated': null,
   'import.damaged.no-metadata': null,

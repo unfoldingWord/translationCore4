@@ -4,7 +4,30 @@
 // into the artifact as electron/tc4-main.js; it must run before the template's
 // electronStartup.js so the template's free-port scan cannot create a second
 // server over the same project store (D39).
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+// The PDF bridge (#20, owner-approved 2026-09-24): the renderer's
+// PDF export sends one print document; this prints it in a hidden window and
+// returns the PDF bytes, with no print dialog. The document goes through a
+// temporary file, not a data: URL, because Chromium caps a data: URL at 2 MB
+// and a long book is larger. `preferCSSPageSize` lets the document's @page
+// rule set the paper (A4 or Letter).
+async function printPdf(_event, html) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-pdf-'));
+  const file = path.join(dir, 'book.html');
+  const win = new BrowserWindow({ show: false, webPreferences: { javascript: false, sandbox: true } });
+  try {
+    fs.writeFileSync(file, String(html));
+    await win.loadFile(file);
+    return await win.webContents.printToPDF({ preferCSSPageSize: true });
+  } finally {
+    win.destroy();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 function start() {
   if (process.platform === 'win32') app.setAppUserModelId('org.unfoldingword.translationcore4');
@@ -13,6 +36,8 @@ function start() {
     app.quit(); // second copy: no window, no server, exit
     return;
   }
+
+  ipcMain.handle('export:pdf', printPdf);
 
   app.on('second-instance', () => {
     const [win] = BrowserWindow.getAllWindows();

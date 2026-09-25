@@ -181,6 +181,20 @@ A pure function from project data to one file, registered in the export kernel's
 (`src/data/export/producers.ts`). It makes no checkpoint, no download and no Report.
 _Avoid_: exporter, writer
 
+**Print document**:
+The one HTML document that the PDF export prints: the print DOM of the book
+(`src/views/print/PrintBook.jsx`) for each chapter with a drafted verse, with one line for each
+run of undrafted chapters between them, the page setup as CSS and the print stylesheet (`src/ds/tokens/print.css`). It stands alone: it reads no screen token and loads no web font
+(issue #20). The Community Checking preview sets the same DOM and stylesheet on page sheets.
+_Avoid_: print view, print page
+
+**PDF bridge**:
+The one desktop-app channel that turns a print document into PDF bytes: `export:pdf` in
+`scripts/desktop-main.cjs`, exposed to the page as `tc4Desktop.printPdf` by `scripts/preload.cjs`.
+It prints in a hidden window with `printToPDF` and opens no print dialog. A browser has no PDF
+bridge (issue #20).
+_Avoid_: print API, PDF service
+
 **Relationships mirror**:
 The `relationships` array of an exported `metadata.json`: the pins of
 `checking/resources.json` as Scripture Burrito relationships, one row for each repository,
