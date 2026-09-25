@@ -4691,16 +4691,23 @@ const sameRegister = (a, b) => {
     { surface: 'alignment', key: '1:2', ts: a2.ts, action: 're-key', to: '1:4' },
     { surface: 'alignment', key: '1:3', ts: a3.ts, action: 're-key', to: '1:4' },
   ])]);
+  // a `replace` keeps its record on its key, so it does not make room for a re-key
+  const onReplaced = fold([add, a2, a3, renumber([
+    { surface: 'alignment', key: '1:2', ts: a2.ts, action: 're-key', to: '1:3' },
+    { surface: 'alignment', key: '1:3', ts: a3.ts, action: 'replace',
+      post: { chapter: '1', verse: '3', alignments: [], wordBank: [], targetVerseMd5: verseTextMd5('dos\n') } },
+  ])]);
   const clean = fold([add, a1, a2, a3, renumber([
     { surface: 'alignment', key: '1:2', ts: a2.ts, action: 're-key', to: '1:3' },
     { surface: 'alignment', key: '1:3', ts: a3.ts, action: 're-key', to: '1:4' },
   ])]);
-  check('JC-34c: an alignment re-key onto a key that holds a live alignment this action does not move away, or two re-keys onto one key, is a COLLISION — refused conflicted, nothing moves; a chain whose occupant moves on (2 → 3 while 3 → 4) applies, and each re-keyed record projects invalid: true [covers R-8.5.23 R-8.5.21]',
+  check('JC-34c: an alignment re-key onto a key that holds a live alignment this action does not move away, or two re-keys onto one key, is a COLLISION (a `replace` keeps its record on its key, so it makes no room) — refused conflicted, nothing moves; a chain whose occupant moves on (2 → 3 while 3 → 4) applies, and each re-keyed record projects invalid: true [covers R-8.5.23 R-8.5.21]',
     occupied.pendingStructural[0]?.detail.includes('collision:alignment|1:1') && !!occupied.alignments.TIT['1:2'] &&
     twoOnOne.pendingStructural[0]?.detail.includes('collision:alignment|1:4') && !!twoOnOne.alignments.TIT['1:2'] &&
+    onReplaced.pendingStructural[0]?.detail.includes('collision:alignment|1:3') && !!onReplaced.alignments.TIT['1:2'] &&
     clean.pendingStructural.length === 0 && clean.alignments.TIT['1:3'].wordBank[0].word === 'dos' && clean.alignments.TIT['1:3'].invalid === true &&
     clean.alignments.TIT['1:4'].invalid === true && !clean.alignments.TIT['1:1'].invalid,
-    JSON.stringify({ occupied: occupied.pendingStructural, twoOnOne: twoOnOne.pendingStructural }));
+    JSON.stringify({ occupied: occupied.pendingStructural, twoOnOne: twoOnOne.pendingStructural, onReplaced: onReplaced.pendingStructural }));
 
   // R-8.5.24 span membership: a decision keyed to verse 2, made on the span 2-3, and a span break
   const addSpan = E('book.add', t(0), null, { book: 'TIT', scope: [], skeleton: skelOf('1:1', '1:2-3', '1:4'),

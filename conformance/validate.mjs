@@ -590,14 +590,18 @@ let mergedVerseObjects = null;
   const alignedRenumbered = (file) => {
     const was = al.chapters['1']['1'];
     const now = file.chapters?.['1']?.['2'];
-    return !!now && !file.chapters['1']['1'] && now.invalid === true && now.targetVerseMd5 === was.targetVerseMd5 &&
-      JSON.stringify(now.alignments) === JSON.stringify(was.alignments) && JSON.stringify(now.wordBank) === JSON.stringify(was.wordBank);
+    const { invalid, ...kept } = now ?? {};
+    const { invalid: _, ...wasKept } = was;
+    return !!now && !file.chapters['1']['1'] && invalid === true && Object.keys(kept).length === Object.keys(wasKept).length &&
+      Object.entries(wasKept).every(([k, v]) => JSON.stringify(kept[k]) === JSON.stringify(v));
   };
   const alFile = JSON.parse(proj['checking/alignments/TIT.json']);
   const flagDropped = JSON.parse(proj['checking/alignments/TIT.json']);
   delete flagDropped.chapters['1']['2'].invalid;
-  check('alignment: a renumber re-keys the record to its text\'s new verse — alignments, wordBank and targetVerseMd5 kept, invalid: true; negative controls: the unrenumbered sample and a projection without the flag both fail',
-    after.pendingStructural.length === 0 && alignedRenumbered(alFile) && !alignedRenumbered(al) && !alignedRenumbered(flagDropped),
+  const fieldDropped = JSON.parse(proj['checking/alignments/TIT.json']);
+  delete fieldDropped.chapters['1']['2'].sourceVersion;
+  check('alignment: a renumber re-keys the record to its text\'s new verse — every field kept (alignments, wordBank, targetVerseMd5, sourceVersion), invalid: true; negative controls: the unrenumbered sample, a projection without the flag, and a projection without sourceVersion all fail',
+    after.pendingStructural.length === 0 && alignedRenumbered(alFile) && !alignedRenumbered(al) && !alignedRenumbered(flagDropped) && !alignedRenumbered(fieldDropped),
     `1:2 invalid=${alFile.chapters['1']['2']?.invalid}`);
   const decisionsKept = (files) => [[tw, files.translationWords], [tn, files.translationNotes]].every(([was, now]) =>
     now.decisions.length === was.decisions.length &&

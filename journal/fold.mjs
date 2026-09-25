@@ -605,7 +605,8 @@ export const fold = (eventsIn) => {
           if ((transitions[dest].sources || []).some((src) => src.key === dest)) continue;
           if ((heads.get(`text|${book}|${dest}`) || []).length) collisions.push(`collision:text|${dest}`);
         }
-        const movedAway = new Set(dispositions.filter((d) => d.surface === 'alignment').map((d) => `${d.key}|${aliasTs(d.ts)}`));
+        // `replace` keeps a record on its key, so only the other actions vacate it
+        const movedAway = new Set(dispositions.filter((d) => d.surface === 'alignment' && d.action !== 'replace').map((d) => `${d.key}|${aliasTs(d.ts)}`));
         const landed = new Set();
         for (const d of dispositions) {
           if (d.surface !== 'alignment' || d.action !== 're-key') continue;
