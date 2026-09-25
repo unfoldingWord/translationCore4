@@ -563,6 +563,8 @@
   "cc.exportBurritoZip": "Scripture Burrito (.zip)",
   "cc.exportPdf": "Export PDF",
   "cc.exportUsfm": "Export USFM",
+  "cc.exportUsfmAligned": "USFM, aligned",
+  "cc.exportUsfmPlain": "USFM, plain",
   "cc.exportsLater": "Exports arrive later in this increment (J7).",
   "cc.pageSetup": "Page setup",
   "cc.columns": "Columns",

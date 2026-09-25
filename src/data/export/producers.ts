@@ -5,6 +5,7 @@
 import { exportFilename, type ExportProducer } from './kernel';
 import { BURRITO_ZIP } from './burritoZip';
 import { PDF } from './pdf';
+import { USFM_ALIGNED, USFM_PLAIN } from './usfm';
 
 /** The e2e kernel case (e2e/j07-publish.spec.ts) proves the menu and the
  * wrapper with this fake: the open book's USFM as a text file. Dev server only,
@@ -30,4 +31,4 @@ const e2eFakeEnabled = (): boolean => {
   }
 };
 
-export const PRODUCERS: readonly ExportProducer[] = [PDF, BURRITO_ZIP, ...(import.meta.env.DEV && e2eFakeEnabled() ? [E2E_FAKE] : [])];
+export const PRODUCERS: readonly ExportProducer[] = [PDF, USFM_ALIGNED, USFM_PLAIN, BURRITO_ZIP, ...(import.meta.env.DEV && e2eFakeEnabled() ? [E2E_FAKE] : [])];

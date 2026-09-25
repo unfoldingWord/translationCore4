@@ -18,6 +18,9 @@ import { RIG_API, createObsProject } from './helpers/story';
 import { assertProjectUnchanged } from '../test/helpers/export';
 import { SEEDED_PROJECT, readIngredient, resetPlaces, resetSeededChecking, rigRepo } from './helpers/rig';
 import { DRAFT } from '../conformance/fixtures/obs-draft.mjs';
+import { decompose } from '../journal/skeleton.mjs';
+import { extractVerseFromZalnUsfm, origWordsFromAlignments } from '../test/helpers/zaln';
+import type { AlignmentFile } from '../src/data/align/zaln';
 
 const CONFORMANCE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'conformance');
 
@@ -313,6 +316,64 @@ test.describe('J7 — PDF', () => {
 
       await page.getByRole('group', { name: 'Paper size' }).getByRole('button', { name: 'Letter' }).click();
       expect(pdfShape((await exportPdf(page, name)).bytes).mediaBox).toBe('0 0 612 792');
+    },
+  );
+});
+
+// The USFM export (#19): the open book as aligned USFM (the stored §5.1
+// records woven in as `\zaln` and `\w`) and as plain USFM (the stored file).
+// Each download is attached to the run as its artifact.
+test.describe('J7 — USFM', () => {
+  /** Export the open book with `item` and prove the project did not change. */
+  const exportUsfm = async (page: Page, item: string): Promise<{ bytes: Buffer; filename: string }> => {
+    let download: { bytes: Buffer; filename: string } = { bytes: Buffer.alloc(0), filename: '' };
+    const commits = await assertProjectUnchanged(rigRepo(SEEDED_PROJECT), async () => {
+      await page.getByTestId('export-menu-trigger').click();
+      download = await captureDownload(page, page.getByRole('menuitem', { name: item, exact: true }));
+    });
+    expect(commits).toBe(0); // a clean project makes no checkpoint
+    await expect(page.getByTestId('export-failure')).toHaveCount(0);
+    await test.info().attach(download.filename, { body: download.bytes, contentType: 'text/plain' });
+    return download;
+  };
+
+  test(
+    'USFM, aligned: unweaving every verse gives the stored alignment records; a verse with no record is its stored text',
+    { tag: ['@inc8', '@J7'] },
+    async ({ page }) => {
+      await openTitusCommunityChecking(page, SEEDED_PROJECT);
+      const download = await exportUsfm(page, 'USFM, aligned');
+      expect(download.filename).toMatch(/^TIT-aligned-\d{4}-\d{2}-\d{2}\.usfm$/);
+
+      const stored = decompose(readIngredient(SEEDED_PROJECT, 'ingredients/TIT.usfm').toString('utf8')).verses as Record<string, string>;
+      const alignments = JSON.parse(readIngredient(SEEDED_PROJECT, 'ingredients/checking/alignments/TIT.json').toString('utf8')) as AlignmentFile;
+      const out = decompose(download.bytes.toString('utf8')).verses as Record<string, string>;
+      expect(Object.keys(out)).toEqual(Object.keys(stored));
+      const woven = Object.keys(stored).filter((key) => /\\zaln-s/.test(out[key]));
+      expect(woven).toEqual(['1:1']); // the one verse the sample aligns
+      for (const key of Object.keys(stored)) {
+        const [chapter, verse] = key.split(':');
+        const record = alignments.chapters[chapter]?.[verse];
+        if (!woven.includes(key)) {
+          expect(out[key], key).toBe(stored[key]);
+          continue;
+        }
+        expect(extractVerseFromZalnUsfm(out[key], origWordsFromAlignments(record.alignments)), key).toEqual({
+          alignments: record.alignments,
+          wordBank: record.wordBank,
+        });
+      }
+    },
+  );
+
+  test(
+    'USFM, plain: the download is the stored book file byte for byte',
+    { tag: ['@inc8', '@J7'] },
+    async ({ page }) => {
+      await openTitusCommunityChecking(page, SEEDED_PROJECT);
+      const download = await exportUsfm(page, 'USFM, plain');
+      expect(download.filename).toMatch(/^TIT-\d{4}-\d{2}-\d{2}\.usfm$/);
+      expect(download.bytes.equals(readIngredient(SEEDED_PROJECT, 'ingredients/TIT.usfm'))).toBe(true);
     },
   );
 });
