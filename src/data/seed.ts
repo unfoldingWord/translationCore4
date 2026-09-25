@@ -11,7 +11,6 @@
 // — 5,138 such lines across en_ult v89; a line-start-only reader silently
 // drops those verses (review finding B1, 2026-07-30). usfm-js verse keys are
 // the independent oracle in the tests.
-import usfm from 'usfm-js';
 
 const PARA_TAGS = new Set([
   'p', 'pi', 'pi1', 'pi2', 'pi3', 'q', 'q1', 'q2', 'q3', 'q4', 'qr', 'qc',
@@ -80,32 +79,4 @@ export function seedBookFromSource(sourceRaw: string, params: SeedParams): strin
       seedUnusable: true,
     });
   return out.join('\n') + '\n';
-}
-
-/** Sanity check a seeded book against its source, using usfm-js as an
- * INDEPENDENT oracle for the verse-key set (never the same reader that
- * produced the seed). */
-export function seedMatchesSource(seeded: string, sourceRaw: string): boolean {
-  const keys = (raw: string): string[] => {
-    const chapters = (usfm.toJSON(raw).chapters ?? {}) as Record<
-      string,
-      Record<string, unknown>
-    >;
-    const list: string[] = [];
-    for (const c of Object.keys(chapters).sort((a, b) => Number(a) - Number(b))) {
-      for (const v of Object.keys(chapters[c])) {
-        if (/^\d/.test(v)) list.push(`${c}:${v}`);
-      }
-    }
-    return list.sort();
-  };
-  const a = keys(seeded);
-  const b = keys(sourceRaw);
-  if (a.length !== b.length || a.some((k, i) => k !== b[i])) return false;
-  if (/\\(zaln|ts\b|ts-s|ts-e|w )/.test(seeded)) return false;
-  // every stub body is exactly ___ (line shape is \v KEY ___ or \d ___)
-  return seeded
-    .split('\n')
-    .filter((l) => l.startsWith('\\v ') || l.startsWith('\\d'))
-    .every((l) => l.endsWith(' ___'));
 }

@@ -40,10 +40,6 @@ declare module 'word-aligner-lib' {
     areAlgnmentsComplete: (targetWords: unknown[], verseAlignments: unknown[]) => boolean;
     [key: string]: unknown;
   };
-  export const UsfmFileConversionHelpers: {
-    convertVerseDataToUSFM: (verseData: { verseObjects: unknown[] }) => string;
-    [key: string]: unknown;
-  };
   export const selectionsHelpers: {
     validateVerseSelections: (
       verseText: string,

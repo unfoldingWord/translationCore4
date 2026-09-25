@@ -86,15 +86,3 @@ export const carryOverDecisions = (
     undecided,
   };
 };
-
-/** Plain-language summary of what a change costs THIS book. Phrased as work
- * that reappears, not as a queue: "you will have N checks to do again". */
-export const describeCarryOver = (r: CarryOverResult, bookLabel: string): string => {
-  if (r.invalidated === 0) {
-    return `${bookLabel}: every decision carried over.`;
-  }
-  return (
-    `${bookLabel}: ${r.carried} decision${r.carried === 1 ? '' : 's'} carried over, ` +
-    `${r.invalidated} no longer applies and will need checking again.`
-  );
-};
