@@ -142,4 +142,9 @@ describe('#156 the store emits the Report', () => {
     expect([seed.op, seed.ok, seed.code, seed.rule]).toEqual(['seed', false, 'seed.mismatch', 'R-8.8.2']);
   });
 
+
+  it('expectRefusal fails when the operation succeeds or carries another code', async () => {
+    await expect(expectRefusal(Promise.resolve('fine'), 'seed.mismatch')).rejects.toThrow(/the operation succeeded/);
+    await expect(expectRefusal(Promise.reject(new Refusal('share.offline', 'x')), 'seed.mismatch')).rejects.toThrow(/expected the refusal seed.mismatch/);
+  });
 });
