@@ -11,7 +11,7 @@ import { findVerse, indexBook } from '../src/data/usfm/indexer';
 const fs = process.getBuiltinModule('node:fs');
 const path = process.getBuiltinModule('node:path');
 
-// Relative to the repo root (the Vitest cwd), as the S-0 suites do.
+// Relative to the repo root (the Vitest cwd).
 const read = (rel: string): string => fs.readFileSync(path.resolve(process.cwd(), rel), 'utf8');
 
 // test/fixtures/sample-burrito/* is a dated snapshot of the generated sample-burrito

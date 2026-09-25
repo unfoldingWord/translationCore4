@@ -132,9 +132,7 @@ and [#391](https://github.com/unfoldingWord/translationCore4/pull/391).
 5. **Use only paths inside this repository.** A maintainer's checkout sits inside a
    planning workspace that holds copies such as `../sample-burrito` and `../dev-env`. A
    path above the repository root works on that one machine only. Use
-   `conformance/sample-burrito` and this repository's `dev-env/`. The S-0 smoke tests
-   are the one recorded exception (`CONTRIBUTING.md`, "Tests that need more than this
-   repository").
+   `conformance/sample-burrito` and this repository's `dev-env/`.
 6. **Run what you build.** If you generate or copy a file that runs later, run it or
    parse it (`node --check`) in a test. In #354, a generated entry point had a syntax
    error. Declare each package that a script imports in `package.json`. In #354,
@@ -148,7 +146,7 @@ and [#391](https://github.com/unfoldingWord/translationCore4/pull/391).
 ## Skips are not failures
 
 Some tests skip on a clean clone. Each names its
-missing prerequisite (the Pankosmia rig, or a sibling `sample-burrito` checkout). Do
+missing prerequisite (the Pankosmia rig). Do
 not "fix" a skip by inventing the missing data, and do not report a skip as a defect.
 
 ## Shell discipline

@@ -102,6 +102,17 @@ describe('resolveProjectScheme — the source ladder', () => {
     });
   });
 
+  it('rung 2 survives re-serialization', () => {
+    const alphabetical = Object.fromEntries(
+      Object.entries(schemes.org).sort(([a], [b]) => (a < b ? -1 : 1)),
+    );
+    const register = { name: 'unrecorded', bytes: JSON.stringify(alphabetical, null, 2) };
+    expect(resolveProjectScheme(register, schemes)).toEqual({
+      name: 'org',
+      source: 'fingerprint',
+    });
+  });
+
   it('rung 3: an unknown scheme is unknown — never silently eng', () => {
     const register = { name: 'unrecorded', bytes: '{"maxVerses":{"GEN":["99"]}}' };
     expect(resolveProjectScheme(register, schemes)).toEqual({ name: null, source: 'unknown' });
@@ -187,5 +198,12 @@ describe('a scheme this code has never heard of still resolves', () => {
       name: 'lsg',
       source: 'fingerprint',
     });
+  });
+
+  it('verse bounds come from the scheme document, not from a built-in list', () => {
+    // The whole point: nothing about a new scheme is hard-coded.
+    expect(verseExists(lsg, 'PSA', 2, 12)).toBe(true);
+    expect(verseExists(lsg, 'PSA', 2, 13)).toBe(false);
+    expect(unplaceableReason(lsg, 'PSA', 2, 13)).toBe('past-chapter-end');
   });
 });
