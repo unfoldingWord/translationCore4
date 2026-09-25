@@ -128,7 +128,7 @@ test.describe('J16 — read a passage with helps and record a user comment', () 
       for (const name of ['TIT.usfm', 'JON.usfm']) {
         expect(
           readIngredient(SEEDED_PROJECT, path.join('ingredients', name)).equals(
-            fs.readFileSync(path.join(TC4_ROOT, 'sample-burrito', 'ingredients', name)),
+            fs.readFileSync(path.join(TC4_ROOT, 'conformance', 'sample-burrito', 'ingredients', name)),
           ),
         ).toBe(true);
       }

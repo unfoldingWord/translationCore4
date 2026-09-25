@@ -4,10 +4,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { TC4_ROOT } from './root';
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-export const TC4_ROOT = path.resolve(HERE, '..', '..', '..');
+// The repository root (#396): the journeys use this repository's own dev-env/.
+export { TC4_ROOT };
 
 // Local projects live at repos/_local_/_local_/<name> (PLATFORM-NOTES #18; seed.zsh).
 export const RIG_LOCAL_REPOS = path.join(
@@ -335,7 +335,7 @@ export function resetPlaces(): void {
 }
 
 export function resetSeededChecking(): void {
-  const source = path.join(TC4_ROOT, 'sample-burrito', 'ingredients');
+  const source = path.join(TC4_ROOT, 'conformance', 'sample-burrito', 'ingredients');
   const target = path.join(rigRepo(SEEDED_PROJECT), 'ingredients');
   for (const rel of ['TIT.usfm', 'JON.usfm']) {
     fs.copyFileSync(path.join(source, rel), path.join(target, rel));
