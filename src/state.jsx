@@ -3889,8 +3889,11 @@ export function AppProvider({ children }) {
 
       /** #129: the rail picks the verse; the session effect re-opens on it. */
       setAlignVerse: (ref) => {
-        alignSessionSeq++; // the old verse's in-flight completions are foreign now
         const st = stateRef.current;
+        // #296: the same verse leaves alignVerse unchanged, so the session
+        // effect would not re-open what this action clears. Do nothing.
+        if (ref === st.alignVerse) return;
+        alignSessionSeq++; // the old verse's in-flight completions are foreign now
         dispatch({
           type: 'set',
           patch: {
