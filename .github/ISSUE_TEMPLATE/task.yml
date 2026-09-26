@@ -21,6 +21,23 @@ body:
     validations:
       required: true
   - type: textarea
+    id: reuse
+    attributes:
+      label: Platform reuse
+      description: >-
+        What Pankosmia or the pinned uW libraries (usfm-js, word-aligner,
+        word-aligner-lib, bible-reference-range, string-punctuation-tokenizer) already do
+        for this item, with a LINK to each file or function. If nothing does it, say what
+        you searched. The builder uses what exists behind our own interface (AGENTS.md,
+        "Look at Pankosmia before you write code").
+      placeholder: |
+        The Pankosmia checking client exports aligned USFM with a local copy of
+        word-aligner-lib's AlignmentHelpers.addAlignmentsToTargetVerseUsingMerge:
+        https://github.com/pankosmia/uw-client-checks/blob/main/src/pages/UsfmExport.jsx
+        Use the same helper. Do not copy its write back into the project (I-1).
+    validations:
+      required: true
+  - type: textarea
     id: acceptance
     attributes:
       label: Acceptance criteria
