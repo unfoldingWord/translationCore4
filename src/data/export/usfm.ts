@@ -1,9 +1,13 @@
 // The USFM export (issue #19, J7, docs/ARCHITECTURE.md §7): one book as one
-// USFM file, in two forms. Plain is the stored book file byte for byte.
+// USFM file, in two forms. Plain is the stored book file byte for byte: it
+// comes from the server's zip of the repository, because the text read drops
+// a leading byte-order mark (Fetch `Response.text()`) and an imported book
+// keeps one (src/data/import/usfm.ts).
 // Aligned weaves the book's §5.1 records in as `\zaln` and `\w` markup
 // (./weave.mjs, the one weave the conformance harness also runs), the form
 // tC3 and Door43 tooling read. Alignment markup exists only in this output,
 // never at rest (I-1).
+import { unzipSync } from 'fflate';
 import { t } from '../../i18n';
 import { exportFilename, type ExportInput, type ExportProducer } from './kernel';
 import { weaveBook } from './weave.mjs';
@@ -34,6 +38,9 @@ export const USFM_PLAIN: ExportProducer = {
   appliesTo: bible,
   produce: async ({ store, book }: ExportInput) => {
     const id = openBook(book);
-    return usfmFile((await store.readBook(id)).usfm, exportFilename(id, 'usfm'));
+    const ipath = `ingredients/${id.toUpperCase()}.usfm`;
+    const bytes = unzipSync(await store.readZipped(), { filter: (entry) => entry.name === ipath })[ipath];
+    if (!bytes) throw new Error(`${ipath} is not in the project`);
+    return { bytes, filename: exportFilename(id, 'usfm'), mime: 'text/plain' };
   },
 };

@@ -376,4 +376,19 @@ test.describe('J7 — USFM', () => {
       expect(download.bytes.equals(readIngredient(SEEDED_PROJECT, 'ingredients/TIT.usfm'))).toBe(true);
     },
   );
+
+  test(
+    'USFM, plain: a book stored with a leading byte-order mark exports with it',
+    { tag: ['@inc8', '@J7'] },
+    async ({ page }) => {
+      // An imported USFM file keeps its byte-order mark (src/data/import/usfm.ts).
+      const book = path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'TIT.usfm');
+      fs.writeFileSync(book, Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), fs.readFileSync(book)]));
+      await openTitusCommunityChecking(page, SEEDED_PROJECT);
+      const stored = readIngredient(SEEDED_PROJECT, 'ingredients/TIT.usfm');
+      expect(stored.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf]))).toBe(true);
+      const download = await exportUsfm(page, 'USFM, plain');
+      expect(download.bytes.equals(stored)).toBe(true);
+    },
+  );
 });

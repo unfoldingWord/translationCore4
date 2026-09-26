@@ -13,6 +13,7 @@
 // 5. a file name leaves the `<BOOK>-aligned-<YYYY-MM-DD>.usfm` /
 //    `<BOOK>-<YYYY-MM-DD>.usfm` forms.
 import { describe, expect, it } from 'vitest';
+import { zipSync } from 'fflate';
 import { weaveBook } from '../../src/data/export/weave.mjs';
 import { USFM_ALIGNED, USFM_PLAIN } from '../../src/data/export/usfm';
 import type { AlignmentFile } from '../../src/data/align/zaln';
@@ -69,11 +70,13 @@ describe('#19 weaveBook', () => {
 });
 
 describe('#19 USFM producers', () => {
-  const input = { store: { readBook: async () => ({ usfm: USFM }), readAlignments: async () => ALIGNMENTS() }, project: { flavor: 'textTranslation' }, book: 'TIT' } as unknown as ExportInput;
+  const stored = new Uint8Array(fs.readFileSync(path.join(SAMPLE, 'TIT.usfm')));
+  const store = { readBook: async () => ({ usfm: USFM }), readAlignments: async () => ALIGNMENTS(), readZipped: async () => zipSync({ 'ingredients/TIT.usfm': stored }) };
+  const input = { store, project: { flavor: 'textTranslation' }, book: 'TIT' } as unknown as ExportInput;
 
   it('plain: the stored book file byte for byte, as <BOOK>-<YYYY-MM-DD>.usfm', async () => {
     const file = await USFM_PLAIN.produce(input);
-    expect(Buffer.from(file.bytes).equals(Buffer.from(USFM, 'utf8'))).toBe(true);
+    expect(Buffer.from(file.bytes).equals(Buffer.from(stored))).toBe(true);
     expect(file.filename).toMatch(/^TIT-\d{4}-\d{2}-\d{2}\.usfm$/);
   });
 
