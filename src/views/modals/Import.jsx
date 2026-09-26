@@ -103,15 +103,15 @@ function ResourcesCheck({ im, actions }) {
   // owner/repo and tag: two owners can publish a repository of the same name
   const found = Object.values(v?.found ?? {}).map((p) => `${p.repoPath.split('/').slice(1).join('/')} ${p.version}`).join(', ');
   const missing = (v?.unresolved ?? []).map(slotName).join(', ');
+  // The found pins are always named: they are stored even when other slots move to the installed versions.
   const text = !v || v.looking
     ? t('importer.review.resourcesLooking')
-    : v.installed
-      ? t('importer.review.resourcesInstalled', { carried: v.installed.carried, invalidated: v.installed.invalidated })
-      : v.unresolved.length === 0
-        ? t('importer.review.resourcesFound', { list: found })
-        : v.offline
-          ? t('importer.review.resourcesOffline', { list: missing })
-          : t('importer.review.resourcesMissing', { list: missing });
+    : [
+        found && t('importer.review.resourcesFound', { list: found }),
+        v.unresolved.length > 0 && (v.installed
+          ? t('importer.review.resourcesInstalled', { list: missing, carried: v.installed.carried, invalidated: v.installed.invalidated })
+          : t(v.offline ? 'importer.review.resourcesOffline' : 'importer.review.resourcesMissing', { list: missing })),
+      ].filter(Boolean).join(' ');
   const open = v && !v.looking && !v.installed && v.unresolved.length > 0;
   return (
     <div style={{ display: 'flex', gap: 10, alignItems: 'baseline' }} data-testid="import-resources" data-state={!v || v.looking ? 'looking' : v.installed ? 'installed' : open ? (v.offline ? 'offline' : 'missing') : 'found'}>

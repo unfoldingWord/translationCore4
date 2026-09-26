@@ -5,7 +5,7 @@
 // the dev-only fake parser (src/data/import/parsers.ts): the screen, the
 // all-or-nothing rollback, and the new project on disk. The parser blocks
 // (tC3 #21, USFM #195, Scripture Burrito #196, damaged input #41) add their own.
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -150,6 +150,16 @@ test.describe('J9 — a facilitator imports existing work', () => {
     test.afterEach(async () => {
       await setNet(true);
     });
+    /** The DCS tags listing, answered from the recorded tags (TC3_DCS_TAGS) so the journeys do not depend on the network. */
+    const recordedDcsTags = (page: Page) =>
+      page.route(/https:\/\/git\.door43\.org\/api\/v1\/repos\/.+\/tags/, async (route) => {
+        const url = new URL(route.request().url());
+        const repoPath = `git.door43.org/${url.pathname.split('/').slice(4, 6).join('/')}`;
+        const tags = url.searchParams.get('page') === '1'
+          ? Object.entries(TC3_DCS_TAGS).filter(([k]) => k.startsWith(`${repoPath}@`)).map(([k, sha]) => ({ name: k.split('@')[1], commit: { sha } }))
+          : [];
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(tags) });
+      });
 
     test('tC3 offline: the review page shows what carries over; Use installed versions moves the decisions (D36); one new project that opens in Translate', { tag: ['@inc8', '@J9'] }, async ({ page }) => {
       test.setTimeout(180_000);
@@ -202,15 +212,7 @@ test.describe('J9 — a facilitator imports existing work', () => {
 
     test('tC3 online: each version DCS has is a full pin; the project opens and the guided fix lists the en_tn v87 this computer lacks', { tag: ['@inc8', '@J9'] }, async ({ page }) => {
       test.setTimeout(180_000);
-      // The DCS tags listing, answered from the recorded tags (TC3_DCS_TAGS) so the journey does not depend on the network.
-      await page.route(/https:\/\/git\.door43\.org\/api\/v1\/repos\/.+\/tags/, async (route) => {
-        const url = new URL(route.request().url());
-        const repoPath = `git.door43.org/${url.pathname.split('/').slice(4, 6).join('/')}`;
-        const tags = url.searchParams.get('page') === '1'
-          ? Object.entries(TC3_DCS_TAGS).filter(([k]) => k.startsWith(`${repoPath}@`)).map(([k, sha]) => ({ name: k.split('@')[1], commit: { sha } }))
-          : [];
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(tags) });
-      });
+      await recordedDcsTags(page);
       const name = fresh('Tita tC3 online');
       const repo = rigRepo(abbrOf(name));
       await test.step('the review page finds the versions; Import needs no choice', async () => {
@@ -238,6 +240,28 @@ test.describe('J9 — a facilitator imports existing work', () => {
         await expect(screen).toBeVisible();
         await expect(screen.getByTestId('fix-pin')).toContainText(EN_TN_V87);
       });
+    });
+
+    test('tC3 online, mixed: the found pins stay named when translationWords moves to the installed versions, and they are stored', { tag: ['@inc8', '@J9'] }, async ({ page }) => {
+      test.setTimeout(300_000);
+      await recordedDcsTags(page);
+      const name = fresh('KJV tC3 mixed');
+      await importFixture(page, MULTI, { kind: 'tc3', edits: { name }, confirm: false });
+      const row = page.getByTestId('import-resources');
+      await expect(row).toHaveAttribute('data-state', 'missing');
+      // LUK names en_tn v87 and ugnt v0.34 (found); its translationWords decisions name no version
+      await expect(row).toContainText('unfoldingWord/en_tn v87');
+      await expect(row).toContainText('unfoldingWord/el-x-koine_ugnt v0.34');
+      await page.getByTestId('import-use-installed').click();
+      await expect(row).toHaveAttribute('data-state', 'installed', { timeout: 60_000 });
+      await expect(row).toContainText('unfoldingWord/en_tn v87');
+      await expect(row).toContainText('The versions on this computer will be used for translationWords.');
+      await page.getByTestId('import-license').selectOption('CC BY-SA 4.0');
+      await page.getByTestId('import-run').click();
+      await expect(page.getByTestId('import-toast')).toBeVisible({ timeout: 240_000 });
+      const pins = readProjectPins(abbrOf(name));
+      expect(pins.languageSets.primary.translationNotes).toMatchObject({ version: 'v87', sha: EN_TN_V87, books: ['LUK'] });
+      expect(readDecisionFile(abbrOf(name), 'translationNotes', 'LUK')!.resource).toMatchObject({ sha: EN_TN_V87 });
     });
 
     test('tC3 multi-zip: three books of one language are one project; the license is chosen on the review page', { tag: ['@inc8', '@J9'] }, async ({ page }) => {
