@@ -17,6 +17,7 @@ import { DRAFT } from './fixtures/obs-draft.mjs';
 import { shiftChapter } from './fixtures/renumber.mjs';
 import { relationshipsFromPins } from '../journal/relationships.mjs';
 import { checkIngredients, compileSbValidator } from '../src/data/import/burritoCheck.mjs';
+import { weaveBook } from '../src/data/export/weave.mjs';
 
 const require = createRequire(import.meta.url);
 const usfmjs = require('usfm-js');
@@ -183,10 +184,8 @@ const bookJson = usfmjs.toJSON(read(ING('TIT.usfm')));
 const alignIng = json(ING('checking/alignments/TIT.json'));
 const stored = alignIng.chapters['1']['1'];
 const verseText = bookJson.chapters['1']['1'].verseObjects.filter(vo => vo.type === 'text' || vo.text).map(vo => vo.text).join('');
-let mergedVerseObjects = null;
 {
   const merged = wordaligner.merge(stored.alignments, stored.wordBank, verseText.trim(), true);
-  mergedVerseObjects = merged;
   const usfmOut = wal.UsfmFileConversionHelpers.convertVerseDataToUSFM({ verseObjects: merged });
   const zalnCount = (usfmOut.match(/\\zaln-s/g) || []).length;
   check('alignment: sidecar merges into zaln USFM (7 zaln-s opens: 6 alignments, one 2-source)', zalnCount === 7,
@@ -533,9 +532,8 @@ let mergedVerseObjects = null;
 
 // ---------- 9. Whole-book aligned USFM export (tC3 interchange from burrito alone) ----------
 {
-  const exportJson = usfmjs.toJSON(read(ING('TIT.usfm')));
-  exportJson.chapters['1']['1'].verseObjects = mergedVerseObjects;
-  const out = usfmjs.toUSFM(exportJson, { forcedNewLines: true });
+  // The app's own weave (src/data/export/weave.mjs, issue #19): one implementation.
+  const out = weaveBook(read(ING('TIT.usfm')), alignIng, wal.AlignmentHelpers);
   check('export: full-book USFM with zaln alignments produced from burrito data alone',
     out.includes('\\zaln-s') && out.includes('x-strong="G23160"') && out.includes('\\v 2 con la esperanza'),
     'draft + sidecar -> aligned USFM3');

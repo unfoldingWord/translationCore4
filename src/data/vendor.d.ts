@@ -38,6 +38,8 @@ declare module 'word-aligner-lib' {
       sourceVerse: unknown,
     ) => { alignment?: unknown[]; alignments?: unknown[]; wordBank: unknown[] } | null;
     areAlgnmentsComplete: (targetWords: unknown[], verseAlignments: unknown[]) => boolean;
+    /** Merge a verse's §5.1 record into its USFM; null when the record does not fit the verse. */
+    addAlignmentsToTargetVerseUsingMerge: (targetVerseUsfm: string, verseAlignments: object) => string | null;
     [key: string]: unknown;
   };
   export const selectionsHelpers: {

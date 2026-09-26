@@ -110,6 +110,41 @@ test.describe('J5 — a translator aligns a verse', () => {
   );
 
   test(
+    'clicking the already-selected verse in the rail keeps the word bank visible (#296)',
+    { tag: ['@inc2', '@J5'] },
+    async ({ page }, testInfo) => {
+      writePinsWithOriginal();
+      const stored = alignmentFile()!.chapters['1']['1'];
+      await openAlign(page);
+
+      // Click the active row twice: the first click can move the rail from
+      // "no verse chosen" to 1:1; the second is always a same-verse click.
+      const row = page.getByTestId('align-verse-list').locator('button[data-ref="1:1"]');
+      await expect(row).toHaveAttribute('data-selected', 'true');
+      await row.click();
+      await row.click();
+
+      await expect(page.getByTestId('align-session')).toBeVisible();
+      await expect(page.getByTestId('align-bank').getByRole('button')).toHaveCount(
+        stored.wordBank.length,
+      );
+      await expect(page.getByText('Opening the alignment…')).toHaveCount(0);
+
+      // The artifact: the bank the page shows after the clicks. It holds no
+      // timestamps, so each run writes the same bytes, and it must match the
+      // stored record's bank word for word.
+      const artifact = {
+        ref: '1:1',
+        bank: (await page.getByTestId('align-bank').getByRole('button').allTextContents()).map((w) => w.trim()),
+      };
+      const artifactPath = testInfo.outputPath('j05-reselect-verse.json');
+      fs.writeFileSync(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`);
+      await testInfo.attach('j05-reselect-verse.json', { path: artifactPath, contentType: 'application/json' });
+      expect(artifact.bank).toEqual(stored.wordBank.map((w: { word: string }) => w.word));
+    },
+  );
+
+  test(
     'linking a word moves it from the bank into the card AND persists to the sidecar (FR-20)',
     { tag: ['@inc2', '@J5'] },
     async ({ page }) => {

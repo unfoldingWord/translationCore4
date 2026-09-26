@@ -181,6 +181,13 @@ A pure function from project data to one file, registered in the export kernel's
 (`src/data/export/producers.ts`). It makes no checkpoint, no download and no Report.
 _Avoid_: exporter, writer
 
+**Weave**:
+The step that puts the §5.1 alignment records of a book into its USFM as `\zaln` and `\w`
+markup (`src/data/export/weave.mjs`, through word-aligner-lib's
+`addAlignmentsToTargetVerseUsingMerge`). Only the aligned USFM export weaves: the stored book
+has no alignment markup (I-1). A verse with no valid record keeps its stored text (issue #19).
+_Avoid_: merge (for the whole book), embed
+
 **Print document**:
 The one HTML document that the PDF export prints: the print DOM of the book
 (`src/views/print/PrintBook.jsx`) for each chapter with a drafted verse, with one line for each
