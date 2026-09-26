@@ -11,7 +11,7 @@
 //
 // Spanish coverage is genuinely partial (es-419_tn v66 carries 3JN/JON/RUT/TIT),
 // which is the condition D30.1 exists for.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './helpers/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import fs from 'node:fs';
 import path from 'node:path';

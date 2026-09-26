@@ -7,7 +7,8 @@
 //
 // Ground truth is the rig's disk: commit counts and messages come from the
 // repository, never from UI state (e2e/helpers/rig.ts).
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from './helpers/test';
+import type { Page } from '@playwright/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import fs from 'node:fs';
 import path from 'node:path';

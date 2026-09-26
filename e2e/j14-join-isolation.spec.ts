@@ -10,7 +10,7 @@
 // the join/import flow ships (J9 is Increment 6; Phase-2 sync is out of #62's
 // scope by design) — the isolation obligation is asserted NOW against the flows
 // that exist: creating and working in a deliberately similar sibling.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './helpers/test';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';

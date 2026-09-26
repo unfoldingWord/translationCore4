@@ -5,7 +5,7 @@
 //   · D8 byte-strict: nothing outside the edited verse changed (FR-7)
 //   · no alignment markup written at rest (FR-8, I-1)
 //   · no auto-commit — commits happen only at checkpoints (FR-34, W-4)
-import { test, expect } from '@playwright/test';
+import { test, expect } from './helpers/test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { verifyAllJournaledProjects } from './helpers/journal';

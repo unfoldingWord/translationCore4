@@ -6,7 +6,7 @@
 // download cannot. What the journey proves is the part only the real rig can
 // show: what a pinned, installed resource does for a session — including when
 // it has nothing to offer for a book.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './helpers/test';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
