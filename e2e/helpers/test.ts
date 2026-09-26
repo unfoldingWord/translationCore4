@@ -16,7 +16,8 @@
 //   3. it refuses any new write to the rig from this browser context, and
 //   4. it asks GET /burrito/metadata/summaries, which takes the same lock, so it
 //      returns only when the server has finished. A 500 there names the rig.
-// The page then closes; its hide handler finds nothing left to save.
+// Steps 3 and 4 run on every exit, also when step 1 or 2 fails; every failure
+// is reported. The page then closes; its hide handler finds nothing left to save.
 import { test as base, type Request } from '@playwright/test';
 import { assertRigHealthy } from '../rig-health';
 
@@ -24,6 +25,8 @@ import { assertRigHealthy } from '../rig-health';
 export const SETTLE_TIMEOUT_MS = 30_000;
 /** A drain sends its writes after a few event-loop turns, not at once. */
 export const QUIET_MS = 500;
+/** Playwright's errors for a page with no window to call (mid-navigation or closed). */
+const NO_WINDOW = /Execution context was destroyed|has been closed/;
 
 const isRigWrite = (request: Request): boolean =>
   request.method() !== 'GET' && new URL(request.url()).pathname.startsWith('/api/');
@@ -49,10 +52,20 @@ export const test = base.extend<{ settleRig: void }>({
 
       await use();
 
-      const deadline = Date.now() + SETTLE_TIMEOUT_MS;
-      const settle = async (quietMs: number) => {
+      const failures: Error[] = [];
+      try {
+        if (!page.isClosed()) {
+          await page
+            .evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false })))
+            .catch((error: Error) => {
+              // A page that is navigating or closing has no window to call; the wait below
+              // still runs. Any other error means the flush did not run: report it.
+              if (!NO_WINDOW.test(error.message)) throw error;
+            });
+        }
+        const deadline = Date.now() + SETTLE_TIMEOUT_MS;
         let quietSince = Date.now();
-        while (inFlight.size > 0 || Date.now() - quietSince < quietMs) {
+        while (inFlight.size > 0 || Date.now() - quietSince < QUIET_MS) {
           if (inFlight.size > 0) quietSince = Date.now();
           if (Date.now() > deadline) {
             const urls = [...inFlight].map((r) => `${r.method()} ${r.url()}`).join(', ');
@@ -60,20 +73,21 @@ export const test = base.extend<{ settleRig: void }>({
           }
           await new Promise((resolve) => setTimeout(resolve, 50));
         }
-      };
-      if (!page.isClosed()) {
-        await page
-          .evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false })))
-          .catch(() => {}); // a page mid-navigation has no window to call; step 2 still waits
+      } catch (error) {
+        failures.push(error as Error);
+      } finally {
+        // On every exit: refuse later writes, so the next test's reset cannot race one.
+        closing = true;
       }
-      await settle(QUIET_MS);
-      closing = true;
-      await settle(0);
+      // Always take the lock, even after a failed settle: a write still inside the
+      // server's walk holds it, so this returns only when the walk has ended.
       try {
         await assertRigHealthy();
       } catch (error) {
-        throw new Error(`After "${testInfo.title}": ${(error as Error).message}`);
+        failures.unshift(new Error(`After "${testInfo.title}": ${(error as Error).message}`, { cause: error }));
       }
+      if (failures.length === 1) throw failures[0];
+      if (failures.length > 1) throw new AggregateError(failures, failures.map((f) => f.message).join('\n'));
     },
     { auto: true },
   ],
