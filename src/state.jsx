@@ -4574,11 +4574,11 @@ export function AppProvider({ children }) {
       //      installed: { base, derived, carried, invalidated } | null } ----
       importResolveVersions: async (bundle) => {
         const online = await api.getNetEnabled().catch(() => false);
-        // A lookup DCS did not answer leaves only its own candidate unresolved; the
-        // shas already found stay. Such a failure offers "Go online" like offline does.
+        // A lookup DCS did not answer leaves its slot unresolved; the other slots'
+        // shas stay. Such a failure offers "Go online" as offline does.
         let unanswered = false;
         const found = online
-          ? await resolveVersions(bundle.versions, (repoPath, version) => releaseCommitSha(repoPath, version).catch(() => ((unanswered = true), null)))
+          ? await resolveVersions(bundle.versions, (repoPath, version) => releaseCommitSha(repoPath, version).catch(() => ((unanswered = true), undefined)))
           : {};
         const offline = !online || unanswered;
         // The user may have gone back or started another review meanwhile: a result

@@ -226,10 +226,16 @@ describe('#21 the tC3 parser', () => {
     // one book names v87, the other names none: the other book does not get v87's sha
     const oneSilent = [requests[0], { ...requests[1], candidates: [] }, requests[2]];
     expect((await resolveVersions(oneSilent, lookup)).translationNotes).toBeUndefined();
-    // a lookup that fails for one candidate keeps the sha another candidate found
+    // DCS does not answer for the newest candidate: the slot stays unresolved, and
+    // the older v0.34 is not pinned in its place; the other slots keep their shas
     const ol = [{ slot: 'originalLanguage.nt' as const, book: 'LUK', candidates: [{ repoPath: 'git.door43.org/unfoldingWord/el-x-koine_ugnt', version: 'v0.99' }, { repoPath: 'git.door43.org/unfoldingWord/el-x-koine_ugnt', version: 'v0.34' }] }];
-    const failing = (repoPath: string, version: string) => (version === 'v0.99' ? Promise.reject(new Error('HTTP 500')).catch(() => null) : lookup(repoPath, version));
-    expect((await resolveVersions(ol, failing))['originalLanguage.nt']?.sha).toBe(UGNT_V034);
+    const tn = { slot: 'translationNotes' as const, book: 'LUK', candidates: [{ repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v87' }] };
+    const failing = async (repoPath: string, version: string) => (version === 'v0.99' ? undefined : lookup(repoPath, version));
+    const partial = await resolveVersions([...ol, tn], failing);
+    expect(partial['originalLanguage.nt']).toBeUndefined();
+    expect(partial.translationNotes?.sha).toBe(EN_TN_V87);
+    // DCS has no v0.99 (a conclusive answer): the next candidate is pinned
+    expect((await resolveVersions(ol, lookup))['originalLanguage.nt']?.sha).toBe(UGNT_V034);
     // a lookup result that is not a 40-hex sha is no pin
     expect((await resolveVersions(ol, async () => 'not-a-sha'))['originalLanguage.nt']).toBeUndefined();
   });

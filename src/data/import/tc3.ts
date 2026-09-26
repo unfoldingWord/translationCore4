@@ -306,10 +306,12 @@ const TOOL_PIN: Record<Tool, string> = { translationNotes: 'translationNotes', t
  * get the newest version DCS has (D82 point 5). A helps slot whose books name
  * different versions is not looked up: no one pin holds all their decisions,
  * so the user takes the installed versions and every book carries over (D82
- * point 2). `lookup` gives the sha of a tag, or null. */
+ * point 2). `lookup` gives the sha of a tag, null when DCS has no such tag,
+ * or undefined when DCS did not answer: then the slot stays unresolved, so an
+ * older candidate is never pinned in place of one that was not checked. */
 export async function resolveVersions(
   requests: VersionRequest[],
-  lookup: (repoPath: string, version: string) => Promise<string | null>,
+  lookup: (repoPath: string, version: string) => Promise<string | null | undefined>,
 ): Promise<Partial<Record<VersionRequest['slot'], { repoPath: string; version: string; sha: string }>>> {
   const out: Awaited<ReturnType<typeof resolveVersions>> = {};
   const bySlot = new Map<VersionRequest['slot'], VersionRequest['candidates']>();
@@ -323,6 +325,7 @@ export async function resolveVersions(
       if (seen.has(`${c.repoPath}@${c.version}`)) continue;
       seen.add(`${c.repoPath}@${c.version}`);
       const sha = await lookup(c.repoPath, c.version);
+      if (sha === undefined) break;
       if (sha && /^[0-9a-f]{40}$/.test(sha)) {
         out[slot] = { ...c, sha };
         break;
