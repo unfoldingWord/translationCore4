@@ -1,7 +1,7 @@
 // J25 — a translator reads a story with helps and records a user comment
 // (docs/JOURNEYS.md J25, D74; issue #290, proof #292). End state on disk: one `note.add`
 // segment with a `{story, frame}` target per comment; the story file is byte-identical.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './helpers/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import { createObsProject, newSegments, segmentFiles, storyBytes } from './helpers/story';
 

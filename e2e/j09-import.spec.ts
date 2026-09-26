@@ -5,7 +5,7 @@
 // the dev-only fake parser (src/data/import/parsers.ts): the screen, the
 // all-or-nothing rollback, and the new project on disk. The parser blocks
 // (tC3 #21, USFM #195, Scripture Burrito #196, damaged input #41) add their own.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './helpers/test';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';

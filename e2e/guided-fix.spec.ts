@@ -13,7 +13,7 @@
 //   1. re-pin  (en_tw v90 missing, offline → the installed v89)
 //   2. fetch   (en_tn v88 missing, online → downloaded through the sha gate)
 //   3. sideload (en_tw v90 still missing → a v89 file is refused, the v90 file installs)
-import { test, expect } from '@playwright/test';
+import { test, expect } from './helpers/test';
 import type { Page, BrowserContext } from '@playwright/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import fs from 'node:fs';
