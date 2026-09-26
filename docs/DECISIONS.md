@@ -998,7 +998,8 @@ holds is the export metadata's declared revision [VERIFIED — pankosmia-web 0.1
 (99fd9be, 2026-07-30), `src/endpoints/git2/clone_repo.rs` + `burrito2/`].
 
 The ruling:
-1. **The tC3 import (FR-23, Increment 6) attempts a DCS tag→sha lookup when the user is
+1. [annotated 2026-09-26 — D82 replaces the marked-unresolved state below: an import stores
+   no pin without its sha] **The tC3 import (FR-23, Increment 6) attempts a DCS tag→sha lookup when the user is
    online.** [annotated 2026-09-11 — the tC3 import (#21) is Increment 7 work on the
    milestone board; the ruling is unchanged, only the increment named here is stale] A resolved tag imports as a full D58 pin (sha identity + version label). A
    lookup that fails (offline, moved tag, renamed org — PLATFORM-NOTES #30) imports as
@@ -1781,3 +1782,36 @@ CI does not run the journeys (`AGENTS.md`, "Before you hand off a pull request",
 defect that only a journey catches is found only when someone runs the journeys on the rig.
 `AGENTS.md` "How to test", `docs/ARCHITECTURE.md` section 10 and
 `.github/ISSUE_TEMPLATE/task.yml` carry this decision.
+
+## D82 (2026-09-26, project-owner rulings) **A tC3 import stores no pin without its sha. The review page looks up each resource version that the project names. When a version is not found, the user goes online or uses the installed versions. When the files have different licenses, the user chooses one. When the books name different original-language versions, the newest version that DCS has is pinned.** [issue #21; replaces the marked-unresolved state of D59 point 1]
+
+Context. D59 point 1 said that a failed tag lookup imports as FR-25's "marked-unresolved"
+state. BURRITO-SPEC §5.3 (D58) says that every pin MUST carry `sha`, and the format has no
+unresolved form. The guided fix also needs a pin with a sha. The owner asked for the better
+option: tell the user to go online to find the resources, and offer to switch to a resource
+that is installed. The tC3 exports on #21 show both cases. `Door43-Catalog/el-x-koine_ugnt`
+v0.24 is gone from DCS, and some versions are the branch `master`, not a tag
+[VERIFIED — git.door43.org tags API, 2026-09-26; the made-up tag v999 gave 404 as the
+control].
+
+1. **The review page looks up the sha of each version.** It uses the DCS tags API
+   (`releaseCommitSha`). A version that DCS has becomes a full pin: the sha is the identity
+   and the tag is the label. The decisions keep their records. When that version is not
+   installed, the tool preflight offers the guided fix after the project opens. The pin
+   records the books that tC3 checked against it (D41); a later local read widens the
+   record (D61). When the books name different versions of one helps resource, no one pin
+   holds all their decisions, so the import treats that resource as not found (point 2).
+2. **Offline, the review page offers "Go online" and "Use installed versions".** When a
+   version is not found (the tag is removed, the ref is `master`, or the project names no
+   version), it offers "Use installed versions". Import waits for the choice.
+3. **"Use installed versions" gives the pins that a new project gets.** The decisions of each
+   tool that moves carry over to the check list of the installed pin before the write (D36).
+   The review page shows how many decisions carry over and how many must be checked again.
+4. **When the files have different licenses, the user chooses one on the review page.** The
+   import writes the chosen license to `metadata.json` `copyright`. When the files have no
+   license, the import applies none (#392).
+5. **When the books name different original-language versions, the newest version that DCS
+   has is pinned.** Each alignment record keeps its own `sourceVersion`. The upgrade of the
+   alignments is #258's work.
+
+`docs/ARCHITECTURE.md` section 8 and BURRITO-SPEC §5.3 (the D41 bullet) carry this decision.

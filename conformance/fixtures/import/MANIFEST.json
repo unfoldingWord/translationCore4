@@ -8,5 +8,8 @@
   { "file": ["usfm/57-TIT.usfm", "usfm/32-JON.usfm", "usfm/58-PHM.txt"], "parser": "usfm", "name": "Tres libros", "lang": "es-419", "expect": "accept", "language": "es-419", "books": ["JON", "PHM", "TIT"], "counts": { "chapters": { "JON": 4, "PHM": 1, "TIT": 3 } } },
   { "file": "usfm/no-id.sfm", "parser": "usfm", "expect": "refuse", "code": "import.damaged.usfm-parse" },
   { "file": "damaged/burrito-no-metadata", "parser": "burrito", "expect": "refuse", "code": "import.damaged.no-metadata" },
-  { "file": "damaged/burrito-checksum-mismatch", "parser": "burrito", "expect": "refuse", "code": "import.damaged.checksum-mismatch" }
+  { "file": "damaged/burrito-checksum-mismatch", "parser": "burrito", "expect": "refuse", "code": "import.damaged.checksum-mismatch" },
+  { "file": "tc3/cfm_fbt_tit_book.zip", "parser": "tc3", "expect": "accept", "language": "cfm", "books": ["TIT"], "counts": { "chapters": { "TIT": 3 } } },
+  { "file": ["tc3/multi/en_kjv_jhn_book.zip", "tc3/multi/en_kjv_job_book.zip", "tc3/multi/en_kjv_luk_book.zip"], "parser": "tc3", "license": "CC BY-SA 4.0", "expect": "accept", "language": "en", "books": ["JHN", "JOB", "LUK"], "counts": { "chapters": { "JHN": 21, "JOB": 42, "LUK": 24 } } },
+  { "file": "tc3/no-manifest", "parser": "tc3", "expect": "refuse", "code": "import.damaged.no-manifest" }
 ]

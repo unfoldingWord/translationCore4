@@ -3,7 +3,7 @@
 // (e2e/j09-import.spec.ts) share them.
 import { zipSync } from 'fflate';
 import type { ImportDeps } from '../../src/data/import/shell';
-import type { ImportFile, ImportParser } from '../../src/data/import/types';
+import type { ImportBundle, ImportFile, ImportParser } from '../../src/data/import/types';
 import type { Report } from '../../src/data/journal/runtime';
 import { ServerApi } from '../../src/data/serverApi';
 
@@ -21,6 +21,7 @@ export type ManifestEntry = {
   wrap?: string; // zip the directory under this one top-level folder, as a DCS sb-zip is
   name?: string; // the review page's name edit: entries made from one burrito need their own project names
   lang?: string; // the review page's language edit: a USFM file carries no language
+  license?: string; // the review page's license choice: the files carry different licenses
   parser: string;
   expect: 'accept' | 'refuse';
   code?: string;
@@ -30,6 +31,29 @@ export type ManifestEntry = {
 };
 
 export const readManifest = (): ManifestEntry[] => JSON.parse(fs.readFileSync(path.join(MANIFEST_DIR, 'MANIFEST.json'), 'utf8')) as ManifestEntry[];
+
+/** The DCS tags the tC3 fixtures name [VERIFIED — git.door43.org tags API,
+ * 2026-09-26; a made-up tag, v999, gave 404 as the control]. Door43-Catalog
+ * ugnt v0.24 (the LUK fixture) is gone from DCS, so it is not here. */
+export const TC3_DCS_TAGS: Record<string, string> = {
+  'git.door43.org/unfoldingWord/en_tn@v87': '80bced5d47685a39ebb2c80fd41461d3cff0d94a',
+  'git.door43.org/unfoldingWord/el-x-koine_ugnt@v0.34': 'fc95b2b8aad08bb65ab54628ab685413a1139e97',
+  'git.door43.org/unfoldingWord/el-x-koine_ugnt@v0.21': 'e01ef34d7dcf42aabd46f7aa1d110af0391c6b77',
+  'git.door43.org/unfoldingWord/hbo_uhb@v2.1.30': '106a441a788d9465846cd427538ea80b8cec6770',
+};
+
+/** The review step of a tC3 import with no network and no installed helps:
+ * the versions resolve by `TC3_DCS_TAGS`, the rest move to the installed pins
+ * with an empty check list (their decisions are invalidated). Any other
+ * bundle passes through. */
+export async function resolveTc3ForTests(bundle: ImportBundle): Promise<ImportBundle> {
+  if (!bundle.versions) return bundle;
+  const { INSTALLED_SUITE } = await import('../../src/data/installedSuite');
+  const { applyVersions, carryOverNeeds, resolveVersions } = await import('../../src/data/import/tc3');
+  const found = await resolveVersions(bundle.versions, async (repoPath, version) => TC3_DCS_TAGS[`${repoPath}@${version}`] ?? null);
+  const derived = Object.fromEntries(carryOverNeeds(bundle, found).map(({ tool, book }) => [`${tool}/${book}`, []]));
+  return applyVersions(bundle, INSTALLED_SUITE as never, found, derived).bundle;
+}
 
 /** Every file under `dir` as zip entries keyed by relative path, under the folder `wrap` when given. */
 export function zipDirectory(dir: string, wrap?: string): Uint8Array {
@@ -91,7 +115,7 @@ export async function runManifest(
     const parser = parsers[entry.parser];
     assert.ok(parser, `manifest entry ${JSON.stringify(entry.file)}: no parser "${entry.parser}"`);
     const files = (Array.isArray(entry.file) ? entry.file : [entry.file]).map((rel) => fixtureFile(rel, entry.wrap));
-    const edits = { name: entry.name, language: entry.lang };
+    const edits = { name: entry.name, language: entry.lang, license: entry.license };
     const label = `manifest entry ${JSON.stringify(entry.file)}`;
     if (entry.expect === 'refuse') {
       const report = await assertNoRepoCreated(() => runImport(parser, files, edits, deps), deps.api);
