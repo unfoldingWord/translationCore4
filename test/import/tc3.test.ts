@@ -210,6 +210,20 @@ describe('#21 the tC3 parser', () => {
     expect(unresolvedSlots(bundle.versions!, offline).sort()).toEqual(['originalLanguage.nt', 'originalLanguage.ot', 'translationNotes', 'translationWords']);
   });
 
+  it('the versions: books that name different helps versions leave the slot unresolved, so every book carries over', async () => {
+    const nt = { slot: 'originalLanguage.nt' as const, candidates: [] };
+    const requests = [
+      { slot: 'translationNotes' as const, book: 'JHN', candidates: [{ repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v87' }] },
+      { slot: 'translationNotes' as const, book: 'LUK', candidates: [{ repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v86' }] },
+      { ...nt, book: 'JHN' },
+    ];
+    const asked: string[] = [];
+    const found = await resolveVersions(requests, async (repoPath, version) => (asked.push(version), lookup(repoPath, version)));
+    expect(found.translationNotes).toBeUndefined();
+    expect(asked).not.toContain('v87');
+    expect(unresolvedSlots(requests, found)).toContain('translationNotes');
+  });
+
   it('applyVersions: a found version is a full pin and its decisions stay as they are; an installed one carries over (D36)', async () => {
     const bundle = await TC3_PARSER.parse([fixtureFile(TIT)]);
     const found = await resolveVersions(bundle.versions!, lookup);

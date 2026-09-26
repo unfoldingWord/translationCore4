@@ -4583,6 +4583,9 @@ export function AppProvider({ children }) {
             found = {};
           }
         }
+        // The user may have gone back or started another review meanwhile: a result
+        // belongs only to the review of the bundle it was looked up for.
+        if (stateRef.current.im?.bundle !== bundle) return;
         a.patchIm({ versions: { looking: false, found, unresolved: unresolvedSlots(bundle.versions, found), offline, installed: null } });
       },
       importGoOnline: async () => {
@@ -4620,8 +4623,10 @@ export function AppProvider({ children }) {
               : [];
           }
           const { carried, invalidated } = applyVersions(bundle, base, versions.found, derived);
+          if (stateRef.current.im?.bundle !== bundle) return; // another review since
           a.patchIm({ busy: false, versions: { ...versions, installed: { base, derived, carried, invalidated } } });
         } catch (e) {
+          if (stateRef.current.im?.bundle !== bundle) return;
           a.patchIm({ busy: false, error: String(e?.message || e) });
         }
       },

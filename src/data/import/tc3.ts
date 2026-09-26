@@ -303,7 +303,10 @@ const TOOL_PIN: Record<Tool, string> = { translationNotes: 'translationNotes', t
 
 /** The pins a set of lookups found: one per slot. A slot's candidates are
  * tried newest first, so books that name different original-language versions
- * get the newest version DCS has (D82). `lookup` gives the sha of a tag, or null. */
+ * get the newest version DCS has (D82 point 5). A helps slot whose books name
+ * different versions is not looked up: no one pin holds all their decisions,
+ * so the user takes the installed versions and every book carries over (D82
+ * point 2). `lookup` gives the sha of a tag, or null. */
 export async function resolveVersions(
   requests: VersionRequest[],
   lookup: (repoPath: string, version: string) => Promise<string | null>,
@@ -313,6 +316,8 @@ export async function resolveVersions(
   for (const r of requests) bySlot.set(r.slot, [...(bySlot.get(r.slot) ?? []), ...r.candidates]);
   const newest = (a: { version: string }, b: { version: string }) => b.version.localeCompare(a.version, undefined, { numeric: true });
   for (const [slot, candidates] of bySlot) {
+    const named = new Set(requests.filter((r) => r.slot === slot).map((r) => JSON.stringify(r.candidates)));
+    if (!slot.startsWith('originalLanguage') && named.size > 1) continue;
     const seen = new Set<string>();
     for (const c of [...candidates].sort(newest)) {
       if (seen.has(`${c.repoPath}@${c.version}`)) continue;

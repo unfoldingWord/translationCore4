@@ -1799,7 +1799,8 @@ control].
    and the tag is the label. The decisions keep their records. When that version is not
    installed, the tool preflight offers the guided fix after the project opens. The pin
    records the books that tC3 checked against it (D41); a later local read widens the
-   record (D61).
+   record (D61). When the books name different versions of one helps resource, no one pin
+   holds all their decisions, so the import treats that resource as not found (point 2).
 2. **Offline, the review page offers "Go online" and "Use installed versions".** When a
    version is not found (the tag is removed, the ref is `master`, or the project names no
    version), it offers "Use installed versions". Import waits for the choice.
