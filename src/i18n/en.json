@@ -7,6 +7,7 @@
   "app.saveError": "Save failed — retry",
   "app.retry": "Retry",
   "app.commitError": "Checkpoint not saved",
+  "app.dcsServer": "QA server: {host}",
   "nav.draft": "Translate",
   "nav.check": "Check",
   "home.yourBibles": "Your Bibles",
