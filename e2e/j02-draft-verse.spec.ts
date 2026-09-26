@@ -76,7 +76,7 @@ test.describe('J2 — a translator drafts a verse', () => {
   test(
     'open the seeded project, draft verse Titus 2:1, and the save is byte-strict with no auto-commit',
     { tag: ['@inc1', '@J2'] },
-    async ({ page }) => {
+    async ({ page }, testInfo) => {
       const bytesBefore = readIngredient(SEEDED_PROJECT, BOOK_IPATH);
       const commitsBefore = commitCount(SEEDED_PROJECT);
 
@@ -106,6 +106,22 @@ test.describe('J2 — a translator drafts a verse', () => {
       await test.step('the save indicator confirms a real write', async () => {
         await expect(page.getByText('Saved')).toBeVisible();
         await page.getByRole('tab', { name: 'Section', exact: true }).click();
+      });
+
+      await test.step('the dev build names the QA Door43 server beside the save indicator (#120)', async () => {
+        // The journeys run on the Vite dev server, so account and write calls
+        // target qa.door43.org and the chrome must say so.
+        const label = page.getByTestId('save-indicator').locator('xpath=..').getByTestId('dcs-server-label');
+        await expect(label).toBeVisible();
+        await expect(label).toContainText('qa.door43.org');
+        // The run's artifact, kept on disk under test-results/: the label text
+        // (the same bytes every run) and a screenshot of the app chrome.
+        const textPath = testInfo.outputPath('dcs-server-label.txt');
+        fs.writeFileSync(textPath, `${(await label.textContent()) ?? ''}\n`);
+        await testInfo.attach('dcs-server-label.txt', { path: textPath, contentType: 'text/plain' });
+        const shotPath = testInfo.outputPath('app-chrome.png');
+        await page.locator('header').first().screenshot({ path: shotPath });
+        await testInfo.attach('app-chrome.png', { path: shotPath, contentType: 'image/png' });
       });
 
       await test.step('the typed text is on disk in ingredients/TIT.usfm (FR-6)', async () => {
