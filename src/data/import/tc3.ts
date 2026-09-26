@@ -254,7 +254,8 @@ async function parse(files: ImportFile[]): Promise<ImportBundle> {
   const decisions: DecisionRecord[] = [];
   const versions: VersionRequest[] = [];
   for (const p of projects) {
-    sidecars[`checking/alignments/${p.code}.json`] = p.alignments;
+    // A book never opened in the aligner has no records, and the checkpoint keeps no empty file.
+    if (Object.keys(p.alignments.chapters).length) sidecars[`checking/alignments/${p.code}.json`] = p.alignments;
     alignments[p.code] = Object.values(p.alignments.chapters).flatMap((c) => Object.values(c));
     const tools = TOOLS.filter((tool) => p.decisions[tool]);
     for (const tool of tools) {
@@ -280,7 +281,7 @@ async function parse(files: ImportFile[]): Promise<ImportBundle> {
     sidecars,
     versions,
     gateway: { languageId: gl, owner },
-    ...(licenses.length > 1 ? { licenseChoices: licenses.filter(Boolean) } : {}),
+    ...(licenses.length > 1 ? { licenseChoices: licenses } : {}), // '' is the choice of no license
     findings,
   };
 }

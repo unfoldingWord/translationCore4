@@ -201,9 +201,11 @@ function ReviewStep({ im, actions }) {
               <Text role="caption" tone="muted">{t('importer.review.readFromFile')}</Text>
               {bundle.licenseChoices && (
                 <Field label={t('importer.review.licensePick')}>
-                  <Input as="select" value={im.license} data-testid="import-license" disabled={!!damaged} onChange={(e) => actions.patchIm({ license: e.target.value })}>
+                  {/* each value is a JSON string, so "no license" ('') differs from "not chosen yet" */}
+                  <Input as="select" value={im.license === null ? '' : JSON.stringify(im.license)} data-testid="import-license" disabled={!!damaged}
+                    onChange={(e) => actions.patchIm({ license: e.target.value ? JSON.parse(e.target.value) : null })}>
                     <option value="">{t('importer.review.licensePickNone')}</option>
-                    {bundle.licenseChoices.map((l) => <option key={l} value={l}>{l}</option>)}
+                    {bundle.licenseChoices.map((l) => <option key={l} value={JSON.stringify(l)}>{l || t('importer.review.licensePickEmpty')}</option>)}
                   </Input>
                 </Field>
               )}

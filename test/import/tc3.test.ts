@@ -6,10 +6,11 @@
 // user data, record for record, and each equals the latest record of its check
 // in `checkData/` (no history is converted, D80 point 3). The version step
 // never stores a pin without its sha (D82).
-import { unzipSync } from 'fflate';
+import { unzipSync, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 import { TC3_PARSER, applyVersions, carryOverNeeds, resolveVersions, unresolvedSlots } from '../../src/data/import/tc3';
 import { runImport } from '../../src/data/import/shell';
+import { USFM_PARSER } from '../../src/data/import/usfm';
 import type { ImportBundle, ImportFile } from '../../src/data/import/types';
 import { INSTALLED_SUITE } from '../../src/data/installedSuite';
 import { decompose, verseTextMd5 } from '../../src/data/journal/runtime';
@@ -286,6 +287,31 @@ describe('#21 the tC3 import end to end on the fake rig', () => {
     const report = await runImport(TC3_PARSER, [fixtureFile(TIT)], { name: 'Tito', language: 'es-419' }, { api, store, resolve: resolveWith() });
     expect(report.ok, JSON.stringify(report)).toBe(true);
     expect((rig.repos.get('_local_/_local_/tito')!.meta as { languages: Array<{ tag: string }> }).languages[0].tag).toBe('es-419');
+  });
+
+  it('one zip with a license and one without: "no license" is a choice, and it writes no copyright; a book with no alignment data imports', async () => {
+    const { rig, api, store } = setup();
+    // Titus again as Philemon, with no license in its manifest
+    const entries = zip(TIT);
+    const phm: Record<string, Uint8Array> = {};
+    for (const [name, bytes] of Object.entries(entries)) phm[name.replace(/^tit\//, 'phm/')] = bytes;
+    const manifest = json(entries, 'manifest.json');
+    manifest.project.id = 'phm';
+    delete manifest.license;
+    phm['manifest.json'] = new TextEncoder().encode(JSON.stringify(manifest));
+    const files = [fixtureFile(TIT), { name: 'cfm_fbt_phm_book.zip', bytes: zipSync(phm) }];
+    const bundle = await TC3_PARSER.parse(files);
+    expect(bundle.licenseChoices).toEqual(['', 'CC BY-SA 4.0']); // PHM, TIT
+    expect(bundle.sidecars!['checking/alignments/PHM.json']).toBeUndefined(); // no alignmentData for phm
+    const notChosen = await runImport(TC3_PARSER, files, { name: 'Mixed' }, { api, store, resolve: resolveWith() });
+    expect(notChosen.ok).toBe(false);
+    const none = await runImport(TC3_PARSER, files, { name: 'Mixed', license: '' }, { api, store, resolve: resolveWith() });
+    expect(none.ok, JSON.stringify(none)).toBe(true);
+    // the copyright stays what the create route wrote: the same as a USFM import, which carries no license
+    const plain = await runImport(USFM_PARSER, [fixtureFile('usfm/57-TIT.usfm')], { name: 'Plain', language: 'cfm' }, { api, store });
+    expect(plain.ok).toBe(true);
+    const copyright = (repo: string) => (rig.repos.get(`_local_/_local_/${repo}`)!.meta as { copyright?: unknown }).copyright;
+    expect(copyright('mixed')).toEqual(copyright('plain'));
   });
 
   it('refuses before any write: versions not resolved; different licenses and none chosen', async () => {

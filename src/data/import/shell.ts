@@ -108,7 +108,7 @@ export async function runImport(
       throw new Error('the resource versions of the files are not resolved to pins');
     const edited = editedFacts(bundle, edits);
     const { name, language } = edited;
-    if (bundle.licenseChoices && !bundle.licenseChoices.includes(edited.license ?? ''))
+    if (bundle.licenseChoices && (edits.license === undefined || !bundle.licenseChoices.includes(edits.license)))
       throw new Error('the files carry different licenses; choose one');
     const abbr = importAbbr(name, language);
     if (!abbr) throw new Error('the project needs a name');

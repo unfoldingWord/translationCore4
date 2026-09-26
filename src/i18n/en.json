@@ -204,6 +204,7 @@
   "importer.review.contributors": "Contributors",
   "importer.review.licensePick": "License of the new Bible",
   "importer.review.licensePickNone": "Choose a license",
+  "importer.review.licensePickEmpty": "No license",
   "importer.review.resources": "Resource versions",
   "importer.review.resourcesLooking": "Looking for the resource versions this project used…",
   "importer.review.resourcesFound": "The versions this project used were found: {list}.",

@@ -256,7 +256,7 @@ test.describe('J9 — a facilitator imports existing work', () => {
       await expect(row).toHaveAttribute('data-state', 'installed', { timeout: 60_000 });
       await expect(row).toContainText('unfoldingWord/en_tn v87');
       await expect(row).toContainText('The versions on this computer will be used for translationWords.');
-      await page.getByTestId('import-license').selectOption('CC BY-SA 4.0');
+      await page.getByTestId('import-license').selectOption({ label: 'CC BY-SA 4.0' });
       await page.getByTestId('import-run').click();
       await expect(page.getByTestId('import-toast')).toBeVisible({ timeout: 240_000 });
       const pins = readProjectPins(abbrOf(name));
@@ -277,7 +277,7 @@ test.describe('J9 — a facilitator imports existing work', () => {
       await expect(page.getByTestId('import-resources')).toHaveAttribute('data-state', 'installed', { timeout: 60_000 });
       // the files disagree (CC BY-SA 4.0, CC0 1.0): Import waits for the choice
       await expect(page.getByTestId('import-run')).toBeDisabled();
-      await page.getByTestId('import-license').selectOption('CC0 1.0 Public Domain');
+      await page.getByTestId('import-license').selectOption({ label: 'CC0 1.0 Public Domain' });
       await page.getByTestId('import-run').click();
       await expect(page.getByTestId('import-toast')).toBeVisible({ timeout: 240_000 });
       const meta = JSON.parse(fs.readFileSync(path.join(repo, 'metadata.json'), 'utf8'));

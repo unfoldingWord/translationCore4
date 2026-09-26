@@ -29,7 +29,7 @@ export type ImportBundle = {
   sidecars?: Record<string, unknown>; // checking files the shell stores, by ingredient path (tC3)
   versions?: VersionRequest[]; // resolved to pins before the write (tC3: applyVersions)
   gateway?: { languageId: string; owner: string }; // the gateway language the decisions were made in
-  licenseChoices?: string[]; // the files disagree: the review page asks which one
+  licenseChoices?: string[]; // the files disagree: the review page asks which one ('' = no license)
   archive?: Uint8Array; // a Scripture Burrito uploaded as it is (D80 point 2); the shell wraps a flat zip
   findings: Array<{ kind: 'license' | 'details' | 'missing-verses' | 'damaged'; text: string; warn: boolean; code?: RefusalCode }>;
 };

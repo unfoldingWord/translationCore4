@@ -334,7 +334,7 @@ const initial = () => ({
   np: null, // New Bible form
   ab: null, // Add-a-book form
   st: null, // Project-settings form
-  im: null, // Import form (#361): { step, kind, files, bundle, name, lang, license, versions (tC3, #21), busy, error, report }
+  im: null, // Import form (#361): { step, kind, files, bundle, name, lang, license (null = not chosen yet), versions (tC3, #21), busy, error, report }
   importToast: null, // { name, books } of the project an import just made
   importedRepo: null, // its repoPath: the Home card carries the "Imported" badge
   // #9: the guided fix screen for a pinned resource this machine lacks —
@@ -4561,7 +4561,7 @@ export function AppProvider({ children }) {
         try {
           const bundle = await parser.parse(im.files);
           const resolving = bundle.versions && !bundle.findings.some((f) => f.kind === 'damaged');
-          a.patchIm({ busy: false, step: 'review', bundle, name: bundle.facts.name, lang: bundle.facts.language, license: bundle.facts.license ?? '', versions: resolving ? LOOKING : null });
+          a.patchIm({ busy: false, step: 'review', bundle, name: bundle.facts.name, lang: bundle.facts.language, license: bundle.licenseChoices ? null : (bundle.facts.license ?? ''), versions: resolving ? LOOKING : null });
           if (resolving) await a.importResolveVersions(bundle);
         } catch (e) {
           a.patchIm({ busy: false, error: String(e?.message || e) });
@@ -4638,7 +4638,7 @@ export function AppProvider({ children }) {
         const resolve = im.bundle?.versions
           ? async (bundle) => applyVersions(bundle, im.versions.installed?.base ?? (await a.importBasePins()), im.versions.found, im.versions.installed?.derived ?? {}).bundle
           : undefined;
-        const report = await runImport(parser, im.files, { name: im.name.trim(), language: im.lang, license: im.license || undefined }, { api, resolve });
+        const report = await runImport(parser, im.files, { name: im.name.trim(), language: im.lang, license: im.license ?? undefined }, { api, resolve });
         if (!report.ok) return a.patchIm({ busy: false, step: 'failed', report });
         const repoPath = report.facts.repoPath;
         try {
