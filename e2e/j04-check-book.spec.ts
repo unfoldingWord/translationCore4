@@ -4,7 +4,7 @@
 // Ground truth is the rig's disk, never UI state alone: the derived list must
 // come from the pinned resource's own TSV, and every decision must land in the
 // §5.2 sidecar with its resolution record.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './helpers/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -545,8 +545,13 @@ test.describe('J4 — a checker works a book', () => {
       await expect(page.getByTestId('check-progress')).toHaveText(progress as string);
 
       // Reopen the project: both marks come back from disk, the chips filter to them.
+      // #421: the tile resumes where this client last worked (#329). That is inside
+      // this tool when the old page's hide save of the place reached the rig before
+      // Home read it, and the tool list when it did not. Both open the same record.
       await openCheck(page);
-      await page.getByTestId('open-translationNotes').click();
+      const toolButton = page.getByTestId('open-translationNotes');
+      await expect(toolButton.or(page.getByTestId('check-progress'))).toBeVisible();
+      if (await toolButton.isVisible()) await toolButton.click();
       await expect(page.getByTestId('check-progress')).toHaveText(progress as string);
       await page.getByTestId('filter-commented').click();
       await expect(page.getByTestId('check-list').locator('button')).toHaveCount(commentedBefore + 1);

@@ -5,7 +5,7 @@
 // the installed-suite pins incl. extraScripture (D10/#13), and books seeded
 // client-side from the pinned ULT structure (PLATFORM-NOTES #19, D14: no \ts).
 // Pins/preflight/absence-handling UI (FR-3..FR-5) is Increment 5 (@inc5).
-import { test, expect } from '@playwright/test';
+import { test, expect } from './helpers/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import { listLocalRepos, rigRepo, ingredientExists, commitCount } from './helpers/rig';
 import fs from 'node:fs';

@@ -3,7 +3,8 @@
 // translationNotes and translationWords (`checking/<toolId>/OBS.json`, R-10.5.1); a
 // later frame edit flags them invalid and retains them (D36); the story file is
 // byte-identical through the checking. The Community Checking preview renders the story.
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from './helpers/test';
+import type { Page } from '@playwright/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import { readDecisionFile } from './helpers/rig';
 import { createObsProject, newSegments, segmentFiles, storyBytes } from './helpers/story';

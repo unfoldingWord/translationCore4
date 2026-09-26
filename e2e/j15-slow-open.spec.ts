@@ -8,7 +8,8 @@
 // The open time this spec measures is the number docs/evidence/open-time-*.md
 // records (machine, commit, date). It is printed, not asserted: the criterion
 // is progress, not speed (owner's ruling, 2026-08-25).
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from './helpers/test';
+import type { Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { verifyAllJournaledProjects } from './helpers/journal';

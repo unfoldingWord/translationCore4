@@ -1,7 +1,7 @@
 // J16 — Read a passage with helps and record a user comment
 // docs/JOURNEYS.md J16 · built in Increment 4 (#104); proof in Increment 5 (#197)
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './helpers/test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { verifyAllJournaledProjects } from './helpers/journal';

@@ -59,7 +59,8 @@ function tc3Usfm(files: Record<string, Uint8Array>, book: string): string {
   return usfmjs.toUSFM({ headers, chapters }, { forcedNewLines: true });
 }
 
-describe('#21 the tC3 parser', () => {
+// The KJV fixtures are about 5 MB of zips: a parse of the three takes seconds under the full suite.
+describe('#21 the tC3 parser', { timeout: 60_000 }, () => {
   it('accepts one or several .zip files, and nothing else', () => {
     const f = (name: string): ImportFile => ({ name, bytes: new Uint8Array() });
     expect(TC3_PARSER.accepts([f('a.zip')])).toBe(true);
@@ -269,7 +270,7 @@ describe('#21 the tC3 parser', () => {
   });
 });
 
-describe('#21 the tC3 import end to end on the fake rig', () => {
+describe('#21 the tC3 import end to end on the fake rig', { timeout: 60_000 }, () => {
   const setup = () => {
     forgetSharedClocks();
     forgetProjectQueues();

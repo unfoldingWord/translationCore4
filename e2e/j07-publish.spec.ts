@@ -6,7 +6,8 @@
 // menu renders it, a click downloads the file, and the project repository is
 // byte-identical except at most one D9 checkpoint commit. The producer cases
 // (USFM #19, Scripture Burrito zip #359, PDF #20, OBS #360) add their own blocks.
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from './helpers/test';
+import type { Page } from '@playwright/test';
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';

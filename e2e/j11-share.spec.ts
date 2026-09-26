@@ -4,7 +4,7 @@
 // Skeleton until #362 lands. The live leg runs against qa.door43.org only when the QA
 // credentials are present (#185) and reports a labelled skip otherwise. Ground truth is the
 // Door43 server and the rig's disk, never the app's own claims.
-import { test } from '@playwright/test';
+import { test } from './helpers/test';
 
 test.describe('J11 — a facilitator shares the project to Door43', () => {
   test.fixme(

@@ -2,7 +2,7 @@
 // issue #289, proof #292). End state on disk: the story file differs from before only
 // inside the written paragraph, the `# N.` line, or the closing `_…_` line; one
 // `text.frame.set` or `text.story.ref.set` segment per save; one paragraph per frame.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './helpers/test';
 import { parseStory } from '../journal/story.mjs';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import {

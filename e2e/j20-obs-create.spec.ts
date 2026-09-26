@@ -6,7 +6,7 @@
 // `localizedNames` the server requires (PLATFORM-NOTES #36); Home shows the OBS
 // tile at 0%, and one frame drafted through the store moves it. The Bible card and the New Bible
 // entry are unchanged beside it (J1's proof is the regression).
-import { test, expect } from '@playwright/test';
+import { test, expect } from './helpers/test';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import fs from 'node:fs';

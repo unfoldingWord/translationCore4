@@ -4,7 +4,7 @@
 //
 // Ground truth is the sidecar on disk. Wordmap suggestions (AD-7) are deferred
 // out of this increment (D35a), so nothing here asserts them.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './helpers/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import fs from 'node:fs';
 import path from 'node:path';

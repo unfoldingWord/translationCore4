@@ -3,7 +3,7 @@
 //
 // Two independent "the ground moved" cases, and the same promise in both:
 // nothing is discarded, the user is told.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './helpers/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import fs from 'node:fs';
 import path from 'node:path';

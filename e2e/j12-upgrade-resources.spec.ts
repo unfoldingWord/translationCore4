@@ -12,7 +12,7 @@
 // v90 changes no Titus check id (measured on both TSVs), so the served notes
 // drop ONE Titus row. The zip's declared revision is unchanged, which is what
 // the D23b sha gate verifies.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './helpers/test';
 import type { Page, BrowserContext } from '@playwright/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import fs from 'node:fs';
