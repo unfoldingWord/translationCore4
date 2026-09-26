@@ -109,8 +109,9 @@ that in passing while you build something else.
 ## Look at Pankosmia before you write code
 
 Added 2026-09-26 by the owner. In #19 (pull request #418), an agent wrote its own USFM
-alignment weave. The Pankosmia checking client already had one, through a helper in
-the pinned `word-aligner-lib`. The agent's weave deleted footnotes, and the helper keeps them.
+alignment weave. The Pankosmia checking client already had one: it calls a repo-local copy
+of `AlignmentHelpers.addAlignmentsToTargetVerseUsingMerge`, and the pinned `word-aligner-lib`
+exports the same function. The agent's weave deleted footnotes, and that function keeps them.
 
 1. **Read the issue's "Platform reuse" section first.** It names the Pankosmia code and
    the pinned uW libraries that already do the task, or it says what was searched.

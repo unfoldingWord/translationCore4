@@ -31,8 +31,8 @@ body:
         you searched. The builder uses what exists behind our own interface (AGENTS.md,
         "Look at Pankosmia before you write code").
       placeholder: |
-        The Pankosmia checking client exports aligned USFM with word-aligner-lib's
-        AlignmentHelpers.addAlignmentsToTargetVerseUsingMerge:
+        The Pankosmia checking client exports aligned USFM with a local copy of
+        word-aligner-lib's AlignmentHelpers.addAlignmentsToTargetVerseUsingMerge:
         https://github.com/pankosmia/uw-client-checks/blob/main/src/pages/UsfmExport.jsx
         Use the same helper. Do not copy its write back into the project (I-1).
     validations:

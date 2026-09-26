@@ -6,9 +6,10 @@
 // it with no build step, as it runs journal/*.mjs.
 //
 // Each verse is woven by word-aligner-lib's
-// `AlignmentHelpers.addAlignmentsToTargetVerseUsingMerge`, the helper the
-// Pankosmia checking client's USFM export calls (pankosmia/uw-client-checks
-// src/pages/UsfmExport.jsx). It merges into the verse's USFM, so a footnote or
+// `AlignmentHelpers.addAlignmentsToTargetVerseUsingMerge`. The Pankosmia
+// checking client's USFM export (pankosmia/uw-client-checks
+// src/pages/UsfmExport.jsx) calls a repo-local copy of the same function
+// [VERIFIED — pankosmia/uw-client-checks 0.0.9 (main 1b0dbc6, 2026-04-10)]. It merges into the verse's USFM, so a footnote or
 // another marker inside the verse stays. Only the woven verse slots change;
 // the rest of the book is the stored bytes (journal/skeleton.mjs). The
 // helpers come from the caller, as Ajv does for ../import/burritoCheck.mjs:
