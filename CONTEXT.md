@@ -183,7 +183,8 @@ _Avoid_: exporter, writer
 
 **Weave**:
 The step that puts the §5.1 alignment records of a book into its USFM as `\zaln` and `\w`
-markup (`src/data/export/weave.mjs`). Only the aligned USFM export weaves: the stored book
+markup (`src/data/export/weave.mjs`, through word-aligner-lib's
+`addAlignmentsToTargetVerseUsingMerge`). Only the aligned USFM export weaves: the stored book
 has no alignment markup (I-1). A verse with no valid record keeps its stored text (issue #19).
 _Avoid_: merge (for the whole book), embed
 

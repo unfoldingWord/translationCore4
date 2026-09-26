@@ -106,6 +106,27 @@ notification stream get adopted, and by which path, is open question
 [#222](https://github.com/unfoldingWord/translationCore4/issues/222). Do not decide
 that in passing while you build something else.
 
+## Look at Pankosmia before you write code
+
+Added 2026-09-26 by the owner. In #19 (pull request #418), an agent wrote its own USFM
+alignment weave. The Pankosmia checking client already had one, through a helper in
+the pinned `word-aligner-lib`. The agent's weave deleted footnotes, and the helper keeps them.
+
+1. **Read the issue's "Platform reuse" section first.** It names the Pankosmia code and
+   the pinned uW libraries that already do the task, or it says what was searched.
+2. **If the issue has no such section, search before you plan.** Search the
+   [`pankosmia` organization](https://github.com/pankosmia) (for example
+   `gh search code "<function or format name>" --owner pankosmia`), the reference clones
+   under `upstream/` when you have them, and the pinned libraries: `usfm-js`,
+   `word-aligner`, `word-aligner-lib`, `bible-reference-range`,
+   `string-punctuation-tokenizer`. This applies to alignment, USFM, checking, resource
+   and versification code.
+3. **Use what exists behind our own interface.** Call the library function, or follow the
+   Pankosmia client's method. Do not copy what our decisions forbid: a write of alignment
+   markup into the project (I-1), or a `pankosmia-rcl` visual component (D29).
+4. **Say what you found in the pull request.** Name the Pankosmia code that you used. If
+   you did not use it, say why. "I did not search" is not an acceptable reason.
+
 ## Before you hand off a pull request
 
 Added 2026-09-23. Each rule below comes from a pull request that a maintainer had to fix

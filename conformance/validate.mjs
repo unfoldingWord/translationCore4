@@ -533,7 +533,7 @@ const verseText = bookJson.chapters['1']['1'].verseObjects.filter(vo => vo.type 
 // ---------- 9. Whole-book aligned USFM export (tC3 interchange from burrito alone) ----------
 {
   // The app's own weave (src/data/export/weave.mjs, issue #19): one implementation.
-  const out = weaveBook(read(ING('TIT.usfm')), alignIng);
+  const out = weaveBook(read(ING('TIT.usfm')), alignIng, wal.AlignmentHelpers);
   check('export: full-book USFM with zaln alignments produced from burrito data alone',
     out.includes('\\zaln-s') && out.includes('x-strong="G23160"') && out.includes('\\v 2 con la esperanza'),
     'draft + sidecar -> aligned USFM3');

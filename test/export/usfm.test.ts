@@ -11,15 +11,21 @@
 //    woven onto text it does not describe;
 // 4. the plain export is not the stored file byte for byte;
 // 5. a file name leaves the `<BOOK>-aligned-<YYYY-MM-DD>.usfm` /
-//    `<BOOK>-<YYYY-MM-DD>.usfm` forms.
+//    `<BOOK>-<YYYY-MM-DD>.usfm` forms;
+// 6. a footnote or another marker inside a woven verse is lost, or a byte
+//    outside the verses (headers, chapter and paragraph markers) changes.
 import { describe, expect, it } from 'vitest';
 import { zipSync } from 'fflate';
-import { weaveBook } from '../../src/data/export/weave.mjs';
+import { weaveBook as weave } from '../../src/data/export/weave.mjs';
+import { AlignmentHelpers } from '../../src/data/vendor';
 import { USFM_ALIGNED, USFM_PLAIN } from '../../src/data/export/usfm';
 import type { AlignmentFile } from '../../src/data/align/zaln';
+
+const weaveBook = (usfm: string, alignments: AlignmentFile | null) => weave(usfm, alignments, AlignmentHelpers);
 import type { ExportInput } from '../../src/data/export/kernel';
 import { extractVerseFromZalnUsfm, origWordsFromAlignments } from '../helpers/zaln';
 import { decompose } from '../../journal/skeleton.mjs';
+import { verseTextMd5 } from '../../journal/fold.mjs';
 
 const fs = process.getBuiltinModule('node:fs');
 const path = process.getBuiltinModule('node:path');
@@ -29,9 +35,10 @@ const USFM = fs.readFileSync(path.join(SAMPLE, 'TIT.usfm'), 'utf8');
 const ALIGNMENTS = (): AlignmentFile => JSON.parse(fs.readFileSync(path.join(SAMPLE, 'checking/alignments/TIT.json'), 'utf8'));
 const MARKUP = /\\zaln-|\\w /;
 
-/** Every verse of `aligned` against the stored book: a verse in `woven` unweaves to its stored record; every other verse is the stored content, unmarked. */
-const expectRoundTrip = (aligned: string, alignments: AlignmentFile, woven: string[]) => {
-  const stored = decompose(USFM).verses as Record<string, string>;
+/** `aligned` against the stored book `usfm`: every byte outside the verses is the same; a verse in `woven` unweaves to its stored record; every other verse is the stored content, unmarked. */
+const expectRoundTrip = (aligned: string, alignments: AlignmentFile, woven: string[], usfm: string = USFM) => {
+  expect(decompose(aligned).skeleton).toBe(decompose(usfm).skeleton);
+  const stored = decompose(usfm).verses as Record<string, string>;
   const out = decompose(aligned).verses as Record<string, string>;
   expect(Object.keys(out)).toEqual(Object.keys(stored));
   for (const key of Object.keys(stored)) {
@@ -62,6 +69,18 @@ describe('#19 weaveBook', () => {
     const flagged = ALIGNMENTS();
     flagged.chapters['1']['1'].invalid = true;
     expectRoundTrip(weaveBook(USFM, flagged), flagged, []);
+  });
+
+  it('keeps a footnote and a paragraph break inside a woven verse', () => {
+    const marked = USFM.replace('de Dios y apóstol', 'de Dios y\n\\p\napóstol').replace('con la piedad,', 'con la piedad,\\f + \\ft Nota de prueba.\\f*');
+    const alignments = ALIGNMENTS();
+    // The store stamps the record against the verse as it is stored (I-3).
+    alignments.chapters['1']['1'].targetVerseMd5 = verseTextMd5((decompose(marked).verses as Record<string, string>)['1:1']);
+    const aligned = weaveBook(marked, alignments);
+    expectRoundTrip(aligned, alignments, ['1:1'], marked);
+    const verse = (decompose(aligned).verses as Record<string, string>)['1:1'];
+    expect(verse).toContain('\\f + \\ft Nota de prueba.\\f*');
+    expect(verse).toMatch(/\\w y\|[^\n]*\n\\p\n\\zaln-s [^\n]*\\w apóstol\|/);
   });
 
   it('a book with no sidecar exports its text with no markup', () => {

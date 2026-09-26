@@ -135,8 +135,8 @@ always finds something. These two rules end the loop.
 - **Tracking issues** (label `epic`) group sub-issues.
 - **Milestones** are delivery targets. A milestone is one increment.
 - **The project board** has one Status field: `Backlog`, `Ready`, `In progress`,
-  `Blocked`, `Done`. `Ready` means: the acceptance criteria and the Verify command are
-  complete, and nobody is assigned. A `Ready` issue is claimable.
+  `Blocked`, `Done`. `Ready` means: the acceptance criteria, the Verify command and the
+  Platform reuse section are complete, and nobody is assigned. A `Ready` issue is claimable.
 
 ### Claim an issue
 

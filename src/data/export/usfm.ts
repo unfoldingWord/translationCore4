@@ -11,6 +11,7 @@ import { unzipSync } from 'fflate';
 import { t } from '../../i18n';
 import { exportFilename, type ExportInput, type ExportProducer } from './kernel';
 import { weaveBook } from './weave.mjs';
+import { AlignmentHelpers } from '../vendor';
 
 const bible: ExportProducer['appliesTo'] = (project) => project.flavor === 'textTranslation';
 
@@ -28,7 +29,7 @@ export const USFM_ALIGNED: ExportProducer = {
   produce: async ({ store, book }: ExportInput) => {
     const id = openBook(book);
     const [{ usfm }, alignments] = await Promise.all([store.readBook(id), store.readAlignments(id)]);
-    return usfmFile(weaveBook(usfm, alignments), exportFilename(`${id}-aligned`, 'usfm'));
+    return usfmFile(weaveBook(usfm, alignments, AlignmentHelpers), exportFilename(`${id}-aligned`, 'usfm'));
   },
 };
 

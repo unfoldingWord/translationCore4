@@ -4,36 +4,42 @@
 // app, and the conformance harness (conformance/validate.mjs, "Whole-book
 // aligned USFM export") imports it. It is `.mjs`, not `.ts`, so that Node runs
 // it with no build step, as it runs journal/*.mjs.
-import usfmjs from 'usfm-js';
-import wordAlignerModule from 'word-aligner';
+//
+// Each verse is woven by word-aligner-lib's
+// `AlignmentHelpers.addAlignmentsToTargetVerseUsingMerge`, the helper the
+// Pankosmia checking client's USFM export calls (pankosmia/uw-client-checks
+// src/pages/UsfmExport.jsx). It merges into the verse's USFM, so a footnote or
+// another marker inside the verse stays. Only the woven verse slots change;
+// the rest of the book is the stored bytes (journal/skeleton.mjs). The
+// helpers come from the caller, as Ajv does for ../import/burritoCheck.mjs:
+// the app and the harness each carry their own copy of the pinned library,
+// and plain Node cannot load its ES build.
 import { verseTextMd5 } from '../../../journal/fold.mjs';
-import { decompose } from '../../../journal/skeleton.mjs';
-
-// Node hands us module.exports, whose `default` is the aligner; Vite may hand us the aligner itself.
-const wordaligner = wordAlignerModule.default ?? wordAlignerModule;
+import { decompose, recompose } from '../../../journal/skeleton.mjs';
 
 /** True when a §5.1 record may be woven into the verse: not flagged invalid,
  * and its `targetVerseMd5` matches the verse's current text (I-3). */
 const isValid = (record, content) => record.invalid !== true && content !== undefined && verseTextMd5(content) === record.targetVerseMd5;
 
 /**
- * The aligned USFM of one book. Each verse with a valid §5.1 record is merged
- * with `wordaligner.merge`; every other verse keeps its stored content, so
- * nothing is invented for a verse the translator has not aligned.
+ * The aligned USFM of one book. Each verse with a valid §5.1 record gets its
+ * alignments; every other verse keeps its stored content, so nothing is
+ * invented for a verse the translator has not aligned.
  * @param {string} usfm the stored book file
  * @param {{ chapters: Record<string, Record<string, object>> } | null} alignments the book's §5.1 sidecar
+ * @param {{ addAlignmentsToTargetVerseUsingMerge: (verseUsfm: string, record: object) => string | null }} AlignmentHelpers word-aligner-lib's
  * @returns {string}
  */
-export function weaveBook(usfm, alignments) {
-  const json = usfmjs.toJSON(usfm);
-  const slots = decompose(usfm).verses;
-  for (const [chapter, verses] of Object.entries(alignments?.chapters ?? {})) {
-    for (const [verse, record] of Object.entries(verses)) {
-      const target = json.chapters[chapter]?.[verse];
-      if (!target || !isValid(record, slots[`${chapter}:${verse}`])) continue;
-      const text = target.verseObjects.map((vo) => vo.text || '').join('');
-      target.verseObjects = wordaligner.merge(record.alignments, record.wordBank, text.trim(), true);
+export function weaveBook(usfm, alignments, AlignmentHelpers) {
+  const { skeleton, verses } = decompose(usfm);
+  for (const [chapter, records] of Object.entries(alignments?.chapters ?? {})) {
+    for (const [verse, record] of Object.entries(records)) {
+      const key = `${chapter}:${verse}`;
+      if (!isValid(record, verses[key])) continue;
+      // null when the record does not merge into the verse: keep the stored content.
+      const woven = AlignmentHelpers.addAlignmentsToTargetVerseUsingMerge(verses[key], record);
+      if (woven !== null) verses[key] = woven;
     }
   }
-  return usfmjs.toUSFM(json, { forcedNewLines: true });
+  return recompose(skeleton, verses);
 }
