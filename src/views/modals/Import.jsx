@@ -100,7 +100,8 @@ const slotName = (slot) => t(`importer.slot.${slot.startsWith('originalLanguage'
  * carry over (D36), and the counts are shown before the import. */
 function ResourcesCheck({ im, actions }) {
   const v = im.versions;
-  const found = Object.values(v?.found ?? {}).map((p) => `${p.repoPath.split('/').pop()} ${p.version}`).join(', ');
+  // owner/repo and tag: two owners can publish a repository of the same name
+  const found = Object.values(v?.found ?? {}).map((p) => `${p.repoPath.split('/').slice(1).join('/')} ${p.version}`).join(', ');
   const missing = (v?.unresolved ?? []).map(slotName).join(', ');
   const text = !v || v.looking
     ? t('importer.review.resourcesLooking')

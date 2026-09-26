@@ -323,7 +323,7 @@ export async function resolveVersions(
       if (seen.has(`${c.repoPath}@${c.version}`)) continue;
       seen.add(`${c.repoPath}@${c.version}`);
       const sha = await lookup(c.repoPath, c.version);
-      if (sha) {
+      if (sha && /^[0-9a-f]{40}$/.test(sha)) {
         out[slot] = { ...c, sha };
         break;
       }

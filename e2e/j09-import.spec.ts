@@ -216,7 +216,7 @@ test.describe('J9 — a facilitator imports existing work', () => {
       await test.step('the review page finds the versions; Import needs no choice', async () => {
         await importFixture(page, TIT, { kind: 'tc3', edits: { name }, confirm: false });
         await expect(page.getByTestId('import-resources')).toHaveAttribute('data-state', 'found');
-        await expect(page.getByTestId('import-resources')).toContainText('en_tn v87');
+        await expect(page.getByTestId('import-resources')).toContainText('unfoldingWord/en_tn v87');
         await page.getByTestId('import-run').click();
         await expect(page.getByTestId('import-toast')).toBeVisible({ timeout: 120_000 });
       });

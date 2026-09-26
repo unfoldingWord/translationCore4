@@ -4573,16 +4573,14 @@ export function AppProvider({ children }) {
       //      its sha. im.versions: { looking, found, unresolved, offline,
       //      installed: { base, derived, carried, invalidated } | null } ----
       importResolveVersions: async (bundle) => {
-        let offline = !(await api.getNetEnabled().catch(() => false));
-        let found = {};
-        if (!offline) {
-          try {
-            found = await resolveVersions(bundle.versions, (repoPath, version) => releaseCommitSha(repoPath, version));
-          } catch {
-            offline = true; // DCS did not answer: nothing is known about the versions
-            found = {};
-          }
-        }
+        const online = await api.getNetEnabled().catch(() => false);
+        // A lookup DCS did not answer leaves only its own candidate unresolved; the
+        // shas already found stay. Such a failure offers "Go online" like offline does.
+        let unanswered = false;
+        const found = online
+          ? await resolveVersions(bundle.versions, (repoPath, version) => releaseCommitSha(repoPath, version).catch(() => ((unanswered = true), null)))
+          : {};
+        const offline = !online || unanswered;
         // The user may have gone back or started another review meanwhile: a result
         // belongs only to the review of the bundle it was looked up for.
         if (stateRef.current.im?.bundle !== bundle) return;

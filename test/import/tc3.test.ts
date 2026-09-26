@@ -53,6 +53,7 @@ function tc3Usfm(files: Record<string, Uint8Array>, book: string): string {
   const headers = json(files, `${book}/headers.json`) as Array<{ tag: string; content: string }>;
   const usfm = headers.find((h) => h.tag === 'usfm');
   if (usfm) usfm.content = '3.0';
+  else if (headers.length < 2) headers.push({ tag: 'usfm', content: '3.0' });
   else headers.splice(1, 0, { tag: 'usfm', content: '3.0' });
   return usfmjs.toUSFM({ headers, chapters }, { forcedNewLines: true });
 }
@@ -222,6 +223,15 @@ describe('#21 the tC3 parser', () => {
     expect(found.translationNotes).toBeUndefined();
     expect(asked).not.toContain('v87');
     expect(unresolvedSlots(requests, found)).toContain('translationNotes');
+    // one book names v87, the other names none: the other book does not get v87's sha
+    const oneSilent = [requests[0], { ...requests[1], candidates: [] }, requests[2]];
+    expect((await resolveVersions(oneSilent, lookup)).translationNotes).toBeUndefined();
+    // a lookup that fails for one candidate keeps the sha another candidate found
+    const ol = [{ slot: 'originalLanguage.nt' as const, book: 'LUK', candidates: [{ repoPath: 'git.door43.org/unfoldingWord/el-x-koine_ugnt', version: 'v0.99' }, { repoPath: 'git.door43.org/unfoldingWord/el-x-koine_ugnt', version: 'v0.34' }] }];
+    const failing = (repoPath: string, version: string) => (version === 'v0.99' ? Promise.reject(new Error('HTTP 500')).catch(() => null) : lookup(repoPath, version));
+    expect((await resolveVersions(ol, failing))['originalLanguage.nt']?.sha).toBe(UGNT_V034);
+    // a lookup result that is not a 40-hex sha is no pin
+    expect((await resolveVersions(ol, async () => 'not-a-sha'))['originalLanguage.nt']).toBeUndefined();
   });
 
   it('applyVersions: a found version is a full pin and its decisions stay as they are; an installed one carries over (D36)', async () => {
