@@ -1,9 +1,10 @@
 // The import screen (issue #361; owner design "tC4 Import Dialog", 2026-09-22):
 // choose the kind of file → drop or choose files → review what was found →
 // import as a new Bible. Bound to the state layer's `im` form (openImport /
-// importPickKind / importAddFiles / importReview / importRun). A kind whose
-// parser is not in the table (src/data/import/parsers.ts) is shown but
-// disabled; the parsers arrive with #21, #195 and #196.
+// importPickKind / importAddFiles / importReview / importRun; a tC3 import adds
+// importGoOnline / importUseInstalled for its resource versions, #21). A kind
+// whose parser is not in the table (src/data/import/parsers.ts) is shown but
+// disabled.
 import React from 'react';
 import { useApp } from '../../state.jsx';
 import { bookName } from '../../data/bookNames';
@@ -86,6 +87,48 @@ const detailsCheck = (details) => ({
 });
 const carriedTitle = (kind) => t(kind === 'burrito' ? 'importer.review.carriedTc4' : 'importer.review.carried');
 
+/** The verses with alignment work: a record with at least one aligned target word. A tC3
+ * project keeps a record for every verse it opened in the aligner, aligned or not. */
+const alignedVerses = (bundle) =>
+  Object.values(bundle.alignments ?? {}).flat().filter((r) => (r.alignments ?? []).some((a) => a.bottomWords?.length)).length;
+
+const slotName = (slot) => t(`importer.slot.${slot.startsWith('originalLanguage') ? 'originalLanguage' : slot}`);
+
+/** The Resource versions row of a tC3 import (D82): found versions become
+ * pins; offline, go online or use the installed versions; a version that
+ * cannot be found, use the installed versions. The decisions of a moved tool
+ * carry over (D36), and the counts are shown before the import. */
+function ResourcesCheck({ im, actions }) {
+  const v = im.versions;
+  const found = Object.values(v?.found ?? {}).map((p) => `${p.repoPath.split('/').pop()} ${p.version}`).join(', ');
+  const missing = (v?.unresolved ?? []).map(slotName).join(', ');
+  const text = !v || v.looking
+    ? t('importer.review.resourcesLooking')
+    : v.installed
+      ? t('importer.review.resourcesInstalled', { carried: v.installed.carried, invalidated: v.installed.invalidated })
+      : v.unresolved.length === 0
+        ? t('importer.review.resourcesFound', { list: found })
+        : v.offline
+          ? t('importer.review.resourcesOffline', { list: missing })
+          : t('importer.review.resourcesMissing', { list: missing });
+  const open = v && !v.looking && !v.installed && v.unresolved.length > 0;
+  return (
+    <div style={{ display: 'flex', gap: 10, alignItems: 'baseline' }} data-testid="import-resources" data-state={!v || v.looking ? 'looking' : v.installed ? 'installed' : open ? (v.offline ? 'offline' : 'missing') : 'found'}>
+      <StatusDot status={open ? 'warn' : 'valid'} size={8} />
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <Text role="strong">{t('importer.review.resources')}</Text>
+        <Text role="caption">{text}</Text>
+        {open && (
+          <div style={{ display: 'flex', gap: 8 }}>
+            {v.offline && <Button size="sm" variant="secondary" data-testid="import-go-online" disabled={im.busy} onClick={actions.importGoOnline}>{t('importer.review.goOnline')}</Button>}
+            <Button size="sm" variant="secondary" data-testid="import-use-installed" disabled={im.busy} onClick={actions.importUseInstalled}>{t('importer.review.useInstalled')}</Button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ReviewStep({ im, actions }) {
   const { bundle } = im;
   const damaged = bundle.findings.find((f) => f.kind === 'damaged');
@@ -132,14 +175,17 @@ function ReviewStep({ im, actions }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }} data-testid="import-carried">
               <Overline as="span">{carriedTitle(im.kind)}</Overline>
               <KeyValueGrid columns={2} items={[
-                { k: t('importer.review.alignments'), v: t('importer.review.alignedVerses', { n: Object.values(bundle.alignments ?? {}).reduce((sum, list) => sum + list.length, 0) }) },
+                ...(bundle.verses !== undefined ? [{ k: t('importer.review.verses'), v: String(bundle.verses) }] : []),
+                { k: t('importer.review.alignments'), v: t('importer.review.alignedVerses', { n: alignedVerses(bundle) }) },
                 { k: t('importer.review.decisions'), v: String(bundle.decisions?.length ?? 0) },
+                ...(bundle.facts.contributors ? [{ k: t('importer.review.contributors'), v: String(bundle.facts.contributors.length) }] : []),
               ]} />
             </div>
           )}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <Overline as="span">{t('importer.review.checks')}</Overline>
+          {bundle.versions && !damaged && <ResourcesCheck im={im} actions={actions} />}
           {checks.map((c) => (
             <div key={c.label} style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
               <StatusDot status={c.status} size={8} />
@@ -152,6 +198,14 @@ function ReviewStep({ im, actions }) {
           <Surface fill="paper" border="line" radius="lg" pad="md">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <Text role="caption" tone="muted">{t('importer.review.readFromFile')}</Text>
+              {bundle.licenseChoices && (
+                <Field label={t('importer.review.licensePick')}>
+                  <Input as="select" value={im.license} data-testid="import-license" disabled={!!damaged} onChange={(e) => actions.patchIm({ license: e.target.value })}>
+                    <option value="">{t('importer.review.licensePickNone')}</option>
+                    {bundle.licenseChoices.map((l) => <option key={l} value={l}>{l}</option>)}
+                  </Input>
+                </Field>
+              )}
               <Field label={t('importer.review.name')}>
                 <Input value={im.name} data-testid="import-name" disabled={!!damaged} onChange={(e) => actions.patchIm({ name: e.target.value })} />
               </Field>
@@ -194,7 +248,10 @@ export default function Import() {
   if (s.modal !== 'import' || !im) return null;
   const [stepKey, titleKey, subtitleKey] = STEP_TITLES[im.step];
   const damaged = im.bundle?.findings.some((f) => f.kind === 'damaged');
-  const cantImport = damaged || !LANGUAGE_CODE.test(im.lang) || !im.name.trim();
+  const v = im.versions;
+  const versionsOpen = !!im.bundle?.versions && !(v && !v.looking && (v.unresolved.length === 0 || v.installed));
+  const licenseOpen = !!im.bundle?.licenseChoices && !im.bundle.licenseChoices.includes(im.license);
+  const cantImport = damaged || !LANGUAGE_CODE.test(im.lang) || !im.name.trim() || versionsOpen || licenseOpen || im.busy;
   const title = (
     <>
       <Overline as="span" style={{ display: 'block', marginBottom: 8 }}>{t(stepKey)}</Overline>
