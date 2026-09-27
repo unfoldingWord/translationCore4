@@ -38,8 +38,18 @@ const DCS: Record<string, string> = {
 };
 const lookup = async (repoPath: string, version: string) => DCS[`${repoPath}@${version}`] ?? null;
 
+// Each fixture is unzipped and parsed once per file: the KJV zips are about 5 MB.
+// No test mutates a cached value (applyVersions and carry-over return new objects).
+const cache = new Map<string, unknown>();
+const once = <T>(key: string, make: () => T): T => {
+  if (!cache.has(key)) cache.set(key, make());
+  return cache.get(key) as T;
+};
 /** The zip's files, without its folder entries. */
-const zip = (rel: string) => Object.fromEntries(Object.entries(unzipSync(fixtureFile(rel).bytes)).filter(([name]) => !name.endsWith('/')));
+const zip = (rel: string) =>
+  once(`zip:${rel}`, () => Object.fromEntries(Object.entries(unzipSync(fixtureFile(rel).bytes)).filter(([name]) => !name.endsWith('/'))));
+/** The parser's bundle for these fixture files, in this order. */
+const parsed = (...rels: string[]) => once(`parse:${rels.join('|')}`, () => TC3_PARSER.parse(rels.map((rel) => fixtureFile(rel))));
 const json = (files: Record<string, Uint8Array>, name: string) => JSON.parse(decoder.decode(files[name]));
 const damagedOf = (bundle: ImportBundle) => bundle.findings.filter((f) => f.kind === 'damaged');
 const sidecar = <T>(bundle: ImportBundle, rel: string) => bundle.sidecars![rel] as T;
@@ -73,7 +83,7 @@ describe('#21 the tC3 parser', { timeout: 60_000 }, () => {
     for (const rel of [TIT, ...MULTI]) {
       const files = zip(rel);
       const book = json(files, 'manifest.json').project.id as string;
-      const bundle = await TC3_PARSER.parse([fixtureFile(rel)]);
+      const bundle = await parsed(rel);
       expect(damagedOf(bundle)).toEqual([]);
       expect(bundle.books).toEqual([{ code: book.toUpperCase(), usfm: tc3Usfm(files, book) }]);
     }
@@ -81,7 +91,7 @@ describe('#21 the tC3 parser', { timeout: 60_000 }, () => {
 
   it('golden: every alignmentData record is stored, I-2 normalized, keyed to its verse text (I-3)', async () => {
     const files = zip(TIT);
-    const bundle = await TC3_PARSER.parse([fixtureFile(TIT)]);
+    const bundle = await parsed(TIT);
     const stored = sidecar<{ schemaVersion: number; book: string; chapters: Record<string, Record<string, Record<string, unknown>>> }>(bundle, 'checking/alignments/TIT.json');
     expect(stored.schemaVersion).toBe(1);
     expect(stored.book).toBe('TIT');
@@ -130,7 +140,7 @@ describe('#21 the tC3 parser', { timeout: 60_000 }, () => {
     for (const rel of [TIT, ...MULTI]) {
       const files = zip(rel);
       const code = (json(files, 'manifest.json').project.id as string).toUpperCase();
-      const bundle = await TC3_PARSER.parse([fixtureFile(rel)]);
+      const bundle = await parsed(rel);
       const stored = sidecar<{ chapters: Record<string, Record<string, { alignments: never[] }>> }>(bundle, `checking/alignments/${code}.json`);
       const aligned = decompose(decoder.decode(files[Object.keys(files).find((f) => /^wordAlignments\/.+\.usfm$/.test(f))!])).verses;
       const text = decompose(bundle.books[0].usfm).verses;
@@ -153,7 +163,7 @@ describe('#21 the tC3 parser', { timeout: 60_000 }, () => {
 
   it('golden: the decisions are the index items with user data, record for record; each equals its latest checkData record', async () => {
     const files = zip(TIT);
-    const bundle = await TC3_PARSER.parse([fixtureFile(TIT)]);
+    const bundle = await parsed(TIT);
     const originals = Object.keys(files)
       .filter((f) => /^apps\/translationCore\/index\/translation(Notes|Words)\/tit\/[^/]+\.json$/.test(f))
       .flatMap((f) => json(files, f) as Array<Record<string, unknown>>)
@@ -181,7 +191,7 @@ describe('#21 the tC3 parser', { timeout: 60_000 }, () => {
   });
 
   it('several zips of one language are one bundle; different licenses ask the review page', async () => {
-    const bundle = await TC3_PARSER.parse(MULTI.map((rel) => fixtureFile(rel)));
+    const bundle = await parsed(...MULTI);
     expect(damagedOf(bundle)).toEqual([]);
     expect(bundle.books.map((b) => b.code)).toEqual(['JHN', 'JOB', 'LUK']);
     expect(bundle.facts.language).toBe('en');
@@ -191,16 +201,16 @@ describe('#21 the tC3 parser', { timeout: 60_000 }, () => {
   });
 
   it('refuses: no manifest.json, two languages, one book twice', async () => {
-    const noManifest = await TC3_PARSER.parse([fixtureFile('tc3/no-manifest')]);
+    const noManifest = await parsed('tc3/no-manifest');
     expect(damagedOf(noManifest).map((f) => f.code)).toEqual(['import.damaged.no-manifest']);
-    const langs = await TC3_PARSER.parse([fixtureFile(TIT), fixtureFile(MULTI[0])]);
+    const langs = await parsed(TIT, MULTI[0]);
     expect(damagedOf(langs)).toHaveLength(1);
-    const twice = await TC3_PARSER.parse([fixtureFile(TIT), fixtureFile(TIT)]);
+    const twice = await parsed(TIT, TIT);
     expect(damagedOf(twice)).toHaveLength(1);
   });
 
   it('the versions: each slot takes the newest version DCS has; a version DCS does not have is unresolved', async () => {
-    const bundle = await TC3_PARSER.parse(MULTI.map((rel) => fixtureFile(rel)));
+    const bundle = await parsed(...MULTI);
     const found = await resolveVersions(bundle.versions!, lookup);
     // LUK names Door43-Catalog ugnt v0.24 (gone from DCS) and v0.34; JHN names v0.21: v0.34 is the newest found
     expect(found['originalLanguage.nt']).toEqual({ repoPath: 'git.door43.org/unfoldingWord/el-x-koine_ugnt', version: 'v0.34', sha: UGNT_V034 });
@@ -243,7 +253,7 @@ describe('#21 the tC3 parser', { timeout: 60_000 }, () => {
   });
 
   it('applyVersions: a found version is a full pin and its decisions stay as they are; an installed one carries over (D36)', async () => {
-    const bundle = await TC3_PARSER.parse([fixtureFile(TIT)]);
+    const bundle = await parsed(TIT);
     const found = await resolveVersions(bundle.versions!, lookup);
     const { bundle: out } = applyVersions(bundle, INSTALLED_SUITE as never, found);
     const resources = sidecar<{ languageSets: { primary: Record<string, { sha: string; version?: string }> }; resources: { originalLanguage: { nt: { sha: string } } } }>(out, 'checking/resources.json');
