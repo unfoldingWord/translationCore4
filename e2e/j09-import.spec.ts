@@ -287,6 +287,59 @@ test.describe('J9 — a facilitator imports existing work', () => {
       expect(new Set(seedEventsOf(onDisk(repo)).map((e) => e.seed.source))).toEqual(new Set(['tc3-import']));
       expect(git(repo, 'status', '--porcelain')).toBe('');
     });
+
+    test('tC3 name clash: a Bible name of a project on this computer is flagged on the review page and Import stays off; a stale review still writes nothing (#436)', { tag: ['@inc8', '@J9'] }, async ({ page }, testInfo) => {
+      test.setTimeout(180_000);
+      await setNet(true); // a fresh rig can start offline: the versions must be found, so only the name holds Import
+      await page.reload();
+      await recordedDcsTags(page);
+      const existing = rigRepo(SEEDED_PROJECT);
+      const before = { head: git(existing, 'rev-parse', 'HEAD'), files: tree(existing) };
+      const field = page.getByTestId('import-name-field');
+      const run = page.getByTestId('import-run');
+      const message = 'A project with this name is already on this computer. Change the Bible name, then import again.';
+      const seen: Record<string, unknown> = {};
+      const read = async () => ({ name: await page.getByTestId('import-name').inputValue(), message: (await field.getByRole('alert').count()) > 0, importEnabled: await run.isEnabled() });
+      await assertNoRepoCreated(async () => {
+        await test.step(`the name "${SEEDED_PROJECT}" (the seeded project's folder): the name-exists message beside Bible name, Import off`, async () => {
+          await importFixture(page, TIT, { kind: 'tc3', edits: { name: SEEDED_PROJECT }, confirm: false });
+          await expect(page.getByTestId('import-resources')).toHaveAttribute('data-state', 'found');
+          await expect(field.getByRole('alert')).toHaveText(message);
+          await expect(run).toBeDisabled();
+          seen.clash = await read();
+        });
+        await test.step('an unused name: the message clears and Import is on', async () => {
+          await page.getByTestId('import-name').fill(fresh('Tita tC3 clash'));
+          await expect(field.getByRole('alert')).toHaveCount(0);
+          await expect(run).toBeEnabled();
+          seen.unused = await read();
+        });
+        await test.step('the listing was stale at review: Import is reachable with the clashing name, and the shell refuses it with import.name-exists', async () => {
+          await page.goto('/');
+          // the review reads an empty listing, as if the project was made after it
+          await page.route('**/api/git/list-local-repos', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
+          await importFixture(page, TIT, { kind: 'tc3', edits: { name: SEEDED_PROJECT }, confirm: false });
+          await page.unroute('**/api/git/list-local-repos');
+          await expect(page.getByTestId('import-resources')).toHaveAttribute('data-state', 'found');
+          await expect(field.getByRole('alert')).toHaveCount(0);
+          seen.staleReview = await read();
+          await run.click();
+          await expect(page.getByTestId('import-failed')).toHaveAttribute('data-code', 'import.name-exists', { timeout: 60_000 });
+          await expect(page.getByTestId('import-failed')).toContainText(message);
+        });
+      });
+      await test.step('the existing project is byte-identical: the same HEAD and the same files', async () => {
+        expect(git(existing, 'rev-parse', 'HEAD')).toBe(before.head);
+        const after = tree(existing);
+        expect([...after.keys()].sort()).toEqual([...before.files.keys()].sort());
+        for (const [rel, bytes] of before.files) expect(after.get(rel)?.equals(bytes), rel).toBe(true);
+        seen.existingUnchanged = { head: before.head.trim(), files: before.files.size };
+      });
+      // The run's artifact: the review page's name check as the page showed it, one entry per step.
+      const artifactPath = testInfo.outputPath('j09-name-clash.json');
+      fs.writeFileSync(artifactPath, `${JSON.stringify(seen, null, 2)}\n`);
+      await testInfo.attach('j09-name-clash.json', { path: artifactPath, contentType: 'application/json' });
+    });
   });
 
   test.describe('USFM', () => {

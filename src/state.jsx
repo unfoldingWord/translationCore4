@@ -4688,7 +4688,7 @@ export function AppProvider({ children }) {
       //      review → one NEW project through the import shell. A damaged
       //      bundle is refused on the review page; runImport is never called. ----
       openImport: () =>
-        dispatch({ type: 'set', patch: { modal: 'import', im: { step: 'kind', kind: null, files: [], bundle: null, name: '', lang: '', license: '', versions: null, busy: false, error: null, report: null } } }),
+        dispatch({ type: 'set', patch: { modal: 'import', im: { step: 'kind', kind: null, files: [], bundle: null, existing: null, name: '', lang: '', license: '', versions: null, busy: false, error: null, report: null } } }),
       patchIm: (patch) =>
         dispatch({ type: 'set', patch: { im: { ...stateRef.current.im, ...patch } } }),
       importPickKind: (kind) => a.patchIm({ step: 'files', kind, files: [], bundle: null, error: null }),
@@ -4704,9 +4704,11 @@ export function AppProvider({ children }) {
         if (!parser.accepts(im.files)) return a.patchIm({ error: t('importer.files.notAccepted') });
         a.patchIm({ busy: true, error: null });
         try {
-          const bundle = await parser.parse(im.files);
+          // The projects on this computer, for the review page's name check (#436).
+          // No answer is null, not "no clash": the shell's own listing still refuses.
+          const [bundle, existing] = await Promise.all([parser.parse(im.files), api.listLocalRepos().catch(() => null)]);
           const resolving = bundle.versions && !bundle.findings.some((f) => f.kind === 'damaged');
-          a.patchIm({ busy: false, step: 'review', bundle, name: bundle.facts.name, lang: bundle.facts.language, license: bundle.licenseChoices ? null : (bundle.facts.license ?? ''), versions: resolving ? LOOKING : null });
+          a.patchIm({ busy: false, step: 'review', bundle, existing, name: bundle.facts.name, lang: bundle.facts.language, license: bundle.licenseChoices ? null : (bundle.facts.license ?? ''), versions: resolving ? LOOKING : null });
           if (resolving) await a.importResolveVersions(bundle);
         } catch (e) {
           a.patchIm({ busy: false, error: String(e?.message || e) });

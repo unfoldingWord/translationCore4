@@ -9,6 +9,7 @@ import React from 'react';
 import { useApp } from '../../state.jsx';
 import { bookName } from '../../data/bookNames';
 import { PARSERS } from '../../data/import/parsers';
+import { importRepoPath } from '../../data/import/shell';
 import { t } from '../../i18n';
 import { Modal, Button, OptionCard, Overline, DropZone, Surface, Text, IconButton, KeyValueGrid, StatusDot, Field, Input, Spinner, Callout } from '../../ds/index.js';
 
@@ -22,6 +23,11 @@ const kindText = (id, key) => (['tc3', 'usfm', 'burrito'].includes(id) ? t(`impo
 
 /** A language code of the design's form: `kau`, `es-419`. */
 export const LANGUAGE_CODE = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
+
+/** The Bible name matches a project on this computer (#436): the shell's
+ * path rule against the listing read for this review. An unread listing is no clash. */
+export const nameClash = (im) =>
+  !!im.name.trim() && !im.bundle?.findings.some((f) => f.kind === 'damaged') && !!im.existing?.includes(importRepoPath(im.name.trim(), im.lang));
 
 const size = (bytes) => (bytes >= 1e6 ? `${(bytes / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1e3))} KB`);
 
@@ -211,7 +217,7 @@ function ReviewStep({ im, actions }) {
                   </Input>
                 </Field>
               )}
-              <Field label={t('importer.review.name')}>
+              <Field label={t('importer.review.name')} data-testid="import-name-field" error={nameClash(im) ? t('refusal.import.name-exists') : undefined}>
                 <Input value={im.name} data-testid="import-name" disabled={!!damaged} onChange={(e) => actions.patchIm({ name: e.target.value })} />
               </Field>
               <Field label={t('importer.review.lang')} error={langError}
@@ -256,7 +262,7 @@ export default function Import() {
   const v = im.versions;
   const versionsOpen = !!im.bundle?.versions && !(v && !v.looking && (v.unresolved.length === 0 || v.installed));
   const licenseOpen = !!im.bundle?.licenseChoices && !im.bundle.licenseChoices.includes(im.license);
-  const cantImport = damaged || !LANGUAGE_CODE.test(im.lang) || !im.name.trim() || versionsOpen || licenseOpen || im.busy;
+  const cantImport = damaged || !LANGUAGE_CODE.test(im.lang) || !im.name.trim() || nameClash(im) || versionsOpen || licenseOpen || im.busy;
   const title = (
     <>
       <Overline as="span" style={{ display: 'block', marginBottom: 8 }}>{t(stepKey)}</Overline>
