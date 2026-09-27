@@ -6,6 +6,7 @@
 import { zipSync } from 'fflate';
 import { JournalingStore } from '../journal/journalingStore';
 import { Refusal, failedReport, okReport, storyIpath, type Report } from '../journal/runtime';
+import type { OpsHandle, OpsRecorder } from '../journal/opsLog';
 import { unwrapExport } from '../resourceFetch';
 import { ServerApi } from '../serverApi';
 import type { ImportBundle, ImportFile, ImportParser } from './types';
@@ -18,7 +19,14 @@ export type ImportFacts = { parser: ImportParser['id']; repoPath?: string; books
 
 /** `resolve` runs after the parse and before any write: the review step's
  * resource choices (a tC3 bundle's versions become pins, D82). */
-export type ImportDeps = { api?: ServerApi; store?: JournalingStore; resolve?: (bundle: ImportBundle) => Promise<ImportBundle> };
+export type ImportDeps = {
+  api?: ServerApi;
+  store?: JournalingStore;
+  resolve?: (bundle: ImportBundle) => Promise<ImportBundle>;
+  /** #374: the ops log. The record names the new repository before it is
+   * created, so an interrupted import can be rolled back at the next start. */
+  ops?: OpsRecorder;
+};
 
 /** The seed source of the imported records (BURRITO-SPEC §8.8). tC3 has its
  * own; the other kinds take the universal seed's default until the
@@ -84,6 +92,19 @@ export async function runImport(
   edits: Partial<ImportBundle['facts']>,
   deps: ImportDeps = {},
 ): Promise<Report> {
+  const record = await deps.ops?.begin('import', { parser: parser.id });
+  const report = await importRecorded(parser, files, edits, deps, record);
+  await record?.close(report);
+  return report;
+}
+
+async function importRecorded(
+  parser: ImportParser,
+  files: ImportFile[],
+  edits: Partial<ImportBundle['facts']>,
+  deps: ImportDeps,
+  record: OpsHandle | undefined,
+): Promise<Report> {
   const startedAt = new Date().toISOString();
   const api = deps.api ?? new ServerApi();
   const store = deps.store ?? new JournalingStore({ api });
@@ -120,6 +141,7 @@ export async function runImport(
     if ((await api.listLocalRepos()).includes(repoPath))
       throw new Refusal('import.name-exists', `a project folder named "${abbr}" already exists`, { repoPath });
     const code = primarySubtag(language);
+    await record?.note({ repoPath });
     try {
       if (bundle.kind === 'obs') await api.newObsResource({ content_name: name, content_abbr: abbr, content_language_code: code });
       else

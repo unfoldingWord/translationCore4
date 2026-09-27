@@ -13,6 +13,7 @@ import ProjectSettings from './views/modals/ProjectSettings.jsx';
 import SourceTexts from './views/modals/SourceTexts.jsx';
 import GatewayChange from './views/modals/GatewayChange.jsx';
 import UpgradeSet from './views/modals/UpgradeSet.jsx';
+import Inspector from './views/dev/Inspector.jsx';
 import GuidedFix from './views/modals/GuidedFix.jsx';
 import CommunityChecking from './views/CommunityChecking.jsx';
 import Understand from './views/Understand.jsx';
@@ -142,6 +143,7 @@ export default function App() {
       <UpgradeSet />
       <GuidedFix />
       <OpenProgress />
+      <Inspector />
     </div>
   );
 }

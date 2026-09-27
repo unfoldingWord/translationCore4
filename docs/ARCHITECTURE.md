@@ -160,8 +160,19 @@ same `Report`.
 The Home banner (`src/state.jsx` `failureText`) shows a failed open's or checkpoint's thrown
 diagnosis. It appends the recovery sentence of the catalog key `refusal.<code>` (`src/i18n/en.json`).
 Every live code has one, approved by the owner on 2026-09-22; a test fails when a live code has
-none. A reserved code shows the diagnosis alone until its issue adds the sentence. The ops record
-per operation, crash recovery from it and the dev Inspector are #374.
+none. A reserved code shows the diagnosis alone until its issue adds the sentence.
+
+**The ops log (issue #374, TEAM-SYNC-PLAN 1.4).** Each open, checkpoint, import and export writes
+one ops record before its first side effect and closes it with its Report. The records are in
+the platform's per-client settings document (`POST /api/client-settings/uw-tc4`), beside
+`draftUnits` and `lastUsed`, so they never enter a burrito.
+
+| Item | Contract | Test |
+|---|---|---|
+| `serialSettingsWriter` | The one writer of the client-settings document: each mutation reads the latest document and writes it back, in call order. A failure rejects that call only. `updateClientSettings` in `src/state.jsx` and the ops log share one instance. | `test/opsLog.test.ts` |
+| `OpsLog` (`src/data/journal/opsLog.ts`) | `begin(op, facts)` writes an open record `{id, op, startedAt, facts}`; the handle's `note(facts)` adds facts before the next side effect (an import's `repoPath`, before the create); `close(report)` stores the Report. The log keeps the last 50 records and never drops an open one. A failed write stays in `errors` and in this session's `entries`, goes to `console.error`, and shows in the Inspector. `JournalingStore` (`init.ops`), `runImport` (`deps.ops`) and `runExport` (third argument) write through it. | `test/opsLog.test.ts` |
+| `OpsLog.recover(api)` | Runs once when the app starts, before the project list loads. Each open record that this session did not begin belongs to a killed operation: an import deletes the repository its record names (a failed Report with `import.write-failed`, `rolledBack`); an export is closed as gone; an open or a checkpoint is closed and left to the journal, whose outbox replays at the next open of that project. Every resolved Report carries `facts.interrupted`. | `test/opsLog.test.ts` (kills an import between its create and its close) |
+| Dev Inspector (`src/views/dev/Inspector.jsx`) | Alt+Shift+I shows the last Report and the ops log, newest first. It shows in a dev build, and in a packaged build only when it is built with `VITE_TC4_INSPECTOR=1`. It never writes. | `test/opsLogInspector.test.tsx` |
 
 ## 4. Checking surface (tC3 contract reference — UI plan superseded by A-5)
 
