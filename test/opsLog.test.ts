@@ -73,6 +73,16 @@ describe('#374 each operation writes and closes an ops record', () => {
     expect(entry.report).toEqual(report);
   });
 
+  it('the import shell\'s rollback is visible in the ops log', async () => {
+    const settings = settingsDoc();
+    const { rig, api, store } = rigSetup();
+    rig.failOn(({ route }) => route.includes('/git/add-and-commit/'), Infinity);
+    const report = await runImport(FAKE_PARSER, FILES, {}, { api, store, ops: appStart(settings) });
+    expect(report).toMatchObject({ ok: false, code: 'import.write-failed', facts: { repoPath: REPO, rolledBack: true } });
+    expect(rig.repos.has(REPO)).toBe(false);
+    expect(opsEntriesOf(settings.get())).toEqual([expect.objectContaining({ op: 'import', facts: { parser: FAKE_PARSER.id, repoPath: REPO }, report })]);
+  });
+
   it('an open and a checkpoint of the app store each leave a closed record', async () => {
     const settings = settingsDoc();
     const ops = appStart(settings);
