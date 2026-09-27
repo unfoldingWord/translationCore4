@@ -6,6 +6,8 @@
   "app.unsaved": "Unsaved changes",
   "app.saveError": "Save failed — retry",
   "app.retry": "Retry",
+  "app.viewError": "This screen could not be shown.",
+  "app.backToHome": "Back to Home",
   "app.commitError": "Checkpoint not saved",
   "app.dcsServer": "QA server: {host}",
   "nav.draft": "Translate",

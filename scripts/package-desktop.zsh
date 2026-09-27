@@ -294,6 +294,13 @@ grep -q "preload: path.join(__dirname, 'preload.js')" "$PACK/electron/electronSt
   echo "FATAL: the template window no longer loads electron/preload.js — re-verify the #20 preload before building" >&2
   exit 1
 }
+# #435: the template's Window menu has Reload (Ctrl+R, Cmd+R on macOS). It is
+# the way back from a blank window without a quit. Refuse if it is gone.
+{ grep -q "label: 'Reload'" "$PACK/electron/electronStartup.js" &&
+  grep -q "bw.webContents.reload()" "$PACK/electron/electronStartup.js"; } || {
+  echo "FATAL: the template's Window menu no longer has Reload — re-verify the #435 window reload before building" >&2
+  exit 1
+}
 cp "$REPO/scripts/preload.cjs" "$PACK/electron/preload.js"
 node --check "$(npath "$PACK/electron/preload.js")"
 node -e "
