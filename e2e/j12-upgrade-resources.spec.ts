@@ -22,6 +22,7 @@ import { deriveTnItems, mergeAndReattach, mergeKey } from '../src/data/derive';
 import {
   SEEDED_PROJECT,
   TC4_ROOT,
+  listLocalRepos,
   rigRepo,
   pinForSideloaded,
   writeProjectPins,
@@ -88,14 +89,20 @@ function servedOriginal(): Uint8Array {
   return zipSync(files, { level: 0 });
 }
 
+/** #438: a newer Hebrew Bible release, for the offer list only (never downloaded). */
+const OT_REPO = 'hbo_uhb';
+const OT_TAG = 'v3.0.0';
+const OT_SHA = '4380000000000000000000000000000000000438';
+
 /** Door43, held still: every pinned repo answers with its pin unless it is in
  * NEWER, which answers v90 from the cache. `olNewer` (#258) makes the UGNT
- * answer OL_TAG. Anything else on the host is 404. */
-async function mockDcs(context: BrowserContext, dropId: string, olNewer = false) {
+ * answer OL_TAG; `otNewer` (#438) makes the UHB answer OT_TAG. `repo` is the
+ * project whose pins answer. Anything else on the host is 404. */
+async function mockDcs(context: BrowserContext, dropId: string, olNewer = false, { repo: project = SEEDED_PROJECT, otNewer = false } = {}) {
   // Read at request time: opening the project adopts installed optional slots
   // (D64 — en_obs among them) into the pin file, and those answer with their pins too.
   const pinnedNow = () => {
-    const pinsFile = readProjectPins(SEEDED_PROJECT) as ReturnType<typeof readProjectPins> & {
+    const pinsFile = readProjectPins(project) as ReturnType<typeof readProjectPins> & {
       resources?: { originalLanguage?: Record<string, unknown> };
       extraScripture?: unknown[];
     };
@@ -119,6 +126,12 @@ async function mockDcs(context: BrowserContext, dropId: string, olNewer = false)
     if (!m) return route.fulfill({ status: 404, headers: cors, body: 'not mocked' });
     const [, repo, rest] = m;
     const olUpgrade = olNewer && repo === OL_REPO;
+    if (otNewer && repo === OT_REPO && (rest === 'releases/latest' || rest.startsWith('tags'))) {
+      return route.fulfill({ status: 200, headers: cors, contentType: 'application/json',
+        body: JSON.stringify(rest === 'releases/latest'
+          ? { tag_name: OT_TAG, published_at: '2026-08-14T00:00:00Z' }
+          : Number(url.searchParams.get('page') ?? '1') === 1 ? [{ name: OT_TAG, commit: { sha: OT_SHA } }] : []) });
+    }
     if (olUpgrade && rest === `sb/${OL_TAG}.zip`) {
       return route.fulfill({ status: 200, headers: cors, contentType: 'application/zip', body: Buffer.from(servedOriginal()) });
     }
@@ -513,6 +526,65 @@ test.describe('J12 — a facilitator upgrades the original-language text (#258)'
       for (const { ref } of marked) {
         await expect(page.getByTestId('align-verse-list').locator(`button[data-ref="${ref}"]`)).toHaveAttribute('data-status', 'invalid');
       }
+    },
+  );
+});
+
+/** J1's create flow: a new Bible with Titus only — it pins both originals
+ * from the installed suite (installedSuite.js). Returns the new repo name. */
+async function createTitusProject(page: Page, name: string): Promise<string> {
+  const before = listLocalRepos();
+  await page.goto('/');
+  await page.getByRole('button', { name: 'New Bible' }).click();
+  await page.getByLabel('Bible name').fill(name);
+  await page.getByLabel('Code').fill('es');
+  await page.getByRole('button', { name: 'Left to right' }).click();
+  await page.getByRole('button', { name: 'Create Bible' }).click();
+  await page.getByRole('button', { name: 'Start a blank book' }).click({ timeout: 20_000 });
+  await page.getByLabel('Book', { exact: true }).selectOption('TIT');
+  await page.getByRole('button', { name: 'Create book' }).click();
+  await expect(page.getByRole('button', { name: /^Draft section/ }).first()).toBeVisible({ timeout: 20_000 });
+  const created = listLocalRepos().filter((r) => !before.includes(r));
+  expect(created, 'exactly one new repo for the created project').toHaveLength(1);
+  return created[0];
+}
+
+test.describe('J12 — the scripture-text offers name only the originals of the project\'s books (#438)', () => {
+  test(
+    'a Titus-only project pins both originals; Check for updates offers the Greek New Testament and no Hebrew Bible row',
+    { tag: ['@inc8', '@J12'] },
+    async ({ page, context }) => {
+      const repo = await createTitusProject(page, 'Rig 438 — Tito');
+      // The precondition: both originals are pinned, and DCS has a newer release of each.
+      const ol = (readProjectPins(repo) as unknown as { resources: { originalLanguage: Record<string, { repoPath: string }> } }).resources.originalLanguage;
+      expect(ol.nt.repoPath.split('/').pop()).toBe(OL_REPO);
+      expect(ol.ot.repoPath.split('/').pop()).toBe(OT_REPO);
+      await mockDcs(context, '', true, { repo, otNewer: true });
+
+      await page.getByRole('tab', { name: 'Check', exact: true }).click();
+      await page.getByTestId('open-sources').click();
+      await expect(page.getByTestId('sources-modal')).toBeVisible();
+      await goOnline(page);
+      await page.getByTestId('check-updates').click();
+      await expect(page.getByTestId('upgrade-texts')).toBeVisible({ timeout: 60_000 });
+      await expect(page.getByTestId(`upgrade-text-${OL_REPO}`)).toHaveAttribute('data-kind', 'original');
+      await expect(page.getByTestId(`upgrade-text-${OL_REPO}`)).toContainText(`${OL_REPO} v0.34 → ${OL_TAG}`);
+      await expect(page.getByTestId(`upgrade-text-${OT_REPO}`)).toHaveCount(0);
+    },
+  );
+
+  test(
+    'the seeded project has Titus and Jonah; Check for updates offers both originals',
+    { tag: ['@inc8', '@J12'] },
+    async ({ page, context }) => {
+      // The mock serves the unfoldingWord org only: pin the English helps (the other J12 cases do the same).
+      writeProjectPins(SEEDED_PROJECT, PINS());
+      await mockDcs(context, '', true, { otNewer: true });
+      await openSources(page);
+      await goOnline(page);
+      await page.getByTestId('check-updates').click();
+      await expect(page.getByTestId(`upgrade-text-${OL_REPO}`)).toContainText(`${OL_REPO} v0.34 → ${OL_TAG}`);
+      await expect(page.getByTestId(`upgrade-text-${OT_REPO}`)).toContainText(`${OT_REPO} v2.1.30 → ${OT_TAG}`);
     },
   );
 });
