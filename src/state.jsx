@@ -53,6 +53,7 @@ import { t } from './i18n';
 import { checkpointMessage } from './data/checkpoint';
 import { runExport } from './data/export/kernel';
 import { runImport } from './data/import/shell';
+import { OpsLog, serialSettingsWriter } from './data/journal/opsLog';
 import { applyVersions, carryOverNeeds, resolveVersions, unresolvedSlots } from './data/import/tc3';
 import { PARSERS } from './data/import/parsers';
 import { INSTALLED_SUITE, SUITE_VERSION } from './data/installedSuite';
@@ -83,6 +84,15 @@ const disposeUnless = (store, ref) => {
 const UPGRADE_IDLE = { checking: false, offers: null, textOffers: null, offersFor: null, error: null, installing: null, progress: null, preview: null };
 
 export const api = new ServerApi();
+// ONE writer for the per-client settings document (Codex review of #138;
+// module-level since #374, so every render shares it): every mutation is a
+// read-modify-write of the LATEST document, applied in order.
+const settingsWriter = serialSettingsWriter(
+  () => api.getClientSettings(STORAGE_ID),
+  (doc) => api.setClientSettings(STORAGE_ID, doc),
+);
+/** #374: the ops log — one record per store operation, in the same document. */
+export const opsLog = new OpsLog({ read: () => api.getClientSettings(STORAGE_ID), update: settingsWriter });
 // The mode a view is, for a checkpoint message (#183). Views not listed keep their id.
 const MODE_NAME = { read: 'Understand', draft: 'Translate', check: 'Check', publish: 'Community Checking' };
 // A leave-project checkpoint still running after its store was torn down
@@ -363,6 +373,7 @@ const initial = () => ({
   // #258: `textOffers` lists the scripture texts with a newer release, and
   // `installing` holds a text's repoPath while that text downloads.
   upgrade: UPGRADE_IDLE,
+  ops: { entries: [], errors: [] }, // #374: the ops log mirror the dev Inspector renders
   aligning: false, // the align surface is open
   alignIndex: null, // #129: { items: [{ref, text, status, placed, total}] } | { error } — the rail's derived verse list
   alignVerse: null, // "chapter:verse" being aligned, or null for the first drafted
@@ -2782,13 +2793,20 @@ export function AppProvider({ children }) {
 
   // ---- boot: project list ----------------------------------------------------
   useEffect(() => {
-    refreshProjects();
+    // #374: resolve what a killed operation left (a partial import is removed)
+    // before the project list is read.
+    const unsubscribe = opsLog.subscribe(() =>
+      dispatch({ type: 'set', patch: { ops: { entries: opsLog.entries, errors: opsLog.errors } } }));
+    opsLog.recover(api)
+      .catch((error) => console.error(`ops log: recovery failed: ${String(error?.message || error)}`))
+      .finally(() => refreshProjects());
     // The platform's net gate drives the D30.4/D30.5 split (fetch vs
     // first-class unavailable), so it must be known from startup — not only
     // once the source-texts modal happens to open.
     api.getNetEnabled()
       .then((netEnabled) => dispatch({ type: 'set', patch: { netEnabled } }))
       .catch(() => dispatch({ type: 'set', patch: { netEnabled: false } }));
+    return unsubscribe;
   }, []);
 
   // Silent-loss guard (review finding M5): warn before the window closes with
@@ -2838,22 +2856,14 @@ export function AppProvider({ children }) {
   // "Use" is user-machine state, so it lives in the platform's per-client
   // settings (0.18.4 endpoint, inside the D31 pin) — never in the project
   // (Phase-2 sync must not carry my open times) and never in localStorage.
-  // ONE writer for the per-client settings document (Codex review of #138):
-  // every mutation is a read-modify-write of the LATEST document, applied in
-  // order, so lastUsed and lastEdit can never clobber each other and a slow
-  // earlier write can never land after a later one.
-  let settingsChain = Promise.resolve();
+  // Every settings mutation goes through the module's settingsWriter, so
+  // lastUsed, lastEdit and the ops records can never clobber each other and a
+  // slow earlier write can never land after a later one. The ops log reports
+  // its own failed writes (#374); these records are session-only on failure.
   function updateClientSettings(mutate) {
-    const run = settingsChain
-      .then(async () => {
-        const cs = await api.getClientSettings(STORAGE_ID);
-        await api.setClientSettings(STORAGE_ID, mutate(cs));
-      })
-      .catch(() => {
-        /* rig without storage_id.json — the record lives for this session only */
-      });
-    settingsChain = run;
-    return run;
+    return settingsWriter(mutate).catch(() => {
+      /* rig without storage_id.json — the record lives for this session only */
+    });
   }
 
   function markUsed(repoPath) {
@@ -2897,7 +2907,7 @@ export function AppProvider({ children }) {
   function flushLastEdit() {
     clearTimeout(lastEditTimer);
     lastEditTimer = null;
-    if (!pendingLastEdit) return settingsChain;
+    if (!pendingLastEdit) return settingsWriter.idle();
     return updateClientSettings((cs) => {
       const rec = pendingLastEdit;
       pendingLastEdit = null;
@@ -3088,7 +3098,7 @@ export function AppProvider({ children }) {
         const st = stateRef.current;
         const store = storeRef.current;
         if (!st.project || !store) return null;
-        return runExport(producer, { store, project: st.project, book: st.book ?? undefined, pageSetup });
+        return runExport(producer, { store, project: st.project, book: st.book ?? undefined, pageSetup }, opsLog);
       },
 
       closeModal: () => dispatch({ type: 'set', patch: { modal: null, np: null, ab: null, st: null, fix: null, im: null } }),
@@ -4758,7 +4768,7 @@ export function AppProvider({ children }) {
         const resolve = im.bundle?.versions
           ? async (bundle) => applyVersions(bundle, im.versions.installed?.base ?? (await a.importBasePins()), im.versions.found, im.versions.installed?.derived ?? {}).bundle
           : undefined;
-        const report = await runImport(parser, im.files, { name: im.name.trim(), language: im.lang, license: im.license ?? undefined }, { api, resolve });
+        const report = await runImport(parser, im.files, { name: im.name.trim(), language: im.lang, license: im.license ?? undefined }, { api, resolve, ops: opsLog });
         if (!report.ok) return a.patchIm({ busy: false, step: 'failed', report });
         const repoPath = report.facts.repoPath;
         try {
@@ -4778,7 +4788,7 @@ export function AppProvider({ children }) {
         if (validation.error) return a.patchNp({ error: validation.error });
         const { abbr } = validation;
         a.patchNp({ busy: true, error: null });
-        const store = new JournalingStore({ api });
+        const store = new JournalingStore({ api, ops: opsLog });
         const target = `_local_/_local_/${abbr}`;
         let existing;
         try {
@@ -4831,7 +4841,7 @@ export function AppProvider({ children }) {
         if (validation.error) return a.patchNp({ error: validation.error });
         const { abbr } = validation;
         a.patchNp({ busy: true, error: null });
-        const store = new JournalingStore({ api });
+        const store = new JournalingStore({ api, ops: opsLog });
         // Friendly-name pre-check only: the boundary's createProject does its
         // own MANDATORY existence pre-check and debris cleanup (PLATFORM-NOTES
         // #28) before the server call — this read is for the specific message.
@@ -4940,7 +4950,7 @@ export function AppProvider({ children }) {
         );
         if (!codes.length) return a.patchAb({ error: t('addBook.pickOne') });
         a.patchAb({ busy: true, error: null });
-        const store = new JournalingStore({ api });
+        const store = new JournalingStore({ api, ops: opsLog });
         try {
           const summary = await store.open(f.repoPath);
           for (const code of codes) {
@@ -5020,7 +5030,7 @@ export function AppProvider({ children }) {
         const f = stateRef.current.st;
         if (f.busy) return;
         a.patchSt({ busy: true, error: null });
-        const store = new JournalingStore({ api });
+        const store = new JournalingStore({ api, ops: opsLog });
         try {
           await store.open(f.repoPath);
           // #9: compare-and-swap like every other sidecar — the md5 of what
@@ -5173,7 +5183,7 @@ export function AppProvider({ children }) {
             dispatch,
             actions: a,
             apiClient: api,
-            makeStore: () => new JournalingStore({ api }),
+            makeStore: () => new JournalingStore({ api, ops: opsLog }),
             markUsed,
             recordLastEdit,
             invalidateProgress,

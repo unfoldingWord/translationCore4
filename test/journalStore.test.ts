@@ -14,7 +14,7 @@ import {
   type JournalEvent,
 } from '../src/data/journal/seal';
 import { SLOT } from '../journal/grammar.mjs';
-import { expectRefusal } from './helpers/report';
+import { expectRefusal, expectRefusalSync } from './helpers/report';
 
 // journal/files.mjs is Node-bound (fs, node:crypto). The app's
 // vite-plugin-node-polyfills aliases node builtins to browser mocks even under
@@ -240,9 +240,7 @@ describe('#61 checkbox 1: immutability branches (R-8.1.4/5) over HTTP', () => {
     const ts = store.issueTs();
     const { ipath } = await store.publish([verseEvent(store.actorId, ts, 'aceptado\n')]);
     const accepted = rig.files.get(rig.key(REPO, ipath));
-    await expect(store.publish([verseEvent(store.actorId, ts, 'DIFERENTE\n')])).rejects.toThrow(
-      /refuse to overwrite/,
-    );
+    await expectRefusal(store.publish([verseEvent(store.actorId, ts, 'DIFERENTE\n')]), 'segment.differs-from-accepted');
     expect(rig.files.get(rig.key(REPO, ipath))).toBe(accepted);
   });
 
@@ -252,7 +250,7 @@ describe('#61 checkbox 1: immutability branches (R-8.1.4/5) over HTTP', () => {
     const events = [verseEvent(store.actorId, ts, 'recuperable\n')];
     const ipath = `checking/journal/${store.actorId}/segments/${refSegmentName(ts)}`;
     rig.files.set(rig.key(REPO, ipath), 'torn garbage — not a segment');
-    await expect(store.publish(events)).rejects.toThrow(/replayStaged/);
+    await expectRefusal(store.publish(events), 'segment.invalid');
     // The staged intent survives the refusal…
     expect(await kv.keys(`outbox:${REPO}:${store.actorId}:`)).toHaveLength(1);
     // …and replay writes the EXACT staged bytes over the invalid file.
@@ -282,7 +280,7 @@ describe('#61 checkbox 1: immutability branches (R-8.1.4/5) over HTTP', () => {
       '2026-08-18T09:30:00.000Z|0000|some-other-actor',
       'ajeno\n',
     );
-    await expect(store.publish([foreign])).rejects.toThrow(/R-8\.1\.12/);
+    await expectRefusal(store.publish([foreign]), 'segment.foreign-actor');
     expect(rig.writes).toHaveLength(before);
   });
 });
@@ -466,9 +464,7 @@ describe('#61 review F2: no duplicate ts, no silent overwrite of a staged action
     const draftA = refSealAction([verseEvent(store.actorId, ts, 'DRAFT A — staged, never landed\n')]);
     await kv.set(stageKey, draftA);
     const before = rig.writes.length;
-    await expect(
-      store.publish([verseEvent(store.actorId, ts, 'DRAFT B\n')]),
-    ).rejects.toThrow(new RegExp(ts.replace(/[|]/g, '\\|')));
+    await expectRefusal(store.publish([verseEvent(store.actorId, ts, 'DRAFT B\n')]), 'outbox.different-action');
     // The staged intent is intact and nothing was written.
     expect(kv.map.get(stageKey)).toBe(draftA);
     expect(rig.writes).toHaveLength(before);
@@ -740,10 +736,10 @@ describe('#95: a deferred open ratchets in the union read, and refuses to mint b
     forgetSharedClocks();
     const store = restartedStore(rig, kv, tickingNow('2026-09-05T09:00:00.000Z').now);
     await store.open({ ratchet: 'deferred' });
-    expect(() => store.issueTs()).toThrow(/readUnion\(\) first/);
+    expectRefusalSync(() => store.issueTs(), 'journal.clock-not-ratcheted');
     const ts = `2026-09-05T09:00:01.000Z|0000|${store.actorId}`;
-    await expect(store.stage([verseEvent(store.actorId, ts, 'antes\n')])).rejects.toThrow(/readUnion\(\) first/);
-    await expect(store.publish([verseEvent(store.actorId, ts, 'antes\n')])).rejects.toThrow(/readUnion\(\) first/);
+    await expectRefusal(store.stage([verseEvent(store.actorId, ts, 'antes\n')]), 'journal.clock-not-ratcheted');
+    await expectRefusal(store.publish([verseEvent(store.actorId, ts, 'antes\n')]), 'journal.clock-not-ratcheted');
     await store.readUnion();
     expect(typeof store.issueTs()).toBe('string');
   });

@@ -10,6 +10,7 @@
 import type { BurritoStore, ProjectSummary } from '../burritoStore';
 import { checkpointMessage } from '../checkpoint';
 import { Refusal, failedReport, okReport, type Report } from '../journal/runtime';
+import type { OpsRecorder } from '../journal/opsLog';
 import type { PageSetup } from './pageSetup';
 
 export type ExportProducer = {
@@ -48,8 +49,16 @@ export function deliverFile(file: ExportFile): void {
 /** Checkpoint when the project is dirty (D9), produce, deliver. A failure
  * delivers nothing and returns a failed Report: `export.checkpoint-failed` when
  * the checkpoint failed; the producer's own refusal when it threw one (the PDF's
- * `export.nothing-drafted`); else `export.read-failed`. */
-export async function runExport(producer: ExportProducer, input: ExportInput): Promise<Report> {
+ * `export.nothing-drafted`); else `export.read-failed`. `ops` (#374) gets the
+ * export's record. */
+export async function runExport(producer: ExportProducer, input: ExportInput, ops?: OpsRecorder): Promise<Report> {
+  const record = await ops?.begin('export', { producer: producer.id });
+  const report = await exportRecorded(producer, input);
+  await record?.close(report);
+  return report;
+}
+
+async function exportRecorded(producer: ExportProducer, input: ExportInput): Promise<Report> {
   const startedAt = new Date().toISOString();
   const fail = (code: 'export.checkpoint-failed' | 'export.read-failed', error: unknown): Report =>
     failedReport('export', startedAt, new Date().toISOString(), new Refusal(code, String((error as Error)?.message ?? error)), {

@@ -286,6 +286,13 @@ store keeps the last one as `lastReport`.
 _Avoid_: result, status, OpenReport (retired by #156), log entry (the ops record of #374 is a
 Report written to the installation store)
 
+**Ops record**, **ops log**:
+The record a store operation writes to the per-client settings document before its first side
+effect and closes with its Report (#374). The ops log is the list of these records, kept on this
+device only. An open ops record at the start of the app belongs to an operation that was killed;
+recovery resolves it.
+_Avoid_: journal (the journal is in the burrito), audit log, history
+
 **Refusal code**:
 The stable name a refused operation returns in its `Report` (for example `share.non-fast-forward`,
 `import.damaged.truncated`), bound to a rule id or marked as an app rule. The table

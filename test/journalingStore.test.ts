@@ -15,6 +15,7 @@ import { validateSegment, type JournalEvent } from '../src/data/journal/seal';
 import { verifyProjectAgainstJournal, describeVerifierReport } from '../src/data/journal/verify';
 import type { Decision, DecisionFile, ResourcesFile } from '../src/data/burritoStore';
 import { journalingRig, memKv, tickingNow, type JournalingRig } from './helpers/journalingRig';
+import { expectRefusal } from './helpers/report';
 
 const REPO = '_local_/_local_/prueba';
 
@@ -498,14 +499,14 @@ describe('#62 mapping: project metadata writes and the checkpoint', () => {
     const action = segments[segments.length - 1].events;
     expect(action).toHaveLength(1);
     expect(action[0]).toMatchObject({ op: 'project.meta.set', path: 'identification.abbreviation.es' });
-    await expect(store.commit('post-meta checkpoint')).rejects.toThrow(/no HTTP metadata write route/);
+    await expectRefusal(store.commit('post-meta checkpoint'), 'checkpoint.metadata-unwritable');
   });
 
   it('commit() REFUSES an out-of-band edit rather than silently repairing it (R-8.7.5)', async () => {
     const { rig, store } = await setup();
     const project = rig.repos.get(REPO);
     project?.files.set('checking/settings.json', '{"schemaVersion":1,"tampered":true}');
-    await expect(store.commit('checkpoint')).rejects.toThrow(/out-of-band/);
+    await expectRefusal(store.commit('checkpoint'), 'checkpoint.divergence');
     // Nothing repaired:
     expect(project?.files.get('checking/settings.json')).toContain('tampered');
   });

@@ -46,6 +46,7 @@ import { JournalStore } from './journalStore';
 import { idbKvStore, type KvStore } from './identity';
 import { sealAction, type JournalEvent } from './seal';
 import { defaultFoldRunner, type FoldRunner } from './foldRunner';
+import type { OpsRecorder } from './opsLog';
 import {
   applyStoryState,
   decompose,
@@ -350,6 +351,8 @@ export interface JournalingStoreInit {
   /** Where the fold runs (#94): a Web Worker in the browser by default, inline
    * in Node. Tests inject a runner to shape its timing. */
   foldRunner?: FoldRunner;
+  /** #374: the ops log each open and checkpoint writes its record to. */
+  ops?: OpsRecorder;
 }
 
 /** The §8.3 seed sources a JournalingStore seed may carry (R-8.5.19: the three
@@ -437,6 +440,7 @@ export class JournalingStore implements BurritoStore {
   lastReport: Report | null = null;
   /** The phase Reports (seed, reconcile) of the open in progress; its Report carries them. */
   private openPhases: Report[] = [];
+  private readonly ops: OpsRecorder | null;
 
   constructor(init: JournalingStoreInit = {}) {
     this.api = init.api ?? new ServerApi({ baseUrl: init.baseUrl, fetchFn: init.fetchFn });
@@ -444,6 +448,7 @@ export class JournalingStore implements BurritoStore {
     this.kv = init.kv ?? idbKvStore();
     this.now = init.now ?? (() => Date.now());
     this.runner = init.foldRunner ?? defaultFoldRunner();
+    this.ops = init.ops ?? null;
   }
 
   /** Release the fold worker (#94). The store is unusable afterwards. */
@@ -1197,6 +1202,7 @@ export class JournalingStore implements BurritoStore {
     // The open's Report covers the WHOLE operation (Codex round 1 of #156): a
     // failure before recovery — the platform open, the installation store —
     // leaves a failed Report too, never a stale one from the previous open.
+    const record = await this.ops?.begin('open', { repoPath });
     const startedAt = this.isoNow();
     const phases: Report[] = [];
     this.openPhases = phases;
@@ -1205,6 +1211,8 @@ export class JournalingStore implements BurritoStore {
     } catch (error) {
       this.lastReport = failedReport('open', startedAt, this.isoNow(), error, { phases });
       throw error;
+    } finally {
+      if (record && this.lastReport) await record.close(this.lastReport);
     }
   }
 
@@ -3012,12 +3020,15 @@ export class JournalingStore implements BurritoStore {
   }
 
   private async commitQueued(message: string, startedAt = this.isoNow()): Promise<void> {
+    const record = await this.ops?.begin('checkpoint', { repoPath: this.boundRepoPath, message });
     try {
       const facts = await this.checkpoint(message);
       this.lastReport = okReport('checkpoint', startedAt, this.isoNow(), facts);
     } catch (error) {
       this.lastReport = failedReport('checkpoint', startedAt, this.isoNow(), error, { message });
       throw error;
+    } finally {
+      if (record && this.lastReport) await record.close(this.lastReport);
     }
   }
 

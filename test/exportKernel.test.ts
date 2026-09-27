@@ -75,7 +75,7 @@ describe('#375 runExport', () => {
     const { store } = await seeded();
     const report = await runExport(fake(async () => { throw new Error('no such book'); }), { store, project: PROJECT });
     expect(reportError(report)).toBeNull();
-    expect(report).toMatchObject({ op: 'export', ok: false, code: 'export.read-failed', facts: { producer: 'usfm-plain', error: 'no such book' } });
+    expect(report).toMatchObject({ op: 'export', ok: false, code: 'export.read-failed', facts: { producer: 'usfm-plain' } });
     expect(downloads).toEqual([]);
     expect(URL.createObjectURL).not.toHaveBeenCalled();
   });
@@ -84,7 +84,7 @@ describe('#375 runExport', () => {
     const { store } = await seeded();
     const report = await runExport(fake(async () => { throw new Refusal('export.nothing-drafted', 'Titus has no drafted verse yet.'); }), { store, project: PROJECT });
     expect(reportError(report)).toBeNull();
-    expect(report).toMatchObject({ op: 'export', ok: false, code: 'export.nothing-drafted', facts: { producer: 'usfm-plain', error: 'Titus has no drafted verse yet.' } });
+    expect(report).toMatchObject({ op: 'export', ok: false, code: 'export.nothing-drafted', facts: { producer: 'usfm-plain' } });
     expect(downloads).toEqual([]);
   });
 

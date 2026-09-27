@@ -6,6 +6,7 @@
 import { zipSync } from 'fflate';
 import { JournalingStore } from '../journal/journalingStore';
 import { Refusal, failedReport, okReport, storyIpath, type Report } from '../journal/runtime';
+import type { OpsHandle, OpsRecorder } from '../journal/opsLog';
 import { unwrapExport } from '../resourceFetch';
 import { ServerApi } from '../serverApi';
 import type { ImportBundle, ImportFile, ImportParser } from './types';
@@ -18,7 +19,14 @@ export type ImportFacts = { parser: ImportParser['id']; repoPath?: string; books
 
 /** `resolve` runs after the parse and before any write: the review step's
  * resource choices (a tC3 bundle's versions become pins, D82). */
-export type ImportDeps = { api?: ServerApi; store?: JournalingStore; resolve?: (bundle: ImportBundle) => Promise<ImportBundle> };
+export type ImportDeps = {
+  api?: ServerApi;
+  store?: JournalingStore;
+  resolve?: (bundle: ImportBundle) => Promise<ImportBundle>;
+  /** #374: the ops log. The record names the new repository before it is
+   * created, so an interrupted import can be rolled back at the next start. */
+  ops?: OpsRecorder;
+};
 
 /** The seed source of the imported records (BURRITO-SPEC §8.8). tC3 has its
  * own; the other kinds take the universal seed's default until the
@@ -77,12 +85,46 @@ async function bundleZip(api: ServerApi, repoPath: string, bundle: ImportBundle,
 /** Parse, then make one new project from the bundle: create the repository
  * (primary language subtag) → upload one wrapped zip → remake → seed the
  * journal (not for an archive) → commit. A failure after the repository exists deletes it and
- * returns `import.write-failed`; a failure before it creates nothing. */
+ * returns `import.write-failed`; a failure before it creates nothing. A
+ * finished import whose ops record names the repository but whose close is not
+ * saved is rolled back the same way, so the next start cannot delete it. */
 export async function runImport(
   parser: ImportParser,
   files: ImportFile[],
   edits: Partial<ImportBundle['facts']>,
   deps: ImportDeps = {},
+): Promise<Report> {
+  const api = deps.api ?? new ServerApi();
+  const record = await deps.ops?.begin('import', { parser: parser.id });
+  // Did a saved write of the record name the new repository?
+  let named = false;
+  const handle: OpsHandle | undefined = record && {
+    note: async (facts: Record<string, unknown>) => {
+      named = await record.note(facts);
+      return named;
+    },
+    close: (report: Report) => record.close(report),
+  };
+  const report = await importRecorded(parser, files, edits, { ...deps, api }, handle);
+  if (!record || (await record.close(report)) || !report.ok || !named) return report;
+  // The saved record names the repository but stays open, so the next start
+  // would delete this finished import as a killed one. Roll it back now, while
+  // the user is told (bench review round 1 of #430).
+  const repoPath = String(report.facts.repoPath);
+  const rolledBack = await api.deleteRepo(repoPath).then(() => true, () => false);
+  const failed = failedReport('import', report.startedAt, new Date().toISOString(),
+    new Refusal('import.write-failed', `the ops record of the import was not saved; the imported project ${rolledBack ? 'was removed' : 'could not be removed'}`, { repoPath }),
+    { ...report.facts, rolledBack });
+  await record.close(failed);
+  return failed;
+}
+
+async function importRecorded(
+  parser: ImportParser,
+  files: ImportFile[],
+  edits: Partial<ImportBundle['facts']>,
+  deps: ImportDeps,
+  record: OpsHandle | undefined,
 ): Promise<Report> {
   const startedAt = new Date().toISOString();
   const api = deps.api ?? new ServerApi();
@@ -120,6 +162,7 @@ export async function runImport(
     if ((await api.listLocalRepos()).includes(repoPath))
       throw new Refusal('import.name-exists', `a project folder named "${abbr}" already exists`, { repoPath });
     const code = primarySubtag(language);
+    await record?.note({ repoPath });
     try {
       if (bundle.kind === 'obs') await api.newObsResource({ content_name: name, content_abbr: abbr, content_language_code: code });
       else
