@@ -230,6 +230,8 @@ export interface TextRepo {
   kind: TextKind;
   pin: ResourcePin;
   slots: TextSlot[];
+  /** The pin each slot holds, parallel to `slots`. */
+  pins: ResourcePin[];
 }
 
 const pinAt = (resources: ResourcesFile, slot: TextSlot): ResourcePin | undefined => {
@@ -257,18 +259,23 @@ export const textReposOf = (resources: ResourcesFile): TextRepo[] => {
     const pin = pinAt(resources, slot);
     if (!pin?.repoPath) continue;
     const hit = out.find((r) => samePath(r.repoPath, pin.repoPath));
-    if (hit) hit.slots.push(slot);
-    else out.push({ repoPath: pin.repoPath, kind, pin, slots: [slot] });
+    if (hit) {
+      hit.slots.push(slot);
+      hit.pins.push(pin);
+    } else out.push({ repoPath: pin.repoPath, kind, pin, slots: [slot], pins: [pin] });
   }
   return out;
 };
 
-/** One text repo with a newer release than its pin. `from` is the pin every
- * slot holds (D58 identity); `to` is the pin the slots will carry. */
+/** One text repo with a newer release than some slot's pin. `from` is the
+ * first pin that differs from the release (for the offer row); `fromPins[i]`
+ * is the pin slot `i` held when the offer was computed (D58 identity) — slots
+ * of one repo may hold different commits. `to` is the pin every slot will carry. */
 export interface TextOffer {
   repoPath: string;
   kind: TextKind;
   slots: TextSlot[];
+  fromPins: ResourcePin[];
   from: ResourcePin;
   to: ResourcePin;
   publishedAt: string | null;
@@ -284,12 +291,15 @@ export const textOffers = async (
   const out: TextOffer[] = [];
   for (const repo of textReposOf(resources)) {
     const info = await lookup(repo.repoPath);
-    if (info.sha === repo.pin.sha) continue;
+    // Offered when ANY slot differs from the release, not only the first.
+    const behind = repo.pins.find((p) => p.sha !== info.sha);
+    if (!behind) continue;
     out.push({
       repoPath: repo.repoPath,
       kind: repo.kind,
       slots: repo.slots,
-      from: repo.pin,
+      fromPins: repo.pins,
+      from: behind,
       to: { repoPath: repo.pin.repoPath, version: info.tag, sha: info.sha, flavor: repo.pin.flavor },
       publishedAt: info.publishedAt,
     });
@@ -320,13 +330,14 @@ export const applyTextUpgrade = (resources: ResourcesFile, offer: TextOffer, to:
 export const textPinOf = (resources: ResourcesFile, offer: TextOffer): ResourcePin | undefined =>
   pinAt(resources, offer.slots[0]);
 
-/** True when some slot of the offer no longer holds the pin it was computed
- * from (the same rule as offerIsStale). */
+/** True when some slot of the offer no longer holds the pin IT was computed
+ * from (the same rule as offerIsStale), each slot against its own snapshot. */
 export const textOfferIsStale = (offer: TextOffer, resources: ResourcesFile | null | undefined): boolean =>
   !resources ||
-  offer.slots.some((slot) => {
+  offer.slots.some((slot, i) => {
     const current = pinAt(resources, slot);
-    return !current || !samePath(current.repoPath, offer.from.repoPath) || current.sha !== offer.from.sha;
+    const was = offer.fromPins?.[i] ?? offer.from;
+    return !current || !samePath(current.repoPath, was.repoPath) || current.sha !== was.sha;
   });
 
 /** The testaments whose alignments an offer invalidates: none for a gateway

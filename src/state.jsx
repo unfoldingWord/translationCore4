@@ -3473,7 +3473,7 @@ export function AppProvider({ children }) {
           if (resolutionError) throw new Error(resolutionError);
           const filled = backfillCoverage(applyTextUpgrade(currentResources, offer), coverage).resources;
           const next = applyTextUpgrade(currentResources, offer, textPinOf(filled, offer) ?? offer.to);
-          const alignments = await plannedAlignmentInvalidations(store, alignSchedulerRef.current, st.project, invalidatedTestaments(offer));
+          const alignments = await plannedAlignmentInvalidations(store, alignSchedulerRef.current, stateRef.current.project, invalidatedTestaments(offer));
           if (!stillCurrent()) return null;
           const invalidatedVerses = alignments.reduce((n, w) => n + w.verses, 0);
           dispatch({
@@ -3645,12 +3645,19 @@ export function AppProvider({ children }) {
           // refused or failed write changes neither. The align buffer is
           // saved first; an edit saved since the preview makes the file's md5
           // stale, and the store refuses the whole change.
-          const sched = alignSchedulerRef.current;
-          if (text && preview.alignments.length && sched && !(await sched.drain())) throw new Error(t('upgrade.alignUnsaved'));
+          // Bench round 1 (George #1): the set is planned again after that
+          // drain, from the project as it is NOW; a book, record or md5 that
+          // differs from what the dialog showed refuses the whole change.
+          let alignments = [];
+          if (text) {
+            alignments = await plannedAlignmentInvalidations(store, alignSchedulerRef.current, stateRef.current.project, invalidatedTestaments(preview.offer));
+            const key = (ws) => ws.map((w) => `${w.book}|${w.expectMd5}|${w.verses}`).join('\n');
+            if (key(alignments) !== key(preview.alignments)) throw new Error(t('upgrade.stale'));
+          }
           await store.applyGatewayChange({
             resources: preview.next,
             resourcesMd5: preview.resourcesMd5 ?? null,
-            ...(text ? { alignments: preview.alignments.map(({ book, file, expectMd5 }) => ({ book, file, expectMd5 })) } : {}),
+            ...(text ? { alignments: alignments.map(({ book, file, expectMd5 }) => ({ book, file, expectMd5 })) } : {}),
             decisions: (preview.plan ?? []).map((p) => ({
               tool: p.tool,
               book: p.book,
@@ -3669,8 +3676,25 @@ export function AppProvider({ children }) {
             patch: { preview: null, error: null, textOffers: (stateRef.current.upgrade.textOffers ?? []).filter((o) => o !== preview.offer) },
           });
           // The align buffer takes the marked files, the panes the new text.
+          // Bench round 1 (George #2): a failed read must not leave the old
+          // file in the buffer — the next edit would write it back over the
+          // marks. Fall back to the committed file; if that is refused too,
+          // say so: the pin has already moved.
           const sched = alignSchedulerRef.current;
-          for (const w of preview.alignments) if (sched) await alignFileFor(store, sched, w.book).catch(() => {});
+          const unloaded = [];
+          for (const w of preview.alignments) {
+            if (!sched) break;
+            try {
+              await alignFileFor(store, sched, w.book);
+            } catch {
+              try {
+                sched.loadBook(w.book, alignFileJson(w.file, w.book));
+              } catch {
+                unloaded.push(w.book);
+              }
+            }
+          }
+          if (unloaded.length) dispatch({ type: 'patchUpgrade', patch: { error: t('upgrade.alignReloadFailed', { books: unloaded.join(', ') }) } });
           a.reloadSourcePanes(preview.next);
           await a.loadAlignIndex();
         } else {

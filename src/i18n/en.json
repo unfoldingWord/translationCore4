@@ -515,6 +515,7 @@
   "upgrade.textNoAlignments": "No alignment will change.",
   "upgrade.textGateway": "No alignment and no check decision will change. The source pane will show the new text.",
   "upgrade.alignUnsaved": "an alignment edit is not saved. Save it, then try again.",
+  "upgrade.alignReloadFailed": "The pin moved and the alignments are marked invalid, but the aligner could not reload {books}. Close the project and open it again before you edit those alignments.",
   "gateway.title": "Change checking language to {lang}?",
   "gateway.affectedRow": "{book} · {tool} — {n} decision(s) checked against {resource}",
   "gateway.keep": "Keep {lang}",

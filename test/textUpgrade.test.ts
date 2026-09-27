@@ -114,6 +114,35 @@ describe('textOffers — one offer per text repo, by sha (D58)', () => {
     expect(textOfferIsStale(ust, PINS)).toBe(false);
     expect(textOfferIsStale(ust, afterUst)).toBe(true);
   });
+
+  // Bench round 1 (Frank): slots of one repo at different commits.
+  const MIXED = {
+    ...PINS,
+    languageSets: { ...PINS.languageSets, fallback: { ...PINS.languageSets.fallback, simplifiedText: PIN('en_ust', 'v88') } },
+  } as ResourcesFile;
+  /** DCS: en_ust's newest release is `tag`; every other text is at its pin. */
+  const ustAt = (tag: string) => async (repoPath: string): Promise<ReleaseInfo> => {
+    if (repoPath.endsWith('/en_ust')) return release('en_ust', tag);
+    const pin = textReposOf(MIXED).find((r) => r.repoPath === repoPath)?.pin as ResourcePin;
+    return { tag: pin.version as string, sha: pin.sha, publishedAt: null };
+  };
+
+  it('offers a repo whose FIRST slot is current when another slot is behind', async () => {
+    const offers = await textOffers(MIXED, ustAt('v89'));
+    expect(offers.map((o) => o.repoPath.split('/').pop())).toEqual(['en_ust']);
+    expect(offers[0].from.version).toBe('v88');
+    expect(offers[0].fromPins.map((p) => p.version)).toEqual(['v89', 'v88']);
+  });
+
+  it('checks each slot against its own snapshot: an unchanged mixed-pin project is not stale', async () => {
+    const [ust] = await textOffers(MIXED, ustAt('v91'));
+    expect(ust.slots).toHaveLength(2);
+    expect(textOfferIsStale(ust, MIXED)).toBe(false);
+    const after = applyTextUpgrade(MIXED, ust);
+    expect(after.extraScripture?.[1].sha).toBe(ust.to.sha);
+    expect(after.languageSets.fallback.simplifiedText?.sha).toBe(ust.to.sha);
+    expect(textOfferIsStale(ust, after)).toBe(true);
+  });
 });
 
 describe('invalidateAlignments — the invalidation count (D72)', () => {
