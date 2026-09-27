@@ -68,11 +68,12 @@ const withEntries = (doc: SettingsDoc, entries: OpsEntry[]): SettingsDoc => {
   return { ...doc, [OPS_KEY]: list };
 };
 
-/** The handle of one open record. */
+/** The handle of one open record. Each call resolves `true` when the record was
+ * saved and `false` when the write failed (the failure is reported, never thrown). */
 export interface OpsHandle {
   /** Add facts before the next side effect (an import's repository path). */
-  note(facts: Record<string, unknown>): Promise<void>;
-  close(report: Report): Promise<void>;
+  note(facts: Record<string, unknown>): Promise<boolean>;
+  close(report: Report): Promise<boolean>;
 }
 
 /** What an operation needs to write its record. */
@@ -170,16 +171,19 @@ export class OpsLog implements OpsRecorder {
     return this.entries.find((e) => e.id === id) as OpsEntry;
   }
 
-  private async put(entry: OpsEntry): Promise<void> {
+  /** `true` when the record was saved. */
+  private async put(entry: OpsEntry): Promise<boolean> {
     this.entries = withEntries({ [OPS_KEY]: this.entries }, [entry])[OPS_KEY] as OpsEntry[];
     this.notify();
     try {
       await this.update((doc) => withEntries(doc, [entry]));
+      return true;
     } catch (error) {
       const failure = { id: entry.id, op: entry.op, error: String((error as Error)?.message ?? error) };
       this.errors = [...this.errors, failure];
       console.error(`ops log: the ${entry.op} record was not saved: ${failure.error}`);
       this.notify();
+      return false;
     }
   }
 

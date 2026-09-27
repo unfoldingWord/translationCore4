@@ -147,6 +147,42 @@ describe('#374 a kill between the two leaves a record the next start resolves', 
     expect(api.deleteRepo).not.toHaveBeenCalled();
   });
 
+  // A finished import whose closing write fails (Frank P1, George 1, bench round 1). The ways it
+  // can fail: (a) the stored record names the repository and stays open, so the next start deletes
+  // a finished import; (b) the rollback's delete fails; (c) the failed Report's close fails too;
+  // (d) the settings document is down for the whole import, so no stored record names the
+  // repository and a rollback would remove a good import for nothing.
+  it('a finished import whose close is not saved is rolled back now, not deleted at the next start', async () => {
+    const settings = settingsDoc();
+    const { rig, store } = rigSetup();
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    // The record names the repository before the create; only the next write (the close) fails.
+    const api = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes('/git/new-text-translation')) settings.failNextWrite();
+      return rig.fetchFn(input, init);
+    }) as typeof fetch });
+    const report = await runImport(FAKE_PARSER, FILES, {}, { api, store, ops: appStart(settings) });
+    expect(report).toMatchObject({ ok: false, code: 'import.write-failed', facts: { repoPath: REPO, rolledBack: true } });
+    expect(rig.repos.has(REPO)).toBe(false);
+    expect(opsEntriesOf(settings.get())).toEqual([expect.objectContaining({ op: 'import', report })]);
+    const recovery = { listLocalRepos: vi.fn(async () => [...rig.repos.keys()]), deleteRepo: vi.fn(async () => {}) };
+    expect(await appStart(settings).recover(recovery)).toEqual([]);
+    expect(recovery.deleteRepo).not.toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it('an import with no saved record at all keeps its project: no stored record can delete it', async () => {
+    const settings = settingsDoc();
+    const { rig, api, store } = rigSetup();
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    for (let i = 0; i < 5; i += 1) settings.failNextWrite();
+    const report = await runImport(FAKE_PARSER, FILES, {}, { api, store, ops: appStart(settings) });
+    expect(report).toMatchObject({ ok: true, facts: { repoPath: REPO } });
+    expect(rig.repos.has(REPO)).toBe(true);
+    expect(opsEntriesOf(settings.get())).toEqual([]);
+    error.mockRestore();
+  });
+
   it('a record this session began is running, not interrupted', async () => {
     const settings = settingsDoc();
     const ops = appStart(settings);

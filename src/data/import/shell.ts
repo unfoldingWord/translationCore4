@@ -85,17 +85,38 @@ async function bundleZip(api: ServerApi, repoPath: string, bundle: ImportBundle,
 /** Parse, then make one new project from the bundle: create the repository
  * (primary language subtag) → upload one wrapped zip → remake → seed the
  * journal (not for an archive) → commit. A failure after the repository exists deletes it and
- * returns `import.write-failed`; a failure before it creates nothing. */
+ * returns `import.write-failed`; a failure before it creates nothing. A
+ * finished import whose ops record names the repository but whose close is not
+ * saved is rolled back the same way, so the next start cannot delete it. */
 export async function runImport(
   parser: ImportParser,
   files: ImportFile[],
   edits: Partial<ImportBundle['facts']>,
   deps: ImportDeps = {},
 ): Promise<Report> {
+  const api = deps.api ?? new ServerApi();
   const record = await deps.ops?.begin('import', { parser: parser.id });
-  const report = await importRecorded(parser, files, edits, deps, record);
-  await record?.close(report);
-  return report;
+  // Did a saved write of the record name the new repository?
+  let named = false;
+  const handle: OpsHandle | undefined = record && {
+    note: async (facts: Record<string, unknown>) => {
+      named = await record.note(facts);
+      return named;
+    },
+    close: (report: Report) => record.close(report),
+  };
+  const report = await importRecorded(parser, files, edits, { ...deps, api }, handle);
+  if (!record || (await record.close(report)) || !report.ok || !named) return report;
+  // The saved record names the repository but stays open, so the next start
+  // would delete this finished import as a killed one. Roll it back now, while
+  // the user is told (bench review round 1 of #430).
+  const repoPath = String(report.facts.repoPath);
+  const rolledBack = await api.deleteRepo(repoPath).then(() => true, () => false);
+  const failed = failedReport('import', report.startedAt, new Date().toISOString(),
+    new Refusal('import.write-failed', `the ops record of the import was not saved; the imported project ${rolledBack ? 'was removed' : 'could not be removed'}`, { repoPath }),
+    { ...report.facts, rolledBack });
+  await record.close(failed);
+  return failed;
 }
 
 async function importRecorded(
