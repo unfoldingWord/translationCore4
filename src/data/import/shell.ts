@@ -16,7 +16,9 @@ const encoder = new TextEncoder();
 /** The facts of an import Report: which parser, the new project, what it holds. */
 export type ImportFacts = { parser: ImportParser['id']; repoPath?: string; books?: string[]; seedSource?: string; rolledBack?: boolean };
 
-export type ImportDeps = { api?: ServerApi; store?: JournalingStore };
+/** `resolve` runs after the parse and before any write: the review step's
+ * resource choices (a tC3 bundle's versions become pins, D82). */
+export type ImportDeps = { api?: ServerApi; store?: JournalingStore; resolve?: (bundle: ImportBundle) => Promise<ImportBundle> };
 
 /** The seed source of the imported records (BURRITO-SPEC §8.8). tC3 has its
  * own; the other kinds take the universal seed's default until the
@@ -56,16 +58,19 @@ const wrap = (folder: string, files: Record<string, Uint8Array>): Uint8Array =>
 const archiveZip = (archive: Uint8Array, folder: string): Uint8Array => wrap(folder, unwrapExport(archive).files);
 
 /** The new project's own files (the created repository's metadata.json and
- * ingredients, for example vrs.json) with the bundle's books or stories over
- * them. The metadata gets the bundle's full language tag back (D80 point 4). */
-async function bundleZip(api: ServerApi, repoPath: string, bundle: ImportBundle, language: string, folder: string): Promise<Uint8Array> {
+ * ingredients, for example vrs.json) with the bundle's books or stories and
+ * its checking files over them. The metadata gets the bundle's full language
+ * tag back (D80 point 4) and the license the files carry, when they carry one. */
+async function bundleZip(api: ServerApi, repoPath: string, bundle: ImportBundle, facts: ImportBundle['facts'], folder: string): Promise<Uint8Array> {
   const meta = await api.getMetadataRaw(repoPath);
   const languages = meta.languages as Array<{ tag: string }> | undefined;
-  if (languages?.[0]) languages[0].tag = language;
+  if (languages?.[0]) languages[0].tag = facts.language;
+  if (facts.license) meta.copyright = { shortStatements: [{ statement: facts.license }] };
   const files: Record<string, Uint8Array> = { 'metadata.json': encoder.encode(JSON.stringify(meta, null, 2)) };
   for (const ipath of await api.listPaths(repoPath)) files[`ingredients/${ipath}`] = encoder.encode(await api.readIngredient(repoPath, ipath));
   for (const book of bundle.books) files[`ingredients/${book.code}.usfm`] = encoder.encode(book.usfm);
   for (const story of bundle.stories ?? []) files[`ingredients/${storyIpath(story.n)}`] = encoder.encode(story.markdown);
+  for (const [rel, value] of Object.entries(bundle.sidecars ?? {})) files[`ingredients/${rel}`] = encoder.encode(JSON.stringify(value, null, 2));
   return wrap(folder, files);
 }
 
@@ -91,12 +96,20 @@ export async function runImport(
     return failedReport('import', startedAt, new Date().toISOString(), refusal, facts);
   };
   try {
-    const bundle = await parser.parse(files);
-    const damaged = damagedFinding(bundle);
+    const parsed = await parser.parse(files);
+    const damaged = damagedFinding(parsed);
     if (damaged) throw damaged.code ? new Refusal(damaged.code, damaged.text) : new Error(damaged.text);
-    if (!bundle.archive && (bundle.alignments || bundle.decisions?.length || bundle.pins?.length))
-      throw new Error('the shell writes books and stories only; alignments, decisions and pins arrive with the tC3 import (#21)');
-    const { name, language } = editedFacts(bundle, edits);
+    const bundle = deps.resolve ? await deps.resolve(parsed) : parsed;
+    // Checking data is stored only as the bundle's own sidecar files, and a
+    // version is never stored without its sha (D58, D82).
+    if (!bundle.archive && !bundle.sidecars && (bundle.alignments || bundle.decisions?.length))
+      throw new Error('the bundle carries checking data but no checking files to store it in');
+    if (bundle.versions?.length && !bundle.sidecars?.['checking/resources.json'])
+      throw new Error('the resource versions of the files are not resolved to pins');
+    const edited = editedFacts(bundle, edits);
+    const { name, language } = edited;
+    if (bundle.licenseChoices && (edits.license === undefined || !bundle.licenseChoices.includes(edits.license)))
+      throw new Error('the files carry different licenses; choose one');
     const abbr = importAbbr(name, language);
     if (!abbr) throw new Error('the project needs a name');
     const repoPath = `${APP_ORG}/${abbr}`;
@@ -127,7 +140,7 @@ export async function runImport(
       throw error;
     }
     created = true;
-    const zip = bundle.archive ? archiveZip(bundle.archive, abbr) : await bundleZip(api, repoPath, bundle, language, abbr);
+    const zip = bundle.archive ? archiveZip(bundle.archive, abbr) : await bundleZip(api, repoPath, bundle, edited, abbr);
     await api.remakeBurritoFromZip(await api.uploadTempBytes(zip), repoPath);
     // Register the new books and their scope. Never for an archive (its
     // metadata.json stays byte for byte) or an OBS project (a rescan empties

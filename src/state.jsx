@@ -26,7 +26,7 @@ import { seedBookFromSource } from './data/seed';
 import { SOURCE_MISSING, SOURCE_NOT_INSTALLED, isSourceAbsent } from './data/sourceState';
 import { BOOK_NAMES, bookName } from './data/bookNames';
 import { GATEWAYS, gatewayKey, DCS_HOST, orgForRepoName } from './data/gateways';
-import { fetchAndInstallPin, latestReleaseTag, identifyExistingInstall, rezip, unwrapExport, verifySideload } from './data/resourceFetch';
+import { fetchAndInstallPin, latestReleaseTag, identifyExistingInstall, releaseCommitSha, rezip, unwrapExport, verifySideload } from './data/resourceFetch';
 import { isNotFoundError } from './data/serverApi';
 import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, mergeOptionalPins, isPinLocal, unsatisfiedProjectPinFor, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk, flavorOfMetadata } from './data/installed';
 import { OBS_TOOL_SLOT, TOOL_SLOT, coverageFor, preflightObsTool, preflightToolBook, recordMatchesResolution, resolutionRecord, resolveObsSetSlot, resolveToolBook, resolveSetSlot, samePath } from './data/resolve';
@@ -53,6 +53,7 @@ import { t } from './i18n';
 import { checkpointMessage } from './data/checkpoint';
 import { runExport } from './data/export/kernel';
 import { runImport } from './data/import/shell';
+import { applyVersions, carryOverNeeds, resolveVersions, unresolvedSlots } from './data/import/tc3';
 import { PARSERS } from './data/import/parsers';
 import { INSTALLED_SUITE, SUITE_VERSION } from './data/installedSuite';
 import { obsFrameSetMismatch } from './data/obsFrameSet';
@@ -61,6 +62,8 @@ export { SUITE_VERSION }; // the AddBook badge imports it from here
 
 const AppCtx = createContext(null);
 const STORAGE_ID = 'uw-tc4';
+/** A tC3 import's resource versions while the lookup runs (#21). */
+const LOOKING = { looking: true, found: {}, unresolved: [], offline: false, installed: null };
 
 /** #94: release the fold worker of the store a ref holds, if any. */
 const disposeStore = (ref) => {
@@ -331,7 +334,7 @@ const initial = () => ({
   np: null, // New Bible form
   ab: null, // Add-a-book form
   st: null, // Project-settings form
-  im: null, // Import form (#361): { step, kind, files, bundle, name, lang, busy, error, report }
+  im: null, // Import form (#361): { step, kind, files, bundle, name, lang, license (null = not chosen yet), versions (tC3, #21), busy, error, report }
   importToast: null, // { name, books } of the project an import just made
   importedRepo: null, // its repoPath: the Home card carries the "Imported" badge
   // #9: the guided fix screen for a pinned resource this machine lacks —
@@ -4540,7 +4543,7 @@ export function AppProvider({ children }) {
       //      review → one NEW project through the import shell. A damaged
       //      bundle is refused on the review page; runImport is never called. ----
       openImport: () =>
-        dispatch({ type: 'set', patch: { modal: 'import', im: { step: 'kind', kind: null, files: [], bundle: null, name: '', lang: '', busy: false, error: null, report: null } } }),
+        dispatch({ type: 'set', patch: { modal: 'import', im: { step: 'kind', kind: null, files: [], bundle: null, name: '', lang: '', license: '', versions: null, busy: false, error: null, report: null } } }),
       patchIm: (patch) =>
         dispatch({ type: 'set', patch: { im: { ...stateRef.current.im, ...patch } } }),
       importPickKind: (kind) => a.patchIm({ step: 'files', kind, files: [], bundle: null, error: null }),
@@ -4557,8 +4560,71 @@ export function AppProvider({ children }) {
         a.patchIm({ busy: true, error: null });
         try {
           const bundle = await parser.parse(im.files);
-          a.patchIm({ busy: false, step: 'review', bundle, name: bundle.facts.name, lang: bundle.facts.language });
+          const resolving = bundle.versions && !bundle.findings.some((f) => f.kind === 'damaged');
+          a.patchIm({ busy: false, step: 'review', bundle, name: bundle.facts.name, lang: bundle.facts.language, license: bundle.licenseChoices ? null : (bundle.facts.license ?? ''), versions: resolving ? LOOKING : null });
+          if (resolving) await a.importResolveVersions(bundle);
         } catch (e) {
+          a.patchIm({ busy: false, error: String(e?.message || e) });
+        }
+      },
+      // ---- The resource versions of a tC3 import (D82): each one resolves to
+      //      a full pin (sha) online, or the user chooses the installed pins
+      //      and the decisions carry over (D36). A pin is never stored without
+      //      its sha. im.versions: { looking, found, unresolved, offline,
+      //      installed: { base, derived, carried, invalidated } | null } ----
+      importResolveVersions: async (bundle) => {
+        const online = await api.getNetEnabled().catch(() => false);
+        // A lookup DCS did not answer leaves its slot unresolved; the other slots'
+        // shas stay. Such a failure offers "Go online" as offline does.
+        let unanswered = false;
+        const found = online
+          ? await resolveVersions(bundle.versions, (repoPath, version) => releaseCommitSha(repoPath, version).catch(() => ((unanswered = true), undefined)))
+          : {};
+        const offline = !online || unanswered;
+        // The user may have gone back or started another review meanwhile: a result
+        // belongs only to the review of the bundle it was looked up for.
+        if (stateRef.current.im?.bundle !== bundle) return;
+        a.patchIm({ versions: { looking: false, found, unresolved: unresolvedSlots(bundle.versions, found), offline, installed: null } });
+      },
+      importGoOnline: async () => {
+        a.patchIm({ versions: LOOKING });
+        try {
+          await api.enableNet();
+        } catch { /* the lookup below then reads offline again */ }
+        await a.refreshNet();
+        await a.importResolveVersions(stateRef.current.im.bundle);
+      },
+      /** The pins a new project gets: the installed suite, with this machine's
+       * versions preferred and their coverage recorded (as createProject does). */
+      importBasePins: async () => {
+        const pins = pinsPreferringInstalled(INSTALLED_SUITE, await readInstalled(api, STORAGE_ID));
+        const { coverage } = await a.resolutionContext();
+        return backfillCoverage(pins, coverage).resources;
+      },
+      importUseInstalled: async () => {
+        const { bundle, versions } = stateRef.current.im;
+        a.patchIm({ busy: true, error: null });
+        try {
+          const base = await a.importBasePins();
+          const derived = {};
+          for (const { tool, book } of carryOverNeeds(bundle, versions.found)) {
+            const pin = base.languageSets.primary[TOOL_SLOT[tool]];
+            let tsv = null;
+            try {
+              tsv = await api.readIngredient(resolveReadPath(pin), `${book}.tsv`);
+            } catch (error) {
+              if (!isNotFoundError(error)) throw error;
+            }
+            // A new project is in the eng frame, the frame of the whole suite: nothing maps.
+            derived[`${tool}/${book}`] = tsv && !tsv.startsWith('{"is_good":false')
+              ? (await deriveForProject({ tsv, tool, bookId: book.toLowerCase(), from: RESOURCE_FRAME, to: RESOURCE_FRAME, schemes: {} })).items
+              : [];
+          }
+          const { carried, invalidated } = applyVersions(bundle, base, versions.found, derived);
+          if (stateRef.current.im?.bundle !== bundle) return; // another review since
+          a.patchIm({ busy: false, versions: { ...versions, installed: { base, derived, carried, invalidated } } });
+        } catch (e) {
+          if (stateRef.current.im?.bundle !== bundle) return;
           a.patchIm({ busy: false, error: String(e?.message || e) });
         }
       },
@@ -4566,8 +4632,13 @@ export function AppProvider({ children }) {
         const im = stateRef.current.im;
         const parser = PARSERS.find((p) => p.id === im.kind);
         if (!parser || im.busy || im.bundle?.findings.some((f) => f.kind === 'damaged')) return;
+        if (im.bundle?.versions && !(im.versions && !im.versions.looking && (im.versions.unresolved.length === 0 || im.versions.installed))) return;
+        if (im.bundle?.licenseChoices && !im.bundle.licenseChoices.includes(im.license)) return;
         a.patchIm({ busy: true, step: 'working', error: null, report: null });
-        const report = await runImport(parser, im.files, { name: im.name.trim(), language: im.lang }, { api });
+        const resolve = im.bundle?.versions
+          ? async (bundle) => applyVersions(bundle, im.versions.installed?.base ?? (await a.importBasePins()), im.versions.found, im.versions.installed?.derived ?? {}).bundle
+          : undefined;
+        const report = await runImport(parser, im.files, { name: im.name.trim(), language: im.lang, license: im.license ?? undefined }, { api, resolve });
         if (!report.ok) return a.patchIm({ busy: false, step: 'failed', report });
         const repoPath = report.facts.repoPath;
         try {
