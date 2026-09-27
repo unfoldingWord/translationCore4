@@ -57,6 +57,7 @@ const RAW_MUTATION_WHITELIST = new Set([
   'src/data/journal/journalingStore.ts', // the boundary itself
   'src/data/journal/journalStore.ts', // the segment writer (#61)
   'src/data/import/shell.ts', // a new repository before its journal exists (#361)
+  'src/data/journal/opsLog.ts', // finishes a killed import's rollback at the next start (#374)
 ]);
 
 /** Constructing the raw HttpStore hands out its whole mutation surface. */

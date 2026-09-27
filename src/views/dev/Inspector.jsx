@@ -6,7 +6,8 @@ import React, { useEffect, useState } from 'react';
 import { useApp } from '../../state.jsx';
 import { t } from '../../i18n';
 
-/** Whether this build shows the Inspector. */
+/** Whether this build shows the Inspector.
+ * @param {{ DEV?: boolean, VITE_TC4_INSPECTOR?: string }} env */
 export const inspectorEnabled = (env = import.meta.env) => env.DEV === true || env.VITE_TC4_INSPECTOR === '1';
 
 const cell = { padding: '2px 8px', textAlign: 'start', fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-caption)' };
