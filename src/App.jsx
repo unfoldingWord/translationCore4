@@ -18,7 +18,7 @@ import GuidedFix from './views/modals/GuidedFix.jsx';
 import CommunityChecking from './views/CommunityChecking.jsx';
 import Understand from './views/Understand.jsx';
 import OpenProgress from './views/OpenProgress.jsx';
-import { AppHeader, Switcher, StatusDot, Button } from './ds/index.js';
+import { AppHeader, Switcher, StatusDot, Button, Callout } from './ds/index.js';
 import { t } from './i18n';
 import { DCS_SERVER_LABEL } from './data/dcsServer';
 
@@ -132,7 +132,9 @@ export default function App() {
   return (
     <div dir={appDir} style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', background: 'var(--surface-app)', color: 'var(--text-body)', fontFamily: 'var(--font-ui)', overflow: 'hidden' }}>
       <TopBar />
-      <MainView state={s} />
+      <ViewBoundary key={`${s.view}:${s.project?.repoPath ?? ''}`}>
+        <MainView state={s} />
+      </ViewBoundary>
       <NewBible />
       <NewObs />
       <AddBook />
@@ -144,6 +146,39 @@ export default function App() {
       <GuidedFix />
       <OpenProgress />
       <Inspector />
+    </div>
+  );
+}
+
+// #435: React unmounts the whole tree on an uncaught render error, and the
+// window goes blank. The boundary holds the error to the view: the top bar
+// stays (its save indicator keeps its Retry), and the message offers the way
+// Home. The key is the view and the project, so a navigation clears it.
+class ViewBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  render() {
+    return this.state.error ? <ViewError error={this.state.error} /> : this.props.children;
+  }
+}
+
+function ViewError({ error }) {
+  const { actions } = useApp();
+  return (
+    <div style={{ flex: 1, padding: 24 }}>
+      <Callout tone="warn" role="alert" data-testid="view-error" style={{ overflowWrap: 'anywhere' }}>
+        <strong>{t('app.viewError')}</strong> {error?.message || String(error)}{' '}
+        <Button size="sm" variant="outline" data-testid="view-error-home" onClick={() => actions.backToProjects()}>
+          {t('app.backToHome')}
+        </Button>
+      </Callout>
     </div>
   );
 }
