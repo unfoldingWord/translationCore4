@@ -22,6 +22,23 @@ export async function expectRefusal(promise: Promise<unknown>, code: RefusalCode
   return error as RefusalError;
 }
 
+/** Call `fn` and expect a synchronous throw carrying exactly `code`; return the refusal. */
+export function expectRefusalSync(fn: () => unknown, code: RefusalCode): RefusalError {
+  let refusal: unknown = null;
+  let returned = false;
+  try {
+    fn();
+    returned = true;
+  } catch (error) {
+    refusal = error;
+  }
+  expect(returned, `expected the refusal ${code}, but the operation succeeded`).toBe(false);
+  const error = refusal as Partial<RefusalError>;
+  expect(error?.code, `expected the refusal ${code}; got ${String((error as Error)?.message ?? error)}`).toBe(code);
+  expect(error.rule).toBe(REFUSAL_CODES[code]);
+  return error as RefusalError;
+}
+
 /** The store's last Report, validated against the schema and checked for `op`. */
 export function lastReportOf(store: { lastReport: Report | null }, op: Report['op']): Report {
   const report = store.lastReport;

@@ -20,7 +20,7 @@ import { validateSegment, type JournalEvent } from '../src/data/journal/seal';
 import { describeVerifierReport, verifyProjectAgainstJournal } from '../src/data/journal/verify';
 import type { Decision, ResourcesFile } from '../src/data/burritoStore';
 import { FAKE_VRS, journalingRig, memKv, tickingNow, type JournalingRig } from './helpers/journalingRig';
-import { openFacts } from './helpers/report';
+import { expectRefusal, openFacts } from './helpers/report';
 
 const REPO = '_local_/_local_/prueba';
 
@@ -511,7 +511,8 @@ describe('#62 universal seeding (§8.8)', () => {
     });
     const store = restart();
     await expect(store.open(repo)).rejects.toThrow(SeedMismatchError);
-    await expect(store.open(repo)).rejects.toThrow(/OBS\.json \(no story project\)/);
+    const refusal = await expectRefusal(store.open(repo), 'seed.mismatch');
+    expect(refusal.facts.mismatches as string[]).toEqual([expect.stringMatching(/OBS\.json \(no story project\)/)]);
     expect(segmentPaths(rig, repo)).toEqual([]); // all-or-nothing: nothing published
   });
 
@@ -631,7 +632,7 @@ describe('#62 actor repair limits', () => {
       }),
     );
     const store3 = restart();
-    await expect(store3.open(REPO)).rejects.toThrow(/never overwritten/);
+    await expectRefusal(store3.open(REPO), 'actor.record-mismatch');
   });
 });
 

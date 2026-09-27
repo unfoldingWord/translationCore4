@@ -12,6 +12,7 @@ import { ServerApi } from '../src/data/serverApi';
 import { JournalStore } from '../src/data/journal/journalStore';
 import type { KvStore } from '../src/data/journal/identity';
 import type { JournalEvent } from '../src/data/journal/seal';
+import { expectRefusal } from './helpers/report';
 
 // journal/files.mjs is Node-bound (fs, node:crypto); loaded via a
 // NATIVE require outside the vite pipeline (vite-plugin-node-polyfills aliases
@@ -127,7 +128,7 @@ describe.skipIf(!rigUp)(
     it('a DIFFERENT action at the same path refuses, and the accepted bytes stay untouched (R-8.1.5)', async () => {
       const before = await api.readIngredient(REPO, segmentIpath);
       const different: JournalEvent[] = [{ ...publishedEvents[0], text: 'un texto DIFERENTE\n' }];
-      await expect(journal.publish(different)).rejects.toThrow(/refuse to overwrite/);
+      await expectRefusal(journal.publish(different), 'segment.differs-from-accepted');
       expect(await api.readIngredient(REPO, segmentIpath)).toBe(before);
     }, 30_000);
 
