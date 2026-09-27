@@ -3,11 +3,13 @@
 // tC4's Electron preload. The packaging recipe copies this tracked source over
 // the template's electron/preload.js (#20). It exposes only what the tC4 client
 // calls: `electronAPI.setCanClose`, the unsaved-work close guard
-// (src/state.jsx), unchanged from the template; and `tc4Desktop.printPdf`, the
-// PDF bridge of src/data/export/pdf.ts, answered by `export:pdf` in
-// scripts/desktop-main.cjs. The template's Firefox, FFmpeg and PDF-publisher
-// members are left out: the tC4 client is the only client packaged, and it
-// calls none of them.
+// (src/state.jsx), unchanged from the template; `tc4Desktop.printPdf`, the PDF
+// bridge of src/data/export/pdf.ts, answered by `export:pdf` in
+// scripts/desktop-main.cjs; and `tc4Desktop.onDownloadDone`, the download
+// report of src/views/ExportMenu.jsx (#382), fed by `download:done` in the same
+// file, which returns the function that removes the listener. The template's
+// Firefox, FFmpeg and PDF-publisher members are left out: the tC4 client is the
+// only client packaged, and it calls none of them.
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -16,4 +18,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
 contextBridge.exposeInMainWorld('tc4Desktop', {
   printPdf: (html) => ipcRenderer.invoke('export:pdf', html),
+  onDownloadDone: (listener) => {
+    const relay = (_event, result) => listener(result);
+    ipcRenderer.on('download:done', relay);
+    return () => ipcRenderer.removeListener('download:done', relay);
+  },
 });
