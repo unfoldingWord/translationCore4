@@ -502,4 +502,30 @@ test.describe('J23 — OBS', () => {
       expect({ frames, on: withPictures.pages, off: noPictures.pages }).toEqual({ frames: 598, on: 362, off: 100 });
     },
   );
+
+  test(
+    'OBS: the PDF in the wrapped layout floats a quarter-width picture at each frame\'s start corner, and the text wraps it',
+    { tag: ['@inc8', '@J23'] },
+    async ({ page }) => {
+      test.setTimeout(240_000); // fifty stories, each frame's picture read and printed
+      const name = await createDraftedObs('j23wrap');
+      const documents = await installPdfBridge(page);
+      await openObsCommunityChecking(page, name);
+      await page.getByRole('button', { name: 'Pictures wrapped' }).click();
+      await expect(page.getByTestId('cc-story')).toHaveAttribute('data-layout', 'wrapped');
+      // On screen: the picture is a quarter of the frame's width, at its left (a left-to-right project).
+      const box = async (id: string) => (await page.getByTestId(id).boundingBox())!;
+      const [picture, frame] = [await box('cc-picture-1'), await box('cc-frame-1')];
+      expect(Math.abs(picture.width - frame.width / 4)).toBeLessThan(2);
+      expect(Math.abs(picture.x - frame.x)).toBeLessThan(2);
+
+      const pdf = await exportPdf(page, name);
+      const html = documents[0];
+      expect(html).toContain('<main class="print-book print-stories print-stories-wrapped">');
+      const frames = (html.match(/<div class="print-frame">/g) || []).length;
+      expect(html.match(/<img class="print-frame-picture" src="data:image\/[^"]+" alt="[^"]*" style="float:left"\/>/g)).toHaveLength(frames);
+      // Several frames share a page: 160 pages, against 362 with pictures above.
+      expect({ frames, pages: pdfShape(pdf.bytes).pages }).toEqual({ frames: 598, pages: 160 });
+    },
+  );
 });

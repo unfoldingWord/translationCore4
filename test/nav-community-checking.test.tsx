@@ -264,6 +264,52 @@ describe('#291 — an OBS project checks the open story', () => {
   });
 });
 
+describe('#11 — the OBS Layout row: pictures above or wrapped', () => {
+  beforeEach(() => {
+    cleanup();
+    go.mockClear();
+  });
+  const picture = () => screen.getByTestId('cc-picture-1');
+
+  it('offers "Pictures above" and "Pictures wrapped", with "Pictures above" chosen by default', () => {
+    state = { ...obsState, view: 'publish' } as never;
+    render(<App />);
+    const row = screen.getByRole('group', { name: 'Layout' });
+    expect(within(row).getByRole('button', { name: 'Pictures above' }).getAttribute('aria-pressed')).toBe('true');
+    expect(within(row).getByRole('button', { name: 'Pictures wrapped' }).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByTestId('cc-story').getAttribute('data-layout')).toBe('above');
+    expect(picture().style.width).toBe('100%');
+    expect(picture().style.float).toBe('');
+  });
+
+  it('wraps the text around a quarter-width picture at the upper left for a left-to-right project', () => {
+    state = { ...obsState, view: 'publish' } as never;
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Pictures wrapped' }));
+    expect(screen.getByTestId('cc-story').getAttribute('data-layout')).toBe('wrapped');
+    expect(picture().style.float).toBe('left');
+    expect(picture().style.width).toBe('25%');
+    expect(screen.getByTestId('cc-frame-1').style.display).toBe('flow-root'); // the frame holds its picture
+  });
+
+  it('puts the picture at the upper right for a right-to-left project', () => {
+    state = { ...obsState, view: 'publish', project: { ...obsState.project, scriptDirection: 'rtl' } } as never;
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Pictures wrapped' }));
+    expect(picture().style.float).toBe('right');
+    expect(picture().style.width).toBe('25%');
+  });
+
+  it('the pictures toggle still applies in the wrapped layout', () => {
+    state = { ...obsState, view: 'publish' } as never;
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Pictures wrapped' }));
+    fireEvent.click(screen.getByLabelText('Pictures'));
+    expect(screen.queryByTestId('cc-picture-1')).toBeNull();
+    expect(screen.getByTestId('cc-story').getAttribute('data-layout')).toBe('wrapped');
+  });
+});
+
 // ---- #381 (D80 point 5): the page setup reaches every export. The dev-only
 // fake producer (src/data/export/producers.ts) enters the table only when its
 // flag is set as the module loads, so these cases load a fresh module graph

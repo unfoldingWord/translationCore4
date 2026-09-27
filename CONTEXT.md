@@ -202,6 +202,13 @@ page, then each frame is its picture above its text, and frames fill a page as t
 second layout, the text wrapped around the picture, is issue #11.
 _Avoid_: default layout, stacked layout
 
+**Wrapped layout**:
+The second print layout of an OBS PDF and preview (issue #11, `pageSetup.obsLayout` `'wrapped'`,
+menu label "Pictures wrapped"): each picture is a quarter of the page width at the frame's start
+corner (upper left for a left-to-right language, upper right for right-to-left), and the frame's
+text wraps around it. Frames flow, so several frames share a page.
+_Avoid_: side-by-side layout, float layout
+
 **PDF bridge**:
 The one desktop-app channel that turns a print document into PDF bytes: `export:pdf` in
 `scripts/desktop-main.cjs`, exposed to the page as `tc4Desktop.printPdf` by `scripts/preload.cjs`.

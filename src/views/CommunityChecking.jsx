@@ -44,20 +44,27 @@ function PageSetupChoiceRow({ label, labelId, options, value, onChange }) {
 }
 
 /** The story pages: the title, then each frame's picture and text, then the
- * reference line. An undrafted frame is stated, never skipped silently. */
-function StoryPages({ story, images, pictures, dir }) {
+ * reference line. An undrafted frame is stated, never skipped silently. In the
+ * wrapped layout (#11) the picture is a quarter of the width at the frame's
+ * start corner (left for a left-to-right language, right for right-to-left)
+ * and the text wraps it. */
+function StoryPages({ story, images, pictures, layout, dir }) {
+  const wrapped = layout === 'wrapped';
+  const pictureStyle = wrapped
+    ? { float: dir === 'rtl' ? 'right' : 'left', width: '25%', margin: dir === 'rtl' ? '0 0 6px 12px' : '0 12px 6px 0' }
+    : { display: 'block', width: '100%', marginBottom: 12 };
   return (
-    <div style={PAGE} data-testid="cc-story" data-pictures={pictures ? '1' : '0'}>
+    <div style={PAGE} data-testid="cc-story" data-pictures={pictures ? '1' : '0'} data-layout={layout}>
       <p style={EYEBROW}>{t('cc.eyebrow')}</p>
       <h1 style={H1} dir={dir}>{story.title || t('storyDraft.storyNumber', { n: story.number })}</h1>
       <div style={RULE} />
       {story.frames.map((frame, i) => {
         const image = images?.[String(i + 1)];
         return (
-          <div key={i + 1} data-testid={`cc-frame-${i + 1}`} style={{ marginBottom: 26 }}>
+          <div key={i + 1} data-testid={`cc-frame-${i + 1}`} style={{ marginBottom: 26, ...(wrapped ? { display: 'flow-root' } : {}) }}>
             {pictures && image?.uri && (
               <img data-testid={`cc-picture-${i + 1}`} src={image.uri} alt={t('storyDraft.imageAlt', { n: i + 1 })}
-                style={{ display: 'block', width: '100%', borderRadius: 'var(--radius-md)', marginBottom: 12, background: 'var(--surface-sunken)' }} />
+                style={{ ...pictureStyle, borderRadius: 'var(--radius-md)', background: 'var(--surface-sunken)' }} />
             )}
             <p dir={dir} style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-md)', lineHeight: 'var(--lh-verse-md)', color: frame.text ? 'var(--text-scripture)' : 'var(--text-tertiary)', textAlign: 'justify', whiteSpace: 'pre-wrap', margin: 0 }}>
               {frame.text || t('cc.notYetDraftedFrame')}
@@ -74,7 +81,7 @@ function StoryPages({ story, images, pictures, dir }) {
   );
 }
 
-/** The OBS preview: the open story, one page-setup toggle (pictures). */
+/** The OBS preview: the open story, the Layout row (#11) and the pictures toggle. */
 function StoryCommunityChecking({ pageSetup, updatePageSetup }) {
   const { s, actions } = useApp();
   const { pictures } = pageSetup;
@@ -91,7 +98,7 @@ function StoryCommunityChecking({ pageSetup, updatePageSetup }) {
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }} data-testid="community-checking">
       <main style={{ flex: 1, overflow: 'auto', minWidth: 0, background: 'var(--surface-muted)', padding: '34px 24px 60px' }}>
-        <StoryPages story={story} images={s.storyImages} pictures={pictures} dir={dir} />
+        <StoryPages story={story} images={s.storyImages} pictures={pictures} layout={pageSetup.obsLayout} dir={dir} />
       </main>
       <aside style={ASIDE}>
         <Button variant="ghost" onClick={() => actions.go('check')} style={{ alignSelf: 'flex-start' }}>{t('cc.back')}</Button>
@@ -100,6 +107,9 @@ function StoryCommunityChecking({ pageSetup, updatePageSetup }) {
         <div style={SETUP_BOX}>
           <Overline style={{ letterSpacing: '.12em' }}>{t('cc.pageSetup')}</Overline>
           <div style={SETUP_LIST}>
+            <PageSetupChoiceRow label={t('cc.layout')} labelId="cc-layout-label"
+              options={[{ value: 'above', label: t('cc.layoutAbove') }, { value: 'wrapped', label: t('cc.layoutWrapped') }]}
+              value={pageSetup.obsLayout} onChange={(obsLayout) => updatePageSetup({ obsLayout })} />
             <Toggle data-testid="cc-pictures" label={t('cc.pictures')} checked={pictures} onChange={() => updatePageSetup({ pictures: !pictures })} />
           </div>
         </div>

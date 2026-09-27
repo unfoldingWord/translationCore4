@@ -163,6 +163,23 @@ describe('the OBS PDF', () => {
     expect(css).toMatch(/\.print-frame \{\s*break-inside: avoid;/);
   });
 
+  it('in the wrapped layout, floats each picture at the start corner (left LTR, right RTL) at a quarter width; pictures off prints none', () => {
+    const pictures = { 1: { '1': 'data:image/jpeg;base64,AA==' } };
+    const above = printStoriesDocument('Equipo', [STORIES[1]], pictures, setup(), 'ltr');
+    expect(above).toContain('<main class="print-book print-stories">');
+    expect(above).not.toContain('style="float');
+    const ltr = printStoriesDocument('Equipo', [STORIES[1]], pictures, setup({ obsLayout: 'wrapped' }), 'ltr');
+    expect(ltr).toContain('<main class="print-book print-stories print-stories-wrapped">');
+    expect(ltr).toMatch(/<img class="print-frame-picture" src="data:image\/jpeg;base64,AA==" alt="[^"]*" style="float:left"\/>/);
+    const rtl = printStoriesDocument('Equipo', [STORIES[1]], pictures, setup({ obsLayout: 'wrapped' }), 'rtl');
+    expect(rtl).toContain('style="float:right"');
+    expect(rtl).toContain('<section class="print-story" dir="rtl">');
+    const css = ltr.slice(ltr.indexOf('<style>'), ltr.indexOf('</style>'));
+    expect(css).toMatch(/\.print-stories-wrapped \.print-frame-picture \{\s*width: 25%;/);
+    expect(css).toMatch(/\.print-stories-wrapped \.print-frame \{ display: flow-root; \}/);
+    expect(printStoriesDocument('Equipo', [STORIES[1]], pictures, setup({ obsLayout: 'wrapped', pictures: false }), 'ltr')).not.toContain('<img');
+  });
+
   it('inlines each resolved picture above its frame text, and names the file <project>-<date>.pdf', async () => {
     const printPdf = installBridge();
     const fetch = stubFetch();
