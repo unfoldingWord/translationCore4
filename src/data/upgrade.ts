@@ -282,14 +282,19 @@ export interface TextOffer {
 }
 
 /** Ask DCS for the newest release of every text repo, and offer each one
- * whose release names another commit (D58). An unanswerable lookup throws —
- * the caller states it; an offer is never guessed. */
+ * whose release names another commit (D58). An original-language text is
+ * asked for only when `testaments` (those of the project's books) holds its
+ * testament (#438). An unanswerable lookup throws — the caller states it; an
+ * offer is never guessed. */
 export const textOffers = async (
   resources: ResourcesFile,
+  testaments: ReadonlyArray<'nt' | 'ot'>,
   lookup: (repoPath: string) => Promise<ReleaseInfo> = latestRelease,
 ): Promise<TextOffer[]> => {
   const out: TextOffer[] = [];
+  const used = (slot: TextSlot) => slot.group !== 'originalLanguage' || testaments.includes(slot.testament);
   for (const repo of textReposOf(resources)) {
+    if (!repo.slots.some(used)) continue;
     const info = await lookup(repo.repoPath);
     // Offered when ANY slot differs from the release, not only the first.
     const behind = repo.pins.find((p) => p.sha !== info.sha);
