@@ -203,6 +203,9 @@ export interface GatewayChangePlan {
   /** md5 of checking/resources.json the preview read (null = was absent). */
   resourcesMd5: string | null;
   decisions: GatewayDecisionWrite[];
+  /** #258: whole alignment files written in the same action — an original-
+   * language upgrade marks their records invalid (D72). */
+  alignments?: Array<{ book: string; file: AlignmentFile; expectMd5: string | null }>;
 }
 
 /**

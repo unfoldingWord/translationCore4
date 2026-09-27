@@ -2,7 +2,8 @@
 // (D72 point 5, issue #256).
 //
 // On demand and online only: the user asks, DCS answers, and each language set
-// shows its own offer with an Upgrade button. Accepting installs the release
+// shows its own offer with an Upgrade button. Each scripture text with a newer
+// release is its own offer too (#258). Accepting installs the release
 // (sha-verified, all or nothing) and opens the UpgradeSet confirmation with
 // the D36 carry-over counts; the pins move only there. Nothing on this
 // surface writes to the project.
@@ -49,6 +50,32 @@ function OfferCard({ rung, offer, set, installing, onUpgrade }) {
   );
 }
 
+/** #258: one row per scripture text with a newer release, each its own offer. */
+function TextOffers({ offers, installing, onUpgrade }) {
+  return (
+    <div data-testid="upgrade-texts" style={{ border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <span style={{ fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)', fontSize: 'var(--fs-ui-sm)' }}>{t('upgrade.texts')}</span>
+      {offers.length === 0 && (
+        <span data-testid="upgrade-texts-current" style={{ fontSize: 'var(--fs-caption)', color: 'var(--tc-valid-strong)', fontWeight: 'var(--fw-bold)' }}>
+          {t('upgrade.textsCurrent')}
+        </span>
+      )}
+      {offers.map((o) => (
+        <div key={o.repoPath} data-testid={`upgrade-text-${repoName(o.repoPath)}`} data-kind={o.kind} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 'var(--fs-caption-lg)', color: 'var(--text-secondary)' }}>{t(`upgrade.text.${o.kind}`)}</span>
+          <span style={{ fontSize: 'var(--fs-caption-lg)', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
+            {t('upgrade.row', { repo: repoName(o.repoPath), from: o.from.version ?? o.from.sha.slice(0, 12), to: o.to.version, date: releaseDateLabel(o.publishedAt) })}
+          </span>
+          <div style={{ flex: 1 }} />
+          <Button size="sm" data-testid={`upgrade-text-apply-${repoName(o.repoPath)}`} disabled={!!installing} onClick={() => onUpgrade(o.repoPath)}>
+            {installing === o.repoPath ? t('upgrade.installing') : t('upgrade.upgradeText')}
+          </Button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function ResourceUpdates() {
   const { s, actions } = useApp();
   const up = s.upgrade;
@@ -77,6 +104,9 @@ export default function ResourceUpdates() {
       {up.offers && up.offersFor === s.project.repoPath && Object.keys(up.offers).map((rung) => (
         <OfferCard key={rung} rung={rung} offer={up.offers[rung]} set={sets[rung]} installing={up.installing} onUpgrade={actions.upgradeSet} />
       ))}
+      {up.textOffers && up.offersFor === s.project.repoPath && (
+        <TextOffers offers={up.textOffers} installing={up.installing} onUpgrade={actions.upgradeText} />
+      )}
     </div>
   );
 }

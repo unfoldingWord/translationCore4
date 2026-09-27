@@ -4,21 +4,29 @@
 // The rules, from D72: discovery is on demand and online only; one offer per
 // language set; the set's pins move only after every resource of the release
 // is installed and sha-verified, so a failed download changes nothing; carry-
-// over follows D36 (the resource is the primary key). Help resources only —
-// the original-language texts and the gateway Bibles are #258.
+// over follows D36 (the resource is the primary key). The set offers carry
+// help resources only; the scripture texts are the #258 part below.
 //
 // This module is the pure part: which repos a set pins, what DCS says is the
 // newest release, which of those differ from the pin, and what the set looks
 // like once it points at the new release. Installing and journaling live in
 // state.jsx, on the same code the gateway change uses.
+//
+// #258 adds the scripture texts: the original-language texts and the gateway
+// Bibles, one offer per repo. D72: an original-language upgrade marks every
+// alignment of the books that text covers invalid and keeps each record; a
+// gateway-Bible upgrade moves its pins only.
 import type { LanguageSet, ResourcePin, ResourcesFile, Rung } from './burritoStore';
+import { LADDER } from './burritoStore';
+import type { AlignmentFile } from './align/zaln';
+import { isEmptyAlignmentRecord } from './journal/journalingStore';
 import { releaseCommitSha } from './resourceFetch';
 import { samePath } from './resolve';
 
 /** The updatable resource slots of a language set, in display order. tW's two
  * slots name one repo (D34), so `reposOfSet` folds them. `simplifiedText` is the
  * language's simplified Bible — a gateway Bible, not a help resource — so it
- * is never offered here (D72 point 5: texts are #258, Increment 7). */
+ * is never offered here — textOffers offers it (#258). */
 export const SET_SLOTS = [
   'translationNotes',
   'translationWordsLinks',
@@ -205,3 +213,144 @@ export const offerIsStale = (offer: SetOffer, set: LanguageSet | undefined): boo
 /** A short label for the release a repo moves to, for the offer row. */
 export const releaseDateLabel = (publishedAt: string | null): string =>
   publishedAt ? publishedAt.slice(0, 10) : '';
+
+// ---- #258: the scripture texts ------------------------------------------------
+
+/** One place in the pin file that pins a scripture text. */
+export type TextSlot =
+  | { group: 'originalLanguage'; testament: 'nt' | 'ot' }
+  | { group: 'extraScripture'; id: string }
+  | { group: 'simplifiedText'; rung: Rung };
+
+/** `original` = the text alignments point at; `gateway` = a source Bible. */
+export type TextKind = 'original' | 'gateway';
+
+export interface TextRepo {
+  repoPath: string;
+  kind: TextKind;
+  pin: ResourcePin;
+  slots: TextSlot[];
+}
+
+const pinAt = (resources: ResourcesFile, slot: TextSlot): ResourcePin | undefined => {
+  if (slot.group === 'originalLanguage') {
+    const group = (resources.resources as { originalLanguage?: Record<string, ResourcePin> } | undefined)?.originalLanguage;
+    return group?.[slot.testament];
+  }
+  if (slot.group === 'extraScripture') return resources.extraScripture?.find((e) => e.id === slot.id);
+  return resources.languageSets?.[slot.rung]?.simplifiedText;
+};
+
+/** One entry per distinct text repo the pin file names: the original-language
+ * texts, the `extraScripture` source panes, and each set's simplified Bible.
+ * Slots that pin the same repo fold into one entry (en_ust is often both a
+ * pane and the fallback set's simplifiedText), so one upgrade moves them all. */
+export const textReposOf = (resources: ResourcesFile): TextRepo[] => {
+  const slots: Array<{ slot: TextSlot; kind: TextKind }> = [];
+  for (const testament of ['nt', 'ot'] as const)
+    slots.push({ slot: { group: 'originalLanguage', testament }, kind: 'original' });
+  for (const entry of resources.extraScripture ?? [])
+    slots.push({ slot: { group: 'extraScripture', id: entry.id }, kind: 'gateway' });
+  for (const rung of LADDER) slots.push({ slot: { group: 'simplifiedText', rung }, kind: 'gateway' });
+  const out: TextRepo[] = [];
+  for (const { slot, kind } of slots) {
+    const pin = pinAt(resources, slot);
+    if (!pin?.repoPath) continue;
+    const hit = out.find((r) => samePath(r.repoPath, pin.repoPath));
+    if (hit) hit.slots.push(slot);
+    else out.push({ repoPath: pin.repoPath, kind, pin, slots: [slot] });
+  }
+  return out;
+};
+
+/** One text repo with a newer release than its pin. `from` is the pin every
+ * slot holds (D58 identity); `to` is the pin the slots will carry. */
+export interface TextOffer {
+  repoPath: string;
+  kind: TextKind;
+  slots: TextSlot[];
+  from: ResourcePin;
+  to: ResourcePin;
+  publishedAt: string | null;
+}
+
+/** Ask DCS for the newest release of every text repo, and offer each one
+ * whose release names another commit (D58). An unanswerable lookup throws —
+ * the caller states it; an offer is never guessed. */
+export const textOffers = async (
+  resources: ResourcesFile,
+  lookup: (repoPath: string) => Promise<ReleaseInfo> = latestRelease,
+): Promise<TextOffer[]> => {
+  const out: TextOffer[] = [];
+  for (const repo of textReposOf(resources)) {
+    const info = await lookup(repo.repoPath);
+    if (info.sha === repo.pin.sha) continue;
+    out.push({
+      repoPath: repo.repoPath,
+      kind: repo.kind,
+      slots: repo.slots,
+      from: repo.pin,
+      to: { repoPath: repo.pin.repoPath, version: info.tag, sha: info.sha, flavor: repo.pin.flavor },
+      publishedAt: info.publishedAt,
+    });
+  }
+  return out;
+};
+
+/** The pin file with the offer's slots moved to `to`. Every other pin, group
+ * and set is the same object as before. */
+export const applyTextUpgrade = (resources: ResourcesFile, offer: TextOffer, to: ResourcePin = offer.to): ResourcesFile => {
+  let next: ResourcesFile = { ...resources };
+  for (const slot of offer.slots) {
+    if (slot.group === 'originalLanguage') {
+      const groups = (next.resources ?? {}) as Record<string, unknown>;
+      const ol = (groups.originalLanguage ?? {}) as Record<string, ResourcePin>;
+      next = { ...next, resources: { ...groups, originalLanguage: { ...ol, [slot.testament]: to } } };
+    } else if (slot.group === 'extraScripture') {
+      next = { ...next, extraScripture: (next.extraScripture ?? []).map((e) => (e.id === slot.id ? { id: e.id, ...to } : e)) };
+    } else {
+      next = { ...next, languageSets: { ...next.languageSets, [slot.rung]: { ...next.languageSets[slot.rung], simplifiedText: to } } };
+    }
+  }
+  return next;
+};
+
+/** The pin `to` as a slot of `resources` holds it (for the coverage the
+ * caller recorded on the moved pins). */
+export const textPinOf = (resources: ResourcesFile, offer: TextOffer): ResourcePin | undefined =>
+  pinAt(resources, offer.slots[0]);
+
+/** True when some slot of the offer no longer holds the pin it was computed
+ * from (the same rule as offerIsStale). */
+export const textOfferIsStale = (offer: TextOffer, resources: ResourcesFile | null | undefined): boolean =>
+  !resources ||
+  offer.slots.some((slot) => {
+    const current = pinAt(resources, slot);
+    return !current || !samePath(current.repoPath, offer.from.repoPath) || current.sha !== offer.from.sha;
+  });
+
+/** The testaments whose alignments an offer invalidates: none for a gateway
+ * Bible, the pinned testament for an original-language text. */
+export const invalidatedTestaments = (offer: TextOffer): Array<'nt' | 'ot'> =>
+  offer.kind === 'original'
+    ? offer.slots.flatMap((s) => (s.group === 'originalLanguage' ? [s.testament] : []))
+    : [];
+
+/** D72: the book's alignment file with every record marked `invalid: true`,
+ * each record kept in full (§5.1). An empty record (the §8.5 removal shape)
+ * points at no source word, and an invalid one is already marked, so both
+ * stay as they are. `verses` counts the records this marks. */
+export const invalidateAlignments = (file: AlignmentFile | null): { file: AlignmentFile | null; verses: number } => {
+  if (!file?.chapters) return { file, verses: 0 };
+  let verses = 0;
+  const chapters: AlignmentFile['chapters'] = {};
+  for (const [chapter, records] of Object.entries(file.chapters)) {
+    chapters[chapter] = {};
+    for (const [verse, record] of Object.entries(records)) {
+      const mark = record.invalid !== true && !isEmptyAlignmentRecord(record as unknown as Record<string, unknown>);
+      if (mark) verses += 1;
+      chapters[chapter][verse] = mark ? { ...record, invalid: true } : record;
+    }
+  }
+  return { file: { ...file, chapters }, verses };
+};
