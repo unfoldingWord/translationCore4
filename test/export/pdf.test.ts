@@ -144,7 +144,7 @@ describe('the OBS PDF', () => {
   // Frame 2 of story 1 has no picture (the resolution found none).
   const storyPictures = vi.fn(async (n: number) => (n === 1 ? { '1': '/api/pic/01-01.jpg' } : { '1': '/api/pic/02-01.jpg' }));
   const stubFetch = (ok = true) => {
-    const fetch = vi.fn(async () => new Response(ok ? new Uint8Array([255, 216, 255]) : 'gone', { status: ok ? 200 : 404, headers: { 'content-type': 'image/jpeg' } }));
+    const fetch = vi.fn<(uri: string) => Promise<Response>>(async () => new Response(ok ? new Uint8Array([255, 216, 255]) : 'gone', { status: ok ? 200 : 404, headers: { 'content-type': 'image/jpeg' } }));
     vi.stubGlobal('fetch', fetch);
     return fetch;
   };
