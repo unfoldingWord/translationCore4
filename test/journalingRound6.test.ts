@@ -22,7 +22,7 @@ import {
   tickingNow,
   type JournalingRig,
 } from './helpers/journalingRig';
-import { openFacts } from './helpers/report';
+import { expectRefusal, openFacts } from './helpers/report';
 
 const REPO = '_local_/_local_/prueba';
 
@@ -263,7 +263,7 @@ describe('official review R4: seeding ABORTS when the project scope cannot be re
     // whole-book scope, silently admitting out-of-scope work.
     rig.failOn((c) => c.route.includes('/burrito/metadata/raw/') && c.route.includes('sinscope'));
     const store = restart();
-    await expect(store.open(repo)).rejects.toThrow(/injected failure|scope/);
+    await expectRefusal(store.open(repo), 'open.scope-unreadable');
     expect(segmentPaths(rig, repo)).toEqual([]); // nothing journaled
   });
 });
