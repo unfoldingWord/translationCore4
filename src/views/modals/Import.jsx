@@ -79,11 +79,13 @@ function FilesStep({ im, actions }) {
   );
 }
 
-/** The Details row: the fixed text, then a details finding's (a foreign burrito: text only). */
-const detailsCheck = (details) => ({
+/** The Details row: the fixed text, then a details finding's (a foreign burrito: text only).
+ * With no valid language code (a USFM file carries none), it warns as the field does (#437). */
+const detailsCheck = (details, langError) => ({
+  id: 'details',
   label: t('importer.review.details'),
-  status: details?.warn ? 'warn' : 'valid',
-  text: [t('importer.review.detailsText'), details?.text].filter(Boolean).join(' '),
+  status: details?.warn || langError ? 'warn' : 'valid',
+  text: [t(langError ? 'importer.review.detailsNoLang' : 'importer.review.detailsText'), details?.text].filter(Boolean).join(' '),
 });
 const carriedTitle = (kind) => t(kind === 'burrito' ? 'importer.review.carriedTc4' : 'importer.review.carried');
 
@@ -138,9 +140,9 @@ function ReviewStep({ im, actions }) {
   const primary = im.lang.startsWith('x-') ? im.lang : im.lang.split('-')[0];
   const langError = !damaged && !LANGUAGE_CODE.test(im.lang) ? t('importer.review.langError') : undefined;
   const checks = [
-    { label: t('importer.review.license'), status: license?.warn ? 'warn' : 'valid', text: license?.text ?? t('importer.review.licenseFound') },
-    detailsCheck(bundle.findings.find((f) => f.kind === 'details')),
-    { label: t('importer.review.missing'), status: missing ? 'warn' : 'valid', text: missing?.text ?? t('importer.review.noneMissing') },
+    { id: 'license', label: t('importer.review.license'), status: license?.warn ? 'warn' : 'valid', text: license?.text ?? t('importer.review.licenseFound') },
+    detailsCheck(bundle.findings.find((f) => f.kind === 'details'), langError),
+    { id: 'missing', label: t('importer.review.missing'), status: missing ? 'warn' : 'valid', text: missing?.text ?? t('importer.review.noneMissing') },
   ];
   return (
     <div data-testid="import-review" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -188,7 +190,7 @@ function ReviewStep({ im, actions }) {
           <Overline as="span">{t('importer.review.checks')}</Overline>
           {bundle.versions && !damaged && <ResourcesCheck im={im} actions={actions} />}
           {checks.map((c) => (
-            <div key={c.label} style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
+            <div key={c.id} data-testid={`import-check-${c.id}`} data-status={c.status} style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
               <StatusDot status={c.status} size={8} />
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
                 <Text role="strong">{c.label}</Text>
