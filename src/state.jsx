@@ -46,7 +46,7 @@ import { bootstrapVerse, linkWord, unlinkWord, moveWord, mergeAlignments, splitA
 import { linksFor, rebindSuggestions, sessionInputFor, trainingVersesFor } from './data/align/suggest';
 import { consequencesOfGatewayChange, applyGatewayChange, uncoveredByChange } from './data/gatewayChange';
 import { carryOverDecisions } from './data/carryOver';
-import { applyUpgrade, latestReleasesForSet, offerForSet, offerIsStale, repinOffer } from './data/upgrade';
+import { applyTextUpgrade, applyUpgrade, invalidateAlignments, invalidatedTestaments, latestReleasesForSet, offerForSet, offerIsStale, repinOffer, textOfferIsStale, textOffers, textPinOf } from './data/upgrade';
 import { LADDER } from './data/burritoStore';
 import { TC_READY_TOPIC } from './data/serverApi';
 import { t } from './i18n';
@@ -80,7 +80,7 @@ const disposeUnless = (store, ref) => {
 /** J12 (#256): the upgrade slice at rest — the value it resets to when a
  * project opens or closes, so an offer never outlives the project it was
  * computed for (Codex review round 1). */
-const UPGRADE_IDLE = { checking: false, offers: null, offersFor: null, error: null, installing: null, progress: null, preview: null };
+const UPGRADE_IDLE = { checking: false, offers: null, textOffers: null, offersFor: null, error: null, installing: null, progress: null, preview: null };
 
 export const api = new ServerApi();
 // The mode a view is, for a checkpoint message (#183). Views not listed keep their id.
@@ -360,6 +360,8 @@ const initial = () => ({
   // "Check for updates" and is bound to the project it was computed for
   // (`offersFor`); `installing` names the rung whose release is being
   // downloaded; `preview` is the confirmation awaiting the user (D72 point 5).
+  // #258: `textOffers` lists the scripture texts with a newer release, and
+  // `installing` holds a text's repoPath while that text downloads.
   upgrade: UPGRADE_IDLE,
   aligning: false, // the align surface is open
   alignIndex: null, // #129: { items: [{ref, text, status, placed, total}] } | { error } — the rail's derived verse list
@@ -1144,6 +1146,24 @@ function offersAfterUpgrade(offers, preview) {
       current: preview.offer.upgrades.map((u) => u.repoPath).concat(preview.offer.current),
     },
   };
+}
+
+/** #258 (D72): the alignment files an original-language upgrade marks
+ * invalid — every book of the project in the upgraded testaments, read from
+ * disk with its md5 for the compare-and-swap. The align buffer is saved
+ * first, so the files read here hold every edit. Books with nothing to mark
+ * are not written. */
+async function plannedAlignmentInvalidations(store, sched, project, testaments) {
+  if (!testaments.length) return [];
+  if (sched && !(await sched.drain())) throw new Error(t('upgrade.alignUnsaved'));
+  const out = [];
+  for (const book of project?.bookCodes ?? []) {
+    if (!testaments.includes(isOldTestament(book) ? 'ot' : 'nt')) continue;
+    const { value, md5 } = await store.readAlignmentsWithMd5(book);
+    const { file, verses } = invalidateAlignments(value);
+    if (verses > 0) out.push({ book, file, expectMd5: md5, verses });
+  }
+  return out;
 }
 
 /** The new release is on disk: resolve again so coverage and the installed
@@ -3333,7 +3353,7 @@ export function AppProvider({ children }) {
           return null;
         }
         const offersFor = st.project?.repoPath ?? null;
-        dispatch({ type: 'patchUpgrade', patch: { checking: true, error: null, offers: null, offersFor } });
+        dispatch({ type: 'patchUpgrade', patch: { checking: true, error: null, offers: null, textOffers: null, offersFor } });
         try {
           const offers = {};
           for (const rung of LADDER) {
@@ -3342,10 +3362,19 @@ export function AppProvider({ children }) {
             const latest = await latestReleasesForSet(set);
             offers[rung] = offerForSet(rung, set, latest);
           }
+          // #258: the scripture texts. A text DCS cannot answer for is stated
+          // and does not hide the help-set offers above.
+          let texts = null;
+          let textError = null;
+          try {
+            texts = await textOffers(pins);
+          } catch (error) {
+            textError = t('upgrade.checkFailed', { reason: String(error?.message || error) });
+          }
           // Bound to the project the check was made for (Codex round 1): a
           // project switch during the awaits above drops the answer.
           if (stateRef.current.project?.repoPath !== offersFor) return null;
-          dispatch({ type: 'patchUpgrade', patch: { checking: false, offers } });
+          dispatch({ type: 'patchUpgrade', patch: { checking: false, offers, textOffers: texts, error: textError } });
           return offers;
         } catch (error) {
           dispatch({
@@ -3403,6 +3432,53 @@ export function AppProvider({ children }) {
           dispatch({
             type: 'patchUpgrade',
             patch: { installing: null, progress: null, preview: { rung, offer, next, resourcesMd5, store, repoPath, ...planned } },
+          });
+          dispatch({ type: 'set', patch: { installEpoch: stateRef.current.installEpoch + 1 } });
+          return next;
+        } catch (error) {
+          if (stillCurrent()) {
+            dispatch({
+              type: 'patchUpgrade',
+              patch: { installing: null, progress: null, error: t('upgrade.failed', { reason: String(error?.message || error) }) },
+            });
+          }
+          return null;
+        }
+      },
+
+      /** #258: accept one scripture text's offer. Install the release (sha-
+       * verified), then plan the pin move and — for an original-language
+       * text — the alignments it marks invalid (D72), and open the
+       * confirmation with that count. The pins move only in confirmUpgrade. */
+      upgradeText: async (textRepoPath) => {
+        const store = storeRef.current;
+        const st = stateRef.current;
+        const offer = st.upgrade.textOffers?.find((o) => samePath(o.repoPath, textRepoPath));
+        if (!store || !offer) return null;
+        const repoPath = projectPathOf(st);
+        const stillCurrent = () => storeRef.current === store && projectPathOf(stateRef.current) === repoPath;
+        dispatch({ type: 'patchUpgrade', patch: { installing: offer.repoPath, error: null, progress: null } });
+        try {
+          const { value: currentResources, md5: resourcesMd5 } = await store.readResourcesWithMd5();
+          if (st.upgrade.offersFor !== repoPath || textOfferIsStale(offer, currentResources)) throw new Error(t('upgrade.stale'));
+          const local = new Set(await api.listLocalRepos());
+          const before = await a.resolutionContext();
+          if (before.resolutionError) throw new Error(before.resolutionError);
+          await installReleaseSet(api, [offer], local, before.installed, (repo) => {
+            if (stillCurrent()) dispatch({ type: 'patchUpgrade', patch: { progress: t('sources.progress', { repo }) } });
+          });
+          if (!stillCurrent()) return null;
+          // Coverage is recorded for the new pin (D41), as the set upgrade does.
+          const { coverage, resolutionError } = await a.resolutionContext();
+          if (resolutionError) throw new Error(resolutionError);
+          const filled = backfillCoverage(applyTextUpgrade(currentResources, offer), coverage).resources;
+          const next = applyTextUpgrade(currentResources, offer, textPinOf(filled, offer) ?? offer.to);
+          const alignments = await plannedAlignmentInvalidations(store, alignSchedulerRef.current, stateRef.current.project, invalidatedTestaments(offer));
+          if (!stillCurrent()) return null;
+          const invalidatedVerses = alignments.reduce((n, w) => n + w.verses, 0);
+          dispatch({
+            type: 'patchUpgrade',
+            patch: { installing: null, progress: null, preview: { kind: 'text', offer, next, resourcesMd5, store, repoPath, alignments, invalidatedVerses } },
           });
           dispatch({ type: 'set', patch: { installEpoch: stateRef.current.installEpoch + 1 } });
           return next;
@@ -3563,10 +3639,25 @@ export function AppProvider({ children }) {
           dispatch({ type: 'patchUpgrade', patch: refusal });
           return;
         }
+        const text = preview.kind === 'text';
         try {
+          // #258: the pins and the invalid marks are ONE journal action, so a
+          // refused or failed write changes neither. The align buffer is
+          // saved first; an edit saved since the preview makes the file's md5
+          // stale, and the store refuses the whole change.
+          // Bench round 1 (George #1): the set is planned again after that
+          // drain, from the project as it is NOW; a book, record or md5 that
+          // differs from what the dialog showed refuses the whole change.
+          let alignments = [];
+          if (text) {
+            alignments = await plannedAlignmentInvalidations(store, alignSchedulerRef.current, stateRef.current.project, invalidatedTestaments(preview.offer));
+            const key = (ws) => ws.map((w) => `${w.book}|${w.expectMd5}|${w.verses}`).join('\n');
+            if (key(alignments) !== key(preview.alignments)) throw new Error(t('upgrade.stale'));
+          }
           await store.applyGatewayChange({
             resources: preview.next,
             resourcesMd5: preview.resourcesMd5 ?? null,
+            ...(text ? { alignments: alignments.map(({ book, file, expectMd5 }) => ({ book, file, expectMd5 })) } : {}),
             decisions: (preview.plan ?? []).map((p) => ({
               tool: p.tool,
               book: p.book,
@@ -3579,10 +3670,39 @@ export function AppProvider({ children }) {
           return;
         }
         dispatch({ type: 'set', patch: { projectPins: preview.next } });
-        dispatch({
-          type: 'patchUpgrade',
-          patch: { preview: null, error: null, offers: offersAfterUpgrade(stateRef.current.upgrade.offers, preview) },
-        });
+        if (text) {
+          dispatch({
+            type: 'patchUpgrade',
+            patch: { preview: null, error: null, textOffers: (stateRef.current.upgrade.textOffers ?? []).filter((o) => o !== preview.offer) },
+          });
+          // The align buffer takes the marked files, the panes the new text.
+          // Bench round 1 (George #2): a failed read must not leave the old
+          // file in the buffer — the next edit would write it back over the
+          // marks. Fall back to the committed file; if that is refused too,
+          // say so: the pin has already moved.
+          const sched = alignSchedulerRef.current;
+          const unloaded = [];
+          for (const w of preview.alignments) {
+            if (!sched) break;
+            try {
+              await alignFileFor(store, sched, w.book);
+            } catch {
+              try {
+                sched.loadBook(w.book, alignFileJson(w.file, w.book));
+              } catch {
+                unloaded.push(w.book);
+              }
+            }
+          }
+          if (unloaded.length) dispatch({ type: 'patchUpgrade', patch: { error: t('upgrade.alignReloadFailed', { books: unloaded.join(', ') }) } });
+          a.reloadSourcePanes(preview.next);
+          await a.loadAlignIndex();
+        } else {
+          dispatch({
+            type: 'patchUpgrade',
+            patch: { preview: null, error: null, offers: offersAfterUpgrade(stateRef.current.upgrade.offers, preview) },
+          });
+        }
         if (stateRef.current.book) await a.runPreflight();
       },
 
