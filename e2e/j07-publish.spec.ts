@@ -422,3 +422,84 @@ test.describe('J7 — USFM', () => {
     },
   );
 });
+
+// OBS (#360, J23): the story Markdown zip is `content/` byte for byte; the PDF
+// prints every story in the flow layout, through the same bridge double as the
+// Bible PDF. The project is made by the app's OBS create path, story 1 drafted
+// from the conformance fixture, so frame 2 onwards and stories 2–50 are undrafted.
+test.describe('J23 — OBS', () => {
+  const openObsCommunityChecking = async (page: Page, name: string): Promise<void> => {
+    await page.goto('/');
+    await page.getByTestId(`project-_local_/_local_/${name}`).getByTestId('story-tile-1').click();
+    await page.getByRole('tab', { name: 'Check', exact: true }).click();
+    await page.getByTestId('open-community-checking').click();
+    await expect(page.getByTestId('cc-picture-1')).toBeVisible(); // the preview resolved its pictures
+    // The first open commits what it writes (the journal seed); an export then makes no checkpoint.
+    await expect.poll(() => execFileSync('git', ['-C', rigRepo(name), 'status', '--porcelain'], { encoding: 'utf8' }), { timeout: 20_000 }).toBe('');
+  };
+  const createDraftedObs = (abbr: string): Promise<string> =>
+    createObsProject(abbr, `Equipo Rig — J23 ${abbr}`, async (s) => {
+      const store = s as unknown as { writeTitle: (story: number, text: string) => Promise<void> };
+      await store.writeTitle(1, DRAFT.title);
+      await s.writeFrame(1, 1, DRAFT.frames[1]);
+    });
+
+  test(
+    'OBS: Story Markdown (.zip) holds content/ exactly as stored, and the project is unchanged',
+    { tag: ['@inc8', '@J23'] },
+    async ({ page }) => {
+      const name = await createDraftedObs('j23md');
+      const repo = rigRepo(name);
+      await openObsCommunityChecking(page, name);
+      let download: { bytes: Buffer; filename: string } = { bytes: Buffer.alloc(0), filename: '' };
+      const commits = await assertProjectUnchanged(repo, async () => {
+        await page.getByTestId('export-menu-trigger').click();
+        await expect(page.getByRole('menuitem')).toHaveText(['Story Markdown (.zip)', 'Scripture Burrito (.zip)']); // a browser: no PDF bridge
+        download = await captureDownload(page, page.getByRole('menuitem', { name: 'Story Markdown (.zip)' }));
+      });
+      expect(commits).toBe(0);
+      await expect(page.getByTestId('export-failure')).toHaveCount(0);
+      expect(download.filename).toMatch(/^Equipo Rig — J23 j23md-stories-\d{4}-\d{2}-\d{2}\.zip$/);
+      const zipped = Object.entries(unzipSync(new Uint8Array(download.bytes))).filter(([entry]) => !entry.endsWith('/'));
+      const stored = repoFiles(path.join(repo, 'ingredients')).filter((p) => p.startsWith('content/'));
+      expect(zipped.map(([entry]) => entry).sort()).toEqual(stored);
+      expect(stored).toContain('content/50.md');
+      for (const [entry, bytes] of zipped) expect(Buffer.from(bytes).equals(fs.readFileSync(path.join(repo, 'ingredients', entry))), entry).toBe(true);
+    },
+  );
+
+  test(
+    'OBS: the PDF prints every story in order in the flow layout, pictures on and off, undrafted frames stated, and the project is unchanged',
+    { tag: ['@inc8', '@J23'] },
+    async ({ page }) => {
+      test.setTimeout(240_000); // fifty stories, each frame's picture read and printed
+      const name = await createDraftedObs('j23pdf');
+      const documents = await installPdfBridge(page);
+      await openObsCommunityChecking(page, name);
+      await page.getByTestId('export-menu-trigger').click();
+      await expect(page.getByRole('menuitem')).toHaveText(['Export PDF', 'Story Markdown (.zip)', 'Scripture Burrito (.zip)']);
+      await page.keyboard.press('Escape');
+
+      const pdf = await exportPdf(page, name);
+      expect(pdf.filename).toMatch(/^Equipo Rig — J23 j23pdf-\d{4}-\d{2}-\d{2}\.pdf$/);
+      expect(pdf.bytes.subarray(0, 5).toString()).toBe('%PDF-');
+      const html = documents[0];
+      const titles = [...html.matchAll(/<h1 class="print-title print-story-title">([^<]+)<\/h1>/g)].map((m) => m[1]);
+      expect(titles).toEqual([DRAFT.title, ...Array.from({ length: 49 }, (_, i) => `Story ${i + 2}`)]); // a seed-form title prints as its number
+      const frames = (html.match(/<div class="print-frame">/g) || []).length;
+      expect(html.match(/<img class="print-frame-picture" src="data:image\//g)).toHaveLength(frames); // every frame's picture resolved
+      expect(html.match(/\[ frame not yet drafted \]/g)).toHaveLength(frames - 1); // only frame 1 of story 1 is drafted
+      expect(html).toContain(DRAFT.frames[1]);
+      const withPictures = pdfShape(pdf.bytes);
+      expect(withPictures.mediaBox).toBe('0 0 594.95996 841.91998');
+
+      await page.getByTestId('cc-pictures').click();
+      const noPictures = pdfShape((await exportPdf(page, name)).bytes);
+      expect(documents[1]).not.toContain('<img');
+      // The seeded project: 598 frames. Pictures off: each story is its title page
+      // and one page of frames (100). Pictures on: frames fill the pages as they
+      // fit, two to a page where both fit (362).
+      expect({ frames, on: withPictures.pages, off: noPictures.pages }).toEqual({ frames: 598, on: 362, off: 100 });
+    },
+  );
+});

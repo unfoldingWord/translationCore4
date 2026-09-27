@@ -191,9 +191,16 @@ _Avoid_: merge (for the whole book), embed
 **Print document**:
 The one HTML document that the PDF export prints: the print DOM of the book
 (`src/views/print/PrintBook.jsx`) for each chapter with a drafted verse, with one line for each
-run of undrafted chapters between them, the page setup as CSS and the print stylesheet (`src/ds/tokens/print.css`). It stands alone: it reads no screen token and loads no web font
+run of undrafted chapters between them (for an OBS project, the print DOM of every story,
+`src/views/print/PrintStories.jsx`), the page setup as CSS and the print stylesheet (`src/ds/tokens/print.css`). It stands alone: it reads no screen token and loads no web font
 (issue #20). The Community Checking preview sets the same DOM and stylesheet on page sheets.
 _Avoid_: print view, print page
+
+**Flow layout**:
+The first print layout of an OBS PDF (issue #360): each story starts with its title alone on a
+page, then each frame is its picture above its text, and frames fill a page as they fit. The
+second layout, the text wrapped around the picture, is issue #11.
+_Avoid_: default layout, stacked layout
 
 **PDF bridge**:
 The one desktop-app channel that turns a print document into PDF bytes: `export:pdf` in

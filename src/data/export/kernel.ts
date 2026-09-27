@@ -19,7 +19,16 @@ export type ExportProducer = {
   appliesTo: (project: ProjectSummary) => boolean; // Bible, OBS, or both
   produce: (input: ExportInput) => Promise<ExportFile>; // pure: data in, bytes out
 };
-export type ExportInput = { store: BurritoStore; project: ProjectSummary; book?: string; pageSetup?: PageSetup };
+/** `storyPictures` (OBS projects, #360) gives one story's frame pictures as
+ * Community Checking resolves them: picture address by frame number ("1" is
+ * the first frame); a frame with no picture has no key. */
+export type ExportInput = {
+  store: BurritoStore;
+  project: ProjectSummary;
+  book?: string;
+  pageSetup?: PageSetup;
+  storyPictures?: (story: number) => Promise<Record<string, string>>;
+};
 export type ExportFile = { bytes: Uint8Array; filename: string; mime: string };
 
 /** The facts of an ok export Report: which producer, the file name, its size in bytes. */
