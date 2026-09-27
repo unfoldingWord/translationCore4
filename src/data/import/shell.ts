@@ -47,6 +47,10 @@ export const importAbbr = (name: string, language: string): string => {
   return slug(name) || slug(language);
 };
 
+/** The new project's repository path. The review page's name check (#436) and
+ * the shell's refusal below both compare this path with the local listing. */
+export const importRepoPath = (name: string, language: string): string => `${APP_ORG}/${importAbbr(name, language)}`;
+
 /** The finding that refuses a bundle on the review page, or undefined. */
 export const damagedFinding = (bundle: ImportBundle) => bundle.findings.find((f) => f.kind === 'damaged');
 
@@ -154,7 +158,7 @@ async function importRecorded(
       throw new Error('the files carry different licenses; choose one');
     const abbr = importAbbr(name, language);
     if (!abbr) throw new Error('the project needs a name');
-    const repoPath = `${APP_ORG}/${abbr}`;
+    const repoPath = importRepoPath(name, language);
     facts.repoPath = repoPath;
     // Never create over an existing path (PLATFORM-NOTES #28): the create route
     // git-inits before it validates, so the rollback below may delete only a
