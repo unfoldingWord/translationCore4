@@ -53,6 +53,7 @@ const PINS: ResourcesFile = {
   ],
 } as unknown as ResourcesFile;
 
+const BOTH = ['nt', 'ot'] as const;
 const release = (repo: string, tag: string): ReleaseInfo => ({ tag, sha: sha40(`${repo}@${tag}`), publishedAt: '2026-09-26T15:45:57Z' });
 /** DCS: UGNT and UST have a newer release; UHB and ULT are at their pins. */
 const NEWER: Record<string, ReleaseInfo> = {
@@ -82,7 +83,7 @@ const record = (patch: Record<string, unknown> = {}) => ({
 
 describe('textOffers — one offer per text repo, by sha (D58)', () => {
   it('offers the original-language text and the gateway Bible that have newer releases, each on its own', async () => {
-    const offers = await textOffers(PINS, lookup);
+    const offers = await textOffers(PINS, BOTH, lookup);
     expect(offers.map((o) => [o.repoPath.split('/').pop(), o.kind, o.to.version])).toEqual([
       ['el-x-koine_ugnt', 'original', 'v0.35'],
       ['en_ust', 'gateway', 'v91'],
@@ -97,7 +98,7 @@ describe('textOffers — one offer per text repo, by sha (D58)', () => {
   });
 
   it('applyTextUpgrade moves only the offer\'s slots; every other pin is the same object', async () => {
-    const [ugnt, ust] = await textOffers(PINS, lookup);
+    const [ugnt, ust] = await textOffers(PINS, BOTH, lookup);
     const afterOl = applyTextUpgrade(PINS, ugnt);
     const ol = (afterOl.resources as { originalLanguage: Record<string, ResourcePin> }).originalLanguage;
     expect(ol.nt.sha).toBe(NEWER['el-x-koine_ugnt'].sha);
@@ -128,20 +129,45 @@ describe('textOffers — one offer per text repo, by sha (D58)', () => {
   };
 
   it('offers a repo whose FIRST slot is current when another slot is behind', async () => {
-    const offers = await textOffers(MIXED, ustAt('v89'));
+    const offers = await textOffers(MIXED, BOTH, ustAt('v89'));
     expect(offers.map((o) => o.repoPath.split('/').pop())).toEqual(['en_ust']);
     expect(offers[0].from.version).toBe('v88');
     expect(offers[0].fromPins.map((p) => p.version)).toEqual(['v89', 'v88']);
   });
 
   it('checks each slot against its own snapshot: an unchanged mixed-pin project is not stale', async () => {
-    const [ust] = await textOffers(MIXED, ustAt('v91'));
+    const [ust] = await textOffers(MIXED, BOTH, ustAt('v91'));
     expect(ust.slots).toHaveLength(2);
     expect(textOfferIsStale(ust, MIXED)).toBe(false);
     const after = applyTextUpgrade(MIXED, ust);
     expect(after.extraScripture?.[1].sha).toBe(ust.to.sha);
     expect(after.languageSets.fallback.simplifiedText?.sha).toBe(ust.to.sha);
     expect(textOfferIsStale(ust, after)).toBe(true);
+  });
+});
+
+// #438: a project pins both originals, but only the testaments of its books
+// are offered. The ways this can fail: an NT-only project offers the Hebrew
+// Bible; an OT-only project offers the Greek New Testament; a project with
+// books in both testaments loses one original; the filter drops a gateway
+// Bible, which is not an original.
+describe('textOffers — only the originals of the project\'s testaments (#438)', () => {
+  /** DCS: both originals and en_ust have a newer release. */
+  const allNewer = async (repoPath: string): Promise<ReleaseInfo> =>
+    repoPath.endsWith('/hbo_uhb') ? release('hbo_uhb', 'v3.0.0') : lookup(repoPath);
+  const offered = async (testaments: ReadonlyArray<'nt' | 'ot'>) =>
+    (await textOffers(PINS, testaments, allNewer)).map((o) => o.repoPath.split('/').pop());
+
+  it('an NT-only project with both originals pinned lists no hbo_uhb row', async () => {
+    expect(await offered(['nt'])).toEqual(['el-x-koine_ugnt', 'en_ust']);
+  });
+
+  it('an OT-only project lists no el-x-koine_ugnt row', async () => {
+    expect(await offered(['ot'])).toEqual(['hbo_uhb', 'en_ust']);
+  });
+
+  it('a project with books in both testaments lists both originals', async () => {
+    expect(await offered(['nt', 'ot'])).toEqual(['el-x-koine_ugnt', 'hbo_uhb', 'en_ust']);
   });
 });
 
@@ -182,7 +208,7 @@ describe('the original-language upgrade is ONE journal action, all or nothing', 
     const segments = () => [...files().keys()].filter((p) => /^checking\/journal\/[a-z0-9-]+\/segments\//.test(p)).sort();
     /** What the app's upgradeText plans: the moved pins and the marked files. */
     const plan = async () => {
-      const [ugnt] = await textOffers(PINS, lookup);
+      const [ugnt] = await textOffers(PINS, BOTH, lookup);
       const { value, md5 } = await store.readAlignmentsWithMd5('TIT');
       const { file, verses } = invalidateAlignments(value);
       return {

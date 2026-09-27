@@ -3393,7 +3393,9 @@ export function AppProvider({ children }) {
           let texts = null;
           let textError = null;
           try {
-            texts = await textOffers(pins);
+            // #438: only the originals of the testaments the project's books use.
+            const testaments = [...new Set((st.project?.bookCodes ?? []).map((code) => (isOldTestament(code) ? 'ot' : 'nt')))];
+            texts = await textOffers(pins, testaments);
           } catch (error) {
             textError = t('upgrade.checkFailed', { reason: String(error?.message || error) });
           }
