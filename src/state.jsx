@@ -3098,7 +3098,20 @@ export function AppProvider({ children }) {
         const st = stateRef.current;
         const store = storeRef.current;
         if (!st.project || !store) return null;
-        return runExport(producer, { store, project: st.project, book: st.book ?? undefined, pageSetup }, opsLog);
+        // #360: an OBS PDF shows each frame's picture as Community Checking
+        // resolves it (D74 point 9), story by story.
+        const project = st.project;
+        const storyPictures = project.flavor === 'textStories'
+          ? async (storyNumber) => {
+            const { installed } = await a.resolutionContext();
+            const { images } = await readObsStoryPresentation({
+              api, store, projectRepo: project.repoPath, storyNumber, resources: st.projectPins, installed,
+              packCache: obsPackCache(), pinsKnown: st.projectPinsLoaded === true,
+            });
+            return Object.fromEntries(Object.entries(images).filter(([, image]) => image.uri).map(([frame, image]) => [frame, image.uri]));
+          }
+          : undefined;
+        return runExport(producer, { store, project, book: st.book ?? undefined, pageSetup, storyPictures }, opsLog);
       },
 
       closeModal: () => dispatch({ type: 'set', patch: { modal: null, np: null, ab: null, st: null, fix: null, im: null } }),

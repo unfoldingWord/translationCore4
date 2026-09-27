@@ -41,7 +41,7 @@ const ingredientsTable = (files: Record<string, Uint8Array>) =>
   );
 
 /** True for a zip entry that stays out of the export. */
-const excluded = (name: string): boolean => {
+export const excluded = (name: string): boolean => {
   const segments = name.replace(/\/$/, '').split('/');
   return segments[0] === '.git' || segments.at(-1) === '.DS_Store' || name.endsWith('.bak');
 };

@@ -79,3 +79,29 @@
   line-height: 1.4;
   margin: 0 0 26px;
 }
+/* An OBS project (#360), the flow layout: each story opens on a new page with
+   its title alone on that page; a frame (its picture above its text) is never
+   split, so frames fill a page as they fit. */
+.print-story { break-before: page; }
+.print-story:first-child { break-before: auto; }
+.print-story-title {
+  break-after: page;
+  padding-top: 30%;
+}
+.print-frame {
+  break-inside: avoid;
+  margin: 0 0 26px;
+}
+.print-frame-picture {
+  display: block;
+  width: 100%;
+  margin: 0 0 12px;
+}
+.print-frame-text,
+.print-story-reference {
+  line-height: var(--print-leading);
+  text-align: justify;
+  white-space: pre-wrap;
+  margin: 0;
+}
+.print-story-reference { font-style: italic; color: #626F78; }

@@ -4,6 +4,7 @@
 // issues: USFM #19, Scripture Burrito zip #359, PDF #20, OBS Markdown #360.
 import { exportFilename, type ExportProducer } from './kernel';
 import { BURRITO_ZIP } from './burritoZip';
+import { OBS_MARKDOWN } from './obsMarkdown';
 import { PDF } from './pdf';
 import { USFM_ALIGNED, USFM_PLAIN } from './usfm';
 
@@ -31,4 +32,4 @@ const e2eFakeEnabled = (): boolean => {
   }
 };
 
-export const PRODUCERS: readonly ExportProducer[] = [PDF, USFM_ALIGNED, USFM_PLAIN, BURRITO_ZIP, ...(import.meta.env.DEV && e2eFakeEnabled() ? [E2E_FAKE] : [])];
+export const PRODUCERS: readonly ExportProducer[] = [PDF, USFM_ALIGNED, USFM_PLAIN, OBS_MARKDOWN, BURRITO_ZIP, ...(import.meta.env.DEV && e2eFakeEnabled() ? [E2E_FAKE] : [])];

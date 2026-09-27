@@ -2,9 +2,9 @@
 // setup applied as CSS, handed to the desktop bridge; the bridge's bytes are
 // the file. A browser has no bridge, so the menu has no PDF item there.
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PDF, printDocument } from '../../src/data/export/pdf';
+import { PDF, printDocument, printStoriesDocument } from '../../src/data/export/pdf';
 import { DEFAULT_PAGE_SETUP, type PageSetup } from '../../src/data/export/pageSetup';
-import type { BurritoStore, ProjectSummary } from '../../src/data/burritoStore';
+import type { BurritoStore, ProjectSummary, Story } from '../../src/data/burritoStore';
 
 const USFM = `\\id TIT
 \\c 1
@@ -33,14 +33,16 @@ const installBridge = (bytes = new Uint8Array([37, 80, 68, 70])) => {
 
 afterEach(() => {
   delete g.window;
+  vi.unstubAllGlobals();
 });
 
 describe('the PDF producer', () => {
-  it('shows only for a Bible project, and only when the desktop bridge exists', () => {
+  it('shows for a Bible and an OBS project, and only when the desktop bridge exists', () => {
     expect(PDF.appliesTo(bible)).toBe(false); // a browser: no bridge, no menu item
+    expect(PDF.appliesTo({ ...bible, flavor: 'textStories' })).toBe(false);
     installBridge();
     expect(PDF.appliesTo(bible)).toBe(true);
-    expect(PDF.appliesTo({ ...bible, flavor: 'textStories' })).toBe(false);
+    expect(PDF.appliesTo({ ...bible, flavor: 'textStories' })).toBe(true);
   });
 
   it('refuses with no bridge or no open book, and prints nothing', async () => {
@@ -123,5 +125,70 @@ describe('the print document', () => {
       '[ chapters 5–7 not yet drafted ]',
       'Chapter 8',
     ]);
+  });
+});
+
+// The OBS PDF (issue #360): every story in order, the flow layout, the
+// pictures toggle, an undrafted frame stated.
+describe('the OBS PDF', () => {
+  const IMAGE = (n: string) => `![OBS Image](https://cdn.door43.org/obs/jpg/360px/obs-en-${n}.jpg)`;
+  const STORIES: Record<number, Story> = {
+    1: { number: 1, title: 'La Creación', frames: [{ image: IMAGE('01-01'), text: 'Así fue <como> Dios hizo todo.' }, { image: IMAGE('01-02'), text: '' }], ref: 'Una historia de Génesis 1-2' },
+    2: { number: 2, title: '', frames: [{ image: IMAGE('02-01'), text: 'Adán y Eva.' }], ref: null },
+  };
+  const obs = { name: 'Equipo', flavor: 'textStories', scriptDirection: 'ltr' } as ProjectSummary;
+  const obsStore = {
+    listStories: vi.fn(async () => [2, 1]),
+    readStory: vi.fn(async (n: number) => ({ bytes: '', md5: '', story: STORIES[n] })),
+  } as unknown as BurritoStore;
+  // Frame 2 of story 1 has no picture (the resolution found none).
+  const storyPictures = vi.fn(async (n: number) => (n === 1 ? { '1': '/api/pic/01-01.jpg' } : { '1': '/api/pic/02-01.jpg' }));
+  const stubFetch = (ok = true) => {
+    const fetch = vi.fn(async () => new Response(ok ? new Uint8Array([255, 216, 255]) : 'gone', { status: ok ? 200 : 404, headers: { 'content-type': 'image/jpeg' } }));
+    vi.stubGlobal('fetch', fetch);
+    return fetch;
+  };
+
+  it('prints every story in order, each title on its own page, frames whole, and states an undrafted frame', () => {
+    const html = printStoriesDocument('Equipo', [STORIES[1], STORIES[2]], {}, setup(), 'ltr');
+    const titles = [...html.matchAll(/<h1 class="print-title print-story-title">([^<]+)<\/h1>/g)].map((m) => m[1]);
+    expect(titles).toEqual(['La Creación', 'Story 2']); // an untitled story keeps its number
+    expect(html.match(/<div class="print-frame">/g)).toHaveLength(3);
+    expect(html).toContain('<p class="print-frame-text print-undrafted">[ frame not yet drafted ]</p>');
+    expect(html).toContain('Así fue &lt;como&gt; Dios hizo todo.'); // text, never markup
+    expect(html).toContain('<p class="print-story-reference">Una historia de Génesis 1-2</p>');
+    const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
+    expect(css).toMatch(/\.print-story \{ break-before: page; \}/);
+    expect(css).toMatch(/\.print-story-title \{\s*break-after: page;/);
+    expect(css).toMatch(/\.print-frame \{\s*break-inside: avoid;/);
+  });
+
+  it('inlines each resolved picture above its frame text, and names the file <project>-<date>.pdf', async () => {
+    const printPdf = installBridge();
+    const fetch = stubFetch();
+    const file = await PDF.produce({ store: obsStore, project: obs, pageSetup: setup(), storyPictures });
+    expect(file.filename).toMatch(/^Equipo-\d{4}-\d{2}-\d{2}\.pdf$/);
+    expect(fetch.mock.calls.map(([uri]) => uri)).toEqual(['/api/pic/01-01.jpg', '/api/pic/02-01.jpg']);
+    const html = printPdf.mock.calls[0][0];
+    expect(html.match(/<img class="print-frame-picture" src="data:image\/jpeg;base64,\/9j\/"/g)).toHaveLength(2);
+    expect(html.indexOf('print-frame-picture')).toBeLessThan(html.indexOf('Así fue'));
+    expect(html.indexOf('La Creación')).toBeLessThan(html.indexOf('Adán y Eva.')); // story 1 before story 2
+  });
+
+  it('with pictures off, prints no picture and reads none', async () => {
+    const printPdf = installBridge();
+    const fetch = stubFetch();
+    storyPictures.mockClear();
+    await PDF.produce({ store: obsStore, project: obs, pageSetup: setup({ pictures: false }), storyPictures });
+    expect(printPdf.mock.calls[0][0]).not.toContain('<img');
+    expect(storyPictures).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('fails, and prints nothing, when a resolved picture cannot be read', async () => {
+    const printPdf = installBridge();
+    stubFetch(false);
+    await expect(PDF.produce({ store: obsStore, project: obs, pageSetup: setup(), storyPictures })).rejects.toThrow(/HTTP 404/);
+    expect(printPdf).not.toHaveBeenCalled();
   });
 });
