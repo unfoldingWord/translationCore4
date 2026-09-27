@@ -170,7 +170,7 @@ const flattenPins = (resources: ResourcesFile): Array<{ slot: string; entry: unk
 /** An "empty-state" §5.1 record — the DEFINED representation of alignment
  * removal (§8.5 R-8.5.11: removal is the explicit empty payload, projected as a
  * record, not absence). */
-const isEmptyAlignmentRecord = (record: Record<string, unknown>): boolean =>
+export const isEmptyAlignmentRecord = (record: Record<string, unknown>): boolean =>
   Array.isArray(record.alignments) &&
   (record.alignments as unknown[]).length === 0 &&
   Array.isArray(record.wordBank) &&
@@ -2912,8 +2912,11 @@ export class JournalingStore implements BurritoStore {
       await this.checkExpectMd5(RESOURCES_IPATH, plan.resourcesMd5);
       for (const write of plan.decisions)
         await this.checkExpectMd5(decisionsIpath(write.tool, write.book), write.expectMd5);
+      for (const write of plan.alignments ?? [])
+        await this.checkExpectMd5(alignmentsIpath(write.book.toUpperCase()), write.expectMd5);
 
-      // 2. Compute the complete action: every decision diff + the pin diff.
+      // 2. Compute the complete action: every decision diff, every alignment
+      // diff (#258) and the pin diff.
       const foldOut = this.foldNow();
       const events: JournalEvent[] = [];
       const affected: string[] = [];
@@ -2926,6 +2929,14 @@ export class JournalingStore implements BurritoStore {
         affected.push(decisionsIpath(write.tool, write.book.toUpperCase()));
         changedResolutions[`${write.tool}\n${write.book.toUpperCase()}`] =
           write.file.resource as Record<string, unknown>;
+      }
+      for (const write of plan.alignments ?? []) {
+        const code = write.book.toUpperCase();
+        const generation = foldOut.books[code] ? foldOut.headsTs[`book|${code}`] : undefined;
+        if (generation === undefined)
+          throw new Error(`applyGatewayChange(${code}): the journal projects no such book`);
+        events.push(...this.alignmentEvents(write.file, foldOut, journal, code, generation));
+        affected.push(alignmentsIpath(code));
       }
       const incoming = flattenPins(plan.resources);
       const incomingSlots = new Set(incoming.map((p) => p.slot));

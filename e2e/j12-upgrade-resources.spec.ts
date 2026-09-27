@@ -69,30 +69,67 @@ function servedNotes(dropId: string): Uint8Array {
   return servedTn.bytes;
 }
 
+/** #258: a newer original-language release, held still. DCS's newest UGNT
+ * is still v0.34 [VERIFIED 2026-09-26, `releases/latest`], so the served
+ * release is the cached v0.34 export under a made-up tag, with its declared
+ * revision rewritten to a made-up commit. The tags API names that commit, so
+ * the D23b sha gate sees a consistent DCS. */
+const OL_REPO = 'el-x-koine_ugnt';
+const OL_TAG = 'v0.35';
+const OL_SHA = '2580000000000000000000000000000000000258';
+const olZipPath = () => path.join(CACHE, `${OL_REPO}-v0.34-unwrapped.zip`);
+function servedOriginal(): Uint8Array {
+  const files = unzipSync(new Uint8Array(fs.readFileSync(olZipPath())));
+  const meta = JSON.parse(strFromU8(files['metadata.json'])) as {
+    identification: { primary: { dcs: Record<string, { revision: string }> } };
+  };
+  for (const entry of Object.values(meta.identification.primary.dcs)) entry.revision = OL_SHA;
+  files['metadata.json'] = strToU8(JSON.stringify(meta));
+  return zipSync(files, { level: 0 });
+}
+
 /** Door43, held still: every pinned repo answers with its pin unless it is in
- * NEWER, which answers v90 from the cache. Anything else on the host is 404. */
-async function mockDcs(context: BrowserContext, dropId: string) {
-  const pinsFile = readProjectPins(SEEDED_PROJECT);
-  const pinned: Record<string, { version: string; sha: string }> = {};
-  for (const set of Object.values(pinsFile.languageSets)) {
-    for (const entry of Object.values(set)) {
+ * NEWER, which answers v90 from the cache. `olNewer` (#258) makes the UGNT
+ * answer OL_TAG. Anything else on the host is 404. */
+async function mockDcs(context: BrowserContext, dropId: string, olNewer = false) {
+  // Read at request time: opening the project adopts installed optional slots
+  // (D64 — en_obs among them) into the pin file, and those answer with their pins too.
+  const pinnedNow = () => {
+    const pinsFile = readProjectPins(SEEDED_PROJECT) as ReturnType<typeof readProjectPins> & {
+      resources?: { originalLanguage?: Record<string, unknown> };
+      extraScripture?: unknown[];
+    };
+    const pinned: Record<string, { version: string; sha: string }> = {};
+    const entries = [
+      ...Object.values(pinsFile.languageSets).flatMap((set) => Object.values(set)),
+      ...Object.values(pinsFile.resources?.originalLanguage ?? {}),
+      ...(pinsFile.extraScripture ?? []),
+    ];
+    for (const entry of entries) {
       const pin = entry as { repoPath?: string; version?: string; sha?: string };
-      if (pin?.repoPath && pin.sha) pinned[pin.repoPath.split('/').pop() as string] = { version: pin.version ?? '', sha: pin.sha };
+      // An adopted pin may carry no label; its release still names a tag.
+      if (pin?.repoPath && pin.sha) pinned[pin.repoPath.split('/').pop() as string] = { version: pin.version || 'pinned', sha: pin.sha };
     }
-  }
+    return pinned;
+  };
   const cors = { 'access-control-allow-origin': '*' };
   await context.route(/^https:\/\/git\.door43\.org\//, async (route) => {
     const url = new URL(route.request().url());
     const m = /^\/(?:api\/v1\/repos\/)?unfoldingWord\/([^/]+)\/(.*)$/.exec(url.pathname);
     if (!m) return route.fulfill({ status: 404, headers: cors, body: 'not mocked' });
     const [, repo, rest] = m;
+    const olUpgrade = olNewer && repo === OL_REPO;
+    if (olUpgrade && rest === `sb/${OL_TAG}.zip`) {
+      return route.fulfill({ status: 200, headers: cors, contentType: 'application/zip', body: Buffer.from(servedOriginal()) });
+    }
     const newer = NEWER.includes(repo);
-    const tag = newer ? NEW_TAG : pinned[repo]?.version;
-    const sha = newer ? cachedRevision(repo) : pinned[repo]?.sha;
+    const pinned = pinnedNow();
+    const tag = olUpgrade ? OL_TAG : newer ? NEW_TAG : pinned[repo]?.version;
+    const sha = olUpgrade ? OL_SHA : newer ? cachedRevision(repo) : pinned[repo]?.sha;
     if (!tag || !sha) return route.fulfill({ status: 404, headers: cors, body: 'unknown repo' });
     if (rest === 'releases/latest') {
       return route.fulfill({ status: 200, headers: cors, contentType: 'application/json',
-        body: JSON.stringify({ tag_name: tag, published_at: newer ? '2026-08-17T19:15:10Z' : '2026-06-23T22:01:21Z' }) });
+        body: JSON.stringify({ tag_name: tag, published_at: newer || olUpgrade ? '2026-08-17T19:15:10Z' : '2026-06-23T22:01:21Z' }) });
     }
     if (rest.startsWith('tags')) {
       const page = Number(url.searchParams.get('page') ?? '1');
@@ -401,6 +438,81 @@ test.describe('J12 — a facilitator upgrades the pinned resources', () => {
       expect((pins.languageSets.primary.translationNotes as { sha: string }).sha).toBe(PINS().tn.sha);
       await expect(page.getByTestId('upgrade-current-fallback')).toBeVisible();
       await expect(page.getByTestId('upgrade-set-primary')).toBeVisible();
+    },
+  );
+});
+
+test.describe('J12 — a facilitator upgrades the original-language text (#258)', () => {
+  test(
+    'accepting moves the UGNT pin only after the download is verified, states how many verses\' alignments it marks invalid, and keeps every record; the align list shows them as work; the help pins and the text are byte-identical (D72)',
+    { tag: ['@inc8', '@J12'] },
+    async ({ page, context }) => {
+      test.setTimeout(240_000);
+      test.skip(!fs.existsSync(olZipPath()), `the ${OL_REPO} v0.34 export is not cached under dev-env/resources-cache`);
+      writeProjectPins(SEEDED_PROJECT, PINS());
+      // The J5 pattern: the NT pin names the sideloaded UGNT, whose words the sample's alignment points at.
+      const pinsPath = path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'resources.json');
+      const file = JSON.parse(fs.readFileSync(pinsPath, 'utf8'));
+      file.resources = { ...(file.resources ?? {}), originalLanguage: { ...(file.resources?.originalLanguage ?? {}), nt: pinForSideloaded(OL_REPO, 'v0.34') } };
+      fs.writeFileSync(pinsPath, `${JSON.stringify(file, null, 2)}\n`);
+      await mockDcs(context, '', true);
+      const textBefore = textIngredients();
+      const alignPath = path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'alignments', 'TIT.json');
+      const readAlign = () => JSON.parse(fs.readFileSync(alignPath, 'utf8')) as { chapters: Record<string, Record<string, Record<string, unknown>>> };
+
+      await settleOpen(page);
+      // Snapshots AFTER the app's own open-time writes.
+      type Pins = { languageSets: unknown; extraScripture?: unknown; resources: { originalLanguage: Record<string, { sha: string; version?: string }> } };
+      const pinsBefore = readProjectPins(SEEDED_PROJECT) as unknown as Pins;
+      const alignBefore = readAlign();
+      const records = Object.entries(alignBefore.chapters).flatMap(([c, vs]) => Object.entries(vs).map(([v, r]) => ({ ref: `${c}:${v}`, r })));
+      const marked = records.filter(({ r }) => r.invalid !== true && ((r.alignments as unknown[]).length > 0 || (r.wordBank as unknown[]).length > 0));
+      expect(marked.length).toBeGreaterThan(0);
+
+      await openSources(page);
+      await goOnline(page);
+      await page.getByTestId('check-updates').click();
+      // Its own offer, beside the help-set offers.
+      const row = page.getByTestId(`upgrade-text-${OL_REPO}`);
+      await expect(row).toHaveAttribute('data-kind', 'original');
+      await expect(row).toContainText(`${OL_REPO} v0.34 → ${OL_TAG}`);
+      await page.getByTestId(`upgrade-text-apply-${OL_REPO}`).click();
+
+      // The confirmation states the count BEFORE the pin moves; the release is installed and verified by now.
+      const confirm = page.getByTestId('upgrade-confirm');
+      await expect(confirm).toBeVisible({ timeout: 150_000 });
+      await expect(confirm).toHaveAttribute('data-kind', 'text');
+      await expect(confirm.getByTestId('upgrade-headline')).toHaveAttribute('data-verses', String(marked.length));
+      await expect(confirm.getByTestId('upgrade-headline')).toHaveText(`The alignments of ${marked.length} verse(s) will be marked invalid.`);
+      expect((readProjectPins(SEEDED_PROJECT) as unknown as Pins).resources.originalLanguage.nt.sha).toBe(pinsBefore.resources.originalLanguage.nt.sha);
+      expect(readAlign()).toEqual(alignBefore);
+
+      await confirm.getByTestId('upgrade-apply').click();
+      await expect(confirm).toHaveCount(0);
+
+      // The NT pin carries the new commit; the OT pin, the sets and the source panes did not move.
+      const pins = readProjectPins(SEEDED_PROJECT) as unknown as Pins;
+      expect(pins.resources.originalLanguage.nt.sha).toBe(OL_SHA);
+      expect(pins.resources.originalLanguage.nt.version).toBe(OL_TAG);
+      expect(pins.resources.originalLanguage.ot).toEqual(pinsBefore.resources.originalLanguage.ot);
+      expect(pins.languageSets).toEqual(pinsBefore.languageSets);
+      expect(pins.extraScripture).toEqual(pinsBefore.extraScripture);
+      // Every alignment record is kept in full and marked invalid; nothing is deleted.
+      const after = readAlign();
+      for (const { ref, r } of records) {
+        const [c, v] = ref.split(':');
+        expect(after.chapters[c][v], ref).toEqual(marked.some((m) => m.ref === ref) ? { ...r, invalid: true } : r);
+      }
+      // Every text ingredient is byte-identical.
+      expect(Object.keys(textIngredients())).toEqual(Object.keys(textBefore));
+      for (const [rel, bytes] of Object.entries(textIngredients())) expect(bytes.equals(textBefore[rel]), rel).toBe(true);
+
+      // The alignment list shows those verses as needing work.
+      await page.getByRole('button', { name: 'Close' }).last().click();
+      await page.getByTestId('open-align').click();
+      for (const { ref } of marked) {
+        await expect(page.getByTestId('align-verse-list').locator(`button[data-ref="${ref}"]`)).toHaveAttribute('data-status', 'invalid');
+      }
     },
   );
 });

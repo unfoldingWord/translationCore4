@@ -4,6 +4,8 @@
 // the user confirms here is the pin move and its exact cost: per (tool, book),
 // how many decisions carry over and how many come back as work. Cancel leaves
 // the pins, the decision files and the old release exactly as they are.
+// A scripture-text upgrade (#258) states instead how many verses' alignments
+// it marks invalid (D72), or that a gateway Bible changes none.
 import React from 'react';
 import { useApp } from '../../state.jsx';
 import { bookName } from '../../data/bookNames';
@@ -74,10 +76,50 @@ const applyStyle = (blocked, harmless) => {
   return harmless ? null : { background: 'var(--uw-kindle)' };
 };
 
+/** #258: the confirmation of one scripture text's upgrade. */
+function TextUpgrade({ preview, error, actions }) {
+  const { offer, invalidatedVerses } = preview;
+  const marks = invalidatedVerses > 0;
+  let headline = t('upgrade.textGateway');
+  if (offer.kind === 'original') headline = marks ? t('upgrade.textInvalidates', { n: invalidatedVerses }) : t('upgrade.textNoAlignments');
+  return (
+    <Modal data-testid="upgrade-confirm" data-kind="text"
+      title={t('upgrade.textConfirmTitle', { repo: repoName(offer.repoPath) })}
+      closeLabel={t('common.close')} onClose={actions.cancelUpgrade}
+      footer={<>
+        <Button variant="secondary" onClick={actions.cancelUpgrade} data-testid="upgrade-cancel">{t('upgrade.keep')}</Button>
+        <Button onClick={() => actions.confirmUpgrade(preview)} data-testid="upgrade-apply" style={marks ? { background: 'var(--uw-kindle)' } : null}>
+          {t('upgrade.apply')}
+        </Button>
+      </>}>
+      <div data-harmless={marks ? '0' : '1'} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <ul style={{ margin: 0, paddingInlineStart: 18 }} data-testid="upgrade-moves">
+          <li style={{ fontSize: 'var(--fs-caption-lg)', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+            {t('upgrade.move', { repo: repoName(offer.repoPath), from: offer.from.version ?? offer.from.sha.slice(0, 12), to: offer.to.version })}
+          </li>
+        </ul>
+        <p data-testid="upgrade-headline" data-verses={invalidatedVerses}
+          style={{ fontSize: 'var(--fs-ui)', letterSpacing: 'var(--track-13-5)', color: marks ? 'var(--tc-warn-text)' : 'var(--tc-valid-strong)', fontWeight: 'var(--fw-bold)', lineHeight: 'var(--lh-body)', margin: 0 }}>
+          {headline}
+        </p>
+        {marks && (
+          <p style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', color: 'var(--text-secondary)', lineHeight: 'var(--lh-body)', margin: 0 }}>
+            {t('upgrade.textInvalidatesDetail')}
+          </p>
+        )}
+        {error && (
+          <Callout tone="warn" role="alert" data-testid="upgrade-confirm-error" style={{ overflowWrap: 'anywhere' }}>{error}</Callout>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 export default function UpgradeSet() {
   const { s, actions } = useApp();
   const preview = s.upgrade?.preview;
   if (!preview) return null;
+  if (preview.kind === 'text') return <TextUpgrade preview={preview} error={s.upgrade.error} actions={actions} />;
   const harmless = preview.consequences.harmless;
   const blocked = (preview.blocked?.length ?? 0) > 0;
   const lang = preview.next.languageSets[preview.rung]?.gatewayLanguage?.languageId ?? '';

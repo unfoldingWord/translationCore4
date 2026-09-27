@@ -209,16 +209,21 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 
 - Actor: facilitator. Activity: Start (touches Check).
 - Precondition: J3; the app is online.
-- Steps: check for updates · see the offer per language set · accept explicitly · re-derive.
+- Steps: check for updates · see the offer per language set and per scripture text · accept
+  explicitly · re-derive.
 - End state (defined 2026-09-11, D72): the set's §5.3 pins carry the new release's `sha` and
   `version`; every affected book's decisions are carried over or invalidated and retained
   (D36); the other language set's pins are unchanged; text ingredients byte-identical; a
-  failed or interrupted download changes nothing.
+  failed or interrupted download changes nothing. An original-language text upgrade (#258)
+  marks every alignment record of the books that text covers `invalid: true` and keeps each
+  record (§5.1); the confirmation states the verse count first. A gateway-Bible upgrade moves
+  its pins only.
 - MUST NOT: upgrade silently (resource-handling stance 2026-07-12); move a pin before every
-  resource of the release is installed and sha-verified; touch the original-language or
-  gateway-Bible pins (that upgrade is #258, Increment 8).
+  resource of the release is installed and sha-verified; let a help-set upgrade touch the
+  original-language or gateway-Bible pins; let a scripture-text upgrade touch a decision, or a
+  gateway-Bible upgrade touch an alignment.
 - Proof: `e2e/j12-upgrade-resources.spec.ts`. Owner: shipped alpha.6 (#40: #256 built, #257
-  proved).
+  proved); the scripture texts are #258 (Increment 8).
 
 ### J13 Change the gateway-language resource set
 
