@@ -1848,6 +1848,9 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
         projectPins: null,
         projectPinsLoaded: false,
         projectPinsError: null,
+        // #434: the tool verdicts carry the previous project's resolved pins.
+        preflight: null,
+        preflightError: null,
         sourcePanes: null,
         understand: null,
         storyNumbers: [],
@@ -3897,6 +3900,9 @@ export function AppProvider({ children }) {
         const st = stateRef.current;
         if (!st.book && st.project?.flavor !== 'textStories') return;
         const { installed, coverage, resolutionError } = await a.resolutionContext();
+        // #434: a verdict for a project that is no longer open must not land.
+        const repoOf = (x) => x.project?.repoPath || x.project?.id;
+        if (repoOf(stateRef.current) !== repoOf(st)) return null;
         if (resolutionError) {
           // Catch-to-absence sweep (D30): an identity-read outage must not
           // present every tool as 'unavailable'/'unpinned' — state it,
@@ -5630,7 +5636,7 @@ export function AppProvider({ children }) {
         alignSessionSeq++;
         dispatch({
           type: 'set',
-          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, storyNumbers: [], storyNumber: null, story: null, sourceStory: null, storyImages: {}, storyImageNote: null, storyLoading: false, storyError: null, storySource: null, saveState: 'saved', noteSaveState: 'saved', alignSaveState: 'saved', checkSaveState: 'saved', storySaveState: 'saved', storySaveError: null, commitError: null, projectPins: null, projectPinsLoaded: false, projectPinsError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, alignSuggest: { status: 'off', verses: 0, error: null }, pickerProgress: null, toolPos: {}, upgrade: UPGRADE_IDLE },
+          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, storyNumbers: [], storyNumber: null, story: null, sourceStory: null, storyImages: {}, storyImageNote: null, storyLoading: false, storyError: null, storySource: null, saveState: 'saved', noteSaveState: 'saved', alignSaveState: 'saved', checkSaveState: 'saved', storySaveState: 'saved', storySaveError: null, commitError: null, projectPins: null, projectPinsLoaded: false, projectPinsError: null, preflight: null, preflightError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, alignSuggest: { status: 'off', verses: 0, error: null }, pickerProgress: null, toolPos: {}, upgrade: UPGRADE_IDLE },
         });
         refreshProjects(); // re-order: the project just left goes to the top
         if (leaving && leavingStore) startLeaveCheckpoint({ store: leavingStore, repoPath: leaving.repoPath, stateRef, dispatch });

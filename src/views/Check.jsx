@@ -747,7 +747,7 @@ function CheckRail({ cs, label, filter, setFilter, sortMode, setSortMode, onSele
   const groups = railGroupsOf({ items: filtered, tool: cs.tool, sortMode, book: cs.book, label });
 
   return (
-    <aside data-testid="check-rail" style={{ width: 'var(--rail-width-wide)', flex: 'none', background: 'var(--surface-card)', borderInlineEnd: 'var(--stroke-hair) solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+    <aside data-testid="check-rail" data-resource={cs.resource?.repoPath} style={{ width: 'var(--rail-width-wide)', flex: 'none', background: 'var(--surface-card)', borderInlineEnd: 'var(--stroke-hair) solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <div style={{ padding: '14px 18px', borderBottom: 'var(--stroke-hair) solid var(--border-hair)', flex: 'none' }}>
         <Button variant="ghost" size="sm" onClick={actions.closeCheckTool} style={{ padding: 0, marginBottom: 8 }}>
           {t('check.back')}
