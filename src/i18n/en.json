@@ -180,6 +180,7 @@
   "importer.review.licenseNone": "No license was found. CC BY-SA 4.0 will be applied.",
   "importer.review.details": "Details",
   "importer.review.detailsText": "Language and name were read from the file. Change them below if they are wrong.",
+  "importer.review.detailsNoLang": "The language code is missing or not valid. Enter it below.",
   "importer.review.textOnly": "Only the text is imported. This Scripture Burrito was not made by translationCore 4, so it has no alignments and no checking decisions.",
   "importer.review.missing": "Missing verses",
   "importer.review.noneMissing": "Every verse is present.",

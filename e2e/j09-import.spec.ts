@@ -335,6 +335,41 @@ test.describe('J9 — a facilitator imports existing work', () => {
       });
     });
 
+    test('USFM with no language code: the Details check warns and names the language code; a file with one keeps it green (#437)', { tag: ['@inc8', '@J9'] }, async ({ page }, testInfo) => {
+      const details = page.getByTestId('import-check-details');
+      const read = async () => ({ status: await details.getAttribute('data-status'), text: (await details.textContent())?.trim() });
+      const seen: Record<string, unknown> = {};
+      await assertNoRepoCreated(async () => {
+        await test.step('57-TIT.usfm (\\id TIT ejemplo_tj): the field is empty, the Details check warns and says the language code is missing', async () => {
+          await importFixture(page, path.join(MANIFEST_DIR, 'usfm', '57-TIT.usfm'), { kind: 'usfm', confirm: false });
+          await expect(page.getByTestId('import-lang')).toHaveValue('');
+          await expect(details).toHaveAttribute('data-status', 'warn');
+          await expect(details).toContainText('The language code is missing or not valid. Enter it below.');
+          await expect(details).not.toContainText('were read from the file');
+          await expect(page.getByTestId('import-run')).toBeDisabled();
+          seen.usfmNoLanguage = await read();
+        });
+        await test.step('type es: the Details check turns green with the read-from-file text', async () => {
+          await page.getByTestId('import-lang').fill('es');
+          await expect(details).toHaveAttribute('data-status', 'valid');
+          await expect(details).toContainText('Language and name were read from the file. Change them below if they are wrong.');
+          seen.usfmTypedEs = await read();
+        });
+        await test.step('the sample Scripture Burrito carries es-419: the Details check is green with the read-from-file text', async () => {
+          await page.goto('/');
+          await importFixture(page, SAMPLE, { kind: 'burrito', confirm: false });
+          await expect(page.getByTestId('import-lang')).toHaveValue('es-419');
+          await expect(details).toHaveAttribute('data-status', 'valid');
+          await expect(details).toHaveText('DetailsLanguage and name were read from the file. Change them below if they are wrong.');
+          seen.burritoEs419 = await read();
+        });
+      });
+      // The run's artifact: the Details check as the page showed it, one entry per step.
+      const artifactPath = testInfo.outputPath('j09-details-check.json');
+      fs.writeFileSync(artifactPath, `${JSON.stringify(seen, null, 2)}\n`);
+      await testInfo.attach('j09-details-check.json', { path: artifactPath, contentType: 'application/json' });
+    });
+
     test('USFM refuse: a file with no \\id line is import.damaged.usfm-parse on the review page, and nothing is written', { tag: ['@inc8', '@J9'] }, async ({ page }) => {
       await assertNoRepoCreated(async () => {
         await importFixture(page, path.join(MANIFEST_DIR, 'usfm', 'no-id.sfm'), { kind: 'usfm', confirm: false });
