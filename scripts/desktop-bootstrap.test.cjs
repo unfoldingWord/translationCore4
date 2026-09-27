@@ -277,17 +277,17 @@ test('the packaged entry point is valid, ordered, and preserves its launch contr
   assert.doesNotThrow(() => new vm.Script(desktopMain));
 
   const linux = runDesktopMain();
-  assert.deepEqual(linux.events, ['lock', 'handle:export:pdf', 'on:second-instance', 'shouldBind:undefined', 'bind', 'upstream']);
+  assert.deepEqual(linux.events, ['lock', 'handle:export:pdf', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'bind', 'upstream']);
   const mac = runDesktopMain({ platform: 'darwin' });
-  assert.deepEqual(mac.events, ['lock', 'handle:export:pdf', 'on:second-instance', 'shouldBind:undefined', 'bind', 'bootstrap', 'upstream']);
+  assert.deepEqual(mac.events, ['lock', 'handle:export:pdf', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'bind', 'bootstrap', 'upstream']);
   const windows = runDesktopMain({ platform: 'win32' });
-  assert.deepEqual(windows.events, ['setAppUserModelId', 'lock', 'handle:export:pdf', 'on:second-instance', 'shouldBind:undefined', 'bind', 'bootstrap', 'upstream']);
+  assert.deepEqual(windows.events, ['setAppUserModelId', 'lock', 'handle:export:pdf', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'bind', 'bootstrap', 'upstream']);
   const external = runDesktopMain({ startServer: 'false' });
-  assert.deepEqual(external.events, ['lock', 'handle:export:pdf', 'on:second-instance', 'shouldBind:false', 'upstream']);
+  assert.deepEqual(external.events, ['lock', 'handle:export:pdf', 'on:browser-window-created', 'on:second-instance', 'shouldBind:false', 'upstream']);
   const second = runDesktopMain({ lock: false });
   assert.deepEqual(second.events, ['lock', 'quit']);
   const failed = runDesktopMain({ bindError: true });
-  assert.deepEqual(failed.events, ['lock', 'handle:export:pdf', 'on:second-instance', 'shouldBind:undefined', 'bind', 'errorBox', 'exit:1']);
+  assert.deepEqual(failed.events, ['lock', 'handle:export:pdf', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'bind', 'errorBox', 'exit:1']);
 
   linux.handlers['second-instance']();
   assert.deepEqual(linux.events.slice(-2), ['restore', 'focus']);
@@ -329,6 +329,64 @@ test('the PDF bridge prints the document in a hidden window and always removes t
   assert.match(recipe, /cp "\$REPO\/scripts\/preload\.cjs" "\$PACK\/electron\/preload\.js"/);
   assert.match(preload, /setCanClose: \(canClose\) => ipcRenderer\.send\('setCanClose', canClose\)/);
   assert.match(preload, /printPdf: \(html\) => ipcRenderer\.invoke\('export:pdf', html\)/);
+});
+
+// A fake session and download item (#382): the item finishes with the result
+// the case gives it; the page records what the main process sent it.
+function fakeDownload({ savePath, suggested, destroyed = false }) {
+  const sent = [];
+  const listeners = {};
+  const session = { on: (event, listener) => (listeners[event] = [...(listeners[event] || []), listener]) };
+  const page = { isDestroyed: () => destroyed, send: (channel, payload) => sent.push([channel, JSON.parse(JSON.stringify(payload))]) }; // IPC copies the payload
+  const start = (state) => {
+    let done;
+    const item = { once: (event, listener) => event === 'done' && (done = listener), getSavePath: () => savePath, getFilename: () => suggested };
+    for (const listener of listeners['will-download'] || []) listener({}, item, page);
+    done?.({}, state);
+  };
+  return { session, sent, listeners, start };
+}
+
+test('the download report sends each download\'s file name and result to the page that started it', () => {
+  const main = runDesktopMain();
+  const win = (session) => main.handlers['browser-window-created']({}, { webContents: { session } });
+
+  // Negative control: before any window exists, no session is watched.
+  const idle = fakeDownload({ savePath: '/home/pilot/TIT-2026-09-26.pdf', suggested: 'TIT-2026-09-26.pdf' });
+  idle.start('completed');
+  assert.deepEqual(idle.sent, []);
+
+  // The person saves under a new name: the report names the saved file.
+  win(idle.session);
+  win(idle.session); // the hidden PDF window shares the session: one listener, one report
+  assert.equal(idle.listeners['will-download'].length, 1);
+  idle.start('completed');
+  assert.deepEqual(idle.sent, [['download:done', { filename: 'TIT-2026-09-26.pdf', state: 'completed' }]]);
+
+  const renamed = fakeDownload({ savePath: '/home/pilot/Titus for review.pdf', suggested: 'TIT-2026-09-26.pdf' });
+  win(renamed.session);
+  renamed.start('completed');
+  assert.deepEqual(renamed.sent, [['download:done', { filename: 'Titus for review.pdf', state: 'completed' }]]);
+
+  // Cancelled and interrupted: no save path, so the suggested name.
+  for (const state of ['cancelled', 'interrupted']) {
+    const download = fakeDownload({ savePath: '', suggested: 'TIT-2026-09-26.usfm' });
+    win(download.session);
+    download.start(state);
+    assert.deepEqual(download.sent, [['download:done', { filename: 'TIT-2026-09-26.usfm', state }]]);
+  }
+
+  // A page that closed before the download finished receives nothing.
+  const closed = fakeDownload({ savePath: '', suggested: 'TIT.zip', destroyed: true });
+  win(closed.session);
+  closed.start('cancelled');
+  assert.deepEqual(closed.sent, []);
+
+  // The preload exposes the report as one listener, and no general IPC.
+  const preload = fs.readFileSync(path.join(__dirname, 'preload.cjs'), 'utf8');
+  assert.match(preload, /ipcRenderer\.on\('download:done', relay\)/);
+  assert.match(preload, /return \(\) => ipcRenderer\.removeListener\('download:done', relay\)/);
+  assert.doesNotMatch(preload, /ipcRenderer\.(on|send|invoke)\((?!'(download:done|setCanClose|export:pdf)')/);
 });
 
 test('external-server mode is the one explicit selector/profile escape hatch', () => {

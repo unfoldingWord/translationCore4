@@ -29,6 +29,25 @@ async function printPdf(_event, html) {
   }
 }
 
+// The download report (#382, D80): the page cannot see whether the person saved
+// a download or cancelled the save dialog, so the main process reports each
+// download's result to the page that started it, on `download:done` (exposed
+// by scripts/preload.cjs as `tc4Desktop.onDownloadDone`). The file name is the
+// one the person saved under, else the suggested one. Each session is watched
+// once: the hidden PDF window shares the main window's session.
+const watchedSessions = new WeakSet();
+function watchDownloads(session) {
+  if (watchedSessions.has(session)) return;
+  watchedSessions.add(session);
+  session.on('will-download', (_event, item, webContents) => {
+    item.once('done', (_done, state) => {
+      const savePath = item.getSavePath();
+      const filename = savePath ? path.basename(savePath) : item.getFilename();
+      if (!webContents.isDestroyed()) webContents.send('download:done', { filename, state });
+    });
+  });
+}
+
 function start() {
   if (process.platform === 'win32') app.setAppUserModelId('org.unfoldingword.translationcore4');
 
@@ -38,6 +57,7 @@ function start() {
   }
 
   ipcMain.handle('export:pdf', printPdf);
+  app.on('browser-window-created', (_event, win) => watchDownloads(win.webContents.session));
 
   app.on('second-instance', () => {
     const [win] = BrowserWindow.getAllWindows();

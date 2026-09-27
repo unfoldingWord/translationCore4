@@ -202,6 +202,14 @@ It prints in a hidden window with `printToPDF` and opens no print dialog. A brow
 bridge (issue #20).
 _Avoid_: print API, PDF service
 
+**Download report**:
+The one desktop-app channel that tells the page how a download ended: `download:done` from the
+`will-download` handler in `scripts/desktop-main.cjs`, exposed to the page as
+`tc4Desktop.onDownloadDone` by `scripts/preload.cjs`. It carries the file name and one result,
+`completed`, `cancelled` or `interrupted`. The export menu says "Saved" only after `completed`.
+A browser has no download report (issue #382).
+_Avoid_: download event, save callback
+
 **Relationships mirror**:
 The `relationships` array of an exported `metadata.json`: the pins of
 `checking/resources.json` as Scripture Burrito relationships, one row for each repository,
