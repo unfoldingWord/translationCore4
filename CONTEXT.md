@@ -233,8 +233,8 @@ the same.
 
 **Import bundle**:
 The one in-memory shape every import parser produces (`ImportBundle`): project facts, books or
-stories, alignments, decisions, pins, findings, or a Scripture Burrito archive to store as it is.
-The import shell turns it into a new project.
+stories, alignments, decisions, checking files, version requests, findings, or a Scripture
+Burrito archive to store as it is. The import shell turns it into a new project.
 _Avoid_: import result, payload
 
 **Import parser**:
@@ -248,6 +248,13 @@ with the primary language subtag, uploads one wrapped zip to the platform's rema
 journal of a bundle built from parts, commits, and deletes the project when a step fails. It
 returns the import Report.
 _Avoid_: import service, importer
+
+**Version request**:
+A resource version that an imported project names for one slot (`VersionRequest`; a tC3
+project's `manifest.json` `externalResources`). The review page looks up its sha: a version
+that DCS has becomes a full pin; else the user goes online or uses the installed versions. An
+import stores no pin without its sha (D82).
+_Avoid_: unresolved pin
 
 **Burrito check**:
 The checks that tell if a Scripture Burrito is valid for an import

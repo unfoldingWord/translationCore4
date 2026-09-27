@@ -7,12 +7,13 @@ import { primarySubtag, runImport } from '../src/data/import/shell';
 import { FAKE_PARSER } from '../src/data/import/parsers';
 import { BURRITO_PARSER } from '../src/data/import/burrito';
 import { USFM_PARSER } from '../src/data/import/usfm';
+import { TC3_PARSER } from '../src/data/import/tc3';
 import type { ImportFile } from '../src/data/import/types';
 import { ServerApi } from '../src/data/serverApi';
 import { JournalingStore, forgetProjectQueues } from '../src/data/journal/journalingStore';
 import { forgetSharedClocks } from '../src/data/journal/journalStore';
 import { journalingRig, memKv, tickingNow } from './helpers/journalingRig';
-import { assertNoRepoCreated, readManifest, runManifest, seedEventsOf } from './helpers/import';
+import { assertNoRepoCreated, readManifest, resolveTc3ForTests, runManifest, seedEventsOf } from './helpers/import';
 
 const usfm = (code: string, name: string) => ['\\id ' + code + ' fake', '\\usfm 3.0', `\\h ${name}`, '\\mt ' + name, '\\c 1', '\\p', '\\v 1 Uno.', '\\v 2 Dos.', ''].join('\n');
 const file = (name: string, text: string): ImportFile => ({ name, bytes: new TextEncoder().encode(text) });
@@ -90,10 +91,10 @@ describe('#361 runImport', () => {
       const project = rig.repos.get(repoPath)!;
       return rel === 'metadata.json' ? JSON.stringify(project.meta) : project.files.get(rel.slice('ingredients/'.length))!;
     };
-    const reports = await runManifest(readManifest(), { fake: FAKE_PARSER, burrito: BURRITO_PARSER, usfm: USFM_PARSER }, deps, read);
+    const reports = await runManifest(readManifest(), { fake: FAKE_PARSER, burrito: BURRITO_PARSER, usfm: USFM_PARSER, tc3: TC3_PARSER }, { ...deps, resolve: resolveTc3ForTests }, read);
     expect(reports.map((r) => r.ok)).toEqual(readManifest().map((e) => e.expect === 'accept'));
     // the runner's refuse branch, with an inline entry (#41 adds the damaged fixtures)
     const refused = await runManifest([{ file: '../../sample-burrito', parser: 'fake', expect: 'refuse', code: 'import.name-exists' }], { fake: FAKE_PARSER }, deps, read);
     expect(refused[0].code).toBe('import.name-exists');
-  });
+  }, 120_000); // the tC3 multi-zip entry seeds 6,900 decisions
 });
