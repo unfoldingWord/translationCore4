@@ -290,6 +290,8 @@ test.describe('J9 — a facilitator imports existing work', () => {
 
     test('tC3 name clash: a Bible name of a project on this computer is flagged on the review page and Import stays off; a stale review still writes nothing (#436)', { tag: ['@inc8', '@J9'] }, async ({ page }, testInfo) => {
       test.setTimeout(180_000);
+      await setNet(true); // a fresh rig can start offline: the versions must be found, so only the name holds Import
+      await page.reload();
       await recordedDcsTags(page);
       const existing = rigRepo(SEEDED_PROJECT);
       const before = { head: git(existing, 'rev-parse', 'HEAD'), files: tree(existing) };
