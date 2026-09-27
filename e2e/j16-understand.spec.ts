@@ -145,7 +145,14 @@ test.describe('J16 — read a passage with helps and record a user comment', () 
         .getByTestId('project-_local_/_local_/sample_burrito')
         .getByRole('button', { name: /Titus/ })
         .click();
-      await expect(page.getByText(/an apostle of Jesus Christ/).first()).toBeVisible({ timeout: 120_000 });
+      // #408: the tile resumes where this client last worked in Titus (#329):
+      // Translate or Understand, chapter 2, as the old page's hide save of the place
+      // did or did not reach the rig before Home read it (#421). Go to Titus 2 from
+      // either place.
+      const translate = page.getByRole('tab', { name: 'Translate', exact: true });
+      await expect(translate).toBeVisible({ timeout: 120_000 });
+      await translate.click();
+      await expect(page.getByRole('button', { name: '2', exact: true })).toBeVisible({ timeout: 120_000 });
       await page.getByRole('button', { name: '2', exact: true }).click();
       await page.getByRole('tab', { name: 'Understand', exact: true }).click();
       await expect(page.getByRole('heading', { name: 'Titus 2', exact: true })).toBeVisible();
