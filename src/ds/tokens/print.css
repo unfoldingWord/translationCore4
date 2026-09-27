@@ -105,3 +105,12 @@
   margin: 0;
 }
 .print-story-reference { font-style: italic; color: #626F78; }
+/* The wrapped layout (#11): the picture is a quarter of the page width at the
+   frame's start corner (PrintStories sets the float side) and the text wraps
+   it; frames flow, so several share a page. */
+.print-stories-wrapped .print-frame { display: flow-root; }
+.print-stories-wrapped .print-frame-picture {
+  width: 25%;
+  margin-block: 0 6px;
+  margin-inline: 0 12px;
+}
