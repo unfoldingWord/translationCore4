@@ -4,7 +4,7 @@
 // into the artifact as electron/tc4-main.js; it must run before the template's
 // electronStartup.js so the template's free-port scan cannot create a second
 // server over the same project store (D39).
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, safeStorage } = require('electron');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -48,6 +48,51 @@ function watchDownloads(session) {
   });
 }
 
+// The Door43 token in the operating-system keychain (#366, D85). The renderer's
+// "Stay signed in" hands the token — the token only — over `token:keep`
+// (exposed by scripts/preload.cjs as `tc4Desktop.keychain`); the next app
+// session reads it back over `token:read`, and Sign out or a refused token
+// clears it over `token:forget`. The bytes on disk are `safeStorage`'s
+// ciphertext, which the operating system's keychain (macOS Keychain, Windows
+// DPAPI, a Linux keyring) holds the key for; the file holds no clear text.
+// Where `safeStorage` reports no encryption (a Linux desktop with no keyring:
+// the basic_text backend is not turned on), nothing is written and the answer
+// says why, so the token stays in renderer memory for the session and the
+// app says so in one line (the conservative choice, D84 point 6).
+const TOKEN_FILE = 'door43-token';
+const tokenFile = () => path.join(app.getPath('userData'), TOKEN_FILE);
+const NO_KEYCHAIN = 'this computer has no keychain the app can use';
+
+function keepToken(_event, token) {
+  if (typeof token !== 'string' || !token) return { kept: false, reason: 'no token was given' };
+  if (!safeStorage.isEncryptionAvailable()) return { kept: false, reason: NO_KEYCHAIN };
+  const file = tokenFile();
+  const writing = `${file}.tc4-writing-${process.pid}`;
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(writing, safeStorage.encryptString(token), { mode: 0o600 });
+  fs.renameSync(writing, file);
+  return { kept: true };
+}
+
+function readToken() {
+  const file = tokenFile();
+  if (!fs.existsSync(file)) return { token: null };
+  if (!safeStorage.isEncryptionAvailable()) return { token: null, reason: NO_KEYCHAIN };
+  try {
+    return { token: safeStorage.decryptString(fs.readFileSync(file)) };
+  } catch (error) {
+    // Bytes this keychain cannot open (another account's, or damaged): they
+    // are no use to anyone, so they go.
+    fs.rmSync(file, { force: true });
+    return { token: null, reason: `the kept token could not be read: ${error.message}` };
+  }
+}
+
+function forgetToken() {
+  fs.rmSync(tokenFile(), { force: true });
+  return { forgotten: true };
+}
+
 function start() {
   if (process.platform === 'win32') app.setAppUserModelId('org.unfoldingword.translationcore4');
 
@@ -63,6 +108,9 @@ function start() {
   if (process.platform === 'linux') app.commandLine.appendSwitch('disable-dev-shm-usage');
 
   ipcMain.handle('export:pdf', printPdf);
+  ipcMain.handle('token:keep', keepToken);
+  ipcMain.handle('token:read', readToken);
+  ipcMain.handle('token:forget', forgetToken);
   app.on('browser-window-created', (_event, win) => {
     watchDownloads(win.webContents.session);
     // #362: "Open on Door43" is a link with target=_blank; it opens in the

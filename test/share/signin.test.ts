@@ -150,7 +150,7 @@ describe('#203 the token in memory only (test 6), and no record of the person (D
     const door43 = fake();
     const kept: unknown[] = [];
     let forgotten = 0;
-    const keychain = { keep: async (value: unknown) => { kept.push(value); }, forget: async () => { forgotten++; } };
+    const keychain = { keep: async (value: unknown) => { kept.push(value); }, read: async () => null, forget: async () => { forgotten++; } };
     const report = await signIn({ ...deps(door43), keychain }, request(USER.username, USER.password, true));
     expect(report.facts.kept).toBe(true);
     // The only keychain write is the token string: no username, no password.
@@ -164,7 +164,7 @@ describe('#203 the token in memory only (test 6), and no record of the person (D
 
   it('a keychain that refuses is not a failed sign-in: the token stays in memory, kept: false', async () => {
     const door43 = fake();
-    const keychain = { keep: async () => { throw new Error('no safeStorage'); }, forget: async () => {} };
+    const keychain = { keep: async () => { throw new Error('no safeStorage'); }, read: async () => null, forget: async () => {} };
     const report = await signIn({ ...deps(door43), keychain }, request(USER.username, USER.password, true));
     expect(report.ok).toBe(true);
     expect(report.facts.kept).toBe(false);

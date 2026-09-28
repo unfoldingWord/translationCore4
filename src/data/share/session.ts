@@ -13,9 +13,11 @@
 import { Refusal, failedReport, okReport, type Report } from '../journal/runtime';
 import { Door43ApiError, type Door43Api, type Door43Session } from './door43Api';
 
-/** The keychain seam (#366): keep the token between app sessions, or forget it. */
+/** The keychain seam (#366): keep the token between app sessions, read the
+ * kept one back (null when none), or forget it. */
 export interface TokenKeychain {
   keep(token: string): Promise<void>;
+  read(): Promise<string | null>;
   forget(): Promise<void>;
 }
 
@@ -31,10 +33,47 @@ export const signOut = async (keychain?: TokenKeychain): Promise<void> => {
 };
 
 /** A kept token found at start-up, with the username `GET /api/v1/user`
- * answered for it (#366 reads the keychain, asks Door43, and calls this). */
+ * answered for it (`resumeKeptSession` reads the keychain, asks Door43, and
+ * calls this). */
 export const resumeSession = (kept: Door43Session): void => {
   session = kept;
 };
+
+export interface ResumeDeps {
+  door43: Pick<Door43Api, 'user'>;
+  keychain: TokenKeychain;
+}
+
+/** What a resume found: `resumed` (the session is set), `none` (no kept
+ * token), `refused` (Door43 answered 401 or 403: the token is forgotten, and
+ * the next share asks the password again), `unavailable` (no answer: offline
+ * or a 5xx; the token stays kept, and the next share tries again). */
+export type ResumeOutcome = 'resumed' | 'none' | 'refused' | 'unavailable';
+
+/** Resume the session from a kept token (#366): read the keychain, ask Door43
+ * who the token is (`GET /api/v1/user`), and hold the session in memory. A
+ * signed-in session is left as it is. Never throws: a keychain that fails to
+ * read counts as no kept token. */
+export async function resumeKeptSession(deps: ResumeDeps): Promise<ResumeOutcome> {
+  if (session) return 'resumed';
+  let token: string | null;
+  try {
+    token = await deps.keychain.read();
+  } catch {
+    return 'none';
+  }
+  if (!token) return 'none';
+  try {
+    session = { username: await deps.door43.user(token), token };
+    return 'resumed';
+  } catch (error) {
+    if (error instanceof Door43ApiError && (error.status === 401 || error.status === 403)) {
+      await deps.keychain.forget().catch(() => {});
+      return 'refused';
+    }
+    return 'unavailable';
+  }
+}
 
 export interface SignInDeps {
   door43: Door43Api;
