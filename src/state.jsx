@@ -4756,10 +4756,11 @@ export function AppProvider({ children }) {
       //      src/data/share/shareOperation.ts; the dialog is ShareDialog.jsx. ----
       /** A card's shared state, read from the repository's own `origin`
        * (D84 point 1): the one record of a share. Read once per session per
-       * project; a share updates it. A failed read leaves the card on Share —
-       * the operation reads `origin` itself and never creates twice. */
-      loadShared: async (project) => {
-        if (project.id in stateRef.current.remoteByProject) return;
+       * project; a share updates it (`force` reads again). A failed read leaves
+       * the card on Share — the operation reads `origin` itself and never
+       * creates twice. Returns the shared state it read. */
+      loadShared: async (project, force = false) => {
+        if (!force && project.id in stateRef.current.remoteByProject) return stateRef.current.remoteByProject[project.id];
         let shared = null;
         try {
           const origin = (await api.listRemotes(project.id)).find((remote) => remote.name === 'origin');
@@ -4768,6 +4769,7 @@ export function AppProvider({ children }) {
           // unknown: the card offers Share
         }
         dispatch({ type: 'set', patch: { remoteByProject: { ...stateRef.current.remoteByProject, [project.id]: shared } } });
+        return shared;
       },
       /** Share, or Upload changes. No token: the sign-in step first, then back
        * here. A shared project (an `origin`) pushes with no dialog; a first
@@ -4779,7 +4781,11 @@ export function AppProvider({ children }) {
           a.openSignIn(project);
           return;
         }
-        if (stateRef.current.remoteByProject[project.id]) return a.shareRun(project);
+        // "Not shared" in the cache can be a read still running, a failed read,
+        // or a create whose push failed: read `origin` again before the
+        // first-share dialog, so a shared project never asks again (#362 AC 2, 7).
+        const shared = stateRef.current.remoteByProject[project.id] || (await a.loadShared(project, true));
+        if (shared) return a.shareRun(project);
         dispatch({
           type: 'set',
           patch: {
@@ -4835,6 +4841,10 @@ export function AppProvider({ children }) {
         }
         if (report.ok) {
           dispatch({ type: 'set', patch: { remoteByProject: { ...stateRef.current.remoteByProject, [project.id]: { repository: report.facts.repository, url: report.facts.url } } } });
+        } else {
+          // A refusal after the create (the push) leaves an `origin`: the card
+          // follows the remote, not the Report.
+          await a.loadShared(project, true);
         }
         const error = report.ok ? null : { code: report.code ?? null, message: report.facts.error };
         if (inDialog) {
