@@ -16,7 +16,6 @@
 // - Resource versions: `manifest.json` `externalResources`. A version is never
 //   stored without its sha (D58): the review step resolves each one (D82), and
 //   `applyVersions` writes the pins.
-import { unzipSync } from 'fflate';
 import { t } from '../../i18n';
 import { normalizeOccurrences, type WithOccurrences } from '../align/occurrences';
 import type { DecisionFile, ResourcePin, ResourcesFile } from '../burritoStore';
@@ -199,15 +198,39 @@ function versionRequests(manifest: Manifest, code: string, tools: Tool[]): Versi
   return out;
 }
 
-/** One zip → its book, or the finding that refuses it. */
-function readProject(file: ImportFile) {
-  let entries: Files;
+/** One zip's entries, each checked against the CRC-32 its headers carry, or
+ * the finding that refuses the zip. A tC3 zip has no other checksum, and
+ * fflate's `unzipSync` checks no CRC (#41), so this read uses zip.js, loaded
+ * on the first tC3 import so that the startup bundle does not carry it. */
+async function unzipChecked(file: ImportFile): Promise<{ entries: Files } | { finding: Finding }> {
+  const { Uint8ArrayReader, Uint8ArrayWriter, ZipReader } = await import('@zip.js/zip.js');
+  const options = { useWebWorkers: false, checkSignature: true };
+  let listed;
   try {
-    entries = unzipSync(file.bytes);
+    listed = await new ZipReader(new Uint8ArrayReader(file.bytes), options).getEntries();
   } catch {
     return { finding: damaged(t('importer.tc3.notZip', { file: file.name }), 'import.damaged.truncated') };
   }
-  const files = projectFiles(entries);
+  const entries: Files = {};
+  for (const entry of listed) {
+    if (entry.directory) {
+      entries[entry.filename] = new Uint8Array(0);
+      continue;
+    }
+    try {
+      entries[entry.filename] = await entry.getData(new Uint8ArrayWriter(), options);
+    } catch {
+      return { finding: damaged(t('importer.tc3.corruptEntry', { file: file.name, entry: entry.filename }), 'import.damaged.corrupt-entry') };
+    }
+  }
+  return { entries };
+}
+
+/** One zip → its book, or the finding that refuses it. */
+async function readProject(file: ImportFile) {
+  const unzipped = await unzipChecked(file);
+  if ('finding' in unzipped) return unzipped;
+  const files = projectFiles(unzipped.entries);
   if (!files) return { finding: damaged(t('importer.tc3.noManifest', { file: file.name }), 'import.damaged.no-manifest') };
   const manifest = json(files['manifest.json']) as Manifest;
   const book = manifest.project?.id?.toLowerCase() ?? '';
@@ -226,7 +249,7 @@ async function parse(files: ImportFile[]): Promise<ImportBundle> {
   const findings: Finding[] = [];
   const projects = [];
   for (const file of files) {
-    const project = readProject(file);
+    const project = await readProject(file);
     if ('finding' in project) findings.push(project.finding!);
     else projects.push(project);
   }
