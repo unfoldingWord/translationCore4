@@ -55,15 +55,22 @@ export const readInstalled = async (api: Pick<ServerApi, 'getClientSettings'>, s
   // install record (a rig without storage_id.json). A transport failure must
   // PROPAGATE — swallowing it made every recorded install read as absent,
   // presenting "your resources are not installed" for a settings blip.
-  try {
-    const settings = await api.getClientSettings(storageId);
-    const raw = settings[INSTALLED_KEY];
-    return raw && typeof raw === 'object' ? (raw as InstalledMap) : {};
-  } catch (error) {
-    if (isNotFoundError(error)) return {};
-    throw error;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const settings = await api.getClientSettings(storageId);
+      const raw = settings[INSTALLED_KEY];
+      return raw && typeof raw === 'object' ? (raw as InstalledMap) : {};
+    } catch (error) {
+      if (isNotFoundError(error)) return {};
+      // #412: the platform writes the document in place, and since #374 every
+      // store operation writes an ops-log record into it, so a read can meet
+      // half-written JSON. That read is torn, not failed: read again.
+      if (!(error instanceof SyntaxError) || attempt === TORN_READ_ATTEMPTS) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
   }
 };
+const TORN_READ_ATTEMPTS = 4;
 
 /** Record one install. Merges, so two downloads never lose each other. */
 export const recordInstalled = async (

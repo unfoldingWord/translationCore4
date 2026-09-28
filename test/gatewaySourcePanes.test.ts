@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { sourcePanesForGateway, applyGatewayChange, gatewaysCoveringProject } from '../src/data/gatewayChange';
 import { pinKey } from '../src/data/resolve';
-import { gatewayBiblesFromInstalled } from '../src/data/installed';
+import { gatewayBiblesFromInstalled, readInstalled } from '../src/data/installed';
 import { INSTALLED_SUITE, EN_HELPS } from '../src/data/installedSuite';
 import type { ResourcePin, ResourcesFile } from '../src/data/burritoStore';
 
@@ -113,5 +113,30 @@ describe('gatewaysCoveringProject (owner Q2)', () => {
     delete noTa['_local_/_sideloaded_/es-419_ta'];
     expect(keys(gatewaysCoveringProject(noTa as never, {}, [], 'bible'))).toEqual(['en::unfoldingWord']);
     expect(keys(gatewaysCoveringProject(installed, {}, [], 'bible'))).toEqual(['en::unfoldingWord', 'es-419::es-419_gl']);
+  });
+});
+
+describe('readInstalled: a torn read of the settings document (#412)', () => {
+  const records = { installedResources: { '_local_/_sideloaded_/es-419_glt': ES_GLT } };
+  const reader = (failures: unknown[]) => {
+    let calls = 0;
+    return {
+      calls: () => calls,
+      api: { getClientSettings: async () => { calls += 1; const f = failures.shift(); if (f) throw f; return records; } },
+    };
+  };
+
+  it('reads again when the document is half written', async () => {
+    const r = reader([new SyntaxError("Expected property name or '}' in JSON at position 28692")]);
+    expect(await readInstalled(r.api as never, 'uw-tc4')).toEqual(records.installedResources);
+    expect(r.calls()).toBe(2);
+  });
+
+  it('a read that stays torn, or any other failure, still propagates', async () => {
+    const torn = () => new SyntaxError('Unexpected end of JSON input');
+    await expect(readInstalled(reader([torn(), torn(), torn(), torn()]).api as never, 'uw-tc4')).rejects.toThrow(SyntaxError);
+    const outage = reader([new Error('connection refused')]);
+    await expect(readInstalled(outage.api as never, 'uw-tc4')).rejects.toThrow('connection refused');
+    expect(outage.calls()).toBe(1);
   });
 });
