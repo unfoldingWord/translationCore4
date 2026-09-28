@@ -16,6 +16,7 @@ import GatewayChange from './views/modals/GatewayChange.jsx';
 import UpgradeSet from './views/modals/UpgradeSet.jsx';
 import Inspector from './views/dev/Inspector.jsx';
 import GuidedFix from './views/modals/GuidedFix.jsx';
+import ShareSignIn from './views/modals/ShareSignIn.jsx';
 import CommunityChecking from './views/CommunityChecking.jsx';
 import Understand from './views/Understand.jsx';
 import OpenProgress from './views/OpenProgress.jsx';
@@ -154,6 +155,7 @@ export default function App() {
       <GatewayChange />
       <UpgradeSet />
       <GuidedFix />
+      <ShareSignIn />
       <OpenProgress />
       <Inspector />
     </div>

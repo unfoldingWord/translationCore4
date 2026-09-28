@@ -54,6 +54,8 @@ import { checkpointMessage } from './data/checkpoint';
 import { runExport } from './data/export/kernel';
 import { runImport } from './data/import/shell';
 import { OpsLog, serialSettingsWriter } from './data/journal/opsLog';
+import { Door43Api } from './data/share/door43Api';
+import { identityOf, signIn as door43SignIn, signOut as door43SignOut, writeIdentity } from './data/share/session';
 import { applyVersions, carryOverNeeds, resolveVersions, unresolvedSlots } from './data/import/tc3';
 import { PARSERS } from './data/import/parsers';
 import { INSTALLED_SUITE, SUITE_VERSION } from './data/installedSuite';
@@ -93,6 +95,11 @@ const settingsWriter = serialSettingsWriter(
 );
 /** #374: the ops log — one record per store operation, in the same document. */
 export const opsLog = new OpsLog({ read: () => api.getClientSettings(STORAGE_ID), update: settingsWriter });
+/** #362/#203: the one Door43 adapter; its server is the build's `dcsServer`. */
+export const door43 = new Door43Api();
+// #203: after a Sign out in this app session the next sign-in step needs no
+// "your sign-in lasted one session" line; a fresh app session does.
+let door43SignedOutThisSession = false;
 // The mode a view is, for a checkpoint message (#183). Views not listed keep their id.
 const MODE_NAME = { read: 'Understand', draft: 'Translate', check: 'Check', publish: 'Community Checking' };
 // A leave-project checkpoint still running after its store was torn down
@@ -340,11 +347,16 @@ const initial = () => ({
   commitErrorRepo: null,
   // Modals (the owner's design: creation, add-book, and settings are dialogs
   // over Home, not separate pages)
-  modal: null, // null | 'addProject' | 'newProject' | 'newObs' | 'addBook' | 'settings' | 'sources' | 'fix' | 'import'
+  modal: null, // null | 'addProject' | 'newProject' | 'newObs' | 'addBook' | 'settings' | 'sources' | 'fix' | 'import' | 'signIn'
   np: null, // New Bible form
   ab: null, // Add-a-book form
   st: null, // Project-settings form
   im: null, // Import form (#361): { step, kind, files, bundle, name, lang, license (null = not chosen yet), versions (tC3, #21), busy, error, report }
+  // #203: the Door43 sign-in step — { login, password, stay, name, email, identity (the stored
+  // record or null), changing, reason ('session' when a password is asked again), server (host),
+  // busy, error: { code, message } | null }. The token never enters this state (session.ts).
+  si: null,
+  door43User: null, // the signed-in Door43 login shown in the Home bar, or null
   importToast: null, // { name, books } of the project an import just made
   importedRepo: null, // its repoPath: the Home card carries the "Imported" badge
   // #9: the guided fix screen for a pinned resource this machine lacks —
@@ -4674,6 +4686,84 @@ export function AppProvider({ children }) {
       //      Bible Stories or Import in its place. Every close resets it, so a
       //      reopen always starts on the three cards. ----
       openAddProject: () => dispatch({ type: 'set', patch: { modal: 'addProject', np: null, im: null } }),
+
+      // ---- Door43 sign-in step (#203; D79 point 13, D84 points 2, 6, 7). The
+      //      token lives in session.ts, never here. The identity for git (D7)
+      //      is read from the installation record when the step opens: absent,
+      //      the step asks for it; present, it shows it with a Change link. ----
+      openSignIn: async ({ reason = null } = {}) => {
+        let identity = null;
+        let error = null;
+        try {
+          identity = identityOf(await api.getClientSettings(STORAGE_ID));
+        } catch (readError) {
+          // A confirmed-absent document is a fresh installation; any other
+          // failure is said in the step (D30), and the identity is asked again.
+          if (!isNotFoundError(readError)) error = { code: null, message: String(readError?.message || readError) };
+        }
+        dispatch({
+          type: 'set',
+          patch: {
+            modal: 'signIn',
+            si: {
+              login: identity?.login || '',
+              password: '',
+              stay: false,
+              name: identity?.name || '',
+              email: identity?.email || '',
+              identity,
+              changing: false,
+              // The one-line reason a password is asked again: the token lasted
+              // one app session (a sign-out in this session needs no reason).
+              reason: reason ?? (identity && !door43SignedOutThisSession ? 'session' : null),
+              server: new URL(door43.server).host,
+              busy: false,
+              error,
+            },
+          },
+        });
+      },
+      patchSi: (patch) => dispatch({ type: 'set', patch: { si: { ...stateRef.current.si, ...patch } } }),
+      changeIdentity: () => a.patchSi({ changing: true }),
+      /** Sign in; resolves the Report (`op: 'share'`), or null when the form is
+       * incomplete. Nothing is stored on a refusal. #362's Share flow chains on it. */
+      submitSignIn: async () => {
+        const si = stateRef.current.si;
+        if (!si || si.busy) return null;
+        const asksIdentity = !si.identity || si.changing;
+        const name = asksIdentity ? si.name.trim() : si.identity.name;
+        const email = asksIdentity ? si.email.trim() : si.identity.email;
+        if (!name || !email) {
+          a.patchSi({ error: { code: null, message: t('signIn.identityRequired') } });
+          return null;
+        }
+        const login = si.login.trim();
+        a.patchSi({ busy: true, error: null });
+        const report = await door43SignIn(
+          { door43, getNetEnabled: () => api.getNetEnabled() },
+          { login, password: si.password, stay: si.stay },
+        );
+        if (!report.ok) {
+          a.patchSi({ busy: false, password: '', error: { code: report.code ?? null, message: report.facts.error } });
+          return report;
+        }
+        try {
+          await writeIdentity(settingsWriter, { name, email, login });
+        } catch (writeError) {
+          // Signed in, but the installation record did not take the identity:
+          // the step stays open and says so; Sign in again retries the write.
+          dispatch({ type: 'set', patch: { door43User: report.facts.username } });
+          a.patchSi({ busy: false, error: { code: null, message: String(writeError?.message || writeError) } });
+          return report;
+        }
+        dispatch({ type: 'set', patch: { door43User: report.facts.username, modal: null, si: null } });
+        return report;
+      },
+      signOut: async () => {
+        await door43SignOut();
+        door43SignedOutThisSession = true;
+        dispatch({ type: 'set', patch: { door43User: null } });
+      },
 
       // ---- New Bible modal (design: creation collects the project facts;
       //      books are added in the SEPARATE Add-a-book dialog) ----

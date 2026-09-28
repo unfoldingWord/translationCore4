@@ -152,6 +152,17 @@ describe('#362 one Door43 adapter', () => {
     expect(offenders, `a Door43 host named under src/data/share/:\n${offenders.join('\n')}`).toEqual([]);
   });
 
+  // #203 test 9: the sign-in code (the session module and the sign-in step)
+  // names no Door43 host either; the step shows the adapter's own server.
+  it('the sign-in module and the sign-in step exist, and neither names a Door43 host', () => {
+    const signIn = ['src/data/share/session.ts', 'src/views/modals/ShareSignIn.jsx'];
+    for (const name of signIn) {
+      const file = files.find((f) => rel(f) === name);
+      expect(file, `${name} is missing`).toBeDefined();
+      expect(DOOR43_HOST.test(read(file!)), `${name} names a Door43 host`).toBe(false);
+    }
+  });
+
   it('the rules fire on the shapes they guard (the test is not vacuous)', () => {
     expect(DOOR43_HOST.test("fetch('https://git.door43.org/api/v1/user/repos')")).toBe(true);
     expect(DOOR43_HOST.test('https://qa.door43.org')).toBe(true);

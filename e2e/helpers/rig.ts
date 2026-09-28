@@ -348,6 +348,23 @@ export function resetPlaces(): void {
   fs.writeFileSync(RIG_CLIENT_SETTINGS, JSON.stringify(doc));
 }
 
+/** The identity for git that #203 stores once per installation (`shareIdentity`
+ * in the client settings), or null when the installation has none. */
+export function readShareIdentity(): { name: string; email: string; login: string } | null {
+  if (!fs.existsSync(RIG_CLIENT_SETTINGS)) return null;
+  const doc = readClientSettings() as { shareIdentity?: { name: string; email: string; login: string } };
+  return doc.shareIdentity ?? null;
+}
+
+/** Make the rig a fresh installation for #203: no identity stored. */
+export function resetShareIdentity(): void {
+  if (!fs.existsSync(RIG_CLIENT_SETTINGS)) return;
+  const doc = readClientSettings();
+  if (!('shareIdentity' in doc)) return;
+  delete doc.shareIdentity;
+  fs.writeFileSync(RIG_CLIENT_SETTINGS, JSON.stringify(doc));
+}
+
 export function resetSeededChecking(): void {
   const source = path.join(TC4_ROOT, 'conformance', 'sample-burrito', 'ingredients');
   const target = path.join(rigRepo(SEEDED_PROJECT), 'ingredients');

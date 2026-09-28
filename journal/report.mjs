@@ -63,6 +63,7 @@ export const REFUSAL_CODES = Object.freeze({
   'share.create-rejected': null,
   'share.non-fast-forward': null,
   'share.push-failed': null,
+  'share.server-unavailable': null, // Door43 answered the sign-in with a 5xx (#203)
 });
 
 export const isRefusalCode = (code) => typeof code === 'string' && Object.hasOwn(REFUSAL_CODES, code);

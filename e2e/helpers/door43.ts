@@ -22,12 +22,17 @@ export interface FakeOrganization {
 export interface FakeDoor43Options {
   /** The server the app is built for (`DCS_SERVER`); calls to any other host are refused. */
   server: string;
-  user: { username: string; password: string };
+  /** `email` lets a sign-in use the email as the login (#203). */
+  user: { username: string; password: string; email?: string };
+  /** Every request answers 503 (the sign-in's server-unavailable leg, #203). */
+  outage?: boolean;
   organizations?: FakeOrganization[];
   /** `<owner>/<name>` that exist already. */
   existingRepositories?: string[];
   /** Tokens that are valid from the start (a session that skipped sign-in). */
   tokens?: string[];
+  /** Token names the account holds already (the qa risk of #203: a stale `translationCore`). */
+  existingTokens?: string[];
   cloneUrlFor?: (fullName: string) => string;
 }
 
@@ -44,6 +49,15 @@ interface Answer {
   body?: unknown;
 }
 
+/** The UTF-8 text behind a Basic credential, or null when it is not base64. */
+const decodeBasic = (credentials: string): string | null => {
+  try {
+    return new TextDecoder().decode(Uint8Array.from(atob(credentials), (c) => c.charCodeAt(0)));
+  } catch {
+    return null;
+  }
+};
+
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS, PATCH, DELETE',
@@ -57,6 +71,8 @@ export class FakeDoor43 {
   readonly repositories = new Map<string, string>();
   /** Token name → secret, for the token routes of #203. */
   readonly tokens = new Map<string, string>();
+  /** The account's tokens as Door43 lists them: by id, the secret never listed. */
+  readonly tokenRows: Array<{ id: number; name: string; secret: string; scopes: string[] }> = [];
   private readonly valid = new Set<string>();
   private readonly options: FakeDoor43Options;
   private nextToken = 1;
@@ -66,6 +82,11 @@ export class FakeDoor43 {
     for (const name of options.existingRepositories ?? [])
       this.repositories.set(name, this.cloneUrl(name));
     for (const token of options.tokens ?? []) this.valid.add(token);
+    for (const name of options.existingTokens ?? []) {
+      const secret = `stale-token-${this.nextToken++}`;
+      this.tokenRows.push({ id: this.nextToken, name, secret, scopes: [] });
+      this.tokens.set(name, secret);
+    }
   }
 
   private cloneUrl(fullName: string): string {
@@ -98,25 +119,40 @@ export class FakeDoor43 {
       },
     };
     const authorization = call.headers.authorization ?? call.headers.Authorization ?? '';
+    if (this.options.outage) return { status: 503, body: { message: 'service unavailable' } };
 
-    // The token routes take Basic auth (#203); everything else the token.
-    const tokens = route.match(/^\/users\/([^/]+)\/tokens$/);
+    // The sign-in routes (#203) take Basic auth, with the username or the
+    // email as the login; everything else the token.
+    const [scheme, credentials] = authorization.split(' ');
+    const { username, email, password } = this.options.user;
+    // Basic credentials are base64 over the UTF-8 bytes, as Gitea decodes them.
+    const decoded = scheme === 'Basic' ? decodeBasic(credentials ?? '') : null;
+    const basicOk = [username, email].some((login) => login && decoded === `${login}:${password}`);
+    if (route === '/user' && call.method === 'GET' && scheme === 'Basic') {
+      if (!basicOk) return unauthorized;
+      return { status: 200, body: { id: 1, login: username, username, email: email ?? '' } };
+    }
+    const tokens = route.match(/^\/users\/([^/]+)\/tokens(?:\/(\d+))?$/);
     if (tokens) {
-      const [scheme, credentials] = authorization.split(' ');
-      const expected = btoa(`${this.options.user.username}:${this.options.user.password}`);
-      if (
-        scheme !== 'Basic' ||
-        credentials !== expected ||
-        tokens[1] !== this.options.user.username
-      )
-        return unauthorized;
+      if (!basicOk || tokens[1] !== username) return unauthorized;
+      if (tokens[2]) {
+        if (call.method !== 'DELETE') return { status: 404, body: { message: 'not found' } };
+        const id = Number(tokens[2]);
+        const held = this.tokenRows.find((row) => row.id === id);
+        if (!held) return { status: 404, body: { message: 'token not found' } };
+        this.tokenRows.splice(this.tokenRows.indexOf(held), 1);
+        this.tokens.delete(held.name);
+        this.valid.delete(held.secret);
+        return { status: 204 };
+      }
       if (call.method === 'GET') {
         return {
           status: 200,
-          body: [...this.tokens.keys()].map((name, id) => ({
-            id: id + 1,
-            name,
-            token_last_eight: this.tokens.get(name)!.slice(-8),
+          body: this.tokenRows.map((row) => ({
+            id: row.id,
+            name: row.name,
+            token_last_eight: row.secret.slice(-8),
+            scopes: row.scopes,
           })),
         };
       }
@@ -125,11 +161,13 @@ export class FakeDoor43 {
       if (this.tokens.has(body.name))
         return { status: 400, body: { message: `access token name has been used already` } };
       const secret = `fake-token-${this.nextToken++}`;
+      const row = { id: this.nextToken, name: body.name, secret, scopes: body.scopes ?? [] };
+      this.tokenRows.push(row);
       this.tokens.set(body.name, secret);
       this.valid.add(secret);
       return {
         status: 201,
-        body: { id: this.tokens.size, name: body.name, sha1: secret, scopes: body.scopes ?? [] },
+        body: { id: row.id, name: row.name, sha1: secret, scopes: row.scopes },
       };
     }
 
