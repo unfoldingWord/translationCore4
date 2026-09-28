@@ -71,6 +71,17 @@ export default [
     files: ['src/data/**/*.ts', 'test/**/*.{ts,tsx}'],
   })),
 
+  // The complexity bar (#457, decided in #149): 15 per function, enforced here
+  // so lint, verify and CI all see it. Existing violations are recorded in
+  // eslint-suppressions.json; fixing one requires pruning it, so the count only
+  // goes down. src/ds/ is the vendored design system, synced from the design
+  // master and not written here (src/ds/README.md): excluded from the rule.
+  {
+    files: ['src/**/*.{js,jsx,ts,tsx}'],
+    ignores: ['src/ds/**'],
+    rules: { complexity: ['error', { max: 15 }] },
+  },
+
   // Prettier last: disables stylistic rules that would fight the formatter.
   prettier,
 ];

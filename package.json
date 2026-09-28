@@ -38,7 +38,7 @@
     "wordmap-lexer": "0.3.6"
   },
   "lint-staged": {
-    "src/**/*.{js,jsx,ts,tsx}": "eslint --config eslint.complexity.config.js"
+    "src/**/*.{js,jsx,ts,tsx}": "eslint"
   },
   "devDependencies": {
     "@eslint/js": "9.39.4",
