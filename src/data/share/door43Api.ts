@@ -242,7 +242,13 @@ export class Door43Api {
     const user = (await (await this.request('/user', null, basic)).json()) as { login?: unknown };
     if (typeof user.login !== 'string' || !user.login)
       throw new Door43ApiError('/user', 200, 'the answer carries no login');
-    assertName(user.login, 'username');
+    // Door43 answered, so a login that fails the name rule is its answer (200),
+    // not an unreachable server (status 0).
+    try {
+      assertName(user.login, 'username');
+    } catch (error) {
+      throw new Door43ApiError('/user', 200, (error as Error).message);
+    }
     const tokensRoute = `/users/${encodeURIComponent(user.login)}/tokens`;
     const tokens = (await (await this.request(`${tokensRoute}?limit=50`, null, basic)).json()) as Array<{
       id: number;

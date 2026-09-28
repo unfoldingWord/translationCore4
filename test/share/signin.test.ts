@@ -219,7 +219,40 @@ describe('#203 the token call', () => {
     };
     const report = await signIn({ door43: new Door43Api({ server: SERVER, fetchFn }), getNetEnabled: async () => true }, request());
     expect(report.ok).toBe(false);
-    expect(report.code).toBe('share.auth-failed');
+    expect(report.code).toBe('share.sign-in-rejected');
+    expect(currentSession()).toBeNull();
+  });
+
+  // Only 401 and 403 are about the password; any other answer keeps Door43's words.
+  const rejected: Array<[string, number, string]> = [
+    ['a used token name (400)', 400, 'access token name has been used already'],
+    ['a rate limit (429)', 429, 'too many requests'],
+  ];
+  for (const [name, status, message] of rejected) {
+    it(`${name} at the token create → share.sign-in-rejected, not share.auth-failed`, async () => {
+      const door43 = fake();
+      const store = stores();
+      const fetchFn: typeof fetch = async (input, init) => {
+        if (init?.method === 'POST') return new Response(JSON.stringify({ message }), { status, headers: { 'Content-Type': 'application/json' } });
+        return door43.fetchFn(input, init);
+      };
+      const report = await signIn({ door43: new Door43Api({ server: SERVER, fetchFn }), getNetEnabled: async () => true }, request());
+      expect(reportError(report)).toBeNull();
+      expect(report.code).toBe('share.sign-in-rejected');
+      expect(JSON.stringify(report)).toContain(message);
+      expect(currentSession()).toBeNull();
+      expect(store.writes).toEqual([]);
+    });
+  }
+
+  it('a /user login that fails the name rule is Door43 answering, not share.offline', async () => {
+    const door43 = fake();
+    const fetchFn: typeof fetch = async (input, init) => {
+      if (String(input).endsWith('/api/v1/user')) return new Response(JSON.stringify({ login: '-bad-' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return door43.fetchFn(input, init);
+    };
+    const report = await signIn({ door43: new Door43Api({ server: SERVER, fetchFn }), getNetEnabled: async () => true }, request());
+    expect(report.code).toBe('share.sign-in-rejected');
     expect(currentSession()).toBeNull();
   });
 });
