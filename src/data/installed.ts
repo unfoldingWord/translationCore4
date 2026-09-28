@@ -50,7 +50,7 @@ export const flavorOfMetadata = (meta: unknown): string => {
   return `${ft.name}/${ft.flavor.name}`;
 };
 
-export const readInstalled = async (api: ServerApi, storageId: string): Promise<InstalledMap> => {
+export const readInstalled = async (api: Pick<ServerApi, 'getClientSettings'>, storageId: string): Promise<InstalledMap> => {
   // Catch-to-absence sweep (D30): {} means the machine CONFIRMS it has no
   // install record (a rig without storage_id.json). A transport failure must
   // PROPAGATE — swallowing it made every recorded install read as absent,

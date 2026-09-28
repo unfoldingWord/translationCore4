@@ -91,6 +91,9 @@ const settingsWriter = serialSettingsWriter(
   () => api.getClientSettings(STORAGE_ID),
   (doc) => api.setClientSettings(STORAGE_ID, doc),
 );
+/** The install records, read in order with the settings writes (#412): an
+ * ops-log write per store operation made a parallel read meet half-written JSON. */
+const settingsDoc = { getClientSettings: () => settingsWriter.read() };
 /** #374: the ops log — one record per store operation, in the same document. */
 export const opsLog = new OpsLog({ read: () => api.getClientSettings(STORAGE_ID), update: settingsWriter });
 // The mode a view is, for a checkpoint message (#183). Views not listed keep their id.
@@ -4557,7 +4560,7 @@ export function AppProvider({ children }) {
           resolutionError = resolutionError ?? String(error?.message || error);
         };
         const [recorded, summaries] = await Promise.all([
-          readInstalled(api, STORAGE_ID).catch((error) => {
+          readInstalled(settingsDoc, STORAGE_ID).catch((error) => {
             noteFailure(error);
             return {};
           }),
@@ -4768,7 +4771,7 @@ export function AppProvider({ children }) {
       /** The pins a new project gets: the installed suite, with this machine's
        * versions preferred and their coverage recorded (as createProject does). */
       importBasePins: async () => {
-        const pins = pinsPreferringInstalled(INSTALLED_SUITE, await readInstalled(api, STORAGE_ID));
+        const pins = pinsPreferringInstalled(INSTALLED_SUITE, await readInstalled(settingsDoc, STORAGE_ID));
         const { coverage } = await a.resolutionContext();
         return backfillCoverage(pins, coverage).resources;
       },
@@ -4853,7 +4856,7 @@ export function AppProvider({ children }) {
           // platform does not record (D28 addendum).
           const freshPins = pinsPreferringInstalled(
             INSTALLED_SUITE,
-            await readInstalled(api, STORAGE_ID),
+            await readInstalled(settingsDoc, STORAGE_ID),
           );
           const { coverage: pinCoverage } = await a.resolutionContext();
           await store.writeResources(backfillCoverage(freshPins, pinCoverage).resources, null);
@@ -4925,7 +4928,7 @@ export function AppProvider({ children }) {
           // yet" from the first session onward.
           const freshPins = pinsPreferringInstalled(
             INSTALLED_SUITE,
-            await readInstalled(api, STORAGE_ID),
+            await readInstalled(settingsDoc, STORAGE_ID),
           );
           const { coverage: pinCoverage } = await a.resolutionContext();
           await store.writeResources(backfillCoverage(freshPins, pinCoverage).resources, null);
@@ -5045,6 +5048,7 @@ export function AppProvider({ children }) {
               error: null,
               gw: { loading: true, pins: null, options: [], error: null },
             },
+            gatewayError: null,
           },
         });
         try {

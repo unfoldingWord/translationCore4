@@ -204,6 +204,29 @@ describe('#374 the one settings writer', () => {
     expect(opsEntriesOf(settings.get())).toHaveLength(1);
   });
 
+  it('#412: a read waits for the writes queued before it, so it never meets a half-written document', async () => {
+    // The platform writes the document in place: a read during a write sees a torn file.
+    let writing = false;
+    let doc: Record<string, unknown> = {};
+    const read = async () => {
+      if (writing) throw new SyntaxError('Expected property name or \'}\' in JSON');
+      return doc;
+    };
+    const write = async (next: Record<string, unknown>) => {
+      writing = true;
+      await tick();
+      doc = next;
+      writing = false;
+    };
+    const writer = serialSettingsWriter(read, write);
+    const written = writer((d) => ({ ...d, lastUsed: { x: 1 } }));
+    await tick(); // the write is in progress
+    await expect(read()).rejects.toThrow(SyntaxError); // the negative control: a parallel read tears
+    const inOrder = writer.read();
+    await written;
+    await expect(inOrder).resolves.toEqual({ lastUsed: { x: 1 } });
+  });
+
   it('a failed ops write is reported, never dropped', async () => {
     const settings = settingsDoc();
     const ops = appStart(settings);

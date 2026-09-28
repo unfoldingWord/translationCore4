@@ -25,7 +25,7 @@ if (!work) {
   process.exit(2);
 }
 
-const ES_419 = ['es-419_tn', 'es-419_tw', 'es-419_ta', 'es-419_glt', 'es-419_gst', 'es-419_obs', 'es-419_obs-tn', 'es-419_obs-twl', 'es-419_obs-tq'];
+const ES_419 = ['es-419_tn', 'es-419_tw', 'es-419_ta', 'es-419_glt', 'es-419_gst', 'es-419_obs', 'es-419_obs-tn', 'es-419_obs-twl'];
 const ORG = Object.fromEntries(ES_419.map((name) => [name, 'es-419_gl']));
 const VERSIONS = {
   en_ult: 'v89',
@@ -45,7 +45,6 @@ const VERSIONS = {
   'es-419_obs': 'v2',
   'es-419_obs-tn': 'v2',
   'es-419_obs-twl': 'v2',
-  'es-419_obs-tq': 'v2',
 };
 
 const installed = {};

@@ -38,7 +38,7 @@ export type SettingsWriter = (mutate: (doc: SettingsDoc) => SettingsDoc) => Prom
 export function serialSettingsWriter(
   read: () => Promise<SettingsDoc>,
   write: (doc: SettingsDoc) => Promise<void>,
-): SettingsWriter & { idle(): Promise<unknown> } {
+): SettingsWriter & { idle(): Promise<unknown>; read(): Promise<SettingsDoc> } {
   let chain: Promise<unknown> = Promise.resolve();
   const update: SettingsWriter = (mutate) => {
     const run = chain.then(async () => {
@@ -48,8 +48,16 @@ export function serialSettingsWriter(
     chain = run.catch(() => {});
     return run;
   };
+  /** A read in the same order as the writes (#412): the platform writes the
+   * document in place, so a read that overlaps a write can meet a half-written
+   * file and fail to parse. */
+  const readInOrder = (): Promise<SettingsDoc> => {
+    const run = chain.then(read);
+    chain = run.catch(() => {});
+    return run;
+  };
   /** Settles when every write queued so far has settled. */
-  return Object.assign(update, { idle: () => chain });
+  return Object.assign(update, { idle: () => chain, read: readInOrder });
 }
 
 export const opsEntriesOf = (doc: SettingsDoc | null | undefined): OpsEntry[] =>
