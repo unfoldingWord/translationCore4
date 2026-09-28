@@ -287,7 +287,7 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 - Actor: translator. Activity: Check (Community Checking preview lives here — D63).
 - Precondition: J21; `obs-tn` and `obs-twl` are installed for the gateway language.
 - Steps: open a frame's note or word link · see the source phrase in the gateway text · select
-  the target words · leave a check comment or a bookmark · preview the story.
+  the target words · leave a check comment or a bookmark · preview the drafted stories (#454).
 - End state (defined 2026-09-15, D74): §5.2 decision records under the `story:frame` key for
   `translationNotes` and `translationWords`; a later frame edit flags them invalid and
   retains them (D36); the story file is byte-identical.

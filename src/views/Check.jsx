@@ -1143,8 +1143,9 @@ function PickerGrid({ s, pre, story, unitLabel, pickerTitleOf }) {
           * yet, so the bar stays empty and the next line names the read. */}
         <div style={{ marginBottom: 16 }}>
           <ProgressBar tone="valid" value={0} height={6} style={{ marginBottom: 9 }} />
-          <p style={{ ...cardCaption, fontWeight: 'var(--fw-bold)', color: 'var(--text-secondary)' }}>{t(story ? 'cc.wholeStory' : 'cc.wholeChapter')}</p>
-          <p style={{ ...cardCaption, color: 'var(--text-tertiary)' }}>{t('cc.nextRead', { ref: readRef })}</p>
+          {/* #454: an OBS preview holds every drafted story, not the open one. */}
+          <p style={{ ...cardCaption, fontWeight: 'var(--fw-bold)', color: 'var(--text-secondary)' }}>{t(story ? 'cc.allDraftedStories' : 'cc.wholeChapter')}</p>
+          <p style={{ ...cardCaption, color: 'var(--text-tertiary)' }}>{story ? t('cc.nextReadStories') : t('cc.nextRead', { ref: readRef })}</p>
         </div>
         <span data-testid="open-community-checking" style={{ ...CTA_STYLE, alignSelf: 'flex-start' }}>
           {t('cc.open')}

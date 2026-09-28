@@ -10,11 +10,15 @@ import { indexBook } from '../src/data/usfm/indexer';
 import { DEFAULT_PAGE_SETUP } from '../src/data/export/pageSetup';
 import type { ExportProducer } from '../src/data/export/kernel';
 import { assertProjectUnchanged } from './helpers/export';
+import { printedStories } from '../src/data/storyModel';
+import type { Story } from '../src/data/burritoStore';
 
 const go = vi.fn();
 const unexpectedAction = vi.fn();
 // Set by the #381 cases: the export action they route to the real kernel.
 let exportFile: ((...args: never[]) => unknown) | null = null;
+// #454: the OBS preview reads the printed stories through this action.
+let readPrintStories: () => Promise<unknown> = async () => printed([STORY]);
 const fs = process.getBuiltinModule('node:fs');
 const os = process.getBuiltinModule('node:os');
 const path = process.getBuiltinModule('node:path');
@@ -75,7 +79,10 @@ vi.mock('../src/state.jsx', () => ({
     book: bookModel,
     sourceModel: null,
     actions: new Proxy({}, {
-      get: (_, name) => (name === 'go' ? go : name === 'exportFile' && exportFile ? exportFile : (...args: unknown[]) => unexpectedAction(name, args)),
+      get: (_, name) => (name === 'go' ? go
+        : name === 'exportFile' && exportFile ? exportFile
+          : name === 'readPrintStories' ? readPrintStories
+            : (...args: unknown[]) => unexpectedAction(name, args)),
     }),
   }),
   AppProvider: ({ children }: { children: unknown }) => children,
@@ -246,8 +253,16 @@ const obsState = {
   story: STORY,
   storyImages: { '1': { uri: 'local://obs-en-01-01.jpg' } },
 };
+/** What readPrintStories answers for `stories`: every frame has a picture source. */
+const printed = (stories: Story[]) => ({
+  items: printedStories(stories),
+  pictures: Object.fromEntries(stories.map((s) => [s.number, Object.fromEntries(s.frames.map((_, i) => [String(i + 1), `local://obs-${s.number}-${i + 1}.jpg`]))])),
+  undrafted: stories.some((s) => s.frames.some((f) => f.text === '')),
+});
+const storyOf = (number: number, texts: string[], title = '') =>
+  ({ number, title, frames: texts.map((text, i) => ({ image: `![OBS Image](https://cdn.door43.org/obs/jpg/360px/obs-en-${number}-${i + 1}.jpg)`, text })), ref: null as string | null });
 
-describe('#291 — an OBS project checks the open story', () => {
+describe('#291 — an OBS project gets Check and Community Checking', () => {
   beforeEach(() => {
     cleanup();
     go.mockClear();
@@ -258,9 +273,77 @@ describe('#291 — an OBS project checks the open story', () => {
     render(<App />);
     expect(screen.getByTestId('preflight-translationWords')).toBeTruthy();
     expect(screen.getByTestId('preflight-translationNotes')).toBeTruthy();
-    expect(screen.getByTestId('community-checking-card').textContent).toContain('Story 1');
     expect(screen.queryByTestId('align-card')).toBeNull();
     expect(screen.queryByTestId('open-align')).toBeNull();
+  });
+
+  it('the Community Checking card names every drafted story, not the open one; a Bible card keeps its chapter (#454)', () => {
+    state = obsState as never;
+    render(<App />);
+    const card = screen.getByTestId('community-checking-card').textContent;
+    expect(card).toContain('All drafted stories');
+    expect(card).toContain('Next · read the drafted stories aloud');
+    expect(card).not.toContain('Whole story');
+    expect(card).not.toContain('Story 1');
+    cleanup();
+    state = { ...baseState } as never;
+    render(<App />);
+    expect(screen.getByTestId('community-checking-card').textContent).toContain('Whole chapter');
+    expect(screen.getByTestId('community-checking-card').textContent).toContain('Next · read Titus 1 aloud');
+  });
+});
+
+// #454: the OBS preview shows what the OBS PDF prints, by the same rule
+// (src/data/storyModel.ts), read through actions.readPrintStories.
+describe('#454 — the OBS preview shows every drafted story', () => {
+  beforeEach(() => {
+    cleanup();
+    go.mockClear();
+    unexpectedAction.mockClear();
+  });
+  afterEach(() => {
+    readPrintStories = async () => printed([STORY]);
+  });
+
+  it('shows each drafted story, one line for each run of undrafted frames or stories, and pictures only on drafted frames', async () => {
+    readPrintStories = async () => printed([storyOf(1, ['Uno.', '', '']), storyOf(2, ['']), storyOf(3, ['']), storyOf(4, ['', 'Cuatro.'], 'Cuatro'), storyOf(5, [''])]);
+    state = { ...obsState, view: 'publish' } as never;
+    render(<App />);
+    const stories = await screen.findAllByTestId('cc-story');
+    expect(stories.map((el) => el.getAttribute('data-story'))).toEqual(['1', '4']); // story 5 comes after the last drafted story
+    expect(screen.getByTestId('cc-story-gap').textContent).toBe('[ stories 2–3 not yet drafted ]');
+    expect(within(stories[0]).getByTestId('cc-frame-gap').textContent).toBe('[ frames 2–3 not yet drafted ]');
+    expect(within(stories[1]).getByTestId('cc-frame-gap').textContent).toBe('[ frame 1 not yet drafted ]');
+    expect(within(stories[0]).getByTestId('cc-picture-1')).toBeTruthy();
+    expect(within(stories[1]).getByTestId('cc-picture-2')).toBeTruthy();
+    expect(within(stories[1]).queryByTestId('cc-picture-1')).toBeNull(); // the undrafted frame has no picture
+    expect(within(stories[1]).getByRole('heading').textContent).toBe('Cuatro');
+    expect(within(stories[0]).getByRole('heading').textContent).toBe('Story 1');
+    expect(screen.getByText(/The export shows each run of undrafted frames or stories as one line, without pictures\. It leaves out undrafted stories before the first drafted story and after the last\./)).toBeTruthy();
+    expect(screen.queryByText(/skipped/)).toBeNull();
+    expect(unexpectedAction).not.toHaveBeenCalled();
+  });
+
+  it('shows no callout when every frame is drafted', async () => {
+    readPrintStories = async () => printed([storyOf(1, ['Uno.', 'Dos.'])]);
+    state = { ...obsState, view: 'publish' } as never;
+    render(<App />);
+    await screen.findByTestId('cc-story');
+    expect(screen.queryByText('Incomplete draft.')).toBeNull();
+    expect(screen.queryByTestId('cc-frame-gap')).toBeNull();
+  });
+
+  it('says so when no story is drafted, and when the stories cannot be read', async () => {
+    readPrintStories = async () => printed([storyOf(1, ['']), storyOf(2, [''])]);
+    state = { ...obsState, view: 'publish' } as never;
+    render(<App />);
+    expect((await screen.findByTestId('cc-nothing-drafted')).textContent).toBe('Nothing is drafted in this project yet.');
+    expect(screen.queryByTestId('cc-story')).toBeNull();
+    cleanup();
+
+    readPrintStories = async () => { throw new Error('content/07.md is malformed'); };
+    render(<App />);
+    expect((await screen.findByText(/The stories could not be loaded\. content\/07\.md is malformed/))).toBeTruthy();
   });
 });
 
@@ -271,9 +354,10 @@ describe('#11 — the OBS Layout row: pictures above or wrapped', () => {
   });
   const picture = () => screen.getByTestId('cc-picture-1');
 
-  it('offers "Pictures above" and "Pictures wrapped", with "Pictures above" chosen by default', () => {
+  it('offers "Pictures above" and "Pictures wrapped", with "Pictures above" chosen by default', async () => {
     state = { ...obsState, view: 'publish' } as never;
     render(<App />);
+    await screen.findByTestId('cc-story');
     const row = screen.getByRole('group', { name: 'Layout' });
     expect(within(row).getByRole('button', { name: 'Pictures above' }).getAttribute('aria-pressed')).toBe('true');
     expect(within(row).getByRole('button', { name: 'Pictures wrapped' }).getAttribute('aria-pressed')).toBe('false');
@@ -282,9 +366,10 @@ describe('#11 — the OBS Layout row: pictures above or wrapped', () => {
     expect(picture().style.float).toBe('');
   });
 
-  it('wraps the text around a quarter-width picture at the upper left for a left-to-right project', () => {
+  it('wraps the text around a quarter-width picture at the upper left for a left-to-right project', async () => {
     state = { ...obsState, view: 'publish' } as never;
     render(<App />);
+    await screen.findByTestId('cc-story');
     fireEvent.click(screen.getByRole('button', { name: 'Pictures wrapped' }));
     expect(screen.getByTestId('cc-story').getAttribute('data-layout')).toBe('wrapped');
     expect(picture().style.float).toBe('left');
@@ -292,17 +377,19 @@ describe('#11 — the OBS Layout row: pictures above or wrapped', () => {
     expect(screen.getByTestId('cc-frame-1').style.display).toBe('flow-root'); // the frame holds its picture
   });
 
-  it('puts the picture at the upper right for a right-to-left project', () => {
+  it('puts the picture at the upper right for a right-to-left project', async () => {
     state = { ...obsState, view: 'publish', project: { ...obsState.project, scriptDirection: 'rtl' } } as never;
     render(<App />);
+    await screen.findByTestId('cc-story');
     fireEvent.click(screen.getByRole('button', { name: 'Pictures wrapped' }));
     expect(picture().style.float).toBe('right');
     expect(picture().style.width).toBe('25%');
   });
 
-  it('the pictures toggle still applies in the wrapped layout', () => {
+  it('the pictures toggle still applies in the wrapped layout', async () => {
     state = { ...obsState, view: 'publish' } as never;
     render(<App />);
+    await screen.findByTestId('cc-story');
     fireEvent.click(screen.getByRole('button', { name: 'Pictures wrapped' }));
     fireEvent.click(screen.getByLabelText('Pictures'));
     expect(screen.queryByTestId('cc-picture-1')).toBeNull();
@@ -371,6 +458,7 @@ describe('#381 — the page setup reaches every export', () => {
     const produce = vi.spyOn(fakeProducer, 'produce').mockResolvedValue({ bytes: new Uint8Array([1]), filename: 'story.txt', mime: 'text/plain' });
     spies.push(produce);
     render(<AppWithFake />);
+    await screen.findByTestId('cc-story');
 
     fireEvent.click(screen.getByLabelText('Pictures'));
     expect(screen.getByTestId('cc-story').getAttribute('data-pictures')).toBe('0');
@@ -397,6 +485,7 @@ describe('#381 — the page setup reaches every export', () => {
     state = { ...obsState, view: 'publish' } as never;
     spies.push(vi.spyOn(fakeProducer, 'appliesTo').mockReturnValue(true));
     render(<AppWithFake />);
+    await screen.findByTestId('cc-story');
     expect(await assertProjectUnchanged(dir, async () => {
       fireEvent.click(screen.getByLabelText('Pictures'));
     })).toBe(0);

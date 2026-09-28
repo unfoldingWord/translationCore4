@@ -15,7 +15,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { unzipSync } from 'fflate';
 import { captureDownload } from './helpers/export';
-import { RIG_API, createObsProject } from './helpers/story';
+import { RIG_API, createObsProject, storyBytes } from './helpers/story';
 import { assertProjectUnchanged } from '../test/helpers/export';
 import { SEEDED_PROJECT, readIngredient, resetPlaces, resetSeededChecking, rigRepo } from './helpers/rig';
 import { DRAFT } from '../conformance/fixtures/obs-draft.mjs';
@@ -424,16 +424,17 @@ test.describe('J7 — USFM', () => {
 });
 
 // OBS (#360, J23): the story Markdown zip is `content/` byte for byte; the PDF
-// prints every story in the flow layout, through the same bridge double as the
-// Bible PDF. The project is made by the app's OBS create path, story 1 drafted
-// from the conformance fixture, so frame 2 onwards and stories 2–50 are undrafted.
+// prints the drafted stories in the flow layout, through the same bridge double
+// as the Bible PDF (#454: one line for each run of undrafted frames or stories,
+// no picture for an undrafted frame). The projects are made by the app's OBS
+// create path, drafted from the conformance fixture.
 test.describe('J23 — OBS', () => {
   const openObsCommunityChecking = async (page: Page, name: string): Promise<void> => {
     await page.goto('/');
     await page.getByTestId(`project-_local_/_local_/${name}`).getByTestId('story-tile-1').click();
     await page.getByRole('tab', { name: 'Check', exact: true }).click();
     await page.getByTestId('open-community-checking').click();
-    await expect(page.getByTestId('cc-picture-1')).toBeVisible(); // the preview resolved its pictures
+    await expect(page.locator('[data-testid="cc-story"][data-story="1"]').getByTestId('cc-picture-1')).toBeVisible(); // the preview resolved its pictures
     // The first open commits what it writes (the journal seed); an export then makes no checkpoint.
     await expect.poll(() => execFileSync('git', ['-C', rigRepo(name), 'status', '--porcelain'], { encoding: 'utf8' }), { timeout: 20_000 }).toBe('');
   };
@@ -468,53 +469,110 @@ test.describe('J23 — OBS', () => {
     },
   );
 
+  /** Story 1: its title and frames 1 and 3; story 4: frame 1. So story 1 has
+   * undrafted frames in the middle and at the end, stories 2–3 lie between two
+   * drafted stories, and stories 5–50 come after the last one (#454). */
+  const createGappedObs = (abbr: string): Promise<string> =>
+    createObsProject(abbr, `Equipo Rig — J23 ${abbr}`, async (s) => {
+      const store = s as unknown as { writeTitle: (story: number, text: string) => Promise<void> };
+      await store.writeTitle(1, DRAFT.title);
+      await s.writeFrame(1, 1, DRAFT.frames[1]);
+      await s.writeFrame(1, 3, DRAFT.frames[2]);
+      await s.writeFrame(4, 1, DRAFT.frames[1]);
+    });
+
+  /** The number of frames of `story` as the project stores it (each frame is one image line). */
+  const storedFrames = (repo: string, story: number): number => (storyBytes(repo, story).match(/^!\[/gm) || []).length;
+
+  /** The lines of an OBS print document in order: titles, frame texts, gap lines, references. */
+  const printedLines = (html: string): string[] =>
+    [...html.matchAll(/<(?:h1|p) class="(?:print-title print-story-title|print-frame-text|print-frame-gap|print-story-gap|print-story-reference|print-nothing-drafted)"[^>]*>([^<]*)<\/(?:h1|p)>/g)].map((m) => m[1]);
+
+  const escapeText = (text: string): string => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
   test(
-    'OBS: the PDF prints every story in order in the flow layout, pictures on and off, undrafted frames stated, and the project is unchanged',
+    'OBS: the PDF prints the drafted stories, one line for each run of undrafted frames or stories, pictures only on drafted frames, the preview the same, and the project is unchanged',
     { tag: ['@inc8', '@J23'] },
     async ({ page }) => {
-      test.setTimeout(240_000); // fifty stories, each frame's picture read and printed
-      const name = await createDraftedObs('j23pdf');
+      test.setTimeout(240_000);
+      const name = await createGappedObs('j23pdf');
+      const [frames1, frames4] = [storedFrames(name, 1), storedFrames(name, 4)];
       const documents = await installPdfBridge(page);
       await openObsCommunityChecking(page, name);
       await page.getByTestId('export-menu-trigger').click();
       await expect(page.getByRole('menuitem')).toHaveText(['Export PDF', 'Story Markdown (.zip)', 'Scripture Burrito (.zip)']);
       await page.keyboard.press('Escape');
 
+      const expected = [
+        DRAFT.title, escapeText(DRAFT.frames[1]), '[ frame 2 not yet drafted ]', escapeText(DRAFT.frames[2]), `[ frames 4–${frames1} not yet drafted ]`,
+        '[ stories 2–3 not yet drafted ]',
+        'Story 4', escapeText(DRAFT.frames[1]), `[ frames 2–${frames4} not yet drafted ]`,
+      ];
+      // The preview states the same stories and lines as the PDF.
+      await expect(page.getByTestId('cc-story')).toHaveCount(2);
+      expect(await page.getByTestId('cc-story').evaluateAll((els) => els.map((el) => el.getAttribute('data-story')))).toEqual(['1', '4']);
+      await expect(page.getByTestId('cc-story-gap')).toHaveText('[ stories 2–3 not yet drafted ]');
+      await expect(page.getByTestId('cc-frame-gap')).toHaveText(['[ frame 2 not yet drafted ]', `[ frames 4–${frames1} not yet drafted ]`, `[ frames 2–${frames4} not yet drafted ]`]);
+      await expect(page.locator('[data-testid^="cc-picture-"]')).toHaveCount(3);
+      await expect(page.getByText('The export shows each run of undrafted frames or stories as one line, without pictures.', { exact: false })).toBeVisible();
+
       const pdf = await exportPdf(page, name);
       expect(pdf.filename).toMatch(/^Equipo Rig — J23 j23pdf-\d{4}-\d{2}-\d{2}\.pdf$/);
       expect(pdf.bytes.subarray(0, 5).toString()).toBe('%PDF-');
       const html = documents[0];
-      const titles = [...html.matchAll(/<h1 class="print-title print-story-title">([^<]+)<\/h1>/g)].map((m) => m[1]);
-      expect(titles).toEqual([DRAFT.title, ...Array.from({ length: 49 }, (_, i) => `Story ${i + 2}`)]); // a seed-form title prints as its number
-      const frames = (html.match(/<div class="print-frame">/g) || []).length;
-      expect(html.match(/<img class="print-frame-picture" src="data:image\//g)).toHaveLength(frames); // every frame's picture resolved
-      expect(html.match(/\[ frame not yet drafted \]/g)).toHaveLength(frames - 1); // only frame 1 of story 1 is drafted
-      expect(html).toContain(DRAFT.frames[1]);
+      expect(printedLines(html)).toEqual(expected);
+      expect(html.match(/<div class="print-frame">/g)).toHaveLength(3); // the three drafted frames
+      expect(html.match(/<img class="print-frame-picture" src="data:image\//g)).toHaveLength(3); // no picture for an undrafted frame
       const withPictures = pdfShape(pdf.bytes);
       expect(withPictures.mediaBox).toBe('0 0 594.95996 841.91998');
+      await test.info().attach('j23-obs-pictures-on.html', { body: html, contentType: 'text/html' });
 
       await page.getByTestId('cc-pictures').click();
       const noPictures = pdfShape((await exportPdf(page, name)).bytes);
       expect(documents[1]).not.toContain('<img');
-      // The seeded project: 598 frames. Pictures off: each story is its title page
-      // and one page of frames (100). Pictures on: frames fill the pages as they
-      // fit, two to a page where both fit (362).
-      expect({ frames, on: withPictures.pages, off: noPictures.pages }).toEqual({ frames: 598, on: 362, off: 100 });
+      expect(printedLines(documents[1])).toEqual(expected);
+      // Two drafted stories, each its title page and its frames' pages, in the fonts
+      // installed on this machine; the #454 report had 362 pages with pictures and
+      // 100 without, for one drafted frame.
+      expect({ on: withPictures.pages, off: noPictures.pages }).toEqual({ on: 5, off: 4 });
     },
   );
 
   test(
-    'OBS: the PDF in the wrapped layout floats a quarter-width picture at each frame\'s start corner, and the text wraps it',
+    'OBS: with no story drafted, the PDF is one line that says so, and the preview says the same',
     { tag: ['@inc8', '@J23'] },
     async ({ page }) => {
-      test.setTimeout(240_000); // fifty stories, each frame's picture read and printed
-      const name = await createDraftedObs('j23wrap');
+      test.setTimeout(120_000);
+      const name = await createObsProject('j23none', 'Equipo Rig — J23 j23none');
+      const documents = await installPdfBridge(page);
+      await page.goto('/');
+      // A project with no story in progress shows no recent tiles: open the full list first.
+      await page.getByTestId(`toggle-stories-_local_/_local_/${name}`).click();
+      await page.getByTestId(`project-_local_/_local_/${name}`).getByTestId('story-tile-1').click();
+      await page.getByRole('tab', { name: 'Check', exact: true }).click();
+      await page.getByTestId('open-community-checking').click();
+      await expect(page.getByTestId('cc-nothing-drafted')).toHaveText('Nothing is drafted in this project yet.');
+      await expect.poll(() => execFileSync('git', ['-C', rigRepo(name), 'status', '--porcelain'], { encoding: 'utf8' }), { timeout: 20_000 }).toBe('');
+
+      const pdf = await exportPdf(page, name);
+      expect(printedLines(documents[0])).toEqual(['Nothing is drafted in this project yet.']);
+      expect(pdfShape(pdf.bytes).pages).toBe(1);
+    },
+  );
+
+  test(
+    'OBS: the PDF in the wrapped layout floats a quarter-width picture at each drafted frame\'s start corner, and the text wraps it',
+    { tag: ['@inc8', '@J23'] },
+    async ({ page }) => {
+      test.setTimeout(240_000);
+      const name = await createGappedObs('j23wrap');
       const documents = await installPdfBridge(page);
       await openObsCommunityChecking(page, name);
       await page.getByRole('button', { name: 'Pictures wrapped' }).click();
-      await expect(page.getByTestId('cc-story')).toHaveAttribute('data-layout', 'wrapped');
+      const story = page.locator('[data-testid="cc-story"][data-story="1"]');
+      await expect(story).toHaveAttribute('data-layout', 'wrapped');
       // On screen: the picture is a quarter of the frame's width, at its left (a left-to-right project).
-      const box = async (id: string) => (await page.getByTestId(id).boundingBox())!;
+      const box = async (id: string) => (await story.getByTestId(id).boundingBox())!;
       const [picture, frame] = [await box('cc-picture-1'), await box('cc-frame-1')];
       expect(Math.abs(picture.width - frame.width / 4)).toBeLessThan(2);
       expect(Math.abs(picture.x - frame.x)).toBeLessThan(2);
@@ -522,10 +580,9 @@ test.describe('J23 — OBS', () => {
       const pdf = await exportPdf(page, name);
       const html = documents[0];
       expect(html).toContain('<main class="print-book print-stories print-stories-wrapped">');
-      const frames = (html.match(/<div class="print-frame">/g) || []).length;
-      expect(html.match(/<img class="print-frame-picture" src="data:image\/[^"]+" alt="[^"]*" style="float:left"\/>/g)).toHaveLength(frames);
-      // Several frames share a page: 160 pages, against 362 with pictures above.
-      expect({ frames, pages: pdfShape(pdf.bytes).pages }).toEqual({ frames: 598, pages: 160 });
+      expect(html.match(/<img class="print-frame-picture" src="data:image\/[^"]+" alt="[^"]*" style="float:left"\/>/g)).toHaveLength(3);
+      expect(html.match(/style="float/g)).toHaveLength(3); // a gap line floats nothing
+      expect(pdfShape(pdf.bytes).pages).toBe(4);
     },
   );
 });

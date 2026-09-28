@@ -1,5 +1,5 @@
 // The PDF export (issue #20, D79 point 3, docs/ARCHITECTURE.md §7): the whole
-// book, or every story of an OBS project (#360, D74 point 1), as a print-ready
+// book, or the drafted stories of an OBS project (#360, D74 point 1, #454), as a print-ready
 // PDF, by the print-styled route — the Chromium that renders the editor also
 // prints the PDF. The producer builds one print document (the print DOM of
 // src/views/print/PrintBook.jsx or PrintStories.jsx, the print stylesheet, and
@@ -15,7 +15,7 @@ import { Refusal } from '../journal/runtime';
 import { PAGE_MARGIN_MM, printBookHtml, printVariables } from '../../views/print/PrintBook.jsx';
 import { printStoriesHtml } from '../../views/print/PrintStories.jsx';
 import PRINT_CSS from '../../ds/tokens/print.css?raw';
-import type { Story } from '../burritoStore';
+import { readPrintedStories, type PrintedStory, type StoryPictures } from '../storyModel';
 import { exportFilename, type ExportInput, type ExportProducer } from './kernel';
 import { DEFAULT_PAGE_SETUP, type PageSetup, type PaperSize } from './pageSetup';
 
@@ -66,15 +66,15 @@ export function printDocument(bookRaw: string, code: string, pageSetup: PageSetu
   return printShell(title, printBookHtml({ title, items, pageSetup, dir }), pageSetup, dir);
 }
 
-/** The complete print document of an OBS project (#360): every story in
- * order, in the flow layout of PrintStories. `pictures` holds each story's
- * picture sources by frame number; with pictures off none prints. */
-export function printStoriesDocument(title: string, stories: Story[], pictures: StoryPictures, pageSetup: PageSetup, dir: 'ltr' | 'rtl'): string {
-  return printShell(title, printStoriesHtml({ stories, pictures, pageSetup, dir }), pageSetup, dir);
+/** The complete print document of an OBS project (#360): `printedStories`,
+ * the preview's rule (#454: each drafted story, one line for each run of
+ * undrafted frames or stories), in the flow layout of PrintStories. `pictures`
+ * holds each printed story's picture sources by frame number; with pictures
+ * off none prints. With no story drafted, the document is one line that says
+ * so. */
+export function printStoriesDocument(title: string, items: PrintedStory[], pictures: StoryPictures, pageSetup: PageSetup, dir: 'ltr' | 'rtl'): string {
+  return printShell(title, printStoriesHtml({ items, pictures, pageSetup, dir }), pageSetup, dir);
 }
-
-/** A story's picture sources by frame number, per story number. */
-type StoryPictures = Record<number, Record<string, string>>;
 
 /** The picture at `uri` as a data: URL. The print document stands alone: the
  * hidden print window loads it from a file, where the app's `/api` addresses
@@ -88,19 +88,18 @@ const inlinePicture = async (uri: string): Promise<string> => {
   return `data:${response.headers.get('content-type') || 'image/jpeg'};base64,${btoa(binary)}`;
 };
 
-/** Every story of the project, in order, and — with pictures on — each
- * frame's picture as the preview resolves it, inlined. */
-const readStories = async ({ store, storyPictures, pageSetup = DEFAULT_PAGE_SETUP }: ExportInput): Promise<{ stories: Story[]; pictures: StoryPictures }> => {
-  const stories: Story[] = [];
+/** The printed stories (`readPrintedStories`) and — with pictures on — the
+ * picture of each drafted frame they print, as the preview resolves it,
+ * inlined. */
+const readStories = async ({ store, storyPictures, pageSetup = DEFAULT_PAGE_SETUP }: ExportInput): Promise<{ items: PrintedStory[]; pictures: StoryPictures }> => {
+  const { items, pictures: sources } = await readPrintedStories(store, pageSetup.pictures ? storyPictures : undefined);
   const pictures: StoryPictures = {};
-  for (const number of [...(await store.listStories())].sort((a, b) => a - b)) {
-    stories.push((await store.readStory(number)).story);
-    if (!pageSetup.pictures || !storyPictures) continue;
+  for (const [story, frames] of Object.entries(sources)) {
     const inlined: Record<string, string> = {};
-    for (const [frame, uri] of Object.entries(await storyPictures(number))) inlined[frame] = await inlinePicture(uri);
-    pictures[number] = inlined;
+    for (const [frame, uri] of Object.entries(frames)) inlined[frame] = await inlinePicture(uri);
+    pictures[Number(story)] = inlined;
   }
-  return { stories, pictures };
+  return { items, pictures };
 };
 
 /** The bridge's PDF of `html`. A print that fails (#451) refuses with a next
@@ -126,8 +125,8 @@ export const PDF: ExportProducer = {
     if (!printer) throw new Error('PDF export needs the desktop app');
     const dir = project.scriptDirection === 'rtl' ? 'rtl' : 'ltr';
     if (project.flavor === 'textStories') {
-      const { stories, pictures } = await readStories(input);
-      const bytes = await print(printer, printStoriesDocument(project.name, stories, pictures, pageSetup, dir), pageSetup.pictures);
+      const { items, pictures } = await readStories(input);
+      const bytes = await print(printer, printStoriesDocument(project.name, items, pictures, pageSetup, dir), pageSetup.pictures);
       return { bytes, filename: exportFilename(project.name, 'pdf'), mime: 'application/pdf' };
     }
     if (!book) throw new Error('no book is open');
