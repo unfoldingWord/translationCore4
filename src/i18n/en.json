@@ -729,6 +729,7 @@
   "home.door43SignedIn": "Signed in to Door43 as {user}",
   "home.door43SignIn": "Sign in",
   "home.door43SignOut": "Sign out",
+  "home.door43NotKept": "Stay signed in is not available on this computer, so your sign-in lasts for this app session.",
   "signIn.title": "Sign in to Door43",
   "signIn.subtitle": "Share · sign in",
   "signIn.server": "Signs in to {host}",

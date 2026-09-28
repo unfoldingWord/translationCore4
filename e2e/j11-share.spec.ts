@@ -67,6 +67,36 @@ const PERSON_KEYS = /identity|login|user|name|email|token/i;
 
 const SIGNED_IN = `Signed in to Door43 as ${USER.username}`;
 const NOT_SIGNED_IN = 'Not signed in to Door43';
+const NOT_KEPT = /Stay signed in is not available on this computer/;
+
+/** The desktop keychain bridge (#366, `tc4Desktop.keychain` of scripts/preload.cjs), faked:
+ * the kept token lives in this test process, so it outlives a reload the way the operating
+ * system's keychain outlives an app session. The browser build has no bridge of its own, so
+ * a test without this helper is the "no keychain" case. Install before the page loads. */
+async function fakeKeychain(context: BrowserContext, held: string | null = null): Promise<{ held: string | null; calls: string[] }> {
+  const keychain = { held, calls: [] as string[] };
+  await context.exposeBinding('__tc4Keychain', async (_source, call: string, token?: string) => {
+    keychain.calls.push(call);
+    if (call === 'keep') {
+      keychain.held = token ?? null;
+      return { kept: true };
+    }
+    if (call === 'read') return { token: keychain.held };
+    keychain.held = null;
+    return { forgotten: true };
+  });
+  await context.addInitScript(() => {
+    const w = window as unknown as { __tc4Keychain: (call: string, token?: string) => Promise<unknown>; tc4Desktop: unknown };
+    w.tc4Desktop = {
+      keychain: {
+        keep: (token: string) => w.__tc4Keychain('keep', token),
+        read: () => w.__tc4Keychain('read'),
+        forget: () => w.__tc4Keychain('forget'),
+      },
+    };
+  });
+  return keychain;
+}
 
 test.describe('J11 — a facilitator shares the project to Door43', () => {
   test.describe('sign in (#203)', () => {
@@ -188,11 +218,19 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       expect(filesHolding(RIG_STATE, 'installedResources')).not.toEqual([]);
     });
 
-    test('7. a new app session without a kept token asks the sign-in again, and says why in one line', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
+    test('7. a new app session without a kept token asks the sign-in again, and says why in one line; "Stay signed in" off never asks the keychain (#366 test 2)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
       await fakeFor(context);
+      const keychain = await fakeKeychain(context);
+      await page.goto('/');
       await page.getByTestId('door43-sign-in').click();
+      await expect(page.getByLabel('Stay signed in on this computer')).not.toBeChecked();
       await signIn(page);
       await expect(page.getByTestId('door43-status')).toHaveText(SIGNED_IN);
+      await expect(page.getByTestId('door43-not-kept')).toHaveCount(0);
+      // The keychain was read at start-up and found nothing; the box was off, so no
+      // keep, only the forget that clears a token an earlier session kept.
+      expect(keychain.calls.filter((c) => c !== 'read')).toEqual(['forget']);
+      expect(keychain.held).toBeNull();
       // A new app session: the token was in renderer memory only, and nothing else was stored.
       await page.reload();
       await expect(page.getByTestId('door43-status')).toHaveText(NOT_SIGNED_IN);
@@ -207,8 +245,79 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
 
     // 7b. A later share in the same session asks nothing: the "Upload changes" case of the
     // share block below (its second upload runs with the token of the first).
-    test.fixme('7c. a kept token asks nothing in the next app session (#366)', { tag: ['@inc85', '@J11'] }, async () => {
-      // Needs the keychain (#366).
+    test('7c. a kept token asks nothing in the next app session, the keychain holds the token only, and Sign out empties it (#366 tests 1, 4, 6)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
+      const fake = await fakeFor(context);
+      const keychain = await fakeKeychain(context);
+      await page.goto('/');
+      await page.getByTestId('door43-sign-in').click();
+      await page.getByLabel('Stay signed in on this computer').check();
+      await signIn(page);
+      await expect(page.getByTestId('door43-status')).toHaveText(SIGNED_IN);
+      await expect(page.getByTestId('door43-not-kept')).toHaveCount(0);
+      const token = fake.tokens.get('translationCore')!;
+      // Test 6: the keychain took the token and nothing else; the rig's disk and the browser's
+      // storage hold none of the three.
+      expect(keychain.calls).toEqual(['read', 'keep']);
+      expect(keychain.held).toBe(token);
+      expect(token).not.toContain(USER.username);
+      for (const secret of [token, USER.password, USER.username]) expect(filesHolding(RIG_STATE, secret), secret).toEqual([]);
+      const stored = await page.evaluate(() => {
+        const dump = (s: Storage) => Object.keys(s).map((k) => `${k}=${s.getItem(k)}`);
+        return [...dump(localStorage), ...dump(sessionStorage)];
+      });
+      expect(stored.filter((entry) => [token, USER.password, USER.username].some((s) => entry.includes(s)))).toEqual([]);
+      expect(settingsKeys().filter((key) => PERSON_KEYS.test(key))).toEqual([]);
+
+      // Test 1: a new app session reads the kept token, asks Door43 who it is, and asks nothing.
+      const before = fake.calls.length;
+      await page.reload();
+      await expect(page.getByTestId('door43-status')).toHaveText(SIGNED_IN);
+      await expect(page.getByTestId('share-signin')).toHaveCount(0);
+      const resumed = fake.calls.slice(before);
+      expect(resumed.map((c) => `${c.method} ${c.url}`)).toEqual([`GET ${QA_SERVER}/api/v1/user`]);
+      expect(resumed[0].headers.authorization ?? resumed[0].headers.Authorization).toBe(`token ${token}`);
+      expect(resumed[0].url).not.toContain(token);
+
+      // Test 4: Sign out empties the keychain; the next session asks the password again.
+      await page.getByTestId('door43-sign-out').click();
+      await expect(page.getByTestId('door43-status')).toHaveText(NOT_SIGNED_IN);
+      expect(keychain.calls.at(-1)).toBe('forget');
+      expect(keychain.held).toBeNull();
+      await page.reload();
+      await expect(page.getByTestId('door43-status')).toHaveText(NOT_SIGNED_IN);
+      await page.getByTestId('door43-sign-in').click();
+      await expect(page.getByLabel('Password', { exact: true })).toHaveValue('');
+      await expect(page.getByTestId('signin-reason')).toHaveText(SESSION_NOTE);
+    });
+
+    test('7d. a kept token Door43 refuses is forgotten, and the app asks the password again (#366 test 5)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
+      // The fake knows no token, so the kept one is revoked; the negative control of test 7c.
+      const fake = await fakeFor(context);
+      const keychain = await fakeKeychain(context, 'revoked-token');
+      await page.goto('/');
+      await expect(page.getByTestId('door43-status')).toHaveText(NOT_SIGNED_IN);
+      await expect.poll(() => keychain.calls).toEqual(['read', 'forget']);
+      expect(keychain.held).toBeNull();
+      expect(fake.calls.map((c) => `${c.method} ${c.url}`)).toEqual([`GET ${QA_SERVER}/api/v1/user`]);
+      await page.getByTestId('door43-sign-in').click();
+      await expect(page.getByLabel('Password', { exact: true })).toHaveValue('');
+      await signIn(page);
+      await expect(page.getByTestId('door43-status')).toHaveText(SIGNED_IN);
+    });
+
+    test('7e. the browser build has no keychain: "Stay signed in" keeps the token in memory and says so in one line (#366 test 3)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
+      await fakeFor(context);
+      // No fakeKeychain: `window.tc4Desktop` is absent, as in the browser build.
+      expect(await page.evaluate(() => 'tc4Desktop' in window)).toBe(false);
+      await page.getByTestId('door43-sign-in').click();
+      await page.getByLabel('Stay signed in on this computer').check();
+      await signIn(page);
+      await expect(page.getByTestId('door43-status')).toHaveText(SIGNED_IN);
+      await expect(page.getByTestId('door43-not-kept')).toHaveText(NOT_KEPT);
+      // The next session asks again: the token was in memory only.
+      await page.reload();
+      await expect(page.getByTestId('door43-status')).toHaveText(NOT_SIGNED_IN);
+      await expect(page.getByTestId('door43-not-kept')).toHaveCount(0);
     });
   });
 
@@ -388,6 +497,36 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       await expect(page.getByTestId('share-signin')).toHaveCount(0);
       await expect(page.getByTestId('share-dialog')).toHaveCount(0);
       await expect.poll(() => remoteMain(), { timeout: 30_000 }).toBe(third);
+    });
+
+    test('2b. with "Stay signed in", Upload changes in a new app session asks nothing (#366 test 1)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
+      const fake = await fakeShare(context);
+      const keychain = await fakeKeychain(context);
+      await page.goto('/');
+      await page.getByTestId(`share-${SEEDED_ID}`).click();
+      await page.getByLabel('Stay signed in on this computer').check();
+      await signIn(page);
+      await page.getByTestId('share-next').click();
+      await page.getByTestId('share-submit').click();
+      await expect(page.getByTestId('share-done')).toBeVisible({ timeout: 30_000 });
+      await page.getByTestId('share-close').click();
+      const first = remoteMain();
+      expect(first).toBe(head(SEEDED_PROJECT));
+      expect(keychain.held).toBe(fake.tokens.get('translationCore'));
+
+      // A new app session, a new local commit: Upload changes asks nothing, no dialog, pushed.
+      await page.reload();
+      await expect(page.getByTestId('door43-status')).toHaveText(SIGNED_IN);
+      await expect(page.getByTestId(`share-${SEEDED_ID}`)).toHaveText('Upload changes');
+      git(rigRepo(SEEDED_PROJECT), '-c', 'user.name=rig', '-c', 'user.email=rig@local', 'commit', '-q', '--allow-empty', '-m', 'local edit 1');
+      const second = head(SEEDED_PROJECT);
+      await page.getByTestId(`share-${SEEDED_ID}`).click();
+      await expect(page.getByTestId('share-signin')).toHaveCount(0);
+      await expect(page.getByTestId('share-dialog')).toHaveCount(0);
+      await expect(page.getByTestId(`share-uploaded-${SEEDED_ID}`)).toBeVisible({ timeout: 30_000 });
+      expect(remoteMain()).toBe(second);
+      // The token is on no disk of the rig.
+      expect(filesHolding(RIG_STATE, keychain.held!)).toEqual([]);
     });
 
     test('3. organizations: one cannot be chosen and says why; the one with the most repositories in the language is Recommended; a share goes there', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
