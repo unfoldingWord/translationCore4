@@ -223,6 +223,17 @@ describe('applying the change', () => {
     expect(direct).toContain('backfillCoverage(');
     expect(direct).toContain('coverage,');
   });
+
+  it('a confirmed change closes the open check session, which was derived from the package it left (#412)', () => {
+    const source = fs.readFileSync(path.resolve(process.cwd(), 'src/state.jsx'), 'utf8');
+    const commit = source.slice(
+      source.indexOf('commitGatewayChange: async'),
+      source.indexOf('setProjectGateway: async'),
+    );
+    const close = commit.indexOf('if (stateRef.current.checkTool) a.closeCheckTool();');
+    expect(close).toBeGreaterThan(commit.indexOf('store.applyGatewayChange('));
+    expect(close).toBeLessThan(commit.indexOf('await a.runPreflight()'));
+  });
 });
 
 describe('#288 OBS gateway changes', () => {

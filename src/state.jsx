@@ -3874,6 +3874,10 @@ export function AppProvider({ children }) {
         });
         dispatch({ type: 'set', patch: { projectPins: preview.next, projectPinsLoaded: true, projectPinsSeq: stateRef.current.projectPinsSeq + 1 } });
         a.reloadSourcePanes(preview.next);
+        // #412: Project settings opens over a running check session, which was
+        // derived from the package just left. Close it; the preflight below
+        // derives the tools again from the new pins.
+        if (stateRef.current.checkTool) a.closeCheckTool();
         if (stateRef.current.book) await a.runPreflight();
         return preview.next;
       },
