@@ -1856,9 +1856,14 @@ main a43a375, 2026-09-28].
    from the keychain.
 3. **Organizations.** The first share asks where the project goes: the user's own account, or
    one of the user's organizations. An organization without `can_create_repository` is shown
-   and cannot be chosen, with the reason. A create that Door43 refuses gives the existing
-   create-rejected refusal; no new refusal code is added. The name-exists refusal applies to
-   the chosen account or organization.
+   and cannot be chosen, with the reason. Of the organizations that the user can choose, the
+   one with the most repositories in the project's language is marked "Recommended". The count
+   is the `X-Total-Count` header of `GET /api/v1/repos/search?owner=<org>&lang=<tag>&limit=1`
+   [VERIFIED — git.door43.org `1.27.3+dcs`, 2026-09-28: `owner=unfoldingWord` gives 67 with no
+   `lang`, 37 with `lang=en`, 0 with `lang=zzzq`]. When no organization has such a repository,
+   or two or more have the same highest count, no organization is marked. A create that Door43
+   refuses gives the existing create-rejected refusal; no new refusal code is added. The
+   name-exists refusal applies to the chosen account or organization.
 4. **The check step.** Before the push, one step shows where the repository will be created,
    the repository name (the user can change it; default: the project's folder name) and the
    books or stories that are shared. It shows no counts, no license, and no private option.
