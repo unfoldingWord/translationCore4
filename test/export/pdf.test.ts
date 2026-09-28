@@ -208,4 +208,15 @@ describe('the OBS PDF', () => {
     await expect(PDF.produce({ store: obsStore, project: obs, pageSetup: setup(), storyPictures })).rejects.toThrow(/HTTP 404/);
     expect(printPdf).not.toHaveBeenCalled();
   });
+
+  // #451: on Linux the print compositor failed on the 48 MB PDF with pictures.
+  it('refuses a failed print with a next step: set Pictures to off when they were on, else choose another export', async () => {
+    g.window = { tc4Desktop: { printPdf: vi.fn(async () => { throw new Error('Failed to generate PDF: Printing failed'); }) } };
+    stubFetch();
+    await expect(PDF.produce({ store: obsStore, project: obs, pageSetup: setup(), storyPictures }))
+      .rejects.toMatchObject({ code: 'export.print-failed-pictures', message: expect.stringMatching(/Printing failed/) });
+    await expect(PDF.produce({ store: obsStore, project: obs, pageSetup: setup({ pictures: false }), storyPictures }))
+      .rejects.toMatchObject({ code: 'export.print-failed' });
+    await expect(PDF.produce({ store, project: bible, book: 'TIT', pageSetup: setup() })).rejects.toMatchObject({ code: 'export.print-failed' });
+  });
 });

@@ -45,6 +45,8 @@ export const REFUSAL_CODES = Object.freeze({
   'export.checkpoint-failed': null,
   'export.unsupported-kind': null,
   'export.nothing-drafted': null, // the book has no drafted verse, so the PDF has nothing to print (#20)
+  'export.print-failed': null, // the desktop bridge could not print the PDF (#451)
+  'export.print-failed-pictures': null, // the same, with the OBS pictures on: the PDF without them is far smaller (#451)
   // Reserved for the import shell (#361, #41).
   'import.damaged.truncated': null,
   'import.damaged.no-metadata': null,

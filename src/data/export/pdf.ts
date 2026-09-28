@@ -103,6 +103,17 @@ const readStories = async ({ store, storyPictures, pageSetup = DEFAULT_PAGE_SETU
   return { stories, pictures };
 };
 
+/** The bridge's PDF of `html`. A print that fails (#451) refuses with a next
+ * step: `export.print-failed-pictures` when the pictures were on, since the
+ * same document without them is far smaller; else `export.print-failed`. */
+const print = async (printer: PdfBridge, html: string, pictures: boolean): Promise<Uint8Array> => {
+  try {
+    return await printer.printPdf(html);
+  } catch (error) {
+    throw new Refusal(pictures ? 'export.print-failed-pictures' : 'export.print-failed', String((error as Error)?.message ?? error));
+  }
+};
+
 export const PDF: ExportProducer = {
   id: 'pdf',
   label: t('cc.exportPdf'),
@@ -114,12 +125,12 @@ export const PDF: ExportProducer = {
     const dir = project.scriptDirection === 'rtl' ? 'rtl' : 'ltr';
     if (project.flavor === 'textStories') {
       const { stories, pictures } = await readStories(input);
-      const bytes = await printer.printPdf(printStoriesDocument(project.name, stories, pictures, pageSetup, dir));
+      const bytes = await print(printer, printStoriesDocument(project.name, stories, pictures, pageSetup, dir), pageSetup.pictures);
       return { bytes, filename: exportFilename(project.name, 'pdf'), mime: 'application/pdf' };
     }
     if (!book) throw new Error('no book is open');
     const { usfm } = await store.readBook(book);
-    const bytes = await printer.printPdf(printDocument(usfm, book, pageSetup, dir));
+    const bytes = await print(printer, printDocument(usfm, book, pageSetup, dir), false);
     return { bytes, filename: exportFilename(book, 'pdf'), mime: 'application/pdf' };
   },
 };

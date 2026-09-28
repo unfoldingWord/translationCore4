@@ -56,6 +56,12 @@ function start() {
     return;
   }
 
+  // The PDF bridge on Linux (#451): Chromium's print compositor keeps the
+  // printed PDF in /dev/shm, which is 64 MB in a Docker container by default.
+  // The OBS PDF with pictures is about 48 MB, and printing it there failed with
+  // "Printing failed". This switch moves that memory to the temporary directory.
+  if (process.platform === 'linux') app.commandLine.appendSwitch('disable-dev-shm-usage');
+
   ipcMain.handle('export:pdf', printPdf);
   app.on('browser-window-created', (_event, win) => watchDownloads(win.webContents.session));
 
