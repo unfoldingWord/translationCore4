@@ -258,6 +258,7 @@
   "settings.save": "Save changes",
   "settings.gatewayCurrent": "This project checks in {lang} · {org}.",
   "settings.gatewayCurrentBadge": "Current",
+  "settings.gatewayUnset": "This project has no checking language yet. Choose one below.",
   "settings.gatewayLoading": "Looking for the packages on this computer…",
   "settings.manageSources": "Manage source texts",
   "app.projectSettings": "Project settings",

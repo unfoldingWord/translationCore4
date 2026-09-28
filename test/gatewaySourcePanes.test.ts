@@ -3,7 +3,7 @@
 // Pins are real identities: the shipped English suite (installedSuite) and the
 // es-419_gl releases cached for the rig (dev-env/resources-cache/helps-provenance.json).
 import { describe, expect, it } from 'vitest';
-import { sourcePanesForGateway, applyGatewayChange, gatewaysCoveringProject } from '../src/data/gatewayChange';
+import { sourcePanesForGateway, applyGatewayChange, gatewaysCoveringProject, pinnedGateway } from '../src/data/gatewayChange';
 import { pinKey } from '../src/data/resolve';
 import { gatewayBiblesFromInstalled, readInstalled } from '../src/data/installed';
 import { INSTALLED_SUITE, EN_HELPS } from '../src/data/installedSuite';
@@ -138,5 +138,18 @@ describe('readInstalled: a torn read of the settings document (#412)', () => {
     const outage = reader([new Error('connection refused')]);
     await expect(readInstalled(outage.api as never, 'uw-tc4')).rejects.toThrow('connection refused');
     expect(outage.calls()).toBe(1);
+  });
+});
+
+describe('pinnedGateway — the current package Project Settings shows (#412: from its pins)', () => {
+  it('is the primary set’s gateway language when the project has pins', () => {
+    const pins = { languageSets: { primary: { gatewayLanguage: { languageId: 'es-419', owner: 'es-419_gl' } } } } as unknown as ResourcesFile;
+    expect(pinnedGateway(pins)).toEqual({ languageId: 'es-419', owner: 'es-419_gl' });
+  });
+
+  it('is none, never English, when the project has no pins or they are not read yet', () => {
+    expect(pinnedGateway(null)).toBeNull();
+    expect(pinnedGateway(undefined)).toBeNull();
+    expect(pinnedGateway({ languageSets: {} } as unknown as ResourcesFile)).toBeNull();
   });
 });

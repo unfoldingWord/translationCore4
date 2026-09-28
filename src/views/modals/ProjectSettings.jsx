@@ -11,22 +11,27 @@ import { useApp, SCRIPT_FONTS } from '../../state.jsx';
 import { t } from '../../i18n';
 import { GATEWAYS } from '../../data/gateways';
 import { samePath } from '../../data/resolve';
+import { pinnedGateway } from '../../data/gatewayChange';
 import { Modal, TextField, Select, FilterChip, Overline, Button, Callout, OptionCard, Badge, Text } from '../../ds/index.js';
 
 const isGateway = (g, gl) => !!gl && g.id === gl.languageId && samePath(g.org, gl.owner);
 
 /** The packages to choose from, and the project's current one from its pins. */
 function GatewayCard({ s, st, actions }) {
-  // The open project's live pins, so a confirmed change shows at once.
-  const pins = s.project?.id === st.repoPath ? s.projectPins : st.gw.pins;
-  const gl = pins?.languageSets?.primary?.gatewayLanguage ?? { languageId: 'en', owner: 'unfoldingWord' };
-  const known = GATEWAYS.find((g) => isGateway(g, gl));
+  // The open project's live pins, so a confirmed change shows at once; while
+  // they are not read yet, the pins Settings read from disk.
+  const pins = (s.project?.id === st.repoPath ? s.projectPins : null) ?? st.gw.pins;
+  // No pins is no current package: nothing is marked, and English stays a choice.
+  const gl = pinnedGateway(pins);
+  const known = gl && GATEWAYS.find((g) => isGateway(g, gl));
   return (
     <div data-testid="settings-gateway">
       <Overline as="span" style={{ display: 'block', marginBottom: 6 }}>{t('newBible.checkingLanguage')}</Overline>
-      <Text role="caption" data-testid="settings-gateway-current" style={{ display: 'block', marginBottom: 8 }}>
-        {t('settings.gatewayCurrent', { lang: known ? known.name : gl.languageId, org: gl.owner })}
-      </Text>
+      {(gl || (!st.gw.loading && !st.gw.error)) && (
+        <Text role="caption" data-testid="settings-gateway-current" style={{ display: 'block', marginBottom: 8 }}>
+          {gl ? t('settings.gatewayCurrent', { lang: known ? known.name : gl.languageId, org: gl.owner }) : t('settings.gatewayUnset')}
+        </Text>
+      )}
       {st.gw.loading && <Text role="caption" tone="muted">{t('settings.gatewayLoading')}</Text>}
       {st.gw.error && <Callout tone="warn" role="alert" data-testid="settings-gateway-error" style={{ overflowWrap: 'anywhere' }}>{st.gw.error}</Callout>}
       {s.gatewayError && !s.gatewayPreview && (

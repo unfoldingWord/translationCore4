@@ -203,6 +203,13 @@ export const sourcePanesForGateway = (
   return [literal, simplified, ...others].filter((e): e is PaneEntry => !!e);
 };
 
+/** The checking language Project Settings shows as current (#412: "from its
+ * pins"). No pins — unpinned, not read yet, or a failed read — is no current
+ * package, never English by default: English stays a choice the user can make. */
+export const pinnedGateway = (
+  pins: ResourcesFile | null | undefined,
+): LanguageSet['gatewayLanguage'] | null => pins?.languageSets?.primary?.gatewayLanguage ?? null;
+
 /** The gateway packages a project can change to (#412, owner Q2): every
  * complete package installed on this computer that covers at least one of the
  * project's books, by its notes or its word links. An OBS project has no books,
