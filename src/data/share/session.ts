@@ -61,7 +61,8 @@ export interface SignInFacts extends Record<string, unknown> {
 /** Sign in to Door43 and hold the token in memory; the Report (`op: 'share'`)
  * names the refusal: `share.auth-failed` (wrong password), `share.offline` (the
  * net gate is off, or Door43 could not be reached), `share.server-unavailable`
- * (Door43 answered 5xx). Nothing is stored on a refusal. */
+ * (Door43 answered 5xx), `share.sign-in-rejected` (any other answer). Nothing
+ * is stored on a refusal. */
 export async function signIn(deps: SignInDeps, request: SignInRequest): Promise<Report> {
   const startedAt = new Date().toISOString();
   const base = { step: 'sign-in' };
@@ -106,5 +107,7 @@ const refusalForSignIn = (error: unknown): unknown => {
     return new Refusal('share.auth-failed', 'Door43 did not accept the username or the password', facts);
   if (error.status >= 500)
     return new Refusal('share.server-unavailable', 'Door43 is not available now; try again later', facts);
-  return new Refusal('share.auth-failed', `Door43 refused the sign-in: ${error.message}`, facts);
+  // Any other answer (a 400 used token name, a refused scope, a 429, a 201
+  // without a secret) is not about the password: its own code, Door43's words.
+  return new Refusal('share.sign-in-rejected', error.message, facts);
 };

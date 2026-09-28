@@ -51,8 +51,8 @@ export default function ShareSignIn() {
           <Callout tone="warn" role="alert" data-testid="signin-error" data-code={si.error.code || ''}
             style={{ overflowWrap: 'anywhere' }}>
             <strong>{t('signIn.failed')}</strong>{' '}
-            {/* The plain-words sentence per code (`share.auth-failed` → `signIn.error.auth-failed`); the Report's own message otherwise. */}
-            {si.error.code ? t(`signIn.error.${si.error.code.replace(/^share\./, '')}`, undefined, si.error.message) : si.error.message}
+            {/* The plain-words sentence per code (`share.auth-failed` → `signIn.error.auth-failed`; `{reason}` is Door43's own words); the Report's own message otherwise. */}
+            {si.error.code ? t(`signIn.error.${si.error.code.replace(/^share\./, '')}`, { reason: si.error.message }, si.error.message) : si.error.message}
           </Callout>
         )}
         {/* Enter submits the form; the visible action is the footer button. */}

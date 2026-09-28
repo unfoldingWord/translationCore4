@@ -743,5 +743,6 @@
   "signIn.failed": "Sign-in failed.",
   "signIn.error.auth-failed": "Door43 did not accept that username or password.",
   "signIn.error.offline": "No network: Door43 could not be reached.",
-  "signIn.error.server-unavailable": "Door43 is not available right now. Try again later."
+  "signIn.error.server-unavailable": "Door43 is not available right now. Try again later.",
+  "signIn.error.sign-in-rejected": "Door43 refused the sign-in: {reason}. Nothing was saved."
 }
