@@ -92,13 +92,15 @@ test.describe('J22 — a translator checks an OBS story', () => {
         });
       }
 
-      await test.step('Community Checking renders the story: title, frame 1 with its picture, the undrafted frames stated', async () => {
+      await test.step('Community Checking renders the drafted story: title, frame 1 with its picture, one line for the undrafted frames (#454)', async () => {
         await page.getByTestId('open-community-checking').click();
-        const story = page.getByTestId('cc-story');
+        const story = page.locator('[data-testid="cc-story"][data-story="1"]');
         await expect(story).toBeVisible();
+        await expect(page.getByTestId('cc-story')).toHaveCount(1); // the other stories are undrafted, after the last drafted one
         await expect(story.getByTestId('cc-frame-1')).toContainText(FRAME_1_EDITED);
         await expect(story.getByTestId('cc-picture-1')).toBeVisible();
-        await expect(story.getByTestId('cc-frame-2')).toContainText('[ frame not yet drafted ]');
+        await expect(story.getByTestId('cc-frame-gap')).toHaveText(/^\[ frames 2–\d+ not yet drafted \]$/);
+        await expect(story.getByTestId('cc-frame-2')).toHaveCount(0);
         await page.getByTestId('cc-pictures').click();
         await expect(story).toHaveAttribute('data-pictures', '0');
         await expect(story.getByTestId('cc-picture-1')).toHaveCount(0);

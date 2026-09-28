@@ -14,6 +14,7 @@ import { JournalingStore, ProjectReader } from './data/journal/journalingStore';
 import { SaveScheduler } from './data/saveScheduler';
 import { StoryScheduler, normalizeStoryUnit } from './data/storyScheduler';
 import { createObsPackCache, readObsStoryPresentation } from './data/obsStory';
+import { readPrintedStories } from './data/storyModel';
 import { recordRecentStory } from './data/obsRecency';
 import { modeOf, placeKey, recordPlace } from './data/place';
 import { spliceSection, spliceVerse, spliceVerseGap, verseBody } from './data/usfm/splice';
@@ -3077,6 +3078,17 @@ export function AppProvider({ children }) {
 
   // ---- actions ----------------------------------------------------------------
   const actions = useMemo(() => {
+    /** One OBS story's frame pictures as Community Checking resolves them (#360,
+     * D74 point 9): the source of each frame that has one, by frame number. The
+     * OBS PDF and the preview (#454) read pictures through it. */
+    const obsStoryPictures = (st, store) => async (storyNumber) => {
+      const { installed } = await a.resolutionContext();
+      const { images } = await readObsStoryPresentation({
+        api, store, projectRepo: st.project.repoPath, storyNumber, resources: st.projectPins, installed,
+        packCache: obsPackCache(), pinsKnown: st.projectPinsLoaded === true,
+      });
+      return Object.fromEntries(Object.entries(images).filter(([, image]) => image.uri).map(([frame, image]) => [frame, image.uri]));
+    };
     const a = {
       go: async (view) => {
         // B1/D65: navigation is flush-and-go (owner ruling 2026-08-28), and a
@@ -3120,20 +3132,22 @@ export function AppProvider({ children }) {
         const st = stateRef.current;
         const store = storeRef.current;
         if (!st.project || !store) return null;
-        // #360: an OBS PDF shows each frame's picture as Community Checking
-        // resolves it (D74 point 9), story by story.
         const project = st.project;
-        const storyPictures = project.flavor === 'textStories'
-          ? async (storyNumber) => {
-            const { installed } = await a.resolutionContext();
-            const { images } = await readObsStoryPresentation({
-              api, store, projectRepo: project.repoPath, storyNumber, resources: st.projectPins, installed,
-              packCache: obsPackCache(), pinsKnown: st.projectPinsLoaded === true,
-            });
-            return Object.fromEntries(Object.entries(images).filter(([, image]) => image.uri).map(([frame, image]) => [frame, image.uri]));
-          }
-          : undefined;
+        const storyPictures = project.flavor === 'textStories' ? obsStoryPictures(st, store) : undefined;
         return runExport(producer, { store, project, book: st.book ?? undefined, pageSetup, storyPictures }, opsLog);
+      },
+
+      /** The printed stories of the open OBS project (#454) as the OBS PDF
+       * prints them: every pending save is on disk first, then each story is
+       * read from the store, and each drafted frame that prints resolves its
+       * picture. For the Community Checking preview. Null when no project is
+       * open or a save failed (the save indicator shows it). */
+      readPrintStories: async () => {
+        if (!(await drainSchedulers(saveRefs))) return null;
+        const st = stateRef.current;
+        const store = storeRef.current;
+        if (!st.project || !store) return null;
+        return readPrintedStories(store, obsStoryPictures(st, store));
       },
 
       closeModal: () => dispatch({ type: 'set', patch: { modal: null, np: null, ab: null, st: null, fix: null, im: null } }),

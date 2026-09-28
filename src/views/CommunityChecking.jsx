@@ -4,15 +4,18 @@
 // DISABLED: they arrive with J7 later in Increment 4 (owner ruling 2026-08-27
 // recorded in #108) — an honest state, not a dead end.
 //
-// An OBS project (#291, D74 §8) previews the open STORY as its pages: title,
-// picture, frame text, reference line, with one OBS-only page-setup toggle,
-// pictures on or off. The PDF file itself is J23 (Increment 8).
+// An OBS project (#291, D74 §8) previews the stories the OBS PDF prints
+// (#454, src/data/storyModel.ts printedStories): each drafted story's title,
+// pictures, frame text and reference line, one line for each run of undrafted
+// frames or stories, with the OBS-only page setup: the layout and pictures on
+// or off.
 import React from 'react';
 import { useApp } from '../state.jsx';
 import { bookName } from '../data/bookNames';
 import { DEFAULT_PAGE_SETUP } from '../data/export/pageSetup';
 import { printedItems } from '../data/bookModel';
 import PrintPages from './print/PrintPages.jsx';
+import { frameGapText, storyGapText, storyTitle } from './print/PrintStories.jsx';
 import { t } from '../i18n';
 import { Button, FilterChip, Toggle, Overline, Callout } from '../ds/index.js';
 import ExportMenu from './ExportMenu.jsx';
@@ -43,31 +46,38 @@ function PageSetupChoiceRow({ label, labelId, options, value, onChange }) {
   );
 }
 
-/** The story pages: the title, then each frame's picture and text, then the
- * reference line. An undrafted frame is stated, never skipped silently. In the
- * wrapped layout (#11) the picture is a quarter of the width at the frame's
- * start corner (left for a left-to-right language, right for right-to-left)
- * and the text wraps it. */
-function StoryPages({ story, images, pictures, layout, dir }) {
+/** A story's page, full width up to the sheet, with the space before the next item. */
+const STORY_PAGE = { ...PAGE, margin: '0 auto 24px' };
+const GAP_LINE = { fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-md)', lineHeight: 'var(--lh-verse-md)', color: 'var(--text-tertiary)', margin: '0 0 26px' };
+const PREVIEW_NOTE = { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary)', fontSize: 'var(--fs-ui)' };
+
+/** One drafted story's page: the title, then each drafted frame's picture and
+ * text and one line for each run of undrafted frames (no picture), then the
+ * reference line. In the wrapped layout (#11) the picture is a quarter of the
+ * width at the frame's start corner (left for a left-to-right language, right
+ * for right-to-left) and the text wraps it. Test ids inside a story repeat in
+ * the next story: find them within their `cc-story` (`data-story` is its number). */
+function StoryPage({ story, frames, images, pictures, layout, dir }) {
   const wrapped = layout === 'wrapped';
   const pictureStyle = wrapped
     ? { float: dir === 'rtl' ? 'right' : 'left', width: '25%', margin: dir === 'rtl' ? '0 0 6px 12px' : '0 12px 6px 0' }
     : { display: 'block', width: '100%', marginBottom: 12 };
   return (
-    <div style={PAGE} data-testid="cc-story" data-pictures={pictures ? '1' : '0'} data-layout={layout}>
+    <div style={STORY_PAGE} data-testid="cc-story" data-story={story.number} data-pictures={pictures ? '1' : '0'} data-layout={layout}>
       <p style={EYEBROW}>{t('cc.eyebrow')}</p>
-      <h1 style={H1} dir={dir}>{story.title || t('storyDraft.storyNumber', { n: story.number })}</h1>
+      <h1 style={H1} dir={dir}>{storyTitle(story)}</h1>
       <div style={RULE} />
-      {story.frames.map((frame, i) => {
-        const image = images?.[String(i + 1)];
+      {frames.map((frame) => {
+        if (frame.gap) return <p key={`gap-${frame.gap[0]}`} dir={dir} data-testid="cc-frame-gap" style={GAP_LINE}>{frameGapText(frame.gap)}</p>;
+        const uri = images?.[String(frame.n)];
         return (
-          <div key={i + 1} data-testid={`cc-frame-${i + 1}`} style={{ marginBottom: 26, ...(wrapped ? { display: 'flow-root' } : {}) }}>
-            {pictures && image?.uri && (
-              <img data-testid={`cc-picture-${i + 1}`} src={image.uri} alt={t('storyDraft.imageAlt', { n: i + 1 })}
+          <div key={frame.n} data-testid={`cc-frame-${frame.n}`} style={{ marginBottom: 26, ...(wrapped ? { display: 'flow-root' } : {}) }}>
+            {pictures && uri && (
+              <img data-testid={`cc-picture-${frame.n}`} src={uri} alt={t('storyDraft.imageAlt', { n: frame.n })}
                 style={{ ...pictureStyle, borderRadius: 'var(--radius-md)', background: 'var(--surface-sunken)' }} />
             )}
-            <p dir={dir} style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-md)', lineHeight: 'var(--lh-verse-md)', color: frame.text ? 'var(--text-scripture)' : 'var(--text-tertiary)', textAlign: 'justify', whiteSpace: 'pre-wrap', margin: 0 }}>
-              {frame.text || t('cc.notYetDraftedFrame')}
+            <p dir={dir} style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-md)', lineHeight: 'var(--lh-verse-md)', color: 'var(--text-scripture)', textAlign: 'justify', whiteSpace: 'pre-wrap', margin: 0 }}>
+              {frame.text}
             </p>
           </div>
         );
@@ -81,24 +91,48 @@ function StoryPages({ story, images, pictures, layout, dir }) {
   );
 }
 
-/** The OBS preview: the open story, the Layout row (#11) and the pictures toggle. */
+/** The OBS preview: the printed stories, read as the PDF reads them, the
+ * Layout row (#11) and the pictures toggle. */
 function StoryCommunityChecking({ pageSetup, updatePageSetup }) {
   const { s, actions } = useApp();
   const { pictures } = pageSetup;
-  const story = s.story;
   const dir = s.project?.scriptDirection === 'rtl' ? 'rtl' : 'ltr';
-  if (!story) {
+  // { items, pictures, undrafted } once read; { error } when the read failed.
+  const [printed, setPrinted] = React.useState(null);
+  // Read once for each project that opens the view; a read that a newer one
+  // replaced is dropped. The action is held in a ref, so a new actions object
+  // does not read again.
+  const projectId = s.project?.id;
+  const readRef = React.useRef(actions.readPrintStories);
+  readRef.current = actions.readPrintStories;
+  React.useEffect(() => {
+    let current = true;
+    setPrinted(null);
+    Promise.resolve()
+      .then(() => readRef.current())
+      .then((result) => { if (current) setPrinted(result ?? { error: '' }); })
+      .catch((error) => { if (current) setPrinted({ error: String(error?.message || error) }); });
+    return () => { current = false; };
+  }, [projectId]);
+  if (!printed || printed.error !== undefined) {
     return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary)', fontSize: 'var(--fs-ui)' }} data-testid="community-checking">
-        {s.storyError ? s.storyError : t('storyDraft.loading')}
+      <div style={PREVIEW_NOTE} data-testid="community-checking">
+        {printed ? `${t('cc.storiesLoadError')} ${printed.error}`.trim() : t('cc.storiesLoading')}
       </div>
     );
   }
-  const undrafted = story.frames.some((frame) => !frame.text);
+  const { items, undrafted } = printed;
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }} data-testid="community-checking">
+      {/* A block, not a flex column: a flex column would shrink a short page to its content. */}
       <main style={{ flex: 1, overflow: 'auto', minWidth: 0, background: 'var(--surface-muted)', padding: '34px 24px 60px' }}>
-        <StoryPages story={story} images={s.storyImages} pictures={pictures} layout={pageSetup.obsLayout} dir={dir} />
+        {items.length === 0 && (
+          <p data-testid="cc-nothing-drafted" style={{ textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 'var(--fs-ui)' }}>{t('cc.nothingDraftedObs')}</p>
+        )}
+        {items.map((item) => item.gap
+          ? <p key={`gap-${item.gap[0]}`} dir={dir} data-testid="cc-story-gap" style={{ ...GAP_LINE, textAlign: 'center', margin: '0 0 24px' }}>{storyGapText(item.gap)}</p>
+          : <StoryPage key={item.story.number} story={item.story} frames={item.frames} images={printed.pictures[item.story.number]}
+            pictures={pictures} layout={pageSetup.obsLayout} dir={dir} />)}
       </main>
       <aside style={ASIDE}>
         <Button variant="ghost" onClick={() => actions.go('check')} style={{ alignSelf: 'flex-start' }}>{t('cc.back')}</Button>
@@ -113,7 +147,8 @@ function StoryCommunityChecking({ pageSetup, updatePageSetup }) {
             <Toggle data-testid="cc-pictures" label={t('cc.pictures')} checked={pictures} onChange={() => updatePageSetup({ pictures: !pictures })} />
           </div>
         </div>
-        {undrafted && (
+        {/* With nothing drafted the export is the one nothing-drafted line, so the run rule does not apply. */}
+        {undrafted && items.length > 0 && (
           <Callout tone="kindle"><strong style={{ color: 'var(--uw-kindle)' }}>{t('cc.incompleteTitle')}</strong> {t('cc.incompleteBodyObs')}</Callout>
         )}
       </aside>
