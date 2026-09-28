@@ -32,7 +32,7 @@ function stageProduct(options, shortName = 'tc4') {
 // `userData` and `encryption` (#366): the fake `safeStorage` — a reversible
 // transform behind a marker, never the clear text — and the directory the
 // token file lives in, so a second start can read what the first kept.
-function runDesktopMain({ platform = 'linux', lock = true, startServer, bindError = false, printError = false, userData = os.tmpdir(), encryption = true } = {}) {
+function runDesktopMain({ platform = 'linux', lock = true, startServer, bindError = false, printError = false, userData = os.tmpdir(), encryption = true, backend = 'gnome_libsecret' } = {}) {
   const events = [];
   const handlers = {};
   const windows = [];
@@ -61,6 +61,7 @@ function runDesktopMain({ platform = 'linux', lock = true, startServer, bindErro
   };
   const safeStorage = {
     isEncryptionAvailable: () => encryption,
+    getSelectedStorageBackend: () => backend,
     encryptString: (text) => Buffer.concat([Buffer.from('v10'), Buffer.from(Buffer.from(text, 'utf8').map((b) => b ^ 0x5a))]),
     decryptString: (bytes) => {
       if (bytes.subarray(0, 3).toString() !== 'v10') throw new Error('not this keychain\'s bytes');
@@ -449,6 +450,12 @@ test('the keychain keeps the token as ciphertext only, a new start reads it back
   assert.deepEqual(fs.readFileSync(file), before);
   assert.deepEqual(await answer(plain.handlers['token:read']({})), { token: null, reason: refused.reason });
   assert.equal(filesUnder(userData).some((f) => fs.readFileSync(f).includes('another-token')), false);
+
+  // Linux basic_text can report encryption but has no protected secret store.
+  const basic = runDesktopMain({ userData, encryption: true, backend: 'basic_text' });
+  assert.equal((await answer(basic.handlers['token:keep']({}, 'unprotected-token'))).kept, false);
+  assert.equal((await answer(basic.handlers['token:read']({}))).token, null);
+  assert.deepEqual(fs.readFileSync(file), before);
 
   // 4. Forget removes the file; a later read finds nothing; forget again is fine.
   assert.deepEqual(await answer(second.handlers['token:forget']({})), { forgotten: true });

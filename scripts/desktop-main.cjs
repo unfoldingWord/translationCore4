@@ -62,10 +62,12 @@ function watchDownloads(session) {
 const TOKEN_FILE = 'door43-token';
 const tokenFile = () => path.join(app.getPath('userData'), TOKEN_FILE);
 const NO_KEYCHAIN = 'this computer has no keychain the app can use';
+const hasKeychain = () => safeStorage.isEncryptionAvailable()
+  && (process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text');
 
 function keepToken(_event, token) {
   if (typeof token !== 'string' || !token) return { kept: false, reason: 'no token was given' };
-  if (!safeStorage.isEncryptionAvailable()) return { kept: false, reason: NO_KEYCHAIN };
+  if (!hasKeychain()) return { kept: false, reason: NO_KEYCHAIN };
   const file = tokenFile();
   const writing = `${file}.tc4-writing-${process.pid}`;
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -77,7 +79,7 @@ function keepToken(_event, token) {
 function readToken() {
   const file = tokenFile();
   if (!fs.existsSync(file)) return { token: null };
-  if (!safeStorage.isEncryptionAvailable()) return { token: null, reason: NO_KEYCHAIN };
+  if (!hasKeychain()) return { token: null, reason: NO_KEYCHAIN };
   try {
     return { token: safeStorage.decryptString(fs.readFileSync(file)) };
   } catch (error) {
