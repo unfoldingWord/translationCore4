@@ -13,7 +13,7 @@
 // decline. They are NOT a banner discovered later when opening a book: that
 // moves the user from deciding to discovering and removes the choice.
 import type { DecisionFile, LanguageSet, ResourcePin, ResourcesFile } from './burritoStore';
-import { OBS_TOOL_SLOT, coverageFor, pinKey, resolveObsSetSlot, resolveToolBook } from './resolve';
+import { OBS_TOOL_SLOT, covers, pinKey, resolveObsSetSlot, resolveToolBook } from './resolve';
 import { GATEWAYS, gatewayKey } from './gateways';
 import type { Gateway } from './gateways';
 import { languageSetFromInstalled } from './installed';
@@ -226,5 +226,5 @@ export const gatewaysCoveringProject = (
     if (!set) return false;
     if (kind === 'obs' || books.length === 0) return true;
     return [set.translationNotes, set.translationWordsLinks]
-      .some((pin) => coverageFor(coverage, pin).books.some((b) => books.includes(b)));
+      .some((pin) => books.some((b) => covers(coverage, pin, b)));
   });

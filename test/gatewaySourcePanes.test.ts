@@ -103,6 +103,12 @@ describe('gatewaysCoveringProject (owner Q2)', () => {
     expect(keys(gatewaysCoveringProject(installed, coverage, ['PHM'], 'bible'))).toEqual(['en::unfoldingWord']);
   });
 
+  it('whole-collection coverage (§5.3 BIBLE) covers every book', () => {
+    const coverage = { [pinKey(ES_TN)]: ['TIT'], [pinKey(ES_TW)]: ['BIBLE'] };
+    expect(keys(gatewaysCoveringProject(installed, coverage, ['GEN'], 'bible'))).toContain('es-419::es-419_gl');
+    expect(keys(gatewaysCoveringProject(installed, { [pinKey(ES_TN)]: ['TIT'], [pinKey(ES_TW)]: ['TIT'] }, ['GEN'], 'bible'))).not.toContain('es-419::es-419_gl');
+  });
+
   it('the word links alone are coverage: a book the notes lack but the links carry lists the package', () => {
     const coverage = { [pinKey(ES_TN)]: ['TIT'], [pinKey(ES_TW)]: ['TIT', 'PHM'] };
     expect(keys(gatewaysCoveringProject(installed, coverage, ['PHM'], 'bible'))).toContain('es-419::es-419_gl');

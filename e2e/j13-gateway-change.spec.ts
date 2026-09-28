@@ -70,6 +70,14 @@ function identities(set: unknown): Record<string, unknown> {
     .map(([slot, pin]) => [slot, pin.repoPath ? `${pin.repoPath}@${pin.sha}` : pin]));
 }
 
+/** The first frame's text of story 1 in an installed OBS source. */
+function firstFrame(name: string): string {
+  const paragraphs = sideloadedIngredient(name, 'content/01.md').split(/\n\s*\n/).map((p) => p.trim());
+  const frame = paragraphs.find((p) => p && !p.startsWith('#') && !p.startsWith('!['));
+  if (!frame) throw new Error(`${name}: story 1 has no frame text`);
+  return frame.split('\n')[0].slice(0, 40);
+}
+
 /** Every file under the project's checking/ folder, as bytes. */
 function checkingBytes(repo: string): Record<string, string> {
   const root = path.join(rigRepo(repo), 'ingredients', 'checking');
@@ -294,6 +302,32 @@ test.describe('J13 — changing the project’s checking language', () => {
   );
 
   test(
+    'from Home: choosing a package opens the project, then the dialogue; Cancel writes nothing of the change (#412)',
+    { tag: ['@inc2', '@J13'] },
+    async ({ page }) => {
+      writeProjectPins(SEEDED_PROJECT, EN());
+      await page.goto('/');
+      await page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByRole('button', { name: 'Settings' }).click();
+      await page.getByTestId(`settings-gateway-${ES_KEY}`).click();
+      await expect(page.getByTestId('gateway-change')).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByTestId('project-settings')).toBeVisible();
+      // The open adopts installed optional slots (D64) on its own schedule; wait
+      // until the pin file is stable, then nothing of the change may move it.
+      const pinBytes = () => fs.readFileSync(path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'resources.json'), 'utf8');
+      let last = '';
+      await expect.poll(() => { const now = pinBytes(); const same = now === last; last = now; return same; }, { intervals: [1500], timeout: 30_000 }).toBe(true);
+      const atQuestion = pinBytes();
+      const decisionsAtQuestion = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT');
+      await page.getByTestId('gateway-cancel').click();
+      await expect(page.getByTestId('gateway-change')).toHaveCount(0);
+      await page.waitForTimeout(1500);
+      expect(pinBytes()).toBe(atQuestion);
+      expect(readProjectPins(SEEDED_PROJECT).languageSets.primary.gatewayLanguage.languageId).toBe('en');
+      expect(readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')).toEqual(decisionsAtQuestion);
+    },
+  );
+
+  test(
     'confirming moves the pins AND reconciles the decisions against the new resource (D36)',
     { tag: ['@inc2', '@J13'] },
     async ({ page }) => {
@@ -463,12 +497,18 @@ test.describe('J13 — changing the project’s checking language', () => {
       const before = readProjectPins(repo) as unknown as ResourcesOnDisk;
       await page.goto('/');
       await page.getByTestId(`project-_local_/_local_/${repo}`).getByTestId('story-tile-1').click();
+      await expect(page.getByTestId('story-draft')).toContainText(firstFrame('en_obs'));
       await page.getByTestId('project-settings').click();
       await expect(page.getByTestId(`settings-gateway-${EN_KEY}`)).toHaveAttribute('data-current', '1');
       await page.getByTestId(`settings-gateway-${ES_KEY}`).click();
       await expect(page.getByTestId('gateway-change')).toBeVisible();
       await page.getByTestId('gateway-confirm').click();
       await expect(page.getByTestId('gateway-change')).toHaveCount(0);
+      await expect(page.getByTestId('settings-gateway-current')).toHaveText('This project checks in Spanish (Latin American) · es-419_gl.');
+      // The open story shows the Spanish source without leaving it, and names v2.
+      await page.getByRole('button', { name: 'Cancel' }).click();
+      await expect(page.getByTestId('story-draft')).toContainText(firstFrame('es-419_obs'));
+      await expect(page.getByTestId('source-name')).toContainText('v2');
       const after = readProjectPins(repo) as unknown as ResourcesOnDisk;
       expect(after.languageSets.primary.gatewayLanguage).toEqual({ languageId: 'es-419', owner: ES_ORG });
       for (const name of ['es-419_obs', 'es-419_obs-tn', 'es-419_obs-twl', 'es-419_tw', 'es-419_ta']) {
@@ -477,7 +517,6 @@ test.describe('J13 — changing the project’s checking language', () => {
       }
       expect(identities(after.languageSets.fallback)).toEqual(identities(before.languageSets.fallback));
       expect(after.extraScripture.map((e) => [e.id, e.repoPath, e.sha])).toEqual(before.extraScripture.map((e) => [e.id, e.repoPath, e.sha]));
-      await expect(page.getByTestId('settings-gateway-current')).toHaveText('This project checks in Spanish (Latin American) · es-419_gl.');
     },
   );
 });

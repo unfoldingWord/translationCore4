@@ -3874,6 +3874,9 @@ export function AppProvider({ children }) {
         });
         dispatch({ type: 'set', patch: { projectPins: preview.next, projectPinsLoaded: true, projectPinsSeq: stateRef.current.projectPinsSeq + 1 } });
         a.reloadSourcePanes(preview.next);
+        // An open OBS story shows the new package's source text too (#412).
+        if (stateRef.current.project?.flavor === 'textStories' && stateRef.current.storyNumber != null)
+          void a.openStory(stateRef.current.storyNumber, preview.next);
         // #412: Project settings opens over a running check session, which was
         // derived from the package just left. Close it; the preflight below
         // derives the tools again from the new pins.
@@ -5097,9 +5100,11 @@ export function AppProvider({ children }) {
       },
 
       /** #412: choose the project's gateway package from Settings. The change is
-       * the J13 one: the consequence dialogue opens over Settings, and nothing is
-       * written before its confirm. A project that is not open is opened first,
-       * because the change is one journal action of the open project. */
+       * the J13 one: the consequence dialogue opens over Settings, and nothing of
+       * the change is written before its confirm. A project that is not open is
+       * opened first, because the change is one journal action of the open
+       * project; that open adopts installed optional slots as every open does
+       * (D64), before the dialogue asks. */
       chooseSettingsGateway: async (gateway) => {
         const st = stateRef.current.st;
         if (!st) return;
