@@ -10,12 +10,49 @@ import { useApp } from '../state.jsx';
 import { t } from '../i18n';
 import { bookName } from '../data/bookNames';
 import { Card, BookTile, Button, Overline, Badge, Callout, Toast } from '../ds/index.js';
+import { shareErrorText } from './modals/ShareDialog.jsx';
 
 // Above this many books a card shows only its in-progress books until expanded.
 const COLLAPSE_ABOVE = 12;
 
-// Plain text action in a card header (Settings, Export): hairline hover, no fill.
+// Plain text action in a card header (Share, Settings): hairline hover, no fill.
 const HEADER_ACTION = { border: 0, background: 'transparent', cursor: 'pointer', padding: '8px 6px', fontFamily: 'var(--font-ui)', fontWeight: 'var(--fw-heavy)', fontSize: 'var(--fs-caption-lg)', letterSpacing: 'var(--track-12-5)', color: 'var(--text-heading)', borderRadius: 'var(--radius-sm)' };
+const CARD_NOTE = { fontSize: 'var(--fs-meta)', letterSpacing: 'var(--track-11-5)', color: 'var(--text-tertiary)', fontWeight: 'var(--fw-medium)', whiteSpace: 'nowrap' };
+
+// #362 (D84 point 1): the Share action beside Settings on a Bible or OBS card
+// (Community Checking has none). A shared project — its repository has an
+// `origin`, read by loadShared, never a stored record (D85) — shows "On Door43"
+// with the repository path, and its action reads "Upload changes": a push with
+// no dialog. Offline (the platform's net gate), the action is disabled and the
+// line under it says why. A refusal of an Upload changes shows here with its code.
+function ShareAction({ p }) {
+  const { s, actions } = useApp();
+  useEffect(() => {
+    actions.loadShared(p);
+  }, [p.id]);
+  const shared = s.remoteByProject[p.id] || null;
+  const run = s.shareCard[p.id] || null;
+  const offline = !s.netEnabled;
+  const busy = !!run?.busy;
+  const label = busy
+    ? t(run.step === 'push' ? 'shareDialog.pushing' : run.step === 'create' ? 'shareDialog.creating' : 'shareDialog.preparing')
+    : t(shared ? 'home.uploadChanges' : 'home.share');
+  return (
+    <div data-testid={`share-card-${p.id}`} data-shared={shared ? '1' : '0'} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+      <button type="button" data-i="quiet" data-testid={`share-${p.id}`} title={offline ? t('home.shareOffline') : label}
+        disabled={offline || busy} onClick={() => actions.startShare(p)} style={{ ...HEADER_ACTION, opacity: offline ? 0.5 : 1, cursor: offline ? 'default' : 'pointer' }}>
+        {label}
+      </button>
+      {shared && <span style={CARD_NOTE} data-testid={`share-state-${p.id}`}>{t('home.onDoor43')} · {shared.repository}</span>}
+      {offline && <span style={CARD_NOTE} data-testid={`share-offline-${p.id}`}>{t('home.shareOffline')}</span>}
+      {run?.error && (
+        <span role="alert" style={{ ...CARD_NOTE, color: 'var(--uw-kindle)', whiteSpace: 'normal', maxWidth: 360, textAlign: 'end' }}
+          data-testid={`share-card-error-${p.id}`} data-code={run.error.code || ''}>{shareErrorText(run.error)}</span>
+      )}
+      {run?.uploaded && <span style={CARD_NOTE} data-testid={`share-uploaded-${p.id}`}>{t('home.uploaded')}</span>}
+    </div>
+  );
+}
 
 // An OBS project's card (J20, #287; D74; #328): the kind marker, and one tile
 // per story, the way a Bible card has one per book. The card opens collapsed
@@ -67,6 +104,7 @@ export function ObsProjectCard({ p }) {
             {p.languageTag} · {t('home.obsStories')} · {t('home.inProgress', { n: inProgress })} · {hasPct ? t('home.drafted', { n: pct }) : '—'}
           </span>
         </div>
+        <ShareAction p={p} />
         <button type="button" data-i="quiet" title={t('home.settings')} onClick={() => actions.openSettings(p)} style={HEADER_ACTION}>
           {t('home.settings')}
         </button>
@@ -133,6 +171,7 @@ function ProjectCard({ p }) {
             {p.languageTag} · {p.bookCodes.length} {p.bookCodes.length === 1 ? t('home.book') : t('home.books')} · {t('home.inProgress', { n: inProgress.length })}
           </span>
         </div>
+        <ShareAction p={p} />
         <button type="button" data-i="quiet" title={t('home.settings')} onClick={() => actions.openSettings(p)} style={HEADER_ACTION}>
           {t('home.settings')}
         </button>
@@ -209,6 +248,24 @@ function ResumeCard({ edit, projects }) {
   );
 }
 
+// #203 (D84 point 2): one Door43 bar above the project cards — "Not signed in
+// to Door43" with Sign in, or the signed-in user with Sign out. Sign in opens
+// the same sign-in step the first share uses; Sign out drops the token from
+// memory (and from the keychain through #366).
+function Door43Bar({ user, actions }) {
+  return (
+    <div data-testid="door43-bar" data-signed-in={user ? '1' : '0'}
+      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', margin: '0 0 16px', background: 'var(--surface-card)', border: 'var(--stroke-hair) solid var(--border-hair)', borderRadius: 'var(--radius-lg)', fontSize: 'var(--fs-ui-sm)', color: 'var(--text-secondary)', fontWeight: 'var(--fw-medium)' }}>
+      <span style={{ flex: 1 }} data-testid="door43-status">
+        {user ? t('home.door43SignedIn', { user }) : t('home.door43NotSignedIn')}
+      </span>
+      {user
+        ? <Button size="sm" variant="outline" onClick={actions.signOut} data-testid="door43-sign-out">{t('home.door43SignOut')}</Button>
+        : <Button size="sm" variant="outline" onClick={() => actions.openSignIn()} data-testid="door43-sign-in">{t('home.door43SignIn')}</Button>}
+    </div>
+  );
+}
+
 export default function Home() {
   const { s, actions } = useApp();
   const projects = s.projects;
@@ -225,6 +282,8 @@ export default function Home() {
           <div style={{ flex: 1 }} />
           <Button onClick={actions.openAddProject} data-testid="add-project">+ {t('home.addProject')}</Button>
         </div>
+
+        <Door43Bar user={s.door43User} actions={actions} />
 
         {/* A refused open (e.g. the #62 seed pipeline's diagnosable STOP) routes
             back here with bookError set; without this banner the click looked

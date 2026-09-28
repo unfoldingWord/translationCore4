@@ -5,11 +5,15 @@ import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 
-const actions = { loadProgress: vi.fn(), openProjectAt: vi.fn(), openSettings: vi.fn() };
+const actions = { loadProgress: vi.fn(), openProjectAt: vi.fn(), openSettings: vi.fn(), loadShared: vi.fn() };
 const stories = Array.from({ length: 50 }, (_, i) => ({ number: i + 1, title: i === 0 ? 'La creación' : i === 11 ? 'El éxodo' : '', pct: i === 0 ? 40 : i === 11 ? 5 : i === 6 ? 100 : 0, frames: 10, drafted: 0 }));
 const PROJECT = { id: '_local_/_local_/historias', name: 'Historias', languageTag: 'es', flavor: 'textStories', scriptDirection: 'ltr' };
 const state = {
   progressByProject: { [PROJECT.id]: { OBS: 3, stories } } as Record<string, unknown>,
+  // #362: the card's Share action reads these (not shared, no run, online).
+  remoteByProject: {} as Record<string, unknown>,
+  shareCard: {} as Record<string, unknown>,
+  netEnabled: true,
   obsRecentByProject: { [PROJECT.id]: [{ story: 12, at: Date.UTC(2026, 8, 17, 12) }, { story: 1, at: Date.UTC(2026, 8, 16, 12) }, { story: 7, at: Date.UTC(2026, 8, 15, 12) }] } as Record<string, Array<{ story: number; at: number }>>,
 };
 vi.mock('../src/state.jsx', () => ({ useApp: () => ({ s: state, actions }) }));

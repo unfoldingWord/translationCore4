@@ -38,7 +38,7 @@ Owner of increment numbers: the GitHub milestones, mirrored in `docs/ROADMAP.md`
 | J9c | facilitator | Exchange | Import raw USFM as a new project | increment 8 (D79): shell #361, parser #195 | `e2e/j09-import.spec.ts` (`@inc8 @J9`; to write) |
 | J9d | facilitator | Exchange | Import a Scripture Burrito as a new project | increment 8 (D79): shell #361, parser #196 | `e2e/j09-import.spec.ts` (`@inc8 @J9`; to write) |
 | J10 | — | — | retired: RTL is a fixture axis on J2, J4, J5, J7 | retired | both runs listed on each of those rows; `e2e/j10-rtl.spec.ts` stays until they exist |
-| J11 | facilitator | Exchange | Share the project to Door43 (first share pushes `main`) | increment 8.5 (D79, D84): #362, #203, #366, #120, #185 | `e2e/j11-share.spec.ts` (`@inc85 @J11`; to write) |
+| J11 | facilitator | Exchange | Share the project to Door43 (first share pushes `main`) | increment 8.5 (D79, D84): #362, #203, #366, #120, #185 | `e2e/j11-share.spec.ts` (`@inc85 @J11`; the keychain case fixme until #366) |
 | J12 | facilitator | Start | Upgrade the pinned resources | shipped alpha.6 (#256, #257; D72) | `e2e/j12-upgrade-resources.spec.ts` |
 | J13 | facilitator | Start | Change the gateway-language resource set | shipped alpha.2 | `e2e/j13-gateway-change.spec.ts` |
 | J14 | — | — | retired: isolation is a MUST NOT row on J1 and J2 | retired | `e2e/j14-join-isolation.spec.ts` stays |
@@ -188,8 +188,9 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   project card, D84).
 - Steps: press Share on the project card · sign in to Door43 with username and password,
   unless the session or the keychain has a token; "Stay signed in on this computer" keeps the
-  token in the operating-system keychain · on the first share of the installation, also give a
-  name and an email and read the D7 exposure notice (later sign-ins show them with a **Change** link, the only place to change them) · choose where the project goes: the user's
+  token in the operating-system keychain · read the author notice: the computer's account name
+  is the author of each shared change, and Door43 shows it (D85; no name or email is asked or
+  stored) · choose where the project goes: the user's
   own account or an organization that lets the user create repositories · check the repository
   name (default: the project's folder name) and the books or stories that are shared · the app
   creates the repository there, adds it as `origin`, pushes the working `main` branch · the app
@@ -198,7 +199,8 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   `main` equal to the local `main`; the project is byte-identical except the D9 checkpoint
   commit; `origin` is set in the repository's git config; nothing about remotes is stored in
   the installation; the token is in renderer memory, and in the operating-system keychain only
-  when "Stay signed in" is on. The card shows "On Door43" and the repository path. A later
+  when "Stay signed in" is on; no name, email or login is stored (D85); each pushed commit's
+  author is the computer's account name (PLATFORM-NOTES #47). The card shows "On Door43" and the repository path. A later
   share ("Upload changes") pushes `main` again with no dialog when a token is available.
 - Refusals (each a `Report` code, nothing pushed): the name exists on the chosen account or
   organization; the push is not a fast-forward, because another device pushed (the message
@@ -209,8 +211,8 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   store the password; write anything into the project.
 - Proof: `e2e/j11-share.spec.ts`, tags `@inc85 @J11`. The live leg against `qa.door43.org`
   runs when the QA credentials are present and reports a labelled skip otherwise (#185).
-- Owner: Increment 8.5 (D79 point 12, D84): #362 the share operation, #203 sign-in and
-  identity, #366 the keychain, #120 the Door43 authority, #185 the journey. Receive and team
+- Owner: Increment 8.5 (D79 point 12, D84, D85): #362 the share operation, #203 sign-in,
+  #366 the keychain, #120 the Door43 authority, #185 the journey. Receive and team
   sync stay Phase 2 (D67; epic #24).
 
 ### J12 Upgrade the pinned resources

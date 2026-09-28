@@ -254,16 +254,36 @@ opposed to a team main built by integrate. The sync plan's X8 scenario proves th
 the same.
 
 **Door43 adapter**:
-The one module that calls the Door43 API (`src/data/share/door43Api.ts`): list the user's
-organizations, read a permission, count repositories in a language, create a repository. Its
-server is `DCS_SERVER`; the token goes in the `Authorization` header only.
+The one module that calls the Door43 API (`src/data/share/door43Api.ts`): sign in (mint the
+`translationCore` token), list the user's organizations, read a permission, count repositories
+in a language, create a repository. Its server is `DCS_SERVER`; the token goes in the
+`Authorization` header only.
 _Avoid_: Door43 client, DCS helper, gitea API (for this module)
+
+**Door43 session**:
+The signed-in user's login and token, held in `src/data/share/session.ts` for the app session
+(`currentSession`); the token alone goes to the operating-system keychain when "Stay signed
+in" is on (#366). Nothing else is stored (D85): no name, no email, no login. Never in React
+state, the client settings, `localStorage`, a URL or a log.
+_Avoid_: credentials (the password is never kept), login state, identity record
 
 **Share target**:
 Where a first share creates the repository: the user's own account, or one organization the
 user can create repositories in (`ShareTarget`). Once the repository's `origin` exists, the
 target is not asked again.
 _Avoid_: destination, owner (for the choice itself)
+
+**Share dialog**:
+The first-share steps in one dialog (`src/views/modals/ShareDialog.jsx`, D84): where it goes,
+check what will be shared, one progress line, the end with the URL. Reached from the Share
+action on a Home card; a shared card's "Upload changes" pushes with no dialog.
+_Avoid_: share wizard, publish dialog
+
+**Shared card**:
+A Home project card whose repository has an `origin` remote: it shows "On Door43" and the
+repository path, and its action reads "Upload changes". The state is read from the remote
+(`GET /git/remotes`), never from a stored record.
+_Avoid_: published card, synced project
 
 **Fake Door43**:
 The in-memory Door43 the share tests use (`e2e/helpers/door43.ts`, `FakeDoor43`): Door43's

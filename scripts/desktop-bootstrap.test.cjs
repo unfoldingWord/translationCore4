@@ -88,6 +88,7 @@ function runDesktopMain({ platform = 'linux', lock = true, startServer, bindErro
       },
     },
     dialog: { showErrorBox: () => events.push('errorBox') },
+    shell: { openExternal: (url) => events.push('openExternal:' + url) },
   };
   const bootstrapModule = {
     shouldBindPackagedResources: (value) => {
@@ -350,7 +351,7 @@ function fakeDownload({ savePath, suggested, destroyed = false }) {
 
 test('the download report sends each download\'s file name and result to the page that started it', () => {
   const main = runDesktopMain();
-  const win = (session) => main.handlers['browser-window-created']({}, { webContents: { session } });
+  const win = (session) => main.handlers['browser-window-created']({}, { webContents: { session, setWindowOpenHandler: () => {} } });
 
   // Negative control: before any window exists, no session is watched.
   const idle = fakeDownload({ savePath: '/home/pilot/TIT-2026-09-26.pdf', suggested: 'TIT-2026-09-26.pdf' });
@@ -388,6 +389,18 @@ test('the download report sends each download\'s file name and result to the pag
   assert.match(preload, /ipcRenderer\.on\('download:done', relay\)/);
   assert.match(preload, /return \(\) => ipcRenderer\.removeListener\('download:done', relay\)/);
   assert.doesNotMatch(preload, /ipcRenderer\.(on|send|invoke)\((?!'(download:done|setCanClose|export:pdf)')/);
+});
+
+// #362: a link with target=_blank ("Open on Door43") opens in the system
+// browser; the app never opens a second window for it, and never for a
+// non-web address.
+test('a window-open request goes to the system browser for a web address, and is denied either way', () => {
+  const main = runDesktopMain();
+  let handler;
+  main.handlers['browser-window-created']({}, { webContents: { session: { on: () => {} }, setWindowOpenHandler: (h) => (handler = h) } });
+  assert.equal(handler({ url: 'https://qa.door43.org/facilitator/tit' }).action, 'deny');
+  assert.equal(handler({ url: 'file:///etc/passwd' }).action, 'deny');
+  assert.deepEqual(main.events.filter((e) => e.startsWith('openExternal:')), ['openExternal:https://qa.door43.org/facilitator/tit']);
 });
 
 test('external-server mode is the one explicit selector/profile escape hatch', () => {

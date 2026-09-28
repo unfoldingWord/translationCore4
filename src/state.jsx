@@ -55,6 +55,10 @@ import { checkpointMessage } from './data/checkpoint';
 import { runExport } from './data/export/kernel';
 import { runImport } from './data/import/shell';
 import { OpsLog, serialSettingsWriter } from './data/journal/opsLog';
+import { Door43Api } from './data/share/door43Api';
+import { currentSession, signIn as door43SignIn, signOut as door43SignOut } from './data/share/session';
+import { share as door43Share, repositoryOf } from './data/share/shareOperation';
+import { organizationChoices } from './data/share/recommend';
 import { applyVersions, carryOverNeeds, resolveVersions, unresolvedSlots } from './data/import/tc3';
 import { PARSERS } from './data/import/parsers';
 import { INSTALLED_SUITE, SUITE_VERSION } from './data/installedSuite';
@@ -94,6 +98,8 @@ const settingsWriter = serialSettingsWriter(
 );
 /** #374: the ops log — one record per store operation, in the same document. */
 export const opsLog = new OpsLog({ read: () => api.getClientSettings(STORAGE_ID), update: settingsWriter });
+/** #362/#203: the one Door43 adapter; its server is the build's `dcsServer`. */
+export const door43 = new Door43Api();
 // The mode a view is, for a checkpoint message (#183). Views not listed keep their id.
 const MODE_NAME = { read: 'Understand', draft: 'Translate', check: 'Check', publish: 'Community Checking' };
 // A leave-project checkpoint still running after its store was torn down
@@ -341,11 +347,25 @@ const initial = () => ({
   commitErrorRepo: null,
   // Modals (the owner's design: creation, add-book, and settings are dialogs
   // over Home, not separate pages)
-  modal: null, // null | 'addProject' | 'newProject' | 'newObs' | 'addBook' | 'settings' | 'sources' | 'fix' | 'import'
+  modal: null, // null | 'addProject' | 'newProject' | 'newObs' | 'addBook' | 'settings' | 'sources' | 'fix' | 'import' | 'signIn' | 'share'
   np: null, // New Bible form
   ab: null, // Add-a-book form
   st: null, // Project-settings form
   im: null, // Import form (#361): { step, kind, files, bundle, name, lang, license (null = not chosen yet), versions (tC3, #21), busy, error, report }
+  // #203: the Door43 sign-in step — { login, password, stay, server (host), busy,
+  // error: { code, message } | null }. The token never enters this state (session.ts).
+  si: null,
+  door43User: null, // the signed-in Door43 login shown in the Home bar, or null
+  // #362 (D84): the first-share dialog — { project, step: 'target'|'check'|'progress'|'done',
+  // choices: OrganizationChoice[] | null (loading), choicesError, target: ShareTarget, name,
+  // busy, steps: ('create'|'push')[] (the progress lines shown so far), error: { code, message } | null, report, copied }
+  sh: null,
+  // #362 (D84 point 1, D85): a card's shared state, DERIVED from the repository's own
+  // `origin` remote (GET /git/remotes) — { repository, url } | null (not shared); a
+  // missing key is not read yet. Nothing about remotes is stored in the installation.
+  remoteByProject: {},
+  // #362: a card's own Upload-changes run (no dialog) — { busy, step, error, uploaded } by repoPath
+  shareCard: {},
   importToast: null, // { name, books } of the project an import just made
   importedRepo: null, // its repoPath: the Home card carries the "Imported" badge
   // #9: the guided fix screen for a pinned resource this machine lacks —
@@ -3142,7 +3162,7 @@ export function AppProvider({ children }) {
         return readPrintedStories(store, obsStoryPictures(st, store));
       },
 
-      closeModal: () => dispatch({ type: 'set', patch: { modal: null, np: null, ab: null, st: null, fix: null, im: null } }),
+      closeModal: () => dispatch({ type: 'set', patch: { modal: null, np: null, ab: null, st: null, fix: null, im: null, sh: null } }),
 
       setDraftUnit: (unit) => {
         const st = stateRef.current;
@@ -4688,6 +4708,165 @@ export function AppProvider({ children }) {
       //      Bible Stories or Import in its place. Every close resets it, so a
       //      reopen always starts on the three cards. ----
       openAddProject: () => dispatch({ type: 'set', patch: { modal: 'addProject', np: null, im: null } }),
+
+      // ---- Door43 sign-in step (#203; D79 point 13, D84 point 6, D85). The
+      //      token lives in session.ts, never here. Nothing is stored but the
+      //      kept token (#366): no name, no email, no login (D85). ----
+      /** `share`: the project a Share pressed without a token continues with (#362). */
+      openSignIn: (share = null) =>
+        dispatch({
+          type: 'set',
+          patch: {
+            modal: 'signIn',
+            si: { login: '', password: '', stay: false, server: new URL(door43.server).host, busy: false, error: null, share },
+          },
+        }),
+      patchSi: (patch) => dispatch({ type: 'set', patch: { si: { ...stateRef.current.si, ...patch } } }),
+      /** Sign in; resolves the Report (`op: 'share'`), or null while a call runs.
+       * Nothing is stored on a refusal. #362's Share flow chains on it. */
+      submitSignIn: async () => {
+        const si = stateRef.current.si;
+        if (!si || si.busy) return null;
+        a.patchSi({ busy: true, error: null });
+        const report = await door43SignIn(
+          { door43, getNetEnabled: () => api.getNetEnabled() },
+          { login: si.login.trim(), password: si.password, stay: si.stay },
+        );
+        if (stateRef.current.modal !== 'signIn') {
+          // Cancel was pressed while the call ran: Cancel shares nothing, so a
+          // token that arrived after it is dropped.
+          await door43SignOut();
+          return report;
+        }
+        if (!report.ok) {
+          a.patchSi({ busy: false, password: '', error: { code: report.code ?? null, message: report.facts.error } });
+          return report;
+        }
+        dispatch({ type: 'set', patch: { door43User: report.facts.username, modal: null, si: null } });
+        // #362: a Share pressed without a token continues here, with the token.
+        if (si.share) a.startShare(si.share);
+        return report;
+      },
+      signOut: async () => {
+        await door43SignOut();
+        dispatch({ type: 'set', patch: { door43User: null } });
+      },
+
+      // ---- Share (#362; D79 point 12, D84 points 1, 3, 4, 5). The operation is
+      //      src/data/share/shareOperation.ts; the dialog is ShareDialog.jsx. ----
+      /** A card's shared state, read from the repository's own `origin`
+       * (D84 point 1): the one record of a share. Read once per session per
+       * project; a share updates it (`force` reads again). A failed read leaves
+       * the card on Share — the operation reads `origin` itself and never
+       * creates twice. Returns the shared state it read. */
+      loadShared: async (project, force = false) => {
+        if (!force && project.id in stateRef.current.remoteByProject) return stateRef.current.remoteByProject[project.id];
+        let shared = null;
+        try {
+          const origin = (await api.listRemotes(project.id)).find((remote) => remote.name === 'origin');
+          if (origin) shared = repositoryOf(origin.url);
+        } catch {
+          // unknown: the card offers Share
+        }
+        dispatch({ type: 'set', patch: { remoteByProject: { ...stateRef.current.remoteByProject, [project.id]: shared } } });
+        return shared;
+      },
+      /** Share, or Upload changes. No token: the sign-in step first, then back
+       * here. A shared project (an `origin`) pushes with no dialog; a first
+       * share opens the dialog on the where-it-goes step and reads the
+       * organizations (D84 point 3). */
+      startShare: async (project) => {
+        const session = currentSession();
+        if (!session) {
+          a.openSignIn(project);
+          return;
+        }
+        // "Not shared" in the cache can be a read still running, a failed read,
+        // or a create whose push failed: read `origin` again before the
+        // first-share dialog, so a shared project never asks again (#362 AC 2, 7).
+        const shared = stateRef.current.remoteByProject[project.id] || (await a.loadShared(project, true));
+        if (shared) return a.shareRun(project);
+        dispatch({
+          type: 'set',
+          patch: {
+            modal: 'share',
+            sh: { project, step: 'target', choices: null, choicesError: null, target: { kind: 'user' }, name: project.id.split('/').pop(), busy: false, steps: [], error: null, report: null, copied: false },
+          },
+        });
+        try {
+          const choices = await organizationChoices(door43, session, project.languageTag);
+          if (stateRef.current.sh?.project.id !== project.id) return;
+          a.patchSh({ choices });
+        } catch (e) {
+          if (stateRef.current.sh?.project.id !== project.id) return;
+          a.patchSh({ choices: [], choicesError: String(e?.message ?? e) });
+        }
+      },
+      patchSh: (patch) => dispatch({ type: 'set', patch: { sh: { ...stateRef.current.sh, ...patch } } }),
+      shareStep: (step) => a.patchSh({ step, error: null }),
+      /** Run the share: from the dialog's check step (a first share), or from
+       * the card's Upload changes (no dialog). One progress line per step;
+       * the Report's refusal shows where the run started. */
+      shareRun: async (project) => {
+        const session = currentSession();
+        if (!session) return null;
+        const sh = stateRef.current.sh;
+        const inDialog = stateRef.current.modal === 'share' && sh?.project.id === project.id;
+        const setCard = (patch) => dispatch({ type: 'set', patch: { shareCard: { ...stateRef.current.shareCard, [project.id]: { ...(stateRef.current.shareCard[project.id] || {}), ...patch } } } });
+        if (inDialog) {
+          if (sh.busy) return null;
+          a.patchSh({ step: 'progress', busy: true, steps: [], error: null });
+        } else {
+          if (stateRef.current.shareCard[project.id]?.busy) return null;
+          setCard({ busy: true, step: null, error: null, uploaded: false });
+        }
+        const onStep = (step) => (inDialog ? a.patchSh({ steps: [...(stateRef.current.sh?.steps || []), step] }) : setCard({ step }));
+        // The D9 checkpoint runs through the project's store: the open one when
+        // this project is open, else a throwaway store (the saveSettings pattern).
+        const open = stateRef.current.project?.id === project.id ? storeRef.current : null;
+        const store = open ?? new JournalingStore({ api, ops: opsLog });
+        let report;
+        try {
+          if (!open) await store.open(project.id);
+          report = await door43Share(
+            // A `file://` remote is the rig's local remote, which the journeys
+            // control (#362 test 1). Only a development build accepts it.
+            { api, door43, ops: opsLog, onStep, allowFileRemote: import.meta.env.DEV === true, commitPending: (messageFor) => store.commitPending(messageFor) },
+            { repoPath: project.id, session, target: sh?.target ?? { kind: 'user' }, name: (sh?.name ?? project.id.split('/').pop()).trim() },
+          );
+        } catch (e) {
+          report = { ok: false, code: null, facts: { error: String(e?.reason || e?.message || e) } };
+        } finally {
+          if (!open) store.dispose();
+        }
+        if (report.ok) {
+          dispatch({ type: 'set', patch: { remoteByProject: { ...stateRef.current.remoteByProject, [project.id]: { repository: report.facts.repository, url: report.facts.url } } } });
+        } else {
+          // A refusal after the create (the push) leaves an `origin`: the card
+          // follows the remote, not the Report.
+          await a.loadShared(project, true);
+        }
+        const error = report.ok ? null : { code: report.code ?? null, message: report.facts.error };
+        if (inDialog) {
+          if (stateRef.current.modal !== 'share') return report;
+          // A refusal returns to the check step: a name that exists is changed there.
+          a.patchSh(report.ok ? { step: 'done', busy: false, report } : { step: 'check', busy: false, error });
+        } else {
+          setCard({ busy: false, step: null, error, uploaded: report.ok });
+        }
+        return report;
+      },
+      /** Copy link (D84 point 5): the repository URL to the clipboard. */
+      shareCopyLink: async () => {
+        const url = stateRef.current.sh?.report?.facts.url;
+        if (!url) return;
+        try {
+          await navigator.clipboard.writeText(url);
+          a.patchSh({ copied: true });
+        } catch {
+          a.patchSh({ copied: false });
+        }
+      },
 
       // ---- New Bible modal (design: creation collects the project facts;
       //      books are added in the SEPARATE Add-a-book dialog) ----
