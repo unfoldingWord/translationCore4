@@ -1834,9 +1834,9 @@ licenses for people." The license belongs to the owner of the work.
 
 `docs/ARCHITECTURE.md` section 8 (the `usfm.ts` row) carries this decision.
 
-## D84 (2026-09-28, project-owner rulings) **Share lives on Home, beside Settings on each project card. A share goes to the user's own account or to an organization that lets the user create repositories. "Stay signed in" keeps the Door43 token in the operating-system keychain in 4.0.0. The check step shows the repository name and the books that are shared, and nothing more.** [owner session 2026-09-28, on the owner's mockup `tC4_Share_on_Door43.html`; epic #372; issues #362, #203, #366; amends D79 points 12 and 13]
+## D84 (2026-09-28, project-owner rulings) **Share lives on Home, beside Settings on each project card. A share goes to the user's own account or to an organization that lets the user create repositories. "Stay signed in" keeps the Door43 token in the operating-system keychain in 4.0.0. The check step shows the repository name and the books that are shared, and nothing more.** [owner session 2026-09-28, on the owner's mockup `tC4_Share_on_Door43.html`; epic #372; issues #362, #203, #366; amends D79 points 12, 13 and 14]
 
-Context. D79 placed Share in Community Checking, beside Export (J11). Community Checking shows
+Context. J11, written under D79, placed Share in Community Checking, beside Export. Community Checking shows
 one book. Share pushes the whole project, and J11's activity is Exchange, as Import is. Import
 already starts from Home. The owner's mockup puts Share on each Home project card, with a
 Door43 sign-in bar above the cards. Facts read for the rulings: Door43 runs `1.27.3+dcs` on
@@ -1869,14 +1869,14 @@ main a43a375, 2026-09-28].
    "Others can read it on Door43."
 6. **Credentials (amends D79 point 13).** "Stay signed in on this computer" is a checkbox in the
    sign-in step. When it is on, the token is kept in the operating-system keychain through
-   Electron's `safeStorage` (#366, moved to Increment 8.5). When it is off, or where
-   `safeStorage` is not available (the dev rig in a browser), the token stays in renderer
+   Electron's `safeStorage` (#366, moved from 4.1.0 to Increment 8.5; this amends D79 point 14). When it is off, or where
+   `safeStorage` or the preload bridge is not available, the token stays in renderer
    memory for the session. The password is used for the token call only and is never stored.
    The token is never placed in a URL, a log, `localStorage`, the platform client settings or
    the installation record. The token asks for the scopes that creating a repository, reading
-   organizations and pushing need; #203 names them after a test on `qa.door43.org`.
+   organizations and pushing need; an acceptance criterion of #203 names them after a test on `qa.door43.org`.
 7. **Unchanged.** Name, email and the D7 exposure notice are asked on the first share of the
    installation (D79 point 13). The UI text says "project", not "Bible", because OBS projects
    share the same way (J24).
 
-`docs/JOURNEYS.md` (J11) and `docs/ROADMAP.md` rows 8.5 and 4.1.0 carry this decision.
+`docs/JOURNEYS.md` (J11, J24), `docs/ROADMAP.md` rows 8.5 and 4.1.0, `docs/ARCHITECTURE.md` section 7, `docs/RISKS.md` row 7 and `CONTEXT.md` (Share) carry this decision.

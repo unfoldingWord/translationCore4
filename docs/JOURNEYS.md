@@ -313,7 +313,7 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 
 ### J24 Share an OBS project to Door43
 
-- Actor: facilitator. Activity: Exchange. Rides J11 unchanged (D79 point 12): the same Share
+- Actor: facilitator. Activity: Exchange. Rides J11 unchanged (D79 point 12, D84): the same Share
   action, the same end state and refusals, an OBS project. Proof: the J11 spec with an OBS project.
 
 ### J25 Read a story with helps and record a user comment
