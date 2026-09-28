@@ -535,7 +535,8 @@ test.describe('J12 — a facilitator upgrades the original-language text (#258)'
 async function createTitusProject(page: Page, name: string): Promise<string> {
   const before = listLocalRepos();
   await page.goto('/');
-  await page.getByRole('button', { name: 'New Bible' }).click();
+  await page.getByTestId('add-project').click();
+  await page.getByTestId('add-project-bible').click();
   await page.getByLabel('Bible name').fill(name);
   await page.getByLabel('Code').fill('es');
   await page.getByRole('button', { name: 'Left to right' }).click();

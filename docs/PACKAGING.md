@@ -628,7 +628,7 @@ between runs; it does not replace the run.
 | Step | Do | Expected |
 |---|---|---|
 | 1 | Start the app (`start-tc4.command` or `start-tc4.sh`). | The window opens on Home within 30 s. No error banner. |
-| 2 | `+ New Bible`: name, language code, direction; `Create Bible →`. The `Add a book` dialog opens: `Start a blank book`, pick Titus, `Create book`. | Titus opens directly in `Translate` at chapter 1. |
+| 2 | `+ Add a project`, then `New Bible`: name, language code, direction; `Create Bible →`. The `Add a book` dialog opens: `Start a blank book`, pick Titus, `Create book`. | Titus opens directly in `Translate` at chapter 1. |
 | 3 | Mode tab `Understand`. | The passage's helps area shows for chapter 1 with English translation notes and translation questions. |
 | 4 | Mode tab `Translate`. Chapter 1. | The chapter's verses show. The source pane shows ULT/UST text. |
 | 5 | `Draft verse 1` (the dashed pill), type a verse, click outside the editor. | The save indicator shows `Saved`. |
@@ -636,7 +636,7 @@ between runs; it does not replace the run.
 | 7 | On the tool picker (`← All checking tools` first, if a tool is open), `Align`. Click one word in the bank, then one card. | The word moves into the card; the bank has one word fewer. If the screen reads "The original-language text is not on this computer", that is a new finding: file its issue. A missing lexicon entry (`en_ugl`, `en_uhl`; #218) is the known case. |
 | 8 | Leave the project (`Switch project`), then open Titus again from Home. Look at `Translate`; then at `Check` › Translation Notes and `Align` for each of steps 6 and 7 that you could do. | Home lists the project. The drafted verse is on screen. Each decision and alignment you made is still there: the progress line still counts the decision; the aligned word is still in its card. |
 | 9 | Export the book. | Not yet possible: #19 (export) is not built. Skip and name #19. |
-| 9b | From alpha.7 (Increment 7, D74): `Switch project`, then `+ New Open Bible Stories`: name, language, `Create stories →`. Open the OBS tile; in `Translate`, story 1 shows with the gateway text on the left. `Draft frame 1`, type, click outside the card. `Understand`; select frame 1. `Check` › Translation Notes › `Start checking`; pick one item; `✓ Mark valid`. | The gateway frame text and the picture of frame 1 show from the bundled `en_obs` and picture pack with the network off. The frame marker for frame 1 turns drafted. Understand lists the notes and word links of frame 1. The check item is decided. A missing picture or gateway story is a new finding: file its issue. |
+| 9b | From alpha.7 (Increment 7, D74): `Switch project`, then `+ Add a project` › `New Open Bible Stories`: name, language, `Create stories →`. Open the OBS tile; in `Translate`, story 1 shows with the gateway text on the left. `Draft frame 1`, type, click outside the card. `Understand`; select frame 1. `Check` › Translation Notes › `Start checking`; pick one item; `✓ Mark valid`. | The gateway frame text and the picture of frame 1 show from the bundled `en_obs` and picture pack with the network off. The frame marker for frame 1 turns drafted. Understand lists the notes and word links of frame 1. The check item is decided. A missing picture or gateway story is a new finding: file its issue. |
 | 10 | Quit the app. Turn the network on again. | |
 
 Look at the screen fonts during the run. With the network off, the interface uses system

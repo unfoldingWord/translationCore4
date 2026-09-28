@@ -340,7 +340,7 @@ const initial = () => ({
   commitErrorRepo: null,
   // Modals (the owner's design: creation, add-book, and settings are dialogs
   // over Home, not separate pages)
-  modal: null, // null | 'newProject' | 'addBook' | 'settings' | 'sources' | 'fix' | 'import'
+  modal: null, // null | 'addProject' | 'newProject' | 'newObs' | 'addBook' | 'settings' | 'sources' | 'fix' | 'import'
   np: null, // New Bible form
   ab: null, // Add-a-book form
   st: null, // Project-settings form
@@ -4641,6 +4641,11 @@ export function AppProvider({ children }) {
           await reloadActiveStoryAfterDownload({ originStore, originRepoPath, storeRef, stateRef, actions: a });
         }
       },
+
+      // ---- Add a project (#431): the chooser that opens New Bible, New Open
+      //      Bible Stories or Import in its place. Every close resets it, so a
+      //      reopen always starts on the three cards. ----
+      openAddProject: () => dispatch({ type: 'set', patch: { modal: 'addProject', np: null, im: null } }),
 
       // ---- New Bible modal (design: creation collects the project facts;
       //      books are added in the SEPARATE Add-a-book dialog) ----

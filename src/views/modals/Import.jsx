@@ -1,4 +1,5 @@
 // The import screen (issue #361; owner design "tC4 Import Dialog", 2026-09-22):
+// (reached from the "+ Add a project" chooser, #431; Back on the kind step returns there)
 // choose the kind of file → drop or choose files → review what was found →
 // import as a new Bible. Bound to the state layer's `im` form (openImport /
 // importPickKind / importAddFiles / importReview / importRun; a tC3 import adds
@@ -272,6 +273,10 @@ export default function Import() {
   const subtitle = im.step === 'review' && damaged ? t('importer.subtitle.damaged') : t(subtitleKey);
   const back = (label, to) => <Button variant="ghost" onClick={() => actions.patchIm({ step: to, error: null })}>{label}</Button>;
   const footer = {
+    kind: <>
+      <Button variant="ghost" data-testid="import-kind-back" onClick={actions.openAddProject}>{t('importer.kind.back')}</Button>
+      <div style={{ flex: 1 }} />
+    </>,
     files: <>
       {back(t('importer.files.back'), 'kind')}
       <div style={{ flex: 1 }} />

@@ -146,7 +146,7 @@ zsh dev-env/scripts/stop.zsh
 ```
 
 The version response must include `pkg_version` `0.18.5`. With the client running,
-open `http://localhost:5199/` and use `+ New Bible` to create a project.
+open `http://localhost:5199/`, select `+ Add a project`, then `New Bible` to create a project.
 
 If `zsh` is not found, install MSYS2 and open its MSYS shell. Do not run these rig
 scripts from PowerShell or cmd.
