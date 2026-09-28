@@ -112,3 +112,50 @@ describe('#62 no-bypass: application code cannot reach a raw server mutation', (
     ).toEqual([]);
   });
 });
+
+// The share adapter (#362 tests 8 and 9; D84): Door43 is spoken to from ONE
+// module, src/data/share/door43Api.ts, which takes its server from DCS_SERVER
+// (#120). A view never builds a Door43 address or fetches for a share, and no
+// share module names a Door43 host — so a packaged build can only reach the
+// server dcsServer.ts resolves.
+const DOOR43_ADAPTER = 'src/data/share/door43Api.ts';
+/** The Door43 API path prefix, and the Door43 hosts. */
+const DOOR43_API = '/api/v1/';
+const DOOR43_HOST = /door43\.org/;
+/** Files that may read DCS_SERVER: the adapter, and the QA label beside the save indicator. */
+const DCS_SERVER_READERS = new Set(['src/data/dcsServer.ts', DOOR43_ADAPTER, 'src/App.jsx']);
+
+describe('#362 one Door43 adapter', () => {
+  const files = walk(SRC);
+  const read = (file: string): string => fs.readFileSync(file, 'utf8');
+
+  it('the adapter exists, and only it (and the QA label) reads DCS_SERVER', () => {
+    expect(files.some((f) => rel(f) === DOOR43_ADAPTER)).toBe(true);
+    const offenders = files.map(rel).filter((name, i) => !DCS_SERVER_READERS.has(name) && /\bDCS_SERVER\b/.test(read(files[i])));
+    expect(offenders, `DCS_SERVER read outside the adapter:\n${offenders.join('\n')}`).toEqual([]);
+  });
+
+  it('no view calls the Door43 API or fetches for a share; only the adapter does', () => {
+    const offenders: string[] = [];
+    for (const file of files) {
+      const name = rel(file);
+      if (name === DOOR43_ADAPTER) continue;
+      const source = read(file);
+      if (name.startsWith('src/views/') && (source.includes(DOOR43_API) || DOOR43_HOST.test(source))) offenders.push(`${name}: a Door43 address`);
+      if ((name.startsWith('src/views/') || name.startsWith('src/data/share/')) && /\bfetch\s*\(/.test(source)) offenders.push(`${name}: fetch(`);
+    }
+    expect(offenders, `Door43 reached outside the adapter:\n${offenders.join('\n')}`).toEqual([]);
+  });
+
+  it('no share module names a Door43 host; the server comes from dcsServer', () => {
+    const offenders = files.map(rel).filter((name, i) => name.startsWith('src/data/share/') && DOOR43_HOST.test(read(files[i])));
+    expect(offenders, `a Door43 host named under src/data/share/:\n${offenders.join('\n')}`).toEqual([]);
+  });
+
+  it('the rules fire on the shapes they guard (the test is not vacuous)', () => {
+    expect(DOOR43_HOST.test("fetch('https://git.door43.org/api/v1/user/repos')")).toBe(true);
+    expect(DOOR43_HOST.test('https://qa.door43.org')).toBe(true);
+    expect('await fetch(`${DCS_SERVER}/api/v1/user/orgs`)'.includes(DOOR43_API)).toBe(true);
+    expect(/\bfetch\s*\(/.test('const r = await fetch (url)')).toBe(true);
+  });
+});

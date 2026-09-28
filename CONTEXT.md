@@ -253,6 +253,24 @@ A Door43 `main` branch created by a first share, holding one actor's working his
 opposed to a team main built by integrate. The sync plan's X8 scenario proves the two behave
 the same.
 
+**Door43 adapter**:
+The one module that calls the Door43 API (`src/data/share/door43Api.ts`): list the user's
+organizations, read a permission, count repositories in a language, create a repository. Its
+server is `DCS_SERVER`; the token goes in the `Authorization` header only.
+_Avoid_: Door43 client, DCS helper, gitea API (for this module)
+
+**Share target**:
+Where a first share creates the repository: the user's own account, or one organization the
+user can create repositories in (`ShareTarget`). Once the repository's `origin` exists, the
+target is not asked again.
+_Avoid_: destination, owner (for the choice itself)
+
+**Fake Door43**:
+The in-memory Door43 the share tests use (`e2e/helpers/door43.ts`, `FakeDoor43`): Door43's
+own shapes and status codes, served as a Playwright route in a journey or as a `fetchFn` in a
+Vitest suite. Its created repositories can point the push at a local `file://` remote.
+_Avoid_: mock server, stub Door43
+
 **Import bundle**:
 The one in-memory shape every import parser produces (`ImportBundle`): project facts, books or
 stories, alignments, decisions, checking files, version requests, findings, or a Scripture

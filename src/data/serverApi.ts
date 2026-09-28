@@ -460,6 +460,50 @@ export class ServerApi {
     });
   }
 
+  // ---- the share transport (#362, D79 point 12): the repository's remotes ----
+
+  /** GET /git/remotes/<repoPath> — the remotes in the repository's git config,
+   * `{name, url}` each, under the `payload` wrapper [VERIFIED — pankosmia-web
+   * 0.18.5 (99fd9be), `endpoints/git2/remotes.rs`, 2026-09-28]. An `origin`
+   * here is the record of a share (D84 point 1); nothing else records it. */
+  async listRemotes(repoPath: string): Promise<Array<{ name: string; url: string }>> {
+    const body = await this.requestJson<{ payload?: { remotes?: Array<{ name: string; url: string }> } }>(
+      `/git/remotes/${encodeRepoPath(repoPath)}`,
+    );
+    return body.payload?.remotes ?? [];
+  }
+
+  /** POST /git/remote/add/<repoPath>?remote_name&remote_url — add one remote.
+   * The name allows `[A-Za-z0-9_-]` only; the url must carry a transport
+   * (`https://`, `ssh://`, `file://`, `git@`), else the server reads it as a
+   * local repo path. A second add of the same name fails [VERIFIED —
+   * pankosmia-web 0.18.5 (99fd9be), `endpoints/git2/add_remote.rs`, 2026-09-28]. */
+  async addRemote(repoPath: string, name: string, url: string): Promise<void> {
+    if (!/^[A-Za-z0-9_-]+$/.test(name)) {
+      throw new ServerApiError('/git/remote/add', 0, `remote name may hold letters, digits, _ and - only: ${JSON.stringify(name)}`);
+    }
+    if (!/^(https?|ssh|file):\/\/|^git@/.test(url)) {
+      throw new ServerApiError('/git/remote/add', 0, `remote url must carry a transport: ${JSON.stringify(url)}`);
+    }
+    await this.post(
+      `/git/remote/add/${encodeRepoPath(repoPath)}?remote_name=${encodeURIComponent(name)}&remote_url=${encodeURIComponent(url)}`,
+    );
+  }
+
+  /** POST /git/push/<repoPath>, body `{remote, cred_type: "https", username,
+   * pass_key}` — push the checked-out branch to `remote` over HTTPS with the
+   * credentials in the BODY, never in the remote url. The server unwraps
+   * `username` and `pass_key` without a check and panics when one is missing
+   * [VERIFIED — pankosmia-web 0.18.5 (99fd9be), `endpoints/git2/push.rs:83-86`,
+   * 2026-09-28], so both are refused here first. Offline, the route answers
+   * HTTP 401 "offline mode" before it reads the body. */
+  async push(repoPath: string, remote: string, username: string, passKey: string): Promise<void> {
+    if (!username || !passKey) {
+      throw new ServerApiError('/git/push', 0, 'a push needs a username and a token; the server panics without them');
+    }
+    await this.post(`/git/push/${encodeRepoPath(repoPath)}`, { remote, cred_type: 'https', username, pass_key: passKey });
+  }
+
   /** POST /git/new-text-translation — stamps the template repo, writes
    * ingredients/vrs.json from `versification`, scaffolds the book from
    * maxVerses when add_book, and makes the initial commit (D25). */
