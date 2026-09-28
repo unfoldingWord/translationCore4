@@ -1833,3 +1833,50 @@ licenses for people." The license belongs to the owner of the work.
    and "No license" is one of the choices.
 
 `docs/ARCHITECTURE.md` section 8 (the `usfm.ts` row) carries this decision.
+
+## D84 (2026-09-28, project-owner rulings) **Share lives on Home, beside Settings on each project card. A share goes to the user's own account or to an organization that lets the user create repositories. "Stay signed in" keeps the Door43 token in the operating-system keychain in 4.0.0. The check step shows the repository name and the books that are shared, and nothing more.** [owner session 2026-09-28, on the owner's mockup `tC4_Share_on_Door43.html`; epic #372; issues #362, #203, #366; amends D79 points 12 and 13]
+
+Context. D79 placed Share in Community Checking, beside Export (J11). Community Checking shows
+one book. Share pushes the whole project, and J11's activity is Exchange, as Import is. Import
+already starts from Home. The owner's mockup puts Share on each Home project card, with a
+Door43 sign-in bar above the cards. Facts read for the rulings: Door43 runs `1.27.3+dcs` on
+`git.door43.org` and `1.27.3+dcs.6-ga7ba9b25c1` on `qa.door43.org`; its API has
+`GET /user/orgs`, `GET /users/{username}/orgs/{org}/permissions` (with `can_create_repository`)
+and `POST /orgs/{org}/repos`; `CreateAccessTokenOption` takes `scopes` [VERIFIED — Door43
+`/api/v1/version` and `swagger.v1.json`, 2026-09-28]. The desktop app has a preload bridge
+(`scripts/preload.cjs`, added by #20), so the keychain needs only new bridge calls [VERIFIED —
+main a43a375, 2026-09-28].
+
+1. **Where Share lives.** Share is a quiet header action on each Home project card, beside
+   Settings, for Bible and OBS projects. Community Checking has no Share action. A shared
+   project's card shows "On Door43" and the repository path, and its action reads
+   "Upload changes". A later share pushes `main` again, as D79 point 12 says.
+2. **The Door43 bar on Home.** Above the cards, one bar shows "Not signed in to Door43" with
+   Sign in, or the signed-in user with Sign out. Sign out removes the token from memory and
+   from the keychain.
+3. **Organizations.** The first share asks where the project goes: the user's own account, or
+   one of the user's organizations. An organization without `can_create_repository` is shown
+   and cannot be chosen, with the reason. A create that Door43 refuses gives the existing
+   create-rejected refusal; no new refusal code is added. The name-exists refusal applies to
+   the chosen account or organization.
+4. **The check step.** Before the push, one step shows where the repository will be created,
+   the repository name (the user can change it; default: the project's folder name) and the
+   books or stories that are shared. It shows no counts, no license, and no private option.
+   Share always pushes the whole project; the list is not a choice.
+5. **Progress and the end.** One progress line ("Creating the repository…", "Pushing…"). The end
+   shows the repository URL, Copy link and Open on Door43. It does not say that team members
+   can open the project in translationCore: receive stays Phase 2 (D67, epic #24). The text is
+   "Others can read it on Door43."
+6. **Credentials (amends D79 point 13).** "Stay signed in on this computer" is a checkbox in the
+   sign-in step. When it is on, the token is kept in the operating-system keychain through
+   Electron's `safeStorage` (#366, moved to Increment 8.5). When it is off, or where
+   `safeStorage` is not available (the dev rig in a browser), the token stays in renderer
+   memory for the session. The password is used for the token call only and is never stored.
+   The token is never placed in a URL, a log, `localStorage`, the platform client settings or
+   the installation record. The token asks for the scopes that creating a repository, reading
+   organizations and pushing need; #203 names them after a test on `qa.door43.org`.
+7. **Unchanged.** Name, email and the D7 exposure notice are asked on the first share of the
+   installation (D79 point 13). The UI text says "project", not "Bible", because OBS projects
+   share the same way (J24).
+
+`docs/JOURNEYS.md` (J11) and `docs/ROADMAP.md` rows 8.5 and 4.1.0 carry this decision.
