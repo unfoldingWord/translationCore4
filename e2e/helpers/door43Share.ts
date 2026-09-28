@@ -53,7 +53,8 @@ export interface BareRemote {
   bare: string;
   /** The remote's `main`, or null when nothing was pushed. */
   main(): string | null;
-  /** `git show <spec>` on the remote, for example `main:ingredients/TIT.usfm`. */
+  /** `git show <spec>` on the remote, for example `main:ingredients/TIT.usfm`; the bytes as
+   * committed, not trimmed (a comparison with `committedIngredient` is byte for byte). */
   show(spec: string): string;
   dispose(): void;
 }
@@ -72,7 +73,7 @@ export function makeBareRemote(): BareRemote {
         return null;
       }
     },
-    show: (spec) => git(bare, 'show', spec),
+    show: (spec) => execFileSync('git', ['-C', bare, 'show', spec], { encoding: 'utf8', stdio: 'pipe' }),
     dispose: () => fs.rmSync(tmp, { recursive: true, force: true }),
   };
 }
