@@ -189,7 +189,7 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 - Steps: press Share on the project card · sign in to Door43 with username and password,
   unless the session or the keychain has a token; "Stay signed in on this computer" keeps the
   token in the operating-system keychain · on the first share of the installation, also give a
-  name and an email and read the D7 exposure notice · choose where the project goes: the user's
+  name and an email and read the D7 exposure notice (later sign-ins show them with a **Change** link, the only place to change them) · choose where the project goes: the user's
   own account or an organization that lets the user create repositories · check the repository
   name (default: the project's folder name) and the books or stories that are shared · the app
   creates the repository there, adds it as `origin`, pushes the working `main` branch · the app

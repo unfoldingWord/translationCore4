@@ -1880,8 +1880,11 @@ main a43a375, 2026-09-28].
    The token is never placed in a URL, a log, `localStorage`, the platform client settings or
    the installation record. The token asks for the scopes that creating a repository, reading
    organizations and pushing need; an acceptance criterion of #203 names them after a test on `qa.door43.org`.
-7. **Unchanged.** Name, email and the D7 exposure notice are asked on the first share of the
-   installation (D79 point 13). The UI text says "project", not "Bible", because OBS projects
-   share the same way (J24).
+7. **Name and email.** Name, email and the D7 exposure notice are asked on the first share of
+   the installation (D79 point 13). Later, the sign-in step shows the stored name and email
+   with a **Change** link, and that link is the only place to change them. No settings screen
+   holds them. With a kept token the sign-in step does not appear, so the user signs out to
+   reach it. The UI text says "project", not "Bible", because OBS projects share the same way
+   (J24).
 
 `docs/JOURNEYS.md` (J11, J24), `docs/ROADMAP.md` rows 8.5 and 4.1.0, `docs/ARCHITECTURE.md` section 7, `docs/RISKS.md` row 7 and `CONTEXT.md` (Share) carry this decision.
