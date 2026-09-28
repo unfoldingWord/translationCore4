@@ -273,6 +273,18 @@ user can create repositories in (`ShareTarget`). Once the repository's `origin` 
 target is not asked again.
 _Avoid_: destination, owner (for the choice itself)
 
+**Share dialog**:
+The first-share steps in one dialog (`src/views/modals/ShareDialog.jsx`, D84): where it goes,
+check what will be shared, one progress line, the end with the URL. Reached from the Share
+action on a Home card; a shared card's "Upload changes" pushes with no dialog.
+_Avoid_: share wizard, publish dialog
+
+**Shared card**:
+A Home project card whose repository has an `origin` remote: it shows "On Door43" and the
+repository path, and its action reads "Upload changes". The state is read from the remote
+(`GET /git/remotes`), never from a stored record.
+_Avoid_: published card, synced project
+
 **Fake Door43**:
 The in-memory Door43 the share tests use (`e2e/helpers/door43.ts`, `FakeDoor43`): Door43's
 own shapes and status codes, served as a Playwright route in a journey or as a `fetchFn` in a
