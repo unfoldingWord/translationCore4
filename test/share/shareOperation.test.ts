@@ -289,6 +289,43 @@ describe('#362 share: refusals, each with its code and nothing pushed', () => {
   });
 });
 
+describe('#362 share: the push remote is on the configured Door43 server (criterion 9)', () => {
+  const FOREIGN = [
+    'https://evil.example/facilitator/puntos.git',
+    'http://qa.door43.org/facilitator/puntos.git',
+    'https://user:tok@qa.door43.org/facilitator/puntos.git',
+    'file:///tmp/remote.git',
+  ];
+
+  it.each(FOREIGN)('an existing origin %s gets no push, and the Report does not hold it', async (url) => {
+    const t = transport({ remotes: [{ name: 'origin', url }] });
+    const door43 = fake();
+    const report = await share(deps(t, door43), request());
+    expect(report).toMatchObject({ ok: false, code: 'share.push-failed', facts: { step: 'push' } });
+    expect(t.pushes).toEqual([]);
+    expect(door43.calls).toEqual([]);
+    expect(JSON.stringify(report)).not.toContain(url);
+  });
+
+  it.each(FOREIGN)('a clone_url %s is not added as origin and nothing is pushed', async (url) => {
+    const t = transport();
+    const door43 = fake({ cloneUrlFor: () => url });
+    const report = await share(deps(t, door43), request());
+    expect(report).toMatchObject({ ok: false, code: 'share.create-rejected' });
+    expect(t.remotes).toEqual([]);
+    expect(t.pushes).toEqual([]);
+    expect(JSON.stringify(report)).not.toContain(url);
+  });
+
+  it('a file:// remote is accepted only when the test dep allows it', async () => {
+    const t = transport();
+    const door43 = fake({ cloneUrlFor: () => 'file:///tmp/remote.git' });
+    const report = await share({ ...deps(t, door43), allowFileRemote: true }, request());
+    expect(report).toMatchObject({ ok: true, facts: { created: true } });
+    expect(t.pushes).toHaveLength(1);
+  });
+});
+
 describe('#362 share: the ops log (#374)', () => {
   it('opens one share record before the first call and closes it with the Report, a refusal included', async () => {
     const t = transport();

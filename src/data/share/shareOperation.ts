@@ -43,6 +43,8 @@ export interface ShareDeps {
   ) => Promise<string | null>;
   /** #374: the ops log the share writes its record to. */
   ops?: OpsRecorder;
+  /** Tests only: accept a `file://` remote (the rig's local remote). Production leaves it unset. */
+  allowFileRemote?: boolean;
 }
 
 export interface ShareRequest {
@@ -76,6 +78,22 @@ const repositoryOf = (remoteUrl: string): { repository: string; url: string } =>
     // a remote that is not a URL (the platform's three-part shorthand): the record is the path
   }
   return { repository, url };
+};
+
+/** Issue #362 criterion 9: the push remote takes its server from `dcsServer`. A
+ * remote is accepted only on the configured Door43 server's origin (scheme, host,
+ * port) with no user or password in it; `file://` only when a test allows it.
+ * The token goes to no other host, and a refused url is never put in a Report. */
+export const remoteAllowed = (raw: string, server: string, allowFileRemote = false): boolean => {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return false;
+  }
+  if (url.username || url.password) return false;
+  if (url.protocol === 'file:') return allowFileRemote;
+  return url.origin === new URL(server).origin;
 };
 
 /** Push the project to Door43 and return its Report (`op: 'share'`). */
@@ -112,9 +130,18 @@ async function shareRecorded(deps: ShareDeps, request: ShareRequest): Promise<Re
   // On a first share the identity is Door43's answer; on a later share it is
   // read back from the `origin` url.
   let facts: ShareFacts;
+  const allowed = (url: string, allowFile = deps.allowFileRemote === true) =>
+    remoteAllowed(url, deps.door43.server, allowFile);
   try {
     const origin = (await deps.api.listRemotes(repoPath)).find((remote) => remote.name === REMOTE);
     if (origin) {
+      if (!allowed(origin.url)) {
+        const refusal = new Refusal(
+          'share.push-failed',
+          'the origin remote is not on the Door43 server; nothing was pushed',
+        );
+        return failed(refusal, { step: 'push' });
+      }
       facts = { ...repositoryOf(origin.url), created: false };
     } else {
       const repository = await deps.door43
@@ -122,6 +149,11 @@ async function shareRecorded(deps: ShareDeps, request: ShareRequest): Promise<Re
         .catch((error: unknown) => {
           throw refusalForCreate(error, name);
         });
+      if (!allowed(repository.cloneUrl) || !allowed(repository.htmlUrl, false))
+        throw new Refusal(
+          'share.create-rejected',
+          'Door43 answered an address that is not on its own server',
+        );
       await deps.api.addRemote(repoPath, REMOTE, repository.cloneUrl);
       facts = { repository: repository.fullName, url: repository.htmlUrl, created: true };
     }

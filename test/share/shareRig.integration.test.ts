@@ -74,6 +74,8 @@ describe.skipIf(!rigUp)('#362 share against the live rig, over a file:// remote'
       api,
       door43: new Door43Api({ server: SERVER, fetchFn: door43.fetchFn }),
       commitPending: (messageFor) => store.commitPending(messageFor),
+      // The rig's remote is a local file:// remote; production never sets this.
+      allowFileRemote: true,
     };
     await store.createProject({
       content_name: `Share 362 rig test ${RUN}`,
