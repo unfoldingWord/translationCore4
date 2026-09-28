@@ -339,6 +339,8 @@ describe('#454 — the OBS preview shows every drafted story', () => {
     render(<App />);
     expect((await screen.findByTestId('cc-nothing-drafted')).textContent).toBe('Nothing is drafted in this project yet.');
     expect(screen.queryByTestId('cc-story')).toBeNull();
+    // Nothing prints but the one line, so the run-rule callout does not show.
+    expect(screen.queryByText('Incomplete draft.')).toBeNull();
     cleanup();
 
     readPrintStories = async () => { throw new Error('content/07.md is malformed'); };

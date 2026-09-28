@@ -147,7 +147,8 @@ function StoryCommunityChecking({ pageSetup, updatePageSetup }) {
             <Toggle data-testid="cc-pictures" label={t('cc.pictures')} checked={pictures} onChange={() => updatePageSetup({ pictures: !pictures })} />
           </div>
         </div>
-        {undrafted && (
+        {/* With nothing drafted the export is the one nothing-drafted line, so the run rule does not apply. */}
+        {undrafted && items.length > 0 && (
           <Callout tone="kindle"><strong style={{ color: 'var(--uw-kindle)' }}>{t('cc.incompleteTitle')}</strong> {t('cc.incompleteBodyObs')}</Callout>
         )}
       </aside>
