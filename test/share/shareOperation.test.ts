@@ -288,3 +288,30 @@ describe('#362 share: refusals, each with its code and nothing pushed', () => {
     expect(door43.calls).toEqual([]);
   });
 });
+
+describe('#362 share: the ops log (#374)', () => {
+  it('opens one share record before the first call and closes it with the Report, a refusal included', async () => {
+    const t = transport();
+    const door43 = fake({ existingRepositories: ['facilitator/puntos'] });
+    const events: string[] = [];
+    const ops: ShareDeps['ops'] = {
+      begin: async (op, facts) => {
+        // `t.calls` is still empty here: the record opens before the first side effect.
+        events.push(`begin ${op} ${JSON.stringify(facts)} after ${t.calls.length} platform calls`);
+        return {
+          note: async () => true,
+          close: async (report) => {
+            events.push(`close ok=${report.ok} code=${report.code}`);
+            return true;
+          },
+        };
+      },
+    };
+    const report = await share({ ...deps(t, door43), ops }, request());
+    expect(report.code).toBe('share.name-exists');
+    expect(events).toEqual([
+      `begin share {"repoPath":"${REPO}"} after 0 platform calls`,
+      'close ok=false code=share.name-exists',
+    ]);
+  });
+});

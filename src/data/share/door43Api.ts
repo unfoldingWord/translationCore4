@@ -24,7 +24,9 @@
 //   "invalid username, password or token".
 import { DCS_SERVER } from '../dcsServer';
 
-/** A signed-in Door43 user: the token is held in memory by #203, never here. */
+/** A signed-in Door43 user: the token is held in memory by #203, never here.
+ * `username` is the account login (it goes into the permissions route), not
+ * the email a person may sign in with; #203 reads it from `GET /api/v1/user`. */
 export interface Door43Session {
   username: string;
   token: string;
