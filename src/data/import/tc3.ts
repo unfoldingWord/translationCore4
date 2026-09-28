@@ -16,7 +16,6 @@
 // - Resource versions: `manifest.json` `externalResources`. A version is never
 //   stored without its sha (D58): the review step resolves each one (D82), and
 //   `applyVersions` writes the pins.
-import { Uint8ArrayReader, Uint8ArrayWriter, ZipReader } from '@zip.js/zip.js';
 import { t } from '../../i18n';
 import { normalizeOccurrences, type WithOccurrences } from '../align/occurrences';
 import type { DecisionFile, ResourcePin, ResourcesFile } from '../burritoStore';
@@ -201,8 +200,10 @@ function versionRequests(manifest: Manifest, code: string, tools: Tool[]): Versi
 
 /** One zip's entries, each checked against the CRC-32 its headers carry, or
  * the finding that refuses the zip. A tC3 zip has no other checksum, and
- * fflate's `unzipSync` checks no CRC (#41), so this read uses zip.js. */
+ * fflate's `unzipSync` checks no CRC (#41), so this read uses zip.js, loaded
+ * on the first tC3 import so that the startup bundle does not carry it. */
 async function unzipChecked(file: ImportFile): Promise<{ entries: Files } | { finding: Finding }> {
+  const { Uint8ArrayReader, Uint8ArrayWriter, ZipReader } = await import('@zip.js/zip.js');
   const options = { useWebWorkers: false, checkSignature: true };
   let listed;
   try {
