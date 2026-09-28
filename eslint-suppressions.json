@@ -1,0 +1,62 @@
+{
+  "src/data/import/shell.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "src/data/import/tc3.ts": {
+    "complexity": {
+      "count": 3
+    }
+  },
+  "src/data/journal/journalingStore.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "src/data/mapReference.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "src/data/obsStory.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "src/data/place.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "src/data/projectFrame.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "src/state.jsx": {
+    "complexity": {
+      "count": 8
+    }
+  },
+  "src/views/HelpsPanel.jsx": {
+    "complexity": {
+      "count": 2
+    }
+  },
+  "src/views/Home.jsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "src/views/modals/AddBook.jsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "src/views/modals/Import.jsx": {
+    "complexity": {
+      "count": 3
+    }
+  }
+}
