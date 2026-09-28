@@ -347,17 +347,20 @@ test.describe('J9 — a facilitator imports existing work', () => {
       const name = fresh('Tito USFM');
       const source = path.join(MANIFEST_DIR, 'usfm', '57-TIT.usfm');
       const repo = rigRepo(abbrOf(name));
-      await test.step('the review page finds Titus, and the license check says CC BY-SA 4.0 will be applied', async () => {
+      await test.step('the review page finds Titus, and the license check says none was found and none is applied', async () => {
         await importFixture(page, source, { kind: 'usfm', edits: { name, language: 'es-419' }, confirm: false });
         await expect(page.getByTestId('import-book-TIT')).toBeVisible();
         await expect(page.getByTestId('import-damaged')).toHaveCount(0);
-        await expect(page.getByText('No license was found. CC BY-SA 4.0 will be applied.')).toBeVisible();
+        await expect(page.getByText('No license was found in the files. None is applied.')).toBeVisible();
         await page.getByTestId('import-run').click();
         await expect(page.getByTestId('import-toast')).toBeVisible({ timeout: 60_000 });
       });
-      await test.step('on disk: the book byte-identical, es-419 kept, the seed journaled with seed.source, one clean commit', async () => {
+      await test.step('on disk: the book byte-identical, es-419 kept, no license written, the seed journaled with seed.source, one clean commit', async () => {
         expect(fs.readFileSync(path.join(repo, 'ingredients', 'TIT.usfm')).equals(fs.readFileSync(source))).toBe(true);
-        expect(JSON.parse(fs.readFileSync(path.join(repo, 'metadata.json'), 'utf8')).languages[0].tag).toBe('es-419');
+        const meta = JSON.parse(fs.readFileSync(path.join(repo, 'metadata.json'), 'utf8'));
+        expect(meta.languages[0].tag).toBe('es-419');
+        // the copyright the create route wrote (#392): an import never chooses a license
+        expect(meta.copyright).toEqual({ shortStatements: [{ statement: 'Copyright ©' }] });
         const ingredients = [...tree(path.join(repo, 'ingredients'))].map(([rel, bytes]) => [rel, bytes.toString('utf8')] as [string, string]);
         const seeded = seedEventsOf(ingredients);
         expect(seeded.filter((e) => e.op === 'book.add').length).toBe(1);

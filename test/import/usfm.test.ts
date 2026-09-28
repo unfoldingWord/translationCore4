@@ -1,6 +1,6 @@
 // The USFM parser (issue #195, J9c): one or several .usfm, .sfm or .txt files
-// are one bundle; the book code comes from `\id`; the license finding says CC
-// BY-SA 4.0 will be applied; a file with no `\id`, two files for one book, or
+// are one bundle; the book code comes from `\id`; the license finding says
+// that none was found and none is applied; a file with no `\id`, two files for one book, or
 // bytes that are not UTF-8 are a damaged finding; the stored book is the file
 // byte for byte, CRLF line ends included; a byte-order mark stays in the text.
 import { describe, expect, it } from 'vitest';
@@ -15,7 +15,7 @@ import { fixtureFile } from '../helpers/import';
 
 const encoder = new TextEncoder();
 const file = (name: string, text: string): ImportFile => ({ name, bytes: encoder.encode(text) });
-const LICENSE = { kind: 'license', text: 'No license was found. CC BY-SA 4.0 will be applied.', warn: true };
+const LICENSE = { kind: 'license', text: 'No license was found in the files. None is applied.', warn: true };
 const damagedOf = (findings: Array<{ kind: string }>) => findings.filter((f) => f.kind === 'damaged');
 
 describe('#195 the USFM parser', () => {

@@ -268,7 +268,7 @@ async function parse(files: ImportFile[]): Promise<ImportBundle> {
       ? { kind: 'license', text: t('importer.tc3.licenses', { licenses: licenses.map((l) => l || t('importer.tc3.licenseNone')).join(' · ') }), warn: true }
       : license
         ? { kind: 'license', text: license, warn: false }
-        : { kind: 'license', text: t('importer.tc3.licenseMissing'), warn: true },
+        : { kind: 'license', text: t('importer.review.licenseNone'), warn: true },
   );
   const contributors = [...new Set(projects.flatMap((p) => [...(p.manifest.translators ?? []), ...(p.manifest.checkers ?? [])].map(String)))];
   const first = projects[0].manifest;

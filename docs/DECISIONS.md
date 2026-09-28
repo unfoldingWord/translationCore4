@@ -1815,3 +1815,21 @@ control].
    alignments is #258's work.
 
 `docs/ARCHITECTURE.md` section 8 and BURRITO-SPEC §5.3 (the D41 bullet) carry this decision.
+
+## D83 (2026-09-23, project-owner ruling) **An import never chooses a license. When the imported files carry no license, the review page says so and the import applies none. A license that the files carry is kept.** [issue #392; after pull request #390]
+
+Context. The import review page said that CC BY-SA 4.0 is applied when the files carry no
+license. The import did not apply it: the stored `metadata.json` `copyright` was the value that the
+create route writes, `{"shortStatements": [{"statement": "Copyright ©"}]}` [VERIFIED — rig,
+pankosmia-web 0.18.5, 2026-09-23, #390]. The text came from the criteria of #195 and the
+fake parser, not from a decision. The owner ruled: "I don't know that we get to decide the
+licenses for people." The license belongs to the owner of the work.
+
+1. **No license in the files: the import applies none.** The review page's License check
+   says "No license was found in the files. None is applied." and stays a warning. The
+   stored `copyright` is the value that the created project already has.
+2. **A license in the files is kept.** A tC3 manifest license goes to `metadata.json`
+   `copyright` (D82 point 4). When the files have different licenses, the user chooses one,
+   and "No license" is one of the choices.
+
+`docs/ARCHITECTURE.md` section 8 (the `usfm.ts` row) carries this decision.
