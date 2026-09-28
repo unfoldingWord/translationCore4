@@ -5,6 +5,7 @@ import Draft from './views/Draft.jsx';
 import StoryDraft from './views/StoryDraft.jsx';
 import StoryUnderstand from './views/StoryUnderstand.jsx';
 import Check from './views/Check.jsx';
+import AddProject from './views/modals/AddProject.jsx';
 import NewBible from './views/modals/NewBible.jsx';
 import NewObs from './views/modals/NewObs.jsx';
 import AddBook from './views/modals/AddBook.jsx';
@@ -135,6 +136,7 @@ export default function App() {
       <ViewBoundary key={`${s.view}:${s.project?.repoPath ?? ''}`}>
         <MainView state={s} />
       </ViewBoundary>
+      <AddProject />
       <NewBible />
       <NewObs />
       <AddBook />

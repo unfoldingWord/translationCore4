@@ -61,10 +61,11 @@ test.describe('J20 — a facilitator creates an Open Bible Stories project', () 
     async ({ page }) => {
       const reposBefore = listLocalRepos();
 
-      await test.step('open the app: Home offers both kinds, and the seeded Bible project keeps its book tiles', async () => {
+      await test.step('open the app: + Add a project offers both kinds, and the seeded Bible project keeps its book tiles', async () => {
         await page.goto('/');
-        await expect(page.getByRole('button', { name: 'New Bible' })).toBeVisible();
-        await expect(page.getByRole('button', { name: 'New Open Bible Stories' })).toBeVisible();
+        await page.getByTestId('add-project').click();
+        await expect(page.getByTestId('add-project-bible')).toBeVisible();
+        await expect(page.getByTestId('add-project-obs')).toBeVisible();
         const bible = page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`);
         await expect(bible).toBeVisible();
         await expect(bible.getByRole('button', { name: /Titus|Jonah/ }).first()).toBeVisible();
@@ -72,7 +73,7 @@ test.describe('J20 — a facilitator creates an Open Bible Stories project', () 
       });
 
       await test.step('choose Open Bible Stories: the dialog asks for language, name and the gateway set — nothing about books or stories', async () => {
-        await page.getByRole('button', { name: 'New Open Bible Stories' }).click();
+        await page.getByTestId('add-project-obs').click();
         await expect(page.getByLabel('Project name')).toBeVisible();
         await expect(page.getByLabel('Language name')).toBeVisible();
         await expect(page.getByLabel('Code')).toBeVisible();

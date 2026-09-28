@@ -1,5 +1,5 @@
 // The import journey helper (issue #361): drive the import screen from Home the
-// way a facilitator does — open Import, pick the kind, choose the files, read
+// way a facilitator does — open + Add a project, choose Import, pick the kind, choose the files, read
 // the review page, and (by default) import.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -23,7 +23,8 @@ export async function importFixture(
   file: string | FixturePayload | Array<string | FixturePayload>,
   { kind = 'e2e-fake', edits = {}, confirm = true }: { kind?: string; edits?: { name?: string; language?: string }; confirm?: boolean } = {},
 ): Promise<void> {
-  await page.getByTestId('open-import').click();
+  await page.getByTestId('add-project').click();
+  await page.getByTestId('add-project-import').click();
   await page.getByTestId(`import-kind-${kind}`).click();
   await page.getByTestId('import-file-input').setInputFiles((Array.isArray(file) ? file : [file]).map(fixturePayload) as never);
   await page.getByTestId('import-to-review').click();

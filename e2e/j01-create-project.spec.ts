@@ -22,8 +22,9 @@ test.describe('J1 — a translator creates a project', () => {
         await page.goto('/');
       });
 
-      await test.step('choose “New Bible”', async () => {
-        await page.getByRole('button', { name: 'New Bible' }).click();
+      await test.step('choose + Add a project, then “New Bible”', async () => {
+        await page.getByTestId('add-project').click();
+        await page.getByTestId('add-project-bible').click();
       });
 
       await test.step('name it, set the language code, pick the text direction', async () => {

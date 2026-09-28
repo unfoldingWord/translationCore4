@@ -2,7 +2,8 @@
 // (epic #104 / #109; layout per templates/translationcore-app Home). Project
 // cards carry per-book tiles with a lazy draft-progress bar
 // (actions.loadProgress) and open the creation / add-book / settings dialogs
-// over this screen, and the import screen (#361). Export is the publish
+// over this screen through one "+ Add a project" chooser (#431): New Bible,
+// New Open Bible Stories, and the import screen (#361). Export is the publish
 // increment and is omitted.
 import React, { useEffect, useState } from 'react';
 import { useApp } from '../state.jsx';
@@ -215,7 +216,7 @@ export default function Home() {
   return (
     <main style={{ flex: 1, overflow: 'auto', padding: '44px 40px 64px', background: 'var(--surface-app)' }}>
       <div style={{ maxWidth: 'var(--measure-page)', margin: '0 auto' }}>
-        <h1 style={{ fontSize: 'var(--fs-display)', letterSpacing: 'var(--track-38)', margin: '0 0 24px' }}>{t('home.yourBibles')}</h1>
+        <h1 style={{ fontSize: 'var(--fs-display)', letterSpacing: 'var(--track-38)', margin: '0 0 24px' }}>{t('home.yourProjects')}</h1>
 
         {s.lastEdit && projects && <ResumeCard edit={s.lastEdit} projects={projects} />}
 
@@ -228,9 +229,7 @@ export default function Home() {
           <Button variant="ghost" onClick={actions.openSources} data-testid="open-sources">
             {t('nav.sources')} →
           </Button>
-          <Button variant="outline" onClick={actions.openImport} data-testid="open-import">{t('importer.home')}</Button>
-          <Button variant="secondary" onClick={actions.openNewObs} data-testid="new-obs">+ {t('home.newObs')}</Button>
-          <Button onClick={actions.openNewProject}>+ {t('home.newBible')}</Button>
+          <Button onClick={actions.openAddProject} data-testid="add-project">+ {t('home.addProject')}</Button>
         </div>
 
         {/* A refused open (e.g. the #62 seed pipeline's diagnosable STOP) routes

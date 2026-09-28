@@ -51,7 +51,8 @@ function actorIdsOf(repo: string): string[] {
 async function createProject(page: import('@playwright/test').Page, name: string): Promise<string> {
   const before = listLocalRepos();
   await page.goto('/');
-  await page.getByRole('button', { name: 'New Bible' }).click();
+  await page.getByTestId('add-project').click();
+  await page.getByTestId('add-project-bible').click();
   await page.getByLabel('Bible name').fill(name);
   await page.getByLabel('Code').fill('es');
   await page.getByRole('button', { name: 'Left to right' }).click();
