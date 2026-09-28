@@ -151,27 +151,38 @@ export async function signIn(deps: SignInDeps, request: SignInRequest): Promise<
   }
   session = signed;
   const facts: SignInFacts = { ...base, step: 'sign-in', username: signed.username, kept: false };
-  if (request.stay && deps.keychain) {
+  if (deps.keychain) await keepOrForget(deps.keychain, request.stay, signed.token, facts);
+  return okReport('share', startedAt, new Date().toISOString(), facts);
+}
+
+/** Keep the token when the user asked to stay signed in; when it is not kept,
+ * forget any token an earlier session kept. Keychain errors go into `facts`. */
+const keepOrForget = async (
+  keychain: TokenKeychain,
+  stay: boolean,
+  token: string,
+  facts: SignInFacts,
+): Promise<void> => {
+  if (stay) {
     // A keychain that refuses is not a failed sign-in: the token is in memory
     // for this session, and the Report says it was not kept.
     try {
-      await deps.keychain.keep(signed.token);
+      await keychain.keep(token);
       facts.kept = true;
     } catch (error) {
       facts.keepError = String((error as Error)?.message ?? error);
     }
   }
-  if (!facts.kept && deps.keychain) {
+  if (!facts.kept) {
     // #366: this sign-in is not kept, so a token an earlier session kept (one
     // an offline start could not resume) must not sign the next session in.
     try {
-      await deps.keychain.forget();
+      await keychain.forget();
     } catch (error) {
       facts.forgetError = String((error as Error)?.message ?? error);
     }
   }
-  return okReport('share', startedAt, new Date().toISOString(), facts);
-}
+};
 
 /** The refusal a Door43 sign-in answer maps to. Facts carry the status and
  * Door43's message, never the credentials. */
