@@ -256,6 +256,7 @@
   "settings.subtitle": "{name} · {n} books",
   "settings.renameNote": "Renaming arrives with a later increment.",
   "settings.save": "Save changes",
+  "gateway.unsaved": "Some of your work is not saved yet. Save it, then change the checking language.",
   "settings.gatewayCurrent": "This project checks in {lang} · {org}.",
   "settings.gatewayCurrentBadge": "Current",
   "settings.gatewayUnset": "This project has no checking language yet. Choose one below.",

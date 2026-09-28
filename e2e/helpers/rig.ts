@@ -45,7 +45,7 @@ export function readLastEdit(): {
   at?: number;
 } | null {
   if (!fs.existsSync(RIG_CLIENT_SETTINGS)) return null;
-  const doc = JSON.parse(fs.readFileSync(RIG_CLIENT_SETTINGS, 'utf8')) as { lastEdit?: unknown };
+  const doc = readClientSettings() as { lastEdit?: unknown };
   return (doc.lastEdit as ReturnType<typeof readLastEdit>) ?? null;
 }
 
@@ -326,9 +326,23 @@ export function readDecisionFile(repo: string, tool: string, book: string): {
  * precondition first, as it states its checking precondition (resetSeededChecking).
  * The record lives in the rig's per-client settings document, never in a project.
  */
+/** The rig's client-settings document. The platform writes it in place, and the
+ * app writes an ops-log record into it for every store operation (#374), so a
+ * read can meet a half-written file: read again (#412). */
+function readClientSettings(): Record<string, unknown> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return JSON.parse(fs.readFileSync(RIG_CLIENT_SETTINGS, 'utf8')) as Record<string, unknown>;
+    } catch (error) {
+      if (!(error instanceof SyntaxError) || attempt === 10) throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+    }
+  }
+}
+
 export function resetPlaces(): void {
   if (!fs.existsSync(RIG_CLIENT_SETTINGS)) return;
-  const doc = JSON.parse(fs.readFileSync(RIG_CLIENT_SETTINGS, 'utf8')) as Record<string, unknown>;
+  const doc = readClientSettings();
   if (!('placeByProject' in doc)) return;
   delete doc.placeByProject;
   fs.writeFileSync(RIG_CLIENT_SETTINGS, JSON.stringify(doc));

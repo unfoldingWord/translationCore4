@@ -3279,6 +3279,10 @@ export function AppProvider({ children }) {
        * change at all (the ladder resolves per book), so this is only ever
        * reached from a deliberate settings action. */
       previewGatewayChange: async (gateway) => {
+        // #412: Project settings opens over a check session, so a decision can
+        // still be queued. Bring every scheduler to rest first: the plan below
+        // reads the decision files, and a later write would meet a stale file.
+        if (!(await drainSchedulers(saveRefs))) throw new Error(t('gateway.unsaved'));
         const store = storeRef.current;
         const st = stateRef.current;
         if (!store || !st.project) throw new Error('no project is open');
@@ -5138,7 +5142,9 @@ export function AppProvider({ children }) {
             textFont: f.font,
           }, md5);
           await store.commit('Update settings (tC4)');
-          if (open) dispatch({ type: 'set', patch: { project: { ...stateRef.current.project, scriptDirection: f.dir, textFont: f.font } } });
+          // The same project only: another may have opened during the commit.
+          if (open && stateRef.current.project?.id === f.repoPath)
+            dispatch({ type: 'set', patch: { project: { ...stateRef.current.project, scriptDirection: f.dir, textFont: f.font } } });
           await refreshProjects();
           a.closeModal();
         } catch (e) {
