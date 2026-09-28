@@ -55,6 +55,8 @@ import { checkpointMessage } from './data/checkpoint';
 import { runExport } from './data/export/kernel';
 import { runImport } from './data/import/shell';
 import { OpsLog, serialSettingsWriter } from './data/journal/opsLog';
+import { Door43Api } from './data/share/door43Api';
+import { signIn as door43SignIn, signOut as door43SignOut } from './data/share/session';
 import { applyVersions, carryOverNeeds, resolveVersions, unresolvedSlots } from './data/import/tc3';
 import { PARSERS } from './data/import/parsers';
 import { INSTALLED_SUITE, SUITE_VERSION } from './data/installedSuite';
@@ -94,6 +96,8 @@ const settingsWriter = serialSettingsWriter(
 );
 /** #374: the ops log — one record per store operation, in the same document. */
 export const opsLog = new OpsLog({ read: () => api.getClientSettings(STORAGE_ID), update: settingsWriter });
+/** #362/#203: the one Door43 adapter; its server is the build's `dcsServer`. */
+export const door43 = new Door43Api();
 // The mode a view is, for a checkpoint message (#183). Views not listed keep their id.
 const MODE_NAME = { read: 'Understand', draft: 'Translate', check: 'Check', publish: 'Community Checking' };
 // A leave-project checkpoint still running after its store was torn down
@@ -341,11 +345,15 @@ const initial = () => ({
   commitErrorRepo: null,
   // Modals (the owner's design: creation, add-book, and settings are dialogs
   // over Home, not separate pages)
-  modal: null, // null | 'addProject' | 'newProject' | 'newObs' | 'addBook' | 'settings' | 'sources' | 'fix' | 'import'
+  modal: null, // null | 'addProject' | 'newProject' | 'newObs' | 'addBook' | 'settings' | 'sources' | 'fix' | 'import' | 'signIn'
   np: null, // New Bible form
   ab: null, // Add-a-book form
   st: null, // Project-settings form
   im: null, // Import form (#361): { step, kind, files, bundle, name, lang, license (null = not chosen yet), versions (tC3, #21), busy, error, report }
+  // #203: the Door43 sign-in step — { login, password, stay, server (host), busy,
+  // error: { code, message } | null }. The token never enters this state (session.ts).
+  si: null,
+  door43User: null, // the signed-in Door43 login shown in the Home bar, or null
   importToast: null, // { name, books } of the project an import just made
   importedRepo: null, // its repoPath: the Home card carries the "Imported" badge
   // #9: the guided fix screen for a pinned resource this machine lacks —
@@ -4688,6 +4696,46 @@ export function AppProvider({ children }) {
       //      Bible Stories or Import in its place. Every close resets it, so a
       //      reopen always starts on the three cards. ----
       openAddProject: () => dispatch({ type: 'set', patch: { modal: 'addProject', np: null, im: null } }),
+
+      // ---- Door43 sign-in step (#203; D79 point 13, D84 point 6, D85). The
+      //      token lives in session.ts, never here. Nothing is stored but the
+      //      kept token (#366): no name, no email, no login (D85). ----
+      openSignIn: () =>
+        dispatch({
+          type: 'set',
+          patch: {
+            modal: 'signIn',
+            si: { login: '', password: '', stay: false, server: new URL(door43.server).host, busy: false, error: null },
+          },
+        }),
+      patchSi: (patch) => dispatch({ type: 'set', patch: { si: { ...stateRef.current.si, ...patch } } }),
+      /** Sign in; resolves the Report (`op: 'share'`), or null while a call runs.
+       * Nothing is stored on a refusal. #362's Share flow chains on it. */
+      submitSignIn: async () => {
+        const si = stateRef.current.si;
+        if (!si || si.busy) return null;
+        a.patchSi({ busy: true, error: null });
+        const report = await door43SignIn(
+          { door43, getNetEnabled: () => api.getNetEnabled() },
+          { login: si.login.trim(), password: si.password, stay: si.stay },
+        );
+        if (stateRef.current.modal !== 'signIn') {
+          // Cancel was pressed while the call ran: Cancel shares nothing, so a
+          // token that arrived after it is dropped.
+          await door43SignOut();
+          return report;
+        }
+        if (!report.ok) {
+          a.patchSi({ busy: false, password: '', error: { code: report.code ?? null, message: report.facts.error } });
+          return report;
+        }
+        dispatch({ type: 'set', patch: { door43User: report.facts.username, modal: null, si: null } });
+        return report;
+      },
+      signOut: async () => {
+        await door43SignOut();
+        dispatch({ type: 'set', patch: { door43User: null } });
+      },
 
       // ---- New Bible modal (design: creation collects the project facts;
       //      books are added in the SEPARATE Add-a-book dialog) ----

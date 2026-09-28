@@ -348,6 +348,11 @@ export function resetPlaces(): void {
   fs.writeFileSync(RIG_CLIENT_SETTINGS, JSON.stringify(doc));
 }
 
+/** The per-client settings document as the rig holds it, or null when none is stored yet. */
+export function readClientSettingsDoc(): Record<string, unknown> | null {
+  return fs.existsSync(RIG_CLIENT_SETTINGS) ? readClientSettings() : null;
+}
+
 export function resetSeededChecking(): void {
   const source = path.join(TC4_ROOT, 'conformance', 'sample-burrito', 'ingredients');
   const target = path.join(rigRepo(SEEDED_PROJECT), 'ingredients');

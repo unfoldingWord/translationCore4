@@ -254,10 +254,18 @@ opposed to a team main built by integrate. The sync plan's X8 scenario proves th
 the same.
 
 **Door43 adapter**:
-The one module that calls the Door43 API (`src/data/share/door43Api.ts`): list the user's
-organizations, read a permission, count repositories in a language, create a repository. Its
-server is `DCS_SERVER`; the token goes in the `Authorization` header only.
+The one module that calls the Door43 API (`src/data/share/door43Api.ts`): sign in (mint the
+`translationCore` token), list the user's organizations, read a permission, count repositories
+in a language, create a repository. Its server is `DCS_SERVER`; the token goes in the
+`Authorization` header only.
 _Avoid_: Door43 client, DCS helper, gitea API (for this module)
+
+**Door43 session**:
+The signed-in user's login and token, held in `src/data/share/session.ts` for the app session
+(`currentSession`); the token alone goes to the operating-system keychain when "Stay signed
+in" is on (#366). Nothing else is stored (D85): no name, no email, no login. Never in React
+state, the client settings, `localStorage`, a URL or a log.
+_Avoid_: credentials (the password is never kept), login state, identity record
 
 **Share target**:
 Where a first share creates the repository: the user's own account, or one organization the

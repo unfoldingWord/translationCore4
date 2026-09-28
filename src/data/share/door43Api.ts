@@ -22,15 +22,46 @@
 //   organization route; the live leg of #185 records that answer).
 // - A failure body is `{"message": "…", "url": "…"}`; 401 says
 //   "invalid username, password or token".
+// - The sign-in (#203, D79 point 13), with Basic auth (username or email, and
+//   the password) on each call [swagger read 2026-09-28; the live leg of #203
+//   test 3 runs these on the QA server when the QA credentials are present]:
+//   `GET /api/v1/user` → `{login}`; `GET /api/v1/users/{login}/tokens` →
+//   `AccessToken[]` (`id`, `name`, `token_last_eight`, `scopes`; the secret
+//   is not listed); `DELETE /api/v1/users/{login}/tokens/{id}` → 204;
+//   `POST /api/v1/users/{login}/tokens` with `CreateAccessTokenOption`
+//   (`name`, `scopes`) → 201 `AccessToken` with `sha1`, the secret, shown
+//   once; 400 when the name is used already.
 import { DCS_SERVER } from '../dcsServer';
 
 /** A signed-in Door43 user: the token is held in memory by #203, never here.
  * `username` is the account login (it goes into the permissions route), not
- * the email a person may sign in with; #203 reads it from `GET /api/v1/user`. */
+ * the email a person may sign in with; `signIn` reads it from `GET /api/v1/user`. */
 export interface Door43Session {
   username: string;
   token: string;
 }
+
+/** The name of the token the app mints on the user's account (D79 point 13).
+ * tC3's is `translation-core`; the two never collide. */
+export const TOKEN_NAME = 'translationCore';
+
+/** The scopes the token asks for (D84 point 6): create a repository and push
+ * to it (`write:repository`, which holds the read of `GET /repos/search`),
+ * list the user's organizations (`read:organization`), and read the account
+ * (`GET /user`) and its organization permissions (`read:user`). The names are
+ * the `CreateAccessTokenOption.scopes` examples of Door43 `1.27.3+dcs`. */
+export const TOKEN_SCOPES: readonly string[] = Object.freeze([
+  'write:repository',
+  'read:organization',
+  'read:user',
+]);
+
+/** `Basic` credentials over the UTF-8 bytes (`btoa` alone refuses a password
+ * with a character outside Latin-1). */
+const basicAuthorization = (login: string, password: string): string => {
+  const bytes = new TextEncoder().encode(`${login}:${password}`);
+  return `Basic ${btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(''))}`;
+};
 
 export interface Door43Organization {
   /** The organization's account name, as it appears in a repository path. */
@@ -105,10 +136,11 @@ export class Door43Api {
   private async request(
     route: string,
     session: Door43Session | null,
-    init: { method?: string; body?: unknown } = {},
+    init: { method?: string; body?: unknown; authorization?: string } = {},
   ): Promise<Response> {
     const headers: Record<string, string> = { Accept: 'application/json' };
-    if (session) headers.Authorization = `token ${session.token}`;
+    if (init.authorization) headers.Authorization = init.authorization;
+    else if (session) headers.Authorization = `token ${session.token}`;
     const request: RequestInit = { method: init.method ?? 'GET', headers };
     if (init.body !== undefined) {
       headers['Content-Type'] = 'application/json';
@@ -196,5 +228,45 @@ export class Door43Api {
       clone_url: string;
     };
     return { fullName: body.full_name, htmlUrl: body.html_url, cloneUrl: body.clone_url };
+  }
+
+  /** Sign in with a username or an email and the password (D79 point 13,
+   * tC3's flow): read the account login, drop the token named `translationCore`
+   * when the account holds one (Door43 lists a token without its secret and
+   * refuses a second token of the same name), and mint it again with
+   * `TOKEN_SCOPES`. The password travels in the `Authorization` header of
+   * these calls only; the caller keeps the session in memory (#203). */
+  async signIn(login: string, password: string): Promise<Door43Session> {
+    const authorization = basicAuthorization(login, password);
+    const basic = { authorization };
+    const user = (await (await this.request('/user', null, basic)).json()) as { login?: unknown };
+    if (typeof user.login !== 'string' || !user.login)
+      throw new Door43ApiError('/user', 200, 'the answer carries no login');
+    // Door43 answered, so a login that fails the name rule is its answer (200),
+    // not an unreachable server (status 0).
+    try {
+      assertName(user.login, 'username');
+    } catch (error) {
+      throw new Door43ApiError('/user', 200, (error as Error).message);
+    }
+    const tokensRoute = `/users/${encodeURIComponent(user.login)}/tokens`;
+    const tokens = (await (await this.request(`${tokensRoute}?limit=50`, null, basic)).json()) as Array<{
+      id: number;
+      name: string;
+    }>;
+    for (const token of tokens) {
+      if (token.name === TOKEN_NAME)
+        await this.request(`${tokensRoute}/${token.id}`, null, { ...basic, method: 'DELETE' });
+    }
+    const created = (await (
+      await this.request(tokensRoute, null, {
+        ...basic,
+        method: 'POST',
+        body: { name: TOKEN_NAME, scopes: [...TOKEN_SCOPES] },
+      })
+    ).json()) as { sha1?: string };
+    if (!created.sha1)
+      throw new Door43ApiError(tokensRoute, 201, 'the created token carries no secret');
+    return { username: user.login, token: created.sha1 };
   }
 }

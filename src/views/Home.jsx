@@ -209,6 +209,24 @@ function ResumeCard({ edit, projects }) {
   );
 }
 
+// #203 (D84 point 2): one Door43 bar above the project cards — "Not signed in
+// to Door43" with Sign in, or the signed-in user with Sign out. Sign in opens
+// the same sign-in step the first share uses; Sign out drops the token from
+// memory (and from the keychain through #366).
+function Door43Bar({ user, actions }) {
+  return (
+    <div data-testid="door43-bar" data-signed-in={user ? '1' : '0'}
+      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', margin: '0 0 16px', background: 'var(--surface-card)', border: 'var(--stroke-hair) solid var(--border-hair)', borderRadius: 'var(--radius-lg)', fontSize: 'var(--fs-ui-sm)', color: 'var(--text-secondary)', fontWeight: 'var(--fw-medium)' }}>
+      <span style={{ flex: 1 }} data-testid="door43-status">
+        {user ? t('home.door43SignedIn', { user }) : t('home.door43NotSignedIn')}
+      </span>
+      {user
+        ? <Button size="sm" variant="outline" onClick={actions.signOut} data-testid="door43-sign-out">{t('home.door43SignOut')}</Button>
+        : <Button size="sm" variant="outline" onClick={() => actions.openSignIn()} data-testid="door43-sign-in">{t('home.door43SignIn')}</Button>}
+    </div>
+  );
+}
+
 export default function Home() {
   const { s, actions } = useApp();
   const projects = s.projects;
@@ -225,6 +243,8 @@ export default function Home() {
           <div style={{ flex: 1 }} />
           <Button onClick={actions.openAddProject} data-testid="add-project">+ {t('home.addProject')}</Button>
         </div>
+
+        <Door43Bar user={s.door43User} actions={actions} />
 
         {/* A refused open (e.g. the #62 seed pipeline's diagnosable STOP) routes
             back here with bookError set; without this banner the click looked
