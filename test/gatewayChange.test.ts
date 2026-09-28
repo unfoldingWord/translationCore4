@@ -218,7 +218,7 @@ describe('applying the change', () => {
     );
 
     expect(preview).toContain(
-      'backfillCoverage(applyGatewayChange(current, proposedPrimary), coverage).resources',
+      'backfillCoverage(applyGatewayChange(current, proposedPrimary, extraScripture), coverage).resources',
     );
     expect(direct).toContain('backfillCoverage(');
     expect(direct).toContain('coverage,');

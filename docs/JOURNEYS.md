@@ -228,11 +228,15 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 ### J13 Change the gateway-language resource set
 
 - Actor: facilitator. Activity: Start.
-- Precondition: two gateway-language suites are installed (the rig holds English and Spanish).
-- Steps: open sources · choose the other language for checking · confirm the change explicitly.
+- Precondition: two gateway-language suites are installed (the rig holds English and Spanish, for
+  Bible and OBS projects).
+- Steps: open Project Settings (from Home or from inside the project) · choose the other package in
+  the Checking language list · confirm the change explicitly (#412).
 - End state: the primary pins name the new language set with `version`, `sha`, `repoPath`; the
   English fallback set stays unchanged (D30, §5.3); decisions re-attach to the new set, or are invalidated and
-  retained (D36). The sources modal and its confirmation are steps.
+  retained (D36). On a Bible project, `extraScripture` names the new package's literal and
+  simplified Bibles; a pane that the package cannot fill names the English ULT or UST (#412).
+  Project Settings and the confirmation are steps.
 - Proof: `e2e/j13-gateway-change.spec.ts`. Owner: shipped alpha.2.
 
 ### J16 Read a passage with helps and record a user comment

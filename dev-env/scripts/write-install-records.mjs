@@ -14,7 +14,7 @@
 //     metadata.json; a record with no revision has no `sha` field;
 //   - `flavor`: `<flavorType>/<flavor>` from the metadata, built as the workspace block
 //     builds it.
-// The OBS resources and the picture pack get no record, as in the workspace block.
+// The English OBS resources and the picture pack get no record, as in the workspace block.
 // The other keys of uw-tc4.json stay as they are.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -25,7 +25,8 @@ if (!work) {
   process.exit(2);
 }
 
-const ORG = { 'es-419_tn': 'es-419_gl', 'es-419_tw': 'es-419_gl', 'es-419_ta': 'es-419_gl' };
+const ES_419 = ['es-419_tn', 'es-419_tw', 'es-419_ta', 'es-419_glt', 'es-419_gst', 'es-419_obs', 'es-419_obs-tn', 'es-419_obs-twl', 'es-419_obs-tq'];
+const ORG = Object.fromEntries(ES_419.map((name) => [name, 'es-419_gl']));
 const VERSIONS = {
   en_ult: 'v89',
   en_ust: 'v89',
@@ -37,6 +38,14 @@ const VERSIONS = {
   'es-419_tn': 'v66',
   'es-419_tw': 'v37',
   'es-419_ta': 'v4',
+  // #412: the Spanish Bibles and OBS package. Their exports name another org, so
+  // only the record places them in es-419_gl.
+  'es-419_glt': 'v42',
+  'es-419_gst': 'v40',
+  'es-419_obs': 'v2',
+  'es-419_obs-tn': 'v2',
+  'es-419_obs-twl': 'v2',
+  'es-419_obs-tq': 'v2',
 };
 
 const installed = {};

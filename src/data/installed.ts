@@ -442,6 +442,24 @@ export const pinsPreferringInstalled = <T extends { languageSets?: Record<string
   return { ...resources, languageSets };
 };
 
+/** The Bibles one gateway package supplies for the Translate source panes (#412):
+ * its literal text (`<lang>_ult`, else `<lang>_glt`) and its simplified text
+ * (`<lang>_ust`, else `<lang>_gst`), each only when installed with its identity. */
+export const gatewayBiblesFromInstalled = (
+  installed: InstalledMap,
+  gateway: { id: string; org: string },
+): { literal?: ResourcePin; simplified?: ResourcePin } => {
+  const org = gateway.org.toLowerCase();
+  const byName = (name: string) =>
+    Object.values(installed).find((p) =>
+      !!p.sha && !!p.flavor && p.repoPath.toLowerCase().includes(`/${org}/`) &&
+      (p.repoPath.split('/').pop() ?? '').toLowerCase() === name.toLowerCase());
+  return {
+    literal: byName(`${gateway.id}_ult`) ?? byName(`${gateway.id}_glt`),
+    simplified: byName(`${gateway.id}_ust`) ?? byName(`${gateway.id}_gst`),
+  };
+};
+
 /** The §5.3 language set for one gateway org, built from what is installed.
  * Bible and OBS sets apply their distinct completeness rules (D75). A partial
  * suite is never written as a pin (§5.3).

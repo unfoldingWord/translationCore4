@@ -250,7 +250,8 @@ async function openSources(page: Page) {
   await page.goto('/');
   await page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByRole('button', { name: /Titus/ }).click();
   await page.getByRole('tab', { name: 'Check', exact: true }).click();
-  await page.getByTestId('open-sources').click();
+  await page.getByTestId('project-settings').click();
+  await page.getByTestId('settings-manage-sources').click();
   await expect(page.getByTestId('sources-modal')).toBeVisible();
 }
 
@@ -563,7 +564,8 @@ test.describe('J12 — the scripture-text offers name only the originals of the 
       await mockDcs(context, '', true, { repo, otNewer: true });
 
       await page.getByRole('tab', { name: 'Check', exact: true }).click();
-      await page.getByTestId('open-sources').click();
+      await page.getByTestId('project-settings').click();
+      await page.getByTestId('settings-manage-sources').click();
       await expect(page.getByTestId('sources-modal')).toBeVisible();
       await goOnline(page);
       await page.getByTestId('check-updates').click();
