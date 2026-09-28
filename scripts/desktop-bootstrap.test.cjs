@@ -50,6 +50,7 @@ function runDesktopMain({ platform = 'linux', lock = true, startServer, bindErro
       handlers[event] = handler;
     },
     exit: (code) => events.push('exit:' + code),
+    commandLine: { appendSwitch: (name) => events.push('switch:' + name) },
   };
   // The hidden print window of the PDF bridge (#20): it records what it was
   // given, and fails the print when the case asks it to.
@@ -277,17 +278,17 @@ test('the packaged entry point is valid, ordered, and preserves its launch contr
   assert.doesNotThrow(() => new vm.Script(desktopMain));
 
   const linux = runDesktopMain();
-  assert.deepEqual(linux.events, ['lock', 'handle:export:pdf', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'bind', 'upstream']);
+  assert.deepEqual(linux.events, ['lock', 'switch:disable-dev-shm-usage', 'handle:export:pdf', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'bind', 'upstream']);
   const mac = runDesktopMain({ platform: 'darwin' });
   assert.deepEqual(mac.events, ['lock', 'handle:export:pdf', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'bind', 'bootstrap', 'upstream']);
   const windows = runDesktopMain({ platform: 'win32' });
   assert.deepEqual(windows.events, ['setAppUserModelId', 'lock', 'handle:export:pdf', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'bind', 'bootstrap', 'upstream']);
   const external = runDesktopMain({ startServer: 'false' });
-  assert.deepEqual(external.events, ['lock', 'handle:export:pdf', 'on:browser-window-created', 'on:second-instance', 'shouldBind:false', 'upstream']);
+  assert.deepEqual(external.events, ['lock', 'switch:disable-dev-shm-usage', 'handle:export:pdf', 'on:browser-window-created', 'on:second-instance', 'shouldBind:false', 'upstream']);
   const second = runDesktopMain({ lock: false });
   assert.deepEqual(second.events, ['lock', 'quit']);
   const failed = runDesktopMain({ bindError: true });
-  assert.deepEqual(failed.events, ['lock', 'handle:export:pdf', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'bind', 'errorBox', 'exit:1']);
+  assert.deepEqual(failed.events, ['lock', 'switch:disable-dev-shm-usage', 'handle:export:pdf', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'bind', 'errorBox', 'exit:1']);
 
   linux.handlers['second-instance']();
   assert.deepEqual(linux.events.slice(-2), ['restore', 'focus']);
