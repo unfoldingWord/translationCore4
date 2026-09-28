@@ -91,12 +91,17 @@ export async function signIn(deps: SignInDeps, request: SignInRequest): Promise<
     return failed(refusalForSignIn(error));
   }
   session = signed;
-  let kept = false;
+  const facts: SignInFacts = { ...base, step: 'sign-in', username: signed.username, kept: false };
   if (request.stay && deps.keychain) {
-    await deps.keychain.keep(signed);
-    kept = true;
+    // A keychain that refuses is not a failed sign-in: the token is in memory
+    // for this session, and the Report says it was not kept.
+    try {
+      await deps.keychain.keep(signed);
+      facts.kept = true;
+    } catch (error) {
+      facts.keepError = String((error as Error)?.message ?? error);
+    }
   }
-  const facts: SignInFacts = { ...base, step: 'sign-in', username: signed.username, kept };
   return okReport('share', startedAt, new Date().toISOString(), facts);
 }
 

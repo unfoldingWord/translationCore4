@@ -4743,6 +4743,12 @@ export function AppProvider({ children }) {
           { door43, getNetEnabled: () => api.getNetEnabled() },
           { login, password: si.password, stay: si.stay },
         );
+        if (stateRef.current.modal !== 'signIn') {
+          // Cancel was pressed while the call ran: Cancel shares nothing, so a
+          // token that arrived after it is dropped and nothing is stored.
+          await door43SignOut();
+          return report;
+        }
         if (!report.ok) {
           a.patchSi({ busy: false, password: '', error: { code: report.code ?? null, message: report.facts.error } });
           return report;

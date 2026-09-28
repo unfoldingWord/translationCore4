@@ -740,7 +740,7 @@
   "signIn.submit": "Sign in",
   "signIn.busy": "Signing in…",
   "signIn.failed": "Sign-in failed.",
-  "signIn.error.share.auth-failed": "Door43 did not accept that username or password.",
-  "signIn.error.share.offline": "No network: Door43 could not be reached.",
-  "signIn.error.share.server-unavailable": "Door43 is not available right now. Try again later."
+  "signIn.error.auth-failed": "Door43 did not accept that username or password.",
+  "signIn.error.offline": "No network: Door43 could not be reached.",
+  "signIn.error.server-unavailable": "Door43 is not available right now. Try again later."
 }

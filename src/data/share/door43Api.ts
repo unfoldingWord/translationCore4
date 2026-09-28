@@ -239,7 +239,9 @@ export class Door43Api {
   async signIn(login: string, password: string): Promise<Door43Session> {
     const authorization = basicAuthorization(login, password);
     const basic = { authorization };
-    const user = (await (await this.request('/user', null, basic)).json()) as { login: string };
+    const user = (await (await this.request('/user', null, basic)).json()) as { login?: unknown };
+    if (typeof user.login !== 'string' || !user.login)
+      throw new Door43ApiError('/user', 200, 'the answer carries no login');
     assertName(user.login, 'username');
     const tokensRoute = `/users/${encodeURIComponent(user.login)}/tokens`;
     const tokens = (await (await this.request(`${tokensRoute}?limit=50`, null, basic)).json()) as Array<{
