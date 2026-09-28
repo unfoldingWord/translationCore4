@@ -1209,13 +1209,6 @@ export default function Check() {
           <p style={{ fontSize: 'var(--fs-body)', letterSpacing: 'var(--track-15)', color: 'var(--text-secondary)', margin: 0, maxWidth: 640, flex: 1 }}>
             {t('check.subtitle')}
           </p>
-          {/* The checking language is a property of the PROJECT (D30.2), so its
-            * entry point belongs where the project is open — not only on Home
-            * before a project is chosen. */}
-          <Button variant="ghost" onClick={actions.openSources} data-testid="open-sources"
-            style={{ fontSize: 'var(--fs-caption-lg)', whiteSpace: 'nowrap' }}>
-            {t('nav.sources')} →
-          </Button>
         </div>
         {s.preflightError && (
           // Catch-to-absence sweep (D30): an identity-read outage is stated

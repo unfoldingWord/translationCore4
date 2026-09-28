@@ -28,7 +28,7 @@ import { BOOK_NAMES, bookName } from './data/bookNames';
 import { GATEWAYS, gatewayKey, DCS_HOST, orgForRepoName } from './data/gateways';
 import { fetchAndInstallPin, latestReleaseTag, identifyExistingInstall, releaseCommitSha, rezip, unwrapExport, verifySideload } from './data/resourceFetch';
 import { isNotFoundError } from './data/serverApi';
-import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, mergeOptionalPins, isPinLocal, unsatisfiedProjectPinFor, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk, flavorOfMetadata } from './data/installed';
+import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, gatewayBiblesFromInstalled, mergeOptionalPins, isPinLocal, unsatisfiedProjectPinFor, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk, flavorOfMetadata } from './data/installed';
 import { OBS_TOOL_SLOT, TOOL_SLOT, coverageFor, preflightObsTool, preflightToolBook, recordMatchesResolution, resolutionRecord, resolveObsSetSlot, resolveToolBook, resolveSetSlot, samePath } from './data/resolve';
 import {
   deriveForProject,
@@ -44,7 +44,7 @@ import { readTwArticle, readTaArticle } from './data/articles';
 import { revalidateAgainstDraft, resolutionWarning } from './data/revalidate';
 import { bootstrapVerse, linkWord, unlinkWord, moveWord, mergeAlignments, splitAlignment, stampTargetVerse, alignmentIsStale, reflowAlignment, settleDone, markDone } from './data/align/edit';
 import { linksFor, rebindSuggestions, sessionInputFor, trainingVersesFor } from './data/align/suggest';
-import { consequencesOfGatewayChange, applyGatewayChange, uncoveredByChange } from './data/gatewayChange';
+import { consequencesOfGatewayChange, applyGatewayChange, uncoveredByChange, sourcePanesForGateway, gatewaysCoveringProject } from './data/gatewayChange';
 import { carryOverDecisions } from './data/carryOver';
 import { applyTextUpgrade, applyUpgrade, invalidateAlignments, invalidatedTestaments, latestReleasesForSet, offerForSet, offerIsStale, repinOffer, textOfferIsStale, textOffers, textPinOf } from './data/upgrade';
 import { LADDER } from './data/burritoStore';
@@ -361,6 +361,7 @@ const initial = () => ({
   gatewayError: null, // a failed gateway-change commit, shown in the dialogue
   netEnabled: false, // mirrors the platform's net gate (GET /net/status)
   projectPins: null, // the open project's resources.json (§5.3 v2 shape)
+  projectPinsSeq: 0, // #412: bumped by a gateway change, so an older pins read never lands over it
   projectPinsLoaded: false, // round 33: distinguishes pins LOADING (understand waits) from pins legally ABSENT (understand proceeds, slots unpinned)
   projectPinsError: null, // round 34: a REJECTED pins read — stated and retryable, never a false absence claim
   sourcePanes: null, // round 37: the open project's §5.3 extraScripture pane ids — null while the pins load, [] when the project legally has none
@@ -726,6 +727,13 @@ async function assertObsSourceCompatible(apiClient, store, pin, installed) {
   const mismatch = obsFrameSetMismatch(current, incoming);
   if (mismatch) throw new Error(`OBS source frame set is incompatible: ${mismatch}`);
 }
+
+/** The English Bibles a gateway change falls back to for the source panes
+ * (#412, owner Q5): the installed unfoldingWord ULT and UST, else the shipped pins. */
+const englishBibles = (installed) => {
+  const en = gatewayBiblesFromInstalled(installed, { id: 'en', org: 'unfoldingWord' });
+  return { literal: en.literal ?? INSTALLED_SUITE.extraScripture[0], simplified: en.simplified ?? INSTALLED_SUITE.extraScripture[1] };
+};
 
 async function gatewayChangePlan({ consequences, next, coverage, installed, stored, md5s, actions, blocked }) {
   const keyOf = (entry) => `${entry.tool}/${entry.book}`;
@@ -2250,8 +2258,11 @@ async function seedInitialUsfm({ store, stateRef, code, projName }) {
  * absent; `failed` marks a rejected read, whose pins are unknown. The
  * dispatches below run before that promise settles for the caller. */
 function loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatch }) {
+  // #412: a gateway change confirmed while this read is in flight wins; the
+  // older document must not replace it (the next open adopts, as D64 says).
+  const seq = stateRef.current.projectPinsSeq;
   const stillCurrent = () =>
-    storeRef.current === store && stateRef.current.project?.repoPath === repoPath;
+    storeRef.current === store && stateRef.current.project?.repoPath === repoPath && stateRef.current.projectPinsSeq === seq;
   const read = store.readResources();
   read
     .then(async (pins) => {
@@ -3268,6 +3279,10 @@ export function AppProvider({ children }) {
        * change at all (the ladder resolves per book), so this is only ever
        * reached from a deliberate settings action. */
       previewGatewayChange: async (gateway) => {
+        // #412: Project settings opens over a check session, so a decision can
+        // still be queued. Bring every scheduler to rest first: the plan below
+        // reads the decision files, and a later write would meet a stale file.
+        if (!(await drainSchedulers(saveRefs))) throw new Error(t('gateway.unsaved'));
         const store = storeRef.current;
         const st = stateRef.current;
         if (!store || !st.project) throw new Error('no project is open');
@@ -3286,7 +3301,12 @@ export function AppProvider({ children }) {
         const { value: currentResources, md5: resourcesMd5 } = await store.readResourcesWithMd5();
         const current = currentResources ?? INSTALLED_SUITE;
         if (kind === 'obs') await assertObsSourceCompatible(api, store, proposedPrimary.obs, installed);
-        const next = backfillCoverage(applyGatewayChange(current, proposedPrimary), coverage).resources;
+        // #412 (owner Q3/Q5): a Bible project's source panes follow the package;
+        // a pane the package cannot fill shows the English Bible.
+        const extraScripture = kind === 'bible'
+          ? sourcePanesForGateway(current.extraScripture, gatewayBiblesFromInstalled(installed, gateway), englishBibles(installed))
+          : undefined;
+        const next = backfillCoverage(applyGatewayChange(current, proposedPrimary, extraScripture), coverage).resources;
         const primary = next.languageSets.primary;
         const planned = await a.planResourcesChange({ next, installed, coverage });
         const imageChange = kind === 'obs' ? {
@@ -3856,7 +3876,15 @@ export function AppProvider({ children }) {
             expectMd5: p.expectMd5 ?? null,
           })),
         });
-        dispatch({ type: 'set', patch: { projectPins: preview.next } });
+        dispatch({ type: 'set', patch: { projectPins: preview.next, projectPinsLoaded: true, projectPinsSeq: stateRef.current.projectPinsSeq + 1 } });
+        a.reloadSourcePanes(preview.next);
+        // An open OBS story shows the new package's source text too (#412).
+        if (stateRef.current.project?.flavor === 'textStories' && stateRef.current.storyNumber != null)
+          void a.openStory(stateRef.current.storyNumber, preview.next);
+        // #412: Project settings opens over a running check session, which was
+        // derived from the package just left. Close it; the preflight below
+        // derives the tools again from the new pins.
+        if (stateRef.current.checkTool) a.closeCheckTool();
         if (stateRef.current.book) await a.runPreflight();
         return preview.next;
       },
@@ -5026,15 +5054,19 @@ export function AppProvider({ children }) {
               dir: project.scriptDirection === 'rtl' ? 'rtl' : 'ltr',
               font: SCRIPT_FONTS[0],
               bookCount: (project.bookCodes || []).length,
+              flavor: project.flavor,
               busy: false,
               loaded: false,
               error: null,
+              gw: { loading: true, pins: null, options: [], error: null },
             },
+            gatewayError: null,
           },
         });
         try {
           const reader = new ProjectReader({ api });
           await reader.open(project.id);
+          a.loadSettingsGateways(project, reader);
           const settings = (await reader.readSettings()) || {};
           a.patchSt({
             dir: settings.textDirection === 'rtl' ? 'rtl' : 'ltr',
@@ -5054,13 +5086,50 @@ export function AppProvider({ children }) {
       patchSt: (patch) =>
         dispatch({ type: 'set', patch: { st: { ...stateRef.current.st, ...patch } } }),
 
+      /** #412: the gateway-language packages the Settings card offers
+       * (gatewaysCoveringProject), read from disk only, so it works offline. */
+      loadSettingsGateways: async (project, reader) => {
+        const kind = project.flavor === 'textStories' ? 'obs' : 'bible';
+        const setGw = (gw) => {
+          if (stateRef.current.st?.repoPath === project.id) a.patchSt({ gw: { ...stateRef.current.st.gw, ...gw } });
+        };
+        try {
+          const [pins, { installed, coverage, resolutionError }] = await Promise.all([reader.readResources(), a.resolutionContext()]);
+          if (resolutionError) throw new Error(resolutionError);
+          const options = gatewaysCoveringProject(installed, coverage, project.bookCodes || [], kind);
+          setGw({ loading: false, pins, options, error: null });
+        } catch (error) {
+          setGw({ loading: false, error: String(error?.message || error) });
+        }
+      },
+
+      /** #412: choose the project's gateway package from Settings. The change is
+       * the J13 one: the consequence dialogue opens over Settings, and nothing of
+       * the change is written before its confirm. A project that is not open is
+       * opened first, because the change is one journal action of the open
+       * project; that open adopts installed optional slots as every open does
+       * (D64), before the dialogue asks. */
+      chooseSettingsGateway: async (gateway) => {
+        const st = stateRef.current.st;
+        if (!st) return;
+        if (stateRef.current.project?.id !== st.repoPath) {
+          a.closeModal();
+          await a.openProject(st.repoPath);
+          if (stateRef.current.project?.id !== st.repoPath) return;
+        }
+        await a.askGatewayChange(gateway);
+      },
+
       saveSettings: async () => {
         const f = stateRef.current.st;
         if (f.busy) return;
         a.patchSt({ busy: true, error: null });
-        const store = new JournalingStore({ api, ops: opsLog });
+        // #412: Settings also opens inside a project. The open project's own
+        // store writes then, never a second store over the same journal.
+        const open = stateRef.current.project?.id === f.repoPath ? storeRef.current : null;
+        const store = open ?? new JournalingStore({ api, ops: opsLog });
         try {
-          await store.open(f.repoPath);
+          if (!open) await store.open(f.repoPath);
           // #9: compare-and-swap like every other sidecar — the md5 of what
           // was read travels with the write, and a concurrent editor's
           // change is refused (StaleWriteError), never overwritten.
@@ -5073,12 +5142,15 @@ export function AppProvider({ children }) {
             textFont: f.font,
           }, md5);
           await store.commit('Update settings (tC4)');
+          // The same project only: another may have opened during the commit.
+          if (open && stateRef.current.project?.id === f.repoPath)
+            dispatch({ type: 'set', patch: { project: { ...stateRef.current.project, scriptDirection: f.dir, textFont: f.font } } });
           await refreshProjects();
           a.closeModal();
         } catch (e) {
           a.patchSt({ busy: false, error: e?.reason || e?.message || t('wizard.error') });
         } finally {
-          store.dispose(); // #94: a throwaway store's fold worker
+          if (!open) store.dispose(); // #94: a throwaway store's fold worker
         }
       },
 
