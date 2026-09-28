@@ -310,6 +310,8 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       // The end: the URL, Copy link, Open on Door43, and the sentence (D84 point 5).
       const done = page.getByTestId('share-done');
       await expect(done).toBeVisible({ timeout: 30_000 });
+      // One progress line showed "Creating the repository…" then "Pushing…" (the two steps, in order).
+      await expect(done).toHaveAttribute('data-steps', 'create,push');
       const url = `${QA_SERVER}/${USER.username}/${SEEDED_PROJECT}`;
       await expect(page.getByTestId('share-url')).toHaveText(url);
       await expect(page.getByTestId('share-copy')).toHaveText('Copy link');

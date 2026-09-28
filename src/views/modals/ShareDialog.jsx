@@ -82,7 +82,8 @@ function CheckStep({ sh, user, actions }) {
 function DoneStep({ sh, actions }) {
   const url = sh.report.facts.url;
   return (
-    <div data-testid="share-done" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    // `data-steps`: the progress lines that were shown, in order (the journey reads them here, after the run).
+    <div data-testid="share-done" data-steps={sh.steps.join(',')} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {/* D84 point 5: "Others can read it on Door43." — receive stays Phase 2, so nothing about opening it in the app. */}
       <Text role="body" data-testid="share-done-text">{t('shareDialog.doneText')}</Text>
       <Text role="strong" data-testid="share-url" style={{ overflowWrap: 'anywhere' }}>{url}</Text>
