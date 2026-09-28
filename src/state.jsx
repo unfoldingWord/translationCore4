@@ -4712,12 +4712,13 @@ export function AppProvider({ children }) {
       // ---- Door43 sign-in step (#203; D79 point 13, D84 point 6, D85). The
       //      token lives in session.ts, never here. Nothing is stored but the
       //      kept token (#366): no name, no email, no login (D85). ----
-      openSignIn: () =>
+      /** `share`: the project a Share pressed without a token continues with (#362). */
+      openSignIn: (share = null) =>
         dispatch({
           type: 'set',
           patch: {
             modal: 'signIn',
-            si: { login: '', password: '', stay: false, server: new URL(door43.server).host, busy: false, error: null },
+            si: { login: '', password: '', stay: false, server: new URL(door43.server).host, busy: false, error: null, share },
           },
         }),
       patchSi: (patch) => dispatch({ type: 'set', patch: { si: { ...stateRef.current.si, ...patch } } }),
@@ -4775,8 +4776,7 @@ export function AppProvider({ children }) {
       startShare: async (project) => {
         const session = currentSession();
         if (!session) {
-          a.openSignIn();
-          a.patchSi({ share: project });
+          a.openSignIn(project);
           return;
         }
         if (stateRef.current.remoteByProject[project.id]) return a.shareRun(project);

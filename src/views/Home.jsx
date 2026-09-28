@@ -35,7 +35,7 @@ function ShareAction({ p }) {
   const offline = !s.netEnabled;
   const busy = !!run?.busy;
   const label = busy
-    ? t(run.step === 'push' ? 'share.pushing' : run.step === 'create' ? 'share.creating' : 'share.preparing')
+    ? t(run.step === 'push' ? 'shareDialog.pushing' : run.step === 'create' ? 'shareDialog.creating' : 'shareDialog.preparing')
     : t(shared ? 'home.uploadChanges' : 'home.share');
   return (
     <div data-testid={`share-card-${p.id}`} data-shared={shared ? '1' : '0'} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>

@@ -17,43 +17,43 @@ import { t } from '../../i18n';
 import { Modal, Button, OptionCard, TextField, Spinner, Callout, Text } from '../../ds/index.js';
 
 /** The plain-words sentence for a share refusal: one per code (`share.name-exists`
- * → `share.error.name-exists`, with the Report's own message as `{reason}`);
+ * → `shareDialog.error.name-exists`, with the Report's own message as `{reason}`);
  * the Report's message when the code has none. Home's card uses it too. */
 export const shareErrorText = (error) =>
-  (error.code ? t(`share.error.${error.code.replace(/^share\./, '')}`, { reason: error.message }, error.message) : error.message);
+  (error.code ? t(`shareDialog.error.${error.code.replace(/^share\./, '')}`, { reason: error.message }, error.message) : error.message);
 
 /** The name Door43 accepts as a repository name (the adapter's rule). */
 export const nameOk = (name) => /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/.test(name.trim());
 
 const STEP_TITLES = {
-  target: ['share.whereTitle', 'share.whereSubtitle'],
-  check: ['share.checkTitle', 'share.checkSubtitle'],
-  progress: ['share.progressTitle', 'share.progressSubtitle'],
-  done: ['share.doneTitle', 'share.doneSubtitle'],
+  target: ['shareDialog.whereTitle', 'shareDialog.whereSubtitle'],
+  check: ['shareDialog.checkTitle', 'shareDialog.checkSubtitle'],
+  progress: ['shareDialog.progressTitle', 'shareDialog.progressSubtitle'],
+  done: ['shareDialog.doneTitle', 'shareDialog.doneSubtitle'],
 };
 
 /** Where the repository will be created, in words. */
-const targetLabel = (sh, user) => (sh.target.kind === 'user' ? t('share.account', { user }) : sh.target.organization);
+const targetLabel = (sh, user) => (sh.target.kind === 'user' ? t('shareDialog.account', { user }) : sh.target.organization);
 
 function TargetStep({ sh, user, actions }) {
   const pick = (target) => actions.patchSh({ target });
   return (
     <div data-testid="share-target" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <OptionCard data-testid="share-target-user" control="radio" selected={sh.target.kind === 'user'}
-        title={t('share.account', { user })} description={t('share.accountDesc')} onClick={() => pick({ kind: 'user' })} />
+        title={t('shareDialog.account', { user })} description={t('shareDialog.accountDesc')} onClick={() => pick({ kind: 'user' })} />
       {sh.choices === null && !sh.choicesError && (
-        <div style={{ padding: '10px 0' }} data-testid="share-orgs-loading"><Spinner label={t('share.orgsLoading')} /></div>
+        <div style={{ padding: '10px 0' }} data-testid="share-orgs-loading"><Spinner label={t('shareDialog.orgsLoading')} /></div>
       )}
       {sh.choicesError && (
-        <Callout tone="warn" role="alert" data-testid="share-orgs-error" style={{ overflowWrap: 'anywhere' }}>{t('share.orgsError')} {sh.choicesError}</Callout>
+        <Callout tone="warn" role="alert" data-testid="share-orgs-error" style={{ overflowWrap: 'anywhere' }}>{t('shareDialog.orgsError')} {sh.choicesError}</Callout>
       )}
       {(sh.choices || []).map((org) => (
         // D84 point 3: an organization the user cannot create in is shown, cannot be chosen, and says why.
         <OptionCard key={org.organization} data-testid={`share-org-${org.organization}`} control="radio"
           selected={sh.target.kind === 'organization' && sh.target.organization === org.organization}
           disabled={!org.canCreateRepository} data-recommended={org.recommended ? '1' : '0'}
-          title={org.fullName || org.organization} recommended={org.recommended} recommendedLabel={t('share.recommended')}
-          description={org.canCreateRepository ? org.organization : t('share.orgCannot')}
+          title={org.fullName || org.organization} recommended={org.recommended} recommendedLabel={t('shareDialog.recommended')}
+          description={org.canCreateRepository ? org.organization : t('shareDialog.orgCannot')}
           onClick={org.canCreateRepository ? () => pick({ kind: 'organization', organization: org.organization }) : undefined} />
       ))}
     </div>
@@ -64,15 +64,15 @@ function CheckStep({ sh, user, actions }) {
   const project = sh.project;
   const obs = project.flavor === 'textStories';
   // D84 point 4: the books or the stories, no counts, no license, no private option; the whole project, always.
-  const items = obs ? t('share.stories') : project.bookCodes.map((code) => bookName(code)).join(', ');
+  const items = obs ? t('shareDialog.stories') : project.bookCodes.map((code) => bookName(code)).join(', ');
   return (
     <div data-testid="share-check" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <Text role="body" data-testid="share-where">{t('share.where', { target: targetLabel(sh, user) })}</Text>
-      <TextField id="sh-name" label={t('share.name')} value={sh.name} data-testid="share-name"
-        error={sh.name.trim() && !nameOk(sh.name) ? t('share.nameRule') : undefined}
+      <Text role="body" data-testid="share-where">{t('shareDialog.where', { target: targetLabel(sh, user) })}</Text>
+      <TextField id="sh-name" label={t('shareDialog.name')} value={sh.name} data-testid="share-name"
+        hint={t('shareDialog.nameRule')} invalid={!!sh.name.trim() && !nameOk(sh.name)}
         onChange={(e) => actions.patchSh({ name: e.target.value, error: null })} />
       <div>
-        <Text role="caption" tone="muted">{obs ? t('share.storiesLabel') : t('share.booksLabel')}</Text>
+        <Text role="caption" tone="muted">{obs ? t('shareDialog.storiesLabel') : t('shareDialog.booksLabel')}</Text>
         <Text role="body" data-testid="share-items">{items}</Text>
       </div>
     </div>
@@ -84,13 +84,13 @@ function DoneStep({ sh, actions }) {
   return (
     <div data-testid="share-done" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {/* D84 point 5: "Others can read it on Door43." — receive stays Phase 2, so nothing about opening it in the app. */}
-      <Text role="body" data-testid="share-done-text">{t('share.doneText')}</Text>
+      <Text role="body" data-testid="share-done-text">{t('shareDialog.doneText')}</Text>
       <Text role="strong" data-testid="share-url" style={{ overflowWrap: 'anywhere' }}>{url}</Text>
       <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
         <Button variant="secondary" size="sm" onClick={actions.shareCopyLink} data-testid="share-copy">
-          {sh.copied ? t('share.copied') : t('share.copyLink')}
+          {sh.copied ? t('shareDialog.copied') : t('shareDialog.copyLink')}
         </Button>
-        <Button size="sm" href={url} target="_blank" rel="noreferrer" data-testid="share-open">{t('share.openOnDoor43')}</Button>
+        <Button size="sm" href={url} target="_blank" rel="noreferrer" data-testid="share-open">{t('shareDialog.openOnDoor43')}</Button>
       </div>
     </div>
   );
@@ -105,14 +105,14 @@ export default function ShareDialog() {
   const footer = {
     target: (
       <>
-        <Button variant="secondary" onClick={actions.closeModal} data-testid="share-cancel">{t('share.cancel')}</Button>
-        <Button onClick={() => actions.shareStep('check')} disabled={sh.choices === null && !sh.choicesError} data-testid="share-next">{t('share.next')}</Button>
+        <Button variant="secondary" onClick={actions.closeModal} data-testid="share-cancel">{t('shareDialog.cancel')}</Button>
+        <Button onClick={() => actions.shareStep('check')} disabled={sh.choices === null && !sh.choicesError} data-testid="share-next">{t('shareDialog.next')}</Button>
       </>
     ),
     check: (
       <>
-        <Button variant="secondary" onClick={() => actions.shareStep('target')} data-testid="share-back">{t('share.back')}</Button>
-        <Button onClick={() => actions.shareRun(sh.project)} disabled={!nameOk(sh.name) || sh.busy} data-testid="share-submit">{t('share.submit')}</Button>
+        <Button variant="secondary" onClick={() => actions.shareStep('target')} data-testid="share-back">{t('shareDialog.back')}</Button>
+        <Button onClick={() => actions.shareRun(sh.project)} disabled={!nameOk(sh.name) || sh.busy} data-testid="share-submit">{t('shareDialog.submit')}</Button>
       </>
     ),
     progress: null,
@@ -127,13 +127,13 @@ export default function ShareDialog() {
       {sh.step === 'progress' && (
         // One progress line (D84 point 5); `data-steps` keeps the lines shown so far for the journey.
         <div style={{ padding: '26px 0 30px', display: 'flex', justifyContent: 'center' }} data-testid="share-progress" data-steps={sh.steps.join(',')}>
-          <Spinner label={current ? t(current === 'create' ? 'share.creating' : 'share.pushing') : t('share.preparing')} />
+          <Spinner label={current ? t(current === 'create' ? 'shareDialog.creating' : 'shareDialog.pushing') : t('shareDialog.preparing')} />
         </div>
       )}
       {sh.step === 'done' && <DoneStep sh={sh} actions={actions} />}
       {sh.error && (
         <Callout tone="warn" role="alert" data-testid="share-error" data-code={sh.error.code || ''} style={{ overflowWrap: 'anywhere' }}>
-          <strong>{t('share.failed')}</strong> {shareErrorText(sh.error)}
+          <strong>{t('shareDialog.failed')}</strong> {shareErrorText(sh.error)}
         </Callout>
       )}
     </Modal>
