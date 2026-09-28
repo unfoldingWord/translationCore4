@@ -361,6 +361,7 @@ const initial = () => ({
   gatewayError: null, // a failed gateway-change commit, shown in the dialogue
   netEnabled: false, // mirrors the platform's net gate (GET /net/status)
   projectPins: null, // the open project's resources.json (§5.3 v2 shape)
+  projectPinsSeq: 0, // #412: bumped by a gateway change, so an older pins read never lands over it
   projectPinsLoaded: false, // round 33: distinguishes pins LOADING (understand waits) from pins legally ABSENT (understand proceeds, slots unpinned)
   projectPinsError: null, // round 34: a REJECTED pins read — stated and retryable, never a false absence claim
   sourcePanes: null, // round 37: the open project's §5.3 extraScripture pane ids — null while the pins load, [] when the project legally has none
@@ -2257,8 +2258,11 @@ async function seedInitialUsfm({ store, stateRef, code, projName }) {
  * absent; `failed` marks a rejected read, whose pins are unknown. The
  * dispatches below run before that promise settles for the caller. */
 function loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatch }) {
+  // #412: a gateway change confirmed while this read is in flight wins; the
+  // older document must not replace it (the next open adopts, as D64 says).
+  const seq = stateRef.current.projectPinsSeq;
   const stillCurrent = () =>
-    storeRef.current === store && stateRef.current.project?.repoPath === repoPath;
+    storeRef.current === store && stateRef.current.project?.repoPath === repoPath && stateRef.current.projectPinsSeq === seq;
   const read = store.readResources();
   read
     .then(async (pins) => {
@@ -3868,7 +3872,7 @@ export function AppProvider({ children }) {
             expectMd5: p.expectMd5 ?? null,
           })),
         });
-        dispatch({ type: 'set', patch: { projectPins: preview.next } });
+        dispatch({ type: 'set', patch: { projectPins: preview.next, projectPinsLoaded: true, projectPinsSeq: stateRef.current.projectPinsSeq + 1 } });
         a.reloadSourcePanes(preview.next);
         if (stateRef.current.book) await a.runPreflight();
         return preview.next;
