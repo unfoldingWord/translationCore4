@@ -210,7 +210,7 @@ describe('the OBS PDF', () => {
   });
 
   // #451: on Linux the print compositor failed on the 48 MB PDF with pictures.
-  it('refuses a failed print with a next step: set Pictures to off when they were on, else choose another export', async () => {
+  it('refuses a failed print with a next step: open the app again, then set Pictures to off when they were on', async () => {
     g.window = { tc4Desktop: { printPdf: vi.fn(async () => { throw new Error('Failed to generate PDF: Printing failed'); }) } };
     stubFetch();
     await expect(PDF.produce({ store: obsStore, project: obs, pageSetup: setup(), storyPictures }))

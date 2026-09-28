@@ -105,7 +105,9 @@ const readStories = async ({ store, storyPictures, pageSetup = DEFAULT_PAGE_SETU
 
 /** The bridge's PDF of `html`. A print that fails (#451) refuses with a next
  * step: `export.print-failed-pictures` when the pictures were on, since the
- * same document without them is far smaller; else `export.print-failed`. */
+ * same document without them is far smaller; else `export.print-failed`. Both
+ * say to open the app again first: on Linux, after one print failed, every
+ * later print in that session failed too. */
 const print = async (printer: PdfBridge, html: string, pictures: boolean): Promise<Uint8Array> => {
   try {
     return await printer.printPdf(html);
