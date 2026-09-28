@@ -46,6 +46,8 @@ function PageSetupChoiceRow({ label, labelId, options, value, onChange }) {
   );
 }
 
+/** A story's page, full width up to the sheet, with the space before the next item. */
+const STORY_PAGE = { ...PAGE, margin: '0 auto 24px' };
 const GAP_LINE = { fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse-md)', lineHeight: 'var(--lh-verse-md)', color: 'var(--text-tertiary)', margin: '0 0 26px' };
 const PREVIEW_NOTE = { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary)', fontSize: 'var(--fs-ui)' };
 
@@ -61,7 +63,7 @@ function StoryPage({ story, frames, images, pictures, layout, dir }) {
     ? { float: dir === 'rtl' ? 'right' : 'left', width: '25%', margin: dir === 'rtl' ? '0 0 6px 12px' : '0 12px 6px 0' }
     : { display: 'block', width: '100%', marginBottom: 12 };
   return (
-    <div style={PAGE} data-testid="cc-story" data-story={story.number} data-pictures={pictures ? '1' : '0'} data-layout={layout}>
+    <div style={STORY_PAGE} data-testid="cc-story" data-story={story.number} data-pictures={pictures ? '1' : '0'} data-layout={layout}>
       <p style={EYEBROW}>{t('cc.eyebrow')}</p>
       <h1 style={H1} dir={dir}>{storyTitle(story)}</h1>
       <div style={RULE} />
@@ -122,12 +124,13 @@ function StoryCommunityChecking({ pageSetup, updatePageSetup }) {
   const { items, undrafted } = printed;
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }} data-testid="community-checking">
-      <main style={{ flex: 1, overflow: 'auto', minWidth: 0, background: 'var(--surface-muted)', padding: '34px 24px 60px', display: 'flex', flexDirection: 'column', gap: 24 }}>
+      {/* A block, not a flex column: a flex column would shrink a short page to its content. */}
+      <main style={{ flex: 1, overflow: 'auto', minWidth: 0, background: 'var(--surface-muted)', padding: '34px 24px 60px' }}>
         {items.length === 0 && (
           <p data-testid="cc-nothing-drafted" style={{ textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 'var(--fs-ui)' }}>{t('cc.nothingDraftedObs')}</p>
         )}
         {items.map((item) => item.gap
-          ? <p key={`gap-${item.gap[0]}`} dir={dir} data-testid="cc-story-gap" style={{ ...GAP_LINE, textAlign: 'center', margin: 0 }}>{storyGapText(item.gap)}</p>
+          ? <p key={`gap-${item.gap[0]}`} dir={dir} data-testid="cc-story-gap" style={{ ...GAP_LINE, textAlign: 'center', margin: '0 0 24px' }}>{storyGapText(item.gap)}</p>
           : <StoryPage key={item.story.number} story={item.story} frames={item.frames} images={printed.pictures[item.story.number]}
             pictures={pictures} layout={pageSetup.obsLayout} dir={dir} />)}
       </main>
