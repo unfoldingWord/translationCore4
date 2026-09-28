@@ -79,9 +79,9 @@
   line-height: 1.4;
   margin: 0 0 26px;
 }
-/* An OBS project (#360), the flow layout: each story opens on a new page with
-   its title alone on that page; a frame (its picture above its text) is never
-   split, so frames fill a page as they fit. */
+/* An OBS project (#360), the flow layout: each drafted story opens on a new
+   page with its title alone on that page; a frame (its picture above its text)
+   is never split, so frames fill a page as they fit. */
 .print-story { break-before: page; }
 .print-story:first-child { break-before: auto; }
 .print-story-title {
@@ -105,6 +105,18 @@
   margin: 0;
 }
 .print-story-reference { font-style: italic; color: #626F78; }
+/* #454: a run of undrafted frames is one line in its story, with no picture; a
+   run of undrafted stories between two drafted ones is one line after the
+   story before it (the next story still opens on a new page); a project with
+   no drafted story prints one line that says so. */
+.print-frame-gap,
+.print-story-gap,
+.print-nothing-drafted {
+  break-inside: avoid;
+  color: #626F78;
+  line-height: 1.4;
+  margin: 0 0 26px;
+}
 /* The wrapped layout (#11): the picture is a quarter of the page width at the
    frame's start corner (PrintStories sets the float side) and the text wraps
    it; frames flow, so several share a page. */
