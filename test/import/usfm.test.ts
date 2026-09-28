@@ -50,6 +50,14 @@ describe('#195 the USFM parser', () => {
     expect(damagedOf(latin1.findings)).toEqual([expect.objectContaining({ code: 'import.damaged.usfm-parse' })]);
   });
 
+  it('refuse: a marker with no end marker is import.damaged.usfm-parse, named by chapter and verse; a closed one is not (#41)', async () => {
+    const closed = await USFM_PARSER.parse([file('TIT.usfm', '\\id TIT\n\\c 1\n\\v 1 a \\f + \\ft n\\f* b \\zaln-s |x-strong="G1"\\*\\w x\\w*\\zaln-e\\*\n')]);
+    expect(damagedOf(closed.findings)).toEqual([]);
+    const open = await USFM_PARSER.parse([file('TIT.usfm', '\\id TIT\n\\c 1\n\\v 1 a\n\\c 2\n\\v 3 \\zaln-s |x-strong="G1"\\*\\w x\\w* b\n')]);
+    expect(damagedOf(open.findings)).toEqual([expect.objectContaining({ code: 'import.damaged.usfm-parse', text: 'TIT.usfm: the \\zaln marker in chapter 2, verse 3 has no end marker.' })]);
+    expect(open.books).toEqual([]);
+  });
+
   it('a byte-order mark: the book is found and the text keeps the mark', async () => {
     const text = '\uFEFF\\id TIT\n\\h Tito\n\\c 1\n';
     const bundle = await USFM_PARSER.parse([file('TIT.usfm', text)]);

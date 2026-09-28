@@ -435,6 +435,24 @@ test.describe('J9 — a facilitator imports existing work', () => {
     });
   });
 
+  // Damaged input (#41, the negative half of J9a–J9d): each damaged manifest
+  // entry is refused on the review page with its code and a message that names
+  // the file and the problem; no part of it is imported, and nothing is written.
+  test.describe('damaged', () => {
+    for (const entry of readManifest().filter((e) => String(e.file).startsWith('damaged/'))) {
+      test(`damaged ${entry.file}: refused on the review page with ${entry.code}, and nothing is written`, { tag: ['@inc8', '@J9'] }, async ({ page }) => {
+        await assertNoRepoCreated(async () => {
+          await importFixture(page, path.resolve(MANIFEST_DIR, entry.file as string), { kind: entry.parser, confirm: false });
+          const refusal = page.getByTestId('import-damaged');
+          await expect(refusal).toHaveAttribute('data-code', entry.code!);
+          await expect(refusal).toContainText(entry.message!);
+          await expect(refusal).toContainText('tC4 does not import only the correct parts of a damaged file.');
+          await expect(page.getByTestId('import-run')).toBeDisabled();
+        });
+      });
+    }
+  });
+
   // The Scripture Burrito parser (#196, J9d): a tC4 export (#359) comes back as
   // a new project through platform routes only, stored as it is (D80 point 2).
   test.describe('Scripture Burrito', () => {
