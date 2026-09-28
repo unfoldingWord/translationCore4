@@ -19,7 +19,9 @@
 //   8. the scopes asked differ from `TOKEN_SCOPES`, or the password or the
 //      token lands in a URL;
 //   9. sign-out leaves the token in memory;
-//  10. the keychain receives more than the token (a username, a password).
+//  10. the keychain receives more than the token (a username, a password);
+//  11. a sign-in that is not kept (the box off, or the keep refused) leaves a
+//      token an earlier session kept, so the next session resumes that one.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Door43Api, TOKEN_NAME, TOKEN_SCOPES } from '../../src/data/share/door43Api';
 import { currentSession, signIn, signOut, type SignInDeps } from '../../src/data/share/session';
@@ -124,7 +126,8 @@ describe('#203 the token in memory only (test 6), and no record of the person (D
     const keychainCalls: string[] = [];
     const keychain = { keep: async () => { keychainCalls.push('keep'); }, read: async () => null, forget: async () => { keychainCalls.push('forget'); } };
     const report = await signIn({ ...deps(door43), keychain }, request());
-    expect(keychainCalls).toEqual([]);
+    // No keep; the one call clears a token an earlier session may have kept.
+    expect(keychainCalls).toEqual(['forget']);
     expect(reportError(report)).toBeNull();
     expect(report.ok).toBe(true);
     expect(report.facts).toMatchObject({ step: 'sign-in', username: USER.username, kept: false });
@@ -173,6 +176,31 @@ describe('#203 the token in memory only (test 6), and no record of the person (D
     expect(report.facts.kept).toBe(false);
     expect(report.facts.keepError).toMatch(/no safeStorage/);
     expect(currentSession()?.token).toBe(door43.tokens.get(TOKEN_NAME));
+  });
+
+  it('a sign-in that is not kept clears a token an earlier session kept; a refused password leaves it (#366)', async () => {
+    const door43 = fake();
+    let held: string | null = 'earlier-account-token';
+    const keychain = { keep: async (t: string) => { held = t; }, read: async () => held, forget: async () => { held = null; } };
+    // Negative control: a wrong password is no sign-in, so the kept token stays.
+    const refused = await signIn({ ...deps(door43), keychain }, request(USER.username, 'wrong'));
+    expect(refused.ok).toBe(false);
+    expect(held).toBe('earlier-account-token');
+    // "Stay signed in" off: the earlier token is gone.
+    const off = await signIn({ ...deps(door43), keychain }, request());
+    expect(off.ok).toBe(true);
+    expect(await keychain.read()).toBeNull();
+    // "Stay signed in" on, and the keep refused: the earlier token is gone too.
+    held = 'earlier-account-token';
+    const refusing = { ...keychain, keep: async () => { throw new Error('no keychain'); } };
+    const notKept = await signIn({ ...deps(door43), keychain: refusing }, request(USER.username, USER.password, true));
+    expect(notKept.facts.kept).toBe(false);
+    expect(await keychain.read()).toBeNull();
+    // "Stay signed in" on, and kept: the keychain holds the new token.
+    held = 'earlier-account-token';
+    const kept = await signIn({ ...deps(door43), keychain }, request(USER.username, USER.password, true));
+    expect(kept.facts.kept).toBe(true);
+    expect(await keychain.read()).toBe(door43.tokens.get(TOKEN_NAME));
   });
 
   it('sign-out drops the token from memory', async () => {

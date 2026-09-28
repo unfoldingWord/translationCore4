@@ -161,6 +161,15 @@ export async function signIn(deps: SignInDeps, request: SignInRequest): Promise<
       facts.keepError = String((error as Error)?.message ?? error);
     }
   }
+  if (!facts.kept && deps.keychain) {
+    // #366: this sign-in is not kept, so a token an earlier session kept (one
+    // an offline start could not resume) must not sign the next session in.
+    try {
+      await deps.keychain.forget();
+    } catch (error) {
+      facts.forgetError = String((error as Error)?.message ?? error);
+    }
+  }
   return okReport('share', startedAt, new Date().toISOString(), facts);
 }
 

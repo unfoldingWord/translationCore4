@@ -227,8 +227,9 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       await signIn(page);
       await expect(page.getByTestId('door43-status')).toHaveText(SIGNED_IN);
       await expect(page.getByTestId('door43-not-kept')).toHaveCount(0);
-      // The keychain was read at start-up and found nothing; the box was off, so no keep.
-      expect(keychain.calls.filter((c) => c !== 'read')).toEqual([]);
+      // The keychain was read at start-up and found nothing; the box was off, so no
+      // keep, only the forget that clears a token an earlier session kept.
+      expect(keychain.calls.filter((c) => c !== 'read')).toEqual(['forget']);
       expect(keychain.held).toBeNull();
       // A new app session: the token was in renderer memory only, and nothing else was stored.
       await page.reload();
