@@ -36,12 +36,17 @@
   },
   "src/state.jsx": {
     "complexity": {
-      "count": 7
+      "count": 8
     }
   },
   "src/views/HelpsPanel.jsx": {
     "complexity": {
       "count": 2
+    }
+  },
+  "src/views/Home.jsx": {
+    "complexity": {
+      "count": 1
     }
   },
   "src/views/modals/AddBook.jsx": {
