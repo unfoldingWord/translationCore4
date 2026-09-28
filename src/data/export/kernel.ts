@@ -58,8 +58,8 @@ export function deliverFile(file: ExportFile): void {
 /** Checkpoint when the project is dirty (D9), produce, deliver. A failure
  * delivers nothing and returns a failed Report: `export.checkpoint-failed` when
  * the checkpoint failed; the producer's own refusal when it threw one (the PDF's
- * `export.nothing-drafted` and `export.print-failed*`); else `export.read-failed`. `ops` (#374) gets the
- * export's record. */
+ * `export.nothing-drafted` and `export.print-failed*`); else
+ * `export.read-failed`. `ops` (#374) gets the export's record. */
 export async function runExport(producer: ExportProducer, input: ExportInput, ops?: OpsRecorder): Promise<Report> {
   const record = await ops?.begin('export', { producer: producer.id });
   const report = await exportRecorded(producer, input);
