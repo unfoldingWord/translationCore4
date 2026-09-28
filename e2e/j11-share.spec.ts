@@ -223,7 +223,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       const keychain = await fakeKeychain(context);
       await page.goto('/');
       await page.getByTestId('door43-sign-in').click();
-      await expect(page.getByTestId('signin-stay')).not.toBeChecked();
+      await expect(page.getByLabel('Stay signed in on this computer')).not.toBeChecked();
       await signIn(page);
       await expect(page.getByTestId('door43-status')).toHaveText(SIGNED_IN);
       await expect(page.getByTestId('door43-not-kept')).toHaveCount(0);
@@ -249,7 +249,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       const keychain = await fakeKeychain(context);
       await page.goto('/');
       await page.getByTestId('door43-sign-in').click();
-      await page.getByTestId('signin-stay').check();
+      await page.getByLabel('Stay signed in on this computer').check();
       await signIn(page);
       await expect(page.getByTestId('door43-status')).toHaveText(SIGNED_IN);
       await expect(page.getByTestId('door43-not-kept')).toHaveCount(0);
@@ -309,7 +309,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       // No fakeKeychain: `window.tc4Desktop` is absent, as in the browser build.
       expect(await page.evaluate(() => 'tc4Desktop' in window)).toBe(false);
       await page.getByTestId('door43-sign-in').click();
-      await page.getByTestId('signin-stay').check();
+      await page.getByLabel('Stay signed in on this computer').check();
       await signIn(page);
       await expect(page.getByTestId('door43-status')).toHaveText(SIGNED_IN);
       await expect(page.getByTestId('door43-not-kept')).toHaveText(NOT_KEPT);
@@ -503,7 +503,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       const keychain = await fakeKeychain(context);
       await page.goto('/');
       await page.getByTestId(`share-${SEEDED_ID}`).click();
-      await page.getByTestId('signin-stay').check();
+      await page.getByLabel('Stay signed in on this computer').check();
       await signIn(page);
       await page.getByTestId('share-next').click();
       await page.getByTestId('share-submit').click();

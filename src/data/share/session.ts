@@ -22,12 +22,20 @@ export interface TokenKeychain {
 }
 
 let session: Door43Session | null = null;
+let sessionRevision = 0;
+let pendingResume: Promise<ResumeOutcome> | null = null;
+
+const cancelResume = (): void => {
+  sessionRevision++;
+  pendingResume = null;
+};
 
 /** The session of this app session, or null when nobody is signed in. */
 export const currentSession = (): Door43Session | null => session;
 
 /** Sign out: the token leaves memory, and the keychain when one is wired. */
 export const signOut = async (keychain?: TokenKeychain): Promise<void> => {
+  cancelResume();
   session = null;
   await keychain?.forget();
 };
@@ -36,6 +44,7 @@ export const signOut = async (keychain?: TokenKeychain): Promise<void> => {
  * answered for it (`resumeKeptSession` reads the keychain, asks Door43, and
  * calls this). */
 export const resumeSession = (kept: Door43Session): void => {
+  cancelResume();
   session = kept;
 };
 
@@ -54,19 +63,31 @@ export type ResumeOutcome = 'resumed' | 'none' | 'refused' | 'unavailable';
  * who the token is (`GET /api/v1/user`), and hold the session in memory. A
  * signed-in session is left as it is. Never throws: a keychain that fails to
  * read counts as no kept token. */
-export async function resumeKeptSession(deps: ResumeDeps): Promise<ResumeOutcome> {
-  if (session) return 'resumed';
+export function resumeKeptSession(deps: ResumeDeps): Promise<ResumeOutcome> {
+  if (session) return Promise.resolve('resumed');
+  if (pendingResume) return pendingResume;
+  const pending = readKeptSession(deps, sessionRevision).finally(() => {
+    if (pendingResume === pending) pendingResume = null;
+  });
+  pendingResume = pending;
+  return pending;
+}
+
+async function readKeptSession(deps: ResumeDeps, revision: number): Promise<ResumeOutcome> {
   let token: string | null;
   try {
     token = await deps.keychain.read();
   } catch {
     return 'none';
   }
-  if (!token) return 'none';
+  if (!token || revision !== sessionRevision) return 'none';
   try {
-    session = { username: await deps.door43.user(token), token };
+    const username = await deps.door43.user(token);
+    if (revision !== sessionRevision) return 'none';
+    session = { username, token };
     return 'resumed';
   } catch (error) {
+    if (revision !== sessionRevision) return 'none';
     if (error instanceof Door43ApiError && (error.status === 401 || error.status === 403)) {
       await deps.keychain.forget().catch(() => {});
       return 'refused';
@@ -114,6 +135,7 @@ export async function signIn(deps: SignInDeps, request: SignInRequest): Promise<
   } catch (error) {
     return failed(error);
   }
+  cancelResume();
   let signed: Door43Session;
   try {
     signed = await deps.door43.signIn(request.login, request.password);

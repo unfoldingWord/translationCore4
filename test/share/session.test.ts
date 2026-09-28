@@ -108,3 +108,34 @@ describe('#366 a kept token resumes the session, and a refused one is forgotten'
     expect(keychain.calls).toEqual([]);
   });
 });
+
+// A startup effect can run twice, and a pending resume can finish after Sign out.
+// Neither may duplicate authentication work or restore a session the user ended.
+describe('#366 pending resume', () => {
+  it('shares one pending resume between callers', async () => {
+    const keychain = spyKeychain('kept-token-1');
+    let calls = 0;
+    const door43 = { user: async () => { calls++; return USER.username; } };
+    await Promise.all([resumeKeptSession({ door43, keychain }), resumeKeptSession({ door43, keychain })]);
+    expect(keychain.calls).toEqual(['read']);
+    expect(calls).toBe(1);
+  });
+
+  it('does not restore a session after Sign out while Door43 replies', async () => {
+    const keychain = spyKeychain('kept-token-1');
+    let answer!: (user: string) => void;
+    let reached!: () => void;
+    const called = new Promise<void>((resolve) => { reached = resolve; });
+    const door43 = { user: async () => {
+      reached();
+      return new Promise<string>((resolve) => { answer = resolve; });
+    } };
+    const pending = resumeKeptSession({ door43, keychain });
+    await called;
+    await signOut(keychain);
+    answer(USER.username);
+    await pending;
+    expect(currentSession()).toBeNull();
+    expect(keychain.held).toBeNull();
+  });
+});
