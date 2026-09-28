@@ -223,12 +223,6 @@ export default function Home() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '0 0 14px' }}>
           <Overline as="h2" style={{ letterSpacing: '.12em', margin: 0 }}>{t('home.projects')}</Overline>
           <div style={{ flex: 1 }} />
-          {/* Source texts are project-independent, so the entry point sits with
-              the project list rather than inside one project (owner design:
-              the modal is top-level and reachable from anywhere). */}
-          <Button variant="ghost" onClick={actions.openSources} data-testid="open-sources">
-            {t('nav.sources')} →
-          </Button>
           <Button onClick={actions.openAddProject} data-testid="add-project">+ {t('home.addProject')}</Button>
         </div>
 

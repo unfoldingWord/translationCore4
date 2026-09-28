@@ -12,8 +12,12 @@
 // consequences are counted HERE, before it is committed, and the user can
 // decline. They are NOT a banner discovered later when opening a book: that
 // moves the user from deciding to discovering and removes the choice.
-import type { DecisionFile, LanguageSet, ResourcesFile } from './burritoStore';
-import { OBS_TOOL_SLOT, pinKey, resolveObsSetSlot, resolveToolBook } from './resolve';
+import type { DecisionFile, LanguageSet, ResourcePin, ResourcesFile } from './burritoStore';
+import { OBS_TOOL_SLOT, covers, pinKey, resolveObsSetSlot, resolveToolBook } from './resolve';
+import { GATEWAYS, gatewayKey } from './gateways';
+import type { Gateway } from './gateways';
+import { languageSetFromInstalled } from './installed';
+import type { InstalledMap } from './installed';
 import type { Coverage, Tool } from './resolve';
 
 /** One book whose stored decisions were made against a resource the change
@@ -152,13 +156,75 @@ export const describeConsequences = (
   };
 };
 
-/** Apply the change to the pin file. Only `primary` moves; the English
- * fallback rung is the installed suite and never changes here (D30.2). */
+/** Apply the change to the pin file. `primary` moves, and so do the source
+ * panes when `extraScripture` is given (#412); the English fallback rung is the
+ * installed suite and never changes here (D30.2). */
 export const applyGatewayChange = (
   resources: ResourcesFile,
   primary: LanguageSet,
+  extraScripture?: ResourcesFile['extraScripture'],
 ): ResourcesFile => ({
   ...resources,
   schemaVersion: 2,
   languageSets: { ...resources.languageSets, primary },
+  ...(extraScripture ? { extraScripture } : {}),
 });
+
+type PaneEntry = NonNullable<ResourcesFile['extraScripture']>[number];
+
+/** The pane ids a gateway package's Bibles fill: the literal pane first, the
+ * simplified pane second. English names them ult/ust; other packages glt/gst. */
+const LITERAL_PANES = ['ult', 'glt'];
+const SIMPLIFIED_PANES = ['ust', 'gst'];
+
+/** A Bible project's source panes after a gateway change (#412, owner Q3/Q5):
+ * the literal pane takes the package's literal Bible and the simplified pane its
+ * simplified Bible; a pane the package cannot fill takes the English one. The
+ * pane id is the repository's suffix (`es-419_glt` → `glt`). A pane that already
+ * pins the chosen repository keeps its pin. Entries that are not gateway panes
+ * stay as they are, and a project with no gateway panes gets none (absence is
+ * legal, §5.3). */
+export const sourcePanesForGateway = (
+  current: ResourcesFile['extraScripture'],
+  bibles: { literal?: ResourcePin; simplified?: ResourcePin },
+  english: { literal: ResourcePin; simplified: ResourcePin },
+): ResourcesFile['extraScripture'] => {
+  if (!current) return current;
+  const pane = (ids: string[], pin: ResourcePin): PaneEntry | null => {
+    const was = current.find((e) => ids.includes(e.id));
+    if (!was) return null;
+    if (was.repoPath.toLowerCase() === pin.repoPath.toLowerCase()) return was;
+    const id = (pin.repoPath.split('/').pop() ?? '').split('_').pop()!.toLowerCase();
+    return { id, repoPath: pin.repoPath, ...(pin.version ? { version: pin.version } : {}), sha: pin.sha, flavor: pin.flavor } as PaneEntry;
+  };
+  const literal = pane(LITERAL_PANES, bibles.literal ?? english.literal);
+  const simplified = pane(SIMPLIFIED_PANES, bibles.simplified ?? english.simplified);
+  const others = current.filter((e) => !LITERAL_PANES.includes(e.id) && !SIMPLIFIED_PANES.includes(e.id));
+  return [literal, simplified, ...others].filter((e): e is PaneEntry => !!e);
+};
+
+/** The checking language Project Settings shows as current (#412: "from its
+ * pins"). No pins — unpinned, not read yet, or a failed read — is no current
+ * package, never English by default: English stays a choice the user can make. */
+export const pinnedGateway = (
+  pins: ResourcesFile | null | undefined,
+): LanguageSet['gatewayLanguage'] | null => pins?.languageSets?.primary?.gatewayLanguage ?? null;
+
+/** The gateway packages a project can change to (#412, owner Q2): every
+ * complete package installed on this computer that covers at least one of the
+ * project's books, by its notes or its word links. An OBS project has no books,
+ * and a Bible project with no books yet has none to filter by: both list every
+ * complete package of their kind. */
+export const gatewaysCoveringProject = (
+  installed: InstalledMap,
+  coverage: Coverage,
+  books: string[],
+  kind: 'bible' | 'obs',
+): Array<Gateway & { key: string }> =>
+  GATEWAYS.map((g) => ({ ...g, key: gatewayKey(g) })).filter((g) => {
+    const set = languageSetFromInstalled(installed, g, kind);
+    if (!set) return false;
+    if (kind === 'obs' || books.length === 0) return true;
+    return [set.translationNotes, set.translationWordsLinks]
+      .some((pin) => books.some((b) => covers(coverage, pin, b)));
+  });

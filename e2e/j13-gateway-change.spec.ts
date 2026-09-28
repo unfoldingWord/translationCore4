@@ -27,7 +27,9 @@ import {
   listSideloaded,
   sideloadedIngredient,
   resetPlaces,
+  RIG_CLIENT_SETTINGS,
 } from './helpers/rig';
+import { createObsProject, RIG_API } from './helpers/story';
 
 // The configured org, NOT the one the export records: es-419's sb-zip exports
 // still say `Idiomas-Puentes`, an org that 404s today (PLATFORM-NOTES #30).
@@ -37,6 +39,86 @@ const EN = () => ({
   tw: pinForSideloaded('en_tw', 'v89'),
   ta: pinForSideloaded('en_ta', 'v89'),
 });
+
+const ES_KEY = 'es-419::es-419_gl';
+const EN_KEY = 'en::unfoldingWord';
+// The Spanish Bible-set pins and the installed repository each must equal.
+const ES_SLOTS: Record<string, string> = {
+  translationNotes: 'es-419_tn',
+  translationWordsLinks: 'es-419_tw',
+  translationWords: 'es-419_tw',
+  translationAcademy: 'es-419_ta',
+  simplifiedText: 'es-419_gst',
+};
+type PinOnDisk = { repoPath: string; sha?: string };
+type ResourcesOnDisk = {
+  languageSets: { primary: Record<string, PinOnDisk> & { gatewayLanguage: { languageId: string; owner: string } }; fallback: unknown };
+  extraScripture: Array<{ id: string } & PinOnDisk>;
+};
+
+/** #412: the change starts in Project Settings, opened from inside the project. */
+async function chooseInSettings(page: import('@playwright/test').Page, key: string) {
+  await page.getByTestId('project-settings').click();
+  await page.getByTestId(`settings-gateway-${key}`).click();
+  await expect(page.getByTestId('gateway-change')).toBeVisible();
+}
+
+/** A language set's pins as identities (repoPath + sha, D58): an open legally
+ * adds the recorded coverage `books` to a pin (D41), which is not a change. */
+function identities(set: unknown): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(set as Record<string, PinOnDisk & { languageId?: string }>)
+    .map(([slot, pin]) => [slot, pin.repoPath ? `${pin.repoPath}@${pin.sha}` : pin]));
+}
+
+/** The first frame's text of story 1 in an installed OBS source. */
+function firstFrame(name: string): string {
+  const paragraphs = sideloadedIngredient(name, 'content/01.md').split(/\n\s*\n/).map((p) => p.trim());
+  const frame = paragraphs.find((p) => p && !p.startsWith('#') && !p.startsWith('!['));
+  if (!frame) throw new Error(`${name}: story 1 has no frame text`);
+  return frame.split('\n')[0].slice(0, 40);
+}
+
+/** Confirm the change and wait for its one journal action. A refused change
+ * keeps the dialogue open with its error, which is the failure reported. */
+async function confirmChange(page: import('@playwright/test').Page) {
+  await page.getByTestId('gateway-confirm').click();
+  await expect(page.getByTestId('gateway-change').or(page.getByTestId('gateway-error'))).toHaveCount(0, { timeout: 30_000 });
+}
+
+/** Every file under the project's checking/ folder, as bytes. */
+function checkingBytes(repo: string): Record<string, string> {
+  const root = path.join(rigRepo(repo), 'ingredients', 'checking');
+  const out: Record<string, string> = {};
+  const walk = (dir: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(p);
+      else out[path.relative(root, p)] = fs.readFileSync(p).toString('base64');
+    }
+  };
+  walk(root);
+  return out;
+}
+
+/** A Spanish package with no Bible, for one test: the install records place the
+ * rig's es-419 Bibles in the org their exports name (Idiomas-Puentes, PLATFORM-NOTES
+ * #30), so es-419_gl has none. Call it before the page opens, and restore after
+ * the page closes: the app is the file's other writer. */
+function hideSpanishBibles(): void {
+  const place = (org: string) => {
+    const settings = JSON.parse(fs.readFileSync(RIG_CLIENT_SETTINGS, 'utf8')) as { installedResources: Record<string, { repoPath: string }> };
+    for (const name of ['es-419_glt', 'es-419_gst'])
+      settings.installedResources[`_local_/_sideloaded_/${name}`].repoPath = `git.door43.org/${org}/${name}`;
+    fs.writeFileSync(RIG_CLIENT_SETTINGS, JSON.stringify(settings));
+  };
+  place('Idiomas-Puentes');
+  // Only the two records go back, so the app's own writes in between stay.
+  restoreSpanishBibles = () => place(ES_ORG);
+}
+
+/** Set while the Spanish Bibles are hidden. It runs before the next test and after
+ * the last: the #417 fixture has settled the page's writes by then (test.ts). */
+let restoreSpanishBibles: (() => void) | null = null;
 
 async function openCheck(page: import('@playwright/test').Page) {
   await page.goto('/');
@@ -83,6 +165,8 @@ function writeDecisionFile(repo: string, tool: string, book: string, file: unkno
 }
 
 test.beforeEach(() => {
+  restoreSpanishBibles?.();
+  restoreSpanishBibles = null;
   resetSeededChecking();
 });
 
@@ -142,23 +226,45 @@ test.describe('J13 — the rig really holds two gateway-language suites', () => 
 
 test.describe('J13 — changing the project’s checking language', () => {
   test(
-    'the change is offered where the user is choosing languages, and only for a COMPLETE installed suite (D30.2)',
+    'Project Settings shows the current package and lists the installed packages from disk, with the network off; Home and Check have no Source texts button (#412)',
+    { tag: ['@inc2', '@J13'] },
+    async ({ page }) => {
+      writeProjectPins(SEEDED_PROJECT, EN());
+      await fetch(`${RIG_API}/net/disable`, { method: 'POST' });
+      await page.goto('/');
+      await expect(page.getByTestId('open-sources')).toHaveCount(0);
+
+      // From the project card on Home.
+      await page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByRole('button', { name: 'Settings' }).click();
+      await expect(page.getByTestId('settings-gateway-current')).toHaveText('This project checks in English · unfoldingWord.');
+      await expect(page.getByTestId(`settings-gateway-${EN_KEY}`)).toHaveAttribute('data-current', '1');
+      await expect(page.getByTestId(`settings-gateway-${ES_KEY}`)).toHaveAttribute('data-current', '0');
+      await page.getByRole('button', { name: 'Cancel' }).click();
+
+      // From inside the open project: the Check tab has no Source texts button.
+      await openCheck(page);
+      await expect(page.getByTestId('open-sources')).toHaveCount(0);
+      await page.getByTestId('project-settings').click();
+      await expect(page.getByTestId(`settings-gateway-${ES_KEY}`)).toBeVisible();
+      await expect(page.getByTestId('settings-gateway').locator('[data-testid^="settings-gateway-"][data-current]')).toHaveCount(2);
+
+      // Manage source texts opens the existing Source texts screen.
+      await page.getByTestId('settings-manage-sources').click();
+      await expect(page.getByTestId('sources-modal')).toBeVisible();
+    },
+  );
+
+  test(
+    'a project pinned to Latin American Spanish shows Spanish as its current package',
     { tag: ['@inc2', '@J13'] },
     async ({ page }) => {
       writeProjectPins(SEEDED_PROJECT, EN());
       await openCheck(page);
-      await page.getByTestId('open-sources').click();
-      await expect(page.getByTestId('sources-modal')).toBeVisible();
-
-      // English IS the project's checking language: no change is offered.
-      await page.getByRole('button', { name: /English/ }).first().click();
-      await expect(page.getByTestId('already-checking-in')).toBeVisible();
-      await expect(page.getByTestId('use-for-checking')).toHaveCount(0);
-
-      // Spanish is installed and is NOT the current language: it is offered.
-      await page.getByRole('button', { name: /Change language/ }).click();
-      await page.getByRole('button', { name: /Español/ }).first().click();
-      await expect(page.getByTestId('use-for-checking')).toBeVisible();
+      await chooseInSettings(page, ES_KEY);
+      await confirmChange(page);
+      await expect(page.getByTestId('settings-gateway-current')).toHaveText('This project checks in Spanish (Latin American) · es-419_gl.');
+      await expect(page.getByTestId(`settings-gateway-${ES_KEY}`)).toHaveAttribute('data-current', '1');
+      await expect(page.getByTestId(`settings-gateway-${EN_KEY}`)).toHaveAttribute('data-current', '0');
     },
   );
 
@@ -182,9 +288,10 @@ test.describe('J13 — changing the project’s checking language', () => {
       expect(before!.decisions.length).toBeGreaterThan(0);
 
       await openCheck(page);
-      await page.getByTestId('open-sources').click();
-      await page.getByRole('button', { name: /Español/ }).first().click();
-      await page.getByTestId('use-for-checking').click();
+      await page.getByTestId('project-settings').click();
+      await expect(page.getByTestId(`settings-gateway-${ES_KEY}`)).toBeVisible();
+      const bytesBefore = checkingBytes(SEEDED_PROJECT);
+      await page.getByTestId(`settings-gateway-${ES_KEY}`).click();
 
       const dialogue = page.getByTestId('gateway-change');
       await expect(dialogue).toBeVisible();
@@ -196,13 +303,43 @@ test.describe('J13 — changing the project’s checking language', () => {
       await expect(page.getByTestId('gateway-plan'))
         .toContainText(/carried over, \d+ to check again/);
 
-      // Declining changes NOTHING on disk.
+      // Declining changes NOTHING on disk, and neither does closing Settings.
       await page.getByTestId('gateway-cancel').click();
       await expect(dialogue).toHaveCount(0);
+      expect(checkingBytes(SEEDED_PROJECT)).toEqual(bytesBefore);
+      await page.getByRole('button', { name: 'Cancel' }).click();
+      await expect(page.getByTestId('settings-gateway')).toHaveCount(0);
+      expect(checkingBytes(SEEDED_PROJECT)).toEqual(bytesBefore);
       expect(readProjectPins(SEEDED_PROJECT).languageSets.primary.gatewayLanguage.languageId)
         .toBe('en');
       expect(readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')!.decisions)
         .toHaveLength(before!.decisions.length);
+    },
+  );
+
+  test(
+    'from Home: choosing a package opens the project, then the dialogue; Cancel writes nothing of the change (#412)',
+    { tag: ['@inc2', '@J13'] },
+    async ({ page }) => {
+      writeProjectPins(SEEDED_PROJECT, EN());
+      await page.goto('/');
+      await page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByRole('button', { name: 'Settings' }).click();
+      await page.getByTestId(`settings-gateway-${ES_KEY}`).click();
+      await expect(page.getByTestId('gateway-change')).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByTestId('project-settings')).toBeVisible();
+      // The open adopts installed optional slots (D64) on its own schedule; wait
+      // until the pin file is stable, then nothing of the change may move it.
+      const pinBytes = () => fs.readFileSync(path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'resources.json'), 'utf8');
+      let last = '';
+      await expect.poll(() => { const now = pinBytes(); const same = now === last; last = now; return same; }, { intervals: [1500], timeout: 30_000 }).toBe(true);
+      const atQuestion = pinBytes();
+      const decisionsAtQuestion = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT');
+      await page.getByTestId('gateway-cancel').click();
+      await expect(page.getByTestId('gateway-change')).toHaveCount(0);
+      await page.waitForTimeout(1500);
+      expect(pinBytes()).toBe(atQuestion);
+      expect(readProjectPins(SEEDED_PROJECT).languageSets.primary.gatewayLanguage.languageId).toBe('en');
+      expect(readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')).toEqual(decisionsAtQuestion);
     },
   );
 
@@ -239,20 +376,32 @@ test.describe('J13 — changing the project’s checking language', () => {
       writeDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT', file);
 
       await openCheck(page);
-      await page.getByTestId('open-sources').click();
-      await page.getByRole('button', { name: /Español/ }).first().click();
-      await page.getByTestId('use-for-checking').click();
+      // The fallback as the open project holds it: an open legally adopts the
+      // installed optional slots (D64), before the change is asked for.
+      await page.getByTestId('project-settings').click();
+      await expect(page.getByTestId(`settings-gateway-${ES_KEY}`)).toBeVisible();
+      const fallbackBefore = identities((readProjectPins(SEEDED_PROJECT) as unknown as ResourcesOnDisk).languageSets.fallback);
+      await page.getByTestId(`settings-gateway-${ES_KEY}`).click();
       await expect(page.getByTestId('gateway-change')).toBeVisible();
-      await page.getByTestId('gateway-confirm').click();
-      await expect(page.getByTestId('gateway-change')).toHaveCount(0);
+      await expect(page.getByTestId('gateway-change')).toBeVisible();
+      await confirmChange(page);
 
       // The primary rung moved; the English FALLBACK did not (D30.2).
-      const pins = readProjectPins(SEEDED_PROJECT);
+      const pins = readProjectPins(SEEDED_PROJECT) as unknown as ResourcesOnDisk;
       expect(pins.languageSets.primary.gatewayLanguage).toEqual({
         languageId: 'es-419',
         owner: ES_ORG,
       });
-      expect(pins.languageSets.fallback.gatewayLanguage.languageId).toBe('en');
+      expect(identities(pins.languageSets.fallback)).toEqual(fallbackBefore);
+      // Each primary pin is the installed copy (#412 data check).
+      for (const [slot, name] of Object.entries(ES_SLOTS)) {
+        expect(pins.languageSets.primary[slot]?.sha, slot).toBe(pinForSideloaded(name, '', ES_ORG).sha);
+      }
+      // The source panes name the package's Bibles (owner Q3).
+      expect(pins.extraScripture.map((e) => [e.id, e.repoPath, e.sha])).toEqual([
+        ['glt', `git.door43.org/${ES_ORG}/es-419_glt`, pinForSideloaded('es-419_glt', '', ES_ORG).sha],
+        ['gst', `git.door43.org/${ES_ORG}/es-419_gst`, pinForSideloaded('es-419_gst', '', ES_ORG).sha],
+      ]);
 
       // The decision file was reconciled against the resource it now checks
       // with — the resource is the primary key.
@@ -294,12 +443,9 @@ test.describe('J13 — changing the project’s checking language', () => {
     async ({ page }) => {
       writeProjectPins(SEEDED_PROJECT, EN());
       await openCheck(page);
-      await page.getByTestId('open-sources').click();
-      await page.getByRole('button', { name: /Español/ }).first().click();
-      await page.getByTestId('use-for-checking').click();
-      await page.getByTestId('gateway-confirm').click();
-      await expect(page.getByTestId('gateway-change')).toHaveCount(0);
-      await page.getByRole('button', { name: /Close/ }).first().click();
+      await chooseInSettings(page, ES_KEY);
+      await confirmChange(page);
+      await page.getByRole('button', { name: 'Cancel' }).click();
 
       await page.getByTestId('open-translationNotes').click();
       await expect(page.getByTestId('check-progress')).toHaveText(/\d+ of \d+ resolved/);
@@ -307,6 +453,115 @@ test.describe('J13 — changing the project’s checking language', () => {
       await expect(page.getByTestId('check-session')).toContainText('es-419_tn');
       // The note prose the user reads is Spanish now.
       await expect(page.getByTestId('check-note')).toContainText(/[áéíóúñ¿]/u);
+
+      // Translate: the source panes are the Spanish Bibles (owner Q3).
+      await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+      await expect(page.getByTestId('source-tab-glt')).toBeVisible();
+      await expect(page.getByTestId('source-tab-gst')).toBeVisible();
+      await expect(page.getByTestId('source-tab-ult')).toHaveCount(0);
+      await expect(page.getByTestId('source-name')).toContainText('v42');
+      // Understand: the notes are the Spanish ones.
+      await page.getByRole('tab', { name: 'Understand', exact: true }).click();
+      await page.getByRole('tab', { name: 'Verse', exact: true }).click();
+      await expect(page.getByTestId('helps-loading')).toHaveCount(0);
+      await page.getByRole('tab', { name: 'Notes', exact: true }).click();
+      await expect(page.getByTestId('note-expand').first().locator('..')).toContainText(/[áéíóúñ¿]/u);
+    },
+  );
+
+  test(
+    'a switch from Settings over an open check session: the session closes, and the next decision saves against the Spanish notes (#412)',
+    { tag: ['@inc2', '@J13'] },
+    async ({ page }) => {
+      test.setTimeout(120_000);
+      writeProjectPins(SEEDED_PROJECT, EN());
+      // The sample's record names the Spanish notes; state it as the English pin
+      // the project now holds, so a decision in the English session saves.
+      const en = EN();
+      const asEnglish = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')!;
+      asEnglish.resource = { repoPath: en.tn.repoPath, version: en.tn.version, sha: en.tn.sha, languageSet: 'fallback' } as never;
+      writeDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT', asEnglish);
+      await openCheck(page);
+      await page.getByTestId('open-translationNotes').click();
+      await expect(page.getByTestId('check-session')).toContainText('en_tn');
+      // A decision made just before the switch is saved before the plan reads the files.
+      await page.getByTestId('check-list').locator('button[data-decided="0"]').first().click();
+      await page.getByTestId('mark-valid').click();
+      await chooseInSettings(page, ES_KEY);
+      await confirmChange(page);
+      await page.getByRole('button', { name: 'Cancel' }).click();
+      // The session derived from English is closed; the picker is back.
+      await expect(page.getByTestId('check-session')).toHaveCount(0);
+      await page.getByTestId('open-translationNotes').click();
+      await expect(page.getByTestId('check-session')).toContainText('es-419_tn');
+      const before = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')!.decisions.length;
+      // A check with no earlier record: a carried-over check cannot be decided
+      // again yet (#448, the same on main).
+      await page.getByTestId('check-list').locator('button[data-decided="0"]').last().click();
+      await page.getByTestId('mark-valid').click();
+      await expect.poll(() => readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')?.decisions.length, { timeout: 10_000 }).toBe(before + 1);
+      expect(readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')!.resource?.repoPath).toContain('es-419_tn');
+    },
+  );
+
+  test(
+    'a package with no Bible installed: the source panes show the English ULT and UST, and extraScripture names them (owner Q5)',
+    { tag: ['@inc2', '@J13'] },
+    async ({ page }) => {
+      writeProjectPins(SEEDED_PROJECT, EN());
+      // Start from Spanish panes, so the change must move them back to English.
+      const pins = readProjectPins(SEEDED_PROJECT) as unknown as ResourcesOnDisk;
+      pins.extraScripture = [
+        { id: 'glt', ...pinForSideloaded('es-419_glt', 'v42', ES_ORG) },
+        { id: 'gst', ...pinForSideloaded('es-419_gst', 'v40', ES_ORG) },
+      ];
+      hideSpanishBibles();
+      {
+        fs.writeFileSync(path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'resources.json'), `${JSON.stringify(pins, null, 2)}\n`);
+        await openCheck(page);
+        await chooseInSettings(page, ES_KEY);
+        await confirmChange(page);
+        const after = readProjectPins(SEEDED_PROJECT) as unknown as ResourcesOnDisk;
+        expect(after.languageSets.primary.gatewayLanguage.languageId).toBe('es-419');
+        expect(after.extraScripture.map((e) => [e.id, e.repoPath, e.sha])).toEqual([
+          ['ult', 'git.door43.org/unfoldingWord/en_ult', pinForSideloaded('en_ult', 'v89').sha],
+          ['ust', 'git.door43.org/unfoldingWord/en_ust', pinForSideloaded('en_ust', 'v89').sha],
+        ]);
+        await page.getByRole('button', { name: 'Cancel' }).click();
+        await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+        await expect(page.getByTestId('source-tab-ult')).toBeVisible();
+        await expect(page.getByTestId('source-tab-ust')).toBeVisible();
+      }
+    },
+  );
+
+  test(
+    'an OBS project changes its package from Settings: the OBS language set moves, the fallback and extraScripture do not (owner Q4)',
+    { tag: ['@inc7', '@J13'] },
+    async ({ page }) => {
+      const repo = await createObsProject('j13obs', 'J13 OBS');
+      const before = readProjectPins(repo) as unknown as ResourcesOnDisk;
+      await page.goto('/');
+      await page.getByTestId(`project-_local_/_local_/${repo}`).getByTestId('story-tile-1').click();
+      await expect(page.getByTestId('story-draft')).toContainText(firstFrame('en_obs'));
+      await page.getByTestId('project-settings').click();
+      await expect(page.getByTestId(`settings-gateway-${EN_KEY}`)).toHaveAttribute('data-current', '1');
+      await page.getByTestId(`settings-gateway-${ES_KEY}`).click();
+      await expect(page.getByTestId('gateway-change')).toBeVisible();
+      await confirmChange(page);
+      await expect(page.getByTestId('settings-gateway-current')).toHaveText('This project checks in Spanish (Latin American) · es-419_gl.');
+      // The open story shows the Spanish source without leaving it, and names v2.
+      await page.getByRole('button', { name: 'Cancel' }).click();
+      await expect(page.getByTestId('story-draft')).toContainText(firstFrame('es-419_obs'));
+      await expect(page.getByTestId('source-name')).toContainText('v2');
+      const after = readProjectPins(repo) as unknown as ResourcesOnDisk;
+      expect(after.languageSets.primary.gatewayLanguage).toEqual({ languageId: 'es-419', owner: ES_ORG });
+      for (const name of ['es-419_obs', 'es-419_obs-tn', 'es-419_obs-twl', 'es-419_tw', 'es-419_ta']) {
+        const slot = { 'es-419_obs': 'obs', 'es-419_obs-tn': 'obs-tn', 'es-419_obs-twl': 'obs-twl', 'es-419_tw': 'translationWords', 'es-419_ta': 'translationAcademy' }[name]!;
+        expect(after.languageSets.primary[slot]?.sha, slot).toBe(pinForSideloaded(name, '', ES_ORG).sha);
+      }
+      expect(identities(after.languageSets.fallback)).toEqual(identities(before.languageSets.fallback));
+      expect(after.extraScripture.map((e) => [e.id, e.repoPath, e.sha])).toEqual(before.extraScripture.map((e) => [e.id, e.repoPath, e.sha]));
     },
   );
 });
@@ -314,5 +569,7 @@ test.describe('J13 — changing the project’s checking language', () => {
 // Issue #62 teardown: after this journey's mutations, every journaled local
 // project must be a verified byte-for-byte materialization of its journal.
 test.afterAll(async () => {
+  restoreSpanishBibles?.();
+  restoreSpanishBibles = null;
   await verifyAllJournaledProjects();
 });

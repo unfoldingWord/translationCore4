@@ -45,11 +45,17 @@ node "$(npath "$ROOT/scripts/seed-large-project.mjs")" "$(npath "$WORK/repos/_lo
 # verified fetch — provenance (release tag + commit revision per resource) is in
 # resources-cache/helps-provenance.json. If a cache entry is absent the rig still
 # seeds, just without that resource.
+# #412: es-419_gl's Bibles (glt, gst) and its OBS package ride along too, so a
+# gateway change moves the Translate panes to real Spanish Bibles and an OBS
+# project has a second complete package to change to. Not es-419_obs-tq: an open
+# adopts an installed optional slot (D64), and the OBS reference sample pins a
+# Spanish set without it.
 # en_tq rides with the English package: D64/#110 made `translationQuestions` a
 # §5.3 slot and the shipped English package pins it, so a rig without it cannot
 # exercise the Understand screen's Questions tab.
 for R in en_ult:v89 en_ust:v89 en_tn:v89 en_tw:v89 en_ta:v89 en_tq:v89 el-x-koine_ugnt:v0.34 \
-         es-419_tn:v66 es-419_tw:v37 es-419_ta:v4 \
+         es-419_tn:v66 es-419_tw:v37 es-419_ta:v4 es-419_glt:v42 es-419_gst:v40 \
+         es-419_obs:v2 es-419_obs-tn:v2 es-419_obs-twl:v2 \
          en_obs:v9 en_obs-tn:v13 en_obs-twl:v3 en_obs-tq:v10; do
   N="${R%%:*}"; V="${R##*:}"
   Z="$DEV/resources-cache/$N-$V-unwrapped.zip"

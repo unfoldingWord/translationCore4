@@ -608,7 +608,7 @@ between runs; it does not replace the run.
    request #192 merged carry it, and the section "Smoke tests" describes it), run it once,
    online: `zsh smoke-installed.zsh`. Expected: `SMOKE OK`. An older artifact has no such
    file; skip this step and say so in the record.
-3. Optional: start the app online once, create a project, open Home › `Source texts`.
+3. Optional: start the app online once, create a project, open it, then `Project settings` › `Manage source texts`.
    Note: an online start also lets Electron cache the fonts from Google's CDN, so after this
    step the font observation below no longer tests #3; skip this step when the run is about #3.
 4. Turn the network off at the operating-system level, not in the app:

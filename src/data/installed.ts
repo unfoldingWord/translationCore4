@@ -50,20 +50,27 @@ export const flavorOfMetadata = (meta: unknown): string => {
   return `${ft.name}/${ft.flavor.name}`;
 };
 
-export const readInstalled = async (api: ServerApi, storageId: string): Promise<InstalledMap> => {
+export const readInstalled = async (api: Pick<ServerApi, 'getClientSettings'>, storageId: string): Promise<InstalledMap> => {
   // Catch-to-absence sweep (D30): {} means the machine CONFIRMS it has no
   // install record (a rig without storage_id.json). A transport failure must
   // PROPAGATE — swallowing it made every recorded install read as absent,
   // presenting "your resources are not installed" for a settings blip.
-  try {
-    const settings = await api.getClientSettings(storageId);
-    const raw = settings[INSTALLED_KEY];
-    return raw && typeof raw === 'object' ? (raw as InstalledMap) : {};
-  } catch (error) {
-    if (isNotFoundError(error)) return {};
-    throw error;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const settings = await api.getClientSettings(storageId);
+      const raw = settings[INSTALLED_KEY];
+      return raw && typeof raw === 'object' ? (raw as InstalledMap) : {};
+    } catch (error) {
+      if (isNotFoundError(error)) return {};
+      // #412: the platform writes the document in place, and since #374 every
+      // store operation writes an ops-log record into it, so a read can meet
+      // half-written JSON. That read is torn, not failed: read again.
+      if (!(error instanceof SyntaxError) || attempt === TORN_READ_ATTEMPTS) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
   }
 };
+const TORN_READ_ATTEMPTS = 4;
 
 /** Record one install. Merges, so two downloads never lose each other. */
 export const recordInstalled = async (
@@ -440,6 +447,24 @@ export const pinsPreferringInstalled = <T extends { languageSets?: Record<string
     languageSets[rung] = next;
   }
   return { ...resources, languageSets };
+};
+
+/** The Bibles one gateway package supplies for the Translate source panes (#412):
+ * its literal text (`<lang>_ult`, else `<lang>_glt`) and its simplified text
+ * (`<lang>_ust`, else `<lang>_gst`), each only when installed with its identity. */
+export const gatewayBiblesFromInstalled = (
+  installed: InstalledMap,
+  gateway: { id: string; org: string },
+): { literal?: ResourcePin; simplified?: ResourcePin } => {
+  const org = gateway.org.toLowerCase();
+  const byName = (name: string) =>
+    Object.values(installed).find((p) =>
+      !!p.sha && !!p.flavor && p.repoPath.toLowerCase().includes(`/${org}/`) &&
+      (p.repoPath.split('/').pop() ?? '').toLowerCase() === name.toLowerCase());
+  return {
+    literal: byName(`${gateway.id}_ult`) ?? byName(`${gateway.id}_glt`),
+    simplified: byName(`${gateway.id}_ust`) ?? byName(`${gateway.id}_gst`),
+  };
 };
 
 /** The §5.3 language set for one gateway org, built from what is installed.
