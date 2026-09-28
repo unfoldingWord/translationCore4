@@ -25,6 +25,7 @@ export type ManifestEntry = {
   parser: string;
   expect: 'accept' | 'refuse';
   code?: string;
+  message?: string; // refuse: words of the refusal message, which names the file and the problem
   language?: string; // accept: the tag the stored metadata.json keeps
   books?: string[]; // accept: the book codes of the new project
   counts?: { chapters?: Record<string, number> }; // accept: `\c` markers per stored book
@@ -121,6 +122,7 @@ export async function runManifest(
       const report = await assertNoRepoCreated(() => runImport(parser, files, edits, deps), deps.api);
       assert.equal(report.ok, false, `${label}: expected a refusal`);
       assert.equal(report.code, entry.code, `${label}: refusal code`);
+      if (entry.message) assert.ok(String(report.facts.error).includes(entry.message), `${label}: the message "${String(report.facts.error)}" does not contain "${entry.message}"`);
       reports.push(report);
       continue;
     }

@@ -201,7 +201,7 @@ describe('#21 the tC3 parser', { timeout: 60_000 }, () => {
   });
 
   it('refuses: no manifest.json, two languages, one book twice', async () => {
-    const noManifest = await parsed('tc3/no-manifest');
+    const noManifest = await parsed('damaged/tc3-no-manifest');
     expect(damagedOf(noManifest).map((f) => f.code)).toEqual(['import.damaged.no-manifest']);
     const langs = await parsed(TIT, MULTI[0]);
     expect(damagedOf(langs)).toHaveLength(1);

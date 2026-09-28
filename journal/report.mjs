@@ -51,6 +51,7 @@ export const REFUSAL_CODES = Object.freeze({
   'import.damaged.checksum-mismatch': null,
   'import.damaged.usfm-parse': null,
   'import.damaged.no-manifest': null,
+  'import.damaged.corrupt-entry': null, // a tC3 zip entry whose bytes do not match its CRC-32
   'import.name-exists': null,
   'import.write-failed': null, // the Report states the rollback
   // Reserved for the share operation (#362, #203).

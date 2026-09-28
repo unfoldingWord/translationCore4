@@ -541,7 +541,7 @@ This build bundles the components below. Full texts are in licenses/.
 | webfonts-core (lib/webfonts; fonts carry their own licenses, mostly SIL OFL) | $WEBFONTS_CORE_REV | MIT (repo); per-font licenses inside | github.com/pankosmia/webfonts-core |
 | puppeteer-core (electron/node_modules) | $PUPPETEER_CORE_VER | Apache-2.0 | github.com/puppeteer/puppeteer |
 | @puppeteer/browsers (electron/node_modules) | $PUPPETEER_BROWSERS_VER | Apache-2.0 | github.com/puppeteer/puppeteer |
-| @zip.js/zip.js (bundled export smoke) | $ZIP_JS_VER | BSD-3-Clause | github.com/gildas-lormeau/zip.js |
+| @zip.js/zip.js (bundled export smoke; the tC3 import in the client) | $ZIP_JS_VER | BSD-3-Clause | github.com/gildas-lormeau/zip.js |
 NOTICES
 for entry in "${BUNDLED_RESOURCES[@]}"; do
   bundled_fields "$entry"
