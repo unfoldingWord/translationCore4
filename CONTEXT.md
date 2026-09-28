@@ -245,7 +245,7 @@ _Avoid_: staging, test server, QA mode
 
 **Share**:
 The push of a project's working `main` branch to a repository under the user's Door43
-account, created by the app on the first share. Send only; receiving and team sync are Phase 2.
+account or one of the user's organizations, created by the app on the first share. Send only; receiving and team sync are Phase 2.
 _Avoid_: sync, send, upload, publish (for Door43)
 
 **Share-born main**:
