@@ -49,6 +49,7 @@ export const resumeSession = (kept: Door43Session): void => {
 };
 
 export interface ResumeDeps {
+  getNetEnabled: () => Promise<boolean>;
   door43: Pick<Door43Api, 'user'>;
   keychain: TokenKeychain;
 }
@@ -74,6 +75,12 @@ export function resumeKeptSession(deps: ResumeDeps): Promise<ResumeOutcome> {
 }
 
 async function readKeptSession(deps: ResumeDeps, revision: number): Promise<ResumeOutcome> {
+  try {
+    if (!(await deps.getNetEnabled())) return 'unavailable';
+  } catch {
+    return 'unavailable';
+  }
+  if (revision !== sessionRevision) return 'none';
   let token: string | null;
   try {
     token = await deps.keychain.read();

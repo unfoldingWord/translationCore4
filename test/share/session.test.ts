@@ -38,7 +38,7 @@ describe('#366 a kept token resumes the session, and a refused one is forgotten'
   it('a kept token that Door43 accepts: the session is resumed with the username Door43 answers, and the keychain is only read', async () => {
     const door43 = new FakeDoor43({ server: SERVER, user: USER, tokens: ['kept-token-1'] });
     const keychain = spyKeychain('kept-token-1');
-    const outcome = await resumeKeptSession({ door43: new Door43Api({ server: SERVER, fetchFn: door43.fetchFn }), keychain });
+    const outcome = await resumeKeptSession({ getNetEnabled: async () => true, door43: new Door43Api({ server: SERVER, fetchFn: door43.fetchFn }), keychain });
     expect(outcome).toBe('resumed');
     expect(currentSession()).toEqual({ username: USER.username, token: 'kept-token-1' });
     expect(keychain.calls).toEqual(['read']);
@@ -50,7 +50,7 @@ describe('#366 a kept token resumes the session, and a refused one is forgotten'
   it('no kept token: nothing asked of Door43, not signed in', async () => {
     const door43 = new FakeDoor43({ server: SERVER, user: USER });
     const keychain = spyKeychain(null);
-    expect(await resumeKeptSession({ door43: new Door43Api({ server: SERVER, fetchFn: door43.fetchFn }), keychain })).toBe('none');
+    expect(await resumeKeptSession({ getNetEnabled: async () => true, door43: new Door43Api({ server: SERVER, fetchFn: door43.fetchFn }), keychain })).toBe('none');
     expect(currentSession()).toBeNull();
     expect(door43.calls).toEqual([]);
   });
@@ -61,7 +61,7 @@ describe('#366 a kept token resumes the session, and a refused one is forgotten'
     const keychain = spyKeychain('revoked-token');
     // Negative control: the fake answers 401 to that token.
     await expect(new Door43Api({ server: SERVER, fetchFn: door43.fetchFn }).user('revoked-token')).rejects.toMatchObject({ status: 401 });
-    const outcome = await resumeKeptSession({ door43: new Door43Api({ server: SERVER, fetchFn: door43.fetchFn }), keychain });
+    const outcome = await resumeKeptSession({ getNetEnabled: async () => true, door43: new Door43Api({ server: SERVER, fetchFn: door43.fetchFn }), keychain });
     expect(outcome).toBe('refused');
     expect(currentSession()).toBeNull();
     expect(keychain.calls).toEqual(['read', 'forget']);
@@ -78,32 +78,32 @@ describe('#366 a kept token resumes the session, and a refused one is forgotten'
   it('no answer (offline, or Door43 down): the token stays kept, no session now, so a later share tries again', async () => {
     const noNetwork: typeof fetch = async () => { throw new TypeError('Failed to fetch'); };
     const offline = spyKeychain('kept-token-1');
-    expect(await resumeKeptSession({ door43: new Door43Api({ server: SERVER, fetchFn: noNetwork }), keychain: offline })).toBe('unavailable');
+    expect(await resumeKeptSession({ getNetEnabled: async () => true, door43: new Door43Api({ server: SERVER, fetchFn: noNetwork }), keychain: offline })).toBe('unavailable');
     expect(currentSession()).toBeNull();
     expect(offline.calls).toEqual(['read']);
     expect(offline.held).toBe('kept-token-1');
 
     const down = new FakeDoor43({ server: SERVER, user: USER, tokens: ['kept-token-1'], outage: true });
     const kept = spyKeychain('kept-token-1');
-    expect(await resumeKeptSession({ door43: new Door43Api({ server: SERVER, fetchFn: down.fetchFn }), keychain: kept })).toBe('unavailable');
+    expect(await resumeKeptSession({ getNetEnabled: async () => true, door43: new Door43Api({ server: SERVER, fetchFn: down.fetchFn }), keychain: kept })).toBe('unavailable');
     expect(kept.held).toBe('kept-token-1');
 
     // Door43 back: the same kept token resumes.
     const up = new FakeDoor43({ server: SERVER, user: USER, tokens: ['kept-token-1'] });
-    expect(await resumeKeptSession({ door43: new Door43Api({ server: SERVER, fetchFn: up.fetchFn }), keychain: kept })).toBe('resumed');
+    expect(await resumeKeptSession({ getNetEnabled: async () => true, door43: new Door43Api({ server: SERVER, fetchFn: up.fetchFn }), keychain: kept })).toBe('resumed');
     expect(currentSession()?.username).toBe(USER.username);
   });
 
   it('a keychain that cannot read counts as no kept token; a signed-in session is left as it is', async () => {
     const door43 = new FakeDoor43({ server: SERVER, user: USER, tokens: ['kept-token-1'] });
     const api = new Door43Api({ server: SERVER, fetchFn: door43.fetchFn });
-    expect(await resumeKeptSession({ door43: api, keychain: spyKeychain('x', new Error('damaged')) })).toBe('none');
+    expect(await resumeKeptSession({ getNetEnabled: async () => true, door43: api, keychain: spyKeychain('x', new Error('damaged')) })).toBe('none');
     expect(currentSession()).toBeNull();
 
     await signIn({ door43: api, getNetEnabled: async () => true }, { login: USER.username, password: USER.password, stay: false });
     const signed = currentSession()!;
     const keychain = spyKeychain('kept-token-1');
-    expect(await resumeKeptSession({ door43: api, keychain })).toBe('resumed');
+    expect(await resumeKeptSession({ getNetEnabled: async () => true, door43: api, keychain })).toBe('resumed');
     expect(currentSession()).toEqual(signed);
     expect(keychain.calls).toEqual([]);
   });
@@ -116,7 +116,7 @@ describe('#366 pending resume', () => {
     const keychain = spyKeychain('kept-token-1');
     let calls = 0;
     const door43 = { user: async () => { calls++; return USER.username; } };
-    await Promise.all([resumeKeptSession({ door43, keychain }), resumeKeptSession({ door43, keychain })]);
+    await Promise.all([resumeKeptSession({ getNetEnabled: async () => true, door43, keychain }), resumeKeptSession({ getNetEnabled: async () => true, door43, keychain })]);
     expect(keychain.calls).toEqual(['read']);
     expect(calls).toBe(1);
   });
@@ -130,7 +130,7 @@ describe('#366 pending resume', () => {
       reached();
       return new Promise<string>((resolve) => { answer = resolve; });
     } };
-    const pending = resumeKeptSession({ door43, keychain });
+    const pending = resumeKeptSession({ getNetEnabled: async () => true, door43, keychain });
     await called;
     await signOut(keychain);
     answer(USER.username);
@@ -138,4 +138,16 @@ describe('#366 pending resume', () => {
     expect(currentSession()).toBeNull();
     expect(keychain.held).toBeNull();
   });
+});
+
+// Resuming is a network operation, so the app's offline switch must prevent it.
+it('does not contact Door43 or discard the token while the net gate is off', async () => {
+  const keychain = spyKeychain('kept-token-1');
+  let calls = 0;
+  const door43 = { user: async () => { calls++; return USER.username; } };
+  const deps = { door43, keychain, getNetEnabled: async () => false };
+  expect(await resumeKeptSession(deps)).toBe('unavailable');
+  expect(calls).toBe(0);
+  expect(keychain.held).toBe('kept-token-1');
+  expect(currentSession()).toBeNull();
 });

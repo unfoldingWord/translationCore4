@@ -2851,7 +2851,7 @@ export function AppProvider({ children }) {
     // (a browser), no kept token, or no answer from Door43: not signed in.
     const keychain = desktopKeychain();
     if (keychain) {
-      resumeKeptSession({ door43, keychain })
+      resumeKeptSession({ door43, keychain, getNetEnabled: () => api.getNetEnabled() })
         .then(() => dispatch({ type: 'set', patch: { door43User: currentSession()?.username ?? null } }))
         .catch(() => {});
     }
@@ -4801,7 +4801,7 @@ export function AppProvider({ children }) {
           // sign-in step asks the password again.
           const keychain = desktopKeychain();
           if (keychain) {
-            await resumeKeptSession({ door43, keychain });
+            await resumeKeptSession({ door43, keychain, getNetEnabled: () => api.getNetEnabled() });
             session = currentSession();
             if (session) dispatch({ type: 'set', patch: { door43User: session.username } });
           }
