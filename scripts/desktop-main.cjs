@@ -63,7 +63,15 @@ function start() {
   if (process.platform === 'linux') app.commandLine.appendSwitch('disable-dev-shm-usage');
 
   ipcMain.handle('export:pdf', printPdf);
-  app.on('browser-window-created', (_event, win) => watchDownloads(win.webContents.session));
+  app.on('browser-window-created', (_event, win) => {
+    watchDownloads(win.webContents.session);
+    // #362: "Open on Door43" is a link with target=_blank; it opens in the
+    // system browser, not in a second app window.
+    win.webContents.setWindowOpenHandler(({ url }) => {
+      if (/^https?:\/\//.test(url)) require('electron').shell.openExternal(url);
+      return { action: 'deny' };
+    });
+  });
 
   app.on('second-instance', () => {
     const [win] = BrowserWindow.getAllWindows();

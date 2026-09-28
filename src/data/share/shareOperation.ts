@@ -43,8 +43,11 @@ export interface ShareDeps {
   ) => Promise<string | null>;
   /** #374: the ops log the share writes its record to. */
   ops?: OpsRecorder;
-  /** Tests only: accept a `file://` remote (the rig's local remote). Production leaves it unset. */
+  /** Accept a `file://` remote (the rig's local remote, the tests' control).
+   * Production leaves it unset; the development client sets it (state.jsx). */
   allowFileRemote?: boolean;
+  /** The progress line (D84 point 5): called before the create and before the push. */
+  onStep?: (step: 'create' | 'push') => void;
 }
 
 export interface ShareRequest {
@@ -69,7 +72,7 @@ export interface ShareFacts extends Record<string, unknown> {
 const REMOTE = 'origin';
 
 /** `<owner>/<name>` and the page address, read back from a remote url. */
-const repositoryOf = (remoteUrl: string): { repository: string; url: string } => {
+export const repositoryOf = (remoteUrl: string): { repository: string; url: string } => {
   const url = remoteUrl.replace(/\.git$/, '');
   let repository = url;
   try {
@@ -144,6 +147,7 @@ async function shareRecorded(deps: ShareDeps, request: ShareRequest): Promise<Re
       }
       facts = { ...repositoryOf(origin.url), created: false };
     } else {
+      deps.onStep?.('create');
       const repository = await deps.door43
         .createRepository(session, target, name)
         .catch((error: unknown) => {
@@ -162,6 +166,7 @@ async function shareRecorded(deps: ShareDeps, request: ShareRequest): Promise<Re
   }
 
   try {
+    deps.onStep?.('push');
     await deps.api.push(repoPath, REMOTE, session.username, session.token);
   } catch (error) {
     return failed(refusalForPush(error), { step: 'push', ...facts });
