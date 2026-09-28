@@ -21,7 +21,7 @@ export const FAKE_PARSER: ImportParser = {
   accepts: (files) => files.length > 0,
   parse: async (files: ImportFile[]): Promise<ImportBundle> => {
     const findings: ImportBundle['findings'] = [
-      { kind: 'license', text: 'No license was found. CC BY-SA 4.0 will be applied.', warn: true },
+      { kind: 'license', text: 'No license was found in the files. None is applied.', warn: true },
     ];
     for (const file of files)
       if (file.name.includes('damaged'))
