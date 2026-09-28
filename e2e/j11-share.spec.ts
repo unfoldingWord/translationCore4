@@ -256,8 +256,11 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
     /** Press Share (or Upload changes) on a card, and sign in when the step appears. */
     const pressShare = async (page: Page, id: string) => {
       await page.getByTestId(`share-${id}`).click();
+      // A page holds no token at first, so the sign-in step comes first; a later press in
+      // the same session shows none (the wait is short, and only then).
       const signin = page.getByTestId('share-signin');
-      if (await signin.isVisible().catch(() => false)) await signIn(page);
+      await signin.waitFor({ state: 'visible', timeout: 3_000 }).catch(() => {});
+      if (await signin.isVisible()) await signIn(page);
       await expect(signin).toHaveCount(0);
     };
     const fakeShare = (context: BrowserContext, extra: Partial<FakeDoor43Options> = {}) =>
