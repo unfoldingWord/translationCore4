@@ -1888,3 +1888,37 @@ main a43a375, 2026-09-28].
    (J24).
 
 `docs/JOURNEYS.md` (J11, J24), `docs/ROADMAP.md` rows 8.5 and 4.1.0, `docs/ARCHITECTURE.md` section 7, `docs/RISKS.md` row 7 and `CONTEXT.md` (Share) carry this decision.
+
+## D85 (2026-09-28, project-owner ruling) **The first share stores only what it must: the Door43 token, in the operating-system keychain, and only when "Stay signed in" is on. No name, email or login is stored. The sign-in step says that the computer's account name is the author of each shared change.** [owner session 2026-09-28, on pull request #459; issues #203, #366, epic #372; amends D84 point 7 and the D7 notice]
+
+Context. #203 as written (and D84 point 7) asked a name and an email on the first share, stored
+them once per installation, and showed them with a **Change** link, under the D7 rule that the
+git author is the user's own choice. The platform does not read them: it sets the commit author
+at project creation to `user.name = whoami::username()` and `user.email = "<that>@localhost"`
+(`new_obs_resource.rs:108-114`; the same in `new_text_translation`, `new_bcv_resource`,
+`clone_repo` and the other create routes), and `add_and_commit.rs:49` signs with
+`repo.signature()`; no route changes it [VERIFIED — pankosmia-web 0.18.5 (99fd9be, 2026-07-30),
+source read 2026-09-28; PLATFORM-NOTES #47]. A stored name and email would have no effect. The
+owner's rule: "store only what we absolutely have to store, and the user must not have to sign
+in every time".
+
+1. **What is stored.** The Door43 token only, in the operating-system keychain (#366), and only
+   when "Stay signed in on this computer" is on. The checkbox stays. When it is off, the token
+   stays in renderer memory for the app session, as D84 point 6 says.
+2. **What is not stored (amends D84 point 7).** No identity record: no name, no email, no login,
+   in the client settings or anywhere else. The sign-in step has no Name, no Email and no
+   **Change**, and does not prefill the login. The username is Door43's own answer to
+   `GET /api/v1/user`, read at sign-in; a session resumed from a kept token (#366) reads it the
+   same way. The keychain seam takes the token only.
+3. **The notice (amends the D7 notice).** In place of "your name and email are recorded in every
+   commit you share", the sign-in step says: "Each change you share is signed with the account
+   name of this computer. Door43 shows that name as the author." D7's posture (a user-controlled
+   author, pseudonyms allowed) waits for a platform route that sets the signature; until then the
+   notice tells the truth.
+4. **Later sessions.** Without a kept token, the next app session asks the sign-in again, with one
+   line that says why ("Without Stay signed in, your sign-in lasts for one app session"). A kept
+   token asks nothing (#366).
+
+`docs/JOURNEYS.md` (J11), `docs/ROADMAP.md` row 8.5, `docs/ARCHITECTURE.md` section 7,
+`docs/PLATFORM-NOTES.md` #47 and `CONTEXT.md` (Door43 session) carry this decision. The bodies of
+#203, #366 and epic #372 were edited to match on 2026-09-28.

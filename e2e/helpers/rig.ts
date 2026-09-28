@@ -348,21 +348,9 @@ export function resetPlaces(): void {
   fs.writeFileSync(RIG_CLIENT_SETTINGS, JSON.stringify(doc));
 }
 
-/** The identity for git that #203 stores once per installation (`shareIdentity`
- * in the client settings), or null when the installation has none. */
-export function readShareIdentity(): { name: string; email: string; login: string } | null {
-  if (!fs.existsSync(RIG_CLIENT_SETTINGS)) return null;
-  const doc = readClientSettings() as { shareIdentity?: { name: string; email: string; login: string } };
-  return doc.shareIdentity ?? null;
-}
-
-/** Make the rig a fresh installation for #203: no identity stored. */
-export function resetShareIdentity(): void {
-  if (!fs.existsSync(RIG_CLIENT_SETTINGS)) return;
-  const doc = readClientSettings();
-  if (!('shareIdentity' in doc)) return;
-  delete doc.shareIdentity;
-  fs.writeFileSync(RIG_CLIENT_SETTINGS, JSON.stringify(doc));
+/** The per-client settings document as the rig holds it, or null when none is stored yet. */
+export function readClientSettingsDoc(): Record<string, unknown> | null {
+  return fs.existsSync(RIG_CLIENT_SETTINGS) ? readClientSettings() : null;
 }
 
 export function resetSeededChecking(): void {

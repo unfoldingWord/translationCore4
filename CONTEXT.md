@@ -262,15 +262,10 @@ _Avoid_: Door43 client, DCS helper, gitea API (for this module)
 
 **Door43 session**:
 The signed-in user's login and token, held in `src/data/share/session.ts` for the app session
-(`currentSession`), or in the operating-system keychain when "Stay signed in" is on (#366).
-Never in React state, the client settings, `localStorage`, a URL or a log.
-_Avoid_: credentials (the password is never kept), login state
-
-**Identity for git**:
-The name and email that git records in a shared commit (D7; a pseudonym is allowed), stored
-once per installation (`shareIdentity` in the client settings) with the Door43 login, and
-changed only through **Change** in the sign-in step (D84 point 7).
-_Avoid_: profile, account (that is the Door43 account), author settings
+(`currentSession`); the token alone goes to the operating-system keychain when "Stay signed
+in" is on (#366). Nothing else is stored (D85): no name, no email, no login. Never in React
+state, the client settings, `localStorage`, a URL or a log.
+_Avoid_: credentials (the password is never kept), login state, identity record
 
 **Share target**:
 Where a first share creates the repository: the user's own account, or one organization the

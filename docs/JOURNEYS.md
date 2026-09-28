@@ -188,8 +188,9 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   project card, D84).
 - Steps: press Share on the project card · sign in to Door43 with username and password,
   unless the session or the keychain has a token; "Stay signed in on this computer" keeps the
-  token in the operating-system keychain · on the first share of the installation, also give a
-  name and an email and read the D7 exposure notice (later sign-ins show them with a **Change** link, the only place to change them) · choose where the project goes: the user's
+  token in the operating-system keychain · read the author notice: the computer's account name
+  is the author of each shared change, and Door43 shows it (D85; no name or email is asked or
+  stored) · choose where the project goes: the user's
   own account or an organization that lets the user create repositories · check the repository
   name (default: the project's folder name) and the books or stories that are shared · the app
   creates the repository there, adds it as `origin`, pushes the working `main` branch · the app
@@ -198,7 +199,8 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   `main` equal to the local `main`; the project is byte-identical except the D9 checkpoint
   commit; `origin` is set in the repository's git config; nothing about remotes is stored in
   the installation; the token is in renderer memory, and in the operating-system keychain only
-  when "Stay signed in" is on. The card shows "On Door43" and the repository path. A later
+  when "Stay signed in" is on; no name, email or login is stored (D85); each pushed commit's
+  author is the computer's account name (PLATFORM-NOTES #47). The card shows "On Door43" and the repository path. A later
   share ("Upload changes") pushes `main` again with no dialog when a token is available.
 - Refusals (each a `Report` code, nothing pushed): the name exists on the chosen account or
   organization; the push is not a fast-forward, because another device pushed (the message
@@ -209,8 +211,8 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   store the password; write anything into the project.
 - Proof: `e2e/j11-share.spec.ts`, tags `@inc85 @J11`. The live leg against `qa.door43.org`
   runs when the QA credentials are present and reports a labelled skip otherwise (#185).
-- Owner: Increment 8.5 (D79 point 12, D84): #362 the share operation, #203 sign-in and
-  identity, #366 the keychain, #120 the Door43 authority, #185 the journey. Receive and team
+- Owner: Increment 8.5 (D79 point 12, D84, D85): #362 the share operation, #203 sign-in,
+  #366 the keychain, #120 the Door43 authority, #185 the journey. Receive and team
   sync stay Phase 2 (D67; epic #24).
 
 ### J12 Upgrade the pinned resources

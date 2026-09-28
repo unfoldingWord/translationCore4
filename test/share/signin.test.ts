@@ -6,28 +6,23 @@
 //   2. no network: the fetch throws → `share.offline`; the net gate off →
 //      `share.offline` before any Door43 call;
 //   3. Door43 down: a 5xx → `share.server-unavailable`;
-//   4. a refusal leaves a token or an identity in the settings store or in
-//      localStorage (nothing may be written on a refusal);
+//   4. a refusal leaves a token in the settings store or in localStorage
+//      (nothing may be written on a refusal);
 //   5. with "Stay signed in" off, the token reaches the platform client
-//      settings, localStorage, or the installation record (it may not);
+//      settings or localStorage (it may not); any sign-in writes a record of
+//      the person — a name, an email, a login — to the settings store (D85: it
+//      may not; the only stored item is the kept token, in the keychain);
 //   6. a stale `translationCore` token on the account makes the create fail
 //      (Door43 refuses a used name and lists no secret): it is deleted first;
 //   7. an email login: the tokens route needs the account login, read from
 //      `GET /user`; the session's username is that login, not the email;
 //   8. the scopes asked differ from `TOKEN_SCOPES`, or the password or the
 //      token lands in a URL;
-//   9. sign-out leaves the token in memory.
+//   9. sign-out leaves the token in memory;
+//  10. the keychain receives more than the token (a username, a password).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Door43Api, TOKEN_NAME, TOKEN_SCOPES } from '../../src/data/share/door43Api';
-import {
-  IDENTITY_KEY,
-  currentSession,
-  identityOf,
-  signIn,
-  signOut,
-  writeIdentity,
-  type SignInDeps,
-} from '../../src/data/share/session';
+import { currentSession, signIn, signOut, type SignInDeps } from '../../src/data/share/session';
 import { reportError } from '../../src/data/journal/runtime';
 import { serialSettingsWriter } from '../../src/data/journal/opsLog';
 import { FakeDoor43, type FakeDoor43Options } from '../../e2e/helpers/door43';
@@ -82,7 +77,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-/** Every request the fake saw, as `METHOD url`, plus the secrets that may never appear in one. */
+/** Every request the fake saw, as `METHOD url`. */
 const urls = (door43: FakeDoor43) => door43.calls.map((c) => `${c.method} ${c.url}`);
 
 describe('#203 sign-in refusals (test 5): each cause has its code, and nothing is stored', () => {
@@ -121,8 +116,8 @@ describe('#203 sign-in refusals (test 5): each cause has its code, and nothing i
   });
 });
 
-describe('#203 the token in memory only (test 6)', () => {
-  it('with "Stay signed in" off, the session holds the token and no store or localStorage saw it', async () => {
+describe('#203 the token in memory only (test 6), and no record of the person (D85)', () => {
+  it('with "Stay signed in" off, the session holds the token and no store or localStorage saw a write', async () => {
     const door43 = fake();
     const store = stores();
     vi.stubGlobal('localStorage', store.localStorage);
@@ -133,34 +128,48 @@ describe('#203 the token in memory only (test 6)', () => {
     const token = door43.tokens.get(TOKEN_NAME)!;
     expect(currentSession()).toEqual({ username: USER.username, token });
     expect(JSON.stringify(report)).not.toContain(token);
+    // D85: no identity record, no login, no token — no write at all.
     expect(store.writes).toEqual([]);
+    expect(store.doc).toEqual({});
     expect(store.localWrites).toEqual([]);
-    // The identity write the app makes after a sign-in never carries the token.
-    await writeIdentity(store.update, { name: 'A Translator', email: 'a@example.org', login: USER.username });
-    expect(JSON.stringify(store.doc)).not.toContain(token);
-    expect(identityOf(store.doc)).toEqual({ name: 'A Translator', email: 'a@example.org', login: USER.username });
-    expect(Object.keys(store.doc)).toEqual([IDENTITY_KEY]);
   });
 
-  it('"Stay signed in" with no keychain wired keeps the token in memory, kept: false', async () => {
+  it('"Stay signed in" with no keychain wired keeps the token in memory, kept: false, and still writes nothing', async () => {
     const door43 = fake();
+    const store = stores();
+    vi.stubGlobal('localStorage', store.localStorage);
     const report = await signIn(deps(door43), request(USER.username, USER.password, true));
     expect(report.ok).toBe(true);
     expect(report.facts.kept).toBe(false);
     expect(currentSession()?.token).toBe(door43.tokens.get(TOKEN_NAME));
+    expect(store.writes).toEqual([]);
+    expect(store.localWrites).toEqual([]);
   });
 
-  it('"Stay signed in" hands the session to the keychain seam (#366), and sign-out forgets it', async () => {
+  it('"Stay signed in" hands the keychain seam (#366) the token and nothing else; sign-out forgets it', async () => {
     const door43 = fake();
     const kept: unknown[] = [];
     let forgotten = 0;
-    const keychain = { keep: async (s: unknown) => { kept.push(s); }, forget: async () => { forgotten++; } };
+    const keychain = { keep: async (value: unknown) => { kept.push(value); }, forget: async () => { forgotten++; } };
     const report = await signIn({ ...deps(door43), keychain }, request(USER.username, USER.password, true));
     expect(report.facts.kept).toBe(true);
-    expect(kept).toEqual([{ username: USER.username, token: door43.tokens.get(TOKEN_NAME) }]);
+    // The only keychain write is the token string: no username, no password.
+    expect(kept).toEqual([door43.tokens.get(TOKEN_NAME)]);
+    expect(JSON.stringify(kept)).not.toContain(USER.username);
+    expect(JSON.stringify(kept)).not.toContain(USER.password);
     await signOut(keychain);
     expect(currentSession()).toBeNull();
     expect(forgotten).toBe(1);
+  });
+
+  it('a keychain that refuses is not a failed sign-in: the token stays in memory, kept: false', async () => {
+    const door43 = fake();
+    const keychain = { keep: async () => { throw new Error('no safeStorage'); }, forget: async () => {} };
+    const report = await signIn({ ...deps(door43), keychain }, request(USER.username, USER.password, true));
+    expect(report.ok).toBe(true);
+    expect(report.facts.kept).toBe(false);
+    expect(report.facts.keepError).toMatch(/no safeStorage/);
+    expect(currentSession()?.token).toBe(door43.tokens.get(TOKEN_NAME));
   });
 
   it('sign-out drops the token from memory', async () => {
@@ -221,21 +230,5 @@ describe('#203 the token call', () => {
     expect(report.ok).toBe(false);
     expect(report.code).toBe('share.auth-failed');
     expect(currentSession()).toBeNull();
-  });
-});
-
-describe('#203 the identity record', () => {
-  it('a record without a name and an email reads as absent, so it is asked again', () => {
-    expect(identityOf(null)).toBeNull();
-    expect(identityOf({})).toBeNull();
-    expect(identityOf({ [IDENTITY_KEY]: { name: ' ', email: 'a@b' } })).toBeNull();
-    expect(identityOf({ [IDENTITY_KEY]: { name: 'A', email: 'a@b' } })).toEqual({ name: 'A', email: 'a@b', login: '' });
-  });
-
-  it('writeIdentity keeps the other keys of the document', async () => {
-    const store = stores();
-    store.doc.lastUsed = { x: 1 };
-    await writeIdentity(store.update, { name: 'A', email: 'a@b', login: 'a' });
-    expect(store.doc).toEqual({ lastUsed: { x: 1 }, [IDENTITY_KEY]: { name: 'A', email: 'a@b', login: 'a' } });
   });
 });
