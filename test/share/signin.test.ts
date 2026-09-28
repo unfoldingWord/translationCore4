@@ -117,11 +117,14 @@ describe('#203 sign-in refusals (test 5): each cause has its code, and nothing i
 });
 
 describe('#203 the token in memory only (test 6), and no record of the person (D85)', () => {
-  it('with "Stay signed in" off, the session holds the token and no store or localStorage saw a write', async () => {
+  it('with "Stay signed in" off, the session holds the token, the keychain is never asked to keep (#366 test 2), and no store or localStorage saw a write', async () => {
     const door43 = fake();
     const store = stores();
     vi.stubGlobal('localStorage', store.localStorage);
-    const report = await signIn(deps(door43), request());
+    const keychainCalls: string[] = [];
+    const keychain = { keep: async () => { keychainCalls.push('keep'); }, read: async () => null, forget: async () => { keychainCalls.push('forget'); } };
+    const report = await signIn({ ...deps(door43), keychain }, request());
+    expect(keychainCalls).toEqual([]);
     expect(reportError(report)).toBeNull();
     expect(report.ok).toBe(true);
     expect(report.facts).toMatchObject({ step: 'sign-in', username: USER.username, kept: false });

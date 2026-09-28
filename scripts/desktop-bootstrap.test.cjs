@@ -29,7 +29,10 @@ function stageProduct(options, shortName = 'tc4') {
   fs.mkdirSync(product, { recursive: true });
   fs.writeFileSync(path.join(product, 'product.json'), JSON.stringify({ short_name: shortName }) + '\n');
 }
-function runDesktopMain({ platform = 'linux', lock = true, startServer, bindError = false, printError = false } = {}) {
+// `userData` and `encryption` (#366): the fake `safeStorage` — a reversible
+// transform behind a marker, never the clear text — and the directory the
+// token file lives in, so a second start can read what the first kept.
+function runDesktopMain({ platform = 'linux', lock = true, startServer, bindError = false, printError = false, userData = os.tmpdir(), encryption = true } = {}) {
   const events = [];
   const handlers = {};
   const windows = [];
@@ -51,6 +54,18 @@ function runDesktopMain({ platform = 'linux', lock = true, startServer, bindErro
     },
     exit: (code) => events.push('exit:' + code),
     commandLine: { appendSwitch: (name) => events.push('switch:' + name) },
+    getPath: (name) => {
+      if (name !== 'userData') throw new Error('unexpected path ' + name);
+      return userData;
+    },
+  };
+  const safeStorage = {
+    isEncryptionAvailable: () => encryption,
+    encryptString: (text) => Buffer.concat([Buffer.from('v10'), Buffer.from(Buffer.from(text, 'utf8').map((b) => b ^ 0x5a))]),
+    decryptString: (bytes) => {
+      if (bytes.subarray(0, 3).toString() !== 'v10') throw new Error('not this keychain\'s bytes');
+      return Buffer.from(bytes.subarray(3).map((b) => b ^ 0x5a)).toString('utf8');
+    },
   };
   // The hidden print window of the PDF bridge (#20): it records what it was
   // given, and fails the print when the case asks it to.
@@ -89,6 +104,7 @@ function runDesktopMain({ platform = 'linux', lock = true, startServer, bindErro
     },
     dialog: { showErrorBox: () => events.push('errorBox') },
     shell: { openExternal: (url) => events.push('openExternal:' + url) },
+    safeStorage,
   };
   const bootstrapModule = {
     shouldBindPackagedResources: (value) => {
@@ -279,17 +295,17 @@ test('the packaged entry point is valid, ordered, and preserves its launch contr
   assert.doesNotThrow(() => new vm.Script(desktopMain));
 
   const linux = runDesktopMain();
-  assert.deepEqual(linux.events, ['lock', 'switch:disable-dev-shm-usage', 'handle:export:pdf', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'bind', 'upstream']);
+  assert.deepEqual(linux.events, ['lock', 'switch:disable-dev-shm-usage', 'handle:export:pdf', 'handle:token:keep', 'handle:token:read', 'handle:token:forget', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'bind', 'upstream']);
   const mac = runDesktopMain({ platform: 'darwin' });
-  assert.deepEqual(mac.events, ['lock', 'handle:export:pdf', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'bind', 'bootstrap', 'upstream']);
+  assert.deepEqual(mac.events, ['lock', 'handle:export:pdf', 'handle:token:keep', 'handle:token:read', 'handle:token:forget', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'bind', 'bootstrap', 'upstream']);
   const windows = runDesktopMain({ platform: 'win32' });
-  assert.deepEqual(windows.events, ['setAppUserModelId', 'lock', 'handle:export:pdf', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'bind', 'bootstrap', 'upstream']);
+  assert.deepEqual(windows.events, ['setAppUserModelId', 'lock', 'handle:export:pdf', 'handle:token:keep', 'handle:token:read', 'handle:token:forget', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'bind', 'bootstrap', 'upstream']);
   const external = runDesktopMain({ startServer: 'false' });
-  assert.deepEqual(external.events, ['lock', 'switch:disable-dev-shm-usage', 'handle:export:pdf', 'on:browser-window-created', 'on:second-instance', 'shouldBind:false', 'upstream']);
+  assert.deepEqual(external.events, ['lock', 'switch:disable-dev-shm-usage', 'handle:export:pdf', 'handle:token:keep', 'handle:token:read', 'handle:token:forget', 'on:browser-window-created', 'on:second-instance', 'shouldBind:false', 'upstream']);
   const second = runDesktopMain({ lock: false });
   assert.deepEqual(second.events, ['lock', 'quit']);
   const failed = runDesktopMain({ bindError: true });
-  assert.deepEqual(failed.events, ['lock', 'switch:disable-dev-shm-usage', 'handle:export:pdf', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'bind', 'errorBox', 'exit:1']);
+  assert.deepEqual(failed.events, ['lock', 'switch:disable-dev-shm-usage', 'handle:export:pdf', 'handle:token:keep', 'handle:token:read', 'handle:token:forget', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'bind', 'errorBox', 'exit:1']);
 
   linux.handlers['second-instance']();
   assert.deepEqual(linux.events.slice(-2), ['restore', 'focus']);
@@ -388,8 +404,77 @@ test('the download report sends each download\'s file name and result to the pag
   const preload = fs.readFileSync(path.join(__dirname, 'preload.cjs'), 'utf8');
   assert.match(preload, /ipcRenderer\.on\('download:done', relay\)/);
   assert.match(preload, /return \(\) => ipcRenderer\.removeListener\('download:done', relay\)/);
-  assert.doesNotMatch(preload, /ipcRenderer\.(on|send|invoke)\((?!'(download:done|setCanClose|export:pdf)')/);
+  assert.doesNotMatch(preload, /ipcRenderer\.(on|send|invoke)\((?!'(download:done|setCanClose|export:pdf|token:keep|token:read|token:forget)')/);
 });
+
+// #366 (D85): the Door43 token in the operating-system keychain through
+// `safeStorage`. The ways this can fail, written before the code: the clear
+// token or the password reaches the disk; a second start cannot read the
+// kept token; no keychain (Linux without a keyring) writes clear text or
+// stays silent; forget leaves the file; bytes another keychain wrote are
+// kept and answered as a token; the bridge exposes more than the three calls.
+test('the keychain keeps the token as ciphertext only, a new start reads it back, forget removes it, and no keychain writes nothing and says so', async (t) => {
+  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-keychain-'));
+  t.after(() => fs.rmSync(userData, { recursive: true, force: true }));
+  const token = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678';
+  const password = 'the pass-word';
+  const file = path.join(userData, 'door43-token');
+  // IPC copies the answer, and the vm context's objects have their own prototypes.
+  const answer = async (promise) => JSON.parse(JSON.stringify(await promise));
+
+  // Negative control: nothing kept yet, so a start reads no token.
+  const first = runDesktopMain({ userData });
+  assert.deepEqual(await answer(first.handlers['token:read']({})), { token: null });
+  assert.deepEqual(await answer(first.handlers['token:keep']({}, '')), { kept: false, reason: 'no token was given' });
+  assert.equal(fs.existsSync(file), false);
+
+  // 1. Kept: the file holds the ciphertext, not the token, not the password.
+  assert.deepEqual(await answer(first.handlers['token:keep']({}, token)), { kept: true });
+  const bytes = fs.readFileSync(file);
+  assert.equal(bytes.includes(token), false);
+  assert.equal(bytes.includes(password), false);
+  assert.equal(bytes.subarray(0, 3).toString(), 'v10');
+  assert.deepEqual(fs.readdirSync(userData), ['door43-token']); // no temporary file left
+  // A new main-process start reads it back.
+  const second = runDesktopMain({ userData });
+  assert.deepEqual(await answer(second.handlers['token:read']({})), { token });
+
+  // 3. No keychain: nothing is written, and the answer says so; a kept file is
+  //    not decryptable either, so it is not answered as a token.
+  const plain = runDesktopMain({ userData, encryption: false });
+  const before = fs.readFileSync(file);
+  const refused = await answer(plain.handlers['token:keep']({}, 'another-token'));
+  assert.equal(refused.kept, false);
+  assert.match(refused.reason, /no keychain/);
+  assert.deepEqual(fs.readFileSync(file), before);
+  assert.deepEqual(await answer(plain.handlers['token:read']({})), { token: null, reason: refused.reason });
+  assert.equal(filesUnder(userData).some((f) => fs.readFileSync(f).includes('another-token')), false);
+
+  // 4. Forget removes the file; a later read finds nothing; forget again is fine.
+  assert.deepEqual(await answer(second.handlers['token:forget']({})), { forgotten: true });
+  assert.equal(fs.existsSync(file), false);
+  assert.deepEqual(await answer(second.handlers['token:read']({})), { token: null });
+  assert.deepEqual(await answer(second.handlers['token:forget']({})), { forgotten: true });
+
+  // Bytes this keychain cannot open (another account's, or damaged) are removed, not answered.
+  fs.writeFileSync(file, Buffer.from('not-ciphertext'));
+  const damaged = await answer(second.handlers['token:read']({}));
+  assert.equal(damaged.token, null);
+  assert.match(damaged.reason, /could not be read/);
+  assert.equal(fs.existsSync(file), false);
+
+  // The preload exposes exactly the three calls, each to its own channel.
+  const preload = fs.readFileSync(path.join(__dirname, 'preload.cjs'), 'utf8');
+  assert.match(preload, /keep: \(token\) => ipcRenderer\.invoke\('token:keep', token\)/);
+  assert.match(preload, /read: \(\) => ipcRenderer\.invoke\('token:read'\)/);
+  assert.match(preload, /forget: \(\) => ipcRenderer\.invoke\('token:forget'\)/);
+});
+
+/** Every file under `dir`, recursively. */
+function filesUnder(dir) {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
+    entry.isDirectory() ? filesUnder(path.join(dir, entry.name)) : [path.join(dir, entry.name)]);
+}
 
 // #362: a link with target=_blank ("Open on Door43") opens in the system
 // browser; the app never opens a second window for it, and never for a
