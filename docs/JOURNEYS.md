@@ -165,7 +165,8 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 - End state: leaving with uncommitted changes makes exactly one checkpoint commit, message prefixed
   `Checkpoint, leaving Translate:` or `Checkpoint, leaving the project:`; leaving without changes
   makes none; the last draft is what reopens.
-- Proof: `e2e/j08-resume.spec.ts` (#184, #185; the share leg is fixme until #185 runs the J11 flow, D84). Owner: built in Increment 4; tag pending.
+- Proof: `e2e/j08-resume.spec.ts` (#184, #185; the share leg runs the J11 flow through
+  `e2e/helpers/door43Share.ts`, D84). Owner: built in Increment 4; the share leg in Increment 8.5.
 
 ### J9a–J9d Import
 

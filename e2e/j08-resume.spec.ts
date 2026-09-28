@@ -1,15 +1,17 @@
 // J8 — Resume work across sessions/books; multi-book navigation
-// docs/JOURNEYS.md J8 · built in Increment 4 (#184, #185); the share leg waits on #120
+// docs/JOURNEYS.md J8 · built in Increment 4 (#184, #185); the share leg since Increment 8.5
 //
-// The last test is the Increment 4 journey end to end (#185): open, draft, mark a
-// check, leave (a checkpoint commits), reload, resume, share. The share leg is a
-// fixme until #120 (runtime server parameter, first-push identity) lands.
+// The last two tests are the journey end to end (#185): open, draft, mark a check,
+// leave (a checkpoint commits), reload, resume, share. The share leg runs the J11
+// flow (e2e/helpers/door43Share.ts) against the fake Door43 and a bare remote the
+// test controls, and reads the pushed commit back from that remote.
 //
 // Ground truth is the rig's disk: commit counts and messages come from the
 // repository, never from UI state (e2e/helpers/rig.ts).
 import { test, expect } from './helpers/test';
 import type { Page } from '@playwright/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
+import { RIG_API, RIG_STATE, dropOrigin, fakeShare, filesHolding, git, head, makeBareRemote, shareFirstTime, USER } from './helpers/door43Share';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -172,8 +174,12 @@ test.describe('J8 — a translator resumes where they left off', () => {
         const progress = page.getByTestId('open-progress');
         await expect(progress).toBeVisible({ timeout: 20_000 });
         await expect(progress).toHaveAttribute('data-stage', /journal|state|prepare/);
-        // ... and then the app lands where the translator stopped.
-        await expect(page.getByText(drafted)).toBeVisible({ timeout: 120_000 });
+        // ... and then the app lands where the translator stopped. The landing is the
+        // chapter heading: Home stays mounted under the indicator until the open ends,
+        // and its Resume card quotes the drafted text, so the text alone is not proof
+        // that the book is open (found 2026-09-28, #185: the open grew past the 5 s
+        // expect window, and the card satisfied the text match while the open ran).
+        await expect(page.getByRole('heading', { name: 'Titus 2', exact: true })).toBeVisible({ timeout: 120_000 });
         await expect(progress).toHaveCount(0);
         await expectTranslateAt(page, '2', drafted);
       } finally {
@@ -344,10 +350,44 @@ test.describe('J8 — the Increment 4 journey: open, resume, and share a project
     },
   );
 
-  test.fixme(
-    'share for the first time: the app asks for a name and an email once, pushes to the configured test server, and the journey reads the pushed commit from the remote, not from the app (#120; L-3 #156 first)',
-    { tag: ['@inc4', '@J8'] },
-    async () => {},
+  test(
+    'share for the first time: Share on the Home card runs the J11 flow (sign in, the account, the check step, the push); the journey reads the pushed commit from the remote, not from the app (J11, D84, D85)',
+    { tag: ['@inc4', '@inc85', '@J8'] },
+    async ({ page, context }) => {
+      test.setTimeout(120_000);
+      const remote = makeBareRemote();
+      // The rig boots with the net gate off, and Share is disabled offline (J11 case 12).
+      await fetch(`${RIG_API}/net/enable`, { method: 'POST' });
+      try {
+        dropOrigin(SEEDED_PROJECT);
+        const fake = await fakeShare(context, remote);
+        await page.goto('/');
+        const id = `_local_/_local_/${SEEDED_PROJECT}`;
+        await expect(page.getByTestId(`share-card-${id}`)).toHaveAttribute('data-shared', '0');
+        const local = head(SEEDED_PROJECT);
+        const url = await shareFirstTime(page, id);
+        expect(url).toBe(`https://qa.door43.org/${USER.username}/${SEEDED_PROJECT}`);
+        // The card: "On Door43", the repository path, and Upload changes.
+        await expect(page.getByTestId(`share-card-${id}`)).toHaveAttribute('data-shared', '1');
+        await expect(page.getByTestId(`share-state-${id}`)).toHaveText(`On Door43 · ${USER.username}/${SEEDED_PROJECT}`);
+        await expect(page.getByTestId(`share-${id}`)).toHaveText('Upload changes');
+        // The remote, read with git: its main is the local main, its last commit is the
+        // leave checkpoint of the test above, and its committed book is the local one.
+        expect(remote.main()).toBe(local);
+        expect(git(remote.bare, 'log', '-1', '--format=%s', 'main')).toBe(lastCommitMessage(SEEDED_PROJECT));
+        expect(remote.show('main:ingredients/TIT.usfm')).toBe(committedIngredient(SEEDED_PROJECT, 'TIT.usfm'));
+        // The token is on no disk of the rig (D85), and the project's git config holds no secret.
+        const token = fake.tokens.get('translationCore')!;
+        expect(token).toBeTruthy();
+        expect(filesHolding(RIG_STATE, token)).toEqual([]);
+        expect(fs.readFileSync(path.join(rigRepo(SEEDED_PROJECT), '.git', 'config'), 'utf8')).not.toContain(token);
+      } finally {
+        // Leave the seeded project as this test found it: unshared, offline.
+        dropOrigin(SEEDED_PROJECT);
+        remote.dispose();
+        await fetch(`${RIG_API}/net/disable`, { method: 'POST' });
+      }
+    },
   );
 });
 

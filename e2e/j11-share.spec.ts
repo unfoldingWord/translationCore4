@@ -15,14 +15,13 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import type { BrowserContext, Page } from '@playwright/test';
 import { test, expect } from './helpers/test';
-import { FakeDoor43, type FakeDoor43Options, type FakeOrganization } from './helpers/door43';
+import type { FakeOrganization } from './helpers/door43';
 import { TC4_ROOT, SEEDED_PROJECT, readClientSettingsDoc, rigRepo, listLocalRepos } from './helpers/rig';
+import {
+  QA_SERVER, RIG_API, RIG_STATE, USER, type BareRemote,
+  dropOrigin, fakeFor, fakeShare, filesHolding, git, head, makeBareRemote, pressShare, signIn,
+} from './helpers/door43Share';
 
-/** The server a development build signs in to (src/data/dcsServer.ts, #120). */
-const QA_SERVER = 'https://qa.door43.org';
-const RIG_API = 'http://127.0.0.1:19998/api';
-const RIG_STATE = path.join(TC4_ROOT, 'dev-env', 'state');
-const USER = { username: 'facilitator-zq', password: 'a pass-word', email: 'facilitator-zq@example.org' };
 const AUTHOR_NOTICE = /signed with the account name of this computer/;
 const SESSION_NOTE = /lasts for one app session/;
 
@@ -34,32 +33,6 @@ const scopesInSource = (): string[] => {
   if (!literal) throw new Error('TOKEN_SCOPES not found in door43Api.ts');
   return [...literal[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
 };
-
-/** Every file under `dir` whose bytes contain `needle`. */
-const filesHolding = (dir: string, needle: string): string[] => {
-  const out: string[] = [];
-  const walk = (at: string) => {
-    for (const entry of fs.readdirSync(at, { withFileTypes: true })) {
-      const full = path.join(at, entry.name);
-      if (entry.isDirectory()) walk(full);
-      else if (entry.isFile() && fs.readFileSync(full).includes(needle)) out.push(path.relative(dir, full));
-    }
-  };
-  walk(dir);
-  return out;
-};
-
-async function fakeFor(context: BrowserContext, extra: Partial<FakeDoor43Options> = {}): Promise<FakeDoor43> {
-  const fake = new FakeDoor43({ server: QA_SERVER, user: USER, ...extra });
-  await fake.route(context);
-  return fake;
-}
-
-async function signIn(page: Page, password = USER.password): Promise<void> {
-  await page.getByLabel('Door43 username or email').fill(USER.username);
-  await page.getByLabel('Password', { exact: true }).fill(password);
-  await page.getByTestId('signin-submit').click();
-}
 
 /** The keys the app's client-settings document holds on the rig: none may record the person. */
 const settingsKeys = (): string[] => Object.keys(readClientSettingsDoc() ?? {});
@@ -326,33 +299,12 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
   //      each Share begins with the sign-in step. ----
   test.describe('share (#362)', () => {
     const SEEDED_ID = `_local_/_local_/${SEEDED_PROJECT}`;
+    let remote: BareRemote;
     const ORGS: FakeOrganization[] = [
       { username: 'orgA', fullName: 'Equipo A', canCreateRepository: true, repositories: { 'es-419': 3 } },
       { username: 'orgB', fullName: 'Equipo B', canCreateRepository: true, repositories: { 'es-419': 1 } },
       { username: 'orgLocked', fullName: 'Locked', canCreateRepository: false, repositories: { 'es-419': 9 } },
     ];
-    let tmp: string;
-    let bare: string;
-
-    const git = (cwd: string, ...args: string[]): string =>
-      execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', stdio: 'pipe' }).trim();
-    const head = (repo: string) => git(rigRepo(repo), 'rev-parse', 'HEAD');
-    /** The bare remote's `main`, or null when nothing was pushed. */
-    const remoteMain = (): string | null => {
-      try {
-        return git(bare, 'rev-parse', '--verify', '--quiet', 'refs/heads/main');
-      } catch {
-        return null;
-      }
-    };
-    /** Unshare: drop the `origin` remote (the one record of a share, D84 point 1). */
-    const dropOrigin = (repo: string) => {
-      try {
-        git(rigRepo(repo), 'remote', 'remove', 'origin');
-      } catch {
-        // no origin: not shared
-      }
-    };
     const remotesOf = async (id: string): Promise<Array<{ name: string; url: string }>> => {
       const body = (await (await fetch(`${RIG_API}/git/remotes/${id}`)).json()) as { payload?: { remotes?: Array<{ name: string; url: string }> } };
       return body.payload?.remotes ?? [];
@@ -362,18 +314,6 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       const entries = (readClientSettingsDoc()?.opsLog ?? []) as Array<{ op: string; report?: { code?: string } }>;
       return entries.filter((e) => e.op === 'share' && e.report?.code).map((e) => e.report!.code!);
     };
-    /** Press Share (or Upload changes) on a card, and sign in when the step appears. */
-    const pressShare = async (page: Page, id: string) => {
-      await page.getByTestId(`share-${id}`).click();
-      // A page holds no token at first, so the sign-in step comes first; a later press in
-      // the same session shows none (the wait is short, and only then).
-      const signin = page.getByTestId('share-signin');
-      await signin.waitFor({ state: 'visible', timeout: 3_000 }).catch(() => {});
-      if (await signin.isVisible()) await signIn(page);
-      await expect(signin).toHaveCount(0);
-    };
-    const fakeShare = (context: BrowserContext, extra: Partial<FakeDoor43Options> = {}) =>
-      fakeFor(context, { cloneUrlFor: () => `file://${bare}`, ...extra });
 
     test.beforeAll(async () => {
       await fetch(`${RIG_API}/net/enable`, { method: 'POST' });
@@ -382,19 +322,17 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       await fetch(`${RIG_API}/net/disable`, { method: 'POST' });
     });
     test.beforeEach(async ({ page }) => {
-      tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-j11-'));
-      bare = path.join(tmp, 'remote.git');
-      execFileSync('git', ['init', '-q', '--bare', '-b', 'main', bare]);
+      remote = makeBareRemote();
       dropOrigin(SEEDED_PROJECT);
       await page.goto('/');
       await expect(page.getByTestId(`share-${SEEDED_ID}`)).toBeVisible();
     });
     test.afterEach(() => {
-      fs.rmSync(tmp, { recursive: true, force: true });
+      remote.dispose();
     });
 
     test('1. Share beside Settings: sign in, the account, the check step, one progress line, the end; the remote main equals the local main; the token is nowhere; Community Checking has no Share', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
-      const fake = await fakeShare(context);
+      const fake = await fakeShare(context, remote);
       const logs: string[] = [];
       page.on('console', (message) => logs.push(message.text()));
       const card = page.getByTestId(`project-${SEEDED_ID}`);
@@ -437,7 +375,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
 
       // The remote: created on the fake under the account, pushed to the bare remote.
       expect([...fake.repositories.keys()]).toEqual([`${USER.username}/${SEEDED_PROJECT}`]);
-      expect(remoteMain()).toBe(head(SEEDED_PROJECT));
+      expect(remote.main()).toBe(head(SEEDED_PROJECT));
       // Every Door43 call went to the QA server (test 9), with the token in no URL (test 10).
       const token = fake.tokens.get('translationCore')!;
       expect(fake.calls.every((c) => c.url.startsWith(`${QA_SERVER}/`))).toBe(true);
@@ -461,24 +399,24 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
     });
 
     test('2. the shared card after a new session reads its state from origin; Upload changes pushes a new commit with no dialog, and asks nothing the second time (#203 7b); the installation store holds no remote', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
-      await fakeShare(context);
+      await fakeShare(context, remote);
       await pressShare(page, SEEDED_ID);
       await page.getByTestId('share-next').click();
       await page.getByTestId('share-submit').click();
       await expect(page.getByTestId('share-done')).toBeVisible({ timeout: 30_000 });
       await page.getByTestId('share-close').click();
-      const first = remoteMain();
+      const first = remote.main();
       expect(first).toBe(head(SEEDED_PROJECT));
 
       // A new app session: the card's state is derived from the repository's own origin (D84
       // point 1) — here the spec's bare `file://` remote, read back as its path (`.git` dropped);
       // on Door43 the url reads back as `<owner>/<name>`, as test 1 showed after the share.
       await page.reload();
-      await expect(page.getByTestId(`share-state-${SEEDED_ID}`)).toHaveText(`On Door43 · ${bare.replace(/^\//, '').replace(/\.git$/, '')}`);
+      await expect(page.getByTestId(`share-state-${SEEDED_ID}`)).toHaveText(`On Door43 · ${remote.bare.replace(/^\//, '').replace(/\.git$/, '')}`);
       await expect(page.getByTestId(`share-${SEEDED_ID}`)).toHaveText('Upload changes');
       expect((await remotesOf(SEEDED_ID)).map((r) => r.name)).toEqual(['origin']);
       // The installation store (the rig's client settings) holds nothing about the remote.
-      expect(JSON.stringify(readClientSettingsDoc() ?? {})).not.toContain(bare);
+      expect(JSON.stringify(readClientSettingsDoc() ?? {})).not.toContain(remote.bare);
       expect(JSON.stringify(readClientSettingsDoc() ?? {})).not.toContain('origin');
 
       // A new local commit, then Upload changes: the token is asked (a new session, D85), then no dialog.
@@ -488,7 +426,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       await pressShare(page, SEEDED_ID);
       await expect(page.getByTestId('share-dialog')).toHaveCount(0);
       await expect(page.getByTestId(`share-uploaded-${SEEDED_ID}`)).toBeVisible({ timeout: 30_000 });
-      expect(remoteMain()).toBe(second);
+      expect(remote.main()).toBe(second);
 
       // The same session again (#203 test 7b): nothing is asked, no dialog, pushed.
       git(rigRepo(SEEDED_PROJECT), '-c', 'user.name=rig', '-c', 'user.email=rig@local', 'commit', '-q', '--allow-empty', '-m', 'local edit 2');
@@ -496,11 +434,11 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       await page.getByTestId(`share-${SEEDED_ID}`).click();
       await expect(page.getByTestId('share-signin')).toHaveCount(0);
       await expect(page.getByTestId('share-dialog')).toHaveCount(0);
-      await expect.poll(() => remoteMain(), { timeout: 30_000 }).toBe(third);
+      await expect.poll(() => remote.main(), { timeout: 30_000 }).toBe(third);
     });
 
     test('2b. with "Stay signed in", Upload changes in a new app session asks nothing (#366 test 1)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
-      const fake = await fakeShare(context);
+      const fake = await fakeShare(context, remote);
       const keychain = await fakeKeychain(context);
       await page.goto('/');
       await page.getByTestId(`share-${SEEDED_ID}`).click();
@@ -510,7 +448,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       await page.getByTestId('share-submit').click();
       await expect(page.getByTestId('share-done')).toBeVisible({ timeout: 30_000 });
       await page.getByTestId('share-close').click();
-      const first = remoteMain();
+      const first = remote.main();
       expect(first).toBe(head(SEEDED_PROJECT));
       expect(keychain.held).toBe(fake.tokens.get('translationCore'));
 
@@ -524,13 +462,13 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       await expect(page.getByTestId('share-signin')).toHaveCount(0);
       await expect(page.getByTestId('share-dialog')).toHaveCount(0);
       await expect(page.getByTestId(`share-uploaded-${SEEDED_ID}`)).toBeVisible({ timeout: 30_000 });
-      expect(remoteMain()).toBe(second);
+      expect(remote.main()).toBe(second);
       // The token is on no disk of the rig.
       expect(filesHolding(RIG_STATE, keychain.held!)).toEqual([]);
     });
 
     test('3. organizations: one cannot be chosen and says why; the one with the most repositories in the language is Recommended; a share goes there', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
-      const fake = await fakeShare(context, { organizations: ORGS });
+      const fake = await fakeShare(context, remote, { organizations: ORGS });
       await pressShare(page, SEEDED_ID);
       await expect(page.getByTestId('share-orgs-loading')).toHaveCount(0);
       const locked = page.getByTestId('share-org-orgLocked');
@@ -554,13 +492,13 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       await page.getByTestId('share-submit').click();
       await expect(page.getByTestId('share-url')).toHaveText(`${QA_SERVER}/orgA/${SEEDED_PROJECT}`, { timeout: 30_000 });
       expect([...fake.repositories.keys()]).toEqual([`orgA/${SEEDED_PROJECT}`]);
-      expect(remoteMain()).toBe(head(SEEDED_PROJECT));
+      expect(remote.main()).toBe(head(SEEDED_PROJECT));
       await page.getByTestId('share-close').click();
       await expect(page.getByTestId(`share-state-${SEEDED_ID}`)).toHaveText(`On Door43 · orgA/${SEEDED_PROJECT}`);
     });
 
     test('6. refusals: the name exists on the account and on an organization; a non-fast-forward push; each with its code, nothing pushed, and in the ops log', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
-      const fake = await fakeShare(context, {
+      const fake = await fakeShare(context, remote, {
         organizations: [ORGS[0]],
         existingRepositories: [`${USER.username}/${SEEDED_PROJECT}`, `orgA/${SEEDED_PROJECT}`],
       });
@@ -573,7 +511,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       await expect(error).toHaveAttribute('data-code', 'share.name-exists', { timeout: 30_000 });
       await expect(error).toContainText('That name exists on this account or organization; pick another.');
       await expect(page.getByTestId('share-check')).toBeVisible();
-      expect(remoteMain()).toBeNull();
+      expect(remote.main()).toBeNull();
       expect((await remotesOf(SEEDED_ID)).find((r) => r.name === 'origin')).toBeUndefined();
       // The same name on the organization.
       await page.getByTestId('share-back').click();
@@ -581,7 +519,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       await page.getByTestId('share-next').click();
       await page.getByTestId('share-submit').click();
       await expect(error).toHaveAttribute('data-code', 'share.name-exists', { timeout: 30_000 });
-      expect(remoteMain()).toBeNull();
+      expect(remote.main()).toBeNull();
       expect(fake.repositories.size).toBe(2);
       // Another name shares.
       await page.getByLabel('Repository name').fill(`${SEEDED_PROJECT}_2`);
@@ -589,29 +527,29 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       await expect(page.getByTestId('share-url')).toHaveText(`${QA_SERVER}/orgA/${SEEDED_PROJECT}_2`, { timeout: 30_000 });
       await page.getByTestId('share-close').click();
       const shared = head(SEEDED_PROJECT);
-      expect(remoteMain()).toBe(shared);
+      expect(remote.main()).toBe(shared);
 
       // Another device pushes; this device commits; Upload changes is refused, the remote keeps theirs.
-      const other = path.join(tmp, 'other');
-      execFileSync('git', ['clone', '-q', `file://${bare}`, other]);
+      const other = path.join(remote.tmp, 'other');
+      execFileSync('git', ['clone', '-q', `file://${remote.bare}`, other]);
       fs.writeFileSync(path.join(other, 'other-device.txt'), 'x\n');
       git(other, 'add', 'other-device.txt');
       git(other, '-c', 'user.email=o@x', '-c', 'user.name=other', 'commit', '-qm', 'other device');
       git(other, 'push', '-q', 'origin', 'main');
-      const theirs = remoteMain();
+      const theirs = remote.main();
       expect(theirs).not.toBe(shared);
       git(rigRepo(SEEDED_PROJECT), '-c', 'user.name=rig', '-c', 'user.email=rig@local', 'commit', '-q', '--allow-empty', '-m', 'local edit');
       await page.getByTestId(`share-${SEEDED_ID}`).click();
       const cardError = page.getByTestId(`share-card-error-${SEEDED_ID}`);
       await expect(cardError).toHaveAttribute('data-code', 'share.non-fast-forward', { timeout: 30_000 });
       await expect(cardError).toContainText('team sync is coming and your work is safe');
-      expect(remoteMain()).toBe(theirs);
+      expect(remote.main()).toBe(theirs);
       // Each refusal is in the ops log (#374, test 13).
       await expect.poll(() => opsCodes().slice(before)).toEqual(['share.name-exists', 'share.name-exists', 'share.non-fast-forward']);
     });
 
     test('11. an OBS project shares the same way: the check step lists the stories; the pushed commit\'s author is the computer\'s account name (J24; #203 test 4)', { tag: ['@inc85', '@J11', '@J24'] }, async ({ page, context }) => {
-      const fake = await fakeShare(context);
+      const fake = await fakeShare(context, remote);
       const abbr = `obs_share_${Date.now()}`;
       const id = `_local_/_local_/${abbr}`;
       const created = await fetch(`${RIG_API}/git/new-obs-resource`, {
@@ -631,9 +569,9 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       await page.getByTestId('share-submit').click();
       await expect(page.getByTestId('share-url')).toHaveText(`${QA_SERVER}/${USER.username}/${abbr}`, { timeout: 30_000 });
       expect([...fake.repositories.keys()]).toEqual([`${USER.username}/${abbr}`]);
-      expect(remoteMain()).toBe(head(abbr));
+      expect(remote.main()).toBe(head(abbr));
       // The platform set the author at creation to the computer's account name (PLATFORM-NOTES #47).
-      expect(git(bare, 'log', '-1', '--format=%an', 'main')).toBe(os.userInfo().username);
+      expect(git(remote.bare, 'log', '-1', '--format=%an', 'main')).toBe(os.userInfo().username);
       await page.getByTestId('share-close').click();
       await expect(page.getByTestId(`share-state-${id}`)).toHaveText(`On Door43 · ${USER.username}/${abbr}`);
       await fetch(`${RIG_API}/git/delete/${id}`, { method: 'POST' });
