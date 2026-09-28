@@ -60,7 +60,7 @@ describe('#156 the refusal-code table is closed and bound', () => {
     // (#361) throws import.name-exists and import.write-failed.
     const reserved = /^(import\.damaged\.|share\.|export\.unsupported-kind$)/;
     const live = Object.keys(REFUSAL_CODES).filter((code) => !reserved.test(code));
-    expect(live.length).toBe(27);
+    expect(live.length).toBe(29);
     for (const code of live) expect(t(`refusal.${code}`, undefined, ''), code).not.toBe('');
   });
 
