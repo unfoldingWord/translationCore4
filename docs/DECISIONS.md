@@ -1818,8 +1818,8 @@ control].
 
 ## D83 (2026-09-23, project-owner ruling) **An import never chooses a license. When the imported files carry no license, the review page says so and the import applies none. A license that the files carry is kept.** [issue #392; after pull request #390]
 
-Context. The import review page said "No license was found. CC BY-SA 4.0 will be applied."
-The import did not apply it: the stored `metadata.json` `copyright` was the value that the
+Context. The import review page said that CC BY-SA 4.0 is applied when the files carry no
+license. The import did not apply it: the stored `metadata.json` `copyright` was the value that the
 create route writes, `{"shortStatements": [{"statement": "Copyright ©"}]}` [VERIFIED — rig,
 pankosmia-web 0.18.5, 2026-09-23, #390]. The text came from the criteria of #195 and the
 fake parser, not from a decision. The owner ruled: "I don't know that we get to decide the
