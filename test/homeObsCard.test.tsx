@@ -19,6 +19,10 @@ const state = {
 vi.mock('../src/state.jsx', () => ({ useApp: () => ({ s: state, actions }) }));
 
 import { ObsProjectCard, collapsedStories } from '../src/views/Home.jsx';
+import { ServerApi } from '../src/data/serverApi';
+import { JournalingStore, forgetProjectQueues } from '../src/data/journal/journalingStore';
+import { forgetSharedClocks } from '../src/data/journal/journalStore';
+import { journalingRig, memKv, tickingNow } from './helpers/journalingRig';
 
 const tiles = () => within(screen.getByTestId('story-tiles')).getAllByRole('button').map((b) => b.getAttribute('data-testid'));
 
@@ -71,5 +75,39 @@ describe('#328 — the OBS project card', () => {
 
   it('collapsedStories ignores a recent entry whose story is not in the list, and keeps recency order', () => {
     expect(collapsedStories(stories, [{ story: 99, at: 9 }, { story: 4, at: 8 }, { story: 2, at: 7 }]).map((s: { number: number }) => s.number)).toEqual([4, 2]);
+  });
+});
+
+describe('#475 — Home progress: two loads that finish before one render', () => {
+  it('keeps both projects\' entries: the merge runs in the reducer, not on a stateRef copy', async () => {
+    // The real module (this file mocks it for the card tests above).
+    const { __performLoadProgressForTests: loadProgress, __reducerForTests: reducer } = await vi.importActual<typeof import('../src/state.jsx')>('../src/state.jsx');
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const rig = journalingRig();
+    const clock = tickingNow('2026-09-29T09:00:00.000Z');
+    const api = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: rig.fetchFn });
+    const store = new JournalingStore({ api, kv: memKv(), now: () => clock.advance(13) });
+    const a = await store.createObsProject({ content_name: 'Historias', content_abbr: 'historias', content_language_code: 'es' });
+    const b = await store.createObsProject({ content_name: 'Hadithi', content_abbr: 'hadithi', content_language_code: 'sw' });
+    const projects = [a, b].map(({ repoPath }) => ({ id: repoPath, flavor: 'textStories' }));
+    // No render between the two completions: stateRef keeps the first snapshot.
+    const snapshot = { progressByProject: {} as Record<string, { stories: unknown[] }> };
+    let state = snapshot;
+    const dispatch = (action: unknown) => { state = reducer(state, action); };
+    const ctx = (project: { id: string; flavor: string }) => ({
+      project,
+      stateRef: { current: snapshot },
+      dispatch,
+      progressGen: new Map(),
+      actions: { resolutionContext: async () => ({ installed: {} }) },
+      apiClient: api,
+    });
+    await Promise.all(projects.map((p) => loadProgress(ctx(p))));
+    expect(Object.keys(state.progressByProject).sort()).toEqual(projects.map((p) => p.id).sort());
+    for (const p of projects) expect(state.progressByProject[p.id].stories).toHaveLength(50);
+    // invalidateProgress drops only its own project's entry.
+    state = reducer(state, { type: 'setProgress', id: projects[0].id });
+    expect(Object.keys(state.progressByProject)).toEqual([projects[1].id]);
   });
 });

@@ -570,7 +570,7 @@ function patchUpgrade(state, a) {
 
 /** Check-session, save-mirror and slice merge actions, table-dispatched ahead
  * of the main switch. */
-const CHECK_SESSION_CASES = { patchCheckSession, checkDecisionSaved, pickerToolEntry, alignSaveState, checkSaveState, patchUpgrade };
+const CHECK_SESSION_CASES = { patchCheckSession, checkDecisionSaved, pickerToolEntry, alignSaveState, checkSaveState, patchUpgrade, setProgress };
 
 function setSourceEntry(state, a) {
   if (a.value === undefined || a.value === null) {
@@ -579,6 +579,19 @@ function setSourceEntry(state, a) {
     return { ...state, sources: next };
   }
   return { ...state, sources: { ...state.sources, [a.id]: a.value } };
+}
+
+// #475: Home's progress cache, merged per project against the reducer's own
+// state. Many cards load at once; two loads that finish before one render and
+// copy the stateRef snapshot drop the sibling's entry, and that card stays
+// empty for the session (same hazard class as setSource). No progress: drop it.
+function setProgress(state, a) {
+  if (a.progress === undefined) {
+    const next = { ...state.progressByProject };
+    delete next[a.id];
+    return { ...state, progressByProject: next };
+  }
+  return { ...state, progressByProject: { ...state.progressByProject, [a.id]: a.progress } };
 }
 
 function reducer(state, a) {
@@ -2147,6 +2160,78 @@ export const __performLoadUnderstandForTests = performLoadUnderstand;
 /** Test hook (#290): the story Understand load is unit-tested on the fake rig. */
 export const __performLoadStoryUnderstandForTests = performLoadStoryUnderstand;
 
+/** Home: lazy per-book draft progress (design shows a bar per tile). */
+async function performLoadProgress(ctx) {
+  const { project, stateRef, dispatch, progressGen, actions, apiClient: api } = ctx;
+  // Review of the D30 sweep: a cached map with UNKNOWN (null) entries
+  // must not block a re-read — one transient failure would pin the
+  // tiles to em-dash for the whole session. Only a fully-known map is
+  // final.
+  const cached = stateRef.current.progressByProject[project.id];
+  if (cached && !Object.values(cached).includes(null)) return;
+  // An invalidation during the read (an edit, a new book) must win over
+  // these soon-stale percentages.
+  const gen = progressGen.get(project.id) || 0;
+  // An OBS project (D74): one percentage over the fifty stories.
+  const loadObs = async () => {
+    const reader = new ProjectReader({ api });
+    try {
+      await reader.open(project.id);
+    } catch {
+      return;
+    }
+    // #328: an undrafted story's tile carries the gateway title, read
+    // from the pinned OBS source when it is on this machine.
+    let sourceTitle = async () => '';
+    try {
+      const [pins, { installed }] = await Promise.all([reader.readResources(), actions.resolutionContext()]);
+      const pin = pins ? resolveObsSetSlot(pins, 'obs').pin : null;
+      const local = pin ? installedPathFor(installed, pin) : null;
+      if (local) sourceTitle = async (n) => parseStory(await api.readIngredient(local, storyIpath(n))).title;
+    } catch {
+      // No gateway on this machine: the tiles show the numbers alone.
+    }
+    const progress = await obsStoryProgress(reader, sourceTitle);
+    if ((progressGen.get(project.id) || 0) !== gen) return;
+    dispatch({ type: 'setProgress', id: project.id, progress });
+  };
+  if (project.flavor === 'textStories') return loadObs();
+  // No upper bound on book count: a project with more than 12 books
+  // shows only its in-progress books by default, and that filter needs
+  // every book's progress.
+  if ((project.bookCodes || []).length === 0) return;
+  // Read-only: the Home tiles must not run open-recovery or claim the
+  // shell's current-project slot (ProjectReader does neither).
+  const reader = new ProjectReader({ api });
+  try {
+    await reader.open(project.id);
+  } catch {
+    // Catch-to-absence sweep (D30), reviewed: cache NOTHING on a
+    // failed open — Home already renders missing entries as unknown
+    // (em-dash), and the next render retries.
+    return;
+  }
+  const pcts = {};
+  for (const code of project.bookCodes) {
+    try {
+      const { usfm: raw } = await reader.readBook(code);
+      const entries = indexBook(raw);
+      const drafted = entries.filter((e) => {
+        const b = raw.slice(e.start, e.end).trim();
+        return b !== '' && b !== '___';
+      }).length;
+      pcts[code] = entries.length ? Math.round((drafted / entries.length) * 100) : 0;
+    } catch {
+      pcts[code] = null;
+    }
+  }
+  if ((progressGen.get(project.id) || 0) !== gen) return;
+  dispatch({ type: 'setProgress', id: project.id, progress: pcts });
+}
+
+/** Test hook: #475 — two loads that finish before one render keep both entries. */
+export const __performLoadProgressForTests = performLoadProgress;
+
 function loadOrigPane({ store, origPin, code, seq, openSeqRef, stateRef, dispatch, testament }) {
   if (stateRef?.current?.sources?.orig) {
     dispatch({ type: 'setSource', id: 'orig', value: undefined });
@@ -2968,9 +3053,7 @@ export function AppProvider({ children }) {
   const progressGen = new Map();
   function invalidateProgress(repoPath) {
     progressGen.set(repoPath, (progressGen.get(repoPath) || 0) + 1);
-    const progressByProject = { ...stateRef.current.progressByProject };
-    delete progressByProject[repoPath];
-    dispatch({ type: 'set', patch: { progressByProject } });
+    dispatch({ type: 'setProgress', id: repoPath });
   }
   // #329: one observation of where the user is, folded into the per-unit place
   // record: the caller names what it knows (a mode switch names the mode, a
@@ -5398,83 +5481,7 @@ export function AppProvider({ children }) {
       },
 
       // ---- Home: lazy per-book draft progress (design shows a bar per tile) ----
-      loadProgress: async (project) => {
-        // Review of the D30 sweep: a cached map with UNKNOWN (null) entries
-        // must not block a re-read — one transient failure would pin the
-        // tiles to em-dash for the whole session. Only a fully-known map is
-        // final.
-        const cached = stateRef.current.progressByProject[project.id];
-        if (cached && !Object.values(cached).includes(null)) return;
-        // An invalidation during the read (an edit, a new book) must win over
-        // these soon-stale percentages.
-        const gen = progressGen.get(project.id) || 0;
-        // An OBS project (D74): one percentage over the fifty stories.
-        const loadObs = async () => {
-          const reader = new ProjectReader({ api });
-          try {
-            await reader.open(project.id);
-          } catch {
-            return;
-          }
-          // #328: an undrafted story's tile carries the gateway title, read
-          // from the pinned OBS source when it is on this machine.
-          let sourceTitle = async () => '';
-          try {
-            const [pins, { installed }] = await Promise.all([reader.readResources(), a.resolutionContext()]);
-            const pin = pins ? resolveObsSetSlot(pins, 'obs').pin : null;
-            const local = pin ? installedPathFor(installed, pin) : null;
-            if (local) sourceTitle = async (n) => parseStory(await api.readIngredient(local, storyIpath(n))).title;
-          } catch {
-            // No gateway on this machine: the tiles show the numbers alone.
-          }
-          const progress = await obsStoryProgress(reader, sourceTitle);
-          if ((progressGen.get(project.id) || 0) !== gen) return;
-          dispatch({
-            type: 'set',
-            patch: { progressByProject: { ...stateRef.current.progressByProject, [project.id]: progress } },
-          });
-        };
-        if (project.flavor === 'textStories') return loadObs();
-        // No upper bound on book count: a project with more than 12 books
-        // shows only its in-progress books by default, and that filter needs
-        // every book's progress.
-        if ((project.bookCodes || []).length === 0) return;
-        // Read-only: the Home tiles must not run open-recovery or claim the
-        // shell's current-project slot (ProjectReader does neither).
-        const reader = new ProjectReader({ api });
-        try {
-          await reader.open(project.id);
-        } catch {
-          // Catch-to-absence sweep (D30), reviewed: cache NOTHING on a
-          // failed open — Home already renders missing entries as unknown
-          // (em-dash), and the next render retries.
-          return;
-        }
-        const pcts = {};
-        for (const code of project.bookCodes) {
-          try {
-            const { usfm: raw } = await reader.readBook(code);
-            const entries = indexBook(raw);
-            const drafted = entries.filter((e) => {
-              const b = raw.slice(e.start, e.end).trim();
-              return b !== '' && b !== '___';
-            }).length;
-            pcts[code] = entries.length ? Math.round((drafted / entries.length) * 100) : 0;
-          } catch {
-            pcts[code] = null;
-          }
-        }
-        if ((progressGen.get(project.id) || 0) !== gen) return;
-        dispatch({
-          type: 'set',
-          patch: {
-            progressByProject: {
-              ...stateRef.current.progressByProject,
-              [project.id]: pcts,
-            },
-          },
-        });
-      },
+      loadProgress: (project) => performLoadProgress({ project, stateRef, dispatch, progressGen, actions: a, apiClient: api }),
 
       /** #329: the frame in focus on the story screens; the place record follows it. */
       setStoryFrame: (frame) => {
