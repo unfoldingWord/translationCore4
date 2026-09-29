@@ -7,7 +7,7 @@
 // A file leaves only as a browser download: the renderer has no file-system
 // access, and Electron routes a download to the operating-system save dialog
 // [VERIFIED — scripts/desktop-main.cjs, 2026-09-22].
-import type { BurritoStore, ProjectSummary } from '../burritoStore';
+import type { BurritoStore, ProjectSummary, Story } from '../burritoStore';
 import { checkpointMessage } from '../checkpoint';
 import { Refusal, failedReport, okReport, type Report } from '../journal/runtime';
 import type { OpsRecorder } from '../journal/opsLog';
@@ -21,13 +21,14 @@ export type ExportProducer = {
 };
 /** `storyPictures` (OBS projects, #360) gives one story's frame pictures as
  * Community Checking resolves them: picture address by frame number ("1" is
- * the first frame); a frame with no picture has no key. */
+ * the first frame); a frame with no picture has no key. It gets the story as
+ * the export already read it (#460). */
 export type ExportInput = {
   store: BurritoStore;
   project: ProjectSummary;
   book?: string;
   pageSetup?: PageSetup;
-  storyPictures?: (story: number) => Promise<Record<string, string>>;
+  storyPictures?: (number: number, story: Story) => Promise<Record<string, string>>;
 };
 export type ExportFile = { bytes: Uint8Array; filename: string; mime: string };
 

@@ -252,6 +252,16 @@ describe('the OBS PDF', () => {
     expect(lines(html)).toEqual(['La Creación', 'Así fue &lt;como&gt; Dios hizo todo.', '[ frame 2 not yet drafted ]', 'Una historia de Génesis 1-2', 'Story 2', 'Adán y Eva.']);
   });
 
+  it('reads each story once and hands the picture reader that story (#460)', async () => {
+    installBridge();
+    stubFetch();
+    vi.mocked(obsStore.readStory).mockClear();
+    storyPictures.mockClear();
+    await PDF.produce({ store: obsStore, project: obs, pageSetup: setup(), storyPictures });
+    expect(vi.mocked(obsStore.readStory).mock.calls.map(([n]) => n)).toEqual([1, 2, 3]); // once each, none again for the pictures
+    expect(storyPictures.mock.calls as unknown[][]).toEqual([[1, STORIES[1]], [2, STORIES[2]]]);
+  });
+
   it('with pictures off, prints no picture and reads none', async () => {
     const printPdf = installBridge();
     const fetch = stubFetch();

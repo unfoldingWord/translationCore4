@@ -13,7 +13,7 @@ import { STORY_FILE, refusalCodeOf } from './data/journal/runtime';
 import { JournalingStore, ProjectReader } from './data/journal/journalingStore';
 import { SaveScheduler } from './data/saveScheduler';
 import { StoryScheduler, normalizeStoryUnit } from './data/storyScheduler';
-import { createObsPackCache, readObsStoryPresentation } from './data/obsStory';
+import { createObsPackCache, projectImageIngredients, readObsStoryPresentation } from './data/obsStory';
 import { readPrintedStories } from './data/storyModel';
 import { recordRecentStory } from './data/obsRecency';
 import { modeOf, placeKey, recordPlace } from './data/place';
@@ -3106,14 +3106,24 @@ export function AppProvider({ children }) {
   const actions = useMemo(() => {
     /** One OBS story's frame pictures as Community Checking resolves them (#360,
      * D74 point 9): the source of each frame that has one, by frame number. The
-     * OBS PDF and the preview (#454) read pictures through it. */
-    const obsStoryPictures = (st, store) => async (storyNumber) => {
-      const { installed } = await a.resolutionContext();
-      const { images } = await readObsStoryPresentation({
-        api, store, projectRepo: st.project.repoPath, storyNumber, resources: st.projectPins, installed,
-        packCache: obsPackCache(), pinsKnown: st.projectPinsLoaded === true,
-      });
-      return Object.fromEntries(Object.entries(images).filter(([, image]) => image.uri).map(([frame, image]) => [frame, image.uri]));
+     * OBS PDF and the preview (#454) read pictures through it, given the story
+     * they already read. The resolution context and the project metadata are
+     * the same for every story of one preview or export, so the first story
+     * reads them and the others reuse them (#460). */
+    const obsStoryPictures = (st, store) => {
+      let shared = null;
+      const sharedReads = () => (shared ??= (async () => ({
+        installed: (await a.resolutionContext()).installed,
+        projectIngredients: await projectImageIngredients(api, st.project.repoPath),
+      }))());
+      return async (storyNumber, story) => {
+        const { installed, projectIngredients } = await sharedReads();
+        const { images } = await readObsStoryPresentation({
+          api, store, projectRepo: st.project.repoPath, storyNumber, resources: st.projectPins, installed,
+          packCache: obsPackCache(), pinsKnown: st.projectPinsLoaded === true, story, projectIngredients,
+        });
+        return Object.fromEntries(Object.entries(images).filter(([, image]) => image.uri).map(([frame, image]) => [frame, image.uri]));
+      };
     };
     const a = {
       go: async (view) => {
