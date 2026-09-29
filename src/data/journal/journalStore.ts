@@ -11,7 +11,9 @@
 // writeIngredient).
 import { makeClock } from '../../../journal/hlc.mjs';
 import { actorSlugError, ipathError, isTs } from '../../../journal/grammar.mjs';
+import { strFromU8 } from 'fflate';
 import { ServerApi, ServerApiError } from '../serverApi';
+import { unzipServerZip } from '../serverZip';
 import { withPathLock } from '../httpStore';
 import { Refusal } from './runtime';
 import { actorIdFor, type KvStore } from './identity';
@@ -203,6 +205,38 @@ export class JournalStore {
     }
   }
 
+  /** Every journal file, fetched as ONE zip of `checking/journal/` through the
+   * platform's own directory route (PLATFORM-NOTES note 41) instead of one GET
+   * per segment — issue #423: on Windows the per-request cost of the
+   * sequential reads made a 4,000-segment open exceed every budget (measured
+   * 13.6 ms per browser request against 0.89 ms from Node for the same read).
+   * Entry names are normalized (`\` → `/`, #425) and prefixed so
+   * groupSegmentPaths applies the SAME actor/segment filter as the paths
+   * listing. Returns full-ipath → text, or null when the route refuses (no
+   * journal directory yet — every journal-less first open) or the body does
+   * not unzip; the caller then falls back to the per-file reads, which are
+   * authoritative either way. */
+  private async readJournalZip(): Promise<Map<string, string> | null> {
+    let entries: Record<string, Uint8Array>;
+    try {
+      entries = unzipServerZip(await this.api.readIngredientZipped(this.repoPath, 'checking/journal'));
+    } catch {
+      return null;
+    }
+    const byIpath = new Map<string, string>();
+    for (const [name, bytes] of Object.entries(entries)) {
+      if (name.endsWith('/')) continue; // a directory entry is not a file
+      // The shared zipper has no filters, but /burrito/paths "skips hidden
+      // files/dirs and .bak files" (serverApi listPaths). Drop the SAME
+      // entries, or a stray <actor>/segments/.DS_Store that the per-file read
+      // never saw would land in `misnamed` and refuse an open that used to
+      // succeed (PR #469 review, Frank).
+      if (name.split('/').some((part) => part.startsWith('.')) || name.endsWith('.bak')) continue;
+      byIpath.set(`${JOURNAL_PREFIX}${name}`, strFromU8(bytes));
+    }
+    return byIpath;
+  }
+
   /** Write one journal file. Segments and actor.json are write-once, so the
    * .bak is pure waste (keepBak: false). update_ingredients is NEVER passed: a
    * rescan wipes every x-role repo-wide (PLATFORM-NOTES #5, D28/W-2) — paths are
@@ -322,9 +356,12 @@ export class JournalStore {
     clock: ReturnType<typeof makeClock>,
     actorId: string,
   ): Promise<void> {
-    const byActor = groupSegmentPaths(await this.api.listPaths(this.repoPath));
+    const zip = await this.readJournalZip(); // one request for every segment (#423)
+    const byActor = zip
+      ? groupSegmentPaths([...zip.keys()])
+      : groupSegmentPaths(await this.api.listPaths(this.repoPath));
     for (const [actor, names] of byActor) {
-      const listing = await this.classifySegments(actor, names);
+      const listing = await this.classifySegments(actor, names, undefined, zip ?? undefined);
       for (const segment of listing.segments) clock.ratchet(segment.maxTs);
       // An OWN segment whose bytes are invalid still ratchets from its FILENAME
       // ts: this actor minted that ts, and a staged intent may yet republish it,
@@ -359,19 +396,29 @@ export class JournalStore {
     actorId: string,
     names: string[],
     onRead?: () => void,
+    bytesByIpath?: Map<string, string>, // the one-request journal zip (#423); absent → per-file reads
   ): Promise<SegmentListing> {
     const dir = `${JOURNAL_PREFIX}${actorId}/segments`;
     const segments: ValidSegment[] = [];
     const misnamed: string[] = [];
     const invalid: InvalidSegment[] = [];
+    let sinceYield = 0;
     for (const name of names) {
+      // From the zip there is no per-segment HTTP await, so a large journal
+      // would hold the main thread until the whole loop ends: the open
+      // indicator (issue #95) would mount frozen and paint no count. Yield a
+      // macrotask now and then so the page paints the progress it is sent.
+      if (bytesByIpath && ++sinceYield >= 50) {
+        sinceYield = 0;
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
       const ts = segmentTs(name);
       if (!isTs(ts) || segmentName(ts) !== name) {
         misnamed.push(name);
         onRead?.(); // listed, judged without a read — still one of `total`
         continue;
       }
-      const raw = await this.readOrNull(`${dir}/${name}`);
+      const raw = bytesByIpath ? (bytesByIpath.get(`${dir}/${name}`) ?? null) : await this.readOrNull(`${dir}/${name}`);
       onRead?.();
       if (raw === null) {
         invalid.push({ name, reason: 'vanished' }); // listed, then gone
@@ -422,8 +469,11 @@ export class JournalStore {
    * neither is ever dropped in silence (R-8.1.7 posture). */
   async readOwnSegments(): Promise<OwnSegmentListing> {
     const actorId = this.actorId;
-    const byActor = groupSegmentPaths(await this.api.listPaths(this.repoPath));
-    return this.classifySegments(actorId, byActor.get(actorId) ?? []);
+    const zip = await this.readJournalZip(); // one request for every segment (#423)
+    const byActor = zip
+      ? groupSegmentPaths([...zip.keys()])
+      : groupSegmentPaths(await this.api.listPaths(this.repoPath));
+    return this.classifySegments(actorId, byActor.get(actorId) ?? [], undefined, zip ?? undefined);
   }
 
   /** Read EVERY actor's segments and return the union of accepted events plus a
@@ -450,7 +500,10 @@ export class JournalStore {
     const own = this.actorId; // throws before any read when not open
     const clock = this.clock;
     if (clock === null) throw new Error('JournalStore: not open — call open() first');
-    const byActor = groupSegmentPaths(await this.api.listPaths(this.repoPath));
+    const zip = await this.readJournalZip(); // one request for every segment (#423)
+    const byActor = zip
+      ? groupSegmentPaths([...zip.keys()])
+      : groupSegmentPaths(await this.api.listPaths(this.repoPath));
     if (!byActor.has(own)) byActor.set(own, []);
     const actions: Array<{ actor: string; ts: string; events: JournalEvent[] }> = [];
     const misnamed: Array<{ actor: string; name: string }> = [];
@@ -465,7 +518,7 @@ export class JournalStore {
       options.onProgress?.({ done, total });
     };
     for (const actor of actors) {
-      const listing = await this.classifySegments(actor, byActor.get(actor) ?? [], onRead);
+      const listing = await this.classifySegments(actor, byActor.get(actor) ?? [], onRead, zip ?? undefined);
       for (const name of listing.misnamed) misnamed.push({ actor, name });
       for (const entry of listing.invalid) {
         invalid.push({ actor, ...entry });

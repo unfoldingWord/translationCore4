@@ -13,10 +13,11 @@
 // server's own rescan and stays. The stored project never changes (no HTTP
 // route writes `metadata.json`; stage rule S-1 keeps `resources.json`
 // authoritative).
-import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
+import { strFromU8, strToU8, zipSync } from 'fflate';
 import { t } from '../../i18n';
 import type { ResourcesFile } from '../burritoStore';
 import { exportFilename, type ExportProducer } from './kernel';
+import { unzipServerZip } from '../serverZip';
 import { relationshipsFromPins } from './relationships';
 import { md5Bytes } from '../../../journal/md5.mjs';
 
@@ -63,7 +64,7 @@ const exportedMetadata = (files: Record<string, Uint8Array>): Uint8Array => {
 /** The server's zip of the repository → the Scripture Burrito zip. */
 export function burritoFromRepoZip(repoZip: Uint8Array): Uint8Array {
   const files: Record<string, Uint8Array> = {};
-  for (const [name, bytes] of Object.entries(unzipSync(repoZip))) if (!excluded(name)) files[name] = bytes;
+  for (const [name, bytes] of Object.entries(unzipServerZip(repoZip))) if (!excluded(name)) files[name] = bytes;
   if (files['metadata.json']) files['metadata.json'] = exportedMetadata(files);
   return zipSync(files);
 }

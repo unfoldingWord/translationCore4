@@ -12,6 +12,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import type { BrowserContext, Page } from '@playwright/test';
 import { test, expect } from './helpers/test';
@@ -429,8 +430,10 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       // A new app session: the card's state is derived from the repository's own origin (D84
       // point 1) — here the spec's bare `file://` remote, read back as its path (`.git` dropped);
       // on Door43 the url reads back as `<owner>/<name>`, as test 1 showed after the share.
+      // The expected path comes from the URL the fake served (pathToFileURL), not from the
+      // filesystem path: on Windows the URL's pathname is `/C:/…` with forward slashes.
       await page.reload();
-      await expect(page.getByTestId(`share-state-${SEEDED_ID}`)).toHaveText(`On Door43 · ${remote.bare.replace(/^\//, '').replace(/\.git$/, '')}`);
+      await expect(page.getByTestId(`share-state-${SEEDED_ID}`)).toHaveText(`On Door43 · ${pathToFileURL(remote.bare).pathname.replace(/^\//, '').replace(/\.git$/, '')}`);
       await expect(page.getByTestId(`share-${SEEDED_ID}`)).toHaveText('Upload changes');
       expect((await remotesOf(SEEDED_ID)).map((r) => r.name)).toEqual(['origin']);
       // The installation store (the rig's client settings) holds nothing about the remote.
@@ -585,7 +588,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
 
       // Another device pushes; this device commits; Upload changes is refused, the remote keeps theirs.
       const other = path.join(remote.tmp, 'other');
-      execFileSync('git', ['clone', '-q', `file://${remote.bare}`, other]);
+      execFileSync('git', ['clone', '-q', pathToFileURL(remote.bare).href, other]); // `file://${path}` breaks on Windows (door43Share.ts)
       fs.writeFileSync(path.join(other, 'other-device.txt'), 'x\n');
       git(other, 'add', 'other-device.txt');
       git(other, '-c', 'user.email=o@x', '-c', 'user.name=other', 'commit', '-qm', 'other device');

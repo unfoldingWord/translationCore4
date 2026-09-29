@@ -5,17 +5,18 @@
 // under `ingredients/content/`, byte for byte, as `content/…`, and drops every
 // `*.bak` and every `.DS_Store` as the Scripture Burrito zip does. The stored
 // project never changes.
-import { unzipSync, zipSync } from 'fflate';
+import { zipSync } from 'fflate';
 import { t } from '../../i18n';
 import { excluded } from './burritoZip';
 import { exportFilename, type ExportProducer } from './kernel';
+import { unzipServerZip } from '../serverZip';
 
 const CONTENT = 'ingredients/content/';
 
 /** The server's zip of the repository → the zip of `content/`. */
 export function storyMarkdownFromRepoZip(repoZip: Uint8Array): Uint8Array {
   const files: Record<string, Uint8Array> = {};
-  for (const [name, bytes] of Object.entries(unzipSync(repoZip))) {
+  for (const [name, bytes] of Object.entries(unzipServerZip(repoZip))) {
     if (!name.startsWith(CONTENT) || name.endsWith('/') || excluded(name)) continue;
     files[name.slice('ingredients/'.length)] = bytes;
   }

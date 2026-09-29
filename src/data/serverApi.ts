@@ -378,6 +378,20 @@ export class ServerApi {
     );
   }
 
+  /** GET /burrito/ingredient/zipped/<repoPath>?ipath=<dir> — one ingredient
+   * DIRECTORY as one zip, without metadata.json [VERIFIED — pankosmia-web
+   * 0.18.5 (99fd9be): `burrito2/get_zipped_ingredient.rs` per PLATFORM-NOTES
+   * note 41; live rig GET 2026-09-28]. A missing directory answers 400
+   * ("could not locate repo or ingredient directory"), thrown as
+   * ServerApiError. On Windows the entry names use `\` (#425) — callers unzip
+   * through unzipServerZip, never fflate directly. */
+  async readIngredientZipped(repoPath: string, ipath: string): Promise<Uint8Array> {
+    const route = `/burrito/ingredient/zipped/${encodeRepoPath(repoPath)}?ipath=${encodeIpath(ipath)}`;
+    const response = await this.fetchFn(`${this.base}${route}`);
+    if (!response.ok) throw new ServerApiError(route, response.status, reasonFromBody(await response.text()));
+    return new Uint8Array(await response.arrayBuffer());
+  }
+
   /** URL for a binary ingredient (used by the OBS image renderer). The server
    * keeps the same identity-qualified local repository paths as the text
    * reader; callers must pass the path resolved from the installed pin. */

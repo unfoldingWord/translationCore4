@@ -1,3 +1,4 @@
+import http from 'node:http';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
@@ -19,7 +20,11 @@ export default defineConfig(({ command }) => ({
     port: 5199,
     strictPort: true,
     proxy: {
-      '/api': { target: 'http://127.0.0.1:19998', changeOrigin: true },
+      // keepAlive: without it the proxy opens a NEW upstream TCP connection per
+      // request, and on Windows that put ~14 ms on every /api round trip
+      // (issue #423, docs/evidence/open-time-windows-2026-09-28.md) — enough
+      // that a many-read screen starved a project open behind it.
+      '/api': { target: 'http://127.0.0.1:19998', changeOrigin: true, agent: new http.Agent({ keepAlive: true }) },
     },
   },
   test: {

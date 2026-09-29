@@ -13,7 +13,10 @@
 // 5. a file name leaves the `<BOOK>-aligned-<YYYY-MM-DD>.usfm` /
 //    `<BOOK>-<YYYY-MM-DD>.usfm` forms;
 // 6. a footnote or another marker inside a woven verse is lost, or a byte
-//    outside the verses (headers, chapter and paragraph markers) changes.
+//    outside the verses (headers, chapter and paragraph markers) changes;
+// 7. the Windows server names zip entries with `\` (#425, PLATFORM-NOTES note
+//    41), the `/` lookup misses, and the plain export throws instead of
+//    downloading.
 import { describe, expect, it } from 'vitest';
 import { zipSync } from 'fflate';
 import { weaveBook as weave } from '../../src/data/export/weave.mjs';
@@ -97,6 +100,12 @@ describe('#19 USFM producers', () => {
     const file = await USFM_PLAIN.produce(input);
     expect(Buffer.from(file.bytes).equals(Buffer.from(stored))).toBe(true);
     expect(file.filename).toMatch(/^TIT-\d{4}-\d{2}-\d{2}\.usfm$/);
+  });
+
+  it('plain: a Windows server zip (`\\` entry names, #425) downloads the same stored bytes', async () => {
+    const windows = { ...store, readZipped: async () => zipSync({ 'ingredients\\TIT.usfm': stored }) };
+    const file = await USFM_PLAIN.produce({ ...input, store: windows } as unknown as ExportInput);
+    expect(Buffer.from(file.bytes).equals(Buffer.from(stored))).toBe(true);
   });
 
   it('aligned: the woven book, as <BOOK>-aligned-<YYYY-MM-DD>.usfm', async () => {
