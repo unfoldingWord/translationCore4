@@ -468,6 +468,7 @@ let fixSeq = 0; // #9: identity of the open guided-fix screen (completions bind 
 let alignSessionSeq = 0;
 let alignIndexSeq = 0;
 let pickerProgressSeq = 0;
+let preflightSeq = 0;
 let storyOpenSeq = 0;
 
 /** #136 (D3d): one picker-progress derivation run's identity. The seq is
@@ -2799,6 +2800,49 @@ function waitForProjectPins(stateRef, ms = 20_000) {
   });
 }
 
+/** C2.2 — run the session preflight for the open book, one verdict per
+ * tool. Pure read: it never fetches or changes anything. */
+async function performRunPreflight({ stateRef, dispatch, actions }) {
+  const start = stateRef.current;
+  if (!start.book && start.project?.flavor !== 'textStories') return;
+  const seq = ++preflightSeq;
+  const { installed, coverage, resolutionError } = await actions.resolutionContext();
+  // #481: only the newest run lands, and it reads the pins and the book as
+  // they are NOW. A gateway change starts a run before its pins render, and
+  // the Check picker starts another after; the older one must not win.
+  if (seq !== preflightSeq) return null;
+  const st = stateRef.current;
+  // #434: a verdict for a project that is no longer open must not land.
+  const repoOf = (x) => x.project?.repoPath || x.project?.id;
+  if (repoOf(st) !== repoOf(start)) return null;
+  if (!st.book && st.project?.flavor !== 'textStories') return null;
+  if (resolutionError) {
+    // Catch-to-absence sweep (D30): an identity-read outage must not
+    // present every tool as 'unavailable'/'unpinned' — state it,
+    // retryable (the preflight re-runs on the next visit or retry).
+    dispatch({ type: 'set', patch: { preflight: null, preflightError: resolutionError } });
+    return null;
+  }
+  const online = st.netEnabled;
+  const out = {};
+  for (const tool of Object.keys(TOOL_SLOT)) {
+    out[tool] = st.project?.flavor === 'textStories'
+      ? preflightObsTool(st.projectPins, tool, {
+          isLocal: (pin) => isPinLocal(installed, pin), online,
+        })
+      : preflightToolBook(st.projectPins, tool, st.book, {
+          coverage,
+          isLocal: (pin) => isPinLocal(installed, pin),
+          online,
+        });
+  }
+  dispatch({ type: 'set', patch: { preflight: out, preflightError: null } });
+  return out;
+}
+
+/** Test hook: #481 — two overlapping runs; only the newest may land. */
+export const __performRunPreflightForTests = performRunPreflight;
+
 /** #268: after pins land, re-run preflight until the tool is ready (or timeout). */
 async function waitForToolPreflightReady(runPreflight, stateRef, tool, ms = 20_000) {
   const deadline = Date.now() + ms;
@@ -4086,38 +4130,8 @@ export function AppProvider({ children }) {
         return next;
       },
 
-      /** C2.2 — run the session preflight for the open book, one verdict per
-       * tool. Pure read: it never fetches or changes anything. */
-      runPreflight: async () => {
-        const st = stateRef.current;
-        if (!st.book && st.project?.flavor !== 'textStories') return;
-        const { installed, coverage, resolutionError } = await a.resolutionContext();
-        // #434: a verdict for a project that is no longer open must not land.
-        const repoOf = (x) => x.project?.repoPath || x.project?.id;
-        if (repoOf(stateRef.current) !== repoOf(st)) return null;
-        if (resolutionError) {
-          // Catch-to-absence sweep (D30): an identity-read outage must not
-          // present every tool as 'unavailable'/'unpinned' — state it,
-          // retryable (the preflight re-runs on the next visit or retry).
-          dispatch({ type: 'set', patch: { preflight: null, preflightError: resolutionError } });
-          return null;
-        }
-        const online = st.netEnabled;
-        const out = {};
-        for (const tool of Object.keys(TOOL_SLOT)) {
-          out[tool] = st.project?.flavor === 'textStories'
-            ? preflightObsTool(st.projectPins, tool, {
-                isLocal: (pin) => isPinLocal(installed, pin), online,
-              })
-            : preflightToolBook(st.projectPins, tool, st.book, {
-                coverage,
-                isLocal: (pin) => isPinLocal(installed, pin),
-                online,
-              });
-        }
-        dispatch({ type: 'set', patch: { preflight: out, preflightError: null } });
-        return out;
-      },
+      /** C2.2 — the session preflight (performRunPreflight). */
+      runPreflight: async () => performRunPreflight({ stateRef, dispatch, actions: a }),
 
       // ---- Align (C2.11, J5) --------------------------------------------
       /** Open the alignment surface for one verse. Reads the ORIGINAL-language
