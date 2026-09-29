@@ -31,14 +31,14 @@ Owner of increment numbers: the GitHub milestones, mirrored in `docs/ROADMAP.md`
 | J4 | translator | Check | Check a book with tN and tW | shipped alpha.2; revised end state (D72) shipped alpha.6 | `e2e/j04-check-book.spec.ts` |
 | J5 | translator | Check | Align a verse | shipped alpha.2; revised end state (D72) shipped alpha.6 | `e2e/j05-align-verse.spec.ts` |
 | J6 | translator | Translate | Edit a checked verse and see the checks flag | shipped alpha.2 | `e2e/j06-edit-invalidation.spec.ts` |
-| J7 | facilitator | Deliver | Export the book | increment 8 (D79): kernel #375; #19 USFM, #359 Scripture Burrito zip, #20 PDF; RTL run #29 Post-4.0 | `e2e/j07-publish.spec.ts` (`@inc8 @J7`; fixme until #375) |
+| J7 | facilitator | Deliver | Export the book | built (2026-09-26; kernel #375; #19 USFM, #359 Scripture Burrito zip, #20 PDF; D79); RTL run #29 Post-4.0 | `e2e/j07-publish.spec.ts` (`@inc8 @J7`) |
 | J8 | translator | Translate | Resume work across sessions and books | built (2026-09-05) | `e2e/j08-resume.spec.ts` |
-| J9a | facilitator | Exchange | Import a tC3 project as a new project | increment 8 (D79): shell #361, parser #21 | `e2e/j09-import.spec.ts` (`@inc8 @J9`; fixme until #361) |
+| J9a | facilitator | Exchange | Import a tC3 project as a new project | built (2026-09-28; shell #361, parser #21, refusals #41; D79) | `e2e/j09-import.spec.ts` (`@inc8 @J9`) |
 | J9b | facilitator | Exchange | Import an x-tcore project | retired: closed without data (D79 point 8; #14) | none |
-| J9c | facilitator | Exchange | Import raw USFM as a new project | increment 8 (D79): shell #361, parser #195 | `e2e/j09-import.spec.ts` (`@inc8 @J9`; to write) |
-| J9d | facilitator | Exchange | Import a Scripture Burrito as a new project | increment 8 (D79): shell #361, parser #196 | `e2e/j09-import.spec.ts` (`@inc8 @J9`; to write) |
+| J9c | facilitator | Exchange | Import raw USFM as a new project | built (2026-09-28; shell #361, parser #195, refusals #41; D79) | `e2e/j09-import.spec.ts` (`@inc8 @J9`) |
+| J9d | facilitator | Exchange | Import a Scripture Burrito as a new project | built (2026-09-28; shell #361, parser #196, refusals #41; D79) | `e2e/j09-import.spec.ts` (`@inc8 @J9`) |
 | J10 | — | — | retired: RTL is a fixture axis on J2, J4, J5, J7 | retired | both runs listed on each of those rows; `e2e/j10-rtl.spec.ts` stays until they exist |
-| J11 | facilitator | Exchange | Share the project to Door43 (first share pushes `main`) | increment 8.5 (D79, D84): #362, #203, #366, #120, #185 | `e2e/j11-share.spec.ts` (`@inc85 @J11`; the live `qa.door43.org` leg a labelled skip without the QA credentials) |
+| J11 | facilitator | Exchange | Share the project to Door43 (first share pushes `main`) | built (2026-09-28; #362, #203, #366, #120, #185; D79, D84) | `e2e/j11-share.spec.ts` (`@inc85 @J11`; the live `qa.door43.org` leg a labelled skip without the QA credentials) |
 | J12 | facilitator | Start | Upgrade the pinned resources | shipped alpha.6 (#256, #257; D72) | `e2e/j12-upgrade-resources.spec.ts` |
 | J13 | facilitator | Start | Change the gateway-language resource set | shipped alpha.2 | `e2e/j13-gateway-change.spec.ts` |
 | J14 | — | — | retired: isolation is a MUST NOT row on J1 and J2 | retired | `e2e/j14-join-isolation.spec.ts` stays |
@@ -50,8 +50,8 @@ Owner of increment numbers: the GitHub milestones, mirrored in `docs/ROADMAP.md`
 | J20 | facilitator | Start | Create an OBS project | shipped alpha.7 (#287; D74) | `e2e/j20-obs-create.spec.ts` |
 | J21 | translator | Translate | Translate a story frame by frame | shipped alpha.7 (#289, #292; D74) | `e2e/j21-obs-draft.spec.ts` |
 | J22 | translator | Check | Check an OBS story | shipped alpha.7 (#291, #292; D74) | `e2e/j22-obs-check.spec.ts` |
-| J23 | facilitator | Deliver | Export an OBS project as Markdown and PDF | increment 8 (with J7, one PDF path; D74, D79): #360, #359, layouts #11 | `e2e/j07-publish.spec.ts` (`@inc8 @J23`; OBS block to add) |
-| J24 | facilitator | Exchange | Share an OBS project to Door43 | increment 8.5, rides J11 (D79 point 12) | `e2e/j11-share.spec.ts` (the OBS case, `@J24`) |
+| J23 | facilitator | Deliver | Export an OBS project as Markdown and PDF | built (2026-09-27; with J7, one PDF path; #360, #359, layouts #11; D74, D79) | `e2e/j07-publish.spec.ts` (`@inc8 @J23`) |
+| J24 | facilitator | Exchange | Share an OBS project to Door43 | built (2026-09-28; rides J11; D79 point 12) | `e2e/j11-share.spec.ts` (the OBS case, `@J24`) |
 | J25 | translator | Understand | Read a story with helps and record a user comment | shipped alpha.7 (#290, #292; D74) | `e2e/j25-obs-understand.spec.ts` |
 
 ## Entries
