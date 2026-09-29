@@ -560,6 +560,8 @@ test.describe('J13 — changing the project’s checking language', () => {
       await confirmChange(page);
       await page.getByRole('button', { name: 'Cancel' }).click();
       await expect(page.getByTestId('check-session')).toHaveCount(0);
+      // The picker card counts the Spanish list once it is current; a click before that opens the English one.
+      await expect(page.getByTestId('preflight-translationNotes')).toContainText(`of ${esItems.length}`);
       await page.getByTestId('open-translationNotes').click();
       await expect(page.getByTestId('check-session')).toContainText('es-419_tn');
 
