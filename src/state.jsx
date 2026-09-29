@@ -56,7 +56,8 @@ import { runExport } from './data/export/kernel';
 import { runImport } from './data/import/shell';
 import { OpsLog, serialSettingsWriter } from './data/journal/opsLog';
 import { Door43Api } from './data/share/door43Api';
-import { currentSession, signIn as door43SignIn, signOut as door43SignOut } from './data/share/session';
+import { currentSession, resumeKeptSession, signIn as door43SignIn, signOut as door43SignOut } from './data/share/session';
+import { desktopKeychain } from './data/share/keychain';
 import { share as door43Share, repositoryOf } from './data/share/shareOperation';
 import { organizationChoices } from './data/share/recommend';
 import { applyVersions, carryOverNeeds, resolveVersions, unresolvedSlots } from './data/import/tc3';
@@ -356,6 +357,10 @@ const initial = () => ({
   // error: { code, message } | null }. The token never enters this state (session.ts).
   si: null,
   door43User: null, // the signed-in Door43 login shown in the Home bar, or null
+  // #366: true when "Stay signed in" was asked and the token could not be kept
+  // (a browser has no keychain bridge; a computer may have no keychain), so
+  // the Home bar says in one line that the sign-in lasts for this app session.
+  door43NotKept: false,
   // #362 (D84): the first-share dialog — { project, step: 'target'|'check'|'progress'|'done',
   // choices: OrganizationChoice[] | null (loading), choicesError, target: ShareTarget, name,
   // busy, steps: ('create'|'push')[] (the progress lines shown so far), error: { code, message } | null, report, copied }
@@ -2841,6 +2846,15 @@ export function AppProvider({ children }) {
     api.getNetEnabled()
       .then((netEnabled) => dispatch({ type: 'set', patch: { netEnabled } }))
       .catch(() => dispatch({ type: 'set', patch: { netEnabled: false } }));
+    // #366: a token kept in the operating-system keychain resumes the Door43
+    // session, so the bar shows the user and a share asks nothing. No bridge
+    // (a browser), no kept token, or no answer from Door43: not signed in.
+    const keychain = desktopKeychain();
+    if (keychain) {
+      resumeKeptSession({ door43, keychain, getNetEnabled: () => api.getNetEnabled() })
+        .then(() => dispatch({ type: 'set', patch: { door43User: currentSession()?.username ?? null } }))
+        .catch(() => {});
+    }
     return unsubscribe;
   }, []);
 
@@ -4728,28 +4742,32 @@ export function AppProvider({ children }) {
         const si = stateRef.current.si;
         if (!si || si.busy) return null;
         a.patchSi({ busy: true, error: null });
+        const keychain = desktopKeychain() ?? undefined;
         const report = await door43SignIn(
-          { door43, getNetEnabled: () => api.getNetEnabled() },
+          { door43, getNetEnabled: () => api.getNetEnabled(), keychain },
           { login: si.login.trim(), password: si.password, stay: si.stay },
         );
         if (stateRef.current.modal !== 'signIn') {
           // Cancel was pressed while the call ran: Cancel shares nothing, so a
-          // token that arrived after it is dropped.
-          await door43SignOut();
+          // token that arrived after it is dropped (from the keychain too).
+          await door43SignOut(keychain);
           return report;
         }
         if (!report.ok) {
           a.patchSi({ busy: false, password: '', error: { code: report.code ?? null, message: report.facts.error } });
           return report;
         }
-        dispatch({ type: 'set', patch: { door43User: report.facts.username, modal: null, si: null } });
+        // #366: "Stay signed in" asked, and the token not kept (no bridge in a
+        // browser, or a keychain that refused): say so in one line on the bar.
+        dispatch({ type: 'set', patch: { door43User: report.facts.username, door43NotKept: si.stay && !report.facts.kept, modal: null, si: null } });
         // #362: a Share pressed without a token continues here, with the token.
         if (si.share) a.startShare(si.share);
         return report;
       },
+      /** Sign out: the token leaves memory and the keychain (#366). */
       signOut: async () => {
-        await door43SignOut();
-        dispatch({ type: 'set', patch: { door43User: null } });
+        await door43SignOut(desktopKeychain() ?? undefined);
+        dispatch({ type: 'set', patch: { door43User: null, door43NotKept: false } });
       },
 
       // ---- Share (#362; D79 point 12, D84 points 1, 3, 4, 5). The operation is
@@ -4776,7 +4794,18 @@ export function AppProvider({ children }) {
        * share opens the dialog on the where-it-goes step and reads the
        * organizations (D84 point 3). */
       startShare: async (project) => {
-        const session = currentSession();
+        let session = currentSession();
+        if (!session) {
+          // #366: a kept token that could not be resumed at start-up (offline
+          // then) is tried again here; a refused one was forgotten, so the
+          // sign-in step asks the password again.
+          const keychain = desktopKeychain();
+          if (keychain) {
+            await resumeKeptSession({ door43, keychain, getNetEnabled: () => api.getNetEnabled() });
+            session = currentSession();
+            if (session) dispatch({ type: 'set', patch: { door43User: session.username } });
+          }
+        }
         if (!session) {
           a.openSignIn(project);
           return;

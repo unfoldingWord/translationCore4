@@ -13,28 +13,95 @@
 import { Refusal, failedReport, okReport, type Report } from '../journal/runtime';
 import { Door43ApiError, type Door43Api, type Door43Session } from './door43Api';
 
-/** The keychain seam (#366): keep the token between app sessions, or forget it. */
+/** The keychain seam (#366): keep the token between app sessions, read the
+ * kept one back (null when none), or forget it. */
 export interface TokenKeychain {
   keep(token: string): Promise<void>;
+  read(): Promise<string | null>;
   forget(): Promise<void>;
 }
 
 let session: Door43Session | null = null;
+let sessionRevision = 0;
+let pendingResume: Promise<ResumeOutcome> | null = null;
+
+const cancelResume = (): void => {
+  sessionRevision++;
+  pendingResume = null;
+};
 
 /** The session of this app session, or null when nobody is signed in. */
 export const currentSession = (): Door43Session | null => session;
 
 /** Sign out: the token leaves memory, and the keychain when one is wired. */
 export const signOut = async (keychain?: TokenKeychain): Promise<void> => {
+  cancelResume();
   session = null;
   await keychain?.forget();
 };
 
 /** A kept token found at start-up, with the username `GET /api/v1/user`
- * answered for it (#366 reads the keychain, asks Door43, and calls this). */
+ * answered for it (`resumeKeptSession` reads the keychain, asks Door43, and
+ * calls this). */
 export const resumeSession = (kept: Door43Session): void => {
+  cancelResume();
   session = kept;
 };
+
+export interface ResumeDeps {
+  getNetEnabled: () => Promise<boolean>;
+  door43: Pick<Door43Api, 'user'>;
+  keychain: TokenKeychain;
+}
+
+/** What a resume found: `resumed` (the session is set), `none` (no kept
+ * token), `refused` (Door43 answered 401 or 403: the token is forgotten, and
+ * the next share asks the password again), `unavailable` (no answer: offline
+ * or a 5xx; the token stays kept, and the next share tries again). */
+export type ResumeOutcome = 'resumed' | 'none' | 'refused' | 'unavailable';
+
+/** Resume the session from a kept token (#366): read the keychain, ask Door43
+ * who the token is (`GET /api/v1/user`), and hold the session in memory. A
+ * signed-in session is left as it is. Never throws: a keychain that fails to
+ * read counts as no kept token. */
+export function resumeKeptSession(deps: ResumeDeps): Promise<ResumeOutcome> {
+  if (session) return Promise.resolve('resumed');
+  if (pendingResume) return pendingResume;
+  const pending = readKeptSession(deps, sessionRevision).finally(() => {
+    if (pendingResume === pending) pendingResume = null;
+  });
+  pendingResume = pending;
+  return pending;
+}
+
+async function readKeptSession(deps: ResumeDeps, revision: number): Promise<ResumeOutcome> {
+  try {
+    if (!(await deps.getNetEnabled())) return 'unavailable';
+  } catch {
+    return 'unavailable';
+  }
+  if (revision !== sessionRevision) return 'none';
+  let token: string | null;
+  try {
+    token = await deps.keychain.read();
+  } catch {
+    return 'none';
+  }
+  if (!token || revision !== sessionRevision) return 'none';
+  try {
+    const username = await deps.door43.user(token);
+    if (revision !== sessionRevision) return 'none';
+    session = { username, token };
+    return 'resumed';
+  } catch (error) {
+    if (revision !== sessionRevision) return 'none';
+    if (error instanceof Door43ApiError && (error.status === 401 || error.status === 403)) {
+      await deps.keychain.forget().catch(() => {});
+      return 'refused';
+    }
+    return 'unavailable';
+  }
+}
 
 export interface SignInDeps {
   door43: Door43Api;
@@ -75,6 +142,7 @@ export async function signIn(deps: SignInDeps, request: SignInRequest): Promise<
   } catch (error) {
     return failed(error);
   }
+  cancelResume();
   let signed: Door43Session;
   try {
     signed = await deps.door43.signIn(request.login, request.password);
@@ -83,18 +151,38 @@ export async function signIn(deps: SignInDeps, request: SignInRequest): Promise<
   }
   session = signed;
   const facts: SignInFacts = { ...base, step: 'sign-in', username: signed.username, kept: false };
-  if (request.stay && deps.keychain) {
+  if (deps.keychain) await keepOrForget(deps.keychain, request.stay, signed.token, facts);
+  return okReport('share', startedAt, new Date().toISOString(), facts);
+}
+
+/** Keep the token when the user asked to stay signed in; when it is not kept,
+ * forget any token an earlier session kept. Keychain errors go into `facts`. */
+const keepOrForget = async (
+  keychain: TokenKeychain,
+  stay: boolean,
+  token: string,
+  facts: SignInFacts,
+): Promise<void> => {
+  if (stay) {
     // A keychain that refuses is not a failed sign-in: the token is in memory
     // for this session, and the Report says it was not kept.
     try {
-      await deps.keychain.keep(signed.token);
+      await keychain.keep(token);
       facts.kept = true;
     } catch (error) {
       facts.keepError = String((error as Error)?.message ?? error);
     }
   }
-  return okReport('share', startedAt, new Date().toISOString(), facts);
-}
+  if (!facts.kept) {
+    // #366: this sign-in is not kept, so a token an earlier session kept (one
+    // an offline start could not resume) must not sign the next session in.
+    try {
+      await keychain.forget();
+    } catch (error) {
+      facts.forgetError = String((error as Error)?.message ?? error);
+    }
+  }
+};
 
 /** The refusal a Door43 sign-in answer maps to. Facts carry the status and
  * Door43's message, never the credentials. */

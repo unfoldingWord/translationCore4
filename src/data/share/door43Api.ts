@@ -157,6 +157,21 @@ export class Door43Api {
     return response;
   }
 
+  /** The account login a token belongs to (`GET /api/v1/user` with the token;
+   * #366 resumes a kept token with it). A revoked or expired token answers
+   * 401, a `Door43ApiError` with that status. */
+  async user(token: string): Promise<string> {
+    const user = (await (await this.request('/user', { username: '', token })).json()) as { login?: unknown };
+    if (typeof user.login !== 'string' || !user.login)
+      throw new Door43ApiError('/user', 200, 'the answer carries no login');
+    try {
+      assertName(user.login, 'username');
+    } catch (error) {
+      throw new Door43ApiError('/user', 200, (error as Error).message);
+    }
+    return user.login;
+  }
+
   /** The organizations the user belongs to, every page. */
   async listOrganizations(session: Door43Session): Promise<Door43Organization[]> {
     const limit = 50;

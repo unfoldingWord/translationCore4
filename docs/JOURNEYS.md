@@ -38,7 +38,7 @@ Owner of increment numbers: the GitHub milestones, mirrored in `docs/ROADMAP.md`
 | J9c | facilitator | Exchange | Import raw USFM as a new project | increment 8 (D79): shell #361, parser #195 | `e2e/j09-import.spec.ts` (`@inc8 @J9`; to write) |
 | J9d | facilitator | Exchange | Import a Scripture Burrito as a new project | increment 8 (D79): shell #361, parser #196 | `e2e/j09-import.spec.ts` (`@inc8 @J9`; to write) |
 | J10 | — | — | retired: RTL is a fixture axis on J2, J4, J5, J7 | retired | both runs listed on each of those rows; `e2e/j10-rtl.spec.ts` stays until they exist |
-| J11 | facilitator | Exchange | Share the project to Door43 (first share pushes `main`) | increment 8.5 (D79, D84): #362, #203, #366, #120, #185 | `e2e/j11-share.spec.ts` (`@inc85 @J11`; the keychain case fixme until #366) |
+| J11 | facilitator | Exchange | Share the project to Door43 (first share pushes `main`) | increment 8.5 (D79, D84): #362, #203, #366, #120, #185 | `e2e/j11-share.spec.ts` (`@inc85 @J11`; the live `qa.door43.org` leg a labelled skip without the QA credentials) |
 | J12 | facilitator | Start | Upgrade the pinned resources | shipped alpha.6 (#256, #257; D72) | `e2e/j12-upgrade-resources.spec.ts` |
 | J13 | facilitator | Start | Change the gateway-language resource set | shipped alpha.2 | `e2e/j13-gateway-change.spec.ts` |
 | J14 | — | — | retired: isolation is a MUST NOT row on J1 and J2 | retired | `e2e/j14-join-isolation.spec.ts` stays |
@@ -165,7 +165,8 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 - End state: leaving with uncommitted changes makes exactly one checkpoint commit, message prefixed
   `Checkpoint, leaving Translate:` or `Checkpoint, leaving the project:`; leaving without changes
   makes none; the last draft is what reopens.
-- Proof: `e2e/j08-resume.spec.ts` (#184, #185; the share leg is fixme until #185 runs the J11 flow, D84). Owner: built in Increment 4; tag pending.
+- Proof: `e2e/j08-resume.spec.ts` (#184, #185; the share leg runs the J11 flow through
+  `e2e/helpers/door43Share.ts`, D84). Owner: built in Increment 4; the share leg in Increment 8.5.
 
 ### J9a–J9d Import
 
