@@ -110,9 +110,10 @@ export async function share(deps: ShareDeps, request: ShareRequest): Promise<Rep
 async function shareRecorded(deps: ShareDeps, request: ShareRequest): Promise<Report> {
   const startedAt = new Date().toISOString();
   const { repoPath, session, target, name } = request;
+  // A failed share names the user's own account with a placeholder and keeps no username (D85, #474).
   const base = {
     repoPath,
-    target: target.kind === 'user' ? session.username : target.organization,
+    target: target.kind === 'user' ? '<username>' : target.organization,
   };
   const failed = (error: unknown, facts: Record<string, unknown> = {}): Report =>
     failedReport('share', startedAt, new Date().toISOString(), error, { ...base, ...facts });
