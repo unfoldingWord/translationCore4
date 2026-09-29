@@ -35,6 +35,8 @@ export default function ShareSignIn() {
         </Button>
       </>}>
       <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* #467: Door43 refused the token a share held; the one line that says why the password is asked. */}
+        {si.renew && <p style={NOTE} data-testid="signin-renew">{t('signIn.renew')}</p>}
         {/* The server comes from the adapter (dcsServer, #120): QA in a development build. */}
         <p style={NOTE} data-testid="signin-server">{t('signIn.server', { host: si.server })}</p>
         <TextField id="si-login" label={t('signIn.login')} value={si.login} autoComplete="username"

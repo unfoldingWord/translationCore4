@@ -45,15 +45,17 @@ export interface Door43Session {
  * tC3's is `translation-core`; the two never collide. */
 export const TOKEN_NAME = 'translationCore';
 
-/** The scopes the token asks for (D84 point 6): create a repository and push
- * to it (`write:repository`, which holds the read of `GET /repos/search`),
- * list the user's organizations (`read:organization`), and read the account
- * (`GET /user`) and its organization permissions (`read:user`). The names are
- * the `CreateAccessTokenOption.scopes` examples of Door43 `1.27.3+dcs`. */
+/** The scopes the token asks for (D84 point 6): create a repository under the
+ * account (`POST /user/repos` needs `write:user`) or an organization
+ * (`POST /orgs/{org}/repos` needs `write:organization`), and push to it
+ * (`write:repository`, which holds the read of `GET /repos/search`). A write
+ * scope holds the read of its group, so `GET /user`, `GET /user/orgs` and the
+ * organization permissions need no scope of their own. Door43 `1.27.3+dcs`
+ * refused a create with `read:user` and `read:organization` (issue #467). */
 export const TOKEN_SCOPES: readonly string[] = Object.freeze([
   'write:repository',
-  'read:organization',
-  'read:user',
+  'write:organization',
+  'write:user',
 ]);
 
 /** `Basic` credentials over the UTF-8 bytes (`btoa` alone refuses a password

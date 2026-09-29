@@ -4726,13 +4726,14 @@ export function AppProvider({ children }) {
       // ---- Door43 sign-in step (#203; D79 point 13, D84 point 6, D85). The
       //      token lives in session.ts, never here. Nothing is stored but the
       //      kept token (#366): no name, no email, no login (D85). ----
-      /** `share`: the project a Share pressed without a token continues with (#362). */
-      openSignIn: (share = null) =>
+      /** `share`: the project a Share pressed without a token continues with (#362).
+       * `renew`: Door43 refused the held token at a share, so the step says why (#467). */
+      openSignIn: (share = null, renew = false) =>
         dispatch({
           type: 'set',
           patch: {
             modal: 'signIn',
-            si: { login: '', password: '', stay: false, server: new URL(door43.server).host, busy: false, error: null, share },
+            si: { login: '', password: '', stay: false, server: new URL(door43.server).host, busy: false, error: null, share, renew },
           },
         }),
       patchSi: (patch) => dispatch({ type: 'set', patch: { si: { ...stateRef.current.si, ...patch } } }),
@@ -4874,6 +4875,16 @@ export function AppProvider({ children }) {
           // A refusal after the create (the push) leaves an `origin`: the card
           // follows the remote, not the Report.
           await a.loadShared(project, true);
+        }
+        if (report.code === 'share.auth-failed') {
+          // #467: Door43 refused the token at the create (revoked, or kept from a
+          // version that minted it without the create scopes). Forget it, and ask
+          // the password once; the new sign-in continues the share.
+          if (!inDialog) setCard({ busy: false, step: null, error: null });
+          await door43SignOut(desktopKeychain() ?? undefined);
+          dispatch({ type: 'set', patch: { door43User: null, door43NotKept: false, sh: null } });
+          a.openSignIn(project, true);
+          return report;
         }
         const error = report.ok ? null : { code: report.code ?? null, message: report.facts.error };
         if (inDialog) {
