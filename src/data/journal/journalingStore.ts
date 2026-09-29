@@ -2465,8 +2465,12 @@ export class JournalingStore implements BurritoStore {
     const projected = (foldOut.decisions[tool] ?? []).find(
       (candidate) => decisionRegisterKey(tool, candidate as unknown as Decision) === key,
     );
+    // An invalidated record is unmatched already (§5.2): a change of checking
+    // language leaves the English-quoted record of a check it could not place, and
+    // a new decision on the same key replaces it (#448).
     const quoteChanged =
       projected &&
+      !(projected as { invalidated?: unknown }).invalidated &&
       (projected as { contextId: { quoteString?: unknown } }).contextId.quoteString !==
         incoming.contextId.quoteString;
     if (quoteChanged)

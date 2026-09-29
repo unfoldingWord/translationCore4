@@ -411,7 +411,10 @@ export const mergeAndReattach = (
 
   const unmatched = saved.filter((d) => !placedSaved.has(d));
   if (unmatched.length > 0) {
-    const results = reattachAcrossResource(unmatched, items);
+    // Only the checks pass 1 left without a decision are on offer: a retained record
+    // that names another check id must not replace the one an identity match placed
+    // (#448).
+    const results = reattachAcrossResource(unmatched, items.filter((item) => !placed.has(item)));
     const carried = new Map<string, CheckItem>();
     const unplaced: CheckItem[] = [];
     for (const r of results) {
