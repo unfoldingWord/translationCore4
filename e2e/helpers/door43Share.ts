@@ -48,6 +48,20 @@ export const filesHolding = (dir: string, needle: string): string[] => {
   return out;
 };
 
+/** Every file under `dir` that stores `username` as a login (D85): the username
+ * anywhere except as the owner of a repository — a path `<username>/<repository>` after
+ * a quote, a space or the start of a line, or the first segment after the server in an
+ * `http(s)` URL. A
+ * share's ops record keeps that path, and the Home card shows it; a path names where a
+ * project lives, not who signed in (#474). An API route such as
+ * `/api/v1/users/<username>/tokens` still counts. */
+export const loginsHolding = (dir: string, username: string): string[] => {
+  const name = username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const asOwner = new RegExp(`(^|["'\\s]|https?://[^/\\s"']+/)${name}/(?=[A-Za-z0-9._-])`, 'gm');
+  return filesHolding(dir, username).filter((file) =>
+    fs.readFileSync(path.join(dir, file), 'utf8').replace(asOwner, '$1').includes(username));
+};
+
 /** A bare git remote in a temporary directory: where the fake's `clone_url` points. */
 export interface BareRemote {
   tmp: string;
