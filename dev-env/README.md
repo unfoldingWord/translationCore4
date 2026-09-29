@@ -226,9 +226,10 @@ MSYS2 zsh window of the [Windows](#windows) section.
 
 3. Cache the 24 resources that the journeys need. Each command downloads one pinned
    release from Door43 through the app's own fetch path, and fails if the commit is not
-   the one given. `seed.zsh` sideloads the first 20 and writes their install records
-   (decision D57). The last four are newer and older releases that J12 and the guided
-   fix serve as a mocked Door43:
+   the one given. `seed.zsh` sideloads the first 20 and writes an install record
+   (decision D57) for each of them except the English OBS rows and the picture pack,
+   which seed without a record — 15 records in all. The last four are newer and older
+   releases that J12 and the guided fix serve as a mocked Door43:
 
    ```bash
    # The English suite, the Greek New Testament, and the Spanish package (seeded).
