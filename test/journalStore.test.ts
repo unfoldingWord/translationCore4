@@ -4,6 +4,7 @@
 // captured bytes are then judged by the CONFORMANCE REFERENCE
 // (journal/files.mjs) — the harness validates what the store writes.
 import { describe, expect, it } from 'vitest';
+import { strToU8, zipSync } from 'fflate';
 import { ServerApi } from '../src/data/serverApi';
 import { forgetSharedClocks, JournalStore } from '../src/data/journal/journalStore';
 import type { KvStore } from '../src/data/journal/identity';
@@ -771,5 +772,195 @@ describe('#95: a deferred open ratchets in the union read, and refuses to mint b
     for (const event of events) expect(next > event.ts).toBe(true);
     expect(next > torn).toBe(true);
     expect(next > foreignTs).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// J. Issue #423 — the journal is fetched as ONE zip, not one GET per segment.
+//
+// On Windows the per-request cost of the sequential segment reads made a
+// 4,000-segment open exceed every test budget (measured 13.6 ms per browser
+// request against 0.89 ms for the same read from Node — the evidence record in
+// the issue). The union read now fetches `checking/journal` through the
+// platform's own ingredient-directory zip route (PLATFORM-NOTES note 41) and
+// falls back to the per-file reads when that route refuses. The zip's entry
+// names use `\` on Windows exactly like the repository zip (#425).
+//
+// The ways the zip read can fail, written before the tests (D81 rule 3):
+// 1. the `\` entry names survive, so no segment is found and the union is
+//    silently empty;
+// 2. a directory entry or an actor.json is read as a segment;
+// 3. the classification differs from the per-file read's (misnamed, invalid,
+//    foreign — R-8.1.7 nothing dropped in silence);
+// 4. a refused zip route (no journal directory yet — every journal-less first
+//    open) fails the open instead of falling back to the per-file reads;
+// 5. a body that does not unzip fails the open instead of falling back;
+// 6. the progress cadence changes (issue #95 pins once per listed segment);
+// 7. the R-8.2.4 ratchet misses a ts the per-file read ratchets past.
+// ---------------------------------------------------------------------------
+
+/** fakeRig plus the platform's `GET /burrito/ingredient/zipped` route, serving
+ * `checking/journal/` the way the WINDOWS server does: `\` entry names, plus
+ * the directory entries the live route was observed to emit
+ * (`fixture-large\segments/` — `\` inside, `/` appended). Counts zip hits and
+ * per-segment raw GETs so a test can prove which path ran. */
+const zipRig = () => {
+  const rig = fakeRig();
+  const counts = { zip: 0, segmentGets: 0 };
+  let mode: 'serve' | 'refuse' | 'corrupt' = 'serve';
+  const inner = rig.fetchFn;
+  const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(String(input));
+    const parts = url.pathname.split('/').filter(Boolean); // ['api', 'burrito', ...]
+    if (parts[1] === 'burrito' && parts[2] === 'ingredient' && parts[3] === 'zipped') {
+      counts.zip += 1;
+      const refusal = new Response(
+        JSON.stringify({ is_good: false, reason: 'could not locate repo or ingredient directory' }),
+        { status: 400 },
+      );
+      // Response wants a BodyInit; a fresh .slice() owns a plain ArrayBuffer.
+      const body = (bytes: Uint8Array): ArrayBuffer => bytes.slice().buffer as ArrayBuffer;
+      if (mode === 'refuse') return refusal;
+      if (mode === 'corrupt') return new Response(body(new Uint8Array([80, 75, 3, 4, 9])), { status: 200 });
+      const repo = parts.slice(4, 7).map(decodeURIComponent).join('/');
+      const prefix = `${repo}\nchecking/journal/`;
+      const entries: Record<string, Uint8Array> = {};
+      for (const [key, text] of rig.files) {
+        if (!key.startsWith(prefix)) continue;
+        const name = key.slice(prefix.length);
+        const dir = name.slice(0, name.lastIndexOf('/') + 1);
+        if (dir) entries[`${dir.slice(0, -1).replaceAll('/', '\\')}/`] = new Uint8Array(0);
+        entries[name.replaceAll('/', '\\')] = strToU8(text);
+      }
+      if (Object.keys(entries).length === 0) return refusal;
+      return new Response(body(zipSync(entries)), { status: 200 });
+    }
+    if (parts[3] === 'raw' && (init?.method ?? 'GET') === 'GET' && (url.searchParams.get('ipath') ?? '').includes('/segments/'))
+      counts.segmentGets += 1;
+    return inner(input, init);
+  }) as typeof fetch;
+  return { ...rig, fetchFn, counts, refuse: () => (mode = 'refuse'), corrupt: () => (mode = 'corrupt'), serve: () => (mode = 'serve') };
+};
+
+describe('#423: the union read fetches the journal as one zip', () => {
+  /** Two own actions, one foreign segment, one own torn segment, one misnamed
+   * file — the fixture every test below reads. */
+  const seeded = async (rig: ReturnType<typeof zipRig> | ReturnType<typeof fakeRig>) => {
+    const foreign = 'a-foreign-actor';
+    const foreignTs = `2030-01-01T00:00:00.000Z|0000|${foreign}`;
+    rig.files.set(
+      rig.key(REPO, `checking/journal/${foreign}/segments/${refSegmentName(foreignTs)}`),
+      refSealAction([verseEvent(foreign, foreignTs, 'del futuro\n')]),
+    );
+    const { kv, store } = await openStore({ rig: rig as ReturnType<typeof fakeRig> });
+    const events = [
+      verseEvent(store.actorId, store.issueTs(), 'primero — versión acentuada\n'),
+      settingsEvent(store.actorId, store.issueTs(), 'segundo'),
+    ];
+    await store.publish(events);
+    const torn = store.issueTs();
+    rig.files.set(rig.key(REPO, `checking/journal/${store.actorId}/segments/${refSegmentName(torn)}`), 'torn');
+    rig.files.set(rig.key(REPO, `checking/journal/${store.actorId}/segments/not-a-ts.action.json`), 'misnamed');
+    return { kv, store, events, torn, foreignTs, foreign };
+  };
+
+  const restarted = (rig: { fetchFn: typeof fetch }, kv: ReturnType<typeof memKv>) => {
+    forgetSharedClocks();
+    return new JournalStore({
+      api: new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: rig.fetchFn }),
+      repoPath: REPO,
+      kv,
+      now: tickingNow('2026-09-28T09:00:00.000Z').now,
+    });
+  };
+
+  it('one zipped request, zero per-segment GETs — and the union equals the per-file read, `\\` names and all', async () => {
+    const rig = zipRig();
+    const { kv } = await seeded(rig);
+
+    // The control: the SAME files read per-file (the zip route refused).
+    rig.refuse();
+    const controlStore = restarted(rig, kv);
+    await controlStore.open({ ratchet: 'deferred' });
+    const expected = await controlStore.readUnion();
+    expect(rig.counts.segmentGets).toBeGreaterThan(0); // the control took the per-file path
+
+    // The zip path, over the same files.
+    rig.serve();
+    rig.counts.zip = 0;
+    rig.counts.segmentGets = 0;
+    const store = restarted(rig, kv);
+    await store.open({ ratchet: 'deferred' });
+    const union = await store.readUnion();
+    expect(rig.counts.zip).toBe(1);
+    expect(rig.counts.segmentGets).toBe(0);
+    expect(union.events).toEqual(expected.events);
+    expect(union.actions).toEqual(expected.actions);
+    expect(union.actors).toEqual(expected.actors);
+    expect(union.misnamed).toEqual(expected.misnamed);
+    expect(union.invalid).toEqual(expected.invalid);
+    expect(union.misnamed.map((m) => m.name)).toEqual(['not-a-ts.action.json']);
+    expect(union.invalid).toHaveLength(1);
+    expect(union.events.some((e) => e.actor === 'a-foreign-actor')).toBe(true);
+  });
+
+  it('the ratchet from the zip is the ratchet from the files: the next ts is past every visible one', async () => {
+    const rig = zipRig();
+    const { kv, events, torn, foreignTs } = await seeded(rig);
+    const store = restarted(rig, kv);
+    await store.open({ ratchet: 'deferred' });
+    await store.readUnion();
+    const next = store.issueTs();
+    for (const event of events) expect(next > event.ts).toBe(true);
+    expect(next > torn).toBe(true);
+    expect(next > foreignTs).toBe(true);
+  });
+
+  it('a refused zip route falls back to the per-file reads (every journal-less first open refuses)', async () => {
+    const rig = zipRig();
+    const { kv } = await seeded(rig);
+    rig.refuse();
+    rig.counts.segmentGets = 0;
+    const store = restarted(rig, kv);
+    await store.open({ ratchet: 'deferred' });
+    const union = await store.readUnion();
+    expect(rig.counts.segmentGets).toBeGreaterThan(0);
+    expect(union.actions.length).toBeGreaterThan(0);
+  });
+
+  it('a body that does not unzip falls back to the per-file reads, never a failed open', async () => {
+    const rig = zipRig();
+    const { kv } = await seeded(rig);
+    rig.corrupt();
+    rig.counts.segmentGets = 0;
+    const store = restarted(rig, kv);
+    await store.open({ ratchet: 'deferred' });
+    const union = await store.readUnion();
+    expect(rig.counts.segmentGets).toBeGreaterThan(0);
+    expect(union.actions.length).toBeGreaterThan(0);
+  });
+
+  it('progress from the zip keeps the issue-#95 cadence: 0 of N first, then once per listed segment', async () => {
+    const rig = zipRig();
+    const { kv } = await seeded(rig);
+    const store = restarted(rig, kv);
+    await store.open({ ratchet: 'deferred' });
+    const seen: Array<{ done: number; total: number }> = [];
+    await store.readUnion({ onProgress: (p) => seen.push({ ...p }) });
+    const total = seen[0].total;
+    expect(total).toBe(4); // foreign valid + own valid + own torn + own misnamed (listed, judged without a read)
+    expect(seen.map((p) => p.done)).toEqual([0, 1, 2, 3, 4]);
+    expect(seen.every((p) => p.total === total)).toBe(true);
+  });
+
+  it("a non-deferred open's R-8.2.4 ratchet reads the zip too, not one GET per segment", async () => {
+    const rig = zipRig();
+    const { kv } = await seeded(rig);
+    rig.counts.zip = 0;
+    rig.counts.segmentGets = 0;
+    const store = restarted(rig, kv);
+    await store.open(); // ratchet 'now' → ratchetFromJournal
+    expect(rig.counts.zip).toBe(1);
+    expect(rig.counts.segmentGets).toBe(0);
   });
 });

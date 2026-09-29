@@ -13,22 +13,26 @@ const SAMPLE = path.resolve(__dirname, '../../conformance/sample-burrito');
 const sampleFile = (p: string): Uint8Array => new Uint8Array(fs.readFileSync(path.join(SAMPLE, p)));
 const RESOURCES = 'ingredients/checking/resources.json';
 
-/** A repository zip the way the server makes one: directory entries, `.git/`, backups, Finder files. */
-const serverZip = (metadata: Record<string, unknown> = JSON.parse(strFromU8(sampleFile('metadata.json')))) =>
-  zipSync({
-    '.DS_Store': strToU8('finder'),
-    '.git/': new Uint8Array(0),
-    '.git/HEAD': strToU8('ref: refs/heads/main\n'),
-    '.git/objects/ab/cdef': strToU8('object'),
-    '.gitignore': strToU8('**/*.bak\n'),
-    'metadata.json': strToU8(JSON.stringify(metadata)),
-    'ingredients/': new Uint8Array(0),
-    'ingredients/TIT.usfm': sampleFile('ingredients/TIT.usfm'),
-    'ingredients/TIT.usfm.bak': strToU8('old'),
-    'ingredients/checking/': new Uint8Array(0),
-    'ingredients/checking/.DS_Store': strToU8('finder'),
-    [RESOURCES]: sampleFile(RESOURCES),
-  });
+/** A repository's zip entries, the way the server names them: directory entries, `.git/`, backups, Finder files. */
+const serverEntries = (metadata: Record<string, unknown> = JSON.parse(strFromU8(sampleFile('metadata.json')))) => ({
+  '.DS_Store': strToU8('finder'),
+  '.git/': new Uint8Array(0),
+  '.git/HEAD': strToU8('ref: refs/heads/main\n'),
+  '.git/objects/ab/cdef': strToU8('object'),
+  '.gitignore': strToU8('**/*.bak\n'),
+  'metadata.json': strToU8(JSON.stringify(metadata)),
+  'ingredients/': new Uint8Array(0),
+  'ingredients/TIT.usfm': sampleFile('ingredients/TIT.usfm'),
+  'ingredients/TIT.usfm.bak': strToU8('old'),
+  'ingredients/checking/': new Uint8Array(0),
+  'ingredients/checking/.DS_Store': strToU8('finder'),
+  [RESOURCES]: sampleFile(RESOURCES),
+});
+
+const serverZip = (metadata?: Record<string, unknown>) => zipSync(serverEntries(metadata));
+
+/** The same entries the way the Windows server names them (#425, PLATFORM-NOTES note 41): `\` in every entry name. */
+const backslashed = (entries: Record<string, Uint8Array>) => Object.fromEntries(Object.entries(entries).map(([name, bytes]) => [name.replaceAll('/', '\\'), bytes]));
 
 describe('burritoFromRepoZip', () => {
   it('removes .git/, every *.bak and every .DS_Store, and keeps every other entry byte-identical', () => {
@@ -74,6 +78,24 @@ describe('burritoFromRepoZip', () => {
       'ingredients/content/01.md': { checksum: { md5: md5(story) }, mimeType: 'text/markdown', size: story.byteLength },
     });
     expect(meta.relationships.length).toBeGreaterThan(0);
+  });
+
+  it('a Windows server zip (`\\` entry names, #425) gives the same export: `/` names, no .git, the mirror written', () => {
+    const expected = unzipSync(burritoFromRepoZip(serverZip()));
+    const out = unzipSync(burritoFromRepoZip(zipSync(backslashed(serverEntries()))));
+    expect(Object.keys(out).sort()).toEqual(Object.keys(expected).sort()); // `/` names; .git, .bak, .DS_Store gone
+    for (const [name, bytes] of Object.entries(expected)) expect(Buffer.from(out[name]).equals(Buffer.from(bytes)), name).toBe(true);
+    expect(JSON.parse(strFromU8(out['metadata.json'])).relationships).toEqual(relationshipsFromPins(JSON.parse(strFromU8(sampleFile(RESOURCES)))));
+  });
+
+  it("a Windows server zip of an OBS project (#425) still rebuilds the ingredients table — it is not empty", () => {
+    const story = strToU8('# 1. La Creación\n\nAsí fue.\n');
+    const entries = {
+      'metadata.json': strToU8(JSON.stringify({ type: { flavorType: { name: 'gloss', flavor: { name: 'textStories' } } }, ingredients: {} })),
+      'ingredients/content/01.md': story,
+    };
+    const meta = JSON.parse(strFromU8(unzipSync(burritoFromRepoZip(zipSync(backslashed(entries))))['metadata.json']));
+    expect(Object.keys(meta.ingredients)).toEqual(['ingredients/content/01.md']);
   });
 
   it('leaves metadata.json byte-identical when the project has no resources.json', () => {

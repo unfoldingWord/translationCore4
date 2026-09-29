@@ -1,6 +1,7 @@
 // docs/JOURNEYS.md: J15 is retired. This file is a quality requirement on opening a project.
-// J15 — Opening a project: a small one shows nothing new; a large one shows
-// determinate progress; a broken one shows its error, never a stuck bar.
+// J15 — Opening a project: nothing shows before the 300 ms ruling; a large
+// project shows determinate progress; a broken one shows its error, never a
+// stuck bar.
 // Issue #95 · needs-rig · the seeded large fixture is sample_burrito_large
 // (dev-env/scripts/seed.zsh → scripts/seed-large-project.mjs: Titus + 4000
 // saved edits, one journal segment each).
@@ -22,8 +23,8 @@ const FIXTURE_ACTOR = 'fixture-large';
  * every mount of the indicator and every progressbar value it shows. */
 async function watchProgress(page: Page): Promise<void> {
   await page.evaluate(() => {
-    const w = window as unknown as { __open: { mounts: number; values: number[]; stages: string[]; texts: string[]; unmountedAt: number | null; readyAt: number | null } };
-    w.__open = { mounts: 0, values: [], stages: [], texts: [], unmountedAt: null, readyAt: null };
+    const w = window as unknown as { __open: { mounts: number; mountedAt: number | null; values: number[]; stages: string[]; texts: string[]; unmountedAt: number | null; readyAt: number | null } };
+    w.__open = { mounts: 0, mountedAt: null, values: [], stages: [], texts: [], unmountedAt: null, readyAt: null };
     let mounted = false;
     const record = () => {
       if (w.__open.readyAt == null && /\(edición \d+\)/.test(document.body.textContent ?? '')) w.__open.readyAt = performance.now();
@@ -32,6 +33,7 @@ async function watchProgress(page: Page): Promise<void> {
         if (mounted && w.__open.unmountedAt == null) w.__open.unmountedAt = performance.now();
         return;
       }
+      if (!mounted && w.__open.mountedAt == null) w.__open.mountedAt = performance.now();
       mounted = true;
       const text = el.querySelector('[data-testid="open-progress-stage"]')?.textContent ?? '';
       if (w.__open.texts.at(-1) !== text) w.__open.texts.push(text);
@@ -54,8 +56,8 @@ async function watchProgress(page: Page): Promise<void> {
   });
 }
 
-async function watched(page: Page): Promise<{ mounts: number; values: number[]; stages: string[]; texts: string[]; unmountedAt: number | null; readyAt: number | null }> {
-  return page.evaluate(() => (window as unknown as { __open: { mounts: number; values: number[]; stages: string[]; texts: string[]; unmountedAt: number | null; readyAt: number | null } }).__open);
+async function watched(page: Page): Promise<{ mounts: number; mountedAt: number | null; values: number[]; stages: string[]; texts: string[]; unmountedAt: number | null; readyAt: number | null }> {
+  return page.evaluate(() => (window as unknown as { __open: { mounts: number; mountedAt: number | null; values: number[]; stages: string[]; texts: string[]; unmountedAt: number | null; readyAt: number | null } }).__open);
 }
 
 function segmentFiles(): string[] {
@@ -71,16 +73,28 @@ test.beforeEach(() => {
 
 test.describe('J15 — a translator opens a project', () => {
   test(
-    'a small project opens with no progress indicator at all (no flash)',
+    'a small project never flashes the indicator: nothing before the 300 ms ruling, nothing left standing',
     { tag: ['@inc6', '@J15'] },
     async ({ page }) => {
       await page.goto('/');
       await expect(page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`)).toBeVisible({ timeout: 20_000 });
       await watchProgress(page);
+      const clickAt = await page.evaluate(() => performance.now());
       await page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByRole('button', { name: /Titus/ }).click();
       await expect(page.getByText('an apostle of Jesus Christ')).toBeVisible({ timeout: 30_000 });
       const seen = await watched(page);
-      expect(seen.mounts, 'the indicator never mounted').toBe(0);
+      // The issue #95 criterion is the owner's ruling (2026-08-25,
+      // OpenProgress.SHOW_THRESHOLD_MS = 300): NOTHING before 300 ms — the
+      // sub-threshold flash is the defect this test pins. A small project
+      // usually finishes under the threshold and mounts nothing, but the
+      // ruling, not the machine's speed, is the criterion: on a Windows dev
+      // rig this open really does exceed 300 ms, and the indicator then
+      // showing is #95's required behavior, not a defect (issue #423,
+      // docs/evidence/open-time-windows-2026-09-28.md — test corrected there).
+      if (seen.mounts > 0) {
+        expect(seen.mountedAt! - clickAt, 'the indicator may appear only past the 300 ms ruling').toBeGreaterThanOrEqual(300);
+        expect(seen.unmountedAt, 'an indicator that appeared must leave with the open').not.toBeNull();
+      }
       await expect(page.getByTestId('open-progress')).toHaveCount(0);
     },
   );
