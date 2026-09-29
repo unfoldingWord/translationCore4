@@ -53,5 +53,14 @@ PLATFORM-NOTES note 41) and falls back to the per-file reads when that route ref
 (a journal-less project has no `checking/journal/` directory, and the route answers 400).
 The route serves the 4,002-segment journal (2,258,632 bytes) in about 1.3 s on this
 machine — one request in place of 4,002. Its zip names entries with `\` on Windows exactly
-like the repository zip (4,005 of 4,007 entries observed), so the read goes through the
-issue #425 normalizer (`src/data/serverZip.ts`).
+like the repository zip (4,005 of 4,007 entries observed; the two without `\` are the
+top-level actor directory entries, `a6b72b756471685f/` and `fixture-large/`), so the read
+goes through the issue #425 normalizer (`src/data/serverZip.ts`). A raw segment entry
+name, as the route served it, relative to `checking/journal` — the name the loader
+prefixes with `checking/journal/` before grouping:
+
+```
+fixture-large\segments\2026-09-01T00_00_00.001Z,0000,fixture-large.action.json
+```
+
+A directory entry keeps `\` inside and gains a trailing `/`: `fixture-large\segments/`.

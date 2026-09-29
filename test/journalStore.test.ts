@@ -796,7 +796,11 @@ describe('#95: a deferred open ratchets in the union read, and refuses to mint b
 //    open) fails the open instead of falling back to the per-file reads;
 // 5. a body that does not unzip fails the open instead of falling back;
 // 6. the progress cadence changes (issue #95 pins once per listed segment);
-// 7. the R-8.2.4 ratchet misses a ts the per-file read ratchets past.
+// 7. the R-8.2.4 ratchet misses a ts the per-file read ratchets past;
+// 8. the zip lists files the paths listing HIDES (the shared zipper has no
+//    filters; /burrito/paths skips hidden and .bak files) — a stray
+//    <actor>/segments/.DS_Store would land in `misnamed` and refuse the open
+//    that used to succeed (PR #469 review, Frank).
 // ---------------------------------------------------------------------------
 
 /** fakeRig plus the platform's `GET /burrito/ingredient/zipped` route, serving
@@ -807,6 +811,9 @@ describe('#95: a deferred open ratchets in the union read, and refuses to mint b
 const zipRig = () => {
   const rig = fakeRig();
   const counts = { zip: 0, segmentGets: 0 };
+  /** Extra zip-only entries (raw Windows names → text): files the shared
+   * zipper includes but /burrito/paths hides — hidden files and *.bak. */
+  const zipOnly: Record<string, string> = {};
   let mode: 'serve' | 'refuse' | 'corrupt' = 'serve';
   const inner = rig.fetchFn;
   const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -832,6 +839,7 @@ const zipRig = () => {
         if (dir) entries[`${dir.slice(0, -1).replaceAll('/', '\\')}/`] = new Uint8Array(0);
         entries[name.replaceAll('/', '\\')] = strToU8(text);
       }
+      for (const [name, text] of Object.entries(zipOnly)) entries[name] = strToU8(text);
       if (Object.keys(entries).length === 0) return refusal;
       return new Response(body(zipSync(entries)), { status: 200 });
     }
@@ -839,7 +847,7 @@ const zipRig = () => {
       counts.segmentGets += 1;
     return inner(input, init);
   }) as typeof fetch;
-  return { ...rig, fetchFn, counts, refuse: () => (mode = 'refuse'), corrupt: () => (mode = 'corrupt'), serve: () => (mode = 'serve') };
+  return { ...rig, fetchFn, counts, zipOnly, refuse: () => (mode = 'refuse'), corrupt: () => (mode = 'corrupt'), serve: () => (mode = 'serve') };
 };
 
 describe('#423: the union read fetches the journal as one zip', () => {
@@ -914,6 +922,33 @@ describe('#423: the union read fetches the journal as one zip', () => {
     for (const event of events) expect(next > event.ts).toBe(true);
     expect(next > torn).toBe(true);
     expect(next > foreignTs).toBe(true);
+  });
+
+  it('hidden and .bak files in the zip are dropped exactly as /burrito/paths drops them — a stray .DS_Store never refuses the open', async () => {
+    const rig = zipRig();
+    const { kv, store: seededStore } = await seeded(rig);
+    const actor = seededStore.actorId;
+    // The shared zipper includes what the paths listing hides (PLATFORM-NOTES
+    // note 41 vs serverApi listPaths): plant the three shapes, Windows names.
+    rig.zipOnly[`${actor}\\segments\\.DS_Store`] = 'finder';
+    rig.zipOnly[`${actor}\\segments\\2026-09-01T00_00_00.009Z,0000,${actor}.action.json.bak`] = 'old';
+    rig.zipOnly[`.trash\\segments\\x.action.json`] = 'hidden dir';
+
+    // The control: the per-file path never sees them (listPaths hides them).
+    rig.refuse();
+    const controlStore = restarted(rig, kv);
+    await controlStore.open({ ratchet: 'deferred' });
+    const expected = await controlStore.readUnion();
+
+    rig.serve();
+    const store = restarted(rig, kv);
+    await store.open({ ratchet: 'deferred' });
+    const union = await store.readUnion();
+    expect(union.misnamed).toEqual(expected.misnamed); // the planted fixture only — no .DS_Store
+    expect(union.misnamed.map((m) => m.name)).not.toContain('.DS_Store');
+    expect(union.invalid).toEqual(expected.invalid);
+    expect(union.actions).toEqual(expected.actions);
+    expect(union.actors).toEqual(expected.actors);
   });
 
   it('a refused zip route falls back to the per-file reads (every journal-less first open refuses)', async () => {

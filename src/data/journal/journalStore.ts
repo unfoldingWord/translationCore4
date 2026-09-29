@@ -226,6 +226,12 @@ export class JournalStore {
     const byIpath = new Map<string, string>();
     for (const [name, bytes] of Object.entries(entries)) {
       if (name.endsWith('/')) continue; // a directory entry is not a file
+      // The shared zipper has no filters, but /burrito/paths "skips hidden
+      // files/dirs and .bak files" (serverApi listPaths). Drop the SAME
+      // entries, or a stray <actor>/segments/.DS_Store that the per-file read
+      // never saw would land in `misnamed` and refuse an open that used to
+      // succeed (PR #469 review, Frank).
+      if (name.split('/').some((part) => part.startsWith('.')) || name.endsWith('.bak')) continue;
       byIpath.set(`${JOURNAL_PREFIX}${name}`, strFromU8(bytes));
     }
     return byIpath;
