@@ -290,11 +290,15 @@ test.describe('J13 — changing the project’s checking language', () => {
       await openCheck(page);
       await page.getByTestId('project-settings').click();
       await expect(page.getByTestId(`settings-gateway-${ES_KEY}`)).toBeVisible();
-      const bytesBefore = checkingBytes(SEEDED_PROJECT);
       await page.getByTestId(`settings-gateway-${ES_KEY}`).click();
 
       const dialogue = page.getByTestId('gateway-change');
       await expect(dialogue).toBeVisible();
+      // #471: the open-time backfill may write the pin file up until the
+      // dialogue opens (the preview awaits it before reading). "Declining
+      // changes NOTHING" means: nothing moves from the moment the question
+      // is on screen — so capture the bytes once the dialogue is visible.
+      const bytesBefore = checkingBytes(SEEDED_PROJECT);
       await expect(page.locator('[data-harmless]')).toHaveAttribute('data-harmless', '0');
       // Not "some checks may be affected" — a count and named books.
       await expect(page.getByTestId('gateway-headline'))

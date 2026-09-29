@@ -107,6 +107,14 @@ const MODE_NAME = { read: 'Understand', draft: 'Translate', check: 'Check', publ
 // (#183), by repoPath. An open of the same project waits for it, so it never
 // reads a half-regenerated tree.
 const leaveCheckpoints = new Map();
+// #471: the open-time pins chain (loadProjectPins' detached backfill) writes
+// checking/resources.json on its own schedule, per store instance. A preview
+// that captures that file's md5 as a write precondition must read AFTER this
+// writer has come to rest, or its confirm is refused as stale — correctly,
+// but for a change nobody made. The stale-write check itself is deliberate
+// safety and stays as is; the fix is this sequencing.
+const pinsBackfills = new WeakMap();
+const pinsBackfillSettled = (store) => pinsBackfills.get(store) ?? Promise.resolve();
 
 // ---- source-package rows (J3) ------------------------------------------------
 // Role assignment uses the catalog's SB flavor where that flavor is
@@ -2375,7 +2383,7 @@ function loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatc
   const stillCurrent = () =>
     storeRef.current === store && stateRef.current.project?.repoPath === repoPath && stateRef.current.projectPinsSeq === seq;
   const read = store.readResources();
-  read
+  const settled = read
     .then(async (pins) => {
       if (!stillCurrent()) return;
       dispatch({ type: 'set', patch: { projectPins: pins, projectPinsLoaded: true, projectPinsError: null } });
@@ -2418,6 +2426,9 @@ function loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatc
           patch: { projectPins: null, projectPinsLoaded: false, projectPinsError: String(error?.message || error) },
         });
     });
+  // #471: the whole detached chain, backfill write included — what a preview
+  // awaits through pinsBackfillSettled before it captures the file's md5.
+  pinsBackfills.set(store, settled);
   return read.then((pins) => ({ pins, failed: false }), () => ({ pins: null, failed: true }));
 }
 
@@ -3427,6 +3438,11 @@ export function AppProvider({ children }) {
         const store = storeRef.current;
         const st = stateRef.current;
         if (!store || !st.project) throw new Error('no project is open');
+        // #471: the open-time backfill writes this same file on its own
+        // schedule. On a slow rig its write landed between this preview's
+        // md5 read and the confirm, and the confirm was refused as stale
+        // for a change nobody made. Read only after it has come to rest.
+        await pinsBackfillSettled(store);
         // Recorded installs PLUS what is simply on disk — the same picture the
         // readiness check uses. Reading only the record made a seeded or
         // hand-sideloaded suite invisible, so a language the app had just
@@ -3602,6 +3618,9 @@ export function AppProvider({ children }) {
         const stillCurrent = () => storeRef.current === store && projectPathOf(stateRef.current) === repoPath;
         dispatch({ type: 'patchUpgrade', patch: { installing: rung, error: null, progress: null } });
         try {
+          // #471: same open-time writer the gateway preview waits out — this
+          // preview's resourcesMd5 is a write precondition too.
+          await pinsBackfillSettled(store);
           const { value: currentResources, md5: resourcesMd5 } = await store.readResourcesWithMd5();
           assertOfferCurrent(st, offer, currentResources);
           const local = new Set(await api.listLocalRepos());
@@ -3648,6 +3667,8 @@ export function AppProvider({ children }) {
         const stillCurrent = () => storeRef.current === store && projectPathOf(stateRef.current) === repoPath;
         dispatch({ type: 'patchUpgrade', patch: { installing: offer.repoPath, error: null, progress: null } });
         try {
+          // #471: same open-time writer the gateway preview waits out.
+          await pinsBackfillSettled(store);
           const { value: currentResources, md5: resourcesMd5 } = await store.readResourcesWithMd5();
           if (st.upgrade.offersFor !== repoPath || textOfferIsStale(offer, currentResources)) throw new Error(t('upgrade.stale'));
           const local = new Set(await api.listLocalRepos());

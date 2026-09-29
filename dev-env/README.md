@@ -224,14 +224,18 @@ MSYS2 zsh window of the [Windows](#windows) section.
    zsh dev-env/scripts/setup-from-pins.zsh
    ```
 
-3. Cache the 19 resources that the journeys need. Each command downloads one pinned
+3. Cache the 24 resources that the journeys need. Each command downloads one pinned
    release from Door43 through the app's own fetch path, and fails if the commit is not
-   the one given. `seed.zsh` sideloads the first 15 and writes their install records
-   (decision D57). The last four are newer and older releases that J12 and the guided
-   fix serve as a mocked Door43:
+   the one given. `seed.zsh` sideloads the first 20 and writes an install record
+   (decision D57) for each of them except the English OBS rows and the picture pack,
+   which seed without a record — 15 records in all. The last four are newer and older
+   releases that J12 and the guided fix serve as a mocked Door43:
 
    ```bash
-   # The English suite, the Greek New Testament, and the Spanish helps (seeded)
+   # The English suite, the Greek New Testament, and the Spanish package (seeded).
+   # The Spanish Bibles and OBS set make the second gateway package complete: without
+   # them the J13 gateway-change cases fail after the confirm (issue #471 found the
+   # gap — seed.zsh names them, but this list did not).
    zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_ult v89 84c73ba00fc8a95a9033f9efb14bb905a2a52ee4
    zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_ust v89 37ec223166bbd73fb55abc7840be8310c0fee7f2
    zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tn v89 ae6bcf6c9e28765df84a0eb34bf20028f7d73803
@@ -242,6 +246,11 @@ MSYS2 zsh window of the [Windows](#windows) section.
    zsh dev-env/scripts/cache-resource.zsh Es-419_gl/es-419_tn v66 22f3d0c61e2ab4701cb869547de9c3c43da07208
    zsh dev-env/scripts/cache-resource.zsh Es-419_gl/es-419_tw v37 7586f4ff1f0483ea40a4a68e5e1f33158e08c208
    zsh dev-env/scripts/cache-resource.zsh Es-419_gl/es-419_ta v4 26606b578c37cc2c0ee09bb7b9a291860ff59444
+   zsh dev-env/scripts/cache-resource.zsh Es-419_gl/es-419_glt v42 3f9bf7e8806f2e310601d723eb201334fe3be1ab
+   zsh dev-env/scripts/cache-resource.zsh Es-419_gl/es-419_gst v40 608e2294aa56938592ef592b0fc391d6d6178b2f
+   zsh dev-env/scripts/cache-resource.zsh Es-419_gl/es-419_obs v2 4a239590d543df59f77d5ee624d475a7488b5fc3
+   zsh dev-env/scripts/cache-resource.zsh Es-419_gl/es-419_obs-tn v2 eaa18de94dcb7df1406cc5b20deb87053c0478ca
+   zsh dev-env/scripts/cache-resource.zsh Es-419_gl/es-419_obs-twl v2 eb5ecd974b19a123e1fe3ee9da21c89c2555d18d
    # The Open Bible Stories resources and the picture pack (seeded, no install record)
    zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_obs v9 d39a1dc7a7557ac54e4a8fecc3462147fe7eec3b
    zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_obs-tn v13 e86138ea13f619f09f7a6dcaa60592716d407fe4
