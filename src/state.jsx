@@ -468,6 +468,7 @@ let fixSeq = 0; // #9: identity of the open guided-fix screen (completions bind 
 let alignSessionSeq = 0;
 let alignIndexSeq = 0;
 let pickerProgressSeq = 0;
+let preflightSeq = 0;
 let storyOpenSeq = 0;
 
 /** #136 (D3d): one picker-progress derivation run's identity. The seq is
@@ -2802,12 +2803,19 @@ function waitForProjectPins(stateRef, ms = 20_000) {
 /** C2.2 — run the session preflight for the open book, one verdict per
  * tool. Pure read: it never fetches or changes anything. */
 async function performRunPreflight({ stateRef, dispatch, actions }) {
-  const st = stateRef.current;
-  if (!st.book && st.project?.flavor !== 'textStories') return;
+  const start = stateRef.current;
+  if (!start.book && start.project?.flavor !== 'textStories') return;
+  const seq = ++preflightSeq;
   const { installed, coverage, resolutionError } = await actions.resolutionContext();
+  // #481: only the newest run lands, and it reads the pins and the book as
+  // they are NOW. A gateway change starts a run before its pins render, and
+  // the Check picker starts another after; the older one must not win.
+  if (seq !== preflightSeq) return null;
+  const st = stateRef.current;
   // #434: a verdict for a project that is no longer open must not land.
   const repoOf = (x) => x.project?.repoPath || x.project?.id;
-  if (repoOf(stateRef.current) !== repoOf(st)) return null;
+  if (repoOf(st) !== repoOf(start)) return null;
+  if (!st.book && st.project?.flavor !== 'textStories') return null;
   if (resolutionError) {
     // Catch-to-absence sweep (D30): an identity-read outage must not
     // present every tool as 'unavailable'/'unpinned' — state it,

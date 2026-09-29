@@ -42,13 +42,13 @@ const stateWith = (projectPins: ResourcesFile) => ({
 
 /** resolutionContext calls that the test settles one by one, in any order. */
 function heldResolution() {
-  const pending: Array<() => void> = [];
+  const pending: Array<(cov: typeof coverage) => void> = [];
   const resolutionContext = vi.fn(
     () => new Promise((resolve) => {
-      pending.push(() => resolve({ installed: {}, coverage, resolutionError: null }));
+      pending.push((cov) => resolve({ installed: {}, coverage: cov, resolutionError: null }));
     }),
   );
-  return { resolutionContext, settle: (i: number) => pending[i]() };
+  return { resolutionContext, settle: (i: number, cov = coverage) => pending[i](cov) };
 }
 
 function harness(projectPins: ResourcesFile) {
@@ -71,6 +71,20 @@ describe('#481 runPreflight — the newest pins win', () => {
     h.settle(1);
     await newer;
     h.settle(0);
+    await older;
+    expect(h.tnRepo()).toBe(ES.translationNotes.repoPath);
+  });
+
+  it('an older run´s resolution context does not land over a newer one', async () => {
+    // Only the seq guard holds here: both runs read the Spanish pins after
+    // the await, but the older run's context predates the Spanish coverage.
+    const h = harness(SPANISH);
+    const older = h.run();
+    const newer = h.run();
+    h.settle(1);
+    await newer;
+    const englishOnly = Object.fromEntries(Object.entries(coverage).filter(([k]) => k.includes('/en_')));
+    h.settle(0, englishOnly);
     await older;
     expect(h.tnRepo()).toBe(ES.translationNotes.repoPath);
   });
