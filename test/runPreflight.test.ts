@@ -27,7 +27,7 @@ const set = (lang: string, org: string) => ({
 
 const EN = set('en', 'unfoldingWord');
 const ES = set('es-419', 'Es-419_gl');
-const ENGLISH: ResourcesFile = { schemaVersion: 2, languageSets: { primary: EN }, resources: {} };
+const ENGLISH: ResourcesFile = { schemaVersion: 2, languageSets: { primary: EN, fallback: EN }, resources: {} };
 const SPANISH: ResourcesFile = { schemaVersion: 2, languageSets: { primary: ES, fallback: EN }, resources: {} };
 const coverage = Object.fromEntries(
   [EN, ES].flatMap((s) => [s.translationNotes, s.translationWordsLinks]).map((p) => [pinKey(p), ['TIT']]),
