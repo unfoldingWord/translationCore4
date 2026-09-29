@@ -143,7 +143,9 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       const basic = `Basic ${Buffer.from(`${user}:${secret}`, 'utf8').toString('base64')}`;
       const headers = { Authorization: basic, Accept: 'application/json', 'Content-Type': 'application/json' };
       const me = await fetch(`${QA_SERVER}/api/v1/user`, { headers });
-      expect(me.status, 'GET /user with the QA credentials').toBe(200);
+      // Door43's own message names the cause: 401 is a wrong secret; 403 is a secret Door43 knows
+      // but refuses here (a token without `read:user`, or an account that must act on the website first).
+      expect(me.status, `GET /user with the QA credentials: ${await me.clone().text()}`).toBe(200);
       const { login } = (await me.json()) as { login: string };
       const tokensRoute = `${QA_SERVER}/api/v1/users/${encodeURIComponent(login)}/tokens`;
       // The adapter's own sequence, on the real server: drop a stale translationCore, mint it again.
