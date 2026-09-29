@@ -178,19 +178,22 @@ describe('#362 share: refusals, each with its code and nothing pushed', () => {
     const door43 = fake({ existingRepositories: ['facilitator/puntos'] });
     const report = await refused(deps(t, door43), t, request(), 'share.name-exists');
     expect(t.remotes).toEqual([]);
-    expect(report.facts).toMatchObject({ target: 'facilitator', refusal: { status: 409 } });
+    // A failed share to the user's own account names it with a placeholder, not the username (#474).
+    expect(report.facts).toMatchObject({ target: '<username>', refusal: { status: 409 } });
+    expect(JSON.stringify(report.facts)).not.toContain('facilitator');
   });
 
   it('share.name-exists when the name exists on the organization', async () => {
     const t = transport();
     const door43 = fake({ existingRepositories: ['orgA/puntos'] });
-    await refused(
+    const report = await refused(
       deps(t, door43),
       t,
       request({ kind: 'organization', organization: 'orgA' }),
       'share.name-exists',
     );
     expect(t.remotes).toEqual([]);
+    expect(report.facts).toMatchObject({ target: 'orgA' });
   });
 
   it('share.auth-failed when the session has no token, before any call', async () => {
