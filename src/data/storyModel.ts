@@ -57,13 +57,14 @@ export function printedStories(stories: Story[]): PrintedStory[] {
 /**
  * Every story of the project as the store holds it, in number order, as
  * printed items; and, with `storyPictures` (one story's picture sources by
- * frame number), the sources of the drafted frames of each printed story. A
+ * frame number, given the story as read here), the sources of the drafted
+ * frames of each printed story. A
  * story that does not print, and an undrafted frame, resolve no picture.
  * `undrafted` is true when any frame of the project has no text.
  */
 export async function readPrintedStories(
   store: Pick<BurritoStore, 'listStories' | 'readStory'>,
-  storyPictures?: (story: number) => Promise<Record<string, string>>,
+  storyPictures?: (number: number, story: Story) => Promise<Record<string, string>>,
 ): Promise<{ items: PrintedStory[]; pictures: StoryPictures; undrafted: boolean }> {
   const stories: Story[] = [];
   for (const number of [...(await store.listStories())].sort((a, b) => a - b)) stories.push((await store.readStory(number)).story);
@@ -75,7 +76,7 @@ export async function readPrintedStories(
     if ('gap' in item) continue;
     const drafted = item.frames.flatMap((frame) => ('gap' in frame ? [] : [String(frame.n)]));
     if (drafted.length === 0) continue;
-    const sources = await storyPictures(item.story.number);
+    const sources = await storyPictures(item.story.number, item.story);
     pictures[item.story.number] = Object.fromEntries(drafted.filter((n) => sources[n]).map((n) => [n, sources[n]]));
   }
   return { items, pictures, undrafted };

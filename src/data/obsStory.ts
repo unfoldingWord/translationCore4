@@ -144,7 +144,7 @@ const noteFor = (
   return { wanted, packs };
 };
 
-const projectImageIngredients = async (
+export const projectImageIngredients = async (
   api: ServerApi,
   projectRepo: string,
 ): Promise<Record<string, ObsImageAsset>> => {
@@ -162,7 +162,9 @@ const sourceRepoFor = (installed: InstalledMap, pin: ResourcePin): string | null
   installedPathFor(installed, pin) ?? null;
 
 /** Read one target story and its pinned gateway story, then resolve every image
- * at render time. No source or image bytes are written into the target story. */
+ * at render time. No source or image bytes are written into the target story.
+ * A caller that presents many stories of one project (#460) passes each `story`
+ * it has already read and the project's `projectIngredients`, read once. */
 export const readObsStoryPresentation = async ({
   api,
   store,
@@ -172,6 +174,8 @@ export const readObsStoryPresentation = async ({
   installed,
   packCache,
   pinsKnown = true,
+  story,
+  projectIngredients,
 }: {
   api: ServerApi;
   store: BurritoStore;
@@ -185,8 +189,12 @@ export const readObsStoryPresentation = async ({
    * no source condition is stated then, because none has been decided. A null
    * `resources` with the pins KNOWN is the real "no pin recorded". */
   pinsKnown?: boolean;
+  /** The target story, when the caller has already read it; absent, it is read here. */
+  story?: Story;
+  /** `projectImageIngredients` of `projectRepo`, when the caller has already read them. */
+  projectIngredients?: Record<string, ObsImageAsset>;
 }): Promise<ObsStoryPresentation> => {
-  const target = await store.readStory(storyNumber);
+  const target = { story: story ?? (await store.readStory(storyNumber)).story };
   let sourceStory: Story | null = null;
   let source: ObsSourceState | null = null;
   const sourcePin = resources ? resolveObsSetSlot(resources, 'obs').pin : null;
@@ -224,13 +232,13 @@ export const readObsStoryPresentation = async ({
   const defaultLocal = installedPathFor(installed, DEFAULT_OBS_IMAGES) ?? DEFAULT_OBS_IMAGES_LOCAL;
   const { pack: bundled, report: bundledReport } = await readPack(api, DEFAULT_OBS_IMAGES, defaultLocal, packCache);
   reports.push(bundledReport);
-  const projectIngredients = await projectImageIngredients(api, projectRepo);
+  const ingredients = projectIngredients ?? (await projectImageIngredients(api, projectRepo));
   const images: Record<string, ObsImageResolution> = {};
   for (let i = 0; i < target.story.frames.length; i += 1) {
     images[String(i + 1)] = resolveObsImage(
       target.story.frames[i].image,
       resources ?? ({ schemaVersion: 2, languageSets: { primary: {}, fallback: {} }, resources: {} } as ResourcesFile),
-      projectIngredients,
+      ingredients,
       packs,
       bundled,
     );
