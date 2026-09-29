@@ -152,9 +152,11 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       const listed = (await (await fetch(`${tokensRoute}?limit=50`, { headers })).json()) as Array<{ id: number; name: string }>;
       for (const token of listed) if (token.name === 'translationCore') await fetch(`${tokensRoute}/${token.id}`, { method: 'DELETE', headers });
       const created = await fetch(tokensRoute, { method: 'POST', headers, body: JSON.stringify({ name: 'translationCore', scopes: scopesInSource() }) });
-      expect(created.status, await created.text().catch(() => '')).toBe(201);
+      // A response body reads once: read it here, then parse it (the failure message needs it too).
+      const createdText = await created.text();
+      expect(created.status, createdText).toBe(201);
       const after = (await (await fetch(`${tokensRoute}?limit=50`, { headers })).json()) as Array<{ name: string; scopes: string[] }>;
-      const minted = (await created.json()) as { sha1: string };
+      const minted = JSON.parse(createdText) as { sha1: string };
       expect(after.find((token) => token.name === 'translationCore')?.scopes.sort()).toEqual([...scopesInSource()].sort());
       // #467: the minted token reads what the share reads, and creates on the account (and on
       // DCS_QA_ORG when it is set); each repository made here is deleted again.
