@@ -183,6 +183,10 @@ const refusalForCreate = (error: unknown, name: string): unknown => {
     return new Refusal('share.name-exists', `the name ${name} exists there; pick another`, facts);
   if (error.status === 401)
     return new Refusal('share.auth-failed', 'Door43 did not accept the sign-in', facts);
+  // A token minted before #467 lacks the create scopes: a new sign-in mints
+  // one that has them, so it is the sign-in that failed, not the create.
+  if (error.status === 403 && /required scope/.test(error.message))
+    return new Refusal('share.auth-failed', 'the Door43 sign-in cannot create repositories; sign in again', facts);
   return new Refusal(
     'share.create-rejected',
     `Door43 did not create the repository: ${error.message}`,

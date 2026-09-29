@@ -31,6 +31,9 @@ export interface FakeDoor43Options {
   existingRepositories?: string[];
   /** Tokens that are valid from the start (a session that skipped sign-in). */
   tokens?: string[];
+  /** The scopes of a token in `tokens` (default: every scope); a token kept from a
+   * version that minted fewer scopes is refused at the create (#467). */
+  tokenScopes?: Record<string, string[]>;
   /** Token names the account holds already (the qa risk of #203: a stale `translationCore`). */
   existingTokens?: string[];
   cloneUrlFor?: (fullName: string) => string;
@@ -73,7 +76,8 @@ export class FakeDoor43 {
   readonly tokens = new Map<string, string>();
   /** The account's tokens as Door43 lists them: by id, the secret never listed. */
   readonly tokenRows: Array<{ id: number; name: string; secret: string; scopes: string[] }> = [];
-  private readonly valid = new Set<string>();
+  /** Valid token → its scopes; null holds every scope. */
+  private readonly valid = new Map<string, string[] | null>();
   private readonly options: FakeDoor43Options;
   private nextToken = 1;
 
@@ -81,7 +85,7 @@ export class FakeDoor43 {
     this.options = options;
     for (const name of options.existingRepositories ?? [])
       this.repositories.set(name, this.cloneUrl(name));
-    for (const token of options.tokens ?? []) this.valid.add(token);
+    for (const token of options.tokens ?? []) this.valid.set(token, options.tokenScopes?.[token] ?? null);
     for (const name of options.existingTokens ?? []) {
       const secret = `stale-token-${this.nextToken++}`;
       this.tokenRows.push({ id: this.nextToken, name, secret, scopes: [] });
@@ -164,7 +168,7 @@ export class FakeDoor43 {
       const row = { id: this.nextToken, name: body.name, secret, scopes: body.scopes ?? [] };
       this.tokenRows.push(row);
       this.tokens.set(body.name, secret);
-      this.valid.add(secret);
+      this.valid.set(secret, row.scopes);
       return {
         status: 201,
         body: { id: row.id, name: row.name, sha1: secret, scopes: row.scopes },
@@ -224,6 +228,16 @@ export class FakeDoor43 {
     if (call.method === 'POST') {
       const org = route.match(/^\/orgs\/([^/]+)\/repos$/);
       let owner: string | null = null;
+      // Door43 checks the token's scope before the route (1.27.3+dcs, issue #467).
+      const scope = route === '/user/repos' ? 'write:user' : org ? 'write:organization' : null;
+      const held = this.valid.get(token);
+      if (scope && held && !held.includes(scope))
+        return {
+          status: 403,
+          body: {
+            message: `token does not have at least one of required scope(s), required=[${scope}], token scope=${held.join(',')}`,
+          },
+        };
       if (route === '/user/repos') owner = this.options.user.username;
       else if (org) {
         const found = this.options.organizations?.find((o) => o.username === org[1]);
