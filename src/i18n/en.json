@@ -737,6 +737,7 @@
   "signIn.password": "Password",
   "signIn.stay": "Stay signed in on this computer",
   "signIn.sessionNote": "Without Stay signed in, your sign-in lasts for one app session.",
+  "signIn.renew": "Sign in again: your earlier sign-in cannot create repositories on Door43.",
   "signIn.notice": "Each change you share is signed with the account name of this computer. Door43 shows that name as the author.",
   "signIn.cancel": "Cancel",
   "signIn.submit": "Sign in",
@@ -787,6 +788,6 @@
   "shareDialog.error.non-fast-forward": "Another device has pushed this project; team sync is coming and your work is safe.",
   "shareDialog.error.offline": "You are offline.",
   "shareDialog.error.auth-failed": "Door43 did not accept the sign-in. Sign in again.",
-  "shareDialog.error.create-rejected": "Door43 did not create the repository: {reason}",
+  "shareDialog.error.create-rejected": "Door43 did not create the repository, so nothing was shared.",
   "shareDialog.error.push-failed": "The push failed: {reason}"
 }

@@ -136,7 +136,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       expect(fake.calls.filter((c) => c.method === 'POST').length).toBe(created + 1);
     });
 
-    test('3. (live) the token on qa.door43.org has the scopes the adapter names', { tag: ['@inc85', '@J11'] }, async () => {
+    test('3. (live) the token on qa.door43.org has the scopes the adapter names, and creates a repository (#467)', { tag: ['@inc85', '@J11'] }, async () => {
       const user = process.env.DCS_QA_USER;
       const secret = process.env.DCS_QA_PASSWORD ?? process.env.DCS_QA_TOKEN;
       test.skip(!user || !secret, 'labelled skip: set DCS_QA_USER and DCS_QA_PASSWORD (or DCS_QA_TOKEN) to run the live leg on qa.door43.org');
@@ -144,17 +144,35 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       const basic = `Basic ${Buffer.from(`${user}:${secret}`, 'utf8').toString('base64')}`;
       const headers = { Authorization: basic, Accept: 'application/json', 'Content-Type': 'application/json' };
       const me = await fetch(`${QA_SERVER}/api/v1/user`, { headers });
-      expect(me.status, 'GET /user with the QA credentials').toBe(200);
+      // Door43's own message names the cause: 401 is a wrong secret; 403 is a secret Door43 knows
+      // but refuses here (a token without `read:user`, or an account that must act on the website first).
+      expect(me.status, `GET /user with the QA credentials: ${await me.clone().text()}`).toBe(200);
       const { login } = (await me.json()) as { login: string };
       const tokensRoute = `${QA_SERVER}/api/v1/users/${encodeURIComponent(login)}/tokens`;
       // The adapter's own sequence, on the real server: drop a stale translationCore, mint it again.
       const listed = (await (await fetch(`${tokensRoute}?limit=50`, { headers })).json()) as Array<{ id: number; name: string }>;
       for (const token of listed) if (token.name === 'translationCore') await fetch(`${tokensRoute}/${token.id}`, { method: 'DELETE', headers });
       const created = await fetch(tokensRoute, { method: 'POST', headers, body: JSON.stringify({ name: 'translationCore', scopes: scopesInSource() }) });
-      expect(created.status, await created.text().catch(() => '')).toBe(201);
+      // A response body reads once: read it here, then parse it (the failure message needs it too).
+      const createdText = await created.text();
+      expect(created.status, createdText).toBe(201);
       const after = (await (await fetch(`${tokensRoute}?limit=50`, { headers })).json()) as Array<{ name: string; scopes: string[] }>;
+      const minted = JSON.parse(createdText) as { sha1: string };
       expect(after.find((token) => token.name === 'translationCore')?.scopes.sort()).toEqual([...scopesInSource()].sort());
-      // The create and the push with this token are the live leg of #185.
+      // #467: the minted token reads what the share reads, and creates on the account (and on
+      // DCS_QA_ORG when it is set); each repository made here is deleted again.
+      const auth = { ...headers, Authorization: `token ${minted.sha1}` };
+      for (const route of ['/user', '/user/orgs'])
+        expect((await fetch(`${QA_SERVER}/api/v1${route}`, { headers: auth })).status, `GET ${route}`).toBe(200);
+      const org = process.env.DCS_QA_ORG;
+      const name = `tc4-467-${Date.now()}`;
+      for (const [route, owner] of [['/user/repos', login], ...(org ? [[`/orgs/${org}/repos`, org]] : [])]) {
+        const made = await fetch(`${QA_SERVER}/api/v1${route}`, { method: 'POST', headers: auth, body: JSON.stringify({ name, auto_init: false, private: false }) });
+        const text = await made.text();
+        if (made.status === 201) await fetch(`${QA_SERVER}/api/v1/repos/${owner}/${name}`, { method: 'DELETE', headers: auth });
+        expect(made.status, `POST ${route}: ${text}`).toBe(201);
+      }
+      // The push with this token is the live leg of #185.
     });
 
     // 4. The pushed commit's author is the computer's account name: the OBS case of the
@@ -466,6 +484,42 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       expect(remote.main()).toBe(second);
       // The token is on no disk of the rig.
       expect(filesHolding(RIG_STATE, keychain.held!)).toEqual([]);
+    });
+
+    test('2c. a token kept by an earlier version without the create scopes: the share asks the password once, says why, replaces the token, and shares (#467)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
+      const OLD = 'kept-before-467';
+      const fake = await fakeShare(context, remote, { tokens: [OLD], tokenScopes: { [OLD]: ['write:repository', 'read:organization', 'read:user'] } });
+      const keychain = await fakeKeychain(context, OLD);
+      await page.goto('/');
+      // The old token still reads the account, so the new session resumes on it.
+      await expect(page.getByTestId('door43-status')).toHaveText(SIGNED_IN);
+      await page.getByTestId(`share-${SEEDED_ID}`).click();
+      await expect(page.getByTestId('share-orgs-loading')).toHaveCount(0);
+      await page.getByTestId('share-next').click();
+      await page.getByTestId('share-submit').click();
+      // Door43 refuses the create (403, a missing scope): the app forgets the token and asks the
+      // password once, with one line, and no repeated or raw server text.
+      const signin = page.getByTestId('share-signin');
+      await expect(signin).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByTestId('signin-renew')).toHaveText('Sign in again: your earlier sign-in cannot create repositories on Door43.');
+      await expect(signin).not.toContainText(/scope|\/user\/repos|HTTP/);
+      expect(keychain.held).toBeNull();
+      await expect(page.getByTestId('door43-status')).toHaveText(NOT_SIGNED_IN);
+      expect(fake.repositories.size).toBe(0);
+      expect(remote.main()).toBeNull();
+      await page.getByLabel('Stay signed in on this computer').check();
+      await signIn(page);
+      // The new token has the scopes; the share continues in the dialog and completes.
+      await expect(page.getByTestId('share-orgs-loading')).toHaveCount(0);
+      await page.getByTestId('share-next').click();
+      await page.getByTestId('share-submit').click();
+      await expect(page.getByTestId('share-url')).toHaveText(`${QA_SERVER}/${USER.username}/${SEEDED_PROJECT}`, { timeout: 30_000 });
+      expect(remote.main()).toBe(head(SEEDED_PROJECT));
+      const minted = fake.tokenRows.find((row) => row.name === 'translationCore')!;
+      expect(minted.scopes).toEqual(scopesInSource());
+      expect(keychain.held).toBe(minted.secret);
+      // The sign-in was asked once: one token minted.
+      expect(fake.calls.filter((c) => c.method === 'POST' && c.url.endsWith('/tokens')).length).toBe(1);
     });
 
     test('3. organizations: one cannot be chosen and says why; the one with the most repositories in the language is Recommended; a share goes there', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {

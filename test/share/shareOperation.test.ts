@@ -3,11 +3,12 @@
 // and for an organization, every refusal with its code and no push, the
 // second share with no create, and the token in the push body, never in a URL.
 import { describe, expect, it } from 'vitest';
-import { Door43Api } from '../../src/data/share/door43Api';
+import { Door43Api, TOKEN_SCOPES } from '../../src/data/share/door43Api';
 import { share, type ShareDeps, type ShareTransport } from '../../src/data/share/shareOperation';
 import { reportError } from '../../src/data/journal/runtime';
 import { ServerApiError } from '../../src/data/serverApi';
 import { FakeDoor43, type FakeOrganization } from '../../e2e/helpers/door43';
+import { t as translate } from '../../src/i18n/index.js';
 
 const SERVER = 'https://qa.door43.org';
 const REPO = '_local_/_local_/puntos';
@@ -212,6 +213,31 @@ describe('#362 share: refusals, each with its code and nothing pushed', () => {
     expect(t.remotes).toEqual([]);
   });
 
+  // #467: the scopes an earlier version minted; Door43 refuses both creates with them.
+  const OLD_SCOPES = ['write:repository', 'read:organization', 'read:user'];
+
+  it.each([
+    ['the account', { kind: 'user' } as const],
+    ['an organization', { kind: 'organization', organization: 'orgA' } as const],
+  ])('share.auth-failed, not create-rejected, when a token without the create scopes creates in %s (#467)', async (_where, target) => {
+    const t = transport();
+    const door43 = fake({ tokenScopes: { [TOKEN]: OLD_SCOPES } });
+    const report = await refused(deps(t, door43), t, request(target), 'share.auth-failed');
+    expect(report.facts).toMatchObject({ refusal: { status: 403 } });
+    expect(t.remotes).toEqual([]);
+  });
+
+  it.each([
+    ['the account', { kind: 'user' } as const, 'facilitator/puntos'],
+    ['an organization', { kind: 'organization', organization: 'orgA' } as const, 'orgA/puntos'],
+  ])('a token with TOKEN_SCOPES creates in %s (#467, the positive control)', async (_where, target, repository) => {
+    const t = transport();
+    const door43 = fake({ tokenScopes: { [TOKEN]: [...TOKEN_SCOPES] } });
+    const report = await share(deps(t, door43), request(target));
+    expect(reportError(report)).toBeNull();
+    expect(report.facts).toMatchObject({ repository, created: true });
+  });
+
   it('share.create-rejected when Door43 rejects the create (403 in an organization the user cannot create in)', async () => {
     const t = transport();
     const door43 = fake();
@@ -222,6 +248,12 @@ describe('#362 share: refusals, each with its code and nothing pushed', () => {
       'share.create-rejected',
     );
     expect(report.facts).toMatchObject({ refusal: { status: 403 } });
+    // #467: the user reads one plain sentence; Door43's route and words stay in the Report.
+    const reason = String(report.facts.error);
+    expect(reason).toContain('/orgs/orgLocked/repos failed (HTTP 403)');
+    expect(translate('shareDialog.error.create-rejected', { reason })).toBe(
+      'Door43 did not create the repository, so nothing was shared.',
+    );
   });
 
   it('share.offline when the platform network is off, before the create', async () => {
