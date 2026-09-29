@@ -12,6 +12,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import type { BrowserContext, Page } from '@playwright/test';
 import { test, expect } from './helpers/test';
@@ -531,7 +532,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
 
       // Another device pushes; this device commits; Upload changes is refused, the remote keeps theirs.
       const other = path.join(remote.tmp, 'other');
-      execFileSync('git', ['clone', '-q', `file://${remote.bare}`, other]);
+      execFileSync('git', ['clone', '-q', pathToFileURL(remote.bare).href, other]); // `file://${path}` breaks on Windows (door43Share.ts)
       fs.writeFileSync(path.join(other, 'other-device.txt'), 'x\n');
       git(other, 'add', 'other-device.txt');
       git(other, '-c', 'user.email=o@x', '-c', 'user.name=other', 'commit', '-qm', 'other device');

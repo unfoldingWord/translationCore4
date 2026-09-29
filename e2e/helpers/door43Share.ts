@@ -6,6 +6,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import type { BrowserContext, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
@@ -84,9 +85,13 @@ export async function fakeFor(context: BrowserContext, extra: Partial<FakeDoor43
   return fake;
 }
 
-/** The fake whose created repositories clone from the bare remote. */
+/** The fake whose created repositories clone from the bare remote. The URL is
+ * built by pathToFileURL, never by prefixing the path: `file://${path}` on
+ * Windows gives `file://C:\...`, which the server's libgit2 push cannot
+ * resolve ("failed to resolve path", os error 2); the encoded form
+ * `file:///C:/...` works on every platform. */
 export const fakeShare = (context: BrowserContext, remote: BareRemote, extra: Partial<FakeDoor43Options> = {}) =>
-  fakeFor(context, { cloneUrlFor: () => `file://${remote.bare}`, ...extra });
+  fakeFor(context, { cloneUrlFor: () => pathToFileURL(remote.bare).href, ...extra });
 
 export async function signIn(page: Page, password = USER.password): Promise<void> {
   await page.getByLabel('Door43 username or email').fill(USER.username);
