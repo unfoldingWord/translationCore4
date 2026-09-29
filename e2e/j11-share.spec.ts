@@ -199,7 +199,8 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       await expect(page.getByTestId('door43-status')).toHaveText(SIGNED_IN);
       const token = fake.tokens.get('translationCore');
       expect(token).toBeTruthy();
-      // The rig's disk (its state: repos, client settings, temp) holds no file with any of the three.
+      // The rig's disk (its state: repos, client settings, temp) holds no file with the token or
+      // the password, and no file stores the login (a repository path is not a login, #474).
       for (const secret of [token!, USER.password]) expect(filesHolding(RIG_STATE, secret), secret).toEqual([]);
       expect(loginsHolding(RIG_STATE, USER.username), USER.username).toEqual([]);
       // The app's storage in the browser: localStorage and sessionStorage hold no value with them.
@@ -274,8 +275,8 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       await expect(page.getByTestId('door43-status')).toHaveText(SIGNED_IN);
       await expect(page.getByTestId('door43-not-kept')).toHaveCount(0);
       const token = fake.tokens.get('translationCore')!;
-      // Test 6: the keychain took the token and nothing else; the rig's disk and the browser's
-      // storage hold none of the three.
+      // Test 6: the keychain took the token and nothing else; the rig's disk holds no token,
+      // no password and no stored login, and the browser's storage holds none of the three.
       expect(keychain.calls).toEqual(['read', 'keep']);
       expect(keychain.held).toBe(token);
       expect(token).not.toContain(USER.username);

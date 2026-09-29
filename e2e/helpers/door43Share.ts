@@ -49,8 +49,9 @@ export const filesHolding = (dir: string, needle: string): string[] => {
 };
 
 /** Every file under `dir` that stores `username` as a login (D85): the username
- * anywhere except as the owner of a repository — a path `<username>/<repository>` at the
- * start of a value, or the first segment after the server in a repository URL. A
+ * anywhere except as the owner of a repository — a path `<username>/<repository>` after
+ * a quote, a space or the start of a line, or the first segment after the server in an
+ * `http(s)` URL. A
  * share's ops record keeps that path, and the Home card shows it; a path names where a
  * project lives, not who signed in (#474). An API route such as
  * `/api/v1/users/<username>/tokens` still counts. */
