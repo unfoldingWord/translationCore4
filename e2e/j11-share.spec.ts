@@ -8,7 +8,8 @@
 // calls, the rig's disk and the browser's storage — never the app's own claims. The live leg
 // runs against qa.door43.org only when the QA credentials are present (#185) and reports a
 // labelled skip otherwise. D85: nothing but a kept token is stored, so the disk checks look
-// for the token, the password and the login and expect none.
+// for the token, the password and the login and expect none. A repository path
+// `<username>/<repository>` is not a login: a share's ops record keeps it (#474).
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -20,7 +21,7 @@ import type { FakeOrganization } from './helpers/door43';
 import { TC4_ROOT, SEEDED_PROJECT, readClientSettingsDoc, rigRepo, listLocalRepos } from './helpers/rig';
 import {
   QA_SERVER, RIG_API, RIG_STATE, USER, type BareRemote,
-  dropOrigin, fakeFor, fakeShare, filesHolding, git, head, makeBareRemote, pressShare, signIn,
+  dropOrigin, fakeFor, fakeShare, filesHolding, git, head, loginsHolding, makeBareRemote, pressShare, signIn,
 } from './helpers/door43Share';
 
 const AUTHOR_NOTICE = /signed with the account name of this computer/;
@@ -199,7 +200,8 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       const token = fake.tokens.get('translationCore');
       expect(token).toBeTruthy();
       // The rig's disk (its state: repos, client settings, temp) holds no file with any of the three.
-      for (const secret of [token!, USER.password, USER.username]) expect(filesHolding(RIG_STATE, secret), secret).toEqual([]);
+      for (const secret of [token!, USER.password]) expect(filesHolding(RIG_STATE, secret), secret).toEqual([]);
+      expect(loginsHolding(RIG_STATE, USER.username), USER.username).toEqual([]);
       // The app's storage in the browser: localStorage and sessionStorage hold no value with them.
       const stored = await page.evaluate(() => {
         const dump = (s: Storage) => Object.keys(s).map((k) => `${k}=${s.getItem(k)}`);
@@ -208,6 +210,31 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       expect(stored.filter((entry) => [token!, USER.password, USER.username].some((s) => entry.includes(s)))).toEqual([]);
       // The negative control: the seed's install records ARE on the rig's disk, so the search can find things.
       expect(filesHolding(RIG_STATE, 'installedResources')).not.toEqual([]);
+    });
+
+    test('6b. the login check passes a repository path and fails a stored login (#474)', { tag: ['@inc85', '@J11'] }, async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-login-'));
+      try {
+        const settings = path.join(dir, 'uw-tc4.json');
+        const repository = `${USER.username}/${SEEDED_PROJECT}`;
+        // What a share's ops record keeps: the repository path and its URL.
+        fs.writeFileSync(settings, JSON.stringify({ opsLog: [{ report: { facts: { repository, url: `${QA_SERVER}/${repository}` } } }] }));
+        expect(filesHolding(dir, USER.username)).toEqual(['uw-tc4.json']);
+        expect(loginsHolding(dir, USER.username)).toEqual([]);
+        // The firing cases: a stored login, alone and beside the path; an email; the
+        // username inside an API route, which is not a repository path.
+        for (const stored of [
+          { login: USER.username },
+          { login: USER.username, opsLog: [{ report: { facts: { repository } } }] },
+          { email: USER.email },
+          { failed: `${QA_SERVER}/api/v1/users/${USER.username}/tokens` },
+        ]) {
+          fs.writeFileSync(settings, JSON.stringify(stored));
+          expect(loginsHolding(dir, USER.username), JSON.stringify(stored)).toEqual(['uw-tc4.json']);
+        }
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
     });
 
     test('7. a new app session without a kept token asks the sign-in again, and says why in one line; "Stay signed in" off never asks the keychain (#366 test 2)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
@@ -252,7 +279,8 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       expect(keychain.calls).toEqual(['read', 'keep']);
       expect(keychain.held).toBe(token);
       expect(token).not.toContain(USER.username);
-      for (const secret of [token, USER.password, USER.username]) expect(filesHolding(RIG_STATE, secret), secret).toEqual([]);
+      for (const secret of [token, USER.password]) expect(filesHolding(RIG_STATE, secret), secret).toEqual([]);
+      expect(loginsHolding(RIG_STATE, USER.username), USER.username).toEqual([]);
       const stored = await page.evaluate(() => {
         const dump = (s: Storage) => Object.keys(s).map((k) => `${k}=${s.getItem(k)}`);
         return [...dump(localStorage), ...dump(sessionStorage)];
