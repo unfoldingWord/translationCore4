@@ -15,8 +15,8 @@
 // Nothing is deleted. An invalidated decision keeps its full §5.2 record, so
 // switching back later can re-attach it (its checkId is still the old
 // resource's, which matches again once that resource is pinned again).
-import { mergeAndReattach } from './derive';
-import type { CheckItem } from './derive';
+import { mergeAndReattach, referenceParts } from './derive';
+import type { CheckContextId, CheckItem } from './derive';
 import type { Decision, DecisionFile } from './burritoStore';
 
 export interface CarryOverResult {
@@ -66,11 +66,25 @@ export const carryOverDecisions = (
   // but they are kept, so pinning the old resource back restores them.
   // §5.2: invalidation MUST NOT leave status "valid"; a "todo" the user set is
   // their triage and is preserved, so the round-trip is loss-free.
-  const invalidatedDecisions = (unplaced as unknown as Decision[]).map((d) => ({
-    ...d,
-    invalidated: true,
-    status: d.status === 'todo' ? ('todo' as const) : ('invalid' as const),
-  }));
+  //
+  // One record per §5.2 identity key (checkId, place, occurrence — no quote). A
+  // carried record can take the key of an unplaced one: es-419_tn keeps the
+  // English check ids while its quotes differ, so a decision from another id can
+  // land on a Spanish check whose English twin was left unplaced. The register
+  // holds one record per key and the later write would win, so the carried one
+  // stays and the unplaced one is left out; it counts as neither (#448).
+  const identityOf = (c: CheckContextId): string => {
+    const { c: chapter, v: verse } = referenceParts(c.reference);
+    return [c.checkId, String(chapter), String(verse), c.occurrence].join('|');
+  };
+  const carriedKeys = new Set(carriedDecisions.map((d) => identityOf(d.contextId as unknown as CheckContextId)));
+  const invalidatedDecisions = (unplaced as unknown as Decision[])
+    .filter((d) => !carriedKeys.has(identityOf(d.contextId as unknown as CheckContextId)))
+    .map((d) => ({
+      ...d,
+      invalidated: true,
+      status: d.status === 'todo' ? ('todo' as const) : ('invalid' as const),
+    }));
 
   // Checks in the new list with no decision at all — work that now exists.
   const undecided = items.filter((i) => !placed.has(i)).length;
