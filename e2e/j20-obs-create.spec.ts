@@ -12,12 +12,12 @@ import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import path from 'node:path';
 import { listLocalRepos, rigRepo, commitCount, SEEDED_PROJECT } from './helpers/rig';
+import { TC4_ROOT } from './helpers/root';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import { seedStory, parseStory } from '../journal/story.mjs';
 
 const RIG = 'http://127.0.0.1:19998/api';
-const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
-const TEMPLATE = path.join(REPO_ROOT, 'conformance', 'fixtures', 'text_stories');
+const TEMPLATE = path.join(TC4_ROOT, 'conformance', 'fixtures', 'text_stories');
 
 /** Every file of a tree, keyed by its path relative to `dir`. */
 const treeFiles = (dir: string): Record<string, string> => {
@@ -35,7 +35,7 @@ const treeFiles = (dir: string): Record<string, string> => {
 
 /** The conformance harness's SB validator, built from its bundled schema. */
 const sbValidator = () => {
-  const conformance = path.join(REPO_ROOT, 'conformance');
+  const conformance = path.join(TC4_ROOT, 'conformance');
   const require = createRequire(path.join(conformance, 'package.json'));
   const Ajv = require('ajv');
   const addFormats = require('ajv-formats');
