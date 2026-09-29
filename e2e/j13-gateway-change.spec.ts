@@ -15,7 +15,7 @@ import { test, expect } from './helpers/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import fs from 'node:fs';
 import path from 'node:path';
-import { deriveTnItems, mergeKey } from '../src/data/derive';
+import { deriveTnItems, isDecided, mergeKey } from '../src/data/derive';
 import {
   SEEDED_PROJECT,
   rigRepo,
@@ -495,12 +495,102 @@ test.describe('J13 — changing the project’s checking language', () => {
       await page.getByTestId('open-translationNotes').click();
       await expect(page.getByTestId('check-session')).toContainText('es-419_tn');
       const before = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')!.decisions.length;
-      // A check with no earlier record: a carried-over check cannot be decided
-      // again yet (#448, the same on main).
       await page.getByTestId('check-list').locator('button[data-decided="0"]').last().click();
       await page.getByTestId('mark-valid').click();
       await expect.poll(() => readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')?.decisions.length, { timeout: 10_000 }).toBe(before + 1);
       expect(readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')!.resource?.repoPath).toContain('es-419_tn');
+    },
+  );
+
+  test(
+    'checks decided in English can be decided again after the change to Spanish: counted, shown with the Spanish quote, saved against es-419_tn (#448)',
+    { tag: ['@inc8', '@J13'] },
+    async ({ page }) => {
+      test.setTimeout(120_000);
+      writeProjectPins(SEEDED_PROJECT, EN());
+      const en = EN();
+      const asEnglish = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')!;
+      asEnglish.resource = { repoPath: en.tn.repoPath, version: en.tn.version, sha: en.tn.sha, languageSet: 'fallback' } as never;
+      writeDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT', asEnglish);
+
+      // Three English checks, taken from the two real TSVs and the sample's records.
+      // es-419_tn keeps the English check ids, so the change meets three cases:
+      //  carried  — same id and quote in Spanish: carried over.
+      //  recheck  — same id, another quote in Spanish: to check again.
+      //  collided — as `recheck`, and a sample record with another id (swi9) is
+      //             carried onto the Spanish check by reference + quote (D17): two
+      //             records for one check id.
+      const crossOf = (i: { contextId: { reference: unknown; quoteString: string; occurrence: number } }) => {
+        const r = i.contextId.reference as { chapter: unknown; verse: unknown };
+        return [String(r.chapter), String(r.verse), i.contextId.quoteString, i.contextId.occurrence].join('|');
+      };
+      const esItems = deriveTnItems(sideloadedIngredient('es-419_tn', 'TIT.tsv'), 'tit');
+      const esByKey = new Map(esItems.map((i) => [mergeKey(i.contextId), i]));
+      const esById = new Map(esItems.map((i) => [i.contextId.checkId, i]));
+      const sampleCross = new Set(asEnglish.decisions.map((d) => crossOf(d as never)));
+      const sampleIds = new Set(asEnglish.decisions.map((d) => (d.contextId as { checkId: string }).checkId));
+      const enItems = deriveTnItems(sideloadedIngredient('en_tn', 'TIT.tsv'), 'tit').filter((i) => !sampleIds.has(i.contextId.checkId));
+      const otherQuote = (i: (typeof enItems)[number]) => {
+        const es = esById.get(i.contextId.checkId);
+        return !!es && es.contextId.quoteString !== i.contextId.quoteString && !esByKey.has(mergeKey(i.contextId));
+      };
+      const carried = enItems.find((i) => esByKey.has(mergeKey(i.contextId)))!;
+      const recheck = enItems.find((i) => otherQuote(i) && !sampleCross.has(crossOf(esById.get(i.contextId.checkId)!)))!;
+      const collided = enItems.find((i) => otherQuote(i) && sampleCross.has(crossOf(esById.get(i.contextId.checkId)!)))!;
+      expect(carried && recheck && collided, 'the real TSVs and the sample give one check of each kind').toBeTruthy();
+      const checks = [carried, recheck, collided];
+
+      await openCheck(page);
+      await page.getByTestId('open-translationNotes').click();
+      await expect(page.getByTestId('check-session')).toContainText('en_tn');
+      const item = (id: string) => page.locator(`[data-testid="check-list"] button[data-check-id="${id}"]`);
+      const record = (id: string) => readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')!.decisions
+        .find((d) => (d.contextId as { checkId: string }).checkId === id);
+      const englishTitle: Record<string, string> = {};
+      for (const one of checks) {
+        const id = one.contextId.checkId;
+        await item(id).click();
+        englishTitle[id] = (await page.getByTestId('check-quote').textContent())!;
+        await page.getByTestId('mark-valid').click();
+        // The indicator may still read Saved from the last check: the record on disk is the proof.
+        await expect.poll(() => record(id)?.status, { timeout: 10_000 }).toBe('valid');
+      }
+
+      await chooseInSettings(page, ES_KEY);
+      await confirmChange(page);
+      await page.getByRole('button', { name: 'Cancel' }).click();
+      await expect(page.getByTestId('check-session')).toHaveCount(0);
+      // The picker card counts the Spanish list once it is current; a click before that opens the English one.
+      await expect(page.getByTestId('preflight-translationNotes')).toContainText(`of ${esItems.length}`);
+      await page.getByTestId('open-translationNotes').click();
+      await expect(page.getByTestId('check-session')).toContainText('es-419_tn');
+
+      // Every carried-over decision is counted. The change kept `carried` and, for `collided`, the
+      // record that the sample's swi9 brought: one record for the check id, not marked to check again.
+      const kept = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')!.decisions.filter((d) => d.invalidated !== true);
+      const keptIds = kept.map((d) => (d.contextId as { checkId: string }).checkId);
+      expect(keptIds).toEqual(expect.arrayContaining([carried.contextId.checkId, collided.contextId.checkId]));
+      expect(keptIds.filter((id) => id === collided.contextId.checkId)).toHaveLength(1);
+      const decided = kept.filter((d) => isDecided(d as never));
+      await expect(page.getByTestId('check-progress')).toHaveText(new RegExp(`^${decided.length} of ${esItems.length} resolved`));
+
+      // Deciding again saves, for all three, against the Spanish notes and with the Spanish quote.
+      for (const one of checks) {
+        const id = one.contextId.checkId;
+        await item(id).click();
+        await expect(page.getByTestId('check-quote')).not.toHaveText(englishTitle[id]);
+        await page.getByTestId('mark-valid').click();
+        await expect.poll(() => record(id)?.modifiedTimestamp, { timeout: 10_000 }).not.toBe(undefined);
+        await expect.poll(() => [record(id)?.status, record(id)?.invalidated], { timeout: 10_000 }).toEqual(['valid', false]);
+        await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
+        await expect(page.getByTestId('save-error')).toHaveCount(0);
+      }
+      const after = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')!;
+      expect(after.resource?.repoPath).toContain('es-419_tn');
+      for (const one of checks)
+        expect(record(one.contextId.checkId)).toMatchObject({
+          contextId: { quoteString: esById.get(one.contextId.checkId)!.contextId.quoteString },
+        });
     },
   );
 
