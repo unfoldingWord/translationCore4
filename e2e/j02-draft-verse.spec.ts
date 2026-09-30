@@ -435,13 +435,9 @@ test.describe('J2 — a translator drafts a verse', () => {
     async ({ page }) => {
       // Every request the client makes from the first paint through a saved draft.
       // The one local host is the dev client (baseURL), which proxies /api to the rig
-      // (vite.config.js); everything else is a network dependency. Two are known and open (#3: the fonts come from Google's
-      // CDN); the list shrinks to nothing when #3 lands. A new host fails the test.
+      // (vite.config.js); everything else is a network dependency, and any other host
+      // fails the test. The fonts are local since #3.
       const OFFLINE_DRAFT = 'Recuérdales que estén dispuestos a toda buena obra.';
-      const KNOWN_OFFLINE_DEFECTS: Record<string, string> = {
-        'fonts.googleapis.com': '#3',
-        'fonts.gstatic.com': '#3',
-      };
       const hosts = new Map<string, Set<string>>();
       const seen = (url: string, label = '') => {
         const u = new URL(url);
@@ -511,9 +507,8 @@ test.describe('J2 — a translator drafts a verse', () => {
       const local = new Set(['localhost:5199']);
       const external = [...hosts.keys()].filter((h) => !local.has(h)).sort();
       console.log(`J2 offline check: hosts contacted = ${[...hosts.keys()].sort().join(', ')}`);
-      for (const h of external) console.log(`  external ${h} (${KNOWN_OFFLINE_DEFECTS[h] ?? 'NO ISSUE'}): ${[...hosts.get(h)!].slice(0, 3).join(' ')}`);
-      const unknown = external.filter((h) => !Object.hasOwn(KNOWN_OFFLINE_DEFECTS, h));
-      expect(unknown, `hosts contacted with no open offline issue: ${unknown.join(', ')}`).toEqual([]);
+      for (const h of external) console.log(`  external ${h}: ${[...hosts.get(h)!].slice(0, 3).join(' ')}`);
+      expect(external, `hosts contacted other than the local server: ${external.join(', ')}`).toEqual([]);
       // The rig was reached through the proxy: the session was a real one, not an empty page.
       expect([...(hosts.get('localhost:5199') ?? [])].some((p) => p.startsWith('/api/'))).toBe(true);
     },

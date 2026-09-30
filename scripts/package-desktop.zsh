@@ -526,6 +526,8 @@ cp "$BUILD/electronite/LICENSES.chromium.html" "$APPDIR/licenses/LICENSES.chromi
 cp "$BUILD/upstream/resource-core/LICENSE" "$APPDIR/licenses/LICENSE.resource-core"
 cp "$BUILD/upstream/webfonts-core/LICENSE" "$APPDIR/licenses/LICENSE.webfonts-core"
 cp "$REPO/node_modules/@zip.js/zip.js/LICENSE" "$APPDIR/licenses/LICENSE.zip.js"
+# #3: the client's own fonts (in clients/uw-tc4) carry their SIL OFL texts.
+for f in "$REPO"/src/ds/assets/fonts/OFL-*.txt; do cp "$f" "$APPDIR/licenses/${f:t}"; done
 cat > "$APPDIR/THIRD-PARTY-NOTICES.md" <<NOTICES
 # Third-party notices
 
@@ -542,6 +544,7 @@ This build bundles the components below. Full texts are in licenses/.
 | puppeteer-core (electron/node_modules) | $PUPPETEER_CORE_VER | Apache-2.0 | github.com/puppeteer/puppeteer |
 | @puppeteer/browsers (electron/node_modules) | $PUPPETEER_BROWSERS_VER | Apache-2.0 | github.com/puppeteer/puppeteer |
 | @zip.js/zip.js (bundled export smoke; the tC3 import in the client) | $ZIP_JS_VER | BSD-3-Clause | github.com/gildas-lormeau/zip.js |
+| Client fonts: Mulish, Charis SIL, Noto Serif, Noto Serif Hebrew, Amiri (clients/uw-tc4) | Fontsource 5.3.0 | SIL OFL 1.1 (licenses/OFL-*.txt) | fontsource.org |
 NOTICES
 for entry in "${BUNDLED_RESOURCES[@]}"; do
   bundled_fields "$entry"
