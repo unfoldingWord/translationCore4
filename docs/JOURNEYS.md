@@ -187,7 +187,7 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 
 - Actor: facilitator. Activity: Exchange (lives on Home: Share beside Settings on each
   project card, D84).
-- Steps: press Share on the project card · sign in to Door43 with username and password,
+- Steps: press "Share on Door43" on the project card · sign in to Door43 with username and password,
   unless the session or the keychain has a token; "Stay signed in on this computer" keeps the
   token in the operating-system keychain. Sign-in is only in Share: Home has no Door43 bar
   (D86 point 7). A kept token is resumed at the first Share, not at app start (D86 point 8)
@@ -204,7 +204,7 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   commit; `origin` is set in the repository's git config; nothing about remotes is stored in
   the installation; the token is in renderer memory, and in the operating-system keychain only
   when "Stay signed in" is on; no name, email or login is stored (D85); each pushed commit's
-  author is the computer's account name (PLATFORM-NOTES #47). The card shows "On Door43" and the repository path. A later
+  author is the computer's account name (PLATFORM-NOTES #47). The card shows an "On Door43" badge beside the project name, and its meta line ends with "· Shared at `owner/repository`" (before a share: "· Only on this computer"; D86 point 6). A later
   share ("Upload changes") pushes `main` again with no dialog when a token is available.
   Under Upload changes, the card shows "as @username · Change" when someone is signed in, or
   "Signed in · Change" when a kept token is not resumed yet. At app start, tC4 sends no

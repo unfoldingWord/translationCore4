@@ -15,9 +15,31 @@ import { shareErrorText, Door43Account } from './modals/ShareDialog.jsx';
 // Above this many books a card shows only its in-progress books until expanded.
 const COLLAPSE_ABOVE = 12;
 
-// Plain text action in a card header (Share, Settings): hairline hover, no fill.
-const HEADER_ACTION = { border: 0, background: 'transparent', cursor: 'pointer', padding: '8px 6px', fontFamily: 'var(--font-ui)', fontWeight: 'var(--fw-heavy)', fontSize: 'var(--fs-caption-lg)', letterSpacing: 'var(--track-12-5)', color: 'var(--text-heading)', borderRadius: 'var(--radius-sm)' };
 const CARD_NOTE = { fontSize: 'var(--fs-meta)', letterSpacing: 'var(--track-11-5)', color: 'var(--text-tertiary)', fontWeight: 'var(--fw-medium)', whiteSpace: 'nowrap' };
+
+// D86 point 6: the end of a card's meta line — "· Only on this computer"
+// before a share, "· Shared at owner/repository" after it; nothing until
+// loadShared has read the repository's `origin`.
+function ShareMeta({ p }) {
+  const { s } = useApp();
+  if (!(p.id in s.remoteByProject)) return null;
+  const shared = s.remoteByProject[p.id];
+  return (
+    <>
+      {' · '}
+      <span data-testid={`share-state-${p.id}`}>
+        {shared ? t('home.sharedAt', { repository: shared.repository }) : t('home.onlyHere')}
+      </span>
+    </>
+  );
+}
+
+/** D86 point 6: "On Door43" beside the name of a shared project. */
+function SharedBadge({ p }) {
+  const { s } = useApp();
+  if (!s.remoteByProject[p.id]) return null;
+  return <Badge size="sm" tone="valid" data-testid={`share-badge-${p.id}`}>{t('home.onDoor43')}</Badge>;
+}
 
 // D86 point 7: a shared card's sign-in line — "as @username · Change", or
 // "Signed in · Change" for a kept sign-in not resumed yet; nothing when no one
@@ -31,11 +53,11 @@ function CardAccount({ p, shared }) {
   );
 }
 
-// #362 (D84 point 1): the Share action beside Settings on a Bible or OBS card
-// (Community Checking has none). A shared project — its repository has an
-// `origin`, read by loadShared, never a stored record (D85) — shows "On Door43"
-// with the repository path, and its action reads "Upload changes": a push with
-// no dialog. Under it, who is signed in (CardAccount). A refusal of an Upload
+// #362 (D84 point 1; D86 point 6): the Share action beside Settings on a Bible
+// or OBS card (Community Checking has none), an outlined pill. It reads "Share
+// on Door43"; for a shared project — its repository has an `origin`, read by
+// loadShared, never a stored record (D85) — "Upload changes": a push with no
+// dialog. Under it, who is signed in (CardAccount). A refusal of an Upload
 // changes shows here with its code.
 function ShareAction({ p }) {
   const { s, actions } = useApp();
@@ -51,12 +73,11 @@ function ShareAction({ p }) {
   return (
     <div data-testid={`share-card-${p.id}`} data-shared={shared ? '1' : '0'} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
       {/* D86 point 4: Share stays enabled in Local; the click asks to allow the internet. */}
-      <button type="button" data-i="quiet" data-testid={`share-${p.id}`} title={label}
-        disabled={busy} onClick={() => actions.requireInternet(() => actions.startShare(p))} style={HEADER_ACTION}>
+      <Button variant="outline" size="sm" data-testid={`share-${p.id}`} title={label}
+        disabled={busy} onClick={() => actions.requireInternet(() => actions.startShare(p))}>
         {label}
-      </button>
+      </Button>
       <CardAccount p={p} shared={shared} />
-      {shared && <span style={CARD_NOTE} data-testid={`share-state-${p.id}`}>{t('home.onDoor43')} · {shared.repository}</span>}
       {run?.error && (
         <span role="alert" style={{ ...CARD_NOTE, color: 'var(--uw-kindle)', whiteSpace: 'normal', maxWidth: 360, textAlign: 'end' }}
           data-testid={`share-card-error-${p.id}`} data-code={run.error.code || ''}>{shareErrorText(run.error)}</span>
@@ -111,15 +132,19 @@ export function ObsProjectCard({ p }) {
             <span dir={dir} style={{ fontSize: 'var(--fs-h3)', letterSpacing: 'var(--track-20)', fontWeight: 'var(--fw-black)', color: 'var(--text-heading)' }}>{p.name}</span>
             <Badge size="sm" tone="accent" data-testid="obs-marker">{t('home.obsMarker')}</Badge>
             <Badge size="sm" tone={dir === 'rtl' ? 'warn' : 'neutral'} style={dir === 'rtl' ? undefined : { color: 'var(--text-secondary)' }}>{dir.toUpperCase()}</Badge>
+            <SharedBadge p={p} />
           </div>
-          <span style={{ fontSize: 'var(--fs-ui-sm)', color: 'var(--text-tertiary)', fontWeight: 'var(--fw-medium)' }} data-testid="obs-progress">
-            {p.languageTag} · {t('home.obsStories')} · {t('home.inProgress', { n: inProgress })} · {hasPct ? t('home.drafted', { n: pct }) : '—'}
+          <span style={{ fontSize: 'var(--fs-ui-sm)', color: 'var(--text-tertiary)', fontWeight: 'var(--fw-medium)' }}>
+            <span data-testid="obs-progress">
+              {p.languageTag} · {t('home.obsStories')} · {t('home.inProgress', { n: inProgress })} · {hasPct ? t('home.drafted', { n: pct }) : '—'}
+            </span>
+            <ShareMeta p={p} />
           </span>
         </div>
         <ShareAction p={p} />
-        <button type="button" data-i="quiet" title={t('home.settings')} onClick={() => actions.openSettings(p)} style={HEADER_ACTION}>
+        <Button variant="secondary" size="sm" title={t('home.settings')} onClick={() => actions.openSettings(p)}>
           {t('home.settings')}
-        </button>
+        </Button>
       </div>
       {/* Wider than a book tile: a story tile carries a number, a title, a percent and a date. */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(236px,1fr))', gap: 8 }} data-testid="story-tiles">
@@ -178,15 +203,17 @@ function ProjectCard({ p }) {
             <span dir={dir} style={{ fontSize: 'var(--fs-h3)', letterSpacing: 'var(--track-20)', fontWeight: 'var(--fw-black)', color: 'var(--text-heading)' }}>{p.name}</span>
             <Badge size="sm" tone={dir === 'rtl' ? 'warn' : 'neutral'} style={dir === 'rtl' ? undefined : { color: 'var(--text-secondary)' }}>{dir.toUpperCase()}</Badge>
             {s.importedRepo === p.id && <Badge size="sm" tone="accentSoft" data-testid="imported-badge">{t('importer.badge')}</Badge>}
+            <SharedBadge p={p} />
           </div>
           <span style={{ fontSize: 'var(--fs-ui-sm)', color: 'var(--text-tertiary)', fontWeight: 'var(--fw-medium)' }}>
             {p.languageTag} · {p.bookCodes.length} {p.bookCodes.length === 1 ? t('home.book') : t('home.books')} · {t('home.inProgress', { n: inProgress.length })}
+            <ShareMeta p={p} />
           </span>
         </div>
         <ShareAction p={p} />
-        <button type="button" data-i="quiet" title={t('home.settings')} onClick={() => actions.openSettings(p)} style={HEADER_ACTION}>
+        <Button variant="secondary" size="sm" title={t('home.settings')} onClick={() => actions.openSettings(p)}>
           {t('home.settings')}
-        </button>
+        </Button>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(148px,1fr))', gap: 8 }}>
