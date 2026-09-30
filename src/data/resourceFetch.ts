@@ -399,7 +399,7 @@ export const fetchAndInstallPin = async (
 
   // The user's offline switch governs, even though the GET is client-side.
   if (!(await opts.api.getNetEnabled())) {
-    throw new Error('the app is offline — go online to download resources');
+    throw new Error('tC4 is set to Local — allow the internet to download resources');
   }
 
   const downloaded = await downloadPin(pin, doFetch);

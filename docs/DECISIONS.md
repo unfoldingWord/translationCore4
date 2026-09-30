@@ -1962,12 +1962,14 @@ main 0996d21, 2026-09-30, `src/data/share/door43Api.ts`].
    the Door43 API module stay refused.
 4. **No internet use without a click.** tC4 uses the internet only after the user clicks an action
    that needs it. At start, tC4 sends no request to Door43 in either state. The Door43 API module
-   refuses every call in Local. In Local, the internet actions stay enabled: Share, Upload
-   changes, the sign-in step, Download of a resource, Check for updates, and the import version
-   lookup. A click on one of them says "tC4 is set to Local." with **Allow internet**. That
-   button opens the confirmation of point 2. After Allow, the action continues. This replaces
-   the three "Go online" buttons. #259 (the automatic check for updates, Post-4.0 under D72)
-   conflicts with this point. It needs its own ruling before it is built.
+   refuses every call in Local. In Local, the internet actions stay enabled: Share, Upload changes,
+   the sign-in step, Download of a resource, Check for updates, and the import version lookup. A
+   click on one of them opens the confirmation of point 2 at once; its text begins "tC4 is set to
+   Local." After Allow, the action continues only when the server reports the gate on. Cancel sends
+   nothing. [amended 2026-09-30 — owner ruling on #486 slice B: the message and the confirmation are
+   one dialog, not a line with an **Allow internet** button before it.] This replaces the three "Go
+   online" buttons. #259 (the automatic check for updates, Post-4.0 under D72) conflicts with this
+   point. It needs its own ruling before it is built.
 5. **A missing pinned resource (amends D30 points 4 and 5).** With Internet, the app offers
    **Download** for the pinned version (sb-zip + SHA, OPEN-QUESTIONS #24). In Local, the checking
    of that (tool, book) is unavailable as a first-class state, and Download offers Allow internet.

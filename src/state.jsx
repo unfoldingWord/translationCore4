@@ -106,6 +106,11 @@ export const opsLog = new OpsLog({ read: () => api.getClientSettings(STORAGE_ID)
 // and refuses in Local. It starts false: Local until the server says otherwise.
 const internetGate = { allowed: false };
 export const door43 = new Door43Api({ allowed: () => internetGate.allowed });
+/** The barrier as the share and sign-in code asks for it (D86 point 3). */
+const internetAllowed = async () => internetGate.allowed;
+/** D86 point 4: the internet action a click in Local started; it runs after
+ * Allow is confirmed, and is dropped on Cancel. */
+let pendingInternet = null;
 
 // The mode a view is, for a checkpoint message (#183). Views not listed keep their id.
 const MODE_NAME = { read: 'Understand', draft: 'Translate', check: 'Check', publish: 'Community Checking' };
@@ -3003,7 +3008,10 @@ export function AppProvider({ children }) {
     // turns it on, anything else (Local, no choice, a settings document that
     // cannot be read) turns it off. The gate drives the D30.4/D30.5 split
     // (Download vs first-class unavailable), so it is known from startup.
-    const netReady = startInternet(api, () => api.getClientSettings(STORAGE_ID)).then(setNet);
+    const netReady = startInternet(api, () => api.getClientSettings(STORAGE_ID)).then(({ allowed, error }) => {
+      setNet(allowed);
+      if (error) dispatch({ type: 'set', patch: { netError: error } });
+    });
     // #366: a token kept in the operating-system keychain resumes the Door43
     // session, so the bar shows the user and a share asks nothing. No bridge
     // (a browser), no kept token, or no answer from Door43: not signed in.
@@ -3011,7 +3019,7 @@ export function AppProvider({ children }) {
     const keychain = desktopKeychain();
     if (keychain) {
       netReady
-        .then(() => resumeKeptSession({ door43, keychain, getNetEnabled: () => api.getNetEnabled() }))
+        .then(() => resumeKeptSession({ door43, keychain, getNetEnabled: internetAllowed }))
         .then(() => dispatch({ type: 'set', patch: { door43User: currentSession()?.username ?? null } }))
         .catch(() => {});
     }
@@ -3442,7 +3450,21 @@ export function AppProvider({ children }) {
         if (st.netChanging || (!allowed && internetBusy(st))) return;
         dispatch({ type: 'set', patch: { netAsk: allowed ? 'internet' : 'local', netError: null } });
       },
-      cancelInternet: () => dispatch({ type: 'set', patch: { netAsk: null } }),
+      cancelInternet: () => {
+        pendingInternet = null;
+        dispatch({ type: 'set', patch: { netAsk: null } });
+      },
+
+      /** D86 point 4: an internet action runs at once with Internet. In Local
+       * the click opens the Allow confirmation ("tC4 is set to Local."), and
+       * the action continues only after the server reports the gate on. */
+      requireInternet: (run) => {
+        if (internetGate.allowed) return run();
+        if (stateRef.current.netChanging) return undefined;
+        pendingInternet = run;
+        dispatch({ type: 'set', patch: { netAsk: 'internet', netError: null } });
+        return undefined;
+      },
 
       /** D86 points 2 and 3: change the gate, show what the server reports, and
        * store the choice only when the gate changed. */
@@ -3457,17 +3479,18 @@ export function AppProvider({ children }) {
         const result = await changeInternet(api, allowed,
           (value) => settingsWriter((cs) => withInternet(cs, value)));
         setNet(result.allowed);
-        dispatch({ type: 'set', patch: { netChanging: null,
-          netError: result.changed ? null : (allowed ? 'net.allowFailed' : 'net.localFailed') } });
+        dispatch({ type: 'set', patch: { netChanging: null, netError: result.error } });
+        const next = pendingInternet;
+        pendingInternet = null;
+        if (next && result.allowed) await next();
       },
 
-      /** Going online is the USER's action — never a side effect of opening a
-       * screen. It stores the choice as the status does (D86). */
-      goOnline: async () => {
-        await a.setInternet(true);
+      /** Source texts in Local: Allow internet, then read the catalogue again
+       * (D86 point 4). Never a side effect of opening a screen. */
+      allowSources: () => a.requireInternet(async () => {
         const g = stateRef.current.src.gateway;
         if (g) await a.loadPackage(g, stateRef.current.src.book);
-      },
+      }),
 
       pickGateway: async (g) => {
         dispatch({ type: 'patchSrc', patch: { gateway: g, dl: null } });
@@ -3648,10 +3671,7 @@ export function AppProvider({ children }) {
         const st = stateRef.current;
         const pins = st.projectPins;
         if (!pins?.languageSets) return null;
-        if (!st.netEnabled) {
-          dispatch({ type: 'patchUpgrade', patch: { error: t('upgrade.offline') } });
-          return null;
-        }
+        if (!st.netEnabled) return a.requireInternet(() => a.checkForUpdates()) ?? null;
         const offersFor = st.project?.repoPath ?? null;
         dispatch({ type: 'patchUpgrade', patch: { checking: true, error: null, offers: null, textOffers: null, offersFor } });
         try {
@@ -3854,10 +3874,7 @@ export function AppProvider({ children }) {
         const fix = stateRef.current.fix;
         if (!fix || fix.busy) return;
         const { id } = fix;
-        if (!stateRef.current.netEnabled) {
-          a.patchFix(id, { error: t('fix.offline') });
-          return;
-        }
+        if (!stateRef.current.netEnabled) return a.requireInternet(() => a.fixFetch());
         a.patchFix(id, { busy: 'fetch', error: null, progress: t('sources.progress', { repo: fix.pin.repoPath.split('/').pop() }) });
         try {
           const local = new Set(await api.listLocalRepos());
@@ -4829,12 +4846,10 @@ export function AppProvider({ children }) {
         const src = stateRef.current.src;
         const chosen = src.rows.filter((r) => r.fixed || r.on);
         if (chosen.length === 0) return;
-        // D86: Local sends nothing. The latest-release lookup below calls
-        // Door43 from the client, before fetchAndInstallPin checks the gate.
-        if (!stateRef.current.netEnabled) {
-          dispatch({ type: 'patchSrc', patch: { error: t('sources.offline') } });
-          return;
-        }
+        // D86: Local sends nothing; the click asks to allow the internet and
+        // continues after Allow. The latest-release lookup below calls Door43
+        // from the client, before fetchAndInstallPin checks the gate.
+        if (!stateRef.current.netEnabled) return a.requireInternet(() => a.downloadPackage());
         // M1 (adversarial round 13): the adoption finalizer runs AFTER long
         // downloads, and the modal stays closable meanwhile — bind the whole
         // operation to what was open when the user clicked Download.
@@ -4932,7 +4947,7 @@ export function AppProvider({ children }) {
         a.patchSi({ busy: true, error: null });
         const keychain = desktopKeychain() ?? undefined;
         const report = await door43SignIn(
-          { door43, getNetEnabled: () => api.getNetEnabled(), keychain },
+          { door43, getNetEnabled: internetAllowed, keychain },
           { login: si.login.trim(), password: si.password, stay: si.stay },
         );
         if (stateRef.current.modal !== 'signIn') {
@@ -4989,7 +5004,7 @@ export function AppProvider({ children }) {
           // sign-in step asks the password again.
           const keychain = desktopKeychain();
           if (keychain) {
-            await resumeKeptSession({ door43, keychain, getNetEnabled: () => api.getNetEnabled() });
+            await resumeKeptSession({ door43, keychain, getNetEnabled: internetAllowed });
             session = currentSession();
             if (session) dispatch({ type: 'set', patch: { door43User: session.username } });
           }
@@ -5179,9 +5194,9 @@ export function AppProvider({ children }) {
       //      its sha. im.versions: { looking, found, unresolved, offline,
       //      installed: { base, derived, carried, invalidated } | null } ----
       importResolveVersions: async (bundle) => {
-        const online = await api.getNetEnabled().catch(() => false);
+        const online = internetGate.allowed;
         // A lookup DCS did not answer leaves its slot unresolved; the other slots'
-        // shas stay. Such a failure offers "Go online" as offline does.
+        // shas stay. Such a failure offers "Allow internet" as Local does.
         let unanswered = false;
         const found = online
           ? await resolveVersions(bundle.versions, (repoPath, version) => releaseCommitSha(repoPath, version).catch(() => ((unanswered = true), undefined)))
@@ -5192,12 +5207,10 @@ export function AppProvider({ children }) {
         if (stateRef.current.im?.bundle !== bundle) return;
         a.patchIm({ versions: { looking: false, found, unresolved: unresolvedSlots(bundle.versions, found), offline, installed: null } });
       },
-      importGoOnline: async () => {
+      importGoOnline: () => a.requireInternet(async () => {
         a.patchIm({ versions: LOOKING });
-        // The lookup below reads offline again when the gate does not change.
-        await a.setInternet(true);
         await a.importResolveVersions(stateRef.current.im.bundle);
-      },
+      }),
       /** The pins a new project gets: the installed suite, with this machine's
        * versions preferred and their coverage recorded (as createProject does). */
       importBasePins: async () => {

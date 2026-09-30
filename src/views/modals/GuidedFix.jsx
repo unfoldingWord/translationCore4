@@ -23,14 +23,10 @@ function FetchOption({ fix, online, actions }) {
         {online ? t('fix.fetch.body', { pin: label(fix.pin) }) : t('fix.offline')}
       </p>
       <div style={{ display: 'flex', gap: 8 }}>
-        <Button size="sm" data-testid="fix-fetch-go" disabled={!online || !!fix.busy} onClick={actions.fixFetch}>
+        {/* D86 point 4: Download stays enabled in Local; the click asks to allow the internet. */}
+        <Button size="sm" data-testid="fix-fetch-go" disabled={!!fix.busy} onClick={actions.fixFetch}>
           {fix.busy === 'fetch' ? t('upgrade.installing') : t('check.fix.download')}
         </Button>
-        {!online && (
-          <Button size="sm" variant="secondary" data-testid="fix-go-online" onClick={actions.goOnline} style={{ background: 'var(--uw-kindle)', color: 'var(--text-inverse)' }}>
-            {t('sources.goOnline')}
-          </Button>
-        )}
       </div>
     </section>
   );

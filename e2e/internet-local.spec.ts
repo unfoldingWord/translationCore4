@@ -105,6 +105,20 @@ test.describe('D86 — Internet / Local', () => {
     expect(storedChoice()).toBeUndefined();
   });
 
+  test('the barrier: a Local choice whose gate stays on is Local, says so, and asks before Sign in (D86 point 3)', { tag: ['@inc85'] }, async ({ page }) => {
+    await fetch(`${RIG_API}/net/enable`, { method: 'POST' });
+    // The disable is answered but does nothing: the gate stays on.
+    await page.route('**/api/net/disable', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{"is_good":true}' }));
+    await page.goto('/');
+    await expect(status(page)).toHaveAttribute('data-state', 'local');
+    await expect(page.getByTestId('net-error')).toContainText('Could not turn the internet off.');
+    expect(await gateOn()).toBe(true);
+    await page.getByTestId('door43-sign-in').click();
+    await expect(page.getByTestId('net-allow')).toContainText('tC4 is set to Local.');
+    await page.getByTestId('net-cancel').click();
+    await expect(page.getByTestId('share-signin')).toHaveCount(0);
+  });
+
   test('in Local, a session with a restart talks to no host but the local server', { tag: ['@inc85'] }, async ({ page }) => {
     const hosts = new Map<string, Set<string>>();
     const seen = (url: string) => {

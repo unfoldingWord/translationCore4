@@ -114,9 +114,11 @@ test.describe('#9 — the guided fix screen for a pinned resource this computer 
       const screen = page.getByTestId('guided-fix');
       await expect(screen).toBeVisible();
       await expect(screen.getByTestId('fix-pin')).toContainText(missing.sha);
-      // 1 · fetch is offered but cannot run offline — it says so and offers the switch.
-      await expect(screen.getByTestId('fix-fetch-go')).toBeDisabled();
-      await expect(screen.getByTestId('fix-go-online')).toBeVisible();
+      // 1 · Download stays enabled in Local; the click asks to allow the internet, and Cancel sends nothing (D86 point 4).
+      await screen.getByTestId('fix-fetch-go').click();
+      await expect(page.getByTestId('net-allow')).toContainText('tC4 is set to Local.');
+      await page.getByTestId('net-cancel').click();
+      await expect(page.getByTestId('net-status')).toHaveAttribute('data-state', 'local');
       // 2 · re-pin lists the installed v89 of the same repo.
       await expect(screen.getByTestId('fix-repin')).toHaveAttribute('data-candidates', '1');
       await screen.getByTestId(`fix-repin-${installed.sha!.slice(0, 12)}`).click();
