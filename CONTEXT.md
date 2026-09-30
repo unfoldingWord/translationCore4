@@ -243,6 +243,12 @@ calls (`DCS_SERVER`, #120). It is reset weekly and holds no durable data. A pack
 production, `https://git.door43.org`. Reads always use production.
 _Avoid_: staging, test server, QA mode
 
+**Internet / Local**:
+The choice of what tC4 may do with the internet (D86). The top bar shows it beside "Saved". With
+Internet, tC4 may share, download and look up versions after a click. With Local, tC4 sends nothing
+and downloads nothing. A new installation starts as Local. The choice stays after a restart.
+_Avoid_: online, offline (they describe the computer's connection, not tC4's choice)
+
 **Share**:
 The push of a project's working `main` branch to a repository under the user's Door43
 account or one of the user's organizations, created by the app on the first share. Send only; receiving and team sync are Phase 2.
