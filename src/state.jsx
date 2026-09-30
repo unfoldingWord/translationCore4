@@ -3479,7 +3479,8 @@ export function AppProvider({ children }) {
         // and Download — so no internet action starts while the gate turns off.
         // The status shows "Turning…" until the server reports.
         if (!allowed) setNet(false);
-        if (!allowed && signOut) await a.signOut();
+        // A keychain that fails to forget must not stop the change to Local.
+        if (!allowed && signOut) await a.signOut().catch(() => {});
         const result = await changeInternet(api, allowed,
           (value) => settingsWriter((cs) => withInternet(cs, value)));
         setNet(result.allowed);
