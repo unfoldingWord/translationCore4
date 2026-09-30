@@ -1925,18 +1925,18 @@ in every time".
 
 ## D86 (2026-09-30, project-owner rulings) **The top bar shows "Internet" or "Local" beside "Saved" at all times. The words tell what tC4 may do, not whether the computer is connected. Local stays after a restart, and tC4 then sends nothing. Door43 sign-in happens only in Share; Home has no Door43 bar.** [owner sessions 2026-09-29 and 2026-09-30, on the owner's mockup `tC4 Share on Door43 v2.html`; issue #486, epic #372; amends D30 points 4 and 5, D72 point 5, D79 point 12, D82 point 2, D84 points 1 and 2, and D85 point 4]
 
-Context. The platform has one network gate. When the gate is off, every Door43 route of the
-platform answers 401 "offline mode". At pankosmia-web 0.18.5 the server starts with the gate off
-[VERIFIED — pankosmia-web 0.18.5 (99fd9be), 2026-09-22, PLATFORM-NOTES #45]. The client shows
-the gate as "online" and "offline". It offers "Go online" on three screens (Source texts, Guided fix, Import
+Context. The platform has one network gate. When the gate is off, every Door43 route of the platform
+answers 401 "offline mode". At pankosmia-web 0.18.5 the server starts with the gate off [VERIFIED —
+pankosmia-web 0.18.5 (99fd9be), 2026-09-22, PLATFORM-NOTES #45]. The client shows the gate as
+"online" and "offline". It offers "Go online" on three screens (Source texts, Guided fix, Import
 review), and it disables Share when the gate is off [VERIFIED — main 0996d21, 2026-09-30]. Users
 read "offline" as a fact about the computer, but the gate is a choice about what tC4 may do. Most
 users allow the internet once, the first time that they share or download, and never change it
 again. A few users must keep tC4 off the internet on a connected computer. An example is a
 facilitator who downloads resources and then gives the computer to a translator in a sensitive
-place. tC3 asked before each internet action, and that warning was noise for most users. The
-Door43 API module calls Door43 from the client, so the platform gate does not stop
-those calls [VERIFIED — main 0996d21, 2026-09-30, `src/data/share/door43Api.ts`].
+place. tC3 asked before each internet action, and that warning was noise for most users. The Door43
+API module calls Door43 from the client, so the platform gate does not stop those calls [VERIFIED —
+main 0996d21, 2026-09-30, `src/data/share/door43Api.ts`].
 
 1. **The status.** The top bar shows "Internet" with a blue dot, or "Local" with a grey dot, beside
    "Saved", in the same small style as "Saved". It shows on Home and in a project. The default is
