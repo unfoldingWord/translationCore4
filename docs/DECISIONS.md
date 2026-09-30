@@ -1922,3 +1922,87 @@ in every time".
 `docs/JOURNEYS.md` (J11), `docs/ROADMAP.md` row 8.5, `docs/ARCHITECTURE.md` section 7,
 `docs/PLATFORM-NOTES.md` #47 and `CONTEXT.md` (Door43 session) carry this decision. The bodies of
 #203, #366 and epic #372 were edited to match on 2026-09-28.
+
+## D86 (2026-09-30, project-owner rulings) **The top bar shows "Internet" or "Local" beside "Saved" at all times. The words tell what tC4 may do, not whether the computer is connected. Local stays after a restart, and tC4 then sends nothing. Door43 sign-in happens only in Share; Home has no Door43 bar.** [owner sessions 2026-09-29 and 2026-09-30, on the owner's mockup `tC4 Share on Door43 v2.html`; issue #486, epic #372; amends D30 points 4 and 5, D72 point 5, D79 point 12, D82 point 2, D84 points 1 and 2, and D85 point 4]
+
+Context. The platform has one network gate. When the gate is off, every Door43 route of the platform
+answers 401 "offline mode". At pankosmia-web 0.18.5 the server starts with the gate off [VERIFIED —
+pankosmia-web 0.18.5 (99fd9be), 2026-09-22, PLATFORM-NOTES #45]. The client shows the gate as
+"online" and "offline". It offers "Go online" on three screens (Source texts, Guided fix, Import
+review), and it disables Share when the gate is off [VERIFIED — main 0996d21, 2026-09-30]. Users
+read "offline" as a fact about the computer, but the gate is a choice about what tC4 may do. Most
+users allow the internet once, the first time that they share or download, and never change it
+again. A few users must keep tC4 off the internet on a connected computer. An example is a
+facilitator who downloads resources and then gives the computer to a translator in a sensitive
+place. tC3 asked before each internet action, and that warning was noise for most users. The Door43
+API module calls Door43 from the client, so the platform gate does not stop those calls [VERIFIED —
+main 0996d21, 2026-09-30, `src/data/share/door43Api.ts`].
+
+1. **The status.** The top bar shows "Internet" with a blue dot, or "Local" with a grey dot, beside
+   "Saved", in the same small style as "Saved". It shows on Home and in a project. The default is
+   Local. The status shows Internet only when the choice is Internet and `GET /api/net/status`
+   reports the gate on (the barrier of point 3). It never shows a value that the server did not
+   confirm. During a change, it shows "Turning…". No UI text says "online" or "offline".
+2. **The change.** A click on Internet opens a small dialog with **Change to Local** and **Cancel**.
+   A click on Local opens a confirmation: "Allow tC4 to use the internet for Share and downloads?",
+   with Allow and Cancel. Cancel sends nothing, changes nothing and signs nothing out. The change
+   to Local is not available while an internet action runs. If the gate does not change, the
+   status goes back and says so.
+3. **The choice stays.** tC4 stores the choice in the platform's per-client settings. At start, a
+   stored Internet sends `POST /api/net/enable` and then reads the status back. A stored Local,
+   no stored choice, or a stored choice that tC4 cannot read keeps the gate off and shows Local.
+   A new installation therefore starts as Local. At pankosmia-web 0.18.10 the server can start
+   with the gate on (`start_offline`) [VERIFIED — pankosmia-web 0.18.10 (84c322a), 2026-09-22,
+   PLATFORM-NOTES #45]. So a stored Local, no stored choice, or a stored choice that tC4 cannot
+   read sends `POST /api/net/disable` before any other request, and then reads the status back.
+   **The barrier.** tC4 lets an internet action run, and lets the Door43 API module call Door43,
+   only when the choice is Internet and the server reports the gate on. When the choice is Local
+   and the disable fails, or the gate still reads on after it, tC4 treats the session as Local.
+   The status shows "Local" and says "Could not turn the internet off." Every internet action and
+   the Door43 API module stay refused.
+4. **No internet use without a click.** tC4 uses the internet only after the user clicks an action
+   that needs it. At start, tC4 sends no request to Door43 in either state. The Door43 API module
+   refuses every call in Local. In Local, the internet actions stay enabled: Share, Upload
+   changes, the sign-in step, Download of a resource, Check for updates, and the import version
+   lookup. A click on one of them says "tC4 is set to Local." with **Allow internet**. That
+   button opens the confirmation of point 2. After Allow, the action continues. This replaces
+   the three "Go online" buttons. #259 (the automatic check for updates, Post-4.0 under D72)
+   conflicts with this point. It needs its own ruling before it is built.
+5. **A missing pinned resource (amends D30 points 4 and 5).** With Internet, the app offers
+   **Download** for the pinned version (sb-zip + SHA, OPEN-QUESTIONS #24). In Local, the checking
+   of that (tool, book) is unavailable as a first-class state, and Download offers Allow internet.
+   Drafting, other books and other tools continue. D30 point 4 said "the app fetches it". The
+   fetch already needs a click on Download [VERIFIED — main 0996d21, 2026-09-30,
+   `src/views/modals/GuidedFix.jsx:26`], so the text now agrees with the code. BURRITO-SPEC §5.3
+   ("Missing pinned version" and the D41 coverage states) changes in the same change set. The
+   burrito format does not change, so the conformance harness is not expected to change. The
+   pull request records the BURRITO-SPEC §9 check.
+6. **Share and Upload changes (amends D79 point 12 and D84 point 1).** The card actions are
+   "Share on Door43" and "Upload changes". They are outlined pill buttons in the style of
+   Settings, beside Settings. Before a share, the card's meta line ends with "· Only on this
+   computer". After a share, an "On Door43" badge shows beside the project name, and the meta
+   line ends with "· Shared at `owner/repository`". In Local, Share does not refuse; point 4
+   applies. The D79 refusal "the app is offline" becomes "Door43 cannot be reached". Its
+   `Report` code stays `share.offline`. D84 points 3, 4 and 5 do not change.
+7. **Door43 sign-in (amends D84 point 2).** Home has no Door43 bar, and the top bar has no
+   Door43 item. Share with no sign-in opens the sign-in step, and then the share continues. The
+   share dialog shows "Sharing as @username · Change". A shared card shows "as @username ·
+   Change" under Upload changes, only when someone is signed in. When a kept sign-in exists but
+   is not resumed yet, the card shows "Signed in · Change", because the username comes from
+   Door43 (D85 point 2). Change signs out and opens the sign-in step. When a kept sign-in exists,
+   the change-to-Local dialog has the checkbox "Also sign out of Door43 on this computer". It is on
+   by default. Sign out removes the token from
+   memory and from the keychain, as D84 point 2 said. The mockup's sign-in code step is not built.
+8. **The kept sign-in (amends D85 point 4).** tC4 resumes a kept token at the first action that
+   needs Door43, not at app start. The resume waits for the barrier of point 3: after Allow, it
+   runs only when the read-back shows the gate on. A kept token still asks nothing. D85 points 1,
+   2 and 3 do not change.
+9. **Import review and Check for updates (amends D82 point 2 and D72 point 5).** The import review
+   offers "Allow internet" in place of "Go online", with the confirmation of point 2. Check for
+   updates is enabled in both states. In Local, it offers Allow internet.
+
+`docs/BURRITO-SPEC.md` §5.3 carries this decision in the same change set. The documents that
+follow describe built behavior, so they change with the implementation of #486:
+`docs/JOURNEYS.md` (J3, J9, J11, and the J12 precondition), `docs/ARCHITECTURE.md` (the net gate
+row and the section 7 share, sign-in and keychain rows), `docs/PACKAGING.md` ("The offline run",
+step 9a) and `CONTEXT.md` (Share, Door43 session, and the new term Local).
