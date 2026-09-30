@@ -18,7 +18,7 @@ import { execFileSync } from 'node:child_process';
 import type { BrowserContext, Page } from '@playwright/test';
 import { test, expect } from './helpers/test';
 import type { FakeOrganization } from './helpers/door43';
-import { TC4_ROOT, SEEDED_PROJECT, readClientSettingsDoc, rigRepo, listLocalRepos } from './helpers/rig';
+import { TC4_ROOT, SEEDED_PROJECT, readClientSettingsDoc, resetClientSettings, rigRepo, listLocalRepos } from './helpers/rig';
 import {
   QA_SERVER, RIG_API, RIG_STATE, USER, type BareRemote,
   dropOrigin, fakeFor, fakeShare, filesHolding, git, head, loginsHolding, makeBareRemote, pressShare, signIn, useInternet,
@@ -91,6 +91,8 @@ async function fakeKeychain(context: BrowserContext, held: string | null = null)
 test.describe('J11 — a facilitator shares the project to Door43', () => {
   test.describe('sign in (#203)', () => {
     test.beforeAll(async () => {
+      // Start from the seeded client settings, whatever ran before this spec (#491).
+      resetClientSettings();
       // The rig boots with the net gate off; sign-in refuses offline before any Door43 call.
       await useInternet(true);
     });
@@ -467,6 +469,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
     };
 
     test.beforeAll(async () => {
+      resetClientSettings(); // #491, as in the sign-in block
       await useInternet(true);
     });
     test.afterAll(async () => {
