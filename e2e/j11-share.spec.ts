@@ -513,6 +513,14 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       expect(look.borderColor).toBe(look.oceanRgb);
       expect(look.weight).toBeGreaterThanOrEqual(700);
       expect(look.radius, 'a pill').toBeGreaterThanOrEqual(look.height / 2 - 1);
+      // Settings beside it is a quiet pill: white fill, a hairline border, the same pill shape (owner, 2026-09-30).
+      const settings = await card.getByRole('button', { name: 'Settings' }).evaluate((el) => {
+        const cs = getComputedStyle(el);
+        return { bg: cs.backgroundColor, border: parseFloat(cs.borderTopWidth), radius: parseFloat(cs.borderTopLeftRadius), height: el.getBoundingClientRect().height };
+      });
+      expect(settings.bg).toBe('rgb(255, 255, 255)');
+      expect(settings.border, 'a border is drawn').toBeGreaterThanOrEqual(1);
+      expect(settings.radius, 'a pill').toBeGreaterThanOrEqual(settings.height / 2 - 1);
       // The meta line ends with "· Only on this computer"; no "On Door43" badge yet.
       await expect(page.getByTestId(`share-state-${SEEDED_ID}`)).toHaveText('Only on this computer');
       await expect(page.getByTestId(`share-badge-${SEEDED_ID}`)).toHaveCount(0);

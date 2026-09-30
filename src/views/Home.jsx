@@ -15,8 +15,6 @@ import { shareErrorText, Door43Account } from './modals/ShareDialog.jsx';
 // Above this many books a card shows only its in-progress books until expanded.
 const COLLAPSE_ABOVE = 12;
 
-// Plain text action in a card header (Settings): hairline hover, no fill.
-const HEADER_ACTION = { border: 0, background: 'transparent', cursor: 'pointer', padding: '8px 6px', fontFamily: 'var(--font-ui)', fontWeight: 'var(--fw-heavy)', fontSize: 'var(--fs-caption-lg)', letterSpacing: 'var(--track-12-5)', color: 'var(--text-heading)', borderRadius: 'var(--radius-sm)' };
 const CARD_NOTE = { fontSize: 'var(--fs-meta)', letterSpacing: 'var(--track-11-5)', color: 'var(--text-tertiary)', fontWeight: 'var(--fw-medium)', whiteSpace: 'nowrap' };
 
 // D86 point 6: the end of a card's meta line — "· Only on this computer"
@@ -144,9 +142,9 @@ export function ObsProjectCard({ p }) {
           </span>
         </div>
         <ShareAction p={p} />
-        <button type="button" data-i="quiet" title={t('home.settings')} onClick={() => actions.openSettings(p)} style={HEADER_ACTION}>
+        <Button variant="secondary" size="sm" title={t('home.settings')} onClick={() => actions.openSettings(p)}>
           {t('home.settings')}
-        </button>
+        </Button>
       </div>
       {/* Wider than a book tile: a story tile carries a number, a title, a percent and a date. */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(236px,1fr))', gap: 8 }} data-testid="story-tiles">
@@ -213,9 +211,9 @@ function ProjectCard({ p }) {
           </span>
         </div>
         <ShareAction p={p} />
-        <button type="button" data-i="quiet" title={t('home.settings')} onClick={() => actions.openSettings(p)} style={HEADER_ACTION}>
+        <Button variant="secondary" size="sm" title={t('home.settings')} onClick={() => actions.openSettings(p)}>
           {t('home.settings')}
-        </button>
+        </Button>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(148px,1fr))', gap: 8 }}>
