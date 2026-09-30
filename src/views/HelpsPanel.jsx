@@ -469,8 +469,15 @@ export function HelpsPanel({ chapter, focusVerses = null, comments = false, stor
     listRef.current.querySelector(`[data-frame="${focusFrame}"]`)?.scrollIntoView?.({ block: 'start' });
   }, [story, focusFrame, tab, loading]);
   return (
-    <aside data-testid="helps-panel" style={{ width: 'var(--helps-width)', flex: 'none', background: 'var(--surface-panel)', borderInlineStart: 'var(--stroke-hair) solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      <Switcher indicator="underline" value={tab} onChange={actions.setHelpsTab} options={tabOptions(u, comments, story)} />
+    <aside data-testid="helps-panel" style={{ width: s.helpsWide ? 'var(--helps-width-wide)' : 'var(--helps-width)', flex: 'none', background: 'var(--surface-panel)', borderInlineStart: 'var(--stroke-hair) solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Switcher indicator="underline" value={tab} onChange={actions.setHelpsTab} options={tabOptions(u, comments, story)} />
+        </div>
+        <IconButton size={26} data-testid="helps-widen" title={s.helpsWide ? t('helps.restore') : t('helps.widen')} onClick={actions.toggleHelpsWide} style={{ flex: 'none', marginInline: 4 }}>
+          {s.helpsWide ? '⇥' : '⇤'}
+        </IconButton>
+      </div>
       <div ref={listRef} style={{ flex: 1, overflow: 'auto', padding: 16, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
         {/* Loading and a failed load are their OWN states — never rendered as
             "the package lacks this resource" (D30 honesty; 2026-08-27 review). */}

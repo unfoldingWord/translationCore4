@@ -683,6 +683,66 @@ test.describe('J2 — a translator drafts a verse', () => {
       });
     },
   );
+
+  test(
+    'widen the helps panel (#234): the toggle widens the pane past the default, drafting still saves, and Check still opens',
+    { tag: ['@inc9', '@J2'] },
+    async ({ page }, testInfo) => {
+      const WIDE_DRAFT = 'Nuestra gente debe aprender a dedicarse a hacer el bien.';
+
+      await page.goto('/');
+      await page.getByTestId('project-_local_/_local_/sample_burrito').getByRole('button', { name: /Titus/ }).click();
+      await page.getByRole('button', { name: '3', exact: true }).click();
+
+      const helps = page.getByTestId('helps-panel');
+      const paneWidth = async () => (await helps.boundingBox())!.width;
+      await expect(helps).toBeVisible();
+      const defaultWidth = await paneWidth();
+
+      await test.step('the toggle widens the pane past the default width (AC1)', async () => {
+        await page.getByTestId('helps-widen').click();
+        await expect.poll(paneWidth).toBeGreaterThan(defaultWidth + 100);
+        // The same control now offers the way back.
+        await expect(page.getByTestId('helps-widen')).toHaveAttribute('title', 'Restore the helps panel width');
+      });
+
+      await test.step('a second click restores the default width; a third widens again', async () => {
+        await page.getByTestId('helps-widen').click();
+        await expect.poll(paneWidth).toBe(defaultWidth);
+        await page.getByTestId('helps-widen').click();
+        await expect.poll(paneWidth).toBeGreaterThan(defaultWidth + 100);
+      });
+
+      await test.step('the artifact records both widths and the widened pane (AC2)', async () => {
+        // The widths come from the design tokens, so this file holds the same
+        // bytes every run at a given commit.
+        const textPath = testInfo.outputPath('helps-widths.txt');
+        fs.writeFileSync(textPath, `default=${defaultWidth}\nwidened=${await paneWidth()}\n`);
+        await testInfo.attach('helps-widths.txt', { path: textPath, contentType: 'text/plain' });
+        const shotPath = testInfo.outputPath('helps-widened.png');
+        await helps.screenshot({ path: shotPath });
+        await testInfo.attach('helps-widened.png', { path: shotPath, contentType: 'image/png' });
+      });
+
+      await test.step('drafting still works with the pane widened (AC3)', async () => {
+        await page.getByRole('tab', { name: 'Verse', exact: true }).click();
+        await page.getByRole('button', { name: 'Start this verse' }).first().click();
+        const editor = page.getByRole('textbox', { name: /Verse/ });
+        await editor.fill(WIDE_DRAFT);
+        await editor.blur();
+        await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
+        await expect
+          .poll(() => readIngredient(SEEDED_PROJECT, BOOK_IPATH).toString('utf8'), { timeout: 10_000 })
+          .toContain(WIDE_DRAFT);
+      });
+
+      await test.step('Check still opens with the pane widened (AC3)', async () => {
+        await page.getByRole('tab', { name: 'Check', exact: true }).click();
+        await page.getByTestId('open-translationNotes').click();
+        await expect(page.getByTestId('check-progress')).toBeVisible();
+      });
+    },
+  );
 });
 
 // Issue #62 teardown: after this journey's mutations, every journaled local
