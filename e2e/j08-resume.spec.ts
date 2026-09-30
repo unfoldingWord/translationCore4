@@ -11,7 +11,7 @@
 import { test, expect } from './helpers/test';
 import type { Page } from '@playwright/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
-import { RIG_API, RIG_STATE, dropOrigin, fakeShare, filesHolding, git, head, makeBareRemote, shareFirstTime, USER } from './helpers/door43Share';
+import { RIG_API, RIG_STATE, dropOrigin, fakeShare, filesHolding, git, head, makeBareRemote, shareFirstTime, USER, useInternet } from './helpers/door43Share';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -357,7 +357,7 @@ test.describe('J8 — the Increment 4 journey: open, resume, and share a project
       test.setTimeout(120_000);
       const remote = makeBareRemote();
       // The rig boots with the net gate off, and Share is disabled offline (J11 case 12).
-      await fetch(`${RIG_API}/net/enable`, { method: 'POST' });
+      await useInternet(true);
       try {
         dropOrigin(SEEDED_PROJECT);
         const fake = await fakeShare(context, remote);
@@ -369,7 +369,7 @@ test.describe('J8 — the Increment 4 journey: open, resume, and share a project
         expect(url).toBe(`https://qa.door43.org/${USER.username}/${SEEDED_PROJECT}`);
         // The card: "On Door43", the repository path, and Upload changes.
         await expect(page.getByTestId(`share-card-${id}`)).toHaveAttribute('data-shared', '1');
-        await expect(page.getByTestId(`share-state-${id}`)).toHaveText(`On Door43 · ${USER.username}/${SEEDED_PROJECT}`);
+        await expect(page.getByTestId(`share-state-${id}`)).toHaveText(`Shared at ${USER.username}/${SEEDED_PROJECT}`);
         await expect(page.getByTestId(`share-${id}`)).toHaveText('Upload changes');
         // A share adds nothing to the project but the D9 checkpoint of pending work
         // (J11's end state): here the resources record the resume into Check wrote.
@@ -388,7 +388,7 @@ test.describe('J8 — the Increment 4 journey: open, resume, and share a project
         // Leave the seeded project as this test found it: unshared, offline.
         dropOrigin(SEEDED_PROJECT);
         remote.dispose();
-        await fetch(`${RIG_API}/net/disable`, { method: 'POST' });
+        await useInternet(false);
       }
     },
   );

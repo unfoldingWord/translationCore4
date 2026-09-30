@@ -591,9 +591,9 @@ commit, date): see "Evidence" below.
 
 tC4 is built for offline field use. This procedure proves one full session with the
 network off, on the installed app, on a clean machine. Under the standing tag rule (epic #59), a pre-release from `v4.0.0-alpha.4` on tags only after this run passed once, or after
-every step that failed names its open issue. One offline defect is known and open before
-the first run: the fonts load from Google's CDN (#3). A run that reaches the end with only that named is a pass under the
-rule.
+every step that failed names its open issue. An artifact built before #3 merged loads its
+fonts from Google's CDN; name #3 in the record of such a run. From #3 on, the fonts ship
+inside the app.
 
 The run is done by a person and recorded. The Playwright check below catches regressions
 between runs; it does not replace the run.
@@ -609,8 +609,6 @@ between runs; it does not replace the run.
    online: `zsh smoke-installed.zsh`. Expected: `SMOKE OK`. An older artifact has no such
    file; skip this step and say so in the record.
 3. Optional: start the app online once, create a project, open it, then `Project settings` › `Manage source texts`.
-   Note: an online start also lets Electron cache the fonts from Google's CDN, so after this
-   step the font observation below no longer tests #3; skip this step when the run is about #3.
 4. Turn the network off at the operating-system level, not in the app:
    - macOS: System Settings › Network, or the menu bar: turn Wi-Fi off and unplug Ethernet.
    - Linux: `nmcli networking off`, or `rfkill block all` plus unplug Ethernet. For a scripted
@@ -636,13 +634,13 @@ between runs; it does not replace the run.
 | 7 | On the tool picker (`← All checking tools` first, if a tool is open), `Align`. Click one word in the bank, then one card. | The word moves into the card; the bank has one word fewer. If the screen reads "The original-language text is not on this computer", that is a new finding: file its issue. A missing lexicon entry (`en_ugl`, `en_uhl`; #218) is the known case. |
 | 8 | Leave the project (`Switch project`), then open Titus again from Home. Look at `Translate`; then at `Check` › Translation Notes and `Align` for each of steps 6 and 7 that you could do. | Home lists the project. The drafted verse is on screen. Each decision and alignment you made is still there: the progress line still counts the decision; the aligned word is still in its card. |
 | 9 | From rc.1 (Increment 8, J7): in Titus, mode tab `Check` (`← All checking tools` first, if a tool is open), then the `Community Checking` card, `Open →`. `Export` › `Export PDF`; save the file. Then `Export` › `Scripture Burrito (.zip)`; save the file. | Each export shows `Saved <file name>`, and the file is in the folder you chose. The PDF opens and shows the drafted verse. A failed or missing export is a new finding: file its issue. |
-| 9a | From rc.1 (Increment 8.5, J11): `Switch project`. On Home, look at the `Share` action of the Titus card. | `Share` is disabled and says `Offline: Share needs the network.` |
+| 9a | From rc.1 (Increment 8.5, J11): `Switch project`. On Home, look at the top bar, then click the `Share` action of the Titus card. | The top bar shows `Local`. The click opens the confirmation `tC4 is set to Local. Allow tC4 to use the internet for Share and downloads?`. Click `Cancel`: the dialog closes and nothing is sent. |
 | 9b | From alpha.7 (Increment 7, D74): on Home, `+ Add a project` › `New Open Bible Stories`: name, language, `Create stories →`. Open the OBS tile; in `Translate`, story 1 shows with the gateway text on the left. `Draft frame 1`, type, click outside the card. `Understand`; select frame 1. `Check` › Translation Notes › `Start checking`; pick one item; `✓ Mark valid`. | The gateway frame text and the picture of frame 1 show from the bundled `en_obs` and picture pack with the network off. The frame marker for frame 1 turns drafted. Understand lists the notes and word links of frame 1. The check item is decided. A missing picture or gateway story is a new finding: file its issue. |
 | 10 | Quit the app. Turn the network on again. | |
 
-Look at the screen fonts during the run. With the network off, the interface uses system
-fonts instead of Mulish, Charis SIL, Noto Serif and Amiri (#3). Right-to-left projects are
-hit hardest. Name #3 in the record; do not stop.
+Look at the screen fonts during the run. With the network off, the interface shows Mulish,
+and scripture shows Charis SIL, Noto Serif (Greek), Noto Serif Hebrew and Amiri (Arabic).
+A system font in their place is a new finding: file its issue.
 
 ### Record the run
 
@@ -654,12 +652,13 @@ and the screen it broke). Paste the step lines into the pre-release notes.
 
 ### The regression check between runs
 
-`e2e/j02-draft-verse.spec.ts` carries the test "a drafting session talks to no host but the
-local server (FR-31, #43)". It records every request and every WebSocket the client opens
-while a project is opened and a verse is drafted, waits out the save's follow-up writes,
-checks that no service worker is registered (a worker's requests would not be seen), and
-fails when a host outside the local server appears that is not on the known-defect list. That list is `fonts.googleapis.com` and `fonts.gstatic.com`
-(#3); it shrinks to nothing in the pull request that closes #3. The check runs on the dev
+`e2e/j02-draft-verse.spec.ts` carries the test "a drafting session in Local, with a restart,
+talks to no host but the local server (FR-31, #43; D86)". It records every request and every
+WebSocket the client opens while a project is opened in Local, a verse is drafted and the app
+starts again. It waits out the save's follow-up writes, checks that no service worker is
+registered (a worker's requests would not be seen), and fails when any host outside the local
+server appears. Since #3 the test has no list of
+known defects: the fonts are part of the client. The check runs on the dev
 client against the rig, not on the packaged app; the packaged app's offline behavior is this
 procedure's subject.
 

@@ -187,9 +187,12 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 
 - Actor: facilitator. Activity: Exchange (lives on Home: Share beside Settings on each
   project card, D84).
-- Steps: press Share on the project card · sign in to Door43 with username and password,
+- Steps: press "Share on Door43" on the project card · sign in to Door43 with username and password,
   unless the session or the keychain has a token; "Stay signed in on this computer" keeps the
-  token in the operating-system keychain · read the author notice: the computer's account name
+  token in the operating-system keychain. Sign-in is only in Share: Home has no Door43 bar
+  (D86 point 7). A kept token is resumed at the first Share, not at app start (D86 point 8)
+  · the share dialog shows "Sharing as @username · Change"; Change signs out and opens the
+  sign-in step · read the author notice: the computer's account name
   is the author of each shared change, and Door43 shows it (D85; no name or email is asked or
   stored) · choose where the project goes: the user's
   own account or an organization that lets the user create repositories · check the repository
@@ -201,12 +204,17 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   commit; `origin` is set in the repository's git config; nothing about remotes is stored in
   the installation; the token is in renderer memory, and in the operating-system keychain only
   when "Stay signed in" is on; no name, email or login is stored (D85); each pushed commit's
-  author is the computer's account name (PLATFORM-NOTES #47). The card shows "On Door43" and the repository path. A later
+  author is the computer's account name (PLATFORM-NOTES #47). The card shows an "On Door43" badge beside the project name, and its meta line ends with "· Shared at `owner/repository`" (before a share: "· Only on this computer"; D86 point 6). A later
   share ("Upload changes") pushes `main` again with no dialog when a token is available.
+  Under Upload changes, the card shows "as @username · Change" when someone is signed in, or
+  "Signed in · Change" when a kept token is not resumed yet. At app start, tC4 sends no
+  request to Door43. The change to Local offers "Also sign out of Door43 on this computer"
+  when a token is kept; it is on by default, and it removes the kept token (D86 point 7).
 - Refusals (each a `Report` code, nothing pushed): the name exists on the chosen account or
   organization; the push is not a fast-forward, because another device pushed (the message
-  says team sync is coming and local work is safe); the app is offline; sign-in failed; the
-  create was rejected.
+  says team sync is coming and local work is safe); Door43 cannot be reached; sign-in failed;
+  the create was rejected. In Local, Share does not refuse: the click asks to allow the internet
+  first, and Cancel sends nothing (D86 point 4).
 - MUST NOT: create a publication branch or an outbox; integrate or receive; force-push; write
   the token anywhere except the operating-system keychain; place the token in a URL or a log;
   store the password; write anything into the project.
@@ -219,7 +227,8 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 ### J12 Upgrade the pinned resources
 
 - Actor: facilitator. Activity: Start (touches Check).
-- Precondition: J3; the app is online.
+- Precondition: J3; tC4 is set to Internet, or the user allows the internet when Check for
+  updates asks (D86 point 4).
 - Steps: check for updates · see the offer per language set and per scripture text · accept
   explicitly · re-derive.
 - End state (defined 2026-09-11, D72): the set's §5.3 pins carry the new release's `sha` and

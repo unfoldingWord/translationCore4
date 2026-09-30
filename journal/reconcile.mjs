@@ -200,3 +200,29 @@ export const seedFromSidecars = ({ actor, books = {}, decisionFiles = {}, alignm
   }
   return events;
 };
+
+// R-8.8.4 (#485): a fold whose pins carry `languageSets.primary.*` slots and no
+// `languageSets.fallback.*` slots cannot project resources.json (§5.3/D17:
+// exactly primary AND fallback), so no checkpoint and no divergence comparison
+// can ever complete — a journal-side invalid state, not disk divergence. The
+// open completes such a fold with ORDINARY pin events (no seed) carrying the
+// implementation's installed English fallback suite, the one D17-legal fallback
+// value. ONLY that shape completes; anything else returns [] and stays a
+// visible, diagnosable stop.
+export const completePartialPins = (pins, fallbackSet, clock, actor) => {
+  const sets = new Set(
+    Object.keys(pins)
+      .filter((slot) => slot.startsWith('languageSets.'))
+      .map((slot) => slot.split('.')[1]),
+  );
+  if (!sets.has('primary') || sets.has('fallback')) return [];
+  return Object.entries(fallbackSet).map(([slot, entry]) => ({
+    v: 1,
+    op: 'resource.pin.set',
+    actor,
+    ts: clock.issue(),
+    base: null,
+    slot: `languageSets.fallback.${slot}`,
+    entry,
+  }));
+};

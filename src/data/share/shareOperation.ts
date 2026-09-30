@@ -120,7 +120,7 @@ async function shareRecorded(deps: ShareDeps, request: ShareRequest): Promise<Re
   try {
     if (!session.username || !session.token)
       throw new Refusal('share.auth-failed', 'sign in to Door43 first');
-    if (!(await deps.api.getNetEnabled())) throw new Refusal('share.offline', 'the app is offline');
+    if (!(await deps.api.getNetEnabled())) throw new Refusal('share.offline', 'tC4 is set to Local');
   } catch (error) {
     return failed(error);
   }
@@ -201,7 +201,7 @@ const refusalForPush = (error: unknown): unknown => {
   const reason = failure?.reason ?? failure?.message ?? String(error);
   const facts = { status: failure?.status ?? 0, reason };
   if (failure?.status === 401 && /offline mode/.test(reason))
-    return new Refusal('share.offline', 'the app is offline', facts);
+    return new Refusal('share.offline', 'tC4 is set to Local', facts);
   if (/NotFastForward/.test(reason)) {
     return new Refusal(
       'share.non-fast-forward',

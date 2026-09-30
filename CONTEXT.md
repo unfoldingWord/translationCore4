@@ -243,6 +243,12 @@ calls (`DCS_SERVER`, #120). It is reset weekly and holds no durable data. A pack
 production, `https://git.door43.org`. Reads always use production.
 _Avoid_: staging, test server, QA mode
 
+**Internet / Local**:
+The choice of what tC4 may do with the internet (D86). The top bar shows it beside "Saved". With
+Internet, tC4 may share, download and look up versions after a click. With Local, tC4 sends nothing
+and downloads nothing. A new installation starts as Local. The choice stays after a restart.
+_Avoid_: online, offline (they describe the computer's connection, not tC4's choice)
+
 **Share**:
 The push of a project's working `main` branch to a repository under the user's Door43
 account or one of the user's organizations, created by the app on the first share. Send only; receiving and team sync are Phase 2.
@@ -264,7 +270,8 @@ _Avoid_: Door43 client, DCS helper, gitea API (for this module)
 The signed-in user's login and token, held in `src/data/share/session.ts` for the app session
 (`currentSession`); the token alone goes to the operating-system keychain when "Stay signed
 in" is on (#366). Nothing else is stored (D85): no name, no email, no login. Never in React
-state, the client settings, `localStorage`, a URL or a log.
+state, the client settings, `localStorage`, a URL or a log. Sign-in starts only from Share,
+and a kept token is resumed at the first Share, not at app start (D86 points 7 and 8).
 _Avoid_: credentials (the password is never kept), login state, identity record
 
 **Share target**:
@@ -280,9 +287,11 @@ action on a Home card; a shared card's "Upload changes" pushes with no dialog.
 _Avoid_: share wizard, publish dialog
 
 **Shared card**:
-A Home project card whose repository has an `origin` remote: it shows "On Door43" and the
-repository path, and its action reads "Upload changes". The state is read from the remote
-(`GET /git/remotes`), never from a stored record.
+A Home project card whose repository has an `origin` remote: it shows an "On Door43" badge,
+its meta line ends with "Shared at" and the repository path, and its action reads "Upload
+changes". Under the action, "as @username ·
+Change" shows who is signed in ("Signed in · Change" for a kept token not resumed yet). The
+state is read from the remote (`GET /git/remotes`), never from a stored record.
 _Avoid_: published card, synced project
 
 **Fake Door43**:

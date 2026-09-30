@@ -75,7 +75,7 @@ export const isRefusalCode = (code) => typeof code === 'string' && Object.hasOwn
 // classified, what checkpoint wrote, ...); `startedAt`/`endedAt` are ISO-8601
 // UTC. A failed Report MAY carry a code (a refusal) or none (any other error);
 // its `rule` is the table's binding for that code and is absent for an app rule.
-export const REPORT_OPS = Object.freeze(['open', 'checkpoint', 'seed', 'reconcile', 'export', 'import', 'share']);
+export const REPORT_OPS = Object.freeze(['open', 'checkpoint', 'seed', 'reconcile', 'pin-complete', 'export', 'import', 'share']);
 
 const REPORT_KEYS = new Set(['op', 'ok', 'code', 'rule', 'facts', 'startedAt', 'endedAt']);
 const isObj = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);

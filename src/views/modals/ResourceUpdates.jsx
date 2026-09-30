@@ -86,8 +86,7 @@ export default function ResourceUpdates() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <Overline as="span">{t('upgrade.title')}</Overline>
         <div style={{ flex: 1 }} />
-        <Button size="sm" variant="secondary" data-testid="check-updates" disabled={!s.netEnabled || up.checking}
-          title={s.netEnabled ? undefined : t('upgrade.offline')} onClick={actions.checkForUpdates}>
+        <Button size="sm" variant="secondary" data-testid="check-updates" disabled={up.checking} onClick={actions.checkForUpdates}>
           {up.checking ? t('upgrade.checking') : t('upgrade.check')}
         </Button>
       </div>

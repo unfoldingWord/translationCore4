@@ -16,6 +16,7 @@ import { test, expect } from './helpers/test';
 import type { Page, BrowserContext } from '@playwright/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import { pickOption } from './helpers/dropdown';
+import { useInternet } from './helpers/door43Share';
 import fs from 'node:fs';
 import path from 'node:path';
 import { unzipSync, zipSync, strToU8, strFromU8 } from 'fflate';
@@ -256,9 +257,14 @@ async function openSources(page: Page) {
   await expect(page.getByTestId('sources-modal')).toBeVisible();
 }
 
+/** D86: in Local, the Source texts callout asks to allow the internet. */
 async function goOnline(page: Page) {
-  const online = page.getByRole('button', { name: 'Go online' });
-  if (await online.count()) await online.first().click();
+  const allow = page.getByTestId('sources-allow-internet');
+  if (await allow.count()) {
+    await allow.click();
+    await page.getByTestId('net-confirm').click();
+    await expect(page.getByTestId('net-status')).toHaveAttribute('data-state', 'internet');
+  }
   await expect(page.getByTestId('check-updates')).toBeEnabled();
 }
 
@@ -276,7 +282,8 @@ async function acceptPrimaryOffer(page: Page) {
  * a previous run that went online leaves it on. Each case states its own
  * starting condition (POST /net/disable is the platform's own switch). */
 async function forceOffline() {
-  await fetch('http://127.0.0.1:19998/api/net/disable', { method: 'POST' });
+  // D86: Allow stores the choice, so the stored flag is cleared with the gate.
+  await useInternet(false);
 }
 
 test.beforeEach(async () => {
@@ -308,9 +315,12 @@ test.describe('J12 — a facilitator upgrades the pinned resources', () => {
       const before = pinsBytes();
 
       await openSources(page);
-      // Offline: the action is disabled and says why.
-      await expect(page.getByTestId('check-updates')).toBeDisabled();
-      await expect(page.getByTestId('upgrade-offline')).toContainText(/offline/i);
+      // Local: the action stays enabled; the click asks to allow the internet, and Cancel sends nothing (D86 point 4).
+      await expect(page.getByTestId('upgrade-offline')).toContainText('tC4 is set to Local');
+      await page.getByTestId('check-updates').click();
+      await expect(page.getByTestId('net-allow')).toContainText('tC4 is set to Local.');
+      await page.getByTestId('net-cancel').click();
+      await expect(page.getByTestId('upgrade-offer-primary')).toHaveCount(0);
       await goOnline(page);
 
       // Online: the offer lists, per set, each newer release with label and date.

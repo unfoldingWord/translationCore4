@@ -20,6 +20,7 @@ import { importFixture } from './helpers/import';
 import { pickOption } from './helpers/dropdown';
 import { assertNoRepoCreated, MANIFEST_DIR, readManifest, seedEventsOf, TC3_DCS_TAGS } from '../test/helpers/import';
 import { SEEDED_PROJECT, lastCommitMessage, readDecisionFile, readProjectPins, rigRepo } from './helpers/rig';
+import { useInternet } from './helpers/door43Share';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CONFORMANCE = path.resolve(HERE, '..', 'conformance');
@@ -145,7 +146,8 @@ test.describe('J9 — a facilitator imports existing work', () => {
     const TIT = path.join(MANIFEST_DIR, 'tc3', 'cfm_fbt_tit_book.zip');
     const MULTI = ['jhn', 'job', 'luk'].map((b) => path.join(MANIFEST_DIR, 'tc3', 'multi', `en_kjv_${b}_book.zip`));
     const EN_TN_V87 = TC3_DCS_TAGS['git.door43.org/unfoldingWord/en_tn@v87'];
-    const setNet = (on: boolean) => fetch(`http://127.0.0.1:19998/api/net/${on ? 'enable' : 'disable'}`, { method: 'POST' });
+    // D86: the stored choice and the gate together, as the app leaves them, so a reload keeps it.
+    const setNet = (on: boolean) => useInternet(on);
     const onDisk = (repo: string) => [...tree(path.join(repo, 'ingredients'))].map(([rel, bytes]) => [rel, bytes.toString('utf8')] as [string, string]);
     /** Every repo pin of a resources.json carries its 40-hex sha (D58). */
     const everyPinHasSha = (text: string) => (text.match(/"repoPath"/g) ?? []).length === (text.match(/"sha": "[0-9a-f]{40}"/g) ?? []).length;
@@ -180,7 +182,7 @@ test.describe('J9 — a facilitator imports existing work', () => {
       });
       await test.step('offline: the versions cannot be looked up, so Import waits for a choice', async () => {
         await expect(page.getByTestId('import-resources')).toHaveAttribute('data-state', 'offline');
-        await expect(page.getByTestId('import-go-online')).toBeVisible();
+        await expect(page.getByTestId('import-allow-internet')).toBeVisible();
         await expect(page.getByTestId('import-run')).toBeDisabled();
         await page.getByTestId('import-use-installed').click();
         await expect(page.getByTestId('import-resources')).toHaveAttribute('data-state', 'installed');
@@ -432,6 +434,44 @@ test.describe('J9 — a facilitator imports existing work', () => {
         await importFixture(page, path.join(MANIFEST_DIR, 'usfm', 'no-id.sfm'), { kind: 'usfm', confirm: false });
         await expect(page.getByTestId('import-damaged')).toHaveAttribute('data-code', 'import.damaged.usfm-parse');
         await expect(page.getByTestId('import-run')).toBeDisabled();
+      });
+    });
+
+    // #485: an imported project's pin file is the EMPTY document, and a
+    // checking-language change built on it used to journal a primary-only pin
+    // state that no later checkpoint or open could project — the project was
+    // locked out for good. The change must pin BOTH sets, and the project must
+    // keep opening.
+    test('USFM #485: a checking-language change on an imported project pins both language sets, and the project reopens', { tag: ['@inc8', '@J9', '@J13'] }, async ({ page }) => {
+      const name = fresh('Tito 485');
+      const source = path.join(MANIFEST_DIR, 'usfm', '57-TIT.usfm');
+      const repo = rigRepo(abbrOf(name));
+      const pinsOnDisk = () => JSON.parse(fs.readFileSync(path.join(repo, 'ingredients', 'checking', 'resources.json'), 'utf8'));
+      await test.step('import Titus as a new project: its committed pin file is the EMPTY document', async () => {
+        await importFixture(page, source, { kind: 'usfm', edits: { name, language: 'es-419' }, confirm: false });
+        await page.getByTestId('import-run').click();
+        await expect(page.getByTestId('import-toast')).toBeVisible({ timeout: 60_000 });
+        expect(pinsOnDisk()).toEqual({ schemaVersion: 2 });
+      });
+      await test.step('open it and change the checking language to English from Project Settings (#412 flow)', async () => {
+        await page.goto('/');
+        await page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`).getByRole('button', { name: /Titus/ }).click();
+        await expect(page.getByRole('heading', { name: /^Titus \d+$/ })).toBeVisible({ timeout: 120_000 });
+        await page.getByTestId('project-settings').click();
+        await page.getByTestId('settings-gateway-en::unfoldingWord').click();
+        await expect(page.getByTestId('gateway-change')).toBeVisible();
+        await page.getByTestId('gateway-confirm').click();
+        await expect(page.getByTestId('gateway-change').or(page.getByTestId('gateway-error'))).toHaveCount(0, { timeout: 30_000 });
+      });
+      await test.step('the pin file carries BOTH sets (§5.3/D17), and the project reopens with no error', async () => {
+        const pins = pinsOnDisk();
+        expect(Object.keys(pins.languageSets).sort()).toEqual(['fallback', 'primary']);
+        expect(pins.languageSets.primary.gatewayLanguage.languageId).toBe('en');
+        expect(pins.languageSets.fallback.gatewayLanguage.languageId).toBe('en');
+        await page.goto('/');
+        await page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`).getByRole('button', { name: /Titus/ }).click();
+        await expect(page.getByRole('heading', { name: /^Titus \d+$/ })).toBeVisible({ timeout: 120_000 });
+        await expect(page.getByTestId('home-open-error')).toHaveCount(0);
       });
     });
   });

@@ -40,12 +40,26 @@ export const signOut = async (keychain?: TokenKeychain): Promise<void> => {
   await keychain?.forget();
 };
 
-/** A kept token found at start-up, with the username `GET /api/v1/user`
- * answered for it (`resumeKeptSession` reads the keychain, asks Door43, and
- * calls this). */
+/** A kept token, with the username `GET /api/v1/user` answered for it
+ * (`resumeKeptSession` reads the keychain, asks Door43, and calls this). */
 export const resumeSession = (kept: Door43Session): void => {
   cancelResume();
   session = kept;
+};
+
+/** D86 point 7: is a token kept on this computer? A keychain read only, no
+ * Door43 call, so the card and the change-to-Local dialog can say so before
+ * the token is resumed. A keychain that fails to read counts as none. A read
+ * that a sign-in or a sign-out overtook answers false: that step set the fact. */
+export const hasKeptToken = async (keychain: TokenKeychain | null | undefined): Promise<boolean> => {
+  if (!keychain) return false;
+  const revision = sessionRevision;
+  try {
+    const token = await keychain.read();
+    return !!token && revision === sessionRevision;
+  } catch {
+    return false;
+  }
 };
 
 export interface ResumeDeps {
@@ -138,7 +152,7 @@ export async function signIn(deps: SignInDeps, request: SignInRequest): Promise<
   try {
     if (!request.login || !request.password)
       throw new Refusal('share.auth-failed', 'enter your Door43 username or email and your password');
-    if (!(await deps.getNetEnabled())) throw new Refusal('share.offline', 'the app is offline');
+    if (!(await deps.getNetEnabled())) throw new Refusal('share.offline', 'tC4 is set to Local');
   } catch (error) {
     return failed(error);
   }
@@ -190,7 +204,7 @@ const refusalForSignIn = (error: unknown): unknown => {
   if (!(error instanceof Door43ApiError)) return error;
   const facts = { status: error.status, message: error.message };
   if (error.status === 0)
-    return new Refusal('share.offline', 'Door43 could not be reached; check the connection', facts);
+    return new Refusal('share.offline', 'Door43 cannot be reached', facts);
   if (error.status === 401 || error.status === 403)
     return new Refusal('share.auth-failed', 'Door43 did not accept the username or the password', facts);
   if (error.status >= 500)
