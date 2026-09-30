@@ -29,12 +29,13 @@ export default function NetStatus() {
         {s.netChanging ? t('net.turning') : t(allowed ? 'net.internet' : 'net.local')}
       </button>
       {s.netError && <span role="alert" data-testid="net-error">· {t(s.netError)}</span>}
-      <NetDialog />
     </div>
   );
 }
 
-function NetDialog() {
+/** Mounted with the other dialogs in App.jsx, outside the top bar, so it does
+ * not take the bar's text color. */
+export function NetDialog() {
   const { s, actions } = useApp();
   if (!s.netAsk) return null;
   const toLocal = s.netAsk === 'local';

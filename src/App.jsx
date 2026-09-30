@@ -21,7 +21,7 @@ import ShareDialog from './views/modals/ShareDialog.jsx';
 import CommunityChecking from './views/CommunityChecking.jsx';
 import Understand from './views/Understand.jsx';
 import OpenProgress from './views/OpenProgress.jsx';
-import NetStatus from './views/NetStatus.jsx';
+import NetStatus, { NetDialog } from './views/NetStatus.jsx';
 import { AppHeader, Switcher, StatusDot, Button, Callout } from './ds/index.js';
 import { t } from './i18n';
 import { DCS_SERVER_LABEL } from './data/dcsServer';
@@ -160,6 +160,7 @@ export default function App() {
       <GuidedFix />
       <ShareSignIn />
       <ShareDialog />
+      <NetDialog />
       <OpenProgress />
       <Inspector />
     </div>

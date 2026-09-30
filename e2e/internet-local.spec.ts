@@ -48,6 +48,15 @@ test.describe('D86 — Internet / Local', () => {
     await page.goto('/');
     await status(page).click();
     await expect(page.getByTestId('net-allow')).toContainText('Allow tC4 to use the internet for Share and downloads?');
+    // The dialog sits outside the dark top bar: its title and Cancel are dark
+    // text on the white card (a copy inside the bar drew them white on white).
+    for (const target of [page.getByRole('dialog', { name: 'Allow internet' }).getByText('Allow internet'), page.getByTestId('net-cancel')]) {
+      const luminance = await target.evaluate((el) => {
+        const [r, g, b] = getComputedStyle(el).color.match(/[\d.]+/g)!.map(Number);
+        return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+      });
+      expect(luminance).toBeLessThan(0.6);
+    }
     await page.getByTestId('net-cancel').click();
     await expect(page.getByTestId('net-allow')).toHaveCount(0);
     await expect(status(page)).toHaveAttribute('data-state', 'local');
