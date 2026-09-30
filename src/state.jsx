@@ -5194,7 +5194,10 @@ export function AppProvider({ children }) {
       //      its sha. im.versions: { looking, found, unresolved, offline,
       //      installed: { base, derived, carried, invalidated } | null } ----
       importResolveVersions: async (bundle) => {
-        const online = internetGate.allowed;
+        // The barrier (D86 point 3) and the server's gate. The status read also
+        // lets the review's own patch render before this one spreads `im`.
+        const reported = await api.getNetEnabled().catch(() => false);
+        const online = internetGate.allowed && reported;
         // A lookup DCS did not answer leaves its slot unresolved; the other slots'
         // shas stay. Such a failure offers "Allow internet" as Local does.
         let unanswered = false;

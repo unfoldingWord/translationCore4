@@ -16,6 +16,7 @@
 import { test, expect } from './helpers/test';
 import type { Page, BrowserContext } from '@playwright/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
+import { useInternet } from './helpers/door43Share';
 import fs from 'node:fs';
 import path from 'node:path';
 import { unzipSync, strFromU8 } from 'fflate';
@@ -75,7 +76,8 @@ async function mockDcs(context: BrowserContext, repo: string, tag: string) {
 
 const NEEDED: Array<[string, string]> = [['en_tn', 'v88'], ['en_tw', 'v90'], ['en_tw', 'v89']];
 
-const setNet = (on: boolean) => fetch(`http://127.0.0.1:19998/api/net/${on ? 'enable' : 'disable'}`, { method: 'POST' });
+// D86: the stored choice and the gate together, as the app leaves them, so a page load keeps it.
+const setNet = (on: boolean) => useInternet(on);
 
 async function openCheck(page: Page) {
   await page.goto('/');

@@ -4,7 +4,7 @@
 // in Local the app talks to no host but the local server.
 import { test, expect } from './helpers/test';
 import type { Page } from '@playwright/test';
-import { SEEDED_PROJECT, readClientSettingsDoc } from './helpers/rig';
+import { SEEDED_PROJECT, readClientSettingsDoc, resetPlaces } from './helpers/rig';
 import { RIG_API, useInternet } from './helpers/door43Share';
 
 const gateOn = async (): Promise<boolean> =>
@@ -14,6 +14,8 @@ const status = (page: Page) => page.getByTestId('net-status');
 
 test.describe('D86 — Internet / Local', () => {
   test.beforeEach(async () => {
+    // A Home tile reopens the place an earlier spec left (#329); these cases open Titus 1.
+    resetPlaces();
     await useInternet(false);
   });
   test.afterAll(async () => {
