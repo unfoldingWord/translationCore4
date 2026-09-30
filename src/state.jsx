@@ -56,6 +56,7 @@ import { runExport } from './data/export/kernel';
 import { runImport } from './data/import/shell';
 import { OpsLog, serialSettingsWriter } from './data/journal/opsLog';
 import { Door43Api } from './data/share/door43Api';
+import { changeInternet, internetBusy, startInternet, withInternet } from './data/internet';
 import { currentSession, resumeKeptSession, signIn as door43SignIn, signOut as door43SignOut } from './data/share/session';
 import { desktopKeychain } from './data/share/keychain';
 import { share as door43Share, repositoryOf } from './data/share/shareOperation';
@@ -100,7 +101,12 @@ const settingsWriter = serialSettingsWriter(
 /** #374: the ops log — one record per store operation, in the same document. */
 export const opsLog = new OpsLog({ read: () => api.getClientSettings(STORAGE_ID), update: settingsWriter });
 /** #362/#203: the one Door43 adapter; its server is the build's `dcsServer`. */
-export const door43 = new Door43Api();
+// D86 point 4: the gate as the server last reported it. The Door43 adapter
+// calls Door43 from the client, outside the platform gate, so it reads this
+// and refuses in Local. It starts false: Local until the server says otherwise.
+const internetGate = { allowed: false };
+export const door43 = new Door43Api({ allowed: () => internetGate.allowed });
+
 // The mode a view is, for a checkpoint message (#183). Views not listed keep their id.
 const MODE_NAME = { read: 'Understand', draft: 'Translate', check: 'Check', publish: 'Community Checking' };
 // A leave-project checkpoint still running after its store was torn down
@@ -398,6 +404,9 @@ const initial = () => ({
   preflightError: null, // catch-to-absence sweep: an identity-read outage on the Check preflight, stated
   gatewayError: null, // a failed gateway-change commit, shown in the dialogue
   netEnabled: false, // mirrors the platform's net gate (GET /net/status)
+  netAsk: null, // D86: null | 'local' | 'internet' — the change dialog that is open
+  netChanging: null, // null | 'on' | 'off' — a change is running ("Turning…")
+  netError: null, // an i18n key: the gate did not change
   projectPins: null, // the open project's resources.json (§5.3 v2 shape)
   projectPinsSeq: 0, // #412: bumped by a gateway change, so an older pins read never lands over it
   projectPinsLoaded: false, // round 33: distinguishes pins LOADING (understand waits) from pins legally ABSENT (understand proceeds, slots unpinned)
@@ -583,7 +592,14 @@ function patchUpgrade(state, a) {
 
 /** Check-session, save-mirror and slice merge actions, table-dispatched ahead
  * of the main switch. */
-const CHECK_SESSION_CASES = { patchCheckSession, checkDecisionSaved, pickerToolEntry, alignSaveState, checkSaveState, patchUpgrade, setProgress };
+// Atomic merge, as patchSrc: Home loads every card's remote at once, and two
+// answers can land before a render, so a captured snapshot would drop the
+// first card's shared state.
+function setShared(state, a) {
+  return { ...state, remoteByProject: { ...state.remoteByProject, [a.id]: a.shared } };
+}
+
+const CHECK_SESSION_CASES = { patchCheckSession, checkDecisionSaved, pickerToolEntry, alignSaveState, checkSaveState, patchUpgrade, setProgress, setShared };
 
 function setSourceEntry(state, a) {
   if (a.value === undefined || a.value === null) {
@@ -2984,18 +3000,19 @@ export function AppProvider({ children }) {
     opsLog.recover(api)
       .catch((error) => console.error(`ops log: recovery failed: ${String(error?.message || error)}`))
       .finally(() => refreshProjects());
-    // The platform's net gate drives the D30.4/D30.5 split (fetch vs
-    // first-class unavailable), so it must be known from startup — not only
-    // once the source-texts modal happens to open.
-    api.getNetEnabled()
-      .then((netEnabled) => dispatch({ type: 'set', patch: { netEnabled } }))
-      .catch(() => dispatch({ type: 'set', patch: { netEnabled: false } }));
+    // D86 point 3: the stored choice sets the net gate at start — Internet
+    // turns it on, anything else (Local, no choice, a settings document that
+    // cannot be read) turns it off. The gate drives the D30.4/D30.5 split
+    // (Download vs first-class unavailable), so it is known from startup.
+    const netReady = startInternet(api, () => api.getClientSettings(STORAGE_ID)).then(setNet);
     // #366: a token kept in the operating-system keychain resumes the Door43
     // session, so the bar shows the user and a share asks nothing. No bridge
     // (a browser), no kept token, or no answer from Door43: not signed in.
+    // It waits for the gate: in Local the adapter refuses and the token stays.
     const keychain = desktopKeychain();
     if (keychain) {
-      resumeKeptSession({ door43, keychain, getNetEnabled: () => api.getNetEnabled() })
+      netReady
+        .then(() => resumeKeptSession({ door43, keychain, getNetEnabled: () => api.getNetEnabled() }))
         .then(() => dispatch({ type: 'set', patch: { door43User: currentSession()?.username ?? null } }))
         .catch(() => {});
     }
@@ -3053,6 +3070,12 @@ export function AppProvider({ children }) {
   // lastUsed, lastEdit and the ops records can never clobber each other and a
   // slow earlier write can never land after a later one. The ops log reports
   // its own failed writes (#374); these records are session-only on failure.
+  /** The gate the server reported, for the adapter and for the screen. */
+  function setNet(netEnabled) {
+    internetGate.allowed = netEnabled;
+    dispatch({ type: 'set', patch: { netEnabled } });
+  }
+
   function updateClientSettings(mutate) {
     return settingsWriter(mutate).catch(() => {
       /* rig without storage_id.json — the record lives for this session only */
@@ -3407,19 +3430,42 @@ export function AppProvider({ children }) {
 
       refreshNet: async () => {
         try {
-          dispatch({ type: 'set', patch: { netEnabled: await api.getNetEnabled() } });
+          setNet(await api.getNetEnabled());
         } catch {
-          dispatch({ type: 'set', patch: { netEnabled: false } });
+          setNet(false);
         }
       },
 
+      /** D86 point 2: open the change dialog — to Local from Internet, or the
+       * Allow confirmation from Local. Opening it changes nothing. */
+      askInternet: (allowed) => {
+        const st = stateRef.current;
+        if (st.netChanging || (!allowed && internetBusy(st))) return;
+        dispatch({ type: 'set', patch: { netAsk: allowed ? 'internet' : 'local', netError: null } });
+      },
+      cancelInternet: () => dispatch({ type: 'set', patch: { netAsk: null } }),
+
+      /** D86 points 2 and 3: change the gate, show what the server reports, and
+       * store the choice only when the gate changed. */
+      setInternet: async (allowed) => {
+        const st = stateRef.current;
+        if (st.netChanging || (!allowed && internetBusy(st))) return;
+        dispatch({ type: 'set', patch: { netAsk: null, netChanging: allowed ? 'on' : 'off', netError: null } });
+        // D86: a confirmed change to Local denies at once — the adapter, Share
+        // and Download — so no internet action starts while the gate turns off.
+        // The status shows "Turning…" until the server reports.
+        if (!allowed) setNet(false);
+        const result = await changeInternet(api, allowed,
+          (value) => settingsWriter((cs) => withInternet(cs, value)));
+        setNet(result.allowed);
+        dispatch({ type: 'set', patch: { netChanging: null,
+          netError: result.changed ? null : (allowed ? 'net.allowFailed' : 'net.localFailed') } });
+      },
+
       /** Going online is the USER's action — never a side effect of opening a
-       * screen (the platform boots net-disabled by design). */
+       * screen. It stores the choice as the status does (D86). */
       goOnline: async () => {
-        try {
-          await api.enableNet();
-        } catch { /* surfaced by the refresh below staying false */ }
-        await a.refreshNet();
+        await a.setInternet(true);
         const g = stateRef.current.src.gateway;
         if (g) await a.loadPackage(g, stateRef.current.src.book);
       },
@@ -4784,6 +4830,12 @@ export function AppProvider({ children }) {
         const src = stateRef.current.src;
         const chosen = src.rows.filter((r) => r.fixed || r.on);
         if (chosen.length === 0) return;
+        // D86: Local sends nothing. The latest-release lookup below calls
+        // Door43 from the client, before fetchAndInstallPin checks the gate.
+        if (!stateRef.current.netEnabled) {
+          dispatch({ type: 'patchSrc', patch: { error: t('sources.offline') } });
+          return;
+        }
         // M1 (adversarial round 13): the adoption finalizer runs AFTER long
         // downloads, and the modal stays closable meanwhile — bind the whole
         // operation to what was open when the user clicked Download.
@@ -4923,7 +4975,7 @@ export function AppProvider({ children }) {
         } catch {
           // unknown: the card offers Share
         }
-        dispatch({ type: 'set', patch: { remoteByProject: { ...stateRef.current.remoteByProject, [project.id]: shared } } });
+        dispatch({ type: 'setShared', id: project.id, shared });
         return shared;
       },
       /** Share, or Upload changes. No token: the sign-in step first, then back
@@ -5006,7 +5058,7 @@ export function AppProvider({ children }) {
           if (!open) store.dispose();
         }
         if (report.ok) {
-          dispatch({ type: 'set', patch: { remoteByProject: { ...stateRef.current.remoteByProject, [project.id]: { repository: report.facts.repository, url: report.facts.url } } } });
+          dispatch({ type: 'setShared', id: project.id, shared: { repository: report.facts.repository, url: report.facts.url } });
         } else {
           // A refusal after the create (the push) leaves an `origin`: the card
           // follows the remote, not the Report.
@@ -5143,10 +5195,8 @@ export function AppProvider({ children }) {
       },
       importGoOnline: async () => {
         a.patchIm({ versions: LOOKING });
-        try {
-          await api.enableNet();
-        } catch { /* the lookup below then reads offline again */ }
-        await a.refreshNet();
+        // The lookup below reads offline again when the gate does not change.
+        await a.setInternet(true);
         await a.importResolveVersions(stateRef.current.im.bundle);
       },
       /** The pins a new project gets: the installed suite, with this machine's
