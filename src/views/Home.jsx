@@ -32,19 +32,18 @@ function ShareAction({ p }) {
   }, [p.id]);
   const shared = s.remoteByProject[p.id] || null;
   const run = s.shareCard[p.id] || null;
-  const offline = !s.netEnabled;
   const busy = !!run?.busy;
   const label = busy
     ? t(run.step === 'push' ? 'shareDialog.pushing' : run.step === 'create' ? 'shareDialog.creating' : 'shareDialog.preparing')
     : t(shared ? 'home.uploadChanges' : 'home.share');
   return (
     <div data-testid={`share-card-${p.id}`} data-shared={shared ? '1' : '0'} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
-      <button type="button" data-i="quiet" data-testid={`share-${p.id}`} title={offline ? t('home.shareOffline') : label}
-        disabled={offline || busy} onClick={() => actions.startShare(p)} style={{ ...HEADER_ACTION, opacity: offline ? 0.5 : 1, cursor: offline ? 'default' : 'pointer' }}>
+      {/* D86 point 4: Share stays enabled in Local; the click asks to allow the internet. */}
+      <button type="button" data-i="quiet" data-testid={`share-${p.id}`} title={label}
+        disabled={busy} onClick={() => actions.requireInternet(() => actions.startShare(p))} style={HEADER_ACTION}>
         {label}
       </button>
       {shared && <span style={CARD_NOTE} data-testid={`share-state-${p.id}`}>{t('home.onDoor43')} · {shared.repository}</span>}
-      {offline && <span style={CARD_NOTE} data-testid={`share-offline-${p.id}`}>{t('home.shareOffline')}</span>}
       {run?.error && (
         <span role="alert" style={{ ...CARD_NOTE, color: 'var(--uw-kindle)', whiteSpace: 'normal', maxWidth: 360, textAlign: 'end' }}
           data-testid={`share-card-error-${p.id}`} data-code={run.error.code || ''}>{shareErrorText(run.error)}</span>
@@ -264,7 +263,7 @@ function Door43Bar({ user, notKept, actions }) {
       </span>
       {user
         ? <Button size="sm" variant="outline" onClick={actions.signOut} data-testid="door43-sign-out">{t('home.door43SignOut')}</Button>
-        : <Button size="sm" variant="outline" onClick={() => actions.openSignIn()} data-testid="door43-sign-in">{t('home.door43SignIn')}</Button>}
+        : <Button size="sm" variant="outline" onClick={() => actions.requireInternet(() => actions.openSignIn())} data-testid="door43-sign-in">{t('home.door43SignIn')}</Button>}
     </div>
   );
 }

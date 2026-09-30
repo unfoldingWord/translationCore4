@@ -44,11 +44,6 @@
       "count": 2
     }
   },
-  "src/views/Home.jsx": {
-    "complexity": {
-      "count": 1
-    }
-  },
   "src/views/modals/AddBook.jsx": {
     "complexity": {
       "count": 1

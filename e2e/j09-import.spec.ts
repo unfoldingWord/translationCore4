@@ -19,6 +19,7 @@ import { captureDownload } from './helpers/export';
 import { importFixture } from './helpers/import';
 import { assertNoRepoCreated, MANIFEST_DIR, readManifest, seedEventsOf, TC3_DCS_TAGS } from '../test/helpers/import';
 import { SEEDED_PROJECT, lastCommitMessage, readDecisionFile, readProjectPins, rigRepo } from './helpers/rig';
+import { useInternet } from './helpers/door43Share';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CONFORMANCE = path.resolve(HERE, '..', 'conformance');
@@ -144,7 +145,8 @@ test.describe('J9 — a facilitator imports existing work', () => {
     const TIT = path.join(MANIFEST_DIR, 'tc3', 'cfm_fbt_tit_book.zip');
     const MULTI = ['jhn', 'job', 'luk'].map((b) => path.join(MANIFEST_DIR, 'tc3', 'multi', `en_kjv_${b}_book.zip`));
     const EN_TN_V87 = TC3_DCS_TAGS['git.door43.org/unfoldingWord/en_tn@v87'];
-    const setNet = (on: boolean) => fetch(`http://127.0.0.1:19998/api/net/${on ? 'enable' : 'disable'}`, { method: 'POST' });
+    // D86: the stored choice and the gate together, as the app leaves them, so a reload keeps it.
+    const setNet = (on: boolean) => useInternet(on);
     const onDisk = (repo: string) => [...tree(path.join(repo, 'ingredients'))].map(([rel, bytes]) => [rel, bytes.toString('utf8')] as [string, string]);
     /** Every repo pin of a resources.json carries its 40-hex sha (D58). */
     const everyPinHasSha = (text: string) => (text.match(/"repoPath"/g) ?? []).length === (text.match(/"sha": "[0-9a-f]{40}"/g) ?? []).length;
@@ -179,7 +181,7 @@ test.describe('J9 — a facilitator imports existing work', () => {
       });
       await test.step('offline: the versions cannot be looked up, so Import waits for a choice', async () => {
         await expect(page.getByTestId('import-resources')).toHaveAttribute('data-state', 'offline');
-        await expect(page.getByTestId('import-go-online')).toBeVisible();
+        await expect(page.getByTestId('import-allow-internet')).toBeVisible();
         await expect(page.getByTestId('import-run')).toBeDisabled();
         await page.getByTestId('import-use-installed').click();
         await expect(page.getByTestId('import-resources')).toHaveAttribute('data-state', 'installed');

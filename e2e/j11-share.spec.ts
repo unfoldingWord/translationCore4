@@ -663,18 +663,30 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       await fetch(`${RIG_API}/git/delete/${id}`, { method: 'POST' });
     });
 
-    test('12. offline: Share is disabled and says why', { tag: ['@inc85', '@J11'] }, async ({ page }) => {
+    test('12. Local: Share asks to allow the internet; Cancel sends nothing; Allow continues the share (D86 point 4)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
+      const fake = await fakeShare(context, remote);
       await useInternet(false);
       try {
         await page.reload();
+        await expect(page.getByTestId('net-status')).toHaveAttribute('data-state', 'local');
         const share = page.getByTestId(`share-${SEEDED_ID}`);
-        await expect(share).toBeDisabled();
-        await expect(page.getByTestId(`share-offline-${SEEDED_ID}`)).toHaveText('Offline: Share needs the network.');
+        await expect(share).toBeEnabled();
+        await share.click();
+        await expect(page.getByTestId('net-allow')).toContainText('tC4 is set to Local.');
+        await page.getByTestId('net-cancel').click();
+        await expect(page.getByTestId('share-signin')).toHaveCount(0);
+        await expect(page.getByTestId('share-dialog')).toHaveCount(0);
+        expect(fake.calls, 'no Door43 request after Cancel').toEqual([]);
+        expect(remote.main(), 'nothing pushed').toBeNull();
+
+        // Allow: the gate turns on, and the share continues where the click left off.
+        await share.click();
+        await page.getByTestId('net-confirm').click();
+        await expect(page.getByTestId('net-status')).toHaveAttribute('data-state', 'internet');
+        await expect(page.getByTestId('share-signin')).toBeVisible();
       } finally {
         await useInternet(true);
       }
-      await page.reload();
-      await expect(page.getByTestId(`share-${SEEDED_ID}`)).toBeEnabled();
       // A push that meets HTTP 401 "offline mode" is test/share/shareOperation.test.ts.
     });
   });
