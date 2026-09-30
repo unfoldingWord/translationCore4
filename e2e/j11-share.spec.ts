@@ -501,10 +501,14 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
         document.body.append(probe);
         const oceanRgb = getComputedStyle(probe).color;
         probe.remove();
-        return { bg: cs.backgroundColor, border: cs.borderTopWidth, borderColor: cs.borderTopColor, color: cs.color, weight: Number(cs.fontWeight), radius: parseFloat(cs.borderTopLeftRadius), height: el.getBoundingClientRect().height, oceanRgb };
+        // Chromium reports a declared 1.5 px border as "1px" (at scale 1 and 2), so the
+        // declared width is read from the token the element uses.
+        return { bg: cs.backgroundColor, border: cs.borderTopWidth, inline: el.getAttribute('style') ?? '', token: cs.getPropertyValue('--stroke-selected').trim(), borderColor: cs.borderTopColor, color: cs.color, weight: Number(cs.fontWeight), radius: parseFloat(cs.borderTopLeftRadius), height: el.getBoundingClientRect().height, oceanRgb };
       });
       expect(look.bg).toBe('rgb(255, 255, 255)');
-      expect(look.border).toBe('1.5px');
+      expect(look.inline).toContain('var(--stroke-selected)');
+      expect(look.token).toBe('1.5px');
+      expect(parseFloat(look.border), 'a border is drawn').toBeGreaterThanOrEqual(1);
       expect(look.color).toBe(look.oceanRgb);
       expect(look.borderColor).toBe(look.oceanRgb);
       expect(look.weight).toBeGreaterThanOrEqual(700);
