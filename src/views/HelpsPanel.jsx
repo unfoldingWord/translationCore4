@@ -447,6 +447,20 @@ const tabOptions = (u, comments, story = false) => [
   ...(comments ? [{ value: 'comments', label: t('helps.comments') }] : []),
 ];
 
+/** The widen/restore toggle for the helps pane (#234). It lives in the view
+ * toolbars, not the pane's tab strip, so the strip keeps its full width
+ * (#225 already clips the last tab at the default width). `shown` gates it
+ * where the pane itself is toggleable (Translate hides it with the pane). */
+export function HelpsWidenButton({ shown = true }) {
+  const { s, actions } = useApp();
+  if (!shown) return null;
+  return (
+    <IconButton data-testid="helps-widen" title={s.helpsWide ? t('helps.restore') : t('helps.widen')} onClick={actions.toggleHelpsWide}>
+      {s.helpsWide ? '⇥' : '⇤'}
+    </IconButton>
+  );
+}
+
 /** `story`: the panel serves a story (#331): `chapter` is the story number, the
  * items' references read as chapter and verse, the strip has no simplified tab,
  * and `focusFrame` marks the frame in focus and scrolls its first card into view. */
@@ -470,14 +484,7 @@ export function HelpsPanel({ chapter, focusVerses = null, comments = false, stor
   }, [story, focusFrame, tab, loading]);
   return (
     <aside data-testid="helps-panel" style={{ width: s.helpsWide ? 'var(--helps-width-wide)' : 'var(--helps-width)', flex: 'none', background: 'var(--surface-panel)', borderInlineStart: 'var(--stroke-hair) solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      <div style={{ display: 'flex', alignItems: 'center' }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <Switcher indicator="underline" value={tab} onChange={actions.setHelpsTab} options={tabOptions(u, comments, story)} />
-        </div>
-        <IconButton size={26} data-testid="helps-widen" title={s.helpsWide ? t('helps.restore') : t('helps.widen')} onClick={actions.toggleHelpsWide} style={{ flex: 'none', marginInline: 4 }}>
-          {s.helpsWide ? '⇥' : '⇤'}
-        </IconButton>
-      </div>
+      <Switcher indicator="underline" value={tab} onChange={actions.setHelpsTab} options={tabOptions(u, comments, story)} />
       <div ref={listRef} style={{ flex: 1, overflow: 'auto', padding: 16, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
         {/* Loading and a failed load are their OWN states — never rendered as
             "the package lacks this resource" (D30 honesty; 2026-08-27 review). */}
