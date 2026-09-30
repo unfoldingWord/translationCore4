@@ -433,6 +433,44 @@ test.describe('J9 — a facilitator imports existing work', () => {
         await expect(page.getByTestId('import-run')).toBeDisabled();
       });
     });
+
+    // #485: an imported project's pin file is the EMPTY document, and a
+    // checking-language change built on it used to journal a primary-only pin
+    // state that no later checkpoint or open could project — the project was
+    // locked out for good. The change must pin BOTH sets, and the project must
+    // keep opening.
+    test('USFM #485: a checking-language change on an imported project pins both language sets, and the project reopens', { tag: ['@inc8', '@J9', '@J13'] }, async ({ page }) => {
+      const name = fresh('Tito 485');
+      const source = path.join(MANIFEST_DIR, 'usfm', '57-TIT.usfm');
+      const repo = rigRepo(abbrOf(name));
+      const pinsOnDisk = () => JSON.parse(fs.readFileSync(path.join(repo, 'ingredients', 'checking', 'resources.json'), 'utf8'));
+      await test.step('import Titus as a new project: its committed pin file is the EMPTY document', async () => {
+        await importFixture(page, source, { kind: 'usfm', edits: { name, language: 'es-419' }, confirm: false });
+        await page.getByTestId('import-run').click();
+        await expect(page.getByTestId('import-toast')).toBeVisible({ timeout: 60_000 });
+        expect(pinsOnDisk()).toEqual({ schemaVersion: 2 });
+      });
+      await test.step('open it and change the checking language to English from Project Settings (#412 flow)', async () => {
+        await page.goto('/');
+        await page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`).getByRole('button', { name: /Titus/ }).click();
+        await expect(page.getByRole('heading', { name: /^Titus \d+$/ })).toBeVisible({ timeout: 120_000 });
+        await page.getByTestId('project-settings').click();
+        await page.getByTestId('settings-gateway-en::unfoldingWord').click();
+        await expect(page.getByTestId('gateway-change')).toBeVisible();
+        await page.getByTestId('gateway-confirm').click();
+        await expect(page.getByTestId('gateway-change').or(page.getByTestId('gateway-error'))).toHaveCount(0, { timeout: 30_000 });
+      });
+      await test.step('the pin file carries BOTH sets (§5.3/D17), and the project reopens with no error', async () => {
+        const pins = pinsOnDisk();
+        expect(Object.keys(pins.languageSets).sort()).toEqual(['fallback', 'primary']);
+        expect(pins.languageSets.primary.gatewayLanguage.languageId).toBe('en');
+        expect(pins.languageSets.fallback.gatewayLanguage.languageId).toBe('en');
+        await page.goto('/');
+        await page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`).getByRole('button', { name: /Titus/ }).click();
+        await expect(page.getByRole('heading', { name: /^Titus \d+$/ })).toBeVisible({ timeout: 120_000 });
+        await expect(page.getByTestId('home-open-error')).toHaveCount(0);
+      });
+    });
   });
 
   // Damaged input (#41, the negative half of J9a–J9d): each damaged manifest

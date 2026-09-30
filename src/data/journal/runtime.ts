@@ -21,7 +21,7 @@ import {
   projectResources as projectResourcesRef,
   projectSettings as projectSettingsRef,
 } from '../../../journal/checkpoint.mjs';
-import { reconcileUsfm as reconcileUsfmRef, seedFromSidecars as seedFromSidecarsRef } from '../../../journal/reconcile.mjs';
+import { completePartialPins as completePartialPinsRef, reconcileUsfm as reconcileUsfmRef, seedFromSidecars as seedFromSidecarsRef } from '../../../journal/reconcile.mjs';
 import { makeClock as makeClockRef } from '../../../journal/hlc.mjs';
 import { normalizeEvent as normalizeEventRef } from '../../../journal/schema.mjs';
 import { toNfc as toNfcRef, isStoryReference as isStoryReferenceRef, STORY_BOOK_ID as STORY_BOOK_ID_REF } from '../../../journal/grammar.mjs';
@@ -206,6 +206,16 @@ export interface SeedInputs {
 /** §8.8 universal seeding: state without a journal becomes seed events. */
 export const seedFromSidecars = seedFromSidecarsRef as (inputs: SeedInputs) => JournalEvent[];
 
+/** R-8.8.4 (#485): the completion events for a primary-only pin fold — ordinary
+ * `resource.pin.set` events pinning the installed English fallback suite. `[]`
+ * for every other pin fold (only the stated shape recovers). */
+export const completePartialPins = completePartialPinsRef as (
+  pins: Record<string, unknown>,
+  fallbackSet: Record<string, unknown>,
+  clock: { issue(): string },
+  actor: string,
+) => JournalEvent[];
+
 export const makeClock = makeClockRef as (
   actorId: string,
   now?: () => number,
@@ -225,7 +235,7 @@ export const normalizeEvent = normalizeEventRef as (event: JournalEvent) => Jour
 // throws is a Refusal carrying one code from REFUSAL_CODES.
 export const REFUSAL_CODES = REFUSAL_CODES_REF as Readonly<Record<RefusalCode, string | null>>;
 export type RefusalCode = keyof typeof REFUSAL_CODES_REF;
-export type ReportOp = 'open' | 'checkpoint' | 'seed' | 'reconcile' | 'export' | 'import' | 'share';
+export type ReportOp = 'open' | 'checkpoint' | 'seed' | 'reconcile' | 'pin-complete' | 'export' | 'import' | 'share';
 
 export interface Report<F extends Record<string, unknown> = Record<string, unknown>> {
   op: ReportOp;

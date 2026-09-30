@@ -16,7 +16,8 @@ import {
   forgetProjectQueues,
 } from '../src/data/journal/journalingStore';
 import { forgetSharedClocks } from '../src/data/journal/journalStore';
-import { validateSegment, type JournalEvent } from '../src/data/journal/seal';
+import { sealAction, segmentName, validateSegment, type JournalEvent } from '../src/data/journal/seal';
+import { INSTALLED_SUITE } from '../src/data/installedSuite';
 import { describeVerifierReport, verifyProjectAgainstJournal } from '../src/data/journal/verify';
 import type { Decision, ResourcesFile } from '../src/data/burritoStore';
 import { FAKE_VRS, journalingRig, memKv, tickingNow, type JournalingRig } from './helpers/journalingRig';
@@ -1180,6 +1181,101 @@ describe('#62 review round 4: a rejected newer same-key intent does not destroy 
     expect(twDisk.decisions.some((d: Decision) => d.contextId.checkId === 'nuevo1')).toBe(true);
     expect(twDisk.decisions.some((d: Decision) => d.contextId.checkId === 'nuevo2')).toBe(true);
     expect((await kv.keys('intent:')).length).toBe(0);
+    await expectVerified(api);
+  });
+});
+
+describe('#485 partial language-set pins (R-8.7.4 / R-8.8.4)', () => {
+  it('a one-set pin document is refused BEFORE publication — nothing lands in the journal or on disk', async () => {
+    const { rig, api, store } = await setup();
+    const before = segmentPaths(rig);
+    const diskBefore = rig.repos.get(REPO)?.files.get('checking/resources.json');
+    const oneSet = { schemaVersion: 2, languageSets: { primary: { ...RUNG } } } as unknown as ResourcesFile;
+    await expectRefusal(store.writeResources(oneSet), 'checkpoint.incomplete-inputs');
+    const { md5 } = await store.readResourcesWithMd5();
+    await expectRefusal(
+      store.applyGatewayChange({ resources: oneSet, resourcesMd5: md5, decisions: [] }),
+      'checkpoint.incomplete-inputs',
+    );
+    expect(segmentPaths(rig)).toEqual(before);
+    expect(rig.repos.get(REPO)?.files.get('checking/resources.json')).toBe(diskBefore);
+    await expectVerified(api);
+  });
+
+  it('a journal already poisoned with primary-only pins recovers at open: the English fallback completes it, drafts stay intact, checkpoints save again (R-8.8.4)', async () => {
+    // The imported-project state (#485): a project whose first checkpoint
+    // committed the EMPTY resources.json and whose journal then took a
+    // primary-only pin batch from a release without the write-side guard.
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const rig = journalingRig();
+    const kv = memKv();
+    const clock = tickingNow('2026-08-19T09:00:00.000Z');
+    const api = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: rig.fetchFn });
+    const store = new JournalingStore({ api, kv, now: () => clock.advance(13) });
+    await store.createProject({
+      content_name: 'Prueba',
+      content_abbr: 'prueba',
+      content_language_code: 'es',
+      add_book: false,
+      versification: 'eng',
+    });
+    await store.addBook({
+      book_code: 'TIT',
+      book_title: 'Tito',
+      book_abbr: 'TIT',
+      add_cv: true,
+      initialUsfm: TIT_USFM,
+    });
+    await store.commit('Import prueba (tC4)');
+    const files = rig.repos.get(REPO)!.files;
+    expect(files.get('checking/resources.json')).toBe('{\n  "schemaVersion": 2\n}\n');
+    const usfmBefore = files.get('TIT.usfm');
+
+    // Poison: the sealed segment a pre-guard device published, byte-exact via
+    // the same seal every writer uses. Only primary slots — no fallback.
+    const ACTOR = 'poison-device';
+    const ts = (i: number): string => `2026-08-19T12:00:00.000Z|${String(i).padStart(4, '0')}|${ACTOR}`;
+    const poison: JournalEvent[] = Object.entries(RUNG).map(([slot, entry], i) => ({
+      v: 1,
+      op: 'resource.pin.set',
+      actor: ACTOR,
+      ts: ts(i),
+      base: null,
+      batch: ts(0),
+      slot: `languageSets.primary.${slot}`,
+      entry,
+    }));
+    files.set(`checking/journal/${ACTOR}/segments/${segmentName(ts(0))}`, await sealAction(poison));
+    files.set(
+      `checking/journal/${ACTOR}/actor.json`,
+      `${JSON.stringify({ schemaVersion: 1, actorId: ACTOR, createdAt: '2026-08-19T12:00:00.000Z', device: 'pre-guard install' }, null, 2)}\n`,
+    );
+
+    // Before R-8.8.4 this open refused with open.unexplained-divergence
+    // (checking/resources.json: disk vs "projected absent") — forever.
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const store2 = new JournalingStore({ api, kv, now: () => clock.advance(29) });
+    await store2.open(REPO);
+    const facts = openFacts(store2);
+    expect(facts.classification).toBe('converged');
+    const resources = await store2.readResources();
+    expect(Object.keys(resources!.languageSets).sort()).toEqual(['fallback', 'primary']);
+    expect(resources!.languageSets.primary.translationNotes).toEqual(RUNG.translationNotes);
+    expect(resources!.languageSets.fallback).toEqual(INSTALLED_SUITE.languageSets.fallback);
+    expect(files.get('TIT.usfm')).toBe(usfmBefore); // drafts untouched
+    await store2.commit('after recovery (tC4)'); // the checkpoint saves again
+
+    // Idempotent: a completed fold no longer matches the trigger — a second
+    // open journals nothing new.
+    const eventCount = (await allEvents(rig)).length;
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const store3 = new JournalingStore({ api, kv, now: () => clock.advance(31) });
+    await store3.open(REPO);
+    expect(openFacts(store3).classification).toBe('converged');
+    expect((await allEvents(rig)).length).toBe(eventCount);
     await expectVerified(api);
   });
 });

@@ -17,6 +17,7 @@ import { OBS_TOOL_SLOT, covers, pinKey, resolveObsSetSlot, resolveToolBook } fro
 import { GATEWAYS, gatewayKey } from './gateways';
 import type { Gateway } from './gateways';
 import { languageSetFromInstalled } from './installed';
+import { INSTALLED_SUITE } from './installedSuite';
 import type { InstalledMap } from './installed';
 import type { Coverage, Tool } from './resolve';
 
@@ -155,6 +156,23 @@ export const describeConsequences = (
       'will not be finished any more. Nothing is deleted.',
   };
 };
+
+/** A §5.3 document with BOTH language sets guaranteed (D17: exactly `primary`
+ * and `fallback`). A non-tC3 import's first checkpoint commits the EMPTY
+ * document — `{"schemaVersion":2}`, no `languageSets` — and a change built on
+ * that document used to journal a primary-only pin state that every later
+ * checkpoint and open refuses (#485). Each missing set is filled from the
+ * installed suite: `fallback` is the D17-mandated installed English suite, and
+ * a missing `primary` starts equal to it (the §5.3 migration rule's initial
+ * state). */
+export const completeLanguageSets = (resources: ResourcesFile): ResourcesFile =>
+  resources.languageSets?.primary && resources.languageSets?.fallback
+    ? resources
+    : {
+        ...resources,
+        schemaVersion: 2,
+        languageSets: { ...INSTALLED_SUITE.languageSets, ...resources.languageSets },
+      };
 
 /** Apply the change to the pin file. `primary` moves, and so do the source
  * panes when `extraScripture` is given (#412); the English fallback rung is the
