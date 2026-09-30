@@ -1980,8 +1980,9 @@ those calls [VERIFIED — main 0996d21, 2026-09-30, `src/data/share/door43Api.ts
 7. **Door43 sign-in (amends D84 point 2).** Home has no Door43 bar, and the top bar has no
    Door43 item. Share with no sign-in opens the sign-in step, and then the share continues. The
    share dialog shows "Sharing as @username · Change". A shared card shows "as @username ·
-   Change" under Upload changes, only when someone is signed in. Change signs out and opens the
-   sign-in step. When a kept sign-in exists, the change-to-Local dialog has the checkbox "Also
+   Change" under Upload changes, only when someone is signed in. When a kept sign-in exists but
+   is not resumed yet, the card shows "Signed in · Change", because the username comes from
+   Door43 (D85 point 2). Change signs out and opens the sign-in step. When a kept sign-in exists, the change-to-Local dialog has the checkbox "Also
    sign out of Door43 on this computer". It is on by default. Sign out removes the token from
    memory and from the keychain, as D84 point 2 said. The mockup's sign-in code step is not built.
 8. **The kept sign-in (amends D85 point 4).** tC4 resumes a kept token at the first action that
