@@ -4,7 +4,7 @@
 // in Local the app talks to no host but the local server.
 import { test, expect } from './helpers/test';
 import type { Page } from '@playwright/test';
-import { SEEDED_PROJECT, readClientSettingsDoc } from './helpers/rig';
+import { SEEDED_PROJECT, readClientSettingsDoc, resetPlaces } from './helpers/rig';
 import { RIG_API, useInternet } from './helpers/door43Share';
 
 const gateOn = async (): Promise<boolean> =>
@@ -14,6 +14,8 @@ const status = (page: Page) => page.getByTestId('net-status');
 
 test.describe('D86 — Internet / Local', () => {
   test.beforeEach(async () => {
+    // A Home tile reopens the place an earlier spec left (#329); these cases open Titus 1.
+    resetPlaces();
     await useInternet(false);
   });
   test.afterAll(async () => {
@@ -103,6 +105,20 @@ test.describe('D86 — Internet / Local', () => {
     await expect(page.getByTestId('net-error')).toContainText('Could not allow the internet.');
     await expect(status(page)).toHaveAttribute('data-state', 'local');
     expect(storedChoice()).toBeUndefined();
+  });
+
+  test('the barrier: a Local choice whose gate stays on is Local, says so, and asks before Sign in (D86 point 3)', { tag: ['@inc85'] }, async ({ page }) => {
+    await fetch(`${RIG_API}/net/enable`, { method: 'POST' });
+    // The disable is answered but does nothing: the gate stays on.
+    await page.route('**/api/net/disable', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{"is_good":true}' }));
+    await page.goto('/');
+    await expect(status(page)).toHaveAttribute('data-state', 'local');
+    await expect(page.getByTestId('net-error')).toContainText('Could not turn the internet off.');
+    expect(await gateOn()).toBe(true);
+    await page.getByTestId('door43-sign-in').click();
+    await expect(page.getByTestId('net-allow')).toContainText('tC4 is set to Local.');
+    await page.getByTestId('net-cancel').click();
+    await expect(page.getByTestId('share-signin')).toHaveCount(0);
   });
 
   test('in Local, a session with a restart talks to no host but the local server', { tag: ['@inc85'] }, async ({ page }) => {

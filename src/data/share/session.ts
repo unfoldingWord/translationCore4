@@ -138,7 +138,7 @@ export async function signIn(deps: SignInDeps, request: SignInRequest): Promise<
   try {
     if (!request.login || !request.password)
       throw new Refusal('share.auth-failed', 'enter your Door43 username or email and your password');
-    if (!(await deps.getNetEnabled())) throw new Refusal('share.offline', 'the app is offline');
+    if (!(await deps.getNetEnabled())) throw new Refusal('share.offline', 'tC4 is set to Local');
   } catch (error) {
     return failed(error);
   }
@@ -190,7 +190,7 @@ const refusalForSignIn = (error: unknown): unknown => {
   if (!(error instanceof Door43ApiError)) return error;
   const facts = { status: error.status, message: error.message };
   if (error.status === 0)
-    return new Refusal('share.offline', 'Door43 could not be reached; check the connection', facts);
+    return new Refusal('share.offline', 'Door43 cannot be reached', facts);
   if (error.status === 401 || error.status === 403)
     return new Refusal('share.auth-failed', 'Door43 did not accept the username or the password', facts);
   if (error.status >= 500)

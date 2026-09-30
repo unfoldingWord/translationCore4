@@ -205,8 +205,9 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   share ("Upload changes") pushes `main` again with no dialog when a token is available.
 - Refusals (each a `Report` code, nothing pushed): the name exists on the chosen account or
   organization; the push is not a fast-forward, because another device pushed (the message
-  says team sync is coming and local work is safe); the app is offline; sign-in failed; the
-  create was rejected.
+  says team sync is coming and local work is safe); Door43 cannot be reached; sign-in failed;
+  the create was rejected. In Local, Share does not refuse: the click asks to allow the internet
+  first, and Cancel sends nothing (D86 point 4).
 - MUST NOT: create a publication branch or an outbox; integrate or receive; force-push; write
   the token anywhere except the operating-system keychain; place the token in a URL or a log;
   store the password; write anything into the project.
@@ -219,7 +220,8 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 ### J12 Upgrade the pinned resources
 
 - Actor: facilitator. Activity: Start (touches Check).
-- Precondition: J3; the app is online.
+- Precondition: J3; tC4 is set to Internet, or the user allows the internet when Check for
+  updates asks (D86 point 4).
 - Steps: check for updates · see the offer per language set and per scripture text · accept
   explicitly · re-derive.
 - End state (defined 2026-09-11, D72): the set's §5.3 pins carry the new release's `sha` and

@@ -130,7 +130,7 @@ function ResourcesCheck({ im, actions }) {
         <Text role="caption">{text}</Text>
         {open && (
           <div style={{ display: 'flex', gap: 8 }}>
-            {v.offline && <Button size="sm" variant="secondary" data-testid="import-go-online" disabled={im.busy} onClick={actions.importGoOnline}>{t('importer.review.goOnline')}</Button>}
+            {v.offline && <Button size="sm" variant="secondary" data-testid="import-allow-internet" disabled={im.busy} onClick={actions.importGoOnline}>{t('importer.review.goOnline')}</Button>}
             <Button size="sm" variant="secondary" data-testid="import-use-installed" disabled={im.busy} onClick={actions.importUseInstalled}>{t('importer.review.useInstalled')}</Button>
           </div>
         )}

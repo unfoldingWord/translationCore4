@@ -41,60 +41,60 @@ describe('the stored choice', () => {
 describe('startInternet', () => {
   it('a stored Internet turns the gate on', async () => {
     const gate = fakeGate(false);
-    expect(await startInternet(gate, async () => ({ internet: true }))).toBe(true);
+    expect(await startInternet(gate, async () => ({ internet: true }))).toEqual({ allowed: true, error: null });
     expect(gate.calls).toEqual(['enable', 'status']);
   });
 
   it('no stored choice turns a gate that starts on (pankosmia-web 0.18.10) off: a new installation is Local', async () => {
     const gate = fakeGate(true);
-    expect(await startInternet(gate, async () => ({}))).toBe(false);
+    expect(await startInternet(gate, async () => ({}))).toEqual({ allowed: false, error: null });
     expect(gate.calls).toEqual(['disable', 'status']);
-  });
-
-  it('a stored Local turns the gate off', async () => {
-    const gate = fakeGate(true);
-    expect(await startInternet(gate, async () => ({ internet: false }))).toBe(false);
   });
 
   it('a settings document that cannot be read is Local', async () => {
     const gate = fakeGate(true);
-    expect(await startInternet(gate, async () => { throw new Error('storage_id.json missing'); })).toBe(false);
+    expect(await startInternet(gate, async () => { throw new Error('storage_id.json missing'); })).toEqual({ allowed: false, error: null });
     expect(gate.calls).toEqual(['disable', 'status']);
   });
 
-  it('reports what the server holds, not what was asked: an unanswered status read is Local', async () => {
-    expect(await startInternet(fakeGate(false, { stuck: true }), async () => ({ internet: true }))).toBe(false);
-    expect(await startInternet(fakeGate(true, { failRead: true }), async () => ({ internet: true }))).toBe(false);
+  it('the barrier (D86 point 3): a Local choice whose gate stays on is Local, and it says so', async () => {
+    expect(await startInternet(fakeGate(true, { stuck: true }), async () => ({}))).toEqual({ allowed: false, error: 'net.localFailed' });
+    expect(await startInternet(fakeGate(true, { stuck: true }), async () => ({ internet: false }))).toEqual({ allowed: false, error: 'net.localFailed' });
+  });
+
+  it('a stored Internet whose gate stays off, or whose status read is unanswered, is Local and says so', async () => {
+    expect(await startInternet(fakeGate(false, { stuck: true }), async () => ({ internet: true }))).toEqual({ allowed: false, error: 'net.allowFailed' });
+    expect(await startInternet(fakeGate(true, { failRead: true }), async () => ({ internet: true }))).toEqual({ allowed: false, error: 'net.allowFailed' });
   });
 });
 
 describe('changeInternet', () => {
-  it('a change that the server confirms is stored', async () => {
+  it('Internet is stored only when the server reports the gate on; Local is stored at once', async () => {
     const gate = fakeGate(false);
     const stored: boolean[] = [];
-    expect(await changeInternet(gate, true, async (v) => { stored.push(v); })).toEqual({ allowed: true, changed: true });
-    expect(await changeInternet(gate, false, async (v) => { stored.push(v); })).toEqual({ allowed: false, changed: true });
+    expect(await changeInternet(gate, true, async (v) => { stored.push(v); })).toEqual({ allowed: true, error: null });
+    expect(await changeInternet(gate, false, async (v) => { stored.push(v); })).toEqual({ allowed: false, error: null });
     expect(stored).toEqual([true, false]);
   });
 
-  it('a gate that does not change stores nothing and reports the gate the server holds', async () => {
+  it('a gate that does not turn on stores nothing and says so', async () => {
     const gate = fakeGate(false, { stuck: true });
     const stored: boolean[] = [];
-    expect(await changeInternet(gate, true, async (v) => { stored.push(v); })).toEqual({ allowed: false, changed: false });
+    expect(await changeInternet(gate, true, async (v) => { stored.push(v); })).toEqual({ allowed: false, error: 'net.allowFailed' });
     expect(stored).toEqual([]);
   });
 
-  it('an unanswered status read is not a change to Local: nothing is stored, and the status shows Local', async () => {
-    const stored: boolean[] = [];
-    const gate = fakeGate(true, { stuck: true, failRead: true });
-    expect(await changeInternet(gate, false, async (v) => { stored.push(v); })).toEqual({ allowed: false, changed: false });
-    expect(await changeInternet(gate, true, async (v) => { stored.push(v); })).toEqual({ allowed: false, changed: false });
-    expect(stored).toEqual([]);
+  it('the barrier: a change to Local whose gate stays on, or whose read is unanswered, is Local, is stored, and says so', async () => {
+    for (const opts of [{ stuck: true }, { stuck: true, failRead: true }]) {
+      const stored: boolean[] = [];
+      expect(await changeInternet(fakeGate(true, opts), false, async (v) => { stored.push(v); })).toEqual({ allowed: false, error: 'net.localFailed' });
+      expect(stored).toEqual([false]);
+    }
   });
 
   it('a store failure keeps the change for this session', async () => {
     const gate = fakeGate(false);
-    expect(await changeInternet(gate, true, async () => { throw new Error('write failed'); })).toEqual({ allowed: true, changed: true });
+    expect(await changeInternet(gate, true, async () => { throw new Error('write failed'); })).toEqual({ allowed: true, error: null });
     expect(gate.on).toBe(true);
   });
 });
