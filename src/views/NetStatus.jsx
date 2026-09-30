@@ -38,15 +38,17 @@ function NetDialog() {
   const { s, actions } = useApp();
   if (!s.netAsk) return null;
   const toLocal = s.netAsk === 'local';
-  const key = toLocal ? 'net.toLocal' : 'net.allow';
+  const text = toLocal
+    ? { title: t('net.toLocal.title'), body: t('net.toLocal.body'), confirm: t('net.toLocal.confirm') }
+    : { title: t('net.allow.title'), body: t('net.allow.body'), confirm: t('net.allow.confirm') };
   return (
-    <Modal data-testid={toLocal ? 'net-to-local' : 'net-allow'} width={440} title={t(`${key}.title`)}
+    <Modal data-testid={toLocal ? 'net-to-local' : 'net-allow'} width={440} title={text.title}
       closeLabel={t('common.close')} onClose={actions.cancelInternet}
       footer={<>
         <Button variant="secondary" onClick={actions.cancelInternet} data-testid="net-cancel">{t('net.cancel')}</Button>
-        <Button onClick={() => actions.setInternet(!toLocal)} data-testid="net-confirm">{t(`${key}.confirm`)}</Button>
+        <Button onClick={() => actions.setInternet(!toLocal)} data-testid="net-confirm">{text.confirm}</Button>
       </>}>
-      <p style={BODY}>{t(`${key}.body`)}</p>
+      <p style={BODY}>{text.body}</p>
     </Modal>
   );
 }
