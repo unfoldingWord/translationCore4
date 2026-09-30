@@ -1923,23 +1923,23 @@ in every time".
 `docs/PLATFORM-NOTES.md` #47 and `CONTEXT.md` (Door43 session) carry this decision. The bodies of
 #203, #366 and epic #372 were edited to match on 2026-09-28.
 
-## D86 (2026-09-30, project-owner rulings) **The top bar shows "Internet" or "Local" beside "Saved" at all times. The words tell what tC4 may do, not whether the computer is connected. Local stays after a restart, and tC4 then sends nothing. Door43 sign-in happens only in Share; Home has no Door43 bar.** [owner sessions 2026-09-29 and 2026-09-30, on the owner's mockup `tC4 Share on Door43 v2.html`; issue #486, epic #372; amends D30 points 4 and 5, D72 point 5, D79 point 12, D82 point 2, D84 points 1, 2 and 6, and D85 point 4]
+## D86 (2026-09-30, project-owner rulings) **The top bar shows "Internet" or "Local" beside "Saved" at all times. The words tell what tC4 may do, not whether the computer is connected. Local stays after a restart, and tC4 then sends nothing. Door43 sign-in happens only in Share; Home has no Door43 bar.** [owner sessions 2026-09-29 and 2026-09-30, on the owner's mockup `tC4 Share on Door43 v2.html`; issue #486, epic #372; amends D30 points 4 and 5, D72 point 5, D79 point 12, D82 point 2, D84 points 1 and 2, and D85 point 4]
 
 Context. The platform has one network gate. When the gate is off, every Door43 route of the
 platform answers 401 "offline mode". At pankosmia-web 0.18.5 the server starts with the gate off
-[VERIFIED — pankosmia-web 0.18.5 (99fd9be), PLATFORM-NOTES #45]. The client shows the gate as
+[VERIFIED — pankosmia-web 0.18.5 (99fd9be), 2026-09-22, PLATFORM-NOTES #45]. The client shows the gate as
 "online" and "offline". It offers "Go online" on three screens (Source texts, Guided fix, Import
 review), and it disables Share when the gate is off [VERIFIED — main 0996d21, 2026-09-30]. Users
 read "offline" as a fact about the computer, but the gate is a choice about what tC4 may do. Most
 users allow the internet once, the first time that they share or download, and never change it
-again. A few users must keep tC4 off the internet on a connected computer: for example, a
+again. A few users must keep tC4 off the internet on a connected computer. An example is a
 facilitator who downloads resources and then gives the computer to a translator in a sensitive
 place. tC3 asked before each internet action, and that warning was noise for most users. The
 Door43 API module calls Door43 from the client, so the platform gate does not stop
 those calls [VERIFIED — main 0996d21, 2026-09-30, `src/data/share/door43Api.ts`].
 
 1. **The status.** The top bar shows "Internet" with a blue dot, or "Local" with a grey dot, beside
-   "Saved". It shows on Home and in a project. The default is Local. The status shows the gate
+   "Saved", in the same small style as "Saved". It shows on Home and in a project. The default is Local. The status shows the gate
    value that `GET /api/net/status` reports, not the value that the user asked for. During a
    change, it shows "Turning…". No UI text says "online" or "offline".
 2. **The change.** A click on Internet opens a small dialog that changes tC4 to Local. A click on
@@ -1949,9 +1949,10 @@ those calls [VERIFIED — main 0996d21, 2026-09-30, `src/data/share/door43Api.ts
 3. **The choice stays.** tC4 stores the choice in the platform's per-client settings. At start, a
    stored Internet sends `POST /api/net/enable` and then reads the status back. A stored Local,
    no stored choice, or a stored choice that tC4 cannot read keeps the gate off and shows Local.
-   A new installation therefore starts as Local. At
-   pankosmia-web 0.18.10 the server can start with the gate on (`start_offline`, PLATFORM-NOTES
-   #45). At that version, a stored Local sends `POST /api/net/disable` before any other request.
+   A new installation therefore starts as Local. At pankosmia-web 0.18.10 the server can start
+   with the gate on (`start_offline`) [VERIFIED — pankosmia-web 0.18.10 (84c322a), 2026-09-22,
+   PLATFORM-NOTES #45]. At that version, a stored Local, no stored choice, or a stored choice that
+   tC4 cannot read sends `POST /api/net/disable` before any other request.
 4. **No internet use without a click.** tC4 uses the internet only after the user clicks an action
    that needs it. At start, tC4 sends no request to Door43 in either state. The Door43 API module
    refuses every call in Local. In Local, the internet actions stay enabled: Share, Upload
@@ -1976,13 +1977,13 @@ those calls [VERIFIED — main 0996d21, 2026-09-30, `src/data/share/door43Api.ts
    line ends with "· Shared at `owner/repository`". In Local, Share does not refuse; point 4
    applies. The D79 refusal "the app is offline" becomes "Door43 cannot be reached". Its
    `Report` code stays `share.offline`. D84 points 3, 4 and 5 do not change.
-7. **Door43 sign-in (amends D84 points 2 and 6).** Home has no Door43 bar, and the top bar has no
+7. **Door43 sign-in (amends D84 point 2).** Home has no Door43 bar, and the top bar has no
    Door43 item. Share with no sign-in opens the sign-in step, and then the share continues. The
    share dialog shows "Sharing as @username · Change". A shared card shows "as @username ·
    Change" under Upload changes, only when someone is signed in. Change signs out and opens the
    sign-in step. When a kept sign-in exists, the change-to-Local dialog has the checkbox "Also
    sign out of Door43 on this computer". It is on by default. Sign out removes the token from
-   memory and from the keychain, as D84 point 2 said.
+   memory and from the keychain, as D84 point 2 said. The mockup's sign-in code step is not built.
 8. **The kept sign-in (amends D85 point 4).** tC4 resumes a kept token at the first action that
    needs Door43, not at app start. A kept token still asks nothing. D85 points 1, 2 and 3 do not
    change.
@@ -1990,7 +1991,8 @@ those calls [VERIFIED — main 0996d21, 2026-09-30, `src/data/share/door43Api.ts
    offers "Allow internet" in place of "Go online", with the confirmation of point 2. Check for
    updates is enabled in both states. In Local, it offers Allow internet.
 
-`docs/BURRITO-SPEC.md` §5.3 carries this decision in the same change set. `docs/JOURNEYS.md` (J3,
-J9, J11), `docs/ARCHITECTURE.md` section 7 (the share, sign-in and keychain rows),
-`docs/PACKAGING.md` ("The offline run", step 9a) and `CONTEXT.md` (Share, Door43 session, and the
-new term Local) describe built behavior, so they change with the implementation of #486.
+`docs/BURRITO-SPEC.md` §5.3 carries this decision in the same change set. The documents that
+follow describe built behavior, so they change with the implementation of #486:
+`docs/JOURNEYS.md` (J3, J9, J11, and the J12 precondition), `docs/ARCHITECTURE.md` (the net gate
+row and the section 7 share, sign-in and keychain rows), `docs/PACKAGING.md` ("The offline run",
+step 9a) and `CONTEXT.md` (Share, Door43 session, and the new term Local).
