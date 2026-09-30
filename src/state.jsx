@@ -3450,6 +3450,10 @@ export function AppProvider({ children }) {
         const st = stateRef.current;
         if (st.netChanging || (!allowed && internetBusy(st))) return;
         dispatch({ type: 'set', patch: { netAsk: null, netChanging: allowed ? 'on' : 'off', netError: null } });
+        // D86: a confirmed change to Local denies at once — the adapter, Share
+        // and Download — so no internet action starts while the gate turns off.
+        // The status shows "Turning…" until the server reports.
+        if (!allowed) setNet(false);
         const result = await changeInternet(api, allowed,
           (value) => settingsWriter((cs) => withInternet(cs, value)));
         setNet(result.allowed);

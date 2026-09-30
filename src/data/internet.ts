@@ -24,14 +24,17 @@ export const withInternet = (settings: Record<string, unknown>, allowed: boolean
   return allowed ? { ...rest, [INTERNET_KEY]: true } : rest;
 };
 
-/** The gate as the server reports it; an unanswered read is Local. */
-const reportedGate = async (gate: NetGate): Promise<boolean> => {
+/** The gate as the server reports it, or null when the read is not answered. */
+const readGate = async (gate: NetGate): Promise<boolean | null> => {
   try {
     return await gate.getNetEnabled();
   } catch {
-    return false;
+    return null;
   }
 };
+
+/** The gate as the server reports it; an unanswered read is Local. */
+const reportedGate = async (gate: NetGate): Promise<boolean> => (await readGate(gate)) ?? false;
 
 /** At start: a stored Internet turns the gate on; anything else turns it off
  * (pankosmia-web 0.18.10 can start with it on). Resolves to the gate the
@@ -64,8 +67,11 @@ export async function changeInternet(
   } catch {
     /* the read below reports what the server holds */
   }
-  const allowed = await reportedGate(gate);
-  const changed = allowed === wanted;
+  // An unanswered read is shown as Local, but it is not a report: the change
+  // is not confirmed and nothing is stored.
+  const read = await readGate(gate);
+  const allowed = read ?? false;
+  const changed = read === wanted;
   if (changed) await store(allowed).catch(() => {});
   return { allowed, changed };
 }

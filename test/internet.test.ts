@@ -84,6 +84,14 @@ describe('changeInternet', () => {
     expect(stored).toEqual([]);
   });
 
+  it('an unanswered status read is not a change to Local: nothing is stored, and the status shows Local', async () => {
+    const stored: boolean[] = [];
+    const gate = fakeGate(true, { stuck: true, failRead: true });
+    expect(await changeInternet(gate, false, async (v) => { stored.push(v); })).toEqual({ allowed: false, changed: false });
+    expect(await changeInternet(gate, true, async (v) => { stored.push(v); })).toEqual({ allowed: false, changed: false });
+    expect(stored).toEqual([]);
+  });
+
   it('a store failure keeps the change for this session', async () => {
     const gate = fakeGate(false);
     expect(await changeInternet(gate, true, async () => { throw new Error('write failed'); })).toEqual({ allowed: true, changed: true });
