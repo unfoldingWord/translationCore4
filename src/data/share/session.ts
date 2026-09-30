@@ -40,12 +40,26 @@ export const signOut = async (keychain?: TokenKeychain): Promise<void> => {
   await keychain?.forget();
 };
 
-/** A kept token found at start-up, with the username `GET /api/v1/user`
- * answered for it (`resumeKeptSession` reads the keychain, asks Door43, and
- * calls this). */
+/** A kept token, with the username `GET /api/v1/user` answered for it
+ * (`resumeKeptSession` reads the keychain, asks Door43, and calls this). */
 export const resumeSession = (kept: Door43Session): void => {
   cancelResume();
   session = kept;
+};
+
+/** D86 point 7: is a token kept on this computer? A keychain read only, no
+ * Door43 call, so the card and the change-to-Local dialog can say so before
+ * the token is resumed. A keychain that fails to read counts as none. A read
+ * that a sign-in or a sign-out overtook answers false: that step set the fact. */
+export const hasKeptToken = async (keychain: TokenKeychain | null | undefined): Promise<boolean> => {
+  if (!keychain) return false;
+  const revision = sessionRevision;
+  try {
+    const token = await keychain.read();
+    return !!token && revision === sessionRevision;
+  } catch {
+    return false;
+  }
 };
 
 export interface ResumeDeps {

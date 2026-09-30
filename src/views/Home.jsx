@@ -10,7 +10,7 @@ import { useApp } from '../state.jsx';
 import { t } from '../i18n';
 import { bookName } from '../data/bookNames';
 import { Card, BookTile, Button, Overline, Badge, Callout, Toast } from '../ds/index.js';
-import { shareErrorText } from './modals/ShareDialog.jsx';
+import { shareErrorText, Door43Account } from './modals/ShareDialog.jsx';
 
 // Above this many books a card shows only its in-progress books until expanded.
 const COLLAPSE_ABOVE = 12;
@@ -19,12 +19,24 @@ const COLLAPSE_ABOVE = 12;
 const HEADER_ACTION = { border: 0, background: 'transparent', cursor: 'pointer', padding: '8px 6px', fontFamily: 'var(--font-ui)', fontWeight: 'var(--fw-heavy)', fontSize: 'var(--fs-caption-lg)', letterSpacing: 'var(--track-12-5)', color: 'var(--text-heading)', borderRadius: 'var(--radius-sm)' };
 const CARD_NOTE = { fontSize: 'var(--fs-meta)', letterSpacing: 'var(--track-11-5)', color: 'var(--text-tertiary)', fontWeight: 'var(--fw-medium)', whiteSpace: 'nowrap' };
 
+// D86 point 7: a shared card's sign-in line — "as @username · Change", or
+// "Signed in · Change" for a kept sign-in not resumed yet; nothing when no one
+// is signed in.
+function CardAccount({ p, shared }) {
+  const { s, actions } = useApp();
+  if (!shared || (!s.door43User && !s.door43Kept)) return null;
+  return (
+    <Door43Account testId={`share-account-${p.id}`} style={CARD_NOTE} onChange={() => actions.changeSignIn()}
+      label={s.door43User ? t('signIn.as', { user: s.door43User }) : t('signIn.kept')} />
+  );
+}
+
 // #362 (D84 point 1): the Share action beside Settings on a Bible or OBS card
 // (Community Checking has none). A shared project — its repository has an
 // `origin`, read by loadShared, never a stored record (D85) — shows "On Door43"
 // with the repository path, and its action reads "Upload changes": a push with
-// no dialog. Offline (the platform's net gate), the action is disabled and the
-// line under it says why. A refusal of an Upload changes shows here with its code.
+// no dialog. Under it, who is signed in (CardAccount). A refusal of an Upload
+// changes shows here with its code.
 function ShareAction({ p }) {
   const { s, actions } = useApp();
   useEffect(() => {
@@ -43,6 +55,7 @@ function ShareAction({ p }) {
         disabled={busy} onClick={() => actions.requireInternet(() => actions.startShare(p))} style={HEADER_ACTION}>
         {label}
       </button>
+      <CardAccount p={p} shared={shared} />
       {shared && <span style={CARD_NOTE} data-testid={`share-state-${p.id}`}>{t('home.onDoor43')} · {shared.repository}</span>}
       {run?.error && (
         <span role="alert" style={{ ...CARD_NOTE, color: 'var(--uw-kindle)', whiteSpace: 'normal', maxWidth: 360, textAlign: 'end' }}
@@ -247,27 +260,6 @@ function ResumeCard({ edit, projects }) {
   );
 }
 
-// #203 (D84 point 2): one Door43 bar above the project cards — "Not signed in
-// to Door43" with Sign in, or the signed-in user with Sign out. Sign in opens
-// the same sign-in step the first share uses; Sign out drops the token from
-// memory and from the keychain (#366). `notKept` (#366): "Stay signed in" was
-// asked, and this computer has no keychain the app can use (a browser has no
-// bridge), so one line says the sign-in lasts for this app session.
-function Door43Bar({ user, notKept, actions }) {
-  return (
-    <div data-testid="door43-bar" data-signed-in={user ? '1' : '0'}
-      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', margin: '0 0 16px', background: 'var(--surface-card)', border: 'var(--stroke-hair) solid var(--border-hair)', borderRadius: 'var(--radius-lg)', fontSize: 'var(--fs-ui-sm)', color: 'var(--text-secondary)', fontWeight: 'var(--fw-medium)' }}>
-      <span style={{ flex: 1 }}>
-        <span data-testid="door43-status">{user ? t('home.door43SignedIn', { user }) : t('home.door43NotSignedIn')}</span>
-        {user && notKept && <span data-testid="door43-not-kept" style={{ display: 'block', fontWeight: 'var(--fw-regular)' }}>{t('home.door43NotKept')}</span>}
-      </span>
-      {user
-        ? <Button size="sm" variant="outline" onClick={actions.signOut} data-testid="door43-sign-out">{t('home.door43SignOut')}</Button>
-        : <Button size="sm" variant="outline" onClick={() => actions.requireInternet(() => actions.openSignIn())} data-testid="door43-sign-in">{t('home.door43SignIn')}</Button>}
-    </div>
-  );
-}
-
 export default function Home() {
   const { s, actions } = useApp();
   const projects = s.projects;
@@ -284,8 +276,6 @@ export default function Home() {
           <div style={{ flex: 1 }} />
           <Button onClick={actions.openAddProject} data-testid="add-project">+ {t('home.addProject')}</Button>
         </div>
-
-        <Door43Bar user={s.door43User} notKept={s.door43NotKept} actions={actions} />
 
         {/* A refused open (e.g. the #62 seed pipeline's diagnosable STOP) routes
             back here with bookError set; without this banner the click looked
