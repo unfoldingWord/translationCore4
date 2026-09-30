@@ -591,7 +591,14 @@ function patchUpgrade(state, a) {
 
 /** Check-session, save-mirror and slice merge actions, table-dispatched ahead
  * of the main switch. */
-const CHECK_SESSION_CASES = { patchCheckSession, checkDecisionSaved, pickerToolEntry, alignSaveState, checkSaveState, patchUpgrade, setProgress };
+// Atomic merge, as patchSrc: Home loads every card's remote at once, and two
+// answers can land before a render, so a captured snapshot would drop the
+// first card's shared state.
+function setShared(state, a) {
+  return { ...state, remoteByProject: { ...state.remoteByProject, [a.id]: a.shared } };
+}
+
+const CHECK_SESSION_CASES = { patchCheckSession, checkDecisionSaved, pickerToolEntry, alignSaveState, checkSaveState, patchUpgrade, setProgress, setShared };
 
 function setSourceEntry(state, a) {
   if (a.value === undefined || a.value === null) {
@@ -623,11 +630,6 @@ function reducer(state, a) {
       return { ...state, ...a.patch };
     case 'toggle':
       return { ...state, [a.key]: !state[a.key] };
-    case 'setShared':
-      // Atomic merge, as patchSrc: Home loads every card's remote at once, and
-      // two answers can land before a render, so a captured snapshot would
-      // drop the first card's shared state.
-      return { ...state, remoteByProject: { ...state.remoteByProject, [a.id]: a.shared } };
     case 'patchSrc':
       // Atomic merge into the source-texts form. Same hazard as `setSource`:
       // pickGateway dispatches and then awaits loadPackage, which dispatches
