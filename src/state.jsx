@@ -623,6 +623,11 @@ function reducer(state, a) {
       return { ...state, ...a.patch };
     case 'toggle':
       return { ...state, [a.key]: !state[a.key] };
+    case 'setShared':
+      // Atomic merge, as patchSrc: Home loads every card's remote at once, and
+      // two answers can land before a render, so a captured snapshot would
+      // drop the first card's shared state.
+      return { ...state, remoteByProject: { ...state.remoteByProject, [a.id]: a.shared } };
     case 'patchSrc':
       // Atomic merge into the source-texts form. Same hazard as `setSource`:
       // pickGateway dispatches and then awaits loadPackage, which dispatches
@@ -4963,7 +4968,7 @@ export function AppProvider({ children }) {
         } catch {
           // unknown: the card offers Share
         }
-        dispatch({ type: 'set', patch: { remoteByProject: { ...stateRef.current.remoteByProject, [project.id]: shared } } });
+        dispatch({ type: 'setShared', id: project.id, shared });
         return shared;
       },
       /** Share, or Upload changes. No token: the sign-in step first, then back
@@ -5046,7 +5051,7 @@ export function AppProvider({ children }) {
           if (!open) store.dispose();
         }
         if (report.ok) {
-          dispatch({ type: 'set', patch: { remoteByProject: { ...stateRef.current.remoteByProject, [project.id]: { repository: report.facts.repository, url: report.facts.url } } } });
+          dispatch({ type: 'setShared', id: project.id, shared: { repository: report.facts.repository, url: report.facts.url } });
         } else {
           // A refusal after the create (the push) leaves an `origin`: the card
           // follows the remote, not the Report.
