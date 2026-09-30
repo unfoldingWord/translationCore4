@@ -2,11 +2,11 @@
 // The words say what tC4 may do, not whether the computer is connected. The
 // label is the gate the server reports (state `netEnabled`), never the value
 // the user asked for. A click only opens a dialog; the change is its button.
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../state.jsx';
 import { internetBusy } from '../data/internet';
 import { t } from '../i18n';
-import { Modal, Button } from '../ds/index.js';
+import { Modal, Button, Checkbox } from '../ds/index.js';
 
 const LABEL = { fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', fontWeight: 'var(--fw-heavy)', display: 'flex', alignItems: 'center', gap: 6, color: 'rgba(255,255,255,.66)' };
 const RESET = { border: 0, background: 'transparent', padding: 0, font: 'inherit', letterSpacing: 'inherit', color: 'inherit', display: 'flex', alignItems: 'center', gap: 6 };
@@ -34,11 +34,16 @@ export default function NetStatus() {
 }
 
 /** Mounted with the other dialogs in App.jsx, outside the top bar, so it does
- * not take the bar's text color. */
+ * not take the bar's text color. With a kept Door43 sign-in, the change to
+ * Local offers to sign out too, on by default (D86 point 7). */
 export function NetDialog() {
   const { s, actions } = useApp();
   if (!s.netAsk) return null;
-  const toLocal = s.netAsk === 'local';
+  return <NetAsk key={s.netAsk} toLocal={s.netAsk === 'local'} kept={!!s.door43Kept} actions={actions} />;
+}
+
+function NetAsk({ toLocal, kept, actions }) {
+  const [signOut, setSignOut] = useState(true);
   const text = toLocal
     ? { title: t('net.toLocal.title'), body: t('net.toLocal.body'), confirm: t('net.toLocal.confirm') }
     : { title: t('net.allow.title'), body: t('net.allow.body'), confirm: t('net.allow.confirm') };
@@ -47,9 +52,13 @@ export function NetDialog() {
       closeLabel={t('common.close')} onClose={actions.cancelInternet}
       footer={<>
         <Button variant="secondary" onClick={actions.cancelInternet} data-testid="net-cancel">{t('net.cancel')}</Button>
-        <Button onClick={() => actions.setInternet(!toLocal)} data-testid="net-confirm">{text.confirm}</Button>
+        <Button onClick={() => actions.setInternet(!toLocal, { signOut: toLocal && kept && signOut })} data-testid="net-confirm">{text.confirm}</Button>
       </>}>
       <p style={BODY}>{text.body}</p>
+      {toLocal && kept && (
+        <Checkbox label={t('net.toLocal.signOut')} checked={signOut} data-testid="net-sign-out"
+          onChange={(e) => setSignOut(!!e.target.checked)} style={{ marginTop: 14 }} />
+      )}
     </Modal>
   );
 }

@@ -40,9 +40,24 @@ const scopesInSource = (): string[] => {
 const settingsKeys = (): string[] => Object.keys(readClientSettingsDoc() ?? {});
 const PERSON_KEYS = /identity|login|user|name|email|token/i;
 
-const SIGNED_IN = `Signed in to Door43 as ${USER.username}`;
-const NOT_SIGNED_IN = 'Not signed in to Door43';
+// D86 point 7: Home has no Door43 bar. The share dialog says who shares, and a shared card
+// says who is signed in; each has Change (sign out, then the sign-in step).
+const SHARING_AS = `Sharing as @${USER.username} · Change`;
+const CARD_AS = `as @${USER.username} · Change`;
+const CARD_KEPT = 'Signed in · Change';
 const NOT_KEPT = /Stay signed in is not available on this computer/;
+const SEEDED_ID = `_local_/_local_/${SEEDED_PROJECT}`;
+
+/** Press Share on the seeded card, which is not shared, and wait for the sign-in step. */
+async function openSignIn(page: Page): Promise<void> {
+  await page.getByTestId(`share-${SEEDED_ID}`).click();
+  await expect(page.getByTestId('share-signin')).toBeVisible();
+}
+
+/** Give the seeded project an `origin` (a bare remote), so its card is a shared card. */
+const addOrigin = (remote: BareRemote): void => {
+  git(rigRepo(SEEDED_PROJECT), 'remote', 'add', 'origin', pathToFileURL(remote.bare).href);
+};
 
 /** The desktop keychain bridge (#366, `tc4Desktop.keychain` of scripts/preload.cjs), faked:
  * the kept token lives in this test process, so it outlives a reload the way the operating
@@ -83,13 +98,23 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       await useInternet(false);
     });
     test.beforeEach(async ({ page }) => {
+      // Sign-in starts at Share (D86 point 7); the seeded card is not shared, so Share
+      // opens the first-share dialog after the sign-in step, and pushes nothing.
+      dropOrigin(SEEDED_PROJECT);
       await page.goto('/');
-      await expect(page.getByTestId('door43-bar')).toBeVisible();
+      await expect(page.getByTestId(`share-${SEEDED_ID}`)).toBeVisible();
+    });
+
+    test('0. Home has no Door43 bar, and the top bar has no Door43 item (D86 point 7)', { tag: ['@inc85', '@J11'] }, async ({ page }) => {
+      await expect(page.getByTestId('net-status')).toBeVisible();
+      await expect(page.getByTestId('door43-bar')).toHaveCount(0);
+      await expect(page.getByRole('button', { name: /sign (in|out)/i })).toHaveCount(0);
+      await expect(page.getByText(/signed in to Door43/i)).toHaveCount(0);
     });
 
     test('1. the sign-in step shows the fields, the checkbox, the author notice and the server; Cancel creates and stores nothing', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
       const fake = await fakeFor(context);
-      await page.getByTestId('door43-sign-in').click();
+      await openSignIn(page);
       const dialog = page.getByTestId('share-signin');
       await expect(dialog).toBeVisible();
       await expect(page.getByLabel('Door43 username or email')).toHaveValue('');
@@ -109,31 +134,34 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       expect(fake.calls).toEqual([]);
       expect(fake.tokens.size).toBe(0);
       expect(settingsKeys().filter((key) => PERSON_KEYS.test(key))).toEqual([]);
-      await expect(page.getByTestId('door43-bar')).toHaveAttribute('data-signed-in', '0');
+      await expect(page.getByTestId('share-dialog')).toHaveCount(0);
     });
 
-    test('2. the Door43 bar says "Not signed in" before, the user after; Sign out, then Sign in asks everything again', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
+    test('2. the share dialog says who shares; Change signs out and opens the sign-in step, which asks everything again (D86 point 7)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
       const fake = await fakeFor(context);
-      const status = page.getByTestId('door43-status');
-      await expect(status).toHaveText(NOT_SIGNED_IN);
-      await page.getByTestId('door43-sign-in').click();
+      await openSignIn(page);
       await signIn(page);
       await expect(page.getByTestId('share-signin')).toHaveCount(0);
-      await expect(status).toHaveText(SIGNED_IN);
-      await expect(page.getByTestId('door43-bar')).toHaveAttribute('data-signed-in', '1');
+      const account = page.getByTestId('share-account');
+      await expect(account).toHaveText(SHARING_AS);
       // The fake minted the app's token with the adapter's scopes (test 3, the fake leg).
       expect(fake.tokenRows.map((row) => [row.name, row.scopes])).toEqual([['translationCore', scopesInSource()]]);
-      // D85: the username on the bar is Door43's answer; the rig's settings hold no record of it.
+      // D85: the username shown is Door43's answer; the rig's settings hold no record of it.
       expect(settingsKeys().filter((key) => PERSON_KEYS.test(key))).toEqual([]);
 
-      await page.getByTestId('door43-sign-out').click();
-      await expect(status).toHaveText(NOT_SIGNED_IN);
-      await page.getByTestId('door43-sign-in').click();
+      // Change: the share dialog closes, the sign-in step opens with nothing filled in.
+      await page.getByTestId('share-account-change').click();
+      await expect(page.getByTestId('share-dialog')).toHaveCount(0);
+      await expect(page.getByTestId('share-signin')).toBeVisible();
       await expect(page.getByLabel('Door43 username or email')).toHaveValue('');
       await expect(page.getByLabel('Password', { exact: true })).toHaveValue('');
+      // Signed out: after Cancel, Share asks the sign-in again.
+      await page.getByTestId('signin-cancel').click();
+      await openSignIn(page);
       const created = fake.calls.filter((c) => c.method === 'POST').length;
       await signIn(page);
-      await expect(status).toHaveText(SIGNED_IN);
+      // The share continues with the new sign-in.
+      await expect(account).toHaveText(SHARING_AS);
       expect(fake.calls.filter((c) => c.method === 'POST').length).toBe(created + 1);
     });
 
@@ -182,21 +210,21 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
 
     test('5. a sign-in failure names the cause with its code, and stores nothing', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
       await fakeFor(context);
-      await page.getByTestId('door43-sign-in').click();
+      await openSignIn(page);
       await signIn(page, 'wrong');
       const error = page.getByTestId('signin-error');
       await expect(error).toHaveAttribute('data-code', 'share.auth-failed');
       await expect(error).toContainText('did not accept that username or password');
-      await expect(page.getByTestId('door43-status')).toHaveText(NOT_SIGNED_IN);
+      await expect(page.getByTestId('share-dialog')).toHaveCount(0);
       expect(settingsKeys().filter((key) => PERSON_KEYS.test(key))).toEqual([]);
       // The other causes (no network, a 5xx) are test/share/signin.test.ts: the real server cannot fail on demand.
     });
 
     test('6. after a sign-in without "Stay signed in", the token, the password and the login are on no disk and in no storage', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
       const fake = await fakeFor(context);
-      await page.getByTestId('door43-sign-in').click();
+      await openSignIn(page);
       await signIn(page);
-      await expect(page.getByTestId('door43-status')).toHaveText(SIGNED_IN);
+      await expect(page.getByTestId('share-account')).toHaveText(SHARING_AS);
       const token = fake.tokens.get('translationCore');
       expect(token).toBeTruthy();
       // The rig's disk (its state: repos, client settings, temp) holds no file with the token or
@@ -238,107 +266,180 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       }
     });
 
-    test('7. a new app session without a kept token asks the sign-in again, and says why in one line; "Stay signed in" off never asks the keychain (#366 test 2)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
+    test('7. a new app session without a kept token asks the sign-in again, and says why in one line; "Stay signed in" off never asks the keychain to keep (#366 test 2)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
       await fakeFor(context);
       const keychain = await fakeKeychain(context);
       await page.goto('/');
-      await page.getByTestId('door43-sign-in').click();
+      await openSignIn(page);
       await expect(page.getByLabel('Stay signed in on this computer')).not.toBeChecked();
       await signIn(page);
-      await expect(page.getByTestId('door43-status')).toHaveText(SIGNED_IN);
-      await expect(page.getByTestId('door43-not-kept')).toHaveCount(0);
-      // The keychain was read at start-up and found nothing; the box was off, so no
-      // keep, only the forget that clears a token an earlier session kept.
+      await expect(page.getByTestId('share-account')).toHaveText(SHARING_AS);
+      await expect(page.getByTestId('signin-not-kept')).toHaveCount(0);
+      // The keychain was only read (at start and at Share) and found nothing; the box was
+      // off, so no keep, only the forget that clears a token an earlier session kept.
       expect(keychain.calls.filter((c) => c !== 'read')).toEqual(['forget']);
       expect(keychain.held).toBeNull();
       // A new app session: the token was in renderer memory only, and nothing else was stored.
       await page.reload();
-      await expect(page.getByTestId('door43-status')).toHaveText(NOT_SIGNED_IN);
-      await page.getByTestId('door43-sign-in').click();
+      await openSignIn(page);
       await expect(page.getByLabel('Door43 username or email')).toHaveValue('');
       await expect(page.getByLabel('Password', { exact: true })).toHaveValue('');
       await expect(page.getByTestId('signin-reason')).toHaveText(SESSION_NOTE);
       await expect(page.getByTestId('signin-notice')).toHaveText(AUTHOR_NOTICE);
       await signIn(page);
-      await expect(page.getByTestId('door43-status')).toHaveText(SIGNED_IN);
+      await expect(page.getByTestId('share-account')).toHaveText(SHARING_AS);
     });
 
     // 7b. A later share in the same session asks nothing: the "Upload changes" case of the
     // share block below (its second upload runs with the token of the first).
-    test('7c. a kept token asks nothing in the next app session, the keychain holds the token only, and Sign out empties it (#366 tests 1, 4, 6)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
+    test('7c. a kept token: no Door43 request at start; the shared card says "Signed in"; Upload changes resumes it and asks nothing; the keychain holds the token only; Change on the card empties it (#366 tests 1, 4, 6; D86 points 7 and 8)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
       const fake = await fakeFor(context);
       const keychain = await fakeKeychain(context);
-      await page.goto('/');
-      await page.getByTestId('door43-sign-in').click();
-      await page.getByLabel('Stay signed in on this computer').check();
-      await signIn(page);
-      await expect(page.getByTestId('door43-status')).toHaveText(SIGNED_IN);
-      await expect(page.getByTestId('door43-not-kept')).toHaveCount(0);
-      const token = fake.tokens.get('translationCore')!;
-      // Test 6: the keychain took the token and nothing else; the rig's disk holds no token,
-      // no password and no stored login, and the browser's storage holds none of the three.
-      expect(keychain.calls).toEqual(['read', 'keep']);
-      expect(keychain.held).toBe(token);
-      expect(token).not.toContain(USER.username);
-      for (const secret of [token, USER.password]) expect(filesHolding(RIG_STATE, secret), secret).toEqual([]);
-      expect(loginsHolding(RIG_STATE, USER.username), USER.username).toEqual([]);
-      const stored = await page.evaluate(() => {
-        const dump = (s: Storage) => Object.keys(s).map((k) => `${k}=${s.getItem(k)}`);
-        return [...dump(localStorage), ...dump(sessionStorage)];
-      });
-      expect(stored.filter((entry) => [token, USER.password, USER.username].some((s) => entry.includes(s)))).toEqual([]);
-      expect(settingsKeys().filter((key) => PERSON_KEYS.test(key))).toEqual([]);
+      const remote = makeBareRemote();
+      try {
+        await page.goto('/');
+        await openSignIn(page);
+        await page.getByLabel('Stay signed in on this computer').check();
+        await signIn(page);
+        await expect(page.getByTestId('share-account')).toHaveText(SHARING_AS);
+        await expect(page.getByTestId('signin-not-kept')).toHaveCount(0);
+        await page.getByTestId('share-cancel').click();
+        const token = fake.tokens.get('translationCore')!;
+        // Test 6: the keychain took the token and nothing else; the rig's disk holds no token,
+        // no password and no stored login, and the browser's storage holds none of the three.
+        expect(keychain.calls.filter((c) => c !== 'read')).toEqual(['keep']);
+        expect(keychain.held).toBe(token);
+        expect(token).not.toContain(USER.username);
+        for (const secret of [token, USER.password]) expect(filesHolding(RIG_STATE, secret), secret).toEqual([]);
+        expect(loginsHolding(RIG_STATE, USER.username), USER.username).toEqual([]);
+        const stored = await page.evaluate(() => {
+          const dump = (s: Storage) => Object.keys(s).map((k) => `${k}=${s.getItem(k)}`);
+          return [...dump(localStorage), ...dump(sessionStorage)];
+        });
+        expect(stored.filter((entry) => [token, USER.password, USER.username].some((s) => entry.includes(s)))).toEqual([]);
+        expect(settingsKeys().filter((key) => PERSON_KEYS.test(key))).toEqual([]);
 
-      // Test 1: a new app session reads the kept token, asks Door43 who it is, and asks nothing.
-      const before = fake.calls.length;
-      await page.reload();
-      await expect(page.getByTestId('door43-status')).toHaveText(SIGNED_IN);
-      await expect(page.getByTestId('share-signin')).toHaveCount(0);
-      const resumed = fake.calls.slice(before);
-      expect(resumed.map((c) => `${c.method} ${c.url}`)).toEqual([`GET ${QA_SERVER}/api/v1/user`]);
-      expect(resumed[0].headers.authorization ?? resumed[0].headers.Authorization).toBe(`token ${token}`);
-      expect(resumed[0].url).not.toContain(token);
+        // D86 point 8: a new app session sends no request to Door43 at start. The keychain is
+        // read (locally), so the shared card says a sign-in is kept, without a username.
+        addOrigin(remote);
+        const before = fake.calls.length;
+        const reads = keychain.calls.length;
+        await page.reload();
+        const account = page.getByTestId(`share-account-${SEEDED_ID}`);
+        await expect(account).toHaveText(CARD_KEPT);
+        expect(keychain.calls.slice(reads)).toEqual(['read']);
+        await page.waitForTimeout(1000);
+        expect(fake.calls.slice(before), 'no Door43 request at start').toEqual([]);
 
-      // Test 4: Sign out empties the keychain; the next session asks the password again.
-      await page.getByTestId('door43-sign-out').click();
-      await expect(page.getByTestId('door43-status')).toHaveText(NOT_SIGNED_IN);
-      expect(keychain.calls.at(-1)).toBe('forget');
-      expect(keychain.held).toBeNull();
-      await page.reload();
-      await expect(page.getByTestId('door43-status')).toHaveText(NOT_SIGNED_IN);
-      await page.getByTestId('door43-sign-in').click();
-      await expect(page.getByLabel('Password', { exact: true })).toHaveValue('');
-      await expect(page.getByTestId('signin-reason')).toHaveText(SESSION_NOTE);
+        // Test 1: Upload changes resumes the kept token (Door43 says who it is), asks nothing, and pushes.
+        await page.getByTestId(`share-${SEEDED_ID}`).click();
+        await expect(page.getByTestId(`share-uploaded-${SEEDED_ID}`)).toBeVisible({ timeout: 30_000 });
+        await expect(page.getByTestId('share-signin')).toHaveCount(0);
+        expect(remote.main()).toBe(head(SEEDED_PROJECT));
+        const resumed = fake.calls.slice(before);
+        expect(resumed.map((c) => `${c.method} ${c.url}`)).toEqual([`GET ${QA_SERVER}/api/v1/user`]);
+        expect(resumed[0].headers.authorization ?? resumed[0].headers.Authorization).toBe(`token ${token}`);
+        expect(resumed[0].url).not.toContain(token);
+        await expect(account).toHaveText(CARD_AS);
+
+        // Test 4, D86 point 7: Change on the card signs out (the keychain is emptied) and opens
+        // the sign-in step; the next session asks the password again.
+        await page.getByTestId(`share-account-${SEEDED_ID}-change`).click();
+        await expect(page.getByTestId('share-signin')).toBeVisible();
+        expect(keychain.calls.at(-1)).toBe('forget');
+        expect(keychain.held).toBeNull();
+        await page.getByTestId('signin-cancel').click();
+        await expect(account).toHaveCount(0);
+        await page.reload();
+        await expect(page.getByTestId(`share-${SEEDED_ID}`)).toHaveText('Upload changes');
+        await expect(account).toHaveCount(0);
+        await page.getByTestId(`share-${SEEDED_ID}`).click();
+        await expect(page.getByTestId('share-signin')).toBeVisible();
+        await expect(page.getByLabel('Password', { exact: true })).toHaveValue('');
+        await expect(page.getByTestId('signin-reason')).toHaveText(SESSION_NOTE);
+      } finally {
+        dropOrigin(SEEDED_PROJECT);
+        remote.dispose();
+      }
     });
 
-    test('7d. a kept token Door43 refuses is forgotten, and the app asks the password again (#366 test 5)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
+    test('7d. a kept token Door43 refuses is forgotten at the first Share, and the app asks the password again (#366 test 5)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
       // The fake knows no token, so the kept one is revoked; the negative control of test 7c.
       const fake = await fakeFor(context);
       const keychain = await fakeKeychain(context, 'revoked-token');
       await page.goto('/');
-      await expect(page.getByTestId('door43-status')).toHaveText(NOT_SIGNED_IN);
-      await expect.poll(() => keychain.calls).toEqual(['read', 'forget']);
+      await expect(page.getByTestId(`share-${SEEDED_ID}`)).toBeVisible();
+      await page.waitForTimeout(1000);
+      expect(fake.calls, 'no Door43 request at start').toEqual([]);
+      await openSignIn(page);
+      expect(keychain.calls).toEqual(['read', 'read', 'forget']);
       expect(keychain.held).toBeNull();
       expect(fake.calls.map((c) => `${c.method} ${c.url}`)).toEqual([`GET ${QA_SERVER}/api/v1/user`]);
-      await page.getByTestId('door43-sign-in').click();
       await expect(page.getByLabel('Password', { exact: true })).toHaveValue('');
       await signIn(page);
-      await expect(page.getByTestId('door43-status')).toHaveText(SIGNED_IN);
+      await expect(page.getByTestId('share-account')).toHaveText(SHARING_AS);
     });
 
     test('7e. the browser build has no keychain: "Stay signed in" keeps the token in memory and says so in one line (#366 test 3)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
       await fakeFor(context);
       // No fakeKeychain: `window.tc4Desktop` is absent, as in the browser build.
       expect(await page.evaluate(() => 'tc4Desktop' in window)).toBe(false);
-      await page.getByTestId('door43-sign-in').click();
+      await openSignIn(page);
       await page.getByLabel('Stay signed in on this computer').check();
       await signIn(page);
-      await expect(page.getByTestId('door43-status')).toHaveText(SIGNED_IN);
-      await expect(page.getByTestId('door43-not-kept')).toHaveText(NOT_KEPT);
+      await expect(page.getByTestId('share-account')).toHaveText(SHARING_AS);
+      await expect(page.getByTestId('signin-not-kept')).toHaveText(NOT_KEPT);
       // The next session asks again: the token was in memory only.
       await page.reload();
-      await expect(page.getByTestId('door43-status')).toHaveText(NOT_SIGNED_IN);
-      await expect(page.getByTestId('door43-not-kept')).toHaveCount(0);
+      await openSignIn(page);
+      await expect(page.getByTestId('signin-not-kept')).toHaveCount(0);
+    });
+
+    test('7f. the change to Local with a kept sign-in: "Also sign out of Door43 on this computer" is on, and removes the kept token; off keeps it (D86 point 7)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
+      const fake = await fakeFor(context);
+      const keychain = await fakeKeychain(context);
+      try {
+        // No kept token: the change-to-Local dialog has no checkbox.
+        await page.goto('/');
+        await expect(page.getByTestId('net-status')).toHaveAttribute('data-state', 'internet');
+        await page.getByTestId('net-status').click();
+        await expect(page.getByTestId('net-to-local')).toBeVisible();
+        await expect(page.getByTestId('net-sign-out')).toHaveCount(0);
+        await page.getByTestId('net-cancel').click();
+
+        // A kept token, the box turned off: Local, and the token stays kept.
+        keychain.held = 'kept-token';
+        await page.reload();
+        await expect(page.getByTestId('net-status')).toHaveAttribute('data-state', 'internet');
+        await page.getByTestId('net-status').click();
+        const box = page.getByTestId('net-to-local').getByLabel('Also sign out of Door43 on this computer');
+        await expect(box).toBeChecked();
+        await box.uncheck();
+        await page.getByTestId('net-confirm').click();
+        await expect(page.getByTestId('net-status')).toHaveAttribute('data-state', 'local');
+        expect(keychain.held).toBe('kept-token');
+        expect(keychain.calls).not.toContain('forget');
+
+        // Cancel signs nothing out.
+        await useInternet(true);
+        await page.reload();
+        await expect(page.getByTestId('net-status')).toHaveAttribute('data-state', 'internet');
+        await page.getByTestId('net-status').click();
+        await page.getByTestId('net-cancel').click();
+        expect(keychain.held).toBe('kept-token');
+
+        // The box on (the default): the kept token is removed, and the status is Local.
+        await page.getByTestId('net-status').click();
+        await expect(box).toBeChecked();
+        await page.getByTestId('net-confirm').click();
+        await expect(page.getByTestId('net-status')).toHaveAttribute('data-state', 'local');
+        expect(keychain.calls.at(-1)).toBe('forget');
+        expect(keychain.held).toBeNull();
+        // The sign-out is local: no Door43 request in this whole case.
+        expect(fake.calls).toEqual([]);
+      } finally {
+        await useInternet(true);
+      }
     });
   });
 
@@ -346,7 +447,6 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
   //      (its `origin` dropped) and a fresh bare remote; a new page holds no token, so
   //      each Share begins with the sign-in step. ----
   test.describe('share (#362)', () => {
-    const SEEDED_ID = `_local_/_local_/${SEEDED_PROJECT}`;
     let remote: BareRemote;
     const ORGS: FakeOrganization[] = [
       { username: 'orgA', fullName: 'Equipo A', canCreateRepository: true, repositories: { 'es-419': 3 } },
@@ -504,7 +604,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
 
       // A new app session, a new local commit: Upload changes asks nothing, no dialog, pushed.
       await page.reload();
-      await expect(page.getByTestId('door43-status')).toHaveText(SIGNED_IN);
+      await expect(page.getByTestId(`share-account-${SEEDED_ID}`)).toHaveText(CARD_KEPT);
       await expect(page.getByTestId(`share-${SEEDED_ID}`)).toHaveText('Upload changes');
       git(rigRepo(SEEDED_PROJECT), '-c', 'user.name=rig', '-c', 'user.email=rig@local', 'commit', '-q', '--allow-empty', '-m', 'local edit 1');
       const second = head(SEEDED_PROJECT);
@@ -522,9 +622,9 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       const fake = await fakeShare(context, remote, { tokens: [OLD], tokenScopes: { [OLD]: ['write:repository', 'read:organization', 'read:user'] } });
       const keychain = await fakeKeychain(context, OLD);
       await page.goto('/');
-      // The old token still reads the account, so the new session resumes on it.
-      await expect(page.getByTestId('door43-status')).toHaveText(SIGNED_IN);
+      // The old token still reads the account, so Share resumes on it and asks nothing.
       await page.getByTestId(`share-${SEEDED_ID}`).click();
+      await expect(page.getByTestId('share-account')).toHaveText(SHARING_AS);
       await expect(page.getByTestId('share-orgs-loading')).toHaveCount(0);
       await page.getByTestId('share-next').click();
       await page.getByTestId('share-submit').click();
@@ -535,7 +635,6 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       await expect(page.getByTestId('signin-renew')).toHaveText('Sign in again: your earlier sign-in cannot create repositories on Door43.');
       await expect(signin).not.toContainText(/scope|\/user\/repos|HTTP/);
       expect(keychain.held).toBeNull();
-      await expect(page.getByTestId('door43-status')).toHaveText(NOT_SIGNED_IN);
       expect(fake.repositories.size).toBe(0);
       expect(remote.main()).toBeNull();
       await page.getByLabel('Stay signed in on this computer').check();

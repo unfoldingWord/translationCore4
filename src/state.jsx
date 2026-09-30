@@ -57,7 +57,7 @@ import { runImport } from './data/import/shell';
 import { OpsLog, serialSettingsWriter } from './data/journal/opsLog';
 import { Door43Api } from './data/share/door43Api';
 import { changeInternet, internetBusy, startInternet, withInternet } from './data/internet';
-import { currentSession, resumeKeptSession, signIn as door43SignIn, signOut as door43SignOut } from './data/share/session';
+import { currentSession, hasKeptToken, resumeKeptSession, signIn as door43SignIn, signOut as door43SignOut } from './data/share/session';
 import { desktopKeychain } from './data/share/keychain';
 import { share as door43Share, repositoryOf } from './data/share/shareOperation';
 import { organizationChoices } from './data/share/recommend';
@@ -378,10 +378,14 @@ const initial = () => ({
   // #203: the Door43 sign-in step — { login, password, stay, server (host), busy,
   // error: { code, message } | null }. The token never enters this state (session.ts).
   si: null,
-  door43User: null, // the signed-in Door43 login shown in the Home bar, or null
+  door43User: null, // the signed-in Door43 login shown in Share and on a shared card, or null
+  // D86 point 7: true while the keychain holds a token (read locally, not
+  // resumed yet), so a shared card shows "Signed in · Change" and the change
+  // to Local offers "Also sign out of Door43 on this computer".
+  door43Kept: false,
   // #366: true when "Stay signed in" was asked and the token could not be kept
   // (a browser has no keychain bridge; a computer may have no keychain), so
-  // the Home bar says in one line that the sign-in lasts for this app session.
+  // the share dialog says in one line that the sign-in lasts for this app session.
   door43NotKept: false,
   // #362 (D84): the first-share dialog — { project, step: 'target'|'check'|'progress'|'done',
   // choices: OrganizationChoice[] | null (loading), choicesError, target: ShareTarget, name,
@@ -3008,21 +3012,16 @@ export function AppProvider({ children }) {
     // turns it on, anything else (Local, no choice, a settings document that
     // cannot be read) turns it off. The gate drives the D30.4/D30.5 split
     // (Download vs first-class unavailable), so it is known from startup.
-    const netReady = startInternet(api, () => api.getClientSettings(STORAGE_ID)).then(({ allowed, error }) => {
+    startInternet(api, () => api.getClientSettings(STORAGE_ID)).then(({ allowed, error }) => {
       setNet(allowed);
       if (error) dispatch({ type: 'set', patch: { netError: error } });
     });
-    // #366: a token kept in the operating-system keychain resumes the Door43
-    // session, so the bar shows the user and a share asks nothing. No bridge
-    // (a browser), no kept token, or no answer from Door43: not signed in.
-    // It waits for the gate: in Local the adapter refuses and the token stays.
-    const keychain = desktopKeychain();
-    if (keychain) {
-      netReady
-        .then(() => resumeKeptSession({ door43, keychain, getNetEnabled: internetAllowed }))
-        .then(() => dispatch({ type: 'set', patch: { door43User: currentSession()?.username ?? null } }))
-        .catch(() => {});
-    }
+    // D86 point 8: a kept token is not resumed at start (no Door43 request);
+    // the first action that needs Door43 resumes it (startShare). The keychain
+    // read is local, and only says that a sign-in is kept (D86 point 7).
+    hasKeptToken(desktopKeychain()).then((kept) => {
+      if (kept) dispatch({ type: 'set', patch: { door43Kept: true } });
+    });
     return unsubscribe;
   }, []);
 
@@ -3469,8 +3468,10 @@ export function AppProvider({ children }) {
       },
 
       /** D86 points 2 and 3: change the gate, show what the server reports, and
-       * store the choice only when the gate changed. */
-      setInternet: async (allowed) => {
+       * store the choice only when the gate changed. `signOut` (D86 point 7):
+       * the change to Local also removes the kept sign-in, whether or not the
+       * gate turns off. */
+      setInternet: async (allowed, { signOut = false } = {}) => {
         const st = stateRef.current;
         if (st.netChanging || (!allowed && internetBusy(st))) return;
         dispatch({ type: 'set', patch: { netAsk: null, netChanging: allowed ? 'on' : 'off', netError: null } });
@@ -3478,6 +3479,7 @@ export function AppProvider({ children }) {
         // and Download — so no internet action starts while the gate turns off.
         // The status shows "Turning…" until the server reports.
         if (!allowed) setNet(false);
+        if (!allowed && signOut) await a.signOut();
         const result = await changeInternet(api, allowed,
           (value) => settingsWriter((cs) => withInternet(cs, value)));
         setNet(result.allowed);
@@ -4965,8 +4967,9 @@ export function AppProvider({ children }) {
           return report;
         }
         // #366: "Stay signed in" asked, and the token not kept (no bridge in a
-        // browser, or a keychain that refused): say so in one line on the bar.
-        dispatch({ type: 'set', patch: { door43User: report.facts.username, door43NotKept: si.stay && !report.facts.kept, modal: null, si: null } });
+        // browser, or a keychain that refused): the share dialog says so in one line.
+        // A sign-in that is not kept forgot any earlier kept token (session.ts).
+        dispatch({ type: 'set', patch: { door43User: report.facts.username, door43Kept: report.facts.kept, door43NotKept: si.stay && !report.facts.kept, modal: null, si: null } });
         // #362: a Share pressed without a token continues here, with the token.
         if (si.share) a.startShare(si.share);
         return report;
@@ -4974,8 +4977,17 @@ export function AppProvider({ children }) {
       /** Sign out: the token leaves memory and the keychain (#366). */
       signOut: async () => {
         await door43SignOut(desktopKeychain() ?? undefined);
-        dispatch({ type: 'set', patch: { door43User: null, door43NotKept: false } });
+        dispatch({ type: 'set', patch: { door43User: null, door43Kept: false, door43NotKept: false } });
       },
+      /** D86 point 7: "Change" in the share dialog or on a shared card signs out
+       * and opens the sign-in step. From the dialog (`project`) the share then
+       * continues; from a card nothing is uploaded that the user did not click.
+       * In Local the sign-in step asks to allow the internet first, and Cancel
+       * signs nothing out. */
+      changeSignIn: (project = null) => a.requireInternet(async () => {
+        await a.signOut();
+        a.openSignIn(project);
+      }),
 
       // ---- Share (#362; D79 point 12, D84 points 1, 3, 4, 5). The operation is
       //      src/data/share/shareOperation.ts; the dialog is ShareDialog.jsx. ----
@@ -5003,14 +5015,15 @@ export function AppProvider({ children }) {
       startShare: async (project) => {
         let session = currentSession();
         if (!session) {
-          // #366: a kept token that could not be resumed at start-up (offline
-          // then) is tried again here; a refused one was forgotten, so the
+          // D86 point 8: a kept token resumes here, at the first action that
+          // needs Door43, never at start. A refused one was forgotten, so the
           // sign-in step asks the password again.
           const keychain = desktopKeychain();
           if (keychain) {
-            await resumeKeptSession({ door43, keychain, getNetEnabled: internetAllowed });
+            const outcome = await resumeKeptSession({ door43, keychain, getNetEnabled: internetAllowed });
             session = currentSession();
             if (session) dispatch({ type: 'set', patch: { door43User: session.username } });
+            if (outcome === 'refused') dispatch({ type: 'set', patch: { door43Kept: false } });
           }
         }
         if (!session) {
@@ -5089,7 +5102,7 @@ export function AppProvider({ children }) {
           // the password once; the new sign-in continues the share.
           if (!inDialog) setCard({ busy: false, step: null, error: null });
           await door43SignOut(desktopKeychain() ?? undefined);
-          dispatch({ type: 'set', patch: { door43User: null, door43NotKept: false, sh: null } });
+          dispatch({ type: 'set', patch: { door43User: null, door43Kept: false, door43NotKept: false, sh: null } });
           a.openSignIn(project, true);
           return report;
         }

@@ -12,7 +12,7 @@
 //   6. the resumed username is not Door43's answer (a stored name).
 import { afterEach, describe, expect, it } from 'vitest';
 import { Door43Api, TOKEN_NAME } from '../../src/data/share/door43Api';
-import { currentSession, resumeKeptSession, signIn, signOut, type TokenKeychain } from '../../src/data/share/session';
+import { currentSession, hasKeptToken, resumeKeptSession, signIn, signOut, type TokenKeychain } from '../../src/data/share/session';
 import { FakeDoor43 } from '../../e2e/helpers/door43';
 
 const SERVER = 'https://qa.door43.org';
@@ -150,4 +150,20 @@ it('does not contact Door43 or discard the token while the net gate is off', asy
   expect(calls).toBe(0);
   expect(keychain.held).toBe('kept-token-1');
   expect(currentSession()).toBeNull();
+});
+
+describe('D86 point 7: a kept sign-in is known from the keychain alone', () => {
+  it('a kept token is reported, and the keychain is only read: no Door43 call, no session', async () => {
+    const keychain = spyKeychain('kept-token-1');
+    expect(await hasKeptToken(keychain)).toBe(true);
+    expect(keychain.calls).toEqual(['read']);
+    expect(keychain.held).toBe('kept-token-1');
+    expect(currentSession()).toBeNull();
+  });
+
+  it('no token, no keychain (a browser), or a keychain that fails to read: none', async () => {
+    expect(await hasKeptToken(spyKeychain(null))).toBe(false);
+    expect(await hasKeptToken(null)).toBe(false);
+    expect(await hasKeptToken(spyKeychain('kept-token-1', new Error('damaged file')))).toBe(false);
+  });
 });
