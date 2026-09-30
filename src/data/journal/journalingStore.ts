@@ -42,6 +42,7 @@ import {
 } from '../httpStore';
 import { ServerApi, ServerApiError, type ServerApiInit } from '../serverApi';
 import { samePath } from '../resolve';
+import { INSTALLED_SUITE } from '../installedSuite';
 import { JournalStore } from './journalStore';
 import { idbKvStore, type KvStore } from './identity';
 import { sealAction, type JournalEvent } from './seal';
@@ -49,6 +50,7 @@ import { defaultFoldRunner, type FoldRunner } from './foldRunner';
 import type { OpsRecorder } from './opsLog';
 import {
   applyStoryState,
+  completePartialPins,
   decompose,
   derivedProjections,
   EMPTY_CHECKPOINT_DOCUMENTS,
@@ -166,6 +168,15 @@ const flattenPins = (resources: ResourcesFile): Array<{ slot: string; entry: unk
   for (const extra of resources.extraScripture ?? [])
     out.push({ slot: `extraScripture.${extra.id}`, entry: extra });
   return out;
+};
+
+/** #485: refuse a document whose pins cannot project (a §5.3 one-set
+ * `languageSets` state, R-8.7.4) BEFORE any event is sealed or published. The
+ * same throw used to fire only inside publishAndRegenerate's regeneration —
+ * after the events and the intent-ledger record had landed — which left a
+ * journal that no later checkpoint or open could project again. */
+const assertProjectablePins = (incoming: Array<{ slot: string; entry: unknown }>): void => {
+  projectResources(Object.fromEntries(incoming.map((p) => [p.slot, p.entry])));
 };
 
 /** An "empty-state" §5.1 record — the DEFINED representation of alignment
@@ -1247,9 +1258,10 @@ export class JournalingStore implements BurritoStore {
     return new Date(this.now()).toISOString();
   }
 
-  /** Run one phase of an open (seed, reconcile) and record its Report — ok with
-   * its facts, or failed with the code it threw — in the open's `phases`. */
-  private async phase<F extends Record<string, unknown>>(op: 'seed' | 'reconcile', run: () => Promise<F>): Promise<Report<F>> {
+  /** Run one phase of an open (seed, reconcile, pin-complete) and record its
+   * Report — ok with its facts, or failed with the code it threw — in the
+   * open's `phases`. */
+  private async phase<F extends Record<string, unknown>>(op: 'seed' | 'reconcile' | 'pin-complete', run: () => Promise<F>): Promise<Report<F>> {
     const startedAt = this.isoNow();
     try {
       const facts = await run(); // before the end timestamp: arguments evaluate left to right
@@ -1351,6 +1363,11 @@ export class JournalingStore implements BurritoStore {
       this.events = union.events;
       this.foldCache = null;
       await this.ensureFold();
+      // R-8.8.4 (#485): complete a primary-only pin fold BEFORE anything
+      // classifies or projects — publishAndRegenerate brackets it with the
+      // same ledger record every mutation gets, so a crash at any point is
+      // classified from the record + reality on the next open.
+      await this.completePartialPinFold();
       await this.harvestResolutions();
       const harvested = new Map(this.resolutions);
       // The register regenerates under the LEDGER OVERLAY: per (tool, BOOK)
@@ -1968,6 +1985,37 @@ export class JournalingStore implements BurritoStore {
       paths.push(ipath);
     }
     return paths;
+  }
+
+  /** R-8.8.4 (#485): a fold whose pins carry `languageSets.primary.*` slots and
+   * no `languageSets.fallback.*` slots cannot project `checking/resources.json`
+   * (§5.3/D17: exactly primary AND fallback), so every checkpoint and every
+   * divergence comparison refuses forever. A release without the write-side
+   * guard journaled exactly that state (issue #485). Complete it: ordinary
+   * `resource.pin.set` events pin the installed English fallback suite — the
+   * one D17-legal fallback value — through the standard mutation bracket
+   * (publishAndRegenerate), before classification. Any other invalid pin fold
+   * keeps refusing: a visible, diagnosable stop (issue #62). Idempotent — a
+   * completed fold no longer matches the trigger. */
+  private async completePartialPinFold(): Promise<void> {
+    const journal = this.mustJournal();
+    // The reference builder (journal/reconcile.mjs) decides the trigger and the
+    // events — the harness proves it, the store only orchestrates (§8.8
+    // discipline, the reconcileUsfm precedent).
+    const events = completePartialPins(
+      this.foldNow().pins,
+      INSTALLED_SUITE.languageSets.fallback as Record<string, unknown>,
+      { issue: (): string => journal.issueTs() },
+      journal.actorId,
+    );
+    if (events.length === 0) return;
+    await this.phase('pin-complete', async () => {
+      await this.publishAndRegenerate(
+        events.map((e) => ({ ...e, entry: toNfc(e.entry) })),
+        [RESOURCES_IPATH],
+      );
+      return { completedSlots: events.map((e) => String(e.slot)) };
+    });
   }
 
   private reconcileDivergence(remainder: DivergedPath[], disk: DiskInventory): Promise<Report<ReconcileFacts>> {
@@ -2598,6 +2646,7 @@ export class JournalingStore implements BurritoStore {
       const foldOut = this.foldNow();
       const events: JournalEvent[] = [];
       const incoming = flattenPins(resources);
+      assertProjectablePins(incoming); // #485: refuse BEFORE publication
       const incomingSlots = new Set(incoming.map((p) => p.slot));
       for (const { slot, entry } of incoming) {
         const current = foldOut.pins[slot];
@@ -2951,6 +3000,7 @@ export class JournalingStore implements BurritoStore {
         affected.push(alignmentsIpath(code));
       }
       const incoming = flattenPins(plan.resources);
+      assertProjectablePins(incoming); // #485: refuse BEFORE publication
       const incomingSlots = new Set(incoming.map((p) => p.slot));
       for (const { slot, entry } of incoming) {
         const current = foldOut.pins[slot];

@@ -45,7 +45,7 @@ import { readTwArticle, readTaArticle } from './data/articles';
 import { revalidateAgainstDraft, resolutionWarning } from './data/revalidate';
 import { bootstrapVerse, linkWord, unlinkWord, moveWord, mergeAlignments, splitAlignment, stampTargetVerse, alignmentIsStale, reflowAlignment, settleDone, markDone } from './data/align/edit';
 import { linksFor, rebindSuggestions, sessionInputFor, trainingVersesFor } from './data/align/suggest';
-import { consequencesOfGatewayChange, applyGatewayChange, uncoveredByChange, sourcePanesForGateway, gatewaysCoveringProject } from './data/gatewayChange';
+import { consequencesOfGatewayChange, applyGatewayChange, completeLanguageSets, uncoveredByChange, sourcePanesForGateway, gatewaysCoveringProject } from './data/gatewayChange';
 import { carryOverDecisions } from './data/carryOver';
 import { applyTextUpgrade, applyUpgrade, invalidateAlignments, invalidatedTestaments, latestReleasesForSet, offerForSet, offerIsStale, repinOffer, textOfferIsStale, textOffers, textPinOf } from './data/upgrade';
 import { LADDER } from './data/burritoStore';
@@ -212,7 +212,10 @@ const updateResources = async (store, mutate, tries = 4, stillCurrent = () => tr
   for (let attempt = 0; ; attempt += 1) {
     const { value, md5 } = await store.readResourcesWithMd5();
     if (!stillCurrent()) return null;
-    const next = mutate(value ?? INSTALLED_SUITE);
+    // #485: an imported project's committed pin file is the EMPTY document
+    // ({"schemaVersion":2}) — complete the sets so no mutation can build a
+    // primary-only state from it.
+    const next = mutate(completeLanguageSets(value ?? INSTALLED_SUITE));
     try {
       await store.writeResources(next, md5);
       return next;
@@ -3500,7 +3503,11 @@ export function AppProvider({ children }) {
         const proposedPrimary = languageSetFromInstalled(installed, gateway, kind);
         if (!proposedPrimary) throw new Error(t('sources.suiteIncomplete', { lang: gateway.name }));
         const { value: currentResources, md5: resourcesMd5 } = await store.readResourcesWithMd5();
-        const current = currentResources ?? INSTALLED_SUITE;
+        // #485: a present-but-EMPTY pin file (a non-tC3 import's first
+        // checkpoint) must not flow through with no fallback set — a change
+        // built on it journaled primary-only pins that no checkpoint or open
+        // could project again.
+        const current = completeLanguageSets(currentResources ?? INSTALLED_SUITE);
         if (kind === 'obs') await assertObsSourceCompatible(api, store, proposedPrimary.obs, installed);
         // #412 (owner Q3/Q5): a Bible project's source panes follow the package;
         // a pane the package cannot fill shows the English Bible.
