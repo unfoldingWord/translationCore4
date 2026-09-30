@@ -287,8 +287,9 @@ action on a Home card; a shared card's "Upload changes" pushes with no dialog.
 _Avoid_: share wizard, publish dialog
 
 **Shared card**:
-A Home project card whose repository has an `origin` remote: it shows "On Door43" and the
-repository path, and its action reads "Upload changes". Under the action, "as @username ·
+A Home project card whose repository has an `origin` remote: it shows an "On Door43" badge,
+its meta line ends with "Shared at" and the repository path, and its action reads "Upload
+changes". Under the action, "as @username ·
 Change" shows who is signed in ("Signed in · Change" for a kept token not resumed yet). The
 state is read from the remote (`GET /git/remotes`), never from a stored record.
 _Avoid_: published card, synced project
