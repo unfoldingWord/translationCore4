@@ -22,6 +22,19 @@ import { Modal, Button, OptionCard, TextField, Spinner, Callout, Text } from '..
 export const shareErrorText = (error) =>
   (error.code ? t(`shareDialog.error.${error.code.replace(/^share\./, '')}`, { reason: error.message }, error.message) : error.message);
 
+const CHANGE = { border: 0, background: 'transparent', padding: 0, font: 'inherit', letterSpacing: 'inherit', color: 'var(--link)', cursor: 'pointer' };
+
+/** D86 point 7: who shares, then Change (sign out, then the sign-in step).
+ * The share dialog shows "Sharing as @username"; a shared card "as @username",
+ * or "Signed in" for a kept sign-in that is not resumed yet. */
+export function Door43Account({ label, onChange, testId, style }) {
+  return (
+    <span data-testid={testId} style={style}>
+      {label} · <button type="button" data-testid={`${testId}-change`} onClick={onChange} style={CHANGE}>{t('signIn.change')}</button>
+    </span>
+  );
+}
+
 /** The name Door43 accepts as a repository name (the adapter's rule). */
 export const nameOk = (name) => /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/.test(name.trim());
 
@@ -97,6 +110,19 @@ function DoneStep({ sh, actions }) {
   );
 }
 
+/** "Sharing as @username · Change" on the where-it-goes and check steps (D86 point 7). */
+function SharingAs({ sh, user, notKept, actions }) {
+  if (sh.step !== 'target' && sh.step !== 'check') return null;
+  return (
+    <div style={{ margin: '0 0 14px' }}>
+      <Door43Account testId="share-account" label={t('signIn.sharingAs', { user })} onChange={() => actions.changeSignIn(sh.project)}
+        style={{ fontSize: 'var(--fs-caption-lg)', color: 'var(--text-secondary)' }} />
+      {/* #366: "Stay signed in" asked, and this computer has no keychain the app can use. */}
+      {notKept && <Text role="caption" tone="muted" data-testid="signin-not-kept">{t('signIn.notKept')}</Text>}
+    </div>
+  );
+}
+
 export default function ShareDialog() {
   const { s, actions } = useApp();
   const sh = s.sh;
@@ -123,6 +149,7 @@ export default function ShareDialog() {
   return (
     <Modal data-testid="share-dialog" title={t(titleKey)} subtitle={t(subtitleKey, { name: sh.project.name })}
       closeLabel={t('common.close')} onClose={sh.step === 'progress' ? undefined : actions.closeModal} footer={footer}>
+      <SharingAs sh={sh} user={user} notKept={s.door43NotKept} actions={actions} />
       {sh.step === 'target' && <TargetStep sh={sh} user={user} actions={actions} />}
       {sh.step === 'check' && <CheckStep sh={sh} user={user} actions={actions} />}
       {sh.step === 'progress' && (

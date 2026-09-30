@@ -270,7 +270,8 @@ _Avoid_: Door43 client, DCS helper, gitea API (for this module)
 The signed-in user's login and token, held in `src/data/share/session.ts` for the app session
 (`currentSession`); the token alone goes to the operating-system keychain when "Stay signed
 in" is on (#366). Nothing else is stored (D85): no name, no email, no login. Never in React
-state, the client settings, `localStorage`, a URL or a log.
+state, the client settings, `localStorage`, a URL or a log. Sign-in starts only from Share,
+and a kept token is resumed at the first Share, not at app start (D86 points 7 and 8).
 _Avoid_: credentials (the password is never kept), login state, identity record
 
 **Share target**:
@@ -287,8 +288,9 @@ _Avoid_: share wizard, publish dialog
 
 **Shared card**:
 A Home project card whose repository has an `origin` remote: it shows "On Door43" and the
-repository path, and its action reads "Upload changes". The state is read from the remote
-(`GET /git/remotes`), never from a stored record.
+repository path, and its action reads "Upload changes". Under the action, "as @username ·
+Change" shows who is signed in ("Signed in · Change" for a kept token not resumed yet). The
+state is read from the remote (`GET /git/remotes`), never from a stored record.
 _Avoid_: published card, synced project
 
 **Fake Door43**:
