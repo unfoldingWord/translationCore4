@@ -5024,7 +5024,10 @@ export function AppProvider({ children }) {
             const outcome = await resumeKeptSession({ door43, keychain, getNetEnabled: internetAllowed });
             session = currentSession();
             if (session) dispatch({ type: 'set', patch: { door43User: session.username } });
-            if (outcome === 'refused') dispatch({ type: 'set', patch: { door43Kept: false } });
+            // A resumed token is kept, even when the start's keychain read failed;
+            // a refused one was forgotten.
+            const kept = { resumed: true, refused: false }[outcome];
+            if (kept !== undefined) dispatch({ type: 'set', patch: { door43Kept: kept } });
           }
         }
         if (!session) {
