@@ -12,7 +12,7 @@ import { bookName } from '../../data/bookNames';
 import { PARSERS } from '../../data/import/parsers';
 import { importRepoPath } from '../../data/import/shell';
 import { t } from '../../i18n';
-import { Modal, Button, OptionCard, Overline, DropZone, Surface, Text, IconButton, KeyValueGrid, StatusDot, Field, Input, Spinner, Callout } from '../../ds/index.js';
+import { Modal, Button, OptionCard, Overline, DropZone, Surface, Text, IconButton, KeyValueGrid, StatusDot, Field, Input, Select, Spinner, Callout } from '../../ds/index.js';
 
 /** The three kinds of the design, then the dev-only fake when the table holds it. */
 export const importKinds = () => [
@@ -209,14 +209,14 @@ function ReviewStep({ im, actions }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <Text role="caption" tone="muted">{t('importer.review.readFromFile')}</Text>
               {bundle.licenseChoices && (
-                <Field label={t('importer.review.licensePick')}>
-                  {/* each value is a JSON string, so "no license" ('') differs from "not chosen yet" */}
-                  <Input as="select" value={im.license === null ? '' : JSON.stringify(im.license)} data-testid="import-license" disabled={!!damaged}
-                    onChange={(e) => actions.patchIm({ license: e.target.value ? JSON.parse(e.target.value) : null })}>
-                    <option value="">{t('importer.review.licensePickNone')}</option>
-                    {bundle.licenseChoices.map((l) => <option key={l} value={JSON.stringify(l)}>{l || t('importer.review.licensePickEmpty')}</option>)}
-                  </Input>
-                </Field>
+                /* each value is a JSON string, so "no license" ('') differs from "not chosen yet" */
+                <Select label={t('importer.review.licensePick')} data-testid="import-license" disabled={!!damaged}
+                  value={im.license === null ? '' : JSON.stringify(im.license)}
+                  onChange={(e) => actions.patchIm({ license: e.target.value ? JSON.parse(e.target.value) : null })}
+                  options={[
+                    { value: '', label: t('importer.review.licensePickNone') },
+                    ...bundle.licenseChoices.map((l) => ({ value: JSON.stringify(l), label: l || t('importer.review.licensePickEmpty') })),
+                  ]} />
               )}
               <Field label={t('importer.review.name')} data-testid="import-name-field" error={nameClash(im) ? t('refusal.import.name-exists') : undefined}>
                 <Input value={im.name} data-testid="import-name" disabled={!!damaged} onChange={(e) => actions.patchIm({ name: e.target.value })} />

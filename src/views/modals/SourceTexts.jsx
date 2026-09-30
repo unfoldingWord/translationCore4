@@ -11,7 +11,7 @@
 // modal says so and offers to go online; it never enables net by itself.
 import React from 'react';
 import { useApp } from '../../state.jsx';
-import { BOOK_NAMES, bookName } from '../../data/bookNames';
+import { BOOK_NAMES, BOOK_CHAPTERS, bookName } from '../../data/bookNames';
 import { gatewayKey } from '../../data/gateways';
 import { t } from '../../i18n';
 import { Modal, Select, OptionCard, Overline, Button, Badge, Callout } from '../../ds/index.js';
@@ -91,7 +91,12 @@ function GatewayStep({ s, g, src, isCheckable, isCurrent, actions }) {
 
           <Select id="src-book" label={t('sources.book')} value={src.book}
             onChange={(e) => actions.setSourceBook(e.target.value)}
-            options={Object.keys(BOOK_NAMES).map((code) => ({ value: code, label: bookName(code) }))} />
+            searchPlaceholder={t('addBook.findBook')} noMatchesLabel={t('addBook.noMatches')}
+            options={Object.keys(BOOK_NAMES).map((code, i) => ({
+              value: code, label: bookName(code), code,
+              meta: t('addBook.chaptersShort', { n: BOOK_CHAPTERS[code] ?? '?' }),
+              group: i >= 39 ? t('addBook.nt') : t('addBook.ot'),
+            }))} />
 
           <div style={{ paddingBottom: 14 }}>
             <Overline as="span" style={{ display: 'block', marginBottom: 8 }}>{t('sources.packageContents')}</Overline>

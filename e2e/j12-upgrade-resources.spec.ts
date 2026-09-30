@@ -15,6 +15,7 @@
 import { test, expect } from './helpers/test';
 import type { Page, BrowserContext } from '@playwright/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
+import { pickOption } from './helpers/dropdown';
 import fs from 'node:fs';
 import path from 'node:path';
 import { unzipSync, zipSync, strToU8, strFromU8 } from 'fflate';
@@ -543,7 +544,7 @@ async function createTitusProject(page: Page, name: string): Promise<string> {
   await page.getByRole('button', { name: 'Left to right' }).click();
   await page.getByRole('button', { name: 'Create Bible' }).click();
   await page.getByRole('button', { name: 'Start a blank book' }).click({ timeout: 20_000 });
-  await page.getByLabel('Book', { exact: true }).selectOption('TIT');
+  await pickOption(page, 'Book', 'Titus');
   await page.getByRole('button', { name: 'Create book' }).click();
   await expect(page.getByRole('button', { name: /^Draft section/ }).first()).toBeVisible({ timeout: 20_000 });
   const created = listLocalRepos().filter((r) => !before.includes(r));
