@@ -11,12 +11,28 @@ import { execFileSync } from 'node:child_process';
 import type { BrowserContext, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { FakeDoor43, type FakeDoor43Options } from './door43';
-import { TC4_ROOT, rigRepo } from './rig';
+import { TC4_ROOT, readClientSettingsDoc, rigRepo } from './rig';
 
 /** The server a development build signs in to (src/data/dcsServer.ts, #120). */
 export const QA_SERVER = 'https://qa.door43.org';
 export const RIG_API = 'http://127.0.0.1:19998/api';
 export const RIG_STATE = path.join(TC4_ROOT, 'dev-env', 'state');
+/** D86 (#486): put tC4 on Internet or Local the way the app leaves it — the
+ * stored choice (`internet: true`, or no flag) and the platform gate — so a
+ * page load or a reload starts in that state. */
+export async function useInternet(allowed: boolean): Promise<void> {
+  const doc = { ...(readClientSettingsDoc() ?? {}) };
+  delete doc.internet;
+  const settings = allowed ? { ...doc, internet: true } : doc;
+  const stored = await fetch(`${RIG_API}/client-settings/uw-tc4`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ settings }),
+  });
+  if (!stored.ok) throw new Error(`client-settings write failed: HTTP ${stored.status}`);
+  await fetch(`${RIG_API}/net/${allowed ? 'enable' : 'disable'}`, { method: 'POST' });
+}
+
 export const USER = { username: 'facilitator-zq', password: 'a pass-word', email: 'facilitator-zq@example.org' };
 
 export const git = (cwd: string, ...args: string[]): string =>

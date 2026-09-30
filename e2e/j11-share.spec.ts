@@ -21,7 +21,7 @@ import type { FakeOrganization } from './helpers/door43';
 import { TC4_ROOT, SEEDED_PROJECT, readClientSettingsDoc, rigRepo, listLocalRepos } from './helpers/rig';
 import {
   QA_SERVER, RIG_API, RIG_STATE, USER, type BareRemote,
-  dropOrigin, fakeFor, fakeShare, filesHolding, git, head, loginsHolding, makeBareRemote, pressShare, signIn,
+  dropOrigin, fakeFor, fakeShare, filesHolding, git, head, loginsHolding, makeBareRemote, pressShare, signIn, useInternet,
 } from './helpers/door43Share';
 
 const AUTHOR_NOTICE = /signed with the account name of this computer/;
@@ -77,10 +77,10 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
   test.describe('sign in (#203)', () => {
     test.beforeAll(async () => {
       // The rig boots with the net gate off; sign-in refuses offline before any Door43 call.
-      await fetch(`${RIG_API}/net/enable`, { method: 'POST' });
+      await useInternet(true);
     });
     test.afterAll(async () => {
-      await fetch(`${RIG_API}/net/disable`, { method: 'POST' });
+      await useInternet(false);
     });
     test.beforeEach(async ({ page }) => {
       await page.goto('/');
@@ -364,10 +364,10 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
     };
 
     test.beforeAll(async () => {
-      await fetch(`${RIG_API}/net/enable`, { method: 'POST' });
+      await useInternet(true);
     });
     test.afterAll(async () => {
-      await fetch(`${RIG_API}/net/disable`, { method: 'POST' });
+      await useInternet(false);
     });
     test.beforeEach(async ({ page }) => {
       remote = makeBareRemote();
@@ -664,14 +664,14 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
     });
 
     test('12. offline: Share is disabled and says why', { tag: ['@inc85', '@J11'] }, async ({ page }) => {
-      await fetch(`${RIG_API}/net/disable`, { method: 'POST' });
+      await useInternet(false);
       try {
         await page.reload();
         const share = page.getByTestId(`share-${SEEDED_ID}`);
         await expect(share).toBeDisabled();
         await expect(page.getByTestId(`share-offline-${SEEDED_ID}`)).toHaveText('Offline: Share needs the network.');
       } finally {
-        await fetch(`${RIG_API}/net/enable`, { method: 'POST' });
+        await useInternet(true);
       }
       await page.reload();
       await expect(page.getByTestId(`share-${SEEDED_ID}`)).toBeEnabled();
