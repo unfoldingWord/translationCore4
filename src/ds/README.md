@@ -43,9 +43,10 @@ in the file:
 - `OptionCard`: `trailing` is not `aria-hidden`; the app puts an "Always
   included" badge and installed counts there, which are part of the row's
   accessible name.
-- `tokens/fonts.css`: the Google Fonts `@import` is replaced by the `<link>`
-  in `index.html` (the app's existing pattern), so the fetch starts before the
-  CSS bundle parses.
+- `tokens/fonts.css`: the Google Fonts `@import` is removed. The app works
+  offline, so Mulish, Charis SIL, Noto Serif, Noto Serif Hebrew and Amiri are
+  `@font-face` rules over `.woff2` files in `assets/fonts/`, with their OFL
+  licence texts (#3). Noto Nastaliq Urdu is not fetched.
 - `primitives/Layer`: new `scrimProps`, spread onto the scrim element, so a
   dialog's extra props (test ids) land on the scrim as they did before.
 - `Modal`: `open` defaults to true (the app mounts a modal only while it is
