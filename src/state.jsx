@@ -3435,9 +3435,11 @@ export function AppProvider({ children }) {
         return checkable;
       },
 
+      // The barrier (D86 point 3): a re-read can only lower the gate. Only the
+      // start and a confirmed change, which know the stored choice, raise it.
       refreshNet: async () => {
         try {
-          setNet(await api.getNetEnabled());
+          setNet(internetGate.allowed && (await api.getNetEnabled()));
         } catch {
           setNet(false);
         }
@@ -3671,7 +3673,9 @@ export function AppProvider({ children }) {
         const st = stateRef.current;
         const pins = st.projectPins;
         if (!pins?.languageSets) return null;
-        if (!st.netEnabled) return a.requireInternet(() => a.checkForUpdates()) ?? null;
+        // The gate, not render state: after Allow, `netEnabled` is still false
+        // until React renders, and the continuation would ask again forever.
+        if (!internetGate.allowed) return a.requireInternet(() => a.checkForUpdates()) ?? null;
         const offersFor = st.project?.repoPath ?? null;
         dispatch({ type: 'patchUpgrade', patch: { checking: true, error: null, offers: null, textOffers: null, offersFor } });
         try {
@@ -3874,7 +3878,7 @@ export function AppProvider({ children }) {
         const fix = stateRef.current.fix;
         if (!fix || fix.busy) return;
         const { id } = fix;
-        if (!stateRef.current.netEnabled) return a.requireInternet(() => a.fixFetch());
+        if (!internetGate.allowed) return a.requireInternet(() => a.fixFetch());
         a.patchFix(id, { busy: 'fetch', error: null, progress: t('sources.progress', { repo: fix.pin.repoPath.split('/').pop() }) });
         try {
           const local = new Set(await api.listLocalRepos());
@@ -4849,7 +4853,7 @@ export function AppProvider({ children }) {
         // D86: Local sends nothing; the click asks to allow the internet and
         // continues after Allow. The latest-release lookup below calls Door43
         // from the client, before fetchAndInstallPin checks the gate.
-        if (!stateRef.current.netEnabled) return a.requireInternet(() => a.downloadPackage());
+        if (!internetGate.allowed) return a.requireInternet(() => a.downloadPackage());
         // M1 (adversarial round 13): the adoption finalizer runs AFTER long
         // downloads, and the modal stays closable meanwhile — bind the whole
         // operation to what was open when the user clicked Download.
@@ -5063,7 +5067,8 @@ export function AppProvider({ children }) {
           report = await door43Share(
             // A `file://` remote is the rig's local remote, which the journeys
             // control (#362 test 1). Only a development build accepts it.
-            { api, door43, ops: opsLog, onStep, allowFileRemote: import.meta.env.DEV === true, commitPending: (messageFor) => store.commitPending(messageFor) },
+            // The push preflight reads the barrier, not the server gate (D86 point 3).
+            { api: Object.assign(Object.create(api), { getNetEnabled: internetAllowed }), door43, ops: opsLog, onStep, allowFileRemote: import.meta.env.DEV === true, commitPending: (messageFor) => store.commitPending(messageFor) },
             { repoPath: project.id, session, target: sh?.target ?? { kind: 'user' }, name: (sh?.name ?? project.id.split('/').pop()).trim() },
           );
         } catch (e) {
