@@ -11,7 +11,7 @@
 import { test, expect } from './helpers/test';
 import type { Page } from '@playwright/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
-import { RIG_API, RIG_STATE, dropOrigin, fakeShare, filesHolding, git, head, makeBareRemote, shareFirstTime, USER } from './helpers/door43Share';
+import { RIG_API, RIG_STATE, dropOrigin, fakeShare, filesHolding, git, head, makeBareRemote, shareFirstTime, USER, useInternet } from './helpers/door43Share';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -357,7 +357,7 @@ test.describe('J8 — the Increment 4 journey: open, resume, and share a project
       test.setTimeout(120_000);
       const remote = makeBareRemote();
       // The rig boots with the net gate off, and Share is disabled offline (J11 case 12).
-      await fetch(`${RIG_API}/net/enable`, { method: 'POST' });
+      await useInternet(true);
       try {
         dropOrigin(SEEDED_PROJECT);
         const fake = await fakeShare(context, remote);
@@ -388,7 +388,7 @@ test.describe('J8 — the Increment 4 journey: open, resume, and share a project
         // Leave the seeded project as this test found it: unshared, offline.
         dropOrigin(SEEDED_PROJECT);
         remote.dispose();
-        await fetch(`${RIG_API}/net/disable`, { method: 'POST' });
+        await useInternet(false);
       }
     },
   );

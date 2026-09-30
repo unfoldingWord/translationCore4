@@ -102,6 +102,10 @@ export interface Door43ApiInit {
   server?: string;
   /** Injectable fetch for the fake; defaults to the global fetch. */
   fetchFn?: typeof fetch;
+  /** D86 point 4: whether tC4 may use the internet now. False (Local) refuses
+   * every call before a request is made; the platform gate does not cover
+   * this module, because it calls Door43 from the client. */
+  allowed?: () => boolean;
 }
 
 /** A path segment that Door43 accepts as an account or repository name; refused
@@ -129,10 +133,12 @@ const messageOf = (text: string): string => {
 export class Door43Api {
   readonly server: string;
   private readonly fetchFn: typeof fetch;
+  private readonly allowed: () => boolean;
 
   constructor(init: Door43ApiInit = {}) {
     this.server = (init.server ?? DCS_SERVER).replace(/\/+$/, '');
     this.fetchFn = init.fetchFn ?? ((...args: Parameters<typeof fetch>) => fetch(...args));
+    this.allowed = init.allowed ?? (() => true);
   }
 
   private async request(
@@ -148,6 +154,7 @@ export class Door43Api {
       headers['Content-Type'] = 'application/json';
       request.body = JSON.stringify(init.body);
     }
+    if (!this.allowed()) throw new Door43ApiError(route, 0, 'tC4 is set to Local');
     let response: Response;
     try {
       response = await this.fetchFn(`${this.server}/api/v1${route}`, request);
