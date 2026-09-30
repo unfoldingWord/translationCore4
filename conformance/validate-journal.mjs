@@ -12,7 +12,8 @@ import { fold, verseTextMd5, slotKeysOf, headIdentity } from '../journal/fold.mj
 import { validateAction, validateEvent, KNOWN_OPS } from '../journal/schema.mjs';
 import * as storyMod from '../journal/story.mjs';
 import { BOOK_CODES, identityKeyOf, identityKeyError, decisionKeyError, ipathError, pinSlotError, pinEntryError, splitDecisionKey } from '../journal/grammar.mjs';
-import { reconcileUsfm, seedFromSidecars } from '../journal/reconcile.mjs';
+import { completePartialPins, reconcileUsfm, seedFromSidecars } from '../journal/reconcile.mjs';
+import { EN_HELPS } from '../src/data/installedSuite.js';
 import { shiftChapter } from './fixtures/renumber.mjs';
 import {
   sealAction, writeActionSegment, validateSegment, validateActorDoc, segmentName,
@@ -529,6 +530,34 @@ const buildSeed = () => {
   const clash = fold([...events, ...recEvents, concurrent]);
   check('JC-8: concurrent journal edit on the same verse surfaces as a fork (never silent) [covers R-8.8.1]', clash.forks.some((f) => f.key === 'text|TIT|1:1'));
   check('JC-8: alignment invalidation composes with reconcile (edited verse alignment goes stale)', after.invalid.some((i) => i.book === 'TIT' && i.verse === '1:1'));
+}
+
+// ---------- JC-8b (#485): partial pin fold completion at open (§8.8) ----------
+// Real pin identities from the installed suite (AGENTS.md: never invent test inputs).
+{
+  const P = (ts, slot, entry) => mkEvent({ op: 'resource.pin.set', actor: 'device-aa', ts, slot, entry });
+  const primaryOnly = [
+    P('2026-09-29T11:00:00.000Z|0000|device-aa', 'languageSets.primary.gatewayLanguage', EN_HELPS.gatewayLanguage),
+    P('2026-09-29T11:00:00.000Z|0001|device-aa', 'languageSets.primary.translationNotes', EN_HELPS.translationNotes),
+  ];
+  const out = fold(primaryOnly);
+  let refused = '';
+  try { projectResources(out.pins); } catch (e) { refused = e.message; }
+  const clock = makeClock('recoverer', () => Date.parse('2026-09-29T12:00:00.000Z'));
+  const rec = completePartialPins(out.pins, EN_HELPS, clock, 'recoverer');
+  const after = fold([...primaryOnly, ...rec]);
+  const doc = JSON.parse(projectResources(after.pins));
+  check('JC-8b (#485): a primary-only pin fold cannot project, and completePartialPins completes it — ORDINARY resource.pin.set events (no seed), every slot under languageSets.fallback.*, and the completed fold projects exactly primary AND fallback (§5.3/D17) [covers R-8.8.4]',
+    refused.includes('primary') &&
+    rec.length === Object.keys(EN_HELPS).length &&
+    rec.every((e) => e.op === 'resource.pin.set' && e.seed === undefined && e.base === null && e.slot.startsWith('languageSets.fallback.') && !validateEvent(e)) &&
+    deepEq(Object.keys(doc.languageSets).sort(), ['fallback', 'primary']) &&
+    deepEq(doc.languageSets.fallback.translationNotes, EN_HELPS.translationNotes),
+    refused ? JSON.stringify(rec.map((e) => e.slot)).slice(0, 120) : 'primary-only fold projected without refusal');
+  check('JC-8b (#485): ONLY the stated shape recovers — a completed fold, a fallback-only fold and an unpinned fold return no events; anything else stays a visible, diagnosable stop [covers R-8.8.4]',
+    completePartialPins(after.pins, EN_HELPS, clock, 'recoverer').length === 0 &&
+    completePartialPins({ 'languageSets.fallback.gatewayLanguage': EN_HELPS.gatewayLanguage }, EN_HELPS, clock, 'recoverer').length === 0 &&
+    completePartialPins({}, EN_HELPS, clock, 'recoverer').length === 0);
 }
 
 // ---------- JC-9 + JC-10: convergence & sneakernet via real sealed segments ----------
@@ -3866,7 +3895,7 @@ const sameRegister = (a, b) => {
       JSON.stringify(Object.keys(projections)));
     let partial = '';
     try { projectResources({ 'languageSets.primary.gatewayLanguage': { languageId: 'en', owner: 'unfoldingWord' } }); } catch (e) { partial = e.message; }
-    check('JC-32c (E-Sweep1 #8): a PARTIAL pin state no longer projects a §5.3-violating resources.json — D17 says `languageSets` MUST contain exactly `primary` and `fallback`, and §8.7 says refuse rather than emit an incomplete derived set',
+    check('JC-32c (E-Sweep1 #8): a PARTIAL pin state no longer projects a §5.3-violating resources.json — D17 says `languageSets` MUST contain exactly `primary` and `fallback`, and §8.7 says refuse rather than emit an incomplete derived set [covers R-8.7.4]',
       partial.includes('primary') && partial.includes('fallback'), `"${partial.slice(0, 80)}"`);
     check('JC-32c (E-Sweep1 #8): both sets, and no set at all, still project (the guard adds no false refusal)',
       (() => {

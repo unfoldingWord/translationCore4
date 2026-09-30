@@ -9,8 +9,10 @@ import {
   consequencesOfGatewayChange,
   describeConsequences,
   applyGatewayChange,
+  completeLanguageSets,
   uncoveredByChange,
 } from '../src/data/gatewayChange';
+import { INSTALLED_SUITE } from '../src/data/installedSuite';
 import type { StoredDecisionFile } from '../src/data/gatewayChange';
 import { pinKey } from '../src/data/resolve';
 import type { Coverage } from '../src/data/resolve';
@@ -222,6 +224,32 @@ describe('applying the change', () => {
     );
     expect(direct).toContain('backfillCoverage(');
     expect(direct).toContain('coverage,');
+  });
+
+  it('#485: the EMPTY document (a non-tC3 import) gains BOTH sets from the installed suite', () => {
+    const empty = { schemaVersion: 2 } as unknown as ResourcesFile;
+    const full = completeLanguageSets(empty);
+    expect(full.languageSets.primary).toEqual(INSTALLED_SUITE.languageSets.primary);
+    expect(full.languageSets.fallback).toEqual(INSTALLED_SUITE.languageSets.fallback);
+    expect(empty).not.toHaveProperty('languageSets'); // pure — the input is untouched
+  });
+
+  it('#485: a primary without a fallback keeps its primary and gains the installed English fallback', () => {
+    const primary = set('es', 'es-419_gl', 'v1');
+    const doc = { schemaVersion: 2, languageSets: { primary } } as unknown as ResourcesFile;
+    const full = completeLanguageSets(doc);
+    expect(full.languageSets.primary).toBe(primary);
+    expect(full.languageSets.fallback).toEqual(INSTALLED_SUITE.languageSets.fallback);
+  });
+
+  it('#485: a complete document passes through by reference, and the change built on the EMPTY document carries both sets', () => {
+    const primary = set('es', 'es-419_gl', 'v1');
+    const fallback = set('en', 'unfoldingWord', 'v2');
+    const complete = { schemaVersion: 2, languageSets: { primary, fallback } } as unknown as ResourcesFile;
+    expect(completeLanguageSets(complete)).toBe(complete);
+    const next = applyGatewayChange(completeLanguageSets({ schemaVersion: 2 } as unknown as ResourcesFile), primary);
+    expect(next.languageSets.primary).toBe(primary);
+    expect(next.languageSets.fallback).toEqual(INSTALLED_SUITE.languageSets.fallback);
   });
 
   it('a confirmed change closes the open check session, which was derived from the package it left (#412)', () => {
