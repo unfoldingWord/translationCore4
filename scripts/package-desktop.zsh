@@ -982,6 +982,9 @@ else
   zip -qry "$ZIP" "$APP_NAME"
 fi
 echo "artifact: $ZIP"
+# ZIP GUARD (#336): the artifact must carry exactly the product.json the
+# version guard checked — assert the zip, not the recipe that wrote it.
+zsh "$REPO/scripts/check-zip-product.zsh" "$ZIP" "$OS" "$APP_NAME" "$PACK/lib/product/product.json" || exit 1
 echo "inputs: electronite $ELECTRONITE_TAG ($ELECTRONITE_SHA256); template $TEMPLATE_REV;"
 echo "        resource-core $RESOURCE_CORE_REV; webfonts-core $WEBFONTS_CORE_REV;"
 echo "        puppeteer-core $PUPPETEER_CORE_VER; @puppeteer/browsers $PUPPETEER_BROWSERS_VER; @zip.js/zip.js $ZIP_JS_VER"
