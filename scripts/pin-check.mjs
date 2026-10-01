@@ -62,6 +62,10 @@ export async function latestProdRelease(owner, repo, fetchFn = fetch) {
   const body = await response.json();
   const entry = Array.isArray(body?.data) ? body.data[0] : undefined;
   if (!entry?.branch_or_tag_name || !entry.commit_sha) throw new Error(`${owner}/${repo}: the catalog lists no production release`);
+  // The answer must be about the repository asked for: a fuzzy or wrong catalog hit is an error, never a comparison.
+  if (entry.name !== repo || String(entry.owner ?? '').toLowerCase() !== owner.toLowerCase()) {
+    throw new Error(`${owner}/${repo}: the catalog answered for ${entry.owner}/${entry.name}`);
+  }
   return { tag: entry.branch_or_tag_name, sha: entry.commit_sha, released: entry.released ?? null };
 }
 

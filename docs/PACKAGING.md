@@ -698,16 +698,24 @@ Per D70, D75 (and its #331 amendment), #163, #218 and #288, the desktop artifact
 
 ### The release tags and the weekly check (#504)
 
-The build ships the English suite at the latest release at build time (owner stance, 2026-07-12). Since 2026-10-01 the pins are `en_ult`, `en_ust`, `en_tn`, `en_tw`, `en_ta` and `en_tq` at **v91** (released 2026-09-26) and `hbo_uhb` at **v3.0.0** (released 2026-08-14; the Hebrew Bible that `en_tn` v91 and `en_ult` v91 declare in their manifests). `el-x-koine_ugnt` v0.34 and the four Open Bible Stories resources were already the latest releases. The table above gives each tag and its commit.
+The build ships the English suite at the latest release at build time (owner stance, 2026-07-12). Since 2026-10-01 the pins are `en_ult`, `en_ust`, `en_tn`, `en_tw`, `en_ta` and `en_tq` at **v91** (released 2026-09-26). `hbo_uhb` is at **v3.0.0** (released 2026-08-14). The manifests of `en_tn` v91 and `en_ult` v91 declare this Hebrew Bible. `el-x-koine_ugnt` v0.34 and the four Open Bible Stories resources were already the latest releases. The table above gives each tag and its commit.
 
 The pins stay fixed in the build (owner decision, 2026-10-01). A scheduled check reports when a pin falls behind:
 
-- `.github/workflows/pin-check.yml` runs `scripts/pin-check.mjs` every Monday at 06:00 UTC, and on demand (`workflow_dispatch`). It has no `pull_request` or `push` trigger, so it adds no time to CI.
-- The script reads every tagged pin from `BUNDLED_RESOURCES` in `scripts/package-desktop.zsh` and asks the Door43 catalog (`/api/v1/catalog/search?owner=<owner>&repo=<repo>&stage=prod`) for the latest production release. A sha-only pin (the two lexicons and the picture pack) has no release tag and is skipped.
-- When a pin is behind, the workflow opens one issue titled "Bundled resource pins are behind the latest Door43 releases", or updates the open one, with each resource, its pinned tag and the latest tag. When every pin is current, it does nothing. A failed catalog lookup is a red run, not a report.
-- Negative control: a `workflow_dispatch` run with the `override` input set to `<owner>/<repo>:<old tag>` (for example `unfoldingWord/en_ult:v89`) must report that pin. The issue it opens names itself as a negative control.
+- `.github/workflows/pin-check.yml` runs `scripts/pin-check.mjs` every Monday at 06:00 UTC, and on demand (`workflow_dispatch`). It has no `pull_request` or `push` trigger. It adds no time to CI.
+- The script reads every tagged pin from `BUNDLED_RESOURCES` in `scripts/package-desktop.zsh`. For each pin it asks the Door43 catalog (`/api/v1/catalog/search?owner=<owner>&repo=<repo>&stage=prod`) for the latest production release. A sha-only pin (the two lexicons and the picture pack) has no release tag. The script skips it.
+- When a pin is behind, the workflow opens one issue titled "Bundled resource pins are behind the latest Door43 releases", or updates the open one. The issue lists each resource, its pinned tag and the latest tag. When every pin is current, the workflow does nothing. A failed catalog lookup is a red run, not a report.
+- Negative control: a `workflow_dispatch` run with the `override` input set to `<owner>/<repo>:<old tag>` (for example `unfoldingWord/en_ult:v89`) must report that pin. The issue it opens has its own title ("Negative control of the weekly pin check") and names itself as a negative control. It never touches the real issue.
 
-To move a pin, change `src/data/installedSuite.js` and `scripts/package-desktop.zsh` together, then the rig copies (`dev-env/scripts/seed.zsh`, `dev-env/scripts/write-install-records.mjs`, `.github/workflows/rig.yml`, the cache commands in `dev-env/README.md`), the journeys that name a pin, and the table above. Pin each tag to the commit the DCS tags API names for it, and check that commit against the revision the `/sb/<tag>.zip` export declares (`dev-env/scripts/cache-resource.zsh <owner>/<repo> <tag> <sha>` aborts on a mismatch). An existing installation keeps its installed releases (`copyIfMissing` in `scripts/desktop-bootstrap.cjs`); the user moves a project with Check for updates (J12), never automatically.
+To move a pin, change these copies together:
+
+1. `src/data/installedSuite.js` and `scripts/package-desktop.zsh`.
+2. The rig copies: `dev-env/scripts/seed.zsh`, `dev-env/scripts/write-install-records.mjs`, `.github/workflows/rig.yml`, and the cache commands in `dev-env/README.md`.
+3. The journeys that name a pin (`e2e/`), and the table above.
+4. The conformance sample `conformance/sample-burrito/ingredients/checking/resources.json`, then `npm run generate` (it regenerates `metadata.json` and the OBS sample).
+5. The examples in `docs/BURRITO-SPEC.md` §3 (the `relationships` block) and §5.3 (the pin file), and the revisions named in `conformance/LICENSE-CONTENT.md`.
+
+Pin each tag to the commit the DCS tags API names for it. Check that commit against the revision the `/sb/<tag>.zip` export declares: `dev-env/scripts/cache-resource.zsh <owner>/<repo> <tag> <sha>` aborts on a mismatch. An existing installation keeps its installed releases (`copyIfMissing` in `scripts/desktop-bootstrap.cjs`). The user moves a project with Check for updates (J12), never automatically.
 
 Artifact sizes before and after bundling the English suite:
 
