@@ -164,7 +164,7 @@ test.describe('J9 — a facilitator imports existing work', () => {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(tags) });
       });
 
-    test('tC3 offline: the review page shows what carries over; Use installed versions moves the decisions (D36); one new project that opens in Translate', { tag: ['@inc8', '@J9'] }, async ({ page }) => {
+    test('tC3 offline: the review page shows what carries over; Use installed versions moves the decisions (D36); one new project that opens in Understand (D87)', { tag: ['@inc8', '@J9'] }, async ({ page }) => {
       test.setTimeout(180_000);
       await setNet(false);
       const name = fresh('Tita tC3');
@@ -347,7 +347,7 @@ test.describe('J9 — a facilitator imports existing work', () => {
   });
 
   test.describe('USFM', () => {
-    test('USFM: one file is one new project — the book byte-identical, the harness format checks pass, it opens in Translate', { tag: ['@inc8', '@J9'] }, async ({ page }) => {
+    test('USFM: one file is one new project — the book byte-identical, the harness format checks pass, it opens in Understand (D87)', { tag: ['@inc8', '@J9'] }, async ({ page }) => {
       const name = fresh('Tito USFM');
       const source = path.join(MANIFEST_DIR, 'usfm', '57-TIT.usfm');
       const repo = rigRepo(abbrOf(name));
