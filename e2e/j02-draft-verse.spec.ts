@@ -88,6 +88,7 @@ test.describe('J2 — a translator drafts a verse', () => {
       await test.step('open the app — the seeded project is listed', async () => {
         // A project on the QA server: its card names the server (#506). The origin is the
         // record of a share (D84 point 1), read once when Home first loads.
+        dropOrigin(SEEDED_PROJECT); // an origin left by a killed run
         git(rigRepo(SEEDED_PROJECT), 'remote', 'add', 'origin', `${QA_SERVER}/${USER.username}/${SEEDED_PROJECT}.git`);
         await page.goto('/');
         await expect(

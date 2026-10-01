@@ -149,8 +149,11 @@ write calls. The user cannot change it.
   picture packs and the discovery.
 - **Indicator:** a development build puts "qa.door43.org" before the
   repository in the meta line of a shared project card: "Shared at
-  qa.door43.org/owner/repository". A packaged build shows "Shared at
+  qa.door43.org/owner/repository". It does this only when the remote of the
+  project is on that host. For a remote on any other host, the line shows
+  "Shared at owner/repository". A packaged build always shows "Shared at
   owner/repository". The top bar shows no server label (#506).
+  [decided 2026-10-01]
 - **QA account:** the live share journey (#185) needs an account on
   `qa.door43.org`. The owner supplies it through a private channel. Until it
   exists, the live leg is a labelled skip.
