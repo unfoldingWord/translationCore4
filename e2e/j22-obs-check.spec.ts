@@ -37,6 +37,7 @@ test.describe('J22 — a translator checks an OBS story', () => {
       await test.step('open the project', async () => {
         await page.goto('/');
         await page.getByTestId(`project-_local_/_local_/${repo}`).getByTestId('story-tile-1').click();
+        await page.getByRole('tab', { name: 'Translate', exact: true }).click(); // a new story opens in Understand (D87)
         await expect(page.getByTestId('story-draft')).toBeVisible({ timeout: 60_000 });
         await expect(page.getByTestId('story-frame-1').getByTestId('story-unit-text')).toHaveText(FRAME_1);
       });

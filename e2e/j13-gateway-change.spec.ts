@@ -637,6 +637,7 @@ test.describe('J13 — changing the project’s checking language', () => {
       const before = readProjectPins(repo) as unknown as ResourcesOnDisk;
       await page.goto('/');
       await page.getByTestId(`project-_local_/_local_/${repo}`).getByTestId('story-tile-1').click();
+      await page.getByRole('tab', { name: 'Translate', exact: true }).click(); // a new story opens in Understand (D87)
       await expect(page.getByTestId('story-draft')).toContainText(firstFrame('en_obs'));
       await page.getByTestId('project-settings').click();
       await expect(page.getByTestId(`settings-gateway-${EN_KEY}`)).toHaveAttribute('data-current', '1');

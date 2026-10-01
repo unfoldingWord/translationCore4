@@ -267,7 +267,7 @@ function ResumeCard({ edit, projects }) {
   // frame as the verse; Resume reopens that story, then the mode.
   const story = project.flavor === 'textStories';
   const resume = async () => {
-    await actions.openProject(edit.repoPath, edit.book);
+    await actions.openProject(edit.repoPath, edit.book, 'draft');
     if (story) {
       if (edit.chapter) await actions.openStory(Number(edit.chapter));
     } else if (edit.chapter && edit.chapter !== 1) await actions.setChapter(edit.chapter);

@@ -2010,3 +2010,23 @@ follow describe built behavior, so they change with the implementation of #486:
 `docs/JOURNEYS.md` (J3, J9, J11, and the J12 precondition), `docs/ARCHITECTURE.md` (the net gate
 row and the section 7 share, sign-in and keychain rows), `docs/PACKAGING.md` ("The offline run",
 step 9a) and `CONTEXT.md` (Share, Door43 session, and the new term Local).
+
+## D87 (2026-10-01, project-owner ruling) **A project that opens with no remembered place opens in Understand. A Home tile or the Resume card with a remembered place opens at that place and in that mode, as before.** [issue #507, found in the end-user QA of v4.0.0-rc.1 (#371); the place rule of #329 and #268 does not change]
+
+Context. Before this decision, every project open went to Translate: `performProjectOpen` in
+`src/state.jsx` set the view `draft` [VERIFIED — main 661af52, 2026-10-01]. So a new book
+opened in Translate. The translator must read the passage and its helps before they translate it.
+
+1. **No remembered place.** The project opens in Understand. This applies to a new Bible project
+   with its first book, a new book, an imported project and a new Open Bible Stories project. It
+   also applies to a Home tile of a book or a story with no place record on this computer. A
+   Bible book opens at chapter 1. A story opens at the story of its tile. For a new Open Bible
+   Stories project, that is story 1.
+2. **A remembered place.** A Home tile with a place record (#329) and the Resume card (#268)
+   open at that place and in that mode, as before. A Resume record with no mode opens in
+   Translate, as before. Other opens do not restore a place, for example the open from Settings
+   (#412). They open in Understand.
+
+`docs/PACKAGING.md` ("The offline run", steps 2, 3 and 9b) and `docs/ARCHITECTURE.md` (the
+`j09` USFM row of the import table) carry this decision. Step 4 of the offline run already
+agrees with it.
