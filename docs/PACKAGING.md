@@ -672,14 +672,14 @@ procedure's subject.
 | resource-core | `54802be780af18ab02e426dd59014bc6adb158af` | `scripts/package-desktop.zsh` |
 | webfonts-core | `eb52ccdad6806b5729ea8b45b1c59c793ffa32c3` | `scripts/package-desktop.zsh` |
 | puppeteer-core / @puppeteer/browsers | `24.43.1` / `2.13.1`, exact; lockfile ships in the artifact (`electron/package-lock.json`) | `scripts/package-desktop.zsh` |
-| en_ult | v89, sha `84c73ba00fc8a95a9033f9efb14bb905a2a52ee4` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
-| en_ust | v89, sha `37ec223166bbd73fb55abc7840be8310c0fee7f2` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
+| en_ult | v91, sha `35d215957f3203fd2e2fac5702ce14902d417f9d` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
+| en_ust | v91, sha `85f274a74245cb418f85266e1a5b524bc3e91e9c` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | el-x-koine_ugnt | v0.34, sha `fc95b2b8aad08bb65ab54628ab685413a1139e97` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
-| hbo_uhb | v2.1.30, sha `106a441a788d9465846cd427538ea80b8cec6770` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
-| en_tn | v86, sha `c354b8ae66a23c485bf6f38fd35bd8f7ef81e4e5` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
-| en_tw | v87, sha `eaeb7bfefcf84132d0cbcbed185f3ea2be3d86dd` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
-| en_ta | v86, sha `c7caddfb474efd713f36b35a3ffc927866c7b180` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
-| en_tq | v89, sha `97c0a13e3b84d46d0e643ba2e8e9f1c295547a58` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
+| hbo_uhb | v3.0.0, sha `74022f0fed012a3ef169886f595dd98e7b200543` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
+| en_tn | v91, sha `e586762e330f482a60c52aedd1c7b3a2f155df8a` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
+| en_tw | v91, sha `ff5b3852c27c3a0d01b109e482eb26047dcd20e2` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
+| en_ta | v91, sha `ce9a1bb9431317ca888e8c1f9620caa7f5fe45fd` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
+| en_tq | v91, sha `8be02772584ff5a5fea893a392b4f019e3efcc77` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | en_obs | v9, sha `d39a1dc7a7557ac54e4a8fecc3462147fe7eec3b` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | en_obs-tn | v13, sha `e86138ea13f619f09f7a6dcaa60592716d407fe4` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | en_obs-twl | v3, sha `44ebc9fafe8101665f985007d566f5036a2be85b` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
@@ -692,9 +692,22 @@ Every artifact carries `BUILD-MANIFEST.json` at its root with the same data. A s
 
 The eight `unfoldingWord` repos are fetched as the DCS sb-zip export `/sb/<tag>.zip`. The two lexicons come from the `uW` org on DCS (D71): those repos have no tag and no sb-zip export (`/sb/` answers 404), so the build fetches the Gitea commit archive `archive/<sha>.zip` and verifies the sha Gitea records in the zip's archive comment against the pin. Both paths run through the app's own fetch code (`src/data/resourceFetch.ts` `downloadPin`), called by `dev-env/scripts/cache-resource.zsh`.
 
-## Bundled English suite (#163, #218)
+## Bundled English suite (#163, #218, #504)
 
 Per D70, D75 (and its #331 amendment), #163, #218 and #288, the desktop artifact bundles fifteen repos: the ten-resource English Bible suite, `en_obs`, `en_obs-tn`, `en_obs-twl`, `en_obs-tq`, and `uW/obs_images_360`. Translation Words and Translation Academy are shared by Bible and OBS sets. The unpacker stages normal resources at `<APPDIR>/resources/<owner lowercased>--<repo>/`. It stages the untagged default image pack at `uw--obs_images_360--7146d5b504f6`, so another installed revision of the same repository is neither replaced nor accepted as the pinned default. The launcher copies only missing directories into `$HOME/pankosmia/tc4-projects/_local_/_sideloaded_/` before the server starts. A second launch preserves every existing directory byte-for-byte.
+
+### The release tags and the weekly check (#504)
+
+The build ships the English suite at the latest release at build time (owner stance, 2026-07-12). Since 2026-10-01 the pins are `en_ult`, `en_ust`, `en_tn`, `en_tw`, `en_ta` and `en_tq` at **v91** (released 2026-09-26) and `hbo_uhb` at **v3.0.0** (released 2026-08-14; the Hebrew Bible that `en_tn` v91 and `en_ult` v91 declare in their manifests). `el-x-koine_ugnt` v0.34 and the four Open Bible Stories resources were already the latest releases. The table above gives each tag and its commit.
+
+The pins stay fixed in the build (owner decision, 2026-10-01). A scheduled check reports when a pin falls behind:
+
+- `.github/workflows/pin-check.yml` runs `scripts/pin-check.mjs` every Monday at 06:00 UTC, and on demand (`workflow_dispatch`). It has no `pull_request` or `push` trigger, so it adds no time to CI.
+- The script reads every tagged pin from `BUNDLED_RESOURCES` in `scripts/package-desktop.zsh` and asks the Door43 catalog (`/api/v1/catalog/search?owner=<owner>&repo=<repo>&stage=prod`) for the latest production release. A sha-only pin (the two lexicons and the picture pack) has no release tag and is skipped.
+- When a pin is behind, the workflow opens one issue titled "Bundled resource pins are behind the latest Door43 releases", or updates the open one, with each resource, its pinned tag and the latest tag. When every pin is current, it does nothing. A failed catalog lookup is a red run, not a report.
+- Negative control: a `workflow_dispatch` run with the `override` input set to `<owner>/<repo>:<old tag>` (for example `unfoldingWord/en_ult:v89`) must report that pin. The issue it opens names itself as a negative control.
+
+To move a pin, change `src/data/installedSuite.js` and `scripts/package-desktop.zsh` together, then the rig copies (`dev-env/scripts/seed.zsh`, `dev-env/scripts/write-install-records.mjs`, `.github/workflows/rig.yml`, the cache commands in `dev-env/README.md`), the journeys that name a pin, and the table above. Pin each tag to the commit the DCS tags API names for it, and check that commit against the revision the `/sb/<tag>.zip` export declares (`dev-env/scripts/cache-resource.zsh <owner>/<repo> <tag> <sha>` aborts on a mismatch). An existing installation keeps its installed releases (`copyIfMissing` in `scripts/desktop-bootstrap.cjs`); the user moves a project with Check for updates (J12), never automatically.
 
 Artifact sizes before and after bundling the English suite:
 

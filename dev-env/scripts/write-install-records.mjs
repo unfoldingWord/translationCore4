@@ -28,12 +28,13 @@ if (!work) {
 const ES_419 = ['es-419_tn', 'es-419_tw', 'es-419_ta', 'es-419_glt', 'es-419_gst', 'es-419_obs', 'es-419_obs-tn', 'es-419_obs-twl'];
 const ORG = Object.fromEntries(ES_419.map((name) => [name, 'es-419_gl']));
 const VERSIONS = {
-  en_ult: 'v89',
-  en_ust: 'v89',
-  en_tn: 'v89',
-  en_tw: 'v89',
-  en_ta: 'v89',
-  en_tq: 'v89',
+  // The English suite at the tags seed.zsh sideloads (the shipped pins, src/data/installedSuite.js — #504).
+  en_ult: 'v91',
+  en_ust: 'v91',
+  en_tn: 'v91',
+  en_tw: 'v91',
+  en_ta: 'v91',
+  en_tq: 'v91',
   'el-x-koine_ugnt': 'v0.34',
   'es-419_tn': 'v66',
   'es-419_tw': 'v37',

@@ -10,8 +10,8 @@ import { createObsProject } from './helpers/story';
 import { EN_HELPS } from '../src/data/installedSuite';
 
 const BIBLE = {
-  translationNotes: pinForSideloaded('en_tn', 'v89'),
-  translationWords: pinForSideloaded('en_tw', 'v89'),
+  translationNotes: pinForSideloaded('en_tn', 'v91'),
+  translationWords: pinForSideloaded('en_tw', 'v91'),
 };
 const STORIES = {
   translationNotes: EN_HELPS['obs-tn'],
@@ -67,7 +67,7 @@ test(
   { tag: ['@J4', '@J22', '@434'] },
   async ({ page }) => {
     test.setTimeout(300_000);
-    writeProjectPins(SEEDED_PROJECT, { tn: BIBLE.translationNotes, tw: BIBLE.translationWords, ta: pinForSideloaded('en_ta', 'v89') });
+    writeProjectPins(SEEDED_PROJECT, { tn: BIBLE.translationNotes, tw: BIBLE.translationWords, ta: pinForSideloaded('en_ta', 'v91') });
     const stories = await createObsProject('j434', 'Equipo Rig — 434');
     const seen: Seen[] = [];
     await page.goto('/');
@@ -105,7 +105,7 @@ test(
   { tag: ['@J4', '@J22', '@J8', '@434'] },
   async ({ page }) => {
     test.setTimeout(300_000);
-    writeProjectPins(SEEDED_PROJECT, { tn: BIBLE.translationNotes, tw: BIBLE.translationWords, ta: pinForSideloaded('en_ta', 'v89') });
+    writeProjectPins(SEEDED_PROJECT, { tn: BIBLE.translationNotes, tw: BIBLE.translationWords, ta: pinForSideloaded('en_ta', 'v91') });
     const stories = await createObsProject('j434r', 'Equipo Rig — 434 resume');
     const seen: Seen[] = [];
     await page.goto('/');

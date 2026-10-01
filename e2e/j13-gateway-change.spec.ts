@@ -35,9 +35,9 @@ import { createObsProject, RIG_API } from './helpers/story';
 // still say `Idiomas-Puentes`, an org that 404s today (PLATFORM-NOTES #30).
 const ES_ORG = 'es-419_gl';
 const EN = () => ({
-  tn: pinForSideloaded('en_tn', 'v89'),
-  tw: pinForSideloaded('en_tw', 'v89'),
-  ta: pinForSideloaded('en_ta', 'v89'),
+  tn: pinForSideloaded('en_tn', 'v91'),
+  tw: pinForSideloaded('en_tw', 'v91'),
+  ta: pinForSideloaded('en_ta', 'v91'),
 });
 
 const ES_KEY = 'es-419::es-419_gl';
@@ -618,8 +618,8 @@ test.describe('J13 — changing the project’s checking language', () => {
         const after = readProjectPins(SEEDED_PROJECT) as unknown as ResourcesOnDisk;
         expect(after.languageSets.primary.gatewayLanguage.languageId).toBe('es-419');
         expect(after.extraScripture.map((e) => [e.id, e.repoPath, e.sha])).toEqual([
-          ['ult', 'git.door43.org/unfoldingWord/en_ult', pinForSideloaded('en_ult', 'v89').sha],
-          ['ust', 'git.door43.org/unfoldingWord/en_ust', pinForSideloaded('en_ust', 'v89').sha],
+          ['ult', 'git.door43.org/unfoldingWord/en_ult', pinForSideloaded('en_ult', 'v91').sha],
+          ['ust', 'git.door43.org/unfoldingWord/en_ust', pinForSideloaded('en_ust', 'v91').sha],
         ]);
         await page.getByRole('button', { name: 'Cancel' }).click();
         await page.getByRole('tab', { name: 'Translate', exact: true }).click();
