@@ -430,13 +430,14 @@ test.describe('J2 — a translator drafts a verse', () => {
   );
 
   test(
-    'a drafting session talks to no host but the local server (FR-31, #43)',
+    'a drafting session in Local, with a restart, talks to no host but the local server (FR-31, #43; D86)',
     { tag: ['@inc4', '@J2'] },
     async ({ page }) => {
       // Every request the client makes from the first paint through a saved draft.
       // The one local host is the dev client (baseURL), which proxies /api to the rig
       // (vite.config.js); everything else is a network dependency, and any other host
-      // fails the test. The fonts are local since #3.
+      // fails the test. The fonts are local since #3. The session runs in Local, the
+      // default with no stored choice (D86 point 3), and includes a restart (#486).
       const OFFLINE_DRAFT = 'Recuérdales que estén dispuestos a toda buena obra.';
       const hosts = new Map<string, Set<string>>();
       const seen = (url: string, label = '') => {
@@ -466,6 +467,7 @@ test.describe('J2 — a translator drafts a verse', () => {
         }
       });
       await page.goto('/');
+      await expect(page.getByTestId('net-status')).toHaveAttribute('data-state', 'local');
       await page.getByTestId('project-_local_/_local_/sample_burrito').getByRole('button', { name: /Titus/ }).click();
       await expect(page.getByText('an apostle of Jesus Christ')).toBeVisible({ timeout: 20_000 });
       await page.getByRole('button', { name: '3', exact: true }).click();
@@ -490,6 +492,12 @@ test.describe('J2 — a translator drafts a verse', () => {
           }
         }, { timeout: 10_000 })
         .toBe(OFFLINE_DRAFT);
+      // The workers of the first app session, before the restart replaces the page's record.
+      const workersBefore = await page.evaluate(() => (window as unknown as { __workers: string[] }).__workers);
+      // A restart: the app starts again in Local, with the draft kept.
+      await page.reload();
+      await expect(page.getByTestId('net-status')).toHaveAttribute('data-state', 'local');
+      await expect(page.getByTestId('project-_local_/_local_/sample_burrito')).toBeVisible({ timeout: 20_000 });
       await page.waitForTimeout(1000);
       // No worker whose traffic could escape the page's request event: a SharedWorker or
       // a cross-origin worker is refused outright (constructed workers were recorded by
@@ -497,7 +505,7 @@ test.describe('J2 — a translator drafts a verse', () => {
       // worker loaded from the client's own origin is the one kind admitted — since #94
       // the fold runs in one — because Playwright reports a dedicated worker's requests
       // through the page, so the host assertion below covers what it talks to.
-      const workers = await page.evaluate(() => (window as unknown as { __workers: string[] }).__workers);
+      const workers = [...workersBefore, ...(await page.evaluate(() => (window as unknown as { __workers: string[] }).__workers))];
       const escaping = workers.filter((w) => !w.startsWith('Worker http://localhost:5199/'));
       expect(escaping, 'workers whose traffic the page cannot observe').toEqual([]);
       const serviceWorkers = await page.evaluate(() =>

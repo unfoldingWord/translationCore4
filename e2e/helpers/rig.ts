@@ -348,6 +348,17 @@ export function resetPlaces(): void {
   fs.writeFileSync(RIG_CLIENT_SETTINGS, JSON.stringify(doc));
 }
 
+/** Keep only the install records of the client-settings document, as they stand
+ * (#491); a fresh seed writes nothing else. A spec that starts from it cannot see
+ * another spec's records (J8's share leg leaves ops-log records that name the
+ * account's repository). */
+export function resetClientSettings(): void {
+  if (!fs.existsSync(RIG_CLIENT_SETTINGS)) return;
+  const doc = readClientSettings();
+  const seeded = 'installedResources' in doc ? { installedResources: doc.installedResources } : {};
+  fs.writeFileSync(RIG_CLIENT_SETTINGS, JSON.stringify(seeded));
+}
+
 /** The per-client settings document as the rig holds it, or null when none is stored yet. */
 export function readClientSettingsDoc(): Record<string, unknown> | null {
   return fs.existsSync(RIG_CLIENT_SETTINGS) ? readClientSettings() : null;
