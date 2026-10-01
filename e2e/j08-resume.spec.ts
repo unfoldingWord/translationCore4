@@ -28,6 +28,7 @@ import {
   readDecisionFile,
   resetSeededChecking,
   resetPlaces,
+  writePlace,
 } from './helpers/rig';
 
 // The seeded large fixture (issue #95): Titus with 4000 journaled edits, so its
@@ -47,15 +48,15 @@ const READY: Record<string, RegExp> = {
 };
 
 async function openTitusAt(page: Page, chapter: string, project = SEEDED_PROJECT) {
+  // These journeys count commits, so they start from a Translate place (writePlace).
+  writePlace(project, 'TIT', { mode: 'draft', chapter: Number(chapter) });
   await page.goto('/');
   await page.getByTestId(`project-_local_/_local_/${project}`).getByRole('button', { name: /Titus/ }).click();
-  // #329: the tile returns to the place last worked in Titus (mode and chapter), so an
-  // earlier test in the run decides where this open lands. These journeys state their
-  // own starting point: Translate, at the chapter asked for. The heading is rendered
-  // only once the book is loaded (Draft and Understand show a loading state before it).
+  // #329: the tile returns to the place written above: Translate, at the chapter asked
+  // for. The heading is rendered only once the book is loaded (Draft and Understand
+  // show a loading state before it).
   await expect(page.getByRole('heading', { name: /^Titus \d+$/ })).toBeVisible({ timeout: 120_000 });
-  const translate = page.getByRole('tab', { name: 'Translate', exact: true });
-  if ((await translate.getAttribute('aria-selected')) !== 'true') await translate.click();
+  await expect(page.getByRole('tab', { name: 'Translate', exact: true })).toHaveAttribute('aria-selected', 'true');
   await page.getByRole('button', { name: chapter, exact: true }).click();
   await expect(page.getByRole('heading', { name: `Titus ${chapter}`, exact: true })).toBeVisible();
   if (chapter === '1') await expect(page.getByText(READY[project]).first()).toBeVisible({ timeout: 120_000 });
@@ -403,7 +404,7 @@ test.afterAll(async () => {
 // #329 — a Home tile returns to where the user last worked in that book or story.
 test.describe('#329 — a Home tile returns to the place last worked', () => {
   test(
-    'a book tile: Understand on Titus 2 is where the Titus tile reopens; a never-opened book opens at chapter 1 in Translate',
+    'a book tile: Understand on Titus 2 is where the Titus tile reopens; a never-opened book opens at chapter 1 in Understand (D87)',
     { tag: ['@inc7', '@J8'] },
     async ({ page }) => {
       test.setTimeout(120_000);
@@ -422,10 +423,10 @@ test.describe('#329 — a Home tile returns to the place last worked', () => {
       await page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByRole('button', { name: /Titus/ }).click();
       await expect(page.getByRole('tab', { name: 'Understand', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 60_000 });
       await expect(page.getByRole('heading', { name: 'Titus 2', exact: true })).toBeVisible();
-      // Jonah was never opened this session: the plain open, Translate at chapter 1.
+      // Jonah has no place record: the plain open, Understand at chapter 1 (D87).
       await page.goto('/');
       await page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByRole('button', { name: /Jonah/ }).click();
-      await expect(page.getByRole('tab', { name: 'Translate', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 60_000 });
+      await expect(page.getByRole('tab', { name: 'Understand', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 60_000 });
       await expect(page.getByRole('heading', { name: 'Jonah 1', exact: true })).toBeVisible();
     },
   );
@@ -441,9 +442,8 @@ test.describe('#329 — a Home tile returns to the place last worked', () => {
       const card = page.getByTestId(`project-_local_/_local_/${repo}`);
       await card.getByTestId(`toggle-stories-_local_/_local_/${repo}`).click();
       await card.getByTestId('story-tile-3').click();
-      await expect(page.getByTestId('story-draft')).toBeVisible({ timeout: 60_000 });
-      await page.getByRole('tab', { name: 'Understand', exact: true }).click();
-      await expect(page.getByTestId('story-understand')).toBeVisible({ timeout: 30_000 });
+      // No place record yet: the story opens in Understand (D87).
+      await expect(page.getByTestId('story-understand')).toBeVisible({ timeout: 60_000 });
       await page.getByTestId('story-understand-unit-4').click();
       await expect(page.getByTestId('story-understand-unit-4')).toHaveAttribute('data-focused', 'true');
       await page.waitForTimeout(800); // the place record's debounced write

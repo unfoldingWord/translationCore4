@@ -61,9 +61,7 @@ async function createProject(page: import('@playwright/test').Page, name: string
   await page.getByLabel('Book', { exact: true }).selectOption('TIT');
   await page.getByRole('button', { name: 'Create book' }).click();
   await expect(page.getByText(name).first()).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByRole('button', { name: /^Draft section/ }).first()).toBeVisible({
-    timeout: 20_000,
-  });
+  await expect(page.getByTestId('understand')).toBeVisible({ timeout: 20_000 }); // a new book opens in Understand (D87)
   const created = listLocalRepos().filter((r) => !before.includes(r));
   expect(created, 'exactly one new repo for the created project').toHaveLength(1);
   return created[0];
@@ -97,7 +95,8 @@ test.describe('J14 — joining is not merging: similar projects stay separate', 
 
       const snapshotA = snapshotRepo(repoA);
 
-      await test.step('work in project B: draft a verse (B is already open in Draft)', async () => {
+      await test.step('work in project B: draft a verse (B is already open; switch to Translate)', async () => {
+        await page.getByRole('tab', { name: 'Translate', exact: true }).click();
         await page.getByRole('tab', { name: 'Verse', exact: true }).click();
         await page.getByRole('button', { name: 'Start this verse' }).first().click();
         const editor = page.getByRole('textbox', { name: 'Verse 1' });
@@ -114,6 +113,10 @@ test.describe('J14 — joining is not merging: similar projects stay separate', 
           .getByTestId(`project-_local_/_local_/${repoB}`)
           .getByRole('button', { name: /Titus/ })
           .click();
+        // The place record of B may not be written yet (debounced): with none, Understand (D87).
+        await expect(page.getByRole('heading', { name: /^Titus \d+$/ })).toBeVisible({ timeout: 20_000 });
+        const translate = page.getByRole('tab', { name: 'Translate', exact: true });
+        if ((await translate.getAttribute('aria-selected')) !== 'true') await translate.click();
         await expect(page.getByText('borrador del gemelo dos').first()).toBeVisible({
           timeout: 20_000,
         });
