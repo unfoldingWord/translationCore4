@@ -16,6 +16,7 @@ import {
   rigRepo,
   writeProjectPins,
   resetPlaces,
+  writePlace,
 } from './helpers/rig';
 
 const PINS = () => ({
@@ -59,6 +60,9 @@ test.describe('J16 — read a passage with helps and record a user comment', () 
       await verifyAllJournaledProjects();
       resetSeededChecking();
       writeProjectPins(SEEDED_PROJECT, PINS());
+      // The switch to Understand below is the checkpoint that commits these pins. With
+      // no place a tile opens in Understand (D87), so the open starts from a Translate place.
+      writePlace(SEEDED_PROJECT, 'TIT', { mode: 'draft', chapter: 1 });
 
       await page.goto('/');
       await page

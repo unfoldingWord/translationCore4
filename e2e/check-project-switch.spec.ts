@@ -54,7 +54,8 @@ async function openTitus(page: Page) {
 
 async function openStory(page: Page, repo: string) {
   await page.getByTestId(`project-_local_/_local_/${repo}`).getByTestId('story-tile-1').click();
-  await expect(page.getByTestId('story-draft')).toBeVisible({ timeout: 60_000 });
+  // The first open has no place, so Understand (D87); a later one has the Translate place.
+  await expect(page.getByTestId(/^story-(understand|draft)$/)).toBeVisible({ timeout: 60_000 });
 }
 
 test.beforeEach(() => {

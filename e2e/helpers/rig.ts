@@ -348,6 +348,18 @@ export function resetPlaces(): void {
   fs.writeFileSync(RIG_CLIENT_SETTINGS, JSON.stringify(doc));
 }
 
+/** #329: write one place record (the `PlaceRecord` of src/data/place.ts) before a page
+ * load, so a Home tile opens at that place. A tile with no place opens in Understand
+ * (D87); a journey that starts in Translate writes a 'draft' place, and the open lands
+ * there with no mode switch (a switch is a checkpoint commit, D9). */
+export function writePlace(project: string, key: string, place: { mode: 'read' | 'draft' | 'check'; chapter: number }): void {
+  const doc = fs.existsSync(RIG_CLIENT_SETTINGS) ? readClientSettings() : {};
+  const places = (doc.placeByProject ?? {}) as Record<string, Record<string, unknown>>;
+  const repoPath = `_local_/_local_/${project}`;
+  places[repoPath] = { ...(places[repoPath] ?? {}), [key]: { ...place, verse: null, at: Date.now() } };
+  fs.writeFileSync(RIG_CLIENT_SETTINGS, JSON.stringify({ ...doc, placeByProject: places }));
+}
+
 /** Keep only the install records of the client-settings document, as they stand
  * (#491); a fresh seed writes nothing else. A spec that starts from it cannot see
  * another spec's records (J8's share leg leaves ops-log records that name the
