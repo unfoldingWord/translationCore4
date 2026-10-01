@@ -77,10 +77,14 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
   const [query, setQuery] = React.useState('');
   const [hi, setHi] = React.useState(0);
   const [width, setWidth] = React.useState(null);
-  /* Layer's outside-mousedown closes the list before the field's own click
-     fires; without this flag that click would reopen it, and the field could
-     never be toggled shut. */
-  const wasOpen = React.useRef(false);
+  /* A native select's popup eats the outside click that closes it: the user
+     dismisses the list without activating whatever sat under the pointer — a
+     dialog's scrim, its Cancel, the field itself. Layer closes the list on
+     the outside MOUSEDOWN, so the CLICK that follows would still land there
+     (and a scrim click would take the whole dialog down with the list). The
+     dismiss marks that press and this capture listener consumes its click.
+     A new mousedown clears a mark whose click never fired (a long drag). */
+  const swallowClick = React.useRef(false);
 
   const opts = React.useMemo(() => options.map(norm), [options]);
   const searchable = opts.length >= SEARCH_AT;
@@ -132,6 +136,22 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
       if (visible[i].label.toLowerCase().startsWith(c)) { setHi(i); return; }
     }
   };
+
+  React.useEffect(() => {
+    const eat = (e) => {
+      if (!swallowClick.current) return;
+      swallowClick.current = false;
+      e.stopPropagation();
+      e.preventDefault();
+    };
+    const arm = () => { swallowClick.current = false; };
+    document.addEventListener('click', eat, true);
+    document.addEventListener('mousedown', arm, true);
+    return () => {
+      document.removeEventListener('click', eat, true);
+      document.removeEventListener('mousedown', arm, true);
+    };
+  }, []);
 
   const onKeyDown = (e) => {
     if (!open) {
@@ -188,8 +208,7 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
         role="combobox" aria-expanded={open ? 'true' : 'false'} aria-controls={listId}
         aria-haspopup="listbox" aria-describedby={f.describedBy}
         aria-activedescendant={searchable ? undefined : active}
-        onMouseDown={() => { wasOpen.current = open; }}
-        onClick={() => { if (wasOpen.current) { wasOpen.current = false; return; } openList(); }}
+        onClick={() => { if (!open) openList(); }}
         onKeyDown={onKeyDown}
         onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
         {...rest}
@@ -217,7 +236,8 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
       </button>
 
       <Layer open={open} level="popover" placement="anchor" anchorTo={buttonRef}
-        offset={6} align="start" dismiss="outside escape" onDismiss={close}>
+        offset={6} align="start" dismiss="outside escape"
+        onDismiss={(why) => { if (why === 'outside') swallowClick.current = true; close(); }}>
         <div ref={panelRef}>
           <Surface fill="card" border="line" radius="lg" elevation="hover"
             style={{ width: width || undefined, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>

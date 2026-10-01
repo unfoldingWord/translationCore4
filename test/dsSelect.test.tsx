@@ -147,6 +147,29 @@ describe('#446 — the design-system dropdown', () => {
     await waitFor(() => expect(document.activeElement).toBe(box('Script font')));
   });
 
+  it('the outside click that closes the list is consumed, like the native popup ate it', async () => {
+    const onChange = vi.fn();
+    const outside = vi.fn();
+    render(
+      <div>
+        <button onClick={outside}>Cancel</button>
+        <Select label="Script font" options={FONTS} value={FONTS[0]} onChange={onChange} />
+      </div>,
+    );
+    fireEvent.click(box('Script font'));
+    screen.getByRole('listbox');
+    const cancel = screen.getByRole('button', { name: 'Cancel' });
+    // the press that dismisses the list must not also activate what it landed on
+    fireEvent.mouseDown(cancel);
+    fireEvent.click(cancel);
+    await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
+    expect(outside).not.toHaveBeenCalled();
+    // the next press is an ordinary click again
+    fireEvent.mouseDown(cancel);
+    fireEvent.click(cancel);
+    expect(outside).toHaveBeenCalledTimes(1);
+  });
+
   it('choosing by click closes the list and focus returns to the field', async () => {
     const onChange = vi.fn();
     render(<Select label="Script font" options={FONTS} value={FONTS[0]} onChange={onChange} />);
