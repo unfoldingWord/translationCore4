@@ -38,6 +38,9 @@ export default defineConfig({
       url: 'http://localhost:5199',
       reuseExistingServer: true,
       timeout: 60_000,
+      // #491: vite's own lines in the run's output. Once, a test met no server on
+      // :5199 and the next test found it again; without them the run cannot show why.
+      stdout: 'pipe',
     },
   ],
 });

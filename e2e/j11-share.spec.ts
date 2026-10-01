@@ -18,7 +18,7 @@ import { execFileSync } from 'node:child_process';
 import type { BrowserContext, Page } from '@playwright/test';
 import { test, expect } from './helpers/test';
 import type { FakeOrganization } from './helpers/door43';
-import { TC4_ROOT, SEEDED_PROJECT, readClientSettingsDoc, rigRepo, listLocalRepos } from './helpers/rig';
+import { TC4_ROOT, SEEDED_PROJECT, readClientSettingsDoc, resetClientSettings, rigRepo, listLocalRepos } from './helpers/rig';
 import {
   QA_SERVER, RIG_API, RIG_STATE, USER, type BareRemote,
   dropOrigin, fakeFor, fakeShare, filesHolding, git, head, loginsHolding, makeBareRemote, pressShare, signIn, useInternet,
@@ -91,6 +91,8 @@ async function fakeKeychain(context: BrowserContext, held: string | null = null)
 test.describe('J11 — a facilitator shares the project to Door43', () => {
   test.describe('sign in (#203)', () => {
     test.beforeAll(async () => {
+      // Start from the seeded client settings, whatever ran before this spec (#491).
+      resetClientSettings();
       // The rig boots with the net gate off; sign-in refuses offline before any Door43 call.
       await useInternet(true);
     });
@@ -467,6 +469,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
     };
 
     test.beforeAll(async () => {
+      resetClientSettings(); // #491, as in the sign-in block
       await useInternet(true);
     });
     test.afterAll(async () => {
@@ -487,10 +490,43 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       const logs: string[] = [];
       page.on('console', (message) => logs.push(message.text()));
       const card = page.getByTestId(`project-${SEEDED_ID}`);
-      // The action sits in the card header beside Settings, and reads Share before a share.
-      await expect(card.getByTestId(`share-${SEEDED_ID}`)).toHaveText('Share');
+      // The action sits in the card header beside Settings, and reads "Share on Door43" before a
+      // share: an outlined pill, white fill, a 1.5 px Ocean border, Ocean text, heavy (D86 point 6).
+      const action = card.getByTestId(`share-${SEEDED_ID}`);
+      await expect(action).toHaveText('Share on Door43');
       await expect(card.getByRole('button', { name: 'Settings' })).toBeVisible();
       await expect(page.getByTestId(`share-card-${SEEDED_ID}`)).toHaveAttribute('data-shared', '0');
+      const look = await action.evaluate((el) => {
+        const cs = getComputedStyle(el);
+        const ocean = getComputedStyle(document.documentElement).getPropertyValue('--uw-ocean').trim();
+        const probe = document.createElement('span');
+        probe.style.color = ocean;
+        document.body.append(probe);
+        const oceanRgb = getComputedStyle(probe).color;
+        probe.remove();
+        // Chromium reports a declared 1.5 px border as "1px" (at scale 1 and 2), so the
+        // declared width is read from the token the element uses.
+        return { bg: cs.backgroundColor, border: cs.borderTopWidth, inline: el.getAttribute('style') ?? '', token: cs.getPropertyValue('--stroke-selected').trim(), borderColor: cs.borderTopColor, color: cs.color, weight: Number(cs.fontWeight), radius: parseFloat(cs.borderTopLeftRadius), height: el.getBoundingClientRect().height, oceanRgb };
+      });
+      expect(look.bg).toBe('rgb(255, 255, 255)');
+      expect(look.inline).toContain('var(--stroke-selected)');
+      expect(look.token).toBe('1.5px');
+      expect(parseFloat(look.border), 'a border is drawn').toBeGreaterThanOrEqual(1);
+      expect(look.color).toBe(look.oceanRgb);
+      expect(look.borderColor).toBe(look.oceanRgb);
+      expect(look.weight).toBeGreaterThanOrEqual(700);
+      expect(look.radius, 'a pill').toBeGreaterThanOrEqual(look.height / 2 - 1);
+      // Settings beside it is a quiet pill: white fill, a hairline border, the same pill shape (owner, 2026-09-30).
+      const settings = await card.getByRole('button', { name: 'Settings' }).evaluate((el) => {
+        const cs = getComputedStyle(el);
+        return { bg: cs.backgroundColor, border: parseFloat(cs.borderTopWidth), radius: parseFloat(cs.borderTopLeftRadius), height: el.getBoundingClientRect().height };
+      });
+      expect(settings.bg).toBe('rgb(255, 255, 255)');
+      expect(settings.border, 'a border is drawn').toBeGreaterThanOrEqual(1);
+      expect(settings.radius, 'a pill').toBeGreaterThanOrEqual(settings.height / 2 - 1);
+      // The meta line ends with "· Only on this computer"; no "On Door43" badge yet.
+      await expect(page.getByTestId(`share-state-${SEEDED_ID}`)).toHaveText('Only on this computer');
+      await expect(page.getByTestId(`share-badge-${SEEDED_ID}`)).toHaveCount(0);
 
       await pressShare(page, SEEDED_ID);
       const dialog = page.getByTestId('share-dialog');
@@ -536,9 +572,11 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       expect(fs.readFileSync(path.join(rigRepo(SEEDED_PROJECT), '.git', 'config'), 'utf8')).not.toContain(token);
       expect(logs.filter((line) => line.includes(token))).toEqual([]);
 
-      // The card now (test 2): "On Door43", the repository path, and Upload changes.
+      // The card now (test 2): the "On Door43" badge beside the name, "Shared at" and the
+      // repository path on the meta line, and Upload changes (D86 point 6).
       await expect(page.getByTestId(`share-card-${SEEDED_ID}`)).toHaveAttribute('data-shared', '1');
-      await expect(page.getByTestId(`share-state-${SEEDED_ID}`)).toHaveText(`On Door43 · ${USER.username}/${SEEDED_PROJECT}`);
+      await expect(page.getByTestId(`share-badge-${SEEDED_ID}`)).toHaveText('On Door43');
+      await expect(page.getByTestId(`share-state-${SEEDED_ID}`)).toHaveText(`Shared at ${USER.username}/${SEEDED_PROJECT}`);
       await expect(page.getByTestId(`share-${SEEDED_ID}`)).toHaveText('Upload changes');
 
       // Community Checking has no Share action.
@@ -565,7 +603,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       // The expected path comes from the URL the fake served (pathToFileURL), not from the
       // filesystem path: on Windows the URL's pathname is `/C:/…` with forward slashes.
       await page.reload();
-      await expect(page.getByTestId(`share-state-${SEEDED_ID}`)).toHaveText(`On Door43 · ${pathToFileURL(remote.bare).pathname.replace(/^\//, '').replace(/\.git$/, '')}`);
+      await expect(page.getByTestId(`share-state-${SEEDED_ID}`)).toHaveText(`Shared at ${pathToFileURL(remote.bare).pathname.replace(/^\//, '').replace(/\.git$/, '')}`);
       await expect(page.getByTestId(`share-${SEEDED_ID}`)).toHaveText('Upload changes');
       expect((await remotesOf(SEEDED_ID)).map((r) => r.name)).toEqual(['origin']);
       // The installation store (the rig's client settings) holds nothing about the remote.
@@ -682,7 +720,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       expect([...fake.repositories.keys()]).toEqual([`orgA/${SEEDED_PROJECT}`]);
       expect(remote.main()).toBe(head(SEEDED_PROJECT));
       await page.getByTestId('share-close').click();
-      await expect(page.getByTestId(`share-state-${SEEDED_ID}`)).toHaveText(`On Door43 · orgA/${SEEDED_PROJECT}`);
+      await expect(page.getByTestId(`share-state-${SEEDED_ID}`)).toHaveText(`Shared at orgA/${SEEDED_PROJECT}`);
     });
 
     test('6. refusals: the name exists on the account and on an organization; a non-fast-forward push; each with its code, nothing pushed, and in the ops log', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
@@ -761,7 +799,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       // The platform set the author at creation to the computer's account name (PLATFORM-NOTES #47).
       expect(git(remote.bare, 'log', '-1', '--format=%an', 'main')).toBe(os.userInfo().username);
       await page.getByTestId('share-close').click();
-      await expect(page.getByTestId(`share-state-${id}`)).toHaveText(`On Door43 · ${USER.username}/${abbr}`);
+      await expect(page.getByTestId(`share-state-${id}`)).toHaveText(`Shared at ${USER.username}/${abbr}`);
       await fetch(`${RIG_API}/git/delete/${id}`, { method: 'POST' });
     });
 

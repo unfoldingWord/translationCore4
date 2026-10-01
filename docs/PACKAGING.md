@@ -659,11 +659,12 @@ and the screen it broke). Paste the step lines into the pre-release notes.
 
 ### The regression check between runs
 
-`e2e/j02-draft-verse.spec.ts` carries the test "a drafting session talks to no host but the
-local server (FR-31, #43)". It records every request and every WebSocket the client opens
-while a project is opened and a verse is drafted, waits out the save's follow-up writes,
-checks that no service worker is registered (a worker's requests would not be seen), and
-fails when any host outside the local server appears. Since #3 the test has no list of
+`e2e/j02-draft-verse.spec.ts` carries the test "a drafting session in Local, with a restart,
+talks to no host but the local server (FR-31, #43; D86)". It records every request and every
+WebSocket the client opens while a project is opened in Local, a verse is drafted and the app
+starts again. It waits out the save's follow-up writes, checks that no service worker is
+registered (a worker's requests would not be seen), and fails when any host outside the local
+server appears. Since #3 the test has no list of
 known defects: the fonts are part of the client. The check runs on the dev
 client against the rig, not on the packaged app; the packaged app's offline behavior is this
 procedure's subject.

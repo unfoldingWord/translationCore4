@@ -16,10 +16,14 @@
 //   3. it refuses any new write to the rig from this browser context, and
 //   4. it asks GET /burrito/metadata/summaries, which takes the same lock, so it
 //      returns only when the server has finished. A 500 there names the rig.
+//   5. it saves the client-settings document and Home's project list in the
+//      test's output folder (#491), so a later failure has the state it met.
 // Steps 3 and 4 run on every exit, also when step 1 or 2 fails; every failure
 // is reported. The page then closes; its hide handler finds nothing left to save.
-import { test as base, type Request } from '@playwright/test';
-import { assertRigHealthy } from '../rig-health';
+import fs from 'node:fs';
+import { test as base, type Request, type TestInfo } from '@playwright/test';
+import { RIG_HEALTH_URL, assertRigHealthy } from '../rig-health';
+import { readClientSettingsDoc } from './rig';
 
 /** How long the rig writes may take to settle before the test fails. */
 export const SETTLE_TIMEOUT_MS = 30_000;
@@ -27,6 +31,14 @@ export const SETTLE_TIMEOUT_MS = 30_000;
 export const QUIET_MS = 500;
 /** Playwright's errors for a page with no window to call (mid-navigation or closed). */
 const NO_WINDOW = /Execution context was destroyed|has been closed/;
+
+/** #491: the state a test leaves for the next one, saved in its output folder for
+ * every test (a later failure is read against it): the client-settings document and
+ * the project list Home reads. */
+async function saveRigState(testInfo: TestInfo): Promise<void> {
+  fs.writeFileSync(testInfo.outputPath('client-settings.json'), JSON.stringify(readClientSettingsDoc(), null, 2));
+  fs.writeFileSync(testInfo.outputPath('home-projects.json'), await (await fetch(RIG_HEALTH_URL)).text());
+}
 
 const isRigWrite = (request: Request): boolean =>
   request.method() !== 'GET' && new URL(request.url()).pathname.startsWith('/api/');
@@ -83,6 +95,7 @@ export const test = base.extend<{ settleRig: void }>({
       // server's walk holds it, so this returns only when the walk has ended.
       try {
         await assertRigHealthy();
+        await saveRigState(testInfo);
       } catch (error) {
         failures.unshift(new Error(`After "${testInfo.title}": ${(error as Error).message}`, { cause: error }));
       }
