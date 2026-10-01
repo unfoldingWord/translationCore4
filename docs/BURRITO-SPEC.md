@@ -58,10 +58,10 @@ Base `metadata.json` on Pankosmia's own textTranslation template (`resource-core
 ```json
 "relationships": [
   {"relationType": "source",         "flavor": "textTranslation",      "id": "dcs::unfoldingWord/el-x-koine_ugnt", "revision": "v0.34"},
-  {"relationType": "source",         "flavor": "textTranslation",      "id": "dcs::unfoldingWord/hbo_uhb",  "revision": "v2.1.30"},
-  {"relationType": "parascriptural", "flavor": "x-bcvarticles",        "id": "dcs::unfoldingWord/en_tw",    "revision": "v87"},
-  {"relationType": "parascriptural", "flavor": "x-bcvnotes",           "id": "dcs::unfoldingWord/en_tn",    "revision": "v86"},
-  {"relationType": "peripheral",     "flavor": "x-peripheralArticles", "id": "dcs::unfoldingWord/en_ta",    "revision": "v86"},
+  {"relationType": "source",         "flavor": "textTranslation",      "id": "dcs::unfoldingWord/hbo_uhb",  "revision": "v3.0.0"},
+  {"relationType": "parascriptural", "flavor": "x-bcvarticles",        "id": "dcs::unfoldingWord/en_tw",    "revision": "v91"},
+  {"relationType": "parascriptural", "flavor": "x-bcvnotes",           "id": "dcs::unfoldingWord/en_tn",    "revision": "v91"},
+  {"relationType": "peripheral",     "flavor": "x-peripheralArticles", "id": "dcs::unfoldingWord/en_ta",    "revision": "v91"},
   {"relationType": "peripheral",     "flavor": "x-lexicon",            "id": "dcs::unfoldingWord/en_ugl",   "revision": "v0.5"},
   {"relationType": "peripheral",     "flavor": "x-lexicon",            "id": "dcs::unfoldingWord/en_uhl"}
 ]
@@ -306,18 +306,18 @@ Common rules:
     },
     "fallback": {                       // the English suite that ships with the install
       "gatewayLanguage": {"languageId": "en", "owner": "unfoldingWord"},
-      "translationNotes":      {"repoPath": "git.door43.org/unfoldingWord/en_tn",  "version": "v86", "sha": "c354b8ae66a23c485bf6f38fd35bd8f7ef81e4e5", "flavor": "parascriptural/x-bcvnotes"},
+      "translationNotes":      {"repoPath": "git.door43.org/unfoldingWord/en_tn",  "version": "v91", "sha": "e586762e330f482a60c52aedd1c7b3a2f155df8a", "flavor": "parascriptural/x-bcvnotes"},
       "translationWordsLinks": {"repoPath": "git.door43.org/unfoldingWord/en_twl", "version": "v86", "sha": "570e76d0024c847689e48a20e2ac1a1d2c6eb6e3", "flavor": "parascriptural/x-bcvarticles"},
-      "translationWords":      {"repoPath": "git.door43.org/unfoldingWord/en_tw",  "version": "v87", "sha": "eaeb7bfefcf84132d0cbcbed185f3ea2be3d86dd", "flavor": "parascriptural/x-bcvarticles"},
-      "translationAcademy":    {"repoPath": "git.door43.org/unfoldingWord/en_ta",  "version": "v86", "sha": "c7caddfb474efd713f36b35a3ffc927866c7b180", "flavor": "peripheral/x-peripheralArticles"},
-      "translationQuestions":  {"repoPath": "git.door43.org/unfoldingWord/en_tq",  "version": "v89", "sha": "97c0a13e3b84d46d0e643ba2e8e9f1c295547a58", "flavor": "parascriptural/x-bcvquestions"},   // OPTIONAL (1.10, D64)
-      "simplifiedText":        {"repoPath": "git.door43.org/unfoldingWord/en_ust", "version": "v89", "sha": "37ec223166bbd73fb55abc7840be8310c0fee7f2", "flavor": "scripture/textTranslation"}         // OPTIONAL (1.10, D64)
+      "translationWords":      {"repoPath": "git.door43.org/unfoldingWord/en_tw",  "version": "v91", "sha": "ff5b3852c27c3a0d01b109e482eb26047dcd20e2", "flavor": "parascriptural/x-bcvarticles"},
+      "translationAcademy":    {"repoPath": "git.door43.org/unfoldingWord/en_ta",  "version": "v91", "sha": "ce9a1bb9431317ca888e8c1f9620caa7f5fe45fd", "flavor": "peripheral/x-peripheralArticles"},
+      "translationQuestions":  {"repoPath": "git.door43.org/unfoldingWord/en_tq",  "version": "v91", "sha": "8be02772584ff5a5fea893a392b4f019e3efcc77", "flavor": "parascriptural/x-bcvquestions"},   // OPTIONAL (1.10, D64)
+      "simplifiedText":        {"repoPath": "git.door43.org/unfoldingWord/en_ust", "version": "v91", "sha": "85f274a74245cb418f85266e1a5b524bc3e91e9c", "flavor": "scripture/textTranslation"}         // OPTIONAL (1.10, D64)
     }
   },
   "resources": {                        // language-set-independent pins
     "originalLanguage": {
       "nt": {"repoPath": "git.door43.org/unfoldingWord/el-x-koine_ugnt", "version": "v0.34", "sha": "fc95b2b8aad08bb65ab54628ab685413a1139e97", "flavor": "scripture/textTranslation"},
-      "ot": {"repoPath": "git.door43.org/unfoldingWord/hbo_uhb", "version": "v2.1.30", "sha": "106a441a788d9465846cd427538ea80b8cec6770", "flavor": "scripture/textTranslation"}
+      "ot": {"repoPath": "git.door43.org/unfoldingWord/hbo_uhb", "version": "v3.0.0", "sha": "74022f0fed012a3ef169886f595dd98e7b200543", "flavor": "scripture/textTranslation"}
     },
     "lexicon": {
       "nt": {"repoPath": "git.door43.org/unfoldingWord/en_ugl", "version": "v0.5", "sha": "8fa6eb60c0fe7afa61a80264c7326d63db5f1e70", "flavor": "peripheral/x-lexicon"},
@@ -325,8 +325,8 @@ Common rules:
     }
   },
   "extraScripture": [
-    {"id": "ult", "repoPath": "git.door43.org/unfoldingWord/en_ult", "version": "v89", "sha": "84c73ba00fc8a95a9033f9efb14bb905a2a52ee4", "flavor": "scripture/textTranslation"},
-    {"id": "ust", "repoPath": "git.door43.org/unfoldingWord/en_ust", "version": "v89", "sha": "37ec223166bbd73fb55abc7840be8310c0fee7f2", "flavor": "scripture/textTranslation"}
+    {"id": "ult", "repoPath": "git.door43.org/unfoldingWord/en_ult", "version": "v91", "sha": "35d215957f3203fd2e2fac5702ce14902d417f9d", "flavor": "scripture/textTranslation"},
+    {"id": "ust", "repoPath": "git.door43.org/unfoldingWord/en_ust", "version": "v91", "sha": "85f274a74245cb418f85266e1a5b524bc3e91e9c", "flavor": "scripture/textTranslation"}
   ]
 }
 ```

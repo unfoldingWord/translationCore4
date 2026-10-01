@@ -44,26 +44,26 @@
       },
       "translationNotes": {
         "repoPath": "git.door43.org/unfoldingWord/en_tn",
-        "version": "v86",
-        "sha": "c354b8ae66a23c485bf6f38fd35bd8f7ef81e4e5",
+        "version": "v91",
+        "sha": "e586762e330f482a60c52aedd1c7b3a2f155df8a",
         "flavor": "parascriptural/x-bcvnotes"
       },
       "translationWordsLinks": {
         "repoPath": "git.door43.org/unfoldingWord/en_tw",
-        "version": "v87",
-        "sha": "eaeb7bfefcf84132d0cbcbed185f3ea2be3d86dd",
+        "version": "v91",
+        "sha": "ff5b3852c27c3a0d01b109e482eb26047dcd20e2",
         "flavor": "parascriptural/x-bcvarticles"
       },
       "translationWords": {
         "repoPath": "git.door43.org/unfoldingWord/en_tw",
-        "version": "v87",
-        "sha": "eaeb7bfefcf84132d0cbcbed185f3ea2be3d86dd",
+        "version": "v91",
+        "sha": "ff5b3852c27c3a0d01b109e482eb26047dcd20e2",
         "flavor": "parascriptural/x-bcvarticles"
       },
       "translationAcademy": {
         "repoPath": "git.door43.org/unfoldingWord/en_ta",
-        "version": "v86",
-        "sha": "c7caddfb474efd713f36b35a3ffc927866c7b180",
+        "version": "v91",
+        "sha": "ce9a1bb9431317ca888e8c1f9620caa7f5fe45fd",
         "flavor": "peripheral/x-peripheralArticles"
       },
       "obs": {
