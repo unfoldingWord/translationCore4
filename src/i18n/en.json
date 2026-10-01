@@ -281,7 +281,6 @@
   "settings.gatewayUnset": "This project has no checking language yet. Choose one below.",
   "settings.gatewayLoading": "Looking for the packages on this computer…",
   "settings.manageSources": "Manage source texts",
-  "app.projectSettings": "Project settings",
   "draft.notYet": "Not yet drafted — ",
   "draft.drafting": "Drafting",
   "draft.saveVerse": "Save verse",

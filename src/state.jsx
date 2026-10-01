@@ -5566,14 +5566,29 @@ export function AppProvider({ children }) {
        * project; that open adopts installed optional slots as every open does
        * (D64), before the dialogue asks. */
       chooseSettingsGateway: async (gateway) => {
+        if (!(await a.openSettingsProject())) return;
+        await a.askGatewayChange(gateway);
+      },
+
+      /** #505: Settings opens only from Home, where no project is open. The
+       * update controls of the Source texts screen (J12) need the open project,
+       * so "Manage source texts" opens it first, as a package choice does. */
+      manageSettingsSources: async () => {
+        if (!(await a.openSettingsProject())) return;
+        await a.openSources();
+      },
+
+      /** Open the project the Settings modal is for, when it is not open. Closes
+       * the modal. False when the Settings are gone or the project did not open. */
+      openSettingsProject: async () => {
         const st = stateRef.current.st;
-        if (!st) return;
+        if (!st) return false;
         if (stateRef.current.project?.id !== st.repoPath) {
           a.closeModal();
           await a.openProject(st.repoPath);
-          if (stateRef.current.project?.id !== st.repoPath) return;
+          if (stateRef.current.project?.id !== st.repoPath) return false;
         }
-        await a.askGatewayChange(gateway);
+        return true;
       },
 
       saveSettings: async () => {

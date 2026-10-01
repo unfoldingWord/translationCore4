@@ -120,14 +120,6 @@ function TopBar() {
       ) : null}
       right={(
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {/* #412: the checking language is a property of the PROJECT (D30.2),
-            * so its Settings open from inside the project too. */}
-          {inProject && (
-            <Button variant="ghost" size="sm" data-testid="project-settings" onClick={() => actions.openSettings(p)}
-              style={{ color: 'var(--text-inverse)' }}>
-              {t('app.projectSettings')}
-            </Button>
-          )}
           <DcsServerLabel />
           <NetStatus />
           <SaveIndicator />

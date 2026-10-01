@@ -228,6 +228,7 @@ async function settleOpen(page: Page) {
   await openSources(page);
   await page.getByRole('button', { name: 'Close' }).last().click();
   await expect(page.getByTestId('sources-modal')).toHaveCount(0);
+  await openTitusCheck(page);
   await page.getByTestId('open-translationNotes').click();
   await expect(page.getByTestId('check-progress')).toBeVisible();
 }
@@ -247,13 +248,18 @@ function textIngredients(): Record<string, Buffer> {
   return out;
 }
 
-async function openSources(page: Page) {
-  await page.goto('/');
+/** Manage source texts opens the project on its default book, so go Home and open Titus on Check again. */
+async function openTitusCheck(page: Page) {
+  await page.getByTitle('Switch project').click();
   await page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByRole('button', { name: /Titus/ }).click();
   await page.getByRole('tab', { name: 'Check', exact: true }).click();
-  await page.getByTestId('project-settings').click();
+}
+
+async function openSources(page: Page) {
+  await page.goto('/');
+  await page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByRole('button', { name: 'Settings' }).click();
   await page.getByTestId('settings-manage-sources').click();
-  await expect(page.getByTestId('sources-modal')).toBeVisible();
+  await expect(page.getByTestId('sources-modal')).toBeVisible({ timeout: 120_000 });
 }
 
 /** D86: in Local, the Source texts callout asks to allow the internet. */
@@ -303,6 +309,7 @@ test.describe('J12 — a facilitator upgrades the pinned resources', () => {
     'pins never move without the explicit accept: open, Check, preflight, the offer, close — resources.json is byte-identical (FR-22, #3)',
     { tag: ['@inc6', '@J12'] },
     async ({ page, context }) => {
+      test.setTimeout(120_000); // two opens now: Manage source texts opens the project, then Titus is opened on Check
       writeProjectPins(SEEDED_PROJECT, PINS());
       const { dropped } = seedDecisionsUnderV89();
       await mockDcs(context, dropped.contextId.checkId);
@@ -332,6 +339,7 @@ test.describe('J12 — a facilitator upgrades the pinned resources', () => {
       // Close without accepting. Nothing moved — not a byte.
       await page.getByRole('button', { name: 'Close' }).last().click();
       await expect(page.getByTestId('sources-modal')).toHaveCount(0);
+      await openTitusCheck(page);
       await page.getByTestId('open-translationNotes').click();
       await expect(page.getByTestId('check-progress')).toBeVisible();
       expect(pinsBytes().equals(before)).toBe(true);
@@ -424,6 +432,7 @@ test.describe('J12 — a facilitator upgrades the pinned resources', () => {
 
       // Case 3: the list re-derives from v90 and progress drops by the dropped check.
       await page.getByRole('button', { name: 'Close' }).last().click();
+      await openTitusCheck(page);
       await page.getByTestId('open-translationNotes').click();
       await expect(page.getByTestId('check-progress')).toHaveText(`${decidedBefore - 1} of ${totalBefore - 1} resolved`);
       await expect(page.getByTestId('check-session')).toContainText(NEW_TAG);
@@ -533,6 +542,7 @@ test.describe('J12 — a facilitator upgrades the original-language text (#258)'
 
       // The alignment list shows those verses as needing work.
       await page.getByRole('button', { name: 'Close' }).last().click();
+      await openTitusCheck(page);
       await page.getByTestId('open-align').click();
       for (const { ref } of marked) {
         await expect(page.getByTestId('align-verse-list').locator(`button[data-ref="${ref}"]`)).toHaveAttribute('data-status', 'invalid');
@@ -573,10 +583,10 @@ test.describe('J12 — the scripture-text offers name only the originals of the 
       expect(ol.ot.repoPath.split('/').pop()).toBe(OT_REPO);
       await mockDcs(context, '', true, { repo, otNewer: true });
 
-      await page.getByRole('tab', { name: 'Check', exact: true }).click();
-      await page.getByTestId('project-settings').click();
+      await page.goto('/');
+      await page.getByTestId(`project-_local_/_local_/${repo}`).getByRole('button', { name: 'Settings' }).click();
       await page.getByTestId('settings-manage-sources').click();
-      await expect(page.getByTestId('sources-modal')).toBeVisible();
+      await expect(page.getByTestId('sources-modal')).toBeVisible({ timeout: 120_000 });
       await goOnline(page);
       await page.getByTestId('check-updates').click();
       await expect(page.getByTestId('upgrade-texts')).toBeVisible({ timeout: 60_000 });

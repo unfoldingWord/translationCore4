@@ -56,9 +56,31 @@ type ResourcesOnDisk = {
   extraScripture: Array<{ id: string } & PinOnDisk>;
 };
 
-/** #412: the change starts in Project Settings, opened from inside the project. */
+/** #505: Project Settings opens only from the Settings button on the project's card on Home.
+ * From inside the open project, the way to Home is Switch project. */
+async function openSettingsFromHome(page: import('@playwright/test').Page, project = SEEDED_PROJECT) {
+  const leave = page.getByTitle('Switch project');
+  if (await leave.count()) await leave.click();
+  else await page.goto('/');
+  await page.getByTestId(`project-_local_/_local_/${project}`).getByRole('button', { name: 'Settings' }).click();
+}
+
+/** After the change, Titus is reopened from its Home tile. Check may resume the notes session
+ * where it was last open, or show the picker: either way the session must derive from Spanish. */
+async function openSpanishNotesSession(page: import('@playwright/test').Page) {
+  const session = page.getByTestId('check-session');
+  await expect(session.or(page.getByTestId('open-translationNotes'))).toBeVisible();
+  await expect(async () => {
+    if (await session.isVisible()) return;
+    await page.getByTestId('open-translationNotes').click({ timeout: 2_000 });
+    await expect(session).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+  await expect(session).toContainText('es-419_tn');
+}
+
+/** #412: the change starts in Project Settings. */
 async function chooseInSettings(page: import('@playwright/test').Page, key: string) {
-  await page.getByTestId('project-settings').click();
+  await openSettingsFromHome(page);
   await page.getByTestId(`settings-gateway-${key}`).click();
   await expect(page.getByTestId('gateway-change')).toBeVisible();
 }
@@ -241,16 +263,22 @@ test.describe('J13 — changing the project’s checking language', () => {
       await expect(page.getByTestId(`settings-gateway-${ES_KEY}`)).toHaveAttribute('data-current', '0');
       await page.getByRole('button', { name: 'Cancel' }).click();
 
-      // From inside the open project: the Check tab has no Source texts button.
+      // Inside the open project the Check tab has no Source texts button and the top bar has no
+      // Project settings button (#505); Settings opens from the Home card.
       await openCheck(page);
       await expect(page.getByTestId('open-sources')).toHaveCount(0);
-      await page.getByTestId('project-settings').click();
+      for (const tab of ['Understand', 'Translate', 'Check']) {
+        await page.getByRole('tab', { name: tab, exact: true }).click();
+        await expect(page.getByRole('tab', { name: tab, exact: true })).toHaveAttribute('aria-selected', 'true');
+        await expect(page.getByTestId('project-settings')).toHaveCount(0);
+      }
+      await openSettingsFromHome(page);
       await expect(page.getByTestId(`settings-gateway-${ES_KEY}`)).toBeVisible();
       await expect(page.getByTestId('settings-gateway').locator('[data-testid^="settings-gateway-"][data-current]')).toHaveCount(2);
 
       // Manage source texts opens the existing Source texts screen.
       await page.getByTestId('settings-manage-sources').click();
-      await expect(page.getByTestId('sources-modal')).toBeVisible();
+      await expect(page.getByTestId('sources-modal')).toBeVisible({ timeout: 60_000 });
     },
   );
 
@@ -259,9 +287,9 @@ test.describe('J13 — changing the project’s checking language', () => {
     { tag: ['@inc2', '@J13'] },
     async ({ page }) => {
       writeProjectPins(SEEDED_PROJECT, EN());
-      await openCheck(page);
       await chooseInSettings(page, ES_KEY);
       await confirmChange(page);
+      await openSettingsFromHome(page);
       await expect(page.getByTestId('settings-gateway-current')).toHaveText('This project checks in Spanish (Latin American) · es-419_gl.');
       await expect(page.getByTestId(`settings-gateway-${ES_KEY}`)).toHaveAttribute('data-current', '1');
       await expect(page.getByTestId(`settings-gateway-${EN_KEY}`)).toHaveAttribute('data-current', '0');
@@ -287,8 +315,7 @@ test.describe('J13 — changing the project’s checking language', () => {
       const before = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT');
       expect(before!.decisions.length).toBeGreaterThan(0);
 
-      await openCheck(page);
-      await page.getByTestId('project-settings').click();
+      await openSettingsFromHome(page);
       await expect(page.getByTestId(`settings-gateway-${ES_KEY}`)).toBeVisible();
       await page.getByTestId(`settings-gateway-${ES_KEY}`).click();
 
@@ -307,11 +334,10 @@ test.describe('J13 — changing the project’s checking language', () => {
       await expect(page.getByTestId('gateway-plan'))
         .toContainText(/carried over, \d+ to check again/);
 
-      // Declining changes NOTHING on disk, and neither does closing Settings.
+      // Declining changes NOTHING on disk. From Home, choosing a package has closed Settings.
       await page.getByTestId('gateway-cancel').click();
       await expect(dialogue).toHaveCount(0);
       expect(checkingBytes(SEEDED_PROJECT)).toEqual(bytesBefore);
-      await page.getByRole('button', { name: 'Cancel' }).click();
       await expect(page.getByTestId('settings-gateway')).toHaveCount(0);
       expect(checkingBytes(SEEDED_PROJECT)).toEqual(bytesBefore);
       expect(readProjectPins(SEEDED_PROJECT).languageSets.primary.gatewayLanguage.languageId)
@@ -330,7 +356,8 @@ test.describe('J13 — changing the project’s checking language', () => {
       await page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByRole('button', { name: 'Settings' }).click();
       await page.getByTestId(`settings-gateway-${ES_KEY}`).click();
       await expect(page.getByTestId('gateway-change')).toBeVisible({ timeout: 30_000 });
-      await expect(page.getByTestId('project-settings')).toBeVisible();
+      await expect(page.getByTitle('Switch project')).toBeVisible();
+      await expect(page.getByTestId('project-settings')).toHaveCount(0);
       // The open adopts installed optional slots (D64) on its own schedule; wait
       // until the pin file is stable, then nothing of the change may move it.
       const pinBytes = () => fs.readFileSync(path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'resources.json'), 'utf8');
@@ -382,7 +409,7 @@ test.describe('J13 — changing the project’s checking language', () => {
       await openCheck(page);
       // The fallback as the open project holds it: an open legally adopts the
       // installed optional slots (D64), before the change is asked for.
-      await page.getByTestId('project-settings').click();
+      await openSettingsFromHome(page);
       await expect(page.getByTestId(`settings-gateway-${ES_KEY}`)).toBeVisible();
       const fallbackBefore = identities((readProjectPins(SEEDED_PROJECT) as unknown as ResourcesOnDisk).languageSets.fallback);
       await page.getByTestId(`settings-gateway-${ES_KEY}`).click();
@@ -446,11 +473,9 @@ test.describe('J13 — changing the project’s checking language', () => {
     { tag: ['@inc2', '@J13'] },
     async ({ page }) => {
       writeProjectPins(SEEDED_PROJECT, EN());
-      await openCheck(page);
       await chooseInSettings(page, ES_KEY);
       await confirmChange(page);
-      await page.getByRole('button', { name: 'Cancel' }).click();
-
+      await openCheck(page);
       await page.getByTestId('open-translationNotes').click();
       await expect(page.getByTestId('check-progress')).toHaveText(/\d+ of \d+ resolved/);
       // The session states which resource it derived from, and it is Spanish.
@@ -474,7 +499,7 @@ test.describe('J13 — changing the project’s checking language', () => {
   );
 
   test(
-    'a switch from Settings over an open check session: the session closes, and the next decision saves against the Spanish notes (#412)',
+    'a switch from Settings after a check session: the reopened session derives from the Spanish notes, and the next decision saves against them (#412)',
     { tag: ['@inc2', '@J13'] },
     async ({ page }) => {
       test.setTimeout(120_000);
@@ -493,11 +518,8 @@ test.describe('J13 — changing the project’s checking language', () => {
       await page.getByTestId('mark-valid').click();
       await chooseInSettings(page, ES_KEY);
       await confirmChange(page);
-      await page.getByRole('button', { name: 'Cancel' }).click();
-      // The session derived from English is closed; the picker is back.
-      await expect(page.getByTestId('check-session')).toHaveCount(0);
-      await page.getByTestId('open-translationNotes').click();
-      await expect(page.getByTestId('check-session')).toContainText('es-419_tn');
+      await openCheck(page);
+      await openSpanishNotesSession(page);
       const before = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')!.decisions.length;
       await page.getByTestId('check-list').locator('button[data-decided="0"]').last().click();
       await page.getByTestId('mark-valid').click();
@@ -562,12 +584,8 @@ test.describe('J13 — changing the project’s checking language', () => {
 
       await chooseInSettings(page, ES_KEY);
       await confirmChange(page);
-      await page.getByRole('button', { name: 'Cancel' }).click();
-      await expect(page.getByTestId('check-session')).toHaveCount(0);
-      // The picker card counts the Spanish list once it is current; a click before that opens the English one.
-      await expect(page.getByTestId('preflight-translationNotes')).toContainText(`of ${esItems.length}`);
-      await page.getByTestId('open-translationNotes').click();
-      await expect(page.getByTestId('check-session')).toContainText('es-419_tn');
+      await openCheck(page);
+      await openSpanishNotesSession(page);
 
       // Every carried-over decision is counted. The change kept `carried` and, for `collided`, the
       // record that the sample's swi9 brought: one record for the check id, not marked to check again.
@@ -612,7 +630,6 @@ test.describe('J13 — changing the project’s checking language', () => {
       hideSpanishBibles();
       {
         fs.writeFileSync(path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'resources.json'), `${JSON.stringify(pins, null, 2)}\n`);
-        await openCheck(page);
         await chooseInSettings(page, ES_KEY);
         await confirmChange(page);
         const after = readProjectPins(SEEDED_PROJECT) as unknown as ResourcesOnDisk;
@@ -621,7 +638,6 @@ test.describe('J13 — changing the project’s checking language', () => {
           ['ult', 'git.door43.org/unfoldingWord/en_ult', pinForSideloaded('en_ult', 'v89').sha],
           ['ust', 'git.door43.org/unfoldingWord/en_ust', pinForSideloaded('en_ust', 'v89').sha],
         ]);
-        await page.getByRole('button', { name: 'Cancel' }).click();
         await page.getByRole('tab', { name: 'Translate', exact: true }).click();
         await expect(page.getByTestId('source-tab-ult')).toBeVisible();
         await expect(page.getByTestId('source-tab-ust')).toBeVisible();
@@ -638,14 +654,16 @@ test.describe('J13 — changing the project’s checking language', () => {
       await page.goto('/');
       await page.getByTestId(`project-_local_/_local_/${repo}`).getByTestId('story-tile-1').click();
       await expect(page.getByTestId('story-draft')).toContainText(firstFrame('en_obs'));
-      await page.getByTestId('project-settings').click();
+      await openSettingsFromHome(page, repo);
       await expect(page.getByTestId(`settings-gateway-${EN_KEY}`)).toHaveAttribute('data-current', '1');
       await page.getByTestId(`settings-gateway-${ES_KEY}`).click();
       await expect(page.getByTestId('gateway-change')).toBeVisible();
       await confirmChange(page);
+      await openSettingsFromHome(page, repo);
       await expect(page.getByTestId('settings-gateway-current')).toHaveText('This project checks in Spanish (Latin American) · es-419_gl.');
-      // The open story shows the Spanish source without leaving it, and names v2.
+      // The story shows the Spanish source, and names v2.
       await page.getByRole('button', { name: 'Cancel' }).click();
+      await page.getByTestId(`project-_local_/_local_/${repo}`).getByTestId('story-tile-1').click();
       await expect(page.getByTestId('story-draft')).toContainText(firstFrame('es-419_obs'));
       await expect(page.getByTestId('source-name')).toContainText('v2');
       const after = readProjectPins(repo) as unknown as ResourcesOnDisk;

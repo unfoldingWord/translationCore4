@@ -250,8 +250,8 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 - Actor: facilitator. Activity: Start.
 - Precondition: two gateway-language suites are installed (the rig holds English and Spanish, for
   Bible and OBS projects).
-- Steps: open Project Settings (from Home or from inside the project) · choose the other package in
-  the Checking language list · confirm the change explicitly (#412).
+- Steps: open Project Settings (the Settings button on the project card on Home) · choose the other
+  package in the Checking language list · confirm the change explicitly (#412).
 - End state: the primary pins name the new language set with `version`, `sha`, `repoPath`; the
   English fallback set stays unchanged (D30, §5.3); decisions re-attach to the new set, or are invalidated and
   retained (D36). On a Bible project, `extraScripture` names the new package's literal and
