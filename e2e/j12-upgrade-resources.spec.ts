@@ -612,7 +612,8 @@ test.describe('J12 — the scripture-text offers name only the originals of the 
       await goOnline(page);
       await page.getByTestId('check-updates').click();
       await expect(page.getByTestId(`upgrade-text-${OL_REPO}`)).toContainText(`${OL_REPO} v0.34 → ${OL_TAG}`);
-      await expect(page.getByTestId(`upgrade-text-${OT_REPO}`)).toContainText(`${OT_REPO} v2.1.30 → ${OT_TAG}`);
+      // The seeded sample pins the shipped Hebrew Bible (v3.0.0 since #504).
+      await expect(page.getByTestId(`upgrade-text-${OT_REPO}`)).toContainText(`${OT_REPO} v3.0.0 → ${OT_TAG}`);
     },
   );
 });
