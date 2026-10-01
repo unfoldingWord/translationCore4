@@ -436,6 +436,67 @@ test.describe('J9 — a facilitator imports existing work', () => {
       });
     });
 
+    // #484: the Add-a-book dialog's second option — add books from USFM files.
+    // Each picked file shows its verdict the moment it lands; Add writes only
+    // the valid ones through the same book.add path as a blank book. A file
+    // whose book is already in the project is refused with a message that
+    // points to Import; a damaged file is refused with the parser's finding.
+    test('add a book from a USFM file: the valid file is added, the already-in-project and damaged files are refused per row', { tag: ['@inc8', '@J9'] }, async ({ page }, testInfo) => {
+      test.setTimeout(240_000);
+      const name = fresh('Jonás USFM');
+      const repo = rigRepo(abbrOf(name));
+      const jonSource = path.join(MANIFEST_DIR, 'usfm', '32-JON.usfm');
+      const titSource = path.join(MANIFEST_DIR, 'usfm', '57-TIT.usfm');
+      const seen: Record<string, unknown> = {};
+      await test.step('a project with Jonah only (imported from one USFM file)', async () => {
+        await importFixture(page, jonSource, { kind: 'usfm', edits: { name, language: 'es-419' } });
+        await expect(page.getByTestId('import-toast')).toBeVisible();
+      });
+      const jonBefore = fs.readFileSync(path.join(repo, 'ingredients', 'JON.usfm'));
+      await test.step('the Add-a-book method step offers the blank book and the USFM option', async () => {
+        await page.goto('/');
+        await page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`).getByRole('button', { name: 'Add a book' }).click();
+        await expect(page.getByRole('button', { name: 'Start a blank book' })).toBeVisible();
+        await page.getByTestId('ab-usfm-option').click();
+      });
+      const rows = page.getByTestId('ab-usfm-file');
+      await test.step('three files, three verdicts: Titus valid, Jonah already in the project (points to Import), no-id.sfm damaged', async () => {
+        await page.getByTestId('ab-usfm-input').setInputFiles([titSource, jonSource, path.join(MANIFEST_DIR, 'usfm', 'no-id.sfm')]);
+        await expect(rows).toHaveCount(3);
+        const tit = rows.filter({ hasText: '57-TIT.usfm' });
+        await expect(tit).toHaveAttribute('data-status', 'valid');
+        await expect(tit).toContainText('Adds Titus');
+        const jon = rows.filter({ hasText: '32-JON.usfm' });
+        await expect(jon).toHaveAttribute('data-status', 'refused');
+        await expect(jon).toContainText('Jonah is already in this project. To replace an existing book, use Import.');
+        const noId = rows.filter({ hasText: 'no-id.sfm' });
+        await expect(noId).toHaveAttribute('data-status', 'refused');
+        await expect(noId).toContainText('no-id.sfm has no \\id line, so the book is not known.');
+        seen.verdicts = await Promise.all((await rows.all()).map(async (row) => ({ status: await row.getAttribute('data-status'), text: (await row.textContent())?.trim() })));
+        // one valid book, so the button adds exactly one
+        await expect(page.getByTestId('ab-usfm-add')).toHaveText('Add book');
+      });
+      await test.step('Add writes Titus through the book.add path and opens it; Jonah is byte-identical', async () => {
+        await page.getByTestId('ab-usfm-add').click();
+        await expect(page.getByRole('heading', { name: /^Titus \d+$/ })).toBeVisible({ timeout: 120_000 });
+        await expect(page.getByText(/Pablo, siervo de Dios y apóstol de Jesucristo/).first()).toBeVisible({ timeout: 60_000 });
+        await expect(page.getByTestId('home-open-error')).toHaveCount(0);
+        expect(fs.existsSync(path.join(repo, 'ingredients', 'TIT.usfm'))).toBe(true);
+        expect(fs.readFileSync(path.join(repo, 'ingredients', 'TIT.usfm'), 'utf8')).toContain('Pablo, siervo de Dios');
+        expect(fs.readFileSync(path.join(repo, 'ingredients', 'JON.usfm')).equals(jonBefore)).toBe(true);
+        expect(lastCommitMessage(abbrOf(name))).toBe('Add TIT (tC4)');
+        seen.onDisk = {
+          books: fs.readdirSync(path.join(repo, 'ingredients')).filter((f) => f.endsWith('.usfm')).sort(),
+          lastCommit: lastCommitMessage(abbrOf(name)),
+          jonUnchanged: true,
+        };
+      });
+      // The run's artifact: each row's verdict as the dialog showed it, and the books on disk after Add.
+      const artifactPath = testInfo.outputPath('j09-add-book-usfm.json');
+      fs.writeFileSync(artifactPath, `${JSON.stringify(seen, null, 2)}\n`);
+      await testInfo.attach('j09-add-book-usfm.json', { path: artifactPath, contentType: 'application/json' });
+    });
+
     // #485: an imported project's pin file is the EMPTY document, and a
     // checking-language change built on it used to journal a primary-only pin
     // state that no later checkpoint or open could project — the project was
