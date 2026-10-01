@@ -19,6 +19,7 @@ import {
   verseTextSpan,
   sideloadedIngredient,
   resetPlaces,
+  writePlace,
 } from './helpers/rig';
 
 const BOOK_IPATH = 'ingredients/TIT.usfm';
@@ -67,9 +68,11 @@ const verseLine = (usfm: string, verse: number): { start: number; end: number } 
 };
 
 // #329: a Home tile returns to where this client last worked; this journey opens
-// books from their tiles and states its own start (Translate, chapter 1).
+// books from their tiles and states its own start (Translate, chapter 1). With no
+// place, a tile opens in Understand (D87), so the start is written as a place.
 test.beforeEach(() => {
   resetPlaces();
+  writePlace(SEEDED_PROJECT, 'TIT', { mode: 'draft', chapter: 1 });
 });
 
 test.describe('J2 — a translator drafts a verse', () => {
