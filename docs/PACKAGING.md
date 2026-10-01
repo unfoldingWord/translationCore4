@@ -147,8 +147,10 @@ write calls. The user cannot change it.
   Door43 use it: sign-in (#203), repository creation and push (#362). Reads
   stay on production: the resource pins, the catalogue, the downloads, the
   picture packs and the discovery.
-- **Indicator:** a development build shows "QA server: qa.door43.org" beside
-  the save indicator. A packaged build shows nothing.
+- **Indicator:** a development build puts "qa.door43.org" before the
+  repository in the meta line of a shared project card: "Shared at
+  qa.door43.org/owner/repository". A packaged build shows "Shared at
+  owner/repository". The top bar shows no server label (#506).
 - **QA account:** the live share journey (#185) needs an account on
   `qa.door43.org`. The owner supplies it through a private channel. Until it
   exists, the live leg is a labelled skip.

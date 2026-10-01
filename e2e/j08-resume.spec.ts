@@ -369,7 +369,7 @@ test.describe('J8 — the Increment 4 journey: open, resume, and share a project
         expect(url).toBe(`https://qa.door43.org/${USER.username}/${SEEDED_PROJECT}`);
         // The card: "On Door43", the repository path, and Upload changes.
         await expect(page.getByTestId(`share-card-${id}`)).toHaveAttribute('data-shared', '1');
-        await expect(page.getByTestId(`share-state-${id}`)).toHaveText(`Shared at ${USER.username}/${SEEDED_PROJECT}`);
+        await expect(page.getByTestId(`share-state-${id}`)).toHaveText(`Shared at qa.door43.org/${USER.username}/${SEEDED_PROJECT}`);
         await expect(page.getByTestId(`share-${id}`)).toHaveText('Upload changes');
         // A share adds nothing to the project but the D9 checkpoint of pending work
         // (J11's end state): here the resources record the resume into Check wrote.

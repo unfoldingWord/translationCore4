@@ -9,6 +9,7 @@ import React, { useEffect, useState } from 'react';
 import { useApp } from '../state.jsx';
 import { t } from '../i18n';
 import { bookName } from '../data/bookNames';
+import { DCS_SERVER_LABEL } from '../data/dcsServer';
 import { Card, BookTile, Button, Overline, Badge, Callout, Toast } from '../ds/index.js';
 import { shareErrorText, Door43Account } from './modals/ShareDialog.jsx';
 
@@ -16,6 +17,18 @@ import { shareErrorText, Door43Account } from './modals/ShareDialog.jsx';
 const COLLAPSE_ABOVE = 12;
 
 const CARD_NOTE = { fontSize: 'var(--fs-meta)', letterSpacing: 'var(--track-11-5)', color: 'var(--text-tertiary)', fontWeight: 'var(--fw-medium)', whiteSpace: 'nowrap' };
+
+// #506: a development build puts the Door43 server name before the repository
+// when the repository is on that server. A packaged build has no label, so the
+// location is "owner/repository".
+const locationOf = (shared) => {
+  try {
+    if (DCS_SERVER_LABEL && new URL(shared.url).host === DCS_SERVER_LABEL) return `${DCS_SERVER_LABEL}/${shared.repository}`;
+  } catch {
+    // a remote that is not a URL: no server to name
+  }
+  return shared.repository;
+};
 
 // D86 point 6: the end of a card's meta line — "· Only on this computer"
 // before a share, "· Shared at owner/repository" after it; nothing until
@@ -28,7 +41,7 @@ function ShareMeta({ p }) {
     <>
       {' · '}
       <span data-testid={`share-state-${p.id}`}>
-        {shared ? t('home.sharedAt', { repository: shared.repository }) : t('home.onlyHere')}
+        {shared ? t('home.sharedAt', { location: locationOf(shared) }) : t('home.onlyHere')}
       </span>
     </>
   );

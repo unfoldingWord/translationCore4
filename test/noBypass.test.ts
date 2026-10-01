@@ -122,14 +122,14 @@ const DOOR43_ADAPTER = 'src/data/share/door43Api.ts';
 /** The Door43 API path prefix, and the Door43 hosts. */
 const DOOR43_API = '/api/v1/';
 const DOOR43_HOST = /door43\.org/;
-/** Files that may read DCS_SERVER: the adapter, and the QA label beside the save indicator. */
-const DCS_SERVER_READERS = new Set(['src/data/dcsServer.ts', DOOR43_ADAPTER, 'src/App.jsx']);
+/** Files that may read DCS_SERVER: its own module and the adapter. */
+const DCS_SERVER_READERS = new Set(['src/data/dcsServer.ts', DOOR43_ADAPTER]);
 
 describe('#362 one Door43 adapter', () => {
   const files = walk(SRC);
   const read = (file: string): string => fs.readFileSync(file, 'utf8');
 
-  it('the adapter exists, and only it (and the QA label) reads DCS_SERVER', () => {
+  it('the adapter exists, and only it reads DCS_SERVER', () => {
     expect(files.some((f) => rel(f) === DOOR43_ADAPTER)).toBe(true);
     const offenders = files.map(rel).filter((name, i) => !DCS_SERVER_READERS.has(name) && /\bDCS_SERVER\b/.test(read(files[i])));
     expect(offenders, `DCS_SERVER read outside the adapter:\n${offenders.join('\n')}`).toEqual([]);
