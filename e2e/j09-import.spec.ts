@@ -164,7 +164,7 @@ test.describe('J9 — a facilitator imports existing work', () => {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(tags) });
       });
 
-    test('tC3 offline: the review page shows what carries over; Use installed versions moves the decisions (D36); one new project that opens in Translate', { tag: ['@inc8', '@J9'] }, async ({ page }) => {
+    test('tC3 offline: the review page shows what carries over; Use installed versions moves the decisions (D36); one new project that opens in Understand (D87)', { tag: ['@inc8', '@J9'] }, async ({ page }) => {
       test.setTimeout(180_000);
       await setNet(false);
       const name = fresh('Tita tC3');
@@ -204,10 +204,12 @@ test.describe('J9 — a facilitator imports existing work', () => {
         expect(lastCommitMessage(abbrOf(name))).toBe(`Import ${name} (tC4)`);
         expect(git(repo, 'status', '--porcelain')).toBe('');
       });
-      await test.step('the new project opens in Translate at Titus with the imported text', async () => {
+      await test.step('the new project opens in Understand at Titus (D87); Translate shows the imported text', async () => {
         await page.goto('/');
         await page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`).getByRole('button', { name: /Titus/ }).click();
         await expect(page.getByRole('heading', { name: /^Titus \d+$/ })).toBeVisible({ timeout: 120_000 });
+        await expect(page.getByRole('tab', { name: 'Understand', exact: true })).toHaveAttribute('aria-selected', 'true');
+        await page.getByRole('tab', { name: 'Translate', exact: true }).click();
         await expect(page.getByText(/Pathian hril mipawlih zumnak/).first()).toBeVisible({ timeout: 60_000 });
         await expect(page.getByTestId('home-open-error')).toHaveCount(0);
       });
@@ -345,7 +347,7 @@ test.describe('J9 — a facilitator imports existing work', () => {
   });
 
   test.describe('USFM', () => {
-    test('USFM: one file is one new project — the book byte-identical, the harness format checks pass, it opens in Translate', { tag: ['@inc8', '@J9'] }, async ({ page }) => {
+    test('USFM: one file is one new project — the book byte-identical, the harness format checks pass, it opens in Understand (D87)', { tag: ['@inc8', '@J9'] }, async ({ page }) => {
       const name = fresh('Tito USFM');
       const source = path.join(MANIFEST_DIR, 'usfm', '57-TIT.usfm');
       const repo = rigRepo(abbrOf(name));
@@ -381,12 +383,13 @@ test.describe('J9 — a facilitator imports existing work', () => {
         const onDisk = [...tree(path.join(repo, 'ingredients')).keys()].filter((rel) => !rel.endsWith('.bak')).map((rel) => `ingredients/${rel}`).sort();
         expect(Object.keys(meta.ingredients).sort()).toEqual(onDisk);
       });
-      await test.step('the new project opens in Translate at Titus with the imported text', async () => {
+      await test.step('the new project opens in Understand at Titus (D87); Translate shows the imported text', async () => {
         await page.goto('/');
         await page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`).getByRole('button', { name: /Titus/ }).click();
         await expect(page.getByRole('heading', { name: /^Titus \d+$/ })).toBeVisible({ timeout: 120_000 });
+        await expect(page.getByRole('tab', { name: 'Understand', exact: true })).toHaveAttribute('aria-selected', 'true');
         const translate = page.getByRole('tab', { name: 'Translate', exact: true });
-        if ((await translate.getAttribute('aria-selected')) !== 'true') await translate.click();
+        await translate.click();
         await expect(translate).toHaveAttribute('aria-selected', 'true');
         await expect(page.getByText(/Pablo, siervo de Dios y apóstol de Jesucristo/).first()).toBeVisible({ timeout: 60_000 });
         await expect(page.getByTestId('home-open-error')).toHaveCount(0);

@@ -566,7 +566,7 @@ async function createTitusProject(page: Page, name: string): Promise<string> {
   await page.getByRole('button', { name: 'Start a blank book' }).click({ timeout: 20_000 });
   await page.getByLabel('Book', { exact: true }).selectOption('TIT');
   await page.getByRole('button', { name: 'Create book' }).click();
-  await expect(page.getByRole('button', { name: /^Draft section/ }).first()).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId('understand')).toBeVisible({ timeout: 20_000 }); // a new book opens in Understand (D87)
   const created = listLocalRepos().filter((r) => !before.includes(r));
   expect(created, 'exactly one new repo for the created project').toHaveLength(1);
   return created[0];

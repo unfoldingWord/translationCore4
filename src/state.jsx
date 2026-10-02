@@ -1796,7 +1796,10 @@ async function openObsStory({ storyNumber, resourcesOverride, context, stateRef,
   });
 }
 
-async function performProjectOpen(ctx, repoPath, bookCode) {
+/** #507 (D87): a project with no remembered place opens in Understand. The
+ * remembered-place opens (#329 Home tile, #268 Resume) pass 'draft' and then
+ * restore the mode, as before. */
+async function performProjectOpen(ctx, repoPath, bookCode, view = 'read') {
   const {
     openProjectSeqRef,
     schedulerRef,
@@ -1928,7 +1931,7 @@ async function performProjectOpen(ctx, repoPath, bookCode) {
       patch: {
         project: { ...summary, scriptDirection, textFont, repoPath },
         projectScope,
-        view: 'draft',
+        view,
         projectPins: null,
         projectPinsLoaded: false,
         projectPinsError: null,
@@ -5639,14 +5642,14 @@ export function AppProvider({ children }) {
 
       /** #329: open a book or a story from its Home tile and return to where the
        * user last worked in it: the mode, the chapter or story, the verse or
-       * frame, the Check tool. Never opened before: the plain open. */
+       * frame, the Check tool. Never opened before: the plain open (Understand, #507). */
       openProjectAt: async (repoPath, unit) => {
         const before = stateRef.current;
         const project = (before.projects || []).find((p) => p.id === repoPath);
         const story = project?.flavor === 'textStories';
         const key = placeKey(story ? { story: Number(unit) } : { book: unit });
         const place = key ? before.placeByProject?.[repoPath]?.[key] : undefined;
-        await a.openProject(repoPath, unit == null ? undefined : String(unit));
+        await a.openProject(repoPath, unit == null ? undefined : String(unit), place ? 'draft' : undefined);
         if (!place || stateRef.current.project?.repoPath !== repoPath) return;
         if (story) {
           if (place.verse != null) a.setStoryFrame(Number(place.verse));
@@ -5660,7 +5663,7 @@ export function AppProvider({ children }) {
         }
       },
 
-      openProject: (repoPath, bookCode) =>
+      openProject: (repoPath, bookCode, view) =>
         performProjectOpen(
           {
             openProjectSeqRef,
@@ -5686,6 +5689,7 @@ export function AppProvider({ children }) {
           },
           repoPath,
           bookCode,
+          view,
         ),
 
       /** Open one OBS story from the catalog returned by the project store. */
