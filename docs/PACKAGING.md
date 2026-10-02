@@ -83,11 +83,12 @@ every other Pankosmia desktop app).
 - **Mechanism:** the build patches the shipped
   `lib/templates/user_settings.json` so `repo_dir` is
   `%%HOMEDIR%%/pankosmia/tc4-projects` (debug: `…/tc4-projects-debug`). The
-  server substitutes `%%HOMEDIR%%` at first boot. The store sits BESIDE the
-  server working dir (`$HOME/pankosmia/tc4`), never inside it — pre-creating
-  anything inside the working dir before first boot makes the server skip
-  first-boot initialization and panic on the missing `app_state.json`
-  (measured while building this). The patch refuses to run if the upstream
+  launcher substitutes the shipped templates at first boot. The store sits
+  BESIDE the server working dir (`$HOME/pankosmia/tc4`). Pankosmia 0.18.5
+  initializes only when that working directory is absent: the launcher stages
+  both template JSON files, `blobs`, `temp` and the install records before
+  publishing a complete fresh profile (#528). Creating only `client_settings`
+  would make the server skip initialization and panic. The patch refuses to run if the upstream
   template's `repo_dir` shape changed (re-verify before building).
 - **Guard, not convention:** the smoke test reads the BOOTED app's resolved
   `user_settings.json` and FAILS the build when `repo_dir` contains
@@ -175,12 +176,13 @@ The same prelude derives the tC4 profile from the packaged product's
 that property through an atomic temporary-file publish. It preserves the
 project store, project bytes, unknown settings and every other preference. A
 malformed settings file fails explicitly and remains untouched. A fresh profile
-is left for the platform to initialize with the already-correct environment.
+is published from the platform's own shipped templates after installing the
+bundled resources and their records.
 
 The development rig and explicit external-server mode (`START_SERVER=false`)
-retain their caller-provided resource selector and profile. Linux keeps its
-shell-based first-run seeding; resource binding is shared by all three packaged
-OS entry points.
+retain their caller-provided resource selector and profile. Resource binding
+and bundled installation share the same bootstrap on all three packaged OS
+entry points, under Electron's singleton lock and before the server starts.
 
 The recipe follows the Pankosmia
 [desktop-app-template](https://github.com/pankosmia/desktop-app-template)
@@ -436,8 +438,9 @@ or Git installation.
 
 The project store is `%USERPROFILE%\pankosmia\tc4-projects` (#70); the server's
 working directory is `%USERPROFILE%\pankosmia\tc4`. The shared bootstrap runs
-under the singleton lock before server startup. It copies missing bundled
-resources atomically and preserves existing resources and user projects.
+under the singleton lock before server startup. It installs each distinct
+bundled revision atomically in its own full-SHA folder and preserves existing
+resources and user projects (#528).
 
 Close tC4 before reinstalling. To uninstall, use **Settings > Apps > Installed
 apps > translationCore4**. The uninstaller removes the application and its
@@ -590,6 +593,19 @@ boundary, verifies the Home listing, checkpoints and reopens it, and runs the fo
 verifier. Keeping the probes separate makes a stale platform template a hard failure
 instead of something a fixture rewrite could hide.
 
+Every post-install smoke also runs an upgrade leg in a separate disposable HOME,
+including Windows. The shipped `smoke-upgrade.cjs` uses real ULT v89 and TN v86
+Titus exports. It creates an old project through `JournalingStore`, stops the
+app, prepares the old canonical resource folders and records, and restarts the
+installed launcher. It checks that the old pinned ULT, unpinned TN and project
+bytes are preserved, the old project reopens with its old ULT pin, and current
+bundled releases have exact records and readable ingredients. It also verifies
+the production gateway selectors prefer the current suite. The logs include
+`bundled-upgrade-witness.json` with old tree hashes, old and new project pins,
+installation records, resolved paths and the disabled net gate. Browser journey
+`e2e/bundled-upgrade.spec.ts` creates a new offline Titus project after that
+upgrade and visits Translate, Understand and Check without Needs downloading.
+
 Records of runs live in `docs/evidence/` (one per close, machine, OS version, artifact id,
 commit, date): see "Evidence" below.
 ## The offline run (#43)
@@ -689,7 +705,7 @@ procedure's subject.
 | en_obs-tn | v13, sha `e86138ea13f619f09f7a6dcaa60592716d407fe4` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | en_obs-twl | v3, sha `44ebc9fafe8101665f985007d566f5036a2be85b` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | en_obs-tq | v10, sha `01b92fe8793d62cff3a2221f5174c768cbad3dc1` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
-| uW/obs_images_360 (#288, D75) | no tag; sha `7146d5b504f6b63b9e11f7dc0b18c594d0ae179d`, fetched as the commit archive and seeded at the identity-qualified path `uw--obs_images_360--7146d5b504f6` | `src/data/installedSuite.js`, `src/data/obsImages.ts`, `scripts/package-desktop.zsh` |
+| uW/obs_images_360 (#288, D75) | no tag; sha `7146d5b504f6b63b9e11f7dc0b18c594d0ae179d`, fetched as the commit archive and installed with its full-SHA suffix (#528) | `src/data/installedSuite.js`, `src/data/obsImages.ts`, `scripts/package-desktop.zsh` |
 | uW/en_ugl (#218, D71) | no tag; sha `d9d29e2d589258ce27f92b59f753a3af03ab7a72`, fetched as the commit archive `archive/<sha>.zip` and verified against the zip's archive comment | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | uW/en_uhl (#218, D71) | no tag; sha `72df5ac25acf9d51e826b20e3ad883a5a657ef4e`, same fetch path | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 
@@ -699,7 +715,31 @@ The eight `unfoldingWord` repos are fetched as the DCS sb-zip export `/sb/<tag>.
 
 ## Bundled English suite (#163, #218, #504)
 
-Per D70, D75 (and its #331 amendment), #163, #218 and #288, the desktop artifact bundles fifteen repos: the ten-resource English Bible suite, `en_obs`, `en_obs-tn`, `en_obs-twl`, `en_obs-tq`, and `uW/obs_images_360`. Translation Words and Translation Academy are shared by Bible and OBS sets. The unpacker stages normal resources at `<APPDIR>/resources/<owner lowercased>--<repo>/`. It stages the untagged default image pack at `uw--obs_images_360--7146d5b504f6`, so another installed revision of the same repository is neither replaced nor accepted as the pinned default. The launcher copies only missing directories into `$HOME/pankosmia/tc4-projects/_local_/_sideloaded_/` before the server starts. A second launch preserves every existing directory byte-for-byte.
+Per D70, D75 (and its #331 amendment), #163, #218 and #288, the desktop artifact bundles fifteen repos: the ten-resource English Bible suite, `en_obs`, `en_obs-tn`, `en_obs-twl`, `en_obs-tq`, and `uW/obs_images_360`. Translation Words and Translation Academy are shared by Bible and OBS sets. The unpacker stages normal resources at `<APPDIR>/resources/<owner lowercased>--<repo>/` and the untagged default image pack at `uw--obs_images_360--7146d5b504f6`.
+
+At each packaged start (#528), the shared bootstrap checks `BUILD-MANIFEST.json`
+against the bundled metadata's repo, full SHA and factual flavor, and verifies
+every declared ingredient's size and checksum for DCS exports. The three
+sha-only commit archives have authored metadata with no DCS identity; the
+lexicons' ingredient tables also omit payload files and have stale README
+checksums. Packaging preserves the fetcher's verified Gitea archive-comment
+identity in `.tc4-bundled-identity.json`, hashes every extracted file, and binds
+that receipt's SHA-256 in the build manifest. Startup verifies that complete
+tree, including metadata and otherwise unlisted payloads. A legacy archive
+copy is reused only with an exact saved identity or matching SHA-qualified
+path and a byte-identical verified tree. A distinct release is installed
+at `$HOME/pankosmia/tc4-projects/_local_/_sideloaded_/<owner lowercased>--<repo>--<full SHA>`.
+Copy staging is outside discovery, on the same filesystem, and published by a
+directory rename. A complete exact release already installed at a legacy,
+short-SHA or full-SHA path is reused at its actual path. The atomic
+`client_settings/uw-tc4.json` merge preserves other install records and preferences;
+a failed record write aborts startup, and retry reuses the published resource.
+Abandoned staging is removed on retry. Older releases remain byte-for-byte,
+including unpinned ones; the launcher neither scans project pins nor collects
+old releases. Existing project pins retain their exact identity, while current
+bundled identities win default selection for new projects regardless of folder
+or record order. A second launch with correct records makes no resource or
+install-record writes. Debug uses the same policy in its separate store.
 
 ### The release tags and the weekly check (#504)
 
