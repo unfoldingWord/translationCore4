@@ -116,8 +116,8 @@ let pendingAsk = null;
 /** D88: a permitted task that continues in a dialog (Share, Source texts)
  * stays open until that dialog closes — { kind, modals, release }. */
 let dialogTasks = [];
-/** D88: how many permitted tasks of each kind are open. */
-const openKinds = new Map();
+/** D88: how many steps of permitted tasks of each kind are running. */
+const runningKinds = new Map();
 /** The dialogs a Share or an Upload changes continues in, and Source texts. */
 const SHARE_MODALS = ['signIn', 'share'];
 const SOURCES_MODALS = ['sources'];
@@ -3464,13 +3464,13 @@ export function AppProvider({ children }) {
        * the internet" on, the "Use the internet?" dialog for `kind` opens first,
        * and Cancel drops the task: nothing is sent. Then the net gate must read
        * on (`gate: false` for a link the browser opens), or the task stops and
-       * says so. A task of the same kind that is still open (a dialog it
-       * continues in) does not ask again. `modals`: the dialogs the task
-       * continues in; it stays permitted until they close. Resolves to the
-       * task's result, or undefined when it did not run. */
+       * says so. Only the same task — one whose dialog is still open — goes on
+       * without asking; another task of the same kind asks. `modals`: the
+       * dialogs the task continues in; it stays permitted until they close.
+       * Resolves to the task's result, or undefined when it did not run. */
       internetTask: async (kind, run, { modals = null, gate = true } = {}) => {
-        const open = a.taskOpen(kind);
-        if (!open) {
+        const continuing = dialogTasks.some((task) => task.kind === kind);
+        if (!continuing) {
           if (stateRef.current.askInternet) {
             if (pendingAsk) return undefined;
             const go = await new Promise((resolve) => {
@@ -3484,26 +3484,25 @@ export function AppProvider({ children }) {
             return undefined;
           }
         }
-        return a.permitted(kind, run, open ? null : modals);
+        return a.permitted(kind, run, continuing ? null : modals);
       },
-      /** A step of a permitted task: requests may leave while it runs, and,
-       * with `modals`, while one of those dialogs stays open. */
+      /** A step of a permitted task: requests may leave while it runs — even
+       * after its dialog closes — and, with `modals`, while one of those
+       * dialogs stays open. */
       permitted: async (kind, run, modals = null) => {
         const release = consent.hold();
-        openKinds.set(kind, (openKinds.get(kind) ?? 0) + 1);
-        const done = () => {
-          release();
-          openKinds.set(kind, openKinds.get(kind) - 1);
-        };
+        runningKinds.set(kind, (runningKinds.get(kind) ?? 0) + 1);
         try {
           return await run();
         } finally {
-          if (modals?.includes(stateRef.current.modal)) dialogTasks.push({ kind, modals, release: done });
-          else done();
+          runningKinds.set(kind, runningKinds.get(kind) - 1);
+          release();
+          if (modals?.includes(stateRef.current.modal)) dialogTasks.push({ kind, modals, release: consent.hold() });
         }
       },
-      /** Whether a permitted task of this kind is running or its dialog is open. */
-      taskOpen: (kind) => (openKinds.get(kind) ?? 0) > 0,
+      /** Whether a step of a permitted task of this kind is running now: an
+       * action that re-enters itself inside its own task does not ask again. */
+      taskRunning: (kind) => (runningKinds.get(kind) ?? 0) > 0,
       /** The answer to the "Use the internet?" dialog. "Don't ask again" is
        * stored only with Continue. */
       confirmInternet: (dontAsk = false) => {
@@ -3717,7 +3716,7 @@ export function AppProvider({ children }) {
         const pins = st.projectPins;
         if (!pins?.languageSets) return null;
         // D88: part of the Source texts task; it asks when no such task is open.
-        if (!a.taskOpen('sources')) return (await a.internetTask('sources', () => a.checkForUpdates(), { modals: SOURCES_MODALS })) ?? null;
+        if (!a.taskRunning('sources')) return (await a.internetTask('sources', () => a.checkForUpdates(), { modals: SOURCES_MODALS })) ?? null;
         const offersFor = st.project?.repoPath ?? null;
         dispatch({ type: 'patchUpgrade', patch: { checking: true, error: null, offers: null, textOffers: null, offersFor } });
         try {
@@ -3763,7 +3762,7 @@ export function AppProvider({ children }) {
         if (!offer?.upgrades.length) return null;
         // D88: an offer can outlive the Source texts screen that found it, so
         // its install is part of that task again, and asks when none is open.
-        if (!a.taskOpen('sources')) return (await a.internetTask('sources', () => a.upgradeSet(rung), { modals: SOURCES_MODALS })) ?? null;
+        if (!a.taskRunning('sources')) return (await a.internetTask('sources', () => a.upgradeSet(rung), { modals: SOURCES_MODALS })) ?? null;
         return a.applyOffer(offer);
       },
 
@@ -3829,7 +3828,7 @@ export function AppProvider({ children }) {
         const st = stateRef.current;
         const offer = st.upgrade.textOffers?.find((o) => samePath(o.repoPath, textRepoPath));
         if (!store || !offer) return null;
-        if (!a.taskOpen('sources')) return (await a.internetTask('sources', () => a.upgradeText(textRepoPath), { modals: SOURCES_MODALS })) ?? null;
+        if (!a.taskRunning('sources')) return (await a.internetTask('sources', () => a.upgradeText(textRepoPath), { modals: SOURCES_MODALS })) ?? null;
         const repoPath = projectPathOf(st);
         const stillCurrent = () => storeRef.current === store && projectPathOf(stateRef.current) === repoPath;
         dispatch({ type: 'patchUpgrade', patch: { installing: offer.repoPath, error: null, progress: null } });
@@ -3923,7 +3922,7 @@ export function AppProvider({ children }) {
         const fix = stateRef.current.fix;
         if (!fix || fix.busy) return;
         const { id } = fix;
-        if (!a.taskOpen('fix')) return a.internetTask('fix', () => a.fixFetch());
+        if (!a.taskRunning('fix')) return a.internetTask('fix', () => a.fixFetch());
         a.patchFix(id, { busy: 'fetch', error: null, progress: t('sources.progress', { repo: fix.pin.repoPath.split('/').pop() }) });
         try {
           const local = new Set(await api.listLocalRepos());
@@ -4896,7 +4895,7 @@ export function AppProvider({ children }) {
         const chosen = src.rows.filter((r) => r.fixed || r.on);
         if (chosen.length === 0) return;
         // D88: part of the Source texts task; it asks when no such task is open.
-        if (!a.taskOpen('sources')) return a.internetTask('sources', () => a.downloadPackage(), { modals: SOURCES_MODALS });
+        if (!a.taskRunning('sources')) return a.internetTask('sources', () => a.downloadPackage(), { modals: SOURCES_MODALS });
         // M1 (adversarial round 13): the adoption finalizer runs AFTER long
         // downloads, and the modal stays closable meanwhile — bind the whole
         // operation to what was open when the user clicked Download.

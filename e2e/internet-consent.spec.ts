@@ -62,11 +62,15 @@ async function openTitus(page: Page): Promise<void> {
 async function openCheckTool(page: Page): Promise<string> {
   await page.getByRole('tab', { name: 'Check', exact: true }).click();
   const card = page.getByTestId('preflight-translationNotes');
+  const progress = page.getByTestId('check-progress');
+  // A reopened project resumes at its remembered place (D87), which can be inside the tool.
+  await expect(card.or(progress).first()).toBeVisible({ timeout: 60_000 });
+  if (await progress.isVisible()) return 'ready';
   await expect(card).toHaveAttribute('data-state', /ready|fetch/, { timeout: 60_000 });
   const state = (await card.getAttribute('data-state')) ?? '';
   if (state === 'ready') {
-    await page.getByTestId('open-translationNotes').click();
-    await expect(page.getByTestId('check-progress')).toBeVisible({ timeout: 60_000 });
+    await page.getByTestId('open-translationNotes').or(progress).first().click();
+    await expect(progress).toBeVisible({ timeout: 60_000 });
   }
   return state;
 }

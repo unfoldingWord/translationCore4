@@ -227,15 +227,22 @@ test.describe('J9 — a facilitator imports existing work', () => {
       });
     });
 
-    test('tC3 online: each version DCS has is a full pin; the project opens and the guided fix lists the en_tn v87 this computer lacks', { tag: ['@inc8', '@J9'] }, async ({ page }) => {
+    test('tC3 online: each version DCS has is a full pin; the project opens and the guided fix lists the en_tn v87 this computer lacks', { tag: ['@inc8', '@J9'] }, async ({ page }, testInfo) => {
       test.setTimeout(180_000);
       await setNet(true);
       await page.reload();
       await recordedDcsTags(page);
       const name = fresh('Tita tC3 online');
       const repo = rigRepo(abbrOf(name));
-      await test.step('the review page finds the versions; Import needs no choice', async () => {
+      await test.step('with asking off, the import up to its review page sends nothing (D88): the lookup waits for its click', async () => {
+        const requests = recordExternal(page);
         await importFixture(page, TIT, { kind: 'tc3', edits: { name }, confirm: false });
+        await expect(page.getByTestId('import-resources')).toHaveAttribute('data-state', 'offline');
+        await page.waitForTimeout(2_000);
+        expect(requests.external()).toEqual([]);
+        await requests.save(testInfo, 'j9-tc3-ask-off-requests');
+      });
+      await test.step('the review page finds the versions; Import needs no choice', async () => {
         await lookUp(page);
         await expect(page.getByTestId('import-resources')).toHaveAttribute('data-state', 'found');
         await expect(page.getByTestId('import-resources')).toContainText('unfoldingWord/en_tn v87');

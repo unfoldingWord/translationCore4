@@ -27,7 +27,7 @@ Owner of increment numbers: the GitHub milestones, mirrored in `docs/ROADMAP.md`
 |---|---|---|---|---|---|
 | J1 | facilitator | Start | Create a Bible project and add books | shipped alpha.1 | `e2e/j01-create-project.spec.ts` |
 | J2 | translator | Translate | Draft verses beside the sources | shipped alpha.1; revised end state (D70) shipped alpha.5 | `e2e/j02-draft-verse.spec.ts` |
-| J3 | facilitator | Start | Get pinned resources | shipped alpha.2 | `e2e/j03-get-resources.spec.ts`; the internet consent: `e2e/internet-consent.spec.ts` (`@internet-consent`) |
+| J3 | facilitator | Start | Get pinned resources | shipped alpha.2 | `e2e/j03-get-resources.spec.ts`; the Download consent: `e2e/guided-fix.spec.ts`; the request boundary: `e2e/internet-consent.spec.ts` (`@internet-consent`) |
 | J4 | translator | Check | Check a book with tN and tW | shipped alpha.2; revised end state (D72) shipped alpha.6 | `e2e/j04-check-book.spec.ts` |
 | J5 | translator | Check | Align a verse | shipped alpha.2; revised end state (D72) shipped alpha.6 | `e2e/j05-align-verse.spec.ts` |
 | J6 | translator | Translate | Edit a checked verse and see the checks flag | shipped alpha.2 | `e2e/j06-edit-invalidation.spec.ts` |
@@ -39,7 +39,7 @@ Owner of increment numbers: the GitHub milestones, mirrored in `docs/ROADMAP.md`
 | J9d | facilitator | Exchange | Import a Scripture Burrito as a new project | shipped rc.1 (shell #361, parser #196, refusals #41; D79) | `e2e/j09-import.spec.ts` (`@inc8 @J9`) |
 | J10 | — | — | retired: RTL is a fixture axis on J2, J4, J5, J7 | retired | both runs listed on each of those rows; `e2e/j10-rtl.spec.ts` stays until they exist |
 | J11 | facilitator | Exchange | Share the project to Door43 (first share pushes `main`) | shipped rc.1 (#362, #203, #366, #120, #185; D79, D84) | `e2e/j11-share.spec.ts` (`@inc85 @J11`; the live `qa.door43.org` leg a labelled skip without the QA credentials); the internet consent: `e2e/internet-consent.spec.ts` (`@internet-consent`) |
-| J12 | facilitator | Start | Upgrade the pinned resources | shipped alpha.6 (#256, #257; D72) | `e2e/j12-upgrade-resources.spec.ts`; the internet consent: `e2e/internet-consent.spec.ts` (`@internet-consent`) |
+| J12 | facilitator | Start | Upgrade the pinned resources | shipped alpha.6 (#256, #257; D72) | `e2e/j12-upgrade-resources.spec.ts` (with the consent of Check for updates) |
 | J13 | facilitator | Start | Change the gateway-language resource set | shipped alpha.2 | `e2e/j13-gateway-change.spec.ts` |
 | J14 | — | — | retired: isolation is a MUST NOT row on J1 and J2 | retired | `e2e/j14-join-isolation.spec.ts` stays |
 | J15 | — | — | retired: slow open is a quality requirement on opening a project | retired | `e2e/j15-slow-open.spec.ts` stays, cited by a FR |
@@ -102,7 +102,8 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   its missing state. Download is always offered. While "Ask before using the internet" is on, it
   asks first with the "Use the internet?" dialog, and Cancel sends nothing (D88 points 2 and 6).
 - Proof: `e2e/j03-get-resources.spec.ts` (installed state, pins, offline, missing states);
-  `e2e/internet-consent.spec.ts` (the dialog, Cancel, and the Download task);
+  `e2e/guided-fix.spec.ts` (the dialog and Cancel of Download); `e2e/internet-consent.spec.ts` (the
+  request boundary);
   `test/resourceFetch.test.ts` (download and sha verification). Pending: a proof that text
   ingredients are unchanged. Owner: shipped alpha.2.
 
@@ -254,8 +255,8 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   resource of the release is installed and sha-verified; let a help-set upgrade touch the
   original-language or gateway-Bible pins; let a scripture-text upgrade touch a decision, or a
   gateway-Bible upgrade touch an alignment.
-- Proof: `e2e/j12-upgrade-resources.spec.ts`; `e2e/internet-consent.spec.ts` (the consent of Check for
-  updates). Owner: shipped alpha.6 (#40: #256 built, #257
+- Proof: `e2e/j12-upgrade-resources.spec.ts` (with the consent of Check for updates: the dialog,
+  Cancel and Continue). Owner: shipped alpha.6 (#40: #256 built, #257
   proved); the scripture texts are #258 (Increment 8).
 
 ### J13 Change the gateway-language resource set
