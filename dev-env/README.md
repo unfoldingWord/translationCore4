@@ -299,8 +299,8 @@ from another checkout.
    ln -s <first checkout>/dev-env/server/target dev-env/server/target
    ```
 
-2. Seed the rig of the second worktree one time. The rig cannot start without a seeded
-   working directory, and Playwright starts the rig before global setup seeds it:
+2. Seed the rig of the second worktree one time. (`run.zsh` also seeds when
+   `dev-env/state/work` is missing.)
 
    ```bash
    zsh dev-env/scripts/seed.zsh
