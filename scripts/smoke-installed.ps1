@@ -148,7 +148,9 @@ try {
   $manifest = Get-Content -Raw -LiteralPath "$AppDir\BUILD-MANIFEST.json" | ConvertFrom-Json
   $leaf = if ($manifest.variant -eq 'debug') { 'tc4-projects-debug' } else { 'tc4-projects' }
   $store = Join-Path $SmokeHome "pankosmia\$leaf"
-  if ([IO.Path]::GetFullPath($settings.repo_dir) -ine $store) { throw "Wrong project store: $($settings.repo_dir)" }
+  # Resolve both existing directories: TEMP may use an 8.3 alias (RUNNER~1),
+  # while PowerShell spells the same profile directory with its long name.
+  if ((Resolve-Path -LiteralPath $settings.repo_dir).Path -ine (Resolve-Path -LiteralPath $store).Path) { throw "Wrong project store: $($settings.repo_dir)" }
   Write-Host "ok store: $store"
   Run-Steps source
   Run-Steps obs-image
