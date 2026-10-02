@@ -142,10 +142,14 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
 
   test('a. an old Internet choice, an invalid flag and an unreadable document do not turn asking off', TAG, async ({ page }) => {
     const write = async (settings: Record<string, unknown>) => {
+      // Keep the rest of the document (the seed's install records): only the preference changes.
+      const rest = { ...(readClientSettingsDoc() ?? {}) };
+      delete rest.internet;
+      delete rest.askInternet;
       const res = await fetch(`${RIG_API}/client-settings/uw-tc4`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ settings }),
+        body: JSON.stringify({ settings: { ...rest, ...settings } }),
       });
       expect(res.ok).toBe(true);
     };
@@ -473,7 +477,9 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
       test.setTimeout(180_000);
       await askInternet(ask);
       const recorder = recordExternal(page);
-      // A saved sign-in token must not change this, so the page holds a keychain with one.
+      // A saved sign-in token must not change this, so the page holds a keychain with one. The
+      // fake Door43 knows no token, so the Share step below never reaches the real server.
+      const fake = await fakeFor(page.context());
       await fakeKeychain(page.context(), 'kept-token');
       const localSession = async (label: string, first: boolean) => {
         if (first) await page.goto('/');
@@ -492,6 +498,7 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
 
       await localSession('before-task', true);
       expect(recorder.external(), 'before any permitted task').toEqual([]);
+      expect(fake.calls, 'a saved token sent nothing to Door43 before a task').toEqual([]);
       expect(await refusedOutsideATask(page)).toEqual([NO_CONSENT, NO_CONSENT]);
       expect(recorder.external()).toEqual([]);
       await recorder.save(testInfo, `e-before-task-ask-${ask ? 'on' : 'off'}`);
@@ -511,8 +518,10 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
       await expect(page.getByTestId('share-signin')).toHaveCount(0);
       expect(await gateOn(), 'the gate stays on for the session').toBe(true);
 
+      const callsAtTaskEnd = fake.calls.length;
       recorder.reset();
       await localSession('after-task', false);
+      expect(fake.calls.length, 'no Door43 call after the task closed').toBe(callsAtTaskEnd);
       expect(recorder.external(), 'after a permitted task, with the gate on').toEqual([]);
       expect(await refusedOutsideATask(page), 'consent ended with the task').toEqual([NO_CONSENT, NO_CONSENT]);
       expect(recorder.external()).toEqual([]);
