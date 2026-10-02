@@ -402,14 +402,13 @@ test.describe('J13 — changing the project’s checking language', () => {
       writeDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT', file);
 
       await openCheck(page);
-      // The fallback as the open project holds it: an open legally adopts the
-      // installed optional slots (D64), before the change is asked for.
       await openSettingsFromHome(page);
       await expect(page.getByTestId(`settings-gateway-${ES_KEY}`)).toBeVisible();
-      const fallbackBefore = identities((readProjectPins(SEEDED_PROJECT) as unknown as ResourcesOnDisk).languageSets.fallback);
       await page.getByTestId(`settings-gateway-${ES_KEY}`).click();
       await expect(page.getByTestId('gateway-change')).toBeVisible();
-      await expect(page.getByTestId('gateway-change')).toBeVisible();
+      // The fallback as the project holds it when the change is asked for: the open that the choice
+      // starts legally adopts the installed optional slots (D64), and it is done before the dialogue.
+      const fallbackBefore = identities((readProjectPins(SEEDED_PROJECT) as unknown as ResourcesOnDisk).languageSets.fallback);
       await confirmChange(page);
 
       // The primary rung moved; the English FALLBACK did not (D30.2).
