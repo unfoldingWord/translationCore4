@@ -48,7 +48,7 @@ async function closeMenu(page: Page): Promise<void> {
 /** A screenshot into the test's output folder, attached to the report. */
 async function shot(page: Page, testInfo: TestInfo, name: string): Promise<void> {
   const file = testInfo.outputPath(`${name}.png`);
-  await page.screenshot({ path: file });
+  await page.screenshot({ path: file, animations: 'disabled' });
   await testInfo.attach(name, { path: file, contentType: 'image/png' });
 }
 async function openTitus(page: Page): Promise<void> {

@@ -99,7 +99,10 @@ export default function AccountMenu() {
       <Layer open={open} level="popover" placement="anchor" anchorTo={ref} align="end"
         role="menu" label={label} dismiss="outside escape" onDismiss={() => setOpen(false)}>
         <Surface fill="card" border="line" radius="lg" elevation="hover" pad={6} data-testid="account-menu-panel">
-          <div ref={panel} onKeyDown={onKeyDown} style={{ display: 'flex', flexDirection: 'column', gap: 1, color: 'var(--text-body)' }}>
+          {/* The panel renders inside the dark top bar, so its rows would take the
+            * bar's white --fg; the card's own colours are set here. */}
+          <div ref={panel} onKeyDown={onKeyDown} style={{ display: 'flex', flexDirection: 'column', gap: 1, color: 'var(--text-body)',
+            '--fg': 'var(--text-body)', '--fg-muted': 'var(--text-secondary)', '--line': 'var(--border)' }}>
           {user && <Row testId="account-page" title={`@${user}`} sub={t('account.openPage')}
             onClick={choose(() => actions.openDoor43Page('profile', `${door43.server}/${encodeURIComponent(user)}`))} />}
           {saved && <Row testId="account-check" title={t('account.saved')} sub={t('account.savedCheck')}
