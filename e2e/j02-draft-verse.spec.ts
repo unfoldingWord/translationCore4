@@ -11,6 +11,7 @@ import path from 'node:path';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import { QA_SERVER, USER, dropOrigin, git } from './helpers/door43Share';
 import { recordExternal } from './helpers/externalRequests';
+import { lane } from './lane.mjs';
 import {
   SEEDED_PROJECT,
   TC4_ROOT,
@@ -514,7 +515,7 @@ test.describe('J2 — a translator drafts a verse', () => {
       // the fold runs in one — because Playwright reports a dedicated worker's requests
       // through the page, so the host assertion below covers what it talks to.
       const workers = [...workersBefore, ...(await page.evaluate(() => (window as unknown as { __workers: string[] }).__workers))];
-      const escaping = workers.filter((w) => !w.startsWith('Worker http://localhost:5199/'));
+      const escaping = workers.filter((w) => !w.startsWith(`Worker ${lane().clientOrigin}/`));
       expect(escaping, 'workers whose traffic the page cannot observe').toEqual([]);
       const serviceWorkers = await page.evaluate(() =>
         'serviceWorker' in navigator ? navigator.serviceWorker.getRegistrations().then((r) => r.length) : 0);

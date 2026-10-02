@@ -275,6 +275,47 @@ MSYS2 zsh window of the [Windows](#windows) section.
 
    To run one journey, give its tag, for example `npm run journeys -- --grep "@J1( |$)"`.
 
+## Run the journeys in two worktrees at the same time
+
+Each checkout has its own rig state (`dev-env/state/`). A port lane gives each checkout
+its own ports too (#524). Two variables name the lane:
+
+| Variable | Default | Used by |
+|---|---|---|
+| `TC4_RIG_PORT` | `19998` | `run.zsh`, the vite `/api` proxy, the journeys, `npm run prove`, and the rig-gated `npm test` suites |
+| `TC4_VITE_PORT` | `5199` | `npm run dev` and the journeys |
+
+With no variable set, nothing changes. When you set one or both variables, Playwright
+starts its own rig and its own vite on the lane ports, and stops them at the end. If a
+lane port is already in use, the run stops with an error. It does not use a server
+from another checkout.
+
+1. In the second worktree, link the rig parts from the first checkout. These links are
+   not tracked. Do not stage them:
+
+   ```bash
+   ln -s <first checkout>/dev-env/app-resources dev-env/app-resources
+   ln -s <first checkout>/dev-env/resources-cache dev-env/resources-cache
+   ln -s <first checkout>/dev-env/server/target dev-env/server/target
+   ```
+
+2. Seed the rig of the second worktree one time. The rig cannot start without a seeded
+   working directory, and Playwright starts the rig before global setup seeds it:
+
+   ```bash
+   zsh dev-env/scripts/seed.zsh
+   ```
+
+3. Run the journeys on ports that no other checkout uses:
+
+   ```bash
+   TC4_RIG_PORT=19999 TC4_VITE_PORT=5299 npm run journeys
+   ```
+
+Each lane uses one Playwright worker, as the default lane does.
+
+`stop.zsh` stops every rig on this computer, in all lanes.
+
 ## What is not in this directory
 
 `app-resources/`, `resources-cache/`, `state/`, `upstream/`, and `server/target/` are

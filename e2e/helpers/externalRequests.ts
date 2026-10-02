@@ -1,6 +1,6 @@
 // D88 (#514): one recorder for "did the client use the internet?". It watches a page for
 // every request and every WebSocket, and calls a request EXTERNAL when it
-//   - goes to any host other than the dev client (localhost:5199, which proxies /api to
+//   - goes to any host other than the dev client (localhost on the lane's vite port, which proxies /api to
 //     the rig), or
 //   - goes to the dev client on a platform route that makes the server use the
 //     internet: /api/gitea/... or /api/git/push/... (src/data/internet.ts OUTBOUND_ROUTES).
@@ -9,8 +9,9 @@
 // so each run leaves a repeatable artifact.
 import fs from 'node:fs';
 import type { Page, TestInfo } from '@playwright/test';
+import { lane } from '../lane.mjs';
 
-export const CLIENT_HOST = 'localhost:5199';
+export const CLIENT_HOST = lane().clientHost;
 const OUTBOUND_PATHS = ['/api/gitea/', '/api/git/push/'];
 
 export interface RecordedRequest {

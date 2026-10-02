@@ -4,12 +4,13 @@
 // verifier CI runs against fixture projects (src/data/journal/verify.ts).
 import { expect } from '@playwright/test';
 import { ServerApi } from '../../src/data/serverApi';
+import { lane } from '../lane.mjs';
 import {
   describeVerifierReport,
   verifyProjectAgainstJournal,
 } from '../../src/data/journal/verify';
 
-const RIG_API = 'http://127.0.0.1:19998/api';
+const RIG_API = lane().rigApi;
 
 /** Run the fold-compare verifier on every LOCAL project that carries a journal.
  * A project with derived files and NO journal is a pre-journal project the app

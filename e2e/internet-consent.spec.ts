@@ -24,6 +24,7 @@ import {
 } from './helpers/door43Share';
 import { recordExternal } from './helpers/externalRequests';
 import { verifyAllJournaledProjects } from './helpers/journal';
+import { lane } from './lane.mjs';
 
 const TAG = { tag: ['@internet-consent', '@inc85'] };
 const NO_CONSENT = 'tC4 has no permission to use the internet for this task';
@@ -585,7 +586,7 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
     const fake = await fakeFor(context, { tokens: ['kept-token'] });
     const keychain = await fakeKeychain(context, 'kept-token');
     // No network at all beyond the local server: any attempt fails and is recorded.
-    await context.route((url) => url.protocol.startsWith('http') && url.host !== 'localhost:5199', (route) => route.abort('internetdisconnected'));
+    await context.route((url) => url.protocol.startsWith('http') && url.host !== lane().clientHost, (route) => route.abort('internetdisconnected'));
     const recorder = recordExternal(page);
     await page.goto('/');
     await expect(trigger(page)).toHaveAttribute('data-state', 'saved');

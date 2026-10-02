@@ -12,10 +12,11 @@ import type { BrowserContext, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { FakeDoor43, type FakeDoor43Options } from './door43';
 import { TC4_ROOT, readClientSettingsDoc, rigRepo } from './rig';
+import { lane } from '../lane.mjs';
 
 /** The server a development build signs in to (src/data/dcsServer.ts, #120). */
 export const QA_SERVER = 'https://qa.door43.org';
-export const RIG_API = 'http://127.0.0.1:19998/api';
+export const RIG_API = lane().rigApi;
 export const RIG_STATE = path.join(TC4_ROOT, 'dev-env', 'state');
 /** D88 (#514): put "Ask before using the internet" the way the app leaves it, so a
  * page load or a reload starts in that state. `ask = false` stores
