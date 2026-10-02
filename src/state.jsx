@@ -116,8 +116,10 @@ let pendingAsk = null;
 /** D88: a permitted task that continues in a dialog (Share, Source texts)
  * stays open until that dialog closes — { kind, modals, release }. */
 let dialogTasks = [];
-/** D88: how many steps of permitted tasks of each kind are running. */
-const runningKinds = new Map();
+/** D88: the argument an action passes itself when internetTask runs it, so
+ * that only its own permitted call skips the dialog — never a click, and
+ * never another task of the same kind. */
+const PERMITTED = Symbol('inside its permitted task');
 /** The dialogs a Share or an Upload changes continues in, and Source texts. */
 const SHARE_MODALS = ['signIn', 'share'];
 const SOURCES_MODALS = ['sources'];
@@ -3491,18 +3493,13 @@ export function AppProvider({ children }) {
        * dialogs stays open. */
       permitted: async (kind, run, modals = null) => {
         const release = consent.hold();
-        runningKinds.set(kind, (runningKinds.get(kind) ?? 0) + 1);
         try {
           return await run();
         } finally {
-          runningKinds.set(kind, runningKinds.get(kind) - 1);
           release();
           if (modals?.includes(stateRef.current.modal)) dialogTasks.push({ kind, modals, release: consent.hold() });
         }
       },
-      /** Whether a step of a permitted task of this kind is running now: an
-       * action that re-enters itself inside its own task does not ask again. */
-      taskRunning: (kind) => (runningKinds.get(kind) ?? 0) > 0,
       /** The answer to the "Use the internet?" dialog. "Don't ask again" is
        * stored only with Continue. */
       confirmInternet: (dontAsk = false) => {
@@ -3711,12 +3708,12 @@ export function AppProvider({ children }) {
       /** Ask DCS for the newest release of every repo each set pins, and
        * offer what differs from the pin — per set, on demand, online only
        * (D72 point 5). Nothing here writes: an offer is a fact on screen. */
-      checkForUpdates: async () => {
+      checkForUpdates: async (inside) => {
         const st = stateRef.current;
         const pins = st.projectPins;
         if (!pins?.languageSets) return null;
         // D88: part of the Source texts task; it asks when no such task is open.
-        if (!a.taskRunning('sources')) return (await a.internetTask('sources', () => a.checkForUpdates(), { modals: SOURCES_MODALS })) ?? null;
+        if (inside !== PERMITTED) return (await a.internetTask('sources', () => a.checkForUpdates(PERMITTED), { modals: SOURCES_MODALS })) ?? null;
         const offersFor = st.project?.repoPath ?? null;
         dispatch({ type: 'patchUpgrade', patch: { checking: true, error: null, offers: null, textOffers: null, offersFor } });
         try {
@@ -3756,13 +3753,13 @@ export function AppProvider({ children }) {
        * verified, all or nothing), then compute the D36 carry-over against
        * the new pins and open the confirmation. The pins move only in
        * confirmUpgrade, after the user has read the counts. */
-      upgradeSet: async (rung) => {
+      upgradeSet: async (rung, inside) => {
         const st = stateRef.current;
         const offer = st.upgrade.offers?.[rung];
         if (!offer?.upgrades.length) return null;
         // D88: an offer can outlive the Source texts screen that found it, so
         // its install is part of that task again, and asks when none is open.
-        if (!a.taskRunning('sources')) return (await a.internetTask('sources', () => a.upgradeSet(rung), { modals: SOURCES_MODALS })) ?? null;
+        if (inside !== PERMITTED) return (await a.internetTask('sources', () => a.upgradeSet(rung, PERMITTED), { modals: SOURCES_MODALS })) ?? null;
         return a.applyOffer(offer);
       },
 
@@ -3823,12 +3820,12 @@ export function AppProvider({ children }) {
        * verified), then plan the pin move and — for an original-language
        * text — the alignments it marks invalid (D72), and open the
        * confirmation with that count. The pins move only in confirmUpgrade. */
-      upgradeText: async (textRepoPath) => {
+      upgradeText: async (textRepoPath, inside) => {
         const store = storeRef.current;
         const st = stateRef.current;
         const offer = st.upgrade.textOffers?.find((o) => samePath(o.repoPath, textRepoPath));
         if (!store || !offer) return null;
-        if (!a.taskRunning('sources')) return (await a.internetTask('sources', () => a.upgradeText(textRepoPath), { modals: SOURCES_MODALS })) ?? null;
+        if (inside !== PERMITTED) return (await a.internetTask('sources', () => a.upgradeText(textRepoPath, PERMITTED), { modals: SOURCES_MODALS })) ?? null;
         const repoPath = projectPathOf(st);
         const stillCurrent = () => storeRef.current === store && projectPathOf(stateRef.current) === repoPath;
         dispatch({ type: 'patchUpgrade', patch: { installing: offer.repoPath, error: null, progress: null } });
@@ -3918,11 +3915,11 @@ export function AppProvider({ children }) {
 
       /** Fetch the pinned identity itself (sb-zip + D23b sha gate), through the
        * same install path a project-pin download takes. */
-      fixFetch: async () => {
+      fixFetch: async (inside) => {
         const fix = stateRef.current.fix;
         if (!fix || fix.busy) return;
         const { id } = fix;
-        if (!a.taskRunning('fix')) return a.internetTask('fix', () => a.fixFetch());
+        if (inside !== PERMITTED) return a.internetTask('fix', () => a.fixFetch(PERMITTED));
         a.patchFix(id, { busy: 'fetch', error: null, progress: t('sources.progress', { repo: fix.pin.repoPath.split('/').pop() }) });
         try {
           const local = new Set(await api.listLocalRepos());
@@ -4890,12 +4887,12 @@ export function AppProvider({ children }) {
        * that is already installed is skipped (the importer refuses an existing
        * target, PLATFORM-NOTES #26). Failures are reported per resource; a failure
        * never leaves a half-installed package silently behind. */
-      downloadPackage: async () => {
+      downloadPackage: async (inside) => {
         const src = stateRef.current.src;
         const chosen = src.rows.filter((r) => r.fixed || r.on);
         if (chosen.length === 0) return;
         // D88: part of the Source texts task; it asks when no such task is open.
-        if (!a.taskRunning('sources')) return a.internetTask('sources', () => a.downloadPackage(), { modals: SOURCES_MODALS });
+        if (inside !== PERMITTED) return a.internetTask('sources', () => a.downloadPackage(PERMITTED), { modals: SOURCES_MODALS });
         // M1 (adversarial round 13): the adoption finalizer runs AFTER long
         // downloads, and the modal stays closable meanwhile — bind the whole
         // operation to what was open when the user clicked Download.
