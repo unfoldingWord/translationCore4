@@ -639,7 +639,7 @@ between runs; it does not replace the run.
 | 7 | On the tool picker (`← All checking tools` first, if a tool is open), `Align`. Click one word in the bank, then one card. | The word moves into the card; the bank has one word fewer. If the screen reads "The original-language text is not on this computer", that is a new finding: file its issue. A missing lexicon entry (`en_ugl`, `en_uhl`; #218) is the known case. |
 | 8 | Leave the project (`Switch project`), then open Titus again from Home. Look at `Translate`; then at `Check` › Translation Notes and `Align` for each of steps 6 and 7 that you could do. | Home lists the project. The drafted verse is on screen. Each decision and alignment you made is still there: the progress line still counts the decision; the aligned word is still in its card. |
 | 9 | From rc.1 (Increment 8, J7): in Titus, mode tab `Check` (`← All checking tools` first, if a tool is open), then the `Community Checking` card, `Open →`. `Export` › `Export PDF`; save the file. Then `Export` › `Scripture Burrito (.zip)`; save the file. | Each export shows `Saved <file name>`, and the file is in the folder you chose. The PDF opens and shows the drafted verse. A failed or missing export is a new finding: file its issue. |
-| 9a | From rc.1 (Increment 8.5, J11): `Switch project`. On Home, look at the top bar, then click the `Share` action of the Titus card. | The top bar shows `Local`. The click opens the confirmation `tC4 is set to Local. Allow tC4 to use the internet for Share and downloads?`. Click `Cancel`: the dialog closes and nothing is sent. |
+| 9a | From rc.1 (Increment 8.5, J11): `Switch project`. On Home, look at the top bar, then click the `Share` action of the Titus card. | The top bar shows the account menu (a person icon) beside `Saved`. It shows no `Internet` or `Local`. The click opens the dialog `Use the internet?`. Click `Cancel`: the dialog closes and nothing is sent (D88). |
 | 9b | From alpha.7 (Increment 7, D74): on Home, `+ Add a project` › `New Open Bible Stories`: name, language, `Create stories →`. Open the story 1 tile: story 1 opens in `Understand`. Mode tab `Translate`: story 1 shows with the gateway text on the left. `Draft frame 1`, type, click outside the card. `Understand`; select frame 1. `Check` › Translation Notes › `Start checking`; pick one item; `✓ Mark valid`. | The gateway frame text and the picture of frame 1 show from the bundled `en_obs` and picture pack with the network off. The frame marker for frame 1 turns drafted. Understand lists the notes and word links of frame 1. The check item is decided. A missing picture or gateway story is a new finding: file its issue. |
 | 10 | Quit the app. Turn the network on again. | |
 
@@ -657,10 +657,10 @@ and the screen it broke). Paste the step lines into the pre-release notes.
 
 ### The regression check between runs
 
-`e2e/j02-draft-verse.spec.ts` carries the test "a drafting session in Local, with a restart,
-talks to no host but the local server (FR-31, #43; D86)". It records every request and every
-WebSocket the client opens while a project is opened in Local, a verse is drafted and the app
-starts again. It waits out the save's follow-up writes, checks that no service worker is
+`e2e/j02-draft-verse.spec.ts` carries the test "a drafting session, with a restart,
+uses no internet: every request goes to the local server (FR-31, #43; D88)". It records every request and every
+WebSocket the client opens while a project is opened, a verse is drafted and the app starts
+again, with no internet task. It waits out the save's follow-up writes, checks that no service worker is
 registered (a worker's requests would not be seen), and fails when any host outside the local
 server appears. Since #3 the test has no list of
 known defects: the fonts are part of the client. The check runs on the dev

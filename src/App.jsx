@@ -21,7 +21,7 @@ import ShareDialog from './views/modals/ShareDialog.jsx';
 import CommunityChecking from './views/CommunityChecking.jsx';
 import Understand from './views/Understand.jsx';
 import OpenProgress from './views/OpenProgress.jsx';
-import NetStatus, { NetDialog } from './views/NetStatus.jsx';
+import AccountMenu, { InternetDialog } from './views/AccountMenu.jsx';
 import { AppHeader, Switcher, StatusDot, Button, Callout } from './ds/index.js';
 import { t } from './i18n';
 
@@ -106,8 +106,8 @@ function TopBar() {
       ) : null}
       right={(
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <NetStatus />
           <SaveIndicator />
+          <AccountMenu />
         </div>
       )}
     />
@@ -137,7 +137,7 @@ export default function App() {
       <GuidedFix />
       <ShareSignIn />
       <ShareDialog />
-      <NetDialog />
+      <InternetDialog />
       <OpenProgress />
       <Inspector />
     </div>

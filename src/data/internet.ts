@@ -1,10 +1,15 @@
-// D86 (#486): the Internet / Local choice. The platform's net gate is the one
-// switch; this module decides where it starts and how it changes. The stored
-// choice is one flag in the per-client settings — `internet: true` — and its
-// absence is Local, so a new installation, a missing document and a document
-// that cannot be read all start as Local (D86 point 3).
+// D88 (#514): "Ask before using the internet". Consent is given to one user
+// task, never read from the platform's net gate. The gate is an internal
+// enforcement step: it is off at start, and the first permitted task turns it
+// on for the rest of the app session (owner ruling, 2026-10-02). The stored
+// preference is one flag in the per-client settings — `askInternet: false` —
+// and its absence is "ask", so a new installation, a missing document, a
+// document that cannot be read and an old Internet / Local choice all ask.
 
-export const INTERNET_KEY = 'internet';
+export const ASK_KEY = 'askInternet';
+
+/** The refusal text of a request made outside a permitted task. */
+export const NO_CONSENT = 'tC4 has no permission to use the internet for this task';
 
 /** The slice of ServerApi this module needs (a fake in the tests). */
 export interface NetGate {
@@ -13,15 +18,15 @@ export interface NetGate {
   disableNet(): Promise<void>;
 }
 
-/** The stored choice in a per-client settings document: Internet only when it says so. */
-export const storedInternet = (settings: Record<string, unknown> | null | undefined): boolean =>
-  settings?.[INTERNET_KEY] === true;
+/** The stored preference: ask, unless the document says `askInternet: false`. */
+export const storedAsk = (settings: Record<string, unknown> | null | undefined): boolean =>
+  settings?.[ASK_KEY] !== false;
 
-/** The settings document with the choice written in: Internet adds the flag, Local removes it. */
-export const withInternet = (settings: Record<string, unknown>, allowed: boolean): Record<string, unknown> => {
+/** The settings document with the preference written in: "ask" removes the flag. */
+export const withAsk = (settings: Record<string, unknown>, ask: boolean): Record<string, unknown> => {
   const rest = { ...settings };
-  delete rest[INTERNET_KEY];
-  return allowed ? { ...rest, [INTERNET_KEY]: true } : rest;
+  delete rest[ASK_KEY];
+  return ask ? rest : { ...rest, [ASK_KEY]: false };
 };
 
 /** The gate as the server reports it, or null when the read is not answered. */
@@ -33,72 +38,68 @@ const readGate = async (gate: NetGate): Promise<boolean | null> => {
   }
 };
 
-/** What tC4 may do now, and the i18n key of a gate that did not follow. */
-export interface InternetState {
-  allowed: boolean;
-  error: 'net.allowFailed' | 'net.localFailed' | null;
+/** At start the gate goes off (pankosmia-web 0.18.10 can start with it on).
+ * Nothing waits for it: no request leaves before a permitted task, and that
+ * task verifies the gate itself. */
+export async function startGate(gate: NetGate): Promise<void> {
+  try {
+    await gate.disableNet();
+  } catch {
+    /* the first permitted task reads the gate again */
+  }
 }
 
-/** D86 point 3, the barrier: tC4 may use the internet only when the choice is
- * Internet and the server reports the gate on. A Local choice is Local even
- * when the gate still reads on; that is said, never shown as Internet. */
-const barrier = (wanted: boolean, read: boolean | null): InternetState => {
-  if (wanted) return { allowed: read === true, error: read === true ? null : 'net.allowFailed' };
-  return { allowed: false, error: read === false ? null : 'net.localFailed' };
-};
-
-/** At start: a stored Internet turns the gate on; anything else turns it off
- * (pankosmia-web 0.18.10 can start with it on). A stored Internet whose gate
- * stays off keeps its stored choice, so the next start tries again. */
-export async function startInternet(gate: NetGate, readSettings: () => Promise<Record<string, unknown>>): Promise<InternetState> {
-  let wanted = false;
+/** Before a permitted task: true only when the server reports the gate on,
+ * read back after an enable. A gate that is already on is not changed. */
+export async function ensureGate(gate: NetGate): Promise<boolean> {
+  if ((await readGate(gate)) === true) return true;
   try {
-    wanted = storedInternet(await readSettings());
-  } catch {
-    wanted = false;
-  }
-  try {
-    await (wanted ? gate.enableNet() : gate.disableNet());
+    await gate.enableNet();
   } catch {
     /* the read below reports what the server holds */
   }
-  return barrier(wanted, await readGate(gate));
+  return (await readGate(gate)) === true;
 }
 
-/** A change the user asked for. Internet is stored only when the server
- * reports the gate on. Local is stored at once: the user's choice to stop
- * holds even when the gate does not turn off. A store failure keeps the
- * change for this session. */
-export async function changeInternet(
-  gate: NetGate,
-  wanted: boolean,
-  store: (allowed: boolean) => Promise<unknown>,
-): Promise<InternetState> {
-  if (!wanted) await store(false).catch(() => {});
-  try {
-    await (wanted ? gate.enableNet() : gate.disableNet());
-  } catch {
-    /* the read below reports what the server holds */
+/** The permitted tasks that are open now. A request may leave the computer
+ * only while one is open. */
+export class Consent {
+  private holds = 0;
+
+  active(): boolean {
+    return this.holds > 0;
   }
-  const result = barrier(wanted, await readGate(gate));
-  if (wanted && result.allowed) await store(true).catch(() => {});
-  return result;
+
+  /** Open a permitted task; the returned function closes it, once. */
+  hold(): () => void {
+    this.holds += 1;
+    let open = true;
+    return () => {
+      if (open) {
+        open = false;
+        this.holds -= 1;
+      }
+    };
+  }
 }
 
-/** The app state fields that show an internet action running (state.jsx). */
-interface BusyState {
-  shareCard?: Record<string, { busy?: boolean } | undefined>;
-  sh?: { busy?: boolean } | null;
-  src?: { dl?: string | null };
-  fix?: { busy?: unknown } | null;
-  upgrade?: { checking?: boolean; installing?: unknown };
-  im?: { versions?: { looking?: boolean } | null } | null;
-}
+/** The platform routes that make the server use the internet. */
+const OUTBOUND_ROUTES = ['/gitea/', '/git/push/'];
 
-/** D86 point 2: an action that uses the internet is running — a share or an
- * upload, a download, an update check or the import version lookup — so the
- * change to Local waits for it. */
-export const internetBusy = (st: BusyState): boolean =>
-  Object.values(st.shareCard ?? {}).some((card) => !!card?.busy) || !!st.sh?.busy
-  || st.src?.dl === 'run' || !!st.fix?.busy || !!st.upgrade?.checking || !!st.upgrade?.installing
-  || !!st.im?.versions?.looking;
+/** Whether a request needs a permitted task: any other origin, and the
+ * platform's own outbound routes. Every other local request is not internet. */
+export const needsConsent = (url: URL, origin: string, apiBase = '/api'): boolean =>
+  url.origin !== origin || OUTBOUND_ROUTES.some((route) => url.pathname.startsWith(`${apiBase}${route}`));
+
+const requestUrl = (input: RequestInfo | URL): string =>
+  typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+
+/** The one boundary for every request the client makes, direct or through
+ * the platform: outside a permitted task it is refused before it is sent. */
+export function guardFetch(fetchFn: typeof fetch, consent: Consent, origin: string): typeof fetch {
+  return ((input: RequestInfo | URL, init?: RequestInit) => {
+    if (needsConsent(new URL(requestUrl(input), origin), origin) && !consent.active())
+      return Promise.reject(new TypeError(NO_CONSENT));
+    return fetchFn(input, init);
+  }) as typeof fetch;
+}

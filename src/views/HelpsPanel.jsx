@@ -429,7 +429,7 @@ export function useLoadHelps() {
   const bookBytesReady = s.bookRaw != null;
   React.useEffect(() => {
     actions.loadUnderstand();
-  }, [s.book, bookBytesReady, s.projectPins, s.projectPinsLoaded, s.netEnabled, s.installEpoch]);
+  }, [s.book, bookBytesReady, s.projectPins, s.projectPinsLoaded, s.installEpoch]);
 }
 
 /** `comments` is Translate-only (#252): Understand writes those notes in its

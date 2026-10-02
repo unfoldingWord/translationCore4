@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import { QA_SERVER, USER, dropOrigin, git } from './helpers/door43Share';
+import { recordExternal } from './helpers/externalRequests';
 import {
   SEEDED_PROJECT,
   TC4_ROOT,
@@ -443,25 +444,18 @@ test.describe('J2 — a translator drafts a verse', () => {
   );
 
   test(
-    'a drafting session in Local, with a restart, talks to no host but the local server (FR-31, #43; D86)',
+    'a drafting session, with a restart, uses no internet: every request goes to the local server (FR-31, #43; D88)',
     { tag: ['@inc4', '@J2'] },
-    async ({ page }) => {
+    async ({ page }, testInfo) => {
       // Every request the client makes from the first paint through a saved draft.
       // The one local host is the dev client (baseURL), which proxies /api to the rig
       // (vite.config.js); everything else is a network dependency, and any other host
-      // fails the test. The fonts are local since #3. The session runs in Local, the
-      // default with no stored choice (D86 point 3), and includes a restart (#486).
+      // fails the test (the shared recorder, e2e/helpers/externalRequests.ts, also
+      // counts /api/gitea/ and /api/git/push/, the routes that make the server use the
+      // internet). The fonts are local since #3. The session runs with no stored
+      // choice, so "Ask before using the internet" is on (D88), and includes a restart.
       const OFFLINE_DRAFT = 'Recuérdales que estén dispuestos a toda buena obra.';
-      const hosts = new Map<string, Set<string>>();
-      const seen = (url: string, label = '') => {
-        const u = new URL(url);
-        if (!hosts.has(u.host)) hosts.set(u.host, new Set());
-        hosts.get(u.host)!.add(label + u.pathname);
-      };
-      page.on('request', (req) => seen(req.url()));
-      // Playwright's request event does not cover WebSockets; record them too (the dev
-      // client's HMR socket is local; a remote one would be a dependency).
-      page.on('websocket', (ws) => seen(ws.url(), 'ws:'));
+      const recorder = recordExternal(page);
       // A SharedWorker's requests bypass the page listeners (Playwright detaches
       // shared-worker targets), so every worker the client constructs is recorded and
       // judged below — only a dedicated same-origin worker is admitted.
@@ -480,7 +474,8 @@ test.describe('J2 — a translator drafts a verse', () => {
         }
       });
       await page.goto('/');
-      await expect(page.getByTestId('net-status')).toHaveAttribute('data-state', 'local');
+      // The account menu is there and signed out; nothing was asked or sent.
+      await expect(page.getByTestId('account-menu')).toHaveAttribute('data-state', 'out');
       await page.getByTestId('project-_local_/_local_/sample_burrito').getByRole('button', { name: /Titus/ }).click();
       await expect(page.getByText('an apostle of Jesus Christ')).toBeVisible({ timeout: 20_000 });
       await page.getByRole('button', { name: '3', exact: true }).click();
@@ -507,9 +502,9 @@ test.describe('J2 — a translator drafts a verse', () => {
         .toBe(OFFLINE_DRAFT);
       // The workers of the first app session, before the restart replaces the page's record.
       const workersBefore = await page.evaluate(() => (window as unknown as { __workers: string[] }).__workers);
-      // A restart: the app starts again in Local, with the draft kept.
+      // A restart: the app starts again, with the draft kept.
       await page.reload();
-      await expect(page.getByTestId('net-status')).toHaveAttribute('data-state', 'local');
+      await expect(page.getByTestId('account-menu')).toHaveAttribute('data-state', 'out');
       await expect(page.getByTestId('project-_local_/_local_/sample_burrito')).toBeVisible({ timeout: 20_000 });
       await page.waitForTimeout(1000);
       // No worker whose traffic could escape the page's request event: a SharedWorker or
@@ -525,13 +520,11 @@ test.describe('J2 — a translator drafts a verse', () => {
         'serviceWorker' in navigator ? navigator.serviceWorker.getRegistrations().then((r) => r.length) : 0);
       expect(serviceWorkers, 'service workers registered').toBe(0);
 
-      const local = new Set(['localhost:5199']);
-      const external = [...hosts.keys()].filter((h) => !local.has(h)).sort();
-      console.log(`J2 offline check: hosts contacted = ${[...hosts.keys()].sort().join(', ')}`);
-      for (const h of external) console.log(`  external ${h}: ${[...hosts.get(h)!].slice(0, 3).join(' ')}`);
-      expect(external, `hosts contacted other than the local server: ${external.join(', ')}`).toEqual([]);
+      const log = await recorder.save(testInfo, 'j2-external-requests');
+      console.log(`J2 offline check: ${recorder.all().length} requests, external = ${recorder.external().join(', ') || 'none'} (${log})`);
+      expect(recorder.external(), 'requests to anything but the local server').toEqual([]);
       // The rig was reached through the proxy: the session was a real one, not an empty page.
-      expect([...(hosts.get('localhost:5199') ?? [])].some((p) => p.startsWith('/api/'))).toBe(true);
+      expect(recorder.all().some((r) => r.path.startsWith('/api/'))).toBe(true);
     },
   );
 

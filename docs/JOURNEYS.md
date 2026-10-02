@@ -27,7 +27,7 @@ Owner of increment numbers: the GitHub milestones, mirrored in `docs/ROADMAP.md`
 |---|---|---|---|---|---|
 | J1 | facilitator | Start | Create a Bible project and add books | shipped alpha.1 | `e2e/j01-create-project.spec.ts` |
 | J2 | translator | Translate | Draft verses beside the sources | shipped alpha.1; revised end state (D70) shipped alpha.5 | `e2e/j02-draft-verse.spec.ts` |
-| J3 | facilitator | Start | Get pinned resources | shipped alpha.2 | `e2e/j03-get-resources.spec.ts` |
+| J3 | facilitator | Start | Get pinned resources | shipped alpha.2 | `e2e/j03-get-resources.spec.ts`; the Download consent: `e2e/guided-fix.spec.ts`; the request boundary: `e2e/internet-consent.spec.ts` (`@internet-consent`) |
 | J4 | translator | Check | Check a book with tN and tW | shipped alpha.2; revised end state (D72) shipped alpha.6 | `e2e/j04-check-book.spec.ts` |
 | J5 | translator | Check | Align a verse | shipped alpha.2; revised end state (D72) shipped alpha.6 | `e2e/j05-align-verse.spec.ts` |
 | J6 | translator | Translate | Edit a checked verse and see the checks flag | shipped alpha.2 | `e2e/j06-edit-invalidation.spec.ts` |
@@ -38,8 +38,8 @@ Owner of increment numbers: the GitHub milestones, mirrored in `docs/ROADMAP.md`
 | J9c | facilitator | Exchange | Import raw USFM as a new project | shipped rc.1 (shell #361, parser #195, refusals #41; D79) | `e2e/j09-import.spec.ts` (`@inc8 @J9`) |
 | J9d | facilitator | Exchange | Import a Scripture Burrito as a new project | shipped rc.1 (shell #361, parser #196, refusals #41; D79) | `e2e/j09-import.spec.ts` (`@inc8 @J9`) |
 | J10 | — | — | retired: RTL is a fixture axis on J2, J4, J5, J7 | retired | both runs listed on each of those rows; `e2e/j10-rtl.spec.ts` stays until they exist |
-| J11 | facilitator | Exchange | Share the project to Door43 (first share pushes `main`) | shipped rc.1 (#362, #203, #366, #120, #185; D79, D84) | `e2e/j11-share.spec.ts` (`@inc85 @J11`; the live `qa.door43.org` leg a labelled skip without the QA credentials) |
-| J12 | facilitator | Start | Upgrade the pinned resources | shipped alpha.6 (#256, #257; D72) | `e2e/j12-upgrade-resources.spec.ts` |
+| J11 | facilitator | Exchange | Share the project to Door43 (first share pushes `main`) | shipped rc.1 (#362, #203, #366, #120, #185; D79, D84) | `e2e/j11-share.spec.ts` (`@inc85 @J11`; the live `qa.door43.org` leg a labelled skip without the QA credentials); the internet consent: `e2e/internet-consent.spec.ts` (`@internet-consent`) |
+| J12 | facilitator | Start | Upgrade the pinned resources | shipped alpha.6 (#256, #257; D72) | `e2e/j12-upgrade-resources.spec.ts` (with the consent of Check for updates) |
 | J13 | facilitator | Start | Change the gateway-language resource set | shipped alpha.2 | `e2e/j13-gateway-change.spec.ts` |
 | J14 | — | — | retired: isolation is a MUST NOT row on J1 and J2 | retired | `e2e/j14-join-isolation.spec.ts` stays |
 | J15 | — | — | retired: slow open is a quality requirement on opening a project | retired | `e2e/j15-slow-open.spec.ts` stays, cited by a FR |
@@ -99,8 +99,11 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 - Steps: choose the gateway language · pick the resource set · download.
 - End state: §5.3 pins with `sha`, `repoPath`, and a `version` that is not `master`; the pinned
   resources are installed and match the pins; the helps open offline; a missing resource shows
-  its missing state.
+  its missing state. Download is always offered. While "Ask before using the internet" is on, it
+  asks first with the "Use the internet?" dialog, and Cancel sends nothing (D88 points 2 and 6).
 - Proof: `e2e/j03-get-resources.spec.ts` (installed state, pins, offline, missing states);
+  `e2e/guided-fix.spec.ts` (the dialog and Cancel of Download); `e2e/internet-consent.spec.ts` (the
+  request boundary);
   `test/resourceFetch.test.ts` (download and sha verification). Pending: a proof that text
   ingredients are unchanged. Owner: shipped alpha.2.
 
@@ -176,7 +179,9 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 - End state (a, c, d): one **new** project repository, valid Scripture Burrito at its first
   commit; imported segments carry `seed.source`; imported text byte-identical to the source
   text. Import never writes into an existing project in 4.0.0 (D79 point 7; the into-existing
-  flow with a conflict review is #365, 4.1.0).
+  flow with a conflict review is #365, 4.1.0). The tC3 import review does not look up resource
+  versions by itself: "Look up on Door43" is an explicit internet task, and it asks first while
+  "Ask before using the internet" is on (D88 point 5). A local import sends no external request.
 - MUST NOT (all): create a project or write anything on disk from damaged or incomplete input;
   leave a partial repository after a failed write (the shell deletes it).
 - Proof: `e2e/j09-import.spec.ts`, tags `@inc8 @J9`: one shell block (#361), one block per
@@ -189,8 +194,11 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   project card, D84).
 - Steps: press "Share on Door43" on the project card · sign in to Door43 with username and password,
   unless the session or the keychain has a token; "Stay signed in on this computer" keeps the
-  token in the operating-system keychain. Sign-in is only in Share: Home has no Door43 bar
-  (D86 point 7). A kept token is resumed at the first Share, not at app start (D86 point 8)
+  token in the operating-system keychain. Sign-in starts from Share or from "Sign in to Door43" on the account menu: Home has no Door43
+  bar (D86 point 7; D88 point 1). A kept token is resumed at the first Share, inside its one
+  internet task, not at app start (D86 point 8). While "Ask before using the internet" is on,
+  Share opens one "Use the internet?" dialog first, and that consent covers the saved sign-in,
+  the sign-in, the destinations and the reviewed upload (D88 point 2)
   · the share dialog shows "Sharing as @username · Change"; Change signs out and opens the
   sign-in step · read the author notice: the computer's account name
   is the author of each shared change, and Door43 shows it (D85; no name or email is asked or
@@ -207,19 +215,22 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   author is the computer's account name (PLATFORM-NOTES #47). The card shows an "On Door43" badge beside the project name, and its meta line ends with "· Shared at `owner/repository`" (in a development build, "· Shared at `qa.door43.org/owner/repository`" when the remote is on that server; #506) (before a share: "· Only on this computer"; D86 point 6). A later
   share ("Upload changes") pushes `main` again with no dialog when a token is available.
   Under Upload changes, the card shows "as @username · Change" when someone is signed in, or
-  "Signed in · Change" when a kept token is not resumed yet. At app start, tC4 sends no
-  request to Door43. The change to Local offers "Also sign out of Door43 on this computer"
-  when a token is kept; it is on by default, and it removes the kept token (D86 point 7).
+  "Signed in · Change" when a kept token is not resumed yet. At app start, and when the
+  account menu opens, tC4 sends no request to Door43. "Sign out of Door43" on the account menu
+  removes the session and the kept token with no request; a keychain that fails to forget is
+  reported (D88 point 1).
 - Refusals (each a `Report` code, nothing pushed): the name exists on the chosen account or
   organization; the push is not a fast-forward, because another device pushed (the message
   says team sync is coming and local work is safe); Door43 cannot be reached; sign-in failed;
-  the create was rejected. In Local, Share does not refuse: the click asks to allow the internet
-  first, and Cancel sends nothing (D86 point 4).
+  the create was rejected. Cancel on the "Use the internet?" dialog sends nothing and changes neither the
+  preference nor the sign-in (D88 point 2).
 - MUST NOT: create a publication branch or an outbox; integrate or receive; force-push; write
   the token anywhere except the operating-system keychain; place the token in a URL or a log;
   store the password; write anything into the project.
 - Proof: `e2e/j11-share.spec.ts`, tags `@inc85 @J11`. The live leg against `qa.door43.org`
   runs when the QA credentials are present and reports a labelled skip otherwise (#185).
+  `e2e/internet-consent.spec.ts`, tag `@internet-consent`, proves the internet consent of Share
+  (it replaces `e2e/internet-local.spec.ts`; D88).
 - Owner: shipped rc.1 (Increment 8.5; D79 point 12, D84, D85): #362 the share operation,
   #203 sign-in, #366 the keychain, #120 the Door43 authority, #185 the journey. Receive and
   team sync stay Phase 2 (D67; epic #24).
@@ -227,8 +238,9 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 ### J12 Upgrade the pinned resources
 
 - Actor: facilitator. Activity: Start (touches Check).
-- Precondition: J3; tC4 is set to Internet, or the user allows the internet when Check for
-  updates asks (D86 point 4).
+- Precondition: J3. Check for updates is an internet task: while "Ask before using the internet"
+  is on, it asks first, and one consent covers the Source texts screen until it closes (D88
+  point 2).
 - Steps: open Project Settings (the Settings button on the project card on Home) · Manage source
   texts (this opens the project first) · check for updates · see the offer per language set and
   per scripture text · accept explicitly · re-derive.
@@ -243,7 +255,8 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   resource of the release is installed and sha-verified; let a help-set upgrade touch the
   original-language or gateway-Bible pins; let a scripture-text upgrade touch a decision, or a
   gateway-Bible upgrade touch an alignment.
-- Proof: `e2e/j12-upgrade-resources.spec.ts`. Owner: shipped alpha.6 (#40: #256 built, #257
+- Proof: `e2e/j12-upgrade-resources.spec.ts` (with the consent of Check for updates: the dialog,
+  Cancel and Continue). Owner: shipped alpha.6 (#40: #256 built, #257
   proved); the scripture texts are #258 (Increment 8).
 
 ### J13 Change the gateway-language resource set

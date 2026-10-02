@@ -11,7 +11,7 @@
 import { test, expect } from './helpers/test';
 import type { Page } from '@playwright/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
-import { RIG_API, RIG_STATE, dropOrigin, fakeShare, filesHolding, git, head, makeBareRemote, shareFirstTime, USER, useInternet } from './helpers/door43Share';
+import { RIG_API, RIG_STATE, dropOrigin, fakeShare, filesHolding, git, head, makeBareRemote, shareFirstTime, USER, askInternet } from './helpers/door43Share';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -357,8 +357,9 @@ test.describe('J8 — the Increment 4 journey: open, resume, and share a project
     async ({ page, context }) => {
       test.setTimeout(120_000);
       const remote = makeBareRemote();
-      // The rig boots with the net gate off, and Share is disabled offline (J11 case 12).
-      await useInternet(true);
+      // D88 (#514): this journey runs with "Ask before using the internet" off; the
+      // consent dialog of a Share is covered by J11 case 12 and @internet-consent.
+      await askInternet(false);
       try {
         dropOrigin(SEEDED_PROJECT);
         const fake = await fakeShare(context, remote);
@@ -386,10 +387,10 @@ test.describe('J8 — the Increment 4 journey: open, resume, and share a project
         expect(filesHolding(RIG_STATE, token)).toEqual([]);
         expect(fs.readFileSync(path.join(rigRepo(SEEDED_PROJECT), '.git', 'config'), 'utf8')).not.toContain(token);
       } finally {
-        // Leave the seeded project as this test found it: unshared, offline.
+        // Leave the seeded project as this test found it: unshared, asking again.
         dropOrigin(SEEDED_PROJECT);
         remote.dispose();
-        await useInternet(false);
+        await askInternet(true);
       }
     },
   );

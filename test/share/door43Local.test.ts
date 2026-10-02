@@ -1,8 +1,10 @@
-// D86 point 4 (#486): in Local the Door43 adapter refuses every call before a
-// request is made. The adapter calls Door43 from the client, so the platform's
-// net gate does not cover it; this check is the only one.
+// D88 (#514): outside a permitted internet task the Door43 adapter refuses
+// every call before a request is made. The adapter calls Door43 from the
+// client, so the platform's net gate does not cover it; main.jsx's guardFetch
+// is the second check.
 import { describe, expect, it } from 'vitest';
 import { Door43Api, Door43ApiError } from '../../src/data/share/door43Api';
+import { NO_CONSENT } from '../../src/data/internet';
 
 const session = { username: 'tester', token: 'secret' };
 
@@ -19,7 +21,7 @@ const calls = (api: Door43Api): Array<[string, () => Promise<unknown>]> => [
 const ADAPTER_METHODS = Object.getOwnPropertyNames(Door43Api.prototype)
   .filter((name) => name !== 'constructor' && name !== 'request');
 
-describe('the Door43 adapter in Local', () => {
+describe('the Door43 adapter outside a permitted task', () => {
   it('the list below names every public adapter call', () => {
     const listed = calls(new Door43Api({ server: 'https://door43.invalid' })).map(([name]) => name);
     expect(listed.sort()).toEqual([...ADAPTER_METHODS].sort());
@@ -36,12 +38,12 @@ describe('the Door43 adapter in Local', () => {
       const error = await call().then(() => null, (e: unknown) => e);
       expect(error, name).toBeInstanceOf(Door43ApiError);
       expect((error as Door43ApiError).status, name).toBe(0);
-      expect((error as Error).message, name).toContain('tC4 is set to Local');
+      expect((error as Error).message, name).toContain(NO_CONSENT);
     }
     expect(seen).toEqual([]);
   });
 
-  it('control: with Internet allowed, the same call reaches fetch', async () => {
+  it('control: inside a permitted task, the same call reaches fetch', async () => {
     const seen: string[] = [];
     const api = new Door43Api({
       server: 'https://door43.invalid',

@@ -29,6 +29,7 @@ import { unzipSync, zipSync } from 'fflate';
 import type { ResourcePin } from './burritoStore';
 import { localRepoPathFromRepoPath } from './installed';
 import { ServerApi } from './serverApi';
+import { NO_CONSENT } from './internet';
 
 /** DCS serves the export cross-origin: a direct browser GET returns
  * `response.type === 'cors'` with a readable body [VERIFIED live 2026-08-03,
@@ -399,7 +400,7 @@ export const fetchAndInstallPin = async (
 
   // The user's offline switch governs, even though the GET is client-side.
   if (!(await opts.api.getNetEnabled())) {
-    throw new Error('tC4 is set to Local — allow the internet to download resources');
+    throw new Error(NO_CONSENT);
   }
 
   const downloaded = await downloadPin(pin, doFetch);

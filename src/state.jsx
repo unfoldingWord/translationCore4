@@ -56,7 +56,7 @@ import { runExport } from './data/export/kernel';
 import { runImport } from './data/import/shell';
 import { OpsLog, serialSettingsWriter } from './data/journal/opsLog';
 import { Door43Api } from './data/share/door43Api';
-import { changeInternet, internetBusy, startInternet, withInternet } from './data/internet';
+import { Consent, ensureGate, startGate, storedAsk, withAsk } from './data/internet';
 import { currentSession, hasKeptToken, resumeKeptSession, signIn as door43SignIn, signOut as door43SignOut } from './data/share/session';
 import { desktopKeychain } from './data/share/keychain';
 import { share as door43Share, repositoryOf } from './data/share/shareOperation';
@@ -72,6 +72,9 @@ const AppCtx = createContext(null);
 const STORAGE_ID = 'uw-tc4';
 /** A tC3 import's resource versions while the lookup runs (#21). */
 const LOOKING = { looking: true, found: {}, unresolved: [], offline: false, installed: null };
+/** D88: a tC3 import's resource versions before the user chooses the lookup:
+ * every slot unresolved, and the lookup offered. */
+const NOT_LOOKED_UP = (bundle) => ({ looking: false, found: {}, unresolved: unresolvedSlots(bundle.versions, {}), offline: true, installed: null });
 
 /** #94: release the fold worker of the store a ref holds, if any. */
 const disposeStore = (ref) => {
@@ -101,16 +104,25 @@ const settingsWriter = serialSettingsWriter(
 /** #374: the ops log — one record per store operation, in the same document. */
 export const opsLog = new OpsLog({ read: () => api.getClientSettings(STORAGE_ID), update: settingsWriter });
 /** #362/#203: the one Door43 adapter; its server is the build's `dcsServer`. */
-// D86 point 4: the gate as the server last reported it. The Door43 adapter
-// calls Door43 from the client, outside the platform gate, so it reads this
-// and refuses in Local. It starts false: Local until the server says otherwise.
-const internetGate = { allowed: false };
-export const door43 = new Door43Api({ allowed: () => internetGate.allowed });
-/** The barrier as the share and sign-in code asks for it (D86 point 3). */
-const internetAllowed = async () => internetGate.allowed;
-/** D86 point 4: the internet action a click in Local started; it runs after
- * Allow is confirmed, and is dropped on Cancel. */
-let pendingInternet = null;
+// D88 (#514): the permitted internet tasks that are open. main.jsx guards
+// every client request with it (guardFetch), and the Door43 adapter refuses
+// outside one before it builds a request.
+export const consent = new Consent();
+export const door43 = new Door43Api({ allowed: () => consent.active() });
+/** Whether a permitted task is open, as the share and sign-in code asks for it. */
+const internetAllowed = async () => consent.active();
+/** D88: the answer to the open "Use the internet?" dialog — true for Continue. */
+let pendingAsk = null;
+/** D88: a permitted task that continues in a dialog (Share, Source texts)
+ * stays open until that dialog closes — { kind, modals, release }. */
+let dialogTasks = [];
+/** D88: the argument an action passes itself when internetTask runs it, so
+ * that only its own permitted call skips the dialog — never a click, and
+ * never another task of the same kind. */
+const PERMITTED = Symbol('inside its permitted task');
+/** The dialogs a Share or an Upload changes continues in, and Source texts. */
+const SHARE_MODALS = ['signIn', 'share'];
+const SOURCES_MODALS = ['sources'];
 
 // The mode a view is, for a checkpoint message (#183). Views not listed keep their id.
 const MODE_NAME = { read: 'Understand', draft: 'Translate', check: 'Check', publish: 'Community Checking' };
@@ -380,8 +392,8 @@ const initial = () => ({
   si: null,
   door43User: null, // the signed-in Door43 login shown in Share and on a shared card, or null
   // D86 point 7: true while the keychain holds a token (read locally, not
-  // resumed yet), so a shared card shows "Signed in · Change" and the change
-  // to Local offers "Also sign out of Door43 on this computer".
+  // resumed yet), so a shared card shows "Signed in · Change" and the account
+  // menu shows "Sign-in saved on this computer" (D88).
   door43Kept: false,
   // #366: true when "Stay signed in" was asked and the token could not be kept
   // (a browser has no keychain bridge; a computer may have no keychain), so
@@ -411,10 +423,10 @@ const initial = () => ({
   checkableError: null, // catch-to-absence sweep: an identity-read outage, stated — never "no language checkable"
   preflightError: null, // catch-to-absence sweep: an identity-read outage on the Check preflight, stated
   gatewayError: null, // a failed gateway-change commit, shown in the dialogue
-  netEnabled: false, // mirrors the platform's net gate (GET /net/status)
-  netAsk: null, // D86: null | 'local' | 'internet' — the change dialog that is open
-  netChanging: null, // null | 'on' | 'off' — a change is running ("Turning…")
-  netError: null, // an i18n key: the gate did not change
+  askInternet: true, // D88: "Ask before using the internet" — on until the stored preference says off
+  netAsk: null, // D88: { kind } of the open "Use the internet?" dialog, or null
+  netFailed: false, // D88: a permitted task stopped because the net gate did not turn on
+  accountError: null, // D88: an i18n key the account menu shows — a sign-out or a saved-sign-in check that failed
   projectPins: null, // the open project's resources.json (§5.3 v2 shape)
   projectPinsSeq: 0, // #412: bumped by a gateway change, so an older pins read never lands over it
   projectPinsLoaded: false, // round 33: distinguishes pins LOADING (understand waits) from pins legally ABSENT (understand proceeds, slots unpinned)
@@ -2039,7 +2051,7 @@ async function performLoadStoryUnderstand(ctx) {
     const { installed, resolutionError } = await actions.resolutionContext();
     const slot = async (tool) => {
       if (resolutionError) return { state: 'error', error: t('understand.resolutionDown', { error: resolutionError }) };
-      const pre = preflightObsTool(st.projectPins, tool, { isLocal: (pin) => isPinLocal(installed, pin), online: st.netEnabled });
+      const pre = preflightObsTool(st.projectPins, tool, { isLocal: (pin) => isPinLocal(installed, pin), online: true });
       const pin = pre.resolution?.pin ?? null;
       const rung = pre.resolution?.rung ?? null;
       if (pre.state !== 'ready') return { state: pre.state === 'unpinned' ? 'none' : pre.state, pin, rung };
@@ -2558,12 +2570,12 @@ function unavailableHelpSlot(st, resolved, sets, slot, installed) {
   if (!resolved.pin) {
     const anyPin = sets.primary?.[slot] ?? sets.fallback?.[slot];
     if (anyPin && !isPinLocal(installed, anyPin))
-      return { state: st.netEnabled ? 'fetch' : 'unavailable', pin: anyPin };
+      return { state: 'fetch', pin: anyPin };
     return { state: 'none' };
   }
   if (!isPinLocal(installed, resolved.pin))
     return {
-      state: st.netEnabled ? 'fetch' : 'unavailable',
+      state: 'fetch',
       pin: resolved.pin,
       rung: resolved.rung,
     };
@@ -2624,7 +2636,7 @@ async function loadSimplifiedHelp({ store, st, book, coverage, installed, sets }
   const pin = resolved.pin ?? sets.primary?.simplifiedText ?? sets.fallback?.simplifiedText;
   if (!pin) return { state: 'none' };
   if (!isPinLocal(installed, pin))
-    return { state: st.netEnabled ? 'fetch' : 'unavailable', pin, rung: resolved.rung };
+    return { state: 'fetch', pin, rung: resolved.rung };
   // Round 36: the D41 warned fallback applies to the simplified text like
   // every other slot — English simplified text must never pass silently as
   // the project's primary gateway language.
@@ -2854,7 +2866,9 @@ async function performRunPreflight({ stateRef, dispatch, actions }) {
     dispatch({ type: 'set', patch: { preflight: null, preflightError: resolutionError } });
     return null;
   }
-  const online = st.netEnabled;
+  // D88: a missing pin is always a fetch — its Download asks before it uses
+  // the internet — so the D30.5 'unavailable' state is not shown.
+  const online = true;
   const out = {};
   for (const tool of Object.keys(TOOL_SLOT)) {
     out[tool] = st.project?.flavor === 'textStories'
@@ -3011,14 +3025,14 @@ export function AppProvider({ children }) {
     opsLog.recover(api)
       .catch((error) => console.error(`ops log: recovery failed: ${String(error?.message || error)}`))
       .finally(() => refreshProjects());
-    // D86 point 3: the stored choice sets the net gate at start — Internet
-    // turns it on, anything else (Local, no choice, a settings document that
-    // cannot be read) turns it off. The gate drives the D30.4/D30.5 split
-    // (Download vs first-class unavailable), so it is known from startup.
-    startInternet(api, () => api.getClientSettings(STORAGE_ID)).then(({ allowed, error }) => {
-      setNet(allowed);
-      if (error) dispatch({ type: 'set', patch: { netError: error } });
-    });
+    // D88: the net gate goes off at start; the first permitted task turns it
+    // on. The preference asks unless the settings say `askInternet: false`; a
+    // document that cannot be read keeps it on.
+    void startGate(api);
+    api.getClientSettings(STORAGE_ID).then(
+      (settings) => dispatch({ type: 'set', patch: { askInternet: storedAsk(settings) } }),
+      () => {},
+    );
     // D86 point 8: a kept token is not resumed at start (no Door43 request);
     // the first action that needs Door43 resumes it (startShare). The keychain
     // read is local, and only says that a sign-in is kept (D86 point 7).
@@ -3079,11 +3093,22 @@ export function AppProvider({ children }) {
   // lastUsed, lastEdit and the ops records can never clobber each other and a
   // slow earlier write can never land after a later one. The ops log reports
   // its own failed writes (#374); these records are session-only on failure.
-  /** The gate the server reported, for the adapter and for the screen. */
-  function setNet(netEnabled) {
-    internetGate.allowed = netEnabled;
-    dispatch({ type: 'set', patch: { netEnabled } });
+  /** D88: close the "Use the internet?" dialog with its answer. */
+  function answerAsk(go) {
+    const resolve = pendingAsk;
+    pendingAsk = null;
+    dispatch({ type: 'set', patch: { netAsk: null } });
+    resolve?.(go);
   }
+
+  // D88: a permitted task that continued in a dialog closes with that dialog.
+  useEffect(() => {
+    dialogTasks = dialogTasks.filter((task) => {
+      if (task.modals.includes(s.modal)) return true;
+      task.release();
+      return false;
+    });
+  }, [s.modal]);
 
   function updateClientSettings(mutate) {
     return settingsWriter(mutate).catch(() => {
@@ -3412,7 +3437,7 @@ export function AppProvider({ children }) {
         if (gateway) {
           dispatch({ type: 'patchSrc', patch: { gateway, rows: [], loading: false, error: null, dl: null } });
         }
-        await Promise.all([a.refreshNet(), a.refreshCheckable()]);
+        await a.refreshCheckable();
         if (gateway) await a.loadPackage(gateway, current.src.book);
       },
 
@@ -3437,68 +3462,69 @@ export function AppProvider({ children }) {
         return checkable;
       },
 
-      // The barrier (D86 point 3): a re-read can only lower the gate. Only the
-      // start and a confirmed change, which know the stored choice, raise it.
-      refreshNet: async () => {
+      /** D88: run one internet task the user asked for. With "Ask before using
+       * the internet" on, the "Use the internet?" dialog for `kind` opens first,
+       * and Cancel drops the task: nothing is sent. Then the net gate must read
+       * on (`gate: false` for a link the browser opens), or the task stops and
+       * says so. Only the same task — one whose dialog is still open — goes on
+       * without asking; another task of the same kind asks. `modals`: the
+       * dialogs the task continues in; it stays permitted until they close.
+       * Resolves to the task's result, or undefined when it did not run. */
+      internetTask: async (kind, run, { modals = null, gate = true } = {}) => {
+        const continuing = dialogTasks.some((task) => task.kind === kind);
+        if (!continuing) {
+          if (stateRef.current.askInternet) {
+            if (pendingAsk) return undefined;
+            const go = await new Promise((resolve) => {
+              pendingAsk = resolve;
+              dispatch({ type: 'set', patch: { netAsk: { kind }, netFailed: false } });
+            });
+            if (!go) return undefined;
+          }
+          if (gate && !(await ensureGate(api))) {
+            dispatch({ type: 'set', patch: { netFailed: true } });
+            return undefined;
+          }
+        }
+        return a.permitted(kind, run, continuing ? null : modals);
+      },
+      /** A step of a permitted task: requests may leave while it runs — even
+       * after its dialog closes — and, with `modals`, while one of those
+       * dialogs stays open. */
+      permitted: async (kind, run, modals = null) => {
+        const release = consent.hold();
         try {
-          setNet(internetGate.allowed && (await api.getNetEnabled()));
-        } catch {
-          setNet(false);
+          return await run();
+        } finally {
+          release();
+          if (modals?.includes(stateRef.current.modal)) dialogTasks.push({ kind, modals, release: consent.hold() });
         }
       },
-
-      /** D86 point 2: open the change dialog — to Local from Internet, or the
-       * Allow confirmation from Local. Opening it changes nothing. */
-      askInternet: (allowed) => {
-        const st = stateRef.current;
-        if (st.netChanging || (!allowed && internetBusy(st))) return;
-        dispatch({ type: 'set', patch: { netAsk: allowed ? 'internet' : 'local', netError: null } });
+      /** The answer to the "Use the internet?" dialog. "Don't ask again" is
+       * stored only with Continue. */
+      confirmInternet: (dontAsk = false) => {
+        if (dontAsk) a.setAskInternet(false);
+        answerAsk(true);
       },
-      cancelInternet: () => {
-        pendingInternet = null;
-        dispatch({ type: 'set', patch: { netAsk: null } });
+      cancelInternet: () => answerAsk(false),
+      closeNetFailed: () => dispatch({ type: 'set', patch: { netFailed: false } }),
+      /** The account menu's switch. It starts no request and resumes no task;
+       * a store failure keeps the change for this session. */
+      setAskInternet: (ask) => {
+        dispatch({ type: 'set', patch: { askInternet: ask } });
+        settingsWriter((cs) => withAsk(cs, ask)).catch(() => {});
       },
+      /** A Door43 page the user chose, in the browser: an internet task with no
+       * net gate, because the browser, not tC4, opens it. */
+      openDoor43Page: (kind, url) => a.internetTask(kind, () => {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }, { gate: false }),
 
-      /** D86 point 4: an internet action runs at once with Internet. In Local
-       * the click opens the Allow confirmation ("tC4 is set to Local."), and
-       * the action continues only after the server reports the gate on. */
-      requireInternet: (run) => {
-        if (internetGate.allowed) return run();
-        if (stateRef.current.netChanging) return undefined;
-        pendingInternet = run;
-        dispatch({ type: 'set', patch: { netAsk: 'internet', netError: null } });
-        return undefined;
-      },
-
-      /** D86 points 2 and 3: change the gate, show what the server reports, and
-       * store the choice only when the gate changed. `signOut` (D86 point 7):
-       * the change to Local also removes the kept sign-in, whether or not the
-       * gate turns off. */
-      setInternet: async (allowed, { signOut = false } = {}) => {
-        const st = stateRef.current;
-        if (st.netChanging || (!allowed && internetBusy(st))) return;
-        dispatch({ type: 'set', patch: { netAsk: null, netChanging: allowed ? 'on' : 'off', netError: null } });
-        // D86: a confirmed change to Local denies at once — the adapter, Share
-        // and Download — so no internet action starts while the gate turns off.
-        // The status shows "Turning…" until the server reports.
-        if (!allowed) setNet(false);
-        // A keychain that fails to forget must not stop the change to Local.
-        if (!allowed && signOut) await a.signOut().catch(() => {});
-        const result = await changeInternet(api, allowed,
-          (value) => settingsWriter((cs) => withInternet(cs, value)));
-        setNet(result.allowed);
-        dispatch({ type: 'set', patch: { netChanging: null, netError: result.error } });
-        const next = pendingInternet;
-        pendingInternet = null;
-        if (next && result.allowed) await next();
-      },
-
-      /** Source texts in Local: Allow internet, then read the catalogue again
-       * (D86 point 4). Never a side effect of opening a screen. */
-      allowSources: () => a.requireInternet(async () => {
+      /** Source texts: read the catalogue again after a Cancel. */
+      allowSources: async () => {
         const g = stateRef.current.src.gateway;
         if (g) await a.loadPackage(g, stateRef.current.src.book);
-      }),
+      },
 
       pickGateway: async (g) => {
         dispatch({ type: 'patchSrc', patch: { gateway: g, dl: null } });
@@ -3519,7 +3545,13 @@ export function AppProvider({ children }) {
       /** Ask the platform for the org's repos and build the package rows for
        * ONE book. Coverage is the catalog's own `book_codes` — no TSV scan. */
       loadPackage: async (g, book) => {
-        dispatch({ type: 'patchSrc', patch: { loading: true, error: null, rows: [] } });
+        // D88: reading the catalogue makes the platform call Door43, so it is
+        // the Source texts task; Cancel leaves the screen with its Continue.
+        const read = await a.internetTask('sources', () => a.readPackage(g, book), { modals: SOURCES_MODALS });
+        if (read === undefined) dispatch({ type: 'patchSrc', patch: { loading: false, rows: [], needsInternet: true } });
+      },
+      readPackage: async (g, book) => {
+        dispatch({ type: 'patchSrc', patch: { loading: true, error: null, rows: [], needsInternet: false } });
         try {
           const repos = await api.remoteRepos(DCS_HOST, g.org);
           const kind = stateRef.current.project?.flavor === 'textStories' ? 'obs' : 'bible';
@@ -3535,6 +3567,7 @@ export function AppProvider({ children }) {
             },
           });
         }
+        return true;
       },
 
       toggleSourceRow: (k) => {
@@ -3675,13 +3708,12 @@ export function AppProvider({ children }) {
       /** Ask DCS for the newest release of every repo each set pins, and
        * offer what differs from the pin — per set, on demand, online only
        * (D72 point 5). Nothing here writes: an offer is a fact on screen. */
-      checkForUpdates: async () => {
+      checkForUpdates: async (inside) => {
         const st = stateRef.current;
         const pins = st.projectPins;
         if (!pins?.languageSets) return null;
-        // The gate, not render state: after Allow, `netEnabled` is still false
-        // until React renders, and the continuation would ask again forever.
-        if (!internetGate.allowed) return a.requireInternet(() => a.checkForUpdates()) ?? null;
+        // D88: part of the Source texts task; it asks when no such task is open.
+        if (inside !== PERMITTED) return (await a.internetTask('sources', () => a.checkForUpdates(PERMITTED), { modals: SOURCES_MODALS })) ?? null;
         const offersFor = st.project?.repoPath ?? null;
         dispatch({ type: 'patchUpgrade', patch: { checking: true, error: null, offers: null, textOffers: null, offersFor } });
         try {
@@ -3721,10 +3753,13 @@ export function AppProvider({ children }) {
        * verified, all or nothing), then compute the D36 carry-over against
        * the new pins and open the confirmation. The pins move only in
        * confirmUpgrade, after the user has read the counts. */
-      upgradeSet: async (rung) => {
+      upgradeSet: async (rung, inside) => {
         const st = stateRef.current;
         const offer = st.upgrade.offers?.[rung];
         if (!offer?.upgrades.length) return null;
+        // D88: an offer can outlive the Source texts screen that found it, so
+        // its install is part of that task again, and asks when none is open.
+        if (inside !== PERMITTED) return (await a.internetTask('sources', () => a.upgradeSet(rung, PERMITTED), { modals: SOURCES_MODALS })) ?? null;
         return a.applyOffer(offer);
       },
 
@@ -3785,7 +3820,10 @@ export function AppProvider({ children }) {
        * verified), then plan the pin move and — for an original-language
        * text — the alignments it marks invalid (D72), and open the
        * confirmation with that count. The pins move only in confirmUpgrade. */
-      upgradeText: async (textRepoPath) => {
+      /** D88: a text upgrade is part of the Source texts task; it asks when no such task is open. */
+      upgradeText: async (textRepoPath) =>
+        (await a.internetTask('sources', () => a.upgradeTextNow(textRepoPath), { modals: SOURCES_MODALS })) ?? null,
+      upgradeTextNow: async (textRepoPath) => {
         const store = storeRef.current;
         const st = stateRef.current;
         const offer = st.upgrade.textOffers?.find((o) => samePath(o.repoPath, textRepoPath));
@@ -3841,7 +3879,6 @@ export function AppProvider({ children }) {
         const st = stateRef.current;
         const pre = st.preflight?.[tool];
         if (!pre) return;
-        await a.refreshNet();
         const { installed, coverage, resolutionError } = await a.resolutionContext();
         // The pin to fix: what the preflight said it must fetch, else the pin it
         // resolved to, else — offline, with the pinned copy's coverage unknown
@@ -3880,11 +3917,11 @@ export function AppProvider({ children }) {
 
       /** Fetch the pinned identity itself (sb-zip + D23b sha gate), through the
        * same install path a project-pin download takes. */
-      fixFetch: async () => {
+      fixFetch: async (inside) => {
         const fix = stateRef.current.fix;
         if (!fix || fix.busy) return;
         const { id } = fix;
-        if (!internetGate.allowed) return a.requireInternet(() => a.fixFetch());
+        if (inside !== PERMITTED) return a.internetTask('fix', () => a.fixFetch(PERMITTED));
         a.patchFix(id, { busy: 'fetch', error: null, progress: t('sources.progress', { repo: fix.pin.repoPath.split('/').pop() }) });
         try {
           const local = new Set(await api.listLocalRepos());
@@ -4852,14 +4889,12 @@ export function AppProvider({ children }) {
        * that is already installed is skipped (the importer refuses an existing
        * target, PLATFORM-NOTES #26). Failures are reported per resource; a failure
        * never leaves a half-installed package silently behind. */
-      downloadPackage: async () => {
+      downloadPackage: async (inside) => {
         const src = stateRef.current.src;
         const chosen = src.rows.filter((r) => r.fixed || r.on);
         if (chosen.length === 0) return;
-        // D86: Local sends nothing; the click asks to allow the internet and
-        // continues after Allow. The latest-release lookup below calls Door43
-        // from the client, before fetchAndInstallPin checks the gate.
-        if (!internetGate.allowed) return a.requireInternet(() => a.downloadPackage());
+        // D88: part of the Source texts task; it asks when no such task is open.
+        if (inside !== PERMITTED) return a.internetTask('sources', () => a.downloadPackage(PERMITTED), { modals: SOURCES_MODALS });
         // M1 (adversarial round 13): the adoption finalizer runs AFTER long
         // downloads, and the modal stays closable meanwhile — bind the whole
         // operation to what was open when the user clicked Download.
@@ -4954,6 +4989,14 @@ export function AppProvider({ children }) {
       submitSignIn: async () => {
         const si = stateRef.current.si;
         if (!si || si.busy) return null;
+        // D88: in a Share the sign-in is a step of that permitted task; from the
+        // account menu it is a task of its own, and asks.
+        if (si.share) return a.permitted('share', () => a.signInNow(), SHARE_MODALS);
+        return (await a.internetTask('signIn', () => a.signInNow())) ?? null;
+      },
+      signInNow: async () => {
+        const si = stateRef.current.si;
+        if (!si || si.busy) return null;
         a.patchSi({ busy: true, error: null });
         const keychain = desktopKeychain() ?? undefined;
         const report = await door43SignIn(
@@ -4974,24 +5017,60 @@ export function AppProvider({ children }) {
         // browser, or a keychain that refused): the share dialog says so in one line.
         // A sign-in that is not kept forgot any earlier kept token (session.ts).
         dispatch({ type: 'set', patch: { door43User: report.facts.username, door43Kept: report.facts.kept, door43NotKept: si.stay && !report.facts.kept, modal: null, si: null } });
-        // #362: a Share pressed without a token continues here, with the token.
-        if (si.share) a.startShare(si.share);
+        // #362: a Share pressed without a token continues here, with the token,
+        // inside the same permitted task (D88).
+        if (si.share) await a.startShare(si.share);
         return report;
       },
-      /** Sign out: the token leaves memory and the keychain (#366). */
+      /** Sign out: the token leaves memory and the keychain (#366), with no
+       * request. A keychain that fails to forget is said, never hidden (D88):
+       * the sign-in then stays saved. True when nothing is left. */
       signOut: async () => {
-        await door43SignOut(desktopKeychain() ?? undefined);
-        dispatch({ type: 'set', patch: { door43User: null, door43Kept: false, door43NotKept: false } });
+        try {
+          await door43SignOut(desktopKeychain() ?? undefined);
+        } catch {
+          dispatch({ type: 'set', patch: { door43User: null, door43NotKept: false, accountError: 'account.signOutFailed' } });
+          return false;
+        }
+        dispatch({ type: 'set', patch: { door43User: null, door43Kept: false, door43NotKept: false, accountError: null } });
+        return true;
       },
       /** D86 point 7: "Change" in the share dialog or on a shared card signs out
        * and opens the sign-in step. From the dialog (`project`) the share then
        * continues; from a card nothing is uploaded that the user did not click.
-       * In Local the sign-in step asks to allow the internet first, and Cancel
-       * signs nothing out. */
-      changeSignIn: (project = null) => a.requireInternet(async () => {
+       * Neither step uses the internet: the sign-in asks when it is sent (D88). */
+      changeSignIn: async (project = null) => {
         await a.signOut();
         a.openSignIn(project);
+      },
+      /** D88: the account menu's "Sign-in saved on this computer": check it
+       * with Door43, as an internet task. */
+      checkSavedSignIn: () => a.internetTask('checkSignIn', async () => {
+        const outcome = await a.resumeKept();
+        // 'none': the keychain holds no token after all, so nothing is saved.
+        if (outcome === 'none') dispatch({ type: 'set', patch: { door43Kept: false } });
+        const error = { refused: 'account.savedRefused', unavailable: 'account.savedUnchecked' }[outcome];
+        if (error) dispatch({ type: 'set', patch: { accountError: error } });
       }),
+      /** D86 point 8: resume a kept token, inside a permitted task only. A
+       * refused one was forgotten, so the sign-in step asks the password again. */
+      resumeKept: async () => {
+        const keychain = desktopKeychain();
+        if (!keychain) return 'none';
+        const outcome = await resumeKeptSession({ door43, keychain, getNetEnabled: internetAllowed });
+        const session = currentSession();
+        if (session) dispatch({ type: 'set', patch: { door43User: session.username, accountError: null } });
+        // A resumed token is kept, even when the start's keychain read failed;
+        // a refused one was forgotten.
+        const kept = { resumed: true, refused: false }[outcome];
+        if (kept !== undefined) dispatch({ type: 'set', patch: { door43Kept: kept } });
+        return outcome;
+      },
+      /** D88: the Home card's Share or Upload changes — one internet task,
+       * whatever it needs: the saved sign-in, a sign-in, the destinations and
+       * the reviewed upload. */
+      shareProject: (project) => a.internetTask(stateRef.current.remoteByProject[project.id] ? 'upload' : 'share',
+        () => a.startShare(project), { modals: SHARE_MODALS }),
 
       // ---- Share (#362; D79 point 12, D84 points 1, 3, 4, 5). The operation is
       //      src/data/share/shareOperation.ts; the dialog is ShareDialog.jsx. ----
@@ -5020,18 +5099,9 @@ export function AppProvider({ children }) {
         let session = currentSession();
         if (!session) {
           // D86 point 8: a kept token resumes here, at the first action that
-          // needs Door43, never at start. A refused one was forgotten, so the
-          // sign-in step asks the password again.
-          const keychain = desktopKeychain();
-          if (keychain) {
-            const outcome = await resumeKeptSession({ door43, keychain, getNetEnabled: internetAllowed });
-            session = currentSession();
-            if (session) dispatch({ type: 'set', patch: { door43User: session.username } });
-            // A resumed token is kept, even when the start's keychain read failed;
-            // a refused one was forgotten.
-            const kept = { resumed: true, refused: false }[outcome];
-            if (kept !== undefined) dispatch({ type: 'set', patch: { door43Kept: kept } });
-          }
+          // needs Door43, never at start.
+          await a.resumeKept();
+          session = currentSession();
         }
         if (!session) {
           a.openSignIn(project);
@@ -5207,8 +5277,7 @@ export function AppProvider({ children }) {
           // No answer is null, not "no clash": the shell's own listing still refuses.
           const [bundle, existing] = await Promise.all([parser.parse(im.files), api.listLocalRepos().catch(() => null)]);
           const resolving = bundle.versions && !bundle.findings.some((f) => f.kind === 'damaged');
-          a.patchIm({ busy: false, step: 'review', bundle, existing, name: bundle.facts.name, lang: bundle.facts.language, license: bundle.licenseChoices ? null : (bundle.facts.license ?? ''), versions: resolving ? LOOKING : null });
-          if (resolving) await a.importResolveVersions(bundle);
+          a.patchIm({ busy: false, step: 'review', bundle, existing, name: bundle.facts.name, lang: bundle.facts.language, license: bundle.licenseChoices ? null : (bundle.facts.license ?? ''), versions: resolving ? NOT_LOOKED_UP(bundle) : null });
         } catch (e) {
           a.patchIm({ busy: false, error: String(e?.message || e) });
         }
@@ -5219,23 +5288,19 @@ export function AppProvider({ children }) {
       //      its sha. im.versions: { looking, found, unresolved, offline,
       //      installed: { base, derived, carried, invalidated } | null } ----
       importResolveVersions: async (bundle) => {
-        // The barrier (D86 point 3) and the server's gate. The status read also
-        // lets the review's own patch render before this one spreads `im`.
-        const reported = await api.getNetEnabled().catch(() => false);
-        const online = internetGate.allowed && reported;
+        // D88: only the permitted lookup the user chose runs this; an import is
+        // local work, so the review never looks up on its own (NOT_LOOKED_UP).
         // A lookup DCS did not answer leaves its slot unresolved; the other slots'
-        // shas stay. Such a failure offers "Allow internet" as Local does.
+        // shas stay. Such a failure offers the lookup again.
         let unanswered = false;
-        const found = online
-          ? await resolveVersions(bundle.versions, (repoPath, version) => releaseCommitSha(repoPath, version).catch(() => ((unanswered = true), undefined)))
-          : {};
-        const offline = !online || unanswered;
+        const found = await resolveVersions(bundle.versions, (repoPath, version) => releaseCommitSha(repoPath, version).catch(() => ((unanswered = true), undefined)));
+        const offline = unanswered;
         // The user may have gone back or started another review meanwhile: a result
         // belongs only to the review of the bundle it was looked up for.
         if (stateRef.current.im?.bundle !== bundle) return;
         a.patchIm({ versions: { looking: false, found, unresolved: unresolvedSlots(bundle.versions, found), offline, installed: null } });
       },
-      importGoOnline: () => a.requireInternet(async () => {
+      importGoOnline: () => a.internetTask('importVersions', async () => {
         a.patchIm({ versions: LOOKING });
         await a.importResolveVersions(stateRef.current.im.bundle);
       }),

@@ -85,9 +85,9 @@ function ShareAction({ p }) {
     : t(shared ? 'home.uploadChanges' : 'home.share');
   return (
     <div data-testid={`share-card-${p.id}`} data-shared={shared ? '1' : '0'} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
-      {/* D86 point 4: Share stays enabled in Local; the click asks to allow the internet. */}
+      {/* D88: Share and Upload changes are one internet task each; it asks first when the preference says so. */}
       <Button variant="outline" size="sm" data-testid={`share-${p.id}`} title={label}
-        disabled={busy} onClick={() => actions.requireInternet(() => actions.startShare(p))}>
+        disabled={busy} onClick={() => actions.shareProject(p)}>
         {label}
       </Button>
       <CardAccount p={p} shared={shared} />
