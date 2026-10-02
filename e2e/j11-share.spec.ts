@@ -79,7 +79,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       await expect(page.getByTestId(`share-${SEEDED_ID}`)).toBeVisible();
     });
 
-    test('0. Home has no Door43 bar, and the top bar has no Door43 item (D86 point 7)', { tag: ['@inc85', '@J11'] }, async ({ page }) => {
+    test('0. Home has no Door43 bar; the top bar has the account menu (D86 point 7, D88)', { tag: ['@inc85', '@J11'] }, async ({ page }) => {
       // D88 (#514): the account menu is the one Door43 item, at the right of the top bar.
       await expect(page.getByTestId('account-menu')).toBeVisible();
       await expect(page.getByTestId('door43-bar')).toHaveCount(0);
