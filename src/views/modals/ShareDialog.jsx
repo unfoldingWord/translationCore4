@@ -104,7 +104,7 @@ function DoneStep({ sh, actions }) {
         <Button variant="secondary" size="sm" onClick={actions.shareCopyLink} data-testid="share-copy">
           {sh.copied ? t('shareDialog.copied') : t('shareDialog.copyLink')}
         </Button>
-        <Button size="sm" href={url} target="_blank" rel="noreferrer" data-testid="share-open">{t('shareDialog.openOnDoor43')}</Button>
+        <Button size="sm" onClick={() => actions.openDoor43Page('repoLink', url)} data-testid="share-open">{t('shareDialog.openOnDoor43')}</Button>
       </div>
     </div>
   );

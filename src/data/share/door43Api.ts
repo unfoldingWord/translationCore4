@@ -32,6 +32,7 @@
 //   (`name`, `scopes`) → 201 `AccessToken` with `sha1`, the secret, shown
 //   once; 400 when the name is used already.
 import { DCS_SERVER } from '../dcsServer';
+import { NO_CONSENT } from '../internet';
 
 /** A signed-in Door43 user: the token is held in memory by #203, never here.
  * `username` is the account login (it goes into the permissions route), not
@@ -102,9 +103,9 @@ export interface Door43ApiInit {
   server?: string;
   /** Injectable fetch for the fake; defaults to the global fetch. */
   fetchFn?: typeof fetch;
-  /** D86 point 4: whether tC4 may use the internet now. False (Local) refuses
-   * every call before a request is made; the platform gate does not cover
-   * this module, because it calls Door43 from the client. */
+  /** D88: whether a permitted internet task is open. False refuses every
+   * call before a request is made; the platform gate does not cover this
+   * module, because it calls Door43 from the client. */
   allowed?: () => boolean;
 }
 
@@ -154,7 +155,7 @@ export class Door43Api {
       headers['Content-Type'] = 'application/json';
       request.body = JSON.stringify(init.body);
     }
-    if (!this.allowed()) throw new Door43ApiError(route, 0, 'tC4 is set to Local');
+    if (!this.allowed()) throw new Door43ApiError(route, 0, NO_CONSENT);
     let response: Response;
     try {
       response = await this.fetchFn(`${this.server}/api/v1${route}`, request);
