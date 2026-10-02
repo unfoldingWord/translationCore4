@@ -3820,12 +3820,14 @@ export function AppProvider({ children }) {
        * verified), then plan the pin move and — for an original-language
        * text — the alignments it marks invalid (D72), and open the
        * confirmation with that count. The pins move only in confirmUpgrade. */
-      upgradeText: async (textRepoPath, inside) => {
+      /** D88: a text upgrade is part of the Source texts task; it asks when no such task is open. */
+      upgradeText: async (textRepoPath) =>
+        (await a.internetTask('sources', () => a.upgradeTextNow(textRepoPath), { modals: SOURCES_MODALS })) ?? null,
+      upgradeTextNow: async (textRepoPath) => {
         const store = storeRef.current;
         const st = stateRef.current;
         const offer = st.upgrade.textOffers?.find((o) => samePath(o.repoPath, textRepoPath));
         if (!store || !offer) return null;
-        if (inside !== PERMITTED) return (await a.internetTask('sources', () => a.upgradeText(textRepoPath, PERMITTED), { modals: SOURCES_MODALS })) ?? null;
         const repoPath = projectPathOf(st);
         const stillCurrent = () => storeRef.current === store && projectPathOf(stateRef.current) === repoPath;
         dispatch({ type: 'patchUpgrade', patch: { installing: offer.repoPath, error: null, progress: null } });
