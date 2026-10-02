@@ -84,9 +84,20 @@ async function bundledPath(repoPath) {
   });
   if (!local) throw new Error("no installed record for " + repoPath + " at " + pin.sha);
   const metadata = JSON.parse(await getText("/api/burrito/metadata/raw/" + enc(local)));
-  if (!Object.entries(metadata.identification.primary.dcs).some(([name, value]) =>
+  const identities = Object.entries(metadata.identification.primary.dcs || {});
+  if (identities.length && !identities.some(([name, value]) =>
     ("git.door43.org/" + name).toLowerCase() === repoPath.toLowerCase() && value.revision === pin.sha))
-    throw new Error("installed metadata disagrees with manifest: " + local);
+    throw new Error("installed identity disagrees with manifest: " + local);
+  if (!identities.length) {
+    const segment = repoPath.replace('git.door43.org/', '').replace('/', '--').toLowerCase();
+    const source = fs.readdirSync(path.join(__dirname, 'resources')).find((name) => name === segment || name === `${segment}--${pin.sha.slice(0, 12)}`);
+    const receipt = fs.readFileSync(path.join(__dirname, 'resources', source || '', '.tc4-bundled-identity.json'));
+    const hash = (bytes) => require('node:crypto').createHash('sha256').update(bytes).digest('hex');
+    if (!pin.archive_receipt_sha256 || hash(receipt) !== pin.archive_receipt_sha256 || !localStore) throw new Error("unverified archive identity: " + local);
+    for (const [file, expected] of Object.entries(JSON.parse(receipt).files)) {
+      if (hash(fs.readFileSync(path.join(localStore, local, file))) !== expected.checksum.sha256) throw new Error("installed archive differs from its verified bundle: " + file);
+    }
+  }
   return local;
 }
 function obsTemplate(number) {

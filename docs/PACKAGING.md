@@ -719,7 +719,15 @@ Per D70, D75 (and its #331 amendment), #163, #218 and #288, the desktop artifact
 
 At each packaged start (#528), the shared bootstrap checks `BUILD-MANIFEST.json`
 against the bundled metadata's repo, full SHA and factual flavor, and verifies
-every declared ingredient's size and checksum. A distinct release is installed
+every declared ingredient's size and checksum for DCS exports. The three
+sha-only commit archives have authored metadata with no DCS identity; the
+lexicons' ingredient tables also omit payload files and have stale README
+checksums. Packaging preserves the fetcher's verified Gitea archive-comment
+identity in `.tc4-bundled-identity.json`, hashes every extracted file, and binds
+that receipt's SHA-256 in the build manifest. Startup verifies that complete
+tree, including metadata and otherwise unlisted payloads. A legacy archive
+copy is reused only with an exact saved identity or matching SHA-qualified
+path and a byte-identical verified tree. A distinct release is installed
 at `$HOME/pankosmia/tc4-projects/_local_/_sideloaded_/<owner lowercased>--<repo>--<full SHA>`.
 Copy staging is outside discovery, on the same filesystem, and published by a
 directory rename. A complete exact release already installed at a legacy,

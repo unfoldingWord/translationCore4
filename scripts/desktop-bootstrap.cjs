@@ -107,11 +107,35 @@ function readObject(file) {
   return value;
 }
 
-function resourceMetadata(directory, pin) {
+const ARCHIVE_RECEIPT = '.tc4-bundled-identity.json';
+
+function archiveProof(directory, pin) {
+  if (!pin.archive_receipt_sha256) return null;
+  const file = path.join(directory, ARCHIVE_RECEIPT);
+  const bytes = fs.readFileSync(file);
+  if (pin.version || createHash('sha256').update(bytes).digest('hex') !== pin.archive_receipt_sha256) throw new Error(`Archive receipt does not match manifest: ${directory}`);
+  const receipt = readObject(file);
+  if (receipt.repoPath !== pin.repoPath || receipt.sha !== pin.sha || !receipt.files?.['metadata.json']) throw new Error(`Archive receipt identity does not match manifest: ${directory}`);
+  return receipt;
+}
+
+function resourceMetadata(directory, pin, archive = null, recorded = null) {
   const meta = readObject(path.join(directory, 'metadata.json'));
   const entries = Object.entries(meta.identification?.primary?.dcs ?? {});
   if (!entries.some(([repo, value]) => `git.door43.org/${repo}`.toLowerCase() === pin.repoPath.toLowerCase() && value.revision === pin.sha)) {
-    throw new Error(`Resource revision does not match manifest: ${directory}`);
+    // Tagged exports must declare their DCS SHA. For commit archives the
+    // signed package's receipt preserves the fetcher's archive-comment proof.
+    let proven = false;
+    if (!entries.length && archive) {
+      if (fs.existsSync(path.join(directory, ARCHIVE_RECEIPT))) proven = !!archiveProof(directory, pin);
+      else if (recorded) proven = recorded.repoPath?.toLowerCase() === pin.repoPath.toLowerCase() && recorded.sha === pin.sha;
+      else {
+        const segment = pin.repoPath.replace('git.door43.org/', '').replace('/', '--').toLowerCase();
+        const name = path.basename(directory).toLowerCase();
+        proven = name === `${segment}--${pin.sha}` || name === `${segment}--${pin.sha.slice(0, 12)}`;
+      }
+    }
+    if (!proven) throw new Error(`Resource revision does not match manifest: ${directory}`);
   }
   const ft = meta.type?.flavorType;
   if (!ft?.name || !ft?.flavor?.name) throw new Error(`Resource has no factual flavor: ${directory}`);
@@ -186,18 +210,24 @@ function ensureBundledResources({ resourcesDir, home, storeLeaf, profileLeaf }) 
       const sourceEntry = sources.find((entry) => entry.name.toLowerCase() === segment || entry.name.toLowerCase() === `${segment}--${pin.sha.slice(0, 12)}`);
       if (!sourceEntry) throw new Error(`Bundled resource missing: ${pin.repoPath}`);
       const source = path.join(bundled, sourceEntry.name);
-      const { meta, flavor } = resourceMetadata(source, pin);
-      validateTree(source, meta.ingredients);
+      const archive = archiveProof(source, pin);
+      const { meta, flavor } = resourceMetadata(source, pin, archive);
+      // Authored archives can have stale ingredient sizes/checksums and omit
+      // payloads. Their verified complete-tree receipt is authoritative; DCS
+      // exports continue to use the export's own ingredient inventory.
+      const tree = archive ? archive.files : meta.ingredients;
+      validateTree(source, tree);
       let destination = path.join(local, `${segment}--${pin.sha}`);
       const candidates = fs.readdirSync(local, { withFileTypes: true }).filter((entry) => entry.isDirectory()).sort((a, b) => a.name.localeCompare(b.name));
       for (const entry of candidates) {
         const candidate = path.join(local, entry.name);
         // Metadata, not a possibly stale record, determines a reusable copy.
         let identity;
-        try { identity = resourceMetadata(candidate, pin); }
+        const recorded = installed[`_local_/_sideloaded_/${entry.name}`];
+        try { identity = resourceMetadata(candidate, pin, archive, recorded); }
         catch (error) { if (candidate === destination) throw error; continue; }
         if (identity.flavor !== flavor) throw new Error(`Resource flavor mismatch: ${candidate}`);
-        validateTree(candidate, meta.ingredients);
+        validateTree(candidate, tree);
         destination = candidate;
         break;
       }
@@ -205,8 +235,8 @@ function ensureBundledResources({ resourcesDir, home, storeLeaf, profileLeaf }) 
         const staging = path.join(stagingRoot, `${segment}--${pin.sha}`);
         fs.mkdirSync(stagingRoot, { recursive: true });
         fs.cpSync(source, staging, { recursive: true, errorOnExist: true, force: false });
-        resourceMetadata(staging, pin);
-        validateTree(staging, meta.ingredients);
+        resourceMetadata(staging, pin, archive);
+        validateTree(staging, tree);
         fs.renameSync(staging, destination);
       }
       const key = `_local_/_sideloaded_/${path.basename(destination)}`;

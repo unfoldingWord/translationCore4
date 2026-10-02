@@ -9,6 +9,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
+const { createHash } = require('node:crypto');
 const { bootstrap } = require('./desktop-bootstrap.cjs');
 
 const root = path.resolve(__dirname, '..');
@@ -54,6 +55,65 @@ function writeSettings(f, doc) {
   fs.mkdirSync(path.dirname(f.settings), { recursive: true });
   fs.writeFileSync(f.settings, JSON.stringify(doc));
 }
+
+// Additional failure inventory (CI): Gitea commit archives have no metadata
+// DCS revision; metadata omits lexicon payload files; a missing/wrong receipt
+// or a changed unlisted payload must never certify a revision. Provenance
+// comes from the real pinned archive and its build-time verified commit.
+async function archiveFixture(t) {
+  const f = fixture(t);
+  const { INSTALLED_SUITE } = await import('../src/data/installedSuite.js');
+  fs.rmSync(f.source, { recursive: true });
+  f.pin = { ...INSTALLED_SUITE.resources.lexicon.nt };
+  f.source = path.join(f.options.resourcesDir, 'resources/uw--en_ugl');
+  fs.mkdirSync(path.join(f.source, 'ingredients/content'), { recursive: true });
+  const input = path.join(root, 'test/fixtures/resources/en_ugl@d9d29e2d5892');
+  fs.copyFileSync(path.join(input, 'metadata.json'), path.join(f.source, 'metadata.json'));
+  fs.copyFileSync(path.join(input, 'README.md'), path.join(f.source, 'ingredients/README.md'));
+  fs.copyFileSync(path.join(input, '1.json'), path.join(f.source, 'ingredients/content/1.json'));
+  const tree = Object.fromEntries(fs.readdirSync(f.source, { recursive: true }).filter((name) => fs.statSync(path.join(f.source, name)).isFile()).sort().map((name) => {
+    const bytes = fs.readFileSync(path.join(f.source, name));
+    return [name.split(path.sep).join('/'), { size: bytes.length, checksum: { sha256: createHash('sha256').update(bytes).digest('hex') } }];
+  }));
+  const receipt = JSON.stringify({ repoPath: f.pin.repoPath, sha: f.pin.sha, files: tree });
+  fs.writeFileSync(path.join(f.source, '.tc4-bundled-identity.json'), receipt);
+  const manifestPin = { ...f.pin, version: null, archive_receipt_sha256: createHash('sha256').update(receipt).digest('hex') };
+  fs.writeFileSync(path.join(f.options.resourcesDir, 'BUILD-MANIFEST.json'), JSON.stringify({ bundled_resources: [manifestPin] }));
+  f.key = `_local_/_sideloaded_/uw--en_ugl--${f.pin.sha}`;
+  f.destination = path.join(f.store, f.key);
+  return f;
+}
+
+test('real commit archive without DCS metadata installs from a verified receipt, records no invented version, and reuses a recorded legacy copy', async (t) => {
+  const f = await archiveFixture(t);
+  const receiptFile = path.join(f.source, '.tc4-bundled-identity.json');
+  const receipt = fs.readFileSync(receiptFile);
+  fs.unlinkSync(receiptFile);
+  assert.throws(() => bootstrap(f.options), /receipt|manifest|ENOENT/); // negative control
+  fs.writeFileSync(receiptFile, receipt);
+  bootstrap(f.options);
+  assert.deepEqual(settingsAt(f).installedResources[f.key], f.pin);
+  assert.equal(fs.existsSync(path.join(f.destination, 'ingredients/content/1.json')), true);
+  const legacy = path.join(f.local, 'uw--en_ugl');
+  fs.renameSync(f.destination, legacy);
+  fs.unlinkSync(path.join(legacy, '.tc4-bundled-identity.json'));
+  writeSettings(f, { installedResources: { '_local_/_sideloaded_/uw--en_ugl': f.pin }, keep: true });
+  bootstrap(f.options);
+  assert.equal(fs.existsSync(f.destination), false);
+  assert.equal(fs.existsSync(path.join(legacy, '.tc4-bundled-identity.json')), false, 'legacy bytes must not be changed');
+  assert.equal(settingsAt(f).keep, true);
+});
+
+test('commit archive receipt and full payload hashes reject a changed unlisted lexicon ingredient', async (t) => {
+  const f = await archiveFixture(t);
+  const receipt = path.join(f.source, '.tc4-bundled-identity.json');
+  fs.appendFileSync(receipt, '\n');
+  assert.throws(() => bootstrap(f.options), /receipt|manifest/);
+  fs.writeFileSync(receipt, fs.readFileSync(receipt, 'utf8').trim());
+  bootstrap(f.options);
+  fs.appendFileSync(path.join(f.destination, 'ingredients/content/1.json'), '\n');
+  assert.throws(() => bootstrap(f.options), /size|checksum/);
+});
 
 test('upgrade preserves older pinned and unpinned releases and records the new exact revision', (t) => {
   const f = fixture(t);

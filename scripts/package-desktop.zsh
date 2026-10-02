@@ -258,6 +258,9 @@ for entry in "${BUNDLED_RESOURCES[@]}"; do
   rm -rf "$target"
   mkdir -p "$target"
   unzip -qq -o "$unwrapped" -d "$target"
+  if [ -z "$tag" ]; then
+    node "$REPO/scripts/resource-archive-receipt.cjs" "$(npath "$target")" "git.door43.org/$owner/$repo" "$sha" "$(npath "$unwrapped")" "$(npath "$REPO/dev-env/resources-cache/helps-provenance.json")"
+  fi
 done
 
 T="$BUILD/upstream/desktop-app-template"
@@ -408,7 +411,7 @@ cp "$PACK/Rocket.toml" "$APPDIR/Rocket.toml"
 
 # The launcher differs per OS in three places only: its filename, how it
 # finds its own directory, and how it invokes Electronite. The debug seeding
-# Linux keeps shell bootstrap; Mac and Windows bootstrap under tc4-main.js.
+# Every OS bootstraps under tc4-main.js.
 # The portable Windows batch file only starts Electron.
 write_windows_launcher() {
   # Bootstrap belongs to tc4-main.js so installed shortcuts and portable launches
@@ -522,7 +525,12 @@ for entry in "${BUNDLED_RESOURCES[@]}"; do
   zip_sha=$(sha256_of "$REPO/dev-env/resources-cache/$repo-$label-unwrapped.zip")
   # A sha-only pin has no version label (never invented): JSON null.
   if [ -n "$tag" ]; then version_json="\"$tag\""; else version_json="null"; fi
-  line="    { \"repoPath\": \"git.door43.org/$owner/$repo\", \"version\": $version_json, \"sha\": \"$sha\", \"zip_sha256\": \"$zip_sha\" }"
+  receipt_json=""
+  if [ -z "$tag" ]; then
+    receipt_sha=$(sha256_of "$APPDIR/resources/$seg/.tc4-bundled-identity.json")
+    receipt_json=", \"archive_receipt_sha256\": \"$receipt_sha\""
+  fi
+  line="    { \"repoPath\": \"git.door43.org/$owner/$repo\", \"version\": $version_json, \"sha\": \"$sha\", \"zip_sha256\": \"$zip_sha\"$receipt_json }"
   if [ -n "$BUNDLED_MANIFEST_ENTRIES" ]; then
     BUNDLED_MANIFEST_ENTRIES="$BUNDLED_MANIFEST_ENTRIES,
 $line"

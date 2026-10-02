@@ -40,6 +40,7 @@ on:
       - scripts/*mac*
       - scripts/*windows*
       - scripts/desktop-bootstrap*
+      - scripts/resource-archive-receipt.cjs
       - scripts/smoke-*
       - scripts/tc4.iss
       - branding/**
