@@ -2083,8 +2083,9 @@ choice as `internet: true` and gave the Door43 adapter a barrier that read that 
    The one consent of Share covers the check or resume of a saved sign-in, the sign-in, the load
    of the destinations, and the reviewed upload. The one consent of the Source texts screen
    covers its catalogue reads, Download, Check for updates and the upgrade installs, until the
-   screen closes. [PROPOSED — the owner has not yet confirmed this reading of "once for each user
-   task" for the Source texts screen.] Cancel sends nothing. It changes neither the preference nor
+   screen closes. A second Download, or a retry, in the same open screen does not ask again; the
+   next visit to the screen asks. [decided 2026-10-02 — owner ruling in the #514 session, chosen
+   over "each install asks" and "each action asks".] Cancel sends nothing. It changes neither the preference nor
    the sign-in. "Don’t ask again" is stored only with Continue. When the user turns the switch
    off, tC4 starts no request and resumes no task. (Amends D86 points 2 and 4.)
 3. **The stored preference.** tC4 stores `askInternet: false` in the per-client settings
