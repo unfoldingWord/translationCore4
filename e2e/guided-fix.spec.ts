@@ -15,7 +15,8 @@
 import { test, expect } from './helpers/test';
 import type { Page, BrowserContext } from '@playwright/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
-import { useInternet } from './helpers/door43Share';
+import { askInternet } from './helpers/door43Share';
+import { recordExternal } from './helpers/externalRequests';
 import fs from 'node:fs';
 import path from 'node:path';
 import { unzipSync, strFromU8 } from 'fflate';
@@ -77,8 +78,9 @@ async function mockDcs(context: BrowserContext, repo: string, tag: string) {
 
 const NEEDED: Array<[string, string]> = [['en_tn', 'v88'], ['en_tw', 'v90'], ['en_tw', SEEDED_TAG]];
 
-// D86: the stored choice and the gate together, as the app leaves them, so a page load keeps it.
-const setNet = (on: boolean) => useInternet(on);
+// D88: "Ask before using the internet" as the app leaves it, so a page load keeps it:
+// `setNet(true)` is the preference off (the task goes on without a dialog), `setNet(false)` is on.
+const setNet = (online: boolean) => askInternet(!online);
 
 async function openCheck(page: Page) {
   await page.goto('/');
@@ -103,8 +105,9 @@ test.describe('#9 — the guided fix screen for a pinned resource this computer 
   test(
     'offline, the screen refuses to download and re-pins to the installed version, with the D36 counts confirmed first',
     { tag: ['@inc6', '@J4'] },
-    async ({ page }) => {
+    async ({ page }, testInfo) => {
       await setNet(false);
+      const requests = recordExternal(page);
       const pins = PINS();
       const missing = missingPin('en_tw', 'v90');
       writeProjectPins(SEEDED_PROJECT, { ...pins, tw: missing });
@@ -112,16 +115,20 @@ test.describe('#9 — the guided fix screen for a pinned resource this computer 
 
       await openCheck(page);
       const card = page.getByTestId('preflight-translationWords');
-      await expect(card).toHaveAttribute('data-state', 'unavailable');
+      // D88: a missing pin is always a fetch; there is no separate offline state.
+      await expect(card).toHaveAttribute('data-state', 'fetch');
       await card.getByTestId('fix-translationWords').click();
       const screen = page.getByTestId('guided-fix');
       await expect(screen).toBeVisible();
       await expect(screen.getByTestId('fix-pin')).toContainText(missing.sha);
-      // 1 · Download stays enabled in Local; the click asks to allow the internet, and Cancel sends nothing (D86 point 4).
+      // 1 · Download asks first (ask on); Cancel sends nothing (D88).
       await screen.getByTestId('fix-fetch-go').click();
-      await expect(page.getByTestId('net-allow')).toContainText('tC4 is set to Local.');
+      await expect(page.getByTestId('net-ask')).toHaveAttribute('data-kind', 'fix');
+      await expect(page.getByTestId('net-confirm')).toHaveText('Download');
       await page.getByTestId('net-cancel').click();
-      await expect(page.getByTestId('net-status')).toHaveAttribute('data-state', 'local');
+      await expect(page.getByTestId('net-ask')).toHaveCount(0);
+      expect(requests.external(), 'Cancel sends nothing').toEqual([]);
+      await requests.save(testInfo, 'guided-fix-cancel-requests');
       // 2 · re-pin lists the installed release of the same repo.
       await expect(screen.getByTestId('fix-repin')).toHaveAttribute('data-candidates', '1');
       await screen.getByTestId(`fix-repin-${installed.sha!.slice(0, 12)}`).click();
@@ -193,7 +200,7 @@ test.describe('#9 — the guided fix screen for a pinned resource this computer 
 
       await openCheck(page);
       const card = page.getByTestId('preflight-translationWords');
-      await expect(card).toHaveAttribute('data-state', 'unavailable');
+      await expect(card).toHaveAttribute('data-state', 'fetch');
       await card.getByTestId('fix-translationWords').click();
       const screen = page.getByTestId('guided-fix');
 
@@ -204,7 +211,7 @@ test.describe('#9 — the guided fix screen for a pinned resource this computer 
       await expect(error).toContainText('not installed');
       await expect(error).toContainText(missing.sha.slice(0, 12));
       expect(fs.existsSync(installDir('en_tw'))).toBe(false);
-      await expect(card).toHaveAttribute('data-state', 'unavailable');
+      await expect(card).toHaveAttribute('data-state', 'fetch');
 
       // The pinned commit's export installs.
       await screen.getByTestId('fix-sideload-file').setInputFiles(zipPath('en_tw', 'v90'));

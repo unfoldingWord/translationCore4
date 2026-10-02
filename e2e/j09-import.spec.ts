@@ -19,7 +19,8 @@ import { captureDownload } from './helpers/export';
 import { importFixture } from './helpers/import';
 import { assertNoRepoCreated, MANIFEST_DIR, readManifest, seedEventsOf, TC3_DCS_TAGS } from '../test/helpers/import';
 import { SEEDED_PROJECT, lastCommitMessage, readDecisionFile, readProjectPins, rigRepo } from './helpers/rig';
-import { useInternet } from './helpers/door43Share';
+import { askInternet } from './helpers/door43Share';
+import { recordExternal } from './helpers/externalRequests';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CONFORMANCE = path.resolve(HERE, '..', 'conformance');
@@ -145,13 +146,19 @@ test.describe('J9 — a facilitator imports existing work', () => {
     const TIT = path.join(MANIFEST_DIR, 'tc3', 'cfm_fbt_tit_book.zip');
     const MULTI = ['jhn', 'job', 'luk'].map((b) => path.join(MANIFEST_DIR, 'tc3', 'multi', `en_kjv_${b}_book.zip`));
     const EN_TN_V87 = TC3_DCS_TAGS['git.door43.org/unfoldingWord/en_tn@v87'];
-    // D86: the stored choice and the gate together, as the app leaves them, so a reload keeps it.
-    const setNet = (on: boolean) => useInternet(on);
+    // D88: "Ask before using the internet" as the app leaves it, so a reload keeps it:
+    // `setNet(true)` is the preference off, `setNet(false)` is on.
+    const setNet = (online: boolean) => askInternet(!online);
+    // D88: the review never looks up versions on its own; with ask off, this press is the whole task.
+    const lookUp = (page: Page) => page.getByTestId('import-allow-internet').click();
     const onDisk = (repo: string) => [...tree(path.join(repo, 'ingredients'))].map(([rel, bytes]) => [rel, bytes.toString('utf8')] as [string, string]);
     /** Every repo pin of a resources.json carries its 40-hex sha (D58). */
     const everyPinHasSha = (text: string) => (text.match(/"repoPath"/g) ?? []).length === (text.match(/"sha": "[0-9a-f]{40}"/g) ?? []).length;
     test.afterEach(async () => {
       await setNet(true);
+    });
+    test.afterAll(async () => {
+      await askInternet(true);
     });
     /** The DCS tags listing, answered from the recorded tags (TC3_DCS_TAGS) so the journeys do not depend on the network. */
     const recordedDcsTags = (page: Page) =>
@@ -164,9 +171,10 @@ test.describe('J9 — a facilitator imports existing work', () => {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(tags) });
       });
 
-    test('tC3 offline: the review page shows what carries over; Use installed versions moves the decisions (D36); one new project that opens in Understand (D87)', { tag: ['@inc8', '@J9'] }, async ({ page }) => {
+    test('tC3 offline: the review page shows what carries over; Use installed versions moves the decisions (D36); one new project that opens in Understand (D87)', { tag: ['@inc8', '@J9'] }, async ({ page }, testInfo) => {
       test.setTimeout(180_000);
       await setNet(false);
+      const requests = recordExternal(page);
       const name = fresh('Tita tC3');
       const repo = rigRepo(abbrOf(name));
       await test.step('the review page: 46 verses, 0 aligned verses, 5 decisions, 0 contributors, the license from manifest.json', async () => {
@@ -204,6 +212,10 @@ test.describe('J9 — a facilitator imports existing work', () => {
         expect(lastCommitMessage(abbrOf(name))).toBe(`Import ${name} (tC4)`);
         expect(git(repo, 'status', '--porcelain')).toBe('');
       });
+      await test.step('D88: the whole import, with asking on, made no external request', async () => {
+        expect(requests.external()).toEqual([]);
+        await requests.save(testInfo, 'j9-tc3-offline-requests');
+      });
       await test.step('the new project opens in Understand at Titus (D87); Translate shows the imported text', async () => {
         await page.goto('/');
         await page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`).getByRole('button', { name: /Titus/ }).click();
@@ -217,11 +229,14 @@ test.describe('J9 — a facilitator imports existing work', () => {
 
     test('tC3 online: each version DCS has is a full pin; the project opens and the guided fix lists the en_tn v87 this computer lacks', { tag: ['@inc8', '@J9'] }, async ({ page }) => {
       test.setTimeout(180_000);
+      await setNet(true);
+      await page.reload();
       await recordedDcsTags(page);
       const name = fresh('Tita tC3 online');
       const repo = rigRepo(abbrOf(name));
       await test.step('the review page finds the versions; Import needs no choice', async () => {
         await importFixture(page, TIT, { kind: 'tc3', edits: { name }, confirm: false });
+        await lookUp(page);
         await expect(page.getByTestId('import-resources')).toHaveAttribute('data-state', 'found');
         await expect(page.getByTestId('import-resources')).toContainText('unfoldingWord/en_tn v87');
         await page.getByTestId('import-run').click();
@@ -239,7 +254,8 @@ test.describe('J9 — a facilitator imports existing work', () => {
         await page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`).getByRole('button', { name: /Titus/ }).click();
         await page.getByRole('tab', { name: 'Check', exact: true }).click();
         const card = page.getByTestId('preflight-translationNotes');
-        await expect(card).toHaveAttribute('data-state', 'unavailable', { timeout: 60_000 });
+        // D88: a missing pin is always a fetch; there is no separate offline state.
+        await expect(card).toHaveAttribute('data-state', 'fetch', { timeout: 60_000 });
         await card.getByTestId('fix-translationNotes').click();
         const screen = page.getByTestId('guided-fix');
         await expect(screen).toBeVisible();
@@ -249,10 +265,13 @@ test.describe('J9 — a facilitator imports existing work', () => {
 
     test('tC3 online, mixed: the found pins stay named when translationWords moves to the installed versions, and they are stored', { tag: ['@inc8', '@J9'] }, async ({ page }) => {
       test.setTimeout(300_000);
+      await setNet(true);
+      await page.reload();
       await recordedDcsTags(page);
       const name = fresh('KJV tC3 mixed');
       await importFixture(page, MULTI, { kind: 'tc3', edits: { name }, confirm: false });
       const row = page.getByTestId('import-resources');
+      await lookUp(page);
       await expect(row).toHaveAttribute('data-state', 'missing');
       // LUK names en_tn v87 and ugnt v0.34 (found); its translationWords decisions name no version
       await expect(row).toContainText('unfoldingWord/en_tn v87');
@@ -294,7 +313,7 @@ test.describe('J9 — a facilitator imports existing work', () => {
 
     test('tC3 name clash: a Bible name of a project on this computer is flagged on the review page and Import stays off; a stale review still writes nothing (#436)', { tag: ['@inc8', '@J9'] }, async ({ page }, testInfo) => {
       test.setTimeout(180_000);
-      await setNet(true); // a fresh rig can start offline: the versions must be found, so only the name holds Import
+      await setNet(true); // ask off: the versions must be found, so only the name holds Import
       await page.reload();
       await recordedDcsTags(page);
       const existing = rigRepo(SEEDED_PROJECT);
@@ -307,6 +326,7 @@ test.describe('J9 — a facilitator imports existing work', () => {
       await assertNoRepoCreated(async () => {
         await test.step(`the name "${SEEDED_PROJECT}" (the seeded project's folder): the name-exists message beside Bible name, Import off`, async () => {
           await importFixture(page, TIT, { kind: 'tc3', edits: { name: SEEDED_PROJECT }, confirm: false });
+          await lookUp(page);
           await expect(page.getByTestId('import-resources')).toHaveAttribute('data-state', 'found');
           await expect(field.getByRole('alert')).toHaveText(message);
           await expect(run).toBeDisabled();
@@ -324,6 +344,7 @@ test.describe('J9 — a facilitator imports existing work', () => {
           await page.route('**/api/git/list-local-repos', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
           await importFixture(page, TIT, { kind: 'tc3', edits: { name: SEEDED_PROJECT }, confirm: false });
           await page.unroute('**/api/git/list-local-repos');
+          await lookUp(page);
           await expect(page.getByTestId('import-resources')).toHaveAttribute('data-state', 'found');
           await expect(field.getByRole('alert')).toHaveCount(0);
           seen.staleReview = await read();

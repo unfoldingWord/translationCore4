@@ -15,7 +15,7 @@
 import { test, expect } from './helpers/test';
 import type { Page, BrowserContext } from '@playwright/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
-import { useInternet } from './helpers/door43Share';
+import { RIG_API, askInternet } from './helpers/door43Share';
 import fs from 'node:fs';
 import path from 'node:path';
 import { unzipSync, zipSync, strToU8, strFromU8 } from 'fflate';
@@ -278,14 +278,9 @@ async function openSources(page: Page) {
   await expect(page.getByTestId('sources-modal')).toBeVisible({ timeout: 120_000 });
 }
 
-/** D86: in Local, the Source texts callout asks to allow the internet. */
+/** D88: these cases run with "Ask before using the internet" off, so the Source texts
+ * task needs no dialog; the dialog itself is the first case below and @internet-consent. */
 async function goOnline(page: Page) {
-  const allow = page.getByTestId('sources-allow-internet');
-  if (await allow.count()) {
-    await allow.click();
-    await page.getByTestId('net-confirm').click();
-    await expect(page.getByTestId('net-status')).toHaveAttribute('data-state', 'internet');
-  }
   await expect(page.getByTestId('check-updates')).toBeEnabled();
 }
 
@@ -301,10 +296,11 @@ async function acceptPrimaryOffer(page: Page) {
 
 /** The rig boots net-disabled, but the gate is in-memory and survives a reseed:
  * a previous run that went online leaves it on. Each case states its own
- * starting condition (POST /net/disable is the platform's own switch). */
+ * starting condition (POST /net/disable is the platform's own switch). D88: the
+ * stored preference is "ask off", so the cases go online without the dialog. */
 async function forceOffline() {
-  // D86: Allow stores the choice, so the stored flag is cleared with the gate.
-  await useInternet(false);
+  await askInternet(false);
+  await fetch(`${RIG_API}/net/disable`, { method: 'POST' });
 }
 
 test.beforeEach(async () => {
@@ -336,17 +332,18 @@ test.describe('J12 — a facilitator upgrades the pinned resources', () => {
       expect(onlyWritten(pinIdentities())).toEqual(written);
       const before = pinsBytes();
 
+      // Ask on (D88): the click asks first, and Cancel sends nothing (replaces D86 point 4).
+      await askInternet(true);
       await openSources(page);
-      // Local: the action stays enabled; the click asks to allow the internet, and Cancel sends nothing (D86 point 4).
-      await expect(page.getByTestId('upgrade-offline')).toContainText('tC4 is set to Local');
       await page.getByTestId('check-updates').click();
-      await expect(page.getByTestId('net-allow')).toContainText('tC4 is set to Local.');
+      await expect(page.getByTestId('net-ask')).toHaveAttribute('data-kind', 'sources');
       await page.getByTestId('net-cancel').click();
       await expect(page.getByTestId('upgrade-offer-primary')).toHaveCount(0);
-      await goOnline(page);
+      // Continue: the check runs; later steps in this open Source texts dialog do not ask again.
+      await page.getByTestId('check-updates').click();
+      await page.getByTestId('net-confirm').click();
 
       // Online: the offer lists, per set, each newer release with label and date.
-      await page.getByTestId('check-updates').click();
       const primary = page.getByTestId('upgrade-offer-primary');
       await expect(primary).toHaveAttribute('data-upgrades', String(NEWER.length));
       await expect(primary).toContainText(new RegExp(`en_tn ${SEEDED_TAG} → ${NEW_TAG} · 2026-08-17`));
@@ -635,6 +632,7 @@ test.afterAll(async () => {
   try {
     await verifyAllJournaledProjects();
   } finally {
+    await askInternet(true);
     resetSeededChecking();
   }
 });

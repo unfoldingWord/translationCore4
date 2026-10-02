@@ -15,13 +15,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import type { BrowserContext, Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { test, expect } from './helpers/test';
 import type { FakeOrganization } from './helpers/door43';
 import { TC4_ROOT, SEEDED_PROJECT, readClientSettingsDoc, resetClientSettings, rigRepo, listLocalRepos } from './helpers/rig';
 import {
   QA_SERVER, RIG_API, RIG_STATE, USER, type BareRemote,
-  dropOrigin, fakeFor, fakeShare, filesHolding, git, head, loginsHolding, makeBareRemote, pressShare, signIn, useInternet,
+  dropOrigin, fakeFor, fakeShare, filesHolding, git, head, loginsHolding, makeBareRemote, pressShare, signIn, askInternet, fakeKeychain,
 } from './helpers/door43Share';
 
 const AUTHOR_NOTICE = /signed with the account name of this computer/;
@@ -59,45 +59,17 @@ const addOrigin = (remote: BareRemote): void => {
   git(rigRepo(SEEDED_PROJECT), 'remote', 'add', 'origin', pathToFileURL(remote.bare).href);
 };
 
-/** The desktop keychain bridge (#366, `tc4Desktop.keychain` of scripts/preload.cjs), faked:
- * the kept token lives in this test process, so it outlives a reload the way the operating
- * system's keychain outlives an app session. The browser build has no bridge of its own, so
- * a test without this helper is the "no keychain" case. Install before the page loads. */
-async function fakeKeychain(context: BrowserContext, held: string | null = null): Promise<{ held: string | null; calls: string[] }> {
-  const keychain = { held, calls: [] as string[] };
-  await context.exposeBinding('__tc4Keychain', async (_source, call: string, token?: string) => {
-    keychain.calls.push(call);
-    if (call === 'keep') {
-      keychain.held = token ?? null;
-      return { kept: true };
-    }
-    if (call === 'read') return { token: keychain.held };
-    keychain.held = null;
-    return { forgotten: true };
-  });
-  await context.addInitScript(() => {
-    const w = window as unknown as { __tc4Keychain: (call: string, token?: string) => Promise<unknown>; tc4Desktop: unknown };
-    w.tc4Desktop = {
-      keychain: {
-        keep: (token: string) => w.__tc4Keychain('keep', token),
-        read: () => w.__tc4Keychain('read'),
-        forget: () => w.__tc4Keychain('forget'),
-      },
-    };
-  });
-  return keychain;
-}
-
 test.describe('J11 — a facilitator shares the project to Door43', () => {
   test.describe('sign in (#203)', () => {
     test.beforeAll(async () => {
       // Start from the seeded client settings, whatever ran before this spec (#491).
       resetClientSettings();
-      // The rig boots with the net gate off; sign-in refuses offline before any Door43 call.
-      await useInternet(true);
+      // D88 (#514): these cases run with "Ask before using the internet" off; the
+      // consent dialogs are the @internet-consent journeys and case 12 below.
+      await askInternet(false);
     });
     test.afterAll(async () => {
-      await useInternet(false);
+      await askInternet(true);
     });
     test.beforeEach(async ({ page }) => {
       // Sign-in starts at Share (D86 point 7); the seeded card is not shared, so Share
@@ -108,7 +80,8 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
     });
 
     test('0. Home has no Door43 bar, and the top bar has no Door43 item (D86 point 7)', { tag: ['@inc85', '@J11'] }, async ({ page }) => {
-      await expect(page.getByTestId('net-status')).toBeVisible();
+      // D88 (#514): the account menu is the one Door43 item, at the right of the top bar.
+      await expect(page.getByTestId('account-menu')).toBeVisible();
       await expect(page.getByTestId('door43-bar')).toHaveCount(0);
       await expect(page.getByRole('button', { name: /sign (in|out)/i })).toHaveCount(0);
       await expect(page.getByText(/signed in to Door43/i)).toHaveCount(0);
@@ -400,50 +373,32 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       await expect(page.getByTestId('signin-not-kept')).toHaveCount(0);
     });
 
-    test('7f. the change to Local with a kept sign-in: "Also sign out of Door43 on this computer" is on, and removes the kept token; off keeps it (D86 point 7)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
+    test('7f. Sign out of Door43 in the account menu removes the kept token without a request; with no sign-in the row is absent; the ask preference does not change (D88; replaces the change-to-Local dialog of D86 point 7)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
       const fake = await fakeFor(context);
       const keychain = await fakeKeychain(context);
       try {
-        // No kept token: the change-to-Local dialog has no checkbox.
+        // No kept token: signed out, and the menu offers no Sign out.
         await page.goto('/');
-        await expect(page.getByTestId('net-status')).toHaveAttribute('data-state', 'internet');
-        await page.getByTestId('net-status').click();
-        await expect(page.getByTestId('net-to-local')).toBeVisible();
-        await expect(page.getByTestId('net-sign-out')).toHaveCount(0);
-        await page.getByTestId('net-cancel').click();
+        await expect(page.getByTestId('account-menu')).toHaveAttribute('data-state', 'out');
+        await page.getByTestId('account-menu').click();
+        await expect(page.getByTestId('account-sign-in')).toBeVisible();
+        await expect(page.getByTestId('account-sign-out')).toHaveCount(0);
+        await page.keyboard.press('Escape');
 
-        // A kept token, the box turned off: Local, and the token stays kept.
+        // A kept token: the menu says it is saved; Sign out removes it.
         keychain.held = 'kept-token';
         await page.reload();
-        await expect(page.getByTestId('net-status')).toHaveAttribute('data-state', 'internet');
-        await page.getByTestId('net-status').click();
-        const box = page.getByTestId('net-to-local').getByLabel('Also sign out of Door43 on this computer');
-        await expect(box).toBeChecked();
-        await box.uncheck();
-        await page.getByTestId('net-confirm').click();
-        await expect(page.getByTestId('net-status')).toHaveAttribute('data-state', 'local');
-        expect(keychain.held).toBe('kept-token');
-        expect(keychain.calls).not.toContain('forget');
-
-        // Cancel signs nothing out.
-        await useInternet(true);
-        await page.reload();
-        await expect(page.getByTestId('net-status')).toHaveAttribute('data-state', 'internet');
-        await page.getByTestId('net-status').click();
-        await page.getByTestId('net-cancel').click();
-        expect(keychain.held).toBe('kept-token');
-
-        // The box on (the default): the kept token is removed, and the status is Local.
-        await page.getByTestId('net-status').click();
-        await expect(box).toBeChecked();
-        await page.getByTestId('net-confirm').click();
-        await expect(page.getByTestId('net-status')).toHaveAttribute('data-state', 'local');
+        await expect(page.getByTestId('account-menu')).toHaveAttribute('data-state', 'saved');
+        await page.getByTestId('account-menu').click();
+        await page.getByTestId('account-sign-out').click();
+        await expect(page.getByTestId('account-menu')).toHaveAttribute('data-state', 'out');
         expect(keychain.calls.at(-1)).toBe('forget');
         expect(keychain.held).toBeNull();
-        // The sign-out is local: no Door43 request in this whole case.
-        expect(fake.calls).toEqual([]);
+        // The sign-out is local, and it left the preference alone (askInternet is off here).
+        expect(fake.calls, 'no Door43 request in this whole case').toEqual([]);
+        expect(readClientSettingsDoc()?.askInternet).toBe(false);
       } finally {
-        await useInternet(true);
+        await askInternet(false);
       }
     });
   });
@@ -470,10 +425,10 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
 
     test.beforeAll(async () => {
       resetClientSettings(); // #491, as in the sign-in block
-      await useInternet(true);
+      await askInternet(false);
     });
     test.afterAll(async () => {
-      await useInternet(false);
+      await askInternet(true);
     });
     test.beforeEach(async ({ page }) => {
       remote = makeBareRemote();
@@ -549,7 +504,12 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       const url = `${QA_SERVER}/${USER.username}/${SEEDED_PROJECT}`;
       await expect(page.getByTestId('share-url')).toHaveText(url);
       await expect(page.getByTestId('share-copy')).toHaveText('Copy link');
-      await expect(page.getByTestId('share-open')).toHaveAttribute('href', url);
+      // D88 (#514): Open on Door43 is a button (an internet task), no longer a link; with asking
+      // off it opens the repository page in the browser's new window at once.
+      await expect(page.getByTestId('share-open')).toHaveText('Open on Door43');
+      const opened = page.waitForEvent('popup');
+      await page.getByTestId('share-open').click();
+      expect((await opened).url()).toBe(url);
       await expect(page.getByTestId('share-done-text')).toHaveText('Others can read it on Door43.');
       await expect(dialog).not.toContainText('translationCore');
       // Copy link puts the URL on the clipboard (the browser context grants the permission here).
@@ -804,29 +764,32 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       await fetch(`${RIG_API}/git/delete/${id}`, { method: 'POST' });
     });
 
-    test('12. Local: Share asks to allow the internet; Cancel sends nothing; Allow continues the share (D86 point 4)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
+    test('12. Ask on: Share opens one internet dialog; Cancel sends nothing; Continue goes to the sign-in step and the share needs no second dialog (D88)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
       const fake = await fakeShare(context, remote);
-      await useInternet(false);
+      await askInternet(true);
       try {
         await page.reload();
-        await expect(page.getByTestId('net-status')).toHaveAttribute('data-state', 'local');
         const share = page.getByTestId(`share-${SEEDED_ID}`);
         await expect(share).toBeEnabled();
         await share.click();
-        await expect(page.getByTestId('net-allow')).toContainText('tC4 is set to Local.');
+        await expect(page.getByTestId('net-ask')).toHaveAttribute('data-kind', 'share');
+        await expect(page.getByTestId('net-ask-reason')).toContainText('This will contact Door43');
         await page.getByTestId('net-cancel').click();
+        await expect(page.getByTestId('net-ask')).toHaveCount(0);
         await expect(page.getByTestId('share-signin')).toHaveCount(0);
         await expect(page.getByTestId('share-dialog')).toHaveCount(0);
         expect(fake.calls, 'no Door43 request after Cancel').toEqual([]);
         expect(remote.main(), 'nothing pushed').toBeNull();
 
-        // Allow: the gate turns on, and the share continues where the click left off.
+        // Continue: the share goes on where the click left off, with no second dialog.
         await share.click();
         await page.getByTestId('net-confirm').click();
-        await expect(page.getByTestId('net-status')).toHaveAttribute('data-state', 'internet');
         await expect(page.getByTestId('share-signin')).toBeVisible();
+        await signIn(page);
+        await expect(page.getByTestId('share-signin')).toHaveCount(0);
+        await expect(page.getByTestId('net-ask')).toHaveCount(0);
       } finally {
-        await useInternet(true);
+        await askInternet(false);
       }
       // A push that meets HTTP 401 "offline mode" is test/share/shareOperation.test.ts.
     });
