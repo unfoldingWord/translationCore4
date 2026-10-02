@@ -183,8 +183,11 @@ try {
   if (!$KeepProject) { Run-Steps delete }
   Stop-App
   if (!$UpgradeFixture) {
-    $upgradeHome = Join-Path $LogDir ("tc4-upgrade-" + [Guid]::NewGuid().ToString('N'))
-    $upgradeLogs = Join-Path $upgradeHome 'logs'
+    # Keep the disposable profile short: under the CI log directory, the real
+    # journal's segment paths exceeded Windows Git's path limit (#528).
+    $upgradeId = [Guid]::NewGuid().ToString('N')
+    $upgradeHome = Join-Path $oldEnv['TEMP'] ("tc4u-" + $upgradeId.Substring(0, 12))
+    $upgradeLogs = Join-Path $LogDir ("tc4-upgrade-" + $upgradeId)
     New-Item -ItemType Directory -Force -Path $upgradeLogs | Out-Null
     & "$AppDir\smoke-installed.ps1" -AppDir $AppDir -SmokeHome $upgradeHome -LogDir $upgradeLogs -UpgradeFixture
   }
