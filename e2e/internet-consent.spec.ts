@@ -619,25 +619,38 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
   });
 
   // ---- h · keyboard ----
-  // Observed on this build (2026-10-02): the menu does not take focus when it opens
-  // (AccountMenu sets no `trapFocus`), Tab from the trigger reaches the first row and Tab
-  // moves through the rows, and Escape closes and returns focus to the trigger. The arrow
-  // keys do nothing (see the fixme below).
-  test('h. keyboard: Enter opens, Tab reaches each row, Escape closes and focus returns to the trigger (signed out and saved)', TAG, async ({ page, context }) => {
+  // The role="menu" contract (AC 1): Enter opens with focus on the first row, the arrows,
+  // Home and End move between rows, Escape closes and focus returns to the trigger, and
+  // Tab leaves the menu (as the owner's mockup does).
+  test('h. keyboard: Enter opens on the first row, the arrows move, Escape closes and focus returns to the trigger (signed out and saved)', TAG, async ({ page, context }) => {
     const focused = () => page.evaluate(() => document.activeElement?.getAttribute('data-testid') ?? null);
     const walk = async (rows: string[]) => {
       await trigger(page).focus();
       await page.keyboard.press('Enter');
       await expect(panel(page)).toBeVisible();
       await expect(trigger(page)).toHaveAttribute('aria-expanded', 'true');
-      for (const row of rows) {
-        await page.keyboard.press('Tab');
+      await expect.poll(focused).toBe(rows[0]);
+      for (const row of rows.slice(1)) {
+        await page.keyboard.press('ArrowDown');
         await expect.poll(focused).toBe(row);
       }
+      await page.keyboard.press('ArrowDown'); // wraps
+      await expect.poll(focused).toBe(rows[0]);
+      await page.keyboard.press('ArrowUp');
+      await expect.poll(focused).toBe(rows[rows.length - 1]);
+      await page.keyboard.press('Home');
+      await expect.poll(focused).toBe(rows[0]);
+      await page.keyboard.press('End');
+      await expect.poll(focused).toBe(rows[rows.length - 1]);
       await page.keyboard.press('Escape');
       await expect(panel(page)).toHaveCount(0);
       await expect(trigger(page)).toHaveAttribute('aria-expanded', 'false');
       await expect.poll(focused).toBe('account-menu');
+      // Tab leaves the menu.
+      await page.keyboard.press('Enter');
+      await expect.poll(focused).toBe(rows[0]);
+      await page.keyboard.press('Tab');
+      await expect(panel(page)).toHaveCount(0);
     };
     await page.goto('/');
     await walk(['account-sign-in', 'account-ask']);
@@ -649,22 +662,6 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
     await openMenu(page);
     await page.mouse.click(5, 400);
     await expect(panel(page)).toHaveCount(0);
-  });
-
-  // FINDING (reported with the #514 e2e work): opening the menu with Enter leaves focus on the
-  // trigger, and ArrowDown / ArrowUp / Home / End do nothing, even with focus on a row, against
-  // the role="menu" contract. Remove `fixme` when the menu takes focus on open and honours the arrows.
-  test.fixme('h. keyboard: opening the menu with Enter puts focus on its first row, and the arrows move between the rows', TAG, async ({ page }) => {
-    const focused = () => page.evaluate(() => document.activeElement?.getAttribute('data-testid') ?? null);
-    await page.goto('/');
-    await trigger(page).focus();
-    await page.keyboard.press('Enter');
-    await expect(panel(page)).toBeVisible();
-    await expect.poll(focused).toBe('account-sign-in');
-    await page.keyboard.press('ArrowDown');
-    await expect.poll(focused).toBe('account-ask');
-    await page.keyboard.press('ArrowUp');
-    await expect.poll(focused).toBe('account-sign-in');
   });
 });
 

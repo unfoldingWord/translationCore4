@@ -3,7 +3,7 @@
 // first while "Ask before using the internet" is on. Opening the menu sends
 // nothing: its account row shows only what this computer already knows (the
 // signed-in login, or that the keychain holds a token, D85).
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useApp, door43 } from '../state.jsx';
 import { t } from '../i18n';
 import { Layer } from '../ds/components/primitives/Layer.jsx';
@@ -59,6 +59,31 @@ export default function AccountMenu() {
     setOpen(false);
     run();
   };
+  // The menu keyboard contract (AC 1): the first row takes focus on open, the
+  // arrows, Home and End move between rows, and Tab leaves the menu. Escape
+  // and the focus return to the trigger are the Layer's.
+  const panel = useRef(null);
+  const rows = () => [...(panel.current?.querySelectorAll('[role^="menuitem"]') ?? [])];
+  useEffect(() => {
+    if (!open) return undefined;
+    let frame = 0;
+    const focusFirst = (tries) => {
+      const first = rows()[0];
+      if (first) first.focus();
+      else if (tries > 0) frame = requestAnimationFrame(() => focusFirst(tries - 1));
+    };
+    focusFirst(10);
+    return () => cancelAnimationFrame(frame);
+  }, [open]);
+  const onKeyDown = (e) => {
+    const list = rows();
+    const i = list.indexOf(document.activeElement);
+    const target = { ArrowDown: (i + 1) % list.length, ArrowUp: (i - 1 + list.length) % list.length, Home: 0, End: list.length - 1 }[e.key];
+    if (e.key === 'Tab') setOpen(false);
+    if (target === undefined || !list.length) return;
+    e.preventDefault();
+    list[target].focus();
+  };
   return (
     <>
       <span ref={ref} style={{ display: 'inline-flex' }}>
@@ -72,9 +97,9 @@ export default function AccountMenu() {
         </button>
       </span>
       <Layer open={open} level="popover" placement="anchor" anchorTo={ref} align="end"
-        role="menu" label={label} navigate="vertical" dismiss="outside escape" onDismiss={() => setOpen(false)}>
-        <Surface fill="card" border="line" radius="lg" elevation="hover" pad={6} data-testid="account-menu-panel"
-          style={{ display: 'flex', flexDirection: 'column', gap: 1, color: 'var(--text-body)' }}>
+        role="menu" label={label} dismiss="outside escape" onDismiss={() => setOpen(false)}>
+        <Surface fill="card" border="line" radius="lg" elevation="hover" pad={6} data-testid="account-menu-panel">
+          <div ref={panel} onKeyDown={onKeyDown} style={{ display: 'flex', flexDirection: 'column', gap: 1, color: 'var(--text-body)' }}>
           {user && <Row testId="account-page" title={`@${user}`} sub={t('account.openPage')}
             onClick={choose(() => actions.openDoor43Page('profile', `${door43.server}/${encodeURIComponent(user)}`))} />}
           {saved && <Row testId="account-check" title={t('account.saved')} sub={t('account.savedCheck')}
@@ -91,6 +116,7 @@ export default function AccountMenu() {
             <Rule style={{ margin: '5px 4px' }} />
             <Row testId="account-sign-out" title={t('account.signOut')} onClick={choose(actions.signOut)} />
           </>}
+          </div>
         </Surface>
       </Layer>
     </>
