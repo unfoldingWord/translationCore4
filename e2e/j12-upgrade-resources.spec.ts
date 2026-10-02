@@ -3,15 +3,15 @@
 //
 // Ground truth is the rig's disk: the §5.3 pin file, the §5.2 decision files
 // and every text ingredient are read as bytes before and after. DCS is a
-// Playwright route on git.door43.org that serves the REAL v90 exports of the
-// English helps, cached by `dev-env/scripts/cache-resource.zsh` (see
-// dev-env/README.md, "J12"): the rig seeds v89, DCS's newest release is v90
-// [VERIFIED 2026-09-13, `releases/latest`], so the fixture is the real world
-// held still — the journey neither depends on the network nor on what Door43
-// publishes next. Case 3 needs a check the new release no longer asks; v89 →
-// v90 changes no Titus check id (measured on both TSVs), so the served notes
-// drop ONE Titus row. The zip's declared revision is unchanged, which is what
-// the D23b sha gate verifies.
+// Playwright route on git.door43.org. The rig seeds the English helps at the
+// shipped release (v91 since #504), and Door43 has no newer one, so the route
+// serves a made-up newer release: the seeded export itself under NEW_TAG, with
+// its declared revision rewritten to a made-up commit that the mocked tags API
+// also names (the #258 pattern below) — the D23b sha gate sees a consistent
+// DCS. The journey neither depends on the network nor on what Door43 publishes
+// next. Case 3 needs a check the new release no longer asks: the served notes
+// are the seeded notes with ONE Titus row removed, so by construction no other
+// Titus check id changes.
 import { test, expect } from './helpers/test';
 import type { Page, BrowserContext } from '@playwright/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
@@ -35,40 +35,55 @@ import {
 } from './helpers/rig';
 
 const CACHE = path.join(TC4_ROOT, 'dev-env', 'resources-cache');
-const NEW_TAG = 'v90';
+/** The release the rig seeds (dev-env/scripts/seed.zsh — the shipped pins). */
+const SEEDED_TAG = 'v91';
+/** The made-up newer release the mocked DCS reports. */
+const NEW_TAG = 'v92';
 /** The repos the mocked DCS reports a newer release for. tq and ust stay at
  * their pins, so the fallback set's optional slots are the "current" case. */
 const NEWER = ['en_tn', 'en_tw', 'en_ta'];
 
 const PINS = () => ({
-  tn: pinForSideloaded('en_tn', 'v89'),
-  tw: pinForSideloaded('en_tw', 'v89'),
-  ta: pinForSideloaded('en_ta', 'v89'),
+  tn: pinForSideloaded('en_tn', SEEDED_TAG),
+  tw: pinForSideloaded('en_tw', SEEDED_TAG),
+  ta: pinForSideloaded('en_ta', SEEDED_TAG),
 });
 
-const cachedZipPath = (repo: string) => path.join(CACHE, `${repo}-${NEW_TAG}-unwrapped.zip`);
+/** The seeded export of a repo — the bytes the served release is built from. */
+const cachedZipPath = (repo: string) => path.join(CACHE, `${repo}-${SEEDED_TAG}-unwrapped.zip`);
 
-/** The commit the cached export declares — the sha the mocked tags API reports
- * for v90, so the app's D23b verification sees a consistent DCS. */
-function cachedRevision(repo: string): string {
+/** The made-up commit each served release declares — the sha the mocked tags
+ * API reports for NEW_TAG, so the app's D23b verification sees a consistent DCS. */
+const SERVED_SHA: Record<string, string> = {
+  en_tn: '9200000000000000000000000000000000000092',
+  en_tw: '9200000000000000000000000000000000000093',
+  en_ta: '9200000000000000000000000000000000000094',
+};
+const servedRevision = (repo: string): string => SERVED_SHA[repo];
+
+/** The served release of one repo: the seeded export with its declared revision
+ * rewritten to SERVED_SHA and, for en_tn, one Titus row removed (case 3's
+ * dropped check). */
+const served = new Map<string, Uint8Array>();
+function servedExport(repo: string, dropId: string): Uint8Array {
+  const key = `${repo}:${dropId}`;
+  const hit = served.get(key);
+  if (hit) return hit;
   const files = unzipSync(new Uint8Array(fs.readFileSync(cachedZipPath(repo))));
+  if (repo === 'en_tn') {
+    const rows = strFromU8(files['ingredients/TIT.tsv']).split('\n');
+    const kept = rows.filter((r, i) => i === 0 || (r.split('\t')[1] ?? '') !== dropId);
+    if (kept.length !== rows.length - 1) throw new Error(`check ${dropId} is not one row of the seeded TIT notes`);
+    files['ingredients/TIT.tsv'] = strToU8(kept.join('\n'));
+  }
   const meta = JSON.parse(strFromU8(files['metadata.json'])) as {
     identification: { primary: { dcs: Record<string, { revision: string }> } };
   };
-  return Object.values(meta.identification.primary.dcs)[0].revision;
-}
-
-/** The v90 notes with one Titus row removed (case 3's dropped check). */
-let servedTn: { bytes: Uint8Array; droppedId: string } | null = null;
-function servedNotes(dropId: string): Uint8Array {
-  if (servedTn && servedTn.droppedId === dropId) return servedTn.bytes;
-  const files = unzipSync(new Uint8Array(fs.readFileSync(cachedZipPath('en_tn'))));
-  const rows = strFromU8(files['ingredients/TIT.tsv']).split('\n');
-  const kept = rows.filter((r, i) => i === 0 || (r.split('\t')[1] ?? '') !== dropId);
-  if (kept.length !== rows.length - 1) throw new Error(`check ${dropId} is not one row of the v90 TIT notes`);
-  files['ingredients/TIT.tsv'] = strToU8(kept.join('\n'));
-  servedTn = { bytes: zipSync(files, { level: 0 }), droppedId: dropId };
-  return servedTn.bytes;
+  for (const entry of Object.values(meta.identification.primary.dcs)) entry.revision = servedRevision(repo);
+  files['metadata.json'] = strToU8(JSON.stringify(meta));
+  const bytes = zipSync(files, { level: 0 });
+  served.set(key, bytes);
+  return bytes;
 }
 
 /** #258: a newer original-language release, held still. DCS's newest UGNT
@@ -90,13 +105,14 @@ function servedOriginal(): Uint8Array {
   return zipSync(files, { level: 0 });
 }
 
-/** #438: a newer Hebrew Bible release, for the offer list only (never downloaded). */
+/** #438: a newer Hebrew Bible release, for the offer list only (never downloaded).
+ * Made up: the shipped pin is v3.0.0 (#504), and Door43 has nothing newer. */
 const OT_REPO = 'hbo_uhb';
-const OT_TAG = 'v3.0.0';
+const OT_TAG = 'v3.0.1';
 const OT_SHA = '4380000000000000000000000000000000000438';
 
 /** Door43, held still: every pinned repo answers with its pin unless it is in
- * NEWER, which answers v90 from the cache. `olNewer` (#258) makes the UGNT
+ * NEWER, which answers NEW_TAG (servedExport). `olNewer` (#258) makes the UGNT
  * answer OL_TAG; `otNewer` (#438) makes the UHB answer OT_TAG. `repo` is the
  * project whose pins answer. Anything else on the host is 404. */
 async function mockDcs(context: BrowserContext, dropId: string, olNewer = false, { repo: project = SEEDED_PROJECT, otNewer = false } = {}) {
@@ -139,7 +155,7 @@ async function mockDcs(context: BrowserContext, dropId: string, olNewer = false,
     const newer = NEWER.includes(repo);
     const pinned = pinnedNow();
     const tag = olUpgrade ? OL_TAG : newer ? NEW_TAG : pinned[repo]?.version;
-    const sha = olUpgrade ? OL_SHA : newer ? cachedRevision(repo) : pinned[repo]?.sha;
+    const sha = olUpgrade ? OL_SHA : newer ? servedRevision(repo) : pinned[repo]?.sha;
     if (!tag || !sha) return route.fulfill({ status: 404, headers: cors, body: 'unknown repo' });
     if (rest === 'releases/latest') {
       return route.fulfill({ status: 200, headers: cors, contentType: 'application/json',
@@ -151,8 +167,7 @@ async function mockDcs(context: BrowserContext, dropId: string, olNewer = false,
         body: JSON.stringify(page === 1 ? [{ name: tag, commit: { sha } }] : []) });
     }
     if (rest === `sb/${NEW_TAG}.zip` && newer) {
-      const bytes = repo === 'en_tn' ? servedNotes(dropId) : new Uint8Array(fs.readFileSync(cachedZipPath(repo)));
-      return route.fulfill({ status: 200, headers: cors, contentType: 'application/zip', body: Buffer.from(bytes) });
+      return route.fulfill({ status: 200, headers: cors, contentType: 'application/zip', body: Buffer.from(servedExport(repo, dropId)) });
     }
     return route.fulfill({ status: 404, headers: cors, body: 'not mocked' });
   });
@@ -162,26 +177,26 @@ function writeDecisionFile(repo: string, tool: string, book: string, file: unkno
   fs.writeFileSync(path.join(rigRepo(repo), 'ingredients', 'checking', tool, `${book}.json`), `${JSON.stringify(file, null, 2)}\n`);
 }
 
-/** The sample records es-419; the project now pins English v89 — restate the
- * checked-against record as that pin (the J4/J13 pattern), and add ONE valid
- * decision on a real v89 Titus check that the served v90 notes will not ask. */
-function seedDecisionsUnderV89(): {
+/** The sample records es-419; the project now pins the seeded English release —
+ * restate the checked-against record as that pin (the J4/J13 pattern), and add
+ * ONE valid decision on a real seeded Titus check that the served notes will not ask. */
+function seedDecisionsUnderSeeded(): {
   dropped: ReturnType<typeof deriveTnItems>[number];
   count: number;
   orphans: number;
-  /** The sample decisions that DO place on the v89 list — the ones the upgrade carries. */
+  /** The sample decisions that DO place on the seeded list — the ones the upgrade carries. */
   carried: Array<Record<string, unknown>>;
 } {
   const en = PINS();
   const file = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')!;
   file.resource = { repoPath: en.tn.repoPath, version: en.tn.version, sha: en.tn.sha, languageSet: 'primary' } as never;
   const items = deriveTnItems(sideloadedIngredient('en_tn', 'TIT.tsv'), 'tit');
-  // Place the sample's decisions on the v89 list with the app's OWN re-attach
+  // Place the sample's decisions on the seeded list with the app's OWN re-attach
   // (derive.ts mergeAndReattach — the same passes the upgrade runs): the
   // dropped check must carry no decision, or dropping it would invalidate a
-  // sample decision as well; and a sample decision that places on NO v89 check
+  // sample decision as well; and a sample decision that places on NO seeded check
   // is an orphan already — the upgrade invalidates it too (D36), on top of the
-  // dropped one. (Measured: the sample's `swi9` collides with a different v89
+  // dropped one. (Measured on v89: the sample's `swi9` collides with a different
   // check id over a different quote, so it is an orphan under English.)
   const placement = mergeAndReattach(items, file.decisions as never);
   const dropped = items.find((i) => i.contextId.quoteString.length > 0 && !placement.placed.has(i));
@@ -296,7 +311,7 @@ test.beforeEach(async () => {
   resetSeededChecking();
   await forceOffline();
   test.skip(!NEWER.every((r) => fs.existsSync(cachedZipPath(r))),
-    `the v90 exports are not cached under dev-env/resources-cache — see dev-env/README.md, "J12"`);
+    `the seeded ${SEEDED_TAG} exports are not cached under dev-env/resources-cache — see dev-env/README.md, "Journeys from a clean clone"`);
 });
 
 // #329: a Home tile returns to where this client last worked; this journey opens
@@ -312,7 +327,7 @@ test.describe('J12 — a facilitator upgrades the pinned resources', () => {
     async ({ page, context }) => {
       test.setTimeout(120_000); // the first open of the project is cold: it seeds the journal
       writeProjectPins(SEEDED_PROJECT, PINS());
-      const { dropped } = seedDecisionsUnderV89();
+      const { dropped } = seedDecisionsUnderSeeded();
       await mockDcs(context, dropped.contextId.checkId);
       const written = onlyWritten(pinIdentities());
 
@@ -334,7 +349,7 @@ test.describe('J12 — a facilitator upgrades the pinned resources', () => {
       await page.getByTestId('check-updates').click();
       const primary = page.getByTestId('upgrade-offer-primary');
       await expect(primary).toHaveAttribute('data-upgrades', String(NEWER.length));
-      await expect(primary).toContainText(/en_tn v89 → v90 · 2026-08-17/);
+      await expect(primary).toContainText(new RegExp(`en_tn ${SEEDED_TAG} → ${NEW_TAG} · 2026-08-17`));
       await expect(page.getByTestId('upgrade-offer-fallback')).toHaveAttribute('data-upgrades', String(NEWER.length));
 
       // Close without accepting. Nothing moved — not a byte.
@@ -354,12 +369,12 @@ test.describe('J12 — a facilitator upgrades the pinned resources', () => {
     async ({ page, context }) => {
       test.setTimeout(240_000);
       writeProjectPins(SEEDED_PROJECT, PINS());
-      const { dropped, count, orphans, carried } = seedDecisionsUnderV89();
+      const { dropped, count, orphans, carried } = seedDecisionsUnderSeeded();
       expect(carried.length).toBeGreaterThan(0);
       await mockDcs(context, dropped.contextId.checkId);
       const textBefore = textIngredients();
 
-      // Progress under v89, with the seeded decision counted.
+      // Progress under the seeded release, with the seeded decision counted.
       await settleOpen(page);
       // Snapshots AFTER the app's own open-time writes (journal seed, coverage backfill).
       const fallbackBefore = JSON.stringify(readProjectPins(SEEDED_PROJECT).languageSets.fallback);
@@ -376,10 +391,10 @@ test.describe('J12 — a facilitator upgrades the pinned resources', () => {
 
       // The confirmation states the exact outcome per book and tool BEFORE the pins move…
       const confirm = page.getByTestId('upgrade-confirm');
-      await expect(confirm.getByTestId('upgrade-moves')).toContainText('en_tn: v89 → v90');
+      await expect(confirm.getByTestId('upgrade-moves')).toContainText(`en_tn: ${SEEDED_TAG} → ${NEW_TAG}`);
       await expect(page.locator('[data-harmless]')).toHaveAttribute('data-harmless', '0');
       // The exact per-(book, tool) outcome: the dropped check, plus any sample
-      // decision that already placed on no v89 check (an orphan is invalidated
+      // decision that already placed on no seeded check (an orphan is invalidated
       // by the change too — the resource is the primary key, D36).
       await expect(confirm.getByTestId('upgrade-plan')).toContainText(
         new RegExp(`Titus · Translation Notes: \\d+ carried over, ${orphans + 1} to check again`),
@@ -396,7 +411,7 @@ test.describe('J12 — a facilitator upgrades the pinned resources', () => {
         const pin = pins.languageSets.primary[slot] as { repoPath: string; version: string; sha: string; flavor: string };
         expect(pin.repoPath).toBe(`git.door43.org/unfoldingWord/${repo}`);
         expect(pin.version).toBe(NEW_TAG);
-        expect(pin.sha).toBe(cachedRevision(repo));
+        expect(pin.sha).toBe(servedRevision(repo));
         expect(pin.flavor).toBeTruthy();
       }
       // Case 4: the other set's pins and every text ingredient are byte-identical.
@@ -408,7 +423,7 @@ test.describe('J12 — a facilitator upgrades the pinned resources', () => {
       // Case 2/3: the decision file was reconciled against the new release.
       const after = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')!;
       expect(after.resource?.repoPath).toContain('en_tn');
-      expect((after.resource as unknown as { sha: string }).sha).toBe(cachedRevision('en_tn'));
+      expect((after.resource as unknown as { sha: string }).sha).toBe(servedRevision('en_tn'));
       // Nothing deleted: every original record is still there (§8.5 R-8.5.11 keeps
       // a re-attached decision's old-identity record as well, so the count grows).
       expect(after.decisions.length).toBeGreaterThanOrEqual(count);
@@ -418,7 +433,7 @@ test.describe('J12 — a facilitator upgrades the pinned resources', () => {
       expect(kept!.status).toBe('invalid');
       expect(kept!.selections).toEqual([{ text: 'Pablo', occurrence: 1, occurrences: 1 }]);
       // …while every decision the new release still asks about carried over:
-      // a record under the v90 check's identity, with the SAME selections and
+      // a record under the served release's check identity, with the SAME selections and
       // the same state (the sample's `gr8c` was already invalidated; carry-over
       // keeps state, it does not launder it — D36/F5), beside the retained
       // old-identity record (§8.5 R-8.5.11).
@@ -426,12 +441,12 @@ test.describe('J12 — a facilitator upgrades the pinned resources', () => {
         const ctx = c.contextId as { checkId: string };
         const twin = after.decisions.find((d) =>
           (d as never)['contextId']['checkId'] !== ctx.checkId && JSON.stringify(d.selections) === JSON.stringify(c.selections));
-        expect(twin, `decision ${ctx.checkId} carried to a v90 identity`).toBeTruthy();
+        expect(twin, `decision ${ctx.checkId} carried to a ${NEW_TAG} identity`).toBeTruthy();
         expect(twin!.invalidated).toBe(c.invalidated);
         expect(after.decisions.some((d) => (d as never)['contextId']['checkId'] === ctx.checkId), 'old identity retained').toBe(true);
       }
 
-      // Case 3: the list re-derives from v90 and progress drops by the dropped check.
+      // Case 3: the list re-derives from the served release and progress drops by the dropped check.
       await page.getByRole('button', { name: 'Close' }).last().click();
       await openTitusCheck(page);
       await page.getByTestId('open-translationNotes').click();
@@ -446,7 +461,7 @@ test.describe('J12 — a facilitator upgrades the pinned resources', () => {
     async ({ page, context }) => {
       test.setTimeout(240_000);
       writeProjectPins(SEEDED_PROJECT, PINS());
-      const { dropped } = seedDecisionsUnderV89();
+      const { dropped } = seedDecisionsUnderSeeded();
       await mockDcs(context, dropped.contextId.checkId);
       await settleOpen(page);
       const pinsBefore = pinsBytes();
@@ -468,7 +483,7 @@ test.describe('J12 — a facilitator upgrades the pinned resources', () => {
       await page.getByTestId('upgrade-apply').click();
       await expect(page.getByTestId('upgrade-confirm')).toHaveCount(0);
       const pins = readProjectPins(SEEDED_PROJECT);
-      expect((pins.languageSets.fallback.translationNotes as { sha: string }).sha).toBe(cachedRevision('en_tn'));
+      expect((pins.languageSets.fallback.translationNotes as { sha: string }).sha).toBe(servedRevision('en_tn'));
       expect((pins.languageSets.primary.translationNotes as { sha: string }).sha).toBe(PINS().tn.sha);
       await expect(page.getByTestId('upgrade-current-fallback')).toBeVisible();
       await expect(page.getByTestId('upgrade-set-primary')).toBeVisible();
@@ -608,7 +623,8 @@ test.describe('J12 — the scripture-text offers name only the originals of the 
       await goOnline(page);
       await page.getByTestId('check-updates').click();
       await expect(page.getByTestId(`upgrade-text-${OL_REPO}`)).toContainText(`${OL_REPO} v0.34 → ${OL_TAG}`);
-      await expect(page.getByTestId(`upgrade-text-${OT_REPO}`)).toContainText(`${OT_REPO} v2.1.30 → ${OT_TAG}`);
+      // The seeded sample pins the shipped Hebrew Bible (v3.0.0 since #504).
+      await expect(page.getByTestId(`upgrade-text-${OT_REPO}`)).toContainText(`${OT_REPO} v3.0.0 → ${OT_TAG}`);
     },
   );
 });

@@ -18,9 +18,9 @@ import {
 } from './helpers/rig';
 
 const PINS = () => ({
-  tn: pinForSideloaded('en_tn', 'v89'),
-  tw: pinForSideloaded('en_tw', 'v89'),
-  ta: pinForSideloaded('en_ta', 'v89'),
+  tn: pinForSideloaded('en_tn', 'v91'),
+  tw: pinForSideloaded('en_tw', 'v91'),
+  ta: pinForSideloaded('en_ta', 'v91'),
 });
 
 async function openTool(page: import('@playwright/test').Page, tool: string) {
@@ -118,7 +118,7 @@ test.describe('J6 — editing a checked verse flags its checks for re-review', (
         .poll(() => readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')?.resource?.version, {
           timeout: 10_000,
         })
-        .toBe('v89');
+        .toBe('v91');
 
       // …so the next visit has nothing to warn about.
       await openTool(page, 'translationNotes');

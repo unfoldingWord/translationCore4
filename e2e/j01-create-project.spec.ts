@@ -120,9 +120,9 @@ test.describe('J1 — a translator creates a project', () => {
         const extra = Object.fromEntries(
           resFile.extraScripture.map((e: { id: string }) => [e.id, e]),
         );
-        expect(extra.ult.version).toBe('v89');
+        expect(extra.ult.version).toBe('v91');
         expect(extra.ult.sha).toMatch(/^[0-9a-f]{40}$/);
-        expect(extra.ust.version).toBe('v89');
+        expect(extra.ust.version).toBe('v91');
       });
 
       await test.step('the chosen text direction is persisted (settings.json) — app-created summaries report "?" so the app reads it back from here', async () => {
