@@ -306,6 +306,10 @@ the owner's 2026-07-12 ruling on missing resources with §5 default #3). The use
 explicit re-pin to a locally available version — warned, re-derive, orphans to review — but
 the app never forces it. Implementation home: the D17 schema change (OPEN-QUESTIONS #28),
 spec + harness in one change set (§9).
+[addendum 2026-10-01 — #505: Project Settings opens only from the Settings button on the project
+card on Home. The top bar has no Project settings button. This replaces the #412 rule that Project
+Settings also opens inside an open project. Manage source texts in Project Settings opens the project
+first, then the Source texts screen with its update controls (owner ruling 2026-10-01).]
 
 
 ## D32 (2026-07-31, project-owner ruling — TW/TWL storage form; closes OPEN-QUESTIONS #29)

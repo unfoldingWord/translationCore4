@@ -229,8 +229,9 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 - Actor: facilitator. Activity: Start (touches Check).
 - Precondition: J3; tC4 is set to Internet, or the user allows the internet when Check for
   updates asks (D86 point 4).
-- Steps: check for updates · see the offer per language set and per scripture text · accept
-  explicitly · re-derive.
+- Steps: open Project Settings (the Settings button on the project card on Home) · Manage source
+  texts (this opens the project first) · check for updates · see the offer per language set and
+  per scripture text · accept explicitly · re-derive.
 - End state (defined 2026-09-11, D72): the set's §5.3 pins carry the new release's `sha` and
   `version`; every affected book's decisions are carried over or invalidated and retained
   (D36); the other language set's pins are unchanged; text ingredients byte-identical; a
@@ -250,8 +251,8 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 - Actor: facilitator. Activity: Start.
 - Precondition: two gateway-language suites are installed (the rig holds English and Spanish, for
   Bible and OBS projects).
-- Steps: open Project Settings (from Home or from inside the project) · choose the other package in
-  the Checking language list · confirm the change explicitly (#412).
+- Steps: open Project Settings (the Settings button on the project card on Home) · choose the other
+  package in the Checking language list · confirm the change explicitly (#412).
 - End state: the primary pins name the new language set with `version`, `sha`, `repoPath`; the
   English fallback set stays unchanged (D30, §5.3); decisions re-attach to the new set, or are invalidated and
   retained (D36). On a Bible project, `extraScripture` names the new package's literal and

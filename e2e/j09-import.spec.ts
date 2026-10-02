@@ -459,7 +459,8 @@ test.describe('J9 — a facilitator imports existing work', () => {
         await page.goto('/');
         await page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`).getByRole('button', { name: /Titus/ }).click();
         await expect(page.getByRole('heading', { name: /^Titus \d+$/ })).toBeVisible({ timeout: 120_000 });
-        await page.getByTestId('project-settings').click();
+        await page.goto('/');
+        await page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`).getByRole('button', { name: 'Settings' }).click();
         await page.getByTestId('settings-gateway-en::unfoldingWord').click();
         await expect(page.getByTestId('gateway-change')).toBeVisible();
         await page.getByTestId('gateway-confirm').click();
