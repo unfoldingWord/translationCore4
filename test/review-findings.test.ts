@@ -71,13 +71,15 @@ describe('B1 — seeding reads mid-line \\v markers (marker stream, not line wal
     // pin the skip names both shas (#406).
     const pin = INSTALLED_SUITE.extraScripture.find((s) => s.id === 'ult');
     if (!pin) throw new Error('INSTALLED_SUITE has no ult pin');
-    // The provenance key, as dev-env/scripts/cache-resource.ts writes it.
+    // The provenance key, as dev-env/scripts/cache-resource.ts writes it (`<repo>`); a cache
+    // that holds several releases of one repo records the others as `<repo>@<tag>` (#504).
     const repo = pin.repoPath.split('/').pop() as string;
     const cacheDir = path.resolve(process.cwd(), 'dev-env', 'resources-cache');
     const provenanceFile = path.join(cacheDir, 'helps-provenance.json');
-    const entry = fs.existsSync(provenanceFile)
-      ? JSON.parse(fs.readFileSync(provenanceFile, 'utf8'))[repo]
-      : undefined;
+    const provenance = fs.existsSync(provenanceFile)
+      ? (JSON.parse(fs.readFileSync(provenanceFile, 'utf8')) as Record<string, { zip: string } | undefined>)
+      : {};
+    const entry = provenance[`${repo}@${pin.version}`] ?? provenance[repo];
     const cache = entry && path.join(cacheDir, entry.zip);
     if (!cache || !fs.existsSync(cache)) {
       console.warn('corpus leg skipped: resources cache absent');

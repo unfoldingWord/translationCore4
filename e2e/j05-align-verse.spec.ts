@@ -18,9 +18,9 @@ import {
 } from './helpers/rig';
 
 const PINS = () => ({
-  tn: pinForSideloaded('en_tn', 'v89'),
-  tw: pinForSideloaded('en_tw', 'v89'),
-  ta: pinForSideloaded('en_ta', 'v89'),
+  tn: pinForSideloaded('en_tn', 'v91'),
+  tw: pinForSideloaded('en_tw', 'v91'),
+  ta: pinForSideloaded('en_ta', 'v91'),
 });
 
 /** The project must also pin an original-language text for alignment. */
@@ -35,7 +35,7 @@ function writePinsWithOriginal() {
     ...(file.resources ?? {}),
     originalLanguage: {
       nt: pinForSideloaded('el-x-koine_ugnt', 'v0.34'),
-      ot: { repoPath: 'git.door43.org/unfoldingWord/hbo_uhb', version: 'v2.1.30', sha: '106a441a788d9465846cd427538ea80b8cec6770', flavor: 'scripture/textTranslation' },
+      ot: { repoPath: 'git.door43.org/unfoldingWord/hbo_uhb', version: 'v3.0.0', sha: '74022f0fed012a3ef169886f595dd98e7b200543', flavor: 'scripture/textTranslation' },
     },
   };
   fs.writeFileSync(p, `${JSON.stringify(file, null, 2)}\n`);

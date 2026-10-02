@@ -47,7 +47,7 @@ crates.io `=` pin when 0.18.5+ publishes (see `docs/RISKS.md` #1).
   through the app's own fetch path. `seed.zsh` sideloads each resource on its own
   fixed list whose cache entry exists (see the loop in `seed.zsh`). The rig-gated
   HttpStore suite reads `en_ult`, so a rig that runs `npm run prove` needs at least:
-  `zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_ult v89 <sha from src/data/installedSuite.js>`.
+  `zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_ult v91 <sha from src/data/installedSuite.js>`.
   For the OBS Translate journey, cache the exact gateway set and the installer
   picture pack as well; `seed.zsh` installs them at their identity-qualified
   paths when those cache entries exist. Without the picture pack every story
@@ -175,25 +175,22 @@ netstat.exe -ano | findstr.exe ":19998"
 The last command should print nothing.
 
 J12 (`e2e/j12-upgrade-resources.spec.ts`, issues #256/#257) needs a NEWER release of
-the English helps than the seeded v89. The rig does not sideload it: the spec serves it
-as the mocked Door43 (a Playwright route on `git.door43.org`), so the journey runs offline
-and does not move when Door43 publishes again. Cache the exports once, through the app's
-own fetch path (the sha is the commit the DCS tags API names for the tag):
+the English helps than the seeded v91. Door43 has none, so the spec serves the seeded v91
+exports under a made-up tag (`v92`) with a made-up commit, as the mocked Door43 (a Playwright
+route on `git.door43.org`). The journey runs offline and does not move when Door43 publishes
+again. It needs no cache entry beyond the seeded ones.
 
-```bash
-zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tn v90 e137f93c4de4d64281e36c84d57a68e405cb20ab
-zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tw v90 014524aebf4f997c123777e952856d24e3b246d2
-zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_ta v90 be50fc8626b561c2fd36cfb98aee834b14a16a1c
-```
-
-Without the three `*-v90-unwrapped.zip` entries the J12 cases skip and say so.
-
-The guided fix screen's proof (`e2e/guided-fix.spec.ts`, issue #9) also needs `en_tn` v88 —
-a release the rig lacks and J12 never installs:
+The guided fix screen's proof (`e2e/guided-fix.spec.ts`, issue #9) needs two releases the
+rig lacks: `en_tn` v88 (the fetch case) and `en_tw` v90 (the re-pin and sideload cases).
+Cache them once, through the app's own fetch path (the sha is the commit the DCS tags API
+names for the tag):
 
 ```bash
 zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tn v88 c3be6e4f2d279327249ef5b14bf5d5c8b7549e35
+zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tw v90 014524aebf4f997c123777e952856d24e3b246d2
 ```
+
+Without them the guided fix cases skip and say so.
 
 Smoke test:
 
@@ -224,24 +221,25 @@ MSYS2 zsh window of the [Windows](#windows) section.
    zsh dev-env/scripts/setup-from-pins.zsh
    ```
 
-3. Cache the 24 resources that the journeys need. Each command downloads one pinned
+3. Cache the 22 resources that the journeys need. Each command downloads one pinned
    release from Door43 through the app's own fetch path, and fails if the commit is not
    the one given. `seed.zsh` sideloads the first 20 and writes an install record
    (decision D57) for each of them except the English OBS rows and the picture pack,
-   which seed without a record — 15 records in all. The last four are newer and older
-   releases that J12 and the guided fix serve as a mocked Door43:
+   which seed without a record — 15 records in all. The last two are releases the rig
+   lacks, which the guided fix serves as a mocked Door43:
 
    ```bash
-   # The English suite, the Greek New Testament, and the Spanish package (seeded).
+   # The English suite at the shipped pins (src/data/installedSuite.js, #504), the Greek
+   # New Testament, and the Spanish package (seeded).
    # The Spanish Bibles and OBS set make the second gateway package complete: without
    # them the J13 gateway-change cases fail after the confirm (issue #471 found the
    # gap — seed.zsh names them, but this list did not).
-   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_ult v89 84c73ba00fc8a95a9033f9efb14bb905a2a52ee4
-   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_ust v89 37ec223166bbd73fb55abc7840be8310c0fee7f2
-   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tn v89 ae6bcf6c9e28765df84a0eb34bf20028f7d73803
-   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tw v89 002f704aa693a0131dd6ea4efb83df7419148bfc
-   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_ta v89 d40dd84430ad7c8a24cf3c1c744916f60b035cd6
-   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tq v89 97c0a13e3b84d46d0e643ba2e8e9f1c295547a58
+   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_ult v91 35d215957f3203fd2e2fac5702ce14902d417f9d
+   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_ust v91 85f274a74245cb418f85266e1a5b524bc3e91e9c
+   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tn v91 e586762e330f482a60c52aedd1c7b3a2f155df8a
+   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tw v91 ff5b3852c27c3a0d01b109e482eb26047dcd20e2
+   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_ta v91 ce9a1bb9431317ca888e8c1f9620caa7f5fe45fd
+   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tq v91 8be02772584ff5a5fea893a392b4f019e3efcc77
    zsh dev-env/scripts/cache-resource.zsh unfoldingWord/el-x-koine_ugnt v0.34 fc95b2b8aad08bb65ab54628ab685413a1139e97
    zsh dev-env/scripts/cache-resource.zsh Es-419_gl/es-419_tn v66 22f3d0c61e2ab4701cb869547de9c3c43da07208
    zsh dev-env/scripts/cache-resource.zsh Es-419_gl/es-419_tw v37 7586f4ff1f0483ea40a4a68e5e1f33158e08c208
@@ -257,11 +255,9 @@ MSYS2 zsh window of the [Windows](#windows) section.
    zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_obs-twl v3 44ebc9fafe8101665f985007d566f5036a2be85b
    zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_obs-tq v10 01b92fe8793d62cff3a2221f5174c768cbad3dc1
    zsh dev-env/scripts/cache-resource.zsh uW/obs_images_360 "" 7146d5b504f6b63b9e11f7dc0b18c594d0ae179d
-   # The releases that J12 and the guided fix serve (not seeded)
-   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tn v90 e137f93c4de4d64281e36c84d57a68e405cb20ab
-   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tw v90 014524aebf4f997c123777e952856d24e3b246d2
-   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_ta v90 be50fc8626b561c2fd36cfb98aee834b14a16a1c
+   # The releases that the guided fix serves (not seeded)
    zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tn v88 c3be6e4f2d279327249ef5b14bf5d5c8b7549e35
+   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tw v90 014524aebf4f997c123777e952856d24e3b246d2
    ```
 
    The cache is gitignored. Do this step once; the entries stay when the rig reseeds.

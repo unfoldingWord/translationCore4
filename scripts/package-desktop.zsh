@@ -129,15 +129,19 @@ ZIP_JS_VER="2.18.2"                # root package.json and package-lock.json
 # burritos: no tag exists, so the tag field is empty and the cache fetches the
 # commit archive by sha. The store segment is `<owner lowercased>--<repo>`
 # (src/data/installed.ts localRepoPathFromRepoPath).
+# The weekly pin check (scripts/pin-check.mjs, .github/workflows/pin-check.yml)
+# reads this array and reports when a tagged pin is older than the latest
+# Door43 release (#504). Change a pin here together with installedSuite.js and
+# the copies docs/PACKAGING.md names.
 BUNDLED_RESOURCES=(
-  "unfoldingWord/en_ult:v89:84c73ba00fc8a95a9033f9efb14bb905a2a52ee4"
-  "unfoldingWord/en_ust:v89:37ec223166bbd73fb55abc7840be8310c0fee7f2"
+  "unfoldingWord/en_ult:v91:35d215957f3203fd2e2fac5702ce14902d417f9d"
+  "unfoldingWord/en_ust:v91:85f274a74245cb418f85266e1a5b524bc3e91e9c"
   "unfoldingWord/el-x-koine_ugnt:v0.34:fc95b2b8aad08bb65ab54628ab685413a1139e97"
-  "unfoldingWord/hbo_uhb:v2.1.30:106a441a788d9465846cd427538ea80b8cec6770"
-  "unfoldingWord/en_tn:v86:c354b8ae66a23c485bf6f38fd35bd8f7ef81e4e5"
-  "unfoldingWord/en_tw:v87:eaeb7bfefcf84132d0cbcbed185f3ea2be3d86dd"
-  "unfoldingWord/en_ta:v86:c7caddfb474efd713f36b35a3ffc927866c7b180"
-  "unfoldingWord/en_tq:v89:97c0a13e3b84d46d0e643ba2e8e9f1c295547a58"
+  "unfoldingWord/hbo_uhb:v3.0.0:74022f0fed012a3ef169886f595dd98e7b200543"
+  "unfoldingWord/en_tn:v91:e586762e330f482a60c52aedd1c7b3a2f155df8a"
+  "unfoldingWord/en_tw:v91:ff5b3852c27c3a0d01b109e482eb26047dcd20e2"
+  "unfoldingWord/en_ta:v91:ce9a1bb9431317ca888e8c1f9620caa7f5fe45fd"
+  "unfoldingWord/en_tq:v91:8be02772584ff5a5fea893a392b4f019e3efcc77"
   "uW/en_ugl::d9d29e2d589258ce27f92b59f753a3af03ab7a72"
   "uW/en_uhl::72df5ac25acf9d51e826b20e3ad883a5a657ef4e"
   "unfoldingWord/en_obs:v9:d39a1dc7a7557ac54e4a8fecc3462147fe7eec3b"

@@ -254,9 +254,9 @@ test.describe('J8 — a translator resumes where they left off', () => {
 // record refuses toward the gateway-change flow (D59 §3), so the record is restated
 // as the pin the project now holds before the journey marks a check.
 const PINS = () => ({
-  tn: pinForSideloaded('en_tn', 'v89'),
-  tw: pinForSideloaded('en_tw', 'v89'),
-  ta: pinForSideloaded('en_ta', 'v89'),
+  tn: pinForSideloaded('en_tn', 'v91'),
+  tw: pinForSideloaded('en_tw', 'v91'),
+  ta: pinForSideloaded('en_ta', 'v91'),
 });
 function pinEnglishAndRestateNotesRecord(): void {
   // Start from the seeded checking surface (the J4 pattern): a pin or decision file

@@ -108,10 +108,10 @@
     },
     "ingredients/checking/resources.json": {
       "checksum": {
-        "md5": "7dfc3fa8127fb56702a782964ccb841e"
+        "md5": "b38aef03bf730caaea1c971a2cbe1229"
       },
       "mimeType": "application/json",
-      "size": 5189,
+      "size": 5375,
       "role": "x-resource-links"
     },
     "ingredients/checking/settings.json": {
@@ -170,19 +170,19 @@
       "relationType": "source",
       "flavor": "textTranslation",
       "id": "dcs::unfoldingWord/hbo_uhb",
-      "revision": "v2.1.30"
+      "revision": "v3.0.0"
     },
     {
       "relationType": "source",
       "flavor": "textTranslation",
       "id": "dcs::unfoldingWord/en_ult",
-      "revision": "v89"
+      "revision": "v91"
     },
     {
       "relationType": "source",
       "flavor": "textTranslation",
       "id": "dcs::unfoldingWord/en_ust",
-      "revision": "v89"
+      "revision": "v91"
     },
     {
       "relationType": "parascriptural",
@@ -206,25 +206,25 @@
       "relationType": "parascriptural",
       "flavor": "x-bcvnotes",
       "id": "dcs::unfoldingWord/en_tn",
-      "revision": "v86"
+      "revision": "v91"
     },
     {
       "relationType": "parascriptural",
       "flavor": "x-bcvarticles",
       "id": "dcs::unfoldingWord/en_tw",
-      "revision": "v87"
+      "revision": "v91"
     },
     {
       "relationType": "peripheral",
       "flavor": "x-peripheralArticles",
       "id": "dcs::unfoldingWord/en_ta",
-      "revision": "v86"
+      "revision": "v91"
     },
     {
       "relationType": "parascriptural",
       "flavor": "x-bcvquestions",
       "id": "dcs::unfoldingWord/en_tq",
-      "revision": "v89"
+      "revision": "v91"
     },
     {
       "relationType": "peripheral",
