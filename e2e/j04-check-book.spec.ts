@@ -16,7 +16,7 @@ import {
   readDecisionFile,
   resetSeededChecking,
   sideloadedIngredient,
-  resetPlaces,
+  resetPlaces, readClientSettingsDoc,
 } from './helpers/rig';
 
 const PINS = () => ({
@@ -308,8 +308,19 @@ test.describe('J4 — a checker works a book', () => {
       // decisions must come back with it. The promise is that nothing is lost —
       // not an exact count, since re-attach and revalidation both legitimately
       // move the number.
-      await openCheck(page);
-      await page.getByTestId('open-translationNotes').click();
+      // #513: a restart returns to the open tool (#268, #329). The place record
+      // reaches the rig 500 ms after the last change, so wait for it. A reload
+      // before that opens the tool list, and a click there races the resume.
+      const places = () =>
+        readClientSettingsDoc()?.placeByProject as Record<string, Record<string, unknown>> | undefined;
+      await expect
+        .poll(() => places()?.[`_local_/_local_/${SEEDED_PROJECT}`]?.TIT, { timeout: 10_000 })
+        .toMatchObject({ mode: 'check', tool: 'translationNotes' });
+      await page.goto('/');
+      await page
+        .getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`)
+        .getByRole('button', { name: /Titus/ })
+        .click();
       await expect(page.getByTestId('check-progress')).toBeVisible();
       expect(await countDecided()).toBeGreaterThanOrEqual(beforeMark + 1);
 

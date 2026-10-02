@@ -1987,7 +1987,9 @@ main 0996d21, 2026-09-30, `src/data/share/door43Api.ts`].
    "Share on Door43" and "Upload changes". They are outlined pill buttons in the style of
    Settings, beside Settings. Before a share, the card's meta line ends with "· Only on this
    computer". After a share, an "On Door43" badge shows beside the project name, and the meta
-   line ends with "· Shared at `owner/repository`". In Local, Share does not refuse; point 4
+   line ends with "· Shared at `owner/repository`". In a development build, the line names the
+   server ("· Shared at `qa.door43.org/owner/repository`") when the remote is on that server
+   (#506; owner, 2026-10-01). In Local, Share does not refuse; point 4
    applies. The D79 refusal "the app is offline" becomes "Door43 cannot be reached". Its
    `Report` code stays `share.offline`. D84 points 3, 4 and 5 do not change.
 7. **Door43 sign-in (amends D84 point 2).** Home has no Door43 bar, and the top bar has no

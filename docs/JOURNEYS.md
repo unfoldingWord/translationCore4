@@ -204,7 +204,7 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   commit; `origin` is set in the repository's git config; nothing about remotes is stored in
   the installation; the token is in renderer memory, and in the operating-system keychain only
   when "Stay signed in" is on; no name, email or login is stored (D85); each pushed commit's
-  author is the computer's account name (PLATFORM-NOTES #47). The card shows an "On Door43" badge beside the project name, and its meta line ends with "· Shared at `owner/repository`" (before a share: "· Only on this computer"; D86 point 6). A later
+  author is the computer's account name (PLATFORM-NOTES #47). The card shows an "On Door43" badge beside the project name, and its meta line ends with "· Shared at `owner/repository`" (in a development build, "· Shared at `qa.door43.org/owner/repository`" when the remote is on that server; #506) (before a share: "· Only on this computer"; D86 point 6). A later
   share ("Upload changes") pushes `main` again with no dialog when a token is available.
   Under Upload changes, the card shows "as @username · Change" when someone is signed in, or
   "Signed in · Change" when a kept token is not resumed yet. At app start, tC4 sends no

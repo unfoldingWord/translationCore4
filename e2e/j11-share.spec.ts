@@ -576,7 +576,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       // repository path on the meta line, and Upload changes (D86 point 6).
       await expect(page.getByTestId(`share-card-${SEEDED_ID}`)).toHaveAttribute('data-shared', '1');
       await expect(page.getByTestId(`share-badge-${SEEDED_ID}`)).toHaveText('On Door43');
-      await expect(page.getByTestId(`share-state-${SEEDED_ID}`)).toHaveText(`Shared at ${USER.username}/${SEEDED_PROJECT}`);
+      await expect(page.getByTestId(`share-state-${SEEDED_ID}`)).toHaveText(`Shared at qa.door43.org/${USER.username}/${SEEDED_PROJECT}`);
       await expect(page.getByTestId(`share-${SEEDED_ID}`)).toHaveText('Upload changes');
 
       // Community Checking has no Share action.
@@ -600,6 +600,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       // A new app session: the card's state is derived from the repository's own origin (D84
       // point 1) — here the spec's bare `file://` remote, read back as its path (`.git` dropped);
       // on Door43 the url reads back as `<owner>/<name>`, as test 1 showed after the share.
+      // The remote is not on the QA server, so the line names no server.
       // The expected path comes from the URL the fake served (pathToFileURL), not from the
       // filesystem path: on Windows the URL's pathname is `/C:/…` with forward slashes.
       await page.reload();
@@ -720,7 +721,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       expect([...fake.repositories.keys()]).toEqual([`orgA/${SEEDED_PROJECT}`]);
       expect(remote.main()).toBe(head(SEEDED_PROJECT));
       await page.getByTestId('share-close').click();
-      await expect(page.getByTestId(`share-state-${SEEDED_ID}`)).toHaveText(`Shared at orgA/${SEEDED_PROJECT}`);
+      await expect(page.getByTestId(`share-state-${SEEDED_ID}`)).toHaveText(`Shared at qa.door43.org/orgA/${SEEDED_PROJECT}`);
     });
 
     test('6. refusals: the name exists on the account and on an organization; a non-fast-forward push; each with its code, nothing pushed, and in the ops log', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
@@ -799,7 +800,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       // The platform set the author at creation to the computer's account name (PLATFORM-NOTES #47).
       expect(git(remote.bare, 'log', '-1', '--format=%an', 'main')).toBe(os.userInfo().username);
       await page.getByTestId('share-close').click();
-      await expect(page.getByTestId(`share-state-${id}`)).toHaveText(`Shared at ${USER.username}/${abbr}`);
+      await expect(page.getByTestId(`share-state-${id}`)).toHaveText(`Shared at qa.door43.org/${USER.username}/${abbr}`);
       await fetch(`${RIG_API}/git/delete/${id}`, { method: 'POST' });
     });
 
