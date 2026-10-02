@@ -23,10 +23,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { lane } from '../e2e/lane.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CONF = path.join(ROOT, 'conformance');
-const RIG_API = process.env.RIG_API || 'http://127.0.0.1:19998/api';
+const RIG_API = process.env.RIG_API || lane().rigApi;
 const SAMPLE = '_local_/_local_/sample_burrito';
 // The seeded set (dev-env/scripts/seed.zsh): the sample and, since issue #95, the large
 // fixture the slow-open journey reads. A pristine rig holds exactly these under _local_/_local_.

@@ -10,6 +10,7 @@ import { indexBook } from '../src/data/usfm/indexer';
 import { SaveScheduler } from '../src/data/saveScheduler';
 import { INSTALLED_SUITE } from '../src/data/installedSuite';
 import { unwrapExport } from '../src/data/resourceFetch';
+import { lane } from '../e2e/lane.mjs';
 
 const fs = process.getBuiltinModule('node:fs');
 const path = process.getBuiltinModule('node:path');
@@ -118,7 +119,7 @@ describe('M3 — splice never glues a body onto a contentless \\v key', () => {
 
 describe('M4 — upsertDecision matches identity key AND quoteString together', () => {
   it('a quote change creates ONE new record; later upserts update it, never append (rig required)', async () => {
-    const probe = await fetch('http://127.0.0.1:19998/api/version').catch(() => null);
+    const probe = await fetch(`${lane().rigApi}/version`).catch(() => null);
     if (!probe?.ok) {
       console.warn('M4 leg skipped: rig not running');
       return;
@@ -130,7 +131,7 @@ describe('M4 — upsertDecision matches identity key AND quoteString together', 
     // with — and the cleanup delete — a real project or a concurrent run.
     const { HttpStore } = await import('../src/data/httpStore');
     const { isNotFoundError } = await import('../src/data/serverApi');
-    const store = new HttpStore({ baseUrl: 'http://127.0.0.1:19998/api' });
+    const store = new HttpStore({ baseUrl: lane().rigApi });
     // The scratch path is computed BEFORE creation so the cleanup scope can
     // delete it on EVERY exit — a rejected create can leave a git-initialized
     // debris repo (PLATFORM-NOTES #28), and a rejected open leaves the created

@@ -275,6 +275,57 @@ MSYS2 zsh window of the [Windows](#windows) section.
 
    To run one journey, give its tag, for example `npm run journeys -- --grep "@J1( |$)"`.
 
+## Run the journeys in two worktrees at the same time
+
+Each worktree has its own rig state (`dev-env/state/`). A port lane gives each worktree
+its own ports too (#524). Two variables name the lane:
+
+| Variable | Default | Used by |
+|---|---|---|
+| `TC4_RIG_PORT` | `19998` | `run.zsh`, the vite `/api` proxy, the journeys, `npm run prove`, and the rig-gated `npm test` suites |
+| `TC4_VITE_PORT` | `5199` | `npm run dev` and the journeys |
+
+With no variable set, nothing changes. When you set one or both variables, Playwright
+starts its own rig and its own vite on the lane ports, and stops them at the end. If a
+lane port is already in use, the run stops with an error. It does not use a server
+from another worktree.
+
+1. In the second worktree, install the packages. A link to the `node_modules` of the
+   first worktree also works, but then the two vite servers share one dependency cache
+   (`node_modules/.vite`). When the packages or `vite.config.js` of the two branches are
+   different, vite optimizes the dependencies again at start and reloads the page. Use
+   `npm ci` to prevent this:
+
+   ```bash
+   npm ci
+   ```
+
+2. Link the rig server, the app resources and the resource cache from the first
+   worktree. These links are not tracked. Do not stage them:
+
+   ```bash
+   ln -s <first worktree>/dev-env/app-resources dev-env/app-resources
+   ln -s <first worktree>/dev-env/resources-cache dev-env/resources-cache
+   ln -s <first worktree>/dev-env/server/target dev-env/server/target
+   ```
+
+3. Seed the rig of the second worktree one time. (`run.zsh` also seeds when
+   `dev-env/state/work` is missing.)
+
+   ```bash
+   zsh dev-env/scripts/seed.zsh
+   ```
+
+4. Run the journeys on ports that no other worktree uses:
+
+   ```bash
+   TC4_RIG_PORT=19999 TC4_VITE_PORT=5299 npm run journeys
+   ```
+
+Each lane uses one Playwright worker, as the default lane does.
+
+`stop.zsh` stops every rig on this computer, in all lanes.
+
 ## What is not in this directory
 
 `app-resources/`, `resources-cache/`, `state/`, `upstream/`, and `server/target/` are
