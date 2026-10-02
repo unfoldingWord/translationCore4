@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
+const { createHash } = require('node:crypto');
 
 function withTrailingSeparator(value) {
   return value.endsWith(path.sep) ? value : `${value}${path.sep}`;
@@ -100,13 +101,133 @@ function copyIfMissing(source, destination, prepare = () => {}) {
   }
 }
 
-function bootstrap({ resourcesDir, home, storeLeaf, variant }) {
+function readObject(file) {
+  const value = JSON.parse(fs.readFileSync(file, 'utf8'));
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`Expected JSON object at ${file}`);
+  return value;
+}
+
+function resourceMetadata(directory, pin) {
+  const meta = readObject(path.join(directory, 'metadata.json'));
+  const entries = Object.entries(meta.identification?.primary?.dcs ?? {});
+  if (!entries.some(([repo, value]) => `git.door43.org/${repo}`.toLowerCase() === pin.repoPath.toLowerCase() && value.revision === pin.sha)) {
+    throw new Error(`Resource revision does not match manifest: ${directory}`);
+  }
+  const ft = meta.type?.flavorType;
+  if (!ft?.name || !ft?.flavor?.name) throw new Error(`Resource has no factual flavor: ${directory}`);
+  if (!meta.ingredients || !Object.keys(meta.ingredients).length) throw new Error(`Resource has no ingredients: ${directory}`);
+  return { meta, flavor: `${ft.name}/${ft.flavor.name}` };
+}
+
+function validateTree(directory, ingredients) {
+  for (const [relative, record] of Object.entries(ingredients)) {
+    if (relative.includes('\\') || path.posix.isAbsolute(relative) || relative.split('/').some((part) => part === '..')) throw new Error(`Invalid ingredient path: ${relative}`);
+    const file = path.join(directory, ...relative.split('/'));
+    if (!fs.statSync(file).isFile()) throw new Error(`Incomplete resource: ${file}`);
+    const bytes = fs.readFileSync(file);
+    if (typeof record.size === 'number' && bytes.length !== record.size) throw new Error(`Resource size mismatch: ${file}`);
+    for (const [algorithm, checksum] of Object.entries(record.checksum ?? {})) {
+      if (!['md5', 'sha256', 'sha512'].includes(algorithm)) throw new Error(`Unsupported resource checksum: ${algorithm}`);
+      if (createHash(algorithm).update(bytes).digest('hex') !== checksum) throw new Error(`Resource checksum mismatch: ${file}`);
+    }
+  }
+}
+
+// Pankosmia 0.18.5 initializes only when its working directory is absent.
+// Publish a COMPLETE fresh profile from its own shipped templates, otherwise
+// recording installs first would make the server skip initialization and panic.
+function prepareProfile(resourcesDir, home, profile, staging) {
+  fs.rmSync(staging, { recursive: true, force: true });
+  fs.mkdirSync(staging, { recursive: true });
+  const setup = readObject(path.join(resourcesDir, 'lib/setup/local_setup.json'));
+  const replacements = {
+    '%%WORKINGDIR%%': profile,
+    '%%APPRESOURCESDIR%%': appResourcesDir(resourcesDir),
+    '%%PANKOSMIADIR%%': setup.local_pankosmia_path,
+    '%%HOMEDIR%%': home,
+  };
+  const substitute = (value) => {
+    if (typeof value === 'string') return Object.entries(replacements).reduce((text, [token, replacement]) => text.replaceAll(token, replacement), value);
+    if (Array.isArray(value)) return value.map(substitute);
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, substitute(child)]));
+    return value;
+  };
+  for (const name of ['user_settings.json', 'app_state.json']) {
+    writeJsonAtomically(path.join(staging, name), substitute(readObject(path.join(resourcesDir, 'lib/templates', name))));
+  }
+  fs.mkdirSync(path.join(staging, 'blobs'));
+  fs.mkdirSync(path.join(staging, 'temp'));
+}
+
+function ensureBundledResources({ resourcesDir, home, storeLeaf, profileLeaf }) {
   const store = path.join(home, storeLeaf);
   const bundled = path.join(resourcesDir, 'resources');
-  for (const entry of fs.readdirSync(bundled, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    copyIfMissing(path.join(bundled, entry.name), path.join(store, '_local_', '_sideloaded_', entry.name));
+  const sources = fs.readdirSync(bundled, { withFileTypes: true }).filter((entry) => entry.isDirectory());
+  const manifest = readObject(path.join(resourcesDir, 'BUILD-MANIFEST.json'));
+  if (!Array.isArray(manifest.bundled_resources) || !manifest.bundled_resources.length) throw new Error('Manifest has no bundled resources');
+  const local = path.join(store, '_local_', '_sideloaded_');
+  const stagingRoot = path.join(store, '.tc4-resource-installing');
+  fs.mkdirSync(local, { recursive: true });
+  // Startup holds the singleton lock; abandoned staging is never a resource.
+  fs.rmSync(stagingRoot, { recursive: true, force: true });
+  const profile = profileDirectory({ resourcesDir, home, profileLeaf });
+  const freshProfile = !fs.existsSync(profile);
+  const profileStaging = `${profile}.tc4-installing`;
+  const settingsFile = path.join(freshProfile ? profileStaging : profile, 'client_settings', 'uw-tc4.json');
+  const settings = !freshProfile && fs.existsSync(settingsFile) ? readObject(settingsFile) : {};
+  const installed = settings.installedResources ?? {};
+  if (!installed || typeof installed !== 'object' || Array.isArray(installed)) throw new Error('Invalid installedResources settings');
+  const next = { ...installed };
+  try {
+    for (const pin of manifest.bundled_resources) {
+      if (!/^git\.door43\.org\/[a-z0-9_.-]+\/[a-z0-9_.-]+$/i.test(pin.repoPath) || !/^[0-9a-f]{40}$/.test(pin.sha)) throw new Error('Invalid bundled resource identity in manifest');
+      const parts = pin.repoPath.split('/');
+      const segment = `${parts[1]}--${parts[2]}`.toLowerCase();
+      const sourceEntry = sources.find((entry) => entry.name.toLowerCase() === segment || entry.name.toLowerCase() === `${segment}--${pin.sha.slice(0, 12)}`);
+      if (!sourceEntry) throw new Error(`Bundled resource missing: ${pin.repoPath}`);
+      const source = path.join(bundled, sourceEntry.name);
+      const { meta, flavor } = resourceMetadata(source, pin);
+      validateTree(source, meta.ingredients);
+      let destination = path.join(local, `${segment}--${pin.sha}`);
+      const candidates = fs.readdirSync(local, { withFileTypes: true }).filter((entry) => entry.isDirectory()).sort((a, b) => a.name.localeCompare(b.name));
+      for (const entry of candidates) {
+        const candidate = path.join(local, entry.name);
+        // Metadata, not a possibly stale record, determines a reusable copy.
+        let identity;
+        try { identity = resourceMetadata(candidate, pin); }
+        catch (error) { if (candidate === destination) throw error; continue; }
+        if (identity.flavor !== flavor) throw new Error(`Resource flavor mismatch: ${candidate}`);
+        validateTree(candidate, meta.ingredients);
+        destination = candidate;
+        break;
+      }
+      if (!fs.existsSync(destination)) {
+        const staging = path.join(stagingRoot, `${segment}--${pin.sha}`);
+        fs.mkdirSync(stagingRoot, { recursive: true });
+        fs.cpSync(source, staging, { recursive: true, errorOnExist: true, force: false });
+        resourceMetadata(staging, pin);
+        validateTree(staging, meta.ingredients);
+        fs.renameSync(staging, destination);
+      }
+      const key = `_local_/_sideloaded_/${path.basename(destination)}`;
+      next[key] = { repoPath: pin.repoPath, sha: pin.sha, ...(pin.version ? { version: pin.version } : {}), flavor };
+    }
+    if (freshProfile) prepareProfile(resourcesDir, home, profile, profileStaging);
+    if (freshProfile || JSON.stringify(next) !== JSON.stringify(installed)) {
+      fs.mkdirSync(path.dirname(settingsFile), { recursive: true });
+      writeJsonAtomically(settingsFile, { ...settings, installedResources: next });
+    }
+    if (freshProfile) fs.renameSync(profileStaging, profile);
+  } finally {
+    fs.rmSync(stagingRoot, { recursive: true, force: true });
+    fs.rmSync(profileStaging, { recursive: true, force: true });
   }
+}
+
+function bootstrap(options) {
+  const { resourcesDir, home, storeLeaf, variant } = options;
+  ensureBundledResources(options);
+  const store = path.join(home, storeLeaf);
   if (variant === 'debug') {
     const destination = path.join(store, '_local_', '_local_', 'sample_burrito');
     copyIfMissing(path.join(resourcesDir, 'debug-seeds', 'sample_burrito'), destination, (cwd) => {
@@ -119,4 +240,4 @@ function bootstrap({ resourcesDir, home, storeLeaf, variant }) {
   }
 }
 
-module.exports = { appResourcesDir, bindPackagedResources, bootstrap, profileDirectory, shouldBindPackagedResources };
+module.exports = { appResourcesDir, bindPackagedResources, bootstrap, ensureBundledResources, profileDirectory, shouldBindPackagedResources };

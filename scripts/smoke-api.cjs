@@ -73,6 +73,22 @@ function localRepoDir(project) {
   if (!localStore) return null;
   return path.join(localStore, ...project.split("/"));
 }
+async function bundledPath(repoPath) {
+  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "BUILD-MANIFEST.json"), "utf8"));
+  const pin = manifest.bundled_resources.find((entry) => entry.repoPath === repoPath);
+  if (!pin) throw new Error("manifest has no " + repoPath);
+  const settings = JSON.parse(await getText("/api/client-settings/uw-tc4"));
+  const local = Object.keys(settings.installedResources || {}).find((key) => {
+    const installed = settings.installedResources[key];
+    return installed.repoPath.toLowerCase() === repoPath.toLowerCase() && installed.sha === pin.sha;
+  });
+  if (!local) throw new Error("no installed record for " + repoPath + " at " + pin.sha);
+  const metadata = JSON.parse(await getText("/api/burrito/metadata/raw/" + enc(local)));
+  if (!Object.entries(metadata.identification.primary.dcs).some(([name, value]) =>
+    ("git.door43.org/" + name).toLowerCase() === repoPath.toLowerCase() && value.revision === pin.sha))
+    throw new Error("installed metadata disagrees with manifest: " + local);
+  return local;
+}
 function obsTemplate(number) {
   return fs.readFileSync(path.join(__dirname, "lib", "templates", "content_templates", "text_stories", "ingredients", storyPath(number)), "utf8");
 }
@@ -194,7 +210,8 @@ async function probeObsTemplate() {
   const ipath = "TIT.usfm"; // ingredient-relative, as /burrito/paths lists them
   const rawRoute = "/api/burrito/ingredient/raw/" + enc(repo) + "?ipath=" + encodeURIComponent(ipath);
   if (mode === "source") {
-    const srcRoute = "/api/burrito/ingredient/raw/_local_/_sideloaded_/unfoldingword--en_ult?ipath=TIT.usfm";
+    const local = await bundledPath("git.door43.org/unfoldingWord/en_ult");
+    const srcRoute = "/api/burrito/ingredient/raw/" + enc(local) + "?ipath=TIT.usfm";
     const usfm = await getText(srcRoute).catch((e) => fail("source", e.message));
     const v = verse11(usfm);
     if (!v) fail("source", "no text for TIT 1:1 in " + srcRoute);
@@ -208,7 +225,8 @@ async function probeObsTemplate() {
       + ", host " + process.platform + "-" + process.arch + ", built " + manifest.built_utc);
     const net = JSON.parse(await getText("/api/net/status"));
     if (net.is_enabled !== false) fail("OBS image net gate", "external access was enabled before the check: " + JSON.stringify(net));
-    const route = "/api/burrito/ingredient/bytes/_local_/_sideloaded_/uw--obs_images_360--7146d5b504f6?ipath=360px%2Fobs-en-01-01.jpg";
+    const local = await bundledPath(pin.repoPath);
+    const route = "/api/burrito/ingredient/bytes/" + enc(local) + "?ipath=360px%2Fobs-en-01-01.jpg";
     const bytes = await getBytes(route).catch((e) => fail("OBS image", e.message));
     let size;
     try { size = jpegDimensions(bytes); } catch (e) { fail("OBS image decode", e.message); }
