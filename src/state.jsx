@@ -3761,6 +3761,9 @@ export function AppProvider({ children }) {
         const st = stateRef.current;
         const offer = st.upgrade.offers?.[rung];
         if (!offer?.upgrades.length) return null;
+        // D88: an offer can outlive the Source texts screen that found it, so
+        // its install is part of that task again, and asks when none is open.
+        if (!a.taskOpen('sources')) return (await a.internetTask('sources', () => a.upgradeSet(rung), { modals: SOURCES_MODALS })) ?? null;
         return a.applyOffer(offer);
       },
 
@@ -3826,6 +3829,7 @@ export function AppProvider({ children }) {
         const st = stateRef.current;
         const offer = st.upgrade.textOffers?.find((o) => samePath(o.repoPath, textRepoPath));
         if (!store || !offer) return null;
+        if (!a.taskOpen('sources')) return (await a.internetTask('sources', () => a.upgradeText(textRepoPath), { modals: SOURCES_MODALS })) ?? null;
         const repoPath = projectPathOf(st);
         const stillCurrent = () => storeRef.current === store && projectPathOf(stateRef.current) === repoPath;
         dispatch({ type: 'patchUpgrade', patch: { installing: offer.repoPath, error: null, progress: null } });
