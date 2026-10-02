@@ -92,8 +92,13 @@ function Run-Upgrade([string]$mode) {
   $env:ELECTRON_RUN_AS_NODE = '1'
   try {
     $settingsFile = Join-Path $SmokeHome 'pankosmia\tc4\client_settings\uw-tc4.json'
-    & $exe "$AppDir\smoke-upgrade.cjs" $mode "http://127.0.0.1:$script:port/api" $store $settingsFile $LogDir
-    if ($LASTEXITCODE -ne 0) { throw "bundled upgrade $mode failed: $LASTEXITCODE" }
+    $out = Join-Path $LogDir "upgrade-$mode-$stamp.log"
+    $err = Join-Path $LogDir "upgrade-$mode-$stamp.err"
+    $argsList = @("`"$AppDir\smoke-upgrade.cjs`"", $mode, "http://127.0.0.1:$script:port/api", "`"$store`"", "`"$settingsFile`"", "`"$LogDir`"")
+    $p = Start-Process -FilePath $exe -ArgumentList $argsList -PassThru -Wait -RedirectStandardOutput $out -RedirectStandardError $err
+    Get-Content -LiteralPath $out | Write-Host
+    Get-Content -LiteralPath $err | Write-Host
+    if ($p.ExitCode -ne 0) { throw "bundled upgrade $mode failed: $($p.ExitCode)" }
   } finally { Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue }
 }
 try {
