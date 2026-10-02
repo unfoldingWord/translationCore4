@@ -248,10 +248,11 @@ function textIngredients(): Record<string, Buffer> {
   return out;
 }
 
-/** Manage source texts opens the project on its default book, so go Home and open Titus on Check again. */
+/** Manage source texts opens the project on its first book and leaves it open. Reach Titus on
+ * Check in that same session, so the check reads the pins the upgrade just wrote in memory. */
 async function openTitusCheck(page: Page) {
-  await page.getByTitle('Switch project').click();
-  await page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByRole('button', { name: /Titus/ }).click();
+  await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+  await page.getByRole('complementary').getByRole('button', { name: /Titus/ }).click();
   await page.getByRole('tab', { name: 'Check', exact: true }).click();
 }
 
@@ -309,7 +310,7 @@ test.describe('J12 — a facilitator upgrades the pinned resources', () => {
     'pins never move without the explicit accept: open, Check, preflight, the offer, close — resources.json is byte-identical (FR-22, #3)',
     { tag: ['@inc6', '@J12'] },
     async ({ page, context }) => {
-      test.setTimeout(120_000); // two opens now: Manage source texts opens the project, then Titus is opened on Check
+      test.setTimeout(120_000); // the first open of the project is cold: it seeds the journal
       writeProjectPins(SEEDED_PROJECT, PINS());
       const { dropped } = seedDecisionsUnderV89();
       await mockDcs(context, dropped.contextId.checkId);

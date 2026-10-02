@@ -608,7 +608,7 @@ between runs; it does not replace the run.
    request #192 merged carry it, and the section "Smoke tests" describes it), run it once,
    online: `zsh smoke-installed.zsh`. Expected: `SMOKE OK`. An older artifact has no such
    file; skip this step and say so in the record.
-3. Optional: start the app online once, create a project, then on its card on Home choose `Settings` › `Manage source texts`.
+3. Optional: start the app online once, create a project, choose `Switch project`, then on its card on Home choose `Settings` › `Manage source texts`.
 4. Turn the network off at the operating-system level, not in the app:
    - macOS: System Settings › Network, or the menu bar: turn Wi-Fi off and unplug Ethernet.
    - Linux: `nmcli networking off`, or `rfkill block all` plus unplug Ethernet. For a scripted

@@ -65,17 +65,12 @@ async function openSettingsFromHome(page: import('@playwright/test').Page, proje
   await page.getByTestId(`project-_local_/_local_/${project}`).getByRole('button', { name: 'Settings' }).click();
 }
 
-/** After the change, Titus is reopened from its Home tile. Check may resume the notes session
- * where it was last open, or show the picker: either way the session must derive from Spanish. */
-async function openSpanishNotesSession(page: import('@playwright/test').Page) {
-  const session = page.getByTestId('check-session');
-  await expect(session.or(page.getByTestId('open-translationNotes'))).toBeVisible();
-  await expect(async () => {
-    if (await session.isVisible()) return;
-    await page.getByTestId('open-translationNotes').click({ timeout: 2_000 });
-    await expect(session).toBeVisible({ timeout: 2_000 });
-  }).toPass({ timeout: 30_000 });
-  await expect(session).toContainText('es-419_tn');
+/** A change from Home opens the project on its first book and leaves it open. Reach Titus on
+ * Check in that same session, so the check reads the pins the change just wrote in memory. */
+async function titusCheckInPlace(page: import('@playwright/test').Page) {
+  await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+  await page.getByRole('complementary').getByRole('button', { name: /Titus/ }).click();
+  await page.getByRole('tab', { name: 'Check', exact: true }).click();
 }
 
 /** #412: the change starts in Project Settings. */
@@ -475,7 +470,7 @@ test.describe('J13 — changing the project’s checking language', () => {
       writeProjectPins(SEEDED_PROJECT, EN());
       await chooseInSettings(page, ES_KEY);
       await confirmChange(page);
-      await openCheck(page);
+      await titusCheckInPlace(page);
       await page.getByTestId('open-translationNotes').click();
       await expect(page.getByTestId('check-progress')).toHaveText(/\d+ of \d+ resolved/);
       // The session states which resource it derived from, and it is Spanish.
@@ -499,7 +494,7 @@ test.describe('J13 — changing the project’s checking language', () => {
   );
 
   test(
-    'a switch from Settings after a check session: the reopened session derives from the Spanish notes, and the next decision saves against them (#412)',
+    'a switch from Settings after a check session: the open project derives its next session from the Spanish notes, and the next decision saves against them (#412)',
     { tag: ['@inc2', '@J13'] },
     async ({ page }) => {
       test.setTimeout(120_000);
@@ -518,8 +513,11 @@ test.describe('J13 — changing the project’s checking language', () => {
       await page.getByTestId('mark-valid').click();
       await chooseInSettings(page, ES_KEY);
       await confirmChange(page);
-      await openCheck(page);
-      await openSpanishNotesSession(page);
+      await titusCheckInPlace(page);
+      // The session derived from English is closed; the picker is back.
+      await expect(page.getByTestId('check-session')).toHaveCount(0);
+      await page.getByTestId('open-translationNotes').click();
+      await expect(page.getByTestId('check-session')).toContainText('es-419_tn');
       const before = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')!.decisions.length;
       await page.getByTestId('check-list').locator('button[data-decided="0"]').last().click();
       await page.getByTestId('mark-valid').click();
@@ -584,8 +582,12 @@ test.describe('J13 — changing the project’s checking language', () => {
 
       await chooseInSettings(page, ES_KEY);
       await confirmChange(page);
-      await openCheck(page);
-      await openSpanishNotesSession(page);
+      await titusCheckInPlace(page);
+      await expect(page.getByTestId('check-session')).toHaveCount(0);
+      // The picker card counts the Spanish list once it is current; a click before that opens the English one.
+      await expect(page.getByTestId('preflight-translationNotes')).toContainText(`of ${esItems.length}`);
+      await page.getByTestId('open-translationNotes').click();
+      await expect(page.getByTestId('check-session')).toContainText('es-419_tn');
 
       // Every carried-over decision is counted. The change kept `carried` and, for `collided`, the
       // record that the sample's swi9 brought: one record for the check id, not marked to check again.
@@ -653,19 +655,20 @@ test.describe('J13 — changing the project’s checking language', () => {
       const before = readProjectPins(repo) as unknown as ResourcesOnDisk;
       await page.goto('/');
       await page.getByTestId(`project-_local_/_local_/${repo}`).getByTestId('story-tile-1').click();
+      await page.getByRole('tab', { name: 'Translate', exact: true }).click();
       await expect(page.getByTestId('story-draft')).toContainText(firstFrame('en_obs'));
       await openSettingsFromHome(page, repo);
       await expect(page.getByTestId(`settings-gateway-${EN_KEY}`)).toHaveAttribute('data-current', '1');
       await page.getByTestId(`settings-gateway-${ES_KEY}`).click();
       await expect(page.getByTestId('gateway-change')).toBeVisible();
       await confirmChange(page);
-      await openSettingsFromHome(page, repo);
-      await expect(page.getByTestId('settings-gateway-current')).toHaveText('This project checks in Spanish (Latin American) · es-419_gl.');
-      // The story shows the Spanish source, and names v2.
-      await page.getByRole('button', { name: 'Cancel' }).click();
-      await page.getByTestId(`project-_local_/_local_/${repo}`).getByTestId('story-tile-1').click();
+      // The project opened for the change and is still open: its story shows the Spanish source
+      // without leaving it, and names v2.
+      await page.getByRole('tab', { name: 'Translate', exact: true }).click();
       await expect(page.getByTestId('story-draft')).toContainText(firstFrame('es-419_obs'));
       await expect(page.getByTestId('source-name')).toContainText('v2');
+      await openSettingsFromHome(page, repo);
+      await expect(page.getByTestId('settings-gateway-current')).toHaveText('This project checks in Spanish (Latin American) · es-419_gl.');
       const after = readProjectPins(repo) as unknown as ResourcesOnDisk;
       expect(after.languageSets.primary.gatewayLanguage).toEqual({ languageId: 'es-419', owner: ES_ORG });
       for (const name of ['es-419_obs', 'es-419_obs-tn', 'es-419_obs-twl', 'es-419_tw', 'es-419_ta']) {
