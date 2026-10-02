@@ -292,7 +292,9 @@ from another worktree.
 
 1. In the second worktree, install the packages. A link to the `node_modules` of the
    first worktree also works, but then the two vite servers share one dependency cache
-   (`node_modules/.vite`). Use `npm ci` when the two branches have different packages:
+   (`node_modules/.vite`). When the packages or `vite.config.js` of the two branches are
+   different, vite optimizes the dependencies again at start and reloads the page. Use
+   `npm ci` to prevent this:
 
    ```bash
    npm ci
