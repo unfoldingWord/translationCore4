@@ -66,11 +66,12 @@ export default function AccountMenu() {
   const rows = () => [...(panel.current?.querySelectorAll('[role^="menuitem"]') ?? [])];
   useEffect(() => {
     if (!open) return undefined;
+    // The Layer settles over its first frames and can hand focus back to the
+    // trigger; keep the first row focused until it has settled.
     let frame = 0;
     const focusFirst = (tries) => {
-      const first = rows()[0];
-      if (first) first.focus();
-      else if (tries > 0) frame = requestAnimationFrame(() => focusFirst(tries - 1));
+      if (!panel.current?.contains(document.activeElement)) rows()[0]?.focus();
+      if (tries > 0) frame = requestAnimationFrame(() => focusFirst(tries - 1));
     };
     focusFirst(10);
     return () => cancelAnimationFrame(frame);
