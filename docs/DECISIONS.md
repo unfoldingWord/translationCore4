@@ -2126,3 +2126,72 @@ change with this decision: `docs/JOURNEYS.md` (J3, J9, J11, and the J12 precondi
 rows), `docs/PACKAGING.md` ("The offline run", step 9a, and the regression check) and
 `CONTEXT.md` (the terms for the internet question and the account menu, and Door43 session). The
 decision follows issue #514.
+
+## D89 (2026-10-03, project-owner rulings) **Increment 9 ships v4.0.0 on 2026-10-16 from an rc.2 tagged on 2026-10-12. A gate that is not green moves the date. A feature that is not green leaves the increment. Each P2 or P3 issue that does not merge by 2026-10-09 moves to the 4.0.1 milestone. macOS ships unsigned. Windows ships signed only if the credential works in CI by 2026-10-08.** [owner grill session 2026-10-02 and 2026-10-03, after the v4.0.0-rc.1 release (#371); milestone "Increment 9 — ship"; issues #44, #456, #461, #206, #71, #7, #42, #46, #420, #519, #476, #521, #378]
+
+Context. Increment 9 had 30 open issues on 2026-10-02 [VERIFIED — `gh issue list` of the
+milestone, 2026-10-02]. Some of them were release gates and some were product work. Six working
+days remain before rc.2: 2026-10-05 to 2026-10-09, and 2026-10-12. rc.1 is unsigned on all three
+platforms [VERIFIED — release assets of v4.0.0-rc.1 and `.github/workflows/package-desktop.yml`,
+2026-10-02]. The criterion of #44, "owner decides by rc.1", had no decision recorded. The owner
+kept most of the product work and ruled on the order, the gates and the cut rules.
+
+1. **The release path.** rc.2 tags on 2026-10-12. v4.0.0 ships on 2026-10-16. v4.0.0 promotes
+   the rc.2 artifact and does not build it again. The dates of D74 and D79 stand. If a gate is
+   not green, the release date moves. If a feature is not green, the feature leaves Increment 9.
+2. **What can enter.** Each defect that end-user QA finds is in scope until rc.2. After rc.2,
+   only a release blocker can enter: data loss, a project that cannot open, or an install that
+   fails. Other defects go to 4.0.1 or 4.1.0.
+3. **The cut rule.** Each P2 or P3 issue that does not merge by the end of 2026-10-09 moves to
+   the 4.0.1 milestone. It then stops blocking the release issue. The owner moves deliberate
+   deferrals to 4.1.0. The gates (P1) are #44, #456, #284, #206, #335, #336, #42, #71 and the
+   rc.1 QA defects #536, #532 and #499.
+4. **Signing (closes the decision criterion of #44).** macOS v4.0.0 is unsigned: the app is
+   ad-hoc signed and not notarized, and the user selects Open Anyway (`docs/PACKAGING.md`).
+   Windows signing is #456. Its credential must work in CI by 2026-10-08. If it does not, rc.2
+   and v4.0.0 ship Windows unsigned with the documented SmartScreen steps. #456 then moves to
+   4.0.1.
+   Linux stays an unsigned zip.
+5. **Witnesses.** A clean-machine witness of the Windows installer is a gate for rc.2. The clean
+   macOS witness is not a gate for rc.2.
+6. **The server pin.** #461 moves the pin from pankosmia-web 0.18.5 to 0.18.14 first, with a
+   hard stop on 2026-10-07. The bump runs the D27 re-baseline. #206 (the server does not stop on
+   quit) uses the `POST /api/system/shutdown` route [VERIFIED — pankosmia-web 0.18.8 (bab524c,
+   2026-09-02) adds it; `src/utils/launch.rs` mounts it under `/api/system`; read 2026-10-03]. If #461 is not green
+   on 2026-10-07, the pin stays at 0.18.5, and #206 gets a narrow fix for the double stop call.
+7. **The client set.** v4.0.0 bundles only the `uw-tc4` client, as rc.1 did. #71 records this
+   ruling and adds a smoke check of `GET /api/list-clients`. #7 closes into #71.
+8. **The keyboard pass.** #42 covers a logical tab order and a visible focus ring on the Check
+   pages. Draft, Align and the screen-reader pass come after 4.0.0. This narrows the owner ruling
+   of 2026-08-12 [VERIFIED — owner comment on #42, 2026-08-13].
+9. **Help and guides (#519).** The help pages come from `tc-help/` in
+   `unfoldingWord/tc-website`. The owner writes them. They build to plain static files with no
+   external fonts, CDN, analytics or host-only features. tC4 pins one commit SHA of that
+   repository and puts `tc-help/` into the install. Help opens the pages offline and sends zero
+   requests. If the pages are not published by 2026-10-09, the menu item stays hidden and #519
+   moves to 4.0.1. The online site (#476) is a parallel track and does not block the release.
+   D88 point 1 stands.
+10. **Report a problem (#521, closes the open points of #378).** tC4 uses the tC3 mechanism:
+    SendGrid with the token and address in `TC_HELP_DESK_TOKEN` and `TC_HELP_DESK_EMAIL`, put
+    into the app at build time [VERIFIED — unfoldingWord/translationCore
+    `src/js/helpers/FeedbackHelpers.js:130`, default branch, 2026-10-02; both secrets exist on
+    that repository, set 2019-12-26]. Anyone can extract a token that ships in an app. The owner
+    accepts this exposure, as tC3 did. The report attaches the last Report and one line with the
+    version and the operating system. The D88 "Use the internet?" dialog opens before the send.
+    Without the internet, tC4 says that the report needs the internet and keeps the message. It
+    does not queue the report. The pull request proves one real send before it merges.
+11. **Out of Increment 9.** The rollback plan #46 moves to 4.0.1. No stable release exists for
+    v4.0.0 to roll back to. On macOS and Windows, projects stay after an uninstall
+    (`docs/PACKAGING.md`). The Linux zip has no uninstall step. Ledger #10 records the one risk that remains. The upgrade of usfm-js,
+    word-aligner and word-aligner-lib (#420) moves to 4.0.1. Until then, an aligned word loses
+    its `\add` style in the aligned USFM export [VERIFIED — issue #420 body, 2026-10-02]. The
+    v4.0.0 notes list this as a known limit.
+    The pilot program (#58) runs in parallel and does not block the release.
+12. **The epics and the release issue.** Four epics carry the Increment 9 journeys: Install and
+    run (#59), Account menu, rc.1 QA fixes, and Translate and check, polished. One release issue,
+    "Release v4.0.0", is blocked by each Increment 9 issue and each epic. It holds the rc.2 and
+    v4.0.0 checklists.
+
+`docs/RISKS.md` (Ledger #10) and `docs/PACKAGING.md` (the signing lines) change with this
+decision. The format does not change, so `docs/BURRITO-SPEC.md` and the conformance harness do
+not change.
