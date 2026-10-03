@@ -17,6 +17,7 @@ check for this rule is a follow-up.
 | `docs/PLATFORM-NOTES.md` + `docs/evidence/` | what Pankosmia does, with freshness citations | memory |
 | `docs/RISKS.md` | known risks `Ledger #n` | — |
 | `docs/JOURNAL-TEST-PLAN.md` | journal checks `JC-n` | — |
+| `docs/USER-TEST-SCRIPT.md` | deterministic user testing instructions for an external agent | — |
 | `docs/PACKAGING.md` | installers and CI packaging | — |
 | `docs/LEGACY-IDS.md` | how to read old ids | — |
 | `docs/plans/*.md` | one plan per epic | — |
