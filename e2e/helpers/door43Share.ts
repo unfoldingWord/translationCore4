@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import type { BrowserContext, Page } from '@playwright/test';
+import type { BrowserContext, Page, TestInfo } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { FakeDoor43, type FakeDoor43Options } from './door43';
 import { TC4_ROOT, readClientSettingsDoc, rigRepo } from './rig';
@@ -88,6 +88,34 @@ export const dropOrigin = (repo: string): void => {
     // no origin: not shared
   }
 };
+
+/** Give a project an `origin` (a bare remote), so its card is a shared card. */
+export const addOrigin = (repo: string, remote: { bare: string }): void => {
+  git(rigRepo(repo), 'remote', 'add', 'origin', pathToFileURL(remote.bare).href);
+};
+
+/** A new local commit with no change, so an upload has something to push. Returns the new `HEAD`. */
+export const commitLocally = (repo: string, message: string): string => {
+  git(rigRepo(repo), '-c', 'user.name=rig', '-c', 'user.email=rig@local', 'commit', '-q', '--allow-empty', '-m', message);
+  return head(repo);
+};
+
+/** A screenshot of the page into the test's output folder, attached to the report (#530). */
+export async function shot(page: Page, testInfo: TestInfo, name: string): Promise<void> {
+  const file = testInfo.outputPath(`${name}.png`);
+  await page.screenshot({ path: file, animations: 'disabled' });
+  await testInfo.attach(name, { path: file, contentType: 'image/png' });
+}
+
+/** #530: a shared card shows the action and nothing under it: no account line, no
+ * "Uploaded." and no refusal. */
+export async function expectCleanCard(page: Page, id: string): Promise<void> {
+  const card = page.getByTestId(`share-card-${id}`);
+  await expect(card).toHaveAttribute('data-shared', '1');
+  await expect(card).toHaveText('Upload changes');
+  await expect(card.getByRole('button')).toHaveCount(1);
+  await expect(card.getByRole('alert')).toHaveCount(0);
+}
 
 /** Every file under `dir` whose bytes contain `needle`. */
 export const filesHolding = (dir: string, needle: string): string[] => {
@@ -177,6 +205,17 @@ export async function pressShare(page: Page, id: string): Promise<void> {
   await signin.waitFor({ state: 'visible', timeout: 3_000 }).catch(() => {});
   if (await signin.isVisible()) await signIn(page);
   await expect(signin).toHaveCount(0);
+}
+
+/** #530: Upload changes on a shared card, through its dialog: the review step, the
+ * upload, the end, then Close. Signs in first when the sign-in step appears. */
+export async function uploadChanges(page: Page, id: string): Promise<void> {
+  await pressShare(page, id);
+  await expect(page.getByTestId('share-upload')).toBeVisible();
+  await page.getByTestId('share-submit').click();
+  await expect(page.getByTestId('share-done')).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId('share-close').click();
+  await expect(page.getByTestId('share-dialog')).toHaveCount(0);
 }
 
 /** The first share of a project through the dialog: the account as the target, the
