@@ -2129,8 +2129,9 @@ decision follows issue #514.
 
 ## D89 (2026-10-03, project-owner rulings) **Increment 9 ships v4.0.0 on 2026-10-16 from an rc.2 tagged on 2026-10-12. A gate that is not green moves the date. A feature that is not green leaves the increment. Each P2 or P3 issue that does not merge by 2026-10-09 moves to the 4.0.1 milestone. macOS ships unsigned. Windows ships signed only if the credential works in CI by 2026-10-08.** [owner grill session 2026-10-02 and 2026-10-03, after the v4.0.0-rc.1 release (#371); milestone "Increment 9 — ship"; issues #44, #456, #461, #206, #71, #7, #42, #46, #420, #519, #476, #521, #378]
 
-Context. Increment 9 had 30 open issues on 2026-10-02. Some of them were release gates and some
-were product work. About 6 working days remain before rc.2. rc.1 is unsigned on all three
+Context. Increment 9 had 30 open issues on 2026-10-02 [VERIFIED — `gh issue list` of the
+milestone, 2026-10-02]. Some of them were release gates and some were product work. Six working
+days remain before rc.2: 2026-10-05 to 2026-10-09, and 2026-10-12. rc.1 is unsigned on all three
 platforms [VERIFIED — release assets of v4.0.0-rc.1 and `.github/workflows/package-desktop.yml`,
 2026-10-02]. The criterion of #44, "owner decides by rc.1", had no decision recorded. The owner
 kept most of the product work and ruled on the order, the gates and the cut rules.
@@ -2147,22 +2148,24 @@ kept most of the product work and ruled on the order, the gates and the cut rule
    rc.1 QA defects #536, #532 and #499.
 4. **Signing (closes the decision criterion of #44).** macOS v4.0.0 is unsigned: the app is
    ad-hoc signed and not notarized, and the user selects Open Anyway (`docs/PACKAGING.md`).
-   Windows signing is #456. If its credential does not work in CI by 2026-10-08, rc.2 and
-   v4.0.0 ship Windows unsigned with the documented SmartScreen steps, and #456 moves to 4.0.1.
+   Windows signing is #456. Its credential must work in CI by 2026-10-08. If it does not, rc.2
+   and v4.0.0 ship Windows unsigned with the documented SmartScreen steps. #456 then moves to
+   4.0.1.
    Linux stays an unsigned zip.
 5. **Witnesses.** A clean-machine witness of the Windows installer is a gate for rc.2. The clean
-   macOS witness is not a gate for v4.0.0.
+   macOS witness is not a gate for rc.2.
 6. **The server pin.** #461 moves the pin from pankosmia-web 0.18.5 to 0.18.14 first, with a
    hard stop on 2026-10-07. The bump runs the D27 re-baseline. #206 (the server does not stop on
-   quit) uses the `POST /system/shutdown` route that the newer server adds. If #461 is not green
+   quit) uses the `POST /api/system/shutdown` route [VERIFIED — pankosmia-web 0.18.8 (bab524c,
+   2026-09-02) adds it; `src/utils/launch.rs` mounts it under `/api/system`; read 2026-10-03]. If #461 is not green
    on 2026-10-07, the pin stays at 0.18.5, and #206 gets a narrow fix for the double stop call.
 7. **The client set.** v4.0.0 bundles only the `uw-tc4` client, as rc.1 did. #71 records this
    ruling and adds a smoke check of `GET /api/list-clients`. #7 closes into #71.
 8. **The keyboard pass.** #42 covers a logical tab order and a visible focus ring on the Check
    pages. Draft, Align and the screen-reader pass come after 4.0.0. This narrows the owner ruling
-   of 2026-08-12 recorded on #42.
+   of 2026-08-12 [VERIFIED — owner comment on #42, 2026-08-13].
 9. **Help and guides (#519).** The help pages come from `tc-help/` in
-   `unfoldingWord/tc-website`, which the owner writes. They build to plain static files with no
+   `unfoldingWord/tc-website`. The owner writes them. They build to plain static files with no
    external fonts, CDN, analytics or host-only features. tC4 pins one commit SHA of that
    repository and puts `tc-help/` into the install. Help opens the pages offline and sends zero
    requests. If the pages are not published by 2026-10-09, the menu item stays hidden and #519
@@ -2178,10 +2181,11 @@ kept most of the product work and ruled on the order, the gates and the cut rule
     Without the internet, tC4 says that the report needs the internet and keeps the message. It
     does not queue the report. The pull request proves one real send before it merges.
 11. **Out of Increment 9.** The rollback plan #46 moves to 4.0.1. No stable release exists for
-    v4.0.0 to roll back to, and projects stay after an uninstall on each platform
-    (`docs/PACKAGING.md`). Ledger #10 records the one risk that remains. The upgrade of usfm-js,
+    v4.0.0 to roll back to. On macOS and Windows, projects stay after an uninstall
+    (`docs/PACKAGING.md`). The Linux zip has no uninstall step. Ledger #10 records the one risk that remains. The upgrade of usfm-js,
     word-aligner and word-aligner-lib (#420) moves to 4.0.1. Until then, an aligned word loses
-    its `\add` style in the aligned USFM export, and the v4.0.0 notes list this as a known limit.
+    its `\add` style in the aligned USFM export [VERIFIED — issue #420 body, 2026-10-02]. The
+    v4.0.0 notes list this as a known limit.
     The pilot program (#58) runs in parallel and does not block the release.
 12. **The epics and the release issue.** Four epics carry the Increment 9 journeys: Install and
     run (#59), Account menu, rc.1 QA fixes, and Translate and check, polished. One release issue,

@@ -4,7 +4,7 @@ This document records the build recipe for the unsigned desktop artifacts.
 Issue #119 added Linux x64 beside the proven macOS arm64 path, and the
 single-layer download. Issue #181 added Windows x64 (Increment 5). Issue #243
 adds the unsigned Mac installer and app icons (Increment 5.5). Issue #44 retains
-signing, notarization, and the remaining platform installer work.
+the remaining platform installer work.
 [decided 2026-09-10 — owner clarification on #243]
 v4.0.0 ships macOS unsigned and not notarized. Windows is signed only if the #456
 credential works in CI by 2026-10-08; if not, Windows ships unsigned. Linux stays
@@ -393,8 +393,8 @@ On a failure the job uploads `dist-desktop/smoke-*.log` as
 ## Windows x64 (#181)
 
 The `windows-x64` job runs the same script on `windows-2025`, under MSYS2's
-`zsh`. Only the host-specific steps differ. Nothing is signed; signing and
-notarization remain #44. Issue #242 adds the Windows installer.
+`zsh`. Only the host-specific steps differ. Nothing is signed. Windows signing
+is #456 (D89 point 4). Issue #242 adds the Windows installer.
 
 ### Artifact layout
 
