@@ -195,7 +195,7 @@ describe('fetchAndInstallPin — the SHA gate (D23b: verify at every import)', (
     await expect(fetchAndInstallPin(PIN, {
       api: apiWith(false) as never,
       fetchFn: (async () => { fetched = true; return { ok: true }; }) as unknown as typeof fetch,
-    })).rejects.toThrow(/tC4 is set to Local/);
+    })).rejects.toThrow(/no permission to use the internet/);
     expect(fetched).toBe(false); // never reached the network
   });
 

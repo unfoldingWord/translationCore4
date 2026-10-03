@@ -19,5 +19,5 @@ export const dcsServerFor = (env: { DEV?: unknown }): string => (env.DEV === tru
 
 export const DCS_SERVER: string = dcsServerFor(import.meta.env);
 
-/** The host to show beside the save indicator, or null on production. */
+/** The host a project card names in its Door43 location (#506), or null on production. */
 export const DCS_SERVER_LABEL: string | null = DCS_SERVER === PRODUCTION ? null : new URL(DCS_SERVER).host;

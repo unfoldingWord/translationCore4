@@ -11,9 +11,9 @@ const repo = path.resolve(__dirname, '..');
 const recipe = fs.readFileSync(path.join(__dirname, 'package-desktop.zsh'), 'utf8');
 const desktopMain = fs.readFileSync(path.join(__dirname, 'desktop-main.cjs'), 'utf8');
 // Source the identifier and project data from the actual packaged inputs.
-const resource = recipe.match(/"(unfoldingWord\/en_ult):/)[1].toLowerCase().replace('/', '--');
-const imagePin = recipe.match(/"uW\/obs_images_360::([0-9a-f]{40})"/)[1];
-const imageResource = `uw--obs_images_360--${imagePin.slice(0, 12)}`;
+const resource = 'unfoldingword--en_tn';
+const resourceMeta = JSON.parse(fs.readFileSync(path.join(repo, 'test/fixtures/resources/en_tn@v91/metadata.json')));
+const resourceSha = resourceMeta.identification.primary.dcs['unfoldingWord/en_tn'].revision;
 const sample = path.join(repo, 'conformance/sample-burrito');
 function fixture(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-bootstrap-'));
@@ -21,8 +21,20 @@ function fixture(t) {
   return { resourcesDir: path.join(dir, 'bundle resources'), home: path.join(dir, 'pilot home'), storeLeaf: 'pankosmia/tc4-projects', variant: 'production' };
 }
 function stage(options) {
-  fs.cpSync(sample, path.join(options.resourcesDir, 'resources', resource), { recursive: true });
-  fs.cpSync(sample, path.join(options.resourcesDir, 'resources', imageResource), { recursive: true });
+  const destination = path.join(options.resourcesDir, 'resources', resource);
+  const metadata = structuredClone(resourceMeta);
+  metadata.ingredients = { 'ingredients/TIT.tsv': metadata.ingredients['ingredients/TIT.tsv'] };
+  metadata.type.flavorType.currentScope = { TIT: [] };
+  fs.mkdirSync(path.join(destination, 'ingredients'), { recursive: true });
+  fs.writeFileSync(path.join(destination, 'metadata.json'), JSON.stringify(metadata));
+  fs.copyFileSync(path.join(repo, 'test/fixtures/resources/en_tn@v91/TIT.tsv'), path.join(destination, 'ingredients/TIT.tsv'));
+  fs.writeFileSync(path.join(options.resourcesDir, 'BUILD-MANIFEST.json'), JSON.stringify({ bundled_resources: [{ repoPath: 'git.door43.org/unfoldingWord/en_tn', sha: resourceSha, version: 'v91' }] }));
+  stageProduct(options);
+  fs.mkdirSync(path.join(options.resourcesDir, 'lib/templates'), { recursive: true });
+  fs.mkdirSync(path.join(options.resourcesDir, 'lib/setup'), { recursive: true });
+  fs.writeFileSync(path.join(options.resourcesDir, 'lib/setup/local_setup.json'), JSON.stringify({ local_pankosmia_path: './lib/clients' }));
+  fs.writeFileSync(path.join(options.resourcesDir, 'lib/templates/user_settings.json'), JSON.stringify({ repo_dir: '%%HOMEDIR%%/pankosmia/tc4-projects', app_resources_dir: '%%APPRESOURCESDIR%%' }));
+  fs.writeFileSync(path.join(options.resourcesDir, 'lib/templates/app_state.json'), JSON.stringify({ current_project: null }));
 }
 function stageProduct(options, shortName = 'tc4') {
   const product = path.join(options.resourcesDir, 'lib', 'product');
@@ -145,21 +157,14 @@ test('missing bundle fails the negative control; production then seeds once and 
   stage(options);
   bootstrap(options);
   const store = path.join(options.home, options.storeLeaf);
-  const installed = path.join(store, '_local_', '_sideloaded_', resource, 'metadata.json');
-  assert.deepEqual(fs.readFileSync(installed), fs.readFileSync(path.join(sample, 'metadata.json')));
+  const installed = path.join(store, '_local_', '_sideloaded_', `${resource}--${resourceSha}`, 'metadata.json');
+  assert.deepEqual(fs.readFileSync(installed), fs.readFileSync(path.join(options.resourcesDir, 'resources', resource, 'metadata.json')));
   fs.appendFileSync(installed, '\n');
   const changed = fs.readFileSync(installed);
   bootstrap(options);
   assert.deepEqual(fs.readFileSync(installed), changed);
-  const imageInstalled = path.join(store, '_local_', '_sideloaded_', imageResource, 'metadata.json');
-  assert.equal(fs.existsSync(imageInstalled), true);
-  fs.appendFileSync(imageInstalled, '\n');
-  const imageChanged = fs.readFileSync(imageInstalled);
-  bootstrap(options);
-  assert.deepEqual(fs.readFileSync(imageInstalled), imageChanged);
-  assert.equal(fs.existsSync(path.join(store, '_local_', '_sideloaded_', 'uw--obs_images_360')), false);
   assert.deepEqual(fs.readdirSync(path.join(store, '_local_')), ['_sideloaded_']);
-  assert.equal(fs.existsSync(path.join(options.home, 'pankosmia/tc4')), false);
+  assert.equal(fs.existsSync(path.join(options.home, 'pankosmia/tc4/app_state.json')), true);
 });
 
 test('debug seed failure can be retried; sample has a git commit and production stays separate', (t) => {
@@ -296,7 +301,7 @@ test('the packaged entry point is valid, ordered, and preserves its launch contr
   assert.doesNotThrow(() => new vm.Script(desktopMain));
 
   const linux = runDesktopMain();
-  assert.deepEqual(linux.events, ['lock', 'switch:disable-dev-shm-usage', 'handle:export:pdf', 'handle:token:keep', 'handle:token:read', 'handle:token:forget', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'bind', 'upstream']);
+  assert.deepEqual(linux.events, ['lock', 'switch:disable-dev-shm-usage', 'handle:export:pdf', 'handle:token:keep', 'handle:token:read', 'handle:token:forget', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'bind', 'bootstrap', 'upstream']);
   const mac = runDesktopMain({ platform: 'darwin' });
   assert.deepEqual(mac.events, ['lock', 'handle:export:pdf', 'handle:token:keep', 'handle:token:read', 'handle:token:forget', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'bind', 'bootstrap', 'upstream']);
   const windows = runDesktopMain({ platform: 'win32' });

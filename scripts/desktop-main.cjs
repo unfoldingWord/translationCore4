@@ -140,12 +140,10 @@ function start() {
         home: require('os').homedir(),
       };
       // Bind the process and any existing profile before upstream startup
-      // captures APP_RESOURCES_DIR. Linux keeps shell seeding; macOS and
-      // Windows also perform their existing first-run copies here.
+      // captures APP_RESOURCES_DIR. All platforms publish resource releases
+      // and their install records under this same singleton lock (#528).
       bootstrap.bindPackagedResources(options);
-      if (process.platform === 'darwin' || process.platform === 'win32') {
-        bootstrap.bootstrap(options);
-      }
+      bootstrap.bootstrap(options);
     }
   } catch (error) {
     require('electron').dialog.showErrorBox(

@@ -12,6 +12,7 @@
 // (PLATFORM-NOTES #47).
 import { Refusal, failedReport, okReport, type Report } from '../journal/runtime';
 import { Door43ApiError, type Door43Api, type Door43Session } from './door43Api';
+import { NO_CONSENT } from '../internet';
 
 /** The keychain seam (#366): keep the token between app sessions, read the
  * kept one back (null when none), or forget it. */
@@ -48,7 +49,7 @@ export const resumeSession = (kept: Door43Session): void => {
 };
 
 /** D86 point 7: is a token kept on this computer? A keychain read only, no
- * Door43 call, so the card and the change-to-Local dialog can say so before
+ * Door43 call, so the card and the account menu (D88) can say so before
  * the token is resumed. A keychain that fails to read counts as none. A read
  * that a sign-in or a sign-out overtook answers false: that step set the fact. */
 export const hasKeptToken = async (keychain: TokenKeychain | null | undefined): Promise<boolean> => {
@@ -152,7 +153,7 @@ export async function signIn(deps: SignInDeps, request: SignInRequest): Promise<
   try {
     if (!request.login || !request.password)
       throw new Refusal('share.auth-failed', 'enter your Door43 username or email and your password');
-    if (!(await deps.getNetEnabled())) throw new Refusal('share.offline', 'tC4 is set to Local');
+    if (!(await deps.getNetEnabled())) throw new Refusal('share.offline', NO_CONSENT);
   } catch (error) {
     return failed(error);
   }

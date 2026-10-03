@@ -10,8 +10,8 @@ import { createObsProject } from './helpers/story';
 import { EN_HELPS } from '../src/data/installedSuite';
 
 const BIBLE = {
-  translationNotes: pinForSideloaded('en_tn', 'v89'),
-  translationWords: pinForSideloaded('en_tw', 'v89'),
+  translationNotes: pinForSideloaded('en_tn', 'v91'),
+  translationWords: pinForSideloaded('en_tw', 'v91'),
 };
 const STORIES = {
   translationNotes: EN_HELPS['obs-tn'],
@@ -52,9 +52,11 @@ async function openTitus(page: Page) {
   await expect(page.getByRole('tab', { name: 'Check', exact: true })).toBeVisible({ timeout: 60_000 });
 }
 
-async function openStory(page: Page, repo: string) {
+/** `screen`: a first open has no place, so Understand (D87); a later one has the
+ * Translate place that checkBothTools leaves (#329). */
+async function openStory(page: Page, repo: string, screen: 'story-understand' | 'story-draft') {
   await page.getByTestId(`project-_local_/_local_/${repo}`).getByTestId('story-tile-1').click();
-  await expect(page.getByTestId('story-draft')).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId(screen)).toBeVisible({ timeout: 60_000 });
 }
 
 test.beforeEach(() => {
@@ -67,13 +69,13 @@ test(
   { tag: ['@J4', '@J22', '@434'] },
   async ({ page }) => {
     test.setTimeout(300_000);
-    writeProjectPins(SEEDED_PROJECT, { tn: BIBLE.translationNotes, tw: BIBLE.translationWords, ta: pinForSideloaded('en_ta', 'v89') });
+    writeProjectPins(SEEDED_PROJECT, { tn: BIBLE.translationNotes, tw: BIBLE.translationWords, ta: pinForSideloaded('en_ta', 'v91') });
     const stories = await createObsProject('j434', 'Equipo Rig — 434');
     const seen: Seen[] = [];
     await page.goto('/');
 
     await test.step('stories project: tN and tW resolve en_obs-tn and en_obs-twl', async () => {
-      await openStory(page, stories);
+      await openStory(page, stories, 'story-understand');
       await checkBothTools(page, STORIES, seen, 'stories');
     });
 
@@ -83,7 +85,7 @@ test(
     });
 
     await test.step('then the stories project again: tN and tW resolve en_obs-tn and en_obs-twl', async () => {
-      await openStory(page, stories);
+      await openStory(page, stories, 'story-draft');
       await checkBothTools(page, STORIES, seen, 'stories');
     });
     await attachSeen(seen);
@@ -105,7 +107,7 @@ test(
   { tag: ['@J4', '@J22', '@J8', '@434'] },
   async ({ page }) => {
     test.setTimeout(300_000);
-    writeProjectPins(SEEDED_PROJECT, { tn: BIBLE.translationNotes, tw: BIBLE.translationWords, ta: pinForSideloaded('en_ta', 'v89') });
+    writeProjectPins(SEEDED_PROJECT, { tn: BIBLE.translationNotes, tw: BIBLE.translationWords, ta: pinForSideloaded('en_ta', 'v91') });
     const stories = await createObsProject('j434r', 'Equipo Rig — 434 resume');
     const seen: Seen[] = [];
     await page.goto('/');
@@ -116,7 +118,7 @@ test(
       await expect(page.getByTestId('preflight-translationNotes')).toHaveAttribute('data-state', 'ready', { timeout: 60_000 });
       await page.getByTestId('open-translationNotes').click();
       await expectResumedTool(page, BIBLE.translationNotes.repoPath, seen, 'bible');
-      await openStory(page, stories);
+      await openStory(page, stories, 'story-understand');
       await page.getByRole('tab', { name: 'Check', exact: true }).click();
       await expect(page.getByTestId('preflight-translationNotes')).toHaveAttribute('data-state', 'ready', { timeout: 60_000 });
       await page.getByTestId('open-translationNotes').click();

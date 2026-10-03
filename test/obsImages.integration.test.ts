@@ -12,8 +12,9 @@ import { forgetSharedClocks } from '../src/data/journal/journalStore';
 import { DEFAULT_OBS_IMAGES, DEFAULT_OBS_IMAGES_LOCAL, resolveObsImage } from '../src/data/obsImages';
 import { readObsStoryPresentation } from '../src/data/obsStory';
 import { memKv } from './helpers/journalingRig';
+import { lane } from '../e2e/lane.mjs';
 
-const BASE = 'http://127.0.0.1:19998/api';
+const BASE = lane().rigApi;
 const SLOW = 30_000;
 const CACHE_HINT = `zsh dev-env/scripts/cache-resource.zsh uW/obs_images_360 "" ${DEFAULT_OBS_IMAGES.sha}, then zsh dev-env/scripts/seed.zsh`;
 

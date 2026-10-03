@@ -243,11 +243,27 @@ calls (`DCS_SERVER`, #120). It is reset weekly and holds no durable data. A pack
 production, `https://git.door43.org`. Reads always use production.
 _Avoid_: staging, test server, QA mode
 
-**Internet / Local**:
-The choice of what tC4 may do with the internet (D86). The top bar shows it beside "Saved". With
-Internet, tC4 may share, download and look up versions after a click. With Local, tC4 sends nothing
-and downloads nothing. A new installation starts as Local. The choice stays after a restart.
-_Avoid_: online, offline (they describe the computer's connection, not tC4's choice)
+**Ask before using the internet**:
+A switch on the account menu, on by default (D88). While it is on, each internet task opens one
+"Use the internet?" dialog before tC4 sends any external request. The dialog has Cancel, an action
+that fits the task, and "Don’t ask again on this computer". The setting is stored for this computer
+only, as `askInternet: false` in the per-client settings. tC4 ignores the old D86 choice.
+_Avoid_: Internet / Local, online, offline, mode (they describe the computer's connection or a
+retired status, not this question)
+
+**Permitted internet task**:
+One thing the user asked tC4 to do with the internet: for example Share, Download, Check for
+updates, or a link to Door43. The user permits the task (D88). Only while a permitted task is
+open may a request leave the computer. The platform net gate is a separate step: it is off at
+start and stays on after the first permitted task. Startup, idle time and local work are never
+a permitted task.
+_Avoid_: online mode, allowed state
+
+**Account menu**:
+The person icon at the right of the top bar, on Home and in a project (D88). It shows the Door43
+account (signed in, sign-in saved but not checked, or signed out), the switch "Ask before using
+the internet", and "Sign out of Door43". Opening it sends no request.
+_Avoid_: Door43 bar, profile menu
 
 **Share**:
 The push of a project's working `main` branch to a repository under the user's Door43
@@ -270,8 +286,9 @@ _Avoid_: Door43 client, DCS helper, gitea API (for this module)
 The signed-in user's login and token, held in `src/data/share/session.ts` for the app session
 (`currentSession`); the token alone goes to the operating-system keychain when "Stay signed
 in" is on (#366). Nothing else is stored (D85): no name, no email, no login. Never in React
-state, the client settings, `localStorage`, a URL or a log. Sign-in starts only from Share,
-and a kept token is resumed at the first Share, not at app start (D86 points 7 and 8).
+state, the client settings, `localStorage`, a URL or a log. Sign-in starts from Share or from
+the account menu, and a kept token is resumed only inside a permitted internet task, never at
+app start (D86 points 7 and 8; D88). Sign out is local and sends no request.
 _Avoid_: credentials (the password is never kept), login state, identity record
 
 **Share target**:
