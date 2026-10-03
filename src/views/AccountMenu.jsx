@@ -5,6 +5,7 @@
 // signed-in login, or that the keychain holds a token, D85).
 import React, { useEffect, useRef, useState } from 'react';
 import { useApp, door43 } from '../state.jsx';
+import { APP_VERSION, LICENSE_TEXT } from '../data/about';
 import { t } from '../i18n';
 import { Layer } from '../ds/components/primitives/Layer.jsx';
 import { Surface } from '../ds/components/primitives/Surface.jsx';
@@ -50,6 +51,7 @@ const Switch = ({ on }) => (
 export default function AccountMenu() {
   const { s, actions } = useApp();
   const [open, setOpen] = useState(false);
+  const [about, setAbout] = useState(false);
   const ref = useRef(null);
   const user = s.door43User;
   const saved = !user && s.door43Kept;
@@ -116,6 +118,7 @@ export default function AccountMenu() {
           <Row testId="account-ask" role="menuitemcheckbox" checked={s.askInternet} title={t('account.ask')}
             sub={t(s.askInternet ? 'account.askOn' : 'account.askOff')} end={<Switch on={s.askInternet} />}
             onClick={() => actions.setAskInternet(!s.askInternet)} />
+          <Row testId="account-about" title={t('account.about')} onClick={choose(() => setAbout(true))} />
           {state !== 'out' && <>
             <Rule style={{ margin: '5px 4px' }} />
             <Row testId="account-sign-out" title={t('account.signOut')} onClick={choose(actions.signOut)} />
@@ -123,7 +126,31 @@ export default function AccountMenu() {
           </div>
         </Surface>
       </Layer>
+      {/* The dialog renders inside the dark top bar: data-on gives it the light ground's colours (ds/tokens/context.css). */}
+      {about && <span data-on="light" style={{ display: 'contents' }}>
+        <AboutDialog onClose={() => {
+          setAbout(false);
+          ref.current?.querySelector('button')?.focus();
+        }} />
+      </span>}
     </>
+  );
+}
+
+/** #520: the version of the running build and the license. Both are part of
+ * the bundle (src/data/about.ts), so opening it sends no request. */
+function AboutDialog({ onClose }) {
+  return (
+    <Modal data-testid="about-dialog" width={560} title={t('account.about')} closeLabel={t('common.close')} onClose={onClose}
+      footer={<Button onClick={onClose} data-testid="about-close">{t('common.close')}</Button>}>
+      <p style={{ ...BODY, color: 'var(--text-body)' }}>
+        {t('about.version')} <strong data-testid="about-version">{APP_VERSION}</strong>
+      </p>
+      <div>
+        <p style={{ ...BODY, fontWeight: 700, color: 'var(--text-body)' }}>{t('about.license')}</p>
+        <pre data-testid="about-license" style={{ ...BODY, marginTop: 6, font: 'inherit', fontSize: 'var(--fs-ui-sm)', whiteSpace: 'pre-wrap' }}>{LICENSE_TEXT}</pre>
+      </div>
+    </Modal>
   );
 }
 
