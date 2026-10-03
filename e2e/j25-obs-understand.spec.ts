@@ -16,12 +16,10 @@ test.describe('J25 — a translator reads a story with helps and records a user 
       const repo = await createObsProject('j25', 'Equipo Rig — J25');
       const storyBefore = storyBytes(repo, 1);
 
-      await test.step('open the project, go to Understand: the title unit and the frames of story 1', async () => {
+      await test.step('open the project in Understand (D87): the title unit and the frames of story 1', async () => {
         await page.goto('/');
         await page.getByTestId(`project-_local_/_local_/${repo}`).getByTestId('story-tile-1').click();
-        await expect(page.getByTestId('story-draft')).toBeVisible({ timeout: 60_000 });
-        await page.getByRole('tab', { name: 'Understand', exact: true }).click();
-        await expect(page.getByTestId('story-understand')).toBeVisible({ timeout: 30_000 });
+        await expect(page.getByTestId('story-understand')).toBeVisible({ timeout: 60_000 });
         await expect(page.getByTestId('story-understand-unit-0')).toBeVisible();
         const unit = page.getByTestId('story-understand-unit-1');
         await expect(unit.getByTestId('story-understand-gateway')).toContainText('This is how God made everything in the beginning.');

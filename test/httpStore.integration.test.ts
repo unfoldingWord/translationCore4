@@ -10,8 +10,9 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { HttpStore, StaleWriteError, md5Hex } from '../src/data/httpStore';
 import type { Decision } from '../src/data/burritoStore';
 import type { AlignmentFile } from '../src/data/align/zaln';
+import { lane } from '../e2e/lane.mjs';
 
-const BASE = 'http://127.0.0.1:19998/api';
+const BASE = lane().rigApi;
 const SLOW = 30_000;
 
 const rigUp = await (async (): Promise<boolean> => {

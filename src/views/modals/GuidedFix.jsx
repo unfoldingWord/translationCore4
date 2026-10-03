@@ -14,16 +14,16 @@ const repoName = (repoPath) => repoPath.split('/').pop();
 const label = (pin) => `${repoName(pin.repoPath)} · ${pin.version ?? pin.sha.slice(0, 12)}`;
 const mono = { fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-caption)', color: 'var(--text-tertiary)' };
 
-/** Option 1 — download the pinned identity itself. Offline it says why and offers the switch. */
-function FetchOption({ fix, online, actions }) {
+/** Option 1 — download the pinned identity itself. */
+function FetchOption({ fix, actions }) {
   return (
     <section data-testid="fix-fetch" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <Overline as="span">{t('fix.fetch.title')}</Overline>
       <p style={{ margin: 0, fontSize: 'var(--fs-ui-sm)', color: 'var(--text-secondary)', lineHeight: 'var(--lh-body)' }}>
-        {online ? t('fix.fetch.body', { pin: label(fix.pin) }) : t('fix.offline')}
+        {t('fix.fetch.body', { pin: label(fix.pin) })}
       </p>
       <div style={{ display: 'flex', gap: 8 }}>
-        {/* D86 point 4: Download stays enabled in Local; the click asks to allow the internet. */}
+        {/* D88: Download is an internet task; it asks first when the preference says so. */}
         <Button size="sm" data-testid="fix-fetch-go" disabled={!!fix.busy} onClick={actions.fixFetch}>
           {fix.busy === 'fetch' ? t('upgrade.installing') : t('check.fix.download')}
         </Button>
@@ -82,7 +82,7 @@ export default function GuidedFix() {
       <p data-testid="fix-pin" style={{ ...mono, margin: 0 }}>{fix.pin.repoPath} · {fix.pin.sha}</p>
       {fix.progress && <p data-testid="fix-progress" style={{ margin: 0, fontSize: 'var(--fs-caption-lg)', fontWeight: 'var(--fw-bold)', color: 'var(--text-secondary)' }}>{fix.progress}</p>}
       {fix.error && <Callout tone="warn" role="alert" data-testid="fix-error" style={{ overflowWrap: 'anywhere' }}>{fix.error}</Callout>}
-      <FetchOption fix={fix} online={s.netEnabled} actions={actions} />
+      <FetchOption fix={fix} actions={actions} />
       <RepinOption fix={fix} actions={actions} />
       <SideloadOption fix={fix} actions={actions} />
     </Modal>

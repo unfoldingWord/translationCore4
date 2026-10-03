@@ -4,7 +4,9 @@
 // with a 500 that looks like a client defect. Global setup calls this probe once,
 // after the reseed, so the run stops before the first test and names the cause.
 
-export const RIG_HEALTH_URL = 'http://127.0.0.1:19998/api/burrito/metadata/summaries';
+import { lane } from './lane.mjs';
+
+export const RIG_HEALTH_URL = `${lane().rigApi}/burrito/metadata/summaries`;
 
 /** A rig that accepts the connection but never answers must not hold the run forever. */
 export const RIG_HEALTH_TIMEOUT_MS = 10_000;

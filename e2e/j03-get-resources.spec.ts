@@ -21,9 +21,9 @@ import {
 } from './helpers/rig';
 
 const PINS = () => ({
-  tn: pinForSideloaded('en_tn', 'v89'),
-  tw: pinForSideloaded('en_tw', 'v89'),
-  ta: pinForSideloaded('en_ta', 'v89'),
+  tn: pinForSideloaded('en_tn', 'v91'),
+  tw: pinForSideloaded('en_tw', 'v91'),
+  ta: pinForSideloaded('en_ta', 'v91'),
 });
 
 async function openTool(page: import('@playwright/test').Page, tool: string) {
@@ -58,7 +58,7 @@ test.describe('J3 — a facilitator fetches the project’s resources', () => {
       // package the app ships pins both.
       for (const name of ['en_tn', 'en_tw', 'en_ta', 'en_tq', 'en_ust']) {
         expect(listSideloaded()).toContain(name);
-        const pin = pinForSideloaded(name, 'v89');
+        const pin = pinForSideloaded(name, 'v91');
         expect(pin.version).toMatch(/^v[\d.]+$/);
         expect(pin.version).not.toBe('master');
         expect(pin.sha).toMatch(/^[0-9a-f]{40}$/);
@@ -81,7 +81,7 @@ test.describe('J3 — a facilitator fetches the project’s resources', () => {
       ] as const) {
         const pinned = fallback[slot];
         expect(pinned, `the seeded project must pin fallback.${slot} (D64)`).toBeTruthy();
-        const cached = pinForSideloaded(repo, 'v89');
+        const cached = pinForSideloaded(repo, 'v91');
         expect(cached.sha, `${repo} cache vs pinned sha`).toBe(pinned!.sha);
         // BOTH halves of the identity, not just the sha: a cache from a fork or
         // a renamed org can carry the same commit under a different repoPath,

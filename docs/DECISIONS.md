@@ -306,6 +306,10 @@ the owner's 2026-07-12 ruling on missing resources with §5 default #3). The use
 explicit re-pin to a locally available version — warned, re-derive, orphans to review — but
 the app never forces it. Implementation home: the D17 schema change (OPEN-QUESTIONS #28),
 spec + harness in one change set (§9).
+[addendum 2026-10-01 — #505: Project Settings opens only from the Settings button on the project
+card on Home. The top bar has no Project settings button. This replaces the #412 rule that Project
+Settings also opens inside an open project. Manage source texts in Project Settings opens the project
+first, then the Source texts screen with its update controls (owner ruling 2026-10-01).]
 
 
 ## D32 (2026-07-31, project-owner ruling — TW/TWL storage form; closes OPEN-QUESTIONS #29)
@@ -1943,11 +1947,14 @@ main 0996d21, 2026-09-30, `src/data/share/door43Api.ts`].
    Local. The status shows Internet only when the choice is Internet and `GET /api/net/status`
    reports the gate on (the barrier of point 3). It never shows a value that the server did not
    confirm. During a change, it shows "Turning…". No UI text says "online" or "offline".
+   [amended 2026-10-02 — D88: the status is removed; the Door43 account menu replaces it.]
 2. **The change.** A click on Internet opens a small dialog with **Change to Local** and **Cancel**.
    A click on Local opens a confirmation: "Allow tC4 to use the internet for Share and downloads?",
    with Allow and Cancel. Cancel sends nothing, changes nothing and signs nothing out. The change
    to Local is not available while an internet action runs. If the gate does not change, the
    status goes back and says so.
+   [amended 2026-10-02 — D88: both dialogs are removed. "Ask before using the internet" and the
+   "Use the internet?" dialog replace them.]
 3. **The choice stays.** tC4 stores the choice in the platform's per-client settings. At start, a
    stored Internet sends `POST /api/net/enable` and then reads the status back. A stored Local,
    no stored choice, or a stored choice that tC4 cannot read keeps the gate off and shows Local.
@@ -1960,6 +1967,9 @@ main 0996d21, 2026-09-30, `src/data/share/door43Api.ts`].
    and the disable fails, or the gate still reads on after it, tC4 treats the session as Local.
    The status shows "Local" and says "Could not turn the internet off." Every internet action and
    the Door43 API module stay refused.
+   [amended 2026-10-02 — D88: the stored choice `internet: true` is ignored, and the barrier is
+   a permitted internet task (D88 points 3 and 4). The gate is off at start and stays on after
+   the first permitted task.]
 4. **No internet use without a click.** tC4 uses the internet only after the user clicks an action
    that needs it. At start, tC4 sends no request to Door43 in either state. The Door43 API module
    refuses every call in Local. In Local, the internet actions stay enabled: Share, Upload changes,
@@ -1970,10 +1980,14 @@ main 0996d21, 2026-09-30, `src/data/share/door43Api.ts`].
    one dialog, not a line with an **Allow internet** button before it.] This replaces the three "Go
    online" buttons. #259 (the automatic check for updates, Post-4.0 under D72) conflicts with this
    point. It needs its own ruling before it is built.
+   [amended 2026-10-02 — D88: the confirmation of point 2 is the "Use the internet?" dialog, and
+   it shows only while "Ask before using the internet" is on. The no-request rule stands (D88 point 5).]
 5. **A missing pinned resource (amends D30 points 4 and 5).** With Internet, the app offers
    **Download** for the pinned version (sb-zip + SHA, OPEN-QUESTIONS #24). In Local, the checking
    of that (tool, book) is unavailable as a first-class state, and Download offers Allow internet.
-   Drafting, other books and other tools continue. D30 point 4 said "the app fetches it". The
+   Drafting, other books and other tools continue.
+   [amended 2026-10-02 — D88 point 6: Download is always offered; the "unavailable … Allow internet"
+   state is no longer shown.] D30 point 4 said "the app fetches it". The
    fetch already needs a click on Download [VERIFIED — main 0996d21, 2026-09-30,
    `src/views/modals/GuidedFix.jsx:26`], so the text now agrees with the code. BURRITO-SPEC §5.3
    ("Missing pinned version" and the D41 coverage states) changes in the same change set. The
@@ -1983,9 +1997,13 @@ main 0996d21, 2026-09-30, `src/data/share/door43Api.ts`].
    "Share on Door43" and "Upload changes". They are outlined pill buttons in the style of
    Settings, beside Settings. Before a share, the card's meta line ends with "· Only on this
    computer". After a share, an "On Door43" badge shows beside the project name, and the meta
-   line ends with "· Shared at `owner/repository`". In Local, Share does not refuse; point 4
+   line ends with "· Shared at `owner/repository`". In a development build, the line names the
+   server ("· Shared at `qa.door43.org/owner/repository`") when the remote is on that server
+   (#506; owner, 2026-10-01). In Local, Share does not refuse; point 4
    applies. The D79 refusal "the app is offline" becomes "Door43 cannot be reached". Its
    `Report` code stays `share.offline`. D84 points 3, 4 and 5 do not change.
+   [amended 2026-10-02 — D88 point 7: "In Local" no longer exists, and the message of the code is
+   now "tC4 has no permission to use the internet for this task".]
 7. **Door43 sign-in (amends D84 point 2).** Home has no Door43 bar, and the top bar has no
    Door43 item. Share with no sign-in opens the sign-in step, and then the share continues. The
    share dialog shows "Sharing as @username · Change". A shared card shows "as @username ·
@@ -1995,6 +2013,9 @@ main 0996d21, 2026-09-30, `src/data/share/door43Api.ts`].
    the change-to-Local dialog has the checkbox "Also sign out of Door43 on this computer". It is on
    by default. Sign out removes the token from
    memory and from the keychain, as D84 point 2 said. The mockup's sign-in code step is not built.
+   [amended 2026-10-02 — D88 points 1 and 7: the top bar has a Door43 account menu. "Sign out of
+   Door43" is on that menu, and the "Also sign out" checkbox is removed with the Local dialog.
+   "Change" stays.]
 8. **The kept sign-in (amends D85 point 4).** tC4 resumes a kept token at the first action that
    needs Door43, not at app start. The resume waits for the barrier of point 3: after Allow, it
    runs only when the read-back shows the gate on. A kept token still asks nothing. D85 points 1,
@@ -2002,9 +2023,106 @@ main 0996d21, 2026-09-30, `src/data/share/door43Api.ts`].
 9. **Import review and Check for updates (amends D82 point 2 and D72 point 5).** The import review
    offers "Allow internet" in place of "Go online", with the confirmation of point 2. Check for
    updates is enabled in both states. In Local, it offers Allow internet.
+   [amended 2026-10-02 — D88 points 5 and 6: Allow internet is removed. The import review offers
+   "Look up on Door43", and Check for updates is an explicit task, each with the D88 dialog.]
 
 `docs/BURRITO-SPEC.md` §5.3 carries this decision in the same change set. The documents that
 follow describe built behavior, so they change with the implementation of #486:
 `docs/JOURNEYS.md` (J3, J9, J11, and the J12 precondition), `docs/ARCHITECTURE.md` (the net gate
 row and the section 7 share, sign-in and keychain rows), `docs/PACKAGING.md` ("The offline run",
 step 9a) and `CONTEXT.md` (Share, Door43 session, and the new term Local).
+
+## D87 (2026-10-01, project-owner ruling) **A project that opens with no remembered place opens in Understand. A Home tile or the Resume card with a remembered place opens at that place and in that mode, as before.** [issue #507, found in the end-user QA of v4.0.0-rc.1 (#371); the place rule of #329 and #268 does not change]
+
+Context. Before this decision, every project open went to Translate: `performProjectOpen` in
+`src/state.jsx` set the view `draft` [VERIFIED — main 661af52, 2026-10-01]. So a new book
+opened in Translate. The translator must read the passage and its helps before they translate it.
+
+1. **No remembered place.** The project opens in Understand. This applies to a new Bible project
+   with its first book, a new book, an imported project and a new Open Bible Stories project. It
+   also applies to a Home tile of a book or a story with no place record on this computer. A
+   Bible book opens at chapter 1. A story opens at the story of its tile. For a new Open Bible
+   Stories project, that is story 1.
+2. **A remembered place.** A Home tile with a place record (#329) and the Resume card (#268)
+   open at that place and in that mode, as before. A Resume record with no mode opens in
+   Translate, as before. Other opens do not restore a place, for example the open from Settings
+   (#412). They open in Understand.
+
+`docs/PACKAGING.md` ("The offline run", steps 2, 3 and 9b) and `docs/ARCHITECTURE.md` (the
+`j09` USFM row of the import table) carry this decision. Step 4 of the offline run already
+agrees with it.
+
+## D88 (2026-10-02, project-owner rulings) **A Door43 account menu in the top bar replaces the "Internet" or "Local" status. While "Ask before using the internet" is on (the default), each internet task opens one "Use the internet?" dialog first. Consent and the platform net gate are separate: the first permitted task turns the gate on, and it stays on for the app session.** [owner session 2026-10-02, on issue #514 and the owner's reviewed mockup "tC4 Door43 Account Menu.html"; amends D86 points 1, 2, 3, 4, 5, 6, 7 and 9]
+
+Context. D86 gave tC4 a persistent choice, "Internet" or "Local", shown in the top bar. A click
+changed it, and the choice stayed after a restart. In use, the choice was one more state for the
+user to manage. It also did not ask at the moment that data left the computer. tC3 asked before
+each internet action, and the owner wants that behavior back, with a switch that stops the
+questions on one computer. The owner also wants the Door43 account in one small menu on every
+screen. Before this change, `src/data/internet.ts` stored the
+choice as `internet: true` and gave the Door43 adapter a barrier that read that choice
+[VERIFIED — source read at origin/main e50e701, 2026-10-02].
+
+1. **The account menu replaces the status.** The persistent "Internet" and "Local" status and its
+   two dialogs are removed. A person icon (initials when signed in) shows at the top right of the
+   top bar. It shows on Home and in a project, signed in or not. Its menu has three account
+   states. Signed in: "@username" and **Open my page on Door43**. Sign-in saved but not checked:
+   "Sign-in saved on this computer" and **Check which Door43 account is saved**. Signed out:
+   **Sign in to Door43** and "Sign in to share projects on Door43." Opening the menu sends no
+   request. In the saved state, the menu fetches no identity. Then the menu shows the switch
+   **Ask before using the internet**. Last, it shows **Sign out of Door43** when a current or
+   saved sign-in exists. Sign out is local and sends no request. If the keychain fails to forget
+   the token, the menu says so. The menu has no "Switch account". Home has no separate Door43 bar.
+   **Help and guides**, **About translationCore** and **Report a problem** are not on the menu
+   until they exist: issues #519, #520 and #521 (Increment 9). (Amends D86 points 1, 2 and 7.)
+2. **One dialog for each internet task.** With the switch on, each explicit internet task opens
+   one "Use the internet?" dialog before any external request. The dialog says what the task
+   does, which service it contacts, and what leaves the computer. It has **Cancel**, an action
+   that fits the task (for example **Continue**, **Sign in** or **Download**), and **Don’t ask
+   again on this computer**. The dialog opens once for each user task, not once for each request.
+   The one consent of Share covers the check or resume of a saved sign-in, the sign-in, the load
+   of the destinations, and the reviewed upload. The one consent of the Source texts screen
+   covers its catalogue reads, Download, Check for updates and the upgrade installs, until the
+   screen closes. A second Download, or a retry, in the same open screen does not ask again; the
+   next visit to the screen asks. [decided 2026-10-02 — owner ruling in the #514 session, chosen
+   over "each install asks" and "each action asks".] Cancel sends nothing. It changes neither the preference nor
+   the sign-in. "Don’t ask again" is stored only with Continue. When the user turns the switch
+   off, tC4 starts no request and resumes no task. (Amends D86 points 2 and 4.)
+3. **The stored preference.** tC4 stores `askInternet: false` in the per-client settings
+   (`STORAGE_ID` `uw-tc4`). If the key is absent, unreadable, or has any other value, tC4 asks.
+   The old `internet: true` of D86 point 3 is ignored, so it never turns the questions off.
+   (Amends D86 point 3.)
+4. **Consent is separate from the net gate.** The user gives consent to a task. tC4 never reads
+   consent from the gate. The gate is off at start. The first permitted task turns it on and
+   reads it back with `GET /api/net/status`. It stays on for the rest of the app session. The
+   owner chose this over "off after each task". Every internet task passes through the consent
+   boundary. In `src/main.jsx`, `guardFetch` refuses each request to another origin, and each
+   request to the platform routes that use the internet (`/api/gitea/` and `/api/git/push/`),
+   outside a permitted task. The Door43 adapter refuses in the same way. If the gate does not
+   read on, the task stops and the dialog "tC4 could not use the internet" shows. tC4 shows no
+   success. [VERIFIED — source read at 7400b03, 2026-10-02, `src/data/internet.ts`,
+   `src/main.jsx`.] (Replaces the barrier of D86 point 3.)
+5. **What sends nothing.** Startup, idle time, opening the menu, local import, and translation
+   and checking with installed resources make zero external requests. This is true with the
+   switch on or off, and after the first permitted task. The tC3 import review no longer looks up
+   resource versions by itself. **Look up on Door43** is an explicit task. (Amends D86 points 4
+   and 9.)
+6. **A missing pinned version (amends D86 point 5 and BURRITO-SPEC §5.3).** **Download** is
+   always offered. When the switch is on, it asks first. The state "unavailable … Allow internet"
+   of D86 is no longer shown. Check for updates and the import lookup are explicit tasks, with
+   the same dialog. D86 point 9 offered "Allow internet" for them; that offer is removed.
+7. **What stands.** D85 stands: the token only, in the operating-system keychain, and only with
+   "Stay signed in". No name, email or login is stored, so the menu shows no display name. D86
+   point 6 stands: the card actions, and the code `share.offline`. Its message now reads "tC4 has
+   no permission to use the internet for this task". D86 point 8 stands: a kept token resumes
+   only inside a permitted task. The "Change" link in the share dialog and on the card stands
+   (D86 point 7). The links to create an account and to recover a password do not exist in tC4
+   today. This change adds none.
+
+`docs/BURRITO-SPEC.md` §5.3 carries this decision. The conformance harness does not assert the
+changed text, so it does not change. The documents that follow describe built behavior, and they
+change with this decision: `docs/JOURNEYS.md` (J3, J9, J11, and the J12 precondition),
+`docs/ARCHITECTURE.md` (the net gate row and the section 7 share, sign-in, keychain and internet
+rows), `docs/PACKAGING.md` ("The offline run", step 9a, and the regression check) and
+`CONTEXT.md` (the terms for the internet question and the account menu, and Door43 session). The
+decision follows issue #514.

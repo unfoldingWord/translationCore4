@@ -90,9 +90,6 @@ export default function ResourceUpdates() {
           {up.checking ? t('upgrade.checking') : t('upgrade.check')}
         </Button>
       </div>
-      {!s.netEnabled && (
-        <p data-testid="upgrade-offline" style={{ fontSize: 'var(--fs-caption)', color: 'var(--text-tertiary)', margin: 0 }}>{t('upgrade.offline')}</p>
-      )}
       {up.progress && (
         <p data-testid="upgrade-progress" style={{ fontSize: 'var(--fs-caption-lg)', color: 'var(--text-secondary)', fontWeight: 'var(--fw-bold)', margin: 0 }}>{up.progress}</p>
       )}

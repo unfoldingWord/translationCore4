@@ -27,9 +27,16 @@ test.describe('J21 — a translator translates a story frame by frame', () => {
       test.setTimeout(120_000);
       const repo = await createObsProject('j21', 'Equipo Rig — J21');
 
-      await test.step('open the project: story 1, the gateway text and the picture of frame 1, the field empty', async () => {
+      await test.step('open the project: story 1 opens in Understand (D87)', async () => {
         await page.goto('/');
         await page.getByTestId(`project-_local_/_local_/${repo}`).getByTestId('story-tile-1').click();
+        await expect(page.getByRole('tab', { name: 'Understand', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 60_000 });
+        await expect(page.getByTestId('story-understand')).toBeVisible({ timeout: 60_000 });
+        await expect(page.getByRole('heading', { name: 'Story 1', exact: true })).toBeVisible();
+      });
+
+      await test.step('Translate: story 1, the gateway text and the picture of frame 1, the field empty', async () => {
+        await page.getByRole('tab', { name: 'Translate', exact: true }).click();
         await expect(page.getByTestId('story-draft')).toBeVisible({ timeout: 60_000 });
         await expect(page.getByTestId('story-source-notice')).toHaveCount(0);
         await expect(page.getByTestId('story-image-note')).toHaveCount(0);
@@ -97,6 +104,11 @@ test.describe('J21 — a translator translates a story frame by frame', () => {
       await test.step('reopen: the three writes are what the story shows, and the other stories are untouched', async () => {
         await page.reload();
         await page.getByTestId(`project-_local_/_local_/${repo}`).getByTestId('story-tile-1').click();
+        // #329: the tile returns to Translate once its place record is written (debounced);
+        // with no record yet, Understand (D87).
+        const translate = page.getByRole('tab', { name: 'Translate', exact: true });
+        await expect(translate).toBeVisible({ timeout: 60_000 });
+        if ((await translate.getAttribute('aria-selected')) !== 'true') await translate.click();
         await expect(page.getByTestId('story-draft')).toBeVisible({ timeout: 60_000 });
         await expect(page.getByTestId('story-frame-1').getByTestId('story-unit-text')).toHaveText(FRAME_1);
         await expect(page.getByTestId('story-title').getByTestId('story-unit-text')).toHaveText(TITLE);

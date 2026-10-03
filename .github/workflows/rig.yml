@@ -25,7 +25,7 @@
 #
 # ⛔ The job talks only to the rig it started. Never a pankosmia remote, token, or
 # upstream trigger. The clones in setup-from-pins.zsh are read-only, at pinned commits.
-# The rig resources fetched from outside GitHub are the pinned en_ult v89 export and the
+# The rig resources fetched from outside GitHub are the pinned en_ult v91 export and the
 # pinned uW/obs_images_360 commit archive from git.door43.org, read through the app's own
 # fetch path (dev-env/scripts/cache-resource.zsh) and cached. (apt, npm and cargo dependencies download as in every other workflow.)
 name: rig
@@ -50,8 +50,8 @@ jobs:
       RIG_API: http://127.0.0.1:19998/api
       # The pinned English source text the HttpStore integration suite reads
       # (test/httpStore.integration.test.ts, test 6). Pin from src/data/installedSuite.js.
-      EN_ULT_TAG: v89
-      EN_ULT_SHA: 84c73ba00fc8a95a9033f9efb14bb905a2a52ee4
+      EN_ULT_TAG: v91
+      EN_ULT_SHA: 35d215957f3203fd2e2fac5702ce14902d417f9d
       # The default OBS picture pack (#288, D75): a sha-only pin, fetched as the commit
       # archive. seed.zsh installs it at its identity-qualified path so the story
       # picture suite (test/obsImages.integration.test.ts) runs. Pin from src/data/obsImages.ts.

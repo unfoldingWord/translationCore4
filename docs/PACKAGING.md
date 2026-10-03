@@ -83,11 +83,12 @@ every other Pankosmia desktop app).
 - **Mechanism:** the build patches the shipped
   `lib/templates/user_settings.json` so `repo_dir` is
   `%%HOMEDIR%%/pankosmia/tc4-projects` (debug: `…/tc4-projects-debug`). The
-  server substitutes `%%HOMEDIR%%` at first boot. The store sits BESIDE the
-  server working dir (`$HOME/pankosmia/tc4`), never inside it — pre-creating
-  anything inside the working dir before first boot makes the server skip
-  first-boot initialization and panic on the missing `app_state.json`
-  (measured while building this). The patch refuses to run if the upstream
+  launcher substitutes the shipped templates at first boot. The store sits
+  BESIDE the server working dir (`$HOME/pankosmia/tc4`). Pankosmia 0.18.5
+  initializes only when that working directory is absent: the launcher stages
+  both template JSON files, `blobs`, `temp` and the install records before
+  publishing a complete fresh profile (#528). Creating only `client_settings`
+  would make the server skip initialization and panic. The patch refuses to run if the upstream
   template's `repo_dir` shape changed (re-verify before building).
 - **Guard, not convention:** the smoke test reads the BOOTED app's resolved
   `user_settings.json` and FAILS the build when `repo_dir` contains
@@ -147,8 +148,13 @@ write calls. The user cannot change it.
   Door43 use it: sign-in (#203), repository creation and push (#362). Reads
   stay on production: the resource pins, the catalogue, the downloads, the
   picture packs and the discovery.
-- **Indicator:** a development build shows "QA server: qa.door43.org" beside
-  the save indicator. A packaged build shows nothing.
+- **Indicator:** a development build puts "qa.door43.org" before the
+  repository in the meta line of a shared project card: "Shared at
+  qa.door43.org/owner/repository". It does this only when the remote of the
+  project is on that host. For a remote on any other host, the line shows
+  "Shared at owner/repository". A packaged build always shows "Shared at
+  owner/repository". The top bar shows no server label (#506).
+  [decided 2026-10-01]
 - **QA account:** the live share journey (#185) needs an account on
   `qa.door43.org`. The owner supplies it through a private channel. Until it
   exists, the live leg is a labelled skip.
@@ -170,12 +176,13 @@ The same prelude derives the tC4 profile from the packaged product's
 that property through an atomic temporary-file publish. It preserves the
 project store, project bytes, unknown settings and every other preference. A
 malformed settings file fails explicitly and remains untouched. A fresh profile
-is left for the platform to initialize with the already-correct environment.
+is published from the platform's own shipped templates after installing the
+bundled resources and their records.
 
 The development rig and explicit external-server mode (`START_SERVER=false`)
-retain their caller-provided resource selector and profile. Linux keeps its
-shell-based first-run seeding; resource binding is shared by all three packaged
-OS entry points.
+retain their caller-provided resource selector and profile. Resource binding
+and bundled installation share the same bootstrap on all three packaged OS
+entry points, under Electron's singleton lock and before the server starts.
 
 The recipe follows the Pankosmia
 [desktop-app-template](https://github.com/pankosmia/desktop-app-template)
@@ -438,8 +445,9 @@ or Git installation.
 
 The project store is `%USERPROFILE%\pankosmia\tc4-projects` (#70); the server's
 working directory is `%USERPROFILE%\pankosmia\tc4`. The shared bootstrap runs
-under the singleton lock before server startup. It copies missing bundled
-resources atomically and preserves existing resources and user projects.
+under the singleton lock before server startup. It installs each distinct
+bundled revision atomically in its own full-SHA folder and preserves existing
+resources and user projects (#528).
 
 Close tC4 before reinstalling. To uninstall, use **Settings > Apps > Installed
 apps > translationCore4**. The uninstaller removes the application and its
@@ -592,6 +600,19 @@ boundary, verifies the Home listing, checkpoints and reopens it, and runs the fo
 verifier. Keeping the probes separate makes a stale platform template a hard failure
 instead of something a fixture rewrite could hide.
 
+Every post-install smoke also runs an upgrade leg in a separate disposable HOME,
+including Windows. The shipped `smoke-upgrade.cjs` uses real ULT v89 and TN v86
+Titus exports. It creates an old project through `JournalingStore`, stops the
+app, prepares the old canonical resource folders and records, and restarts the
+installed launcher. It checks that the old pinned ULT, unpinned TN and project
+bytes are preserved, the old project reopens with its old ULT pin, and current
+bundled releases have exact records and readable ingredients. It also verifies
+the production gateway selectors prefer the current suite. The logs include
+`bundled-upgrade-witness.json` with old tree hashes, old and new project pins,
+installation records, resolved paths and the disabled net gate. Browser journey
+`e2e/bundled-upgrade.spec.ts` creates a new offline Titus project after that
+upgrade and visits Translate, Understand and Check without Needs downloading.
+
 Records of runs live in `docs/evidence/` (one per close, machine, OS version, artifact id,
 commit, date): see "Evidence" below.
 ## The offline run (#43)
@@ -615,7 +636,7 @@ between runs; it does not replace the run.
    request #192 merged carry it, and the section "Smoke tests" describes it), run it once,
    online: `zsh smoke-installed.zsh`. Expected: `SMOKE OK`. An older artifact has no such
    file; skip this step and say so in the record.
-3. Optional: start the app online once, create a project, open it, then `Project settings` › `Manage source texts`.
+3. Optional: start the app online once, create a project, choose `Switch project`, then on its card on Home choose `Settings` › `Manage source texts`.
 4. Turn the network off at the operating-system level, not in the app:
    - macOS: System Settings › Network, or the menu bar: turn Wi-Fi off and unplug Ethernet.
    - Linux: `nmcli networking off`, or `rfkill block all` plus unplug Ethernet. For a scripted
@@ -633,16 +654,16 @@ between runs; it does not replace the run.
 | Step | Do | Expected |
 |---|---|---|
 | 1 | Start the app (`start-tc4.command` or `start-tc4.sh`). | The window opens on Home within 30 s. No error banner. |
-| 2 | `+ Add a project`, then `New Bible`: name, language code, direction; `Create Bible →`. The `Add a book` dialog opens: `Start a blank book`, pick Titus, `Create book`. | Titus opens directly in `Translate` at chapter 1. |
-| 3 | Mode tab `Understand`. | The passage's helps area shows for chapter 1 with English translation notes and translation questions. |
+| 2 | `+ Add a project`, then `New Bible`: name, language code, direction; `Create Bible →`. The `Add a book` dialog opens: `Start a blank book`, pick Titus, `Create book`. | Titus opens directly in `Understand` at chapter 1 (D87). |
+| 3 | Stay in `Understand`. Look at chapter 1. | The passage's helps area shows for chapter 1 with English translation notes and translation questions. |
 | 4 | Mode tab `Translate`. Chapter 1. | The chapter's verses show. The source pane shows ULT/UST text. |
 | 5 | `Draft verse 1` (the dashed pill), type a verse, click outside the editor. | The save indicator shows `Saved`. |
 | 6 | Mode tab `Check`. On the Translation Notes card, `Start checking` (or `Continue`). Pick one item; `✓ Mark valid`. | The item is decided; the progress line `N of M resolved` counts it. If the card reads `Unavailable offline`, read which resource it names: a lexicon (`en_ugl`, `en_uhl`; #218) is the known case; name it and go on. Any other missing resource is a new finding: file its issue. |
 | 7 | On the tool picker (`← All checking tools` first, if a tool is open), `Align`. Click one word in the bank, then one card. | The word moves into the card; the bank has one word fewer. If the screen reads "The original-language text is not on this computer", that is a new finding: file its issue. A missing lexicon entry (`en_ugl`, `en_uhl`; #218) is the known case. |
 | 8 | Leave the project (`Switch project`), then open Titus again from Home. Look at `Translate`; then at `Check` › Translation Notes and `Align` for each of steps 6 and 7 that you could do. | Home lists the project. The drafted verse is on screen. Each decision and alignment you made is still there: the progress line still counts the decision; the aligned word is still in its card. |
 | 9 | From rc.1 (Increment 8, J7): in Titus, mode tab `Check` (`← All checking tools` first, if a tool is open), then the `Community Checking` card, `Open →`. `Export` › `Export PDF`; save the file. Then `Export` › `Scripture Burrito (.zip)`; save the file. | Each export shows `Saved <file name>`, and the file is in the folder you chose. The PDF opens and shows the drafted verse. A failed or missing export is a new finding: file its issue. |
-| 9a | From rc.1 (Increment 8.5, J11): `Switch project`. On Home, look at the top bar, then click the `Share` action of the Titus card. | The top bar shows `Local`. The click opens the confirmation `tC4 is set to Local. Allow tC4 to use the internet for Share and downloads?`. Click `Cancel`: the dialog closes and nothing is sent. |
-| 9b | From alpha.7 (Increment 7, D74): on Home, `+ Add a project` › `New Open Bible Stories`: name, language, `Create stories →`. Open the OBS tile; in `Translate`, story 1 shows with the gateway text on the left. `Draft frame 1`, type, click outside the card. `Understand`; select frame 1. `Check` › Translation Notes › `Start checking`; pick one item; `✓ Mark valid`. | The gateway frame text and the picture of frame 1 show from the bundled `en_obs` and picture pack with the network off. The frame marker for frame 1 turns drafted. Understand lists the notes and word links of frame 1. The check item is decided. A missing picture or gateway story is a new finding: file its issue. |
+| 9a | From rc.1 (Increment 8.5, J11): `Switch project`. On Home, look at the top bar, then click the `Share` action of the Titus card. | The top bar shows the account menu (a person icon) beside `Saved`. It shows no `Internet` or `Local`. The click opens the dialog `Use the internet?`. Click `Cancel`: the dialog closes and nothing is sent (D88). |
+| 9b | From alpha.7 (Increment 7, D74): on Home, `+ Add a project` › `New Open Bible Stories`: name, language, `Create stories →`. Open the story 1 tile: story 1 opens in `Understand`. Mode tab `Translate`: story 1 shows with the gateway text on the left. `Draft frame 1`, type, click outside the card. `Understand`; select frame 1. `Check` › Translation Notes › `Start checking`; pick one item; `✓ Mark valid`. | The gateway frame text and the picture of frame 1 show from the bundled `en_obs` and picture pack with the network off. The frame marker for frame 1 turns drafted. Understand lists the notes and word links of frame 1. The check item is decided. A missing picture or gateway story is a new finding: file its issue. |
 | 10 | Quit the app. Turn the network on again. | |
 
 Look at the screen fonts during the run. With the network off, the interface shows Mulish,
@@ -659,10 +680,10 @@ and the screen it broke). Paste the step lines into the pre-release notes.
 
 ### The regression check between runs
 
-`e2e/j02-draft-verse.spec.ts` carries the test "a drafting session in Local, with a restart,
-talks to no host but the local server (FR-31, #43; D86)". It records every request and every
-WebSocket the client opens while a project is opened in Local, a verse is drafted and the app
-starts again. It waits out the save's follow-up writes, checks that no service worker is
+`e2e/j02-draft-verse.spec.ts` carries the test "a drafting session, with a restart,
+uses no internet: every request goes to the local server (FR-31, #43; D88)". It records every request and every
+WebSocket the client opens while a project is opened, a verse is drafted and the app starts
+again, with no internet task. It waits out the save's follow-up writes, checks that no service worker is
 registered (a worker's requests would not be seen), and fails when any host outside the local
 server appears. Since #3 the test has no list of
 known defects: the fonts are part of the client. The check runs on the dev
@@ -679,19 +700,19 @@ procedure's subject.
 | resource-core | `54802be780af18ab02e426dd59014bc6adb158af` | `scripts/package-desktop.zsh` |
 | webfonts-core | `eb52ccdad6806b5729ea8b45b1c59c793ffa32c3` | `scripts/package-desktop.zsh` |
 | puppeteer-core / @puppeteer/browsers | `24.43.1` / `2.13.1`, exact; lockfile ships in the artifact (`electron/package-lock.json`) | `scripts/package-desktop.zsh` |
-| en_ult | v89, sha `84c73ba00fc8a95a9033f9efb14bb905a2a52ee4` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
-| en_ust | v89, sha `37ec223166bbd73fb55abc7840be8310c0fee7f2` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
+| en_ult | v91, sha `35d215957f3203fd2e2fac5702ce14902d417f9d` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
+| en_ust | v91, sha `85f274a74245cb418f85266e1a5b524bc3e91e9c` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | el-x-koine_ugnt | v0.34, sha `fc95b2b8aad08bb65ab54628ab685413a1139e97` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
-| hbo_uhb | v2.1.30, sha `106a441a788d9465846cd427538ea80b8cec6770` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
-| en_tn | v86, sha `c354b8ae66a23c485bf6f38fd35bd8f7ef81e4e5` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
-| en_tw | v87, sha `eaeb7bfefcf84132d0cbcbed185f3ea2be3d86dd` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
-| en_ta | v86, sha `c7caddfb474efd713f36b35a3ffc927866c7b180` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
-| en_tq | v89, sha `97c0a13e3b84d46d0e643ba2e8e9f1c295547a58` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
+| hbo_uhb | v3.0.0, sha `74022f0fed012a3ef169886f595dd98e7b200543` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
+| en_tn | v91, sha `e586762e330f482a60c52aedd1c7b3a2f155df8a` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
+| en_tw | v91, sha `ff5b3852c27c3a0d01b109e482eb26047dcd20e2` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
+| en_ta | v91, sha `ce9a1bb9431317ca888e8c1f9620caa7f5fe45fd` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
+| en_tq | v91, sha `8be02772584ff5a5fea893a392b4f019e3efcc77` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | en_obs | v9, sha `d39a1dc7a7557ac54e4a8fecc3462147fe7eec3b` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | en_obs-tn | v13, sha `e86138ea13f619f09f7a6dcaa60592716d407fe4` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | en_obs-twl | v3, sha `44ebc9fafe8101665f985007d566f5036a2be85b` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | en_obs-tq | v10, sha `01b92fe8793d62cff3a2221f5174c768cbad3dc1` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
-| uW/obs_images_360 (#288, D75) | no tag; sha `7146d5b504f6b63b9e11f7dc0b18c594d0ae179d`, fetched as the commit archive and seeded at the identity-qualified path `uw--obs_images_360--7146d5b504f6` | `src/data/installedSuite.js`, `src/data/obsImages.ts`, `scripts/package-desktop.zsh` |
+| uW/obs_images_360 (#288, D75) | no tag; sha `7146d5b504f6b63b9e11f7dc0b18c594d0ae179d`, fetched as the commit archive and installed with its full-SHA suffix (#528) | `src/data/installedSuite.js`, `src/data/obsImages.ts`, `scripts/package-desktop.zsh` |
 | uW/en_ugl (#218, D71) | no tag; sha `d9d29e2d589258ce27f92b59f753a3af03ab7a72`, fetched as the commit archive `archive/<sha>.zip` and verified against the zip's archive comment | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | uW/en_uhl (#218, D71) | no tag; sha `72df5ac25acf9d51e826b20e3ad883a5a657ef4e`, same fetch path | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 
@@ -699,9 +720,54 @@ Every artifact carries `BUILD-MANIFEST.json` at its root with the same data. A s
 
 The eight `unfoldingWord` repos are fetched as the DCS sb-zip export `/sb/<tag>.zip`. The two lexicons come from the `uW` org on DCS (D71): those repos have no tag and no sb-zip export (`/sb/` answers 404), so the build fetches the Gitea commit archive `archive/<sha>.zip` and verifies the sha Gitea records in the zip's archive comment against the pin. Both paths run through the app's own fetch code (`src/data/resourceFetch.ts` `downloadPin`), called by `dev-env/scripts/cache-resource.zsh`.
 
-## Bundled English suite (#163, #218)
+## Bundled English suite (#163, #218, #504)
 
-Per D70, D75 (and its #331 amendment), #163, #218 and #288, the desktop artifact bundles fifteen repos: the ten-resource English Bible suite, `en_obs`, `en_obs-tn`, `en_obs-twl`, `en_obs-tq`, and `uW/obs_images_360`. Translation Words and Translation Academy are shared by Bible and OBS sets. The unpacker stages normal resources at `<APPDIR>/resources/<owner lowercased>--<repo>/`. It stages the untagged default image pack at `uw--obs_images_360--7146d5b504f6`, so another installed revision of the same repository is neither replaced nor accepted as the pinned default. The launcher copies only missing directories into `$HOME/pankosmia/tc4-projects/_local_/_sideloaded_/` before the server starts. A second launch preserves every existing directory byte-for-byte.
+Per D70, D75 (and its #331 amendment), #163, #218 and #288, the desktop artifact bundles fifteen repos: the ten-resource English Bible suite, `en_obs`, `en_obs-tn`, `en_obs-twl`, `en_obs-tq`, and `uW/obs_images_360`. Translation Words and Translation Academy are shared by Bible and OBS sets. The unpacker stages normal resources at `<APPDIR>/resources/<owner lowercased>--<repo>/` and the untagged default image pack at `uw--obs_images_360--7146d5b504f6`.
+
+At each packaged start (#528), the shared bootstrap checks `BUILD-MANIFEST.json`
+against the bundled metadata's repo, full SHA and factual flavor, and verifies
+every declared ingredient's size and checksum for DCS exports. The three
+sha-only commit archives have authored metadata with no DCS identity; the
+lexicons' ingredient tables also omit payload files and have stale README
+checksums. Packaging preserves the fetcher's verified Gitea archive-comment
+identity in `.tc4-bundled-identity.json`, hashes every extracted file, and binds
+that receipt's SHA-256 in the build manifest. Startup verifies that complete
+tree, including metadata and otherwise unlisted payloads. A legacy archive
+copy is reused only with an exact saved identity or matching SHA-qualified
+path and a byte-identical verified tree. A distinct release is installed
+at `$HOME/pankosmia/tc4-projects/_local_/_sideloaded_/<owner lowercased>--<repo>--<full SHA>`.
+Copy staging is outside discovery, on the same filesystem, and published by a
+directory rename. A complete exact release already installed at a legacy,
+short-SHA or full-SHA path is reused at its actual path. The atomic
+`client_settings/uw-tc4.json` merge preserves other install records and preferences;
+a failed record write aborts startup, and retry reuses the published resource.
+Abandoned staging is removed on retry. Older releases remain byte-for-byte,
+including unpinned ones; the launcher neither scans project pins nor collects
+old releases. Existing project pins retain their exact identity, while current
+bundled identities win default selection for new projects regardless of folder
+or record order. A second launch with correct records makes no resource or
+install-record writes. Debug uses the same policy in its separate store.
+
+### The release tags and the weekly check (#504)
+
+The build ships the English suite at the latest release at build time (owner stance, 2026-07-12). Since 2026-10-01 the pins are `en_ult`, `en_ust`, `en_tn`, `en_tw`, `en_ta` and `en_tq` at **v91** (released 2026-09-26). `hbo_uhb` is at **v3.0.0** (released 2026-08-14). The manifests of `en_tn` v91 and `en_ult` v91 declare this Hebrew Bible. `el-x-koine_ugnt` v0.34 and the four Open Bible Stories resources were already the latest releases. The table above gives each tag and its commit.
+
+The pins stay fixed in the build (owner decision, 2026-10-01). A scheduled check reports when a pin falls behind:
+
+- `.github/workflows/pin-check.yml` runs `scripts/pin-check.mjs` every Monday at 06:00 UTC, and on demand (`workflow_dispatch`). It has no `pull_request` or `push` trigger. It adds no time to CI.
+- The script reads every tagged pin from `BUNDLED_RESOURCES` in `scripts/package-desktop.zsh`. For each pin it asks the Door43 catalog (`/api/v1/catalog/search?owner=<owner>&repo=<repo>&stage=prod`) for the latest production release. A sha-only pin (the two lexicons and the picture pack) has no release tag. The script skips it.
+- When a pin is behind, the workflow opens one issue titled "Bundled resource pins are behind the latest Door43 releases", or updates the open one. The issue lists each resource, its pinned tag and the latest tag. When every pin is current, the workflow does nothing. A failed catalog lookup is a red run, not a report.
+- Negative control: a `workflow_dispatch` run with the `override` input set to `<owner>/<repo>:<old tag>` (for example `unfoldingWord/en_ult:v89`) must report that pin. The issue it opens has its own title ("Negative control of the weekly pin check") and names itself as a negative control. It never touches the real issue.
+
+To move a pin, change these copies together:
+
+1. `src/data/installedSuite.js` and `scripts/package-desktop.zsh`.
+2. The rig copies: `dev-env/scripts/seed.zsh`, `dev-env/scripts/write-install-records.mjs`, `.github/workflows/rig.yml`, and the cache commands in `dev-env/README.md`.
+3. The journeys that name a pin (`e2e/`), and the table above.
+4. The conformance sample `conformance/sample-burrito/ingredients/checking/resources.json`, then `npm run generate` (it regenerates `metadata.json` and the OBS sample).
+5. The examples in `docs/BURRITO-SPEC.md` §3 (the `relationships` block) and §5.3 (the pin file), and the revisions named in `conformance/LICENSE-CONTENT.md`.
+
+Pin each tag to the commit the DCS tags API names for it. Check that commit against the revision the `/sb/<tag>.zip` export declares: `dev-env/scripts/cache-resource.zsh <owner>/<repo> <tag> <sha>` aborts on a mismatch. An existing installation keeps its installed releases (`copyIfMissing` in `scripts/desktop-bootstrap.cjs`). The user moves a project with Check for updates (J12), never automatically.
 
 Artifact sizes before and after bundling the English suite:
 
