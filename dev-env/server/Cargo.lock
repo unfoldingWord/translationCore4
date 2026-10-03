@@ -1432,8 +1432,8 @@ dependencies = [
 
 [[package]]
 name = "pankosmia_web"
-version = "0.18.5"
-source = "git+https://github.com/pankosmia/pankosmia-web.git?rev=99fd9bea8a9f3d14ac6a61f8e2213f1c5d42ed2a#99fd9bea8a9f3d14ac6a61f8e2213f1c5d42ed2a"
+version = "0.18.15"
+source = "git+https://github.com/pankosmia/pankosmia-web.git?rev=a83725b67593b018f815fdb25a3920ce03e833e7#a83725b67593b018f815fdb25a3920ce03e833e7"
 dependencies = [
  "boon",
  "chksum-md5",

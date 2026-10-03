@@ -35,12 +35,6 @@ export type ImportDeps = {
 const seedSourceOf = (parser: ImportParser) =>
   parser.id === 'tc3' ? ('tc3-import' as const) : ('sidecar-migration' as const);
 
-/** The code the create route takes: `new-text-translation` accepts only a bare
- * language code, so `es-419` is sent as `es`; remake then writes the bundle's
- * own metadata.json with the full tag (D80 point 4, PLATFORM-NOTES #43). A
- * private-use `x-` tag is sent whole. */
-export const primarySubtag = (tag: string): string => (tag.startsWith('x-') ? tag : tag.split('-')[0].toLowerCase());
-
 /** The new repository's folder name: the New Bible wizard's rule. */
 export const importAbbr = (name: string, language: string): string => {
   const slug = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
@@ -71,12 +65,10 @@ const archiveZip = (archive: Uint8Array, folder: string): Uint8Array => wrap(fol
 
 /** The new project's own files (the created repository's metadata.json and
  * ingredients, for example vrs.json) with the bundle's books or stories and
- * its checking files over them. The metadata gets the bundle's full language
- * tag back (D80 point 4) and the license the files carry, when they carry one. */
+ * its checking files over them. The metadata gets the license the files carry,
+ * when they carry one. */
 async function bundleZip(api: ServerApi, repoPath: string, bundle: ImportBundle, facts: ImportBundle['facts'], folder: string): Promise<Uint8Array> {
   const meta = await api.getMetadataRaw(repoPath);
-  const languages = meta.languages as Array<{ tag: string }> | undefined;
-  if (languages?.[0]) languages[0].tag = facts.language;
   if (facts.license) meta.copyright = { shortStatements: [{ statement: facts.license }] };
   const files: Record<string, Uint8Array> = { 'metadata.json': encoder.encode(JSON.stringify(meta, null, 2)) };
   for (const ipath of await api.listPaths(repoPath)) files[`ingredients/${ipath}`] = encoder.encode(await api.readIngredient(repoPath, ipath));
@@ -87,7 +79,7 @@ async function bundleZip(api: ServerApi, repoPath: string, bundle: ImportBundle,
 }
 
 /** Parse, then make one new project from the bundle: create the repository
- * (primary language subtag) → upload one wrapped zip → remake → seed the
+ * (the full language tag, PLATFORM-NOTES #43) → upload one wrapped zip → remake → seed the
  * journal (not for an archive) → commit. A failure after the repository exists deletes it and
  * returns `import.write-failed`; a failure before it creates nothing. A
  * finished import whose ops record names the repository but whose close is not
@@ -165,16 +157,17 @@ async function importRecorded(
     // path this listing proved absent.
     if ((await api.listLocalRepos()).includes(repoPath))
       throw new Refusal('import.name-exists', `a project folder named "${abbr}" already exists`, { repoPath });
-    const code = primarySubtag(language);
+    const languageName = language.startsWith('x-') ? name : null;
     await record?.note({ repoPath });
     try {
-      if (bundle.kind === 'obs') await api.newObsResource({ content_name: name, content_abbr: abbr, content_language_code: code });
+      if (bundle.kind === 'obs')
+        await api.newObsResource({ content_name: name, content_abbr: abbr, content_language_code: language, content_language_name: languageName });
       else
         await api.newTextTranslation({
           content_name: name,
           content_abbr: abbr,
-          content_language_code: code,
-          content_language_name: code.startsWith('x-') ? name : null,
+          content_language_code: language,
+          content_language_name: languageName,
           add_book: false,
           versification: 'eng',
         });

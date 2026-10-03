@@ -9,7 +9,7 @@ const LANE = lane();
 
 export default defineConfig(({ command }) => ({
   plugins: [react(), nodePolyfills()],
-  // pankosmia-web 0.18.5 has no CORS handling at all (source-verified), so the dev
+  // pankosmia-web 0.18.15 (a83725b) has no CORS handling at all (source-verified 2026-10-03), so the dev
   // server proxies /api to the rig — same-origin to the browser. The built client is
   // served BY the rig from /clients/uw-tc4; the server's homepage redirect points at
   // the slash-less path, where relative ('./') asset URLs resolve wrongly and the

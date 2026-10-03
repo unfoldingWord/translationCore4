@@ -86,7 +86,7 @@ const run = async () => {
 
   // ---------- T1: rig sanity ----------
   const v = await get('/version');
-  check('T1: rig server is the pinned latest crate', v.json?.pkg_version === '0.18.5', `pkg_version=${v.json?.pkg_version}`);
+  check('T1: rig server is the pinned latest crate', v.json?.pkg_version === '0.18.15', `pkg_version=${v.json?.pkg_version}`);
   const sums = await get('/burrito/metadata/summaries');
   check('T1: seeded sample_burrito is served', !!sums.json?.[`${LOCAL}/sample_burrito`]);
 
@@ -171,7 +171,11 @@ const run = async () => {
     const pull = await pullRepo('incoming', S);
     const conflicts = pull.json?.has_conflicts ?? pull.json?.payload?.has_conflicts ?? false;
     if (process.env.RIG_DEBUG) console.log(`  [${label}] pull:`, pull.status, JSON.stringify(pull.json));
-    if (pull.status !== 200 || conflicts) { await deleteRepo(S); return { conflict: true, before, after: head(P) }; }
+    if (pull.status !== 200 || conflicts) {
+      const conflicted = git('diff --name-only --diff-filter=U', S).split('\n').filter(Boolean);
+      await deleteRepo(S);
+      return { conflict: true, conflicted, before, after: head(P) };
+    }
     // PLATFORM FINDING (0.17.0): after a NORMAL pull-repo merge, files added by the merge are in
     // the merge COMMIT but not the WORKING TREE (non-force checkout); a subsequent add-and-commit
     // would commit their deletion. The correct §8.7/JC-20 posture is also the workaround: the
@@ -208,22 +212,31 @@ const run = async () => {
   check('T3: A1 integrates via HTTP scratch (copy→remote/add→pull-repo→regenerate→commit→pull-to-main)',
     !iA1.conflict && iA1.ffOk && iA1.after !== iA1.before,
     `merge_type=${iA1.mergeType}`);
-  check('T3: publication commits are journal-only paths (publication isolation holds over HTTP)',
-    JSON.stringify(pubA1Paths) === JSON.stringify([`ingredients/checking/journal/actor-a/segments/${segmentName(a1.ts)}`]),
+  // MEASURED at pankosmia-web 0.18.15 (a83725b, 2026-09-29; PLATFORM-NOTES #48): every
+  // add-and-commit rewrites metadata.json (meta.dateCreated, the primary revision and
+  // timestamp, and an ingredient remake). So a publication commit is the journal segment
+  // PLUS metadata.json, and two commits made apart always conflict on metadata.json in
+  // pull-repo. At 0.18.5 the publication was journal-only and B1/A2 integrated cleanly.
+  // §8 is [PROPOSED] (#22); its concurrent integration needs a metadata.json rule before
+  // ratification. These checks record the platform as it is, so an upstream change flips them.
+  check('T3: publication commits are the journal segment plus the server\'s metadata.json rewrite (PLATFORM-NOTES #48)',
+    JSON.stringify(pubA1Paths) === JSON.stringify([`ingredients/checking/journal/actor-a/segments/${segmentName(a1.ts)}`, 'metadata.json']),
     JSON.stringify(pubA1Paths));
 
   writeJournalFs(pubB, 'actor-b', [b1]); await commitRepo(pubB, 'publish B1');
   const iB1 = await integrate(pubB, 'b1');
-  check('T3: B1 integrates while A is offline; both texts present',
-    !iB1.conflict && iB1.ffOk && iB1.out.books.TIT.verses['1:2'] === 'dos A1\n' && iB1.out.books.TIT.verses['1:3'] === 'tres B1\n');
+  check('T3: B1 integration while A is offline conflicts on metadata.json only, and main is untouched (PLATFORM-NOTES #48)',
+    iB1.conflict === true && JSON.stringify(iB1.conflicted) === '["metadata.json"]' && iB1.after === iB1.before,
+    JSON.stringify(iB1.conflicted));
 
-  // A continues OFFLINE — no receive of B1/main. Working projection diverges; publication stays journal-only.
+  // A continues OFFLINE — no receive of main. Working projection diverges.
   const workAHeadBeforeIntegrations = head(workA);
   writeJournalFs(workA, 'actor-a', [a1, a2]); await project(workA); await commitRepo(workA, 'A2 working checkpoint offline');
   writeJournalFs(pubA, 'actor-a', [a1, a2]); await commitRepo(pubA, 'publish A2 while offline');
   const iA2 = await integrate(pubA, 'a2');
-  check('T3: A2 submits WITHOUT receiving B1 — clean HTTP integration; A2+B1 both survive',
-    !iA2.conflict && iA2.ffOk && iA2.out.books.TIT.verses['1:2'] === 'dos A2\n' && iA2.out.books.TIT.verses['1:3'] === 'tres B1\n');
+  check('T3: A2 submits WITHOUT receiving main — conflicts on metadata.json only, and main is untouched (PLATFORM-NOTES #48)',
+    iA2.conflict === true && JSON.stringify(iA2.conflicted) === '["metadata.json"]' && iA2.after === iA2.before,
+    JSON.stringify(iA2.conflicted));
 
   // Counterexample: merging the full working projection (derived files committed) DOES conflict.
   const iWork = await integrate(workA, 'fullwork');
@@ -234,8 +247,9 @@ const run = async () => {
   const recvA = `${LOCAL}/rig_recv_a`;
   await copyRepo(P, recvA);
   const recvFold = foldRepo(recvA);
-  check('T3: receive rebuilds replacement from main (union present); old working repo untouched until swap',
-    recvFold.books.TIT.verses['1:2'] === 'dos A2\n' && recvFold.books.TIT.verses['1:3'] === 'tres B1\n' &&
+  // Main holds A1 only: B1 and A2 did not integrate (above).
+  check('T3: receive rebuilds replacement from main (main\'s union present); old working repo untouched until swap',
+    recvFold.books.TIT.verses['1:2'] === 'dos A1\n' && recvFold.books.TIT.verses['1:3'] === 'tres\n' &&
     head(workA) !== workAHeadBeforeIntegrations /* it advanced by A's own commits only */ &&
     foldRepo(workA).books.TIT.verses['1:3'] === 'tres\n' /* B1 never leaked into old working repo */);
 

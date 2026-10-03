@@ -1,6 +1,6 @@
 # The rig job (L-1b of #154, D67). The `verify` job in ci.yml runs `npm run prove` on a
 # clean clone, where every rig-gated suite skips. This job builds the pinned Pankosmia
-# server (dev-env/server, pankosmia-web 0.18.5 at 99fd9be), assembles the rig from the
+# server (dev-env/server, pankosmia-web 0.18.15 at a83725b), assembles the rig from the
 # pinned upstream inputs (dev-env/scripts/setup-from-pins.zsh), seeds it, starts it on
 # 127.0.0.1:19998, and runs `prove` with RIG_REPOS set, so validate:transport,
 # validate:roundtrip and the *.integration vitest files execute. The manifest is

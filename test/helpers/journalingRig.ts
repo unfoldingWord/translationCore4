@@ -122,10 +122,19 @@ export const journalingRig = () => {
     obsTemplateFixed = false;
   };
 
-  /** Whether new-text-translation refuses a code outside its bare-code table (PLATFORM-NOTES #43). */
+  /** Whether the create routes check the language code as the server does
+   * (PLATFORM-NOTES #43): a tag whose first subtag is in the table, or an `x-`
+   * tag with a name. The table has no `qaa`–`qtz` (reserved for local use).
+   * The check runs before the repository exists. Opt-in: the older suites
+   * create with codes the real table refuses. */
   let languageTable = false;
   const refuseUnknownLanguages = (): void => {
     languageTable = true;
+  };
+  const languageRefusal = (code: string, name: string | null | undefined): Response | null => {
+    if (!languageTable) return null;
+    const known = code.startsWith('x-') ? !!name : /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(code) && !/^q[a-t][a-z]$/.test(code.split('-')[0]);
+    return known ? null : ok({ is_good: false, reason: `Unable to find language name: ${code}` });
   };
 
   const failOn = (match: FailureRule['match'], times = 1): void => {
@@ -239,8 +248,10 @@ export const journalingRig = () => {
 
     if (parts[1] === 'git' && parts[2] === 'new-obs-resource') {
       maybeFail({ method, route });
-      const body = JSON.parse(String(init?.body)) as { content_abbr: string; content_name: string; content_language_code: string };
+      const body = JSON.parse(String(init?.body)) as { content_abbr: string; content_name: string; content_language_code: string; content_language_name?: string | null };
       const repoPath = `_local_/_local_/${body.content_abbr}`;
+      const refused = languageRefusal(body.content_language_code, body.content_language_name);
+      if (refused) return refused;
       if (repos.has(repoPath)) return notFound(`Local content called '${body.content_abbr}' already exists`);
       // The template's ingredients, byte for byte, with the source's titles —
       // the seed form is the client's job (R-10.2.4).
@@ -268,7 +279,7 @@ export const journalingRig = () => {
       const project = repos.get(repo);
       if (!project) return notFound(`no such repo ${repo}`);
       const body = JSON.parse(String(init?.body)) as { commit_message: string };
-      project.commits.push(body.commit_message); // the real platform commits an EMPTY commit on a clean tree too
+      project.commits.push(body.commit_message); // the real platform commits on a clean tree too (PLATFORM-NOTES #9, #48)
       project.dirty.clear();
       return ok();
     }
@@ -286,19 +297,16 @@ export const journalingRig = () => {
       const body = JSON.parse(String(init?.body)) as {
         content_abbr: string;
         content_language_code: string;
+        content_language_name?: string | null;
         add_book: boolean;
         book_code?: string;
       };
       const repoPath = `_local_/_local_/${body.content_abbr}`;
+      const refused = languageRefusal(body.content_language_code, body.content_language_name);
+      if (refused) return refused;
       // Checked BEFORE the git init [VERIFIED — pankosmia-web 0.18.5, new_text_translation.rs]
       if (repos.has(repoPath)) return notFound(`Local content called '${body.content_abbr}' already exists`);
       const project = createRepo(repoPath, { 'vrs.json': FAKE_VRS }, baseMeta(body.content_language_code));
-      // The table holds bare codes only; `qaa`–`qtz` is reserved for local use
-      // and is in no table. The repository is already git-initialised. Opt-in:
-      // the older suites create with tags the real table refuses.
-      const code = body.content_language_code;
-      if (languageTable && !code.startsWith('x-') && (code.includes('-') || /^q[a-t][a-z]$/.test(code)))
-        return ok({ is_good: false, reason: `Unknown language code '${code}'` });
       if (body.add_book && body.book_code)
         project.files.set(`${body.book_code.toUpperCase()}.usfm`, SERVER_SKELETON(body.book_code.toUpperCase()));
       rescan(project);

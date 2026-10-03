@@ -211,6 +211,7 @@ at 0.18.5; `x-` roles are still wiped (6→0).** S-1 authority is unchanged (res
 stays authoritative; the mirror is now durable in practice); S-2 stays permanent per D28. On
 a server-rescanned copy the expected Stage-2 split is now **1/2**, not 0/2. The increment-close
 pin review still runs (upstream moves fast), but its special measurement is already satisfied.
+[superseded by D90, 2026-10-03 — the pin is a git rev pin to 0.18.15 (`a83725b`), re-baselined the same day]
 
 
 ## D28 (2026-07-30, upstream position via the project owner —
@@ -1756,7 +1757,8 @@ changed. These facts were read for the rulings:
 4. **An import creates the project with the primary language subtag.** The shell sends the
    primary subtag of the bundle's tag to the create route (`es-419` → `es`). Remake then
    writes the bundle's own `metadata.json`, with the full tag (#361). The owner routes the
-   create-route question upstream.
+   create-route question upstream. [superseded by D90, 2026-10-03 — the import sends the full
+   tag, which the create routes keep whole from 0.18.14]
 5. **Page setup stays in memory for 4.0.0.** No project file, journal entry or client-settings
    record stores it. The publisher's per-project `specs.json` is not adopted (#381, #20).
 6. **Import validation is tC4's own.** The platform's `/burrito/audit` is not used (#196).
@@ -2159,6 +2161,7 @@ kept most of the product work and ruled on the order, the gates and the cut rule
    quit) uses the `POST /api/system/shutdown` route [VERIFIED — pankosmia-web 0.18.8 (bab524c,
    2026-09-02) adds it; `src/utils/launch.rs` mounts it under `/api/system`; read 2026-10-03]. If #461 is not green
    on 2026-10-07, the pin stays at 0.18.5, and #206 gets a narrow fix for the double stop call.
+   [superseded by D90, 2026-10-03 — #461 moves the pin to 0.18.15 (`a83725b`), not 0.18.14]
 7. **The client set.** v4.0.0 bundles only the `uw-tc4` client, as rc.1 did. #71 records this
    ruling and adds a smoke check of `GET /api/list-clients`. #7 closes into #71.
 8. **The keyboard pass.** #42 covers a logical tab order and a visible focus ring on the Check
@@ -2195,3 +2198,41 @@ kept most of the product work and ruled on the order, the gates and the cut rule
 `docs/RISKS.md` (Ledger #10) and `docs/PACKAGING.md` (the signing lines) change with this
 decision. The format does not change, so `docs/BURRITO-SPEC.md` and the conformance harness do
 not change.
+
+## D90 (2026-10-03, project-owner ruling) **The rig and the desktop package pin pankosmia-web 0.18.15 (`a83725b`), not 0.18.14. A new project keeps a regional language tag such as `es-419` whole, from the wizards and from import.** [owner instruction in the #461 session, 2026-10-03: "go to 0.18.15. I don't want to have to do this again in the immediate future."; issue #461; amends D27, D80 point 4 and D89 point 6]
+
+Context. #461 named 0.18.14 (`173f9f6`). At that commit the OBS create route has no
+`content_language_name` field, so it refuses every `x-` code, and the issue's `x-` criterion
+cannot pass [VERIFIED — pankosmia-web 0.18.14 (173f9f6, 2026-09-29),
+`src/endpoints/git2/new_obs_resource.rs`, read 2026-10-03]. 0.18.15 adds the field
+[VERIFIED — pankosmia-web 0.18.15 (a83725b, 2026-09-29), `new_obs_resource.rs:22-23`, `:61-75`].
+0.18.15 is upstream `main` on 2026-10-03, and crates.io publishes it from the same commit.
+
+1. **The pin.** `dev-env/server/Cargo.toml` pins rev `a83725b67593b018f815fdb25a3920ce03e833e7`.
+   It stays a rev pin, because `scripts/prove.mjs` reads the build revision from that line.
+2. **The D27 re-baseline.** A 0.18.5 control rig ran the same harness on the same day
+   [VERIFIED — local rigs on macOS, 2026-10-03; `evidence/rig-rebaseline-0.18.15-2026-10-03.md`].
+   Round-trip is **12/12** on both. Stage-1 on the server-touched copy is **38/38** on both.
+   Stage-2 is **0/2** on both: the `relationships` check of #359 compares key order, and the
+   server writes the keys sorted at both versions, so this is not a change. The rig-backed
+   Vitest files are **46/46** on both before the language change. Transport was **5/10** on
+   0.18.15 before its re-baseline and is **10/10** after it.
+3. **What the transport re-baseline changes.** From 0.18.10, each `add-and-commit` rewrites
+   `metadata.json` (PLATFORM-NOTES #48). T1 now expects 0.18.15. Four T3 checks now record the
+   platform as measured: a publication commit carries `metadata.json`, the B1 and A2
+   integrations conflict on `metadata.json` only and leave main unchanged, and receive rebuilds
+   from a main that holds A1 only. On the 0.18.5 control the same five checks fail, so they
+   discriminate. §8.7 sync is [PROPOSED] (#22): it needs a `metadata.json` rule before
+   ratification (BURRITO-SPEC §8.7 names the caveat). No v4.0.0 path calls `pull-repo`.
+4. **Language codes.** The create routes keep a valid tag whole and name it (PLATFORM-NOTES
+   #43). The import sends the full tag (this supersedes D80 point 4). The New OBS wizard and an
+   OBS import send `content_language_name` for an `x-` code, as the New Bible wizard does, and
+   `newObsResource` refuses an `x-` code with no name before the request. The wizard shows the
+   server's refusal of a code it cannot name. tC4 adds no tag check and no name lookup.
+5. **What does not change.** The server still starts offline: tC4's product files do not set
+   `start_offline` (PLATFORM-NOTES #45). The working-directory start check is unchanged
+   (`lib.rs:129`). The format does not change.
+
+`docs/BURRITO-SPEC.md` §8.7 (the third sync caveat) and `conformance/validate-transport.mjs`
+change together (§9). `docs/PLATFORM-NOTES.md` #9, #28, #43, #45 and #48, and `docs/RISKS.md`
+Ledger #1, change with this decision.

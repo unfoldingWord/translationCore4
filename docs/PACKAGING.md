@@ -87,7 +87,7 @@ every other Pankosmia desktop app).
   `lib/templates/user_settings.json` so `repo_dir` is
   `%%HOMEDIR%%/pankosmia/tc4-projects` (debug: `…/tc4-projects-debug`). The
   launcher substitutes the shipped templates at first boot. The store sits
-  BESIDE the server working dir (`$HOME/pankosmia/tc4`). Pankosmia 0.18.5
+  BESIDE the server working dir (`$HOME/pankosmia/tc4`). Pankosmia 0.18.15
   initializes only when that working directory is absent: the launcher stages
   both template JSON files, `blobs`, `temp` and the install records before
   publishing a complete fresh profile (#528). Creating only `client_settings`
@@ -197,8 +197,8 @@ Steps, in order:
 1. Syntax-check the tracked Electron entry point and run the desktop contract
    tests (`package-preflight` in CI).
 2. Build the tC4 client (`npm run build` → `dist/`).
-3. Build the pinned server (`dev-env/server`, pankosmia-web 0.18.5, rev
-   `99fd9be` — D27).
+3. Build the pinned server (`dev-env/server`, pankosmia-web 0.18.15, rev
+   `a83725b` — D27, D90).
 4. Clone read-only inputs: the desktop template (pinned rev), `resource-core`,
    and `webfonts-core`.
 5. Assemble the app directory. The layout comes from the template:
@@ -690,7 +690,7 @@ procedure's subject.
 
 | Input | Pin | Where |
 |---|---|---|
-| pankosmia-web | 0.18.5, rev `99fd9be` | `dev-env/server/Cargo.toml` |
+| pankosmia-web | 0.18.15, rev `a83725b` | `dev-env/server/Cargo.toml` |
 | Electronite | `v37.1.0-graphite`, zip sha256 verified — `a3dde44e…f59488` (darwin-arm64), `41218aa3…d8f8540` (linux-x64), `8146ca21…371b52` (win32-x64; matches the release asset digest, measured 2026-09-07) | `scripts/package-desktop.zsh` |
 | desktop-app-template | `4cb7576` | `scripts/package-desktop.zsh` |
 | resource-core | `54802be780af18ab02e426dd59014bc6adb158af` | `scripts/package-desktop.zsh` |
@@ -803,7 +803,7 @@ Measured locally on 2026-09-12 (macOS arm64, Node 22); the desktop artifact grow
   Pankosmia clients (dashboard, content, workspace, content handlers) are not
   bundled. Reason: the template builds them from source at branch tiers
   (`main` tier pins pankosmia_web 0.16.20; `dev` tier 0.18.7), and no tier is
-  proven compatible with our 0.18.5 rev pin. The server panics at boot on a
+  proven compatible with our rev pin (0.18.15, D90). The server panics at boot on a
   `minServerVersion`/`maxServerVersion` mismatch (`bootstrap.rs` version
   check). Picking and proving a client set is issue
   [#71](https://github.com/unfoldingWord/translationCore4/issues/71).
