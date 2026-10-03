@@ -129,15 +129,19 @@ ZIP_JS_VER="2.18.2"                # root package.json and package-lock.json
 # burritos: no tag exists, so the tag field is empty and the cache fetches the
 # commit archive by sha. The store segment is `<owner lowercased>--<repo>`
 # (src/data/installed.ts localRepoPathFromRepoPath).
+# The weekly pin check (scripts/pin-check.mjs, .github/workflows/pin-check.yml)
+# reads this array and reports when a tagged pin is older than the latest
+# Door43 release (#504). Change a pin here together with installedSuite.js and
+# the copies docs/PACKAGING.md names.
 BUNDLED_RESOURCES=(
-  "unfoldingWord/en_ult:v89:84c73ba00fc8a95a9033f9efb14bb905a2a52ee4"
-  "unfoldingWord/en_ust:v89:37ec223166bbd73fb55abc7840be8310c0fee7f2"
+  "unfoldingWord/en_ult:v91:35d215957f3203fd2e2fac5702ce14902d417f9d"
+  "unfoldingWord/en_ust:v91:85f274a74245cb418f85266e1a5b524bc3e91e9c"
   "unfoldingWord/el-x-koine_ugnt:v0.34:fc95b2b8aad08bb65ab54628ab685413a1139e97"
-  "unfoldingWord/hbo_uhb:v2.1.30:106a441a788d9465846cd427538ea80b8cec6770"
-  "unfoldingWord/en_tn:v86:c354b8ae66a23c485bf6f38fd35bd8f7ef81e4e5"
-  "unfoldingWord/en_tw:v87:eaeb7bfefcf84132d0cbcbed185f3ea2be3d86dd"
-  "unfoldingWord/en_ta:v86:c7caddfb474efd713f36b35a3ffc927866c7b180"
-  "unfoldingWord/en_tq:v89:97c0a13e3b84d46d0e643ba2e8e9f1c295547a58"
+  "unfoldingWord/hbo_uhb:v3.0.0:74022f0fed012a3ef169886f595dd98e7b200543"
+  "unfoldingWord/en_tn:v91:e586762e330f482a60c52aedd1c7b3a2f155df8a"
+  "unfoldingWord/en_tw:v91:ff5b3852c27c3a0d01b109e482eb26047dcd20e2"
+  "unfoldingWord/en_ta:v91:ce9a1bb9431317ca888e8c1f9620caa7f5fe45fd"
+  "unfoldingWord/en_tq:v91:8be02772584ff5a5fea893a392b4f019e3efcc77"
   "uW/en_ugl::d9d29e2d589258ce27f92b59f753a3af03ab7a72"
   "uW/en_uhl::72df5ac25acf9d51e826b20e3ad883a5a657ef4e"
   "unfoldingWord/en_obs:v9:d39a1dc7a7557ac54e4a8fecc3462147fe7eec3b"
@@ -254,6 +258,9 @@ for entry in "${BUNDLED_RESOURCES[@]}"; do
   rm -rf "$target"
   mkdir -p "$target"
   unzip -qq -o "$unwrapped" -d "$target"
+  if [ -z "$tag" ]; then
+    node "$REPO/scripts/resource-archive-receipt.cjs" "$(npath "$target")" "git.door43.org/$owner/$repo" "$sha" "$(npath "$unwrapped")" "$(npath "$REPO/dev-env/resources-cache/helps-provenance.json")"
+  fi
 done
 
 T="$BUILD/upstream/desktop-app-template"
@@ -404,7 +411,7 @@ cp "$PACK/Rocket.toml" "$APPDIR/Rocket.toml"
 
 # The launcher differs per OS in three places only: its filename, how it
 # finds its own directory, and how it invokes Electronite. The debug seeding
-# Linux keeps shell bootstrap; Mac and Windows bootstrap under tc4-main.js.
+# Every OS bootstraps under tc4-main.js.
 # The portable Windows batch file only starts Electron.
 write_windows_launcher() {
   # Bootstrap belongs to tc4-main.js so installed shortcuts and portable launches
@@ -454,61 +461,16 @@ elif [ "$OS" = windows ]; then
   cp "$REPO/branding/icon-1024.png" "$APPDIR/electron/favicon.png"
   node "$REPO/scripts/brand-windows.mjs" "$(npath "$APPDIR/electronite/electron.exe")" "$(npath "$APPDIR/icon.ico")" "$VERSION"
 else
-  # Linux keeps shell first-run seeding, but the Electron main wrapper still
-  # needs the same resource-binding helper and configuration.
+  # All resource and debug-project installation runs in tc4-main.js under
+  # Electron's singleton lock, before the server starts (#528).
   cp "$REPO/scripts/desktop-bootstrap.cjs" "$APPDIR/electron/tc4-bootstrap.cjs"
   printf '{"storeLeaf":"%s","variant":"%s"}\n' "$STORE_LEAF" "$VARIANT" > "$APPDIR/electron/tc4-bootstrap.json"
-  if [ "$VARIANT" = "debug" ]; then
   cat > "$APPDIR/$LAUNCHER" <<LAUNCH
 $LAUNCH_SHEBANG
-# Unsigned DEBUG artifact. Seeds the debug-only project store on first run
-# (never the shared \$HOME/pankosmia_repos), then starts Electronite; the
-# startup script spawns the bundled server itself.
+# Starts Electronite; tc4-main.js prepares this build's isolated store.
 $LAUNCH_CD
-STORE="\$HOME/pankosmia/tc4-projects-debug"
-if [ -d "./resources" ]; then
-  for res in ./resources/*; do
-    [ -d "\$res" ] || continue
-    seg="\${res##*/}"
-    dest="\$STORE/_local_/_sideloaded_/\$seg"
-    if [ ! -d "\$dest" ]; then
-      mkdir -p "\$STORE/_local_/_sideloaded_"
-      cp -R "\$res" "\$dest"
-    fi
-  done
-fi
-SEED="\$STORE/_local_/_local_/sample_burrito"
-if [ ! -d "\$SEED" ] && command -v git >/dev/null; then
-  mkdir -p "\$STORE/_local_/_local_"
-  cp -R ./debug-seeds/sample_burrito "\$SEED"
-  # Initial commit: the platform's add-and-commit panics on a repo with
-  # zero commits (PLATFORM-NOTES #20).
-  (cd "\$SEED" && git init -q -b main . && git add -A \\
-    && git -c user.email=debug@tc4.local -c user.name=tc4-debug commit -qm seed)
-fi
 $LAUNCH_EXEC
 LAUNCH
-else
-  cat > "$APPDIR/$LAUNCHER" <<LAUNCH
-$LAUNCH_SHEBANG
-# Unsigned development artifact. Starts Electronite; the startup script
-# spawns the bundled server itself.
-$LAUNCH_CD
-STORE="\$HOME/pankosmia/tc4-projects"
-if [ -d "./resources" ]; then
-  for res in ./resources/*; do
-    [ -d "\$res" ] || continue
-    seg="\${res##*/}"
-    dest="\$STORE/_local_/_sideloaded_/\$seg"
-    if [ ! -d "\$dest" ]; then
-      mkdir -p "\$STORE/_local_/_sideloaded_"
-      cp -R "\$res" "\$dest"
-    fi
-  done
-fi
-$LAUNCH_EXEC
-LAUNCH
-fi
 fi
 if [ "$OS" != macos ]; then chmod +x "$APPDIR/$LAUNCHER"; fi
 
@@ -563,7 +525,12 @@ for entry in "${BUNDLED_RESOURCES[@]}"; do
   zip_sha=$(sha256_of "$REPO/dev-env/resources-cache/$repo-$label-unwrapped.zip")
   # A sha-only pin has no version label (never invented): JSON null.
   if [ -n "$tag" ]; then version_json="\"$tag\""; else version_json="null"; fi
-  line="    { \"repoPath\": \"git.door43.org/$owner/$repo\", \"version\": $version_json, \"sha\": \"$sha\", \"zip_sha256\": \"$zip_sha\" }"
+  receipt_json=""
+  if [ -z "$tag" ]; then
+    receipt_sha=$(sha256_of "$APPDIR/resources/$seg/.tc4-bundled-identity.json")
+    receipt_json=", \"archive_receipt_sha256\": \"$receipt_sha\""
+  fi
+  line="    { \"repoPath\": \"git.door43.org/$owner/$repo\", \"version\": $version_json, \"sha\": \"$sha\", \"zip_sha256\": \"$zip_sha\"$receipt_json }"
   if [ -n "$BUNDLED_MANIFEST_ENTRIES" ]; then
     BUNDLED_MANIFEST_ENTRIES="$BUNDLED_MANIFEST_ENTRIES,
 $line"
@@ -599,6 +566,11 @@ cat "$APPDIR/BUILD-MANIFEST.json"
 
 node "$REPO/scripts/build-smoke-api.cjs" "$APPDIR/smoke-api.cjs"
 node "$REPO/scripts/build-smoke-journal.cjs" "$APPDIR/smoke-journal.cjs"
+node "$REPO/scripts/build-smoke-upgrade.cjs" "$APPDIR/smoke-upgrade.cjs"
+mkdir -p "$APPDIR/upgrade-fixtures"
+for fixture in en_ult@v89 en_tn@v86; do
+  cp -R "$REPO/test/fixtures/resources/$fixture" "$APPDIR/upgrade-fixtures/$fixture"
+done
 if [ "$OS" = macos ]; then
   zsh "$REPO/scripts/package-macos.zsh" "$APPDIR" "$APP_NAME" "$VERSION" "$VARIANT" "$STORE_LEAF"
   LAUNCHER="$APP_NAME.app/Contents/MacOS/Electron"
@@ -937,7 +909,7 @@ else
   expected_segments=()
   for entry in "${BUNDLED_RESOURCES[@]}"; do
     bundled_fields "$entry"
-    expected_segments+=("$seg")
+    expected_segments+=("${(L)owner}--${repo}--${sha}")
   done
   expected_segments=($(printf '%s\n' "${expected_segments[@]}" | sort))
   if [ "${sideloaded_entries[*]}" != "${expected_segments[*]}" ]; then

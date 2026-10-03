@@ -15,13 +15,14 @@ import { Door43Api } from '../../src/data/share/door43Api';
 import { share, type ShareDeps } from '../../src/data/share/shareOperation';
 import { checkpointMessage } from '../../src/data/checkpoint';
 import { FakeDoor43 } from '../../e2e/helpers/door43';
+import { lane } from '../../e2e/lane.mjs';
 
 const fs = process.getBuiltinModule('node:fs');
 const os = process.getBuiltinModule('node:os');
 const path = process.getBuiltinModule('node:path');
 const { execFileSync } = process.getBuiltinModule('node:child_process');
 
-const BASE = 'http://127.0.0.1:19998/api';
+const BASE = lane().rigApi;
 const SERVER = 'https://qa.door43.org';
 const REPOS = process.env.RIG_REPOS || path.resolve(process.cwd(), 'dev-env/state/work/repos');
 const TOKEN = 'tok-rig-secret-3c1a';

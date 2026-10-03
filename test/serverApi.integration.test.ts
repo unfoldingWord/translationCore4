@@ -12,8 +12,9 @@ import {
   ServerApiError,
   type NewTextTranslationParams,
 } from '../src/data/serverApi';
+import { lane } from '../e2e/lane.mjs';
 
-const BASE = 'http://127.0.0.1:19998/api';
+const BASE = lane().rigApi;
 const SLOW = 30_000;
 
 const rigUp = await (async (): Promise<boolean> => {

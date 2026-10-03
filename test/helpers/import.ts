@@ -6,6 +6,7 @@ import type { ImportDeps } from '../../src/data/import/shell';
 import type { ImportBundle, ImportFile, ImportParser } from '../../src/data/import/types';
 import type { Report } from '../../src/data/journal/runtime';
 import { ServerApi } from '../../src/data/serverApi';
+import { lane } from '../../e2e/lane.mjs';
 
 // Real node builtins via the runtime: the app's polyfill plugin aliases the
 // imports under Vitest (the test/noBypass.test.ts workaround).
@@ -90,7 +91,7 @@ export function seedEventsOf(files: Iterable<[string, string]>): Array<{ op: str
 }
 
 /** Run `fn` and assert the repository list is identical before and after it. */
-export async function assertNoRepoCreated<T>(fn: () => Promise<T>, api: ServerApi = new ServerApi({ baseUrl: 'http://127.0.0.1:19998/api' })): Promise<T> {
+export async function assertNoRepoCreated<T>(fn: () => Promise<T>, api: ServerApi = new ServerApi({ baseUrl: lane().rigApi })): Promise<T> {
   const before = await api.listLocalRepos();
   const out = await fn();
   assert.deepEqual(await api.listLocalRepos(), before, 'the import left a repository behind');

@@ -27,6 +27,7 @@ import { Refusal, failedReport, okReport, type Report } from '../journal/runtime
 import type { OpsRecorder } from '../journal/opsLog';
 import type { ServerApi } from '../serverApi';
 import { Door43ApiError, type Door43Api, type Door43Session, type ShareTarget } from './door43Api';
+import { NO_CONSENT } from '../internet';
 
 /** The platform calls a share makes; `ServerApi` satisfies it. */
 export type ShareTransport = Pick<
@@ -120,7 +121,7 @@ async function shareRecorded(deps: ShareDeps, request: ShareRequest): Promise<Re
   try {
     if (!session.username || !session.token)
       throw new Refusal('share.auth-failed', 'sign in to Door43 first');
-    if (!(await deps.api.getNetEnabled())) throw new Refusal('share.offline', 'tC4 is set to Local');
+    if (!(await deps.api.getNetEnabled())) throw new Refusal('share.offline', NO_CONSENT);
   } catch (error) {
     return failed(error);
   }
@@ -201,7 +202,7 @@ const refusalForPush = (error: unknown): unknown => {
   const reason = failure?.reason ?? failure?.message ?? String(error);
   const facts = { status: failure?.status ?? 0, reason };
   if (failure?.status === 401 && /offline mode/.test(reason))
-    return new Refusal('share.offline', 'tC4 is set to Local', facts);
+    return new Refusal('share.offline', NO_CONSENT, facts);
   if (/NotFastForward/.test(reason)) {
     return new Refusal(
       'share.non-fast-forward',

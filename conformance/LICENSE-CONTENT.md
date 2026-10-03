@@ -10,7 +10,7 @@ block declares this: "CC BY-SA 4.0, Equipo Ejemplo".
 The alignment files in `sample-burrito/ingredients/` carry Greek and Hebrew source
 tokens from unfoldingWord's Greek New Testament (UGNT) and Hebrew Bible (UHB). Both
 works are CC BY-SA 4.0, © unfoldingWord. The `relationships` array in `metadata.json`
-names the exact revisions (UGNT `v0.34`, UHB `v2.1.30`).
+names the exact revisions (UGNT `v0.34`, UHB `v3.0.0`).
 
 The Scripture Burrito schema bundle in `sb-schema/` is a verbatim copy from pankosmia
 `resource-core` (see `README.md`).

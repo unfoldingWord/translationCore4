@@ -14,7 +14,7 @@ import type { Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { verifyAllJournaledProjects } from './helpers/journal';
-import { rigRepo, SEEDED_PROJECT, resetPlaces } from './helpers/rig';
+import { rigRepo, SEEDED_PROJECT, resetPlaces, writePlace } from './helpers/rig';
 
 const LARGE = 'sample_burrito_large';
 const FIXTURE_ACTOR = 'fixture-large';
@@ -105,6 +105,9 @@ test.describe('J15 — a translator opens a project', () => {
     async ({ page }) => {
       const segments = segmentFiles().length;
       expect(segments).toBeGreaterThan(1000);
+      // The ready marker is the fixture's own text, which Translate shows. With no place a
+      // tile opens in Understand (D87), so the open starts from a Translate place.
+      writePlace(LARGE, 'TIT', { mode: 'draft', chapter: 1 });
       await page.goto('/');
       const card = page.getByTestId(`project-_local_/_local_/${LARGE}`);
       await expect(card).toBeVisible({ timeout: 20_000 });
