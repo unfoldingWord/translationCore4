@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { TC4_ROOT, RIG_SIDELOADED_REPOS, RIG_CLIENT_SETTINGS, listLocalRepos, rigRepo } from './helpers/rig';
+import { pickOption } from './helpers/dropdown';
 import { lane } from './lane.mjs';
 import { ServerApi } from '../src/data/serverApi';
 import { INSTALLED_SUITE } from '../src/data/installedSuite';
@@ -64,7 +65,7 @@ test('upgrade retains old pinned and unpinned bytes; new offline Titus uses bund
   await page.getByLabel('Code').fill('fr');
   await page.getByRole('button', { name: 'Create Bible' }).click();
   await page.getByRole('button', { name: 'Start a blank book' }).click({ timeout: 20_000 });
-  await page.getByLabel('Book', { exact: true }).selectOption('TIT');
+  await pickOption(page, 'Book', 'Titus');
   await page.getByRole('button', { name: 'Create book' }).click();
   await expect(page.getByTestId('understand')).toBeVisible({ timeout: 20_000 });
   for (const mode of ['Translate', 'Understand', 'Check']) {
