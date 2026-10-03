@@ -18,6 +18,12 @@ on:
     branches: ['**']
   pull_request:
 
+# A new push to a branch or pull request cancels the older run of this workflow on that
+# ref. Runs on `main` are never cancelled: each run on `main` has its own group.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify:
     runs-on: ubuntu-latest
