@@ -9,26 +9,11 @@ import React, { useEffect, useState } from 'react';
 import { useApp } from '../state.jsx';
 import { t } from '../i18n';
 import { bookName } from '../data/bookNames';
-import { DCS_SERVER_LABEL } from '../data/dcsServer';
+import { locationOf } from '../data/dcsServer';
 import { Card, BookTile, Button, Overline, Badge, Callout, Toast } from '../ds/index.js';
-import { shareErrorText, Door43Account } from './modals/ShareDialog.jsx';
 
 // Above this many books a card shows only its in-progress books until expanded.
 const COLLAPSE_ABOVE = 12;
-
-const CARD_NOTE = { fontSize: 'var(--fs-meta)', letterSpacing: 'var(--track-11-5)', color: 'var(--text-tertiary)', fontWeight: 'var(--fw-medium)', whiteSpace: 'nowrap' };
-
-// #506: a development build puts the Door43 server name before the repository
-// when the repository is on that server. A packaged build has no label, so the
-// location is "owner/repository".
-const locationOf = (shared) => {
-  try {
-    if (DCS_SERVER_LABEL && new URL(shared.url).host === DCS_SERVER_LABEL) return `${DCS_SERVER_LABEL}/${shared.repository}`;
-  } catch {
-    // a remote that is not a URL: no server to name
-  }
-  return shared.repository;
-};
 
 // D86 point 6: the end of a card's meta line — "· Only on this computer"
 // before a share, "· Shared at owner/repository" after it; nothing until
@@ -54,48 +39,25 @@ function SharedBadge({ p }) {
   return <Badge size="sm" tone="valid" data-testid={`share-badge-${p.id}`}>{t('home.onDoor43')}</Badge>;
 }
 
-// D86 point 7: a shared card's sign-in line — "as @username · Change", or
-// "Signed in · Change" for a kept sign-in not resumed yet; nothing when no one
-// is signed in.
-function CardAccount({ p, shared }) {
-  const { s, actions } = useApp();
-  if (!shared || (!s.door43User && !s.door43Kept)) return null;
-  return (
-    <Door43Account testId={`share-account-${p.id}`} style={CARD_NOTE} onChange={() => actions.changeSignIn()}
-      label={s.door43User ? t('signIn.as', { user: s.door43User }) : t('signIn.kept')} />
-  );
-}
-
 // #362 (D84 point 1; D86 point 6): the Share action beside Settings on a Bible
 // or OBS card (Community Checking has none), an outlined pill. It reads "Share
 // on Door43"; for a shared project — its repository has an `origin`, read by
-// loadShared, never a stored record (D85) — "Upload changes": a push with no
-// dialog. Under it, who is signed in (CardAccount). A refusal of an Upload
-// changes shows here with its code.
+// loadShared, never a stored record (D85) — "Upload changes", which opens the
+// upload dialog. #530: the card shows nothing under the action; the account,
+// the progress, the result and a refusal are in the dialog (ShareDialog.jsx).
 function ShareAction({ p }) {
   const { s, actions } = useApp();
   useEffect(() => {
     actions.loadShared(p);
   }, [p.id]);
   const shared = s.remoteByProject[p.id] || null;
-  const run = s.shareCard[p.id] || null;
-  const busy = !!run?.busy;
-  const label = busy
-    ? t(run.step === 'push' ? 'shareDialog.pushing' : run.step === 'create' ? 'shareDialog.creating' : 'shareDialog.preparing')
-    : t(shared ? 'home.uploadChanges' : 'home.share');
+  const label = t(shared ? 'home.uploadChanges' : 'home.share');
   return (
-    <div data-testid={`share-card-${p.id}`} data-shared={shared ? '1' : '0'} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
-      {/* D88: Share and Upload changes are one internet task each; it asks first when the preference says so. */}
-      <Button variant="outline" size="sm" data-testid={`share-${p.id}`} title={label}
-        disabled={busy} onClick={() => actions.shareProject(p)}>
+    <div data-testid={`share-card-${p.id}`} data-shared={shared ? '1' : '0'}>
+      {/* D88: a Share is one internet task; it asks first when the preference says so. An upload asks in its dialog (#530). */}
+      <Button variant="outline" size="sm" data-testid={`share-${p.id}`} title={label} onClick={() => actions.shareProject(p)}>
         {label}
       </Button>
-      <CardAccount p={p} shared={shared} />
-      {run?.error && (
-        <span role="alert" style={{ ...CARD_NOTE, color: 'var(--uw-kindle)', whiteSpace: 'normal', maxWidth: 360, textAlign: 'end' }}
-          data-testid={`share-card-error-${p.id}`} data-code={run.error.code || ''}>{shareErrorText(run.error)}</span>
-      )}
-      {run?.uploaded && <span style={CARD_NOTE} data-testid={`share-uploaded-${p.id}`}>{t('home.uploaded')}</span>}
     </div>
   );
 }

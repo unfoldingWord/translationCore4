@@ -122,6 +122,12 @@ let dialogTasks = [];
 const PERMITTED = Symbol('inside its permitted task');
 /** The dialogs a Share or an Upload changes continues in, and Source texts. */
 const SHARE_MODALS = ['signIn', 'share'];
+/** The kind of the Share or Upload changes task that is open in those dialogs
+ * ('share' or 'upload'), or null when none is: its next step does not ask again. */
+const shareTaskKind = () => dialogTasks.find((task) => task.modals === SHARE_MODALS)?.kind ?? null;
+/** #530: an Upload changes click that waits for its answer or its sign-in
+ * check. A second click does nothing until the first one ends. */
+let uploadStarting = false;
 const SOURCES_MODALS = ['sources'];
 
 // The mode a view is, for a checkpoint message (#183). Views not listed keep their id.
@@ -407,8 +413,6 @@ const initial = () => ({
   // `origin` remote (GET /git/remotes) — { repository, url } | null (not shared); a
   // missing key is not read yet. Nothing about remotes is stored in the installation.
   remoteByProject: {},
-  // #362: a card's own Upload-changes run (no dialog) — { busy, step, error, uploaded } by repoPath
-  shareCard: {},
   importToast: null, // { name, books } of the project an import just made
   importedRepo: null, // its repoPath: the Home card carries the "Imported" badge
   // #9: the guided fix screen for a pinned resource this machine lacks —
@@ -4974,13 +4978,15 @@ export function AppProvider({ children }) {
       //      token lives in session.ts, never here. Nothing is stored but the
       //      kept token (#366): no name, no email, no login (D85). ----
       /** `share`: the project a Share pressed without a token continues with (#362).
-       * `renew`: Door43 refused the held token at a share, so the step says why (#467). */
-      openSignIn: (share = null, renew = false) =>
+       * `renew`: Door43 refused the held token at a share, so the step says why (#467).
+       * `asked`: the step opens inside a permitted task, so sending it does not
+       * ask again (D88); false for an Upload changes that has sent nothing yet (#530). */
+      openSignIn: (share = null, renew = false, asked = false) =>
         dispatch({
           type: 'set',
           patch: {
             modal: 'signIn',
-            si: { login: '', password: '', stay: false, server: new URL(door43.server).host, busy: false, error: null, share, renew },
+            si: { login: '', password: '', stay: false, server: new URL(door43.server).host, busy: false, error: null, share, renew, asked },
           },
         }),
       patchSi: (patch) => dispatch({ type: 'set', patch: { si: { ...stateRef.current.si, ...patch } } }),
@@ -4990,8 +4996,13 @@ export function AppProvider({ children }) {
         const si = stateRef.current.si;
         if (!si || si.busy) return null;
         // D88: in a Share the sign-in is a step of that permitted task; from the
-        // account menu it is a task of its own, and asks.
-        if (si.share) return a.permitted('share', () => a.signInNow(), SHARE_MODALS);
+        // account menu it is a task of its own, and asks. #530: an Upload changes
+        // opens its dialogs with no task, so its sign-in asks here, and that one
+        // consent covers the upload.
+        if (si.share) {
+          if (si.asked) return a.permitted(shareTaskKind() ?? 'share', () => a.signInNow(), SHARE_MODALS);
+          return (await a.internetTask('upload', () => a.signInNow(), { modals: SHARE_MODALS })) ?? null;
+        }
         return (await a.internetTask('signIn', () => a.signInNow())) ?? null;
       },
       signInNow: async () => {
@@ -5035,13 +5046,16 @@ export function AppProvider({ children }) {
         dispatch({ type: 'set', patch: { door43User: null, door43Kept: false, door43NotKept: false, accountError: null } });
         return true;
       },
-      /** D86 point 7: "Change" in the share dialog or on a shared card signs out
-       * and opens the sign-in step. From the dialog (`project`) the share then
-       * continues; from a card nothing is uploaded that the user did not click.
-       * Neither step uses the internet: the sign-in asks when it is sent (D88). */
+      /** D86 point 7: "Change" in the share or upload dialog signs out and
+       * opens the sign-in step. After the sign-in the dialog shows again
+       * (`project`); an upload waits for its own click (#530). Neither step
+       * uses the internet: the sign-in asks when it is sent (D88). */
       changeSignIn: async (project = null) => {
+        // A first share asked at its card click. An upload asked only when its
+        // task is open already (a sign-in or a try of this same upload).
+        const asked = stateRef.current.sh?.mode === 'upload' ? shareTaskKind() !== null : true;
         await a.signOut();
-        a.openSignIn(project);
+        a.openSignIn(project, false, asked);
       },
       /** D88: the account menu's "Sign-in saved on this computer": check it
        * with Door43, as an internet task. */
@@ -5066,11 +5080,48 @@ export function AppProvider({ children }) {
         if (kept !== undefined) dispatch({ type: 'set', patch: { door43Kept: kept } });
         return outcome;
       },
-      /** D88: the Home card's Share or Upload changes — one internet task,
-       * whatever it needs: the saved sign-in, a sign-in, the destinations and
-       * the reviewed upload. */
-      shareProject: (project) => a.internetTask(stateRef.current.remoteByProject[project.id] ? 'upload' : 'share',
-        () => a.startShare(project), { modals: SHARE_MODALS }),
+      /** D88: the Home card's Share — one internet task, whatever it needs:
+       * the saved sign-in, a sign-in, the destinations and the reviewed upload.
+       * #530: Upload changes on a shared card opens its dialog and sends
+       * nothing; the task starts when the upload, or its sign-in, is sent. */
+      shareProject: (project) => (stateRef.current.remoteByProject[project.id]
+        ? a.openUpload(project)
+        : a.internetTask('share', () => a.startShare(project), { modals: SHARE_MODALS })),
+      /** #530: the upload dialog of a shared project, on its review step: the
+       * repository, the account, and the books or stories. No request leaves.
+       * With no sign-in in memory and none saved, the sign-in step comes first. */
+      openUpload: (project) => {
+        if (!currentSession() && !stateRef.current.door43Kept) return a.openSignIn(project);
+        return dispatch({
+          type: 'set',
+          patch: {
+            modal: 'share',
+            sh: { project, mode: 'upload', step: 'upload', choices: [], choicesError: null, target: { kind: 'user' }, name: project.id.split('/').pop(), busy: false, steps: [], error: null, report: null, copied: false },
+          },
+        });
+      },
+      /** #530: Upload changes, or Try again, in the upload dialog — the internet
+       * task of an upload. It asks first (D88), unless the sign-in of this same
+       * upload asked already. A saved sign-in resumes here; one that Door43
+       * refuses goes to the sign-in step, and the dialog shows again after it. */
+      uploadChanges: async (project) => {
+        const sh = stateRef.current.sh;
+        if (stateRef.current.modal !== 'share' || sh?.project.id !== project.id || sh.busy || uploadStarting) return null;
+        uploadStarting = true;
+        try {
+          const report = await a.internetTask(shareTaskKind() ?? 'upload', async () => {
+            if (!currentSession()) await a.resumeKept();
+            if (!currentSession()) {
+              a.openSignIn(project, false, true);
+              return null;
+            }
+            return a.shareRun(project);
+          }, { modals: SHARE_MODALS });
+          return report ?? null;
+        } finally {
+          uploadStarting = false;
+        }
+      },
 
       // ---- Share (#362; D79 point 12, D84 points 1, 3, 4, 5). The operation is
       //      src/data/share/shareOperation.ts; the dialog is ShareDialog.jsx. ----
@@ -5092,9 +5143,9 @@ export function AppProvider({ children }) {
         return shared;
       },
       /** Share, or Upload changes. No token: the sign-in step first, then back
-       * here. A shared project (an `origin`) pushes with no dialog; a first
-       * share opens the dialog on the where-it-goes step and reads the
-       * organizations (D84 point 3). */
+       * here. A shared project (an `origin`) opens the upload dialog on its
+       * review step (#530); a first share opens the dialog on the
+       * where-it-goes step and reads the organizations (D84 point 3). */
       startShare: async (project) => {
         let session = currentSession();
         if (!session) {
@@ -5104,14 +5155,14 @@ export function AppProvider({ children }) {
           session = currentSession();
         }
         if (!session) {
-          a.openSignIn(project);
+          a.openSignIn(project, false, true);
           return;
         }
         // "Not shared" in the cache can be a read still running, a failed read,
         // or a create whose push failed: read `origin` again before the
         // first-share dialog, so a shared project never asks again (#362 AC 2, 7).
         const shared = stateRef.current.remoteByProject[project.id] || (await a.loadShared(project, true));
-        if (shared) return a.shareRun(project);
+        if (shared) return a.openUpload(project);
         dispatch({
           type: 'set',
           patch: {
@@ -5130,23 +5181,17 @@ export function AppProvider({ children }) {
       },
       patchSh: (patch) => dispatch({ type: 'set', patch: { sh: { ...stateRef.current.sh, ...patch } } }),
       shareStep: (step) => a.patchSh({ step, error: null }),
-      /** Run the share: from the dialog's check step (a first share), or from
-       * the card's Upload changes (no dialog). One progress line per step;
-       * the Report's refusal shows where the run started. */
+      /** Run the share from its dialog: the check step of a first share, or
+       * the review step of an upload (#530). One progress line per step; the
+       * Report's refusal shows on the step the run started from. */
       shareRun: async (project) => {
         const session = currentSession();
         if (!session) return null;
         const sh = stateRef.current.sh;
-        const inDialog = stateRef.current.modal === 'share' && sh?.project.id === project.id;
-        const setCard = (patch) => dispatch({ type: 'set', patch: { shareCard: { ...stateRef.current.shareCard, [project.id]: { ...(stateRef.current.shareCard[project.id] || {}), ...patch } } } });
-        if (inDialog) {
-          if (sh.busy) return null;
-          a.patchSh({ step: 'progress', busy: true, steps: [], error: null });
-        } else {
-          if (stateRef.current.shareCard[project.id]?.busy) return null;
-          setCard({ busy: true, step: null, error: null, uploaded: false });
-        }
-        const onStep = (step) => (inDialog ? a.patchSh({ steps: [...(stateRef.current.sh?.steps || []), step] }) : setCard({ step }));
+        if (stateRef.current.modal !== 'share' || sh?.project.id !== project.id || sh.busy) return null;
+        const review = sh.mode === 'upload' ? 'upload' : 'check';
+        a.patchSh({ step: 'progress', busy: true, steps: [], error: null });
+        const onStep = (step) => a.patchSh({ steps: [...(stateRef.current.sh?.steps || []), step] });
         // The D9 checkpoint runs through the project's store: the open one when
         // this project is open, else a throwaway store (the saveSettings pattern).
         const open = stateRef.current.project?.id === project.id ? storeRef.current : null;
@@ -5159,7 +5204,7 @@ export function AppProvider({ children }) {
             // control (#362 test 1). Only a development build accepts it.
             // The push preflight reads the barrier, not the server gate (D86 point 3).
             { api: Object.assign(Object.create(api), { getNetEnabled: internetAllowed }), door43, ops: opsLog, onStep, allowFileRemote: import.meta.env.DEV === true, commitPending: (messageFor) => store.commitPending(messageFor) },
-            { repoPath: project.id, session, target: sh?.target ?? { kind: 'user' }, name: (sh?.name ?? project.id.split('/').pop()).trim() },
+            { repoPath: project.id, session, target: sh.target, name: sh.name.trim() },
           );
         } catch (e) {
           report = { ok: false, code: null, facts: { error: String(e?.reason || e?.message || e) } };
@@ -5177,20 +5222,16 @@ export function AppProvider({ children }) {
           // #467: Door43 refused the token at the create (revoked, or kept from a
           // version that minted it without the create scopes). Forget it, and ask
           // the password once; the new sign-in continues the share.
-          if (!inDialog) setCard({ busy: false, step: null, error: null });
           await door43SignOut(desktopKeychain() ?? undefined);
           dispatch({ type: 'set', patch: { door43User: null, door43Kept: false, door43NotKept: false, sh: null } });
-          a.openSignIn(project, true);
+          a.openSignIn(project, true, true);
           return report;
         }
         const error = report.ok ? null : { code: report.code ?? null, message: report.facts.error };
-        if (inDialog) {
-          if (stateRef.current.modal !== 'share') return report;
-          // A refusal returns to the check step: a name that exists is changed there.
-          a.patchSh(report.ok ? { step: 'done', busy: false, report } : { step: 'check', busy: false, error });
-        } else {
-          setCard({ busy: false, step: null, error, uploaded: report.ok });
-        }
+        if (stateRef.current.modal !== 'share') return report;
+        // A refusal returns to the step it started from: a name that exists is
+        // changed on the check step; an upload offers Try again on its review step.
+        a.patchSh(report.ok ? { step: 'done', busy: false, report } : { step: review, busy: false, error });
         return report;
       },
       /** Copy link (D84 point 5): the repository URL to the clipboard. */
