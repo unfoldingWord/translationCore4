@@ -15,6 +15,7 @@
 import { test, expect } from './helpers/test';
 import type { Page, BrowserContext } from '@playwright/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
+import { pickOption } from './helpers/dropdown';
 import { RIG_API, askInternet } from './helpers/door43Share';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -576,7 +577,7 @@ async function createTitusProject(page: Page, name: string): Promise<string> {
   await page.getByRole('button', { name: 'Left to right' }).click();
   await page.getByRole('button', { name: 'Create Bible' }).click();
   await page.getByRole('button', { name: 'Start a blank book' }).click({ timeout: 20_000 });
-  await page.getByLabel('Book', { exact: true }).selectOption('TIT');
+  await pickOption(page, 'Book', 'Titus');
   await page.getByRole('button', { name: 'Create book' }).click();
   await expect(page.getByTestId('understand')).toBeVisible({ timeout: 20_000 }); // a new book opens in Understand (D87)
   const created = listLocalRepos().filter((r) => !before.includes(r));

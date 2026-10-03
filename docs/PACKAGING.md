@@ -403,7 +403,7 @@ the debug variant). That folder holds:
 | `start-tc4.cmd` | portable zip launcher; installed shortcuts launch Electron directly |
 | `electronite\` | the unpacked Electronite release (`electron.exe`, Chromium data) |
 | `electron\` | the template startup files plus `tc4-main.js` (the #4 single-instance guard) |
-| `bin\server.exe` | the pinned pankosmia-web server; the template's startup script spawns `bin\server.exe` on Windows |
+| `bin\` | `server.exe`, the pinned pankosmia-web server (the template's startup script spawns `bin\server.exe` on Windows), plus the Microsoft VC++ runtime DLLs it needs (`vcruntime140.dll` and the rest of the redist CRT, #284) |
 | `lib\`, `resources\` | clients, app resources, templates, webfonts; the bundled English suite (#163) |
 | `Rocket.toml`, `LICENSE`, `licenses\`, `THIRD-PARTY-NOTICES.md`, `BUILD-MANIFEST.json` | the same as macOS and Linux |
 | `smoke-installed.ps1`, `smoke-api.cjs`, `smoke-journal.cjs` | post-install proof using PowerShell and the bundled runtime; the latter is the bundled production `JournalingStore` lifecycle |
@@ -435,6 +435,19 @@ and portable production copies use the same store. Close one before opening
 the other. The debug zip uses its separate debug store; seeding the debug
 sample requires Git. The production application needs no separate Node, Rust
 or Git installation.
+
+**Visual C++ runtime (#284).** `bin\server.exe` is an MSVC build and needs
+`VCRUNTIME140.dll`. A stock Windows installation does not have that DLL; it
+comes with the
+[Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe).
+Both the installer and the zip ship the runtime themselves: the build stages
+the redist CRT DLLs app-local in `bin\` beside `server.exe`, and refuses to
+package without them. No manual `vc_redist` install is necessary on either
+path. Artifacts from v4.0.0-alpha.6 and earlier do not carry the DLLs; on a
+machine without them, install the redistributable from the link above
+(witness: `docs/evidence/offline-run-2026-09-14.md`). If a launch stops with a
+message that names `VCRUNTIME140.dll`, this copy lost `bin\vcruntime140.dll`:
+re-extract the complete zip, or install the redistributable.
 
 The project store is `%USERPROFILE%\pankosmia\tc4-projects` (#70); the server's
 working directory is `%USERPROFILE%\pankosmia\tc4`. The shared bootstrap runs
@@ -504,7 +517,13 @@ checks reinstall/uninstall preserve a project that it wrote through the app.
 - **CI is Windows Server 2025.** The installed-app job uses a fresh runner and
   profile, validates shortcuts and project persistence, and removes developer
   tools from PATH. It does not represent every DLL/runtime configuration of a
-  clean Windows 11 installation.
+  clean Windows 11 installation. In particular the runner image already has
+  the system-wide VC++ redistributable, so a boot there cannot witness the
+  clean-machine `VCRUNTIME140.dll` failure (#284). Instead, the build fails
+  when the CRT is not staged into `bin\`, and the shipped
+  `smoke-installed.ps1` fails when `bin\vcruntime140.dll` is missing from the
+  payload. The clean-VM boot witness for the installer and the zip stays a
+  manual step, recorded in `docs/evidence/` (#284).
 - **Witnessed on a real machine, one step open.** Windows 10 Pro 10.0.19045,
   no developer checkout, artifact 10056395396 (run 34227273789, head `8fbb62f`,
   188,346,325 bytes, sha256 `20582ef6…8d0cba`): unpacked once, launched,

@@ -38,6 +38,24 @@ function shouldBindPackagedResources(startServer = process.env.START_SERVER) {
   return startServer !== 'false';
 }
 
+// #284: the MSVC-built bin\server.exe needs VCRUNTIME140.dll, and a clean
+// Windows install has none (exit 0xC0000135, STATUS_DLL_NOT_FOUND, on
+// alpha.6 — docs/evidence/offline-run-2026-09-14.md). The packaging recipe
+// ships the CRT app-local in bin\; a copy that lost it, on a machine without
+// the system-wide redistributable, must stop with this prerequisite instead
+// of the template's opaque "The backend could not be started."
+const WINDOWS_SERVER_RUNTIME_DLL = 'vcruntime140.dll';
+const VC_REDIST_DOWNLOAD = 'https://aka.ms/vs/17/release/vc_redist.x64.exe';
+function missingWindowsServerRuntime({ resourcesDir, platform = process.platform, systemRoot = process.env.SystemRoot }) {
+  if (platform !== 'win32') return null;
+  if (fs.existsSync(path.join(resourcesDir, 'bin', WINDOWS_SERVER_RUNTIME_DLL))) return null;
+  if (systemRoot && fs.existsSync(path.join(systemRoot, 'System32', WINDOWS_SERVER_RUNTIME_DLL))) return null;
+  return 'The backend server (bin\\server.exe) needs VCRUNTIME140.dll, and this computer does not have it.\n\n'
+    + `This copy of translationCore4 is missing bin\\${WINDOWS_SERVER_RUNTIME_DLL}. `
+    + 'Re-extract the complete zip, or install the Microsoft Visual C++ Redistributable (x64) from\n\n'
+    + `${VC_REDIST_DOWNLOAD}\n\nThen start translationCore4 again.`;
+}
+
 function writeJsonAtomically(file, value) {
   const temporary = `${file}.tc4-writing-${process.pid}-${Date.now()}`;
   const contents = `${JSON.stringify(value, null, 2)}\n`;
@@ -270,4 +288,4 @@ function bootstrap(options) {
   }
 }
 
-module.exports = { appResourcesDir, bindPackagedResources, bootstrap, ensureBundledResources, profileDirectory, shouldBindPackagedResources };
+module.exports = { appResourcesDir, bindPackagedResources, bootstrap, ensureBundledResources, missingWindowsServerRuntime, profileDirectory, shouldBindPackagedResources };
