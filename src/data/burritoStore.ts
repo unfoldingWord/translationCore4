@@ -141,8 +141,26 @@ export interface ResourcesFile {
 export const LADDER = ['primary', 'fallback'] as const;
 export type Rung = (typeof LADDER)[number];
 
+/** `checking/settings.json` — BURRITO-SPEC §5.4 (D89). A GENERATED mirror: the
+ * journal owns the settings. A change records `settings.set` events (last
+ * writer wins per path, JC-17); folding them supplies the values, and
+ * `writeSettings`/checkpoints regenerate this file from the fold (R-8.7.1).
+ * The product writes the presentation fields:
+ * - `textDirection` — `ltr` | `rtl`; chosen at creation, editable in Project Settings.
+ * - `textFont` — the selected script-font label, or null/absent: the default font applies.
+ * - `languageName` — the display name saved at creation, or null/absent; read-only
+ *   in Project Settings (metadata is not writable over HTTP, D28 addendum).
+ * Keys stay open — no allowlist: an accepted project may carry other keys and the
+ * fold preserves them per path. The specification's pane/tool/category settings
+ * are reserved, not implemented. `checkingLanguage` is OBSOLETE and has no effect
+ * (#529): the checking language is the resource pins' primary rung (§5.3, D30.2).
+ * New projects never write it; a project that carries it stays readable, the
+ * field preserved through save/checkpoint/export/import and ignored. */
 export interface SettingsFile {
   schemaVersion: number;
+  textDirection?: 'ltr' | 'rtl';
+  textFont?: string | null;
+  languageName?: string | null;
   [key: string]: unknown;
 }
 
