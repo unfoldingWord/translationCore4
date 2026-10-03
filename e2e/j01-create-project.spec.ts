@@ -133,7 +133,8 @@ test.describe('J1 — a translator creates a project', () => {
           ),
         );
         expect(settings.textDirection).toBe('ltr');
-        expect(settings.checkingLanguage).toBe('en');
+        // #529: the checking language lives in the resource pins (§5.3), never here.
+        expect(settings).not.toHaveProperty('checkingLanguage');
         expect(settings.textFont).toBeTruthy();
       });
 

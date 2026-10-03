@@ -238,7 +238,7 @@ const createDraftedTitus = async (): Promise<string> => {
   });
   await store.open(repoPath);
   await store.writeResources(INSTALLED_SUITE, null);
-  await store.writeSettings({ schemaVersion: 1, checkingLanguage: 'en', textDirection: 'ltr', textFont: null, languageName: 'Español' }, null);
+  await store.writeSettings({ schemaVersion: 1, textDirection: 'ltr', textFont: null, languageName: 'Español' }, null);
   await store.addBook({ book_code: 'TIT', book_title: 'Tito', book_abbr: 'TIT', add_cv: true, initialUsfm: usfm });
   await store.commit('Project created (journey precondition)');
   store.dispose();

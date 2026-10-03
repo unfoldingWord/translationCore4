@@ -356,21 +356,42 @@ Common rules:
 
 ### 5.4 Settings: `checking/settings.json` (role `x-check-settings`)
 
+A **generated mirror**, like every derived shared file (§8.7, R-8.7.1): the journal owns the
+settings. A settings change records one `settings.set` event per changed path (last writer wins
+per path — JC-17); folding those events supplies the values, and the writer and every checkpoint
+regenerate this file whole from the fold. Nothing treats the file itself as the authority.
+
+The implemented document [decided 2026-10-02 — D89, issue #529]:
+
 ```jsonc
 {
-  "schemaVersion": 1,
-  "checkCategories": {
-    "translationWords": ["kt", "names", "other"],
-    "translationNotes": ["translate"]
-  },
-  "ui": {
-    "paneSettings": [ {"bibleId": "targetBible", "languageId": "es-419"} ],
-    "toolsSettings": {}
-  }
+  "schemaVersion": 1,            // the generated document's version
+  "textDirection": "ltr",        // "ltr" | "rtl" — chosen at creation, editable in Project settings
+  "textFont": "Charis SIL",      // the selected script-font label, or null: the default font applies
+  "languageName": "Español"      // the display name saved at creation, or null; read-only in Project settings
 }
 ```
 
-This file is the home for the RCL `saveSettings` payload (pane/tool settings — an unpersisted TODO in the current client) and for the check-category filter (`checker_setting.json` equivalent).
+- **`schemaVersion` (normative):** 1. Removing an obsolete OPTIONAL field is not a version
+  change [decided 2026-10-02 — D89].
+- **`textDirection`:** `ltr` or `rtl`. Missing or `null`: the app renders left-to-right.
+- **`textFont`:** the selected script-font label. Missing or `null`: the app's default font.
+- **`languageName`:** the language display name typed at creation. Missing or `null`: the app
+  shows none. The field is presentation only; the project's language tag lives in
+  `metadata.json` (§3).
+- **Missing values are legal.** A reader treats an absent or `null` field as "no choice
+  recorded" and applies its default. A missing FILE is regenerated whole from the fold
+  (R-8.7.1), never treated as data loss.
+- **Keys are open — there is no allowlist.** An accepted project may carry other keys; the §8
+  fold preserves them per path and a writer MUST NOT discard keys it does not know. The earlier
+  draft's pane/tool/category settings (`checkCategories`, `ui.paneSettings`, `ui.toolsSettings` —
+  the RCL `saveSettings` payload and the `checker_setting.json` equivalent) are RESERVED
+  specification fields: legal to carry, not implemented by the product today.
+- **`checkingLanguage` is obsolete and has no effect** [decided 2026-10-02 — D89]. The checking
+  language is the resource pins' primary rung (§5.3, D30.2); pre-release creation code wrote
+  `checkingLanguage: "en"` and nothing ever read it. A conforming writer does not write it to a
+  new project. A project that carries it stays readable: the field is preserved through normal
+  save, checkpoint, export and import, and ignored when choosing resources.
 
 ## 6. Server interaction rules (Phase 1)
 
