@@ -2126,3 +2126,46 @@ change with this decision: `docs/JOURNEYS.md` (J3, J9, J11, and the J12 precondi
 rows), `docs/PACKAGING.md` ("The offline run", step 9a, and the regression check) and
 `CONTEXT.md` (the terms for the internet question and the account menu, and Door43 session). The
 decision follows issue #514.
+
+## D89 (2026-10-02, project-owner rulings) **Alignment suggestions grow with every saved verse, without waiting for a retrain. Amends D72 point 3 twice: gatewayEdit's engine settings are a reference, not adopted as-is (2026-09-24, #400), and "refreshed after each confirmed save" becomes a per-save memory append with a budgeted background retrain (2026-10-02, #516).** [issues #400 and #516; the measurement is `docs/evidence/align-suggestions-growth-2026-10-02.md`]
+
+Context. D72 point 3 said gatewayEdit's defaults are "adopted as-is" and the model is
+"refreshed after each confirmed save". Built literally, every confirmed save retrained the
+whole testament's model and Suggest was refused while the status was `training` — minutes
+per saved verse on a project with a few thousand aligned verses, and no suggestions at all
+before the fifth verse. The #400/#516 measurement (owner session 2026-10-02) showed the
+accuracy growth lives in wordMAP's alignment memory, not in the booster: appending one
+confirmed verse costs 0.14 ms, a booster trained once tracks a retrained one within noise
+up to ~2 500 verses, and plain wordMAP memory answers from the first verse.
+
+1. **The 2026-09-24 ruling (#400) stands and is recorded here:** gatewayEdit's engine
+   settings are a reference to start from, not a design to copy. The header of
+   `src/data/align/suggestEngine.ts` no longer says "adopted as-is". What stands from D72
+   point 3 unchanged: the engine learns ONLY from the project's own confirmed alignments,
+   a suggestion is never saved until the translator confirms it, and training runs in a
+   Web Worker.
+2. **Every confirmed save appends its verse to the worker's alignment memory**
+   (wordMAP `appendAlignmentMemory`, the same call training makes for the verses the
+   complexity cap trims). The next Suggest sees the verse; nothing is waited for. A
+   re-saved verse appends its current links and is counted once; its old links stay in
+   the memory beside them until the next retrain rebuilds it.
+3. **The booster retrains in the background, on a budget:** when the Align tool opens for
+   a project, and then when the testament's memory first reaches 10, 25, 50, 100, 250,
+   500 and 1 000 aligned verses. Above 1 000, no further retrain in the session;
+   reopening the tool trains once. While a retrain runs, the Suggestions row stays
+   `ready` and Suggest is answered by the model trained before; the new model replaces
+   the old one atomically, with the saves made meanwhile re-applied.
+4. **Before the booster can fit — fewer than five aligned verses, or a corpus it
+   rejects — plain wordMAP answers from the same memory.** The row says what the
+   suggestions are drawn from (N verses); there is no "learning" wait state after the
+   first training. The row's count is the number of verses in the model's memory.
+5. **Out of scope, recorded in #516's Follow-up:** the engine speed-up (a ~70-line patch
+   to `uw-wordmapbooster`'s JLBoost — upstream work), collision handling, early-seed
+   variance, the bench's case (b), and switching the scorer to memory-only on a mature
+   project.
+
+`docs/JOURNEYS.md` J5 and the suggestion comments of `src/state.jsx` and
+`src/data/align/suggestEngine.ts` carry the amendment. The scheduling is proven by
+`test/align-suggest.test.ts`, `test/align-suggest-schedule.test.ts` and the J5 case
+"suggestions grow with every saved verse"; the measurement protocol is reproducible with
+`test/align-suggest-growth-bench.test.ts`.

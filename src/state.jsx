@@ -44,7 +44,7 @@ import {
 import { readTwArticle, readTaArticle } from './data/articles';
 import { revalidateAgainstDraft, resolutionWarning } from './data/revalidate';
 import { bootstrapVerse, linkWord, unlinkWord, moveWord, mergeAlignments, splitAlignment, stampTargetVerse, alignmentIsStale, reflowAlignment, settleDone, markDone } from './data/align/edit';
-import { linksFor, rebindSuggestions, sessionInputFor, trainingVersesFor } from './data/align/suggest';
+import { crossesRetrainBudget, linksFor, rebindSuggestions, sessionInputFor, trainingVerseOf, trainingVersesFor } from './data/align/suggest';
 import { consequencesOfGatewayChange, applyGatewayChange, completeLanguageSets, uncoveredByChange, sourcePanesForGateway, gatewaysCoveringProject } from './data/gatewayChange';
 import { carryOverDecisions } from './data/carryOver';
 import { applyTextUpgrade, applyUpgrade, invalidateAlignments, invalidatedTestaments, latestReleasesForSet, offerForSet, offerIsStale, repinOffer, textOfferIsStale, textOffers, textPinOf } from './data/upgrade';
@@ -464,9 +464,12 @@ const initial = () => ({
   draftUnits: {}, // repoPath -> 'section' | 'verse'
   alignSuggestions: {}, // #1: repoPath -> true when the suggestions switch is on (per client, never in the project)
   // #1: the suggestion engine's state for the open project — status 'off' |
-  // 'training' | 'ready' | 'none' | 'few' | 'error'; `testament` names the model
-  // the status is about (one model per original language, owner ruling 2026-09-12).
-  alignSuggest: { status: 'off', testament: null, verses: 0, error: null },
+  // 'training' | 'ready' | 'none' | 'error'; `testament` names the model the
+  // status is about (one model per original language, owner ruling 2026-09-12).
+  // #516: `ready` means the model answers — `boosted` says whether the booster
+  // is fitted or plain wordMAP memory answers; `verses` is the memory's count,
+  // and `training` is only ever the FIRST training (nothing to answer from yet).
+  alignSuggest: { status: 'off', testament: null, verses: 0, boosted: false, error: null },
   lastEdit: null, // { repoPath, book, chapter, verse, snippet, at, mode?, tool? } — the Home Resume card; per-client settings, never the project. mode: 'read'|'draft'|'check'; tool only when mode is 'check'.
   tick: 0,
 });
@@ -2976,7 +2979,13 @@ export function AppProvider({ children }) {
   // request counter that lets a stale reply be ignored.
   const suggestWorkerRef = useRef(null);
   const suggestSeqRef = useRef(0);
-  const suggestRetrainRef = useRef(null);
+  // #516: the saved verse waiting to join the worker's memory — one slot, the
+  // open verse's latest record, posted when its edits settle (debounced) and
+  // flushed at once when Suggest asks or another verse starts editing.
+  const suggestAppendRef = useRef(null);
+  // #516: verses in each testament's memory, as the worker last reported —
+  // the budgeted retrain fires when an append first reaches a budget step.
+  const suggestVersesRef = useRef({ ot: 0, nt: 0 });
   // One training in flight at a time; a request that arrives meanwhile is
   // remembered once and runs after (a training is minutes, not milliseconds).
   const suggestTrainingRef = useRef(false);
@@ -4411,8 +4420,9 @@ export function AppProvider({ children }) {
         dispatch({ type: 'set', patch: { alignSession: optimistic } });
         const [chapter, verse] = a2.ref.split(':');
         sched.markDirty(a2.book, chapter, verse, JSON.stringify(record));
-        // D72: the engine learns from every confirmed save.
-        a.retrainAlignSuggestionsSoon();
+        // D72 as amended by D89 (#516): the engine learns from every confirmed
+        // save — the verse joins the worker's memory; no retrain is waited for.
+        a.queueAlignSuggestionAppend(optimistic);
       },
 
       placeAlignWord: (cardIndex) => {
@@ -4473,7 +4483,11 @@ export function AppProvider({ children }) {
         const worker = new Worker(new URL('./data/align/suggestWorker.ts', import.meta.url), { type: 'module' });
         worker.onmessage = (event) => a.onSuggestReply(event.data);
         worker.onerror = (event) => {
-          dispatch({ type: 'set', patch: { alignSuggest: { status: 'error', testament: stateRef.current.alignSuggest.testament, verses: 0, error: String(event?.message || 'worker') } } });
+          dispatch({ type: 'set', patch: { alignSuggest: { status: 'error', testament: stateRef.current.alignSuggest.testament, verses: 0, boosted: false, error: String(event?.message || 'worker') } } });
+          // The worker's memory died with it — the counts must not claim it.
+          suggestVersesRef.current = { ot: 0, nt: 0 };
+          clearTimeout(suggestAppendRef.current?.timer);
+          suggestAppendRef.current = null;
           // The worker is dead: drop it BEFORE settling, so a pending retrain
           // gets a fresh worker from ensureSuggestWorker instead of posting
           // into the corpse and waiting forever (Codex round 3).
@@ -4491,7 +4505,9 @@ export function AppProvider({ children }) {
         suggestWorkerRef.current?.terminate();
         suggestWorkerRef.current = null;
         suggestSeqRef.current++;
-        clearTimeout(suggestRetrainRef.current);
+        clearTimeout(suggestAppendRef.current?.timer);
+        suggestAppendRef.current = null;
+        suggestVersesRef.current = { ot: 0, nt: 0 };
         suggestTrainingRef.current = false;
         suggestPendingRef.current = false;
         storyOpenSeq++;
@@ -4499,14 +4515,18 @@ export function AppProvider({ children }) {
         dispatch({
           type: 'set',
           patch: {
-            alignSuggest: { status: 'off', verses: 0, error: null },
+            alignSuggest: { status: 'off', verses: 0, boosted: false, error: null },
             ...(a2?.record ? { alignSession: { ...a2, suggestions: null, refusal: null } } : {}),
           },
         });
       },
 
       /** Train the open book's testament on every confirmed alignment in the
-       * project. Reads each book's draft and sidecar once; fire-and-forget. */
+       * project. Reads each book's draft and sidecar once; fire-and-forget.
+       * #516: while a model already answers for this testament, the row stays
+       * `ready` and Suggest keeps working — the retrain is invisible until its
+       * model atomically replaces the old one (the `training` state is only
+       * ever the FIRST training, when there is nothing to answer from). */
       trainAlignSuggestions: () => {
         const st = stateRef.current;
         const store = storeRef.current;
@@ -4521,16 +4541,17 @@ export function AppProvider({ children }) {
         suggestTrainingRef.current = true;
         suggestPendingRef.current = false;
         const testament = isOldTestament(st.book) ? 'ot' : 'nt';
+        const standing = st.alignSuggest.status === 'ready' && st.alignSuggest.testament === testament;
         const id = ++suggestSeqRef.current;
-        dispatch({ type: 'set', patch: { alignSuggest: { status: 'training', testament, verses: 0, error: null } } });
+        if (!standing) dispatch({ type: 'set', patch: { alignSuggest: { status: 'training', testament, verses: 0, boosted: false, error: null } } });
         void collectTrainingVerses({ store, sched: alignSchedulerRef.current, project: st.project, book: st.book, bookRaw: rawRef.current, testament })
           .then((verses) => {
             // An obsolete collection (the switch was cycled, or the project
             // left) owns no lock any more — a newer training may hold it
             // (Codex round 2). Only the CURRENT training settles.
             if (id !== suggestSeqRef.current || storeRef.current !== store) return;
-            if (!verses.length) {
-              dispatch({ type: 'set', patch: { alignSuggest: { status: 'none', testament, verses: 0, error: null } } });
+            if (!verses.length && !standing) {
+              dispatch({ type: 'set', patch: { alignSuggest: { status: 'none', testament, verses: 0, boosted: false, error: null } } });
               a.settleTraining(id);
               return;
             }
@@ -4538,7 +4559,9 @@ export function AppProvider({ children }) {
           })
           .catch((e) => {
             if (id !== suggestSeqRef.current) return;
-            dispatch({ type: 'set', patch: { alignSuggest: { status: 'error', testament, verses: 0, error: String(e?.message || e) } } });
+            // A standing model keeps answering; only a first training surfaces
+            // the collection failure as the row's state (#516).
+            if (!standing) dispatch({ type: 'set', patch: { alignSuggest: { status: 'error', testament, verses: 0, boosted: false, error: String(e?.message || e) } } });
             a.settleTraining(id);
           });
       },
@@ -4554,25 +4577,55 @@ export function AppProvider({ children }) {
         }
       },
 
-      /** After a confirmed save: retrain once the saves settle (debounced). */
-      retrainAlignSuggestionsSoon: () => {
+      /** #516: after a confirmed save, the saved verse (its latest record)
+       * waits to join the worker's memory — posted when its edits settle, or
+       * flushed at once by Suggest or by edits on another verse. One slot:
+       * every edit of the same verse replaces the waiting snapshot. */
+      queueAlignSuggestionAppend: (session) => {
         const st = stateRef.current;
         const key = st.project?.repoPath || st.project?.id;
-        if (!key || !st.alignSuggestions?.[key]) return;
-        clearTimeout(suggestRetrainRef.current);
-        suggestRetrainRef.current = setTimeout(() => a.trainAlignSuggestions(), 3000);
+        if (!key || !st.alignSuggestions?.[key] || !session?.record) return;
+        const refKey = `${session.book} ${session.ref}`;
+        const pending = suggestAppendRef.current;
+        if (pending && pending.refKey !== refKey) a.flushAlignSuggestionAppend();
+        else clearTimeout(pending?.timer);
+        const verse = trainingVerseOf(refKey, session.record, session.targetText);
+        if (!verse) {
+          // The save left the verse with no links — nothing to teach.
+          suggestAppendRef.current = null;
+          return;
+        }
+        suggestAppendRef.current = {
+          refKey,
+          testament: isOldTestament(session.book) ? 'ot' : 'nt',
+          verse,
+          timer: setTimeout(() => a.flushAlignSuggestionAppend(), 3000),
+        };
+      },
+
+      /** Post the waiting verse to the worker now (#516). */
+      flushAlignSuggestionAppend: () => {
+        const pending = suggestAppendRef.current;
+        if (!pending) return;
+        clearTimeout(pending.timer);
+        suggestAppendRef.current = null;
+        a.ensureSuggestWorker().postMessage({ type: 'append', id: suggestSeqRef.current, testament: pending.testament, verse: pending.verse });
       },
 
       onSuggestReply: (reply) => {
         if (reply.type === 'trained' || reply.type === 'error') a.settleTraining(reply.id);
         if (reply.id !== suggestSeqRef.current) return; // a stale train/suggest — ignore
         if (reply.type === 'trained') {
-          const status = reply.verses ? 'ready' : reply.tooFew ? 'few' : 'none';
-          dispatch({ type: 'set', patch: { alignSuggest: { status, testament: reply.testament, verses: reply.verses, error: null } } });
+          // Memory-only is `ready` too (#516): plain wordMAP answers from the
+          // same memory from the first verse; only an empty memory is `none`.
+          const status = reply.verses ? 'ready' : 'none';
+          suggestVersesRef.current[reply.testament] = reply.verses;
+          dispatch({ type: 'set', patch: { alignSuggest: { status, testament: reply.testament, verses: reply.verses, boosted: !!reply.boosted, error: null } } });
           return;
         }
+        if (reply.type === 'appended') return a.onSuggestAppended(reply);
         if (reply.type === 'error') {
-          dispatch({ type: 'set', patch: { alignSuggest: { status: 'error', testament: stateRef.current.alignSuggest.testament, verses: 0, error: reply.message } } });
+          dispatch({ type: 'set', patch: { alignSuggest: { status: 'error', testament: stateRef.current.alignSuggest.testament, verses: 0, boosted: false, error: reply.message } } });
           return;
         }
         // Bound to the verse and session that asked (Codex round 1): a reply
@@ -4584,13 +4637,33 @@ export function AppProvider({ children }) {
         dispatch({ type: 'set', patch: { alignSession: { ...a2, suggestions: links, suggesting: false, refusal: null } } });
       },
 
-      /** Suggest: ask the trained model for this verse's unplaced words. */
+      /** #516: a saved verse landed in the worker's memory. The row's count is
+       * the memory's count; the booster retrains in the background when the
+       * memory first reaches a budget step — never waited for, and never again
+       * above the last step. */
+      onSuggestAppended: (reply) => {
+        const prev = suggestVersesRef.current[reply.testament] ?? 0;
+        suggestVersesRef.current[reply.testament] = reply.verses;
+        const st = stateRef.current;
+        const testament = st.book && isOldTestament(st.book) ? 'ot' : 'nt';
+        if (testament === reply.testament && st.alignSuggest.status !== 'off') {
+          dispatch({ type: 'set', patch: { alignSuggest: { status: 'ready', testament: reply.testament, verses: reply.verses, boosted: !!reply.boosted, error: null } } });
+        }
+        if (crossesRetrainBudget(prev, reply.verses)) a.trainAlignSuggestions();
+      },
+
+      /** Suggest: ask the model for this verse's unplaced words. `ready` covers
+       * the boosted model AND the memory-only one (#516) — and it stays `ready`
+       * while a retrain runs, answered by the model trained before. */
       suggestAlign: () => {
+        // A save waiting to join the memory joins it NOW — the worker handles
+        // messages in order, so this Suggest sees the verse just aligned (#516).
+        a.flushAlignSuggestionAppend();
         const st = stateRef.current;
         const a2 = st.alignSession;
         const worker = suggestWorkerRef.current;
         const testament = isOldTestament(a2?.book ?? '') ? 'ot' : 'nt';
-        // Only a model trained for THIS book's testament may be asked.
+        // Only a model built for THIS book's testament may be asked.
         if (!a2?.record || !worker || st.alignSuggest.status !== 'ready' || st.alignSuggest.testament !== testament) return;
         const id = suggestSeqRef.current;
         dispatch({ type: 'set', patch: { alignSession: { ...a2, suggesting: true, refusal: null } } });
@@ -6161,7 +6234,9 @@ export function AppProvider({ children }) {
           ref.current = null;
         }
         // #1: the suggestion engine belongs to the project being left.
-        clearTimeout(suggestRetrainRef.current);
+        clearTimeout(suggestAppendRef.current?.timer);
+        suggestAppendRef.current = null;
+        suggestVersesRef.current = { ot: 0, nt: 0 };
         suggestWorkerRef.current?.terminate();
         suggestWorkerRef.current = null;
         suggestSeqRef.current++;
@@ -6181,7 +6256,7 @@ export function AppProvider({ children }) {
         alignSessionSeq++;
         dispatch({
           type: 'set',
-          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, storyNumbers: [], storyNumber: null, story: null, sourceStory: null, storyImages: {}, storyImageNote: null, storyLoading: false, storyError: null, storySource: null, saveState: 'saved', noteSaveState: 'saved', alignSaveState: 'saved', checkSaveState: 'saved', storySaveState: 'saved', storySaveError: null, commitError: null, projectPins: null, projectPinsLoaded: false, projectPinsError: null, preflight: null, preflightError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, alignSuggest: { status: 'off', verses: 0, error: null }, pickerProgress: null, toolPos: {}, upgrade: UPGRADE_IDLE },
+          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, storyNumbers: [], storyNumber: null, story: null, sourceStory: null, storyImages: {}, storyImageNote: null, storyLoading: false, storyError: null, storySource: null, saveState: 'saved', noteSaveState: 'saved', alignSaveState: 'saved', checkSaveState: 'saved', storySaveState: 'saved', storySaveError: null, commitError: null, projectPins: null, projectPinsLoaded: false, projectPinsError: null, preflight: null, preflightError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, alignSuggest: { status: 'off', verses: 0, boosted: false, error: null }, pickerProgress: null, toolPos: {}, upgrade: UPGRADE_IDLE },
         });
         refreshProjects(); // re-order: the project just left goes to the top
         if (leaving && leavingStore) startLeaveCheckpoint({ store: leavingStore, repoPath: leaving.repoPath, stateRef, dispatch });

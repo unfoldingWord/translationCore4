@@ -2,8 +2,9 @@
 // docs/JOURNEYS.md J5 · shipped v4.0.0-alpha.2 · run LTR and RTL (the J10 axis)
 // (owner-approved placement, 2026-08-03).
 //
-// Ground truth is the sidecar on disk. Wordmap suggestions (AD-7) are deferred
-// out of this increment (D35a), so nothing here asserts them.
+// Ground truth is the sidecar on disk. The wordMAP suggestion cases (#1, D72
+// point 3; #516, D89) assert the propose-only rules and that the engine learns
+// from every saved verse without a retrain in the way.
 import { test, expect } from './helpers/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import fs from 'node:fs';
@@ -390,6 +391,56 @@ test.describe('J5 — a translator aligns a verse', () => {
       // Un-aligning it by hand returns the word to the bank — the two paths meet.
       await page.locator(`[data-testid="align-card-${cardIndex}"]`).getByRole('button', { name: word }).click();
       await expect.poll(() => alignmentFile()?.chapters?.['1']?.['1']?.wordBank?.some((w: { word: string }) => w.word === word), { timeout: 10_000 }).toBe(true);
+    },
+  );
+
+  test(
+    '#516 suggestions grow with every saved verse: align verse A, open verse B, Suggest answers in 2 s and the row never says "Learning"',
+    { tag: ['@inc9', '@J5'] },
+    async ({ page }, testInfo) => {
+      writePinsWithOriginal();
+      await openAlign(page);
+      const row = page.getByTestId('align-suggestions');
+      const status = page.getByTestId('align-suggest-status');
+      const toggle = page.getByTestId('align-suggest-switch');
+      if (!(await toggle.isChecked())) await toggle.click();
+      // The first training (the seed's one aligned verse) is the only one that
+      // may show as training; once ready, the row never leaves it.
+      await expect(row).toHaveAttribute('data-status', 'ready', { timeout: 30_000 });
+      await expect(status).toContainText('1 verses');
+
+      // Verse A (1:2): place "Dios" on the θεός card by hand — one confirmed
+      // save. The engine learns it without a retrain.
+      await page.getByTestId('align-next').click();
+      await expect(page.getByTestId('align-verse-list').locator('button[data-ref="1:2"]')).toHaveAttribute('data-selected', 'true');
+      await page.getByTestId('align-bank').getByRole('button', { name: 'Dios', exact: true }).click();
+      await page.locator('[data-testid^="align-card-"]', { hasText: 'Θε' }).first().click();
+      // The save never flips the row out of `ready` — no "Learning…" state.
+      await expect(row).toHaveAttribute('data-status', 'ready');
+
+      // Verse B (1:3): Suggest answers within 2 seconds, from the memory that
+      // now holds verse A (the pending save joins the memory ahead of the ask).
+      await page.getByTestId('align-next').click();
+      await expect(page.getByTestId('align-verse-list').locator('button[data-ref="1:3"]')).toHaveAttribute('data-selected', 'true');
+      const chips = page.locator('[data-testid^="align-suggested-"]');
+      await page.getByTestId('align-suggest').click();
+      await expect.poll(async () => chips.count(), { timeout: 2_000 }).toBeGreaterThan(0);
+      await expect(row).toHaveAttribute('data-status', 'ready');
+      // The row's count is the memory's count: the seed verse plus verse A.
+      await expect(status).toContainText('2 verses');
+      expect(await status.innerText()).not.toContain('Learning');
+
+      // The artifact: what the row reported and what Suggest proposed.
+      const artifact = {
+        status: await row.getAttribute('data-status'),
+        statusText: (await status.innerText()).trim(),
+        proposals: await chips.count(),
+      };
+      const artifactPath = testInfo.outputPath('j05-suggestions-grow.json');
+      fs.writeFileSync(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`);
+      await testInfo.attach('j05-suggestions-grow.json', { path: artifactPath, contentType: 'application/json' });
+      expect(artifact.status).toBe('ready');
+      expect(artifact.proposals).toBeGreaterThan(0);
     },
   );
 
