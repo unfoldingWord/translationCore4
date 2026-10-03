@@ -465,8 +465,10 @@ function useSuggestionsSwitch(s, actions) {
 function SuggestionsRow({ a, suggest, on, actions }) {
   const standing = a.suggestions?.length ?? 0;
   const status = !on ? 'off' : suggest.status;
+  // #516: `ready` covers the boosted model and the memory-only one; both say
+  // what the suggestions are drawn from, never a "learning" state.
   const text = status === 'ready'
-    ? t('align.suggest.ready', { n: suggest.verses })
+    ? t(suggest.boosted ? 'align.suggest.ready' : 'align.suggest.memory', { n: suggest.verses })
     : status === 'error'
       ? t('align.suggest.error', { error: suggest.error ?? '' })
       : t(`align.suggest.${status}`);

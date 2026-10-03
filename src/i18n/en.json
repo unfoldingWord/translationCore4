@@ -609,7 +609,7 @@
   "align.suggest.off": "Off. Turn on to get links proposed from the verses you have already aligned.",
   "align.suggest.training": "Learning from your aligned verses…",
   "align.suggest.none": "No aligned verses yet in this testament — align a verse by hand first.",
-  "align.suggest.few": "Too few aligned verses to learn from yet — align a few more by hand.",
+  "align.suggest.memory": "Drawn from {n} verses you have aligned — suggestions improve as you align more.",
   "align.suggest.ready": "Drawn from {n} verses you have already aligned",
   "align.suggest.error": "Suggestions are unavailable right now: {error}",
   "align.suggest.suggest": "Suggest",
