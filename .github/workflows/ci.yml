@@ -13,10 +13,14 @@
 name: ci
 permissions:
   contents: read
+# The merge queue on `main` requires `verify` on each merge group, so the job runs on
+# `merge_group`. The queue's temporary branches (gh-readonly-queue/) are not built a second
+# time on `push`.
 on:
   push:
-    branches: ['**']
+    branches: ['**', '!gh-readonly-queue/**']
   pull_request:
+  merge_group:
 
 # A new push to a branch or pull request cancels the older run of this workflow on that
 # ref. Runs on `main` are never cancelled: each run on `main` has its own group.
