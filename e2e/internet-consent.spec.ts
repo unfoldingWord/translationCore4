@@ -14,8 +14,12 @@
 //   f  a gate that cannot be established stops the task and says so
 //   g  sign out needs no network; a keychain that cannot forget is reported
 //   h  the keyboard opens, walks and closes the menu and returns focus to its trigger
+//   i  About translationCore (#520) shows the version and the license, on Home and in a
+//      project, with no network connection and with zero external requests
 // The shared recorder (helpers/externalRequests.ts) writes each request log, and the
 // menu and dialog screenshots, into the test's output folder (and attaches them).
+import fs from 'node:fs';
+import path from 'node:path';
 import { test, expect } from './helpers/test';
 import type { Page, TestInfo } from '@playwright/test';
 import { SEEDED_PROJECT, readClientSettingsDoc, resetClientSettings, resetPlaces, resetSeededChecking } from './helpers/rig';
@@ -25,6 +29,7 @@ import {
 import { recordExternal } from './helpers/externalRequests';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import { lane } from './lane.mjs';
+import { TC4_ROOT } from './helpers/root';
 
 const TAG = { tag: ['@internet-consent', '@inc85'] };
 const NO_CONSENT = 'tC4 has no permission to use the internet for this task';
@@ -658,15 +663,63 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
       await expect(panel(page)).toHaveCount(0);
     };
     await page.goto('/');
-    await walk(['account-sign-in', 'account-ask']);
+    await walk(['account-sign-in', 'account-ask', 'account-about']);
     await fakeKeychain(context, 'kept-token');
     await page.reload();
     await expect(trigger(page)).toHaveAttribute('data-state', 'saved');
-    await walk(['account-check', 'account-ask', 'account-sign-out']);
+    await walk(['account-check', 'account-ask', 'account-about', 'account-sign-out']);
     // An outside click closes it as well.
     await openMenu(page);
     await page.mouse.click(5, 400);
     await expect(panel(page)).toHaveCount(0);
+  });
+
+  // ---- i · About translationCore (#520) ----
+  // The version and the license are part of the bundle. The expected values come from the
+  // repository's own package.json and LICENSE, read here from disk.
+  test('i. About translationCore: the keyboard opens and closes it, it shows the version and the license, with no network and no external request', TAG, async ({ page, context }, testInfo) => {
+    const version = (JSON.parse(fs.readFileSync(path.join(TC4_ROOT, 'package.json'), 'utf8')) as { version: string }).version;
+    const license = fs.readFileSync(path.join(TC4_ROOT, 'LICENSE'), 'utf8');
+    const focused = () => page.evaluate(() => document.activeElement?.getAttribute('data-testid') ?? null);
+    const dialog = page.getByTestId('about-dialog');
+    const recorder = recordExternal(page);
+    const openByKeyboard = async () => {
+      await trigger(page).focus();
+      await page.keyboard.press('Enter');
+      await expect(panel(page)).toBeVisible();
+      await page.getByTestId('account-about').focus();
+      await page.keyboard.press('Enter');
+      await expect(panel(page)).toHaveCount(0);
+      const heading = page.getByRole('dialog', { name: 'About translationCore' }).getByText('About translationCore');
+      await expect(heading).toBeVisible();
+      // The dialog renders inside the dark top bar; its title must not take the bar's white text.
+      expect(await heading.evaluate((el) => getComputedStyle(el).color)).not.toBe('rgb(255, 255, 255)');
+      await expect(page.getByTestId('about-version')).toHaveText(version);
+      await expect(page.getByTestId('about-license')).toHaveText(license);
+    };
+    const closeByEscape = async () => {
+      await page.keyboard.press('Escape');
+      await expect(dialog).toHaveCount(0);
+      await expect.poll(focused).toBe('account-menu');
+    };
+    await page.goto('/');
+    for (const where of ['home', 'project']) {
+      if (where === 'project') await openTitus(page);
+      await openByKeyboard();
+      await shot(page, testInfo, `about-${where}`);
+      await closeByEscape();
+    }
+    // With no network connection: nothing can load, so what shows is in the bundle.
+    await context.setOffline(true);
+    try {
+      await openByKeyboard();
+      await shot(page, testInfo, 'about-offline');
+      await closeByEscape();
+    } finally {
+      await context.setOffline(false);
+    }
+    expect(recorder.external()).toEqual([]);
+    await recorder.save(testInfo, 'i-about-requests');
   });
 });
 

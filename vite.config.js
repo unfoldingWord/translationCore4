@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import http from 'node:http';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
@@ -6,9 +7,12 @@ import { lane } from './e2e/lane.mjs';
 
 // #524: TC4_VITE_PORT and TC4_RIG_PORT name this checkout's port lane (e2e/lane.mjs).
 const LANE = lane();
+// #520: "About translationCore" shows the version of the running build (src/data/about.ts).
+const { version } = JSON.parse(fs.readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
 
 export default defineConfig(({ command }) => ({
   plugins: [react(), nodePolyfills()],
+  define: { __APP_VERSION__: JSON.stringify(version) },
   // pankosmia-web 0.18.5 has no CORS handling at all (source-verified), so the dev
   // server proxies /api to the rig — same-origin to the browser. The built client is
   // served BY the rig from /clients/uw-tc4; the server's homepage redirect points at
