@@ -12,7 +12,10 @@ $AppDir = (Resolve-Path -LiteralPath $AppDir).Path
 $exe = Join-Path $AppDir 'electronite\electron.exe'
 $serverExe = Join-Path $AppDir 'bin\server.exe'
 $main = Join-Path $AppDir 'electron'
-foreach ($file in @($exe, $serverExe, "$AppDir\smoke-api.cjs", "$AppDir\smoke-journal.cjs", "$AppDir\smoke-upgrade.cjs", "$AppDir\BUILD-MANIFEST.json")) {
+# bin\vcruntime140.dll (#284): the shipped VC++ runtime must travel beside
+# server.exe. CI runners already have the system-wide redistributable, so only
+# this presence check can fail there while a clean machine fails to boot.
+foreach ($file in @($exe, $serverExe, "$AppDir\bin\vcruntime140.dll", "$AppDir\smoke-api.cjs", "$AppDir\smoke-journal.cjs", "$AppDir\smoke-upgrade.cjs", "$AppDir\BUILD-MANIFEST.json")) {
   if (!(Test-Path -LiteralPath $file -PathType Leaf)) { throw "Missing installed file: $file" }
 }
 $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
