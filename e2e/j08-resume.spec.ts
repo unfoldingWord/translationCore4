@@ -11,7 +11,7 @@
 import { test, expect } from './helpers/test';
 import type { Page } from '@playwright/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
-import { RIG_API, RIG_STATE, dropOrigin, fakeShare, filesHolding, git, head, makeBareRemote, shareFirstTime, USER, useInternet } from './helpers/door43Share';
+import { RIG_API, RIG_STATE, dropOrigin, fakeShare, filesHolding, git, head, makeBareRemote, shareFirstTime, USER, askInternet } from './helpers/door43Share';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -28,6 +28,7 @@ import {
   readDecisionFile,
   resetSeededChecking,
   resetPlaces,
+  writePlace,
 } from './helpers/rig';
 
 // The seeded large fixture (issue #95): Titus with 4000 journaled edits, so its
@@ -47,15 +48,15 @@ const READY: Record<string, RegExp> = {
 };
 
 async function openTitusAt(page: Page, chapter: string, project = SEEDED_PROJECT) {
+  // These journeys count commits, so they start from a Translate place (writePlace).
+  writePlace(project, 'TIT', { mode: 'draft', chapter: Number(chapter) });
   await page.goto('/');
   await page.getByTestId(`project-_local_/_local_/${project}`).getByRole('button', { name: /Titus/ }).click();
-  // #329: the tile returns to the place last worked in Titus (mode and chapter), so an
-  // earlier test in the run decides where this open lands. These journeys state their
-  // own starting point: Translate, at the chapter asked for. The heading is rendered
-  // only once the book is loaded (Draft and Understand show a loading state before it).
+  // #329: the tile returns to the place written above: Translate, at the chapter asked
+  // for. The heading is rendered only once the book is loaded (Draft and Understand
+  // show a loading state before it).
   await expect(page.getByRole('heading', { name: /^Titus \d+$/ })).toBeVisible({ timeout: 120_000 });
-  const translate = page.getByRole('tab', { name: 'Translate', exact: true });
-  if ((await translate.getAttribute('aria-selected')) !== 'true') await translate.click();
+  await expect(page.getByRole('tab', { name: 'Translate', exact: true })).toHaveAttribute('aria-selected', 'true');
   await page.getByRole('button', { name: chapter, exact: true }).click();
   await expect(page.getByRole('heading', { name: `Titus ${chapter}`, exact: true })).toBeVisible();
   if (chapter === '1') await expect(page.getByText(READY[project]).first()).toBeVisible({ timeout: 120_000 });
@@ -253,9 +254,9 @@ test.describe('J8 — a translator resumes where they left off', () => {
 // record refuses toward the gateway-change flow (D59 §3), so the record is restated
 // as the pin the project now holds before the journey marks a check.
 const PINS = () => ({
-  tn: pinForSideloaded('en_tn', 'v89'),
-  tw: pinForSideloaded('en_tw', 'v89'),
-  ta: pinForSideloaded('en_ta', 'v89'),
+  tn: pinForSideloaded('en_tn', 'v91'),
+  tw: pinForSideloaded('en_tw', 'v91'),
+  ta: pinForSideloaded('en_ta', 'v91'),
 });
 function pinEnglishAndRestateNotesRecord(): void {
   // Start from the seeded checking surface (the J4 pattern): a pin or decision file
@@ -356,8 +357,9 @@ test.describe('J8 — the Increment 4 journey: open, resume, and share a project
     async ({ page, context }) => {
       test.setTimeout(120_000);
       const remote = makeBareRemote();
-      // The rig boots with the net gate off, and Share is disabled offline (J11 case 12).
-      await useInternet(true);
+      // D88 (#514): this journey runs with "Ask before using the internet" off; the
+      // consent dialog of a Share is covered by J11 case 12 and @internet-consent.
+      await askInternet(false);
       try {
         dropOrigin(SEEDED_PROJECT);
         const fake = await fakeShare(context, remote);
@@ -369,7 +371,7 @@ test.describe('J8 — the Increment 4 journey: open, resume, and share a project
         expect(url).toBe(`https://qa.door43.org/${USER.username}/${SEEDED_PROJECT}`);
         // The card: "On Door43", the repository path, and Upload changes.
         await expect(page.getByTestId(`share-card-${id}`)).toHaveAttribute('data-shared', '1');
-        await expect(page.getByTestId(`share-state-${id}`)).toHaveText(`Shared at ${USER.username}/${SEEDED_PROJECT}`);
+        await expect(page.getByTestId(`share-state-${id}`)).toHaveText(`Shared at qa.door43.org/${USER.username}/${SEEDED_PROJECT}`);
         await expect(page.getByTestId(`share-${id}`)).toHaveText('Upload changes');
         // A share adds nothing to the project but the D9 checkpoint of pending work
         // (J11's end state): here the resources record the resume into Check wrote.
@@ -385,10 +387,10 @@ test.describe('J8 — the Increment 4 journey: open, resume, and share a project
         expect(filesHolding(RIG_STATE, token)).toEqual([]);
         expect(fs.readFileSync(path.join(rigRepo(SEEDED_PROJECT), '.git', 'config'), 'utf8')).not.toContain(token);
       } finally {
-        // Leave the seeded project as this test found it: unshared, offline.
+        // Leave the seeded project as this test found it: unshared, asking again.
         dropOrigin(SEEDED_PROJECT);
         remote.dispose();
-        await useInternet(false);
+        await askInternet(true);
       }
     },
   );
@@ -403,7 +405,7 @@ test.afterAll(async () => {
 // #329 — a Home tile returns to where the user last worked in that book or story.
 test.describe('#329 — a Home tile returns to the place last worked', () => {
   test(
-    'a book tile: Understand on Titus 2 is where the Titus tile reopens; a never-opened book opens at chapter 1 in Translate',
+    'a book tile: Understand on Titus 2 is where the Titus tile reopens; a never-opened book opens at chapter 1 in Understand (D87)',
     { tag: ['@inc7', '@J8'] },
     async ({ page }) => {
       test.setTimeout(120_000);
@@ -422,10 +424,10 @@ test.describe('#329 — a Home tile returns to the place last worked', () => {
       await page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByRole('button', { name: /Titus/ }).click();
       await expect(page.getByRole('tab', { name: 'Understand', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 60_000 });
       await expect(page.getByRole('heading', { name: 'Titus 2', exact: true })).toBeVisible();
-      // Jonah was never opened this session: the plain open, Translate at chapter 1.
+      // Jonah has no place record: the plain open, Understand at chapter 1 (D87).
       await page.goto('/');
       await page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByRole('button', { name: /Jonah/ }).click();
-      await expect(page.getByRole('tab', { name: 'Translate', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 60_000 });
+      await expect(page.getByRole('tab', { name: 'Understand', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 60_000 });
       await expect(page.getByRole('heading', { name: 'Jonah 1', exact: true })).toBeVisible();
     },
   );
@@ -441,9 +443,8 @@ test.describe('#329 — a Home tile returns to the place last worked', () => {
       const card = page.getByTestId(`project-_local_/_local_/${repo}`);
       await card.getByTestId(`toggle-stories-_local_/_local_/${repo}`).click();
       await card.getByTestId('story-tile-3').click();
-      await expect(page.getByTestId('story-draft')).toBeVisible({ timeout: 60_000 });
-      await page.getByRole('tab', { name: 'Understand', exact: true }).click();
-      await expect(page.getByTestId('story-understand')).toBeVisible({ timeout: 30_000 });
+      // No place record yet: the story opens in Understand (D87).
+      await expect(page.getByTestId('story-understand')).toBeVisible({ timeout: 60_000 });
       await page.getByTestId('story-understand-unit-4').click();
       await expect(page.getByTestId('story-understand-unit-4')).toHaveAttribute('data-focused', 'true');
       await page.waitForTimeout(800); // the place record's debounced write

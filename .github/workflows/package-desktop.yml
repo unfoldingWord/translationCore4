@@ -33,11 +33,14 @@ on:
       - scripts/smoke-installed.zsh
       - scripts/smoke-api.cjs
       - scripts/build-smoke-journal.cjs
+      - scripts/build-smoke-upgrade.cjs
+      - test/fixtures/resources/**
       - scripts/smoke-journal-entry.ts
       - scripts/desktop-main.cjs
       - scripts/*mac*
       - scripts/*windows*
       - scripts/desktop-bootstrap*
+      - scripts/resource-archive-receipt.cjs
       - scripts/smoke-*
       - scripts/tc4.iss
       - branding/**

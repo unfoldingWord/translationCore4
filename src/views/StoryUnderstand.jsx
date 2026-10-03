@@ -74,7 +74,7 @@ export default function StoryUnderstand() {
   // network change (the book screen's useLoadHelps, on the story's inputs).
   React.useEffect(() => {
     actions.loadUnderstand();
-  }, [s.storyNumber, s.projectPins, s.projectPinsLoaded, s.netEnabled, s.installEpoch]);
+  }, [s.storyNumber, s.projectPins, s.projectPinsLoaded, s.installEpoch]);
 
   if (s.storyLoading) return <main data-testid="story-understand-loading" style={{ flex: 1, padding: 40 }}>{t('storyDraft.loading')}</main>;
   if (s.storyError) return <main data-testid="story-understand-error" style={{ flex: 1, padding: 40 }}><Callout tone="warn">{s.storyError}</Callout></main>;

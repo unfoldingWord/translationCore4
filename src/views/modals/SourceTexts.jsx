@@ -178,8 +178,8 @@ export default function SourceTexts() {
       closeLabel={t('common.close')} onClose={actions.closeModal}
       footer={g ? <SourcesFooter src={src} g={g} actions={actions} /> : null}>
 
-      {/* D86: in Local the catalogue cannot be read; Allow internet asks first. */}
-      {!s.netEnabled && (
+      {/* D88: the catalogue was not read, because the user cancelled "Use the internet?". */}
+      {s.src.needsInternet && s.src.gateway && (
         <Callout tone="kindle" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ flex: 1 }}>{t('sources.offline')}</span>
           <Button size="sm" data-testid="sources-allow-internet" onClick={actions.allowSources}

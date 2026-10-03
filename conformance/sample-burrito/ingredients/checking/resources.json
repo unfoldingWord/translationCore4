@@ -56,14 +56,13 @@
       },
       "translationNotes": {
         "repoPath": "git.door43.org/unfoldingWord/en_tn",
-        "version": "v86",
-        "sha": "c354b8ae66a23c485bf6f38fd35bd8f7ef81e4e5",
+        "version": "v91",
+        "sha": "e586762e330f482a60c52aedd1c7b3a2f155df8a",
         "flavor": "parascriptural/x-bcvnotes",
         "books": [
           "GEN",
           "EXO",
           "LEV",
-          "NUM",
           "DEU",
           "JOS",
           "JDG",
@@ -72,20 +71,14 @@
           "2SA",
           "1KI",
           "2KI",
-          "1CH",
-          "2CH",
           "EZR",
           "NEH",
           "EST",
           "JOB",
           "PSA",
           "PRO",
-          "ECC",
           "SNG",
-          "ISA",
-          "JER",
           "LAM",
-          "EZK",
           "DAN",
           "HOS",
           "JOL",
@@ -130,8 +123,8 @@
       },
       "translationWordsLinks": {
         "repoPath": "git.door43.org/unfoldingWord/en_tw",
-        "version": "v87",
-        "sha": "eaeb7bfefcf84132d0cbcbed185f3ea2be3d86dd",
+        "version": "v91",
+        "sha": "ff5b3852c27c3a0d01b109e482eb26047dcd20e2",
         "flavor": "parascriptural/x-bcvarticles",
         "books": [
           "BIBLE"
@@ -139,8 +132,8 @@
       },
       "translationWords": {
         "repoPath": "git.door43.org/unfoldingWord/en_tw",
-        "version": "v87",
-        "sha": "eaeb7bfefcf84132d0cbcbed185f3ea2be3d86dd",
+        "version": "v91",
+        "sha": "ff5b3852c27c3a0d01b109e482eb26047dcd20e2",
         "flavor": "parascriptural/x-bcvarticles",
         "books": [
           "BIBLE"
@@ -148,20 +141,20 @@
       },
       "translationAcademy": {
         "repoPath": "git.door43.org/unfoldingWord/en_ta",
-        "version": "v86",
-        "sha": "c7caddfb474efd713f36b35a3ffc927866c7b180",
+        "version": "v91",
+        "sha": "ce9a1bb9431317ca888e8c1f9620caa7f5fe45fd",
         "flavor": "peripheral/x-peripheralArticles"
       },
       "translationQuestions": {
         "repoPath": "git.door43.org/unfoldingWord/en_tq",
-        "version": "v89",
-        "sha": "97c0a13e3b84d46d0e643ba2e8e9f1c295547a58",
+        "version": "v91",
+        "sha": "8be02772584ff5a5fea893a392b4f019e3efcc77",
         "flavor": "parascriptural/x-bcvquestions"
       },
       "simplifiedText": {
         "repoPath": "git.door43.org/unfoldingWord/en_ust",
-        "version": "v89",
-        "sha": "37ec223166bbd73fb55abc7840be8310c0fee7f2",
+        "version": "v91",
+        "sha": "85f274a74245cb418f85266e1a5b524bc3e91e9c",
         "flavor": "scripture/textTranslation"
       }
     }
@@ -176,8 +169,8 @@
       },
       "ot": {
         "repoPath": "git.door43.org/unfoldingWord/hbo_uhb",
-        "version": "v2.1.30",
-        "sha": "106a441a788d9465846cd427538ea80b8cec6770",
+        "version": "v3.0.0",
+        "sha": "74022f0fed012a3ef169886f595dd98e7b200543",
         "flavor": "scripture/textTranslation"
       }
     },
@@ -199,15 +192,15 @@
     {
       "id": "ult",
       "repoPath": "git.door43.org/unfoldingWord/en_ult",
-      "version": "v89",
-      "sha": "84c73ba00fc8a95a9033f9efb14bb905a2a52ee4",
+      "version": "v91",
+      "sha": "35d215957f3203fd2e2fac5702ce14902d417f9d",
       "flavor": "scripture/textTranslation"
     },
     {
       "id": "ust",
       "repoPath": "git.door43.org/unfoldingWord/en_ust",
-      "version": "v89",
-      "sha": "37ec223166bbd73fb55abc7840be8310c0fee7f2",
+      "version": "v91",
+      "sha": "85f274a74245cb418f85266e1a5b524bc3e91e9c",
       "flavor": "scripture/textTranslation"
     }
   ]

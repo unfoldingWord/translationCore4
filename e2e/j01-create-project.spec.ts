@@ -52,10 +52,17 @@ test.describe('J1 — a translator creates a project', () => {
           .click({ timeout: 20_000 });
       });
 
-      await test.step('pick the book Titus and create it — the new project opens in Draft', async () => {
+      await test.step('pick the book Titus and create it — the new project opens in Understand at chapter 1 (D87)', async () => {
         await pickOption(page, 'Book', 'Titus');
         await page.getByRole('button', { name: 'Create book' }).click();
         await expect(page.getByText('Equipo Rig — Tito').first()).toBeVisible({ timeout: 20_000 });
+        await expect(page.getByRole('tab', { name: 'Understand', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 20_000 });
+        await expect(page.getByTestId('understand')).toBeVisible({ timeout: 20_000 });
+        await expect(page.getByRole('heading', { name: 'Titus 1', exact: true })).toBeVisible();
+      });
+
+      await test.step('Translate shows the new book', async () => {
+        await page.getByRole('tab', { name: 'Translate', exact: true }).click();
         await expect(page.getByRole('button', { name: /^Draft section/ }).first()).toBeVisible({
           timeout: 20_000,
         });
@@ -114,9 +121,9 @@ test.describe('J1 — a translator creates a project', () => {
         const extra = Object.fromEntries(
           resFile.extraScripture.map((e: { id: string }) => [e.id, e]),
         );
-        expect(extra.ult.version).toBe('v89');
+        expect(extra.ult.version).toBe('v91');
         expect(extra.ult.sha).toMatch(/^[0-9a-f]{40}$/);
-        expect(extra.ust.version).toBe('v89');
+        expect(extra.ust.version).toBe('v91');
       });
 
       await test.step('the chosen text direction is persisted (settings.json) — app-created summaries report "?" so the app reads it back from here', async () => {
