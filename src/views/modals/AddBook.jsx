@@ -1,13 +1,14 @@
 // Add-a-book modal — owner-approved design rebuilt on the design system (epic
 // #104 / #109) bound to the state layer's `ab` form (openAddBook/patchAb/
-// addBooks): the blank-book path. Import makes a new project from files, from
-// Home (#361); import into an existing project is #365. The several-at-once
-// grid is the owner's optional multi-pick addition.
+// addBooks): the blank-book path, and the from-USFM-files path (#484), which
+// adds only books the project does not have. Import makes a new project from
+// files, from Home (#361); import into an existing project (replace a book) is
+// #365. The several-at-once grid is the owner's optional multi-pick addition.
 import React from 'react';
 import { useApp, SUITE_VERSION } from '../../state.jsx';
 import { BOOK_NAMES, BOOK_CHAPTERS, bookName } from '../../data/bookNames';
 import { t } from '../../i18n';
-import { Modal, Select, FilterChip, OptionCard, Overline, Button, Callout } from '../../ds/index.js';
+import { Modal, Select, FilterChip, OptionCard, Overline, Button, Callout, DropZone, Surface, Text, IconButton, StatusDot } from '../../ds/index.js';
 
 const ALL_CODES = Object.keys(BOOK_NAMES);
 const OT = ALL_CODES.slice(0, 39);
@@ -44,6 +45,41 @@ function BookGrid({ ab, actions, codes, title }) {
   );
 }
 
+/** The from-USFM-files step (#484): drop or choose files, see each file's
+ * verdict the moment it lands (the parse is in-memory and quick), add the
+ * valid ones. Modeled on Import's FilesStep; the per-row dot is the import
+ * review's check idiom. */
+function UsfmStep({ ab, actions }) {
+  const inputRef = React.useRef(null);
+  const add = (list) => { if (list?.length) actions.abAddUsfmFiles([...list]); };
+  return (
+    <div data-testid="ab-usfm" style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingBottom: 18 }}>
+      <input ref={inputRef} type="file" multiple accept=".usfm,.sfm,.txt" data-testid="ab-usfm-input" hidden
+        onChange={(e) => { add(e.target.files); e.target.value = ''; }} />
+      <DropZone title={t('importer.kind.usfm.drop')} hint={t('importer.kind.usfm.hint')} data-testid="ab-usfm-drop"
+        onClick={() => inputRef.current?.click()}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => { e.preventDefault(); add(e.dataTransfer?.files); }} />
+      {(ab.files || []).map((f, i) => (
+        <Surface key={`${f.name}-${i}`} fill="card" border="line" radius="md" pad="10px 10px 10px 14px"
+          data-testid="ab-usfm-file" data-status={f.refusal ? 'refused' : 'valid'}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+            <StatusDot status={f.refusal ? 'warn' : 'valid'} size={8} />
+            <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <Text role="strong" truncate>{f.name}</Text>
+              <Text role="caption" tone={f.refusal ? undefined : 'muted'}>
+                {f.refusal ?? t('addBook.usfmWillAdd', { name: bookName(f.code) })}
+              </Text>
+            </div>
+            <IconButton variant="plain" title={t('importer.files.remove')} onClick={() => actions.abRemoveUsfmFile(i)}>✕</IconButton>
+          </div>
+        </Surface>
+      ))}
+      {ab.error && <Callout tone="warn" role="alert">{ab.error}</Callout>}
+    </div>
+  );
+}
+
 export default function AddBook() {
   const { s, actions } = useApp();
   const ab = s.ab;
@@ -52,6 +88,7 @@ export default function AddBook() {
   const picked = ab.multi ? Object.keys(ab.books).filter((k) => ab.books[k]) : [ab.book];
   const existingPicked = picked.filter((c) => (ab.existing || []).includes(c));
   const testament = NT.includes(ab.book) ? t('addBook.nt') : t('addBook.ot');
+  const validFiles = (ab.files || []).filter((f) => !f.refusal);
 
   return (
     <Modal width={600} title={t('addBook.title')}
@@ -62,14 +99,23 @@ export default function AddBook() {
         <Button onClick={actions.addBooks} disabled={ab.busy}>
           {ab.multi ? t('addBook.createN', { n: picked.length }) : t('addBook.create')}
         </Button>
+      </> : ab.step === 'usfm' ? <>
+        <Button variant="secondary" onClick={() => actions.patchAb({ step: 'method', error: null })}>{t('addBook.back')}</Button>
+        <Button onClick={actions.addUsfmBooks} disabled={ab.busy || validFiles.length === 0} data-testid="ab-usfm-add">
+          {validFiles.length === 1 ? t('addBook.addOne') : t('addBook.addN', { n: validFiles.length })}
+        </Button>
       </> : null}>
 
       {ab.step === 'method' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingBottom: 18 }}>
           <OptionCard icon="+" title={t('addBook.blankTitle')} description={t('addBook.blankDesc')}
             trailing="→" onClick={() => actions.patchAb({ step: 'pick' })} />
+          <OptionCard icon={t('importer.kind.usfm.icon')} title={t('addBook.usfmTitle')} description={t('addBook.usfmDesc')}
+            trailing="→" data-testid="ab-usfm-option" onClick={() => actions.patchAb({ step: 'usfm', error: null })} />
         </div>
       )}
+
+      {ab.step === 'usfm' && <UsfmStep ab={ab} actions={actions} />}
 
       {ab.step === 'pick' && (
         <>
