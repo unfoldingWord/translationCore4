@@ -8,7 +8,7 @@ import { useApp } from '../state.jsx';
 import { bookName } from '../data/bookNames';
 import { t } from '../i18n';
 import BookRail from './BookRail.jsx';
-import { HelpsPanel, leadingNum, useLoadHelps, focusOf } from './HelpsPanel.jsx';
+import { HelpsPanel, HelpsWidenButton, leadingNum, useLoadHelps, focusOf } from './HelpsPanel.jsx';
 import { keyCarries, SourceVerse } from './SourceVerse.jsx';
 import { absenceMessageKey, isSourceAbsent } from '../data/sourceState';
 import { FilterChip, IconButton, Overline, Switcher, StatusDot, Callout, Button } from '../ds/index.js';
@@ -412,6 +412,7 @@ export default function Understand() {
           <IconButton title={t('draft.toggleRail')} onClick={actions.toggleRail}><RailIcon /></IconButton>
           <h2 style={{ fontSize: 'var(--fs-title)', letterSpacing: 'var(--track-17)', margin: 0, flex: 'none' }}>{bookName(book.code)} {chapter}</h2>
           <span style={{ fontSize: 'var(--fs-caption-lg)', letterSpacing: 'var(--track-12-5)', color: 'var(--text-tertiary)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t('understand.note')}</span>
+          <HelpsWidenButton />
         </div>
         <div style={{ flex: 1, overflow: 'auto', minHeight: 0, background: 'var(--surface-app)' }}>
           <div style={{ maxWidth: 'var(--measure-read)', margin: '0 auto', padding: '22px 26px 60px' }}>

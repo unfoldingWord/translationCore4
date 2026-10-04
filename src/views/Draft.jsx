@@ -12,7 +12,7 @@ import { FilterChip, IconButton, Overline, Button, Switcher } from '../ds/index.
 import { RailIcon, HelpsIcon } from './PanelIcons.jsx';
 import { targetTypeFor, projectDir } from './scriptStyle.js';
 import BookRail from './BookRail.jsx';
-import { HelpsPanel, useLoadHelps } from './HelpsPanel.jsx';
+import { HelpsPanel, HelpsWidenButton, useLoadHelps } from './HelpsPanel.jsx';
 import { editingFocus } from './helpsFocus.js';
 import { SourceVerse } from './SourceVerse.jsx';
 import { verseText as sourceText } from './verseText.js';
@@ -311,6 +311,7 @@ export default function Draft() {
           <IconButton title={t('draft.toggleRail')} onClick={actions.toggleRail}><RailIcon /></IconButton>
           <h2 style={{ fontSize: 'var(--fs-title)', letterSpacing: 'var(--track-17)', margin: 0 }}>{bookName(book.code)} {s.chapter}</h2>
           <div style={{ flex: 1 }} />
+          <HelpsWidenButton shown={s.helps} />
           <IconButton title={t('draft.toggleHelps')} onClick={actions.toggleHelps}><HelpsIcon /></IconButton>
         </div>
 
