@@ -158,7 +158,7 @@ describe.skipIf(!rigUp)('serverApi against the live rig', () => {
     async () => {
       await api.newTextTranslation(createParams);
       const metadata = await api.getMetadataRaw(REPO);
-      expect(metadata.languages[0]).toMatchObject({ tag: 'es-419', name: { en: 'Spanish (419)' } });
+      expect((metadata.languages as unknown[])[0]).toMatchObject({ tag: 'es-419', name: { en: 'Spanish (419)' } });
       expect(Object.keys(metadata.type.flavorType.currentScope)).toContain('TIT');
       const ingredientPaths = Object.keys(metadata.ingredients);
       expect(ingredientPaths).toContain('ingredients/TIT.usfm');

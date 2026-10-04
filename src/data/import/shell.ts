@@ -183,14 +183,15 @@ async function importRecorded(
     const zip = bundle.archive ? archiveZip(bundle.archive, abbr) : await bundleZip(api, repoPath, bundle, edited, abbr);
     await api.remakeBurritoFromZip(await api.uploadTempBytes(zip), repoPath);
     // Register the new books and their scope. Never for an archive (its
-    // metadata.json stays byte for byte) or an OBS project (a rescan empties
+    // metadata.json stays as exported) or an OBS project (a rescan empties
     // the template's scope table, PLATFORM-NOTES #37).
     if (!bundle.archive && bundle.kind === 'bible') await api.remakeIngredients(repoPath);
     const message = `Import ${name} (tC4)`;
     if (bundle.archive) {
       // Stored as exported (D80 point 2), so neither opened nor checkpointed:
       // both rescan the ingredients, and a rescan rewrites metadata.json (W-2).
-      // The first open seeds what its journal does not hold, with the same source.
+      // The commit itself still rewrites the commit fields of metadata.json
+      // (PLATFORM-NOTES #48, D90 point 6). The first open seeds what its journal does not hold, with the same source.
       facts.books = (await api.getSummary(repoPath)).book_codes;
       await api.addAndCommit(repoPath, message);
     } else {

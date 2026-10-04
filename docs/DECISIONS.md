@@ -1750,7 +1750,9 @@ changed. These facts were read for the rulings:
    for downloads only, and amends D79 point 4. A bridge for PDF bytes still needs #20's
    task 1 and the owner's word on that pull request.
 2. **A Scripture Burrito import keeps its journal.** The import shell uploads the archive as
-   it is, so `journal/` and `checking/` arrive as exported (#196, #361).
+   it is, so `journal/` and `checking/` arrive as exported (#196, #361). [superseded by D90,
+   2026-10-03 — every file arrives as exported except the fields of `metadata.json` that the
+   import commit rewrites]
 3. **A tC3 import keeps the current state only.** The parser does not convert the tC3 check
    history into journal events. The translator's tC3 export zip stays the record of that
    history. This supersedes the [PROPOSED] comment of 2026-08-13 on #21.
@@ -2199,7 +2201,7 @@ kept most of the product work and ruled on the order, the gates and the cut rule
 decision. The format does not change, so `docs/BURRITO-SPEC.md` and the conformance harness do
 not change.
 
-## D90 (2026-10-03, project-owner ruling) **The rig and the desktop package pin pankosmia-web 0.18.15 (`a83725b`), not 0.18.14. A new project keeps a regional language tag such as `es-419` whole, from the wizards and from import.** [owner instruction in the #461 session, 2026-10-03: "go to 0.18.15. I don't want to have to do this again in the immediate future."; issue #461; amends D27, D80 point 4 and D89 point 6]
+## D90 (2026-10-03, project-owner ruling) **The rig and the desktop package pin pankosmia-web 0.18.15 (`a83725b`), not 0.18.14. A new project keeps a regional language tag such as `es-419` whole, from the wizards and from import.** [owner instruction in the #461 session, 2026-10-03: "go to 0.18.15. I don't want to have to do this again in the immediate future."; issue #461; amends D27, D80 points 2 and 4, D89 point 6, and BURRITO-SPEC R-10.2.3]
 
 Context. #461 named 0.18.14 (`173f9f6`). At that commit the OBS create route has no
 `content_language_name` field, so it refuses every `x-` code, and the issue's `x-` criterion
@@ -2232,7 +2234,26 @@ cannot pass [VERIFIED — pankosmia-web 0.18.14 (173f9f6, 2026-09-29),
 5. **What does not change.** The server still starts offline: tC4's product files do not set
    `start_offline` (PLATFORM-NOTES #45). The working-directory start check is unchanged
    (`lib.rs:129`). The format does not change.
+6. **A Scripture Burrito import is stored as exported, except the commit fields of
+   `metadata.json`** [owner ruling in the same session, 2026-10-03, on the J9 failure below].
+   The remake route does not commit, so the import must commit, and each commit rewrites
+   `meta.dateCreated`, the primary `revision` and `timestamp`, and the ingredient roles
+   (PLATFORM-NOTES #48). Every other field of `metadata.json`, and every other file, stays as
+   exported. J9 now compares `metadata.json` without those fields. Before this ruling, the two
+   J9 "byte for byte" tests failed on `metadata.json` at 0.18.15 [VERIFIED — lane run of
+   `e2e/j09-import.spec.ts`, 2026-10-03]. This supersedes the byte-for-byte reading of D80
+   point 2.
+7. **R-10.2.3 checks the OBS scope table by keys and ranges, not by key order** [owner ruling
+   in the same session, 2026-10-03, on the J7/J23 failure below]. Each commit writes
+   `metadata.json` with sorted object keys, so an OBS project's `currentScope` loses the
+   template's order at its first commit; the keys and ranges stay the same (PLATFORM-NOTES
+   #48). The client reads the table only by key. Before this ruling, the full journey suite
+   failed J7/J23 on the harness checks `OBS scope` and `OBS v2 fold`, which compared the order
+   [VERIFIED — lane run of the full suite, 152 passed, 2 failed, 2026-10-03]. BURRITO-SPEC 1.18
+   and `conformance/validate.mjs` change together (§9): a dropped key and a changed range fire,
+   and a reordered table passes. The check counts do not change.
 
 `docs/BURRITO-SPEC.md` §8.7 (the third sync caveat) and `conformance/validate-transport.mjs`
-change together (§9). `docs/PLATFORM-NOTES.md` #9, #28, #43, #45 and #48, and `docs/RISKS.md`
-Ledger #1, change with this decision.
+change together (§9). `docs/PLATFORM-NOTES.md` #9, #27, #28, #43, #45 and #48, `docs/RISKS.md`
+Ledger #1, `docs/ARCHITECTURE.md` (the integration row and the import row), BURRITO-SPEC R-10.2.3 and
+`e2e/j09-import.spec.ts` change with this decision.
