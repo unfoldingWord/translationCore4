@@ -1,6 +1,6 @@
 # The rig job (L-1b of #154, D67). The `verify` job in ci.yml runs `npm run prove` on a
 # clean clone, where every rig-gated suite skips. This job builds the pinned Pankosmia
-# server (dev-env/server, pankosmia-web 0.18.5 at 99fd9be), assembles the rig from the
+# server (dev-env/server, pankosmia-web 0.18.15 at a83725b), assembles the rig from the
 # pinned upstream inputs (dev-env/scripts/setup-from-pins.zsh), seeds it, starts it on
 # 127.0.0.1:19998, and runs `prove` with RIG_REPOS set, so validate:transport,
 # validate:roundtrip and the *.integration vitest files execute. The manifest is
@@ -42,6 +42,12 @@ on:
         type: boolean
         default: false
 
+# A new push to a branch or pull request cancels the older run of this workflow on that
+# ref. Runs on `main` are never cancelled: each run on `main` has its own group.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   rig:
     runs-on: ubuntu-24.04
@@ -79,7 +85,10 @@ jobs:
         working-directory: conformance
 
       - name: Rust toolchain
-        run: rustup toolchain install stable --profile minimal
+        id: rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          echo "rustc=$(rustc -V | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
       - name: Cache cargo
         uses: actions/cache@v6
         with:
@@ -88,7 +97,10 @@ jobs:
             ~/.cargo/git
             dev-env/server/target
           # Same key as package-desktop.yml: it is the same server build.
-          key: cargo-package-desktop-${{ runner.os }}-${{ hashFiles('dev-env/server/Cargo.lock', 'dev-env/server/Cargo.toml') }}
+          # The key names the rustc version. Build output from a different rustc is not
+          # reused, and a key that hits is never saved again (2026-10-03: `stable` moved
+          # to 1.99.0, and every run compiled all crates from a cache of 2026-09-11).
+          key: cargo-package-desktop-${{ runner.os }}-rustc-${{ steps.rust.outputs.rustc }}-${{ hashFiles('dev-env/server/Cargo.lock', 'dev-env/server/Cargo.toml') }}
 
       - name: Build the client (registered as /clients/uw-tc4)
         run: npm run build

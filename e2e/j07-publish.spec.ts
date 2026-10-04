@@ -251,7 +251,16 @@ const openTitusCommunityChecking = async (page: Page, name: string): Promise<voi
   await page.getByTestId(`project-_local_/_local_/${name}`).getByRole('button', { name: /Titus/ }).click();
   await page.getByRole('tab', { name: 'Check', exact: true }).click();
   await page.getByTestId('open-community-checking').click();
-  await expect.poll(() => execFileSync('git', ['-C', rigRepo(name), 'status', '--porcelain'], { encoding: 'utf8' }), { timeout: 20_000 }).toBe('');
+  // Settled = a clean tree and the same HEAD for a whole second. One clean sample can
+  // fall between the open's commits: the pin write and its checkpoint follow the
+  // first commit (#461, full-suite runs on 0.18.15).
+  const git = (...args: string[]) => execFileSync('git', ['-C', rigRepo(name), ...args], { encoding: 'utf8' });
+  await expect.poll(async () => {
+    const head = git('rev-parse', 'HEAD');
+    if (git('status', '--porcelain') !== '') return false;
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    return git('status', '--porcelain') === '' && git('rev-parse', 'HEAD') === head;
+  }, { timeout: 20_000 }).toBe(true);
 };
 
 /** Export the PDF of the open book and prove the project did not change. */

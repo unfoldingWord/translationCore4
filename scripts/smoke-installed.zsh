@@ -160,12 +160,12 @@ start_app() {  # $1 = label
 port_answers() { curl -s --max-time 1 "http://127.0.0.1:$PORT/api/version" | grep -q '"product_short_name":"tc4"'; }
 
 stop_app() {  # $1 = label. The launcher execs Electron, so APP_PID is Electron's; the
-              # server is its child, found by the port it listens on. A stop is proven
-              # when both processes are gone AND the port is silent. SIGTERM first; a
-              # process still alive after 10 s gets SIGKILL (a macOS CI runner kept
-              # Electron alive past 30 s of SIGTERM, run 34008006559). The test proves
-              # persistence across a restart, not a graceful quit, so a forced stop is
-              # reported, not failed.
+              # server is its child, found by the port it listens on. SIGTERM goes to
+              # Electron only: the app must stop its own server (#206). A stop is proven
+              # when both processes are gone, the port is silent, and the app's log has
+              # one "Server stopped." and no "Failed to stop". A process still alive
+              # after 10 s gets SIGKILL (a macOS CI runner kept Electron alive past 30 s
+              # of SIGTERM, run 34008006559); a forced stop is reported, not failed.
   local victims="$APP_PID $SERVER_PIDS"
   local pid i forced=""
   # Both must still be running when the stop begins: an app that died during the
@@ -173,12 +173,16 @@ stop_app() {  # $1 = label. The launcher execs Electron, so APP_PID is Electron'
   for pid in ${=victims}; do
     alive "$pid" || fail "$1 stop: pid $pid (of electron $APP_PID, server $SERVER_PIDS) was already dead before the stop (log: $LOGDIR/tc4-smoke-$1.log)"
   done
-  for pid in ${=victims}; do kill "$pid" 2>/dev/null; done
+  kill "$APP_PID" 2>/dev/null
   for i in {1..40}; do
     local left=""
     for pid in ${=victims}; do alive "$pid" && left="$left $pid"; done
     if [ -z "$left" ] && ! port_answers; then
-      ok "$1 stop: electron and server exited (pids $victims${forced:+; SIGKILL needed for$forced}), port $PORT no longer answers"
+      local log="$LOGDIR/tc4-smoke-$1.log" stopped
+      stopped=$(grep -cF 'stopServer() - Server stopped.' "$log")
+      [ "$stopped" = 1 ] && ! grep -q 'Failed to stop' "$log" \
+        || fail "$1 stop: the app did not stop its server cleanly: $stopped 'Server stopped.' line(s); $(grep 'stopServer()' "$log" | tr '\n' ' ') (log: $log)"
+      ok "$1 stop: electron and server exited (pids $victims${forced:+; SIGKILL needed for$forced}), port $PORT no longer answers, the app logged one 'Server stopped.'"
       APP_PID=""; return 0
     fi
     if [ "$i" = 10 ] && [ -n "$left" ]; then

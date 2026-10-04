@@ -141,7 +141,7 @@ export interface ResourcesFile {
 export const LADDER = ['primary', 'fallback'] as const;
 export type Rung = (typeof LADDER)[number];
 
-/** `checking/settings.json` — BURRITO-SPEC §5.4 (D89). A GENERATED mirror: the
+/** `checking/settings.json` — BURRITO-SPEC §5.4 (D91). A GENERATED mirror: the
  * journal owns the settings. A change records `settings.set` events (last
  * writer wins per path, JC-17); folding them supplies the values, and
  * `writeSettings`/checkpoints regenerate this file from the fold (R-8.7.1).
@@ -201,6 +201,7 @@ export interface CreateObsProjectParams {
   content_name: string;
   content_abbr: string;
   content_language_code: string;
+  content_language_name?: string | null;
 }
 
 /** One planned decision-file rewrite inside a coordinated gateway change. */
