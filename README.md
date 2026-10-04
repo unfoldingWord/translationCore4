@@ -117,7 +117,7 @@ the runner and runs the rig-backed suites, on every pull request and on `main`
 ## Run against a local server
 
 The client needs a Pankosmia server on port 19998 to open or create a project.
-`dev-env/` builds one, pinned to pankosmia-web 0.18.5 (`99fd9be`). Read
+`dev-env/` builds one, pinned to pankosmia-web 0.18.15 (`a83725b`). Read
 `dev-env/README.md` for the steps. Without the server, `npm run dev` shows the client,
 and every project action fails with HTTP 500.
 

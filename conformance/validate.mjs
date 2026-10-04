@@ -895,15 +895,22 @@ const verseText = bookJson.chapters['1']['1'].verseObjects.filter(vo => vo.type 
       positive && fires, '', 'obs');
   }
 
-  // O5 — currentScope equality with the template's table, verbatim
+  // O5 — currentScope equality with the template's table: same keys, same ranges. Key
+  // order is not part of it: each server commit writes the keys sorted (D90, PLATFORM-NOTES #48).
+  const sameScope = (a, b) => {
+    const keys = Object.keys(a).sort();
+    return JSON.stringify(keys) === JSON.stringify(Object.keys(b).sort()) &&
+      keys.every((k) => JSON.stringify(a[k]) === JSON.stringify(b[k]));
+  };
   {
-    const same = JSON.stringify(obsMeta.type.flavorType.currentScope) === JSON.stringify(tmplMeta.type.flavorType.currentScope);
+    const tmplScope = tmplMeta.type.flavorType.currentScope;
+    const same = sameScope(obsMeta.type.flavorType.currentScope, tmplScope);
     const broken = clone(obsMeta.type.flavorType.currentScope); delete broken.JAS;
+    const changed = clone(obsMeta.type.flavorType.currentScope); changed.JAS = [...changed.JAS, '5:20'];
     const reordered = Object.fromEntries(Object.entries(clone(obsMeta.type.flavorType.currentScope)).reverse());
-    const fires = JSON.stringify(broken) !== JSON.stringify(tmplMeta.type.flavorType.currentScope) &&
-      JSON.stringify(reordered) !== JSON.stringify(tmplMeta.type.flavorType.currentScope);
+    const fires = !sameScope(broken, tmplScope) && !sameScope(changed, tmplScope) && sameScope(reordered, tmplScope);
     const grammar = Object.values(obsMeta.type.flavorType.currentScope).every((v) => scopeError(v) === null);
-    check('OBS scope: type.flavorType.currentScope equals the template\'s table VERBATIM (same keys, same order, same ranges — 33 books the stories retell) and every value passes the §3 rule 4 grammar; a dropped key and a reordered table both fire [covers R-10.2.3]',
+    check('OBS scope: type.flavorType.currentScope equals the template\'s table (same keys, same ranges — 33 books the stories retell; key order is not significant) and every value passes the §3 rule 4 grammar; a dropped key and a changed range both fire, a reordered table passes [covers R-10.2.3]',
       same && fires && grammar, `${Object.keys(obsMeta.type.flavorType.currentScope).length} books`, 'obs');
   }
 
@@ -941,8 +948,8 @@ const verseText = bookJson.chapters['1']['1'].verseObjects.filter(vo => vo.type 
     const seed = seedStory(read(TING(storyIpath(1))).replace(/\r\n/g, '\n'));
     const proj = derivedProjections(out, { baseMetadata: obsMeta, baseStories: { 1: seed } });
     // R-10.2.3 at checkpoint: the projected metadata.json keeps the template's scope table
-    // verbatim (the fold has no story scope; a Bible project's scope is reconstructed)
-    const scopeKept = JSON.stringify(JSON.parse(proj['metadata.json']).type.flavorType.currentScope) === JSON.stringify(tmplMeta.type.flavorType.currentScope);
+    // (the fold has no story scope; a Bible project's scope is reconstructed)
+    const scopeKept = sameScope(JSON.parse(proj['metadata.json']).type.flavorType.currentScope, tmplMeta.type.flavorType.currentScope);
     const positive = out.stories[1].frames[0] === DRAFT.title && out.stories[1].ref === DRAFT.ref && out.forks.length === 0 &&
       proj[storyIpath(1)] === read(OING(storyIpath(1))) && Object.keys(out.books).length === 0 && scopeKept;
     // a v: 1 segment set (the Bible sample's seed) folds unchanged: books project, no story
@@ -957,7 +964,7 @@ const verseText = bookJson.chapters['1']['1'].verseObjects.filter(vo => vo.type 
     const mutated = fold([...events.slice(0, 2), ev(2, { op: 'text.frame.set', story: 1, frame: 2, text: 'otro' }), events[3]]);
     const differs = derivedProjections(mutated, { baseMetadata: obsMeta, baseStories: { 1: seed } })[storyIpath(1)] !== read(OING(storyIpath(1)));
     const noBase = throws(() => derivedProjections(out, { baseMetadata: obsMeta }));
-    check('OBS v2 fold: the drafted story as four v: 2 segments (title = frame 0, frames 1-2, reference line) folds without forks and the checkpoint projection onto the seed story equals sample content/01.md BYTE FOR BYTE, with the projected metadata.json keeping the template\'s currentScope verbatim; a v: 1 seed set still folds to its USFM with no story; v: 1 refuses the story ops and story targets; a different frame text does not project the sample; a missing base story refuses the checkpoint [covers R-10.7.1 R-10.7.4 R-10.2.3]',
+    check('OBS v2 fold: the drafted story as four v: 2 segments (title = frame 0, frames 1-2, reference line) folds without forks and the checkpoint projection onto the seed story equals sample content/01.md BYTE FOR BYTE, with the projected metadata.json keeping the template\'s currentScope (keys and ranges); a v: 1 seed set still folds to its USFM with no story; v: 1 refuses the story ops and story targets; a different frame text does not project the sample; a missing base story refuses the checkpoint [covers R-10.7.1 R-10.7.4 R-10.2.3]',
       positive && v1ok && v1Refuses && differs && noBase, '', 'obs');
   }
 }

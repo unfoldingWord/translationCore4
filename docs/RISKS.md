@@ -6,7 +6,7 @@ mark a retired risk in its Mitigation column.
 
 | # | Risk | Mitigation |
 |---|---|---|
-| 1 | Upstream release cadence against the Increment-1 pin (0.18.5 git rev, D27 update) | Examine the pin again when Increment 1 closes. Run the transport and round-trip suites at the release that is current then (D27). Return to a crates.io `=` pin when 0.18.5+ publishes |
+| 1 | Upstream release cadence against the pin (0.18.15 git rev `a83725b`, D90) | Run the transport and round-trip suites again at each pin move (D27), with a control run on the old pin. crates.io publishes 0.18.15 from the same commit; a crates.io `=` pin needs `scripts/prove.mjs` to read the revision from another source |
 | 2 | Two writers on one book file in Phase 1 | Single app, single user in Phase 1. Load-time revalidation self-heals. Phase 2 solves it structurally |
 | 3 | Load-time derivation cost on large books | Measure first (OPEN-QUESTIONS #9). An optional disposable cache keyed by content hashes — never a second source of truth |
 | 4 | Phase 2 scope creep | Phase gate. Option to pilot journaling on checking data before drafting |

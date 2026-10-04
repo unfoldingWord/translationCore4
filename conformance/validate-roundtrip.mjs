@@ -1,7 +1,7 @@
 // Server round-trip suite — can pankosmia-web round-trip tC4's custom work?
 // Pushes the conforming sample project (x- roles, relationships, checking/ sidecars,
 // Phase-2 journal files, span verses) through every server operation that rewrites
-// files or metadata, live against the dev-env rig (pankosmia_web 0.18.5, git-rev pin), and
+// files or metadata, live against the dev-env rig (pankosmia_web 0.18.15, git-rev pin), and
 // measures exactly what survives. R7 re-runs the 34-check conformance harness on the
 // server-touched copy and asserts the Stage-1/Stage-2 split lands exactly as the spec
 // predicts. Requires: dev-env/scripts/seed.zsh && dev-env/scripts/run.zsh
@@ -109,7 +109,7 @@ const run = async () => {
     r3.status === 200 && !!m3.type?.flavorType?.currentScope?.TIT && !!m3.identification && Array.isArray(m3.languages) &&
     listFiles(path.join(dirOf(RT), 'ingredients')).every((r) => m3.ingredients[`ingredients/${r}`]),
     `status=${r3.status}`);
-  console.log(`  observed at 0.18.5: relationships ${m3.relationships ? 'survived' : 'DROPPED'}; roles ${Object.values(m3.ingredients).some((e) => e.role) ? 'survived' : 'DROPPED'} (stage rules S-1/S-2). Upstream added roles+relationships to the SB model 2026-07-30, but remake rebuilds ingredients from disk and CANNOT intuit x-roles (upstream, 2026-07-30) — treat x-roles as non-durable by design; paths stay authoritative.`);
+  console.log(`  observed at 0.18.15: relationships ${m3.relationships ? 'survived' : 'DROPPED'}; roles ${Object.values(m3.ingredients).some((e) => e.role) ? 'survived' : 'DROPPED'} (stage rules S-1/S-2). Upstream added roles+relationships to the SB model 2026-07-30, but remake rebuilds ingredients from disk and CANNOT intuit x-roles (upstream, 2026-07-30) — treat x-roles as non-durable by design; paths stay authoritative.`);
 
   // ---------- R4: content bytes are never rewritten by metadata operations ----------
   const after = snapshot(RT);

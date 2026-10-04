@@ -5,8 +5,8 @@
 # The recipe follows the Pankosmia desktop-app-template (read-only reference,
 # MIT license). The wrapper is Electronite v37.1.0-graphite, the Graphite-enabled
 # Electron fork from unfoldingWord (D20). The artifact is minimal for now: it
-# bundles ONLY the uw-tc4 client (#71), the pinned server (pankosmia-web 0.18.5,
-# 99fd9be), and the runtime resources. See docs/PACKAGING.md.
+# bundles ONLY the uw-tc4 client (#71), the pinned server (pankosmia-web 0.18.15,
+# a83725b), and the runtime resources. See docs/PACKAGING.md.
 #
 # The smoke test launches the STAGED ARTIFACT THROUGH ITS OWN ENTRY POINT
 # (the start-tc4 launcher -> Electronite -> electronStartup.js), with a fresh HOME
@@ -187,7 +187,7 @@ if [ "$OS" != linux ]; then node --test "$REPO/scripts/desktop-bootstrap.test.cj
 npm ci --no-audit --no-fund
 npm run build
 
-echo "== 2/7 build the pinned server (pankosmia-web 0.18.5, 99fd9be)"
+echo "== 2/7 build the pinned server (pankosmia-web 0.18.15, a83725b)"
 cd "$REPO/dev-env/server"
 cargo build --release
 
@@ -500,7 +500,7 @@ This build bundles the components below. Full texts are in licenses/.
 |---|---|---|---|
 | Electronite (Graphite-enabled Electron) | $ELECTRONITE_TAG | MIT (+ Chromium notices) | github.com/unfoldingWord/electronite |
 | desktop-app-template startup files (electron/, modified) | $TEMPLATE_REV | MIT | github.com/pankosmia/desktop-app-template |
-| pankosmia-web server (bin/$SERVER_BIN) | 0.18.5 (99fd9be) | MIT | github.com/pankosmia/pankosmia-web |
+| pankosmia-web server (bin/$SERVER_BIN) | 0.18.15 (a83725b) | MIT | github.com/pankosmia/pankosmia-web |
 | resource-core (lib/app_resources, lib/templates) | $RESOURCE_CORE_REV | MIT | github.com/pankosmia/resource-core |
 | webfonts-core (lib/webfonts; fonts carry their own licenses, mostly SIL OFL) | $WEBFONTS_CORE_REV | MIT (repo); per-font licenses inside | github.com/pankosmia/webfonts-core |
 | puppeteer-core (electron/node_modules) | $PUPPETEER_CORE_VER | Apache-2.0 | github.com/puppeteer/puppeteer |
@@ -550,7 +550,7 @@ $BUNDLED_MANIFEST_ENTRIES
   ],
   "inputs": {
     "uw-tc4_client": { "version": "$VERSION", "commit": "$(git -C $REPO rev-parse HEAD)" },
-    "pankosmia_web_server": { "version": "0.18.5", "rev": "99fd9bea8a9f3d14ac6a61f8e2213f1c5d42ed2a", "bin_sha256": "$SERVER_SHA" },
+    "pankosmia_web_server": { "version": "0.18.15", "rev": "a83725b67593b018f815fdb25a3920ce03e833e7", "bin_sha256": "$SERVER_SHA" },
     "electronite": { "tag": "$ELECTRONITE_TAG", "zip_sha256": "$ELECTRONITE_SHA256" },
     "desktop_app_template": { "rev": "$TEMPLATE_REV" },
     "resource_core": { "rev": "$RESOURCE_CORE_REV" },
@@ -743,7 +743,7 @@ echo "root: $ROOT; /clients/uw-tc4: $CLIENT"
 
 # VERSION GUARD (#326): the booted server must report this artifact's own
 # lib/product/product.json version and datetime. /api/version reads that file
-# at runtime (pankosmia-web 0.18.5 lib.rs:45-61 — primary
+# at runtime (pankosmia-web 0.18.15 lib.rs:46-62 — primary
 # lib/app_resources/product/product.json, else $APP_RESOURCES_DIR/product/
 # product.json); a mismatch means the probe answered from a different tree
 # (for example a leftover install already listening on the port).
