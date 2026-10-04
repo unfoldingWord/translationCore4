@@ -2,10 +2,14 @@ import http from 'node:http';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
+import { lane } from './e2e/lane.mjs';
+
+// #524: TC4_VITE_PORT and TC4_RIG_PORT name this checkout's port lane (e2e/lane.mjs).
+const LANE = lane();
 
 export default defineConfig(({ command }) => ({
   plugins: [react(), nodePolyfills()],
-  // pankosmia-web 0.18.5 has no CORS handling at all (source-verified), so the dev
+  // pankosmia-web 0.18.15 (a83725b) has no CORS handling at all (source-verified 2026-10-03), so the dev
   // server proxies /api to the rig — same-origin to the browser. The built client is
   // served BY the rig from /clients/uw-tc4; the server's homepage redirect points at
   // the slash-less path, where relative ('./') asset URLs resolve wrongly and the
@@ -17,14 +21,14 @@ export default defineConfig(({ command }) => ({
   // session, and under the e2e journeys.
   optimizeDeps: { include: ['uw-wordmapbooster', 'wordmap', 'wordmap-lexer'] },
   server: {
-    port: 5199,
+    port: LANE.vitePort,
     strictPort: true,
     proxy: {
       // keepAlive: without it the proxy opens a NEW upstream TCP connection per
       // request, and on Windows that put ~14 ms on every /api round trip
       // (issue #423, docs/evidence/open-time-windows-2026-09-28.md) — enough
       // that a many-read screen starved a project open behind it.
-      '/api': { target: 'http://127.0.0.1:19998', changeOrigin: true, agent: new http.Agent({ keepAlive: true }) },
+      '/api': { target: LANE.rigOrigin, changeOrigin: true, agent: new http.Agent({ keepAlive: true }) },
     },
   },
   test: {

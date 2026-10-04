@@ -86,7 +86,7 @@ for bin in "$LAUNCHER" "$ELECTRON"; do
   [ -f "$bin" ] || { echo "FAIL artifact: $bin is missing"; exit 1; }
   [ -x "$bin" ] || { echo "FAIL artifact: $bin exists but is not executable ($(ls -l "$bin" | cut -d' ' -f1)); the unpacker dropped the permission bits. Unpack the downloaded zip once with unzip."; exit 1; }
 done
-for helper in "$APPDIR/smoke-api.cjs" "$APPDIR/smoke-journal.cjs"; do
+for helper in "$APPDIR/smoke-api.cjs" "$APPDIR/smoke-journal.cjs" "$APPDIR/smoke-upgrade.cjs"; do
   [ -f "$helper" ] || { echo "FAIL artifact: $helper is missing"; exit 1; }
 done
 ok "artifact: $APPDIR ($(basename "$LAUNCHER") and $(basename "$ELECTRON") are executable)"
@@ -160,12 +160,12 @@ start_app() {  # $1 = label
 port_answers() { curl -s --max-time 1 "http://127.0.0.1:$PORT/api/version" | grep -q '"product_short_name":"tc4"'; }
 
 stop_app() {  # $1 = label. The launcher execs Electron, so APP_PID is Electron's; the
-              # server is its child, found by the port it listens on. A stop is proven
-              # when both processes are gone AND the port is silent. SIGTERM first; a
-              # process still alive after 10 s gets SIGKILL (a macOS CI runner kept
-              # Electron alive past 30 s of SIGTERM, run 34008006559). The test proves
-              # persistence across a restart, not a graceful quit, so a forced stop is
-              # reported, not failed.
+              # server is its child, found by the port it listens on. SIGTERM goes to
+              # Electron only: the app must stop its own server (#206). A stop is proven
+              # when both processes are gone, the port is silent, and the app's log has
+              # one "Server stopped." and no "Failed to stop". A process still alive
+              # after 10 s gets SIGKILL (a macOS CI runner kept Electron alive past 30 s
+              # of SIGTERM, run 34008006559); a forced stop is reported, not failed.
   local victims="$APP_PID $SERVER_PIDS"
   local pid i forced=""
   # Both must still be running when the stop begins: an app that died during the
@@ -173,12 +173,16 @@ stop_app() {  # $1 = label. The launcher execs Electron, so APP_PID is Electron'
   for pid in ${=victims}; do
     alive "$pid" || fail "$1 stop: pid $pid (of electron $APP_PID, server $SERVER_PIDS) was already dead before the stop (log: $LOGDIR/tc4-smoke-$1.log)"
   done
-  for pid in ${=victims}; do kill "$pid" 2>/dev/null; done
+  kill "$APP_PID" 2>/dev/null
   for i in {1..40}; do
     local left=""
     for pid in ${=victims}; do alive "$pid" && left="$left $pid"; done
     if [ -z "$left" ] && ! port_answers; then
-      ok "$1 stop: electron and server exited (pids $victims${forced:+; SIGKILL needed for$forced}), port $PORT no longer answers"
+      local log="$LOGDIR/tc4-smoke-$1.log" stopped
+      stopped=$(grep -cF 'stopServer() - Server stopped.' "$log")
+      [ "$stopped" = 1 ] && ! grep -q 'Failed to stop' "$log" \
+        || fail "$1 stop: the app did not stop its server cleanly: $stopped 'Server stopped.' line(s); $(grep 'stopServer()' "$log" | tr '\n' ' ') (log: $log)"
+      ok "$1 stop: electron and server exited (pids $victims${forced:+; SIGKILL needed for$forced}), port $PORT no longer answers, the app logged one 'Server stopped.'"
       APP_PID=""; return 0
     fi
     if [ "$i" = 10 ] && [ -n "$left" ]; then
@@ -241,6 +245,7 @@ ok "store: repo_dir $STORE (the ${VARIANT:-production} build's tC4-owned store; 
 # /burrito/ingredient/raw/<repo>?ipath=TIT.usfm. Each line is one step.
 run_steps() { node_run "$APPDIR/smoke-api.cjs" "http://127.0.0.1:$PORT" "$REPO" "$ABBR" "$MARKER" "$1" "$STORE"; }
 run_real_client() { node_run "$APPDIR/smoke-journal.cjs" "http://127.0.0.1:$PORT/api" "$ABBR" "$MARKER" "$STORE"; }
+run_upgrade() { node_run "$APPDIR/smoke-upgrade.cjs" "$1" "http://127.0.0.1:$PORT/api" "$STORE" "$SMOKE_HOME/pankosmia/tc4/client_settings/uw-tc4.json" "$LOGDIR"; }
 
 # ---- source: bundled English suite (en_ult) is readable offline (#163) ----------
 run_steps source || { cleanup_app; exit 1; }
@@ -260,7 +265,9 @@ DISK_V11=$(sed -n 's/^\\v 1 \(.*\)$/\1/p' "$ON_DISK" | head -1)
 
 # ---- 6: restart and read back ----------------------------------------------------
 FIRST_SERVER="$SERVER_PIDS"
+if [ "${TC4_SMOKE_UPGRADE:-0}" = 1 ]; then run_upgrade project || { cleanup_app; exit 1; }; fi
 stop_app first
+if [ "${TC4_SMOKE_UPGRADE:-0}" = 1 ]; then run_upgrade prepare || exit 1; fi
 node_run - "$SMOKE_HOME/pankosmia/tc4/user_settings.json" "$POISON_ROOT/lib" <<'NODE'
 const fs = require('fs');
 const path = require('path');
@@ -283,6 +290,7 @@ run_steps readback || { cleanup_app; exit 1; }
 run_steps export || { cleanup_app; exit 1; }
 run_steps obs-image || { cleanup_app; exit 1; }
 run_steps obs-readback || { cleanup_app; exit 1; }
+if [ "${TC4_SMOKE_UPGRADE:-0}" = 1 ]; then run_upgrade verify || { cleanup_app; exit 1; }; fi
 
 # ---- 7: clean up -----------------------------------------------------------------
 if [ "${TC4_SMOKE_KEEP:-0}" = "1" ]; then
@@ -291,6 +299,14 @@ else
   run_steps delete || { cleanup_app; exit 1; }
 fi
 stop_app second
+
+# Every platform's installed smoke also exercises an upgrade. The fixture HOME
+# is separate even when a pilot runs the fresh smoke against their real HOME.
+if [ "${TC4_SMOKE_UPGRADE:-0}" != 1 ]; then
+  UPGRADE_HOME=$(mktemp -d "$LOGDIR/tc4-upgrade-XXXXXX") || exit 1
+  mkdir -p "$UPGRADE_HOME/logs"
+  TC4_SMOKE_UPGRADE=1 TC4_SMOKE_KEEP=0 TC4_SMOKE_HOME="$UPGRADE_HOME" TC4_SMOKE_LOGDIR="$UPGRADE_HOME/logs" zsh "$APPDIR/smoke-installed.zsh" "$APPDIR" || exit 1
+fi
 
 # Runtime writes must not invalidate the installed app's seal (#243).
 if [ -n "$BUNDLE" ]; then

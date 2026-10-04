@@ -16,12 +16,13 @@ import {
   rigRepo,
   writeProjectPins,
   resetPlaces,
+  writePlace,
 } from './helpers/rig';
 
 const PINS = () => ({
-  tn: pinForSideloaded('en_tn', 'v89'),
-  tw: pinForSideloaded('en_tw', 'v89'),
-  ta: pinForSideloaded('en_ta', 'v89'),
+  tn: pinForSideloaded('en_tn', 'v91'),
+  tw: pinForSideloaded('en_tw', 'v91'),
+  ta: pinForSideloaded('en_ta', 'v91'),
 });
 
 /** The seeded project's journal segment files (every actor), newest last. */
@@ -59,6 +60,9 @@ test.describe('J16 — read a passage with helps and record a user comment', () 
       await verifyAllJournaledProjects();
       resetSeededChecking();
       writeProjectPins(SEEDED_PROJECT, PINS());
+      // The switch to Understand below is the checkpoint that commits these pins. With
+      // no place a tile opens in Understand (D87), so the open starts from a Translate place.
+      writePlace(SEEDED_PROJECT, 'TIT', { mode: 'draft', chapter: 1 });
 
       await page.goto('/');
       await page

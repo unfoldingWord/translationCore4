@@ -21,10 +21,9 @@ import ShareDialog from './views/modals/ShareDialog.jsx';
 import CommunityChecking from './views/CommunityChecking.jsx';
 import Understand from './views/Understand.jsx';
 import OpenProgress from './views/OpenProgress.jsx';
-import NetStatus, { NetDialog } from './views/NetStatus.jsx';
+import AccountMenu, { InternetDialog } from './views/AccountMenu.jsx';
 import { AppHeader, Switcher, StatusDot, Button, Callout } from './ds/index.js';
 import { t } from './i18n';
-import { DCS_SERVER_LABEL } from './data/dcsServer';
 
 /** Which failure the indicator's Retry button retries: a story/note save, a
  * checkpoint commit (#183), or the verse save. */
@@ -81,19 +80,6 @@ function SaveIndicator() {
   );
 }
 
-// #120: a development build writes to qa.door43.org; the chrome says so beside
-// the save indicator. On production (a packaged build) nothing renders.
-export function DcsServerLabel() {
-  if (!DCS_SERVER_LABEL) return null;
-  return (
-    <div data-testid="dcs-server-label"
-      style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', fontWeight: 'var(--fw-heavy)', display: 'flex', alignItems: 'center', gap: 6, color: 'rgba(255,255,255,.66)' }}>
-      <StatusDot status="warn" size={8} />
-      {t('app.dcsServer', { host: DCS_SERVER_LABEL })}
-    </div>
-  );
-}
-
 function TopBar() {
   const { s, actions } = useApp();
   const inProject = !!s.project && s.view !== 'home';
@@ -120,17 +106,8 @@ function TopBar() {
       ) : null}
       right={(
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {/* #412: the checking language is a property of the PROJECT (D30.2),
-            * so its Settings open from inside the project too. */}
-          {inProject && (
-            <Button variant="ghost" size="sm" data-testid="project-settings" onClick={() => actions.openSettings(p)}
-              style={{ color: 'var(--text-inverse)' }}>
-              {t('app.projectSettings')}
-            </Button>
-          )}
-          <DcsServerLabel />
-          <NetStatus />
           <SaveIndicator />
+          <AccountMenu />
         </div>
       )}
     />
@@ -160,7 +137,7 @@ export default function App() {
       <GuidedFix />
       <ShareSignIn />
       <ShareDialog />
-      <NetDialog />
+      <InternetDialog />
       <OpenProgress />
       <Inspector />
     </div>

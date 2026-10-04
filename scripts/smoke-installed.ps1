@@ -4,14 +4,15 @@ param(
   [Parameter(Mandatory)][string]$AppDir,
   [string]$SmokeHome = $env:USERPROFILE,
   [string]$LogDir = $env:TEMP,
-  [switch]$KeepProject
+  [switch]$KeepProject,
+  [switch]$UpgradeFixture
 )
 $ErrorActionPreference = 'Stop'
 $AppDir = (Resolve-Path -LiteralPath $AppDir).Path
 $exe = Join-Path $AppDir 'electronite\electron.exe'
 $serverExe = Join-Path $AppDir 'bin\server.exe'
 $main = Join-Path $AppDir 'electron'
-foreach ($file in @($exe, $serverExe, "$AppDir\smoke-api.cjs", "$AppDir\smoke-journal.cjs", "$AppDir\BUILD-MANIFEST.json")) {
+foreach ($file in @($exe, $serverExe, "$AppDir\smoke-api.cjs", "$AppDir\smoke-journal.cjs", "$AppDir\smoke-upgrade.cjs", "$AppDir\BUILD-MANIFEST.json")) {
   if (!(Test-Path -LiteralPath $file -PathType Leaf)) { throw "Missing installed file: $file" }
 }
 $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
@@ -87,6 +88,19 @@ function Run-RealClientSmoke {
     if ($p.ExitCode -ne 0) { throw "real-client OBS smoke failed: $($p.ExitCode)" }
   } finally { Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue }
 }
+function Run-Upgrade([string]$mode) {
+  $env:ELECTRON_RUN_AS_NODE = '1'
+  try {
+    $settingsFile = Join-Path $SmokeHome 'pankosmia\tc4\client_settings\uw-tc4.json'
+    $out = Join-Path $LogDir "upgrade-$mode-$stamp.log"
+    $err = Join-Path $LogDir "upgrade-$mode-$stamp.err"
+    $argsList = @("`"$AppDir\smoke-upgrade.cjs`"", $mode, "http://127.0.0.1:$script:port/api", "`"$store`"", "`"$settingsFile`"", "`"$LogDir`"")
+    $p = Start-Process -FilePath $exe -ArgumentList $argsList -PassThru -Wait -RedirectStandardOutput $out -RedirectStandardError $err
+    Get-Content -LiteralPath $out | Write-Host
+    Get-Content -LiteralPath $err | Write-Host
+    if ($p.ExitCode -ne 0) { throw "bundled upgrade $mode failed: $($p.ExitCode)" }
+  } finally { Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue }
+}
 try {
   # Negative control: refuse to touch a server the smoke did not start.
   $existing = Find-Port
@@ -139,7 +153,9 @@ try {
   $manifest = Get-Content -Raw -LiteralPath "$AppDir\BUILD-MANIFEST.json" | ConvertFrom-Json
   $leaf = if ($manifest.variant -eq 'debug') { 'tc4-projects-debug' } else { 'tc4-projects' }
   $store = Join-Path $SmokeHome "pankosmia\$leaf"
-  if ([IO.Path]::GetFullPath($settings.repo_dir) -ine $store) { throw "Wrong project store: $($settings.repo_dir)" }
+  # Resolve both existing directories: TEMP may use an 8.3 alias (RUNNER~1),
+  # while PowerShell spells the same profile directory with its long name.
+  if ((Resolve-Path -LiteralPath $settings.repo_dir).Path -ine (Resolve-Path -LiteralPath $store).Path) { throw "Wrong project store: $($settings.repo_dir)" }
   Write-Host "ok store: $store"
   Run-Steps source
   Run-Steps obs-image
@@ -150,7 +166,9 @@ try {
   $onDisk = Join-Path $store "$repo/ingredients/TIT.usfm"
   if (!(Get-Content -LiteralPath $onDisk | Where-Object { $_ -ceq "\v 1 $marker" })) { throw 'Written verse missing on disk' }
   $firstServer = $script:serverProcess.Id
+  if ($UpgradeFixture) { Run-Upgrade project }
   Stop-App
+  if ($UpgradeFixture) { Run-Upgrade prepare }
   $settingsFile = Join-Path $SmokeHome 'pankosmia\tc4\user_settings.json'
   $settings = Get-Content -Raw -LiteralPath $settingsFile | ConvertFrom-Json
   $settings.app_resources_dir = (Join-Path $poisonRoot 'lib') + '\'
@@ -168,8 +186,18 @@ try {
   Run-Steps export
   Run-Steps obs-image
   Run-Steps obs-readback
+  if ($UpgradeFixture) { Run-Upgrade verify }
   if (!$KeepProject) { Run-Steps delete }
   Stop-App
+  if (!$UpgradeFixture) {
+    # Keep the disposable profile short: under the CI log directory, the real
+    # journal's segment paths exceeded Windows Git's path limit (#528).
+    $upgradeId = [Guid]::NewGuid().ToString('N')
+    $upgradeHome = Join-Path $oldEnv['TEMP'] ("tc4u-" + $upgradeId.Substring(0, 12))
+    $upgradeLogs = Join-Path $LogDir ("tc4-upgrade-" + $upgradeId)
+    New-Item -ItemType Directory -Force -Path $upgradeLogs | Out-Null
+    & "$AppDir\smoke-installed.ps1" -AppDir $AppDir -SmokeHome $upgradeHome -LogDir $upgradeLogs -UpgradeFixture
+  }
   Write-Host "SMOKE OK: $AppDir under USERPROFILE=$SmokeHome; store $store"
 } finally {
   Stop-App

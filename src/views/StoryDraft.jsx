@@ -20,7 +20,7 @@ import { t } from '../i18n';
 import { resolveObsSetSlot } from '../data/resolve';
 import { RailIcon, HelpsIcon } from './PanelIcons.jsx';
 import StoryRail, { isFrameDrafted } from './StoryRail.jsx';
-import { HelpsPanel } from './HelpsPanel.jsx';
+import { HelpsPanel, HelpsWidenButton } from './HelpsPanel.jsx';
 import { CELL, DraftPill, EditingCard, hair } from './draftChrome.jsx';
 
 /** A rail frame button brings its unit into view, as a chapter button brings its chapter. */
@@ -213,7 +213,7 @@ export default function StoryDraft() {
   // the story, the pins or the network change.
   useEffect(() => {
     actions.loadUnderstand?.();
-  }, [s.storyNumber, s.projectPins, s.projectPinsLoaded, s.netEnabled, s.installEpoch]);
+  }, [s.storyNumber, s.projectPins, s.projectPinsLoaded, s.installEpoch]);
 
   if (s.storyLoading) return <main data-testid="story-draft-loading" style={{ flex: 1, padding: 40 }}>{t('storyDraft.loading')}</main>;
   if (s.storyError) return <main data-testid="story-draft-error" style={{ flex: 1, padding: 40 }}><Callout tone="warn">{s.storyError}</Callout></main>;
@@ -233,6 +233,7 @@ export default function StoryDraft() {
           <IconButton title={t('storyDraft.toggleRail')} data-testid="toggle-story-rail" onClick={actions.toggleRail}><RailIcon /></IconButton>
           <h2 style={{ fontSize: 'var(--fs-title)', letterSpacing: 'var(--track-17)', margin: 0 }}>{t('storyDraft.storyNumber', { n: story.number })}</h2>
           <div style={{ flex: 1 }} />
+          <HelpsWidenButton shown={s.helps} />
           <IconButton title={t('draft.toggleHelps')} data-testid="toggle-story-helps" onClick={actions.toggleHelps}><HelpsIcon /></IconButton>
         </div>
         <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>

@@ -10,8 +10,9 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { HttpStore, StaleWriteError, md5Hex } from '../src/data/httpStore';
 import type { Decision } from '../src/data/burritoStore';
 import type { AlignmentFile } from '../src/data/align/zaln';
+import { lane } from '../e2e/lane.mjs';
 
-const BASE = 'http://127.0.0.1:19998/api';
+const BASE = lane().rigApi;
 const SLOW = 30_000;
 
 const rigUp = await (async (): Promise<boolean> => {
@@ -120,8 +121,8 @@ describe.skipIf(!rigUp)('HttpStore against the live rig', () => {
     const { repoPath } = await store.createProject({
       content_name: `Inc1 HttpStore test ${RUN}`,
       content_abbr: ABBR,
-      // 'es-419' is rejected by the server's BCP47 lookup at creation [VERIFIED live 0.18.5]
-      content_language_code: 'es',
+      // A regional tag is stored whole (PLATFORM-NOTES #43, #461)
+      content_language_code: 'es-419',
       content_language_name: 'Spanish',
       add_book: true,
       book_code: 'TIT',
@@ -143,7 +144,7 @@ describe.skipIf(!rigUp)('HttpStore against the live rig', () => {
     const mine = projects.find((p) => p.id === REPO);
     expect(mine).toBeDefined();
     expect(mine?.name).toBe(`Inc1 HttpStore test ${RUN}`);
-    expect(mine?.languageTag).toBe('es');
+    expect(mine?.languageTag).toBe('es-419');
     expect(mine?.bookCodes).toContain('TIT');
   });
 

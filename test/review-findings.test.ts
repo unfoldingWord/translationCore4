@@ -10,6 +10,7 @@ import { indexBook } from '../src/data/usfm/indexer';
 import { SaveScheduler } from '../src/data/saveScheduler';
 import { INSTALLED_SUITE } from '../src/data/installedSuite';
 import { unwrapExport } from '../src/data/resourceFetch';
+import { lane } from '../e2e/lane.mjs';
 
 const fs = process.getBuiltinModule('node:fs');
 const path = process.getBuiltinModule('node:path');
@@ -71,13 +72,15 @@ describe('B1 — seeding reads mid-line \\v markers (marker stream, not line wal
     // pin the skip names both shas (#406).
     const pin = INSTALLED_SUITE.extraScripture.find((s) => s.id === 'ult');
     if (!pin) throw new Error('INSTALLED_SUITE has no ult pin');
-    // The provenance key, as dev-env/scripts/cache-resource.ts writes it.
+    // The provenance key, as dev-env/scripts/cache-resource.ts writes it (`<repo>`); a cache
+    // that holds several releases of one repo records the others as `<repo>@<tag>` (#504).
     const repo = pin.repoPath.split('/').pop() as string;
     const cacheDir = path.resolve(process.cwd(), 'dev-env', 'resources-cache');
     const provenanceFile = path.join(cacheDir, 'helps-provenance.json');
-    const entry = fs.existsSync(provenanceFile)
-      ? JSON.parse(fs.readFileSync(provenanceFile, 'utf8'))[repo]
-      : undefined;
+    const provenance = fs.existsSync(provenanceFile)
+      ? (JSON.parse(fs.readFileSync(provenanceFile, 'utf8')) as Record<string, { zip: string } | undefined>)
+      : {};
+    const entry = provenance[`${repo}@${pin.version}`] ?? provenance[repo];
     const cache = entry && path.join(cacheDir, entry.zip);
     if (!cache || !fs.existsSync(cache)) {
       console.warn('corpus leg skipped: resources cache absent');
@@ -116,7 +119,7 @@ describe('M3 — splice never glues a body onto a contentless \\v key', () => {
 
 describe('M4 — upsertDecision matches identity key AND quoteString together', () => {
   it('a quote change creates ONE new record; later upserts update it, never append (rig required)', async () => {
-    const probe = await fetch('http://127.0.0.1:19998/api/version').catch(() => null);
+    const probe = await fetch(`${lane().rigApi}/version`).catch(() => null);
     if (!probe?.ok) {
       console.warn('M4 leg skipped: rig not running');
       return;
@@ -128,7 +131,7 @@ describe('M4 — upsertDecision matches identity key AND quoteString together', 
     // with — and the cleanup delete — a real project or a concurrent run.
     const { HttpStore } = await import('../src/data/httpStore');
     const { isNotFoundError } = await import('../src/data/serverApi');
-    const store = new HttpStore({ baseUrl: 'http://127.0.0.1:19998/api' });
+    const store = new HttpStore({ baseUrl: lane().rigApi });
     // The scratch path is computed BEFORE creation so the cleanup scope can
     // delete it on EVERY exit — a rejected create can leave a git-initialized
     // debris repo (PLATFORM-NOTES #28), and a rejected open leaves the created

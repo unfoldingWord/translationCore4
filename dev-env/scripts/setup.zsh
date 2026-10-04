@@ -46,6 +46,6 @@ console.log("patched: repo_dir -> %%WORKINGDIR%%/repos ; local_pankosmia_path ->
 mkdir -p "$DEV/app-resources/product"
 if [ -d "$DEV/app-resources/clients/uw-tc4/build" ]; then HP=uw-tc4; else HP=main; fi
 print -r -- '{ "short_name": "tc4rig", "name": "tC4 dev rig", "version": "0.1.0", "datetime": "2026-07-18T00:00:00Z", "homepage": "'$HP'" }' > "$DEV/app-resources/product/product.json"
-echo "== building pinned server (pankosmia_web 0.18.5 git-rev pin, D27 update)"
+echo "== building pinned server (pankosmia_web 0.18.15 git-rev pin, D27 update)"
 cd "$DEV/server" && cargo build --release
 echo "setup complete"

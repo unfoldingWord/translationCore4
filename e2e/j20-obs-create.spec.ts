@@ -15,8 +15,9 @@ import { listLocalRepos, rigRepo, commitCount, SEEDED_PROJECT } from './helpers/
 import { TC4_ROOT } from './helpers/root';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import { seedStory, parseStory } from '../journal/story.mjs';
+import { lane } from './lane.mjs';
 
-const RIG = 'http://127.0.0.1:19998/api';
+const RIG = lane().rigApi;
 const TEMPLATE = path.join(TC4_ROOT, 'conformance', 'fixtures', 'text_stories');
 
 /** Every file of a tree, keyed by its path relative to `dir`. */

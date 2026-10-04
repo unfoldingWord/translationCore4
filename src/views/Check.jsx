@@ -1165,7 +1165,7 @@ export default function Check() {
 
   React.useEffect(() => {
     actions.runPreflight();
-  }, [s.book, s.projectPins, s.netEnabled, s.tick]);
+  }, [s.book, s.projectPins, s.tick]);
 
   // #136 (D3d): derive the picker cards' progress on demand — on entering
   // the picker and on returning to it (a closed session flips atPicker back
