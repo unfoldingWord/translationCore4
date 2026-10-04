@@ -28,6 +28,12 @@ function isInnermost(token) {
   }
   return false;
 }
+/* tC4 local (#446): every open layer that closes on an outside press. A press
+   on a scrim closes that scrim's layer only when no such layer is open inside
+   it — the same innermost rule as Escape. Without it a press on a dialog's
+   scrim while a dropdown is open in the dialog closes the dropdown (its
+   outside press) AND the dialog (the click on the scrim). */
+const outsideStack = [];
 const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
 /* --dur-panel existed in tokens/motion.css and nothing read it, so panels
@@ -178,6 +184,8 @@ export function Layer({
 
   /* Held in a ref so an inline arrow at the call site — which every call site
      writes — cannot retrigger the effect below and re-register this layer. */
+  /* Set by the press on the scrim, read by its click (see outsideStack). */
+  const scrimPress = React.useRef(true);
   const dismissRef = React.useRef(onDismiss);
   dismissRef.current = onDismiss;
   const wantEscape = has(dismiss, 'escape');
@@ -223,6 +231,12 @@ export function Layer({
       });
     }
     if (wantOutside) {
+      const token = { depth };
+      outsideStack.push(token);
+      cleanups.push(() => {
+        const i = outsideStack.indexOf(token);
+        if (i !== -1) outsideStack.splice(i, 1);
+      });
       const h = e => {
         if (panelRef.current && !panelRef.current.contains(e.target) && dismissRef.current) dismissRef.current('outside');
       };
@@ -323,7 +337,19 @@ export function Layer({
      the way the pre-primitive Modal and Drawer spread their rest props. */
   return portal(
     <div {...scrimProps}
-      onClick={has(dismiss, 'scrim') && onDismiss ? () => dismissRef.current('scrim') : undefined}
+      /* React's root listener runs before the document listener that closes
+         the inner layer, so the inner layer is still in outsideStack here. A
+         press that will not close this layer keeps the focus where it is. */
+      onMouseDown={e => {
+        if (e.target !== e.currentTarget) return; /* a press inside the panel */
+        scrimPress.current = !outsideStack.some(t => t.depth > depth);
+        if (!scrimPress.current) e.preventDefault();
+      }}
+      onClick={has(dismiss, 'scrim') && onDismiss ? () => {
+        const press = scrimPress.current;
+        scrimPress.current = true;
+        if (press) dismissRef.current('scrim');
+      } : undefined}
       style={{
         position: 'fixed', inset: 0, zIndex: z, display: 'flex',
         justifyContent: JUSTIFY[placement] || 'center',
