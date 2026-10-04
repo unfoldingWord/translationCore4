@@ -47,6 +47,7 @@ test.describe('#461 — language tags at project creation (pankosmia-web 0.18.15
     'es-419 stays whole from the OBS wizard and an OBS import; an x- code keeps its name; an invalid code is refused with the reason shown and no repository',
     { tag: ['@J20', '@J9'] },
     async ({ page }, testInfo) => {
+      test.setTimeout(120_000); // five creates and imports; late in a full run each is slower
       const rows: Row[] = [];
       await page.goto('/');
 
