@@ -6,6 +6,9 @@ single-layer download. Issue #181 added Windows x64 (Increment 5). Issue #243
 adds the unsigned Mac installer and app icons (Increment 5.5). Issue #44 retains
 signing, notarization, and the remaining platform installer work.
 [decided 2026-09-10 — owner clarification on #243]
+D89 point 4 supersedes the signing part of that ruling. v4.0.0 ships macOS unsigned and not notarized. Windows is signed only if the #456
+credential works in CI by 2026-10-08; if not, Windows ships unsigned. Linux stays
+an unsigned zip. [decided 2026-10-03 — D89 point 4]
 
 ## What the pipeline does
 
@@ -390,8 +393,8 @@ On a failure the job uploads `dist-desktop/smoke-*.log` as
 ## Windows x64 (#181)
 
 The `windows-x64` job runs the same script on `windows-2025`, under MSYS2's
-`zsh`. Only the host-specific steps differ. Nothing is signed; signing and
-notarization remain #44. Issue #242 adds the Windows installer.
+`zsh`. Only the host-specific steps differ. Nothing is signed. Windows signing
+is #456 (D89 point 4). Issue #242 adds the Windows installer.
 
 ### Artifact layout
 
@@ -498,7 +501,7 @@ checks reinstall/uninstall preserve a project that it wrote through the app.
 
 ### Known limits
 
-- **Unsigned.** Signing remains #44. Security prompts and icon appearance still
+- **Unsigned.** Windows signing is #456 (D89 point 4). Security prompts and icon appearance still
   need a browser-download witness on Windows 11. The earlier Windows 10 zip
   witness does not prove this installer.
 - **CI is Windows Server 2025.** The installed-app job uses a fresh runner and
@@ -789,7 +792,8 @@ Measured locally on 2026-09-12 (macOS arm64, Node 22); the desktop artifact grow
 ## Known limits (start of the pipeline, not the end)
 
 - **Three platforms**: macOS arm64 (#57), Linux x64 (#119) and Windows x64
-  (#181). macOS x64 and signing are #44.
+  (#181). macOS x64 is #44. v4.0.0 ships macOS unsigned; Windows signing is #456
+  (D89 point 4).
 - **Linux is unsigned and un-installed**: the artifact is a plain zip with no
   installer, no desktop entry, and no signature. Most desktops refuse to run
   it from the file manager, so the user must run `start-tc4.sh` from a
@@ -804,7 +808,8 @@ Measured locally on 2026-09-12 (macOS arm64, Node 22); the desktop artifact grow
   check). Picking and proving a client set is issue
   [#71](https://github.com/unfoldingWord/translationCore4/issues/71).
 - **Unsigned Mac installer**: #243 installs a self-contained, ad-hoc-signed app.
-  The pkg itself is unsigned. Developer ID signing and notarization remain #44.
+  The pkg itself is unsigned. v4.0.0 ships without Developer ID signing and
+  notarization (D89 point 4).
   Installer instructions include Open Anyway. A clean macOS 15 Safari-download →
   Installer → Finder witness must record the approval count before #243 closes;
   automated boot/signature checks do not establish that count.
