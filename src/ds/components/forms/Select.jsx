@@ -8,7 +8,7 @@
    system's standard 36px field height. Recorded in ../../README.md. */
 
 import React from 'react';
-import { Field, useField } from '../primitives/Field.jsx';
+import { Field, FieldContext, useField } from '../primitives/Field.jsx';
 import { Layer } from '../primitives/Layer.jsx';
 import { Surface } from '../primitives/Surface.jsx';
 import { Text } from '../primitives/Text.jsx';
@@ -222,6 +222,12 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
     return () => { done = true; timers.forEach(clearTimeout); };
   }, [open, searchable]);
 
+  /* A closed list stays drawn while the Layer animates it out. It is inert in
+     that time, so Tab cannot land in a search field that is about to go. */
+  React.useEffect(() => {
+    if (panelRef.current) panelRef.current.toggleAttribute('inert', !open);
+  }, [open]);
+
   /* The highlighted row is kept in view as the highlight moves. */
   React.useEffect(() => {
     if (!open || !visible[hi] || !panelRef.current) return;
@@ -287,7 +293,10 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
             style={{ width: width || undefined, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             {searchable ? (
               <div style={{ padding: '8px 8px 6px' }} onKeyDown={onKeyDown}>
-                <SearchField value={query} placeholder={searchPlaceholder}
+                {/* Not inside the field's context: the search input takes no id
+                    from it (the id is the field button's) and has its own name. */}
+                <FieldContext.Provider value={null}>
+                <SearchField value={query} placeholder={searchPlaceholder} aria-label={searchPlaceholder}
                   aria-controls={listId} aria-activedescendant={active}
                   onChange={(e) => { setQuery(e.target.value); setHi(0); }}
                   onClear={() => {
@@ -299,6 +308,7 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
                     const input = panelRef.current && panelRef.current.querySelector('input');
                     if (input) input.focus();
                   }} />
+                </FieldContext.Provider>
               </div>
             ) : null}
             <div role="listbox" id={listId} style={{ maxHeight: 340, overflowY: 'auto', padding: '0 6px 6px' }}>

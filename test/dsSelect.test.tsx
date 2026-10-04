@@ -15,10 +15,13 @@
 // 9. A dismiss with no click after it (a right-click) eats the next keyboard click.
 // 10. The list stays open when the focus leaves it, or the close pulls the focus back.
 // 11. Home/End in the search field move the highlight, not the text cursor.
+// 12. A closing list can still take the focus while it animates out.
+// 13. The search input copies the field button's id.
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Select as DsSelect } from '../src/ds/components/forms/Select.jsx';
+import { SCRIPT_FONTS } from '../src/state.jsx';
 
 /* The .jsx component's `options = []` default infers as never[] under tsc;
    the test types the surface it actually uses. */
@@ -30,7 +33,8 @@ type SelectProps = {
 };
 const Select = DsSelect as unknown as React.FC<SelectProps>;
 
-const FONTS = ['Noto Sans (default)', 'Charis SIL', 'Scheherazade New', 'Awami Nastaliq', 'Padauk'];
+/* The app's own font catalogue (AGENTS.md: inputs come from the system). */
+const FONTS: string[] = SCRIPT_FONTS;
 
 /** Ten options with codes and groups — the smallest list that shows search. */
 const TEN = [
@@ -117,7 +121,7 @@ describe('#446 — the design-system dropdown', () => {
     fireEvent.keyDown(b, { key: 'Enter' }); // opens
     fireEvent.keyDown(b, { key: 'p' });     // → Padauk
     fireEvent.keyDown(b, { key: 'Enter' });
-    expect(onChange.mock.calls[0][0]).toEqual({ target: { value: 'Padauk' } });
+    expect(onChange.mock.calls[0][0]).toEqual({ target: { value: 'Padauk — Myanmar' } });
   });
 
   it('never chooses a disabled option, by click or by Enter, and the list stays open', () => {
@@ -302,5 +306,24 @@ describe('#446 — the design-system dropdown', () => {
     // and the highlight did not move: Enter still chooses Job
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(onChange.mock.calls[0][0]).toEqual({ target: { value: 'JOB' } });
+  });
+  it('a closing list is inert while it animates out, so Tab cannot land in it', async () => {
+    render(<Select label="Book" options={TEN} value="GEN" onChange={() => {}} searchPlaceholder="Find a book" />);
+    open();
+    const input = screen.getByPlaceholderText('Find a book');
+    expect(input.closest('[inert]')).toBeNull();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    // still drawn for the exit animation, but out of the focus order
+    expect(screen.getByPlaceholderText('Find a book').closest('[inert]')).not.toBeNull();
+    await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
+  });
+
+  it('the search input has its own name and does not copy the field id', () => {
+    render(<Select label="Book" options={TEN} value="GEN" onChange={() => {}} searchPlaceholder="Find a book" />);
+    open();
+    const id = box().id;
+    expect(id).toBeTruthy();
+    expect(document.querySelectorAll('[id="' + id + '"]')).toHaveLength(1);
+    expect(screen.getByRole('textbox', { name: 'Find a book' }).id).not.toBe(id);
   });
 });
