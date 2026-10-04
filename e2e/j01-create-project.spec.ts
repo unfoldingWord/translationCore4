@@ -7,6 +7,7 @@
 // Pins/preflight/absence-handling UI (FR-3..FR-5) is Increment 5 (@inc5).
 import { test, expect } from './helpers/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
+import { pickOption } from './helpers/dropdown';
 import { listLocalRepos, rigRepo, ingredientExists, commitCount } from './helpers/rig';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -52,7 +53,7 @@ test.describe('J1 — a translator creates a project', () => {
       });
 
       await test.step('pick the book Titus and create it — the new project opens in Understand at chapter 1 (D87)', async () => {
-        await page.getByLabel('Book', { exact: true }).selectOption('TIT');
+        await pickOption(page, 'Book', 'Titus');
         await page.getByRole('button', { name: 'Create book' }).click();
         await expect(page.getByText('Equipo Rig — Tito').first()).toBeVisible({ timeout: 20_000 });
         await expect(page.getByRole('tab', { name: 'Understand', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 20_000 });
