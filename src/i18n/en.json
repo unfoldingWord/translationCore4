@@ -729,6 +729,8 @@
   "helps.questions": "Questions",
   "helps.simplified": "Simplified",
   "helps.comments": "Comments",
+  "helps.widen": "Widen the helps panel",
+  "helps.restore": "Restore the helps panel width",
   "understand.academyLink": "Translation Academy →",
   "understand.wordLink": "Read the article →",
   "understand.verseOne": "Verse {n}",
