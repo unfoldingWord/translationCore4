@@ -308,6 +308,25 @@ grep -q "preload: path.join(__dirname, 'preload.js')" "$PACK/electron/electronSt
   echo "FATAL: the template's Window menu no longer has Reload — re-verify the #435 window reload before building" >&2
   exit 1
 }
+# #206: the template calls stopServer() from both before-quit and will-quit.
+# The first call stops the server; the second kills a pid that is gone and
+# logs "Server Failed to stop" on every quit. Only the first call acts now.
+# Refuse if stopServer() or its two quit callers changed shape.
+node -e '
+const fs = require("fs");
+const p = process.argv[1];
+const s = fs.readFileSync(p, "utf8");
+const from = "function stopServer() {\n  if (serverProcess) {\n";
+const to = "let serverStopAttempted = false;\nfunction stopServer() {\n  if (serverStopAttempted) return;\n  serverStopAttempted = true;\n  if (serverProcess) {\n";
+const once = (t) => s.split(t).length === 2;
+if (![from, "app.on(\x27before-quit\x27", "app.on(\x27will-quit\x27"].every(once)
+    || s.split("stopServer();").length !== 3) {
+  console.error("FATAL: the template stopServer() or its quit callers changed — re-verify the #206 stopServer patch before building");
+  process.exit(1);
+}
+fs.writeFileSync(p, s.replace(from, to));
+console.log("stopServer() acts once per quit (#206)");
+' "$(npath "$PACK/electron/electronStartup.js")"
 cp "$REPO/scripts/preload.cjs" "$PACK/electron/preload.js"
 node --check "$(npath "$PACK/electron/preload.js")"
 node -e "
