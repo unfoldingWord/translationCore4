@@ -165,7 +165,14 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
     else if (e.key === 'ArrowUp') { e.preventDefault(); move(-1); }
     else if (e.key === 'Home') { e.preventDefault(); setHi(0); }
     else if (e.key === 'End') { e.preventDefault(); setHi(Math.max(0, visible.length - 1)); }
-    else if (e.key === 'Enter') { e.preventDefault(); if (visible[hi]) choose(visible[hi]); }
+    else if (e.key === 'Enter') {
+      /* Enter on another button inside the panel (the search field's Clear) is
+         that button's own activation, not a choice of the highlighted row. */
+      const t = e.target;
+      if (t !== buttonRef.current && t instanceof Element && t.closest('button')) return;
+      e.preventDefault();
+      if (visible[hi]) choose(visible[hi]);
+    }
     else if (!searchable && e.key.length === 1 && /\S/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
       jump(e.key);
     }

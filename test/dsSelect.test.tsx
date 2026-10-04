@@ -134,6 +134,29 @@ describe('#446 — the design-system dropdown', () => {
     expect(screen.getByRole('listbox')).toBeTruthy();
   });
 
+  it('Enter on the search Clear button activates Clear, not the highlighted option', () => {
+    const onChange = vi.fn();
+    render(<Select label="Book" options={TEN} value="GEN" onChange={onChange}
+      searchPlaceholder="Find a book" />);
+    open();
+    const input = screen.getByPlaceholderText('Find a book') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'tit' } }); // highlight: enabled Titus
+    const clear = screen.getByRole('button', { name: 'Clear' });
+    // the key is left to the button's own activation (keydown not cancelled) …
+    expect(fireEvent.keyDown(clear, { key: 'Enter' })).toBe(true);
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByRole('listbox')).toBeTruthy();
+    // … which, as a click, empties the filter and leaves the list open
+    fireEvent.click(clear);
+    expect(input.value).toBe('');
+    expect(screen.getAllByRole('option')).toHaveLength(10);
+    expect(onChange).not.toHaveBeenCalled();
+    // Enter in the search input still chooses
+    fireEvent.change(input, { target: { value: 'tit' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onChange.mock.calls[0][0]).toEqual({ target: { value: 'TIT' } });
+  });
+
   it('closes on Escape without changing the value, and focus returns to the field', async () => {
     const onChange = vi.fn();
     render(<Select label="Script font" options={FONTS} value={FONTS[0]} onChange={onChange} />);
