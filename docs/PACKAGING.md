@@ -818,6 +818,18 @@ Measured locally on 2026-09-12 (macOS arm64, Node 22); the desktop artifact grow
   approvals for its launcher, Electron, and server; it is no longer the primary
   Mac pilot path. The valid ad-hoc re-seal introduced for #57 is retained on the
   completed bundle, including an explicitly signed embedded server.
+- **macOS quit: Electron did not exit on SIGTERM two times (#206).** The app
+  stops its server once per quit, and the smoke test sends SIGTERM to Electron
+  only. Each stop must log one `Server stopped.` and no `Failed to stop`. Before
+  #206, the template called `stopServer()` two times on each quit, and the
+  second call logged a false `Failed to stop`. In the macOS smoke jobs of 182
+  `main` runs (2026-08-31 to 2026-09-30), Electron stayed alive for more than
+  10 s after SIGTERM 2 times: run 34058863316 (2026-09-06) and run 35289758439
+  (2026-09-18). In 120 macOS smoke jobs from 2026-09-30 to 2026-10-04, it did
+  not occur. When it occurs, the smoke test sends SIGKILL and reports it. The
+  cause is not known. A possible cause (not verified): a slow native shutdown
+  after `will-quit`, as in
+  [electron/electron#52582](https://github.com/electron/electron/issues/52582).
 - **Shared project store — RESOLVED by #70** (history: the earlier "demo
   seed data" claim was wrong, see the evidence record; the platform default
   `repo_dir` is the shared `$HOME/pankosmia_repos`). The build now pins an
