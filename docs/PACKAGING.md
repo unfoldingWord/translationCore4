@@ -223,6 +223,13 @@ Steps, in order:
    the #70 store guard must pass (see "Project-store isolation").
 8. Re-verify the Mac signature after execution, build the production installer, and zip
    the portable artifact. `--zip` skips the Mac installer; `--debug` builds the debug zip.
+   After the zip is written, the zip guard (#336, `scripts/check-zip-product.zsh`)
+   asserts the artifact itself: exactly one `*/lib/product/product.json` entry at
+   the platform's expected path, byte-equal to the staged file the version guard
+   smoke-checked, with a `datetime` equal to `built_utc` in the zip's own
+   `BUILD-MANIFEST.json` (both are written from one `$DATETIME`, so a mismatch
+   means files from two builds). One `zip guard:` line in the log records the
+   version and datetime the artifact carries.
 
 ## The wrapper is Electronite [VERIFIED — desktop-app-template 4cb7576, 2026-08-14]
 
