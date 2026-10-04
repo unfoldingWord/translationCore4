@@ -253,7 +253,15 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
                 <SearchField value={query} placeholder={searchPlaceholder}
                   aria-controls={listId} aria-activedescendant={active}
                   onChange={(e) => { setQuery(e.target.value); setHi(0); }}
-                  onClear={() => { setQuery(''); setHi(0); }} />
+                  onClear={() => {
+                    setQuery('');
+                    setHi(0);
+                    /* Clear leaves the page with the empty filter. Without this
+                       the focus falls to <body>, and typing and the arrow keys
+                       stop reaching the list. */
+                    const input = panelRef.current && panelRef.current.querySelector('input');
+                    if (input) input.focus();
+                  }} />
               </div>
             ) : null}
             <div role="listbox" id={listId} style={{ maxHeight: 340, overflowY: 'auto', padding: '0 6px 6px' }}>

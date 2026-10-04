@@ -157,6 +157,25 @@ describe('#446 — the design-system dropdown', () => {
     expect(onChange.mock.calls[0][0]).toEqual({ target: { value: 'TIT' } });
   });
 
+  it('clearing the search puts the focus back in the search field, so the keyboard keeps working', () => {
+    const onChange = vi.fn();
+    render(<Select label="Book" options={TEN} value="GEN" onChange={onChange}
+      searchPlaceholder="Find a book" />);
+    open();
+    const input = screen.getByPlaceholderText('Find a book') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'tit' } });
+    const clear = screen.getByRole('button', { name: 'Clear' });
+    clear.focus(); // Tab from the search field
+    fireEvent.click(clear);
+    // Clear leaves with the empty filter; the focus must not fall to <body>
+    expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull();
+    expect(document.activeElement).toBe(input);
+    // arrows and Enter act from where the focus is: Genesis → Exodus
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
+    fireEvent.keyDown(document.activeElement!, { key: 'Enter' });
+    expect(onChange.mock.calls[0][0]).toEqual({ target: { value: 'EXO' } });
+  });
+
   it('closes on Escape without changing the value, and focus returns to the field', async () => {
     const onChange = vi.fn();
     render(<Select label="Script font" options={FONTS} value={FONTS[0]} onChange={onChange} />);
