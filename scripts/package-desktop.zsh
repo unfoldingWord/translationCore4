@@ -87,16 +87,15 @@ for arg in "$@"; do
     *) echo "Unknown argument: $arg (expected --debug or --zip)" >&2; exit 1 ;;
   esac
 done
-if [ "$OS" = macos ]; then
-  # Do not mistake a pilot's already-running app for this build's smoke server.
-  # In particular, the existing app can hold Electron's native singleton lock.
-  for smoke_port in {19119..19139}; do
-    if "$CURL" -s --max-time 1 "http://127.0.0.1:$smoke_port/api/version" | grep -q '"product_short_name":"tc4"'; then
-      echo "FAIL precondition: quit the running tC4 app (port $smoke_port) before packaging smoke." >&2
-      exit 1
-    fi
-  done
-fi
+# Do not mistake a pilot's already-running app for this build's smoke server,
+# on every build host (#335). In particular, the existing app can hold
+# Electron's native singleton lock.
+for smoke_port in {19119..19139}; do
+  if "$CURL" -s --max-time 1 "http://127.0.0.1:$smoke_port/api/version" | grep -q '"product_short_name":"tc4"'; then
+    echo "FAIL precondition: quit the running tC4 app (port $smoke_port) before packaging smoke." >&2
+    exit 1
+  fi
+done
 if [ "$VARIANT" = "debug" ]; then
   STORE_LEAF="pankosmia/tc4-projects-debug"   # separate debug-only store
 else
