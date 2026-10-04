@@ -19,6 +19,8 @@ import { SearchField } from './SearchField.jsx';
    66-book lists get the search field, the 5-font and ~3-license lists do not. */
 const SEARCH_AT = 10;
 
+const MODIFIERS = ['Shift', 'Control', 'Alt', 'Meta'];
+
 const norm = (o) => (typeof o === 'string' ? { value: o, label: o } : o);
 
 /* Name contains the query, or the option's code starts with it — the two ways
@@ -83,7 +85,9 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
      the outside MOUSEDOWN, so the CLICK that follows would still land there
      (and a scrim click would take the whole dialog down with the list). The
      dismiss marks that press and this capture listener consumes its click.
-     A new mousedown clears a mark whose click never fired (a long drag). */
+     A new mousedown clears a mark whose click never fired (a long drag, a
+     right-click), and so does a keydown: a click that Enter or Space makes
+     comes after its keydown and is not part of the dismissing press. */
   const swallowClick = React.useRef(false);
 
   const opts = React.useMemo(() => options.map(norm), [options]);
@@ -119,12 +123,23 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
     if (buttonRef.current) setWidth(buttonRef.current.getBoundingClientRect().width);
     setOpen(true);
   };
-  const close = () => setOpen(false);
+  /* The field takes the focus back after a choice or Esc. A close because the
+     focus left (Tab) or because of a press outside leaves the focus there, so
+     the Layer does not restore it. */
+  const close = (refocus) => {
+    if (refocus && buttonRef.current) buttonRef.current.focus();
+    setOpen(false);
+  };
+  const onFocusOut = (e) => {
+    const to = e.relatedTarget;
+    if (!open || to === buttonRef.current || (to && panelRef.current && panelRef.current.contains(to))) return;
+    close();
+  };
 
   const choose = (o) => {
     if (o.disabled) return;
     onChange && onChange({ target: { value: o.value } });
-    close();
+    close(true);
   };
 
   const move = (delta) => setHi((i) => Math.max(0, Math.min(visible.length - 1, i + delta)));
@@ -145,9 +160,14 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
       e.preventDefault();
     };
     const arm = () => { swallowClick.current = false; };
+    /* A modifier held through the outside click repeats its keydown (Windows),
+       and that must not let the click through. */
+    const armKey = (e) => { if (!MODIFIERS.includes(e.key)) arm(); };
     document.addEventListener('click', eat, true);
     document.addEventListener('mousedown', arm, true);
+    document.addEventListener('keydown', armKey, true);
     return () => {
+      document.removeEventListener('keydown', armKey, true);
       document.removeEventListener('click', eat, true);
       document.removeEventListener('mousedown', arm, true);
     };
@@ -161,10 +181,12 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
       }
       return;
     }
+    const inSearch = e.target instanceof HTMLInputElement;
     if (e.key === 'ArrowDown') { e.preventDefault(); move(1); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); move(-1); }
-    else if (e.key === 'Home') { e.preventDefault(); setHi(0); }
-    else if (e.key === 'End') { e.preventDefault(); setHi(Math.max(0, visible.length - 1)); }
+    /* In the search field, Home and End move the text cursor. */
+    else if (e.key === 'Home' && !inSearch) { e.preventDefault(); setHi(0); }
+    else if (e.key === 'End' && !inSearch) { e.preventDefault(); setHi(Math.max(0, visible.length - 1)); }
     else if (e.key === 'Enter') {
       /* Enter on another button inside the panel (the search field's Clear) is
          that button's own activation, not a choice of the highlighted row. */
@@ -217,6 +239,7 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
         aria-activedescendant={searchable ? undefined : active}
         onClick={() => { if (!open) openList(); }}
         onKeyDown={onKeyDown}
+        onBlur={onFocusOut}
         onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
         {...rest}
         style={{
@@ -244,8 +267,22 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
 
       <Layer open={open} level="popover" placement="anchor" anchorTo={buttonRef}
         offset={6} align="start" dismiss="outside escape"
-        onDismiss={(why) => { if (why === 'outside') swallowClick.current = true; close(); }}>
-        <div ref={panelRef}>
+        restoreFocus={false}
+        onDismiss={(why) => {
+          if (why === 'outside') {
+            swallowClick.current = true;
+            /* A press on something that takes no focus (the scrim) leaves it on
+               <body>, outside the dialog's trap: give it back to the field. */
+            setTimeout(() => {
+              if ((!document.activeElement || document.activeElement === document.body) && buttonRef.current) buttonRef.current.focus();
+            }, 0);
+          }
+          close(why === 'escape');
+        }}>
+        {/* A press on a row or a header keeps the focus where it is (the field
+            or the search), so it does not count as the focus leaving. */}
+        <div ref={panelRef} onBlur={onFocusOut}
+          onMouseDown={(e) => { if (!(e.target instanceof Element && e.target.closest('input, button'))) e.preventDefault(); }}>
           <Surface fill="card" border="line" radius="lg" elevation="hover"
             style={{ width: width || undefined, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             {searchable ? (

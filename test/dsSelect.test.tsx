@@ -12,6 +12,9 @@
 // 6. Enter/Esc leave the list open, or focus does not return to the field.
 // 7. onChange delivers something other than { target: { value } }.
 // 8. Group headers miss, or their counts do not follow the filter.
+// 9. A dismiss with no click after it (a right-click) eats the next keyboard click.
+// 10. The list stays open when the focus leaves it, or the close pulls the focus back.
+// 11. Home/End in the search field move the highlight, not the text cursor.
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -124,6 +127,8 @@ describe('#446 — the design-system dropdown', () => {
     open();
     const jonah = screen.getByRole('option', { name: /Jonah/ });
     expect(jonah.getAttribute('aria-disabled')).toBe('true');
+    // a press on a row keeps the focus where it is, so the list does not close
+    expect(fireEvent.mouseDown(jonah)).toBe(false);
     fireEvent.click(jonah);
     expect(onChange).not.toHaveBeenCalled();
     expect(screen.getByRole('listbox')).toBeTruthy();
@@ -222,5 +227,80 @@ describe('#446 — the design-system dropdown', () => {
     expect(onChange.mock.calls[0][0]).toEqual({ target: { value: 'Charis SIL' } });
     await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
     await waitFor(() => expect(document.activeElement).toBe(box('Script font')));
+  });
+  it('a dismiss with no click after it does not eat the next keyboard click', async () => {
+    const outside = vi.fn();
+    render(
+      <div>
+        <button onClick={outside}>Create book</button>
+        <Select label="Script font" options={FONTS} value={FONTS[0]} onChange={() => {}} />
+      </div>,
+    );
+    fireEvent.click(box('Script font'));
+    screen.getByRole('listbox');
+    const create = screen.getByRole('button', { name: 'Create book' });
+    // a held modifier repeats its keydown; that must not clear the mark of a real press
+    fireEvent.mouseDown(create);
+    fireEvent.keyDown(create, { key: 'Shift' });
+    fireEvent.click(create);
+    expect(outside).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
+    fireEvent.click(box('Script font'));
+    screen.getByRole('listbox');
+    // a right-click closes the list and sends contextmenu, not click
+    fireEvent.mouseDown(create, { button: 2 });
+    await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
+    // Enter on a button: keydown, then the click the browser makes from it
+    fireEvent.keyDown(create, { key: 'Enter' });
+    fireEvent.click(create);
+    expect(outside).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes when the focus leaves the field, and leaves the focus where it went', async () => {
+    render(
+      <div>
+        <Select label="Script font" options={FONTS} value={FONTS[0]} onChange={() => {}} />
+        <input aria-label="Next" />
+      </div>,
+    );
+    const b = box('Script font');
+    b.focus();
+    fireEvent.keyDown(b, { key: 'Enter' });
+    screen.getByRole('listbox');
+    const next = screen.getByRole('textbox', { name: 'Next' });
+    next.focus(); // Tab
+    await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
+    expect(document.activeElement).toBe(next);
+  });
+
+  it('closes when the focus leaves the search field, and leaves the focus where it went', async () => {
+    render(
+      <div>
+        <Select label="Book" options={TEN} value="GEN" onChange={() => {}} searchPlaceholder="Find a book" />
+        <input aria-label="Next" />
+      </div>,
+    );
+    open();
+    const input = screen.getByPlaceholderText('Find a book');
+    input.focus();
+    const next = screen.getByRole('textbox', { name: 'Next' });
+    next.focus(); // Tab out of the panel
+    await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
+    expect(document.activeElement).toBe(next);
+  });
+
+  it('Home and End in the search field are left to the text cursor', () => {
+    const onChange = vi.fn();
+    render(<Select label="Book" options={TEN} value="GEN" onChange={onChange} searchPlaceholder="Find a book" />);
+    open();
+    const input = screen.getByPlaceholderText('Find a book');
+    fireEvent.change(input, { target: { value: 'jo' } });
+    fireEvent.keyDown(input, { key: 'ArrowDown' }); // highlight: Job
+    // not cancelled: the browser moves the cursor
+    expect(fireEvent.keyDown(input, { key: 'Home' })).toBe(true);
+    expect(fireEvent.keyDown(input, { key: 'End' })).toBe(true);
+    // and the highlight did not move: Enter still chooses Job
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onChange.mock.calls[0][0]).toEqual({ target: { value: 'JOB' } });
   });
 });
