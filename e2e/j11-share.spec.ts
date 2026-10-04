@@ -693,6 +693,48 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       expect(filesHolding(RIG_STATE, keychain.held!)).toEqual([]);
     });
 
+    test('2d. a kept token Door43 refuses when the upload is sent: nothing is pushed, the token is forgotten, the sign-in step opens, and the new sign-in returns to the review; the upload waits for its own click (#530; #366 test 5)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
+      // The fake knows no token, so the kept one is revoked (the upload leg of case 7d).
+      const fake = await fakeShare(context, remote);
+      const keychain = await fakeKeychain(context, 'revoked-token');
+      const pushes = watchPushes(page);
+      addOrigin(SEEDED_PROJECT, remote);
+      await page.reload();
+      await expectCleanCard(page, SEEDED_ID);
+
+      // The dialog opens on the kept sign-in, and sends nothing.
+      await page.getByTestId(`share-${SEEDED_ID}`).click();
+      await expect(page.getByTestId('share-upload')).toBeVisible();
+      await expect(page.getByTestId('share-account')).toHaveText(KEPT);
+      await page.waitForTimeout(500);
+      expect(fake.calls, 'no Door43 request when the dialog opens').toEqual([]);
+
+      // Upload changes: Door43 refuses the token. The app forgets it and asks the password.
+      await page.getByTestId('share-submit').click();
+      await expect(page.getByTestId('share-signin')).toBeVisible();
+      await expect(page.getByTestId('share-dialog')).toHaveCount(0);
+      expect(fake.calls.map((c) => `${c.method} ${c.url}`)).toEqual([`GET ${QA_SERVER}/api/v1/user`]);
+      expect(keychain.calls.filter((c) => c !== 'read')).toEqual(['forget']);
+      expect(keychain.held).toBeNull();
+      await expect(page.getByLabel('Password', { exact: true })).toHaveValue('');
+      expect(pushes.length, 'the refused sign-in pushed nothing').toBe(0);
+      expect(remote.main()).toBeNull();
+
+      // The new sign-in returns to the review, with the account named. Nothing is uploaded yet.
+      await signIn(page);
+      await expect(page.getByTestId('share-upload')).toBeVisible();
+      await expect(page.getByTestId('share-account')).toHaveText(SHARING_AS);
+      await page.waitForTimeout(500);
+      expect(pushes.length, 'the sign-in does not upload by itself').toBe(0);
+      expect(remote.main()).toBeNull();
+
+      // Upload changes, pressed by the user, pushes.
+      await page.getByTestId('share-submit').click();
+      await expect(page.getByTestId('share-done')).toBeVisible({ timeout: 30_000 });
+      expect(pushes.length).toBe(1);
+      expect(remote.main()).toBe(head(SEEDED_PROJECT));
+    });
+
     test('2c. a token kept by an earlier version without the create scopes: the share asks the password once, says why, replaces the token, and shares (#467)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
       const OLD = 'kept-before-467';
       const fake = await fakeShare(context, remote, { tokens: [OLD], tokenScopes: { [OLD]: ['write:repository', 'read:organization', 'read:user'] } });
