@@ -1,6 +1,6 @@
 # The rig job (L-1b of #154, D67). The `verify` job in ci.yml runs `npm run prove` on a
 # clean clone, where every rig-gated suite skips. This job builds the pinned Pankosmia
-# server (dev-env/server, pankosmia-web 0.18.5 at 99fd9be), assembles the rig from the
+# server (dev-env/server, pankosmia-web 0.18.15 at a83725b), assembles the rig from the
 # pinned upstream inputs (dev-env/scripts/setup-from-pins.zsh), seeds it, starts it on
 # 127.0.0.1:19998, and runs `prove` with RIG_REPOS set, so validate:transport,
 # validate:roundtrip and the *.integration vitest files execute. The manifest is
@@ -25,7 +25,7 @@
 #
 # ⛔ The job talks only to the rig it started. Never a pankosmia remote, token, or
 # upstream trigger. The clones in setup-from-pins.zsh are read-only, at pinned commits.
-# The rig resources fetched from outside GitHub are the pinned en_ult v89 export and the
+# The rig resources fetched from outside GitHub are the pinned en_ult v91 export and the
 # pinned uW/obs_images_360 commit archive from git.door43.org, read through the app's own
 # fetch path (dev-env/scripts/cache-resource.zsh) and cached. (apt, npm and cargo dependencies download as in every other workflow.)
 name: rig
@@ -42,6 +42,12 @@ on:
         type: boolean
         default: false
 
+# A new push to a branch or pull request cancels the older run of this workflow on that
+# ref. Runs on `main` are never cancelled: each run on `main` has its own group.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   rig:
     runs-on: ubuntu-24.04
@@ -50,8 +56,8 @@ jobs:
       RIG_API: http://127.0.0.1:19998/api
       # The pinned English source text the HttpStore integration suite reads
       # (test/httpStore.integration.test.ts, test 6). Pin from src/data/installedSuite.js.
-      EN_ULT_TAG: v89
-      EN_ULT_SHA: 84c73ba00fc8a95a9033f9efb14bb905a2a52ee4
+      EN_ULT_TAG: v91
+      EN_ULT_SHA: 35d215957f3203fd2e2fac5702ce14902d417f9d
       # The default OBS picture pack (#288, D75): a sha-only pin, fetched as the commit
       # archive. seed.zsh installs it at its identity-qualified path so the story
       # picture suite (test/obsImages.integration.test.ts) runs. Pin from src/data/obsImages.ts.
@@ -79,7 +85,10 @@ jobs:
         working-directory: conformance
 
       - name: Rust toolchain
-        run: rustup toolchain install stable --profile minimal
+        id: rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          echo "rustc=$(rustc -V | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
       - name: Cache cargo
         uses: actions/cache@v6
         with:
@@ -88,7 +97,10 @@ jobs:
             ~/.cargo/git
             dev-env/server/target
           # Same key as package-desktop.yml: it is the same server build.
-          key: cargo-package-desktop-${{ runner.os }}-${{ hashFiles('dev-env/server/Cargo.lock', 'dev-env/server/Cargo.toml') }}
+          # The key names the rustc version. Build output from a different rustc is not
+          # reused, and a key that hits is never saved again (2026-10-03: `stable` moved
+          # to 1.99.0, and every run compiled all crates from a cache of 2026-09-11).
+          key: cargo-package-desktop-${{ runner.os }}-rustc-${{ steps.rust.outputs.rustc }}-${{ hashFiles('dev-env/server/Cargo.lock', 'dev-env/server/Cargo.toml') }}
 
       - name: Build the client (registered as /clients/uw-tc4)
         run: npm run build

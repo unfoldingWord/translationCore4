@@ -203,9 +203,10 @@ const toProjectSummary = (repoPath: string, summary: RepoSummary): ProjectSummar
   // books of the project: an OBS project has stories, never books.
   bookCodes: summary.flavor === 'textStories' ? [] : sortCanonical(summary.book_codes),
   // The platform's `timestamp` is the SCAN time — identical for every repo, so it
-  // cannot order writes [VERIFIED live 2026-07-31]; `generated_date` is the
-  // project's creation date. Home orders by most-recently-USED — the
-  // client-settings lastUsed record wins over this creation fallback.
+  // cannot order writes [VERIFIED live 2026-07-31]; `generated_date` is
+  // `meta.dateCreated`, which each commit rewrites from 0.18.10, so it is the
+  // time of the last commit (PLATFORM-NOTES #48). Home orders by most-recently-USED —
+  // the client-settings lastUsed record wins over this fallback.
   timestamp: Date.parse(summary.generated_date) || 0,
 });
 

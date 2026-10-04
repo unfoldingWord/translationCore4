@@ -7,7 +7,7 @@
 // (tC3 #21, USFM #195, Scripture Burrito #196, damaged input #41) add their own.
 import type { Page } from '@playwright/test';
 import { test, expect } from './helpers/test';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,9 +17,11 @@ import addFormats from 'ajv-formats';
 import { checkBurrito, compileSbValidator } from '../src/data/import/burritoCheck.mjs';
 import { captureDownload } from './helpers/export';
 import { importFixture } from './helpers/import';
+import { pickOption } from './helpers/dropdown';
 import { assertNoRepoCreated, MANIFEST_DIR, readManifest, seedEventsOf, TC3_DCS_TAGS } from '../test/helpers/import';
 import { SEEDED_PROJECT, lastCommitMessage, readDecisionFile, readProjectPins, rigRepo } from './helpers/rig';
-import { useInternet } from './helpers/door43Share';
+import { askInternet } from './helpers/door43Share';
+import { recordExternal } from './helpers/externalRequests';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CONFORMANCE = path.resolve(HERE, '..', 'conformance');
@@ -39,6 +41,18 @@ const tree = (dir: string): Map<string, Buffer> => {
   };
   walk(dir);
   return out;
+};
+
+/** metadata.json without the fields each server commit rewrites (PLATFORM-NOTES #48,
+ * D90): `meta.dateCreated`, the primary `revision` and `timestamp`, and the ingredient
+ * roles. The import commits, so these are the only metadata fields that may differ. */
+const withoutCommitFields = (bytes: Buffer | Uint8Array) => {
+  const meta = JSON.parse(Buffer.from(bytes).toString('utf8'));
+  delete meta.meta.dateCreated;
+  for (const org of Object.values(meta.identification.primary ?? {}) as Array<Record<string, Record<string, unknown>>>)
+    for (const entry of Object.values(org)) { delete entry.revision; delete entry.timestamp; }
+  for (const entry of Object.values(meta.ingredients ?? {}) as Array<Record<string, unknown>>) delete entry.role;
+  return meta;
 };
 
 /** A name no earlier run left on the rig: the shell refuses an existing folder. */
@@ -86,26 +100,30 @@ test.describe('J9 — a facilitator imports existing work', () => {
     });
 
     for (const entry of readManifest().filter((e) => e.parser === 'fake' && e.expect === 'accept')) {
-      test(`manifest ${JSON.stringify(entry.file)}: a Scripture Burrito is stored as it is — byte for byte, ${entry.language} kept, the harness passes`, { tag: ['@inc8', '@J9'] }, async ({ page }) => {
+      test(`manifest ${JSON.stringify(entry.file)}: a Scripture Burrito is stored as it is — byte for byte but the commit's metadata fields, ${entry.language} kept, the harness passes`, { tag: ['@inc8', '@J9'] }, async ({ page }) => {
         const name = fresh('Muestra');
         const source = path.resolve(MANIFEST_DIR, entry.file as string);
         await importFixture(page, source, { edits: { name } });
         await expect(page.getByTestId('import-toast')).toBeVisible();
         const repo = rigRepo(abbrOf(name));
-        await test.step('every file of the archive is byte-identical in the new project (remake strips .gitignore by design)', async () => {
+        await test.step('every file of the archive is byte-identical in the new project, metadata.json but the fields the commit rewrites (remake strips .gitignore by design)', async () => {
           const stored = tree(repo);
           for (const [rel, bytes] of tree(source)) {
             if (rel === '.gitignore') continue;
-            expect(stored.get(rel)?.equals(bytes), rel).toBe(true);
+            if (rel === 'metadata.json') expect(withoutCommitFields(stored.get(rel)!), rel).toEqual(withoutCommitFields(bytes));
+            else expect(stored.get(rel)?.equals(bytes), rel).toBe(true);
           }
           expect(JSON.parse(stored.get('metadata.json')!.toString('utf8')).languages[0].tag).toBe(entry.language);
           for (const [book, chapters] of Object.entries(entry.counts?.chapters ?? {}))
             expect(stored.get(`ingredients/${book}.usfm`)!.toString('utf8').match(/^\\c \d+/gm)?.length).toBe(chapters);
           expect(git(repo, 'status', '--porcelain')).toBe('');
         });
-        await test.step('the conformance harness passes on the stored project', async () => {
-          const out = execFileSync('node', ['validate.mjs'], { cwd: CONFORMANCE, env: { ...process.env, BURRITO: repo }, encoding: 'utf8' });
-          expect(out).toMatch(/\n\d+ passed, 0 failed\n?$/);
+        await test.step('the conformance harness passes on the stored project, Stage-2 aside (the import commit drops the x- roles: D28, D90 point 6)', async () => {
+          // The harness exits non-zero on any failed check, Stage-2 included, so read its summary lines.
+          const out = spawnSync('node', ['validate.mjs'], { cwd: CONFORMANCE, env: { ...process.env, BURRITO: repo }, encoding: 'utf8' }).stdout;
+          const groups = out.split('\n').filter((line) => /^(Stage-1|Stage-2|Phase-2|OBS) /.test(line));
+          expect(groups.some((line) => line.startsWith('Stage-1 '))).toBe(true);
+          for (const line of groups.filter((l) => !l.startsWith('Stage-2 '))) expect(line).toMatch(/: \d+ passed, 0 failed$/);
         });
       });
     }
@@ -145,13 +163,19 @@ test.describe('J9 — a facilitator imports existing work', () => {
     const TIT = path.join(MANIFEST_DIR, 'tc3', 'cfm_fbt_tit_book.zip');
     const MULTI = ['jhn', 'job', 'luk'].map((b) => path.join(MANIFEST_DIR, 'tc3', 'multi', `en_kjv_${b}_book.zip`));
     const EN_TN_V87 = TC3_DCS_TAGS['git.door43.org/unfoldingWord/en_tn@v87'];
-    // D86: the stored choice and the gate together, as the app leaves them, so a reload keeps it.
-    const setNet = (on: boolean) => useInternet(on);
+    // D88: "Ask before using the internet" as the app leaves it, so a reload keeps it:
+    // `setNet(true)` is the preference off, `setNet(false)` is on.
+    const setNet = (online: boolean) => askInternet(!online);
+    // D88: the review never looks up versions on its own; with ask off, this press is the whole task.
+    const lookUp = (page: Page) => page.getByTestId('import-allow-internet').click();
     const onDisk = (repo: string) => [...tree(path.join(repo, 'ingredients'))].map(([rel, bytes]) => [rel, bytes.toString('utf8')] as [string, string]);
     /** Every repo pin of a resources.json carries its 40-hex sha (D58). */
     const everyPinHasSha = (text: string) => (text.match(/"repoPath"/g) ?? []).length === (text.match(/"sha": "[0-9a-f]{40}"/g) ?? []).length;
     test.afterEach(async () => {
       await setNet(true);
+    });
+    test.afterAll(async () => {
+      await askInternet(true);
     });
     /** The DCS tags listing, answered from the recorded tags (TC3_DCS_TAGS) so the journeys do not depend on the network. */
     const recordedDcsTags = (page: Page) =>
@@ -164,9 +188,10 @@ test.describe('J9 — a facilitator imports existing work', () => {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(tags) });
       });
 
-    test('tC3 offline: the review page shows what carries over; Use installed versions moves the decisions (D36); one new project that opens in Translate', { tag: ['@inc8', '@J9'] }, async ({ page }) => {
+    test('tC3 offline: the review page shows what carries over; Use installed versions moves the decisions (D36); one new project that opens in Understand (D87)', { tag: ['@inc8', '@J9'] }, async ({ page }, testInfo) => {
       test.setTimeout(180_000);
       await setNet(false);
+      const requests = recordExternal(page);
       const name = fresh('Tita tC3');
       const repo = rigRepo(abbrOf(name));
       await test.step('the review page: 46 verses, 0 aligned verses, 5 decisions, 0 contributors, the license from manifest.json', async () => {
@@ -204,22 +229,38 @@ test.describe('J9 — a facilitator imports existing work', () => {
         expect(lastCommitMessage(abbrOf(name))).toBe(`Import ${name} (tC4)`);
         expect(git(repo, 'status', '--porcelain')).toBe('');
       });
-      await test.step('the new project opens in Translate at Titus with the imported text', async () => {
+      await test.step('D88: the whole import, with asking on, made no external request', async () => {
+        expect(requests.external()).toEqual([]);
+        await requests.save(testInfo, 'j9-tc3-offline-requests');
+      });
+      await test.step('the new project opens in Understand at Titus (D87); Translate shows the imported text', async () => {
         await page.goto('/');
         await page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`).getByRole('button', { name: /Titus/ }).click();
         await expect(page.getByRole('heading', { name: /^Titus \d+$/ })).toBeVisible({ timeout: 120_000 });
+        await expect(page.getByRole('tab', { name: 'Understand', exact: true })).toHaveAttribute('aria-selected', 'true');
+        await page.getByRole('tab', { name: 'Translate', exact: true }).click();
         await expect(page.getByText(/Pathian hril mipawlih zumnak/).first()).toBeVisible({ timeout: 60_000 });
         await expect(page.getByTestId('home-open-error')).toHaveCount(0);
       });
     });
 
-    test('tC3 online: each version DCS has is a full pin; the project opens and the guided fix lists the en_tn v87 this computer lacks', { tag: ['@inc8', '@J9'] }, async ({ page }) => {
+    test('tC3 online: each version DCS has is a full pin; the project opens and the guided fix lists the en_tn v87 this computer lacks', { tag: ['@inc8', '@J9'] }, async ({ page }, testInfo) => {
       test.setTimeout(180_000);
+      await setNet(true);
+      await page.reload();
       await recordedDcsTags(page);
       const name = fresh('Tita tC3 online');
       const repo = rigRepo(abbrOf(name));
-      await test.step('the review page finds the versions; Import needs no choice', async () => {
+      await test.step('with asking off, the import up to its review page sends nothing (D88): the lookup waits for its click', async () => {
+        const requests = recordExternal(page);
         await importFixture(page, TIT, { kind: 'tc3', edits: { name }, confirm: false });
+        await expect(page.getByTestId('import-resources')).toHaveAttribute('data-state', 'offline');
+        await page.waitForTimeout(2_000);
+        expect(requests.external()).toEqual([]);
+        await requests.save(testInfo, 'j9-tc3-ask-off-requests');
+      });
+      await test.step('the review page finds the versions; Import needs no choice', async () => {
+        await lookUp(page);
         await expect(page.getByTestId('import-resources')).toHaveAttribute('data-state', 'found');
         await expect(page.getByTestId('import-resources')).toContainText('unfoldingWord/en_tn v87');
         await page.getByTestId('import-run').click();
@@ -237,7 +278,8 @@ test.describe('J9 — a facilitator imports existing work', () => {
         await page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`).getByRole('button', { name: /Titus/ }).click();
         await page.getByRole('tab', { name: 'Check', exact: true }).click();
         const card = page.getByTestId('preflight-translationNotes');
-        await expect(card).toHaveAttribute('data-state', 'unavailable', { timeout: 60_000 });
+        // D88: a missing pin is always a fetch; there is no separate offline state.
+        await expect(card).toHaveAttribute('data-state', 'fetch', { timeout: 60_000 });
         await card.getByTestId('fix-translationNotes').click();
         const screen = page.getByTestId('guided-fix');
         await expect(screen).toBeVisible();
@@ -247,10 +289,13 @@ test.describe('J9 — a facilitator imports existing work', () => {
 
     test('tC3 online, mixed: the found pins stay named when translationWords moves to the installed versions, and they are stored', { tag: ['@inc8', '@J9'] }, async ({ page }) => {
       test.setTimeout(300_000);
+      await setNet(true);
+      await page.reload();
       await recordedDcsTags(page);
       const name = fresh('KJV tC3 mixed');
       await importFixture(page, MULTI, { kind: 'tc3', edits: { name }, confirm: false });
       const row = page.getByTestId('import-resources');
+      await lookUp(page);
       await expect(row).toHaveAttribute('data-state', 'missing');
       // LUK names en_tn v87 and ugnt v0.34 (found); its translationWords decisions name no version
       await expect(row).toContainText('unfoldingWord/en_tn v87');
@@ -259,7 +304,7 @@ test.describe('J9 — a facilitator imports existing work', () => {
       await expect(row).toHaveAttribute('data-state', 'installed', { timeout: 60_000 });
       await expect(row).toContainText('unfoldingWord/en_tn v87');
       await expect(row).toContainText('The versions on this computer will be used for translationWords.');
-      await page.getByTestId('import-license').selectOption({ label: 'CC BY-SA 4.0' });
+      await pickOption(page, page.getByTestId('import-license'), 'CC BY-SA 4.0');
       await page.getByTestId('import-run').click();
       await expect(page.getByTestId('import-toast')).toBeVisible({ timeout: 240_000 });
       const pins = readProjectPins(abbrOf(name));
@@ -280,7 +325,7 @@ test.describe('J9 — a facilitator imports existing work', () => {
       await expect(page.getByTestId('import-resources')).toHaveAttribute('data-state', 'installed', { timeout: 60_000 });
       // the files disagree (CC BY-SA 4.0, CC0 1.0): Import waits for the choice
       await expect(page.getByTestId('import-run')).toBeDisabled();
-      await page.getByTestId('import-license').selectOption({ label: 'CC0 1.0 Public Domain' });
+      await pickOption(page, page.getByTestId('import-license'), 'CC0 1.0 Public Domain');
       await page.getByTestId('import-run').click();
       await expect(page.getByTestId('import-toast')).toBeVisible({ timeout: 240_000 });
       const meta = JSON.parse(fs.readFileSync(path.join(repo, 'metadata.json'), 'utf8'));
@@ -292,7 +337,7 @@ test.describe('J9 — a facilitator imports existing work', () => {
 
     test('tC3 name clash: a Bible name of a project on this computer is flagged on the review page and Import stays off; a stale review still writes nothing (#436)', { tag: ['@inc8', '@J9'] }, async ({ page }, testInfo) => {
       test.setTimeout(180_000);
-      await setNet(true); // a fresh rig can start offline: the versions must be found, so only the name holds Import
+      await setNet(true); // ask off: the versions must be found, so only the name holds Import
       await page.reload();
       await recordedDcsTags(page);
       const existing = rigRepo(SEEDED_PROJECT);
@@ -305,6 +350,7 @@ test.describe('J9 — a facilitator imports existing work', () => {
       await assertNoRepoCreated(async () => {
         await test.step(`the name "${SEEDED_PROJECT}" (the seeded project's folder): the name-exists message beside Bible name, Import off`, async () => {
           await importFixture(page, TIT, { kind: 'tc3', edits: { name: SEEDED_PROJECT }, confirm: false });
+          await lookUp(page);
           await expect(page.getByTestId('import-resources')).toHaveAttribute('data-state', 'found');
           await expect(field.getByRole('alert')).toHaveText(message);
           await expect(run).toBeDisabled();
@@ -322,6 +368,7 @@ test.describe('J9 — a facilitator imports existing work', () => {
           await page.route('**/api/git/list-local-repos', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
           await importFixture(page, TIT, { kind: 'tc3', edits: { name: SEEDED_PROJECT }, confirm: false });
           await page.unroute('**/api/git/list-local-repos');
+          await lookUp(page);
           await expect(page.getByTestId('import-resources')).toHaveAttribute('data-state', 'found');
           await expect(field.getByRole('alert')).toHaveCount(0);
           seen.staleReview = await read();
@@ -345,7 +392,7 @@ test.describe('J9 — a facilitator imports existing work', () => {
   });
 
   test.describe('USFM', () => {
-    test('USFM: one file is one new project — the book byte-identical, the harness format checks pass, it opens in Translate', { tag: ['@inc8', '@J9'] }, async ({ page }) => {
+    test('USFM: one file is one new project — the book byte-identical, the harness format checks pass, it opens in Understand (D87)', { tag: ['@inc8', '@J9'] }, async ({ page }) => {
       const name = fresh('Tito USFM');
       const source = path.join(MANIFEST_DIR, 'usfm', '57-TIT.usfm');
       const repo = rigRepo(abbrOf(name));
@@ -381,12 +428,13 @@ test.describe('J9 — a facilitator imports existing work', () => {
         const onDisk = [...tree(path.join(repo, 'ingredients')).keys()].filter((rel) => !rel.endsWith('.bak')).map((rel) => `ingredients/${rel}`).sort();
         expect(Object.keys(meta.ingredients).sort()).toEqual(onDisk);
       });
-      await test.step('the new project opens in Translate at Titus with the imported text', async () => {
+      await test.step('the new project opens in Understand at Titus (D87); Translate shows the imported text', async () => {
         await page.goto('/');
         await page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`).getByRole('button', { name: /Titus/ }).click();
         await expect(page.getByRole('heading', { name: /^Titus \d+$/ })).toBeVisible({ timeout: 120_000 });
+        await expect(page.getByRole('tab', { name: 'Understand', exact: true })).toHaveAttribute('aria-selected', 'true');
         const translate = page.getByRole('tab', { name: 'Translate', exact: true });
-        if ((await translate.getAttribute('aria-selected')) !== 'true') await translate.click();
+        await translate.click();
         await expect(translate).toHaveAttribute('aria-selected', 'true');
         await expect(page.getByText(/Pablo, siervo de Dios y apóstol de Jesucristo/).first()).toBeVisible({ timeout: 60_000 });
         await expect(page.getByTestId('home-open-error')).toHaveCount(0);
@@ -517,7 +565,8 @@ test.describe('J9 — a facilitator imports existing work', () => {
         await page.goto('/');
         await page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`).getByRole('button', { name: /Titus/ }).click();
         await expect(page.getByRole('heading', { name: /^Titus \d+$/ })).toBeVisible({ timeout: 120_000 });
-        await page.getByTestId('project-settings').click();
+        await page.goto('/');
+        await page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`).getByRole('button', { name: 'Settings' }).click();
         await page.getByTestId('settings-gateway-en::unfoldingWord').click();
         await expect(page.getByTestId('gateway-change')).toBeVisible();
         await page.getByTestId('gateway-confirm').click();
@@ -583,11 +632,12 @@ test.describe('J9 — a facilitator imports existing work', () => {
       });
       const seedsBefore = seedEventsOf([...tree(path.join(repo, 'ingredients'))].map(([rel, bytes]) => [rel, bytes.toString('utf8')] as [string, string])).length;
       expect(seedsBefore).toBeGreaterThan(0); // the export's own seed, so an equal count after the open is not vacuous
-      await test.step('on disk: every exported file byte-identical — the books, checking/ and the journal (remake strips .gitignore)', async () => {
+      await test.step('on disk: every exported file byte-identical — the books, checking/ and the journal; metadata.json but the fields the commit rewrites (remake strips .gitignore)', async () => {
         const stored = tree(repo);
         for (const [rel, bytes] of Object.entries(exported)) {
           if (rel === '.gitignore') continue;
-          expect(stored.get(rel)?.equals(Buffer.from(bytes)), rel).toBe(true);
+          if (rel === 'metadata.json') expect(withoutCommitFields(stored.get(rel)!), rel).toEqual(withoutCommitFields(bytes));
+          else expect(stored.get(rel)?.equals(Buffer.from(bytes)), rel).toBe(true);
         }
         for (const book of ['TIT', 'JON']) expect(stored.get(`ingredients/${book}.usfm`)!.equals(fs.readFileSync(path.join(source, 'ingredients', `${book}.usfm`)))).toBe(true);
         expect(git(repo, 'status', '--porcelain')).toBe('');

@@ -124,9 +124,16 @@ export default function AddBook() {
               <>
                 <Select id="ab-book" label={t('addBook.book')} value={ab.book}
                   onChange={(e) => actions.patchAb({ book: e.target.value })}
+                  searchPlaceholder={t('addBook.findBook')} noMatchesLabel={t('addBook.noMatches')}
                   options={ALL_CODES.map((code) => {
                     const already = (ab.existing || []).includes(code);
-                    return { value: code, disabled: already, label: `${bookName(code)} (${code})${already ? ` ${t('sym.tick')}` : ''}` };
+                    return {
+                      value: code, label: bookName(code), code,
+                      meta: t('addBook.chaptersShort', { n: BOOK_CHAPTERS[code] ?? '?' }),
+                      group: NT.includes(code) ? t('addBook.nt') : t('addBook.ot'),
+                      disabled: already,
+                      badge: already ? t('addBook.inThisBible') : undefined,
+                    };
                   })} />
                 <p style={{ fontSize: 'var(--fs-caption-lg)', letterSpacing: 'var(--track-12-5)', color: 'var(--text-tertiary)', margin: '8px 0 0', lineHeight: 'var(--lh-body)' }}>
                   {t('addBook.info', { name: bookName(ab.book), chapters: BOOK_CHAPTERS[ab.book] ?? '?', testament })}

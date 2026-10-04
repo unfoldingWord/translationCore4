@@ -4,19 +4,19 @@
 // Not a journey of its own: it is the FR-5 preflight-failure branch of J4
 // (docs/JOURNEYS.md), proven here against the rig with the disk as ground truth.
 //
-// Fixture: the rig seeds the English helps at v89; the project pins a release of
-// one repo that the rig lacks. Door43 is a Playwright route serving the cached
-// real export (dev-env/README.md, "J12"). The cases run in this order on
-// purpose — an install stays on the rig until the next reseed, and J12 (which
-// runs after this file) must still find en_tn v90 ABSENT, so the fetch case
-// takes en_tn v88 instead:
-//   1. re-pin  (en_tw v90 missing, offline → the installed v89)
+// Fixture: the rig seeds the English helps at the shipped release (v91 since
+// #504); the project pins a release of one repo that the rig lacks (en_tw v90,
+// en_tn v88 — older releases, cached: dev-env/README.md, "J12"). Door43 is a
+// Playwright route serving the cached real export. The cases run in this order
+// on purpose — an install stays on the rig until the next reseed:
+//   1. re-pin  (en_tw v90 missing, offline → the installed v91)
 //   2. fetch   (en_tn v88 missing, online → downloaded through the sha gate)
-//   3. sideload (en_tw v90 still missing → a v89 file is refused, the v90 file installs)
+//   3. sideload (en_tw v90 still missing → the installed v91 file is refused, the v90 file installs)
 import { test, expect } from './helpers/test';
 import type { Page, BrowserContext } from '@playwright/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
-import { useInternet } from './helpers/door43Share';
+import { askInternet } from './helpers/door43Share';
+import { recordExternal } from './helpers/externalRequests';
 import fs from 'node:fs';
 import path from 'node:path';
 import { unzipSync, strFromU8 } from 'fflate';
@@ -35,10 +35,12 @@ import {
 const CACHE = path.join(TC4_ROOT, 'dev-env', 'resources-cache');
 const zipPath = (repo: string, tag: string) => path.join(CACHE, `${repo}-${tag}-unwrapped.zip`);
 
+/** The release the rig seeds (dev-env/scripts/seed.zsh — the shipped pins). */
+const SEEDED_TAG = 'v91';
 const PINS = () => ({
-  tn: pinForSideloaded('en_tn', 'v89'),
-  tw: pinForSideloaded('en_tw', 'v89'),
-  ta: pinForSideloaded('en_ta', 'v89'),
+  tn: pinForSideloaded('en_tn', SEEDED_TAG),
+  tw: pinForSideloaded('en_tw', SEEDED_TAG),
+  ta: pinForSideloaded('en_ta', SEEDED_TAG),
 });
 
 /** The commit a cached export declares — the sha the project pins and the mocked tags API reports. */
@@ -50,7 +52,7 @@ function cachedRevision(repo: string, tag: string): string {
 
 /** A pin of `repo` at `tag` — a release the rig does not hold, from the cached export's own metadata. */
 const missingPin = (repo: 'en_tn' | 'en_tw', tag: string) => {
-  const base = pinForSideloaded(repo, 'v89');
+  const base = pinForSideloaded(repo, SEEDED_TAG);
   return { ...base, version: tag, sha: cachedRevision(repo, tag) };
 };
 
@@ -74,10 +76,11 @@ async function mockDcs(context: BrowserContext, repo: string, tag: string) {
   });
 }
 
-const NEEDED: Array<[string, string]> = [['en_tn', 'v88'], ['en_tw', 'v90'], ['en_tw', 'v89']];
+const NEEDED: Array<[string, string]> = [['en_tn', 'v88'], ['en_tw', 'v90'], ['en_tw', SEEDED_TAG]];
 
-// D86: the stored choice and the gate together, as the app leaves them, so a page load keeps it.
-const setNet = (on: boolean) => useInternet(on);
+// D88: "Ask before using the internet" as the app leaves it, so a page load keeps it:
+// `setNet(true)` is the preference off (the task goes on without a dialog), `setNet(false)` is on.
+const setNet = (online: boolean) => askInternet(!online);
 
 async function openCheck(page: Page) {
   await page.goto('/');
@@ -89,7 +92,7 @@ const installDir = (repo: string) => sideloadedRepo(`unfoldingword--${repo}`);
 
 test.beforeEach(async () => {
   resetSeededChecking();
-  test.skip(!NEEDED.every(([r, tag]) => fs.existsSync(zipPath(r, tag))), 'en_tn v88 / en_tw v89+v90 are not cached under dev-env/resources-cache — see dev-env/README.md, "J12"');
+  test.skip(!NEEDED.every(([r, tag]) => fs.existsSync(zipPath(r, tag))), `en_tn v88 / en_tw v90+${SEEDED_TAG} are not cached under dev-env/resources-cache — see dev-env/README.md, "J12"`);
 });
 
 // #329: a Home tile returns to where this client last worked; this journey opens
@@ -102,8 +105,9 @@ test.describe('#9 — the guided fix screen for a pinned resource this computer 
   test(
     'offline, the screen refuses to download and re-pins to the installed version, with the D36 counts confirmed first',
     { tag: ['@inc6', '@J4'] },
-    async ({ page }) => {
+    async ({ page }, testInfo) => {
       await setNet(false);
+      const requests = recordExternal(page);
       const pins = PINS();
       const missing = missingPin('en_tw', 'v90');
       writeProjectPins(SEEDED_PROJECT, { ...pins, tw: missing });
@@ -111,17 +115,21 @@ test.describe('#9 — the guided fix screen for a pinned resource this computer 
 
       await openCheck(page);
       const card = page.getByTestId('preflight-translationWords');
-      await expect(card).toHaveAttribute('data-state', 'unavailable');
+      // D88: a missing pin is always a fetch; there is no separate offline state.
+      await expect(card).toHaveAttribute('data-state', 'fetch');
       await card.getByTestId('fix-translationWords').click();
       const screen = page.getByTestId('guided-fix');
       await expect(screen).toBeVisible();
       await expect(screen.getByTestId('fix-pin')).toContainText(missing.sha);
-      // 1 · Download stays enabled in Local; the click asks to allow the internet, and Cancel sends nothing (D86 point 4).
+      // 1 · Download asks first (ask on); Cancel sends nothing (D88).
       await screen.getByTestId('fix-fetch-go').click();
-      await expect(page.getByTestId('net-allow')).toContainText('tC4 is set to Local.');
+      await expect(page.getByTestId('net-ask')).toHaveAttribute('data-kind', 'fix');
+      await expect(page.getByTestId('net-confirm')).toHaveText('Download');
       await page.getByTestId('net-cancel').click();
-      await expect(page.getByTestId('net-status')).toHaveAttribute('data-state', 'local');
-      // 2 · re-pin lists the installed v89 of the same repo.
+      await expect(page.getByTestId('net-ask')).toHaveCount(0);
+      expect(requests.external(), 'Cancel sends nothing').toEqual([]);
+      await requests.save(testInfo, 'guided-fix-cancel-requests');
+      // 2 · re-pin lists the installed release of the same repo.
       await expect(screen.getByTestId('fix-repin')).toHaveAttribute('data-candidates', '1');
       await screen.getByTestId(`fix-repin-${installed.sha!.slice(0, 12)}`).click();
 
@@ -129,7 +137,7 @@ test.describe('#9 — the guided fix screen for a pinned resource this computer 
       const confirm = page.getByTestId('upgrade-confirm');
       await expect(confirm).toBeVisible({ timeout: 30_000 });
       await expect(confirm).toHaveAttribute('data-kind', 'repin');
-      await expect(confirm.getByTestId('upgrade-moves')).toContainText('en_tw: v90 → v89');
+      await expect(confirm.getByTestId('upgrade-moves')).toContainText(`en_tw: v90 → ${SEEDED_TAG}`);
       expect((readProjectPins(SEEDED_PROJECT).languageSets.primary.translationWordsLinks as { sha: string }).sha).toBe(missing.sha);
       await confirm.getByTestId('upgrade-apply').click();
       await expect(confirm).toHaveCount(0);
@@ -140,7 +148,7 @@ test.describe('#9 — the guided fix screen for a pinned resource this computer 
       const after = readProjectPins(SEEDED_PROJECT);
       for (const slot of ['translationWordsLinks', 'translationWords'] as const) {
         expect((after.languageSets.primary[slot] as { sha: string; version: string }).sha).toBe(installed.sha);
-        expect((after.languageSets.primary[slot] as { sha: string; version: string }).version).toBe('v89');
+        expect((after.languageSets.primary[slot] as { sha: string; version: string }).version).toBe(SEEDED_TAG);
       }
       expect((after.languageSets.fallback.translationWordsLinks as { sha: string }).sha).toBe(missing.sha);
       await expect(card).toHaveAttribute('data-state', 'ready');
@@ -192,18 +200,18 @@ test.describe('#9 — the guided fix screen for a pinned resource this computer 
 
       await openCheck(page);
       const card = page.getByTestId('preflight-translationWords');
-      await expect(card).toHaveAttribute('data-state', 'unavailable');
+      await expect(card).toHaveAttribute('data-state', 'fetch');
       await card.getByTestId('fix-translationWords').click();
       const screen = page.getByTestId('guided-fix');
 
-      // Wrong commit: the v89 export for a v90 pin — refused before any install.
-      await screen.getByTestId('fix-sideload-file').setInputFiles(zipPath('en_tw', 'v89'));
+      // Wrong commit: the installed release's export for a v90 pin — refused before any install.
+      await screen.getByTestId('fix-sideload-file').setInputFiles(zipPath('en_tw', SEEDED_TAG));
       const error = screen.getByTestId('fix-error');
       await expect(error).toBeVisible({ timeout: 60_000 });
       await expect(error).toContainText('not installed');
       await expect(error).toContainText(missing.sha.slice(0, 12));
       expect(fs.existsSync(installDir('en_tw'))).toBe(false);
-      await expect(card).toHaveAttribute('data-state', 'unavailable');
+      await expect(card).toHaveAttribute('data-state', 'fetch');
 
       // The pinned commit's export installs.
       await screen.getByTestId('fix-sideload-file').setInputFiles(zipPath('en_tw', 'v90'));

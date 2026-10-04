@@ -23,8 +23,9 @@ import { forgetSharedClocks } from '../src/data/journal/journalStore';
 import { verifyProjectAgainstJournal, describeVerifierReport } from '../src/data/journal/verify';
 import { memKv } from './helpers/journalingRig';
 import { openFacts } from './helpers/report';
+import { lane } from '../e2e/lane.mjs';
 
-const BASE = 'http://127.0.0.1:19998/api';
+const BASE = lane().rigApi;
 const SLOW = 30_000;
 
 const rigUp = await (async (): Promise<boolean> => {

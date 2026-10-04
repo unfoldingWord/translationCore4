@@ -7,13 +7,14 @@
 // Pins/preflight/absence-handling UI (FR-3..FR-5) is Increment 5 (@inc5).
 import { test, expect } from './helpers/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
+import { pickOption } from './helpers/dropdown';
 import { listLocalRepos, rigRepo, ingredientExists, commitCount } from './helpers/rig';
 import fs from 'node:fs';
 import path from 'node:path';
 
 test.describe('J1 — a translator creates a project', () => {
   test(
-    'create a project (name, language, direction, one book): a rejected region subtag surfaces as a designed error, then the corrected code yields a conforming repo on disk',
+    'create a project (name, language, direction, one book): an invalid language code surfaces as a designed error, then the regional tag es-419 yields a conforming repo on disk that keeps it',
     { tag: ['@inc1', '@J1'] },
     async ({ page }) => {
       const reposBefore = listLocalRepos();
@@ -29,32 +30,39 @@ test.describe('J1 — a translator creates a project', () => {
 
       await test.step('name it, set the language code, pick the text direction', async () => {
         await page.getByLabel('Bible name').fill('Equipo Rig — Tito');
-        await page.getByLabel('Code').fill('es-419');
+        await page.getByLabel('Code').fill('es_419!');
         await page.getByRole('button', { name: 'Left to right' }).click();
       });
 
-      await test.step('the server rejects the region subtag with a designed error, not a crash (PLATFORM-NOTES #27)', async () => {
+      await test.step('the server refuses an invalid code with a designed error, not a crash, and leaves no repository (PLATFORM-NOTES #27, #43)', async () => {
         await page.getByRole('button', { name: 'Create Bible' }).click();
         await expect(page.getByRole('alert')).toContainText(/language code/i);
-        // The failed attempt git-inits a debris repo (PLATFORM-NOTES #28); the modal
+        // A refused create may leave a debris repo (PLATFORM-NOTES #28); the modal
         // cleans it up asynchronously — poll until the rig is back to baseline.
         await expect
           .poll(() => listLocalRepos(), { timeout: 10_000 })
           .toEqual(reposBefore);
       });
 
-      await test.step('correct the language code and create — the Add-a-book dialog follows', async () => {
-        await page.getByLabel('Code').fill('es');
+      await test.step('correct the language code to es-419 and create — the Add-a-book dialog follows', async () => {
+        await page.getByLabel('Code').fill('es-419');
         await page.getByRole('button', { name: 'Create Bible' }).click();
         await page
           .getByRole('button', { name: 'Start a blank book' })
           .click({ timeout: 20_000 });
       });
 
-      await test.step('pick the book Titus and create it — the new project opens in Draft', async () => {
-        await page.getByLabel('Book', { exact: true }).selectOption('TIT');
+      await test.step('pick the book Titus and create it — the new project opens in Understand at chapter 1 (D87)', async () => {
+        await pickOption(page, 'Book', 'Titus');
         await page.getByRole('button', { name: 'Create book' }).click();
         await expect(page.getByText('Equipo Rig — Tito').first()).toBeVisible({ timeout: 20_000 });
+        await expect(page.getByRole('tab', { name: 'Understand', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 20_000 });
+        await expect(page.getByTestId('understand')).toBeVisible({ timeout: 20_000 });
+        await expect(page.getByRole('heading', { name: 'Titus 1', exact: true })).toBeVisible();
+      });
+
+      await test.step('Translate shows the new book', async () => {
+        await page.getByRole('tab', { name: 'Translate', exact: true }).click();
         await expect(page.getByRole('button', { name: /^Draft section/ }).first()).toBeVisible({
           timeout: 20_000,
         });
@@ -66,6 +74,8 @@ test.describe('J1 — a translator creates a project', () => {
         const r = created[0];
         expect(fs.existsSync(path.join(rigRepo(r), 'metadata.json'))).toBe(true);
         expect(fs.existsSync(path.join(rigRepo(r), '.git'))).toBe(true);
+        const meta = JSON.parse(fs.readFileSync(path.join(rigRepo(r), 'metadata.json'), 'utf8'));
+        expect(meta.languages[0]).toMatchObject({ tag: 'es-419', name: { en: 'Spanish (419)' } });
         expect(ingredientExists(r, path.join('ingredients', 'TIT.usfm'))).toBe(true);
         return r;
       });
@@ -113,9 +123,9 @@ test.describe('J1 — a translator creates a project', () => {
         const extra = Object.fromEntries(
           resFile.extraScripture.map((e: { id: string }) => [e.id, e]),
         );
-        expect(extra.ult.version).toBe('v89');
+        expect(extra.ult.version).toBe('v91');
         expect(extra.ult.sha).toMatch(/^[0-9a-f]{40}$/);
-        expect(extra.ust.version).toBe('v89');
+        expect(extra.ust.version).toBe('v91');
       });
 
       await test.step('the chosen text direction is persisted (settings.json) — app-created summaries report "?" so the app reads it back from here', async () => {

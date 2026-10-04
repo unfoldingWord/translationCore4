@@ -33,11 +33,14 @@ on:
       - scripts/smoke-installed.zsh
       - scripts/smoke-api.cjs
       - scripts/build-smoke-journal.cjs
+      - scripts/build-smoke-upgrade.cjs
+      - test/fixtures/resources/**
       - scripts/smoke-journal-entry.ts
       - scripts/desktop-main.cjs
       - scripts/*mac*
       - scripts/*windows*
       - scripts/desktop-bootstrap*
+      - scripts/resource-archive-receipt.cjs
       - scripts/smoke-*
       - scripts/tc4.iss
       - branding/**
@@ -47,6 +50,12 @@ on:
 
 permissions:
   contents: read
+
+# A new push to a branch or pull request cancels the older run of this workflow on that
+# ref. Runs on `main` are never cancelled: each run on `main` has its own group.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   package-preflight:
@@ -82,7 +91,10 @@ jobs:
           cache: npm
 
       - name: Rust toolchain
-        run: rustup toolchain install stable --profile minimal
+        id: rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          echo "rustc=$(rustc -V | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
 
       - name: Cache cargo
         uses: actions/cache@v6
@@ -91,7 +103,10 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             dev-env/server/target
-          key: cargo-package-desktop-${{ runner.os }}-${{ hashFiles('dev-env/server/Cargo.lock', 'dev-env/server/Cargo.toml') }}
+          # The key names the rustc version. Build output from a different rustc is not
+          # reused, and a key that hits is never saved again (2026-10-03: `stable` moved
+          # to 1.99.0, and every run compiled all crates from a cache of 2026-09-11).
+          key: cargo-package-desktop-${{ runner.os }}-rustc-${{ steps.rust.outputs.rustc }}-${{ hashFiles('dev-env/server/Cargo.lock', 'dev-env/server/Cargo.toml') }}
 
       - name: Build the artifact
         run: zsh scripts/package-desktop.zsh ${{ matrix.variant == 'debug' && '--debug' || '' }}
@@ -160,7 +175,10 @@ jobs:
             libasound2t64 libatspi2.0-0t64 libgtk-3-0t64
 
       - name: Rust toolchain
-        run: rustup toolchain install stable --profile minimal
+        id: rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          echo "rustc=$(rustc -V | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
 
       - name: Cache cargo
         uses: actions/cache@v6
@@ -169,7 +187,10 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             dev-env/server/target
-          key: cargo-package-desktop-${{ runner.os }}-${{ hashFiles('dev-env/server/Cargo.lock', 'dev-env/server/Cargo.toml') }}
+          # The key names the rustc version. Build output from a different rustc is not
+          # reused, and a key that hits is never saved again (2026-10-03: `stable` moved
+          # to 1.99.0, and every run compiled all crates from a cache of 2026-09-11).
+          key: cargo-package-desktop-${{ runner.os }}-rustc-${{ steps.rust.outputs.rustc }}-${{ hashFiles('dev-env/server/Cargo.lock', 'dev-env/server/Cargo.toml') }}
 
       - name: Build the artifact
         run: xvfb-run -a zsh scripts/package-desktop.zsh
@@ -236,8 +257,11 @@ jobs:
           install: zsh zip unzip curl
 
       - name: Rust toolchain
+        id: rust
         shell: pwsh
-        run: rustup toolchain install stable --profile minimal
+        run: |
+          rustup toolchain install stable --profile minimal
+          "rustc=$((rustc -V).Split(' ')[1])" >> $env:GITHUB_OUTPUT
 
       - name: Cache cargo
         uses: actions/cache@v6
@@ -246,7 +270,10 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             dev-env/server/target
-          key: cargo-package-desktop-${{ runner.os }}-${{ hashFiles('dev-env/server/Cargo.lock', 'dev-env/server/Cargo.toml') }}
+          # The key names the rustc version. Build output from a different rustc is not
+          # reused, and a key that hits is never saved again (2026-10-03: `stable` moved
+          # to 1.99.0, and every run compiled all crates from a cache of 2026-09-11).
+          key: cargo-package-desktop-${{ runner.os }}-rustc-${{ steps.rust.outputs.rustc }}-${{ hashFiles('dev-env/server/Cargo.lock', 'dev-env/server/Cargo.toml') }}
 
       - name: Build the artifact
         shell: msys2 {0}

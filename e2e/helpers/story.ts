@@ -6,8 +6,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { rigRepo } from './rig';
 import { storyIpath } from '../../journal/story.mjs';
+import { lane } from '../lane.mjs';
 
-export const RIG_API = 'http://127.0.0.1:19998/api';
+export const RIG_API = lane().rigApi;
 
 /** Create an OBS project on the rig through the store, optionally drafting into it
  * first (a J21 precondition for J22). Returns the local repository name. */

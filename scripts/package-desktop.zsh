@@ -5,8 +5,8 @@
 # The recipe follows the Pankosmia desktop-app-template (read-only reference,
 # MIT license). The wrapper is Electronite v37.1.0-graphite, the Graphite-enabled
 # Electron fork from unfoldingWord (D20). The artifact is minimal for now: it
-# bundles ONLY the uw-tc4 client (#71), the pinned server (pankosmia-web 0.18.5,
-# 99fd9be), and the runtime resources. See docs/PACKAGING.md.
+# bundles ONLY the uw-tc4 client (#71), the pinned server (pankosmia-web 0.18.15,
+# a83725b), and the runtime resources. See docs/PACKAGING.md.
 #
 # The smoke test launches the STAGED ARTIFACT THROUGH ITS OWN ENTRY POINT
 # (the start-tc4 launcher -> Electronite -> electronStartup.js), with a fresh HOME
@@ -87,16 +87,15 @@ for arg in "$@"; do
     *) echo "Unknown argument: $arg (expected --debug or --zip)" >&2; exit 1 ;;
   esac
 done
-if [ "$OS" = macos ]; then
-  # Do not mistake a pilot's already-running app for this build's smoke server.
-  # In particular, the existing app can hold Electron's native singleton lock.
-  for smoke_port in {19119..19139}; do
-    if "$CURL" -s --max-time 1 "http://127.0.0.1:$smoke_port/api/version" | grep -q '"product_short_name":"tc4"'; then
-      echo "FAIL precondition: quit the running tC4 app (port $smoke_port) before packaging smoke." >&2
-      exit 1
-    fi
-  done
-fi
+# Do not mistake a pilot's already-running app for this build's smoke server,
+# on every build host (#335). In particular, the existing app can hold
+# Electron's native singleton lock.
+for smoke_port in {19119..19139}; do
+  if "$CURL" -s --max-time 1 "http://127.0.0.1:$smoke_port/api/version" | grep -q '"product_short_name":"tc4"'; then
+    echo "FAIL precondition: quit the running tC4 app (port $smoke_port) before packaging smoke." >&2
+    exit 1
+  fi
+done
 if [ "$VARIANT" = "debug" ]; then
   STORE_LEAF="pankosmia/tc4-projects-debug"   # separate debug-only store
 else
@@ -129,15 +128,19 @@ ZIP_JS_VER="2.18.2"                # root package.json and package-lock.json
 # burritos: no tag exists, so the tag field is empty and the cache fetches the
 # commit archive by sha. The store segment is `<owner lowercased>--<repo>`
 # (src/data/installed.ts localRepoPathFromRepoPath).
+# The weekly pin check (scripts/pin-check.mjs, .github/workflows/pin-check.yml)
+# reads this array and reports when a tagged pin is older than the latest
+# Door43 release (#504). Change a pin here together with installedSuite.js and
+# the copies docs/PACKAGING.md names.
 BUNDLED_RESOURCES=(
-  "unfoldingWord/en_ult:v89:84c73ba00fc8a95a9033f9efb14bb905a2a52ee4"
-  "unfoldingWord/en_ust:v89:37ec223166bbd73fb55abc7840be8310c0fee7f2"
+  "unfoldingWord/en_ult:v91:35d215957f3203fd2e2fac5702ce14902d417f9d"
+  "unfoldingWord/en_ust:v91:85f274a74245cb418f85266e1a5b524bc3e91e9c"
   "unfoldingWord/el-x-koine_ugnt:v0.34:fc95b2b8aad08bb65ab54628ab685413a1139e97"
-  "unfoldingWord/hbo_uhb:v2.1.30:106a441a788d9465846cd427538ea80b8cec6770"
-  "unfoldingWord/en_tn:v86:c354b8ae66a23c485bf6f38fd35bd8f7ef81e4e5"
-  "unfoldingWord/en_tw:v87:eaeb7bfefcf84132d0cbcbed185f3ea2be3d86dd"
-  "unfoldingWord/en_ta:v86:c7caddfb474efd713f36b35a3ffc927866c7b180"
-  "unfoldingWord/en_tq:v89:97c0a13e3b84d46d0e643ba2e8e9f1c295547a58"
+  "unfoldingWord/hbo_uhb:v3.0.0:74022f0fed012a3ef169886f595dd98e7b200543"
+  "unfoldingWord/en_tn:v91:e586762e330f482a60c52aedd1c7b3a2f155df8a"
+  "unfoldingWord/en_tw:v91:ff5b3852c27c3a0d01b109e482eb26047dcd20e2"
+  "unfoldingWord/en_ta:v91:ce9a1bb9431317ca888e8c1f9620caa7f5fe45fd"
+  "unfoldingWord/en_tq:v91:8be02772584ff5a5fea893a392b4f019e3efcc77"
   "uW/en_ugl::d9d29e2d589258ce27f92b59f753a3af03ab7a72"
   "uW/en_uhl::72df5ac25acf9d51e826b20e3ad883a5a657ef4e"
   "unfoldingWord/en_obs:v9:d39a1dc7a7557ac54e4a8fecc3462147fe7eec3b"
@@ -183,7 +186,7 @@ if [ "$OS" != linux ]; then node --test "$REPO/scripts/desktop-bootstrap.test.cj
 npm ci --no-audit --no-fund
 npm run build
 
-echo "== 2/7 build the pinned server (pankosmia-web 0.18.5, 99fd9be)"
+echo "== 2/7 build the pinned server (pankosmia-web 0.18.15, a83725b)"
 cd "$REPO/dev-env/server"
 cargo build --release
 
@@ -254,6 +257,9 @@ for entry in "${BUNDLED_RESOURCES[@]}"; do
   rm -rf "$target"
   mkdir -p "$target"
   unzip -qq -o "$unwrapped" -d "$target"
+  if [ -z "$tag" ]; then
+    node "$REPO/scripts/resource-archive-receipt.cjs" "$(npath "$target")" "git.door43.org/$owner/$repo" "$sha" "$(npath "$unwrapped")" "$(npath "$REPO/dev-env/resources-cache/helps-provenance.json")"
+  fi
 done
 
 T="$BUILD/upstream/desktop-app-template"
@@ -301,6 +307,25 @@ grep -q "preload: path.join(__dirname, 'preload.js')" "$PACK/electron/electronSt
   echo "FATAL: the template's Window menu no longer has Reload — re-verify the #435 window reload before building" >&2
   exit 1
 }
+# #206: the template calls stopServer() from both before-quit and will-quit.
+# The first call stops the server; the second kills a pid that is gone and
+# logs "Server Failed to stop" on every quit. Only the first call acts now.
+# Refuse if stopServer() or its two quit callers changed shape.
+node -e '
+const fs = require("fs");
+const p = process.argv[1];
+const s = fs.readFileSync(p, "utf8");
+const from = "function stopServer() {\n  if (serverProcess) {\n";
+const to = "let serverStopAttempted = false;\nfunction stopServer() {\n  if (serverStopAttempted) return;\n  serverStopAttempted = true;\n  if (serverProcess) {\n";
+const once = (t) => s.split(t).length === 2;
+if (![from, "app.on(\x27before-quit\x27", "app.on(\x27will-quit\x27"].every(once)
+    || s.split("stopServer();").length !== 3) {
+  console.error("FATAL: the template stopServer() or its quit callers changed — re-verify the #206 stopServer patch before building");
+  process.exit(1);
+}
+fs.writeFileSync(p, s.replace(from, to));
+console.log("stopServer() acts once per quit (#206)");
+' "$(npath "$PACK/electron/electronStartup.js")"
 cp "$REPO/scripts/preload.cjs" "$PACK/electron/preload.js"
 node --check "$(npath "$PACK/electron/preload.js")"
 node -e "
@@ -404,7 +429,7 @@ cp "$PACK/Rocket.toml" "$APPDIR/Rocket.toml"
 
 # The launcher differs per OS in three places only: its filename, how it
 # finds its own directory, and how it invokes Electronite. The debug seeding
-# Linux keeps shell bootstrap; Mac and Windows bootstrap under tc4-main.js.
+# Every OS bootstraps under tc4-main.js.
 # The portable Windows batch file only starts Electron.
 write_windows_launcher() {
   # Bootstrap belongs to tc4-main.js so installed shortcuts and portable launches
@@ -454,61 +479,16 @@ elif [ "$OS" = windows ]; then
   cp "$REPO/branding/icon-1024.png" "$APPDIR/electron/favicon.png"
   node "$REPO/scripts/brand-windows.mjs" "$(npath "$APPDIR/electronite/electron.exe")" "$(npath "$APPDIR/icon.ico")" "$VERSION"
 else
-  # Linux keeps shell first-run seeding, but the Electron main wrapper still
-  # needs the same resource-binding helper and configuration.
+  # All resource and debug-project installation runs in tc4-main.js under
+  # Electron's singleton lock, before the server starts (#528).
   cp "$REPO/scripts/desktop-bootstrap.cjs" "$APPDIR/electron/tc4-bootstrap.cjs"
   printf '{"storeLeaf":"%s","variant":"%s"}\n' "$STORE_LEAF" "$VARIANT" > "$APPDIR/electron/tc4-bootstrap.json"
-  if [ "$VARIANT" = "debug" ]; then
   cat > "$APPDIR/$LAUNCHER" <<LAUNCH
 $LAUNCH_SHEBANG
-# Unsigned DEBUG artifact. Seeds the debug-only project store on first run
-# (never the shared \$HOME/pankosmia_repos), then starts Electronite; the
-# startup script spawns the bundled server itself.
+# Starts Electronite; tc4-main.js prepares this build's isolated store.
 $LAUNCH_CD
-STORE="\$HOME/pankosmia/tc4-projects-debug"
-if [ -d "./resources" ]; then
-  for res in ./resources/*; do
-    [ -d "\$res" ] || continue
-    seg="\${res##*/}"
-    dest="\$STORE/_local_/_sideloaded_/\$seg"
-    if [ ! -d "\$dest" ]; then
-      mkdir -p "\$STORE/_local_/_sideloaded_"
-      cp -R "\$res" "\$dest"
-    fi
-  done
-fi
-SEED="\$STORE/_local_/_local_/sample_burrito"
-if [ ! -d "\$SEED" ] && command -v git >/dev/null; then
-  mkdir -p "\$STORE/_local_/_local_"
-  cp -R ./debug-seeds/sample_burrito "\$SEED"
-  # Initial commit: the platform's add-and-commit panics on a repo with
-  # zero commits (PLATFORM-NOTES #20).
-  (cd "\$SEED" && git init -q -b main . && git add -A \\
-    && git -c user.email=debug@tc4.local -c user.name=tc4-debug commit -qm seed)
-fi
 $LAUNCH_EXEC
 LAUNCH
-else
-  cat > "$APPDIR/$LAUNCHER" <<LAUNCH
-$LAUNCH_SHEBANG
-# Unsigned development artifact. Starts Electronite; the startup script
-# spawns the bundled server itself.
-$LAUNCH_CD
-STORE="\$HOME/pankosmia/tc4-projects"
-if [ -d "./resources" ]; then
-  for res in ./resources/*; do
-    [ -d "\$res" ] || continue
-    seg="\${res##*/}"
-    dest="\$STORE/_local_/_sideloaded_/\$seg"
-    if [ ! -d "\$dest" ]; then
-      mkdir -p "\$STORE/_local_/_sideloaded_"
-      cp -R "\$res" "\$dest"
-    fi
-  done
-fi
-$LAUNCH_EXEC
-LAUNCH
-fi
 fi
 if [ "$OS" != macos ]; then chmod +x "$APPDIR/$LAUNCHER"; fi
 
@@ -538,7 +518,7 @@ This build bundles the components below. Full texts are in licenses/.
 |---|---|---|---|
 | Electronite (Graphite-enabled Electron) | $ELECTRONITE_TAG | MIT (+ Chromium notices) | github.com/unfoldingWord/electronite |
 | desktop-app-template startup files (electron/, modified) | $TEMPLATE_REV | MIT | github.com/pankosmia/desktop-app-template |
-| pankosmia-web server (bin/$SERVER_BIN) | 0.18.5 (99fd9be) | MIT | github.com/pankosmia/pankosmia-web |
+| pankosmia-web server (bin/$SERVER_BIN) | 0.18.15 (a83725b) | MIT | github.com/pankosmia/pankosmia-web |
 | resource-core (lib/app_resources, lib/templates) | $RESOURCE_CORE_REV | MIT | github.com/pankosmia/resource-core |
 | webfonts-core (lib/webfonts; fonts carry their own licenses, mostly SIL OFL) | $WEBFONTS_CORE_REV | MIT (repo); per-font licenses inside | github.com/pankosmia/webfonts-core |
 | puppeteer-core (electron/node_modules) | $PUPPETEER_CORE_VER | Apache-2.0 | github.com/puppeteer/puppeteer |
@@ -563,7 +543,12 @@ for entry in "${BUNDLED_RESOURCES[@]}"; do
   zip_sha=$(sha256_of "$REPO/dev-env/resources-cache/$repo-$label-unwrapped.zip")
   # A sha-only pin has no version label (never invented): JSON null.
   if [ -n "$tag" ]; then version_json="\"$tag\""; else version_json="null"; fi
-  line="    { \"repoPath\": \"git.door43.org/$owner/$repo\", \"version\": $version_json, \"sha\": \"$sha\", \"zip_sha256\": \"$zip_sha\" }"
+  receipt_json=""
+  if [ -z "$tag" ]; then
+    receipt_sha=$(sha256_of "$APPDIR/resources/$seg/.tc4-bundled-identity.json")
+    receipt_json=", \"archive_receipt_sha256\": \"$receipt_sha\""
+  fi
+  line="    { \"repoPath\": \"git.door43.org/$owner/$repo\", \"version\": $version_json, \"sha\": \"$sha\", \"zip_sha256\": \"$zip_sha\"$receipt_json }"
   if [ -n "$BUNDLED_MANIFEST_ENTRIES" ]; then
     BUNDLED_MANIFEST_ENTRIES="$BUNDLED_MANIFEST_ENTRIES,
 $line"
@@ -583,7 +568,7 @@ $BUNDLED_MANIFEST_ENTRIES
   ],
   "inputs": {
     "uw-tc4_client": { "version": "$VERSION", "commit": "$(git -C $REPO rev-parse HEAD)" },
-    "pankosmia_web_server": { "version": "0.18.5", "rev": "99fd9bea8a9f3d14ac6a61f8e2213f1c5d42ed2a", "bin_sha256": "$SERVER_SHA" },
+    "pankosmia_web_server": { "version": "0.18.15", "rev": "a83725b67593b018f815fdb25a3920ce03e833e7", "bin_sha256": "$SERVER_SHA" },
     "electronite": { "tag": "$ELECTRONITE_TAG", "zip_sha256": "$ELECTRONITE_SHA256" },
     "desktop_app_template": { "rev": "$TEMPLATE_REV" },
     "resource_core": { "rev": "$RESOURCE_CORE_REV" },
@@ -599,6 +584,11 @@ cat "$APPDIR/BUILD-MANIFEST.json"
 
 node "$REPO/scripts/build-smoke-api.cjs" "$APPDIR/smoke-api.cjs"
 node "$REPO/scripts/build-smoke-journal.cjs" "$APPDIR/smoke-journal.cjs"
+node "$REPO/scripts/build-smoke-upgrade.cjs" "$APPDIR/smoke-upgrade.cjs"
+mkdir -p "$APPDIR/upgrade-fixtures"
+for fixture in en_ult@v89 en_tn@v86; do
+  cp -R "$REPO/test/fixtures/resources/$fixture" "$APPDIR/upgrade-fixtures/$fixture"
+done
 if [ "$OS" = macos ]; then
   zsh "$REPO/scripts/package-macos.zsh" "$APPDIR" "$APP_NAME" "$VERSION" "$VARIANT" "$STORE_LEAF"
   LAUNCHER="$APP_NAME.app/Contents/MacOS/Electron"
@@ -771,7 +761,7 @@ echo "root: $ROOT; /clients/uw-tc4: $CLIENT"
 
 # VERSION GUARD (#326): the booted server must report this artifact's own
 # lib/product/product.json version and datetime. /api/version reads that file
-# at runtime (pankosmia-web 0.18.5 lib.rs:45-61 — primary
+# at runtime (pankosmia-web 0.18.15 lib.rs:46-62 — primary
 # lib/app_resources/product/product.json, else $APP_RESOURCES_DIR/product/
 # product.json); a mismatch means the probe answered from a different tree
 # (for example a leftover install already listening on the port).
@@ -937,7 +927,7 @@ else
   expected_segments=()
   for entry in "${BUNDLED_RESOURCES[@]}"; do
     bundled_fields "$entry"
-    expected_segments+=("$seg")
+    expected_segments+=("${(L)owner}--${repo}--${sha}")
   done
   expected_segments=($(printf '%s\n' "${expected_segments[@]}" | sort))
   if [ "${sideloaded_entries[*]}" != "${expected_segments[*]}" ]; then
@@ -982,6 +972,9 @@ else
   zip -qry "$ZIP" "$APP_NAME"
 fi
 echo "artifact: $ZIP"
+# ZIP GUARD (#336): the artifact must carry exactly the product.json the
+# version guard checked — assert the zip, not the recipe that wrote it.
+zsh "$REPO/scripts/check-zip-product.zsh" "$ZIP" "$OS" "$APP_NAME" "$PACK/lib/product/product.json" || exit 1
 echo "inputs: electronite $ELECTRONITE_TAG ($ELECTRONITE_SHA256); template $TEMPLATE_REV;"
 echo "        resource-core $RESOURCE_CORE_REV; webfonts-core $WEBFONTS_CORE_REV;"
 echo "        puppeteer-core $PUPPETEER_CORE_VER; @puppeteer/browsers $PUPPETEER_BROWSERS_VER; @zip.js/zip.js $ZIP_JS_VER"

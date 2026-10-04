@@ -12,8 +12,9 @@ import {
   ServerApiError,
   type NewTextTranslationParams,
 } from '../src/data/serverApi';
+import { lane } from '../e2e/lane.mjs';
 
-const BASE = 'http://127.0.0.1:19998/api';
+const BASE = lane().rigApi;
 const SLOW = 30_000;
 
 const rigUp = await (async (): Promise<boolean> => {
@@ -133,9 +134,8 @@ const REPO = `_local_/_local_/${ABBR}`;
 const createParams: NewTextTranslationParams = {
   content_name: `Inc1 serverApi test ${RUN}`,
   content_abbr: ABBR,
-  // NOTE: the server validates non-'x-' codes against its BCP47 lookup table;
-  // 'es-419' is REJECTED at 0.18.5 while 'es' is accepted [VERIFIED live].
-  content_language_code: 'es',
+  // A regional tag is stored whole (PLATFORM-NOTES #43, #461)
+  content_language_code: 'es-419',
   content_language_name: 'Spanish',
   add_book: true,
   book_code: 'TIT',
@@ -158,6 +158,7 @@ describe.skipIf(!rigUp)('serverApi against the live rig', () => {
     async () => {
       await api.newTextTranslation(createParams);
       const metadata = await api.getMetadataRaw(REPO);
+      expect((metadata.languages as unknown[])[0]).toMatchObject({ tag: 'es-419', name: { en: 'Spanish (419)' } });
       expect(Object.keys(metadata.type.flavorType.currentScope)).toContain('TIT');
       const ingredientPaths = Object.keys(metadata.ingredients);
       expect(ingredientPaths).toContain('ingredients/TIT.usfm');

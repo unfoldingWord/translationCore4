@@ -12,25 +12,64 @@ import type { BrowserContext, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { FakeDoor43, type FakeDoor43Options } from './door43';
 import { TC4_ROOT, readClientSettingsDoc, rigRepo } from './rig';
+import { lane } from '../lane.mjs';
 
 /** The server a development build signs in to (src/data/dcsServer.ts, #120). */
 export const QA_SERVER = 'https://qa.door43.org';
-export const RIG_API = 'http://127.0.0.1:19998/api';
+export const RIG_API = lane().rigApi;
 export const RIG_STATE = path.join(TC4_ROOT, 'dev-env', 'state');
-/** D86 (#486): put tC4 on Internet or Local the way the app leaves it — the
- * stored choice (`internet: true`, or no flag) and the platform gate — so a
- * page load or a reload starts in that state. */
-export async function useInternet(allowed: boolean): Promise<void> {
+/** D88 (#514): put "Ask before using the internet" the way the app leaves it, so a
+ * page load or a reload starts in that state. `ask = false` stores
+ * `askInternet: false` (and drops the old `internet` choice, which the app ignores);
+ * `ask = true` removes the flag, which is the default, and turns the platform gate
+ * off the way the app does at start. */
+export async function askInternet(ask: boolean): Promise<void> {
   const doc = { ...(readClientSettingsDoc() ?? {}) };
   delete doc.internet;
-  const settings = allowed ? { ...doc, internet: true } : doc;
+  delete doc.askInternet;
+  const settings = ask ? doc : { ...doc, askInternet: false };
   const stored = await fetch(`${RIG_API}/client-settings/uw-tc4`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ settings }),
   });
   if (!stored.ok) throw new Error(`client-settings write failed: HTTP ${stored.status}`);
-  await fetch(`${RIG_API}/net/${allowed ? 'enable' : 'disable'}`, { method: 'POST' });
+  if (ask) await fetch(`${RIG_API}/net/disable`, { method: 'POST' });
+}
+
+/** The desktop keychain bridge (#366, `tc4Desktop.keychain` of scripts/preload.cjs), faked:
+ * the kept token lives in this test process, so it outlives a reload the way the operating
+ * system's keychain outlives an app session. The browser build has no bridge of its own, so
+ * a test without this helper is the "no keychain" case. Install before the page loads.
+ * `forgetFails`: forget() rejects, as a keychain that refuses to remove the token. */
+export async function fakeKeychain(
+  context: BrowserContext,
+  held: string | null = null,
+  opts: { forgetFails?: boolean } = {},
+): Promise<{ held: string | null; calls: string[] }> {
+  const keychain = { held, calls: [] as string[] };
+  await context.exposeBinding('__tc4Keychain', async (_source, call: string, token?: string) => {
+    keychain.calls.push(call);
+    if (call === 'keep') {
+      keychain.held = token ?? null;
+      return { kept: true };
+    }
+    if (call === 'read') return { token: keychain.held };
+    if (opts.forgetFails) throw new Error('the keychain refused to forget the token');
+    keychain.held = null;
+    return { forgotten: true };
+  });
+  await context.addInitScript(() => {
+    const w = window as unknown as { __tc4Keychain: (call: string, token?: string) => Promise<unknown>; tc4Desktop: unknown };
+    w.tc4Desktop = {
+      keychain: {
+        keep: (token: string) => w.__tc4Keychain('keep', token),
+        read: () => w.__tc4Keychain('read'),
+        forget: () => w.__tc4Keychain('forget'),
+      },
+    };
+  });
+  return keychain;
 }
 
 export const USER = { username: 'facilitator-zq', password: 'a pass-word', email: 'facilitator-zq@example.org' };

@@ -183,6 +183,7 @@ export interface CreateObsProjectParams {
   content_name: string;
   content_abbr: string;
   content_language_code: string;
+  content_language_name?: string | null;
 }
 
 /** One planned decision-file rewrite inside a coordinated gateway change. */

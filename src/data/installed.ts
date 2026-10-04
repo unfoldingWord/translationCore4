@@ -1,8 +1,8 @@
 // installed.ts — what THIS MACHINE has locally, and the coverage that follows.
 //
 // Two different things must not be confused:
-//   * an INSTALL is machine-scoped — a resource lives once at
-//     `_local_/_sideloaded_/<repo>` and is shared by every project;
+//   * an INSTALL is machine-scoped — each resource revision has a folder under
+//     `_local_/_sideloaded_/` and is shared by every project;
 //   * a PIN is project-scoped — `checking/resources.json` records which
 //     (repoPath, version, sha) that project checks against (§5.3, D30.3).
 // This module owns the machine side. The pin record is persisted through the
@@ -13,6 +13,7 @@ import { pinKey, samePath } from './resolve';
 import type { Coverage } from './resolve';
 import { isNotFoundError } from './serverApi';
 import type { RepoSummary, ServerApi } from './serverApi';
+import { INSTALLED_SUITE } from './installedSuite';
 
 /** Key under which the installed-resource record lives in client settings. */
 export const INSTALLED_KEY = 'installedResources';
@@ -173,7 +174,13 @@ const discoverOne = async (
   const seg = localPath.split('/').pop() as string;
   const sep = seg.indexOf('--');
   const ownerFromPath = sep > 0 ? seg.slice(0, sep) : null;
-  const repoName = sep > 0 ? seg.slice(sep + 2) : seg;
+  const namedRepo = sep > 0 ? seg.slice(sep + 2) : seg;
+  // Full- and legacy short-SHA install paths carry the revision after the
+  // repository name. Strip it only when it agrees with the Burrito identity.
+  const suffix = namedRepo.match(/--([0-9a-f]{12}|[0-9a-f]{40})$/);
+  const repoName = suffix && revision.startsWith(suffix[1])
+    ? namedRepo.slice(0, -suffix[0].length)
+    : namedRepo;
   const org = ownerFromPath ?? orgFor(repoName);
   const repoPath = org ? `git.door43.org/${org}/${repoName}` : `git.door43.org/${key}`;
   // Both identity halves are factual — the burrito states its own flavor and
@@ -403,7 +410,7 @@ export const mergeOptionalPins = <T extends { languageSets?: Record<string, Lang
     .filter((p) => p.repoPath.toLowerCase().includes(`/${org}/`))
     .filter((p) => !!p.sha && !!p.flavor);
   const byName = (name: string) =>
-    ofOrg.find((p) => (p.repoPath.split('/').pop() ?? '').toLowerCase() === name.toLowerCase());
+    preferredNamedPin(ofOrg, name);
   const built = {
     translationQuestions: byName(`${gateway.id}_tq`),
     simplifiedText: byName(`${gateway.id}_ust`) ?? byName(`${gateway.id}_gst`),
@@ -449,6 +456,18 @@ export const pinsPreferringInstalled = <T extends { languageSets?: Record<string
   return { ...resources, languageSets };
 };
 
+// Selection is separate from exact project-pin resolution. When the shipped
+// release is installed, it is the default even if an older copy appears first.
+// Preserve gateway selection policy for repositories outside the bundled suite.
+const bundledDefaults = [
+  ...Object.values(INSTALLED_SUITE.languageSets.fallback).filter((value) => 'repoPath' in value),
+  ...INSTALLED_SUITE.extraScripture,
+];
+const preferredNamedPin = (pins: ResourcePin[], name: string): ResourcePin | undefined => {
+  const matches = pins.filter((pin) => (pin.repoPath.split('/').pop() ?? '').toLowerCase() === name.toLowerCase());
+  return matches.find((pin) => bundledDefaults.some((preferred) => samePath(preferred.repoPath, pin.repoPath) && preferred.sha === pin.sha)) ?? matches[0];
+};
+
 /** The Bibles one gateway package supplies for the Translate source panes (#412):
  * its literal text (`<lang>_ult`, else `<lang>_glt`) and its simplified text
  * (`<lang>_ust`, else `<lang>_gst`), each only when installed with its identity. */
@@ -457,10 +476,9 @@ export const gatewayBiblesFromInstalled = (
   gateway: { id: string; org: string },
 ): { literal?: ResourcePin; simplified?: ResourcePin } => {
   const org = gateway.org.toLowerCase();
-  const byName = (name: string) =>
-    Object.values(installed).find((p) =>
-      !!p.sha && !!p.flavor && p.repoPath.toLowerCase().includes(`/${org}/`) &&
-      (p.repoPath.split('/').pop() ?? '').toLowerCase() === name.toLowerCase());
+  const ofOrg = Object.values(installed).filter((p) =>
+    !!p.sha && !!p.flavor && p.repoPath.toLowerCase().includes(`/${org}/`));
+  const byName = (name: string) => preferredNamedPin(ofOrg, name);
   return {
     literal: byName(`${gateway.id}_ult`) ?? byName(`${gateway.id}_glt`),
     simplified: byName(`${gateway.id}_ust`) ?? byName(`${gateway.id}_gst`),
@@ -490,10 +508,7 @@ export const languageSetFromInstalled = (
   // e.g. Bengali tN pinned into a Hindi language set (2026-08-27 adversarial
   // round 3; the round-1 fix covered only the optional slots).
   const byName = (name: string) =>
-    ofOrg.find((p) => {
-      const base = p.repoPath.split('/').pop() ?? '';
-      return base.toLowerCase() === name.toLowerCase();
-    });
+    preferredNamedPin(ofOrg, name);
   const tn = byName(`${gateway.id}_tn`);
   const tw = byName(`${gateway.id}_tw`); // D34: one repo serves both tW slots
   const ta = byName(`${gateway.id}_ta`);

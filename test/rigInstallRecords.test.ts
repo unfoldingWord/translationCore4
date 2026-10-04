@@ -50,7 +50,7 @@ function expectRecords(work: string): void {
   expect(doc.installedResources).toEqual({
     '_local_/_sideloaded_/en_tw': {
       repoPath: 'git.door43.org/unfoldingWord/en_tw',
-      version: 'v89',
+      version: 'v91',
       flavor: 'parascriptural/x-bcvarticles',
       sha: EN_TW_SHA,
     },
@@ -89,7 +89,7 @@ describe('#396 — write-install-records.mjs (D57)', () => {
     expect(settings(work).installedResources).toEqual({
       '_local_/_sideloaded_/en_ult': {
         repoPath: 'git.door43.org/unfoldingWord/en_ult',
-        version: 'v89',
+        version: 'v91',
         flavor: 'scripture/textTranslation',
       },
     });

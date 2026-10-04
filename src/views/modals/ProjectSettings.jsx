@@ -51,7 +51,7 @@ function GatewayCard({ s, st, actions }) {
           );
         })}
       </div>
-      <Button variant="ghost" size="sm" data-testid="settings-manage-sources" onClick={actions.openSources} style={{ marginTop: 8 }}>
+      <Button variant="ghost" size="sm" data-testid="settings-manage-sources" onClick={actions.manageSettingsSources} style={{ marginTop: 8 }}>
         {t('settings.manageSources')} →
       </Button>
     </div>

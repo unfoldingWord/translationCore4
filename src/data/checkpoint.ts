@@ -4,9 +4,10 @@
 // the commit is the checkpoint a person or a teammate can point at.
 //
 // Two facts from the platform shape this module [VERIFIED live — pankosmia-web
-// 0.18.5 (99fd9be), 2026-09-05, PLATFORM-NOTES #9]:
+// 0.18.5 (99fd9be), 2026-09-05, and 0.18.15 (a83725b), 2026-10-03; PLATFORM-NOTES #9, #48]:
 //   - `add-and-commit` sweeps the whole repository, and on a CLEAN tree it still
-//     succeeds and records an EMPTY commit. So the caller must look first.
+//     succeeds and records a commit (at 0.18.15 it changes only metadata.json).
+//     So the caller must look first.
 //   - `GET /git/status/<repo>` lists the pending changes as {path, change_type}.
 //     An empty list means nothing to commit.
 //

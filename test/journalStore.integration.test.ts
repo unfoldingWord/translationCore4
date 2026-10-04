@@ -13,6 +13,7 @@ import { JournalStore } from '../src/data/journal/journalStore';
 import type { KvStore } from '../src/data/journal/identity';
 import type { JournalEvent } from '../src/data/journal/seal';
 import { expectRefusal } from './helpers/report';
+import { lane } from '../e2e/lane.mjs';
 
 // journal/files.mjs is Node-bound (fs, node:crypto); loaded via a
 // NATIVE require outside the vite pipeline (vite-plugin-node-polyfills aliases
@@ -24,7 +25,7 @@ const refFiles = nodeRequire('./journal/files.mjs') as {
   validateSegment(raw: string): { ok: boolean; reason?: string };
 };
 
-const BASE = 'http://127.0.0.1:19998/api';
+const BASE = lane().rigApi;
 
 const rigUp = await (async (): Promise<boolean> => {
   try {

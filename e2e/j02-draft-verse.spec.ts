@@ -9,6 +9,9 @@ import { test, expect } from './helpers/test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { verifyAllJournaledProjects } from './helpers/journal';
+import { QA_SERVER, USER, dropOrigin, git } from './helpers/door43Share';
+import { recordExternal } from './helpers/externalRequests';
+import { lane } from './lane.mjs';
 import {
   SEEDED_PROJECT,
   TC4_ROOT,
@@ -19,6 +22,7 @@ import {
   verseTextSpan,
   sideloadedIngredient,
   resetPlaces,
+  writePlace,
 } from './helpers/rig';
 
 const BOOK_IPATH = 'ingredients/TIT.usfm';
@@ -67,9 +71,15 @@ const verseLine = (usfm: string, verse: number): { start: number; end: number } 
 };
 
 // #329: a Home tile returns to where this client last worked; this journey opens
-// books from their tiles and states its own start (Translate, chapter 1).
+// books from their tiles and states its own start (Translate, chapter 1). With no
+// place, a tile opens in Understand (D87), so the start is written as a place.
 test.beforeEach(() => {
   resetPlaces();
+  writePlace(SEEDED_PROJECT, 'TIT', { mode: 'draft', chapter: 1 });
+});
+// #506: the first test gives the seeded project an `origin`; none stays behind.
+test.afterEach(() => {
+  dropOrigin(SEEDED_PROJECT);
 });
 
 test.describe('J2 — a translator drafts a verse', () => {
@@ -81,6 +91,10 @@ test.describe('J2 — a translator drafts a verse', () => {
       const commitsBefore = commitCount(SEEDED_PROJECT);
 
       await test.step('open the app — the seeded project is listed', async () => {
+        // A project on the QA server: its card names the server (#506). The origin is the
+        // record of a share (D84 point 1), read once when Home first loads.
+        dropOrigin(SEEDED_PROJECT); // an origin left by a killed run
+        git(rigRepo(SEEDED_PROJECT), 'remote', 'add', 'origin', `${QA_SERVER}/${USER.username}/${SEEDED_PROJECT}.git`);
         await page.goto('/');
         await expect(
           page.getByText('Equipo Ejemplo — Tito y Jonás').first(),
@@ -108,20 +122,21 @@ test.describe('J2 — a translator drafts a verse', () => {
         await page.getByRole('tab', { name: 'Section', exact: true }).click();
       });
 
-      await test.step('the dev build names the QA Door43 server beside the save indicator (#120)', async () => {
+      await test.step('the project card names the QA Door43 server in its meta line (#506)', async () => {
         // The journeys run on the Vite dev server, so account and write calls
-        // target qa.door43.org and the chrome must say so.
-        const label = page.getByTestId('save-indicator').locator('xpath=..').getByTestId('dcs-server-label');
-        await expect(label).toBeVisible();
-        await expect(label).toContainText('qa.door43.org');
-        // The run's artifact, kept on disk under test-results/: the label text
-        // (the same bytes every run) and a screenshot of the app chrome.
-        const textPath = testInfo.outputPath('dcs-server-label.txt');
-        fs.writeFileSync(textPath, `${(await label.textContent()) ?? ''}\n`);
-        await testInfo.attach('dcs-server-label.txt', { path: textPath, contentType: 'text/plain' });
-        const shotPath = testInfo.outputPath('app-chrome.png');
-        await page.locator('header').first().screenshot({ path: shotPath });
-        await testInfo.attach('app-chrome.png', { path: shotPath, contentType: 'image/png' });
+        // target qa.door43.org and the card must say so. The top bar has no label.
+        await page.getByTitle('Switch project').click();
+        const meta = page.getByTestId('share-state-_local_/_local_/sample_burrito');
+        await expect(meta).toHaveText(`Shared at qa.door43.org/${USER.username}/${SEEDED_PROJECT}`);
+        await expect(page.getByTestId('dcs-server-label')).toHaveCount(0);
+        // The run's artifact, kept on disk under test-results/: the meta line text
+        // and a screenshot of the card.
+        const textPath = testInfo.outputPath('card-meta.txt');
+        fs.writeFileSync(textPath, `${(await meta.textContent()) ?? ''}\n`);
+        await testInfo.attach('card-meta.txt', { path: textPath, contentType: 'text/plain' });
+        const shotPath = testInfo.outputPath('project-card.png');
+        await page.getByTestId('project-_local_/_local_/sample_burrito').screenshot({ path: shotPath });
+        await testInfo.attach('project-card.png', { path: shotPath, contentType: 'image/png' });
       });
 
       await test.step('the typed text is on disk in ingredients/TIT.usfm (FR-6)', async () => {
@@ -430,25 +445,18 @@ test.describe('J2 — a translator drafts a verse', () => {
   );
 
   test(
-    'a drafting session in Local, with a restart, talks to no host but the local server (FR-31, #43; D86)',
+    'a drafting session, with a restart, uses no internet: every request goes to the local server (FR-31, #43; D88)',
     { tag: ['@inc4', '@J2'] },
-    async ({ page }) => {
+    async ({ page }, testInfo) => {
       // Every request the client makes from the first paint through a saved draft.
       // The one local host is the dev client (baseURL), which proxies /api to the rig
       // (vite.config.js); everything else is a network dependency, and any other host
-      // fails the test. The fonts are local since #3. The session runs in Local, the
-      // default with no stored choice (D86 point 3), and includes a restart (#486).
+      // fails the test (the shared recorder, e2e/helpers/externalRequests.ts, also
+      // counts /api/gitea/ and /api/git/push/, the routes that make the server use the
+      // internet). The fonts are local since #3. The session runs with no stored
+      // choice, so "Ask before using the internet" is on (D88), and includes a restart.
       const OFFLINE_DRAFT = 'Recuérdales que estén dispuestos a toda buena obra.';
-      const hosts = new Map<string, Set<string>>();
-      const seen = (url: string, label = '') => {
-        const u = new URL(url);
-        if (!hosts.has(u.host)) hosts.set(u.host, new Set());
-        hosts.get(u.host)!.add(label + u.pathname);
-      };
-      page.on('request', (req) => seen(req.url()));
-      // Playwright's request event does not cover WebSockets; record them too (the dev
-      // client's HMR socket is local; a remote one would be a dependency).
-      page.on('websocket', (ws) => seen(ws.url(), 'ws:'));
+      const recorder = recordExternal(page);
       // A SharedWorker's requests bypass the page listeners (Playwright detaches
       // shared-worker targets), so every worker the client constructs is recorded and
       // judged below — only a dedicated same-origin worker is admitted.
@@ -467,7 +475,8 @@ test.describe('J2 — a translator drafts a verse', () => {
         }
       });
       await page.goto('/');
-      await expect(page.getByTestId('net-status')).toHaveAttribute('data-state', 'local');
+      // The account menu is there and signed out; nothing was asked or sent.
+      await expect(page.getByTestId('account-menu')).toHaveAttribute('data-state', 'out');
       await page.getByTestId('project-_local_/_local_/sample_burrito').getByRole('button', { name: /Titus/ }).click();
       await expect(page.getByText('an apostle of Jesus Christ')).toBeVisible({ timeout: 20_000 });
       await page.getByRole('button', { name: '3', exact: true }).click();
@@ -494,9 +503,9 @@ test.describe('J2 — a translator drafts a verse', () => {
         .toBe(OFFLINE_DRAFT);
       // The workers of the first app session, before the restart replaces the page's record.
       const workersBefore = await page.evaluate(() => (window as unknown as { __workers: string[] }).__workers);
-      // A restart: the app starts again in Local, with the draft kept.
+      // A restart: the app starts again, with the draft kept.
       await page.reload();
-      await expect(page.getByTestId('net-status')).toHaveAttribute('data-state', 'local');
+      await expect(page.getByTestId('account-menu')).toHaveAttribute('data-state', 'out');
       await expect(page.getByTestId('project-_local_/_local_/sample_burrito')).toBeVisible({ timeout: 20_000 });
       await page.waitForTimeout(1000);
       // No worker whose traffic could escape the page's request event: a SharedWorker or
@@ -506,19 +515,17 @@ test.describe('J2 — a translator drafts a verse', () => {
       // the fold runs in one — because Playwright reports a dedicated worker's requests
       // through the page, so the host assertion below covers what it talks to.
       const workers = [...workersBefore, ...(await page.evaluate(() => (window as unknown as { __workers: string[] }).__workers))];
-      const escaping = workers.filter((w) => !w.startsWith('Worker http://localhost:5199/'));
+      const escaping = workers.filter((w) => !w.startsWith(`Worker ${lane().clientOrigin}/`));
       expect(escaping, 'workers whose traffic the page cannot observe').toEqual([]);
       const serviceWorkers = await page.evaluate(() =>
         'serviceWorker' in navigator ? navigator.serviceWorker.getRegistrations().then((r) => r.length) : 0);
       expect(serviceWorkers, 'service workers registered').toBe(0);
 
-      const local = new Set(['localhost:5199']);
-      const external = [...hosts.keys()].filter((h) => !local.has(h)).sort();
-      console.log(`J2 offline check: hosts contacted = ${[...hosts.keys()].sort().join(', ')}`);
-      for (const h of external) console.log(`  external ${h}: ${[...hosts.get(h)!].slice(0, 3).join(' ')}`);
-      expect(external, `hosts contacted other than the local server: ${external.join(', ')}`).toEqual([]);
+      const log = await recorder.save(testInfo, 'j2-external-requests');
+      console.log(`J2 offline check: ${recorder.all().length} requests, external = ${recorder.external().join(', ') || 'none'} (${log})`);
+      expect(recorder.external(), 'requests to anything but the local server').toEqual([]);
       // The rig was reached through the proxy: the session was a real one, not an empty page.
-      expect([...(hosts.get('localhost:5199') ?? [])].some((p) => p.startsWith('/api/'))).toBe(true);
+      expect(recorder.all().some((r) => r.path.startsWith('/api/'))).toBe(true);
     },
   );
 
@@ -688,6 +695,66 @@ test.describe('J2 — a translator drafts a verse', () => {
         const bytesAfter = readIngredient(SEEDED_PROJECT, BOOK_IPATH);
         expect(bytesAfter.equals(bytesBefore)).toBe(true);
         expect(commitCount(SEEDED_PROJECT)).toBe(commitsBefore);
+      });
+    },
+  );
+
+  test(
+    'widen the helps panel (#234): the toggle widens the pane past the default, drafting still saves, and Check still opens',
+    { tag: ['@inc9', '@J2'] },
+    async ({ page }, testInfo) => {
+      const WIDE_DRAFT = 'Nuestra gente debe aprender a dedicarse a hacer el bien.';
+
+      await page.goto('/');
+      await page.getByTestId('project-_local_/_local_/sample_burrito').getByRole('button', { name: /Titus/ }).click();
+      await page.getByRole('button', { name: '3', exact: true }).click();
+
+      const helps = page.getByTestId('helps-panel');
+      const paneWidth = async () => (await helps.boundingBox())!.width;
+      await expect(helps).toBeVisible();
+      const defaultWidth = await paneWidth();
+
+      await test.step('the toggle widens the pane past the default width (AC1)', async () => {
+        await page.getByTestId('helps-widen').click();
+        await expect.poll(paneWidth).toBeGreaterThan(defaultWidth + 100);
+        // The same control now offers the way back.
+        await expect(page.getByTestId('helps-widen')).toHaveAttribute('title', 'Restore the helps panel width');
+      });
+
+      await test.step('a second click restores the default width; a third widens again', async () => {
+        await page.getByTestId('helps-widen').click();
+        await expect.poll(paneWidth).toBe(defaultWidth);
+        await page.getByTestId('helps-widen').click();
+        await expect.poll(paneWidth).toBeGreaterThan(defaultWidth + 100);
+      });
+
+      await test.step('the artifact records both widths and the widened pane (AC2)', async () => {
+        // The widths come from the design tokens, so this file holds the same
+        // bytes every run at a given commit.
+        const textPath = testInfo.outputPath('helps-widths.txt');
+        fs.writeFileSync(textPath, `default=${defaultWidth}\nwidened=${await paneWidth()}\n`);
+        await testInfo.attach('helps-widths.txt', { path: textPath, contentType: 'text/plain' });
+        const shotPath = testInfo.outputPath('helps-widened.png');
+        await helps.screenshot({ path: shotPath });
+        await testInfo.attach('helps-widened.png', { path: shotPath, contentType: 'image/png' });
+      });
+
+      await test.step('drafting still works with the pane widened (AC3)', async () => {
+        await page.getByRole('tab', { name: 'Verse', exact: true }).click();
+        await page.getByRole('button', { name: 'Start this verse' }).first().click();
+        const editor = page.getByRole('textbox', { name: /Verse/ });
+        await editor.fill(WIDE_DRAFT);
+        await editor.blur();
+        await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
+        await expect
+          .poll(() => readIngredient(SEEDED_PROJECT, BOOK_IPATH).toString('utf8'), { timeout: 10_000 })
+          .toContain(WIDE_DRAFT);
+      });
+
+      await test.step('Check still opens with the pane widened (AC3)', async () => {
+        await page.getByRole('tab', { name: 'Check', exact: true }).click();
+        await page.getByTestId('open-translationNotes').click();
+        await expect(page.getByTestId('check-progress')).toBeVisible();
       });
     },
   );

@@ -9,6 +9,7 @@ import React, { useEffect, useState } from 'react';
 import { useApp } from '../state.jsx';
 import { t } from '../i18n';
 import { bookName } from '../data/bookNames';
+import { DCS_SERVER_LABEL } from '../data/dcsServer';
 import { Card, BookTile, Button, Overline, Badge, Callout, Toast } from '../ds/index.js';
 import { shareErrorText, Door43Account } from './modals/ShareDialog.jsx';
 
@@ -16,6 +17,18 @@ import { shareErrorText, Door43Account } from './modals/ShareDialog.jsx';
 const COLLAPSE_ABOVE = 12;
 
 const CARD_NOTE = { fontSize: 'var(--fs-meta)', letterSpacing: 'var(--track-11-5)', color: 'var(--text-tertiary)', fontWeight: 'var(--fw-medium)', whiteSpace: 'nowrap' };
+
+// #506: a development build puts the Door43 server name before the repository
+// when the repository is on that server. A packaged build has no label, so the
+// location is "owner/repository".
+const locationOf = (shared) => {
+  try {
+    if (DCS_SERVER_LABEL && new URL(shared.url).host === DCS_SERVER_LABEL) return `${DCS_SERVER_LABEL}/${shared.repository}`;
+  } catch {
+    // a remote that is not a URL: no server to name
+  }
+  return shared.repository;
+};
 
 // D86 point 6: the end of a card's meta line — "· Only on this computer"
 // before a share, "· Shared at owner/repository" after it; nothing until
@@ -28,7 +41,7 @@ function ShareMeta({ p }) {
     <>
       {' · '}
       <span data-testid={`share-state-${p.id}`}>
-        {shared ? t('home.sharedAt', { repository: shared.repository }) : t('home.onlyHere')}
+        {shared ? t('home.sharedAt', { location: locationOf(shared) }) : t('home.onlyHere')}
       </span>
     </>
   );
@@ -72,9 +85,9 @@ function ShareAction({ p }) {
     : t(shared ? 'home.uploadChanges' : 'home.share');
   return (
     <div data-testid={`share-card-${p.id}`} data-shared={shared ? '1' : '0'} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
-      {/* D86 point 4: Share stays enabled in Local; the click asks to allow the internet. */}
+      {/* D88: Share and Upload changes are one internet task each; it asks first when the preference says so. */}
       <Button variant="outline" size="sm" data-testid={`share-${p.id}`} title={label}
-        disabled={busy} onClick={() => actions.requireInternet(() => actions.startShare(p))}>
+        disabled={busy} onClick={() => actions.shareProject(p)}>
         {label}
       </Button>
       <CardAccount p={p} shared={shared} />
@@ -254,7 +267,7 @@ function ResumeCard({ edit, projects }) {
   // frame as the verse; Resume reopens that story, then the mode.
   const story = project.flavor === 'textStories';
   const resume = async () => {
-    await actions.openProject(edit.repoPath, edit.book);
+    await actions.openProject(edit.repoPath, edit.book, 'draft');
     if (story) {
       if (edit.chapter) await actions.openStory(Number(edit.chapter));
     } else if (edit.chapter && edit.chapter !== 1) await actions.setChapter(edit.chapter);

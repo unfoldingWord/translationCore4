@@ -37,8 +37,9 @@ node "$(npath "$ROOT/scripts/seed-large-project.mjs")" "$(npath "$WORK/repos/_lo
 # path (D17/D30 ladder, D23a gateway change, D36 carry-over) is exercisable on the
 # rig. es-419_tn v66 covers 3JN/JON/RUT/TIT — TIT and JON are the rig's books, so a
 # real primary rung exists. Build a cache entry with dev-env/scripts/cache-resource.zsh.
-# Sideload cached burritos (v89 sb-zips, unwrapped form): the source texts
-# en_ult/en_ust, plus the helps en_tn/en_tw/en_ta that a checking session needs
+# Sideload cached burritos (the v91 sb-zips the install ships, unwrapped form —
+# src/data/installedSuite.js, #504): the source texts en_ult/en_ust, plus the
+# helps en_tn/en_tw/en_ta that a checking session needs
 # (Increment 2 — J3/J4 journeys pin these, so the seed must supply them).
 # Replicates POST /burrito/zipped exactly: plain unzip, no git init (verified against
 # post_zipped_repo.rs at 0.18.5). The helps cache was produced by the app's own
@@ -53,7 +54,7 @@ node "$(npath "$ROOT/scripts/seed-large-project.mjs")" "$(npath "$WORK/repos/_lo
 # en_tq rides with the English package: D64/#110 made `translationQuestions` a
 # §5.3 slot and the shipped English package pins it, so a rig without it cannot
 # exercise the Understand screen's Questions tab.
-for R in en_ult:v89 en_ust:v89 en_tn:v89 en_tw:v89 en_ta:v89 en_tq:v89 el-x-koine_ugnt:v0.34 \
+for R in en_ult:v91 en_ust:v91 en_tn:v91 en_tw:v91 en_ta:v91 en_tq:v91 el-x-koine_ugnt:v0.34 \
          es-419_tn:v66 es-419_tw:v37 es-419_ta:v4 es-419_glt:v42 es-419_gst:v40 \
          es-419_obs:v2 es-419_obs-tn:v2 es-419_obs-twl:v2 \
          en_obs:v9 en_obs-tn:v13 en_obs-twl:v3 en_obs-tq:v10; do
