@@ -19,8 +19,6 @@ import { SearchField } from './SearchField.jsx';
    66-book lists get the search field, the 5-font and ~3-license lists do not. */
 const SEARCH_AT = 10;
 
-const MODIFIERS = ['Shift', 'Control', 'Alt', 'Meta'];
-
 const norm = (o) => (typeof o === 'string' ? { value: o, label: o } : o);
 
 /* Name contains the query, or the option's code starts with it — the two ways
@@ -79,16 +77,6 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
   const [query, setQuery] = React.useState('');
   const [hi, setHi] = React.useState(0);
   const [width, setWidth] = React.useState(null);
-  /* A native select's popup eats the outside click that closes it: the user
-     dismisses the list without activating whatever sat under the pointer — a
-     dialog's scrim, its Cancel, the field itself. Layer closes the list on
-     the outside MOUSEDOWN, so the CLICK that follows would still land there
-     (and a scrim click would take the whole dialog down with the list). The
-     dismiss marks that press and this capture listener consumes its click.
-     A new mousedown clears a mark whose click never fired (a long drag, a
-     right-click), and so does a keydown: a click that Enter or Space makes
-     comes after its keydown and is not part of the dismissing press. */
-  const swallowClick = React.useRef(false);
 
   const opts = React.useMemo(() => options.map(norm), [options]);
   const searchable = opts.length >= SEARCH_AT;
@@ -123,11 +111,13 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
     if (buttonRef.current) setWidth(buttonRef.current.getBoundingClientRect().width);
     setOpen(true);
   };
-  /* The field takes the focus back after a choice or Esc. A close because the
-     focus left (Tab) or because of a press outside leaves the focus there, so
-     the Layer does not restore it. */
-  const close = (refocus) => {
-    if (refocus && buttonRef.current) buttonRef.current.focus();
+  /* One rule for every close: if the focus is in the list, it goes back to
+     the field, because the list is about to go. A close because the focus
+     left (Tab) leaves it where it went, so the Layer does not restore it. */
+  const close = () => {
+    if (panelRef.current && panelRef.current.contains(document.activeElement) && buttonRef.current) {
+      buttonRef.current.focus();
+    }
     setOpen(false);
   };
   const onFocusOut = (e) => {
@@ -139,7 +129,7 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
   const choose = (o) => {
     if (o.disabled) return;
     onChange && onChange({ target: { value: o.value } });
-    close(true);
+    close();
   };
 
   const move = (delta) => setHi((i) => Math.max(0, Math.min(visible.length - 1, i + delta)));
@@ -151,27 +141,6 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
       if (visible[i].label.toLowerCase().startsWith(c)) { setHi(i); return; }
     }
   };
-
-  React.useEffect(() => {
-    const eat = (e) => {
-      if (!swallowClick.current) return;
-      swallowClick.current = false;
-      e.stopPropagation();
-      e.preventDefault();
-    };
-    const arm = () => { swallowClick.current = false; };
-    /* A modifier held through the outside click repeats its keydown (Windows),
-       and that must not let the click through. */
-    const armKey = (e) => { if (!MODIFIERS.includes(e.key)) arm(); };
-    document.addEventListener('click', eat, true);
-    document.addEventListener('mousedown', arm, true);
-    document.addEventListener('keydown', armKey, true);
-    return () => {
-      document.removeEventListener('keydown', armKey, true);
-      document.removeEventListener('click', eat, true);
-      document.removeEventListener('mousedown', arm, true);
-    };
-  }, []);
 
   const onKeyDown = (e) => {
     if (!open) {
@@ -222,12 +191,6 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
     return () => { done = true; timers.forEach(clearTimeout); };
   }, [open, searchable]);
 
-  /* A closed list stays drawn while the Layer animates it out. It is inert in
-     that time, so Tab cannot land in a search field that is about to go. */
-  React.useEffect(() => {
-    if (panelRef.current) panelRef.current.toggleAttribute('inert', !open);
-  }, [open]);
-
   /* The highlighted row is kept in view as the highlight moves. */
   React.useEffect(() => {
     if (!open || !visible[hi] || !panelRef.current) return;
@@ -243,7 +206,10 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
         role="combobox" aria-expanded={open ? 'true' : 'false'} aria-controls={listId}
         aria-haspopup="listbox" aria-describedby={f.describedBy}
         aria-activedescendant={searchable ? undefined : active}
-        onClick={() => { if (!open) openList(); }}
+        /* The field is part of the open list, not "outside" it: a press on it
+           toggles the list instead of closing it and opening it again. */
+        onMouseDown={(e) => { if (open) e.stopPropagation(); }}
+        onClick={() => { if (open) close(); else openList(); }}
         onKeyDown={onKeyDown}
         onBlur={onFocusOut}
         onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
@@ -271,27 +237,19 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
         <Chevron open={open} />
       </button>
 
-      <Layer open={open} level="popover" placement="anchor" anchorTo={buttonRef}
+      {/* Drawn only while open, and without an exit animation: a closed list
+          leaves the page in the same commit that closes it. A Layer with
+          open={false} keeps its panel for one more effect, and a fast Tab or
+          press can land in it there and lose the focus when it goes. */}
+      {open ? <Layer open level="popover" placement="anchor" anchorTo={buttonRef}
         offset={6} align="start" dismiss="outside escape"
-        /* On the Layer's own panel (it has tabIndex -1), not only on ours: a
-           press anywhere in the popover keeps the focus where it is (the
-           field or the search), so it does not count as the focus leaving.
-           That includes the second press of a double-click on a row while
-           the closed list animates out (our panel is inert then, so the
-           press lands on the Layer's panel). */
+        animate={false}
+        /* A press in the popover (a row, a header, the Layer's own panel)
+           keeps the focus where it is, the field or the search, so it does
+           not count as the focus leaving. */
         onMouseDown={(e) => { if (!(e.target instanceof Element && e.target.closest('input, button'))) e.preventDefault(); }}
         restoreFocus={false}
-        onDismiss={(why) => {
-          if (why === 'outside') {
-            swallowClick.current = true;
-            /* A press on something that takes no focus (the scrim) leaves it on
-               <body>, outside the dialog's trap: give it back to the field. */
-            setTimeout(() => {
-              if ((!document.activeElement || document.activeElement === document.body) && buttonRef.current) buttonRef.current.focus();
-            }, 0);
-          }
-          close(why === 'escape');
-        }}>
+        onDismiss={close}>
         <div ref={panelRef} onBlur={onFocusOut}>
           <Surface fill="card" border="line" radius="lg" elevation="hover"
             style={{ width: width || undefined, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -342,7 +300,7 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
             </div>
           </Surface>
         </div>
-      </Layer>
+      </Layer> : null}
     </>
   );
 }

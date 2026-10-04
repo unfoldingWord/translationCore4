@@ -12,15 +12,18 @@
 // 6. Enter/Esc leave the list open, or focus does not return to the field.
 // 7. onChange delivers something other than { target: { value } }.
 // 8. Group headers miss, or their counts do not follow the filter.
-// 9. A dismiss with no click after it (a right-click) eats the next keyboard click.
+// 9. A press outside does not reach what it landed on, or a dismiss with no click
+//    after it (a right-click) eats the next keyboard click.
 // 10. The list stays open when the focus leaves it, or the close pulls the focus back.
 // 11. Home/End in the search field move the highlight, not the text cursor.
-// 12. A closing list can still take the focus while it animates out.
+// 12. A closed list stays on the page (an exit animation) and can take the focus.
 // 13. The search input copies the field button's id.
+// 14. A press on a dialog's scrim with a list open closes the dialog too.
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Select as DsSelect } from '../src/ds/components/forms/Select.jsx';
+import { Modal as DsModal } from '../src/ds/index.js';
 import { SCRIPT_FONTS } from '../src/state.jsx';
 
 /* The .jsx component's `options = []` default infers as never[] under tsc;
@@ -32,6 +35,7 @@ type SelectProps = {
   searchPlaceholder?: string; noMatchesLabel?: string;
 };
 const Select = DsSelect as unknown as React.FC<SelectProps>;
+const Modal = DsModal as unknown as React.FC<{ title: string; onClose: () => void; 'data-testid'?: string; children?: React.ReactNode }>;
 
 /* The app's own font catalogue (AGENTS.md: inputs come from the system). */
 const FONTS: string[] = SCRIPT_FONTS;
@@ -201,27 +205,55 @@ describe('#446 — the design-system dropdown', () => {
     await waitFor(() => expect(document.activeElement).toBe(box('Script font')));
   });
 
-  it('the outside click that closes the list is consumed, like the native popup ate it', async () => {
-    const onChange = vi.fn();
+  it('an outside click closes the list and still reaches what it landed on', () => {
     const outside = vi.fn();
     render(
       <div>
         <button onClick={outside}>Cancel</button>
-        <Select label="Script font" options={FONTS} value={FONTS[0]} onChange={onChange} />
+        <Select label="Script font" options={FONTS} value={FONTS[0]} onChange={() => {}} />
       </div>,
     );
     fireEvent.click(box('Script font'));
     screen.getByRole('listbox');
     const cancel = screen.getByRole('button', { name: 'Cancel' });
-    // the press that dismisses the list must not also activate what it landed on
     fireEvent.mouseDown(cancel);
     fireEvent.click(cancel);
-    await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
-    expect(outside).not.toHaveBeenCalled();
-    // the next press is an ordinary click again
-    fireEvent.mouseDown(cancel);
-    fireEvent.click(cancel);
+    expect(screen.queryByRole('listbox')).toBeNull();
     expect(outside).toHaveBeenCalledTimes(1);
+  });
+
+  it('a press on the field while the list is open closes it, and it stays closed', () => {
+    render(<Select label="Script font" options={FONTS} value={FONTS[0]} onChange={() => {}} />);
+    const b = box('Script font');
+    fireEvent.mouseDown(b);
+    fireEvent.click(b);
+    screen.getByRole('listbox');
+    fireEvent.mouseDown(b);
+    fireEvent.click(b);
+    expect(screen.queryByRole('listbox')).toBeNull();
+  });
+
+  it('in a dialog, a press on the scrim closes only the open list; the next one closes the dialog', () => {
+    const onClose = vi.fn();
+    render(
+      <Modal title="Add a book" onClose={onClose} data-testid="scrim">
+        <Select label="Book" options={TEN} value="GEN" onChange={() => {}} searchPlaceholder="Find a book" />
+      </Modal>,
+    );
+    open();
+    const input = screen.getByPlaceholderText('Find a book');
+    input.focus();
+    const scrim = screen.getByTestId('scrim');
+    // the press does not move the focus (it is cancelled), and closes the list
+    expect(fireEvent.mouseDown(scrim)).toBe(false);
+    fireEvent.click(scrim);
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(box());
+    // with no list open, the scrim closes the dialog as before
+    expect(fireEvent.mouseDown(scrim)).toBe(true);
+    fireEvent.click(scrim);
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it('choosing by click closes the list and focus returns to the field', async () => {
@@ -235,7 +267,8 @@ describe('#446 — the design-system dropdown', () => {
     await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
     await waitFor(() => expect(document.activeElement).toBe(box('Script font')));
   });
-  it('a dismiss with no click after it does not eat the next keyboard click', async () => {
+
+  it('a dismiss with no click after it (a right-click) leaves the next keyboard click alone', async () => {
     const outside = vi.fn();
     render(
       <div>
@@ -246,14 +279,6 @@ describe('#446 — the design-system dropdown', () => {
     fireEvent.click(box('Script font'));
     screen.getByRole('listbox');
     const create = screen.getByRole('button', { name: 'Create book' });
-    // a held modifier repeats its keydown; that must not clear the mark of a real press
-    fireEvent.mouseDown(create);
-    fireEvent.keyDown(create, { key: 'Shift' });
-    fireEvent.click(create);
-    expect(outside).not.toHaveBeenCalled();
-    await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
-    fireEvent.click(box('Script font'));
-    screen.getByRole('listbox');
     // a right-click closes the list and sends contextmenu, not click
     fireEvent.mouseDown(create, { button: 2 });
     await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
@@ -310,34 +335,22 @@ describe('#446 — the design-system dropdown', () => {
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(onChange.mock.calls[0][0]).toEqual({ target: { value: 'JOB' } });
   });
-  it('a closing list is inert while it animates out, so Tab cannot land in it', async () => {
-    render(<Select label="Book" options={TEN} value="GEN" onChange={() => {}} searchPlaceholder="Find a book" />);
-    open();
-    const input = screen.getByPlaceholderText('Find a book');
-    expect(input.closest('[inert]')).toBeNull();
-    fireEvent.keyDown(document, { key: 'Escape' });
-    // still drawn for the exit animation, but out of the focus order
-    expect(screen.getByPlaceholderText('Find a book').closest('[inert]')).not.toBeNull();
-    await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
-  });
 
-  it('a press on the closing popover does not take the focus (double-click on a row)', () => {
+  it('a closed list is gone at once (no exit animation), by Escape or by a choice', () => {
     const onChange = vi.fn();
-    render(<Select label="Script font" options={FONTS} value={FONTS[0]} onChange={onChange} />);
-    const b = box('Script font');
-    b.focus();
-    fireEvent.click(b);
-    const row = screen.getByRole('option', { name: 'Charis SIL' });
-    // the Layer's own panel, the focusable box (tabIndex -1) around our panel
-    const layerPanel = row.closest('[tabindex="-1"]') as HTMLElement;
-    expect(layerPanel).not.toBeNull();
-    fireEvent.mouseDown(row);
-    fireEvent.click(row); // first click: chooses and closes
-    expect(onChange).toHaveBeenCalledTimes(1);
-    expect(document.activeElement).toBe(b);
-    // second press, during the exit animation: our panel is inert, so the
-    // press lands on the Layer's panel, which must not take the focus
-    expect(fireEvent.mouseDown(layerPanel)).toBe(false);
+    render(<Select label="Book" options={TEN} value="GEN" onChange={onChange} searchPlaceholder="Find a book" />);
+    open();
+    screen.getByPlaceholderText('Find a book').focus();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    // nothing is left on the page to take the focus or a press
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(screen.queryByPlaceholderText('Find a book')).toBeNull();
+    expect(document.activeElement).toBe(box());
+    open();
+    fireEvent.click(screen.getByRole('option', { name: /Exodus/ }));
+    expect(onChange.mock.calls[0][0]).toEqual({ target: { value: 'EXO' } });
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(document.activeElement).toBe(box());
   });
 
   it('the search input has its own name and does not copy the field id', () => {
