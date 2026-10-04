@@ -524,11 +524,15 @@ test.describe('J9 — a facilitator imports existing work', () => {
         // one valid book, so the button adds exactly one
         await expect(page.getByTestId('ab-usfm-add')).toHaveText('Add book');
       });
-      await test.step('Add writes Titus through the book.add path and opens it; Jonah is byte-identical', async () => {
+      const card = page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`);
+      await test.step('Add writes Titus through the book.add path and stays on Home: the dialog closes and the project card shows Titus; Jonah is byte-identical', async () => {
         await page.getByTestId('ab-usfm-add').click();
-        await expect(page.getByRole('heading', { name: /^Titus \d+$/ })).toBeVisible({ timeout: 120_000 });
-        await expect(page.getByText(/Pablo, siervo de Dios y apóstol de Jesucristo/).first()).toBeVisible({ timeout: 60_000 });
-        await expect(page.getByTestId('home-open-error')).toHaveCount(0);
+        await expect(page.getByTestId('ab-usfm')).toHaveCount(0, { timeout: 60_000 });
+        await expect(card.getByRole('button', { name: /Titus/ })).toBeVisible();
+        await expect(card.getByRole('button', { name: /Jonah/ })).toBeVisible();
+        // Home, not Translate: the project was not opened
+        await expect(page.getByRole('heading', { name: /^Titus \d+$/ })).toHaveCount(0);
+        seen.afterAdd = { onHome: true, cardBooks: await card.getByRole('button', { name: /Titus|Jonah/ }).count() };
         expect(fs.existsSync(path.join(repo, 'ingredients', 'TIT.usfm'))).toBe(true);
         expect(fs.readFileSync(path.join(repo, 'ingredients', 'TIT.usfm'), 'utf8')).toContain('Pablo, siervo de Dios');
         expect(fs.readFileSync(path.join(repo, 'ingredients', 'JON.usfm')).equals(jonBefore)).toBe(true);
@@ -538,6 +542,12 @@ test.describe('J9 — a facilitator imports existing work', () => {
           lastCommit: lastCommitMessage(abbrOf(name)),
           jonUnchanged: true,
         };
+      });
+      await test.step('the new book opens from its tile in Translate with the file\'s text', async () => {
+        await card.getByRole('button', { name: /Titus/ }).click();
+        await expect(page.getByRole('heading', { name: /^Titus \d+$/ })).toBeVisible({ timeout: 120_000 });
+        await expect(page.getByText(/Pablo, siervo de Dios y apóstol de Jesucristo/).first()).toBeVisible({ timeout: 60_000 });
+        await expect(page.getByTestId('home-open-error')).toHaveCount(0);
       });
       // The run's artifact: each row's verdict as the dialog showed it, and the books on disk after Add.
       const artifactPath = testInfo.outputPath('j09-add-book-usfm.json');

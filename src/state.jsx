@@ -3365,10 +3365,12 @@ export function AppProvider({ children }) {
     };
     /** #484: the one write path for the Add-a-book dialog — blank or from a
      * USFM file. Journals one self-contained §8.5 book.add per book (issue
-     * #62) through a throwaway store, commits once, and opens the project at
-     * the first book. `items` is [{ code, initialUsfm? }]; a missing
-     * initialUsfm seeds from the pinned ULT structure like a blank book. */
-    const writeNewBooks = async (f, items) => {
+     * #62) through a throwaway store and commits once. `items` is
+     * [{ code, initialUsfm? }]; a missing initialUsfm seeds from the pinned
+     * ULT structure like a blank book. A blank book opens in Translate (the
+     * next step is to draft it); books from files stay on Home, where the
+     * project card shows them, as a project import does. */
+    const writeNewBooks = async (f, items, { open = true } = {}) => {
       a.patchAb({ busy: true, error: null });
       const store = new JournalingStore({ api, ops: opsLog });
       try {
@@ -3390,10 +3392,12 @@ export function AppProvider({ children }) {
           });
         }
         await store.commit(`Add ${items.map((i) => i.code).join(', ')} (tC4)`);
-        invalidateProgress(f.repoPath); // the new book's tile must not stay unknown
+        // After the listing: Home reloads the progress for the books it lists,
+        // so the new book's tile must be listed before its cache is dropped.
         await refreshProjects();
+        invalidateProgress(f.repoPath);
         a.closeModal();
-        await a.openProject(f.repoPath, items[0].code);
+        if (open) await a.openProject(f.repoPath, items[0].code);
       } catch (e) {
         a.patchAb({ busy: false, error: e?.reason || e?.message || t('wizard.error') });
       } finally {
@@ -5630,7 +5634,7 @@ export function AppProvider({ children }) {
         if (f.busy) return;
         const items = (f.files || []).filter((x) => !x.refusal).map(({ code, usfm }) => ({ code, initialUsfm: usfm }));
         if (!items.length) return;
-        await writeNewBooks(f, items);
+        await writeNewBooks(f, items, { open: false });
       },
 
       // ---- Project settings modal (Increment 1: direction + font are
