@@ -2257,3 +2257,31 @@ cannot pass [VERIFIED — pankosmia-web 0.18.14 (173f9f6, 2026-09-29),
 change together (§9). `docs/PLATFORM-NOTES.md` #9, #27, #28, #43, #45 and #48, `docs/RISKS.md`
 Ledger #1, `docs/ARCHITECTURE.md` (the integration row and the import row), BURRITO-SPEC R-10.2.3 and
 `e2e/j09-import.spec.ts` change with this decision.
+
+## D91 (2026-10-02, project-owner ruling) **The journal owns the project settings; `checking/settings.json` stays as a generated mirror; `checkingLanguage` is obsolete and new projects do not write it.** [issue #529; found in the end-user QA of build 9215071 (#439)]
+
+1. **The journal owns settings.** A settings change records `settings.set` events (last writer
+   wins per path — journal check JC-17). Folding those events supplies the values, and the
+   writer and every checkpoint regenerate `checking/settings.json` whole from the fold
+   (BURRITO-SPEC R-8.7.1). The file stays as a generated mirror; no reader treats it as the
+   authority. This point records the existing contract, it changes nothing.
+2. **The implemented fields are presentation fields.** `schemaVersion` (1), `textDirection`,
+   `textFont` and `languageName`, defined in BURRITO-SPEC §5.4 and on the store's
+   `SettingsFile` type. The earlier draft's pane/tool/category settings stay reserved
+   specification fields: legal to carry, not implemented.
+3. **`checkingLanguage` is obsolete and has no effect.** The checking language is the resource
+   pins' primary rung (§5.3, D30.2). Creation wrote `checkingLanguage: "en"` and nothing ever
+   read it: on the packaged build at `daf42c9` (2026-10-02), QA439 Titus checked in Spanish
+   (`es-419_gl` pins) while its settings file still said English. New Bible and OBS projects
+   stop writing the field. `schemaVersion` stays 1: removing an unused OPTIONAL field is not a
+   format change (D47 is not engaged).
+4. **Existing data stays readable, with no migration.** The owner reports these projects are
+   not yet in the wild; disposable QA projects may be recreated. An accepted journal or an
+   imported pre-release project that carries the field keeps it through normal save,
+   checkpoint, export and import; readers ignore it when choosing resources. No settings-key
+   allowlist, no filtering of generic projections, no rewrite of sealed segments, and no
+   refusal of a project merely because it carries the field.
+
+`docs/BURRITO-SPEC.md` §5.4 carries this decision. The conformance harness does not assert the
+removed field, so its checks do not change. The regression journey is
+`e2e/settings-contract.spec.ts`.

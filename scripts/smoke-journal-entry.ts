@@ -75,7 +75,7 @@ const main = async (): Promise<void> => {
     // checkpoint through JournalingStore (not direct /ingredient/raw writes).
     await store.open(repoPath);
     await store.writeResources(INSTALLED_SUITE as never, null);
-    await store.writeSettings({ schemaVersion: 1, checkingLanguage: 'en', textDirection: 'ltr', textFont: null, languageName: 'Français' }, null);
+    await store.writeSettings({ schemaVersion: 1, textDirection: 'ltr', textFont: null, languageName: 'Français' }, null);
 
     for (let number = 1; number <= 50; number += 1) {
       const template = fs.readFileSync(path.join(__dirname, 'lib', 'templates', 'content_templates', 'text_stories', 'ingredients', storyPath(number)));

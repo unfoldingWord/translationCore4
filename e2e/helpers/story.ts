@@ -29,7 +29,7 @@ export async function createObsProject(
   // J20 proves that path): the bundled English suite, which carries the OBS members
   // (#288, D75), and the language settings the platform does not record.
   await store.writeResources(INSTALLED_SUITE, null);
-  await store.writeSettings({ schemaVersion: 1, checkingLanguage: 'en', textDirection: 'ltr', textFont: null, languageName: 'Español' }, null);
+  await store.writeSettings({ schemaVersion: 1, textDirection: 'ltr', textFont: null, languageName: 'Español' }, null);
   if (draft) await draft(store);
   await store.commit('Project created (journey precondition)');
   store.dispose();
