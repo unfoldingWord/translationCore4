@@ -179,7 +179,7 @@ stop_app() {  # $1 = label. The launcher execs Electron, so APP_PID is Electron'
     for pid in ${=victims}; do alive "$pid" && left="$left $pid"; done
     if [ -z "$left" ] && ! port_answers; then
       local log="$LOGDIR/tc4-smoke-$1.log" stopped
-      stopped=$(grep -c 'stopServer() - Server stopped.' "$log")
+      stopped=$(grep -cF 'stopServer() - Server stopped.' "$log")
       [ "$stopped" = 1 ] && ! grep -q 'Failed to stop' "$log" \
         || fail "$1 stop: the app did not stop its server cleanly: $stopped 'Server stopped.' line(s); $(grep 'stopServer()' "$log" | tr '\n' ' ') (log: $log)"
       ok "$1 stop: electron and server exited (pids $victims${forced:+; SIGKILL needed for$forced}), port $PORT no longer answers, the app logged one 'Server stopped.'"
