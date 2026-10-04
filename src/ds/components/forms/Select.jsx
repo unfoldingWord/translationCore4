@@ -273,6 +273,13 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
 
       <Layer open={open} level="popover" placement="anchor" anchorTo={buttonRef}
         offset={6} align="start" dismiss="outside escape"
+        /* On the Layer's own panel (it has tabIndex -1), not only on ours: a
+           press anywhere in the popover keeps the focus where it is (the
+           field or the search), so it does not count as the focus leaving.
+           That includes the second press of a double-click on a row while
+           the closed list animates out (our panel is inert then, so the
+           press lands on the Layer's panel). */
+        onMouseDown={(e) => { if (!(e.target instanceof Element && e.target.closest('input, button'))) e.preventDefault(); }}
         restoreFocus={false}
         onDismiss={(why) => {
           if (why === 'outside') {
@@ -285,10 +292,7 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
           }
           close(why === 'escape');
         }}>
-        {/* A press on a row or a header keeps the focus where it is (the field
-            or the search), so it does not count as the focus leaving. */}
-        <div ref={panelRef} onBlur={onFocusOut}
-          onMouseDown={(e) => { if (!(e.target instanceof Element && e.target.closest('input, button'))) e.preventDefault(); }}>
+        <div ref={panelRef} onBlur={onFocusOut}>
           <Surface fill="card" border="line" radius="lg" elevation="hover"
             style={{ width: width || undefined, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             {searchable ? (

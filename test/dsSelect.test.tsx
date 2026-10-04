@@ -91,6 +91,9 @@ describe('#446 — the design-system dropdown', () => {
     expect(groups.map((g) => g.getAttribute('aria-label'))).toEqual(['Old Testament', 'New Testament']);
     expect(groups[0].textContent).toContain('Old Testament3');
     expect(groups[1].textContent).toContain('New Testament2');
+    // a code that is in no name: only the code-prefix rule finds John
+    fireEvent.change(input, { target: { value: 'jhn' } });
+    expect(optionNames()).toEqual(['JohnJHN']);
     fireEvent.change(input, { target: { value: 'zzz' } });
     expect(screen.queryAllByRole('option')).toHaveLength(0);
     expect(screen.getByText('Nothing matches this filter.')).toBeTruthy();
@@ -316,6 +319,25 @@ describe('#446 — the design-system dropdown', () => {
     // still drawn for the exit animation, but out of the focus order
     expect(screen.getByPlaceholderText('Find a book').closest('[inert]')).not.toBeNull();
     await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
+  });
+
+  it('a press on the closing popover does not take the focus (double-click on a row)', () => {
+    const onChange = vi.fn();
+    render(<Select label="Script font" options={FONTS} value={FONTS[0]} onChange={onChange} />);
+    const b = box('Script font');
+    b.focus();
+    fireEvent.click(b);
+    const row = screen.getByRole('option', { name: 'Charis SIL' });
+    // the Layer's own panel, the focusable box (tabIndex -1) around our panel
+    const layerPanel = row.closest('[tabindex="-1"]') as HTMLElement;
+    expect(layerPanel).not.toBeNull();
+    fireEvent.mouseDown(row);
+    fireEvent.click(row); // first click: chooses and closes
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(b);
+    // second press, during the exit animation: our panel is inert, so the
+    // press lands on the Layer's panel, which must not take the focus
+    expect(fireEvent.mouseDown(layerPanel)).toBe(false);
   });
 
   it('the search input has its own name and does not copy the field id', () => {
