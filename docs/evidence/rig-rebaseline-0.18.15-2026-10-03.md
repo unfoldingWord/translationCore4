@@ -193,3 +193,29 @@ obs  "x-abc"       name="Abc Language"  → 200 repo=yes stored tag="x-x-abc" na
   tC4 does not call that route.
 - **`POST /api/system/shutdown`** (bab524c): new; #206 uses it (D89 point 6).
 - **Metadata model** (`structs.rs`): formatting only, plus `AppSettings.dev_settings`.
+
+## Journeys (Playwright, full suite)
+
+Each run used its own port lane and a fresh seed.
+
+```
+main 6f219aa, 0.18.5 control:            153 passed, 8 skipped, 0 failed (15.5m)
+this branch, 0.18.15, first full run:    152 passed, 8 skipped, 2 failed (16.5m)
+  J7/J23 OBS Scripture Burrito export — harness OBS group 5/7 (currentScope key order) → D90 point 7
+  J7 PDF — a clean git status fell between the open's two commits (test wait) → fixed in the spec
+this branch, 0.18.15, final run:         154 passed, 8 skipped, 0 failed (16.4m)
+```
+
+J9 failed on `metadata.json` byte equality before D90 point 6 (lane run of
+`e2e/j09-import.spec.ts`, 2026-10-03). The new journey `e2e/language-tags.spec.ts` writes
+`language-tags.json`: `obs-wizard es_419!` refused with the server's reason; `obs-wizard
+es-419` → `es-419` / "Spanish (419)"; `obs-wizard x-abc` + "Abc Language" → stored with that
+name; `obs-import es-419` → `es-419`; `obs-import es_419!` refused on the review page.
+
+## Commit time (add-and-commit after one sidecar write, 5 runs, macOS)
+
+```
+                       0.18.5          0.18.15
+sample_burrito         0.01–0.04 s     0.02–0.07 s
+sample_burrito_large   0.64–0.91 s     0.92–1.34 s
+```
