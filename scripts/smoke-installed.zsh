@@ -224,12 +224,18 @@ case "$ROOT" in
 esac
 [ "$CLIENT" = "200" ] && ok "client: /clients/uw-tc4 200" || fail "client: /clients/uw-tc4 answered $CLIENT"
 # v4.0.0 bundles only the uw-tc4 client (#71, D89 point 7). GET /api/list-clients is
-# the server's compact JSON array of {"id":…,…,"url":…} (pankosmia-web 0.18.15).
+# the server's JSON array of {id, …, url} (pankosmia-web 0.18.15); parse it, so a
+# malformed body fails instead of matching by pattern.
 CLIENTS=$(curl -s --max-time 10 "http://127.0.0.1:$PORT/api/list-clients") || fail "client set: curl exit $? on GET /api/list-clients"
-CLIENT_IDS=$(print -r -- "$CLIENTS" | grep -o '"id":"[^"]*"' | tr '\n' ' ')
-[ "$CLIENT_IDS" = '"id":"uw-tc4" ' ] && [[ "$CLIENTS" == *'"url":"/clients/uw-tc4"'* ]] \
+CLIENT_SET=$(node_run -e '
+let clients;
+try { clients = JSON.parse(process.argv[1]); } catch (e) { process.stdout.write("not JSON"); process.exit(1); }
+const seen = Array.isArray(clients) ? clients.map((c) => `${c && c.id} ${c && c.url}`) : [];
+process.stdout.write(JSON.stringify(seen));
+process.exit(seen.length === 1 && seen[0] === "uw-tc4 /clients/uw-tc4" ? 0 : 1);
+' "$CLIENTS") \
   && ok "client set: /api/list-clients lists only uw-tc4" \
-  || fail "client set: /api/list-clients must list only uw-tc4, got ${CLIENTS[1,200]}"
+  || fail "client set: /api/list-clients must list only uw-tc4 at /clients/uw-tc4, got ${CLIENT_SET:-nothing} from ${CLIENTS[1,200]}"
 
 # ---- 3: the project store (#70) --------------------------------------------------
 US="$SMOKE_HOME/pankosmia/tc4/user_settings.json"

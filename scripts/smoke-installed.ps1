@@ -143,10 +143,14 @@ try {
   $client = Invoke-WebRequest "http://127.0.0.1:$script:port/clients/uw-tc4" -UseBasicParsing
   if ($client.StatusCode -ne 200) { throw 'Client did not return 200' }
   Write-Host 'ok client: root 303, tC4 client 200'
-  # v4.0.0 bundles only the uw-tc4 client (#71, D89 point 7). ForEach-Object unrolls the
-  # array: Windows PowerShell 5.1's ConvertFrom-Json emits a JSON array as one object.
+  # v4.0.0 bundles only the uw-tc4 client (#71, D89 point 7). PowerShell 7's
+  # ConvertFrom-Json accepts a truncated array and a bare object, so require an array
+  # first. ForEach-Object unrolls it: Windows PowerShell 5.1's ConvertFrom-Json emits a
+  # JSON array as one object.
   $clientsBody = (Invoke-WebRequest "http://127.0.0.1:$script:port/api/list-clients" -UseBasicParsing -TimeoutSec 10).Content
-  $parsedClients = ConvertFrom-Json $clientsBody
+  $trimmedClients = "$clientsBody".Trim()
+  if (!$trimmedClients.StartsWith('[') -or !$trimmedClients.EndsWith(']')) { throw "Client set: /api/list-clients is not a JSON array: $clientsBody" }
+  $parsedClients = ConvertFrom-Json $trimmedClients
   $clients = @($parsedClients | ForEach-Object { "$($_.id) $($_.url)" })
   if ($clients.Count -ne 1 -or $clients[0] -cne 'uw-tc4 /clients/uw-tc4') { throw "Client set: /api/list-clients must list only uw-tc4, got $clientsBody" }
   Write-Host 'ok client set: /api/list-clients lists only uw-tc4'
