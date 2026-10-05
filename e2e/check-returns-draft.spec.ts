@@ -1,7 +1,8 @@
 // Issue #532 — a check shows a verse's new draft when the user returns to it (J4, J22).
 // The Translate / Check switch leaves the tool open. A verse (or an OBS frame) that was
 // empty when the tool opened, then drafted in Translate, must show its new text under
-// "Your translation" on the return. A verse that is still empty still says so.
+// "Your translation" on the return. A verse that is still empty still says so. Opening
+// another book in Translate closes the open check, as opening another story does.
 import { test, expect } from './helpers/test';
 import type { Page } from '@playwright/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
@@ -46,7 +47,7 @@ test.beforeEach(() => {
 
 test.describe('#532 — the check reads the draft made while the tool stayed open', () => {
   test(
-    'a Bible verse drafted in Translate shows under Your translation on the return to Check; a still-empty verse still says it is not drafted',
+    'a Bible verse drafted in Translate shows under Your translation on the return to Check; a still-empty verse still says it is not drafted; opening another book closes the check',
     { tag: ['@inc9', '@J4'] },
     async ({ page }) => {
       writeProjectPins(SEEDED_PROJECT, { tn: pinForSideloaded('en_tn', 'v91'), tw: pinForSideloaded('en_tw', 'v91'), ta: pinForSideloaded('en_ta', 'v91') });
@@ -81,6 +82,15 @@ test.describe('#532 — the check reads the draft made while the tool stayed ope
         const empty = await look(page, seen, 'bible', '2:2', 'after');
         await expect(empty).toHaveAttribute('data-drafted', '0');
         await expect(empty).toHaveText('This verse is not drafted yet. Draft it first, then return to check.');
+      });
+
+      await test.step('open Jonah in Translate: the Titus check closes, so Check shows the tool picker', async () => {
+        await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+        await page.getByRole('button', { name: /^Jonah/ }).click();
+        await page.getByRole('tab', { name: 'Check', exact: true }).click();
+        await expect(page.getByTestId(`open-${TOOL}`)).toBeVisible({ timeout: 30_000 });
+        await expect(page.getByTestId('check-list')).toHaveCount(0);
+        seen.push({ project: 'bible', ref: 'JON', when: 'after', drafted: null, text: 'tool picker shown; no check session' });
       });
       await attachSeen(seen);
     },

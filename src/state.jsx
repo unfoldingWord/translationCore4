@@ -5847,7 +5847,12 @@ export function AppProvider({ children }) {
         // Sequence token: two rapid opens must not interleave (finding M2) —
         // only the latest open may install its bytes and sources.
         const seq = ++openSeqRef.current;
-        dispatch({ type: 'set', patch: { book: code, chapter: 1, bookRaw: null, bookError: null, sources: {}, editing: null, helpsHover: null, helpsActive: null, pickerProgress: null } });
+        // #532: a check session is scoped to one book, as one story (#291) —
+        // another book closes it. Its decisions are on disk (the drain above),
+        // and the seq bump drops any open still in flight.
+        const closeCheck = stateRef.current.book !== code;
+        if (closeCheck) checkSessionSeq++;
+        dispatch({ type: 'set', patch: { book: code, chapter: 1, bookRaw: null, bookError: null, sources: {}, editing: null, helpsHover: null, helpsActive: null, pickerProgress: null, ...(closeCheck ? { checkTool: null, checkSession: null } : {}) } });
         let raw;
         try {
           ({ usfm: raw } = await store.readBook(code));
