@@ -3001,6 +3001,12 @@ export function AppProvider({ children }) {
   // request counter that lets a stale reply be ignored.
   const suggestWorkerRef = useRef(null);
   const suggestSeqRef = useRef(0);
+  // #516 (bench round 1): every request takes its own id from suggestSeqRef.
+  // The CURRENT training's id is kept apart, so a background retrain no longer
+  // makes an outstanding append or suggest reply look stale; an id at or below
+  // the epoch belongs to an engine the switch or the project teardown dropped.
+  const suggestTrainIdRef = useRef(0);
+  const suggestEpochRef = useRef(0);
   // #516: the saved verse waiting to join the worker's memory — one slot, the
   // open verse's latest record, posted when its edits settle (debounced) and
   // flushed at once when Suggest asks or another verse starts editing.
@@ -4520,7 +4526,7 @@ export function AppProvider({ children }) {
             worker.terminate();
             suggestWorkerRef.current = null;
           }
-          a.settleTraining(suggestSeqRef.current); // the running training died with the worker
+          a.settleTraining(suggestTrainIdRef.current); // the running training died with the worker
         };
         suggestWorkerRef.current = worker;
         return worker;
@@ -4530,6 +4536,7 @@ export function AppProvider({ children }) {
         suggestWorkerRef.current?.terminate();
         suggestWorkerRef.current = null;
         suggestSeqRef.current++;
+        suggestEpochRef.current = suggestTrainIdRef.current = suggestSeqRef.current;
         clearTimeout(suggestAppendRef.current?.timer);
         suggestAppendRef.current = null;
         suggestVersesRef.current = { ot: 0, nt: 0 };
@@ -4568,14 +4575,19 @@ export function AppProvider({ children }) {
         const testament = isOldTestament(st.book) ? 'ot' : 'nt';
         const standing = st.alignSuggest.status === 'ready' && st.alignSuggest.testament === testament;
         const id = ++suggestSeqRef.current;
+        suggestTrainIdRef.current = id;
         if (!standing) dispatch({ type: 'set', patch: { alignSuggest: { status: 'training', testament, verses: 0, boosted: false, error: null } } });
+        // Re-read at resolution, not from before the await: a save during the
+        // collection may have started a memory-only model that now answers
+        // (#516, D93 point 3; bench round 1).
+        const answers = () => standing || (stateRef.current.alignSuggest.status === 'ready' && stateRef.current.alignSuggest.testament === testament);
         void collectTrainingVerses({ store, sched: alignSchedulerRef.current, project: st.project, book: st.book, bookRaw: rawRef.current, testament })
           .then((verses) => {
             // An obsolete collection (the switch was cycled, or the project
             // left) owns no lock any more — a newer training may hold it
             // (Codex round 2). Only the CURRENT training settles.
-            if (id !== suggestSeqRef.current || storeRef.current !== store) return;
-            if (!verses.length && !standing) {
+            if (id !== suggestTrainIdRef.current || storeRef.current !== store) return;
+            if (!verses.length && !answers()) {
               dispatch({ type: 'set', patch: { alignSuggest: { status: 'none', testament, verses: 0, boosted: false, error: null } } });
               a.settleTraining(id);
               return;
@@ -4583,10 +4595,10 @@ export function AppProvider({ children }) {
             a.ensureSuggestWorker().postMessage({ type: 'train', id, testament, verses });
           })
           .catch((e) => {
-            if (id !== suggestSeqRef.current) return;
+            if (id !== suggestTrainIdRef.current) return;
             // A standing model keeps answering; only a first training surfaces
             // the collection failure as the row's state (#516).
-            if (!standing) dispatch({ type: 'set', patch: { alignSuggest: { status: 'error', testament, verses: 0, boosted: false, error: String(e?.message || e) } } });
+            if (!answers()) dispatch({ type: 'set', patch: { alignSuggest: { status: 'error', testament, verses: 0, boosted: false, error: String(e?.message || e) } } });
             a.settleTraining(id);
           });
       },
@@ -4594,7 +4606,7 @@ export function AppProvider({ children }) {
       /** The CURRENT training ended (any way): release the lock and run the
        * one that was asked for meanwhile. A stale id releases nothing. */
       settleTraining: (id) => {
-        if (id !== suggestSeqRef.current) return;
+        if (id !== suggestTrainIdRef.current) return;
         suggestTrainingRef.current = false;
         if (suggestPendingRef.current) {
           suggestPendingRef.current = false;
@@ -4634,12 +4646,12 @@ export function AppProvider({ children }) {
         if (!pending) return;
         clearTimeout(pending.timer);
         suggestAppendRef.current = null;
-        a.ensureSuggestWorker().postMessage({ type: 'append', id: suggestSeqRef.current, testament: pending.testament, verse: pending.verse });
+        a.ensureSuggestWorker().postMessage({ type: 'append', id: ++suggestSeqRef.current, testament: pending.testament, verse: pending.verse });
       },
 
       onSuggestReply: (reply) => {
         if (reply.type === 'trained' || reply.type === 'error') a.settleTraining(reply.id);
-        if (reply.id !== suggestSeqRef.current) return; // a stale train/suggest — ignore
+        if (a.staleSuggestReply(reply)) return;
         if (reply.type === 'trained') {
           // Memory-only is `ready` too (#516): plain wordMAP answers from the
           // same memory from the first verse; only an empty memory is `none`.
@@ -4662,6 +4674,12 @@ export function AppProvider({ children }) {
         dispatch({ type: 'set', patch: { alignSession: { ...a2, suggestions: links, suggesting: false, refusal: null } } });
       },
 
+      /** A reply from an engine the switch or the teardown dropped, or from a
+       * superseded training — ignored. Appends and suggests are NOT stale just
+       * because a retrain started after they were asked (bench round 1). */
+      staleSuggestReply: (reply) =>
+        reply.id <= suggestEpochRef.current || (reply.type === 'trained' && reply.id !== suggestTrainIdRef.current),
+
       /** #516: a saved verse landed in the worker's memory. The row's count is
        * the memory's count; the booster retrains in the background when the
        * memory first reaches a budget step — never waited for, and never again
@@ -4671,10 +4689,15 @@ export function AppProvider({ children }) {
         suggestVersesRef.current[reply.testament] = reply.verses;
         const st = stateRef.current;
         const testament = st.book && isOldTestament(st.book) ? 'ot' : 'nt';
-        if (testament === reply.testament && st.alignSuggest.status !== 'off') {
+        const open = testament === reply.testament;
+        if (open && st.alignSuggest.status !== 'off') {
           dispatch({ type: 'set', patch: { alignSuggest: { status: 'ready', testament: reply.testament, verses: reply.verses, boosted: !!reply.boosted, error: null } } });
         }
-        if (crossesRetrainBudget(prev, reply.verses)) a.trainAlignSuggestions();
+        // trainAlignSuggestions trains the OPEN book's testament: a step the
+        // other testament's memory reached must not retrain this one. That
+        // model is retrained when its testament next opens (the switch effect
+        // in Align.jsx trains on every testament change; bench round 1).
+        if (open && crossesRetrainBudget(prev, reply.verses)) a.trainAlignSuggestions();
       },
 
       /** Suggest: ask the model for this verse's unplaced words. `ready` covers
@@ -4690,7 +4713,7 @@ export function AppProvider({ children }) {
         const testament = isOldTestament(a2?.book ?? '') ? 'ot' : 'nt';
         // Only a model built for THIS book's testament may be asked.
         if (!a2?.record || !worker || st.alignSuggest.status !== 'ready' || st.alignSuggest.testament !== testament) return;
-        const id = suggestSeqRef.current;
+        const id = ++suggestSeqRef.current;
         dispatch({ type: 'set', patch: { alignSession: { ...a2, suggesting: true, refusal: null } } });
         worker.postMessage({ type: 'suggest', id, testament, input: sessionInputFor(a2.record, a2.targetText), ref: a2.ref, session: a2.seq });
       },
@@ -6272,6 +6295,7 @@ export function AppProvider({ children }) {
         suggestWorkerRef.current?.terminate();
         suggestWorkerRef.current = null;
         suggestSeqRef.current++;
+        suggestEpochRef.current = suggestTrainIdRef.current = suggestSeqRef.current;
         suggestTrainingRef.current = false;
         suggestPendingRef.current = false;
         checkTargetsRef.current = new Map();
