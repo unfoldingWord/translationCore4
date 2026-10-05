@@ -45,14 +45,29 @@ const tree = (dir: string): Map<string, Buffer> => {
 
 /** metadata.json without the fields each server commit rewrites (PLATFORM-NOTES #48,
  * D90): `meta.dateCreated`, the primary `revision` and `timestamp`, and the ingredient
- * roles. The import commits, so these are the only metadata fields that may differ. */
-const withoutCommitFields = (bytes: Buffer | Uint8Array) => {
+ * roles; and without the two fields the import rewrites to the review page's name (D92):
+ * `identification.name` and `identification.abbreviation`. So these are the only
+ * metadata fields that may differ. */
+const withoutRewrittenFields = (bytes: Buffer | Uint8Array) => {
   const meta = JSON.parse(Buffer.from(bytes).toString('utf8'));
   delete meta.meta.dateCreated;
   for (const org of Object.values(meta.identification.primary ?? {}) as Array<Record<string, Record<string, unknown>>>)
     for (const entry of Object.values(org)) { delete entry.revision; delete entry.timestamp; }
   for (const entry of Object.values(meta.ingredients ?? {}) as Array<Record<string, unknown>>) delete entry.role;
+  delete meta.identification.name;
+  delete meta.identification.abbreviation;
   return meta;
+};
+
+/** #499, D92: every language of the stored name is the typed name, and every
+ * language of the stored abbreviation is the folder name, with the source's
+ * language keys. */
+const expectTypedName = (stored: Buffer | Uint8Array, source: Buffer | Uint8Array, name: string) => {
+  const was = JSON.parse(Buffer.from(source).toString('utf8')).identification;
+  const now = JSON.parse(Buffer.from(stored).toString('utf8')).identification;
+  const each = (keys: string[], value: string) => Object.fromEntries((keys.length ? keys : ['en']).map((k) => [k, value]));
+  expect(now.name).toEqual(each(Object.keys(was.name ?? {}), name));
+  expect(now.abbreviation).toEqual(each(Object.keys(was.abbreviation ?? {}), abbrOf(name)));
 };
 
 /** A name no earlier run left on the rig: the shell refuses an existing folder. */
@@ -106,12 +121,18 @@ test.describe('J9 — a facilitator imports existing work', () => {
         await importFixture(page, source, { edits: { name } });
         await expect(page.getByTestId('import-toast')).toBeVisible();
         const repo = rigRepo(abbrOf(name));
+        await test.step('#499: the toast and the Home card use the typed name, not the name in the file', async () => {
+          await expect(page.getByTestId('import-toast')).toContainText(`${name} was imported`);
+          await expect(page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`).getByText(name, { exact: true })).toBeVisible();
+        });
         await test.step('every file of the archive is byte-identical in the new project, metadata.json but the fields the commit rewrites (remake strips .gitignore by design)', async () => {
           const stored = tree(repo);
           for (const [rel, bytes] of tree(source)) {
             if (rel === '.gitignore') continue;
-            if (rel === 'metadata.json') expect(withoutCommitFields(stored.get(rel)!), rel).toEqual(withoutCommitFields(bytes));
-            else expect(stored.get(rel)?.equals(bytes), rel).toBe(true);
+            if (rel === 'metadata.json') {
+              expect(withoutRewrittenFields(stored.get(rel)!), rel).toEqual(withoutRewrittenFields(bytes));
+              expectTypedName(stored.get(rel)!, bytes, name);
+            } else expect(stored.get(rel)?.equals(bytes), rel).toBe(true);
           }
           expect(JSON.parse(stored.get('metadata.json')!.toString('utf8')).languages[0].tag).toBe(entry.language);
           for (const [book, chapters] of Object.entries(entry.counts?.chapters ?? {}))
@@ -568,6 +589,8 @@ test.describe('J9 — a facilitator imports existing work', () => {
         await expect(page.getByTestId('import-damaged')).toHaveCount(0);
         await page.getByTestId('import-run').click();
         await expect(page.getByTestId('import-toast')).toBeVisible({ timeout: 60_000 });
+        await expect(page.getByTestId('import-toast')).toContainText(`${name} was imported`);
+        await expect(page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`).getByText(name, { exact: true })).toBeVisible();
       });
       const seedsBefore = seedEventsOf([...tree(path.join(repo, 'ingredients'))].map(([rel, bytes]) => [rel, bytes.toString('utf8')] as [string, string])).length;
       expect(seedsBefore).toBeGreaterThan(0); // the export's own seed, so an equal count after the open is not vacuous
@@ -575,8 +598,10 @@ test.describe('J9 — a facilitator imports existing work', () => {
         const stored = tree(repo);
         for (const [rel, bytes] of Object.entries(exported)) {
           if (rel === '.gitignore') continue;
-          if (rel === 'metadata.json') expect(withoutCommitFields(stored.get(rel)!), rel).toEqual(withoutCommitFields(bytes));
-          else expect(stored.get(rel)?.equals(Buffer.from(bytes)), rel).toBe(true);
+          if (rel === 'metadata.json') {
+            expect(withoutRewrittenFields(stored.get(rel)!), rel).toEqual(withoutRewrittenFields(bytes));
+            expectTypedName(stored.get(rel)!, bytes, name);
+          } else expect(stored.get(rel)?.equals(Buffer.from(bytes)), rel).toBe(true);
         }
         for (const book of ['TIT', 'JON']) expect(stored.get(`ingredients/${book}.usfm`)!.equals(fs.readFileSync(path.join(source, 'ingredients', `${book}.usfm`)))).toBe(true);
         expect(git(repo, 'status', '--porcelain')).toBe('');
