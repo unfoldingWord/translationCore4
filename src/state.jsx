@@ -4592,7 +4592,7 @@ export function AppProvider({ children }) {
        * `ready` and Suggest keeps working — the retrain is invisible until its
        * model atomically replaces the old one (the `training` state is only
        * ever the FIRST training, when there is nothing to answer from). */
-      trainAlignSuggestions: () => {
+      trainAlignSuggestions: (published) => {
         const st = stateRef.current;
         const store = storeRef.current;
         const key = st.project?.repoPath || st.project?.id;
@@ -4606,7 +4606,10 @@ export function AppProvider({ children }) {
         suggestTrainingRef.current = true;
         suggestPendingRef.current = false;
         const testament = isOldTestament(st.book) ? 'ot' : 'nt';
-        const standing = st.alignSuggest.status === 'ready' && st.alignSuggest.testament === testament;
+        // A row published in this same tick is not in stateRef until the
+        // next render: a queued training reads it from `published` (round 4).
+        const row = published ?? st.alignSuggest;
+        const standing = row.status === 'ready' && row.testament === testament;
         const id = ++suggestSeqRef.current;
         suggestTrainIdRef.current = id;
         if (!standing) dispatch({ type: 'set', patch: { alignSuggest: { status: 'training', testament, verses: 0, boosted: false, error: null } } });
@@ -4659,14 +4662,15 @@ export function AppProvider({ children }) {
       },
 
       /** The CURRENT training ended (any way): release the lock and run the
-       * one that was asked for meanwhile. A stale id releases nothing. */
-      settleTraining: (id) => {
+       * one that was asked for meanwhile. A stale id releases nothing.
+       * `published` is the row the ending training just dispatched. */
+      settleTraining: (id, published) => {
         if (id !== suggestTrainIdRef.current) return;
         suggestTrainingRef.current = false;
         suggestCollectRef.current = null;
         if (suggestPendingRef.current) {
           suggestPendingRef.current = false;
-          a.trainAlignSuggestions();
+          a.trainAlignSuggestions(published);
         }
       },
 
@@ -4708,17 +4712,14 @@ export function AppProvider({ children }) {
       },
 
       onSuggestReply: (reply) => {
-        const ofTraining = reply.id === suggestTrainIdRef.current; // before settle starts the next one
-        if (reply.type === 'trained' || reply.type === 'error') a.settleTraining(reply.id);
-        if (a.staleSuggestReply(reply)) return;
-        if (reply.type === 'trained') {
-          // Memory-only is `ready` too (#516): plain wordMAP answers from the
-          // same memory from the first verse; only an empty memory is `none`.
-          const status = reply.verses ? 'ready' : 'none';
-          suggestVersesRef.current[reply.testament] = reply.verses;
-          dispatch({ type: 'set', patch: { alignSuggest: { status, testament: reply.testament, verses: reply.verses, boosted: !!reply.boosted, error: null } } });
-          return;
-        }
+        // Both read BEFORE settle: settling may start the queued training,
+        // which moves suggestTrainIdRef — the model that just loaded is
+        // still the current training's (bench round 4).
+        const ofTraining = reply.id === suggestTrainIdRef.current;
+        const stale = a.staleSuggestReply(reply);
+        if (reply.type === 'trained') return a.settleTraining(reply.id, stale ? null : a.publishTrained(reply));
+        if (reply.type === 'error') a.settleTraining(reply.id);
+        if (stale) return;
         if (reply.type === 'appended') return a.onSuggestAppended(reply);
         if (reply.type === 'error') return a.onSuggestError(reply, ofTraining);
         // Bound to the verse and session that asked (Codex round 1): a reply
@@ -4735,6 +4736,17 @@ export function AppProvider({ children }) {
        * because a retrain started after they were asked (bench round 1). */
       staleSuggestReply: (reply) =>
         reply.id <= suggestEpochRef.current || (reply.type === 'trained' && reply.id !== suggestTrainIdRef.current),
+
+      /** The current training's model loaded: the row says so. Memory-only
+       * is `ready` too (#516): plain wordMAP answers from the same memory
+       * from the first verse; only an empty memory is `none`. Returns the
+       * row, which stateRef shows only after the next render. */
+      publishTrained: (reply) => {
+        const row = { status: reply.verses ? 'ready' : 'none', testament: reply.testament, verses: reply.verses, boosted: !!reply.boosted, error: null };
+        suggestVersesRef.current[reply.testament] = reply.verses;
+        dispatch({ type: 'set', patch: { alignSuggest: row } });
+        return row;
+      },
 
       /** A failed background retrain never replaced the worker's model
        * (suggestWorker assigns only on success): a `ready` row keeps
