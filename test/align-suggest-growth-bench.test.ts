@@ -14,7 +14,7 @@
 //   TC4_SUGGEST_GROWTH=1 npx vitest run test/align-suggest-growth-bench.test.ts
 // Narrow it with TC4_SUGGEST_GROWTH_MAX=<verses> (default 250 — the full-depth
 // numbers of record were produced in the owner's 2026-10-02 session, issue
-// #516). TC4_SUGGEST_GROWTH_OT=1 runs the Old Testament books instead.
+// #516). TC4_SUGGEST_GROWTH_OT=1 runs Genesis and Psalms instead.
 import { describe, expect, it } from 'vitest';
 import WordMap from 'wordmap';
 import { appendVerse, predictLinks, trainModel, type TrainedModel } from '../src/data/align/suggestEngine';
@@ -23,7 +23,7 @@ import { loadUltBooks, mulberry32 } from './helpers/ult-corpus';
 
 const path = process.getBuiltinModule('node:path');
 const RUN = process.env.TC4_SUGGEST_GROWTH === '1';
-const ZIP = process.env.TC4_ULT_ZIP ?? path.resolve(process.cwd(), '../dev-env/resources-cache/en_ult-v89-unwrapped.zip');
+const ZIP = process.env.TC4_ULT_ZIP ?? path.resolve(process.cwd(), 'dev-env/resources-cache/en_ult-v89-unwrapped.zip');
 const MAX = Number(process.env.TC4_SUGGEST_GROWTH_MAX ?? 250);
 const OT_RUN = process.env.TC4_SUGGEST_GROWTH_OT === '1';
 const SEED = Number(process.env.TC4_SUGGEST_GROWTH_SEED ?? 1);

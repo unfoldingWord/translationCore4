@@ -1,22 +1,23 @@
-// suggestWorker.ts — the suggestion engine's Web Worker (#1, D72 point 3;
-// #516, D93).
+// suggestWorker.ts — the answering half of the suggestion engine (#1, D72
+// point 3; #516, D93).
 //
-// Training a wordMAP model over a whole testament's confirmed alignments takes
-// seconds to minutes; the aligner's hands must never stop (the save-latency
-// ruling behind #100). So the engine lives here, off the main thread, one
-// trained model per testament. The main thread posts plain objects only
-// (suggest.ts shapes); this file rebuilds the engine's Tokens from them.
+// The aligner's hands must never stop (the save-latency ruling behind #100),
+// so the engine lives off the main thread, one model per testament. This
+// worker holds the models and answers; it never trains. Training is minutes of
+// uninterruptible work and has its own worker (suggestTrainWorker.ts), so a
+// Suggest is answered at once by the model this worker holds while a retrain
+// runs there. The main thread posts plain objects only (suggest.ts shapes).
 //
 // #516: a confirmed save arrives as an `append` — the verse joins the model's
-// alignment memory at once (~0.14 ms) and the next `suggest` sees it; the
-// booster retrains only when the main thread posts a budgeted `train`. While
-// a `train` runs, the standing model keeps answering, and every verse appended
-// meanwhile is re-applied to the new model before it replaces the old one, so
-// no save is lost to the race. A save that arrives before any training ran
-// starts a memory-only model that answers from the first verse.
+// alignment memory at once (~0.14 ms) and the next `suggest` sees it. A save
+// that arrives before any model was loaded starts a memory-only model that
+// answers from the first verse. A finished training arrives as a `load`: the
+// fitted booster plus the verses for its memory. The main thread adds to those
+// verses every save it posted since it read the corpus, so the model that
+// replaces the old one knows all of them.
 //
 // Protocol (main → worker):
-//   { type: 'train',   id, testament, verses: TrainingVerse[] }
+//   { type: 'load',    id, testament, model: PackedModel, verses: TrainingVerse[] }
 //   { type: 'append',  id, testament, verse: TrainingVerse }
 //   { type: 'suggest', id, testament, input: SessionInput }
 // (worker → main):
@@ -26,11 +27,11 @@
 //   { type: 'error',       id, message }
 // A 'suggest' for a testament with no model answers with no links; the main
 // thread never renders a proposal from a model that knows nothing.
-import { appendVerse, emptyModel, predictLinks, trainModel, type TrainedModel } from './suggestEngine';
+import { appendVerse, emptyModel, predictLinks, unpackModel, type PackedModel, type TrainedModel } from './suggestEngine';
 import type { SessionInput, Testament, TrainingVerse } from './suggest';
 
 export type WorkerRequest =
-  | { type: 'train'; id: number; testament: Testament; verses: TrainingVerse[] }
+  | { type: 'load'; id: number; testament: Testament; model: PackedModel; verses: TrainingVerse[] }
   | { type: 'append'; id: number; testament: Testament; verse: TrainingVerse }
   | { type: 'suggest'; id: number; testament: Testament; input: SessionInput; ref: string; session: number };
 
@@ -44,29 +45,16 @@ export type WorkerReply =
 
 const models: Partial<Record<Testament, TrainedModel>> = {};
 /** The refs the model's memory holds — a re-saved verse appends its current
- * links but is counted once (#516). A `train` rebuilds the set from its corpus. */
+ * links but is counted once (#516). A `load` rebuilds the set from its verses. */
 const seenRefs: Partial<Record<Testament, Set<string>>> = {};
-/** Verses appended while a `train` is in flight, re-applied to its result. */
-const inFlight: Partial<Record<Testament, TrainingVerse[]>> = {};
 
 /** The worker's one step, exported so the unit tests drive it without a Worker. */
 export const handle = async (req: WorkerRequest): Promise<WorkerReply> => {
   try {
-    if (req.type === 'train') {
-      const pending: TrainingVerse[] = [];
-      inFlight[req.testament] = pending;
-      const trained = await trainModel(req.testament, req.verses);
-      if (inFlight[req.testament] === pending) delete inFlight[req.testament];
-      const refs = new Set(req.verses.map((v) => v.ref));
-      let model = trained;
-      // Saves made while this training ran are not in its corpus — the new
-      // model must know them before it replaces the one that does (#516).
-      for (const v of pending) {
-        model = appendVerse(model, v, !refs.has(v.ref));
-        refs.add(v.ref);
-      }
+    if (req.type === 'load') {
+      const model = unpackModel(req.model, req.verses);
       models[req.testament] = model;
-      seenRefs[req.testament] = refs;
+      seenRefs[req.testament] = new Set(req.verses.map((v) => v.ref));
       return { type: 'trained', id: req.id, testament: req.testament, verses: model.verses, boosted: !!model.boosted, ...(model.tooFew ? { tooFew: true } : {}) };
     }
     if (req.type === 'append') {
@@ -75,7 +63,6 @@ export const handle = async (req: WorkerRequest): Promise<WorkerReply> => {
       refs.add(req.verse.ref);
       const model = appendVerse(models[req.testament] ?? emptyModel(req.testament), req.verse, isNew);
       models[req.testament] = model;
-      inFlight[req.testament]?.push(req.verse);
       return { type: 'appended', id: req.id, testament: req.testament, verses: model.verses, boosted: !!model.boosted };
     }
     const trained = models[req.testament];

@@ -3000,6 +3000,8 @@ export function AppProvider({ children }) {
   // #1: the suggestion engine's Web Worker (one per open project) and the
   // request counter that lets a stale reply be ignored.
   const suggestWorkerRef = useRef(null);
+  // #516: training has its own worker, so the one above is never busy with it.
+  const suggestTrainWorkerRef = useRef(null);
   const suggestSeqRef = useRef(0);
   // #516 (bench round 1): every request takes its own id from suggestSeqRef.
   // The CURRENT training's id is kept apart, so a background retrain no longer
@@ -3011,9 +3013,10 @@ export function AppProvider({ children }) {
   // open verse's latest record, posted when its edits settle (debounced) and
   // flushed at once when Suggest asks or another verse starts editing.
   const suggestAppendRef = useRef(null);
-  // #516 (bench round 2): the verses appended while a training's corpus is
-  // being collected. The worker only keeps saves that arrive after `train`;
-  // these arrive before it, so they ride in the `train` corpus instead.
+  // #516: the training in flight — its corpus once collected, and every verse
+  // appended since the collection started. The corpus was read before those
+  // saves, so they are merged into it for the training and again for the
+  // `load` that replaces the answering model (bench round 2).
   const suggestCollectRef = useRef(null);
   // #516: verses in each testament's memory, as the worker last reported —
   // the budgeted retrain fires when an append first reaches a budget step.
@@ -4505,7 +4508,8 @@ export function AppProvider({ children }) {
       },
 
       // ---- Alignment suggestions (#1, D72 point 3) --------------------------
-      // The engine runs in a Web Worker (suggestWorker.ts), one model per
+      // The engine runs in two Web Workers — suggestWorker.ts answers,
+      // suggestTrainWorker.ts trains (#516) — one model per
       // testament, trained on this project's own confirmed alignments. A
       // suggestion lives ONLY in alignSession.suggestions: it is never written,
       // never counted, and vanishes when the verse changes or the translator
@@ -4536,9 +4540,34 @@ export function AppProvider({ children }) {
         return worker;
       },
 
-      stopAlignSuggestions: () => {
+      /** The training worker — created on first use, dropped with the engine.
+       * Its `fitted` model goes to the answering worker as a `load`; a failed
+       * or dead training is the current training's error. */
+      ensureSuggestTrainWorker: () => {
+        if (suggestTrainWorkerRef.current) return suggestTrainWorkerRef.current;
+        const worker = new Worker(new URL('./data/align/suggestTrainWorker.ts', import.meta.url), { type: 'module' });
+        worker.onmessage = (event) => a.onSuggestFitted(event.data);
+        worker.onerror = (event) => {
+          if (suggestTrainWorkerRef.current !== worker) return;
+          worker.terminate();
+          suggestTrainWorkerRef.current = null;
+          a.onSuggestReply({ type: 'error', id: suggestTrainIdRef.current, message: String(event?.message || 'worker') });
+        };
+        suggestTrainWorkerRef.current = worker;
+        return worker;
+      },
+
+      /** Both workers go with the engine, and the training in flight with them. */
+      dropSuggestWorkers: () => {
         suggestWorkerRef.current?.terminate();
         suggestWorkerRef.current = null;
+        suggestTrainWorkerRef.current?.terminate();
+        suggestTrainWorkerRef.current = null;
+        suggestCollectRef.current = null;
+      },
+
+      stopAlignSuggestions: () => {
+        a.dropSuggestWorkers();
         suggestSeqRef.current++;
         suggestEpochRef.current = suggestTrainIdRef.current = suggestSeqRef.current;
         clearTimeout(suggestAppendRef.current?.timer);
@@ -4585,25 +4614,25 @@ export function AppProvider({ children }) {
         // collection may have started a memory-only model that now answers
         // (#516, D93 point 3; bench round 1).
         const answers = () => standing || (stateRef.current.alignSuggest.status === 'ready' && stateRef.current.alignSuggest.testament === testament);
-        suggestCollectRef.current = { id, testament, verses: new Map() };
+        suggestCollectRef.current = { id, testament, corpus: [], verses: new Map() };
         void collectTrainingVerses({ store, sched: alignSchedulerRef.current, project: st.project, book: st.book, bookRaw: rawRef.current, testament })
           .then((collected) => {
             // An obsolete collection (the switch was cycled, or the project
             // left) owns no lock any more — a newer training may hold it
             // (Codex round 2). Only the CURRENT training settles.
-            if (id !== suggestTrainIdRef.current || storeRef.current !== store) return;
-            const verses = a.withCollectAppends(id, collected);
+            if (id !== suggestTrainIdRef.current || storeRef.current !== store || suggestCollectRef.current?.id !== id) return;
+            suggestCollectRef.current.corpus = collected;
+            const verses = a.trainingCorpus();
             if (!verses.length) {
               // Never train an empty model over one that answers (bench round 2).
               if (!answers()) dispatch({ type: 'set', patch: { alignSuggest: { status: 'none', testament, verses: 0, boosted: false, error: null } } });
               a.settleTraining(id);
               return;
             }
-            a.ensureSuggestWorker().postMessage({ type: 'train', id, testament, verses });
+            a.ensureSuggestTrainWorker().postMessage({ type: 'train', id, testament, verses });
           })
           .catch((e) => {
             if (id !== suggestTrainIdRef.current) return;
-            a.withCollectAppends(id, []);
             // A standing model keeps answering; only a first training surfaces
             // the collection failure as the row's state (#516).
             if (!answers()) dispatch({ type: 'set', patch: { alignSuggest: { status: 'error', testament, verses: 0, boosted: false, error: String(e?.message || e) } } });
@@ -4611,15 +4640,22 @@ export function AppProvider({ children }) {
           });
       },
 
-      /** The collected corpus plus the saves appended while it was collected —
-       * the worker only re-applies saves that arrive after `train`, so a save
-       * missing from the collection would be lost when the new model replaces
-       * the one holding it (Codex round 2 on 48e73a692). Ends the collection. */
-      withCollectAppends: (id, collected) => {
+      /** The corpus of the training in flight plus every save appended since
+       * its collection started; the latest save of a verse wins. */
+      trainingCorpus: () => {
         const c = suggestCollectRef.current;
-        if (!c || c.id !== id) return collected;
+        return [...c.corpus.filter((v) => !c.verses.has(v.ref)), ...c.verses.values()];
+      },
+
+      /** The training worker answered. Its model replaces the answering
+       * worker's, with the saves made during the training in its memory; the
+       * answering worker's `trained` reply then settles the training. */
+      onSuggestFitted: (reply) => {
+        if (reply.id !== suggestTrainIdRef.current || !suggestCollectRef.current) return;
+        if (reply.type === 'error') return a.onSuggestReply(reply);
+        const verses = a.trainingCorpus();
         suggestCollectRef.current = null;
-        return [...collected.filter((v) => !c.verses.has(v.ref)), ...c.verses.values()];
+        a.ensureSuggestWorker().postMessage({ type: 'load', id: reply.id, testament: reply.testament, model: reply.model, verses });
       },
 
       /** The CURRENT training ended (any way): release the lock and run the
@@ -4627,6 +4663,7 @@ export function AppProvider({ children }) {
       settleTraining: (id) => {
         if (id !== suggestTrainIdRef.current) return;
         suggestTrainingRef.current = false;
+        suggestCollectRef.current = null;
         if (suggestPendingRef.current) {
           suggestPendingRef.current = false;
           a.trainAlignSuggestions();
@@ -6319,8 +6356,7 @@ export function AppProvider({ children }) {
         clearTimeout(suggestAppendRef.current?.timer);
         suggestAppendRef.current = null;
         suggestVersesRef.current = { ot: 0, nt: 0 };
-        suggestWorkerRef.current?.terminate();
-        suggestWorkerRef.current = null;
+        a.dropSuggestWorkers();
         suggestSeqRef.current++;
         suggestEpochRef.current = suggestTrainIdRef.current = suggestSeqRef.current;
         suggestTrainingRef.current = false;

@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bootstrapVerse, linkWord, stampTargetVerse } from '../src/data/align/edit';
 import { RETRAIN_BUDGET, crossesRetrainBudget, linksFor, rebindSuggestions, sessionInputFor, trainingVerseOf, trainingVersesFor } from '../src/data/align/suggest';
 import { MIN_BOOST_VERSES, appendVerse, boundCorpus, predictLinks, trainModel } from '../src/data/align/suggestEngine';
+import { handleTrain } from '../src/data/align/suggestTrainWorker';
 import { handle } from '../src/data/align/suggestWorker';
 import type { AlignedWord, AlignmentFile, AlignmentVerseRecord } from '../src/data/align/zaln';
 
@@ -182,10 +183,12 @@ describe('#1 engine — trains on confirmed alignments, proposes for the bank, n
     expect(trained.boosted).toBeLessThan(4);
   });
 
-  it('the worker step: train then suggest per testament; an untrained testament answers with no links', async () => {
+  it('the worker steps: train, load, then suggest per testament; a testament with no model answers with no links', async () => {
     const f = file({ '1': aligned11(), '4': aligned14() });
     const verses = trainingVersesFor('TIT', f, { '1:1': V11.text, '1:4': V14.text });
-    const trained = await handle({ type: 'train', id: 1, testament: 'nt', verses });
+    const fitted = await handleTrain({ type: 'train', id: 1, testament: 'nt', verses });
+    if (fitted.type !== 'fitted') throw new Error(fitted.message);
+    const trained = await handle({ type: 'load', id: 1, testament: 'nt', model: fitted.model, verses });
     expect(trained).toMatchObject({ type: 'trained', id: 1, testament: 'nt', verses: 2 });
     const r = bootstrapVerse('de Dios Padre', [V14.orig[1], V14.orig[2]], SOURCE);
     const nt = await handle({ type: 'suggest', id: 2, testament: 'nt', input: sessionInputFor(r, 'de Dios Padre'), ref: '1:4', session: 7 });

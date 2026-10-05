@@ -2345,7 +2345,9 @@ up to ~2 500 verses, and plain wordMAP memory answers from the first verse.
    500 and 1 000 aligned verses. Above 1 000, no further retrain in the session;
    reopening the tool trains once. While a retrain runs, the Suggestions row stays
    `ready` and Suggest is answered by the model trained before; the new model replaces
-   the old one atomically, with the saves made meanwhile re-applied.
+   the old one atomically, with the saves made meanwhile re-applied. Training has its own
+   Web Worker, because the booster's fit cannot be interrupted: the worker that answers
+   Suggest never trains (review of pull request #538, 2026-10-05).
 4. **Before the booster can fit — fewer than five aligned verses, or a corpus it
    rejects — plain wordMAP answers from the same memory.** The row says what the
    suggestions are drawn from (N verses); there is no "learning" wait state after the

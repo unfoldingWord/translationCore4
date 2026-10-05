@@ -1,5 +1,5 @@
 // suggestEngine.ts — the wordMAP + uw-wordmapbooster engine behind alignment
-// suggestions (#1, D72 point 3; #516, D93). Runs inside suggestWorker.ts;
+// suggestions (#1, D72 point 3; #516, D93). Runs inside the two suggestion workers;
 // imported directly by the unit tests. gatewayEdit's `enhanced-word-aligner-rcl`
 // is a reference to start from, not a design to copy (owner ruling 2026-09-24,
 // #400; amends the 2026-08-13 "adopted as-is" ruling). From it we keep the
@@ -155,6 +155,32 @@ export const trainModel = async (testament: Testament, verses: TrainingVerse[]):
   // prediction; only the booster's fit is bounded.
   for (const v of verses.slice(kept.length)) appendToMemory(model, v);
   return { testament, verses: verses.length, boosted: kept.length, model };
+};
+
+/** A trained model as plain data, for the hand-over from the training worker
+ * to the worker that answers (#516): the fitted booster, or null for a
+ * memory-only model. The alignment memory does not travel — the receiver
+ * rebuilds it from the verses. */
+export interface PackedModel {
+  testament: Testament;
+  boosted: number;
+  tooFew?: boolean;
+  booster: unknown | null;
+}
+
+export const packModel = (trained: TrainedModel): PackedModel => ({
+  testament: trained.testament,
+  boosted: trained.boosted ?? 0,
+  ...(trained.tooFew ? { tooFew: true } : {}),
+  booster: trained.boosted ? trained.model.saveWithoutData() : null,
+});
+
+/** The model `packModel` described, with `verses` as its alignment memory. */
+export const unpackModel = (packed: PackedModel, verses: TrainingVerse[]): TrainedModel => {
+  const model = new MorphJLBoostWordMap(MODEL_OPTIONS);
+  if (packed.booster) model.specificLoad(packed.booster);
+  for (const v of verses) appendToMemory(model, v);
+  return { testament: packed.testament, verses: verses.length, boosted: packed.boosted, ...(packed.tooFew ? { tooFew: true } : {}), model };
 };
 
 /**
