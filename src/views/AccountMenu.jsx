@@ -5,7 +5,7 @@
 // signed-in login, or that the keychain holds a token, D85).
 import React, { useEffect, useRef, useState } from 'react';
 import { useApp, door43 } from '../state.jsx';
-import { APP_VERSION, LICENSE_TEXT } from '../data/about';
+import { APP_COMMIT, APP_VERSION, COPYRIGHT_LINE, GPL_TEXT, LICENSE_TEXT } from '../data/about';
 import { t } from '../i18n';
 import { Layer } from '../ds/components/primitives/Layer.jsx';
 import { Surface } from '../ds/components/primitives/Surface.jsx';
@@ -51,7 +51,8 @@ const Switch = ({ on }) => (
 export default function AccountMenu() {
   const { s, actions } = useApp();
   const [open, setOpen] = useState(false);
-  const [about, setAbout] = useState(false);
+  // #520: null, 'about', 'license', or 'back' (About again, after License closed).
+  const [about, setAbout] = useState(null);
   const ref = useRef(null);
   const user = s.door43User;
   const saved = !user && s.door43Kept;
@@ -118,7 +119,7 @@ export default function AccountMenu() {
           <Row testId="account-ask" role="menuitemcheckbox" checked={s.askInternet} title={t('account.ask')}
             sub={t(s.askInternet ? 'account.askOn' : 'account.askOff')} end={<Switch on={s.askInternet} />}
             onClick={() => actions.setAskInternet(!s.askInternet)} />
-          <Row testId="account-about" title={t('account.about')} onClick={choose(() => setAbout(true))} />
+          <Row testId="account-about" title={t('account.about')} onClick={choose(() => setAbout('about'))} />
           {state !== 'out' && <>
             <Rule style={{ margin: '5px 4px' }} />
             <Row testId="account-sign-out" title={t('account.signOut')} onClick={choose(actions.signOut)} />
@@ -126,29 +127,63 @@ export default function AccountMenu() {
           </div>
         </Surface>
       </Layer>
-      {/* The dialog renders inside the dark top bar: data-on gives it the light ground's colours (ds/tokens/context.css). */}
+      {/* The dialogs render inside the dark top bar: data-on gives them the light ground's colours (ds/tokens/context.css). */}
       {about && <span data-on="light" style={{ display: 'contents' }}>
-        <AboutDialog onClose={() => {
-          setAbout(false);
-          ref.current?.querySelector('button')?.focus();
-        }} />
+        {about === 'license'
+          ? <LicenseDialog onClose={() => setAbout('back')} />
+          : <AboutDialog focusRead={about === 'back'} onRead={() => setAbout('license')} onClose={() => {
+            setAbout(null);
+            ref.current?.querySelector('button')?.focus();
+          }} />}
       </span>}
     </>
   );
 }
 
-/** #520: the version of the running build and the license. Both are part of
- * the bundle (src/data/about.ts), so opening it sends no request. */
-function AboutDialog({ onClose }) {
+const LICENSE_PRE = { ...BODY, font: 'inherit', fontSize: 'var(--fs-ui-sm)', whiteSpace: 'pre-wrap' };
+
+/** #520: the version and the commit of the running build, the copyright line and
+ * the license name. The build reads every value (src/data/about.ts), so opening
+ * it sends no request. */
+function AboutDialog({ focusRead, onRead, onClose }) {
+  const read = useRef(null);
+  useEffect(() => {
+    if (!focusRead) return undefined;
+    // Back from License: the focus returns to "Read the license". The Layer puts
+    // it on its first control over its first frames; hold it here until it settles.
+    let frame = 0;
+    const hold = (tries) => {
+      read.current?.focus();
+      if (tries > 0) frame = requestAnimationFrame(() => hold(tries - 1));
+    };
+    hold(10);
+    return () => cancelAnimationFrame(frame);
+  }, [focusRead]);
   return (
-    <Modal data-testid="about-dialog" width={560} title={t('account.about')} closeLabel={t('common.close')} onClose={onClose}
+    <Modal data-testid="about-dialog" width={460} title={t('account.about')} closeLabel={t('common.close')} onClose={onClose}
       footer={<Button onClick={onClose} data-testid="about-close">{t('common.close')}</Button>}>
       <p style={{ ...BODY, color: 'var(--text-body)' }}>
-        {t('about.version')} <strong data-testid="about-version">{APP_VERSION}</strong>
+        {t('about.version')} <strong data-testid="about-version">{APP_VERSION} ({APP_COMMIT})</strong>
       </p>
-      <div>
-        <p style={{ ...BODY, fontWeight: 700, color: 'var(--text-body)' }}>{t('about.license')}</p>
-        <pre data-testid="about-license" style={{ ...BODY, marginTop: 6, font: 'inherit', fontSize: 'var(--fs-ui-sm)', whiteSpace: 'pre-wrap' }}>{LICENSE_TEXT}</pre>
+      <p style={BODY} data-testid="about-copyright">{COPYRIGHT_LINE}</p>
+      <p style={BODY} data-testid="about-license-name">{t('about.licenseName')}</p>
+      <div ref={(el) => { read.current = el?.querySelector('button') ?? null; }}>
+        <Button variant="secondary" onClick={onRead} data-testid="about-read-license">{t('about.readLicense')}</Button>
+      </div>
+    </Modal>
+  );
+}
+
+/** #520: the LICENSE notice, then the full GNU GPL version 2, in one region that
+ * the keyboard can reach and scroll. Closing it returns to About. */
+function LicenseDialog({ onClose }) {
+  return (
+    <Modal data-testid="license-dialog" width={640} title={t('about.license')} closeLabel={t('common.close')} onClose={onClose}
+      footer={<Button onClick={onClose} data-testid="license-close">{t('common.close')}</Button>}>
+      <div role="region" aria-label={t('about.licenseText')} tabIndex={0} data-testid="license-text"
+        style={{ maxHeight: '52vh', overflow: 'auto', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8 }}>
+        <pre data-testid="license-notice" style={{ ...LICENSE_PRE, margin: 0 }}>{LICENSE_TEXT}</pre>
+        <pre data-testid="license-gpl" style={{ ...LICENSE_PRE, margin: '18px 0 0' }}>{GPL_TEXT}</pre>
       </div>
     </Modal>
   );
