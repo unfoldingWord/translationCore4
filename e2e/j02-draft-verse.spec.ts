@@ -18,6 +18,7 @@ import {
   readIngredient,
   rigRepo,
   commitCount,
+  lastCommitMessage,
   byteStrictViolation,
   verseTextSpan,
   sideloadedIngredient,
@@ -122,23 +123,6 @@ test.describe('J2 — a translator drafts a verse', () => {
         await page.getByRole('tab', { name: 'Section', exact: true }).click();
       });
 
-      await test.step('the project card names the QA Door43 server in its meta line (#506)', async () => {
-        // The journeys run on the Vite dev server, so account and write calls
-        // target qa.door43.org and the card must say so. The top bar has no label.
-        await page.getByTitle('Switch project').click();
-        const meta = page.getByTestId('share-state-_local_/_local_/sample_burrito');
-        await expect(meta).toHaveText(`Shared at qa.door43.org/${USER.username}/${SEEDED_PROJECT}`);
-        await expect(page.getByTestId('dcs-server-label')).toHaveCount(0);
-        // The run's artifact, kept on disk under test-results/: the meta line text
-        // and a screenshot of the card.
-        const textPath = testInfo.outputPath('card-meta.txt');
-        fs.writeFileSync(textPath, `${(await meta.textContent()) ?? ''}\n`);
-        await testInfo.attach('card-meta.txt', { path: textPath, contentType: 'text/plain' });
-        const shotPath = testInfo.outputPath('project-card.png');
-        await page.getByTestId('project-_local_/_local_/sample_burrito').screenshot({ path: shotPath });
-        await testInfo.attach('project-card.png', { path: shotPath, contentType: 'image/png' });
-      });
-
       await test.step('the typed text is on disk in ingredients/TIT.usfm (FR-6)', async () => {
         await expect
           .poll(() => readIngredient(SEEDED_PROJECT, BOOK_IPATH).toString('utf8'), {
@@ -157,8 +141,34 @@ test.describe('J2 — a translator drafts a verse', () => {
         expect(after).not.toContain('\\zaln');
       });
 
+      // #536: counted BEFORE the step below leaves the project. Leaving is a checkpoint
+      // (D9, #183) that the app starts in the background (startLeaveCheckpoint), so a
+      // count taken after the Switch project click raced that commit.
       await test.step('nothing auto-committed — commits are checkpoint-only (FR-34 / W-4)', async () => {
         expect(commitCount(SEEDED_PROJECT)).toBe(commitsBefore);
+      });
+
+      await test.step('the project card names the QA Door43 server in its meta line (#506)', async () => {
+        // The journeys run on the Vite dev server, so account and write calls
+        // target qa.door43.org and the card must say so. The top bar has no label.
+        await page.getByTitle('Switch project').click();
+        const meta = page.getByTestId('share-state-_local_/_local_/sample_burrito');
+        await expect(meta).toHaveText(`Shared at qa.door43.org/${USER.username}/${SEEDED_PROJECT}`);
+        await expect(page.getByTestId('dcs-server-label')).toHaveCount(0);
+        // The run's artifact, kept on disk under test-results/: the meta line text
+        // and a screenshot of the card.
+        const textPath = testInfo.outputPath('card-meta.txt');
+        fs.writeFileSync(textPath, `${(await meta.textContent()) ?? ''}\n`);
+        await testInfo.attach('card-meta.txt', { path: textPath, contentType: 'text/plain' });
+        const shotPath = testInfo.outputPath('project-card.png');
+        await page.getByTestId('project-_local_/_local_/sample_burrito').screenshot({ path: shotPath });
+        await testInfo.attach('project-card.png', { path: shotPath, contentType: 'image/png' });
+      });
+
+      await test.step('leaving the project makes one checkpoint commit and no other (D9, #183)', async () => {
+        // Started, not awaited, by the app: poll the disk until it lands.
+        await expect.poll(() => commitCount(SEEDED_PROJECT), { timeout: 20_000 }).toBe(commitsBefore + 1);
+        expect(lastCommitMessage(SEEDED_PROJECT)).toMatch(/^Checkpoint, leaving the project: .*TIT text/);
       });
     },
   );
