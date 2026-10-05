@@ -6,7 +6,7 @@ mark a retired risk in its Mitigation column.
 
 | # | Risk | Mitigation |
 |---|---|---|
-| 1 | Upstream release cadence against the Increment-1 pin (0.18.5 git rev, D27 update) | Examine the pin again when Increment 1 closes. Run the transport and round-trip suites at the release that is current then (D27). Return to a crates.io `=` pin when 0.18.5+ publishes |
+| 1 | Upstream release cadence against the pin (0.18.15 git rev `a83725b`, D90) | Run the transport and round-trip suites again at each pin move (D27), with a control run on the old pin. crates.io publishes 0.18.15 from the same commit; a crates.io `=` pin needs `scripts/prove.mjs` to read the revision from another source |
 | 2 | Two writers on one book file in Phase 1 | Single app, single user in Phase 1. Load-time revalidation self-heals. Phase 2 solves it structurally |
 | 3 | Load-time derivation cost on large books | Measure first (OPEN-QUESTIONS #9). An optional disposable cache keyed by content hashes — never a second source of truth |
 | 4 | Phase 2 scope creep | Phase gate. Option to pilot journaling on checking data before drafting |
@@ -15,3 +15,4 @@ mark a retired risk in its Mitigation column.
 | 7 | Repository name collision on the chosen Door43 account or organization, including tC3-era repositories | The create step runs first and refuses with `share.name-exists` before any push; the user picks another name (#362) |
 | 8 | Door43 tooling (Door43 Preview, the catalogue) reading tC4 repositories with `checking/` sidecars and the journal | Low impact on the evidence of 2026-09-22 (Door43 Preview renders the USFM and ignores unknown ingredients); unverified against the journal paths; record in the J11 definition and re-check at the first pilot share |
 | 9 | The platform's https push panics inside the credential callback when the username or the token is missing, instead of answering 400 [VERIFIED — pankosmia-web 0.18.5 (99fd9be), `push.rs:83-86`, 2026-09-22] | The app validates both fields before the call (#362); the finding is routed to upstream through the owner |
+| 10 | An older build reads a newer journal envelope as damaged. v4.0.0 accepts only `v` 1 and 2. The fold refuses any other value, and the user sees `refusal.segment.invalid` ("A saved change in this project is damaged"), not "made by a newer version" [VERIFIED — `journal/schema.mjs:491`, `journal/fold.mjs:148-149` and `src/i18n/en.json:57` at d8f3de9, 2026-10-03] | A release before the first one that writes `v=3` must ship a clear newer-version refusal. Then a user who installs an older build again sees the right message. The rollback plan #46 (4.0.1) carries the refusal code and its journey test (D89 point 11) |

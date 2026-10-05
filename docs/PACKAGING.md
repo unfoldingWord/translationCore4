@@ -6,6 +6,9 @@ single-layer download. Issue #181 added Windows x64 (Increment 5). Issue #243
 adds the unsigned Mac installer and app icons (Increment 5.5). Issue #44 retains
 signing, notarization, and the remaining platform installer work.
 [decided 2026-09-10 — owner clarification on #243]
+D89 point 4 supersedes the signing part of that ruling. v4.0.0 ships macOS unsigned and not notarized. Windows is signed only if the #456
+credential works in CI by 2026-10-08; if not, Windows ships unsigned. Linux stays
+an unsigned zip. [decided 2026-10-03 — D89 point 4]
 
 ## What the pipeline does
 
@@ -84,7 +87,7 @@ every other Pankosmia desktop app).
   `lib/templates/user_settings.json` so `repo_dir` is
   `%%HOMEDIR%%/pankosmia/tc4-projects` (debug: `…/tc4-projects-debug`). The
   launcher substitutes the shipped templates at first boot. The store sits
-  BESIDE the server working dir (`$HOME/pankosmia/tc4`). Pankosmia 0.18.5
+  BESIDE the server working dir (`$HOME/pankosmia/tc4`). Pankosmia 0.18.15
   initializes only when that working directory is absent: the launcher stages
   both template JSON files, `blobs`, `temp` and the install records before
   publishing a complete fresh profile (#528). Creating only `client_settings`
@@ -194,8 +197,8 @@ Steps, in order:
 1. Syntax-check the tracked Electron entry point and run the desktop contract
    tests (`package-preflight` in CI).
 2. Build the tC4 client (`npm run build` → `dist/`).
-3. Build the pinned server (`dev-env/server`, pankosmia-web 0.18.5, rev
-   `99fd9be` — D27).
+3. Build the pinned server (`dev-env/server`, pankosmia-web 0.18.15, rev
+   `a83725b` — D27, D90).
 4. Clone read-only inputs: the desktop template (pinned rev), `resource-core`,
    and `webfonts-core`.
 5. Assemble the app directory. The layout comes from the template:
@@ -220,6 +223,13 @@ Steps, in order:
    the #70 store guard must pass (see "Project-store isolation").
 8. Re-verify the Mac signature after execution, build the production installer, and zip
    the portable artifact. `--zip` skips the Mac installer; `--debug` builds the debug zip.
+   After the zip is written, the zip guard (#336, `scripts/check-zip-product.zsh`)
+   asserts the artifact itself: exactly one `*/lib/product/product.json` entry at
+   the platform's expected path, byte-equal to the staged file the version guard
+   smoke-checked, with a `datetime` equal to `built_utc` in the zip's own
+   `BUILD-MANIFEST.json` (both are written from one `$DATETIME`, so a mismatch
+   means files from two builds). One `zip guard:` line in the log records the
+   version and datetime the artifact carries.
 
 ## The wrapper is Electronite [VERIFIED — desktop-app-template 4cb7576, 2026-08-14]
 
@@ -390,8 +400,8 @@ On a failure the job uploads `dist-desktop/smoke-*.log` as
 ## Windows x64 (#181)
 
 The `windows-x64` job runs the same script on `windows-2025`, under MSYS2's
-`zsh`. Only the host-specific steps differ. Nothing is signed; signing and
-notarization remain #44. Issue #242 adds the Windows installer.
+`zsh`. Only the host-specific steps differ. Nothing is signed. Windows signing
+is #456 (D89 point 4). Issue #242 adds the Windows installer.
 
 ### Artifact layout
 
@@ -498,7 +508,7 @@ checks reinstall/uninstall preserve a project that it wrote through the app.
 
 ### Known limits
 
-- **Unsigned.** Signing remains #44. Security prompts and icon appearance still
+- **Unsigned.** Windows signing is #456 (D89 point 4). Security prompts and icon appearance still
   need a browser-download witness on Windows 11. The earlier Windows 10 zip
   witness does not prove this installer.
 - **CI is Windows Server 2025.** The installed-app job uses a fresh runner and
@@ -687,7 +697,7 @@ procedure's subject.
 
 | Input | Pin | Where |
 |---|---|---|
-| pankosmia-web | 0.18.5, rev `99fd9be` | `dev-env/server/Cargo.toml` |
+| pankosmia-web | 0.18.15, rev `a83725b` | `dev-env/server/Cargo.toml` |
 | Electronite | `v37.1.0-graphite`, zip sha256 verified — `a3dde44e…f59488` (darwin-arm64), `41218aa3…d8f8540` (linux-x64), `8146ca21…371b52` (win32-x64; matches the release asset digest, measured 2026-09-07) | `scripts/package-desktop.zsh` |
 | desktop-app-template | `4cb7576` | `scripts/package-desktop.zsh` |
 | resource-core | `54802be780af18ab02e426dd59014bc6adb158af` | `scripts/package-desktop.zsh` |
@@ -789,7 +799,8 @@ Measured locally on 2026-09-12 (macOS arm64, Node 22); the desktop artifact grow
 ## Known limits (start of the pipeline, not the end)
 
 - **Three platforms**: macOS arm64 (#57), Linux x64 (#119) and Windows x64
-  (#181). macOS x64 and signing are #44.
+  (#181). macOS x64 is #44. v4.0.0 ships macOS unsigned; Windows signing is #456
+  (D89 point 4).
 - **Linux is unsigned and un-installed**: the artifact is a plain zip with no
   installer, no desktop entry, and no signature. Most desktops refuse to run
   it from the file manager, so the user must run `start-tc4.sh` from a
@@ -799,12 +810,13 @@ Measured locally on 2026-09-12 (macOS arm64, Node 22); the desktop artifact grow
   Pankosmia clients (dashboard, content, workspace, content handlers) are not
   bundled. Reason: the template builds them from source at branch tiers
   (`main` tier pins pankosmia_web 0.16.20; `dev` tier 0.18.7), and no tier is
-  proven compatible with our 0.18.5 rev pin. The server panics at boot on a
+  proven compatible with our rev pin (0.18.15, D90). The server panics at boot on a
   `minServerVersion`/`maxServerVersion` mismatch (`bootstrap.rs` version
   check). Picking and proving a client set is issue
   [#71](https://github.com/unfoldingWord/translationCore4/issues/71).
 - **Unsigned Mac installer**: #243 installs a self-contained, ad-hoc-signed app.
-  The pkg itself is unsigned. Developer ID signing and notarization remain #44.
+  The pkg itself is unsigned. v4.0.0 ships without Developer ID signing and
+  notarization (D89 point 4).
   Installer instructions include Open Anyway. A clean macOS 15 Safari-download →
   Installer → Finder witness must record the approval count before #243 closes;
   automated boot/signature checks do not establish that count.
@@ -813,6 +825,18 @@ Measured locally on 2026-09-12 (macOS arm64, Node 22); the desktop artifact grow
   approvals for its launcher, Electron, and server; it is no longer the primary
   Mac pilot path. The valid ad-hoc re-seal introduced for #57 is retained on the
   completed bundle, including an explicitly signed embedded server.
+- **macOS quit: Electron did not exit on SIGTERM two times (#206).** The app
+  stops its server once per quit, and the smoke test sends SIGTERM to Electron
+  only. Each stop must log one `Server stopped.` and no `Failed to stop`. Before
+  #206, the template called `stopServer()` two times on each quit, and the
+  second call logged a false `Failed to stop`. In the macOS smoke jobs of 182
+  `main` runs (2026-08-31 to 2026-09-30), Electron stayed alive for more than
+  10 s after SIGTERM 2 times: run 34058863316 (2026-09-06) and run 35289758439
+  (2026-09-18). In 120 macOS smoke jobs from 2026-09-30 to 2026-10-04, it did
+  not occur. When it occurs, the smoke test sends SIGKILL and reports it. The
+  cause is not known. A possible cause (not verified): a slow native shutdown
+  after `will-quit`, as in
+  [electron/electron#52582](https://github.com/electron/electron/issues/52582).
 - **Shared project store — RESOLVED by #70** (history: the earlier "demo
   seed data" claim was wrong, see the evidence record; the platform default
   `repo_dir` is the shared `$HOME/pankosmia_repos`). The build now pins an

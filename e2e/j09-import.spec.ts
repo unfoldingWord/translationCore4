@@ -7,7 +7,7 @@
 // (tC3 #21, USFM #195, Scripture Burrito #196, damaged input #41) add their own.
 import type { Page } from '@playwright/test';
 import { test, expect } from './helpers/test';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +17,7 @@ import addFormats from 'ajv-formats';
 import { checkBurrito, compileSbValidator } from '../src/data/import/burritoCheck.mjs';
 import { captureDownload } from './helpers/export';
 import { importFixture } from './helpers/import';
+import { pickOption } from './helpers/dropdown';
 import { assertNoRepoCreated, MANIFEST_DIR, readManifest, seedEventsOf, TC3_DCS_TAGS } from '../test/helpers/import';
 import { SEEDED_PROJECT, lastCommitMessage, readDecisionFile, readProjectPins, rigRepo } from './helpers/rig';
 import { askInternet } from './helpers/door43Share';
@@ -40,6 +41,18 @@ const tree = (dir: string): Map<string, Buffer> => {
   };
   walk(dir);
   return out;
+};
+
+/** metadata.json without the fields each server commit rewrites (PLATFORM-NOTES #48,
+ * D90): `meta.dateCreated`, the primary `revision` and `timestamp`, and the ingredient
+ * roles. The import commits, so these are the only metadata fields that may differ. */
+const withoutCommitFields = (bytes: Buffer | Uint8Array) => {
+  const meta = JSON.parse(Buffer.from(bytes).toString('utf8'));
+  delete meta.meta.dateCreated;
+  for (const org of Object.values(meta.identification.primary ?? {}) as Array<Record<string, Record<string, unknown>>>)
+    for (const entry of Object.values(org)) { delete entry.revision; delete entry.timestamp; }
+  for (const entry of Object.values(meta.ingredients ?? {}) as Array<Record<string, unknown>>) delete entry.role;
+  return meta;
 };
 
 /** A name no earlier run left on the rig: the shell refuses an existing folder. */
@@ -87,26 +100,30 @@ test.describe('J9 — a facilitator imports existing work', () => {
     });
 
     for (const entry of readManifest().filter((e) => e.parser === 'fake' && e.expect === 'accept')) {
-      test(`manifest ${JSON.stringify(entry.file)}: a Scripture Burrito is stored as it is — byte for byte, ${entry.language} kept, the harness passes`, { tag: ['@inc8', '@J9'] }, async ({ page }) => {
+      test(`manifest ${JSON.stringify(entry.file)}: a Scripture Burrito is stored as it is — byte for byte but the commit's metadata fields, ${entry.language} kept, the harness passes`, { tag: ['@inc8', '@J9'] }, async ({ page }) => {
         const name = fresh('Muestra');
         const source = path.resolve(MANIFEST_DIR, entry.file as string);
         await importFixture(page, source, { edits: { name } });
         await expect(page.getByTestId('import-toast')).toBeVisible();
         const repo = rigRepo(abbrOf(name));
-        await test.step('every file of the archive is byte-identical in the new project (remake strips .gitignore by design)', async () => {
+        await test.step('every file of the archive is byte-identical in the new project, metadata.json but the fields the commit rewrites (remake strips .gitignore by design)', async () => {
           const stored = tree(repo);
           for (const [rel, bytes] of tree(source)) {
             if (rel === '.gitignore') continue;
-            expect(stored.get(rel)?.equals(bytes), rel).toBe(true);
+            if (rel === 'metadata.json') expect(withoutCommitFields(stored.get(rel)!), rel).toEqual(withoutCommitFields(bytes));
+            else expect(stored.get(rel)?.equals(bytes), rel).toBe(true);
           }
           expect(JSON.parse(stored.get('metadata.json')!.toString('utf8')).languages[0].tag).toBe(entry.language);
           for (const [book, chapters] of Object.entries(entry.counts?.chapters ?? {}))
             expect(stored.get(`ingredients/${book}.usfm`)!.toString('utf8').match(/^\\c \d+/gm)?.length).toBe(chapters);
           expect(git(repo, 'status', '--porcelain')).toBe('');
         });
-        await test.step('the conformance harness passes on the stored project', async () => {
-          const out = execFileSync('node', ['validate.mjs'], { cwd: CONFORMANCE, env: { ...process.env, BURRITO: repo }, encoding: 'utf8' });
-          expect(out).toMatch(/\n\d+ passed, 0 failed\n?$/);
+        await test.step('the conformance harness passes on the stored project, Stage-2 aside (the import commit drops the x- roles: D28, D90 point 6)', async () => {
+          // The harness exits non-zero on any failed check, Stage-2 included, so read its summary lines.
+          const out = spawnSync('node', ['validate.mjs'], { cwd: CONFORMANCE, env: { ...process.env, BURRITO: repo }, encoding: 'utf8' }).stdout;
+          const groups = out.split('\n').filter((line) => /^(Stage-1|Stage-2|Phase-2|OBS) /.test(line));
+          expect(groups.some((line) => line.startsWith('Stage-1 '))).toBe(true);
+          for (const line of groups.filter((l) => !l.startsWith('Stage-2 '))) expect(line).toMatch(/: \d+ passed, 0 failed$/);
         });
       });
     }
@@ -287,7 +304,7 @@ test.describe('J9 — a facilitator imports existing work', () => {
       await expect(row).toHaveAttribute('data-state', 'installed', { timeout: 60_000 });
       await expect(row).toContainText('unfoldingWord/en_tn v87');
       await expect(row).toContainText('The versions on this computer will be used for translationWords.');
-      await page.getByTestId('import-license').selectOption({ label: 'CC BY-SA 4.0' });
+      await pickOption(page, page.getByTestId('import-license'), 'CC BY-SA 4.0');
       await page.getByTestId('import-run').click();
       await expect(page.getByTestId('import-toast')).toBeVisible({ timeout: 240_000 });
       const pins = readProjectPins(abbrOf(name));
@@ -308,7 +325,7 @@ test.describe('J9 — a facilitator imports existing work', () => {
       await expect(page.getByTestId('import-resources')).toHaveAttribute('data-state', 'installed', { timeout: 60_000 });
       // the files disagree (CC BY-SA 4.0, CC0 1.0): Import waits for the choice
       await expect(page.getByTestId('import-run')).toBeDisabled();
-      await page.getByTestId('import-license').selectOption({ label: 'CC0 1.0 Public Domain' });
+      await pickOption(page, page.getByTestId('import-license'), 'CC0 1.0 Public Domain');
       await page.getByTestId('import-run').click();
       await expect(page.getByTestId('import-toast')).toBeVisible({ timeout: 240_000 });
       const meta = JSON.parse(fs.readFileSync(path.join(repo, 'metadata.json'), 'utf8'));
@@ -554,11 +571,12 @@ test.describe('J9 — a facilitator imports existing work', () => {
       });
       const seedsBefore = seedEventsOf([...tree(path.join(repo, 'ingredients'))].map(([rel, bytes]) => [rel, bytes.toString('utf8')] as [string, string])).length;
       expect(seedsBefore).toBeGreaterThan(0); // the export's own seed, so an equal count after the open is not vacuous
-      await test.step('on disk: every exported file byte-identical — the books, checking/ and the journal (remake strips .gitignore)', async () => {
+      await test.step('on disk: every exported file byte-identical — the books, checking/ and the journal; metadata.json but the fields the commit rewrites (remake strips .gitignore)', async () => {
         const stored = tree(repo);
         for (const [rel, bytes] of Object.entries(exported)) {
           if (rel === '.gitignore') continue;
-          expect(stored.get(rel)?.equals(Buffer.from(bytes)), rel).toBe(true);
+          if (rel === 'metadata.json') expect(withoutCommitFields(stored.get(rel)!), rel).toEqual(withoutCommitFields(bytes));
+          else expect(stored.get(rel)?.equals(Buffer.from(bytes)), rel).toBe(true);
         }
         for (const book of ['TIT', 'JON']) expect(stored.get(`ingredients/${book}.usfm`)!.equals(fs.readFileSync(path.join(source, 'ingredients', `${book}.usfm`)))).toBe(true);
         expect(git(repo, 'status', '--porcelain')).toBe('');

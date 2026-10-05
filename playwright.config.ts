@@ -28,7 +28,7 @@ export default defineConfig({
   },
   webServer: [
     {
-      // Rig server (pankosmia_web 0.18.5 git-rev pin — D27 update; isolated state under dev-env/state/).
+      // Rig server (pankosmia_web 0.18.15 git-rev pin — D27 update; isolated state under dev-env/state/).
       // reuseExistingServer: the rig is normally already running during development.
       // Through zsh, with MSYS2 paths on Windows (#396).
       command: rigCommand(path.join(TC4_ROOT, 'dev-env', 'scripts', 'run.zsh')),

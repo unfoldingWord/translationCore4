@@ -1,5 +1,5 @@
 // suggestEngine.ts — the wordMAP + uw-wordmapbooster engine behind alignment
-// suggestions (#1, D72 point 3; #516, D89). Runs inside suggestWorker.ts;
+// suggestions (#1, D72 point 3; #516, D92). Runs inside suggestWorker.ts;
 // imported directly by the unit tests. gatewayEdit's `enhanced-word-aligner-rcl`
 // is a reference to start from, not a design to copy (owner ruling 2026-09-24,
 // #400; amends the 2026-08-13 "adopted as-is" ruling). From it we keep the

@@ -1,7 +1,7 @@
 # Alignment suggestions: ramp-up and training-time measurement (2026-10-02)
 
 The measurement behind [#516](https://github.com/unfoldingWord/translationCore4/issues/516)
-and decision D89: where the suggestion engine's accuracy growth lives, what a
+and decision D92: where the suggestion engine's accuracy growth lives, what a
 retrain costs, and which engine settings help. It was run in an owner session
 on 2026-10-02 (cloud container: Intel Xeon 2.10 GHz, 4 cores, Node 22.22.0);
 the full run logs are the two reports attached to #516
@@ -61,7 +61,7 @@ issue's Follow-up section.
 
 | candidate | result | ruling |
 |---|---|---|
-| per-save memory append + budgeted retrain + memory-only answers before the booster fits | growth lives in the memory (tables below); append 0.14 ms | **adopted** (#516, D89) |
+| per-save memory append + budgeted retrain + memory-only answers before the booster fits | growth lives in the memory (tables below); append 0.14 ms | **adopted** (#516, D92) |
 | JLBoost patch A (no per-step row clone) | bit-identical model, 1.2x uncontended (1.7x contended) | follow-up, upstream |
 | JLBoost patch A + B (quickselect split, partition by value) with `train_steps: 300, tree_depth: 3` | booster fit 26x faster (NT 428 s → 36 s uncontended); recall UP on 6 of 7 seed/testament pairs (NT mean 0.639 → 0.669, OT 0.417 → 0.479) | follow-up, upstream — **do not set the two options on the shipped code** |
 | `train_steps: 300` alone (shipped code) | 0.634 → 0.600 recall | rejected |

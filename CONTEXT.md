@@ -330,7 +330,7 @@ _Avoid_: importer (for the parser alone), converter
 
 **Import shell**:
 The layer every import runs through (`src/data/import/shell.ts`): it creates the new project
-with the primary language subtag, uploads one wrapped zip to the platform's remake, seeds the
+with the bundle's full language tag, uploads one wrapped zip to the platform's remake, seeds the
 journal of a bundle built from parts, commits, and deletes the project when a step fails. It
 returns the import Report.
 _Avoid_: import service, importer

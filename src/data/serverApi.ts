@@ -111,12 +111,17 @@ export interface ServerVersionInfo {
 /** POST /git/new-obs-resource (BURRITO-SPEC §10, D74): the platform copies its
  * `text_stories` template, stamps `metadata.json` from the template by string
  * replacement, and makes the initial commit [VERIFIED — pankosmia-web 0.18.5
- * (99fd9be), `src/endpoints/git2/new_obs_resource.rs`, 2026-09-16]. */
+ * (99fd9be), `src/endpoints/git2/new_obs_resource.rs`, 2026-09-16]. Its language
+ * check is the one the text route uses [VERIFIED — pankosmia-web 0.18.15
+ * (a83725b, 2026-09-29), `new_obs_resource.rs:61-75`]. */
 export interface NewObsResourceParams {
   content_name: string;
   /** Becomes the repo directory name under _local_/_local_/ — validated as a path segment. */
   content_abbr: string;
   content_language_code: string;
+  /** REQUIRED non-null only when content_language_code starts with 'x-' (as
+   * NewTextTranslationParams). */
+  content_language_name?: string | null;
 }
 
 /** POST /git/new-text-translation payload (docs/ARCHITECTURE.md §3.1, D25). */
@@ -126,8 +131,10 @@ export interface NewTextTranslationParams {
   content_abbr: string;
   content_language_code: string;
   /** REQUIRED non-null only when content_language_code starts with 'x-'.
-   * Non-custom codes must exist in the server's BCP47 lookup table — e.g.
-   * 'es-419' is REJECTED at 0.18.5; 'es' is accepted [VERIFIED live]. */
+   * Any other code must be a valid BCP 47 tag whose first subtag is in the
+   * server's lookup table. The server keeps the tag whole and names it:
+   * 'es-419' → "Spanish (419)" [VERIFIED — pankosmia-web 0.18.15 (a83725b,
+   * 2026-09-29), `utils/burrito.rs` `language_name_from_code`; live rig 2026-10-03]. */
   content_language_name?: string | null;
   add_book: boolean;
   book_code?: string;
@@ -414,7 +421,8 @@ export class ServerApi {
   /** GET /git/status/<repoPath> — the pending (uncommitted) changes of the
    * repository as `{path, change_type}` entries; an empty list is a clean tree.
    * A checkpoint (#183) reads this first: `add-and-commit` on a clean tree
-   * records an EMPTY commit [VERIFIED live 0.18.5 (99fd9be), 2026-09-05; PLATFORM-NOTES #9]. */
+   * still records a commit [VERIFIED live 0.18.5 (99fd9be), 2026-09-05, and
+   * 0.18.15 (a83725b), 2026-10-03; PLATFORM-NOTES #9, #48]. */
   async gitStatus(repoPath: string): Promise<Array<{ path: string; change_type: string }>> {
     return this.requestJson(`/git/status/${encodeRepoPath(repoPath)}`);
   }
@@ -466,8 +474,11 @@ export class ServerApi {
   }
 
   /** POST /git/add-and-commit/<repoPath> — sweeps ALL pending changes (W-4).
-   * A commit with nothing pending also succeeds, and records an EMPTY commit
-   * [VERIFIED live 0.18.5 (99fd9be), 2026-09-05] — look at gitStatus() first. */
+   * Each commit also rewrites metadata.json: `meta.dateCreated`, the primary
+   * `revision` and `timestamp`, and a remake of the ingredients that drops the
+   * `x-` roles [VERIFIED live 0.18.15 (a83725b), 2026-10-03; PLATFORM-NOTES #48].
+   * So a commit with nothing pending also succeeds and records a commit — look
+   * at gitStatus() first. */
   async addAndCommit(repoPath: string, commitMessage: string): Promise<void> {
     await this.post(`/git/add-and-commit/${encodeRepoPath(repoPath)}`, {
       commit_message: commitMessage,
@@ -564,15 +575,23 @@ export class ServerApi {
   }
 
   /** POST /git/new-obs-resource — the template repo with the fifty stories
-   * and the initial commit (see NewObsResourceParams). A code the BCP47 lookup
-   * does not know is stored as `x-<code>` by the server, never rejected. */
+   * and the initial commit (see NewObsResourceParams). The server refuses a
+   * code that is not a valid tag, or whose first subtag the lookup does not know. */
   async newObsResource(params: NewObsResourceParams): Promise<void> {
     assertSafeSegment(params.content_abbr, `content_abbr ${JSON.stringify(params.content_abbr)}`);
     assertJsonSafeText(params.content_name, '/git/new-obs-resource');
+    if (params.content_language_code.startsWith('x-') && !params.content_language_name) {
+      throw new ServerApiError(
+        '/git/new-obs-resource',
+        0,
+        "content_language_name is REQUIRED (non-null) when content_language_code starts with 'x-'",
+      );
+    }
     await this.post('/git/new-obs-resource', {
       content_name: params.content_name,
       content_abbr: params.content_abbr,
       content_language_code: params.content_language_code,
+      content_language_name: params.content_language_name ?? null,
       branch_name: null,
     });
   }
