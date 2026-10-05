@@ -804,7 +804,7 @@ try {
   console.error(`CLIENT SET GUARD FAILED: /api/list-clients is not JSON: ${body.slice(0, 200)}`);
   process.exit(1);
 }
-const seen = Array.isArray(clients) ? clients.map((c) => `${c.id} ${c.url}`) : [];
+const seen = Array.isArray(clients) ? clients.map((c) => `${c && c.id} ${c && c.url}`) : [];
 if (seen.length !== 1 || seen[0] !== "uw-tc4 /clients/uw-tc4") {
   console.error(`CLIENT SET GUARD FAILED: /api/list-clients must list only uw-tc4 at /clients/uw-tc4, got ${JSON.stringify(seen)}`);
   process.exit(1);

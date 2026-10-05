@@ -229,9 +229,10 @@ esac
 CLIENTS=$(curl -s --max-time 10 "http://127.0.0.1:$PORT/api/list-clients") || fail "client set: curl exit $? on GET /api/list-clients"
 CLIENT_SET=$(node_run -e '
 let clients;
-try { clients = JSON.parse(process.argv[1]); } catch (e) { process.stdout.write("not JSON"); process.exit(1); }
+const fs = require("fs");
+try { clients = JSON.parse(process.argv[1]); } catch (e) { fs.writeSync(1, "not JSON"); process.exit(1); }
 const seen = Array.isArray(clients) ? clients.map((c) => `${c && c.id} ${c && c.url}`) : [];
-process.stdout.write(JSON.stringify(seen));
+fs.writeSync(1, JSON.stringify(seen));
 process.exit(seen.length === 1 && seen[0] === "uw-tc4 /clients/uw-tc4" ? 0 : 1);
 ' "$CLIENTS") \
   && ok "client set: /api/list-clients lists only uw-tc4" \
