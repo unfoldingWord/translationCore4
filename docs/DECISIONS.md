@@ -2077,8 +2077,13 @@ choice as `internet: true` and gave the Door43 adapter a barrier that read that 
    **Ask before using the internet**. Last, it shows **Sign out of Door43** when a current or
    saved sign-in exists. Sign out is local and sends no request. If the keychain fails to forget
    the token, the menu says so. The menu has no "Switch account". Home has no separate Door43 bar.
-   **Help and guides**, **About translationCore** and **Report a problem** are not on the menu
-   until they exist: issues #519, #520 and #521 (Increment 9). (Amends D86 points 1, 2 and 7.)
+   **Help and guides** and **Report a problem** are not on the menu until they exist: issues
+   #519 and #521 (Increment 9). **About translationCore** is on the menu, below the switch
+   (#520). Its dialog shows the version and the short commit hash of the build, the copyright
+   line and the license name. **Read the license** opens the **License** dialog: the text of
+   the `LICENSE` file, then the full GNU GPL version 2 (`COPYING`). The build reads these
+   values, and the dialogs send no request. [decided 2026-10-04 — owner rulings on #520.]
+   (Amends D86 points 1, 2 and 7.)
 2. **One dialog for each internet task.** With the switch on, each explicit internet task opens
    one "Use the internet?" dialog before any external request. The dialog says what the task
    does, which service it contacts, and what leaves the computer. It has **Cancel**, an action
@@ -2243,6 +2248,8 @@ cannot pass [VERIFIED — pankosmia-web 0.18.14 (173f9f6, 2026-09-29),
    J9 "byte for byte" tests failed on `metadata.json` at 0.18.15 [VERIFIED — lane run of
    `e2e/j09-import.spec.ts`, 2026-10-03]. This supersedes the byte-for-byte reading of D80
    point 2.
+   [amended by D92, 2026-10-05 — the import also rewrites `identification.name` and
+   `identification.abbreviation` to the name typed on the review page and the folder name]
 7. **R-10.2.3 checks the OBS scope table by keys and ranges, not by key order** [owner ruling
    in the same session, 2026-10-03, on the J7/J23 failure below]. Each commit writes
    `metadata.json` with sorted object keys, so an OBS project's `currentScope` loses the
@@ -2286,7 +2293,32 @@ Ledger #1, `docs/ARCHITECTURE.md` (the integration row and the import row), BURR
 removed field, so its checks do not change. The regression journey is
 `e2e/settings-contract.spec.ts`.
 
-## D92 (2026-10-02, project-owner rulings) **Alignment suggestions grow with every saved verse, without waiting for a retrain. Amends D72 point 3 twice: gatewayEdit's engine settings are a reference, not adopted as-is (2026-09-24, #400), and "refreshed after each confirmed save" becomes a per-save memory append with a budgeted background retrain (2026-10-02, #516).** [issues #400 and #516; the measurement is `docs/evidence/align-suggestions-growth-2026-10-02.md`]
+## D92 (2026-10-05, project-owner ruling) **A Scripture Burrito import keeps the Bible name typed on the review page. The import rewrites `identification.name` and `identification.abbreviation` of `metadata.json`. Every other field, and every other file, stays as exported.** [owner answer in the #499 session, 2026-10-05: "Rewrite name + abbr"; issue #499, an rc.1 QA defect and a gate of D89 point 3; amends D90 point 6]
+
+Context. The review page says that the name was read from the file and that the user can change
+it. On `4.0.0-rc.1` (`661af52`) a Scripture Burrito imported with a changed name got the typed
+name in the toast and the folder only. The Home card and the saved name kept the name in the file
+(#499). The shell used the typed name for the create route and the folder. Remake then wrote the
+archive's own `metadata.json` over the created one, as D90 point 6 required [VERIFIED —
+`src/data/import/shell.ts` at `f876bfe`, read 2026-10-05].
+
+1. **The two fields.** Before the upload, the shell sets each language of `identification.name`
+   to the typed name. It sets each language of `identification.abbreviation` to the new folder
+   name (`importAbbr`). A field with no language gets `en`. The language keys of the file stay.
+2. **What does not change.** Every other field of `metadata.json` stays as exported, except the
+   commit fields of D90 point 6. Every other file stays byte for byte. When both fields already
+   match, `metadata.json` keeps its bytes. A tC3 or USFM import already takes the created
+   repository's `metadata.json`, so it does not change.
+3. **The language code is out of scope.** A changed language code on the review page still sets
+   only the create route's tag. A follow-up issue can rule on it.
+
+`docs/ARCHITECTURE.md` (the import row) and `docs/JOURNEYS.md` (J9) change with this decision.
+`e2e/j09-import.spec.ts` compares `metadata.json` without these two fields, and checks that they
+hold the typed name and the folder name, and that the toast and the Home card show the typed
+name. The format does not change, so `docs/BURRITO-SPEC.md` and the conformance harness do not
+change.
+
+## D93 (2026-10-02, project-owner rulings) **Alignment suggestions grow with every saved verse, without waiting for a retrain. Amends D72 point 3 twice: gatewayEdit's engine settings are a reference, not adopted as-is (2026-09-24, #400), and "refreshed after each confirmed save" becomes a per-save memory append with a budgeted background retrain (2026-10-02, #516).** [issues #400 and #516; the measurement is `docs/evidence/align-suggestions-growth-2026-10-02.md`]
 
 Context. D72 point 3 said gatewayEdit's defaults are "adopted as-is" and the model is
 "refreshed after each confirmed save". Built literally, every confirmed save retrained the

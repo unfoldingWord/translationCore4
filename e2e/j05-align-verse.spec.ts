@@ -3,7 +3,7 @@
 // (owner-approved placement, 2026-08-03).
 //
 // Ground truth is the sidecar on disk. The wordMAP suggestion cases (#1, D72
-// point 3; #516, D92) assert the propose-only rules and that the engine learns
+// point 3; #516, D93) assert the propose-only rules and that the engine learns
 // from every saved verse without a retrain in the way.
 import { test, expect } from './helpers/test';
 import { verifyAllJournaledProjects } from './helpers/journal';

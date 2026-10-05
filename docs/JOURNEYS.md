@@ -134,7 +134,7 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   or the sidecar.
 - MUST NOT: write an unconfirmed suggestion; count a verse as resolved or a suggested word as
   placed while a suggestion stands; store the suggestions switch in the project; make the
-  translator wait for training after a save (#516, D92 — a saved verse joins the engine's
+  translator wait for training after a save (#516, D93 — a saved verse joins the engine's
   memory at once, Suggest keeps answering while any retrain runs in the background).
 - Proof: `e2e/j05-align-verse.spec.ts`, LTR and RTL; the suggestion cases are added by #1,
   the growth case (align verse A, open verse B, Suggest answers in 2 s with no "learning"
@@ -182,7 +182,8 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   d) Scripture Burrito.
 - End state (a, c, d): one **new** project repository, valid Scripture Burrito at its first
   commit; imported segments carry `seed.source`; imported text byte-identical to the source
-  text. Import never writes into an existing project in 4.0.0 (D79 point 7; the into-existing
+  text. The new project's name is the Bible name on the review page: the toast, the Home card
+  and `metadata.json` all show it (#499, D92). Import never writes into an existing project in 4.0.0 (D79 point 7; the into-existing
   flow with a conflict review is #365, 4.1.0). The tC3 import review does not look up resource
   versions by itself: "Look up on Door43" is an explicit internet task, and it asks first while
   "Ask before using the internet" is on (D88 point 5). A local import sends no external request.

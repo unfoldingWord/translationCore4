@@ -1,5 +1,5 @@
 // suggestWorker.ts — the suggestion engine's Web Worker (#1, D72 point 3;
-// #516, D92).
+// #516, D93).
 //
 // Training a wordMAP model over a whole testament's confirmed alignments takes
 // seconds to minutes; the aligner's hands must never stop (the save-latency

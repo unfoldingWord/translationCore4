@@ -13,6 +13,7 @@ import type { ImportBundle, ImportFile, ImportParser } from './types';
 
 const APP_ORG = '_local_/_local_';
 const encoder = new TextEncoder();
+const decoder = new TextDecoder();
 
 /** The facts of an import Report: which parser, the new project, what it holds. */
 export type ImportFacts = { parser: ImportParser['id']; repoPath?: string; books?: string[]; seedSource?: string; rolledBack?: boolean };
@@ -59,9 +60,28 @@ export const editedFacts = (bundle: ImportBundle, edits: Partial<ImportBundle['f
 const wrap = (folder: string, files: Record<string, Uint8Array>): Uint8Array =>
   zipSync(Object.fromEntries(Object.entries(files).map(([rel, bytes]) => [`${folder}/${rel}`, bytes])));
 
-/** A Scripture Burrito as it is (D80 point 2): every file's bytes unchanged,
- * under one top-level folder. */
-const archiveZip = (archive: Uint8Array, folder: string): Uint8Array => wrap(folder, unwrapExport(archive).files);
+/** Each language of a localized name set to `value`; `en` when it has none. */
+const relabel = (names: unknown, value: string): Record<string, string> => {
+  const keys = names && typeof names === 'object' ? Object.keys(names) : [];
+  return Object.fromEntries((keys.length ? keys : ['en']).map((key) => [key, value]));
+};
+
+/** A Scripture Burrito as it is (D80 point 2, D90 point 6), under one top-level
+ * folder. Only `identification.name` and `identification.abbreviation` of
+ * `metadata.json` change: they take the review page's name and the folder name
+ * (#499, D92). Every other file keeps its bytes, and so does `metadata.json`
+ * when both already match. */
+const archiveZip = (archive: Uint8Array, folder: string, name: string): Uint8Array => {
+  const files = { ...unwrapExport(archive).files };
+  const meta = JSON.parse(decoder.decode(files['metadata.json'])) as { identification?: Record<string, unknown> };
+  const identification = (meta.identification ??= {});
+  const named = { name: relabel(identification.name, name), abbreviation: relabel(identification.abbreviation, folder) };
+  if (JSON.stringify(named) !== JSON.stringify({ name: identification.name, abbreviation: identification.abbreviation })) {
+    Object.assign(identification, named);
+    files['metadata.json'] = encoder.encode(JSON.stringify(meta, null, 2));
+  }
+  return wrap(folder, files);
+};
 
 /** The new project's own files (the created repository's metadata.json and
  * ingredients, for example vrs.json) with the bundle's books or stories and
@@ -180,15 +200,15 @@ async function importRecorded(
       throw error;
     }
     created = true;
-    const zip = bundle.archive ? archiveZip(bundle.archive, abbr) : await bundleZip(api, repoPath, bundle, edited, abbr);
+    const zip = bundle.archive ? archiveZip(bundle.archive, abbr, name) : await bundleZip(api, repoPath, bundle, edited, abbr);
     await api.remakeBurritoFromZip(await api.uploadTempBytes(zip), repoPath);
     // Register the new books and their scope. Never for an archive (its
-    // metadata.json stays as exported) or an OBS project (a rescan empties
+    // metadata.json stays as exported but its name, D92) or an OBS project (a rescan empties
     // the template's scope table, PLATFORM-NOTES #37).
     if (!bundle.archive && bundle.kind === 'bible') await api.remakeIngredients(repoPath);
     const message = `Import ${name} (tC4)`;
     if (bundle.archive) {
-      // Stored as exported (D80 point 2), so neither opened nor checkpointed:
+      // Stored as exported but its name (D80 point 2, D92), so neither opened nor checkpointed:
       // both rescan the ingredients, and a rescan rewrites metadata.json (W-2).
       // The commit itself still rewrites the commit fields of metadata.json
       // (PLATFORM-NOTES #48, D90 point 6). The first open seeds what its journal does not hold, with the same source.

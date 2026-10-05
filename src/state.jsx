@@ -590,6 +590,27 @@ function checkDecisionSaved(state, a) {
   return { ...state, checkSession: { ...cs, items, progress: progressOf(items) } };
 }
 
+/** #532: the session's draft copy, read again from the live draft when the
+ * user returns to Check. The Translate / Check switch leaves the tool open,
+ * so without this the copy taken at open still says a verse (or frame)
+ * drafted meanwhile is empty. The items revalidate against the same text, as
+ * an open does (completedCheckSession). Merged from the reducer's own state. */
+function refreshCheckDraft(state, a) {
+  const cs = state.checkSession;
+  if (!cs?.items || cs.seq !== a.seq) return state;
+  // Only the session's own text: a book opened in Translate meanwhile (the
+  // tool stays open) or a draft still loading keeps the copy it has.
+  const obs = isObsProject(state);
+  if (obs ? !state.story : state.book !== cs.book || state.bookRaw == null) return state;
+  const verses = obs ? frameTextIndex(state.story) : withSpanMembers(verseTextIndex(state.bookRaw));
+  const { items, invalidated } = revalidateAgainstDraft(cs.items, verses);
+  if (invalidated === 0) return { ...state, checkSession: { ...cs, verses } };
+  return {
+    ...state,
+    checkSession: { ...cs, verses, items, progress: progressOf(items), invalidated: (cs.invalidated ?? 0) + invalidated },
+  };
+}
+
 /** #100: the align scheduler's state mirror. */
 function alignSaveState(state, a) {
   return { ...state, alignSaveState: a.state };
@@ -623,7 +644,7 @@ function setShared(state, a) {
   return { ...state, remoteByProject: { ...state.remoteByProject, [a.id]: a.shared } };
 }
 
-const CHECK_SESSION_CASES = { patchCheckSession, checkDecisionSaved, pickerToolEntry, alignSaveState, checkSaveState, patchUpgrade, setProgress, setShared };
+const CHECK_SESSION_CASES = { patchCheckSession, checkDecisionSaved, refreshCheckDraft, pickerToolEntry, alignSaveState, checkSaveState, patchUpgrade, setProgress, setShared };
 
 function setSourceEntry(state, a) {
   if (a.value === undefined || a.value === null) {
@@ -3345,6 +3366,9 @@ export function AppProvider({ children }) {
         const st = stateRef.current;
         const from = st.view;
         dispatch({ type: 'set', patch: { view } });
+        // #532: an open check reads the draft made while the user was away.
+        if (view === 'check' && from !== 'check' && st.checkSession?.items)
+          dispatch({ type: 'refreshCheckDraft', seq: st.checkSession.seq });
         if (view !== 'home') rememberPlace({ mode: modeOf(view) });
         // #183 (D9): a mode switch is a checkpoint. Started, not awaited: a
         // failure lands in commitError, never in the way.
@@ -4421,7 +4445,7 @@ export function AppProvider({ children }) {
         dispatch({ type: 'set', patch: { alignSession: optimistic } });
         const [chapter, verse] = a2.ref.split(':');
         sched.markDirty(a2.book, chapter, verse, JSON.stringify(record));
-        // D72 as amended by D92 (#516): the engine learns from every confirmed
+        // D72 as amended by D93 (#516): the engine learns from every confirmed
         // save — the verse joins the worker's memory; no retrain is waited for.
         a.queueAlignSuggestionAppend(optimistic);
       },
@@ -5896,7 +5920,12 @@ export function AppProvider({ children }) {
         // Sequence token: two rapid opens must not interleave (finding M2) —
         // only the latest open may install its bytes and sources.
         const seq = ++openSeqRef.current;
-        dispatch({ type: 'set', patch: { book: code, chapter: 1, bookRaw: null, bookError: null, sources: {}, editing: null, helpsHover: null, helpsActive: null, pickerProgress: null } });
+        // #532: a check session is scoped to one book, as one story (#291) —
+        // another book closes it. Its decisions are on disk (the drain above),
+        // and the seq bump drops any open still in flight.
+        const closeCheck = stateRef.current.book !== code;
+        if (closeCheck) checkSessionSeq++;
+        dispatch({ type: 'set', patch: { book: code, chapter: 1, bookRaw: null, bookError: null, sources: {}, editing: null, helpsHover: null, helpsActive: null, pickerProgress: null, ...(closeCheck ? { checkTool: null, checkSession: null } : {}) } });
         let raw;
         try {
           ({ usfm: raw } = await store.readBook(code));
