@@ -2033,8 +2033,10 @@ main 0996d21, 2026-09-30, `src/data/share/door43Api.ts`].
    opens first, its consent covers the upload, and the dialog then opens for review; (c) after
    Change, or after Door43 refuses the token, the new sign-in returns to the review and uploads
    nothing; (d) a refusal offers **Try again** and **Close**, and **Close** alone when another
-   device pushed. The consent of an upload belongs to the dialog that it was given in: when
-   that dialog, or its sign-in step, closes, the next one asks again.]
+   device pushed. The consent of a Share or an Upload changes belongs to its flow: the click on
+   the card, its sign-in step and its dialogs, until they close. The flow asks one time. When
+   it closes, its consent ends; a step of it that ends later changes nothing; and the next
+   click is a new flow, which asks again. One sign-in is sent at a time.]
 8. **The kept sign-in (amends D85 point 4).** tC4 resumes a kept token at the first action that
    needs Door43, not at app start. The resume waits for the barrier of point 3: after Allow, it
    runs only when the read-back shows the gate on. A kept token still asks nothing. D85 points 1,

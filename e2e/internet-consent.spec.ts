@@ -120,6 +120,38 @@ const refusedOutsideATask = (page: Page) =>
     return out;
   });
 
+/** #530: hold Door43's answer to a sign-in (`GET /user` with Basic credentials) until the
+ * journey releases it. The check of a saved token (`token …`) is not a sign-in and passes.
+ * `hold(n)` says whether the n-th sign-in is held. `events` keeps the order of what happened. */
+async function holdSignIns(page: Page, hold: (n: number) => boolean): Promise<{ sent: number; events: string[]; release: Record<number, () => void> }> {
+  const signIns = { sent: 0, events: [] as string[], release: {} as Record<number, () => void> };
+  await page.route(`${QA_SERVER}/api/v1/user`, async (route) => {
+    if (!(route.request().headers().authorization ?? '').startsWith('Basic ')) return route.fallback();
+    signIns.sent += 1;
+    const n = signIns.sent;
+    signIns.events.push(`sign-in ${n} sent`);
+    if (hold(n)) {
+      await new Promise<void>((resolve) => {
+        signIns.release[n] = () => {
+          signIns.events.push(`sign-in ${n} released`);
+          resolve();
+        };
+      });
+    }
+    return route.fallback();
+  });
+  return signIns;
+}
+/** The push requests the page sent to the platform. */
+const watchPushes = (page: Page): string[] => {
+  const pushes: string[] = [];
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname.startsWith('/api/git/push/')) pushes.push(request.url());
+  });
+  return pushes;
+};
+const SHARING_AS = `Sharing as @${USER.username} · Change`;
+
 test.describe('D88 — ask before using the internet, and the account menu', () => {
   test.beforeEach(async () => {
     // A Home tile reopens the place an earlier spec left (#329); these cases open Titus 1.
@@ -564,7 +596,9 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
       // The held check ends. The cancelled upload pushes nothing and opens no sign-in step.
       release();
       await expect.poll(() => fake.calls.length).toBe(1);
-      await page.waitForTimeout(1000);
+      // The signal that the cancelled upload's check ended: Door43 named the account, and the
+      // open dialog shows it. What the cancelled upload does next, it has done by now.
+      await expect(page.getByTestId('share-account')).toHaveText(SHARING_AS);
       expect(pushes, 'the cancelled upload pushes nothing').toEqual([]);
       expect(remote.main()).toBeNull();
       await expect(page.getByTestId('share-signin')).toHaveCount(0);
@@ -593,15 +627,10 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
     const remote = makeBareRemote();
     try {
       const fake = await fakeShare(context, remote);
+      const keychain = await fakeKeychain(context);
+      const forgets = () => keychain.calls.filter((call) => call === 'forget').length;
       addOrigin(SEEDED_PROJECT, remote);
-      let release!: () => void;
-      const held = new Promise<void>((resolve) => { release = resolve; });
-      let sent = 0;
-      await page.route(`${QA_SERVER}/api/v1/user`, async (route) => {
-        sent += 1;
-        if (sent === 1) await held;
-        await route.fallback();
-      });
+      const signIns = await holdSignIns(page, (n) => n === 1);
       await countAsks(page);
       await page.goto('/');
       const action = page.getByTestId(`share-${SEEDED_ID}`);
@@ -611,7 +640,7 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
       await action.click();
       await signIn(page);
       await page.getByTestId('net-confirm').click();
-      await expect.poll(() => sent).toBe(1);
+      await expect.poll(() => signIns.sent).toBe(1);
 
       // Cancel while it is held, then open the sign-in step again.
       await page.getByTestId('signin-cancel').click();
@@ -620,8 +649,11 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
       await expect(page.getByTestId('share-signin')).toBeVisible();
 
       // The held sign-in ends. It signs nobody in, and the upload dialog does not open.
-      release();
-      await page.waitForTimeout(1500);
+      // The signal that the app has dealt with it: the keychain was told to forget twice,
+      // once by the sign-in itself (not kept), once by the Cancel that drops its token.
+      const before = forgets();
+      signIns.release[1]();
+      await expect.poll(forgets).toBe(before + 2);
       await expect(page.getByTestId('share-signin')).toBeVisible();
       await expect(page.getByTestId('share-dialog')).toHaveCount(0);
       await expect(page.getByLabel('Password', { exact: true })).toHaveValue('');
@@ -637,6 +669,128 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
       expect(await asksSeen(page)).toBe(1);
       expect(remote.main(), 'the sign-in pushed nothing').toBeNull();
       expect(fake.tokens.size).toBeGreaterThan(0);
+    } finally {
+      dropOrigin(SEEDED_PROJECT);
+      remote.dispose();
+    }
+  });
+
+  // #530 (review rounds 4 and 5): the same rule for a sign-in step that opens inside an
+  // upload the user has already consented to. Two ways lead to that step: Door43 refuses
+  // the saved sign-in, or the user presses Change after the consent.
+  for (const way of ['a refused saved sign-in', 'Change after the consent'] as const) {
+    test(`d. Upload changes: ${way}, then Cancel while the new sign-in is sent: the step opened after it asks again, and sends no sign-in before the answer`, TAG, async ({ page, context }, testInfo) => {
+      const KEPT_TOKEN = 'kept-token-for-530';
+      const remote = makeBareRemote();
+      try {
+        // "Refused": the fake knows no token. "Change": the token is good, and the push fails
+        // once, so the consented dialog returns to its review step, where Change is.
+        const refused = way === 'a refused saved sign-in';
+        const fake = await fakeShare(context, remote, refused ? {} : { tokens: [KEPT_TOKEN] });
+        const keychain = await fakeKeychain(context, KEPT_TOKEN);
+        const forgets = () => keychain.calls.filter((call) => call === 'forget').length;
+        addOrigin(SEEDED_PROJECT, remote);
+        const signIns = await holdSignIns(page, (n) => n === 1);
+        const pushes = watchPushes(page);
+        if (!refused) await page.route('**/api/git/push/**', (route) => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ is_good: false, reason: 'the journey refused this push' }) }));
+        await countAsks(page);
+        await page.goto('/');
+        const action = page.getByTestId(`share-${SEEDED_ID}`);
+        await expect(action).toHaveText('Upload changes');
+
+        // Upload changes, Continue: the one question of this upload.
+        await action.click();
+        await page.getByTestId('share-submit').click();
+        await page.getByTestId('net-confirm').click();
+        if (!refused) {
+          await expect(page.getByTestId('share-error')).toHaveAttribute('data-code', 'share.push-failed', { timeout: 30_000 });
+          await page.getByTestId('share-account-change').click();
+        }
+        // The sign-in step is a step of that upload: it asks nothing more. It is sent, and held.
+        await expect(page.getByTestId('share-signin')).toBeVisible();
+        await signIn(page);
+        await expect.poll(() => signIns.sent).toBe(1);
+        expect(await asksSeen(page), 'the sign-in of a consented upload does not ask again').toBe(1);
+
+        // Cancel while it is held, then press Upload changes again. No sign-in is left, in
+        // memory or saved, so the sign-in step opens.
+        await page.getByTestId('signin-cancel').click();
+        await expect(page.getByTestId('share-signin')).toHaveCount(0);
+        await action.click();
+        await expect(page.getByTestId('share-signin')).toBeVisible();
+
+        // The held sign-in ends (the signal: its own forget, and the forget of the Cancel).
+        // It signs nobody in, opens nothing, and pushes nothing.
+        const before = forgets();
+        const pushed = pushes.length;
+        signIns.release[1]();
+        await expect.poll(forgets).toBe(before + 2);
+        await expect(page.getByTestId('share-signin')).toBeVisible();
+        await expect(page.getByTestId('share-dialog')).toHaveCount(0);
+        await expect(page.getByLabel('Password', { exact: true })).toHaveValue('');
+        await expect(trigger(page)).toHaveAttribute('data-state', 'out');
+        expect(pushes.length).toBe(pushed);
+
+        // The step opened after the Cancel asks again, and sends no sign-in before the answer.
+        await page.evaluate(() => { (window as unknown as { __asks: number }).__asks = 0; });
+        const calls = fake.calls.length;
+        await signIn(page);
+        await expect(askDialog(page)).toHaveAttribute('data-kind', 'upload');
+        expect(signIns.sent, 'no sign-in is sent before the answer').toBe(1);
+        expect(fake.calls.length, 'no Door43 request before the answer').toBe(calls);
+        await page.getByTestId('net-confirm').click();
+        await expect(page.getByTestId('share-upload')).toBeVisible();
+        await expect(page.getByTestId('share-account')).toHaveText(SHARING_AS);
+        expect(await asksSeen(page)).toBe(1);
+        expect(signIns.sent).toBe(2);
+        expect(pushes.length, 'the sign-in pushed nothing').toBe(pushed);
+        const log = testInfo.outputPath('d-upload-consented-sign-in-cancel.json');
+        fs.writeFileSync(log, JSON.stringify({ way, signIns: signIns.events, pushes: pushes.length }, null, 2));
+        await testInfo.attach('d-upload-consented-sign-in-cancel', { path: log, contentType: 'application/json' });
+      } finally {
+        dropOrigin(SEEDED_PROJECT);
+        remote.dispose();
+      }
+    });
+  }
+
+  // #530: one sign-in is sent at a time. A sign-in sent from a step that was cancelled drops
+  // its own token when it ends; it must not end after a newer sign-in and drop that one.
+  test('d. Upload changes: a sign-in sent while a cancelled one is still in flight waits for it, and keeps its own session', TAG, async ({ page, context }, testInfo) => {
+    const remote = makeBareRemote();
+    try {
+      await fakeShare(context, remote);
+      addOrigin(SEEDED_PROJECT, remote);
+      const signIns = await holdSignIns(page, (n) => n === 1);
+      await askInternet(false); // no questions here: the order of the sign-ins is the subject
+      await page.goto('/');
+      const action = page.getByTestId(`share-${SEEDED_ID}`);
+      await expect(action).toHaveText('Upload changes');
+
+      // The first sign-in is sent and held. Cancel, open the step again, and sign in again.
+      await action.click();
+      await signIn(page);
+      await expect.poll(() => signIns.sent).toBe(1);
+      await page.getByTestId('signin-cancel').click();
+      await action.click();
+      await expect(page.getByTestId('share-signin')).toBeVisible();
+      await signIn(page);
+      // Give a second sign-in the time to leave, if the app sends it now. Then release the first.
+      await expect.poll(() => signIns.sent, { timeout: 1500 }).toBe(2).catch(() => {});
+      signIns.release[1]();
+
+      // The second sign-in left only after the first one ended, and it signed in.
+      await expect(page.getByTestId('share-upload')).toBeVisible({ timeout: 30_000 });
+      expect(signIns.events).toEqual(['sign-in 1 sent', 'sign-in 1 released', 'sign-in 2 sent']);
+      await expect(page.getByTestId('share-account')).toHaveText(SHARING_AS);
+      // Its session is whole: the upload runs with no new sign-in.
+      await page.getByTestId('share-submit').click();
+      await expect(page.getByTestId('share-done')).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByTestId('share-signin')).toHaveCount(0);
+      expect(remote.main()).toBe(head(SEEDED_PROJECT));
+      const log = testInfo.outputPath('d-upload-sign-in-order.json');
+      fs.writeFileSync(log, JSON.stringify(signIns.events, null, 2));
+      await testInfo.attach('d-upload-sign-in-order', { path: log, contentType: 'application/json' });
     } finally {
       dropOrigin(SEEDED_PROJECT);
       remote.dispose();
