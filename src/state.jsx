@@ -5097,7 +5097,9 @@ export function AppProvider({ children }) {
           type: 'set',
           patch: {
             modal: 'share',
-            sh: { project, mode: 'upload', step: 'upload', choices: [], choicesError: null, target: { kind: 'user' }, name: project.id.split('/').pop(), busy: false, steps: [], error: null, report: null, copied: false },
+            // `opened`: this dialog, so an upload started in it cannot run in a
+            // dialog opened after it was closed (uploadChanges).
+            sh: { project, mode: 'upload', step: 'upload', opened: Symbol('upload dialog'), choices: [], choicesError: null, target: { kind: 'user' }, name: project.id.split('/').pop(), busy: false, steps: [], error: null, report: null, copied: false },
           },
         });
       },
@@ -5109,9 +5111,16 @@ export function AppProvider({ children }) {
         const sh = stateRef.current.sh;
         if (stateRef.current.modal !== 'share' || sh?.project.id !== project.id || sh.busy || uploadStarting) return null;
         uploadStarting = true;
+        // The dialog stays closable while the answer or the sign-in check is
+        // awaited. A closed dialog ends this upload: no sign-in step and no
+        // push, even when the same project's dialog opens again meanwhile.
+        const opened = sh.opened;
+        const stillOpen = () => stateRef.current.modal === 'share' && stateRef.current.sh?.opened === opened;
         try {
           const report = await a.internetTask(shareTaskKind() ?? 'upload', async () => {
+            if (!stillOpen()) return null;
             if (!currentSession()) await a.resumeKept();
+            if (!stillOpen()) return null;
             if (!currentSession()) {
               a.openSignIn(project, false, true);
               return null;
