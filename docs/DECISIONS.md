@@ -2091,8 +2091,13 @@ choice as `internet: true` and gave the Door43 adapter a barrier that read that 
    **Ask before using the internet**. Last, it shows **Sign out of Door43** when a current or
    saved sign-in exists. Sign out is local and sends no request. If the keychain fails to forget
    the token, the menu says so. The menu has no "Switch account". Home has no separate Door43 bar.
-   **Help and guides**, **About translationCore** and **Report a problem** are not on the menu
-   until they exist: issues #519, #520 and #521 (Increment 9). (Amends D86 points 1, 2 and 7.)
+   **Help and guides** and **Report a problem** are not on the menu until they exist: issues
+   #519 and #521 (Increment 9). **About translationCore** is on the menu, below the switch
+   (#520). Its dialog shows the version and the short commit hash of the build, the copyright
+   line and the license name. **Read the license** opens the **License** dialog: the text of
+   the `LICENSE` file, then the full GNU GPL version 2 (`COPYING`). The build reads these
+   values, and the dialogs send no request. [decided 2026-10-04 — owner rulings on #520.]
+   (Amends D86 points 1, 2 and 7.)
 2. **One dialog for each internet task.** With the switch on, each explicit internet task opens
    one "Use the internet?" dialog before any external request. The dialog says what the task
    does, which service it contacts, and what leaves the computer. It has **Cancel**, an action
