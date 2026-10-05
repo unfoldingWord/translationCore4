@@ -3011,6 +3011,10 @@ export function AppProvider({ children }) {
   // open verse's latest record, posted when its edits settle (debounced) and
   // flushed at once when Suggest asks or another verse starts editing.
   const suggestAppendRef = useRef(null);
+  // #516 (bench round 2): the verses appended while a training's corpus is
+  // being collected. The worker only keeps saves that arrive after `train`;
+  // these arrive before it, so they ride in the `train` corpus instead.
+  const suggestCollectRef = useRef(null);
   // #516: verses in each testament's memory, as the worker last reported —
   // the budgeted retrain fires when an append first reaches a budget step.
   const suggestVersesRef = useRef({ ot: 0, nt: 0 });
@@ -4581,14 +4585,17 @@ export function AppProvider({ children }) {
         // collection may have started a memory-only model that now answers
         // (#516, D93 point 3; bench round 1).
         const answers = () => standing || (stateRef.current.alignSuggest.status === 'ready' && stateRef.current.alignSuggest.testament === testament);
+        suggestCollectRef.current = { id, testament, verses: new Map() };
         void collectTrainingVerses({ store, sched: alignSchedulerRef.current, project: st.project, book: st.book, bookRaw: rawRef.current, testament })
-          .then((verses) => {
+          .then((collected) => {
             // An obsolete collection (the switch was cycled, or the project
             // left) owns no lock any more — a newer training may hold it
             // (Codex round 2). Only the CURRENT training settles.
             if (id !== suggestTrainIdRef.current || storeRef.current !== store) return;
-            if (!verses.length && !answers()) {
-              dispatch({ type: 'set', patch: { alignSuggest: { status: 'none', testament, verses: 0, boosted: false, error: null } } });
+            const verses = a.withCollectAppends(id, collected);
+            if (!verses.length) {
+              // Never train an empty model over one that answers (bench round 2).
+              if (!answers()) dispatch({ type: 'set', patch: { alignSuggest: { status: 'none', testament, verses: 0, boosted: false, error: null } } });
               a.settleTraining(id);
               return;
             }
@@ -4596,11 +4603,23 @@ export function AppProvider({ children }) {
           })
           .catch((e) => {
             if (id !== suggestTrainIdRef.current) return;
+            a.withCollectAppends(id, []);
             // A standing model keeps answering; only a first training surfaces
             // the collection failure as the row's state (#516).
             if (!answers()) dispatch({ type: 'set', patch: { alignSuggest: { status: 'error', testament, verses: 0, boosted: false, error: String(e?.message || e) } } });
             a.settleTraining(id);
           });
+      },
+
+      /** The collected corpus plus the saves appended while it was collected —
+       * the worker only re-applies saves that arrive after `train`, so a save
+       * missing from the collection would be lost when the new model replaces
+       * the one holding it (Codex round 2 on 48e73a692). Ends the collection. */
+      withCollectAppends: (id, collected) => {
+        const c = suggestCollectRef.current;
+        if (!c || c.id !== id) return collected;
+        suggestCollectRef.current = null;
+        return [...collected.filter((v) => !c.verses.has(v.ref)), ...c.verses.values()];
       },
 
       /** The CURRENT training ended (any way): release the lock and run the
@@ -4646,10 +4665,13 @@ export function AppProvider({ children }) {
         if (!pending) return;
         clearTimeout(pending.timer);
         suggestAppendRef.current = null;
+        const collecting = suggestCollectRef.current;
+        if (collecting?.testament === pending.testament) collecting.verses.set(pending.verse.ref, pending.verse);
         a.ensureSuggestWorker().postMessage({ type: 'append', id: ++suggestSeqRef.current, testament: pending.testament, verse: pending.verse });
       },
 
       onSuggestReply: (reply) => {
+        const ofTraining = reply.id === suggestTrainIdRef.current; // before settle starts the next one
         if (reply.type === 'trained' || reply.type === 'error') a.settleTraining(reply.id);
         if (a.staleSuggestReply(reply)) return;
         if (reply.type === 'trained') {
@@ -4661,10 +4683,7 @@ export function AppProvider({ children }) {
           return;
         }
         if (reply.type === 'appended') return a.onSuggestAppended(reply);
-        if (reply.type === 'error') {
-          dispatch({ type: 'set', patch: { alignSuggest: { status: 'error', testament: stateRef.current.alignSuggest.testament, verses: 0, boosted: false, error: reply.message } } });
-          return;
-        }
+        if (reply.type === 'error') return a.onSuggestError(reply, ofTraining);
         // Bound to the verse and session that asked (Codex round 1): a reply
         // for a verse the translator has since left is discarded, never mapped
         // onto the verse now open.
@@ -4679,6 +4698,14 @@ export function AppProvider({ children }) {
        * because a retrain started after they were asked (bench round 1). */
       staleSuggestReply: (reply) =>
         reply.id <= suggestEpochRef.current || (reply.type === 'trained' && reply.id !== suggestTrainIdRef.current),
+
+      /** A failed background retrain never replaced the worker's model
+       * (suggestWorker assigns only on success): a `ready` row keeps
+       * answering (George round 2). Any other error surfaces as before. */
+      onSuggestError: (reply, ofTraining) => {
+        if (ofTraining && stateRef.current.alignSuggest.status === 'ready') return;
+        dispatch({ type: 'set', patch: { alignSuggest: { status: 'error', testament: stateRef.current.alignSuggest.testament, verses: 0, boosted: false, error: reply.message } } });
+      },
 
       /** #516: a saved verse landed in the worker's memory. The row's count is
        * the memory's count; the booster retrains in the background when the
