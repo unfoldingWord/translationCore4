@@ -13,7 +13,8 @@
 # and a deliberately poisoned APP_RESOURCES_DIR. The app must bind itself to
 # the current package before it self-spawns its
 # bundled server and serve the tC4 client (303 from /, 200 from
-# /clients/uw-tc4) before the zip is written.
+# /clients/uw-tc4, and only uw-tc4 in /api/list-clients, #71) before the zip is
+# written.
 #
 # Usage: zsh scripts/package-desktop.zsh [--debug] [--zip]
 #   (no flag)  production variant: isolated EMPTY project store.
@@ -786,6 +787,30 @@ for (const [disk, liveKey] of [["version", "product_version"], ["datetime", "pro
 }
 console.log("version guard: /api/version matches lib/product/product.json (" + onDisk.version + ", " + onDisk.datetime + ")");
 ' "$(npath "$PACK/lib/product/product.json")" "$VERSION_BODY" || exit 1
+
+# CLIENT SET GUARD (#71, D89 point 7): v4.0.0 bundles only the uw-tc4 client.
+# The booted server must list exactly that one client. GET /api/list-clients
+# serializes the server's merged roster: app_setup.json clients, then the
+# user_settings my_clients (pankosmia-web 0.18.15 a83725b, endpoints/clients.rs
+# list_clients and utils/bootstrap.rs merged_clients, read 2026-10-05).
+CLIENTS_BODY=$("$CURL" -s --max-time 5 "http://127.0.0.1:$SMOKE_PORT/api/list-clients") || {
+  echo "CLIENT SET GUARD FAILED: curl exit $? on GET /api/list-clients" >&2; exit 1; }
+node -e '
+const body = process.argv[1];
+let clients;
+try {
+  clients = JSON.parse(body);
+} catch (e) {
+  console.error(`CLIENT SET GUARD FAILED: /api/list-clients is not JSON: ${body.slice(0, 200)}`);
+  process.exit(1);
+}
+const seen = Array.isArray(clients) ? clients.map((c) => `${c.id} ${c.url}`) : [];
+if (seen.length !== 1 || seen[0] !== "uw-tc4 /clients/uw-tc4") {
+  console.error(`CLIENT SET GUARD FAILED: /api/list-clients must list only uw-tc4 at /clients/uw-tc4, got ${JSON.stringify(seen)}`);
+  process.exit(1);
+}
+console.log("client set guard: /api/list-clients lists only uw-tc4 (/clients/uw-tc4)");
+' "$CLIENTS_BODY" || exit 1
 
 # OBS regression (#347/#348): first read the platform-created bytes BEFORE any
 # client seed write. This probe is deliberately separate from the lifecycle
