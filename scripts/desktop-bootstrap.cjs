@@ -157,7 +157,7 @@ function validateTree(directory, ingredients) {
   }
 }
 
-// Pankosmia 0.18.5 initializes only when its working directory is absent.
+// Pankosmia (0.18.5 to 0.18.15, lib.rs:129) initializes only when its working directory is absent.
 // Publish a COMPLETE fresh profile from its own shipped templates, otherwise
 // recording installs first would make the server skip initialization and panic.
 function prepareProfile(resourcesDir, home, profile, staging) {

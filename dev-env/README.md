@@ -4,11 +4,11 @@ The tC4 client runs against a Pankosmia server. This directory builds a scripted
 isolated `pankosmia-web` server for development and for the rig-backed test suites.
 Tests that need it are labelled `needs-rig` and skip without it.
 
-The server is pinned by git rev to **pankosmia-web 0.18.5
-(`99fd9bea8a9f3d14ac6a61f8e2213f1c5d42ed2a`)**. A rev pin, not crates.io, because
-crates.io stops at 0.18.4, published without the role/relationships modeling
-(verified via `.cargo_vcs_info.json` in the published crate, 2026-07-30). Return to a
-crates.io `=` pin when 0.18.5+ publishes (see `docs/RISKS.md` #1).
+The server is pinned by git rev to **pankosmia-web 0.18.15
+(`a83725b67593b018f815fdb25a3920ce03e833e7`)** (#461). crates.io publishes 0.18.15
+from the same commit (`.cargo_vcs_info.json` of the published crate, read
+2026-10-03). The pin stays a rev pin because `scripts/prove.mjs` reads the build
+revision from `Cargo.toml` (see `docs/RISKS.md` #1).
 
 ## Prerequisites
 
@@ -145,7 +145,7 @@ npm run dev
 zsh dev-env/scripts/stop.zsh
 ```
 
-The version response must include `pkg_version` `0.18.5`. With the client running,
+The version response must include `pkg_version` `0.18.15`. With the client running,
 open `http://localhost:5199/`, select `+ Add a project`, then `New Bible` to create a project.
 
 If `zsh` is not found, install MSYS2 and open its MSYS shell. Do not run these rig
@@ -160,7 +160,7 @@ zsh dev-env/scripts/run.zsh > /tmp/tc4-rig.log 2>&1 &
 /c/Windows/System32/curl.exe -s http://localhost:19998/api/version
 ```
 
-The response must include `pkg_version` `0.18.5`. In another terminal, run
+The response must include `pkg_version` `0.18.15`. In another terminal, run
 `npm run dev` and open `http://localhost:5199/`. If the browser is blank, confirm that
 the Vite terminal is still running and that the rig responds on port 19998. `Ctrl+C`
 stops the foreground command, so use it only when you intend to stop that terminal.
@@ -198,7 +198,7 @@ Smoke test:
 curl -s localhost:19998/api/version
 ```
 
-Expect `pkg_version 0.18.5`.
+Expect `pkg_version 0.18.15`.
 
 ## Journeys from a clean clone
 

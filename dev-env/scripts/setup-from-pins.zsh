@@ -103,6 +103,6 @@ console.log("patched: repo_dir -> %%WORKINGDIR%%/repos ; clients -> uw-tc4 only"
 # register FIRST, or the 0.18.x server panics at boot).
 print -r -- '{ "short_name": "tc4rig", "name": "tC4 dev rig", "version": "0.1.0", "datetime": "2026-07-18T00:00:00Z", "homepage": "uw-tc4" }' > "$RES/product/product.json"
 
-echo "== 4/4 build the pinned server (pankosmia-web 0.18.5, 99fd9be)"
+echo "== 4/4 build the pinned server (pankosmia-web 0.18.15, a83725b)"
 cd "$DEV/server" && cargo build --release
 echo "setup complete: $RES"
