@@ -3474,8 +3474,10 @@ export function AppProvider({ children }) {
        * says so. Only the same task — one whose dialog is still open — goes on
        * without asking; another task of the same kind asks. `modals`: the
        * dialogs the task continues in; it stays permitted until they close.
-       * Resolves to the task's result, or undefined when it did not run. */
-      internetTask: async (kind, run, { modals = null, gate = true } = {}) => {
+       * `keep`: whether the dialog the task was started in is still the open
+       * one; a task whose dialog closed gives nothing to a dialog opened after
+       * it (#530). Resolves to the task's result, or undefined when it did not run. */
+      internetTask: async (kind, run, { modals = null, gate = true, keep = null } = {}) => {
         const continuing = dialogTasks.some((task) => task.kind === kind);
         if (!continuing) {
           if (stateRef.current.askInternet) {
@@ -3491,18 +3493,19 @@ export function AppProvider({ children }) {
             return undefined;
           }
         }
-        return a.permitted(kind, run, continuing ? null : modals);
+        return a.permitted(kind, run, continuing ? null : modals, keep);
       },
       /** A step of a permitted task: requests may leave while it runs — even
        * after its dialog closes — and, with `modals`, while one of those
-       * dialogs stays open. */
-      permitted: async (kind, run, modals = null) => {
+       * dialogs stays open. With `keep`, the task continues only in the dialog
+       * it was started in, not in one opened after that dialog closed. */
+      permitted: async (kind, run, modals = null, keep = null) => {
         const release = consent.hold();
         try {
           return await run();
         } finally {
           release();
-          if (modals?.includes(stateRef.current.modal)) dialogTasks.push({ kind, modals, release: consent.hold() });
+          if (modals?.includes(stateRef.current.modal) && (!keep || keep())) dialogTasks.push({ kind, modals, release: consent.hold() });
         }
       },
       /** The answer to the "Use the internet?" dialog. "Don't ask again" is
@@ -4987,7 +4990,8 @@ export function AppProvider({ children }) {
           type: 'set',
           patch: {
             modal: 'signIn',
-            si: { login: '', password: '', stay: false, server: new URL(door43.server).host, busy: false, error: null, share, renew, asked },
+            // `opened`: this step, so a sign-in sent from it cannot end in a step opened after it was closed.
+            si: { login: '', password: '', stay: false, server: new URL(door43.server).host, busy: false, error: null, share, renew, asked, opened: Symbol('sign-in step') },
           },
         }),
       patchSi: (patch) => dispatch({ type: 'set', patch: { si: { ...stateRef.current.si, ...patch } } }),
@@ -5002,7 +5006,10 @@ export function AppProvider({ children }) {
         // consent covers the upload.
         if (si.share) {
           if (si.asked) return a.permitted(shareTaskKind() ?? 'share', () => a.signInNow(), SHARE_MODALS);
-          return (await a.internetTask('upload', () => a.signInNow(), { modals: SHARE_MODALS })) ?? null;
+          // The consent continues after a sign-in that this step sent: a refusal
+          // shown in it, or the session it made. A cancelled sign-in keeps neither.
+          const keep = () => stateRef.current.si?.opened === si.opened || !!currentSession();
+          return (await a.internetTask('upload', () => a.signInNow(), { modals: SHARE_MODALS, keep })) ?? null;
         }
         return (await a.internetTask('signIn', () => a.signInNow())) ?? null;
       },
@@ -5015,9 +5022,10 @@ export function AppProvider({ children }) {
           { door43, getNetEnabled: internetAllowed, keychain },
           { login: si.login.trim(), password: si.password, stay: si.stay },
         );
-        if (stateRef.current.modal !== 'signIn') {
+        if (stateRef.current.modal !== 'signIn' || stateRef.current.si?.opened !== si.opened) {
           // Cancel was pressed while the call ran: Cancel shares nothing, so a
-          // token that arrived after it is dropped (from the keychain too).
+          // token that arrived after it is dropped (from the keychain too). A
+          // sign-in step opened after the Cancel is another step (#530).
           await door43SignOut(keychain);
           return report;
         }
@@ -5126,7 +5134,9 @@ export function AppProvider({ children }) {
               return null;
             }
             return a.shareRun(project);
-          }, { modals: SHARE_MODALS });
+            // The consent stays with this dialog (and the sign-in step it
+            // opened), never with a dialog opened after this one closed.
+          }, { modals: SHARE_MODALS, keep: () => stateRef.current.sh?.opened === opened });
           return report ?? null;
         } finally {
           uploadStarting = false;

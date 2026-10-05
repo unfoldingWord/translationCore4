@@ -2026,14 +2026,15 @@ main 0996d21, 2026-09-30, `src/data/share/door43Api.ts`].
    its repository on Door43 (not editable), the account with "Change", and the books or stories
    as a review. It has **Cancel** and **Upload changes**, then one progress line, then the end
    with Copy link, Open on Door43 and Close, or the refusal. The "On Door43" badge and "Shared
-   at…" stay on the card. Four details are [PROPOSED — comment on issue #530, 2026-10-03; the
-   owner has not answered yet]: (a) the click on the card sends nothing, and the "Use the
-   internet?" dialog opens when the upload, or its sign-in, is sent; a kept sign-in that is not
-   resumed yet shows as "Signed in · Change"; (b) with no sign-in, the sign-in step opens first,
-   its consent covers the upload, and the dialog then opens for review; (c) after Change, or
-   after Door43 refuses the token, the new sign-in returns to the review and uploads nothing;
-   (d) a refusal offers **Try again** and **Close**, and **Close** alone when another device
-   pushed.]
+   at…" stay on the card. Four details are [decided 2026-10-05 — owner ruling, comment on pull
+   request #540, "I confirm all four as built"]: (a) the click on the card sends nothing, and
+   the "Use the internet?" dialog opens when the upload, or its sign-in, is sent; a kept sign-in
+   that is not resumed yet shows as "Signed in · Change"; (b) with no sign-in, the sign-in step
+   opens first, its consent covers the upload, and the dialog then opens for review; (c) after
+   Change, or after Door43 refuses the token, the new sign-in returns to the review and uploads
+   nothing; (d) a refusal offers **Try again** and **Close**, and **Close** alone when another
+   device pushed. The consent of an upload belongs to the dialog that it was given in: when
+   that dialog, or its sign-in step, closes, the next one asks again.]
 8. **The kept sign-in (amends D85 point 4).** tC4 resumes a kept token at the first action that
    needs Door43, not at app start. The resume waits for the barrier of point 3: after Allow, it
    runs only when the read-back shows the gate on. A kept token still asks nothing. D85 points 1,
