@@ -128,13 +128,17 @@ const SHARE_MODALS = ['signIn', 'share'];
  * the "Use the internet?" answer is recorded on the flow, never on whichever
  * dialog is open. So a step that ends after its flow closed changes nothing,
  * and a dialog opened later is another flow, which asks for itself.
- * { kind: 'share' | 'upload', consented, closed, dialog, starting, release };
- * `dialog`: a sign-in step or a dialog was opened for it. */
+ * { kind: 'share' | 'upload', consented, closed, dialog, attempt, release };
+ * `dialog`: a sign-in step or a dialog was opened for it. `attempt`: the
+ * Upload changes click that is waiting for its answer or its sign-in check,
+ * or null. An attempt belongs to the review it was submitted in: Change, or
+ * any step that takes the place of that review, ends the attempt, and the
+ * flow and its consent go on. */
 let openShareFlow = null;
 /** Start a flow. Only one is open: a new one closes the one before it. */
 const startShareFlow = (kind) => {
   closeShareFlow();
-  openShareFlow = { kind, consented: false, closed: false, dialog: false, starting: false, release: null };
+  openShareFlow = { kind, consented: false, closed: false, dialog: false, attempt: null, release: null };
   return openShareFlow;
 };
 /** Close a flow (the open one, when none is named): its consent ends, and its
@@ -5061,7 +5065,11 @@ export function AppProvider({ children }) {
        * `flow`: the Share or Upload changes flow this step belongs to (#530);
        * null from the account menu, where the sign-in is a task of its own. */
       openSignIn: (share = null, renew = false, flow = null) => {
-        if (flow) flow.dialog = true;
+        if (flow) {
+          flow.dialog = true;
+          // The step takes the place of the review: an upload submitted there ends.
+          flow.attempt = null;
+        }
         dispatch({
           type: 'set',
           patch: {
@@ -5157,6 +5165,10 @@ export function AppProvider({ children }) {
         // The sign-in step stays in the flow of the dialog: it asks only when
         // that flow has not asked yet (an upload that has sent nothing).
         const flow = stateRef.current.sh?.flow ?? null;
+        // Change leaves the review: an upload that was submitted there, and
+        // still waits for its sign-in check, ends now. It must not run later
+        // with the account of the new sign-in.
+        if (flow) flow.attempt = null;
         await a.signOut();
         if (flow?.closed) return;
         a.openSignIn(project, false, flow);
@@ -5205,6 +5217,8 @@ export function AppProvider({ children }) {
         if (flow.closed) return undefined;
         if (!currentSession() && !stateRef.current.door43Kept) return a.openSignIn(project, false, flow);
         flow.dialog = true;
+        // A new review: no upload is submitted in it yet.
+        flow.attempt = null;
         return dispatch({
           type: 'set',
           patch: {
@@ -5224,14 +5238,19 @@ export function AppProvider({ children }) {
         const flow = sh.flow;
         // A second click does nothing while the first one waits for its answer
         // or its sign-in check.
-        if (!flow || flow.starting) return null;
-        flow.starting = true;
+        if (!flow || flow.attempt) return null;
+        const attempt = Symbol('upload attempt');
+        flow.attempt = attempt;
+        // The review stays open, with Cancel and Change, while the answer or
+        // the sign-in check is awaited. This upload goes on only while it is
+        // still the attempt of its flow: a closed dialog, or Change, ends it —
+        // no sign-in step and no push, whatever session exists by then.
+        const ended = () => flow.closed || flow.attempt !== attempt;
         try {
           const report = await a.flowStep(flow, async () => {
+            if (ended()) return null;
             if (!currentSession()) await a.resumeKept();
-            // The dialog stays closable while the sign-in check is awaited. A
-            // closed dialog ends this upload: no sign-in step and no push.
-            if (flow.closed) return null;
+            if (ended()) return null;
             if (!currentSession()) {
               a.openSignIn(project, false, flow);
               return null;
@@ -5240,7 +5259,7 @@ export function AppProvider({ children }) {
           });
           return report ?? null;
         } finally {
-          flow.starting = false;
+          if (flow.attempt === attempt) flow.attempt = null;
         }
       },
 

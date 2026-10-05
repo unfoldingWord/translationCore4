@@ -754,6 +754,75 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
     });
   }
 
+  // #530 (review round 6): an upload belongs to the review it was submitted in. Change leaves
+  // that review, so the upload that was waiting for the check of the saved sign-in ends.
+  // The flow, and its consent, go on: the new review uploads at its own click, with no new question.
+  test('d. Upload changes: Change while the saved sign-in is checked ends that upload; after the new sign-in nothing is pushed until Upload changes is pressed again, and then one push', TAG, async ({ page, context }, testInfo) => {
+    const KEPT_TOKEN = 'kept-token-for-530';
+    const remote = makeBareRemote();
+    try {
+      const fake = await fakeShare(context, remote, { tokens: [KEPT_TOKEN] });
+      await fakeKeychain(context, KEPT_TOKEN);
+      addOrigin(SEEDED_PROJECT, remote);
+      // Hold Door43's answer to the check of the saved sign-in (`token …`); a sign-in passes.
+      const isCheck = (authorization: string | undefined) => (authorization ?? '').startsWith('token ');
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => { release = resolve; });
+      let checks = 0;
+      await page.route(`${QA_SERVER}/api/v1/user`, async (route) => {
+        if (!isCheck(route.request().headers().authorization)) return route.fallback();
+        checks += 1;
+        await held;
+        return route.fallback();
+      });
+      const pushes = watchPushes(page);
+      await countAsks(page);
+      await page.goto('/');
+      const action = page.getByTestId(`share-${SEEDED_ID}`);
+      await expect(action).toHaveText('Upload changes');
+
+      // Upload changes, Continue: the check of the saved sign-in is sent, and held.
+      await action.click();
+      await expect(page.getByTestId('share-account')).toHaveText('Signed in · Change');
+      await page.getByTestId('share-submit').click();
+      await page.getByTestId('net-confirm').click();
+      await expect.poll(() => checks).toBe(1);
+
+      // Change while it is held, and sign in. The consent of this upload covers the sign-in.
+      await page.getByTestId('share-account-change').click();
+      await expect(page.getByTestId('share-signin')).toBeVisible();
+      await signIn(page);
+      await expect(page.getByTestId('share-upload')).toBeVisible();
+      await expect(page.getByTestId('share-account')).toHaveText(SHARING_AS);
+      expect(pushes, 'the sign-in pushed nothing').toEqual([]);
+
+      // The held check ends. Wait until the page has its answer and has run what follows it.
+      const answered = page.waitForResponse((response) => response.url() === `${QA_SERVER}/api/v1/user` && isCheck(response.request().headers().authorization));
+      release();
+      await (await answered).finished();
+      await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0))));
+      // The upload that was submitted before Change does not run: the review stands, and nothing is pushed.
+      await expect(page.getByTestId('share-upload')).toBeVisible();
+      await expect(page.getByTestId('share-progress')).toHaveCount(0);
+      await expect(page.getByTestId('share-done')).toHaveCount(0);
+      expect(pushes, 'nothing is pushed without a new click').toEqual([]);
+      expect(remote.main()).toBeNull();
+
+      // Upload changes, pressed again: one push, and no second question.
+      await page.getByTestId('share-submit').click();
+      await expect(page.getByTestId('share-done')).toBeVisible({ timeout: 30_000 });
+      expect(pushes.length, 'one push for the one click').toBe(1);
+      expect(remote.main()).toBe(head(SEEDED_PROJECT));
+      expect(await asksSeen(page), 'Change keeps the consent of the upload: one question').toBe(1);
+      const log = testInfo.outputPath('d-upload-change-while-checking.json');
+      fs.writeFileSync(log, JSON.stringify({ savedSignInChecks: checks, door43Calls: fake.calls.map((c) => `${c.method} ${c.url}`), pushes: pushes.length }, null, 2));
+      await testInfo.attach('d-upload-change-while-checking', { path: log, contentType: 'application/json' });
+    } finally {
+      dropOrigin(SEEDED_PROJECT);
+      remote.dispose();
+    }
+  });
+
   // #530: one sign-in is sent at a time. A sign-in sent from a step that was cancelled drops
   // its own token when it ends; it must not end after a newer sign-in and drop that one.
   test('d. Upload changes: a sign-in sent while a cancelled one is still in flight waits for it, and keeps its own session', TAG, async ({ page, context }, testInfo) => {
