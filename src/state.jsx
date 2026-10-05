@@ -347,6 +347,7 @@ const initial = () => ({
   saveState: 'saved', // saved | dirty | saving | error
   rail: true,
   helps: true,
+  helpsWide: false, // #234: the user widened the helps panel; not persisted
   helpsTab: 'notes',
   // Helps-card focus (epic #104 fidelity, F3): the hovered and the clicked
   // card, each { verse, quote, occurrence, id } — the mockup's
@@ -5408,6 +5409,9 @@ export function AppProvider({ children }) {
             content_name: w.name.trim(),
             content_abbr: abbr,
             content_language_code: w.code.trim(),
+            content_language_name: w.code.trim().startsWith('x-')
+              ? w.langName.trim() || w.name.trim()
+              : null,
           });
           await store.open(repoPath);
           // The same pins and settings a Bible project gets at creation: the
@@ -5422,7 +5426,6 @@ export function AppProvider({ children }) {
           await store.writeResources(backfillCoverage(freshPins, pinCoverage).resources, null);
           await store.writeSettings({
             schemaVersion: 1,
-            checkingLanguage: 'en',
             textDirection: w.dir,
             textFont: w.font,
             languageName: w.langName.trim() || null,
@@ -5497,7 +5500,6 @@ export function AppProvider({ children }) {
           // the app reads these back from here.
           await store.writeSettings({
             schemaVersion: 1,
-            checkingLanguage: 'en',
             textDirection: w.dir,
             textFont: w.font,
             languageName: w.langName.trim() || null,
@@ -6038,6 +6040,7 @@ export function AppProvider({ children }) {
       },
       toggleRail: () => dispatch({ type: 'toggle', key: 'rail' }),
       toggleHelps: () => dispatch({ type: 'toggle', key: 'helps' }),
+      toggleHelpsWide: () => dispatch({ type: 'toggle', key: 'helpsWide' }),
       setHelpsTab: (helpsTab) => dispatch({ type: 'set', patch: { helpsTab } }),
       // F3: hover is transient; click toggles the sticky focus (mockup
       // hoverNote/activeNote). Payload: { verse, quote, occurrence, id }|null.

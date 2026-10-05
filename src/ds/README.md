@@ -49,6 +49,11 @@ in the file:
   licence texts (#3). Noto Nastaliq Urdu is not fetched.
 - `primitives/Layer`: new `scrimProps`, spread onto the scrim element, so a
   dialog's extra props (test ids) land on the scrim as they did before.
+- `primitives/Layer` (#446): a press on a scrim closes that scrim's layer
+  only when no layer that closes on an outside press is open inside it — the
+  same innermost rule as Escape. That press is cancelled, so the focus stays
+  where it is. Before, a press on a dialog's scrim with a dropdown open closed
+  the dropdown and the dialog.
 - `Modal`: `open` defaults to true (the app mounts a modal only while it is
   open); new `closeLabel` (i18n for the ✕ button); `zIndex` is accepted for
   the old call sites and ignored (Layer stacks by nesting depth, then DOM
@@ -58,7 +63,14 @@ in the file:
 - `AppHeader`: new `switchTitle` (i18n for the project chip tooltip).
 - `TextField` / `Select`: the `id` prop goes to the `Field`, so the label's
   `htmlFor` reaches the control (accessibility + `getByLabel` tests).
-- `Select`: an option object may carry `disabled`.
+- `Select`: rewritten as a select-only combobox (issue #446, owner decisions
+  2026-09-27) — a 36px combobox button that opens a listbox in an anchored
+  `Layer` popover, in place of the native `<select>`, which cannot hold the
+  approved panel (a search field inside the list, sticky group headers,
+  multi-column rows). The name and core props are unchanged; an option object
+  may carry `disabled`, `code`, `meta`, `badge` and `group`; lists of 10 or
+  more options open with a search field (`searchPlaceholder`,
+  `noMatchesLabel`); `onChange` still receives `{ target: { value } }`.
 - `OptionCard`: new `recommendedLabel` (i18n for the Recommended badge).
 - `HelpCard` (carried from #104/#106): a key word carries no verse label; a
   note with no quoted phrase prints no bare quotes; the body is a `div`, so

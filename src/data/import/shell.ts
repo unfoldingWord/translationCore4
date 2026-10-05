@@ -13,6 +13,7 @@ import type { ImportBundle, ImportFile, ImportParser } from './types';
 
 const APP_ORG = '_local_/_local_';
 const encoder = new TextEncoder();
+const decoder = new TextDecoder();
 
 /** The facts of an import Report: which parser, the new project, what it holds. */
 export type ImportFacts = { parser: ImportParser['id']; repoPath?: string; books?: string[]; seedSource?: string; rolledBack?: boolean };
@@ -34,12 +35,6 @@ export type ImportDeps = {
  * frame, R-8.5.19). */
 const seedSourceOf = (parser: ImportParser) =>
   parser.id === 'tc3' ? ('tc3-import' as const) : ('sidecar-migration' as const);
-
-/** The code the create route takes: `new-text-translation` accepts only a bare
- * language code, so `es-419` is sent as `es`; remake then writes the bundle's
- * own metadata.json with the full tag (D80 point 4, PLATFORM-NOTES #43). A
- * private-use `x-` tag is sent whole. */
-export const primarySubtag = (tag: string): string => (tag.startsWith('x-') ? tag : tag.split('-')[0].toLowerCase());
 
 /** The new repository's folder name: the New Bible wizard's rule. */
 export const importAbbr = (name: string, language: string): string => {
@@ -65,18 +60,35 @@ export const editedFacts = (bundle: ImportBundle, edits: Partial<ImportBundle['f
 const wrap = (folder: string, files: Record<string, Uint8Array>): Uint8Array =>
   zipSync(Object.fromEntries(Object.entries(files).map(([rel, bytes]) => [`${folder}/${rel}`, bytes])));
 
-/** A Scripture Burrito as it is (D80 point 2): every file's bytes unchanged,
- * under one top-level folder. */
-const archiveZip = (archive: Uint8Array, folder: string): Uint8Array => wrap(folder, unwrapExport(archive).files);
+/** Each language of a localized name set to `value`; `en` when it has none. */
+const relabel = (names: unknown, value: string): Record<string, string> => {
+  const keys = names && typeof names === 'object' ? Object.keys(names) : [];
+  return Object.fromEntries((keys.length ? keys : ['en']).map((key) => [key, value]));
+};
+
+/** A Scripture Burrito as it is (D80 point 2, D90 point 6), under one top-level
+ * folder. Only `identification.name` and `identification.abbreviation` of
+ * `metadata.json` change: they take the review page's name and the folder name
+ * (#499, D92). Every other file keeps its bytes, and so does `metadata.json`
+ * when both already match. */
+const archiveZip = (archive: Uint8Array, folder: string, name: string): Uint8Array => {
+  const files = { ...unwrapExport(archive).files };
+  const meta = JSON.parse(decoder.decode(files['metadata.json'])) as { identification?: Record<string, unknown> };
+  const identification = (meta.identification ??= {});
+  const named = { name: relabel(identification.name, name), abbreviation: relabel(identification.abbreviation, folder) };
+  if (JSON.stringify(named) !== JSON.stringify({ name: identification.name, abbreviation: identification.abbreviation })) {
+    Object.assign(identification, named);
+    files['metadata.json'] = encoder.encode(JSON.stringify(meta, null, 2));
+  }
+  return wrap(folder, files);
+};
 
 /** The new project's own files (the created repository's metadata.json and
  * ingredients, for example vrs.json) with the bundle's books or stories and
- * its checking files over them. The metadata gets the bundle's full language
- * tag back (D80 point 4) and the license the files carry, when they carry one. */
+ * its checking files over them. The metadata gets the license the files carry,
+ * when they carry one. */
 async function bundleZip(api: ServerApi, repoPath: string, bundle: ImportBundle, facts: ImportBundle['facts'], folder: string): Promise<Uint8Array> {
   const meta = await api.getMetadataRaw(repoPath);
-  const languages = meta.languages as Array<{ tag: string }> | undefined;
-  if (languages?.[0]) languages[0].tag = facts.language;
   if (facts.license) meta.copyright = { shortStatements: [{ statement: facts.license }] };
   const files: Record<string, Uint8Array> = { 'metadata.json': encoder.encode(JSON.stringify(meta, null, 2)) };
   for (const ipath of await api.listPaths(repoPath)) files[`ingredients/${ipath}`] = encoder.encode(await api.readIngredient(repoPath, ipath));
@@ -87,7 +99,7 @@ async function bundleZip(api: ServerApi, repoPath: string, bundle: ImportBundle,
 }
 
 /** Parse, then make one new project from the bundle: create the repository
- * (primary language subtag) → upload one wrapped zip → remake → seed the
+ * (the full language tag, PLATFORM-NOTES #43) → upload one wrapped zip → remake → seed the
  * journal (not for an archive) → commit. A failure after the repository exists deletes it and
  * returns `import.write-failed`; a failure before it creates nothing. A
  * finished import whose ops record names the repository but whose close is not
@@ -165,16 +177,17 @@ async function importRecorded(
     // path this listing proved absent.
     if ((await api.listLocalRepos()).includes(repoPath))
       throw new Refusal('import.name-exists', `a project folder named "${abbr}" already exists`, { repoPath });
-    const code = primarySubtag(language);
+    const languageName = language.startsWith('x-') ? name : null;
     await record?.note({ repoPath });
     try {
-      if (bundle.kind === 'obs') await api.newObsResource({ content_name: name, content_abbr: abbr, content_language_code: code });
+      if (bundle.kind === 'obs')
+        await api.newObsResource({ content_name: name, content_abbr: abbr, content_language_code: language, content_language_name: languageName });
       else
         await api.newTextTranslation({
           content_name: name,
           content_abbr: abbr,
-          content_language_code: code,
-          content_language_name: code.startsWith('x-') ? name : null,
+          content_language_code: language,
+          content_language_name: languageName,
           add_book: false,
           versification: 'eng',
         });
@@ -187,17 +200,18 @@ async function importRecorded(
       throw error;
     }
     created = true;
-    const zip = bundle.archive ? archiveZip(bundle.archive, abbr) : await bundleZip(api, repoPath, bundle, edited, abbr);
+    const zip = bundle.archive ? archiveZip(bundle.archive, abbr, name) : await bundleZip(api, repoPath, bundle, edited, abbr);
     await api.remakeBurritoFromZip(await api.uploadTempBytes(zip), repoPath);
     // Register the new books and their scope. Never for an archive (its
-    // metadata.json stays byte for byte) or an OBS project (a rescan empties
+    // metadata.json stays as exported but its name, D92) or an OBS project (a rescan empties
     // the template's scope table, PLATFORM-NOTES #37).
     if (!bundle.archive && bundle.kind === 'bible') await api.remakeIngredients(repoPath);
     const message = `Import ${name} (tC4)`;
     if (bundle.archive) {
-      // Stored as exported (D80 point 2), so neither opened nor checkpointed:
+      // Stored as exported but its name (D80 point 2, D92), so neither opened nor checkpointed:
       // both rescan the ingredients, and a rescan rewrites metadata.json (W-2).
-      // The first open seeds what its journal does not hold, with the same source.
+      // The commit itself still rewrites the commit fields of metadata.json
+      // (PLATFORM-NOTES #48, D90 point 6). The first open seeds what its journal does not hold, with the same source.
       facts.books = (await api.getSummary(repoPath)).book_codes;
       await api.addAndCommit(repoPath, message);
     } else {
