@@ -450,8 +450,9 @@ function useSuggestionsSwitch(s, actions) {
   const on = !!s.alignSuggestions?.[s.project?.repoPath || s.project?.id];
   const testament = s.book ? (isOldTestament(s.book) ? 'ot' : 'nt') : null;
   React.useEffect(() => {
-    // Train on open, and again when the book crosses to the other testament:
-    // Jonah after Titus needs the Hebrew model, not the Greek one.
+    // Train when the switch goes on, and when the book crosses to the other
+    // testament: Jonah after Titus needs the Hebrew model, not the Greek one.
+    // Opening the tool trains in startAligning (#516).
     if (on && testament && (s.alignSuggest.status === 'off' || s.alignSuggest.testament !== testament)) actions.trainAlignSuggestions();
   }, [s.book, on, testament]);
   return on;
@@ -468,7 +469,9 @@ function SuggestionsRow({ a, suggest, on, actions }) {
   // #516: `ready` covers the boosted model and the memory-only one; both say
   // what the suggestions are drawn from, never a "learning" state.
   const text = status === 'ready'
-    ? t(suggest.boosted ? 'align.suggest.ready' : 'align.suggest.memory', { n: suggest.verses })
+    ? suggest.verses === 1 // one verse is never boosted: a booster needs five
+      ? t('align.suggest.memory.one')
+      : t(suggest.boosted ? 'align.suggest.ready' : 'align.suggest.memory', { n: suggest.verses })
     : status === 'error'
       ? t('align.suggest.error', { error: suggest.error ?? '' })
       : t(`align.suggest.${status}`);

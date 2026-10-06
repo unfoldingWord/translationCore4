@@ -620,6 +620,7 @@
   "align.suggest.training": "Learning from your aligned verses…",
   "align.suggest.none": "No aligned verses yet in this testament — align a verse by hand first.",
   "align.suggest.memory": "Drawn from {n} verses you have aligned — suggestions improve as you align more.",
+  "align.suggest.memory.one": "Drawn from 1 verse you have aligned — suggestions improve as you align more.",
   "align.suggest.ready": "Drawn from {n} verses you have already aligned",
   "align.suggest.error": "Suggestions are unavailable right now: {error}",
   "align.suggest.suggest": "Suggest",

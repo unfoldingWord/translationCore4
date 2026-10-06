@@ -184,12 +184,16 @@ export const unpackModel = (packed: PackedModel, verses: TrainingVerse[]): Train
 };
 
 /**
- * One whole-verse suggestion for the open verse, given the links already
- * placed as context. A boosted model predicts through the booster; a
+ * One whole-verse suggestion for the open verse. A boosted model predicts
+ * through the booster, with the links already placed as context. A
  * memory-only model answers with plain `WordMap.predict` on the same memory
  * (#516) — the boosted path on an unfitted booster would throw [VERIFIED —
- * uw-wordmapbooster 1.0.5 model_score on a null jlboost_model]. A model with
- * nothing in memory proposes nothing.
+ * uw-wordmapbooster 1.0.5 model_score on a null jlboost_model] — and that
+ * call takes no placed links [VERIFIED — wordmap 0.6.2 dist/WordMap.d.ts:
+ * predict(sourceSentence, targetSentence, maxSuggestions); 2026-10-05].
+ * `linksFor` (suggest.ts) proposes only words still in the bank, so a placed
+ * word is never proposed on either path. A model with nothing in memory
+ * proposes nothing.
  */
 export const predictLinks = (trained: TrainedModel, input: SessionInput): RawLink[] => {
   if (!trained.verses) return [];

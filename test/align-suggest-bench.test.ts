@@ -12,7 +12,7 @@ import { loadUltBooks } from './helpers/ult-corpus';
 
 const path = process.getBuiltinModule('node:path');
 const RUN = process.env.TC4_SUGGEST_BENCH === '1';
-const ZIP = process.env.TC4_ULT_ZIP ?? path.resolve(process.cwd(), '../dev-env/resources-cache/en_ult-v89-unwrapped.zip');
+const ZIP = process.env.TC4_ULT_ZIP ?? path.resolve(process.cwd(), 'dev-env/resources-cache/en_ult-v89-unwrapped.zip');
 
 const NT = ['MAT', 'MRK', 'LUK', 'JHN', 'ACT', 'ROM', '1CO', '2CO', 'GAL', 'EPH', 'PHP', 'COL', '1TH', '2TH', '1TI', '2TI', 'TIT', 'PHM', 'HEB', 'JAS', '1PE', '2PE', '1JN', '2JN', '3JN', 'JUD', 'REV'];
 const OT = ['GEN', 'PSA'];

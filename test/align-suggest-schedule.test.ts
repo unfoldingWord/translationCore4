@@ -3,12 +3,21 @@
 // from the first verse, and a `load` replaces the model with the verses it
 // carries. That Suggest is answered while a real training runs is proven with
 // two real threads in test/align-suggest-handover.test.ts.
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { bootstrapVerse, linkWord, stampTargetVerse } from '../src/data/align/edit';
 import { sessionInputFor, trainingVerseOf, trainingVersesFor } from '../src/data/align/suggest';
-import { handleTrain } from '../src/data/align/suggestTrainWorker';
-import { handle } from '../src/data/align/suggestWorker';
 import type { AlignedWord, AlignmentFile, AlignmentVerseRecord } from '../src/data/align/zaln';
+
+// The answering worker keeps its models and its seen refs in module state.
+// Each test loads a fresh copy of the module, so no test reads what another
+// test saved and every test passes alone or in any order.
+let handle: typeof import('../src/data/align/suggestWorker').handle;
+let handleTrain: typeof import('../src/data/align/suggestTrainWorker').handleTrain;
+beforeEach(async () => {
+  vi.resetModules();
+  ({ handle } = await import('../src/data/align/suggestWorker'));
+  ({ handleTrain } = await import('../src/data/align/suggestTrainWorker'));
+});
 
 const G = (text: string, strong: string, lemma: string, morph: string) => ({ tag: 'w', type: 'word', text, strong, lemma, morph, occurrence: 1, occurrences: 1 });
 const SOURCE = 'dcs::unfoldingWord/el-x-koine_ugnt@v0.34';
@@ -41,7 +50,7 @@ const suggestOn = (ref: string, orig: typeof V11.orig, text: string, id: number,
 
 describe('#516 answering worker — saves land at once; a load replaces the model', () => {
   it('a save before any training starts a memory-only model that answers (append → suggest, no train between)', async () => {
-    // The OT model: nothing was ever trained for it in this file.
+    // A fresh worker: no model was trained or loaded for any testament.
     const v = trainingVerseOf('JON 1:1', aligned11(), V11.text)!;
     const appended = await handle({ type: 'append', id: 1, testament: 'ot', verse: v });
     expect(appended).toMatchObject({ type: 'appended', id: 1, testament: 'ot', verses: 1, boosted: false });
@@ -58,25 +67,35 @@ describe('#516 answering worker — saves land at once; a load replaces the mode
 
   it('a re-saved verse appends its links but is counted once; a new verse counts', async () => {
     const v = trainingVerseOf('JON 1:1', aligned11(), V11.text)!;
-    const again = await handle({ type: 'append', id: 3, testament: 'ot', verse: v });
-    expect(again).toMatchObject({ type: 'appended', verses: 1 }); // same ref as the test above
+    const first = await handle({ type: 'append', id: 1, testament: 'ot', verse: v });
+    expect(first).toMatchObject({ type: 'appended', verses: 1 });
+    const again = await handle({ type: 'append', id: 2, testament: 'ot', verse: v });
+    expect(again).toMatchObject({ type: 'appended', verses: 1 }); // same ref: counted once
     const v2 = trainingVerseOf('JON 1:2', aligned14(), V14.text)!;
-    const more = await handle({ type: 'append', id: 4, testament: 'ot', verse: v2 });
+    const more = await handle({ type: 'append', id: 3, testament: 'ot', verse: v2 });
     expect(more).toMatchObject({ type: 'appended', verses: 2 });
   });
 
-  it('a load replaces the model: its verses are the memory and the count, and a later save adds to them', async () => {
-    // The main thread sends the trained corpus plus the saves made since it
-    // read that corpus: here 1:1 (collected) and 1:4 (saved during the training).
+  it('a load replaces the standing model and the verses it counts; a later save adds to them', async () => {
     const corpus = trainingVersesFor('TIT', file({ '1': aligned11() }), { '1:1': V11.text });
     const v14 = trainingVerseOf('TIT 1:4', aligned14(), V14.text)!;
+    // Τίτῳ → Tito (word 1 of "A Tito") is known only from TIT 1:4.
+    const knowsTito = async (id: number) => {
+      const reply = await suggestOn('TIT 1:9', [V14.orig[0]], 'A Tito', id);
+      return (reply as { links: Array<{ source: number[]; target: number[] }> }).links.some((l) => l.source.includes(0) && l.target.includes(1));
+    };
+    // A model stands: one saved verse, TIT 1:4.
+    expect(await handle({ type: 'append', id: 1, testament: 'nt', verse: v14 })).toMatchObject({ type: 'appended', verses: 1 });
+    expect(await knowsTito(2)).toBe(true);
+    // A load whose verses do not hold TIT 1:4 replaces it; it does not merge into it.
     const fitted = await handleTrain({ type: 'train', id: 10, testament: 'nt', verses: corpus });
     if (fitted.type !== 'fitted') throw new Error(fitted.message);
-    const loaded = await handle({ type: 'load', id: 10, testament: 'nt', model: fitted.model, verses: [...corpus, v14] });
-    expect(loaded).toMatchObject({ type: 'trained', id: 10, testament: 'nt', verses: 2 });
-    const reply = await suggestOn('TIT 1:9', [V14.orig[0]], 'A Tito', 11);
-    expect((reply as { links: Array<{ target: number[] }> }).links.some((l) => l.target.includes(1))).toBe(true); // Τίτῳ → Tito, from 1:4
-    // A re-save of a loaded verse is counted once.
+    const loaded = await handle({ type: 'load', id: 10, testament: 'nt', model: fitted.model, verses: corpus });
+    expect(loaded).toMatchObject({ type: 'trained', id: 10, testament: 'nt', verses: 1 });
+    expect(await knowsTito(11)).toBe(false);
+    // TIT 1:4 is a new verse for the loaded model, then a re-saved one.
     expect(await handle({ type: 'append', id: 12, testament: 'nt', verse: v14 })).toMatchObject({ type: 'appended', verses: 2 });
+    expect(await knowsTito(13)).toBe(true);
+    expect(await handle({ type: 'append', id: 14, testament: 'nt', verse: v14 })).toMatchObject({ type: 'appended', verses: 2 });
   });
 });

@@ -3,7 +3,7 @@
 // The booster's fit is one uninterruptible computation [VERIFIED —
 // uw-wordmapbooster 1.0.5 dist/boostwordmap_tools.js: add_alignments_2 and
 // do_boost_training run JLBoost.train to the end before their promise
-// resolves; 2026-10-06]. A worker that trains cannot answer anything else
+// resolves; 2026-10-05]. A worker that trains cannot answer anything else
 // until the fit ends. So training has this worker to itself, and
 // suggestWorker.ts, which answers Suggest, never trains. This is gatewayEdit's
 // arrangement (a training worker beside the model that answers).

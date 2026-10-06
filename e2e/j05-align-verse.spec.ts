@@ -294,7 +294,7 @@ test.describe('J5 — a translator aligns a verse', () => {
       // ON: the engine trains on the one aligned verse of the seed and says so.
       await toggle.click();
       await expect(row).toHaveAttribute('data-status', 'ready', { timeout: 30_000 });
-      await expect(page.getByTestId('align-suggest-status')).toContainText('1 verses');
+      await expect(page.getByTestId('align-suggest-status')).toContainText('Drawn from 1 verse you have');
 
       const before = JSON.stringify(alignmentFile());
       const segmentsBefore = fs.readdirSync(path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'journal')).length;
@@ -399,6 +399,17 @@ test.describe('J5 — a translator aligns a verse', () => {
     { tag: ['@inc9', '@J5'] },
     async ({ page }, testInfo) => {
       writePinsWithOriginal();
+      // Count the trainings the app posts: every `train` message to a worker.
+      await page.addInitScript(() => {
+        const w = window as unknown as { __trainPosts: number };
+        w.__trainPosts = 0;
+        const post = Worker.prototype.postMessage;
+        Worker.prototype.postMessage = function (this: Worker, ...args: unknown[]) {
+          if ((args[0] as { type?: string } | null)?.type === 'train') w.__trainPosts += 1;
+          return Reflect.apply(post, this, args);
+        } as typeof post;
+      });
+      const trainPosts = () => page.evaluate(() => (window as unknown as { __trainPosts: number }).__trainPosts);
       await openAlign(page);
       const row = page.getByTestId('align-suggestions');
       const status = page.getByTestId('align-suggest-status');
@@ -407,7 +418,31 @@ test.describe('J5 — a translator aligns a verse', () => {
       // The first training (the seed's one aligned verse) is the only one that
       // may show as training; once ready, the row never leaves it.
       await expect(row).toHaveAttribute('data-status', 'ready', { timeout: 30_000 });
-      await expect(status).toContainText('1 verses');
+      // From here to the end an in-page observer records every data-status the
+      // row takes: the assertions below sample single moments and would miss a
+      // brief `training` after a save. It watches the body, not the row — the
+      // session re-mounts when the verse changes — and records a row that is
+      // added as well as a row whose attribute changes.
+      await page.evaluate(() => {
+        const ROW = '[data-testid="align-suggestions"]';
+        const statusOf = (el: Element | null) => el?.getAttribute('data-status') ?? '(none)';
+        const w = window as unknown as { __suggestStatuses: string[] };
+        w.__suggestStatuses = [statusOf(document.querySelector(ROW))];
+        new MutationObserver((mutations) => {
+          for (const m of mutations) {
+            if (m.type === 'attributes') {
+              const el = m.target as Element;
+              if (el.getAttribute('data-testid') === 'align-suggestions') w.__suggestStatuses.push(statusOf(el));
+            }
+            for (const node of m.addedNodes) {
+              if (!(node instanceof Element)) continue;
+              const added = node.matches(ROW) ? node : node.querySelector(ROW);
+              if (added) w.__suggestStatuses.push(statusOf(added));
+            }
+          }
+        }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-status'] });
+      });
+      await expect(status).toContainText('Drawn from 1 verse you have');
 
       // Verse A (1:2): place "Dios" on the θεός card by hand — one confirmed
       // save. The engine learns it without a retrain.
@@ -429,17 +464,35 @@ test.describe('J5 — a translator aligns a verse', () => {
       // The row's count is the memory's count: the seed verse plus verse A.
       await expect(status).toContainText('2 verses');
       expect(await status.innerText()).not.toContain('Learning');
+      const proposals = await chips.count();
 
-      // The artifact: what the row reported and what Suggest proposed.
+      // One training so far — the one at open — and none for the save. The
+      // tool opened again trains once more, in the background (D93 point 3).
+      const trainingsAtOpen = await trainPosts();
+      expect(trainingsAtOpen).toBe(1);
+      await page.getByTestId('align-rail').getByRole('button', { name: '← All checking tools' }).click();
+      await page.getByTestId('open-align').click();
+      await expect(page.getByTestId('align-session')).toBeVisible();
+      await expect.poll(trainPosts, { timeout: 15_000 }).toBe(2);
+      await expect(row).toHaveAttribute('data-status', 'ready');
+
+      // The artifact: what the row reported, every status the observer saw
+      // since the first `ready` (distinct and sorted, so each run writes the
+      // same bytes), the trainings posted, and what Suggest proposed.
+      const seen = await page.evaluate(() => (window as unknown as { __suggestStatuses: string[] }).__suggestStatuses);
       const artifact = {
         status: await row.getAttribute('data-status'),
         statusText: (await status.innerText()).trim(),
-        proposals: await chips.count(),
+        statuses: [...new Set(seen)].sort(),
+        trainings: { atOpen: trainingsAtOpen, afterReopen: await trainPosts() },
+        proposals,
       };
       const artifactPath = testInfo.outputPath('j05-suggestions-grow.json');
       fs.writeFileSync(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`);
       await testInfo.attach('j05-suggestions-grow.json', { path: artifactPath, contentType: 'application/json' });
       expect(artifact.status).toBe('ready');
+      // Never `training`, nor anything else, at any moment after the first ready.
+      expect(seen.filter((st) => st !== 'ready')).toEqual([]);
       expect(artifact.proposals).toBeGreaterThan(0);
     },
   );

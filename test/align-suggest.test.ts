@@ -177,10 +177,12 @@ describe('#1 engine — trains on confirmed alignments, proposes for the bank, n
   it('every confirmed verse is in the memory; the booster fits the capped share', async () => {
     const f = file({ '1': aligned11(), '4': aligned14() });
     const verses = trainingVersesFor('TIT', f, { '1:1': V11.text, '1:4': V14.text });
-    // Force the cap to keep one verse for boosting; the other still joins memory.
-    const trained = await trainModel('nt', [...verses, ...verses.map((v) => ({ ...v, ref: `${v.ref}b`, source: new Array(400).fill(v.source[0]).map((s, i) => ({ ...s, position: i })), target: new Array(300).fill(v.target[0]).map((t, i) => ({ ...t, position: i })) }))]);
-    expect(trained.verses).toBe(4);
-    expect(trained.boosted).toBeLessThan(4);
+    // Five verses, so the booster is fitted. The cap keeps the three small
+    // ones for it; the two oversize ones still join the memory.
+    const small = [...verses, { ...verses[0], ref: 'TIT 1:1c' }];
+    const trained = await trainModel('nt', [...small, ...verses.map((v) => ({ ...v, ref: `${v.ref}b`, source: new Array(400).fill(v.source[0]).map((s, i) => ({ ...s, position: i })), target: new Array(300).fill(v.target[0]).map((t, i) => ({ ...t, position: i })) }))]);
+    expect(trained.verses).toBe(5);
+    expect(trained.boosted).toBe(3);
   });
 
   it('the worker steps: train, load, then suggest per testament; a testament with no model answers with no links', async () => {
@@ -237,24 +239,15 @@ describe('#516 engine — the memory answers from the first verse; the booster i
     expect(trainingVerseOf('TIT 1:1', aligned11(), '')).toBeNull();
   });
 
-  it('a retrain is posted on the budget: 1 100 saves after opening the tool post exactly eight train messages', () => {
-    // The scheduling policy the main thread applies (#516): one training when
-    // the Align tool opens, then one whenever an append first reaches a budget
-    // step. Above the last step no further retrain is posted in the session.
-    const trains: number[] = [];
-    trains.push(0); // the Align tool opens → one training over the corpus
-    let verses = 0;
-    for (let save = 1; save <= 1100; save++) {
-      const prev = verses;
-      verses += 1; // each confirmed save appends one new verse to the memory
-      if (crossesRetrainBudget(prev, verses)) trains.push(verses);
-    }
-    expect(trains).toEqual([0, ...RETRAIN_BUDGET]);
-    expect(trains).toHaveLength(8);
-    // A memory already past a step never re-fires it (a trained reply that
-    // jumps the count past steps posts nothing — the training just ran).
+  it('crossesRetrainBudget is true only when a count first reaches a step of the budget', () => {
+    // The predicate alone. That the scheduler follows it — eight trainings
+    // for 1 100 saves — is test/align-suggest-scheduler.test.ts.
+    expect(RETRAIN_BUDGET).toEqual([10, 25, 50, 100, 250, 500, 1000]);
+    expect(crossesRetrainBudget(9, 10)).toBe(true);
+    expect(crossesRetrainBudget(10, 11)).toBe(false);
+    expect(crossesRetrainBudget(8, 12)).toBe(true); // a count that jumps over a step reached it
     expect(crossesRetrainBudget(600, 601)).toBe(false);
     expect(crossesRetrainBudget(999, 1000)).toBe(true);
-    expect(crossesRetrainBudget(1000, 1001)).toBe(false);
+    expect(crossesRetrainBudget(1000, 1001)).toBe(false); // above the last step: never again
   });
 });

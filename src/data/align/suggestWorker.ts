@@ -11,10 +11,11 @@
 // #516: a confirmed save arrives as an `append` — the verse joins the model's
 // alignment memory at once (~0.14 ms) and the next `suggest` sees it. A save
 // that arrives before any model was loaded starts a memory-only model that
-// answers from the first verse. A finished training arrives as a `load`: the
-// fitted booster plus the verses for its memory. The main thread adds to those
-// verses every save it posted since it read the corpus, so the model that
-// replaces the old one knows all of them.
+// answers from the first verse. A `load` replaces what stands for a testament:
+// first the project's verses as a memory-only model, which answers while the
+// booster is fitted, then the fitted booster with the verses for its memory.
+// The main thread adds to those verses every save it posted since it read the
+// corpus, so the model that replaces the old one knows all of them.
 //
 // Protocol (main → worker):
 //   { type: 'load',    id, testament, model: PackedModel, verses: TrainingVerse[] }
