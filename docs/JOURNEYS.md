@@ -178,7 +178,8 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   d) Scripture Burrito.
 - End state (a, c, d): one **new** project repository, valid Scripture Burrito at its first
   commit; imported segments carry `seed.source`; imported text byte-identical to the source
-  text. Import never writes into an existing project in 4.0.0 (D79 point 7; the into-existing
+  text. The new project's name is the Bible name on the review page: the toast, the Home card
+  and `metadata.json` all show it (#499, D92). Import never writes into an existing project in 4.0.0 (D79 point 7; the into-existing
   flow with a conflict review is #365, 4.1.0). The tC3 import review does not look up resource
   versions by itself: "Look up on Door43" is an explicit internet task, and it asks first while
   "Ask before using the internet" is on (D88 point 5). A local import sends no external request.

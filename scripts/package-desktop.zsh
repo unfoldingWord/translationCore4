@@ -5,15 +5,16 @@
 # The recipe follows the Pankosmia desktop-app-template (read-only reference,
 # MIT license). The wrapper is Electronite v37.1.0-graphite, the Graphite-enabled
 # Electron fork from unfoldingWord (D20). The artifact is minimal for now: it
-# bundles ONLY the uw-tc4 client (#71), the pinned server (pankosmia-web 0.18.5,
-# 99fd9be), and the runtime resources. See docs/PACKAGING.md.
+# bundles ONLY the uw-tc4 client (#71), the pinned server (pankosmia-web 0.18.15,
+# a83725b), and the runtime resources. See docs/PACKAGING.md.
 #
 # The smoke test launches the STAGED ARTIFACT THROUGH ITS OWN ENTRY POINT
 # (the start-tc4 launcher -> Electronite -> electronStartup.js), with a fresh HOME
 # and a deliberately poisoned APP_RESOURCES_DIR. The app must bind itself to
 # the current package before it self-spawns its
 # bundled server and serve the tC4 client (303 from /, 200 from
-# /clients/uw-tc4) before the zip is written.
+# /clients/uw-tc4, and only uw-tc4 in /api/list-clients, #71) before the zip is
+# written.
 #
 # Usage: zsh scripts/package-desktop.zsh [--debug] [--zip]
 #   (no flag)  production variant: isolated EMPTY project store.
@@ -87,16 +88,15 @@ for arg in "$@"; do
     *) echo "Unknown argument: $arg (expected --debug or --zip)" >&2; exit 1 ;;
   esac
 done
-if [ "$OS" = macos ]; then
-  # Do not mistake a pilot's already-running app for this build's smoke server.
-  # In particular, the existing app can hold Electron's native singleton lock.
-  for smoke_port in {19119..19139}; do
-    if "$CURL" -s --max-time 1 "http://127.0.0.1:$smoke_port/api/version" | grep -q '"product_short_name":"tc4"'; then
-      echo "FAIL precondition: quit the running tC4 app (port $smoke_port) before packaging smoke." >&2
-      exit 1
-    fi
-  done
-fi
+# Do not mistake a pilot's already-running app for this build's smoke server,
+# on every build host (#335). In particular, the existing app can hold
+# Electron's native singleton lock.
+for smoke_port in {19119..19139}; do
+  if "$CURL" -s --max-time 1 "http://127.0.0.1:$smoke_port/api/version" | grep -q '"product_short_name":"tc4"'; then
+    echo "FAIL precondition: quit the running tC4 app (port $smoke_port) before packaging smoke." >&2
+    exit 1
+  fi
+done
 if [ "$VARIANT" = "debug" ]; then
   STORE_LEAF="pankosmia/tc4-projects-debug"   # separate debug-only store
 else
@@ -187,7 +187,7 @@ if [ "$OS" != linux ]; then node --test "$REPO/scripts/desktop-bootstrap.test.cj
 npm ci --no-audit --no-fund
 npm run build
 
-echo "== 2/7 build the pinned server (pankosmia-web 0.18.5, 99fd9be)"
+echo "== 2/7 build the pinned server (pankosmia-web 0.18.15, a83725b)"
 cd "$REPO/dev-env/server"
 cargo build --release
 
@@ -308,6 +308,25 @@ grep -q "preload: path.join(__dirname, 'preload.js')" "$PACK/electron/electronSt
   echo "FATAL: the template's Window menu no longer has Reload — re-verify the #435 window reload before building" >&2
   exit 1
 }
+# #206: the template calls stopServer() from both before-quit and will-quit.
+# The first call stops the server; the second kills a pid that is gone and
+# logs "Server Failed to stop" on every quit. Only the first call acts now.
+# Refuse if stopServer() or its two quit callers changed shape.
+node -e '
+const fs = require("fs");
+const p = process.argv[1];
+const s = fs.readFileSync(p, "utf8");
+const from = "function stopServer() {\n  if (serverProcess) {\n";
+const to = "let serverStopAttempted = false;\nfunction stopServer() {\n  if (serverStopAttempted) return;\n  serverStopAttempted = true;\n  if (serverProcess) {\n";
+const once = (t) => s.split(t).length === 2;
+if (![from, "app.on(\x27before-quit\x27", "app.on(\x27will-quit\x27"].every(once)
+    || s.split("stopServer();").length !== 3) {
+  console.error("FATAL: the template stopServer() or its quit callers changed — re-verify the #206 stopServer patch before building");
+  process.exit(1);
+}
+fs.writeFileSync(p, s.replace(from, to));
+console.log("stopServer() acts once per quit (#206)");
+' "$(npath "$PACK/electron/electronStartup.js")"
 cp "$REPO/scripts/preload.cjs" "$PACK/electron/preload.js"
 node --check "$(npath "$PACK/electron/preload.js")"
 node -e "
@@ -521,7 +540,7 @@ This build bundles the components below. Full texts are in licenses/.
 |---|---|---|---|
 | Electronite (Graphite-enabled Electron) | $ELECTRONITE_TAG | MIT (+ Chromium notices) | github.com/unfoldingWord/electronite |
 | desktop-app-template startup files (electron/, modified) | $TEMPLATE_REV | MIT | github.com/pankosmia/desktop-app-template |
-| pankosmia-web server (bin/$SERVER_BIN) | 0.18.5 (99fd9be) | MIT | github.com/pankosmia/pankosmia-web |
+| pankosmia-web server (bin/$SERVER_BIN) | 0.18.15 (a83725b) | MIT | github.com/pankosmia/pankosmia-web |
 | resource-core (lib/app_resources, lib/templates) | $RESOURCE_CORE_REV | MIT | github.com/pankosmia/resource-core |
 | webfonts-core (lib/webfonts; fonts carry their own licenses, mostly SIL OFL) | $WEBFONTS_CORE_REV | MIT (repo); per-font licenses inside | github.com/pankosmia/webfonts-core |
 | puppeteer-core (electron/node_modules) | $PUPPETEER_CORE_VER | Apache-2.0 | github.com/puppeteer/puppeteer |
@@ -575,7 +594,7 @@ $BUNDLED_MANIFEST_ENTRIES
   ],
   "inputs": {
     "uw-tc4_client": { "version": "$VERSION", "commit": "$(git -C $REPO rev-parse HEAD)" },
-    "pankosmia_web_server": { "version": "0.18.5", "rev": "99fd9bea8a9f3d14ac6a61f8e2213f1c5d42ed2a", "bin_sha256": "$SERVER_SHA" },
+    "pankosmia_web_server": { "version": "0.18.15", "rev": "a83725b67593b018f815fdb25a3920ce03e833e7", "bin_sha256": "$SERVER_SHA" },
     "electronite": { "tag": "$ELECTRONITE_TAG", "zip_sha256": "$ELECTRONITE_SHA256" },
     "desktop_app_template": { "rev": "$TEMPLATE_REV" },
     "resource_core": { "rev": "$RESOURCE_CORE_REV" },
@@ -768,7 +787,7 @@ echo "root: $ROOT; /clients/uw-tc4: $CLIENT"
 
 # VERSION GUARD (#326): the booted server must report this artifact's own
 # lib/product/product.json version and datetime. /api/version reads that file
-# at runtime (pankosmia-web 0.18.5 lib.rs:45-61 — primary
+# at runtime (pankosmia-web 0.18.15 lib.rs:46-62 — primary
 # lib/app_resources/product/product.json, else $APP_RESOURCES_DIR/product/
 # product.json); a mismatch means the probe answered from a different tree
 # (for example a leftover install already listening on the port).
@@ -793,6 +812,30 @@ for (const [disk, liveKey] of [["version", "product_version"], ["datetime", "pro
 }
 console.log("version guard: /api/version matches lib/product/product.json (" + onDisk.version + ", " + onDisk.datetime + ")");
 ' "$(npath "$PACK/lib/product/product.json")" "$VERSION_BODY" || exit 1
+
+# CLIENT SET GUARD (#71, D89 point 7): v4.0.0 bundles only the uw-tc4 client.
+# The booted server must list exactly that one client. GET /api/list-clients
+# serializes the server's merged roster: app_setup.json clients, then the
+# user_settings my_clients (pankosmia-web 0.18.15 a83725b, endpoints/clients.rs
+# list_clients and utils/bootstrap.rs merged_clients, read 2026-10-05).
+CLIENTS_BODY=$("$CURL" -s --max-time 5 "http://127.0.0.1:$SMOKE_PORT/api/list-clients") || {
+  echo "CLIENT SET GUARD FAILED: curl exit $? on GET /api/list-clients" >&2; exit 1; }
+node -e '
+const body = process.argv[1];
+let clients;
+try {
+  clients = JSON.parse(body);
+} catch (e) {
+  console.error(`CLIENT SET GUARD FAILED: /api/list-clients is not JSON: ${body.slice(0, 200)}`);
+  process.exit(1);
+}
+const seen = Array.isArray(clients) ? clients.map((c) => `${c && c.id} ${c && c.url}`) : [];
+if (seen.length !== 1 || seen[0] !== "uw-tc4 /clients/uw-tc4") {
+  console.error(`CLIENT SET GUARD FAILED: /api/list-clients must list only uw-tc4 at /clients/uw-tc4, got ${JSON.stringify(seen)}`);
+  process.exit(1);
+}
+console.log("client set guard: /api/list-clients lists only uw-tc4 (/clients/uw-tc4)");
+' "$CLIENTS_BODY" || exit 1
 
 # OBS regression (#347/#348): first read the platform-created bytes BEFORE any
 # client seed write. This probe is deliberately separate from the lifecycle
@@ -979,6 +1022,9 @@ else
   zip -qry "$ZIP" "$APP_NAME"
 fi
 echo "artifact: $ZIP"
+# ZIP GUARD (#336): the artifact must carry exactly the product.json the
+# version guard checked — assert the zip, not the recipe that wrote it.
+zsh "$REPO/scripts/check-zip-product.zsh" "$ZIP" "$OS" "$APP_NAME" "$PACK/lib/product/product.json" || exit 1
 echo "inputs: electronite $ELECTRONITE_TAG ($ELECTRONITE_SHA256); template $TEMPLATE_REV;"
 echo "        resource-core $RESOURCE_CORE_REV; webfonts-core $WEBFONTS_CORE_REV;"
 echo "        puppeteer-core $PUPPETEER_CORE_VER; @puppeteer/browsers $PUPPETEER_BROWSERS_VER; @zip.js/zip.js $ZIP_JS_VER"

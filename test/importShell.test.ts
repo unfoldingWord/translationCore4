@@ -3,7 +3,7 @@
 // `seed.source`, a refusal and a failed write leave the repository list as it
 // was, and the fixture manifest runs through the same runner the rig uses.
 import { describe, expect, it } from 'vitest';
-import { primarySubtag, runImport } from '../src/data/import/shell';
+import { runImport } from '../src/data/import/shell';
 import { FAKE_PARSER } from '../src/data/import/parsers';
 import { BURRITO_PARSER } from '../src/data/import/burrito';
 import { USFM_PARSER } from '../src/data/import/usfm';
@@ -38,7 +38,7 @@ describe('#361 runImport', () => {
     expect(new Set(seedEventsOf(rig.repos.get('_local_/_local_/fake_import')!.files).map((e) => e.seed.source))).toEqual(new Set(['tc3-import']));
   });
 
-  it('the create route gets the primary language subtag; the edits name the project', async () => {
+  it('the create route gets the full language tag; the edits name the project', async () => {
     const { rig, deps } = setup();
     const bodies: string[] = [];
     const fetchFn = rig.fetchFn;
@@ -49,10 +49,8 @@ describe('#361 runImport', () => {
     const report = await runImport(FAKE_PARSER, TWO_FILES, { name: 'Biblia Kanuri', language: 'es-419' }, { ...deps, api });
     expect(report.ok).toBe(true);
     expect(report.facts.repoPath).toBe('_local_/_local_/biblia_kanuri');
-    expect(JSON.parse(bodies[0])).toMatchObject({ content_name: 'Biblia Kanuri', content_language_code: 'es' });
-    // remake writes the bundle's own metadata.json, with the full tag (D80 point 4)
-    expect(rig.repos.get('_local_/_local_/biblia_kanuri')!.meta.languages).toEqual([{ tag: 'es-419', name: { en: 'es' } }]);
-    expect([primarySubtag('es-419'), primarySubtag('kau'), primarySubtag('x-abc')]).toEqual(['es', 'kau', 'x-abc']);
+    expect(JSON.parse(bodies[0])).toMatchObject({ content_name: 'Biblia Kanuri', content_language_code: 'es-419', content_language_name: null });
+    expect(rig.repos.get('_local_/_local_/biblia_kanuri')!.meta.languages).toEqual([{ tag: 'es-419', name: { en: 'es-419' } }]);
   });
 
   it('a failure after the seed also rolls back: the commit fails, no repository remains', async () => {

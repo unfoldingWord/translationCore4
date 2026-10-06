@@ -3,7 +3,8 @@
 # on the machine that will use it. It proves what a pilot does after installing:
 #
 #   1. the app starts through its own launcher and its bundled server answers;
-#   2. the server serves the tC4 client (303 from /, 200 from /clients/uw-tc4);
+#   2. the server serves the tC4 client (303 from /, 200 from /clients/uw-tc4) and
+#      lists no other client (GET /api/list-clients, #71);
 #   3. the project store is the tC4-owned path, never $HOME/pankosmia_repos (#70);
 #   4. the bundled source text (en_ult) is readable offline (source, #163);
 #   5. the bundled story 1/frame 1 image decodes locally while net is disabled;
@@ -160,12 +161,12 @@ start_app() {  # $1 = label
 port_answers() { curl -s --max-time 1 "http://127.0.0.1:$PORT/api/version" | grep -q '"product_short_name":"tc4"'; }
 
 stop_app() {  # $1 = label. The launcher execs Electron, so APP_PID is Electron's; the
-              # server is its child, found by the port it listens on. A stop is proven
-              # when both processes are gone AND the port is silent. SIGTERM first; a
-              # process still alive after 10 s gets SIGKILL (a macOS CI runner kept
-              # Electron alive past 30 s of SIGTERM, run 34008006559). The test proves
-              # persistence across a restart, not a graceful quit, so a forced stop is
-              # reported, not failed.
+              # server is its child, found by the port it listens on. SIGTERM goes to
+              # Electron only: the app must stop its own server (#206). A stop is proven
+              # when both processes are gone, the port is silent, and the app's log has
+              # one "Server stopped." and no "Failed to stop". A process still alive
+              # after 10 s gets SIGKILL (a macOS CI runner kept Electron alive past 30 s
+              # of SIGTERM, run 34008006559); a forced stop is reported, not failed.
   local victims="$APP_PID $SERVER_PIDS"
   local pid i forced=""
   # Both must still be running when the stop begins: an app that died during the
@@ -173,12 +174,16 @@ stop_app() {  # $1 = label. The launcher execs Electron, so APP_PID is Electron'
   for pid in ${=victims}; do
     alive "$pid" || fail "$1 stop: pid $pid (of electron $APP_PID, server $SERVER_PIDS) was already dead before the stop (log: $LOGDIR/tc4-smoke-$1.log)"
   done
-  for pid in ${=victims}; do kill "$pid" 2>/dev/null; done
+  kill "$APP_PID" 2>/dev/null
   for i in {1..40}; do
     local left=""
     for pid in ${=victims}; do alive "$pid" && left="$left $pid"; done
     if [ -z "$left" ] && ! port_answers; then
-      ok "$1 stop: electron and server exited (pids $victims${forced:+; SIGKILL needed for$forced}), port $PORT no longer answers"
+      local log="$LOGDIR/tc4-smoke-$1.log" stopped
+      stopped=$(grep -cF 'stopServer() - Server stopped.' "$log")
+      [ "$stopped" = 1 ] && ! grep -q 'Failed to stop' "$log" \
+        || fail "$1 stop: the app did not stop its server cleanly: $stopped 'Server stopped.' line(s); $(grep 'stopServer()' "$log" | tr '\n' ' ') (log: $log)"
+      ok "$1 stop: electron and server exited (pids $victims${forced:+; SIGKILL needed for$forced}), port $PORT no longer answers, the app logged one 'Server stopped.'"
       APP_PID=""; return 0
     fi
     if [ "$i" = 10 ] && [ -n "$left" ]; then
@@ -218,6 +223,20 @@ case "$ROOT" in
   *) fail "root: expected 303 to /clients/uw-tc4, got '$ROOT'" ;;
 esac
 [ "$CLIENT" = "200" ] && ok "client: /clients/uw-tc4 200" || fail "client: /clients/uw-tc4 answered $CLIENT"
+# v4.0.0 bundles only the uw-tc4 client (#71, D89 point 7). GET /api/list-clients is
+# the server's JSON array of {id, …, url} (pankosmia-web 0.18.15); parse it, so a
+# malformed body fails instead of matching by pattern.
+CLIENTS=$(curl -s --max-time 10 "http://127.0.0.1:$PORT/api/list-clients") || fail "client set: curl exit $? on GET /api/list-clients"
+CLIENT_SET=$(node_run -e '
+let clients;
+const fs = require("fs");
+try { clients = JSON.parse(process.argv[1]); } catch (e) { fs.writeSync(1, "not JSON"); process.exit(1); }
+const seen = Array.isArray(clients) ? clients.map((c) => `${c && c.id} ${c && c.url}`) : [];
+fs.writeSync(1, JSON.stringify(seen));
+process.exit(seen.length === 1 && seen[0] === "uw-tc4 /clients/uw-tc4" ? 0 : 1);
+' "$CLIENTS") \
+  && ok "client set: /api/list-clients lists only uw-tc4" \
+  || fail "client set: /api/list-clients must list only uw-tc4 at /clients/uw-tc4, got ${CLIENT_SET:-nothing} from ${CLIENTS[1,200]}"
 
 # ---- 3: the project store (#70) --------------------------------------------------
 US="$SMOKE_HOME/pankosmia/tc4/user_settings.json"

@@ -8,7 +8,7 @@
    system's standard 36px field height. Recorded in ../../README.md. */
 
 import React from 'react';
-import { Field, useField } from '../primitives/Field.jsx';
+import { Field, FieldContext, useField } from '../primitives/Field.jsx';
 import { Layer } from '../primitives/Layer.jsx';
 import { Surface } from '../primitives/Surface.jsx';
 import { Text } from '../primitives/Text.jsx';
@@ -77,14 +77,6 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
   const [query, setQuery] = React.useState('');
   const [hi, setHi] = React.useState(0);
   const [width, setWidth] = React.useState(null);
-  /* A native select's popup eats the outside click that closes it: the user
-     dismisses the list without activating whatever sat under the pointer — a
-     dialog's scrim, its Cancel, the field itself. Layer closes the list on
-     the outside MOUSEDOWN, so the CLICK that follows would still land there
-     (and a scrim click would take the whole dialog down with the list). The
-     dismiss marks that press and this capture listener consumes its click.
-     A new mousedown clears a mark whose click never fired (a long drag). */
-  const swallowClick = React.useRef(false);
 
   const opts = React.useMemo(() => options.map(norm), [options]);
   const searchable = opts.length >= SEARCH_AT;
@@ -119,7 +111,20 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
     if (buttonRef.current) setWidth(buttonRef.current.getBoundingClientRect().width);
     setOpen(true);
   };
-  const close = () => setOpen(false);
+  /* One rule for every close: if the focus is in the list, it goes back to
+     the field, because the list is about to go. A close because the focus
+     left (Tab) leaves it where it went, so the Layer does not restore it. */
+  const close = () => {
+    if (panelRef.current && panelRef.current.contains(document.activeElement) && buttonRef.current) {
+      buttonRef.current.focus();
+    }
+    setOpen(false);
+  };
+  const onFocusOut = (e) => {
+    const to = e.relatedTarget;
+    if (!open || to === buttonRef.current || (to && panelRef.current && panelRef.current.contains(to))) return;
+    close();
+  };
 
   const choose = (o) => {
     if (o.disabled) return;
@@ -137,22 +142,6 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
     }
   };
 
-  React.useEffect(() => {
-    const eat = (e) => {
-      if (!swallowClick.current) return;
-      swallowClick.current = false;
-      e.stopPropagation();
-      e.preventDefault();
-    };
-    const arm = () => { swallowClick.current = false; };
-    document.addEventListener('click', eat, true);
-    document.addEventListener('mousedown', arm, true);
-    return () => {
-      document.removeEventListener('click', eat, true);
-      document.removeEventListener('mousedown', arm, true);
-    };
-  }, []);
-
   const onKeyDown = (e) => {
     if (!open) {
       if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -161,11 +150,20 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
       }
       return;
     }
+    const inSearch = e.target instanceof HTMLInputElement;
     if (e.key === 'ArrowDown') { e.preventDefault(); move(1); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); move(-1); }
-    else if (e.key === 'Home') { e.preventDefault(); setHi(0); }
-    else if (e.key === 'End') { e.preventDefault(); setHi(Math.max(0, visible.length - 1)); }
-    else if (e.key === 'Enter') { e.preventDefault(); if (visible[hi]) choose(visible[hi]); }
+    /* In the search field, Home and End move the text cursor. */
+    else if (e.key === 'Home' && !inSearch) { e.preventDefault(); setHi(0); }
+    else if (e.key === 'End' && !inSearch) { e.preventDefault(); setHi(Math.max(0, visible.length - 1)); }
+    else if (e.key === 'Enter') {
+      /* Enter on another button inside the panel (the search field's Clear) is
+         that button's own activation, not a choice of the highlighted row. */
+      const t = e.target;
+      if (t !== buttonRef.current && t instanceof Element && t.closest('button')) return;
+      e.preventDefault();
+      if (visible[hi]) choose(visible[hi]);
+    }
     else if (!searchable && e.key.length === 1 && /\S/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
       jump(e.key);
     }
@@ -208,8 +206,12 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
         role="combobox" aria-expanded={open ? 'true' : 'false'} aria-controls={listId}
         aria-haspopup="listbox" aria-describedby={f.describedBy}
         aria-activedescendant={searchable ? undefined : active}
-        onClick={() => { if (!open) openList(); }}
+        /* The field is part of the open list, not "outside" it: a press on it
+           toggles the list instead of closing it and opening it again. */
+        onMouseDown={(e) => { if (open) e.stopPropagation(); }}
+        onClick={() => { if (open) close(); else openList(); }}
         onKeyDown={onKeyDown}
+        onBlur={onFocusOut}
         onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
         {...rest}
         style={{
@@ -235,18 +237,40 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
         <Chevron open={open} />
       </button>
 
-      <Layer open={open} level="popover" placement="anchor" anchorTo={buttonRef}
+      {/* Drawn only while open, and without an exit animation: a closed list
+          leaves the page in the same commit that closes it. A Layer with
+          open={false} keeps its panel for one more effect, and a fast Tab or
+          press can land in it there and lose the focus when it goes. */}
+      {open ? <Layer open level="popover" placement="anchor" anchorTo={buttonRef}
         offset={6} align="start" dismiss="outside escape"
-        onDismiss={(why) => { if (why === 'outside') swallowClick.current = true; close(); }}>
-        <div ref={panelRef}>
+        animate={false}
+        /* A press in the popover (a row, a header, the Layer's own panel)
+           keeps the focus where it is, the field or the search, so it does
+           not count as the focus leaving. */
+        onMouseDown={(e) => { if (!(e.target instanceof Element && e.target.closest('input, button'))) e.preventDefault(); }}
+        restoreFocus={false}
+        onDismiss={close}>
+        <div ref={panelRef} onBlur={onFocusOut}>
           <Surface fill="card" border="line" radius="lg" elevation="hover"
             style={{ width: width || undefined, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             {searchable ? (
               <div style={{ padding: '8px 8px 6px' }} onKeyDown={onKeyDown}>
-                <SearchField value={query} placeholder={searchPlaceholder}
+                {/* Not inside the field's context: the search input takes no id
+                    from it (the id is the field button's) and has its own name. */}
+                <FieldContext.Provider value={null}>
+                <SearchField value={query} placeholder={searchPlaceholder} aria-label={searchPlaceholder}
                   aria-controls={listId} aria-activedescendant={active}
                   onChange={(e) => { setQuery(e.target.value); setHi(0); }}
-                  onClear={() => { setQuery(''); setHi(0); }} />
+                  onClear={() => {
+                    setQuery('');
+                    setHi(0);
+                    /* Clear leaves the page with the empty filter. Without this
+                       the focus falls to <body>, and typing and the arrow keys
+                       stop reaching the list. */
+                    const input = panelRef.current && panelRef.current.querySelector('input');
+                    if (input) input.focus();
+                  }} />
+                </FieldContext.Provider>
               </div>
             ) : null}
             <div role="listbox" id={listId} style={{ maxHeight: 340, overflowY: 'auto', padding: '0 6px 6px' }}>
@@ -276,7 +300,7 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
             </div>
           </Surface>
         </div>
-      </Layer>
+      </Layer> : null}
     </>
   );
 }

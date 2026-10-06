@@ -211,6 +211,7 @@ at 0.18.5; `x-` roles are still wiped (6→0).** S-1 authority is unchanged (res
 stays authoritative; the mirror is now durable in practice); S-2 stays permanent per D28. On
 a server-rescanned copy the expected Stage-2 split is now **1/2**, not 0/2. The increment-close
 pin review still runs (upstream moves fast), but its special measurement is already satisfied.
+[superseded by D90, 2026-10-03 — the pin is a git rev pin to 0.18.15 (`a83725b`), re-baselined the same day]
 
 
 ## D28 (2026-07-30, upstream position via the project owner —
@@ -1749,14 +1750,17 @@ changed. These facts were read for the rulings:
    for downloads only, and amends D79 point 4. A bridge for PDF bytes still needs #20's
    task 1 and the owner's word on that pull request.
 2. **A Scripture Burrito import keeps its journal.** The import shell uploads the archive as
-   it is, so `journal/` and `checking/` arrive as exported (#196, #361).
+   it is, so `journal/` and `checking/` arrive as exported (#196, #361). [superseded by D90,
+   2026-10-03 — every file arrives as exported except the fields of `metadata.json` that the
+   import commit rewrites]
 3. **A tC3 import keeps the current state only.** The parser does not convert the tC3 check
    history into journal events. The translator's tC3 export zip stays the record of that
    history. This supersedes the [PROPOSED] comment of 2026-08-13 on #21.
 4. **An import creates the project with the primary language subtag.** The shell sends the
    primary subtag of the bundle's tag to the create route (`es-419` → `es`). Remake then
    writes the bundle's own `metadata.json`, with the full tag (#361). The owner routes the
-   create-route question upstream.
+   create-route question upstream. [superseded by D90, 2026-10-03 — the import sends the full
+   tag, which the create routes keep whole from 0.18.14]
 5. **Page setup stays in memory for 4.0.0.** No project file, journal entry or client-settings
    record stores it. The publisher's per-project `specs.json` is not adopted (#381, #20).
 6. **Import validation is tC4's own.** The platform's `/burrito/audit` is not used (#196).
@@ -2073,8 +2077,13 @@ choice as `internet: true` and gave the Door43 adapter a barrier that read that 
    **Ask before using the internet**. Last, it shows **Sign out of Door43** when a current or
    saved sign-in exists. Sign out is local and sends no request. If the keychain fails to forget
    the token, the menu says so. The menu has no "Switch account". Home has no separate Door43 bar.
-   **Help and guides**, **About translationCore** and **Report a problem** are not on the menu
-   until they exist: issues #519, #520 and #521 (Increment 9). (Amends D86 points 1, 2 and 7.)
+   **Help and guides** and **Report a problem** are not on the menu until they exist: issues
+   #519 and #521 (Increment 9). **About translationCore** is on the menu, below the switch
+   (#520). Its dialog shows the version and the short commit hash of the build, the copyright
+   line and the license name. **Read the license** opens the **License** dialog: the text of
+   the `LICENSE` file, then the full GNU GPL version 2 (`COPYING`). The build reads these
+   values, and the dialogs send no request. [decided 2026-10-04 — owner rulings on #520.]
+   (Amends D86 points 1, 2 and 7.)
 2. **One dialog for each internet task.** With the switch on, each explicit internet task opens
    one "Use the internet?" dialog before any external request. The dialog says what the task
    does, which service it contacts, and what leaves the computer. It has **Cancel**, an action
@@ -2126,3 +2135,185 @@ change with this decision: `docs/JOURNEYS.md` (J3, J9, J11, and the J12 precondi
 rows), `docs/PACKAGING.md` ("The offline run", step 9a, and the regression check) and
 `CONTEXT.md` (the terms for the internet question and the account menu, and Door43 session). The
 decision follows issue #514.
+
+## D89 (2026-10-03, project-owner rulings) **Increment 9 ships v4.0.0 on 2026-10-16 from an rc.2 tagged on 2026-10-12. A gate that is not green moves the date. A feature that is not green leaves the increment. Each P2 or P3 issue that does not merge by 2026-10-09 moves to the 4.0.1 milestone. macOS ships unsigned. Windows ships signed only if the credential works in CI by 2026-10-08.** [owner grill session 2026-10-02 and 2026-10-03, after the v4.0.0-rc.1 release (#371); milestone "Increment 9 — ship"; issues #44, #456, #461, #206, #71, #7, #42, #46, #420, #519, #476, #521, #378]
+
+Context. Increment 9 had 30 open issues on 2026-10-02 [VERIFIED — `gh issue list` of the
+milestone, 2026-10-02]. Some of them were release gates and some were product work. Six working
+days remain before rc.2: 2026-10-05 to 2026-10-09, and 2026-10-12. rc.1 is unsigned on all three
+platforms [VERIFIED — release assets of v4.0.0-rc.1 and `.github/workflows/package-desktop.yml`,
+2026-10-02]. The criterion of #44, "owner decides by rc.1", had no decision recorded. The owner
+kept most of the product work and ruled on the order, the gates and the cut rules.
+
+1. **The release path.** rc.2 tags on 2026-10-12. v4.0.0 ships on 2026-10-16. v4.0.0 promotes
+   the rc.2 artifact and does not build it again. The dates of D74 and D79 stand. If a gate is
+   not green, the release date moves. If a feature is not green, the feature leaves Increment 9.
+2. **What can enter.** Each defect that end-user QA finds is in scope until rc.2. After rc.2,
+   only a release blocker can enter: data loss, a project that cannot open, or an install that
+   fails. Other defects go to 4.0.1 or 4.1.0.
+3. **The cut rule.** Each P2 or P3 issue that does not merge by the end of 2026-10-09 moves to
+   the 4.0.1 milestone. It then stops blocking the release issue. The owner moves deliberate
+   deferrals to 4.1.0. The gates (P1) are #44, #456, #284, #206, #335, #336, #42, #71 and the
+   rc.1 QA defects #536, #532 and #499.
+4. **Signing (closes the decision criterion of #44).** macOS v4.0.0 is unsigned: the app is
+   ad-hoc signed and not notarized, and the user selects Open Anyway (`docs/PACKAGING.md`).
+   Windows signing is #456. Its credential must work in CI by 2026-10-08. If it does not, rc.2
+   and v4.0.0 ship Windows unsigned with the documented SmartScreen steps. #456 then moves to
+   4.0.1.
+   Linux stays an unsigned zip.
+5. **Witnesses.** A clean-machine witness of the Windows installer is a gate for rc.2. The clean
+   macOS witness is not a gate for rc.2.
+6. **The server pin.** #461 moves the pin from pankosmia-web 0.18.5 to 0.18.14 first, with a
+   hard stop on 2026-10-07. The bump runs the D27 re-baseline. #206 (the server does not stop on
+   quit) uses the `POST /api/system/shutdown` route [VERIFIED — pankosmia-web 0.18.8 (bab524c,
+   2026-09-02) adds it; `src/utils/launch.rs` mounts it under `/api/system`; read 2026-10-03]. If #461 is not green
+   on 2026-10-07, the pin stays at 0.18.5, and #206 gets a narrow fix for the double stop call.
+   [superseded by D90, 2026-10-03 — #461 moves the pin to 0.18.15 (`a83725b`), not 0.18.14]
+7. **The client set.** v4.0.0 bundles only the `uw-tc4` client, as rc.1 did. #71 records this
+   ruling and adds a smoke check of `GET /api/list-clients`. #7 closes into #71.
+8. **The keyboard pass.** #42 covers a logical tab order and a visible focus ring on the Check
+   pages. Draft, Align and the screen-reader pass come after 4.0.0. This narrows the owner ruling
+   of 2026-08-12 [VERIFIED — owner comment on #42, 2026-08-13].
+9. **Help and guides (#519).** The help pages come from `tc-help/` in
+   `unfoldingWord/tc-website`. The owner writes them. They build to plain static files with no
+   external fonts, CDN, analytics or host-only features. tC4 pins one commit SHA of that
+   repository and puts `tc-help/` into the install. Help opens the pages offline and sends zero
+   requests. If the pages are not published by 2026-10-09, the menu item stays hidden and #519
+   moves to 4.0.1. The online site (#476) is a parallel track and does not block the release.
+   D88 point 1 stands.
+10. **Report a problem (#521, closes the open points of #378).** tC4 uses the tC3 mechanism:
+    SendGrid with the token and address in `TC_HELP_DESK_TOKEN` and `TC_HELP_DESK_EMAIL`, put
+    into the app at build time [VERIFIED — unfoldingWord/translationCore
+    `src/js/helpers/FeedbackHelpers.js:130`, default branch, 2026-10-02; both secrets exist on
+    that repository, set 2019-12-26]. Anyone can extract a token that ships in an app. The owner
+    accepts this exposure, as tC3 did. The report attaches the last Report and one line with the
+    version and the operating system. The D88 "Use the internet?" dialog opens before the send.
+    Without the internet, tC4 says that the report needs the internet and keeps the message. It
+    does not queue the report. The pull request proves one real send before it merges.
+11. **Out of Increment 9.** The rollback plan #46 moves to 4.0.1. No stable release exists for
+    v4.0.0 to roll back to. On macOS and Windows, projects stay after an uninstall
+    (`docs/PACKAGING.md`). The Linux zip has no uninstall step. Ledger #10 records the one risk that remains. The upgrade of usfm-js,
+    word-aligner and word-aligner-lib (#420) moves to 4.0.1. Until then, an aligned word loses
+    its `\add` style in the aligned USFM export [VERIFIED — issue #420 body, 2026-10-02]. The
+    v4.0.0 notes list this as a known limit.
+    The pilot program (#58) runs in parallel and does not block the release.
+12. **The epics and the release issue.** Four epics carry the Increment 9 journeys: Install and
+    run (#59), Account menu, rc.1 QA fixes, and Translate and check, polished. One release issue,
+    "Release v4.0.0", is blocked by each Increment 9 issue and each epic. It holds the rc.2 and
+    v4.0.0 checklists.
+
+`docs/RISKS.md` (Ledger #10) and `docs/PACKAGING.md` (the signing lines) change with this
+decision. The format does not change, so `docs/BURRITO-SPEC.md` and the conformance harness do
+not change.
+
+## D90 (2026-10-03, project-owner ruling) **The rig and the desktop package pin pankosmia-web 0.18.15 (`a83725b`), not 0.18.14. A new project keeps a regional language tag such as `es-419` whole, from the wizards and from import.** [owner instruction in the #461 session, 2026-10-03: "go to 0.18.15. I don't want to have to do this again in the immediate future."; issue #461; amends D27, D80 points 2 and 4, D89 point 6, and BURRITO-SPEC R-10.2.3]
+
+Context. #461 named 0.18.14 (`173f9f6`). At that commit the OBS create route has no
+`content_language_name` field, so it refuses every `x-` code, and the issue's `x-` criterion
+cannot pass [VERIFIED — pankosmia-web 0.18.14 (173f9f6, 2026-09-29),
+`src/endpoints/git2/new_obs_resource.rs`, read 2026-10-03]. 0.18.15 adds the field
+[VERIFIED — pankosmia-web 0.18.15 (a83725b, 2026-09-29), `new_obs_resource.rs:22-23`, `:61-75`].
+0.18.15 is upstream `main` on 2026-10-03, and crates.io publishes it from the same commit.
+
+1. **The pin.** `dev-env/server/Cargo.toml` pins rev `a83725b67593b018f815fdb25a3920ce03e833e7`.
+   It stays a rev pin, because `scripts/prove.mjs` reads the build revision from that line.
+2. **The D27 re-baseline.** A 0.18.5 control rig ran the same harness on the same day
+   [VERIFIED — local rigs on macOS, 2026-10-03; `evidence/rig-rebaseline-0.18.15-2026-10-03.md`].
+   Round-trip is **12/12** on both. Stage-1 on the server-touched copy is **38/38** on both.
+   Stage-2 is **0/2** on both: the `relationships` check of #359 compares key order, and the
+   server writes the keys sorted at both versions, so this is not a change. The rig-backed
+   Vitest files are **46/46** on both before the language change. Transport was **5/10** on
+   0.18.15 before its re-baseline and is **10/10** after it.
+3. **What the transport re-baseline changes.** From 0.18.10, each `add-and-commit` rewrites
+   `metadata.json` (PLATFORM-NOTES #48). T1 now expects 0.18.15. Four T3 checks now record the
+   platform as measured: a publication commit carries `metadata.json`, the B1 and A2
+   integrations conflict on `metadata.json` only and leave main unchanged, and receive rebuilds
+   from a main that holds A1 only. On the 0.18.5 control the same five checks fail, so they
+   discriminate. §8.7 sync is [PROPOSED] (#22): it needs a `metadata.json` rule before
+   ratification (BURRITO-SPEC §8.7 names the caveat). No v4.0.0 path calls `pull-repo`.
+4. **Language codes.** The create routes keep a valid tag whole and name it (PLATFORM-NOTES
+   #43). The import sends the full tag (this supersedes D80 point 4). The New OBS wizard and an
+   OBS import send `content_language_name` for an `x-` code, as the New Bible wizard does, and
+   `newObsResource` refuses an `x-` code with no name before the request. The wizard shows the
+   server's refusal of a code it cannot name. tC4 adds no tag check and no name lookup.
+5. **What does not change.** The server still starts offline: tC4's product files do not set
+   `start_offline` (PLATFORM-NOTES #45). The working-directory start check is unchanged
+   (`lib.rs:129`). The format does not change.
+6. **A Scripture Burrito import is stored as exported, except the commit fields of
+   `metadata.json`** [owner ruling in the same session, 2026-10-03, on the J9 failure below].
+   The remake route does not commit, so the import must commit, and each commit rewrites
+   `meta.dateCreated`, the primary `revision` and `timestamp`, and the ingredient roles
+   (PLATFORM-NOTES #48). Every other field of `metadata.json`, and every other file, stays as
+   exported. J9 now compares `metadata.json` without those fields. Before this ruling, the two
+   J9 "byte for byte" tests failed on `metadata.json` at 0.18.15 [VERIFIED — lane run of
+   `e2e/j09-import.spec.ts`, 2026-10-03]. This supersedes the byte-for-byte reading of D80
+   point 2.
+   [amended by D92, 2026-10-05 — the import also rewrites `identification.name` and
+   `identification.abbreviation` to the name typed on the review page and the folder name]
+7. **R-10.2.3 checks the OBS scope table by keys and ranges, not by key order** [owner ruling
+   in the same session, 2026-10-03, on the J7/J23 failure below]. Each commit writes
+   `metadata.json` with sorted object keys, so an OBS project's `currentScope` loses the
+   template's order at its first commit; the keys and ranges stay the same (PLATFORM-NOTES
+   #48). The client reads the table only by key. Before this ruling, the full journey suite
+   failed J7/J23 on the harness checks `OBS scope` and `OBS v2 fold`, which compared the order
+   [VERIFIED — lane run of the full suite, 152 passed, 2 failed, 2026-10-03]. BURRITO-SPEC 1.18
+   and `conformance/validate.mjs` change together (§9): a dropped key and a changed range fire,
+   and a reordered table passes. The check counts do not change.
+
+`docs/BURRITO-SPEC.md` §8.7 (the third sync caveat) and `conformance/validate-transport.mjs`
+change together (§9). `docs/PLATFORM-NOTES.md` #9, #27, #28, #43, #45 and #48, `docs/RISKS.md`
+Ledger #1, `docs/ARCHITECTURE.md` (the integration row and the import row), BURRITO-SPEC R-10.2.3 and
+`e2e/j09-import.spec.ts` change with this decision.
+
+## D91 (2026-10-02, project-owner ruling) **The journal owns the project settings; `checking/settings.json` stays as a generated mirror; `checkingLanguage` is obsolete and new projects do not write it.** [issue #529; found in the end-user QA of build 9215071 (#439)]
+
+1. **The journal owns settings.** A settings change records `settings.set` events (last writer
+   wins per path — journal check JC-17). Folding those events supplies the values, and the
+   writer and every checkpoint regenerate `checking/settings.json` whole from the fold
+   (BURRITO-SPEC R-8.7.1). The file stays as a generated mirror; no reader treats it as the
+   authority. This point records the existing contract, it changes nothing.
+2. **The implemented fields are presentation fields.** `schemaVersion` (1), `textDirection`,
+   `textFont` and `languageName`, defined in BURRITO-SPEC §5.4 and on the store's
+   `SettingsFile` type. The earlier draft's pane/tool/category settings stay reserved
+   specification fields: legal to carry, not implemented.
+3. **`checkingLanguage` is obsolete and has no effect.** The checking language is the resource
+   pins' primary rung (§5.3, D30.2). Creation wrote `checkingLanguage: "en"` and nothing ever
+   read it: on the packaged build at `daf42c9` (2026-10-02), QA439 Titus checked in Spanish
+   (`es-419_gl` pins) while its settings file still said English. New Bible and OBS projects
+   stop writing the field. `schemaVersion` stays 1: removing an unused OPTIONAL field is not a
+   format change (D47 is not engaged).
+4. **Existing data stays readable, with no migration.** The owner reports these projects are
+   not yet in the wild; disposable QA projects may be recreated. An accepted journal or an
+   imported pre-release project that carries the field keeps it through normal save,
+   checkpoint, export and import; readers ignore it when choosing resources. No settings-key
+   allowlist, no filtering of generic projections, no rewrite of sealed segments, and no
+   refusal of a project merely because it carries the field.
+
+`docs/BURRITO-SPEC.md` §5.4 carries this decision. The conformance harness does not assert the
+removed field, so its checks do not change. The regression journey is
+`e2e/settings-contract.spec.ts`.
+
+## D92 (2026-10-05, project-owner ruling) **A Scripture Burrito import keeps the Bible name typed on the review page. The import rewrites `identification.name` and `identification.abbreviation` of `metadata.json`. Every other field, and every other file, stays as exported.** [owner answer in the #499 session, 2026-10-05: "Rewrite name + abbr"; issue #499, an rc.1 QA defect and a gate of D89 point 3; amends D90 point 6]
+
+Context. The review page says that the name was read from the file and that the user can change
+it. On `4.0.0-rc.1` (`661af52`) a Scripture Burrito imported with a changed name got the typed
+name in the toast and the folder only. The Home card and the saved name kept the name in the file
+(#499). The shell used the typed name for the create route and the folder. Remake then wrote the
+archive's own `metadata.json` over the created one, as D90 point 6 required [VERIFIED —
+`src/data/import/shell.ts` at `f876bfe`, read 2026-10-05].
+
+1. **The two fields.** Before the upload, the shell sets each language of `identification.name`
+   to the typed name. It sets each language of `identification.abbreviation` to the new folder
+   name (`importAbbr`). A field with no language gets `en`. The language keys of the file stay.
+2. **What does not change.** Every other field of `metadata.json` stays as exported, except the
+   commit fields of D90 point 6. Every other file stays byte for byte. When both fields already
+   match, `metadata.json` keeps its bytes. A tC3 or USFM import already takes the created
+   repository's `metadata.json`, so it does not change.
+3. **The language code is out of scope.** A changed language code on the review page still sets
+   only the create route's tag. A follow-up issue can rule on it.
+
+`docs/ARCHITECTURE.md` (the import row) and `docs/JOURNEYS.md` (J9) change with this decision.
+`e2e/j09-import.spec.ts` compares `metadata.json` without these two fields, and checks that they
+hold the typed name and the folder name, and that the toast and the Home card show the typed
+name. The format does not change, so `docs/BURRITO-SPEC.md` and the conformance harness do not
+change.

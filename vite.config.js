@@ -1,4 +1,7 @@
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
 import http from 'node:http';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
@@ -6,10 +9,16 @@ import { lane } from './e2e/lane.mjs';
 
 // #524: TC4_VITE_PORT and TC4_RIG_PORT name this checkout's port lane (e2e/lane.mjs).
 const LANE = lane();
+// #520: "About translationCore" shows the version and the short commit hash of the running
+// build (src/data/about.ts). The build reads git here; the app never does. A build outside a
+// git checkout fails here: it has no hash to show.
+const { version } = JSON.parse(fs.readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
+const commit = execFileSync('git', ['rev-parse', '--short=7', 'HEAD'], { cwd: fileURLToPath(new URL('.', import.meta.url)), encoding: 'utf8' }).trim();
 
 export default defineConfig(({ command }) => ({
   plugins: [react(), nodePolyfills()],
-  // pankosmia-web 0.18.5 has no CORS handling at all (source-verified), so the dev
+  define: { __APP_VERSION__: JSON.stringify(version), __APP_COMMIT__: JSON.stringify(commit) },
+  // pankosmia-web 0.18.15 (a83725b) has no CORS handling at all (source-verified 2026-10-03), so the dev
   // server proxies /api to the rig — same-origin to the browser. The built client is
   // served BY the rig from /clients/uw-tc4; the server's homepage redirect points at
   // the slash-less path, where relative ('./') asset URLs resolve wrongly and the
