@@ -8,7 +8,8 @@
 //      sign-in and sign-out leave it alone
 //   c  the account menu in its three states, on Home and inside a project
 //   d  Cancel sends nothing and stores nothing; Continue starts the exact task; Share is
-//      one dialog and keeps its review; "Don't ask again" persists only after Continue
+//      one dialog and keeps its review; "Don't ask again" persists only after Continue;
+//      Upload changes opens its dialog with no request and asks when it is sent (#530)
 //   e  startup, idle, the menu and local work make zero external requests, with asking
 //      on and off, before and after a permitted task has turned the gate on
 //   f  a gate that cannot be established stops the task and says so
@@ -27,7 +28,7 @@ import { test, expect } from './helpers/test';
 import type { Page, TestInfo } from '@playwright/test';
 import { SEEDED_PROJECT, readClientSettingsDoc, resetClientSettings, resetPlaces, resetSeededChecking } from './helpers/rig';
 import {
-  QA_SERVER, RIG_API, USER, askInternet, dropOrigin, fakeFor, fakeKeychain, fakeShare, head, makeBareRemote, signIn,
+  QA_SERVER, RIG_API, USER, addOrigin, askInternet, commitLocally, dropOrigin, expectCleanCard, fakeFor, fakeKeychain, fakeShare, head, makeBareRemote, signIn,
 } from './helpers/door43Share';
 import { recordExternal } from './helpers/externalRequests';
 import { verifyAllJournaledProjects } from './helpers/journal';
@@ -118,6 +119,55 @@ const refusedOutsideATask = (page: Page) =>
     }
     return out;
   });
+
+/** #530: hold Door43's answer to a sign-in (`GET /user` with Basic credentials) until the
+ * journey releases it. The check of a saved token (`token …`) is not a sign-in and passes.
+ * `hold(n)` says whether the n-th sign-in is held. `events` keeps the order of what happened. */
+async function holdSignIns(page: Page, hold: (n: number) => boolean): Promise<{ sent: number; events: string[]; release: Record<number, () => void> }> {
+  const signIns = { sent: 0, events: [] as string[], release: {} as Record<number, () => void> };
+  await page.route(`${QA_SERVER}/api/v1/user`, async (route) => {
+    if (!(route.request().headers().authorization ?? '').startsWith('Basic ')) return route.fallback();
+    signIns.sent += 1;
+    const n = signIns.sent;
+    signIns.events.push(`sign-in ${n} sent`);
+    if (hold(n)) {
+      await new Promise<void>((resolve) => {
+        signIns.release[n] = () => {
+          signIns.events.push(`sign-in ${n} released`);
+          resolve();
+        };
+      });
+    }
+    return route.fallback();
+  });
+  return signIns;
+}
+/** The push requests the page sent to the platform. */
+const watchPushes = (page: Page): string[] => {
+  const pushes: string[] = [];
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname.startsWith('/api/git/push/')) pushes.push(request.url());
+  });
+  return pushes;
+};
+const SHARING_AS = `Sharing as @${USER.username} · Change`;
+/** #540 round 7: hold the platform's answer to the first gate read (`GET /api/net/status`)
+ * until the journey releases it. `finished` counts the gate reads that have ended. */
+async function holdFirstGateRead(page: Page): Promise<{ reads: () => number; finished: () => number; release: () => void }> {
+  let reads = 0;
+  let finished = 0;
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  await page.route('**/api/net/status', async (route) => {
+    reads += 1;
+    if (reads === 1) await held;
+    return route.fallback();
+  });
+  page.on('requestfinished', (request) => {
+    if (new URL(request.url()).pathname.endsWith('/api/net/status')) finished += 1;
+  });
+  return { reads: () => reads, finished: () => finished, release };
+}
 
 test.describe('D88 — ask before using the internet, and the account menu', () => {
   test.beforeEach(async () => {
@@ -418,6 +468,513 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
       expect(popup.url()).toContain(`${QA_SERVER}/${USER.username}/${SEEDED_PROJECT}`);
       await popup.close();
       await recorder.save(testInfo, 'd-share-requests');
+    } finally {
+      dropOrigin(SEEDED_PROJECT);
+      remote.dispose();
+    }
+  });
+
+  // #530: Upload changes opens its dialog with no internet task. The one "Use the internet?"
+  // dialog of an upload opens when its sign-in, or the upload, is sent.
+  test('d. Upload changes: the sign-in step and the upload dialog open with no request; the question comes when the sign-in or the upload is sent, once for each upload; Cancel in each place pushes nothing', TAG, async ({ page, context }, testInfo) => {
+    const remote = makeBareRemote();
+    try {
+      const fake = await fakeShare(context, remote);
+      addOrigin(SEEDED_PROJECT, remote);
+      await countAsks(page);
+      const recorder = recordExternal(page);
+      await page.goto('/');
+      const action = page.getByTestId(`share-${SEEDED_ID}`);
+      await expect(action).toHaveText('Upload changes');
+      await expectCleanCard(page, SEEDED_ID);
+      await shot(page, testInfo, 'upload-card-clean');
+
+      // Signed out: the click opens the sign-in step. No question yet, and nothing is sent.
+      await action.click();
+      await expect(page.getByTestId('share-signin')).toBeVisible();
+      await page.waitForTimeout(500);
+      expect(await asksSeen(page)).toBe(0);
+      expect(recorder.external()).toEqual([]);
+
+      // The sign-in is sent: the question opens (kind upload). Cancel keeps the step and sends nothing.
+      await signIn(page);
+      await expect(askDialog(page)).toHaveAttribute('data-kind', 'upload');
+      await expect(page.getByTestId('net-ask-reason')).toContainText('upload this project’s changes to its existing repository on Door43');
+      await shot(page, testInfo, 'net-ask-upload');
+      await page.getByTestId('net-cancel').click();
+      await expect(askDialog(page)).toHaveCount(0);
+      await expect(page.getByTestId('share-signin')).toBeVisible();
+      await page.waitForTimeout(500);
+      expect(fake.calls).toEqual([]);
+      expect(recorder.external()).toEqual([]);
+
+      // Continue: the sign-in is sent, and the upload dialog opens for review. Nothing is pushed.
+      await signIn(page);
+      await page.getByTestId('net-confirm').click();
+      await expect(page.getByTestId('share-upload')).toBeVisible();
+      await expect(page.getByTestId('share-account')).toHaveText(`Sharing as @${USER.username} · Change`);
+      expect(remote.main(), 'the sign-in pushed nothing').toBeNull();
+      // That one consent covers the upload: Upload changes asks nothing more.
+      await page.getByTestId('share-submit').click();
+      await expect(page.getByTestId('share-done')).toBeVisible({ timeout: 30_000 });
+      expect(await asksSeen(page), 'the sign-in and the upload share one answered question (one Cancel, one Continue)').toBe(2);
+      expect(remote.main()).toBe(head(SEEDED_PROJECT));
+      await page.getByTestId('share-close').click();
+      await expectCleanCard(page, SEEDED_ID);
+      await recorder.save(testInfo, 'd-upload-signed-out-requests');
+
+      // Signed in, a new upload: the dialog opens with no question and no request.
+      recorder.reset();
+      await page.evaluate(() => { (window as unknown as { __asks: number }).__asks = 0; });
+      const pushed = remote.main();
+      const next = commitLocally(SEEDED_PROJECT, 'a local edit for the consent journey');
+      await action.click();
+      await expect(page.getByTestId('share-upload')).toBeVisible();
+      await page.waitForTimeout(500);
+      expect(await asksSeen(page)).toBe(0);
+      expect(recorder.external(), 'opening the dialog sends nothing').toEqual([]);
+      await shot(page, testInfo, 'upload-dialog-review');
+
+      // Upload changes asks. Cancel returns to the review; nothing left the computer.
+      await page.getByTestId('share-submit').click();
+      await expect(askDialog(page)).toHaveAttribute('data-kind', 'upload');
+      await page.getByTestId('net-cancel').click();
+      await expect(askDialog(page)).toHaveCount(0);
+      await expect(page.getByTestId('share-upload')).toBeVisible();
+      await page.waitForTimeout(500);
+      expect(recorder.external()).toEqual([]);
+      expect(remote.main()).toBe(pushed);
+
+      // Cancel in the dialog: no push, and the project keeps its repository.
+      await page.getByTestId('share-cancel').click();
+      await expect(page.getByTestId('share-dialog')).toHaveCount(0);
+      expect(recorder.external()).toEqual([]);
+      expect(remote.main()).toBe(pushed);
+      await expectCleanCard(page, SEEDED_ID);
+
+      // Upload changes, then Continue: one question, and the push.
+      await page.evaluate(() => { (window as unknown as { __asks: number }).__asks = 0; });
+      await action.click();
+      await page.getByTestId('share-submit').click();
+      await page.getByTestId('net-confirm').click();
+      await expect(page.getByTestId('share-done')).toBeVisible({ timeout: 30_000 });
+      expect(await asksSeen(page)).toBe(1);
+      expect(remote.main()).toBe(next);
+      expect(recorder.external().some((line) => line.includes('/api/git/push/'))).toBe(true);
+      await shot(page, testInfo, 'upload-dialog-done');
+      await recorder.save(testInfo, 'd-upload-signed-in-requests');
+    } finally {
+      dropOrigin(SEEDED_PROJECT);
+      remote.dispose();
+    }
+  });
+
+  // #530 (review rounds 2 and 3): the consent of an upload belongs to the dialog it was given
+  // in. A dialog that was closed while the saved sign-in was checked gives nothing to the
+  // next dialog: no push, no sign-in step, and the next upload asks again.
+  test('d. Upload changes: Cancel while the saved sign-in is checked ends that upload; the dialog opened after it does not push, and its upload asks again', TAG, async ({ page, context }, testInfo) => {
+    const KEPT_TOKEN = 'kept-token-for-530';
+    const remote = makeBareRemote();
+    try {
+      const fake = await fakeShare(context, remote, { tokens: [KEPT_TOKEN] });
+      await fakeKeychain(context, KEPT_TOKEN);
+      addOrigin(SEEDED_PROJECT, remote);
+      // Hold Door43's answer to the check of the saved sign-in until the journey releases it.
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => { release = resolve; });
+      let checks = 0;
+      await page.route(`${QA_SERVER}/api/v1/user`, async (route) => {
+        checks += 1;
+        await held;
+        await route.fallback();
+      });
+      const pushes: string[] = [];
+      page.on('request', (request) => {
+        if (new URL(request.url()).pathname.startsWith('/api/git/push/')) pushes.push(request.url());
+      });
+      await countAsks(page);
+      await page.goto('/');
+      const action = page.getByTestId(`share-${SEEDED_ID}`);
+      await expect(action).toHaveText('Upload changes');
+
+      // Upload changes, Continue: the check of the saved sign-in is sent, and held.
+      await action.click();
+      await expect(page.getByTestId('share-account')).toHaveText('Signed in · Change');
+      await page.getByTestId('share-submit').click();
+      await page.getByTestId('net-confirm').click();
+      await expect.poll(() => checks).toBe(1);
+
+      // Cancel while it is held, then open the dialog again.
+      await page.getByTestId('share-cancel').click();
+      await expect(page.getByTestId('share-dialog')).toHaveCount(0);
+      await action.click();
+      await expect(page.getByTestId('share-upload')).toBeVisible();
+
+      // The held check ends. The cancelled upload pushes nothing and opens no sign-in step.
+      release();
+      await expect.poll(() => fake.calls.length).toBe(1);
+      // The signal that the cancelled upload's check ended: Door43 named the account, and the
+      // open dialog shows it. What the cancelled upload does next, it has done by now.
+      await expect(page.getByTestId('share-account')).toHaveText(SHARING_AS);
+      expect(pushes, 'the cancelled upload pushes nothing').toEqual([]);
+      expect(remote.main()).toBeNull();
+      await expect(page.getByTestId('share-signin')).toHaveCount(0);
+      await expect(page.getByTestId('share-upload')).toBeVisible();
+
+      // The next upload asks again: the first consent ended with its dialog.
+      await page.evaluate(() => { (window as unknown as { __asks: number }).__asks = 0; });
+      await page.getByTestId('share-submit').click();
+      await expect(askDialog(page)).toHaveAttribute('data-kind', 'upload');
+      expect(pushes).toEqual([]);
+      await page.getByTestId('net-confirm').click();
+      await expect(page.getByTestId('share-done')).toBeVisible({ timeout: 30_000 });
+      expect(await asksSeen(page)).toBe(1);
+      expect(pushes.length).toBe(1);
+      expect(remote.main()).toBe(head(SEEDED_PROJECT));
+      const log = testInfo.outputPath('d-upload-cancel-reopen.json');
+      fs.writeFileSync(log, JSON.stringify({ savedSignInChecks: checks, door43Calls: fake.calls.map((c) => `${c.method} ${c.url}`), pushes: pushes.length }, null, 2));
+      await testInfo.attach('d-upload-cancel-reopen', { path: log, contentType: 'application/json' });
+    } finally {
+      dropOrigin(SEEDED_PROJECT);
+      remote.dispose();
+    }
+  });
+
+  test('d. Upload changes: Cancel while the sign-in is sent signs nothing in; the sign-in step opened after it asks again', TAG, async ({ page, context }) => {
+    const remote = makeBareRemote();
+    try {
+      const fake = await fakeShare(context, remote);
+      const keychain = await fakeKeychain(context);
+      const forgets = () => keychain.calls.filter((call) => call === 'forget').length;
+      addOrigin(SEEDED_PROJECT, remote);
+      const signIns = await holdSignIns(page, (n) => n === 1);
+      await countAsks(page);
+      await page.goto('/');
+      const action = page.getByTestId(`share-${SEEDED_ID}`);
+      await expect(action).toHaveText('Upload changes');
+
+      // Signed out: the sign-in step. Sign in, Continue: the sign-in is sent, and held.
+      await action.click();
+      await signIn(page);
+      await page.getByTestId('net-confirm').click();
+      await expect.poll(() => signIns.sent).toBe(1);
+
+      // Cancel while it is held, then open the sign-in step again.
+      await page.getByTestId('signin-cancel').click();
+      await expect(page.getByTestId('share-signin')).toHaveCount(0);
+      await action.click();
+      await expect(page.getByTestId('share-signin')).toBeVisible();
+
+      // The held sign-in ends. It signs nobody in, and the upload dialog does not open.
+      // The signal that the app has dealt with it: the keychain was told to forget twice,
+      // once by the sign-in itself (not kept), once by the Cancel that drops its token.
+      const before = forgets();
+      signIns.release[1]();
+      await expect.poll(forgets).toBe(before + 2);
+      await expect(page.getByTestId('share-signin')).toBeVisible();
+      await expect(page.getByTestId('share-dialog')).toHaveCount(0);
+      await expect(page.getByLabel('Password', { exact: true })).toHaveValue('');
+      await expect(trigger(page)).toHaveAttribute('data-state', 'out');
+      expect(remote.main()).toBeNull();
+
+      // The new sign-in asks again.
+      await page.evaluate(() => { (window as unknown as { __asks: number }).__asks = 0; });
+      await signIn(page);
+      await expect(askDialog(page)).toHaveAttribute('data-kind', 'upload');
+      await page.getByTestId('net-confirm').click();
+      await expect(page.getByTestId('share-upload')).toBeVisible();
+      expect(await asksSeen(page)).toBe(1);
+      expect(remote.main(), 'the sign-in pushed nothing').toBeNull();
+      expect(fake.tokens.size).toBeGreaterThan(0);
+    } finally {
+      dropOrigin(SEEDED_PROJECT);
+      remote.dispose();
+    }
+  });
+
+  // #530 (review rounds 4 and 5): the same rule for a sign-in step that opens inside an
+  // upload the user has already consented to. Two ways lead to that step: Door43 refuses
+  // the saved sign-in, or the user presses Change after the consent.
+  for (const way of ['a refused saved sign-in', 'Change after the consent'] as const) {
+    test(`d. Upload changes: ${way}, then Cancel while the new sign-in is sent: the step opened after it asks again, and sends no sign-in before the answer`, TAG, async ({ page, context }, testInfo) => {
+      const KEPT_TOKEN = 'kept-token-for-530';
+      const remote = makeBareRemote();
+      try {
+        // "Refused": the fake knows no token. "Change": the token is good, and the push fails
+        // once, so the consented dialog returns to its review step, where Change is.
+        const refused = way === 'a refused saved sign-in';
+        const fake = await fakeShare(context, remote, refused ? {} : { tokens: [KEPT_TOKEN] });
+        const keychain = await fakeKeychain(context, KEPT_TOKEN);
+        const forgets = () => keychain.calls.filter((call) => call === 'forget').length;
+        addOrigin(SEEDED_PROJECT, remote);
+        const signIns = await holdSignIns(page, (n) => n === 1);
+        const pushes = watchPushes(page);
+        if (!refused) await page.route('**/api/git/push/**', (route) => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ is_good: false, reason: 'the journey refused this push' }) }));
+        await countAsks(page);
+        await page.goto('/');
+        const action = page.getByTestId(`share-${SEEDED_ID}`);
+        await expect(action).toHaveText('Upload changes');
+
+        // Upload changes, Continue: the one question of this upload.
+        await action.click();
+        await page.getByTestId('share-submit').click();
+        await page.getByTestId('net-confirm').click();
+        if (!refused) {
+          await expect(page.getByTestId('share-error')).toHaveAttribute('data-code', 'share.push-failed', { timeout: 30_000 });
+          await page.getByTestId('share-account-change').click();
+        }
+        // The sign-in step is a step of that upload: it asks nothing more. It is sent, and held.
+        await expect(page.getByTestId('share-signin')).toBeVisible();
+        await signIn(page);
+        await expect.poll(() => signIns.sent).toBe(1);
+        expect(await asksSeen(page), 'the sign-in of a consented upload does not ask again').toBe(1);
+
+        // Cancel while it is held, then press Upload changes again. No sign-in is left, in
+        // memory or saved, so the sign-in step opens.
+        await page.getByTestId('signin-cancel').click();
+        await expect(page.getByTestId('share-signin')).toHaveCount(0);
+        await action.click();
+        await expect(page.getByTestId('share-signin')).toBeVisible();
+
+        // The held sign-in ends (the signal: its own forget, and the forget of the Cancel).
+        // It signs nobody in, opens nothing, and pushes nothing.
+        const before = forgets();
+        const pushed = pushes.length;
+        signIns.release[1]();
+        await expect.poll(forgets).toBe(before + 2);
+        await expect(page.getByTestId('share-signin')).toBeVisible();
+        await expect(page.getByTestId('share-dialog')).toHaveCount(0);
+        await expect(page.getByLabel('Password', { exact: true })).toHaveValue('');
+        await expect(trigger(page)).toHaveAttribute('data-state', 'out');
+        expect(pushes.length).toBe(pushed);
+
+        // The step opened after the Cancel asks again, and sends no sign-in before the answer.
+        await page.evaluate(() => { (window as unknown as { __asks: number }).__asks = 0; });
+        const calls = fake.calls.length;
+        await signIn(page);
+        await expect(askDialog(page)).toHaveAttribute('data-kind', 'upload');
+        expect(signIns.sent, 'no sign-in is sent before the answer').toBe(1);
+        expect(fake.calls.length, 'no Door43 request before the answer').toBe(calls);
+        await page.getByTestId('net-confirm').click();
+        await expect(page.getByTestId('share-upload')).toBeVisible();
+        await expect(page.getByTestId('share-account')).toHaveText(SHARING_AS);
+        expect(await asksSeen(page)).toBe(1);
+        expect(signIns.sent).toBe(2);
+        expect(pushes.length, 'the sign-in pushed nothing').toBe(pushed);
+        const log = testInfo.outputPath('d-upload-consented-sign-in-cancel.json');
+        fs.writeFileSync(log, JSON.stringify({ way, signIns: signIns.events, pushes: pushes.length }, null, 2));
+        await testInfo.attach('d-upload-consented-sign-in-cancel', { path: log, contentType: 'application/json' });
+      } finally {
+        dropOrigin(SEEDED_PROJECT);
+        remote.dispose();
+      }
+    });
+  }
+
+  // #530 (review round 6): an upload belongs to the review it was submitted in. Change leaves
+  // that review, so the upload that was waiting for the check of the saved sign-in ends.
+  // The flow, and its consent, go on: the new review uploads at its own click, with no new question.
+  test('d. Upload changes: Change while the saved sign-in is checked ends that upload; after the new sign-in nothing is pushed until Upload changes is pressed again, and then one push', TAG, async ({ page, context }, testInfo) => {
+    const KEPT_TOKEN = 'kept-token-for-530';
+    const remote = makeBareRemote();
+    try {
+      const fake = await fakeShare(context, remote, { tokens: [KEPT_TOKEN] });
+      await fakeKeychain(context, KEPT_TOKEN);
+      addOrigin(SEEDED_PROJECT, remote);
+      // Hold Door43's answer to the check of the saved sign-in (`token …`); a sign-in passes.
+      const isCheck = (authorization: string | undefined) => (authorization ?? '').startsWith('token ');
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => { release = resolve; });
+      let checks = 0;
+      await page.route(`${QA_SERVER}/api/v1/user`, async (route) => {
+        if (!isCheck(route.request().headers().authorization)) return route.fallback();
+        checks += 1;
+        await held;
+        return route.fallback();
+      });
+      const pushes = watchPushes(page);
+      await countAsks(page);
+      await page.goto('/');
+      const action = page.getByTestId(`share-${SEEDED_ID}`);
+      await expect(action).toHaveText('Upload changes');
+
+      // Upload changes, Continue: the check of the saved sign-in is sent, and held.
+      await action.click();
+      await expect(page.getByTestId('share-account')).toHaveText('Signed in · Change');
+      await page.getByTestId('share-submit').click();
+      await page.getByTestId('net-confirm').click();
+      await expect.poll(() => checks).toBe(1);
+
+      // Change while it is held, and sign in. The consent of this upload covers the sign-in.
+      await page.getByTestId('share-account-change').click();
+      await expect(page.getByTestId('share-signin')).toBeVisible();
+      await signIn(page);
+      await expect(page.getByTestId('share-upload')).toBeVisible();
+      await expect(page.getByTestId('share-account')).toHaveText(SHARING_AS);
+      expect(pushes, 'the sign-in pushed nothing').toEqual([]);
+
+      // The held check ends. Wait until the page has its answer and has run what follows it.
+      const answered = page.waitForResponse((response) => response.url() === `${QA_SERVER}/api/v1/user` && isCheck(response.request().headers().authorization));
+      release();
+      await (await answered).finished();
+      await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0))));
+      // The upload that was submitted before Change does not run: the review stands, and nothing is pushed.
+      await expect(page.getByTestId('share-upload')).toBeVisible();
+      await expect(page.getByTestId('share-progress')).toHaveCount(0);
+      await expect(page.getByTestId('share-done')).toHaveCount(0);
+      expect(pushes, 'nothing is pushed without a new click').toEqual([]);
+      expect(remote.main()).toBeNull();
+
+      // Upload changes, pressed again: one push, and no second question.
+      await page.getByTestId('share-submit').click();
+      await expect(page.getByTestId('share-done')).toBeVisible({ timeout: 30_000 });
+      expect(pushes.length, 'one push for the one click').toBe(1);
+      expect(remote.main()).toBe(head(SEEDED_PROJECT));
+      expect(await asksSeen(page), 'Change keeps the consent of the upload: one question').toBe(1);
+      const log = testInfo.outputPath('d-upload-change-while-checking.json');
+      fs.writeFileSync(log, JSON.stringify({ savedSignInChecks: checks, door43Calls: fake.calls.map((c) => `${c.method} ${c.url}`), pushes: pushes.length }, null, 2));
+      await testInfo.attach('d-upload-change-while-checking', { path: log, contentType: 'application/json' });
+    } finally {
+      dropOrigin(SEEDED_PROJECT);
+      remote.dispose();
+    }
+  });
+
+  // #540 review round 7: the steps of one flow share its question and its gate check. A step
+  // that starts while the first one still waits for the gate asks nothing and takes no
+  // consent of its own, so the close of the flow leaves no request permitted.
+  test('d. Upload changes: Change and a new sign-in while the gate is checked share the one question; after Close no request is permitted', TAG, async ({ page, context }, testInfo) => {
+    const KEPT_TOKEN = 'kept-token-for-530';
+    const remote = makeBareRemote();
+    try {
+      const fake = await fakeShare(context, remote, { tokens: [KEPT_TOKEN] });
+      await fakeKeychain(context, KEPT_TOKEN);
+      addOrigin(SEEDED_PROJECT, remote);
+      const gate = await holdFirstGateRead(page);
+      const pushes = watchPushes(page);
+      await countAsks(page);
+      await page.goto('/');
+      const action = page.getByTestId(`share-${SEEDED_ID}`);
+      await expect(action).toHaveText('Upload changes');
+
+      // Upload changes, Continue: the gate is read, and the answer is held.
+      await action.click();
+      await expect(page.getByTestId('share-account')).toHaveText('Signed in · Change');
+      await page.getByTestId('share-submit').click();
+      await page.getByTestId('net-confirm').click();
+      await expect.poll(() => gate.reads()).toBe(1);
+
+      // Change, and sign in, while the gate read is held. The sign-in waits for the same
+      // check: no second question opens, and the gate is not read again.
+      await page.getByTestId('share-account-change').click();
+      await expect(page.getByTestId('share-signin')).toBeVisible();
+      await signIn(page);
+      await expect.poll(() => asksSeen(page), { timeout: 1500 }).toBe(2).catch(() => {});
+      expect(await asksSeen(page), 'the sign-in shares the question of its flow').toBe(1);
+      expect(gate.reads(), 'one gate check for the flow').toBe(1);
+
+      // The held read ends: the check goes on, the sign-in is sent, and the review returns.
+      gate.release();
+      await expect(page.getByTestId('share-upload')).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByTestId('share-account')).toHaveText(SHARING_AS);
+      expect(pushes, 'nothing is pushed without a new click').toEqual([]);
+
+      // Close the dialog. The flow's consent ends with it: a request outside a task is refused.
+      await page.getByTestId('share-cancel').click();
+      await expect(page.getByTestId('share-dialog')).toHaveCount(0);
+      expect(await refusedOutsideATask(page), 'no consent is left after Close').toEqual([NO_CONSENT, NO_CONSENT]);
+      expect(await asksSeen(page), 'one question in all').toBe(1);
+      expect(pushes).toEqual([]);
+      expect(remote.main()).toBeNull();
+      const log = testInfo.outputPath('d-upload-change-while-gate-checked.json');
+      fs.writeFileSync(log, JSON.stringify({ gateReads: gate.reads(), asks: await asksSeen(page), door43Calls: fake.calls.map((c) => `${c.method} ${c.url}`), pushes: pushes.length }, null, 2));
+      await testInfo.attach('d-upload-change-while-gate-checked', { path: log, contentType: 'application/json' });
+    } finally {
+      dropOrigin(SEEDED_PROJECT);
+      remote.dispose();
+    }
+  });
+
+  // #540 review round 7 (Frank): with asking off, Sign in pressed twice while the gate is
+  // checked. The two submits share one authorization; after Cancel no request is permitted.
+  test('d. Upload changes: two quick Sign in submits while the gate is checked, then Cancel: nothing is sent, and no request is permitted', TAG, async ({ page, context }, testInfo) => {
+    const remote = makeBareRemote();
+    try {
+      const fake = await fakeShare(context, remote);
+      addOrigin(SEEDED_PROJECT, remote);
+      await askInternet(false);
+      const gate = await holdFirstGateRead(page);
+      await page.goto('/');
+      const action = page.getByTestId(`share-${SEEDED_ID}`);
+      await expect(action).toHaveText('Upload changes');
+
+      // The sign-in step; Sign in twice while the first gate read is held.
+      await action.click();
+      await expect(page.getByTestId('share-signin')).toBeVisible();
+      await page.getByLabel('Door43 username or email').fill(USER.username);
+      await page.getByLabel('Password', { exact: true }).fill(USER.password);
+      await page.getByTestId('signin-submit').click();
+      await expect.poll(() => gate.reads()).toBe(1);
+      await page.getByTestId('signin-submit').click();
+      await expect.poll(() => gate.reads(), { timeout: 1500 }).toBe(2).catch(() => {});
+      expect(gate.reads(), 'the second submit shares the gate check').toBe(1);
+
+      // Cancel, then let the check end: read, enable, read back.
+      await page.getByTestId('signin-cancel').click();
+      await expect(page.getByTestId('share-signin')).toHaveCount(0);
+      gate.release();
+      await expect.poll(() => gate.finished(), { timeout: 30_000 }).toBeGreaterThanOrEqual(2);
+      await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0))));
+
+      expect(await refusedOutsideATask(page), 'no consent is left after Cancel').toEqual([NO_CONSENT, NO_CONSENT]);
+      expect(fake.calls, 'the cancelled step signed nothing in').toEqual([]);
+      expect(remote.main()).toBeNull();
+      const log = testInfo.outputPath('d-upload-two-submits-while-gate-checked.json');
+      fs.writeFileSync(log, JSON.stringify({ gateReads: gate.reads(), gateReadsFinished: gate.finished(), door43Calls: fake.calls.length }, null, 2));
+      await testInfo.attach('d-upload-two-submits-while-gate-checked', { path: log, contentType: 'application/json' });
+    } finally {
+      dropOrigin(SEEDED_PROJECT);
+      remote.dispose();
+    }
+  });
+
+  // #530: one sign-in is sent at a time. A sign-in sent from a step that was cancelled drops
+  // its own token when it ends; it must not end after a newer sign-in and drop that one.
+  test('d. Upload changes: a sign-in sent while a cancelled one is still in flight waits for it, and keeps its own session', TAG, async ({ page, context }, testInfo) => {
+    const remote = makeBareRemote();
+    try {
+      await fakeShare(context, remote);
+      addOrigin(SEEDED_PROJECT, remote);
+      const signIns = await holdSignIns(page, (n) => n === 1);
+      await askInternet(false); // no questions here: the order of the sign-ins is the subject
+      await page.goto('/');
+      const action = page.getByTestId(`share-${SEEDED_ID}`);
+      await expect(action).toHaveText('Upload changes');
+
+      // The first sign-in is sent and held. Cancel, open the step again, and sign in again.
+      await action.click();
+      await signIn(page);
+      await expect.poll(() => signIns.sent).toBe(1);
+      await page.getByTestId('signin-cancel').click();
+      await action.click();
+      await expect(page.getByTestId('share-signin')).toBeVisible();
+      await signIn(page);
+      // Give a second sign-in the time to leave, if the app sends it now. Then release the first.
+      await expect.poll(() => signIns.sent, { timeout: 1500 }).toBe(2).catch(() => {});
+      signIns.release[1]();
+
+      // The second sign-in left only after the first one ended, and it signed in.
+      await expect(page.getByTestId('share-upload')).toBeVisible({ timeout: 30_000 });
+      expect(signIns.events).toEqual(['sign-in 1 sent', 'sign-in 1 released', 'sign-in 2 sent']);
+      await expect(page.getByTestId('share-account')).toHaveText(SHARING_AS);
+      // Its session is whole: the upload runs with no new sign-in.
+      await page.getByTestId('share-submit').click();
+      await expect(page.getByTestId('share-done')).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByTestId('share-signin')).toHaveCount(0);
+      expect(remote.main()).toBe(head(SEEDED_PROJECT));
+      const log = testInfo.outputPath('d-upload-sign-in-order.json');
+      fs.writeFileSync(log, JSON.stringify(signIns.events, null, 2));
+      await testInfo.attach('d-upload-sign-in-order', { path: log, contentType: 'application/json' });
     } finally {
       dropOrigin(SEEDED_PROJECT);
       remote.dispose();

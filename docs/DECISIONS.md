@@ -1375,7 +1375,9 @@ increment on the board and settled the open design questions behind alignment su
    sits in the Suggestions row, off by default, stored per client per project in the
    platform's per-client settings record; nothing about it enters the project. Order on
    the alignment save path: #255 (one tokenizer, with the agreement test) → #134 → #213 →
-   #1.
+   #1. [amended by D93, 2026-10-02 — gatewayEdit's settings are a reference, not adopted
+   as-is; each confirmed save appends to the engine's memory, and the booster retrains in
+   the background on a budget]
 4. **Check comments and bookmarks** (#50). A **check comment** is the §5.2 `comments`
    field, editable and clearable, written by `check.decision.set`; a **bookmark** is the
    `reminders` field. Neither is a J16 user comment (`note.add`), and neither changes
@@ -2020,6 +2022,23 @@ main 0996d21, 2026-09-30, `src/data/share/door43Api.ts`].
    [amended 2026-10-02 — D88 points 1 and 7: the top bar has a Door43 account menu. "Sign out of
    Door43" is on that menu, and the "Also sign out" checkbox is removed with the Local dialog.
    "Change" stays.]
+   [amended 2026-10-03 — issue #530; decided 2026-10-02, owner request after a review of the
+   upload-changes screenshot: the card shows no account line, no "Uploaded." and no refusal under
+   **Upload changes**. **Upload changes** opens an upload dialog. The dialog shows the project,
+   its repository on Door43 (not editable), the account with "Change", and the books or stories
+   as a review. It has **Cancel** and **Upload changes**, then one progress line, then the end
+   with Copy link, Open on Door43 and Close, or the refusal. The "On Door43" badge and "Shared
+   at…" stay on the card. Four details are [decided 2026-10-05 — owner ruling, comment on pull
+   request #540, "I confirm all four as built"]: (a) the click on the card sends nothing, and
+   the "Use the internet?" dialog opens when the upload, or its sign-in, is sent; a kept sign-in
+   that is not resumed yet shows as "Signed in · Change"; (b) with no sign-in, the sign-in step
+   opens first, its consent covers the upload, and the dialog then opens for review; (c) after
+   Change, or after Door43 refuses the token, the new sign-in returns to the review and uploads
+   nothing; (d) a refusal offers **Try again** and **Close**, and **Close** alone when another
+   device pushed. The consent of a Share or an Upload changes belongs to its flow: the click on
+   the card, its sign-in step and its dialogs, until they close. The flow asks one time. When
+   it closes, its consent ends; a step of it that ends later changes nothing; and the next
+   click is a new flow, which asks again. One sign-in is sent at a time.]
 8. **The kept sign-in (amends D85 point 4).** tC4 resumes a kept token at the first action that
    needs Door43, not at app start. The resume waits for the barrier of point 3: after Allow, it
    runs only when the read-back shows the gate on. A kept token still asks nothing. D85 points 1,
@@ -2127,6 +2146,10 @@ choice as `internet: true` and gave the Door43 adapter a barrier that read that 
    only inside a permitted task. The "Change" link in the share dialog and on the card stands
    (D86 point 7). The links to create an account and to recover a password do not exist in tC4
    today. This change adds none.
+   [amended 2026-10-03 — issue #530; decided 2026-10-02, owner request: the "Change" link is no
+   longer on the card. It is in the share dialog and in the upload dialog. An upload is one
+   internet task, as before (point 2), but its "Use the internet?" dialog opens when the upload,
+   or its sign-in, is sent, not at the click on the card. See the amendment of D86 point 7.]
 
 `docs/BURRITO-SPEC.md` §5.3 carries this decision. The conformance harness does not assert the
 changed text, so it does not change. The documents that follow describe built behavior, and they
@@ -2317,3 +2340,67 @@ archive's own `metadata.json` over the created one, as D90 point 6 required [VER
 hold the typed name and the folder name, and that the toast and the Home card show the typed
 name. The format does not change, so `docs/BURRITO-SPEC.md` and the conformance harness do not
 change.
+
+## D93 (2026-10-02, project-owner rulings) **Alignment suggestions grow with every saved verse, without waiting for a retrain. Amends D72 point 3 twice: gatewayEdit's engine settings are a reference, not adopted as-is (2026-09-24, #400), and "refreshed after each confirmed save" becomes a per-save memory append with a budgeted background retrain (2026-10-02, #516).** [issues #400 and #516; the measurement is `docs/evidence/align-suggestions-growth-2026-10-02.md`]
+
+Context. D72 point 3 said gatewayEdit's defaults are "adopted as-is" and the model is
+"refreshed after each confirmed save". Built literally, every confirmed save retrained the
+whole testament's model and Suggest was refused while the status was `training` — minutes
+per saved verse on a project with a few thousand aligned verses, and no suggestions at all
+before the fifth verse. The #400/#516 measurement (owner session 2026-10-02) showed the
+accuracy growth lives in wordMAP's alignment memory, not in the booster: appending one
+confirmed verse costs 0.14 ms, a booster trained once tracks a retrained one within noise
+up to ~2 500 verses, and plain wordMAP memory answers from the first verse.
+
+1. **The 2026-09-24 ruling (#400) stands and is recorded here:** gatewayEdit's engine
+   settings are a reference to start from, not a design to copy. The header of
+   `src/data/align/suggestEngine.ts` no longer says "adopted as-is". What stands from D72
+   point 3 unchanged: the engine learns ONLY from the project's own confirmed alignments,
+   a suggestion is never saved until the translator confirms it, and training runs in a
+   Web Worker.
+2. **Every confirmed save appends its verse to the worker's alignment memory**
+   (wordMAP `appendAlignmentMemory`, the same call training makes for the verses the
+   complexity cap trims). The next Suggest sees the verse; nothing is waited for. A
+   re-saved verse appends its current links and is counted once; its old links stay in
+   the memory beside them until the engine is built again from the project (the next
+   time the project opens or the switch goes on). The memory is not rebuilt in a
+   session; only a failed answering worker drops the engine, and the next training
+   builds a new one from the project. [owner ruling 2026-10-06, pull request #538 — the
+   old links are accepted until their cost is measured on the bench; a rebuild of the
+   memory when a booster joins it is the fix if the bench shows a loss]
+3. **The booster retrains in the background, on a budget:** when the Align tool opens for
+   a project, when the open book crosses to the other testament, and then when the
+   testament's memory first reaches 10, 25, 50, 100, 250, 500 and 1 000 aligned verses.
+   Above 1 000, no further retrain in the session; reopening the tool trains once. While
+   a retrain runs, the Suggestions row stays `ready` and Suggest is answered by the
+   memory and the booster that stand. The fitted booster then joins the memory that the
+   answering worker holds, in one step; the memory is not replaced, so no save can be
+   lost to a retrain. A fit that gives no booster keeps the booster fitted before. One
+   training runs at a time: budget steps reached while a training runs give one training
+   after it, on every verse, for the testament that is open then. [owner ruling
+   2026-10-06, pull request #538] Training has its own Web Worker, because the booster's fit cannot
+   be interrupted: the worker that answers Suggest never trains (review of pull request
+   #538, 2026-10-05).
+4. **Before the booster can fit — fewer than five aligned verses, or a corpus it
+   rejects — plain wordMAP answers from the same memory.** The first time a testament is
+   asked for in a session, the project's aligned verses are read and given to the
+   answering worker as its memory, and plain wordMAP answers from them at once. No fit is
+   waited for, also when the other testament's booster is being fitted. While the verses
+   are read, the row says "Reading your aligned verses…" [owner ruling 2026-10-06, pull
+   request #538]; there is no "learning" state.
+   Then the row says what the suggestions are drawn from (N verses). The row's count is
+   the number of verses in the memory.
+5. **Out of scope, recorded in #516's Follow-up:** the engine speed-up (a ~70-line patch
+   to `uw-wordmapbooster`'s JLBoost — upstream work), collision handling, early-seed
+   variance, the bench's case (b), and switching the scorer to memory-only on a mature
+   project.
+
+`docs/JOURNEYS.md` J5 and the suggestion comments of `src/state.jsx` and
+`src/data/align/suggestEngine.ts` carry the amendment. The scheduling (points 2, 3 and 4)
+is one module, `src/data/align/suggestScheduler.ts`, proven by
+`test/align-suggest-scheduler.test.ts`. The engine and the answering worker are proven by
+`test/align-suggest.test.ts` and `test/align-suggest-schedule.test.ts`. The two workers in
+two real threads, and a booster that joins the memory and predicts like the model that was
+trained, are proven by `test/align-suggest-handover.test.ts`. The whole is proven by the J5 case
+"suggestions grow with every saved verse". The measurement protocol is reproducible with
+`test/align-suggest-growth-bench.test.ts`.

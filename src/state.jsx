@@ -44,7 +44,8 @@ import {
 import { readTwArticle, readTaArticle } from './data/articles';
 import { revalidateAgainstDraft, resolutionWarning } from './data/revalidate';
 import { bootstrapVerse, linkWord, unlinkWord, moveWord, mergeAlignments, splitAlignment, stampTargetVerse, alignmentIsStale, reflowAlignment, settleDone, markDone } from './data/align/edit';
-import { linksFor, rebindSuggestions, sessionInputFor, trainingVersesFor } from './data/align/suggest';
+import { linksFor, rebindSuggestions, sessionInputFor, trainingVerseOf, trainingVersesFor } from './data/align/suggest';
+import { SuggestScheduler } from './data/align/suggestScheduler';
 import { consequencesOfGatewayChange, applyGatewayChange, completeLanguageSets, uncoveredByChange, sourcePanesForGateway, gatewaysCoveringProject } from './data/gatewayChange';
 import { carryOverDecisions } from './data/carryOver';
 import { applyTextUpgrade, applyUpgrade, invalidateAlignments, invalidatedTestaments, latestReleasesForSet, offerForSet, offerIsStale, repinOffer, textOfferIsStale, textOffers, textPinOf } from './data/upgrade';
@@ -123,6 +124,40 @@ let dialogTasks = [];
 const PERMITTED = Symbol('inside its permitted task');
 /** The dialogs a Share or an Upload changes continues in, and Source texts. */
 const SHARE_MODALS = ['signIn', 'share'];
+/** #530: one Share or one Upload changes is a FLOW, from the click on the Home
+ * card to the close of its dialogs. Its sign-in step and its dialogs carry the
+ * same flow (`si.flow`, `sh.flow`). The flow owns the consent of that task:
+ * the "Use the internet?" answer is recorded on the flow, never on whichever
+ * dialog is open. So a step that ends after its flow closed changes nothing,
+ * and a dialog opened later is another flow, which asks for itself.
+ * { kind: 'share' | 'upload', consented, closed, dialog, attempt, release, authorizing };
+ * `authorizing`: the question and gate check that are in progress, which
+ * every step that starts meanwhile shares, so a flow asks once and holds
+ * one consent. `dialog`: a sign-in step or a dialog was opened for it. `attempt`: the
+ * Upload changes click that is waiting for its answer or its sign-in check,
+ * or null. An attempt belongs to the review it was submitted in: Change, or
+ * any step that takes the place of that review, ends the attempt, and the
+ * flow and its consent go on. */
+let openShareFlow = null;
+/** Start a flow. Only one is open: a new one closes the one before it. */
+const startShareFlow = (kind) => {
+  closeShareFlow();
+  openShareFlow = { kind, consented: false, closed: false, dialog: false, attempt: null, release: null, authorizing: null };
+  return openShareFlow;
+};
+/** Close a flow (the open one, when none is named): its consent ends, and its
+ * late steps do nothing. */
+function closeShareFlow(flow = openShareFlow) {
+  if (!flow || flow.closed) return;
+  if (openShareFlow === flow) openShareFlow = null;
+  flow.closed = true;
+  flow.release?.();
+  flow.release = null;
+}
+/** #530: the sign-in call that is in flight, or null. One is sent at a time: a
+ * cancelled sign-in drops its own token when it ends, and must not end after a
+ * newer sign-in and drop that one. */
+let signInFlight = null;
 const SOURCES_MODALS = ['sources'];
 
 // The mode a view is, for a checkpoint message (#183). Views not listed keep their id.
@@ -409,8 +444,6 @@ const initial = () => ({
   // `origin` remote (GET /git/remotes) — { repository, url } | null (not shared); a
   // missing key is not read yet. Nothing about remotes is stored in the installation.
   remoteByProject: {},
-  // #362: a card's own Upload-changes run (no dialog) — { busy, step, error, uploaded } by repoPath
-  shareCard: {},
   importToast: null, // { name, books } of the project an import just made
   importedRepo: null, // its repoPath: the Home card carries the "Imported" badge
   // #9: the guided fix screen for a pinned resource this machine lacks —
@@ -466,9 +499,11 @@ const initial = () => ({
   draftUnits: {}, // repoPath -> 'section' | 'verse'
   alignSuggestions: {}, // #1: repoPath -> true when the suggestions switch is on (per client, never in the project)
   // #1: the suggestion engine's state for the open project — status 'off' |
-  // 'training' | 'ready' | 'none' | 'few' | 'error'; `testament` names the model
-  // the status is about (one model per original language, owner ruling 2026-09-12).
-  alignSuggest: { status: 'off', testament: null, verses: 0, error: null },
+  // 'reading' | 'ready' | 'none' | 'error'; `testament` names the model the
+  // status is about (one model per original language, owner ruling 2026-09-12).
+  // #516: the row is the scheduler's (SuggestRow in suggestScheduler.ts);
+  // `off` is set here, when the switch is off.
+  alignSuggest: { status: 'off', testament: null, verses: 0, boosted: false, error: null },
   lastEdit: null, // { repoPath, book, chapter, verse, snippet, at, mode?, tool? } — the Home Resume card; per-client settings, never the project. mode: 'read'|'draft'|'check'; tool only when mode is 'check'.
   tick: 0,
 });
@@ -3032,15 +3067,9 @@ export function AppProvider({ children }) {
   // #100: the align and check schedulers and the decision target registry.
   // saveRefs is THE list every drain, dispose and gate iterates.
   const alignSchedulerRef = useRef(null);
-  // #1: the suggestion engine's Web Worker (one per open project) and the
-  // request counter that lets a stale reply be ignored.
-  const suggestWorkerRef = useRef(null);
-  const suggestSeqRef = useRef(0);
-  const suggestRetrainRef = useRef(null);
-  // One training in flight at a time; a request that arrives meanwhile is
-  // remembered once and runs after (a training is minutes, not milliseconds).
-  const suggestTrainingRef = useRef(false);
-  const suggestPendingRef = useRef(false);
+  // #1, #516: the suggestion engine of the open project — the scheduler
+  // (suggestScheduler.ts) and its two Web Workers. Null while the switch is off.
+  const suggestRef = useRef(null);
   const checkSchedulerRef = useRef(null);
   const checkTargetsRef = useRef(new Map());
   const storySchedulerRef = useRef(null);
@@ -3162,12 +3191,15 @@ export function AppProvider({ children }) {
   }
 
   // D88: a permitted task that continued in a dialog closes with that dialog.
+  // #530: a Share or Upload changes flow ends when another dialog takes its
+  // place (closeModal ends it at once).
   useEffect(() => {
     dialogTasks = dialogTasks.filter((task) => {
       if (task.modals.includes(s.modal)) return true;
       task.release();
       return false;
     });
+    if (s.modal && !SHARE_MODALS.includes(s.modal)) closeShareFlow();
   }, [s.modal]);
 
   function updateClientSettings(mutate) {
@@ -3489,7 +3521,11 @@ export function AppProvider({ children }) {
         return readPrintedStories(store, obsStoryPictures(st, store));
       },
 
-      closeModal: () => dispatch({ type: 'set', patch: { modal: null, np: null, ab: null, st: null, fix: null, im: null, sh: null } }),
+      closeModal: () => {
+        // #530: Cancel, Close and Escape end the Share or Upload changes flow now.
+        closeShareFlow();
+        dispatch({ type: 'set', patch: { modal: null, np: null, ab: null, st: null, fix: null, im: null, sh: null } });
+      },
 
       setDraftUnit: (unit) => {
         const st = stateRef.current;
@@ -3573,24 +3609,32 @@ export function AppProvider({ children }) {
        * says so. Only the same task — one whose dialog is still open — goes on
        * without asking; another task of the same kind asks. `modals`: the
        * dialogs the task continues in; it stays permitted until they close.
-       * Resolves to the task's result, or undefined when it did not run. */
+       * Resolves to the task's result, or undefined when it did not run.
+       * A Share or an Upload changes is not such a task: its consent belongs
+       * to its flow (`flowStep`, #530). */
       internetTask: async (kind, run, { modals = null, gate = true } = {}) => {
         const continuing = dialogTasks.some((task) => task.kind === kind);
-        if (!continuing) {
-          if (stateRef.current.askInternet) {
-            if (pendingAsk) return undefined;
-            const go = await new Promise((resolve) => {
-              pendingAsk = resolve;
-              dispatch({ type: 'set', patch: { netAsk: { kind }, netFailed: false } });
-            });
-            if (!go) return undefined;
-          }
-          if (gate && !(await ensureGate(api))) {
-            dispatch({ type: 'set', patch: { netFailed: true } });
-            return undefined;
-          }
-        }
+        if (!continuing && !(await a.allowInternet(kind, gate))) return undefined;
         return a.permitted(kind, run, continuing ? null : modals);
+      },
+      /** The question of one internet task, and the net gate. True when the
+       * task may run: the user said Continue (or does not want to be asked),
+       * and the gate reads on. Cancel, or a question that is open already,
+       * is false: nothing is sent. */
+      allowInternet: async (kind, gate = true) => {
+        if (stateRef.current.askInternet) {
+          if (pendingAsk) return false;
+          const go = await new Promise((resolve) => {
+            pendingAsk = resolve;
+            dispatch({ type: 'set', patch: { netAsk: { kind }, netFailed: false } });
+          });
+          if (!go) return false;
+        }
+        if (gate && !(await ensureGate(api))) {
+          dispatch({ type: 'set', patch: { netFailed: true } });
+          return false;
+        }
+        return true;
       },
       /** A step of a permitted task: requests may leave while it runs — even
        * after its dialog closes — and, with `modals`, while one of those
@@ -3603,6 +3647,36 @@ export function AppProvider({ children }) {
           release();
           if (modals?.includes(stateRef.current.modal)) dialogTasks.push({ kind, modals, release: consent.hold() });
         }
+      },
+      /** #530: one step of a Share or Upload changes flow that uses the
+       * internet — the one place such a step starts. A closed flow runs
+       * nothing. A flow asks once (D88 point 2): the answer is recorded on the
+       * flow, and stays permitted until the flow closes. A step that is still
+       * running when its flow closes may finish its request, and must check
+       * `flow.closed` before it changes anything. Resolves to the step's
+       * result, or undefined when it did not run. */
+      flowStep: async (flow, run) => {
+        if (flow.closed) return undefined;
+        if (!flow.consented && !(await a.authorizeFlow(flow))) return undefined;
+        if (flow.closed) return undefined;
+        return a.permitted(flow.kind, run);
+      },
+      /** The consent of a flow: one question and one gate check, shared by
+       * every step that starts while they are in progress, and one hold for
+       * the flow. True when the flow is consented and still open. */
+      authorizeFlow: (flow) => {
+        if (!flow.authorizing) {
+          flow.authorizing = a.allowInternet(flow.kind).then((ok) => {
+            if (ok && !flow.closed && !flow.consented) {
+              flow.consented = true;
+              flow.release = consent.hold();
+            }
+            return flow.consented && !flow.closed;
+          }).finally(() => {
+            flow.authorizing = null;
+          });
+        }
+        return flow.authorizing;
       },
       /** The answer to the "Use the internet?" dialog. "Don't ask again" is
        * stored only with Continue. */
@@ -4432,6 +4506,8 @@ export function AppProvider({ children }) {
             (ref) => ref && texts[ref],
           ) ?? null;
         dispatch({ type: 'set', patch: { aligning: true, alignSession: null, alignVerse } });
+        // #516 (D93 point 3): the booster retrains each time the Align tool opens.
+        a.trainAlignSuggestions();
       },
 
       closeAlign: () => {
@@ -4515,8 +4591,9 @@ export function AppProvider({ children }) {
         dispatch({ type: 'set', patch: { alignSession: optimistic } });
         const [chapter, verse] = a2.ref.split(':');
         sched.markDirty(a2.book, chapter, verse, JSON.stringify(record));
-        // D72: the engine learns from every confirmed save.
-        a.retrainAlignSuggestionsSoon();
+        // D72 as amended by D93 (#516): the engine learns from every confirmed
+        // save — the verse joins the worker's memory; no retrain is waited for.
+        a.queueAlignSuggestionAppend(optimistic);
       },
 
       placeAlignWord: (cardIndex) => {
@@ -4564,141 +4641,143 @@ export function AppProvider({ children }) {
       },
 
       // ---- Alignment suggestions (#1, D72 point 3) --------------------------
-      // The engine runs in a Web Worker (suggestWorker.ts), one model per
+      // The engine runs in two Web Workers — suggestWorker.ts answers,
+      // suggestTrainWorker.ts trains (#516) — one model per
       // testament, trained on this project's own confirmed alignments. A
       // suggestion lives ONLY in alignSession.suggestions: it is never written,
       // never counted, and vanishes when the verse changes or the translator
       // rejects it. Confirming one is a linkWord edit like any other.
 
-      /** The worker for the open project — created on first use, dropped by
-       * stopAlignSuggestions (switch off) and by the project teardown. */
-      ensureSuggestWorker: () => {
-        if (suggestWorkerRef.current) return suggestWorkerRef.current;
-        const worker = new Worker(new URL('./data/align/suggestWorker.ts', import.meta.url), { type: 'module' });
-        worker.onmessage = (event) => a.onSuggestReply(event.data);
-        worker.onerror = (event) => {
-          dispatch({ type: 'set', patch: { alignSuggest: { status: 'error', testament: stateRef.current.alignSuggest.testament, verses: 0, error: String(event?.message || 'worker') } } });
-          // The worker is dead: drop it BEFORE settling, so a pending retrain
-          // gets a fresh worker from ensureSuggestWorker instead of posting
-          // into the corpse and waiting forever (Codex round 3).
-          if (suggestWorkerRef.current === worker) {
-            worker.terminate();
-            suggestWorkerRef.current = null;
+      /** The engine of the open project — created on first use, dropped by
+       * dropSuggestEngine. The scheduler decides when to train and what
+       * answers meanwhile; this file gives it the project's verses, the two
+       * workers and the place to show the row. A worker starts when the
+       * scheduler first posts to it, and a dead one is dropped, so the next
+       * post starts a fresh one. */
+      ensureSuggestEngine: () => {
+        if (suggestRef.current) return suggestRef.current;
+        const engine = { sched: null, answering: null, training: null };
+        const post = (slot, start, onReply, onDead) => (message) => {
+          if (!engine[slot]) {
+            const worker = start();
+            worker.onmessage = (event) => onReply(event.data);
+            worker.onerror = (event) => {
+              if (engine[slot] !== worker) return;
+              worker.terminate();
+              engine[slot] = null;
+              onDead(String(event?.message || 'worker'));
+            };
+            engine[slot] = worker;
           }
-          a.settleTraining(suggestSeqRef.current); // the running training died with the worker
+          engine[slot].postMessage(message);
         };
-        suggestWorkerRef.current = worker;
-        return worker;
+        engine.sched = new SuggestScheduler({
+          testament: () => (stateRef.current.book ? (isOldTestament(stateRef.current.book) ? 'ot' : 'nt') : null),
+          collect: (testament) => {
+            const st = stateRef.current;
+            return collectTrainingVerses({ store: storeRef.current, sched: alignSchedulerRef.current, project: st.project, book: st.book, bookRaw: rawRef.current, testament });
+          },
+          postAnswer: post(
+            'answering',
+            () => new Worker(new URL('./data/align/suggestWorker.ts', import.meta.url), { type: 'module' }),
+            (reply) => engine.sched.onAnswerReply(reply),
+            (message) => suggestRef.current === engine && a.failSuggestEngine(message),
+          ),
+          postTrain: post(
+            'training',
+            () => new Worker(new URL('./data/align/suggestTrainWorker.ts', import.meta.url), { type: 'module' }),
+            (reply) => engine.sched.onTrainReply(reply),
+            () => engine.sched.trainWorkerFailed(),
+          ),
+          onRow: (row) => dispatch({ type: 'set', patch: { alignSuggest: row } }),
+          onSuggestions: (reply) => a.showAlignSuggestions(reply),
+        });
+        suggestRef.current = engine;
+        return engine;
+      },
+
+      /** The scheduler and both workers go together: when the switch goes
+       * off, and when the project is left. */
+      dropSuggestEngine: () => {
+        const engine = suggestRef.current;
+        if (!engine) return;
+        suggestRef.current = null;
+        engine.sched.dispose();
+        engine.answering?.terminate();
+        engine.training?.terminate();
+      },
+
+      /** The answering worker died, and the memory with it. The engine goes;
+       * the row says so until the next training (the Align tool opened again,
+       * or the switch) builds a fresh one from the project. */
+      failSuggestEngine: (message) => {
+        const testament = stateRef.current.alignSuggest?.testament;
+        a.dropSuggestEngine();
+        const a2 = stateRef.current.alignSession;
+        dispatch({
+          type: 'set',
+          patch: {
+            alignSuggest: { status: 'error', testament: testament ?? null, verses: 0, boosted: false, error: message },
+            ...(a2?.record ? { alignSession: { ...a2, suggesting: false } } : {}),
+          },
+        });
       },
 
       stopAlignSuggestions: () => {
-        suggestWorkerRef.current?.terminate();
-        suggestWorkerRef.current = null;
-        suggestSeqRef.current++;
-        clearTimeout(suggestRetrainRef.current);
-        suggestTrainingRef.current = false;
-        suggestPendingRef.current = false;
+        a.dropSuggestEngine();
         storyOpenSeq++;
         const a2 = stateRef.current.alignSession;
         dispatch({
           type: 'set',
           patch: {
-            alignSuggest: { status: 'off', verses: 0, error: null },
+            alignSuggest: { status: 'off', verses: 0, boosted: false, error: null },
             ...(a2?.record ? { alignSession: { ...a2, suggestions: null, refusal: null } } : {}),
           },
         });
       },
 
       /** Train the open book's testament on every confirmed alignment in the
-       * project. Reads each book's draft and sidecar once; fire-and-forget. */
+       * project (#516, D93): when the Align tool opens, when the open
+       * testament changes, and when the switch goes on. The budgeted
+       * retrains are the scheduler's own. */
       trainAlignSuggestions: () => {
         const st = stateRef.current;
-        const store = storeRef.current;
         const key = st.project?.repoPath || st.project?.id;
-        if (!store || !st.book || !key || !st.alignSuggestions?.[key]) return;
-        // Coalesce: a training already runs in the worker — remember that one
-        // more is wanted and let the running one finish (Codex round 1).
-        if (suggestTrainingRef.current) {
-          suggestPendingRef.current = true;
-          return;
-        }
-        suggestTrainingRef.current = true;
-        suggestPendingRef.current = false;
-        const testament = isOldTestament(st.book) ? 'ot' : 'nt';
-        const id = ++suggestSeqRef.current;
-        dispatch({ type: 'set', patch: { alignSuggest: { status: 'training', testament, verses: 0, error: null } } });
-        void collectTrainingVerses({ store, sched: alignSchedulerRef.current, project: st.project, book: st.book, bookRaw: rawRef.current, testament })
-          .then((verses) => {
-            // An obsolete collection (the switch was cycled, or the project
-            // left) owns no lock any more — a newer training may hold it
-            // (Codex round 2). Only the CURRENT training settles.
-            if (id !== suggestSeqRef.current || storeRef.current !== store) return;
-            if (!verses.length) {
-              dispatch({ type: 'set', patch: { alignSuggest: { status: 'none', testament, verses: 0, error: null } } });
-              a.settleTraining(id);
-              return;
-            }
-            a.ensureSuggestWorker().postMessage({ type: 'train', id, testament, verses });
-          })
-          .catch((e) => {
-            if (id !== suggestSeqRef.current) return;
-            dispatch({ type: 'set', patch: { alignSuggest: { status: 'error', testament, verses: 0, error: String(e?.message || e) } } });
-            a.settleTraining(id);
-          });
+        if (!storeRef.current || !st.book || !key || !st.alignSuggestions?.[key]) return;
+        a.ensureSuggestEngine().sched.train();
       },
 
-      /** The CURRENT training ended (any way): release the lock and run the
-       * one that was asked for meanwhile. A stale id releases nothing. */
-      settleTraining: (id) => {
-        if (id !== suggestSeqRef.current) return;
-        suggestTrainingRef.current = false;
-        if (suggestPendingRef.current) {
-          suggestPendingRef.current = false;
-          a.trainAlignSuggestions();
-        }
+      /** #516: after a confirmed save, the saved verse (its latest record)
+       * joins the engine's memory. The scheduler waits for its edits to
+       * settle; no training is waited for. With no engine there is no memory
+       * to join: the next training reads the save from the project. */
+      queueAlignSuggestionAppend: (session) => {
+        const sched = suggestRef.current?.sched;
+        if (!sched || !session?.record) return;
+        const ref = `${session.book} ${session.ref}`;
+        sched.save(isOldTestament(session.book) ? 'ot' : 'nt', ref, trainingVerseOf(ref, session.record, session.targetText));
       },
 
-      /** After a confirmed save: retrain once the saves settle (debounced). */
-      retrainAlignSuggestionsSoon: () => {
-        const st = stateRef.current;
-        const key = st.project?.repoPath || st.project?.id;
-        if (!key || !st.alignSuggestions?.[key]) return;
-        clearTimeout(suggestRetrainRef.current);
-        suggestRetrainRef.current = setTimeout(() => a.trainAlignSuggestions(), 3000);
-      },
-
-      onSuggestReply: (reply) => {
-        if (reply.type === 'trained' || reply.type === 'error') a.settleTraining(reply.id);
-        if (reply.id !== suggestSeqRef.current) return; // a stale train/suggest — ignore
-        if (reply.type === 'trained') {
-          const status = reply.verses ? 'ready' : reply.tooFew ? 'few' : 'none';
-          dispatch({ type: 'set', patch: { alignSuggest: { status, testament: reply.testament, verses: reply.verses, error: null } } });
-          return;
-        }
-        if (reply.type === 'error') {
-          dispatch({ type: 'set', patch: { alignSuggest: { status: 'error', testament: stateRef.current.alignSuggest.testament, verses: 0, error: reply.message } } });
-          return;
-        }
-        // Bound to the verse and session that asked (Codex round 1): a reply
-        // for a verse the translator has since left is discarded, never mapped
-        // onto the verse now open.
+      /** The engine's proposals for a verse. Bound to the verse and session
+       * that asked (Codex round 1): a reply for a verse the translator has
+       * since left is discarded, never mapped onto the verse now open. */
+      showAlignSuggestions: (reply) => {
         const a2 = stateRef.current.alignSession;
         if (!a2?.record || a2.ref !== reply.ref || a2.seq !== reply.session) return;
         const links = linksFor(a2.record, a2.targetText, reply.links);
         dispatch({ type: 'set', patch: { alignSession: { ...a2, suggestions: links, suggesting: false, refusal: null } } });
       },
 
-      /** Suggest: ask the trained model for this verse's unplaced words. */
+      /** Suggest: ask the engine for this verse's unplaced words. The model
+       * of the book's own testament answers — the boosted one or the
+       * memory-only one (#516) — and it answers while a retrain runs. */
       suggestAlign: () => {
-        const st = stateRef.current;
-        const a2 = st.alignSession;
-        const worker = suggestWorkerRef.current;
-        const testament = isOldTestament(a2?.book ?? '') ? 'ot' : 'nt';
-        // Only a model trained for THIS book's testament may be asked.
-        if (!a2?.record || !worker || st.alignSuggest.status !== 'ready' || st.alignSuggest.testament !== testament) return;
-        const id = suggestSeqRef.current;
+        const a2 = stateRef.current.alignSession;
+        const sched = suggestRef.current?.sched;
+        if (!a2?.record || !sched) return;
+        const testament = isOldTestament(a2.book ?? '') ? 'ot' : 'nt';
+        if (!sched.suggest(testament, sessionInputFor(a2.record, a2.targetText), a2.ref, a2.seq)) return;
         dispatch({ type: 'set', patch: { alignSession: { ...a2, suggesting: true, refusal: null } } });
-        worker.postMessage({ type: 'suggest', id, testament, input: sessionInputFor(a2.record, a2.targetText), ref: a2.ref, session: a2.seq });
       },
 
       /** Confirm one proposal: the same linkWord edit a manual placement makes. */
@@ -5078,53 +5157,88 @@ export function AppProvider({ children }) {
       //      token lives in session.ts, never here. Nothing is stored but the
       //      kept token (#366): no name, no email, no login (D85). ----
       /** `share`: the project a Share pressed without a token continues with (#362).
-       * `renew`: Door43 refused the held token at a share, so the step says why (#467). */
-      openSignIn: (share = null, renew = false) =>
+       * `renew`: Door43 refused the held token at a share, so the step says why (#467).
+       * `flow`: the Share or Upload changes flow this step belongs to (#530);
+       * null from the account menu, where the sign-in is a task of its own. */
+      openSignIn: (share = null, renew = false, flow = null) => {
+        if (flow) {
+          flow.dialog = true;
+          // The step takes the place of the review: an upload submitted there ends.
+          flow.attempt = null;
+        }
         dispatch({
           type: 'set',
           patch: {
             modal: 'signIn',
-            si: { login: '', password: '', stay: false, server: new URL(door43.server).host, busy: false, error: null, share, renew },
+            // `opened`: this step, so a sign-in sent from it cannot end in a step opened after it was closed.
+            si: { login: '', password: '', stay: false, server: new URL(door43.server).host, busy: false, error: null, share, renew, flow, opened: Symbol('sign-in step') },
           },
-        }),
+        });
+      },
       patchSi: (patch) => dispatch({ type: 'set', patch: { si: { ...stateRef.current.si, ...patch } } }),
       /** Sign in; resolves the Report (`op: 'share'`), or null while a call runs.
        * Nothing is stored on a refusal. #362's Share flow chains on it. */
       submitSignIn: async () => {
         const si = stateRef.current.si;
         if (!si || si.busy) return null;
-        // D88: in a Share the sign-in is a step of that permitted task; from the
-        // account menu it is a task of its own, and asks.
-        if (si.share) return a.permitted('share', () => a.signInNow(), SHARE_MODALS);
+        // D88: in a Share or an Upload changes the sign-in is a step of that
+        // flow: the flow asks once, for whichever of its steps is sent first
+        // (#530). From the account menu it is a task of its own, and asks.
+        if (si.flow) return (await a.flowStep(si.flow, () => a.signInNow())) ?? null;
         return (await a.internetTask('signIn', () => a.signInNow())) ?? null;
       },
       signInNow: async () => {
         const si = stateRef.current.si;
         if (!si || si.busy) return null;
         a.patchSi({ busy: true, error: null });
-        const keychain = desktopKeychain() ?? undefined;
-        const report = await door43SignIn(
-          { door43, getNetEnabled: internetAllowed, keychain },
-          { login: si.login.trim(), password: si.password, stay: si.stay },
-        );
-        if (stateRef.current.modal !== 'signIn') {
-          // Cancel was pressed while the call ran: Cancel shares nothing, so a
-          // token that arrived after it is dropped (from the keychain too).
-          await door43SignOut(keychain);
+        // This step is gone when Cancel was pressed: the sign-in step is not
+        // open, or the one that is open was opened after the Cancel (#530).
+        const gone = () => stateRef.current.modal !== 'signIn' || stateRef.current.si?.opened !== si.opened;
+        // One sign-in at a time: wait for the one in flight, which may be a
+        // cancelled one that still has to drop its token.
+        const earlier = signInFlight;
+        let landed;
+        const flight = new Promise((resolve) => {
+          landed = resolve;
+        });
+        signInFlight = flight;
+        try {
+          await earlier;
+          // Cancelled while it waited: nothing is sent.
+          if (gone()) return null;
+          const keychain = desktopKeychain() ?? undefined;
+          const report = await door43SignIn(
+            { door43, getNetEnabled: internetAllowed, keychain },
+            { login: si.login.trim(), password: si.password, stay: si.stay },
+          );
+          if (gone()) {
+            // Cancel was pressed while the call ran: Cancel shares nothing, so a
+            // token that arrived after it is dropped (from the keychain too).
+            await door43SignOut(keychain);
+            return report;
+          }
+          if (!report.ok) {
+            a.patchSi({ busy: false, password: '', error: { code: report.code ?? null, message: report.facts.error } });
+            return report;
+          }
+          // #366: "Stay signed in" asked, and the token not kept (no bridge in a
+          // browser, or a keychain that refused): the share dialog says so in one line.
+          // A sign-in that is not kept forgot any earlier kept token (session.ts).
+          const signedIn = { door43User: report.facts.username, door43Kept: report.facts.kept, door43NotKept: si.stay && !report.facts.kept };
+          if (!si.flow) {
+            dispatch({ type: 'set', patch: { ...signedIn, modal: null, si: null } });
+            return report;
+          }
+          // #362: a Share pressed without a token continues here, with the token,
+          // in the same flow (D88). The step stays, busy, until the flow's
+          // dialog takes its place, so the flow has an open dialog at all times.
+          dispatch({ type: 'set', patch: signedIn });
+          await a.startShare(si.share, si.flow);
           return report;
+        } finally {
+          landed();
+          if (signInFlight === flight) signInFlight = null;
         }
-        if (!report.ok) {
-          a.patchSi({ busy: false, password: '', error: { code: report.code ?? null, message: report.facts.error } });
-          return report;
-        }
-        // #366: "Stay signed in" asked, and the token not kept (no bridge in a
-        // browser, or a keychain that refused): the share dialog says so in one line.
-        // A sign-in that is not kept forgot any earlier kept token (session.ts).
-        dispatch({ type: 'set', patch: { door43User: report.facts.username, door43Kept: report.facts.kept, door43NotKept: si.stay && !report.facts.kept, modal: null, si: null } });
-        // #362: a Share pressed without a token continues here, with the token,
-        // inside the same permitted task (D88).
-        if (si.share) await a.startShare(si.share);
-        return report;
       },
       /** Sign out: the token leaves memory and the keychain (#366), with no
        * request. A keychain that fails to forget is said, never hidden (D88):
@@ -5139,13 +5253,21 @@ export function AppProvider({ children }) {
         dispatch({ type: 'set', patch: { door43User: null, door43Kept: false, door43NotKept: false, accountError: null } });
         return true;
       },
-      /** D86 point 7: "Change" in the share dialog or on a shared card signs out
-       * and opens the sign-in step. From the dialog (`project`) the share then
-       * continues; from a card nothing is uploaded that the user did not click.
-       * Neither step uses the internet: the sign-in asks when it is sent (D88). */
+      /** D86 point 7: "Change" in the share or upload dialog signs out and
+       * opens the sign-in step. After the sign-in the dialog shows again
+       * (`project`); an upload waits for its own click (#530). Neither step
+       * uses the internet: the sign-in asks when it is sent (D88). */
       changeSignIn: async (project = null) => {
+        // The sign-in step stays in the flow of the dialog: it asks only when
+        // that flow has not asked yet (an upload that has sent nothing).
+        const flow = stateRef.current.sh?.flow ?? null;
+        // Change leaves the review: an upload that was submitted there, and
+        // still waits for its sign-in check, ends now. It must not run later
+        // with the account of the new sign-in.
+        if (flow) flow.attempt = null;
         await a.signOut();
-        a.openSignIn(project);
+        if (flow?.closed) return;
+        a.openSignIn(project, false, flow);
       },
       /** D88: the account menu's "Sign-in saved on this computer": check it
        * with Door43, as an internet task. */
@@ -5170,11 +5292,72 @@ export function AppProvider({ children }) {
         if (kept !== undefined) dispatch({ type: 'set', patch: { door43Kept: kept } });
         return outcome;
       },
-      /** D88: the Home card's Share or Upload changes — one internet task,
-       * whatever it needs: the saved sign-in, a sign-in, the destinations and
-       * the reviewed upload. */
-      shareProject: (project) => a.internetTask(stateRef.current.remoteByProject[project.id] ? 'upload' : 'share',
-        () => a.startShare(project), { modals: SHARE_MODALS }),
+      /** D88: the Home card's Share — one internet task, whatever it needs:
+       * the saved sign-in, a sign-in, the destinations and the reviewed upload.
+       * #530: Upload changes on a shared card opens its dialog and sends
+       * nothing; the task starts when the upload, or its sign-in, is sent. */
+      shareProject: (project) => {
+        // The click starts the flow of this Share or Upload changes (#530).
+        if (stateRef.current.remoteByProject[project.id]) return a.openUpload(project, startShareFlow('upload'));
+        const flow = startShareFlow('share');
+        // A flow that opened no dialog (Cancel on the question, or a failure
+        // before the first dialog) ends here, and its consent with it.
+        return a.flowStep(flow, () => a.startShare(project, flow)).finally(() => {
+          if (!flow.dialog) closeShareFlow(flow);
+        });
+      },
+      /** #530: the upload dialog of a shared project, on its review step: the
+       * repository, the account, and the books or stories. No request leaves.
+       * With no sign-in in memory and none saved, the sign-in step comes first. */
+      openUpload: (project, flow) => {
+        if (flow.closed) return undefined;
+        if (!currentSession() && !stateRef.current.door43Kept) return a.openSignIn(project, false, flow);
+        flow.dialog = true;
+        // A new review: no upload is submitted in it yet.
+        flow.attempt = null;
+        return dispatch({
+          type: 'set',
+          patch: {
+            modal: 'share',
+            si: null,
+            sh: { project, mode: 'upload', step: 'upload', flow, choices: [], choicesError: null, target: { kind: 'user' }, name: project.id.split('/').pop(), busy: false, steps: [], error: null, report: null, copied: false },
+          },
+        });
+      },
+      /** #530: Upload changes, or Try again, in the upload dialog — a step of
+       * the upload's flow. The flow asks first (D88), unless its sign-in asked
+       * already. A saved sign-in resumes here; one that Door43 refuses goes to
+       * the sign-in step, and the dialog shows again after it. */
+      uploadChanges: async (project) => {
+        const sh = stateRef.current.sh;
+        if (stateRef.current.modal !== 'share' || sh?.project.id !== project.id || sh.busy) return null;
+        const flow = sh.flow;
+        // A second click does nothing while the first one waits for its answer
+        // or its sign-in check.
+        if (!flow || flow.attempt) return null;
+        const attempt = Symbol('upload attempt');
+        flow.attempt = attempt;
+        // The review stays open, with Cancel and Change, while the answer or
+        // the sign-in check is awaited. This upload goes on only while it is
+        // still the attempt of its flow: a closed dialog, or Change, ends it —
+        // no sign-in step and no push, whatever session exists by then.
+        const ended = () => flow.closed || flow.attempt !== attempt;
+        try {
+          const report = await a.flowStep(flow, async () => {
+            if (ended()) return null;
+            if (!currentSession()) await a.resumeKept();
+            if (ended()) return null;
+            if (!currentSession()) {
+              a.openSignIn(project, false, flow);
+              return null;
+            }
+            return a.shareRun(project);
+          });
+          return report ?? null;
+        } finally {
+          if (flow.attempt === attempt) flow.attempt = null;
+        }
+      },
 
       // ---- Share (#362; D79 point 12, D84 points 1, 3, 4, 5). The operation is
       //      src/data/share/shareOperation.ts; the dialog is ShareDialog.jsx. ----
@@ -5196,10 +5379,10 @@ export function AppProvider({ children }) {
         return shared;
       },
       /** Share, or Upload changes. No token: the sign-in step first, then back
-       * here. A shared project (an `origin`) pushes with no dialog; a first
-       * share opens the dialog on the where-it-goes step and reads the
-       * organizations (D84 point 3). */
-      startShare: async (project) => {
+       * here. A shared project (an `origin`) opens the upload dialog on its
+       * review step (#530); a first share opens the dialog on the
+       * where-it-goes step and reads the organizations (D84 point 3). */
+      startShare: async (project, flow) => {
         let session = currentSession();
         if (!session) {
           // D86 point 8: a kept token resumes here, at the first action that
@@ -5207,50 +5390,50 @@ export function AppProvider({ children }) {
           await a.resumeKept();
           session = currentSession();
         }
+        // #530: after each wait, a flow that closed meanwhile opens nothing.
+        if (flow.closed) return;
         if (!session) {
-          a.openSignIn(project);
+          a.openSignIn(project, false, flow);
           return;
         }
         // "Not shared" in the cache can be a read still running, a failed read,
         // or a create whose push failed: read `origin` again before the
         // first-share dialog, so a shared project never asks again (#362 AC 2, 7).
         const shared = stateRef.current.remoteByProject[project.id] || (await a.loadShared(project, true));
-        if (shared) return a.shareRun(project);
+        if (flow.closed) return;
+        if (shared) return a.openUpload(project, flow);
+        flow.dialog = true;
         dispatch({
           type: 'set',
           patch: {
             modal: 'share',
-            sh: { project, step: 'target', choices: null, choicesError: null, target: { kind: 'user' }, name: project.id.split('/').pop(), busy: false, steps: [], error: null, report: null, copied: false },
+            si: null,
+            sh: { project, step: 'target', flow, choices: null, choicesError: null, target: { kind: 'user' }, name: project.id.split('/').pop(), busy: false, steps: [], error: null, report: null, copied: false },
           },
         });
         try {
           const choices = await organizationChoices(door43, session, project.languageTag);
-          if (stateRef.current.sh?.project.id !== project.id) return;
+          if (flow.closed) return;
           a.patchSh({ choices });
         } catch (e) {
-          if (stateRef.current.sh?.project.id !== project.id) return;
+          if (flow.closed) return;
           a.patchSh({ choices: [], choicesError: String(e?.message ?? e) });
         }
       },
       patchSh: (patch) => dispatch({ type: 'set', patch: { sh: { ...stateRef.current.sh, ...patch } } }),
       shareStep: (step) => a.patchSh({ step, error: null }),
-      /** Run the share: from the dialog's check step (a first share), or from
-       * the card's Upload changes (no dialog). One progress line per step;
-       * the Report's refusal shows where the run started. */
+      /** Run the share from its dialog: the check step of a first share, or
+       * the review step of an upload (#530). One progress line per step; the
+       * Report's refusal shows on the step the run started from. */
       shareRun: async (project) => {
         const session = currentSession();
         if (!session) return null;
         const sh = stateRef.current.sh;
-        const inDialog = stateRef.current.modal === 'share' && sh?.project.id === project.id;
-        const setCard = (patch) => dispatch({ type: 'set', patch: { shareCard: { ...stateRef.current.shareCard, [project.id]: { ...(stateRef.current.shareCard[project.id] || {}), ...patch } } } });
-        if (inDialog) {
-          if (sh.busy) return null;
-          a.patchSh({ step: 'progress', busy: true, steps: [], error: null });
-        } else {
-          if (stateRef.current.shareCard[project.id]?.busy) return null;
-          setCard({ busy: true, step: null, error: null, uploaded: false });
-        }
-        const onStep = (step) => (inDialog ? a.patchSh({ steps: [...(stateRef.current.sh?.steps || []), step] }) : setCard({ step }));
+        if (stateRef.current.modal !== 'share' || sh?.project.id !== project.id || sh.busy) return null;
+        const flow = sh.flow;
+        const review = sh.mode === 'upload' ? 'upload' : 'check';
+        a.patchSh({ step: 'progress', busy: true, steps: [], error: null });
+        const onStep = (step) => a.patchSh({ steps: [...(stateRef.current.sh?.steps || []), step] });
         // The D9 checkpoint runs through the project's store: the open one when
         // this project is open, else a throwaway store (the saveSettings pattern).
         const open = stateRef.current.project?.id === project.id ? storeRef.current : null;
@@ -5263,7 +5446,7 @@ export function AppProvider({ children }) {
             // control (#362 test 1). Only a development build accepts it.
             // The push preflight reads the barrier, not the server gate (D86 point 3).
             { api: Object.assign(Object.create(api), { getNetEnabled: internetAllowed }), door43, ops: opsLog, onStep, allowFileRemote: import.meta.env.DEV === true, commitPending: (messageFor) => store.commitPending(messageFor) },
-            { repoPath: project.id, session, target: sh?.target ?? { kind: 'user' }, name: (sh?.name ?? project.id.split('/').pop()).trim() },
+            { repoPath: project.id, session, target: sh.target, name: sh.name.trim() },
           );
         } catch (e) {
           report = { ok: false, code: null, facts: { error: String(e?.reason || e?.message || e) } };
@@ -5281,20 +5464,18 @@ export function AppProvider({ children }) {
           // #467: Door43 refused the token at the create (revoked, or kept from a
           // version that minted it without the create scopes). Forget it, and ask
           // the password once; the new sign-in continues the share.
-          if (!inDialog) setCard({ busy: false, step: null, error: null });
           await door43SignOut(desktopKeychain() ?? undefined);
+          if (flow.closed) return report;
           dispatch({ type: 'set', patch: { door43User: null, door43Kept: false, door43NotKept: false, sh: null } });
-          a.openSignIn(project, true);
+          a.openSignIn(project, true, flow);
           return report;
         }
         const error = report.ok ? null : { code: report.code ?? null, message: report.facts.error };
-        if (inDialog) {
-          if (stateRef.current.modal !== 'share') return report;
-          // A refusal returns to the check step: a name that exists is changed there.
-          a.patchSh(report.ok ? { step: 'done', busy: false, report } : { step: 'check', busy: false, error });
-        } else {
-          setCard({ busy: false, step: null, error, uploaded: report.ok });
-        }
+        // The result goes to the dialog of this flow only (#530).
+        if (flow.closed || stateRef.current.modal !== 'share') return report;
+        // A refusal returns to the step it started from: a name that exists is
+        // changed on the check step; an upload offers Try again on its review step.
+        a.patchSh(report.ok ? { step: 'done', busy: false, report } : { step: review, busy: false, error });
         return report;
       },
       /** Copy link (D84 point 5): the repository URL to the clipboard. */
@@ -6265,12 +6446,7 @@ export function AppProvider({ children }) {
           ref.current = null;
         }
         // #1: the suggestion engine belongs to the project being left.
-        clearTimeout(suggestRetrainRef.current);
-        suggestWorkerRef.current?.terminate();
-        suggestWorkerRef.current = null;
-        suggestSeqRef.current++;
-        suggestTrainingRef.current = false;
-        suggestPendingRef.current = false;
+        a.dropSuggestEngine();
         checkTargetsRef.current = new Map();
         noteTargetsRef.current = new Map();
         disposeStore(storeRef); // #94: the fold worker goes with the project
@@ -6285,7 +6461,7 @@ export function AppProvider({ children }) {
         alignSessionSeq++;
         dispatch({
           type: 'set',
-          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, storyNumbers: [], storyNumber: null, story: null, sourceStory: null, storyImages: {}, storyImageNote: null, storyLoading: false, storyError: null, storySource: null, saveState: 'saved', noteSaveState: 'saved', alignSaveState: 'saved', checkSaveState: 'saved', storySaveState: 'saved', storySaveError: null, commitError: null, projectPins: null, projectPinsLoaded: false, projectPinsError: null, preflight: null, preflightError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, alignSuggest: { status: 'off', verses: 0, error: null }, pickerProgress: null, toolPos: {}, upgrade: UPGRADE_IDLE },
+          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, storyNumbers: [], storyNumber: null, story: null, sourceStory: null, storyImages: {}, storyImageNote: null, storyLoading: false, storyError: null, storySource: null, saveState: 'saved', noteSaveState: 'saved', alignSaveState: 'saved', checkSaveState: 'saved', storySaveState: 'saved', storySaveError: null, commitError: null, projectPins: null, projectPinsLoaded: false, projectPinsError: null, preflight: null, preflightError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, alignSuggest: { status: 'off', verses: 0, boosted: false, error: null }, pickerProgress: null, toolPos: {}, upgrade: UPGRADE_IDLE },
         });
         refreshProjects(); // re-order: the project just left goes to the top
         if (leaving && leavingStore) startLeaveCheckpoint({ store: leavingStore, repoPath: leaving.repoPath, stateRef, dispatch });

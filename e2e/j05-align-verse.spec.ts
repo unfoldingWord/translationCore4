@@ -2,8 +2,9 @@
 // docs/JOURNEYS.md J5 · shipped v4.0.0-alpha.2 · run LTR and RTL (the J10 axis)
 // (owner-approved placement, 2026-08-03).
 //
-// Ground truth is the sidecar on disk. Wordmap suggestions (AD-7) are deferred
-// out of this increment (D35a), so nothing here asserts them.
+// Ground truth is the sidecar on disk. The wordMAP suggestion cases (#1, D72
+// point 3; #516, D93) assert the propose-only rules and that the engine learns
+// from every saved verse without a retrain in the way.
 import { test, expect } from './helpers/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import fs from 'node:fs';
@@ -293,7 +294,7 @@ test.describe('J5 — a translator aligns a verse', () => {
       // ON: the engine trains on the one aligned verse of the seed and says so.
       await toggle.click();
       await expect(row).toHaveAttribute('data-status', 'ready', { timeout: 30_000 });
-      await expect(page.getByTestId('align-suggest-status')).toContainText('1 verses');
+      await expect(page.getByTestId('align-suggest-status')).toContainText('Drawn from 1 verse you have');
 
       const before = JSON.stringify(alignmentFile());
       const segmentsBefore = fs.readdirSync(path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'journal')).length;
@@ -390,6 +391,153 @@ test.describe('J5 — a translator aligns a verse', () => {
       // Un-aligning it by hand returns the word to the bank — the two paths meet.
       await page.locator(`[data-testid="align-card-${cardIndex}"]`).getByRole('button', { name: word }).click();
       await expect.poll(() => alignmentFile()?.chapters?.['1']?.['1']?.wordBank?.some((w: { word: string }) => w.word === word), { timeout: 10_000 }).toBe(true);
+    },
+  );
+
+  test(
+    '#1 suggestions: a pins write that keeps the original-language pin does not reopen the session or drop its proposals',
+    { tag: ['@inc9', '@J5'] },
+    async ({ page }) => {
+      // The open adopts installed resources and backfills coverage into
+      // resources.json (D41, D64). That write once reopened the session, and
+      // a Suggest reply in flight was dropped (2026-10-06 J5 flake). Hold the
+      // write until Suggest has answered, then let it land.
+      writePinsWithOriginal();
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      let held = false;
+      await page.route(
+        (url) => url.searchParams.get('ipath') === 'checking/resources.json' && url.search.includes('update_ingredients'),
+        async (route) => {
+          if (route.request().method() === 'POST') {
+            held = true;
+            await gate;
+          }
+          await route.continue();
+        },
+      );
+      await openAlign(page);
+      const toggle = page.getByTestId('align-suggest-switch');
+      if (!(await toggle.isChecked())) await toggle.click();
+      await expect(page.getByTestId('align-suggestions')).toHaveAttribute('data-status', 'ready', { timeout: 30_000 });
+      await page.getByTestId('align-suggest').click();
+      const chips = page.locator('[data-testid^="align-suggested-"]');
+      const status = page.getByTestId('align-suggest-status');
+      const replied = async () => (await chips.count()) > 0 || (await status.innerText()).includes('Nothing to suggest');
+      await expect.poll(replied, { timeout: 15_000 }).toBe(true);
+      const shown = { chips: await chips.count(), status: await status.innerText() };
+      await expect.poll(() => held, { message: 'the open wrote resources.json', timeout: 10_000 }).toBe(true);
+      const written = page.waitForResponse((r) => r.request().method() === 'POST' && r.url().includes('update_ingredients'));
+      release();
+      expect((await written).ok()).toBe(true);
+      // A reopen shows within a few hundred ms (the flake's trace: 30 ms);
+      // watch for two seconds that the proposals still stand.
+      await page.waitForTimeout(2_000);
+      await expect(chips).toHaveCount(shown.chips);
+      await expect(status).toHaveText(shown.status);
+    },
+  );
+
+  test(
+    '#516 suggestions grow with every saved verse: align verse A, open verse B, Suggest answers in 2 s and the row never says "Learning"',
+    { tag: ['@inc9', '@J5'] },
+    async ({ page }, testInfo) => {
+      writePinsWithOriginal();
+      // Count the trainings the app posts: every `train` message to a worker.
+      await page.addInitScript(() => {
+        const w = window as unknown as { __trainPosts: number };
+        w.__trainPosts = 0;
+        const post = Worker.prototype.postMessage;
+        Worker.prototype.postMessage = function (this: Worker, ...args: unknown[]) {
+          if ((args[0] as { type?: string } | null)?.type === 'train') w.__trainPosts += 1;
+          return Reflect.apply(post, this, args);
+        } as typeof post;
+      });
+      const trainPosts = () => page.evaluate(() => (window as unknown as { __trainPosts: number }).__trainPosts);
+      await openAlign(page);
+      const row = page.getByTestId('align-suggestions');
+      const status = page.getByTestId('align-suggest-status');
+      const toggle = page.getByTestId('align-suggest-switch');
+      if (!(await toggle.isChecked())) await toggle.click();
+      // Only the first read of the project's verses may show as `reading`; once
+      // ready, the row never leaves it.
+      await expect(row).toHaveAttribute('data-status', 'ready', { timeout: 30_000 });
+      // From here to the end an in-page observer records every data-status the
+      // row takes: the assertions below sample single moments and would miss a
+      // brief change of status after a save. It watches the body, not the row — the
+      // session re-mounts when the verse changes — and records a row that is
+      // added as well as a row whose attribute changes.
+      await page.evaluate(() => {
+        const ROW = '[data-testid="align-suggestions"]';
+        const statusOf = (el: Element | null) => el?.getAttribute('data-status') ?? '(none)';
+        const w = window as unknown as { __suggestStatuses: string[] };
+        w.__suggestStatuses = [statusOf(document.querySelector(ROW))];
+        new MutationObserver((mutations) => {
+          for (const m of mutations) {
+            if (m.type === 'attributes') {
+              const el = m.target as Element;
+              if (el.getAttribute('data-testid') === 'align-suggestions') w.__suggestStatuses.push(statusOf(el));
+            }
+            for (const node of m.addedNodes) {
+              if (!(node instanceof Element)) continue;
+              const added = node.matches(ROW) ? node : node.querySelector(ROW);
+              if (added) w.__suggestStatuses.push(statusOf(added));
+            }
+          }
+        }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-status'] });
+      });
+      await expect(status).toContainText('Drawn from 1 verse you have');
+
+      // Verse A (1:2): place "Dios" on the θεός card by hand — one confirmed
+      // save. The engine learns it without a retrain.
+      await page.getByTestId('align-next').click();
+      await expect(page.getByTestId('align-verse-list').locator('button[data-ref="1:2"]')).toHaveAttribute('data-selected', 'true');
+      await page.getByTestId('align-bank').getByRole('button', { name: 'Dios', exact: true }).click();
+      await page.locator('[data-testid^="align-card-"]', { hasText: 'Θε' }).first().click();
+      // The save never flips the row out of `ready` — no "Learning…" state.
+      await expect(row).toHaveAttribute('data-status', 'ready');
+
+      // Verse B (1:3): Suggest answers within 2 seconds, from the memory that
+      // now holds verse A (the pending save joins the memory ahead of the ask).
+      await page.getByTestId('align-next').click();
+      await expect(page.getByTestId('align-verse-list').locator('button[data-ref="1:3"]')).toHaveAttribute('data-selected', 'true');
+      const chips = page.locator('[data-testid^="align-suggested-"]');
+      await page.getByTestId('align-suggest').click();
+      await expect.poll(async () => chips.count(), { timeout: 2_000 }).toBeGreaterThan(0);
+      await expect(row).toHaveAttribute('data-status', 'ready');
+      // The row's count is the memory's count: the seed verse plus verse A.
+      await expect(status).toContainText('2 verses');
+      expect(await status.innerText()).not.toContain('Learning');
+      const proposals = await chips.count();
+
+      // One training so far — the one at open — and none for the save. The
+      // tool opened again trains once more, in the background (D93 point 3).
+      const trainingsAtOpen = await trainPosts();
+      expect(trainingsAtOpen).toBe(1);
+      await page.getByTestId('align-rail').getByRole('button', { name: '← All checking tools' }).click();
+      await page.getByTestId('open-align').click();
+      await expect(page.getByTestId('align-session')).toBeVisible();
+      await expect.poll(trainPosts, { timeout: 15_000 }).toBe(2);
+      await expect(row).toHaveAttribute('data-status', 'ready');
+
+      // The artifact: what the row reported, every status the observer saw
+      // since the first `ready` (distinct and sorted, so each run writes the
+      // same bytes), the trainings posted, and what Suggest proposed.
+      const seen = await page.evaluate(() => (window as unknown as { __suggestStatuses: string[] }).__suggestStatuses);
+      const artifact = {
+        status: await row.getAttribute('data-status'),
+        statusText: (await status.innerText()).trim(),
+        statuses: [...new Set(seen)].sort(),
+        trainings: { atOpen: trainingsAtOpen, afterReopen: await trainPosts() },
+        proposals,
+      };
+      const artifactPath = testInfo.outputPath('j05-suggestions-grow.json');
+      fs.writeFileSync(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`);
+      await testInfo.attach('j05-suggestions-grow.json', { path: artifactPath, contentType: 'application/json' });
+      expect(artifact.status).toBe('ready');
+      // Never `training`, nor anything else, at any moment after the first ready.
+      expect(seen.filter((st) => st !== 'ready')).toEqual([]);
+      expect(artifact.proposals).toBeGreaterThan(0);
     },
   );
 
