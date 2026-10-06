@@ -454,7 +454,9 @@ comes with the
 [Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe).
 Both the installer and the zip ship the runtime themselves: the build stages
 the redist CRT DLLs app-local in `bin\` beside `server.exe`, and refuses to
-package without them. The release assets of v4.0.0-rc.1 and earlier do not
+package without them. Both paths then start on a Windows without the VC++
+runtime [VERIFIED — `evidence/windows-clean-machine-284-2026-10-06.md`]. The
+release assets of v4.0.0-rc.1 and earlier do not
 carry the DLLs [VERIFIED — `scripts/package-desktop.zsh` at the tags
 v4.0.0-alpha.6 (`7227cb8`), v4.0.0-alpha.7 (`95238c3`) and v4.0.0-rc.1
 (`6f878aa`) stages no DLL; read 2026-10-06]. On a machine without them,
@@ -536,8 +538,8 @@ checks reinstall/uninstall preserve a project that it wrote through the app.
   clean-machine `VCRUNTIME140.dll` failure (#284). Instead, the build fails
   when the CRT is not staged into `bin\`, and the shipped
   `smoke-installed.ps1` fails when `bin\vcruntime140.dll` is missing from the
-  payload. The clean-VM boot witness for the installer and the zip is pending
-  (#284).
+  payload. The clean-machine witness for the installer and the zip is
+  `docs/evidence/windows-clean-machine-284-2026-10-06.md` (#284).
 - **Witnessed on a real machine, one step open.** Windows 10 Pro 10.0.19045,
   no developer checkout, artifact 10056395396 (run 34227273789, head `8fbb62f`,
   188,346,325 bytes, sha256 `20582ef6…8d0cba`): unpacked once, launched,
