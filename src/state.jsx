@@ -128,8 +128,10 @@ const SHARE_MODALS = ['signIn', 'share'];
  * the "Use the internet?" answer is recorded on the flow, never on whichever
  * dialog is open. So a step that ends after its flow closed changes nothing,
  * and a dialog opened later is another flow, which asks for itself.
- * { kind: 'share' | 'upload', consented, closed, dialog, attempt, release };
- * `dialog`: a sign-in step or a dialog was opened for it. `attempt`: the
+ * { kind: 'share' | 'upload', consented, closed, dialog, attempt, release, authorizing };
+ * `authorizing`: the question and gate check that are in progress, which
+ * every step that starts meanwhile shares, so a flow asks once and holds
+ * one consent. `dialog`: a sign-in step or a dialog was opened for it. `attempt`: the
  * Upload changes click that is waiting for its answer or its sign-in check,
  * or null. An attempt belongs to the review it was submitted in: Change, or
  * any step that takes the place of that review, ends the attempt, and the
@@ -138,7 +140,7 @@ let openShareFlow = null;
 /** Start a flow. Only one is open: a new one closes the one before it. */
 const startShareFlow = (kind) => {
   closeShareFlow();
-  openShareFlow = { kind, consented: false, closed: false, dialog: false, attempt: null, release: null };
+  openShareFlow = { kind, consented: false, closed: false, dialog: false, attempt: null, release: null, authorizing: null };
   return openShareFlow;
 };
 /** Close a flow (the open one, when none is named): its consent ends, and its
@@ -3579,13 +3581,26 @@ export function AppProvider({ children }) {
        * result, or undefined when it did not run. */
       flowStep: async (flow, run) => {
         if (flow.closed) return undefined;
-        if (!flow.consented) {
-          if (!(await a.allowInternet(flow.kind))) return undefined;
-          if (flow.closed) return undefined;
-          flow.consented = true;
-          flow.release = consent.hold();
-        }
+        if (!flow.consented && !(await a.authorizeFlow(flow))) return undefined;
+        if (flow.closed) return undefined;
         return a.permitted(flow.kind, run);
+      },
+      /** The consent of a flow: one question and one gate check, shared by
+       * every step that starts while they are in progress, and one hold for
+       * the flow. True when the flow is consented and still open. */
+      authorizeFlow: (flow) => {
+        if (!flow.authorizing) {
+          flow.authorizing = a.allowInternet(flow.kind).then((ok) => {
+            if (ok && !flow.closed && !flow.consented) {
+              flow.consented = true;
+              flow.release = consent.hold();
+            }
+            return flow.consented && !flow.closed;
+          }).finally(() => {
+            flow.authorizing = null;
+          });
+        }
+        return flow.authorizing;
       },
       /** The answer to the "Use the internet?" dialog. "Don't ask again" is
        * stored only with Continue. */

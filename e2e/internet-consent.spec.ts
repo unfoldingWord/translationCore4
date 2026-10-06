@@ -151,6 +151,23 @@ const watchPushes = (page: Page): string[] => {
   return pushes;
 };
 const SHARING_AS = `Sharing as @${USER.username} · Change`;
+/** #540 round 7: hold the platform's answer to the first gate read (`GET /api/net/status`)
+ * until the journey releases it. `finished` counts the gate reads that have ended. */
+async function holdFirstGateRead(page: Page): Promise<{ reads: () => number; finished: () => number; release: () => void }> {
+  let reads = 0;
+  let finished = 0;
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  await page.route('**/api/net/status', async (route) => {
+    reads += 1;
+    if (reads === 1) await held;
+    return route.fallback();
+  });
+  page.on('requestfinished', (request) => {
+    if (new URL(request.url()).pathname.endsWith('/api/net/status')) finished += 1;
+  });
+  return { reads: () => reads, finished: () => finished, release };
+}
 
 test.describe('D88 — ask before using the internet, and the account menu', () => {
   test.beforeEach(async () => {
@@ -817,6 +834,104 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
       const log = testInfo.outputPath('d-upload-change-while-checking.json');
       fs.writeFileSync(log, JSON.stringify({ savedSignInChecks: checks, door43Calls: fake.calls.map((c) => `${c.method} ${c.url}`), pushes: pushes.length }, null, 2));
       await testInfo.attach('d-upload-change-while-checking', { path: log, contentType: 'application/json' });
+    } finally {
+      dropOrigin(SEEDED_PROJECT);
+      remote.dispose();
+    }
+  });
+
+  // #540 review round 7: the steps of one flow share its question and its gate check. A step
+  // that starts while the first one still waits for the gate asks nothing and takes no
+  // consent of its own, so the close of the flow leaves no request permitted.
+  test('d. Upload changes: Change and a new sign-in while the gate is checked share the one question; after Close no request is permitted', TAG, async ({ page, context }, testInfo) => {
+    const KEPT_TOKEN = 'kept-token-for-530';
+    const remote = makeBareRemote();
+    try {
+      const fake = await fakeShare(context, remote, { tokens: [KEPT_TOKEN] });
+      await fakeKeychain(context, KEPT_TOKEN);
+      addOrigin(SEEDED_PROJECT, remote);
+      const gate = await holdFirstGateRead(page);
+      const pushes = watchPushes(page);
+      await countAsks(page);
+      await page.goto('/');
+      const action = page.getByTestId(`share-${SEEDED_ID}`);
+      await expect(action).toHaveText('Upload changes');
+
+      // Upload changes, Continue: the gate is read, and the answer is held.
+      await action.click();
+      await expect(page.getByTestId('share-account')).toHaveText('Signed in · Change');
+      await page.getByTestId('share-submit').click();
+      await page.getByTestId('net-confirm').click();
+      await expect.poll(() => gate.reads()).toBe(1);
+
+      // Change, and sign in, while the gate read is held. The sign-in waits for the same
+      // check: no second question opens, and the gate is not read again.
+      await page.getByTestId('share-account-change').click();
+      await expect(page.getByTestId('share-signin')).toBeVisible();
+      await signIn(page);
+      await expect.poll(() => asksSeen(page), { timeout: 1500 }).toBe(2).catch(() => {});
+      expect(await asksSeen(page), 'the sign-in shares the question of its flow').toBe(1);
+      expect(gate.reads(), 'one gate check for the flow').toBe(1);
+
+      // The held read ends: the check goes on, the sign-in is sent, and the review returns.
+      gate.release();
+      await expect(page.getByTestId('share-upload')).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByTestId('share-account')).toHaveText(SHARING_AS);
+      expect(pushes, 'nothing is pushed without a new click').toEqual([]);
+
+      // Close the dialog. The flow's consent ends with it: a request outside a task is refused.
+      await page.getByTestId('share-cancel').click();
+      await expect(page.getByTestId('share-dialog')).toHaveCount(0);
+      expect(await refusedOutsideATask(page), 'no consent is left after Close').toEqual([NO_CONSENT, NO_CONSENT]);
+      expect(await asksSeen(page), 'one question in all').toBe(1);
+      expect(pushes).toEqual([]);
+      expect(remote.main()).toBeNull();
+      const log = testInfo.outputPath('d-upload-change-while-gate-checked.json');
+      fs.writeFileSync(log, JSON.stringify({ gateReads: gate.reads(), asks: await asksSeen(page), door43Calls: fake.calls.map((c) => `${c.method} ${c.url}`), pushes: pushes.length }, null, 2));
+      await testInfo.attach('d-upload-change-while-gate-checked', { path: log, contentType: 'application/json' });
+    } finally {
+      dropOrigin(SEEDED_PROJECT);
+      remote.dispose();
+    }
+  });
+
+  // #540 review round 7 (Frank): with asking off, Sign in pressed twice while the gate is
+  // checked. The two submits share one authorization; after Cancel no request is permitted.
+  test('d. Upload changes: two quick Sign in submits while the gate is checked, then Cancel: nothing is sent, and no request is permitted', TAG, async ({ page, context }, testInfo) => {
+    const remote = makeBareRemote();
+    try {
+      const fake = await fakeShare(context, remote);
+      addOrigin(SEEDED_PROJECT, remote);
+      await askInternet(false);
+      const gate = await holdFirstGateRead(page);
+      await page.goto('/');
+      const action = page.getByTestId(`share-${SEEDED_ID}`);
+      await expect(action).toHaveText('Upload changes');
+
+      // The sign-in step; Sign in twice while the first gate read is held.
+      await action.click();
+      await expect(page.getByTestId('share-signin')).toBeVisible();
+      await page.getByLabel('Door43 username or email').fill(USER.username);
+      await page.getByLabel('Password', { exact: true }).fill(USER.password);
+      await page.getByTestId('signin-submit').click();
+      await expect.poll(() => gate.reads()).toBe(1);
+      await page.getByTestId('signin-submit').click();
+      await expect.poll(() => gate.reads(), { timeout: 1500 }).toBe(2).catch(() => {});
+      expect(gate.reads(), 'the second submit shares the gate check').toBe(1);
+
+      // Cancel, then let the check end: read, enable, read back.
+      await page.getByTestId('signin-cancel').click();
+      await expect(page.getByTestId('share-signin')).toHaveCount(0);
+      gate.release();
+      await expect.poll(() => gate.finished(), { timeout: 30_000 }).toBeGreaterThanOrEqual(2);
+      await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0))));
+
+      expect(await refusedOutsideATask(page), 'no consent is left after Cancel').toEqual([NO_CONSENT, NO_CONSENT]);
+      expect(fake.calls, 'the cancelled step signed nothing in').toEqual([]);
+      expect(remote.main()).toBeNull();
+      const log = testInfo.outputPath('d-upload-two-submits-while-gate-checked.json');
+      fs.writeFileSync(log, JSON.stringify({ gateReads: gate.reads(), gateReadsFinished: gate.finished(), door43Calls: fake.calls.length }, null, 2));
+      await testInfo.attach('d-upload-two-submits-while-gate-checked', { path: log, contentType: 'application/json' });
     } finally {
       dropOrigin(SEEDED_PROJECT);
       remote.dispose();
