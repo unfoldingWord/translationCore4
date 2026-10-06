@@ -13,7 +13,8 @@
 // (worker → main):
 //   { type: 'fitted', id, testament, model: PackedModel }
 //   { type: 'error',  id, message }
-// The main thread passes `model` on to suggestWorker.ts as a `load`.
+// The main thread passes `model` on to suggestWorker.ts as a `booster`; it joins
+// the memory that worker already holds.
 import { packModel, trainModel, type PackedModel } from './suggestEngine';
 import type { Testament, TrainingVerse } from './suggest';
 

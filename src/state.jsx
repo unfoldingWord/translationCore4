@@ -466,7 +466,7 @@ const initial = () => ({
   draftUnits: {}, // repoPath -> 'section' | 'verse'
   alignSuggestions: {}, // #1: repoPath -> true when the suggestions switch is on (per client, never in the project)
   // #1: the suggestion engine's state for the open project — status 'off' |
-  // 'training' | 'ready' | 'none' | 'error'; `testament` names the model the
+  // 'reading' | 'ready' | 'none' | 'error'; `testament` names the model the
   // status is about (one model per original language, owner ruling 2026-09-12).
   // #516: the row is the scheduler's (SuggestRow in suggestScheduler.ts);
   // `off` is set here, when the switch is off.
@@ -4525,13 +4525,13 @@ export function AppProvider({ children }) {
             'answering',
             () => new Worker(new URL('./data/align/suggestWorker.ts', import.meta.url), { type: 'module' }),
             (reply) => engine.sched.onAnswerReply(reply),
-            (message) => engine.sched.answerWorkerFailed(message),
+            (message) => suggestRef.current === engine && a.failSuggestEngine(message),
           ),
           postTrain: post(
             'training',
             () => new Worker(new URL('./data/align/suggestTrainWorker.ts', import.meta.url), { type: 'module' }),
             (reply) => engine.sched.onTrainReply(reply),
-            (message) => engine.sched.trainWorkerFailed(message),
+            () => engine.sched.trainWorkerFailed(),
           ),
           onRow: (row) => dispatch({ type: 'set', patch: { alignSuggest: row } }),
           onSuggestions: (reply) => a.showAlignSuggestions(reply),
@@ -4549,6 +4549,22 @@ export function AppProvider({ children }) {
         engine.sched.dispose();
         engine.answering?.terminate();
         engine.training?.terminate();
+      },
+
+      /** The answering worker died, and the memory with it. The engine goes;
+       * the row says so until the next training (the Align tool opened again,
+       * or the switch) builds a fresh one from the project. */
+      failSuggestEngine: (message) => {
+        const testament = stateRef.current.alignSuggest?.testament;
+        a.dropSuggestEngine();
+        const a2 = stateRef.current.alignSession;
+        dispatch({
+          type: 'set',
+          patch: {
+            alignSuggest: { status: 'error', testament: testament ?? null, verses: 0, boosted: false, error: message },
+            ...(a2?.record ? { alignSession: { ...a2, suggesting: false } } : {}),
+          },
+        });
       },
 
       stopAlignSuggestions: () => {
@@ -4577,13 +4593,13 @@ export function AppProvider({ children }) {
 
       /** #516: after a confirmed save, the saved verse (its latest record)
        * joins the engine's memory. The scheduler waits for its edits to
-       * settle; no training is waited for. */
+       * settle; no training is waited for. With no engine there is no memory
+       * to join: the next training reads the save from the project. */
       queueAlignSuggestionAppend: (session) => {
-        const st = stateRef.current;
-        const key = st.project?.repoPath || st.project?.id;
-        if (!key || !st.alignSuggestions?.[key] || !session?.record) return;
+        const sched = suggestRef.current?.sched;
+        if (!sched || !session?.record) return;
         const ref = `${session.book} ${session.ref}`;
-        a.ensureSuggestEngine().sched.save(isOldTestament(session.book) ? 'ot' : 'nt', ref, trainingVerseOf(ref, session.record, session.targetText));
+        sched.save(isOldTestament(session.book) ? 'ot' : 'nt', ref, trainingVerseOf(ref, session.record, session.targetText));
       },
 
       /** The engine's proposals for a verse. Bound to the verse and session

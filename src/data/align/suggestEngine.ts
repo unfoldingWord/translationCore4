@@ -14,7 +14,9 @@
 // appends its verse to the alignment memory (`appendVerse`), the booster
 // retrains only on a budget, and before the booster can fit — fewer than
 // MIN_BOOST_VERSES, or a corpus it rejects — plain wordMAP answers from the
-// same memory (`predictLinks` falls back to `WordMap.predict`).
+// same memory (`predictLinks` falls back to `WordMap.predict`). A booster fitted
+// in the background joins the standing memory (`attachBooster`); the memory is
+// never rebuilt in a session.
 //
 // One instance per testament: the alignment memory generalizes through the
 // shared original-language text, and Hebrew memory cannot inform a Greek verse.
@@ -88,8 +90,8 @@ const appendToMemory = (model: MorphJLBoostWordMap, v: TrainingVerse) => {
   wordMapOf(model).appendAlignmentMemory(v.links.map((l) => alignment(s, t, l)));
 };
 
-/** A model that knows nothing yet — the worker's starting point when a save
- * arrives before any training ran (#516). */
+/** A model that knows nothing yet — the answering worker's starting point for
+ * a testament (#516). */
 export const emptyModel = (testament: Testament): TrainedModel => ({
   testament,
   verses: 0,
@@ -105,8 +107,9 @@ export const emptyModel = (testament: Testament): TrainedModel => ({
  * tracks a retrained one within noise up to ~2 500 verses.
  * `isNew` says whether the verse counts (a re-save of a verse already in
  * memory appends its current links — the engine stays current — but the old
- * links stay beside them until the next budgeted retrain rebuilds the memory,
- * and the verse is not counted twice).
+ * links stay beside them until the engine is built again from the project —
+ * the next time the project opens or the switch goes on — and the verse is not
+ * counted twice).
  */
 export const appendVerse = (trained: TrainedModel, verse: TrainingVerse, isNew = true): TrainedModel => {
   appendToMemory(trained.model, verse);
@@ -157,10 +160,9 @@ export const trainModel = async (testament: Testament, verses: TrainingVerse[]):
   return { testament, verses: verses.length, boosted: kept.length, model };
 };
 
-/** A trained model as plain data, for the hand-over from the training worker
- * to the worker that answers (#516): the fitted booster, or null for a
- * memory-only model. The alignment memory does not travel — the receiver
- * rebuilds it from the verses. */
+/** A fitted booster as plain data, for the hand-over from the training worker
+ * to the worker that answers (#516): null for a memory-only model. The
+ * alignment memory does not travel — the answering worker keeps its own. */
 export interface PackedModel {
   testament: Testament;
   boosted: number;
@@ -175,12 +177,19 @@ export const packModel = (trained: TrainedModel): PackedModel => ({
   booster: trained.boosted ? trained.model.saveWithoutData() : null,
 });
 
-/** The model `packModel` described, with `verses` as its alignment memory. */
-export const unpackModel = (packed: PackedModel, verses: TrainingVerse[]): TrainedModel => {
-  const model = new MorphJLBoostWordMap(MODEL_OPTIONS);
-  if (packed.booster) model.specificLoad(packed.booster);
-  for (const v of verses) appendToMemory(model, v);
-  return { testament: packed.testament, verses: verses.length, boosted: packed.boosted, ...(packed.tooFew ? { tooFew: true } : {}), model };
+/**
+ * The fitted booster joins the standing model; its alignment memory is
+ * untouched. `saveWithoutData()` carries empty alignment and corpus lists, so
+ * `specificLoad()` adds nothing to the memory and only sets the booster
+ * [VERIFIED — uw-wordmapbooster 1.0.5 dist/boostwordmap_tools.js
+ * AbstractWordMapWrapper.saveWithoutData/specificLoad, MorphJLBoostWordMap.specificLoad;
+ * 2026-10-06]. A packed model with no booster leaves the standing one as it is:
+ * a booster fitted before still answers.
+ */
+export const attachBooster = (trained: TrainedModel, packed: PackedModel): TrainedModel => {
+  if (!packed.booster) return trained;
+  trained.model.specificLoad(packed.booster);
+  return { ...trained, boosted: packed.boosted };
 };
 
 /**

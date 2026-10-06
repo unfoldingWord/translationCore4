@@ -2341,25 +2341,28 @@ up to ~2 500 verses, and plain wordMAP memory answers from the first verse.
    (wordMAP `appendAlignmentMemory`, the same call training makes for the verses the
    complexity cap trims). The next Suggest sees the verse; nothing is waited for. A
    re-saved verse appends its current links and is counted once; its old links stay in
-   the memory beside them until the next retrain rebuilds it.
+   the memory beside them until the engine is built again from the project (the next
+   time the project opens or the switch goes on). The memory is not rebuilt in a
+   session; only a failed answering worker drops the engine, and the next training
+   builds a new one from the project.
 3. **The booster retrains in the background, on a budget:** when the Align tool opens for
    a project, when the open book crosses to the other testament, and then when the
    testament's memory first reaches 10, 25, 50, 100, 250, 500 and 1 000 aligned verses.
    Above 1 000, no further retrain in the session; reopening the tool trains once. While
-   a retrain runs, the Suggestions row stays `ready` and Suggest is answered by the model
-   trained before; the new model replaces the old one atomically, with the saves made
-   meanwhile re-applied. Training has its own Web Worker, because the booster's fit cannot
+   a retrain runs, the Suggestions row stays `ready` and Suggest is answered by the
+   memory and the booster that stand. The fitted booster then joins the memory that the
+   answering worker holds, in one step; the memory is not replaced, so no save can be
+   lost to a retrain. A fit that gives no booster keeps the booster fitted before. Training has its own Web Worker, because the booster's fit cannot
    be interrupted: the worker that answers Suggest never trains (review of pull request
    #538, 2026-10-05).
 4. **Before the booster can fit — fewer than five aligned verses, or a corpus it
-   rejects — plain wordMAP answers from the same memory.** The same holds while the first
-   booster of a session is fitted: the engine is given the project's aligned verses as its
-   memory first, and plain wordMAP answers from them until the fitted model takes their
-   place. The row says what the suggestions are drawn from (N verses); the "learning"
-   wait is the read of the project's verses. One training runs at a time, so a testament
-   opened while the other testament's booster is fitted also waits for that fit, and
-   counts only the verses saved since until then. The row's count is the number of verses
-   in the model's memory.
+   rejects — plain wordMAP answers from the same memory.** The first time a testament is
+   asked for in a session, the project's aligned verses are read and given to the
+   answering worker as its memory, and plain wordMAP answers from them at once. No fit is
+   waited for, also when the other testament's booster is being fitted. While the verses
+   are read, the row says "Reading your aligned verses…"; there is no "learning" state.
+   Then the row says what the suggestions are drawn from (N verses). The row's count is
+   the number of verses in the memory.
 5. **Out of scope, recorded in #516's Follow-up:** the engine speed-up (a ~70-line patch
    to `uw-wordmapbooster`'s JLBoost — upstream work), collision handling, early-seed
    variance, the bench's case (b), and switching the scorer to memory-only on a mature
@@ -2369,7 +2372,8 @@ up to ~2 500 verses, and plain wordMAP memory answers from the first verse.
 `src/data/align/suggestEngine.ts` carry the amendment. The scheduling (points 2, 3 and 4)
 is one module, `src/data/align/suggestScheduler.ts`, proven by
 `test/align-suggest-scheduler.test.ts`. The engine and the answering worker are proven by
-`test/align-suggest.test.ts` and `test/align-suggest-schedule.test.ts`, the two workers in
-two real threads by `test/align-suggest-handover.test.ts`, and the whole by the J5 case
+`test/align-suggest.test.ts` and `test/align-suggest-schedule.test.ts`. The two workers in
+two real threads, and a booster that joins the memory and predicts like the model that was
+trained, are proven by `test/align-suggest-handover.test.ts`. The whole is proven by the J5 case
 "suggestions grow with every saved verse". The measurement protocol is reproducible with
 `test/align-suggest-growth-bench.test.ts`.

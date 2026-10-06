@@ -415,12 +415,12 @@ test.describe('J5 — a translator aligns a verse', () => {
       const status = page.getByTestId('align-suggest-status');
       const toggle = page.getByTestId('align-suggest-switch');
       if (!(await toggle.isChecked())) await toggle.click();
-      // The first training (the seed's one aligned verse) is the only one that
-      // may show as training; once ready, the row never leaves it.
+      // Only the first read of the project's verses may show as `reading`; once
+      // ready, the row never leaves it.
       await expect(row).toHaveAttribute('data-status', 'ready', { timeout: 30_000 });
       // From here to the end an in-page observer records every data-status the
       // row takes: the assertions below sample single moments and would miss a
-      // brief `training` after a save. It watches the body, not the row — the
+      // brief change of status after a save. It watches the body, not the row — the
       // session re-mounts when the verse changes — and records a row that is
       // added as well as a row whose attribute changes.
       await page.evaluate(() => {
