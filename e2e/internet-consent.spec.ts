@@ -14,8 +14,15 @@
 //   f  a gate that cannot be established stops the task and says so
 //   g  sign out needs no network; a keychain that cannot forget is reported
 //   h  the keyboard opens, walks and closes the menu and returns focus to its trigger
+//   i  About translationCore (#520) shows the version, the commit, the copyright line and the
+//      license name; Read the license opens License (the LICENSE notice and the full GPL
+//      version 2) and returns; on Home and in a project, with no network connection and
+//      with zero external requests
 // The shared recorder (helpers/externalRequests.ts) writes each request log, and the
 // menu and dialog screenshots, into the test's output folder (and attaches them).
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
 import { test, expect } from './helpers/test';
 import type { Page, TestInfo } from '@playwright/test';
 import { SEEDED_PROJECT, readClientSettingsDoc, resetClientSettings, resetPlaces, resetSeededChecking } from './helpers/rig';
@@ -25,6 +32,7 @@ import {
 import { recordExternal } from './helpers/externalRequests';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import { lane } from './lane.mjs';
+import { TC4_ROOT } from './helpers/root';
 
 const TAG = { tag: ['@internet-consent', '@inc85'] };
 const NO_CONSENT = 'tC4 has no permission to use the internet for this task';
@@ -658,15 +666,100 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
       await expect(panel(page)).toHaveCount(0);
     };
     await page.goto('/');
-    await walk(['account-sign-in', 'account-ask']);
+    await walk(['account-sign-in', 'account-ask', 'account-about']);
     await fakeKeychain(context, 'kept-token');
     await page.reload();
     await expect(trigger(page)).toHaveAttribute('data-state', 'saved');
-    await walk(['account-check', 'account-ask', 'account-sign-out']);
+    await walk(['account-check', 'account-ask', 'account-about', 'account-sign-out']);
     // An outside click closes it as well.
     await openMenu(page);
     await page.mouse.click(5, 400);
     await expect(panel(page)).toHaveCount(0);
+  });
+
+  // ---- i · About translationCore (#520) ----
+  // The build reads the version, the commit, the LICENSE notice and the GPL text. The expected
+  // values come from the repository itself: package.json, git, LICENSE and COPYING.
+  test('i. About translationCore and License: the keyboard opens, reads and closes them; the version, the commit, the copyright line and both license texts show, with no network and no external request', TAG, async ({ page, context }, testInfo) => {
+    const version = (JSON.parse(fs.readFileSync(path.join(TC4_ROOT, 'package.json'), 'utf8')) as { version: string }).version;
+    const commit = execFileSync('git', ['rev-parse', '--short=7', 'HEAD'], { cwd: TC4_ROOT, encoding: 'utf8' }).trim();
+    const notice = fs.readFileSync(path.join(TC4_ROOT, 'LICENSE'), 'utf8');
+    const gpl = fs.readFileSync(path.join(TC4_ROOT, 'COPYING'), 'utf8');
+    expect(gpl).toContain('GNU GENERAL PUBLIC LICENSE');
+    expect(gpl).toContain('Version 2, June 1991');
+    const focused = () => page.evaluate(() => document.activeElement?.getAttribute('data-testid') ?? null);
+    const aboutDialog = page.getByRole('dialog', { name: 'About translationCore' });
+    const licenseDialog = page.getByRole('dialog', { name: 'License', exact: true });
+    const region = page.getByRole('region', { name: 'License text' });
+    const recorder = recordExternal(page);
+    const notWhite = async (heading: ReturnType<Page['getByText']>) => {
+      await expect(heading).toBeVisible();
+      // The dialogs render inside the dark top bar; a title must not take the bar's white text.
+      expect(await heading.evaluate((el) => getComputedStyle(el).color)).not.toBe('rgb(255, 255, 255)');
+    };
+    /** The whole path by keyboard: menu, About, License, back to About, back to the trigger. */
+    const walk = async (name: string) => {
+      await trigger(page).focus();
+      await page.keyboard.press('Enter');
+      await expect(panel(page)).toBeVisible();
+      await page.getByTestId('account-about').focus();
+      await page.keyboard.press('Enter');
+      await expect(panel(page)).toHaveCount(0);
+      await notWhite(aboutDialog.getByText('About translationCore'));
+      await expect(page.getByTestId('about-version')).toHaveText(`${version} (${commit})`);
+      await expect(page.getByTestId('about-copyright')).toHaveText(notice.split('\n')[0]);
+      await expect(page.getByTestId('about-license-name')).toContainText('GNU GPL v2 or later');
+      await shot(page, testInfo, `about-${name}`);
+
+      // Read the license closes About and opens License.
+      await page.getByTestId('about-read-license').focus();
+      await page.keyboard.press('Enter');
+      await expect(aboutDialog).toHaveCount(0);
+      await notWhite(licenseDialog.getByText('License', { exact: true }).first());
+      await expect(page.getByTestId('license-notice')).toHaveText(notice);
+      await expect(page.getByTestId('license-gpl')).toHaveText(gpl);
+      // The keyboard reaches the text and scrolls it.
+      await expect(region).toHaveAttribute('tabindex', '0');
+      for (let i = 0; i < 4 && (await focused()) !== 'license-text'; i += 1) await page.keyboard.press('Tab');
+      expect(await focused()).toBe('license-text');
+      expect(await region.evaluate((el) => el.scrollTop)).toBe(0);
+      await page.keyboard.press('End');
+      await expect.poll(() => region.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+      await shot(page, testInfo, `license-${name}`);
+
+      // Escape on License returns to About, with the focus on Read the license.
+      await page.keyboard.press('Escape');
+      await expect(licenseDialog).toHaveCount(0);
+      await expect(aboutDialog).toBeVisible();
+      await expect.poll(focused).toBe('about-read-license');
+      // Escape on About returns the focus to the account menu trigger.
+      await page.keyboard.press('Escape');
+      await expect(aboutDialog).toHaveCount(0);
+      await expect.poll(focused).toBe('account-menu');
+    };
+    await page.goto('/');
+    await walk('home');
+    await openTitus(page);
+    await walk('project');
+    // The Close buttons do the same as Escape.
+    await openMenu(page);
+    await page.getByTestId('account-about').click();
+    await page.getByTestId('about-read-license').click();
+    await page.getByTestId('license-close').click();
+    await expect(licenseDialog).toHaveCount(0);
+    await expect.poll(focused).toBe('about-read-license');
+    await page.getByTestId('about-close').click();
+    await expect(aboutDialog).toHaveCount(0);
+    await expect.poll(focused).toBe('account-menu');
+    // With no network connection: nothing can load, so what shows is in the bundle.
+    await context.setOffline(true);
+    try {
+      await walk('offline');
+    } finally {
+      await context.setOffline(false);
+    }
+    expect(recorder.external()).toEqual([]);
+    await recorder.save(testInfo, 'i-about-requests');
   });
 });
 

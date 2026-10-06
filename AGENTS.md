@@ -30,26 +30,6 @@ its discovery endpoint. Do not construct a plausible-looking identifier from mem
 Run a negative control first: feed one deliberately-invalid input. If the invalid input
 and your "valid" input fail in the same way, your input is wrong — not the system.
 
-## Verify before you claim
-
-Do not state what the Pankosmia platform does from memory or inference. Apply
-"Verifying a platform claim", the final section of `docs/PLATFORM-NOTES.md`:
-
-1. Name the surface that you read, and confirm the behavior is general — not an artifact
-   of one product's configuration or of your own test setup.
-2. Cite the version, the commit hash and the date. A hash alone does not say whether the
-   code is current.
-
-A behavior that you observed only on your own rig is a rig finding until it reproduces
-elsewhere. `docs/PLATFORM-NOTES.md` entry #26(a) records what happens when this rule is
-skipped.
-
-## Do not touch the pinned versions
-
-`usfm-js@3.4.3`, `word-aligner@1.0.3`, `word-aligner-lib@1.0.1`. The exact pairing is
-behavioral proof. Do not run `npm audit fix --force`. If an audit fix is needed, trial it
-in a scratch copy and confirm these three versions are unchanged before you apply it.
-
 ## If you change BURRITO-SPEC section 8 or section 10, run the normative gate
 
 ```bash
@@ -68,12 +48,6 @@ If you add or reword a rule, add or update its check in the same change set (§9
 the rule is violated. Counting look-alike checks is how the suite once reached
 306 green checks while five blocking defects went unnoticed [VERIFIED — pull
 request #75, review of 2026-08-17].
-
-## Read the decisions before you propose
-
-`docs/DECISIONS.md` holds the decision log. A recorded decision is not open for a new
-proposal. If you believe a decision is wrong, say so to the owner with evidence — do not
-silently build the alternative.
 
 ## What "we use Pankosmia" means
 

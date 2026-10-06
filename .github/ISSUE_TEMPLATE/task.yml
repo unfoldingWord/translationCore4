@@ -41,10 +41,15 @@ body:
     id: acceptance
     attributes:
       label: Acceptance criteria
-      description: Measurable statements. Each one is true or false after the work — no "improve" or "better".
+      description: >-
+        Measurable statements. Each one is true or false after the work — no "improve" or "better".
+        Name the check that proves each one (a test, a journey, a command). A rule that another
+        issue already owns, such as the internet-consent boundary, is one criterion that cites that
+        issue's check — for example "the @internet-consent journeys pass" — not a restatement of the rule.
       placeholder: |
-        - [ ] The preflight lists each missing resource before the first download starts.
-        - [ ] A cancelled preflight leaves no partial files on disk.
+        - [ ] The preflight lists each missing resource before the first download starts (J3, preflight step).
+        - [ ] A cancelled preflight leaves no partial files on disk (J3, cancel case).
+        - [ ] The internet-consent boundary holds: the @internet-consent journeys pass unchanged.
     validations:
       required: true
   - type: textarea
