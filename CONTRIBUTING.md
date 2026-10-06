@@ -92,12 +92,19 @@ result with the CI result of `main` at the commit you branched from.
    runs it on every pull request.
 4. **Do not change the pinned versions.** `usfm-js@3.4.3`, `word-aligner@1.0.3` and
    `word-aligner-lib@1.0.1` are a proven pairing. The conformance harness is the proof.
-   Do not run `npm audit fix --force`.
+   Do not run `npm audit fix --force`. If an audit fix is needed, trial it in a scratch copy
+   and confirm these three versions are unchanged before you apply it.
 5. **Do not re-propose decided things.** Read `docs/DECISIONS.md` before you propose a
-   design change. A decision entry states what we tried, chose and withdrew.
-6. **Verify a platform claim before you record it.** Apply the rules in "Verifying a
-   platform claim", the final section of `docs/PLATFORM-NOTES.md`. Name the surface that
-   you read. Cite the version, the commit hash and the date.
+   design change. A decision entry states what we tried, chose and withdrew. If you believe
+   a decision is wrong, say so to the owner with evidence. Do not silently build the
+   alternative.
+6. **Verify a platform claim before you record it.** Do not state what the Pankosmia
+   platform does from memory or inference. Apply the rules in "Verifying a platform claim",
+   the final section of `docs/PLATFORM-NOTES.md`. Name the surface that you read, and
+   confirm the behavior is general, not an artifact of one product's configuration or of
+   your own test setup. Cite the version, the commit hash and the date: a hash alone does
+   not say whether the code is current. A behavior that you observed only on your own rig
+   is a rig finding until it reproduces elsewhere (`docs/PLATFORM-NOTES.md` entry #26(a)).
 
 ## Pull requests
 
@@ -113,15 +120,27 @@ Before you send a pull request:
 Adopted 2026-09-06, after Increment 4. One pull request ran 37 review rounds
 (https://github.com/unfoldingWord/translationCore4/pull/116); 99 of the 252 commits on
 `main` between 2026-08-26 and 2026-09-06 were review-fix commits. An adversarial reviewer
-always finds something. These two rules end the loop.
+always finds something. These three rules end the loop.
 
 1. **A finding is fixed in the pull request only if it fails one of two tests:** it fails
    an acceptance criterion of the issue, or it breaks a rule in this document. Any other
-   finding gets one line in the pull request: "filed as issue N" or "dropped: <reason>".
-   Triage every finding against these two tests before the first fix commit.
-2. **A pull request gets at most three review rounds.** After round three, the pull
-   request is ready to merge or it goes back to the issue for a new definition. A fourth
-   round needs the owner's word, in a comment on the pull request.
+   finding gets one line in the pull request, as rule 3 says. Triage every finding
+   against these two tests before the first fix commit.
+2. **A pull request gets at most five review rounds, plus one grace round.** A round is
+   one reviewed commit. This matches the review bench's cap (`uwreview`). After the grace
+   round, the pull request is ready to merge, or it goes to the owner: the owner merges
+   it, sends it back to the issue for a new definition, or allows more rounds in a
+   comment on the pull request.
+3. **A finding becomes an issue only if all three of these are true.** Otherwise it gets
+   one line in the pull request: "dropped: <reason>". This applies to every finding,
+   whatever severity the reviewer gives it.
+   - **It reproduces.** Written steps go from a real user action or input to a wrong
+     result, data loss or a security problem. "This could happen if …" is not enough.
+   - **No open issue covers it.** If an open issue covers the same area, add the finding
+     to that issue as a comment. Do not open a new issue.
+   - **The owner agrees to track it.**
+
+   If all three are true, the line is "filed as issue N" or "added to issue N".
 
 ## How work moves
 
@@ -156,8 +175,10 @@ or higher assigns issues and applies labels]
 ### Found a defect while working another issue?
 
 Fix it inline when it is inside the issue's own scope: the same defect class the issue
-targets, in the files the issue touches. Say so in the pull request. Otherwise open a new
-issue and link it from the pull request. Leave that fix out of the change set.
+targets, in the files the issue touches. Say so in the pull request. Otherwise leave the
+fix out of the change set, and apply the three tests of "Review findings" rule 3: file or
+add it to an issue only if all three are true, and link that issue from the pull request.
+If they are not all true, say "dropped: <reason>" in the pull request.
 
 ### Labels
 

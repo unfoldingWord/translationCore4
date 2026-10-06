@@ -64,6 +64,7 @@ import { share as door43Share, repositoryOf } from './data/share/shareOperation'
 import { organizationChoices } from './data/share/recommend';
 import { applyVersions, carryOverNeeds, resolveVersions, unresolvedSlots } from './data/import/tc3';
 import { PARSERS } from './data/import/parsers';
+import { USFM_PARSER } from './data/import/usfm';
 import { INSTALLED_SUITE, SUITE_VERSION } from './data/installedSuite';
 import { obsFrameSetMismatch } from './data/obsFrameSet';
 import { parseStory, storyIpath } from './data/journal/runtime';
@@ -2425,6 +2426,43 @@ export const __setInstalledCacheForTests = (installed) => {
  * documented state, issue #62), never the machine suite's text. A transient
  * read failure PROPAGATES (D30 sweep): journaling an unchunked skeleton is
  * permanent (§8.5 grow-only). */
+/** #484: each picked USFM file's verdict for the Add-a-book dialog — the book
+ * it adds ({ code, usfm }), or a `refusal` naming why not. The damage checks
+ * (UTF-8, `\id`, unclosed marker) are the import parser's own, one call per
+ * file so each finding stays attached to its file; the duplicate and
+ * already-in-project checks are the dialog's. Re-run over the whole set on
+ * every add/remove, so a verdict never goes stale. */
+async function classifyUsfmFiles(files, existing) {
+  const fileOf = new Map();
+  const out = [];
+  for (const { name, bytes } of files) {
+    const entry = { name, bytes };
+    if (!USFM_PARSER.accepts([entry])) {
+      out.push({ ...entry, refusal: t('importer.files.notAccepted') });
+      continue;
+    }
+    const { books, findings } = await USFM_PARSER.parse([entry]);
+    const damaged = findings.find((f) => f.kind === 'damaged');
+    if (damaged) {
+      out.push({ ...entry, refusal: damaged.text });
+      continue;
+    }
+    const { code, usfm } = books[0];
+    const first = fileOf.get(code);
+    if (first) {
+      out.push({ ...entry, code, refusal: t('importer.usfm.twoFiles', { code, first, file: name }) });
+      continue;
+    }
+    fileOf.set(code, name);
+    if ((existing || []).includes(code)) {
+      out.push({ ...entry, code, refusal: t('addBook.usfmExists', { name: bookName(code) }) });
+      continue;
+    }
+    out.push({ ...entry, code, usfm });
+  }
+  return out;
+}
+
 async function seedInitialUsfm({ store, stateRef, code, projName }) {
   const seedPin = stateRef.current.projectPins?.extraScripture?.[0];
   if (!seedPin) return undefined;
@@ -3342,6 +3380,47 @@ export function AppProvider({ children }) {
         });
         return Object.fromEntries(Object.entries(images).filter(([, image]) => image.uri).map(([frame, image]) => [frame, image.uri]));
       };
+    };
+    /** #484: the one write path for the Add-a-book dialog — blank or from a
+     * USFM file. Journals one self-contained §8.5 book.add per book (issue
+     * #62) through a throwaway store and commits once. `items` is
+     * [{ code, initialUsfm? }]; a missing initialUsfm seeds from the pinned
+     * ULT structure like a blank book. A blank book opens in Translate (the
+     * next step is to draft it); books from files stay on Home, where the
+     * project card shows them, as a project import does. */
+    const writeNewBooks = async (f, items, { open = true } = {}) => {
+      a.patchAb({ busy: true, error: null });
+      const store = new JournalingStore({ api, ops: opsLog });
+      try {
+        const summary = await store.open(f.repoPath);
+        for (const { code, initialUsfm } of items) {
+          if (summary.bookCodes.includes(code)) continue; // fresh server truth wins
+          // Seed client-side from the pinned ULT structure (pre-chunked;
+          // PLATFORM-NOTES #19), computed FIRST so addBook journals ONE
+          // self-contained §8.5 book.add carrying the book's REAL initial
+          // state (issue #62). A book missing from the source journals the
+          // server skeleton instead — absence is a state, not an error.
+          const usfm = initialUsfm ?? (await seedInitialUsfm({ store, stateRef, code, projName: f.projName }));
+          await store.addBook({
+            book_code: code,
+            book_title: bookName(code),
+            book_abbr: code,
+            add_cv: true,
+            initialUsfm: usfm,
+          });
+        }
+        await store.commit(`Add ${items.map((i) => i.code).join(', ')} (tC4)`);
+        // After the listing: Home reloads the progress for the books it lists,
+        // so the new book's tile must be listed before its cache is dropped.
+        await refreshProjects();
+        invalidateProgress(f.repoPath);
+        a.closeModal();
+        if (open) await a.openProject(f.repoPath, items[0].code);
+      } catch (e) {
+        a.patchAb({ busy: false, error: e?.reason || e?.message || t('wizard.error') });
+      } finally {
+        store.dispose(); // #94: a throwaway store's fold worker
+      }
     };
     const a = {
       go: async (view) => {
@@ -5538,6 +5617,7 @@ export function AppProvider({ children }) {
               book: firstFree,
               multi: false,
               books: {},
+              files: [], // #484: the picked USFM files, each with its verdict
               busy: false,
               error: null,
             },
@@ -5557,36 +5637,28 @@ export function AppProvider({ children }) {
           (c) => !(f.existing || []).includes(c),
         );
         if (!codes.length) return a.patchAb({ error: t('addBook.pickOne') });
-        a.patchAb({ busy: true, error: null });
-        const store = new JournalingStore({ api, ops: opsLog });
-        try {
-          const summary = await store.open(f.repoPath);
-          for (const code of codes) {
-            if (summary.bookCodes.includes(code)) continue; // fresh server truth wins
-            // Seed client-side from the pinned ULT structure (pre-chunked;
-            // PLATFORM-NOTES #19), computed FIRST so addBook journals ONE
-            // self-contained §8.5 book.add carrying the book's REAL initial
-            // state (issue #62). A book missing from the source journals the
-            // server skeleton instead — absence is a state, not an error.
-            const initialUsfm = await seedInitialUsfm({ store, stateRef, code, projName: f.projName });
-            await store.addBook({
-              book_code: code,
-              book_title: bookName(code),
-              book_abbr: code,
-              add_cv: true,
-              initialUsfm,
-            });
-          }
-          await store.commit(`Add ${codes.join(', ')} (tC4)`);
-          invalidateProgress(f.repoPath); // the new book's tile must not stay unknown
-          await refreshProjects();
-          a.closeModal();
-          await a.openProject(f.repoPath, codes[0]);
-        } catch (e) {
-          a.patchAb({ busy: false, error: e?.reason || e?.message || t('wizard.error') });
-        } finally {
-          store.dispose(); // #94: a throwaway store's fold worker
-        }
+        await writeNewBooks(f, codes.map((code) => ({ code })));
+      },
+
+      // ---- Add books from USFM files (#484): the files are parsed the moment
+      //      they are picked, each row shows its verdict, and Add writes only
+      //      the valid ones. Nothing touches the project before Add. ----
+      abAddUsfmFiles: async (list) => {
+        const added = await Promise.all(list.map(async (f) => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) })));
+        const ab = stateRef.current.ab;
+        a.patchAb({ files: await classifyUsfmFiles([...(ab.files || []), ...added], ab.existing), error: null });
+      },
+      abRemoveUsfmFile: async (index) => {
+        const ab = stateRef.current.ab;
+        // Re-classify the rest: removing a file can un-refuse a duplicate.
+        a.patchAb({ files: await classifyUsfmFiles((ab.files || []).filter((_, i) => i !== index), ab.existing) });
+      },
+      addUsfmBooks: async () => {
+        const f = stateRef.current.ab;
+        if (f.busy) return;
+        const items = (f.files || []).filter((x) => !x.refusal).map(({ code, usfm }) => ({ code, initialUsfm: usfm }));
+        if (!items.length) return;
+        await writeNewBooks(f, items, { open: false });
       },
 
       // ---- Project settings modal (Increment 1: direction + font are
