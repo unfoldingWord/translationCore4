@@ -527,10 +527,24 @@ test.describe('J9 — a facilitator imports existing work', () => {
         await page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`).getByRole('button', { name: 'Add a book' }).click();
         await expect(page.getByRole('button', { name: 'Start a blank book' })).toBeVisible();
         await page.getByTestId('ab-usfm-option').click();
+        // #564: with no valid file the disabled button names no count
+        await expect(page.getByTestId('ab-usfm-add')).toHaveText('Add book');
+        await expect(page.getByTestId('ab-usfm-add')).toBeDisabled();
       });
       const rows = page.getByTestId('ab-usfm-file');
       await test.step('three files, three verdicts: Titus valid, Jonah already in the project (points to Import), no-id.sfm damaged', async () => {
-        await page.getByTestId('ab-usfm-input').setInputFiles([titSource, jonSource, path.join(MANIFEST_DIR, 'usfm', 'no-id.sfm')]);
+        // #564: two drops with no wait between them — the second lands while the
+        // first is still being classified, and neither loses a row.
+        const drops = [[titSource, jonSource], [path.join(MANIFEST_DIR, 'usfm', 'no-id.sfm')]]
+          .map((drop) => drop.map((file) => ({ name: path.basename(file), bytes: [...fs.readFileSync(file)] })));
+        await page.getByTestId('ab-usfm-input').evaluate((input: HTMLInputElement, batches) => {
+          for (const batch of batches) {
+            const transfer = new DataTransfer();
+            for (const { name, bytes } of batch) transfer.items.add(new File([new Uint8Array(bytes)], name));
+            input.files = transfer.files;
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        }, drops);
         await expect(rows).toHaveCount(3);
         const tit = rows.filter({ hasText: '57-TIT.usfm' });
         await expect(tit).toHaveAttribute('data-status', 'valid');
@@ -543,6 +557,24 @@ test.describe('J9 — a facilitator imports existing work', () => {
         await expect(noId).toContainText('no-id.sfm has no \\id line, so the book is not known.');
         seen.verdicts = await Promise.all((await rows.all()).map(async (row) => ({ status: await row.getAttribute('data-status'), text: (await row.textContent())?.trim() })));
         // one valid book, so the button adds exactly one
+        await expect(page.getByTestId('ab-usfm-add')).toHaveText('Add book');
+      });
+      await test.step('#564: the message of a failed Add survives a classify that finishes after it', async () => {
+        // The first write of an Add is the platform's new-book call; fail it once.
+        const writeRoute = '**/api/git/new-scripture-book/**';
+        let failed = 0;
+        await page.route(writeRoute, (route) => (failed++ ? route.continue() : route.fulfill({ status: 500, body: '{"is_good":false,"reason":"injected by #564"}' })));
+        await page.getByTestId('ab-usfm-add').click();
+        const callout = page.getByTestId('ab-usfm').getByRole('alert');
+        await expect(callout).toBeVisible();
+        seen.failedAdd = { message: (await callout.textContent())?.trim(), titOnDisk: fs.existsSync(path.join(repo, 'ingredients', 'TIT.usfm')) };
+        await page.getByTestId('ab-usfm-input').setInputFiles([path.join(MANIFEST_DIR, 'usfm', '58-PHM.txt')]);
+        await expect(rows).toHaveCount(4); // the classify ran
+        await expect(callout).toBeVisible(); // and did not erase the failure
+        await page.unroute(writeRoute);
+        // back to the three rows; the next Add (the step below) clears the message and writes
+        await rows.filter({ hasText: '58-PHM.txt' }).getByRole('button').click();
+        await expect(rows).toHaveCount(3);
         await expect(page.getByTestId('ab-usfm-add')).toHaveText('Add book');
       });
       const card = page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`);
