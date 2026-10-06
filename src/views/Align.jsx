@@ -306,6 +306,14 @@ function AlignHeader({ a, index, book, actions }) {
   );
 }
 
+/** The session reads one pin: the open testament's original language. A pins
+ * write that leaves it alone (the open's coverage backfill) must not reopen
+ * the session: a reopen drops a Suggest reply still in flight. */
+function originalPinKey(s) {
+  const pin = s.book ? s.projectPins?.resources?.originalLanguage?.[isOldTestament(s.book) ? 'ot' : 'nt'] : null;
+  return pin ? `${pin.repoPath}@${pin.version}#${pin.sha}` : null;
+}
+
 export default function Align({ embedded = false }) {
   const { s, actions } = useApp();
   const a = s.alignSession;
@@ -313,7 +321,7 @@ export default function Align({ embedded = false }) {
 
   React.useEffect(() => {
     actions.openAlign();
-  }, [s.book, s.alignVerse, s.projectPins]);
+  }, [s.book, s.alignVerse, originalPinKey(s)]);
 
   const suggestOn = useSuggestionsSwitch(s, actions);
 

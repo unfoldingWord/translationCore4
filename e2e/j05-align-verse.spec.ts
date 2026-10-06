@@ -395,6 +395,50 @@ test.describe('J5 — a translator aligns a verse', () => {
   );
 
   test(
+    '#1 suggestions: a pins write that keeps the original-language pin does not reopen the session or drop its proposals',
+    { tag: ['@inc9', '@J5'] },
+    async ({ page }) => {
+      // The open adopts installed resources and backfills coverage into
+      // resources.json (D41, D64). That write once reopened the session, and
+      // a Suggest reply in flight was dropped (2026-10-06 J5 flake). Hold the
+      // write until Suggest has answered, then let it land.
+      writePinsWithOriginal();
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      let held = false;
+      await page.route(
+        (url) => url.searchParams.get('ipath') === 'checking/resources.json' && url.search.includes('update_ingredients'),
+        async (route) => {
+          if (route.request().method() === 'POST') {
+            held = true;
+            await gate;
+          }
+          await route.continue();
+        },
+      );
+      await openAlign(page);
+      const toggle = page.getByTestId('align-suggest-switch');
+      if (!(await toggle.isChecked())) await toggle.click();
+      await expect(page.getByTestId('align-suggestions')).toHaveAttribute('data-status', 'ready', { timeout: 30_000 });
+      await page.getByTestId('align-suggest').click();
+      const chips = page.locator('[data-testid^="align-suggested-"]');
+      const status = page.getByTestId('align-suggest-status');
+      const replied = async () => (await chips.count()) > 0 || (await status.innerText()).includes('Nothing to suggest');
+      await expect.poll(replied, { timeout: 15_000 }).toBe(true);
+      const shown = { chips: await chips.count(), status: await status.innerText() };
+      await expect.poll(() => held, { message: 'the open wrote resources.json', timeout: 10_000 }).toBe(true);
+      const written = page.waitForResponse((r) => r.request().method() === 'POST' && r.url().includes('update_ingredients'));
+      release();
+      expect((await written).ok()).toBe(true);
+      // A reopen shows within a few hundred ms (the flake's trace: 30 ms);
+      // watch for two seconds that the proposals still stand.
+      await page.waitForTimeout(2_000);
+      await expect(chips).toHaveCount(shown.chips);
+      await expect(status).toHaveText(shown.status);
+    },
+  );
+
+  test(
     '#516 suggestions grow with every saved verse: align verse A, open verse B, Suggest answers in 2 s and the row never says "Learning"',
     { tag: ['@inc9', '@J5'] },
     async ({ page }, testInfo) => {
