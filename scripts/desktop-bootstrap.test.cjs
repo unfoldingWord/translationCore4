@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const vm = require('node:vm');
-const { appResourcesDir, bindPackagedResources, bootstrap, profileDirectory, shouldBindPackagedResources } = require('./desktop-bootstrap.cjs');
+const { appResourcesDir, bindPackagedResources, bootstrap, missingWindowsServerRuntime, profileDirectory, shouldBindPackagedResources } = require('./desktop-bootstrap.cjs');
 
 const repo = path.resolve(__dirname, '..');
 const recipe = fs.readFileSync(path.join(__dirname, 'package-desktop.zsh'), 'utf8');
@@ -44,7 +44,7 @@ function stageProduct(options, shortName = 'tc4') {
 // `userData` and `encryption` (#366): the fake `safeStorage` — a reversible
 // transform behind a marker, never the clear text — and the directory the
 // token file lives in, so a second start can read what the first kept.
-function runDesktopMain({ platform = 'linux', lock = true, startServer, bindError = false, printError = false, userData = os.tmpdir(), encryption = true, backend = 'gnome_libsecret' } = {}) {
+function runDesktopMain({ platform = 'linux', lock = true, startServer, bindError = false, printError = false, runtimeMissing = false, userData = os.tmpdir(), encryption = true, backend = 'gnome_libsecret' } = {}) {
   const events = [];
   const handlers = {};
   const windows = [];
@@ -123,6 +123,10 @@ function runDesktopMain({ platform = 'linux', lock = true, startServer, bindErro
     shouldBindPackagedResources: (value) => {
       events.push('shouldBind:' + (value ?? 'undefined'));
       return value !== 'false';
+    },
+    missingWindowsServerRuntime: () => {
+      events.push('runtime');
+      return runtimeMissing ? 'install the Microsoft Visual C++ Redistributable (x64)' : null;
     },
     bindPackagedResources: () => {
       events.push('bind');
@@ -301,17 +305,22 @@ test('the packaged entry point is valid, ordered, and preserves its launch contr
   assert.doesNotThrow(() => new vm.Script(desktopMain));
 
   const linux = runDesktopMain();
-  assert.deepEqual(linux.events, ['lock', 'switch:disable-dev-shm-usage', 'handle:export:pdf', 'handle:token:keep', 'handle:token:read', 'handle:token:forget', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'bind', 'bootstrap', 'upstream']);
+  assert.deepEqual(linux.events, ['lock', 'switch:disable-dev-shm-usage', 'handle:export:pdf', 'handle:token:keep', 'handle:token:read', 'handle:token:forget', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'runtime', 'bind', 'bootstrap', 'upstream']);
   const mac = runDesktopMain({ platform: 'darwin' });
-  assert.deepEqual(mac.events, ['lock', 'handle:export:pdf', 'handle:token:keep', 'handle:token:read', 'handle:token:forget', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'bind', 'bootstrap', 'upstream']);
+  assert.deepEqual(mac.events, ['lock', 'handle:export:pdf', 'handle:token:keep', 'handle:token:read', 'handle:token:forget', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'runtime', 'bind', 'bootstrap', 'upstream']);
   const windows = runDesktopMain({ platform: 'win32' });
-  assert.deepEqual(windows.events, ['setAppUserModelId', 'lock', 'handle:export:pdf', 'handle:token:keep', 'handle:token:read', 'handle:token:forget', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'bind', 'bootstrap', 'upstream']);
+  assert.deepEqual(windows.events, ['setAppUserModelId', 'lock', 'handle:export:pdf', 'handle:token:keep', 'handle:token:read', 'handle:token:forget', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'runtime', 'bind', 'bootstrap', 'upstream']);
   const external = runDesktopMain({ startServer: 'false' });
   assert.deepEqual(external.events, ['lock', 'switch:disable-dev-shm-usage', 'handle:export:pdf', 'handle:token:keep', 'handle:token:read', 'handle:token:forget', 'on:browser-window-created', 'on:second-instance', 'shouldBind:false', 'upstream']);
   const second = runDesktopMain({ lock: false });
   assert.deepEqual(second.events, ['lock', 'quit']);
   const failed = runDesktopMain({ bindError: true });
-  assert.deepEqual(failed.events, ['lock', 'switch:disable-dev-shm-usage', 'handle:export:pdf', 'handle:token:keep', 'handle:token:read', 'handle:token:forget', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'bind', 'errorBox', 'exit:1']);
+  assert.deepEqual(failed.events, ['lock', 'switch:disable-dev-shm-usage', 'handle:export:pdf', 'handle:token:keep', 'handle:token:read', 'handle:token:forget', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'runtime', 'bind', 'errorBox', 'exit:1']);
+  // #284: a Windows copy that cannot run bin\server.exe stops at the
+  // prerequisite message, before any profile write and before upstream
+  // startup can show the opaque "backend could not be started".
+  const noRuntime = runDesktopMain({ platform: 'win32', runtimeMissing: true });
+  assert.deepEqual(noRuntime.events, ['setAppUserModelId', 'lock', 'handle:export:pdf', 'handle:token:keep', 'handle:token:read', 'handle:token:forget', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'runtime', 'errorBox', 'exit:1']);
 
   linux.handlers['second-instance']();
   assert.deepEqual(linux.events.slice(-2), ['restore', 'focus']);
@@ -328,6 +337,18 @@ test('the packaged entry point is valid, ordered, and preserves its launch contr
   assert.match(recipe, /ELECTRON_RUN_AS_NODE=1 "\$ELECTRON_NODE" "\$\(cygpath -m "\$SMOKE_JOURNAL"\)"/);
   assert.match(recipe, /build-smoke-journal\.cjs/);
   assert.match(recipe, /run_api_smoke obs-readback/);
+
+  // #284: the recipe stages the VC++ CRT beside server.exe from the build
+  // toolchain's own redist (vswhere finds it), and refuses a Windows payload
+  // without vcruntime140.dll; the entry point runs the runtime preflight; the
+  // shipped installed smoke fails when the payload lost the runtime, so CI
+  // cannot stay green while a clean machine fails.
+  assert.match(desktopMain, /missingWindowsServerRuntime/);
+  assert.match(recipe, /vswhere\.exe/);
+  assert.match(recipe, /Microsoft\.VC14\*\.CRT/);
+  assert.match(recipe, /vcruntime140\.dll/);
+  const installedSmoke = fs.readFileSync(path.join(__dirname, 'smoke-installed.ps1'), 'utf8');
+  assert.match(installedSmoke, /bin\\vcruntime140\.dll/);
 });
 
 test('the PDF bridge prints the document in a hidden window and always removes the window and the temporary file', async () => {
@@ -498,6 +519,45 @@ test('a window-open request goes to the system browser for a web address, and is
   assert.equal(handler({ url: 'https://qa.door43.org/facilitator/tit' }).action, 'deny');
   assert.equal(handler({ url: 'file:///etc/passwd' }).action, 'deny');
   assert.deepEqual(main.events.filter((e) => e.startsWith('openExternal:')), ['openExternal:https://qa.door43.org/facilitator/tit']);
+});
+
+// #284: the MSVC-built server.exe needs VCRUNTIME140.dll; a clean Windows
+// install has none (STATUS_DLL_NOT_FOUND on alpha.6). The ways this can fail,
+// written before the code: the check misses a machine with no runtime
+// anywhere, so the pilot still gets the opaque template error; it fires
+// although the payload carries the DLL app-local, or although Windows has the
+// system-wide redistributable, telling pilots to install what they have; it
+// fires on macOS or Linux; a machine without %SystemRoot% crashes the check;
+// the message does not name the DLL and the official download, so the pilot
+// cannot act on it.
+test('the Windows runtime preflight blocks only a win32 copy with no CRT anywhere, and names the DLL and the download', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-crt-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const resourcesDir = path.join(dir, 'bundle');
+  const systemRoot = path.join(dir, 'Windows');
+  fs.mkdirSync(path.join(systemRoot, 'System32'), { recursive: true });
+
+  // No runtime anywhere: the message names the DLL and the official download.
+  const message = missingWindowsServerRuntime({ resourcesDir, platform: 'win32', systemRoot });
+  assert.match(message, /VCRUNTIME140\.dll/i);
+  assert.match(message, /https:\/\/aka\.ms\/vs\/17\/release\/vc_redist\.x64\.exe/);
+  // A machine without %SystemRoot% still gets the message, not a crash.
+  assert.match(missingWindowsServerRuntime({ resourcesDir, platform: 'win32', systemRoot: null }), /VCRUNTIME140\.dll/i);
+
+  // Not Windows: never a message, even with nothing staged.
+  for (const platform of ['darwin', 'linux']) {
+    assert.equal(missingWindowsServerRuntime({ resourcesDir, platform, systemRoot }), null);
+  }
+
+  // The system-wide redistributable alone is enough.
+  fs.writeFileSync(path.join(systemRoot, 'System32', 'vcruntime140.dll'), '');
+  assert.equal(missingWindowsServerRuntime({ resourcesDir, platform: 'win32', systemRoot }), null);
+  fs.rmSync(path.join(systemRoot, 'System32', 'vcruntime140.dll'));
+
+  // The app-local DLL alone is enough (the shipped prerequisite path, #284).
+  fs.mkdirSync(path.join(resourcesDir, 'bin'), { recursive: true });
+  fs.writeFileSync(path.join(resourcesDir, 'bin', 'vcruntime140.dll'), '');
+  assert.equal(missingWindowsServerRuntime({ resourcesDir, platform: 'win32', systemRoot: null }), null);
 });
 
 test('external-server mode is the one explicit selector/profile escape hatch', () => {

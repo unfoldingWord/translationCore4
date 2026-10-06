@@ -44,3 +44,8 @@ Name: "{autoprograms}\translationCore4"; Filename: "{app}\electronite\electron.e
 Name: "{autodesktop}\translationCore4"; Filename: "{app}\electronite\electron.exe"; Parameters: """{app}\electron"""; WorkingDir: "{app}"; IconFilename: "{app}\icon.ico"; AppUserModelID: "org.unfoldingword.translationcore4"; Tasks: desktopicon
 ; No Run or UninstallDelete section: launch as the user from Start, and leave
 ; their projects/settings/resources outside {app} intact on uninstall.
+; No vc_redist [Run] step either (#284): the payload carries the VC++ CRT
+; app-local in bin\ beside server.exe (package-desktop.zsh stages it and
+; refuses to build without it), so the server starts on a machine without the
+; system-wide redistributable, and the installer keeps PrivilegesRequired=lowest
+; honest — vc_redist.x64.exe would demand the elevation this installer avoids.
