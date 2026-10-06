@@ -143,6 +143,29 @@ try {
   $client = Invoke-WebRequest "http://127.0.0.1:$script:port/clients/uw-tc4" -UseBasicParsing
   if ($client.StatusCode -ne 200) { throw 'Client did not return 200' }
   Write-Host 'ok client: root 303, tC4 client 200'
+  # v4.0.0 bundles only the uw-tc4 client (#71, D89 point 7). ConvertFrom-Json is not
+  # a strict parser (it accepts comments, single quotes and trailing commas), so the
+  # body goes through JSON.parse under the shipped Electron in Node mode, the same
+  # check as smoke-installed.zsh. The body travels in a file, not on the command line.
+  $clientsBody = (Invoke-WebRequest "http://127.0.0.1:$script:port/api/list-clients" -UseBasicParsing -TimeoutSec 10).Content
+  $clientsFile = Join-Path $LogDir "list-clients-$stamp.json"
+  $clientsCheck = Join-Path $LogDir "client-set-$stamp.cjs"
+  [IO.File]::WriteAllText($clientsFile, "$clientsBody", [Text.UTF8Encoding]::new($false))
+  [IO.File]::WriteAllText($clientsCheck, @'
+const fs = require("fs");
+let clients;
+try { clients = JSON.parse(fs.readFileSync(process.argv[2], "utf8")); } catch (e) { fs.writeSync(1, "not JSON"); process.exit(1); }
+const seen = Array.isArray(clients) ? clients.map((c) => `${c && c.id} ${c && c.url}`) : [];
+fs.writeSync(1, JSON.stringify(seen));
+process.exit(seen.length === 1 && seen[0] === "uw-tc4 /clients/uw-tc4" ? 0 : 1);
+'@, [Text.UTF8Encoding]::new($false))
+  $env:ELECTRON_RUN_AS_NODE = '1'
+  try {
+    $out = Join-Path $LogDir "client-set-$stamp.log"
+    $p = Start-Process -FilePath $exe -ArgumentList @("`"$clientsCheck`"", "`"$clientsFile`"") -PassThru -Wait -RedirectStandardOutput $out -RedirectStandardError "$out.err"
+  } finally { Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue }
+  if ($p.ExitCode -ne 0) { throw "Client set: /api/list-clients must list only uw-tc4 at /clients/uw-tc4, got $(Get-Content -Raw -LiteralPath $out) from $clientsBody" }
+  Write-Host 'ok client set: /api/list-clients lists only uw-tc4'
   # VERSION GUARD (#326): the server must report this install's own
   # lib/product/product.json version and datetime, not another tree's.
   $product = Get-Content -Raw -LiteralPath "$AppDir\lib\product\product.json" | ConvertFrom-Json
