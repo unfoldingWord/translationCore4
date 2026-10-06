@@ -3,7 +3,8 @@
 # on the machine that will use it. It proves what a pilot does after installing:
 #
 #   1. the app starts through its own launcher and its bundled server answers;
-#   2. the server serves the tC4 client (303 from /, 200 from /clients/uw-tc4);
+#   2. the server serves the tC4 client (303 from /, 200 from /clients/uw-tc4) and
+#      lists no other client (GET /api/list-clients, #71);
 #   3. the project store is the tC4-owned path, never $HOME/pankosmia_repos (#70);
 #   4. the bundled source text (en_ult) is readable offline (source, #163);
 #   5. the bundled story 1/frame 1 image decodes locally while net is disabled;
@@ -222,6 +223,20 @@ case "$ROOT" in
   *) fail "root: expected 303 to /clients/uw-tc4, got '$ROOT'" ;;
 esac
 [ "$CLIENT" = "200" ] && ok "client: /clients/uw-tc4 200" || fail "client: /clients/uw-tc4 answered $CLIENT"
+# v4.0.0 bundles only the uw-tc4 client (#71, D89 point 7). GET /api/list-clients is
+# the server's JSON array of {id, …, url} (pankosmia-web 0.18.15); parse it, so a
+# malformed body fails instead of matching by pattern.
+CLIENTS=$(curl -s --max-time 10 "http://127.0.0.1:$PORT/api/list-clients") || fail "client set: curl exit $? on GET /api/list-clients"
+CLIENT_SET=$(node_run -e '
+let clients;
+const fs = require("fs");
+try { clients = JSON.parse(process.argv[1]); } catch (e) { fs.writeSync(1, "not JSON"); process.exit(1); }
+const seen = Array.isArray(clients) ? clients.map((c) => `${c && c.id} ${c && c.url}`) : [];
+fs.writeSync(1, JSON.stringify(seen));
+process.exit(seen.length === 1 && seen[0] === "uw-tc4 /clients/uw-tc4" ? 0 : 1);
+' "$CLIENTS") \
+  && ok "client set: /api/list-clients lists only uw-tc4" \
+  || fail "client set: /api/list-clients must list only uw-tc4 at /clients/uw-tc4, got ${CLIENT_SET:-nothing} from ${CLIENTS[1,200]}"
 
 # ---- 3: the project store (#70) --------------------------------------------------
 US="$SMOKE_HOME/pankosmia/tc4/user_settings.json"

@@ -13,7 +13,8 @@
 # and a deliberately poisoned APP_RESOURCES_DIR. The app must bind itself to
 # the current package before it self-spawns its
 # bundled server and serve the tC4 client (303 from /, 200 from
-# /clients/uw-tc4) before the zip is written.
+# /clients/uw-tc4, and only uw-tc4 in /api/list-clients, #71) before the zip is
+# written.
 #
 # Usage: zsh scripts/package-desktop.zsh [--debug] [--zip]
 #   (no flag)  production variant: isolated EMPTY project store.
@@ -341,6 +342,27 @@ fs.writeFileSync(p, JSON.stringify(j, null, 2) + '\n');
 cp "$REPO/dev-env/server/target/release/tc4_dev_server$EXE" "$PACK/bin/$SERVER_BIN"
 cp "$REPO/dev-env/server/Rocket.toml" "$PACK/Rocket.toml"
 
+if [ "$OS" = windows ]; then
+  # #284: the MSVC-built server.exe needs VCRUNTIME140.dll, and a clean
+  # Windows install has none (STATUS_DLL_NOT_FOUND on alpha.6 —
+  # docs/evidence/offline-run-2026-09-14.md). Ship the build toolchain's own
+  # x64 CRT app-local beside server.exe, so the zip and the installer both
+  # supply the runtime with no vc_redist install and no elevation
+  # (tc4.iss keeps PrivilegesRequired=lowest). vswhere ships with every
+  # Visual Studio / Build Tools install, and the MSVC toolchain is already a
+  # build requirement here.
+  VSWHERE="/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe"
+  [ -x "$VSWHERE" ] || { echo "FATAL: vswhere.exe not found — the MSVC toolchain's VC redist must supply the CRT (#284)" >&2; exit 1; }
+  CRT_DIR_W=$(MSYS2_ARG_CONV_EXCL='*' "$VSWHERE" -latest -products '*' -find 'VC\Redist\MSVC\*\x64\Microsoft.VC14*.CRT' | tr -d '\r' | sort -V | tail -1)
+  [ -n "$CRT_DIR_W" ] || { echo "FATAL: no x64 VC redist CRT directory in the Visual Studio install — add the VC.Redist component (#284)" >&2; exit 1; }
+  CRT_DIR=$(cygpath -u "$CRT_DIR_W")
+  MSVC_CRT_VERSION=${CRT_DIR:h:h:t}
+  # print -r: zsh echo would eat the \x64 path segment as a hex escape.
+  print -r -- "VC redist CRT $MSVC_CRT_VERSION: $CRT_DIR_W"
+  cp "$CRT_DIR"/*.dll "$PACK/bin/"
+  [ -f "$PACK/bin/vcruntime140.dll" ] || { echo "FATAL: vcruntime140.dll was not staged beside server.exe (#284)" >&2; exit 1; }
+fi
+
 # lib: runtime resources per the template's app_config.env asset map.
 cp -R "$BUILD/upstream/resource-core/runtime_resources" "$PACK/lib/app_resources"
 cp -R "$BUILD/upstream/resource-core/templates" "$PACK/lib/templates"
@@ -530,6 +552,10 @@ for entry in "${BUNDLED_RESOURCES[@]}"; do
   bundled_fields "$entry"
   echo "| $owner/$repo | ${tag:-commit ${sha[1,12]}} | CC BY-SA 4.0 | git.door43.org/$owner/$repo |" >> "$APPDIR/THIRD-PARTY-NOTICES.md"
 done
+if [ "$OS" = windows ]; then
+  # #284: the app-local VC++ CRT staged beside server.exe above.
+  echo "| Microsoft Visual C++ runtime DLLs (bin/, beside server.exe) | $MSVC_CRT_VERSION | Microsoft Visual Studio distributable code terms | https://aka.ms/vs/17/release/vc_redist.x64.exe |" >> "$APPDIR/THIRD-PARTY-NOTICES.md"
+fi
 cat >> "$APPDIR/THIRD-PARTY-NOTICES.md" <<NOTICES
 
 npm dependency license texts remain in electron/node_modules/*/LICENSE.
@@ -786,6 +812,30 @@ for (const [disk, liveKey] of [["version", "product_version"], ["datetime", "pro
 }
 console.log("version guard: /api/version matches lib/product/product.json (" + onDisk.version + ", " + onDisk.datetime + ")");
 ' "$(npath "$PACK/lib/product/product.json")" "$VERSION_BODY" || exit 1
+
+# CLIENT SET GUARD (#71, D89 point 7): v4.0.0 bundles only the uw-tc4 client.
+# The booted server must list exactly that one client. GET /api/list-clients
+# serializes the server's merged roster: app_setup.json clients, then the
+# user_settings my_clients (pankosmia-web 0.18.15 a83725b, endpoints/clients.rs
+# list_clients and utils/bootstrap.rs merged_clients, read 2026-10-05).
+CLIENTS_BODY=$("$CURL" -s --max-time 5 "http://127.0.0.1:$SMOKE_PORT/api/list-clients") || {
+  echo "CLIENT SET GUARD FAILED: curl exit $? on GET /api/list-clients" >&2; exit 1; }
+node -e '
+const body = process.argv[1];
+let clients;
+try {
+  clients = JSON.parse(body);
+} catch (e) {
+  console.error(`CLIENT SET GUARD FAILED: /api/list-clients is not JSON: ${body.slice(0, 200)}`);
+  process.exit(1);
+}
+const seen = Array.isArray(clients) ? clients.map((c) => `${c && c.id} ${c && c.url}`) : [];
+if (seen.length !== 1 || seen[0] !== "uw-tc4 /clients/uw-tc4") {
+  console.error(`CLIENT SET GUARD FAILED: /api/list-clients must list only uw-tc4 at /clients/uw-tc4, got ${JSON.stringify(seen)}`);
+  process.exit(1);
+}
+console.log("client set guard: /api/list-clients lists only uw-tc4 (/clients/uw-tc4)");
+' "$CLIENTS_BODY" || exit 1
 
 # OBS regression (#347/#348): first read the platform-created bytes BEFORE any
 # client seed write. This probe is deliberately separate from the lifecycle

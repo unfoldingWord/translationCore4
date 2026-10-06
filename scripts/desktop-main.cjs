@@ -139,6 +139,15 @@ function start() {
         resourcesDir: require('path').join(__dirname, '..'),
         home: require('os').homedir(),
       };
+      // #284: a Windows copy whose server cannot load the VC++ runtime stops
+      // here, with the prerequisite named, before any profile write and
+      // before the template can show "The backend could not be started."
+      const missingRuntime = bootstrap.missingWindowsServerRuntime(options);
+      if (missingRuntime) {
+        require('electron').dialog.showErrorBox('translationCore4 could not start', missingRuntime);
+        app.exit(1);
+        return;
+      }
       // Bind the process and any existing profile before upstream startup
       // captures APP_RESOURCES_DIR. All platforms publish resource releases
       // and their install records under this same singleton lock (#528).

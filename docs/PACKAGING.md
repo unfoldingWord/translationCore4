@@ -219,6 +219,8 @@ Steps, in order:
    with a fresh `HOME` and no app-specific environment overrides. The app
    must self-spawn its bundled server (first free port from 19119) and serve
    `303` from `/` to `/clients/uw-tc4`, then `200` from the client page. The
+   client set guard (#71, D89 point 7) then requires `GET /api/list-clients` to
+   list one client only: `uw-tc4` at `/clients/uw-tc4`. The
    working directory must appear under the fresh `$HOME/pankosmia/tc4`, and
    the #70 store guard must pass (see "Project-store isolation").
 8. Re-verify the Mac signature after execution, build the production installer, and zip
@@ -413,7 +415,7 @@ the debug variant). That folder holds:
 | `start-tc4.cmd` | portable zip launcher; installed shortcuts launch Electron directly |
 | `electronite\` | the unpacked Electronite release (`electron.exe`, Chromium data) |
 | `electron\` | the template startup files plus `tc4-main.js` (the #4 single-instance guard) |
-| `bin\server.exe` | the pinned pankosmia-web server; the template's startup script spawns `bin\server.exe` on Windows |
+| `bin\` | `server.exe`, the pinned pankosmia-web server (the template's startup script spawns `bin\server.exe` on Windows), plus the Microsoft VC++ runtime DLLs it needs (`vcruntime140.dll` and the rest of the redist CRT, #284) |
 | `lib\`, `resources\` | clients, app resources, templates, webfonts; the bundled English suite (#163) |
 | `Rocket.toml`, `LICENSE`, `licenses\`, `THIRD-PARTY-NOTICES.md`, `BUILD-MANIFEST.json` | the same as macOS and Linux |
 | `smoke-installed.ps1`, `smoke-api.cjs`, `smoke-journal.cjs` | post-install proof using PowerShell and the bundled runtime; the latter is the bundled production `JournalingStore` lifecycle |
@@ -445,6 +447,23 @@ and portable production copies use the same store. Close one before opening
 the other. The debug zip uses its separate debug store; seeding the debug
 sample requires Git. The production application needs no separate Node, Rust
 or Git installation.
+
+**Visual C++ runtime (#284).** `bin\server.exe` is an MSVC build and needs
+`VCRUNTIME140.dll`. A stock Windows installation does not have that DLL; it
+comes with the
+[Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe).
+Both the installer and the zip ship the runtime themselves: the build stages
+the redist CRT DLLs app-local in `bin\` beside `server.exe`, and refuses to
+package without them. Both paths then start on a Windows without the VC++
+runtime [VERIFIED — `evidence/windows-clean-machine-284-2026-10-06.md`]. The
+release assets of v4.0.0-rc.1 and earlier do not
+carry the DLLs [VERIFIED — `scripts/package-desktop.zsh` at the tags
+v4.0.0-alpha.6 (`7227cb8`), v4.0.0-alpha.7 (`95238c3`) and v4.0.0-rc.1
+(`6f878aa`) stages no DLL; read 2026-10-06]. On a machine without them,
+install the redistributable from the link above (witness for the alpha.6 zip:
+`docs/evidence/offline-run-2026-09-14.md`). If a launch stops with a
+message that names `VCRUNTIME140.dll`, this copy lost `bin\vcruntime140.dll`:
+re-extract the complete zip, or install the redistributable.
 
 The project store is `%USERPROFILE%\pankosmia\tc4-projects` (#70); the server's
 working directory is `%USERPROFILE%\pankosmia\tc4`. The shared bootstrap runs
@@ -514,7 +533,13 @@ checks reinstall/uninstall preserve a project that it wrote through the app.
 - **CI is Windows Server 2025.** The installed-app job uses a fresh runner and
   profile, validates shortcuts and project persistence, and removes developer
   tools from PATH. It does not represent every DLL/runtime configuration of a
-  clean Windows 11 installation.
+  clean Windows 11 installation. In particular the runner image already has
+  the system-wide VC++ redistributable, so a boot there cannot witness the
+  clean-machine `VCRUNTIME140.dll` failure (#284). Instead, the build fails
+  when the CRT is not staged into `bin\`, and the shipped
+  `smoke-installed.ps1` fails when `bin\vcruntime140.dll` is missing from the
+  payload. The clean-machine witness for the installer and the zip is
+  `docs/evidence/windows-clean-machine-284-2026-10-06.md` (#284).
 - **Witnessed on a real machine, one step open.** Windows 10 Pro 10.0.19045,
   no developer checkout, artifact 10056395396 (run 34227273789, head `8fbb62f`,
   188,346,325 bytes, sha256 `20582ef6…8d0cba`): unpacked once, launched,
@@ -547,7 +572,7 @@ Two smoke tests exist. They answer two different questions.
 |---|---|---|
 | Where | `scripts/package-desktop.zsh`, step 6/7, on the staged folder, before the zip is written | `smoke-installed.zsh`, shipped in the artifact folder; the source is `scripts/smoke-installed.zsh` |
 | Question | Can this artifact start on the build host? | Does the installed app work for a pilot? |
-| What it proves | The launcher self-spawns the server while the parent carries a deliberately stale `APP_RESOURCES_DIR`; `/` answers 303 to `/clients/uw-tc4` and the client 200; `/api/version` reports the staged `lib/product/product.json` version and datetime (#326); a second launch exits by itself (#4); a pre-seed OBS probe compares all 50 platform-created bytes before any client write (so a stale tree cannot be masked); the HTTP smoke then creates all fifty LF seed stories and compares HTTP, disk, and Git HEAD bytes, edits/checkpoints one story, and retains it after a real restart; the bundled real-client harness runs `JournalingStore`, lists the OBS project on Home, edits/checkpoints/reopens it, and runs the journal fold verifier; `repo_dir` is the isolated store and holds the seeded English and OBS suite (#70, #163, #288) | The same start and client checks on the INSTALLED folder; the parent and an existing saved profile deliberately point at a stale resource tree, then both selectors are rebound to the installed `lib/`; `/api/version` reports the installed `lib/product/product.json` version and datetime (#326); the store path (#70); bundled source text is readable offline (`source`, #163); with the platform net gate disabled, OBS story 1/frame 1 is read only from the local bundled image pack and decoded as a 640×360 JPEG; a fresh-project pre-seed probe and the bundled real-client `JournalingStore` lifecycle both pass after the contaminated-profile restart; an OBS project is created and its fifty stories are checked byte-for-byte across HTTP, disk, and Git; a Bible project is created and one verse is persisted; after restart, its server-generated Scripture Burrito ZIP has a root `metadata.json` that matches the raw metadata route and contains ingredient files; both smoke projects are removed. The transcript records artifact version, commit, host platform and build date from `BUILD-MANIFEST.json`. |
+| What it proves | The launcher self-spawns the server while the parent carries a deliberately stale `APP_RESOURCES_DIR`; `/` answers 303 to `/clients/uw-tc4` and the client 200; `/api/version` reports the staged `lib/product/product.json` version and datetime (#326); `/api/list-clients` lists only `uw-tc4` (#71); a second launch exits by itself (#4); a pre-seed OBS probe compares all 50 platform-created bytes before any client write (so a stale tree cannot be masked); the HTTP smoke then creates all fifty LF seed stories and compares HTTP, disk, and Git HEAD bytes, edits/checkpoints one story, and retains it after a real restart; the bundled real-client harness runs `JournalingStore`, lists the OBS project on Home, edits/checkpoints/reopens it, and runs the journal fold verifier; `repo_dir` is the isolated store and holds the seeded English and OBS suite (#70, #163, #288) | The same start, client and client-set checks on the INSTALLED folder; the parent and an existing saved profile deliberately point at a stale resource tree, then both selectors are rebound to the installed `lib/`; `/api/version` reports the installed `lib/product/product.json` version and datetime (#326); the store path (#70); bundled source text is readable offline (`source`, #163); with the platform net gate disabled, OBS story 1/frame 1 is read only from the local bundled image pack and decoded as a 640×360 JPEG; a fresh-project pre-seed probe and the bundled real-client `JournalingStore` lifecycle both pass after the contaminated-profile restart; an OBS project is created and its fifty stories are checked byte-for-byte across HTTP, disk, and Git; a Bible project is created and one verse is persisted; after restart, its server-generated Scripture Burrito ZIP has a root `metadata.json` that matches the raw metadata route and contains ingredient files; both smoke projects are removed. The transcript records artifact version, commit, host platform and build date from `BUILD-MANIFEST.json`. |
 | Runs | In every build, in CI and by hand | On a fresh CI runner after every build (`smoke-macos-arm64`, `smoke-linux-x64` in `package-desktop.yml`), and by a person on a clean machine |
 | Fails the build | Yes | The CI job fails; the tag rule (epic #59) needs the run to pass on each platform before a pre-release tags |
 

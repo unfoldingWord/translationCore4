@@ -67,5 +67,8 @@
     "vite": "6.4.3",
     "vite-plugin-node-polyfills": "0.24.0",
     "vitest": "4.1.10"
+  },
+  "overrides": {
+    "shell-quote": "1.12.0"
   }
 }
