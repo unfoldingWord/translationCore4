@@ -9,8 +9,8 @@
 // a manual link through the same save path.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bootstrapVerse, linkWord, stampTargetVerse } from '../src/data/align/edit';
-import { linksFor, rebindSuggestions, sessionInputFor, trainingVersesFor } from '../src/data/align/suggest';
-import { boundCorpus, predictLinks, trainModel } from '../src/data/align/suggestEngine';
+import { RETRAIN_BUDGET, crossesRetrainBudget, linksFor, rebindSuggestions, sessionInputFor, trainingVerseOf, trainingVersesFor } from '../src/data/align/suggest';
+import { MIN_BOOST_VERSES, appendVerse, boundCorpus, predictLinks, trainModel } from '../src/data/align/suggestEngine';
 import { handle } from '../src/data/align/suggestWorker';
 import type { AlignedWord, AlignmentFile, AlignmentVerseRecord } from '../src/data/align/zaln';
 
@@ -176,22 +176,75 @@ describe('#1 engine — trains on confirmed alignments, proposes for the bank, n
   it('every confirmed verse is in the memory; the booster fits the capped share', async () => {
     const f = file({ '1': aligned11(), '4': aligned14() });
     const verses = trainingVersesFor('TIT', f, { '1:1': V11.text, '1:4': V14.text });
-    // Force the cap to keep one verse for boosting; the other still joins memory.
-    const trained = await trainModel('nt', [...verses, ...verses.map((v) => ({ ...v, ref: `${v.ref}b`, source: new Array(400).fill(v.source[0]).map((s, i) => ({ ...s, position: i })), target: new Array(300).fill(v.target[0]).map((t, i) => ({ ...t, position: i })) }))]);
-    expect(trained.verses).toBe(4);
-    expect(trained.boosted).toBeLessThan(4);
+    // Five verses, so the booster is fitted. The cap keeps the three small
+    // ones for it; the two oversize ones still join the memory.
+    const small = [...verses, { ...verses[0], ref: 'TIT 1:1c' }];
+    const trained = await trainModel('nt', [...small, ...verses.map((v) => ({ ...v, ref: `${v.ref}b`, source: new Array(400).fill(v.source[0]).map((s, i) => ({ ...s, position: i })), target: new Array(300).fill(v.target[0]).map((t, i) => ({ ...t, position: i })) }))]);
+    expect(trained.verses).toBe(5);
+    expect(trained.boosted).toBe(3);
   });
 
-  it('the worker step: train then suggest per testament; an untrained testament answers with no links', async () => {
+  it('the worker steps: load, then suggest per testament; a testament with no model answers with no links', async () => {
     const f = file({ '1': aligned11(), '4': aligned14() });
     const verses = trainingVersesFor('TIT', f, { '1:1': V11.text, '1:4': V14.text });
-    const trained = await handle({ type: 'train', id: 1, testament: 'nt', verses });
-    expect(trained).toMatchObject({ type: 'trained', id: 1, testament: 'nt', verses: 2 });
+    const loaded = await handle({ type: 'load', id: 1, testament: 'nt', verses });
+    expect(loaded).toMatchObject({ type: 'memory', id: 1, testament: 'nt', verses: 2 });
     const r = bootstrapVerse('de Dios Padre', [V14.orig[1], V14.orig[2]], SOURCE);
     const nt = await handle({ type: 'suggest', id: 2, testament: 'nt', input: sessionInputFor(r, 'de Dios Padre'), ref: '1:4', session: 7 });
     expect(nt).toMatchObject({ type: 'suggestions', ref: '1:4', session: 7 }); // echoed: the reply binds to its verse and session
     expect((nt as { links: unknown[] }).links.length).toBeGreaterThan(0);
     const ot = await handle({ type: 'suggest', id: 3, testament: 'ot', input: sessionInputFor(r, 'de Dios Padre'), ref: '1:4', session: 7 });
     expect(ot).toMatchObject({ type: 'suggestions', id: 3, links: [] });
+  });
+});
+
+describe('#516 engine — the memory answers from the first verse; the booster is budgeted, never waited for', () => {
+  it('below MIN_BOOST_VERSES the model is memory-only and two aligned verses give at least one proposal', async () => {
+    const f = file({ '1': aligned11(), '4': aligned14() });
+    const verses = trainingVersesFor('TIT', f, { '1:1': V11.text, '1:4': V14.text });
+    expect(verses.length).toBeLessThan(MIN_BOOST_VERSES);
+    const trained = await trainModel('nt', verses);
+    expect(trained.verses).toBe(2);
+    expect(trained.boosted).toBe(0); // no booster fit was attempted
+    const r = bootstrapVerse('de Dios Padre', [V14.orig[1], V14.orig[2]], SOURCE);
+    const raw = predictLinks(trained, sessionInputFor(r, 'de Dios Padre'));
+    const links = linksFor(r, 'de Dios Padre', raw);
+    expect(links.length).toBeGreaterThan(0);
+  });
+
+  it('appendVerse puts a confirmed save into the memory at once; a re-save keeps the count', async () => {
+    const f = file({ '1': aligned11() });
+    const [v11] = trainingVersesFor('TIT', f, { '1:1': V11.text });
+    let trained = await trainModel('nt', [v11]);
+    expect(trained.verses).toBe(1);
+    const v14 = trainingVerseOf('TIT 1:4', aligned14(), V14.text)!;
+    trained = appendVerse(trained, v14);
+    expect(trained.verses).toBe(2);
+    // The appended verse answers on the NEXT predict, no training in between:
+    // Τίτῳ → Tito exists only in the appended verse's links.
+    const r = bootstrapVerse('A Tito', [V14.orig[0]], SOURCE);
+    const links = linksFor(r, 'A Tito', predictLinks(trained, sessionInputFor(r, 'A Tito')));
+    expect(links.some((l) => l.word.word === 'Tito')).toBe(true);
+    // A re-save of the same verse appends its current links, counted once.
+    trained = appendVerse(trained, v14, false);
+    expect(trained.verses).toBe(2);
+  });
+
+  it('trainingVerseOf derives one verse, and nothing from a verse with no links', () => {
+    expect(trainingVerseOf('TIT 1:1', aligned11(), V11.text)).toMatchObject({ ref: 'TIT 1:1' });
+    expect(trainingVerseOf('TIT 1:2', bootstrapVerse('Sin alinear', V11.orig, SOURCE), 'Sin alinear')).toBeNull();
+    expect(trainingVerseOf('TIT 1:1', aligned11(), '')).toBeNull();
+  });
+
+  it('crossesRetrainBudget is true only when a count first reaches a step of the budget', () => {
+    // The predicate alone. That the scheduler follows it — eight trainings
+    // for 1 100 saves — is test/align-suggest-scheduler.test.ts.
+    expect(RETRAIN_BUDGET).toEqual([10, 25, 50, 100, 250, 500, 1000]);
+    expect(crossesRetrainBudget(9, 10)).toBe(true);
+    expect(crossesRetrainBudget(10, 11)).toBe(false);
+    expect(crossesRetrainBudget(8, 12)).toBe(true); // a count that jumps over a step reached it
+    expect(crossesRetrainBudget(600, 601)).toBe(false);
+    expect(crossesRetrainBudget(999, 1000)).toBe(true);
+    expect(crossesRetrainBudget(1000, 1001)).toBe(false); // above the last step: never again
   });
 });

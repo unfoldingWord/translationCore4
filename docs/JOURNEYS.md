@@ -133,8 +133,12 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   manual link, and a suggestion that was shown and not accepted leaves no trace in the journal
   or the sidecar.
 - MUST NOT: write an unconfirmed suggestion; count a verse as resolved or a suggested word as
-  placed while a suggestion stands; store the suggestions switch in the project.
-- Proof: `e2e/j05-align-verse.spec.ts`, LTR and RTL; the suggestion cases are added by #1.
+  placed while a suggestion stands; store the suggestions switch in the project; make the
+  translator wait for training after a save (#516, D93 — a saved verse joins the engine's
+  memory at once, Suggest keeps answering while any retrain runs in the background).
+- Proof: `e2e/j05-align-verse.spec.ts`, LTR and RTL; the suggestion cases are added by #1,
+  the growth case (align verse A, open verse B, Suggest answers in 2 s with no "learning"
+  wait) by #516.
   Pending: a direct before-and-after compare of the book bytes (same as J4). Owner: shipped
   alpha.2 (manual form); revised end state shipped alpha.6 (#262: #255, #134, #213, #1).
 

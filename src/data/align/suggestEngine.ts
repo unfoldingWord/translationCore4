@@ -1,18 +1,27 @@
 // suggestEngine.ts — the wordMAP + uw-wordmapbooster engine behind alignment
-// suggestions (#1, D72 point 3). Runs inside suggestWorker.ts; imported
-// directly by the unit tests. gatewayEdit's `enhanced-word-aligner-rcl` is the
-// reference for HOW (owner ruling 2026-08-13): its model class, hyper-
-// parameters and defaults are adopted as-is [VERIFIED — enhanced-word-aligner-rcl
-// 1.4.8 dist/workers/utils/AlignmentTrainerUtils.js createTrainedWordAlignerModel;
+// suggestions (#1, D72 point 3; #516, D93). Runs inside the two suggestion workers;
+// imported directly by the unit tests. gatewayEdit's `enhanced-word-aligner-rcl`
+// is a reference to start from, not a design to copy (owner ruling 2026-09-24,
+// #400; amends the 2026-08-13 "adopted as-is" ruling). From it we keep the
+// model class and defaults [VERIFIED — enhanced-word-aligner-rcl 1.4.8
+// dist/workers/utils/AlignmentTrainerUtils.js createTrainedWordAlignerModel;
 // dist/common/constants.js; 2026-09-12]: `MorphJLBoostWordMap`, sourceNgramLength 3,
 // targetNgramLength 5, train_steps 1000, `add_alignments_2`, one whole-verse
 // suggestion (maxSuggestions 1), no confidence cut, training bounded by a
 // complexity cap (100 000 for the NT model, 50 000 for the OT model).
+// Where we differ (owner ruling 2026-10-02, #516, measured in
+// docs/evidence/align-suggestions-growth-2026-10-02.md): every confirmed save
+// appends its verse to the alignment memory (`appendVerse`), the booster
+// retrains only on a budget, and before the booster can fit — fewer than
+// MIN_BOOST_VERSES, or a corpus it rejects — plain wordMAP answers from the
+// same memory (`predictLinks` falls back to `WordMap.predict`). A booster fitted
+// in the background joins the standing memory (`attachBooster`); the memory is
+// never rebuilt in a session.
 //
 // One instance per testament: the alignment memory generalizes through the
 // shared original-language text, and Hebrew memory cannot inform a Greek verse.
 import { MorphJLBoostWordMap, updateTokenLocations } from 'uw-wordmapbooster';
-import { Alignment, Ngram } from 'wordmap';
+import WordMap, { Alignment, Ngram } from 'wordmap';
 import { Token } from 'wordmap-lexer';
 import type { PositionLink, RawLink, SessionInput, Testament, TokenSeed, TrainingVerse } from './suggest';
 
@@ -52,29 +61,78 @@ export const boundCorpus = (verses: TrainingVerse[], cap: number): TrainingVerse
   return kept;
 };
 
+/** Below this many aligned verses the booster is not asked to fit at all —
+ * gatewayEdit requires more than four, and the 2026-10-02 measurement shows
+ * plain wordMAP memory answers from the first verse (#516). */
+export const MIN_BOOST_VERSES = 5;
+
 export interface TrainedModel {
   testament: Testament;
-  /** Verses the model learned from (all of them sit in its alignment memory);
-   * 0 when it could not be trained. */
+  /** Verses in the model's alignment memory (every confirmed verse, appended
+   * ones included); 0 when the model knows nothing. */
   verses: number;
-  /** The subset the booster was fitted on — the complexity cap's share. */
+  /** The subset the booster was fitted on — the complexity cap's share; 0 for
+   * a memory-only model (fewer than MIN_BOOST_VERSES, or `tooFew`). */
   boosted?: number;
   /** True when the corpus had aligned verses but the booster could not fit
-   * them (too few for its correct/incorrect split) — "align more first". */
+   * them (too few for its correct/incorrect split) — the model then answers
+   * from wordMAP memory alone. */
   tooFew?: boolean;
   model: MorphJLBoostWordMap;
 }
 
+const wordMapOf = (model: MorphJLBoostWordMap) =>
+  (model as unknown as { wordMap: WordMap }).wordMap;
+
+const appendToMemory = (model: MorphJLBoostWordMap, v: TrainingVerse) => {
+  const s = tokens(v.source);
+  const t = tokens(v.target);
+  wordMapOf(model).appendAlignmentMemory(v.links.map((l) => alignment(s, t, l)));
+};
+
+/** A model that knows nothing yet — the answering worker's starting point for
+ * a testament (#516). */
+export const emptyModel = (testament: Testament): TrainedModel => ({
+  testament,
+  verses: 0,
+  boosted: 0,
+  model: new MorphJLBoostWordMap(MODEL_OPTIONS),
+});
+
+/**
+ * One confirmed save joins the model's alignment memory at once — wordMAP's
+ * `appendAlignmentMemory`, the same call training makes for the verses the
+ * complexity cap trims (#516; ~0.14 ms per verse per the 2026-10-02
+ * measurement). The booster is untouched: a stale booster over a fresh memory
+ * tracks a retrained one within noise up to ~2 500 verses.
+ * `isNew` says whether the verse counts (a re-save of a verse already in
+ * memory appends its current links — the engine stays current — but the old
+ * links stay beside them until the engine is built again from the project —
+ * the next time the project opens or the switch goes on — and the verse is not
+ * counted twice).
+ */
+export const appendVerse = (trained: TrainedModel, verse: TrainingVerse, isNew = true): TrainedModel => {
+  appendToMemory(trained.model, verse);
+  return { ...trained, verses: trained.verses + (isNew ? 1 : 0) };
+};
+
 /**
  * Train one testament's model on the project's confirmed alignments.
+ * With fewer than MIN_BOOST_VERSES the booster is not asked at all — the
+ * model is memory-only and plain wordMAP answers (#516). From five verses up,
  * `add_alignments_2` (gatewayEdit's choice) boosts on the second half of the
- * verses over memory of the first; with ONE aligned verse that half is empty
- * and the booster reads `xy_data[0]` of nothing [VERIFIED — uw-wordmapbooster
- * 1.0.5, JLBoost.train, on the rig's seeded project 2026-09-12]. One verse
- * therefore boosts over all of it (`add_alignments_3`), and a corpus the
- * booster still cannot fit reports `tooFew` instead of throwing.
+ * verses over memory of the first; a corpus the booster still cannot fit
+ * falls back to the same memory-only model instead of throwing.
  */
 export const trainModel = async (testament: Testament, verses: TrainingVerse[]): Promise<TrainedModel> => {
+  if (!verses.length) return { testament, verses: 0, model: new MorphJLBoostWordMap(MODEL_OPTIONS) };
+  // Memory-only: every verse into the alignment memory, no booster fit.
+  const memoryOnly = (tooFew?: boolean): TrainedModel => {
+    const model = new MorphJLBoostWordMap(MODEL_OPTIONS);
+    for (const v of verses) appendToMemory(model, v);
+    return { testament, verses: verses.length, boosted: 0, ...(tooFew ? { tooFew } : {}), model };
+  };
+  if (verses.length < MIN_BOOST_VERSES) return memoryOnly();
   const kept = boundCorpus(verses, MAX_COMPLEXITY[testament]);
   const source: { [ref: string]: Token[] } = {};
   const target: { [ref: string]: Token[] } = {};
@@ -85,39 +143,74 @@ export const trainModel = async (testament: Testament, verses: TrainingVerse[]):
     alignments[v.ref] = v.links.map((l) => alignment(source[v.ref], target[v.ref], l));
   }
   const model = new MorphJLBoostWordMap(MODEL_OPTIONS);
-  if (!kept.length) return { testament, verses: 0, model };
   try {
     if (kept.length >= 2) await model.add_alignments_2(source, target, alignments);
     else await model.add_alignments_3(source, target, alignments);
   } catch {
-    return { testament, verses: 0, tooFew: true, model };
+    // The booster rejected the corpus (too few rows for its split) — a fresh
+    // memory-only model on the SAME corpus answers instead; the partly-fed
+    // model is discarded so nothing is counted twice.
+    return memoryOnly(true);
   }
   // The verses the cap left out still count as what the translator confirmed:
   // they join the alignment memory (an index, no boosting), as gatewayEdit
   // does for its trimmed verses. Every confirmed alignment informs a
   // prediction; only the booster's fit is bounded.
-  const wordMap = (model as unknown as { wordMap: { appendAlignmentMemory: (a: Alignment | Alignment[]) => void } }).wordMap;
-  for (const v of verses.slice(kept.length)) {
-    const s = tokens(v.source);
-    const t = tokens(v.target);
-    wordMap.appendAlignmentMemory(v.links.map((l) => alignment(s, t, l)));
-  }
+  for (const v of verses.slice(kept.length)) appendToMemory(model, v);
   return { testament, verses: verses.length, boosted: kept.length, model };
 };
 
+/** A fitted booster as plain data, for the hand-over from the training worker
+ * to the worker that answers (#516): null for a memory-only model. The
+ * alignment memory does not travel — the answering worker keeps its own. */
+export interface PackedModel {
+  testament: Testament;
+  boosted: number;
+  tooFew?: boolean;
+  booster: unknown | null;
+}
+
+export const packModel = (trained: TrainedModel): PackedModel => ({
+  testament: trained.testament,
+  boosted: trained.boosted ?? 0,
+  ...(trained.tooFew ? { tooFew: true } : {}),
+  booster: trained.boosted ? trained.model.saveWithoutData() : null,
+});
+
 /**
- * One whole-verse suggestion for the open verse, given the links already
- * placed as context. An untrained model has no boosted scorer and cannot
- * predict [VERIFIED — uw-wordmapbooster 1.0.5 model_score on a null
- * jlboost_model throws]; the caller never asks it (a project with no
- * alignments has no suggestions).
+ * The fitted booster joins the standing model; its alignment memory is
+ * untouched. `saveWithoutData()` carries empty alignment and corpus lists, so
+ * `specificLoad()` adds nothing to the memory and only sets the booster
+ * [VERIFIED — uw-wordmapbooster 1.0.5 dist/boostwordmap_tools.js
+ * AbstractWordMapWrapper.saveWithoutData/specificLoad, MorphJLBoostWordMap.specificLoad;
+ * 2026-10-06]. A packed model with no booster leaves the standing one as it is:
+ * a booster fitted before still answers.
+ */
+export const attachBooster = (trained: TrainedModel, packed: PackedModel): TrainedModel => {
+  if (!packed.booster) return trained;
+  trained.model.specificLoad(packed.booster);
+  return { ...trained, boosted: packed.boosted };
+};
+
+/**
+ * One whole-verse suggestion for the open verse. A boosted model predicts
+ * through the booster, with the links already placed as context. A
+ * memory-only model answers with plain `WordMap.predict` on the same memory
+ * (#516) — the boosted path on an unfitted booster would throw [VERIFIED —
+ * uw-wordmapbooster 1.0.5 model_score on a null jlboost_model] — and that
+ * call takes no placed links [VERIFIED — wordmap 0.6.2 dist/WordMap.d.ts:
+ * predict(sourceSentence, targetSentence, maxSuggestions); 2026-10-05].
+ * `linksFor` (suggest.ts) proposes only words still in the bank, so a placed
+ * word is never proposed on either path. A model with nothing in memory
+ * proposes nothing.
  */
 export const predictLinks = (trained: TrainedModel, input: SessionInput): RawLink[] => {
   if (!trained.verses) return [];
   const source = tokens(input.source);
   const target = tokens(input.target);
-  const manual = input.manual.map((l) => alignment(source, target, l));
-  const suggestions = trained.model.predict(source, target, 1, manual);
+  const suggestions = trained.boosted
+    ? trained.model.predict(source, target, 1, input.manual.map((l) => alignment(source, target, l)))
+    : wordMapOf(trained.model).predict(source, target, 1);
   const out: RawLink[] = [];
   for (const s of suggestions) {
     for (const p of s.getPredictions()) {

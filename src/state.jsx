@@ -44,7 +44,8 @@ import {
 import { readTwArticle, readTaArticle } from './data/articles';
 import { revalidateAgainstDraft, resolutionWarning } from './data/revalidate';
 import { bootstrapVerse, linkWord, unlinkWord, moveWord, mergeAlignments, splitAlignment, stampTargetVerse, alignmentIsStale, reflowAlignment, settleDone, markDone } from './data/align/edit';
-import { linksFor, rebindSuggestions, sessionInputFor, trainingVersesFor } from './data/align/suggest';
+import { linksFor, rebindSuggestions, sessionInputFor, trainingVerseOf, trainingVersesFor } from './data/align/suggest';
+import { SuggestScheduler } from './data/align/suggestScheduler';
 import { consequencesOfGatewayChange, applyGatewayChange, completeLanguageSets, uncoveredByChange, sourcePanesForGateway, gatewaysCoveringProject } from './data/gatewayChange';
 import { carryOverDecisions } from './data/carryOver';
 import { applyTextUpgrade, applyUpgrade, invalidateAlignments, invalidatedTestaments, latestReleasesForSet, offerForSet, offerIsStale, repinOffer, textOfferIsStale, textOffers, textPinOf } from './data/upgrade';
@@ -498,9 +499,11 @@ const initial = () => ({
   draftUnits: {}, // repoPath -> 'section' | 'verse'
   alignSuggestions: {}, // #1: repoPath -> true when the suggestions switch is on (per client, never in the project)
   // #1: the suggestion engine's state for the open project — status 'off' |
-  // 'training' | 'ready' | 'none' | 'few' | 'error'; `testament` names the model
-  // the status is about (one model per original language, owner ruling 2026-09-12).
-  alignSuggest: { status: 'off', testament: null, verses: 0, error: null },
+  // 'reading' | 'ready' | 'none' | 'error'; `testament` names the model the
+  // status is about (one model per original language, owner ruling 2026-09-12).
+  // #516: the row is the scheduler's (SuggestRow in suggestScheduler.ts);
+  // `off` is set here, when the switch is off.
+  alignSuggest: { status: 'off', testament: null, verses: 0, boosted: false, error: null },
   lastEdit: null, // { repoPath, book, chapter, verse, snippet, at, mode?, tool? } — the Home Resume card; per-client settings, never the project. mode: 'read'|'draft'|'check'; tool only when mode is 'check'.
   tick: 0,
 });
@@ -3064,15 +3067,9 @@ export function AppProvider({ children }) {
   // #100: the align and check schedulers and the decision target registry.
   // saveRefs is THE list every drain, dispose and gate iterates.
   const alignSchedulerRef = useRef(null);
-  // #1: the suggestion engine's Web Worker (one per open project) and the
-  // request counter that lets a stale reply be ignored.
-  const suggestWorkerRef = useRef(null);
-  const suggestSeqRef = useRef(0);
-  const suggestRetrainRef = useRef(null);
-  // One training in flight at a time; a request that arrives meanwhile is
-  // remembered once and runs after (a training is minutes, not milliseconds).
-  const suggestTrainingRef = useRef(false);
-  const suggestPendingRef = useRef(false);
+  // #1, #516: the suggestion engine of the open project — the scheduler
+  // (suggestScheduler.ts) and its two Web Workers. Null while the switch is off.
+  const suggestRef = useRef(null);
   const checkSchedulerRef = useRef(null);
   const checkTargetsRef = useRef(new Map());
   const storySchedulerRef = useRef(null);
@@ -4509,6 +4506,8 @@ export function AppProvider({ children }) {
             (ref) => ref && texts[ref],
           ) ?? null;
         dispatch({ type: 'set', patch: { aligning: true, alignSession: null, alignVerse } });
+        // #516 (D93 point 3): the booster retrains each time the Align tool opens.
+        a.trainAlignSuggestions();
       },
 
       closeAlign: () => {
@@ -4592,8 +4591,9 @@ export function AppProvider({ children }) {
         dispatch({ type: 'set', patch: { alignSession: optimistic } });
         const [chapter, verse] = a2.ref.split(':');
         sched.markDirty(a2.book, chapter, verse, JSON.stringify(record));
-        // D72: the engine learns from every confirmed save.
-        a.retrainAlignSuggestionsSoon();
+        // D72 as amended by D93 (#516): the engine learns from every confirmed
+        // save — the verse joins the worker's memory; no retrain is waited for.
+        a.queueAlignSuggestionAppend(optimistic);
       },
 
       placeAlignWord: (cardIndex) => {
@@ -4641,141 +4641,143 @@ export function AppProvider({ children }) {
       },
 
       // ---- Alignment suggestions (#1, D72 point 3) --------------------------
-      // The engine runs in a Web Worker (suggestWorker.ts), one model per
+      // The engine runs in two Web Workers — suggestWorker.ts answers,
+      // suggestTrainWorker.ts trains (#516) — one model per
       // testament, trained on this project's own confirmed alignments. A
       // suggestion lives ONLY in alignSession.suggestions: it is never written,
       // never counted, and vanishes when the verse changes or the translator
       // rejects it. Confirming one is a linkWord edit like any other.
 
-      /** The worker for the open project — created on first use, dropped by
-       * stopAlignSuggestions (switch off) and by the project teardown. */
-      ensureSuggestWorker: () => {
-        if (suggestWorkerRef.current) return suggestWorkerRef.current;
-        const worker = new Worker(new URL('./data/align/suggestWorker.ts', import.meta.url), { type: 'module' });
-        worker.onmessage = (event) => a.onSuggestReply(event.data);
-        worker.onerror = (event) => {
-          dispatch({ type: 'set', patch: { alignSuggest: { status: 'error', testament: stateRef.current.alignSuggest.testament, verses: 0, error: String(event?.message || 'worker') } } });
-          // The worker is dead: drop it BEFORE settling, so a pending retrain
-          // gets a fresh worker from ensureSuggestWorker instead of posting
-          // into the corpse and waiting forever (Codex round 3).
-          if (suggestWorkerRef.current === worker) {
-            worker.terminate();
-            suggestWorkerRef.current = null;
+      /** The engine of the open project — created on first use, dropped by
+       * dropSuggestEngine. The scheduler decides when to train and what
+       * answers meanwhile; this file gives it the project's verses, the two
+       * workers and the place to show the row. A worker starts when the
+       * scheduler first posts to it, and a dead one is dropped, so the next
+       * post starts a fresh one. */
+      ensureSuggestEngine: () => {
+        if (suggestRef.current) return suggestRef.current;
+        const engine = { sched: null, answering: null, training: null };
+        const post = (slot, start, onReply, onDead) => (message) => {
+          if (!engine[slot]) {
+            const worker = start();
+            worker.onmessage = (event) => onReply(event.data);
+            worker.onerror = (event) => {
+              if (engine[slot] !== worker) return;
+              worker.terminate();
+              engine[slot] = null;
+              onDead(String(event?.message || 'worker'));
+            };
+            engine[slot] = worker;
           }
-          a.settleTraining(suggestSeqRef.current); // the running training died with the worker
+          engine[slot].postMessage(message);
         };
-        suggestWorkerRef.current = worker;
-        return worker;
+        engine.sched = new SuggestScheduler({
+          testament: () => (stateRef.current.book ? (isOldTestament(stateRef.current.book) ? 'ot' : 'nt') : null),
+          collect: (testament) => {
+            const st = stateRef.current;
+            return collectTrainingVerses({ store: storeRef.current, sched: alignSchedulerRef.current, project: st.project, book: st.book, bookRaw: rawRef.current, testament });
+          },
+          postAnswer: post(
+            'answering',
+            () => new Worker(new URL('./data/align/suggestWorker.ts', import.meta.url), { type: 'module' }),
+            (reply) => engine.sched.onAnswerReply(reply),
+            (message) => suggestRef.current === engine && a.failSuggestEngine(message),
+          ),
+          postTrain: post(
+            'training',
+            () => new Worker(new URL('./data/align/suggestTrainWorker.ts', import.meta.url), { type: 'module' }),
+            (reply) => engine.sched.onTrainReply(reply),
+            () => engine.sched.trainWorkerFailed(),
+          ),
+          onRow: (row) => dispatch({ type: 'set', patch: { alignSuggest: row } }),
+          onSuggestions: (reply) => a.showAlignSuggestions(reply),
+        });
+        suggestRef.current = engine;
+        return engine;
+      },
+
+      /** The scheduler and both workers go together: when the switch goes
+       * off, and when the project is left. */
+      dropSuggestEngine: () => {
+        const engine = suggestRef.current;
+        if (!engine) return;
+        suggestRef.current = null;
+        engine.sched.dispose();
+        engine.answering?.terminate();
+        engine.training?.terminate();
+      },
+
+      /** The answering worker died, and the memory with it. The engine goes;
+       * the row says so until the next training (the Align tool opened again,
+       * or the switch) builds a fresh one from the project. */
+      failSuggestEngine: (message) => {
+        const testament = stateRef.current.alignSuggest?.testament;
+        a.dropSuggestEngine();
+        const a2 = stateRef.current.alignSession;
+        dispatch({
+          type: 'set',
+          patch: {
+            alignSuggest: { status: 'error', testament: testament ?? null, verses: 0, boosted: false, error: message },
+            ...(a2?.record ? { alignSession: { ...a2, suggesting: false } } : {}),
+          },
+        });
       },
 
       stopAlignSuggestions: () => {
-        suggestWorkerRef.current?.terminate();
-        suggestWorkerRef.current = null;
-        suggestSeqRef.current++;
-        clearTimeout(suggestRetrainRef.current);
-        suggestTrainingRef.current = false;
-        suggestPendingRef.current = false;
+        a.dropSuggestEngine();
         storyOpenSeq++;
         const a2 = stateRef.current.alignSession;
         dispatch({
           type: 'set',
           patch: {
-            alignSuggest: { status: 'off', verses: 0, error: null },
+            alignSuggest: { status: 'off', verses: 0, boosted: false, error: null },
             ...(a2?.record ? { alignSession: { ...a2, suggestions: null, refusal: null } } : {}),
           },
         });
       },
 
       /** Train the open book's testament on every confirmed alignment in the
-       * project. Reads each book's draft and sidecar once; fire-and-forget. */
+       * project (#516, D93): when the Align tool opens, when the open
+       * testament changes, and when the switch goes on. The budgeted
+       * retrains are the scheduler's own. */
       trainAlignSuggestions: () => {
         const st = stateRef.current;
-        const store = storeRef.current;
         const key = st.project?.repoPath || st.project?.id;
-        if (!store || !st.book || !key || !st.alignSuggestions?.[key]) return;
-        // Coalesce: a training already runs in the worker — remember that one
-        // more is wanted and let the running one finish (Codex round 1).
-        if (suggestTrainingRef.current) {
-          suggestPendingRef.current = true;
-          return;
-        }
-        suggestTrainingRef.current = true;
-        suggestPendingRef.current = false;
-        const testament = isOldTestament(st.book) ? 'ot' : 'nt';
-        const id = ++suggestSeqRef.current;
-        dispatch({ type: 'set', patch: { alignSuggest: { status: 'training', testament, verses: 0, error: null } } });
-        void collectTrainingVerses({ store, sched: alignSchedulerRef.current, project: st.project, book: st.book, bookRaw: rawRef.current, testament })
-          .then((verses) => {
-            // An obsolete collection (the switch was cycled, or the project
-            // left) owns no lock any more — a newer training may hold it
-            // (Codex round 2). Only the CURRENT training settles.
-            if (id !== suggestSeqRef.current || storeRef.current !== store) return;
-            if (!verses.length) {
-              dispatch({ type: 'set', patch: { alignSuggest: { status: 'none', testament, verses: 0, error: null } } });
-              a.settleTraining(id);
-              return;
-            }
-            a.ensureSuggestWorker().postMessage({ type: 'train', id, testament, verses });
-          })
-          .catch((e) => {
-            if (id !== suggestSeqRef.current) return;
-            dispatch({ type: 'set', patch: { alignSuggest: { status: 'error', testament, verses: 0, error: String(e?.message || e) } } });
-            a.settleTraining(id);
-          });
+        if (!storeRef.current || !st.book || !key || !st.alignSuggestions?.[key]) return;
+        a.ensureSuggestEngine().sched.train();
       },
 
-      /** The CURRENT training ended (any way): release the lock and run the
-       * one that was asked for meanwhile. A stale id releases nothing. */
-      settleTraining: (id) => {
-        if (id !== suggestSeqRef.current) return;
-        suggestTrainingRef.current = false;
-        if (suggestPendingRef.current) {
-          suggestPendingRef.current = false;
-          a.trainAlignSuggestions();
-        }
+      /** #516: after a confirmed save, the saved verse (its latest record)
+       * joins the engine's memory. The scheduler waits for its edits to
+       * settle; no training is waited for. With no engine there is no memory
+       * to join: the next training reads the save from the project. */
+      queueAlignSuggestionAppend: (session) => {
+        const sched = suggestRef.current?.sched;
+        if (!sched || !session?.record) return;
+        const ref = `${session.book} ${session.ref}`;
+        sched.save(isOldTestament(session.book) ? 'ot' : 'nt', ref, trainingVerseOf(ref, session.record, session.targetText));
       },
 
-      /** After a confirmed save: retrain once the saves settle (debounced). */
-      retrainAlignSuggestionsSoon: () => {
-        const st = stateRef.current;
-        const key = st.project?.repoPath || st.project?.id;
-        if (!key || !st.alignSuggestions?.[key]) return;
-        clearTimeout(suggestRetrainRef.current);
-        suggestRetrainRef.current = setTimeout(() => a.trainAlignSuggestions(), 3000);
-      },
-
-      onSuggestReply: (reply) => {
-        if (reply.type === 'trained' || reply.type === 'error') a.settleTraining(reply.id);
-        if (reply.id !== suggestSeqRef.current) return; // a stale train/suggest — ignore
-        if (reply.type === 'trained') {
-          const status = reply.verses ? 'ready' : reply.tooFew ? 'few' : 'none';
-          dispatch({ type: 'set', patch: { alignSuggest: { status, testament: reply.testament, verses: reply.verses, error: null } } });
-          return;
-        }
-        if (reply.type === 'error') {
-          dispatch({ type: 'set', patch: { alignSuggest: { status: 'error', testament: stateRef.current.alignSuggest.testament, verses: 0, error: reply.message } } });
-          return;
-        }
-        // Bound to the verse and session that asked (Codex round 1): a reply
-        // for a verse the translator has since left is discarded, never mapped
-        // onto the verse now open.
+      /** The engine's proposals for a verse. Bound to the verse and session
+       * that asked (Codex round 1): a reply for a verse the translator has
+       * since left is discarded, never mapped onto the verse now open. */
+      showAlignSuggestions: (reply) => {
         const a2 = stateRef.current.alignSession;
         if (!a2?.record || a2.ref !== reply.ref || a2.seq !== reply.session) return;
         const links = linksFor(a2.record, a2.targetText, reply.links);
         dispatch({ type: 'set', patch: { alignSession: { ...a2, suggestions: links, suggesting: false, refusal: null } } });
       },
 
-      /** Suggest: ask the trained model for this verse's unplaced words. */
+      /** Suggest: ask the engine for this verse's unplaced words. The model
+       * of the book's own testament answers — the boosted one or the
+       * memory-only one (#516) — and it answers while a retrain runs. */
       suggestAlign: () => {
-        const st = stateRef.current;
-        const a2 = st.alignSession;
-        const worker = suggestWorkerRef.current;
-        const testament = isOldTestament(a2?.book ?? '') ? 'ot' : 'nt';
-        // Only a model trained for THIS book's testament may be asked.
-        if (!a2?.record || !worker || st.alignSuggest.status !== 'ready' || st.alignSuggest.testament !== testament) return;
-        const id = suggestSeqRef.current;
+        const a2 = stateRef.current.alignSession;
+        const sched = suggestRef.current?.sched;
+        if (!a2?.record || !sched) return;
+        const testament = isOldTestament(a2.book ?? '') ? 'ot' : 'nt';
+        if (!sched.suggest(testament, sessionInputFor(a2.record, a2.targetText), a2.ref, a2.seq)) return;
         dispatch({ type: 'set', patch: { alignSession: { ...a2, suggesting: true, refusal: null } } });
-        worker.postMessage({ type: 'suggest', id, testament, input: sessionInputFor(a2.record, a2.targetText), ref: a2.ref, session: a2.seq });
       },
 
       /** Confirm one proposal: the same linkWord edit a manual placement makes. */
@@ -6444,12 +6446,7 @@ export function AppProvider({ children }) {
           ref.current = null;
         }
         // #1: the suggestion engine belongs to the project being left.
-        clearTimeout(suggestRetrainRef.current);
-        suggestWorkerRef.current?.terminate();
-        suggestWorkerRef.current = null;
-        suggestSeqRef.current++;
-        suggestTrainingRef.current = false;
-        suggestPendingRef.current = false;
+        a.dropSuggestEngine();
         checkTargetsRef.current = new Map();
         noteTargetsRef.current = new Map();
         disposeStore(storeRef); // #94: the fold worker goes with the project
@@ -6464,7 +6461,7 @@ export function AppProvider({ children }) {
         alignSessionSeq++;
         dispatch({
           type: 'set',
-          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, storyNumbers: [], storyNumber: null, story: null, sourceStory: null, storyImages: {}, storyImageNote: null, storyLoading: false, storyError: null, storySource: null, saveState: 'saved', noteSaveState: 'saved', alignSaveState: 'saved', checkSaveState: 'saved', storySaveState: 'saved', storySaveError: null, commitError: null, projectPins: null, projectPinsLoaded: false, projectPinsError: null, preflight: null, preflightError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, alignSuggest: { status: 'off', verses: 0, error: null }, pickerProgress: null, toolPos: {}, upgrade: UPGRADE_IDLE },
+          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, storyNumbers: [], storyNumber: null, story: null, sourceStory: null, storyImages: {}, storyImageNote: null, storyLoading: false, storyError: null, storySource: null, saveState: 'saved', noteSaveState: 'saved', alignSaveState: 'saved', checkSaveState: 'saved', storySaveState: 'saved', storySaveError: null, commitError: null, projectPins: null, projectPinsLoaded: false, projectPinsError: null, preflight: null, preflightError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, alignSuggest: { status: 'off', verses: 0, boosted: false, error: null }, pickerProgress: null, toolPos: {}, upgrade: UPGRADE_IDLE },
         });
         refreshProjects(); // re-order: the project just left goes to the top
         if (leaving && leavingStore) startLeaveCheckpoint({ store: leavingStore, repoPath: leaving.repoPath, stateRef, dispatch });
