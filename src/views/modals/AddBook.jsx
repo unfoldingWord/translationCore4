@@ -102,7 +102,7 @@ export default function AddBook() {
       </> : ab.step === 'usfm' ? <>
         <Button variant="secondary" onClick={() => actions.patchAb({ step: 'method', error: null })}>{t('addBook.back')}</Button>
         <Button onClick={actions.addUsfmBooks} disabled={ab.busy || validFiles.length === 0} data-testid="ab-usfm-add">
-          {validFiles.length === 1 ? t('addBook.addOne') : t('addBook.addN', { n: validFiles.length })}
+          {validFiles.length > 1 ? t('addBook.addN', { n: validFiles.length }) : t('addBook.addOne')}
         </Button>
       </> : null}>
 

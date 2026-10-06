@@ -527,6 +527,9 @@ test.describe('J9 — a facilitator imports existing work', () => {
         await page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`).getByRole('button', { name: 'Add a book' }).click();
         await expect(page.getByRole('button', { name: 'Start a blank book' })).toBeVisible();
         await page.getByTestId('ab-usfm-option').click();
+        // #564: with no valid file the disabled button names no count
+        await expect(page.getByTestId('ab-usfm-add')).toHaveText('Add book');
+        await expect(page.getByTestId('ab-usfm-add')).toBeDisabled();
       });
       const rows = page.getByTestId('ab-usfm-file');
       await test.step('three files, three verdicts: Titus valid, Jonah already in the project (points to Import), no-id.sfm damaged', async () => {
@@ -543,6 +546,24 @@ test.describe('J9 — a facilitator imports existing work', () => {
         await expect(noId).toContainText('no-id.sfm has no \\id line, so the book is not known.');
         seen.verdicts = await Promise.all((await rows.all()).map(async (row) => ({ status: await row.getAttribute('data-status'), text: (await row.textContent())?.trim() })));
         // one valid book, so the button adds exactly one
+        await expect(page.getByTestId('ab-usfm-add')).toHaveText('Add book');
+      });
+      await test.step('#564: the message of a failed Add survives a classify that finishes after it', async () => {
+        // The first write of an Add is the platform's new-book call; fail it once.
+        const writeRoute = '**/api/git/new-scripture-book/**';
+        let failed = 0;
+        await page.route(writeRoute, (route) => (failed++ ? route.continue() : route.fulfill({ status: 500, body: '{"is_good":false,"reason":"injected by #564"}' })));
+        await page.getByTestId('ab-usfm-add').click();
+        const callout = page.getByTestId('ab-usfm').getByRole('alert');
+        await expect(callout).toBeVisible();
+        seen.failedAdd = { message: (await callout.textContent())?.trim(), titOnDisk: fs.existsSync(path.join(repo, 'ingredients', 'TIT.usfm')) };
+        await page.getByTestId('ab-usfm-input').setInputFiles([path.join(MANIFEST_DIR, 'usfm', '58-PHM.txt')]);
+        await expect(rows).toHaveCount(4); // the classify ran
+        await expect(callout).toBeVisible(); // and did not erase the failure
+        await page.unroute(writeRoute);
+        // back to the three rows, so the next Add (the step below) writes Titus only
+        await rows.filter({ hasText: '58-PHM.txt' }).getByRole('button').click();
+        await expect(rows).toHaveCount(3);
         await expect(page.getByTestId('ab-usfm-add')).toHaveText('Add book');
       });
       const card = page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`);

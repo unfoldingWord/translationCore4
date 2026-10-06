@@ -5825,7 +5825,7 @@ export function AppProvider({ children }) {
       abAddUsfmFiles: async (list) => {
         const added = await Promise.all(list.map(async (f) => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) })));
         const ab = stateRef.current.ab;
-        a.patchAb({ files: await classifyUsfmFiles([...(ab.files || []), ...added], ab.existing), error: null });
+        a.patchAb({ files: await classifyUsfmFiles([...(ab.files || []), ...added], ab.existing) });
       },
       abRemoveUsfmFile: async (index) => {
         const ab = stateRef.current.ab;
