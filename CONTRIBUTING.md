@@ -92,12 +92,19 @@ result with the CI result of `main` at the commit you branched from.
    runs it on every pull request.
 4. **Do not change the pinned versions.** `usfm-js@3.4.3`, `word-aligner@1.0.3` and
    `word-aligner-lib@1.0.1` are a proven pairing. The conformance harness is the proof.
-   Do not run `npm audit fix --force`.
+   Do not run `npm audit fix --force`. If an audit fix is needed, trial it in a scratch copy
+   and confirm these three versions are unchanged before you apply it.
 5. **Do not re-propose decided things.** Read `docs/DECISIONS.md` before you propose a
-   design change. A decision entry states what we tried, chose and withdrew.
-6. **Verify a platform claim before you record it.** Apply the rules in "Verifying a
-   platform claim", the final section of `docs/PLATFORM-NOTES.md`. Name the surface that
-   you read. Cite the version, the commit hash and the date.
+   design change. A decision entry states what we tried, chose and withdrew. If you believe
+   a decision is wrong, say so to the owner with evidence. Do not silently build the
+   alternative.
+6. **Verify a platform claim before you record it.** Do not state what the Pankosmia
+   platform does from memory or inference. Apply the rules in "Verifying a platform claim",
+   the final section of `docs/PLATFORM-NOTES.md`. Name the surface that you read, and
+   confirm the behavior is general, not an artifact of one product's configuration or of
+   your own test setup. Cite the version, the commit hash and the date: a hash alone does
+   not say whether the code is current. A behavior that you observed only on your own rig
+   is a rig finding until it reproduces elsewhere (`docs/PLATFORM-NOTES.md` entry #26(a)).
 
 ## Pull requests
 
