@@ -2344,7 +2344,9 @@ up to ~2 500 verses, and plain wordMAP memory answers from the first verse.
    the memory beside them until the engine is built again from the project (the next
    time the project opens or the switch goes on). The memory is not rebuilt in a
    session; only a failed answering worker drops the engine, and the next training
-   builds a new one from the project.
+   builds a new one from the project. [owner ruling 2026-10-06, pull request #538 — the
+   old links are accepted until their cost is measured on the bench; a rebuild of the
+   memory when a booster joins it is the fix if the bench shows a loss]
 3. **The booster retrains in the background, on a budget:** when the Align tool opens for
    a project, when the open book crosses to the other testament, and then when the
    testament's memory first reaches 10, 25, 50, 100, 250, 500 and 1 000 aligned verses.
@@ -2352,7 +2354,10 @@ up to ~2 500 verses, and plain wordMAP memory answers from the first verse.
    a retrain runs, the Suggestions row stays `ready` and Suggest is answered by the
    memory and the booster that stand. The fitted booster then joins the memory that the
    answering worker holds, in one step; the memory is not replaced, so no save can be
-   lost to a retrain. A fit that gives no booster keeps the booster fitted before. Training has its own Web Worker, because the booster's fit cannot
+   lost to a retrain. A fit that gives no booster keeps the booster fitted before. One
+   training runs at a time: budget steps reached while a training runs give one training
+   after it, on every verse, for the testament that is open then. [owner ruling
+   2026-10-06, pull request #538] Training has its own Web Worker, because the booster's fit cannot
    be interrupted: the worker that answers Suggest never trains (review of pull request
    #538, 2026-10-05).
 4. **Before the booster can fit — fewer than five aligned verses, or a corpus it
@@ -2360,7 +2365,8 @@ up to ~2 500 verses, and plain wordMAP memory answers from the first verse.
    asked for in a session, the project's aligned verses are read and given to the
    answering worker as its memory, and plain wordMAP answers from them at once. No fit is
    waited for, also when the other testament's booster is being fitted. While the verses
-   are read, the row says "Reading your aligned verses…"; there is no "learning" state.
+   are read, the row says "Reading your aligned verses…" [owner ruling 2026-10-06, pull
+   request #538]; there is no "learning" state.
    Then the row says what the suggestions are drawn from (N verses). The row's count is
    the number of verses in the memory.
 5. **Out of scope, recorded in #516's Follow-up:** the engine speed-up (a ~70-line patch
