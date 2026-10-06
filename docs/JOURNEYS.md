@@ -214,9 +214,17 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   the installation; the token is in renderer memory, and in the operating-system keychain only
   when "Stay signed in" is on; no name, email or login is stored (D85); each pushed commit's
   author is the computer's account name (PLATFORM-NOTES #47). The card shows an "On Door43" badge beside the project name, and its meta line ends with "· Shared at `owner/repository`" (in a development build, "· Shared at `qa.door43.org/owner/repository`" when the remote is on that server; #506) (before a share: "· Only on this computer"; D86 point 6). A later
-  share ("Upload changes") pushes `main` again with no dialog when a token is available.
-  Under Upload changes, the card shows "as @username · Change" when someone is signed in, or
-  "Signed in · Change" when a kept token is not resumed yet. At app start, and when the
+  share ("Upload changes") opens the upload dialog (#530; the amendment of D86 point 7). The
+  click sends nothing. The dialog shows the project, its repository on Door43 (not editable),
+  "Sharing as @username · Change" (or "Signed in · Change" when a kept token is not resumed
+  yet), and the books or stories as a review. **Cancel** pushes nothing and leaves `origin` as
+  it is. **Upload changes** pushes `main` again; with "Ask before using the internet" on, the
+  "Use the internet?" dialog opens first, once for the upload. With no sign-in, the sign-in step
+  opens first, and its one consent covers the upload. The dialog then shows one progress line
+  and cannot be closed, then the end (Copy link, Open on Door43, Close). A refusal shows in the
+  dialog with its code, **Try again** and **Close** (**Close** alone when another device
+  pushed). The card shows nothing under Upload changes: no account, no "Uploaded." and no
+  refusal. At app start, and when the
   account menu opens, tC4 sends no request to Door43. "Sign out of Door43" on the account menu
   removes the session and the kept token with no request; a keychain that fails to forget is
   reported (D88 point 1).
@@ -231,7 +239,7 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 - Proof: `e2e/j11-share.spec.ts`, tags `@inc85 @J11`. The live leg against `qa.door43.org`
   runs when the QA credentials are present and reports a labelled skip otherwise (#185).
   `e2e/internet-consent.spec.ts`, tag `@internet-consent`, proves the internet consent of Share
-  (it replaces `e2e/internet-local.spec.ts`; D88).
+  and of Upload changes (it replaces `e2e/internet-local.spec.ts`; D88; #530).
 - Owner: shipped rc.1 (Increment 8.5; D79 point 12, D84, D85): #362 the share operation,
   #203 sign-in, #366 the keychain, #120 the Door43 authority, #185 the journey. Receive and
   team sync stay Phase 2 (D67; epic #24).

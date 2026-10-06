@@ -123,6 +123,40 @@ let dialogTasks = [];
 const PERMITTED = Symbol('inside its permitted task');
 /** The dialogs a Share or an Upload changes continues in, and Source texts. */
 const SHARE_MODALS = ['signIn', 'share'];
+/** #530: one Share or one Upload changes is a FLOW, from the click on the Home
+ * card to the close of its dialogs. Its sign-in step and its dialogs carry the
+ * same flow (`si.flow`, `sh.flow`). The flow owns the consent of that task:
+ * the "Use the internet?" answer is recorded on the flow, never on whichever
+ * dialog is open. So a step that ends after its flow closed changes nothing,
+ * and a dialog opened later is another flow, which asks for itself.
+ * { kind: 'share' | 'upload', consented, closed, dialog, attempt, release, authorizing };
+ * `authorizing`: the question and gate check that are in progress, which
+ * every step that starts meanwhile shares, so a flow asks once and holds
+ * one consent. `dialog`: a sign-in step or a dialog was opened for it. `attempt`: the
+ * Upload changes click that is waiting for its answer or its sign-in check,
+ * or null. An attempt belongs to the review it was submitted in: Change, or
+ * any step that takes the place of that review, ends the attempt, and the
+ * flow and its consent go on. */
+let openShareFlow = null;
+/** Start a flow. Only one is open: a new one closes the one before it. */
+const startShareFlow = (kind) => {
+  closeShareFlow();
+  openShareFlow = { kind, consented: false, closed: false, dialog: false, attempt: null, release: null, authorizing: null };
+  return openShareFlow;
+};
+/** Close a flow (the open one, when none is named): its consent ends, and its
+ * late steps do nothing. */
+function closeShareFlow(flow = openShareFlow) {
+  if (!flow || flow.closed) return;
+  if (openShareFlow === flow) openShareFlow = null;
+  flow.closed = true;
+  flow.release?.();
+  flow.release = null;
+}
+/** #530: the sign-in call that is in flight, or null. One is sent at a time: a
+ * cancelled sign-in drops its own token when it ends, and must not end after a
+ * newer sign-in and drop that one. */
+let signInFlight = null;
 const SOURCES_MODALS = ['sources'];
 
 // The mode a view is, for a checkpoint message (#183). Views not listed keep their id.
@@ -409,8 +443,6 @@ const initial = () => ({
   // `origin` remote (GET /git/remotes) — { repository, url } | null (not shared); a
   // missing key is not read yet. Nothing about remotes is stored in the installation.
   remoteByProject: {},
-  // #362: a card's own Upload-changes run (no dialog) — { busy, step, error, uploaded } by repoPath
-  shareCard: {},
   importToast: null, // { name, books } of the project an import just made
   importedRepo: null, // its repoPath: the Home card carries the "Imported" badge
   // #9: the guided fix screen for a pinned resource this machine lacks —
@@ -3162,12 +3194,15 @@ export function AppProvider({ children }) {
   }
 
   // D88: a permitted task that continued in a dialog closes with that dialog.
+  // #530: a Share or Upload changes flow ends when another dialog takes its
+  // place (closeModal ends it at once).
   useEffect(() => {
     dialogTasks = dialogTasks.filter((task) => {
       if (task.modals.includes(s.modal)) return true;
       task.release();
       return false;
     });
+    if (s.modal && !SHARE_MODALS.includes(s.modal)) closeShareFlow();
   }, [s.modal]);
 
   function updateClientSettings(mutate) {
@@ -3489,7 +3524,11 @@ export function AppProvider({ children }) {
         return readPrintedStories(store, obsStoryPictures(st, store));
       },
 
-      closeModal: () => dispatch({ type: 'set', patch: { modal: null, np: null, ab: null, st: null, fix: null, im: null, sh: null } }),
+      closeModal: () => {
+        // #530: Cancel, Close and Escape end the Share or Upload changes flow now.
+        closeShareFlow();
+        dispatch({ type: 'set', patch: { modal: null, np: null, ab: null, st: null, fix: null, im: null, sh: null } });
+      },
 
       setDraftUnit: (unit) => {
         const st = stateRef.current;
@@ -3573,24 +3612,32 @@ export function AppProvider({ children }) {
        * says so. Only the same task — one whose dialog is still open — goes on
        * without asking; another task of the same kind asks. `modals`: the
        * dialogs the task continues in; it stays permitted until they close.
-       * Resolves to the task's result, or undefined when it did not run. */
+       * Resolves to the task's result, or undefined when it did not run.
+       * A Share or an Upload changes is not such a task: its consent belongs
+       * to its flow (`flowStep`, #530). */
       internetTask: async (kind, run, { modals = null, gate = true } = {}) => {
         const continuing = dialogTasks.some((task) => task.kind === kind);
-        if (!continuing) {
-          if (stateRef.current.askInternet) {
-            if (pendingAsk) return undefined;
-            const go = await new Promise((resolve) => {
-              pendingAsk = resolve;
-              dispatch({ type: 'set', patch: { netAsk: { kind }, netFailed: false } });
-            });
-            if (!go) return undefined;
-          }
-          if (gate && !(await ensureGate(api))) {
-            dispatch({ type: 'set', patch: { netFailed: true } });
-            return undefined;
-          }
-        }
+        if (!continuing && !(await a.allowInternet(kind, gate))) return undefined;
         return a.permitted(kind, run, continuing ? null : modals);
+      },
+      /** The question of one internet task, and the net gate. True when the
+       * task may run: the user said Continue (or does not want to be asked),
+       * and the gate reads on. Cancel, or a question that is open already,
+       * is false: nothing is sent. */
+      allowInternet: async (kind, gate = true) => {
+        if (stateRef.current.askInternet) {
+          if (pendingAsk) return false;
+          const go = await new Promise((resolve) => {
+            pendingAsk = resolve;
+            dispatch({ type: 'set', patch: { netAsk: { kind }, netFailed: false } });
+          });
+          if (!go) return false;
+        }
+        if (gate && !(await ensureGate(api))) {
+          dispatch({ type: 'set', patch: { netFailed: true } });
+          return false;
+        }
+        return true;
       },
       /** A step of a permitted task: requests may leave while it runs — even
        * after its dialog closes — and, with `modals`, while one of those
@@ -3603,6 +3650,36 @@ export function AppProvider({ children }) {
           release();
           if (modals?.includes(stateRef.current.modal)) dialogTasks.push({ kind, modals, release: consent.hold() });
         }
+      },
+      /** #530: one step of a Share or Upload changes flow that uses the
+       * internet — the one place such a step starts. A closed flow runs
+       * nothing. A flow asks once (D88 point 2): the answer is recorded on the
+       * flow, and stays permitted until the flow closes. A step that is still
+       * running when its flow closes may finish its request, and must check
+       * `flow.closed` before it changes anything. Resolves to the step's
+       * result, or undefined when it did not run. */
+      flowStep: async (flow, run) => {
+        if (flow.closed) return undefined;
+        if (!flow.consented && !(await a.authorizeFlow(flow))) return undefined;
+        if (flow.closed) return undefined;
+        return a.permitted(flow.kind, run);
+      },
+      /** The consent of a flow: one question and one gate check, shared by
+       * every step that starts while they are in progress, and one hold for
+       * the flow. True when the flow is consented and still open. */
+      authorizeFlow: (flow) => {
+        if (!flow.authorizing) {
+          flow.authorizing = a.allowInternet(flow.kind).then((ok) => {
+            if (ok && !flow.closed && !flow.consented) {
+              flow.consented = true;
+              flow.release = consent.hold();
+            }
+            return flow.consented && !flow.closed;
+          }).finally(() => {
+            flow.authorizing = null;
+          });
+        }
+        return flow.authorizing;
       },
       /** The answer to the "Use the internet?" dialog. "Don't ask again" is
        * stored only with Continue. */
@@ -5078,53 +5155,88 @@ export function AppProvider({ children }) {
       //      token lives in session.ts, never here. Nothing is stored but the
       //      kept token (#366): no name, no email, no login (D85). ----
       /** `share`: the project a Share pressed without a token continues with (#362).
-       * `renew`: Door43 refused the held token at a share, so the step says why (#467). */
-      openSignIn: (share = null, renew = false) =>
+       * `renew`: Door43 refused the held token at a share, so the step says why (#467).
+       * `flow`: the Share or Upload changes flow this step belongs to (#530);
+       * null from the account menu, where the sign-in is a task of its own. */
+      openSignIn: (share = null, renew = false, flow = null) => {
+        if (flow) {
+          flow.dialog = true;
+          // The step takes the place of the review: an upload submitted there ends.
+          flow.attempt = null;
+        }
         dispatch({
           type: 'set',
           patch: {
             modal: 'signIn',
-            si: { login: '', password: '', stay: false, server: new URL(door43.server).host, busy: false, error: null, share, renew },
+            // `opened`: this step, so a sign-in sent from it cannot end in a step opened after it was closed.
+            si: { login: '', password: '', stay: false, server: new URL(door43.server).host, busy: false, error: null, share, renew, flow, opened: Symbol('sign-in step') },
           },
-        }),
+        });
+      },
       patchSi: (patch) => dispatch({ type: 'set', patch: { si: { ...stateRef.current.si, ...patch } } }),
       /** Sign in; resolves the Report (`op: 'share'`), or null while a call runs.
        * Nothing is stored on a refusal. #362's Share flow chains on it. */
       submitSignIn: async () => {
         const si = stateRef.current.si;
         if (!si || si.busy) return null;
-        // D88: in a Share the sign-in is a step of that permitted task; from the
-        // account menu it is a task of its own, and asks.
-        if (si.share) return a.permitted('share', () => a.signInNow(), SHARE_MODALS);
+        // D88: in a Share or an Upload changes the sign-in is a step of that
+        // flow: the flow asks once, for whichever of its steps is sent first
+        // (#530). From the account menu it is a task of its own, and asks.
+        if (si.flow) return (await a.flowStep(si.flow, () => a.signInNow())) ?? null;
         return (await a.internetTask('signIn', () => a.signInNow())) ?? null;
       },
       signInNow: async () => {
         const si = stateRef.current.si;
         if (!si || si.busy) return null;
         a.patchSi({ busy: true, error: null });
-        const keychain = desktopKeychain() ?? undefined;
-        const report = await door43SignIn(
-          { door43, getNetEnabled: internetAllowed, keychain },
-          { login: si.login.trim(), password: si.password, stay: si.stay },
-        );
-        if (stateRef.current.modal !== 'signIn') {
-          // Cancel was pressed while the call ran: Cancel shares nothing, so a
-          // token that arrived after it is dropped (from the keychain too).
-          await door43SignOut(keychain);
+        // This step is gone when Cancel was pressed: the sign-in step is not
+        // open, or the one that is open was opened after the Cancel (#530).
+        const gone = () => stateRef.current.modal !== 'signIn' || stateRef.current.si?.opened !== si.opened;
+        // One sign-in at a time: wait for the one in flight, which may be a
+        // cancelled one that still has to drop its token.
+        const earlier = signInFlight;
+        let landed;
+        const flight = new Promise((resolve) => {
+          landed = resolve;
+        });
+        signInFlight = flight;
+        try {
+          await earlier;
+          // Cancelled while it waited: nothing is sent.
+          if (gone()) return null;
+          const keychain = desktopKeychain() ?? undefined;
+          const report = await door43SignIn(
+            { door43, getNetEnabled: internetAllowed, keychain },
+            { login: si.login.trim(), password: si.password, stay: si.stay },
+          );
+          if (gone()) {
+            // Cancel was pressed while the call ran: Cancel shares nothing, so a
+            // token that arrived after it is dropped (from the keychain too).
+            await door43SignOut(keychain);
+            return report;
+          }
+          if (!report.ok) {
+            a.patchSi({ busy: false, password: '', error: { code: report.code ?? null, message: report.facts.error } });
+            return report;
+          }
+          // #366: "Stay signed in" asked, and the token not kept (no bridge in a
+          // browser, or a keychain that refused): the share dialog says so in one line.
+          // A sign-in that is not kept forgot any earlier kept token (session.ts).
+          const signedIn = { door43User: report.facts.username, door43Kept: report.facts.kept, door43NotKept: si.stay && !report.facts.kept };
+          if (!si.flow) {
+            dispatch({ type: 'set', patch: { ...signedIn, modal: null, si: null } });
+            return report;
+          }
+          // #362: a Share pressed without a token continues here, with the token,
+          // in the same flow (D88). The step stays, busy, until the flow's
+          // dialog takes its place, so the flow has an open dialog at all times.
+          dispatch({ type: 'set', patch: signedIn });
+          await a.startShare(si.share, si.flow);
           return report;
+        } finally {
+          landed();
+          if (signInFlight === flight) signInFlight = null;
         }
-        if (!report.ok) {
-          a.patchSi({ busy: false, password: '', error: { code: report.code ?? null, message: report.facts.error } });
-          return report;
-        }
-        // #366: "Stay signed in" asked, and the token not kept (no bridge in a
-        // browser, or a keychain that refused): the share dialog says so in one line.
-        // A sign-in that is not kept forgot any earlier kept token (session.ts).
-        dispatch({ type: 'set', patch: { door43User: report.facts.username, door43Kept: report.facts.kept, door43NotKept: si.stay && !report.facts.kept, modal: null, si: null } });
-        // #362: a Share pressed without a token continues here, with the token,
-        // inside the same permitted task (D88).
-        if (si.share) await a.startShare(si.share);
-        return report;
       },
       /** Sign out: the token leaves memory and the keychain (#366), with no
        * request. A keychain that fails to forget is said, never hidden (D88):
@@ -5139,13 +5251,21 @@ export function AppProvider({ children }) {
         dispatch({ type: 'set', patch: { door43User: null, door43Kept: false, door43NotKept: false, accountError: null } });
         return true;
       },
-      /** D86 point 7: "Change" in the share dialog or on a shared card signs out
-       * and opens the sign-in step. From the dialog (`project`) the share then
-       * continues; from a card nothing is uploaded that the user did not click.
-       * Neither step uses the internet: the sign-in asks when it is sent (D88). */
+      /** D86 point 7: "Change" in the share or upload dialog signs out and
+       * opens the sign-in step. After the sign-in the dialog shows again
+       * (`project`); an upload waits for its own click (#530). Neither step
+       * uses the internet: the sign-in asks when it is sent (D88). */
       changeSignIn: async (project = null) => {
+        // The sign-in step stays in the flow of the dialog: it asks only when
+        // that flow has not asked yet (an upload that has sent nothing).
+        const flow = stateRef.current.sh?.flow ?? null;
+        // Change leaves the review: an upload that was submitted there, and
+        // still waits for its sign-in check, ends now. It must not run later
+        // with the account of the new sign-in.
+        if (flow) flow.attempt = null;
         await a.signOut();
-        a.openSignIn(project);
+        if (flow?.closed) return;
+        a.openSignIn(project, false, flow);
       },
       /** D88: the account menu's "Sign-in saved on this computer": check it
        * with Door43, as an internet task. */
@@ -5170,11 +5290,72 @@ export function AppProvider({ children }) {
         if (kept !== undefined) dispatch({ type: 'set', patch: { door43Kept: kept } });
         return outcome;
       },
-      /** D88: the Home card's Share or Upload changes — one internet task,
-       * whatever it needs: the saved sign-in, a sign-in, the destinations and
-       * the reviewed upload. */
-      shareProject: (project) => a.internetTask(stateRef.current.remoteByProject[project.id] ? 'upload' : 'share',
-        () => a.startShare(project), { modals: SHARE_MODALS }),
+      /** D88: the Home card's Share — one internet task, whatever it needs:
+       * the saved sign-in, a sign-in, the destinations and the reviewed upload.
+       * #530: Upload changes on a shared card opens its dialog and sends
+       * nothing; the task starts when the upload, or its sign-in, is sent. */
+      shareProject: (project) => {
+        // The click starts the flow of this Share or Upload changes (#530).
+        if (stateRef.current.remoteByProject[project.id]) return a.openUpload(project, startShareFlow('upload'));
+        const flow = startShareFlow('share');
+        // A flow that opened no dialog (Cancel on the question, or a failure
+        // before the first dialog) ends here, and its consent with it.
+        return a.flowStep(flow, () => a.startShare(project, flow)).finally(() => {
+          if (!flow.dialog) closeShareFlow(flow);
+        });
+      },
+      /** #530: the upload dialog of a shared project, on its review step: the
+       * repository, the account, and the books or stories. No request leaves.
+       * With no sign-in in memory and none saved, the sign-in step comes first. */
+      openUpload: (project, flow) => {
+        if (flow.closed) return undefined;
+        if (!currentSession() && !stateRef.current.door43Kept) return a.openSignIn(project, false, flow);
+        flow.dialog = true;
+        // A new review: no upload is submitted in it yet.
+        flow.attempt = null;
+        return dispatch({
+          type: 'set',
+          patch: {
+            modal: 'share',
+            si: null,
+            sh: { project, mode: 'upload', step: 'upload', flow, choices: [], choicesError: null, target: { kind: 'user' }, name: project.id.split('/').pop(), busy: false, steps: [], error: null, report: null, copied: false },
+          },
+        });
+      },
+      /** #530: Upload changes, or Try again, in the upload dialog — a step of
+       * the upload's flow. The flow asks first (D88), unless its sign-in asked
+       * already. A saved sign-in resumes here; one that Door43 refuses goes to
+       * the sign-in step, and the dialog shows again after it. */
+      uploadChanges: async (project) => {
+        const sh = stateRef.current.sh;
+        if (stateRef.current.modal !== 'share' || sh?.project.id !== project.id || sh.busy) return null;
+        const flow = sh.flow;
+        // A second click does nothing while the first one waits for its answer
+        // or its sign-in check.
+        if (!flow || flow.attempt) return null;
+        const attempt = Symbol('upload attempt');
+        flow.attempt = attempt;
+        // The review stays open, with Cancel and Change, while the answer or
+        // the sign-in check is awaited. This upload goes on only while it is
+        // still the attempt of its flow: a closed dialog, or Change, ends it —
+        // no sign-in step and no push, whatever session exists by then.
+        const ended = () => flow.closed || flow.attempt !== attempt;
+        try {
+          const report = await a.flowStep(flow, async () => {
+            if (ended()) return null;
+            if (!currentSession()) await a.resumeKept();
+            if (ended()) return null;
+            if (!currentSession()) {
+              a.openSignIn(project, false, flow);
+              return null;
+            }
+            return a.shareRun(project);
+          });
+          return report ?? null;
+        } finally {
+          if (flow.attempt === attempt) flow.attempt = null;
+        }
+      },
 
       // ---- Share (#362; D79 point 12, D84 points 1, 3, 4, 5). The operation is
       //      src/data/share/shareOperation.ts; the dialog is ShareDialog.jsx. ----
@@ -5196,10 +5377,10 @@ export function AppProvider({ children }) {
         return shared;
       },
       /** Share, or Upload changes. No token: the sign-in step first, then back
-       * here. A shared project (an `origin`) pushes with no dialog; a first
-       * share opens the dialog on the where-it-goes step and reads the
-       * organizations (D84 point 3). */
-      startShare: async (project) => {
+       * here. A shared project (an `origin`) opens the upload dialog on its
+       * review step (#530); a first share opens the dialog on the
+       * where-it-goes step and reads the organizations (D84 point 3). */
+      startShare: async (project, flow) => {
         let session = currentSession();
         if (!session) {
           // D86 point 8: a kept token resumes here, at the first action that
@@ -5207,50 +5388,50 @@ export function AppProvider({ children }) {
           await a.resumeKept();
           session = currentSession();
         }
+        // #530: after each wait, a flow that closed meanwhile opens nothing.
+        if (flow.closed) return;
         if (!session) {
-          a.openSignIn(project);
+          a.openSignIn(project, false, flow);
           return;
         }
         // "Not shared" in the cache can be a read still running, a failed read,
         // or a create whose push failed: read `origin` again before the
         // first-share dialog, so a shared project never asks again (#362 AC 2, 7).
         const shared = stateRef.current.remoteByProject[project.id] || (await a.loadShared(project, true));
-        if (shared) return a.shareRun(project);
+        if (flow.closed) return;
+        if (shared) return a.openUpload(project, flow);
+        flow.dialog = true;
         dispatch({
           type: 'set',
           patch: {
             modal: 'share',
-            sh: { project, step: 'target', choices: null, choicesError: null, target: { kind: 'user' }, name: project.id.split('/').pop(), busy: false, steps: [], error: null, report: null, copied: false },
+            si: null,
+            sh: { project, step: 'target', flow, choices: null, choicesError: null, target: { kind: 'user' }, name: project.id.split('/').pop(), busy: false, steps: [], error: null, report: null, copied: false },
           },
         });
         try {
           const choices = await organizationChoices(door43, session, project.languageTag);
-          if (stateRef.current.sh?.project.id !== project.id) return;
+          if (flow.closed) return;
           a.patchSh({ choices });
         } catch (e) {
-          if (stateRef.current.sh?.project.id !== project.id) return;
+          if (flow.closed) return;
           a.patchSh({ choices: [], choicesError: String(e?.message ?? e) });
         }
       },
       patchSh: (patch) => dispatch({ type: 'set', patch: { sh: { ...stateRef.current.sh, ...patch } } }),
       shareStep: (step) => a.patchSh({ step, error: null }),
-      /** Run the share: from the dialog's check step (a first share), or from
-       * the card's Upload changes (no dialog). One progress line per step;
-       * the Report's refusal shows where the run started. */
+      /** Run the share from its dialog: the check step of a first share, or
+       * the review step of an upload (#530). One progress line per step; the
+       * Report's refusal shows on the step the run started from. */
       shareRun: async (project) => {
         const session = currentSession();
         if (!session) return null;
         const sh = stateRef.current.sh;
-        const inDialog = stateRef.current.modal === 'share' && sh?.project.id === project.id;
-        const setCard = (patch) => dispatch({ type: 'set', patch: { shareCard: { ...stateRef.current.shareCard, [project.id]: { ...(stateRef.current.shareCard[project.id] || {}), ...patch } } } });
-        if (inDialog) {
-          if (sh.busy) return null;
-          a.patchSh({ step: 'progress', busy: true, steps: [], error: null });
-        } else {
-          if (stateRef.current.shareCard[project.id]?.busy) return null;
-          setCard({ busy: true, step: null, error: null, uploaded: false });
-        }
-        const onStep = (step) => (inDialog ? a.patchSh({ steps: [...(stateRef.current.sh?.steps || []), step] }) : setCard({ step }));
+        if (stateRef.current.modal !== 'share' || sh?.project.id !== project.id || sh.busy) return null;
+        const flow = sh.flow;
+        const review = sh.mode === 'upload' ? 'upload' : 'check';
+        a.patchSh({ step: 'progress', busy: true, steps: [], error: null });
+        const onStep = (step) => a.patchSh({ steps: [...(stateRef.current.sh?.steps || []), step] });
         // The D9 checkpoint runs through the project's store: the open one when
         // this project is open, else a throwaway store (the saveSettings pattern).
         const open = stateRef.current.project?.id === project.id ? storeRef.current : null;
@@ -5263,7 +5444,7 @@ export function AppProvider({ children }) {
             // control (#362 test 1). Only a development build accepts it.
             // The push preflight reads the barrier, not the server gate (D86 point 3).
             { api: Object.assign(Object.create(api), { getNetEnabled: internetAllowed }), door43, ops: opsLog, onStep, allowFileRemote: import.meta.env.DEV === true, commitPending: (messageFor) => store.commitPending(messageFor) },
-            { repoPath: project.id, session, target: sh?.target ?? { kind: 'user' }, name: (sh?.name ?? project.id.split('/').pop()).trim() },
+            { repoPath: project.id, session, target: sh.target, name: sh.name.trim() },
           );
         } catch (e) {
           report = { ok: false, code: null, facts: { error: String(e?.reason || e?.message || e) } };
@@ -5281,20 +5462,18 @@ export function AppProvider({ children }) {
           // #467: Door43 refused the token at the create (revoked, or kept from a
           // version that minted it without the create scopes). Forget it, and ask
           // the password once; the new sign-in continues the share.
-          if (!inDialog) setCard({ busy: false, step: null, error: null });
           await door43SignOut(desktopKeychain() ?? undefined);
+          if (flow.closed) return report;
           dispatch({ type: 'set', patch: { door43User: null, door43Kept: false, door43NotKept: false, sh: null } });
-          a.openSignIn(project, true);
+          a.openSignIn(project, true, flow);
           return report;
         }
         const error = report.ok ? null : { code: report.code ?? null, message: report.facts.error };
-        if (inDialog) {
-          if (stateRef.current.modal !== 'share') return report;
-          // A refusal returns to the check step: a name that exists is changed there.
-          a.patchSh(report.ok ? { step: 'done', busy: false, report } : { step: 'check', busy: false, error });
-        } else {
-          setCard({ busy: false, step: null, error, uploaded: report.ok });
-        }
+        // The result goes to the dialog of this flow only (#530).
+        if (flow.closed || stateRef.current.modal !== 'share') return report;
+        // A refusal returns to the step it started from: a name that exists is
+        // changed on the check step; an upload offers Try again on its review step.
+        a.patchSh(report.ok ? { step: 'done', busy: false, report } : { step: review, busy: false, error });
         return report;
       },
       /** Copy link (D84 point 5): the repository URL to the clipboard. */

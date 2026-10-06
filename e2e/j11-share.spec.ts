@@ -15,13 +15,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import type { Page } from '@playwright/test';
+import type { Page, Request } from '@playwright/test';
 import { test, expect } from './helpers/test';
 import type { FakeOrganization } from './helpers/door43';
 import { TC4_ROOT, SEEDED_PROJECT, readClientSettingsDoc, resetClientSettings, rigRepo, listLocalRepos } from './helpers/rig';
 import {
   QA_SERVER, RIG_API, RIG_STATE, USER, type BareRemote,
-  dropOrigin, fakeFor, fakeShare, filesHolding, git, head, loginsHolding, makeBareRemote, pressShare, signIn, askInternet, fakeKeychain,
+  addOrigin, commitLocally, dropOrigin, expectCleanCard, fakeFor, fakeShare, filesHolding, git, head, loginsHolding, makeBareRemote, pressShare,
+  shareFirstTime, shot, signIn, askInternet, fakeKeychain, uploadChanges,
 } from './helpers/door43Share';
 
 const AUTHOR_NOTICE = /signed with the account name of this computer/;
@@ -40,11 +41,11 @@ const scopesInSource = (): string[] => {
 const settingsKeys = (): string[] => Object.keys(readClientSettingsDoc() ?? {});
 const PERSON_KEYS = /identity|login|user|name|email|token/i;
 
-// D86 point 7: Home has no Door43 bar. The share dialog says who shares, and a shared card
-// says who is signed in; each has Change (sign out, then the sign-in step).
+// D86 point 7: Home has no Door43 bar. The share dialog and the upload dialog say who
+// shares, with Change (sign out, then the sign-in step). #530: a card says nothing about
+// the account; a kept sign-in that is not resumed yet shows in the upload dialog with no username.
 const SHARING_AS = `Sharing as @${USER.username} · Change`;
-const CARD_AS = `as @${USER.username} · Change`;
-const CARD_KEPT = 'Signed in · Change';
+const KEPT = 'Signed in · Change';
 const NOT_KEPT = /Stay signed in is not available on this computer/;
 const SEEDED_ID = `_local_/_local_/${SEEDED_PROJECT}`;
 
@@ -54,9 +55,17 @@ async function openSignIn(page: Page): Promise<void> {
   await expect(page.getByTestId('share-signin')).toBeVisible();
 }
 
-/** Give the seeded project an `origin` (a bare remote), so its card is a shared card. */
-const addOrigin = (remote: BareRemote): void => {
-  git(rigRepo(SEEDED_PROJECT), 'remote', 'add', 'origin', pathToFileURL(remote.bare).href);
+/** The repository location the seeded card shows after "Shared at ". */
+const cardLocation = async (page: Page): Promise<string> =>
+  ((await page.getByTestId(`share-state-${SEEDED_ID}`).textContent()) ?? '').replace(/^Shared at /, '');
+
+/** The push requests the page sent to the platform (POST /api/git/push/...). */
+const watchPushes = (page: Page): Request[] => {
+  const pushes: Request[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && new URL(request.url()).pathname.startsWith('/api/git/push/')) pushes.push(request);
+  });
+  return pushes;
 };
 
 test.describe('J11 — a facilitator shares the project to Door43', () => {
@@ -267,7 +276,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
 
     // 7b. A later share in the same session asks nothing: the "Upload changes" case of the
     // share block below (its second upload runs with the token of the first).
-    test('7c. a kept token: no Door43 request at start; the shared card says "Signed in"; Upload changes resumes it and asks nothing; the keychain holds the token only; Change on the card empties it (#366 tests 1, 4, 6; D86 points 7 and 8)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
+    test('7c. a kept token: no Door43 request at start, and none when the upload dialog opens; the dialog says "Signed in"; Upload changes resumes it and asks nothing; the keychain holds the token only; Change in the dialog empties it (#366 tests 1, 4, 6; D86 points 7 and 8; #530)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
       const fake = await fakeFor(context);
       const keychain = await fakeKeychain(context);
       const remote = makeBareRemote();
@@ -295,41 +304,58 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
         expect(settingsKeys().filter((key) => PERSON_KEYS.test(key))).toEqual([]);
 
         // D86 point 8: a new app session sends no request to Door43 at start. The keychain is
-        // read (locally), so the shared card says a sign-in is kept, without a username.
-        addOrigin(remote);
+        // read (locally). #530: the shared card says nothing about the sign-in.
+        addOrigin(SEEDED_PROJECT, remote);
         const before = fake.calls.length;
         const reads = keychain.calls.length;
         await page.reload();
-        const account = page.getByTestId(`share-account-${SEEDED_ID}`);
-        await expect(account).toHaveText(CARD_KEPT);
+        await expectCleanCard(page, SEEDED_ID);
         // Only reads (the development build mounts twice under React StrictMode).
         expect(keychain.calls.slice(reads).length).toBeGreaterThan(0);
         expect(keychain.calls.slice(reads).filter((c) => c !== 'read')).toEqual([]);
         await page.waitForTimeout(1000);
         expect(fake.calls.slice(before), 'no Door43 request at start').toEqual([]);
 
-        // Test 1: Upload changes resumes the kept token (Door43 says who it is), asks nothing, and pushes.
+        // #530: Upload changes opens the dialog. The kept sign-in is not resumed yet, so the
+        // dialog names no username, and opening it sent nothing to Door43 and pushed nothing.
         await page.getByTestId(`share-${SEEDED_ID}`).click();
-        await expect(page.getByTestId(`share-uploaded-${SEEDED_ID}`)).toBeVisible({ timeout: 30_000 });
+        await expect(page.getByTestId('share-upload')).toBeVisible();
+        await expect(page.getByTestId('share-signin')).toHaveCount(0);
+        const account = page.getByTestId('share-account');
+        await expect(account).toHaveText(KEPT);
+        await page.waitForTimeout(500);
+        expect(fake.calls.slice(before), 'no Door43 request when the dialog opens').toEqual([]);
+        expect(remote.main(), 'nothing pushed when the dialog opens').toBeNull();
+
+        // Test 1: Upload changes resumes the kept token (Door43 says who it is), asks nothing, and pushes.
+        await page.getByTestId('share-submit').click();
+        await expect(page.getByTestId('share-done')).toBeVisible({ timeout: 30_000 });
         await expect(page.getByTestId('share-signin')).toHaveCount(0);
         expect(remote.main()).toBe(head(SEEDED_PROJECT));
         const resumed = fake.calls.slice(before);
         expect(resumed.map((c) => `${c.method} ${c.url}`)).toEqual([`GET ${QA_SERVER}/api/v1/user`]);
         expect(resumed[0].headers.authorization ?? resumed[0].headers.Authorization).toBe(`token ${token}`);
         expect(resumed[0].url).not.toContain(token);
-        await expect(account).toHaveText(CARD_AS);
+        await page.getByTestId('share-close').click();
+        await expectCleanCard(page, SEEDED_ID);
 
-        // Test 4, D86 point 7: Change on the card signs out (the keychain is emptied) and opens
-        // the sign-in step; the next session asks the password again.
-        await page.getByTestId(`share-account-${SEEDED_ID}-change`).click();
+        // The sign-in is resumed now: the next dialog names the account.
+        await page.getByTestId(`share-${SEEDED_ID}`).click();
+        await expect(account).toHaveText(SHARING_AS);
+
+        // Test 4, D86 point 7: Change in the dialog signs out (the keychain is emptied) and opens
+        // the sign-in step; nothing is uploaded; the next session asks the password again.
+        const pushed = remote.main();
+        await page.getByTestId('share-account-change').click();
         await expect(page.getByTestId('share-signin')).toBeVisible();
+        await expect(page.getByTestId('share-dialog')).toHaveCount(0);
         expect(keychain.calls.at(-1)).toBe('forget');
         expect(keychain.held).toBeNull();
         await page.getByTestId('signin-cancel').click();
-        await expect(account).toHaveCount(0);
+        expect(remote.main()).toBe(pushed);
         await page.reload();
         await expect(page.getByTestId(`share-${SEEDED_ID}`)).toHaveText('Upload changes');
-        await expect(account).toHaveCount(0);
+        await expectCleanCard(page, SEEDED_ID);
         await page.getByTestId(`share-${SEEDED_ID}`).click();
         await expect(page.getByTestId('share-signin')).toBeVisible();
         await expect(page.getByLabel('Password', { exact: true })).toHaveValue('');
@@ -547,13 +573,10 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       await expect(page.getByTestId('community-checking').getByRole('button', { name: /share|upload/i })).toHaveCount(0);
     });
 
-    test('2. the shared card after a new session reads its state from origin; Upload changes pushes a new commit with no dialog, and asks nothing the second time (#203 7b); the installation store holds no remote', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
+    test('2. the shared card after a new session reads its state from origin; Upload changes opens the dialog: the repository, the account and the books; Cancel pushes nothing; Upload changes pushes the new commit to the same repository; the second time asks no sign-in (#203 7b; #530); the installation store holds no remote', { tag: ['@inc85', '@J11'] }, async ({ page, context }, testInfo) => {
       await fakeShare(context, remote);
-      await pressShare(page, SEEDED_ID);
-      await page.getByTestId('share-next').click();
-      await page.getByTestId('share-submit').click();
-      await expect(page.getByTestId('share-done')).toBeVisible({ timeout: 30_000 });
-      await page.getByTestId('share-close').click();
+      const pushes = watchPushes(page);
+      await shareFirstTime(page, SEEDED_ID);
       const first = remote.main();
       expect(first).toBe(head(SEEDED_PROJECT));
 
@@ -571,25 +594,74 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       expect(JSON.stringify(readClientSettingsDoc() ?? {})).not.toContain(remote.bare);
       expect(JSON.stringify(readClientSettingsDoc() ?? {})).not.toContain('origin');
 
-      // A new local commit, then Upload changes: the token is asked (a new session, D85), then no dialog.
-      git(rigRepo(SEEDED_PROJECT), '-c', 'user.name=rig', '-c', 'user.email=rig@local', 'commit', '-q', '--allow-empty', '-m', 'local edit 1');
-      const second = head(SEEDED_PROJECT);
+      // #530: the shared card shows the action and nothing under it.
+      await expectCleanCard(page, SEEDED_ID);
+      await shot(page, testInfo, 'upload-card-clean');
+      const location = await cardLocation(page);
+      const origin = (await remotesOf(SEEDED_ID)).find((r) => r.name === 'origin')!.url;
+      const pushedBefore = pushes.length;
+
+      // A new local commit, then Upload changes: the token is asked (a new session, D85), then
+      // the dialog opens on its review step. Nothing is pushed yet.
+      const second = commitLocally(SEEDED_PROJECT, 'local edit 1');
       expect(second).not.toBe(first);
       await pressShare(page, SEEDED_ID);
-      await expect(page.getByTestId('share-dialog')).toHaveCount(0);
-      await expect(page.getByTestId(`share-uploaded-${SEEDED_ID}`)).toBeVisible({ timeout: 30_000 });
-      expect(remote.main()).toBe(second);
+      const dialog = page.getByTestId('share-dialog');
+      await expect(page.getByTestId('share-upload')).toBeVisible();
+      await expect(dialog).toContainText('Upload changes');
+      await expect(dialog).toContainText('· check');
+      // The repository is the card's own location, shown and not editable; the account; the
+      // books as a review, with nothing to choose.
+      await expect(page.getByTestId('share-where')).toHaveText(location);
+      await expect(page.getByLabel('Repository name')).toHaveCount(0);
+      await expect(page.getByTestId('share-account')).toHaveText(SHARING_AS);
+      await expect(page.getByTestId('share-items')).toHaveText('Jonah, Titus');
+      await expect(dialog.getByRole('checkbox')).toHaveCount(0);
+      await expect(dialog.getByRole('radio')).toHaveCount(0);
+      await expect(page.getByTestId('share-submit')).toHaveText('Upload changes');
+      await shot(page, testInfo, 'upload-dialog-review');
 
-      // The same session again (#203 test 7b): nothing is asked, no dialog, pushed.
-      git(rigRepo(SEEDED_PROJECT), '-c', 'user.name=rig', '-c', 'user.email=rig@local', 'commit', '-q', '--allow-empty', '-m', 'local edit 2');
-      const third = head(SEEDED_PROJECT);
+      // Cancel: no push request left, the remote keeps its commit, the origin is the same.
+      await page.getByTestId('share-cancel').click();
+      await expect(dialog).toHaveCount(0);
+      await page.waitForTimeout(500);
+      expect(pushes.length, 'Cancel sends no push').toBe(pushedBefore);
+      expect(remote.main()).toBe(first);
+      expect((await remotesOf(SEEDED_ID)).find((r) => r.name === 'origin')!.url).toBe(origin);
+      await expectCleanCard(page, SEEDED_ID);
+
+      // Upload changes in the dialog: one progress line, then the end with the link actions.
       await page.getByTestId(`share-${SEEDED_ID}`).click();
       await expect(page.getByTestId('share-signin')).toHaveCount(0);
-      await expect(page.getByTestId('share-dialog')).toHaveCount(0);
-      await expect.poll(() => remote.main(), { timeout: 30_000 }).toBe(third);
+      await page.getByTestId('share-submit').click();
+      const done = page.getByTestId('share-done');
+      await expect(done).toBeVisible({ timeout: 30_000 });
+      await expect(done).toHaveAttribute('data-steps', 'push');
+      await expect(dialog).toContainText('Uploaded to Door43');
+      await expect(page.getByTestId('share-done-text')).toHaveText('Your changes are on Door43.');
+      await expect(page.getByTestId('share-copy')).toHaveText('Copy link');
+      await expect(page.getByTestId('share-open')).toHaveText('Open on Door43');
+      await shot(page, testInfo, 'upload-dialog-done');
+      // The push went to the same repository: the remote has the new commit, the origin is the same.
+      expect(remote.main()).toBe(second);
+      expect(pushes.length).toBe(pushedBefore + 1);
+      expect((await remotesOf(SEEDED_ID)).find((r) => r.name === 'origin')!.url).toBe(origin);
+      await page.getByTestId('share-close').click();
+      await expect(dialog).toHaveCount(0);
+      await expectCleanCard(page, SEEDED_ID);
+
+      // The same session again (#203 test 7b): no sign-in is asked; the dialog, then pushed.
+      const third = commitLocally(SEEDED_PROJECT, 'local edit 2');
+      await uploadChanges(page, SEEDED_ID);
+      expect(remote.main()).toBe(third);
+
+      // The artifact: the push requests of this test, in order.
+      const log = testInfo.outputPath('upload-push-requests.json');
+      fs.writeFileSync(log, JSON.stringify(pushes.map((r) => `${r.method()} ${new URL(r.url()).pathname}`), null, 2));
+      await testInfo.attach('upload-push-requests', { path: log, contentType: 'application/json' });
     });
 
-    test('2b. with "Stay signed in", Upload changes in a new app session asks nothing (#366 test 1)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
+    test('2b. with "Stay signed in", Upload changes in a new app session asks no sign-in (#366 test 1; #530)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
       const fake = await fakeShare(context, remote);
       const keychain = await fakeKeychain(context);
       await page.goto('/');
@@ -604,19 +676,63 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       expect(first).toBe(head(SEEDED_PROJECT));
       expect(keychain.held).toBe(fake.tokens.get('translationCore'));
 
-      // A new app session, a new local commit: Upload changes asks nothing, no dialog, pushed.
+      // A new app session, a new local commit: the upload dialog says a sign-in is kept, asks no
+      // sign-in, and pushes after Upload changes.
       await page.reload();
-      await expect(page.getByTestId(`share-account-${SEEDED_ID}`)).toHaveText(CARD_KEPT);
-      await expect(page.getByTestId(`share-${SEEDED_ID}`)).toHaveText('Upload changes');
-      git(rigRepo(SEEDED_PROJECT), '-c', 'user.name=rig', '-c', 'user.email=rig@local', 'commit', '-q', '--allow-empty', '-m', 'local edit 1');
-      const second = head(SEEDED_PROJECT);
+      await expectCleanCard(page, SEEDED_ID);
+      const second = commitLocally(SEEDED_PROJECT, 'local edit 1');
       await page.getByTestId(`share-${SEEDED_ID}`).click();
+      await expect(page.getByTestId('share-upload')).toBeVisible();
+      await expect(page.getByTestId('share-account')).toHaveText(KEPT);
+      expect(remote.main()).toBe(first);
+      await page.getByTestId('share-submit').click();
+      await expect(page.getByTestId('share-done')).toBeVisible({ timeout: 30_000 });
       await expect(page.getByTestId('share-signin')).toHaveCount(0);
-      await expect(page.getByTestId('share-dialog')).toHaveCount(0);
-      await expect(page.getByTestId(`share-uploaded-${SEEDED_ID}`)).toBeVisible({ timeout: 30_000 });
       expect(remote.main()).toBe(second);
       // The token is on no disk of the rig.
       expect(filesHolding(RIG_STATE, keychain.held!)).toEqual([]);
+    });
+
+    test('2d. a kept token Door43 refuses when the upload is sent: nothing is pushed, the token is forgotten, the sign-in step opens, and the new sign-in returns to the review; the upload waits for its own click (#530; #366 test 5)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
+      // The fake knows no token, so the kept one is revoked (the upload leg of case 7d).
+      const fake = await fakeShare(context, remote);
+      const keychain = await fakeKeychain(context, 'revoked-token');
+      const pushes = watchPushes(page);
+      addOrigin(SEEDED_PROJECT, remote);
+      await page.reload();
+      await expectCleanCard(page, SEEDED_ID);
+
+      // The dialog opens on the kept sign-in, and sends nothing.
+      await page.getByTestId(`share-${SEEDED_ID}`).click();
+      await expect(page.getByTestId('share-upload')).toBeVisible();
+      await expect(page.getByTestId('share-account')).toHaveText(KEPT);
+      await page.waitForTimeout(500);
+      expect(fake.calls, 'no Door43 request when the dialog opens').toEqual([]);
+
+      // Upload changes: Door43 refuses the token. The app forgets it and asks the password.
+      await page.getByTestId('share-submit').click();
+      await expect(page.getByTestId('share-signin')).toBeVisible();
+      await expect(page.getByTestId('share-dialog')).toHaveCount(0);
+      expect(fake.calls.map((c) => `${c.method} ${c.url}`)).toEqual([`GET ${QA_SERVER}/api/v1/user`]);
+      expect(keychain.calls.filter((c) => c !== 'read')).toEqual(['forget']);
+      expect(keychain.held).toBeNull();
+      await expect(page.getByLabel('Password', { exact: true })).toHaveValue('');
+      expect(pushes.length, 'the refused sign-in pushed nothing').toBe(0);
+      expect(remote.main()).toBeNull();
+
+      // The new sign-in returns to the review, with the account named. Nothing is uploaded yet.
+      await signIn(page);
+      await expect(page.getByTestId('share-upload')).toBeVisible();
+      await expect(page.getByTestId('share-account')).toHaveText(SHARING_AS);
+      await page.waitForTimeout(500);
+      expect(pushes.length, 'the sign-in does not upload by itself').toBe(0);
+      expect(remote.main()).toBeNull();
+
+      // Upload changes, pressed by the user, pushes.
+      await page.getByTestId('share-submit').click();
+      await expect(page.getByTestId('share-done')).toBeVisible({ timeout: 30_000 });
+      expect(pushes.length).toBe(1);
+      expect(remote.main()).toBe(head(SEEDED_PROJECT));
     });
 
     test('2c. a token kept by an earlier version without the create scopes: the share asks the password once, says why, replaces the token, and shares (#467)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
@@ -725,17 +841,25 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       git(other, 'push', '-q', 'origin', 'main');
       const theirs = remote.main();
       expect(theirs).not.toBe(shared);
-      git(rigRepo(SEEDED_PROJECT), '-c', 'user.name=rig', '-c', 'user.email=rig@local', 'commit', '-q', '--allow-empty', '-m', 'local edit');
+      commitLocally(SEEDED_PROJECT, 'local edit');
+      // #530: the refusal shows in the upload dialog. A second try cannot change it, so the
+      // dialog offers Close alone; the card stays clean.
       await page.getByTestId(`share-${SEEDED_ID}`).click();
-      const cardError = page.getByTestId(`share-card-error-${SEEDED_ID}`);
-      await expect(cardError).toHaveAttribute('data-code', 'share.non-fast-forward', { timeout: 30_000 });
-      await expect(cardError).toContainText('team sync is coming and your work is safe');
+      await page.getByTestId('share-submit').click();
+      await expect(error).toHaveAttribute('data-code', 'share.non-fast-forward', { timeout: 30_000 });
+      await expect(error).toContainText('Not uploaded.');
+      await expect(error).toContainText('team sync is coming and your work is safe');
+      await expect(page.getByTestId('share-upload')).toBeVisible();
+      await expect(page.getByTestId('share-submit')).toHaveCount(0);
       expect(remote.main()).toBe(theirs);
+      await page.getByTestId('share-close').click();
+      await expect(page.getByTestId('share-dialog')).toHaveCount(0);
+      await expectCleanCard(page, SEEDED_ID);
       // Each refusal is in the ops log (#374, test 13).
       await expect.poll(() => opsCodes().slice(before)).toEqual(['share.name-exists', 'share.name-exists', 'share.non-fast-forward']);
     });
 
-    test('11. an OBS project shares the same way: the check step lists the stories; the pushed commit\'s author is the computer\'s account name (J24; #203 test 4)', { tag: ['@inc85', '@J11', '@J24'] }, async ({ page, context }) => {
+    test('11. an OBS project shares the same way: the check step lists the stories; the pushed commit\'s author is the computer\'s account name; Upload changes opens the same dialog (J24; #203 test 4; #530)', { tag: ['@inc85', '@J11', '@J24'] }, async ({ page, context }, testInfo) => {
       const fake = await fakeShare(context, remote);
       const abbr = `obs_share_${Date.now()}`;
       const id = `_local_/_local_/${abbr}`;
@@ -761,7 +885,91 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       expect(git(remote.bare, 'log', '-1', '--format=%an', 'main')).toBe(os.userInfo().username);
       await page.getByTestId('share-close').click();
       await expect(page.getByTestId(`share-state-${id}`)).toHaveText(`Shared at qa.door43.org/${USER.username}/${abbr}`);
+
+      // #530: Upload changes on the OBS card opens the same dialog; the review lists the stories.
+      await expectCleanCard(page, id);
+      const next = commitLocally(abbr, 'a story edit');
+      await page.getByTestId(`share-${id}`).click();
+      await expect(page.getByTestId('share-upload')).toBeVisible();
+      await expect(page.getByTestId('share-where')).toHaveText(`qa.door43.org/${USER.username}/${abbr}`);
+      await expect(page.getByTestId('share-upload')).toContainText('Stories uploaded');
+      await expect(page.getByTestId('share-items')).toHaveText('Stories 1 to 50');
+      await shot(page, testInfo, 'upload-dialog-review-obs');
+      await page.getByTestId('share-submit').click();
+      await expect(page.getByTestId('share-done')).toBeVisible({ timeout: 30_000 });
+      expect(remote.main()).toBe(next);
+      await page.getByTestId('share-close').click();
+      await expectCleanCard(page, id);
       await fetch(`${RIG_API}/git/delete/${id}`, { method: 'POST' });
+    });
+
+    test('13. the upload dialog: a failed upload shows there with Try again, and a second try uploads; two fast clicks send one push; the keyboard opens and cancels it; it does not close during the upload (#530)', { tag: ['@inc85', '@J11'] }, async ({ page, context }, testInfo) => {
+      await fakeShare(context, remote);
+      const pushes = watchPushes(page);
+      await shareFirstTime(page, SEEDED_ID);
+      const first = remote.main();
+      const second = commitLocally(SEEDED_PROJECT, 'local edit 1');
+      const action = page.getByTestId(`share-${SEEDED_ID}`);
+      const dialog = page.getByTestId('share-dialog');
+      const submit = page.getByTestId('share-submit');
+
+      // The keyboard: Enter on the card action opens the dialog with the focus inside it;
+      // Escape cancels, sends nothing, and gives the focus back to the action.
+      await action.focus();
+      await page.keyboard.press('Enter');
+      await expect(page.getByTestId('share-upload')).toBeVisible();
+      await expect(dialog.getByRole('dialog')).toBeVisible();
+      await expect.poll(() => page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'))).toBe(true);
+      await page.keyboard.press('Escape');
+      await expect(dialog).toHaveCount(0);
+      await expect(action).toBeFocused();
+      expect(pushes.length).toBe(1); // the first share only
+      expect(remote.main()).toBe(first);
+
+      // A failed upload: the platform's push answers an error once. The dialog says so, with
+      // its code, and offers Try again and Close; nothing is pushed, and no success is shown.
+      await page.route('**/api/git/push/**', (route) => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ is_good: false, reason: 'the journey refused this push' }) }));
+      await action.click();
+      await submit.click();
+      const error = page.getByTestId('share-error');
+      await expect(error).toHaveAttribute('data-code', 'share.push-failed', { timeout: 30_000 });
+      await expect(error).toHaveAttribute('role', 'alert');
+      await expect(error).toContainText('Not uploaded.');
+      await expect(page.getByTestId('share-done')).toHaveCount(0);
+      await expect(submit).toHaveText('Try again');
+      await expect(page.getByTestId('share-close')).toHaveText('Close');
+      await expect(page.getByTestId('share-where')).toBeVisible();
+      expect(remote.main()).toBe(first);
+      await shot(page, testInfo, 'upload-dialog-failed');
+      await page.unroute('**/api/git/push/**');
+
+      // Try again, pressed twice at once, while the push is held: one push request leaves. The
+      // dialog shows the progress as a status, has no Close, and Escape does not close it.
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => { release = resolve; });
+      await page.route('**/api/git/push/**', async (route) => {
+        await held;
+        await route.continue();
+      });
+      const sent = pushes.length;
+      await submit.dblclick();
+      const progress = page.getByTestId('share-progress');
+      await expect(progress).toBeVisible();
+      await expect(progress).toHaveAttribute('role', 'status');
+      await expect(progress).toHaveAttribute('data-steps', 'push');
+      await expect(dialog.getByRole('button')).toHaveCount(0);
+      await shot(page, testInfo, 'upload-dialog-progress');
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(300);
+      await expect(progress).toBeVisible();
+      expect(pushes.length, 'two fast clicks send one push').toBe(sent + 1);
+      release();
+      await expect(page.getByTestId('share-done')).toBeVisible({ timeout: 30_000 });
+      await expect(error).toHaveCount(0);
+      expect(pushes.length).toBe(sent + 1);
+      expect(remote.main()).toBe(second);
+      await page.getByTestId('share-close').click();
+      await expectCleanCard(page, SEEDED_ID);
     });
 
     test('12. Ask on: Share opens one internet dialog; Cancel sends nothing; Continue goes to the sign-in step and the share needs no second dialog (D88)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {

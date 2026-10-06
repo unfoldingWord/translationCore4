@@ -21,3 +21,15 @@ export const DCS_SERVER: string = dcsServerFor(import.meta.env);
 
 /** The host a project card names in its Door43 location (#506), or null on production. */
 export const DCS_SERVER_LABEL: string | null = DCS_SERVER === PRODUCTION ? null : new URL(DCS_SERVER).host;
+
+/** #506: a development build puts the Door43 server name before the repository
+ * when the repository is on that server. A packaged build has no label, so the
+ * location is "owner/repository". The project card and the upload dialog show it. */
+export const locationOf = (shared: { repository: string; url: string }): string => {
+  try {
+    if (DCS_SERVER_LABEL && new URL(shared.url).host === DCS_SERVER_LABEL) return `${DCS_SERVER_LABEL}/${shared.repository}`;
+  } catch {
+    // a remote that is not a URL: no server to name
+  }
+  return shared.repository;
+};

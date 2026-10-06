@@ -8,7 +8,7 @@ import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 
-const state = { remoteByProject: {} as Record<string, unknown>, progressByProject: {}, shareCard: {}, obsRecentByProject: {}, netEnabled: true };
+const state = { remoteByProject: {} as Record<string, unknown>, progressByProject: {}, obsRecentByProject: {}, netEnabled: true };
 vi.mock('../src/state.jsx', () => ({ useApp: () => ({ s: state, actions: { loadProgress: vi.fn(), loadShared: vi.fn() } }) }));
 
 const PRODUCTION = 'https://git.door43.org';

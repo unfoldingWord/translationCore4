@@ -2020,6 +2020,23 @@ main 0996d21, 2026-09-30, `src/data/share/door43Api.ts`].
    [amended 2026-10-02 — D88 points 1 and 7: the top bar has a Door43 account menu. "Sign out of
    Door43" is on that menu, and the "Also sign out" checkbox is removed with the Local dialog.
    "Change" stays.]
+   [amended 2026-10-03 — issue #530; decided 2026-10-02, owner request after a review of the
+   upload-changes screenshot: the card shows no account line, no "Uploaded." and no refusal under
+   **Upload changes**. **Upload changes** opens an upload dialog. The dialog shows the project,
+   its repository on Door43 (not editable), the account with "Change", and the books or stories
+   as a review. It has **Cancel** and **Upload changes**, then one progress line, then the end
+   with Copy link, Open on Door43 and Close, or the refusal. The "On Door43" badge and "Shared
+   at…" stay on the card. Four details are [decided 2026-10-05 — owner ruling, comment on pull
+   request #540, "I confirm all four as built"]: (a) the click on the card sends nothing, and
+   the "Use the internet?" dialog opens when the upload, or its sign-in, is sent; a kept sign-in
+   that is not resumed yet shows as "Signed in · Change"; (b) with no sign-in, the sign-in step
+   opens first, its consent covers the upload, and the dialog then opens for review; (c) after
+   Change, or after Door43 refuses the token, the new sign-in returns to the review and uploads
+   nothing; (d) a refusal offers **Try again** and **Close**, and **Close** alone when another
+   device pushed. The consent of a Share or an Upload changes belongs to its flow: the click on
+   the card, its sign-in step and its dialogs, until they close. The flow asks one time. When
+   it closes, its consent ends; a step of it that ends later changes nothing; and the next
+   click is a new flow, which asks again. One sign-in is sent at a time.]
 8. **The kept sign-in (amends D85 point 4).** tC4 resumes a kept token at the first action that
    needs Door43, not at app start. The resume waits for the barrier of point 3: after Allow, it
    runs only when the read-back shows the gate on. A kept token still asks nothing. D85 points 1,
@@ -2127,6 +2144,10 @@ choice as `internet: true` and gave the Door43 adapter a barrier that read that 
    only inside a permitted task. The "Change" link in the share dialog and on the card stands
    (D86 point 7). The links to create an account and to recover a password do not exist in tC4
    today. This change adds none.
+   [amended 2026-10-03 — issue #530; decided 2026-10-02, owner request: the "Change" link is no
+   longer on the card. It is in the share dialog and in the upload dialog. An upload is one
+   internet task, as before (point 2), but its "Use the internet?" dialog opens when the upload,
+   or its sign-in, is sent, not at the click on the card. See the amendment of D86 point 7.]
 
 `docs/BURRITO-SPEC.md` §5.3 carries this decision. The conformance harness does not assert the
 changed text, so it does not change. The documents that follow describe built behavior, and they
