@@ -110,8 +110,30 @@ result with the CI result of `main` at the commit you branched from.
 
 Before you send a pull request:
 
-1. Run `npm run prove` (or `npm run verify` for the quick subset).
-2. Paste the test output into the pull request description.
+1. **Do a self-review.** The reviewer must not be the first person to read and run your
+   change.
+   - Read the full diff against each acceptance criterion.
+   - Run the built feature the way a user does, for each criterion. Record what you saw:
+     the command, the output or the screenshot. Passing tests do not replace this step.
+     If you cannot run the feature, say why in the pull request. A criterion that you
+     cannot run is not met.
+   - Remove from the pull request each claim that you did not see happen.
+   - Check these cases in the diff:
+     - **Failure is not success.** Find each write, read or wait that you add. Find what
+       happens when it throws, returns false or gets no answer. Keep "done", "no" and
+       "no answer" separate.
+     - **Inputs that differ.** For each filter, group or "pick first", try two inputs
+       that differ and one that is empty.
+     - **Read again after `await`.** A value that you read before an `await` can change
+       before you use it.
+     - **Test data that differs.** Give the fixtures one case where a field is empty and
+       one where two inputs disagree.
+     - **Parsed means stored.** Each value that you read from input is stored, or the
+       pull request says why not.
+2. **Record each point that was decided during the work.** Write it in a comment on the
+   issue or in `docs/DECISIONS.md`. Link the record from the pull request description.
+3. Run `npm run prove` (or `npm run verify` for the quick subset).
+4. Paste the test output and the self-review results into the pull request description.
 
 "Done" means: the acceptance criteria pass, with pasted evidence.
 
@@ -154,8 +176,9 @@ always finds something. These three rules end the loop.
 - **Tracking issues** (label `epic`) group sub-issues.
 - **Milestones** are delivery targets. A milestone is one increment.
 - **The project board** has one Status field: `Backlog`, `Ready`, `In progress`,
-  `Blocked`, `Done`. `Ready` means: the acceptance criteria, the Verify command and the
-  Platform reuse section are complete, and nobody is assigned. A `Ready` issue is claimable.
+  `Blocked`, `Done`. `Ready` means: the acceptance criteria, the Verify command, the
+  Platform reuse section and the Interruptions section are complete, and nobody is
+  assigned. A `Ready` issue is claimable.
 
 ### Claim an issue
 
@@ -171,6 +194,30 @@ run `gh issue view <number>`; the `projects:` line shows the status in parenthes
 issue with no board status is not yet triaged. Ask in a comment before you start it.
 [VERIFIED — gh 2.86.0 against the board, 2026-09-04; GitHub's repository roles: triage
 or higher assigns issues and applies labels]
+
+### Before you start work
+
+Added 2026-10-06. The issues for pull requests
+[#538](https://github.com/unfoldingWord/translationCore4/pull/538) and
+[#540](https://github.com/unfoldingWord/translationCore4/pull/540) answered only some of
+the four questions below. Neither said what happens when an input changes partway. The
+owner decided the open points while the pull requests were open. Most of their blocking
+review findings were on the four questions.
+
+When you claim an issue, read its Interruptions section. Do this before you write
+code. The section answers four questions for each flow that has more than one step, or
+that waits for a server, a worker or the user:
+
+1. What happens when the user cancels partway?
+2. What happens when a step fails or gets no answer?
+3. What happens when the user starts a second action while the first is still pending?
+4. What happens when an input changes partway, for example the account, the book or
+   the model?
+
+A flow with one step and no wait needs one line: "None: one step, no wait."
+
+If the section is missing, or an answer is missing, ask in the issue. Wait for the
+owner's answer. Do not choose the behavior yourself.
 
 ### Found a defect while working another issue?
 

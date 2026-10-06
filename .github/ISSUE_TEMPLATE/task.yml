@@ -53,6 +53,23 @@ body:
     validations:
       required: true
   - type: textarea
+    id: interruptions
+    attributes:
+      label: Interruptions
+      description: >-
+        For each flow with more than one step, or that waits for a server, a worker or the
+        user, say what happens when: the user cancels partway; a step fails or gets no
+        answer; the user starts a second action while the first is pending; an input
+        changes partway. For a flow with one step and no wait, write "None: one step, no
+        wait." (CONTRIBUTING.md, "Before you start work").
+      placeholder: |
+        Upload changes: Cancel in the review dialog sends nothing.
+        A failed push shows Try again and Close. The project stays as it was.
+        A second click on Upload while a push runs does nothing.
+        An account Change returns to the review. It uploads nothing by itself.
+    validations:
+      required: true
+  - type: textarea
     id: verify
     attributes:
       label: Verify
