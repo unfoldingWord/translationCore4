@@ -119,9 +119,11 @@ always finds something. These two rules end the loop.
    an acceptance criterion of the issue, or it breaks a rule in this document. Any other
    finding gets one line in the pull request: "filed as issue N" or "dropped: <reason>".
    Triage every finding against these two tests before the first fix commit.
-2. **A pull request gets at most three review rounds.** After round three, the pull
-   request is ready to merge or it goes back to the issue for a new definition. A fourth
-   round needs the owner's word, in a comment on the pull request.
+2. **A pull request gets at most five review rounds, plus one grace round.** A round is
+   one reviewed commit. This matches the review bench's cap (`uwreview`). After the grace
+   round, the pull request is ready to merge, or it goes to the owner: the owner merges
+   it, sends it back to the issue for a new definition, or allows more rounds in a
+   comment on the pull request.
 
 ## How work moves
 
