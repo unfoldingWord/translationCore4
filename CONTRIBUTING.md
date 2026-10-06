@@ -120,17 +120,27 @@ Before you send a pull request:
 Adopted 2026-09-06, after Increment 4. One pull request ran 37 review rounds
 (https://github.com/unfoldingWord/translationCore4/pull/116); 99 of the 252 commits on
 `main` between 2026-08-26 and 2026-09-06 were review-fix commits. An adversarial reviewer
-always finds something. These two rules end the loop.
+always finds something. These three rules end the loop.
 
 1. **A finding is fixed in the pull request only if it fails one of two tests:** it fails
    an acceptance criterion of the issue, or it breaks a rule in this document. Any other
-   finding gets one line in the pull request: "filed as issue N" or "dropped: <reason>".
-   Triage every finding against these two tests before the first fix commit.
+   finding gets one line in the pull request, as rule 3 says. Triage every finding
+   against these two tests before the first fix commit.
 2. **A pull request gets at most five review rounds, plus one grace round.** A round is
    one reviewed commit. This matches the review bench's cap (`uwreview`). After the grace
    round, the pull request is ready to merge, or it goes to the owner: the owner merges
    it, sends it back to the issue for a new definition, or allows more rounds in a
    comment on the pull request.
+3. **A finding becomes an issue only if all three of these are true.** Otherwise it gets
+   one line in the pull request: "dropped: <reason>". This applies to every finding,
+   whatever severity the reviewer gives it.
+   - **It reproduces.** Written steps go from a real user action or input to a wrong
+     result, data loss or a security problem. "This could happen if …" is not enough.
+   - **No open issue covers it.** If an open issue covers the same area, add the finding
+     to that issue as a comment. Do not open a new issue.
+   - **The owner agrees to track it.**
+
+   If all three are true, the line is "filed as issue N" or "added to issue N".
 
 ## How work moves
 
