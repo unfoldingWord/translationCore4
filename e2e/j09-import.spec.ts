@@ -564,9 +564,13 @@ test.describe('J9 — a facilitator imports existing work', () => {
           jonUnchanged: true,
         };
       });
-      await test.step('the new book opens from its tile in Translate with the file\'s text', async () => {
+      await test.step('the new book opens from its tile with the file\'s text in Translate', async () => {
         await card.getByRole('button', { name: /Titus/ }).click();
         await expect(page.getByRole('heading', { name: /^Titus \d+$/ })).toBeVisible({ timeout: 120_000 });
+        // A book with no place record opens in Understand (D63); the text is asserted in Translate.
+        const translate = page.getByRole('tab', { name: 'Translate', exact: true });
+        if ((await translate.getAttribute('aria-selected')) !== 'true') await translate.click();
+        await expect(translate).toHaveAttribute('aria-selected', 'true');
         await expect(page.getByText(/Pablo, siervo de Dios y apóstol de Jesucristo/).first()).toBeVisible({ timeout: 60_000 });
         await expect(page.getByTestId('home-open-error')).toHaveCount(0);
       });
