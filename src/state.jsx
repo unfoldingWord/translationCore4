@@ -3055,11 +3055,6 @@ export function AppProvider({ children }) {
   // dispatch until the next render.
   const placesRef = useRef(null);
   const placeTimerRef = useRef(null);
-  // #564: Add-a-book USFM file-list updates run one at a time, each off the list
-  // the previous update left, so two quick drops (or a remove during a classify)
-  // cannot last-write each other away. Dialog-list only; the journal snapshot in
-  // addUsfmBooks is unchanged.
-  const abFilesChainRef = useRef(Promise.resolve());
   const obsPackCache = () => {
     const key = `${openProjectSeqRef.current}|${stateRef.current.installEpoch}`;
     if (obsPackCacheRef.current.key !== key) obsPackCacheRef.current = { key, packs: createObsPackCache() };
@@ -5646,24 +5641,15 @@ export function AppProvider({ children }) {
       // ---- Add books from USFM files (#484): the files are parsed the moment
       //      they are picked, each row shows its verdict, and Add writes only
       //      the valid ones. Nothing touches the project before Add. ----
-      abAddUsfmFiles: (list) => {
-        const picked = [...list];
-        abFilesChainRef.current = abFilesChainRef.current.then(async () => {
-          const added = await Promise.all(picked.map(async (f) => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) })));
-          const ab = stateRef.current.ab;
-          if (!ab) return; // the dialog closed while this waited
-          a.patchAb({ files: await classifyUsfmFiles([...(ab.files || []), ...added], ab.existing) });
-        }).catch((error) => console.error(`add-book files: ${String(error?.message || error)}`));
-        return abFilesChainRef.current;
+      abAddUsfmFiles: async (list) => {
+        const added = await Promise.all(list.map(async (f) => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) })));
+        const ab = stateRef.current.ab;
+        a.patchAb({ files: await classifyUsfmFiles([...(ab.files || []), ...added], ab.existing) });
       },
-      abRemoveUsfmFile: (index) => {
-        abFilesChainRef.current = abFilesChainRef.current.then(async () => {
-          const ab = stateRef.current.ab;
-          if (!ab) return;
-          // Re-classify the rest: removing a file can un-refuse a duplicate.
-          a.patchAb({ files: await classifyUsfmFiles((ab.files || []).filter((_, i) => i !== index), ab.existing) });
-        }).catch((error) => console.error(`add-book files: ${String(error?.message || error)}`));
-        return abFilesChainRef.current;
+      abRemoveUsfmFile: async (index) => {
+        const ab = stateRef.current.ab;
+        // Re-classify the rest: removing a file can un-refuse a duplicate.
+        a.patchAb({ files: await classifyUsfmFiles((ab.files || []).filter((_, i) => i !== index), ab.existing) });
       },
       addUsfmBooks: async () => {
         const f = stateRef.current.ab;
