@@ -175,8 +175,10 @@ or higher assigns issues and applies labels]
 ### Found a defect while working another issue?
 
 Fix it inline when it is inside the issue's own scope: the same defect class the issue
-targets, in the files the issue touches. Say so in the pull request. Otherwise open a new
-issue and link it from the pull request. Leave that fix out of the change set.
+targets, in the files the issue touches. Say so in the pull request. Otherwise leave the
+fix out of the change set, and apply the three tests of "Review findings" rule 3: file or
+add it to an issue only if all three are true, and link that issue from the pull request.
+If they are not all true, say "dropped: <reason>" in the pull request.
 
 ### Labels
 
