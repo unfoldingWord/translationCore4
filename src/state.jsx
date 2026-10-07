@@ -26,7 +26,7 @@ import { mapReference } from './data/mapReference';
 import { seedBookFromSource } from './data/seed';
 import { SOURCE_MISSING, SOURCE_NOT_INSTALLED, isSourceAbsent } from './data/sourceState';
 import { BOOK_NAMES, bookName } from './data/bookNames';
-import { GATEWAYS, gatewayKey, DCS_HOST, orgForRepoName } from './data/gateways';
+import { GATEWAYS, gatewayKey, gatewayDisplayName, DCS_HOST, orgForRepoName } from './data/gateways';
 import { fetchAndInstallPin, latestReleaseTag, identifyExistingInstall, releaseCommitSha, rezip, unwrapExport, verifySideload } from './data/resourceFetch';
 import { isNotFoundError } from './data/serverApi';
 import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, gatewayBiblesFromInstalled, mergeOptionalPins, isPinLocal, unsatisfiedProjectPinFor, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk, flavorOfMetadata } from './data/installed';
@@ -3802,7 +3802,7 @@ export function AppProvider({ children }) {
         if (resolutionError) throw new Error(resolutionError);
         const kind = st.project.flavor === 'textStories' ? 'obs' : 'bible';
         const proposedPrimary = languageSetFromInstalled(installed, gateway, kind);
-        if (!proposedPrimary) throw new Error(t('sources.suiteIncomplete', { lang: gateway.name }));
+        if (!proposedPrimary) throw new Error(t('sources.suiteIncomplete', { lang: gatewayDisplayName(gateway) }));
         const { value: currentResources, md5: resourcesMd5 } = await store.readResourcesWithMd5();
         // #485: a present-but-EMPTY pin file (a non-tC3 import's first
         // checkpoint) must not flow through with no fallback set — a change
@@ -4334,7 +4334,7 @@ export function AppProvider({ children }) {
         const current = stateRef.current.projectPins?.languageSets?.primary?.gatewayLanguage;
         dispatch({
           type: 'set',
-          patch: { gatewayPreview: { ...preview, currentName: current?.languageId } },
+          patch: { gatewayPreview: { ...preview, currentGateway: current ?? null } },
         });
         return preview;
       },
@@ -4419,7 +4419,7 @@ export function AppProvider({ children }) {
         const kind = stateRef.current.project?.flavor === 'textStories' ? 'obs' : 'bible';
         const primary = languageSetFromInstalled(installed, gateway, kind);
         if (!primary) {
-          throw new Error(t('sources.suiteIncomplete', { lang: gateway.name }));
+          throw new Error(t('sources.suiteIncomplete', { lang: gatewayDisplayName(gateway) }));
         }
         if (kind === 'obs') await assertObsSourceCompatible(api, store, primary.obs, installed);
         const next = await updateResources(

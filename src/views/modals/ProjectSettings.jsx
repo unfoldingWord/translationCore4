@@ -9,7 +9,7 @@
 import React from 'react';
 import { useApp, SCRIPT_FONTS } from '../../state.jsx';
 import { t } from '../../i18n';
-import { GATEWAYS } from '../../data/gateways';
+import { gatewayDisplayName } from '../../data/gateways';
 import { samePath } from '../../data/resolve';
 import { pinnedGateway } from '../../data/gatewayChange';
 import { Modal, TextField, Select, FilterChip, Overline, Button, Callout, OptionCard, Badge, Text } from '../../ds/index.js';
@@ -23,13 +23,12 @@ function GatewayCard({ s, st, actions }) {
   const pins = (s.project?.id === st.repoPath ? s.projectPins : null) ?? st.gw.pins;
   // No pins is no current package: nothing is marked, and English stays a choice.
   const gl = pinnedGateway(pins);
-  const known = gl && GATEWAYS.find((g) => isGateway(g, gl));
   return (
     <div data-testid="settings-gateway">
       <Overline as="span" style={{ display: 'block', marginBottom: 6 }}>{t('newBible.checkingLanguage')}</Overline>
       {(gl || (!st.gw.loading && !st.gw.error)) && (
         <Text role="caption" data-testid="settings-gateway-current" style={{ display: 'block', marginBottom: 8 }}>
-          {gl ? t('settings.gatewayCurrent', { lang: known ? known.name : gl.languageId, org: gl.owner }) : t('settings.gatewayUnset')}
+          {gl ? t('settings.gatewayCurrent', { lang: gatewayDisplayName(gl), org: gl.owner }) : t('settings.gatewayUnset')}
         </Text>
       )}
       {st.gw.loading && <Text role="caption" tone="muted">{t('settings.gatewayLoading')}</Text>}
@@ -44,7 +43,7 @@ function GatewayCard({ s, st, actions }) {
           const current = isGateway(g, gl);
           return (
             <OptionCard key={g.key} data-testid={`settings-gateway-${g.key}`} data-current={current ? '1' : '0'}
-              selected={current} title={<span dir={g.dir}>{g.autonym}</span>} meta={g.name} description={g.org}
+              selected={current} title={<span dir={g.dir}>{gatewayDisplayName(g)}</span>} meta={g.name} description={g.org}
               trailing={current ? <Badge tone="accentSoft" size="sm">{t('settings.gatewayCurrentBadge')}</Badge> : '→'}
               onClick={current ? undefined : () => actions.chooseSettingsGateway(g)}
               style={current ? { cursor: 'default' } : undefined} />

@@ -78,6 +78,19 @@ export const gatewayKey = (g: Gateway): string => `${g.id}::${g.org}`;
 export const findGateway = (key: string): Gateway | undefined =>
   GATEWAYS.find((g) => gatewayKey(g) === key);
 
+/** The one name every screen shows for a gateway language (#579, D94): the
+ * language's own name (`autonym`), so a list row, the ready message, the change
+ * dialogue and the Project settings sentence agree. Lists add the English
+ * `name` as a second line themselves. A pinned language (`languageId`) that no
+ * configured gateway names shows its tag: the one case where a code shows.
+ * The autonym is the language's, not the owner's, so the language id decides. */
+export const gatewayDisplayName = (
+  gl: Pick<Gateway, 'id' | 'autonym'> | { languageId: string },
+): string => {
+  if ('autonym' in gl) return gl.autonym;
+  return GATEWAYS.find((g) => g.id === gl.languageId)?.autonym ?? gl.languageId;
+};
+
 /** English is the suite that ships with the install — the fallback rung's
  * language (D30.2). Kept as a lookup so no view hardcodes 'en'. */
 export const INSTALLED_GATEWAY = GATEWAYS.find((g) => g.id === 'en') as Gateway;
