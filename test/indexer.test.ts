@@ -3,7 +3,7 @@
 // and aligned tC3-shaped USFM (en_ult/en_ust TIT v89, see test/fixtures/README.md).
 import { describe, expect, it } from 'vitest';
 import usfmjs from 'usfm-js';
-import { findVerse, indexBook } from '../src/data/usfm/indexer';
+import { draftPercent, findVerse, indexBook } from '../src/data/usfm/indexer';
 
 // Real node builtins via the runtime, NOT `import 'node:fs'` — the app's
 // vite-plugin-node-polyfills aliases node builtins to browser mocks (fs → null)
@@ -112,6 +112,17 @@ describe('span verse keys (property 3)', () => {
     expect(findVerse(entries, 2, '9-10')).not.toBeNull();
     expect(findVerse(entries, 2, '9')).toBeNull();
     expect(findVerse(entries, '2', '10')).toBeNull();
+  });
+});
+
+// #572 (D81, D94) — the J2 verse-span journey proves the drafted percentage. This
+// one case stays because the journey cannot fail on it: in Titus (46 verses) an
+// undrafted span that counts as one verse gives 5 of 45 or 6 of 45, and both
+// round to the same percent as 5 of 46 and 6 of 46.
+describe('draftPercent — what the J2 span journey cannot show (#572)', () => {
+  it('an undrafted span counts its verses as undrafted', () => {
+    const raw = ['\\id TST', '\\c 1', '\\p', '\\v 1 uno', '\\v 2-3 ___', '\\v 4 ___', ''].join('\n');
+    expect(draftPercent(indexBook(raw), raw)).toBe(25);
   });
 });
 

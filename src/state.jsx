@@ -18,7 +18,7 @@ import { readPrintedStories } from './data/storyModel';
 import { recordRecentStory } from './data/obsRecency';
 import { modeOf, placeKey, recordPlace } from './data/place';
 import { spliceSection, spliceVerse, spliceVerseGap, verseBody } from './data/usfm/splice';
-import { indexBook } from './data/usfm/indexer';
+import { draftPercent, indexBook } from './data/usfm/indexer';
 import { bookModel, parseChapters, verseText } from './data/bookModel';
 import { RESOURCE_FRAME, forgetProjectFrames, resolveProjectFrame } from './data/projectFrame';
 import { backfillCoverage } from './data/coverageBackfill';
@@ -2338,12 +2338,7 @@ async function performLoadProgress(ctx) {
   for (const code of project.bookCodes) {
     try {
       const { usfm: raw } = await reader.readBook(code);
-      const entries = indexBook(raw);
-      const drafted = entries.filter((e) => {
-        const b = raw.slice(e.start, e.end).trim();
-        return b !== '' && b !== '___';
-      }).length;
-      pcts[code] = entries.length ? Math.round((drafted / entries.length) * 100) : 0;
+      pcts[code] = draftPercent(indexBook(raw), raw);
     } catch {
       pcts[code] = null;
     }
@@ -3049,15 +3044,6 @@ export const __buildAlignmentSessionForTests = buildAlignmentSession;
  * staged, untouched verses byte-identical. */
 export const __reflowAlignedVersesForTests = reflowAlignedVerses;
 
-function calcDraftPct(entries, bookRaw) {
-  if (!entries.length) return 0;
-  const draftedCount = entries.filter((e) => {
-    const b = bookRaw.slice(e.start, e.end).trim();
-    return b !== '' && b !== '___';
-  }).length;
-  return Math.round((draftedCount / entries.length) * 100);
-}
-
 export function AppProvider({ children }) {
   const [s, dispatch] = useReducer(reducer, undefined, initial);
   const storeRef = useRef(null);
@@ -3108,7 +3094,7 @@ export function AppProvider({ children }) {
   const model = useMemo(() => {
     if (!s.project || !s.book || s.bookRaw == null) return { book: null, progress: {} };
     const { entries, byChapter, chapterNums } = bookModel(s.bookRaw);
-    const draftPct = calcDraftPct(entries, s.bookRaw);
+    const draftPct = draftPercent(entries, s.bookRaw);
     return { book: { code: s.book, byChapter, chapterNums, draftPct }, progress: {} };
   }, [s.project, s.book, s.bookRaw, s.tick]);
 
