@@ -837,6 +837,12 @@ test.describe('J13 — a check the user marked Invalid stays Invalid through a c
     { tag: ['@inc9', '@J13'] },
     async ({ page }) => {
       writeProjectPins(SEEDED_PROJECT, EN());
+      // State the sample's record as checked under English, so the change has
+      // consequences and the preview derives the Spanish notes (as above).
+      const en = EN();
+      const asEnglish = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')!;
+      asEnglish.resource = { repoPath: en.tn.repoPath, version: en.tn.version, sha: en.tn.sha, languageSet: 'fallback' } as never;
+      writeDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT', asEnglish);
       // Hold the preview on its read of the Spanish notes, so the change stays pending.
       let release!: () => void;
       const held = new Promise<void>((resolve) => { release = resolve; });
