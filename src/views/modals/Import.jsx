@@ -118,8 +118,12 @@ function ResourcesCheck({ im, actions }) {
     : [
         found && t('importer.review.resourcesFound', { list: found }),
         v.unresolved.length > 0 && (v.installed
-          ? t('importer.review.resourcesInstalled', { list: missing, carried: v.installed.carried, invalidated: v.installed.invalidated })
-          : t(v.offline ? 'importer.review.resourcesOffline' : 'importer.review.resourcesMissing', { list: missing })),
+          ? [
+              t('importer.review.resourcesInstalled', { list: missing }),
+              t(v.installed.carried === 1 ? 'importer.review.decisionsCarriedOne' : 'importer.review.decisionsCarried', { n: v.installed.carried }),
+              t(v.installed.invalidated === 1 ? 'importer.review.decisionsInvalidatedOne' : 'importer.review.decisionsInvalidated', { n: v.installed.invalidated }),
+            ].join(' ')
+          :t(v.offline ? 'importer.review.resourcesOffline' : 'importer.review.resourcesMissing', { list: missing })),
       ].filter(Boolean).join(' ');
   const open = v && !v.looking && !v.installed && v.unresolved.length > 0;
   return (
