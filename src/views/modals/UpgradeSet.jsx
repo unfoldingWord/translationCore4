@@ -23,7 +23,7 @@ function PlanRows({ preview }) {
           <li key={`${a.tool}:${a.book}`}
             style={{ fontSize: 'var(--fs-caption-lg)', letterSpacing: 'var(--track-12-5)', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
             {p
-              ? t('gateway.carryOver', { book: bookName(a.book), tool: t(`check.tool.${a.tool}`), carried: p.carried, invalidated: p.invalidated })
+              ? t('gateway.carryOver', { book: bookName(a.book), tool: t(`check.tool.${a.tool}`), carried: p.shown, invalidated: p.invalidated })
               : t('gateway.affectedRow', { book: bookName(a.book), tool: t(`check.tool.${a.tool}`), n: a.decisions, resource: repoName(a.checkedAgainst.repoPath) })}
           </li>
         );

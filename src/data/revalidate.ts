@@ -60,7 +60,8 @@ export const revalidateAgainstDraft = (
     if (!stale) return item;
     if (item.invalidated === true) return item; // already known
     invalidated += 1;
-    return { ...item, invalidated: true, status: 'invalid' };
+    // #580: a user's own Invalid is marked as theirs (§5.2 `userInvalid`).
+    return { ...item, invalidated: true, status: 'invalid', ...(item.status === 'invalid' ? { userInvalid: true } : {}) };
   });
   return { items: next, invalidated };
 };

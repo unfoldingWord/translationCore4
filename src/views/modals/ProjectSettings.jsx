@@ -46,6 +46,8 @@ function GatewayCard({ s, st, actions }) {
             <OptionCard key={g.key} data-testid={`settings-gateway-${g.key}`} data-current={current ? '1' : '0'}
               selected={current} title={<span dir={g.dir}>{g.autonym}</span>} meta={g.name} description={g.org}
               trailing={current ? <Badge tone="accentSoft" size="sm">{t('settings.gatewayCurrentBadge')}</Badge> : '→'}
+              // #580 Interruptions 3: the rows wait while a change is pending.
+              disabled={!current && (!!s.gatewayBusy || !!s.gatewayPreview)}
               onClick={current ? undefined : () => actions.chooseSettingsGateway(g)}
               style={current ? { cursor: 'default' } : undefined} />
           );

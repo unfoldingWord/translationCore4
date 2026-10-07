@@ -42,6 +42,7 @@ import {
 } from '../httpStore';
 import { ServerApi, ServerApiError, type ServerApiInit } from '../serverApi';
 import { samePath } from '../resolve';
+import { invalidateDecision } from '../invalidate';
 import { INSTALLED_SUITE } from '../installedSuite';
 import { JournalStore } from './journalStore';
 import { idbKvStore, type KvStore } from './identity';
@@ -2627,11 +2628,7 @@ export class JournalingStore implements BurritoStore {
       if (current.invalidated === true) continue; // already retained-invalid
       // §8.5 R-8.5.11: never deleted — invalidate and retain, preserving a
       // user-set "todo" triage exactly as carry-over does (§5.2/D36).
-      pushDecision(key, {
-        ...current,
-        invalidated: true,
-        status: current.status === 'todo' ? 'todo' : 'invalid',
-      });
+      pushDecision(key, invalidateDecision(current));
     }
     return { events, resolutionChanged };
   }

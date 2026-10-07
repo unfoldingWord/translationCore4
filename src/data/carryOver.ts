@@ -15,7 +15,8 @@
 // Nothing is deleted. An invalidated decision keeps its full §5.2 record, so
 // switching back later can re-attach it (its checkId is still the old
 // resource's, which matches again once that resource is pinned again).
-import { mergeAndReattach, referenceParts } from './derive';
+import { isDecided, mergeAndReattach, referenceParts } from './derive';
+import { invalidateDecision } from './invalidate';
 import type { CheckContextId, CheckItem } from './derive';
 import type { Decision, DecisionFile } from './burritoStore';
 
@@ -24,6 +25,9 @@ export interface CarryOverResult {
   file: DecisionFile;
   /** How many decisions carried onto the new list. */
   carried: number;
+  /** How many of the carried decisions show as decided on the new list (#580):
+   * the count the change dialogues state as "carried over". */
+  shown: number;
   /** How many were invalidated because the new resource has no such check. */
   invalidated: number;
   /** Checks in the new list with no decision at all — work that now exists. */
@@ -80,11 +84,7 @@ export const carryOverDecisions = (
   const carriedKeys = new Set(carriedDecisions.map((d) => identityOf(d.contextId as unknown as CheckContextId)));
   const invalidatedDecisions = (unplaced as unknown as Decision[])
     .filter((d) => !carriedKeys.has(identityOf(d.contextId as unknown as CheckContextId)))
-    .map((d) => ({
-      ...d,
-      invalidated: true,
-      status: d.status === 'todo' ? ('todo' as const) : ('invalid' as const),
-    }));
+    .map((d) => invalidateDecision(d));
 
   // Checks in the new list with no decision at all — work that now exists.
   const undecided = items.filter((i) => !placed.has(i)).length;
@@ -96,6 +96,12 @@ export const carryOverDecisions = (
       decisions: [...carriedDecisions, ...invalidatedDecisions],
     },
     carried: carriedDecisions.length,
+    // #580: the dialogue's "carried over" is the carried decisions that show
+    // as decided on the new list (the one counting rule, isDecided). A carried
+    // record that comes back To do (an Invalid the change set, or a "todo")
+    // is kept but not counted, so the dialogue never promises more than the
+    // list shows.
+    shown: (carriedDecisions as unknown as CheckItem[]).filter(isDecided).length,
     invalidated: invalidatedDecisions.length,
     undecided,
   };

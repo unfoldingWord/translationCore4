@@ -157,6 +157,13 @@ async function openCheck(page: import('@playwright/test').Page) {
  * by quote difference alone still re-attaches. Measured on TIT: en_tn derives
  * 157 items, es-419_tn 112, and 58 of the English items are unplaceable. */
 function englishOnlyItem(book: string) {
+  const hit = englishOnlyItems(book)[0];
+  if (!hit) throw new Error('every English check is placeable in Spanish — fixture broken');
+  return hit;
+}
+
+/** Every English check of `book` that the Spanish notes cannot place (see above). */
+function englishOnlyItems(book: string) {
   type Ctx = { reference: { chapter: unknown; verse: unknown }; quoteString: string; occurrence: number };
   const crossKey = (c: Ctx) =>
     [String(c.reference.chapter), String(c.reference.verse), c.quoteString, c.occurrence].join('|');
@@ -164,16 +171,14 @@ function englishOnlyItem(book: string) {
   const esIds = new Set(es.map((i) => i.contextId.checkId));
   const esIdentity = new Set(es.map((i) => mergeKey(i.contextId)));
   const esCross = new Set(es.map((i) => crossKey(i.contextId as unknown as Ctx)));
-  const hit = deriveTnItems(sideloadedIngredient('en_tn', `${book}.tsv`), book.toLowerCase())
-    .find(
+  return deriveTnItems(sideloadedIngredient('en_tn', `${book}.tsv`), book.toLowerCase())
+    .filter(
       (i) =>
         i.contextId.quoteString.length > 0 &&
         !esIds.has(i.contextId.checkId) &&
         !esIdentity.has(mergeKey(i.contextId)) &&
         !esCross.has(crossKey(i.contextId as unknown as Ctx)),
     );
-  if (!hit) throw new Error('every English check is placeable in Spanish — fixture broken');
-  return hit;
 }
 
 function writeDecisionFile(repo: string, tool: string, book: string, file: unknown): void {
@@ -676,6 +681,194 @@ test.describe('J13 — changing the project’s checking language', () => {
       }
       expect(identities(after.languageSets.fallback)).toEqual(identities(before.languageSets.fallback));
       expect(after.extraScripture.map((e) => [e.id, e.repoPath, e.sha])).toEqual(before.extraScripture.map((e) => [e.id, e.repoPath, e.sha]));
+    },
+  );
+});
+
+/** The dialogue's "N carried over, M to check again" for Titus · Translation Notes. */
+async function titusNotesPlan(page: import('@playwright/test').Page) {
+  const line = (await page.getByTestId('gateway-plan').locator('li', { hasText: 'Translation Notes' }).textContent()) ?? '';
+  const m = /(\d+) carried over, (\d+) to check again/.exec(line);
+  if (!m) throw new Error(`no carry-over line for Titus · Translation Notes: "${line}"`);
+  return { line: line.trim(), carried: Number(m[1]), toCheckAgain: Number(m[2]) };
+}
+
+/** "N of M resolved" on the open check session, as numbers. */
+async function resolved(page: import('@playwright/test').Page) {
+  const text = (await page.getByTestId('check-progress').textContent()) ?? '';
+  const m = /^(\d+) of (\d+) resolved/.exec(text.trim());
+  if (!m) throw new Error(`no progress line: "${text}"`);
+  return { decided: Number(m[1]), total: Number(m[2]) };
+}
+
+test.describe('J13 — a check the user marked Invalid stays Invalid through a change of checking language and back (#580)', () => {
+  test(
+    'English → es-419 → English: the user’s Invalid shows Invalid, the valid shows valid, the check only the change invalidated shows To do, and "carried over" equals what shows (D94)',
+    { tag: ['@inc9', '@J13'] },
+    async ({ page }, testInfo) => {
+      test.setTimeout(180_000);
+      writeProjectPins(SEEDED_PROJECT, EN());
+      // The sample's record names the Spanish notes; state it as the English pin
+      // the project holds, so the decisions below save under English.
+      const en = EN();
+      const asEnglish = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')!;
+      asEnglish.resource = { repoPath: en.tn.repoPath, version: en.tn.version, sha: en.tn.sha, languageSet: 'fallback' } as never;
+      writeDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT', asEnglish);
+
+      // Three English checks, taken from the two real TSVs:
+      //  mine     — English-only: the user marks it Invalid; the change to Spanish invalidates it.
+      //  byChange — English-only: the user marks it valid; only the change invalidates it.
+      //  kept     — Spanish keeps its id and quote: the user marks it valid; it carries over.
+      const sampleIds = new Set(asEnglish.decisions.map((d) => (d.contextId as { checkId: string }).checkId));
+      const [mine, byChange] = englishOnlyItems('TIT').filter((i) => !sampleIds.has(i.contextId.checkId));
+      const esItems = deriveTnItems(sideloadedIngredient('es-419_tn', 'TIT.tsv'), 'tit');
+      const enItems = deriveTnItems(sideloadedIngredient('en_tn', 'TIT.tsv'), 'tit');
+      const esKeys = new Set(esItems.map((i) => mergeKey(i.contextId)));
+      const kept = enItems.find((i) => esKeys.has(mergeKey(i.contextId)) && !sampleIds.has(i.contextId.checkId));
+      expect(mine && byChange && kept, 'the real TSVs give two English-only checks and one Spanish keeps').toBeTruthy();
+      const ids = { mine: mine.contextId.checkId, byChange: byChange.contextId.checkId, kept: kept!.contextId.checkId };
+
+      const row = (id: string) => page.locator(`[data-testid="check-list"] button[data-check-id="${id}"]`).first();
+      const record = (id: string) => readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')!.decisions
+        .find((d) => (d.contextId as { checkId: string }).checkId === id && d.invalidated !== true)
+        ?? readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')!.decisions
+          .find((d) => (d.contextId as { checkId: string }).checkId === id);
+      const seen: Record<string, unknown> = { ids };
+
+      // In English: one Invalid and two valid.
+      await openCheck(page);
+      await page.getByTestId('open-translationNotes').click();
+      await expect(page.getByTestId('check-session')).toContainText('en_tn');
+      for (const [id, button, status] of [[ids.mine, 'mark-invalid', 'invalid'], [ids.byChange, 'mark-valid', 'valid'], [ids.kept, 'mark-valid', 'valid']] as const) {
+        await row(id).click();
+        await page.getByTestId(button).click();
+        await expect.poll(() => record(id)?.status, { timeout: 10_000 }).toBe(status);
+      }
+      await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
+
+      // English → Spanish. The dialogue's count is what the Spanish list shows.
+      await chooseInSettings(page, ES_KEY);
+      const toSpanish = await titusNotesPlan(page);
+      await confirmChange(page);
+      await titusCheckInPlace(page);
+      await expect(page.getByTestId('preflight-translationNotes')).toContainText(`of ${esItems.length}`);
+      await page.getByTestId('open-translationNotes').click();
+      await expect(page.getByTestId('check-session')).toContainText('es-419_tn');
+      const inSpanish = await resolved(page);
+      expect(inSpanish.decided, `"${toSpanish.line}" vs the Spanish list`).toBe(toSpanish.carried);
+      // Away from English, the user's Invalid is retained and marked as theirs (§5.2 `userInvalid`).
+      expect(readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')!.decisions
+        .find((d) => (d.contextId as { checkId: string }).checkId === ids.mine))
+        .toMatchObject({ invalidated: true, status: 'invalid', userInvalid: true });
+      expect(readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')!.decisions
+        .find((d) => (d.contextId as { checkId: string }).checkId === ids.byChange))
+        .not.toHaveProperty('userInvalid');
+
+      // Spanish → English.
+      await chooseInSettings(page, EN_KEY);
+      const toEnglish = await titusNotesPlan(page);
+      await confirmChange(page);
+      await titusCheckInPlace(page);
+      await expect(page.getByTestId('preflight-translationNotes')).toContainText(`of ${enItems.length}`);
+      await page.getByTestId('open-translationNotes').click();
+      await expect(page.getByTestId('check-session')).toContainText('en_tn');
+      const inEnglish = await resolved(page);
+      expect(inEnglish.decided, `"${toEnglish.line}" vs the English list`).toBe(toEnglish.carried);
+
+      await expect(row(ids.mine)).toHaveAttribute('data-status', 'invalid');
+      await expect(row(ids.mine)).toHaveAttribute('data-invalid', '0');
+      await expect(row(ids.kept)).toHaveAttribute('data-status', 'valid');
+      await expect(row(ids.byChange)).toHaveAttribute('data-status', 'todo');
+      expect(record(ids.mine)).toMatchObject({ invalidated: false, status: 'invalid' });
+      expect(record(ids.mine)).not.toHaveProperty('userInvalid');
+
+      // The run's artifact: what each dialogue said and what each list showed.
+      Object.assign(seen, {
+        toSpanish, inSpanish, toEnglish, inEnglish,
+        rows: {
+          mine: await row(ids.mine).getAttribute('data-status'),
+          kept: await row(ids.kept).getAttribute('data-status'),
+          byChange: await row(ids.byChange).getAttribute('data-status'),
+        },
+      });
+      const artifactPath = testInfo.outputPath('j13-user-invalid.json');
+      fs.writeFileSync(artifactPath, `${JSON.stringify(seen, null, 2)}\n`);
+      await testInfo.attach('j13-user-invalid.json', { path: artifactPath, contentType: 'application/json' });
+    },
+  );
+
+  test(
+    'Interruptions 1 and 2: after Confirm the change cannot be cancelled; a refused write shows the error and changes no decision (D94)',
+    { tag: ['@inc9', '@J13'] },
+    async ({ page }) => {
+      writeProjectPins(SEEDED_PROJECT, EN());
+      await chooseInSettings(page, ES_KEY);
+      const bytesBefore = checkingBytes(SEEDED_PROJECT);
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => { release = resolve; });
+      const refuseWrites = (url: URL) => url.pathname.startsWith('/api/');
+      await page.route(refuseWrites, async (route) => {
+        if (route.request().method() === 'GET') return route.fallback();
+        await held;
+        return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ is_good: false, reason: 'J13 #580: the write is refused' }) });
+      });
+      await page.getByTestId('gateway-confirm').click();
+      // 1: while the change is written, neither button answers, and Escape does not close.
+      await expect(page.getByTestId('gateway-cancel')).toBeDisabled();
+      await expect(page.getByTestId('gateway-confirm')).toBeDisabled();
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('gateway-change')).toBeVisible();
+      // 2: the refusal is stated in the dialogue, and nothing moved.
+      release();
+      await expect(page.getByTestId('gateway-error')).toBeVisible({ timeout: 30_000 });
+      await page.unroute(refuseWrites);
+      expect(checkingBytes(SEEDED_PROJECT)).toEqual(bytesBefore);
+      expect(readProjectPins(SEEDED_PROJECT).languageSets.primary.gatewayLanguage.languageId).toBe('en');
+      // Keep answers again once the change has ended.
+      await expect(page.getByTestId('gateway-cancel')).toBeEnabled();
+      await page.getByTestId('gateway-cancel').click();
+      await expect(page.getByTestId('gateway-change')).toHaveCount(0);
+      expect(checkingBytes(SEEDED_PROJECT)).toEqual(bytesBefore);
+    },
+  );
+
+  test(
+    'Interruptions 3 and 4: while a change is pending the language rows wait; a change whose project was left shows nothing and writes nothing (D94)',
+    { tag: ['@inc9', '@J13'] },
+    async ({ page }) => {
+      writeProjectPins(SEEDED_PROJECT, EN());
+      // Hold the preview on its read of the Spanish notes, so the change stays pending.
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => { release = resolve; });
+      let reading = false;
+      const spanishNotes = /es-419_tn.*ipath=TIT\.tsv/;
+      await page.route(spanishNotes, async (route) => {
+        reading = true;
+        await held;
+        return route.fallback();
+      });
+      await openSettingsFromHome(page);
+      await page.getByTestId(`settings-gateway-${ES_KEY}`).click();
+      await expect.poll(() => reading, { timeout: 30_000 }).toBe(true);
+      const bytesAtChoice = checkingBytes(SEEDED_PROJECT);
+
+      // 3: back on Home with the change still pending, the rows wait.
+      await page.getByTitle('Switch project').click();
+      await page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByRole('button', { name: 'Settings' }).click();
+      await expect(page.getByTestId(`settings-gateway-${ES_KEY}`)).toBeDisabled();
+      await page.getByRole('button', { name: 'Cancel' }).click();
+
+      // 4: the project the change started on is no longer open: when the preview
+      // ends, no dialogue opens and nothing is written.
+      release();
+      await page.unroute(spanishNotes);
+      await page.waitForTimeout(1500);
+      await expect(page.getByTestId('gateway-change')).toHaveCount(0);
+      expect(checkingBytes(SEEDED_PROJECT)).toEqual(bytesAtChoice);
+      expect(readProjectPins(SEEDED_PROJECT).languageSets.primary.gatewayLanguage.languageId).toBe('en');
+      // And the rows answer again.
+      await page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByRole('button', { name: 'Settings' }).click();
+      await expect(page.getByTestId(`settings-gateway-${ES_KEY}`)).toBeEnabled();
     },
   );
 });

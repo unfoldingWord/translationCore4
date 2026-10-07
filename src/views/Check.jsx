@@ -923,6 +923,7 @@ function CheckRail({ cs, label, filter, setFilter, sortMode, setSortMode, onSele
                     data-check-id={it.contextId.checkId}
                     data-decided={decided(it) ? '1' : '0'}
                     data-invalid={it.invalidated === true ? '1' : '0'}
+                    data-status={it.invalidated === true ? 'invalid' : st}
                     data-bookmarked={isBookmarked(it) ? '1' : '0'}
                     data-commented={hasComment(it) ? '1' : '0'}
                     data-save-error={cs.saveErrorKey === `${cs.tool}|${cs.book}|${it.contextId.checkId}` ? '1' : '0'}

@@ -664,6 +664,7 @@
   "sources.checkInPrompt": "This suite is installed. Check this project against {lang}?",
   "sources.checkIn": "Use for checking",
   "gateway.failed": "The change was not applied.",
+  "gateway.otherProject": "Another project is open now. Open this project and choose the language again.",
   "gateway.blocked": "This change cannot be applied: {books} already carry checking decisions, and the new language does not cover them. Install a suite that covers these books first. Nothing was changed.",
   "gateway.blocked-versification-unavailable": "This change cannot be applied right now: {books} carry checking decisions, and the numbering data needed to carry them over could not be loaded. Nothing was changed. Try again.",
   "gateway.blocked-versification-unknown": "This change cannot be applied: {books} carry checking decisions, and this project's versification scheme could not be identified, so they cannot be carried over safely. Nothing was changed. Recording the scheme, or re-creating the project in tC4, unblocks the change.",
