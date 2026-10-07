@@ -210,8 +210,11 @@ test.describe('#42 — the Check pages work with the keyboard alone', () => {
 
       // 6 (dialogs) · GuidedFix opens from a card whose pinned resource is
       // missing. It holds focus and returns it to its button.
+      // Each re-pin starts from a fresh seed: the open above journaled the
+      // project, and a journaled project refuses a sidecar edited on disk.
       rec.step('GuidedFix dialog');
       const en = PINS();
+      resetSeededChecking();
       writeProjectPins(SEEDED_PROJECT, { ...en, tn: { ...en.tn, version: 'v1', sha: 'a'.repeat(40) } });
       await openCheckTab(page);
       await expect(page.getByTestId('preflight-translationNotes')).toHaveAttribute('data-state', 'fetch');
@@ -222,6 +225,7 @@ test.describe('#42 — the Check pages work with the keyboard alone', () => {
       // 2 · A clean English tW session. No stored decisions, so the only
       // decision on disk is the one this journey makes.
       rec.step('open the tW session');
+      resetSeededChecking();
       writeProjectPins(SEEDED_PROJECT, PINS());
       fs.rmSync(path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'translationWords', 'TIT.json'), { force: true });
       await openCheckTab(page);
