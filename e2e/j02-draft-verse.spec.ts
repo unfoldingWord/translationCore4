@@ -6,6 +6,7 @@
 //   · no alignment markup written at rest (FR-8, I-1)
 //   · no auto-commit — commits happen only at checkpoints (FR-34, W-4)
 import { test, expect } from './helpers/test';
+import type { Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { verifyAllJournaledProjects } from './helpers/journal';
@@ -84,6 +85,9 @@ const draftedPercentOnDisk = (usfm: string): number => {
   }
   return Math.round((drafted / total) * 100);
 };
+
+/** Titus's percent in its own rail row (every rail row may show one). */
+const titusRailPct = (page: Page) => page.locator('aside button', { hasText: 'Titus' }).first().getByText(/%$/);
 
 // #329: a Home tile returns to where this client last worked; this journey opens
 // books from their tiles and states its own start (Translate, chapter 1). With no
@@ -280,7 +284,7 @@ test.describe('J2 — a translator drafts a verse', () => {
       await page.getByTestId('project-_local_/_local_/sample_burrito').getByRole('button', { name: /Titus/ }).click();
       await page.getByRole('button', { name: '2', exact: true }).click();
       // #572: Titus's percent in its own rail row, read before the join.
-      const railPct = page.locator('aside button', { hasText: 'Titus' }).first().getByText(/%$/);
+      const railPct = titusRailPct(page);
       const pctBefore = draftedPercentOnDisk(bytesBefore.toString('utf8'));
       await expect(railPct).toHaveText(`${pctBefore}%`);
 
@@ -406,6 +410,9 @@ test.describe('J2 — a translator drafts a verse', () => {
 
       const spanned = readIngredient(SEEDED_PROJECT, BOOK_IPATH).toString('utf8');
       const segmentsBefore = new Set(segmentFiles());
+      // #572: the rail's percent while 11 and 12 are one span.
+      const pctWithSpan = (await titusRailPct(page).textContent()) ?? '';
+      expect(pctWithSpan).toMatch(/^\d+%$/);
 
       await test.step('reopen the section: the span opens as one line, its pins stacked; drag 12 onto its first word', async () => {
         await page.getByRole('button', { name: 'Draft section 11–13' }).click();
@@ -428,6 +435,10 @@ test.describe('J2 — a translator drafts a verse', () => {
         await expect
           .poll(() => readIngredient(SEEDED_PROJECT, BOOK_IPATH).toString('utf8'), { timeout: 10_000 })
           .toBe(expected);
+      });
+
+      await test.step('the drafted percentage is the same with the span and with the two verses apart (#572)', async () => {
+        await expect(titusRailPct(page)).toHaveText(pctWithSpan);
       });
 
       await test.step('the journal carries ONE text.structure.apply: verse 11 claims the span head, verse 12 states its text (AC4)', async () => {
