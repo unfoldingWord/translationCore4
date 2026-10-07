@@ -181,15 +181,22 @@ const clickableCard = (open) => ({
   },
 });
 
+/* #42: the CTA of a ready tool card is a real button, the card's first Tab
+ * stop; a mouse click anywhere else on the card still opens the tool. */
+const CTA_BUTTON = { ...CTA_STYLE, alignSelf: 'flex-start', border: 0, background: 'transparent', padding: 0, fontFamily: 'inherit', cursor: 'pointer' };
+
 function ToolCard({ tool, pre, label, progress, titleOf }) {
   const { actions } = useApp();
   const tone = TONE[pre.state] ?? TONE.unpinned;
   const ready = pre.state === 'ready';
   const open = () => actions.openCheckTool(tool);
 
+  // #42: a plain container, never role="button" — a ready card can hold the
+  // fetch button too, and a control inside a button is not valid ARIA. The
+  // open button and the fetch button are siblings; open comes first.
   return (
     <div data-testid={`preflight-${tool}`} data-state={pre.state} data-i={ready ? 'card' : undefined} data-tone="accent"
-      {...(ready ? clickableCard(open) : {})}
+      onClick={ready ? open : undefined}
       style={{ ...PICKER_CARD, border: `var(--stroke) solid ${tone.border}`, background: tone.bg, boxShadow: ready ? 'var(--shadow-card)' : 'none', cursor: ready ? 'pointer' : 'default' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, ...PICKER_TITLE }}>
         <span>{t(`check.tool.${tool}`)}</span>
@@ -203,12 +210,22 @@ function ToolCard({ tool, pre, label, progress, titleOf }) {
         {ready ? t(`check.desc.${tool}`) : t(`check.explain.${pre.state}`, { book: label })}
       </p>
       <ToolNeeds pre={pre} />
+      {pre.state === 'ready' && (
+        <>
+          <CardProgress entry={progress} titleOf={titleOf} />
+          <button type="button" data-testid={`open-${tool}`} style={CTA_BUTTON}
+            onClick={(e) => { e.stopPropagation(); open(); }}>
+            {ctaFor(progress)} {'→'}
+          </button>
+        </>
+      )}
       {/* B20 warned fallback (D41): the resolver opened the installed fallback
         * because the pinned PRIMARY is not on this computer. That is not silent —
         * say which primary is missing and offer to download it. The card still
-        * opens (state 'ready'); the fallback never blocks. */}
+        * opens (state 'ready'); the fallback never blocks. #42: it sits after the
+        * open button, so reading order and Tab order are both open → fetch. */}
       {pre.unavailablePrimary && (
-        <Callout tone="warn" data-testid={`fallback-warning-${tool}`} style={{ margin: '0 0 10px' }}>
+        <Callout tone="warn" data-testid={`fallback-warning-${tool}`} style={{ margin: '14px 0 0' }}>
           {t('check.fallbackWarn', {
             repo: pre.unavailablePrimary.repoPath,
             version: pre.unavailablePrimary.version,
@@ -223,16 +240,6 @@ function ToolCard({ tool, pre, label, progress, titleOf }) {
             </Button>
           </div>
         </Callout>
-      )}
-      {pre.state === 'ready' && (
-        <>
-          <CardProgress entry={progress} titleOf={titleOf} />
-          {/* The card is the control (role=button); the CTA is its label, not
-            * a nested button (Codex round 1, a11y). Clicks bubble to the card. */}
-          <span data-testid={`open-${tool}`} style={{ ...CTA_STYLE, alignSelf: 'flex-start' }}>
-            {ctaFor(progress)} {'→'}
-          </span>
-        </>
       )}
     </div>
   );
@@ -489,10 +496,56 @@ function SourcePanes({ cs, item, sources, sourcePanes, sourceStory, c, v }) {
   );
 }
 
+/** #42: the line of target words is one Tab stop (a roving tab index). Left and
+ * Right move between the words in VISUAL order — so in a right-to-left
+ * translation Left moves to the next word. Shift+arrow extends the selection
+ * from the focused word to its neighbour; Space or Enter selects or clears the
+ * focused word alone, so a selection with gaps stays possible, as with the
+ * mouse. Keyed by item by the caller: the focused word starts at the first. */
+function TargetWords({ words, sel, toggleWord, addWords, direction }) {
+  const [focus, setFocus] = React.useState(0);
+  const refs = React.useRef([]);
+  const at = Math.min(focus, words.length - 1);
+  const move = (next) => {
+    setFocus(next);
+    refs.current[next]?.focus();
+  };
+  const onKeyDown = (e) => {
+    const rtl = direction === 'rtl';
+    const step = e.key === 'ArrowRight' ? (rtl ? -1 : 1) : e.key === 'ArrowLeft' ? (rtl ? 1 : -1) : 0;
+    if (step) {
+      e.preventDefault();
+      const next = at + step;
+      if (next < 0 || next >= words.length) return;
+      if (e.shiftKey) addWords([at, next]);
+      move(next);
+    } else if (e.key === 'Home' || e.key === 'End') {
+      e.preventDefault();
+      move(e.key === 'Home' ? 0 : words.length - 1);
+    } else if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault();
+      toggleWord(at);
+    }
+  };
+  return (
+    <p data-testid="check-target" data-drafted="1" role="group" aria-label={t('check.targetWordsLabel')} onKeyDown={onKeyDown}
+      style={{ direction, textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-title-lg)', lineHeight: 1.9, color: 'var(--text-scripture)', margin: '8px 0 0' }}>
+      {words.map((w, i) => (
+        <span key={i} ref={(el) => { refs.current[i] = el; }} data-testid={`tw-${i}`} data-selected={sel.has(i) ? '1' : '0'}
+          role="button" aria-pressed={sel.has(i)} tabIndex={i === at ? 0 : -1}
+          onClick={() => { setFocus(i); toggleWord(i); }}
+          style={{ display: 'inline-block', cursor: 'pointer', borderRadius: 4, padding: '0 .1em', marginInlineEnd: '.22em', background: sel.has(i) ? 'var(--tc-highlight-soft)' : 'transparent' }}>
+          {w}
+        </span>
+      ))}
+    </p>
+  );
+}
+
 /** The detail column (F1): ref + item counter header, serif phrase h1, the
  * "What to check" note box, the Academy link, the compare card, and the three
  * block triage buttons — the mockup's L1044–1196 region. */
-function CheckDetail({ cs, item, title, sources, sourcePanes, sourceStory, words, sel, toggleWord, markValid, markInvalid, markTodo, onBookmark, onComment, onOpenAcademy, onNav, targetDirection = 'ltr' }) {
+function CheckDetail({ cs, item, title, sources, sourcePanes, sourceStory, words, sel, toggleWord, addWords, markValid, markInvalid, markTodo, onBookmark, onComment, onOpenAcademy, onNav, targetDirection = 'ltr' }) {
   const { c, v } = referenceParts(item.contextId.reference);
   const quote = title;
   const idx = cs.activeIndex;
@@ -555,15 +608,7 @@ function CheckDetail({ cs, item, title, sources, sourcePanes, sourceStory, words
             </p>
           ) : (
             <>
-              <p data-testid="check-target" data-drafted="1" style={{ direction: targetDirection, textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-title-lg)', lineHeight: 1.9, color: 'var(--text-scripture)', margin: '8px 0 0' }}>
-                {words.map((w, i) => (
-                  <span key={i} data-testid={`tw-${i}`} data-selected={sel.has(i) ? '1' : '0'}
-                    onClick={() => toggleWord(i)}
-                    style={{ display: 'inline-block', cursor: 'pointer', borderRadius: 4, padding: '0 .1em', marginInlineEnd: '.22em', background: sel.has(i) ? 'var(--tc-highlight-soft)' : 'transparent' }}>
-                    {w}
-                  </span>
-                ))}
-              </p>
+              <TargetWords key={idx} words={words} sel={sel} toggleWord={toggleWord} addWords={addWords} direction={targetDirection} />
               <p style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--text-tertiary)', margin: '8px 0 0' }}>{t('check.selectHint')}</p>
             </>
           )}
@@ -647,6 +692,9 @@ function CheckMarks({ item, idx, onBookmark, onComment }) {
   const written = hasComment(item);
   const [open, setOpen] = React.useState(false);
   const [draft, setDraft] = React.useState(written ? item.comments : '');
+  // #42: Done and Delete close the editor that holds focus; focus goes back to
+  // the button that opened it, not to the page body.
+  const toggleRef = React.useRef(null);
   // A new item closes the editor and takes its own stored text.
   React.useEffect(() => {
     setOpen(false);
@@ -656,11 +704,13 @@ function CheckMarks({ item, idx, onBookmark, onComment }) {
     const text = draft.trim();
     if (text !== (written ? item.comments : '')) onComment(text || false);
     setOpen(false);
+    toggleRef.current?.focus();
   };
   const remove = () => {
     setDraft('');
     if (written) onComment(false);
     setOpen(false);
+    toggleRef.current?.focus();
   };
   const chip = (active) => ({
     ...railChip(active), fontSize: 'var(--fs-ui-sm)', padding: '8px 14px', borderRadius: 'var(--radius-md)',
@@ -675,7 +725,7 @@ function CheckMarks({ item, idx, onBookmark, onComment }) {
           {t(bookmarked ? 'check.bookmark.on' : 'check.bookmark.off')}
         </button>
         <div style={{ flex: 1 }} />
-        <button type="button" data-testid="comment-toggle" data-written={written ? '1' : '0'} data-open={open ? '1' : '0'}
+        <button ref={toggleRef} type="button" data-testid="comment-toggle" data-written={written ? '1' : '0'} data-open={open ? '1' : '0'}
           onClick={() => setOpen((o) => !o)} style={chip(open)}>
           <span aria-hidden="true">{t('check.glyph.comment')}</span>
           {t(open ? 'check.comment.hide' : written ? 'check.comment.written' : 'check.comment.add')}
@@ -686,7 +736,7 @@ function CheckMarks({ item, idx, onBookmark, onComment }) {
           <Overline tone="accent">{t('check.comment.title')}</Overline>
           <textarea data-testid="comment-text" rows={3} value={draft} onChange={(e) => setDraft(e.target.value)}
             placeholder={t('check.comment.placeholder')}
-            style={{ width: '100%', boxSizing: 'border-box', marginTop: 8, border: 'var(--stroke) solid var(--border-input)', borderRadius: 'var(--radius-md)', padding: '10px 12px', fontFamily: 'inherit', fontSize: 'var(--fs-ui-md)', lineHeight: 'var(--lh-body)', color: 'var(--text-body)', background: 'var(--surface-app)', resize: 'vertical', outline: 'none' }} />
+            style={{ width: '100%', boxSizing: 'border-box', marginTop: 8, border: 'var(--stroke) solid var(--border-input)', borderRadius: 'var(--radius-md)', padding: '10px 12px', fontFamily: 'inherit', fontSize: 'var(--fs-ui-md)', lineHeight: 'var(--lh-body)', color: 'var(--text-body)', background: 'var(--surface-app)', resize: 'vertical' }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
             <Button size="sm" data-testid="comment-done" onClick={done}>{t('check.comment.done')}</Button>
             <div style={{ flex: 1 }} />
@@ -734,7 +784,27 @@ export function railGroupsOf({ items, sortMode, book, label = bookName(book) }) 
   return [{ label, rows }];
 }
 
-function CheckRail({ cs, label, filter, setFilter, sortMode, setSortMode, onSelect, titleOf }) {
+/** #42: the rail's item list is one Tab stop — the Switcher roving pattern
+ * (ds/components/primitives/Switcher.jsx). Only the current item is tabbable
+ * (the first shown one when a filter hides it); Up and Down, Home and End move
+ * the selection in the order the rail shows, and focus moves with it. A book
+ * can have hundreds of items, and Tab must not walk each one. */
+function railKeyDown(order, current, onSelect, listRef) {
+  return (e) => {
+    const step = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1
+      : e.key === 'Home' ? -Infinity : e.key === 'End' ? Infinity : 0;
+    if (!step || !order.length) return;
+    e.preventDefault();
+    const pos = order.indexOf(current);
+    const nextPos = step === -Infinity ? 0 : step === Infinity ? order.length - 1
+      : (pos + step + order.length) % order.length;
+    const next = order[nextPos];
+    onSelect(next);
+    listRef.current?.querySelector(`[data-rail-index="${next}"]`)?.focus();
+  };
+}
+
+function CheckRail({ cs, label, filter, setFilter, sortMode, setSortMode, onSelect, titleOf, listRef }) {
   const { actions } = useApp();
   const decided = isDecided;
   const indexed = cs.items.map((it, i) => ({ it, i }));
@@ -745,11 +815,13 @@ function CheckRail({ cs, label, filter, setFilter, sortMode, setSortMode, onSele
   const sorts = SORTS[cs.tool];
   const story = isStorySession(cs.book);
   const groups = railGroupsOf({ items: filtered, tool: cs.tool, sortMode, book: cs.book, label });
+  const order = groups.flatMap((grp) => grp.rows.map(({ i }) => i));
+  const tabStop = order.includes(cs.activeIndex) ? cs.activeIndex : order[0];
 
   return (
     <aside data-testid="check-rail" data-resource={cs.resource?.repoPath} style={{ width: 'var(--rail-width-wide)', flex: 'none', background: 'var(--surface-card)', borderInlineEnd: 'var(--stroke-hair) solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <div style={{ padding: '14px 18px', borderBottom: 'var(--stroke-hair) solid var(--border-hair)', flex: 'none' }}>
-        <Button variant="ghost" size="sm" onClick={actions.closeCheckTool} style={{ padding: 0, marginBottom: 8 }}>
+        <Button variant="ghost" size="sm" data-testid="check-back" onClick={actions.closeCheckTool} style={{ padding: 0, marginBottom: 8 }}>
           {t('check.back')}
         </Button>
         <h2 style={{ fontSize: 'var(--fs-title-sm)', letterSpacing: 'var(--track-16)', fontWeight: 'var(--fw-black)', color: 'var(--text-heading)', margin: '0 0 2px' }}>
@@ -787,7 +859,7 @@ function CheckRail({ cs, label, filter, setFilter, sortMode, setSortMode, onSele
           </p>
         )}
       </div>
-      <div data-testid="check-list" style={{ flex: 1, overflow: 'auto', padding: 14, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div data-testid="check-list" ref={listRef} onKeyDown={railKeyDown(order, tabStop, onSelect, listRef)} style={{ flex: 1, overflow: 'auto', padding: 14, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
         {groups.map((grp) => (
           <div key={grp.label}>
             <Overline tone="muted" as="p" style={{ margin: '0 0 6px' }}>{grp.label}</Overline>
@@ -797,6 +869,7 @@ function CheckRail({ cs, label, filter, setFilter, sortMode, setSortMode, onSele
                 const activeRow = i === cs.activeIndex;
                 return (
                   <button key={`${it.contextId.checkId}-${i}`} type="button" data-i="choice" data-tone="accent" data-selected={activeRow ? 'true' : undefined} onClick={() => onSelect(i)}
+                    data-rail-index={i} tabIndex={i === tabStop ? 0 : -1} aria-current={activeRow ? 'true' : undefined}
                     title={`${locatorOf(it.contextId.reference)} · ${it.contextId.groupId}`}
                     data-ref={locatorOf(it.contextId.reference)}
                     data-check-id={it.contextId.checkId}
@@ -842,7 +915,7 @@ function CheckRail({ cs, label, filter, setFilter, sortMode, setSortMode, onSele
         {/* Close the session before leaving: a kept-alive session would render
           * stale target text and decisions after the user edits in Translate —
           * re-opening the tool re-derives and re-runs invalidation. */}
-        <Button variant="ghost" size="sm" style={{ padding: 0 }}
+        <Button variant="ghost" size="sm" data-testid="check-to-draft" style={{ padding: 0 }}
           onClick={() => { actions.closeCheckTool(); actions.go('draft'); }}>
           {t('check.backToTranslating')}
         </Button>
@@ -1010,6 +1083,23 @@ export function gatewayTitleFor(sources, sourcePanes, understand) {
   };
 }
 
+/** #42: when a session opens, focus goes to its current rail item — once per
+ * (tool, book), after the items derive, never on a later re-render. Returns
+ * the ref for the rail's item list. */
+function useFocusOnOpen(cs, tool, book) {
+  const listRef = React.useRef(null);
+  const focusedFor = React.useRef(null);
+  React.useEffect(() => {
+    const key = `${tool}|${book}`;
+    if (!cs?.items || cs.empty || focusedFor.current === key) return;
+    const row = listRef.current?.querySelector('[tabindex="0"]');
+    if (!row) return;
+    focusedFor.current = key;
+    row.focus();
+  }, [cs?.items, cs?.empty, tool, book]);
+  return listRef;
+}
+
 function CheckSession() {
   const { s, actions } = useApp();
   const cs = s.checkSession;
@@ -1041,6 +1131,8 @@ function CheckSession() {
     [s.sources, s.sourcePanes, s.understand],
   );
 
+  const listRef = useFocusOnOpen(cs, tool, book);
+
   const centered = (child) => (
     <main style={{ flex: 1, overflow: 'auto', padding: '32px 40px 64px' }}>
       <div style={{ maxWidth: 760, margin: '0 auto' }}>{child}</div>
@@ -1066,6 +1158,8 @@ function CheckSession() {
       else next.add(i);
       return next;
     });
+  const addWords = (indices) =>
+    setSel((prev) => new Set([...prev, ...indices]));
   const markValid = () => {
     const selections = selectionsFromTokens(targetText, [...sel].sort((a, b) => a - b));
     actions.recordDecision(
@@ -1089,13 +1183,13 @@ function CheckSession() {
   return (
     <div data-testid="check-session" style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       <CheckRail cs={cs} label={label} filter={filter} setFilter={setFilter}
-        sortMode={sortMode} setSortMode={setSortMode} titleOf={titleOf}
+        sortMode={sortMode} setSortMode={setSortMode} titleOf={titleOf} listRef={listRef}
         onSelect={(i) => actions.setCheckIndex(i)} />
       <main style={{ flex: 1, overflow: 'auto', minWidth: 0, background: 'var(--surface-app)' }}>
         {item && (
           <CheckDetail cs={cs} item={item} title={titleOf(item)} sources={s.sources} sourcePanes={s.sourcePanes} sourceStory={s.sourceStory} words={words} sel={sel}
             targetDirection={s.project?.scriptDirection === 'rtl' ? 'rtl' : 'ltr'}
-            toggleWord={toggleWord} markValid={markValid} markInvalid={markInvalid} markTodo={markTodo}
+            toggleWord={toggleWord} addWords={addWords} markValid={markValid} markInvalid={markInvalid} markTodo={markTodo}
             onBookmark={toggleBookmark} onComment={setComment}
             onOpenAcademy={() => setAcademyOpen(true)}
             onNav={(i) => actions.setCheckIndex(i)} />
@@ -1175,6 +1269,21 @@ export default function Check() {
   // Align entry and revalidate the tools against nothing. A story session
   // depends on the open story the same way.
   const atPicker = !s.checkTool && !s.aligning;
+
+  // #42: after Back from a session, focus goes to the open button of the tool
+  // card that opened it — held until the picker has rendered its cards. A card
+  // that is no longer ready has no open button; the return is then dropped, so
+  // it can never take focus later.
+  const returnTo = React.useRef(null);
+  React.useEffect(() => {
+    if (s.checkTool) returnTo.current = s.checkTool;
+  }, [s.checkTool]);
+  React.useEffect(() => {
+    if (!atPicker || !pre || !returnTo.current) return;
+    const button = document.querySelector(`[data-testid="open-${returnTo.current}"]`);
+    returnTo.current = null;
+    button?.focus();
+  });
   React.useEffect(() => {
     if (pre && atPicker && unitLoaded) actions.loadPickerProgress();
   }, [pre, atPicker, unitLoaded, s.story]);
