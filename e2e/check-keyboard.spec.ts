@@ -155,6 +155,17 @@ async function openCheckTab(page: Page): Promise<void> {
   await expect(page.getByTestId('preflight-translationWords')).toHaveAttribute('data-state', 'ready');
 }
 
+/** Go Home, then put the fixture's checking folder back. The first open gives
+ * the project a journal (#62), so a pin file rewritten on disk after it no
+ * longer matches the journal, and the next open refuses the project ("derived
+ * state diverges from the journal projection"). The reset removes that journal
+ * too, and the next open seeds it again from the pins written after (#536). */
+async function leaveAndResetChecking(page: Page): Promise<void> {
+  await page.goto('/');
+  await expect(page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`)).toBeVisible();
+  resetSeededChecking();
+}
+
 /** Focus stays inside the dialog for a full Tab cycle, and Escape returns it to
  * the button that opened the dialog. */
 async function expectDialogHoldsFocus(page: Page, rec: ReturnType<typeof recorder>, dialogTestId: string, openerTestId: string) {
@@ -212,6 +223,7 @@ test.describe('#42 — the Check pages work with the keyboard alone', () => {
       // missing. It holds focus and returns it to its button.
       rec.step('GuidedFix dialog');
       const en = PINS();
+      await leaveAndResetChecking(page);
       writeProjectPins(SEEDED_PROJECT, { ...en, tn: { ...en.tn, version: 'v1', sha: 'a'.repeat(40) } });
       await openCheckTab(page);
       await expect(page.getByTestId('preflight-translationNotes')).toHaveAttribute('data-state', 'fetch');
@@ -222,6 +234,7 @@ test.describe('#42 — the Check pages work with the keyboard alone', () => {
       // 2 · A clean English tW session. No stored decisions, so the only
       // decision on disk is the one this journey makes.
       rec.step('open the tW session');
+      await leaveAndResetChecking(page);
       writeProjectPins(SEEDED_PROJECT, PINS());
       fs.rmSync(path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'translationWords', 'TIT.json'), { force: true });
       await openCheckTab(page);

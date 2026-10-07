@@ -78,7 +78,9 @@ test.describe('#532 — the check reads the draft made while the tool stayed ope
         await expect(page.getByTestId('check-list')).toBeVisible();
         const drafted = await look(page, seen, 'bible', '2:1', 'after');
         await expect(drafted).toHaveAttribute('data-drafted', '1');
-        await expect(drafted).toContainText('sana doctrina');
+        // Each word is its own span, with no space between (Check.jsx TargetWords),
+        // so the words are matched one span each, in order (#536).
+        await expect(drafted.locator('[data-testid^="tw-"]')).toContainText(['sana', 'doctrina']);
         const empty = await look(page, seen, 'bible', '2:2', 'after');
         await expect(empty).toHaveAttribute('data-drafted', '0');
         await expect(empty).toHaveText('This verse is not drafted yet. Draft it first, then return to check.');
@@ -118,7 +120,9 @@ test.describe('#532 — the check reads the draft made while the tool stayed ope
       await test.step('switch to Translate and draft frame 2 (the tool stays open)', async () => {
         await page.getByRole('tab', { name: 'Translate', exact: true }).click();
         const before = new Set(segmentFiles(repo));
-        await page.getByTestId('story-frame-2').getByTestId('story-unit-text').click();
+        // An undrafted frame shows its "Draft frame 2" pill, not story-unit-text
+        // (StoryDraft.jsx TargetCell), as in J21 (#536).
+        await page.getByTestId('story-frame-2').getByRole('button', { name: 'Draft frame 2' }).click();
         const box = page.getByTestId('story-frame-2').getByRole('textbox');
         await box.fill(FRAME_2);
         await box.blur();
