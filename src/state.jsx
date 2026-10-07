@@ -1430,6 +1430,19 @@ async function adoptDownloadedPins({
   }
 }
 
+// #492: the server refuses a code that its own table cannot name (PLATFORM-NOTES
+// #43), and Door43's list suggests such codes. The server's sentence does not
+// say what to do next, so the dialog adds the private-use form of the same
+// code, which the server accepts with the language name the dialog sends.
+// Not for a code with a capital letter in its first part: the server's table is
+// lower case, so `ES` is refused where `es` works.
+function createRefusal(e, code) {
+  const reason = e?.reason || e?.message || t('wizard.error');
+  return /not been found in the BCP47 lookup table/.test(reason) && !/^[^-]*[A-Z]/.test(code)
+    ? `${reason}. ${t('wizard.privateCodeHint', { code: `x-${code}` })}`
+    : reason;
+}
+
 function validateNewBible(form) {
   if (!form.name.trim()) return { error: t('wizard.nameRequired') };
   if (!form.code.trim()) return { error: t('wizard.codeRequired') };
@@ -5695,7 +5708,7 @@ export function AppProvider({ children }) {
           await refreshProjects();
           a.closeModal(); // the story screen is J21 (#289): Home shows the new tile
         } catch (e) {
-          a.patchNp({ busy: false, error: e?.reason || e?.message || t('wizard.error') });
+          a.patchNp({ busy: false, error: createRefusal(e, w.code.trim()) });
         } finally {
           store.dispose(); // #94: a throwaway store's fold worker
         }
@@ -5770,7 +5783,7 @@ export function AppProvider({ children }) {
           // Design flow: "You'll add books next" — straight into Add-a-book.
           a.openAddBook({ id: repoPath, name: w.name.trim(), bookCodes: [] });
         } catch (e) {
-          a.patchNp({ busy: false, error: e?.reason || e?.message || t('wizard.error') });
+          a.patchNp({ busy: false, error: createRefusal(e, w.code.trim()) });
         } finally {
           store.dispose(); // #94: a throwaway store's fold worker
         }

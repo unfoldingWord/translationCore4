@@ -27,6 +27,7 @@ export { OptionCard } from './components/forms/OptionCard.jsx';
 export { Radio, RadioGroup } from './components/forms/Radio.jsx';
 export { SearchField } from './components/forms/SearchField.jsx';
 export { Select } from './components/forms/Select.jsx';
+export { SuggestField } from './components/forms/SuggestField.jsx';
 export { TextArea } from './components/forms/TextArea.jsx';
 export { TextField } from './components/forms/TextField.jsx';
 export { Toggle } from './components/forms/Toggle.jsx';

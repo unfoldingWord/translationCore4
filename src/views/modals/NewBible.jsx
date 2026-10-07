@@ -7,6 +7,7 @@ import React from 'react';
 import { useApp, SCRIPT_FONTS } from '../../state.jsx';
 import { t } from '../../i18n';
 import { Modal, TextField, Select, FilterChip, OptionCard, Overline, Button, Callout } from '../../ds/index.js';
+import LanguageNameField from './LanguageNameField.jsx';
 
 // Single English gateway-language row — non-interactive this increment (the
 // installed suite is the only option; the picker arrives with the resource
@@ -35,8 +36,7 @@ export default function NewBible() {
         placeholder={t('newBible.namePlaceholder')} onChange={(e) => actions.patchNp({ name: e.target.value })} />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px', gap: 12 }}>
-        <TextField id="nb-lang" label={t('newBible.langName')} value={np.langName}
-          placeholder={t('newBible.langPlaceholder')} onChange={(e) => actions.patchNp({ langName: e.target.value })} />
+        <LanguageNameField id="nb-lang" />
         <TextField id="nb-code" label={t('newBible.code')} value={np.code}
           placeholder={t('newBible.codePlaceholder')} onChange={(e) => actions.patchNp({ code: e.target.value })} />
       </div>
