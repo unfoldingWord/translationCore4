@@ -118,8 +118,12 @@ function ResourcesCheck({ im, actions }) {
     : [
         found && t('importer.review.resourcesFound', { list: found }),
         v.unresolved.length > 0 && (v.installed
-          ? t('importer.review.resourcesInstalled', { list: missing, carried: v.installed.carried, invalidated: v.installed.invalidated })
-          : t(v.offline ? 'importer.review.resourcesOffline' : 'importer.review.resourcesMissing', { list: missing })),
+          ? [
+              t('importer.review.resourcesInstalled', { list: missing }),
+              t(v.installed.carried === 1 ? 'importer.review.decisionsCarriedOne' : 'importer.review.decisionsCarried', { n: v.installed.carried }),
+              t(v.installed.invalidated === 1 ? 'importer.review.decisionsInvalidatedOne' : 'importer.review.decisionsInvalidated', { n: v.installed.invalidated }),
+            ].join(' ')
+          :t(v.offline ? 'importer.review.resourcesOffline' : 'importer.review.resourcesMissing', { list: missing })),
       ].filter(Boolean).join(' ');
   const open = v && !v.looking && !v.installed && v.unresolved.length > 0;
   return (
@@ -186,7 +190,7 @@ function ReviewStep({ im, actions }) {
               <Overline as="span">{carriedTitle(im.kind)}</Overline>
               <KeyValueGrid columns={2} items={[
                 ...(bundle.verses !== undefined ? [{ k: t('importer.review.verses'), v: String(bundle.verses) }] : []),
-                { k: t('importer.review.alignments'), v: t('importer.review.alignedVerses', { n: alignedVerses(bundle) }) },
+                { k: t('importer.review.alignments'), v: t(alignedVerses(bundle) === 1 ? 'importer.review.alignedVersesOne' : 'importer.review.alignedVerses', { n: alignedVerses(bundle) }) },
                 { k: t('importer.review.decisions'), v: String(bundle.decisions?.length ?? 0) },
                 ...(bundle.facts.contributors ? [{ k: t('importer.review.contributors'), v: String(bundle.facts.contributors.length) }] : []),
               ]} />
