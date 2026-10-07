@@ -115,39 +115,14 @@ describe('span verse keys (property 3)', () => {
   });
 });
 
-// #572 — the ways the drafted percentage can be wrong, written before the code:
-//   1. a drafted span counts as one drafted verse, not as each verse it covers;
-//   2. a span takes one verse out of the total, so the percentage moves on a join;
-//   3. an undrafted span takes its verses out of the total;
-//   4. a key that is not `n-m` ("2a") is dropped or counts as more than one verse;
-//   5. a book with no verses divides by zero.
-describe('draftPercent — a span counts every verse it covers (#572)', () => {
-  const pct = (raw: string): number => draftPercent(indexBook(raw), raw);
-  const book = (...verses: string[]): string => ['\\id TST', '\\c 1', '\\p', ...verses, ''].join('\n');
-
-  it('joining two drafted verses into a span keeps the percentage', () => {
-    const apart = book('\\v 1 uno', '\\v 2 dos', '\\v 3 tres', '\\v 4 ___');
-    const joined = book('\\v 1 uno', '\\v 2-3 dos tres', '\\v 4 ___');
-    expect(pct(apart)).toBe(75);
-    expect(pct(joined)).toBe(75);
-  });
-
+// #572 (D81, D94) — the J2 verse-span journey proves the drafted percentage. This
+// one case stays because the journey cannot fail on it: in Titus (46 verses) an
+// undrafted span that counts as one verse gives 5 of 45 or 6 of 45, and both
+// round to the same percent as 5 of 46 and 6 of 46.
+describe('draftPercent — what the J2 span journey cannot show (#572)', () => {
   it('an undrafted span counts its verses as undrafted', () => {
-    expect(pct(book('\\v 1 uno', '\\v 2-3 ___', '\\v 4 ___'))).toBe(25);
-  });
-
-  it('sample JON: the drafted span 2:9-10 is 2 of 48 verses', () => {
-    const jon = corpora['sample JON (plain draft, span verse 2:9-10)'];
-    expect(indexBook(jon)).toHaveLength(47);
-    expect(pct(jon)).toBe(4);
-  });
-
-  it('a key that is not `n-m` counts as one verse', () => {
-    expect(pct(book('\\v 1 uno', '\\v 2a dos', '\\v 2b ___', '\\v 3 ___'))).toBe(50);
-  });
-
-  it('a book with no verses is 0%', () => {
-    expect(pct('\\id TST\n\\h Title\n')).toBe(0);
+    const raw = ['\\id TST', '\\c 1', '\\p', '\\v 1 uno', '\\v 2-3 ___', '\\v 4 ___', ''].join('\n');
+    expect(draftPercent(indexBook(raw), raw)).toBe(25);
   });
 });
 

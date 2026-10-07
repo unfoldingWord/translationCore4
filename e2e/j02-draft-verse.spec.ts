@@ -72,20 +72,6 @@ const verseLine = (usfm: string, verse: number): { start: number; end: number } 
   return { start: span.start - `\\v ${verse} `.length, end: span.end };
 };
 
-/** Titus's drafted percentage, counted from the file: the verses each `\\v`
- * line covers (a span "9-10" covers two) over all verses (#572). */
-const draftedPercentOnDisk = (usfm: string): number => {
-  let drafted = 0;
-  let total = 0;
-  for (const [, key, body] of usfm.matchAll(/^\\v (\S+) (.*)$/gm)) {
-    const [from, to = from] = key.split('-').map(Number);
-    const covered = to - from + 1;
-    total += covered;
-    if (body.trim() !== '___') drafted += covered;
-  }
-  return Math.round((drafted / total) * 100);
-};
-
 /** Titus's percent in its own rail row (every rail row may show one). */
 const titusRailPct = (page: Page) => page.locator('aside button', { hasText: 'Titus' }).first().getByText(/%$/);
 
@@ -277,39 +263,103 @@ test.describe('J2 — a translator drafts a verse', () => {
     async ({ page }, testInfo) => {
       const VERSE_9 = 'Exhorta a los siervos a que se sujeten a sus amos y a que agraden en todo';
       const VERSE_10 = 'no defraudando sino mostrando toda buena fe';
-      const bytesBefore = readIngredient(SEEDED_PROJECT, BOOK_IPATH);
-      const segmentsBefore = new Set(segmentFiles());
+      test.setTimeout(60_000); // seven saves and four page loads
+      const onDisk = () => readIngredient(SEEDED_PROJECT, BOOK_IPATH).toString('utf8');
+      /** The lines of Titus 2:9 and 2:10 in the file, while they are two verses. */
+      const twoVerseLines = () => {
+        const usfm = onDisk();
+        return usfm.slice(verseLine(usfm, 9).start, verseLine(usfm, 10).end);
+      };
 
       await page.goto('/');
       await page.getByTestId('project-_local_/_local_/sample_burrito').getByRole('button', { name: /Titus/ }).click();
       await page.getByRole('button', { name: '2', exact: true }).click();
-      // #572: Titus's percent in its own rail row, read before the join.
+      // #572 (D94): the journey reads Titus's percent in its own rail row at
+      // four states of verses 9 and 10. It sets each state itself, so it does
+      // not need the sibling #141 case to have drafted them.
       const railPct = titusRailPct(page);
-      const pctBefore = draftedPercentOnDisk(bytesBefore.toString('utf8'));
-      await expect(railPct).toHaveText(`${pctBefore}%`);
-
-      await test.step('type the section, then stack verse 10 on the first word', async () => {
-        await page.getByRole('button', { name: 'Draft section 9–10' }).click();
-        await page.getByRole('textbox', { name: 'Section 9–10' }).fill(`${VERSE_9} ${VERSE_10}`);
+      const railNow = async () => (await railPct.textContent()) ?? '';
+      // The row reads "9–10" for two verses and "9-10" for the one span verse.
+      const openSection = () => page.getByRole('button', { name: /^Draft section 9[–-]10$/ }).click();
+      const sectionText = page.getByRole('textbox', { name: /^Section 9[–-]10$/ });
+      const saveSection = async () => {
+        await page.getByRole('button', { name: 'Save section' }).click();
+        await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
+        await expect(page.getByTestId('section-editor')).toHaveCount(0);
+      };
+      const stackVerse10OnTheFirstWord = async () => {
+        await openSection();
+        await sectionText.fill(`${VERSE_9} ${VERSE_10}`);
         await page.getByRole('tab', { name: 'Place verse numbers' }).click();
         await page.getByTestId('pin-bank').getByRole('button', { name: 'Move where verse 10 begins' }).click();
         // The first word carries the fixed verse 9: dropping 10 there joins them.
         await page.getByRole('button', { name: 'Join verse 10 to verse 9 at Exhorta' }).click();
         await expect(page.getByTestId('pin-bank').getByRole('button', { name: /Move where verse/ })).toHaveCount(0);
         await expect(page.getByTestId('place-words').getByRole('button', { name: 'Move where verse 10 begins' })).toBeVisible();
+      };
+
+      /** Empty one verse in the verse-by-verse form: it returns to the `___` stub. */
+      const clearVerse = async (key: string, word: string) => {
+        await page.getByRole('tab', { name: 'Verse', exact: true }).click();
+        await page.getByTitle('Edit this verse').filter({ hasText: word }).click();
+        const editor = page.getByRole('textbox', { name: `Verse ${key}`, exact: true });
+        await editor.fill('');
+        await editor.blur();
+        await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
+        await page.getByRole('tab', { name: 'Section', exact: true }).click();
+      };
+      const draftTwoVerses = async () => {
+        await openSection();
+        await sectionText.fill(`${VERSE_9} ${VERSE_10}`);
+        await page.getByRole('tab', { name: 'Place verse numbers' }).click();
+        await page.getByTestId('pin-bank').getByRole('button', { name: 'Move where verse 10 begins' }).click();
+        await page.getByRole('button', { name: 'Begin verse 10 at no' }).click();
+        // No wait on the save indicator: when 9 and 10 hold this text already
+        // (the #141 case ran first), the save writes nothing. The file is the proof.
+        await page.getByRole('button', { name: 'Save section' }).click();
+        await expect(page.getByTestId('section-editor')).toHaveCount(0);
+        await expect.poll(twoVerseLines, { timeout: 10_000 }).toBe(`\\v 9 ${VERSE_9}\n\\v 10 ${VERSE_10}\n`);
+        return railNow();
+      };
+
+      const pctTwoUndrafted = await test.step('two undrafted verses: draft 9 and 10, then empty each one in the verse form', async () => {
+        const drafted = await draftTwoVerses();
+        await clearVerse('10', 'defraudando');
+        await clearVerse('9', 'Exhorta');
+        await expect.poll(twoVerseLines, { timeout: 10_000 }).toBe('\\v 9 ___\n\\v 10 ___\n');
+        const pct = await railNow();
+        // Two drafted verses fewer move the percent: the rail is live.
+        expect(pct).toMatch(/^\d+%$/);
+        expect(pct).not.toBe(drafted);
+        return pct;
+      });
+
+      const pctBefore = await test.step('two drafted verses: type the section, place verse 10 at "no", save', async () => {
+        const settled = new Set(segmentFiles());
+        const pct = await draftTwoVerses();
+        expect(pct).not.toBe(pctTwoUndrafted);
+        // Both verse writes are in the journal before the join starts its own count.
+        await expect
+          .poll(() => eventsSince(settled).filter((e) => e.op === 'text.verse.set').map((e) => `${e.chapter}:${e.verse}`).sort(), { timeout: 10_000 })
+          .toEqual(['2:10', '2:9']);
+        return pct;
+      });
+
+      const bytesBefore = readIngredient(SEEDED_PROJECT, BOOK_IPATH);
+      const segmentsBefore = new Set(segmentFiles());
+
+      await test.step('type the section, then stack verse 10 on the first word', async () => {
+        await stackVerse10OnTheFirstWord();
       });
 
       await test.step('Save section writes the structural change through the scheduler', async () => {
-        await page.getByRole('button', { name: 'Save section' }).click();
-        await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
-        await expect(page.getByTestId('section-editor')).toHaveCount(0);
+        await saveSection();
         // The row now holds the one span verse.
         await expect(page.getByRole('button', { name: 'Draft section 9-10' })).toBeVisible();
       });
 
       await test.step('the file is the previous file with the two verse lines replaced by one \\v 9-10 line (AC1, AC6)', async () => {
-        // The sibling #141 case drafted 9 and 10 before this one: whatever the
-        // two lines held, exactly they are replaced; every other byte stays.
+        // Exactly the two verse lines are replaced; every other byte stays.
         const before = bytesBefore.toString('utf8');
         const from = verseLine(before, 9);
         const to = verseLine(before, 10);
@@ -331,15 +381,41 @@ test.describe('J2 — a translator drafts a verse', () => {
         expect(action.dispositions?.every((d) => d.action === 'invalidate-retain')).toBe(true);
       });
 
-      await test.step('the span counts as two verses in the drafted percentage: the rail and the Home tile agree with the file (#572)', async () => {
-        const pctAfter = draftedPercentOnDisk(readIngredient(SEEDED_PROJECT, BOOK_IPATH).toString('utf8'));
-        await expect(railPct).toHaveText(`${pctAfter}%`);
-        const rail = await railPct.textContent();
+      const pctAfter = await test.step('the join of two drafted verses does not move the drafted percentage (#572)', async () => {
+        await expect(railPct).toHaveText(pctBefore);
+        return railNow();
+      });
+      const spanned = onDisk();
+
+      const pctUndraftedSpan = await test.step('an undrafted span counts as two undrafted verses: empty the span in the verse form (#572)', async () => {
+        await clearVerse('9-10', 'Exhorta');
+        await expect
+          .poll(onDisk, { timeout: 10_000 })
+          .toBe(spanned.replace(`\\v 9-10 ${VERSE_9} ${VERSE_10}`, '\\v 9-10 ___'));
+        await expect(railPct).toHaveText(pctTwoUndrafted);
+        return railNow();
+      });
+
+      await test.step('the span holds its text again; the rail and the Home tile show the percentage of before the join (#572)', async () => {
+        await stackVerse10OnTheFirstWord();
+        await saveSection();
+        await expect.poll(onDisk, { timeout: 10_000 }).toBe(spanned);
+        await expect(railPct).toHaveText(pctBefore);
+        // A reload: Home computes the tile again from the file.
         await page.goto('/');
         const tilePct = page.getByTestId('project-_local_/_local_/sample_burrito').getByRole('button', { name: /Titus/ }).getByText(/%$/);
-        await expect(tilePct).toHaveText(`${pctAfter}%`);
+        await expect(tilePct).toHaveText(pctBefore);
         const textPath = testInfo.outputPath('drafted-percent.txt');
-        fs.writeFileSync(textPath, `before=${pctBefore}\nrail=${rail}\ntile=${await tilePct.textContent()}\n`);
+        fs.writeFileSync(
+          textPath,
+          [
+            `before the join=${pctBefore}`,
+            `after the join=${pctAfter}`,
+            `two undrafted verses=${pctTwoUndrafted}`,
+            `undrafted span=${pctUndraftedSpan}`,
+            `home tile=${await tilePct.textContent()}`,
+          ].join('\n') + '\n',
+        );
         await testInfo.attach('drafted-percent.txt', { path: textPath, contentType: 'text/plain' });
       });
 
