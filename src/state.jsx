@@ -3445,6 +3445,11 @@ export function AppProvider({ children }) {
       a.patchAb({ busy: true, error: null });
       const store = new JournalingStore({ api, ops: opsLog });
       try {
+        // #574: the seed source resolves to its local copy through the
+        // installed map. Before any project open in this page it is not
+        // loaded, and a gateway Bible then reads as absent, so the book
+        // gets the skeleton with the English name instead of the gateway's.
+        if (installedCache === null && items.some((i) => i.initialUsfm == null)) await a.resolutionContext();
         const summary = await store.open(f.repoPath);
         for (const { code, initialUsfm } of items) {
           if (summary.bookCodes.includes(code)) continue; // fresh server truth wins

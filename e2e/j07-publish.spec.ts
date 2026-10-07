@@ -479,7 +479,9 @@ test.describe('J7 — a new blank book names its book', () => {
       expectHeader(download.bytes.toString('utf8'), code, name);
       if (item === 'USFM, plain') {
         expect(download.filename).toMatch(new RegExp(`^${code}-\\d{4}-\\d{2}-\\d{2}\\.usfm$`));
-        await test.info().attach(download.filename, { body: download.bytes, contentType: 'text/plain' });
+        const kept = test.info().outputPath(download.filename);
+        fs.writeFileSync(kept, download.bytes);
+        await test.info().attach(download.filename, { path: kept, contentType: 'text/plain' });
       }
     }
     const zip = await exportBurrito(page, rigRepo(repo));
