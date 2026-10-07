@@ -497,33 +497,54 @@ function SourcePanes({ cs, item, sources, sourcePanes, sourceStory, c, v }) {
 }
 
 /** #42: the line of target words is one Tab stop (a roving tab index). Left and
- * Right move between the words in VISUAL order — so in a right-to-left
- * translation Left moves to the next word. Shift+arrow extends the selection
- * from the focused word to its neighbour; Space or Enter selects or clears the
- * focused word alone, so a selection with gaps stays possible, as with the
- * mouse. Keyed by item by the caller: the focused word starts at the first. */
-function TargetWords({ words, sel, toggleWord, addWords, direction }) {
-  const [focus, setFocus] = React.useState(0);
+ * Right move between the words in VISUAL order — in a right-to-left translation
+ * Left moves to the next word. Space or Enter selects or clears the focused word
+ * alone, so a selection with gaps stays possible, as with the mouse.
+ *
+ * Shift+arrow selects as a word processor does, by word [decided 2026-10-07 —
+ * owner, on #42]: a caret sits before the focused word. Shift+Right selects
+ * the word after the caret and moves on; Shift+Left from there clears it again,
+ * and Shift+Left from where the run began selects the word before. One run of
+ * Shift+arrows grows or shrinks a range from where it began; any other key or a
+ * click ends the run. The words selected before the run stay selected. Keyed by
+ * item by the caller: the caret starts before the first word. */
+function TargetWords({ words, sel, setSelection, toggleWord, direction }) {
+  // caret: 0..words.length, the gap before word `caret`. run: { anchor, base }
+  // while Shift+arrows extend a range; base is the selection when it began.
+  const [caret, setCaret] = React.useState(0);
+  const run = React.useRef(null);
   const refs = React.useRef([]);
-  const at = Math.min(focus, words.length - 1);
-  const move = (next) => {
-    setFocus(next);
-    refs.current[next]?.focus();
+  const at = Math.min(caret, words.length - 1);
+  const focusWord = (i) => refs.current[Math.min(i, words.length - 1)]?.focus();
+  const extend = (step) => {
+    run.current ??= { anchor: caret, base: new Set(sel) };
+    const { anchor, base } = run.current;
+    const next = Math.max(0, Math.min(words.length, caret + step));
+    const range = new Set(base);
+    for (let i = Math.min(anchor, next); i < Math.max(anchor, next); i++) range.add(i);
+    setSelection(range);
+    setCaret(next);
+    focusWord(next);
+  };
+  const moveTo = (i) => {
+    run.current = null;
+    setCaret(i);
+    focusWord(i);
   };
   const onKeyDown = (e) => {
     const rtl = direction === 'rtl';
     const step = e.key === 'ArrowRight' ? (rtl ? -1 : 1) : e.key === 'ArrowLeft' ? (rtl ? 1 : -1) : 0;
     if (step) {
       e.preventDefault();
-      const next = at + step;
-      if (next < 0 || next >= words.length) return;
-      if (e.shiftKey) addWords([at, next]);
-      move(next);
+      if (e.shiftKey) extend(step);
+      else moveTo(Math.max(0, Math.min(words.length - 1, at + step)));
     } else if (e.key === 'Home' || e.key === 'End') {
       e.preventDefault();
-      move(e.key === 'Home' ? 0 : words.length - 1);
+      moveTo(e.key === 'Home' ? 0 : words.length - 1);
     } else if (e.key === ' ' || e.key === 'Enter') {
       e.preventDefault();
+      run.current = null;
+      setCaret(at);
       toggleWord(at);
     }
   };
@@ -533,7 +554,7 @@ function TargetWords({ words, sel, toggleWord, addWords, direction }) {
       {words.map((w, i) => (
         <span key={i} ref={(el) => { refs.current[i] = el; }} data-testid={`tw-${i}`} data-selected={sel.has(i) ? '1' : '0'}
           role="button" aria-pressed={sel.has(i)} tabIndex={i === at ? 0 : -1}
-          onClick={() => { setFocus(i); toggleWord(i); }}
+          onClick={() => { run.current = null; setCaret(i); toggleWord(i); }}
           style={{ display: 'inline-block', cursor: 'pointer', borderRadius: 4, padding: '0 .1em', marginInlineEnd: '.22em', background: sel.has(i) ? 'var(--tc-highlight-soft)' : 'transparent' }}>
           {w}
         </span>
@@ -545,7 +566,7 @@ function TargetWords({ words, sel, toggleWord, addWords, direction }) {
 /** The detail column (F1): ref + item counter header, serif phrase h1, the
  * "What to check" note box, the Academy link, the compare card, and the three
  * block triage buttons — the mockup's L1044–1196 region. */
-function CheckDetail({ cs, item, title, sources, sourcePanes, sourceStory, words, sel, toggleWord, addWords, markValid, markInvalid, markTodo, onBookmark, onComment, onOpenAcademy, onNav, targetDirection = 'ltr' }) {
+function CheckDetail({ cs, item, title, sources, sourcePanes, sourceStory, words, sel, toggleWord, setSelection, markValid, markInvalid, markTodo, onBookmark, onComment, onOpenAcademy, onNav, targetDirection = 'ltr' }) {
   const { c, v } = referenceParts(item.contextId.reference);
   const quote = title;
   const idx = cs.activeIndex;
@@ -608,7 +629,7 @@ function CheckDetail({ cs, item, title, sources, sourcePanes, sourceStory, words
             </p>
           ) : (
             <>
-              <TargetWords key={idx} words={words} sel={sel} toggleWord={toggleWord} addWords={addWords} direction={targetDirection} />
+              <TargetWords key={idx} words={words} sel={sel} setSelection={setSelection} toggleWord={toggleWord} direction={targetDirection} />
               <p style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--text-tertiary)', margin: '8px 0 0' }}>{t('check.selectHint')}</p>
             </>
           )}
@@ -1087,8 +1108,13 @@ export function gatewayTitleFor(sources, sourcePanes, understand) {
 }
 
 /** #42: when a session opens, focus goes to its current rail item — once per
- * (tool, book), after the items derive, never on a later re-render. Returns
- * the ref for the rail's item list. */
+ * (tool, book), after the items derive, never on a later re-render. Only when
+ * focus is still on the page body: if the user moved it while the session
+ * derived, it stays where they put it [decided 2026-10-07 — owner, on #42].
+ * Returns the ref for the rail's item list. */
+/** True when nothing holds focus: the control that had it unmounted. */
+const focusIsUnmoved = () => !document.activeElement || document.activeElement === document.body;
+
 function useFocusOnOpen(cs, tool, book) {
   const listRef = React.useRef(null);
   const focusedFor = React.useRef(null);
@@ -1098,7 +1124,7 @@ function useFocusOnOpen(cs, tool, book) {
     const row = listRef.current?.querySelector('[tabindex="0"]');
     if (!row) return;
     focusedFor.current = key;
-    row.focus();
+    if (focusIsUnmoved()) row.focus();
   }, [cs?.items, cs?.empty, tool, book]);
   return listRef;
 }
@@ -1161,8 +1187,6 @@ function CheckSession() {
       else next.add(i);
       return next;
     });
-  const addWords = (indices) =>
-    setSel((prev) => new Set([...prev, ...indices]));
   const markValid = () => {
     const selections = selectionsFromTokens(targetText, [...sel].sort((a, b) => a - b));
     actions.recordDecision(
@@ -1192,7 +1216,7 @@ function CheckSession() {
         {item && (
           <CheckDetail cs={cs} item={item} title={titleOf(item)} sources={s.sources} sourcePanes={s.sourcePanes} sourceStory={s.sourceStory} words={words} sel={sel}
             targetDirection={s.project?.scriptDirection === 'rtl' ? 'rtl' : 'ltr'}
-            toggleWord={toggleWord} addWords={addWords} markValid={markValid} markInvalid={markInvalid} markTodo={markTodo}
+            toggleWord={toggleWord} setSelection={setSel} markValid={markValid} markInvalid={markInvalid} markTodo={markTodo}
             onBookmark={toggleBookmark} onComment={setComment}
             onOpenAcademy={() => setAcademyOpen(true)}
             onNav={(i) => actions.setCheckIndex(i)} />
@@ -1273,19 +1297,20 @@ export default function Check() {
   // depends on the open story the same way.
   const atPicker = !s.checkTool && !s.aligning;
 
-  // #42: after Back from a session, focus goes to the open button of the tool
-  // card that opened it — held until the picker has rendered its cards. A card
-  // that is no longer ready has no open button; the return is then dropped, so
-  // it can never take focus later.
+  // #42: after Back from a session, focus goes to the first control of the
+  // tool card that opened it — its open button when the card is ready, else
+  // its fix button [decided 2026-10-07 — owner, on #42]. Held until the picker
+  // has rendered its cards, then dropped, so it can never take focus later;
+  // like the open move, it leaves focus that the user has moved.
   const returnTo = React.useRef(null);
   React.useEffect(() => {
     if (s.checkTool) returnTo.current = s.checkTool;
   }, [s.checkTool]);
   React.useEffect(() => {
     if (!atPicker || !pre || !returnTo.current) return;
-    const button = document.querySelector(`[data-testid="open-${returnTo.current}"]`);
+    const card = document.querySelector(`[data-testid="preflight-${returnTo.current}"]`);
     returnTo.current = null;
-    button?.focus();
+    if (focusIsUnmoved()) card?.querySelector('button:not([disabled])')?.focus();
   });
   React.useEffect(() => {
     if (pre && atPicker && unitLoaded) actions.loadPickerProgress();

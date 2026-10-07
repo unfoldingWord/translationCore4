@@ -241,12 +241,12 @@ test.describe('#42 — the Check pages work with the keyboard alone', () => {
       await rec.record();
       await page.keyboard.press('ArrowUp');
       await expect(counter).toHaveText(first ?? '');
-      // Move on until the item's verse is drafted with two words or more.
+      // Move on until the item's verse is drafted with three words or more.
       for (let n = 0; n < 40; n++) {
-        if (await page.locator('[data-testid="check-target"][data-drafted="1"] [data-testid="tw-1"]').count()) break;
+        if (await page.locator('[data-testid="check-target"][data-drafted="1"] [data-testid="tw-2"]').count()) break;
         await page.keyboard.press('ArrowDown');
       }
-      await expect(page.getByTestId('tw-1')).toBeVisible();
+      await expect(page.getByTestId('tw-2')).toBeVisible();
       expect(await activeIs(page, '[data-testid="check-list"] [aria-current="true"]')).toBe(true);
       await rec.record();
       // Tab leaves the list at once, straight into the detail pane. "Back to
@@ -261,22 +261,33 @@ test.describe('#42 — the Check pages work with the keyboard alone', () => {
       await page.keyboard.press('Enter');
       await expectDialogHoldsFocus(page, rec, 'academy-drawer', 'open-academy');
 
-      // 4 · The target words are one Tab stop. Shift+Right selects two words.
+      // 4 · The target words are one Tab stop. Shift+arrow selects by word, as a
+      // word processor does (#42, decided 2026-10-07): two Shift+Right select
+      // two words, Shift+Left takes the last one back.
       rec.step('target words');
       const word = await rec.tabTo((s) => /^tw-\d+$/.test(s.testid ?? ''));
       expect(word.testid).toBe('tw-0');
-      const w0 = (await page.getByTestId('tw-0').textContent())?.trim();
-      const w1 = (await page.getByTestId('tw-1').textContent())?.trim();
+      const pressed = (i: number) => page.getByTestId(`tw-${i}`);
+      const w0 = (await pressed(0).textContent())?.trim();
+      const w1 = (await pressed(1).textContent())?.trim();
       await page.keyboard.press('Shift+ArrowRight');
-      await expect(page.getByTestId('tw-0')).toHaveAttribute('aria-pressed', 'true');
-      await expect(page.getByTestId('tw-1')).toHaveAttribute('aria-pressed', 'true');
-      expect(await activeIs(page, '[data-testid="tw-1"]')).toBe(true);
+      await expect(pressed(0)).toHaveAttribute('aria-pressed', 'true');
+      await expect(pressed(1)).toHaveAttribute('aria-pressed', 'false');
+      await page.keyboard.press('Shift+ArrowRight');
+      await expect(pressed(1)).toHaveAttribute('aria-pressed', 'true');
+      expect(await activeIs(page, '[data-testid="tw-2"]'), 'the caret moves on past the selection').toBe(true);
       await rec.record();
-      // Space clears the focused word and selects it again: gaps stay possible.
+      await page.keyboard.press('Shift+ArrowLeft');
+      await expect(pressed(1)).toHaveAttribute('aria-pressed', 'false');
+      await expect(pressed(0)).toHaveAttribute('aria-pressed', 'true');
+      await page.keyboard.press('Shift+ArrowRight');
+      await expect(pressed(1)).toHaveAttribute('aria-pressed', 'true');
+      // Space selects the focused word alone and clears it again: gaps stay possible.
       await page.keyboard.press(' ');
-      await expect(page.getByTestId('tw-1')).toHaveAttribute('aria-pressed', 'false');
+      await expect(pressed(2)).toHaveAttribute('aria-pressed', 'true');
       await page.keyboard.press(' ');
-      await expect(page.getByTestId('tw-1')).toHaveAttribute('aria-pressed', 'true');
+      await expect(pressed(2)).toHaveAttribute('aria-pressed', 'false');
+      await expect(pressed(1)).toHaveAttribute('aria-pressed', 'true');
       expect(await rec.tab()).toMatchObject({ testid: 'mark-valid' });
       const checkId = await page.locator('[data-testid="check-list"] [aria-current="true"]').getAttribute('data-check-id');
       await page.keyboard.press('Enter');
