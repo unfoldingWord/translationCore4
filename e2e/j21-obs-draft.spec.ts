@@ -137,6 +137,12 @@ test.describe('J21 — a translator translates a story frame by frame', () => {
         const after = storyBytes(repo, 1);
         expect(outsideTitleViolation(before, after)).toBeNull();
         expect(after.split('\n')[0]).toBe(`# 1. ${TITLE}`);
+        // #573: with another story open, the row of story 1 shows the drafted title, not the gateway's.
+        await page.getByTestId('story-rail').getByTestId('story-2').click();
+        await expect(page.getByTestId('story-rail').getByTestId('story-2')).toHaveAttribute('aria-current', 'page', { timeout: 30_000 });
+        await expect(railCells(page, 1).first()).toHaveText(`1 · ${TITLE}`, { timeout: 15_000 });
+        await page.getByTestId('story-rail').getByTestId('story-1').click();
+        await expect(page.getByTestId('story-title').getByTestId('story-unit-text')).toHaveText(TITLE, { timeout: 30_000 });
       });
 
       await test.step('write the reference line: one text.story.ref.set segment; only the closing line changes', async () => {

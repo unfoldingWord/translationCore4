@@ -1910,6 +1910,7 @@ async function performProjectOpen(ctx, repoPath, bookCode, view = 'read') {
     makeStore,
     markUsed,
     recordLastEdit,
+    invalidateProgress,
     rememberObsEdit,
   } = ctx;
   const saveRefs = saveRefsOf(ctx);
@@ -2004,8 +2005,12 @@ async function performProjectOpen(ctx, repoPath, bookCode, view = 'read') {
         recordLastEdit?.({ repoPath, book: STORY_BOOK, chapter: unit.story, verse: unit.frame, snippet: text.trim().slice(0, 90), mode: 'draft', at: Date.now() });
       },
       // #328: every durable story write (title, frame, reference) is an edit of
-      // that story for the Home card's recency.
-      onStorySaved: (unit) => rememberObsEdit?.(repoPath, unit.story, Date.now()),
+      // that story for the Home card's recency. The cached progress holds the
+      // story's title too, so a title write makes it stale (#573).
+      onStorySaved: (unit) => {
+        rememberObsEdit?.(repoPath, unit.story, Date.now());
+        if (unit.kind === 'title') invalidateProgress?.(repoPath);
+      },
     });
     installAlignCheckSchedulers(ctx, store);
     apiClient.setCurrentProject(repoPath).catch(() => {});
@@ -6063,6 +6068,7 @@ export function AppProvider({ children }) {
             makeStore: () => new JournalingStore({ api, ops: opsLog }),
             markUsed,
             recordLastEdit,
+            invalidateProgress,
             rememberObsEdit,
           },
           repoPath,
