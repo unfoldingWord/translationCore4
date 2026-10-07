@@ -171,7 +171,9 @@ fs.writeFileSync(path.join(dest, '.gitignore'), '**/*.bak\n');
 // Fixed author and committer dates too, so the repository state is the same bytes every seed.
 const gitEnv = { ...process.env, GIT_AUTHOR_DATE: '2026-09-01T00:00:00Z', GIT_COMMITTER_DATE: '2026-09-01T00:00:00Z' };
 execFileSync('git', ['init', '-q', '-b', 'main', '.'], { cwd: dest, env: gitEnv });
+execFileSync('git', ['config', 'user.email', 'rig@local'], { cwd: dest, env: gitEnv });
+execFileSync('git', ['config', 'user.name', 'rig'], { cwd: dest, env: gitEnv });
 execFileSync('git', ['add', '-A'], { cwd: dest, env: gitEnv });
-execFileSync('git', ['-c', 'user.email=rig@local', '-c', 'user.name=rig', 'commit', '-qm', 'seed (large fixture, issue #95)'], { cwd: dest, env: gitEnv });
+execFileSync('git', ['commit', '-qm', 'seed (large fixture, issue #95)'], { cwd: dest, env: gitEnv });
 
 console.log(`large fixture: ${dest} — ${actions.length} segments (${EDITS} edits + seed + book), ${files.length} ingredient files, clean fold`);
