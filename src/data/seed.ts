@@ -25,23 +25,57 @@ const MARKER_RE = /\\([a-z0-9]+)(?:\s+(\d+(?:-\d+)?))?/g;
 
 export interface SeedParams {
   bookCode: string; // UPPERCASE USFM code, e.g. "TIT"
-  bookName: string; // display name for \h/\toc/\mt
+  bookName: string; // the English name: \h/\toc1/\toc2/\mt when the source names none
   projectName: string;
 }
 
-/** Build a stub target book from the source book's raw USFM. */
+// #574 (D94, owner 2026-10-07): a new blank book writes the book NAME in \h,
+// \toc1, \toc2 and \mt, and starts with \usfm 3.0. \toc3 stays the code.
+const HEADER_TAGS = new Set(['usfm', 'ide', 'h', 'toc1', 'toc2', 'toc3', 'mt', 'mt1']);
+const headerLines = (bookCode: string, bookName: string): string[] => [
+  '\\usfm 3.0',
+  '\\ide UTF-8',
+  `\\h ${bookName}`,
+  `\\toc1 ${bookName}`,
+  `\\toc2 ${bookName}`,
+  `\\toc3 ${bookCode}`,
+  `\\mt ${bookName}`,
+];
+
+/** The text before the first chapter, where the book's identification lines live. */
+const headerPart = (usfm: string): string => {
+  const c = usfm.search(/^\\c\s/m);
+  return c < 0 ? usfm : usfm.slice(0, c);
+};
+
+/** The book name a source book carries in its `\h` line (the gateway
+ * language's name when the source is the gateway's Bible, e.g. "Tito" in
+ * es-419_glt), or null when it has none. */
+export function sourceBookName(sourceRaw: string): string | null {
+  const m = headerPart(sourceRaw).match(/^\\h[ \t]+(.*\S)[ \t]*$/m);
+  return m ? m[1] : null;
+}
+
+/** Rewrite a server skeleton's identification lines (`POST /git/new-scripture-book`
+ * writes the bare code in \h, \toc1-3 and \mt, and no \usfm line) to the
+ * blank-book header. The `\id` line, any other header line, and everything
+ * from the first `\c` on are kept as they are. */
+export function withBookHeader(usfm: string, params: { bookCode: string; bookName: string }): string {
+  const head = headerPart(usfm);
+  const body = usfm.slice(head.length);
+  const lines = head.split(/\r?\n/).filter((l) => l.trim() !== '');
+  const idAt = lines.findIndex((l) => /^\\id\s/.test(l));
+  const id = idAt >= 0 ? lines[idAt] : `\\id ${params.bookCode}`;
+  const others = lines.filter((l, i) => i !== idAt && !HEADER_TAGS.has(l.match(/^\\([a-z0-9]+)/)?.[1] ?? ''));
+  return [id, ...headerLines(params.bookCode, params.bookName), ...others].join('\n') + '\n' + body;
+}
+
+/** Build a stub target book from the source book's raw USFM. The book name is
+ * the source's own `\h` name, else `params.bookName` (#574). */
 export function seedBookFromSource(sourceRaw: string, params: SeedParams): string {
-  const { bookCode, bookName, projectName } = params;
-  const out: string[] = [
-    `\\id ${bookCode} ${projectName}`,
-    '\\usfm 3.0',
-    `\\ide UTF-8`,
-    `\\h ${bookName}`,
-    `\\toc1 ${bookName}`,
-    `\\toc2 ${bookName}`,
-    `\\toc3 ${bookCode}`,
-    `\\mt ${bookName}`,
-  ];
+  const { bookCode, projectName } = params;
+  const bookName = sourceBookName(sourceRaw) ?? params.bookName;
+  const out: string[] = [`\\id ${bookCode} ${projectName}`, ...headerLines(bookCode, bookName)];
   let pendingPara: string | null = null;
   let sawContent = false;
   for (const m of sourceRaw.matchAll(MARKER_RE)) {

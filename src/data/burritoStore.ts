@@ -169,7 +169,9 @@ export interface SettingsFile {
  * present, is the book's REAL initial state (the client-side seed from the
  * pinned source, PLATFORM-NOTES #19) — the §8.5 `book.add` journals scope,
  * skeleton and initial verses from it, so creation is ONE self-contained action
- * rather than a scaffold followed by a topology-changing write. */
+ * rather than a scaffold followed by a topology-changing write. Absent, the
+ * book is the server skeleton with the blank-book header: `book_title` in \h,
+ * \toc1, \toc2 and \mt, and \usfm 3.0 (#574, D94). */
 export interface AddBookParams {
   book_code: string;
   book_title: string;
