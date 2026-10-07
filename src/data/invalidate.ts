@@ -1,6 +1,7 @@
 // invalidate.ts — the one §5.2 rule for invalidate-and-retain (D36), shared by
-// the carry-over, the journal write and the draft revalidation. No imports, so
-// the journal store can use it without the derive module.
+// the carry-over and the journal write. (The draft revalidation keeps its own
+// write, which sets "invalid" over a "todo", and marks `userInvalid` the same
+// way.) No imports, so the journal store can use it without the derive module.
 
 /** §5.2 (#580, D94): mark a decision invalidated and retained. Invalidation
  * MUST NOT leave `status: "valid"`; a `"todo"` the user set stands. A record

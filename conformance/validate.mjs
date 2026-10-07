@@ -378,7 +378,7 @@ const verseText = bookJson.chapters['1']['1'].verseObjects.filter(vo => vo.type 
     ...(d.invalidated !== true && d.status === 'invalid' ? { userInvalid: true } : {}) });
   const reattachSpec = d => {
     const { userInvalid, ...rest } = d;
-    return { ...rest, invalidated: false, ...(d.status === 'invalid' && userInvalid !== true ? { status: 'todo' } : {}) };
+    return { ...rest, invalidated: false, status: userInvalid === true ? 'invalid' : 'todo' };
   };
   // Negative controls. The pre-1.19 rule cleared every Invalid; a writer that
   // leaves `status` absent instead of "todo" lets a record with selections
@@ -396,6 +396,8 @@ const verseText = bookJson.chapters['1']['1'].verseObjects.filter(vo => vo.type 
   const userInvalid = { contextId: mk('old7', 6, 'figs-explicit', 'λόγον'), selections: false, nothingToSelect: false, invalidated: false, status: 'invalid' };
   const wasValid = { contextId: mk('old8', 7, 'figs-explicit', 'λόγον'), selections: [{ text: 'palabra', occurrence: 1, occurrences: 1 }], nothingToSelect: false, invalidated: false, status: 'valid' };
   const userAway = away(userInvalid), validAway = away(wasValid);
+  // A legal pre-1.19 record: invalidated, selections kept, no status at all.
+  const legacyAway = { contextId: mk('old9', 8, 'figs-explicit', 'λόγον'), selections: [{ text: 'palabra', occurrence: 1, occurrences: 1 }], nothingToSelect: false, invalidated: true };
   const userBack = roundTrips(userInvalid, reattachSpec, 3), validBack = roundTrips(wasValid, reattachSpec, 3);
   const userInvalidOk =
     userAway.userInvalid === true && userAway.status === 'invalid' &&
@@ -404,7 +406,9 @@ const verseText = bookJson.chapters['1']['1'].verseObjects.filter(vo => vo.type 
     triage(userBack) === 'invalid' && userBack.invalidated === false && !('userInvalid' in userBack) &&
     triage(validBack) === 'todo' && validBack.invalidated === false && Array.isArray(validBack.selections) &&
     triage(roundTrips(userInvalid, reattachPre119, 1)) !== 'invalid' &&                    // negative control: the old rule loses it
-    triage(roundTrips(wasValid, reattachAbsent, 1)) === 'valid';                            // negative control: an absent status revives it
+    triage(reattachSpec(legacyAway)) === 'todo' && Array.isArray(reattachSpec(legacyAway).selections) &&
+    triage(roundTrips(wasValid, reattachAbsent, 1)) === 'valid' &&                         // negative control: an absent status revives it
+    triage(reattachAbsent(legacyAway)) === 'valid';                                         // negative control: so does a legacy record left as it is
   check('carry-over: an unplaceable decision is invalidated, kept in full, and re-keyed decisions take the NEW resource contextId (D36); a user\'s own Invalid is marked `userInvalid` and survives the round trip, an Invalid the invalidation set comes back "todo" (§5.2 1.19, D94)',
     co.carried === 2 && co.invalidated === 1 && co.decisions.length === savedX.length &&
     inv.length === 1 && inv[0].status === 'invalid' &&

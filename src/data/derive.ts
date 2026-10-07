@@ -392,18 +392,17 @@ export const mergeAndReattach = (
     // the check the user sees is the new resource's, never a stale note.
     let out: CheckItem;
     if (hit.invalidated && !opts.keepInvalidated) {
-      // `status: "invalid"` without `userInvalid` was set BY the invalidation
-      // of a formerly-VALID decision (§5.2), so the check is To do again:
-      // stored as an explicit `"todo"`, because an absent status on a record
-      // with selections derives as valid (§5.2). With `userInvalid` the user
-      // set it before the invalidation, and it stays (#580, D94). A `"todo"`
-      // the user set is preserved through the cycle (carryOver keeps it on
-      // invalidation, and it is not `"invalid"`, so it is not changed here).
+      // With `userInvalid` the user set `status: "invalid"` before the
+      // invalidation, and it stays (#580, D94). A `"todo"` the user set is
+      // preserved through the cycle. Every other invalidated record — an
+      // Invalid the invalidation set, or a legacy record with no status — is
+      // To do again, stored as an explicit `"todo"`: an absent status on a
+      // record with selections derives as valid (§5.2).
       const { userInvalid, ...rest } = hit;
       out = {
         ...rest,
         invalidated: false,
-        ...(hit.status === 'invalid' && userInvalid !== true ? { status: 'todo' } : {}),
+        status: userInvalid === true ? 'invalid' : 'todo',
         contextId: item.contextId,
       };
     } else {
