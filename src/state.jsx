@@ -1476,13 +1476,23 @@ async function writeBookOrStructure({ store, structuralRef, alignSchedulerRef },
  * broken, D70). The book is rewritten ONCE over the affected verses — never
  * spliced verse by verse, which would pass through a slot set no action
  * describes — and the book is flagged for the scheduler's writer. */
-function stageStructuralSection({ rawRef, schedulerRef, structuralRef, stateRef, dispatch }, chapter, keys, texts, newKeys) {
+function stageStructuralSection({ rawRef, schedulerRef, structuralRef, stateRef, dispatch, recordLastEdit }, chapter, keys, texts, newKeys) {
   const book = stateRef.current.book;
   const verses = newKeys.map((key) => ({ key, body: (texts[key] ?? '').trim() }));
   rawRef.current = spliceSection(rawRef.current, chapter, keys, verses);
   structuralRef.current.add(book);
   schedulerRef.current.replaceBook(book, rawRef.current);
   dispatch({ type: 'set', patch: { bookRaw: rawRef.current } });
+  // #576 (D94): the Resume record names a verse that exists after this save —
+  // the first key the save made: the span after a join (2-3), the first verse
+  // of the old span after a break (2).
+  const st = stateRef.current;
+  const repoPath = st.project?.repoPath || st.project?.id;
+  const verse = newKeys.find((key) => !keys.includes(key)) ?? newKeys[0];
+  if (repoPath && book && verse) {
+    const snippet = (texts[verse] ?? '').trim().slice(0, 90);
+    recordLastEdit?.({ repoPath, book, chapter, verse, snippet, mode: 'draft', at: Date.now() });
+  }
 }
 
 /** D65 (round-22 checkpoint): comprehension notes ride their own
@@ -6381,7 +6391,7 @@ export function AppProvider({ children }) {
       // verse span created or broken — one structural action, not splices.
       saveSection: (chapter, keys, texts, newKeys = keys, formats = {}) => {
         if (newKeys.join('\n') !== keys.join('\n')) {
-          stageStructuralSection({ rawRef, schedulerRef, structuralRef, stateRef, dispatch }, chapter, keys, texts, newKeys);
+          stageStructuralSection({ rawRef, schedulerRef, structuralRef, stateRef, dispatch, recordLastEdit }, chapter, keys, texts, newKeys);
         } else {
           const changed = [];
           for (const verseKey of keys) {
