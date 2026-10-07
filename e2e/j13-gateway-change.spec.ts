@@ -727,44 +727,46 @@ test.describe('J13 — one name for a gateway language on every screen (#579)', 
       test.skip(!fs.existsSync(ES_TA_ZIP), 'es-419_ta v4 is not cached under dev-env/resources-cache — see dev-env/README.md, "Journeys from a clean clone"');
       test.setTimeout(120_000);
       writeProjectPins(SEEDED_PROJECT, EN());
-      const seen: Record<string, unknown> = {};
-      const dialogue = async () => ({
-        title: (await page.getByTestId('gateway-change').getByText(/^Change checking language to /).textContent())?.trim(),
-        keep: (await page.getByTestId('gateway-cancel').textContent())?.trim(),
-        change: (await page.getByTestId('gateway-confirm').textContent())?.trim(),
-      });
-      const BARE_CODE = /\b(?:Keep|Change to) (?:en|es-419)\b/;
-
-      // English → Spanish.
-      await chooseInSettings(page, ES_KEY);
-      await expect(page.getByTestId('gateway-change')).toContainText('Change checking language to Español (Latinoamérica)?');
-      await expect(page.getByTestId('gateway-cancel')).toHaveText('Keep English');
-      await expect(page.getByTestId('gateway-confirm')).toHaveText('Change to Español (Latinoamérica)');
-      seen.toSpanish = await dialogue();
-      await confirmChange(page);
-      await openSettingsFromHome(page);
-      await expect(page.getByTestId('settings-gateway-current')).toHaveText('This project checks in Español (Latinoamérica) · es-419_gl.');
-      seen.sentenceSpanish = await page.getByTestId('settings-gateway-current').textContent();
-      await page.getByRole('button', { name: 'Cancel' }).click();
-
-      // Spanish → English: the keep button names the language being left by its own name.
-      await chooseInSettings(page, EN_KEY);
-      await expect(page.getByTestId('gateway-change')).toContainText('Change checking language to English?');
-      await expect(page.getByTestId('gateway-cancel')).toHaveText('Keep Español (Latinoamérica)');
-      await expect(page.getByTestId('gateway-confirm')).toHaveText('Change to English');
-      seen.toEnglish = await dialogue();
-      await confirmChange(page);
-      await openSettingsFromHome(page);
-      await expect(page.getByTestId('settings-gateway-current')).toHaveText('This project checks in English · unfoldingWord.');
-      seen.sentenceEnglish = await page.getByTestId('settings-gateway-current').textContent();
-      // The list keeps the English name as its second line.
-      await expect(page.getByTestId(`settings-gateway-${ES_KEY}`)).toContainText('Español (Latinoamérica)');
-      await expect(page.getByTestId(`settings-gateway-${ES_KEY}`)).toContainText('Spanish (Latin American)');
-
-      // The ready message after a package download, Door43 held still.
+      // The download at the end goes online without the "Use the internet?" step. The app
+      // reads this preference when it loads, so it is set before the first page load.
       await fetch(`${RIG_API}/net/enable`, { method: 'POST' });
       await askInternet(false);
       try {
+        const seen: Record<string, unknown> = {};
+        const dialogue = async () => ({
+          title: (await page.getByTestId('gateway-change').getByText(/^Change checking language to /).textContent())?.trim(),
+          keep: (await page.getByTestId('gateway-cancel').textContent())?.trim(),
+          change: (await page.getByTestId('gateway-confirm').textContent())?.trim(),
+        });
+        const BARE_CODE = /\b(?:Keep|Change to) (?:en|es-419)\b/;
+
+        // English → Spanish.
+        await chooseInSettings(page, ES_KEY);
+        await expect(page.getByTestId('gateway-change')).toContainText('Change checking language to Español (Latinoamérica)?');
+        await expect(page.getByTestId('gateway-cancel')).toHaveText('Keep English');
+        await expect(page.getByTestId('gateway-confirm')).toHaveText('Change to Español (Latinoamérica)');
+        seen.toSpanish = await dialogue();
+        await confirmChange(page);
+        await openSettingsFromHome(page);
+        await expect(page.getByTestId('settings-gateway-current')).toHaveText('This project checks in Español (Latinoamérica) · es-419_gl.');
+        seen.sentenceSpanish = await page.getByTestId('settings-gateway-current').textContent();
+        await page.getByRole('button', { name: 'Cancel' }).click();
+
+        // Spanish → English: the keep button names the language being left by its own name.
+        await chooseInSettings(page, EN_KEY);
+        await expect(page.getByTestId('gateway-change')).toContainText('Change checking language to English?');
+        await expect(page.getByTestId('gateway-cancel')).toHaveText('Keep Español (Latinoamérica)');
+        await expect(page.getByTestId('gateway-confirm')).toHaveText('Change to English');
+        seen.toEnglish = await dialogue();
+        await confirmChange(page);
+        await openSettingsFromHome(page);
+        await expect(page.getByTestId('settings-gateway-current')).toHaveText('This project checks in English · unfoldingWord.');
+        seen.sentenceEnglish = await page.getByTestId('settings-gateway-current').textContent();
+        // The list keeps the English name as its second line.
+        await expect(page.getByTestId(`settings-gateway-${ES_KEY}`)).toContainText('Español (Latinoamérica)');
+        await expect(page.getByTestId(`settings-gateway-${ES_KEY}`)).toContainText('Spanish (Latin American)');
+
+        // The ready message after a package download, Door43 held still.
         await mockSpanishAcademy(page);
         await page.getByTestId('settings-manage-sources').click();
         const sources = page.getByTestId('sources-modal');
@@ -773,18 +775,18 @@ test.describe('J13 — one name for a gateway language on every screen (#579)', 
         await page.getByTestId('sources-download').click();
         await expect(page.getByTestId('sources-done')).toHaveText('✓ Titus · Español (Latinoamérica) is ready', { timeout: 60_000 });
         seen.ready = await page.getByTestId('sources-done').textContent();
+
+        for (const d of [seen.toSpanish, seen.toEnglish] as Array<{ keep: string; change: string }>) {
+          expect(d.keep).not.toMatch(BARE_CODE);
+          expect(d.change).not.toMatch(BARE_CODE);
+        }
+        // The run's artifact: every string the user read, in order.
+        const artifactPath = testInfo.outputPath('j13-gateway-names.json');
+        fs.writeFileSync(artifactPath, `${JSON.stringify(seen, null, 2)}\n`);
+        await testInfo.attach('j13-gateway-names.json', { path: artifactPath, contentType: 'application/json' });
       } finally {
         await askInternet(true);
       }
-
-      for (const d of [seen.toSpanish, seen.toEnglish] as Array<{ keep: string; change: string }>) {
-        expect(d.keep).not.toMatch(BARE_CODE);
-        expect(d.change).not.toMatch(BARE_CODE);
-      }
-      // The run's artifact: every string the user read, in order.
-      const artifactPath = testInfo.outputPath('j13-gateway-names.json');
-      fs.writeFileSync(artifactPath, `${JSON.stringify(seen, null, 2)}\n`);
-      await testInfo.attach('j13-gateway-names.json', { path: artifactPath, contentType: 'application/json' });
     },
   );
 });
