@@ -112,11 +112,11 @@ Before you send a pull request:
 
 1. **Do a self-review.** The reviewer must not be the first person to read and run your
    change.
-   - Read the full diff against each acceptance criterion.
-   - Run the built feature the way a user does, for each criterion. Record what you saw:
-     the command, the output or the screenshot. Passing tests do not replace this step.
-     If you cannot run the feature, say why in the pull request. A criterion that you
-     cannot run is not met.
+   - Read the full diff against each acceptance criterion and each Interruptions answer.
+   - Run the built feature the way a user does, for each criterion and each Interruptions
+     answer. Record what you saw: the command, the output or the screenshot. Passing tests
+     do not replace this step. If you cannot run the feature, say why in the pull request.
+     A criterion or an answer that you cannot run is not met.
    - Remove from the pull request each claim that you did not see happen.
    - Check these cases in the diff:
      - **Failure is not success.** Find each write, read or wait that you add. Find what
@@ -135,7 +135,8 @@ Before you send a pull request:
 3. Run `npm run prove` (or `npm run verify` for the quick subset).
 4. Paste the test output and the self-review results into the pull request description.
 
-"Done" means: the acceptance criteria pass, with pasted evidence.
+"Done" means: the acceptance criteria and the Interruptions answers pass, with pasted
+evidence.
 
 ### Review findings
 
