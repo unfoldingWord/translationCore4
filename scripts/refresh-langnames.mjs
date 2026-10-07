@@ -13,7 +13,11 @@
 // sorted by code, so a refresh shows as a small diff.
 //
 // exit 1, and the file is not touched, when Door43 does not answer with a list in which
-// every row has a code, a name and a direction of `ltr` or `rtl`.
+// every row has a code, a name and a direction of `ltr` or `rtl`, every name is text and
+// the alternate names are a list of text.
+//
+// .gitattributes marks the file `-diff`, so that its 9,000 lines do not fill the diff of
+// a pull request. To read a refresh row by row: git diff --text src/data/langnames.json
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -30,6 +34,11 @@ if (!Array.isArray(list) || list.length === 0) throw new Error(`${SOURCE} did no
 const rows = list.map((row) => {
   if (!row.lc || !row.ln || (row.ld !== 'ltr' && row.ld !== 'rtl')) {
     throw new Error(`a row has no code, no name or no direction: ${JSON.stringify(row)}`);
+  }
+  // The app reads the names as text, and the alternate names as a list of text.
+  const names = [row.lc, row.ln, row.ang ?? '', ...(Array.isArray(row.alt) ? row.alt : [])];
+  if ((row.alt != null && !Array.isArray(row.alt)) || names.some((name) => typeof name !== 'string')) {
+    throw new Error(`a row has a name that is not text, or alternate names that are not a list: ${JSON.stringify(row)}`);
   }
   return { lc: row.lc, ang: row.ang || '', ln: row.ln, ld: row.ld, alt: row.alt || [] };
 });

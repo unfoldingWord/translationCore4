@@ -7,3 +7,7 @@ conformance/sample-burrito/** -text
 *.jpeg binary
 *.zip binary
 *.ico binary
+# The shipped Door43 language list (#492): one language per line, 1 MB. Not shown in a
+# diff, so a pull request that adds or refreshes it stays readable.
+# `git diff --text src/data/langnames.json` shows the rows.
+src/data/langnames.json -diff
