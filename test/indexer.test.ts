@@ -3,7 +3,7 @@
 // and aligned tC3-shaped USFM (en_ult/en_ust TIT v89, see test/fixtures/README.md).
 import { describe, expect, it } from 'vitest';
 import usfmjs from 'usfm-js';
-import { findVerse, indexBook } from '../src/data/usfm/indexer';
+import { draftPercent, findVerse, indexBook } from '../src/data/usfm/indexer';
 
 // Real node builtins via the runtime, NOT `import 'node:fs'` — the app's
 // vite-plugin-node-polyfills aliases node builtins to browser mocks (fs → null)
@@ -112,6 +112,42 @@ describe('span verse keys (property 3)', () => {
     expect(findVerse(entries, 2, '9-10')).not.toBeNull();
     expect(findVerse(entries, 2, '9')).toBeNull();
     expect(findVerse(entries, '2', '10')).toBeNull();
+  });
+});
+
+// #572 — the ways the drafted percentage can be wrong, written before the code:
+//   1. a drafted span counts as one drafted verse, not as each verse it covers;
+//   2. a span takes one verse out of the total, so the percentage moves on a join;
+//   3. an undrafted span takes its verses out of the total;
+//   4. a key that is not `n-m` ("2a") is dropped or counts as more than one verse;
+//   5. a book with no verses divides by zero.
+describe('draftPercent — a span counts every verse it covers (#572)', () => {
+  const pct = (raw: string): number => draftPercent(indexBook(raw), raw);
+  const book = (...verses: string[]): string => ['\\id TST', '\\c 1', '\\p', ...verses, ''].join('\n');
+
+  it('joining two drafted verses into a span keeps the percentage', () => {
+    const apart = book('\\v 1 uno', '\\v 2 dos', '\\v 3 tres', '\\v 4 ___');
+    const joined = book('\\v 1 uno', '\\v 2-3 dos tres', '\\v 4 ___');
+    expect(pct(apart)).toBe(75);
+    expect(pct(joined)).toBe(75);
+  });
+
+  it('an undrafted span counts its verses as undrafted', () => {
+    expect(pct(book('\\v 1 uno', '\\v 2-3 ___', '\\v 4 ___'))).toBe(25);
+  });
+
+  it('sample JON: the drafted span 2:9-10 is 2 of 48 verses', () => {
+    const jon = corpora['sample JON (plain draft, span verse 2:9-10)'];
+    expect(indexBook(jon)).toHaveLength(47);
+    expect(pct(jon)).toBe(4);
+  });
+
+  it('a key that is not `n-m` counts as one verse', () => {
+    expect(pct(book('\\v 1 uno', '\\v 2a dos', '\\v 2b ___', '\\v 3 ___'))).toBe(50);
+  });
+
+  it('a book with no verses is 0%', () => {
+    expect(pct('\\id TST\n\\h Title\n')).toBe(0);
   });
 });
 

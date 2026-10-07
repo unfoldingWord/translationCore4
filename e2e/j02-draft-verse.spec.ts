@@ -71,6 +71,20 @@ const verseLine = (usfm: string, verse: number): { start: number; end: number } 
   return { start: span.start - `\\v ${verse} `.length, end: span.end };
 };
 
+/** Titus's drafted percentage, counted from the file: the verses each `\\v`
+ * line covers (a span "9-10" covers two) over all verses (#572). */
+const draftedPercentOnDisk = (usfm: string): number => {
+  let drafted = 0;
+  let total = 0;
+  for (const [, key, body] of usfm.matchAll(/^\\v (\S+) (.*)$/gm)) {
+    const [from, to = from] = key.split('-').map(Number);
+    const covered = to - from + 1;
+    total += covered;
+    if (body.trim() !== '___') drafted += covered;
+  }
+  return Math.round((drafted / total) * 100);
+};
+
 // #329: a Home tile returns to where this client last worked; this journey opens
 // books from their tiles and states its own start (Translate, chapter 1). With no
 // place, a tile opens in Understand (D87), so the start is written as a place.
@@ -256,7 +270,7 @@ test.describe('J2 — a translator drafts a verse', () => {
   test(
     'create a verse span (Titus 2:9-10): stack verse 10 on verse 9 in Place mode, save — one \\v 9-10 line and one text.structure.apply on disk (#63, D70)',
     { tag: ['@inc5', '@J2'] },
-    async ({ page }) => {
+    async ({ page }, testInfo) => {
       const VERSE_9 = 'Exhorta a los siervos a que se sujeten a sus amos y a que agraden en todo';
       const VERSE_10 = 'no defraudando sino mostrando toda buena fe';
       const bytesBefore = readIngredient(SEEDED_PROJECT, BOOK_IPATH);
@@ -265,6 +279,10 @@ test.describe('J2 — a translator drafts a verse', () => {
       await page.goto('/');
       await page.getByTestId('project-_local_/_local_/sample_burrito').getByRole('button', { name: /Titus/ }).click();
       await page.getByRole('button', { name: '2', exact: true }).click();
+      // #572: Titus's percent in its own rail row, read before the join.
+      const railPct = page.locator('aside button', { hasText: 'Titus' }).first().getByText(/%$/);
+      const pctBefore = draftedPercentOnDisk(bytesBefore.toString('utf8'));
+      await expect(railPct).toHaveText(`${pctBefore}%`);
 
       await test.step('type the section, then stack verse 10 on the first word', async () => {
         await page.getByRole('button', { name: 'Draft section 9–10' }).click();
@@ -307,6 +325,18 @@ test.describe('J2 — a translator drafts a verse', () => {
         expect(action.transitions?.['2:9-10']?.text.trim()).toBe(`${VERSE_9} ${VERSE_10}`);
         expect(action.transitions?.['2:9-10']?.sources.map((s) => s.key)).toEqual(['2:9', '2:10']);
         expect(action.dispositions?.every((d) => d.action === 'invalidate-retain')).toBe(true);
+      });
+
+      await test.step('the span counts as two verses in the drafted percentage: the rail and the Home tile agree with the file (#572)', async () => {
+        const pctAfter = draftedPercentOnDisk(readIngredient(SEEDED_PROJECT, BOOK_IPATH).toString('utf8'));
+        await expect(railPct).toHaveText(`${pctAfter}%`);
+        const rail = await railPct.textContent();
+        await page.goto('/');
+        const tilePct = page.getByTestId('project-_local_/_local_/sample_burrito').getByRole('button', { name: /Titus/ }).getByText(/%$/);
+        await expect(tilePct).toHaveText(`${pctAfter}%`);
+        const textPath = testInfo.outputPath('drafted-percent.txt');
+        fs.writeFileSync(textPath, `before=${pctBefore}\nrail=${rail}\ntile=${await tilePct.textContent()}\n`);
+        await testInfo.attach('drafted-percent.txt', { path: textPath, contentType: 'text/plain' });
       });
 
       await test.step('the span can be re-aligned and re-checked: Align opens 2:9-10, and the verse-9 note reads the span text (AC5)', async () => {
