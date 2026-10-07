@@ -2404,3 +2404,27 @@ two real threads, and a booster that joins the memory and predicts like the mode
 trained, are proven by `test/align-suggest-handover.test.ts`. The whole is proven by the J5 case
 "suggestions grow with every saved verse". The measurement protocol is reproducible with
 `test/align-suggest-growth-bench.test.ts`.
+
+## D94 (2026-10-07, project-owner rulings) **The rc.1 QA defects in epic #544 stay in scope until rc.2 tags on 2026-10-12, at any priority. Their acceptance is proven by journeys, not unit tests. A one-step fix may answer Interruptions with one line.** [owner grill session 2026-10-07 on epic #544; issues #536, #572–#576, #579, #580, #583; amends D89 point 3]
+
+Context. D89 point 2 puts each defect that end-user QA finds in scope until rc.2. D89 point 3
+moves each P2 or P3 issue that has not merged by the end of 2026-10-09 to 4.0.1. The rc.1 QA
+defects filed on 2026-10-07 (#572–#580) carry `Priority/Medium` or `Priority/Low`, so the two
+points disagreed about them.
+
+1. **Scope.** A sub-issue of epic #544 stays in Increment 9 until the rc.2 tag on 2026-10-12,
+   whatever its priority label. The 2026-10-09 cut of D89 point 3 does not apply to it. After
+   rc.2, D89 point 2 applies unchanged: only a release blocker can enter.
+2. **Test method.** The acceptance criteria of these sub-issues are proven by Playwright
+   journey assertions that leave a reproducible artifact (D81). Each criterion that asked
+   for a unit test is rewritten as a journey assertion.
+3. **Interruptions.** A fix with one step and no wait answers the Interruptions section with
+   "None: one step, no wait." A flow with more than one step answers all four questions.
+
+The rulings for each issue are recorded as owner-decision comments on that issue (2026-10-07):
+#536 (closed; its full-journeys criterion moves to #583), #572, #573, #574, #575, #576, #579,
+#580 and #583.
+
+The format does not change, so `docs/BURRITO-SPEC.md` and the conformance harness do not
+change. #580 may change the §5.2 decision record. If it does, that pull request changes the
+specification and the harness together (`CONTRIBUTING.md` hard rule 3).
