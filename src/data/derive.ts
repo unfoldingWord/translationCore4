@@ -403,7 +403,9 @@ export const mergeAndReattach = (
       out = {
         ...rest,
         invalidated: false,
-        ...(hit.status === 'invalid' && userInvalid !== true ? { status: 'todo' } : {}),
+        // Every other record is stored "todo", a legacy one with no `status`
+        // (a tC3 import) included: absent, it would derive as valid (§5.2).
+        status: hit.status === 'invalid' && userInvalid === true ? 'invalid' : 'todo',
         contextId: item.contextId,
       };
     } else {

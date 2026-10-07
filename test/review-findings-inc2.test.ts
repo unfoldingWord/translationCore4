@@ -188,6 +188,26 @@ describe('R3 — re-pinning the old resource restores a decided item (D36)', () 
     expect(items[0].selections).toHaveLength(1);
   });
 
+  it('a legacy invalidated decision with no status (a tC3 import) comes back To do, not valid (§5.2 1.19)', () => {
+    const legacy = item({
+      contextId: ctx,
+      selections: [{ text: 'Dios', occurrence: 1, occurrences: 1 }],
+      invalidated: true,
+    });
+    const { items } = mergeAndReattach([item({ contextId: ctx })], [legacy]);
+    expect(items[0].invalidated).toBeFalsy();
+    expect(items[0].status).toBe('todo');
+    expect(items[0].selections).toHaveLength(1);
+  });
+
+  it('a user Invalid (userInvalid) stays Invalid on re-attach and loses the mark (D94)', () => {
+    const own = item({ contextId: ctx, nothingToSelect: true, invalidated: true, status: 'invalid', userInvalid: true } as Partial<CheckItem> & { contextId: CheckItem['contextId'] });
+    const { items } = mergeAndReattach([item({ contextId: ctx })], [own]);
+    expect(items[0].status).toBe('invalid');
+    expect(items[0].invalidated).toBeFalsy();
+    expect((items[0] as { userInvalid?: unknown }).userInvalid).toBeUndefined();
+  });
+
   it('#63: with the SAME resource (no re-pin) the invalidation is the journal\'s and survives the merge', () => {
     // A verse span created or broken under a decision: the fold retains it
     // `invalidated` (§8.5 invalidate-retain). No selections, so revalidation
