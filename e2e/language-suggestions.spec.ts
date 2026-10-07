@@ -5,7 +5,9 @@
 // review and Project settings keep their plain fields.
 //
 // Every language below is a row of the shipped list, read here from the same file the
-// app reads.
+// app reads. `ug` (Uyghur) is in the list and not in the server's own table
+// (pankosmia-web 0.18.15, PLATFORM-NOTES #43): the server refuses it, and the dialog
+// then names the private-use code `x-ug`.
 //
 // The artifact `language-suggestions.json` records each query's first suggestions and
 // each created project's stored language. It holds no project name and no time, so
@@ -179,10 +181,10 @@ test.describe('#492 — language suggestions from the shipped Door43 list', () =
   );
 
   test(
-    'New Open Bible Stories: Hausa is suggested; an unlisted name and code create a project; Import review keeps its plain field',
+    'New Open Bible Stories: Hausa is suggested; an unlisted name and code create a project; a listed code the server refuses names its x- code; Import review keeps its plain field',
     { tag: ['@J20', '@J9'] },
     async ({ page }, testInfo) => {
-      test.setTimeout(120_000); // a create and an import review
+      test.setTimeout(120_000); // two creates, one refusal and an import review
       const rows: Row[] = [];
       const open = async () => {
         await page.goto('/');
@@ -210,6 +212,28 @@ test.describe('#492 — language suggestions from the shipped Door43 list', () =
         const { kept } = await stored(page, before);
         expect(kept).toEqual({ tag: 'x-abc', name: 'Abc Language', languageName: 'Abc Language', textDirection: 'ltr' });
         rows.push({ dialog: 'new-obs', code: 'x-abc', outcome: 'created', ...kept });
+      });
+
+      await test.step('Uyghur (ug) is in the list and not in the server\'s table: the refusal names x-ug, and no repository is left', async () => {
+        await open();
+        const before = listLocalRepos();
+        await suggest(page, 'Uyghur', ['ug']);
+        await page.getByRole('option').first().click();
+        await expect(codeField(page)).toHaveValue('ug');
+        await page.getByRole('button', { name: 'Create stories →' }).click();
+        const alert = page.getByRole('alert');
+        await expect(alert).toContainText("Language code 'ug' is not custom (no 'x-') but has not been found in the BCP47 lookup table", { timeout: 30_000 });
+        await expect(alert).toContainText('To create the project anyway, use the code x-ug.');
+        // Watch the listing long enough for a late create to show.
+        await page.waitForTimeout(2_000);
+        expect(listLocalRepos()).toEqual(before);
+        rows.push({ dialog: 'new-obs', code: 'ug', outcome: 'refused', reason: (await alert.textContent())?.trim() });
+
+        await codeField(page).fill('x-ug');
+        await page.getByRole('button', { name: 'Create stories →' }).click();
+        const { kept } = await stored(page, before);
+        expect(kept).toEqual({ tag: 'x-ug', name: 'Uyghur', languageName: 'Uyghur', textDirection: 'ltr' });
+        rows.push({ dialog: 'new-obs', code: 'x-ug', outcome: 'created', ...kept });
       });
 
       await test.step('Import review: Language code is the plain field, with no suggestions', async () => {

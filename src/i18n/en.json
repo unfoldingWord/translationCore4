@@ -113,6 +113,7 @@
   "wizard.nameInUse": "A project folder named “{abbr}” already exists.",
   "wizard.booksRequired": "Select at least one book.",
   "wizard.error": "The server could not create the project.",
+  "wizard.privateCodeHint": "To create the project anyway, use the code {code}.",
   "wizard.installedSuite": "English (installed suite)",
   "wizard.default": "(default)",
   "wizard.newTestament": "New Testament",
