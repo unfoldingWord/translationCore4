@@ -12,16 +12,30 @@ afterEach(cleanup);
 
 function Words() {
   const [sel, setSel] = React.useState<Set<number>>(new Set());
-  const toggle = (i: number) => setSel((s) => { const n = new Set(s); if (n.has(i)) n.delete(i); else n.add(i); return n; });
+  const toggle = (i: number) =>
+    setSel((s) => {
+      const n = new Set(s);
+      if (n.has(i)) n.delete(i);
+      else n.add(i);
+      return n;
+    });
   return (
     <>
-      <TargetWords words={['a', 'b', 'c', 'd']} sel={sel} setSelection={setSel} toggleWord={toggle} direction="ltr" />
+      <TargetWords
+        words={['a', 'b', 'c', 'd']}
+        sel={sel}
+        setSelection={setSel}
+        toggleWord={toggle}
+        direction="ltr"
+      />
       <button type="button">elsewhere</button>
     </>
   );
 }
-const pressed = () => [0, 1, 2, 3].filter((i) => screen.getByTestId(`tw-${i}`).getAttribute('aria-pressed') === 'true');
-const key = (k: string, shiftKey = false) => fireEvent.keyDown(document.activeElement as Element, { key: k, shiftKey });
+const pressed = () =>
+  [0, 1, 2, 3].filter((i) => screen.getByTestId(`tw-${i}`).getAttribute('aria-pressed') === 'true');
+const key = (k: string, shiftKey = false) =>
+  fireEvent.keyDown(document.activeElement as Element, { key: k, shiftKey });
 
 describe('TargetWords — a Shift+arrow run ends on any other key or on blur', () => {
   it('Tab away and back: Shift+Left starts a new run and keeps both words', () => {
