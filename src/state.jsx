@@ -882,7 +882,7 @@ const englishBibles = (installed) => {
   return { literal: en.literal ?? INSTALLED_SUITE.extraScripture[0], simplified: en.simplified ?? INSTALLED_SUITE.extraScripture[1] };
 };
 
-async function gatewayChangePlan({ consequences, next, coverage, installed, stored, md5s, actions, blocked }) {
+async function gatewayChangePlan({ consequences, next, coverage, installed, stored, md5s, actions, blocked, draftFor }) {
   const keyOf = (entry) => `${entry.tool}/${entry.book}`;
   const blockedSet = new Set(blocked.map(keyOf));
   const plan = [];
@@ -896,11 +896,19 @@ async function gatewayChangePlan({ consequences, next, coverage, installed, stor
     }
     const source = stored.find((candidate) => candidate.tool === entry.tool && candidate.book === entry.book);
     const derived = await actions.deriveItemsFor(entry.tool, entry.book, resolution.pin);
+    const carried = carryOverDecisions(source.file, derived, resolutionRecord(resolution));
+    // #580: "carried over" is what the check screen will show — the same merge
+    // and draft revalidation completedCheckSession runs, then the one counting
+    // rule. A decision whose selected words the draft no longer has is not
+    // counted (the session flags it), so the line equals "N of M resolved".
+    const { items: merged } = mergeAndReattach(derived, carried.file.decisions, { keepInvalidated: true });
+    const shown = progressOf(revalidateAgainstDraft(merged, await draftFor(entry.book)).items).decided;
     plan.push({
       tool: entry.tool,
       book: entry.book,
       expectMd5: md5s[`${entry.tool}/${entry.book}`] ?? null,
-      ...carryOverDecisions(source.file, derived, resolutionRecord(resolution)),
+      ...carried,
+      shown,
     });
   }
   return { plan, blocked };
@@ -3884,7 +3892,16 @@ export function AppProvider({ children }) {
               book: entry.book,
               reason: `versification-${frame.state}`,
             }));
+        // The draft each book's check session revalidates against: the open
+        // book's live text, another book's text from disk, the open story's
+        // frames. A failed read rejects, so the preview states it (D30).
+        const draftFor = async (book) => {
+          if (obsProject) return frameTextIndex(st.story);
+          const raw = book === st.book && st.bookRaw != null ? st.bookRaw : (await store.readBook(book)).usfm;
+          return withSpanMembers(verseTextIndex(raw));
+        };
         const { plan, blocked } = await gatewayChangePlan({
+          draftFor,
           consequences,
           next,
           coverage,
