@@ -17,7 +17,8 @@ import { unzipSync } from 'fflate';
 import { captureDownload } from './helpers/export';
 import { RIG_API, createObsProject, storyBytes } from './helpers/story';
 import { assertProjectUnchanged } from '../test/helpers/export';
-import { SEEDED_PROJECT, readIngredient, resetPlaces, resetSeededChecking, rigRepo } from './helpers/rig';
+import { SEEDED_PROJECT, listLocalRepos, readIngredient, resetPlaces, resetSeededChecking, rigRepo, sideloadedIngredient } from './helpers/rig';
+import { pickOption } from './helpers/dropdown';
 import { DRAFT } from '../conformance/fixtures/obs-draft.mjs';
 import { decompose } from '../journal/skeleton.mjs';
 import { verseTextMd5 } from '../journal/fold.mjs';
@@ -428,6 +429,124 @@ test.describe('J7 — USFM', () => {
       expect(stored.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf]))).toBe(true);
       const download = await exportUsfm(page, 'USFM, plain');
       expect(download.bytes.equals(stored)).toBe(true);
+    },
+  );
+});
+
+// A new blank book's header (#574, D94): the book NAME in \h, \toc1, \toc2 and
+// \mt, \toc3 the code, and \usfm 3.0 — the gateway's name when the project's
+// gateway Bible has the book, else English. Plain USFM, aligned USFM and the
+// Scripture Burrito carry the same lines. Each plain download is the artifact.
+test.describe('J7 — a new blank book names its book', () => {
+  /** The `\h` name a source the rig holds gives its book (the expected name is the data's, not ours). */
+  const sourceName = (resource: string, code: string): string =>
+    sideloadedIngredient(resource, `${code}.usfm`).split(/^\\c\s/m)[0].match(/^\\h[ \t]+(.*\S)/m)![1];
+
+  /** The first eight lines of a blank book: \id, then the D94 header. */
+  const expectHeader = (usfm: string, code: string, name: string): void => {
+    const lines = usfm.replace(/^\uFEFF/, '').split(/\r?\n/);
+    expect(lines[0]).toMatch(new RegExp(`^\\\\id ${code}( |$)`));
+    expect(lines.slice(1, 8)).toEqual(['\\usfm 3.0', '\\ide UTF-8', `\\h ${name}`, `\\toc1 ${name}`, `\\toc2 ${name}`, `\\toc3 ${code}`, `\\mt ${name}`]);
+  };
+
+  /** Open `book` of `repo` in Community Checking from Home and wait for a settled tree. */
+  const openCommunityChecking = async (page: Page, repo: string, book: RegExp): Promise<void> => {
+    await page.goto('/');
+    await page.getByTestId(`project-_local_/_local_/${repo}`).getByRole('button', { name: book }).click();
+    await page.getByRole('tab', { name: 'Check', exact: true }).click();
+    await page.getByTestId('open-community-checking').click();
+    const git = (...args: string[]) => execFileSync('git', ['-C', rigRepo(repo), ...args], { encoding: 'utf8' });
+    await expect.poll(async () => {
+      const head = git('rev-parse', 'HEAD');
+      if (git('status', '--porcelain') !== '') return false;
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+      return git('status', '--porcelain') === '' && git('rev-parse', 'HEAD') === head;
+    }, { timeout: 20_000 }).toBe(true);
+  };
+
+  /** Export `code` three ways and prove each carries the header; the plain file is kept as the artifact. */
+  const expectExportsCarryHeader = async (page: Page, repo: string, code: string, name: string): Promise<void> => {
+    const stored = readIngredient(repo, `ingredients/${code}.usfm`).toString('utf8');
+    expectHeader(stored, code, name);
+    for (const item of ['USFM, plain', 'USFM, aligned']) {
+      let download: { bytes: Buffer; filename: string } = { bytes: Buffer.alloc(0), filename: '' };
+      const commits = await assertProjectUnchanged(rigRepo(repo), async () => {
+        await page.getByTestId('export-menu-trigger').click();
+        download = await captureDownload(page, page.getByRole('menuitem', { name: item, exact: true }));
+      });
+      expect(commits).toBe(0);
+      await expect(page.getByTestId('export-failure')).toHaveCount(0);
+      expectHeader(download.bytes.toString('utf8'), code, name);
+      if (item === 'USFM, plain') {
+        expect(download.filename).toMatch(new RegExp(`^${code}-\\d{4}-\\d{2}-\\d{2}\\.usfm$`));
+        const kept = test.info().outputPath(download.filename);
+        fs.writeFileSync(kept, download.bytes);
+        await test.info().attach(download.filename, { path: kept, contentType: 'text/plain' });
+      }
+    }
+    const zip = await exportBurrito(page, rigRepo(repo));
+    const dir = unzipTo(zip.bytes);
+    expectHeader(fs.readFileSync(path.join(dir, 'ingredients', `${code}.usfm`), 'utf8'), code, name);
+    fs.rmSync(dir, { recursive: true, force: true });
+  };
+
+  test(
+    'a blank book takes the English name while the project checks in English, and the gateway\'s name after a change to es-419; every export carries it',
+    { tag: ['@inc9', '@J7'] },
+    async ({ page }) => {
+      test.setTimeout(240_000);
+      const before = listLocalRepos();
+      const jonah = sourceName('en_ult', 'JON');
+      const tito = sourceName('es-419_glt', 'TIT');
+      expect(jonah).not.toBe('JON');
+      expect(tito).not.toBe(sourceName('en_ult', 'TIT')); // the gateway name differs from the English one
+
+      const repo = await test.step('New Bible (es-419) › Start a blank book › Jonah › Create book', async () => {
+        await page.goto('/');
+        await page.getByTestId('add-project').click();
+        await page.getByTestId('add-project-bible').click();
+        await page.getByLabel('Bible name').fill(`J7 blank ${Date.now()}`);
+        await page.getByLabel('Code').fill('es-419');
+        await page.getByRole('button', { name: 'Create Bible' }).click();
+        await page.getByRole('button', { name: 'Start a blank book' }).click({ timeout: 20_000 });
+        await pickOption(page, 'Book', 'Jonah');
+        await page.getByRole('button', { name: 'Create book' }).click();
+        await expect(page.getByTestId('understand')).toBeVisible({ timeout: 20_000 });
+        const created = listLocalRepos().filter((r) => !before.includes(r));
+        expect(created).toHaveLength(1);
+        return created[0];
+      });
+
+      await test.step('Jonah: the English name, in the stored book and in all three exports', async () => {
+        await openCommunityChecking(page, repo, /Jonah/);
+        await expectExportsCarryHeader(page, repo, 'JON', jonah);
+      });
+
+      await test.step('Project settings › es-419 › confirm: the literal source pane is the es-419 GLT', async () => {
+        await page.getByTitle('Switch project').click();
+        await page.getByTestId(`project-_local_/_local_/${repo}`).getByRole('button', { name: 'Settings' }).click();
+        await page.getByTestId('settings-gateway-es-419::es-419_gl').click();
+        await expect(page.getByTestId('gateway-change')).toBeVisible();
+        await page.getByTestId('gateway-confirm').click();
+        await expect(page.getByTestId('gateway-change').or(page.getByTestId('gateway-error'))).toHaveCount(0, { timeout: 30_000 });
+        const pins = JSON.parse(readIngredient(repo, 'ingredients/checking/resources.json').toString('utf8'));
+        expect(pins.extraScripture[0].repoPath).toMatch(/\/es-419_glt$/);
+      });
+
+      await test.step('Add a book › Start a blank book › Titus: the gateway name, in the stored book and in all three exports', async () => {
+        await page.goto('/');
+        await page.getByTestId(`project-_local_/_local_/${repo}`).getByRole('button', { name: 'Add a book' }).click();
+        await page.getByRole('button', { name: 'Start a blank book' }).click();
+        await pickOption(page, 'Book', 'Titus');
+        await page.getByRole('button', { name: 'Create book' }).click();
+        await expect(page.getByTestId('understand')).toBeVisible({ timeout: 20_000 });
+        await openCommunityChecking(page, repo, /Titus/);
+        await expectExportsCarryHeader(page, repo, 'TIT', tito);
+      });
+
+      await test.step('the gateway change did not rewrite Jonah', async () => {
+        expectHeader(readIngredient(repo, 'ingredients/JON.usfm').toString('utf8'), 'JON', jonah);
+      });
     },
   );
 });

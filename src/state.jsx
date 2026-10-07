@@ -2503,8 +2503,13 @@ async function classifyUsfmFiles(files, existing) {
   return out;
 }
 
-async function seedInitialUsfm({ store, stateRef, code, projName }) {
-  const seedPin = stateRef.current.projectPins?.extraScripture?.[0];
+async function seedInitialUsfm({ store, code, projName }) {
+  // #574: the pins of the project the book goes INTO, read through its own
+  // store. The open project's state pins were null when the book was added
+  // from Home or right after New Bible, so every such book got the server
+  // skeleton. extraScripture[0] is the literal pane, which follows the
+  // gateway (#412): its \h name is the gateway's book name.
+  const seedPin = (await store.readResources())?.extraScripture?.[0];
   if (!seedPin) return undefined;
   try {
     const src = await store.readSourceBook(localSourceRepo(seedPin), code);
@@ -3426,6 +3431,11 @@ export function AppProvider({ children }) {
       a.patchAb({ busy: true, error: null });
       const store = new JournalingStore({ api, ops: opsLog });
       try {
+        // #574: the seed source resolves to its local copy through the
+        // installed map. Before any project open in this page it is not
+        // loaded, and a gateway Bible then reads as absent, so the book
+        // gets the skeleton with the English name instead of the gateway's.
+        if (installedCache === null && items.some((i) => i.initialUsfm == null)) await a.resolutionContext();
         const summary = await store.open(f.repoPath);
         for (const { code, initialUsfm } of items) {
           if (summary.bookCodes.includes(code)) continue; // fresh server truth wins
@@ -3434,7 +3444,7 @@ export function AppProvider({ children }) {
           // self-contained §8.5 book.add carrying the book's REAL initial
           // state (issue #62). A book missing from the source journals the
           // server skeleton instead — absence is a state, not an error.
-          const usfm = initialUsfm ?? (await seedInitialUsfm({ store, stateRef, code, projName: f.projName }));
+          const usfm = initialUsfm ?? (await seedInitialUsfm({ store, code, projName: f.projName }));
           await store.addBook({
             book_code: code,
             book_title: bookName(code),
