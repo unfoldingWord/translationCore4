@@ -265,6 +265,14 @@ test.describe('#492 — language suggestions from the shipped Door43 list', () =
         expect(listLocalRepos()).toEqual(before);
         rows.push({ dialog: 'new-obs', code: 'ug', outcome: 'refused', reason: (await alert.textContent())?.trim() });
 
+        // The server's table is lower case: `ES` is refused where `es` works, and x-ES is not the advice.
+        await codeField(page).fill('ES');
+        await page.getByRole('button', { name: 'Create stories →' }).click();
+        await expect(alert).toContainText("Language code 'ES' is not custom (no 'x-') but has not been found in the BCP47 lookup table", { timeout: 30_000 });
+        await expect(alert).not.toContainText('To create the project anyway');
+        await page.waitForTimeout(2_000);
+        expect(listLocalRepos()).toEqual(before);
+
         await codeField(page).fill('x-ug');
         await page.getByRole('button', { name: 'Create stories →' }).click();
         const { kept } = await stored(page, before);

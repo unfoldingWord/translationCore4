@@ -1434,9 +1434,11 @@ async function adoptDownloadedPins({
 // #43), and Door43's list suggests such codes. The server's sentence does not
 // say what to do next, so the dialog adds the private-use form of the same
 // code, which the server accepts with the language name the dialog sends.
+// Not for a code with a capital letter in its first part: the server's table is
+// lower case, so `ES` is refused where `es` works.
 function createRefusal(e, code) {
   const reason = e?.reason || e?.message || t('wizard.error');
-  return /not been found in the BCP47 lookup table/.test(reason)
+  return /not been found in the BCP47 lookup table/.test(reason) && !/^[^-]*[A-Z]/.test(code)
     ? `${reason}. ${t('wizard.privateCodeHint', { code: `x-${code}` })}`
     : reason;
 }
