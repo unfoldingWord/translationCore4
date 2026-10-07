@@ -11,6 +11,7 @@ import path from 'node:path';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import { QA_SERVER, USER, dropOrigin, git } from './helpers/door43Share';
 import { recordExternal } from './helpers/externalRequests';
+import { captureDownload } from './helpers/export';
 import { lane } from './lane.mjs';
 import {
   SEEDED_PROJECT,
@@ -413,6 +414,94 @@ test.describe('J2 — a translator drafts a verse', () => {
         expect(action.transitions?.['2:13']?.sources.map((s) => s.key)).toEqual(['2:13']);
         expect(action.dispositions?.every((d) => d.action === 'invalidate-retain')).toBe(true);
       });
+    },
+  );
+
+  test(
+    'join two verses in separate paragraphs into a span (Jonah 1): the paragraphs merge into one — no \\p and no blank line in the stored span, and the reading view, Type mode and the USFM export show one paragraph (#575, D94)',
+    { tag: ['@inc9', '@J2'] },
+    async ({ page }, testInfo) => {
+      test.setTimeout(120_000);
+      // Jonah: no other journey drafts in it, and resetSeededChecking restores it.
+      const JON_IPATH = 'ingredients/JON.usfm';
+      const FIRST = 'Vino palabra de Jehová a Jonás hijo de Amitai (párrafo uno)';
+      const SECOND = 'Levántate y ve a Nínive aquella gran ciudad (párrafo dos)';
+      writePlace(SEEDED_PROJECT, 'JON', { mode: 'draft', chapter: 1 });
+      await page.goto('/');
+      await page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByRole('button', { name: /Jonah/ }).click();
+      await expect(page.getByRole('heading', { name: 'Jonah 1', exact: true })).toBeVisible({ timeout: 60_000 });
+      await page.getByRole('tab', { name: 'Section', exact: true }).click();
+      // The first section of Jonah 1 with two verses or more, read from the page:
+      // its verses are A to B. The journey drafts A and A+1 as two paragraphs.
+      const sectionButton = page.getByRole('button', { name: /^Draft section \d+–\d+$/ }).first();
+      const label = (await sectionButton.textContent())!.trim();
+      const [a, b] = label.replace('Draft section ', '').split('–');
+      const next = String(Number(a) + 1);
+      expect(Number(b)).toBeGreaterThanOrEqual(Number(next));
+      const spanKey = `${a}-${next}`;
+      const textbox = page.getByRole('textbox', { name: `Section ${a}–${b}` });
+
+      await test.step(`draft verses ${a} and ${next} as two paragraphs and save: a \\p stands between them`, async () => {
+        await sectionButton.click();
+        await textbox.fill(`${a} ${FIRST}\n\n${next} ${SECOND}`);
+        await page.getByRole('button', { name: 'Save section' }).click();
+        await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
+        await expect
+          .poll(() => readIngredient(SEEDED_PROJECT, JON_IPATH).toString('utf8'), { timeout: 10_000 })
+          .toContain(`\\v ${a} ${FIRST}\n\\p\n\\v ${next} ${SECOND}\n`);
+      });
+
+      const before = readIngredient(SEEDED_PROJECT, JON_IPATH).toString('utf8');
+
+      await test.step(`join verse ${next} to verse ${a} in Place mode and save`, async () => {
+        await sectionButton.click();
+        await page.getByRole('tab', { name: 'Place verse numbers' }).click();
+        await page.getByTestId('place-words').getByRole('button', { name: `Move where verse ${next} begins` }).press('Enter');
+        await page.getByRole('button', { name: `Join verse ${next} to verse ${a} at Vino`, exact: true }).click();
+        await page.getByRole('button', { name: 'Save section' }).click();
+        await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
+      });
+
+      await test.step(`the stored file is the previous file with the two verses and the \\p between them replaced by one \\v ${spanKey} line`, async () => {
+        const pair = `\\v ${a} ${FIRST}\n\\p\n\\v ${next} ${SECOND}\n`;
+        expect(before.split(pair)).toHaveLength(2);
+        const expected = before.replace(pair, `\\v ${spanKey} ${FIRST} ${SECOND}\n`);
+        await expect
+          .poll(() => readIngredient(SEEDED_PROJECT, JON_IPATH).toString('utf8'), { timeout: 10_000 })
+          .toBe(expected);
+      });
+
+      const stored = readIngredient(SEEDED_PROJECT, JON_IPATH);
+
+      await test.step('the reading view shows the span as one paragraph', async () => {
+        await expect(page.getByTestId('section-editor')).toHaveCount(0);
+        const paragraphs = page.locator('p').filter({ hasText: 'Vino palabra de Jehová' });
+        await expect(paragraphs).toHaveCount(1);
+        await expect(paragraphs).toContainText('Levántate y ve a Nínive');
+      });
+
+      await test.step('Type mode shows the span as one line, with no blank line', async () => {
+        await sectionButton.click();
+        const value = await textbox.inputValue();
+        expect(value.split('\n')[0]).toBe(`${spanKey} ${FIRST} ${SECOND}`);
+        expect(value).not.toMatch(/\n\s*\n/);
+        await page.getByTestId('section-editor').getByRole('button', { name: 'Cancel' }).click();
+      });
+
+      await test.step('the plain USFM export is the stored book, with the span on one line', async () => {
+        await page.getByRole('tab', { name: 'Check', exact: true }).click();
+        await page.getByTestId('open-community-checking').click();
+        await page.getByTestId('export-menu-trigger').click();
+        const download = await captureDownload(page, page.getByRole('menuitem', { name: 'USFM, plain', exact: true }));
+        expect(download.filename).toMatch(/^JON-\d{4}-\d{2}-\d{2}\.usfm$/);
+        expect(download.bytes.equals(stored)).toBe(true);
+        expect(download.bytes.toString('utf8')).toContain(`\\v ${spanKey} ${FIRST} ${SECOND}\n`);
+      });
+
+      // The run's artifact: the stored book after the join.
+      const artifactPath = testInfo.outputPath('j02-span-paragraph-merge-JON.usfm');
+      fs.writeFileSync(artifactPath, stored);
+      await testInfo.attach('j02-span-paragraph-merge-JON.usfm', { path: artifactPath, contentType: 'text/plain' });
     },
   );
 
