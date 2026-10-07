@@ -249,9 +249,9 @@ test.describe('#42 — the Check pages work with the keyboard alone', () => {
       await expect(page.getByTestId('tw-1')).toBeVisible();
       expect(await activeIs(page, '[data-testid="check-list"] [aria-current="true"]')).toBe(true);
       await rec.record();
-      // Tab leaves the list at once: the rail's footer, then the detail pane.
+      // Tab leaves the list at once, straight into the detail pane. "Back to
+      // translating" is out of the Tab order (#42 owner ruling; #569).
       rec.step('rail to detail');
-      expect(await rec.tab()).toMatchObject({ testid: 'check-to-draft' });
       await rec.tab();
       expect(await page.evaluate(() => !!document.activeElement?.closest('main'))).toBe(true);
 

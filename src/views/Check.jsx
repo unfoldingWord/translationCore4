@@ -914,8 +914,11 @@ function CheckRail({ cs, label, filter, setFilter, sortMode, setSortMode, onSele
       <div style={{ padding: '12px 16px', borderTop: 'var(--stroke-hair) solid var(--border-hair)' }}>
         {/* Close the session before leaving: a kept-alive session would render
           * stale target text and decisions after the user edits in Translate —
-          * re-opening the tool re-derives and re-runs invalidation. */}
-        <Button variant="ghost" size="sm" data-testid="check-to-draft" style={{ padding: 0 }}
+          * re-opening the tool re-derives and re-runs invalidation.
+          * #42: out of the Tab order, so Tab goes from the rail list straight
+          * to the detail pane (owner ruling 2026-10-07). The Translate tab in
+          * the header stays the keyboard route; view shortcuts are #569. */}
+        <Button variant="ghost" size="sm" data-testid="check-to-draft" tabIndex={-1} style={{ padding: 0 }}
           onClick={() => { actions.closeCheckTool(); actions.go('draft'); }}>
           {t('check.backToTranslating')}
         </Button>
