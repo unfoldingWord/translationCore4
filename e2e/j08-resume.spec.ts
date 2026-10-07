@@ -281,10 +281,14 @@ test.describe('J8 — a translator resumes where they left off', () => {
         await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
         await waitForResumeRecord(SEEDED_PROJECT, 3, FIRST);
         expect(readLastEdit()?.verse).toBe(spanKey);
+        // The span's text: both verses, cut at the record's 90 characters (src/state.jsx).
+        const spanSnippet = `${FIRST} ${SECOND}`.slice(0, 90);
+        expect(spanSnippet).toContain('Que a nadie');
+        expect(readLastEdit()?.snippet).toBe(spanSnippet);
         seen.afterJoin = { record: record(), banner: '' };
         await page.goto('/');
         const card = page.getByTestId('resume-card');
-        await expect(card).toContainText(`Last edited verse ${spanKey} — “${FIRST} ${SECOND}`.slice(0, 60), { timeout: 30_000 });
+        await expect(card).toContainText(`Last edited verse ${spanKey} — “${spanSnippet}”`, { timeout: 30_000 });
         (seen.afterJoin as { banner: string }).banner = (await card.textContent()) ?? '';
       });
 
@@ -299,11 +303,14 @@ test.describe('J8 — a translator resumes where they left off', () => {
         await page.getByRole('button', { name: 'Save section' }).click();
         await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
         await expect.poll(() => readLastEdit()?.verse, { timeout: 10_000 }).toBe(a);
+        // Verse A's own text only: the second verse's words left with it.
+        expect(readLastEdit()?.snippet).toBe(FIRST);
         await waitForResumeRecord(SEEDED_PROJECT, 3, FIRST);
         seen.afterBreak = { record: record(), banner: '' };
         await page.goto('/');
         const card = page.getByTestId('resume-card');
-        await expect(card).toContainText(`Last edited verse ${a} — “${FIRST}`, { timeout: 30_000 });
+        await expect(card).toContainText(`Last edited verse ${a} — “${FIRST}”`, { timeout: 30_000 });
+        await expect(card).not.toContainText('Que a nadie');
         await expect(card).not.toContainText(spanKey);
         (seen.afterBreak as { banner: string }).banner = (await card.textContent()) ?? '';
       });
