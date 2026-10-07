@@ -15,6 +15,7 @@ import { test, expect } from './helpers/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import fs from 'node:fs';
 import path from 'node:path';
+import { unzipSync, strFromU8 } from 'fflate';
 import { deriveTnItems, isDecided, mergeKey } from '../src/data/derive';
 import {
   SEEDED_PROJECT,
@@ -28,7 +29,9 @@ import {
   sideloadedIngredient,
   resetPlaces,
   RIG_CLIENT_SETTINGS,
+  TC4_ROOT,
 } from './helpers/rig';
+import { askInternet } from './helpers/door43Share';
 import { createObsProject, RIG_API } from './helpers/story';
 
 // The configured org, NOT the one the export records: es-419's sb-zip exports
@@ -285,7 +288,7 @@ test.describe('J13 — changing the project’s checking language', () => {
       await chooseInSettings(page, ES_KEY);
       await confirmChange(page);
       await openSettingsFromHome(page);
-      await expect(page.getByTestId('settings-gateway-current')).toHaveText('This project checks in Spanish (Latin American) · es-419_gl.');
+      await expect(page.getByTestId('settings-gateway-current')).toHaveText('This project checks in Español (Latinoamérica) · es-419_gl.');
       await expect(page.getByTestId(`settings-gateway-${ES_KEY}`)).toHaveAttribute('data-current', '1');
       await expect(page.getByTestId(`settings-gateway-${EN_KEY}`)).toHaveAttribute('data-current', '0');
     },
@@ -667,7 +670,7 @@ test.describe('J13 — changing the project’s checking language', () => {
       await expect(page.getByTestId('story-draft')).toContainText(firstFrame('es-419_obs'));
       await expect(page.getByTestId('source-name')).toContainText('v2');
       await openSettingsFromHome(page, repo);
-      await expect(page.getByTestId('settings-gateway-current')).toHaveText('This project checks in Spanish (Latin American) · es-419_gl.');
+      await expect(page.getByTestId('settings-gateway-current')).toHaveText('This project checks in Español (Latinoamérica) · es-419_gl.');
       const after = readProjectPins(repo) as unknown as ResourcesOnDisk;
       expect(after.languageSets.primary.gatewayLanguage).toEqual({ languageId: 'es-419', owner: ES_ORG });
       for (const name of ['es-419_obs', 'es-419_obs-tn', 'es-419_obs-twl', 'es-419_tw', 'es-419_ta']) {
@@ -676,6 +679,114 @@ test.describe('J13 — changing the project’s checking language', () => {
       }
       expect(identities(after.languageSets.fallback)).toEqual(identities(before.languageSets.fallback));
       expect(after.extraScripture.map((e) => [e.id, e.repoPath, e.sha])).toEqual(before.extraScripture.map((e) => [e.id, e.repoPath, e.sha]));
+    },
+  );
+});
+
+/** #579 (D94): the cached Spanish academy export, the one download the next test makes. */
+const ES_TA_ZIP = path.join(TC4_ROOT, 'dev-env', 'resources-cache', 'es-419_ta-v4-unwrapped.zip');
+
+/** The commit the cached export declares, which the mocked tags listing reports. */
+function cachedRevision(zip: string): string {
+  const files = unzipSync(new Uint8Array(fs.readFileSync(zip)));
+  const meta = JSON.parse(strFromU8(files['metadata.json'])) as { identification: { primary: { dcs: Record<string, { revision: string }> } } };
+  return Object.values(meta.identification.primary.dcs)[0].revision;
+}
+
+/** Door43 and its catalogue, held still for es-419_gl: the catalogue lists only
+ * es-419_ta, and Door43 serves only its v4 release, from the cache. */
+async function mockSpanishAcademy(page: import('@playwright/test').Page) {
+  const cors = { 'access-control-allow-origin': '*' };
+  const sha = cachedRevision(ES_TA_ZIP);
+  await page.route(/\/gitea\/remote-repos\/git\.door43\.org\/es-419_gl$/, (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify([{ name: 'es-419_ta', description: '', flavor: '', flavor_type: '', topics: ['tc-ready'], book_codes: [] }]),
+  }));
+  await page.context().route(/^https:\/\/git\.door43\.org\//, (route) => {
+    const url = new URL(route.request().url());
+    const m = /^\/(?:api\/v1\/repos\/)?es-419_gl\/es-419_ta\/(.*)$/.exec(url.pathname);
+    if (!m) return route.fulfill({ status: 404, headers: cors, body: 'not mocked' });
+    if (m[1] === 'releases/latest')
+      return route.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify({ tag_name: 'v4' }) });
+    if (m[1].startsWith('tags')) {
+      const p = Number(url.searchParams.get('page') ?? '1');
+      return route.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify(p === 1 ? [{ name: 'v4', commit: { sha } }] : []) });
+    }
+    if (m[1] === 'sb/v4.zip')
+      return route.fulfill({ status: 200, headers: cors, contentType: 'application/zip', body: fs.readFileSync(ES_TA_ZIP) });
+    return route.fulfill({ status: 404, headers: cors, body: 'not mocked' });
+  });
+}
+
+test.describe('J13 — one name for a gateway language on every screen (#579)', () => {
+  test(
+    'English → es-419 → English: the dialogue title, both buttons, the Project settings sentence and the ready message use the own name; no button shows a bare code (D94)',
+    { tag: ['@inc9', '@J13'] },
+    async ({ page }, testInfo) => {
+      test.skip(!fs.existsSync(ES_TA_ZIP), 'es-419_ta v4 is not cached under dev-env/resources-cache — see dev-env/README.md, "Journeys from a clean clone"');
+      test.setTimeout(120_000);
+      writeProjectPins(SEEDED_PROJECT, EN());
+      // The download at the end goes online without the "Use the internet?" step. The app
+      // reads this preference when it loads, so it is set before the first page load.
+      await fetch(`${RIG_API}/net/enable`, { method: 'POST' });
+      await askInternet(false);
+      try {
+        const seen: Record<string, unknown> = {};
+        const dialogue = async () => ({
+          title: (await page.getByTestId('gateway-change').getByText(/^Change checking language to /).textContent())?.trim(),
+          keep: (await page.getByTestId('gateway-cancel').textContent())?.trim(),
+          change: (await page.getByTestId('gateway-confirm').textContent())?.trim(),
+        });
+        const BARE_CODE = /\b(?:Keep|Change to) (?:en|es-419)\b/;
+
+        // English → Spanish.
+        await chooseInSettings(page, ES_KEY);
+        await expect(page.getByTestId('gateway-change')).toContainText('Change checking language to Español (Latinoamérica)?');
+        await expect(page.getByTestId('gateway-cancel')).toHaveText('Keep English');
+        await expect(page.getByTestId('gateway-confirm')).toHaveText('Change to Español (Latinoamérica)');
+        seen.toSpanish = await dialogue();
+        await confirmChange(page);
+        await openSettingsFromHome(page);
+        await expect(page.getByTestId('settings-gateway-current')).toHaveText('This project checks in Español (Latinoamérica) · es-419_gl.');
+        seen.sentenceSpanish = await page.getByTestId('settings-gateway-current').textContent();
+        await page.getByRole('button', { name: 'Cancel' }).click();
+
+        // Spanish → English: the keep button names the language being left by its own name.
+        await chooseInSettings(page, EN_KEY);
+        await expect(page.getByTestId('gateway-change')).toContainText('Change checking language to English?');
+        await expect(page.getByTestId('gateway-cancel')).toHaveText('Keep Español (Latinoamérica)');
+        await expect(page.getByTestId('gateway-confirm')).toHaveText('Change to English');
+        seen.toEnglish = await dialogue();
+        await confirmChange(page);
+        await openSettingsFromHome(page);
+        await expect(page.getByTestId('settings-gateway-current')).toHaveText('This project checks in English · unfoldingWord.');
+        seen.sentenceEnglish = await page.getByTestId('settings-gateway-current').textContent();
+        // The list keeps the English name as its second line.
+        await expect(page.getByTestId(`settings-gateway-${ES_KEY}`)).toContainText('Español (Latinoamérica)');
+        await expect(page.getByTestId(`settings-gateway-${ES_KEY}`)).toContainText('Spanish (Latin American)');
+
+        // The ready message after a package download, Door43 held still.
+        await mockSpanishAcademy(page);
+        await page.getByTestId('settings-manage-sources').click();
+        const sources = page.getByTestId('sources-modal');
+        await expect(sources).toBeVisible({ timeout: 60_000 });
+        await sources.getByText('Español (Latinoamérica)', { exact: true }).click();
+        await page.getByTestId('sources-download').click();
+        await expect(page.getByTestId('sources-done')).toHaveText('✓ Titus · Español (Latinoamérica) is ready', { timeout: 60_000 });
+        seen.ready = await page.getByTestId('sources-done').textContent();
+
+        for (const d of [seen.toSpanish, seen.toEnglish] as Array<{ keep: string; change: string }>) {
+          expect(d.keep).not.toMatch(BARE_CODE);
+          expect(d.change).not.toMatch(BARE_CODE);
+        }
+        // The run's artifact: every string the user read, in order.
+        const artifactPath = testInfo.outputPath('j13-gateway-names.json');
+        fs.writeFileSync(artifactPath, `${JSON.stringify(seen, null, 2)}\n`);
+        await testInfo.attach('j13-gateway-names.json', { path: artifactPath, contentType: 'application/json' });
+      } finally {
+        await askInternet(true);
+      }
     },
   );
 });

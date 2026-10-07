@@ -12,7 +12,7 @@
 import React from 'react';
 import { useApp } from '../../state.jsx';
 import { BOOK_NAMES, BOOK_CHAPTERS, bookName } from '../../data/bookNames';
-import { gatewayKey } from '../../data/gateways';
+import { gatewayKey, gatewayDisplayName } from '../../data/gateways';
 import { t } from '../../i18n';
 import { Modal, Select, OptionCard, Overline, Button, Badge, Callout } from '../../ds/index.js';
 import ResourceUpdates from './ResourceUpdates.jsx';
@@ -26,7 +26,7 @@ function LanguageStep({ gateways, installedCount, onPick }) {
           const n = installedCount(g);
           return (
             <OptionCard key={g.key} onClick={() => onPick(g)}
-              title={<span dir={g.dir}>{g.autonym}</span>} meta={g.name}
+              title={<span dir={g.dir}>{gatewayDisplayName(g)}</span>} meta={g.name}
               description={<span style={{ fontFamily: 'var(--font-mono)' }}>{g.org} · {t('sources.suiteSeen', { tn: g.seen.tn, tw: g.seen.tw, ta: g.seen.ta })}</span>}
               trailing={n > 0 ? (
                 <span style={{ fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', fontWeight: 'var(--fw-heavy)', color: 'var(--tc-valid-strong)', whiteSpace: 'nowrap' }}>
@@ -54,7 +54,7 @@ function GatewayStep({ s, g, src, isCheckable, isCurrent, actions }) {
   return (
         <>
           <Callout tone="info" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)' }}>{g.name} · {g.org}</span>
+            <span style={{ fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)' }}>{gatewayDisplayName(g)} · {g.org}</span>
             <div style={{ flex: 1 }} />
             <Button variant="ghost" onClick={actions.changeGateway}
               style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)' }}>
@@ -78,14 +78,14 @@ function GatewayStep({ s, g, src, isCheckable, isCurrent, actions }) {
           )}
           {isCheckable && !isCurrent && s.project && (
             <Callout tone="info" style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--surface-accent-soft)', borderColor: 'rgba(49,173,227,.35)', color: 'var(--uw-ocean)' }}>
-              <span style={{ flex: 1 }}>{t('sources.checkInPrompt', { lang: g.name })}</span>
+              <span style={{ flex: 1 }}>{t('sources.checkInPrompt', { lang: gatewayDisplayName(g) })}</span>
               <Button size="sm" onClick={() => actions.askGatewayChange(g)} data-testid="use-for-checking"
                 style={{ flex: 'none' }}>{t('sources.checkIn')}</Button>
             </Callout>
           )}
           {isCurrent && (
             <p data-testid="already-checking-in" style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--tc-valid-strong)', fontWeight: 'var(--fw-bold)', margin: 0 }}>
-              {t('sources.alreadyCheckingIn', { lang: g.name })}
+              {t('sources.alreadyCheckingIn', { lang: gatewayDisplayName(g) })}
             </p>
           )}
 
@@ -115,7 +115,7 @@ function GatewayStep({ s, g, src, isCheckable, isCurrent, actions }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                 {src.rows.length === 0 && (
                   <p style={{ fontSize: 'var(--fs-caption-lg)', color: 'var(--text-tertiary)', margin: 0, lineHeight: 'var(--lh-body)' }}>
-                    {t('sources.noneForBook', { book: bookName(src.book), lang: g.name })}
+                    {t('sources.noneForBook', { book: bookName(src.book), lang: gatewayDisplayName(g) })}
                   </p>
                 )}
                 {src.rows.map((row) => (
@@ -133,7 +133,7 @@ function SourcesFooter({ src, g, actions }) {
     <>
         {src.dl === 'done' && (
           <span style={{ fontSize: 'var(--fs-caption-lg)', letterSpacing: 'var(--track-12-5)', fontWeight: 'var(--fw-heavy)', color: 'var(--tc-valid-strong)' }} data-testid="sources-done">
-            {t('sources.ready', { book: bookName(src.book), lang: g.name })}
+            {t('sources.ready', { book: bookName(src.book), lang: gatewayDisplayName(g) })}
           </span>
         )}
         {src.dl === 'run' && (

@@ -11,6 +11,7 @@ import React from 'react';
 import { useApp } from '../../state.jsx';
 import { describeConsequences } from '../../data/gatewayChange';
 import { bookName } from '../../data/bookNames';
+import { gatewayDisplayName } from '../../data/gateways';
 import { t } from '../../i18n';
 import { Modal, Button, Callout } from '../../ds/index.js';
 
@@ -35,17 +36,17 @@ export default function GatewayChange() {
   const blocked = (preview.blocked?.length ?? 0) > 0;
 
   return (
-    <Modal zIndex={90} data-testid="gateway-change" title={t('gateway.title', { lang: preview.gateway.name })}
+    <Modal zIndex={90} data-testid="gateway-change" title={t('gateway.title', { lang: gatewayDisplayName(preview.gateway) })}
       closeLabel={t('common.close')} onClose={actions.cancelGatewayChange}
       footer={<>
         <Button variant="secondary" onClick={actions.cancelGatewayChange} data-testid="gateway-cancel">
-          {t('gateway.keep', { lang: preview.currentName ?? t('gateway.current') })}
+          {t('gateway.keep', { lang: preview.currentGateway ? gatewayDisplayName(preview.currentGateway) : t('gateway.current') })}
         </Button>
         <Button onClick={() => actions.confirmGatewayChange(preview)} data-testid="gateway-confirm"
           disabled={blocked}
           style={blocked ? { background: 'var(--uw-haze)', boxShadow: 'none' }
             : harmless ? null : { background: 'var(--uw-kindle)' }}>
-          {t('gateway.change', { lang: preview.gateway.name })}
+          {t('gateway.change', { lang: gatewayDisplayName(preview.gateway) })}
         </Button>
       </>}>
       <div data-harmless={harmless ? '1' : '0'} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
