@@ -295,7 +295,9 @@ test.describe('J8 — a translator resumes where they left off', () => {
       await test.step(`break the span and save: the Home banner reads "Last edited verse ${a}"`, async () => {
         await openTitusAt(page, '3');
         await page.getByRole('tab', { name: 'Section', exact: true }).click();
-        await page.getByRole('button', { name: label }).click();
+        // A section of exactly A and A+1 is now the one span verse, labelled by its key (sections.js rangeSpan).
+        const joinedLabel = b === next ? `Draft section ${spanKey}` : label;
+        await page.getByRole('button', { name: joinedLabel, exact: true }).click();
         await page.getByRole('tab', { name: 'Place verse numbers' }).click();
         // A placed pin is picked up with the keyboard (Enter), then dropped on its word (the J2 break pattern).
         await page.getByTestId('place-words').getByRole('button', { name: `Move where verse ${next} begins` }).press('Enter');
