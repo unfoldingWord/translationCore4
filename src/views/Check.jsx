@@ -191,9 +191,20 @@ function ToolCard({ tool, pre, label, progress, titleOf }) {
   const ready = pre.state === 'ready';
   const open = () => actions.openCheckTool(tool);
 
+  const warned = !!pre.unavailablePrimary;
+  const openButton = (
+    <button type="button" data-testid={`open-${tool}`} style={CTA_BUTTON}
+      onClick={(e) => { e.stopPropagation(); open(); }}>
+      {ctaFor(progress)} {'→'}
+    </button>
+  );
+
   // #42: a plain container, never role="button" — a ready card can hold the
   // fetch button too, and a control inside a button is not valid ARIA. The
-  // open button and the fetch button are siblings; open comes first.
+  // open button and the fetch button are siblings; open comes first. On a
+  // warned card the open button moves above the warning, so reading order
+  // and Tab order are both open → fetch [decided 2026-10-07 — owner, layout B
+  // on #42]; a card with no warning keeps progress, then the open button.
   return (
     <div data-testid={`preflight-${tool}`} data-state={pre.state} data-i={ready ? 'card' : undefined} data-tone="accent"
       onClick={ready ? open : undefined}
@@ -210,38 +221,42 @@ function ToolCard({ tool, pre, label, progress, titleOf }) {
         {ready ? t(`check.desc.${tool}`) : t(`check.explain.${pre.state}`, { book: label })}
       </p>
       <ToolNeeds pre={pre} />
-      {pre.state === 'ready' && (
+      {ready && warned && (
         <>
+          {openButton}
+          <FallbackWarning tool={tool} missing={pre.unavailablePrimary} />
           <CardProgress entry={progress} titleOf={titleOf} />
-          <button type="button" data-testid={`open-${tool}`} style={CTA_BUTTON}
-            onClick={(e) => { e.stopPropagation(); open(); }}>
-            {ctaFor(progress)} {'→'}
-          </button>
         </>
       )}
-      {/* B20 warned fallback (D41): the resolver opened the installed fallback
-        * because the pinned PRIMARY is not on this computer. That is not silent —
-        * say which primary is missing and offer to download it. The card still
-        * opens (state 'ready'); the fallback never blocks. #42: it sits after the
-        * open button, so reading order and Tab order are both open → fetch. */}
-      {pre.unavailablePrimary && (
-        <Callout tone="warn" data-testid={`fallback-warning-${tool}`} style={{ margin: '14px 0 0' }}>
-          {t('check.fallbackWarn', {
-            repo: pre.unavailablePrimary.repoPath,
-            version: pre.unavailablePrimary.version,
-          })}
-          <div style={{ marginTop: 8 }}>
-            {/* Inside a whole-card click target (review round 1): the nested
-              * action must not ALSO open the tool. */}
-            <Button size="sm" variant="secondary" data-testid={`fetch-primary-${tool}`}
-              onClick={(e) => { e.stopPropagation(); actions.openSources(); }}
-              style={{ color: 'var(--tc-warn-text)', borderColor: 'rgba(229,157,51,.5)' }}>
-              {t('check.fix.download')}
-            </Button>
-          </div>
-        </Callout>
+      {ready && !warned && (
+        <>
+          <CardProgress entry={progress} titleOf={titleOf} />
+          {openButton}
+        </>
       )}
     </div>
+  );
+}
+
+/** B20 warned fallback (D41): the resolver opened the installed fallback
+ * because the pinned PRIMARY is not on this computer. That is not silent —
+ * say which primary is missing and offer to download it. The card still
+ * opens (state 'ready'); the fallback never blocks. */
+function FallbackWarning({ tool, missing }) {
+  const { actions } = useApp();
+  return (
+    <Callout tone="warn" data-testid={`fallback-warning-${tool}`} style={{ margin: '14px 0 10px' }}>
+      {t('check.fallbackWarn', { repo: missing.repoPath, version: missing.version })}
+      <div style={{ marginTop: 8 }}>
+        {/* Inside a whole-card click target (review round 1): the nested
+          * action must not ALSO open the tool. */}
+        <Button size="sm" variant="secondary" data-testid={`fetch-primary-${tool}`}
+          onClick={(e) => { e.stopPropagation(); actions.openSources(); }}
+          style={{ color: 'var(--tc-warn-text)', borderColor: 'rgba(229,157,51,.5)' }}>
+          {t('check.fix.download')}
+        </Button>
+      </div>
+    </Callout>
   );
 }
 
