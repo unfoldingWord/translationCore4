@@ -402,7 +402,7 @@ export const mergeAndReattach = (
       out = {
         ...rest,
         invalidated: false,
-        status: userInvalid === true ? 'invalid' : 'todo',
+        status: hit.status === 'invalid' && userInvalid === true ? 'invalid' : 'todo',
         contextId: item.contextId,
       };
     } else {
