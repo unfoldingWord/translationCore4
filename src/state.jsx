@@ -5069,6 +5069,14 @@ export function AppProvider({ children }) {
           ...patch,
           modifiedTimestamp: new Date().toISOString(),
         };
+        // #580 (§5.2 1.19): on a check already invalidated (a draft edit, a
+        // change of language), the user's own Invalid is marked as theirs, so
+        // a later re-attach keeps it; any other status the user records
+        // removes the mark.
+        if (item.invalidated === true && 'status' in patch) {
+          if (patch.status === 'invalid') next.userInvalid = true;
+          else delete next.userInvalid;
+        }
         const key = checkKeyFor(cs.tool, cs.book, item.contextId.checkId);
         checkTargetsRef.current.set(key, { tool: cs.tool, book: cs.book, resource: cs.resource ?? null });
         // The item as the session holds it is the buffer's persisted value:

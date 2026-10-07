@@ -378,7 +378,13 @@ const verseText = bookJson.chapters['1']['1'].verseObjects.filter(vo => vo.type 
     ...(d.invalidated !== true && d.status === 'invalid' ? { userInvalid: true } : {}) });
   const reattachSpec = d => {
     const { userInvalid, ...rest } = d;
-    return { ...rest, invalidated: false, status: userInvalid === true ? 'invalid' : 'todo' };
+    return { ...rest, invalidated: false, status: d.status === 'invalid' && userInvalid === true ? 'invalid' : 'todo' };
+  };
+  // The user records a status on a decision (the check screen's write).
+  const userSets = (d, status) => {
+    const next = { ...d, status };
+    if (d.invalidated === true) { if (status === 'invalid') next.userInvalid = true; else delete next.userInvalid; }
+    return next;
   };
   // Negative controls. The pre-1.19 rule cleared every Invalid; a writer that
   // leaves `status` absent instead of "todo" lets a record with selections
@@ -407,6 +413,10 @@ const verseText = bookJson.chapters['1']['1'].verseObjects.filter(vo => vo.type 
     triage(validBack) === 'todo' && validBack.invalidated === false && Array.isArray(validBack.selections) &&
     triage(roundTrips(userInvalid, reattachPre119, 1)) !== 'invalid' &&                    // negative control: the old rule loses it
     triage(reattachSpec(legacyAway)) === 'todo' && Array.isArray(reattachSpec(legacyAway).selections) &&
+    // Invalidated first (a draft edit), then marked Invalid by the user: theirs, through 3 round trips;
+    // marked valid instead, the mark goes and the invalidation's own Invalid clears.
+    triage(roundTrips(reattachSpec(userSets(validAway, 'invalid')), reattachSpec, 3)) === 'invalid' &&
+    !('userInvalid' in userSets(userSets(validAway, 'invalid'), 'valid')) &&
     triage(roundTrips(wasValid, reattachAbsent, 1)) === 'valid' &&                         // negative control: an absent status revives it
     triage(reattachAbsent(legacyAway)) === 'valid';                                         // negative control: so does a legacy record left as it is
   check('carry-over: an unplaceable decision is invalidated, kept in full, and re-keyed decisions take the NEW resource contextId (D36); a user\'s own Invalid is marked `userInvalid` and survives the round trip, an Invalid the invalidation set comes back "todo" (§5.2 1.19, D94)',

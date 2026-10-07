@@ -25,8 +25,10 @@ export interface CarryOverResult {
   file: DecisionFile;
   /** How many decisions carried onto the new list. */
   carried: number;
-  /** How many of the carried decisions show as decided on the new list (#580):
-   * the count the change dialogues state as "carried over". */
+  /** How many of the carried decisions count as decided (isDecided), BEFORE
+   * any draft revalidation. The change dialogues do not show this number:
+   * gatewayChangePlan (state.jsx) replaces it with the count after the check
+   * session's own merge and draft revalidation (#580). */
   shown: number;
   /** How many were invalidated because the new resource has no such check. */
   invalidated: number;
@@ -96,11 +98,8 @@ export const carryOverDecisions = (
       decisions: [...carriedDecisions, ...invalidatedDecisions],
     },
     carried: carriedDecisions.length,
-    // #580: the dialogue's "carried over" is the carried decisions that show
-    // as decided on the new list (the one counting rule, isDecided). A carried
-    // record that comes back To do (an Invalid the change set, or a "todo")
-    // is kept but not counted, so the dialogue never promises more than the
-    // list shows.
+    // #580: the carried decisions that count as decided, before the draft
+    // revalidation. The dialogue's figure is the plan's, computed after it.
     shown: (carriedDecisions as unknown as CheckItem[]).filter(isDecided).length,
     invalidated: invalidatedDecisions.length,
     undecided,

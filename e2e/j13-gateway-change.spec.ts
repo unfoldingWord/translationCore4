@@ -798,6 +798,54 @@ test.describe('J13 — a check the user marked Invalid stays Invalid through a c
   );
 
   test(
+    'a check a draft edit invalidated and the user then marked Invalid stays Invalid after es-419 and back (D94, §5.2 1.19)',
+    { tag: ['@inc9', '@J13'] },
+    async ({ page }) => {
+      test.setTimeout(120_000);
+      writeProjectPins(SEEDED_PROJECT, EN());
+      const en = EN();
+      const file = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')!;
+      file.resource = { repoPath: en.tn.repoPath, version: en.tn.version, sha: en.tn.sha, languageSet: 'fallback' } as never;
+      // An English-only check decided valid on words the draft no longer has —
+      // as after a draft edit (J6). Opening the session flags it invalidated.
+      const sampleIds = new Set(file.decisions.map((d) => (d.contextId as { checkId: string }).checkId));
+      const stale = englishOnlyItems('TIT').filter((i) => !sampleIds.has(i.contextId.checkId))[0];
+      const id = stale.contextId.checkId;
+      file.decisions.push({
+        ...stale,
+        selections: [{ text: 'palabraquenoestá', occurrence: 1, occurrences: 1 }],
+        comments: false, reminders: false, nothingToSelect: false, verseEdits: false, invalidated: false, status: 'valid',
+        modifiedTimestamp: '2026-10-07T00:00:00.000Z',
+      } as never);
+      writeDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT', file);
+      const row = () => page.locator(`[data-testid="check-list"] button[data-check-id="${id}"]`).first();
+      const record = () => readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')!.decisions
+        .find((d) => (d.contextId as { checkId: string }).checkId === id);
+
+      await openCheck(page);
+      await page.getByTestId('open-translationNotes').click();
+      await expect(page.getByTestId('check-session')).toContainText('en_tn');
+      await expect(row()).toHaveAttribute('data-invalid', '1');
+      // The user's own Invalid on the already-invalidated check.
+      await row().click();
+      await page.getByTestId('mark-invalid').click();
+      await expect.poll(() => record(), { timeout: 10_000 }).toMatchObject({ invalidated: true, status: 'invalid', userInvalid: true });
+
+      await chooseInSettings(page, ES_KEY);
+      await confirmChange(page);
+      await chooseInSettings(page, EN_KEY);
+      await confirmChange(page);
+      await titusCheckInPlace(page);
+      await page.getByTestId('open-translationNotes').click();
+      await expect(page.getByTestId('check-session')).toContainText('en_tn');
+      await expect(row()).toHaveAttribute('data-status', 'invalid');
+      await expect(row()).toHaveAttribute('data-invalid', '0');
+      expect(record()).toMatchObject({ invalidated: false, status: 'invalid' });
+      expect(record()).not.toHaveProperty('userInvalid');
+    },
+  );
+
+  test(
     'Interruptions 1 and 2: after Confirm the change cannot be cancelled; a refused write shows the error and changes no decision (D94)',
     { tag: ['@inc9', '@J13'] },
     async ({ page }) => {
