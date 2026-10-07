@@ -4,10 +4,11 @@
 //
 // The order (owner decisions 2026-09-30): the code typed whole, then a name
 // typed whole, then a name or a code that starts with the query, then a word or
-// the acronym inside a name, then a name that contains the query. At one rank,
-// a language whose own name matches comes before a language that only an
-// alternate name reaches. Capital letters and accents do not count. Languages
-// that are still equal go by name, then by code.
+// the acronym inside a name, then a name that contains the query. A language
+// whose code or own name matches comes before every language that only an
+// alternate name reaches; those follow in the same order of ranks. Capital
+// letters and accents do not count. Languages that are still equal go by name,
+// then by code.
 
 /** One language of the shipped list: the fields the app reads from Door43's. */
 export interface LanguageRow {
@@ -100,12 +101,12 @@ export function suggestLanguages(
     else if (language.code.startsWith(folded)) own = Math.min(own, STARTS);
     const alternate = rankNames(language.alternate, folded, queryWords);
     if (own === NONE && alternate === NONE) continue;
-    hits.push({ language, rank: Math.min(own, alternate), alternate: alternate < own ? 1 : 0 });
+    hits.push(own === NONE ? { language, rank: alternate, alternate: 1 } : { language, rank: own, alternate: 0 });
   }
   hits.sort(
     (a, b) =>
-      a.rank - b.rank ||
       a.alternate - b.alternate ||
+      a.rank - b.rank ||
       (a.language.name < b.language.name ? -1 : a.language.name > b.language.name ? 1 : 0) ||
       (a.language.code < b.language.code ? -1 : a.language.code > b.language.code ? 1 : 0),
   );

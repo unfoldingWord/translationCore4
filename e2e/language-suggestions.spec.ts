@@ -121,8 +121,11 @@ test.describe('#492 — language suggestions from the shipped Door43 list', () =
       await test.step('arrow down, then Enter, chooses Hausa: name, code and direction come from its row', async () => {
         await nameField(page).press('ArrowDown');
         await expect(page.getByRole('option').first()).toHaveText(rowText('ha'));
+        await expect(nameField(page)).toHaveAttribute('aria-activedescendant', 'nb-lang-opt-0');
         await nameField(page).press('ArrowDown');
+        await expect(nameField(page)).toHaveAttribute('aria-activedescendant', 'nb-lang-opt-1');
         await nameField(page).press('ArrowUp');
+        await expect(nameField(page)).toHaveAttribute('aria-activedescendant', 'nb-lang-opt-0');
         await nameField(page).press('Enter');
         await expect(page.getByRole('listbox')).toHaveCount(0);
         await expect(nameField(page)).toHaveValue('Hausa');
@@ -134,8 +137,41 @@ test.describe('#492 — language suggestions from the shipped Door43 list', () =
       await test.step('"es-419" offers Latin American Spanish first; choosing nothing keeps the code already there', async () => {
         await expect(codeField(page)).toBeEditable();
         rows.push({ dialog: 'new-bible', query: 'es-419', suggestions: await suggest(page, 'es-419', ['es-419']) });
+        // The row draws the whole anglicized name: a long own name gives way, not this one.
+        const anglicized = page.getByRole('option').first().getByText(language('es-419').ang, { exact: true });
+        expect(await anglicized.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
         await page.keyboard.press('Escape');
         await expect(nameField(page)).toHaveValue('es-419');
+        await expect(codeField(page)).toHaveValue('ha');
+      });
+
+      await test.step('with the pointer at rest where the list opens, no row is highlighted and Enter chooses nothing; a real move highlights, and leaving the list clears it', async () => {
+        const field = (await nameField(page).boundingBox())!;
+        await page.mouse.move(field.x + 60, field.y + field.height + 30);
+        await suggest(page, 'Abc', ['abc']);
+        // The browser tells a row that it is under the pointer a moment after it draws it.
+        await page.waitForTimeout(300);
+        await expect(nameField(page)).not.toHaveAttribute('aria-activedescendant', /./);
+        await nameField(page).press('Enter');
+        await expect(nameField(page)).toHaveValue('Abc');
+        await expect(codeField(page)).toHaveValue('ha');
+        await page.mouse.move(field.x + 70, field.y + field.height + 32);
+        await page.mouse.move(field.x + 80, field.y + field.height + 34);
+        await expect(nameField(page)).toHaveAttribute('aria-activedescendant', 'nb-lang-opt-0');
+        await page.mouse.move(field.x + 80, field.y - 40);
+        await expect(nameField(page)).not.toHaveAttribute('aria-activedescendant', /./);
+        await nameField(page).press('Enter');
+        await expect(nameField(page)).toHaveValue('Abc');
+        await expect(codeField(page)).toHaveValue('ha');
+        await page.keyboard.press('Escape');
+      });
+
+      await test.step('Tab leaves a list long enough to scroll and lands in the Code box', async () => {
+        await nameField(page).fill('Arab');
+        await expect(page.getByRole('option').nth(9)).toBeAttached();
+        await nameField(page).press('Tab');
+        await expect(codeField(page)).toBeFocused();
+        await expect(page.getByRole('listbox')).toHaveCount(0);
         await expect(codeField(page)).toHaveValue('ha');
       });
 

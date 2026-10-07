@@ -8,7 +8,8 @@
 // 2. A name typed whole is not ahead of the longer names that start with it.
 // 3. Capital letters or accents change the result.
 // 4. A language that only an alternate name reaches is missed, or it comes before a
-//    language whose own name matches as well.
+//    language whose own name matches (the owner's rule: the own name outranks an
+//    alternate name, whatever the rank of each match).
 // 5. A word inside the name, or the name's acronym, is missed, or it comes before a
 //    name that starts with the query.
 // 6. A name that only contains the query comes before a better match, or is missed.
@@ -34,10 +35,9 @@ describe('#492 language suggestions: the order', () => {
   it('a code typed whole comes first (1)', () => {
     expect(codes('en')[0]).toBe('en');
     expect(codes('es-419')).toEqual(['es-419']);
-    // `las` is the code of Lama. Four names start with "las", then two alternate
-    // names do (Balochi, Western; Marghi Central), then the acronym of "Latin
-    // American Spanish". Names that only contain "las" follow.
-    expect(codes('las').slice(0, 8)).toEqual(['las', 'llm', 'lsa', 'lsi', 'lss', 'bgn', 'mrt', 'es-419']);
+    // `las` is the code of Lama. Four names start with "las", then comes the
+    // acronym of "Latin American Spanish". Names that only contain "las" follow.
+    expect(codes('las').slice(0, 6)).toEqual(['las', 'llm', 'lsa', 'lsi', 'lss', 'es-419']);
   });
 
   it('a name typed whole comes before the longer names that start with it (2)', () => {
@@ -62,6 +62,13 @@ describe('#492 language suggestions: the order', () => {
     const oromo = codes('Oromo');
     expect(oromo[0]).toBe('om');
     expect(oromo.indexOf('om')).toBeLessThan(oromo.indexOf('gax'));
+    // "Persian" is an alternate name of Dari (`prs`), typed whole. Three own names
+    // only start with it, and they still come first.
+    const persian = codes('Persian');
+    expect(persian.slice(0, 3)).toEqual(['fa', 'psc', 'pes']);
+    expect(persian.indexOf('prs')).toBeGreaterThan(persian.indexOf('pes'));
+    // "Kanuri" is an alternate name of Kanembu (`kbl`): after the five Kanuri names.
+    expect(codes('Kanuri')).toEqual(['kr', 'bms', 'knc', 'kby', 'krt', 'kbl']);
   });
 
   it('a word inside the name matches after a name that starts with the query (5)', () => {

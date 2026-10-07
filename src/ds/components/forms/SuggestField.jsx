@@ -32,6 +32,20 @@ function Suggest({ suggestions, onChange, onChoose, ...rest }) {
     setOpen(true);
   };
   const close = () => { setOpen(false); setHi(-1); };
+
+  /* A row drawn under a pointer that is at rest must not become the highlight:
+     Enter would then replace the typed text with a row the user never went to.
+     So the first pointer position seen in an open list is only remembered, and
+     a row is highlighted when the pointer is next seen somewhere else. */
+  const pointer = React.useRef(null);
+  React.useEffect(() => { if (!shown) pointer.current = null; }, [shown]);
+  const onMouseMove = (e) => {
+    const was = pointer.current;
+    pointer.current = { x: e.clientX, y: e.clientY };
+    if (!was || (was.x === e.clientX && was.y === e.clientY)) return;
+    const row = e.target instanceof Element && e.target.closest('[role="option"]');
+    if (row) setHi(Array.prototype.indexOf.call(row.parentNode.children, row));
+  };
   const choose = (o) => { onChoose && onChoose(o); close(); };
 
   const onKeyDown = (e) => {
@@ -75,10 +89,13 @@ function Suggest({ suggestions, onChange, onChoose, ...rest }) {
         <div ref={panelRef}>
           <Surface fill="card" border="line" radius="lg" elevation="hover"
             style={{ width: width || undefined, overflow: 'hidden' }}>
-            <div role="listbox" id={listId} style={{ maxHeight: 340, overflowY: 'auto', padding: 6 }}>
+            {/* tabIndex: a list that scrolls is a Tab stop of its own in the
+                browser; Tab from the field must go to the next field. */}
+            <div role="listbox" id={listId} tabIndex={-1} onMouseMove={onMouseMove} onMouseLeave={() => setHi(-1)}
+              style={{ maxHeight: 340, overflowY: 'auto', padding: 6 }}>
               {suggestions.map((o, i) => (
                 <Row key={String(o.value)} opt={o} id={optId(i)} selected={false}
-                  highlighted={i === hi} onChoose={() => choose(o)} onHighlight={() => setHi(i)} />
+                  highlighted={i === hi} onChoose={() => choose(o)} />
               ))}
             </div>
           </Surface>

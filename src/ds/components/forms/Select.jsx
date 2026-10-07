@@ -56,13 +56,16 @@ export function Row({ opt, id, selected, highlighted, onChoose, onHighlight }) {
         {selected ? '✓' : ''}
       </span>
       <span style={{
-        flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        flex: '1 1 auto', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
         fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', fontWeight: 'var(--fw-heavy)',
         color: opt.disabled ? 'var(--disabled-fg)' : selected ? 'var(--text-heading)' : 'var(--text-body)',
       }}>{opt.label}</span>
       {opt.badge ? <Badge tone="neutral" size="sm" style={{ flex: 'none' }}>{opt.badge}</Badge> : null}
-      {/* A long meta (a language's own name, #492) gives way to the label. */}
-      {opt.meta ? <span style={{ flex: '0 1 auto', minWidth: 0, maxWidth: '50%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 'var(--fs-label)', color: 'var(--text-tertiary)' }}>{opt.meta}</span> : null}
+      {/* A long meta (a language's own name, #492) gives way to the label. The
+          shrink factor is this large so that the label's own share of the
+          shrink stays under the browser's layout unit: any more and the label
+          draws an ellipsis for a fraction of a pixel. */}
+      {opt.meta ? <span style={{ flex: '0 1000000 auto', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 'var(--fs-label)', color: 'var(--text-tertiary)' }}>{opt.meta}</span> : null}
       {opt.code ? <span style={{ flex: 'none', fontSize: 'var(--fs-badge)', letterSpacing: 'var(--tracking-label)', fontWeight: 'var(--fw-heavy)', color: 'var(--text-tertiary)' }}>{opt.code}</span> : null}
     </div>
   );

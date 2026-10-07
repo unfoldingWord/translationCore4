@@ -78,7 +78,7 @@ in the file:
   `onChoose` tells the caller which one was taken. It draws its list with the
   `Select`'s `Layer` popover and `Row` (now exported from `Select.jsx`), so the
   two lists look the same. The `Row`'s `meta` text now shrinks with an
-  ellipsis, at half the row at most.
+  ellipsis before the label does.
 - `HelpCard` (carried from #104/#106): a key word carries no verse label; a
   note with no quoted phrase prints no bare quotes; the body is a `div`, so
   rendered markdown blocks are not a `<p>` inside a `<p>`.
