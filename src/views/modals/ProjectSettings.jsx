@@ -65,7 +65,7 @@ export default function ProjectSettings() {
   const saveDisabled = st.busy || !st.loaded;
 
   return (
-    <Modal title={t('settings.title')} subtitle={t('settings.subtitle', { name: st.projName, n: st.bookCount })}
+    <Modal title={t('settings.title')} subtitle={t(st.bookCount === 1 ? 'settings.subtitleOne' : 'settings.subtitle', { name: st.projName, n: st.bookCount })}
       closeLabel={t('newBible.close')} onClose={actions.closeModal}
       footer={<>
         <Button variant="secondary" onClick={actions.closeModal}>{t('newBible.cancel')}</Button>

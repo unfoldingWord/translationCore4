@@ -136,7 +136,7 @@ export default function AddBook() {
                     };
                   })} />
                 <p style={{ fontSize: 'var(--fs-caption-lg)', letterSpacing: 'var(--track-12-5)', color: 'var(--text-tertiary)', margin: '8px 0 0', lineHeight: 'var(--lh-body)' }}>
-                  {t('addBook.info', { name: bookName(ab.book), chapters: BOOK_CHAPTERS[ab.book] ?? '?', testament })}
+                  {t(BOOK_CHAPTERS[ab.book] === 1 ? 'addBook.infoOne' : 'addBook.info', { name: bookName(ab.book), chapters: BOOK_CHAPTERS[ab.book] ?? '?', testament })}
                 </p>
               </>
             )}
