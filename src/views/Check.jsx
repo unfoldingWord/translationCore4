@@ -523,7 +523,9 @@ function SourcePanes({ cs, item, sources, sourcePanes, sourceStory, c, v }) {
  * Shift+arrows grows or shrinks a range from where it began; any other key or a
  * click ends the run. The words selected before the run stay selected. Keyed by
  * item by the caller: the caret starts before the first word. */
-function TargetWords({ words, sel, setSelection, toggleWord, direction }) {
+const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta']);
+
+export function TargetWords({ words, sel, setSelection, toggleWord, direction }) {
   // caret: 0..words.length, the gap before word `caret`. run: { anchor, base }
   // while Shift+arrows extend a range; base is the selection when it began.
   const [caret, setCaret] = React.useState(0);
@@ -561,10 +563,18 @@ function TargetWords({ words, sel, setSelection, toggleWord, direction }) {
       run.current = null;
       setCaret(at);
       toggleWord(at);
+    } else if (!MODIFIER_KEYS.has(e.key)) {
+      // Any other key (Tab included) ends the run; the selection stays as the
+      // next run's base (#42 decision point 2).
+      run.current = null;
     }
   };
+  // Focus leaving the line ends the run too (a click elsewhere, then back).
+  const onBlur = (e) => {
+    if (!e.currentTarget.contains(e.relatedTarget)) run.current = null;
+  };
   return (
-    <p data-testid="check-target" data-drafted="1" role="group" aria-label={t('check.targetWordsLabel')} onKeyDown={onKeyDown}
+    <p data-testid="check-target" data-drafted="1" role="group" aria-label={t('check.targetWordsLabel')} onKeyDown={onKeyDown} onBlur={onBlur}
       style={{ direction, textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-title-lg)', lineHeight: 1.9, color: 'var(--text-scripture)', margin: '8px 0 0' }}>
       {words.map((w, i) => (
         <span key={i} ref={(el) => { refs.current[i] = el; }} data-testid={`tw-${i}`} data-selected={sel.has(i) ? '1' : '0'}
@@ -824,8 +834,10 @@ export function railGroupsOf({ items, sortMode, book, label = bookName(book) }) 
  * (ds/components/primitives/Switcher.jsx). Only the current item is tabbable
  * (the first shown one when a filter hides it); Up and Down, Home and End move
  * the selection in the order the rail shows, and focus moves with it. A book
- * can have hundreds of items, and Tab must not walk each one. */
-function railKeyDown(order, current, onSelect, listRef) {
+ * can have hundreds of items, and Tab must not walk each one. `current` is the
+ * selected item (cs.activeIndex), as Switcher passes its value: when a filter
+ * hides it, Up or Down selects the focused first row rather than skip it. */
+export function railKeyDown(order, current, onSelect, listRef) {
   return (e) => {
     const step = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1
       : e.key === 'Home' ? -Infinity : e.key === 'End' ? Infinity : 0;
@@ -833,7 +845,7 @@ function railKeyDown(order, current, onSelect, listRef) {
     e.preventDefault();
     const pos = order.indexOf(current);
     const nextPos = step === -Infinity ? 0 : step === Infinity ? order.length - 1
-      : (pos + step + order.length) % order.length;
+      : pos < 0 ? 0 : (pos + step + order.length) % order.length;
     const next = order[nextPos];
     onSelect(next);
     listRef.current?.querySelector(`[data-rail-index="${next}"]`)?.focus();
@@ -895,7 +907,7 @@ function CheckRail({ cs, label, filter, setFilter, sortMode, setSortMode, onSele
           </p>
         )}
       </div>
-      <div data-testid="check-list" ref={listRef} onKeyDown={railKeyDown(order, tabStop, onSelect, listRef)} style={{ flex: 1, overflow: 'auto', padding: 14, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div data-testid="check-list" ref={listRef} onKeyDown={railKeyDown(order, cs.activeIndex, onSelect, listRef)} style={{ flex: 1, overflow: 'auto', padding: 14, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
         {groups.map((grp) => (
           <div key={grp.label}>
             <Overline tone="muted" as="p" style={{ margin: '0 0 6px' }}>{grp.label}</Overline>
