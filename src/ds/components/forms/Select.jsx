@@ -37,7 +37,8 @@ function Chevron({ open }) {
   );
 }
 
-function Row({ opt, id, selected, highlighted, onChoose, onHighlight }) {
+/* Exported for SuggestField (#492): one row look for every list. */
+export function Row({ opt, id, selected, highlighted, onChoose, onHighlight }) {
   return (
     <div role="option" id={id} aria-selected={selected ? 'true' : 'false'}
       aria-disabled={opt.disabled ? 'true' : undefined}
@@ -60,7 +61,8 @@ function Row({ opt, id, selected, highlighted, onChoose, onHighlight }) {
         color: opt.disabled ? 'var(--disabled-fg)' : selected ? 'var(--text-heading)' : 'var(--text-body)',
       }}>{opt.label}</span>
       {opt.badge ? <Badge tone="neutral" size="sm" style={{ flex: 'none' }}>{opt.badge}</Badge> : null}
-      {opt.meta ? <span style={{ flex: 'none', fontSize: 'var(--fs-label)', color: 'var(--text-tertiary)' }}>{opt.meta}</span> : null}
+      {/* A long meta (a language's own name, #492) gives way to the label. */}
+      {opt.meta ? <span style={{ flex: '0 1 auto', minWidth: 0, maxWidth: '50%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 'var(--fs-label)', color: 'var(--text-tertiary)' }}>{opt.meta}</span> : null}
       {opt.code ? <span style={{ flex: 'none', fontSize: 'var(--fs-badge)', letterSpacing: 'var(--tracking-label)', fontWeight: 'var(--fw-heavy)', color: 'var(--text-tertiary)' }}>{opt.code}</span> : null}
     </div>
   );

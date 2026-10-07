@@ -149,7 +149,7 @@
   "newBible.langName": "Language name",
   "newBible.langPlaceholder": "e.g. Kanuri",
   "newBible.code": "Code",
-  "newBible.codePlaceholder": "e.g. kau",
+  "newBible.codePlaceholder": "e.g. kr",
   "newBible.direction": "Text direction",
   "newBible.checkingLanguage": "Checking language",
   "newBible.glNote": "Your team checks and aligns against a gateway language. English ships with the app and has the complete set of book packages, so it is preselected.",

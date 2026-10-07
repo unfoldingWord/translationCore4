@@ -7,6 +7,7 @@ import { useApp, SCRIPT_FONTS } from '../../state.jsx';
 import { t } from '../../i18n';
 import { Modal, TextField, Select, FilterChip, Overline, Button, Callout } from '../../ds/index.js';
 import { GlRow } from './NewBible.jsx';
+import LanguageNameField from './LanguageNameField.jsx';
 
 export default function NewObs() {
   const { s, actions } = useApp();
@@ -24,8 +25,7 @@ export default function NewObs() {
         placeholder={t('newObs.namePlaceholder')} onChange={(e) => actions.patchNp({ name: e.target.value })} />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px', gap: 12 }}>
-        <TextField id="no-lang" label={t('newBible.langName')} value={np.langName}
-          placeholder={t('newBible.langPlaceholder')} onChange={(e) => actions.patchNp({ langName: e.target.value })} />
+        <LanguageNameField id="no-lang" />
         <TextField id="no-code" label={t('newBible.code')} value={np.code}
           placeholder={t('newBible.codePlaceholder')} onChange={(e) => actions.patchNp({ code: e.target.value })} />
       </div>

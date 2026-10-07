@@ -72,6 +72,13 @@ in the file:
   more options open with a search field (`searchPlaceholder`,
   `noMatchesLabel`); `onChange` still receives `{ target: { value } }`.
 - `OptionCard`: new `recommendedLabel` (i18n for the Recommended badge).
+- `SuggestField`: new (issue #492) — a text field with a list of suggestions
+  under it, for the Language name field of New Bible and New Open Bible
+  Stories. The typed text is the value; a suggestion is an offer, and
+  `onChoose` tells the caller which one was taken. It draws its list with the
+  `Select`'s `Layer` popover and `Row` (now exported from `Select.jsx`), so the
+  two lists look the same. The `Row`'s `meta` text now shrinks with an
+  ellipsis, at half the row at most.
 - `HelpCard` (carried from #104/#106): a key word carries no verse label; a
   note with no quoted phrase prints no bare quotes; the body is a `div`, so
   rendered markdown blocks are not a `<p>` inside a `<p>`.
