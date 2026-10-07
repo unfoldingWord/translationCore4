@@ -862,13 +862,13 @@ test.describe('J13 — a check the user marked Invalid stays Invalid through a c
       // ends, no dialogue opens and nothing is written.
       release();
       await page.unroute(spanishNotes);
-      await page.waitForTimeout(1500);
+      // The rows answer again only once the preview has ended: that is the moment
+      // a dialogue would have opened, so the checks below follow it, not a timer.
+      await page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByRole('button', { name: 'Settings' }).click();
+      await expect(page.getByTestId(`settings-gateway-${ES_KEY}`)).toBeEnabled({ timeout: 30_000 });
       await expect(page.getByTestId('gateway-change')).toHaveCount(0);
       expect(checkingBytes(SEEDED_PROJECT)).toEqual(bytesAtChoice);
       expect(readProjectPins(SEEDED_PROJECT).languageSets.primary.gatewayLanguage.languageId).toBe('en');
-      // And the rows answer again.
-      await page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByRole('button', { name: 'Settings' }).click();
-      await expect(page.getByTestId(`settings-gateway-${ES_KEY}`)).toBeEnabled();
     },
   );
 });

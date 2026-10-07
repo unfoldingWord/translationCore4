@@ -3068,6 +3068,9 @@ export function AppProvider({ children }) {
   const structuralRef = useRef(new Set());
   const rawRef = useRef(null); // authoritative raw book text, updated synchronously
   const stateRef = useRef(null); // live state for async closures
+  // #580 Interruptions 3: set with the `gatewayBusy` dispatch, read at once —
+  // stateRef follows the render, so two quick clicks could both pass it.
+  const gatewayBusyRef = useRef(false);
   const openSeqRef = useRef(0); // openBook sequence token (review finding M2)
   const understandSeqRef = useRef(0); // loadUnderstand sequence token (2026-08-27 Codex review)
   // D65 (round-22 checkpoint): the comprehension-note SaveScheduler and the
@@ -4324,10 +4327,11 @@ export function AppProvider({ children }) {
       askGatewayChange: async (gateway) => {
         // #580 Interruptions 3: one change at a time. A second choice while the
         // first is previewed, asked or committed does nothing.
-        if (stateRef.current.gatewayBusy || stateRef.current.gatewayPreview) return null;
+        if (gatewayBusyRef.current || stateRef.current.gatewayPreview) return null;
         // #580 Interruptions 4: the change belongs to the project it started on.
         const origin = storeRef.current;
         const projectId = stateRef.current.project?.id ?? null;
+        gatewayBusyRef.current = true;
         dispatch({ type: 'set', patch: { gatewayBusy: true } });
         // Catch-to-absence sweep (D30): the preview now PROPAGATES transient
         // read failures (deriveItemsFor / readDecisionsText) instead of
@@ -4336,16 +4340,19 @@ export function AppProvider({ children }) {
         try {
           preview = await a.previewGatewayChange(gateway);
         } catch (error) {
+          gatewayBusyRef.current = false;
           dispatch({ type: 'set', patch: { gatewayBusy: false, ...(storeRef.current === origin ? { gatewayError: String(error?.message || error) } : {}) } });
           return null;
         }
         // The user left the project while the preview was read: its dialogue
         // would describe one project over another. Nothing is shown.
         if (storeRef.current !== origin) {
+          gatewayBusyRef.current = false;
           dispatch({ type: 'set', patch: { gatewayBusy: false } });
           return null;
         }
         const current = stateRef.current.projectPins?.languageSets?.primary?.gatewayLanguage;
+        gatewayBusyRef.current = false;
         dispatch({
           type: 'set',
           patch: { gatewayBusy: false, gatewayPreview: { ...preview, projectId, currentName: current?.languageId } },
@@ -4356,7 +4363,7 @@ export function AppProvider({ children }) {
       // #580 Interruptions 1: "Keep …" changes nothing. After Confirm the change
       // cannot be cancelled: the dialogue's buttons are disabled until it ends.
       cancelGatewayChange: () => {
-        if (stateRef.current.gatewayBusy) return;
+        if (gatewayBusyRef.current) return;
         dispatch({ type: 'set', patch: { gatewayPreview: null, gatewayError: null } });
       },
 
@@ -4374,16 +4381,19 @@ export function AppProvider({ children }) {
           });
           return;
         }
-        if (stateRef.current.gatewayBusy) return;
+        if (gatewayBusyRef.current) return;
+        gatewayBusyRef.current = true;
         dispatch({ type: 'set', patch: { gatewayBusy: true } });
         try {
           await a.commitGatewayChange(preview);
         } catch (e) {
           // #580 Interruptions 2: the dialogue states the failure. The change is
           // one journal action, so a refused one changes no decision.
+          gatewayBusyRef.current = false;
           dispatch({ type: 'set', patch: { gatewayBusy: false, gatewayError: e?.reason || e?.message || String(e) } });
           return;
         }
+        gatewayBusyRef.current = false;
         dispatch({ type: 'set', patch: { gatewayBusy: false, gatewayPreview: null, gatewayError: null } });
       },
 
@@ -5954,7 +5964,7 @@ export function AppProvider({ children }) {
        * project; that open adopts installed optional slots as every open does
        * (D64), before the dialogue asks. */
       chooseSettingsGateway: async (gateway) => {
-        if (stateRef.current.gatewayBusy || stateRef.current.gatewayPreview) return;
+        if (gatewayBusyRef.current || stateRef.current.gatewayPreview) return;
         if (!(await a.openSettingsProject())) return;
         await a.askGatewayChange(gateway);
       },

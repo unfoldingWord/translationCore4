@@ -378,10 +378,19 @@ const verseText = bookJson.chapters['1']['1'].verseObjects.filter(vo => vo.type 
     ...(d.invalidated !== true && d.status === 'invalid' ? { userInvalid: true } : {}) });
   const reattachSpec = d => {
     const { userInvalid, ...rest } = d;
+    return { ...rest, invalidated: false, ...(d.status === 'invalid' && userInvalid !== true ? { status: 'todo' } : {}) };
+  };
+  // Negative controls. The pre-1.19 rule cleared every Invalid; a writer that
+  // leaves `status` absent instead of "todo" lets a record with selections
+  // derive as valid.
+  const reattachPre119 = d => ({ ...d, invalidated: false, ...(d.status === 'invalid' ? { status: undefined } : {}) });
+  const reattachAbsent = d => {
+    const { userInvalid, ...rest } = d;
     return { ...rest, invalidated: false, ...(d.status === 'invalid' && userInvalid !== true ? { status: undefined } : {}) };
   };
-  // The pre-1.19 rule, as the negative control: it cleared every Invalid.
-  const reattachPre119 = d => ({ ...d, invalidated: false, ...(d.status === 'invalid' ? { status: undefined } : {}) });
+  // §5.2 triage as a reader derives it: a present `status` wins; else
+  // invalidated ⇒ invalid, done ⇒ valid, else todo.
+  const triage = d => d.status ?? (d.invalidated ? 'invalid' : (d.selections !== false || d.nothingToSelect === true) ? 'valid' : 'todo');
   const away = d => invalidate(d);
   const roundTrips = (d, back, n) => { let x = d; for (let i = 0; i < n; i++) x = back(away(x)); return x; };
   const userInvalid = { contextId: mk('old7', 6, 'figs-explicit', 'λόγον'), selections: false, nothingToSelect: false, invalidated: false, status: 'invalid' };
@@ -392,16 +401,17 @@ const verseText = bookJson.chapters['1']['1'].verseObjects.filter(vo => vo.type 
     userAway.userInvalid === true && userAway.status === 'invalid' &&
     !('userInvalid' in validAway) && validAway.status === 'invalid' &&
     away(validAway).userInvalid === undefined && away(userAway).userInvalid === true &&   // re-invalidation keeps the mark it has
-    userBack.status === 'invalid' && userBack.invalidated === false && !('userInvalid' in userBack) &&
-    validBack.status === undefined && validBack.invalidated === false &&
-    roundTrips(userInvalid, reattachPre119, 1).status !== 'invalid';                       // negative control: the old rule loses it
-  check('carry-over: an unplaceable decision is invalidated, kept in full, and re-keyed decisions take the NEW resource contextId (D36); a user\'s own Invalid is marked `userInvalid` and survives the round trip, an Invalid the invalidation set clears (§5.2 1.19, D94)',
+    triage(userBack) === 'invalid' && userBack.invalidated === false && !('userInvalid' in userBack) &&
+    triage(validBack) === 'todo' && validBack.invalidated === false && Array.isArray(validBack.selections) &&
+    triage(roundTrips(userInvalid, reattachPre119, 1)) !== 'invalid' &&                    // negative control: the old rule loses it
+    triage(roundTrips(wasValid, reattachAbsent, 1)) === 'valid';                            // negative control: an absent status revives it
+  check('carry-over: an unplaceable decision is invalidated, kept in full, and re-keyed decisions take the NEW resource contextId (D36); a user\'s own Invalid is marked `userInvalid` and survives the round trip, an Invalid the invalidation set comes back "todo" (§5.2 1.19, D94)',
     co.carried === 2 && co.invalidated === 1 && co.decisions.length === savedX.length &&
     inv.length === 1 && inv[0].status === 'invalid' &&
     inv[0].contextId.checkId === 'old7' &&
     co.decisions.filter(d => !d.invalidated).map(d => d.contextId.checkId).join(',') === 'zz10,zz11' &&
     userInvalidOk,
-    `${co.carried} carried (re-keyed to the new resource), ${co.invalidated} invalidated and retained, 0 deleted; user Invalid after 3 round trips: ${userBack.status}, change-set Invalid: ${validBack.status ?? 'cleared'}`);
+    `${co.carried} carried (re-keyed to the new resource), ${co.invalidated} invalidated and retained, 0 deleted; user Invalid after 3 round trips: ${userBack.status}, change-set Invalid: ${triage(validBack)}`);
 }
 
 // ---------- 8. Multi-book + resource pinning completeness ----------
