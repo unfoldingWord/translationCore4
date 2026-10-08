@@ -531,6 +531,8 @@ if [ "$OS" != macos ]; then chmod +x "$APPDIR/$LAUNCHER"; fi
 # Licenses. The startup files in electron/ are modified copies from the MIT
 # desktop-app-template; Electronite ships its own LICENSE files in the zip.
 cp "$REPO/LICENSE" "$APPDIR/LICENSE"
+# #554: LICENSE names GPL-2.0-or-later; COPYING is its full text.
+cp "$REPO/COPYING" "$APPDIR/licenses/COPYING"
 # #45: the post-install smoke test travels with the artifact, so a pilot on a clean
 # machine can run it (zsh smoke-installed.zsh) with nothing but the folder and a
 # shell. CI runs this shipped copy on a fresh runner (package-desktop.yml, smoke-*).
@@ -573,7 +575,12 @@ fi
 cat >> "$APPDIR/THIRD-PARTY-NOTICES.md" <<NOTICES
 
 npm dependency license texts remain in electron/node_modules/*/LICENSE.
+
 NOTICES
+# #554: the client build (step 1) lists the npm packages in the client JavaScript, with
+# each license text. package-macos.zsh adds its table rows above this list.
+[ -s "$REPO/dist/third-party-npm.md" ] || { echo "FATAL: the client build wrote no dist/third-party-npm.md (#554)" >&2; exit 1; }
+cat "$REPO/dist/third-party-npm.md" >> "$APPDIR/THIRD-PARTY-NOTICES.md"
 
 # Input manifest: every component with its exact version/commit/checksum.
 SERVER_SHA=$(sha256_of "$APPDIR/bin/$SERVER_BIN")

@@ -18,6 +18,13 @@ $main = Join-Path $AppDir 'electron'
 foreach ($file in @($exe, $serverExe, "$AppDir\bin\vcruntime140.dll", "$AppDir\smoke-api.cjs", "$AppDir\smoke-journal.cjs", "$AppDir\smoke-upgrade.cjs", "$AppDir\BUILD-MANIFEST.json")) {
   if (!(Test-Path -LiteralPath $file -PathType Leaf)) { throw "Missing installed file: $file" }
 }
+# #554: the notices list the client's npm packages, and licenses\ has the GPL text.
+$notices = Join-Path $AppDir 'THIRD-PARTY-NOTICES.md'
+$gpl = Join-Path $AppDir 'licenses\COPYING'
+if (!(Test-Path -LiteralPath $notices -PathType Leaf) -or !(Select-String -LiteralPath $notices -Pattern '^### react ' -Quiet)) { throw "FAIL notices: THIRD-PARTY-NOTICES.md lists no client npm packages (no react entry)" }
+if (!(Test-Path -LiteralPath $gpl -PathType Leaf) -or !(Select-String -LiteralPath $gpl -Pattern 'GNU GENERAL PUBLIC LICENSE' -SimpleMatch -Quiet)) { throw "FAIL notices: licenses\COPYING (the GPL version 2 text) is missing" }
+$npmEntries = (Select-String -LiteralPath $notices -Pattern '^### ').Count
+Write-Host "ok notices: THIRD-PARTY-NOTICES.md lists $npmEntries client npm packages; licenses\COPYING has the GPL text"
 $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
 $abbr = "smoke_$stamp"
 $repo = "_local_/_local_/$abbr"
