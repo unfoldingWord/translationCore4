@@ -51,7 +51,7 @@ import { carryOverDecisions } from './data/carryOver';
 import { applyTextUpgrade, applyUpgrade, invalidateAlignments, invalidatedTestaments, latestReleasesForSet, offerForSet, offerIsStale, repinOffer, textOfferIsStale, textOffers, textPinOf } from './data/upgrade';
 import { LADDER } from './data/burritoStore';
 import { TC_READY_TOPIC } from './data/serverApi';
-import { t } from './i18n';
+import { isLocale, setLocale, t, useLocale } from './i18n';
 import { checkpointMessage } from './data/checkpoint';
 import { runExport } from './data/export/kernel';
 import { runImport } from './data/import/shell';
@@ -110,6 +110,13 @@ export const opsLog = new OpsLog({ read: () => api.getClientSettings(STORAGE_ID)
 // guards every client request with it (guardFetch), and the Door43 adapter
 // refuses while it is off before it builds a request. Each launch starts off.
 export const internet = new InternetSwitch();
+/** #522: true once the user has previewed or applied an app language in this
+ * session. The startup read of the saved choice lands only while this is false,
+ * so a slow read never overwrites a newer selection. */
+let localeChosen = false;
+/** #522: the saved app language, as the dialog reads it: the last applied
+ * choice. Separate from the displayed (preview) locale. */
+const readSavedLocale = (cs) => (isLocale(cs?.appLocale) ? cs.appLocale : 'en');
 export const door43 = new Door43Api({ allowed: () => internet.on });
 /** Whether the internet is on, as the share and sign-in code asks for it. */
 const internetAllowed = async () => internet.on;
@@ -454,6 +461,7 @@ const initial = () => ({
   netAsk: null, // D95: { kind } of the open "Turn on the internet?" dialog, or null
   netFailed: false, // D88: a step stopped because the net gate did not turn on
   accountError: null, // D88: an i18n key the account menu shows — a sign-out or a saved-sign-in check that failed
+  appLocale: 'en', // #522: the APPLIED app language (saved on this computer); the displayed one is the i18n store's, which a preview moves
   projectPins: null, // the open project's resources.json (§5.3 v2 shape)
   projectPinsSeq: 0, // #412: bumped by a gateway change, so an older pins read never lands over it
   projectPinsLoaded: false, // round 33: distinguishes pins LOADING (understand waits) from pins legally ABSENT (understand proceeds, slots unpinned)
@@ -3179,6 +3187,17 @@ export function AppProvider({ children }) {
     // stored. The net gate goes off at start; the first step after "Turn on
     // internet" turns it on.
     void startGate(api);
+    // #522: the saved app language, read once at start (a local request).
+    // English until it lands; a read that fails or finds no valid id leaves
+    // English. A selection made before it lands wins (localeChosen).
+    api.getClientSettings(STORAGE_ID)
+      .then((cs) => {
+        if (localeChosen) return;
+        const saved = readSavedLocale(cs);
+        setLocale(saved);
+        dispatch({ type: 'set', patch: { appLocale: saved } });
+      })
+      .catch(() => { /* no settings document: English */ });
     // D86 point 8: a kept token is not resumed at start (no Door43 request);
     // the first action that needs Door43 resumes it (startShare). The keychain
     // read is local, and only says that a sign-in is kept (D86 point 7).
@@ -5319,6 +5338,26 @@ export function AppProvider({ children }) {
           if (signInFlight === flight) signInFlight = null;
         }
       },
+      /** #522: show `locale` across the app now, without saving it. The dialog
+       * calls it for each selection and for a rollback (Cancel, Escape, close,
+       * the scrim). Nothing is stored. */
+      previewAppLocale: (locale) => {
+        localeChosen = true;
+        setLocale(locale);
+      },
+      /** #522: save `locale` as the app language of this computer, through the
+       * one settings writer (a read-modify-write of the latest document, so
+       * every other record stays). Resolves when the write has succeeded;
+       * REJECTS when it failed — a swallowed failure would be a false success.
+       * The displayed locale is already the preview; on success it becomes the
+       * applied one. */
+      applyAppLocale: async (locale) => {
+        if (!isLocale(locale)) throw new Error(`not an installed app language: ${String(locale)}`);
+        localeChosen = true;
+        await settingsWriter((cs) => ({ ...cs, appLocale: locale }));
+        setLocale(locale);
+        dispatch({ type: 'set', patch: { appLocale: locale } });
+      },
       /** Sign out: the token leaves memory and the keychain (#366), with no
        * request. A keychain that fails to forget is said, never hidden (D88):
        * the sign-in then stays saved. True when nothing is left. */
@@ -6553,7 +6592,11 @@ export function AppProvider({ children }) {
 
   stateRef.current = s;
 
-  const value = { s, ...model, sourceModel, actions, BOOK_NAMES };
+  // #522: the displayed app language. A preview or a rollback renders the
+  // provider again, and with it every consumer, so each t() call reads the
+  // active catalog. No remount: the view and project identity stay.
+  const locale = useLocale();
+  const value = { s, ...model, sourceModel, actions, BOOK_NAMES, locale };
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;
 }
 

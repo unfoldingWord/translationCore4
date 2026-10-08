@@ -7,7 +7,6 @@
 // (./weave.mjs, the one weave the conformance harness also runs), the form
 // tC3 and Door43 tooling read. Alignment markup exists only in this output,
 // never at rest (I-1).
-import { t } from '../../i18n';
 import { exportFilename, type ExportInput, type ExportProducer } from './kernel';
 import { unzipServerZip } from '../serverZip';
 import { weaveBook } from './weave.mjs';
@@ -24,7 +23,7 @@ const usfmFile = (text: string, filename: string) => ({ bytes: new TextEncoder()
 
 export const USFM_ALIGNED: ExportProducer = {
   id: 'usfm-aligned',
-  label: t('cc.exportUsfmAligned'),
+  label: 'cc.exportUsfmAligned',
   appliesTo: bible,
   produce: async ({ store, book }: ExportInput) => {
     const id = openBook(book);
@@ -35,7 +34,7 @@ export const USFM_ALIGNED: ExportProducer = {
 
 export const USFM_PLAIN: ExportProducer = {
   id: 'usfm-plain',
-  label: t('cc.exportUsfmPlain'),
+  label: 'cc.exportUsfmPlain',
   appliesTo: bible,
   produce: async ({ store, book }: ExportInput) => {
     const id = openBook(book);

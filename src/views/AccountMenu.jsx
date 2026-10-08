@@ -7,12 +7,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useApp, door43 } from '../state.jsx';
 import { APP_COMMIT, APP_VERSION, COPYRIGHT_LINE, GPL_TEXT, LICENSE_TEXT } from '../data/about';
-import { t } from '../i18n';
+import { LOCALES, t } from '../i18n';
 import { Layer } from '../ds/components/primitives/Layer.jsx';
 import { Surface } from '../ds/components/primitives/Surface.jsx';
 import { Action } from '../ds/components/primitives/Action.jsx';
 import { Rule } from '../ds/components/primitives/Rule.jsx';
-import { Modal, Button } from '../ds/index.js';
+import { Modal, Button, Select, Callout } from '../ds/index.js';
 
 const TRIGGER = {
   width: 34, height: 34, padding: 0, borderRadius: 'var(--radius-pill)', display: 'flex', alignItems: 'center',
@@ -74,6 +74,8 @@ export default function AccountMenu() {
   const [open, setOpen] = useState(false);
   // #520: null, 'about', 'license', or 'back' (About again, after License closed).
   const [about, setAbout] = useState(null);
+  // #522: the App language dialog is open.
+  const [language, setLanguage] = useState(false);
   const ref = useRef(null);
   const user = s.door43User;
   const saved = !user && s.door43Kept;
@@ -134,6 +136,9 @@ export default function AccountMenu() {
           <Row testId="account-internet" role="menuitemcheckbox" checked={online} title={t('account.internet')}
             sub={t(online ? 'account.internetOn' : 'account.internetOff')} end={<Switch on={online} />}
             onClick={() => actions.setInternet(!online)} />
+          {/* #522: the app language, below the internet switch and before About. */}
+          <Row testId="account-language" title={t('account.language')} sub={LOCALES.find((l) => l.id === s.appLocale)?.label}
+            onClick={choose(() => setLanguage(true))} />
           <Row testId="account-about" title={t('account.about')} onClick={choose(() => setAbout('about'))} />
           {state !== 'out' && <>
             <Rule style={{ margin: '5px 4px' }} />
@@ -143,6 +148,12 @@ export default function AccountMenu() {
         </Surface>
       </Layer>
       {/* The dialogs render inside the dark top bar: data-on gives them the light ground's colours (ds/tokens/context.css). */}
+      {language && <span data-on="light" style={{ display: 'contents' }}>
+        <AppLanguageDialog applied={s.appLocale} actions={actions} onClose={() => {
+          setLanguage(false);
+          ref.current?.querySelector('button')?.focus();
+        }} />
+      </span>}
       {about && <span data-on="light" style={{ display: 'contents' }}>
         {about === 'license'
           ? <LicenseDialog onClose={() => setAbout('back')} />
@@ -200,6 +211,64 @@ function LicenseDialog({ onClose }) {
         <pre data-testid="license-notice" style={{ ...LICENSE_PRE, margin: 0 }}>{LICENSE_TEXT}</pre>
         <pre data-testid="license-gpl" style={{ ...LICENSE_PRE, margin: '18px 0 0' }}>{GPL_TEXT}</pre>
       </div>
+    </Modal>
+  );
+}
+
+/** #522: App language. One select of the four installed catalogs, Apply and
+ * Cancel. A selection previews the language across the whole app, this dialog
+ * included; Apply saves it on this computer and closes after the write has
+ * succeeded; Cancel, Escape, the close button and the scrim restore the applied
+ * language and save nothing. A failed save keeps the preview and the dialog,
+ * with an error; retry and Cancel are then available again. While the save is
+ * pending, the select, Apply and every dismissal are disabled (Q9).
+ * The applied locale is captured when Apply starts: a later rollback uses the
+ * value that was applied then, not one a race could leave. */
+function AppLanguageDialog({ applied, actions, onClose }) {
+  const [preview, setPreview] = useState(applied);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(false);
+  const locked = saving;
+  // Opening the dialog is the user's selection of `applied`: from here on a
+  // startup read of the saved choice that lands late changes nothing.
+  useEffect(() => {
+    actions.previewAppLocale(applied);
+  }, []); // on mount only: `applied` changes only through this dialog's own Apply
+  const select = (id) => {
+    if (locked || id === preview) return;
+    setPreview(id);
+    setError(false);
+    actions.previewAppLocale(id);
+  };
+  const cancel = () => {
+    if (locked) return;
+    actions.previewAppLocale(applied);
+    onClose();
+  };
+  const apply = async () => {
+    if (locked || preview === applied) return;
+    const chosen = preview;
+    setSaving(true);
+    setError(false);
+    try {
+      await actions.applyAppLocale(chosen);
+      onClose();
+    } catch {
+      setSaving(false);
+      setError(true);
+    }
+  };
+  return (
+    <Modal data-testid="language-dialog" data-saving={saving ? 'true' : 'false'} width={420} title={t('language.title')}
+      closeLabel={t('common.close')} onClose={cancel}
+      footer={<>
+        <Button variant="secondary" onClick={cancel} disabled={locked} data-testid="language-cancel">{t('language.cancel')}</Button>
+        <Button onClick={apply} disabled={locked || preview === applied} data-testid="language-apply">{t('language.apply')}</Button>
+      </>}>
+      <p style={{ ...BODY, color: 'var(--text-body)' }}>{t('language.hint')}</p>
+      <Select id="app-language" label={t('language.field')} value={preview} disabled={locked} data-testid="language-select"
+        onChange={(e) => select(e.target.value)} options={LOCALES.map((l) => ({ value: l.id, label: l.label }))} />
+      {error && <Callout tone="warn" role="alert" data-testid="language-error">{t('language.saveFailed')}</Callout>}
     </Modal>
   );
 }
