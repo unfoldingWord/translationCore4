@@ -115,43 +115,13 @@ test.describe('J16 — read a passage with helps and record a user comment', () 
       const comment = 'Pablo le dice a Tito qué enseñar (J16).';
       const textbox = page.getByTestId('understand-unit-v1').getByRole('textbox');
       // #599: the mode switch stays in the center of the top bar while the save status
-      // changes. The comment is unsaved from the first key to the blur, and the blur's
-      // write is failed once to show the longest status in a 1024-pixel-wide window.
+      // changes. The comment is unsaved from the first key to the blur.
       await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
       const saved = await topBar(page);
       await textbox.fill(comment);
       await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'dirty');
       const unsaved = await topBar(page);
-      const failWrites = (route: Route) =>
-        route.request().method() === 'GET' ? route.fallback() : route.abort('failed');
-      const rigApi = (url: URL) => url.pathname.startsWith('/api/');
-      await page.route(rigApi, failWrites);
       await textbox.blur();
-      await expect(page.getByTestId('retry-note-save')).toBeVisible({ timeout: 10_000 });
-      const wide = page.viewportSize()!;
-      await page.setViewportSize({ width: 1024, height: wide.height });
-      const failed = await topBar(page);
-      const shot = testInfo.outputPath('top-bar-1024-save-failed.png');
-      await page.screenshot({ path: shot, animations: 'disabled', clip: { x: 0, y: 0, width: 1024, height: 80 } });
-      await testInfo.attach('top-bar-1024-save-failed', { path: shot, contentType: 'image/png' });
-      await page.setViewportSize(wide);
-      const positions = testInfo.outputPath('top-bar.json');
-      fs.writeFileSync(positions, `${JSON.stringify({ saved, unsaved, failed }, null, 2)}\n`);
-      await testInfo.attach('top-bar', { path: positions, contentType: 'application/json' });
-
-      expect(saved.status).toBe('Saved');
-      expect(unsaved.status).toBe('Unsaved changes');
-      expect(unsaved.indicator.width).toBeGreaterThan(saved.indicator.width);
-      expect(unsaved.switch.left).toBe(saved.switch.left);
-      for (const bar of [saved, unsaved, failed]) {
-        expect(Math.abs((bar.switch.left + bar.switch.right) / 2 - bar.window / 2)).toBeLessThanOrEqual(1);
-      }
-      expect(failed.status).toContain('Save failed — retry');
-      expect(failed.project.right).toBeLessThanOrEqual(failed.switch.left);
-      expect(failed.switch.right).toBeLessThanOrEqual(failed.indicator.left);
-
-      await page.unroute(rigApi, failWrites);
-      await page.getByTestId('retry-note-save').click();
 
       await expect
         .poll(
@@ -191,6 +161,54 @@ test.describe('J16 — read a passage with helps and record a user comment', () 
           ),
         ).toBe(true);
       }
+
+      // #599: the longest save status in a 1024-pixel-wide window. The J16 comment above
+      // is saved; the write of a second comment (verse 2) is failed once, then retried.
+      const secondComment = 'Los ancianos deben ser sobrios (J16, #599).';
+      const secondBox = page.getByTestId('understand-unit-v2').getByRole('textbox');
+      const failWrites = (route: Route) =>
+        route.request().method() === 'GET' ? route.fallback() : route.abort('failed');
+      const rigApi = (url: URL) => url.pathname.startsWith('/api/');
+      await page.route(rigApi, failWrites);
+      await secondBox.fill(secondComment);
+      await secondBox.blur();
+      await expect(page.getByTestId('retry-note-save')).toBeVisible({ timeout: 10_000 });
+      const wide = page.viewportSize()!;
+      await page.setViewportSize({ width: 1024, height: wide.height });
+      const failed = await topBar(page);
+      const shot = testInfo.outputPath('top-bar-1024-save-failed.png');
+      await page.screenshot({ path: shot, animations: 'disabled', clip: { x: 0, y: 0, width: 1024, height: 80 } });
+      await testInfo.attach('top-bar-1024-save-failed', { path: shot, contentType: 'image/png' });
+      await page.setViewportSize(wide);
+      const positions = testInfo.outputPath('top-bar.json');
+      fs.writeFileSync(positions, `${JSON.stringify({ saved, unsaved, failed }, null, 2)}\n`);
+      await testInfo.attach('top-bar', { path: positions, contentType: 'application/json' });
+
+      expect(saved.status).toBe('Saved');
+      expect(unsaved.status).toBe('Unsaved changes');
+      expect(unsaved.indicator.width).toBeGreaterThan(saved.indicator.width);
+      expect(unsaved.switch.left).toBe(saved.switch.left);
+      for (const bar of [saved, unsaved, failed]) {
+        expect(Math.abs((bar.switch.left + bar.switch.right) / 2 - bar.window / 2)).toBeLessThanOrEqual(1);
+      }
+      expect(failed.status).toContain('Save failed — retry');
+      expect(failed.project.right).toBeLessThanOrEqual(failed.switch.left);
+      expect(failed.switch.right).toBeLessThanOrEqual(failed.indicator.left);
+
+      await page.unroute(rigApi, failWrites);
+      await page.getByTestId('retry-note-save').click();
+      await expect
+        .poll(
+          () =>
+            segmentFiles()
+              .filter((f) => !segmentsBefore.has(f))
+              .flatMap(readSegmentEvents)
+              .map((ev) => `${ev.op} ${ev.text}`),
+          { timeout: 10_000 },
+        )
+        .toEqual([`note.add ${comment}`, `note.add ${secondComment}`]);
+      await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
+      expect(commitCount(SEEDED_PROJECT)).toBe(commitsBefore);
 
       await page.getByRole('tab', { name: 'Translate', exact: true }).click();
       await expect

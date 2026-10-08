@@ -25,7 +25,8 @@ export function AppHeader({ tone = 'ocean', logoSrc, projectInitials, projectNam
       style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto minmax(0,1fr)', alignItems: 'center',
                gap: 14, flex: 'none', height: 'var(--header-height)', zIndex: 'var(--z-header)' }}>
       {/* #599: the two side columns are equal, so the switch stays in the center of
-          the bar. A project name that does not fit is cut with an ellipsis. */}
+          the bar. A project name that does not fit is cut with an ellipsis, and the
+          button's tooltip gives it in full. */}
       <Stack direction="row" gap={14} align="center" style={{ alignSelf: 'stretch' }}>
         <Stack direction="row" gap={9} align="center" onClick={onBrandClick}
           style={{ flex: 'none', cursor: onBrandClick ? 'pointer' : undefined }}>
@@ -39,7 +40,7 @@ export function AppHeader({ tone = 'ocean', logoSrc, projectInitials, projectNam
         <Rule orientation="vertical" />
         {projectName ? (
           <Surface as="button" fill="quiet" border="line" radius="md" interactive="quiet"
-            onClick={onProjectClick} title={switchTitle} data-testid="project-switch"
+            onClick={onProjectClick} title={`${projectName}. ${switchTitle}`} data-testid="project-switch"
             style={{ padding: '5px 10px 5px 8px', cursor: 'pointer', font: 'inherit', minWidth: 0 }}>
             <Stack direction="row" gap={9} align="center">
               <Surface as="span" tone={dark ? 'accent' : 'ocean'} fill="solid" radius="xs"
