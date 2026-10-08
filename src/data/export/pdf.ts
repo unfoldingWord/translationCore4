@@ -8,7 +8,6 @@
 // `window.tc4Desktop.printPdf`. The bridge prints the document in a hidden
 // window with `printToPDF` and returns the bytes; no print dialog opens. A
 // browser has no bridge, so there the menu has no PDF item.
-import { t } from '../../i18n';
 import { bookName } from '../bookNames';
 import { bookModel, printedItems } from '../bookModel';
 import { Refusal } from '../journal/runtime';
@@ -117,7 +116,7 @@ const print = async (printer: PdfBridge, html: string, pictures: boolean): Promi
 
 export const PDF: ExportProducer = {
   id: 'pdf',
-  label: t('cc.exportPdf'),
+  label: 'cc.exportPdf',
   appliesTo: () => bridge() !== undefined, // Bible and OBS projects
   produce: async (input) => {
     const { store, project, book, pageSetup = DEFAULT_PAGE_SETUP } = input;

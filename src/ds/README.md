@@ -61,6 +61,9 @@ in the file:
 - `Drawer`: `open` defaults to true; rest props go to the scrim via
   `scrimProps`.
 - `AppHeader`: new `switchTitle` (i18n for the project chip tooltip).
+- `AppHeader`: three columns, the two side ones equal, so `center` stays in the
+  center of the bar; a project name that does not fit is cut with an ellipsis
+  (issue #599).
 - `TextField` / `Select`: the `id` prop goes to the `Field`, so the label's
   `htmlFor` reaches the control (accessibility + `getByLabel` tests).
 - `Select`: rewritten as a select-only combobox (issue #446, owner decisions

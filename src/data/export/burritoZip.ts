@@ -14,7 +14,6 @@
 // route writes `metadata.json`; stage rule S-1 keeps `resources.json`
 // authoritative).
 import { strFromU8, strToU8, zipSync } from 'fflate';
-import { t } from '../../i18n';
 import type { ResourcesFile } from '../burritoStore';
 import { exportFilename, type ExportProducer } from './kernel';
 import { unzipServerZip } from '../serverZip';
@@ -71,7 +70,7 @@ export function burritoFromRepoZip(repoZip: Uint8Array): Uint8Array {
 
 export const BURRITO_ZIP: ExportProducer = {
   id: 'burrito-zip',
-  label: t('cc.exportBurritoZip'),
+  label: 'cc.exportBurritoZip',
   appliesTo: () => true, // Bible and OBS projects
   produce: async ({ store, project }) => ({
     bytes: burritoFromRepoZip(await store.readZipped()),

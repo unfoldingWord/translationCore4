@@ -6,7 +6,6 @@
 // `*.bak` and every `.DS_Store` as the Scripture Burrito zip does. The stored
 // project never changes.
 import { zipSync } from 'fflate';
-import { t } from '../../i18n';
 import { excluded } from './burritoZip';
 import { exportFilename, type ExportProducer } from './kernel';
 import { unzipServerZip } from '../serverZip';
@@ -25,7 +24,7 @@ export function storyMarkdownFromRepoZip(repoZip: Uint8Array): Uint8Array {
 
 export const OBS_MARKDOWN: ExportProducer = {
   id: 'obs-markdown',
-  label: t('cc.exportStoryMarkdown'),
+  label: 'cc.exportStoryMarkdown',
   appliesTo: (project) => project.flavor === 'textStories',
   produce: async ({ store, project }) => ({
     bytes: storyMarkdownFromRepoZip(await store.readZipped()),
