@@ -12,7 +12,9 @@
 // src/data/share/keychain.ts (#366, D85), answered by `token:keep`,
 // `token:read` and `token:forget` in the same file through Electron's
 // `safeStorage`. The token is the only thing that crosses this bridge, and
-// nothing else about the person. The template's Firefox, FFmpeg and
+// nothing else about the person; and `tc4Desktop.feedback.send`, the help-desk
+// report of the Feedback dialog (#378), answered by `feedback:send` in the same
+// file, which sends it and returns the result. The template's Firefox, FFmpeg and
 // PDF-publisher members are left out: the tC4 client is the only client
 // packaged, and it calls none of them.
 const { contextBridge, ipcRenderer } = require('electron');
@@ -32,5 +34,8 @@ contextBridge.exposeInMainWorld('tc4Desktop', {
     keep: (token) => ipcRenderer.invoke('token:keep', token),
     read: () => ipcRenderer.invoke('token:read'),
     forget: () => ipcRenderer.invoke('token:forget'),
+  },
+  feedback: {
+    send: (report) => ipcRenderer.invoke('feedback:send', report),
   },
 });

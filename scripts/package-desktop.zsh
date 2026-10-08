@@ -295,6 +295,20 @@ if [ -n "$TC4_TEST_NO_SINGLE_INSTANCE" ]; then
   sed_inplace 's/!app.requestSingleInstanceLock()/false/' "$PACK/electron/tc4-main.js"
 fi
 node --check "$(npath "$PACK/electron/tc4-main.js")"
+# The help-desk send (#378): the main process sends the Feedback report, so the
+# build's TC_HELP_DESK_TOKEN and TC_HELP_DESK_EMAIL go beside it, never into the
+# web bundle. Node writes the file from the environment, so no value is echoed.
+# A build without both values still packages; its dialog says sending is not available.
+cp "$REPO/scripts/desktop-feedback.cjs" "$PACK/electron/tc4-feedback.cjs"
+node --check "$(npath "$PACK/electron/tc4-feedback.cjs")"
+rm -f "$PACK/electron/tc4-helpdesk.json"
+if [ -n "$TC_HELP_DESK_TOKEN" ] && [ -n "$TC_HELP_DESK_EMAIL" ]; then
+  HELPDESK_OUT="$(npath "$PACK/electron/tc4-helpdesk.json")" node -e \
+    "require('fs').writeFileSync(process.env.HELPDESK_OUT, JSON.stringify({ token: process.env.TC_HELP_DESK_TOKEN, email: process.env.TC_HELP_DESK_EMAIL }))"
+  echo "help desk: TC_HELP_DESK_TOKEN and TC_HELP_DESK_EMAIL are in this build"
+else
+  echo "help desk: TC_HELP_DESK_TOKEN or TC_HELP_DESK_EMAIL is not set; this build cannot send a Feedback report"
+fi
 # tC4's preload (#20) replaces the template's: it keeps setCanClose and adds
 # the PDF bridge. Refuse if the template's window no longer loads preload.js.
 grep -q "preload: path.join(__dirname, 'preload.js')" "$PACK/electron/electronStartup.js" || {
