@@ -2332,13 +2332,19 @@ async function performLoadProgress(ctx) {
     }
     const progress = await obsStoryProgress(reader, sourceTitle);
     if ((progressGen.get(project.id) || 0) !== gen) return;
-    // #573: an in-place re-read is discarded when the user opened another
-    // project during it, and when a read failed: the Stories rail keeps its
-    // last known rows. The entry stays stale, so the next Home visit or the
-    // next edit reads it again.
-    if (inPlace && (stateRef.current.project?.id !== project.id || progress.OBS === null)) return;
-    progressStale?.delete(project.id);
-    dispatch({ type: 'setProgress', id: project.id, progress });
+    if (!inPlace) {
+      progressStale?.delete(project.id);
+      dispatch({ type: 'setProgress', id: project.id, progress });
+      return;
+    }
+    // #573: an in-place re-read is discarded when the user left the project
+    // during it, and when a story read failed: the Stories rail keeps its last
+    // known rows. A failed gateway read leaves a title empty, so each row
+    // keeps its last known title. The entry stays stale: Home reads it again.
+    if (stateRef.current.project?.id !== project.id || progress.OBS === null) return;
+    const last = new Map((stateRef.current.progressByProject[project.id]?.stories ?? []).map((row) => [row.number, row.title]));
+    const stories = progress.stories.map((row) => (row.title ? row : { ...row, title: last.get(row.number) || '' }));
+    dispatch({ type: 'setProgress', id: project.id, progress: { ...progress, stories } });
   };
   if (project.flavor === 'textStories') return loadObs();
   // No upper bound on book count: a project with more than 12 books

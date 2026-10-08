@@ -5,8 +5,10 @@
 // #573 (D94): a frame save keeps every Stories-rail row; the rows before and after
 // each save go into the artifact `story-rail.txt`.
 import fs from 'node:fs';
+import path from 'node:path';
 import type { Page, Request } from '@playwright/test';
 import { test, expect } from './helpers/test';
+import { rigRepo } from './helpers/rig';
 import { parseStory, storyIpath } from '../journal/story.mjs';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import {
@@ -78,7 +80,15 @@ test.describe('J21 — a translator translates a story frame by frame', () => {
         const frames = parseStory(storyBytes(repo, 1)).frames.length;
         await expect(railCells(page, 1).last()).toHaveText(storyPct(drafted, frames), { timeout: 15_000 });
         expect(await railRow(page, 2)).toBe(story2Before);
-        rail.push(`${label}: ${await railRow(page, 1)} | ${await railRow(page, 2)}`);
+        // Each row of the rail has its number, a title and a percentage.
+        const rows = await page.getByTestId('story-rail').locator('button[data-testid^="story-"]')
+          .evaluateAll((els) => els.map((el) => [...el.querySelectorAll(':scope > :first-child > *')].map((cell) => cell.textContent ?? '')));
+        expect(rows).toHaveLength(fs.readdirSync(path.join(rigRepo(repo), 'ingredients', 'content')).filter((file) => /^\d{2}\.md$/.test(file)).length);
+        rows.forEach(([name, pct], i) => {
+          expect(name).toMatch(new RegExp(`^${i + 1} · \\S`));
+          expect(pct).toMatch(/^\d+%$/);
+        });
+        rail.push(`${label}: ${await railRow(page, 1)} | ${await railRow(page, 2)} | rows with a title and a percentage: ${rows.length}`);
       };
 
       const saveOne = async (act: () => Promise<void>) => {
@@ -260,21 +270,37 @@ test.describe('J21 — a translator translates a story frame by frame', () => {
         await record('after frame 2, the re-read answered');
       });
 
-      await test.step('a second save while a re-read is pending: the newer re-read wins', async () => {
-        const hold = await holdReread();
+      await test.step('the read of a gateway title fails: the row keeps its title, and story 1 counts the new frame', async () => {
+        // The gateway story 2 of the pinned source: any read of story file 2 that is not this project's.
+        const gateway = (url: URL) => url.pathname.includes('/burrito/ingredient/raw/') && !url.pathname.endsWith(`/${repo}`) && url.searchParams.get('ipath') === storyIpath(2);
+        let failed = 0;
+        await page.route(gateway, (route) => {
+          failed++;
+          return route.fulfill({ status: 500, body: '{"is_good":false,"reason":"injected by #573"}' });
+        });
         await draft(3);
-        await hold.held; // the first re-read has read story 1 with three frames, and waits
-        await draft(4);
-        await expect(railCells(page, 1).last()).toHaveText(storyPct(4, frames), { timeout: 15_000 });
-        await hold.release(); // the first re-read ends after the second
-        await expect(railCells(page, 1).last()).toHaveText(storyPct(4, frames));
+        await expect(railCells(page, 1).last()).toHaveText(storyPct(3, frames), { timeout: 15_000 });
+        expect(failed).toBeGreaterThan(0);
         expect(await railRow(page, 2)).toBe(story2);
-        await record('after frames 3 and 4, the older re-read ended last');
+        await record('after frame 3, the read of the gateway title of story 2 failed');
+        await page.unroute(gateway);
       });
 
-      await test.step('the user opens another project during a re-read: its rail shows its own rows, and Home shows the new percentage', async () => {
+      await test.step('a second save while a re-read is pending: the newer re-read wins', async () => {
         const hold = await holdReread();
+        await draft(4);
+        await hold.held; // the first re-read has read story 1 with four frames, and waits
         await draft(5);
+        await expect(railCells(page, 1).last()).toHaveText(storyPct(5, frames), { timeout: 15_000 });
+        await hold.release(); // the first re-read ends after the second
+        await expect(railCells(page, 1).last()).toHaveText(storyPct(5, frames));
+        expect(await railRow(page, 2)).toBe(story2);
+        await record('after frames 4 and 5, the older re-read ended last');
+      });
+
+      await test.step('the user leaves the project during a re-read: the other project shows its own rows, and Home shows the new percentage', async () => {
+        const hold = await holdReread();
+        await draft(6);
         await hold.held;
         await page.getByTitle('Switch project').click();
         await page.getByTestId(`project-_local_/_local_/${other}`).getByTestId('story-tile-1').click();
@@ -285,8 +311,8 @@ test.describe('J21 — a translator translates a story frame by frame', () => {
         await record('in the other project, after the re-read of the first ended');
         await page.getByTitle('Switch project').click();
         const tile = page.getByTestId(`project-_local_/_local_/${repo}`).getByTestId('story-tile-1');
-        await expect(tile).toContainText(storyPct(5, frames), { timeout: 30_000 });
-        lines.push(`Home tile of the first project, after frame 5: ${storyPct(5, frames)}`);
+        await expect(tile).toContainText(storyPct(6, frames), { timeout: 30_000 });
+        lines.push(`Home tile of the first project, after frame 6: ${storyPct(6, frames)}`);
       });
 
       const textPath = testInfo.outputPath('story-rail-interruptions.txt');
