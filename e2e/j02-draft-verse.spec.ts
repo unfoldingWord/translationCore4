@@ -277,38 +277,45 @@ test.describe('J2 — a translator drafts a verse', () => {
       await page.getByRole('button', { name: '2', exact: true }).click();
 
       /** Draft 9 and 10 as two verses; the file is the proof (the #141 case may have drafted them already). */
-      const draftTwoVerses = async () => {
+      const draftTwoVerses = async (gap = '') => {
         await page.getByRole('button', { name: 'Draft section 9–10' }).click();
-        await sectionText.fill(`9 ${VERSE_9}\n10 ${VERSE_10}`);
+        await sectionText.fill(`9 ${VERSE_9}\n${gap ? '\n' : ''}10 ${VERSE_10}`);
         await saveButton.click();
         await expect(page.getByTestId('section-editor')).toHaveCount(0);
         await expect
           .poll(() => { const usfm = onDisk(); return usfm.slice(verseLine(usfm, 9).start, verseLine(usfm, 10).end); }, { timeout: 10_000 })
-          .toBe(`\\v 9 ${VERSE_9}\n\\v 10 ${VERSE_10}\n`);
+          .toBe(`\\v 9 ${VERSE_9}\n${gap}\\v 10 ${VERSE_10}\n`);
       };
 
       /** Leave `typed` in the drafted section, save it, and prove the result on disk. */
-      const emptyWith = async (name: string, typed: string) => {
-        await draftTwoVerses();
+      const emptyWith = async (name: string, typed: string, gap = '') => {
+        await draftTwoVerses(gap);
         const drafted = onDisk();
         const pctDrafted = (await railPct.textContent()) ?? '';
         const segmentsBefore = new Set(segmentFiles());
         // The whole expected file: the drafted file with the two bodies as the stub.
-        const stub = (usfm: string, verse: number) => {
-          const span = verseTextSpan(usfm, CHAPTER, verse);
-          return `${usfm.slice(0, span.start)}___\n${usfm.slice(span.end)}`;
+        // By line, not by slot: a verse's slot also holds a \p line that follows it.
+        const stub = (usfm: string, verse: number, body: string) => {
+          const parts = usfm.split(`\\v ${verse} ${body}\n`);
+          expect(parts).toHaveLength(2);
+          return parts.join(`\\v ${verse} ___\n`);
         };
-        const expected = stub(stub(drafted, 10), 9);
+        const expected = stub(stub(drafted, 10, VERSE_10), 9, VERSE_9);
 
         await page.getByRole('button', { name: 'Draft section 9–10' }).click();
-        await expect(sectionText).toHaveValue(`9 ${VERSE_9}\n10 ${VERSE_10}`);
+        await expect(sectionText).toHaveValue(`9 ${VERSE_9}\n${gap ? '\n' : ''}10 ${VERSE_10}`);
         await sectionText.fill(typed);
         await expect(saveButton).toBeEnabled();
         record.push(`${name}: Save section enabled=${await saveButton.isEnabled()}`);
 
-        // The save asks first. "Keep editing" writes nothing and keeps the card.
+        // The save asks first. Escape and "Keep editing" write nothing and keep the card.
         await saveButton.click();
         await expect(confirm).toBeVisible();
+        await page.keyboard.press('Escape');
+        await expect(confirm).toHaveCount(0);
+        await expect(sectionText).toHaveValue(typed);
+        expect(onDisk()).toBe(drafted);
+        await saveButton.click();
         await confirm.getByRole('button', { name: 'Keep editing' }).click();
         await expect(confirm).toHaveCount(0);
         await expect(sectionText).toHaveValue(typed);
@@ -322,7 +329,8 @@ test.describe('J2 — a translator drafts a verse', () => {
         await expect.poll(onDisk, { timeout: 10_000 }).toBe(expected);
 
         const slots = () => eventsSince(segmentsBefore).filter((e) => e.op === 'text.verse.set').map((e) => `${e.chapter}:${e.verse}=${JSON.stringify(e.text)}`).sort();
-        await expect.poll(slots, { timeout: 10_000 }).toEqual(['2:10="___\\n"', '2:9="___\\n"']);
+        // A §8.4 slot's text runs to the next verse marker: verse 9's holds the \p line.
+        await expect.poll(slots, { timeout: 10_000 }).toEqual(['2:10="___\\n"', `2:9=${JSON.stringify(`___\n${gap}`)}`]);
         record.push(`${name}: text.verse.set events=${slots().join(' ')}`);
 
         const pctEmptied = (await railPct.textContent()) ?? '';
@@ -339,12 +347,26 @@ test.describe('J2 — a translator drafts a verse', () => {
         return emptyWith('verse numbers only', '9\n10');
       });
 
+      await test.step('a paragraph break between the two verses stays: the save changes the verse bodies only', async () => {
+        const kept = await emptyWith('paragraph break between the verses', '', '\\p\n');
+        const usfm = onDisk();
+        expect(kept).toBe(usfm);
+        const between = usfm.slice(verseLine(usfm, 9).start, verseLine(usfm, 10).end);
+        expect(between).toBe('\\v 9 ___\n\\p\n\\v 10 ___\n');
+        record.push(`paragraph break between the verses: lines of 9 and 10=${JSON.stringify(between)}`);
+      });
+
       await test.step('a section with no draft has nothing to save: Save section stays off', async () => {
         await page.getByRole('button', { name: 'Draft section 9–10' }).click();
         await expect(sectionText).toHaveValue('');
         await expect(saveButton).toBeDisabled();
         record.push(`undrafted section, empty text: Save section enabled=${await saveButton.isEnabled()}`);
         await page.getByTestId('section-editor').getByRole('button', { name: 'Cancel' }).click();
+      });
+
+      await test.step('leave the section as two plain verses for the cases that follow', async () => {
+        // A save with text and no blank line removes the paragraph break again.
+        await draftTwoVerses();
       });
 
       // The run's artifacts: the recorded states and the stored book.

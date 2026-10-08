@@ -188,7 +188,9 @@ export function SectionEditor({ chapter, keys, verses, span, dir, editType }) {
   const save = () => {
     if (!canSave) return;
     const groups = sectionGroups(draft.markers, pins, keys);
-    const formats = groupFormats(groups, draft.blocks);
+    // An emptied save changes the verse bodies only: the \p and \q lines
+    // between the verses stay, as when each verse is emptied alone.
+    const formats = empties ? {} : groupFormats(groups, draft.blocks);
     actions.saveSection(
       chapter,
       keys,
