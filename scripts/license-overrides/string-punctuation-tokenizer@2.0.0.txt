@@ -1,0 +1,11 @@
+The package.json of string-punctuation-tokenizer 2.0.0 names GPL-2.0. The package ships
+no license text. Version 2.0.0 (2020-04-03) comes before the MIT LICENSE file that its
+repository (github.com/translationCoreApps/string-punctuation-tokenizer) added on
+2020-06-09, so this version stays under GPL-2.0.
+
+Copyright (c) unfoldingWord
+
+This program is free software; you can redistribute it and/or modify it under the terms
+of the GNU General Public License as published by the Free Software Foundation; version 2.
+The full text of the GNU General Public License version 2 is in licenses/COPYING, and in
+the app under About translationCore > Read the license.

@@ -6,6 +6,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import { lane } from './e2e/lane.mjs';
+import { collectNpmNotices, renderNpmNotices } from './scripts/third-party-npm.mjs';
 
 // #524: TC4_VITE_PORT and TC4_RIG_PORT name this checkout's port lane (e2e/lane.mjs).
 const LANE = lane();
@@ -14,9 +15,33 @@ const LANE = lane();
 // git checkout fails here: it has no hash to show.
 const { version } = JSON.parse(fs.readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
 const commit = execFileSync('git', ['rev-parse', '--short=7', 'HEAD'], { cwd: fileURLToPath(new URL('.', import.meta.url)), encoding: 'utf8' }).trim();
+// #554: the build writes third-party-npm.md: the npm packages in the app, with each license
+// text. The packager adds it to THIRD-PARTY-NOTICES.md. A package counts when it has code in
+// an output chunk. The worker builds run inside the main build, so the main build's
+// generateBundle sees the worker modules too.
+const bundledModules = new Set();
+const recordBundledModules = {
+  name: 'tc4-bundled-modules',
+  apply: 'build',
+  generateBundle(_, bundle) {
+    for (const chunk of Object.values(bundle)) {
+      if (chunk.type !== 'chunk') continue;
+      for (const [id, info] of Object.entries(chunk.modules)) if (info.renderedLength > 0) bundledModules.add(id);
+    }
+  },
+};
+const thirdPartyNpm = {
+  name: 'tc4-third-party-npm',
+  apply: 'build',
+  generateBundle() {
+    const overrides = fileURLToPath(new URL('./scripts/license-overrides/', import.meta.url));
+    this.emitFile({ type: 'asset', fileName: 'third-party-npm.md', source: renderNpmNotices(collectNpmNotices(bundledModules, overrides)) });
+  },
+};
 
 export default defineConfig(({ command }) => ({
-  plugins: [react(), nodePolyfills()],
+  plugins: [react(), nodePolyfills(), recordBundledModules, thirdPartyNpm],
+  worker: { plugins: () => [recordBundledModules] },
   define: { __APP_VERSION__: JSON.stringify(version), __APP_COMMIT__: JSON.stringify(commit) },
   // pankosmia-web 0.18.15 (a83725b) has no CORS handling at all (source-verified 2026-10-03), so the dev
   // server proxies /api to the rig — same-origin to the browser. The built client is
