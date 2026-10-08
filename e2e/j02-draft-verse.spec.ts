@@ -259,6 +259,105 @@ test.describe('J2 — a translator drafts a verse', () => {
   );
 
   test(
+    'empty a drafted section (Titus 2:9–10): delete all the text, or leave only the verse numbers, confirm the save — both verses are the ___ stub again, one text.verse.set each, and the percentage goes down (#600)',
+    { tag: ['@inc9', '@J2'] },
+    async ({ page }, testInfo) => {
+      const VERSE_9 = 'Exhorta a los siervos a que se sujeten a sus amos y a que agraden en todo';
+      const VERSE_10 = 'no defraudando sino mostrando toda buena fe';
+      test.setTimeout(60_000); // four saves
+      const onDisk = () => readIngredient(SEEDED_PROJECT, BOOK_IPATH).toString('utf8');
+      const railPct = titusRailPct(page);
+      const sectionText = page.getByRole('textbox', { name: 'Section 9–10' });
+      const saveButton = page.getByRole('button', { name: 'Save section' });
+      const confirm = page.getByRole('dialog', { name: 'Remove all the text of section 9–10?' });
+      const record: string[] = [];
+
+      await page.goto('/');
+      await page.getByTestId('project-_local_/_local_/sample_burrito').getByRole('button', { name: /Titus/ }).click();
+      await page.getByRole('button', { name: '2', exact: true }).click();
+
+      /** Draft 9 and 10 as two verses; the file is the proof (the #141 case may have drafted them already). */
+      const draftTwoVerses = async () => {
+        await page.getByRole('button', { name: 'Draft section 9–10' }).click();
+        await sectionText.fill(`9 ${VERSE_9}\n10 ${VERSE_10}`);
+        await saveButton.click();
+        await expect(page.getByTestId('section-editor')).toHaveCount(0);
+        await expect
+          .poll(() => { const usfm = onDisk(); return usfm.slice(verseLine(usfm, 9).start, verseLine(usfm, 10).end); }, { timeout: 10_000 })
+          .toBe(`\\v 9 ${VERSE_9}\n\\v 10 ${VERSE_10}\n`);
+      };
+
+      /** Leave `typed` in the drafted section, save it, and prove the result on disk. */
+      const emptyWith = async (name: string, typed: string) => {
+        await draftTwoVerses();
+        const drafted = onDisk();
+        const pctDrafted = (await railPct.textContent()) ?? '';
+        const segmentsBefore = new Set(segmentFiles());
+        // The whole expected file: the drafted file with the two bodies as the stub.
+        const stub = (usfm: string, verse: number) => {
+          const span = verseTextSpan(usfm, CHAPTER, verse);
+          return `${usfm.slice(0, span.start)}___\n${usfm.slice(span.end)}`;
+        };
+        const expected = stub(stub(drafted, 10), 9);
+
+        await page.getByRole('button', { name: 'Draft section 9–10' }).click();
+        await expect(sectionText).toHaveValue(`9 ${VERSE_9}\n10 ${VERSE_10}`);
+        await sectionText.fill(typed);
+        await expect(saveButton).toBeEnabled();
+        record.push(`${name}: Save section enabled=${await saveButton.isEnabled()}`);
+
+        // The save asks first. "Keep editing" writes nothing and keeps the card.
+        await saveButton.click();
+        await expect(confirm).toBeVisible();
+        await confirm.getByRole('button', { name: 'Keep editing' }).click();
+        await expect(confirm).toHaveCount(0);
+        await expect(sectionText).toHaveValue(typed);
+        expect(onDisk()).toBe(drafted);
+        record.push(`${name}: confirmation shown=true, file after "Keep editing" unchanged=${onDisk() === drafted}`);
+
+        await saveButton.click();
+        await confirm.getByRole('button', { name: 'Remove the text' }).click();
+        await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
+        await expect(page.getByTestId('section-editor')).toHaveCount(0);
+        await expect.poll(onDisk, { timeout: 10_000 }).toBe(expected);
+
+        const slots = () => eventsSince(segmentsBefore).filter((e) => e.op === 'text.verse.set').map((e) => `${e.chapter}:${e.verse}=${JSON.stringify(e.text)}`).sort();
+        await expect.poll(slots, { timeout: 10_000 }).toEqual(['2:10="___\\n"', '2:9="___\\n"']);
+        record.push(`${name}: text.verse.set events=${slots().join(' ')}`);
+
+        const pctEmptied = (await railPct.textContent()) ?? '';
+        expect(Number.parseInt(pctEmptied, 10)).toBeLessThan(Number.parseInt(pctDrafted, 10));
+        record.push(`${name}: Titus percent drafted=${pctDrafted} emptied=${pctEmptied}`);
+        return expected;
+      };
+
+      await test.step('all the Type text deleted: Save section is on, asks, and writes the two stubs', async () => {
+        await emptyWith('empty text', '');
+      });
+
+      const stored = await test.step('only the section\'s own verse numbers left: the save is the same', async () => {
+        return emptyWith('verse numbers only', '9\n10');
+      });
+
+      await test.step('a section with no draft has nothing to save: Save section stays off', async () => {
+        await page.getByRole('button', { name: 'Draft section 9–10' }).click();
+        await expect(sectionText).toHaveValue('');
+        await expect(saveButton).toBeDisabled();
+        record.push(`undrafted section, empty text: Save section enabled=${await saveButton.isEnabled()}`);
+        await page.getByTestId('section-editor').getByRole('button', { name: 'Cancel' }).click();
+      });
+
+      // The run's artifacts: the recorded states and the stored book.
+      const textPath = testInfo.outputPath('j02-empty-section.txt');
+      fs.writeFileSync(textPath, `${record.join('\n')}\n`);
+      await testInfo.attach('j02-empty-section.txt', { path: textPath, contentType: 'text/plain' });
+      const usfmPath = testInfo.outputPath('j02-empty-section-TIT.usfm');
+      fs.writeFileSync(usfmPath, stored);
+      await testInfo.attach('j02-empty-section-TIT.usfm', { path: usfmPath, contentType: 'text/plain' });
+    },
+  );
+
+  test(
     'create a verse span (Titus 2:9-10): stack verse 10 on verse 9 in Place mode, save — one \\v 9-10 line and one text.structure.apply on disk (#63, D70)',
     { tag: ['@inc5', '@J2'] },
     async ({ page }, testInfo) => {
