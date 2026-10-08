@@ -1781,8 +1781,8 @@ function writeStoryUnit(store, unit, text) {
 }
 
 /** The story scheduler of an open OBS project. A durable numbered-frame write
- * changes the project's draft percentage (D74), so it drops Home's cached
- * value; the title (frame 0) and the reference line do not count (#289). */
+ * changes the project's draft percentage (D74), so it makes Home's cached
+ * value stale; the title (frame 0) and the reference line do not count (#289). */
 function installStoryScheduler({ storySchedulerRef, store, dispatch, onFrameSaved, onStorySaved = undefined }) {
   if (!storySchedulerRef) return;
   storySchedulerRef.current = new StoryScheduler({
@@ -2034,13 +2034,17 @@ async function performProjectOpen(ctx, repoPath, bookCode, view = 'read') {
       store,
       dispatch,
       onFrameSaved: (unit, text) => {
-        invalidateProgress?.(repoPath);
         // #290: a durable frame write is a Resume target (mode 'draft'), as a verse save is.
+        // The record also marks the project's cached progress stale (#573).
         recordLastEdit?.({ repoPath, book: STORY_BOOK, chapter: unit.story, verse: unit.frame, snippet: text.trim().slice(0, 90), mode: 'draft', at: Date.now() });
       },
       // #328: every durable story write (title, frame, reference) is an edit of
-      // that story for the Home card's recency.
-      onStorySaved: (unit) => rememberObsEdit?.(repoPath, unit.story, Date.now()),
+      // that story for the Home card's recency. The cached progress holds the
+      // story's title too, so a title write makes it stale (#573).
+      onStorySaved: (unit) => {
+        rememberObsEdit?.(repoPath, unit.story, Date.now());
+        if (unit.kind === 'title') invalidateProgress?.(repoPath);
+      },
     });
     installAlignCheckSchedulers(ctx, store);
     apiClient.setCurrentProject(repoPath).catch(() => {});
@@ -2327,15 +2331,17 @@ export const __performLoadUnderstandForTests = performLoadUnderstand;
 /** Test hook (#290): the story Understand load is unit-tested on the fake rig. */
 export const __performLoadStoryUnderstandForTests = performLoadStoryUnderstand;
 
-/** Home: lazy per-book draft progress (design shows a bar per tile). */
+/** Home: lazy per-book draft progress (design shows a bar per tile). #573:
+ * with `inPlace`, the re-read of the open story project's entry after an edit. */
 async function performLoadProgress(ctx) {
-  const { project, stateRef, dispatch, progressGen, actions, apiClient: api } = ctx;
+  const { project, stateRef, dispatch, progressGen, progressStale, inPlace = false, actions, apiClient: api } = ctx;
   // Review of the D30 sweep: a cached map with UNKNOWN (null) entries
   // must not block a re-read — one transient failure would pin the
   // tiles to em-dash for the whole session. Only a fully-known map is
   // final.
   const cached = stateRef.current.progressByProject[project.id];
-  if (cached && !Object.values(cached).includes(null)) return;
+  // #573: a stale entry is fully known but old, so it is read again.
+  if (cached && !progressStale?.has(project.id) && !Object.values(cached).includes(null)) return;
   // An invalidation during the read (an edit, a new book) must win over
   // these soon-stale percentages.
   const gen = progressGen.get(project.id) || 0;
@@ -2360,7 +2366,19 @@ async function performLoadProgress(ctx) {
     }
     const progress = await obsStoryProgress(reader, sourceTitle);
     if ((progressGen.get(project.id) || 0) !== gen) return;
-    dispatch({ type: 'setProgress', id: project.id, progress });
+    if (!inPlace) {
+      progressStale?.delete(project.id);
+      dispatch({ type: 'setProgress', id: project.id, progress });
+      return;
+    }
+    // #573: an in-place re-read is discarded when the user left the project
+    // during it, and when a story read failed: the Stories rail keeps its last
+    // known rows. A failed gateway read leaves a title empty, so each row
+    // keeps its last known title. The entry stays stale: Home reads it again.
+    if (stateRef.current.project?.id !== project.id || progress.OBS === null) return;
+    const last = new Map((stateRef.current.progressByProject[project.id]?.stories ?? []).map((row) => [row.number, row.title]));
+    const stories = progress.stories.map((row) => (row.title ? row : { ...row, title: last.get(row.number) || '' }));
+    dispatch({ type: 'setProgress', id: project.id, progress: { ...progress, stories } });
   };
   if (project.flavor === 'textStories') return loadObs();
   // No upper bound on book count: a project with more than 12 books
@@ -3309,9 +3327,18 @@ export function AppProvider({ children }) {
   }
   // Home's progress cache for one project: dropped, with a generation bump so
   // an older in-flight loadProgress cannot repopulate it (Codex review of #138).
+  // #573: the Stories rail of the open project reads the same entry for its
+  // titles and percentages, so that entry stays, stale, and is read again in place.
   const progressGen = new Map();
+  const progressStale = new Set();
   function invalidateProgress(repoPath) {
     progressGen.set(repoPath, (progressGen.get(repoPath) || 0) + 1);
+    const st = stateRef.current;
+    if (isObsProject(st) && st.project.id === repoPath) {
+      progressStale.add(repoPath);
+      void performLoadProgress({ project: st.project, stateRef, dispatch, progressGen, progressStale, inPlace: true, actions, apiClient: api });
+      return;
+    }
     dispatch({ type: 'setProgress', id: repoPath });
   }
   // #329: one observation of where the user is, folded into the per-unit place
@@ -6077,7 +6104,7 @@ export function AppProvider({ children }) {
       },
 
       // ---- Home: lazy per-book draft progress (design shows a bar per tile) ----
-      loadProgress: (project) => performLoadProgress({ project, stateRef, dispatch, progressGen, actions: a, apiClient: api }),
+      loadProgress: (project) => performLoadProgress({ project, stateRef, dispatch, progressGen, progressStale, actions: a, apiClient: api }),
 
       /** #329: the frame in focus on the story screens; the place record follows it. */
       setStoryFrame: (frame) => {
