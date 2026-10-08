@@ -95,6 +95,13 @@ function forgetToken() {
   return { forgotten: true };
 }
 
+// The help-desk send (#378): scripts/desktop-feedback.cjs, copied beside this
+// file as tc4-feedback.cjs, with the build's values in tc4-helpdesk.json. The
+// page calls it as `tc4Desktop.feedback.send` (scripts/preload.cjs).
+const { loadHelpDesk, sendFeedback } = require('./tc4-feedback.cjs');
+const helpDesk = loadHelpDesk(__dirname);
+const sendToHelpDesk = (_event, payload) => sendFeedback(payload, { desk: helpDesk });
+
 function start() {
   if (process.platform === 'win32') app.setAppUserModelId('org.unfoldingword.translationcore4');
 
@@ -113,6 +120,7 @@ function start() {
   ipcMain.handle('token:keep', keepToken);
   ipcMain.handle('token:read', readToken);
   ipcMain.handle('token:forget', forgetToken);
+  ipcMain.handle('feedback:send', sendToHelpDesk);
   app.on('browser-window-created', (_event, win) => {
     watchDownloads(win.webContents.session);
     // #362: "Open on Door43" is a link with target=_blank; it opens in the
