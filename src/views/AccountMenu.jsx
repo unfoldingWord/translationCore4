@@ -139,6 +139,8 @@ export default function AccountMenu() {
           {/* #522: the app language, below the internet switch and before About. */}
           <Row testId="account-language" title={t('account.language')} sub={LOCALES.find((l) => l.id === s.appLocale)?.label}
             onClick={choose(() => setLanguage(true))} />
+          {/* #521: the Feedback dialog of #378; opening it sends nothing. */}
+          <Row testId="account-report" title={t('account.report')} onClick={choose(actions.reportProblem)} />
           <Row testId="account-about" title={t('account.about')} onClick={choose(() => setAbout('about'))} />
           {state !== 'out' && <>
             <Rule style={{ margin: '5px 4px' }} />

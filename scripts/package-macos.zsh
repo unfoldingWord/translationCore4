@@ -34,6 +34,7 @@ const fs = require('fs');
 const path = require('path');
 const [metadataFile, resources] = process.argv.slice(2);
 const { packages } = JSON.parse(fs.readFileSync(metadataFile, 'utf8'));
+const rows = [];
 for (const [name, files, license] of [
   ['libgit2-sys', ['libgit2/COPYING', 'libgit2/deps/pcre/COPYING', 'libgit2/deps/llhttp/LICENSE-MIT'], 'GPL-2.0 with linking exception; bundled dependency notices'],
   ['libssh2-sys', ['libssh2/COPYING'], 'BSD-3-Clause'],
@@ -43,9 +44,15 @@ for (const [name, files, license] of [
   if (!pkg) throw new Error(`Missing vendored native library: ${name}`);
   const contents = files.map((file) => fs.readFileSync(path.join(path.dirname(pkg.manifest_path), file), 'utf8')).join('\n\n');
   fs.writeFileSync(path.join(resources, 'licenses', `LICENSE.${name}`), contents);
-  fs.appendFileSync(path.join(resources, 'THIRD-PARTY-NOTICES.md'),
-    `| ${name} (statically linked native library) | ${pkg.version} | ${license} | ${pkg.repository} |\n`);
+  rows.push(`| ${name} (statically linked native library) | ${pkg.version} | ${license} | ${pkg.repository} |\n`);
 }
+// #554: the rows go at the end of the table, above the paragraph and the npm list
+// that package-desktop.zsh wrote after it.
+const notices = path.join(resources, 'THIRD-PARTY-NOTICES.md');
+const text = fs.readFileSync(notices, 'utf8');
+const tableEnd = text.indexOf('\nnpm dependency license texts remain');
+if (tableEnd < 0) throw new Error('THIRD-PARTY-NOTICES.md has no end-of-table marker (#554)');
+fs.writeFileSync(notices, text.slice(0, tableEnd) + rows.join('') + text.slice(tableEnd));
 NODE
 
 # Keep the pinned template's resource cwd; change only its Mac executable path.

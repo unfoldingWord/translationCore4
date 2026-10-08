@@ -214,6 +214,10 @@ Steps, in order:
 6. Stage the artifact: Electronite + app dir + license files +
    `THIRD-PARTY-NOTICES.md` + `BUILD-MANIFEST.json` (every input with its
    exact version, commit, and checksum — also echoed in the build log).
+   `licenses/COPYING` is the full GPL version 2 text. `THIRD-PARTY-NOTICES.md` ends
+   with the npm packages in the client JavaScript, with each license text. The client
+   build writes that list (`dist/third-party-npm.md`, #554). A package that ships no
+   license file needs a text in `scripts/license-overrides/`, or the build fails.
 7. Smoke test **through the shipped entry point**: run the shipped launcher
    (`translationCore4.app/Contents/MacOS/Electron` on macOS, `start-tc4.sh` on Linux)
    with a fresh `HOME` and no app-specific environment overrides. The app

@@ -39,6 +39,7 @@
   "account.internet": "Usar el internet",
   "account.internetOn": "Activado hasta que lo desactives o cierres tC4.",
   "account.internetOff": "Desactivado. Un paso que necesite el internet lo pedirá primero.",
+  "account.report": "Informar de un problema",
   "account.about": "Acerca de translationCore",
   "account.language": "Idioma de la aplicación",
   "language.title": "Idioma de la aplicación",
