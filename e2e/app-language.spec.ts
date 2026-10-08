@@ -270,7 +270,9 @@ test.describe('#522 — App language in the account menu', () => {
     await expect(cancel(page)).toBeDisabled();
     await page.keyboard.press('Escape');
     await page.mouse.click(5, 400);
-    await dialog(page).getByRole('button', { name: ES['common.close'], exact: true }).click();
+    // The close button is not offered while the write is pending (the pattern of the
+    // import and share dialogs); it is back once the write has answered.
+    await expect(dialog(page).getByRole('button', { name: ES['common.close'], exact: true })).toHaveCount(0);
     await expect(dialog(page)).toBeVisible();
     await expect(dialog(page)).toHaveAttribute('data-saving', 'true');
     await expectLanguage(page, 'es-419');

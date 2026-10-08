@@ -221,7 +221,9 @@ function LicenseDialog({ onClose }) {
  * succeeded; Cancel, Escape, the close button and the scrim restore the applied
  * language and save nothing. A failed save keeps the preview and the dialog,
  * with an error; retry and Cancel are then available again. While the save is
- * pending, the select, Apply and every dismissal are disabled (Q9).
+ * pending, the select, Apply and Cancel are disabled, and the close button,
+ * Escape and the scrim are withdrawn (`onClose` undefined, as the import and
+ * share dialogs do while busy) (Q9).
  * The applied locale is captured when Apply starts: a later rollback uses the
  * value that was applied then, not one a race could leave. */
 function AppLanguageDialog({ applied, actions, onClose }) {
@@ -260,7 +262,7 @@ function AppLanguageDialog({ applied, actions, onClose }) {
   };
   return (
     <Modal data-testid="language-dialog" data-saving={saving ? 'true' : 'false'} width={420} title={t('language.title')}
-      closeLabel={t('common.close')} onClose={cancel}
+      closeLabel={t('common.close')} onClose={locked ? undefined : cancel}
       footer={<>
         <Button variant="secondary" onClick={cancel} disabled={locked} data-testid="language-cancel">{t('language.cancel')}</Button>
         <Button onClick={apply} disabled={locked || preview === applied} data-testid="language-apply">{t('language.apply')}</Button>
