@@ -1,6 +1,7 @@
 // D88 (#514): the Door43 account menu at the right of the top bar, on Home and
-// in a project, and the "Use the internet?" dialog every internet task opens
-// first while "Ask before using the internet" is on. Opening the menu sends
+// in a project. D95 (#559): the button shows while the internet is on, the
+// menu's switch turns it off, and the "Turn on the internet?" dialog opens for
+// a step that needs the internet while it is off. Opening the menu sends
 // nothing: its account row shows only what this computer already knows (the
 // signed-in login, or that the keychain holds a token, D85).
 import React, { useEffect, useRef, useState } from 'react';
@@ -11,7 +12,7 @@ import { Layer } from '../ds/components/primitives/Layer.jsx';
 import { Surface } from '../ds/components/primitives/Surface.jsx';
 import { Action } from '../ds/components/primitives/Action.jsx';
 import { Rule } from '../ds/components/primitives/Rule.jsx';
-import { Modal, Button, Checkbox } from '../ds/index.js';
+import { Modal, Button } from '../ds/index.js';
 
 const TRIGGER = {
   width: 34, height: 34, padding: 0, borderRadius: 'var(--radius-pill)', display: 'flex', alignItems: 'center',
@@ -48,6 +49,26 @@ const Switch = ({ on }) => (
   </span>
 );
 
+/** The account button. D95: while the internet is on it carries a dot, and its
+ * tooltip says so; the menu's switch turns the internet off. */
+function Trigger({ state, user, label, online, open, onClick }) {
+  const title = online ? t('net.on.tooltip') : label;
+  return (
+    <>
+      <button type="button" data-testid="account-menu" data-state={state} data-internet={online ? 'on' : 'off'}
+        aria-haspopup="menu" aria-expanded={open} aria-label={online ? `${label}. ${title}` : label} title={title} onClick={onClick}
+        style={{ ...TRIGGER, ...(user
+          ? { background: 'var(--uw-inspire)', border: '2px solid rgba(255,255,255,.9)', fontWeight: 900, fontSize: 12.5 }
+          : { background: 'rgba(255,255,255,.12)', border: '1.5px solid rgba(255,255,255,.55)' }),
+        boxShadow: open ? '0 0 0 3px rgba(49,173,227,.45)' : 'none' }}>
+        {user ? user.slice(0, 2).toUpperCase() : <Person />}
+      </button>
+      {online && <span data-testid="internet-indicator" aria-hidden="true" style={{ position: 'absolute', right: -2, top: -2, width: 11, height: 11,
+        borderRadius: 'var(--radius-pill)', background: 'var(--uw-inspire)', border: '2px solid #fff', boxSizing: 'border-box', pointerEvents: 'none' }} />}
+    </>
+  );
+}
+
 export default function AccountMenu() {
   const { s, actions } = useApp();
   const [open, setOpen] = useState(false);
@@ -58,6 +79,7 @@ export default function AccountMenu() {
   const saved = !user && s.door43Kept;
   const state = user ? 'in' : saved ? 'saved' : 'out';
   const label = t(`account.label.${state}`, { user });
+  const online = s.internetOn;
   const choose = (run) => () => {
     setOpen(false);
     run();
@@ -90,15 +112,8 @@ export default function AccountMenu() {
   };
   return (
     <>
-      <span ref={ref} style={{ display: 'inline-flex' }}>
-        <button type="button" data-testid="account-menu" data-state={state} aria-haspopup="menu" aria-expanded={open}
-          aria-label={label} title={label} onClick={() => setOpen(!open)}
-          style={{ ...TRIGGER, ...(user
-            ? { background: 'var(--uw-inspire)', border: '2px solid rgba(255,255,255,.9)', fontWeight: 900, fontSize: 12.5 }
-            : { background: 'rgba(255,255,255,.12)', border: '1.5px solid rgba(255,255,255,.55)' }),
-          boxShadow: open ? '0 0 0 3px rgba(49,173,227,.45)' : 'none' }}>
-          {user ? user.slice(0, 2).toUpperCase() : <Person />}
-        </button>
+      <span ref={ref} style={{ display: 'inline-flex', position: 'relative' }}>
+        <Trigger state={state} user={user} label={label} online={online} open={open} onClick={() => setOpen(!open)} />
       </span>
       <Layer open={open} level="popover" placement="anchor" anchorTo={ref} align="end"
         role="menu" label={label} dismiss="outside escape" onDismiss={() => setOpen(false)}>
@@ -115,10 +130,10 @@ export default function AccountMenu() {
             onClick={choose(() => actions.openSignIn())} />}
           {s.accountError && <p role="alert" data-testid="account-error" style={{ ...SUB, margin: '2px 10px 6px', maxWidth: 260 }}>{t(s.accountError)}</p>}
           <Rule style={{ margin: '5px 4px' }} />
-          {/* A menu row that stays open: the switch changes the preference only. */}
-          <Row testId="account-ask" role="menuitemcheckbox" checked={s.askInternet} title={t('account.ask')}
-            sub={t(s.askInternet ? 'account.askOn' : 'account.askOff')} end={<Switch on={s.askInternet} />}
-            onClick={() => actions.setAskInternet(!s.askInternet)} />
+          {/* A menu row that stays open: the switch changes the internet state only (D95). */}
+          <Row testId="account-internet" role="menuitemcheckbox" checked={online} title={t('account.internet')}
+            sub={t(online ? 'account.internetOn' : 'account.internetOff')} end={<Switch on={online} />}
+            onClick={() => actions.setInternet(!online)} />
           <Row testId="account-about" title={t('account.about')} onClick={choose(() => setAbout('about'))} />
           {state !== 'out' && <>
             <Rule style={{ margin: '5px 4px' }} />
@@ -189,9 +204,10 @@ function LicenseDialog({ onClose }) {
   );
 }
 
-/** D88: "Use the internet?" — what the task does, whom it contacts and what
- * leaves the computer. Mounted over every other dialog, so a task that starts
- * in Source texts or Share asks on top of it. */
+/** D95: "Turn on the internet?" — what the step does, and that the internet
+ * stays on until the user turns it off or closes tC4. Mounted over every
+ * other dialog, so a step that starts in Source texts or Share asks on top of
+ * it. "tC4 could not use the internet" shows here too (D88 point 4). */
 export function InternetDialog() {
   const { s, actions } = useApp();
   if (s.netFailed) {
@@ -203,24 +219,16 @@ export function InternetDialog() {
     );
   }
   if (!s.netAsk) return null;
-  return <Ask key={s.netAsk.kind} kind={s.netAsk.kind} actions={actions} />;
-}
-
-const ACTION_LABEL = { signIn: 'net.ask.signInAction', fix: 'net.ask.fixAction' };
-
-function Ask({ kind, actions }) {
-  const [dontAsk, setDontAsk] = useState(false);
+  const kind = s.netAsk.kind;
   return (
-    <Modal data-testid="net-ask" data-kind={kind} width={520} title={t('net.ask.title')}
+    <Modal key={kind} data-testid="net-ask" data-kind={kind} width={520} title={t('net.ask.title')}
       closeLabel={t('common.close')} onClose={actions.cancelInternet}
       footer={<>
-        <Button variant="secondary" onClick={actions.cancelInternet} data-testid="net-cancel">{t('net.ask.cancel')}</Button>
-        <Button onClick={() => actions.confirmInternet(dontAsk)} data-testid="net-confirm">{t(ACTION_LABEL[kind] ?? 'net.ask.continue')}</Button>
+        <Button variant="secondary" onClick={actions.cancelInternet} data-testid="net-cancel">{t('net.ask.notNow')}</Button>
+        <Button onClick={actions.turnOnInternet} data-testid="net-confirm">{t('net.ask.turnOn')}</Button>
       </>}>
-      <p style={{ ...BODY, color: 'var(--text-body)' }} data-testid="net-ask-reason">{t(`net.ask.${kind}`)}</p>
-      <Checkbox label={t('net.ask.dontAsk')} checked={dontAsk} data-testid="net-dont-ask"
-        onChange={(e) => setDontAsk(!!e.target.checked)} style={{ marginTop: 14 }} />
-      <p style={{ ...BODY, marginTop: 14 }}>{t('net.ask.note')}</p>
+      <p style={{ ...BODY, color: 'var(--text-body)' }} data-testid="net-ask-reason">{t('net.ask.step', { what: t(`net.ask.${kind}`) })}</p>
+      <p style={{ ...BODY, marginTop: 14 }}>{t('net.ask.until')}</p>
     </Modal>
   );
 }

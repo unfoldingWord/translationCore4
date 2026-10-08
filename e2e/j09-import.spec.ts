@@ -20,7 +20,6 @@ import { importFixture } from './helpers/import';
 import { pickOption } from './helpers/dropdown';
 import { assertNoRepoCreated, MANIFEST_DIR, readManifest, seedEventsOf, TC3_DCS_TAGS } from '../test/helpers/import';
 import { SEEDED_PROJECT, lastCommitMessage, readDecisionFile, readProjectPins, rigRepo } from './helpers/rig';
-import { askInternet } from './helpers/door43Share';
 import { recordExternal } from './helpers/externalRequests';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -184,20 +183,17 @@ test.describe('J9 — a facilitator imports existing work', () => {
     const TIT = path.join(MANIFEST_DIR, 'tc3', 'cfm_fbt_tit_book.zip');
     const MULTI = ['jhn', 'job', 'luk'].map((b) => path.join(MANIFEST_DIR, 'tc3', 'multi', `en_kjv_${b}_book.zip`));
     const EN_TN_V87 = TC3_DCS_TAGS['git.door43.org/unfoldingWord/en_tn@v87'];
-    // D88: "Ask before using the internet" as the app leaves it, so a reload keeps it:
-    // `setNet(true)` is the preference off, `setNet(false)` is on.
-    const setNet = (online: boolean) => askInternet(!online);
-    // D88: the review never looks up versions on its own; with ask off, this press is the whole task.
-    const lookUp = (page: Page) => page.getByTestId('import-allow-internet').click();
+    // D95: the internet is off at every page load, and nothing is stored. The review never
+    // looks up versions on its own; "Look up on Door43" is the first step of its page load
+    // that needs the internet, so it asks to turn the internet on, and the press turns it on.
+    const lookUp = async (page: Page) => {
+      await page.getByTestId('import-allow-internet').click();
+      await expect(page.getByTestId('net-ask')).toHaveAttribute('data-kind', 'importVersions');
+      await page.getByTestId('net-confirm').click();
+    };
     const onDisk = (repo: string) => [...tree(path.join(repo, 'ingredients'))].map(([rel, bytes]) => [rel, bytes.toString('utf8')] as [string, string]);
     /** Every repo pin of a resources.json carries its 40-hex sha (D58). */
     const everyPinHasSha = (text: string) => (text.match(/"repoPath"/g) ?? []).length === (text.match(/"sha": "[0-9a-f]{40}"/g) ?? []).length;
-    test.afterEach(async () => {
-      await setNet(true);
-    });
-    test.afterAll(async () => {
-      await askInternet(true);
-    });
     /** The DCS tags listing, answered from the recorded tags (TC3_DCS_TAGS) so the journeys do not depend on the network. */
     const recordedDcsTags = (page: Page) =>
       page.route(/https:\/\/git\.door43\.org\/api\/v1\/repos\/.+\/tags/, async (route) => {
@@ -211,7 +207,6 @@ test.describe('J9 — a facilitator imports existing work', () => {
 
     test('tC3 offline: the review page shows what carries over; Use installed versions moves the decisions (D36); one new project that opens in Understand (D87)', { tag: ['@inc8', '@J9'] }, async ({ page }, testInfo) => {
       test.setTimeout(180_000);
-      await setNet(false);
       const requests = recordExternal(page);
       const name = fresh('Tita tC3');
       const repo = rigRepo(abbrOf(name));
@@ -250,7 +245,7 @@ test.describe('J9 — a facilitator imports existing work', () => {
         expect(lastCommitMessage(abbrOf(name))).toBe(`Import ${name} (tC4)`);
         expect(git(repo, 'status', '--porcelain')).toBe('');
       });
-      await test.step('D88: the whole import, with asking on, made no external request', async () => {
+      await test.step('D95: the whole import, with the internet off, made no external request', async () => {
         expect(requests.external()).toEqual([]);
         await requests.save(testInfo, 'j9-tc3-offline-requests');
       });
@@ -267,18 +262,17 @@ test.describe('J9 — a facilitator imports existing work', () => {
 
     test('tC3 online: each version DCS has is a full pin; the project opens and the guided fix lists the en_tn v87 this computer lacks', { tag: ['@inc8', '@J9'] }, async ({ page }, testInfo) => {
       test.setTimeout(180_000);
-      await setNet(true);
       await page.reload();
       await recordedDcsTags(page);
       const name = fresh('Tita tC3 online');
       const repo = rigRepo(abbrOf(name));
-      await test.step('with asking off, the import up to its review page sends nothing (D88): the lookup waits for its click', async () => {
+      await test.step('the import up to its review page sends nothing (D95): the lookup waits for its click', async () => {
         const requests = recordExternal(page);
         await importFixture(page, TIT, { kind: 'tc3', edits: { name }, confirm: false });
         await expect(page.getByTestId('import-resources')).toHaveAttribute('data-state', 'offline');
         await page.waitForTimeout(2_000);
         expect(requests.external()).toEqual([]);
-        await requests.save(testInfo, 'j9-tc3-ask-off-requests');
+        await requests.save(testInfo, 'j9-tc3-before-lookup-requests');
       });
       await test.step('the review page finds the versions; Import needs no choice', async () => {
         await lookUp(page);
@@ -293,8 +287,7 @@ test.describe('J9 — a facilitator imports existing work', () => {
         expect(readDecisionFile(abbrOf(name), 'translationNotes', 'TIT')!.resource).toMatchObject({ sha: EN_TN_V87, languageSet: 'primary' });
         expect(everyPinHasSha(fs.readFileSync(path.join(repo, 'ingredients', 'checking', 'resources.json'), 'utf8'))).toBe(true);
       });
-      await test.step('offline, Check offers the guided fix for the pinned en_tn v87', async () => {
-        await setNet(false);
+      await test.step('offline (a new page load starts with the internet off), Check offers the guided fix for the pinned en_tn v87', async () => {
         await page.goto('/');
         await page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`).getByRole('button', { name: /Titus/ }).click();
         await page.getByRole('tab', { name: 'Check', exact: true }).click();
@@ -310,7 +303,6 @@ test.describe('J9 — a facilitator imports existing work', () => {
 
     test('tC3 online, mixed: the found pins stay named when translationWords moves to the installed versions, and they are stored', { tag: ['@inc8', '@J9'] }, async ({ page }) => {
       test.setTimeout(300_000);
-      await setNet(true);
       await page.reload();
       await recordedDcsTags(page);
       const name = fresh('KJV tC3 mixed');
@@ -335,7 +327,6 @@ test.describe('J9 — a facilitator imports existing work', () => {
 
     test('tC3 multi-zip: three books of one language are one project; the license is chosen on the review page', { tag: ['@inc8', '@J9'] }, async ({ page }) => {
       test.setTimeout(300_000);
-      await setNet(false);
       const name = fresh('KJV tC3');
       const repo = rigRepo(abbrOf(name));
       await page.reload();
@@ -358,7 +349,7 @@ test.describe('J9 — a facilitator imports existing work', () => {
 
     test('tC3 name clash: a Bible name of a project on this computer is flagged on the review page and Import stays off; a stale review still writes nothing (#436)', { tag: ['@inc8', '@J9'] }, async ({ page }, testInfo) => {
       test.setTimeout(180_000);
-      await setNet(true); // ask off: the versions must be found, so only the name holds Import
+      // The versions must be found (the lookup turns the internet on), so only the name holds Import.
       await page.reload();
       await recordedDcsTags(page);
       const existing = rigRepo(SEEDED_PROJECT);

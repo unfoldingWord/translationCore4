@@ -178,7 +178,7 @@ export default function SourceTexts() {
       closeLabel={t('common.close')} onClose={actions.closeModal}
       footer={g ? <SourcesFooter src={src} g={g} actions={actions} /> : null}>
 
-      {/* D88: the catalogue was not read, because the user cancelled "Use the internet?". */}
+      {/* D95: the catalogue was not read, because the user answered Not now to "Turn on the internet?". */}
       {s.src.needsInternet && s.src.gateway && (
         <Callout tone="kindle" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ flex: 1 }}>{t('sources.offline')}</span>

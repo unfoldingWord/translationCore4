@@ -243,26 +243,29 @@ calls (`DCS_SERVER`, #120). It is reset weekly and holds no durable data. A pack
 production, `https://git.door43.org`. Reads always use production.
 _Avoid_: staging, test server, QA mode
 
-**Ask before using the internet**:
-A switch on the account menu, on by default (D88). While it is on, each internet task opens one
-"Use the internet?" dialog before tC4 sends any external request. The dialog has Cancel, an action
-that fits the task, and "Don’t ask again on this computer". The setting is stored for this computer
-only, as `askInternet: false` in the per-client settings. tC4 ignores the old D86 choice.
-_Avoid_: Internet / Local, online, offline, mode (they describe the computer's connection or a
-retired status, not this question)
+**Use the internet**:
+The one on/off internet state of the app session (D95). Every launch starts with it off, and
+nothing about it is stored. A step that needs the internet while it is off opens the "Turn on
+the internet?" dialog, in place: "Turn on internet" turns it on for the rest of the session and
+the step continues; "Not now" sends nothing. The account button shows an indicator while it is
+on, and the switch "Use the internet" on the account menu turns it off. Turning it off stops the
+next request at once; a request already sent finishes.
+_Avoid_: Ask before using the internet, Don't ask again, consent, permitted task (the D88
+model that D95 replaced); Internet / Local, mode (the retired D86 status)
 
-**Permitted internet task**:
-One thing the user asked tC4 to do with the internet: for example Share, Download, Check for
-updates, or a link to Door43. The user permits the task (D88). Only while a permitted task is
-open may a request leave the computer. The platform net gate is a separate step: it is off at
-start and stays on after the first permitted task. Startup, idle time and local work are never
-a permitted task.
-_Avoid_: online mode, allowed state
+**A step that needs the internet**:
+One thing the user asked tC4 to do with the internet: for example Share, Upload changes, sign
+in, Download, Check for updates, Look up on Door43, or a link to Door43. While the internet is
+off, the step asks to turn it on. A request may leave the computer only while the internet is
+on (`guardFetch` and the Door43 adapter refuse otherwise). The platform net gate is a separate
+step: it is off at start and stays on after the first step with the internet on. Startup, idle
+time and local work are never such a step.
+_Avoid_: online mode, allowed state, internet task
 
 **Account menu**:
 The person icon at the right of the top bar, on Home and in a project (D88). It shows the Door43
-account (signed in, sign-in saved but not checked, or signed out), the switch "Ask before using
-the internet", and "Sign out of Door43". Opening it sends no request.
+account (signed in, sign-in saved but not checked, or signed out), the switch "Use the
+internet" (D95), and "Sign out of Door43". Opening it sends no request.
 _Avoid_: Door43 bar, profile menu
 
 **Share**:
@@ -287,8 +290,8 @@ The signed-in user's login and token, held in `src/data/share/session.ts` for th
 (`currentSession`); the token alone goes to the operating-system keychain when "Stay signed
 in" is on (#366). Nothing else is stored (D85): no name, no email, no login. Never in React
 state, the client settings, `localStorage`, a URL or a log. Sign-in starts from Share or from
-the account menu, and a kept token is resumed only inside a permitted internet task, never at
-app start (D86 points 7 and 8; D88). Sign out is local and sends no request.
+the account menu, and a kept token is resumed only by a step that needs Door43, with the internet
+on, never at app start (D86 points 7 and 8; D88; D95). Sign out is local and sends no request.
 _Avoid_: credentials (the password is never kept), login state, identity record
 
 **Share target**:

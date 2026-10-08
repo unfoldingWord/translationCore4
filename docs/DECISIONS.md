@@ -2428,3 +2428,99 @@ The rulings for each issue are recorded as owner-decision comments on that issue
 The format does not change, so `docs/BURRITO-SPEC.md` and the conformance harness do not
 change. #580 may change the §5.2 decision record. If it does, that pull request changes the
 specification and the harness together (`CONTRIBUTING.md` hard rule 3).
+
+## D95 (2026-10-07, project-owner rulings) **The internet is one on/off state for the app session. Each launch starts with it off, and nothing about it is stored. A step that needs the internet while it is off asks, in place, to turn it on; "Turn on internet" turns it on for the rest of the session, and the step continues. The account button shows while it is on, and the account menu turns it off. There is no "Don’t ask again" and no per-task yes.** [owner rulings 2026-10-06, retrospective on #530 and #540; issue #559; amends D88 points 2, 3 and 4]
+
+Context. Under D88, each internet task opened one "Use the internet?" dialog while "Ask before
+using the internet" was on, and the yes lasted for that task only. tC4 built that with a count
+of open "holds" (`Consent` in `src/data/internet.ts`), opened and closed across `await`s in
+`src/state.jsx` by `permitted`, `dialogTasks` and, from #540, the Share and Upload flows. Pull
+request #540 went through seven review rounds. Each one found a new way for a hold to be left
+open (the internet stays allowed for the session) or used by the wrong task [VERIFIED — #540
+review history, rounds 1–7, 2026-10-05]. One state with no temporary answers has nothing to
+take back.
+
+The owner weighed three alternatives. tC3's "Continue" + "Don't ask again": unchecked, it is a
+yes for one task, the same lifetime problem. A state stored across launches: easy to leave on
+without knowing. D86's old always-on status: D88 replaced it because it was "one more state for
+the user to manage" and "did not ask at the moment that data left the computer". This model
+asks at the moment it matters, starts every session offline, and keeps the state visible.
+
+1. **One state for the session (replaces D88 point 2).** The internet is on or off for the app
+   session. Each launch starts with it off. When a step needs the internet and it is off, the
+   step asks, in place, to turn it on. The dialog opens once for each press of the step, never
+   once for each request. **Turn on internet** turns it on for the rest of the session, and the
+   step continues where the press left it. **Not now** sends nothing, changes nothing, and the
+   user stays where they were; the next press asks again. While the internet is on, no
+   question opens. The dialog has no "Don’t ask again" checkbox.
+2. **Nothing is stored (replaces D88 point 3).** The `askInternet` setting is neither read nor
+   written. A stored `askInternet: false` from D88, the old `internet: true` of D86, and an
+   unreadable settings document have no effect: the internet is off after every launch. Users
+   who chose "Don’t ask again" under D88 are asked once per session. That is intended.
+3. **The state is visible, and the menu turns it off.** The account button shows an indicator
+   while the internet is on, with the tooltip "The internet is on. Click to turn it off." The
+   menu switch **Use the internet** replaces **Ask before using the internet**; it turns the
+   internet on or off and starts no request. Turning it off stops new requests at once; a
+   request that was already sent finishes. In practice the switch cannot be reached during a
+   request: internet steps run inside a modal dialog, whose scrim and focus trap cover the
+   account button (`Modal` → `Layer` with `trapFocus`; the title bar is `--z-header: 30`, under
+   the scrim at `--z-overlay: 50`). The On state ends with the session.
+4. **The request boundary and the gate (amends D88 point 4).** `guardFetch` and the Door43
+   adapter allow a request only while the internet is on; while it is off, a request to another
+   origin, or to `/api/gitea/` or `/api/git/push/`, is refused before it is sent. The platform
+   net gate is unchanged: off at start, turned on and read back before the first request after
+   **Turn on internet**, and on for the rest of the session. If it does not read on, "tC4 could
+   not use the internet" shows, the step stops, and no success is shown; the internet state
+   stays on, and the next press reads the gate again. Turning the internet off does not turn
+   the gate off. The `Consent` counter, `permitted`, `dialogTasks` and the flow fields
+   `consented`, `release` and `authorizing` are removed.
+5. **The words.** The dialog title is "Turn on the internet?". Its body: "This step needs the
+   internet to *[what the step does, for example: upload your changes to Door43]*. tC4 will use
+   the internet until you turn it off in the account menu, or close tC4." Its buttons: **Turn on
+   internet** and **Not now**.
+
+The flow:
+
+```mermaid
+flowchart TD
+  start([App starts]) --> off0["Internet = Off<br/>(every launch; nothing is stored)"]
+  off0 --> idle["Nothing is sent at startup or while idle<br/>(D88 point 5, unchanged)"]
+
+  step(["A step needs the internet<br/>sign-in · check saved sign-in · Share · Upload changes ·<br/>download sources · check for updates · look up on Door43"]) --> setting{"Internet on?"}
+
+  setting -- "On" --> gate{"Platform gate on?<br/>read · enable · read back"}
+  setting -- "Off" --> ask[["Dialog: Turn on the internet?<br/>[Turn on internet]   [Not now]"]]
+
+  ask -- "Turn on internet" --> on["Internet = On<br/>indicator shows on the account button"] --> gate
+  ask -- "Not now" --> notnow(["The step does not run. Nothing sent.<br/>The user stays where they were.<br/>Pressing the step again asks again"])
+
+  gate -- "yes" --> run(["The step runs; its requests go"])
+  gate -- "no" --> fail(["Dialog: tC4 could not use the internet.<br/>The step stops; no success is shown"])
+
+  menu(["Account button: indicator + menu switch 'Use the internet'"]) -- "turned On" --> menuOn["Internet = On"]
+  menu -- "turned Off" --> menuOff["Internet = Off; indicator clears.<br/>No new request leaves, at once.<br/>Requests already sent finish"]
+
+  quit([tC4 closes]) --> gone["The On state ends with the session"]
+
+  subgraph guard["Every request (guardFetch and the Door43 adapter)"]
+    req(["A request to another origin, or to /api/gitea/ or /api/git/push/"]) --> chk{"Internet on?"}
+    chk -- "yes" --> send(["Sent"])
+    chk -- "no" --> refuse(["Refused before it is sent"])
+  end
+```
+
+What stands. D88 points 1, 5, 6 and 7 stand: the account menu and its account states, zero
+requests at startup, idle and local work, Download always offered, and D85 and D86 point 8. The
+#530 flow of a Share or an Upload changes stands for what is not consent: a step whose dialog
+was cancelled while it waited for the question, the gate or Door43 runs nothing (`flow.closed`,
+`flowStep`); an upload belongs to the review it was submitted in (`flow.attempt`); a cancelled
+sign-in drops its own token (`gone()` in `signInNow`); one sign-in is sent at a time
+(`signInFlight`). Steps that start while a gate check is in progress share that check.
+
+`docs/BURRITO-SPEC.md` §5.3 names the dialog; its text changes with this decision, and the
+conformance harness does not assert it, so the harness does not change. The documents that
+describe built behavior change with this decision: `docs/JOURNEYS.md` (J3, J9, J11 and the J12
+precondition), `docs/ARCHITECTURE.md` (the net gate row, the share and internet rows of section
+7, and the internet line of the cross-cutting list), `docs/PACKAGING.md` (step 9a of the offline
+run) and `CONTEXT.md` (the terms for the internet state and the account menu). The decision
+follows issue #559.

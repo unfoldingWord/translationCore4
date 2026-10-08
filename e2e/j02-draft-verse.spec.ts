@@ -669,8 +669,8 @@ test.describe('J2 — a translator drafts a verse', () => {
       // (vite.config.js); everything else is a network dependency, and any other host
       // fails the test (the shared recorder, e2e/helpers/externalRequests.ts, also
       // counts /api/gitea/ and /api/git/push/, the routes that make the server use the
-      // internet). The fonts are local since #3. The session runs with no stored
-      // choice, so "Ask before using the internet" is on (D88), and includes a restart.
+      // internet). The fonts are local since #3. The session starts with the internet
+      // off, as every session does (D95), and includes a restart.
       const OFFLINE_DRAFT = 'Recuérdales que estén dispuestos a toda buena obra.';
       const recorder = recordExternal(page);
       // A SharedWorker's requests bypass the page listeners (Playwright detaches

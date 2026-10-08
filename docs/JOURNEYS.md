@@ -39,7 +39,7 @@ Owner of increment numbers: the GitHub milestones, mirrored in `docs/ROADMAP.md`
 | J9d | facilitator | Exchange | Import a Scripture Burrito as a new project | shipped rc.1 (shell #361, parser #196, refusals #41; D79) | `e2e/j09-import.spec.ts` (`@inc8 @J9`) |
 | J10 | — | — | retired: RTL is a fixture axis on J2, J4, J5, J7 | retired | both runs listed on each of those rows; `e2e/j10-rtl.spec.ts` stays until they exist |
 | J11 | facilitator | Exchange | Share the project to Door43 (first share pushes `main`) | shipped rc.1 (#362, #203, #366, #120, #185; D79, D84) | `e2e/j11-share.spec.ts` (`@inc85 @J11`; the live `qa.door43.org` leg a labelled skip without the QA credentials); the internet consent: `e2e/internet-consent.spec.ts` (`@internet-consent`) |
-| J12 | facilitator | Start | Upgrade the pinned resources | shipped alpha.6 (#256, #257; D72) | `e2e/j12-upgrade-resources.spec.ts` (with the consent of Check for updates) |
+| J12 | facilitator | Start | Upgrade the pinned resources | shipped alpha.6 (#256, #257; D72) | `e2e/j12-upgrade-resources.spec.ts` (with the internet question of Check for updates) |
 | J13 | facilitator | Start | Change the gateway-language resource set | shipped alpha.2 | `e2e/j13-gateway-change.spec.ts` |
 | J14 | — | — | retired: isolation is a MUST NOT row on J1 and J2 | retired | `e2e/j14-join-isolation.spec.ts` stays |
 | J15 | — | — | retired: slow open is a quality requirement on opening a project | retired | `e2e/j15-slow-open.spec.ts` stays, cited by a FR |
@@ -99,10 +99,10 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 - Steps: choose the gateway language · pick the resource set · download.
 - End state: §5.3 pins with `sha`, `repoPath`, and a `version` that is not `master`; the pinned
   resources are installed and match the pins; the helps open offline; a missing resource shows
-  its missing state. Download is always offered. While "Ask before using the internet" is on, it
-  asks first with the "Use the internet?" dialog, and Cancel sends nothing (D88 points 2 and 6).
+  its missing state. Download is always offered. While the internet is off, it asks first with
+  the "Turn on the internet?" dialog, and Not now sends nothing (D95; D88 point 6).
 - Proof: `e2e/j03-get-resources.spec.ts` (installed state, pins, offline, missing states);
-  `e2e/guided-fix.spec.ts` (the dialog and Cancel of Download); `e2e/internet-consent.spec.ts` (the
+  `e2e/guided-fix.spec.ts` (the dialog and Not now of Download); `e2e/internet-consent.spec.ts` (the
   request boundary);
   `test/resourceFetch.test.ts` (download and sha verification). Pending: a proof that text
   ingredients are unchanged. Owner: shipped alpha.2.
@@ -185,8 +185,8 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   text. The new project's name is the Bible name on the review page: the toast, the Home card
   and `metadata.json` all show it (#499, D92). Import never writes into an existing project in 4.0.0 (D79 point 7; the into-existing
   flow with a conflict review is #365, 4.1.0). The tC3 import review does not look up resource
-  versions by itself: "Look up on Door43" is an explicit internet task, and it asks first while
-  "Ask before using the internet" is on (D88 point 5). A local import sends no external request.
+  versions by itself: "Look up on Door43" is an explicit step, and it asks to turn the internet
+  on while the internet is off (D88 point 5, D95). A local import sends no external request.
 - MUST NOT (all): create a project or write anything on disk from damaged or incomplete input;
   leave a partial repository after a failed write (the shell deletes it).
 - Proof: `e2e/j09-import.spec.ts`, tags `@inc8 @J9`: one shell block (#361), one block per
@@ -200,10 +200,10 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 - Steps: press "Share on Door43" on the project card · sign in to Door43 with username and password,
   unless the session or the keychain has a token; "Stay signed in on this computer" keeps the
   token in the operating-system keychain. Sign-in starts from Share or from "Sign in to Door43" on the account menu: Home has no Door43
-  bar (D86 point 7; D88 point 1). A kept token is resumed at the first Share, inside its one
-  internet task, not at app start (D86 point 8). While "Ask before using the internet" is on,
-  Share opens one "Use the internet?" dialog first, and that consent covers the saved sign-in,
-  the sign-in, the destinations and the reviewed upload (D88 point 2)
+  bar (D86 point 7; D88 point 1). A kept token is resumed at the first Share, not at app start
+  (D86 point 8). While the internet is off, Share opens one "Turn on the internet?" dialog
+  first; the internet then stays on for the session, so the saved sign-in, the sign-in, the
+  destinations and the reviewed upload ask nothing more (D95)
   · the share dialog shows "Sharing as @username · Change"; Change signs out and opens the
   sign-in step · read the author notice: the computer's account name
   is the author of each shared change, and Door43 shows it (D85; no name or email is asked or
@@ -222,9 +222,9 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   click sends nothing. The dialog shows the project, its repository on Door43 (not editable),
   "Sharing as @username · Change" (or "Signed in · Change" when a kept token is not resumed
   yet), and the books or stories as a review. **Cancel** pushes nothing and leaves `origin` as
-  it is. **Upload changes** pushes `main` again; with "Ask before using the internet" on, the
-  "Use the internet?" dialog opens first, once for the upload. With no sign-in, the sign-in step
-  opens first, and its one consent covers the upload. The dialog then shows one progress line
+  it is. **Upload changes** pushes `main` again; while the internet is off, the "Turn on the
+  internet?" dialog opens when the upload is sent. With no sign-in, the sign-in step opens
+  first, and asks when the sign-in is sent (D95). The dialog then shows one progress line
   and cannot be closed, then the end (Copy link, Open on Door43, Close). A refusal shows in the
   dialog with its code, **Try again** and **Close** (**Close** alone when another device
   pushed). The card shows nothing under Upload changes: no account, no "Uploaded." and no
@@ -235,8 +235,8 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 - Refusals (each a `Report` code, nothing pushed): the name exists on the chosen account or
   organization; the push is not a fast-forward, because another device pushed (the message
   says team sync is coming and local work is safe); Door43 cannot be reached; sign-in failed;
-  the create was rejected. Cancel on the "Use the internet?" dialog sends nothing and changes neither the
-  preference nor the sign-in (D88 point 2).
+  the create was rejected. Not now on the "Turn on the internet?" dialog sends nothing and changes
+  neither the internet state nor the sign-in (D95).
 - MUST NOT: create a publication branch or an outbox; integrate or receive; force-push; write
   the token anywhere except the operating-system keychain; place the token in a URL or a log;
   store the password; write anything into the project.
@@ -251,9 +251,8 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 ### J12 Upgrade the pinned resources
 
 - Actor: facilitator. Activity: Start (touches Check).
-- Precondition: J3. Check for updates is an internet task: while "Ask before using the internet"
-  is on, it asks first, and one consent covers the Source texts screen until it closes (D88
-  point 2).
+- Precondition: J3. Check for updates needs the internet: while the internet is off, it asks to
+  turn it on, and the internet then stays on for the session (D95).
 - Steps: open Project Settings (the Settings button on the project card on Home) · Manage source
   texts (this opens the project first) · check for updates · see the offer per language set and
   per scripture text · accept explicitly · re-derive.
@@ -268,7 +267,7 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   resource of the release is installed and sha-verified; let a help-set upgrade touch the
   original-language or gateway-Bible pins; let a scripture-text upgrade touch a decision, or a
   gateway-Bible upgrade touch an alignment.
-- Proof: `e2e/j12-upgrade-resources.spec.ts` (with the consent of Check for updates: the dialog,
+- Proof: `e2e/j12-upgrade-resources.spec.ts` (with the internet question of Check for updates: the dialog,
   Cancel and Continue). Owner: shipped alpha.6 (#40: #256 built, #257
   proved); the scripture texts are #258 (Increment 8).
 

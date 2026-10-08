@@ -1,4 +1,4 @@
-// D88 (#514): outside a permitted internet task the Door43 adapter refuses
+// D95 (#559): while the internet is off the Door43 adapter refuses
 // every call before a request is made. The adapter calls Door43 from the
 // client, so the platform's net gate does not cover it; main.jsx's guardFetch
 // is the second check.
@@ -21,7 +21,7 @@ const calls = (api: Door43Api): Array<[string, () => Promise<unknown>]> => [
 const ADAPTER_METHODS = Object.getOwnPropertyNames(Door43Api.prototype)
   .filter((name) => name !== 'constructor' && name !== 'request');
 
-describe('the Door43 adapter outside a permitted task', () => {
+describe('the Door43 adapter while the internet is off', () => {
   it('the list below names every public adapter call', () => {
     const listed = calls(new Door43Api({ server: 'https://door43.invalid' })).map(([name]) => name);
     expect(listed.sort()).toEqual([...ADAPTER_METHODS].sort());
@@ -43,7 +43,7 @@ describe('the Door43 adapter outside a permitted task', () => {
     expect(seen).toEqual([]);
   });
 
-  it('control: inside a permitted task, the same call reaches fetch', async () => {
+  it('control: while the internet is on, the same call reaches fetch', async () => {
     const seen: string[] = [];
     const api = new Door43Api({
       server: 'https://door43.invalid',

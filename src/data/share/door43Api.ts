@@ -103,9 +103,9 @@ export interface Door43ApiInit {
   server?: string;
   /** Injectable fetch for the fake; defaults to the global fetch. */
   fetchFn?: typeof fetch;
-  /** D88: whether a permitted internet task is open. False refuses every
-   * call before a request is made; the platform gate does not cover this
-   * module, because it calls Door43 from the client. */
+  /** D95: whether the internet is on for the app session. False refuses
+   * every call before a request is made; the platform gate does not cover
+   * this module, because it calls Door43 from the client. */
   allowed?: () => boolean;
 }
 

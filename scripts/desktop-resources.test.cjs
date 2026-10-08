@@ -126,13 +126,13 @@ test('upgrade preserves older pinned and unpinned releases and records the new e
   fs.mkdirSync(project, { recursive: true });
   fs.writeFileSync(path.join(project, 'resources.json'), JSON.stringify({ resources: { notes: old } }));
   const projectsBefore = files(path.dirname(project));
-  writeSettings(f, { askInternet: true, installedResources: { '_local_/_sideloaded_/unfoldingword--en_tn': old } });
+  writeSettings(f, { otherSetting: true, installedResources: { '_local_/_sideloaded_/unfoldingword--en_tn': old } });
   bootstrap(f.options);
   assert.equal(fs.existsSync(f.destination), true, 'new project must find bundled v91 beside old v86');
   assert.deepEqual(files(legacy), before);
   assert.deepEqual(files(path.dirname(project)), projectsBefore);
   assert.deepEqual(settingsAt(f).installedResources[f.key], f.pin);
-  assert.equal(settingsAt(f).askInternet, true);
+  assert.equal(settingsAt(f).otherSetting, true);
   fs.rmSync(path.dirname(path.dirname(project)), { recursive: true });
   bootstrap(f.options);
   assert.deepEqual(files(legacy), before, 'unpinned old release stays unchanged too');
@@ -194,7 +194,7 @@ for (const phase of ['before-publish', 'after-publish']) {
 
 test('failed record write repairs the already published folder on retry and preserves other settings', (t) => {
   const f = fixture(t);
-  writeSettings(f, { askInternet: false, installedResources: {} });
+  writeSettings(f, { otherSetting: false, installedResources: {} });
   const rename = fs.renameSync;
   fs.renameSync = (src, dest) => {
     if (dest === f.settings) throw new Error('settings unavailable');
@@ -204,7 +204,7 @@ test('failed record write repairs the already published folder on retry and pres
   finally { fs.renameSync = rename; }
   assert.deepEqual(files(f.destination), files(f.source));
   bootstrap(f.options);
-  assert.equal(settingsAt(f).askInternet, false);
+  assert.equal(settingsAt(f).otherSetting, false);
   assert.deepEqual(settingsAt(f).installedResources[f.key], f.pin);
 });
 

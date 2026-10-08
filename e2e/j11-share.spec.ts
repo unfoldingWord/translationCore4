@@ -22,7 +22,7 @@ import { TC4_ROOT, SEEDED_PROJECT, readClientSettingsDoc, resetClientSettings, r
 import {
   QA_SERVER, RIG_API, RIG_STATE, USER, type BareRemote,
   addOrigin, commitLocally, dropOrigin, expectCleanCard, fakeFor, fakeShare, filesHolding, git, head, loginsHolding, makeBareRemote, pressShare,
-  shareFirstTime, shot, signIn, askInternet, fakeKeychain, uploadChanges,
+  shareFirstTime, shot, signIn, turnOnInternet, gateOff, fakeKeychain, uploadChanges,
 } from './helpers/door43Share';
 
 const AUTHOR_NOTICE = /signed with the account name of this computer/;
@@ -73,12 +73,9 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
     test.beforeAll(async () => {
       // Start from the seeded client settings, whatever ran before this spec (#491).
       resetClientSettings();
-      // D88 (#514): these cases run with "Ask before using the internet" off; the
-      // consent dialogs are the @internet-consent journeys and case 12 below.
-      await askInternet(false);
     });
     test.afterAll(async () => {
-      await askInternet(true);
+      await gateOff();
     });
     test.beforeEach(async ({ page }) => {
       // Sign-in starts at Share (D86 point 7); the seeded card is not shared, so Share
@@ -86,6 +83,10 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       dropOrigin(SEEDED_PROJECT);
       await page.goto('/');
       await expect(page.getByTestId(`share-${SEEDED_ID}`)).toBeVisible();
+      // D95 (#559): these cases run with the internet on for this page load, turned on in
+      // the account menu. Every page load starts off, so a case that loads the page again
+      // turns it on again. The dialog of a step while it is off is @internet-consent and case 12.
+      await turnOnInternet(page);
     });
 
     test('0. Home has no Door43 bar; the top bar has the account menu (D86 point 7, D88)', { tag: ['@inc85', '@J11'] }, async ({ page }) => {
@@ -254,6 +255,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       await fakeFor(context);
       const keychain = await fakeKeychain(context);
       await page.goto('/');
+      await turnOnInternet(page);
       await openSignIn(page);
       await expect(page.getByLabel('Stay signed in on this computer')).not.toBeChecked();
       await signIn(page);
@@ -265,6 +267,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       expect(keychain.held).toBeNull();
       // A new app session: the token was in renderer memory only, and nothing else was stored.
       await page.reload();
+      await turnOnInternet(page);
       await openSignIn(page);
       await expect(page.getByLabel('Door43 username or email')).toHaveValue('');
       await expect(page.getByLabel('Password', { exact: true })).toHaveValue('');
@@ -282,6 +285,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       const remote = makeBareRemote();
       try {
         await page.goto('/');
+        await turnOnInternet(page);
         await openSignIn(page);
         await page.getByLabel('Stay signed in on this computer').check();
         await signIn(page);
@@ -310,6 +314,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
         const reads = keychain.calls.length;
         await page.reload();
         await expectCleanCard(page, SEEDED_ID);
+        await turnOnInternet(page);
         // Only reads (the development build mounts twice under React StrictMode).
         expect(keychain.calls.slice(reads).length).toBeGreaterThan(0);
         expect(keychain.calls.slice(reads).filter((c) => c !== 'read')).toEqual([]);
@@ -374,6 +379,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       await expect(page.getByTestId(`share-${SEEDED_ID}`)).toBeVisible();
       await page.waitForTimeout(1000);
       expect(fake.calls, 'no Door43 request at start').toEqual([]);
+      await turnOnInternet(page);
       await openSignIn(page);
       // The start and the Share only read the keychain; the refusal forgets the token.
       expect(keychain.calls.filter((c) => c !== 'read')).toEqual(['forget']);
@@ -395,37 +401,34 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       await expect(page.getByTestId('signin-not-kept')).toHaveText(NOT_KEPT);
       // The next session asks again: the token was in memory only.
       await page.reload();
+      await turnOnInternet(page);
       await openSignIn(page);
       await expect(page.getByTestId('signin-not-kept')).toHaveCount(0);
     });
 
-    test('7f. Sign out of Door43 in the account menu removes the kept token without a request; with no sign-in the row is absent; the ask preference does not change (D88; replaces the change-to-Local dialog of D86 point 7)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
+    test('7f. Sign out of Door43 in the account menu removes the kept token without a request; with no sign-in the row is absent; the internet stays off (D88, D95; replaces the change-to-Local dialog of D86 point 7)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
       const fake = await fakeFor(context);
       const keychain = await fakeKeychain(context);
-      try {
-        // No kept token: signed out, and the menu offers no Sign out.
-        await page.goto('/');
-        await expect(page.getByTestId('account-menu')).toHaveAttribute('data-state', 'out');
-        await page.getByTestId('account-menu').click();
-        await expect(page.getByTestId('account-sign-in')).toBeVisible();
-        await expect(page.getByTestId('account-sign-out')).toHaveCount(0);
-        await page.keyboard.press('Escape');
+      // No kept token: signed out, and the menu offers no Sign out.
+      await page.goto('/');
+      await expect(page.getByTestId('account-menu')).toHaveAttribute('data-state', 'out');
+      await page.getByTestId('account-menu').click();
+      await expect(page.getByTestId('account-sign-in')).toBeVisible();
+      await expect(page.getByTestId('account-sign-out')).toHaveCount(0);
+      await page.keyboard.press('Escape');
 
-        // A kept token: the menu says it is saved; Sign out removes it.
-        keychain.held = 'kept-token';
-        await page.reload();
-        await expect(page.getByTestId('account-menu')).toHaveAttribute('data-state', 'saved');
-        await page.getByTestId('account-menu').click();
-        await page.getByTestId('account-sign-out').click();
-        await expect(page.getByTestId('account-menu')).toHaveAttribute('data-state', 'out');
-        expect(keychain.calls.at(-1)).toBe('forget');
-        expect(keychain.held).toBeNull();
-        // The sign-out is local, and it left the preference alone (askInternet is off here).
-        expect(fake.calls, 'no Door43 request in this whole case').toEqual([]);
-        expect(readClientSettingsDoc()?.askInternet).toBe(false);
-      } finally {
-        await askInternet(false);
-      }
+      // A kept token: the menu says it is saved; Sign out removes it.
+      keychain.held = 'kept-token';
+      await page.reload();
+      await expect(page.getByTestId('account-menu')).toHaveAttribute('data-state', 'saved');
+      await page.getByTestId('account-menu').click();
+      await page.getByTestId('account-sign-out').click();
+      await expect(page.getByTestId('account-menu')).toHaveAttribute('data-state', 'out');
+      expect(keychain.calls.at(-1)).toBe('forget');
+      expect(keychain.held).toBeNull();
+      // The sign-out is local, and it did not turn the internet on (D95: off at this page load).
+      expect(fake.calls, 'no Door43 request in this whole case').toEqual([]);
+      await expect(page.getByTestId('account-menu')).toHaveAttribute('data-internet', 'off');
     });
   });
 
@@ -451,16 +454,16 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
 
     test.beforeAll(async () => {
       resetClientSettings(); // #491, as in the sign-in block
-      await askInternet(false);
     });
     test.afterAll(async () => {
-      await askInternet(true);
+      await gateOff();
     });
     test.beforeEach(async ({ page }) => {
       remote = makeBareRemote();
       dropOrigin(SEEDED_PROJECT);
       await page.goto('/');
       await expect(page.getByTestId(`share-${SEEDED_ID}`)).toBeVisible();
+      await turnOnInternet(page); // D95, as in the sign-in block
     });
     test.afterEach(() => {
       remote.dispose();
@@ -530,8 +533,8 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       const url = `${QA_SERVER}/${USER.username}/${SEEDED_PROJECT}`;
       await expect(page.getByTestId('share-url')).toHaveText(url);
       await expect(page.getByTestId('share-copy')).toHaveText('Copy link');
-      // D88 (#514): Open on Door43 is a button (an internet task), no longer a link; with asking
-      // off it opens the repository page in the browser's new window at once.
+      // D88 (#514): Open on Door43 is a button (a step that needs the internet), no longer a
+      // link; with the internet on it opens the repository page in the browser's new window at once.
       await expect(page.getByTestId('share-open')).toHaveText('Open on Door43');
       const opened = page.waitForEvent('popup');
       await page.getByTestId('share-open').click();
@@ -587,6 +590,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       // The expected path comes from the URL the fake served (pathToFileURL), not from the
       // filesystem path: on Windows the URL's pathname is `/C:/…` with forward slashes.
       await page.reload();
+      await turnOnInternet(page);
       await expect(page.getByTestId(`share-state-${SEEDED_ID}`)).toHaveText(`Shared at ${pathToFileURL(remote.bare).pathname.replace(/^\//, '').replace(/\.git$/, '')}`);
       await expect(page.getByTestId(`share-${SEEDED_ID}`)).toHaveText('Upload changes');
       expect((await remotesOf(SEEDED_ID)).map((r) => r.name)).toEqual(['origin']);
@@ -665,6 +669,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       const fake = await fakeShare(context, remote);
       const keychain = await fakeKeychain(context);
       await page.goto('/');
+      await turnOnInternet(page);
       await page.getByTestId(`share-${SEEDED_ID}`).click();
       await page.getByLabel('Stay signed in on this computer').check();
       await signIn(page);
@@ -679,6 +684,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       // A new app session, a new local commit: the upload dialog says a sign-in is kept, asks no
       // sign-in, and pushes after Upload changes.
       await page.reload();
+      await turnOnInternet(page);
       await expectCleanCard(page, SEEDED_ID);
       const second = commitLocally(SEEDED_PROJECT, 'local edit 1');
       await page.getByTestId(`share-${SEEDED_ID}`).click();
@@ -700,6 +706,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       const pushes = watchPushes(page);
       addOrigin(SEEDED_PROJECT, remote);
       await page.reload();
+      await turnOnInternet(page);
       await expectCleanCard(page, SEEDED_ID);
 
       // The dialog opens on the kept sign-in, and sends nothing.
@@ -740,6 +747,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       const fake = await fakeShare(context, remote, { tokens: [OLD], tokenScopes: { [OLD]: ['write:repository', 'read:organization', 'read:user'] } });
       const keychain = await fakeKeychain(context, OLD);
       await page.goto('/');
+      await turnOnInternet(page);
       // The old token still reads the account, so Share resumes on it and asks nothing.
       await page.getByTestId(`share-${SEEDED_ID}`).click();
       await expect(page.getByTestId('share-account')).toHaveText(SHARING_AS);
@@ -871,6 +879,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       expect(created.ok, await created.text().catch(() => '')).toBe(true);
       expect(listLocalRepos()).toContain(abbr);
       await page.reload();
+      await turnOnInternet(page);
       const card = page.getByTestId(`project-${id}`);
       await expect(card.getByTestId('obs-marker')).toHaveText('OBS');
       await pressShare(page, id);
@@ -972,33 +981,34 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       await expectCleanCard(page, SEEDED_ID);
     });
 
-    test('12. Ask on: Share opens one internet dialog; Cancel sends nothing; Continue goes to the sign-in step and the share needs no second dialog (D88)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
+    test('12. The internet off: Share opens one "Turn on the internet?" dialog; Not now sends nothing; Turn on internet goes to the sign-in step, and the share needs no second dialog (D95)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
       const fake = await fakeShare(context, remote);
-      await askInternet(true);
-      try {
-        await page.reload();
-        const share = page.getByTestId(`share-${SEEDED_ID}`);
-        await expect(share).toBeEnabled();
-        await share.click();
-        await expect(page.getByTestId('net-ask')).toHaveAttribute('data-kind', 'share');
-        await expect(page.getByTestId('net-ask-reason')).toContainText('This will contact Door43');
-        await page.getByTestId('net-cancel').click();
-        await expect(page.getByTestId('net-ask')).toHaveCount(0);
-        await expect(page.getByTestId('share-signin')).toHaveCount(0);
-        await expect(page.getByTestId('share-dialog')).toHaveCount(0);
-        expect(fake.calls, 'no Door43 request after Cancel').toEqual([]);
-        expect(remote.main(), 'nothing pushed').toBeNull();
+      // A new page load starts with the internet off, and nothing about it is stored (D95).
+      await page.reload();
+      await expect(page.getByTestId('account-menu')).toHaveAttribute('data-internet', 'off');
+      const share = page.getByTestId(`share-${SEEDED_ID}`);
+      await expect(share).toBeEnabled();
+      await share.click();
+      await expect(page.getByTestId('net-ask')).toHaveAttribute('data-kind', 'share');
+      await expect(page.getByTestId('net-ask-reason')).toContainText('This step needs the internet to contact Door43');
+      await expect(page.getByTestId('net-confirm')).toHaveText('Turn on internet');
+      await expect(page.getByTestId('net-cancel')).toHaveText('Not now');
+      await page.getByTestId('net-cancel').click();
+      await expect(page.getByTestId('net-ask')).toHaveCount(0);
+      await expect(page.getByTestId('share-signin')).toHaveCount(0);
+      await expect(page.getByTestId('share-dialog')).toHaveCount(0);
+      await expect(page.getByTestId('account-menu')).toHaveAttribute('data-internet', 'off');
+      expect(fake.calls, 'no Door43 request after Not now').toEqual([]);
+      expect(remote.main(), 'nothing pushed').toBeNull();
 
-        // Continue: the share goes on where the click left off, with no second dialog.
-        await share.click();
-        await page.getByTestId('net-confirm').click();
-        await expect(page.getByTestId('share-signin')).toBeVisible();
-        await signIn(page);
-        await expect(page.getByTestId('share-signin')).toHaveCount(0);
-        await expect(page.getByTestId('net-ask')).toHaveCount(0);
-      } finally {
-        await askInternet(false);
-      }
+      // Turn on internet: the share goes on where the click left off, with no second dialog.
+      await share.click();
+      await page.getByTestId('net-confirm').click();
+      await expect(page.getByTestId('account-menu')).toHaveAttribute('data-internet', 'on');
+      await expect(page.getByTestId('share-signin')).toBeVisible();
+      await signIn(page);
+      await expect(page.getByTestId('share-signin')).toHaveCount(0);
+      await expect(page.getByTestId('net-ask')).toHaveCount(0);
       // A push that meets HTTP 401 "offline mode" is test/share/shareOperation.test.ts.
     });
   });

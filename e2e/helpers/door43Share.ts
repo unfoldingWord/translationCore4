@@ -18,23 +18,30 @@ import { lane } from '../lane.mjs';
 export const QA_SERVER = 'https://qa.door43.org';
 export const RIG_API = lane().rigApi;
 export const RIG_STATE = path.join(TC4_ROOT, 'dev-env', 'state');
-/** D88 (#514): put "Ask before using the internet" the way the app leaves it, so a
- * page load or a reload starts in that state. `ask = false` stores
- * `askInternet: false` (and drops the old `internet` choice, which the app ignores);
- * `ask = true` removes the flag, which is the default, and turns the platform gate
- * off the way the app does at start. */
-export async function askInternet(ask: boolean): Promise<void> {
-  const doc = { ...(readClientSettingsDoc() ?? {}) };
-  delete doc.internet;
-  delete doc.askInternet;
-  const settings = ask ? doc : { ...doc, askInternet: false };
-  const stored = await fetch(`${RIG_API}/client-settings/uw-tc4`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ settings }),
-  });
-  if (!stored.ok) throw new Error(`client-settings write failed: HTTP ${stored.status}`);
-  if (ask) await fetch(`${RIG_API}/net/disable`, { method: 'POST' });
+/** D95 (#559): turn the internet on for this page load, the user's own way: the
+ * account menu's switch, which sends nothing. Nothing is stored, so every page load
+ * and reload starts off; call it after each `goto` or `reload` that internet work
+ * follows. The dialog a step opens while the internet is off is the subject of the
+ * `@internet-consent` journeys. */
+export async function turnOnInternet(page: Page): Promise<void> {
+  const trigger = page.getByTestId('account-menu');
+  await expect(trigger).toBeVisible();
+  if ((await trigger.getAttribute('data-internet')) === 'on') return;
+  await trigger.click();
+  const row = page.getByTestId('account-internet');
+  await expect(row).toHaveAttribute('aria-checked', 'false');
+  await row.click();
+  await expect(row).toHaveAttribute('aria-checked', 'true');
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('account-menu-panel')).toHaveCount(0);
+  await expect(trigger).toHaveAttribute('data-internet', 'on');
+}
+
+/** The platform's net gate, off. The rig boots with it off, but the gate is in memory
+ * and survives a reseed: a run that went online leaves it on. The app turns it off at
+ * start too (D88 point 4); a journey that reads the gate states its own start. */
+export async function gateOff(): Promise<void> {
+  await fetch(`${RIG_API}/net/disable`, { method: 'POST' });
 }
 
 /** The desktop keychain bridge (#366, `tc4Desktop.keychain` of scripts/preload.cjs), faked:
