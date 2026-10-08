@@ -2,7 +2,7 @@
 // 2026-10-06). Failure modes R4 and R5 of the pull request, written before the
 // code; the @feedback journey proves the refused operation's own Report.
 import { describe, expect, it } from 'vitest';
-import { attachmentText, reportToAttach } from '../src/data/feedback';
+import { attachmentText, keepsReport, refusalKey, reportToAttach } from '../src/data/feedback';
 import type { OpsEntry } from '../src/data/journal/opsLog';
 import type { Report } from '../src/data/journal/runtime';
 
@@ -31,5 +31,22 @@ describe('the Feedback attachment (#378)', () => {
     for (const entries of [[], [entry('c', undefined)]]) {
       expect(attachmentText('v · os', reportToAttach(null, entries))).toBe('v · os\nno Report\n');
     }
+  });
+});
+
+describe('Ask for help with a kept report (#378, Interruptions of 2026-10-08)', () => {
+  const help = { code: 'open.unexplained-divergence', text: 'The project changed outside the app.' };
+  const kept = { refusal: refusalKey(help), result: null };
+
+  it('the same refusal reopens the kept, unsent report (Cancel keeps the message)', () => {
+    expect(keepsReport(kept, help)).toBe(true);
+    expect(keepsReport({ ...kept, result: 'timeout' }, help)).toBe(true);
+  });
+
+  it('a different refusal, a sent report, or no report starts a new one', () => {
+    expect(keepsReport(kept, { ...help, code: 'checkpoint.scope-mismatch' })).toBe(false);
+    expect(keepsReport(kept, { ...help, text: 'Another diagnosis.' })).toBe(false);
+    expect(keepsReport({ ...kept, result: 'sent' }, help)).toBe(false);
+    expect(keepsReport(null, help)).toBe(false);
   });
 });

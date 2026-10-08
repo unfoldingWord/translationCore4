@@ -13,6 +13,18 @@ export function reportToAttach(failed: Report | null, entries: OpsEntry[]): Repo
   return entries.filter((e) => e.report).at(-1)?.report ?? null;
 }
 
+/** Which refusal a report was opened for: its code and the banner's diagnosis. */
+export const refusalKey = (help: { code: string; text: string }): string => `${help.code}\n${help.text}`;
+
+/** Whether "Ask for help" reopens the kept report instead of replacing it: an
+ * unsent report of the SAME refusal is kept (Cancel keeps the message); a
+ * different refusal replaces it (Interruptions, owner 2026-10-08); a sent
+ * report was cleared, so a new one starts. */
+export const keepsReport = (
+  fb: { refusal?: string; result?: string | null } | null,
+  help: { code: string; text: string },
+): boolean => !!fb && fb.result !== 'sent' && fb.refusal === refusalKey(help);
+
 /** The version line, then the Report labelled with its operation name and time. */
 export const attachmentText = (versionLine: string, report: Report | null): string =>
   report

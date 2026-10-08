@@ -68,7 +68,7 @@ import { USFM_PARSER } from './data/import/usfm';
 import { INSTALLED_SUITE, SUITE_VERSION } from './data/installedSuite';
 import { obsFrameSetMismatch } from './data/obsFrameSet';
 import { parseStory, storyIpath } from './data/journal/runtime';
-import { attachmentText, reportToAttach } from './data/feedback';
+import { attachmentText, keepsReport, refusalKey, reportToAttach } from './data/feedback';
 import { APP_COMMIT, APP_VERSION } from './data/about';
 export { SUITE_VERSION }; // the AddBook badge imports it from here
 
@@ -3631,16 +3631,19 @@ export function AppProvider({ children }) {
       /** #378: "Ask for help" on a banner. The Feedback dialog opens as a Bug
        * Report with the refusal code and the banner's diagnosis, and the
        * attachment is fixed now: a later change behind the dialog leaves it as
-       * shown. It replaces a kept, unsent report (owner, 2026-10-08). */
+       * shown. It replaces a kept, unsent report of a different refusal, and
+       * reopens the one of the same refusal (owner, 2026-10-08). */
       askForHelp: (help) => {
         if (feedbackSending) return;
+        // The same refusal reopens its kept, unsent report (Cancel keeps the message).
+        if (keepsReport(stateRef.current.fb, help)) return dispatch({ type: 'set', patch: { modal: 'feedback' } });
         const report = reportToAttach(help.report, opsLog.entries);
         dispatch({
           type: 'set',
           patch: {
             modal: 'feedback',
             fb: {
-              category: 'Bug Report', message: `Refusal code: ${help.code}\n\n${help.text}`, name: '', email: '',
+              refusal: refusalKey(help), category: 'Bug Report', message: `Refusal code: ${help.code}\n\n${help.text}`, name: '', email: '',
               attachment: attachmentText(`${APP_LINE} · ${navigator.platform}`, report), sending: false, result: null,
             },
           },
