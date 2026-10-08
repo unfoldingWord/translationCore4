@@ -803,6 +803,9 @@ const SORTS = {
   translationWords: { modes: ['byWord', 'byVerse'], default: 'byWord' },
   translationNotes: { modes: ['byVerse', 'byCategory'], default: 'byVerse' },
 };
+// The session can mount before it has a tool (#583): until its reset effect
+// runs, the rail shows the tool's default, so the first rows it renders stay.
+const shownSort = (sortMode, tool) => sortMode ?? SORTS[tool]?.default;
 
 /** Reference fields are number | string (derive.ts CheckReference): 'front',
  * comma lists and letter verses are legal — they sort ahead of any number
@@ -1238,7 +1241,7 @@ function CheckSession() {
   return (
     <div data-testid="check-session" style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       <CheckRail cs={cs} label={label} filter={filter} setFilter={setFilter}
-        sortMode={sortMode} setSortMode={setSortMode} titleOf={titleOf} listRef={listRef}
+        sortMode={shownSort(sortMode, tool)} setSortMode={setSortMode} titleOf={titleOf} listRef={listRef}
         onSelect={(i) => actions.setCheckIndex(i)} />
       <main style={{ flex: 1, overflow: 'auto', minWidth: 0, background: 'var(--surface-app)' }}>
         {item && (
@@ -1309,7 +1312,6 @@ export default function Check() {
   const pre = s.preflight;
   // #291: an OBS project checks the open story (§10.5); its unit is the story.
   const story = s.project?.flavor === 'textStories';
-  const unitLabel = story ? unitLabelFor(STORY_BOOK, s.storyNumber) : bookName(s.book);
   const unitLoaded = story ? !!s.story : !!s.bookRaw;
 
   React.useEffect(() => {
@@ -1351,7 +1353,9 @@ export default function Check() {
     [s.sources, s.sourcePanes, s.understand],
   );
 
+  // The tabs show while the project opens, before openBook sets s.book (#583).
   if (story ? !s.story : !s.book) return null;
+  const unitLabel = story ? unitLabelFor(STORY_BOOK, s.storyNumber) : bookName(s.book);
 
   // #129: Align opens inside the same rail+detail workspace as the derived
   // tools — no separate top-level Align screen.

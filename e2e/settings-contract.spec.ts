@@ -36,7 +36,7 @@ import { describeVerifierReport, verifyProjectAgainstJournal, type VerifierRepor
 
 // The j13 keys: a gateway option card is keyed `languageId::owner`.
 const ES_KEY = 'es-419::es-419_gl';
-const SPANISH_CARD = 'This project checks in Spanish (Latin American) · es-419_gl.';
+const SPANISH_CARD = 'This project checks in Español (Latinoamérica) · es-419_gl.'; // #579: the own name (D94)
 const SETTINGS_IPATH = 'checking/settings.json';
 const EN = () => ({
   tn: pinForSideloaded('en_tn', 'v91'),

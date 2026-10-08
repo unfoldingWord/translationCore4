@@ -207,6 +207,26 @@ export const indexBook = (rawBook: string): VerseEntry[] => {
   return entries;
 };
 
+/** How many verses an entry covers: a span "9-10" covers two, any other key one. */
+const versesCovered = (verseKey: string): number => {
+  const m = /^(\d+)-(\d+)$/.exec(verseKey);
+  return m ? Number(m[2]) - Number(m[1]) + 1 : 1;
+};
+
+/** The drafted percentage of a book: drafted verses over all verses. A span
+ * counts every verse it covers on both sides, so a join does not move it (#572). */
+export const draftPercent = (entries: readonly VerseEntry[], rawBook: string): number => {
+  let drafted = 0;
+  let total = 0;
+  for (const e of entries) {
+    const n = versesCovered(e.verseKey);
+    const b = rawBook.slice(e.start, e.end).trim();
+    total += n;
+    if (b !== '' && b !== '___') drafted += n;
+  }
+  return total ? Math.round((drafted / total) * 100) : 0;
+};
+
 /**
  * Exact lookup. `chapter` accepts number for caller convenience (`String()` on
  * a chapter number is lossless); `verseKey` is an exact string and is never

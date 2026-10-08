@@ -245,6 +245,84 @@ test.describe('J8 — a translator resumes where they left off', () => {
       expect(commitCount(SEEDED_PROJECT)).toBe(before);
     },
   );
+
+  test(
+    'a section save that makes a verse span names the span on Resume; a save that breaks it names the first verse of the old span (#576, D94)',
+    { tag: ['@inc9', '@J8'] },
+    async ({ page }, testInfo) => {
+      test.setTimeout(120_000);
+      await openTitusAt(page, '3');
+      // Translate may reopen on Verse (an earlier test chose it); the section card is on Section.
+      await page.getByRole('tab', { name: 'Section', exact: true }).click();
+      // The first section of Titus 3 with two verses or more, read from the page:
+      // its verses are A to B, and the journey joins A+1 to A. Verses after A+1 stay unplaced.
+      const sectionButton = page.getByRole('button', { name: /^Draft section \d+–\d+$/ }).first();
+      const label = (await sectionButton.textContent())!.trim();
+      const [a, b] = label.replace('Draft section ', '').split('–');
+      const next = String(Number(a) + 1);
+      expect(Number(b)).toBeGreaterThanOrEqual(Number(next));
+      const spanKey = `${a}-${next}`;
+      const FIRST = 'Recuérdales que se sujeten a los gobernantes y autoridades (tramo)';
+      const SECOND = 'Que a nadie difamen, que no sean pendencieros (tramo)';
+      const seen: Record<string, unknown> = { section: label, spanKey };
+      // The record without its timestamp, so each run writes the same artifact.
+      const record = () => {
+        const rec = readLastEdit();
+        return rec ? { repoPath: rec.repoPath, book: rec.book, chapter: rec.chapter, verse: rec.verse, snippet: rec.snippet } : null;
+      };
+
+      await test.step(`join verse ${next} to verse ${a} and save: the Home banner reads "Last edited verse ${spanKey}" with its text`, async () => {
+        await sectionButton.click();
+        await page.getByRole('textbox', { name: `Section ${a}–${b}` }).fill(`${FIRST} ${SECOND}`);
+        await page.getByRole('tab', { name: 'Place verse numbers' }).click();
+        await page.getByTestId('pin-bank').getByRole('button', { name: `Move where verse ${next} begins` }).click();
+        await page.getByRole('button', { name: `Join verse ${next} to verse ${a} at Recuérdales` }).click();
+        await page.getByRole('button', { name: 'Save section' }).click();
+        await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
+        await waitForResumeRecord(SEEDED_PROJECT, 3, FIRST);
+        expect(readLastEdit()?.verse).toBe(spanKey);
+        // The span's text: both verses, cut at the record's 90 characters (src/state.jsx).
+        const spanSnippet = `${FIRST} ${SECOND}`.slice(0, 90);
+        expect(spanSnippet).toContain('Que a nadie');
+        expect(readLastEdit()?.snippet).toBe(spanSnippet);
+        seen.afterJoin = { record: record(), banner: '' };
+        await page.goto('/');
+        const card = page.getByTestId('resume-card');
+        await expect(card).toContainText(`Last edited verse ${spanKey} — “${spanSnippet}”`, { timeout: 30_000 });
+        (seen.afterJoin as { banner: string }).banner = (await card.textContent()) ?? '';
+      });
+
+      await test.step(`break the span and save: the Home banner reads "Last edited verse ${a}"`, async () => {
+        await openTitusAt(page, '3');
+        await page.getByRole('tab', { name: 'Section', exact: true }).click();
+        // A section of exactly A and A+1 is now the one span verse, labelled by its key (sections.js rangeSpan).
+        const joinedLabel = b === next ? `Draft section ${spanKey}` : label;
+        await page.getByRole('button', { name: joinedLabel, exact: true }).click();
+        await page.getByRole('tab', { name: 'Place verse numbers' }).click();
+        // A placed pin is picked up with the keyboard (Enter), then dropped on its word (the J2 break pattern).
+        await page.getByTestId('place-words').getByRole('button', { name: `Move where verse ${next} begins` }).press('Enter');
+        await page.getByRole('button', { name: `Begin verse ${next} at Que`, exact: true }).click();
+        await page.getByRole('button', { name: 'Save section' }).click();
+        await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
+        await expect.poll(() => readLastEdit()?.verse, { timeout: 10_000 }).toBe(a);
+        // Verse A's own text only: the second verse's words left with it.
+        expect(readLastEdit()?.snippet).toBe(FIRST);
+        await waitForResumeRecord(SEEDED_PROJECT, 3, FIRST);
+        seen.afterBreak = { record: record(), banner: '' };
+        await page.goto('/');
+        const card = page.getByTestId('resume-card');
+        await expect(card).toContainText(`Last edited verse ${a} — “${FIRST}”`, { timeout: 30_000 });
+        await expect(card).not.toContainText('Que a nadie');
+        await expect(card).not.toContainText(spanKey);
+        (seen.afterBreak as { banner: string }).banner = (await card.textContent()) ?? '';
+      });
+
+      // The run's artifact: the Resume record and the banner after each save.
+      const artifactPath = testInfo.outputPath('j08-resume-after-span.json');
+      fs.writeFileSync(artifactPath, `${JSON.stringify(seen, null, 2)}\n`);
+      await testInfo.attach('j08-resume-after-span.json', { path: artifactPath, contentType: 'application/json' });
+    },
+  );
 });
 
 // ---- #185: the Increment 4 journey end to end ----------------------------------

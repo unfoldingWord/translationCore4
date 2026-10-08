@@ -230,7 +230,11 @@ export const sectionVerses = (words, seps, markers, pins, keys = pins) => {
   });
   const out = {};
   for (const g of groups) {
-    const t = (buf[g.key] ?? '').trim();
+    let t = (buf[g.key] ?? '').trim();
+    // #575 (D94): verses joined into a span are one paragraph. A blank line
+    // inside it (the `\p` between the joined verses) becomes one space, so the
+    // stored span has no bare blank line. A single line break stays as typed.
+    if (g.members.length > 1) t = t.replace(/[ \t]*\n(?:[ \t]*\n)+[ \t]*/g, ' ');
     if (t) out[g.key] = t;
   }
   return out;

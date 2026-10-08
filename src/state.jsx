@@ -18,7 +18,7 @@ import { readPrintedStories } from './data/storyModel';
 import { recordRecentStory } from './data/obsRecency';
 import { modeOf, placeKey, recordPlace } from './data/place';
 import { spliceSection, spliceVerse, spliceVerseGap, verseBody } from './data/usfm/splice';
-import { indexBook } from './data/usfm/indexer';
+import { draftPercent, indexBook } from './data/usfm/indexer';
 import { bookModel, parseChapters, verseText } from './data/bookModel';
 import { RESOURCE_FRAME, forgetProjectFrames, resolveProjectFrame } from './data/projectFrame';
 import { backfillCoverage } from './data/coverageBackfill';
@@ -26,7 +26,7 @@ import { mapReference } from './data/mapReference';
 import { seedBookFromSource } from './data/seed';
 import { SOURCE_MISSING, SOURCE_NOT_INSTALLED, isSourceAbsent } from './data/sourceState';
 import { BOOK_NAMES, bookName } from './data/bookNames';
-import { GATEWAYS, gatewayKey, DCS_HOST, orgForRepoName } from './data/gateways';
+import { GATEWAYS, gatewayKey, gatewayDisplayName, DCS_HOST, orgForRepoName } from './data/gateways';
 import { fetchAndInstallPin, latestReleaseTag, identifyExistingInstall, releaseCommitSha, rezip, unwrapExport, verifySideload } from './data/resourceFetch';
 import { isNotFoundError } from './data/serverApi';
 import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, gatewayBiblesFromInstalled, mergeOptionalPins, isPinLocal, unsatisfiedProjectPinFor, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk, flavorOfMetadata } from './data/installed';
@@ -1510,13 +1510,23 @@ async function writeBookOrStructure({ store, structuralRef, alignSchedulerRef },
  * broken, D70). The book is rewritten ONCE over the affected verses — never
  * spliced verse by verse, which would pass through a slot set no action
  * describes — and the book is flagged for the scheduler's writer. */
-function stageStructuralSection({ rawRef, schedulerRef, structuralRef, stateRef, dispatch }, chapter, keys, texts, newKeys) {
+function stageStructuralSection({ rawRef, schedulerRef, structuralRef, stateRef, dispatch, recordLastEdit }, chapter, keys, texts, newKeys) {
   const book = stateRef.current.book;
   const verses = newKeys.map((key) => ({ key, body: (texts[key] ?? '').trim() }));
   rawRef.current = spliceSection(rawRef.current, chapter, keys, verses);
   structuralRef.current.add(book);
   schedulerRef.current.replaceBook(book, rawRef.current);
   dispatch({ type: 'set', patch: { bookRaw: rawRef.current } });
+  // #576 (D94): the Resume record names a verse that exists after this save —
+  // the first key the save made: the span after a join (2-3), the first verse
+  // of the old span after a break (2).
+  const st = stateRef.current;
+  const repoPath = st.project?.repoPath || st.project?.id;
+  const verse = newKeys.find((key) => !keys.includes(key)) ?? newKeys[0];
+  if (repoPath && book && verse) {
+    const snippet = (texts[verse] ?? '').trim().slice(0, 90);
+    recordLastEdit?.({ repoPath, book, chapter, verse, snippet, mode: 'draft', at: Date.now() });
+  }
 }
 
 /** D65 (round-22 checkpoint): comprehension notes ride their own
@@ -2372,12 +2382,7 @@ async function performLoadProgress(ctx) {
   for (const code of project.bookCodes) {
     try {
       const { usfm: raw } = await reader.readBook(code);
-      const entries = indexBook(raw);
-      const drafted = entries.filter((e) => {
-        const b = raw.slice(e.start, e.end).trim();
-        return b !== '' && b !== '___';
-      }).length;
-      pcts[code] = entries.length ? Math.round((drafted / entries.length) * 100) : 0;
+      pcts[code] = draftPercent(indexBook(raw), raw);
     } catch {
       pcts[code] = null;
     }
@@ -2542,8 +2547,13 @@ async function classifyUsfmFiles(files, existing) {
   return out;
 }
 
-async function seedInitialUsfm({ store, stateRef, code, projName }) {
-  const seedPin = stateRef.current.projectPins?.extraScripture?.[0];
+async function seedInitialUsfm({ store, code, projName }) {
+  // #574: the pins of the project the book goes INTO, read through its own
+  // store. The open project's state pins were null when the book was added
+  // from Home or right after New Bible, so every such book got the server
+  // skeleton. extraScripture[0] is the literal pane, which follows the
+  // gateway (#412): its \h name is the gateway's book name.
+  const seedPin = (await store.readResources())?.extraScripture?.[0];
   if (!seedPin) return undefined;
   try {
     const src = await store.readSourceBook(localSourceRepo(seedPin), code);
@@ -3083,15 +3093,6 @@ export const __buildAlignmentSessionForTests = buildAlignmentSession;
  * staged, untouched verses byte-identical. */
 export const __reflowAlignedVersesForTests = reflowAlignedVerses;
 
-function calcDraftPct(entries, bookRaw) {
-  if (!entries.length) return 0;
-  const draftedCount = entries.filter((e) => {
-    const b = bookRaw.slice(e.start, e.end).trim();
-    return b !== '' && b !== '___';
-  }).length;
-  return Math.round((draftedCount / entries.length) * 100);
-}
-
 export function AppProvider({ children }) {
   const [s, dispatch] = useReducer(reducer, undefined, initial);
   const storeRef = useRef(null);
@@ -3145,7 +3146,7 @@ export function AppProvider({ children }) {
   const model = useMemo(() => {
     if (!s.project || !s.book || s.bookRaw == null) return { book: null, progress: {} };
     const { entries, byChapter, chapterNums } = bookModel(s.bookRaw);
-    const draftPct = calcDraftPct(entries, s.bookRaw);
+    const draftPct = draftPercent(entries, s.bookRaw);
     return { book: { code: s.book, byChapter, chapterNums, draftPct }, progress: {} };
   }, [s.project, s.book, s.bookRaw, s.tick]);
 
@@ -3477,6 +3478,11 @@ export function AppProvider({ children }) {
       a.patchAb({ busy: true, error: null });
       const store = new JournalingStore({ api, ops: opsLog });
       try {
+        // #574: the seed source resolves to its local copy through the
+        // installed map. Before any project open in this page it is not
+        // loaded, and a gateway Bible then reads as absent, so the book
+        // gets the skeleton with the English name instead of the gateway's.
+        if (installedCache === null && items.some((i) => i.initialUsfm == null)) await a.resolutionContext();
         const summary = await store.open(f.repoPath);
         for (const { code, initialUsfm } of items) {
           if (summary.bookCodes.includes(code)) continue; // fresh server truth wins
@@ -3485,7 +3491,7 @@ export function AppProvider({ children }) {
           // self-contained §8.5 book.add carrying the book's REAL initial
           // state (issue #62). A book missing from the source journals the
           // server skeleton instead — absence is a state, not an error.
-          const usfm = initialUsfm ?? (await seedInitialUsfm({ store, stateRef, code, projName: f.projName }));
+          const usfm = initialUsfm ?? (await seedInitialUsfm({ store, code, projName: f.projName }));
           await store.addBook({
             book_code: code,
             book_title: bookName(code),
@@ -3839,7 +3845,7 @@ export function AppProvider({ children }) {
         if (resolutionError) throw new Error(resolutionError);
         const kind = st.project.flavor === 'textStories' ? 'obs' : 'bible';
         const proposedPrimary = languageSetFromInstalled(installed, gateway, kind);
-        if (!proposedPrimary) throw new Error(t('sources.suiteIncomplete', { lang: gateway.name }));
+        if (!proposedPrimary) throw new Error(t('sources.suiteIncomplete', { lang: gatewayDisplayName(gateway) }));
         const { value: currentResources, md5: resourcesMd5 } = await store.readResourcesWithMd5();
         // #485: a present-but-EMPTY pin file (a non-tC3 import's first
         // checkpoint) must not flow through with no fallback set — a change
@@ -4392,7 +4398,7 @@ export function AppProvider({ children }) {
         gatewayBusyRef.current = false;
         dispatch({
           type: 'set',
-          patch: { gatewayBusy: false, gatewayPreview: { ...preview, projectId, currentName: current?.languageId } },
+          patch: { gatewayBusy: false, gatewayPreview: { ...preview, projectId, currentGateway: current ?? null } },
         });
         return preview;
       },
@@ -4495,7 +4501,7 @@ export function AppProvider({ children }) {
         const kind = stateRef.current.project?.flavor === 'textStories' ? 'obs' : 'bible';
         const primary = languageSetFromInstalled(installed, gateway, kind);
         if (!primary) {
-          throw new Error(t('sources.suiteIncomplete', { lang: gateway.name }));
+          throw new Error(t('sources.suiteIncomplete', { lang: gatewayDisplayName(gateway) }));
         }
         if (kind === 'obs') await assertObsSourceCompatible(api, store, primary.obs, installed);
         const next = await updateResources(
@@ -6470,7 +6476,7 @@ export function AppProvider({ children }) {
       // verse span created or broken — one structural action, not splices.
       saveSection: (chapter, keys, texts, newKeys = keys, formats = {}) => {
         if (newKeys.join('\n') !== keys.join('\n')) {
-          stageStructuralSection({ rawRef, schedulerRef, structuralRef, stateRef, dispatch }, chapter, keys, texts, newKeys);
+          stageStructuralSection({ rawRef, schedulerRef, structuralRef, stateRef, dispatch, recordLastEdit }, chapter, keys, texts, newKeys);
         } else {
           const changed = [];
           for (const verseKey of keys) {

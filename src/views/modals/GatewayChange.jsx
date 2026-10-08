@@ -11,6 +11,7 @@ import React from 'react';
 import { useApp } from '../../state.jsx';
 import { describeConsequences } from '../../data/gatewayChange';
 import { bookName } from '../../data/bookNames';
+import { gatewayDisplayName } from '../../data/gateways';
 import { t } from '../../i18n';
 import { Modal, Button, Callout } from '../../ds/index.js';
 
@@ -31,13 +32,13 @@ function GatewayFooter({ preview, blocked, harmless, busy, actions }) {
   return (
     <>
       <Button variant="secondary" onClick={actions.cancelGatewayChange} data-testid="gateway-cancel" disabled={busy}>
-        {t('gateway.keep', { lang: preview.currentName ?? t('gateway.current') })}
+        {t('gateway.keep', { lang: preview.currentGateway ? gatewayDisplayName(preview.currentGateway) : t('gateway.current') })}
       </Button>
       <Button onClick={() => actions.confirmGatewayChange(preview)} data-testid="gateway-confirm"
         disabled={blocked || busy}
         style={blocked ? { background: 'var(--uw-haze)', boxShadow: 'none' }
           : harmless ? null : { background: 'var(--uw-kindle)' }}>
-        {t('gateway.change', { lang: preview.gateway.name })}
+        {t('gateway.change', { lang: gatewayDisplayName(preview.gateway) })}
       </Button>
     </>
   );
@@ -52,7 +53,7 @@ export default function GatewayChange() {
   // its own dialogue, with the error and a way to close it, without a plan
   // or a Confirm button that could mistake the failed read for success.
   if (preview.failed) return (
-    <Modal zIndex={90} data-testid="gateway-change" title={t('gateway.title', { lang: preview.gateway.name })}
+    <Modal zIndex={90} data-testid="gateway-change" title={t('gateway.title', { lang: gatewayDisplayName(preview.gateway) })}
       closeLabel={t('common.close')} onClose={actions.cancelGatewayChange}
       footer={<Button variant="secondary" onClick={actions.cancelGatewayChange} data-testid="gateway-cancel">{t('common.close')}</Button>}>
       <Callout tone="warn" role="alert" data-testid="gateway-error" style={{ overflowWrap: 'anywhere' }}>
@@ -68,7 +69,7 @@ export default function GatewayChange() {
   const busy = !!s.gatewayBusy;
 
   return (
-    <Modal zIndex={90} data-testid="gateway-change" title={t('gateway.title', { lang: preview.gateway.name })}
+    <Modal zIndex={90} data-testid="gateway-change" title={t('gateway.title', { lang: gatewayDisplayName(preview.gateway) })}
       closeLabel={t('common.close')} onClose={busy ? undefined : actions.cancelGatewayChange}
       footer={<GatewayFooter preview={preview} blocked={blocked} harmless={harmless} busy={busy} actions={actions} />}>
       <div data-harmless={harmless ? '1' : '0'} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

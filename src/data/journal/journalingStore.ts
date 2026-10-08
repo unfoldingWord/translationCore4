@@ -44,6 +44,7 @@ import { ServerApi, ServerApiError, type ServerApiInit } from '../serverApi';
 import { samePath } from '../resolve';
 import { invalidateDecision } from '../invalidate';
 import { INSTALLED_SUITE } from '../installedSuite';
+import { withBookHeader } from '../seed';
 import { JournalStore } from './journalStore';
 import { idbKvStore, type KvStore } from './identity';
 import { sealAction, type JournalEvent } from './seal';
@@ -2172,8 +2173,14 @@ export class JournalingStore implements BurritoStore {
         add_cv: params.add_cv,
         vrs_name: params.vrs_name,
       });
+      // #574 (D94): with no seed, the server skeleton gets the blank-book
+      // header — the book name (book_title) and \usfm 3.0, not the bare code.
       const usfm =
-        params.initialUsfm ?? (await this.api.readIngredient(this.mustRepo(), bookIpath(book)));
+        params.initialUsfm ??
+        withBookHeader(await this.api.readIngredient(this.mustRepo(), bookIpath(book)), {
+          bookCode: book,
+          bookName: params.book_title,
+        });
       const { skeleton, verses } = decompose(toNfc(usfm));
       const foldOut = this.foldNow();
       const event: JournalEvent = {
