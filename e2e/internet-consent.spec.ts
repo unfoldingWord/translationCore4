@@ -25,6 +25,10 @@
 //      license name; Read the license opens License (the LICENSE notice and the full GPL
 //      version 2) and returns; on Home and in a project, with no network connection and
 //      with zero external requests
+//   j  Report a problem (#521) opens the Feedback dialog of #378 from the menu, on Home and in
+//      a project, by keyboard, with zero external requests; Send asks while the internet is off,
+//      Not now sends nothing and keeps the report; a kept report opens again with what was typed
+//      and the attachment of now; while the internet is on, Send asks nothing
 // The shared recorder (helpers/externalRequests.ts) writes each request log, and the
 // menu and dialog screenshots, into the test's output folder (and attaches them).
 import { execFileSync } from 'node:child_process';
@@ -38,6 +42,7 @@ import {
   turnOnInternet,
 } from './helpers/door43Share';
 import { recordExternal } from './helpers/externalRequests';
+import { fakeFeedbackBridge } from './helpers/feedbackBridge';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import { lane } from './lane.mjs';
 import { TC4_ROOT } from './helpers/root';
@@ -1286,7 +1291,7 @@ test.describe('D95 — the internet is one on/off state for the app session, and
       await expect(panel(page)).toHaveCount(0);
     };
     await page.goto('/');
-    await walk(['account-sign-in', 'account-internet', 'account-about']);
+    await walk(['account-sign-in', 'account-internet', 'account-report', 'account-about']);
     // The switch itself works from the keyboard: Enter on the row turns the internet on, the
     // menu stays open, and Enter again turns it off.
     await trigger(page).focus();
@@ -1305,7 +1310,7 @@ test.describe('D95 — the internet is one on/off state for the app session, and
     await fakeKeychain(context, 'kept-token');
     await page.reload();
     await expect(trigger(page)).toHaveAttribute('data-state', 'saved');
-    await walk(['account-check', 'account-internet', 'account-about', 'account-sign-out']);
+    await walk(['account-check', 'account-internet', 'account-report', 'account-about', 'account-sign-out']);
     // An outside click closes it as well.
     await openMenu(page);
     await page.mouse.click(5, 400);
@@ -1395,5 +1400,117 @@ test.describe('D95 — the internet is one on/off state for the app session, and
     }
     expect(recorder.external()).toEqual([]);
     await recorder.save(testInfo, 'i-about-requests');
+  });
+
+  // ---- j · Report a problem (#521) ----
+  // The send itself (the bridge's answers, the timeout, the double click) is #378's journey,
+  // e2e/feedback.spec.ts. The desktop bridge is faked: the browser build has none.
+  test('j. Report a problem: the keyboard opens the Feedback dialog on Home and in a project with no request; Send asks while the internet is off, Not now sends nothing and keeps the report; while it is on, Send asks nothing', TAG, async ({ page, context }, testInfo) => {
+    const calls = await fakeFeedbackBridge(context, [{ ok: true, status: 202 }, { ok: true, status: 202 }], 0);
+    const recorder = recordExternal(page);
+    const focused = () => page.evaluate(() => document.activeElement?.getAttribute('data-testid') ?? null);
+    const dialog = page.getByTestId('feedback');
+    const message = dialog.getByTestId('feedback-message');
+    const send = dialog.getByTestId('feedback-send');
+    const askNet = page.getByTestId('net-ask');
+    const FIRST = 'The Titus card shows the wrong language. Journey j.';
+    const openByKeyboard = async () => {
+      await trigger(page).focus();
+      await page.keyboard.press('Enter');
+      await expect.poll(focused).toBe('account-sign-in');
+      await page.keyboard.press('ArrowDown');
+      await page.keyboard.press('ArrowDown');
+      await expect.poll(focused).toBe('account-report');
+      await expect(page.getByTestId('account-report')).toHaveText('Report a problem');
+      await page.keyboard.press('Enter');
+      await expect(panel(page)).toHaveCount(0);
+      await expect(dialog).toBeVisible();
+    };
+
+    // Home: a new report is General Feedback with no message; the attachment shows.
+    await page.goto('/');
+    await openMenu(page);
+    await shot(page, testInfo, 'j-menu-home');
+    await page.keyboard.press('Escape');
+    await openByKeyboard();
+    await expect(dialog.getByRole('combobox', { name: 'Category' })).toContainText('General Feedback');
+    await expect(message).toHaveValue('');
+    await expect(send).toBeDisabled();
+    // A name and an email with no message yet are kept as well.
+    await dialog.getByLabel('Name (optional)').fill('Journey Tester');
+    await dialog.getByLabel('Email (optional)').fill('journey@example.invalid');
+    await dialog.getByTestId('feedback-cancel').click();
+    await expect(dialog).toHaveCount(0);
+    await openByKeyboard();
+    await expect(dialog.getByLabel('Name (optional)')).toHaveValue('Journey Tester');
+    await expect(dialog.getByLabel('Email (optional)')).toHaveValue('journey@example.invalid');
+    await expect(message).toHaveValue('');
+    const attachment = (await dialog.getByTestId('feedback-attachment').textContent()) ?? '';
+    expect(attachment).toMatch(/^translationCore \S+ \(\S+\) · \S+\n(no Report|Report: \S+, \d{4}-\d\d-\d\dT)/);
+    await message.fill(FIRST);
+    await shot(page, testInfo, 'j-report-home');
+    expect(recorder.external()).toEqual([]);
+
+    // The internet is off: Send asks; Not now sends nothing and keeps the report.
+    await send.click();
+    await expect(askNet).toHaveAttribute('data-kind', 'feedback');
+    await expect(askNet.getByTestId('net-ask-reason')).toContainText('This step needs the internet to send your report to the unfoldingWord help desk');
+    await page.getByTestId('net-cancel').click();
+    await expect(askNet).toHaveCount(0);
+    await expect(dialog).toBeVisible();
+    await expect(message).toHaveValue(FIRST);
+    await expect(trigger(page)).toHaveAttribute('data-internet', 'off');
+    expect(calls).toHaveLength(0);
+    expect(recorder.external()).toEqual([]);
+
+    // Cancel keeps the report: the menu opens it again as it was.
+    await dialog.getByTestId('feedback-cancel').click();
+    await expect(dialog).toHaveCount(0);
+    await openByKeyboard();
+    await expect(message).toHaveValue(FIRST);
+    await expect(dialog.getByTestId('feedback-attachment')).toHaveText(attachment);
+    await dialog.getByTestId('feedback-cancel').click();
+
+    // In a project, after the open of Titus: the kept report has what was typed, and its
+    // attachment is the one of now, the Report of that open.
+    await openTitus(page);
+    await openByKeyboard();
+    await expect(message).toHaveValue(FIRST);
+    await expect(dialog.getByLabel('Name (optional)')).toHaveValue('Journey Tester');
+    const inProject = (await dialog.getByTestId('feedback-attachment').textContent()) ?? '';
+    expect(inProject).toMatch(/^translationCore \S+ \(\S+\) · \S+\nReport: open, \d{4}-\d\d-\d\dT/);
+    expect(inProject).not.toBe(attachment);
+    await shot(page, testInfo, 'j-report-project');
+
+    // Turn on internet sends the report once, as the dialog shows it.
+    await send.click();
+    await page.getByTestId('net-confirm').click();
+    await expect(dialog.getByTestId('feedback-result')).toHaveAttribute('data-result', 'sent');
+    await expect(trigger(page)).toHaveAttribute('data-internet', 'on');
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ category: 'General Feedback', message: FIRST, name: 'Journey Tester', email: 'journey@example.invalid', attachment: inProject });
+    await dialog.getByTestId('feedback-close').click();
+
+    // The internet is on: a new report opens (a sent one is cleared), and Send asks nothing.
+    await openByKeyboard();
+    await expect(dialog.getByRole('combobox', { name: 'Category' })).toContainText('General Feedback');
+    await expect(message).toHaveValue('');
+    await expect(dialog.getByLabel('Name (optional)')).toHaveValue('');
+    await expect(dialog.getByLabel('Email (optional)')).toHaveValue('');
+    await message.fill('A second report, from inside Titus.');
+    await send.click();
+    await expect(dialog.getByTestId('feedback-result')).toHaveAttribute('data-result', 'sent');
+    await expect(askNet).toHaveCount(0);
+    expect(calls).toHaveLength(2);
+    expect(calls[1]).toMatchObject({ category: 'General Feedback', message: 'A second report, from inside Titus.', name: '', email: '' });
+    await dialog.getByTestId('feedback-close').click();
+    await expect(dialog).toHaveCount(0);
+
+    // The fake bridge is the only way out: the page itself sent nothing.
+    expect(recorder.external()).toEqual([]);
+    const payloads = testInfo.outputPath('j-report-payloads.json');
+    fs.writeFileSync(payloads, JSON.stringify(calls, null, 2));
+    await testInfo.attach('j-report-payloads.json', { path: payloads, contentType: 'application/json' });
+    await recorder.save(testInfo, 'j-report-requests');
   });
 });

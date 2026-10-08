@@ -15,38 +15,22 @@
 //   f  the bridge receives exactly the attachment text the dialog showed
 //   g  with no desktop bridge, Send says that sending works only in the desktop app, asks
 //      nothing, and keeps the message
+//   h  Report a problem in the account menu (#521) starts a new report over that kept one
 // Each run writes the payloads that reached the fake bridge and the request log into the
 // test's output folder (and attaches them).
 import fs from 'node:fs';
 import path from 'node:path';
 import { test, expect } from './helpers/test';
-import type { BrowserContext, Page, TestInfo } from '@playwright/test';
+import type { Page, TestInfo } from '@playwright/test';
 import { SEEDED_PROJECT, resetClientSettings, resetSeededChecking, rigRepo } from './helpers/rig';
 import { recordExternal } from './helpers/externalRequests';
+import { fakeFeedbackBridge } from './helpers/feedbackBridge';
 import { verifyAllJournaledProjects } from './helpers/journal';
 
 const TAG = { tag: ['@feedback', '@inc9'] };
 const OUTSIDE_FILE = path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'custom', 'notes.json');
 const CODE = 'open.unexplained-divergence';
 const ASK_REASON = 'This step needs the internet to send your report to the unfoldingWord help desk';
-
-interface Answer { ok: boolean; status?: number; reason?: string }
-
-/** The desktop help-desk bridge, faked: each call is recorded, and answered from
- * `answers` in order after `delayMs`. Install before the page loads. */
-async function fakeFeedbackBridge(context: BrowserContext, answers: Answer[], delayMs = 400) {
-  const calls: Array<Record<string, string>> = [];
-  await context.exposeFunction('__tc4Feedback', async (payload: Record<string, string>) => {
-    calls.push(payload);
-    await new Promise((r) => setTimeout(r, delayMs));
-    return answers[calls.length - 1] ?? { ok: false, reason: 'refused' };
-  });
-  await context.addInitScript(() => {
-    const w = window as unknown as { __tc4Feedback: (p: unknown) => Promise<unknown>; tc4Desktop: unknown };
-    w.tc4Desktop = { feedback: { send: (payload: unknown) => w.__tc4Feedback(payload) } };
-  });
-  return calls;
-}
 
 /** The #156 scenario: an outside file makes the open of Titus refuse. */
 async function refuseOpen(page: Page) {
@@ -170,6 +154,15 @@ test.describe('Ask for help: the Feedback dialog (#378)', () => {
     await expect(page.getByTestId('net-ask')).toHaveCount(0);
     await expect(message).toHaveValue('The open of Titus was refused. Kept text.');
     // Cancel keeps the report in memory; the dialog closes.
+    await dialog.getByTestId('feedback-cancel').click();
+    await expect(dialog).toHaveCount(0);
+    // #521: Report a problem in the account menu starts a new report; it does not open the
+    // kept Bug Report of the refusal.
+    await page.getByTestId('account-menu').click();
+    await page.getByTestId('account-report').click();
+    await expect(dialog.getByRole('combobox', { name: 'Category' })).toContainText('General Feedback');
+    await expect(message).toHaveValue('');
+    await expect(dialog.getByTestId('feedback-result')).toHaveCount(0);
     await dialog.getByTestId('feedback-cancel').click();
     await expect(dialog).toHaveCount(0);
     expect(requests.external()).toEqual([]);
