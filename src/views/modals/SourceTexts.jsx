@@ -79,7 +79,7 @@ function GatewayStep({ s, g, src, isCheckable, isCurrent, actions }) {
           {isCheckable && !isCurrent && s.project && (
             <Callout tone="info" style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--surface-accent-soft)', borderColor: 'rgba(49,173,227,.35)', color: 'var(--uw-ocean)' }}>
               <span style={{ flex: 1 }}>{t('sources.checkInPrompt', { lang: gatewayDisplayName(g) })}</span>
-              <Button size="sm" onClick={() => actions.askGatewayChange(g)} data-testid="use-for-checking"
+              <Button size="sm" onClick={() => actions.askGatewayChange(g)} data-testid="use-for-checking" disabled={!!s.gatewayBusy}
                 style={{ flex: 'none' }}>{t('sources.checkIn')}</Button>
             </Callout>
           )}

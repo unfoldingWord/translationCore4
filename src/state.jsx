@@ -469,6 +469,7 @@ const initial = () => ({
   sourcePanes: null, // round 37: the open project's §5.3 extraScripture pane ids — null while the pins load, [] when the project legally has none
   preflight: null, // { [tool]: Preflight } for the open book (C2.2)
   gatewayPreview: null, // a proposed gateway change awaiting confirmation
+  gatewayBusy: false, // #580: a gateway change is being previewed or committed; the language rows wait
   // J12 (#256): the on-demand resource upgrade. `offers` is per rung after a
   // "Check for updates" and is bound to the project it was computed for
   // (`offersFor`); `installing` names the rung whose release is being
@@ -881,7 +882,7 @@ const englishBibles = (installed) => {
   return { literal: en.literal ?? INSTALLED_SUITE.extraScripture[0], simplified: en.simplified ?? INSTALLED_SUITE.extraScripture[1] };
 };
 
-async function gatewayChangePlan({ consequences, next, coverage, installed, stored, md5s, actions, blocked }) {
+async function gatewayChangePlan({ consequences, next, coverage, installed, stored, md5s, actions, blocked, draftFor }) {
   const keyOf = (entry) => `${entry.tool}/${entry.book}`;
   const blockedSet = new Set(blocked.map(keyOf));
   const plan = [];
@@ -895,14 +896,47 @@ async function gatewayChangePlan({ consequences, next, coverage, installed, stor
     }
     const source = stored.find((candidate) => candidate.tool === entry.tool && candidate.book === entry.book);
     const derived = await actions.deriveItemsFor(entry.tool, entry.book, resolution.pin);
+    const carried = carryOverDecisions(source.file, derived, resolutionRecord(resolution));
+    // #580: "carried over" is what the check screen will show — the same merge
+    // and draft revalidation completedCheckSession runs, then the one counting
+    // rule. A decision whose selected words the draft no longer has is not
+    // counted (the session flags it), so the line equals "N of M resolved".
+    const { items: merged } = mergeAndReattach(derived, carried.file.decisions, { keepInvalidated: true });
+    const shown = progressOf(revalidateAgainstDraft(merged, await draftFor(entry.book)).items).decided;
     plan.push({
       tool: entry.tool,
       book: entry.book,
       expectMd5: md5s[`${entry.tool}/${entry.book}`] ?? null,
-      ...carryOverDecisions(source.file, derived, resolutionRecord(resolution)),
+      ...carried,
+      shown,
     });
   }
   return { plan, blocked };
+}
+
+/** Drafts remain editable while the resource reads are in flight. Count
+ * against one live snapshot, then retry if an edit/book switch changed it
+ * during any await, including a later book's derive. rawRef owns synchronous
+ * edits; bookRaw being null means the new book is loading. */
+async function liveGatewayChangePlan({ store, storeRef, stateRef, rawRef, obsProject, ...args }) {
+  const snapshot = () => {
+    const live = stateRef.current;
+    return { book: live.book, raw: live.bookRaw == null ? null : rawRef.current, story: live.story };
+  };
+  for (;;) {
+    if (storeRef.current !== store) throw new Error(t('gateway.otherProject'));
+    const draft = snapshot();
+    const draftFor = async (book) => {
+      if (obsProject) return frameTextIndex(draft.story);
+      const raw = book === draft.book && draft.raw != null ? draft.raw : (await store.readBook(book)).usfm;
+      return withSpanMembers(verseTextIndex(raw));
+    };
+    const result = await gatewayChangePlan({ ...args, blocked: [...args.blocked], draftFor });
+    if (storeRef.current !== store) throw new Error(t('gateway.otherProject'));
+    const live = snapshot();
+    if (live.book !== draft.book || live.raw !== draft.raw || live.story !== draft.story) continue;
+    return result;
+  }
 }
 
 /** Derive one tool's check session: the item list, and the project-frame
@@ -3068,6 +3102,9 @@ export function AppProvider({ children }) {
   const structuralRef = useRef(new Set());
   const rawRef = useRef(null); // authoritative raw book text, updated synchronously
   const stateRef = useRef(null); // live state for async closures
+  // #580 Interruptions 3: set with the `gatewayBusy` dispatch, read at once —
+  // stateRef follows the render, so two quick clicks could both pass it.
+  const gatewayBusyRef = useRef(false);
   const openSeqRef = useRef(0); // openBook sequence token (review finding M2)
   const understandSeqRef = useRef(0); // loadUnderstand sequence token (2026-08-27 Codex review)
   // D65 (round-22 checkpoint): the comprehension-note SaveScheduler and the
@@ -3886,15 +3923,10 @@ export function AppProvider({ children }) {
               book: entry.book,
               reason: `versification-${frame.state}`,
             }));
-        const { plan, blocked } = await gatewayChangePlan({
-          consequences,
-          next,
-          coverage,
-          installed,
-          stored,
-          md5s,
-          actions: a,
-          blocked: initiallyBlocked,
+        const { plan, blocked } = await liveGatewayChangePlan({
+          store, storeRef, stateRef, rawRef, obsProject,
+          consequences, next, coverage, installed, stored, md5s,
+          actions: a, blocked: initiallyBlocked,
         });
         const carried = plan.reduce((n, p) => n + p.carried, 0);
         const invalidated = plan.reduce((n, p) => n + p.invalidated, 0);
@@ -4327,6 +4359,14 @@ export function AppProvider({ children }) {
 
       /** Open the confirmation dialogue for a proposed gateway language. */
       askGatewayChange: async (gateway) => {
+        // #580 Interruptions 3: one change at a time. A second choice while the
+        // first is previewed, asked or committed does nothing.
+        if (gatewayBusyRef.current || stateRef.current.gatewayPreview) return null;
+        // #580 Interruptions 4: the change belongs to the project it started on.
+        const origin = storeRef.current;
+        const projectId = stateRef.current.project?.id ?? null;
+        gatewayBusyRef.current = true;
+        dispatch({ type: 'set', patch: { gatewayBusy: true } });
         // Catch-to-absence sweep (D30): the preview now PROPAGATES transient
         // read failures (deriveItemsFor / readDecisionsText) instead of
         // understating consequences — state them in the dialogue's error.
@@ -4334,21 +4374,44 @@ export function AppProvider({ children }) {
         try {
           preview = await a.previewGatewayChange(gateway);
         } catch (error) {
-          dispatch({ type: 'set', patch: { gatewayError: String(error?.message || error) } });
+          gatewayBusyRef.current = false;
+          dispatch({
+            type: 'set',
+            patch: {
+              gatewayBusy: false,
+              ...(storeRef.current === origin ? {
+                gatewayPreview: { failed: true, gateway, projectId },
+                gatewayError: String(error?.message || error),
+              } : {}),
+            },
+          });
+          return null;
+        }
+        // The user left the project while the preview was read: its dialogue
+        // would describe one project over another. Nothing is shown.
+        if (storeRef.current !== origin) {
+          gatewayBusyRef.current = false;
+          dispatch({ type: 'set', patch: { gatewayBusy: false } });
           return null;
         }
         const current = stateRef.current.projectPins?.languageSets?.primary?.gatewayLanguage;
+        gatewayBusyRef.current = false;
         dispatch({
           type: 'set',
-          patch: { gatewayPreview: { ...preview, currentGateway: current ?? null } },
+          patch: { gatewayBusy: false, gatewayPreview: { ...preview, projectId, currentGateway: current ?? null } },
         });
         return preview;
       },
 
-      cancelGatewayChange: () =>
-        dispatch({ type: 'set', patch: { gatewayPreview: null, gatewayError: null } }),
+      // #580 Interruptions 1: "Keep …" changes nothing. After Confirm the change
+      // cannot be cancelled: the dialogue's buttons are disabled until it ends.
+      cancelGatewayChange: () => {
+        if (gatewayBusyRef.current) return;
+        dispatch({ type: 'set', patch: { gatewayPreview: null, gatewayError: null } });
+      },
 
       confirmGatewayChange: async (preview) => {
+        if (preview?.failed) return;
         // A failed commit must stay VISIBLE: the dialogue used to swallow the
         // rejection, leaving an open dialogue that ignored its confirm button
         // (found 2026-08-22, rig journey run).
@@ -4362,13 +4425,20 @@ export function AppProvider({ children }) {
           });
           return;
         }
+        if (gatewayBusyRef.current) return;
+        gatewayBusyRef.current = true;
+        dispatch({ type: 'set', patch: { gatewayBusy: true } });
         try {
           await a.commitGatewayChange(preview);
         } catch (e) {
-          dispatch({ type: 'set', patch: { gatewayError: e?.reason || e?.message || String(e) } });
+          // #580 Interruptions 2: the dialogue states the failure. The change is
+          // one journal action, so a refused one changes no decision.
+          gatewayBusyRef.current = false;
+          dispatch({ type: 'set', patch: { gatewayBusy: false, gatewayError: e?.reason || e?.message || String(e) } });
           return;
         }
-        dispatch({ type: 'set', patch: { gatewayPreview: null, gatewayError: null } });
+        gatewayBusyRef.current = false;
+        dispatch({ type: 'set', patch: { gatewayBusy: false, gatewayPreview: null, gatewayError: null } });
       },
 
       /** Commit a previewed change. Takes the preview so the user confirms
@@ -4386,6 +4456,9 @@ export function AppProvider({ children }) {
       commitGatewayChange: async (preview) => {
         const store = storeRef.current;
         if (!store) throw new Error('no project is open');
+        // #580 Interruptions 4: a preview applies only to the project it was read on.
+        if (preview.projectId !== undefined && preview.projectId !== (stateRef.current.project?.id ?? null))
+          throw new Error(t('gateway.otherProject'));
         await store.applyGatewayChange({
           resources: preview.next,
           resourcesMd5: preview.resourcesMd5 ?? null,
@@ -4396,6 +4469,9 @@ export function AppProvider({ children }) {
             expectMd5: p.expectMd5 ?? null,
           })),
         });
+        // The change is written to the project it started on. If another
+        // project is open now, nothing of the result is applied to it.
+        if (storeRef.current !== store) return preview.next;
         dispatch({ type: 'set', patch: { projectPins: preview.next, projectPinsLoaded: true, projectPinsSeq: stateRef.current.projectPinsSeq + 1 } });
         a.reloadSourcePanes(preview.next);
         // An open OBS story shows the new package's source text too (#412).
@@ -5020,6 +5096,14 @@ export function AppProvider({ children }) {
           ...patch,
           modifiedTimestamp: new Date().toISOString(),
         };
+        // #580 (§5.2 1.19): on a check already invalidated (a draft edit, a
+        // change of language), the user's own Invalid is marked as theirs, so
+        // a later re-attach keeps it; any other status the user records
+        // removes the mark.
+        if (item.invalidated === true && 'status' in patch) {
+          if (patch.status === 'invalid') next.userInvalid = true;
+          else delete next.userInvalid;
+        }
         const key = checkKeyFor(cs.tool, cs.book, item.contextId.checkId);
         checkTargetsRef.current.set(key, { tool: cs.tool, book: cs.book, resource: cs.resource ?? null });
         // The item as the session holds it is the buffer's persisted value:
@@ -5932,6 +6016,7 @@ export function AppProvider({ children }) {
        * project; that open adopts installed optional slots as every open does
        * (D64), before the dialogue asks. */
       chooseSettingsGateway: async (gateway) => {
+        if (gatewayBusyRef.current || stateRef.current.gatewayPreview) return;
         if (!(await a.openSettingsProject())) return;
         await a.askGatewayChange(gateway);
       },

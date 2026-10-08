@@ -26,29 +26,52 @@ function ImageChange({ change }) {
   );
 }
 
+/** The dialogue's two buttons. #580 Interruptions 1: while the change is
+ * committed (`busy`) neither answers, so a confirmed change cannot be cancelled. */
+function GatewayFooter({ preview, blocked, harmless, busy, actions }) {
+  return (
+    <>
+      <Button variant="secondary" onClick={actions.cancelGatewayChange} data-testid="gateway-cancel" disabled={busy}>
+        {t('gateway.keep', { lang: preview.currentGateway ? gatewayDisplayName(preview.currentGateway) : t('gateway.current') })}
+      </Button>
+      <Button onClick={() => actions.confirmGatewayChange(preview)} data-testid="gateway-confirm"
+        disabled={blocked || busy}
+        style={blocked ? { background: 'var(--uw-haze)', boxShadow: 'none' }
+          : harmless ? null : { background: 'var(--uw-kindle)' }}>
+        {t('gateway.change', { lang: gatewayDisplayName(preview.gateway) })}
+      </Button>
+    </>
+  );
+}
+
 export default function GatewayChange() {
   const { s, actions } = useApp();
   const preview = s.gatewayPreview;
   if (!preview) return null;
 
+  // Settings closes when it opens the project. A failed preview still needs
+  // its own dialogue, with the error and a way to close it, without a plan
+  // or a Confirm button that could mistake the failed read for success.
+  if (preview.failed) return (
+    <Modal zIndex={90} data-testid="gateway-change" title={t('gateway.title', { lang: gatewayDisplayName(preview.gateway) })}
+      closeLabel={t('common.close')} onClose={actions.cancelGatewayChange}
+      footer={<Button variant="secondary" onClick={actions.cancelGatewayChange} data-testid="gateway-cancel">{t('common.close')}</Button>}>
+      <Callout tone="warn" role="alert" data-testid="gateway-error" style={{ overflowWrap: 'anywhere' }}>
+        <strong>{t('gateway.failed')}</strong> {s.gatewayError}
+      </Callout>
+    </Modal>
+  );
+
   const { headline, detail } = describeConsequences(preview.consequences, bookName);
   const harmless = preview.consequences.harmless;
   const blocked = (preview.blocked?.length ?? 0) > 0;
+  // #580 Interruptions 1: after Confirm the change cannot be cancelled.
+  const busy = !!s.gatewayBusy;
 
   return (
     <Modal zIndex={90} data-testid="gateway-change" title={t('gateway.title', { lang: gatewayDisplayName(preview.gateway) })}
-      closeLabel={t('common.close')} onClose={actions.cancelGatewayChange}
-      footer={<>
-        <Button variant="secondary" onClick={actions.cancelGatewayChange} data-testid="gateway-cancel">
-          {t('gateway.keep', { lang: preview.currentGateway ? gatewayDisplayName(preview.currentGateway) : t('gateway.current') })}
-        </Button>
-        <Button onClick={() => actions.confirmGatewayChange(preview)} data-testid="gateway-confirm"
-          disabled={blocked}
-          style={blocked ? { background: 'var(--uw-haze)', boxShadow: 'none' }
-            : harmless ? null : { background: 'var(--uw-kindle)' }}>
-          {t('gateway.change', { lang: gatewayDisplayName(preview.gateway) })}
-        </Button>
-      </>}>
+      closeLabel={t('common.close')} onClose={busy ? undefined : actions.cancelGatewayChange}
+      footer={<GatewayFooter preview={preview} blocked={blocked} harmless={harmless} busy={busy} actions={actions} />}>
       <div data-harmless={harmless ? '1' : '0'} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <p data-testid="gateway-headline"
           style={{ fontSize: 'var(--fs-ui)', letterSpacing: 'var(--track-13-5)', color: harmless ? 'var(--tc-valid-strong)' : 'var(--tc-warn-text)', fontWeight: 'var(--fw-bold)', lineHeight: 'var(--lh-body)', margin: 0 }}>
@@ -78,7 +101,7 @@ export default function GatewayChange() {
                     ? t('gateway.carryOver', {
                       book: bookName(a.book),
                       tool: t(`check.tool.${a.tool}`),
-                      carried: p.carried,
+                      carried: p.shown,
                       invalidated: p.invalidated,
                     })
                     : t('gateway.affectedRow', {

@@ -172,7 +172,7 @@ describe('R3 — re-pinning the old resource restores a decided item (D36)', () 
     verseEdits: false, invalidated: false, ...over,
   });
 
-  it('a formerly-valid, invalidated decision that re-attaches loses only its cleared status', () => {
+  it('a formerly-valid, invalidated decision that re-attaches keeps its selections and comes back To do (D94, §5.2 1.19)', () => {
     const invalidated = item({
       contextId: ctx,
       selections: [{ text: 'Dios', occurrence: 1, occurrences: 1 }],
@@ -182,7 +182,21 @@ describe('R3 — re-pinning the old resource restores a decided item (D36)', () 
     const { items } = mergeAndReattach([item({ contextId: ctx })], [invalidated]);
     expect(items).toHaveLength(1);
     expect(items[0].invalidated).toBeFalsy();
-    expect(items[0].status).toBeUndefined();
+    // #580 (D94): an Invalid the change set returns as an explicit "todo"; an
+    // absent status on a record with selections would derive as valid (§5.2).
+    expect(items[0].status).toBe('todo');
+    expect(items[0].selections).toHaveLength(1);
+  });
+
+  it('a legacy invalidated decision with no status (a tC3 import) comes back To do, not valid (§5.2 1.19)', () => {
+    const legacy = item({
+      contextId: ctx,
+      selections: [{ text: 'Dios', occurrence: 1, occurrences: 1 }],
+      invalidated: true,
+    });
+    const { items } = mergeAndReattach([item({ contextId: ctx })], [legacy]);
+    expect(items[0].invalidated).toBeFalsy();
+    expect(items[0].status).toBe('todo');
     expect(items[0].selections).toHaveLength(1);
   });
 

@@ -54,6 +54,8 @@ export interface Decision {
   invalidated: boolean;
   modifiedTimestamp?: string;
   status?: 'valid' | 'invalid' | 'todo'; // additive D2 field — normative in BURRITO-SPEC §5.2 since 1.1-draft (2026-07-07)
+  /** §5.2 1.19 (#580, D94): on an invalidated record, the user set `status: "invalid"` before the invalidation, so it stays when the record re-attaches. */
+  userInvalid?: boolean;
 }
 
 export interface DecisionFile {

@@ -369,12 +369,63 @@ const verseText = bookJson.chapters['1']['1'].verseObjects.filter(vo => vo.type 
   };
   const co = carryOver(savedX, derivedX);
   const inv = co.decisions.filter(d => d.invalidated);
-  check('carry-over: an unplaceable decision is invalidated, kept in full, and re-keyed decisions take the NEW resource contextId (D36)',
+
+  // §5.2 1.19 `userInvalid` (D94, #580): who set `status: "invalid"`. Invalidating
+  // a decision that holds the user's own Invalid marks it; when the old resource
+  // is pinned again and the decision re-attaches by its identity key, that
+  // Invalid stays, while an Invalid the invalidation set clears (To do again).
+  const invalidate = d => ({ ...d, invalidated: true, status: d.status === 'todo' ? 'todo' : 'invalid',
+    ...(d.invalidated !== true && d.status === 'invalid' ? { userInvalid: true } : {}) });
+  const reattachSpec = d => {
+    const { userInvalid, ...rest } = d;
+    return { ...rest, invalidated: false, status: d.status === 'invalid' && userInvalid === true ? 'invalid' : 'todo' };
+  };
+  // The user records a status on a decision (the check screen's write).
+  const userSets = (d, status) => {
+    const next = { ...d, status };
+    if (d.invalidated === true) { if (status === 'invalid') next.userInvalid = true; else delete next.userInvalid; }
+    return next;
+  };
+  // Negative controls. The pre-1.19 rule cleared every Invalid; a writer that
+  // leaves `status` absent instead of "todo" lets a record with selections
+  // derive as valid.
+  const reattachPre119 = d => ({ ...d, invalidated: false, ...(d.status === 'invalid' ? { status: undefined } : {}) });
+  const reattachAbsent = d => {
+    const { userInvalid, ...rest } = d;
+    return { ...rest, invalidated: false, ...(d.status === 'invalid' && userInvalid !== true ? { status: undefined } : {}) };
+  };
+  // §5.2 triage as a reader derives it: a present `status` wins; else
+  // invalidated ⇒ invalid, done ⇒ valid, else todo.
+  const triage = d => d.status ?? (d.invalidated ? 'invalid' : (d.selections !== false || d.nothingToSelect === true) ? 'valid' : 'todo');
+  const away = d => invalidate(d);
+  const roundTrips = (d, back, n) => { let x = d; for (let i = 0; i < n; i++) x = back(away(x)); return x; };
+  const userInvalid = { contextId: mk('old7', 6, 'figs-explicit', 'λόγον'), selections: false, nothingToSelect: false, invalidated: false, status: 'invalid' };
+  const wasValid = { contextId: mk('old8', 7, 'figs-explicit', 'λόγον'), selections: [{ text: 'palabra', occurrence: 1, occurrences: 1 }], nothingToSelect: false, invalidated: false, status: 'valid' };
+  const userAway = away(userInvalid), validAway = away(wasValid);
+  // A legal pre-1.19 record: invalidated, selections kept, no status at all.
+  const legacyAway = { contextId: mk('old9', 8, 'figs-explicit', 'λόγον'), selections: [{ text: 'palabra', occurrence: 1, occurrences: 1 }], nothingToSelect: false, invalidated: true };
+  const userBack = roundTrips(userInvalid, reattachSpec, 3), validBack = roundTrips(wasValid, reattachSpec, 3);
+  const userInvalidOk =
+    userAway.userInvalid === true && userAway.status === 'invalid' &&
+    !('userInvalid' in validAway) && validAway.status === 'invalid' &&
+    away(validAway).userInvalid === undefined && away(userAway).userInvalid === true &&   // re-invalidation keeps the mark it has
+    triage(userBack) === 'invalid' && userBack.invalidated === false && !('userInvalid' in userBack) &&
+    triage(validBack) === 'todo' && validBack.invalidated === false && Array.isArray(validBack.selections) &&
+    triage(roundTrips(userInvalid, reattachPre119, 1)) !== 'invalid' &&                    // negative control: the old rule loses it
+    triage(reattachSpec(legacyAway)) === 'todo' && Array.isArray(reattachSpec(legacyAway).selections) &&
+    // Invalidated first (a draft edit), then marked Invalid by the user: theirs, through 3 round trips;
+    // marked valid instead, the mark goes and the invalidation's own Invalid clears.
+    triage(roundTrips(reattachSpec(userSets(validAway, 'invalid')), reattachSpec, 3)) === 'invalid' &&
+    !('userInvalid' in userSets(userSets(validAway, 'invalid'), 'valid')) &&
+    triage(roundTrips(wasValid, reattachAbsent, 1)) === 'valid' &&                         // negative control: an absent status revives it
+    triage(reattachAbsent(legacyAway)) === 'valid';                                         // negative control: so does a legacy record left as it is
+  check('carry-over: an unplaceable decision is invalidated, kept in full, and re-keyed decisions take the NEW resource contextId (D36); a user\'s own Invalid is marked `userInvalid` and survives the round trip, an Invalid the invalidation set comes back "todo" (§5.2 1.19, D94)',
     co.carried === 2 && co.invalidated === 1 && co.decisions.length === savedX.length &&
     inv.length === 1 && inv[0].status === 'invalid' &&
     inv[0].contextId.checkId === 'old7' &&
-    co.decisions.filter(d => !d.invalidated).map(d => d.contextId.checkId).join(',') === 'zz10,zz11',
-    `${co.carried} carried (re-keyed to the new resource), ${co.invalidated} invalidated and retained, 0 deleted`);
+    co.decisions.filter(d => !d.invalidated).map(d => d.contextId.checkId).join(',') === 'zz10,zz11' &&
+    userInvalidOk,
+    `${co.carried} carried (re-keyed to the new resource), ${co.invalidated} invalidated and retained, 0 deleted; user Invalid after 3 round trips: ${userBack.status}, change-set Invalid: ${triage(validBack)}`);
 }
 
 // ---------- 8. Multi-book + resource pinning completeness ----------
