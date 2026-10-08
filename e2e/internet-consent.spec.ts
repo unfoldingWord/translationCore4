@@ -1420,6 +1420,7 @@ test.describe('D95 — the internet is one on/off state for the app session, and
       await expect.poll(focused).toBe('account-sign-in');
       await page.keyboard.press('ArrowDown');
       await page.keyboard.press('ArrowDown');
+      await page.keyboard.press('ArrowDown'); // past App language (#522)
       await expect.poll(focused).toBe('account-report');
       await expect(page.getByTestId('account-report')).toHaveText('Report a problem');
       await page.keyboard.press('Enter');

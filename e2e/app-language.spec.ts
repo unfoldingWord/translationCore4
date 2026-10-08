@@ -376,6 +376,9 @@ test.describe('#522 — App language in the account menu', () => {
     await expect.poll(focused).toBe('account-sign-in');
     await page.keyboard.press('End');
     await expect.poll(focused).toBe('account-about');
+    // Report a problem (#521) sits between App language and About.
+    await page.keyboard.press('ArrowUp');
+    await expect.poll(focused).toBe('account-report');
     await page.keyboard.press('ArrowUp');
     await expect.poll(focused).toBe('account-language');
     await page.keyboard.press('Enter');
