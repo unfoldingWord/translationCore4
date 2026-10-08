@@ -15,7 +15,7 @@ import type { PageSetup } from './pageSetup';
 
 export type ExportProducer = {
   id: 'usfm-aligned' | 'usfm-plain' | 'burrito-zip' | 'pdf' | 'obs-markdown';
-  label: string; // menu text, from i18n
+  label: string; // the menu text's i18n KEY (#522: the menu translates it at render, so a language change shows)
   appliesTo: (project: ProjectSummary) => boolean; // Bible, OBS, or both
   produce: (input: ExportInput) => Promise<ExportFile>; // pure: data in, bytes out
 };

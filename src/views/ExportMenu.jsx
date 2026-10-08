@@ -56,7 +56,7 @@ export default function ExportMenu({ pageSetup }) {
     <div data-testid="export-menu">
       <Menu
         trigger={<Button size="lg" disabled={running} data-testid="export-menu-trigger">{t('cc.export')}</Button>}
-        items={producers.map((producer) => ({ label: producer.label, disabled: running, onClick: () => run(producer) }))}
+        items={producers.map((producer) => ({ label: t(producer.label, undefined, producer.label), disabled: running, onClick: () => run(producer) }))}
       />
       {/* The side panel is narrower than the toast's 300px minimum width. */}
       {notice && <Toast tone={notice.tone} message={notice.message} onDismiss={() => setNotice(null)} data-testid="export-toast" style={{ marginTop: 10, '--toast-w-min': '0px' }} />}

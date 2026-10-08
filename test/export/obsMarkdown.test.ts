@@ -3,6 +3,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { strToU8, unzipSync, zipSync } from 'fflate';
 import { OBS_MARKDOWN, storyMarkdownFromRepoZip } from '../../src/data/export/obsMarkdown';
+import { t } from '../../src/i18n/index.js';
 import type { BurritoStore, ProjectSummary } from '../../src/data/burritoStore';
 
 const fs = process.getBuiltinModule('node:fs');
@@ -57,7 +58,9 @@ describe('the story Markdown producer', () => {
   const obs = { name: 'Equipo', flavor: 'textStories' } as ProjectSummary;
 
   it('shows for an OBS project only', () => {
-    expect(OBS_MARKDOWN.label).toBe('Story Markdown (.zip)');
+    // #522: the label is the catalog key; the menu translates it at render.
+    expect(OBS_MARKDOWN.label).toBe('cc.exportStoryMarkdown');
+    expect(t(OBS_MARKDOWN.label)).toBe('Story Markdown (.zip)');
     expect(OBS_MARKDOWN.appliesTo(obs)).toBe(true);
     expect(OBS_MARKDOWN.appliesTo({ ...obs, flavor: 'textTranslation' })).toBe(false);
   });

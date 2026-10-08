@@ -1291,7 +1291,7 @@ test.describe('D95 — the internet is one on/off state for the app session, and
       await expect(panel(page)).toHaveCount(0);
     };
     await page.goto('/');
-    await walk(['account-sign-in', 'account-internet', 'account-report', 'account-about']);
+    await walk(['account-sign-in', 'account-internet', 'account-language', 'account-report', 'account-about']);
     // The switch itself works from the keyboard: Enter on the row turns the internet on, the
     // menu stays open, and Enter again turns it off.
     await trigger(page).focus();
@@ -1310,7 +1310,7 @@ test.describe('D95 — the internet is one on/off state for the app session, and
     await fakeKeychain(context, 'kept-token');
     await page.reload();
     await expect(trigger(page)).toHaveAttribute('data-state', 'saved');
-    await walk(['account-check', 'account-internet', 'account-report', 'account-about', 'account-sign-out']);
+    await walk(['account-check', 'account-internet', 'account-language', 'account-report', 'account-about', 'account-sign-out']);
     // An outside click closes it as well.
     await openMenu(page);
     await page.mouse.click(5, 400);
@@ -1420,6 +1420,7 @@ test.describe('D95 — the internet is one on/off state for the app session, and
       await expect.poll(focused).toBe('account-sign-in');
       await page.keyboard.press('ArrowDown');
       await page.keyboard.press('ArrowDown');
+      await page.keyboard.press('ArrowDown'); // past App language (#522)
       await expect.poll(focused).toBe('account-report');
       await expect(page.getByTestId('account-report')).toHaveText('Report a problem');
       await page.keyboard.press('Enter');
