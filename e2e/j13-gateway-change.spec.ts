@@ -959,11 +959,12 @@ test('a failed draft read from Home Settings stays visible and can be retried @i
   await openSettingsFromHome(page);
   await page.getByTestId(`settings-gateway-${ES_KEY}`).click();
   await expect(page.getByTestId('gateway-error')).toContainText(marker);
+  await expect(page.getByTestId('gateway-error')).toBeVisible();
   await expect(page.getByTestId('gateway-confirm')).toHaveCount(0);
   expect(before).toBeDefined();
   expect(checkingBytes(SEEDED_PROJECT)).toEqual(before);
   expect(identities(readProjectPins(SEEDED_PROJECT).languageSets.primary)).toEqual(identities(pins!.languageSets.primary));
-  await page.screenshot({ path: testInfo.outputPath('preview-read-error.png') });
+  await page.screenshot({ path: testInfo.outputPath('preview-read-error.png'), animations: 'disabled' });
   await testInfo.attach('preview-read-error', { path: testInfo.outputPath('preview-read-error.png'), contentType: 'image/png' });
   await page.getByTestId('gateway-cancel').click();
   await expect(page.getByTestId('gateway-change')).toHaveCount(0);
