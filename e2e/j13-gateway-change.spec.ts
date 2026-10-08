@@ -16,6 +16,8 @@ import { verifyAllJournaledProjects } from './helpers/journal';
 import fs from 'node:fs';
 import path from 'node:path';
 import { deriveTnItems, isDecided, mergeKey } from '../src/data/derive';
+import { revalidateAgainstDraft } from '../src/data/revalidate';
+import { tokenizeVerse } from '../src/data/align/tokenize';
 import {
   SEEDED_PROJECT,
   rigRepo,
@@ -28,6 +30,7 @@ import {
   sideloadedIngredient,
   resetPlaces,
   RIG_CLIENT_SETTINGS,
+  verseTextSpan,
 } from './helpers/rig';
 import { createObsProject, RIG_API } from './helpers/story';
 
@@ -925,6 +928,126 @@ test.describe('J13 — a check the user marked Invalid stays Invalid through a c
       expect(readProjectPins(SEEDED_PROJECT).languageSets.primary.gatewayLanguage.languageId).toBe('en');
     },
   );
+});
+
+// #580 Interruptions 2: a preview failure from Home remains visible after Settings closes.
+test('a failed draft read from Home Settings stays visible and can be retried @inc9 @J13', async ({ page }, testInfo) => {
+  writeProjectPins(SEEDED_PROJECT, EN());
+  const en = EN();
+  const file = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')!;
+  file.resource = { repoPath: en.tn.repoPath, version: en.tn.version, sha: en.tn.sha, languageSet: 'fallback' } as never;
+  writeDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT', file);
+  // Opening the project may normalize legacy files. Snapshot after those
+  // reads, at the preview's resource read, so only this failed change is judged.
+  let before: Record<string, string> | undefined;
+  let pins: ReturnType<typeof readProjectPins> | undefined;
+  const marker = 'draft-read-failed';
+  let previewRead = false;
+  const spanishNotes = /es-419_tn.*ipath=TIT\.tsv/;
+  const targetBook = (url: URL) => url.pathname.includes(`/raw/_local_/_local_/${SEEDED_PROJECT}`)
+    && url.searchParams.get('ipath') === 'TIT.usfm';
+  await page.route(spanishNotes, async route => {
+    before = checkingBytes(SEEDED_PROJECT);
+    pins = readProjectPins(SEEDED_PROJECT);
+    previewRead = true;
+    await route.fallback();
+  });
+  await page.route(targetBook, async route => {
+    if (!previewRead) return route.fallback();
+    await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ is_good: false, reason: marker }) });
+  });
+  await openSettingsFromHome(page);
+  await page.getByTestId(`settings-gateway-${ES_KEY}`).click();
+  await expect(page.getByTestId('gateway-error')).toContainText(marker);
+  await expect(page.getByTestId('gateway-confirm')).toHaveCount(0);
+  expect(before).toBeDefined();
+  expect(checkingBytes(SEEDED_PROJECT)).toEqual(before);
+  expect(identities(readProjectPins(SEEDED_PROJECT).languageSets.primary)).toEqual(identities(pins!.languageSets.primary));
+  await page.screenshot({ path: testInfo.outputPath('preview-read-error.png') });
+  await testInfo.attach('preview-read-error', { path: testInfo.outputPath('preview-read-error.png'), contentType: 'image/png' });
+  await page.getByTestId('gateway-cancel').click();
+  await expect(page.getByTestId('gateway-change')).toHaveCount(0);
+  await page.unroute(targetBook);
+  await page.unroute(spanishNotes);
+  await chooseInSettings(page, ES_KEY);
+  await expect(page.getByTestId('gateway-confirm')).toBeEnabled();
+  await expect(page.getByTestId('gateway-error')).toHaveCount(0);
+  await page.getByTestId('gateway-cancel').click();
+  expect(checkingBytes(SEEDED_PROJECT)).toEqual(before);
+});
+
+test('editing the open draft while preview waits keeps the carried count exact @inc9 @J13', async ({ page }, testInfo) => {
+  test.setTimeout(60_000);
+  const pins = EN();
+  writeProjectPins(SEEDED_PROJECT, pins);
+  const en = deriveTnItems(sideloadedIngredient('en_tn', 'JON.tsv'), 'jon');
+  const es = deriveTnItems(sideloadedIngredient('es-419_tn', 'JON.tsv'), 'jon');
+  const esKeys = new Set(es.map((i) => mergeKey(i.contextId)));
+  const kept = en.find((i) => String(i.contextId.reference.chapter) === '1' && String(i.contextId.reference.verse) === '2' && esKeys.has(mergeKey(i.contextId)));
+  expect(kept, 'real English and Spanish TSVs share a Jonah 1:2 check').toBeTruthy();
+
+  // Every text and identifier comes from the sample project or real resource exports.
+  const titus = fs.readFileSync(path.join(rigRepo(SEEDED_PROJECT), 'ingredients/TIT.usfm'), 'utf8');
+  const sourceSpan = verseTextSpan(titus, 1, 1);
+  const oldDraft = titus.slice(sourceSpan.start, sourceSpan.end).trim();
+  const words = oldDraft.split(/\s+/);
+  const selectedToken = tokenizeVerse(oldDraft).find((token) => token.isWord)!;
+  const selected = selectedToken.text;
+  const editedDraft = words.filter((word) => !word.includes(selected)).join(' ');
+  expect(editedDraft).not.toContain(selected);
+  const decision = { ...kept!, selections: [{ text: selected, occurrence: selectedToken.occurrence!, occurrences: selectedToken.occurrences! }], status: 'valid' as const, invalidated: false };
+  // Negative control first: the removed word is stale, while the original sample text is valid.
+  expect(isDecided(revalidateAgainstDraft([decision], { '1:2': editedDraft }).items[0])).toBe(false);
+  expect(isDecided(revalidateAgainstDraft([decision], { '1:2': oldDraft }).items[0])).toBe(true);
+  const jonPath = path.join(rigRepo(SEEDED_PROJECT), 'ingredients/JON.usfm');
+  const jon = fs.readFileSync(jonPath, 'utf8');
+  const span = verseTextSpan(jon, 1, 2);
+  fs.writeFileSync(jonPath, jon.slice(0, span.start) + oldDraft + '\n' + jon.slice(span.end));
+  const file = readDecisionFile(SEEDED_PROJECT, 'translationNotes', 'TIT')!;
+  fs.mkdirSync(path.join(rigRepo(SEEDED_PROJECT), 'ingredients/checking/translationNotes'), { recursive: true });
+  fs.writeFileSync(path.join(rigRepo(SEEDED_PROJECT), 'ingredients/checking/translationNotes/JON.json'), JSON.stringify({ ...file, book: 'JON', resource: { repoPath: pins.tn.repoPath, version: pins.tn.version, sha: pins.tn.sha, languageSet: 'primary' }, decisions: [decision] }, null, 2));
+
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  let reading = false;
+  const spanishNotes = /es-419_tn.*ipath=JON\.tsv/;
+  await page.route(spanishNotes, async (route) => { reading = true; await held; return route.fallback(); });
+  try {
+    await page.goto('/');
+    await page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByRole('button', { name: 'Settings' }).click();
+    await page.getByTestId('settings-gateway-es-419::es-419_gl').click();
+    await expect.poll(() => reading, { timeout: 30_000 }).toBe(true);
+    await expect(page.getByTestId('gateway-change')).toHaveCount(0);
+    await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+    // A Settings choice opens the first book, Jonah; verify rather than silently switching it.
+    await expect(page.getByRole('heading', { name: 'Jonah 1', exact: true })).toBeVisible();
+    await page.getByRole('tab', { name: 'Verse', exact: true }).click();
+    await page.getByTitle('Edit this verse').first().click({ timeout: 5000 });
+    const editor = page.getByRole('textbox', { name: 'Verse 2', exact: true });
+    await editor.fill(editedDraft);
+    await editor.blur();
+    await expect.poll(() => fs.readFileSync(jonPath, 'utf8'), { timeout: 15_000 }).toContain(editedDraft);
+    release();
+    await page.unroute(spanishNotes);
+    await expect(page.getByTestId('gateway-change')).toBeVisible({ timeout: 30_000 });
+    const line = (await page.getByTestId('gateway-plan').locator('li', { hasText: 'Jonah' }).textContent())!;
+    const carried = Number(/(\d+) carried over/.exec(line)![1]);
+    await page.getByTestId('gateway-confirm').click();
+    await expect(page.getByTestId('gateway-change')).toHaveCount(0, { timeout: 30_000 });
+    await page.getByRole('tab', { name: 'Check', exact: true }).click();
+    await page.getByTestId('open-translationNotes').click();
+    await expect(page.getByTestId('check-session')).toContainText('es-419_tn');
+    const progress = (await page.getByTestId('check-progress').textContent())!;
+    const decided = Number(/^(\d+) of/.exec(progress.trim())![1]);
+    const evidence = { checkId: kept!.contextId.checkId, selected, oldDraft, editedDraft, line, carried, progress, decided };
+    const artifact = testInfo.outputPath('snapshot-count.json');
+    fs.writeFileSync(artifact, JSON.stringify(evidence, null, 2));
+    await testInfo.attach('snapshot-count.json', { path: artifact, contentType: 'application/json' });
+    expect(decided, 'the confirmation promise equals the resulting check screen').toBe(carried);
+  } finally {
+    release();
+    await page.unroute(spanishNotes);
+  }
 });
 
 // Issue #62 teardown: after this journey's mutations, every journaled local

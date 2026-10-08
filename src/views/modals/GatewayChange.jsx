@@ -48,6 +48,19 @@ export default function GatewayChange() {
   const preview = s.gatewayPreview;
   if (!preview) return null;
 
+  // Settings closes when it opens the project. A failed preview still needs
+  // its own dialogue, with the error and a way to close it, without a plan
+  // or a Confirm button that could mistake the failed read for success.
+  if (preview.failed) return (
+    <Modal zIndex={90} data-testid="gateway-change" title={t('gateway.title', { lang: preview.gateway.name })}
+      closeLabel={t('common.close')} onClose={actions.cancelGatewayChange}
+      footer={<Button variant="secondary" onClick={actions.cancelGatewayChange} data-testid="gateway-cancel">{t('common.close')}</Button>}>
+      <Callout tone="warn" role="alert" data-testid="gateway-error" style={{ overflowWrap: 'anywhere' }}>
+        <strong>{t('gateway.failed')}</strong> {s.gatewayError}
+      </Callout>
+    </Modal>
+  );
+
   const { headline, detail } = describeConsequences(preview.consequences, bookName);
   const harmless = preview.consequences.harmless;
   const blocked = (preview.blocked?.length ?? 0) > 0;

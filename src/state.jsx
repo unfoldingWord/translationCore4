@@ -914,6 +914,31 @@ async function gatewayChangePlan({ consequences, next, coverage, installed, stor
   return { plan, blocked };
 }
 
+/** Drafts remain editable while the resource reads are in flight. Count
+ * against one live snapshot, then retry if an edit/book switch changed it
+ * during any await, including a later book's derive. rawRef owns synchronous
+ * edits; bookRaw being null means the new book is loading. */
+async function liveGatewayChangePlan({ store, storeRef, stateRef, rawRef, obsProject, ...args }) {
+  const snapshot = () => {
+    const live = stateRef.current;
+    return { book: live.book, raw: live.bookRaw == null ? null : rawRef.current, story: live.story };
+  };
+  for (;;) {
+    if (storeRef.current !== store) throw new Error(t('gateway.otherProject'));
+    const draft = snapshot();
+    const draftFor = async (book) => {
+      if (obsProject) return frameTextIndex(draft.story);
+      const raw = book === draft.book && draft.raw != null ? draft.raw : (await store.readBook(book)).usfm;
+      return withSpanMembers(verseTextIndex(raw));
+    };
+    const result = await gatewayChangePlan({ ...args, blocked: [...args.blocked], draftFor });
+    if (storeRef.current !== store) throw new Error(t('gateway.otherProject'));
+    const live = snapshot();
+    if (live.book !== draft.book || live.raw !== draft.raw || live.story !== draft.story) continue;
+    return result;
+  }
+}
+
 /** Derive one tool's check session: the item list, and the project-frame
  * verdict the compare panes need. #131 class: a non-eng-framed project
  * numbers its items in ITS frame, while the source books stay in their own —
@@ -3892,24 +3917,10 @@ export function AppProvider({ children }) {
               book: entry.book,
               reason: `versification-${frame.state}`,
             }));
-        // The draft each book's check session revalidates against: the open
-        // book's live text, another book's text from disk, the open story's
-        // frames. A failed read rejects, so the preview states it (D30).
-        const draftFor = async (book) => {
-          if (obsProject) return frameTextIndex(st.story);
-          const raw = book === st.book && st.bookRaw != null ? st.bookRaw : (await store.readBook(book)).usfm;
-          return withSpanMembers(verseTextIndex(raw));
-        };
-        const { plan, blocked } = await gatewayChangePlan({
-          draftFor,
-          consequences,
-          next,
-          coverage,
-          installed,
-          stored,
-          md5s,
-          actions: a,
-          blocked: initiallyBlocked,
+        const { plan, blocked } = await liveGatewayChangePlan({
+          store, storeRef, stateRef, rawRef, obsProject,
+          consequences, next, coverage, installed, stored, md5s,
+          actions: a, blocked: initiallyBlocked,
         });
         const carried = plan.reduce((n, p) => n + p.carried, 0);
         const invalidated = plan.reduce((n, p) => n + p.invalidated, 0);
@@ -4358,7 +4369,16 @@ export function AppProvider({ children }) {
           preview = await a.previewGatewayChange(gateway);
         } catch (error) {
           gatewayBusyRef.current = false;
-          dispatch({ type: 'set', patch: { gatewayBusy: false, ...(storeRef.current === origin ? { gatewayError: String(error?.message || error) } : {}) } });
+          dispatch({
+            type: 'set',
+            patch: {
+              gatewayBusy: false,
+              ...(storeRef.current === origin ? {
+                gatewayPreview: { failed: true, gateway, projectId },
+                gatewayError: String(error?.message || error),
+              } : {}),
+            },
+          });
           return null;
         }
         // The user left the project while the preview was read: its dialogue
@@ -4385,6 +4405,7 @@ export function AppProvider({ children }) {
       },
 
       confirmGatewayChange: async (preview) => {
+        if (preview?.failed) return;
         // A failed commit must stay VISIBLE: the dialogue used to swallow the
         // rejection, leaving an open dialogue that ignored its confirm button
         // (found 2026-08-22, rig journey run).
