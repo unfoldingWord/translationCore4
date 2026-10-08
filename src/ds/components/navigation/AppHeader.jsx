@@ -22,39 +22,44 @@ export function AppHeader({ tone = 'ocean', logoSrc, projectInitials, projectNam
   return (
     <Surface as="header" tone={dark ? 'ocean' : undefined} fill={dark ? 'solid' : 'card'}
       border={dark ? 'none' : 'hair'} radius="none" pad="0 16px"
-      style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 'none',
-               height: 'var(--header-height)', zIndex: 'var(--z-header)' }}>
-      <Stack direction="row" gap={9} align="center" onClick={onBrandClick}
-        style={{ cursor: onBrandClick ? 'pointer' : undefined }}>
-        {logoSrc ? <img src={logoSrc} alt="translationCore" style={{ height: 28, width: 'auto', display: 'block' }} /> : null}
-        <Text role="strong" style={{ fontSize: 'var(--fs-wordmark)', letterSpacing: 'var(--track-15-5)' }}>
-          translationCore
-          <Text as="span" role="labelMicro" tone="muted"
-            style={{ verticalAlign: 'super', marginInlineStart: 1, letterSpacing: 'var(--track-9)' }}>®</Text>
-        </Text>
-      </Stack>
-      <Rule orientation="vertical" />
-      {projectName ? (
-        <Surface as="button" fill="quiet" border="line" radius="md" interactive="quiet"
-          onClick={onProjectClick} title={switchTitle}
-          style={{ padding: '5px 10px 5px 8px', cursor: 'pointer', font: 'inherit' }}>
-          <Stack direction="row" gap={9} align="center">
-            <Surface as="span" tone={dark ? 'accent' : 'ocean'} fill="solid" radius="xs"
-              style={{ width: 26, height: 26, flex: 'none', display: 'inline-flex',
-                       alignItems: 'center', justifyContent: 'center' }}>
-              <Text role="captionStrong" style={{ color: 'var(--tone-on-fill)' }}>{projectInitials}</Text>
-            </Surface>
-            <Stack direction="column" gap={1} style={{ textAlign: 'start' }}>
-              <Text role="ui" tone="strong">{projectName}</Text>
-              <Text role="overline" tone="muted" style={{ textTransform: 'none', letterSpacing: 'var(--track-11)' }}>{projectMeta}</Text>
+      style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto minmax(0,1fr)', alignItems: 'center',
+               gap: 14, flex: 'none', height: 'var(--header-height)', zIndex: 'var(--z-header)' }}>
+      {/* #599: the two side columns are equal, so the switch stays in the center of
+          the bar. A project name that does not fit is cut with an ellipsis, and the
+          button's tooltip gives it in full. */}
+      <Stack direction="row" gap={14} align="center" style={{ alignSelf: 'stretch' }}>
+        <Stack direction="row" gap={9} align="center" onClick={onBrandClick}
+          style={{ flex: 'none', cursor: onBrandClick ? 'pointer' : undefined }}>
+          {logoSrc ? <img src={logoSrc} alt="translationCore" style={{ height: 28, width: 'auto', display: 'block' }} /> : null}
+          <Text role="strong" style={{ fontSize: 'var(--fs-wordmark)', letterSpacing: 'var(--track-15-5)' }}>
+            translationCore
+            <Text as="span" role="labelMicro" tone="muted"
+              style={{ verticalAlign: 'super', marginInlineStart: 1, letterSpacing: 'var(--track-9)' }}>®</Text>
+          </Text>
+        </Stack>
+        <Rule orientation="vertical" />
+        {projectName ? (
+          <Surface as="button" fill="quiet" border="line" radius="md" interactive="quiet"
+            onClick={onProjectClick} title={`${projectName}. ${switchTitle}`} data-testid="project-switch"
+            style={{ padding: '5px 10px 5px 8px', cursor: 'pointer', font: 'inherit', minWidth: 0 }}>
+            <Stack direction="row" gap={9} align="center">
+              <Surface as="span" tone={dark ? 'accent' : 'ocean'} fill="solid" radius="xs"
+                style={{ width: 26, height: 26, flex: 'none', display: 'inline-flex',
+                         alignItems: 'center', justifyContent: 'center' }}>
+                <Text role="captionStrong" style={{ color: 'var(--tone-on-fill)' }}>{projectInitials}</Text>
+              </Surface>
+              <Stack direction="column" gap={1} style={{ textAlign: 'start' }}>
+                <Text role="ui" tone="strong" truncate>{projectName}</Text>
+                <Text role="overline" tone="muted" truncate style={{ textTransform: 'none', letterSpacing: 'var(--track-11)' }}>{projectMeta}</Text>
+              </Stack>
             </Stack>
-          </Stack>
-        </Surface>
-      ) : null}
-      <span style={{ flex: 1 }} />
-      {center}
-      <span style={{ flex: 1 }} />
-      {right != null ? right : <StatusDot status="valid" size={8} label="Saved" />}
+          </Surface>
+        ) : null}
+      </Stack>
+      <span style={{ display: 'flex' }}>{center}</span>
+      <Stack direction="row" align="center" justify="end">
+        {right != null ? right : <StatusDot status="valid" size={8} label="Saved" />}
+      </Stack>
     </Surface>
   );
 }

@@ -98,7 +98,7 @@ function TopBar() {
         // D63: Publish is retired as a top-level tab — the publish flow lives
         // inside Check as the Community Checking tool (#108). An OBS project
         // has the same three modes (#290, #291).
-        <Switcher indicator="pill" value={s.view === 'publish' ? 'check' : s.view} onChange={(v) => actions.go(v)}
+        <Switcher indicator="pill" data-testid="mode-switch" value={s.view === 'publish' ? 'check' : s.view} onChange={(v) => actions.go(v)}
           options={[
             { value: 'read', label: t('nav.understand') },
             { value: 'draft', label: t('nav.draft') },
