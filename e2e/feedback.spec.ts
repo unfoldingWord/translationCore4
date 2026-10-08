@@ -20,33 +20,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { test, expect } from './helpers/test';
-import type { BrowserContext, Page, TestInfo } from '@playwright/test';
+import type { Page, TestInfo } from '@playwright/test';
 import { SEEDED_PROJECT, resetClientSettings, resetSeededChecking, rigRepo } from './helpers/rig';
 import { recordExternal } from './helpers/externalRequests';
+import { fakeFeedbackBridge } from './helpers/feedbackBridge';
 import { verifyAllJournaledProjects } from './helpers/journal';
 
 const TAG = { tag: ['@feedback', '@inc9'] };
 const OUTSIDE_FILE = path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'custom', 'notes.json');
 const CODE = 'open.unexplained-divergence';
 const ASK_REASON = 'This step needs the internet to send your report to the unfoldingWord help desk';
-
-interface Answer { ok: boolean; status?: number; reason?: string }
-
-/** The desktop help-desk bridge, faked: each call is recorded, and answered from
- * `answers` in order after `delayMs`. Install before the page loads. */
-async function fakeFeedbackBridge(context: BrowserContext, answers: Answer[], delayMs = 400) {
-  const calls: Array<Record<string, string>> = [];
-  await context.exposeFunction('__tc4Feedback', async (payload: Record<string, string>) => {
-    calls.push(payload);
-    await new Promise((r) => setTimeout(r, delayMs));
-    return answers[calls.length - 1] ?? { ok: false, reason: 'refused' };
-  });
-  await context.addInitScript(() => {
-    const w = window as unknown as { __tc4Feedback: (p: unknown) => Promise<unknown>; tc4Desktop: unknown };
-    w.tc4Desktop = { feedback: { send: (payload: unknown) => w.__tc4Feedback(payload) } };
-  });
-  return calls;
-}
 
 /** The #156 scenario: an outside file makes the open of Titus refuse. */
 async function refuseOpen(page: Page) {

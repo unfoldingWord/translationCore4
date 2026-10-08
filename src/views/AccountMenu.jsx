@@ -134,6 +134,8 @@ export default function AccountMenu() {
           <Row testId="account-internet" role="menuitemcheckbox" checked={online} title={t('account.internet')}
             sub={t(online ? 'account.internetOn' : 'account.internetOff')} end={<Switch on={online} />}
             onClick={() => actions.setInternet(!online)} />
+          {/* #521: the Feedback dialog of #378; opening it sends nothing. */}
+          <Row testId="account-report" title={t('account.report')} onClick={choose(actions.reportProblem)} />
           <Row testId="account-about" title={t('account.about')} onClick={choose(() => setAbout('about'))} />
           {state !== 'out' && <>
             <Rule style={{ margin: '5px 4px' }} />

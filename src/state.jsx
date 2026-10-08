@@ -3649,6 +3649,25 @@ export function AppProvider({ children }) {
           },
         });
       },
+      /** #521: "Report a problem" in the account menu. An unsent report with a
+       * message reopens as it was (Cancel keeps the message). Otherwise a new
+       * one opens as General Feedback, as tC3's menu does, with the last
+       * closed entry of the ops log as its attachment. */
+      reportProblem: () => {
+        if (feedbackSending) return;
+        const kept = stateRef.current.fb;
+        if (kept && kept.result !== 'sent' && kept.message.trim()) return dispatch({ type: 'set', patch: { modal: 'feedback' } });
+        dispatch({
+          type: 'set',
+          patch: {
+            modal: 'feedback',
+            fb: {
+              refusal: null, category: 'General Feedback', message: '', name: '', email: '',
+              attachment: attachmentText(`${APP_LINE} · ${navigator.platform}`, reportToAttach(null, opsLog.entries)), sending: false, result: null,
+            },
+          },
+        });
+      },
       patchFb: (patch) => {
         if (feedbackSending) return;
         dispatch({ type: 'set', patch: { fb: { ...stateRef.current.fb, ...patch } } });
