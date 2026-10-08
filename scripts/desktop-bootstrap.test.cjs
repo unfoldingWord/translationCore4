@@ -137,6 +137,7 @@ function runDesktopMain({ platform = 'linux', lock = true, startServer, bindErro
   const fakeRequire = (request) => {
     if (request === 'electron') return electron;
     if (request === './tc4-bootstrap.cjs') return bootstrapModule;
+    if (request === './tc4-feedback.cjs') return require('./desktop-feedback.cjs');
     if (request === './tc4-bootstrap.json') return { storeLeaf: 'pankosmia/tc4-projects', variant: 'production' };
     if (request === './electronStartup.js') {
       events.push('upstream');
@@ -305,22 +306,22 @@ test('the packaged entry point is valid, ordered, and preserves its launch contr
   assert.doesNotThrow(() => new vm.Script(desktopMain));
 
   const linux = runDesktopMain();
-  assert.deepEqual(linux.events, ['lock', 'switch:disable-dev-shm-usage', 'handle:export:pdf', 'handle:token:keep', 'handle:token:read', 'handle:token:forget', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'runtime', 'bind', 'bootstrap', 'upstream']);
+  assert.deepEqual(linux.events, ['lock', 'switch:disable-dev-shm-usage', 'handle:export:pdf', 'handle:token:keep', 'handle:token:read', 'handle:token:forget', 'handle:feedback:send', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'runtime', 'bind', 'bootstrap', 'upstream']);
   const mac = runDesktopMain({ platform: 'darwin' });
-  assert.deepEqual(mac.events, ['lock', 'handle:export:pdf', 'handle:token:keep', 'handle:token:read', 'handle:token:forget', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'runtime', 'bind', 'bootstrap', 'upstream']);
+  assert.deepEqual(mac.events, ['lock', 'handle:export:pdf', 'handle:token:keep', 'handle:token:read', 'handle:token:forget', 'handle:feedback:send', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'runtime', 'bind', 'bootstrap', 'upstream']);
   const windows = runDesktopMain({ platform: 'win32' });
-  assert.deepEqual(windows.events, ['setAppUserModelId', 'lock', 'handle:export:pdf', 'handle:token:keep', 'handle:token:read', 'handle:token:forget', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'runtime', 'bind', 'bootstrap', 'upstream']);
+  assert.deepEqual(windows.events, ['setAppUserModelId', 'lock', 'handle:export:pdf', 'handle:token:keep', 'handle:token:read', 'handle:token:forget', 'handle:feedback:send', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'runtime', 'bind', 'bootstrap', 'upstream']);
   const external = runDesktopMain({ startServer: 'false' });
-  assert.deepEqual(external.events, ['lock', 'switch:disable-dev-shm-usage', 'handle:export:pdf', 'handle:token:keep', 'handle:token:read', 'handle:token:forget', 'on:browser-window-created', 'on:second-instance', 'shouldBind:false', 'upstream']);
+  assert.deepEqual(external.events, ['lock', 'switch:disable-dev-shm-usage', 'handle:export:pdf', 'handle:token:keep', 'handle:token:read', 'handle:token:forget', 'handle:feedback:send', 'on:browser-window-created', 'on:second-instance', 'shouldBind:false', 'upstream']);
   const second = runDesktopMain({ lock: false });
   assert.deepEqual(second.events, ['lock', 'quit']);
   const failed = runDesktopMain({ bindError: true });
-  assert.deepEqual(failed.events, ['lock', 'switch:disable-dev-shm-usage', 'handle:export:pdf', 'handle:token:keep', 'handle:token:read', 'handle:token:forget', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'runtime', 'bind', 'errorBox', 'exit:1']);
+  assert.deepEqual(failed.events, ['lock', 'switch:disable-dev-shm-usage', 'handle:export:pdf', 'handle:token:keep', 'handle:token:read', 'handle:token:forget', 'handle:feedback:send', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'runtime', 'bind', 'errorBox', 'exit:1']);
   // #284: a Windows copy that cannot run bin\server.exe stops at the
   // prerequisite message, before any profile write and before upstream
   // startup can show the opaque "backend could not be started".
   const noRuntime = runDesktopMain({ platform: 'win32', runtimeMissing: true });
-  assert.deepEqual(noRuntime.events, ['setAppUserModelId', 'lock', 'handle:export:pdf', 'handle:token:keep', 'handle:token:read', 'handle:token:forget', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'runtime', 'errorBox', 'exit:1']);
+  assert.deepEqual(noRuntime.events, ['setAppUserModelId', 'lock', 'handle:export:pdf', 'handle:token:keep', 'handle:token:read', 'handle:token:forget', 'handle:feedback:send', 'on:browser-window-created', 'on:second-instance', 'shouldBind:undefined', 'runtime', 'errorBox', 'exit:1']);
 
   linux.handlers['second-instance']();
   assert.deepEqual(linux.events.slice(-2), ['restore', 'focus']);
@@ -431,7 +432,7 @@ test('the download report sends each download\'s file name and result to the pag
   const preload = fs.readFileSync(path.join(__dirname, 'preload.cjs'), 'utf8');
   assert.match(preload, /ipcRenderer\.on\('download:done', relay\)/);
   assert.match(preload, /return \(\) => ipcRenderer\.removeListener\('download:done', relay\)/);
-  assert.doesNotMatch(preload, /ipcRenderer\.(on|send|invoke)\((?!'(download:done|setCanClose|export:pdf|token:keep|token:read|token:forget)')/);
+  assert.doesNotMatch(preload, /ipcRenderer\.(on|send|invoke)\((?!'(download:done|setCanClose|export:pdf|token:keep|token:read|token:forget|feedback:send)')/);
 });
 
 // #366 (D85): the Door43 token in the operating-system keychain through
@@ -584,3 +585,12 @@ test('external-server mode leaves the caller override and saved profile untouche
   assert.equal(process.env.APP_RESOURCES_DIR, original.app_resources_dir);
   assert.deepEqual(JSON.parse(fs.readFileSync(settingsFile, 'utf8')), original);
 });
+
+test('#378: the help-desk send is answered by the main process; a build with no help-desk values sends nothing', async () => {
+  const main = runDesktopMain();
+  assert.deepEqual(await main.handlers['feedback:send']({}, { category: 'Bug Report', message: 'm', name: '', email: '', version: 'v', attachment: 'a' }),
+    { ok: false, reason: 'not-configured' });
+  assert.match(recipe, /cp "\$REPO\/scripts\/desktop-feedback\.cjs" "\$PACK\/electron\/tc4-feedback\.cjs"/);
+  assert.match(recipe, /tc4-helpdesk\.json/);
+});
+

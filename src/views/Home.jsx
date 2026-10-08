@@ -262,6 +262,18 @@ function ResumeCard({ edit, projects }) {
   );
 }
 
+/** #378: the banner's "Ask for help", while the banner still shows the refusal it was made for. */
+function AskForHelp({ help, text }) {
+  const { actions } = useApp();
+  if (!help || help.text !== text) return null;
+  return (
+    <Button size="sm" variant="outline" data-testid="ask-for-help" data-code={help.code}
+      style={{ marginLeft: 8 }} onClick={() => actions.askForHelp(help)}>
+      {t('feedback.ask')}
+    </Button>
+  );
+}
+
 export default function Home() {
   const { s, actions } = useApp();
   const projects = s.projects;
@@ -289,6 +301,7 @@ export default function Home() {
           <Callout tone="warn" role="alert" data-testid="home-checkpoint-error"
             style={{ margin: '0 0 16px', overflowWrap: 'anywhere' }}>
             {s.commitError} {t('home.commitErrorHint')}
+            <AskForHelp help={s.commitErrorHelp} text={s.commitError} />
           </Callout>
         )}
         {s.bookError && (
@@ -303,6 +316,7 @@ export default function Home() {
                 {t('app.retry')}
               </Button>
             )}
+            <AskForHelp help={s.bookErrorHelp} text={s.bookError} />
           </Callout>
         )}
 

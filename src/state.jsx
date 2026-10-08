@@ -68,6 +68,8 @@ import { USFM_PARSER } from './data/import/usfm';
 import { INSTALLED_SUITE, SUITE_VERSION } from './data/installedSuite';
 import { obsFrameSetMismatch } from './data/obsFrameSet';
 import { parseStory, storyIpath } from './data/journal/runtime';
+import { attachmentText, keepsReport, refusalKey, reportToAttach } from './data/feedback';
+import { APP_COMMIT, APP_VERSION } from './data/about';
 export { SUITE_VERSION }; // the AddBook badge imports it from here
 
 const AppCtx = createContext(null);
@@ -122,6 +124,11 @@ export const door43 = new Door43Api({ allowed: () => internet.on });
 const internetAllowed = async () => internet.on;
 /** D95: the answer to the open "Turn on the internet?" dialog — true for Turn on. */
 let pendingAsk = null;
+/** #378: a Feedback send is running. Set at the click, before any await, so a
+ * second click sends nothing. */
+let feedbackSending = false;
+/** #378: the version as the help desk reads it, and with the operating system. */
+const APP_LINE = `translationCore ${APP_VERSION} (${APP_COMMIT})`;
 /** The gate check in progress, shared by every step that starts meanwhile, so
  * two quick presses read the gate once. */
 let gateCheck = null;
@@ -366,6 +373,9 @@ const initial = () => ({
   chapter: 1,
   bookRaw: null, // raw USFM string — the editing source of truth
   bookError: null,
+  // #378: the "Ask for help" of the bookError banner: { code, text, report },
+  // shown only while bookError is still `text` (askHelpFor).
+  bookErrorHelp: null,
   // OBS story editing is a separate model: story numbers are not Bible books.
   storyNumbers: [],
   storyNumber: null,
@@ -412,13 +422,19 @@ const initial = () => ({
   // failed. Shown in the save indicator's error state with a Retry; a commit
   // never blocks navigation.
   commitError: null,
+  commitErrorHelp: null, // #378: the "Ask for help" of the commitError banner, as bookErrorHelp
   // The repoPath that owes a checkpoint after leaving it failed (#183). The
   // checkpoint is retried when that project opens again; no store is opened
   // for a project that is not current (open() sets the shell's current project).
   commitErrorRepo: null,
   // Modals (the owner's design: creation, add-book, and settings are dialogs
   // over Home, not separate pages)
-  modal: null, // null | 'addProject' | 'newProject' | 'newObs' | 'addBook' | 'settings' | 'sources' | 'fix' | 'import' | 'signIn' | 'share'
+  modal: null, // null | 'addProject' | 'newProject' | 'newObs' | 'addBook' | 'settings' | 'sources' | 'fix' | 'import' | 'signIn' | 'share' | 'feedback'
+  // #378: the Feedback report, kept in memory until the app quits (never stored):
+  // { category, message, name, email, attachment, sending, result }. `result`:
+  // null | 'sent' | a reason it was not sent ('no-desktop', 'not-configured',
+  // 'offline', 'timeout', 'refused').
+  fb: null,
   np: null, // New Bible form
   ab: null, // Add-a-book form
   st: null, // Project-settings form
@@ -1636,6 +1652,20 @@ const failureText = (e) => {
   return recovery ? `${detail} ${recovery}` : detail;
 };
 
+/** #378: whether a refusal's recovery sentence tells the user to ask for help.
+ * Read from the catalogue, so a new sentence that says so gets the control. */
+const asksForHelp = (code) =>
+  t('refusal.' + code, undefined, '').toLowerCase().includes(t('feedback.ask').toLowerCase());
+
+/** #378: the "Ask for help" record of a banner that shows `text` for error `e`,
+ * or null. The Report is the failed operation's own, when the store holds it. */
+const askHelpFor = (e, text, store) => {
+  const code = refusalCodeOf(e);
+  if (code === null || !asksForHelp(code)) return null;
+  const last = store?.lastReport;
+  return { code, text, report: last && !last.ok && last.code === code ? last : null };
+};
+
 /** The store's D59 refusal (journalingStore.upsertDecision) ends its message
  * with the decision reference; nothing else the writer throws does. */
 const isDecisionRefusal = (error) => /\(D36\/D59\)/.test(String(error?.message ?? error));
@@ -1714,7 +1744,11 @@ async function checkpointCommit(store, reason) {
 function startCheckpoint({ store, storeRef, dispatch }, reason) {
   checkpointCommit(store, reason)
     .then(() => { if (storeRef.current === store) dispatch({ type: 'set', patch: { commitError: null } }); })
-    .catch((e) => { if (storeRef.current === store) dispatch({ type: 'set', patch: { commitError: failureText(e) } }); });
+    .catch((e) => {
+      if (storeRef.current !== store) return;
+      const text = failureText(e);
+      dispatch({ type: 'set', patch: { commitError: text, commitErrorHelp: askHelpFor(e, text, store) } });
+    });
 }
 
 /** The project just opened owes the checkpoint that failed when it was left
@@ -1742,7 +1776,7 @@ function startLeaveCheckpoint({ store, repoPath, stateRef, dispatch }) {
       const st = stateRef.current;
       const visible = st.view === 'home' || st.project?.repoPath === repoPath;
       const message = `${t('app.commitError')}: ${failureText(e)}`;
-      dispatch({ type: 'set', patch: { commitErrorRepo: repoPath, ...(visible ? { commitError: message } : {}) } });
+      dispatch({ type: 'set', patch: { commitErrorRepo: repoPath, ...(visible ? { commitError: message, commitErrorHelp: askHelpFor(e, message, store) } : {}) } });
     })
     .finally(() => { if (leaveCheckpoints.get(repoPath) === run) leaveCheckpoints.delete(repoPath); });
   leaveCheckpoints.set(repoPath, run);
@@ -2124,9 +2158,10 @@ async function performProjectOpen(ctx, repoPath, bookCode, view = 'read') {
     disposeUnless(store, storeRef); // #94: a failed open's store is never adopted
     if (superseded()) return; // a stale failure must not route the OPEN project Home
     // A failed open surfaces its diagnosable report and never a stuck bar (#95).
+    const text = failureText(e);
     dispatch({
       type: 'set',
-      patch: { bookError: failureText(e), view: 'home', opening: null },
+      patch: { bookError: text, bookErrorHelp: askHelpFor(e, text, store), view: 'home', opening: null },
     });
   }
 }
@@ -3573,7 +3608,8 @@ export function AppProvider({ children }) {
           await checkpointCommit(store, 'retry');
           dispatch({ type: 'set', patch: { commitError: null } });
         } catch (e) {
-          dispatch({ type: 'set', patch: { commitError: failureText(e) } });
+          const text = failureText(e);
+          dispatch({ type: 'set', patch: { commitError: text, commitErrorHelp: askHelpFor(e, text, store) } });
         }
       },
 
@@ -3609,6 +3645,64 @@ export function AppProvider({ children }) {
         // #530: Cancel, Close and Escape end the Share or Upload changes flow now.
         closeShareFlow();
         dispatch({ type: 'set', patch: { modal: null, np: null, ab: null, st: null, fix: null, im: null, sh: null } });
+      },
+
+      /** #378: "Ask for help" on a banner. The Feedback dialog opens as a Bug
+       * Report with the refusal code and the banner's diagnosis, and the
+       * attachment is fixed now: a later change behind the dialog leaves it as
+       * shown. It replaces a kept, unsent report of a different refusal, and
+       * reopens the one of the same refusal (owner, 2026-10-08). */
+      askForHelp: (help) => {
+        if (feedbackSending) return;
+        // The same refusal reopens its kept, unsent report (Cancel keeps the message).
+        if (keepsReport(stateRef.current.fb, help)) return dispatch({ type: 'set', patch: { modal: 'feedback' } });
+        const report = reportToAttach(help.report, opsLog.entries);
+        dispatch({
+          type: 'set',
+          patch: {
+            modal: 'feedback',
+            fb: {
+              refusal: refusalKey(help), category: 'Bug Report', message: `Refusal code: ${help.code}\n\n${help.text}`, name: '', email: '',
+              attachment: attachmentText(`${APP_LINE} · ${navigator.platform}`, report), sending: false, result: null,
+            },
+          },
+        });
+      },
+      patchFb: (patch) => {
+        if (feedbackSending) return;
+        dispatch({ type: 'set', patch: { fb: { ...stateRef.current.fb, ...patch } } });
+      },
+      /** Cancel: nothing is sent and the report is kept. Not while a send runs. */
+      closeFeedback: () => {
+        if (feedbackSending) return;
+        dispatch({ type: 'set', patch: { modal: null } });
+      },
+      /** Send: the desktop bridge sends the report as the dialog shows it. The
+       * browser build has no bridge; Not now sends nothing. A report that was
+       * not sent is kept; a sent one is cleared. */
+      sendFeedback: async () => {
+        if (feedbackSending) return;
+        const fb = stateRef.current.fb;
+        if (!fb) return;
+        feedbackSending = true;
+        const finish = (patch) => dispatch({ type: 'set', patch: { fb: { ...stateRef.current.fb, sending: false, ...patch } } });
+        dispatch({ type: 'set', patch: { fb: { ...fb, sending: true, result: null } } });
+        try {
+          const bridge = window.tc4Desktop?.feedback;
+          if (!bridge) return finish({ result: 'no-desktop' });
+          if (!(await a.allowInternet('feedback', false))) return finish({});
+          let sent;
+          try {
+            sent = await bridge.send({
+              category: fb.category, message: fb.message, name: fb.name.trim(), email: fb.email.trim(), version: APP_LINE, attachment: fb.attachment,
+            });
+          } catch {
+            sent = { ok: false, reason: 'refused' };
+          }
+          return finish(sent?.ok ? { message: '', name: '', email: '', result: 'sent' } : { result: sent?.reason ?? 'refused' });
+        } finally {
+          feedbackSending = false;
+        }
       },
 
       setDraftUnit: (unit) => {

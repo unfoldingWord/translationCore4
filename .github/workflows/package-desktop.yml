@@ -37,6 +37,8 @@ on:
       - test/fixtures/resources/**
       - scripts/smoke-journal-entry.ts
       - scripts/desktop-main.cjs
+      - scripts/desktop-feedback.cjs
+      - scripts/preload.cjs
       - scripts/*mac*
       - scripts/*windows*
       - scripts/desktop-bootstrap*
@@ -109,6 +111,11 @@ jobs:
           key: cargo-package-desktop-${{ runner.os }}-rustc-${{ steps.rust.outputs.rustc }}-${{ hashFiles('dev-env/server/Cargo.lock', 'dev-env/server/Cargo.toml') }}
 
       - name: Build the artifact
+        # #378: every packaging run carries the help-desk values (owner ruling 9 of
+        # 2026-10-06). A run without the secrets still packages; that build cannot send.
+        env:
+          TC_HELP_DESK_TOKEN: ${{ secrets.TC_HELP_DESK_TOKEN }}
+          TC_HELP_DESK_EMAIL: ${{ secrets.TC_HELP_DESK_EMAIL }}
         run: zsh scripts/package-desktop.zsh ${{ matrix.variant == 'debug' && '--debug' || '' }}
 
       # Single-layer download (#119): `archive: false` uploads the zip as one file, so the
@@ -193,6 +200,11 @@ jobs:
           key: cargo-package-desktop-${{ runner.os }}-rustc-${{ steps.rust.outputs.rustc }}-${{ hashFiles('dev-env/server/Cargo.lock', 'dev-env/server/Cargo.toml') }}
 
       - name: Build the artifact
+        # #378: every packaging run carries the help-desk values (owner ruling 9 of
+        # 2026-10-06). A run without the secrets still packages; that build cannot send.
+        env:
+          TC_HELP_DESK_TOKEN: ${{ secrets.TC_HELP_DESK_TOKEN }}
+          TC_HELP_DESK_EMAIL: ${{ secrets.TC_HELP_DESK_EMAIL }}
         run: xvfb-run -a zsh scripts/package-desktop.zsh
 
       - name: Upload the smoke-test logs (failures only)
@@ -276,6 +288,11 @@ jobs:
           key: cargo-package-desktop-${{ runner.os }}-rustc-${{ steps.rust.outputs.rustc }}-${{ hashFiles('dev-env/server/Cargo.lock', 'dev-env/server/Cargo.toml') }}
 
       - name: Build the artifact
+        # #378: every packaging run carries the help-desk values (owner ruling 9 of
+        # 2026-10-06). A run without the secrets still packages; that build cannot send.
+        env:
+          TC_HELP_DESK_TOKEN: ${{ secrets.TC_HELP_DESK_TOKEN }}
+          TC_HELP_DESK_EMAIL: ${{ secrets.TC_HELP_DESK_EMAIL }}
         shell: msys2 {0}
         run: zsh scripts/package-desktop.zsh
 
