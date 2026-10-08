@@ -15,6 +15,7 @@
 //   f  the bridge receives exactly the attachment text the dialog showed
 //   g  with no desktop bridge, Send says that sending works only in the desktop app, asks
 //      nothing, and keeps the message
+//   h  Report a problem in the account menu (#521) starts a new report over that kept one
 // Each run writes the payloads that reached the fake bridge and the request log into the
 // test's output folder (and attaches them).
 import fs from 'node:fs';
@@ -153,6 +154,15 @@ test.describe('Ask for help: the Feedback dialog (#378)', () => {
     await expect(page.getByTestId('net-ask')).toHaveCount(0);
     await expect(message).toHaveValue('The open of Titus was refused. Kept text.');
     // Cancel keeps the report in memory; the dialog closes.
+    await dialog.getByTestId('feedback-cancel').click();
+    await expect(dialog).toHaveCount(0);
+    // #521: Report a problem in the account menu starts a new report; it does not open the
+    // kept Bug Report of the refusal.
+    await page.getByTestId('account-menu').click();
+    await page.getByTestId('account-report').click();
+    await expect(dialog.getByRole('combobox', { name: 'Category' })).toContainText('General Feedback');
+    await expect(message).toHaveValue('');
+    await expect(dialog.getByTestId('feedback-result')).toHaveCount(0);
     await dialog.getByTestId('feedback-cancel').click();
     await expect(dialog).toHaveCount(0);
     expect(requests.external()).toEqual([]);

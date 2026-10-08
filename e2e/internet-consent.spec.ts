@@ -27,7 +27,8 @@
 //      with zero external requests
 //   j  Report a problem (#521) opens the Feedback dialog of #378 from the menu, on Home and in
 //      a project, by keyboard, with zero external requests; Send asks while the internet is off,
-//      Not now sends nothing and keeps the report; while the internet is on, Send asks nothing
+//      Not now sends nothing and keeps the report; a kept report opens again with what was typed
+//      and the attachment of now; while the internet is on, Send asks nothing
 // The shared recorder (helpers/externalRequests.ts) writes each request log, and the
 // menu and dialog screenshots, into the test's output folder (and attaches them).
 import { execFileSync } from 'node:child_process';
@@ -1435,6 +1436,15 @@ test.describe('D95 — the internet is one on/off state for the app session, and
     await expect(dialog.getByRole('combobox', { name: 'Category' })).toContainText('General Feedback');
     await expect(message).toHaveValue('');
     await expect(send).toBeDisabled();
+    // A name and an email with no message yet are kept as well.
+    await dialog.getByLabel('Name (optional)').fill('Journey Tester');
+    await dialog.getByLabel('Email (optional)').fill('journey@example.invalid');
+    await dialog.getByTestId('feedback-cancel').click();
+    await expect(dialog).toHaveCount(0);
+    await openByKeyboard();
+    await expect(dialog.getByLabel('Name (optional)')).toHaveValue('Journey Tester');
+    await expect(dialog.getByLabel('Email (optional)')).toHaveValue('journey@example.invalid');
+    await expect(message).toHaveValue('');
     const attachment = (await dialog.getByTestId('feedback-attachment').textContent()) ?? '';
     expect(attachment).toMatch(/^translationCore \S+ \(\S+\) · \S+\n(no Report|Report: \S+, \d{4}-\d\d-\d\dT)/);
     await message.fill(FIRST);
@@ -1459,30 +1469,40 @@ test.describe('D95 — the internet is one on/off state for the app session, and
     await openByKeyboard();
     await expect(message).toHaveValue(FIRST);
     await expect(dialog.getByTestId('feedback-attachment')).toHaveText(attachment);
+    await dialog.getByTestId('feedback-cancel').click();
 
-    // Turn on internet sends the report once, as the dialog showed it.
+    // In a project, after the open of Titus: the kept report has what was typed, and its
+    // attachment is the one of now, the Report of that open.
+    await openTitus(page);
+    await openByKeyboard();
+    await expect(message).toHaveValue(FIRST);
+    await expect(dialog.getByLabel('Name (optional)')).toHaveValue('Journey Tester');
+    const inProject = (await dialog.getByTestId('feedback-attachment').textContent()) ?? '';
+    expect(inProject).toMatch(/^translationCore \S+ \(\S+\) · \S+\nReport: open, \d{4}-\d\d-\d\dT/);
+    expect(inProject).not.toBe(attachment);
+    await shot(page, testInfo, 'j-report-project');
+
+    // Turn on internet sends the report once, as the dialog shows it.
     await send.click();
     await page.getByTestId('net-confirm').click();
     await expect(dialog.getByTestId('feedback-result')).toHaveAttribute('data-result', 'sent');
     await expect(trigger(page)).toHaveAttribute('data-internet', 'on');
     expect(calls).toHaveLength(1);
-    expect(calls[0]).toMatchObject({ category: 'General Feedback', message: FIRST, name: '', email: '', attachment });
+    expect(calls[0]).toMatchObject({ category: 'General Feedback', message: FIRST, name: 'Journey Tester', email: 'journey@example.invalid', attachment: inProject });
     await dialog.getByTestId('feedback-close').click();
 
-    // In a project, with the internet on: a new report opens, and Send asks nothing.
-    await openTitus(page);
+    // The internet is on: a new report opens (a sent one is cleared), and Send asks nothing.
     await openByKeyboard();
     await expect(dialog.getByRole('combobox', { name: 'Category' })).toContainText('General Feedback');
     await expect(message).toHaveValue('');
-    const inProject = (await dialog.getByTestId('feedback-attachment').textContent()) ?? '';
-    expect(inProject).toMatch(/^translationCore \S+ \(\S+\) · \S+\nReport: \S+, \d{4}-\d\d-\d\dT/);
+    await expect(dialog.getByLabel('Name (optional)')).toHaveValue('');
+    await expect(dialog.getByLabel('Email (optional)')).toHaveValue('');
     await message.fill('A second report, from inside Titus.');
-    await shot(page, testInfo, 'j-report-project');
     await send.click();
     await expect(dialog.getByTestId('feedback-result')).toHaveAttribute('data-result', 'sent');
     await expect(askNet).toHaveCount(0);
     expect(calls).toHaveLength(2);
-    expect(calls[1]).toMatchObject({ category: 'General Feedback', message: 'A second report, from inside Titus.', attachment: inProject });
+    expect(calls[1]).toMatchObject({ category: 'General Feedback', message: 'A second report, from inside Titus.', name: '', email: '' });
     await dialog.getByTestId('feedback-close').click();
     await expect(dialog).toHaveCount(0);
 

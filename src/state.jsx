@@ -3649,22 +3649,24 @@ export function AppProvider({ children }) {
           },
         });
       },
-      /** #521: "Report a problem" in the account menu. An unsent report with a
-       * message reopens as it was (Cancel keeps the message). Otherwise a new
-       * one opens as General Feedback, as tC3's menu does, with the last
-       * closed entry of the ops log as its attachment. */
+      /** #521: "Report a problem" in the account menu. An unsent report that
+       * the menu started, and that holds a message, a name or an email, reopens
+       * with what the user typed (in memory only) and with the attachment of
+       * now: the last closed entry of the ops log. Otherwise a new one opens as
+       * General Feedback, as tC3's menu does; it replaces a kept report of a
+       * refusal, which belongs to "Ask for help". */
       reportProblem: () => {
         if (feedbackSending) return;
         const kept = stateRef.current.fb;
-        if (kept && kept.result !== 'sent' && kept.message.trim()) return dispatch({ type: 'set', patch: { modal: 'feedback' } });
+        const typed = kept && kept.result !== 'sent' && kept.refusal === null && (kept.message + kept.name + kept.email).trim();
+        const attachment = attachmentText(`${APP_LINE} · ${navigator.platform}`, reportToAttach(null, opsLog.entries));
         dispatch({
           type: 'set',
           patch: {
             modal: 'feedback',
-            fb: {
-              refusal: null, category: 'General Feedback', message: '', name: '', email: '',
-              attachment: attachmentText(`${APP_LINE} · ${navigator.platform}`, reportToAttach(null, opsLog.entries)), sending: false, result: null,
-            },
+            fb: typed
+              ? { ...kept, attachment }
+              : { refusal: null, category: 'General Feedback', message: '', name: '', email: '', attachment, sending: false, result: null },
           },
         });
       },
